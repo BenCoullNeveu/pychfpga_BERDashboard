@@ -20,6 +20,8 @@ import sys
 import select
 import numpy as np
 #import matplotlib as mpl
+import matplotlib
+matplotlib.use('TKAgg')
 import matplotlib.pyplot as plt
 import pdb
 import __builtin__
@@ -32,6 +34,16 @@ import SocketIO
 import SPI
 import SYSMON
 import FreqCtr
+
+# -- hex() -- 
+
+def hex(arg):
+	""" Wrapper around the built-in hex function to allow connversion of arrays """ 
+	if isinstance(arg, np.ndarray):
+		return '[%s]' % (' '.join(__builtin__.hex(a) for a in arg))
+	else:
+		return __builtin__.hex(arg)
+
 import MGT
 
 # SPI device handlers
@@ -56,14 +68,6 @@ for m in reload_modules:
 	reload(m)
 
 
-# -- hex() -- 
-
-def hex(arg):
-	""" Wrapper around the built-in hex function to allow connversion of arrays """ 
-	if isinstance(arg, np.ndarray):
-		return '[%s]' % (' '.join(__builtin__.hex(a) for a in arg))
-	else:
-		return __builtin__.hex(arg)
 
 # -- chFPGA -- 
 
@@ -716,6 +720,7 @@ class chFPGA:
 		#if not hold:
 		plt.clf()
 		plt.hold(hold)
+		plt.show()
 
 		if fft:
 			f=arange(512)*1024.0/800.0
@@ -762,7 +767,7 @@ class chFPGA:
 					if fft:
 						plt.subplot(2,1,1);
 						if correlate:
-							plt.plot(f,abs(a[ch1,:]) ,'b.-',f,abs(a[ch2]),'k.-')
+							plt.plot(f,abs(a[ch1,a:]) ,'b.-',f,abs(a[ch2]),'k.-')
 						else:
 							#raise
 							plt.plot(abs(a[ch1,:]) ,'b.-')
