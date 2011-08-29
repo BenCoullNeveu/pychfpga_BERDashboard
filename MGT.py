@@ -13,7 +13,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from Module import Module_base, BitDef
-from chFPGA import hex
+import util
 
 class MGT_port_base(Module_base):
 	""" Implements interface to the MGT """
@@ -150,6 +150,8 @@ class MGT_port_base(Module_base):
 			pass
 
 	def init(self):
+		# Receiver set-up
+
 		self.RX_DFE_OVERRIDE=1
 		self.TAP1=8
 		self.TAP2=0
@@ -157,6 +159,8 @@ class MGT_port_base(Module_base):
 		self.TAP4=0
 		self.RX_EQMIX=0 # RX Equalizer
 		self.RX_EYE_SCANMODE=0
+
+		# Transmitter set-up
 		self.TX_DIFFCTRL=10 # Transmit power
 		self.TX_PREEMPHASIS=0
 		self.TX_POSTEMPHASIS=0
@@ -194,7 +198,7 @@ class MGT_port_base(Module_base):
 	def print_status(self):
 		try:
 			while 1: 
-				print hex(self.read(0,length=5)), self.RX_LOSSOFSYNC, self.CLK_DLY_MON, self.EYE_HEIGHT, ' DFE Taps=[ %2i, %2i, %2i, %2i] ' % (self.TAP1_MON,self.TAP2_MON,self.TAP3_MON,self.TAP4_MON)
+				print util.hex(self.read(0,length=5)), self.RX_LOSSOFSYNC, self.CLK_DLY_MON, self.EYE_HEIGHT, ' DFE Taps=[ %2i, %2i, %2i, %2i] ' % (self.TAP1_MON,self.TAP2_MON,self.TAP3_MON,self.TAP4_MON)
 		except KeyboardInterrupt:
 			pass
 
