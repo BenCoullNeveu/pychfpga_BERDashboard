@@ -22,8 +22,6 @@ import sys
 import select
 import numpy as np
 #import matplotlib as mpl
-import matplotlib
-matplotlib.use('TKAgg')
 import matplotlib.pyplot as plt
 import pdb
 
@@ -38,16 +36,6 @@ import SPI
 import SYSMON
 import SYSMOD
 import FreqCtr
-
-# -- hex() -- 
-
-def hex(arg):
-	""" Wrapper around the built-in hex function to allow connversion of arrays """ 
-	if isinstance(arg, np.ndarray):
-		return '[%s]' % (' '.join(__builtin__.hex(a) for a in arg))
-	else:
-		return __builtin__.hex(arg)
-
 import MGT
 
 # SPI device handlers
@@ -72,11 +60,8 @@ for m in reload_modules:
 	reload(m)
 
 
-<<<<<<< HEAD
 # -- hex() -- 
 #hex=util.hex # override default hex function
-=======
->>>>>>> 758575e4393601d969e7b96c7249183f68ccdc03
 
 # -- chFPGA -- 
 
@@ -725,17 +710,16 @@ class chFPGA:
 			ch+=1
 		return data		
 
-	def plot_ADC_frame(self, channels=0, hold=0, frames=1, continuous=0,xmax=1023,fft=0, sync_period=None, out_shift=0, fft_shift=None, filename=None,simulate=0,correlate=0):
+	def plot_ADC_frame(self, channels=0, hold=0, frames=1, continuous=0,xmax=1023,fft=0, sync_period=None, out_shift=0, fft_shift=None, filename=None,simulate=0):
 		if filename:
-			file=open(filename,'w')
+			f=open(filename,'w')
 		else:
-			file=None
+			f=None
 
 		plt.figure(5)
 		#if not hold:
 		plt.clf()
 		plt.hold(hold)
-		plt.show()
 
 		if fft:
 			f=arange(512)*1024.0/800.0
@@ -751,9 +735,9 @@ class chFPGA:
 		if type(channels) is int: # make sure that 'channels' is a list
 			channels=[channels];
 
-		correlate=(len(channels)>1) & correlate
-        mult_chan = len(channels)>1
-		if mult_chan: # select channels to correlate
+		correlate=len(channels)>1
+
+		if correlate: # select channels to correlate
 			ch1=channels[0]
 			ch2=channels[1]
 		else:
@@ -782,7 +766,7 @@ class chFPGA:
 					if fft:
 						plt.subplot(2,1,1);
 						if correlate:
-							plt.plot(f,abs(a[ch1,a:]) ,'b.-',f,abs(a[ch2]),'k.-')
+							plt.plot(f,abs(a[ch1,:]) ,'b.-',f,abs(a[ch2]),'k.-')
 						else:
 							#raise
 							plt.plot(abs(a[ch1,:]) ,'b.-')
@@ -792,18 +776,17 @@ class chFPGA:
 						plt.plot(f,abs(corr) ,'b.-',f,corr_sum.real/number_of_frames,'r.-')
 					else:
 						plt.plot(a[ch1],'b.-')
-						plt.plot(a[ch2],'r.-')
 						plt.axis([0,xmax,-ymax,ymax])
 					plt.draw()
-					if file:
-						file.write(np.int8(a[ch1,:]))
-						file.write(np.int8(a[ch2,:]))
+					if f:
+						f.write(np.int8(a[ch1,:]))
+	#					f.write(np.int8(a[ch2,:]))
 				except:
 					raise
 		except KeyboardInterrupt:
 			pass
-		if file:
-			file.close()
+		if f:
+			f.close()
 		print 'Plotted %i frames' % number_of_frames
 	
 		
