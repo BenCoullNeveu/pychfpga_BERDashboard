@@ -28,8 +28,11 @@ class ADC_chip(object):
 		self.adc=adc_instance # store current ADC number for this instance
 		self.adc_number=adc_number # store current ADC number for this instance
 		
-	def read(self,addr): return self.adc.read(self.adc_number,addr)
-	def write(self,addr,value): return self.adc.write(self.adc_number,addr,value)
+	def read(self,addr): 
+		return self.adc.read(self.adc_number,addr)
+
+	def write(self,addr,value): 
+		return self.adc.write(self.adc_number,addr,value)
 
 
 	def init(self, test_mode=0):
@@ -91,17 +94,17 @@ class ADC_base(object):
 	# Class functions (applies to all ADCs)
 	def reset(self):
 		""" Resets both ADCs"""
-		fpga=self.fpga_instance; # use a shorter variable name to access the FPGA instance attributes
-		fpga.pulse_bit(fpga.SYSTEM_PORT,fpga.SYSTEM_SPI_MODULE,0x05,0)
+		sysmod=self.fpga_instance.SYSMOD; # use a shorter variable name to access the FPGA instance attributes
+		sysmod.pulse_bit('ADC_RESET')
 
 	def sync(self):
 		""" Resyncs both ADCs"""
-		fpga=self.fpga_instance; # use a shorter variable name to access the FPGA instance attributes
-		fpga.pulse_bit(fpga.SYSTEM_PORT,fpga.SYSTEM_SPI_MODULE,0x05,1)
+		sysmod=self.fpga_instance.SYSMOD; # use a shorter variable name to access the FPGA instance attributes
+		sysmod.pulse_bit('ADC_SYNC')
 
 	def init(self,test_mode=0):
 		self.reset() # Send sync pulse on both ADCs
 		for adc in self.ADC:
 			adc.init(test_mode)
 			adc.channel=0
-		self.sync() # Send sync pulse
+		#self.sync() # Send sync pulse

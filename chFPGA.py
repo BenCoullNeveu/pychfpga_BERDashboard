@@ -11,6 +11,8 @@ chFPGA.py module
 # History:
 # 2011-01-10 : JFC : First version
 # 2011-04-30 JFC : Modified UDP.py into chFPGA.py to implement higher level communication system
+# 2011-04 - 2011-08 JFC : Major modifications & cleanup
+# 2011-08-29 JFC: Moved hex to util to solve circular import reference.
 """
 
 import time
@@ -20,30 +22,20 @@ import sys
 import select
 import numpy as np
 #import matplotlib as mpl
-import matplotlib
-matplotlib.use('TKAgg')
 import matplotlib.pyplot as plt
 import pdb
-import __builtin__
 
 
+import util
+ 
 import Module
 
 import SocketIO
 # hardware subsystems handlers
 import SPI
 import SYSMON
+import SYSMOD
 import FreqCtr
-
-# -- hex() -- 
-
-def hex(arg):
-	""" Wrapper around the built-in hex function to allow connversion of arrays """ 
-	if isinstance(arg, np.ndarray):
-		return '[%s]' % (' '.join(__builtin__.hex(a) for a in arg))
-	else:
-		return __builtin__.hex(arg)
-
 import MGT
 
 # SPI device handlers
@@ -60,7 +52,7 @@ import ANT
 # -- Module reloader -- 
 # Reload modules if we are debugging in case the source code has changed
 
-reload_modules=(SocketIO,Module,SPI,SYSMON,AmbTemp,FreqCtr,ADC,IOExpander,ADC_PLL,BiasADC,MGT_PLL,ANT,MGT)
+reload_modules=(util,SocketIO,Module,SPI,SYSMOD,SYSMON,AmbTemp,FreqCtr,ADC,IOExpander,ADC_PLL,BiasADC,MGT_PLL,ANT,MGT)
 	
 
 for m in reload_modules: 
@@ -68,6 +60,8 @@ for m in reload_modules:
 	reload(m)
 
 
+# -- hex() -- 
+#hex=util.hex # override default hex function
 
 # -- chFPGA -- 
 
@@ -82,6 +76,7 @@ class chFPGA:
 	SYSTEM_SPI_MODULE=0
 	SYSTEM_SYSMON_MODULE=1
 	SYSTEM_FREQ_CTR_MODULE=2
+	SYSTEM_SYSMOD_MODULE=3
 
 
 	def __init__(self,adc_test_mode=0, adc_delay_table=None):
@@ -95,6 +90,8 @@ class chFPGA:
 			self.SYSMON=SYSMON.SYSMON_base(self)
 			self.SPI=SPI.SPI_base(self)
 			self.FreqCtr=FreqCtr.FreqCtr_base(self)
+			self.SYSMOD=SYSMOD.SYSMOD_base(self)
+
 			self.MGT=MGT.MGT_base(self)
 
 			self.ADC=ADC.ADC_base(self)
@@ -107,6 +104,9 @@ class chFPGA:
 			self.ANT=ANT.ANT_base(self)
 
 			# Initialize subsystems. This has to be done only once all subsystems are created because some subsystems depend on each other.
+
+			self.SYSMOD.init()
+			self.SYSMOD.status()
 			self.SYSMON.init()
 			self.SYSMON.status()
 			self.SPI.init()
@@ -720,7 +720,6 @@ class chFPGA:
 		#if not hold:
 		plt.clf()
 		plt.hold(hold)
-		plt.show()
 
 		if fft:
 			f=arange(512)*1024.0/800.0
@@ -767,7 +766,7 @@ class chFPGA:
 					if fft:
 						plt.subplot(2,1,1);
 						if correlate:
-							plt.plot(f,abs(a[ch1,a:]) ,'b.-',f,abs(a[ch2]),'k.-')
+							plt.plot(f,abs(a[ch1,:]) ,'b.-',f,abs(a[ch2]),'k.-')
 						else:
 							#raise
 							plt.plot(abs(a[ch1,:]) ,'b.-')

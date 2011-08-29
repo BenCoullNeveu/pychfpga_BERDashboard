@@ -77,7 +77,7 @@ class Module_base(object):
 		type={1:np.uint8, 2:np.uint16}[bytes]
 		data= self.read(bit_def.addr+first_byte, type=type)
 		
-		#print 'Read ,bit "%s" at port %i, bit=%i, data: %X' % (bit_name,  bit_def.port,bit_def.bit, data)
+		#print 'Read ,bit "%s" at port %i, bit=%i, data: %X' % (bit_name,  bit_def.addr,bit_def.bit, data)
 		return data>>bit_def.bit & ((1<<bit_def.width)-1)
 
 	def write_field(self,bit_name,data):
