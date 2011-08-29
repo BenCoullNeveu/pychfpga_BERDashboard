@@ -720,6 +720,7 @@ class chFPGA:
 		#if not hold:
 		plt.clf()
 		plt.hold(hold)
+		plt.show()
 
 		if fft:
 			f=arange(512)*1024.0/800.0
@@ -736,7 +737,7 @@ class chFPGA:
 			channels=[channels];
 
 		correlate=(len(channels)>1) & correlate
-        mult_chan = len(channels)>1
+		mult_chan = len(channels)>1
 		if mult_chan: # select channels to correlate
 			ch1=channels[0]
 			ch2=channels[1]
@@ -776,12 +777,14 @@ class chFPGA:
 						plt.plot(f,abs(corr) ,'b.-',f,corr_sum.real/number_of_frames,'r.-')
 					else:
 						plt.plot(a[ch1],'b.-')
-						plt.plot(a[ch2],'r.-')
+						if mult_chan:
+							plt.plot(a[ch2],'r.-')
 						plt.axis([0,xmax,-ymax,ymax])
 					plt.draw()
 					if file:
 						file.write(np.int8(a[ch1,:]))
-						file.write(np.int8(a[ch2,:]))
+						if mult_chan:
+							file.write(np.int8(a[ch2,:]))
 				except:
 					raise
 		except KeyboardInterrupt:
