@@ -28,8 +28,9 @@ for filenum in range(nfiles):
    print data.size
    data = data.reshape((nsamples,slength))
    for j in arange(data.shape[0]):
-      data[j] = gauss_window(data[j], sig)
+      #data[j] = gauss_window(data[j], sig)
 	  #data[j] = hann_window(data[j])
+	  data[j] = data[j]
    fft1 = fft.fft(data)
    fft1 = fft1[:,:slength/2]
    freq = freq[:slength/2]

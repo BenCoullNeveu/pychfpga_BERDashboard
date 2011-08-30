@@ -34,7 +34,7 @@ class MGT_PLL_base(object):
 
 # ---------------------------------------------------------------------------------------------
 
-	def init(self, fout=312.5, fref=25, sel=0, band=None, verbose=2, **args):
+	def init(self, fout= 312.5, fref=10, sel=0, band=None, verbose=2, **args):
 		""" 
 		Initializes the MGT PLL to provide an adequate clock to the Multigigabit transceivers.
 		fout: MGT reference frequency in MHz.
@@ -52,6 +52,7 @@ class MGT_PLL_base(object):
 		# VCO frequency limits
 		fvco_min=3350 # MHz
 		fvco_max=4050 # MHz
+		
 
 		# Compute the output division ratio which is ODF=P0*P1, where P0=4-11 and P1=1-63. 
 		# We want to find which combination of P0 and P1 will allow the exact frequency to be generated with a integer multiplication of the reference frequency 
@@ -64,7 +65,13 @@ class MGT_PLL_base(object):
 		# List all possible values of P0 and P1
 		P0_list=range(4,11+1)
 		P1_list=range(1,63+1)
-
+		# set reference frequency doubler to true if can't get freq in range
+		if (fref*N_max < fvco_min ):
+			REFERENCE_FREQUENCY_DOUBLER=1
+			fref=fref*2
+		else:
+			REFERENCE_FREQUENCY_DOUBLER=0
+		
 		valid_params=[] # initialize list of valid PLL tuning parameter values
 		# Loop over all possible values of P0 and P1 to find valid combinations of parameters
 		for p0 in P0_list:
@@ -179,6 +186,7 @@ class MGT_PLL_base(object):
 		self.write(0x17,((FRAC & 0x0F)<<4 | ((P1>>5) & 0x01))) 
 		self.write(0x18,((P1 & 0x1F)<<3) | (P0-4)) # P1
 		self.write(0x19,(ENABLE_SPI_OUT_DIV<<7)) # 
+		self.write(0x1d, (REFERENCE_FREQUENCY_DOUBLER<<2))
 		self.write(0x0E,(1<<7) | (ENABLE_ALC<<6) | (ALC_THRESHOLD<<3) | (ENABLE_SPI_VCO_CAL<<2) | (VCO_SUPPLY_BOOST<<1) | (ENABLE_SPI_VCO_BAND<<0))
 		self.write(0x05,0x01) # Force the PLL to register the values sent so far 
 
