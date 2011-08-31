@@ -5,7 +5,8 @@ SYSMOD.py module
  Implements SYSTEM-level interface
 #
 # History:
-# 2011-08-25 : JFC : Created 
+	2011-08-25 JFC : Created 
+	2011-08-30 JFC: Added read_bitstream_* functions and status() 
 """
 
 from Module import Module_base, BitDef
@@ -28,6 +29,7 @@ class SYSMOD_base(Module_base):
 		'BUILD_YEAR' : 		BitDef(0x080+ 0x04,0,8,doc='Build year of the firmware'),
 		'BUILD_MONTH' : 	BitDef(0x080+ 0x05,0,8,doc='Build month of the firmware'),
 		'BUILD_DAY' : 		BitDef(0x080+ 0x06,0,8,doc='Build day of the firmware'),
+
 	}
 
 
@@ -37,9 +39,26 @@ class SYSMOD_base(Module_base):
 	def init(self):
 		pass
 
+	def read_bitstream_data(self):
+		return self.read(0x80+0x07, type=np.dtype('>u4'))
+
+	def read_bitstream_date(self):
+		data=self.read_bitstream_data()
+		sec=(data>>0) & 0x3F
+		min=(data>>6) & 0x3F
+		hour=(data>>12) & 0x1F
+		year=(data>>17) & 0x3F
+		month=(data>>23) & 0x0F
+		day=(data>>27) & 0x1F
+		str='%04i-%02i-%02i %02i:%02i:%02i' % (year+2000,month,day,hour,min,sec)
+		return str
+
+
+
 	def status(self):
 		print '----------------------------------------------------------------------'
 		print 'chFPGA Firmware version %i.%i, Build %i, Date: %04i-%02i-%02i' % (self.MAJOR_VERSION, self.MINOR_VERSION, self.BUILD_NUMBER, self.BUILD_YEAR+2000,self.BUILD_MONTH, self.BUILD_DAY)
+		print 'Bistream timestamp is: %s' % self.read_bitstream_date()
 		print '----------------------------------------------------------------------'
 
 
