@@ -779,8 +779,8 @@ class chFPGA:
 						plt.plot(a[ch1],'b.-')
 						if mult_chan:
 							plt.plot(a[ch2],'r.-')
-						#plt.axis([0,xmax,-ymax,ymax])
-						plt.axis([0,xmax,-70,70])
+						plt.axis([0,xmax,-ymax,ymax])
+						#plt.axis([0,xmax,-70,70])
 					plt.draw()
 					if file:
 						file.write(np.int8(a[ch1,:]))
