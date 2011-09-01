@@ -3,9 +3,10 @@
 """
 ADC_PLL.py module 
  Implements the ADC PLL interface
-#
-# History:
-# 2011-07-08 : JFC : Created from test code in chFPGA.py
+
+History:
+	2011-07-08 JFC : Created from test code in chFPGA.py
+	2011-08-30 KB : Changed default reference to 10 MHz
 """
 import numpy as np
 

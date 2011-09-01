@@ -103,8 +103,8 @@ class ADC_base(object):
 		sysmod.pulse_bit('ADC_SYNC')
 
 	def init(self,test_mode=0):
-		self.reset() # Send sync pulse on both ADCs
+		self.reset() # Send reset pulse on both ADCs
 		for adc in self.ADC:
 			adc.init(test_mode)
 			adc.channel=0
-		#self.sync() # Send sync pulse
+		#self.sync() # Send sync pulse -- reates problems. to be debugged.
