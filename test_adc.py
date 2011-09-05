@@ -60,5 +60,8 @@ if __name__=='__main__':
 	# Displays the system frequencies
 	c.FreqCtr.status()
 	# Continuously plot the ADC output
-	c.plot_ADC_frame(channels=[0], frames=2048, filename='595MHzp6dbm_650MHzp6dbm.dat')
+	c.SPI.CLK_ENABLE=0
+	c.SYSMOD.BUCK_SYNC_ENABLE=1
+	c.plot_ADC_frame(channels=[0], frames=2048, filename='762.5MHzp3dbm_775MHzp3dbm.dat')
+	#c.plot_ADC_frame(channels=[0], frames=2048, filename='50ohm_term.dat')
 

@@ -23,7 +23,7 @@ for filenum in range(nfiles):
    filename = sys.argv[filenum+1]
    fd = open(filename, 'rb')
    data = fromfile(file=fd, dtype=int8)
-   data = data[:2097152]
+   data = data[:2097152]*0.5/256.0
    nsamples = data.size/slength
    print data.size
    data = data.reshape((nsamples,slength))
@@ -34,7 +34,7 @@ for filenum in range(nfiles):
    fft1 = fft.fft(data)
    fft1 = fft1[:,:slength/2]
    freq = freq[:slength/2]
-   pspec = 10*log10((fft1*fft1.conjugate()).mean(axis=0))
+   pspec = 10*log10((fft1*fft1.conjugate()).mean(axis=0)) - 40.0
    pspec[0] = 0
    print pspec.max()
    pspecs.append(pspec)
@@ -42,7 +42,7 @@ for filenum in range(nfiles):
    ii+=1
    pylab.plot(freq,pspec, label=filename[:-4])
 
-pylab.legend(loc=4)
+pylab.legend(loc=0)
 pylab.xlabel('freq (MHz)')
 pylab.ylabel('Power (dB)')
 #pylab.savefig('neighboring_channels.pdf')

@@ -793,6 +793,91 @@ class chFPGA:
 		if file:
 			file.close()
 		print 'Plotted %i frames' % number_of_frames
+		
+		
+def plot_ADC_frame_fft(self, channels=0, hold=0, frames=1, continuous=0,xmax=1023,fft=0, sync_period=None, out_shift=0, fft_shift=None, filename=None,simulate=0,correlate=0):
+		if filename:
+			file=open(filename,'w')
+		else:
+			file=None
+
+		plt.figure(5)
+		#if not hold:
+		plt.clf()
+		plt.hold(hold)
+		plt.show()
+
+		if fft:
+			f=arange(512)*1024.0/800.0
+			plt.title('Signal')
+			plt.subplot(2,1,1)
+			plt.xlabel('Frequency (MHz)')
+			plt.ylabel('Amplitude');
+			plt.subplot(2,1,2)
+			plt.title('Correlation')
+			plt.xlabel('Frequency (MHz)')
+			plt.ylabel('Amplitude');
+
+		if type(channels) is int: # make sure that 'channels' is a list
+			channels=[channels];
+
+		correlate=(len(channels)>1) & correlate
+		mult_chan = len(channels)>1
+		if mult_chan: # select channels to correlate
+			ch1=channels[0]
+			ch2=channels[1]
+		else:
+			ch1=channels[0]
+		corr_sum=np.zeros(512,dtype=complex)
+		number_of_frames=0
+
+		
+		ymax=1
+#		if fft:
+#			self.FFTinit(ant=channel,sync_period=sync_period, out_shift=out_shift, fft_shift=fft_shift);
+		try:
+			while (frames==0) or (frames!=0 and number_of_frames<frames):
+				try:
+					a=self.read_ADC_frame(channels,length=1024,reset=(number_of_frames==0),fft=fft,simulate=simulate) #(number_of_frames==0)
+					if fft: 
+						if correlate:
+							corr=a[ch1]*conj(a[ch2])
+						else:
+							corr=a[ch1]
+						corr_sum+=corr
+					number_of_frames+=1
+					
+					aamax=max(max(abs(a)))
+					ymax=max(ymax*.99,aamax)
+					if fft:
+						plt.subplot(2,1,1);
+						if correlate:
+							plt.plot(f,abs(a[ch1,:]) ,'b.-',f,abs(a[ch2]),'k.-')
+						else:
+							#raise
+							plt.plot(abs(a[ch1,:]) ,'b.-')
+
+						plt.axis([0,xmax,-ymax,ymax])
+						plt.subplot(2,1,2);
+						plt.plot(f,abs(corr) ,'b.-',f,corr_sum.real/number_of_frames,'r.-')
+					else:
+						plt.plot(a[ch1],'b.-')
+						if mult_chan:
+							plt.plot(a[ch2],'r.-')
+						plt.axis([0,xmax,-ymax,ymax])
+						#plt.axis([0,xmax,-70,70])
+					plt.draw()
+					if file:
+						file.write(np.int8(a[ch1,:]))
+						if mult_chan:
+							file.write(np.int8(a[ch2,:]))
+				except:
+					raise
+		except KeyboardInterrupt:
+			pass
+		if file:
+			file.close()
+		print 'Plotted %i frames' % number_of_frames
 	
 		
 		
