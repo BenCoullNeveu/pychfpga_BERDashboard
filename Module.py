@@ -32,7 +32,7 @@ class Module_base(object):
 		self.port_number=port_number 
 		self.module_number=module_number;
 		for bit_name in self.BITS.keys():
-			print '  Defining property "%s"' % (bit_name)
+			#print '  Defining property "%s"' % (bit_name)
 
 			# Use function closures to create the callback function with arguments that won't be rebinded
 			fget=lambda s,_bit_name=bit_name:s.read_field(_bit_name) # Pass bit_name as a default argument to 'close' that variable (i.e. bind it now). Otherwise the function will use the value at call time (which is the last value assigned to that variable) 

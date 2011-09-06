@@ -24,7 +24,7 @@ import numpy as np
 #import matplotlib as mpl
 import matplotlib.pyplot as plt
 import pdb
-
+import socket #110906 JFCs
 
 import util
  
@@ -582,7 +582,7 @@ class chFPGA:
 		plt.draw()
 
 	def ADC_check_frames(self, channel=0, frames=16, delay=None, verbose=0):
-		if iterable(channel):
+		if np.iterable(channel): #110906 JFC
 			channel_list=channel
 		else:
 			channel_list=[channel]
@@ -795,7 +795,10 @@ class chFPGA:
 		print 'Plotted %i frames' % number_of_frames
 		
 		
-def plot_ADC_frame_fft(self, channels=0, hold=0, frames=1, continuous=0,xmax=1023,fft=0, sync_period=None, out_shift=0, fft_shift=None, filename=None,simulate=0,correlate=0):
+	def plot_ADC_frame_fft(self, channels=0, hold=0, frames=1, continuous=0,xmax=1023, sync_period=None, fft=1, out_shift=0, fft_shift=None, filename=None,simulate=0,correlate=0):
+		'''
+		20110906KMB:  added fft plotting
+		'''
 		if filename:
 			file=open(filename,'w')
 		else:
@@ -808,14 +811,15 @@ def plot_ADC_frame_fft(self, channels=0, hold=0, frames=1, continuous=0,xmax=102
 		plt.show()
 
 		if fft:
-			f=arange(512)*1024.0/800.0
+			#f=np.arange(1024)*1024.0/800.0
+			f=np.fft.fftfreq(1024,1/800.0)
 			plt.title('Signal')
 			plt.subplot(2,1,1)
 			plt.xlabel('Frequency (MHz)')
 			plt.ylabel('Amplitude');
 			plt.subplot(2,1,2)
-			plt.title('Correlation')
-			plt.xlabel('Frequency (MHz)')
+			plt.title('Timestream')
+			plt.xlabel('sample')
 			plt.ylabel('Amplitude');
 
 		if type(channels) is int: # make sure that 'channels' is a list
@@ -828,7 +832,7 @@ def plot_ADC_frame_fft(self, channels=0, hold=0, frames=1, continuous=0,xmax=102
 			ch2=channels[1]
 		else:
 			ch1=channels[0]
-		corr_sum=np.zeros(512,dtype=complex)
+		#corr_sum=np.zeros(512,dtype=complex)
 		number_of_frames=0
 
 		
@@ -838,28 +842,34 @@ def plot_ADC_frame_fft(self, channels=0, hold=0, frames=1, continuous=0,xmax=102
 		try:
 			while (frames==0) or (frames!=0 and number_of_frames<frames):
 				try:
-					a=self.read_ADC_frame(channels,length=1024,reset=(number_of_frames==0),fft=fft,simulate=simulate) #(number_of_frames==0)
-					if fft: 
+					a=self.read_ADC_frame(channels,length=1024,reset=(number_of_frames==0),fft=0,simulate=simulate) #(number_of_frames==0)
+					if fft:
+						fa = np.fft.fft(a[ch1])#[:512]
 						if correlate:
-							corr=a[ch1]*conj(a[ch2])
+							corr=fa[ch1]*conj(fa[ch2])
 						else:
 							corr=a[ch1]
-						corr_sum+=corr
+						#corr_sum+=corr
 					number_of_frames+=1
 					
 					aamax=max(max(abs(a)))
 					ymax=max(ymax*.99,aamax)
+					fmax = f.max()
+					ftmax = 10*np.log10(np.abs(fa)**2).max()
+					print fa.size
 					if fft:
 						plt.subplot(2,1,1);
 						if correlate:
 							plt.plot(f,abs(a[ch1,:]) ,'b.-',f,abs(a[ch2]),'k.-')
 						else:
 							#raise
-							plt.plot(abs(a[ch1,:]) ,'b.-')
+							plt.plot(f,10*np.log10(np.abs(fa)**2) ,'b.-')
 
-						plt.axis([0,xmax,-ymax,ymax])
+						#plt.axis([0,fmax,0,ftmax])
+						plt.ylim(0,100)
 						plt.subplot(2,1,2);
-						plt.plot(f,abs(corr) ,'b.-',f,corr_sum.real/number_of_frames,'r.-')
+						plt.plot(a[ch1] ,'b.-')
+						plt.axis([0,xmax,-ymax,ymax])
 					else:
 						plt.plot(a[ch1],'b.-')
 						if mult_chan:

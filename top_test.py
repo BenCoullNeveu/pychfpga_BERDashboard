@@ -60,5 +60,5 @@ if __name__=='__main__':
 	# Displays the system frequencies
 	c.FreqCtr.status()
 	# Continuously plot the ADC output
-	c.plot_ADC_frame(channels=[0], frames=0)
+	#c.plot_ADC_frame(channels=[0], frames=0)
 
