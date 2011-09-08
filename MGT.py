@@ -3,9 +3,10 @@
 """
 MGT.py module 
  Implements interface to the MGT
-#
-# History:
-# 2011-08-03 : JFC : Created 
+
+ History:
+	2011-08-03 : JFC : Created 
+	2011-09-08 JFC: Removed property initialization message in _init_
 """
 
 import time
@@ -101,7 +102,7 @@ class MGT_port_base(Module_base):
 		super(self.__class__,self).__init__(fpga,fpga.MGT_PORT, MGT_number)
 
 		for field_name in self.DRP_FIELDS.keys():
-			print '  Defining property "%s"' % (field_name)
+			#print '  Defining property "%s"' % (field_name)
 
 			# Use function closures to create the callback function with arguments that won't be rebinded
 			fget=lambda s,_bit_name=field_name:s.read_sys_field(_bit_name) # Pass bit_name as a default argument to 'close' that variable (i.e. bind it now). Otherwise the function will use the value at call time (which is the last value assigned to that variable) 

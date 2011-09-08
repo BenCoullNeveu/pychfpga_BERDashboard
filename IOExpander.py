@@ -3,13 +3,13 @@
 """
 IOExpander.py module 
  Implements IOExpander interface of chFPGFA
-#
-# History:
-# 2011-07-08 : JFC : Created from test code in chFPGA.py
-# 2010-07-17 JFC: Fixed the getter and setter : needed to use a closure to fix the bit name at function creation. 
-#			Created bit definition class to access elements by name instead of index. Updated code appropriately.
-# 2010-07-18 JFC: Added comments
- 
+
+ History:
+ 2011-07-08 JFC : Created from test code in chFPGA.py
+ 2011-07-17 JFC: Fixed the getter and setter : needed to use a closure to fix the bit name at function creation. 
+			Created bit definition class to access elements by name instead of index. Updated code appropriately.
+ 2011-07-18 JFC: Added comments
+ 2011-09-08 JFC: Removed printed message when defining the properties   
 """
 import numpy as np
 
@@ -72,7 +72,7 @@ class IOExpander_base(object):
 		self.verbose=verbose
 		# Automatically generate properties for each of the IOExpander bits
 		for bit_name in self.BITS.keys():
-			print '  Defining property "%s" with port=, bit=' % (bit_name)
+			#print '  Defining property "%s" with port=, bit=' % (bit_name)
 			# Use function closures to create the callback function with arguments that won't be rebinded
 			fget=lambda s,_bit_name=bit_name:s.read_gpio_bit(_bit_name) # Pass bit_name as a default argument to 'close' that variable (i.e. bind it now). Otherwise the function will use the value at call time (which is the last value assigned to that variable) 
 			fset=lambda s,value,_bit_name=bit_name:s.write_gpio_bit(_bit_name,value)

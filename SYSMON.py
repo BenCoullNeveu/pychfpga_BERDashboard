@@ -3,9 +3,11 @@
 """
 SYSMON.py module 
  Implements the System Monitor interface
-#
-# History:
-# 2011-07-08 : JFC : Created from test code in chFPGA.py
+
+History:
+	2011-07-08 : JFC : Created from test code in chFPGA.py
+	2011-09-08 JFC : Improve display of status screen
+
 """
 import numpy as np
 
@@ -92,11 +94,12 @@ class SYSMON_base(object):
 		return volt;
 	
 	def status(self):
+		print '--------------- VIRTEX 6 System Monitor statistics ---------------'
 		print 'Temperature: %.1f C (%.2f C min, %.1f C max)' % (self.temperature(self.TEMP_ADDR),self.temperature(self.TEMP_MIN_ADDR),self.temperature(self.TEMP_MAX_ADDR))
 		print 'VccINT: %.2f V (%.2f V min, %.2f V max)' % (self.voltage(self.VCCINT_ADDR),self.voltage(self.VCCINT_MIN_ADDR),self.voltage(self.VCCINT_MAX_ADDR))
 		print 'VccAUX: %.2f V (%.2f V min, %.2f V max)' % (self.voltage(self.VCCAUX_ADDR),self.voltage(self.VCCAUX_MIN_ADDR),self.voltage(self.VCCAUX_MAX_ADDR))
 		print 'ML605 12V Supply voltage: %.2f V (ADC input=%.2f V )' % (self.voltage(self.VAUX_VOLT_ADDR,vref=1.0)*24,self.voltage(self.VAUX_VOLT_ADDR,vref=1.0))
-		print 'ML605 12V Supply current: %.2f A(?) (ADC input=%.2f V )' % (self.voltage(self.VAUX_CURR_ADDR,vref=1.0)/(0.001*50),self.voltage(self.VAUX_CURR_ADDR,vref=1.0))
+		print 'ML605 12V Supply current: %.2f A (ADC input=%.2f V )' % (self.voltage(self.VAUX_CURR_ADDR,vref=1.0)/(0.001*50)/2,self.voltage(self.VAUX_CURR_ADDR,vref=1.0))
 		print 'VREFP: %.2f V, VREFN: %.2f V' % (self.voltage(self.VAUX_VREFP_ADDR),self.voltage(self.VAUX_VREFN_ADDR))
 		print 'VCCInt Current: %.2f A, (ADC input= %.2f V' % (self.voltage(self.VAUX_VPVN_ADDR,vref=1.0)/0.005,self.voltage(self.VAUX_VPVN_ADDR,vref=1.0))
 
