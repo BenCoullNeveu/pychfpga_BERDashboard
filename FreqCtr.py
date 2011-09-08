@@ -3,9 +3,10 @@
 """
 FreqCtr.py module 
  Implements the Frequency Counter interface
-#
-# History:
-# 2011-07-13 : JFC : Created from test code in chFPGA.py
+
+History:
+	2011-07-13 : JFC : Created from test code in chFPGA.py
+	2011-09-08 JFC: Added FMC_REFCLK
 """
 import numpy as np
 
@@ -22,8 +23,9 @@ class FreqCtr_base(object):
 	'ADC_CLK7':7,
 	'MGT_REFCLK':8,
 	'MGT_USRCLK2':9,
-	'CLK200':10,
-	'CTRL_CLK':11
+	'FMC_REFCLK': 10,
+	'CLK200':11,
+	'CTRL_CLK':12
 	}
 
 
@@ -69,12 +71,13 @@ class FreqCtr_base(object):
 		return freq*2.0/gate_time
 
 	def status(self):
-		gate_time=0.1
+		gate_time=0.05
 		resolution=2.0/gate_time/1e6
 
 		print 'System Frequencies:'
-		print '   Reference frequency:     %7.3f MHz' % (self.read_frequency('CLK200',gate_time=gate_time)/1e6) 
+		print '   FPGA Board frequency:    %7.3f MHz' % (self.read_frequency('CLK200',gate_time=gate_time)/1e6) 
 		print '   CTRL_CLK frequency:      %7.3f MHz' % (self.read_frequency('CTRL_CLK', gate_time=gate_time)/1e6) 
+		print '   FMC Reference frequency: %7.3f MHz' % (self.read_frequency('FMC_REFCLK', gate_time=gate_time)/1e6) 
 		print '   MGT Ref clock frequency: %7.3f MHz' % (self.read_frequency('MGT_REFCLK', gate_time=gate_time)/1e6) 
 		print '   MGT word frequency:      %7.3f MHz' % (self.read_frequency('MGT_USRCLK2', gate_time=gate_time)/1e6) 
 		print '   ADC0 clock frequency:    %7.3f MHz' % (self.read_frequency('ADC_CLK0', gate_time=gate_time)/1e6) 

@@ -7,6 +7,7 @@ SYSMOD.py module
 # History:
 	2011-08-25 JFC : Created 
 	2011-08-30 JFC: Added read_bitstream_* functions and status() 
+	2011-09-08 JFC: Added TIMESTAMP_VALID and ADC_SYNC_READBACK in field definitions
 """
 
 from Module import Module_base, BitDef
@@ -22,6 +23,9 @@ class SYSMOD_base(Module_base):
 		'ADC_SYNC' : 		BitDef(0x00,1,doc='ADC SYNC line. Common to both ADCs.'),
 		'ADC_RESET' : 		BitDef(0x00,0,doc='ADC RESET line. Common to both ADCs.'),
 		'BUCK_CLK_DIV' : 	BitDef(0x01,0,8,doc='Clock divider to set the BUCK SYNC frequency (2-255). Relative to the internal ADC word clock (200 MHz)'),
+
+		'TIMESTAMP_VALID' : BitDef(0x080+ 0x00,7,doc='Timestamp data valid (i.e. can be read)'),
+		'ADC_SYNC_READBACK' : BitDef(0x080+ 0x00,0,doc='Reads back the SYNC bit for debugging'),
 
 		'MAJOR_VERSION' : 	BitDef(0x080+ 0x01,0,8,doc='Major revision number of the firmware'),
 		'MINOR_VERSION' : 	BitDef(0x080+ 0x02,0,8,doc='Minor revision number of the firmware'),
