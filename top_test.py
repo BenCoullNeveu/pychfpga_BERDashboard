@@ -6,8 +6,9 @@ top_test.py script
 
 
 #
-# History:
-# 2011-08-14 : JFC : Created from chFPGA, which now only contains top test code.
+History:
+	2011-08-14 JFC: Created from chFPGA, which now only contains top test code.
+	2011-09-09 JFC: Added global FREF 
 """
 
 import chFPGA
@@ -52,9 +53,10 @@ if __name__=='__main__':
 
 	ADC_TEST_MODE=0 	#  0= normal, 1= ramp, 2=pulse (1 high, 10 low)
 	ADC_DELAY_TABLE=SN002_adc_delays # select the table corresponding to the FMC serial number
+	FREF=10 # FMC Reference clock frequency 
 
 	# Create the new chFPGA object.
-	c=chFPGA.chFPGA(adc_test_mode=ADC_TEST_MODE, adc_delay_table=ADC_DELAY_TABLE);
+	c=chFPGA.chFPGA(adc_test_mode=ADC_TEST_MODE, adc_delay_table=ADC_DELAY_TABLE,fref=FREF);
 	print
 	
 	# Displays the system frequencies

@@ -79,7 +79,7 @@ class chFPGA:
 	SYSTEM_SYSMOD_MODULE=3
 
 
-	def __init__(self,adc_test_mode=0, adc_delay_table=None):
+	def __init__(self,adc_test_mode=0, adc_delay_table=None, fref=10):
 
 		# Create socket handled and open socket communications to chFPGA
 		self.sock=SocketIO.SocketIO_base()
@@ -111,12 +111,12 @@ class chFPGA:
 			self.SYSMON.status()
 			self.SPI.init()
 			self.IOExpander.init()
-			self.ADC_PLL.init()
+			self.ADC_PLL.init(fref=fref)
 		#	pdb.set_trace()
 			self.ADC.init(test_mode=adc_test_mode);
 			self.AmbTemp.status()
 			self.ANT.init()
-			self.MGT_PLL.init()
+			self.MGT_PLL.init(fref=fref)
 			self.MGT.init() # MGT_PLL must be initialized first
 
 			if adc_delay_table:

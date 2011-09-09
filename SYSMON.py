@@ -94,12 +94,24 @@ class SYSMON_base(object):
 		return volt;
 	
 	def status(self):
+		"""
+		Displays the Virtex 6 / ML605 System Monitor statistics
+
+		NOTES:
+			ADC measurement is always differential (P-N). 
+			All external ADC signals acquired in unipolar mode since the differential voltages  are never negative. 0-1 V (differential) corresponds to full range 0-0x3FF.
+			VccINT and VccAUX voltages are measured internally. They have a gain of 1/3 before being fed to the ADC.
+			VccINT Current: Measures current sense resistor (0.005 ohm) on VP/VN
+			12V Current:  Current sense resistor: 0.002 ohm (schematic is wrong, Hardware manual section 22 is right) , Amplifier gain (INA213): 50, Measured on Vaux<12>
+			12V Voltage: Measured through a resistor divider (1/24) on Vaux<13>
+		"""
 		print '--------------- VIRTEX 6 System Monitor statistics ---------------'
-		print 'Temperature: %.1f C (%.2f C min, %.1f C max)' % (self.temperature(self.TEMP_ADDR),self.temperature(self.TEMP_MIN_ADDR),self.temperature(self.TEMP_MAX_ADDR))
-		print 'VccINT: %.2f V (%.2f V min, %.2f V max)' % (self.voltage(self.VCCINT_ADDR),self.voltage(self.VCCINT_MIN_ADDR),self.voltage(self.VCCINT_MAX_ADDR))
-		print 'VccAUX: %.2f V (%.2f V min, %.2f V max)' % (self.voltage(self.VCCAUX_ADDR),self.voltage(self.VCCAUX_MIN_ADDR),self.voltage(self.VCCAUX_MAX_ADDR))
-		print 'ML605 12V Supply voltage: %.2f V (ADC input=%.2f V )' % (self.voltage(self.VAUX_VOLT_ADDR,vref=1.0)*24,self.voltage(self.VAUX_VOLT_ADDR,vref=1.0))
-		print 'ML605 12V Supply current: %.2f A (ADC input=%.2f V )' % (self.voltage(self.VAUX_CURR_ADDR,vref=1.0)/(0.001*50)/2,self.voltage(self.VAUX_CURR_ADDR,vref=1.0))
-		print 'VREFP: %.2f V, VREFN: %.2f V' % (self.voltage(self.VAUX_VREFP_ADDR),self.voltage(self.VAUX_VREFN_ADDR))
-		print 'VCCInt Current: %.2f A, (ADC input= %.2f V' % (self.voltage(self.VAUX_VPVN_ADDR,vref=1.0)/0.005,self.voltage(self.VAUX_VPVN_ADDR,vref=1.0))
+		print 'Core Temperature:   %5.1f C (%.2f C min, %.1f C max)' % (self.temperature(self.TEMP_ADDR),self.temperature(self.TEMP_MIN_ADDR),self.temperature(self.TEMP_MAX_ADDR))
+		print 'VccINT Voltage:     %5.2f V (%.2f V min, %.2f V max)' % (self.voltage(self.VCCINT_ADDR),self.voltage(self.VCCINT_MIN_ADDR),self.voltage(self.VCCINT_MAX_ADDR))
+		print 'VccINT Current:     %5.2f A, (ADC input= %.2f V' % (self.voltage(self.VAUX_VPVN_ADDR,vref=1.0)/0.005,self.voltage(self.VAUX_VPVN_ADDR,vref=1.0))
+		print 'VccAUX Voltage:     %5.2f V (%.2f V min, %.2f V max)' % (self.voltage(self.VCCAUX_ADDR),self.voltage(self.VCCAUX_MIN_ADDR),self.voltage(self.VCCAUX_MAX_ADDR))
+		print '12V Supply Voltage: %5.2f V (ADC input=%.2f V )' % (self.voltage(self.VAUX_VOLT_ADDR,vref=1.0)*24,self.voltage(self.VAUX_VOLT_ADDR,vref=1.0))
+		print '12V Supply Current: %5.2f A (ADC input=%.2f V )' % (self.voltage(self.VAUX_CURR_ADDR,vref=1.0)/(0.002*50),self.voltage(self.VAUX_CURR_ADDR,vref=1.0))
+		print 'VREFP Voltage:      %5.2f V' % (self.voltage(self.VAUX_VREFP_ADDR))
+		print 'VREFN Voltage:      %5.2f V' % (self.voltage(self.VAUX_VREFN_ADDR))
 
