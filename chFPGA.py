@@ -798,11 +798,13 @@ class chFPGA:
 	def plot_ADC_frame_fft(self, channels=0, hold=0, frames=1, continuous=0,xmax=1023, sync_period=None, fft=1, out_shift=0, fft_shift=None, filename=None,simulate=0,correlate=0):
 		'''
 		20110906KMB:  added fft plotting
+		20110909KMB: changed save to be npy files. other gave anomolous results.
 		'''
-		if filename:
-			file=open(filename,'w')
-		else:
-			file=None
+		#if filename:
+		data_list = []
+		#	#file=open(filename,'w')
+		#else:
+		#	#file=None
 
 		plt.figure(5)
 		#if not hold:
@@ -877,16 +879,20 @@ class chFPGA:
 						plt.axis([0,xmax,-ymax,ymax])
 						#plt.axis([0,xmax,-70,70])
 					plt.draw()
-					if file:
-						file.write(np.int8(a[ch1,:]))
+					if filename:
+						data_list.append(a[ch1])
+						#file.write(np.int8(a[ch1,:]))
 						if mult_chan:
-							file.write(np.int8(a[ch2,:]))
+							data_list.append(a[ch2])
+							#file.write(np.int8(a[ch2,:]))
 				except:
 					raise
 		except KeyboardInterrupt:
 			pass
-		if file:
-			file.close()
+		if filename:
+			np.array(data_list)
+			np.save(filename,data_list)
+			#file.close()
 		print 'Plotted %i frames' % number_of_frames
 	
 		

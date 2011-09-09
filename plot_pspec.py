@@ -21,9 +21,11 @@ def hann_window(data):
 
 for filenum in range(nfiles):
    filename = sys.argv[filenum+1]
-   fd = open(filename, 'rb')
-   data = fromfile(file=fd, dtype=int8)
-   data = data[:2097152]*0.5/256.0
+   #fd = open(filename, 'rb')
+   #data = fromfile(file=fd, dtype=int8)
+   data = load(filename)
+   #data = data[:2097152]*0.5/256.0
+   data = data[:524288]#*0.5/256.0
    nsamples = data.size/slength
    print data.size
    data = data.reshape((nsamples,slength))
