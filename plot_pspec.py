@@ -23,9 +23,9 @@ for filenum in range(nfiles):
    filename = sys.argv[filenum+1]
    #fd = open(filename, 'rb')
    #data = fromfile(file=fd, dtype=int8)
-   data = load(filename)
+   data = load(filename)*0.5/256.0
    #data = data[:2097152]*0.5/256.0
-   data = data[:524288]#*0.5/256.0
+   #data = data[:524288]#*0.5/256.0
    nsamples = data.size/slength
    print data.size
    data = data.reshape((nsamples,slength))
@@ -40,7 +40,7 @@ for filenum in range(nfiles):
    pspec[0] = 0
    print pspec.max()
    pspecs.append(pspec)
-   fd.close()
+   #fd.close()
    ii+=1
    pylab.plot(freq,pspec, label=filename[:-4])
 
@@ -48,7 +48,8 @@ pylab.legend(loc=0)
 pylab.xlabel('freq (MHz)')
 pylab.ylabel('Power (dB)')
 #pylab.savefig('neighboring_channels.pdf')
-#pylab.ylim(-35,-15)
-#pylab.xlim(5,25)
-pylab.savefig('762.5_775_-15-5-0p5.pdf')
+#pylab.ylim(-15,5)
+#pylab.xlim(370,380)
+#pylab.savefig(filename[:-4]+str(nfiles)+'_zoom.png')
+pylab.savefig(filename[:-4]+str(nfiles)+'.png')
 pylab.show()
