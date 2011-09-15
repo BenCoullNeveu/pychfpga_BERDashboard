@@ -61,5 +61,5 @@ if __name__=='__main__':
 	c.FreqCtr.status()
 	# Continuously plot the ADC output
 	#c.plot_ADC_frame(channels=[0], frames=0)
-	c.plot_ADC_frame_fft(channels=[0], frames=512, filename='sweep_801_1199')
+	c.plot_ADC_frame_fft(channels=[0], frames=1024, filename='575_625_-2dbm')
 
