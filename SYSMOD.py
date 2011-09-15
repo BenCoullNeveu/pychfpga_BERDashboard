@@ -8,6 +8,7 @@ SYSMOD.py module
 	2011-08-25 JFC : Created 
 	2011-08-30 JFC: Added read_bitstream_* functions and status() 
 	2011-09-08 JFC: Added TIMESTAMP_VALID and ADC_SYNC_READBACK in field definitions
+	2011-09-14 JFC: Added USER_RESET bit to match firmware
 """
 
 from Module import Module_base, BitDef
@@ -20,6 +21,7 @@ class SYSMOD_base(Module_base):
 	BITS={
 		'GLOBAL_TRIG' : 	BitDef(0x00,7,doc='Global trigger'),
 		'BUCK_SYNC_ENABLE' : BitDef(0x00,6,doc='Enable generation of the Buck SYNC signals'),
+		'GLOBAL_RESET' : 		BitDef(0x00,5,doc='Resets the whole FPGA'),
 		'ADC_SYNC' : 		BitDef(0x00,1,doc='ADC SYNC line. Common to both ADCs.'),
 		'ADC_RESET' : 		BitDef(0x00,0,doc='ADC RESET line. Common to both ADCs.'),
 		'BUCK_CLK_DIV' : 	BitDef(0x01,0,8,doc='Clock divider to set the BUCK SYNC frequency (2-255). Relative to the internal ADC word clock (200 MHz)'),
