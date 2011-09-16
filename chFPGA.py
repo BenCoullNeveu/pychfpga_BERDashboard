@@ -617,9 +617,20 @@ class chFPGA:
 			self.ADC_set_delay(ch,old_delays); # restore original delays
 			print ' Channel %i: Pass: %i (%.2f%%), fail: %i (%.2f%%)' % (ch, passed, passed*100.0/(passed+failed), failed, failed*100.0/(passed+failed))
 
-	def read_ADC_frame(self,channels=0,frames=1,verbose=0,length=1024,simulate=0, reset=1, fft=0, dummy=0):
+	def read_ADC_frame(self,channels=0,frames=1,verbose=1,length=1024,simulate=0, reset=1, fft=0, dummy=0):
 		"""
-		Acquires frames from the specified ADC channel.
+		Triggers frame acquisition  from the specified ADC channel and capture the data.
+
+		Parameters:
+			channels: Channels to configure and trigger. Will expect len(channels) frames. Frames from unexpected channels will cause an error
+			frames: Number of frames to acquire per channel. Limited by the buffer lengths in the FPGA
+			length: number of bytes to capture per channel. Must be a multiple of 4.
+			reset: when true, resets the antenna processor 
+
+		History:
+			110916 JFC: Added comments. 
+				Changed output format to dictionnary of arrays instead of bidimentional array.
+				Now use global trigger to support multi-channel
 		"""
 		if dummy:
 			if fft:
@@ -634,7 +645,7 @@ class chFPGA:
 		else:
 			output_length=1024
 
-		if verbose:
+		if verbose>=2:
 			print ' Receiving %i ADC frames of %i bytes from Antenna %i' % ( frames, length, channels)
 			print 'Resetting FIFO'
 		if isinstance(channels,int): # make sure that channel is a list of channels
@@ -663,20 +674,24 @@ class chFPGA:
 					ant.DSP.BYPASS=0
 					ant.DSP.reset_sync()
 
-#				ant.FR_DIST.TRIG_FRAME_COUNT=frames # Set number of frames to send when triggered
+				ant.FR_DIST.TRIG_FRAME_COUNT=frames # Set number of frames to send when triggered. 110916 JFC: re-enabled line
 				ant.FR_DIST.reset_fifo()
-				ant.CH_DIST.select_words(length//4); # Enable transmission of all bytes 
+				ant.CH_DIST.select_words(length//4); # Enable transmission of desired number of words 
+
+		# Send a global trigger
+		self.SYSMOD.global_trig() #trigger data acquisition  on all antennas
+
 #		if len(channel)==1:
-		ant.FR_DIST.trig_frame(frames); # Trigger frame acquisition and transmission  
+#		ant.FR_DIST.trig_frame(frames); # Trigger frame acquisition and transmission  
 #		else:
 #			print 'Sending trig'
 #			self.pulse_bit(self.SYSTEM_PORT,self.FMC_SPI_MODULE,5,7); # Trigger transmission for all frames
+		#data=np.zeros((len(channels),output_length));
 
-		data=np.zeros((len(channels),output_length));
-		ch=0
+		data={}
 		for j in range(len(channels)*frames):
-			if verbose>1 or (verbose==1 and (i % 100 ==99 or i==frames-1)):
-				print 'Frame %i (%.0f%%)' % ((i+1),(100*(i+1)/frames))
+			if verbose>1 or (verbose==1 and (j % 100 ==99 or j==frames-1)):
+				print 'Acquiring Frame %i (%.0f%%)' % ((j+1),(100*(j+1)/frames))
 
 			in_frame=self.read_frame()
 			if(len(in_frame)!=length+5):
@@ -684,7 +699,7 @@ class chFPGA:
 
 			# Process the packet header
 			rx_packet_header=ord(in_frame[0])
-			channel=rx_packet_header & 0x3F
+			port=rx_packet_header & 0x3F
 
 			# Process the frame header
 
@@ -701,13 +716,15 @@ class chFPGA:
 			raw_data=np.array(map(ord,rx_subframe),dtype=np.uint8)
 			raw_data.dtype=np.int8
 
-			print 'Packet received from port %i. Frame header information: Antenna %i, Valid frame #=%i, Frame #=%i, Frame length=%i' % (channel, ant_number, frame_valid_ctr, frame_ctr, frame_length)
-			print data
+			ch=port
+			if verbose:
+				print 'Packet received from port %i. Frame header information: Antenna %i, Valid frame #=%i, Frame #=%i, Frame length=%i words' % (port, ant_number, frame_valid_ctr, frame_ctr, frame_length)
+				#print data
 			if fft:
-				data[ch,:]=np.array([raw_data[i]+1j*raw_data[i+1] for i in range(0,1024,2)])
+				data[ch]=np.array([raw_data[i]+1j*raw_data[i+1] for i in range(0,1024,2)])
 			else:
-				data[ch,:]=raw_data;
-			ch+=1
+				data[ch]=raw_data;
+			#ch+=1
 		return data		
 
 	def plot_ADC_frame(self, channels=0, hold=0, frames=1, continuous=0,xmax=1023,fft=0, sync_period=None, out_shift=0, fft_shift=None, filename=None,simulate=0,correlate=0):
