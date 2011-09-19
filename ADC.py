@@ -89,7 +89,7 @@ class ADC_base(object):
 		temp= (data>>3)/16.0;
 		if self.verbose:
 			print 'ADC%i Temperature is %.2f C (raw data=0x%04x)' % (adc_number,temp,data)
-		return data
+		return temp #110918 JFC
 
 	# Class functions (applies to all ADCs)
 	def reset(self):

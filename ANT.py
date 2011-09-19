@@ -73,7 +73,8 @@ class FR_DIST_base(Module_base):
 		'RAMP_MISMATCH': 	BitDef(0x80,2, doc="Active high if the ramp value does not match the ADC value. used for testing the ADC data acquisition when the ADC is set in ramp generation mode"),
 		'CTRL_FIFO_EMPTY': 	BitDef(0x80,1, doc="Active high  when the data FIFO is empty"),
 		'CTRL_FIFO_OVERFLOW': BitDef(0x80,0, doc="Active high if the data FIFO is overflowing"),
-		'CTRL_FIFO_LENGTH': BitDef(0x81,0,8, doc="Number of samples currently in the data FIFO (last 8 bits only)")
+		'CTRL_FIFO_LENGTH': BitDef(0x81,0,8, doc="Number of samples currently in the data FIFO (last 8 bits only)"),
+		'TRIG_COUNT': BitDef(0x82,0,8, doc="Number trigger events received")
 		}
 
 	def __init__(self,ant_ch_instance):

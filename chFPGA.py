@@ -229,8 +229,8 @@ class chFPGA:
 		self.write(port,module, addr, (old_data | mask))
 		self.write(port,module, addr, (old_data & (~mask)))
 
-	def read_frame(self):
-		return self.sock.read_data();
+	def read_frame(self,*args,**kwargs):
+		return self.sock.read_data(*args,**kwargs);
 
 
 
@@ -423,7 +423,7 @@ class chFPGA:
 							failed+=1
 						else:
 							passed+=1;
-					except socket.timeout:
+					except SocketIO.timeout:
 						print 'Frame %i: !!! Timeout !!!' % (i+1)
 						failed+=1
 		except KeyboardInterrupt:
@@ -622,7 +622,7 @@ class chFPGA:
 		Triggers frame acquisition  from the specified ADC channel and capture the data.
 
 		Parameters:
-			channels: Channels to configure and trigger. Will expect len(channels) frames. Frames from unexpected channels will cause an error
+			channels: List of channels to configure and trigger. Will expect len(channels) frames. Frames from unexpected channels will cause an error
 			frames: Number of frames to acquire per channel. Limited by the buffer lengths in the FPGA
 			length: number of bytes to capture per channel. Must be a multiple of 4.
 			reset: when true, resets the antenna processor 
@@ -651,6 +651,17 @@ class chFPGA:
 		if isinstance(channels,int): # make sure that channel is a list of channels
 			channels=[channels]
 
+		if reset:
+			for ant in self.ANT:
+				ant.FR_DIST.TRIG_FRAME_COUNT=0 # Disable response to global trigger for all channnels by default. The requested ones will be re-enabled later. 
+			# Sync all modules in data path
+			self.SYSMOD.ADC_SYNC=1 
+			self.SYSMOD.ADC_DAQ_SYNC=1 
+			self.SYSMOD.FR_DIST_SYNC=1 
+			self.SYSMOD.FR_DIST_SYNC=0 
+			self.SYSMOD.ADC_DAQ_SYNC=0 
+			self.SYSMOD.ADC_SYNC=0 
+	
 		for ch in channels:
 			ant=self.ANT[ch]
 			if reset:
@@ -679,10 +690,12 @@ class chFPGA:
 				ant.CH_DIST.select_words(length//4); # Enable transmission of desired number of words 
 
 		# Send a global trigger
-		self.SYSMOD.global_trig() #trigger data acquisition  on all antennas
+		#self.SYSMOD.global_trig() #trigger data acquisition  on all antennas
+		self.SYSMOD.GLOBAL_TRIG=0 #trigger data acquisition  on all antennas
+		self.SYSMOD.GLOBAL_TRIG=1 #trigger data acquisition  on all antennas
+		#self.ANT[channels[0]].FR_DIST.trig_frame(frames); # Trigger frame acquisition and transmission  
 
 #		if len(channel)==1:
-#		ant.FR_DIST.trig_frame(frames); # Trigger frame acquisition and transmission  
 #		else:
 #			print 'Sending trig'
 #			self.pulse_bit(self.SYSTEM_PORT,self.FMC_SPI_MODULE,5,7); # Trigger transmission for all frames
@@ -690,10 +703,16 @@ class chFPGA:
 
 		data={}
 		for j in range(len(channels)*frames):
+		#j=0
+		#while 1:
+			#j+=1
 			if verbose>1 or (verbose==1 and (j % 100 ==99 or j==frames-1)):
 				print 'Acquiring Frame %i (%.0f%%)' % ((j+1),(100*(j+1)/frames))
+			try:
+				in_frame=self.read_frame(timeout_delay=0.2)
+			except SocketIO.timeout:
+				break
 
-			in_frame=self.read_frame()
 			if(len(in_frame)!=length+5):
 				print 'Frame %i: !!!Frame length MISMATCH: Received %i, Expected : %i!!!' % ((j+1), len(in_frame), (5+length))
 
@@ -718,7 +737,7 @@ class chFPGA:
 
 			ch=port
 			if verbose:
-				print 'Packet received from port %i. Frame header information: Antenna %i, Valid frame #=%i, Frame #=%i, Frame length=%i words' % (port, ant_number, frame_valid_ctr, frame_ctr, frame_length)
+				print 'Packet received from port %i. Frame header information: Antenna %i, Valid frame #=%i, Frame #=%i, Frame length=%i words, trigger count=%i' % (port, ant_number, frame_valid_ctr, frame_ctr, frame_length,self.ANT[ch].FR_DIST.TRIG_COUNT)
 				#print data
 			if fft:
 				data[ch]=np.array([raw_data[i]+1j*raw_data[i+1] for i in range(0,1024,2)])
@@ -732,6 +751,9 @@ class chFPGA:
 			file=open(filename,'w')
 		else:
 			file=None
+
+		if isinstance(channels,int): # make sure that channel is a list of channels
+			channels=[channels]
 
 		plt.figure(5)
 		#if not hold:
@@ -750,9 +772,6 @@ class chFPGA:
 			plt.xlabel('Frequency (MHz)')
 			plt.ylabel('Amplitude');
 
-		if type(channels) is int: # make sure that 'channels' is a list
-			channels=[channels];
-
 		correlate=(len(channels)>1) & correlate
 		mult_chan = len(channels)>1
 		if mult_chan: # select channels to correlate
@@ -768,41 +787,47 @@ class chFPGA:
 #		if fft:
 #			self.FFTinit(ant=channel,sync_period=sync_period, out_shift=out_shift, fft_shift=fft_shift);
 		try:
-			while (frames==0) or (frames!=0 and number_of_frames<frames):
+			while (continuous==1) or (number_of_frames<frames):
 				try:
+					print 'Reading data...'
 					a=self.read_ADC_frame(channels,length=1024,reset=(number_of_frames==0),fft=fft,simulate=simulate) #(number_of_frames==0)
+					ch1_data=a[ch1]
+					if mult_chan: # select channels to correlate
+						ch2_data=a[ch2]
+
 					if fft: 
 						if correlate:
-							corr=a[ch1]*conj(a[ch2])
+							corr=ch1_data*conj(ch2_data)
 						else:
-							corr=a[ch1]
+							corr=ch1_data
 						corr_sum+=corr
 					number_of_frames+=1
 					
-					aamax=max(max(abs(a)))
+					aamax=max(abs(ch1_data))
 					ymax=max(ymax*.99,aamax)
 					if fft:
 						plt.subplot(2,1,1);
 						if correlate:
-							plt.plot(f,abs(a[ch1,:]) ,'b.-',f,abs(a[ch2]),'k.-')
+							plt.plot(f,abs(ch1_data) ,'b.-',f,abs(ch2_data),'k.-')
 						else:
 							#raise
-							plt.plot(abs(a[ch1,:]) ,'b.-')
+							plt.plot(abs(ch1_data) ,'b.-')
 
 						plt.axis([0,xmax,-ymax,ymax])
 						plt.subplot(2,1,2);
 						plt.plot(f,abs(corr) ,'b.-',f,corr_sum.real/number_of_frames,'r.-')
 					else:
-						plt.plot(a[ch1],'b.-')
-						if mult_chan:
-							plt.plot(a[ch2],'r.-')
+						if not mult_chan:
+							plt.plot(ch1_data,'b.-')
+						else:
+							plt.plot(ch1_data,'b.-', ch2_data,'r.-')
 						plt.axis([0,xmax,-ymax,ymax])
 						#plt.axis([0,xmax,-70,70])
 					plt.draw()
 					if file:
-						file.write(np.int8(a[ch1,:]))
+						file.write(np.int8(ch1_data))
 						if mult_chan:
-							file.write(np.int8(a[ch2,:]))
+							file.write(np.int8(ch2_data))
 				except:
 					raise
 		except KeyboardInterrupt:
