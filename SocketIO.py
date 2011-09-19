@@ -5,11 +5,14 @@ socketIO.py module. Implements socket communications to chFPGA
 
 
 History:
- 2011-08-14 : JFC : Created from the code in chFPGA.py
+	2011-08-14 JFC : Created from the code in chFPGA.py
+	2011-09-18 JFC: Added socket timout variable
 """
 
 import socket
 import os
+
+timeout=socket.timeout #110918 JFC
 
 class SocketIO_base(object):
 	def __init__(self):
@@ -64,8 +67,8 @@ class SocketIO_base(object):
 		data,client=self.sock.recvfrom(16384)
 		return data
 
-	def read_data(self):
-		self.sock_data.settimeout(0.1);
+	def read_data(self,timeout_delay=0.1): #110918 JFC: Added timeout_delay
+		self.sock_data.settimeout(timeout_delay);
 		data,client=self.sock_data.recvfrom(16384);
 		return data;
 
@@ -95,3 +98,4 @@ class SocketIO_base(object):
 			pass; # do nothing
 			#print('Buffer is empty');
 		self.sock_data.settimeout(1);
+
