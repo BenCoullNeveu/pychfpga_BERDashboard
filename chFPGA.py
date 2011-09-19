@@ -896,7 +896,7 @@ class chFPGA:
 						#corr_sum+=corr
 					number_of_frames+=1
 					
-					aamax=max(max(abs(a)))
+					aamax=max(abs(a[ch1]))
 					ymax=max(ymax*.99,aamax)
 					fmax = f.max()
 					ftmax = 10*np.log10(np.abs(fa)**2).max()
@@ -904,7 +904,7 @@ class chFPGA:
 					if fft:
 						plt.subplot(2,1,1);
 						if correlate:
-							plt.plot(f,abs(a[ch1,:]) ,'b.-',f,abs(a[ch2]),'k.-')
+							plt.plot(f,abs(a[ch1]) ,'b.-',f,abs(a[ch2]),'k.-')
 						else:
 							#raise
 							plt.plot(f,10*np.log10(np.abs(fa)**2) ,'b.-')

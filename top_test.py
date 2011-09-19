@@ -51,8 +51,8 @@ if __name__=='__main__':
 	except:
 		pass
 
-	ADC_TEST_MODE=1 	#  0= normal, 1= ramp, 2=pulse (1 high, 10 low)
-	ADC_DELAY_TABLE=SN002_adc_delays # select the table corresponding to the FMC serial number
+	ADC_TEST_MODE=0 	#  0= normal, 1= ramp, 2=pulse (1 high, 10 low)
+	ADC_DELAY_TABLE=SN001_adc_delays # select the table corresponding to the FMC serial number
 	FREF=10 # FMC Reference clock frequency 
 
 	# Create the new chFPGA object.
@@ -62,5 +62,5 @@ if __name__=='__main__':
 	# Displays the system frequencies
 	c.FreqCtr.status()
 	# Continuously plot the ADC output
-	#c.plot_ADC_frame(channels=[0], frames=0)
+	c.plot_ADC_frame(channels=[1], frames=512)
 
