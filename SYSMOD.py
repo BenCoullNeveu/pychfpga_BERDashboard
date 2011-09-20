@@ -10,6 +10,7 @@ SYSMOD.py module
 	2011-09-08 JFC: Added TIMESTAMP_VALID and ADC_SYNC_READBACK in field definitions
 	2011-09-14 JFC: Added GLOBAL_RESET bit to match firmware
 	2011-09-16 JFC: Added functions to pulse GLOBAL TRIG and GLOBAL RESET
+	2011-09-19 JFC: Added ADC_DAQ_SYNC and FR_DIST_SYNC properties
 """
 
 from Module import Module_base, BitDef
@@ -23,6 +24,8 @@ class SYSMOD_base(Module_base):
 		'GLOBAL_TRIG' : 	BitDef(0x00,7,doc='Global trigger'),
 		'BUCK_SYNC_ENABLE':	BitDef(0x00,6,doc='Enable generation of the Buck SYNC signals'),
 		'GLOBAL_RESET' : 	BitDef(0x00,5,doc='Resets the whole FPGA'),
+		'ADC_DAQ_SYNC' : 	BitDef(0x00,4,doc='ADC_DAQ SYNC line. Common to all ADC_DAQs.'),
+		'FR_DIST_SYNC' : 	BitDef(0x00,3,doc='FR_DIST line. Common to all FR_DISTs.'),
 		'ADC_SYNC' : 		BitDef(0x00,1,doc='ADC SYNC line. Common to both ADCs.'),
 		'ADC_RESET' : 		BitDef(0x00,0,doc='ADC RESET line. Common to both ADCs.'),
 		'BUCK_CLK_DIV' : 	BitDef(0x01,0,8,doc='Clock divider to set the BUCK SYNC frequency (2-255). Relative to the internal ADC word clock (200 MHz)'),
