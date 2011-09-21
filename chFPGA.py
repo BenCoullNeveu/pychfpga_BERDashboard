@@ -652,12 +652,14 @@ class chFPGA:
 			channels=[channels]
 
 		if reset:
-			for ant in self.ANT:
-				ant.FR_DIST.TRIG_FRAME_COUNT=0 # Disable response to global trigger for all channnels by default. The requested ones will be re-enabled later. 
-			# Sync all modules in data path
 			self.SYSMOD.ADC_SYNC=1 
 			self.SYSMOD.ADC_DAQ_SYNC=1 
 			self.SYSMOD.FR_DIST_SYNC=1 
+			for ant in self.ANT:
+				ant.FR_DIST.TRIG_FRAME_COUNT=0 # Disable response to global trigger for all channnels by default. The requested ones will be re-enabled later. 
+				ant.CH_DIST.RESET=1 
+				ant.CH_DIST.RESET=0 
+			# Sync all modules in data path
 			self.SYSMOD.FR_DIST_SYNC=0 
 			self.SYSMOD.ADC_DAQ_SYNC=0 
 			self.SYSMOD.ADC_SYNC=0 
@@ -794,7 +796,7 @@ class chFPGA:
 					ch1_data=a[ch1]
 					if mult_chan: # select channels to correlate
 						ch2_data=a[ch2]
-
+					print 'CHa[0]=',hex(ch1_data[0]),'CHb[0]=',hex(ch2_data[0]), ' Difference=', ch1_data[0]-ch2_data[0]
 					if fft: 
 						if correlate:
 							corr=ch1_data*conj(ch2_data)
@@ -820,7 +822,7 @@ class chFPGA:
 						if not mult_chan:
 							plt.plot(ch1_data,'b.-')
 						else:
-							plt.plot(ch1_data,'b.-', ch2_data,'r.-')
+							plt.plot(ch1_data,'b-', ch2_data,'r-')
 						plt.axis([0,xmax,-ymax,ymax])
 						#plt.axis([0,xmax,-70,70])
 					plt.draw()
