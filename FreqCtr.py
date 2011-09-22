@@ -25,7 +25,9 @@ class FreqCtr_base(object):
 	'MGT_USRCLK2':9,
 	'FMC_REFCLK': 10,
 	'CLK200':11,
-	'CTRL_CLK':12
+	'CTRL_CLK':12,
+	'FAN':13,
+
 	}
 
 
@@ -80,9 +82,10 @@ class FreqCtr_base(object):
 		print '   FMC Reference frequency: %7.3f MHz' % (self.read_frequency('FMC_REFCLK', gate_time=gate_time)/1e6) 
 		print '   MGT Ref clock frequency: %7.3f MHz' % (self.read_frequency('MGT_REFCLK', gate_time=gate_time)/1e6) 
 		print '   MGT word frequency:      %7.3f MHz' % (self.read_frequency('MGT_USRCLK2', gate_time=gate_time)/1e6) 
-		print '   ADC0 clock frequency:    %7.3f MHz' % (self.read_frequency('ADC_CLK0', gate_time=gate_time)/1e6) 
-		print '   ADC1 clock frequency:    %7.3f MHz' % (self.read_frequency('ADC_CLK1', gate_time=gate_time)/1e6) 
+		for i in range(8):
+			print '   ADC%i clock frequency:    %7.3f MHz' % (i,self.read_frequency('ADC_CLK%i' % i, gate_time=gate_time)/1e6) 
 		print '   Resolution          :    %10.6f MHz' % (resolution) 
+		print '   Fan speed:               %7.0f RPM' % (self.read_frequency('FAN', gate_time=gate_time)*60/2) # 1 Hz=60 RPM, divide by 2 because the signal provided to FREQ_CTR is not divided as expected.  
 		print '   Gate time           :    %.3f s' % (gate_time) 
 
 		#for port_name in self.PORTS.keys():

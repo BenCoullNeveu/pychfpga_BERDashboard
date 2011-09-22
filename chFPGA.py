@@ -36,6 +36,7 @@ import SPI
 import SYSMON
 import SYSMOD
 import FreqCtr
+import REFCLK
 import MGT
 
 # SPI device handlers
@@ -52,7 +53,7 @@ import ANT
 # -- Module reloader -- 
 # Reload modules if we are debugging in case the source code has changed
 
-reload_modules=(util,SocketIO,Module,SPI,SYSMOD,SYSMON,AmbTemp,FreqCtr,ADC,IOExpander,ADC_PLL,BiasADC,MGT_PLL,ANT,MGT)
+reload_modules=(util,SocketIO,Module,SPI,SYSMOD,SYSMON,REFCLK,AmbTemp,FreqCtr,ADC,IOExpander,ADC_PLL,BiasADC,MGT_PLL,ANT,MGT)
 	
 
 for m in reload_modules: 
@@ -77,6 +78,7 @@ class chFPGA:
 	SYSTEM_SYSMON_MODULE=1
 	SYSTEM_FREQ_CTR_MODULE=2
 	SYSTEM_SYSMOD_MODULE=3
+	SYSTEM_REFCLK_MODULE=4
 
 
 	def __init__(self,adc_test_mode=0, adc_delay_table=None, fref=10):
@@ -91,6 +93,7 @@ class chFPGA:
 			self.SPI=SPI.SPI_base(self)
 			self.FreqCtr=FreqCtr.FreqCtr_base(self)
 			self.SYSMOD=SYSMOD.SYSMOD_base(self)
+			self.REFCLK=REFCLK.REFCLK_base(self)
 
 			self.MGT=MGT.MGT_base(self)
 
@@ -107,6 +110,7 @@ class chFPGA:
 
 			self.SYSMOD.init()
 			self.SYSMOD.status()
+			self.REFCLK.status()
 			self.SYSMON.init()
 			self.SYSMON.status()
 			self.SPI.init()
