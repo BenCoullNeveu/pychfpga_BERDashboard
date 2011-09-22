@@ -47,9 +47,10 @@ class ADC_chip(object):
 
 		REG_CONTROL_Value=np.uint32((TEST<<12)+(FS<<10)+(BDW<<8)+(BG<<7)+(DMUX_RATIO<<6)+(STDBY<<4)+ADC_MODE)
 		REG_TEST_Value=(0,0,1)[test_mode] # Select test pattern: test=0: no test mode, test=1:ramp, test=2: flashing 0xff
-
+		REG_SYNC_Value=0x08 #0-15
 		self.write(self.REG_CONTROL,REG_CONTROL_Value)
 		self.write(self.REG_TEST, REG_TEST_Value) 
+		self.write(self.REG_SYNC, REG_SYNC_Value) 
 
 	channel=property(lambda s: s.read(s.REG_CHANNEL_SELECT), lambda s,value: s.write(s.REG_CHANNEL_SELECT,value));
 	chip_id=property(lambda s: s.read(s.REG_CHIP_ID), lambda s,value: s.write(s.REG_CHIP_ID,value));

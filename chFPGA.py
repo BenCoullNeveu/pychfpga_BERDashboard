@@ -652,17 +652,20 @@ class chFPGA:
 			channels=[channels]
 
 		if reset:
+			print 'Resetting and SYNCing the devices'
+			self.sock.flush_data_socket()
 			self.SYSMOD.ADC_SYNC=1 
 			self.SYSMOD.ADC_DAQ_SYNC=1 
 			self.SYSMOD.FR_DIST_SYNC=1 
-			for ant in self.ANT:
-				ant.FR_DIST.TRIG_FRAME_COUNT=0 # Disable response to global trigger for all channnels by default. The requested ones will be re-enabled later. 
-				ant.CH_DIST.RESET=1 
-				ant.CH_DIST.RESET=0 
-			# Sync all modules in data path
 			self.SYSMOD.FR_DIST_SYNC=0 
 			self.SYSMOD.ADC_DAQ_SYNC=0 
 			self.SYSMOD.ADC_SYNC=0 
+			# Sync all modules in data path
+			for ant in self.ANT:
+				print 'Resetting ANT[%i]' % ant.ant_number
+				ant.FR_DIST.TRIG_FRAME_COUNT=0 # Disable response to global trigger for all channnels by default. The requested ones will be re-enabled later. 
+				ant.CH_DIST.RESET=1 
+				ant.CH_DIST.RESET=0 
 	
 		for ch in channels:
 			ant=self.ANT[ch]
