@@ -522,31 +522,36 @@ class chFPGA:
 		plt.grid(True)
 
 
-	def ADC_plot_eye_diagram(self, channel=0):
+	def plot_ADC_eye_diagram(self, channel=0):
 
+		ant=self.ANT[channel]
 		m=np.zeros((32,1024),np.uint8)
-		old_delays=self.ADC_read_delay(channel)
+		old_delays=ant.ADCDAQ.read_delay()
 		plt.figure(2)
 		plt.clf()
-		plt.plot(old_delays,arange(8),'ro')
+		plt.plot(old_delays,np.arange(8),'ro')
 		plt.hold(1)
 		plt.draw()
 		for dly in range(32):
-			self.ADC_set_delay(channel,[dly]*8,reset=0)
-			a=self.ADC_Read_Frame(channel,length=1024);
+			ant.ADCDAQ.set_delay([dly]*8,reset=0)
+			a=self.read_ADC_frame(channels=[channel],length=1024);
 			#m[dly,:]=[ 1 if a[i]&(1<<bit) else 0 for i in xrange(len(a))]
-			m[dly,:]=a
+			m[dly,:]=a[channel]
 			#print ' Delay %2i : %s' % (dly, ''.join([ '|' if a[i]&(1<<bit) else '.' for i in xrange(160)])) 
-		self.ADC_set_delay(channel,old_delays); # restore original delays
+		ant.ADCDAQ.set_delay(old_delays); # restore original delays
 		for b in range(8):
-			#mm=m & (1<<b) # select desired bit
-			#ix=where(diff(mm)) # find indexes of all transitions
-			#ixx=column_stack((ix-2,ix-1,ix,ix+1))
-
-			plot(np.arange(0,32),(m[:,:(2**b)*4] & (1<<b)!=0 )*0.4-0.2 +b,'b.-')
+			mm=np.array(m & (1<<b),dtype=bool) # select desired bit
+			ix=np.where(np.diff(mm,axis=0)) # find indexes of all transitions (dly ix,sample ix)
+			
+			xx=np.row_stack((ix[0],ix[0]+1))
+			yy=np.row_stack((mm[ix],mm[ix[0]+1,ix[1]]))*0.4-0.2 +b
+			plt.plot(np.arange(0,32),(m[:,:(2**b)*4] & (1<<b)!=0 )*0.4-0.2 +b,'r.-')
+			#plt.plot(xx,yy,'b.-')
+			print('Bit %i, %i points' % (b,len(ix[0])))
+			#plt.plot(np.arange(0,32),(m[:,:(2**b)*4] & (1<<b)!=0 )*0.4-0.2 +b,'r.-')
 			plt.draw()
-		xlabel('Tap delay #');
-		ylabel('Bit #');
+		plt.xlabel('Tap delay #');
+		plt.ylabel('Bit #');
 		
 		#plt.figure(1)
 		#plt.clf()
@@ -656,20 +661,23 @@ class chFPGA:
 			channels=[channels]
 
 		if reset:
-			print 'Resetting and SYNCing the devices'
-			self.sock.flush_data_socket()
-			self.SYSMOD.ADC_SYNC=1 
-			self.SYSMOD.ADC_DAQ_SYNC=1 
-			self.SYSMOD.FR_DIST_SYNC=1 
-			self.SYSMOD.FR_DIST_SYNC=0 
-			self.SYSMOD.ADC_DAQ_SYNC=0 
-			self.SYSMOD.ADC_SYNC=0 
-			# Sync all modules in data path
 			for ant in self.ANT:
 				print 'Resetting ANT[%i]' % ant.ant_number
 				ant.FR_DIST.TRIG_FRAME_COUNT=0 # Disable response to global trigger for all channnels by default. The requested ones will be re-enabled later. 
-				ant.CH_DIST.RESET=1 
-				ant.CH_DIST.RESET=0 
+			print 'Resetting and SYNCing the devices'
+			self.sock.flush_data_socket()
+			self.SYSMOD.ADC_SYNC=1 
+			self.SYSMOD.ADC_DAQ_BUFR_SYNC=1 
+			self.SYSMOD.FR_DIST_SYNC=1 
+			self.SYSMOD.FR_DIST_SYNC=0 
+			self.SYSMOD.ADC_DAQ_BUFR_SYNC=0 
+			self.SYSMOD.ADC_SYNC=0 
+			# Sync all modules in data path
+#			self.SYSMOD.ADC_DAQ_SYNC=1 
+#			self.SYSMOD.ADC_DAQ_SYNC=0 
+			self.SYSMOD.pulse_bit('ADC_DAQ_SERDES_SYNC') 
+			for ant in self.ANT:
+				ant.CH_DIST.pulse_bit('RESET') 
 	
 		for ch in channels:
 			ant=self.ANT[ch]
@@ -832,7 +840,9 @@ class chFPGA:
 							plt.plot(ch1_data,'b-', ch2_data,'r-')
 						plt.axis([0,xmax,-ymax,ymax])
 						#plt.axis([0,xmax,-70,70])
+					plt.legend(('Ch%i' % ch1, 'Ch%i' % ch2))
 					plt.draw()
+
 					if file:
 						file.write(np.int8(ch1_data))
 						if mult_chan:

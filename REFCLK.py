@@ -5,7 +5,8 @@ REFCLK.py module
  Implements FMC Reference clock interface
 #
 # History:
-	2011-09-22 JFC : Created 
+	2011-09-22 JFC: Created
+	2011-09-25 JFC: Modified to support new method on incrementing phase (pulse PS_EN unstead of PS_CLK) 
 """
 
 from Module import Module_base, BitDef
@@ -16,9 +17,9 @@ class REFCLK_base(Module_base):
 
 
 	BITS={
-		'PS_CLK' : 		BitDef(0x00,0,doc='Phase shift control clock'),
-		'PS_EN':		BitDef(0x00,1,doc='Enable Phase shift increment/decrement'),
-		'PS_INCDEC':	BitDef(0x00,2,doc='1=Increment phase by 1/56th of cycle, 2= decrement phase by same amount'),
+		'PS_CLK' : 		BitDef(0x00,0,doc='Phase shift control clock -- Not used'),
+		'PS_EN':		BitDef(0x00,1,doc='Enable Phase shift increment/decrement when transitionning from 0 to 1'),
+		'PS_INCDEC':	BitDef(0x00,2,doc='1=Increment phase by 1/56th of cycle, 0= decrement phase by same amount'),
 
 		'PS_DONE' : 	BitDef(0x080+ 0x00,0,doc='Phase shift completed'),
 		'LOCKED' : 		BitDef(0x080+ 0x00,1,doc='MCMM is locked'),
@@ -36,13 +37,9 @@ class REFCLK_base(Module_base):
 			self.PS_INCDEC=1
 		else:
 			self.PS_INCDEC=0
-			inc_amount=abs(inc_amount)
-		self.PS_EN=1
-		for i in range(inc_amount):
-			self.PS_CLK=1
-			self.PS_CLK=0
-			while not self.PS_DONE: pass
-		self.PS_EN=0
+		for i in range(abs(inc_amount)):
+			self.pulse_bit('PS_EN')
+			#while not self.PS_DONE: pass
 
 
 

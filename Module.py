@@ -5,7 +5,8 @@ Module.py module
   Module base class definition
 #
 # History:
-# 2011-08-03 : JFC : Created from ANT.py
+	2011-08-03 JFC : Created from ANT.py
+	2011-09-25 JFC: Added read_DRP and read_RAM 
 """
 
 import numpy as np
@@ -67,6 +68,18 @@ class Module_base(object):
 	def read(self,addr,*args,**kwargs): return self.fpga.Read(self.port_number, self.module_number,addr,*args,**kwargs)
 
 	def read_bit(self,addr,bit): return bool(self.fpga.Read(self.port_number, self.module_number,addr)& (1<<bit))
+
+	def read_DRP(self,addr):
+		"""
+		Reads a DRP (Dynamic Reconfigurable Port) from one of the FPGA internal devices (PLL, SYSMON, MGT etc). 'addr' is the 16-bit DRP register address.
+		"""
+		return self.read(0x200+2*addr,type=np.dtype('<u2'))
+
+	def read_RAM(self,addr,*args,**kwargs):
+		"""
+		Reads a byte from the RAM space
+		"""
+		return self.read(0x200+2*addr,*args,**kwargs)
 
 	def read_field(self,bit_name):
 		""" Reads the field identified by the name 'bit_name' which is looked up in the BITS table to find the bit definition (port, bit position etc). Returns a boolean."""  

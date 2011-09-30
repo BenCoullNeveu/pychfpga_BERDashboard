@@ -7,6 +7,7 @@ ADC_PLL.py module
 History:
 	2011-07-08 JFC : Created from test code in chFPGA.py
 	2011-08-30 KB : Changed default reference to 10 MHz
+	2011-09-25 JFC: Made fdiv computation work for any frequency
 """
 import numpy as np
 
@@ -22,22 +23,27 @@ class ADC_PLL_base(object):
 		spi.read_write(spi.SPI_PLL1_ADDR, data)
 
 	def init(self,fout=1600, fref=10, **args):
-		""" Initializes the ADC PLL to provide an adequate clock to the ADC.
+		""" Initializes the ADC PLL (Analog Devices ADF4350) to provide an adequate clock to the ADC.
 			fout: ADC reference frequency in MHz. Sampling rate is fout/2.
 			fref: PLL reference frequency in MHZ (typically 10 or 25 MHz)
-
 		"""
 		
 		#fref=25 # MHz - PLL reference frequency (fixed)
 		#fout=1600 # MHz - ADC Reference Frequency. Sampling rate is fout/2
-		fdiv=2 if fout<2200 else 1 # Output division factor
+		#fdiv=2 if fout<2200 else 1 # Output division factor
+		fmin=2200 # MHz. Minimum VCO frequency
+		fmax=4400 # MHz. Minimum VCO frequency
 
+		fdiv=int(2**np.ceil(np.log2(float(fmin)/fout))) #110925 JFC - Compute any factor for the output divider fdiv.
+		if fdiv>16:
+			raise Exception('Frequency is too low')
 
 		if self.verbose:
-			print ' --- PLL Set-up ---'
-			print ' Using reference frequency of %.0f MHz' % fref 
-			print ' Target ADC refernece frequency: %.0f MHz' % fout 
-			print ' Using RF frequency division ratio of %i' % fdiv 
+			print
+			print '--------------------- ADC PLL ------------------------------------'
+			print ' PLL Reference frequency         %4.0f MHz' % fref 
+			print ' Target ADC refernece frequency: %4.0f MHz' % fout 
+			print ' VCO output frequency division factor %i' % fdiv 
 
 		# REGISTER 5
 		LD_pin_mode=1 # 0=LOW, 1=Lock Detect, 2=Low, 3= High
@@ -106,6 +112,10 @@ class ADC_PLL_base(object):
 		self.write(np.uint32(PLL_reg2)); # write Reg 2: 
 		self.write(np.uint32(PLL_reg1)); # write Reg 1: 
 		self.write(np.uint32(PLL_reg0)); # write Reg 0: 
-		
+
+		if self.verbose:
+			print ' PLL is locked: %s' % bool(self.fpga_instance.IOExpander.PLL1_LOCK)
+			print '----------------------------------------------------------------------'
+
 		return (PLL_reg0,PLL_reg1,PLL_reg2,PLL_reg3,PLL_reg4,PLL_reg5);
 
