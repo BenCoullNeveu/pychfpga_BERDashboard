@@ -34,9 +34,11 @@ for filenum in range(nfiles):
 	  #data[j] = hann_window(data[j])
 	  data[j] = data[j]
    fft1 = fft.fft(data)
-   fft1 = fft1[:,:slength/2]
+   #convert to Vrms units
+   fft1 = fft1[:,:slength/2]*sqrt(2)/slength
    freq = freq[:slength/2]
-   pspec = 10*log10((fft1*fft1.conjugate()).mean(axis=0)) - 40.0
+   #convert to dbm assumes 50 ohms in.
+   pspec = 10*log10((fft1*fft1.conjugate()).mean(axis=0)/50.0) + 30.0
    pspec[0] = 0
    print pspec.max()
    pspecs.append(pspec)
