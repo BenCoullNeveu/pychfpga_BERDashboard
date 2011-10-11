@@ -6,6 +6,8 @@ ADC.py module
 #
 # History:
 # 2011-07-07 : JFC : Created from test code in chFPGA.py
+	2011-09-29 JFC: Added set_test_mode()
+
 """
 
 import numpy as np
@@ -55,6 +57,10 @@ class ADC_chip(object):
 	channel=property(lambda s: s.read(s.REG_CHANNEL_SELECT), lambda s,value: s.write(s.REG_CHANNEL_SELECT,value));
 	chip_id=property(lambda s: s.read(s.REG_CHIP_ID), lambda s,value: s.write(s.REG_CHIP_ID,value));
 	temperature=property(lambda s: s.adc.temperature(s.adc_number));
+
+
+
+
 
 class ADC_base(object):
 
@@ -109,3 +115,9 @@ class ADC_base(object):
 			adc.init(test_mode)
 			adc.channel=0
 		#self.sync() # Send sync pulse -- reates problems. to be debugged.
+
+	def set_test_mode(self,test_mode=0):
+		REG_TEST_Value=(0,0,1)[test_mode] # Select test pattern: test=0: no test mode, test=1:ramp, test=2: flashing 0xff
+		for adc in self.ADC:
+			adc.write(adc.REG_TEST, REG_TEST_Value) 
+		self.sync();

@@ -10,6 +10,7 @@ Module.py module
 """
 
 import numpy as np
+import time
 
 class BitDef:
 	""" Holds the definition of a memory-mapped variable"""
@@ -65,7 +66,8 @@ class Module_base(object):
 	def _lock(self):
 		self.__dict__['_locked']=True
 
-	def read(self,addr,*args,**kwargs): return self.fpga.Read(self.port_number, self.module_number,addr,*args,**kwargs)
+	def read(self,addr,*args,**kwargs):
+		return self.fpga.Read(self.port_number, self.module_number,addr,*args,**kwargs)
 
 	def read_bit(self,addr,bit): return bool(self.fpga.Read(self.port_number, self.module_number,addr)& (1<<bit))
 
@@ -151,6 +153,26 @@ class Module_base(object):
 		old_value=self.read(addr)
 		self.write(addr,old_value | mask) # Set bit to '1'
 		self.write(addr,old_value & ~mask) # Set bit to '0'
+
+	def wait_for_bit(self,addr,bit=0,timeout=1): 
+		"""
+		Wait for spoecified bit to become '1'. 
+		if 'addr' is numeric, the bit 'bit' at address 'addr' is pulsed.
+		If 'addr' is a string containing the name of a bit field, then this bit is pulsed.
+		"""
+
+		if addr in self.BITS:
+			field_def=self.BITS[addr]
+			if field_def.width!=1:
+				raise Exception('The bit field must be a single bit (width=1)')
+			(addr,bit)=(field_def.addr,field_def.bit)
+
+		mask=(1<<bit)
+		t0=time.time()
+		while 1:
+			if self.read(addr) & mask : return
+			if (time.time()-t0)>timeout:
+				raise(Exception('Timeout exceeded while waiting for status bit'))
 
 	def init(self):
 		pass

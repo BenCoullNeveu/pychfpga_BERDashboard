@@ -558,6 +558,59 @@ class chFPGA:
 		#plt.imshow((m & (1<<bit))!=0,aspect='auto', interpolation='nearest', cmap=plt.gray(), filternorm=1)
 		#plt.draw()
 
+	def read_eye_diagram(self,channels=[0]):
+		self.ADC.set_test_mode(2) # generate pulse pattern
+		#self.SYSMOD.ADC_DAQ_BUFR_SYNC=1 
+		#self.SYSMOD.ADC_DAQ_BUFR_SYNC=0 
+		#self.SYSMOD.pulse_bit('ADC_DAQ_SERDES_SYNC') 
+
+
+		data={}
+		for ch in channels:
+			d=np.zeros((32,3),dtype=np.uint8)
+			print 'Reading channel %i' % (ch)
+			adcdaq=self.ANT[ch].ADCDAQ
+			adcdaq.CAPTURE_ALIGN=1 # first capture will be done while aligning bits
+			for dly in range(32):
+				#print '  Acquiring pattern for delay %i' % (dly)
+				#dly=0
+				adcdaq.set_delay(dly)
+				adcdaq.pulse_bit('CAPTURE_TRIG')
+				adcdaq.wait_for_bit('CAPTURE_DONE')
+				d[dly,:]=adcdaq.read(0x8B, type=np.uint8, length=3)
+				adcdaq.CAPTURE_ALIGN=0 # we no longer want to align the following captures so we can track the bits moving with the delays
+			data[ch]=d
+			#if np.sum(d[:,1])==0: raise
+		return data
+
+	def compute_delays(self,channels=[0]):
+		data=self.read_eye_diagram(channels)
+		n=np.zeros((8,3),dtype=np.uint8)
+		delays={}
+
+		for ch in channels:
+			for bit in range(8):
+				mask=1<<bit
+				n[bit,:]=np.sum((data[ch] & mask)/mask,axis=0)
+			#print 'n is ', n
+
+			n_min=np.min(n,axis=0) # minimum number of delay values that allowed the pulse in each slot
+			N=np.argmax(n_min) # slot with the maximum number of possible delays for all bits
+			N=1
+			print 'Aligning bits on sample #%i' % N
+
+			print 'CHANNEL %i' % ch
+			m=np.zeros(8,dtype=np.uint8)
+			for bit in range(8):
+				mask=1<<bit
+				d=(data[ch][:,N]&mask)/mask
+				m[bit]=np.sum(d*range(32))/np.sum(d)
+				print 'Bit %i:' % bit, ''.join('.#!O'[d[i] +2*bool(m[bit]==i)] for i in range(len(d))), 'Delay = %2i' % m[bit]
+
+			delays[ch]=m
+
+		return delays
+
 	def ADC_plot_map(self, channel=0,bit=0):
 
 		old_delays=self.ADC_read_delay(channel)
@@ -661,21 +714,35 @@ class chFPGA:
 			channels=[channels]
 
 		if reset:
+			# Sync all modules in data path
 			for ant in self.ANT:
 				print 'Resetting ANT[%i]' % ant.ant_number
 				ant.FR_DIST.TRIG_FRAME_COUNT=0 # Disable response to global trigger for all channnels by default. The requested ones will be re-enabled later. 
 			print 'Resetting and SYNCing the devices'
 			self.sock.flush_data_socket()
-			self.SYSMOD.ADC_SYNC=1 
-			self.SYSMOD.ADC_DAQ_BUFR_SYNC=1 
+
 			self.SYSMOD.FR_DIST_SYNC=1 
-			self.SYSMOD.FR_DIST_SYNC=0 
+			self.SYSMOD.ADC_DAQ_SERDES_SYNC=1 # Reset the SERDES while there is a clock (to allow the reset process to complete internally) and keep it there 
+			self.SYSMOD.ADC_SYNC=1 # Stops the 400 MHz ADC output clock
+			# The ADC clock stops running here
+			self.SYSMOD.ADC_DAQ_BUFR_SYNC=1 # Reset the BUFR, which divides the ADC clock by 2 to generate the 200 MHz word clock. The next rising edge of the word clock is therefore in a known phase relationship with the first word 
+			# ADC READY=false
 			self.SYSMOD.ADC_DAQ_BUFR_SYNC=0 
-			self.SYSMOD.ADC_SYNC=0 
-			# Sync all modules in data path
-#			self.SYSMOD.ADC_DAQ_SYNC=1 
-#			self.SYSMOD.ADC_DAQ_SYNC=0 
-			self.SYSMOD.pulse_bit('ADC_DAQ_SERDES_SYNC') 
+			self.SYSMOD.FR_DIST_SYNC=0 #Release FR_DIST from forced reset
+			#self.SYSMOD.ADC_SYNC=0 
+			self.SYSMOD.ADC_DAQ_SERDES_SYNC=0 # Releases the SERDES RESET to start shifting the next byte in a known bit position 
+			# Still no 400 MHz and 200 MHz clock here. We can't reset anything that uses those clocks yet.
+			self.SYSMOD.ADC_SYNC=0 # Restart the 400 MHz ADC output clock.
+			# The ADC clock runs now. 
+			# After N samples, ADC_READY becomes TRUE and FR_DIST starts framing the data
+
+			#self.SYSMOD.pulse_bit('ADC_DAQ_SERDES_SYNC') # make sure all serdes clock their first bits at the same position
+			#self.SYSMOD.FR_DIST_SYNC=0 
+
+			# Now the clocks are restarting
+
+
+			# Make sure the CH_DIST buffers are empty
 			for ant in self.ANT:
 				ant.CH_DIST.pulse_bit('RESET') 
 	
@@ -690,7 +757,7 @@ class chFPGA:
 					ant.FR_DIST.DSP_DATA_SRC_ADC=1 # Source is ADC DAQ
 				elif simulate==2: # Source is Frame_DIST-based ramp generator
 					ant.ADCDAQ.ENABLE_RAMP=0
-					ant.FR_DIST.ENABLE_RAMP=1 # Enable ranp generator
+					ant.FR_DIST.ENABLE_RAMP=1 # Enable ramp generator
 					ant.FR_DIST.DSP_DATA_SRC_ADC=0 # Source is ADC DAQ
 				else:
 					raise Exception('Invalid simulation parameter')
@@ -728,6 +795,7 @@ class chFPGA:
 			try:
 				in_frame=self.read_frame(timeout_delay=0.2)
 			except SocketIO.timeout:
+				print 'Timeout!'
 				break
 
 			if(len(in_frame)!=length+5):
@@ -763,7 +831,7 @@ class chFPGA:
 			#ch+=1
 		return data		
 
-	def plot_ADC_frame(self, channels=0, hold=0, frames=1, continuous=0,xmax=1023,fft=0, sync_period=None, out_shift=0, fft_shift=None, filename=None,simulate=0,correlate=0):
+	def plot_ADC_frame(self, channels=0, hold=0, frames=1, continuous=0,xmax=1023,fft=0, sync_period=None, out_shift=0, fft_shift=None, filename=None,simulate=0,correlate=0,reset=0,length=1024):
 		if filename:
 			file=open(filename,'w')
 		else:
@@ -807,8 +875,8 @@ class chFPGA:
 			while (continuous==1) or (number_of_frames<frames):
 				try:
 					print 'Reading data...'
-					a=self.read_ADC_frame(channels,length=1024,reset=(number_of_frames==0),fft=fft,simulate=simulate) #(number_of_frames==0)
-					ch1_data=a[ch1]
+					a=self.read_ADC_frame(channels,length=1024,reset=(number_of_frames==0) or bool(reset),fft=fft,simulate=simulate) #(number_of_frames==0)
+					ch1_data=a[ch1][:length]
 					if mult_chan: # select channels to correlate
 						ch2_data=a[ch2]
 					print 'CHa[0]=',hex(ch1_data[0]),'CHb[0]=',hex(ch2_data[0]), ' Difference=', ch1_data[0]-ch2_data[0]

@@ -15,46 +15,104 @@ from Module import Module_base, BitDef
 class ADCDAQ_base(Module_base):
 	""" Implements interface to the ADC data acquisisition logic within a procecessor pipeline"""
 	BITS={
-		'ENABLE_RAMP' : 	BitDef(0x08,4,doc='Enables transmission of a ramp. 0=inactive, 1=active'),
-		'IDELAYCTRL_RESET' : 	BitDef(0x08,3,doc='Resets the IDELAYCTRL. Forces it to recalibrate. '),
-		'BUFR_RESET' : 		BitDef(0x08,2,doc='Resets the BUFR.'),
-		'ISERDES_RESET' : 	BitDef(0x08,1,doc='Resets the ISERDES.'),
-		'IODELAY_RESET' : 	BitDef(0x08,0,doc='Resets the IODELAY element. This loads the delay values into the delay lines'),
+		# 0x00 - 0x07, bits 5:0: IODELAY values for bits 0:7
+		# 0x08, bits 5:0: IODELAY values for the clock line
 
-		'RAMP_CTR' : 		BitDef(0x88,2,6,doc=''),
-		'IDELAYCTRL_PRESENT' : 	BitDef(0x88,1,doc='Indicate whether this ADCDAQ instantiated a IODELAYCTRL'),
-		'IDELAYCTRL_RDY' : 	BitDef(0x88,0,doc='Indicate if the IODELAYCTRL has finished calibrating'),
+		'DELAY0' : 	BitDef(0x00,0,5,doc='IODELAY value for the data line. Loaded the IODELAY_RST is pulsed.'),
+		'CLK_DELAY' : 	BitDef(0x08,0,5,doc='IODELAY value for the clock line. Loaded the CLK_IODELAY_RST is pulsed.'),
+
+		'CLK_IODELAY_RESET' : 	BitDef(0x09,5,doc='Resets the IODELAY element in the clock path. This loads the delay values into the delay lines'),
+		'ENABLE_RAMP' : 	BitDef(0x09,4,doc='Enables transmission of a ramp. 0=inactive, 1=active'),
+		'IDELAYCTRL_RESET' : 	BitDef(0x09,3,doc='Resets the IDELAYCTRL. Forces it to recalibrate. '),
+		'BUFR_RESET' : 		BitDef(0x09,2,doc='Resets the BUFR.'),
+		'ISERDES_RESET' : 	BitDef(0x09,1,doc='Resets the ISERDES.'),
+		'IODELAY_RESET' : 	BitDef(0x09,0,doc='Resets the IODELAY element. This loads the delay values into the delay lines'),
+
+		'CAPTURE_TRIG' : 	BitDef(0x0A,7,doc='A 0-to-1 transition triggers capturing of a 4-byte word'),
+		'CAPTURE_ALIGN' : 	BitDef(0x0A,6,doc='1: Next capture alignes the non-zero byte to byte 1. 0: Capture next word on a 11-word periodiciry'),
+		'CAPTURE_SOURCE' : 	BitDef(0x0A,5,doc='0: Word number is the one determined during the ALIGN process. 1: Word number is the one specified in USER_WORD_NUMBER'),
+		'CAPTURE_USER_WORD_NUMBER' : 	BitDef(0x0A,0,4,doc='0: Word number is the one determined during the ALIGN process. 1: Word number is the one specified in USER_WORD_NUMBER'),
+
+		'CLK_DELAY_STATUS':	BitDef(0x88,0,5,doc='Current delay value of the CLK line IODELAY'),
+		'CAPTURE_DONE' : 	BitDef(0x89,7,doc="'1' when capture is complete"),
+		'FIFO_OVERFLOW' : 	BitDef(0x89,6,doc="'1' if the FIFO has overflowed. Reset by SERDES_SYNC."),
+		'FIFO_UNDERFLOW' : 	BitDef(0x89,5,doc="'1' if the FIFO has underflowed.  Reset by SERDES_SYNC."),
+		'FIFO_EMPTY' : 		BitDef(0x89,4,doc="'1' if the FIFO has been empty. Reset by SERDES_SYNC."),
+		'IDELAYCTRL_PRESENT':BitDef(0x89,1,doc='Indicate whether this ADCDAQ instantiated a IODELAYCTRL'),
+		'IDELAYCTRL_RDY' : 	BitDef(0x89,0,doc='Indicate if the IODELAYCTRL has finished calibrating'),
+
+		'CAPTURE_PATTERN0' : BitDef(0x8A,0,8,doc='Captured byte'),
+		'CAPTURE_PATTERN1' : BitDef(0x8B,0,8,doc='Captured byte'),
+		'CAPTURE_PATTERN2' : BitDef(0x8C,0,8,doc='Captured byte'),
+		'CAPTURE_PATTERN3' : BitDef(0x8D,0,8,doc='Captured byte'),
+
+		'CAPTURE_WORD_CTR' : BitDef(0x8E,4,4,doc='Free running word counter for the capture engine'),
+		'CAPTURE_WORD_NUMBER' : BitDef(0x8E,0,4,doc='Word number determined by the automatic alignment process'),
+
+		'RAMP_CTR' : BitDef(0x8F,0,6,doc='Free running word counter for readout interface, used to generate ramp at the ADCDAQ level'),
+
+		'FIFO_WR_COUNT' : BitDef(0x90,0,8,doc='Number of words in the FIFO, as seen from the WR clock'),
+		'FIFO_RD_COUNT' : BitDef(0x91,0,8,doc='Number of words in the FIFO, as seen from the RD clock (readout system)'),
+
 	}
 
 	def __init__(self,ant_ch_instance):
 		super(self.__class__,self).__init__(ant_ch_instance.fpga,ant_ch_instance.ant_number, ant_ch_instance.ADCDAQ_MODULE)
+		self._lock() # Prevent accidental addition of attributes (if, for example, a value is assigned to a wrongly-spelled property)
 
-	def set_delay(self, data=[0,0,0,0,0,0,0,0],reset=1):
-		""" Sets the tap delays """
-#		if type(data)==int:
-#			data=[data]*8;
-		self.write(0x00,data) # Set delay in registers
-		self.pulse_bit(0x08,0);
-		if reset:
-			self.write_mask(0x08,0x06,0x06) # Reset SERDES and BUFR
-			self.write_mask(0x08,0x06,0x02) # Reset SERDES 
-			self.write_mask(0x08,0x06,0x00) # Stop reset
+	def set_delay(self, dly=[0,0,0,0,0,0,0,0]):
+		""" Sets the tap delays 
+		WARNING: will work only if DIVCLK is clocking (i.e. ADC not in SYNC, and BUFR/PLL not in RESET)
+		"""
+		if isinstance(dly,int):
+			dly=[dly]*8;
+		elif len(dly)>9:
+			raise Exception('Delay vector too long')
+
+		self.write(self.BITS['DELAY0'].addr, dly) # Set delay in registers
+		self.pulse_bit('IODELAY_RESET');
+
+	def set_clk_delay(self, dly):
+		""" Sets the tap delay on the clock line 
+		WARNING: will work only if DIVCLK is clocking (i.e. ADC not in SYNC, and BUFR/PLL not in RESET)
+		"""
+		if not isinstance(dly,int):
+			raise Exception('Delay on the clock line must be a scalar')
+
+		self.write(self.BITS['CLK_DELAY'].addr, dly) # Set delay in registers
+		self.pulse_bit('CLK_IODELAY_RESET');
 
 	def read_delay(self):
 		""" Reads the 8 delay tap values and return them as an array"""
 		return self.read(0x00,length=8) # Reads the delay in registers
 
+	def get_actual_delay(self):
+		""" Reads the 8 actual delay tap values (returned by the IODELAY themselves, not the last delay set point) and return them as an array"""
+		return self.read(0x80,length=8) # Reads the delay in registers
+
 	delay=property(set_delay,read_delay)
 
-	def get_iodelayctrl_present(self):
-		return self.read_bit(0x88,1);
+#	def get_iodelayctrl_present(self):
+#		return self.IDELAYCTRL_PRESENT;
 
-	def get_iodelayctrl_ready(self):
-		return self.read_bit(0x88,0);
+#	def get_iodelayctrl_ready(self):
+#		return self.IDELAYCTRL_RDY;
 
-	iodelayctrl_present=property(get_iodelayctrl_present)
-	iodelayctrl_ready=property(get_iodelayctrl_ready)
+#	iodelayctrl_present=property(get_iodelayctrl_present)
+#	iodelayctrl_ready=property(get_iodelayctrl_ready)
 
+	def capture_print(self):
+		""" """
+		self.CAPTURE_SOURCE=1
+		self.CAPTURE_ALIGN=0
+		for i in range(11):
+			self.CAPTURE_USER_WORD_NUMBER=i
+			self.pulse_bit('CAPTURE_TRIG')
+			print 'Word number: %i : ' % i, self.read(self.BITS['CAPTURE_PATTERN0'].addr,length=4)
+		self.CAPTURE_SOURCE=0
+
+
+	
 class FR_DIST_base(Module_base):
 	""" Implements interface to the FR_DIST within a procecessor pipeline"""
 

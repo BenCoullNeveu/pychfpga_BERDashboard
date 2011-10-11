@@ -23,6 +23,8 @@ class REFCLK_base(Module_base):
 
 		'PS_DONE' : 	BitDef(0x080+ 0x00,0,doc='Phase shift completed'),
 		'LOCKED' : 		BitDef(0x080+ 0x00,1,doc='MCMM is locked'),
+		'DIFF_COUNTER' : 		BitDef(0x080+ 0x01,0,8,doc='DIfference between clocks'),
+
 	}
 
 

@@ -42,8 +42,7 @@ class ADC_PLL_base(object):
 			print
 			print '--------------------- ADC PLL ------------------------------------'
 			print ' PLL Reference frequency         %4.0f MHz' % fref 
-			print ' Target ADC refernece frequency: %4.0f MHz' % fout 
-			print ' VCO output frequency division factor %i' % fdiv 
+			print ' Target ADC reference frequency: %4.0f MHz' % fout 
 
 		# REGISTER 5
 		LD_pin_mode=1 # 0=LOW, 1=Lock Detect, 2=Low, 3= High
@@ -89,6 +88,13 @@ class ADC_PLL_base(object):
 		# REGISTER 0
 		int_div=fdiv*fout/fref; #23-65535
 		frac_div=0; #0-4095
+
+		if self.verbose:
+			print ' Reference integer multiplication factor: %i' % int_div 
+			print ' VCO Frequency: %.3f MHz (%.0f MHz min, %.0f MHz max)' % (int_div*fref,fmin,fmax)
+			print ' VCO output frequency division factor: %i' % fdiv 
+			print ' PLL output frequency: %.3f' % (float(fref)*int_div/fdiv) 
+ 
 
 		# Override variable names if any is specified in the function call
 		for (varname,value) in args.items():
