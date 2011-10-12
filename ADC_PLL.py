@@ -8,6 +8,10 @@ History:
 	2011-07-08 JFC : Created from test code in chFPGA.py
 	2011-08-30 KB : Changed default reference to 10 MHz
 	2011-09-25 JFC: Made fdiv computation work for any frequency
+	2011-10-10 JFC: Change FB_select to '0' to make sure the output divider was in the feedback loop and eliminate a phase ambiguity. 
+		Modify computation of int_div to handle both FB_select==0 and FB_select==1
+		Added check on int_div range
+		Changed default phase to 2000 to allow reliable SYNC
 """
 import numpy as np
 
@@ -23,9 +27,13 @@ class ADC_PLL_base(object):
 		spi.read_write(spi.SPI_PLL1_ADDR, data)
 
 	def init(self,fout=1600, fref=10, **args):
-		""" Initializes the ADC PLL (Analog Devices ADF4350) to provide an adequate clock to the ADC.
+		"""
+		Initializes the ADC PLL (Analog Devices ADF4350) to provide an adequate clock to the ADC.
 			fout: ADC reference frequency in MHz. Sampling rate is fout/2.
 			fref: PLL reference frequency in MHZ (typically 10 or 25 MHz)
+
+		NOTES:
+			- The reference clock x2 doubler or /2 divider are never enabled
 		"""
 		
 		#fref=25 # MHz - PLL reference frequency (fixed)
@@ -36,19 +44,19 @@ class ADC_PLL_base(object):
 
 		fdiv=int(2**np.ceil(np.log2(float(fmin)/fout))) #110925 JFC - Compute any factor for the output divider fdiv.
 		if fdiv>16:
-			raise Exception('Frequency is too low')
+			raise Exception('Output frequency is too low')
 
 		if self.verbose:
 			print
 			print '--------------------- ADC PLL ------------------------------------'
-			print ' PLL Reference frequency         %4.0f MHz' % fref 
-			print ' Target ADC reference frequency: %4.0f MHz' % fout 
+			print ' PLL Reference frequency         %7.3f MHz' % fref 
+			print ' Target ADC reference frequency: %7.3f MHz' % fout 
 
 		# REGISTER 5
 		LD_pin_mode=1 # 0=LOW, 1=Lock Detect, 2=Low, 3= High
 
 		# REGISTER 4
-		FB_select=1 # 0=feedback from output divided, 1=feedback from VCO directly
+		FB_select=0 # 0=feedback from output divided, 1=feedback from VCO directly
 		RF_div= int(np.log2(fdiv)) # Output divider: 0=/1, 1=/2, 2=/4, 3=/8, 4=/16
 		band_sel_div=fref*8 #1-255. R counter output / band_sel_div < 125 kHz.
 		vco_power_down=0 # 0-1
@@ -82,18 +90,24 @@ class ADC_PLL_base(object):
 
 		# REGISTER 1
 		prescaler=0 # 0=4/5. 1=8/9
-		phase=1 # 0-4095
+		phase=2000 # 0-4095 # 111011 JFC: Changed to make the SYNC stable
 		modulus=4095 # 0-4095
 
 		# REGISTER 0
-		int_div=fdiv*fout/fref; #23-65535
+		if FB_select: # if feedback is from VCO directly
+			int_div=fdiv*fout/fref/2; #23-65535
+		else: # if feedback is from the output of the output divider
+			int_div=fout/fref; #23-65535
+		if int_div<23 or int_div>65535:
+			raise Exception('Integer division factor is out of range (it_div=%i, range is 23-65535)' % int_div)
+
 		frac_div=0; #0-4095
 
 		if self.verbose:
 			print ' Reference integer multiplication factor: %i' % int_div 
 			print ' VCO Frequency: %.3f MHz (%.0f MHz min, %.0f MHz max)' % (int_div*fref,fmin,fmax)
 			print ' VCO output frequency division factor: %i' % fdiv 
-			print ' PLL output frequency: %.3f' % (float(fref)*int_div/fdiv) 
+			print ' Programmed PLL output frequency: %.3f' % (float(fref)*int_div/fdiv) 
  
 
 		# Override variable names if any is specified in the function call
@@ -118,6 +132,7 @@ class ADC_PLL_base(object):
 		self.write(np.uint32(PLL_reg2)); # write Reg 2: 
 		self.write(np.uint32(PLL_reg1)); # write Reg 1: 
 		self.write(np.uint32(PLL_reg0)); # write Reg 0: 
+		self.write(np.uint32(PLL_reg0)); # write Reg 0: # To make sure DBR values are clocked in. 
 
 		if self.verbose:
 			print ' PLL is locked: %s' % bool(self.fpga_instance.IOExpander.PLL1_LOCK)

@@ -9,12 +9,14 @@ top_test.py script
 History:
 	2011-08-14 JFC: Created from chFPGA, which now only contains top test code.
 	2011-09-09 JFC: Added global FREF 
+	2011-10-11 JFC: Updated delay tables
 """
 
 import chFPGA
 reload(chFPGA) # just to make sure that any changes to the code are reloaded
 
-
+# Default data and clock line delays for the two FMC boards/ML605 combination.
+# First 8 values are the delays for bits 0 to 7, 8th value is the delay for the clock line.
 SN001_adc_delays=(
 	[13,19,19,19,19,19,19,19]+[13], # CH0
 	[18]*8+[0], #CH1
@@ -26,14 +28,14 @@ SN001_adc_delays=(
 	[14]*8+[0] #CH7
 	)
 SN002_adc_delays=(
-	[13,19,19,19,19,19,19,19],
-	[8]*8,
-	[20]*8,
-	[14]*8,
-	[12]*8,
-	[11]*8,
-	[13]*8,
-	[9]*8
+	[16,22,22,22,22,22,22,22]+[13], #CH0 (BUFR)
+	[21]*8, #CH1 (BUFR)
+	[9]*8+[13], #CH2 (PLL)
+	[18]*8+[13-5], #CH3 (PLL)
+	[17]*8, #CH4 (BUFR)
+	[17]*8, #CH5 (BUFR)
+	[18]*8, #CH6 (BUFR)
+	[14]*8, #CH7 (BUFR)
 	)
 SN001_adc_delays_IDDR=(
 	[25,5,5,5,5,5,5,5],
