@@ -38,8 +38,8 @@ for filenum in range(nfiles):
    for j in arange(data.shape[0]):
       for k in arange(nchan):
          #data[j,k,:] = gauss_window(data[j,k,:], sig)
-	     #data[j,k,:] = hann_window(data[j,k,:])
-	     data[j,k,:] = data[j,k,:]
+	     data[j,k,:] = hann_window(data[j,k,:])
+         #data[j,k,:] = data[j,k,:]
    fftall = fft.fft(data)
    #convert to Vrms units
    fftall = fftall[:,:,:slength/2]*sqrt(2)/slength
