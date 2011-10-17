@@ -196,7 +196,7 @@ class chFPGA:
 			s+=''.join([chr(a[i]) for i in range(4)])
 		elif type(data)==np.uint16:
 			length=2;
-			a=array([data],np.dtype('>u2')); # store as big endian (most significant byte first)
+			a=np.array([data],np.dtype('>u2')); # store as big endian (most significant byte first)
 			a.dtype=np.uint8;
 			s+=''.join([chr(a[i]) for i in range(2)])
 		elif type([data])==np.uint8:
@@ -610,6 +610,12 @@ class chFPGA:
 			delays[ch]=m
 
 		return delays
+	def print_phase(self):
+		for phase in range(512):
+			self.ANT[1].ADCDAQ.set_divclk_phase(phase)
+			a= self.read_ADC_frame(channels=range(8),reset=1,simulate=0,raw=1,verbose=0);
+			print 'PHASE = ', phase
+			print a[7][:10]
 
 	def ADC_plot_map(self, channel=0,bit=0):
 
@@ -679,7 +685,7 @@ class chFPGA:
 			self.ADC_set_delay(ch,old_delays); # restore original delays
 			print ' Channel %i: Pass: %i (%.2f%%), fail: %i (%.2f%%)' % (ch, passed, passed*100.0/(passed+failed), failed, failed*100.0/(passed+failed))
 
-	def read_ADC_frame(self,channels=0,frames=1,verbose=1,length=1024,simulate=0, reset=1, fft=0, dummy=0):
+	def read_ADC_frame(self,channels=0,frames=1,verbose=1,length=1024,simulate=0, reset=1, fft=0, dummy=0,raw=0):
 		"""
 		Triggers frame acquisition  from the specified ADC channel and capture the data.
 
@@ -688,7 +694,7 @@ class chFPGA:
 			frames: Number of frames to acquire per channel. Limited by the buffer lengths in the FPGA
 			length: number of bytes to capture per channel. Must be a multiple of 4.
 			reset: when true, resets the antenna processor 
-
+			raw: when true, returns the unsigned raw data from the ADC (bit 7 is not inverted)
 		History:
 			110916 JFC: Added comments. 
 				Changed output format to dictionnary of arrays instead of bidimentional array.
@@ -716,7 +722,7 @@ class chFPGA:
 		if reset:
 			# Sync all modules in data path
 			for ant in self.ANT:
-				print 'Resetting ANT[%i]' % ant.ant_number
+				#print 'Resetting ANT[%i]' % ant.ant_number
 				ant.FR_DIST.TRIG_FRAME_COUNT=0 # Disable response to global trigger for all channnels by default. The requested ones will be re-enabled later. 
 			print 'Resetting and SYNCing the devices'
 			self.sock.flush_data_socket()
@@ -819,6 +825,10 @@ class chFPGA:
 			rx_subframe=in_frame[5:]
 			raw_data=np.array(map(ord,rx_subframe),dtype=np.uint8)
 			raw_data.dtype=np.int8
+
+			if raw:
+				raw_data.dtype=np.uint8
+				raw_data^=0x80
 
 			ch=port
 			if verbose:

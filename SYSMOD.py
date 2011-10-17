@@ -14,33 +14,36 @@ SYSMOD.py module
 	2011-09-27 JFC: Split ADC_DAQ_SYNC into ADC_DAQ_BUFR_SYNC and ADC_DAQ_SERDES_SYNC 
 """
 
-from Module import Module_base, BitDef
+from Module import Module_base, BitField
 
 import numpy as np
 
 class SYSMOD_base(Module_base):
 
+	# Create local variables for page numbers tomake the table more readable
+	CONTROL=BitField.CONTROL
+	STATUS=BitField.CONTROL
 
 	BITS={
-		'GLOBAL_TRIG' : 	BitDef(0x00,7,doc='Global trigger'),
-		'BUCK_SYNC_ENABLE':	BitDef(0x00,6,doc='Enable generation of the Buck SYNC signals'),
-		'GLOBAL_RESET' : 	BitDef(0x00,5,doc='Resets the whole FPGA'),
-		'ADC_DAQ_BUFR_SYNC' : 	BitDef(0x00,4,doc='ADC_DAQ SYNC line. Common to all ADC_DAQs.'),
-		'ADC_DAQ_SERDES_SYNC' : BitDef(0x00,3,doc='ADC_DAQ SYNC line. Common to all ADC_DAQs.'),
-		'FR_DIST_SYNC' : 	BitDef(0x00,2,doc='FR_DIST line. Common to all FR_DISTs.'),
-		'ADC_SYNC' : 		BitDef(0x00,1,doc='ADC SYNC line. Common to both ADCs.'),
-		'ADC_RESET' : 		BitDef(0x00,0,doc='ADC RESET line. Common to both ADCs.'),
-		'BUCK_CLK_DIV' : 	BitDef(0x01,0,8,doc='Clock divider to set the BUCK SYNC frequency (2-255). Relative to the internal ADC word clock (200 MHz)'),
+		'GLOBAL_TRIG' : 	BitField(CONTROL,0x00,7,doc='Global trigger'),
+		'BUCK_SYNC_ENABLE':	BitField(CONTROL,0x00,6,doc='Enable generation of the Buck SYNC signals'),
+		'GLOBAL_RESET' : 	BitField(CONTROL,0x00,5,doc='Resets the whole FPGA'),
+		'ADC_DAQ_BUFR_SYNC' : 	BitField(CONTROL,0x00,4,doc='ADC_DAQ SYNC line. Common to all ADC_DAQs.'),
+		'ADC_DAQ_SERDES_SYNC' : BitField(CONTROL,0x00,3,doc='ADC_DAQ SYNC line. Common to all ADC_DAQs.'),
+		'FR_DIST_SYNC' : 	BitField(CONTROL,0x00,2,doc='FR_DIST line. Common to all FR_DISTs.'),
+		'ADC_SYNC' : 		BitField(CONTROL,0x00,1,doc='ADC SYNC line. Common to both ADCs.'),
+		'ADC_RESET' : 		BitField(CONTROL,0x00,0,doc='ADC RESET line. Common to both ADCs.'),
+		'BUCK_CLK_DIV' : 	BitField(CONTROL,0x01,0,8,doc='Clock divider to set the BUCK SYNC frequency (2-255). Relative to the internal ADC word clock (200 MHz)'),
 
-		'TIMESTAMP_VALID' : BitDef(0x080+ 0x00,7,doc='Timestamp data valid (i.e. can be read)'),
-		'ADC_SYNC_READBACK' : BitDef(0x080+ 0x00,0,doc='Reads back the SYNC bit for debugging'),
+		'TIMESTAMP_VALID' : BitField(STATUS,0x080+ 0x00,7,doc='Timestamp data valid (i.e. can be read)'),
+		'ADC_SYNC_READBACK' : BitField(STATUS,0x080+ 0x00,0,doc='Reads back the SYNC bit for debugging'),
 
-		'MAJOR_VERSION' : 	BitDef(0x080+ 0x01,0,8,doc='Major revision number of the firmware'),
-		'MINOR_VERSION' : 	BitDef(0x080+ 0x02,0,8,doc='Minor revision number of the firmware'),
-		'BUILD_NUMBER' : 	BitDef(0x080+ 0x03,0,8,doc='Build number of the firmware'),
-		'BUILD_YEAR' : 		BitDef(0x080+ 0x04,0,8,doc='Build year of the firmware'),
-		'BUILD_MONTH' : 	BitDef(0x080+ 0x05,0,8,doc='Build month of the firmware'),
-		'BUILD_DAY' : 		BitDef(0x080+ 0x06,0,8,doc='Build day of the firmware'),
+		'MAJOR_VERSION' : 	BitField(STATUS,0x080+ 0x01,0,8,doc='Major revision number of the firmware'),
+		'MINOR_VERSION' : 	BitField(STATUS,0x080+ 0x02,0,8,doc='Minor revision number of the firmware'),
+		'BUILD_NUMBER' : 	BitField(STATUS,0x080+ 0x03,0,8,doc='Build number of the firmware'),
+		'BUILD_YEAR' : 		BitField(STATUS,0x080+ 0x04,0,8,doc='Build year of the firmware'),
+		'BUILD_MONTH' : 	BitField(STATUS,0x080+ 0x05,0,8,doc='Build month of the firmware'),
+		'BUILD_DAY' : 		BitField(STATUS,0x080+ 0x06,0,8,doc='Build day of the firmware'),
 
 	}
 

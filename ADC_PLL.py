@@ -103,11 +103,14 @@ class ADC_PLL_base(object):
 
 		frac_div=0; #0-4095
 
+		fvco=int_div*fref if FB_select else int_div*fref*fdiv
+
 		if self.verbose:
 			print ' Reference integer multiplication factor: %i' % int_div 
-			print ' VCO Frequency: %.3f MHz (%.0f MHz min, %.0f MHz max)' % (int_div*fref,fmin,fmax)
-			print ' VCO output frequency division factor: %i' % fdiv 
-			print ' Programmed PLL output frequency: %.3f' % (float(fref)*int_div/fdiv) 
+			print ' Output division factor: %i' % fdiv 
+			print ' Feedback includes output dividor: %s' %  (not FB_select)
+			print ' VCO Frequency: %.3f MHz (%.0f MHz min, %.0f MHz max)' % (fvco,fmin,fmax)
+			print ' Programmed PLL output frequency: %.3f' % (float(fvco)/fdiv) 
  
 
 		# Override variable names if any is specified in the function call
@@ -139,4 +142,5 @@ class ADC_PLL_base(object):
 			print '----------------------------------------------------------------------'
 
 		return (PLL_reg0,PLL_reg1,PLL_reg2,PLL_reg3,PLL_reg4,PLL_reg5);
+
 

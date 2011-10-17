@@ -11,7 +11,7 @@ SPI.py module
 
 import numpy as np
 
-from Module import Module_base, BitDef
+from Module import Module_base, BitField
 
 __reload__=True
 
@@ -27,16 +27,19 @@ class SPI_base(Module_base):
 	SPI_PLL2_ADDR=7 # MGT PLL. Write only.
 	SPI_PLL1_ADDR=10 # ADC PLL. One of the other devices is enabled while we write to the PLL, so that default device must be read only.
 
+	CONTROL=BitField.CONTROL
+	STATUS=BitField.STATUS
+
 	BITS={
-		'ADDR' : 	BitDef(0x04,4,4,doc='Address of SPI device to communicate with'),
-		'RESET' :   BitDef(0x04,3,doc='Resets the SPI state machine'),
-		'START' :   BitDef(0x04,2,doc='A 0 to 1 transition on this bit starts SPI read/write'),
-		'BYTES' :   BitDef(0x04,0,2,doc='Number of bytes in the SPI communication 0=1 Byte, 1=2 bytes, 2=3 bytes, 3=4 bytes'),
+		'ADDR' : 	BitField(CONTROL,0x04,4,4,doc='Address of SPI device to communicate with'),
+		'RESET' :   BitField(CONTROL,0x04,3,doc='Resets the SPI state machine'),
+		'START' :   BitField(CONTROL,0x04,2,doc='A 0 to 1 transition on this bit starts SPI read/write'),
+		'BYTES' :   BitField(CONTROL,0x04,0,2,doc='Number of bytes in the SPI communication 0=1 Byte, 1=2 bytes, 2=3 bytes, 3=4 bytes'),
 
-		'DEFAULT_ADDR' : 	BitDef(0x05,4,3,doc='Default address of SPI device (enabled when there is no communication or ADC_PLL1 is accessed'),
-		'CLK_ENABLE' : 	BitDef(0x05,3,doc='When 1, enables the SPI clock'),
+		'DEFAULT_ADDR' : 	BitField(CONTROL,0x05,4,3,doc='Default address of SPI device (enabled when there is no communication or ADC_PLL1 is accessed'),
+		'CLK_ENABLE' : 	BitField(CONTROL,0x05,3,doc='When 1, enables the SPI clock'),
 
-		'READY' : 	BitDef(0x080+ 0x04,0,doc='High when SPI transaction is completed'),
+		'READY' : 	BitField(STATUS,0x080+ 0x04,0,doc='High when SPI transaction is completed'),
 	}
 
 

@@ -13,88 +13,91 @@ import time
 import numpy as np
 import matplotlib.pyplot as plt
 
-from Module import Module_base, BitDef
+from Module import Module_base, BitField
 import util
 
 class MGT_port_base(Module_base):
 	""" Implements interface to the MGT """
+	CONTROL=BitField.CONTROL
+	STATUS=BitField.STATUS
+	DRP=BitField.DRP
 
 	# Register definition
 	BITS={
-		'USER_CHARISK' : 	BitDef(0x04,0,4,doc=''),
-		'USER_DATA_EN' : 	BitDef(0x04,7,doc=''),
+		'USER_CHARISK' : 	BitField(CONTROL, 0x04,0,4,doc=''),
+		'USER_DATA_EN' : 	BitField(CONTROL,0x04,7,doc=''),
 
-		'GTX_RX_RESET':		BitDef(0x05,7,doc=''),
-		'RX_RESET' :		BitDef(0x05,6,doc=''),
-		'GTX_TX_RESET':		BitDef(0x05,5,doc=''),
-		'TX_RESET' :		BitDef(0x05,4,doc=''),
-		'LOGIC_RESET' :		BitDef(0x05,3,doc=''),
-		'LOOPBACK_MODE' : 	BitDef(0x05,0,3,doc=''),
+		'GTX_RX_RESET':		BitField(CONTROL,0x05,7,doc=''),
+		'RX_RESET' :		BitField(CONTROL,0x05,6,doc=''),
+		'GTX_TX_RESET':		BitField(CONTROL,0x05,5,doc=''),
+		'TX_RESET' :		BitField(CONTROL,0x05,4,doc=''),
+		'LOGIC_RESET' :		BitField(CONTROL,0x05,3,doc=''),
+		'LOOPBACK_MODE' : 	BitField(CONTROL,0x05,0,3,doc=''),
 
-		'TX_DIFFCTRL' :		BitDef(0x06,4,4,doc=''),
-		'TX_PREEMPHASIS' :	BitDef(0x06,0,4,doc=''),
+		'TX_DIFFCTRL' :		BitField(CONTROL,0x06,4,4,doc=''),
+		'TX_PREEMPHASIS' :	BitField(CONTROL,0x06,0,4,doc=''),
 
-		'TX_POSTEMPHASIS' :	BitDef(0x07,3,5,doc=''),
-		'RX_EQMIX' :		BitDef(0x07,0,3,doc=''),
+		'TX_POSTEMPHASIS' :	BitField(CONTROL,0x07,3,5,doc=''),
+		'RX_EQMIX' :		BitField(CONTROL,0x07,0,3,doc=''),
 
-		'RX_CDR_RESET' :	BitDef(0x08,7,doc=''),
-		'TX_ELEC_IDLE' :	BitDef(0x08,6,doc=''),
-		'DRP_BANK' : 		BitDef(0x08,0,2,doc=''), # not used anymore
+		'RX_CDR_RESET' :	BitField(CONTROL,0x08,7,doc=''),
+		'TX_ELEC_IDLE' :	BitField(CONTROL,0x08,6,doc=''),
+		'DRP_BANK' : 		BitField(CONTROL,0x08,0,2,doc=''), # not used anymore
 
-		'TX_PRBS_FORCE_ERROR' : BitDef(0x09,7,doc=''),
-		'TX_PRBS_MODE' : 		BitDef(0x09,4,3,doc=''),
-		'RX_PRBS_RESET_COUNTER':BitDef(0x09,3,doc=''),
-		'RX_PRBS_MODE' : 		BitDef(0x09,0,3,doc=''),
+		'TX_PRBS_FORCE_ERROR' : BitField(CONTROL,0x09,7,doc=''),
+		'TX_PRBS_MODE' : 		BitField(CONTROL,0x09,4,3,doc=''),
+		'RX_PRBS_RESET_COUNTER':BitField(CONTROL,0x09,3,doc=''),
+		'RX_PRBS_MODE' : 		BitField(CONTROL,0x09,0,3,doc=''),
 
-		'RX_DFE_OVERRIDE': 		BitDef(10,7,doc=''),
-		'TAP1' : 		BitDef(10,0,5,doc=''),
-		'TAP2' : 		BitDef(11,0,5,doc=''),
+		'RX_DFE_OVERRIDE': 		BitField(CONTROL,10,7,doc=''),
+		'TAP1' : 		BitField(CONTROL,10,0,5,doc=''),
+		'TAP2' : 		BitField(CONTROL,11,0,5,doc=''),
 
-		'TAP3' : 		BitDef(12,4,4,doc=''),
-		'TAP4' : 		BitDef(12,0,4,doc=''),
+		'TAP3' : 		BitField(CONTROL,12,4,4,doc=''),
+		'TAP4' : 		BitField(CONTROL,12,0,4,doc=''),
 
 
 		# STATUS bitfields
-		'RX_CHARISK' : 		BitDef(0x84,4,4,doc=''),
-		'RX_CHARISCOMMA' : 	BitDef(0x84,0,4,doc=''),
+		'RX_CHARISK' : 		BitField(STATUS, 0x84,4,4,doc=''),
+		'RX_CHARISCOMMA' : 	BitField(STATUS,0x84,0,4,doc=''),
 
-		'RX_LOSSOFSYNC': 	BitDef(0x85,6,2,doc=''),
-		'RX_PRBS_ERROR': 	BitDef(0x85,5,doc=''),
-		'EYE_HEIGHT' : 		BitDef(0x85,0,5,doc=''),
+		'RX_LOSSOFSYNC': 	BitField(STATUS,0x85,6,2,doc=''),
+		'RX_PRBS_ERROR': 	BitField(STATUS,0x85,5,doc=''),
+		'EYE_HEIGHT' : 		BitField(STATUS,0x85,0,5,doc=''),
 
-		'RX_STATE_NUMBER' : BitDef(0x86,5,3,doc=''),
-		'TAP1_MON' : 		BitDef(0x86,0,5,doc=''),
+		'RX_STATE_NUMBER' : BitField(STATUS,0x86,5,3,doc=''),
+		'TAP1_MON' : 		BitField(STATUS,0x86,0,5,doc=''),
 
-		'RX_COUNT' : 		BitDef(0x87,5,3,doc=''),
-		'TAP2_MON' : 		BitDef(0x87,0,5,doc=''),
+		'RX_COUNT' : 		BitField(STATUS,0x87,5,3,doc=''),
+		'TAP2_MON' : 		BitField(STATUS,0x87,0,5,doc=''),
 
-		'TAP4_MON' : 		BitDef(0x88,4,4,doc=''),
-		'TAP3_MON' : 		BitDef(0x88,0,4,doc=''),
+		'TAP4_MON' : 		BitField(STATUS,0x88,4,4,doc=''),
+		'TAP3_MON' : 		BitField(STATUS,0x88,0,4,doc=''),
 
 
-		'RX_RESETDONE' : 	BitDef(0x89,7,doc=''),
-		'RX_PLL_LOCKED' : 	BitDef(0x89,6,doc=''),
-		'CLK_DLY_MON' : 	BitDef(0x89,0,6,doc=''),
+		'RX_RESETDONE' : 	BitField(STATUS,0x89,7,doc=''),
+		'RX_PLL_LOCKED' : 	BitField(STATUS,0x89,6,doc=''),
+		'CLK_DLY_MON' : 	BitField(STATUS,0x89,0,6,doc=''),
 
-		'RX_BUF_STATUS' : 	BitDef(0x8A,5,3,doc=''),
-		'TX_COUNT' : 		BitDef(0x8A,0,5,doc=''),
+		'RX_BUF_STATUS' : 	BitField(STATUS,0x8A,5,3,doc=''),
+		'TX_COUNT' : 		BitField(STATUS,0x8A,0,5,doc=''),
 
-		'TX_STATE' :		BitDef(0x080 + 20,4,4,doc=''),
+		'TX_STATE' :		BitField(STATUS,0x080 + 20,4,4,doc=''),
 	
-		'RX_VALID' :		BitDef(0x080 + 21,7,doc=''),
-		'RX_ELEC_IDLE' :	BitDef(0x080 + 21,6,doc=''),
+		'RX_VALID' :		BitField(STATUS,0x080 + 21,7,doc=''),
+		'RX_ELEC_IDLE' :	BitField(STATUS,0x080 + 21,6,doc=''),
 
 		}
 
 	DRP_FIELDS={
-		'RX_CLK25_DIVIDER' : 	BitDef(0x17,5,5,doc=''),
-		'RX_EYE_SCANMODE' : 	BitDef(0x2E,9,2,doc=''),
-		'RX_EYE_OFFSET' : 		BitDef(0x2D,8,8,doc=''),
-		'AC_CAP_DIS' : 			BitDef(0x17,4,doc=''),
-		'RX_PRBS_ERR_COUNT' : 	BitDef(0x82,0,16,doc=''),
-		'RX_PLL_DIVSEL_FB' : 	BitDef(0x1B,1,5,doc=''),
-		'RX_PLL_DIVSEL_FB45' : 	BitDef(0x1B,6,doc=''),
-		'TXOUTCLK_CTRL' : 	BitDef(0x43,0,3,doc=''),
+		'RX_CLK25_DIVIDER' : 	BitField(DRP, 0x17,5,5,doc=''),
+		'RX_EYE_SCANMODE' : 	BitField(DRP,0x2E,9,2,doc=''),
+		'RX_EYE_OFFSET' : 		BitField(DRP,0x2D,8,8,doc=''),
+		'AC_CAP_DIS' : 			BitField(DRP,0x17,4,doc=''),
+		'RX_PRBS_ERR_COUNT' : 	BitField(DRP,0x82,0,16,doc=''),
+		'RX_PLL_DIVSEL_FB' : 	BitField(DRP,0x1B,1,5,doc=''),
+		'RX_PLL_DIVSEL_FB45' : 	BitField(DRP,0x1B,6,doc=''),
+		'TXOUTCLK_CTRL' : 	BitField(DRP,0x43,0,3,doc=''),
 		}
 
 	def __init__(self,fpga,MGT_number):
@@ -206,15 +209,17 @@ class MGT_port_base(Module_base):
 class MGT_base(Module_base):
 	""" Instantiates a container for all MGTs """
 	NUMBER_OF_MGT=4
+	CONTROL=BitField.CONTROL
+	STATUS=BitField.STATUS
 
 	# Register definition
 	BITS={
-		'RESET' : 	BitDef(0x00,7,doc=''),
-		'TX_SEL' : 	BitDef(0x00,0,2,doc=''),
+		'RESET' : 	BitField(CONTROL, 0x00,7,doc=''),
+		'TX_SEL' : 	BitField(CONTROL,0x00,0,2,doc=''),
 
-		'MMCM_RESET' : 	BitDef(0x80,7,doc=''),
-		'MMCM_LOCKED' : BitDef(0x80,6,doc=''),
-		'RX_PLL_LOCKED' : BitDef(0x80,5,doc=''),
+		'MMCM_RESET' : 	BitField(STATUS,0x80,7,doc=''),
+		'MMCM_LOCKED' : BitField(STATUS,0x80,6,doc=''),
+		'RX_PLL_LOCKED' : BitField(STATUS,0x80,5,doc=''),
 		}
 
 	def __init__(self,fpga,verbose=0):

@@ -86,8 +86,8 @@ class FreqCtr_base(object):
 		for i in range(8):
 			print '   ADC%i clock frequency:    %7.3f MHz' % (i,self.read_frequency('ADC_CLK%i' % i, gate_time=gate_time)/1e6) 
 		print '   Resolution          :    %10.6f MHz' % (resolution) 
-		print '   Fan speed:               %7.0f RPM' % (self.read_frequency('FAN', gate_time=gate_time)*60./2) # 1 Hz=60 RPM, divide by 2 because there is 2 pulses per fan turn  
 		print '   Gate time           :    %.3f s' % (gate_time) 
+		print '   Fan speed:               %7.0f RPM (resolution %.0f RPM)' % (self.read_frequency('FAN', gate_time=gate_time)*60./2, resolution*1e6*60./2) # 1 Hz=60 RPM, divide by 2 because there is 2 pulses per fan turn  
 
 		#for port_name in self.PORTS.keys():
 		#	print '%s: %.3f MHz' % (port_name,self.read_frequency(port_name)/1e6) 

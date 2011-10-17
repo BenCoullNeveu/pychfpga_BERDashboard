@@ -12,18 +12,42 @@ Module.py module
 import numpy as np
 import time
 
-class BitDef:
+class BitField:
 	""" Holds the definition of a memory-mapped variable"""
-	def __init__(self,addr, bit, width=1, default=None, doc=''): 
+	# Page values
+	CONTROL=0
+	STATUS=1
+	RAM=2
+	DRP=3 # Dynamic Reconfiguration Port
+	def __init__(self,page, addr, bit, width=1, default=None, doc=''): 
+		self.page=page 
 		self.addr=addr 
 		self.bit=bit
 		self.width=width 
 		self.default=default
 		self.doc=doc
 
+	def get_addr(self):
+		"""
+		Returns the Memory-mapped address corresponding to the bit field
+		"""
+		if self.page==self.CONTROL:
+			return 0x000+self.addr
+		elif self.page==self.STATUS:
+			return 0x080+self.addr
+		elif self.page==self.RAM:
+			return 0x200+self.addr
+		elif self.page==self.DRP:
+			return 0x200+(self.addr<<1)
+
+
 class Module_base(object):
 	""" Implements basic interfaces to a module. It is intended to be inherited by a subclass that specializes to specific modules"""
 	_locked=False # when 1, prevents the object to be modified
+
+	CONTROL=BitField.CONTROL
+	STATUS=BitField.STATUS
+	DRP=BitField.DRP
 
 	#BitDef=BitDef_base # make class accessible to subclass (somehow the class is not inherited directly)
 	BITS={} # Should be overriden by the subclass
@@ -39,17 +63,18 @@ class Module_base(object):
 			# Use function closures to create the callback function with arguments that won't be rebinded
 			fget=lambda s,_bit_name=bit_name:s.read_field(_bit_name) # Pass bit_name as a default argument to 'close' that variable (i.e. bind it now). Otherwise the function will use the value at call time (which is the last value assigned to that variable) 
 			fset=lambda s,value,_bit_name=bit_name:s.write_field(_bit_name,value)
-			if (self.BITS[bit_name].addr & 0xF0)==0x10:
-				setattr(self.__class__, bit_name, property(fget,doc=self.BITS[bit_name].doc))
-			else:
-				setattr(self.__class__, bit_name, property(fget, fset,doc=self.BITS[bit_name].doc))
+#			if self.BITS[bit_name].page ==0x10:
+#				setattr(self.__class__, bit_name, property(fget,doc=self.BITS[bit_name].doc))
+#			else:
+			setattr(self.__class__, bit_name, property(fget, fset,doc=self.BITS[bit_name].doc))
 
 	def __setattr__(self, name, value):
 		""" Prevents creating new attributes to the class when _locked==1"""
 		if (not self._locked) or (hasattr(self,name)): # allow write if not locked or if attribute already exists
+#			print 'setting ',name
 			object.__setattr__(self,name,value)
 		else:
-			raise AttributeError('Class is locked: cannot assign new attributes')
+			raise AttributeError("Class '%s' is locked: cannot assign new attribute '%s'" % (self.__name__, name))
 
 	def __getitem__(self, index):
 		if index in self.BITS:
@@ -67,7 +92,8 @@ class Module_base(object):
 		self.__dict__['_locked']=True
 
 	def read(self,addr,*args,**kwargs):
-		return self.fpga.Read(self.port_number, self.module_number,addr,*args,**kwargs)
+		if isinstance(addr,int):
+			return self.fpga.read(self.port_number, self.module_number,addr,*args,**kwargs)
 
 	def read_bit(self,addr,bit): return bool(self.fpga.Read(self.port_number, self.module_number,addr)& (1<<bit))
 
@@ -86,20 +112,36 @@ class Module_base(object):
 	def read_field(self,bit_name):
 		""" Reads the field identified by the name 'bit_name' which is looked up in the BITS table to find the bit definition (port, bit position etc). Returns a boolean."""  
 		bit_def=self.BITS[bit_name]
-		first_byte=int(bit_def.bit/8)
-		last_byte=int((bit_def.bit+bit_def.width-1)/8)
+		if bit_def.page==BitField.DRP:
+			data= self.read_DRP(bit_def.addr) # read 16-bit value
+			return (data>>bit_def.bit) & ((1<<bit_def.width)-1)
+
+		word_width=8;
+		first_byte=int(bit_def.bit/word_width)
+		last_byte=int((bit_def.bit+bit_def.width-1)/word_width)
 		bytes=last_byte-first_byte+1
 		type={1:np.uint8, 2:np.uint16}[bytes]
 		data= self.read(bit_def.addr+first_byte, type=type)
 		
 		#print 'Read ,bit "%s" at port %i, bit=%i, data: %X' % (bit_name,  bit_def.addr,bit_def.bit, data)
-		return data>>bit_def.bit & ((1<<bit_def.width)-1)
+		return (data>>bit_def.bit) & ((1<<bit_def.width)-1)
 
 	def write_field(self,bit_name,data):
 		""" Writes the field identified by the name 'bit_name' which is looked up in the BITS table to find the bit definition (port, bit position etc). Returns a boolean."""  
+		#print 'Writing field',bit_name
 		bit_def=self.BITS[bit_name]
+
 		if (data>=2**bit_def.width) or data<0:
 			raise Exception('Bad value %i for memory-mapped property %s' % (data, bit_name))
+
+		if bit_def.page==BitField.DRP:
+			old_data= self.read_DRP(bit_def.addr) # read 16-bit value
+			mask=(2**bit_def.width-1)<<bit_def.bit
+			new_data = old_data & ~mask
+			new_data |= ((data << bit_def.bit) & mask) 
+			self.write_DRP(bit_def.addr, new_data)
+			return
+
 		first_byte=int(bit_def.bit/8)
 		last_byte=int((bit_def.bit+bit_def.width-1)/8)
 		bytes=last_byte-first_byte+1
@@ -124,7 +166,13 @@ class Module_base(object):
 		"""
 		Writes within the RAM/FIFO address space of the module. Simply calls the write() function with the appropriate address offset.
 		"""
-		self.fpga.write(self.port_number, self.module_number,addr+0x200,data,*args,**kwargs)
+		self.write(addr+0x200,data,*args,**kwargs)
+
+	def write_DRP(self,addr,data):
+		"""
+		Writes a DRP (Dynamic Reconfigurable Port) from one of the FPGA internal devices (PLL, SYSMON, MGT etc). 'addr' is the 16-bit DRP register address.
+		"""
+		self.write(0x200+2*addr,[data &0xFF, (data>>8)& 0xFF])
 
 	def write_bit(self,addr,bit): 
 		mask=(1<<bit)

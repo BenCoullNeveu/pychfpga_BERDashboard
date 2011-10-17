@@ -9,50 +9,71 @@ ANT.py module
 """
 
 import numpy as np
-from Module import Module_base, BitDef
+from Module import Module_base, BitField
 
 
 class ADCDAQ_base(Module_base):
 	""" Implements interface to the ADC data acquisisition logic within a procecessor pipeline"""
+	# Create local variables for page numbers tomake the table more readable
+	CONTROL=BitField.CONTROL
+	STATUS=BitField.STATUS
+	DRP=BitField.DRP
+
 	BITS={
 		# 0x00 - 0x07, bits 5:0: IODELAY values for bits 0:7
 		# 0x08, bits 5:0: IODELAY values for the clock line
 
-		'DELAY0' : 	BitDef(0x00,0,5,doc='IODELAY value for the data line. Loaded the IODELAY_RST is pulsed.'),
-		'CLK_DELAY' : 	BitDef(0x08,0,5,doc='IODELAY value for the clock line. Loaded the CLK_IODELAY_RST is pulsed.'),
+		'DELAY0' : 	BitField(CONTROL,0x00,0,5,doc='IODELAY value for the data line. Loaded the IODELAY_RST is pulsed.'),
+		'CLK_DELAY' : 	BitField(CONTROL,0x08,0,5,doc='IODELAY value for the clock line. Loaded the CLK_IODELAY_RST is pulsed.'),
 
-		'CLK_IODELAY_RESET' : 	BitDef(0x09,5,doc='Resets the IODELAY element in the clock path. This loads the delay values into the delay lines'),
-		'ENABLE_RAMP' : 	BitDef(0x09,4,doc='Enables transmission of a ramp. 0=inactive, 1=active'),
-		'IDELAYCTRL_RESET' : 	BitDef(0x09,3,doc='Resets the IDELAYCTRL. Forces it to recalibrate. '),
-		'BUFR_RESET' : 		BitDef(0x09,2,doc='Resets the BUFR.'),
-		'ISERDES_RESET' : 	BitDef(0x09,1,doc='Resets the ISERDES.'),
-		'IODELAY_RESET' : 	BitDef(0x09,0,doc='Resets the IODELAY element. This loads the delay values into the delay lines'),
+		'MMCM_RST' : 	BitField(CONTROL,0x09,7,doc='MCMM reset. Must be high when using DRP'),
+		#'NC' : 	BitField(CONTROL,0x09,6,doc='Polarity of the word clock on the ISERDES'),
+		'CLK_IODELAY_RESET' : 	BitField(CONTROL,0x09,5,doc='Resets the IODELAY element in the clock path. This loads the delay values into the delay lines'),
+		'ENABLE_RAMP' : 	BitField(CONTROL,0x09,4,doc='Enables transmission of a ramp. 0=inactive, 1=active'),
+		'IDELAYCTRL_RESET' : 	BitField(CONTROL,0x09,3,doc='Resets the IDELAYCTRL. Forces it to recalibrate. '),
+		'BUFR_RESET' : 		BitField(CONTROL,0x09,2,doc='Resets the BUFR.'),
+		'ISERDES_RESET' : 	BitField(CONTROL,0x09,1,doc='Resets the ISERDES.'),
+		'IODELAY_RESET' : 	BitField(CONTROL,0x09,0,doc='Resets the IODELAY element. This loads the delay values into the delay lines'),
 
-		'CAPTURE_TRIG' : 	BitDef(0x0A,7,doc='A 0-to-1 transition triggers capturing of a 4-byte word'),
-		'CAPTURE_ALIGN' : 	BitDef(0x0A,6,doc='1: Next capture alignes the non-zero byte to byte 1. 0: Capture next word on a 11-word periodiciry'),
-		'CAPTURE_SOURCE' : 	BitDef(0x0A,5,doc='0: Word number is the one determined during the ALIGN process. 1: Word number is the one specified in USER_WORD_NUMBER'),
-		'CAPTURE_USER_WORD_NUMBER' : 	BitDef(0x0A,0,4,doc='0: Word number is the one determined during the ALIGN process. 1: Word number is the one specified in USER_WORD_NUMBER'),
+		'CAPTURE_TRIG' : 	BitField(CONTROL,0x0A,7,doc='A 0-to-1 transition triggers capturing of a 4-byte word'),
+		'CAPTURE_ALIGN' : 	BitField(CONTROL,0x0A,6,doc='1: Next capture alignes the non-zero byte to byte 1. 0: Capture next word on a 11-word periodiciry'),
+		'CAPTURE_SOURCE' : 	BitField(CONTROL,0x0A,5,doc='0: Word number is the one determined during the ALIGN process. 1: Word number is the one specified in USER_WORD_NUMBER'),
+		'CAPTURE_USER_WORD_NUMBER' : 	BitField(CONTROL,0x0A,0,4,doc='0: Word number is the one determined during the ALIGN process. 1: Word number is the one specified in USER_WORD_NUMBER'),
 
-		'CLK_DELAY_STATUS':	BitDef(0x88,0,5,doc='Current delay value of the CLK line IODELAY'),
-		'CAPTURE_DONE' : 	BitDef(0x89,7,doc="'1' when capture is complete"),
-		'FIFO_OVERFLOW' : 	BitDef(0x89,6,doc="'1' if the FIFO has overflowed. Reset by SERDES_SYNC."),
-		'FIFO_UNDERFLOW' : 	BitDef(0x89,5,doc="'1' if the FIFO has underflowed.  Reset by SERDES_SYNC."),
-		'FIFO_EMPTY' : 		BitDef(0x89,4,doc="'1' if the FIFO has been empty. Reset by SERDES_SYNC."),
-		'IDELAYCTRL_PRESENT':BitDef(0x89,1,doc='Indicate whether this ADCDAQ instantiated a IODELAYCTRL'),
-		'IDELAYCTRL_RDY' : 	BitDef(0x89,0,doc='Indicate if the IODELAYCTRL has finished calibrating'),
+		'IOCLK_POL' : 	BitField(CONTROL,0x0B,7,doc='Polarity of the data clock on the ISERDES'),
+		'DIVCLK_POL' : 	BitField(CONTROL,0x0B,6,doc='Polarity of the word clock on the ISERDES'),
 
-		'CAPTURE_PATTERN0' : BitDef(0x8A,0,8,doc='Captured byte'),
-		'CAPTURE_PATTERN1' : BitDef(0x8B,0,8,doc='Captured byte'),
-		'CAPTURE_PATTERN2' : BitDef(0x8C,0,8,doc='Captured byte'),
-		'CAPTURE_PATTERN3' : BitDef(0x8D,0,8,doc='Captured byte'),
+		'CLK_DELAY_STATUS':	BitField(STATUS,0x88,0,5,doc='Current delay value of the CLK line IODELAY'),
+		'CAPTURE_DONE' : 	BitField(STATUS,0x89,7,doc="'1' when capture is complete"),
+		'FIFO_OVERFLOW' : 	BitField(STATUS,0x89,6,doc="'1' if the FIFO has overflowed. Reset by SERDES_SYNC."),
+		'FIFO_UNDERFLOW' : 	BitField(STATUS,0x89,5,doc="'1' if the FIFO has underflowed.  Reset by SERDES_SYNC."),
+		'FIFO_EMPTY' : 		BitField(STATUS,0x89,4,doc="'1' if the FIFO has been empty. Reset by SERDES_SYNC."),
+		'IDELAYCTRL_PRESENT':BitField(STATUS,0x89,1,doc='Indicate whether this ADCDAQ instantiated a IODELAYCTRL'),
+		'IDELAYCTRL_RDY' : 	BitField(STATUS,0x89,0,doc='Indicate if the IODELAYCTRL has finished calibrating'),
 
-		'CAPTURE_WORD_CTR' : BitDef(0x8E,4,4,doc='Free running word counter for the capture engine'),
-		'CAPTURE_WORD_NUMBER' : BitDef(0x8E,0,4,doc='Word number determined by the automatic alignment process'),
+		'CAPTURE_PATTERN0' : BitField(STATUS,0x8A,0,8,doc='Captured byte'),
+		'CAPTURE_PATTERN1' : BitField(STATUS,0x8B,0,8,doc='Captured byte'),
+		'CAPTURE_PATTERN2' : BitField(STATUS,0x8C,0,8,doc='Captured byte'),
+		'CAPTURE_PATTERN3' : BitField(STATUS,0x8D,0,8,doc='Captured byte'),
 
-		'RAMP_CTR' : BitDef(0x8F,0,6,doc='Free running word counter for readout interface, used to generate ramp at the ADCDAQ level'),
+		'CAPTURE_WORD_CTR' : BitField(STATUS,0x8E,4,4,doc='Free running word counter for the capture engine'),
+		'CAPTURE_WORD_NUMBER' : BitField(STATUS,0x8E,0,4,doc='Word number determined by the automatic alignment process'),
 
-		'FIFO_WR_COUNT' : BitDef(0x90,0,8,doc='Number of words in the FIFO, as seen from the WR clock'),
-		'FIFO_RD_COUNT' : BitDef(0x91,0,8,doc='Number of words in the FIFO, as seen from the RD clock (readout system)'),
+		'RAMP_CTR' : BitField(STATUS,0x8F,0,6,doc='Free running word counter for readout interface, used to generate ramp at the ADCDAQ level'),
+
+		'FIFO_WR_COUNT' : BitField(STATUS,0x90,0,8,doc='Number of words in the FIFO, as seen from the WR clock'),
+		'FIFO_RD_COUNT' : BitField(STATUS,0x91,0,8,doc='Number of words in the FIFO, as seen from the RD clock (readout system)'),
+
+		'MMCM_FB_LOW' : 		BitField(DRP,0x14,0,6,doc='MCMM Feedback clock Low time (in VCO cycles)'),
+		'MMCM_FB_HIGH' : 		BitField(DRP,0x14,6,6,doc='MCMM Feedback clock High time (in VCO cycles)'),
+		'MMCM_FB_PHASE' : 		BitField(DRP,0x14,13,3,doc='MCMM Feedback clock phase in increments of 1/8 the VCO period'),
+
+		'MMCM_DIVCLK_LOW' : 	BitField(DRP,0x0A,0,6,doc='MCMM DIVCLK clock Low time (in VCO cycles)'),
+		'MMCM_DIVCLK_HIGH': 	BitField(DRP,0x0A,6,6,doc='MCMM DIVCLK clock High time (in VCO cycles)'),
+		'MMCM_DIVCLK_PHASE':	BitField(DRP,0x0A,13,3,doc='MCMM DIVCLK clock phase in increments of 1/8 the VCO period'),
+		'MMCM_DIVCLK_DELAY':	BitField(DRP,0x0B,0,6,doc='MCMM DIVCLK clock delay in increments of the VCO period'),
+
+		'MMCM_POWER':	BitField(DRP,0x28,0,16,doc='MCMM Power bits. Must be set to 0xFFFF in order to successfully program the other MMCM registers'),
 
 	}
 
@@ -90,6 +111,16 @@ class ADCDAQ_base(Module_base):
 		""" Reads the 8 actual delay tap values (returned by the IODELAY themselves, not the last delay set point) and return them as an array"""
 		return self.read(0x80,length=8) # Reads the delay in registers
 
+	def set_divclk_phase(self,phase):
+		"""
+		Sets DIVCLK phase on MCMM in inrements of 1/8 VCO cycles. Valid range is 0-512.
+		"""
+		self.MMCM_RST=1
+		self.MMCM_POWER=0xFFFF
+		self.MMCM_DIVCLK_PHASE=phase & 0x07
+		self.MMCM_DIVCLK_DELAY=phase>>3
+		self.MMCM_RST=0
+
 	delay=property(set_delay,read_delay)
 
 #	def get_iodelayctrl_present(self):
@@ -111,28 +142,42 @@ class ADCDAQ_base(Module_base):
 			print 'Word number: %i : ' % i, self.read(self.BITS['CAPTURE_PATTERN0'].addr,length=4)
 		self.CAPTURE_SOURCE=0
 
+	def capture_phase(self):
+		""" """
+		self.CAPTURE_SOURCE=0
+		self.CAPTURE_ALIGN=1
+		for i in range(8):
+			self.set_divclk_phase(i)
+			#self.CAPTURE_USER_WORD_NUMBER=i
+			self.pulse_bit('CAPTURE_TRIG')
+			#self.CAPTURE_ALIGN=0
+			print 'Word number: %i : ' % i, self.read(self.BITS['CAPTURE_PATTERN0'].addr,length=4)
+		self.CAPTURE_SOURCE=0
 
 	
 class FR_DIST_base(Module_base):
 	""" Implements interface to the FR_DIST within a procecessor pipeline"""
+	# Create local variables for page numbers tomake the table more readable
+	CONTROL=BitField.CONTROL
+	STATUS=BitField.STATUS
 
 	# Register definition
 	BITS={
-		'ENABLE_RAMP' : 	BitDef(0x00,6,doc='Enables transmission of a ramp. 0=inactive, 1=active'),
-		'DUAL_FRAME': 		BitDef(0x00,5,doc="When '1', allows buffering of two frames before it is transmitted."),
-		'SYNC_RAMP': 		BitDef(0x00,4,doc="When '1', synchronizes the ramp generator with the ADC data value. Must be set to zero for the ramp to increment naturallly. This might change the SYNC pulses spacing and will require resyncing or resseting the downstream modules"),
-		'FIFO_RESET': 		BitDef(0x00,3, doc="When '1', resets the data FIFO"),
-		'TRIG_FRAME': 		BitDef(0x00,2, doc="When a 0 to 1 transition is detected, force transmission of 'TRIG_FRAME_COUNT' data frame"),
-		'DSP_DATA_SRC_ADC': 	BitDef(0x00,1, doc="Selects the data source: 0=Internal (Ramp or FIFO), 1=ADC"),
-		'DSP_CLK_SRC_ADC': 		BitDef(0x00,0, doc="Selects the clock source for the antenna processor. Not used: ADC clock is always selected."),
-		'TRIG_FRAME_COUNT': BitDef(0x01,0,8, doc="Sets the number of frame to transmit. 0= COntinuous transmission, 1-255 = Trigerred transmission."),
-		'SYNC_PERIOD': 		BitDef(0x02,0,16, doc="Number of clock cycles between SYNC pulses. See CASPER documentation for minimum SYNC spacing."),
+		'ENABLE_RAMP' : 	BitField(CONTROL,0x00,6,doc='Enables transmission of a ramp. 0=inactive, 1=active'),
+		'DUAL_FRAME': 		BitField(CONTROL,0x00,5,doc="When '1', allows buffering of two frames before it is transmitted."),
+		'SYNC_RAMP': 		BitField(CONTROL,0x00,4,doc="When '1', synchronizes the ramp generator with the ADC data value. Must be set to zero for the ramp to increment naturallly. This might change the SYNC pulses spacing and will require resyncing or resseting the downstream modules"),
+		'FIFO_RESET': 		BitField(CONTROL,0x00,3, doc="When '1', resets the data FIFO"),
+		'TRIG_FRAME': 		BitField(CONTROL,0x00,2, doc="When a 0 to 1 transition is detected, force transmission of 'TRIG_FRAME_COUNT' data frame"),
+		'DSP_DATA_SRC_ADC': BitField(CONTROL,0x00,1, doc="Selects the data source: 0=Internal (Ramp or FIFO), 1=ADC"),
+		'DSP_CLK_SRC_ADC': 	BitField(CONTROL,0x00,0, doc="Selects the clock source for the antenna processor. Not used: ADC clock is always selected."),
+		'TRIG_FRAME_COUNT': BitField(CONTROL,0x01,0,8, doc="Sets the number of frame to transmit. 0= COntinuous transmission, 1-255 = Trigerred transmission."),
+		'SYNC_PERIOD': 		BitField(CONTROL,0x02,0,16, doc="Number of clock cycles between SYNC pulses. See CASPER documentation for minimum SYNC spacing."),
 
-		'RAMP_MISMATCH': 	BitDef(0x80,2, doc="Active high if the ramp value does not match the ADC value. used for testing the ADC data acquisition when the ADC is set in ramp generation mode"),
-		'CTRL_FIFO_EMPTY': 	BitDef(0x80,1, doc="Active high  when the data FIFO is empty"),
-		'CTRL_FIFO_OVERFLOW': BitDef(0x80,0, doc="Active high if the data FIFO is overflowing"),
-		'CTRL_FIFO_LENGTH': BitDef(0x81,0,8, doc="Number of samples currently in the data FIFO (last 8 bits only)"),
-		'TRIG_COUNT': BitDef(0x82,0,8, doc="Number trigger events received")
+		'RAMP_MISMATCH': 	BitField(STATUS,0x80,2, doc="Active high if the ramp value does not match the ADC value. used for testing the ADC data acquisition when the ADC is set in ramp generation mode"),
+		'CTRL_FIFO_EMPTY': 	BitField(STATUS,0x80,1, doc="Active high  when the data FIFO is empty"),
+		'CTRL_FIFO_OVERFLOW': BitField(STATUS,0x80,0, doc="Active high if the data FIFO is overflowing"),
+		'CTRL_FIFO_LENGTH': BitField(STATUS,0x81,0,8, doc="Number of samples currently in the data FIFO (last 8 bits only)"),
+		'TRIG_COUNT': 		BitField(STATUS,0x82,0,8, doc="Number trigger events received")
 		}
 
 	def __init__(self,ant_ch_instance):
@@ -175,11 +220,14 @@ class FR_DIST_base(Module_base):
 
 class DSP_base(Module_base):
 	""" Implements interface to the FR_DIST within a procecessor pipeline"""
+	# Create local variables for page numbers tomake the table more readable
+	CONTROL=BitField.CONTROL
+	STATUS=BitField.STATUS
 	BITS={
-		'BYPASS': 	BitDef(0x00,0, doc="Bypass the FFT"),
-		'RESET_SYNC': 	BitDef(0x00,1, doc="Reset the SYNC Module. Force it to re-learn the DSP block latency."),
-		'OUT_SHIFT': 	BitDef(0x01,4,4, doc="Number of bits to right-shift thr FFT data"),
-		'FFT_SHIFT': 	BitDef(0x02,0,10, doc="FFT shift enable bit for each of the FFT stage"),
+		'BYPASS': 		BitField(CONTROL,0x00,0, doc="Bypass the FFT"),
+		'RESET_SYNC': 	BitField(CONTROL,0x00,1, doc="Reset the SYNC Module. Force it to re-learn the DSP block latency."),
+		'OUT_SHIFT': 	BitField(CONTROL,0x01,4,4, doc="Number of bits to right-shift thr FFT data"),
+		'FFT_SHIFT': 	BitField(CONTROL,0x02,0,10, doc="FFT shift enable bit for each of the FFT stage"),
 		}
 
 	def __init__(self,ant_ch_instance):
@@ -190,11 +238,14 @@ class DSP_base(Module_base):
 
 class CH_DIST_base(Module_base):
 	""" Implements interface to the FR_DIST within a procecessor pipeline"""
+	# Create local variables for page numbers tomake the table more readable
+	CONTROL=BitField.CONTROL
+	STATUS=BitField.STATUS
 	BITS={
-		'RESET': 	BitDef(0x00,7, doc="Reset the CH_DIST. Clears FIFO."),
-		'FIFO_EMPTY': 	BitDef(0x80,7, doc="Active high when the data FIFO is empty"),
-		'FIFO_OVERFLOW': BitDef(0x80,6, doc="Active high if the data FIFO is overflowing"),
-		'FRAME_VALID_CTR': BitDef(0x80,0,6, doc="Number of valid frames seen since last reset")
+		'RESET': 			BitField(CONTROL,0x00,7, doc="Reset the CH_DIST. Clears FIFO."),
+		'FIFO_EMPTY': 		BitField(STATUS,0x80,7, doc="Active high when the data FIFO is empty"),
+		'FIFO_OVERFLOW': 	BitField(STATUS,0x80,6, doc="Active high if the data FIFO is overflowing"),
+		'FRAME_VALID_CTR': 	BitField(STATUS,0x80,0,6, doc="Number of valid frames seen since last reset")
 		}
 
 	def __init__(self,ant_ch_instance):
