@@ -82,4 +82,3 @@ class SYSMOD_base(Module_base):
 		print 'Bistream timestamp is: %s' % self.read_bitstream_date()
 		print '----------------------------------------------------------------------'
 
-

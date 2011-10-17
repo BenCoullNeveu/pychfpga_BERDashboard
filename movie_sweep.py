@@ -1,5 +1,5 @@
 from numpy import *
-import pylab, sys
+import pylab, sys, os
 
 pspecs = []
 ii=1
@@ -19,6 +19,10 @@ def hann_window(data):
    x = arange(npoints)
    return data*0.5*(1-cos(2*pi*x/(npoints-1)))
 
+fig = pylab.figure()
+ax = fig.add_subplot(111)
+moviefiles=[]
+
 for filenum in range(nfiles):
    filename = sys.argv[filenum+1]
    #fd = open(filename, 'rb')
@@ -34,24 +38,35 @@ for filenum in range(nfiles):
 	  #data[j] = hann_window(data[j])
 	  data[j] = data[j]
    fft1 = fft.fft(data)
-   #convert to Vrms units
-   fft1 = fft1[:,:slength/2]*sqrt(2)/slength
+   fft1 = fft1[:,:slength/2]
    freq = freq[:slength/2]
-   #convert to dbm assumes 50 ohms in.
-   pspec = 10*log10((fft1*fft1.conjugate()).mean(axis=0)/50.0) + 30.0
-   pspec[0] = 0
+   pspec = 10*log10((fft1*fft1.conjugate())) - 40.0
+   pspec[:,0] = 0
    print pspec.max()
-   pspecs.append(pspec)
+   #pspecs.append(pspec)
    #fd.close()
    ii+=1
-   pylab.plot(freq,pspec, label=filename[:-4])
+   for j in arange(pspec.shape[0]):
+      ax.cla()
+      ax.plot(freq,pspec[j])
+      ax.set_ylim(-70,0)
+      fname = "movie%03d.png"% j
+      fig.savefig(fname)
+      moviefiles.append(fname)
 
-pylab.legend(loc=0)
-pylab.xlabel('freq (MHz)')
-pylab.ylabel('Power (dB)')
+
+print 'making animation'
+
+#os.system("mencoder 'mf://movie*.png' -mf type=png:fps=10 \\
+#      -ovc lavc -lavcopts vcodec=mpeg4 -oac copy -o animation.mpg")
+os.system("ffmpeg -r 10 -i movie%03d.png movie.mp4")
+
+#pylab.legend(loc=0)
+#pylab.xlabel('freq (MHz)')
+#pylab.ylabel('Power (dB)')
 #pylab.savefig('neighboring_channels.pdf')
 #pylab.ylim(-15,5)
 #pylab.xlim(370,380)
 #pylab.savefig(filename[:-4]+str(nfiles)+'_zoom.png')
-pylab.savefig(filename[:-4]+str(nfiles)+'.png')
-pylab.show()
+#pylab.savefig(filename[:-4]+str(nfiles)+'.png')
+#pylab.show()

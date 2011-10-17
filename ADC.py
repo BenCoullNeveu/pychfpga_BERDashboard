@@ -121,3 +121,4 @@ class ADC_base(object):
 		for adc in self.ADC:
 			adc.write(adc.REG_TEST, REG_TEST_Value) 
 		self.sync();
+>>>>>>> 0d51075c7b614671d7c66f65260b3e21ea9c291b
