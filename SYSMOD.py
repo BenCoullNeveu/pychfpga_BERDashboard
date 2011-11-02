@@ -22,7 +22,7 @@ class SYSMOD_base(Module_base):
 
 	# Create local variables for page numbers tomake the table more readable
 	CONTROL=BitField.CONTROL
-	STATUS=BitField.CONTROL
+	STATUS=BitField.STATUS
 
 	BITS={
 		'GLOBAL_TRIG' : 	BitField(CONTROL,0x00,7,doc='Global trigger'),
@@ -81,4 +81,5 @@ class SYSMOD_base(Module_base):
 		print 'chFPGA Firmware version %i.%i, Build %i, Date: %04i-%02i-%02i' % (self.MAJOR_VERSION, self.MINOR_VERSION, self.BUILD_NUMBER, self.BUILD_YEAR+2000,self.BUILD_MONTH, self.BUILD_DAY)
 		print 'Bistream timestamp is: %s' % self.read_bitstream_date()
 		print '----------------------------------------------------------------------'
+
 
