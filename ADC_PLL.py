@@ -69,8 +69,8 @@ class ADC_PLL_base(object):
 
 		# REGISTER 3
 		cycle_slip_reduction=0 # 0-1. Needs 50% duty cycle and lowest CP current
-		clock_div_mode=0 # 0=clock divider off, 1=fast lock, 2=resync enable, 3=reserved
-		clock_div=1 # 0-4095
+		clock_div_mode=2 # 0=clock divider off, 1=fast lock, 2=resync enable, 3=reserved #111018 JFC: set to 2 to allow phase control
+		clock_div=2 # 0-4095
 
 		
 		# REGISTER 2
@@ -81,7 +81,7 @@ class ADC_PLL_base(object):
 		R_counter=1 #1-1023
 		double_buf=0 # 0=disabled, 1=enabled
 		CP_current=0 # 0-15
-		LDF=0 # 0 = frac-N, 1=INT-N
+		LDF=1 # 0 = Lock Detect Fractional: frac-N, 1=INT-N #111018 JFC: set to 1 to enable phase shift
 		LDP=1 # 0=10 ns, 1 = 6ns
 		PD_polarity=1 # 0=negative, 1=positive
 		power_down=0 # 0=disabled, 1=enabled
@@ -90,23 +90,25 @@ class ADC_PLL_base(object):
 
 		# REGISTER 1
 		prescaler=0 # 0=4/5. 1=8/9
-		phase=2000 # 0-4095 # 111011 JFC: Changed to make the SYNC stable
-		modulus=4095 # 0-4095
+		phase=0 # 0-modulus # 111011 JFC: Changed to make the SYNC stable
+		modulus=200 # 0-4095
 
 		# REGISTER 0
 		if FB_select: # if feedback is from VCO directly
 			int_div=fdiv*fout/fref/2; #23-65535
 		else: # if feedback is from the output of the output divider
 			int_div=fout/fref; #23-65535
+
+		int_div-=1
+		frac_div=modulus; #0-4095
+		fvco=(int_div+float(frac_div)/modulus)*fref if FB_select else (int_div+float(frac_div)/modulus)*fref*fdiv
+
 		if int_div<23 or int_div>65535:
 			raise Exception('Integer division factor is out of range (it_div=%i, range is 23-65535)' % int_div)
 
-		frac_div=0; #0-4095
-
-		fvco=int_div*fref if FB_select else int_div*fref*fdiv
-
 		if self.verbose:
 			print ' Reference integer multiplication factor: %i' % int_div 
+			print ' Reference fractional multiplication factor/modulus: %i/%i' % (frac_div,modulus) 
 			print ' Output division factor: %i' % fdiv 
 			print ' Feedback includes output dividor: %s' %  (not FB_select)
 			print ' VCO Frequency: %.3f MHz (%.0f MHz min, %.0f MHz max)' % (fvco,fmin,fmax)
@@ -116,7 +118,7 @@ class ADC_PLL_base(object):
 		# Override variable names if any is specified in the function call
 		for (varname,value) in args.items():
 			if varname in locals():
-				print 'Setting %s = %i' % (varname, value)
+				print ' Setting %s = %i' % (varname, value)
 				exec('%s=%i' % (varname, value))
 			else:
 				print '"%s" is not a PLL variable' % varname
@@ -135,8 +137,9 @@ class ADC_PLL_base(object):
 		self.write(np.uint32(PLL_reg2)); # write Reg 2: 
 		self.write(np.uint32(PLL_reg1)); # write Reg 1: 
 		self.write(np.uint32(PLL_reg0)); # write Reg 0: 
-		self.write(np.uint32(PLL_reg0)); # write Reg 0: # To make sure DBR values are clocked in. 
+		#self.write(np.uint32(PLL_reg0)); # write Reg 0: # To make sure DBR values are clocked in. 
 
+		self.fpga_instance.IOExpander.wait_for_bit('PLL1_LOCK', timeout=1)
 		if self.verbose:
 			print ' PLL is locked: %s' % bool(self.fpga_instance.IOExpander.PLL1_LOCK)
 			print '----------------------------------------------------------------------'

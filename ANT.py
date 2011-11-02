@@ -73,6 +73,11 @@ class ADCDAQ_base(Module_base):
 		'MMCM_DIVCLK_PHASE':	BitField(DRP,0x0A,13,3,doc='MCMM DIVCLK clock phase in increments of 1/8 the VCO period'),
 		'MMCM_DIVCLK_DELAY':	BitField(DRP,0x0B,0,6,doc='MCMM DIVCLK clock delay in increments of the VCO period'),
 
+		'MMCM_ADCCLK_LOW' : 	BitField(DRP,0x0C,0,6,doc='MCMM DIVCLK clock Low time (in VCO cycles)'),
+		'MMCM_ADCCLK_HIGH': 	BitField(DRP,0x0C,6,6,doc='MCMM DIVCLK clock High time (in VCO cycles)'),
+		'MMCM_ADCCLK_PHASE':	BitField(DRP,0x0C,13,3,doc='MCMM DIVCLK clock phase in increments of 1/8 the VCO period'),
+		'MMCM_ADCCLK_DELAY':	BitField(DRP,0x0D,0,6,doc='MCMM DIVCLK clock delay in increments of the VCO period'),
+
 		'MMCM_POWER':	BitField(DRP,0x28,0,16,doc='MCMM Power bits. Must be set to 0xFFFF in order to successfully program the other MMCM registers'),
 
 	}
@@ -103,6 +108,7 @@ class ADCDAQ_base(Module_base):
 		self.write(self.BITS['CLK_DELAY'].addr, dly) # Set delay in registers
 		self.pulse_bit('CLK_IODELAY_RESET');
 
+
 	def read_delay(self):
 		""" Reads the 8 delay tap values and return them as an array"""
 		return self.read(0x00,length=8) # Reads the delay in registers
@@ -119,6 +125,16 @@ class ADCDAQ_base(Module_base):
 		self.MMCM_POWER=0xFFFF
 		self.MMCM_DIVCLK_PHASE=phase & 0x07
 		self.MMCM_DIVCLK_DELAY=phase>>3
+		self.MMCM_RST=0
+
+	def set_adcclk_phase(self,phase):
+		"""
+		Sets ADC_CLK phase on MCMM in inrements of 1/8 VCO cycles. Valid range is 0-512.
+		"""
+		self.MMCM_RST=1
+		self.MMCM_POWER=0xFFFF
+		self.MMCM_ADCCLK_PHASE=phase & 0x07
+		self.MMCM_ADCCLK_DELAY=phase>>3
 		self.MMCM_RST=0
 
 	delay=property(set_delay,read_delay)
@@ -314,7 +330,11 @@ class ANT_channel(object):
 
 
 	def init(self):
-		pass
+		self.ADCDAQ.init()
+		self.FR_DIST.init()
+		self.DSP.init()
+		self.CH_DIST.init()
+
 
 	def status(self):
 		pass
@@ -350,7 +370,10 @@ class ANT_base(object):
 		fpga.Write(fpga.ANT_PORT[ant_number],module_number, addr, data,*args,**kwargs)
 
 	def init(self):
-		pass
+		for ant in self.ANT:
+			ant.init()
+
+		self.ANT[1].ADCDAQ.set_divclk_phase(1) # Adjust phase of the DIVCLK signal to allow proper sampling of the deserialized words
 
 	def set_delays(self,adc_delay_table):
 		"""

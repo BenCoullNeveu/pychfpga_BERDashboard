@@ -28,10 +28,10 @@ SN001_adc_delays=(
 	[14]*8+[0] #CH7
 	)
 SN001_adc_delays=(
-	[5,8,8,8,8,8,8,8]+[0], # CH0
-	[2]*8+[0], #CH1
-	[5]*8+[0], #CH2
-	[1]*8+[0], #CH3
+	[5+16,8+16,8+16,8+16,8+16,8+16,8+16,8+16]+[0], # CH0
+	[2+16]*8+[0], #CH1
+	[5+16]*8+[0], #CH2
+	[1+16]*8+[0], #CH3
 	[16]*8+[0], #CH4
 	[15]*8+[0], #CH5
 	[18]*8+[0], #CH6
@@ -39,10 +39,10 @@ SN001_adc_delays=(
 	)
 
 SN002_adc_delays=(
-	[16,22,22,22,22,22,22,22]+[13], #CH0 (BUFR)
+	[16,22,22,22,22,22,22,22]+[0], #CH0 (BUFR)
 	[21]*8, #CH1 (BUFR)
-	[9]*8+[13], #CH2 (PLL)
-	[18]*8+[13-5], #CH3 (PLL)
+	[22]*8+[0], #CH2 (PLL)
+	[18]*8+[0], #CH3 (PLL)
 	[17]*8, #CH4 (BUFR)
 	[17]*8, #CH5 (BUFR)
 	[18]*8, #CH6 (BUFR)
@@ -80,6 +80,7 @@ if __name__=='__main__':
 
 	# Create the new chFPGA object.
 	c=chFPGA.chFPGA(adc_test_mode=ADC_TEST_MODE, adc_delay_table=ADC_DELAY_TABLE,fref=FREF);
+	c.sync()
 	print
 	
 	# Displays the system frequencies

@@ -610,12 +610,13 @@ class chFPGA:
 			delays[ch]=m
 
 		return delays
-	def print_phase(self):
-		for phase in range(512):
+	def print_phase(self,channels=range(8)):
+		for phase in range(32):
 			self.ANT[1].ADCDAQ.set_divclk_phase(phase)
-			a= self.read_ADC_frame(channels=range(8),reset=1,simulate=0,raw=1,verbose=0);
+			a= self.read_ADC_frame(channels=channels,reset=1,simulate=0,raw=1,verbose=0);
 			print 'PHASE = ', phase
-			print a[7][:10]
+			for (ch,data) in a.iteritems():
+				print 'CH:',ch,': ',data[:10]
 
 	def ADC_plot_map(self, channel=0,bit=0):
 
@@ -684,6 +685,35 @@ class chFPGA:
 					pass
 			self.ADC_set_delay(ch,old_delays); # restore original delays
 			print ' Channel %i: Pass: %i (%.2f%%), fail: %i (%.2f%%)' % (ch, passed, passed*100.0/(passed+failed), failed, failed*100.0/(passed+failed))
+	def sync(self, continuous=0, sleep=0.3,phase=None):
+		if phase is not None:
+			self.ADC_PLL.init(phase=phase)
+		try:
+			while 1:
+				print 'Sync...'
+				self.SYSMOD.ADC_DAQ_SERDES_SYNC=1 # Reset the SERDES while there is a clock (to allow the reset process to complete internally) and keep it there 
+				self.SYSMOD.ADC_SYNC=1 # Stops the 400 MHz ADC output clock
+				# The ADC clock stops running here
+				self.SYSMOD.ADC_DAQ_BUFR_SYNC=1 # Reset the BUFR, which divides the ADC clock by 2 to generate the 200 MHz word clock. The next rising edge of the word clock is therefore in a known phase relationship with the first word 
+				# ADC READY=false
+				self.SYSMOD.ADC_DAQ_BUFR_SYNC=0 
+				self.SYSMOD.ADC_DAQ_SERDES_SYNC=0 # Releases the SERDES RESET to start shifting the next byte in a known bit position 
+				# Still no 400 MHz and 200 MHz clock here. We can't reset anything that uses those clocks yet.
+				self.SYSMOD.ADC_SYNC=0 # Restart the 400 MHz ADC output clock.
+				if not continuous: break
+				time.sleep(sleep)
+		except KeyboardInterrupt:
+			pass
+
+	def scan_phase(self):
+		for phase in range(0,200,10):
+			self.ADC_PLL.init(fout=1600,phase=phase)
+			while not self.IOExpander.PLL1_LOCK: pass
+			for i in range(10):
+				print 'Sync...'
+				self.sync()
+				time.sleep(0.25)
+			#raw_input('Press [ENTER]')
 
 	def read_ADC_frame(self,channels=0,frames=1,verbose=1,length=1024,simulate=0, reset=1, fft=0, dummy=0,raw=0):
 		"""

@@ -11,6 +11,7 @@ IOExpander.py module
  2011-07-18 JFC: Added comments
  2011-09-08 JFC: Removed printed message when defining the properties   
 """
+import time
 import numpy as np
 
 class IOExpander_base(object):
@@ -109,6 +110,20 @@ class IOExpander_base(object):
 		#print 'Writing data: old_data=%X, port %i, addr=%X, bit=%x' % (old_data, bit_def.port,self.REG_GPIOA+bit_def.port,bit_def.bit)
 		new_data= (old_data & ~mask) | (bool(data)*mask)
 		data= self.write(self.REG_GPIOA+bit_def.port,new_data)
+
+	def wait_for_bit(self,bit_name,timeout=1): 
+		"""
+		Wait for specified bit to become '1'. 
+		"""
+		if bit_name not in self.BITS:
+			raise Exception('The bit name does not exist')
+
+		t0=time.time()
+		while 1:
+			if self.read_gpio_bit(bit_name): return
+			if (time.time()-t0)>timeout:
+				raise(Exception('Timeout exceeded while waiting for bit %s' % bit_name))
+
 
 	def init(self):
 		""" Initializes the register of the IOExpander. Sets the GPIO bits direction and default values based on the 'BITS' table
