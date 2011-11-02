@@ -37,7 +37,7 @@ class SPI_base(Module_base):
 		'BYTES' :   BitField(CONTROL,0x04,0,2,doc='Number of bytes in the SPI communication 0=1 Byte, 1=2 bytes, 2=3 bytes, 3=4 bytes'),
 
 		'DEFAULT_ADDR' : 	BitField(CONTROL,0x05,4,3,doc='Default address of SPI device (enabled when there is no communication or ADC_PLL1 is accessed'),
-		'CLK_ENABLE' : 	BitField(CONTROL,0x05,3,doc='When 1, enables the SPI clock'),
+		'CLK_ENABLE' : 		BitField(CONTROL,0x05,3,doc='When 1, enables the SPI clock'),
 
 		'READY' : 	BitField(STATUS,0x080+ 0x04,0,doc='High when SPI transaction is completed'),
 	}
