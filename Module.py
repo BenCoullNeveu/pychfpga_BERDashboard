@@ -220,7 +220,7 @@ class Module_base(object):
 		while 1:
 			if self.read(addr) & mask : return
 			if (time.time()-t0)>timeout:
-				raise(Exception('Timeout exceeded while waiting for status bit'))
+				raise(Warning('Timeout exceeded while waiting for status bit'))
 
 	def init(self):
 		pass

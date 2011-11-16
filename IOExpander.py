@@ -12,6 +12,7 @@ IOExpander.py module
  2011-09-08 JFC: Removed printed message when defining the properties   
 """
 import time
+import warnings
 import numpy as np
 
 class IOExpander_base(object):
@@ -122,7 +123,7 @@ class IOExpander_base(object):
 		while 1:
 			if self.read_gpio_bit(bit_name): return
 			if (time.time()-t0)>timeout:
-				raise(Exception('Timeout exceeded while waiting for bit %s' % bit_name))
+				warnings.warn('Timeout exceeded while waiting for bit %s' % bit_name)
 
 
 	def init(self):

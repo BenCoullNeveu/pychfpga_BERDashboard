@@ -13,6 +13,7 @@ History:
 		Added check on int_div range
 		Changed default phase to 2000 to allow reliable SYNC
 """
+
 import numpy as np
 
 class ADC_PLL_base(object):
@@ -56,7 +57,7 @@ class ADC_PLL_base(object):
 		LD_pin_mode=1 # 0=LOW, 1=Lock Detect, 2=Low, 3= High
 
 		# REGISTER 4
-		FB_select=0 # 0=feedback from output divided, 1=feedback from VCO directly
+		FB_select=0 # 0=feedback from output divided (needed to ensure absolute phase reproducibility), 1=feedback from VCO directly
 		RF_div= int(np.log2(fdiv)) # Output divider: 0=/1, 1=/2, 2=/4, 3=/8, 4=/16
 		band_sel_div=fref*8 #1-255. R counter output / band_sel_div < 125 kHz.
 		vco_power_down=0 # 0-1
@@ -77,7 +78,7 @@ class ADC_PLL_base(object):
 		noise_mode=0 # 0=low noise, 1-2: reserved, 3=low spur
 		muxout=0 # !using 4 interferes with the locking process! 0=Hi-Z, 1=Vdd, 2=GND, 3=R Divider out, 4= N divider out, 5=Analog lock detect, 6= Digital lock detect, 7=reserved
 		ref_doubler=0 # 0=disabled, 1=enabled
-		rdiv2=0 # 0=disabled, 1=enabled
+		rdiv2=1 # 0=disabled, 1=enabled
 		R_counter=1 #1-1023
 		double_buf=0 # 0=disabled, 1=enabled
 		CP_current=0 # 0-15
@@ -95,9 +96,9 @@ class ADC_PLL_base(object):
 
 		# REGISTER 0
 		if FB_select: # if feedback is from VCO directly
-			int_div=fdiv*fout/fref/2; #23-65535
+			int_div=fdiv*fout/fref/2*(rdiv2+1); #23-65535
 		else: # if feedback is from the output of the output divider
-			int_div=fout/fref; #23-65535
+			int_div=fout/fref*(rdiv2+1); #23-65535
 
 		int_div-=1
 		frac_div=modulus; #0-4095

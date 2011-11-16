@@ -685,21 +685,39 @@ class chFPGA:
 					pass
 			self.ADC_set_delay(ch,old_delays); # restore original delays
 			print ' Channel %i: Pass: %i (%.2f%%), fail: %i (%.2f%%)' % (ch, passed, passed*100.0/(passed+failed), failed, failed*100.0/(passed+failed))
-	def sync(self, continuous=0, sleep=0.3,phase=None):
+	def sync(self, continuous=0, sleep=0.3,phase=None,delay=None,plot=0):
 		if phase is not None:
 			self.ADC_PLL.init(phase=phase)
+		if plot:
+			plt.figure(1)
+			plt.clf()
+			plt.hold(1)
+			plt.axis([0,32,-1,2])
+			
 		try:
 			while 1:
 				print 'Sync...'
-				self.SYSMOD.ADC_DAQ_SERDES_SYNC=1 # Reset the SERDES while there is a clock (to allow the reset process to complete internally) and keep it there 
-				self.SYSMOD.ADC_SYNC=1 # Stops the 400 MHz ADC output clock
-				# The ADC clock stops running here
-				self.SYSMOD.ADC_DAQ_BUFR_SYNC=1 # Reset the BUFR, which divides the ADC clock by 2 to generate the 200 MHz word clock. The next rising edge of the word clock is therefore in a known phase relationship with the first word 
-				# ADC READY=false
-				self.SYSMOD.ADC_DAQ_BUFR_SYNC=0 
-				self.SYSMOD.ADC_DAQ_SERDES_SYNC=0 # Releases the SERDES RESET to start shifting the next byte in a known bit position 
-				# Still no 400 MHz and 200 MHz clock here. We can't reset anything that uses those clocks yet.
-				self.SYSMOD.ADC_SYNC=0 # Restart the 400 MHz ADC output clock.
+				#self.SYSMOD.ADC_DAQ_SERDES_SYNC=1 # Reset the SERDES while there is a clock (to allow the reset process to complete internally) and keep it there 
+				##self.SYSMOD.ADC_SYNC=1 # Stops the 400 MHz ADC output clock
+				#self.REFCLK.MASTER=1
+				#self.REFCLK.SYNC=1 # Stops the 400 MHz ADC output clock
+				## The ADC clock stops running here
+				#self.SYSMOD.ADC_DAQ_BUFR_SYNC=1 # Reset the BUFR, which divides the ADC clock by 2 to generate the 200 MHz word clock. The next rising edge of the word clock is therefore in a known phase relationship with the first word 
+				## ADC READY=false
+				#self.REFCLK.SMA_SYNC=1 # Stops the 400 MHz ADC output clock
+				#self.REFCLK.SMA_SYNC=0 # Stops the 400 MHz ADC output clock
+				#self.REFCLK.ENCODE_SYNC=1 # Stops the 400 MHz ADC output clock
+				#self.REFCLK.ENCODE_SYNC=0 # Stops the 400 MHz ADC output clock
+				self.REFCLK.sync(delay=delay)
+				s=self.REFCLK.scan_refclk_delay()
+				if plot:
+					plt.plot(s)
+					plt.draw()
+				#self.SYSMOD.ADC_DAQ_BUFR_SYNC=0 
+				#self.SYSMOD.ADC_DAQ_SERDES_SYNC=0 # Releases the SERDES RESET to start shifting the next byte in a known bit position 
+				## Still no 400 MHz and 200 MHz clock here. We can't reset anything that uses those clocks yet.
+				##self.SYSMOD.ADC_SYNC=0 # Restart the 400 MHz ADC output clock.
+				#self.REFCLK.SYNC=0 # Stops the 400 MHz ADC output clock
 				if not continuous: break
 				time.sleep(sleep)
 		except KeyboardInterrupt:
@@ -756,24 +774,27 @@ class chFPGA:
 				ant.FR_DIST.TRIG_FRAME_COUNT=0 # Disable response to global trigger for all channnels by default. The requested ones will be re-enabled later. 
 			print 'Resetting and SYNCing the devices'
 			self.sock.flush_data_socket()
-
-			self.SYSMOD.FR_DIST_SYNC=1 
-			self.SYSMOD.ADC_DAQ_SERDES_SYNC=1 # Reset the SERDES while there is a clock (to allow the reset process to complete internally) and keep it there 
-			self.SYSMOD.ADC_SYNC=1 # Stops the 400 MHz ADC output clock
+#			self.SYSMOD.FR_DIST_SYNC=1 
+			#self.SYSMOD.ADC_DAQ_SERDES_SYNC=1 # Reset the SERDES while there is a clock (to allow the reset process to complete internally) and keep it there 
+			#self.SYSMOD.ADC_SYNC=1 # Stops the 400 MHz ADC output clock
+#			self.REFCLK.MASTER=1
+#			self.REFCLK.SMA_SYNC=1 # Stops the 400 MHz ADC output clock
+#			self.sync()
 			# The ADC clock stops running here
-			self.SYSMOD.ADC_DAQ_BUFR_SYNC=1 # Reset the BUFR, which divides the ADC clock by 2 to generate the 200 MHz word clock. The next rising edge of the word clock is therefore in a known phase relationship with the first word 
+			#self.SYSMOD.ADC_DAQ_BUFR_SYNC=1 # Reset the BUFR, which divides the ADC clock by 2 to generate the 200 MHz word clock. The next rising edge of the word clock is therefore in a known phase relationship with the first word 
 			# ADC READY=false
-			self.SYSMOD.ADC_DAQ_BUFR_SYNC=0 
-			self.SYSMOD.FR_DIST_SYNC=0 #Release FR_DIST from forced reset
-			#self.SYSMOD.ADC_SYNC=0 
-			self.SYSMOD.ADC_DAQ_SERDES_SYNC=0 # Releases the SERDES RESET to start shifting the next byte in a known bit position 
+			#self.SYSMOD.ADC_DAQ_BUFR_SYNC=0 
+#			self.SYSMOD.FR_DIST_SYNC=0 #Release FR_DIST from forced reset
+			##self.SYSMOD.ADC_SYNC=0 
+			#self.SYSMOD.ADC_DAQ_SERDES_SYNC=0 # Releases the SERDES RESET to start shifting the next byte in a known bit position 
 			# Still no 400 MHz and 200 MHz clock here. We can't reset anything that uses those clocks yet.
-			self.SYSMOD.ADC_SYNC=0 # Restart the 400 MHz ADC output clock.
+			#self.SYSMOD.ADC_SYNC=0 # Restart the 400 MHz ADC output clock.
+#			self.REFCLK.SMA_SYNC=0 # Stops the 400 MHz ADC output clock
 			# The ADC clock runs now. 
 			# After N samples, ADC_READY becomes TRUE and FR_DIST starts framing the data
 
-			#self.SYSMOD.pulse_bit('ADC_DAQ_SERDES_SYNC') # make sure all serdes clock their first bits at the same position
-			#self.SYSMOD.FR_DIST_SYNC=0 
+			##self.SYSMOD.pulse_bit('ADC_DAQ_SERDES_SYNC') # make sure all serdes clock their first bits at the same position
+			##self.SYSMOD.FR_DIST_SYNC=0 
 
 			# Now the clocks are restarting
 
