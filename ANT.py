@@ -64,6 +64,8 @@ class ADCDAQ_base(Module_base):
 		'FIFO_WR_COUNT' : BitField(STATUS,0x90,0,8,doc='Number of words in the FIFO, as seen from the WR clock'),
 		'FIFO_RD_COUNT' : BitField(STATUS,0x91,0,8,doc='Number of words in the FIFO, as seen from the RD clock (readout system)'),
 
+		'ADC_CLK_SAMPLE' : BitField(STATUS,0x80+18,0,doc='Non-delayed 400 MHz ADC clock sampled by REFCLK'),
+
 		'MMCM_FB_LOW' : 		BitField(DRP,0x14,0,6,doc='MCMM Feedback clock Low time (in VCO cycles)'),
 		'MMCM_FB_HIGH' : 		BitField(DRP,0x14,6,6,doc='MCMM Feedback clock High time (in VCO cycles)'),
 		'MMCM_FB_PHASE' : 		BitField(DRP,0x14,13,3,doc='MCMM Feedback clock phase in increments of 1/8 the VCO period'),

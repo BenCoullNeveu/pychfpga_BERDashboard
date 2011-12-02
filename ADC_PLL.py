@@ -27,7 +27,7 @@ class ADC_PLL_base(object):
 		spi=self.fpga_instance.SPI
 		spi.read_write(spi.SPI_PLL1_ADDR, data)
 
-	def init(self,fout=1600, fref=10, **args):
+	def init(self,fout=1600, fref=10, verbose=None, **args):
 		"""
 		Initializes the ADC PLL (Analog Devices ADF4350) to provide an adequate clock to the ADC.
 			fout: ADC reference frequency in MHz. Sampling rate is fout/2.
@@ -37,6 +37,9 @@ class ADC_PLL_base(object):
 			- The reference clock x2 doubler or /2 divider are never enabled
 		"""
 		
+		if verbose is None:
+			verbose=self.verbose
+
 		#fref=25 # MHz - PLL reference frequency (fixed)
 		#fout=1600 # MHz - ADC Reference Frequency. Sampling rate is fout/2
 		#fdiv=2 if fout<2200 else 1 # Output division factor
@@ -47,7 +50,7 @@ class ADC_PLL_base(object):
 		if fdiv>16:
 			raise Exception('Output frequency is too low')
 
-		if self.verbose:
+		if verbose:
 			print
 			print '--------------------- ADC PLL ------------------------------------'
 			print ' PLL Reference frequency         %7.3f MHz' % fref 
@@ -77,9 +80,9 @@ class ADC_PLL_base(object):
 		# REGISTER 2
 		noise_mode=0 # 0=low noise, 1-2: reserved, 3=low spur
 		muxout=0 # !using 4 interferes with the locking process! 0=Hi-Z, 1=Vdd, 2=GND, 3=R Divider out, 4= N divider out, 5=Analog lock detect, 6= Digital lock detect, 7=reserved
-		ref_doubler=0 # 0=disabled, 1=enabled
-		rdiv2=1 # 0=disabled, 1=enabled
-		R_counter=1 #1-1023
+		ref_doubler=0 # Reference clock doubler: 0=disabled, 1=enabled
+		rdiv2=1 # Reference clock divide-by-2: 0=disabled, 1=enabled
+		R_counter=1 # Reference clock divider: 1-1023
 		double_buf=0 # 0=disabled, 1=enabled
 		CP_current=0 # 0-15
 		LDF=1 # 0 = Lock Detect Fractional: frac-N, 1=INT-N #111018 JFC: set to 1 to enable phase shift
@@ -99,15 +102,16 @@ class ADC_PLL_base(object):
 			int_div=fdiv*fout/fref/2*(rdiv2+1); #23-65535
 		else: # if feedback is from the output of the output divider
 			int_div=fout/fref*(rdiv2+1); #23-65535
+		fractional_mode=True
 
-		int_div-=1
-		frac_div=modulus; #0-4095
+		int_div-=1*fractional_mode
+		frac_div=modulus*fractional_mode; #0-4095 Non-zero for frationnal mode
 		fvco=(int_div+float(frac_div)/modulus)*fref if FB_select else (int_div+float(frac_div)/modulus)*fref*fdiv
 
 		if int_div<23 or int_div>65535:
 			raise Exception('Integer division factor is out of range (it_div=%i, range is 23-65535)' % int_div)
 
-		if self.verbose:
+		if verbose:
 			print ' Reference integer multiplication factor: %i' % int_div 
 			print ' Reference fractional multiplication factor/modulus: %i/%i' % (frac_div,modulus) 
 			print ' Output division factor: %i' % fdiv 
@@ -119,7 +123,8 @@ class ADC_PLL_base(object):
 		# Override variable names if any is specified in the function call
 		for (varname,value) in args.items():
 			if varname in locals():
-				print ' Setting %s = %i' % (varname, value)
+				if verbose:
+					print ' Setting %s = %i' % (varname, value)
 				exec('%s=%i' % (varname, value))
 			else:
 				print '"%s" is not a PLL variable' % varname
@@ -141,7 +146,7 @@ class ADC_PLL_base(object):
 		#self.write(np.uint32(PLL_reg0)); # write Reg 0: # To make sure DBR values are clocked in. 
 
 		self.fpga_instance.IOExpander.wait_for_bit('PLL1_LOCK', timeout=1)
-		if self.verbose:
+		if verbose:
 			print ' PLL is locked: %s' % bool(self.fpga_instance.IOExpander.PLL1_LOCK)
 			print '----------------------------------------------------------------------'
 

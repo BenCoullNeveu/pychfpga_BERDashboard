@@ -685,9 +685,9 @@ class chFPGA:
 					pass
 			self.ADC_set_delay(ch,old_delays); # restore original delays
 			print ' Channel %i: Pass: %i (%.2f%%), fail: %i (%.2f%%)' % (ch, passed, passed*100.0/(passed+failed), failed, failed*100.0/(passed+failed))
-	def sync(self, continuous=0, sleep=0.3,phase=None,delay=None,plot=0):
+	def sync(self, continuous=0, sleep=0.3,phase=None,delay=None,plot=0,verbose=1,local=0):
 		if phase is not None:
-			self.ADC_PLL.init(phase=phase)
+			self.ADC_PLL.init(phase=phase,verbose=verbose)
 		if plot:
 			plt.figure(1)
 			plt.clf()
@@ -696,7 +696,8 @@ class chFPGA:
 			
 		try:
 			while 1:
-				print 'Sync...'
+				if verbose:
+					print 'Sync...'
 				#self.SYSMOD.ADC_DAQ_SERDES_SYNC=1 # Reset the SERDES while there is a clock (to allow the reset process to complete internally) and keep it there 
 				##self.SYSMOD.ADC_SYNC=1 # Stops the 400 MHz ADC output clock
 				#self.REFCLK.MASTER=1
@@ -708,8 +709,14 @@ class chFPGA:
 				#self.REFCLK.SMA_SYNC=0 # Stops the 400 MHz ADC output clock
 				#self.REFCLK.ENCODE_SYNC=1 # Stops the 400 MHz ADC output clock
 				#self.REFCLK.ENCODE_SYNC=0 # Stops the 400 MHz ADC output clock
-				self.REFCLK.sync(delay=delay)
+				if local:
+					self.REFCLK.local_sync(delay=delay)
+				else:
+					self.REFCLK.sync(delay=delay)
+
 				s=self.REFCLK.scan_refclk_delay()
+				if verbose:
+					self.REFCLK.print_bit_vector(s)
 				if plot:
 					plt.plot(s)
 					plt.draw()
@@ -724,13 +731,12 @@ class chFPGA:
 			pass
 
 	def scan_phase(self):
-		for phase in range(0,200,10):
-			self.ADC_PLL.init(fout=1600,phase=phase)
-			while not self.IOExpander.PLL1_LOCK: pass
-			for i in range(10):
-				print 'Sync...'
-				self.sync()
-				time.sleep(0.25)
+		for phase in range(0,200,5):
+			#for i in range(10):
+				self.sync(phase=phase,verbose=0)
+				s=self.REFCLK.scan_refclk_delay()
+				print ' Phase %i, %s' % (phase, self.REFCLK.bit_vector_to_string(s))
+				time.sleep(0.01)
 			#raw_input('Press [ENTER]')
 
 	def read_ADC_frame(self,channels=0,frames=1,verbose=1,length=1024,simulate=0, reset=1, fft=0, dummy=0,raw=0):
