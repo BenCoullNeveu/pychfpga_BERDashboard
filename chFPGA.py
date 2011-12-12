@@ -126,6 +126,8 @@ class chFPGA:
 			if adc_delay_table:
 				self.ANT.set_delays(adc_delay_table)
 
+			self.set_ADC_mode('Normal')
+
 		except:
 			print 'Error during chFPGA initialization. Closing socket communications'
 			self.close()
@@ -558,21 +560,14 @@ class chFPGA:
 		#plt.imshow((m & (1<<bit))!=0,aspect='auto', interpolation='nearest', cmap=plt.gray(), filternorm=1)
 		#plt.draw()
 
-	def read_eye_diagram(self,channels=[0], offset=6):
-		self.ADC.set_test_mode(2) # generate pulse pattern
-		#self.sync()
-		#self.SYSMOD.ADC_DAQ_BUFR_SYNC=1 
-		#self.SYSMOD.ADC_DAQ_BUFR_SYNC=0 
-		#self.SYSMOD.pulse_bit('ADC_DAQ_SERDES_SYNC') 
-
+	def read_eye_diagram(self,channels=[0], offset=5):
+		self.set_ADC_mode('pulse') # generate pulse pattern
 
 		data={}
 		for ch in channels:
 			d=np.zeros((32,3),dtype=np.uint8)
 			print 'Reading channel %i' % (ch)
 			adcdaq=self.ANT[ch].ADCDAQ
-			adcdaq.CAPTURE2_PERIOD=11 # set the period so we are ready to capture data correctly after the SYNC resets the CAPTURE logic
-			self.sync() # make sure the capture now restarts properly with the right period
 
 			#adcdaq.CAPTURE_ALIGN=1 # first capture will be done while aligning bits
 			for dly in range(32):
@@ -589,11 +584,10 @@ class chFPGA:
 		return data
 
 	def scan_delay(self,channels=[0],bit=0,phase=[0],delay=range(32),sync=1):
-		self.ADC.set_test_mode(2) # generate pulse pattern
+		self.set_ADC_mode('pulse',sync=0) # generate pulse pattern, and sets CAPTURE period
 		for ch in channels:
 			print 'Reading channel %i' % (ch)
 			adcdaq=self.ANT[ch].ADCDAQ
-			adcdaq.CAPTURE2_PERIOD=11 # set the period so we are ready to capture data correctly after the SYNC resets the CAPTURE logic
 
 			for p in phase:
 				self.ANT[1].ADCDAQ.set_divclk_phase(p)
@@ -751,6 +745,30 @@ class chFPGA:
 				time.sleep(sleep)
 		except KeyboardInterrupt:
 			pass
+
+	def set_ADC_mode(self,test_mode=0, sync=1):
+		"""
+		Sets the test mode of both ADCs, sets the proper CAPTURE period, and sends a SYNC.
+			test_mode:
+				0 or 'normal': Normal mode (ADC output contains analog samples)
+				1 or 'ramp': Ramp mode (ADC output contains repeating 0-255 pattern. Note that ADCDAQ inverts bit 7 during acquisition to convert offset binary to 2's complement binary)
+				2 or 'pulse' or 'strobe' : Strobe mode (ADC output contains one 0xFF followed by ten 0x00. It repeats with a pariod of 11. Same comment as above)
+		111212 JFC: Added this high-level function with string mode.
+		"""
+
+		mode_strings={'n':0, 'r':1, 's':2, 'p':2} # define the test mode based on the first character of the test_mode string
+		mode_periods=(64,64,11) # repetition period (in words) for each mode
+		if isinstance(test_mode,str):
+			test_mode=mode_strings[test_mode[0].lower()]
+
+		self.ADC.set_test_mode(test_mode=test_mode)
+		self.current_ADC_mode=test_mode
+
+		for ant in self.ANT:
+			ant.ADCDAQ.CAPTURE2_PERIOD=mode_periods[test_mode] # set the period so we are ready to capture data correctly after the SYNC resets the CAPTURE logic
+
+		if sync:
+			self.sync() # make sure the ADC mode is set and that capture  restarts properly with the right period
 
 	def scan_phase(self):
 		for phase in range(0,200,5):
