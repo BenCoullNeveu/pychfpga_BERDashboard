@@ -110,7 +110,7 @@ class ADC_base(object):
 		#sysmod.pulse_bit('ADC_SYNC')
 
 		refclk=self.fpga_instance.REFCLK; # use a shorter variable name to access the FPGA instance attributes
-		refclk.pulse_bit('ENCODE_SYNC')
+		refclk.local_sync()
 
 	def init(self,test_mode=0):
 		self.reset() # Send reset pulse on both ADCs

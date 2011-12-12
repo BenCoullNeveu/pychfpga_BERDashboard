@@ -38,6 +38,17 @@ SN001_adc_delays=(
 	[13]*8+[0] #CH7
 	)
 
+SN001_adc_delays=(
+	[5,12,12,12,12,12,12,12]+[0], # CH0
+	[8]*8+[0], #CH1
+	[8]*8+[0], #CH2
+	[6]*8+[0], #CH3
+	[5]*8+[0], #CH4
+	[4]*8+[0], #CH5
+	[4]*8+[0], #CH6
+	[4]*8+[0] #CH7
+	)
+
 SN002_adc_delays=(
 	[16,22,22,22,22,22,22,22]+[0], #CH0 (BUFR)
 	[21]*8, #CH1 (BUFR)
@@ -47,16 +58,6 @@ SN002_adc_delays=(
 	[17]*8, #CH5 (BUFR)
 	[18]*8, #CH6 (BUFR)
 	[14]*8, #CH7 (BUFR)
-	)
-SN001_adc_delays_IDDR=(
-	[25,5,5,5,5,5,5,5],
-	[15]*8,
-	[31,31,10,10,10,10,10,10],
-	[31,31,31,10,10,10,10,10],
-	[12]*8,
-	[11]*8,
-	[13]*8,
-	[9]*8
 	)
 
 
@@ -75,7 +76,7 @@ if __name__=='__main__':
 		pass
 
 	ADC_TEST_MODE=1 	#  0= normal, 1= ramp, 2=pulse (1 high, 10 low)
-	ADC_DELAY_TABLE=SN002_adc_delays # select the table corresponding to the FMC serial number
+	ADC_DELAY_TABLE=SN001_adc_delays # select the table corresponding to the FMC serial number
 	FREF=10 # FMC Reference clock frequency 
 
 	# Create the new chFPGA object.
