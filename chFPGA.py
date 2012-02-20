@@ -962,7 +962,7 @@ class chFPGA:
 					ch1_data=a[ch1][:length]
 					if mult_chan: # select channels to correlate
 						ch2_data=a[ch2]
-					print 'CHa[0]=',hex(ch1_data[0]),'CHb[0]=',hex(ch2_data[0]), ' Difference=', ch1_data[0]-ch2_data[0]
+						print 'CHa[0]=',hex(ch1_data[0]),'CHb[0]=',hex(ch2_data[0]), ' Difference=', ch1_data[0]-ch2_data[0]
 					if fft: 
 						if correlate:
 							corr=ch1_data*conj(ch2_data)
@@ -991,7 +991,7 @@ class chFPGA:
 							plt.plot(ch1_data,'b-', ch2_data,'r-')
 						plt.axis([0,xmax,-ymax,ymax])
 						#plt.axis([0,xmax,-70,70])
-					plt.legend(('Ch%i' % ch1, 'Ch%i' % ch2))
+					#plt.legend(('Ch%i' % ch1, 'Ch%i' % ch2))
 					plt.draw()
 
 					if file:
@@ -1007,8 +1007,9 @@ class chFPGA:
 		print 'Plotted %i frames' % number_of_frames
 		
 		
-	def plot_ADC_frame_fft(self, channels=0, hold=0, frames=1, continuous=0,xmax=1023, sync_period=None, fft=1, out_shift=0, fft_shift=None, filename=None,simulate=0):
+	def plot_ADC_frame_fft(self, channels=0, hold=0, frames=1, continuous=0,xmax=1023, sync_period=None, fft=1, out_shift=0, fft_shift=None, filename=None,simulate=0, contiguousFrames=8, length=1024):
 		'''
+		20120220KMB: added contiguous frames support
 		20110906KMB:  added fft plotting
 		20110909KMB: changed save to be npy files. other gave anomolous results.
 		20110919KMB:  got rid of correlation, added support for any number of channels
@@ -1022,6 +1023,7 @@ class chFPGA:
 			channels=[channels];
 		nchan = len(channels)
 		plt.figure(5, figsize=(6*nchan,6))
+		plt.ion()
 		#if not hold:
 		plt.clf()
 		plt.hold(hold)
@@ -1032,7 +1034,7 @@ class chFPGA:
 		
 		if fft:
 			#f=np.arange(1024)*1024.0/800.0
-			f=np.fft.fftfreq(1024,1/800.0)
+			f=np.fft.fftfreq(length*contiguousFrames,1/800.0)
 			for chanNum in chanIndex:
 				plt.subplot(2,nchan,chanNum+1)
 				plt.title('Spectrum')
@@ -1056,8 +1058,9 @@ class chFPGA:
 		try:
 			while (frames==0) or (frames!=0 and number_of_frames<frames):
 				try:
-					a=self.read_ADC_frame(channels,length=1024,reset=(number_of_frames==0),fft=0,simulate=simulate) #(number_of_frames==0)
+					a=self.read_ADC_frame(channels,length=length,sync=(number_of_frames==0),fft=0,simulate=simulate, frames=contiguousFrames) #(number_of_frames==0)
 					print a
+					#print f, f.shape
 					fa = np.zeros((nchan,len(a[channels[0]])))
 					if fft:
 						for chanNum in chanIndex:
