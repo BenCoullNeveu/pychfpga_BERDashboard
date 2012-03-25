@@ -62,5 +62,5 @@ if __name__=='__main__':
 	c.ADC.sync()
 	# Continuously plot the ADC output
 	#c.plot_ADC_frame(channels=[0], frames=0)
-	c.plot_ADC_frame_fft(channels=[0,1,2,3,4,5,6,7], frames=1024, filename='2tones_620_570_-5dbm_101011')
+	c.plot_ADC_frame_fft(channels=[0,1,2,3,4,5,6,7], frames=128, filename='testing_all_ch_tone774')
 

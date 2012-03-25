@@ -7,7 +7,7 @@ ANT.py module
 # History:
 # 2011-07-12 : JFC : Created from test code in chFPGA.py
 """
-
+import time
 import numpy as np
 from Module import Module_base, BitField
 
@@ -20,10 +20,11 @@ class ADCDAQ_base(Module_base):
 	DRP=BitField.DRP
 
 	BITS={
-		# 0x00 - 0x07, bits 5:0: IODELAY values for bits 0:7
-		# 0x08, bits 5:0: IODELAY values for the clock line
+
+		# CONTROL BYTES
 
 		'DELAY0' : 	BitField(CONTROL,0x00,0,5,doc='IODELAY value for the data line. Loaded the IODELAY_RST is pulsed.'),
+		# 0x00 - 0x07, bits 5:0: IODELAY values for bits 0:7
 		'CLK_DELAY' : 	BitField(CONTROL,0x08,0,5,doc='IODELAY value for the clock line. Loaded the CLK_IODELAY_RST is pulsed.'),
 
 		'MMCM_RST' : 	BitField(CONTROL,0x09,7,doc='MCMM reset. Must be high when using DRP'),
@@ -40,35 +41,51 @@ class ADCDAQ_base(Module_base):
 		'CAPTURE_SOURCE' : 	BitField(CONTROL,0x0A,5,doc='0: Word number is the one determined during the ALIGN process. 1: Word number is the one specified in USER_WORD_NUMBER'),
 		'CAPTURE_USER_WORD_NUMBER' : 	BitField(CONTROL,0x0A,0,4,doc='0: Word number is the one determined during the ALIGN process. 1: Word number is the one specified in USER_WORD_NUMBER'),
 
-		'IOCLK_POL' : 	BitField(CONTROL,0x0B,7,doc='Polarity of the data clock on the ISERDES'),
-		'DIVCLK_POL' : 	BitField(CONTROL,0x0B,6,doc='Polarity of the word clock on the ISERDES'),
+		'SAMPLE_DELAY' 		: BitField(CONTROL,11,0,4,doc='Number of samples ti skip before starting data acquisition after a SYNC event'),
+
+		'CAPTURE2_PERIOD' 	: BitField(CONTROL,0x0C,0,8,doc='Word capture period, from 0-255. 0 means 256 words'),
+
+		'CAPTURE2_WORD_NUMBER' : BitField(CONTROL,0x0D,0,8,doc='Word number to be capured in CAPTURE_PATTERN. Must be <=CAPTURE2_PERIOD-1 for data to be captured'),
+
+		# STATUS BYTES
 
 		'CLK_DELAY_STATUS':	BitField(STATUS,0x88,0,5,doc='Current delay value of the CLK line IODELAY'),
 		'CAPTURE_DONE' : 	BitField(STATUS,0x89,7,doc="'1' when capture is complete"),
 		'FIFO_OVERFLOW' : 	BitField(STATUS,0x89,6,doc="'1' if the FIFO has overflowed. Reset by SERDES_SYNC."),
 		'FIFO_UNDERFLOW' : 	BitField(STATUS,0x89,5,doc="'1' if the FIFO has underflowed.  Reset by SERDES_SYNC."),
-		'FIFO_EMPTY' : 		BitField(STATUS,0x89,4,doc="'1' if the FIFO has been empty. Reset by SERDES_SYNC."),
+		'FIFO_EMPTY' 		: BitField(STATUS,0x89,4,doc="'1' if the FIFO has been empty. Reset by SERDES_SYNC."),
 		'IDELAYCTRL_PRESENT':BitField(STATUS,0x89,1,doc='Indicate whether this ADCDAQ instantiated a IODELAYCTRL'),
-		'IDELAYCTRL_RDY' : 	BitField(STATUS,0x89,0,doc='Indicate if the IODELAYCTRL has finished calibrating'),
+		'IDELAYCTRL_RDY'	: BitField(STATUS,0x89,0,doc='Indicate if the IODELAYCTRL has finished calibrating'),
 
-		'CAPTURE_PATTERN0' : BitField(STATUS,0x8A,0,8,doc='Captured byte'),
-		'CAPTURE_PATTERN1' : BitField(STATUS,0x8B,0,8,doc='Captured byte'),
-		'CAPTURE_PATTERN2' : BitField(STATUS,0x8C,0,8,doc='Captured byte'),
-		'CAPTURE_PATTERN3' : BitField(STATUS,0x8D,0,8,doc='Captured byte'),
+		'CAPTURE_PATTERN0'	: BitField(STATUS,0x8A,0,8,doc='Captured byte'),
+		'CAPTURE_PATTERN1'	: BitField(STATUS,0x8B,0,8,doc='Captured byte'),
+		'CAPTURE_PATTERN2'	: BitField(STATUS,0x8C,0,8,doc='Captured byte'),
+		'CAPTURE_PATTERN3'	: BitField(STATUS,0x8D,0,8,doc='Captured byte'),
+
 
 		'CAPTURE_WORD_CTR' : BitField(STATUS,0x8E,4,4,doc='Free running word counter for the capture engine'),
 		'CAPTURE_WORD_NUMBER' : BitField(STATUS,0x8E,0,4,doc='Word number determined by the automatic alignment process'),
 
-		'RAMP_CTR' : BitField(STATUS,0x8F,0,6,doc='Free running word counter for readout interface, used to generate ramp at the ADCDAQ level'),
+		'RAMP_CTR' 			: BitField(STATUS,0x8F,0,6,doc='Free running word counter for readout interface, used to generate ramp at the ADCDAQ level'),
 
-		'FIFO_WR_COUNT' : BitField(STATUS,0x90,0,8,doc='Number of words in the FIFO, as seen from the WR clock'),
-		'FIFO_RD_COUNT' : BitField(STATUS,0x91,0,8,doc='Number of words in the FIFO, as seen from the RD clock (readout system)'),
+		'FIFO_WR_COUNT' 	: BitField(STATUS,0x90,0,8,doc='Number of words in the FIFO, as seen from the WR clock'),
+		'FIFO_RD_COUNT' 	: BitField(STATUS,0x91,0,8,doc='Number of words in the FIFO, as seen from the RD clock (readout system)'),
 
-		'ADC_CLK_SAMPLE' : BitField(STATUS,0x80+18,0,doc='Non-delayed 400 MHz ADC clock sampled by REFCLK'),
+		'ADC_CLK_SAMPLE' 	: BitField(STATUS,0x80+18,0,doc='Non-delayed 400 MHz ADC clock sampled by REFCLK'),
 
+		'CAPTURE2_PATTERN0' : BitField(STATUS,0x080+ 19,0,8,doc='Captured byte'),
+		'CAPTURE2_PATTERN1' : BitField(STATUS,0x080+ 20,0,8,doc='Captured byte'),
+		'CAPTURE2_PATTERN2' : BitField(STATUS,0x080+ 21,0,8,doc='Captured byte'),
+		'CAPTURE2_PATTERN3' : BitField(STATUS,0x080+ 22,0,8,doc='Captured byte'),
+
+		# DRP Ports
 		'MMCM_FB_LOW' : 		BitField(DRP,0x14,0,6,doc='MCMM Feedback clock Low time (in VCO cycles)'),
 		'MMCM_FB_HIGH' : 		BitField(DRP,0x14,6,6,doc='MCMM Feedback clock High time (in VCO cycles)'),
 		'MMCM_FB_PHASE' : 		BitField(DRP,0x14,13,3,doc='MCMM Feedback clock phase in increments of 1/8 the VCO period'),
+
+		'MMCM_CLKIN_LOW' : 		BitField(DRP,0x16,0,6,doc='MCMM Input clock divider Low time (in input clock cycles)'),
+		'MMCM_CLKIN_HIGH' : 	BitField(DRP,0x16,6,6,doc='MCMM input clock divider High time (in input clock cycles)'),
+		'MMCM_CLKIN_BYPASS' : 	BitField(DRP,0x16,12,doc='MCMM input clock divider bypass'),
 
 		'MMCM_DIVCLK_LOW' : 	BitField(DRP,0x0A,0,6,doc='MCMM DIVCLK clock Low time (in VCO cycles)'),
 		'MMCM_DIVCLK_HIGH': 	BitField(DRP,0x0A,6,6,doc='MCMM DIVCLK clock High time (in VCO cycles)'),
@@ -171,6 +188,40 @@ class ADCDAQ_base(Module_base):
 			#self.CAPTURE_ALIGN=0
 			print 'Word number: %i : ' % i, self.read(self.BITS['CAPTURE_PATTERN0'].addr,length=4)
 		self.CAPTURE_SOURCE=0
+
+	def get_pattern(self,period=11):
+		"""
+		Captures N words samples with a periodicity of 'period'
+		"""
+		self.CAPTURE2_PERIOD=period & 0xf
+		d=np.zeros(4*period,np.uint8)
+		for i in range(period):
+			#print '  Acquiring pattern for delay %i' % (dly)
+			#dly=0
+			self.CAPTURE2_WORD_NUMBER=i
+			time.sleep(1/200e6*period*2) # make sure the data has time to be capture
+			d[4*i:4*(i+1)]=self.read('CAPTURE2_PATTERN0', type=np.uint8, length=4)
+		return d
+
+
+	def status(self):
+		
+		fin=200
+		input_div=1 if self.MMCM_CLKIN_BYPASS else (self.MMCM_CLKIN_HIGH + self.MMCM_CLKIN_LOW) 
+		divclk_div=self.MMCM_DIVCLK_HIGH + self.MMCM_DIVCLK_LOW
+		fb_div=self.MMCM_FB_HIGH + self.MMCM_FB_LOW
+
+		print '-------------- ANT[].ADCDAQ STATUS --------------' 
+		print 'MMCM'
+		print '  Input clock divider: HIGH:%i, LOW: %i, TOTAL: %i, BYPASS:%i' % (self.MMCM_CLKIN_HIGH, self.MMCM_CLKIN_LOW, self.MMCM_CLKIN_HIGH + self.MMCM_CLKIN_LOW,self.MMCM_CLKIN_BYPASS)
+		print '  FB divider           HIGH:%i, LOW: %i, TOTAL: %i, PHASE: %i' % (self.MMCM_FB_HIGH, self.MMCM_FB_LOW, self.MMCM_FB_HIGH + self.MMCM_FB_LOW, self.MMCM_FB_PHASE)
+		print '  DIVCLK divider       HIGH:%i, LOW: %i, TOTAL: %i, PHASE: %i, Delay: %i' % (self.MMCM_DIVCLK_HIGH, self.MMCM_DIVCLK_LOW, self.MMCM_DIVCLK_HIGH + self.MMCM_DIVCLK_LOW, self.MMCM_DIVCLK_PHASE, self.MMCM_DIVCLK_DELAY)
+		print '  ADCCLK divider       HIGH:%i, LOW: %i, TOTAL: %i, PHASE: %i, Delay: %i' % (self.MMCM_ADCCLK_HIGH, self.MMCM_ADCCLK_LOW, self.MMCM_ADCCLK_HIGH + self.MMCM_ADCCLK_LOW, self.MMCM_ADCCLK_PHASE, self.MMCM_ADCCLK_DELAY)
+		print '  Assmued input frequency: %.0f MHz'% fin
+		print '  Computed PFD frequency: %.0f MHz'% (fin*1.0/input_div)
+		print '  Computed VCO frequency: %.0f MHz'% (fin*1.0/input_div*fb_div)
+		print '  Computed DIVCLK frequency: %.0f MHz' % (fin*1.0/input_div*fb_div/divclk_div)
+
 
 	
 class FR_DIST_base(Module_base):
@@ -375,7 +426,7 @@ class ANT_base(object):
 		for ant in self.ANT:
 			ant.init()
 
-		self.ANT[1].ADCDAQ.set_divclk_phase(1) # Adjust phase of the DIVCLK signal to allow proper sampling of the deserialized words
+		#self.ANT[1].ADCDAQ.set_divclk_phase(1) # Adjust phase of the DIVCLK signal to allow proper sampling of the deserialized words
 
 	def set_delays(self,adc_delay_table):
 		"""

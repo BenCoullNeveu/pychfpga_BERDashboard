@@ -24,6 +24,16 @@ SN001_adc_delays=(
 	[13]*8,
 	[9]*8
 	)
+SN001_adc_delays=(
+	[5,12,12,12,12,12,12,12]+[0], # CH0
+	[8]*8+[0], #CH1
+	[8]*8+[0], #CH2
+	[6]*8+[0], #CH3
+	[5]*8+[0], #CH4
+	[4]*8+[0], #CH5
+	[4]*8+[0], #CH6
+	[4]*8+[0] #CH7
+	)
 SN002_adc_delays=(
 	[13,19,19,19,19,19,19,19],
 	[8]*8,
@@ -60,5 +70,5 @@ if __name__=='__main__':
 	# Displays the system frequencies
 	c.FreqCtr.status()
 	# Continuously plot the ADC output
-	c.plot_ADC_frame(channels=[0], frames=2048, filename='595MHzp6dbm_650MHzp6dbm.dat')
+	c.plot_ADC_frame(channels=[0], frames=2048, filename='testing.dat')
 

@@ -126,6 +126,8 @@ class chFPGA:
 			if adc_delay_table:
 				self.ANT.set_delays(adc_delay_table)
 
+			self.set_ADC_mode('Normal')
+
 		except:
 			print 'Error during chFPGA initialization. Closing socket communications'
 			self.close()
@@ -558,33 +560,59 @@ class chFPGA:
 		#plt.imshow((m & (1<<bit))!=0,aspect='auto', interpolation='nearest', cmap=plt.gray(), filternorm=1)
 		#plt.draw()
 
-	def read_eye_diagram(self,channels=[0]):
-		self.ADC.set_test_mode(2) # generate pulse pattern
-		#self.SYSMOD.ADC_DAQ_BUFR_SYNC=1 
-		#self.SYSMOD.ADC_DAQ_BUFR_SYNC=0 
-		#self.SYSMOD.pulse_bit('ADC_DAQ_SERDES_SYNC') 
-
+	def read_eye_diagram(self,channels=[0], offset=5):
+		self.set_ADC_mode('pulse') # generate pulse pattern
 
 		data={}
 		for ch in channels:
 			d=np.zeros((32,3),dtype=np.uint8)
 			print 'Reading channel %i' % (ch)
 			adcdaq=self.ANT[ch].ADCDAQ
-			adcdaq.CAPTURE_ALIGN=1 # first capture will be done while aligning bits
+
+			#adcdaq.CAPTURE_ALIGN=1 # first capture will be done while aligning bits
 			for dly in range(32):
 				#print '  Acquiring pattern for delay %i' % (dly)
 				#dly=0
 				adcdaq.set_delay(dly)
-				adcdaq.pulse_bit('CAPTURE_TRIG')
-				adcdaq.wait_for_bit('CAPTURE_DONE')
-				d[dly,:]=adcdaq.read(0x8B, type=np.uint8, length=3)
-				adcdaq.CAPTURE_ALIGN=0 # we no longer want to align the following captures so we can track the bits moving with the delays
+				#adcdaq.pulse_bit('CAPTURE_TRIG')
+				#adcdaq.wait_for_bit('CAPTURE_DONE')
+				#d[dly,:]=adcdaq.read(0x8B, type=np.uint8, length=3)
+				d[dly,:]=self.ANT[ch].ADCDAQ.get_pattern(period=11)[offset:offset+3];
+				#adcdaq.CAPTURE_ALIGN=0 # we no longer want to align the following captures so we can track the bits moving with the delays
 			data[ch]=d
 			#if np.sum(d[:,1])==0: raise
 		return data
 
-	def compute_delays(self,channels=[0]):
-		data=self.read_eye_diagram(channels)
+	def scan_delay(self,channels=[0],bit=0,phase=[0],delay=range(32),sync=1):
+		self.set_ADC_mode('pulse',sync=0) # generate pulse pattern, and sets CAPTURE period
+		for ch in channels:
+			print 'Reading channel %i' % (ch)
+			adcdaq=self.ANT[ch].ADCDAQ
+
+			for p in phase:
+				self.ANT[1].ADCDAQ.set_divclk_phase(p)
+				self.sync() # make sure the capture now restarts properly with the right period and we recover fromm the PLL reset caused by phase change
+				for d in delay:
+					adcdaq.set_delay(d)
+					if sync: self.sync()
+					time.sleep(0.1)
+					data=adcdaq.get_pattern(period=11)
+					print 'CH%i DIVCLK phase: %2i, delay=%2i Bit %i: %s' % (ch,p,d,bit, ''.join(('0','1')[bool(d&(1<<bit))] for d in data))
+
+	def scan_divclk_phase(self,channel=0, bit=None):
+		self.ADC.set_test_mode(2) # generate pulse pattern
+		ch=channel
+		for phase in range(32):
+			self.sync()
+			time.sleep(0.1)
+			data= self.ANT[ch].ADCDAQ.get_pattern(period=11);
+			if bit is None:
+				print 'DIVCLK Phase=%2i CH%i:' % (phase,ch), data
+			else:
+				print 'DIVCLK Phase=%2i CH%i Bit %i: %s' % (phase,ch,bit, ''.join(('0','1')[bool(d&(1<<bit))] for d in data))
+
+	def compute_delays(self,channels=[0], offset=6):
+		data=self.read_eye_diagram(channels, offset=offset)
 		n=np.zeros((8,3),dtype=np.uint8)
 		delays={}
 
@@ -603,20 +631,23 @@ class chFPGA:
 			m=np.zeros(8,dtype=np.uint8)
 			for bit in range(8):
 				mask=1<<bit
-				d=(data[ch][:,N]&mask)/mask
+				d=(data[ch][:,0] & mask)/mask
 				m[bit]=np.sum(d*range(32))/np.sum(d)
 				print 'Bit %i:' % bit, ''.join('.#!O'[d[i] +2*bool(m[bit]==i)] for i in range(len(d))), 'Delay = %2i' % m[bit]
 
 			delays[ch]=m
 
 		return delays
-	def print_phase(self,channels=range(8)):
-		for phase in range(32):
+	def print_phase(self,channels=range(8), bit=None):
+		for phase in range(64):
 			self.ANT[1].ADCDAQ.set_divclk_phase(phase)
 			a= self.read_ADC_frame(channels=channels,reset=1,simulate=0,raw=1,verbose=0);
-			print 'PHASE = ', phase
 			for (ch,data) in a.iteritems():
-				print 'CH:',ch,': ',data[:10]
+				if bit is None:
+					print 'DIVCLK Phase=%2i CH%i:' % (phase,ch), data[:10]
+				else:
+					print 'DIVCLK Phase=%2i CH%i Bit %i: %s' % (phase,ch,bit, ''.join(('0','1')[bool(d&(1<<bit))] for d in data[:32]))
+
 
 	def ADC_plot_map(self, channel=0,bit=0):
 
@@ -685,7 +716,8 @@ class chFPGA:
 					pass
 			self.ADC_set_delay(ch,old_delays); # restore original delays
 			print ' Channel %i: Pass: %i (%.2f%%), fail: %i (%.2f%%)' % (ch, passed, passed*100.0/(passed+failed), failed, failed*100.0/(passed+failed))
-	def sync(self, continuous=0, sleep=0.3,phase=None,delay=None,plot=0,verbose=1,local=0):
+
+	def sync(self, continuous=0, sleep=0,phase=None,delay=None,plot=0,verbose=0,local=1):
 		if phase is not None:
 			self.ADC_PLL.init(phase=phase,verbose=verbose)
 		if plot:
@@ -698,17 +730,6 @@ class chFPGA:
 			while 1:
 				if verbose:
 					print 'Sync...'
-				#self.SYSMOD.ADC_DAQ_SERDES_SYNC=1 # Reset the SERDES while there is a clock (to allow the reset process to complete internally) and keep it there 
-				##self.SYSMOD.ADC_SYNC=1 # Stops the 400 MHz ADC output clock
-				#self.REFCLK.MASTER=1
-				#self.REFCLK.SYNC=1 # Stops the 400 MHz ADC output clock
-				## The ADC clock stops running here
-				#self.SYSMOD.ADC_DAQ_BUFR_SYNC=1 # Reset the BUFR, which divides the ADC clock by 2 to generate the 200 MHz word clock. The next rising edge of the word clock is therefore in a known phase relationship with the first word 
-				## ADC READY=false
-				#self.REFCLK.SMA_SYNC=1 # Stops the 400 MHz ADC output clock
-				#self.REFCLK.SMA_SYNC=0 # Stops the 400 MHz ADC output clock
-				#self.REFCLK.ENCODE_SYNC=1 # Stops the 400 MHz ADC output clock
-				#self.REFCLK.ENCODE_SYNC=0 # Stops the 400 MHz ADC output clock
 				if local:
 					self.REFCLK.local_sync(delay=delay)
 				else:
@@ -720,15 +741,34 @@ class chFPGA:
 				if plot:
 					plt.plot(s)
 					plt.draw()
-				#self.SYSMOD.ADC_DAQ_BUFR_SYNC=0 
-				#self.SYSMOD.ADC_DAQ_SERDES_SYNC=0 # Releases the SERDES RESET to start shifting the next byte in a known bit position 
-				## Still no 400 MHz and 200 MHz clock here. We can't reset anything that uses those clocks yet.
-				##self.SYSMOD.ADC_SYNC=0 # Restart the 400 MHz ADC output clock.
-				#self.REFCLK.SYNC=0 # Stops the 400 MHz ADC output clock
 				if not continuous: break
 				time.sleep(sleep)
 		except KeyboardInterrupt:
 			pass
+
+	def set_ADC_mode(self,test_mode=0, sync=1):
+		"""
+		Sets the test mode of both ADCs, sets the proper CAPTURE period, and sends a SYNC.
+			test_mode:
+				0 or 'normal': Normal mode (ADC output contains analog samples)
+				1 or 'ramp': Ramp mode (ADC output contains repeating 0-255 pattern. Note that ADCDAQ inverts bit 7 during acquisition to convert offset binary to 2's complement binary)
+				2 or 'pulse' or 'strobe' : Strobe mode (ADC output contains one 0xFF followed by ten 0x00. It repeats with a pariod of 11. Same comment as above)
+		111212 JFC: Added this high-level function with string mode.
+		"""
+
+		mode_strings={'n':0, 'r':1, 's':2, 'p':2} # define the test mode based on the first character of the test_mode string
+		mode_periods=(64,64,11) # repetition period (in words) for each mode
+		if isinstance(test_mode,str):
+			test_mode=mode_strings[test_mode[0].lower()]
+
+		self.ADC.set_test_mode(test_mode=test_mode)
+		self.current_ADC_mode=test_mode
+
+		for ant in self.ANT:
+			ant.ADCDAQ.CAPTURE2_PERIOD=mode_periods[test_mode] # set the period so we are ready to capture data correctly after the SYNC resets the CAPTURE logic
+
+		if sync:
+			self.sync() # make sure the ADC mode is set and that capture  restarts properly with the right period
 
 	def scan_phase(self):
 		for phase in range(0,200,5):
@@ -739,7 +779,7 @@ class chFPGA:
 				time.sleep(0.01)
 			#raw_input('Press [ENTER]')
 
-	def read_ADC_frame(self,channels=0,frames=1,verbose=1,length=1024,simulate=0, reset=1, fft=0, dummy=0,raw=0):
+	def read_ADC_frame(self,channels=0,frames=1,verbose=1,length=1024,simulate=0, sync=1, fft=0, dummy=0,raw=0):
 		"""
 		Triggers frame acquisition  from the specified ADC channel and capture the data.
 
@@ -747,7 +787,7 @@ class chFPGA:
 			channels: List of channels to configure and trigger. Will expect len(channels) frames. Frames from unexpected channels will cause an error
 			frames: Number of frames to acquire per channel. Limited by the buffer lengths in the FPGA
 			length: number of bytes to capture per channel. Must be a multiple of 4.
-			reset: when true, resets the antenna processor 
+			sync: when true, send a local sync and resets the antenna processor before acquiring the frames
 			raw: when true, returns the unsigned raw data from the ADC (bit 7 is not inverted)
 		History:
 			110916 JFC: Added comments. 
@@ -773,45 +813,19 @@ class chFPGA:
 		if isinstance(channels,int): # make sure that channel is a list of channels
 			channels=[channels]
 
-		if reset:
-			# Sync all modules in data path
-			for ant in self.ANT:
-				#print 'Resetting ANT[%i]' % ant.ant_number
-				ant.FR_DIST.TRIG_FRAME_COUNT=0 # Disable response to global trigger for all channnels by default. The requested ones will be re-enabled later. 
-			print 'Resetting and SYNCing the devices'
+		# Disable frame transmission for all antennas. Those thar are selected will be set-up later.
+		for ant in self.ANT:
+			ant.FR_DIST.TRIG_FRAME_COUNT=0 # Disable response to global trigger for all channnels by default. The requested ones will be re-enabled later. 
+
+		if sync:
+			if verbose:
+				print 'Resetting and SYNCing the devices'
 			self.sock.flush_data_socket()
-#			self.SYSMOD.FR_DIST_SYNC=1 
-			#self.SYSMOD.ADC_DAQ_SERDES_SYNC=1 # Reset the SERDES while there is a clock (to allow the reset process to complete internally) and keep it there 
-			#self.SYSMOD.ADC_SYNC=1 # Stops the 400 MHz ADC output clock
-#			self.REFCLK.MASTER=1
-#			self.REFCLK.SMA_SYNC=1 # Stops the 400 MHz ADC output clock
-#			self.sync()
-			# The ADC clock stops running here
-			#self.SYSMOD.ADC_DAQ_BUFR_SYNC=1 # Reset the BUFR, which divides the ADC clock by 2 to generate the 200 MHz word clock. The next rising edge of the word clock is therefore in a known phase relationship with the first word 
-			# ADC READY=false
-			#self.SYSMOD.ADC_DAQ_BUFR_SYNC=0 
-#			self.SYSMOD.FR_DIST_SYNC=0 #Release FR_DIST from forced reset
-			##self.SYSMOD.ADC_SYNC=0 
-			#self.SYSMOD.ADC_DAQ_SERDES_SYNC=0 # Releases the SERDES RESET to start shifting the next byte in a known bit position 
-			# Still no 400 MHz and 200 MHz clock here. We can't reset anything that uses those clocks yet.
-			#self.SYSMOD.ADC_SYNC=0 # Restart the 400 MHz ADC output clock.
-#			self.REFCLK.SMA_SYNC=0 # Stops the 400 MHz ADC output clock
-			# The ADC clock runs now. 
-			# After N samples, ADC_READY becomes TRUE and FR_DIST starts framing the data
-
-			##self.SYSMOD.pulse_bit('ADC_DAQ_SERDES_SYNC') # make sure all serdes clock their first bits at the same position
-			##self.SYSMOD.FR_DIST_SYNC=0 
-
-			# Now the clocks are restarting
-
-
-			# Make sure the CH_DIST buffers are empty
-			for ant in self.ANT:
-				ant.CH_DIST.pulse_bit('RESET') 
+			self.sync()
 	
 		for ch in channels:
 			ant=self.ANT[ch]
-			if reset:
+			if sync:
 				if simulate==0: # Source is ADC data
 					ant.ADCDAQ.ENABLE_RAMP=0
 					ant.FR_DIST.DSP_DATA_SRC_ADC=1 # Source is ADC DAQ
@@ -824,30 +838,25 @@ class chFPGA:
 					ant.FR_DIST.DSP_DATA_SRC_ADC=0 # Source is ADC DAQ
 				else:
 					raise Exception('Invalid simulation parameter')
+
+				ant.CH_DIST.pulse_bit('RESET') # Make sure the CH_DIST buffers are empty
+				ant.FR_DIST.reset_fifo() # if this automatically reset by SYNC now?
 				
-			if reset:
 				if fft:
 					self.FFTinit(ch)
 				else:
 					ant.DSP.BYPASS=0
-					ant.DSP.reset_sync()
+					ant.DSP.reset_sync() # recompute pipeline delays of selected DSP processing block
 
-				ant.FR_DIST.TRIG_FRAME_COUNT=frames # Set number of frames to send when triggered. 110916 JFC: re-enabled line
-				ant.FR_DIST.reset_fifo()
-				ant.CH_DIST.select_words(length//4); # Enable transmission of desired number of words 
+			ant.FR_DIST.TRIG_FRAME_COUNT=frames # Set number of frames to send when triggered. 110916 JFC: re-enabled line
+			ant.CH_DIST.select_words(length//4); # Enable transmission of desired number of words 
 
-		# Send a global trigger
-		#self.SYSMOD.global_trig() #trigger data acquisition  on all antennas
+
+		# Send a global trigger to start frame transmission
 		self.SYSMOD.GLOBAL_TRIG=0 #trigger data acquisition  on all antennas
 		self.SYSMOD.GLOBAL_TRIG=1 #trigger data acquisition  on all antennas
-		#self.ANT[channels[0]].FR_DIST.trig_frame(frames); # Trigger frame acquisition and transmission  
 
-#		if len(channel)==1:
-#		else:
-#			print 'Sending trig'
-#			self.pulse_bit(self.SYSTEM_PORT,self.FMC_SPI_MODULE,5,7); # Trigger transmission for all frames
-		#data=np.zeros((len(channels),output_length));
-
+		# Now we acquire the data
 		data={}
 		for j in range(len(channels)*frames):
 		#j=0
@@ -891,11 +900,18 @@ class chFPGA:
 			if verbose:
 				print 'Packet received from port %i. Frame header information: Antenna %i, Valid frame #=%i, Frame #=%i, Frame length=%i words, trigger count=%i' % (port, ant_number, frame_valid_ctr, frame_ctr, frame_length,self.ANT[ch].FR_DIST.TRIG_COUNT)
 				#print data
+
+			# Make sure there is an empty vector on the first storage so we can concatenate to it the new data
+			
 			if fft:
-				data[ch]=np.array([raw_data[i]+1j*raw_data[i+1] for i in range(0,1024,2)])
+				vector=np.array([raw_data[i]+1j*raw_data[i+1] for i in range(0,1024,2)])
 			else:
-				data[ch]=raw_data;
-			#ch+=1
+				vector=raw_data;
+
+			if ch not in data:
+				data[ch]=vector
+			else:
+				data[ch]=np.hstack((data[ch],vector));
 		return data		
 
 	def plot_ADC_frame(self, channels=0, hold=0, frames=1, continuous=0,xmax=1023,fft=0, sync_period=None, out_shift=0, fft_shift=None, filename=None,simulate=0,correlate=0,reset=0,length=1024):
@@ -942,11 +958,11 @@ class chFPGA:
 			while (continuous==1) or (number_of_frames<frames):
 				try:
 					print 'Reading data...'
-					a=self.read_ADC_frame(channels,length=1024,reset=(number_of_frames==0) or bool(reset),fft=fft,simulate=simulate) #(number_of_frames==0)
+					a=self.read_ADC_frame(channels,length=1024,sync=(number_of_frames==0) or bool(reset),fft=fft,simulate=simulate) #(number_of_frames==0)
 					ch1_data=a[ch1][:length]
 					if mult_chan: # select channels to correlate
 						ch2_data=a[ch2]
-					print 'CHa[0]=',hex(ch1_data[0]),'CHb[0]=',hex(ch2_data[0]), ' Difference=', ch1_data[0]-ch2_data[0]
+						print 'CHa[0]=',hex(ch1_data[0]),'CHb[0]=',hex(ch2_data[0]), ' Difference=', ch1_data[0]-ch2_data[0]
 					if fft: 
 						if correlate:
 							corr=ch1_data*conj(ch2_data)
@@ -975,7 +991,7 @@ class chFPGA:
 							plt.plot(ch1_data,'b-', ch2_data,'r-')
 						plt.axis([0,xmax,-ymax,ymax])
 						#plt.axis([0,xmax,-70,70])
-					plt.legend(('Ch%i' % ch1, 'Ch%i' % ch2))
+					#plt.legend(('Ch%i' % ch1, 'Ch%i' % ch2))
 					plt.draw()
 
 					if file:
@@ -991,8 +1007,9 @@ class chFPGA:
 		print 'Plotted %i frames' % number_of_frames
 		
 		
-	def plot_ADC_frame_fft(self, channels=0, hold=0, frames=1, continuous=0,xmax=1023, sync_period=None, fft=1, out_shift=0, fft_shift=None, filename=None,simulate=0):
+	def plot_ADC_frame_fft(self, channels=0, hold=0, frames=1, continuous=0,xmax=1023, sync_period=None, fft=1, out_shift=0, fft_shift=None, filename=None,simulate=0, contiguousFrames=8, length=1024):
 		'''
+		20120220KMB: added contiguous frames support
 		20110906KMB:  added fft plotting
 		20110909KMB: changed save to be npy files. other gave anomolous results.
 		20110919KMB:  got rid of correlation, added support for any number of channels
@@ -1006,6 +1023,7 @@ class chFPGA:
 			channels=[channels];
 		nchan = len(channels)
 		plt.figure(5, figsize=(6*nchan,6))
+		plt.ion()
 		#if not hold:
 		plt.clf()
 		plt.hold(hold)
@@ -1016,7 +1034,7 @@ class chFPGA:
 		
 		if fft:
 			#f=np.arange(1024)*1024.0/800.0
-			f=np.fft.fftfreq(1024,1/800.0)
+			f=np.fft.fftfreq(length*contiguousFrames,1/800.0)
 			for chanNum in chanIndex:
 				plt.subplot(2,nchan,chanNum+1)
 				plt.title('Spectrum')
@@ -1040,8 +1058,9 @@ class chFPGA:
 		try:
 			while (frames==0) or (frames!=0 and number_of_frames<frames):
 				try:
-					a=self.read_ADC_frame(channels,length=1024,reset=(number_of_frames==0),fft=0,simulate=simulate) #(number_of_frames==0)
+					a=self.read_ADC_frame(channels,length=length,sync=(number_of_frames==0),fft=0,simulate=simulate, frames=contiguousFrames) #(number_of_frames==0)
 					print a
+					#print f, f.shape
 					fa = np.zeros((nchan,len(a[channels[0]])))
 					if fft:
 						for chanNum in chanIndex:

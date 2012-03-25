@@ -32,13 +32,15 @@ class BitField:
 		Returns the Memory-mapped address corresponding to the bit field
 		"""
 		if self.page==self.CONTROL:
-			return 0x000+self.addr
+			return 0x000+(self.addr & 0x07F)
 		elif self.page==self.STATUS:
-			return 0x080+self.addr
+			return 0x080+(self.addr & 0x07F)
 		elif self.page==self.RAM:
-			return 0x200+self.addr
+			return 0x200+(self.addr & 0x1FF)
 		elif self.page==self.DRP:
-			return 0x200+(self.addr<<1)
+			return 0x200+((self.addr<<1) & 0x1FF)
+
+	addr=property(get_addr, doc='Returns the memory-mapped address of the current item')
 
 
 class Module_base(object):
@@ -94,6 +96,8 @@ class Module_base(object):
 	def read(self,addr,*args,**kwargs):
 		if isinstance(addr,int):
 			return self.fpga.read(self.port_number, self.module_number,addr,*args,**kwargs)
+		elif isinstance(addr,str):
+			return self.fpga.read(self.port_number, self.module_number,self.BITS[addr].addr,*args,**kwargs)
 
 	def read_bit(self,addr,bit): return bool(self.fpga.Read(self.port_number, self.module_number,addr)& (1<<bit))
 
