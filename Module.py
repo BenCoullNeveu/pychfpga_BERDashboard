@@ -76,6 +76,7 @@ class Module_base(object):
 #			print 'setting ',name
 			object.__setattr__(self,name,value)
 		else:
+			print "Class '%s' is locked: cannot assign new attribute '%s'" % (self, name)
 			raise AttributeError("Class '%s' is locked: cannot assign new attribute '%s'" % (self.__name__, name))
 
 	def __getitem__(self, index):
