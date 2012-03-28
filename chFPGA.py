@@ -13,6 +13,7 @@ chFPGA.py module
 # 2011-04-30 JFC : Modified UDP.py into chFPGA.py to implement higher level communication system
 # 2011-04 - 2011-08 JFC : Major modifications & cleanup
 # 2011-08-29 JFC: Moved hex to util to solve circular import reference.
+# 2012-03-27 JFC: Modified the read and write commands to support the new format following AXI4-Streaming implementation of the command bus
 """
 
 import time
@@ -105,9 +106,7 @@ class chFPGA:
 			self.BiasADC=BiasADC.BiasADC_base(self)
 
 			self.ANT=ANT.ANT_base(self)
-
-			print self.write(0,1,2,0x03)
-			
+	
 			# Initialize subsystems. This has to be done only once all subsystems are created because some subsystems depend on each other.
 
 			self.SYSMOD.init()
@@ -159,9 +158,11 @@ class chFPGA:
 			s=chr(0x00+(NBYTES<<3)+(ant>>2))+chr(((ant&0x03)<<6)+(module<<2)+(addr>>8))+chr(addr&0xff)
 			self.sock.write_control(s)
 			data=self.sock.read_control()
-			if data[0:2]!=s[0:2]:
-				print "Read: ERROR: Returned ANT/SUB/ADDR (",data[0:2]," does not match request values (",s[0:2],")"
-			dout[i]=ord(data[3]) # store received byte
+			#if data[0]!=s[0]:
+			#	print "Read: ERROR: Returned ANT/SUB/ADDR (",data[0:2]," does not match request values (",s[0:2],")"
+			if len(data)!=2:
+				print "Read: ERROR: %i bytes were returned" % len(data)
+			dout[i]=ord(data[1]) # store received byte
 			if incr: addr+=1
 		dout.dtype=np.dtype(type) # change interpretation of the byte array into a 'type' array
 
@@ -186,7 +187,7 @@ class chFPGA:
 		# build command packet
 		#s=chr(0x80+ant+(0x40 if incr else 0))+chr((module<<2)+(addr>>8))+chr(addr&0xFF) 
 		NBYTES=0
-		s=chr(0x80+(NBYTES<<3)+(ant>>2))+chr(((ant&0x03)<<6)+(module<<2)+(addr>>8))+chr(addr&0xff)
+		s=chr(0x80+(0x40 if incr else 0)+(NBYTES<<3)+(ant>>2))+chr(((ant&0x03)<<6)+(module<<2)+(addr>>8))+chr(addr&0xff)
 
 		# Add the data to the string. The method depends on the data type
 		if type(data)==str:
