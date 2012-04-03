@@ -59,8 +59,9 @@ class SYSMOD_base(Module_base):
 		super(self.__class__,self).__init__(fpga,fpga.SYSTEM_PORT, fpga.SYSTEM_SYSMOD_MODULE)
 		self._lock() # prevent further property creation to avoid creating attrubutes by mistake
 	def init(self):
-		#print 'LCD_RW=',self.LCD_RW #debug
-		self.lcd_init()
+		
+		#self.lcd_init()
+		pass
 
 	def read_bitstream_data(self):
 		return self.read(0x80+0x07, type=np.dtype('>u4'))

@@ -7,6 +7,7 @@ socketIO.py module. Implements socket communications to chFPGA
 History:
 	2011-08-14 JFC : Created from the code in chFPGA.py
 	2011-09-18 JFC: Added socket timout variable
+	2012-03-31 JFC: Removed manual ARP entry now that the firmware supports ARP protocol. Was a problem with Win 7 (running non-admin) and with a router.
 """
 
 import socket
@@ -27,9 +28,6 @@ class SocketIO_base(object):
 		self.IN_IP="10.10.10.10";
 		self.IN_PORT=41000;
 		self.IN_PORT_DATA=self.IN_PORT+1;
-
-		os.system('arp -s %s %s %s' % (self.OUT_IP,self.OUT_MAC_ADDR,self.IN_IP)) # set ARP table to let the computer know that this Ip request shpuld be sent to this MAC address. chFPGA does respond to ARP requests...
-
 
 	def open(self):
 		"""

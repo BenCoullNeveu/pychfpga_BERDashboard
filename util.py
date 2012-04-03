@@ -6,11 +6,11 @@ util.py module
  
 #
 # History:
-# 2011-08-29 : JFC : Chreated with hex() from chFPGA to eliminate circular imports
+# 2011-08-29 : JFC : Created with hex() from chFPGA to eliminate circular imports
 """
 
 import __builtin__
-
+import numpy as np
 
 def hex(arg):
 	""" Wrapper around the built-in hex function to allow hex conversion of arrays """ 

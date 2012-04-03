@@ -34,6 +34,7 @@ import Module
 import SocketIO
 # hardware subsystems handlers
 import SPI
+import I2C
 import SYSMON
 import SYSMOD
 import FreqCtr
@@ -47,6 +48,11 @@ import ADC_PLL
 import AmbTemp
 import BiasADC
 import MGT_PLL
+
+# I2C device handlers
+import FMC_EEPROM
+
+
 # Antenna processor handlers
 import ANT
 
@@ -54,7 +60,7 @@ import ANT
 # -- Module reloader -- 
 # Reload modules if we are debugging in case the source code has changed
 
-reload_modules=(util,SocketIO,Module,SPI,SYSMOD,SYSMON,REFCLK,AmbTemp,FreqCtr,ADC,IOExpander,ADC_PLL,BiasADC,MGT_PLL,ANT,MGT)
+reload_modules=(util,SocketIO,Module,SPI,I2C,SYSMOD,SYSMON,REFCLK,AmbTemp,FreqCtr,ADC,IOExpander,ADC_PLL,BiasADC,MGT_PLL,FMC_EEPROM,ANT,MGT)
 	
 
 for m in reload_modules: 
@@ -80,54 +86,97 @@ class chFPGA:
 	SYSTEM_FREQ_CTR_MODULE=2
 	SYSTEM_SYSMOD_MODULE=3
 	SYSTEM_REFCLK_MODULE=4
+	SYSTEM_I2C_MODULE=5
 
 
 	def __init__(self,adc_test_mode=0, adc_delay_table=None, fref=10):
 
+		print '*** Opening sockets ***'
 		# Create socket handled and open socket communications to chFPGA
 		self.sock=SocketIO.SocketIO_base()
 		self.sock.open();
 
 		try: # catch initialization errors so we can free the socket for future instantiation
+			print '*** Instantiating modules ***'
 		# Create handware handling objects
+			print '  - SYSMON'
 			self.SYSMON=SYSMON.SYSMON_base(self)
+			print '  - SPI'
 			self.SPI=SPI.SPI_base(self)
+			print '  - I2C'
+			self.I2C=I2C.I2C_base(self)
+			print '  - FreqCtr'
 			self.FreqCtr=FreqCtr.FreqCtr_base(self)
+			print '  - SYSMOD'
 			self.SYSMOD=SYSMOD.SYSMOD_base(self)
+			print '  - REFCLK'
 			self.REFCLK=REFCLK.REFCLK_base(self)
 
+			print '  - MGT'
 			self.MGT=MGT.MGT_base(self)
 
+			print '  - ADC'
 			self.ADC=ADC.ADC_base(self)
+			print '  - IOExpander'
 			self.IOExpander=IOExpander.IOExpander_base(self)
+			print '  - ADC_PLL'
 			self.ADC_PLL=ADC_PLL.ADC_PLL_base(self)
+			print '  - AmbTemp'
 			self.AmbTemp=AmbTemp.AmbTemp_base(self)
+			print '  - MGT_PLL'
 			self.MGT_PLL=MGT_PLL.MGT_PLL_base(self)
+			print '  - BiasADC'
 			self.BiasADC=BiasADC.BiasADC_base(self)
-
+			print '  - FMC EEPROM'
+			self.FMC_EEPROM=FMC_EEPROM.FMC_EEPROM_base(self)
+			print '  - ANT'
 			self.ANT=ANT.ANT_base(self)
 	
 			# Initialize subsystems. This has to be done only once all subsystems are created because some subsystems depend on each other.
+			print '*** Initializing modules ***'
 
+			print '  - SYSMOD'
 			self.SYSMOD.init()
 			self.SYSMOD.status()
+			print '  - REFCLK'
 			self.REFCLK.status()
+			print '  - SYSMON'
 			self.SYSMON.init()
 			self.SYSMON.status()
+			print '  - SPI'
 			self.SPI.init()
+			print '  - I2C'
+			self.I2C.init()
+			print '  - EEPROM'
+			self.FMC_EEPROM.init()
+			print '  - IOExpander'
 			self.IOExpander.init()
+			print '  - ADC_PLL'
 			self.ADC_PLL.init(fref=fref)
 		#	pdb.set_trace()
+			print '  - ADC'
+
 			self.ADC.init(test_mode=adc_test_mode);
+			print '  - AmbTemp'
+
 			self.AmbTemp.status()
+			print '  - ANT'
 			self.ANT.init()
+			print '  - MGT_PLL'
 			self.MGT_PLL.init(fref=fref)
+			print '  - MGT'
 			self.MGT.init() # MGT_PLL must be initialized first
+			print '  - Done with initializations'
+
+			print '*** Setting ADCDAQ delays ***'
 
 			if adc_delay_table:
 				self.ANT.set_delays(adc_delay_table)
 
+			print '*** Set ADC mode ***'
+
 			self.set_ADC_mode('Normal')
+			print '*** End of chFPGA initialization ***'
 
 		except:
 			print 'Error during chFPGA initialization. Closing socket communications'
