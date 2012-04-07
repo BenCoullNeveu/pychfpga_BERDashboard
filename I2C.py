@@ -9,6 +9,7 @@ I2C.py module
 """
 
 import numpy as np
+from util import  hex
 
 from Module import Module_base, BitField
 
@@ -23,7 +24,7 @@ class I2C_base(Module_base):
 	STATUS=BitField.STATUS
 
 	BITS={
-		'START' :   BitField(CONTROL,0x04,2,doc='A 0 to 1 transition on this bit starts I2C transaction'),
+		'START' :   BitField(CONTROL,0x04,7,doc='A 0 to 1 transition on this bit starts I2C transaction'),
 		'BYTES' :   BitField(CONTROL,0x04,0,2,doc='Number of bytes in the I2C communication (excluding the address byte) 1=1 Byte, 1=2 bytes, 2=3 bytes'),
 
 		'ACK_STATUS' : 	BitField(STATUS,0x080+ 0x05,0,8,doc='Ack bits'),
@@ -56,8 +57,9 @@ class I2C_base(Module_base):
 		if port<0 or port>1:
 			print 'I2C_read: port number is out of range'
 			return
+		self.write(0x000+0x05,port<<4)
 		self.write(0x000+0x00,[(addr<<1) | 0x01])
-		self.write(0x000+0x04,[0x00, 0x80+length+(port<<5)], incr=0)
+		self.write(0x000+0x04,[0x00+length, 0x80+length], incr=0)
 		#self.write(0x000+0x04,[0x80+length+(port<<5)])
 		self.wait_for_bit('DONE')
 		data=self.read(0x080+0x00, length=4, type=np.uint8)
@@ -76,25 +78,47 @@ class I2C_base(Module_base):
 		"""
 		#print 'i2c write called with addr-%i, data=%i' % (addr,data[0])
 		length=len(data)
+		self.write(0x000+0x05,port<<4)
 		self.write(0x000+0x00,[(addr<<1)+0x00]+data)
-		self.write(0x000+0x04,[0x00, 0x80+length+(port<<5)],incr=0)
+		self.write(0x000+0x04,[0x00+length, 0x80+length],incr=0)
 		#self.write(0x000+0x04,[0x80+length+(port<<5)]) # start transaction
 		self.wait_for_bit('DONE')
 		ack=self.ACK_STATUS
+		print 'I2C_write communication: ACK byte is 0x%02x' % ack
+		
 		if ack!=2**(length+1)-1:
 			print 'I2C_write communication error: did not receive correct ACK bits'
 			print 'I2C_write communication: ACK byte is 0x%02x' % ack
 		return
 
+	def i2c_reset(self, port=0, verbose=0):
+		""" 
+		"""
+		self.write(0x000+0x05,[0x80+(port<<5)])
+		self.write(0x000+0x05,[0x00+(port<<5)])
+
+	def i2c_status(self, verbose=0):
+		s=self.read(0x04,length=2)
+		print 'Current selected port: %i' % (s[0]&0b01100000)>>6
+		print 'Reset state: %i' % bool(s[1]&0x80)
+		print 'Force line SCK: %i, SDA: %i' % (bool(s[1]&0x02),bool(s[1]&0x01))
+		s=self.read(0x80,length=9)
+		print 'Read bytes:', hex(s[0:4])
+		print 'last state:', hex(s[4]>>4)
+		print 'SCK = %i, SDA= %i' %(bool(s[4]&0x02), bool(s[4]&0x01))
+		print 'ACK bits:', bin(s[5])
+		
+	
 	def i2c_write_read(self, port=0, addr=0, data=[0], length=1, verbose=0):
 		""" Serially writes 1-3 bytes to the specified I2C node, send a restart condition and reads 'length' (0-4) bytes. 
 		The written word must be padded so its total length covers the whole SPI transaction (read and write bits). 
 		"""
 		#print 'i2c write called with addr-%i, data=%i' % (addr,data[0])
 		write_length=len(data)
+		self.write(0x000+0x05,port<<4)
 		self.write(0x000+0x00,[(addr<<1)+0x00]+data)
 		#self.write(0x000+0x04,[0x00])
-		self.write(0x000+0x04,[0x00, 0x80+(port<<5)+(length<<2)+write_length],incr=0) # start transaction
+		self.write(0x000+0x04,[0x00+(length<<4)+write_length, 0x80+(length<<4)+write_length],incr=0) # start transaction
 		self.wait_for_bit('DONE')
 		data=self.read(0x080+0x00, length=4, type=np.uint8)
 		ack=self.ACK_STATUS
