@@ -3,13 +3,14 @@
 """
 I2C.py module 
  Implements I2C interface of chFPGFA
-#
-# History:
-# 2012-03-29 : JFC : Created from SPI.py
+
+ History:
+	2012-03-29 JFC : Created from SPI.py
+	2012-04-11 JFC : generalized i2c_write_read to allow simple read and writes. Trig the state machine (START) in two lines to make sure the 0-to-1 transition is not missed. Cleanup.
 """
 
 import numpy as np
-from util import  hex
+from util import hex
 
 from Module import Module_base, BitField
 
@@ -25,13 +26,35 @@ class I2C_base(Module_base):
 
 	BITS={
 		'START' :   BitField(CONTROL,0x04,7,doc='A 0 to 1 transition on this bit starts I2C transaction'),
-		'BYTES' :   BitField(CONTROL,0x04,0,2,doc='Number of bytes in the I2C communication (excluding the address byte) 1=1 Byte, 1=2 bytes, 2=3 bytes'),
+		'BYTES2' :   BitField(CONTROL,0x04,4,3,doc='Number of bytes to read back from the same address after the write sequence'),
+		'BYTES1' :   BitField(CONTROL,0x04,0,2,doc='Number of bytes in the I2C communication (excluding the address byte) 1=1 Byte, 1=2 bytes, 2=3 bytes'),
 
-		'ACK_STATUS' : 	BitField(STATUS,0x080+ 0x05,0,8,doc='Ack bits'),
+		'RESET' :   		BitField(CONTROL,0x05,7,doc='1 resets the I2C subsystem'),
+		'ALWAYS_CLK' :		BitField(CONTROL,0x05,6,doc='Force the generation if a clock even when idle (will prevent the system from detecting idle bus state unless STOP events are seen'),
+		'PORT' :			BitField(CONTROL,0x05,4,2,doc='I2C port number (0=FMC HPC EEPROM/ML605 EEPROM/ML605 EEPROM, 1=SMBus'),
+		'FORCE_SCK' : 		BitField(CONTROL,0x05,3,doc='Enables forcing SCK to the state identified in FORCE_SCK_STATE'),
+		'FORCE_SDA' : 		BitField(CONTROL,0x05,2,doc='Enables forcing SDA to the state identified in FORCE_SDA_STATE'),
+		'FORCE_SCK_STATE': 	BitField(CONTROL,0x05,1,doc='State to which SCK is forces when FORCE_SCK=1'),
+		'FORCE_SDA_STATE': 	BitField(CONTROL,0x05,0,doc='State to which SDA is forces when FORCE_SDA=1'),
+
+		'IDLE':		BitField(STATUS,0x080+ 0x04,7,doc='Indicates if the bus is idle'),
+		'TIMEOUT':	BitField(STATUS,0x080+ 0x04,4,doc='Indicates if a timeout has occured during the transaction'),
 		'COLLISION':BitField(STATUS,0x080+ 0x04,3,doc='Indicates if the transaction experienced a collision'),
 		'SCK' : 	BitField(STATUS,0x080+ 0x04,2,doc='State of the SCK line'),
 		'SDA' : 	BitField(STATUS,0x080+ 0x04,1,doc='State of the SDA line'),
 		'DONE' : 	BitField(STATUS,0x080+ 0x04,0,doc='High when I2C transaction is completed'),
+
+
+
+		'ACK_STATUS' : 	BitField(STATUS,0x080+ 0x05,0,8,doc='Ack bits'),
+
+		'BYTE_CTR' : 	BitField(STATUS,0x080+ 0x06,4,3,doc='Byte counter at end of transmission'),
+		'DIR' : 		BitField(STATUS,0x080+ 0x06,1,doc='Dirction at end of transmission'),
+		'BIT_CTR' : 	BitField(STATUS,0x080+ 0x06,0,3,doc='Bit counter at end of transmission'),
+
+		'START_CTR' : 	BitField(STATUS,0x080+ 0x07,4,4,doc='Counts the number of START events'),
+		'DONE_CTR' : 	BitField(STATUS,0x080+ 0x07,0,4,doc='Counts the number of DONE events'),
+
 	}
 
 
@@ -40,56 +63,81 @@ class I2C_base(Module_base):
 		self.fpga_instance=fpga;
 		super(self.__class__,self).__init__(fpga,fpga.SYSTEM_PORT, fpga.SYSTEM_I2C_MODULE)
 
-	# def read_reg(self, addr, length=1,  type=np.uint8):
-		# """ Reads from the SPI control register"""
-		# fpga=self.fpga_instance; # use a shorter variable name to access the FPGA instance attributes
-		# data=fpga.read(fpga.SYSTEM_PORT,fpga.SYSTEM_SPI_MODULE,addr, length=length, type=type)
-		# return data
-	# def write_reg(self, addr, data,  type=np.uint8):
-		# """ Writes to the SPI control register"""
-		# fpga=self.fpga_instance; # use a shorter variable name to access the FPGA instance attributes
-		# length=fpga.Write(fpga.SYSTEM_PORT,fpga.SYSTEM_SPI_MODULE,addr,data);
-		# return length
+	def i2c_write_read(self, port=0, addr=0, data=[0], read_length=0, verbose=0):
+		""" Serially writes 1-3 bytes to the specified I2C node, send a restart condition and reads 'read_length' (0-4) bytes. 
+		The written word must be padded so its total length covers the whole SPI transaction (read and write bits). 
+		"""
+		#verbose=1
+		if port<0 or port>1:
+			print 'i2c_write_read: port number is out of range'
+			raise ValueError()
+
+		if addr<0 or addr>0xFF:
+			print 'i2c_write_read: I2C address is out of range'
+			raise ValueError()
+
+		if read_length<0 or read_length>4:
+			print 'i2c_write_read: read_length is out of range'
+			raise ValueError()
+
+		write_length=len(data)
+		if write_length>3:
+			print 'i2c_write_read: write length is out of range'
+			raise ValueError()
+
+		if verbose:
+			print 'i2c_write_read:  writing %i and reading %i bytes at port %i at address 0x%02x with the following data:' % (write_length, read_length, port,addr), hex(data)
+
+		error=0
+		start_ctr=self.START_CTR
+		done_ctr=self.DONE_CTR
+
+		if start_ctr!=done_ctr:
+			print 'i2c_write_read: start_ctr is different from done_ctr'
+			error=1
+
+		self.write(0x000+0x05,port<<4) # disables RESET, set port number
+		if data is None: # if we do not write
+			self.write(0x000+0x00,[(addr<<1)+0x01]) # write I2C address with read flag to the transmit buffer 
+			expected_ack=2**(read_length+1)-1;
+		else: # if we write and optionnally read
+			self.write(0x000+0x00,[(addr<<1)+0x00]+data) # write address with write flag and data in transmit buffer (4 bytes max)
+			expected_ack=2**(read_length+write_length+1+(read_length!=0))-1
+		self.write(0x000+0x04,[0x00+(read_length<<4)+write_length]) # Prepare to start transaction by clearing the START bit
+		self.write(0x000+0x04,[0x80+(read_length<<4)+write_length]) # start transaction by creating a 0-to-1 trsnsition on the START bit. Do this as a separate transmission to make sure that the firmware registered the zero
+		self.wait_for_bit('DONE')
+		data=self.read(0x080+0x00, length=4, type=np.uint8)
+		ack=self.ACK_STATUS
+		if ack!=expected_ack:
+			print 'i2c_write_read: communication error: did not receive correct ACK bits. Received 0x%02x, expected 0x%02x' % (ack, expected_ack)
+			error=1
+		start_ctr=(start_ctr+1) % 16
+		done_ctr=(done_ctr+1) % 16
+		if self.START_CTR != start_ctr:
+			print 'i2c_write_read: communication error: start_ctr do not match. Read %i, expected %i' (self.START_CTR, start_ctr)
+			error=1
+		if self.DONE_CTR != done_ctr:
+			print 'i2c_write_read: communication error: done_ctr do not match. Read %i, expected %i' (self.DONE_CTR, DONE_ctr)
+			error=1
+
+		#print 'I2C communication: ACK byte is 0x%02x' % ack
+		data=data[-read_length:]
+		#data.dtype=np.dtype(type)
+		if not verbose and error:
+			print 'i2c_write_read:  The above errors occured while writing %i and reading %i bytes at port %i at address 0x%02x with the following data:' % (write_length, read_length, port,addr), hex(data)
+			raise SystemError()
+
+		return data
 
 	def i2c_read(self, port=0, addr=0, length=1,  type=np.uint8, verbose=0):
 		""" Serially reads 0-3 bytes  bytes long) from the I2C bus at the specified I2C address 
 		"""
-		if port<0 or port>1:
-			print 'I2C_read: port number is out of range'
-			return
-		self.write(0x000+0x05,port<<4)
-		self.write(0x000+0x00,[(addr<<1) | 0x01])
-		self.write(0x000+0x04,[0x00+length, 0x80+length], incr=0)
-		#self.write(0x000+0x04,[0x80+length+(port<<5)])
-		self.wait_for_bit('DONE')
-		data=self.read(0x080+0x00, length=4, type=np.uint8)
-		ack=self.ACK_STATUS
-		if ack!=2**(length+1)-1: # 
-			print 'I2C_read communication error: did not receive correct ACK bits, addr=%i, ack=%i' % (addr,ack)
-			#print 'I2C communication: ACK byte is %02x' % ack
-#		read_length=np.dtype(type).itemsize
-		data=data[-length:]
-		data.dtype=np.dtype(type)
-		return data
+		return self.i2c_write_read(port=port,addr=addr,data=None,read_length=length, verbose=verbose)
 
 	def i2c_write(self, port=0, addr=0, data=[0], verbose=0):
 		""" Serially writes 1-3 bytes to the specified I2C node 
-		The written word must be padded so its total length covers the whole SPI transaction (read and write bits). 
 		"""
-		#print 'i2c write called with addr-%i, data=%i' % (addr,data[0])
-		length=len(data)
-		self.write(0x000+0x05,port<<4)
-		self.write(0x000+0x00,[(addr<<1)+0x00]+data)
-		self.write(0x000+0x04,[0x00+length, 0x80+length],incr=0)
-		#self.write(0x000+0x04,[0x80+length+(port<<5)]) # start transaction
-		self.wait_for_bit('DONE')
-		ack=self.ACK_STATUS
-		print 'I2C_write communication: ACK byte is 0x%02x' % ack
-		
-		if ack!=2**(length+1)-1:
-			print 'I2C_write communication error: did not receive correct ACK bits'
-			print 'I2C_write communication: ACK byte is 0x%02x' % ack
-		return
+		return self.i2c_write_read(port=port,addr=addr,data=data,read_length=0, verbose=verbose)
 
 	def i2c_reset(self, port=0, verbose=0):
 		""" 
@@ -109,25 +157,6 @@ class I2C_base(Module_base):
 		print 'ACK bits:', bin(s[5])
 		
 	
-	def i2c_write_read(self, port=0, addr=0, data=[0], length=1, verbose=0):
-		""" Serially writes 1-3 bytes to the specified I2C node, send a restart condition and reads 'length' (0-4) bytes. 
-		The written word must be padded so its total length covers the whole SPI transaction (read and write bits). 
-		"""
-		#print 'i2c write called with addr-%i, data=%i' % (addr,data[0])
-		write_length=len(data)
-		self.write(0x000+0x05,port<<4)
-		self.write(0x000+0x00,[(addr<<1)+0x00]+data)
-		#self.write(0x000+0x04,[0x00])
-		self.write(0x000+0x04,[0x00+(length<<4)+write_length, 0x80+(length<<4)+write_length],incr=0) # start transaction
-		self.wait_for_bit('DONE')
-		data=self.read(0x080+0x00, length=4, type=np.uint8)
-		ack=self.ACK_STATUS
-		if ack!=2**(length+write_length+2)-1:
-			print 'I2C_write_read communication error: did not receive correct ACK bits'
-		#print 'I2C communication: ACK byte is 0x%02x' % ack
-		data=data[-length:]
-		#data.dtype=np.dtype(type)
-		return data
 
 	def init(self):
 		pass

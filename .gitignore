@@ -2,3 +2,5 @@
 *.pyc
 *.pyo
 *.bak
+/Archives
+*.7z
