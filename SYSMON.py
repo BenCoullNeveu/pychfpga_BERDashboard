@@ -105,13 +105,17 @@ class SYSMON_base(object):
 			12V Current:  Current sense resistor: 0.002 ohm (schematic is wrong, Hardware manual section 22 is right) , Amplifier gain (INA213): 50, Measured on Vaux<12>
 			12V Voltage: Measured through a resistor divider (1/24) on Vaux<13>
 		"""
+		Vin=self.voltage(self.VAUX_VOLT_ADDR,vref=1.0)*24
+		Iin=self.voltage(self.VAUX_CURR_ADDR,vref=1.0)/(0.002*50)
 		print '--------------- VIRTEX 6 System Monitor statistics ---------------'
 		print 'Core Temperature:   %5.1f C (%.2f C min, %.1f C max)' % (self.temperature(self.TEMP_ADDR),self.temperature(self.TEMP_MIN_ADDR),self.temperature(self.TEMP_MAX_ADDR))
 		print 'VccINT Voltage:     %5.2f V (%.2f V min, %.2f V max)' % (self.voltage(self.VCCINT_ADDR),self.voltage(self.VCCINT_MIN_ADDR),self.voltage(self.VCCINT_MAX_ADDR))
-		print 'VccINT Current:     %5.2f A, (ADC input= %.2f V' % (self.voltage(self.VAUX_VPVN_ADDR,vref=1.0)/0.005,self.voltage(self.VAUX_VPVN_ADDR,vref=1.0))
+		print 'VccINT Current:     %5.2f A, (ADC input= %.2f mV' % (self.voltage(self.VAUX_VPVN_ADDR,vref=1.0)/0.005,self.voltage(self.VAUX_VPVN_ADDR,vref=1.0)*1000)
 		print 'VccAUX Voltage:     %5.2f V (%.2f V min, %.2f V max)' % (self.voltage(self.VCCAUX_ADDR),self.voltage(self.VCCAUX_MIN_ADDR),self.voltage(self.VCCAUX_MAX_ADDR))
-		print '12V Supply Voltage: %5.2f V (ADC input=%.2f V )' % (self.voltage(self.VAUX_VOLT_ADDR,vref=1.0)*24,self.voltage(self.VAUX_VOLT_ADDR,vref=1.0))
-		print '12V Supply Current: %5.2f A (ADC input=%.2f V )' % (self.voltage(self.VAUX_CURR_ADDR,vref=1.0)/(0.002*50),self.voltage(self.VAUX_CURR_ADDR,vref=1.0))
+		print '12V Supply Voltage: %5.2f V (ADC input=%.2f V )' % (Vin,self.voltage(self.VAUX_VOLT_ADDR,vref=1.0))
+		print '12V Supply Current: %5.2f A (ADC input=%.2f V )' % (Iin,self.voltage(self.VAUX_CURR_ADDR,vref=1.0))
+		print '12V Power         : %5.2f W ' % (Vin*Iin)
 		print 'VREFP Voltage:      %5.2f V' % (self.voltage(self.VAUX_VREFP_ADDR))
 		print 'VREFN Voltage:      %5.2f V' % (self.voltage(self.VAUX_VREFN_ADDR))
+		print '------------------------------------------------------------------'
 

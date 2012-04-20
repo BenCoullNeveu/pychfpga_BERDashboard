@@ -51,6 +51,7 @@ import MGT_PLL
 
 # I2C device handlers
 import FMC_EEPROM
+import ML605_PMBus
 
 
 # Antenna processor handlers
@@ -60,7 +61,7 @@ import ANT
 # -- Module reloader -- 
 # Reload modules if we are debugging in case the source code has changed
 
-reload_modules=(util,SocketIO,Module,SPI,I2C,SYSMOD,SYSMON,REFCLK,AmbTemp,FreqCtr,ADC,IOExpander,ADC_PLL,BiasADC,MGT_PLL,FMC_EEPROM,ANT,MGT)
+reload_modules=(util,SocketIO,Module,SPI,I2C,SYSMOD,SYSMON,REFCLK,AmbTemp,FreqCtr,ADC,IOExpander,ADC_PLL,BiasADC,MGT_PLL,FMC_EEPROM,ML605_PMBus,ANT,MGT)
 	
 
 for m in reload_modules: 
@@ -129,6 +130,9 @@ class chFPGA:
 			self.BiasADC=BiasADC.BiasADC_base(self)
 			print '  - FMC EEPROM'
 			self.FMC_EEPROM=FMC_EEPROM.FMC_EEPROM_base(self)
+			print '  - ML605 PMBus'
+			self.ML605_PMBus=ML605_PMBus.ML605_PMBus_base(self)
+
 			print '  - ANT'
 			self.ANT=ANT.ANT_base(self)
 	
@@ -149,6 +153,12 @@ class chFPGA:
 			self.I2C.init()
 			print '  - EEPROM'
 			self.FMC_EEPROM.init()
+			self.FMC_EEPROM.status()
+
+			print '  - ML605 PMBus'
+			self.ML605_PMBus.init()
+			self.ML605_PMBus.status()
+
 			print '  - IOExpander'
 			self.IOExpander.init()
 			print '  - ADC_PLL'
