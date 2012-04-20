@@ -32,7 +32,7 @@ class SPI_base(Module_base):
 
 	BITS={
 		'ADDR' : 	BitField(CONTROL,0x04,4,4,doc='Address of SPI device to communicate with'),
-		'RESET' :   BitField(CONTROL,0x04,3,doc='Resets the SPI state machine'),
+		'RESET' :   BitField(CONTROL,0x04,3,doc='Resets the SPI state machine. NOTE: Only available on the HPC connector'),
 		'START' :   BitField(CONTROL,0x04,2,doc='A 0 to 1 transition on this bit starts SPI read/write'),
 		'BYTES' :   BitField(CONTROL,0x04,0,2,doc='Number of bytes in the SPI communication 0=1 Byte, 1=2 bytes, 2=3 bytes, 3=4 bytes'),
 
