@@ -675,7 +675,7 @@ class chFPGA:
 			else:
 				print 'DIVCLK Phase=%2i CH%i Bit %i: %s' % (phase,ch,bit, ''.join(('0','1')[bool(d&(1<<bit))] for d in data))
 
-	def compute_delays(self,channels=[0], offset=6):
+	def compute_delays(self,channels=[0], offset=5):
 		data=self.read_eye_diagram(channels, offset=offset)
 		n=np.zeros((8,3),dtype=np.uint8)
 		delays={}

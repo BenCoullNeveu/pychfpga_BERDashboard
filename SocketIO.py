@@ -8,10 +8,12 @@ History:
 	2011-08-14 JFC : Created from the code in chFPGA.py
 	2011-09-18 JFC: Added socket timout variable
 	2012-03-31 JFC: Removed manual ARP entry now that the firmware supports ARP protocol. Was a problem with Win 7 (running non-admin) and with a router.
+	2012-05-18 JFC: Let the code automatically determine the host computer IP address on which to open a listening port
 """
 
 import socket
 import os
+import numpy as np
 
 timeout=socket.timeout #110918 JFC
 
@@ -19,15 +21,15 @@ class SocketIO_base(object):
 	def __init__(self):
 
 		# Defines basic variables
-		
+		self.netmask='255.255.0.0' # network mask used to find the host address that is on the same subnet as the target IP. This does not affect the network adapter settings.
 		self.OUT_IP="10.10.10.11"
-		self.OUT_PORT=41000
+		self.OUT_PORT=41000 # Control port on the FPGA
 		self.OUT_ADDR=(self.OUT_IP, self.OUT_PORT)
-		self.OUT_MAC_ADDR='12-34-56-78-9a-bc'
+		#self.OUT_MAC_ADDR='12-34-56-78-9a-bc' # Not needed anymore now that we have ARP
 		
-		self.IN_IP="10.10.10.10";
-		self.IN_PORT=41000;
-		self.IN_PORT_DATA=self.IN_PORT+1;
+		self.IN_IP=None; # When None, the host address is automatically determined 
+		self.IN_PORT=41000; # Control port on the host to receive command replies
+		self.IN_PORT_DATA=self.IN_PORT+1; # Data port on the host (Control port +1), to receive frame data
 
 	def open(self):
 		"""
@@ -42,9 +44,13 @@ class SocketIO_base(object):
 		err = self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 32768);
 		err = self.sock_data.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 32768);
 #		print self.sock.getsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF)
-		self.sock.bind((self.IN_IP, self.IN_PORT));
-		self.sock_data.bind((self.IN_IP, self.IN_PORT_DATA));
-		print 'Opened UDP Socket communications on %s:%i and %s:%i' % (self.IN_IP, self.IN_PORT, self.IN_IP, self.IN_PORT_DATA)
+		if self.IN_IP is None:
+			host_addr=self.get_host_addr(dest_addr=self.OUT_IP, netmask=self.netmask)
+		else:
+			host_name=self.IN_IP
+		self.sock.bind((host_addr, self.IN_PORT));
+		self.sock_data.bind((host_addr, self.IN_PORT_DATA));
+		print 'Opened UDP Socket communications. Listening on %s:%i (control) and %s:%i (data)' % (host_addr, self.IN_PORT, host_addr, self.IN_PORT_DATA)
 
 
 	def close(self):
@@ -97,3 +103,21 @@ class SocketIO_base(object):
 			#print('Buffer is empty');
 		self.sock_data.settimeout(1);
 
+	def get_host_addr(self,dest_addr,netmask='255.255.0.0', only_one=True):
+		"""
+		Returns the IP of the host adapter that is on the same subnet as the specified destination IP given the net mask
+		"""
+		host_data=socket.gethostbyname_ex(socket.gethostname()) # get the list of IP addresses associated with this computer
+		host_addr_list=host_data[2] # get the list of IP addresses associated with this computer
+		dest_addr_vect=np.array(map(ord,socket.inet_aton(dest_addr))) # convert the target IP into a vector
+		netmask_vect=np.array(map(ord,socket.inet_aton(netmask))) # convert the net mask into a vector
+		
+		matched_addr=[];
+		for host_addr in host_addr_list:
+			host_addr_vect=np.array(map(ord,socket.inet_aton(host_addr))) # convert the host address into a vector
+			if all((host_addr_vect & netmask_vect)==(dest_addr_vect & netmask_vect)):
+				matched_addr.append(host_addr)
+		if only_one and len(matched_addr)!=1:
+			raise SystemError('Could not determine the host address. Found %i possible matches for %s/%s on the following adapters for %s : %s' % (len(matched_addr),dest_addr,netmask, host_data[0], ', '.join(host_addr_list)))
+		return matched_addr[0]
+		
