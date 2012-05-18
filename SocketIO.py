@@ -23,7 +23,7 @@ class SocketIO_base(object):
 		# Defines basic variables
 		self.netmask='255.255.0.0' # network mask used to find the host address that is on the same subnet as the target IP. This does not affect the network adapter settings.
 		self.OUT_IP="10.10.10.11"
-		self.OUT_IP="192.168.0.103"
+		#self.OUT_IP="192.168.0.103" # if accessing from the WAN side of the router. Address is dynamic and may change over time.
 		self.OUT_PORT=41000 # Control port on the FPGA
 		self.OUT_ADDR=(self.OUT_IP, self.OUT_PORT)
 		#self.OUT_MAC_ADDR='12-34-56-78-9a-bc' # Not needed anymore now that we have ARP
