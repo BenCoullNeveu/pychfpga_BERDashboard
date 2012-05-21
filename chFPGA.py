@@ -1071,7 +1071,7 @@ class chFPGA:
 		print 'Plotted %i frames' % number_of_frames
 		
 		
-	def plot_ADC_frame_fft(self, channels=0, hold=0, frames=1, continuous=0,xmax=1023, sync_period=None, fft=1, out_shift=0, fft_shift=None, filename=None,simulate=0, contiguousFrames=8, length=1024):
+	def plot_ADC_frame_fft(self, channels=0, hold=0, frames=1, continuous=0,xmax=1023, sync_period=None, fft=1, out_shift=0, fft_shift=None, filename=None,simulate=0, contiguousFrames=1, length=1024):
 		'''
 		20120220KMB: added contiguous frames support
 		20110906KMB:  added fft plotting
