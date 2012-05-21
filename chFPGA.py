@@ -1095,19 +1095,24 @@ class chFPGA:
 
 		
 		chanIndex = range(nchan)
+		plotFFTObject = range(nchan)
+		plotObject = range(nchan)
 		
 		if fft:
 			#f=np.arange(1024)*1024.0/800.0
 			f=np.fft.fftfreq(length*contiguousFrames,1/800.0)
+			zeros=np.zeros(len(f))
 			for chanNum in chanIndex:
 				plt.subplot(2,nchan,chanNum+1)
 				plt.title('Spectrum')
 				plt.xlabel('Frequency (MHz)')
-				plt.ylabel('Amplitude');
+				plt.ylabel('Amplitude')
+				plotFFTObject[chanNum], = plt.plot(f,zeros ,'b.-')
 				plt.subplot(2,nchan,nchan+chanNum+1)
 				plt.title('Timestream')
 				plt.xlabel('sample')
-				plt.ylabel('Amplitude');
+				plt.ylabel('Amplitude')
+				plotObject[chanNum], = plt.plot(zeros ,'b.-')
 
 		
 		mult_chan = nchan>1
@@ -1140,11 +1145,13 @@ class chFPGA:
 					if fft:
 						for chanNum in chanIndex:
 							plt.subplot(2,nchan,chanNum+1);
-							plt.plot(f,10*np.log10(np.abs(fa[chanNum])**2) ,'b.-')
+							plotFFTObject[chanNum].set_ydata(10*np.log10(np.abs(fa[chanNum])**2))
+							###plt.plot(f,10*np.log10(np.abs(fa[chanNum])**2) ,'b.-')
 							#plt.axis([0,fmax,0,ftmax])
 							plt.ylim(0,100)
 							plt.subplot(2,nchan,nchan+chanNum+1);
-							plt.plot(a[channels[chanNum]] ,'b.-')
+							###plt.plot(a[channels[chanNum]] ,'b.-')
+							plotObject[chanNum].set_ydata(a[channels[chanNum]])
 							#plt.axis([0,xmax,-ymax,ymax])
 							plt.axis([0,xmax,-128,127])
 					else:

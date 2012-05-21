@@ -9,8 +9,8 @@ top_test.py script
 # History:
 # 2011-08-14 : JFC : Created from chFPGA, which now only contains top test code.
 """
-import matplotlib
-matplotlib.use("TkAgg")
+#import matplotlib
+#matplotlib.use("TkAgg")
 import chFPGA
 reload(chFPGA) # just to make sure that any changes to the code are reloaded
 
