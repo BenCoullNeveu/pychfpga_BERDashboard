@@ -1127,7 +1127,7 @@ class chFPGA:
 		try:
 			while (frames==0) or (frames!=0 and number_of_frames<frames):
 				try:
-					a=self.read_ADC_frame(channels,length=length,sync=(number_of_frames==0),fft=0,simulate=simulate, frames=contiguousFrames) #(number_of_frames==0)
+					a=self.read_ADC_frame(channels, length=length,sync=(number_of_frames==0),fft=0,simulate=simulate, frames=contiguousFrames) #(number_of_frames==0)
 					print a
 					#print f, f.shape
 					fa = np.zeros((nchan,len(a[channels[0]])))
@@ -1176,8 +1176,49 @@ class chFPGA:
 			#file.close()
 		print 'Plotted %i frames' % number_of_frames
 	
+	def save_ADC_frames(self, channels=0, verbose=0, frames=1, continuous=0,xmax=1023, sync_period=None, out_shift=0, fft_shift=None, filename=None,simulate=0, contiguousFrames=1, length=1024):	
+		'''
+		20120521KMB: created to just save stream data without plotting 
+		'''
+		#if filename:
+		data_list = []
+		#	#file=open(filename,'w')
+		#else:
+		#	#file=None
+		if type(channels) is int: # make sure that 'channels' is a list
+			channels=[channels];
+		nchan = len(channels)
+		chanIndex = range(nchan)
+
 		
+		mult_chan = nchan>1
+
+		#corr_sum=np.zeros(512,dtype=complex)
+		number_of_frames=0
+
 		
+		ymax=1
+#		if fft:
+#			self.FFTinit(ant=channel,sync_period=sync_period, out_shift=out_shift, fft_shift=fft_shift);
+		try:
+			while (frames==0) or (frames!=0 and number_of_frames<frames):
+				try:
+					a=self.read_ADC_frame(channels,verbose=verbose,length=length,sync=(number_of_frames==0),fft=0,simulate=simulate, frames=contiguousFrames) #(number_of_frames==0)
+					#print a
+					number_of_frames+=1					
+					if filename:
+						for chanNum in chanIndex:
+							data_list.append(a[channels[chanNum]])
+							#file.write(np.int8(a[ch1,:]))
+				except:
+					raise
+		except KeyboardInterrupt:
+			pass
+		if filename:
+			np.array(data_list)
+			np.save(filename,data_list)
+			#file.close()
+		print 'Saved %i frames' % number_of_frames
 		
 		
 		

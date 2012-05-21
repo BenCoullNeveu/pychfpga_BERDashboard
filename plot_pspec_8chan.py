@@ -38,13 +38,13 @@ for filenum in range(nfiles):
    for j in arange(data.shape[0]):
       for k in arange(nchan):
          #data[j,k,:] = gauss_window(data[j,k,:], sig)
-	     data[j,k,:] = hann_window(data[j,k,:])
-	     #data[j,k,:] = data[j,k,:]
+	     #data[j,k,:] = hann_window(data[j,k,:])
+	     data[j,k,:] = data[j,k,:]
    fftall = fft.fft(data)
    #convert to Vrms units
    fftall = fftall[:,:,:slength/2]*sqrt(2)/slength
    #convert to dbm assumes 50 ohms in.
-   pspec = 10*log10((fftall*fftall.conjugate()).mean(axis=0)/50.0) + 30.0
+   pspec = 10*log10(1e-20+(fftall*fftall.conjugate()).mean(axis=0)/100.0) + 30.0  #changed from 50 to 100 since adc is actually 100 ohms might be wrong
    pspec[:,0] = 0
    print pspec.max()
    pspecs.append(pspec)
