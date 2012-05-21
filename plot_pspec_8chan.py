@@ -43,7 +43,7 @@ for filenum in range(nfiles):
    fftall = fft.fft(data)
    #convert to Vrms units
    fftall = fftall[:,:,:slength/2]*sqrt(2)/slength
-   #convert to dbm assumes 50 ohms in.
+   #convert to dbm had assumed 50 ohms in. changed to 100 ohms across the adc
    pspec = 10*log10(1e-20+(fftall*fftall.conjugate()).mean(axis=0)/100.0) + 30.0  #changed from 50 to 100 since adc is actually 100 ohms might be wrong
    pspec[:,0] = 0
    print pspec.max()
