@@ -1154,6 +1154,7 @@ class chFPGA:
 							plotObject[chanNum].set_ydata(a[channels[chanNum]])
 							#plt.axis([0,xmax,-ymax,ymax])
 							plt.axis([0,xmax,-128,127])
+							plt.draw()
 					else:
 						for chanNum in chanIndex:
 							plt.subplot(2,nchan,chanNum)
