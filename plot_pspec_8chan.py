@@ -4,7 +4,7 @@ import pylab, sys
 pspecs = []
 ii=1
 #size of sample block
-slength = 1024
+slength = 4096 #1024
 #number of channels
 nchan=8
 sig = 0.2
