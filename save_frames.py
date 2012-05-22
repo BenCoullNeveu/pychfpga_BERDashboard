@@ -61,8 +61,8 @@ SN002_adc_delays=(
 
 if __name__=='__main__':		
 	print '------------------------'
-	print 'top_test.py: chFGPA test script'
-	print 'J.-F. Cliche'
+	print 'Saving data to npy file'
+	print 'J.-F. Cliche, Kevin Bandura'
 	print '------------------------'
 
 	# Delete previous instances of 'c' to make sure the sockets are closed. If not, the new object will not be able to open the socket.
@@ -85,5 +85,6 @@ if __name__=='__main__':
 	# Displays the system frequencies
 	c.FreqCtr.status()
 	# save some number of frames to disk.
-	c.save_ADC_frames(channels=[0,1,2,3,4,5,6,7], frames=512, filename='testing.npy')
+	
+	c.save_ADC_frames(channels=[0,1,2,3,4,5,6,7], frames=2048, contiguousFrames=4, filename='testing2.npy')
 
