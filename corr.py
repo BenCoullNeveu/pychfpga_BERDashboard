@@ -12,7 +12,7 @@ def hann_window(data):
     return data*0.5*(1-cos(2*pi*x/(npoints-1)))
 
 def sim_data(sigma=12, dataLength=1024, nchan = 4):
-    return (sigma*np.random.randn(nchan,dataLength)).round().astype(int8)
+    return (sigma*np.random.randn(nchan,dataLength)).round().astype(np.int8)
 
 def fourier_transform(data):
     out = np.fft.fft(data)[:,:data.shape[1]/2]
@@ -26,15 +26,17 @@ def corr(nchan, fdata, accumulator):
     
 if __name__ == "__main__":
     #import sys
-    import pp
-    intLoops = 2048 #sys.argv[1]
+    import pp, time
+    intLoops = 5048 #sys.argv[1]
     nchan = 4
     length = 1024
-    accumulator = zeros(((nchan*(nchan+1))/2,length/2))
+    accumulator = np.zeros(((nchan*(nchan+1))/2,length/2))
     #pdata = 
+    st = time.time()
     for i in np.arange(intLoops):
         data = sim_data(dataLength=length, nchan=nchan)
         fdata = fourier_transform(data)
         accumulator = corr(nchan, fdata, accumulator)
     accumulator = accumulator/intLoops
-
+    et = time.time()
+    print "took " + str(et - st ) + ' seconds'
