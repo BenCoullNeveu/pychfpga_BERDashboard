@@ -106,18 +106,21 @@ class ADC_PLL_base(object):
 
 		int_div-=1*fractional_mode
 		frac_div=modulus*fractional_mode; #0-4095 Non-zero for frationnal mode
-		fvco=(int_div+float(frac_div)/modulus)*fref if FB_select else (int_div+float(frac_div)/modulus)*fref*fdiv
+		fvco=(int_div+float(frac_div)/modulus)*fref/(rdiv2+1) if FB_select else (int_div+float(frac_div)/modulus)*fref/(rdiv2+1)*fdiv
 
 		if int_div<23 or int_div>65535:
 			raise Exception('Integer division factor is out of range (it_div=%i, range is 23-65535)' % int_div)
 
 		if verbose:
-			print ' Reference integer multiplication factor: %i' % int_div 
-			print ' Reference fractional multiplication factor/modulus: %i/%i' % (frac_div,modulus) 
-			print ' Output division factor: %i' % fdiv 
+			print ' Reference divide-by-2 enabled: %s' % bool(rdiv2) 
+			print ' PFB frequency: %.0f MHz' % (fref/(1+rdiv2)) 
+			print ' Integer multiplication factor: %i' % int_div 
+			print ' Fractional multiplication factor/modulus: %i/%i' % (frac_div,modulus) 
+			print ' Total multiplication factor: %i' % (int_div+float(frac_div)/modulus) 
 			print ' Feedback includes output dividor: %s' %  (not FB_select)
 			print ' VCO Frequency: %.3f MHz (%.0f MHz min, %.0f MHz max)' % (fvco,fmin,fmax)
-			print ' Programmed PLL output frequency: %.3f' % (float(fvco)/fdiv) 
+			print ' Output division factor: %i' % fdiv 
+			print ' Programmed output frequency: %.3f' % (float(fvco)/fdiv) 
  
 
 		# Override variable names if any is specified in the function call

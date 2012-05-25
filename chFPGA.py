@@ -161,6 +161,7 @@ class chFPGA:
 
 			print '  - IOExpander'
 			self.IOExpander.init()
+
 			print '  - ADC_PLL'
 			self.ADC_PLL.init(fref=fref)
 		#	pdb.set_trace()
@@ -172,10 +173,12 @@ class chFPGA:
 			self.AmbTemp.status()
 			print '  - ANT'
 			self.ANT.init()
-			print '  - MGT_PLL'
-			self.MGT_PLL.init(fref=fref)
-			print '  - MGT'
-			self.MGT.init() # MGT_PLL must be initialized first
+
+			# MGT is disabled	
+			#print '  - MGT_PLL'
+			#self.MGT_PLL.init(fref=fref)
+			#print '  - MGT'
+			#self.MGT.init() # MGT_PLL must be initialized first
 			print '  - Done with initializations'
 
 			print '*** Setting ADCDAQ delays ***'

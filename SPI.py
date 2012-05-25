@@ -59,7 +59,7 @@ class SPI_base(Module_base):
 		length=fpga.Write(fpga.SYSTEM_PORT,fpga.SYSTEM_SPI_MODULE,addr,data);
 		return length
 
-	def read_write(self, device=2, data=[0x00,0x00,0x00,0x00],  type=np.uint8, verbose=0):
+	def read_write(self, device=2, data=[0x00,0x00,0x00,0x00],  type=np.uint8, verbose=1):
 		""" Serially writes a word (1-4 bytes long) to the specified device on the SPI bus while reading serial data put the bus at the same time
 		The written word must be padded so its total length covers the whole SPI transaction (read and write bits). 
 		"""
