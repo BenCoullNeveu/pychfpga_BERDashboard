@@ -61,64 +61,13 @@ def convert_format(accumulator):
         interleave_a[:,i * 2 + 1] = acc_imag[:,i]
     return interleave_a
 
-def get_ADC_frames(c, channels, length=1024, frames=2):
-    number_of_frames=0
-    data_list=[]
-    while (frames==0) or (frames!=0 and number_of_frames<frames):
-        try:
-            a=c.read_ADC_frame_simple(channels,length=length, frames=contiguousFrames) #(number_of_frames==0)
-            #print a
-            number_of_frames+=1					
-            if filename:
-                for chanNum in chanIndex:
-                    data_list.append(a[channels[chanNum]])
-        #file.write(np.int8(a[ch1,:]))
-        except:
-            raise
-    np.array(data_list)
-    return data_list
-
-
-SN002_adc_delays=(
-                  [16,22,22,22,22,22,22,22]+[0], #CH0 (BUFR)
-                  [21]*8, #CH1 (BUFR)
-                  [22]*8+[0], #CH2 (PLL)
-                  [18]*8+[0], #CH3 (PLL)
-                  [17]*8, #CH4 (BUFR)
-                  [17]*8, #CH5 (BUFR)
-                  [18]*8, #CH6 (BUFR)
-                  [14]*8, #CH7 (BUFR)
-                  )
+    
     
 
 if __name__ == "__main__":
   #import sys
   import time, os
   try:
-          print 'Deleting previous chFPGA instances in current namespace'
-          c.close() # close sockets from previous objects to free them for the new one
-          del c
-  except:
-          pass
-      
-  ADC_TEST_MODE=0 	#  0= normal, 1= ramp, 2=pulse (1 high, 10 low)
-  ADC_DELAY_TABLE=SN002_adc_delays # select the table corresponding to the FMC serial number
-  FREF=10 # FMC Reference clock frequency 
-  
-  # Create the new chFPGA object.
-  c=chFPGA.chFPGA(adc_test_mode=ADC_TEST_MODE, adc_delay_table=ADC_DELAY_TABLE,fref=FREF);
-  c.sync()
-  print
-  
-  # Displays the system frequencies
-  c.FreqCtr.status()
-  # save some number of frames to disk.
-  channels = [1,2,3,4]
-  c.setup_ADC(channels, length=1024, frames=2)
-  #c.save_ADC_frames(channels=[0,1,2,3,4,5,6,7], frames=2048, contiguousFrames=4, filename='testing_600MHz.npy')
-    
-  try:
-    setup_adc
     intLoops = 2048 #sys.argv[1]
     nchan = 4
     length = 2048
@@ -136,8 +85,8 @@ if __name__ == "__main__":
     write_header(fout, est_clk, acc_len)
     accumulator = np.zeros(((nchan*(nchan+1))/2,length/2))
     #pdata = 
-    #tsdata = np.load('testing_600MHz.npy')
-    #tsdata = tsdata.reshape((2048,8,4096))
+    tsdata = np.load('testing_600MHz.npy')
+    tsdata = tsdata.reshape((2048,8,4096))
     icount = 0
     fcount = 0
     cont = True
@@ -145,8 +94,7 @@ if __name__ == "__main__":
         st = time.time()
         for i in np.arange(intLoops):
             #data = sim_data(dataLength=length, nchan=nchan)
-            #data = tsdata[i,:nchan,:length]
-            data = get_ADC_frames(c, channels, length=1024, frames=2)
+            data = tsdata[i,:nchan,:length]
             fdata = fourier_transform(data)
             accumulator = corr(nchan, fdata, accumulator)
         accumulator = accumulator/intLoops
