@@ -71,6 +71,15 @@ class ADC_chip(object):
 	chip_id=property(lambda s: s.read(s.REG_CHIP_ID), lambda s,value: s.write(s.REG_CHIP_ID,value));
 	temperature=property(lambda s: s.adc.temperature(s.adc_number));
 
+	def status(self):
+		print '  ----ADC[%i]------------' % self.adc_number
+		w=self.read(self.REG_CHIP_ID)
+		print '  ADC Chip ID:'
+		print '    Chip type: 0x%x' % (w>>8)
+		print '    Version: %i.%i' % ( ((w>>2)&0x03), (w&0x03) )
+		print '    Branch: %i' % ((w>>4)&0x0F)
+		print '  ADC test mode active: %s' % bool(self.read(self.REG_CONTROL) & 0x1000)
+		print '  ADC test mode: %i' % self.read(self.REG_TEST)
 
 
 
@@ -147,14 +156,6 @@ class ADC_base(object):
 		if not self.fpga.FMC_present:
 			print 'FMC board not present'
 			return
-		for i in len(self.ADC):
-			adc=self.ADC[i]
-			print ' -- ADC%i' % i
-			w=adc.read(self.REG_CHIP_ID)
-			print ' ADC Chip ID:'
-			print '    Chip type: 0x%x' % (w>>8)
-			print '    Version: %i.%i' % ( ((w>>2)&0x03), (w&0x03) )
-			print '    Branch: %i' % ((w>>4)&0x0F)
-			print ' ADC test mode active: %s' % bool(adc.read(self.REG_CONTROL) & 0x1000)
-			print ' ADC test mode: %i' % self.read(adc.REG_TEST)
+		for adc in self.ADC:
+			adc.status()
 		print '----------------------------------------------------------------------'

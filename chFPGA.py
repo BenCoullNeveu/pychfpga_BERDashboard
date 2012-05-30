@@ -14,6 +14,7 @@ chFPGA.py module
 # 2011-04 - 2011-08 JFC : Major modifications & cleanup
 # 2011-08-29 JFC: Moved hex to util to solve circular import reference.
 # 2012-03-27 JFC: Modified the read and write commands to support the new format following AXI4-Streaming implementation of the command bus
+# 2012-05-29 JFC: Cleanup init. Support FMC board detection. Extracted test functions.
 """
 
 import time
@@ -161,7 +162,7 @@ class chFPGA:
 			self.FMC_EEPROM.init()
 			self.FMC_EEPROM.status()
 
-			FMC_present=self.FMC_EEPROM.FMC_present(verbose=True)
+			self.FMC_present=self.FMC_EEPROM.FMC_present(verbose=True)
 
 			 # Modules cannot depend on FMC_present before this point
 
@@ -734,7 +735,7 @@ class chFPGA:
 
 		# Disable frame transmission for all antennas. Those thar are selected will be set-up later.
 		for ant in self.ANT:
-			ant.FR_DIST.TRIG_FRAME_COUNT=0 # Disable response to global trigger for all channnels by default. The requested ones will be re-enabled later. 
+			ant.FR_DIST.set_burst(0) # Disable response to global trigger for all channnels by default. The requested ones will be re-enabled later. 
 
 		if sync:
 			if verbose:

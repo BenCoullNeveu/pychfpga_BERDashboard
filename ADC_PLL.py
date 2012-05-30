@@ -12,6 +12,8 @@ History:
 		Modify computation of int_div to handle both FB_select==0 and FB_select==1
 		Added check on int_div range
 		Changed default phase to 2000 to allow reliable SYNC
+	2011-05-28 JFC: Fixed VCO frequency display to take into account input divider
+	2011-05-29 JFC: Changed default frequency to 1700 MHz to match current CHIME value.
 """
 
 import numpy as np
@@ -27,7 +29,7 @@ class ADC_PLL_base(object):
 		spi=self.fpga.SPI
 		spi.read_write(spi.SPI_PLL1_ADDR, data)
 
-	def init(self,fout=1600, fref=10, verbose=None, **args):
+	def init(self,fout=1700, fref=10, verbose=None, **args):
 		"""
 		Initializes the ADC PLL (Analog Devices ADF4350) to provide an adequate clock to the ADC.
 			fout: ADC reference frequency in MHz. Sampling rate is fout/2.
