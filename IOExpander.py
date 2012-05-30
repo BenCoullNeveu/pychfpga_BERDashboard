@@ -126,11 +126,15 @@ class IOExpander_base(object):
 				warnings.warn('Timeout exceeded while waiting for bit %s' % bit_name)
 
 
-	def init(self):
-		""" Initializes the register of the IOExpander. Sets the GPIO bits direction and default values based on the 'BITS' table
-
+	def init(self, verbose=0):
+		""" 
+		Initializes the register of the IOExpander. Sets the GPIO bits direction and default values based on the 'BITS' table
 		Call only after the SPI subsystem is initialized.
 		"""
+		# Do nothing if the FMC is not present
+		if not self.fpga.FMC_present:
+			return
+
 		bypass=0
 
 		dir=[0xFF,0xFF] # direction are 'read' by default
@@ -143,10 +147,16 @@ class IOExpander_base(object):
 				dir[port] |= (bit_def.dir<<bit) # set with new value
 				val[port] &= ~(1<<bit) # clear bit
 				val[port] |= (bit_def.default<<bit) # set with new value
-		if self.verbose:
+		if verbose or self.verbose:
 			print 'IOExpander config: IODIRA=%02X , IODIRB=%02X, GPIOA=%02X, GPIOB=%02X' % (dir[0], dir[1], val[0], val[1])
 		self.write(self.REG_IODIRA,dir[self.PORT_A]) # 
 		self.write(self.REG_IODIRB,dir[self.PORT_B]) # 
 		self.write(self.REG_GPIOA,val[self.PORT_A]) # 
 		self.write(self.REG_GPIOB,val[self.PORT_B]) # 
 
+	def status(self):
+		print '---------------------FMC IO Expander------------------------------------'
+		if not self.fpga.FMC_present:
+			print 'FMC board not present'
+		print ' No status info'
+		print '----------------------------------------------------------------------'

@@ -56,12 +56,16 @@ import ML605_PMBus
 
 # Antenna processor handlers
 import ANT
+import ADCDAQ # Included only so it can be reloaded
+import FRAMER # Included only so it can be reloaded
+import FFT # Included only so it can be reloaded
+import CH_DIST	# Included only so it can be reloaded
 
 
 # -- Module reloader -- 
 # Reload modules if we are debugging in case the source code has changed
 
-reload_modules=(util,SocketIO,Module,SPI,I2C,SYSMOD,SYSMON,REFCLK,AmbTemp,FreqCtr,ADC,IOExpander,ADC_PLL,BiasADC,MGT_PLL,FMC_EEPROM,ML605_PMBus,ANT,MGT)
+reload_modules=(util,SocketIO,Module,SPI,I2C,SYSMOD,SYSMON,REFCLK,AmbTemp,FreqCtr,ADC,IOExpander,ADC_PLL,BiasADC,MGT_PLL,FMC_EEPROM,ML605_PMBus,ANT,ADCDAQ, FRAMER, FFT, CH_DIST, MGT)
 	
 
 for m in reload_modules: 
@@ -89,23 +93,27 @@ class chFPGA:
 	SYSTEM_REFCLK_MODULE=4
 	SYSTEM_I2C_MODULE=5
 
+	FMC_present=False # indicates if the FMC board is present. If not, the modules will act accordingly.
+
 
 	def __init__(self,adc_test_mode=0, adc_delay_table=None, fref=10):
 
 		print '*** Opening sockets ***'
-		# Create socket handled and open socket communications to chFPGA
+		# Create socket handled and open socket communications to the chFPGA board
 		self.sock=SocketIO.SocketIO_base()
 		self.sock.open();
 
 		try: # catch initialization errors so we can free the socket for future instantiation
 			print '*** Instantiating modules ***'
-		# Create handware handling objects
+		# Create handware handling objects 
+		#  NOTE: Does not initialize them yet because some modules are interdependent - we need to wait until all of them are instantiated.
+		#  NOTE: The instantiation does not initiate communicattion with the hardware yet. this is done in the INIT phase.
+			print '  - I2C'
+			self.I2C=I2C.I2C_base(self)
 			print '  - SYSMON'
 			self.SYSMON=SYSMON.SYSMON_base(self)
 			print '  - SPI'
 			self.SPI=SPI.SPI_base(self)
-			print '  - I2C'
-			self.I2C=I2C.I2C_base(self)
 			print '  - FreqCtr'
 			self.FreqCtr=FreqCtr.FreqCtr_base(self)
 			print '  - SYSMOD'
@@ -139,40 +147,58 @@ class chFPGA:
 			# Initialize subsystems. This has to be done only once all subsystems are created because some subsystems depend on each other.
 			print '*** Initializing modules ***'
 
+			print '  - I2C'
+			self.I2C.init()
+
 			print '  - SYSMOD'
 			self.SYSMOD.init()
 			self.SYSMOD.status()
-			print '  - REFCLK'
-			self.REFCLK.status()
-			print '  - SYSMON'
-			self.SYSMON.init()
-			self.SYSMON.status()
-			print '  - SPI'
-			self.SPI.init()
-			print '  - I2C'
-			self.I2C.init()
-			print '  - EEPROM'
-			self.FMC_EEPROM.init()
-			self.FMC_EEPROM.status()
 
 			print '  - ML605 PMBus'
 			self.ML605_PMBus.init()
 			self.ML605_PMBus.status()
 
+
+			print '  - EEPROM'
+			self.FMC_EEPROM.init()
+			self.FMC_EEPROM.status()
+
+			FMC_present=self.FMC_EEPROM.FMC_present(verbose=True)
+
+			 # Modules cannot depend on FMC_present before this point
+
+			print '  - REFCLK'
+			self.REFCLK.init()
+			self.REFCLK.status()
+
+			print '  - SYSMON'
+			self.SYSMON.init()
+			self.SYSMON.status()
+
+			print '  - SPI'
+			self.SPI.init()
+			self.SPI.status()
+
+			print '  - AmbTemp'
+			self.AmbTemp.init()
+			self.AmbTemp.status()
+
+
 			print '  - IOExpander'
 			self.IOExpander.init()
+			self.IOExpander.status()
 
 			print '  - ADC_PLL'
-			self.ADC_PLL.init(fref=fref)
-		#	pdb.set_trace()
+			self.ADC_PLL.init(fref=fref, verbose=1)
+			self.ADC_PLL.status()
+
 			print '  - ADC'
-
 			self.ADC.init(test_mode=adc_test_mode);
-			print '  - AmbTemp'
+			self.ADC.status()
 
-			self.AmbTemp.status()
 			print '  - ANT'
 			self.ANT.init()
+			self.ANT.status()
 
 			# MGT is disabled	
 			#print '  - MGT_PLL'

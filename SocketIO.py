@@ -51,7 +51,8 @@ class SocketIO_base(object):
 			host_name=self.IN_IP
 		self.sock.bind((host_addr, self.IN_PORT));
 		self.sock_data.bind((host_addr, self.IN_PORT_DATA));
-		print 'Opened UDP Socket communications. Listening on %s:%i (control) and %s:%i (data)' % (host_addr, self.IN_PORT, host_addr, self.IN_PORT_DATA)
+		print 'Opened UDP Socket communications.'
+		print '    Listening on %s:%i (control) and %s:%i (data)' % (host_addr, self.IN_PORT, host_addr, self.IN_PORT_DATA)
 
 
 	def close(self):

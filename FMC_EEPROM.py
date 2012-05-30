@@ -20,18 +20,18 @@ class FMC_EEPROM_base(object):
 		self.fpga_instance=fpga
 		self.verbose=verbose
 
-	def read(self,addr,length=1):
+	def read(self,addr,length=1, **kwargs):
 		""" Reads from the EEPROM"""
 		i2c=self.fpga_instance.I2C
 
-		data=i2c.i2c_write_read(self.FMC_EPPROM_PORT, self.FMC_EPPROM_ADDR+((addr>>16)&1),[(addr>>8)&0xff, addr&0xff],read_length=length) # reads a byte
+		data=i2c.i2c_write_read(self.FMC_EPPROM_PORT, self.FMC_EPPROM_ADDR+((addr>>16)&1),[(addr>>8)&0xff, addr&0xff],read_length=length, **kwargs) # reads a byte
 
 		return data
 
-	def write(self, addr,data):
+	def write(self, addr,data, **kwargs):
 		""" Writes to the EEPROM"""
 		i2c=self.fpga_instance.I2C
-		i2c.i2c_write(self.FMC_EPPROM_PORT,self.FMC_EPPROM_ADDR+((addr>>16)&1),[(addr>>8)&0xff, addr&0xff, data]) # sets the address
+		i2c.i2c_write(self.FMC_EPPROM_PORT,self.FMC_EPPROM_ADDR+((addr>>16)&1),[(addr>>8)&0xff, addr&0xff, data], **kwargs) # sets the address
 
 	def init(self):
 		pass
@@ -44,12 +44,20 @@ class FMC_EEPROM_base(object):
 		data=i2c.i2c_read(0,i2c_addr,length=2) # reads a byte
 		return data
 
+	def FMC_present(self, verbose=False):
+		""" Checks if the FMC is present"""
+		i2c=self.fpga_instance.I2C
+		data=self.read(0,length=1,noerror=True, verbose=verbose)
+		return data[0]==13 
+
 	
 	def status(self):
 		""" Shows EEPROM data"""
 		Ptotal=0
-	
 		print '--------------- FMC EEPROM ---------------'
-		print 'FMC EEPROM data at address 0x00-0x03 is: ', hex(self.read(0,length=4))
+		print 'FMC board is present:', self.FMC_present()
+		print 'global FMC_present flag set to:', self.fpga_instance.FMC_present
+		if self.fpga_instance.FMC_present:
+			print 'FMC EEPROM data at address 0x00-0x03 is: ', hex(self.read(0,length=4))
 		print '------------------------------------------'
 	

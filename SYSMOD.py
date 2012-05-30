@@ -58,8 +58,8 @@ class SYSMOD_base(Module_base):
 	def __init__(self,fpga):
 		super(self.__class__,self).__init__(fpga,fpga.SYSTEM_PORT, fpga.SYSTEM_SYSMOD_MODULE)
 		self._lock() # prevent further property creation to avoid creating attrubutes by mistake
+
 	def init(self):
-		
 		#self.lcd_init()
 		pass
 
@@ -155,7 +155,7 @@ class SYSMOD_base(Module_base):
 			self.lcd_write_data(c)
 
 	def status(self):
-		print '----------------------------------------------------------------------'
+		print '-------------------------SYSMOD--------------------------------------'
 		print 'chFPGA Firmware version %i.%i, Build %i, Date: %04i-%02i-%02i' % (self.MAJOR_VERSION, self.MINOR_VERSION, self.BUILD_NUMBER, self.BUILD_YEAR+2000,self.BUILD_MONTH, self.BUILD_DAY)
 		print 'Bistream timestamp is: %s' % self.read_bitstream_date()
 		print '----------------------------------------------------------------------'

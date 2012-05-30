@@ -78,3 +78,8 @@ class SPI_base(Module_base):
 	def init(self):
 		self.DEFAULT_ADDR=self.SPI_ADC1_TEMP_ADDR # Default SPI_ADDR<2:0> when not accessing the SPI devices or interfacing devices with addresses >=8
 		self.CLK_ENABLE=1 # enable SPI clock
+
+	def status(self):
+		print '---------------------FMC SPI Interface------------------------------------'
+		print ' No status info'
+		print '----------------------------------------------------------------------'

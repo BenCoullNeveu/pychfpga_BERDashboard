@@ -63,9 +63,9 @@ class I2C_base(Module_base):
 		self.fpga_instance=fpga;
 		super(self.__class__,self).__init__(fpga,fpga.SYSTEM_PORT, fpga.SYSTEM_I2C_MODULE)
 
-	def i2c_write_read(self, port=0, addr=0, data=[0], read_length=0, verbose=0):
-		""" Serially writes 1-3 bytes to the specified I2C node, send a restart condition and reads 'read_length' (0-4) bytes. 
-		The written word must be padded so its total length covers the whole SPI transaction (read and write bits). 
+	def i2c_write_read(self, port=0, addr=0, data=[0], read_length=0, verbose=False, noerror=False):
+		""" 
+		Serially writes 1-3 bytes to the specified I2C node, send a restart condition and reads 'read_length' (0-4) bytes. 
 		"""
 		#verbose=1
 		if port<0 or port>1:
@@ -109,35 +109,39 @@ class I2C_base(Module_base):
 		data=self.read(0x080+0x00, length=4, type=np.uint8)
 		ack=self.ACK_STATUS
 		if ack!=expected_ack:
-			print 'i2c_write_read: communication error: did not receive correct ACK bits. Received 0x%02x, expected 0x%02x' % (ack, expected_ack)
 			error=1
+			if verbose:
+				print 'i2c_write_read: communication error: did not receive correct ACK bits. Received 0x%02x, expected 0x%02x' % (ack, expected_ack)
 		start_ctr=(start_ctr+1) % 16
 		done_ctr=(done_ctr+1) % 16
 		if self.START_CTR != start_ctr:
-			print 'i2c_write_read: communication error: start_ctr do not match. Read %i, expected %i' (self.START_CTR, start_ctr)
 			error=1
+			if verbose:
+				print 'i2c_write_read: communication error: start_ctr do not match. Read %i, expected %i' (self.START_CTR, start_ctr)
 		if self.DONE_CTR != done_ctr:
-			print 'i2c_write_read: communication error: done_ctr do not match. Read %i, expected %i' (self.DONE_CTR, DONE_ctr)
 			error=1
+			if verbose:
+				print 'i2c_write_read: communication error: done_ctr do not match. Read %i, expected %i' (self.DONE_CTR, DONE_ctr)
 
 		#print 'I2C communication: ACK byte is 0x%02x' % ack
 		data=data[-read_length:]
 		#data.dtype=np.dtype(type)
-		if not verbose and error:
+		if verbose and error:
 			print 'i2c_write_read:  The above errors occured while writing %i and reading %i bytes at port %i at address 0x%02x with the following data:' % (write_length, read_length, port,addr), hex(data)
+		if error and not noerror:
 			raise SystemError()
 
 		return data
 
-	def i2c_read(self, port=0, addr=0, length=1,  type=np.uint8, verbose=0):
+	def i2c_read(self, port=0, addr=0, length=1,  type=np.uint8, **kwargs):
 		""" Serially reads 0-3 bytes  bytes long) from the I2C bus at the specified I2C address 
 		"""
-		return self.i2c_write_read(port=port,addr=addr,data=None,read_length=length, verbose=verbose)
+		return self.i2c_write_read(port=port,addr=addr,data=None,read_length=length, **kwargs)
 
-	def i2c_write(self, port=0, addr=0, data=[0], verbose=0):
+	def i2c_write(self, port=0, addr=0, data=[0], **kwargs):
 		""" Serially writes 1-3 bytes to the specified I2C node 
 		"""
-		return self.i2c_write_read(port=port,addr=addr,data=data,read_length=0, verbose=verbose)
+		return self.i2c_write_read(port=port,addr=addr,data=data,read_length=0, **kwargs)
 
 	def i2c_reset(self, port=0, verbose=0):
 		""" 
