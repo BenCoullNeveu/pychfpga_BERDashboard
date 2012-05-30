@@ -28,6 +28,7 @@ class FreqCtr_base(object):
 	'CLK200':11,
 	'CTRL_CLK':12,
 	'FAN':13,
+	'DSP_CLK':14,
 
 	}
 
@@ -85,6 +86,7 @@ class FreqCtr_base(object):
 		print '   MGT word frequency:      %7.3f MHz' % (self.read_frequency('MGT_USRCLK2', gate_time=gate_time)/1e6) 
 		for i in range(8):
 			print '   ADC%i clock frequency:    %7.3f MHz' % (i,self.read_frequency('ADC_CLK%i' % i, gate_time=gate_time)/1e6) 
+		print '   DSP_CLK frequency:      %7.3f MHz' % (self.read_frequency('DSP_CLK', gate_time=gate_time)/1e6) 
 		print '   Resolution          :    %10.6f MHz' % (resolution) 
 		print '   Gate time           :    %.3f s' % (gate_time) 
 		print '   Fan speed:               %7.0f RPM (resolution %.0f RPM)' % (self.read_frequency('FAN', gate_time=gate_time)*60./2, resolution*1e6*60./2) # 1 Hz=60 RPM, divide by 2 because there is 2 pulses per fan turn  
