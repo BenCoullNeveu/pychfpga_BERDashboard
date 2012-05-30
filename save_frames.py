@@ -86,5 +86,6 @@ if __name__=='__main__':
 	c.FreqCtr.status()
 	# save some number of frames to disk.
 	
-	c.save_ADC_frames(channels=[0,1,2,3,4,5,6,7], frames=2048, contiguousFrames=4, filename='testing_600MHz.npy')
+	#c.save_ADC_frames(channels=[0,1,2,3,4,5,6,7], frames=2048, contiguousFrames=4, filename='testing_DRAO1.npy')
+	c.save_ADC_frames(channels=[0,1,2,3], frames=2048, contiguousFrames=4, filename='DRAO_spec1.npy')
 

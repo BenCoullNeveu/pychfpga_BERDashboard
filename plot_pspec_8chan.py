@@ -9,8 +9,8 @@ slength = 4096 #1024
 nchan=8
 sig = 0.2
 #800MSPS sampling rate
-freq = fft.fftfreq(slength,1/800.0)
-freq = 800.0 - freq[:slength/2]
+freq = fft.fftfreq(slength,1/850.0)
+freq = 850.0 - freq[:slength/2]
 
 nfiles = len(sys.argv) - 1
 

@@ -932,7 +932,7 @@ class chFPGA:
 				in_frame=self.read_frame(timeout_delay=0.2)
 			except SocketIO.timeout:
 				print 'Timeout!'
-				break
+				raise
 
 			if(len(in_frame)!=length+5):
 				print 'Frame %i: !!!Frame length MISMATCH: Received %i, Expected : %i!!!' % ((j+1), len(in_frame), (5+length))
