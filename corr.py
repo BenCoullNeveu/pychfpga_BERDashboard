@@ -20,9 +20,11 @@ def fourier_transform(data):
     return out
 
 def corr(nchan, fdata, accumulator):
+    i=0
     for j in np.arange(nchan):
         for k in np.arange(j,nchan):
-            accumulator = fdata[j]*fdata[k].conjugate() + accumulator
+            accumulator[i] = fdata[j]*fdata[k].conjugate() + accumulator[i]
+            i=i+1
     return accumulator
 
 def write_header(datafile, est_clk, acc_len):
@@ -54,8 +56,9 @@ def write_header(datafile, est_clk, acc_len):
 def convert_format(accumulator):
     #want 1024 int32 real, int32 imag
     interleave_a = numpy.empty([10,2048],dtype=np.int32)
-    acc_real = accumulator.real.astype(np.int32)
-    acc_imag = accumulator.imag.astype(np.int32)
+    gain = 4096
+    acc_real = (gain*accumulator).real.astype(np.int32)
+    acc_imag = (gain*accumulator).imag.astype(np.int32)
     #interleave_a[:,::2] = acc_real
     #interleave_a[:,1::2] = acc_imag
     for i in range(1024):
@@ -64,12 +67,11 @@ def convert_format(accumulator):
     #print interleave_a
     return interleave_a
 
-def get_ADC_frames(c, channels, length=1024, frames=2):
+def get_ADC_frames(c, channels, length=1024, frames=1, contiguousFrames=2):
     number_of_frames=0
     data_list=[]
     nchan = len(channels)
     chanIndex = range(nchan)
-    contiguousFrames=2
     while (frames==0) or (frames!=0 and number_of_frames<frames):
         try:
             a=c.read_ADC_frame_simple(channels,length=length, frames=contiguousFrames) #(number_of_frames==0)
@@ -77,7 +79,7 @@ def get_ADC_frames(c, channels, length=1024, frames=2):
             number_of_frames+=1					
             if filename:
                 for chanNum in chanIndex:
-                    data_list.append(a[channels[chanNum]])
+                    data_list.append(np.array(a[channels[chanNum]]))
         #file.write(np.int8(a[ch1,:]))
         except:
             raise
@@ -140,7 +142,7 @@ if __name__ == "__main__":
     est_clk = 65
     acc_len = intLoops
     write_header(fout, est_clk, acc_len)
-    accumulator = np.zeros(((nchan*(nchan+1))/2,length/2))
+    accumulator = np.zeros(((nchan*(nchan+1))/2,length/2),dtype=complex)
     #pdata = 
     #tsdata = np.load('testing_600MHz.npy')
     #tsdata = tsdata.reshape((2048,8,4096))
@@ -154,7 +156,7 @@ if __name__ == "__main__":
             #data = tsdata[i,:nchan,:length]
             intLoopsMod = intLoops
             try:
-                data = get_ADC_frames(c, channels, length=1024, frames=2)
+                data = get_ADC_frames(c, channels, length=1024, frames=1, contiguousFrames=2)  #length will be length*contiguousFrames
                 fdata = fourier_transform(data)
             except:
                 intLoopsMod = intLoopsMod - 1
@@ -166,7 +168,7 @@ if __name__ == "__main__":
         #print interleave_a[0,:20:2]
         #interleave_a = accumulator
         fout.write(interleave_a)
-        accumulator = np.zeros(((nchan*(nchan+1))/2, length/2))
+        accumulator = np.zeros(((nchan*(nchan+1))/2, length/2), dtype=complex)
         et = time.time()
         icount = icount + 1
         if ( icount > 1023):
