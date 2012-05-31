@@ -28,10 +28,10 @@ def corr(nchan, fdata, accumulator):
 def write_header(datafile, est_clk, acc_len):
     ## Read gains from a file
     #f=open('gains.txt', 'r')
-    gainA= numpy.empty([1024],dtype=numpy.int32)
-    gainB= numpy.empty([1024],dtype=numpy.int32)
-    gainC= numpy.empty([1024],dtype=numpy.int32)
-    gainD= numpy.empty([1024],dtype=numpy.int32)
+    gainA= numpy.ones(1024,dtype=numpy.int32)
+    gainB= numpy.ones(1024,dtype=numpy.int32)
+    gainC= numpy.ones(1024,dtype=numpy.int32)
+    gainD= numpy.ones(1024,dtype=numpy.int32)
     #for i in range(1024):
     #    gainA[i] = int(f.readline())
     #for i in range(1024):
@@ -56,9 +56,12 @@ def convert_format(accumulator):
     interleave_a = numpy.empty([10,2048],dtype=np.int32)
     acc_real = accumulator.real.astype(np.int32)
     acc_imag = accumulator.imag.astype(np.int32)
+    #interleave_a[:,::2] = acc_real
+    #interleave_a[:,1::2] = acc_imag
     for i in range(1024):
         interleave_a[:,i * 2]     = acc_real[:,i]
         interleave_a[:,i * 2 + 1] = acc_imag[:,i]
+    #print interleave_a
     return interleave_a
 
 def get_ADC_frames(c, channels, length=1024, frames=2):
@@ -122,7 +125,7 @@ if __name__ == "__main__":
     
   try:
     #setup_adc
-    intLoops = 2048 #sys.argv[1]
+    intLoops = 128 #was2048 #sys.argv[1]
     nchan = 4
     length = 2048
     filename = 'out'
@@ -135,7 +138,7 @@ if __name__ == "__main__":
     fcount = 0
     fout = open(fname+'%04i'%fcount, 'w+')
     est_clk = 65
-    acc_len = 2*11
+    acc_len = intLoops
     write_header(fout, est_clk, acc_len)
     accumulator = np.zeros(((nchan*(nchan+1))/2,length/2))
     #pdata = 
@@ -152,21 +155,25 @@ if __name__ == "__main__":
             intLoopsMod = intLoops
             try:
                 data = get_ADC_frames(c, channels, length=1024, frames=2)
+                fdata = fourier_transform(data)
             except:
                 intLoopsMod = intLoopsMod - 1
                 print "Lost one integration"
-            fdata = fourier_transform(data)
             accumulator = corr(nchan, fdata, accumulator)
         accumulator = accumulator/intLoopsMod
+        #print accumulator[0,:10].real.astype(np.int32)
         interleave_a = convert_format(accumulator)
+        #print interleave_a[0,:20:2]
+        #interleave_a = accumulator
         fout.write(interleave_a)
+        accumulator = np.zeros(((nchan*(nchan+1))/2, length/2))
         et = time.time()
         icount = icount + 1
-        if ( icount > 120):
+        if ( icount > 1023):
             fout.close()
             icount = 0
             fcount=fcount+1
-            if (fcount > 48):
+            if (fcount > 5000):
                 cont = False
             fname=basename+filename+str(time.time())+'.'+'%04i'%fcount
             fout=open(fname,'w+')
