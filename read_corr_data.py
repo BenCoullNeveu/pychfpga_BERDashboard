@@ -28,10 +28,10 @@ def read_header_v140(fpath):
 	
 def read_raw_data(fpath):
     """Read the full raw data (not including header) of a CHIME data file"""
-    f = open(fpath, 'r')
+    f = open(fpath, 'rb')
     #f.seek(hdr_len, 0)
     #data = f.read()
-    data = np.fromfile(file=f, dtype='i') 
+    data = np.fromfile(file=f, dtype=np.int32) 
     f.close()
     raw_data = data[hdr_len/4:]
     #raw_data = data
@@ -41,7 +41,7 @@ def read_raw_data(fpath):
 if __name__ == '__main__':
     import sys
     #fname = sys.argv[1]
-    fpath = '\\Users\\chime\\workspace\\kevin\\data\\out_1338445645.75\\out1338445645.75.0000'
+    fpath = '\\Users\\chime\\workspace\\kevin\\data\\out_1338498475.31\\out1338498475.31.0000'
     hdr_time, gainA, gainB, gainC, gainD = read_header_v140(fpath)
     print hdr_len
     raw_data = read_raw_data(fpath)

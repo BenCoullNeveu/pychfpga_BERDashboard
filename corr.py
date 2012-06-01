@@ -127,7 +127,7 @@ if __name__ == "__main__":
     
   try:
     #setup_adc
-    intLoops = 128 #was2048 #sys.argv[1]
+    intLoops = 256 #was2048 #sys.argv[1]
     nchan = 4
     length = 2048
     filename = 'out'
@@ -138,7 +138,11 @@ if __name__ == "__main__":
     os.mkdir(basename)
     fname=basename+filename+str(time.time())+'.'
     fcount = 0
-    fout = open(fname+'%04i'%fcount, 'w+')
+    fout = open(fname+'%04i'%fcount, 'w+b')
+    timeFileName = basename+'time_file.txt'
+    timefile = open(timeFileName, 'w+')
+    temperatureFileName = basename+'temperature_file.txt'
+    temperaturefile = open(temperatureFileName, 'w+')
     est_clk = 65
     acc_len = intLoops
     write_header(fout, est_clk, acc_len)
@@ -148,9 +152,13 @@ if __name__ == "__main__":
     #tsdata = tsdata.reshape((2048,8,4096))
     icount = 0
     fcount = 0
+    kcount = 0
     cont = True
     while (cont):
         st = time.time()
+        timefile.write(str(st) + '\n')
+        temperature = c.AmbTemp.temperature
+        temperaturefile.write(str(temperature) + '\n' )
         for i in np.arange(intLoops):
             #data = sim_data(dataLength=length, nchan=nchan)
             #data = tsdata[i,:nchan,:length]
@@ -161,30 +169,47 @@ if __name__ == "__main__":
             except:
                 intLoopsMod = intLoopsMod - 1
                 print "Lost one integration"
+                try:
+                    c.close()
+                    del c
+                    c=chFPGA.chFPGA(adc_test_mode=ADC_TEST_MODE, adc_delay_table=ADC_DELAY_TABLE,fref=FREF);
+                    c.sync()
+                    c.setup_ADC(channels, length=1024, frames=2)
+                except:
+                    print "couldn't reinitialize"
+                    raise
             accumulator = corr(nchan, fdata, accumulator)
         accumulator = accumulator/intLoopsMod
+        fname=basename+filename+'.'+'%04i'%kcount
+        np.save(fname, accumulator)
         #print accumulator[0,:10].real.astype(np.int32)
         interleave_a = convert_format(accumulator)
+        fname=basename+'interleave_file'+'.'+'%04i'%kcount
+        np.save(fname, interleave_a)
         #print interleave_a[0,:20:2]
         #interleave_a = accumulator
-        fout.write(interleave_a)
+        for ia in interleave_a:
+            fout.write(ia)
         accumulator = np.zeros(((nchan*(nchan+1))/2, length/2), dtype=complex)
         et = time.time()
         icount = icount + 1
-        if ( icount > 1023):
+        kcount = kcount + 1
+        if ( icount > 256):
             fout.close()
             icount = 0
             fcount=fcount+1
             if (fcount > 5000):
                 cont = False
             fname=basename+filename+str(time.time())+'.'+'%04i'%fcount
-            fout=open(fname,'w+')
+            fout=open(fname,'w+b')
             #f_osc=open(fname+'.osc','w+')
             write_header(fout, est_clk, acc_len)
             #start_time = time.time()
         print "took " + str(et - st ) + ' seconds'
   except KeyboardInterrupt:
     fout.close()
+    timefile.close()
+    temperaturefile.close()
   except:
     print "something bad happend"  
     raise
