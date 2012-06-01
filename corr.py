@@ -180,12 +180,12 @@ if __name__ == "__main__":
                     raise
             accumulator = corr(nchan, fdata, accumulator)
         accumulator = accumulator/intLoopsMod
-        fname=basename+filename+'.'+'%04i'%kcount
-        np.save(fname, accumulator)
+        #####fname=basename+filename+'.'+'%04i'%kcount
+        #####np.save(fname, accumulator)
         #print accumulator[0,:10].real.astype(np.int32)
         interleave_a = convert_format(accumulator)
-        fname=basename+'interleave_file'+'.'+'%04i'%kcount
-        np.save(fname, interleave_a)
+        ####fname=basename+'interleave_file'+'.'+'%04i'%kcount
+        ####np.save(fname, interleave_a)
         #print interleave_a[0,:20:2]
         #interleave_a = accumulator
         for ia in interleave_a:
