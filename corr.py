@@ -30,10 +30,10 @@ def corr(nchan, fdata, accumulator):
 def write_header(datafile, est_clk, acc_len):
     ## Read gains from a file
     #f=open('gains.txt', 'r')
-    gainA= numpy.ones(1024,dtype=numpy.int32)
-    gainB= numpy.ones(1024,dtype=numpy.int32)
-    gainC= numpy.ones(1024,dtype=numpy.int32)
-    gainD= numpy.ones(1024,dtype=numpy.int32)
+    gainA= np.ones(1024,dtype=np.int32)
+    gainB= np.ones(1024,dtype=np.int32)
+    gainC= np.ones(1024,dtype=np.int32)
+    gainD= np.ones(1024,dtype=np.int32)
     #for i in range(1024):
     #    gainA[i] = int(f.readline())
     #for i in range(1024):
@@ -55,7 +55,7 @@ def write_header(datafile, est_clk, acc_len):
 
 def convert_format(accumulator):
     #want 1024 int32 real, int32 imag
-    interleave_a = numpy.empty([10,2048],dtype=np.int32)
+    interleave_a = np.empty([10,2048],dtype=np.int32)
     gain = 4096
     acc_real = (gain*accumulator).real.astype(np.int32)
     acc_imag = (gain*accumulator).imag.astype(np.int32)
