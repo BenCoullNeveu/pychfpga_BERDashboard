@@ -56,7 +56,7 @@ def write_header(datafile, est_clk, acc_len):
 def convert_format(accumulator):
     #want 1024 int32 real, int32 imag
     interleave_a = np.empty([10,2048],dtype=np.int32)
-    gain = 4096
+    gain = 32
     acc_real = (gain*accumulator).real.astype(np.int32)
     acc_imag = (gain*accumulator).imag.astype(np.int32)
     #interleave_a[:,::2] = acc_real
@@ -121,7 +121,7 @@ if __name__ == "__main__":
   # Displays the system frequencies
   c.FreqCtr.status()
   # save some number of frames to disk.
-  channels = [1,2,3,4]
+  channels = [0,1,2,3]
   c.setup_ADC(channels, length=1024, frames=2)
   #c.save_ADC_frames(channels=[0,1,2,3,4,5,6,7], frames=2048, contiguousFrames=4, filename='testing_600MHz.npy')
     
