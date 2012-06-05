@@ -24,6 +24,7 @@ class ADC_chip(object):
 	REG_CH_CAL_CTRL=0x10
 	REG_CH_CAL_CTRL_MLBX=0x11
 	REG_CH_STATUS=0x12
+	REG_TRIM=0x13  ## added kmb to set to 100ohms
 
 	def __init__(self,adc_instance,adc_number):
 		#super(ADC_chip,self).__init__(fpga)
@@ -43,7 +44,7 @@ class ADC_chip(object):
 		STDBY=0 # 0-3, 0=Full active, 3=Full standby
 		DMUX_RATIO=1; # 0=DMUX2:1, 1=DMUX1:1
 		BG=0 # 0=Binary, 1=Gray code
-		BDW=0 # 0-3, 0= 500 MHz, 1=600 MHz, 2=1.5 GHz, 3=2 GHz
+		BDW=2 # 0-3, 0= 500 MHz, 1=600 MHz, 2=1.5 GHz, 3=2 GHz
 		FS=0 # 0=500 mV full scale, 1=625 mV full scale
 		TEST=bool(test_mode) # 0=No test mode, 1=test mode activated
 

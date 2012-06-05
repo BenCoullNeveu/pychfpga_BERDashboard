@@ -27,7 +27,7 @@ class ADC_PLL_base(object):
 		spi=self.fpga_instance.SPI
 		spi.read_write(spi.SPI_PLL1_ADDR, data)
 
-	def init(self,fout=1700, fref=10, verbose=None, **args):
+	def init(self,fout=1700, fref=10, verbose=True, **args):
 		"""
 		Initializes the ADC PLL (Analog Devices ADF4350) to provide an adequate clock to the ADC.
 			fout: ADC reference frequency in MHz. Sampling rate is fout/2.

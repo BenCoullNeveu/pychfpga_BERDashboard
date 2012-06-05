@@ -63,10 +63,11 @@ class IOExpander_base(object):
 		'PLL1_MUTE' : 	BitDef(PORT_A,3,RD,0),
 		'PLL1_MUXOUT' : BitDef(PORT_A,4,RD,0),
 		'PLL2_LOCK' : 	BitDef(PORT_A,5,RD,0),
-		'LED0' : 		BitDef(PORT_A,6,WR,1),
+		'LED0' : 		BitDef(PORT_A,6,WR,1),  #changed to 0
 		'LED1_PLL2_RESET' : BitDef(PORT_A,7,WR,0), # default=0  to enable MGT_PLL
 		'LED2' : 		BitDef(PORT_B,0,WR,1),
-		'LED3' : 		BitDef(PORT_B,1,WR,1)
+		'LED3' : 		BitDef(PORT_B,1,WR,1),
+		'CLOCKSELECT' : BitDef(PORT_B,3,WR,1) ## kmb added for new fmc board clock set -> 1 is SMA, 0 is fmc
 		}
 
 	def __init__(self,fpga,verbose=1):
@@ -124,6 +125,8 @@ class IOExpander_base(object):
 			if self.read_gpio_bit(bit_name): return
 			if (time.time()-t0)>timeout:
 				warnings.warn('Timeout exceeded while waiting for bit %s' % bit_name)
+				print "Couldn't Lock PLL"
+				break
 
 
 	def init(self):
