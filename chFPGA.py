@@ -929,10 +929,10 @@ class chFPGA:
 			if verbose>1 or (verbose==1 and (j % 100 ==99 or j==frames-1)):
 				print 'Acquiring Frame %i (%.0f%%)' % ((j+1),(100*(j+1)/frames))
 			try:
-				in_frame=self.read_frame(timeout_delay=0.2)
+				in_frame=self.read_frame(timeout_delay=0.001)
 			except SocketIO.timeout:
 				print 'Timeout!'
-				break
+				raise
 
 			if(len(in_frame)!=length+5):
 				print 'Frame %i: !!!Frame length MISMATCH: Received %i, Expected : %i!!!' % ((j+1), len(in_frame), (5+length))
