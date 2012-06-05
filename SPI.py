@@ -22,10 +22,10 @@ class SPI_base(Module_base):
 	SPI_ADC0_TEMP_ADDR=2 # ADC temperature sensor chip. Read only
 	SPI_ADC1_TEMP_ADDR=3 # ADC temperature sensor chip. Read only
 	SPI_AMB_TEMP_ADDR=4 # Board temperature sensor chip. Read/Write device
-	SPI_ADC_BIAS_ADDR=5 # Bias measurement ADC.  Read/Write device
+	SPI_PLL1_ADDR=5 # ADC PLL. One of the other devices is enabled while we write to the PLL, so that default device must be read only. New address on rev 2 board
+	#SPI_ADC_BIAS_ADDR=5 # Bias measurement ADC.  Read/Write device # Not present on Rev2 board
 	SPI_IO_EXP_ADDR=6 # IO Expander. Read/Write device
 	SPI_PLL2_ADDR=7 # MGT PLL. Write only.
-	SPI_PLL1_ADDR=10 # ADC PLL. One of the other devices is enabled while we write to the PLL, so that default device must be read only.
 
 	CONTROL=BitField.CONTROL
 	STATUS=BitField.STATUS
