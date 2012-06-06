@@ -22,7 +22,7 @@ class SPI_base(Module_base):
 	SPI_ADC0_TEMP_ADDR=2 # ADC temperature sensor chip. Read only
 	SPI_ADC1_TEMP_ADDR=3 # ADC temperature sensor chip. Read only
 	SPI_AMB_TEMP_ADDR=4 # Board temperature sensor chip. Read/Write device
-	SPI_PLL1_ADDR=5 # ADC PLL. One of the other devices is enabled while we write to the PLL, so that default device must be read only. New address on rev 2 board
+	SPI_PLL1_ADDR=(5,1) # ADC PLL. The second element of the tuple indicates that we use the alternate timing 
 	#SPI_ADC_BIAS_ADDR=5 # Bias measurement ADC.  Read/Write device # Not present on Rev2 board
 	SPI_IO_EXP_ADDR=6 # IO Expander. Read/Write device
 	SPI_PLL2_ADDR=7 # MGT PLL. Write only.
@@ -38,6 +38,8 @@ class SPI_base(Module_base):
 
 		'DEFAULT_ADDR' : 	BitField(CONTROL,0x05,4,3,doc='Default address of SPI device (enabled when there is no communication or ADC_PLL1 is accessed'),
 		'CLK_ENABLE' : 		BitField(CONTROL,0x05,3,doc='When 1, enables the SPI clock'),
+		'REV0' : 			BitField(CONTROL,0x05,2,doc='When 1, Indicates this is a Rev0 board protocol. When 0, the PLL_LE line is treates as a global CS'),
+		'ALT_TIMING' : 		BitField(CONTROL,0x05,1,doc='When 1, uses the alternate timing where the CS is deactivated later. This is to be used with the ADC PLL.'),
 
 		'READY' : 	BitField(STATUS,0x080+ 0x04,0,doc='High when SPI transaction is completed'),
 	}
@@ -63,6 +65,12 @@ class SPI_base(Module_base):
 		""" Serially writes a word (1-4 bytes long) to the specified device on the SPI bus while reading serial data put the bus at the same time
 		The written word must be padded so its total length covers the whole SPI transaction (read and write bits). 
 		"""
+		if isinstance(device,tuple):
+			self.ALT_TIMING=device[1]
+			device=device[0]
+		else:
+			self.ALT_TIMING=0
+		
 		word_length=self.write_reg(0x000+0x00,data);
 		self.write_reg(0x000+0x04,[0x00+(device<<4)+(word_length-1)]);
 		self.write_reg(0x000+0x04,[0x04+(device<<4)+(word_length-1)]);
