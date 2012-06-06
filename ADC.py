@@ -89,7 +89,7 @@ class ADC_base(object):
 		spi.read_write(spi.SPI_ADC0_ADDR+adc_number, data=[0x80+addr,data>>8,data&0xFF])
 
 	# High level functions
-	def temperature(self, adc_number,verbose):
+	def temperature(self, adc_number,verbose=False):
 		"""Reads the external temperature sensor connected to the sensing diode in the specified ADC chip"""
 
 		spi=self.fpga_instance.SPI; # use a shorter variable name to access the FPGA instance attributes

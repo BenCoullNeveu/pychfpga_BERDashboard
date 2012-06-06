@@ -57,7 +57,7 @@ class IOExpander_base(object):
 			self.default=default
 	# Bit configuration table:   name: (port,bit,dir (0=wr,1=rd), default_value)
 	BITS={
-		'ADC_RESET' : 	BitDef(PORT_A,0,RD,0),
+		'ADC_RESET' : 	BitDef(PORT_A,0,WR,1),
 		'PLL1_CE': 		BitDef(PORT_A,1,RD,0),
 		'PLL1_LOCK' : 	BitDef(PORT_A,2,RD,0),
 		'PLL1_MUTE' : 	BitDef(PORT_A,3,RD,0),
