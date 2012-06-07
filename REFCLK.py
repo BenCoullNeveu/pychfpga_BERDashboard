@@ -18,7 +18,7 @@ import matplotlib.pyplot as plt
 
 class REFCLK_base(Module_base):
 
-	sync_delay=0
+	sync_delay=16
 
 	CONTROL=BitField.CONTROL
 	STATUS=BitField.STATUS
