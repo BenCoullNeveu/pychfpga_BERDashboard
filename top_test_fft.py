@@ -9,7 +9,8 @@ top_test.py script
 # History:
 # 2011-08-14 : JFC : Created from chFPGA, which now only contains top test code.
 """
-
+#import matplotlib
+#matplotlib.use("TkAgg")
 import chFPGA
 reload(chFPGA) # just to make sure that any changes to the code are reloaded
 
@@ -24,17 +25,27 @@ SN001_adc_delays=(
 	[13]*8,
 	[9]*8
 	)
-SN002_adc_delays=(
-	[13,19,19,19,19,19,19,19],
-	[8]*8,
-	[20]*8,
-	[14]*8,
-	[12]*8,
-	[11]*8,
-	[13]*8,
-	[9]*8
-	)
+#SN002_adc_delays=(
+#	[13,19,19,19,19,19,19,19],
+#	[8]*8,
+#	[20]*8,
+#	[14]*8,
+#	[12]*8,
+#	[11]*8,
+#	[13]*8,
+#	[9]*8
+#	)
 
+SN002_adc_delays=(
+	[16,22,22,22,22,22,22,22]+[0], #CH0 (BUFR)
+	[21]*8, #CH1 (BUFR)
+	[22]*8+[0], #CH2 (PLL)
+	[18]*8+[0], #CH3 (PLL)
+	[17]*8, #CH4 (BUFR)
+	[17]*8, #CH5 (BUFR)
+	[18]*8, #CH6 (BUFR)
+	[14]*8, #CH7 (BUFR)
+	)
 
 if __name__=='__main__':		
 	print '------------------------'

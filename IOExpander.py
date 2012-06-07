@@ -57,16 +57,19 @@ class IOExpander_base(object):
 			self.default=default
 	# Bit configuration table:   name: (port,bit,dir (0=wr,1=rd), default_value)
 	BITS={
-		'ADC_RESET' : 	BitDef(PORT_A,0,RD,0),
+		'ADC_RESET' : 	BitDef(PORT_A,0,WR,1),
 		'PLL1_CE': 		BitDef(PORT_A,1,RD,0),
 		'PLL1_LOCK' : 	BitDef(PORT_A,2,RD,0),
 		'PLL1_MUTE' : 	BitDef(PORT_A,3,RD,0),
 		'PLL1_MUXOUT' : BitDef(PORT_A,4,RD,0),
 		'PLL2_LOCK' : 	BitDef(PORT_A,5,RD,0),
-		'LED0' : 		BitDef(PORT_A,6,WR,1),
+		'LED0' : 		BitDef(PORT_A,6,WR,1),  #changed to 0
 		'LED1_PLL2_RESET' : BitDef(PORT_A,7,WR,0), # default=0  to enable MGT_PLL
 		'LED2' : 		BitDef(PORT_B,0,WR,1),
-		'LED3' : 		BitDef(PORT_B,1,WR,1)
+		'LED3' : 		BitDef(PORT_B,1,WR,1),
+		'REFCLK_INPUT_SEL' : BitDef(PORT_B,3,WR,1), ## kmb added for new fmc board clock set -> 1 is SMA, 0 is fmc
+		'SYNC_INPUT_SEL' : BitDef(PORT_B,6,WR,0), #SYNC source: 0=FPGA, 1= SMA
+		'SYNC_FF_BYPASS' : BitDef(PORT_B,2,WR,0), #SYNC FlipFlop Bypass: 0=Bypass, 1= Use FF (Note: It is not enough to set this bit for FF bypass. Resistors must also be set to route the buffered SYNC to the FF or the FF bypass input)
 		}
 
 	def __init__(self,fpga,verbose=1):
@@ -124,6 +127,8 @@ class IOExpander_base(object):
 			if self.read_gpio_bit(bit_name): return
 			if (time.time()-t0)>timeout:
 				warnings.warn('Timeout exceeded while waiting for bit %s' % bit_name)
+				print "Couldn't Lock PLL"
+				break
 
 
 	def init(self, verbose=0):

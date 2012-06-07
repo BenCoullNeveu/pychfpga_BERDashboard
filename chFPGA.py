@@ -785,10 +785,10 @@ class chFPGA:
 			if verbose>1 or (verbose==1 and (j % 100 ==99 or j==frames-1)):
 				print 'Acquiring Frame %i (%.0f%%)' % ((j+1),(100*(j+1)/frames))
 			try:
-				in_frame=self.read_frame(timeout_delay=0.2)
+				in_frame=self.read_frame(timeout_delay=0.001)
 			except SocketIO.timeout:
 				print 'Timeout!'
-				break
+				raise
 
 			if(len(in_frame)!=length+5):
 				print 'Frame %i: !!!Frame length MISMATCH: Received %i, Expected : %i!!!' % ((j+1), len(in_frame), (5+length))
@@ -927,7 +927,7 @@ class chFPGA:
 		print 'Plotted %i frames' % number_of_frames
 		
 		
-	def plot_ADC_frame_fft(self, channels=0, hold=0, frames=1, continuous=0,xmax=1023, sync_period=None, fft=1, out_shift=0, fft_shift=None, filename=None,simulate=0, contiguousFrames=8, length=1024):
+	def plot_ADC_frame_fft(self, channels=0, hold=0, frames=1, continuous=0,xmax=1023, sync_period=None, fft=1, out_shift=0, fft_shift=None, filename=None,simulate=0, contiguousFrames=1, length=1024):
 		'''
 		20120220KMB: added contiguous frames support
 		20110906KMB:  added fft plotting
@@ -951,19 +951,24 @@ class chFPGA:
 
 		
 		chanIndex = range(nchan)
+		plotFFTObject = range(nchan)
+		plotObject = range(nchan)
 		
 		if fft:
 			#f=np.arange(1024)*1024.0/800.0
 			f=np.fft.fftfreq(length*contiguousFrames,1/800.0)
+			zeros=np.zeros(len(f))
 			for chanNum in chanIndex:
 				plt.subplot(2,nchan,chanNum+1)
 				plt.title('Spectrum')
 				plt.xlabel('Frequency (MHz)')
-				plt.ylabel('Amplitude');
+				plt.ylabel('Amplitude')
+				plotFFTObject[chanNum], = plt.plot(f,zeros ,'b.-')
 				plt.subplot(2,nchan,nchan+chanNum+1)
 				plt.title('Timestream')
 				plt.xlabel('sample')
-				plt.ylabel('Amplitude');
+				plt.ylabel('Amplitude')
+				plotObject[chanNum], = plt.plot(zeros ,'b.-')
 
 		
 		mult_chan = nchan>1
@@ -978,7 +983,7 @@ class chFPGA:
 		try:
 			while (frames==0) or (frames!=0 and number_of_frames<frames):
 				try:
-					a=self.read_ADC_frame(channels,length=length,sync=(number_of_frames==0),fft=0,simulate=simulate, frames=contiguousFrames) #(number_of_frames==0)
+					a=self.read_ADC_frame(channels, length=length,sync=(number_of_frames==0),fft=0,simulate=simulate, frames=contiguousFrames) #(number_of_frames==0)
 					print a
 					#print f, f.shape
 					fa = np.zeros((nchan,len(a[channels[0]])))
@@ -996,13 +1001,16 @@ class chFPGA:
 					if fft:
 						for chanNum in chanIndex:
 							plt.subplot(2,nchan,chanNum+1);
-							plt.plot(f,10*np.log10(np.abs(fa[chanNum])**2) ,'b.-')
+							plotFFTObject[chanNum].set_ydata(10*np.log10(np.abs(fa[chanNum])**2))
+							###plt.plot(f,10*np.log10(np.abs(fa[chanNum])**2) ,'b.-')
 							#plt.axis([0,fmax,0,ftmax])
 							plt.ylim(0,100)
 							plt.subplot(2,nchan,nchan+chanNum+1);
-							plt.plot(a[channels[chanNum]] ,'b.-')
+							###plt.plot(a[channels[chanNum]] ,'b.-')
+							plotObject[chanNum].set_ydata(a[channels[chanNum]])
 							#plt.axis([0,xmax,-ymax,ymax])
 							plt.axis([0,xmax,-128,127])
+							#plt.draw()
 					else:
 						for chanNum in chanIndex:
 							plt.subplot(2,nchan,chanNum)
@@ -1024,9 +1032,147 @@ class chFPGA:
 			#file.close()
 		print 'Plotted %i frames' % number_of_frames
 	
+	def save_ADC_frames(self, channels=0, verbose=0, frames=1, continuous=0,xmax=1023, sync_period=None, out_shift=0, fft_shift=None, filename=None,simulate=0, contiguousFrames=1, length=1024):	
+		'''
+		20120521KMB: created to just save stream data without plotting 
+		'''
+		#if filename:
+		data_list = []
+		#	#file=open(filename,'w')
+		#else:
+		#	#file=None
+		if type(channels) is int: # make sure that 'channels' is a list
+			channels=[channels];
+		nchan = len(channels)
+		chanIndex = range(nchan)
+
 		
+		mult_chan = nchan>1
+
+		#corr_sum=np.zeros(512,dtype=complex)
+		number_of_frames=0
+
 		
+		ymax=1
+#		if fft:
+#			self.FFTinit(ant=channel,sync_period=sync_period, out_shift=out_shift, fft_shift=fft_shift);
+		try:
+			self.setup_ADC(channels, length=length, frames=contiguousFrames)
+			while (frames==0) or (frames!=0 and number_of_frames<frames):
+				try:
+					a=self.read_ADC_frame_simple(channels,length=length, frames=contiguousFrames) #(number_of_frames==0)
+					#print a
+					number_of_frames+=1					
+					if filename:
+						for chanNum in chanIndex:
+							data_list.append(a[channels[chanNum]])
+							#file.write(np.int8(a[ch1,:]))
+				except:
+					raise
+		except KeyboardInterrupt:
+			pass
+		if filename:
+			np.array(data_list)
+			np.save(filename,data_list)
+			#file.close()
+		print 'Saved %i frames' % number_of_frames
+	
+	def setup_ADC(self, channels=0, length=1024, frames=1):
+		self.sock.flush_data_socket()
+		self.sync()
+		length=((length+3)//4)*4;
+		if isinstance(channels,int): # make sure that channel is a list of channels
+			channels=[channels]
+		# Disable frame transmission for all antennas. Those thar are selected will be set-up later.
+		for ant in self.ANT:
+			ant.FR_DIST.TRIG_FRAME_COUNT=0 # Disable response to global trigger for all channnels by default. The requested ones will be re-enabled later. 
+
+		for ch in channels:
+			ant=self.ANT[ch]
+			ant.ADCDAQ.ENABLE_RAMP=0
+			ant.FR_DIST.DSP_DATA_SRC_ADC=1 # Source is ADC DAQ
+
+			ant.CH_DIST.pulse_bit('RESET') # Make sure the CH_DIST buffers are empty
+			ant.FR_DIST.reset_fifo() # if this automatically reset by SYNC now?
+				
+			ant.DSP.BYPASS=0
+			ant.DSP.reset_sync() # recompute pipeline delays of selected DSP processing block
+
+			ant.FR_DIST.TRIG_FRAME_COUNT=frames # Set number of frames to send when triggered. 110916 JFC: re-enabled line
+			ant.CH_DIST.select_words(length//4); # Enable transmission of desired number of words 
+			
+	def read_ADC_frame_simple(self,channels=0,frames=1,length=1024):
+		"""
+		Triggers frame acquisition  from the specified ADC channel and capture the data.
+
+		Parameters:
+			channels: List of channels to configure and trigger. Will expect len(channels) frames. Frames from unexpected channels will cause an error
+			frames: Number of frames to acquire per channel. Limited by the buffer lengths in the FPGA
+			length: number of bytes to capture per channel. Must be a multiple of 4.
+			sync: when true, send a local sync and resets the antenna processor before acquiring the frames
+			raw: when true, returns the unsigned raw data from the ADC (bit 7 is not inverted)
+		History:
+			110916 JFC: Added comments. 
+				Changed output format to dictionnary of arrays instead of bidimentional array.
+				Now use global trigger to support multi-channel
+		"""
+
+		length=((length+3)//4)*4;
+
 		
+		if isinstance(channels,int): # make sure that channel is a list of channels
+			channels=[channels]
+
+
+		# Send a global trigger to start frame transmission
+		self.SYSMOD.GLOBAL_TRIG=0 #trigger data acquisition  on all antennas
+		self.SYSMOD.GLOBAL_TRIG=1 #trigger data acquisition  on all antennas
+
+		# Now we acquire the data
+		data={}
+		for j in range(len(channels)*frames):
+		#j=0
+		#while 1:
+			#j+=1
+			try:
+				in_frame=self.read_frame(timeout_delay=0.2)
+			except SocketIO.timeout:
+				print 'Timeout!'
+				break
+
+			if(len(in_frame)!=length+5):
+				print 'Frame %i: !!!Frame length MISMATCH: Received %i, Expected : %i!!!' % ((j+1), len(in_frame), (5+length))
+
+			# Process the packet header
+			rx_packet_header=ord(in_frame[0])
+			port=rx_packet_header & 0x3F
+
+			# Process the frame header
+
+			rx_frame_header=np.array(map(ord,in_frame[1:5]),np.uint8) # extract 4 header bytes as an uint8 array
+
+			ant_number=rx_frame_header[0]
+			frame_valid_ctr=rx_frame_header[1]>>2
+			frame_ctr=((rx_frame_header[1]&0x03)<<6)+(rx_frame_header[2]>>2);
+			frame_length=((rx_frame_header[2]&0x03)<<8)+rx_frame_header[3]
+
+			# Process the frame data
+
+			rx_subframe=in_frame[5:]
+			raw_data=np.array(map(ord,rx_subframe),dtype=np.uint8)
+			raw_data.dtype=np.int8
+
+
+			ch=port
+			# Make sure there is an empty vector on the first storage so we can concatenate to it the new data
+
+			vector=raw_data;
+
+			if ch not in data:
+				data[ch]=vector
+			else:
+				data[ch]=np.hstack((data[ch],vector));
+		return data	
 		
 		
 		

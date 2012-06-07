@@ -24,10 +24,11 @@ class ADC_chip(object):
 	REG_CH_CAL_CTRL=0x10
 	REG_CH_CAL_CTRL_MLBX=0x11
 	REG_CH_STATUS=0x12
+	REG_TRIM=0x13  ## added kmb to set to 100ohms
 
-	def __init__(self,fpga,adc_number):
+	def __init__(self,adc_instance,adc_number):
 		#super(ADC_chip,self).__init__(fpga)
-		self.adc=fpga # store current ADC number for this instance
+		self.adc=adc_instance # store current ADC number for this instance
 		self.adc_number=adc_number # store current ADC number for this instance
 		
 	def read(self,addr): 
@@ -110,7 +111,7 @@ class ADC_base(object):
 		spi.read_write(spi.SPI_ADC0_ADDR+adc_number, data=[0x80+addr,data>>8,data&0xFF])
 
 	# High level functions
-	def temperature(self, adc_number,verbose):
+	def temperature(self, adc_number,verbose=False):
 		"""Reads the external temperature sensor connected to the sensing diode in the specified ADC chip"""
 
 		spi=self.fpga.SPI; # use a shorter variable name to access the FPGA instance attributes
