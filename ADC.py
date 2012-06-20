@@ -7,7 +7,7 @@ ADC.py module
 # History:
 # 2011-07-07 : JFC : Created from test code in chFPGA.py
 	2011-09-29 JFC: Added set_test_mode()
-
+	2012-06-07 JFC: Added ADC_chip.get_temperature()
 """
 
 import numpy as np
@@ -28,7 +28,7 @@ class ADC_chip(object):
 
 	def __init__(self,adc_instance,adc_number):
 		#super(ADC_chip,self).__init__(fpga)
-		self.adc=adc_instance # store current ADC number for this instance
+		self.adc=adc_instance # store reference to the parent instance (ADC_Base)
 		self.adc_number=adc_number # store current ADC number for this instance
 		
 	def read(self,addr): 
@@ -37,6 +37,8 @@ class ADC_chip(object):
 	def write(self,addr,value): 
 		return self.adc.write(self.adc_number,addr,value)
 
+	def get_temperature(self,**kwargs):
+		return self.adc.temperature(self.adc_number,**kwargs) 
 
 	def init(self, test_mode=0):
 		# CONTROL Register

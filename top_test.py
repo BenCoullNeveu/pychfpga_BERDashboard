@@ -71,6 +71,17 @@ SN002_adc_delays=(
 	[14]*8, #CH7 (BUFR)
 	)
 
+ADC_DELAYS_Rev2_SN0001=(
+	[20,26,25,25,25,25,25,24], #CH0
+	[23]*8, #CH1 
+	[24,22,20,20,20,20,20,17], #CH2 
+	[19]*8+[0], #CH3
+	[17]*8, #CH4
+	[17]*8, #CH5 
+	[19,19,19,18,17,16,20,20], #CH6 
+	[16]*8, #CH7
+	)
+
 
 if __name__=='__main__':		
 	print '------------------------'
@@ -86,8 +97,8 @@ if __name__=='__main__':
 	except:
 		pass
 
-	ADC_TEST_MODE=1 	#  0= normal, 1= ramp, 2=pulse (1 high, 10 low)
-	ADC_DELAY_TABLE=SN002_adc_delays # select the table corresponding to the FMC serial number
+	ADC_TEST_MODE=0 	#  0= normal, 1= ramp, 2=pulse (1 high, 10 low)
+	ADC_DELAY_TABLE=ADC_DELAYS_Rev2_SN0001 # select the table corresponding to the FMC serial number
 	FREF=10 # FMC Reference clock frequency 
 
 	# Create the new chFPGA object.
