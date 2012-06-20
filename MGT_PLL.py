@@ -9,8 +9,11 @@ ADC_PLL.py module
 # 2011-08-11 JFC : Complete cleanup. Made the PLL programming work. Changed the order of computations.
 	Changed the PLL parameter selection algorithm to select the values that yield the lowest frequency error. 
 	Print frequency table at the end, wich computation of precision, errror and PPM
+	2011-06-08 JFC: Added an Exception if there are no valid P0/P1/N combinations for target frequency
+				Slightly changed the programming sequence. Now done in 2 phases only: 1) program registers (including outputs levels)  and 2) initiate VCO cal.
 """
 import numpy as np
+import time
 
 class Struct(object):
 	def __init__(self,**args):
@@ -90,6 +93,9 @@ class MGT_PLL_base(object):
 
 					valid_params.append( Struct(P0=p0,P1=p1, fout_err=fout_err,N_int=N_int,N_real=N_real,MODULUS=MODULUS,FRAC=FRAC,fvco=fvco,fout_real=fout_real) ) # store combination (whether or not N is integer or not. We'll use a non-integer N if we have to.)
 
+		if not len(valid_params):
+			raise SystemError("Cannot find valid combination of parameters to acheive target MGT PLL frequency")
+			
 		# Sort the list of ODF values, putting the items with integer N first (if any) so we will use it.
 		valid_params=sorted(valid_params, key=lambda k: k.fout_err) # put combinations that yield integer cooefficients first 
 
@@ -163,33 +169,28 @@ class MGT_PLL_base(object):
 		OUT2_CMOS_POL=0 # 0=(+,-), 1=(+,+), 2=(-,-), 3=(-,+)
 		ENABLE_SPI_OUT2_CTRL=1
 
-		# --- Program the PLL registers ---
-
-		# VCO Control
-		self.write(0x0E, (ENABLE_SPI_VCO_CAL<<2) | (ENABLE_SPI_VCO_BAND<<0))
+		# --- Reset PLL to a known state ---
+		self.write(0x00, 0x3c) # Soft reset
 		self.write(0x05,0x01) # Update
-
+		time.sleep(0.003) # wait 3 ms for the VCO cal to complete (needed?)
+		
+		# --- Program the registers ---
+		# VCO Control
+		self.write(0x0E, (0<<7) | (ENABLE_ALC<<6) | (ALC_THRESHOLD<<3) | (ENABLE_SPI_VCO_CAL<<2) | (VCO_SUPPLY_BOOST<<1) | (ENABLE_SPI_VCO_BAND<<0))
 		self.write(0x0F, (VCO_LEVEL<<2))
 		self.write(0x10, (VCO_BAND<<1))
-		self.write(0x05,0x01) # Force the PLL to register the values sent so far 
-
-#		self.write(0x0E,(1<<7) | (ENABLE_ALC<<6) | (ALC_THRESHOLD<<3) | (ENABLE_SPI_VCO_CAL<<2) | (VCO_SUPPLY_BOOST<<1) | (ENABLE_SPI_VCO_BAND<<0))
-#		self.write(0x05,0x01) # Update
 
 		# PLL loop Control
-		self.write(0x11,N_int) # MOD
-		self.write(0x12,(MODULUS>>12) & 0xFF) # MOD
-		self.write(0x13,(MODULUS>>4) & 0xFF) # MOD
-		self.write(0x14,((MODULUS & 0x0F)<<4) | (ENABLE_SPI_FREQ_CTRL<<3) | (BYPASS_SDM<<2) | (DISABLE_SDM<<1) | (RESET_PLL<<0)) # MOD
-		self.write(0x15,(FRAC>>12)&0xFF) # MOD
-		self.write(0x16,(FRAC>>4) & 0xFF) # MOD
-		self.write(0x17,((FRAC & 0x0F)<<4 | ((P1>>5) & 0x01))) 
-		self.write(0x18,((P1 & 0x1F)<<3) | (P0-4)) # P1
-		self.write(0x19,(ENABLE_SPI_OUT_DIV<<7)) # 
+		self.write(0x11, N_int) # MOD
+		self.write(0x12, (MODULUS>>12) & 0xFF) # MOD
+		self.write(0x13, (MODULUS>>4) & 0xFF) # MOD
+		self.write(0x14, ((MODULUS & 0x0F)<<4) | (ENABLE_SPI_FREQ_CTRL<<3) | (BYPASS_SDM<<2) | (DISABLE_SDM<<1) | (RESET_PLL<<0)) # MOD
+		self.write(0x15, (FRAC>>12)&0xFF) # MOD
+		self.write(0x16, (FRAC>>4) & 0xFF) # MOD
+		self.write(0x17, ((FRAC & 0x0F)<<4 | ((P1>>5) & 0x01))) 
+		self.write(0x18, ((P1 & 0x1F)<<3) | (P0-4)) # P1
+		self.write(0x19, (ENABLE_SPI_OUT_DIV<<7)) # 
 		self.write(0x1d, (REFERENCE_FREQUENCY_DOUBLER<<2))
-		self.write(0x0E,(1<<7) | (ENABLE_ALC<<6) | (ALC_THRESHOLD<<3) | (ENABLE_SPI_VCO_CAL<<2) | (VCO_SUPPLY_BOOST<<1) | (ENABLE_SPI_VCO_BAND<<0))
-		self.write(0x05,0x01) # Force the PLL to register the values sent so far 
-
 
 		# OUT1 Control
 		self.write(0x32,(OUT1_DRIVE_STRENGTH<<7) | (OUT1_POWER_DOWN<<6) | (OUT1_MODE<<3) | (OUT1_CMOS_POL<<1) | (ENABLE_SPI_OUT1_CTRL<<0))
@@ -198,7 +199,13 @@ class MGT_PLL_base(object):
 		self.write(0x33,(OUT2_SOURCE<<3)) # 
 		self.write(0x34,(OUT2_DRIVE_STRENGTH<<7) | (OUT2_POWER_DOWN<<6) | (OUT2_MODE<<3) | (OUT2_CMOS_POL<<1) | (ENABLE_SPI_OUT2_CTRL<<0))
 
+		# Load register values
+		self.write(0x05,0x01) # Tell the PLL to register the values sent so far 
+
+		# Initiate VCO calibration to allow locking with new parameters
+		self.write(0x0E,(1<<7) | (ENABLE_ALC<<6) | (ALC_THRESHOLD<<3) | (ENABLE_SPI_VCO_CAL<<2) | (VCO_SUPPLY_BOOST<<1) | (ENABLE_SPI_VCO_BAND<<0))
 		self.write(0x05,0x01) # Force the PLL to register the values sent so far 
+		time.sleep(0.003) # wait 3 ms for the VCO cal to complete
 
 		if verbose>0:
 			fpga=self.fpga_instance
