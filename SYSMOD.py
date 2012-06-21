@@ -48,7 +48,7 @@ class SYSMOD_base(Module_base):
 		'MAJOR_VERSION' : 	BitField(STATUS,0x080+ 0x01,0,8,doc='Major revision number of the firmware'),
 		'MINOR_VERSION' : 	BitField(STATUS,0x080+ 0x02,0,8,doc='Minor revision number of the firmware'),
 		'BUILD_NUMBER' : 	BitField(STATUS,0x080+ 0x03,0,8,doc='Build number of the firmware'),
-		'BUILD_YEAR' : 		BitField(STATUS,0x080+ 0x04,0,8,doc='Build year of the firmware'),
+		'BUILD_YEAR' : 	BitField(STATUS,0x080+ 0x04,0,8,doc='Build year of the firmware'),
 		'BUILD_MONTH' : 	BitField(STATUS,0x080+ 0x05,0,8,doc='Build month of the firmware'),
 		'BUILD_DAY' : 		BitField(STATUS,0x080+ 0x06,0,8,doc='Build day of the firmware'),
 

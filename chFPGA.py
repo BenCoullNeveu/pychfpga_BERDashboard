@@ -95,7 +95,7 @@ class chFPGA:
 	FMC_present=False # indicates if the FMC board is present. If not, the modules will act accordingly.
 
 
-	def __init__(self,adc_test_mode=0, adc_delay_table=None, fref=10, verbose=1):
+	def __init__(self,adc_test_mode=0, adc_delay_table=None, fref=10, verbose=2):
 
 		print '*** Opening sockets ***'
 		# Create socket handled and open socket communications to the chFPGA board
