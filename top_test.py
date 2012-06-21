@@ -12,7 +12,7 @@ History:
 	2011-10-11 JFC: Updated delay tables
 """
 
-import chFPGA
+from core import chFPGA
 reload(chFPGA) # just to make sure that any changes to the code are reloaded
 
 # Default data and clock line delays for the two FMC boards/ML605 combination.
