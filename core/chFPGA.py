@@ -1,4 +1,6 @@
 #!/usr/bin/python
+# Disable pylint TAB warnings (W0312) and Line too long (=C0301)
+# pylint: disable=W0312,C0301 
 
 """
 chFPGA.py module 
@@ -60,6 +62,7 @@ import ANT
 import ADCDAQ # Included only so it can be reloaded
 import FRAMER # Included only so it can be reloaded
 import FFT # Included only so it can be reloaded
+import PROBER # Included only so it can be reloaded
 
 
 # Correlator handlers
@@ -70,7 +73,7 @@ import CH_DIST	# Included only so it can be reloaded
 # -- Module reloader -- 
 # Reload modules if we are debugging in case the source code has changed
 
-reload_modules=(util,SocketIO,Module,SPI,I2C,SYSMOD,SYSMON,REFCLK,AmbTemp,FreqCtr,ADC,IOExpander,ADC_PLL,BiasADC,MGT_PLL,FMC_EEPROM,ML605_PMBus,ANT,ADCDAQ, FRAMER, FFT, CORR_BLOCK, CH_DIST, MGT)
+reload_modules=(util,SocketIO,Module,SPI,I2C,SYSMOD,SYSMON,REFCLK,AmbTemp,FreqCtr,ADC,IOExpander,ADC_PLL,BiasADC,MGT_PLL,FMC_EEPROM,ML605_PMBus,ANT,ADCDAQ, FRAMER, FFT, PROBER, CORR_BLOCK, CH_DIST, MGT)
 	
 
 for m in reload_modules: 
@@ -113,7 +116,7 @@ class chFPGA:
 		print '*** Opening sockets ***'
 		# Create socket handled and open socket communications to the chFPGA board
 		self.sock=SocketIO.SocketIO_base()
-		self.sock.open();
+		self.sock.open()
 
 		try: # catch initialization errors so we can free the socket for future instantiation
 			print '*** Instantiating modules ***'
@@ -208,7 +211,7 @@ class chFPGA:
 			self.ADC_PLL.status()
 
 			if verbose>=2: print '  - ADC'
-			self.ADC.init(test_mode=adc_test_mode);
+			self.ADC.init(test_mode=adc_test_mode)
 			self.ADC.status()
 
 			if verbose>=2: print '  - ANT'
@@ -243,8 +246,8 @@ class chFPGA:
 
 	def __del__(self):
 
-		self.close();
-		print '__del__: Closed FPGA at IP address %s' % self.self.OUT_IP
+		self.close()
+		print '__del__: Closed FPGA at IP address %s' % self.SocketIO.OUT_IP
 
 	def close(self):
 		""" 
@@ -275,9 +278,9 @@ class chFPGA:
 
 		#if we requested a single value (length=1), returns the object, otherwise return a numpy array of objects
 		if len(dout)==1:
-			return dout[0];
+			return dout[0]
 		else:
-			return dout;
+			return dout
 		
 	
 	def write(self,ant,module,addr,data,incr=1,mask=0xff):
@@ -298,7 +301,7 @@ class chFPGA:
 
 		# Add the data to the string. The method depends on the data type
 		if type(data)==str:
-			s+=data;
+			s+=data
 			length=len(data)
 		elif type(data)==list or type(data)==np.ndarray:
 			s+=''.join([chr(data[i]) for i in range(len(data))])
@@ -306,17 +309,17 @@ class chFPGA:
 		elif type(data)==np.uint32:
 			length=4;
 			a=np.array([data],np.dtype('>u4')) # store as big endian (most significant byte first)
-			a.dtype=np.uint8;
+			a.dtype=np.uint8
 			s+=''.join([chr(a[i]) for i in range(4)])
 		elif type(data)==np.uint16:
 			length=2;
-			a=np.array([data],np.dtype('>u2')); # store as big endian (most significant byte first)
-			a.dtype=np.uint8;
+			a=np.array([data],np.dtype('>u2')) # store as big endian (most significant byte first)
+			a.dtype=np.uint8
 			s+=''.join([chr(a[i]) for i in range(2)])
 		elif type([data])==np.uint8:
 			length=1;
 			a=np.array([data]); # store as big endian (most significant byte first)
-			a.dtype=np.uint8;
+			a.dtype=np.uint8
 			s+=chr(a[i])
 		else:
 			s=s+chr(data);

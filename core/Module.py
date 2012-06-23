@@ -1,4 +1,6 @@
 #!/usr/bin/python
+# Disable pylint TAB warnings (W0312) and Line too long (=C0301)
+# pylint: disable=W0312,C0301 
 
 """
 Module.py module 
@@ -7,6 +9,7 @@ Module.py module
 # History:
 	2011-08-03 JFC : Created from ANT.py
 	2011-09-25 JFC: Added read_DRP and read_RAM 
+	2012-06-23 JFC: Added bitfield_property to introduce a new way to define bitfields (allows these bitfields to be more easily referred to as function arguments, and makes pylint happier)
 """
 
 import numpy as np
@@ -15,23 +18,23 @@ import time
 class BitField:
 	""" Holds the definition of a memory-mapped variable"""
 	# Page values
-	CONTROL=0
-	STATUS=1
-	RAM=2
-	DRP=3 # Dynamic Reconfiguration Port
-	def __init__(self,page, addr, bit, width=1, default=None, doc=''): 
-		self.page=page 
-		self.addr=addr 
-		self.bit=bit
-		self.width=width 
-		self.default=default
-		self.doc=doc
+	CONTROL = 0
+	STATUS = 1
+	RAM = 2
+	DRP = 3 # Dynamic Reconfiguration Port
+	def __init__(self, page, addr, bit, width=1, default=None, doc=''): 
+		self.page = page 
+		self.addr = addr 
+		self.bit = bit
+		self.width = width 
+		self.default = default
+		self.doc = doc
 
 	def get_addr(self):
 		"""
 		Returns the Memory-mapped address corresponding to the bit field
 		"""
-		if self.page==self.CONTROL:
+		if self.page == self.CONTROL:
 			return 0x000+(self.addr & 0x07F)
 		elif self.page==self.STATUS:
 			return 0x080+(self.addr & 0x07F)
@@ -53,6 +56,14 @@ class Module_base(object):
 
 	#BitDef=BitDef_base # make class accessible to subclass (somehow the class is not inherited directly)
 	BITS={} # Should be overriden by the subclass
+
+	def bitfield_property(self, *args, **kwargs):
+		""" creates a property that accesses bit fields in the memory-mapped space"""
+		bitfield=BitField(*args, **kwargs) # Creates a bitfield structure
+		fget = lambda s, _bitfield = bitfield : s.read_field(_bitfield) # Pass bit_name as a default argument to 'close' that variable (i.e. bind it now). Otherwise the function will use the value at call time (which is the last value assigned to that variable) 
+		fset = lambda s, value, _bitfield = bitfield : s.write_field(_bitfield,value)
+		fdoc = bitfield.doc
+		return property(fget, fset, doc=fdoc)
 	
 	def __init__(self,fpga_instance,port_number,module_number):
 		self._unlock()
@@ -63,8 +74,8 @@ class Module_base(object):
 			#print '  Defining property "%s"' % (bit_name)
 
 			# Use function closures to create the callback function with arguments that won't be rebinded
-			fget=lambda s,_bit_name=bit_name:s.read_field(_bit_name) # Pass bit_name as a default argument to 'close' that variable (i.e. bind it now). Otherwise the function will use the value at call time (which is the last value assigned to that variable) 
-			fset=lambda s,value,_bit_name=bit_name:s.write_field(_bit_name,value)
+			fget=lambda s, _bit_name = bit_name : s.read_field(_bit_name) # Pass bit_name as a default argument to 'close' that variable (i.e. bind it now). Otherwise the function will use the value at call time (which is the last value assigned to that variable) 
+			fset=lambda s, value,_bit_name = bit_name : s.write_field(_bit_name,value)
 #			if self.BITS[bit_name].page ==0x10:
 #				setattr(self.__class__, bit_name, property(fget,doc=self.BITS[bit_name].doc))
 #			else:

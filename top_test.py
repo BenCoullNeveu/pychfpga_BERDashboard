@@ -1,4 +1,6 @@
 #!/usr/bin/python
+# Disable pylint TAB warnings (W0312) and Line too long (=C0301)
+# pylint: disable=W0312,C0301 
 
 """
 top_test.py script 
@@ -17,7 +19,7 @@ reload(chFPGA) # just to make sure that any changes to the code are reloaded
 
 # Default data and clock line delays for the two FMC boards/ML605 combination.
 # First 8 values are the delays for bits 0 to 7, 8th value is the delay for the clock line.
-SN001_adc_delays=(
+SN001_ADC_DELAYS = (
 	[13,19,19,19,19,19,19,19]+[13], # CH0
 	[18]*8+[0], #CH1
 	[10]*8+[13], #CH2
@@ -60,7 +62,7 @@ SN001_adc_delays=(
 #	[14]*8, #CH7 (BUFR)
 #	)
 	
-SN002_adc_delays=(
+SN002_ADC_DELAYS = (
 	[17,15,15,15,15,15,15,3]+[0], #CH0 (BUFR)
 	[15]*8, #CH1 (BUFR)
 	[27,14,29,29,29,29,29,15]+[0], #CH2 (PLL)
@@ -71,7 +73,7 @@ SN002_adc_delays=(
 	[14]*8, #CH7 (BUFR)
 	)
 
-ADC_DELAYS_Rev2_SN0001=(
+ADC_DELAYS_REV2_SN0001 = (
 	[20,26,25,25,25,25,25,24], #CH0
 	[23]*8, #CH1 
 	[24,22,20,20,20,20,20,17], #CH2 
@@ -83,26 +85,27 @@ ADC_DELAYS_Rev2_SN0001=(
 	)
 
 
-if __name__=='__main__':		
+if __name__ == '__main__':		
 	print '------------------------'
 	print 'top_test.py: chFGPA test script'
 	print 'J.-F. Cliche'
 	print '------------------------'
 
 	# Delete previous instances of 'c' to make sure the sockets are closed. If not, the new object will not be able to open the socket.
+	# pylint: disable=E0601	
 	try:
 		print 'Deleting previous chFPGA instances in current namespace'
 		c.close() # close sockets from previous objects to free them for the new one
 		del c
-	except:
+	except NameError:
 		pass
 
-	ADC_TEST_MODE=0 	#  0= normal, 1= ramp, 2=pulse (1 high, 10 low)
-	ADC_DELAY_TABLE=ADC_DELAYS_Rev2_SN0001 # select the table corresponding to the FMC serial number
-	FREF=10 # FMC Reference clock frequency 
+	ADC_TEST_MODE = 0 	#  0= normal, 1= ramp, 2=pulse (1 high, 10 low)
+	ADC_DELAY_TABLE = ADC_DELAYS_REV2_SN0001 # select the table corresponding to the FMC serial number
+	FREF = 10 # FMC Reference clock frequency 
 
 	# Create the new chFPGA object.
-	c=chFPGA.chFPGA(adc_test_mode=ADC_TEST_MODE, adc_delay_table=ADC_DELAY_TABLE,fref=FREF);
+	c = chFPGA.chFPGA(adc_test_mode=ADC_TEST_MODE, adc_delay_table=ADC_DELAY_TABLE, fref=FREF) # pylint: disable=C0103
 	c.sync()
 	print
 	

@@ -10,7 +10,7 @@ ANT.py module
 import ADCDAQ
 import FRAMER
 import FFT
-#import CH_DIST	
+import PROBER	
 
 class ANT_channel(object):
 	""" Implements interface to one of the antenna processor pipeline"""
@@ -29,6 +29,7 @@ class ANT_channel(object):
 		self.ADCDAQ=ADCDAQ.ADCDAQ_base(self)
 		self.FR_DIST=FRAMER.FR_DIST_base(self)
 		self.DSP=FFT.DSP_base(self)
+		self.PROBER=PROBER.PROBER_base(self)
 		#self.CH_DIST=CH_DIST.CH_DIST_base(self)
 		self.frame_length=self.ant.frame_length
 
@@ -45,7 +46,7 @@ class ANT_channel(object):
 		self.ADCDAQ.init()
 		self.FR_DIST.init()
 		self.DSP.init()
-#		self.CH_DIST.init()
+		self.PROBER.init()
 
 
 	def status(self):
@@ -53,7 +54,7 @@ class ANT_channel(object):
 		self.ADCDAQ.status()
 		self.FR_DIST.status()
 		self.DSP.status()
-#		self.CH_DIST.status()
+		self.PROBER.status()
 
 
 
