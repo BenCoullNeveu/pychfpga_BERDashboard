@@ -42,16 +42,12 @@ class SYSMOD_base(Module_base):
 		'LCD_RW' : 			BitField(CONTROL,0x02,5,doc='LCD Read/Write flag (0=write, 1=read)'),
 		'LCD_DATA' : 		BitField(CONTROL,0x02,0,4,doc='LCD 4-bit data bus'),
 
+		'USER_RESET' : 		BitField(CONTROL,0x03,7,doc='User reset'),
+		'ANT_RESET' : 		BitField(CONTROL,0x03,6,doc='Antenna processing pipeline reset'),
+		'CORR_RESET' : 		BitField(CONTROL,0x03,5,doc='Correlator reset'),
+
 		'TIMESTAMP_VALID' : BitField(STATUS,0x080+ 0x00,7,doc='Timestamp data valid (i.e. can be read)'),
 		'ADC_SYNC_READBACK' : BitField(STATUS,0x080+ 0x00,0,doc='Reads back the SYNC bit for debugging'),
-
-		'MAJOR_VERSION' : 	BitField(STATUS,0x080+ 0x01,0,8,doc='Major revision number of the firmware'),
-		'MINOR_VERSION' : 	BitField(STATUS,0x080+ 0x02,0,8,doc='Minor revision number of the firmware'),
-		'BUILD_NUMBER' : 	BitField(STATUS,0x080+ 0x03,0,8,doc='Build number of the firmware'),
-		'BUILD_YEAR' : 	BitField(STATUS,0x080+ 0x04,0,8,doc='Build year of the firmware'),
-		'BUILD_MONTH' : 	BitField(STATUS,0x080+ 0x05,0,8,doc='Build month of the firmware'),
-		'BUILD_DAY' : 		BitField(STATUS,0x080+ 0x06,0,8,doc='Build day of the firmware'),
-
 	}
 
 
@@ -156,7 +152,6 @@ class SYSMOD_base(Module_base):
 
 	def status(self):
 		print '-------------------------SYSMOD--------------------------------------'
-		print 'chFPGA Firmware version %i.%i, Build %i, Date: %04i-%02i-%02i' % (self.MAJOR_VERSION, self.MINOR_VERSION, self.BUILD_NUMBER, self.BUILD_YEAR+2000,self.BUILD_MONTH, self.BUILD_DAY)
 		print 'Bistream timestamp is: %s' % self.read_bitstream_date()
 		print '----------------------------------------------------------------------'
 

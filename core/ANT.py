@@ -19,7 +19,7 @@ class ANT_channel(object):
 	ADCDAQ_MODULE=0
 	FR_DIST_MODULE=1
 	DSP_MODULE=2
-	CH_DIST_MODULE=3
+	PROBER_MODULE=3
 
 	def __init__(self,ant_instance,ant_number):
 		#super(ADC_chip,self).__init__(fpga)

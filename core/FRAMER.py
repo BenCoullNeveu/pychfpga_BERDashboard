@@ -103,13 +103,12 @@ class FR_DIST_base(Module_base):
 		""" Initializes the antenna processing chain data source module """
 		# Do nothing if the FMC is not present
 		if not self.fpga.FMC_present:
-			self.DSP_DATA_SRC = 2 # use FRAMER-generated ramp if the ADC is not present
+			self.DATA_SOURCE = self.DATA_SOURCE_NAMES['ramp'] # use FRAMER-generated ramp if the ADC is not present
 		else:
-			self.DSP_DATA_SRC = 0 # use the ADC data
+			self.DATA_SOURCE = self.DATA_SOURCE_NAMES['adc'] # use the ADC data
 
 	def status(self):
 		""" Displays the status of the antenna processing chain data source module """
 		print '-------------- ANT[%i].FRAMER STATUS --------------' % self.port_number 
-		print ' Data source: %s' % ('ADC', 'Inject', 'Ramp', 'Zero')[self.DSP_DATA_SRC]
-		print ' TRIG_COUNT=: %i' % self.TRIG_COUNT
+		print ' Data source: %i' % self.DATA_SOURCE
 
