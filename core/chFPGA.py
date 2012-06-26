@@ -354,119 +354,6 @@ class chFPGA:
 		return self.sock.read_data(*args,**kwargs);
 
 
-
-	def test1(self):
-		self.OpenSocket();
-
-		# Empty buffer
-		self.flush_control_socket();
-		
-		# Create big data string
-		#print 'Generating data...'
-		#s="";
-		#for i in range(9014-42):
-		#	s+="A";
-
-		frame_transmission_time=(9014+42+4+12)*8/1e9; # frame transmission time @ 1 Gb/s- used to compute timout	
-		print "Frame transmission duration is ", frame_transmission_time;
-		self.sock.settimeout(max(frame_transmission_time*4,0.1));
-
-		# Send test patterns
-		print 'Sending test patterns'
-		fail=0;
-		success=0;
-		total_size=0;
-		total_rx_size=0;
-		
-		s0=''.join([chr(random.randint(0,255)) for i in range(7000)])
-#		s="XXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXx";
-		t1=time.time();
-		i=1;
-		j=1;
-		send_retry=0;
-		rx_retry=0;
-		N=1000;
-		while j<=N:
-		#	print '------------------------'
-
-		#	res= 'Iteration ',i,
-
-
-			#s="";
-			#for i in range(9014-42):
-			#	s+=chr(random.randint(0,255));
-			s="Message #" + str(i)+s0;
-			s=s0;
-		#	print '     Sending data:', s
-		#	print '     Sending data...',
-			#print 'Iteration ',i
-			data="";
-			rx,tx,ex=select.select((self.sock,),(self.sock,),[],0);
-			if i<=N:
-				try:
-					self.sock.settimeout(0);
-			#		print "TX Message #", i
-					n=self.sock.sendto ( s, self.OUT_ADDR );
-			#		data,client=self.sock.recvfrom ( 16384 );
-			#		print '    Received data length:', len(data),
-					total_size+=len(s)+8+42+4+12; # also include preamble, Ethernet/IP/UDP headers, CRC and interframe delay to get a better idea of the real throughput
-					i+=1;
-			#	except KeyboardInterrupt:
-			#		raise
-				except socket.error as (errno,errname):
-					if errno==11:
-						#print 'Error 11 on packet #',i
-						#ss=''.join([chr(random.randint(0,255)) for i in range(90-42)])
-						send_retry+=1;
-					#	time.sleep(0.00001);
-						pass
-
-
-			if(len(rx)>0):
-				self.sock.settimeout(1);
-				data,client=self.sock.recvfrom ( 16384);
-				print '   RX Message #', j
-				total_rx_size+=len(data)+8+42+4+12; # also include preamble, Ethernet/IP/UDP headers, CRC and interframe delay to get a better idea of the real throughput
-				s2="Message #" + str(j)+s0;
-				s2=s0;
-				j+=1;
-				if data[0:100]==s2[0:100]: 
-					success+=1;
-				#	print '   Data match'
-				#	print s2
-				#	print data
-				else:
-
-					print '   !!!Data MISMATCH!!!'
-				#	print s2
-				#	print data
-					fail+=1;
-			#except socket.error as (errno,errname):
-			#	if errno==11:
-
-			#		print 'Receive Error 11 on packet #',j
-			#		print data
-			#		#ss=''.join([chr(random.randint(0,255)) for i in range(90-42)])
-			#		rx_retry+=1;
-			#	#	time.sleep(0.00001);
-			#		pass
-			#	else:
-			#		print '   !!! Socket error: ',errno,errname
-			#		fail+=1;
-		t2=time.time();
-		dt=t2-t1;
-		if dt==0:
-			dt=0.000001;
-		print '------------------------'
-		print ' Success: ', success, '/', success+fail, '(', success/(success+fail)*100, '%) over ', total_size/1024/1024, 'MBytes in', dt, 'seconds, average speed=',total_size*8/1e6/dt,"Mb/s", 'retries=',send_retry
-				
-		self.CloseSocket();		
-			
-		
-	
-
-
-
 	def plot_ADC_eye_diagram(self, channel=0):
 
 		ant=self.ANT[channel]
@@ -614,13 +501,13 @@ class chFPGA:
 
 		plt.figure(4)
 		plt.clf()
-		hold(1)
+		plt.hold(1)
 #		self.ADC_set_delay(adc,dly)
 		a=self.ADC_Read_Frame(channel,length=1024,simulate=simulate);
 		if delay:
 			self.ADC_set_delay(channel,old_delays); # restore original delays
 		for bit in range(8):
-			plot(((a & (1<<bit))!=0) +2*bit,'b.-')
+			plt.plot(((a & (1<<bit))!=0) +2*bit,'b.-')
 #			hold(1)
 		plt.draw()
 
@@ -636,7 +523,7 @@ class chFPGA:
 				self.ADC_set_delay(ch,delay)
 
 			a=self.ADC_Read_Frame(ch,length=1024);
-			a0=(arange(1024)+a[0]) % 256;
+			a0=(np.arange(1024)+a[0]) % 256;
 			passed=0
 			failed=0;
 			try:
@@ -765,6 +652,9 @@ class chFPGA:
 				print 'Resetting and SYNCing the devices'
 			self.sock.flush_data_socket()
 			self.sync()
+
+		# Dissable the global capture flag
+		self.SYSMOD.GLOBAL_TRIG=0 #trigger data acquisition  on all antennas
 	
 		for ch in channels:
 			ant=self.ANT[ch]
@@ -795,8 +685,6 @@ class chFPGA:
 			ant.CH_DIST.select_words(length//4); # Enable transmission of desired number of words 
 
 
-		# Send a global trigger to start frame transmission
-		self.SYSMOD.GLOBAL_TRIG=0 #trigger data acquisition  on all antennas
 		self.SYSMOD.GLOBAL_TRIG=1 #trigger data acquisition  on all antennas
 
 		# Now we acquire the data

@@ -81,16 +81,17 @@ class Module_base(object):
 		self.fpga = fpga_instance
 		self.port_number = port_number 
 		self.module_number = module_number
-		for bit_name in self.BITS.keys():
-			#print '  Defining property "%s"' % (bit_name)
-
-			# Use function closures to create the callback function with arguments that won't be rebinded
-			fget = lambda s, _bit_name = bit_name : s.read_field(_bit_name) # Pass bit_name as a default argument to 'close' that variable (i.e. bind it now). Otherwise the function will use the value at call time (which is the last value assigned to that variable) 
-			fset = lambda s, value,_bit_name = bit_name : s.write_field(_bit_name,value)
-#			if self.BITS[bit_name].page ==0x10:
-#				setattr(self.__class__, bit_name, property(fget,doc=self.BITS[bit_name].doc))
-#			else:
-			setattr(self.__class__, bit_name, property(fget, fset, doc=self.BITS[bit_name].doc))
+		for field_name, bitfield in self.BITS.items():
+			setattr(self.__class__, field_name, bitfield)
+#			#print '  Defining property "%s"' % (bit_name)
+#
+#			# Use function closures to create the callback function with arguments that won't be rebinded
+#			fget = lambda s, _bitfield = bitfield : s.read_field(_bitfield) # Pass bit_name as a default argument to 'close' that variable (i.e. bind it now). Otherwise the function will use the value at call time (which is the last value assigned to that variable) 
+#			fset = lambda s, value,_bitfield = bitfield : s.write_field(_bitfield,value)
+##			if self.BITS[bit_name].page ==0x10:
+##				setattr(self.__class__, bit_name, property(fget,doc=self.BITS[bit_name].doc))
+##			else:
+#			setattr(self.__class__, bit_name, property(fget, fset, doc=self.BITS[bit_name].doc))
 
 	def __setattr__(self, name, value):
 		""" Prevents creating new attributes to the class when _locked==1"""
@@ -137,64 +138,64 @@ class Module_base(object):
 		"""
 		return self.read(0x200+2*addr,*args,**kwargs)
 
-	def read_field(self, bit_name):
+	def read_field(self, bitfield):
 		""" Reads the field identified by the name 'bit_name' which is looked up in the BITS table to find the bit definition (port, bit position etc). Returns a boolean."""  
-		if isinstance(bit_name, BitField):
-			bit_def = bit_name
-			bit_name = '(unspecified)'
-		else:
-			bit_def=self.BITS[bit_name]
+#		if isinstance(bit_name, BitField):
+#			bit_def = bit_name
+#			bit_name = '(unspecified)'
+#		else:
+#			bit_def=self.BITS[bit_name]
 
-		if bit_def.page==BitField.DRP:
-			data= self.read_DRP(bit_def.addr) # read 16-bit value
-			return (data>>bit_def.bit) & ((1<<bit_def.width)-1)
+		if bitfield.page==BitField.DRP:
+			data= self.read_DRP(bitfield.addr) # read 16-bit value
+			return (data>>bitfield.bit) & ((1<<bitfield.width)-1)
 
 		word_width=8
-		first_byte = int(bit_def.bit/word_width)
-		last_byte = int((bit_def.bit+bit_def.width-1)/word_width)
+		first_byte = int(bitfield.bit/word_width)
+		last_byte = int((bitfield.bit+bitfield.width-1)/word_width)
 		number_of_bytes = last_byte - first_byte+1
 		data_type = {1:np.uint8, 2:np.uint16}[number_of_bytes]
-		data= self.read(bit_def.addr + first_byte, type=data_type)
+		data= self.read(bitfield.addr + first_byte, type=data_type)
 		
 		#print 'Read ,bit "%s" at port %i, bit=%i, data: %X' % (bit_name,  bit_def.addr,bit_def.bit, data)
-		return (data>>bit_def.bit) & ((1<<bit_def.width)-1)
+		return (data>>bitfield.bit) & ((1<<bitfield.width)-1)
 
-	def write_field(self, bit_name, data):
+	def write_field(self, bitfield, data):
 		""" Writes the field identified by the name 'bit_name' which is looked up in the BITS table to find the bit definition (port, bit position etc). Returns a boolean."""  
-		if isinstance(bit_name,BitField):
-			bit_def = bit_name
-			bit_name = '(unspecified)'
-		else:
-			bit_def=self.BITS[bit_name]
+#		if isinstance(bit_name,BitField):
+#			bit_def = bit_name
+#			bit_name = '(unspecified)'
+#		else:
+#			bit_def=self.BITS[bit_name]
 		#print 'Writing field',bit_name
 
-		if (data>=2**bit_def.width) or data<0:
-			raise Exception('Bad value %i for memory-mapped property %s' % (data, bit_name))
+		if (data>=2**bitfield.width) or data<0:
+			raise Exception('Bad value %i for memory-mapped property %s' % (data, bitfield))
 
-		if bit_def.page==BitField.DRP:
-			old_data= self.read_DRP(bit_def.addr) # read 16-bit value
-			mask=(2**bit_def.width-1)<<bit_def.bit
+		if bitfield.page==BitField.DRP:
+			old_data= self.read_DRP(bitfield.addr) # read 16-bit value
+			mask=(2**bitfield.width-1)<<bitfield.bit
 			new_data = old_data & ~mask
-			new_data |= ((data << bit_def.bit) & mask) 
-			self.write_DRP(bit_def.addr, new_data)
+			new_data |= ((data << bitfield.bit) & mask) 
+			self.write_DRP(bitfield.addr, new_data)
 			return
 
-		first_byte=int(bit_def.bit/8)
-		last_byte=int((bit_def.bit+bit_def.width-1)/8)
+		first_byte=int(bitfield.bit/8)
+		last_byte=int((bitfield.bit+bitfield.width-1)/8)
 		number_of_bytes=last_byte-first_byte+1
 		data_type={1:np.uint8, 2:np.uint16}[number_of_bytes]
 		
-		old_data= self.read(bit_def.addr+first_byte, type=data_type)
-		mask=(2**bit_def.width-1)<<bit_def.bit
+		old_data= self.read(bitfield.addr+first_byte, type=data_type)
+		mask=(2**bitfield.width-1)<<bitfield.bit
 		new_data = old_data & ~mask
-		new_data |= ((data << bit_def.bit) & mask) 
+		new_data |= ((data << bitfield.bit) & mask) 
 		#print 'Read ,bit "%s" at port %i, bit=%i, data: %X' % (bit_name,  bit_def.port,bit_def.bit, data)
 		#print 'old data, new_data=', hex(old_data), hex(new_data)
 		#print 'type=',type(new_data)
 		new_data=np.array([data_type(new_data)])
 		new_data.dtype=np.uint8
 		#print new_data
-		self.write(bit_def.addr+first_byte, new_data)
+		self.write(bitfield.addr+first_byte, new_data)
 
 	def write(self, addr, data, *args, **kwargs): 
 		self.fpga.write(self.port_number, self.module_number,addr,data,*args,**kwargs)
