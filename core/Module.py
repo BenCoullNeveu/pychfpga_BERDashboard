@@ -55,14 +55,14 @@ class BitField(object):
 
 	addr = property(get_addr, doc='Returns the memory-mapped address of the current bitfield item')
 
-#@staticmethod
-def bitfield_property(*args, **kwargs):
-	""" creates a property that accesses bit fields in the memory-mapped space"""
-	bitfield = BitField(*args, **kwargs) # Creates a bitfield structure
-	fget = lambda s, _bitfield = bitfield : s.read_field(_bitfield) # Pass bit_name as a default argument to 'close' that variable (i.e. bind it now). Otherwise the function will use the value at call time (which is the last value assigned to that variable) 
-	fset = lambda s, value, _bitfield = bitfield : s.write_field(_bitfield, value)
-	fdoc = bitfield.doc
-	return property(fget, fset, doc=fdoc)
+##@staticmethod
+#def bitfield_property(*args, **kwargs):
+#	""" creates a property that accesses bit fields in the memory-mapped space"""
+#	bitfield = BitField(*args, **kwargs) # Creates a bitfield structure
+#	fget = lambda s, _bitfield = bitfield : s.read_field(_bitfield) # Pass bit_name as a default argument to 'close' that variable (i.e. bind it now). Otherwise the function will use the value at call time (which is the last value assigned to that variable) 
+#	fset = lambda s, value, _bitfield = bitfield : s.write_field(_bitfield, value)
+#	fdoc = bitfield.doc
+#	return property(fget, fset, doc=fdoc)
 
 class Module_base(object):
 	""" Implements basic interfaces to a module. It is intended to be inherited by a subclass that specializes to specific modules"""
@@ -229,12 +229,19 @@ class Module_base(object):
 		If 'addr' is a string containing the name of a bit field, then this bit is pulsed.
 		"""
 
-		if addr in self.BITS:
-			field_def = self.BITS[addr]
-			if field_def.width!=1:
-				raise Exception('The bit field must be a single bit (width=1)')
-			(addr,bit)=(field_def.addr,field_def.bit)
-
+		if isinstance(addr,str):
+			class_attributes=vars(type(self))
+			if addr in class_attributes: # is the variable an attribute of this class
+				bitfield = class_attributes[addr]
+				if not isinstance(bitfield,BitField):
+					raise Exception("'%s' is not a Bitfield" % addr)
+				elif bitfield.width!=1:
+					raise Exception('The bit field must be a single bit (width=1)')
+				else:
+					(addr,bit)=(bitfield.addr,bitfield.bit)
+			else:
+				raise Exception("The BitField '%s' is not defined" % addr)
+				
 		mask = (1<<bit)
 		old_value = self.read(addr)
 		self.write(addr, old_value | mask) # Set bit to '1'

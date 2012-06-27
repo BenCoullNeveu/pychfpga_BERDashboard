@@ -21,14 +21,12 @@ chFPGA.py module
 
 import time
 #import datetime
-import random
+#import random
 #import sys
-import select
+#import select
 import numpy as np
-#import matplotlib as mpl
 import matplotlib.pyplot as plt
 #import pdb
-import socket #110906 JFCs
 
 import util
  
@@ -609,6 +607,32 @@ class chFPGA:
 				time.sleep(0.01)
 			#raw_input('Press [ENTER]')
 
+	def trigger_capture(self,source=None, channels=range(NUMBER_OF_ANTENNAS), frames_per_burst=1, burst_period=390000, number_of_bursts=0, sync=1):
+		"""
+		Triggers the capture of the specified number of frames in the FPGA for transmission over the Ethernet port. 
+		This function does not receive the frames from the ethernet port. This has to be done separately.
+		"""
+
+		self.SYSMOD.GLOBAL_TRIG=0 # disable data transmission if continuous mode is currentlly selected
+#		self.SYSMOD.ANT_RESET=1 # resets all 
+		
+		if source is not None:
+			pass
+		
+		for ant in self.ANT:
+			ant.PROBER.RESET=1
+			ant.PROBER.config_capture(frames_per_burst=frames_per_burst, burst_period=burst_period, number_of_bursts=number_of_bursts)
+			if ant.ant_number in channels:
+				print 'Enabling Capture for Antenna %i' % ant.ant_number
+				ant.PROBER.RESET=0
+
+		self.SYSMOD.GLOBAL_TRIG=1 # enables data transmission if continuous mode is selected
+				
+			
+
+			
+
+
 	def read_ADC_frame(self,channels=0,frames=1,verbose=1,length=1024,simulate=0, sync=1, fft=0, dummy=0,raw=0):
 		"""
 		Triggers frame acquisition  from the specified ADC channel and capture the data.
@@ -626,21 +650,21 @@ class chFPGA:
 		"""
 		if dummy:
 			if fft:
-				return np.array(rand(1024)*256-128,np.int8)
+				return np.array(rand(1024)*256-128, np.int8)
 			else:
-				return np.array(rand(512)*256-128,np.int8)
+				return np.array(rand(512)*256-128, np.int8)
 
-		length=((length+3)//4)*4;
+		length = ((length+3)//4)*4;
 
 		if fft:
-			output_length=512
+			output_length = 512
 		else:
-			output_length=1024
+			output_length = 1024
 
 		if verbose>=2:
 			print ' Receiving %i ADC frames of %i bytes from Antenna %i' % ( frames, length, channels)
 			print 'Resetting FIFO'
-		if isinstance(channels,int): # make sure that channel is a list of channels
+		if isinstance(channels, int): # make sure that channel is a list of channels
 			channels=[channels]
 
 		# Disable frame transmission for all antennas. Those thar are selected will be set-up later.
@@ -654,18 +678,18 @@ class chFPGA:
 			self.sync()
 
 		# Dissable the global capture flag
-		self.SYSMOD.GLOBAL_TRIG=0 #trigger data acquisition  on all antennas
+		self.SYSMOD.GLOBAL_TRIG = 0 #disable trigger data acquisition  on all antennas
 	
 		for ch in channels:
-			ant=self.ANT[ch]
+			ant = self.ANT[ch]
 			if sync:
-				if simulate==0: # Source is ADC data
+				if simulate == 0: # Source is ADC data
 					ant.ADCDAQ.ENABLE_RAMP=0
 					ant.FR_DIST.DSP_DATA_SRC_ADC=1 # Source is ADC DAQ
-				elif simulate==1: # Source is ADC-DAQ ramp generator
+				elif simulate == 1: # Source is ADC-DAQ ramp generator
 					ant.ADCDAQ.ENABLE_RAMP=1
 					ant.FR_DIST.DSP_DATA_SRC_ADC=1 # Source is ADC DAQ
-				elif simulate==2: # Source is Frame_DIST-based ramp generator
+				elif simulate == 2: # Source is Frame_DIST-based ramp generator
 					ant.ADCDAQ.ENABLE_RAMP=0
 					ant.FR_DIST.ENABLE_RAMP=1 # Enable ramp generator
 					ant.FR_DIST.DSP_DATA_SRC_ADC=0 # Source is ADC DAQ

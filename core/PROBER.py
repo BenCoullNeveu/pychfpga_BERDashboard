@@ -21,23 +21,23 @@ class PROBER_base(Module_base):
 	STATUS = BitField.STATUS
 
 	# Memory-mapped control registers
-	RESET = bitfield_property(CONTROL, 0x00, 7, doc="Resets the module (including the FIFO)")
-	FIFO_RESET = bitfield_property(CONTROL, 0x00, 6, doc="When '1', resets the data FIFO")
-	BURST_LENGTH = bitfield_property(CONTROL, 0x01, 0, width=8, doc="Sets the number of frame to transmit in a burst. 0= Continuous transmission, 1-255 = Trigerred transmission.")
-	BURST_PERIOD2 = bitfield_property(CONTROL, 0x02, 0, width=8, doc="8 bit MSB of number of frames between bursts")
-	BURST_PERIOD1 = bitfield_property(CONTROL, 0x03, 0, width=8, doc="8 bit middle byte of Number of frames between bursts ")
-	BURST_PERIOD0 = bitfield_property(CONTROL, 0x04, 0, width=8, doc="8 bit LSB of number of frames between bursts")
-	BURST_NUMBER = bitfield_property(CONTROL, 0x05, 0, width=8, doc="Sets the number of bursts to transmit. 0-255, 0= Continuous transmission.")
+	RESET = BitField(CONTROL, 0x00, 7, doc="Resets the module (including the FIFO)")
+	FIFO_RESET = BitField(CONTROL, 0x00, 6, doc="When '1', resets the data FIFO")
+	BURST_LENGTH = BitField(CONTROL, 0x01, 0, width=8, doc="Sets the number of frame to transmit in a burst. 0= Continuous transmission, 1-255 = Trigerred transmission.")
+	BURST_PERIOD2 = BitField(CONTROL, 0x02, 0, width=8, doc="8 bit MSB of number of frames between bursts")
+	BURST_PERIOD1 = BitField(CONTROL, 0x03, 0, width=8, doc="8 bit middle byte of Number of frames between bursts ")
+	BURST_PERIOD0 = BitField(CONTROL, 0x04, 0, width=8, doc="8 bit LSB of number of frames between bursts")
+	BURST_NUMBER = BitField(CONTROL, 0x05, 0, width=8, doc="Sets the number of bursts to transmit. 0-255, 0= Continuous transmission.")
 	PROBE_ID = BitField(CONTROL, 0x06, 0, width=8, doc="Arbitrary 8-bit number that shows in the header of the transmitted frames to identify the source")
 
 	# Memory-mapped status registers
-	_TRIG_CTR = bitfield_property(STATUS, 0x01, 0, width= 8, doc="Number of frames")
-	_CAPTURE_FLAG = bitfield_property(STATUS, 0x00, 7, doc="State of the CAPTURE flag in the incoming frame data (for debugging)")
-	_CAPTURE_FRAME = bitfield_property(STATUS, 0x00, 6, doc="State of the CAPTURE_FRAME signal (for debugging)")
-	_IN_DAT_FIRST = bitfield_property(STATUS, 0x00, 5, doc="State of the CAPTURE_FRAME signal (for debugging)")
-	_DATA_FIFO_EMPTY = bitfield_property(STATUS, 0x00, 4, doc="State of the DATA_FIFO_EMPTY signal (for debugging)")
-	_DATA_FIFO_OVERFLOW = bitfield_property(STATUS, 0x00, 3, doc="State of the DATA_FIFO_OVERFLOW signal (for debugging)")
-	CAPTURE_ACTIVE = bitfield_property(STATUS, 0x00, 0, doc="Active high if data capture is in progress (cleared when BURST_NUMBER bursts have been sent)")
+	_TRIG_CTR = BitField(STATUS, 0x01, 0, width= 8, doc="Number of frames")
+	_CAPTURE_FLAG = BitField(STATUS, 0x00, 7, doc="State of the CAPTURE flag in the incoming frame data (for debugging)")
+	_CAPTURE_FRAME = BitField(STATUS, 0x00, 6, doc="State of the CAPTURE_FRAME signal (for debugging)")
+	_IN_DAT_FIRST = BitField(STATUS, 0x00, 5, doc="State of the CAPTURE_FRAME signal (for debugging)")
+	_DATA_FIFO_EMPTY = BitField(STATUS, 0x00, 4, doc="State of the DATA_FIFO_EMPTY signal (for debugging)")
+	_DATA_FIFO_OVERFLOW = BitField(STATUS, 0x00, 3, doc="State of the DATA_FIFO_OVERFLOW signal (for debugging)")
+	CAPTURE_ACTIVE = BitField(STATUS, 0x00, 0, doc="Active high if data capture is in progress (cleared when BURST_NUMBER bursts have been sent)")
 	
 	def __init__(self, ant_instance):
 		self.ant = ant_instance
@@ -66,7 +66,7 @@ class PROBER_base(Module_base):
 	def config_capture(self, frames_per_burst=1, burst_period=100, number_of_bursts=0):
 		"""
 		Configure the capture of data frames for transmisssion over the ethernet link.
-			frames_per_burst: number of contihuous frames to send in a burst (default=1)
+			frames_per_burst: number of continuous frames to send in a burst (default=1)
 			burst_period: delay between bursts in seconds
 			number_of_bursts: number of bursts to send. '0' means that bursts are sent continuously as long as frames are tagged for capture at the source . Default is '0'.
 		"""
@@ -91,7 +91,7 @@ class PROBER_base(Module_base):
 		print '-------------- ANT[%i] data capture --------------' % self.port_number 
 		print ' Capture %i frame(s) every %i frames' % (self.BURST_LENGTH, self.get_burst_period()), 
 		if self.BURST_NUMBER:
-			print ' for %i bursts' % self.BURST_NUMBER
+			print 'for %i bursts' % self.BURST_NUMBER
 		else:
-			print ' continuously while the frames are tagged for capture at the source'
+			print 'continuously while the frames are tagged for capture at the source'
 
