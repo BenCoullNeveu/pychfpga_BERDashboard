@@ -80,15 +80,32 @@ for m in reload_modules:
 
 
 
+class Frame:
+	def __init__(self, data):
+		data=map(ord,data) # convert string to integer array
+		self.probe_id = data[0]
+		self.stream_id = (data[1]<<8) | data[2]
+		self.flags = data[3]>>4
+		self.word_length = ((data[3]&0x0F)<<8) | data[4]
+		self.timestamp = (data[5]<<24) | (data[6]<<16) | (data[7]<<8) | data[8]
+		self.data = data[9:]
+		self.length = len(data)
+
 # -- chFPGA -- 
 
 class chFPGA:
 
 	# Basic system parameters
-	NUMBER_OF_CORRELATORS=1
-	NUMBER_OF_ANTENNAS=8
-	LOG2_FRAME_LENGTH=11
-	FRAME_LENGTH=2**LOG2_FRAME_LENGTH
+	NUMBER_OF_CORRELATORS = 1
+	NUMBER_OF_ANTENNAS = 8
+	LOG2_FRAME_LENGTH = 11
+	FRAME_LENGTH = 2**LOG2_FRAME_LENGTH
+	ADC_CLK_SELECT = 1 # Antenna number from which the antenna processing will be clocked. This is hardwired in the firmware (need to use an ADCDAQ with a PLL)	
+	SAMPLING_FREQUENCY = 800e6 # in Hz
+	REFERENCE_FREQUENCY = 10e6 # in Hz
+	SYSTEM_CLOCK_FREQUENCY = 200e6 # in Hz
+	
+	FRAME_PERIOD = float(FRAME_LENGTH)/SAMPLING_FREQUENCY
 	
 	# Port numbers
 	ANT_PORT=range(NUMBER_OF_ANTENNAS) # Antennas are ports 0-7
@@ -109,7 +126,7 @@ class chFPGA:
 	FMC_present=False # indicates if the FMC board is present. If not, the modules will act accordingly.
 
 
-	def __init__(self,adc_test_mode=0, adc_delay_table=None, fref=10, verbose=2):
+	def __init__(self, adc_test_mode=0, adc_delay_table=None, fref=10, verbose=2):
 
 		print '*** Opening sockets ***'
 		# Create socket handled and open socket communications to the chFPGA board
@@ -205,7 +222,7 @@ class chFPGA:
 			self.IOExpander.status()
 
 			if verbose>=2: print '  - ADC_PLL'
-			self.ADC_PLL.init(fref=fref, verbose=1)
+			self.ADC_PLL.init(fout=2*self.SAMPLING_FREQUENCY/1e6, fref=self.REFERENCE_FREQUENCY/1e6, verbose=1)
 			self.ADC_PLL.status()
 
 			if verbose>=2: print '  - ADC'
@@ -607,32 +624,43 @@ class chFPGA:
 				time.sleep(0.01)
 			#raw_input('Press [ENTER]')
 
-	def trigger_capture(self,source=None, channels=range(NUMBER_OF_ANTENNAS), frames_per_burst=1, burst_period=390000, number_of_bursts=0, sync=1):
+	def read_frames(self, timeout=1):
+		frame_array=[]
+		try:
+			while True:
+				data = self.sock.read_data(timeout_delay=timeout)
+				frame=Frame(data)
+				frame_array.append(frame)
+				print 'timestamp=%i (%f s)' % (frame.timestamp, frame.timestamp*self.FRAME_PERIOD)
+		except SocketIO.timeout:
+			pass
+		return frame_array
+		
+
+	def trigger_capture(self, source=None, channels=range(NUMBER_OF_ANTENNAS), frames_per_burst=1, burst_period=1.0/FRAME_PERIOD, number_of_bursts=0, sync=1):
 		"""
 		Triggers the capture of the specified number of frames in the FPGA for transmission over the Ethernet port. 
 		This function does not receive the frames from the ethernet port. This has to be done separately.
 		"""
 
 		self.SYSMOD.GLOBAL_TRIG=0 # disable data transmission if continuous mode is currentlly selected
-#		self.SYSMOD.ANT_RESET=1 # resets all 
-		
+		self.SYSMOD.ANT_RESET=1 # resets all 
+		self.sock.flush_data_socket()
 		if source is not None:
 			pass
 		
 		for ant in self.ANT:
 			ant.PROBER.RESET=1
-			ant.PROBER.config_capture(frames_per_burst=frames_per_burst, burst_period=burst_period, number_of_bursts=number_of_bursts)
+			ant.PROBER.PROBE_ID = 0xA0+ant.ant_number
+			ant.PROBER.config_capture(frames_per_burst=frames_per_burst, burst_period=int(burst_period), number_of_bursts=number_of_bursts)
 			if ant.ant_number in channels:
 				print 'Enabling Capture for Antenna %i' % ant.ant_number
-				ant.PROBER.RESET=0
+				ant.PROBER.RESET = 0
 
-		self.SYSMOD.GLOBAL_TRIG=1 # enables data transmission if continuous mode is selected
+		self.SYSMOD.GLOBAL_TRIG = 1 # enables data transmission if continuous mode is selected
+		self.SYSMOD.ANT_RESET = 0 # resets all 
 				
 			
-
-			
-
-
 	def read_ADC_frame(self,channels=0,frames=1,verbose=1,length=1024,simulate=0, sync=1, fft=0, dummy=0,raw=0):
 		"""
 		Triggers frame acquisition  from the specified ADC channel and capture the data.

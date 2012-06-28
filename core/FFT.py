@@ -8,7 +8,7 @@ FFT.py module
 # 2011-07-12 : JFC : Created from test code in chFPGA.py
 # 2012-05-29 JFC: Extracted frm ANT.py
 """
-import time
+#import time
 import numpy as np
 from Module import Module_base, BitField
 

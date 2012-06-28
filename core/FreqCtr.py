@@ -38,18 +38,18 @@ class FreqCtr_base(object):
 	# Registers
 
 	def __init__(self,fpga,verbose=1):
-		self.fpga_instance=fpga
+		self.fpga=fpga
 		self.verbose=verbose
 
 	def read(self,addr,type=np.uint8):
 		""" Reads from the register of the frequency counter"""
-		fpga=self.fpga_instance
+		fpga=self.fpga
 		data=fpga.Read(fpga.SYSTEM_PORT,fpga.SYSTEM_FREQ_CTR_MODULE, addr,type)
 		return data
 
 	def write(self, addr,data):
 		""" Writes to the register of the frequency counter"""
-		fpga=self.fpga_instance
+		fpga=self.fpga
 		fpga.Write(fpga.SYSTEM_PORT,fpga.SYSTEM_FREQ_CTR_MODULE, addr, data)
 
 	def init(self):
@@ -76,18 +76,27 @@ class FreqCtr_base(object):
 		return freq*2.0/gate_time
 
 	def status(self):
+		fpga=self.fpga
+
 		gate_time=0.05
 		resolution=2.0/gate_time
+
+		if fpga.FMC_present:
+			FMC_present_string = ''
+		else:
+			FMC_present_string = ' (ADC board not present)'
+
+		ANT_clock_source_string = ('ADC','SYSTEM CLOCK')[fpga.ANT[fpga.ADC_CLK_SELECT].ADCDAQ.PLL_CLK_SRC]		
 
 		print 'System Frequencies:'
 		print '   FPGA Board frequency:      %7.3f MHz' % (self.read_frequency('CLK200',gate_time=gate_time)/1e6) 
 		print '   CTRL_CLK frequency:        %7.3f MHz' % (self.read_frequency('CTRL_CLK', gate_time=gate_time)/1e6) 
-		print '   Data processing frequency: %7.3f MHz' % (self.read_frequency('DSP_CLK', gate_time=gate_time)/1e6) 
-		print '   FMC Reference frequency:   %7.3f MHz' % (self.read_frequency('FMC_REFCLK', gate_time=gate_time)/1e6) 
+		print '   Data processing frequency: %7.3f MHz (Source=%s)' % (self.read_frequency('DSP_CLK', gate_time=gate_time)/1e6, ANT_clock_source_string) 
+		print '   FMC Reference frequency:   %7.3f MHz%s' % (self.read_frequency('FMC_REFCLK', gate_time=gate_time)/1e6, FMC_present_string) 
 		print '   MGT Ref clock frequency:   %7.3f MHz' % (self.read_frequency('MGT_REFCLK', gate_time=gate_time)/1e6) 
 		print '   MGT word frequency:        %7.3f MHz' % (self.read_frequency('MGT_USRCLK2', gate_time=gate_time)/1e6) 
 		for i in range(8):
-			print '   ADC%i clock frequency:      %7.3f MHz' % (i,self.read_frequency('ADC_CLK%i' % i, gate_time=gate_time)/1e6) 
+			print '   ADC%i clock frequency:      %7.3f MHz%s' % (i,self.read_frequency('ADC_CLK%i' % i, gate_time=gate_time)/1e6, FMC_present_string) 
 		print '   Resolution          :    %10.6f MHz' % (resolution/1e6) 
 		print '   Gate time           :    %.3f s' % (gate_time) 
 		print '   Fan speed:               %7.0f RPM (resolution %.0f RPM)' % (self.read_frequency('FAN', gate_time=gate_time)*60./2, resolution*60./2) # 1 Hz=60 RPM, divide by 2 because there is 2 pulses per fan turn  

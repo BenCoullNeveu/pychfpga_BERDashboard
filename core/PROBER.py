@@ -10,7 +10,7 @@ PROBER.py module
  2012-06-21 JFC: Created
 """
 
-from Module import Module_base, BitField, bitfield_property
+from Module import Module_base, BitField
 
 
 	
