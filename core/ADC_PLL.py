@@ -70,7 +70,7 @@ class ADC_PLL_base(object):
 		# REGISTER 4
 		FB_select=0 # 0=feedback from output divided (needed to ensure absolute phase reproducibility), 1=feedback from VCO directly
 		RF_div= int(np.log2(fdiv)) # Output divider: 0=/1, 1=/2, 2=/4, 3=/8, 4=/16
-		band_sel_div=fref*8 #1-255. R counter output / band_sel_div < 125 kHz.
+		band_sel_div=int(fref*8) #1-255. R counter output / band_sel_div < 125 kHz.
 		vco_power_down=0 # 0-1
 		mute_until_lock_detect=0 # 0-1
 		AUX_sel=0 #  0=use output divider output, 1=use VCO output directly,
@@ -107,9 +107,9 @@ class ADC_PLL_base(object):
 
 		# REGISTER 0
 		if FB_select: # if feedback is from VCO directly
-			int_div=fdiv*fout/fref/2*(rdiv2+1); #23-65535
+			int_div=int(fdiv*fout/fref/2*(rdiv2+1)); #23-65535
 		else: # if feedback is from the output of the output divider
-			int_div=fout/fref*(rdiv2+1); #23-65535
+			int_div=int(fout/fref*(rdiv2+1)); #23-65535
 		fractional_mode=True
 
 		int_div-=1*fractional_mode
