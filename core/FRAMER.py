@@ -42,9 +42,10 @@ class FR_DIST_base(Module_base):
 
 		'SYNC_PERIOD': 	BitField(CONTROL, 0x02, 0,16, doc="Number of clock cycles between SYNC pulses. See CASPER documentation for minimum SYNC spacing."),
 
-		'FIFO_EMPTY': 		BitField(STATUS, 0x80, 1, doc="Active high  when the data FIFO is empty"),
-		'FIFO_OVERFLOW': 	BitField(STATUS, 0x80, 0, doc="Active high if the data FIFO is overflowing"),
-		'CTRL_FIFO_LENGTH': BitField(STATUS, 0x81, 0, 8, doc="Number of samples currently in the data FIFO (last 8 bits only)"),
+		'FIFO_OVERFLOW': 	BitField(STATUS, 0x00, 0, doc="Active high if the data FIFO is overflowing"),
+		'FIFO_EMPTY': 		BitField(STATUS, 0x00, 1, doc="Active high  when the data FIFO is empty"),
+		'FIFO_LENGTH': BitField(STATUS, 0x01, 0, 8, doc="Number of samples currently in the data FIFO (last 8 bits only)"),
+		'RAMP_CTR': BitField(STATUS, 0x02, 0, width=8, doc="Last 8 bits of the ramp counter (for debuging)"),
 		}
 
 	def __init__(self, ant_ch_instance):
