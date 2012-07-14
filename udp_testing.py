@@ -20,8 +20,8 @@ import os, sys
 import socket
 import time
 
-PORT = 21758
-BUFSIZE = 4096
+PORT = 41001
+BUFSIZE = 32768
 socket.setdefaulttimeout(10.0)
 
 def server(port):
@@ -32,7 +32,7 @@ def server(port):
     print "Waiting for first packet to arrive...",
     sock.recvfrom(BUFSIZE)
     print "ok"
-    t0 = time.clock()
+    t0 = time.time()
     while 1:
         try:
             try:
@@ -42,7 +42,7 @@ def server(port):
                 break
             except KeyboardInterrupt: # #1755388 #926423
                 raise
-            t1 = time.clock()
+            t1 = time.time()
             if not data:
                 break
             history.append((len(data), t1-t0))
@@ -96,24 +96,20 @@ def show_stats(history, which):
     print "Max speed %8.1f Kbytes/sec" % (speed_max/1024)
     print "Min speed %8.1f Kbytes/sec" % (speed_min/1024)
     print "Avg speed %8.1f Kbytes/sec" % (speed_avg/1024)
+    print "Avg speed %8.1f Kbits/sec" % (speed_avg/1024*8)
     print
-    open("udpstress-%s.csv" % which,"w").writelines(
-                                                        ["%d,%f\n" % item for item in history])
+#    open("udpstress-%s.csv" % which,"w").writelines(
+#                                                        ["%d,%f\n" % item for item in history])
 
-if len(sys.argv)>1:
-    if "client".startswith(sys.argv[1].lower()):
-        remotehost = sys.argv[2]
-        data = sys.argv[3]
-        if data.isdigit(): # means length of message
-            data = "x" * int(data)
-            history = client(remotehost, PORT, data)
-            show_stats(history, "client")
-            sys.exit(0)
-    elif "server".startswith(sys.argv[1].lower()):
-        history = server(PORT)
-        show_stats(history, "server")
-        sys.exit(0)
-
-print >>sys.stderr, __doc__ % {
-"name": os.path.basename(sys.argv[0]),
-"port": PORT}
+#if len(sys.argv)>1:
+#    if "client".startswith(sys.argv[1].lower()):
+#        remotehost = sys.argv[2]
+#        data = sys.argv[3]
+#        if data.isdigit(): # means length of message
+#            data = "x" * int(data)
+#            history = client(remotehost, PORT, data)
+#            show_stats(history, "client")
+#            sys.exit(0)
+#    elif "server".startswith(sys.argv[1].lower()):
+history = server(PORT)
+show_stats(history, "server")

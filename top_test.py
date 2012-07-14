@@ -107,10 +107,13 @@ if __name__ == '__main__':
 	# Create the new chFPGA object.
 	c = chFPGA.chFPGA(adc_test_mode=ADC_TEST_MODE, adc_delay_table=ADC_DELAY_TABLE, fref=FREF) # pylint: disable=C0103
 	c.sync()
+	
 	print
 	
 	# Displays the system frequencies
 	c.FreqCtr.status()
+	c.set_data_source('func_ramp')
+	c.set_data_capture(burst_period=10000, number_of_bursts=0)
 	# Continuously plot the ADC output
 	#c.plot_ADC_frame(channels=[1], frames=512)
 

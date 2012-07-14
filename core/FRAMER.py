@@ -30,7 +30,7 @@ class FR_DIST_base(Module_base):
 		'unused' : 4, # Not defined yet
 		'prbs' : 5, # Not defined yet. reserfed for a future noise generator
 		'fifo' : 6, # Takes the data from the data injection FIFO
-		'adc' : 7, # takes the data from the ADC
+		'adcdaq' : 7, # takes the data from the ADCDAQ
 		}	
 	
 	# Register definition
@@ -106,7 +106,7 @@ class FR_DIST_base(Module_base):
 		if not self.fpga.FMC_present:
 			self.DATA_SOURCE = self.DATA_SOURCE_NAMES['ramp'] # use FRAMER-generated ramp if the ADC is not present
 		else:
-			self.DATA_SOURCE = self.DATA_SOURCE_NAMES['adc'] # use the ADC data
+			self.DATA_SOURCE = self.DATA_SOURCE_NAMES['adcdaq'] # use the ADC data
 
 	def status(self):
 		""" Displays the status of the antenna processing chain data source module """

@@ -10,6 +10,7 @@ REFCLK.py module
 	2011-09-22 JFC: Created
 	2011-09-25 JFC: Modified to support new method on incrementing phase (pulse PS_EN unstead of PS_CLK) 
 	2011-11-15 JFC: Lots of modifications done to debug SYNC clock alignment. 
+	2012-05-xx JFC: Added disabling SYNC detect when the board is not there, because a floating input create spurious clocks and cause intermittent resets
 """
 
 from Module import Module_base, BitField

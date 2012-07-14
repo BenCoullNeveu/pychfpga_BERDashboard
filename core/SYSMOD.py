@@ -12,6 +12,7 @@ SYSMOD.py module
 	2011-09-16 JFC: Added functions to pulse GLOBAL TRIG and GLOBAL RESET
 	2011-09-19 JFC: Added ADC_DAQ_SYNC and FR_DIST_SYNC properties
 	2011-09-27 JFC: Split ADC_DAQ_SYNC into ADC_DAQ_BUFR_SYNC and ADC_DAQ_SERDES_SYNC 
+	2012-07-09 JFC: Assert ANT_RESET on init to allow communications through if the board is sending lots of data
 """
 
 from Module import Module_base, BitField
@@ -55,9 +56,6 @@ class SYSMOD_base(Module_base):
 		super(self.__class__,self).__init__(fpga,fpga.SYSTEM_PORT, fpga.SYSTEM_SYSMOD_MODULE)
 		self._lock() # prevent further property creation to avoid creating attrubutes by mistake
 
-	def init(self):
-		#self.lcd_init()
-		pass
 
 	def read_bitstream_data(self):
 		return self.read(0x80+0x07, type=np.dtype('>u4'))
@@ -78,6 +76,20 @@ class SYSMOD_base(Module_base):
 
 	def global_reset(self):
 		self.pulse_bit('GLOBAL_RESET')
+
+	def init(self):
+		# reset the antenna processors so they stop sending data.
+		# We do not use ANT_RESET=1 because this implies a read, which might not get through if too much data is coming in
+		ant_reset= self.BITS['ANT_RESET']
+		self.write(ant_reset.addr, 1<<ant_reset.bit)
+
+		#self.lcd_init()
+
+	def status(self):
+		print '-------------------------SYSMOD--------------------------------------'
+		print 'Bistream timestamp is: %s' % self.read_bitstream_date()
+		print '----------------------------------------------------------------------'
+
 
 	def lcd_read_write(self,dir=0, command=1, data=0):
 		self.LCD_RW=0 # Always write for now
@@ -150,9 +162,5 @@ class SYSMOD_base(Module_base):
 		for c in bitmap:
 			self.lcd_write_data(c)
 
-	def status(self):
-		print '-------------------------SYSMOD--------------------------------------'
-		print 'Bistream timestamp is: %s' % self.read_bitstream_date()
-		print '----------------------------------------------------------------------'
 
 
