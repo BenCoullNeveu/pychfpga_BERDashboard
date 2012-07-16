@@ -72,8 +72,8 @@ class FR_DIST_base(Module_base):
 	def inject_frame(self, length=None, data=None):
 		""" Inject a frame of data in the antenna processing pipeline"""
 
-		self.DSP_DATA_SRC = 1 # Data source = Data Injection FIFO
-		self.pulse_bit('FIFO_RESET') # clear FIFO to make sure we do not sent data that was previously lingering in the FIFO
+		#self.DSP_DATA_SRC = 1 # Data source = Data Injection FIFO
+		#self.pulse_bit('FIFO_RESET') # clear FIFO to make sure we do not sent data that was previously lingering in the FIFO
 
 		if data == None: # Send ramp
 			if length == None:
@@ -87,9 +87,9 @@ class FR_DIST_base(Module_base):
 				data_length = len(data)
 				frame = [ord(data[i % data_length]) for i in range(length)]
 				#print 'Sending string:',s
-			elif type(data) == np.ndarray or type(data) == list:
+			elif isinstance(data, np.ndarray) or isinstance(data, list):
 				data_length = len(data)
-				frame = np.uint8(data)
+				data = np.uint8(data)
 				frame = [data[i % data_length] for i in range(length)]
 				#print 'Sending string:',s
 			elif type(data) == int:

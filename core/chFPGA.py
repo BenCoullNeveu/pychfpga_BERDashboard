@@ -756,7 +756,7 @@ class chFPGA:
 		self.sync() # make sure the ADC mode is set and that capture  restarts properly with the right period
 
 
-	def set_data_capture(self, source=None, channels=range(NUMBER_OF_ANTENNAS), frames_per_burst=1, burst_period=1.0/FRAME_PERIOD, number_of_bursts=0, sync=1, verbose=1):
+	def set_data_capture(self, frames_per_burst=1, burst_period=1.0/FRAME_PERIOD, number_of_bursts=0,  channels=range(NUMBER_OF_ANTENNAS), sync=1, verbose=1):
 		"""
 		Triggers the capture of the specified number of frames in the FPGA for transmission over the Ethernet port. 
 		This function does not receive the frames from the ethernet port. This has to be done separately.
@@ -770,13 +770,11 @@ class chFPGA:
 				('continuously when TRIG=1' if not number_of_bursts else 'for a total of %i bursts' % number_of_bursts ) ) 
 			frames_per_second = len(channels)*frames_per_burst*1.0/self.FRAME_PERIOD
 			bits_per_second = frames_per_second * 8 * self.FRAME_LENGTH
-			print 'Data rates are: %f Frames/s, %f Mbits/s' % (frames_per_second, bits_per_second/1e6)
+			print 'Data rates are: %f kFrames/s, %f Mbits/s' % (frames_per_second/1e3, bits_per_second/1e6)
 
 		self.SYSMOD.GLOBAL_TRIG=0 # disable data transmission if continuous mode is currentlly selected
 		self.SYSMOD.ANT_RESET=1 # resets all 
 		self.sock.flush_data_socket()
-		if source is not None:
-			pass
 		
 		for ant in self.ANT:
 			ant.PROBER.RESET=1
