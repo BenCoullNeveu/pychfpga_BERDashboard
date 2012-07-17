@@ -24,20 +24,19 @@ def plot_TIMESTREAM_frames(chFPGA, channel=0, raw=0, flush=0):
     #	channels=[channels]
     def anim_init():
         a = chFPGA.read_frames(raw=raw, flush=flush)
-        print a
         line.set_data(range(len(a[1])),a[1])
         return line
 
     def animate(i):
         a = chFPGA.read_frames(raw=raw, flush=flush)
-        print a
         line.set_ydata(a[i])
         return line
     
     fig  = plt.figure()
-    ax = fig.add_subplot(111, autoscale_on=False, xlim=(0, 1024), ylim=(-128, 128))
-    line, = ax.plot([], [], 'o-', lw=2)    
-    ani = animation.FuncAnimation(fig, animate, np.zeros(frames),
+    ax = fig.add_subplot(111, autoscale_on=True, xlim=(0, 2048), ylim=(-128, 128))
+    a = chFPGA.read_frames(raw=raw, flush=flush)
+    line, = ax.plot(range(len(a[1])),a[1], 'o-', lw=2)    
+    ani = animation.FuncAnimation(fig, animate, channel*np.ones(50),
                                   interval=20, blit=False, init_func=anim_init)
     plt.show()
     
