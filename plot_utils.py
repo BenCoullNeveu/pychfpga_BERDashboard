@@ -41,131 +41,93 @@ def plot_TIMESTREAM_frames(chFPGA, channel=0, raw=0, flush=0):
     plt.show()
     
 
-def plot_TIMESTREAM_frames_multichannel(chFPGA, channels=[0], hold=0, frames=1, raw=0, flush=0):
+def plot_TIMESTREAM_frames_multichannel(chFPGA, channels=[0], raw=0, flush=0):
     """ Plots incoming frames, expected to be a timestream """
     if isinstance(channels,int): # make sure that channel is a array of channels
     	channels=np.array([channels])
     elif isinstance(channels,list):
         channels=np.array(channels)
-
     
-    continuous = (frames == 0) # plots continuously if frames=0
+    def anim_init():
+        a = chFPGA.read_frames(raw=raw, flush=flush)
+        for line in lineObjects:
+            line.set_data(range(len(a[0])),a[0])
+        return lineObjects
+                
+    def animate(i):
+        a = chFPGA.read_frames(raw=raw, flush=flush)
+        for j,line in enumerate(lineObjects):
+            line.set_ydata(a[channels[j]])
+        return lineObjects
+
     nchan = channels.size
     
-    plt.figure(5, figsize=(6*nchan,4))
-    plt.ion()  #not sure if necessary, sets to interactive mode
-    plt.clf()
-    #plt.hold(hold)  #again, not sure if necessary or should be here
-    plt.show()   #again, not sure if necessary or should be here
+    fig  = plt.figure(5, figsize=(3*nchan,4))
     
     chanIndex = np.arange(nchan)
-    plotObject = range(nchan)
+    axObjects = range(nchan)
+    lineObjects = range(nchan)
+    a = chFPGA.read_frames(raw=raw, flush=flush)
+    for i,ax in enumerate(axObjects):
+        ax = fig.add_subplot(1,nchan,i+1, autoscale_on=True, xlim=(0, 2048), ylim=(-128, 128))
+        lineObjects[i], = ax.plot(range(len(a[1])),a[1], 'o-', lw=2)
+    ani = animation.FuncAnimation(fig, animate, np.ones(50),
+                                      interval=20, blit=True, init_func=anim_init)
+    plt.show()
 
 
-    number_of_frames = 0
-    ymax = 1
-    try:
-        while (continuous == 1) | (number_of_frames < frames):
-            try:
-                print 'Reading data...'
-                #sync_again=(number_of_frames==0) or bool(reset)
-                a = chFPGA.read_frames(raw=raw, flush=flush) #(number_of_frames==0)
-                flush = 0  ### ? not sure about this
-                print a
-                if ( number_of_frames == 0 ):
-                    aamax = max(abs(a[channels[0]]))
-                    ymax = max(ymax*.99, aamax)
-                    for chanNum in chanIndex:
-                        plt.subplot(1,nchan,chanNum)
-                        plt.title('Timestream')
-                        plt.xlabel('Sample')
-                        plt.ylabel('Amplitude')
-                        plotObject[chanNum], = plt.plot(a[channels[chanNum]], 'b.-')
-                        plt.draw()
-                else:
-                    for chanNum in chanIndex:
-                        plotObject[chanNum].set_ydata(a[channels[chanNum]])
-                        plt.draw()
-                
-                number_of_frames += 1
-            except KeyError:
-                print "KeyError, lost data?"
-                pass
-            except KeyboardInterrupt:
-                print "Stopping plotting"
-                continuous=0
-                frames=0
-    except:
-        raise
-    print 'Plotted %i frames' % number_of_frames
-
-def plot_SPECTRUM_frames(chFPGA, channels=[0], hold=0, frames=1, raw=0, flush=0):
+def plot_SPECTRUM_frames(chFPGA, channels=[0], raw=0, flush=0):
     """ Plots incoming frames, expected to be fourier transformed """
     if isinstance(channels,int): # make sure that channel is a array of channels
     	channels=np.array([channels])
     elif isinstance(channels,list):
         channels=np.array(channels)
+
     
+    def anim_init():
+        a = chFPGA.read_frames(raw=raw, flush=flush)
+        fa.real = a[channels[0]][::2]
+        fa.imag = a[channels[0]][1::2]
+        for line in lineMagObjects:
+            line.set_data(range(len(fa)),10*np.log10(np.abs(fa)**2))
+        for line in linePhaseObjects:
+            line.set_data(range(len(fa)),np.angle(fa))
+        return lineMagObjects, linePhaseObjects
     
-    continuous = (frames == 0) # plots continuously if frames=0
+    def animate(i):
+        a = chFPGA.read_frames(raw=raw, flush=flush)
+        for j,line in enumerate(lineMagObjects):
+            fa.real = a[channels[j]][::2]
+            fa.imag = a[channels[j]][1::2]
+            line.set_ydata(10*np.log10(np.abs(fa)**2))
+            linePhaseObjects[j].set_ydata(np.angle(fa))
+        return lineMagObjects,linePhaseObjects
+    
     nchan = channels.size
     
-    plt.figure(5, figsize=(6*nchan,6))
-    plt.ion()  #not sure if necessary, sets to interactive mode
-    plt.clf()
-    plt.hold(hold)  #again, not sure if necessary or should be here
-    plt.show()   #again, not sure if necessary or should be here
+    fig  = plt.figure(5, figsize=(3*nchan,4))
     
     chanIndex = np.arange(nchan)
-    plotMagnitudeObject = range(nchan)
-    plotPhaseObject = range(nchan)
-    
-    
-    number_of_frames = 0
-    ymax = 1
-    try:
-        while (continuous == 1) or (number_of_frames < frames):
-            try:
-                print 'Reading data...'
-                #sync_again=(number_of_frames==0) or bool(reset)
-                a = chFPGA.read_frames(raw=raw, flush=flush) #(number_of_frames==0)
-                flush = 0  ### ? not sure about this
-                print a
-                aamax = max(abs(a[channels[0]]))
-                ymax = max(ymax*.99, aamax)
-                if ( number_of_frames == 0 ):
-                    #Break up real and imaginary parts of a and put into numpy complex array
-                    #fa = np.empty([chanIndex.size,(a[channels[0].size)/2],dtype=np.complex64)
-                    fa = np.empty((a[channels[0]].size)/2,dtype=np.complex64)
-                    for chanNum in chanIndex:
-                        fa.real = a[channels[chanNum]][::2]
-                        fa.imag = a[channels[chanNum]][1::2]
-                        plt.subplot(2,nchan,chanNum+1)
-                        plt.title('Spectrum')
-                        plt.xlabel('Frequency (arb)')
-                        plt.ylabel('Amplitude')
-                        plotMagnitudeObject[chanNum], = plt.plot(10*np.log10(np.abs(fa)**2), 'b.-')
-                        plt.subplot(2,nchan,nchan+chanNum+1)
-                        plt.title('Phase')
-                        plt.xlabel('Frequency (arb)')
-                        plt.ylabel('Phase (rad)')
-                        plotPhaseObject[chanNum], = plt.plot(np.angle(fa) ,'b.-')
-                else:
-                    for chanNum in chanIndex:
-                        fa.real = a[channels[chanNum]][::2]
-                        fa.imag = a[channels[chanNum]][1::2]
-                        plt.subplot(2,nchan,chanNum+1)
-                        plotMagnitudeObject[chanNum].set_ydata(10*np.log10(np.abs(fa)**2))
-                        plt.subplot(2,nchan,nchan+chanNum+1);
-                        plotPhaseObject[chanNum].set_ydata(np.angle(fa))
-                        plt.draw()
-                
-                number_of_frames += 1
-            except:
-                raise
-    except KeyboardInterrupt:
-        pass
-    print 'Plotted %i frames' % number_of_frames
+    axMagObjects = range(nchan)
+    lineMagObjects = range(nchan)
+    axPhaseObjects = range(nchan)
+    linePhaseObjects = range(nchan)
+    a = chFPGA.read_frames(raw=raw, flush=flush)
+    fa = np.empty((a[channels[0]].size)/2,dtype=np.complex64)
+    fa.real = a[channels[0]][::2]
+    fa.imag = a[channels[0]][1::2]
+    for i,ax in enumerate(axMagObjects):
+        ax = fig.add_subplot(2,nchan,i+1, autoscale_on=True, xlim=(0, 2048), ylim=(-128, 128))
+        lineMagObjects[i], = ax.plot(range(len(fa)),10*np.log10(np.abs(fa)**2), 'o-', lw=2)
+    for i,ax in enumerate(axPhaseObjects):
+        ax = fig.add_subplot(2,nchan,nchan+i+1, autoscale_on=True, xlim=(0, 2048), ylim=(-128, 128))
+        linePhaseObjects[i], = ax.plot(range(len(fa)),np.angle(fa), 'o-', lw=2)
+    ani = animation.FuncAnimation(fig, animate, np.ones(50),
+                                  interval=20, blit=False, init_func=anim_init)
+    plt.show()
+
+
+
 
 def save_DATA_frames(chFPGA, channels=[0], frames=1, raw=0, flush=0, filename='data.npy'):	
     '''
@@ -252,18 +214,18 @@ if __name__ == '__main__':
     channels=[0,1,2,3,4,5,6,7]
     # source can be:  'func_zero', func_one, func_ramp, func_real_ramp, inject, adcdaq_data, adcdaq_ramp
     c.set_data_source('adcdaq_data')
-    c.set_ADC_mode(channels=channels, mode='data')
+    c.set_ADC_mode(channels=channels, mode='ramp')
     c.set_data_capture(burst_period=10000, number_of_bursts=0)
-    plot_TIMESTREAM_frames(c, channel=0, raw=0, flush=0)
+    #plot_TIMESTREAM_frames(c, channel=0, raw=0, flush=0)
 
-    #plot_TIMESTREAM_frames_multichannel(c, channels=[0,1,2,3,4,5,6,7], hold=0, frames=0, raw=0, flush=0)
+    #plot_TIMESTREAM_frames_multichannel(c, channels=[0,1,2,3,4,5,6,7], raw=0, flush=0)
 
-    #for channel in channels:
-    #    c.ANT[channel].FFT.BYPASS=0
-    #    c.ANT[channel].SCALER.BYPASS=0
-    #    c.ANT[channel].SCALER.SHIFT_LEFT=1
+    for channel in channels:
+        c.ANT[channel].FFT.BYPASS=0
+        c.ANT[channel].SCALER.BYPASS=0
+        c.ANT[channel].SCALER.SHIFT_LEFT=1
    
-    #plot_SPECTRUM_frames(c, channels=channels, hold=0, frames=3, raw=0, flush=0)
+    plot_SPECTRUM_frames(c, channels=channels, raw=0, flush=0)
     c.close()
     
 
