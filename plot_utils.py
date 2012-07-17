@@ -6,49 +6,41 @@
     #
     # History:
     # 2012-07-16 : KMB : Created mostly moving functions from chFPGA
+    # 2012-07-17 : KMB : Changed plot timestream to use much faster animation library, more to follow
     
 '''
 
 
 import numpy as np
-import pylab as plt
+import matplotlib
+matplotlib.use('TkAgg')
+import matplotlib.pyplot as plt
+import matplotlib.animation as animation
 #from core import chFPGA
 
-def plot_TIMESTREAM_frames(chFPGA, channel=0, hold=0, frames=1, continuous=0, raw=0, flush=0):
+def plot_TIMESTREAM_frames(chFPGA, channel=0, raw=0, flush=0):
     """ Plots incoming frames """
     #if isinstance(channels,int): # make sure that channel is a list of channels
     #	channels=[channels]
+    def anim_init():
+        a = chFPGA.read_frames(raw=raw, flush=flush)
+        print a
+        line.set_data(range(len(a[1])),a[1])
+        return line
+
+    def animate(i):
+        a = chFPGA.read_frames(raw=raw, flush=flush)
+        print a
+        line.set_ydata(a[i])
+        return line
     
-    
-    continuous |= (frames == 0) # plots continuously if frames=0 and continuous set to True
-    
-    
-    plt.figure(5)
-    plt.clf()
-    plt.hold(hold)
+    fig  = plt.figure()
+    ax = fig.add_subplot(111, autoscale_on=False, xlim=(0, 1024), ylim=(-128, 128))
+    line, = ax.plot([], [], 'o-', lw=2)    
+    ani = animation.FuncAnimation(fig, animate, np.zeros(frames),
+                                  interval=20, blit=False, init_func=anim_init)
     plt.show()
     
-    number_of_frames = 0
-    ymax = 1
-    try:
-        while (continuous == 1) or (number_of_frames < frames):
-            try:
-                print 'Reading data...'
-                #sync_again=(number_of_frames==0) or bool(reset)
-                a = chFPGA.read_frames(raw=raw, flush=flush) #(number_of_frames==0)
-                flush = 0
-                ch1_data = a[channel]
-                number_of_frames += 1
-                
-                aamax = max(abs(ch1_data))
-                ymax = max(ymax*.99, aamax)
-                plt.plot(ch1_data, 'b.-')
-                plt.draw()
-            except:
-                raise
-    except KeyboardInterrupt:
-        pass
-    print 'Plotted %i frames' % number_of_frames
 
 def plot_TIMESTREAM_frames_multichannel(chFPGA, channels=[0], hold=0, frames=1, raw=0, flush=0):
     """ Plots incoming frames, expected to be a timestream """
@@ -61,45 +53,51 @@ def plot_TIMESTREAM_frames_multichannel(chFPGA, channels=[0], hold=0, frames=1, 
     continuous = (frames == 0) # plots continuously if frames=0
     nchan = channels.size
     
-    plt.figure(5, figsize=(6*nchan,6))
+    plt.figure(5, figsize=(6*nchan,4))
     plt.ion()  #not sure if necessary, sets to interactive mode
     plt.clf()
-    plt.hold(hold)  #again, not sure if necessary or should be here
+    #plt.hold(hold)  #again, not sure if necessary or should be here
     plt.show()   #again, not sure if necessary or should be here
     
     chanIndex = np.arange(nchan)
-    plotObject = np.arange(nchan)
+    plotObject = range(nchan)
 
 
     number_of_frames = 0
     ymax = 1
     try:
-        while (continuous == 1) or (number_of_frames < frames):
+        while (continuous == 1) | (number_of_frames < frames):
             try:
                 print 'Reading data...'
                 #sync_again=(number_of_frames==0) or bool(reset)
                 a = chFPGA.read_frames(raw=raw, flush=flush) #(number_of_frames==0)
                 flush = 0  ### ? not sure about this
-                
-                aamax = max(abs(a[channels[0]]))
-                ymax = max(ymax*.99, aamax)
-                if ( number_of_frames == 0 )
+                print a
+                if ( number_of_frames == 0 ):
+                    aamax = max(abs(a[channels[0]]))
+                    ymax = max(ymax*.99, aamax)
                     for chanNum in chanIndex:
-                        plt.subplot(2,nchan,chanNum)
+                        plt.subplot(1,nchan,chanNum)
                         plt.title('Timestream')
                         plt.xlabel('Sample')
                         plt.ylabel('Amplitude')
-                        plotObject[chanNum], = plt.plot(a[channels[chanNum]] ,'b.-')
-                        plt.draw()  #not sure if necessary
+                        plotObject[chanNum], = plt.plot(a[channels[chanNum]], 'b.-')
+                        plt.draw()
                 else:
                     for chanNum in chanIndex:
                         plotObject[chanNum].set_ydata(a[channels[chanNum]])
+                        plt.draw()
                 
                 number_of_frames += 1
-            except:
-                raise
-    except KeyboardInterrupt:
-        pass
+            except KeyError:
+                print "KeyError, lost data?"
+                pass
+            except KeyboardInterrupt:
+                print "Stopping plotting"
+                continuous=0
+                frames=0
+    except:
+        raise
     print 'Plotted %i frames' % number_of_frames
 
 def plot_SPECTRUM_frames(chFPGA, channels=[0], hold=0, frames=1, raw=0, flush=0):
@@ -120,8 +118,8 @@ def plot_SPECTRUM_frames(chFPGA, channels=[0], hold=0, frames=1, raw=0, flush=0)
     plt.show()   #again, not sure if necessary or should be here
     
     chanIndex = np.arange(nchan)
-    plotMagnitudeObject = np.arange(nchan)
-    plotPhaseObject = np.arange(nchan)
+    plotMagnitudeObject = range(nchan)
+    plotPhaseObject = range(nchan)
     
     
     number_of_frames = 0
@@ -133,16 +131,16 @@ def plot_SPECTRUM_frames(chFPGA, channels=[0], hold=0, frames=1, raw=0, flush=0)
                 #sync_again=(number_of_frames==0) or bool(reset)
                 a = chFPGA.read_frames(raw=raw, flush=flush) #(number_of_frames==0)
                 flush = 0  ### ? not sure about this
-                
+                print a
                 aamax = max(abs(a[channels[0]]))
                 ymax = max(ymax*.99, aamax)
                 if ( number_of_frames == 0 ):
                     #Break up real and imaginary parts of a and put into numpy complex array
                     #fa = np.empty([chanIndex.size,(a[channels[0].size)/2],dtype=np.complex64)
-                    fa = np.empty((a[channels[0].size)/2,dtype=np.complex64)
+                    fa = np.empty((a[channels[0]].size)/2,dtype=np.complex64)
                     for chanNum in chanIndex:
                         fa.real = a[channels[chanNum]][::2]
-                        fa.imaginary = a[channels[chanNum]][1::2]
+                        fa.imag = a[channels[chanNum]][1::2]
                         plt.subplot(2,nchan,chanNum+1)
                         plt.title('Spectrum')
                         plt.xlabel('Frequency (arb)')
@@ -156,11 +154,12 @@ def plot_SPECTRUM_frames(chFPGA, channels=[0], hold=0, frames=1, raw=0, flush=0)
                 else:
                     for chanNum in chanIndex:
                         fa.real = a[channels[chanNum]][::2]
-                        fa.imaginary = a[channels[chanNum]][1::2]
+                        fa.imag = a[channels[chanNum]][1::2]
                         plt.subplot(2,nchan,chanNum+1)
-                        plotMagnetudeObject[chanNum].set_ydata(10*np.log10(np.abs(fa)**2))
+                        plotMagnitudeObject[chanNum].set_ydata(10*np.log10(np.abs(fa)**2))
                         plt.subplot(2,nchan,nchan+chanNum+1);
                         plotPhaseObject[chanNum].set_ydata(np.angle(fa))
+                        plt.draw()
                 
                 number_of_frames += 1
             except:
@@ -171,7 +170,7 @@ def plot_SPECTRUM_frames(chFPGA, channels=[0], hold=0, frames=1, raw=0, flush=0)
 
 def save_DATA_frames(chFPGA, channels=[0], frames=1, raw=0, flush=0, filename='data.npy'):	
     '''
-     Saves data from Acquisition board to numpy array 
+        Saves data from Acquisition board to numpy array 
     '''
     data_list = []
     if isinstance(channels,int): # make sure that channel is a array of channels
@@ -191,7 +190,7 @@ def save_DATA_frames(chFPGA, channels=[0], frames=1, raw=0, flush=0, filename='d
                     for chanNum in chanIndex:
                         data_list.append(a[channels[chanNum]])
                 if (number_of_frames % 100) == 0:
-                print 'Captured {0} frames'.format(number_of_frames) 
+                    print 'Captured {0} frames'.format(number_of_frames) 
             except:
                 raise
     except KeyboardInterrupt:
@@ -231,7 +230,9 @@ def save_DATA_frames(chFPGA, channels=[0], frames=1, raw=0, flush=0, filename='d
 #    if file:
 #        file.close()
 #    print 'Saved %i frames' % number_of_frames
-                                     
+
+
+
 if __name__ == '__main__':
     from core import chFPGA
     ADC_TEST_MODE = 0 	#  0= normal, 1= ramp, 2=pulse (1 high, 10 low)
@@ -247,13 +248,24 @@ if __name__ == '__main__':
                            )
     FREF = 10 # FMC Reference clock frequency
     # Create the new chFPGA object.
-    c = chFPGA.chFPGA(adc_test_mode=ADC_TEST_MODE, adc_delay_table=ADC_DELAY_TABLE, fref=FREF) # pylint: disable=C0103
+    c = chFPGA.chFPGA(adc_test_mode=ADC_TEST_MODE, adc_delay_table=ADC_DELAYS_REV2_SN0001, fref=FREF) # pylint: disable=C0103
     c.sync()
+    channels=[0,1,2,3,4,5,6,7]
     # source can be:  'func_zero', func_one, func_ramp, func_real_ramp, inject, adcdaq_data, adcdaq_ramp
     c.set_data_source('adcdaq_data')
+    c.set_ADC_mode(channels=channels, mode='data')
     c.set_data_capture(burst_period=10000, number_of_bursts=0)
-    plot_TIMESTREAM_frames_multichannel(c, channels=[0,1,2,3,4,5,6,7], hold=0, frames=0, raw=0, flush=0):
-    #plot_SPECTRUM_frames(c, channels=[0,1,2,3,4,5,6,7], hold=0, frames=0, raw=0, flush=0):
+    plot_TIMESTREAM_frames(c, channel=0, raw=0, flush=0)
+
+    #plot_TIMESTREAM_frames_multichannel(c, channels=[0,1,2,3,4,5,6,7], hold=0, frames=0, raw=0, flush=0)
+
+    #for channel in channels:
+    #    c.ANT[channel].FFT.BYPASS=0
+    #    c.ANT[channel].SCALER.BYPASS=0
+    #    c.ANT[channel].SCALER.SHIFT_LEFT=1
+   
+    #plot_SPECTRUM_frames(c, channels=channels, hold=0, frames=3, raw=0, flush=0)
+    c.close()
     
 
                                      
