@@ -13,7 +13,9 @@ def pfb_fir(x):
     y = np.array([0+0j]*(N-taps*L))
     for n in range((taps-1)*L, N):
         m = n%L
+        #print m
         coeff_sub = coeff[L*taps-m::-L]
+        #print coeff_sub
         y[n-taps*L] = (x[n-(taps-1)*L:n+L:L]*coeff_sub).sum()
 
     return y
