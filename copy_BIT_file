@@ -1,0 +1,20 @@
+#!/bin/bash
+answer = raw_input('Commit anyway? [N/y] ')
+
+echo Copy BIT file from chFPGA: [y] or [n]?
+read answer
+
+while [[ x$answer != xy && x$answer != xn ]]
+do
+	echo "$answer" is an invalid response. Please try again
+	read answer
+done
+
+if [[ x$answer = xy ]]; then
+echo 'Copying bit file...'
+cp ../chFPGA/_ISE_Projects/chFPGA_ML605/work/chfpga_v6.bit .
+fi
+
+echo Done
+
+  

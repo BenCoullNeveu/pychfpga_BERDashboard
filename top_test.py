@@ -15,8 +15,9 @@ History:
 """
 
 from core import chFPGA
+import plot_utils as pu
 reload(chFPGA) # just to make sure that any changes to the code are reloaded
-
+reload(pu)
 # Default data and clock line delays for the two FMC boards/ML605 combination.
 # First 8 values are the delays for bits 0 to 7, 8th value is the delay for the clock line.
 SN001_ADC_DELAYS = (
@@ -112,8 +113,8 @@ if __name__ == '__main__':
 	
 	# Displays the system frequencies
 	c.FreqCtr.status()
-	c.set_data_source('func_ramp')
-	c.set_data_capture(burst_period=10000, number_of_bursts=0)
+	c.set_data_source('adcdaq_data')
+	c.set_data_capture(burst_period=100000, number_of_bursts=0)
 	# Continuously plot the ADC output
 	#c.plot_ADC_frame(channels=[1], frames=512)
 

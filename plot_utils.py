@@ -13,7 +13,7 @@
 
 import numpy as np
 import matplotlib
-matplotlib.use('TkAgg')
+#matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 #from core import chFPGA
@@ -23,11 +23,13 @@ def plot_TIMESTREAM_frames(chFPGA, channel=0, raw=0, flush=0):
     #if isinstance(channels,int): # make sure that channel is a list of channels
     #	channels=[channels]
     def anim_init():
+        print 'calling init'
         a = chFPGA.read_frames(raw=raw, flush=flush)
-        line.set_data(range(len(a[1])),a[1])
+        line.set_data(range(len(a[channel])),a[channel])
         return line
 
     def animate(i):
+        print 'calling animate'
         a = chFPGA.read_frames(raw=raw, flush=flush)
         line.set_ydata(a[i])
         return line
@@ -35,9 +37,11 @@ def plot_TIMESTREAM_frames(chFPGA, channel=0, raw=0, flush=0):
     fig  = plt.figure()
     ax = fig.add_subplot(111, autoscale_on=True, xlim=(0, 2048), ylim=(-128, 128))
     a = chFPGA.read_frames(raw=raw, flush=flush)
-    line, = ax.plot(range(len(a[1])),a[1], 'o-', lw=2)    
-    ani = animation.FuncAnimation(fig, animate, channel*np.ones(50),
-                                  interval=20, blit=False, init_func=anim_init)
+    line, = ax.plot(range(len(a[channel])),a[channel], 'o-', lw=2)    
+#    ani = animation.FuncAnimation(fig, animate, channel*np.ones(500),
+#                                  interval=20, blit=False, init_func=anim_init)
+    ani = animation.FuncAnimation(fig, animate, 10, 
+                                   init_func=anim_init)
     plt.show()
     
 
