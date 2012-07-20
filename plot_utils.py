@@ -30,7 +30,7 @@ def plot_TIMESTREAM_frames(chFPGA, channel=0, raw=0, flush=0):
 
     def animate(i):
         print 'calling animate'
-        a = chFPGA.read_frames(raw=raw, flush=flush)
+        a = chFPGA.read_frames(verbose=2, raw=raw, flush=flush)
         line.set_ydata(a[i])
         return line
     
@@ -149,7 +149,7 @@ def save_DATA_frames(chFPGA, channels=[0], frames=1, raw=0, flush=0, filename='d
     try:
         while (frames==0) or (frames!=0 and number_of_frames<frames):
             try:
-                a = chFPGA.read_frames(raw=raw, flush=flush)
+                a = chFPGA.read_frames(verbose=2, raw=raw, flush=flush)
                 number_of_frames+=1
                 if filename:
                     for chanNum in chanIndex:
@@ -199,7 +199,8 @@ def save_DATA_frames(chFPGA, channels=[0], frames=1, raw=0, flush=0, filename='d
 
 
 if __name__ == '__main__':
-    from core import chFPGA
+    from core import chFPGA_controller
+    from core import chFPGA_receiver
     ADC_TEST_MODE = 0 	#  0= normal, 1= ramp, 2=pulse (1 high, 10 low)
     ADC_DELAYS_REV2_SN0001 = (
                            [20,26,25,25,25,25,25,24], #CH0
@@ -213,24 +214,29 @@ if __name__ == '__main__':
                            )
     FREF = 10 # FMC Reference clock frequency
     # Create the new chFPGA object.
-    c = chFPGA.chFPGA(adc_test_mode=ADC_TEST_MODE, adc_delay_table=ADC_DELAYS_REV2_SN0001, fref=FREF) # pylint: disable=C0103
+    c = chFPGA_controller.chFPGA_controller(adc_delay_table=ADC_DELAYS_REV2_SN0001)
     c.sync()
-    channels=[0,1,2,3,4,5,6,7]
+    channels=[0]
     # source can be:  'func_zero', func_one, func_ramp, func_real_ramp, inject, adcdaq_data, adcdaq_ramp
     c.set_data_source('adcdaq_data')
-    c.set_ADC_mode(channels=channels, mode='ramp')
-    c.set_data_capture(burst_period=10000, number_of_bursts=0)
-    #plot_TIMESTREAM_frames(c, channel=0, raw=0, flush=0)
+    c.set_ADC_mode(channels=channels, mode='data')
+    c.start_data_capture(burst_period_in_seconds=0.1, number_of_bursts=0)
+    c.close()
+    
+    cr = chFPGA_receiver.chFPGA_receiver()
+    plot_TIMESTREAM_frames(cr, channel=0, raw=0, flush=0)
 
     #plot_TIMESTREAM_frames_multichannel(c, channels=[0,1,2,3,4,5,6,7], raw=0, flush=0)
 
-    for channel in channels:
-        c.ANT[channel].FFT.BYPASS=0
-        c.ANT[channel].SCALER.BYPASS=0
-        c.ANT[channel].SCALER.SHIFT_LEFT=1
-   
-    plot_SPECTRUM_frames(c, channels=channels, raw=0, flush=0)
-    c.close()
+#    for channel in channels:
+#        c.ANT[channel].FFT.BYPASS=0
+#        c.ANT[channel].SCALER.BYPASS=0
+#        c.ANT[channel].SCALER.SHIFT_LEFT=1
+#    
+#    
+#    
+#    plot_SPECTRUM_frames(cr, channels=channels, raw=0, flush=0)
+    cr.close()
     
 
                                      

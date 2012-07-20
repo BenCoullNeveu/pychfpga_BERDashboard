@@ -200,10 +200,10 @@ class chFPGA_receiver(object):
 					raw_data.dtype=np.uint8
 					raw_data^=0x80
 	
-				if verbose:
-					#print 'Packet received from port %i. Frame header information:  Valid frame #=%i, Frame #=%i, Frame length=%i words, trigger count=%i' % (channel_number, ant_number, frame_valid_ctr, frame_ctr, frame_length,self.ANT[ch].FR_DIST.TRIG_COUNT)
-					#print data
-					pass
+				if verbose >=2:
+					print 'Packet received from port %i. Frame header information:  probe_id #=%i, stream_id #=%i, Word length=%i words, timestamp=%i' % (channel, probe_id, stream_id, word_length, timestamp)
+					print data
+					#pass
 				# Make sure there is an empty vector on the first storage so we can concatenate to it the new data
 				
 				if channel not in data:
