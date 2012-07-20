@@ -107,8 +107,7 @@ class chFPGA_receiver(object):
 
 		print '*** Opening receiver sockets ***'
 		# Create socket handled and open socket communications to the chFPGA board
-		self.sock=SocketIO.SocketIO_base()
-		self.sock.open()
+		self.sock=SocketIO.DataSocket_base()
 
 		# Create a frame a queue and a thread that will fill it
 		self.frame_queue = Queue.Queue(maxsize=self.FRAME_BUFFER_LENGTH)
