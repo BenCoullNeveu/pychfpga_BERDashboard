@@ -142,7 +142,7 @@ class chFPGA_receiver(object):
 			self.frame_queue.queue.clear()
 		
 			
-	def read_frames(self, frames=1, verbose=1, raw=0, flush=0):
+	def read_frames(self, frames=1, verbose=0, raw=0, flush=0):
 		"""
 		Get frames that were captured by the capture thread.
 

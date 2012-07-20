@@ -4,8 +4,9 @@ def set_inject_mode(fpga_ctrl, fpga_data):
 	pass
 	#
 
-def inject(fc, fr, channel=0, data=[]):
-	fc.ANT[channel].inject(data)
+def inject(fc, fr, channel=0, data=None):
+	print data
+	fc.ANT[channel].FR_DIST.inject_frame(data)
 	returned_data = fr.read_frames()
 	return returned_data[channel]
 
@@ -44,3 +45,32 @@ def ADC_check_frames(self, channel=0, frames=16, delay=None, verbose=0):
 				pass
 		self.ADC_set_delay(ch,old_delays); # restore original delays
 		print ' Channel %i: Pass: %i (%.2f%%), fail: %i (%.2f%%)' % (ch, passed, passed*100.0/(passed+failed), failed, failed*100.0/(passed+failed))
+
+if __name__ == '__main__':
+    print "testing frame injection"
+    import chFPGA_controller
+    import chFPGA_receiver
+    import numpy as np
+    ADC_TEST_MODE = 0 	#  0= normal, 1= ramp, 2=pulse (1 high, 10 low)
+    ADC_DELAYS_REV2_SN0001 = (
+                              [20,26,25,25,25,25,25,24], #CH0
+                              [23]*8, #CH1 
+                              [24,22,20,20,20,20,20,17], #CH2 
+                              [19]*8+[0], #CH3
+                              [17]*8, #CH4
+                              [17]*8, #CH5 
+                              [19,19,19,18,17,16,20,20], #CH6 
+                              [16]*8, #CH7
+                              )
+    FREF = 10 # FMC Reference clock frequency
+    # Create the new chFPGA object.
+    c = chFPGA_controller.chFPGA_controller(adc_delay_table=ADC_DELAYS_REV2_SN0001)
+    c.sync()
+    c.set_data_source('inject')
+    c.start_data_capture(burst_period_in_seconds=0.1, number_of_bursts=0)
+    channels=[4,5]
+    cr = chFPGA_receiver.chFPGA_receiver()
+    data1 = np.load('../testing_rfof_2.npy')
+    out = []
+    for channel in channels:
+        out.append(inject(c, cr, channel, data1[0]))

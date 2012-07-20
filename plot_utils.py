@@ -149,7 +149,7 @@ def save_DATA_frames(chFPGA, channels=[0], frames=1, raw=0, flush=0, filename='d
     try:
         while (frames==0) or (frames!=0 and number_of_frames<frames):
             try:
-                a = chFPGA.read_frames(verbose=2, raw=raw, flush=flush)
+                a = chFPGA.read_frames(verbose=0, raw=raw, flush=flush)
                 number_of_frames+=1
                 if filename:
                     for chanNum in chanIndex:
