@@ -30,7 +30,7 @@ def plot_TIMESTREAM_frames(chFPGA, channel=0, raw=0, flush=0):
 
     def animate(i):
         print 'calling animate'
-        a = chFPGA.read_frames(verbose=2, raw=raw, flush=flush)
+        a = chFPGA.read_frames(verbose=0, raw=raw, flush=flush)
         line.set_ydata(a[i])
         return line
     
@@ -38,10 +38,10 @@ def plot_TIMESTREAM_frames(chFPGA, channel=0, raw=0, flush=0):
     ax = fig.add_subplot(111, autoscale_on=True, xlim=(0, 2048), ylim=(-128, 128))
     a = chFPGA.read_frames(raw=raw, flush=flush)
     line, = ax.plot(range(len(a[channel])),a[channel], 'o-', lw=2)    
-#    ani = animation.FuncAnimation(fig, animate, channel*np.ones(500),
-#                                  interval=20, blit=False, init_func=anim_init)
-    ani = animation.FuncAnimation(fig, animate, 10, 
-                                   init_func=anim_init)
+    ani = animation.FuncAnimation(fig, animate, channel*np.ones(500),
+                                  interval=20, blit=False, init_func=anim_init)
+#    ani = animation.FuncAnimation(fig, animate, 10, 
+#                                   init_func=anim_init)
     plt.show()
     
 

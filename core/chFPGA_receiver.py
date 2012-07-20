@@ -122,7 +122,7 @@ class chFPGA_receiver(object):
 	def __del__(self):
 
 		self.close()
-		print '__del__: Closed FPGA at IP address %s' % self.SocketIO.OUT_IP
+		print '__del__: Closed FPGA at IP address'# %s' % self.SocketIO.OUT_IP
 
 	def close(self):
 		""" 
