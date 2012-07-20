@@ -14,9 +14,10 @@ History:
 	2011-10-11 JFC: Updated delay tables
 """
 
-from core import chFPGA
-reload(chFPGA) # just to make sure that any changes to the code are reloaded
-
+from core import chFPGA_controller
+import plot_utils as pu
+reload(chFPGA_controller) # just to make sure that any changes to the code are reloaded
+reload(pu)
 # Default data and clock line delays for the two FMC boards/ML605 combination.
 # First 8 values are the delays for bits 0 to 7, 8th value is the delay for the clock line.
 SN001_ADC_DELAYS = (
@@ -100,20 +101,17 @@ if __name__ == '__main__':
 	except NameError:
 		pass
 
-	ADC_TEST_MODE = 0 	#  0= normal, 1= ramp, 2=pulse (1 high, 10 low)
+	#ADC_TEST_MODE = 0 	#  0= normal, 1= ramp, 2=pulse (1 high, 10 low)
 	ADC_DELAY_TABLE = ADC_DELAYS_REV2_SN0001 # select the table corresponding to the FMC serial number
-	FREF = 10 # FMC Reference clock frequency 
+	#FREF = 10 # FMC Reference clock frequency 
 
 	# Create the new chFPGA object.
-	c = chFPGA.chFPGA(adc_test_mode=ADC_TEST_MODE, adc_delay_table=ADC_DELAY_TABLE, fref=FREF) # pylint: disable=C0103
+	c = chFPGA_controller.chFPGA_controller(adc_delay_table=ADC_DELAY_TABLE) # pylint: disable=C0103
 	c.sync()
-	
-	print
-	
 	# Displays the system frequencies
 	c.FreqCtr.status()
-	c.set_data_source('func_ramp')
-	c.set_data_capture(burst_period=10000, number_of_bursts=0)
+	c.set_data_source('adcdaq_data')
+	c.start_data_capture(1.0)
 	# Continuously plot the ADC output
 	#c.plot_ADC_frame(channels=[1], frames=512)
 

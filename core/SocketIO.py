@@ -1,4 +1,6 @@
 #!/usr/bin/python
+# Disable pylint TAB warnings (W0312) and Line too long (=C0301)
+# pylint: disable=W0312,C0301 
 
 """
 socketIO.py module. Implements socket communications to chFPGA 
@@ -12,115 +14,143 @@ History:
 """
 
 import socket
-import os
 import numpy as np
 
-timeout=socket.timeout #110918 JFC
+timeout = socket.timeout #110918 JFC
 
-class SocketIO_base(object):
-	def __init__(self):
-
-		# Defines basic variables
-		self.netmask='255.255.0.0' # network mask used to find the host address that is on the same subnet as the target IP. This does not affect the network adapter settings.
-		self.OUT_IP="10.10.10.11"
-		#self.OUT_IP="192.168.0.103" # if accessing from the WAN side of the router. Address is dynamic and may change over time.
-		self.OUT_PORT=41000 # Control port on the FPGA
-		self.OUT_ADDR=(self.OUT_IP, self.OUT_PORT)
-		#self.OUT_MAC_ADDR='12-34-56-78-9a-bc' # Not needed anymore now that we have ARP
-		
-		self.IN_IP=None; # When None, the host address is automatically determined 
-		self.IN_PORT=41000; # Control port on the host to receive command replies
-		self.IN_PORT_DATA=self.IN_PORT+1; # Data port on the host (Control port +1), to receive frame data
-
+class ControlSocket_base(object):
+	"""Creates an object that represents the control socket communication link to the chFPGA.""" 
+	BUFFER_LENGTH = 32768
+	
+	def __init__(self, ip_address, port_number, netmask='255.255.0.0'):
+		self.netmask = netmask # network mask used to find the host address that is on the same subnet as the target IP. This does not affect the network adapter settings.
+		self.ip_address = ip_address
+		self.port_number = port_number # Control port on the FPGA
+		self.address = (self.ip_address, self.port_number)
+		self.sock = None
+		self.open()
 	def open(self):
 		"""
-		Open Socket communications to chFPGA. Two sockets are open: one for control and one for data.
+		Open control communication socket to chFPGA. 
 		"""
-		self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM);
-		self.sock.settimeout(2);
-
-		self.sock_data = socket.socket(socket.AF_INET, socket.SOCK_DGRAM);
-		self.sock_data.settimeout(2);
-		#		print self.sock.getsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF)
-		err = self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 32768);
-		err = self.sock_data.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 32768);
-#		print self.sock.getsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF)
-		if self.IN_IP is None:
-			host_addr=self.get_host_addr(dest_addr=self.OUT_IP, netmask=self.netmask)
-		else:
-			host_name=self.IN_IP
-		self.sock.bind((host_addr, self.IN_PORT));
-		self.sock_data.bind((host_addr, self.IN_PORT_DATA));
-		print 'Opened UDP Socket communications.'
-		print '    Control port: listening on %s:%i ' % (host_addr, self.IN_PORT)
-		print '    Data port:    listening on %s:%i ' % (host_addr, self.IN_PORT_DATA)
+		self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+		self.sock.settimeout(2)
+		self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, self.BUFFER_LENGTH)
+		host_addr = get_host_addr(dest_addr=self.ip_address, netmask=self.netmask)
+		self.sock.bind((host_addr, self.port_number))
+		print 'Opened control UDP Socket'
+		print '    Control port: listening on %s:%i ' % (host_addr, self.port_number)
 
 
 	def close(self):
-		self.sock.close();
-		self.sock_data.close();
-		print 'Closed UDP Socket communications'
+		"""Closes the socket"""
+		self.sock.close()
+		print 'Closed UDP control socket'
 
-	def write_control(self,s):
+	def write(self, data):
 		"""
 		Writes a string to the control socket.
 		"""
-		self.sock.sendto(s,self.OUT_ADDR);
+		self.sock.sendto(data, self.address)
 
-	def read_control(self):
+	def read(self):
 		"""
 		Reads a string from the control socket.
 		"""
-		data,client=self.sock.recvfrom(16384)
+		data = self.sock.recv(self.BUFFER_LENGTH)
 		return data
 
-	def read_data(self,timeout_delay=0.1): #110918 JFC: Added timeout_delay
-		self.sock_data.settimeout(timeout_delay);
-		data,client=self.sock_data.recvfrom(16384);
-		return data;
 
-
-	def flush_control_socket(self):
-#		print('Flushing socket buffer...');
-		self.sock.settimeout(0.1);
+	def flush(self):
+		"""Flushes the socket receive buffer."""
+		old_timeout = self.sock.gettimeout()
+		self.sock.settimeout(0.1)
 		try:
 			while True:
-				data,client=self.sock.recvfrom ( 16384 );
-				if len(data)==0:
-					break;
-		except:
-			pass; # do nothing
-			#print('Buffer is empty');
-		self.sock.settimeout(1);
+				data = self.sock.recv(self.BUFFER_LENGTH)
+				if len(data) == 0:
+					break
+		except socket.timeout:
+			pass # do nothing
+			#print('Buffer is empty')
+		self.sock.settimeout(old_timeout)
 
-	def flush_data_socket(self):
-#		print('Flushing socket buffer...');
-		self.sock_data.settimeout(0.1);
+
+
+class DataSocket_base(object):
+	"""Creates an object that represents the control socket communication link to the chFPGA.""" 
+
+	BUFFER_LENGTH = 32768
+
+	def __init__(self, ip_address, port_number, netmask='255.255.0.0'):
+
+		# Defines basic variables
+		self.netmask = netmask # network mask used to find the host address that is on the same subnet as the target IP. This does not affect the network adapter settings.
+		self.ip_address = ip_address # IP of the chFPGA board. Used to determine the host address 
+		self.port_number = port_number # Data port on the host (Control port +1), to receive frame data
+		self.sock = None
+		self.open()
+
+	def open(self):
+		"""
+		Open data communication socket communications to chFPGA. This is a listen-only socket.
+		"""
+
+		self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+		self.sock.settimeout(2)
+		self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, self.BUFFER_LENGTH)
+		host_addr = get_host_addr(dest_addr=self.ip_address, netmask=self.netmask)
+		self.sock.bind((host_addr, self.port_number))
+		print 'Opened data UDP Socket'
+		print '    Data port:    listening on %s:%i ' % (host_addr, self.port_number)
+
+	def close(self):
+		"""Closes the communication socket"""
+		self.sock.close()
+		print 'Closed UDP data socket'
+
+	def flush(self):
+		"""Flushes the socket receive buffer."""
+		old_timeout = self.sock.gettimeout()
+		self.sock.settimeout(0.1)
 		try:
 			while True:
-				data,client=self.sock_data.recvfrom ( 16384 );
-				if len(data)==0:
-					break;
-		except:
-			pass; # do nothing
-			#print('Buffer is empty');
-		self.sock_data.settimeout(1);
+				data = self.sock.recv(self.BUFFER_LENGTH)
+				if len(data) == 0:
+					break
+		except socket.timeout:
+			pass # do nothing
+			#print('Buffer is empty')
+		self.sock.settimeout(old_timeout)
 
-	def get_host_addr(self,dest_addr,netmask='255.255.0.0', only_one=True):
+	def read(self, timeout_delay=None): #110918 JFC: Added timeout_delay
 		"""
-		Returns the IP of the host adapter that is on the same subnet as the specified destination IP given the net mask
+		Reads a string from the control socket.
 		"""
-		host_data=socket.gethostbyname_ex(socket.gethostname()) # get the list of IP addresses associated with this computer
-		host_addr_list=host_data[2] # get the list of IP addresses associated with this computer
-		dest_addr_vect=np.array(map(ord,socket.inet_aton(dest_addr))) # convert the target IP into a vector
-		netmask_vect=np.array(map(ord,socket.inet_aton(netmask))) # convert the net mask into a vector
+		if timeout_delay is not None:
+			self.sock.settimeout(timeout_delay)
+		else:
+			self.sock.settimeout(0.1)
 		
-		matched_addr=[];
-		for host_addr in host_addr_list:
-			host_addr_vect=np.array(map(ord,socket.inet_aton(host_addr))) # convert the host address into a vector
-			if all((host_addr_vect & netmask_vect)==(dest_addr_vect & netmask_vect)):
-				matched_addr.append(host_addr)
-		if only_one and len(matched_addr)!=1:
-			raise SystemError('Could not determine the host address. Found %i possible matches for %s/%s on the following adapters for %s : %s' % (len(matched_addr),dest_addr,netmask, host_data[0], ', '.join(host_addr_list)))
-		return matched_addr[0]
+		data = self.sock.recv(self.BUFFER_LENGTH)
+		return data
+
+
+def get_host_addr(dest_addr, netmask='255.255.0.0', only_one=True):
+	"""
+	Returns the IP of the host adapter that is on the same subnet as the specified destination IP given the net mask
+	"""
+	host_data = socket.gethostbyname_ex(socket.gethostname()) # get the list of IP addresses associated with this computer
+	host_addr_list = host_data[2] # get the list of IP addresses associated with this computer
+	dest_addr_vect = np.array(map(ord, socket.inet_aton(dest_addr))) # convert the target IP into a vector
+	netmask_vect = np.array(map(ord, socket.inet_aton(netmask))) # convert the net mask into a vector
+	
+	matched_addr = []
+	for host_addr in host_addr_list:
+		host_addr_vect = np.array(map(ord, socket.inet_aton(host_addr))) # convert the host address into a vector
+		if all((host_addr_vect & netmask_vect) == (dest_addr_vect & netmask_vect)):
+			matched_addr.append(host_addr)
+	if only_one and len(matched_addr) != 1:
+		raise SystemError('Could not determine the host address. Found %i possible matches for %s/%s on the following adapters for %s : %s' % (len(matched_addr), dest_addr, netmask, host_data[0], ', '.join(host_addr_list)))
+	return matched_addr[0]
 		
