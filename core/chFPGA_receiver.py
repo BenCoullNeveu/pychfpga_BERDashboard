@@ -102,18 +102,21 @@ class ReceiverThread(threading.Thread):
 class chFPGA_receiver(object):
 	# define constants
 	FRAME_BUFFER_LENGTH = 10
+	FRAME_HEADER_LENGTH = 9
+	LOG2_FRAME_LENGTH = 11
+	FRAME_LENGTH = 2**LOG2_FRAME_LENGTH
 
-	def __init__(self, ip_address, port=41001, verbose=2):
+	def __init__(self, ip_address='10.10.10.11', port=41001, verbose=2):
 
 		print '*** Opening receiver sockets ***'
 		# Create socket handled and open socket communications to the chFPGA board
-		self.sock=SocketIO.SocketIO_base()
+		self.sock=SocketIO.DataSocket_base(ip_address, port)
 		self.sock.open()
 
 		# Create a frame a queue and a thread that will fill it
 		self.frame_queue = Queue.Queue(maxsize=self.FRAME_BUFFER_LENGTH)
 		#self.frame_queue = multiprocessing.Queue(maxsize=1000)
-		self.frame_receiver = ReceiverThread(self.sock.sock_data, self.frame_queue, verbose=0)
+		self.frame_receiver = ReceiverThread(self.sock.sock, self.frame_queue, verbose=0)
 		self.frame_receiver.start()
 
 	def __del__(self):

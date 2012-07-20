@@ -111,7 +111,8 @@ if __name__ == '__main__':
 	# Displays the system frequencies
 	c.FreqCtr.status()
 	c.set_data_source('adcdaq_data')
-	c.start_data_capture(1.0)
+	c.start_data_capture(burst_period_in_seconds=0.01, number_of_bursts=0)
+    #c.set_data_capture(burst_period=10000, number_of_bursts=0)
 	# Continuously plot the ADC output
 	#c.plot_ADC_frame(channels=[1], frames=512)
 
