@@ -8,6 +8,7 @@ PROBER.py module
 
  History:
  2012-06-21 JFC: Created
+ 2012-07-20 JFC: Added initialization of PROBE_ID with antenna number
 """
 
 from Module import Module_base, BitField
@@ -85,6 +86,7 @@ class PROBER_base(Module_base):
 	def init(self, **kwargs):
 		""" Initialize the data capture module"""
 		#self.config_capture(1, 100) # Capture 1 frame every 100 frames
+		self.PROBE_ID = 0xA0+self.ant.ant_number
 
 	def status(self):
 		""" Displays the status of the data capture module"""

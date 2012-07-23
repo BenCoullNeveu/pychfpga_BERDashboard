@@ -9,7 +9,8 @@ CORR_BLOCK.py module
  History:
  2012-06-21 : JFC : Created 
 """
-import CH_DIST	
+import CH_DIST
+import ACC
 
 
 class CORR_BLOCK_base(object):
@@ -17,8 +18,8 @@ class CORR_BLOCK_base(object):
 
 	# Antenna processor module addresses
 	CH_DIST_MODULE = 0
-	CORR_MODULE = 0
-	ACC_MODULE = 0
+	CORR_MODULE = 1
+	ACC_MODULE = 2
 
 	def __init__(self, corr_instance, corr_number):
 		#super(ADC_chip,self).__init__(fpga)
@@ -26,6 +27,7 @@ class CORR_BLOCK_base(object):
 		self.corr_number = corr_number # store current ADC number for this instance
 		self.fpga = self.corr.fpga
 		self.CH_DIST = CH_DIST.CH_DIST_base(self)
+		self.ACC = ACC.ACC_base(self)
 
 		
 	def read(self, module, addr, *args, **kwargs): 
@@ -41,12 +43,14 @@ class CORR_BLOCK_base(object):
 	def init(self):
 		""" Inisializes all modules of a correlator block.""" 
 		self.CH_DIST.init()
+		self.ACC.init()
 
 
 	def status(self):
 		"""Displays the status of al the correlator blocks"""
 		print '======= CORR NUMBER %i =============' % self.corr_number
 		self.CH_DIST.status()
+		self.ACC.status()
 
 
 
@@ -80,10 +84,10 @@ class CORR_base(object):
 
 	def init(self):
 		""" Initializes all correlators"""
-		for corr in self.CORR:
-			corr.init()
+		#for corr in self.CORR:
+		#	corr.init()
 
 	def status(self):
 		""" Displays the status of all correlators"""
-		for corr in self.CORR:
-			corr.status()
+		#for corr in self.CORR:
+		#	corr.status()

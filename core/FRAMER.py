@@ -58,16 +58,6 @@ class FR_DIST_base(Module_base):
 		""" Resets the data injection FIFO"""
 		self.pulse_bit('FIFO_RESET')
 
-#	def start_frame_transmission(self, number_of_frames=1, number_of_bursts=1, period=1, source=None):
-#		"""
-#		Triggers tagging a number of frames for transmission the ethernet link.
-#			number_of_frames: number of contihuous frames to send in a burst (default=1)
-#			number_of_bursts: number of bursts of 'number_of_frames' frames to send (default=1)
-#			period: delay between bursts in seconds
-#			source: if specified, changes the data source to the specified source
-#		"""
-#		self.set_burst(number_of_frames=number_of_frames, number_of_bursts=number_of_bursts, period=period, source=source)
-#		self.pulse_bit('TRIG_BURST')
 
 	def inject_frame(self, length=None, data=None):
 		""" Inject a frame of data in the antenna processing pipeline"""
