@@ -1,15 +1,22 @@
 # -*- coding: utf-8 -*-
+import numpy as np
 
 def set_inject_mode(fpga_ctrl, fpga_recv):
     fpga_ctrl.set_data_source('inject')
     fpga_ctrl.start_data_capture(burst_period_in_frames=1, number_of_bursts=0)
     fpga_recv.flush()
 
-def inject(fc, fr, channel=0, data=None):
-    print data
-    fc.ANT[channel].FR_DIST.inject_frame(data)
+def inject(fc, fr, channels=0, data=None):
+    if isinstance(channels, np.ndarray) | isinstance(channels, list):    
+        for channel in channels:
+            fc.ANT[channel].FR_DIST.inject_frame(data)
+    elif isinstance(channels, int):
+        fc.ANT[channels].FR_DIST.inject_frame(data)
+    else:
+        print "Need a list of channels or single channel to inject data to"
+        return None
     returned_data = fr.read_frames()
-    return returned_data[channel]
+    return returned_data[channels]
 
 def ADC_check_frames(self, channel=0, frames=16, delay=None, verbose=0):
     if np.iterable(channel): #110906 JFC
@@ -47,6 +54,40 @@ def ADC_check_frames(self, channel=0, frames=16, delay=None, verbose=0):
         self.ADC_set_delay(ch,old_delays); # restore original delays
         print ' Channel %i: Pass: %i (%.2f%%), fail: %i (%.2f%%)' % (ch, passed, passed*100.0/(passed+failed), failed, failed*100.0/(passed+failed))
 
+def inject_dc(fc,fr, dc_level=1, channels=[0,1,2,3,4,5,6,7]):
+    data = np.ones(2048)*dc_level
+    return inject(fc,fr, channels, data)
+    
+def inject_sine(fc,fr, sine_amp=1, sine_freq=1.0, channels=[0,1,2,3,4,5,6,7]):
+    '''
+    Injects a sine wave with amplitude sine_level and frequency in frequency bin, assumes 2048 point fft.
+    '''
+    t = np.arange(2048)
+    freq = sin_freq/2048.0
+    data = sine_amp*np.sine(2.0*np.pi*freq*t)
+    return inject(fc,fr, channels, data)
+    
+def check_fft_dc(fc,fr):
+    dc_levels = range(-128,128)
+    dcs = []
+    for dc_level in dc_levels:
+        dc_fft_out = inject_DC(fc,fr,dc_level)
+        print "DC level with " + str(dc_level) + " input is " + str(dc_fft_out[0])
+        dcs.append(dc_fft_out[0])
+    #put some overflow checks here
+    return dcs
+    
+def check_fft_sine(fc,fr):
+    sine_amps = range(1,128)
+    sine_freqs = np.arange(1,1024)
+    spectra = []
+    for sine_amp in sine_amps:
+        for sine_freq in sine_freqs:
+            sine_fft_out = inject_sine(fc,fr,sine_level=sine_amp, sine_freq=sine_freq)
+            print "Amplitude of FFT of bin" + str(sine_freq) + " with amplitude " + str(sine_amp) + " is " + str(abs(sine_fft_out[sine_freq]))
+            spectra.append(sine_fft_out)
+    return spectra
+    
 if __name__ == '__main__':
     print "testing frame injection"
     import chFPGA_controller
@@ -67,11 +108,8 @@ if __name__ == '__main__':
     # Create the new chFPGA object.
     c = chFPGA_controller.chFPGA_controller(adc_delay_table=ADC_DELAYS_REV2_SN0001)
     c.sync()
-    c.set_data_source('inject')
-    c.start_data_capture(burst_period_in_frames=1, number_of_bursts=0)
     channels=[4,5]
     cr = chFPGA_receiver.chFPGA_receiver()
-    data1 = np.load('../testing_rfof_2.npy')
-    out = []
-    for channel in channels:
-        out.append(inject(c, cr, channel, data1[0]))
+    set_inject_mode(c,cr)
+    dcs = check_fft_dc(c,cr)
+    spectra = check_fft_sine(c,cr)
