@@ -117,6 +117,7 @@ if __name__ == '__main__':
     r = chFPGA_receiver.chFPGA_receiver()
     c.sync()
     inj.set_inject_mode(c,r)
+    dcs = inj.check_fft_dc(c,r)
     # Displays the system frequencies
     c.FreqCtr.status()
     #c.set_data_source('adcdaq_data')

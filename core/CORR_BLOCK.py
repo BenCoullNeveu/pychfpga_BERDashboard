@@ -10,7 +10,7 @@ CORR_BLOCK.py module
  2012-06-21 : JFC : Created 
 """
 import CH_DIST
-import ACC
+#import ACC
 
 
 class CORR_BLOCK_channel(object):
@@ -27,7 +27,7 @@ class CORR_BLOCK_channel(object):
 		self.corr_number = corr_number # store current ADC number for this instance
 		self.fpga = self.corr.fpga
 		self.CH_DIST = CH_DIST.CH_DIST_base(self)
-		self.ACC = ACC.ACC_base(self)
+		#self.ACC = ACC.ACC_base(self)
 
 		
 	def read(self, module, addr, *args, **kwargs): 
@@ -50,7 +50,7 @@ class CORR_BLOCK_channel(object):
 		"""Displays the status of al the correlator blocks"""
 		print '======= CORR NUMBER %i =============' % self.corr_number
 		self.CH_DIST.status()
-		self.ACC.status()
+		#self.ACC.status()
 
 
 
@@ -85,7 +85,7 @@ class CORR_BLOCK_base(object):
 	def init(self):
 		""" Initializes all correlators"""
 		for corr in self.CORR:
-			corr.init()
+			pass#corr.init()
 
 	def status(self):
 		""" Displays the status of all correlators"""

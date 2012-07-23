@@ -67,10 +67,10 @@ class FR_DIST_base(Module_base):
         if data == None: # Send ramp
             if length == None:
                 length = self.ant.frame_length
-            frame = [0 for i in range(length)] #(i % 256)
+            frame = [(i % 256) for i in range(length)] #(i % 256)
         else:
             if length == None:
-                length = len(data)
+                length = self.ant.frame_length #len(data)
             
             if type(data) == str :
                 data_length = len(data)
