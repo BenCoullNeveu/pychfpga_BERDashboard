@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import numpy as np
 
 def set_inject_mode(fpga_ctrl, fpga_recv):
     """ Sets all channels into injection mode"""
