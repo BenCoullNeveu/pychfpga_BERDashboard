@@ -13,7 +13,7 @@ import CH_DIST
 import ACC
 
 
-class CORR_BLOCK_base(object):
+class CORR_BLOCK_channel(object):
 	""" Implements interface to one of the correlator"""
 
 	# Antenna processor module addresses
@@ -54,7 +54,7 @@ class CORR_BLOCK_base(object):
 
 
 
-class CORR_base(object):
+class CORR_BLOCK_base(object):
 	""" Instantiates a container for all correlators blocks"""
 
 	def __init__(self, fpga, verbose=0):
@@ -63,7 +63,7 @@ class CORR_base(object):
 		# Create an instance of ADC_chip for each chip of the FMC board
 		self.CORR = []
 		for i in range(fpga.NUMBER_OF_CORRELATORS):
-			self.CORR.append(CORR_BLOCK_base(self, i))
+			self.CORR.append(CORR_BLOCK_channel(self, i))
 
 	def __getitem__(self, key):
 		"""	Returns the correlator instance specified by the index"""
@@ -84,10 +84,10 @@ class CORR_base(object):
 
 	def init(self):
 		""" Initializes all correlators"""
-		#for corr in self.CORR:
-		#	corr.init()
+		for corr in self.CORR:
+			corr.init()
 
 	def status(self):
 		""" Displays the status of all correlators"""
-		#for corr in self.CORR:
-		#	corr.status()
+		for corr in self.CORR:
+			corr.status()

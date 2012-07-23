@@ -19,6 +19,7 @@ from core import chFPGA_receiver
 import plot_utils as pu
 from core import Inject as inj
 reload(chFPGA_controller) # just to make sure that any changes to the code are reloaded
+reload(chFPGA_receiver) # just to make sure that any changes to the code are reloaded
 reload(pu)
 reload(inj)
 
@@ -101,7 +102,9 @@ if __name__ == '__main__':
     try:
         print 'Deleting previous chFPGA instances in current namespace'
         c.close() # close sockets from previous objects to free them for the new one
+        r.close() # close sockets from previous objects to free them for the new one
         del c
+        del r
     except NameError:
         pass
 
@@ -113,10 +116,11 @@ if __name__ == '__main__':
     c = chFPGA_controller.chFPGA_controller(adc_delay_table=ADC_DELAY_TABLE) # pylint: disable=C0103
     r = chFPGA_receiver.chFPGA_receiver()
     c.sync()
+    inj.set_inject_mode(c,r)
     # Displays the system frequencies
     c.FreqCtr.status()
-    c.set_data_source('adcdaq_data')
-    c.start_data_capture(burst_period_in_seconds=0.01, number_of_bursts=0)
+    #c.set_data_source('adcdaq_data')
+    #c.start_data_capture(burst_period_in_seconds=1.0, number_of_bursts=0)
     #c.set_data_capture(burst_period=10000, number_of_bursts=0)
     # Continuously plot the ADC output
     #c.plot_ADC_frame(channels=[1], frames=512)

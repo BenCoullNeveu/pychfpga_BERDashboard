@@ -28,6 +28,7 @@ class PROBER_base(Module_base):
 	BURST_PERIOD2 = BitField(CONTROL, 0x02, 0, width=8, doc="8 bit MSB of number of frames between bursts")
 	BURST_PERIOD1 = BitField(CONTROL, 0x03, 0, width=8, doc="8 bit middle byte of Number of frames between bursts ")
 	BURST_PERIOD0 = BitField(CONTROL, 0x04, 0, width=8, doc="8 bit LSB of number of frames between bursts")
+	BURST_PERIOD = BitField(CONTROL, 0x04, 0, width=32, doc="24 bit  number of frames between bursts. We read 32 bits but have to discard the MSbyte")
 	BURST_NUMBER = BitField(CONTROL, 0x05, 0, width=8, doc="Sets the number of bursts to transmit. 0-255, 0= Continuous transmission.")
 	PROBE_ID = BitField(CONTROL, 0x06, 0, width=8, doc="Arbitrary 8-bit number that shows in the header of the transmitted frames to identify the source")
 

@@ -154,7 +154,7 @@ class Module_base(object):
 		first_byte = int(bitfield.bit/word_width)
 		last_byte = int((bitfield.bit+bitfield.width-1)/word_width)
 		number_of_bytes = last_byte - first_byte+1
-		data_type = {1:np.uint8, 2:np.uint16}[number_of_bytes]
+		data_type = {1:np.uint8, 2:np.uint16, 4:np.uint32}[number_of_bytes]
 		data= self.read(bitfield.addr + first_byte, type=data_type)
 		
 		#print 'Read ,bit "%s" at port %i, bit=%i, data: %X' % (bit_name,  bit_def.addr,bit_def.bit, data)

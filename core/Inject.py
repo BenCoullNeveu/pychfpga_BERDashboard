@@ -1,13 +1,35 @@
 # -*- coding: utf-8 -*-
 
 def set_inject_mode(fpga_ctrl, fpga_recv):
+    """ Sets all channels into injection mode"""
+    fpga_recv.send_every_frame(1)
     fpga_ctrl.set_data_source('inject')
     fpga_ctrl.start_data_capture(burst_period_in_frames=1, number_of_bursts=0)
     fpga_recv.flush()
+    # The first injected frame is dropped, so I send a dummy frame
+    for k in range(2):
+        for ch in range(8): 
+            fpga_ctrl.ANT[ch].FR_DIST.reset_fifo()
+            fpga_ctrl.ANT[ch].FR_DIST.inject_frame()
 
-def inject(fc, fr, channel=0, data=None):
+def inject(fc, fr, channels=range(8), data=None):
+    """
+    Injects data into the specified channels.
+    
+    If 'data' is a dicionnary, the data is sent to all channels represented by the corresponding keys.
+    If data is None, a ramp will be sent to all channels specified by 'channels'. 
+    By default, 'channels' covers all channels unless specified otherwise. 
+    """
     print data
-    fc.ANT[channel].FR_DIST.inject_frame(data)
+    if isinstance(data, dict):
+        for ch in data.iterkeys():
+            fc.ANT[ch].FR_DIST.inject_frame(data[ch])
+    else:
+        if isinstance(channels,int):
+            channels = [channels]
+        for ch in channels:
+            fc.ANT[ch].FR_DIST.inject_frame(data)
+
     returned_data = fr.read_frames()
     return returned_data[channel]
 
