@@ -49,7 +49,8 @@ class FR_DIST_base(Module_base):
 
     def __init__(self, ant_ch_instance):
         self.ant = ant_ch_instance
-        super(self.__class__, self).__init__(ant_ch_instance.fpga, ant_ch_instance.ant_number, ant_ch_instance.FR_DIST_MODULE)
+        fpga = ant_ch_instance.fpga
+        super(self.__class__, self).__init__(fpga, fpga.ANT_PORT[ant_ch_instance.ant_number], ant_ch_instance.FR_DIST_MODULE)
         self._lock() # Prevent accidental addition of attributes (if, for example, a value is assigned to a wrongly-spelled property)
     # Specialized functions
 

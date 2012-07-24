@@ -9,7 +9,7 @@ FFT.py module
 # 2012-05-29 JFC: Extracted frm ANT.py
 """
 #import time
-import numpy as np
+#import numpy as np
 from Module import Module_base, BitField
 
 	

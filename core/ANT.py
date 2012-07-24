@@ -90,13 +90,13 @@ class ANT_base(object):
 	def read(self, ant_number, module_number, addr, *args, **kwargs):
 		""" Reads from the register of a module of a specified antenna processor"""
 		fpga = self.fpga
-		data = fpga.Read(fpga.ANT_PORT[ant_number], module_number, addr, *args, **kwargs)
+		data = fpga.read(fpga.ANT_PORT[ant_number], module_number, addr, *args, **kwargs)
 		return data
 
 	def write(self, ant_number, module_number, addr, data, *args, **kwargs):
 		""" Writes to the register of a module of a specified antenna processor"""
 		fpga = self.fpga
-		fpga.Write(fpga.ANT_PORT[ant_number], module_number, addr, data, *args, **kwargs)
+		fpga.write(fpga.ANT_PORT[ant_number], module_number, addr, data, *args, **kwargs)
 
 	def init(self, delay_table=None):
 		""" Initializes all antennas""" 

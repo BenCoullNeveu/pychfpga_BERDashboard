@@ -143,7 +143,7 @@ class chFPGA_controller(object):
     # Port numbers
     ANT_PORT = range(NUMBER_OF_ANTENNAS) # Antennas are ports 0-7
     SYSTEM_PORT = NUMBER_OF_ANTENNAS
-    CORR_PORT = NUMBER_OF_ANTENNAS+1
+    CORR_PORT = range(NUMBER_OF_ANTENNAS+1, NUMBER_OF_ANTENNAS+1+ NUMBER_OF_CORRELATORS)
     #MGT_PORT = NUMBER_OF_ANTENNAS+2 -- for future use, if needed
 
 
@@ -210,7 +210,7 @@ class chFPGA_controller(object):
             self.ANT = ANT.ANT_base(self)
     
             if verbose >= 2: print '  - CORR'
-            self.CORR = CORR_BLOCK.CORR_BLOCK_base(self)
+            self.CORR_BLOCK = CORR_BLOCK.CORR_BLOCK_base(self)
     
             # Initialize subsystems. This has to be done only once all subsystems are created because some subsystems depend on each other.
             if init:
@@ -273,8 +273,8 @@ class chFPGA_controller(object):
                 self.ANT.status()
         
                 if verbose >= 2: print '  - CORR'
-                self.CORR.init()
-                self.CORR.status()
+                self.CORR_BLOCK.init()
+                self.CORR_BLOCK.status()
         
                 # MGT is disabled    
                 #print '  - MGT_PLL'
