@@ -121,11 +121,16 @@ if __name__ == '__main__':
     #dcs = inj.check_fft_dc(c,r)
     # Displays the system frequencies
     c.FreqCtr.status()
-    adctest = alg_test_adc(c,r)
-    stuff = adctest.execute()
+    #adctest = alg_test_adc(c,r)
+    #stuff = adctest.execute()
+    #import numpy as np
+    #stuff = np.array(stuff)
+    #np.save('convergance_of_pfb.npy', stuff)
     #c.set_data_source('adcdaq_data')
     #c.start_data_capture(burst_period_in_seconds=1.0, number_of_bursts=0)
     #c.set_data_capture(burst_period=10000, number_of_bursts=0)
     # Continuously plot the ADC output
     #c.plot_ADC_frame(channels=[1], frames=512)
+    #c.close()
+    #r.close()
 
