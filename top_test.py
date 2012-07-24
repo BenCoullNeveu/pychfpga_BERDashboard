@@ -14,10 +14,11 @@ History:
     2011-10-11 JFC: Updated delay tables
 """
 
-from core import chFPGA_controller
-from core import chFPGA_receiver
-import plot_utils as pu
-from core import Inject as inj
+from pychime.core import chFPGA_controller
+from pychime.core import chFPGA_receiver
+import pychime.plot_utils as pu
+from pychime.core import Inject as inj
+from pychime.common.algs.alg_test_adc import alg_test_adc
 reload(chFPGA_controller) # just to make sure that any changes to the code are reloaded
 reload(chFPGA_receiver) # just to make sure that any changes to the code are reloaded
 reload(pu)
@@ -120,6 +121,8 @@ if __name__ == '__main__':
     #dcs = inj.check_fft_dc(c,r)
     # Displays the system frequencies
     c.FreqCtr.status()
+    adctest = alg_test_adc(c,r)
+    stuff = adctest.execute()
     #c.set_data_source('adcdaq_data')
     #c.start_data_capture(burst_period_in_seconds=1.0, number_of_bursts=0)
     #c.set_data_capture(burst_period=10000, number_of_bursts=0)
