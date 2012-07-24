@@ -9,10 +9,16 @@ def set_inject_mode(fpga_ctrl, fpga_recv):
     fpga_ctrl.start_data_capture(burst_period_in_frames=1, number_of_bursts=0)
     fpga_recv.flush()
     # The first injected frame is dropped, so I send a dummy frame
-    for k in range(1):
+    for k in range(2):
         for ch in range(8): 
             fpga_ctrl.ANT[ch].FR_DIST.reset_fifo()
             fpga_ctrl.ANT[ch].FR_DIST.inject_frame()
+    time.sleep(0.5)
+    fpga_recv.flush()
+
+    #if fpga_recv.length():
+    #    fpga_recv.read_frames()        
+    #fpga_recv.flush()
 
 def inject(fc, fr, channels=range(8), data=None):
     """
@@ -22,7 +28,7 @@ def inject(fc, fr, channels=range(8), data=None):
     If data is None, a ramp will be sent to all channels specified by 'channels'. 
     By default, 'channels' covers all channels unless specified otherwise. 
     """
-    print data
+    #print data
     returned_data = []
     if isinstance(data, dict):
         for ch in data.iterkeys():
@@ -96,6 +102,7 @@ def check_fft_dc(fc,fr):
     dcs = []
     for dc_level in dc_levels:
         dc_fft_out = inject_dc(fc,fr,dc_level)
+        #print dc_fft_out
         print "DC level with " + str(dc_level) + " input is " + str(dc_fft_out[0])
         dcs.append(dc_fft_out[0])
     #put some overflow checks here
