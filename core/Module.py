@@ -1,6 +1,6 @@
 #!/usr/bin/python
 # Disable pylint Line too long (=C0301)
-# pylint: disable=W0312,C0301 
+# pylint: disable=C0301 
 
 """
 Module.py module 

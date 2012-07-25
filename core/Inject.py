@@ -1,4 +1,7 @@
 # -*- coding: utf-8 -*-
+# Disable pylint Line too long (=C0301)
+# pylint: disable=C0301 
+
 import numpy as np
 import time
 
@@ -6,6 +9,7 @@ def set_inject_mode(fpga_ctrl, fpga_recv):
     """ Sets all channels into injection mode"""
     fpga_recv.send_every_frame(1)
     fpga_ctrl.set_data_source('inject')
+    fpga_ctrl.ant_reset() # resets the antenna processing chain to eliminate any frames in transit in the processing pipeline
     fpga_ctrl.start_data_capture(burst_period_in_frames=1, number_of_bursts=0)
     fpga_recv.flush()
     # The first injected frame is dropped, so I send a dummy frame

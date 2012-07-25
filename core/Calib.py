@@ -10,6 +10,34 @@ x module
 	2012-07-19 JFC: Created
 """
 
+    def sync(self, continuous=0, sleep=0, phase=None, delay=None, plot=0, verbose=0, local=1):
+        if phase is not None:
+            self.ADC_PLL.init(phase=phase, verbose=verbose)
+        if plot:
+            plt.figure(1)
+            plt.clf()
+            plt.hold(1)
+            plt.axis([0, 32, -1, 2])
+            
+        try:
+            while 1:
+                if verbose:
+                    print 'Sync...'
+                if local:
+                    self.REFCLK.local_sync(delay=delay)
+                else:
+                    self.REFCLK.sync(delay=delay)
+
+                s = self.REFCLK.scan_refclk_delay()
+                if verbose:
+                    self.REFCLK.print_bit_vector(s)
+                if plot:
+                    plt.plot(s)
+                    plt.draw()
+                if not continuous: break
+                time.sleep(sleep)
+        except KeyboardInterrupt:
+            pass
 
 	def read_eye_diagram(self,channels=[0], offset=5):
 		self.set_ADC_mode('pulse') # generate pulse pattern

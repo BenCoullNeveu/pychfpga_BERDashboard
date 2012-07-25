@@ -1,4 +1,6 @@
 #!/usr/bin/python
+# Disable pylint Line too long (=C0301)
+# pylint: disable=C0301 
 '''
    plot_utils.py
     Provides plotting utilities
@@ -16,8 +18,16 @@ import matplotlib
 #comment this out if Tk backend not working well  
 #I havetrouble sometime with the EPD version, but works well with macports
 import os
-if os.name != 'nt':
-    matplotlib.use('TkAgg')
+
+# Selects which backend to use for matplotlib based on the operating system.
+# If not in the list, the default backend is used
+BACKEND_SELECTOR_LIST = {
+    'nt': 'TkAgg'
+    }
+
+if os.name in BACKEND_SELECTOR_LIST:
+    matplotlib.use(BACKEND_SELECTOR_LIST[os.name])
+
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 #from core import chFPGA
@@ -25,11 +35,11 @@ import matplotlib.animation as animation
 def plot_TIMESTREAM_frames(chFPGA, channel=0, raw=0, flush=0):
     """ Plots incoming frames """
     #if isinstance(channels,int): # make sure that channel is a list of channels
-    #	channels=[channels]
+    #    channels=[channels]
     def anim_init():
         print 'calling init'
         a = chFPGA.read_frames(raw=raw, flush=flush)
-        line.set_data(range(len(a[channel])),a[channel])
+        line.set_data(range(len(a[channel])), a[channel])
         return line
 
     def animate(i):
@@ -41,7 +51,7 @@ def plot_TIMESTREAM_frames(chFPGA, channel=0, raw=0, flush=0):
     fig  = plt.figure()
     ax = fig.add_subplot(111, autoscale_on=True, xlim=(0, 2048), ylim=(-128, 128))
     a = chFPGA.read_frames(raw=raw, flush=flush)
-    line, = ax.plot(range(len(a[channel])),a[channel], 'o-', lw=2)    
+    line, = ax.plot(range(len(a[channel])), a[channel], 'o-', lw=2)    
     ani = animation.FuncAnimation(fig, animate, channel*np.ones(500),
                                   interval=20, blit=False, init_func=anim_init)
 #    ani = animation.FuncAnimation(fig, animate, 10, 
@@ -52,7 +62,7 @@ def plot_TIMESTREAM_frames(chFPGA, channel=0, raw=0, flush=0):
 def plot_TIMESTREAM_frames_multichannel(chFPGA, channels=[0], raw=0, flush=0):
     """ Plots incoming frames, expected to be a timestream """
     if isinstance(channels,int): # make sure that channel is a array of channels
-    	channels=np.array([channels])
+        channels=np.array([channels])
     elif isinstance(channels,list):
         channels=np.array(channels)
     
@@ -78,7 +88,7 @@ def plot_TIMESTREAM_frames_multichannel(chFPGA, channels=[0], raw=0, flush=0):
     a = chFPGA.read_frames(raw=raw, flush=flush)
     for i,ax in enumerate(axObjects):
         ax = fig.add_subplot(1,nchan,i+1, autoscale_on=True, xlim=(0, 2048), ylim=(-128, 128))
-        lineObjects[i], = ax.plot(range(len(a[1])),a[1], 'o-', lw=2)
+        lineObjects[i], = ax.plot(range(len(a[1])), a[1], 'o-', lw=2)
     ani = animation.FuncAnimation(fig, animate, np.ones(50),
                                       interval=20, blit=False, init_func=anim_init)
     plt.show()
@@ -87,7 +97,7 @@ def plot_TIMESTREAM_frames_multichannel(chFPGA, channels=[0], raw=0, flush=0):
 def plot_SPECTRUM_frames(chFPGA, channels=[0], raw=0, flush=0):
     """ Plots incoming frames, expected to be fourier transformed """
     if isinstance(channels,int): # make sure that channel is a array of channels
-    	channels=np.array([channels])
+        channels=np.array([channels])
     elif isinstance(channels,list):
         channels=np.array(channels)
 
@@ -140,7 +150,7 @@ def plot_SPECTRUM_frames(chFPGA, channels=[0], raw=0, flush=0):
 
 
 
-def save_DATA_frames(chFPGA, channels=[0], frames=1, raw=0, flush=0, filename='data.npy'):	
+def save_DATA_frames(chFPGA, channels=[0], frames=1, raw=0, flush=0, filename='data.npy'):    
     '''
         Saves data from Acquisition board to numpy array 
     '''
@@ -208,7 +218,7 @@ def save_DATA_frames(chFPGA, channels=[0], frames=1, raw=0, flush=0, filename='d
 if __name__ == '__main__':
     from core import chFPGA_controller
     from core import chFPGA_receiver
-    ADC_TEST_MODE = 0 	#  0= normal, 1= ramp, 2=pulse (1 high, 10 low)
+    ADC_TEST_MODE = 0     #  0= normal, 1= ramp, 2=pulse (1 high, 10 low)
     ADC_DELAYS_REV2_SN0001 = (
                            [20,26,25,25,25,25,25,24], #CH0
                            [23]*8, #CH1 
