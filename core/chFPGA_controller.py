@@ -7,19 +7,18 @@
 chFPGA.py module 
  Implements interface to the CHIME chFPGA Proof of Concept board
  
- Provided methods:
 
-
-#
-# History:
-# 2011-01-10 : JFC : First version
-# 2011-04-30 JFC : Modified UDP.py into chFPGA.py to implement higher level communication system
-# 2011-04 - 2011-08 JFC : Major modifications & cleanup
-# 2011-08-29 JFC: Moved hex to util to solve circular import reference.
-# 2012-03-27 JFC: Modified the read and write commands to support the new format following AXI4-Streaming implementation of the command bus
-# 2012-05-29 JFC: Cleanup init. Support FMC board detection. Extracted test functions.
+History:
+    2011-01-10 : JFC : First version
+    2011-04-30 JFC : Modified UDP.py into chFPGA.py to implement higher level communication system
+    2011-04 - 2011-08 JFC : Major modifications & cleanup
+    2011-08-29 JFC: Moved hex to util to solve circular import reference.
+    2012-03-27 JFC: Modified the read and write commands to support the new format following AXI4-Streaming implementation of the command bus
+    2012-05-29 JFC: Cleanup init. Support FMC board detection. Extracted test functions.
     2012-07-xx JFC: Implemented Thread-based frame buffering. Updated frame reading and plotting functions accordingly.
-    #2012-07-16 KMB: Started moving plotting/saving functions out to plot_utils.py, and removing redundant programs
+    2012-07-16 KMB: Started moving plotting/saving functions out to plot_utils.py, and removing redundant programs
+    2012-07-25 JFC: Splitted the init() from __init() to make sure the controller object creation does not change the state of the FPGA.
+        Added LCD initialization and firmware version display on the LCD
 """
 
 import time
@@ -47,6 +46,7 @@ import SYSMOD
 import FreqCtr
 import REFCLK
 import MGT
+import ML605_LCD
 
 # SPI device handlers
 import ADC
@@ -86,6 +86,7 @@ reload_modules = (util,
         SYSMOD, 
         SYSMON, 
         REFCLK, 
+        ML605_LCD,
         AmbTemp,
         FreqCtr,
         ADC,
@@ -155,12 +156,17 @@ class chFPGA_controller(object):
     SYSTEM_REFCLK_MODULE = 4
     SYSTEM_I2C_MODULE = 5
 
-    def __init__(self, ip_address='10.10.10.11', port_number=41000, sampling_frequency=800e6, reference_frequency=10e6, init=1, adc_delay_table=None, verbose=2):
-
-        self.sampling_frequency = sampling_frequency
-        self.reference_frequency = reference_frequency
-        self.FRAME_PERIOD = float(self.FRAME_LENGTH)/self.sampling_frequency
-        self.FMC_present = False # indicates if the FMC board is present. If not, the modules will act accordingly.
+    def __init__(self, ip_address='10.10.10.11', port_number=41000, init=1, verbose=2, **kwargs):
+        """
+        Opens communication with the specified chFPGA. This does not affect the state and operations of chFPGA.
+        """
+        # Initialize instance attributes
+        # For now, we do not know their values unless the system is initialized. 
+        # We may want to fix that by reading the FPGA states and determining those values. 
+        self.sampling_frequency = None
+        self.reference_frequency = None
+        self.FRAME_PERIOD = None
+        self.FMC_present = None  # indicates if the FMC board is present. If not, the modules will act accordingly.
 
         print '*** Opening control communication sockets ***'
         # Create socket handled and open socket communications to the chFPGA board
@@ -172,23 +178,51 @@ class chFPGA_controller(object):
             #  NOTE: Does not initialize them yet because some modules are interdependent - we need to wait until all of them are instantiated.
             #  NOTE: The instantiation does not initiate communicattion with the hardware yet. this is done in the INIT phase.
     
-    
+            # ---------------------------------------------------------------------
+            # -- Create basic FPGA ressource handlers objects
+            # ---------------------------------------------------------------------
             if verbose >= 2: print '  - SYSMOD'
             self.SYSMOD = SYSMOD.SYSMOD_base(self)
+
             if verbose >= 2: print '  - I2C'
             self.I2C = I2C.I2C_base(self)
+
             if verbose >= 2: print '  - SYSMON'
             self.SYSMON = SYSMON.SYSMON_base(self)
+
             if verbose >= 2: print '  - SPI'
             self.SPI = SPI.SPI_base(self)
+
             if verbose >= 2: print '  - FreqCtr'
             self.FreqCtr = FreqCtr.FreqCtr_base(self)
+
             if verbose >= 2: print '  - REFCLK'
             self.REFCLK = REFCLK.REFCLK_base(self)
+            
+            if verbose >= 2: print '  - ANT'
+            self.ANT = ANT.ANT_base(self) # Antenna processors (ADCDAQ, SRCSEL, FFT, SCALER) for each input
     
+            if verbose >= 2: print '  - CORR'
+            self.CORR_BLOCK = CORR_BLOCK.CORR_BLOCK_base(self) # Correlator (CH_DIST, CORR, ACC) for each correlator
+
+    
+            # ---------------------------------------------------------------------
+            # -- Create ML605 ressource handlers objects
+            # ---------------------------------------------------------------------
+            if verbose >= 2: print '  - ML605 PMBus'
+            self.ML605_PMBus = ML605_PMBus.ML605_PMBus_base(self)
+
+            if verbose >= 2: print '  - ML605 PMBus'
+            self.LCD = ML605_LCD.LCD_base(self.SYSMOD)
+
             #if verbose>=2: print '  - MGT'
             #self.MGT=MGT.MGT_base(self)
     
+    
+            # ---------------------------------------------------------------------
+            # -- Create MGADC08 FMC board ressource handlers objects
+            # ---------------------------------------------------------------------
+
             if verbose >= 2: print '  - ADC'
             self.ADC = ADC.ADC_base(self)
             if verbose >= 2: print '  - IOExpander'
@@ -203,106 +237,115 @@ class chFPGA_controller(object):
             self.BiasADC = BiasADC.BiasADC_base(self)
             if verbose >= 2: print '  - FMC EEPROM'
             self.FMC_EEPROM = FMC_EEPROM.FMC_EEPROM_base(self)
-            if verbose >= 2: print '  - ML605 PMBus'
-            self.ML605_PMBus = ML605_PMBus.ML605_PMBus_base(self)
-    
-            if verbose >= 2: print '  - ANT'
-            self.ANT = ANT.ANT_base(self)
-    
-            if verbose >= 2: print '  - CORR'
-            self.CORR_BLOCK = CORR_BLOCK.CORR_BLOCK_base(self)
-    
-            # Initialize subsystems. This has to be done only once all subsystems are created because some subsystems depend on each other.
-            if init:
-                print '*** Initializing modules ***'
-        
-                if verbose >= 2: print '  - SYSMOD'
-                self.SYSMOD.init() # This stops the antenna procesors from sending data. Neeeded if the FPGA is flooding the buffers which prevent subsequent reads to come through
-                #self.sock.flush_data_socket() # Now the the data stops coming, flush the buffers
-                self.sock.flush()
-                self.SYSMOD.status()
-        
-                if verbose >= 2: print '  - I2C'
-                self.I2C.init()
-        
-        
-                if verbose >= 2: print '  - ML605 PMBus'
-                self.ML605_PMBus.init()
-                self.ML605_PMBus.status()
-        
-        
-                if verbose >= 2: print '  - EEPROM'
-                self.FMC_EEPROM.init()
-                self.FMC_EEPROM.status()
-        
-                self.FMC_present = self.FMC_EEPROM.FMC_present(verbose=True)
-        
-                 # Module depend on the FMC_present flag after this point
-        
-                if verbose >= 2: print '  - REFCLK'
-                self.REFCLK.init()
-                self.REFCLK.status()
-        
-                if verbose >= 2: print '  - SYSMON'
-                self.SYSMON.init()
-                self.SYSMON.status()
-        
-                if verbose >= 2: print '  - SPI'
-                self.SPI.init()
-                self.SPI.status()
-        
-                if verbose >= 2: print '  - AmbTemp'
-                self.AmbTemp.init()
-                self.AmbTemp.status()
-        
-        
-                if verbose >= 2: print '  - IOExpander'
-                self.IOExpander.init()
-                self.IOExpander.status()
-        
-                if verbose >= 2: print '  - ADC_PLL'
-                self.ADC_PLL.init(fout=2*self.sampling_frequency/1e6, fref=self.reference_frequency/1e6, verbose=1)
-                self.ADC_PLL.status()
-        
-                if verbose >= 2: print '  - ADC'
-                self.ADC.init()
-                self.ADC.status()
-        
-                if verbose >= 2: print '  - ANT'
-                self.ANT.init(delay_table=adc_delay_table)
-                self.ANT.status()
-        
-                if verbose >= 2: print '  - CORR'
-                self.CORR_BLOCK.init()
-                self.CORR_BLOCK.status()
-        
-                # MGT is disabled    
-                #print '  - MGT_PLL'
-                #self.MGT_PLL.init(fref=fref)
-                #print '  - MGT'
-                #self.MGT.init() # MGT_PLL must be initialized first
-                if verbose >= 2: 
-                    print '  - Done with initializations'
-    
-                #print '*** Setting ADCDAQ delays ***'
-        
-                #if adc_delay_table:
-                #    self.ANT.set_delays(adc_delay_table)
-        
-                print '*** Set ADC mode ***'
-        
-                self.set_ADC_mode('data')
-                print '*** End of chFPGA initialization ***'
-    
+               
         except SocketIO.timeout:
             self.close()
             raise
-    
+            # Initialize subsystems. This has to be done only once all subsystems are created because some subsystems depend on each other.
+
+        if init:
+            self.init(**kwargs)
+
 
     def __del__(self):
 
         self.close()
         print '__del__: Closed FPGA at IP address %s' % self.sock.ip_address
+
+    def init(self, sampling_frequency=800e6, reference_frequency=10e6, adc_delay_table=None, verbose=2):
+        """
+        Resets the chFPGA to a known state with specified parameters.
+        """
+        
+        self.sampling_frequency = sampling_frequency
+        self.reference_frequency = reference_frequency
+        self.FRAME_PERIOD = float(self.FRAME_LENGTH)/self.sampling_frequency
+        self.FMC_present = False # indicates if the FMC board is present. If not, the modules will act accordingly.
+
+        print '*** Initializing modules ***'
+
+        if verbose >= 2: print '  - SYSMOD'
+        self.SYSMOD.init() # This stops the antenna procesors from sending data. Neeeded if the FPGA is flooding the buffers which prevent subsequent reads to come through
+        #self.sock.flush_data_socket() # Now the the data stops coming, flush the buffers
+        self.sock.flush()
+        self.SYSMOD.status()
+
+        self.LCD.init()
+        self.LCD.write('CHIME FW Version', col=0, row=0)
+        self.LCD.write('%s' % self.SYSMOD.get_bitstream_date(), col=0, row=1)
+
+        if verbose >= 2: print '  - I2C'
+        self.I2C.init()
+
+
+        if verbose >= 2: print '  - ML605 PMBus'
+        self.ML605_PMBus.init()
+        self.ML605_PMBus.status()
+
+
+        if verbose >= 2: print '  - EEPROM'
+        self.FMC_EEPROM.init()
+        self.FMC_EEPROM.status()
+
+        self.FMC_present = self.FMC_EEPROM.FMC_present(verbose=True)
+
+         # Module depend on the FMC_present flag after this point
+
+        if verbose >= 2: print '  - REFCLK'
+        self.REFCLK.init()
+        self.REFCLK.status()
+
+        if verbose >= 2: print '  - SYSMON'
+        self.SYSMON.init()
+        self.SYSMON.status()
+
+        if verbose >= 2: print '  - SPI'
+        self.SPI.init()
+        self.SPI.status()
+
+        if verbose >= 2: print '  - AmbTemp'
+        self.AmbTemp.init()
+        self.AmbTemp.status()
+
+
+        if verbose >= 2: print '  - IOExpander'
+        self.IOExpander.init()
+        self.IOExpander.status()
+
+        if verbose >= 2: print '  - ADC_PLL'
+        self.ADC_PLL.init(fout=2*self.sampling_frequency/1e6, fref=self.reference_frequency/1e6, verbose=1)
+        self.ADC_PLL.status()
+
+        if verbose >= 2: print '  - ADC'
+        self.ADC.init()
+        self.ADC.status()
+
+        if verbose >= 2: print '  - ANT'
+        self.ANT.init(delay_table=adc_delay_table)
+        self.ANT.status()
+
+        if verbose >= 2: print '  - CORR'
+        self.CORR_BLOCK.init()
+        self.CORR_BLOCK.status()
+
+        # MGT is disabled    
+        #print '  - MGT_PLL'
+        #self.MGT_PLL.init(fref=fref)
+        #print '  - MGT'
+        #self.MGT.init() # MGT_PLL must be initialized first
+        if verbose >= 2: 
+            print '  - Done with initializations'
+
+        #print '*** Setting ADCDAQ delays ***'
+
+        #if adc_delay_table:
+        #    self.ANT.set_delays(adc_delay_table)
+
+        print '*** Set ADC mode ***'
+
+        self.set_ADC_mode('data')
+        print '*** End of chFPGA initialization ***'
+
 
     def close(self):
         """ 
@@ -352,34 +395,34 @@ class chFPGA_controller(object):
         # build command packet
         #s=chr(0x80+ant+(0x40 if incr else 0))+chr((module<<2)+(addr>>8))+chr(addr&0xFF) 
         NBYTES = 0
-        s = chr(0x80+(0x40 if incr else 0)+(NBYTES<<3)+(ant>>2))+chr(((ant&0x03)<<6)+(module<<2)+(addr>>8))+chr(addr&0xff)
+        string = chr(0x80 + (0x40 if incr else 0) + (NBYTES << 3) + (ant >> 2)) + chr(((ant & 0x03) << 6) + (module << 2) + (addr >> 8)) + chr(addr & 0xff)
 
         # Add the data to the string. The method depends on the data type
         if type(data) == str:
-            s += data
+            string += data
             length = len(data)
         elif type(data) == list or type(data) == np.ndarray:
-            s += ''.join([chr(data[i]) for i in range(len(data))])
+            string += ''.join([chr(data[i]) for i in range(len(data))])
             length = len(data)
         elif type(data) == np.uint32:
             length = 4
             a = np.array([data], np.dtype('>u4')) # store as big endian (most significant byte first)
             a.dtype = np.uint8
-            s += ''.join([chr(a[i]) for i in range(4)])
+            string += ''.join([chr(a[i]) for i in range(4)])
         elif type(data) == np.uint16:
             length = 2
             a = np.array([data], np.dtype('>u2')) # store as big endian (most significant byte first)
             a.dtype = np.uint8
-            s += ''.join([chr(a[i]) for i in range(2)])
+            string += ''.join([chr(a[i]) for i in range(2)])
         elif type([data]) == np.uint8:
             length = 1
             a = np.array([data]) # store as big endian (most significant byte first)
             a.dtype = np.uint8
-            s += chr(a[i])
+            string += chr(a[i])
         else:
-            s = s + chr(data)
+            string += chr(data)
             length = 1
-        self.sock.write(s)
+        self.sock.write(string)
         return length
         
 

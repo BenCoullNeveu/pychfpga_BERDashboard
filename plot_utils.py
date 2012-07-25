@@ -7,7 +7,7 @@
     # History:
     # 2012-07-16 : KMB : Created mostly moving functions from chFPGA
     # 2012-07-17 : KMB : Changed plot timestream to use much faster animation library, more to follow
-    
+    2012-07-25 JFC: Added selection of matplotlib backend based on os type so it would work on both windows and mac
 '''
 
 
@@ -15,7 +15,9 @@ import numpy as np
 import matplotlib
 #comment this out if Tk backend not working well  
 #I havetrouble sometime with the EPD version, but works well with macports
-matplotlib.use('TkAgg')
+import os
+if os.name != 'nt':
+    matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 #from core import chFPGA

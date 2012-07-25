@@ -13,6 +13,7 @@ Module.py module
         Fixed class name printing when raising exception when attempting to write to a locked attribute
     2012-07-23 JFC: Fixed read_ and write_bitfield to correctly handle data as big endian (MSB at lower address). 
         Added 32-bit field support. 
+    2012-07-25 JFC: added bitfield() to facilitate access to bitfield properties and methods
 """
 
 import numpy as np
@@ -24,11 +25,12 @@ class BitField(object):
     It is implemented as a data descriptor shch that calls the read_field() and write_field() properties of the parent object when accessed.    
     """
     # Page values
-    CONTROL = 0
-    STATUS = 1
-    RAM = 2
+    CONTROL = 0 # Control bytes (read/write)
+    STATUS = 1 # STATUS bytes (read only)
+    RAM = 2 # RAM or FIFO
     DRP = 3 # Dynamic Reconfiguration Port
-    def __init__(self, page, addr, bit, width=1, default=None, doc=''): 
+
+    def __init__(self, page, addr, bit, width=1, default=None, doc='No documentation available'): 
         self.page = page 
         self._addr = addr 
         self.bit = bit
@@ -120,12 +122,14 @@ class Module_base(object):
         self.__dict__['_locked'] = True
 
     def read(self, addr, *args, **kwargs):
+        """ Reads bytes from the FPGA memory-mapped registers.""" 
         if isinstance(addr, int):
             return self.fpga.read(self.port_number, self.module_number, addr, *args, **kwargs)
         elif isinstance(addr, str):
             return self.fpga.read(self.port_number, self.module_number, self.BITS[addr].addr, *args, **kwargs)
 
     def read_bit(self, addr, bit): 
+        """ Reads a bit from a FPGA memory-mapped register.""" 
         return bool(self.fpga.Read(self.port_number, self.module_number, addr) & (1<<bit))
 
     def read_DRP(self, addr):
@@ -201,6 +205,7 @@ class Module_base(object):
         self.write(msb_addr, new_data)
 
     def write(self, addr, data, *args, **kwargs): 
+        """ Writes bytes to the FPGA memory-mapped registers"""
         self.fpga.write(self.port_number, self.module_number, addr, data, *args, **kwargs)
 
     def write_ram(self, addr, data, *args, **kwargs): 
@@ -211,11 +216,13 @@ class Module_base(object):
 
     def write_DRP(self, addr, data):
         """
-        Writes a DRP (Dynamic Reconfigurable Port) from one of the FPGA internal devices (PLL, SYSMON, MGT etc). 'addr' is the 16-bit DRP register address.
+        Writes a DRP (Dynamic Reconfigurable Port) of the FPGA internal devices (PLL, SYSMON, MGT etc). 
+        'addr' is the 16-bit DRP register address.
         """
         self.write(0x200+2*addr, [data &0xFF, (data>>8)& 0xFF])
 
     def write_bit(self, addr, bit): 
+        """ Sets a bit of the FPGA memory-mapped registers"""
         mask = (1<<bit)
         old_value = self.read(addr)
         self.write(addr, old_value & ~mask)
@@ -225,6 +232,21 @@ class Module_base(object):
         old_value = self.read(addr)
         self.write(addr, (old_value & ~mask) | (data & mask))
 
+    def bitfield(self, bitfield_name):
+        """ 
+        Returns the bitfield object with name 'bitfield_name'. 
+        This is used to access the attributes and methods of the bitfield objects, since this is a python data descriptor and direct access calls its fget() method instead of returning the object.
+        """ 
+        class_attributes = vars(type(self))
+        if bitfield_name not in class_attributes: # is the variable an attribute of this class
+            raise Exception("The BitField '%s' is not defined" % bitfield_name)
+        else:
+            bitfield = class_attributes[bitfield_name]
+            if not isinstance(bitfield, BitField):
+                raise Exception("'%s' is not a Bitfield" % bitfield_name)
+            else:
+                return bitfield
+                
     def pulse_bit(self, addr, bit=0): 
         """
         Pulses the specified bit to '1' then back to '0'. 
@@ -233,17 +255,12 @@ class Module_base(object):
         """
 
         if isinstance(addr, str):
-            class_attributes = vars(type(self))
-            if addr in class_attributes: # is the variable an attribute of this class
-                bitfield = class_attributes[addr]
-                if not isinstance(bitfield, BitField):
-                    raise Exception("'%s' is not a Bitfield" % addr)
-                elif bitfield.width != 1:
-                    raise Exception('The bit field must be a single bit (width=1)')
-                else:
-                    (addr, bit) = (bitfield.addr, bitfield.bit)
+            bitfield = self.bitfield(addr)
+            if bitfield.width != 1:
+                raise Exception('The bit field must be a single bit (width=1)')
             else:
-                raise Exception("The BitField '%s' is not defined" % addr)
+                (addr, bit) = (bitfield.addr, bitfield.bit)
+
                 
         mask = (1<<bit)
         old_value = self.read(addr)
