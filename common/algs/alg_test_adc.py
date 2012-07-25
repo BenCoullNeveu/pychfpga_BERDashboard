@@ -23,7 +23,7 @@ class alg_test_adc(alg_BaseClass):
         '''
         t = np.arange(2048)
         freq = sine_freq/2048.0
-        data = sine_amp*np.sine(2.0*np.pi*freq*t)
+        data = sine_amp*np.sin(2.0*np.pi*freq*t)
         return inj.inject(fc,fr, channels, data)
         
     def check_fft_dc(self,fc,fr):
@@ -51,5 +51,12 @@ class alg_test_adc(alg_BaseClass):
     def execute(self): 
         ''' set mode to inject and get dc packets out'''
         inj.set_inject_mode(self.fpga_ctrl, self.fpga_recv)
-        dcs = self.check_fft_dc(self.fpga_ctrl,self.fpga_recv)
-        return dcs
+        #dcs = self.check_fft_dc(self.fpga_ctrl,self.fpga_recv)
+        self.fpga_ctrl.ANT[0].FFT.BYPASS=0
+        self.fpga_ctrl.ANT[0].SCALER.BYPASS=0
+        self.fpga_ctrl.ANT[0].SCALER.SHIFT_LEFT=7
+        data = []
+        for i in range(20):
+            data.append(self.inject_sine(self.fpga_ctrl, self.fpga_recv, sine_amp=16.0, sine_freq=510.0, channels=[0]))
+        print data
+        return data

@@ -13,7 +13,9 @@
 
 import numpy as np
 import matplotlib
-#matplotlib.use('TkAgg')
+#comment this out if Tk backend not working well  
+#I havetrouble sometime with the EPD version, but works well with macports
+matplotlib.use('TkAgg')
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
 #from core import chFPGA
@@ -29,7 +31,7 @@ def plot_TIMESTREAM_frames(chFPGA, channel=0, raw=0, flush=0):
         return line
 
     def animate(i):
-        print 'calling animate'
+        #print 'calling animate'
         a = chFPGA.read_frames(verbose=0, raw=raw, flush=flush)
         line.set_ydata(a[i])
         return line
@@ -76,7 +78,7 @@ def plot_TIMESTREAM_frames_multichannel(chFPGA, channels=[0], raw=0, flush=0):
         ax = fig.add_subplot(1,nchan,i+1, autoscale_on=True, xlim=(0, 2048), ylim=(-128, 128))
         lineObjects[i], = ax.plot(range(len(a[1])),a[1], 'o-', lw=2)
     ani = animation.FuncAnimation(fig, animate, np.ones(50),
-                                      interval=20, blit=True, init_func=anim_init)
+                                      interval=20, blit=False, init_func=anim_init)
     plt.show()
 
 
@@ -93,17 +95,18 @@ def plot_SPECTRUM_frames(chFPGA, channels=[0], raw=0, flush=0):
         fa.real = a[channels[0]][::2]
         fa.imag = a[channels[0]][1::2]
         for line in lineMagObjects:
-            line.set_data(range(len(fa)),10*np.log10(np.abs(fa)**2))
+            line.set_data(range(len(fa)),10*np.log10(np.abs(fa)**2+1e-2))
         for line in linePhaseObjects:
             line.set_data(range(len(fa)),np.angle(fa))
         return lineMagObjects, linePhaseObjects
     
     def animate(i):
         a = chFPGA.read_frames(raw=raw, flush=flush)
+        #print "animating"
         for j,line in enumerate(lineMagObjects):
             fa.real = a[channels[j]][::2]
             fa.imag = a[channels[j]][1::2]
-            line.set_ydata(10*np.log10(np.abs(fa)**2))
+            line.set_ydata(10*np.log10(np.abs(fa)**2+1e-2))
             linePhaseObjects[j].set_ydata(np.angle(fa))
         return lineMagObjects,linePhaseObjects
     
@@ -122,13 +125,15 @@ def plot_SPECTRUM_frames(chFPGA, channels=[0], raw=0, flush=0):
     fa.imag = a[channels[0]][1::2]
     for i,ax in enumerate(axMagObjects):
         ax = fig.add_subplot(2,nchan,i+1, autoscale_on=True, xlim=(0, 2048), ylim=(-128, 128))
-        lineMagObjects[i], = ax.plot(range(len(fa)),10*np.log10(np.abs(fa)**2), 'o-', lw=2)
+        lineMagObjects[i], = ax.plot(range(len(fa)),10*np.log10(np.abs(fa)**2+1e-2), 'o-', lw=2)
     for i,ax in enumerate(axPhaseObjects):
         ax = fig.add_subplot(2,nchan,nchan+i+1, autoscale_on=True, xlim=(0, 2048), ylim=(-128, 128))
         linePhaseObjects[i], = ax.plot(range(len(fa)),np.angle(fa), 'o-', lw=2)
     ani = animation.FuncAnimation(fig, animate, np.ones(50),
                                   interval=20, blit=False, init_func=anim_init)
+    print "Starting animation"
     plt.show()
+    print "Finished animation"
 
 
 
@@ -163,7 +168,7 @@ def save_DATA_frames(chFPGA, channels=[0], frames=1, raw=0, flush=0, filename='d
     np.array(data_list)
     np.save(filename,data_list)
 
-    print 'Saved %i frames' % number_of_frames
+    print 'Saved {0} frames'.format(number_of_frames)
 
                                      
                                      
@@ -221,22 +226,25 @@ if __name__ == '__main__':
     c.set_data_source('adcdaq_data')
     c.set_ADC_mode(channels=channels, mode='data')
     c.start_data_capture(burst_period_in_seconds=0.1, number_of_bursts=0)
-    c.close()
+
     
     cr = chFPGA_receiver.chFPGA_receiver()
-    plot_TIMESTREAM_frames(cr, channel=0, raw=0, flush=0)
+    #plot_TIMESTREAM_frames_multichannel(cr, channels=[5], raw=0, flush=0)
 
     #plot_TIMESTREAM_frames_multichannel(c, channels=[0,1,2,3,4,5,6,7], raw=0, flush=0)
 
-#    for channel in channels:
-#        c.ANT[channel].FFT.BYPASS=0
-#        c.ANT[channel].SCALER.BYPASS=0
-#        c.ANT[channel].SCALER.SHIFT_LEFT=1
-#    
-#    
-#    
-#    plot_SPECTRUM_frames(cr, channels=channels, raw=0, flush=0)
-    cr.close()
+    #c.ANT[0].FFT.BYPASS=0
+    #c.ANT[0].SCALER.BYPASS=0
+    #c.ANT[0].SCALER.SHIFT_LEFT=1
+    for channel in channels:
+        c.ANT[channel].FFT.BYPASS=0
+        c.ANT[channel].SCALER.BYPASS=0
+        c.ANT[channel].SCALER.SHIFT_LEFT=7
+
+
+    plot_SPECTRUM_frames(cr, channels=channels, raw=0, flush=0)
+    #c.close()
+    #cr.close()
     
 
                                      
