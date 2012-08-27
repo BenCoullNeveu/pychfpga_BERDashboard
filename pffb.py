@@ -3,6 +3,9 @@ import numpy as np
 import pylab
 
 def pfb_fir(x, taps=4, L=512):
+    '''
+    PFB copyied directly from web.  
+    '''
     N = len(x)    # x is the incoming data time stream.
     #taps = 4
     #L = 1024   # Points in subsequent FFT.
@@ -21,17 +24,37 @@ def pfb_fir(x, taps=4, L=512):
 
     return y,coeff
 
-
-
-def pffb(x, taps=4, L=512):
-    N=len(x) #length of data stream
-    #taps = number of fir taps
-    #L = points in fft
+def sinc_window(taps, L):
     coeff_length = np.pi*taps
     coeff_num_samples = taps*L
     X = np.arange(-coeff_length/2.0,coeff_length/2.0, coeff_length/coeff_num_samples) #sampling locations of sinc function
     #np.sinc function is sin(pi*x)/pi*x, not sin(x)/x, so use X/pi
-    coeff = np.sinc(X/np.pi)*np.hanning(taps*L)
+    coeff = np.sinc(X/np.pi)
+    return coeff
+    
+def hanning_window(taps,L):
+    return(np.hanning(taps*L))
+    
+def sinc_hanning_window(taps,L):
+    return(sinc_window(taps,L)*hanning_window(taps,L))
+
+def kaiser_window(taps,L):
+    return(np.kaiser(taps*L, np.pi*3))
+
+def sinc_kaiser_window(taps,L):
+    return(sinc_window(taps,L)*kaiser_window(taps,L))
+    
+def pffb(x, taps=4, L=2048, window_function=sinc_kaiser_window):
+    '''
+    Polyphase filter bank FFT with hanning/sinc window rewritten to be more 
+    clear.  Takes arbitrary length of timestream data and ouputs complex 
+    spectra y of length L.  Taps is the number of taps for the poly-phase filter.
+    '''
+    N=len(x) #length of data stream
+    #taps = number of fir taps
+    #L = points in fft
+    coeff = window_function(taps, L)    
+    #*np.hanning(taps*L)
     slice_length = taps*L
     shift_size = L
     count = 0
@@ -51,21 +74,28 @@ def pffb(x, taps=4, L=512):
 
 if __name__ == '__main__':
     taps = 4
-    L = 512
-    x=np.sin(np.arange(8192)/78.0)
-    y, coeff =  pffb(x, taps, L)
-    fy = np.fft.fft(y[:L])
-    fy2 = np.fft.fft(y[L:2*L])
-    fyo = np.fft.fft(x[:L*taps])
-    #pylab.plot(abs(fyo[:fyo.size/2]))
-    #pylab.plot(4*np.arange(L/2),abs(fy[:L/2]))
-    #pylab.plot(4*np.arange(L/2),abs(fy2[:L/2]))
-    lz = np.zeros(2**16)
-    lz[65536/2:65536/2+taps*L]=coeff
-    coeff_ft = np.fft.fft(lz)
-    lz2 = np.zeros(2**16)
-    lz2[65536/2:65536/2+taps*L]=1
-    flat_ft = np.fft.fft(lz2)
-    pylab.plot(np.arange(65536)/(1.0*L),10*np.log10(abs(flat_ft)))
-    pylab.plot(np.arange(65536)/(1.0*L),10*np.log10(abs(coeff_ft)))
+    L = 2048
+    bin_numbers = [1,6,7]
+    for bin_number in bin_numbers:
+        x=np.sin(np.arange(8192)*np.pi*2.0*bin_number/2048.0)
+        y, coeff =  pffb(x, taps, L)
+        fy = np.fft.fft(y[:L])
+        #fy2 = np.fft.fft(y[L:2*L])
+        fyo = np.fft.fft(x[:L*taps])
+        #pylab.plot(abs(fyo[:fyo.size/2]))
+        #pylab.plot(4*np.arange(L/2),abs(fy[:L/2]))
+        #pylab.plot(4*np.arange(L/2),abs(fy2[:L/2]))
+        lz = np.zeros(2**20)
+        lz[lz.size/2:lz.size/2+4*2048] = coeff*x
+        coeff_ft = np.fft.fft(lz)
+        lz2 = np.zeros(2**20)
+        lz2[lz2.size/2:lz2.size/2+2048] = 1*x[:2048]
+        flat_ft = np.fft.fft(lz2)
+        #pylab.plot(np.arange(65536)/(1.0*L),10*np.log10(abs(flat_ft)))
+        #pylab.plot(np.arange(65536)/(1.0*L),10*np.log10(abs(coeff_ft)))
+        pylab.plot(np.arange(lz2.size)*2048.0/lz2.size, 20*np.log10(np.abs(coeff_ft)/np.abs(coeff_ft).max()))
+        pylab.plot(np.arange(lz2.size)*2048.0/lz2.size, 20*np.log10(np.abs(flat_ft)/np.abs(flat_ft).max()))
+    pylab.xlim(0,8)
+    pylab.ylim(-120,0)
+    pylab.savefig('pffb_comp_flat_vs_pfb_sinc_kaiser_window_bins1_6_7.pdf')
     pylab.show()
