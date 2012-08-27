@@ -22,7 +22,7 @@ import os
 # Selects which backend to use for matplotlib based on the operating system.
 # If not in the list, the default backend is used
 BACKEND_SELECTOR_LIST = {
-    'nt': 'TkAgg'
+    'nt': 'Qt4Agg'
     }
 
 if os.name in BACKEND_SELECTOR_LIST:

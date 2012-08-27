@@ -3,7 +3,7 @@
 # pylint: disable=C0301 
 
 """
-SYSMOD.py module 
+GPIO.py module 
  Implements SYSTEM-level interface
 #
 # History:
@@ -15,13 +15,14 @@ SYSMOD.py module
     2011-09-19 JFC: Added ADC_DAQ_SYNC and FR_DIST_SYNC properties
     2011-09-27 JFC: Split ADC_DAQ_SYNC into ADC_DAQ_BUFR_SYNC and ADC_DAQ_SERDES_SYNC 
     2012-07-09 JFC: Assert ANT_RESET on init to allow communications through if the board is sending lots of data
+    2012-07-25 JFC: Renamed from SYSMOD.py to GPIO.py
 """
 
 from Module import Module_base, BitField
 
 #import numpy as np
 
-class SYSMOD_base(Module_base):
+class GPIO_base(Module_base):
     """ Provides accesss to the system-level GPIO lines """
 
     # Create local variables for page numbers tomake the table more readable

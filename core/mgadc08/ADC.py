@@ -140,7 +140,7 @@ class ADC_base(object):
 	# Class functions (applies to all ADCs)
 	def reset(self):
 		""" Resets both ADCs"""
-		sysmod = self.fpga.SYSMOD # use a shorter variable name to access the FPGA instance attributes
+		sysmod = self.fpga.GPIO # use a shorter variable name to access the FPGA instance attributes
 		sysmod.pulse_bit('ADC_RESET')
 
 	def sync(self):

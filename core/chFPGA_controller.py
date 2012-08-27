@@ -20,40 +20,28 @@ History:
     2012-07-25 JFC: Splitted the init() from __init() to make sure the controller object creation does not change the state of the FPGA.
         Added LCD initialization and firmware version display on the LCD
         Implemented default channel managements
+    2012-08-27 JFC : Fixed reference to common.util as pychime.common.util         
 """
 
 import numpy as np
 #import pdb
 
-import util
+from pychime.common import util
  
 import Module
 
 import SocketIO
-# hardware subsystems handlers
+
+# FPGA subsystems handlers
 import SPI
 import I2C
+import GPIO
 import SYSMON
-import SYSMOD
 import FreqCtr
 import REFCLK
 import MGT
-import ML605_LCD
 
-# SPI device handlers
-import ADC
-import IOExpander
-import ADC_PLL
-import AmbTemp
-import BiasADC
-import MGT_PLL
-
-# I2C device handlers
-import FMC_EEPROM
-import ML605_PMBus
-
-
-# Antenna processor handlers
+# FPGA Antenna processor handlers
 import ANT
 import ADCDAQ # Included only so it can be reloaded
 import FRAMER # Included only so it can be reloaded
@@ -61,32 +49,40 @@ import FFT # Included only so it can be reloaded
 import SCALER # Included only so it can be reloaded
 import PROBER # Included only so it can be reloaded
 
-
-# Correlator handlers
+# FPGA Correlator handlers
 import CORR_BLOCK
 import CH_DIST    # Included only so it can be reloaded
+import ACC # Included only so it can be reloaded
+
+
+# ML605 FPGA board specific device handlers
+
+import ML605_LCD
+import ML605_PMBus
+
+# MGADC08 FMC ADC board device handlers
+from mgadc08 import MGADC08 
+MGADC08.reload_modules()
+
+
+
 
 
 # -- Module reloader -- 
 # Reload modules if we are debugging in case the source code has changed
 
-reload_modules = (util, 
+MODULE_LIST = (
+        util, 
         SocketIO, 
         Module, 
         SPI, 
         I2C, 
-        SYSMOD, 
+        GPIO, 
         SYSMON, 
         REFCLK, 
+        MGADC08,
         ML605_LCD,
-        AmbTemp,
         FreqCtr,
-        ADC,
-        IOExpander,
-        ADC_PLL,
-        BiasADC,
-        MGT_PLL,
-        FMC_EEPROM,
         ML605_PMBus,
         ANT,
         ADCDAQ,
@@ -96,14 +92,17 @@ reload_modules = (util,
         PROBER, 
         CORR_BLOCK, 
         CH_DIST, 
+        ACC,
         MGT
         )
     
+def reload_modules(module_list=MODULE_LIST):
+    """ Reloads the modules specified in the list """
+    for module in module_list: 
+        print 'Reloading module %s' % (module.__name__)
+        reload(module)
 
-for m in reload_modules: 
-    print 'Reloading module %s' % (m.__name__)
-    reload(m)
-
+reload_modules()
 
 
 # -- chFPGA -- 
@@ -176,7 +175,7 @@ class chFPGA_controller(object):
             # -- Create basic FPGA ressource handlers objects
             # ---------------------------------------------------------------------
             if verbose >= 2: print '  - SYSMOD'
-            self.SYSMOD = SYSMOD.SYSMOD_base(self)
+            self.GPIO = GPIO.GPIO_base(self)
 
             if verbose >= 2: print '  - I2C'
             self.I2C = I2C.I2C_base(self)
@@ -207,7 +206,7 @@ class chFPGA_controller(object):
             self.ML605_PMBus = ML605_PMBus.ML605_PMBus_base(self)
 
             if verbose >= 2: print '  - ML605 PMBus'
-            self.LCD = ML605_LCD.LCD_base(self.SYSMOD)
+            self.LCD = ML605_LCD.LCD_base(self.GPIO)
 
             #if verbose>=2: print '  - MGT'
             #self.MGT=MGT.MGT_base(self)
@@ -217,20 +216,8 @@ class chFPGA_controller(object):
             # -- Create MGADC08 FMC board ressource handlers objects
             # ---------------------------------------------------------------------
 
-            if verbose >= 2: print '  - ADC'
-            self.ADC = ADC.ADC_base(self)
-            if verbose >= 2: print '  - IOExpander'
-            self.IOExpander = IOExpander.IOExpander_base(self)
-            if verbose >= 2: print '  - ADC_PLL'
-            self.ADC_PLL = ADC_PLL.ADC_PLL_base(self)
-            if verbose >= 2: print '  - AmbTemp'
-            self.AmbTemp = AmbTemp.AmbTemp_base(self)
-            if verbose >= 2: print '  - MGT_PLL'
-            self.MGT_PLL = MGT_PLL.MGT_PLL_base(self)
-            if verbose >= 2: print '  - BiasADC'
-            self.BiasADC = BiasADC.BiasADC_base(self)
-            if verbose >= 2: print '  - FMC EEPROM'
-            self.FMC_EEPROM = FMC_EEPROM.FMC_EEPROM_base(self)
+            self.ADC_BOARD = MGADC08.MGADC08_base(self)
+            self.FMC_present = self.ADC_BOARD.is_present()
                
         except SocketIO.timeout:
             self.close()
@@ -254,19 +241,18 @@ class chFPGA_controller(object):
         self.sampling_frequency = sampling_frequency
         self.reference_frequency = reference_frequency
         self.FRAME_PERIOD = float(self.FRAME_LENGTH)/self.sampling_frequency
-        self.FMC_present = False # indicates if the FMC board is present. If not, the modules will act accordingly.
 
         print '*** Initializing modules ***'
 
         if verbose >= 2: print '  - SYSMOD'
-        self.SYSMOD.init() # This stops the antenna procesors from sending data. Neeeded if the FPGA is flooding the buffers which prevent subsequent reads to come through
+        self.GPIO.init() # This stops the antenna procesors from sending data. Neeeded if the FPGA is flooding the buffers which prevent subsequent reads to come through
         #self.sock.flush_data_socket() # Now the the data stops coming, flush the buffers
         self.sock.flush()
-        self.SYSMOD.status()
+        self.GPIO.status()
 
         self.LCD.init()
         self.LCD.write('CHIME FW Version', col=0, row=0)
-        self.LCD.write('%s' % self.SYSMOD.get_bitstream_date(), col=0, row=1)
+        self.LCD.write('%s' % self.GPIO.get_bitstream_date(), col=0, row=1)
 
         if verbose >= 2: print '  - I2C'
         self.I2C.init()
@@ -277,11 +263,6 @@ class chFPGA_controller(object):
         self.ML605_PMBus.status()
 
 
-        if verbose >= 2: print '  - EEPROM'
-        self.FMC_EEPROM.init()
-        self.FMC_EEPROM.status()
-
-        self.FMC_present = self.FMC_EEPROM.FMC_present(verbose=True)
 
          # Module depend on the FMC_present flag after this point
 
@@ -297,22 +278,6 @@ class chFPGA_controller(object):
         self.SPI.init()
         self.SPI.status()
 
-        if verbose >= 2: print '  - AmbTemp'
-        self.AmbTemp.init()
-        self.AmbTemp.status()
-
-
-        if verbose >= 2: print '  - IOExpander'
-        self.IOExpander.init()
-        self.IOExpander.status()
-
-        if verbose >= 2: print '  - ADC_PLL'
-        self.ADC_PLL.init(fout=2*self.sampling_frequency/1e6, fref=self.reference_frequency/1e6, verbose=1)
-        self.ADC_PLL.status()
-
-        if verbose >= 2: print '  - ADC'
-        self.ADC.init()
-        self.ADC.status()
 
         if verbose >= 2: print '  - ANT'
         self.ANT.init(delay_table=adc_delay_table)
@@ -321,6 +286,14 @@ class chFPGA_controller(object):
         if verbose >= 2: print '  - CORR'
         self.CORR_BLOCK.init()
         self.CORR_BLOCK.status()
+
+        if verbose >= 2: print '  - ADC BOARD'
+        self.ADC_BOARD.init()
+        self.ADC_BOARD.status()
+
+
+        self.FMC_present = self.ADC_BOARD.is_present()
+
 
         # MGT is disabled    
         #print '  - MGT_PLL'
@@ -450,6 +423,12 @@ class chFPGA_controller(object):
         else:
             self.REFCLK.sync()
 
+    def ant_reset(self):
+        """ Resets the stats of all antenna processor modules and clear the processing pipeline.
+        Memory-mapped registers are not affected.
+        """
+        self.GPIO.pulse_bit('ANT_RESET') # resets all 
+
     def set_default_channels(self, channels):
         """
             Sets the default channels to use in other functions when not specifically specified.
@@ -507,10 +486,10 @@ class chFPGA_controller(object):
                 ant.ADCDAQ.ENABLE_RAMP = adcdaq_ramp
 
     ADC_MODE_NAMES = {
-        # name, mode number, period
-        'data' : (0, 64), # All bytes are zero
-        'ramp' : (1, 64), # All bytes are one
-        'pulse': (2, 11), # Successive bytes generate a repeating ramp from 0 to 255
+        # name, mode number, period (in 4-bytes words)
+        'data' : (0, 64), # ADC sends analog data
+        'ramp' : (1, 64), # ADC sends ramp from 0 to 255
+        'pulse': (2, 11), # ADC sends ten 0x00 followed by one 0xff
         }    
 
     def set_ADC_mode(self, mode='data', channels=None):
@@ -529,7 +508,7 @@ class chFPGA_controller(object):
         mode_value = mode_info[0]
         capture_period = mode_info[1]
 
-        self.ADC.set_test_mode(test_mode=mode_value)
+        self.ADC_BOARD.ADC.set_test_mode(test_mode=mode_value)
         self.current_ADC_mode = mode_value
 
         for ant in self.ANT:
@@ -541,7 +520,7 @@ class chFPGA_controller(object):
         """
         Stops the transmission of data.
         """
-        self.SYSMOD.GLOBAL_TRIG = 0 # disable data transmission if continuous mode is currentlly selected
+        self.GPIO.GLOBAL_TRIG = 0 # disable data transmission if continuous mode is currentlly selected
         for ant in self.ANT:
             ant.PROBER.RESET = 1
 
@@ -573,8 +552,8 @@ class chFPGA_controller(object):
             bits_per_second = frames_per_second * 8 * self.FRAME_LENGTH
             print 'Data rates are: %f kFrames/s, %f Mbits/s' % (frames_per_second/1e3, bits_per_second/1e6)
 
-        self.SYSMOD.GLOBAL_TRIG = 0 # disable data transmission if continuous mode is currentlly selected
-        self.SYSMOD.ANT_RESET = 1 # resets all 
+        self.GPIO.GLOBAL_TRIG = 0 # disable data transmission if continuous mode is currentlly selected
+        self.GPIO.ANT_RESET = 1 # resets all 
 #        if clear_buffer:
 #            self.flush_frame_buffer()
             
@@ -586,5 +565,5 @@ class chFPGA_controller(object):
                 print 'Enabling Capture for Antenna %i' % ant.ant_number
                 ant.PROBER.RESET = 0
 
-        self.SYSMOD.GLOBAL_TRIG = 1 # enables data transmission if continuous mode is selected
-        self.SYSMOD.ANT_RESET = 0 # disable reset all 
+        self.GPIO.GLOBAL_TRIG = 1 # enables data transmission if continuous mode is selected
+        self.GPIO.ANT_RESET = 0 # disable reset all 

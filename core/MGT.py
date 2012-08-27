@@ -4,9 +4,10 @@
 MGT.py module 
  Implements interface to the MGT
 
- History:
-	2011-08-03 : JFC : Created 
-	2011-09-08 JFC: Removed property initialization message in _init_
+History:
+    2011-08-03 : JFC : Created 
+    2011-09-08 JFC: Removed property initialization message in _init_
+    2012-08-27 JFC : Fixed reference to common.util as pychime.common.util         
 """
 
 import time
@@ -14,7 +15,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from Module import Module_base, BitField
-import util
+from pychime.common import util
 
 class MGT_port_base(Module_base):
 	""" Implements interface to the MGT """

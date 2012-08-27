@@ -2,15 +2,16 @@
 
 """
 I2C.py module 
- Implements I2C interface of chFPGFA
+    Implements I2C interface of chFPGFA
 
- History:
-	2012-03-29 JFC : Created from SPI.py
-	2012-04-11 JFC : generalized i2c_write_read to allow simple read and writes. Trig the state machine (START) in two lines to make sure the 0-to-1 transition is not missed. Cleanup.
+History:
+    2012-03-29 JFC : Created from SPI.py
+    2012-04-11 JFC : generalized i2c_write_read to allow simple read and writes. Trig the state machine (START) in two lines to make sure the 0-to-1 transition is not missed. Cleanup.
+    2012-08-27 JFC : Fixed reference to common.util as pychime.common.util         
 """
 
 import numpy as np
-from util import hex
+from pychime.common.util import hex
 
 from Module import Module_base, BitField
 
