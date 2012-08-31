@@ -4,10 +4,11 @@
 
 """
 ANT.py module 
- Implements interface to the Antenna processors
+    Implements interface to the Antenna processors
 
- History:
- 2011-07-12 : JFC : Created from test code in chFPGA.py
+History:
+    2011-07-12 : JFC : Created from test code in chFPGA.py
+    2012-08-31 JFC: Swapped addresses of PROBER and SCALER to match the same change in firmware
 """
 import ADCDAQ
 import FRAMER
@@ -22,8 +23,8 @@ class ANT_channel(object):
     ADCDAQ_MODULE = 0
     FR_DIST_MODULE = 1
     FFT_MODULE = 2
-    PROBER_MODULE = 3
-    SCALER_MODULE = 4
+    SCALER_MODULE = 3
+    PROBER_MODULE = 4
 
     def __init__(self, ant_instance, ant_number):
         #super(ADC_chip,self).__init__(fpga)

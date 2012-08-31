@@ -528,6 +528,8 @@ class chFPGA_controller(object):
         """
         Triggers the capture of the specified number of frames in the FPGA for transmission over the Ethernet port. 
         This function does not receive the frames from the ethernet port. This has to be done separately.
+        History:
+            2012-08-31 JFC: Fixed bandwidth computation
         """
         if channels is None:
             channels = self.default_channels
@@ -548,7 +550,7 @@ class chFPGA_controller(object):
                 burst_period_in_frames, 
                 burst_period_in_frames*self.FRAME_PERIOD*1000, 
                 ('continuously when TRIG=1' if not number_of_bursts else 'for a total of %i bursts' % number_of_bursts ) ) 
-            frames_per_second = len(channels)*frames_per_burst*1.0/self.FRAME_PERIOD
+            frames_per_second = len(channels)*frames_per_burst*1.0/self.FRAME_PERIOD/burst_period_in_frames
             bits_per_second = frames_per_second * 8 * self.FRAME_LENGTH
             print 'Data rates are: %f kFrames/s, %f Mbits/s' % (frames_per_second/1e3, bits_per_second/1e6)
 
@@ -567,3 +569,20 @@ class chFPGA_controller(object):
 
         self.GPIO.GLOBAL_TRIG = 1 # enables data transmission if continuous mode is selected
         self.GPIO.ANT_RESET = 0 # disable reset all 
+
+    def set_FFT_bypass(self, bypass_mode, channels=None):
+        """
+        Determines in the FFT is bypassed or not. Sets the BYPASS flag on both the FFT and the SCALER modules.
+
+        History:
+            120831 JFC: Added this function
+        """
+        if channels is None:
+            channels = self.default_channels
+
+        for ant in self.ANT:
+            if ant.ant_number in channels:
+                print 'Setting FFT and SCALER bypass mode for Antenna %i' % ant.ant_number
+                ant.FFT.BYPASS = bypass_mode
+                ant.SCALER.BYPASS = bypass_mode
+

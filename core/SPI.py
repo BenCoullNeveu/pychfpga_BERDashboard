@@ -17,18 +17,18 @@ __reload__=True
 
 class SPI_base(Module_base):
     # SPI addresses
-    SPI_ADC0_ADDR=0    # ADC. R/W device. 8 bit address+RW, 16 bit data.
-    SPI_ADC1_ADDR=1 # ADC. R/W device. 8 bit address+RW, 16 bit data.
-    SPI_ADC0_TEMP_ADDR=2 # ADC temperature sensor chip. Read only
-    SPI_ADC1_TEMP_ADDR=3 # ADC temperature sensor chip. Read only
-    SPI_AMB_TEMP_ADDR=4 # Board temperature sensor chip. Read/Write device
-    SPI_PLL1_ADDR=(5,1) # ADC PLL. The second element of the tuple indicates that we use the alternate timing 
+    SPI_ADC0_ADDR = 0    # ADC. R/W device. 8 bit address+RW, 16 bit data.
+    SPI_ADC1_ADDR = 1 # ADC. R/W device. 8 bit address+RW, 16 bit data.
+    SPI_ADC0_TEMP_ADDR = 2 # ADC temperature sensor chip. Read only
+    SPI_ADC1_TEMP_ADDR = 3 # ADC temperature sensor chip. Read only
+    SPI_AMB_TEMP_ADDR = 4 # Board temperature sensor chip. Read/Write device
+    SPI_PLL1_ADDR = (5, 1) # ADC PLL. The second element of the tuple indicates that we use the alternate timing 
     #SPI_ADC_BIAS_ADDR=5 # Bias measurement ADC.  Read/Write device # Not present on Rev2 board
-    SPI_IO_EXP_ADDR=6 # IO Expander. Read/Write device
-    SPI_PLL2_ADDR=7 # MGT PLL. Write only.
+    SPI_IO_EXP_ADDR = 6 # IO Expander. Read/Write device
+    SPI_PLL2_ADDR = 7 # MGT PLL. Write only.
 
-    CONTROL=BitField.CONTROL
-    STATUS=BitField.STATUS
+    CONTROL = BitField.CONTROL
+    STATUS = BitField.STATUS
 
     BITS={
         'ADDR' :     BitField(CONTROL, 0x04,4, 4, doc='Address of SPI device to communicate with'),

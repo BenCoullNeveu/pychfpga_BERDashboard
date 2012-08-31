@@ -1,6 +1,6 @@
 #!/usr/bin/python
-# Disable pylint TAB warnings (W0312) and Line too long (=C0301)
-# pylint: disable=W0312,C0301 
+# Disable pylint Line too long (=C0301)
+# pylint: disable=C0301 
 
 """
 FRAMER.py module 
@@ -9,6 +9,7 @@ FRAMER.py module
 # History:
 # 2011-07-12 JFC : Created from test code in chFPGA.py
 # 2012-05-29 JFC: Extracted from ANT.py
+    2012-08-28 JFC: Moved SYNC_PERIOD to the FFT block
 """
 
 import numpy as np
@@ -33,17 +34,17 @@ class FR_DIST_base(Module_base):
         'adcdaq' : 7, # takes the data from the ADCDAQ
         }    
     
-    # Register definition
-    RESET = BitField(CONTROL, 0x00 ,7, doc='Resets this module')
+    # Memory-mapped register definition
+    RESET = BitField(CONTROL, 0x00, 7, doc='Resets this module')
     FIFO_RESET = BitField(CONTROL, 0x00, 6, doc="When '1', resets the data FIFO")
     CAPTURE_FLAG = BitField(CONTROL, 0x00, 5, doc="When '1', forces the CAPURE flag of the outgoing frames to be '1'. Could be used downstream.")
-    DATA_SOURCE = BitField(CONTROL, 0x00, 0,3, doc="Selects the Antenna processing block data source")
-
-    SYNC_PERIOD = BitField(CONTROL, 0x02, 0,16, doc="Number of clock cycles between SYNC pulses. See CASPER documentation for minimum SYNC spacing.")
+    DATA_SOURCE = BitField(CONTROL, 0x00, 0, width=3, doc="Selects the Antenna processing block data source")
+    BYTE0 = BitField(CONTROL, 0x01, 0, width=8, doc="First byte to be used by the function generator")
+    BYTE1 = BitField(CONTROL, 0x02, 0, width=8, doc="Second byte to be used by the function generator")
 
     FIFO_OVERFLOW = BitField(STATUS, 0x00, 0, doc="Active high if the data FIFO is overflowing")
     FIFO_EMPTY = BitField(STATUS, 0x00, 1, doc="Active high  when the data FIFO is empty")
-    FIFO_LENGTH = BitField(STATUS, 0x01, 0, 8, doc="Number of samples currently in the data FIFO (last 8 bits only)")
+    FIFO_LENGTH = BitField(STATUS, 0x01, 0, width=8, doc="Number of samples currently in the data FIFO (last 8 bits only)")
     RAMP_CTR = BitField(STATUS, 0x02, 0, width=8, doc="Last 8 bits of the ramp counter (for debuging)")
 
 
