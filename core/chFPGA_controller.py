@@ -57,11 +57,11 @@ import ACC # Included only so it can be reloaded
 
 # ML605 FPGA board specific device handlers
 
-import ML605_LCD
-import ML605_PMBus
+from pychime.ML605 import ML605_LCD
+from pychime.ML605 import ML605_PMBus
 
 # MGADC08 FMC ADC board device handlers
-from mgadc08 import MGADC08 
+from pychime.MGADC08 import MGADC08 
 MGADC08.reload_modules()
 
 
@@ -121,6 +121,7 @@ class chFPGA_controller(object):
     """
     
     # Basic system constants
+    IMPLEMENT_CORR = False
     NUMBER_OF_CORRELATORS = 1
     NUMBER_OF_ANTENNAS = 8
     LOG2_FRAME_LENGTH = 11
@@ -283,9 +284,10 @@ class chFPGA_controller(object):
         self.ANT.init(delay_table=adc_delay_table)
         self.ANT.status()
 
-        if verbose >= 2: print '  - CORR'
-        self.CORR_BLOCK.init()
-        self.CORR_BLOCK.status()
+        if self.IMPLEMENT_CORR:
+            if verbose >= 2: print '  - CORR'
+            self.CORR_BLOCK.init()
+            self.CORR_BLOCK.status()
 
         if verbose >= 2: print '  - ADC BOARD'
         self.ADC_BOARD.init()
@@ -308,6 +310,7 @@ class chFPGA_controller(object):
         #if adc_delay_table:
         #    self.ANT.set_delays(adc_delay_table)
 
+ 
         print '*** Set ADC mode ***'
 
         self.set_ADC_mode('data')
@@ -501,6 +504,11 @@ class chFPGA_controller(object):
                 'pulse': Strobe mode (ADC output contains one 0xFF followed by ten 0x00. It repeats with a pariod of 11. Same comment as above)
         111212 JFC: Added this high-level function with string mode.
         """
+        if not self.ADC_BOARD.is_present():
+            print 'ADC Board not present. Ignoring set_ADC_mode() command'
+            return
+            
+
         if channels is None:
             channels = self.default_channels
 

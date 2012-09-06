@@ -144,7 +144,7 @@ class Module_base(object):
         """
         return self.read(0x200+2*addr, *args, **kwargs)
 
-    def read_field(self, bitfield):
+    def read_field(self, bitfield, verbose=0):
         """ Reads the field identified by the name 'bit_name' which is looked up in the BITS table to find the bit definition (port, bit position etc). Returns a boolean."""  
 #        if isinstance(bit_name, BitField):
 #            bit_def = bit_name
@@ -162,7 +162,8 @@ class Module_base(object):
         number_of_bytes = lsb_addr - msb_addr + 1
         data_type = {1:np.dtype('>u1'), 2:np.dtype('>u2'), 4:np.dtype('>u4')}[number_of_bytes]
         data = self.read(msb_addr, type=data_type)
-        #print 'Read port %i, module %i, addr: %i - %i' % (self.port_number, self.module_number, msb_addr, lsb_addr)
+        if verbose:
+            print 'Read port %i, module %i, addr: %i - %i, bit %i, width=%i, value=%i' % (self.port_number, self.module_number, msb_addr, lsb_addr, bitfield.bit, bitfield.width, data)
         #print 'Read bit at port %i, bit=%i, data: %X' % (bit_name,  bit_def.addr,bit_def.bit, data)
         return (data>>bitfield.bit) & ((1<<bitfield.width)-1)
 
