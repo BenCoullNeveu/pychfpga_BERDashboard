@@ -11,6 +11,7 @@ REFCLK.py module
     2011-09-25 JFC: Modified to support new method on incrementing phase (pulse PS_EN unstead of PS_CLK) 
     2011-11-15 JFC: Lots of modifications done to debug SYNC clock alignment. 
     2012-05-xx JFC: Added disabling SYNC detect when the board is not there, because a floating input create spurious clocks and cause intermittent resets
+    2012-09-05 JFC: Updated registers to match firmware. Includes a few status registers to debug SYNC generation mechanism. Added ENABLE_SYNC_GENERATION flag handling to fix spurious generation of SERDES_RST when FMC boar dis not present (the software FORCE_SYNC and REFCLK noise got the SYNC state machine started and left it in SERDES_RST=1 state) 
 """
 
 from Module import Module_base, BitField
@@ -28,29 +29,29 @@ class REFCLK_base(Module_base):
     DRP=BitField.DRP
 
     BITS={
-        'PS_CLK' :             BitField(CONTROL, 0x00,0,doc='Phase shift control clock -- Not used'),
-        'PS_EN':                BitField(CONTROL, 0x00,1,doc='Enable Phase shift increment/decrement when transitionning from 0 to 1'),
-        'PS_INCDEC':            BitField(CONTROL, 0x00,2,doc='1=Increment phase by 1/56th of cycle, 0= decrement phase by same amount'),
-        'MASTER':                BitField(CONTROL, 0x00,3,doc='1=board is MASTER: SYNC SMA is an output, 0= board is SLAVE: SYNC SMA is an input'),
-        'ENCODE_SYNC':            BitField(CONTROL, 0x00,4,doc='Generate a SYNC signal encoded on the 10 MHz clock output. Will SYNC the local FMC board only if the 10 MHz output is connected to the 10 MHz input of the local FMC board'),
-        'FORCE_SYNC':            BitField(CONTROL, 0x00,5,doc='Force the generation of a local SYNC sequence on the local board only. Has the same effect as a SYNC signed received on the 10 MHz clock.  The SYNC is synchronized to the 10 MHz output (transitions on its falling edge)'),
-        'DCI_RESET':            BitField(CONTROL, 0x00,6,doc='Resets the DCI'),
-        'ADC_SYNC':                BitField(CONTROL, 0x00,7,doc='Force a SYNC to the ADC, synchronized on the FMC Reference clock, but bypasses the SYNC state machine that resets the IOSERDES and BUFR'),
+    # CONTROL byte 0
+        'ADC_SYNC':                BitField(CONTROL, 0x00, 7, doc='Force a SYNC to the ADC, synchronized on the FMC Reference clock, but bypasses the SYNC state machine that resets the IOSERDES and BUFR'),
+        'DCI_RESET':            BitField(CONTROL, 0x00, 6, doc='Resets the DCI'),
+        'FORCE_SYNC':            BitField(CONTROL, 0x00, 5, doc='Force the generation of a local SYNC sequence on the local board only. Has the same effect as a SYNC signed received on the 10 MHz clock.  The SYNC is synchronized to the 10 MHz output (transitions on its falling edge)'),
+        'ENCODE_SYNC':            BitField(CONTROL, 0x00, 4, doc='Generate a SYNC signal encoded on the 10 MHz clock output. Will SYNC the local FMC board only if the 10 MHz output is connected to the 10 MHz input of the local FMC board'),
+        'SLAVE':                BitField(CONTROL, 0x00, 3, doc='0=board is MASTER: SYNC SMA is an output, 1= board is SLAVE: SYNC SMA is an input'),
 
+    # CONTROL byte 1
         'SYNC_DELAY_RST':        BitField(CONTROL, 0x01, 7, doc='Resets the SYNC line IODELAY and loads the delay value specified in SYNC_DELAY.'),
-        'MMCM_RST':            BitField(CONTROL, 0x01, 6, doc='Resets the MMCM. Must be held high while the DRP port is used.'),
+        'ENABLE_SYNC_GENERATION':   BitField(CONTROL, 0x01, 6, doc='Allows the internal state machine to generate the SYNC sequence (generate the ADC SYNC and resets the ADCDAQ SERDES and BUFG)'),
         'ENABLE_SYNC_DETECT':    BitField(CONTROL, 0x01, 5, doc='When 1, enable SYNC detection based on the Refecence clock pulse length. Disable if the FMC board is not present to prevent spurious resets of the data path.'),
         'SYNC_DELAY':            BitField(CONTROL, 0x01, 0, width=5, doc='Delay between the FMC Reference clock and the SYNC edge (0-31). Must pulse SYNC_DELAY_RST to load.'),
 
         'REFCLK_DELAY':            BitField(CONTROL,0x02, 0, width=5, doc='Delay applied to the FMC Reference clock within the FPGA (0-31). Must pulse REFCLK_DELAY_RST to load.'),
         'REFCLK_DELAY_RST':        BitField(CONTROL,0x02, 7, doc='Resets the REFCLK line IODELAY and loads the delay value specified in REFCLK_DELAY.'),
 
-        'PS_DONE' :             BitField(STATUS, 0x00, 0, doc='Phase shift completed'),
-        'LOCKED' :                 BitField(STATUS, 0x00, 1, doc='MCMM is locked'),
+        'SERDES_RST' :             BitField(STATUS, 0x00, 0, doc='Status of the SERDER Reset output line'),
+        'SYNC' :                 BitField(STATUS, 0x00, 1, doc='Status on the internal SYNC signal, which is a combination of various sources (recovered from RefClk, from pin, from bit etc)'),
         'RECOVERED_SYNC':        BitField(STATUS, 0x00, 2, doc='1 when a SYNC signal encoded on the 10 MHz is detected '),
         'DCI_LOCKED':            BitField(STATUS, 0x00, 3, doc='1 when DCI is locked'),
+        'SYNC_CTR':            BitField(STATUS, 0x00, 4, width=4, doc='Counts the SYNC events'),
 
-        'DIFF_COUNTER':            BitField(STATUS, 0x01, 0, width=8,doc='DIfference between clocks'),
+        'DIFF_COUNTER':            BitField(STATUS, 0x01, 0, width=8, doc='DIfference between clocks'),
 
         'SYNC_DELAY_READBACK':    BitField(STATUS, 0x02, 0, width=5,doc='Reads back the delay set onthe SYNC IODELAY'),
         'SYNC_DONE':            BitField(STATUS, 0x02, 5, doc='1 when the local SYNC process is completed'),
@@ -81,8 +82,10 @@ class REFCLK_base(Module_base):
         # If the board is not present, disable SYNC detection on REFCLK to prevent noise on the floating REFCLK lien to generate spurioys resets. 
         if self.fpga.FMC_present:
             self.ENABLE_SYNC_DETECT = 1
+            self.ENABLE_SYNC_GENERATION = 1
         else:
             self.ENABLE_SYNC_DETECT = 0
+            self.ENABLE_SYNC_GENERATION = 0
             
 
     def sync(self, delay=None):
@@ -310,7 +313,6 @@ class REFCLK_base(Module_base):
 
     def status(self):
         print '---------------------FMC REF CLK  ------------------------------------'
-        print 'MCMM Locked: %i' % (self.LOCKED)
         print 'SYNC Detection Enabled: %s' % (bool(self.ENABLE_SYNC_DETECT))
         print '----------------------------------------------------------------------'
 

@@ -42,8 +42,13 @@ class FR_DIST_base(Module_base):
     BYTE0 = BitField(CONTROL, 0x01, 0, width=8, doc="First byte to be used by the function generator")
     BYTE1 = BitField(CONTROL, 0x02, 0, width=8, doc="Second byte to be used by the function generator")
 
-    FIFO_OVERFLOW = BitField(STATUS, 0x00, 0, doc="Active high if the data FIFO is overflowing")
+    RST = BitField(STATUS, 0x00, 7, doc="debug")
+    FIFO_RESET = BitField(STATUS, 0x00, 6, doc="debug")
+    SOFT_RESET = BitField(STATUS, 0x00, 5, doc="debug")
+    ANT_RESET = BitField(STATUS, 0x00, 4, doc="debug")
+    SYNC = BitField(STATUS, 0x00, 3, doc="debug")
     FIFO_EMPTY = BitField(STATUS, 0x00, 1, doc="Active high  when the data FIFO is empty")
+    FIFO_OVERFLOW = BitField(STATUS, 0x00, 0, doc="Active high if the data FIFO is overflowing")
     FIFO_LENGTH = BitField(STATUS, 0x01, 0, width=8, doc="Number of samples currently in the data FIFO (last 8 bits only)")
     RAMP_CTR = BitField(STATUS, 0x02, 0, width=8, doc="Last 8 bits of the ramp counter (for debuging)")
 
