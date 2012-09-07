@@ -29,44 +29,46 @@ class alg_test_adc(alg_BaseClass):
         data = sine_amp*np.sin(2.0*np.pi*freq*t)
         return inj.inject(self.fpga_ctrl,self.fpga_recv, channels, data)
         
-    def check_fft_dc(self):
+    def check_timestream_dc(self):
         '''
         Checks that dc level injected is what is returned.
         '''
+        original_bypass = np.zeros((8,), dtype=np.int)
         for i in range(8):
+            original_bypass[i] = self.fpga_ctrl.ANT[i].FFT.BYPASS
             self.fpga_ctrl.ANT[i].FFT.BYPASS=1
         dc_levels = range(-128,128)
         dcs = []
         for dc_level in dc_levels:
-            dc_fft_out = self.inject_dc(self.fpga_ctrl,self.fpga_recv,dc_level)
+            dc_fft_out = self.inject_dc(dc_level)
             #print dc_fft_out
             print "DC level with " + str(dc_level) + " input is " + str(dc_fft_out[0])
             dcs.append(dc_fft_out[0])
         #put some overflow checks here
         for i in range(8):
-            self.fpga_ctrl.ANT[i].FFT.BYPASS=0
+            self.fpga_ctrl.ANT[i].FFT.BYPASS=original_bypass[i]
         return dcs
         
     def check_fft_sine(self):
-        sine_amps = [5,120] #range(1,128)
+        sine_amps = [16,120] #range(1,128)
         sine_freqs = np.arange(1,1024)
         spectra = []
+        tone=[]
         for sine_amp in sine_amps:
             for sine_freq in sine_freqs:
-                sine_fft_out = inject_sine(self.fpga_ctrl,self.fpga_recv,sine_level=sine_amp, sine_freq=sine_freq)
-                print "Amplitude of FFT of bin" + str(sine_freq) + " with amplitude " + str(sine_amp) + " is " + str(abs(sine_fft_out[sine_freq]))
-                spectra.append(sine_fft_out)
-        return spectra
-        
-    def execute(self): 
-        ''' set mode to inject and get dc packets out'''
-        inj.set_inject_mode(self.fpga_ctrl, self.fpga_recv)
-        #self.fpga_ctrl.ANT[0].FFT.BYPASS=1
-        dcs = self.check_fft_dc()
-        self.fpga_ctrl.ANT[0].FFT.BYPASS=0
-        self.fpga_ctrl.ANT[0].SCALER.BYPASS=0
-        self.fpga_ctrl.ANT[0].SCALER.SHIFT_LEFT=3
-        print "initialized"
+                for i in range(20):
+                    sine_fft_out = self.inject_sine(sine_amp=sine_amp, sine_freq=sine_freq, channels=[0])
+                sine_fft_out = np.array(sine_fft_out)
+                sine_fft_out = sine_fft_out.reshape(sine_fft_out.shape[0],sine_fft_out.shape[-1])
+                spec = np.empty((sine_fft_out.shape[0],sine_fft_out.shape[1]/2),dtype=complex)
+                spec.real = sine_fft_out[:,::2]
+                spec.imag = sine_fft_out[:,1::2]
+                print "Amplitude of FFT of bin " + str(sine_freq) + " with amplitude " + str(sine_amp) + " is " + str(abs(spec[0][sine_freq]))
+                spectra.append(spec)
+                tone.append(spec[0][sine_freq])
+        return spectra, tone
+    
+    def check_fft_shifts(self):
         shifts = np.arange(11)
         specs = []
         for shift in shifts:
@@ -74,11 +76,26 @@ class alg_test_adc(alg_BaseClass):
             data = []
             for i in range(20):
                 data.append(self.inject_sine( sine_amp=16.0, sine_freq=510.0, channels=[0]))
-            print data
+            #print data
             data = np.array(data)
             data = data.reshape(data.shape[0],data.shape[-1])
             spec = np.empty((data.shape[0],data.shape[1]/2),dtype=complex)
             spec.real = data[:,::2]
             spec.imag = data[:,1::2]
             specs.append(spec[-1])
-        return np.array(specs)
+        return np.array(specs)       
+        
+    def execute(self): 
+        ''' set mode to inject and get dc packets out'''
+        inj.set_inject_mode(self.fpga_ctrl, self.fpga_recv)
+        print self.inject_dc(0)
+        print "initialized"
+        #self.fpga_ctrl.ANT[0].FFT.BYPASS=1
+        #dcs = self.check_timestream_dc()        
+        self.fpga_ctrl.ANT[0].FFT.BYPASS=0
+        self.fpga_ctrl.ANT[0].SCALER.BYPASS=0
+        self.fpga_ctrl.ANT[0].SCALER.SHIFT_LEFT=0
+        self.fpga_ctrl.ANT[0].FFT.FFT_SHIFT= 2**8 - 1
+        spectra = self.check_fft_sine()
+        return spectra
+
