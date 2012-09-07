@@ -5,6 +5,8 @@
 import numpy as np
 import time
 
+###set bypass fft or not.
+
 def set_inject_mode(fpga_ctrl, fpga_recv):
     """ Sets all channels into injection mode"""
     fpga_recv.send_every_frame(1)
@@ -13,6 +15,7 @@ def set_inject_mode(fpga_ctrl, fpga_recv):
     fpga_ctrl.start_data_capture(burst_period_in_frames=1, number_of_bursts=0)
     fpga_recv.flush()
     # The first injected frame is dropped, so I send a dummy frame
+    ### change to inject until see something coming out.  Record number of frames
     for k in range(2):
         for ch in range(8): 
             fpga_ctrl.ANT[ch].FR_DIST.reset_fifo()

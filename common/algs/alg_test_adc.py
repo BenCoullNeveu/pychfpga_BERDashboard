@@ -54,7 +54,8 @@ class alg_test_adc(alg_BaseClass):
         #dcs = self.check_fft_dc(self.fpga_ctrl,self.fpga_recv)
         self.fpga_ctrl.ANT[0].FFT.BYPASS=0
         self.fpga_ctrl.ANT[0].SCALER.BYPASS=0
-        self.fpga_ctrl.ANT[0].SCALER.SHIFT_LEFT=7
+        self.fpga_ctrl.ANT[0].SCALER.SHIFT_LEFT=3
+        print "initialized"
         data = []
         for i in range(20):
             data.append(self.inject_sine(self.fpga_ctrl, self.fpga_recv, sine_amp=16.0, sine_freq=510.0, channels=[0]))
