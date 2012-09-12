@@ -40,7 +40,8 @@ class FFT_base(Module_base):
 
     def init(self):
         """ Initialize the FFT module"""
-        self.BYPASS=0
+        self.BYPASS = 0
+        self.SYNC_PERIOD *= 2
 
     def status(self):
         """ Displays the status of the data capture module"""
