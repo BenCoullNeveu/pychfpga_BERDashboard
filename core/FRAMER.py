@@ -108,4 +108,17 @@ class FR_DIST_base(Module_base):
         """ Displays the status of the antenna processing chain data source module """
         print '-------------- ANT[%i].FRAMER STATUS --------------' % self.port_number 
         print ' Data source: %i' % self.DATA_SOURCE
+        print ' Reset states:'
+        print '    RST: %s' % bool(self.RST)
+        print '    FIFO_RESET: %s' % bool(self.FIFO_RESET)
+        print '    SOFT_RESET: %s' % bool(self.SOFT_RESET)
+        print '    ANT_RESET: %s' % bool(self.ANT_RESET)
+        print '    SYNC: %s' % bool(self.SYNC)
+        print ' Inject FIFO status:'
+        print '    EMPTY: %s' % bool(self.FIFO_EMPTY)
+        print '    OVERFLOW: %s' % bool(self.FIFO_OVERFLOW)
+        print '    LENGTH: %i' % self.FIFO_LENGTH
+        print ' Ramp counter status:'
+        print '    RAMP_CTR: %i' % self.RAMP_CTR
+ 
 

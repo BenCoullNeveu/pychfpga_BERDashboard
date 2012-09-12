@@ -121,7 +121,7 @@ class chFPGA_controller(object):
     """
     
     # Basic system constants
-    IMPLEMENT_CORR = False
+    IMPLEMENT_CORR = True
     NUMBER_OF_CORRELATORS = 1
     NUMBER_OF_ANTENNAS = 8
     LOG2_FRAME_LENGTH = 11
@@ -594,3 +594,6 @@ class chFPGA_controller(object):
                 ant.FFT.BYPASS = bypass_mode
                 ant.SCALER.BYPASS = bypass_mode
 
+    def version(self):
+       print 'Firmware date is %s' % self.GPIO.get_bitstream_date()
+       

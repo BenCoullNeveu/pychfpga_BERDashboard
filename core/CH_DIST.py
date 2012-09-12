@@ -29,12 +29,13 @@ class CH_DIST_base(Module_base):
     # Status bitfields
     FIFO_EMPTY = BitField(STATUS, 0x00, 7, doc="Active high when the data FIFO is empty")
     FIFO_OVERFLOW = BitField(STATUS, 0x00, 6, doc="Active high if the data FIFO is overflowing")
+    FRAME_CTR = BitField(STATUS, 0x01, 0, width=8, doc="Number of frames written into the FIFOs. Rolls over.")
 
     def __init__(self, parent, fpga_instance, port_number, module_number):
         self.parent = parent
         self.fpga = fpga_instance
         super(self.__class__, self).__init__(fpga_instance, port_number, module_number)
-
+        self._lock()
     def reset(self):
         """Performs the soft reset of the CH_DIST module."""
         self.RESET = 1
@@ -63,8 +64,8 @@ class CH_DIST_base(Module_base):
 
     def init(self):
         """ Initializes CH_DIST."""
-        self.select_words(self.fpga.FRAME_LENGTH//4) # enable tranmission of all words by default
-        self.select_words(4) # enable tranmission of all words by default
+        #self.select_words(self.fpga.FRAME_LENGTH//4) # enable tranmission of all words by default
+        self.select_words(8) # enable tranmission of all words by default
 
     def status(self):
         """Displays the status of CH_DIST."""
