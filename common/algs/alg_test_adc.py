@@ -22,14 +22,17 @@ class alg_test_adc(alg_BaseClass):
         data = np.ones(2048)*dc_level
         return inj.inject(self.fpga_ctrl,self.fpga_recv, channels, data)
         
-    def inject_sine(self, sine_amp=1, sine_freq=1.0, channels=[0,1,2,3,4,5,6,7]):
+    def inject_sine(self, sine_amp=1, sine_freq=1.0, channels=[0,1,2,3,4,5,6,7], loops= 20):
         '''
         Injects a sine wave with amplitude sine_level and frequency in frequency bin, assumes 2048 point fft.
         '''
-        t = np.arange(2048)
+        t = np.arange(2048*loops)
         freq = sine_freq/2048.0
         data = sine_amp*np.sin(2.0*np.pi*freq*t)
-        return inj.inject(self.fpga_ctrl,self.fpga_recv, channels, data)
+        data = data.reshape(loops,2048)
+        for datum in data:
+            data_output = inj.inject(self.fpga_ctrl,self.fpga_recv, channels, datum)
+        return data_output
         
     def clean_output(self,output):
         output = np.array(output)
@@ -66,8 +69,7 @@ class alg_test_adc(alg_BaseClass):
         tone=[]
         for sine_amp in sine_amps:
             for sine_freq in sine_freqs:
-                for i in range(20):
-                    sine_fft_out = self.inject_sine(sine_amp=sine_amp, sine_freq=sine_freq, channels=[0])
+                sine_fft_out = self.inject_sine(sine_amp=sine_amp, sine_freq=sine_freq, channels=[0], loops=20)
                 spec = self.clean_output(sine_fft_out)
                 print "Amplitude of FFT of bin " + str(sine_freq) + " with amplitude " + str(sine_amp) + " is " + str(abs(spec[0][sine_freq]))
                 spectra.append(spec)
@@ -81,14 +83,13 @@ class alg_test_adc(alg_BaseClass):
         spectra = []
         tone = []
         for sine_freq in sine_freqs:
-            for i in range(20):
-                sine_fft_out = self.inject_sine(sine_amp=sine_amp, sine_freq=sine_freq, channels=[0])
+            sine_fft_out = self.inject_sine(sine_amp=sine_amp, sine_freq=sine_freq, channels=[0], loops=20)
             spec = self.clean_output(sine_fft_out)
             print "Output with {0} Amp in bin {1} is {2}".format(sine_amp,sine_freq,spec[0][sine_freq_center])
             spectra.append(spec)
             tone.append(spec[0][sine_freq_center])
         tone = np.array(tone)
-        xs = sine_freq_center-2 + arange(tone.size)*0.0025
+        xs = sine_freq_center-2 + np.arange(tone.size)*0.0025
         return xs, spectra, tone
         
     def check_fft_shifts(self):
@@ -122,9 +123,10 @@ class alg_test_adc(alg_BaseClass):
         #spectra = self.check_fft_sine()
         x, spectra, tone = self.check_fft_bin_shape()
         xs, sim_spec = pfb.sim_pfb(taps=4, L=2048, window_function=pfb.boxcar, bin_number=31, resolution=2**20)        
-        pylab.plot(x,abs(tone))
-        pylab.plot(xs,abs(sim_spec))
+        pylab.plot(x,20*np.log10(abs(tone)/abs(tone).max()))
+        pylab.plot(xs,20*np.log10(abs(sim_spec)/abs(sim_spec).max()))
         pylab.xlim(x.min(),x.max())
+        pylab.ylim(-60,0)
         pylab.savefig('Measured_vs_sim_binshape.pdf')
         return x, spectra, tone, xs, sim_spec
 
