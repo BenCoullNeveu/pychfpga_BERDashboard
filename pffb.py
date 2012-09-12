@@ -44,6 +44,9 @@ def kaiser_window(taps,L):
 def sinc_kaiser_window(taps,L):
     return(sinc_window(taps,L)*kaiser_window(taps,L))
     
+def boxcar(taps,L):
+    return(np.ones(taps*L))
+    
 def pffb(x, taps=4, L=2048, window_function=sinc_kaiser_window):
     '''
     Polyphase filter bank FFT with hanning/sinc window rewritten to be more 
@@ -71,6 +74,25 @@ def pffb(x, taps=4, L=2048, window_function=sinc_kaiser_window):
     y = np.array(out_arr).flatten()
     return y, coeff
 
+
+###Finish to simulate fft of same bin
+def sim_pfb(taps=4, L = 2048, window_function=sinc_hanning_window, bin_number=30, resolution=2**20):
+    x=np.sin(np.arange(taps*L)*np.pi*2.0*bin_number*1.0/L)
+    y, coeff =  pffb(x, taps, L, window_function)
+    #fy = np.fft.fft(y[:L])
+    #fy2 = np.fft.fft(y[L:2*L])
+    #fyo = np.fft.fft(x[:L*taps])
+    lz = np.zeros(resolution)
+    if window_function == boxcar:
+        lz[lz.size/2:lz.size/2+L] = 1.0*x[:L]
+    else:
+        lz[lz.size/2:lz.size/2+taps*L] = coeff*x
+    coeff_ft = np.fft.fft(lz)
+    #lz2 = np.zeros(resolution)
+    #lz2[lz2.size/2:lz2.size/2+L] = 1*x[:L]
+    #flat_ft = np.fft.fft(lz2)
+    xs = np.arange(lz.size)*L*1.0/lz.size
+    return xs, coeff_ft
 
 if __name__ == '__main__':
     taps = 4

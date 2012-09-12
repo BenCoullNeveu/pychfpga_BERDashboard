@@ -221,6 +221,8 @@ class chFPGA_receiver(object):
                 else:    
                     (probe_id, stream_id, word_length, timestamp) = struct.unpack_from('>BHHL', in_frame)
                     channel = probe_id & 0x0F
+                    flags = word_length >> 12
+                    word_length &= (2**12 - 1)
                 
                 if(len(in_frame) != self.FRAME_LENGTH+self.FRAME_HEADER_LENGTH):
                     print 'Frame too short'
@@ -236,7 +238,7 @@ class chFPGA_receiver(object):
                     raw_data^=0x80
     
                 if verbose >=2:
-                    print 'Packet received from port %i. Frame header information:  probe_id #=%i, stream_id #=%i, Word length=%i words, timestamp=%i' % (channel, probe_id, stream_id, word_length, timestamp)
+                    print 'Packet received from port %i. Frame header information:  probe_id #=%i, stream_id #=%i, Word length=%i words, timestamp=%i, flags=%i' % (channel, probe_id, stream_id, word_length, timestamp, flags)
                     print data
                     #pass
                 # Make sure there is an empty vector on the first storage so we can concatenate to it the new data

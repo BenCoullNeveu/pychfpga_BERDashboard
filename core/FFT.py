@@ -24,7 +24,7 @@ class FFT_base(Module_base):
     # Define Control registers
     BYPASS = BitField(CONTROL, 0x00,0, doc="Bypass the FFT")
     DLY_RESET = BitField(CONTROL, 0x00,1, doc="Reset the computation of the CASPER block pipelining delay. When released, the block will re-learn the block latency once a CASPER SYNC has passed through the block.")
-    FFT_SHIFT = BitField(CONTROL, 0x02,0,10, doc="FFT shift enable bit for each of the FFT stage")
+    FFT_SHIFT = BitField(CONTROL, 0x02,0,11, doc="FFT shift enable bit for each of the FFT stage")
     SYNC_PERIOD = BitField(CONTROL, 0x04, 0, width=16, doc="Number of clock cycles between SYNC pulses. See CASPER documentation for minimum SYNC spacing.")
     PIPELINE_DELAY = BitField(CONTROL, 0x06, 0, width=16, doc="Latency (in number of clocks) of the CASPER PFB/FFT")
      
@@ -40,7 +40,8 @@ class FFT_base(Module_base):
 
     def init(self):
         """ Initialize the FFT module"""
-        self.BYPASS=0
+        self.BYPASS = 0
+        self.SYNC_PERIOD *= 2
 
     def status(self):
         """ Displays the status of the data capture module"""

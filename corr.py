@@ -133,7 +133,7 @@ if __name__ == "__main__":
     filename = 'out'
     nowtime=time.time()
     #nowtime = 1338143259.2
-    basename = '\\Users\\chime\\workspace\\kevin\\data\\'+filename + '_'+ str(nowtime)+'\\'
+    basename = '\\Users\\kbandura\\chime\\data\\'+filename + '_'+ str(nowtime)+'\\'
     print basename
     os.mkdir(basename)
     fname=basename+filename+str(time.time())+'.'

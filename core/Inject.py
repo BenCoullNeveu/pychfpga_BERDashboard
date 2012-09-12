@@ -5,6 +5,8 @@
 import numpy as np
 import time
 
+###set bypass fft or not.
+
 def set_inject_mode(fpga_ctrl, fpga_recv):
     """ Sets all channels into injection mode"""
     fpga_recv.send_every_frame(1)
@@ -12,12 +14,30 @@ def set_inject_mode(fpga_ctrl, fpga_recv):
     fpga_ctrl.ant_reset() # resets the antenna processing chain to eliminate any frames in transit in the processing pipeline
     fpga_ctrl.start_data_capture(burst_period_in_frames=1, number_of_bursts=0)
     fpga_recv.flush()
-    # The first injected frame is dropped, so I send a dummy frame
-    for k in range(2):
+    for ch in range(8): 
+        fpga_ctrl.ANT[ch].FR_DIST.reset_fifo()
+    ### changed to inject until see something coming out.  Record number of frames
+    ### if get to 100, break out of the loop. 
+    filling_buffer = True
+    pipeline = 0
+    while (filling_buffer):
         for ch in range(8): 
-            fpga_ctrl.ANT[ch].FR_DIST.reset_fifo()
             fpga_ctrl.ANT[ch].FR_DIST.inject_frame()
+        try:
+            #fpga_recv.read_frames()
+            print "Got data"
+            if ( pipeline > 20):
+                filling_buffer=False
+            else:
+                pipeline +=1
+        except:
+            print "pipeline not full"
+            pipeline += 1
+        if (pipeline >100):
+            break
+                            
     time.sleep(0.5)
+    print fpga_recv.length()
     fpga_recv.flush()
 
     #if fpga_recv.length():
