@@ -27,13 +27,18 @@ class ReceiverThread(threading.Thread):
     data = bytearray(BUF_SIZE)
     data_buf = buffer(data)
     data_block = np.zeros((8,2048+9), dtype=np.uint8)
+    #Number of frequency bin pairs, Number of antennas, Number of bytes per word, header
+    corr_data_length = 128*4*13+11 #in bytes
+    corr_data_block = np.zeros((5,corr_data_length), dtype=np.int8)
 #        frame_block = {'timestamp' :0, 'data':frame_data}        
     queue_overflow = 0
+    queue_corr_overflow = 0
     n_frames = 0
     
-    def __init__(self, sock, queue, verbose = 1):
+    def __init__(self, sock, queue, queue_corr, verbose = 1):
         self.sock = sock
         self.queue = queue
+        self.queue_corr = queue_corr
         self._stop = threading.Event()
         self._flush = threading.Event()
         self.verbose = verbose
@@ -44,6 +49,7 @@ class ReceiverThread(threading.Thread):
     def stop(self):
         self._stop.set()
 
+    ###Currently the flush is unused...  Remove?
     def flush(self,state):
         if state:
             self._flush.set()
@@ -89,29 +95,43 @@ class ReceiverThread(threading.Thread):
                 if nbytes:
                     #print 'Received a frame!!!'
                     self.n_frames += 1
-                    (probe_id, stream_id, word_length, timestamp) = struct.unpack_from('>BHHL', self.data_buf)
-                    
-                    if self._send_every_frame.is_set():
-                        self.data_block[0,:] = self.data[:2048+9]
+
+###Edit here to check for corr or fft/data.
+### add another queue to put data into
+
+
+                    #probe_id = struct.unpack_from('>B', self.data_buf)
+                    (probe_id, stream_id, word_length, timestamp) = struct.unpack_from('>BHHL', in_frame)
+                    if (probe_id == 0xFB):
+                        #Correlator unpack first try very simple.  
+                        self.corr_data_block[0,:] = self.data[:corr_data_length]
                         try:
-                            self.queue.put_nowait((timestamp, self.data_block[0:1,:].copy()))
-                            #print 'Stored a frame!!!'
+                            self.queue_corr.put_nowait(self.corr_data_block[0:1,:].copy())
                         except Queue.Full:
-                            self.queue_overflow += 1
+                            self.queue_corr_overflow += 1
                     else:
-                        if (timestamp != last_timestamp):
-                            #print 'trying to store a frame!!!'
-                            if n:
-                                try:
-                                    #print 'Storing a frame!!!'
-                                    self.queue.put_nowait((timestamp, self.data_block[0:n,:].copy()))
-                                except Queue.Full:
-                                    self.queue_overflow += 1
-                            last_timestamp = timestamp
-                            n = 0
-                        # Copy the new vector into the block memory buffer
-                        self.data_block[n,:] = self.data[:2048+9]                    
-                        n += 1
+                        #Spectrum/timestream unpack (maybe break this up as well?)    
+                        if self._send_every_frame.is_set():
+                            self.data_block[0,:] = self.data[:2048+9]
+                            try:
+                                self.queue.put_nowait((timestamp, self.data_block[0:1,:].copy()))
+                                #print 'Stored a frame!!!'
+                            except Queue.Full:
+                                self.queue_overflow += 1
+                        else:
+                            if (timestamp != last_timestamp):
+                                #print 'trying to store a frame!!!'
+                                if n:
+                                    try:
+                                        #print 'Storing a frame!!!'
+                                        self.queue.put_nowait((timestamp, self.data_block[0:n,:].copy()))
+                                    except Queue.Full:
+                                        self.queue_overflow += 1
+                                last_timestamp = timestamp
+                                n = 0
+                            # Copy the new vector into the block memory buffer
+                            self.data_block[n,:] = self.data[:2048+9]                    
+                            n += 1
         print 'Frame acquisition thread is stopped'
 
     def status(self, print_delay=1):
@@ -131,6 +151,7 @@ class chFPGA_receiver(object):
     # define constants
     FRAME_BUFFER_LENGTH = 10
     FRAME_HEADER_LENGTH = 9
+    CORR_FRAME_HEADER_LENGTH = 11
     LOG2_FRAME_LENGTH = 11
     FRAME_LENGTH = 2**LOG2_FRAME_LENGTH
 
@@ -143,8 +164,9 @@ class chFPGA_receiver(object):
 
         # Create a frame a queue and a thread that will fill it
         self.frame_queue = Queue.Queue(maxsize=self.FRAME_BUFFER_LENGTH)
+        self.frame_queue_corr = Queue.Queue(maxsize=self.FRAME_BUFFER_LENGTH)
         #self.frame_queue = multiprocessing.Queue(maxsize=1000)
-        self.frame_receiver = ReceiverThread(self.sock.sock, self.frame_queue, verbose=0)
+        self.frame_receiver = ReceiverThread(self.sock.sock, self.frame_queue, self.frame_queue_corr verbose=0)
         self.frame_receiver.start()
 
     def __del__(self):
@@ -249,6 +271,66 @@ class chFPGA_receiver(object):
                     data[channel]=np.hstack((data[channel],raw_data));
         return data        
             
+    def read_corr_frames(self, frames=1, verbose=0, flush=0, timeout=3):
+        """
+        Get corr frames that were captured by the capture thread.
+
+        ##FIX THIS
+        Parameters:
+            frames: Number of frames to acquire per channel. Limited by the buffer lengths in the FPGA
+        History:
+            120913 KMB: Created from read_frames to read corr buffer
+        """
+
+        # Acquire the data
+        data={}
+        #need to change flush to take a queue object
+        if flush:
+            self.flush_frame_buffer()
+            
+        for j in range(frames):
+        #j=0
+        #while 1:
+            #j+=1
+            if verbose>1 or (verbose==1 and (j % 100 ==99 or j==frames-1)):
+                print 'Acquiring Frame %i (%.0f%%)' % ((j+1),(100*(j+1)/frames))
+            #try:
+            data_block = self.frame_queue_corr.get(timeout=timeout)
+            #except Queue.`:
+            #    return None
+                
+            in_frames =  data_block
+            block_timestamp = 0
+            data['timestamp'] = block_timestamp
+            
+            for in_frame in in_frames[:]:
+                
+
+                if(len(in_frame) < self.CORR_FRAME_HEADER_LENGTH):
+                    print 'Bad header'
+                    break
+                else:    
+                    (probe_id, mult_id, word_length, timestamp) = struct.unpack_from('>BHLL', in_frame)
+                    data['mult_id'] = mult_id
+
+
+        
+                # Process the frame data Need to use Mult_ID to sort out what is what.
+    
+                raw_data=in_frame[self.CORR_FRAME_HEADER_LENGTH:]
+                raw_data.dtype=np.int8 # ADC output are signed values
+    
+                if verbose >=2:
+                    print 'Packet received from port %i. Frame header information:  probe_id #=%i, stream_id #=%i, Word length=%i words, timestamp=%i, flags=%i' % (channel, probe_id, stream_id, word_length, timestamp, flags)
+                    print data
+                    #pass
+                # Make sure there is an empty vector on the first storage so we can concatenate to it the new data
+                
+                if mult_id not in data:
+                    data[mult_id]=raw_data
+                else:
+                    data[mult_id]=np.hstack((data[mult_id],raw_data));
+        return data     
 
 
 
