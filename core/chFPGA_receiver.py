@@ -316,11 +316,17 @@ class chFPGA_receiver(object):
                     print 'Bad header'
                     break
                 else:    
-                    (probe_id, mult_id, word_length, timestamp, flags, r1, r2, i1, i2) = struct.unpack_from('>BHLLBHLHL', in_frame)
+                    (probe_id, mult_id, word_length, timestamp, flags) = struct.unpack_from('>BHLL', in_frame)
                     data['mult_id'] = mult_id
 
                 #Return numpy complex128's  Check if this shifting is correct
-                raw_data = ( r1 << 32 | r2 ) + 1.0j*(i1<<32 | i2) 
+                #not shifting through correctly yet.
+                #not sure if the word thing will work, might need indexes or something
+                raw_data = []
+                for word in in_frame[11::13]:
+                    (flags, r1, r2, i1, i2) = struct.unpack_from('>BHLHL',word)
+                    raw_data.append(( r1 << 32 | r2 ) + 1.0j*(i1<<32 | i2))
+                raw_data = array(raw_data)
         
                 # Process the frame data Need to use Mult_ID to sort out what is what.
                 # include in data flags etc?
