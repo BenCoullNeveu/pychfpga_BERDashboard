@@ -22,8 +22,9 @@ import os
 # Selects which backend to use for matplotlib based on the operating system.
 # If not in the list, the default backend is used
 BACKEND_SELECTOR_LIST = {
-    'nt': 'Qt4Agg'
+    'nt': 'TkAgg'
     }
+#    'nt': 'Qt4Agg'
 
 if os.name in BACKEND_SELECTOR_LIST:
     matplotlib.use(BACKEND_SELECTOR_LIST[os.name])
@@ -251,12 +252,12 @@ if __name__ == '__main__':
     for channel in channels:
         c.ANT[channel].FFT.BYPASS=0
         c.ANT[channel].SCALER.BYPASS=0
-        c.ANT[channel].SCALER.SHIFT_LEFT=7
+        c.ANT[channel].SCALER.SHIFT_LEFT=0
 
 
     plot_SPECTRUM_frames(cr, channels=channels, raw=0, flush=0)
-    #c.close()
-    #cr.close()
+    c.close()
+    cr.close()
     
 
                                      
