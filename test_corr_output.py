@@ -138,15 +138,16 @@ if __name__ == '__main__':
     time.sleep(2)
     output = r.read_corr_frames(verbose=3)
     dout = np.array([output[0],output[1],output[2],output[3],output[4]])
-    dout = dout.reshape(dout.shape[0],dout.shape[1]/13,13)
-    flags = dout[:,:,0]
-    data = dout[:,:,1:]
-    reals = data[:,:,:6].astype(np.uint8)
-    imags = data[:,:,6:].astype(np.uint8)
-    re2 = reals[:,:,0].astype(np.int8) *256**5 + reals[:,:,1] *256**4 + reals[:,:,2] *256**3 + \
-        reals[:,:,3] *256**2 + reals[:,:,4] *256 + reals[:,:,5]
-    im2 = imags[:,:,0] *256**5 + imags[:,:,1] *256**4 + imags[:,:,2] *256**3 + \
-        imags[:,:,3] *256**2 + imags[:,:,4] *256 + imags[:,:,5]
-    corr = re2 + 1.0j*im2
+    #### dout shouldn't need to do all these manipulations anymore
+    # dout = dout.reshape(dout.shape[0],dout.shape[1]/13,13)
+    # flags = dout[:,:,0]
+    # data = dout[:,:,1:]
+    # reals = data[:,:,:6].astype(np.uint8)
+    # imags = data[:,:,6:].astype(np.uint8)
+    # re2 = reals[:,:,0].astype(np.int8) *256**5 + reals[:,:,1] *256**4 + reals[:,:,2] *256**3 + \
+    #     reals[:,:,3] *256**2 + reals[:,:,4] *256 + reals[:,:,5]
+    # im2 = imags[:,:,0] *256**5 + imags[:,:,1] *256**4 + imags[:,:,2] *256**3 + \
+    #     imags[:,:,3] *256**2 + imags[:,:,4] *256 + imags[:,:,5]
+    # corr = re2 + 1.0j*im2
     
 

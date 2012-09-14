@@ -316,15 +316,16 @@ class chFPGA_receiver(object):
                     print 'Bad header'
                     break
                 else:    
-                    (probe_id, mult_id, word_length, timestamp) = struct.unpack_from('>BHLL', in_frame)
+                    (probe_id, mult_id, word_length, timestamp, flags, r1, r2, i1, i2) = struct.unpack_from('>BHLLBHLHL', in_frame)
                     data['mult_id'] = mult_id
 
-
+                #Return numpy complex128's  Check if this shifting is correct
+                raw_data = ( r1 << 32 | r2 ) + 1.0j*(i1<<32 | i2) 
         
                 # Process the frame data Need to use Mult_ID to sort out what is what.
+                # include in data flags etc?
     
-                raw_data=in_frame[self.CORR_FRAME_HEADER_LENGTH:]
-                raw_data.dtype=np.int8 # ADC output are signed values
+                #Format data from frame
     
                 if verbose >=2:
                     print 'Frame header information:  probe_id #=%i, mult_id #=%i, Word length=%i words, timestamp=%i ' % ( probe_id, mult_id, word_length, timestamp )
