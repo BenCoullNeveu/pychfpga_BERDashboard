@@ -71,6 +71,7 @@ class ReceiverThread(threading.Thread):
         last_timestamp = 0
     #    last_delta = 0
         n = 0
+        n_corr = 0
         #t0 = time.time()
         #last_display_time = t0
 #            expected_delta=self.ANT[0].PROBER.get_burst_period()
@@ -96,19 +97,24 @@ class ReceiverThread(threading.Thread):
                     #print 'Received a frame!!!'
                     self.n_frames += 1
 
-###Edit here to check for corr or fft/data.
-### add another queue to put data into
-
-
                     #probe_id = struct.unpack_from('>B', self.data_buf)
-                    (probe_id, stream_id, word_length, timestamp) = struct.unpack_from('>BHHL', in_frame)
+                    (probe_id, stream_id, word_length, timestamp) = struct.unpack_from('>BHHL', self.data_buf)
+                    #Correlator input                    
                     if (probe_id == 0xFB):
                         #Correlator unpack first try very simple.  
-                        self.corr_data_block[0,:] = self.data[:corr_data_length]
-                        try:
-                            self.queue_corr.put_nowait(self.corr_data_block[0:1,:].copy())
-                        except Queue.Full:
-                            self.queue_corr_overflow += 1
+                        if (stream_id < 5 ) :
+                            if (stream_id == 4):
+                                self.corr_data_block[stream_id,:] = self.data[:self.corr_data_length]
+                                try:
+                                    self.queue_corr.put_nowait(self.corr_data_block.copy())
+                                except Queue.Full:
+                                    self.queue_corr_overflow += 1
+                            else:
+                                self.corr_data_block[stream_id,:] = self.data[:self.corr_data_length]
+                        else:
+                            print "BAD STREAM ID?"
+                            #Clear stuff? ERROR HANDLE
+                    
                     else:
                         #Spectrum/timestream unpack (maybe break this up as well?)    
                         if self._send_every_frame.is_set():
@@ -166,7 +172,7 @@ class chFPGA_receiver(object):
         self.frame_queue = Queue.Queue(maxsize=self.FRAME_BUFFER_LENGTH)
         self.frame_queue_corr = Queue.Queue(maxsize=self.FRAME_BUFFER_LENGTH)
         #self.frame_queue = multiprocessing.Queue(maxsize=1000)
-        self.frame_receiver = ReceiverThread(self.sock.sock, self.frame_queue, self.frame_queue_corr verbose=0)
+        self.frame_receiver = ReceiverThread(self.sock.sock, self.frame_queue, self.frame_queue_corr, verbose=0)
         self.frame_receiver.start()
 
     def __del__(self):
@@ -321,7 +327,7 @@ class chFPGA_receiver(object):
                 raw_data.dtype=np.int8 # ADC output are signed values
     
                 if verbose >=2:
-                    print 'Packet received from port %i. Frame header information:  probe_id #=%i, stream_id #=%i, Word length=%i words, timestamp=%i, flags=%i' % (channel, probe_id, stream_id, word_length, timestamp, flags)
+                    print 'Frame header information:  probe_id #=%i, mult_id #=%i, Word length=%i words, timestamp=%i ' % ( probe_id, mult_id, word_length, timestamp )
                     print data
                     #pass
                 # Make sure there is an empty vector on the first storage so we can concatenate to it the new data

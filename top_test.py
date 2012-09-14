@@ -121,8 +121,8 @@ if __name__ == '__main__':
     #dcs = inj.check_fft_dc(c,r)
     # Displays the system frequencies
     c.FreqCtr.status()
-    adctest = alg_test_adc(c,r)
-    stuff = adctest.execute()
+    #adctest = alg_test_adc(c,r)
+    #stuff = adctest.execute()
     #import numpy as np
     #stuff = np.array(stuff)
     #np.save('convergance_of_pfb.npy', stuff)

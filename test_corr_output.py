@@ -13,7 +13,8 @@ History:
     2011-09-09 JFC: Added global FREF 
     2011-10-11 JFC: Updated delay tables
 """
-
+import time
+import numpy as np
 from pychime.core import chFPGA_controller
 from pychime.core import chFPGA_receiver
 import pychime.plot_utils as pu
@@ -23,6 +24,7 @@ reload(chFPGA_controller) # just to make sure that any changes to the code are r
 reload(chFPGA_receiver) # just to make sure that any changes to the code are reloaded
 reload(pu)
 reload(inj)
+
 
 # Default data and clock line delays for the two FMC boards/ML605 combination.
 # First 8 values are the delays for bits 0 to 7, 8th value is the delay for the clock line.
@@ -126,14 +128,25 @@ if __name__ == '__main__':
     #import numpy as np
     #stuff = np.array(stuff)
     #np.save('convergance_of_pfb.npy', stuff)
-    #c.set_data_source('adcdaq_data')
-    #c.start_data_capture(burst_period_in_seconds=1.0, number_of_bursts=0)
+    c.set_data_source('func_one')
+    c.start_data_capture(burst_period_in_seconds=1.0, number_of_bursts=0)
     #c.set_data_capture(burst_period=10000, number_of_bursts=0)
     # Continuously plot the ADC output
     #c.plot_ADC_frame(channels=[1], frames=512)
     #c.close()
     #r.close()
-    re2 = reals[:,0] *256**5 + reals[:,1] *256**4 + reals[:,2] *256**3 + \
-        reals[:,3] *256**2 + reals[:,4] *256 + reals[:,5]
+    time.sleep(2)
+    output = r.read_corr_frames(verbose=3)
+    dout = np.array([output[0],output[1],output[2],output[3],output[4]])
+    dout = dout.reshape(dout.shape[0],dout.shape[1]/13,13)
+    flags = dout[:,:,0]
+    data = dout[:,:,1:]
+    reals = data[:,:,:6].astype(np.uint8)
+    imags = data[:,:,6:].astype(np.uint8)
+    re2 = reals[:,:,0].astype(np.int8) *256**5 + reals[:,:,1] *256**4 + reals[:,:,2] *256**3 + \
+        reals[:,:,3] *256**2 + reals[:,:,4] *256 + reals[:,:,5]
+    im2 = imags[:,:,0] *256**5 + imags[:,:,1] *256**4 + imags[:,:,2] *256**3 + \
+        imags[:,:,3] *256**2 + imags[:,:,4] *256 + imags[:,:,5]
+    corr = re2 + 1.0j*im2
     
 
