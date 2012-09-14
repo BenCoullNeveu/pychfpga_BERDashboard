@@ -20,9 +20,11 @@ def fourier_transform(data):
     return out
 
 def corr(nchan, fdata, accumulator):
+    i=0
     for j in np.arange(nchan):
         for k in np.arange(j,nchan):
-            accumulator = fdata[j]*fdata[k].conjugate() + accumulator
+            accumulator[i] = fdata[j]*fdata[k].conjugate() + accumulator[i]
+            i=i+1
     return accumulator
 
 def write_header(datafile, est_clk, acc_len):
@@ -83,7 +85,7 @@ if __name__ == "__main__":
     est_clk = 65
     acc_len = 2*11
     write_header(fout, est_clk, acc_len)
-    accumulator = np.zeros(((nchan*(nchan+1))/2,length/2))
+    accumulator = np.zeros(((nchan*(nchan+1))/2,length/2), dtype=np.complex)
     #pdata = 
     tsdata = np.load('testing_600MHz.npy')
     tsdata = tsdata.reshape((2048,8,4096))

@@ -65,7 +65,8 @@ class CH_DIST_base(Module_base):
     def init(self):
         """ Initializes CH_DIST."""
         #self.select_words(self.fpga.FRAME_LENGTH//4) # enable tranmission of all words by default
-        self.select_words(8*[1]) # enable tranmission 8 words, 16 freq channels by default
+        #array doesn't seem to work here....
+        self.select_words(8) # enable tranmission 8 words, 16 freq channels by default
 
     def status(self):
         """Displays the status of CH_DIST."""
