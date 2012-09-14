@@ -323,7 +323,8 @@ class chFPGA_receiver(object):
                 #not shifting through correctly yet.
                 #not sure if the word thing will work, might need indexes or something
                 raw_data = []
-                for word in in_frame[11::13]:
+                #in_frame[11+13*i:24+13*i] i from 0 to 512
+                for word in in_frame[11:].reshape(512,13):
                     (flags, r1, r2, i1, i2) = struct.unpack_from('>BHLHL',word)
                     raw_data.append(( r1 << 32 | r2 ) + 1.0j*(i1<<32 | i2))
                 raw_data = array(raw_data)
