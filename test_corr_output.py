@@ -130,7 +130,7 @@ if __name__ == '__main__':
     print 'top_test.py: chFGPA test script'
     print 'J.-F. Cliche'
     print '------------------------'
-
+    import pylab
     # Delete previous instances of 'c' to make sure the sockets are closed. If not, the new object will not be able to open the socket.
     # pylint: disable=E0601    
     try:
@@ -176,6 +176,14 @@ if __name__ == '__main__':
     output = r.read_corr_frames()
     dout = np.array([output[0],output[1],output[2],output[3],output[4]])
     data = unscramble(dout)
+    expected = np.load('expected_real_ramp_corr_1sec.npy')
+    pylab.plot(abs(data[0,:256]))
+    pylab.plot(abs(expected[0,:256]))
+    pylab.xlabel('Freq Channel')
+    pylab.ylabel('abs correlation')
+    pylab.savefig('Correlation_check.pdf')
+    pylab.show()
+    
     #### dout shouldn't need to do all these manipulations anymore
     # dout = dout.reshape(dout.shape[0],dout.shape[1]/13,13)
     # flags = dout[:,:,0]

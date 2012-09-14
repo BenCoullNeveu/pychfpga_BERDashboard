@@ -46,6 +46,7 @@ class CH_DIST_base(Module_base):
         Selects which words* are going to be transmitted at the output of the antenna processing pipeline.
         If 'pattern' is an integer, words 0 to (pattern-1) are transmitted.
         If pattern is an array, the word numbers indicated in the arrays are transmitted.
+        So [0,1,2,3] will do freq channels [0,1,2,3,4,5,6,7]
         * NOTE: a word is 4 bytes. If the FFT is bypassed, each word contains 4 8-bit ADC samples. 
             If the FFT is enabled, each word contains 2 complex values, one for the even and odd frequency bin. Each complex value is two 8-bit values (real and imaginary)
         """
@@ -66,7 +67,7 @@ class CH_DIST_base(Module_base):
         """ Initializes CH_DIST."""
         #self.select_words(self.fpga.FRAME_LENGTH//4) # enable tranmission of all words by default
         #array doesn't seem to work here....
-        self.select_words(8) # enable tranmission 8 words, 16 freq channels by default
+        self.select_words(126) # enable tranmission 8 words, 16 freq channels by default
 
     def status(self):
         """Displays the status of CH_DIST."""
