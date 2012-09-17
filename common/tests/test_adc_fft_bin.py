@@ -16,14 +16,6 @@ class test_adc_fft_bin(alg_BaseClass):
      Looks closely at bin number 31 (), Might want to change to be configurable.
     '''
         
-    def clean_output(self,output):
-        output = np.array(output)
-        output = output.reshape(output.shape[0],output.shape[-1])
-        spec = np.empty((output.shape[0],output.shape[1]/2),dtype=complex)
-        spec.real = output[:,::2]
-        spec.imag = output[:,1::2]
-        return spec
-        
     
     def check_fft_bin_shape(self):
         sine_amp = 32
