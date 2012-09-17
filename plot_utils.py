@@ -153,7 +153,7 @@ def plot_corr_frames(chFPGA, freqs=256, raw=0, flush=0):
     """ Plots incoming frames, expected to be a timestream """
     
     def anim_init():
-        output = chFPGA.read_corr_frames(raw=raw, flush=flush)
+        output = chFPGA.read_corr_frames( flush=flush)
         dout = np.array([output[0],output[1],output[2],output[3],output[4]])
         a = unscramble(dout)
         for line in lineObjects:
@@ -161,7 +161,7 @@ def plot_corr_frames(chFPGA, freqs=256, raw=0, flush=0):
         return lineObjects
                 
     def animate(i):
-        output = chFPGA.read_corr_frames(raw=raw, flush=flush)
+        output = chFPGA.read_corr_frames( flush=flush)
         dout = np.array([output[0],output[1],output[2],output[3],output[4]])
         a = unscramble(dout)
         for j,line in enumerate(lineObjects):
@@ -173,12 +173,12 @@ def plot_corr_frames(chFPGA, freqs=256, raw=0, flush=0):
     chanIndex = np.arange(freqs)
     lineObjects = range(ncorr)
     ax = fig.add_subplot(111, autoscale_on=True, xlim=(0, 2048), ylim=(-128, 128))
-    output = chFPGA.read_corr_frames(raw=raw, flush=flush)
+    output = chFPGA.read_corr_frames( flush=flush)
     dout = np.array([output[0],output[1],output[2],output[3],output[4]])
     a = unscramble(dout)
-    for line in lineObjects:
-        line, = ax.plot(range(len(a[1])), a[1], 'o-', lw=2)  
-    ani = animation.FuncAnimation(fig, animate, channel*np.ones(500),
+    for i in range(len(lineObjects)):
+        lineObjects[i], = ax.plot(range(len(a[1])), a[1], '-', lw=2)  
+    ani = animation.FuncAnimation(fig, animate, np.ones(500),
                                   interval=20, blit=False, init_func=anim_init)
 #    ani = animation.FuncAnimation(fig, animate, 10, 
 #                                   init_func=anim_init)
@@ -218,7 +218,7 @@ def save_DATA_frames(chFPGA, channels=[0], frames=1, raw=0, flush=0, filename='d
     print 'Saved {0} frames'.format(number_of_frames)
 
                                      
-def unscramble(self, data):
+def unscramble(data):
     '''
     Assumes data is (5,512) in shape array
     writes to (10,256) shape, where the 10 

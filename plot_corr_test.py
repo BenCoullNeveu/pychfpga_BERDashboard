@@ -18,7 +18,7 @@ from pychime.core import chFPGA_controller
 from pychime.core import chFPGA_receiver
 import pychime.plot_utils as pu
 from pychime.core import Inject as inj
-from pychime.common.algs.alg_test_adc import alg_test_adc
+from pychime.common.tests.test_adc import test_adc
 reload(chFPGA_controller) # just to make sure that any changes to the code are reloaded
 reload(chFPGA_receiver) # just to make sure that any changes to the code are reloaded
 reload(pu)
