@@ -7,8 +7,6 @@ Class with testing function for testing the adc.
 from pychime.core import Inject as inj
 from pychime.common.tests.test_BaseClass import test_BaseClass
 import numpy as np
-import pychime.pffb as pfb
-import pylab
 
 class test_adc_dc(test_BaseClass):
     '''

@@ -43,7 +43,7 @@ class test_adc(test_BaseClass):
             self.fpga_ctrl.ANT[i].FFT.BYPASS=original_bypass[i]
         return dcs
         
-    def check_fft_sine(self):
+    def check_fft_level(self):
         sine_amps = [16,120] #range(1,128)
         sine_freqs = np.arange(1,1024)
         spectra = []

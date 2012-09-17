@@ -20,6 +20,14 @@ class test_BaseClass:
         self.fpga_ctrl = fpga_ctrl
         self.fpga_recv = fpga_recv
 
+    def clean_output(self,output):
+        output = np.array(output)
+        output = output.reshape(output.shape[0],output.shape[-1])
+        spec = np.empty((output.shape[0],output.shape[1]/2),dtype=complex)
+        spec.real = output[:,::2]
+        spec.imag = output[:,1::2]
+        return spec
+
     def inject_dc(self, dc_level=1, channels=[0,1,2,3,4,5,6,7]):
         '''
         Injects a DC level given by dc_level.  
