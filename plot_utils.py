@@ -149,6 +149,40 @@ def plot_SPECTRUM_frames(chFPGA, channels=[0], raw=0, flush=0):
     print "Finished animation"
 
 
+def plot_corr_frames(chFPGA, freqs=256, raw=0, flush=0):
+    """ Plots incoming frames, expected to be a timestream """
+    
+    def anim_init():
+        output = chFPGA.read_corr_frames(raw=raw, flush=flush)
+        dout = np.array([output[0],output[1],output[2],output[3],output[4]])
+        a = unscramble(dout)
+        for line in lineObjects:
+            line.set_data(range(len(a[0])),a[0])
+        return lineObjects
+                
+    def animate(i):
+        output = chFPGA.read_corr_frames(raw=raw, flush=flush)
+        dout = np.array([output[0],output[1],output[2],output[3],output[4]])
+        a = unscramble(dout)
+        for j,line in enumerate(lineObjects):
+            line.set_ydata(a[j])
+        return lineObjects
+
+    fig  = plt.figure()
+    ncorr=10
+    chanIndex = np.arange(freqs)
+    lineObjects = range(ncorr)
+    ax = fig.add_subplot(111, autoscale_on=True, xlim=(0, 2048), ylim=(-128, 128))
+    output = chFPGA.read_corr_frames(raw=raw, flush=flush)
+    dout = np.array([output[0],output[1],output[2],output[3],output[4]])
+    a = unscramble(dout)
+    for line in lineObjects:
+        line, = ax.plot(range(len(a[1])), a[1], 'o-', lw=2)  
+    ani = animation.FuncAnimation(fig, animate, channel*np.ones(500),
+                                  interval=20, blit=False, init_func=anim_init)
+#    ani = animation.FuncAnimation(fig, animate, 10, 
+#                                   init_func=anim_init)
+    plt.show()
 
 
 def save_DATA_frames(chFPGA, channels=[0], frames=1, raw=0, flush=0, filename='data.npy'):    
@@ -184,6 +218,37 @@ def save_DATA_frames(chFPGA, channels=[0], frames=1, raw=0, flush=0, filename='d
     print 'Saved {0} frames'.format(number_of_frames)
 
                                      
+def unscramble(self, data):
+    '''
+    Assumes data is (5,512) in shape array
+    writes to (10,256) shape, where the 10 
+    are correlation pairs:  AA, AB,AC,AD,BB,BC,BD,CC,CD,DD
+    and the 256 are frequency channels.  Will need to further combine output from 4
+    Correlators to get all frequencies. Hopefully will see a pattern to put in for loop.  Also should change to 
+    better support the actual data coming out
+    '''
+    corr_output = np.zeros((10,256), dtype=np.complex)
+    corr_output[0,::2] = data[4,::4] #AA
+    corr_output[0,1::2] = data[0,3::4] #AA
+    corr_output[1,::2] = data[3,::4] #AB
+    corr_output[1,1::2] = data[1,3::4] #AB
+    corr_output[2,::2] = data[3,1::4] #AC
+    corr_output[2,1::2] = data[1,2::4] #AC
+    corr_output[3,::2] = data[3,2::4] #AD
+    corr_output[3,1::2] = data[1,1::4] #AD
+    corr_output[4,::2] = data[4,1::4] #BB
+    corr_output[4,1::2] = data[0,2::4] #BB
+    corr_output[5,::2] = data[2,::4] #BC
+    corr_output[5,1::2] = data[2,3::4] #BC
+    corr_output[6,::2] = data[2,1::4] #BD
+    corr_output[6,1::2] = data[2,2::4] #BD
+    corr_output[7,::2] = data[4,2::4] #CC
+    corr_output[7,1::2] = data[0,1::4] #CC
+    corr_output[8,::2] = data[1,::4] #CD
+    corr_output[8,1::2] = data[3,3::4] #CD
+    corr_output[9,::2] = data[4,3::4] #DD
+    corr_output[9,1::2] = data[0,::4] #DD
+    return corr_output
                                      
 #legacy version may not still work.  
 #def save_frames(self, filename, channels=0, frames=1, raw=0):

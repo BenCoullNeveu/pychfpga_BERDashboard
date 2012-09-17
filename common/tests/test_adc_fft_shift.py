@@ -15,14 +15,6 @@ class test_adc_fft_shift(test_BaseClass):
      Test class for testing chFPGA behavior.  Checks the output while changing the shift internal
      to the FFT.  Each shift is a half/doubling of the gain
     '''
-        
-    def clean_output(self,output):
-        output = np.array(output)
-        output = output.reshape(output.shape[0],output.shape[-1])
-        spec = np.empty((output.shape[0],output.shape[1]/2),dtype=complex)
-        spec.real = output[:,::2]
-        spec.imag = output[:,1::2]
-        return spec
     
         
     def check_fft_shifts(self):
