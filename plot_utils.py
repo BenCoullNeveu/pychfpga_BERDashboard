@@ -24,7 +24,8 @@ import uuid
 # If not in the list, the default backend is used
 # usial choices of packends are 'TkAgg' or 'Qt4Agg' 
 BACKEND_SELECTOR_LIST = {
-     120196411245L: 'Qt4Agg' # JFC ASUS Computer
+     120196411245L: 'Qt4Agg', # JFC ASUS Computer
+     121377386969L: 'TkAgg'
     }
 NODE_ID = uuid.getnode()
 if NODE_ID in BACKEND_SELECTOR_LIST:
