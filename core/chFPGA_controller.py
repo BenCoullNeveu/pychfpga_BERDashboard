@@ -21,6 +21,7 @@ History:
         Added LCD initialization and firmware version display on the LCD
         Implemented default channel managements
     2012-08-27 JFC : Fixed reference to common.util as pychime.common.util         
+    2012-09-18 JFC: Added set_global_trig()
 """
 
 import numpy as np
@@ -426,11 +427,11 @@ class chFPGA_controller(object):
         else:
             self.REFCLK.sync()
 
-    def ant_reset(self):
+    def pulse_ant_reset(self):
         """ Resets the stats of all antenna processor modules and clear the processing pipeline.
         Memory-mapped registers are not affected.
         """
-        self.GPIO.pulse_bit('ANT_RESET') # resets all 
+        self.GPIO.pulse_ant_reset() # resets all 
 
     def set_default_channels(self, channels):
         """
@@ -594,6 +595,30 @@ class chFPGA_controller(object):
                 ant.FFT.BYPASS = bypass_mode
                 ant.SCALER.BYPASS = bypass_mode
 
+    def set_global_trigger(self, trigger_state):
+        """
+        Sets the global trigger to the specified value.
+        
+        In injection mode, the injection buffers are read only when trigger=True. This allows the buffers from all the antennas to be read simultaneously. In this case, the CAPTURE flag if the injected frames is always set.
+        In other modes, the trigger status is passed to the CAPTURE flag of the data frames on a frame-by-frame basis (the CAPTURE flag is set at the begining of the frame ans syats constant until the end of the frame so no partial frames will be captured downstream.)
+
+        History:
+            120918 JFC: Added this function
+        """
+        self.GPIO.set_global_trig(trigger_state)
+
+    def inject_frame(self,  data=None, length=None, channels=None):
+        """ Inject a frame of data in the specified antenna processing pipeline"""
+        if channels is None:
+            channels = self.default_channels
+        if isinstance(channels, int):
+            channels = [channels]
+        for ch in channels:            
+            if isinstance(data, dict):
+                self.ANT[ch].FR_DIST.inject_frame(data[ch])
+            else:
+                self.ANT[ch].FR_DIST.inject_frame(data)
+                
     def version(self):
        print 'Firmware date is %s' % self.GPIO.get_bitstream_date()
        
