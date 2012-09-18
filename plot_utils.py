@@ -5,11 +5,11 @@
    plot_utils.py
     Provides plotting utilities
     
-    #
-    # History:
-    # 2012-07-16 : KMB : Created mostly moving functions from chFPGA
-    # 2012-07-17 : KMB : Changed plot timestream to use much faster animation library, more to follow
+History:
+    2012-07-16 : KMB : Created mostly moving functions from chFPGA
+    2012-07-17 : KMB : Changed plot timestream to use much faster animation library, more to follow
     2012-07-25 JFC: Added selection of matplotlib backend based on os type so it would work on both windows and mac
+    2012-09-18 JFC: Changed backend selection method to use the computer node address.
 '''
 
 
@@ -18,16 +18,17 @@ import matplotlib
 #comment this out if Tk backend not working well  
 #I havetrouble sometime with the EPD version, but works well with macports
 import os
+import uuid
 
-# Selects which backend to use for matplotlib based on the operating system.
+# Selects which backend to use for matplotlib based on the system node ID.
 # If not in the list, the default backend is used
+# usial choices of packends are 'TkAgg' or 'Qt4Agg' 
 BACKEND_SELECTOR_LIST = {
-    'nt': 'TkAgg'
+     120196411245L: 'Qt4Agg' # JFC ASUS Computer
     }
-#    'nt': 'Qt4Agg'
-
-if os.name in BACKEND_SELECTOR_LIST:
-    matplotlib.use(BACKEND_SELECTOR_LIST[os.name])
+NODE_ID = uuid.getnode()
+if NODE_ID in BACKEND_SELECTOR_LIST:
+    matplotlib.use(BACKEND_SELECTOR_LIST[NODE_ID])
 
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
