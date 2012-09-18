@@ -10,7 +10,7 @@ import numpy as np
 import pychime.pffb as pfb
 import pylab
 
-class test_adc_fft_bin(alg_BaseClass):
+class test_adc_fft_bin(test_BaseClass):
     '''
      Test class for testing chFPGA poly-phase filter-bank FFT bin shape.  
      Looks closely at bin number 31 (), Might want to change to be configurable.

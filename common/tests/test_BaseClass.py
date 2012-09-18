@@ -5,6 +5,7 @@ BaseClass for testing chime FPGA board.
 '''
 
 from pychime.core import Inject as inj
+import numpy as np
 
 class test_BaseClass:
     '''
