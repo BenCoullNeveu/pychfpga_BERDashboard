@@ -200,9 +200,15 @@ class chFPGA_receiver(object):
             self.frame_queue.queue.clear()
 
     def send_every_frame(self, state):
+        """ 
+        If state=True, tells the receiver Thread to put in the FIFO every data frame as it comes in.
+        If state=False, the receiver will put all the data with the same timestamp in the FIFO. This means this is not done until another timestanp is received.
+        """        
         self.frame_receiver.send_every_frame(state)
         
     def length(self):
+        """ Returns the number of entries in the receiver FIFO """
+        
         return self.frame_queue.qsize()        
             
     def read_frames(self, frames=1, verbose=0, raw=0, flush=0, timeout=3):

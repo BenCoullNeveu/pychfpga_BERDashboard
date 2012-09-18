@@ -16,6 +16,7 @@ GPIO.py module
     2011-09-27 JFC: Split ADC_DAQ_SYNC into ADC_DAQ_BUFR_SYNC and ADC_DAQ_SERDES_SYNC 
     2012-07-09 JFC: Assert ANT_RESET on init to allow communications through if the board is sending lots of data
     2012-07-25 JFC: Renamed from SYSMOD.py to GPIO.py
+    2012-09-18 JFC: Added set_global_trig()
 """
 
 from Module import Module_base, BitField
@@ -78,9 +79,17 @@ class GPIO_base(Module_base):
         string = '%04i-%02i-%02i %02i:%02i:%02i' % (year + 2000, month, day, hour, minutes, seconds)
         return string
 
-    def global_trig(self):
+    def set_global_trig(self, trigger_state):
+        """ Sets the global trigger line to the specified state. """
+        self.GLOBAL_TRIG = trigger_state
+
+    def pulse_global_trig(self):
         """ Pulses the global trigger line. """
         self.pulse_bit('GLOBAL_TRIG')
+
+    def pulse_ant_reset(self):
+        """ Pulses the antenna processor reset line. """
+        self.pulse_bit('ANT_RESET')
 
     def global_reset(self):
         """ Pulses the global reset line. """
