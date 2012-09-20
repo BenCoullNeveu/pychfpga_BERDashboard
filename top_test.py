@@ -124,8 +124,8 @@ if __name__ == '__main__':
     #dcs = inj.check_fft_dc(c,r)
     # Displays the system frequencies
     c.FreqCtr.status()
-    #adctest = test_adc_fft_bin(c,r)
-    #stuff = adctest.execute()
+    adctest = test_adc_fft_bin(c,r)
+    stuff = adctest.execute()
     #adctest = test_adc_fft_int_power(c,r)
     #stuff = adctest.execute()
     #import numpy as np
