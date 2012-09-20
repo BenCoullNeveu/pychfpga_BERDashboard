@@ -64,6 +64,7 @@ def inject(fc, fr, channels=None, data=None):
     By default, 'channels' covers all channels unless specified otherwise. 
 
     2012-09-18 JFC: Switched the order of the parameters
+    2012-09-19 KMB: Switched back parameters to keep compatiblity
     """
     #print data
     if channels is None:
