@@ -55,7 +55,7 @@ def set_inject_mode(fpga_ctrl, fpga_recv, bypass_FFT=False, channels=range(8)):
     #    fpga_recv.read_frames()        
     #fpga_recv.flush()
 
-def inject(fc, fr,  data=None, channels=None):
+def inject(fc, fr, channels=None, data=None):
     """
     Injects data into the specified channels.
     
@@ -64,6 +64,7 @@ def inject(fc, fr,  data=None, channels=None):
     By default, 'channels' covers all channels unless specified otherwise. 
 
     2012-09-18 JFC: Switched the order of the parameters
+    2012-09-19 KMB: Switched back parameters to keep compatiblity
     """
     #print data
     if channels is None:

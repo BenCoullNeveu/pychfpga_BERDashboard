@@ -1,7 +1,7 @@
 #!/usr/bin/env python
 
 '''
-Class with testing function for testing the adc.
+Class with testing function for testing the adc. older version, not kept up.  Remove soon.
 '''
 
 from pychime.core import Inject as inj
