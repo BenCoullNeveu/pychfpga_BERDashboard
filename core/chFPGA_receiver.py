@@ -228,7 +228,7 @@ class chFPGA_receiver(object):
         # Acquire the data
         data={}
         if flush:
-            self.flush_frame_buffer()
+            self.flush()
             
         for j in range(frames):
         #j=0
