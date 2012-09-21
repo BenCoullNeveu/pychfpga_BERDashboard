@@ -8,7 +8,8 @@ History:
     2011-07-12 : JFC : Created from test code in chFPGA.py
     2012-05-29 JFC: Extracted frm ANT.py
     2012-09-05 JFC: Fixed PIPELINE_DELAY property: was STATUS instead of CONTROL
-    
+    2012-09-20 JFC: Changed FFT_SHIFT init value: left at default. FW was updated with updated value.
+        Added OVERFLOW_RESET, SOFT_RESET bitfields to match FW
 """
 #import time
 #import numpy as np
@@ -22,8 +23,10 @@ class FFT_base(Module_base):
     STATUS = BitField.STATUS
 
     # Define Control registers
-    BYPASS = BitField(CONTROL, 0x00,0, doc="Bypass the FFT")
+    SOFT_RESET = BitField(CONTROL, 0x00,7, doc="Resets the module (also performs a DLY_RESET).")
+    OVERFLOW_RESET = BitField(CONTROL, 0x00,2, doc="Resets the overflow counter.")
     DLY_RESET = BitField(CONTROL, 0x00,1, doc="Reset the computation of the CASPER block pipelining delay. When released, the block will re-learn the block latency once a CASPER SYNC has passed through the block.")
+    BYPASS = BitField(CONTROL, 0x00,0, doc="Bypass the FFT")
     FFT_SHIFT = BitField(CONTROL, 0x02,0,11, doc="FFT shift enable bit for each of the FFT stage")
     SYNC_PERIOD = BitField(CONTROL, 0x04, 0, width=16, doc="Number of clock cycles between SYNC pulses. See CASPER documentation for minimum SYNC spacing.")
     PIPELINE_DELAY = BitField(CONTROL, 0x06, 0, width=16, doc="Latency (in number of clocks) of the CASPER PFB/FFT")
@@ -40,16 +43,16 @@ class FFT_base(Module_base):
 
     def init(self):
         """ Initialize the FFT module"""
-        self.BYPASS = 0
-        self.SYNC_PERIOD *= 2
-        self.FFT_SHIFT= 2**3 - 1
+        #self.BYPASS = 0
+        #self.SYNC_PERIOD *= 2
+        #self.FFT_SHIFT= 2**3 - 1
 
     def status(self):
         """ Displays the status of the data capture module"""
         print '-------------- ANT[%i].FFT STATUS --------------' % self.port_number 
         print ' FFT Bypass: %s' % (bool(self.BYPASS))
-#        print ' FFT SHIFT schedule: 0x%X' % (self.FFT_SHIFT)
-#        print ' CASPER block pipeling delay: %i clocks' % (self.PIPELINE_DELAY)
-#        print ' Number of FFT overflows: %i' % (self.OVERFLOW_COUNT)
+        print ' FFT SHIFT schedule: 0x%X' % (self.FFT_SHIFT)
+        print ' CASPER block pipeling delay: Measured=%i, set point=%i:  clocks' % (self.MEASURED_PIPELINE_DELAY, self.PIPELINE_DELAY)
+        print ' Number of FFT overflows: %i' % (self.OVERFLOW_COUNT)
 
 

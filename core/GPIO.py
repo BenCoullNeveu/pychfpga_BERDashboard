@@ -17,6 +17,7 @@ GPIO.py module
     2012-07-09 JFC: Assert ANT_RESET on init to allow communications through if the board is sending lots of data
     2012-07-25 JFC: Renamed from SYSMOD.py to GPIO.py
     2012-09-18 JFC: Added set_global_trig()
+    2012-09-20 JFC: Modified bitfield list into bitfield assignemnts. Added LOG2_FRAME_LENGTH and NUMBER_OF_ANTENNAS bitfields.
 """
 
 from Module import Module_base, BitField
@@ -30,32 +31,32 @@ class GPIO_base(Module_base):
     CONTROL = BitField.CONTROL
     STATUS = BitField.STATUS
 
-    BITS = {
-        'GLOBAL_TRIG' :     BitField(CONTROL, 0x00, 7, doc='Global trigger'),
-        'BUCK_SYNC_ENABLE':    BitField(CONTROL, 0x00, 6, doc='Enable generation of the Buck SYNC signals'),
-        'GLOBAL_RESET' :     BitField(CONTROL, 0x00, 5, doc='Resets the whole FPGA'),
-        'ADC_DAQ_BUFR_SYNC' :     BitField(CONTROL, 0x00, 4, doc='ADC_DAQ SYNC line. Common to all ADC_DAQs.'),
-        'ADC_DAQ_SERDES_SYNC' : BitField(CONTROL, 0x00, 3, doc='ADC_DAQ SYNC line. Common to all ADC_DAQs.'),
-        'FR_DIST_SYNC' :     BitField(CONTROL, 0x00, 2, doc='FR_DIST line. Common to all FR_DISTs.'),
-        'ADC_SYNC' :         BitField(CONTROL, 0x00, 1, doc='ADC SYNC line. Common to both ADCs.'),
-        'ADC_RESET' :         BitField(CONTROL, 0x00, 0, doc='ADC RESET line. Common to both ADCs.'),
+    GLOBAL_TRIG = BitField(CONTROL, 0x00, 7, doc='Global trigger')
+    BUCK_SYNC_ENABLE = BitField(CONTROL, 0x00, 6, doc='Enable generation of the Buck SYNC signals')
+    GLOBAL_RESET = BitField(CONTROL, 0x00, 5, doc='Resets the whole FPGA')
+    ADC_DAQ_BUFR_SYNC = BitField(CONTROL, 0x00, 4, doc='ADC_DAQ SYNC line. Common to all ADC_DAQs.')
+    ADC_DAQ_SERDES_SYNC = BitField(CONTROL, 0x00, 3, doc='ADC_DAQ SYNC line. Common to all ADC_DAQs.')
+    FR_DIST_SYNC = BitField(CONTROL, 0x00, 2, doc='FR_DIST line. Common to all FR_DISTs.')
+    ADC_SYNC = BitField(CONTROL, 0x00, 1, doc='ADC SYNC line. Common to both ADCs.')
+    ADC_RESET = BitField(CONTROL, 0x00, 0, doc='ADC RESET line. Common to both ADCs.')
 
-        'BUCK_CLK_DIV' :     BitField(CONTROL, 0x01, 0, width=8, doc='Clock divider to set the BUCK SYNC frequency (2-255). Relative to the internal ADC word clock (200 MHz)'),
+    BUCK_CLK_DIV = BitField(CONTROL, 0x01, 0, width=8, doc='Clock divider to set the BUCK SYNC frequency (2-255). Relative to the internal ADC word clock (200 MHz)')
 
-        'LCD_E' :             BitField(CONTROL, 0x02, 7, doc='LCD Enable'),
-        'LCD_RS' :             BitField(CONTROL, 0x02, 6, doc='LCD RS (0=command, 1=data)'),
-        'LCD_RW' :             BitField(CONTROL, 0x02, 5, doc='LCD Read/Write flag (0=write, 1=read)'),
-        'LCD_DATA' :         BitField(CONTROL, 0x02, 0, width=4, doc='LCD 4-bit data bus'),
+    LCD_E = BitField(CONTROL, 0x02, 7, doc='LCD Enable')
+    LCD_RS = BitField(CONTROL, 0x02, 6, doc='LCD RS (0=command, 1=data)')
+    LCD_RW = BitField(CONTROL, 0x02, 5, doc='LCD Read/Write flag (0=write, 1=read)')
+    LCD_DATA = BitField(CONTROL, 0x02, 0, width=4, doc='LCD 4-bit data bus')
 
-        'USER_RESET' :         BitField(CONTROL, 0x03, 7, doc='User reset'),
-        'ANT_RESET' :         BitField(CONTROL, 0x03, 6, doc='Antenna processing pipeline reset'),
-        'CORR_RESET' :         BitField(CONTROL, 0x03, 5, doc='Correlator reset'),
+    USER_RESET = BitField(CONTROL, 0x03, 7, doc='User reset')
+    ANT_RESET = BitField(CONTROL, 0x03, 6, doc='Antenna processing pipeline reset')
+    CORR_RESET = BitField(CONTROL, 0x03, 5, doc='Correlator reset')
 
-        'TIMESTAMP' : BitField(STATUS, 0x0A, 0, width=32, doc='Bitstream timestamp word'),
+    TIMESTAMP = BitField(STATUS, 0x0A, 0, width=32, doc='Bitstream timestamp word')
 
-        'TIMESTAMP_VALID' : BitField(STATUS, 0x00, 7, doc='Timestamp data valid (i.e. can be read)'),
-        'ADC_SYNC_READBACK' : BitField(STATUS, 0x00, 0, doc='Reads back the SYNC bit for debugging'),
-    }
+    TIMESTAMP_VALID = BitField(STATUS, 0x00, 7, doc='Timestamp data valid (i.e. can be read)')
+    ADC_SYNC_READBACK = BitField(STATUS, 0x00, 0, doc='Reads back the SYNC bit for debugging')
+    LOG2_FRAME_LENGTH = BitField(STATUS, 0x01, 0, width=8, doc='Number of time samples per frame')
+    NUMBER_OF_ANTENNAS = BitField(STATUS, 0x02, 0, width=8, doc='Number of implemented antenna processing pipelines')
 
 
     def __init__(self, fpga):

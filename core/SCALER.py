@@ -34,8 +34,8 @@ class SCALER_base(Module_base):
 
 	def init(self):
 		""" Initialize the SCALER module"""
-		self.BYPASS = 1
-		self.SHIFT_LEFT = 10
+		#self.BYPASS = 1
+		#self.SHIFT_LEFT = 10
 
 	def status(self):
 		""" Displays the status of the scaler module"""
