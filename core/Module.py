@@ -274,12 +274,18 @@ class Module_base(object):
         if 'addr' is numeric, the bit 'bit' at address 'addr' is pulsed.
         If 'addr' is a string containing the name of a bit field, then this bit is pulsed.
         """
-
-        if addr in self.BITS:
-            field_def = self.BITS[addr]
-            if field_def.width != 1:
+        if isinstance(addr, str):
+            bitfield = self.bitfield(addr)
+            if bitfield.width != 1:
                 raise Exception('The bit field must be a single bit (width=1)')
-            (addr, bit) = (field_def.addr, field_def.bit)
+            else:
+                (addr, bit) = (bitfield.addr, bitfield.bit)
+
+        #if addr in self.BITS:
+        #    field_def = self.BITS[addr]
+        #    if field_def.width != 1:
+        #        raise Exception('The bit field must be a single bit (width=1)')
+        #    (addr, bit) = (field_def.addr, field_def.bit)
 
         mask = (1<<bit)
         t0 = time.time()
