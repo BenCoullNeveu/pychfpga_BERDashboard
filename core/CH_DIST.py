@@ -43,12 +43,19 @@ class CH_DIST_base(Module_base):
 
     def select_words(self, words_to_enable):
         """
-        Selects which words* are going to be transmitted at the output of the antenna processing pipeline.
-        If 'pattern' is an integer, words 0 to (pattern-1) are transmitted.
-        If pattern is an array, the word numbers indicated in the arrays are transmitted.
-        So [0,1,2,3] will do freq channels [0,1,2,3,4,5,6,7]
-        * NOTE: a word is 4 bytes. If the FFT is bypassed, each word contains 4 8-bit ADC samples. 
-            If the FFT is enabled, each word contains 2 complex values, one for the even and odd frequency bin. Each complex value is two 8-bit values (real and imaginary)
+        Selects which frequency channels are going to be passed to this correlator. 
+        A correlator normally process only a subset of the frequency channels because it receives those channels from all antennas but it has a limited computational bandwidth.
+        The correlation of all frequency channles is therefore usually spread over many correlator blocks, each procesing a different range of frequency channels.
+
+        Due to the inetrnal architecture of the system, the frequency channels are selected in pairs: an even and odd bin.
+        Each pair is contained in a 32-bit word. This function selects which word to transmit.
+        
+        If 'words_to_enable' is an integer, words 0 to (words_to_enable-1) are transmitted. (i.e channels 0 to 2*words_to_enable-1 are selected )
+            select_words(4) selects words 0,1,2 and 3. and freq channels [0,1,2,3,4,5,6,7]
+        If 'words_to_enable' is an array, the word numbers indicated in the arrays are selected.
+            select_words([0,1,2,3]) selects words 0,1,2 and 3. and freq channels [0,1,2,3,4,5,6,7]
+
+        If the FFT is bypassed, each word contains 4 8-bit ADC samples instead of a pair of frequency channels. 
         """
         # Initialize filter mask (8 flags per word)
         mask = np.zeros(self.fpga.FRAME_LENGTH/4/8, np.uint8)

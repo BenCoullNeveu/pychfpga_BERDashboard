@@ -50,13 +50,14 @@ class GPIO_base(Module_base):
     USER_RESET = BitField(CONTROL, 0x03, 7, doc='User reset')
     ANT_RESET = BitField(CONTROL, 0x03, 6, doc='Antenna processing pipeline reset')
     CORR_RESET = BitField(CONTROL, 0x03, 5, doc='Correlator reset')
-
-    TIMESTAMP = BitField(STATUS, 0x0A, 0, width=32, doc='Bitstream timestamp word')
+    CORR_IP_PORT_OFFSET = BitField(CONTROL, 0x03, 2, width=2, doc='Correlator output data IP port offset from the base port')
+    DATA_IP_PORT_OFFSET = BitField(CONTROL, 0x03, 0, width=2, doc='Captured data IP port offset from the base port')
 
     TIMESTAMP_VALID = BitField(STATUS, 0x00, 7, doc='Timestamp data valid (i.e. can be read)')
     ADC_SYNC_READBACK = BitField(STATUS, 0x00, 0, doc='Reads back the SYNC bit for debugging')
     LOG2_FRAME_LENGTH = BitField(STATUS, 0x01, 0, width=8, doc='Number of time samples per frame')
     NUMBER_OF_ANTENNAS = BitField(STATUS, 0x02, 0, width=8, doc='Number of implemented antenna processing pipelines')
+    TIMESTAMP = BitField(STATUS, 0x0A, 0, width=32, doc='Bitstream timestamp word')
 
 
     def __init__(self, fpga):
@@ -100,8 +101,10 @@ class GPIO_base(Module_base):
         """ Initializes the module operations"""
         # reset the antenna processors so they stop sending data.
         # We do not use ANT_RESET=1 because this implies a read, which might not get through if too much data is coming in
-        ant_reset = self.bitfield('ANT_RESET')
-        self.write(ant_reset.addr, 1 << ant_reset.bit)
+        self.ANT_RESET = 1 # This replaces the direct access below which resets all bits in the word. Not sure why I did that. 
+        self.CORR_RESET = 0  
+        # ant_reset = self.bitfield('ANT_RESET')
+        # self.write(ant_reset.addr, 1 << ant_reset.bit)
 
     def status(self):
         """ Displays the module status"""
