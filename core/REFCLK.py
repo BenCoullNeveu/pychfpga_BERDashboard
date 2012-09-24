@@ -38,7 +38,7 @@ class REFCLK_base(Module_base):
 
     SYNC_DELAY_RST = BitField(CONTROL, 0x01, 7, doc='Resets the SYNC line IODELAY and loads the delay value specified in SYNC_DELAY.')
     ENABLE_SYNC_GENERATION = BitField(CONTROL, 0x01, 6, doc='Allows the internal state machine to generate the SYNC sequence (generate the ADC SYNC and resets the ADCDAQ SERDES and BUFG)')
-    ENABLE_SYNC_DETECT = BitField(CONTROL, 0x01, 5, doc='When 1, enable SYNC detection based on the Refecence clock pulse length. Disable if the FMC board is not present to prevent spurious resets of the data path.')
+    ENABLE_SYNC_DETECTION = BitField(CONTROL, 0x01, 5, doc='When 1, enable SYNC detection based on the Refecence clock pulse length. Disable if the FMC board is not present to prevent spurious resets of the data path.')
     SYNC_DELAY = BitField(CONTROL, 0x01, 0, width=5, doc='Delay between the FMC Reference clock and the SYNC edge (0-31). Must pulse SYNC_DELAY_RST to load.')
 
     REFCLK_DELAY_RST = BitField(CONTROL,0x02, 7, doc='Resets the REFCLK line IODELAY and loads the delay value specified in REFCLK_DELAY.')
@@ -67,10 +67,10 @@ class REFCLK_base(Module_base):
 
         # If the board is not present, disable SYNC detection on REFCLK to prevent noise on the floating REFCLK lien to generate spurioys resets. 
         if self.fpga.FMC_present:
-            self.ENABLE_SYNC_DETECT = 1
+            self.ENABLE_SYNC_DETECTION = 1
             self.ENABLE_SYNC_GENERATION = 1
         else:
-            self.ENABLE_SYNC_DETECT = 0
+            self.ENABLE_SYNC_DETECTION = 0
             self.ENABLE_SYNC_GENERATION = 0
             
 
@@ -84,16 +84,21 @@ class REFCLK_base(Module_base):
 
     def local_sync(self, delay=None):
         """
-        Locally generates a SYNC pulse on the current board's ADCs and reset the data acquisition logic. This is the same as receiving a SYNC signal encoded on the 10 MHz reference clock. The timing of the sync pulse relative to the received 10 MHz clock can optionally be specified.
+        Locally generates a SYNC pulse on the current board's ADCs and reset the data acquisition logic. 
+        This is the same as receiving a SYNC signal encoded on the 10 MHz reference clock. 
+        The timing of the sync pulse (delay relative to FMC 10 MHz reference clock can optionally be specified).
+            If delay=None or is omited, the previous SYNC timing will be used.
+            If delay is an integer between 0 and 31, the timing delay is set to that value.
         """ 
-        if delay is not None:
+        if delay is None:
+            self.set_refclk_delay(self.sync_delay)
+        else:
             self.set_sync_delay(delay)
             self.set_refclk_delay(delay)
-        self.set_refclk_delay(self.sync_delay)
-
+ 
         #print 'Setting delay to',    self.sync_delay
-        self.pulse_bit('FORCE_SYNC')
-        self.wait_for_bit('SYNC_DONE')
+        self.pulse_bit('FORCE_SYNC') # Force the REFCLK state machine to initiate a SYNC event
+        self.wait_for_bit('SYNC_DONE') # Wait until the SYNC process is completed
         #time.sleep(10e-3) # make sure the SYNC sequence is completed and that the ADC clock is running 
 
     def inc_phase(self, inc_amount):
@@ -141,58 +146,47 @@ class REFCLK_base(Module_base):
         self.REFCLK_DELAY = delay
         self.pulse_bit('REFCLK_DELAY_RST')
 
-    def scan_refclk_delay(self, sleep=0.005, average=1, continuous=0, verbose=0):
+    def acquire_ADC_clock_waveform(self,  sleep=0.005, average=1, continuous=0, verbose=0):
+        """
+        Measures the waveform of the 400 MHz ADC input clock for all ADCs. 
+        This is done by sweeping the delay on the 10 MHz reference clock and sampling the ADC clock signal in that delayed clock for every delay value. 
+        32 samples are taken over total delay of 2.5 ns (78.125 ps/sample). The acquisition therefore spans the full period of a 400 MHz signal, and it is graranteed that a transition will be observed. 
+
+        'ADC_list' specifies from which ADCs we want to measure the waveform.
+        'sleep' indicates how much time to wait between samples are taken.
+
+        The method returns a numpy array ox 8x32 integers. First dimension is the ADC number, second dimension is the delay.
+        """
         tap_delay = 1/200e6/32/2
-        #N=0
-        #sum_edges=0.0
-        #max_edges=-np.inf
-        #min_edges=np.inf
-        try:
-            while True:
-                samples = np.zeros(32, np.int8);
-                for delay in range(32): 
-                    self.set_refclk_delay(delay)
-                    time.sleep(sleep)
-                    #for i in range(40):
-                        #s=self.ADC_CLK_SAMPLE
-                        #print ('0','1')[s],
-                    #print
-                    #samples.append(self.ADC_CLK_SAMPLE)
-                    #samples[delay]=self.ADC_CLK_SAMPLE
-                    samples[delay] = self.fpga.ANT[0].ADCDAQ.ADC_CLK_SAMPLE | self.fpga.ANT[7].ADCDAQ.ADC_CLK_SAMPLE<<1
-
-                #edges=np.where(np.diff(np.array(samples)))
-                #first_edge=np.min(edges)
-                #last_edge=np.max(edges)
-                #uncertainty=float(last_edge-first_edge)*tap_delay
-                #edge=float(last_edge+first_edge)/2*tap_delay
-                #N+=1;
-                #sum_edges+=edge
-                #max_edges=max(max_edges,edge)
-                #min_edges=min(min_edges,edge)
-
-                #sum_uncertainty+=uncertainty
-
-                if verbose:
-                    print '%s (edge %.0f ps, uncertaunty= %.0f)' % (self.bit_vector_to_string(samples), edge*1e12,uncertainty*1e12)
-                average -= 1
-                if (not continuous) and (not average): break
-        except KeyboardInterrupt:
-            pass
-        self.set_refclk_delay(0)
-        #if verbose:
-        #    print 'Edge statistigs: Average=%.0f ps, min=%.0f, max=%.0f, spread=%.0f ' % (sum_edges/N*1e12,min_edges*1e12,max_edges*1e12, (max_edges-min_edges)*1e12)
+        samples = np.zeros((8,32), np.int8) # prepare an empty array that wil lcontain the clock sample values for all ADCs and all delay values. 
+        for delay in range(32): 
+            self.set_refclk_delay(delay)
+            time.sleep(sleep)
+            for i in range(8):
+                samples[i][delay] = self.fpga.ANT[i].ADCDAQ.ADC_CLK_SAMPLE
+ 
+        self.set_refclk_delay(0) # Return the reference clock delay to a known state
         return samples
 
     def print_bit_vector(self, samples):
         print self.bit_vector_to_string(samples)
 
-    def bit_vector_to_string(self,samples):
+#    def bit_vector_to_string(self,samples):
+#
+#        r = ''
+#        for bit in range(2):
+#            r += ''.join(('0','1')[bool(s & (1<<bit))] for s in samples)+' '
+#        return r
 
-        r = ''
-        for bit in range(2):
-            r += ''.join(('0','1')[bool(s & (1<<bit))] for s in samples)+' '
-        return r
+    def bit_vector_to_string(self, samples, mark):
+
+        bitstring = ''
+        for i in range(len(samples)):
+            if i == mark:
+                bitstring += '!'
+            else:
+                bitstring += ('.','#')[bool(samples[i])]
+        return bitstring
 
     def compute_phase(self, s, freq=400e6, dt=1/200e6/32/2):
         """
@@ -231,8 +225,25 @@ class REFCLK_base(Module_base):
         return vv
 
 
-    def scan_sync_delay(self, sleep=0.001, repeat=1, delays=range(32), plot=False):
+    def compute_sync_delay(self, ADC_list = [0,7], sleep=0.001, repeat=1, delays=range(32), plot=False):
+        """
+        Computes and sets the recommended SYNC pulse timing to ensure that it will meet the ADC timing requirments. 
+
+        This is done by sweeping the timing of the SYNC pulse over a range of 2.5 ns in 32 steps (78.125 ps steps) and for 
+        each delay synchronize the ADC and measure the waveform of the 400 MHz ADC output clock. 
+        Phase discontinuities will be seen where the timing requirments is not met 
+        (i.e. the SYNC falling edge is too close to the 1600 MHz ADC input clock and the setup or hold requirements are not met).  
+
+        The algorithm then look for those discontinuities, and compute the delay that will place the SYNC between the first two first ones. 
+        This is done for all ADC simultaneously. The average SYNC timing for all ADCs is used as the optimal value.
+
+        NOTE: This will work only of the ADC board is configured to SYNC the ADC directly from the SYNC signal coming from the FPGA.
+        On REV2 boards, this means: 
+            1) The FPGA SYNC is used as a source by setting the appropriate control bit on the SYNC mux. 
+            2) The SYNC Flip Flop is bypassed by hardware, and the ADC SYNC selection mux control bit must also be set to use the bypassed input.
+        """
         samples = [];
+        # If plot=1, prepare the plots 
         if plot:
             plt.figure(1)
             plt.clf()
@@ -251,55 +262,62 @@ class REFCLK_base(Module_base):
 
         if isinstance(delays,int):
             delays = [delays]
-        phase = np.ones(len(delays))*np.inf
+        phase = np.ones((8,len(delays)))*np.inf
 
-        try:
-            for delay in delays: 
-                for n in range(repeat):
-                    self.local_sync(delay)
-                    s = self.scan_refclk_delay(sleep=sleep)
-                    ss = (s&1!=0, s&2!=0)
-                    dd = self.compute_phase(ss[0])
-                    print 'Delay %2i: %s, phase =%.0f' % (delay, self.bit_vector_to_string(s), dd)
-                    if plot:
-                        plt.subplot(1,2,1)
-                        plt.plot([0, 128],[-.25+delay]*2, 'r-')
-                        plt.plot((np.hstack((ss[0], ss[0], ss[0], ss[0]))-.5)*.5+delay, 'r-')
-                        plt.plot([dd],[delay], 'go')
-                        #plt.plot([rise],[delay],'yo')
-                        #plt.plot([np.mod(dd,8)],[delay],'ro')
-                        plt.subplot(1,2,2)
-                        plt.plot([0,128],[-.25+delay]*2, 'r-')
-                        plt.plot((np.hstack((ss[1], ss[1], ss[1], ss[1]))-.5)*.5+delay, 'r-')
-                phase[delay] = min(phase[delay],dd)
-                if plot:
-                    plt.draw()
-            print 'Phases: ',phase
-            phase = self.unwrap(phase, 32) # removes jumps greater than 32
-            edges = self.find_edges(phase, min_step=3, window=4)
-        
+        for sync_delay in delays: 
+            print 'Sync delay %2i:' % (sync_delay),
+            self.local_sync(sync_delay)
+            samples = self.acquire_ADC_clock_waveform(sleep=sleep) # Measure the ADC clock waveform for all ADCs
+            for ADC_number in range(len(samples)):
+                phase[ADC_number][sync_delay] = self.compute_phase(samples[ADC_number])
+                if ADC_number in ADC_list:
+                    bitstring =  self.bit_vector_to_string(samples[ADC_number], np.mod(int(round(phase[ADC_number][sync_delay])),32))   
+                    print 'ADC%2i: %s' % (ADC_number,bitstring), 
+            print
+#            if plot:
+#                plt.subplot(1,2,1)
+#                plt.plot([0, 128],[-.25+delay]*2, 'r-')
+#                plt.plot((np.hstack((ss[0], ss[0], ss[0], ss[0]))-.5)*.5+delay, 'r-')
+#                plt.plot([dd],[delay], 'go')
+#                #plt.plot([rise],[delay],'yo')
+#                #plt.plot([np.mod(dd,8)],[delay],'ro')
+#                plt.subplot(1,2,2)
+#                plt.plot([0,128],[-.25+delay]*2, 'r-')
+#                plt.plot((np.hstack((ss[1], ss[1], ss[1], ss[1]))-.5)*.5+delay, 'r-')
+#            phase[delay] = min(phase[delay],dd)
+#            if plot:
+#                plt.draw()
+        print 'Recommended SYNC delays' 
+        recommended_sync_delay = np.zeros(len(samples))
+        for ADC_number in range(len(samples)):
+            print 'ADC%2i:' % (ADC_number), 
+            phase[ADC_number] = self.unwrap(phase[ADC_number], 32) # removes jumps greater than 16
+            phase[ADC_number] -= min(phase[ADC_number])
+            edges = self.find_edges(phase[ADC_number], min_step=3, window=4)
+            print 'Edges found at delays (%s)' % str(edges),
             if len(edges)<2:
                 print 'Insufficient number of ADC_CLK phase jumps edges to determine optimal SYNC timing'
             else:
-                e = int(edges[0]+np.average(np.diff(edges*1.0))*0.40) # place sync at a fraction of the average distance between phase jumps
-                print 'Recommended SYNC delay: %i taps' % e
-                if plot:
-                    plt.subplot(1, 2, 1)
-                    plt.plot(phase, range(len(phase)), 'bo-')
-                    plt.plot(phase[np.mod(edges, 64)], edges, 'ro')
-                    plt.plot([0, 31], [e]*2, 'yo-')
-                    plt.draw()
-                self.set_sync_delay(e)
+                recommended_sync_delay[ADC_number] = edges[0]+np.average(np.diff(edges*1.0))*0.40 # place sync at a fraction of the average distance between phase jumps
+                print ' Recommended sync_delay: %i' % int(round(recommended_sync_delay[ADC_number]))
+        average_recommended_sync_delay = int(round(np.average(recommended_sync_delay))) # must be an integer
+        print 'Recommended average sync delay: %i' % average_recommended_sync_delay
+#            if plot:
+#                plt.subplot(1, 2, 1)
+#                plt.plot(phase, range(len(phase)), 'bo-')
+#                plt.plot(phase[np.mod(edges, 64)], edges, 'ro')
+#                plt.plot([0, 31], [e]*2, 'yo-')
+#                plt.draw()
 
-        except KeyboardInterrupt:
-            pass
+        self.set_sync_delay(average_recommended_sync_delay)
+
 
             #self.print_bit_vector(s)
         #print ''.join(('0','1')[sample] for sample in samples)
 
     def status(self):
         print '---------------------FMC REF CLK  ------------------------------------'
-        print 'SYNC Detection Enabled: %s' % (bool(self.ENABLE_SYNC_DETECT))
+        print 'SYNC Detection Enabled: %s' % (bool(self.ENABLE_SYNC_DETECTION))
         print '----------------------------------------------------------------------'
 
 

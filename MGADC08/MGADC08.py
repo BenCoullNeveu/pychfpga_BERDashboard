@@ -97,7 +97,6 @@ class MGADC08_base(object):
             if verbose >= 2: print '  - AmbTemp'
             self.AmbTemp.init()
     
-    
             if verbose >= 2: print '  - IOExpander'
             self.IOExpander.init()
     

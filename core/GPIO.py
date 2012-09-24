@@ -37,7 +37,6 @@ class GPIO_base(Module_base):
     ADC_DAQ_BUFR_SYNC = BitField(CONTROL, 0x00, 4, doc='ADC_DAQ SYNC line. Common to all ADC_DAQs.')
     ADC_DAQ_SERDES_SYNC = BitField(CONTROL, 0x00, 3, doc='ADC_DAQ SYNC line. Common to all ADC_DAQs.')
     FR_DIST_SYNC = BitField(CONTROL, 0x00, 2, doc='FR_DIST line. Common to all FR_DISTs.')
-    ADC_SYNC = BitField(CONTROL, 0x00, 1, doc='ADC SYNC line. Common to both ADCs.')
     ADC_RESET = BitField(CONTROL, 0x00, 0, doc='ADC RESET line. Common to both ADCs.')
 
     BUCK_CLK_DIV = BitField(CONTROL, 0x01, 0, width=8, doc='Clock divider to set the BUCK SYNC frequency (2-255). Relative to the internal ADC word clock (200 MHz)')
