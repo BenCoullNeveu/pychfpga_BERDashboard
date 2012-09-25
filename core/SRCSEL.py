@@ -3,7 +3,7 @@
 # pylint: disable=C0301 
 
 """
-FRAMER.py module 
+SRCSEL.py module 
  Implements interface to the antenna FRAMER
 #
 # History:
@@ -17,7 +17,7 @@ from Module import Module_base, BitField
 
 
     
-class FR_DIST_base(Module_base):
+class SRCSEL_base(Module_base):
     """ Implements interface to the FR_DIST within a procecessor pipeline"""
     # Create local variables for page numbers tomake the table more readable
     CONTROL = BitField.CONTROL
@@ -51,12 +51,13 @@ class FR_DIST_base(Module_base):
     FIFO_OVERFLOW = BitField(STATUS, 0x00, 0, doc="Active high if the data FIFO is overflowing")
     FIFO_LENGTH = BitField(STATUS, 0x01, 0, width=8, doc="Number of samples currently in the data FIFO (last 8 bits only)")
     RAMP_CTR = BitField(STATUS, 0x02, 0, width=8, doc="Last 8 bits of the ramp counter (for debuging)")
+    ADC_FRAME_CTR = BitField(STATUS, 3, 0, width=8, doc="8-bit ADC Frame counter (for debuging)")
 
 
     def __init__(self, ant_ch_instance):
         self.ant = ant_ch_instance
         fpga = ant_ch_instance.fpga
-        super(self.__class__, self).__init__(fpga, fpga.ANT_PORT[ant_ch_instance.ant_number], ant_ch_instance.FR_DIST_MODULE)
+        super(self.__class__, self).__init__(fpga, fpga.ANT_PORT[ant_ch_instance.ant_number], ant_ch_instance.SRCSEL_MODULE)
         self._lock() # Prevent accidental addition of attributes (if, for example, a value is assigned to a wrongly-spelled property)
     # Specialized functions
 

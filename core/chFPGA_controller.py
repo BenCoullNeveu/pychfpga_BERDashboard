@@ -45,7 +45,7 @@ import MGT
 # FPGA Antenna processor handlers
 import ANT
 import ADCDAQ # Included only so it can be reloaded
-import FRAMER # Included only so it can be reloaded
+import SRCSEL # Included only so it can be reloaded
 import FFT # Included only so it can be reloaded
 import SCALER # Included only so it can be reloaded
 import PROBER # Included only so it can be reloaded
@@ -87,7 +87,7 @@ MODULE_LIST = (
         ML605_PMBus,
         ANT,
         ADCDAQ,
-        FRAMER, 
+        SRCSEL, 
         FFT, 
         SCALER, 
         PROBER, 
@@ -306,6 +306,7 @@ class chFPGA_controller(object):
         if verbose >= 2: 
             print '  - Done with initializations'
 
+
         #print '*** Setting ADCDAQ delays ***'
 
         #if adc_delay_table:
@@ -484,8 +485,8 @@ class chFPGA_controller(object):
             
         for ch in channels:
             ant = self.ANT[ch]
-            ant.FR_DIST.DATA_SOURCE = source_sel
-            ant.FR_DIST.reset_fifo() # if this automatically reset by SYNC now?
+            ant.SRCSEL.DATA_SOURCE = source_sel
+            ant.SRCSEL.reset_fifo() # if this automatically reset by SYNC now?
             if adcdaq_ramp is not None:
                 ant.ADCDAQ.ENABLE_RAMP = adcdaq_ramp
 
@@ -525,6 +526,15 @@ class chFPGA_controller(object):
 
         self.sync() # make sure the ADC mode is set and that capture  restarts properly with the right period
 
+    def set_ant_reset(self, state):
+        self.GPIO.ANT_RESET = state
+
+    def set_corr_reset(self, state):
+        self.GPIO.CORR_RESET = state
+
+    def set_trig(self, state):
+        self.GPIO.GLOBAL_TRIG = state
+        
     def stop_data_capture(self):
         """
         Stops the transmission of data.
@@ -615,10 +625,14 @@ class chFPGA_controller(object):
             channels = [channels]
         for ch in channels:            
             if isinstance(data, dict):
-                self.ANT[ch].FR_DIST.inject_frame(data[ch])
+                self.ANT[ch].SRCSEL.inject_frame(data[ch])
             else:
-                self.ANT[ch].FR_DIST.inject_frame(data)
+                self.ANT[ch].SRCSEL.inject_frame(data)
                 
     def version(self):
-       print 'Firmware date is %s' % self.GPIO.get_bitstream_date()
+        """
+        Displays the firmware revion currenting running on the FPGA (which si the date and time of bitstream generation)
+        """
+        print 'Firmware date is %s' % self.GPIO.get_bitstream_date()
+
        

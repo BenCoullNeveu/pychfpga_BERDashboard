@@ -9,9 +9,10 @@ ANT.py module
 History:
     2011-07-12 : JFC : Created from test code in chFPGA.py
     2012-08-31 JFC: Swapped addresses of PROBER and SCALER to match the same change in firmware
+    2012-09-25 JFC: Renamed to FRAMER and FR_DIST to SRCSEL
 """
 import ADCDAQ
-import FRAMER
+import SRCSEL
 import FFT
 import SCALER
 import PROBER    
@@ -21,7 +22,7 @@ class ANT_channel(object):
 
     # Antenna processor module addresses
     ADCDAQ_MODULE = 0
-    FR_DIST_MODULE = 1
+    SRCSEL_MODULE = 1
     FFT_MODULE = 2
     SCALER_MODULE = 3
     PROBER_MODULE = 4
@@ -32,7 +33,7 @@ class ANT_channel(object):
         self.ant_number = ant_number # store current ADC number for this instance
         self.fpga = self.ant.fpga
         self.ADCDAQ = ADCDAQ.ADCDAQ_base(self)
-        self.FR_DIST = FRAMER.FR_DIST_base(self)
+        self.SRCSEL = SRCSEL.SRCSEL_base(self)
         self.FFT = FFT.FFT_base(self)
         self.SCALER = SCALER.SCALER_base(self)
         self.PROBER = PROBER.PROBER_base(self)
@@ -53,7 +54,7 @@ class ANT_channel(object):
     def init(self):
         """ Initializes the antenna modules""" 
         self.ADCDAQ.init()
-        self.FR_DIST.init()
+        self.SRCSEL.init()
         self.FFT.init()
         self.SCALER.init()
         self.PROBER.init()
@@ -63,7 +64,7 @@ class ANT_channel(object):
         """ Displays the status of the antenna modules""" 
         print '======= ANTENNA NUMBER %i =============' % self.ant_number
         self.ADCDAQ.status()
-        self.FR_DIST.status()
+        self.SRCSEL.status()
         self.FFT.status()
         self.SCALER.status()
         self.PROBER.status()

@@ -1,12 +1,15 @@
 #!/usr/bin/python
+# Disable pylint Line too long (=C0301)
+# pylint: disable=C0301 
 
 """
 ADCDAQ.py module 
  Implements the interface to the ADC data acquisition module
-#
-# History:
-# 2011-07-12 : JFC : Created from test code in chFPGA.py
-# 2012-05-29 JFC: Extracted from ANT.py
+
+History:
+    2011-07-12 JFC: Created from test code in chFPGA.py
+    2012-05-29 JFC: Extracted from ANT.py
+    2012-09-25 JFC: Cleaned up for pylint.
 """
 
 import time
@@ -15,230 +18,241 @@ from Module import Module_base, BitField
 
 
 class ADCDAQ_base(Module_base):
-	""" Implements interface to the ADC data acquisisition logic within a procecessor pipeline"""
-	# Create local variables for page numbers tomake the table more readable
-	CONTROL=BitField.CONTROL
-	STATUS=BitField.STATUS
-	DRP=BitField.DRP
+    """ Implements interface to the ADC data acquisisition logic within a procecessor pipeline"""
+    # Create local variables for page numbers tomake the table more readable
+    CONTROL = BitField.CONTROL
+    STATUS = BitField.STATUS
+    DRP = BitField.DRP
 
-	BITS={
+    BITS = {
 
-		# CONTROL BYTES
+        # CONTROL BYTES
 
-		'DELAY0' : 			BitField(CONTROL,0x00,0,5,doc='IODELAY value for the data line. Loaded the IODELAY_RST is pulsed.'),
-		'DELAY1' : 			BitField(CONTROL,0x01,0,5,doc='IODELAY value for the data line. Loaded the IODELAY_RST is pulsed.'),
-		'DELAY2' : 			BitField(CONTROL,0x02,0,5,doc='IODELAY value for the data line. Loaded the IODELAY_RST is pulsed.'),
-		'DELAY3' : 			BitField(CONTROL,0x03,0,5,doc='IODELAY value for the data line. Loaded the IODELAY_RST is pulsed.'),
-		'DELAY4' : 			BitField(CONTROL,0x04,0,5,doc='IODELAY value for the data line. Loaded the IODELAY_RST is pulsed.'),
-		'DELAY5' : 			BitField(CONTROL,0x05,0,5,doc='IODELAY value for the data line. Loaded the IODELAY_RST is pulsed.'),
-		'DELAY6' : 			BitField(CONTROL,0x06,0,5,doc='IODELAY value for the data line. Loaded the IODELAY_RST is pulsed.'),
-		'DELAY7' : 			BitField(CONTROL,0x07,0,5,doc='IODELAY value for the data line. Loaded the IODELAY_RST is pulsed.'),
-		'CLK_DELAY' : 		BitField(CONTROL,0x08,0,5,doc='IODELAY value for the clock line. Loaded the CLK_IODELAY_RST is pulsed.'),
+        'DELAY0' :             BitField(CONTROL, 0x00, 0, width=5, doc='IODELAY value for the data line. Loaded the IODELAY_RST is pulsed.'),
+        'DELAY1' :             BitField(CONTROL, 0x01, 0, width=5, doc='IODELAY value for the data line. Loaded the IODELAY_RST is pulsed.'),
+        'DELAY2' :             BitField(CONTROL, 0x02, 0, width=5, doc='IODELAY value for the data line. Loaded the IODELAY_RST is pulsed.'),
+        'DELAY3' :             BitField(CONTROL, 0x03, 0, width=5, doc='IODELAY value for the data line. Loaded the IODELAY_RST is pulsed.'),
+        'DELAY4' :             BitField(CONTROL, 0x04, 0, width=5, doc='IODELAY value for the data line. Loaded the IODELAY_RST is pulsed.'),
+        'DELAY5' :             BitField(CONTROL, 0x05, 0, width=5, doc='IODELAY value for the data line. Loaded the IODELAY_RST is pulsed.'),
+        'DELAY6' :             BitField(CONTROL, 0x06, 0, width=5, doc='IODELAY value for the data line. Loaded the IODELAY_RST is pulsed.'),
+        'DELAY7' :             BitField(CONTROL, 0x07, 0, width=5, doc='IODELAY value for the data line. Loaded the IODELAY_RST is pulsed.'),
+        'CLK_DELAY' :          BitField(CONTROL, 0x08, 0, width=5, doc='IODELAY value for the clock line. Loaded the CLK_IODELAY_RST is pulsed.'),
 
-		'MMCM_RST' : 		BitField(CONTROL,0x09,7,doc='MCMM reset. Must be high when using DRP'),
-		'PLL_CLK_SRC' : 	BitField(CONTROL,0x09,6,doc='Selects the data clock output source: 0=PLL output generated from the ADC clock, 1= 200 MHz system clock'),
-		'CLK_IODELAY_RESET' : 	BitField(CONTROL,0x09,5,doc='Resets the IODELAY element in the clock path. This loads the delay values into the delay lines'),
-		'ENABLE_RAMP' : 	BitField(CONTROL,0x09,4,doc='Enables transmission of a ramp. 0=inactive, 1=active'),
-		'IDELAYCTRL_RESET' : 	BitField(CONTROL,0x09,3,doc='Resets the IDELAYCTRL. Forces it to recalibrate. '),
-		'BUFR_RESET' : 		BitField(CONTROL,0x09,2,doc='Resets the BUFR.'),
-		'ISERDES_RESET' : 	BitField(CONTROL,0x09,1,doc='Resets the ISERDES.'),
-		'IODELAY_RESET' : 	BitField(CONTROL,0x09,0,doc='Resets the IODELAY element. This loads the delay values into the delay lines'),
+        'MMCM_RST' :         BitField(CONTROL,0x09,7,doc='MCMM reset. Must be high when using DRP'),
+        'PLL_CLK_SRC' :     BitField(CONTROL,0x09,6,doc='Selects the data clock output source: 0=PLL output generated from the ADC clock, 1= 200 MHz system clock'),
+        'CLK_IODELAY_RESET' :     BitField(CONTROL,0x09,5,doc='Resets the IODELAY element in the clock path. This loads the delay values into the delay lines'),
+        'ENABLE_RAMP' :     BitField(CONTROL,0x09,4,doc='Enables transmission of a ramp. 0=inactive, 1=active'),
+        'IDELAYCTRL_RESET' :     BitField(CONTROL,0x09,3,doc='Resets the IDELAYCTRL. Forces it to recalibrate. '),
+        'BUFR_RESET' :         BitField(CONTROL,0x09,2,doc='Resets the BUFR.'),
+        'ISERDES_RESET' :     BitField(CONTROL,0x09,1,doc='Resets the ISERDES.'),
+        'IODELAY_RESET' :     BitField(CONTROL,0x09,0,doc='Resets the IODELAY element. This loads the delay values into the delay lines'),
 
-		'CAPTURE_TRIG' : 	BitField(CONTROL,0x0A,7,doc='A 0-to-1 transition triggers capturing of a 4-byte word'),
-		'CAPTURE_ALIGN' : 	BitField(CONTROL,0x0A,6,doc='1: Next capture alignes the non-zero byte to byte 1. 0: Capture next word on a 11-word periodiciry'),
-		'CAPTURE_SOURCE' : 	BitField(CONTROL,0x0A,5,doc='0: Word number is the one determined during the ALIGN process. 1: Word number is the one specified in USER_WORD_NUMBER'),
-		'CAPTURE_USER_WORD_NUMBER' : 	BitField(CONTROL,0x0A,0,4,doc='0: Word number is the one determined during the ALIGN process. 1: Word number is the one specified in USER_WORD_NUMBER'),
+        'CAPTURE_TRIG' :     BitField(CONTROL,0x0A,7,doc='A 0-to-1 transition triggers capturing of a 4-byte word'),
+        'CAPTURE_ALIGN' :     BitField(CONTROL,0x0A,6,doc='1: Next capture alignes the non-zero byte to byte 1. 0: Capture next word on a 11-word periodiciry'),
+        'CAPTURE_SOURCE' :     BitField(CONTROL,0x0A,5,doc='0: Word number is the one determined during the ALIGN process. 1: Word number is the one specified in USER_WORD_NUMBER'),
+        'CAPTURE_USER_WORD_NUMBER' :     BitField(CONTROL,0x0A,0,4,doc='0: Word number is the one determined during the ALIGN process. 1: Word number is the one specified in USER_WORD_NUMBER'),
 
-		'SAMPLE_DELAY' 		: BitField(CONTROL,11,0,4,doc='Number of samples ti skip before starting data acquisition after a SYNC event'),
+        'SAMPLE_DELAY'         : BitField(CONTROL, 0x0B, 0,4,doc='Number of samples ti skip before starting data acquisition after a SYNC event'),
 
-		'CAPTURE2_PERIOD' 	: BitField(CONTROL,0x0C,0,8,doc='Word capture period, from 0-255. 0 means 256 words'),
+        'CAPTURE2_PERIOD'     : BitField(CONTROL, 0x0C, 0, width=8, doc='Word capture period, from 0-255. 0 means 256 words'),
 
-		'CAPTURE2_WORD_NUMBER' : BitField(CONTROL,0x0D,0,8,doc='Word number to be capured in CAPTURE_PATTERN. Must be <=CAPTURE2_PERIOD-1 for data to be captured'),
+        'CAPTURE2_WORD_NUMBER' : BitField(CONTROL, 0x0D, 0, 8, doc='Word number to be capured in CAPTURE_PATTERN. Must be <=CAPTURE2_PERIOD-1 for data to be captured'),
 
-		# STATUS BYTES
+        # STATUS BYTES
 
-		'CLK_DELAY_STATUS':	BitField(STATUS,0x88,0,5,doc='Current delay value of the CLK line IODELAY'),
-		'CAPTURE_DONE' : 	BitField(STATUS,0x89,7,doc="'1' when capture is complete"),
-		'FIFO_OVERFLOW' : 	BitField(STATUS,0x89,6,doc="'1' if the FIFO has overflowed. Reset by SERDES_SYNC."),
-		'FIFO_UNDERFLOW' : 	BitField(STATUS,0x89,5,doc="'1' if the FIFO has underflowed.  Reset by SERDES_SYNC."),
-		'FIFO_EMPTY' 		: BitField(STATUS,0x89,4,doc="'1' if the FIFO has been empty. Reset by SERDES_SYNC."),
-		'IDELAYCTRL_PRESENT':BitField(STATUS,0x89,1,doc='Indicate whether this ADCDAQ instantiated a IODELAYCTRL'),
-		'IDELAYCTRL_RDY'	: BitField(STATUS,0x89,0,doc='Indicate if the IODELAYCTRL has finished calibrating'),
+        'CLK_DELAY_STATUS':    BitField(STATUS, 0x08, 0, width=5, doc='Current delay value of the CLK line IODELAY'),
+        'CAPTURE_DONE' :     BitField(STATUS, 0x09, 7, doc="'1' when capture is complete"),
+        'FIFO_OVERFLOW' :     BitField(STATUS, 0x09, 6, doc="'1' if the FIFO has overflowed. Reset by SERDES_SYNC."),
+        'FIFO_UNDERFLOW' :     BitField(STATUS, 0x09, 5, doc="'1' if the FIFO has underflowed.  Reset by SERDES_SYNC."),
+        'FIFO_EMPTY'         : BitField(STATUS, 0x09, 4, doc="'1' if the FIFO has been empty. Reset by SERDES_SYNC."),
+        'IDELAYCTRL_PRESENT':BitField(STATUS, 0x09, 1, doc='Indicate whether this ADCDAQ instantiated a IODELAYCTRL'),
+        'IDELAYCTRL_RDY'    : BitField(STATUS, 0x09, 0, doc='Indicate if the IODELAYCTRL has finished calibrating'),
 
-		'CAPTURE_PATTERN0'	: BitField(STATUS,0x8A,0,8,doc='Captured byte'),
-		'CAPTURE_PATTERN1'	: BitField(STATUS,0x8B,0,8,doc='Captured byte'),
-		'CAPTURE_PATTERN2'	: BitField(STATUS,0x8C,0,8,doc='Captured byte'),
-		'CAPTURE_PATTERN3'	: BitField(STATUS,0x8D,0,8,doc='Captured byte'),
-
-
-		'CAPTURE_WORD_CTR' : BitField(STATUS,0x8E,4,4,doc='Free running word counter for the capture engine'),
-		'CAPTURE_WORD_NUMBER' : BitField(STATUS,0x8E,0,4,doc='Word number determined by the automatic alignment process'),
-
-		'RAMP_CTR' 			: BitField(STATUS,0x8F,0,6,doc='Free running word counter for readout interface, used to generate ramp at the ADCDAQ level'),
-
-		'FIFO_WR_COUNT' 	: BitField(STATUS,0x90,0,8,doc='Number of words in the FIFO, as seen from the WR clock'),
-		'FIFO_RD_COUNT' 	: BitField(STATUS,0x91,0,8,doc='Number of words in the FIFO, as seen from the RD clock (readout system)'),
-
-		'ADC_CLK_SAMPLE' 	: BitField(STATUS,0x80+18,0,doc='Non-delayed 400 MHz ADC clock sampled by REFCLK'),
-
-		'CAPTURE2_PATTERN0' : BitField(STATUS,0x080+ 19,0,8,doc='Captured byte'),
-		'CAPTURE2_PATTERN1' : BitField(STATUS,0x080+ 20,0,8,doc='Captured byte'),
-		'CAPTURE2_PATTERN2' : BitField(STATUS,0x080+ 21,0,8,doc='Captured byte'),
-		'CAPTURE2_PATTERN3' : BitField(STATUS,0x080+ 22,0,8,doc='Captured byte'),
-
-		# DRP Ports
-		'MMCM_FB_LOW' : 		BitField(DRP,0x14,0,6,doc='MCMM Feedback clock Low time (in VCO cycles)'),
-		'MMCM_FB_HIGH' : 		BitField(DRP,0x14,6,6,doc='MCMM Feedback clock High time (in VCO cycles)'),
-		'MMCM_FB_PHASE' : 		BitField(DRP,0x14,13,3,doc='MCMM Feedback clock phase in increments of 1/8 the VCO period'),
-
-		'MMCM_CLKIN_LOW' : 		BitField(DRP,0x16,0,6,doc='MCMM Input clock divider Low time (in input clock cycles)'),
-		'MMCM_CLKIN_HIGH' : 	BitField(DRP,0x16,6,6,doc='MCMM input clock divider High time (in input clock cycles)'),
-		'MMCM_CLKIN_BYPASS' : 	BitField(DRP,0x16,12,doc='MCMM input clock divider bypass'),
-
-		'MMCM_DIVCLK_LOW' : 	BitField(DRP,0x0A,0,6,doc='MCMM DIVCLK clock Low time (in VCO cycles)'),
-		'MMCM_DIVCLK_HIGH': 	BitField(DRP,0x0A,6,6,doc='MCMM DIVCLK clock High time (in VCO cycles)'),
-		'MMCM_DIVCLK_PHASE':	BitField(DRP,0x0A,13,3,doc='MCMM DIVCLK clock phase in increments of 1/8 the VCO period'),
-		'MMCM_DIVCLK_DELAY':	BitField(DRP,0x0B,0,6,doc='MCMM DIVCLK clock delay in increments of the VCO period'),
-
-		'MMCM_ADCCLK_LOW' : 	BitField(DRP,0x0C,0,6,doc='MCMM DIVCLK clock Low time (in VCO cycles)'),
-		'MMCM_ADCCLK_HIGH': 	BitField(DRP,0x0C,6,6,doc='MCMM DIVCLK clock High time (in VCO cycles)'),
-		'MMCM_ADCCLK_PHASE':	BitField(DRP,0x0C,13,3,doc='MCMM DIVCLK clock phase in increments of 1/8 the VCO period'),
-		'MMCM_ADCCLK_DELAY':	BitField(DRP,0x0D,0,6,doc='MCMM DIVCLK clock delay in increments of the VCO period'),
-
-		'MMCM_POWER':	BitField(DRP,0x28,0,16,doc='MCMM Power bits. Must be set to 0xFFFF in order to successfully program the other MMCM registers'),
-
-	}
-
-	def __init__(self,ant_ch_instance):
-		ant_inst=ant_ch_instance;
-		super(self.__class__,self).__init__(ant_ch_instance.fpga,ant_ch_instance.ant_number, ant_ch_instance.ADCDAQ_MODULE)
-		self._lock() # Prevent accidental addition of attributes (if, for example, a value is assigned to a wrongly-spelled property)
-
-	def set_delay(self, dly=[0,0,0,0,0,0,0,0]):
-		""" Sets the tap delays 
-		WARNING: will work only if DIVCLK is clocking (i.e. ADC not in SYNC, and BUFR/PLL not in RESET)
-		"""
-		if isinstance(dly,int):
-			dly=[dly]*8;
-		elif len(dly)>9:
-			raise Exception('Delay vector too long')
-
-		self.write(self.BITS['DELAY0'].addr, dly) # Set delay in registers
-		self.pulse_bit('IODELAY_RESET');
-
-	def set_clk_delay(self, dly):
-		""" Sets the tap delay on the clock line 
-		WARNING: will work only if DIVCLK is clocking (i.e. ADC not in SYNC, and BUFR/PLL not in RESET)
-		"""
-		if not isinstance(dly,int):
-			raise Exception('Delay on the clock line must be a scalar')
-
-		self.write(self.BITS['CLK_DELAY'].addr, dly) # Set delay in registers
-		self.pulse_bit('CLK_IODELAY_RESET');
+        'CAPTURE_PATTERN0'    : BitField(STATUS, 10, 0, 8, doc='Captured byte'),
+        'CAPTURE_PATTERN1'    : BitField(STATUS, 11, 0, 8, doc='Captured byte'),
+        'CAPTURE_PATTERN2'    : BitField(STATUS, 12, 0, 8, doc='Captured byte'),
+        'CAPTURE_PATTERN3'    : BitField(STATUS, 13, 0, 8, doc='Captured byte'),
 
 
-	def read_delay(self):
-		""" Reads the 8 delay tap values and return them as an array"""
-		return self.read(0x00,length=8) # Reads the delay in registers
+        'CAPTURE_WORD_CTR' : BitField(STATUS, 14, 4, width=4, doc='Free running word counter for the capture engine'),
+        'CAPTURE_WORD_NUMBER' : BitField(STATUS, 14, 0, 4,doc='Word number determined by the automatic alignment process'),
 
-	def get_actual_delay(self):
-		""" Reads the 8 actual delay tap values (returned by the IODELAY themselves, not the last delay set point) and return them as an array"""
-		return self.read(0x80,length=8) # Reads the delay in registers
+        'RAMP_CTR'         : BitField(STATUS, 15, 0, width=8,doc='Free running word counter for readout interface, used to generate ramp at the ADCDAQ level'),
 
-	def set_divclk_phase(self,phase):
-		"""
-		Sets DIVCLK phase on MCMM in inrements of 1/8 VCO cycles. Valid range is 0-512.
-		"""
-		self.MMCM_RST=1
-		self.MMCM_POWER=0xFFFF
-		self.MMCM_DIVCLK_PHASE=phase & 0x07
-		self.MMCM_DIVCLK_DELAY=phase>>3
-		self.MMCM_RST=0
+        'FIFO_WR_COUNT'     : BitField(STATUS, 16, 0, width=8, doc='Number of words in the FIFO, as seen from the WR clock'),
+        'FIFO_RD_COUNT'     : BitField(STATUS, 17, 0, width=8, doc='Number of words in the FIFO, as seen from the RD clock (readout system)'),
 
-	def set_adcclk_phase(self,phase):
-		"""
-		Sets ADC_CLK phase on MCMM in inrements of 1/8 VCO cycles. Valid range is 0-512.
-		"""
-		self.MMCM_RST=1
-		self.MMCM_POWER=0xFFFF
-		self.MMCM_ADCCLK_PHASE=phase & 0x07
-		self.MMCM_ADCCLK_DELAY=phase>>3
-		self.MMCM_RST=0
+        'ADC_CLK_SAMPLE'     : BitField(STATUS, 18,0,doc='Non-delayed 400 MHz ADC clock sampled by REFCLK'),
 
-	delay=property(set_delay,read_delay)
+        'CAPTURE2_PATTERN0' : BitField(STATUS, 19,0, width=8, doc='Captured byte'),
+        'CAPTURE2_PATTERN1' : BitField(STATUS, 20,0, width=8, doc='Captured byte'),
+        'CAPTURE2_PATTERN2' : BitField(STATUS, 21,0, width=8, doc='Captured byte'),
+        'CAPTURE2_PATTERN3' : BitField(STATUS, 22,0, width=8, doc='Captured byte'),
 
-#	def get_iodelayctrl_present(self):
-#		return self.IDELAYCTRL_PRESENT;
+        # DRP Ports
+        'MMCM_FB_LOW' :         BitField(DRP, 0x14, 0, width=6, doc='MCMM Feedback clock Low time (in VCO cycles)'),
+        'MMCM_FB_HIGH' :         BitField(DRP, 0x14, 6, width=6, doc='MCMM Feedback clock High time (in VCO cycles)'),
+        'MMCM_FB_PHASE' :         BitField(DRP, 0x14, 13, width=3, doc='MCMM Feedback clock phase in increments of 1/8 the VCO period'),
 
-#	def get_iodelayctrl_ready(self):
-#		return self.IDELAYCTRL_RDY;
+        'MMCM_CLKIN_LOW' :         BitField(DRP, 0x16, 0, width=6, doc='MCMM Input clock divider Low time (in input clock cycles)'),
+        'MMCM_CLKIN_HIGH' :     BitField(DRP, 0x16, 6, width=6, doc='MCMM input clock divider High time (in input clock cycles)'),
+        'MMCM_CLKIN_BYPASS' :     BitField(DRP, 0x16, 12, doc='MCMM input clock divider bypass'),
 
-#	iodelayctrl_present=property(get_iodelayctrl_present)
-#	iodelayctrl_ready=property(get_iodelayctrl_ready)
+        'MMCM_DIVCLK_LOW' :     BitField(DRP, 0x0A, 0, width=6, doc='MCMM DIVCLK clock Low time (in VCO cycles)'),
+        'MMCM_DIVCLK_HIGH':     BitField(DRP, 0x0A, 6, width=6, doc='MCMM DIVCLK clock High time (in VCO cycles)'),
+        'MMCM_DIVCLK_PHASE':    BitField(DRP, 0x0A, 13, width=3, doc='MCMM DIVCLK clock phase in increments of 1/8 the VCO period'),
+        'MMCM_DIVCLK_DELAY':    BitField(DRP, 0x0B, 0, width=6, doc='MCMM DIVCLK clock delay in increments of the VCO period'),
 
-	def capture_print(self):
-		""" """
-		self.CAPTURE_SOURCE=1
-		self.CAPTURE_ALIGN=0
-		for i in range(11):
-			self.CAPTURE_USER_WORD_NUMBER=i
-			self.pulse_bit('CAPTURE_TRIG')
-			print 'Word number: %i : ' % i, self.read(self.BITS['CAPTURE_PATTERN0'].addr,length=4)
-		self.CAPTURE_SOURCE=0
+        'MMCM_ADCCLK_LOW' :     BitField(DRP, 0x0C, 0, width=6, doc='MCMM DIVCLK clock Low time (in VCO cycles)'),
+        'MMCM_ADCCLK_HIGH':     BitField(DRP, 0x0C, 6, width=6, doc='MCMM DIVCLK clock High time (in VCO cycles)'),
+        'MMCM_ADCCLK_PHASE':    BitField(DRP, 0x0C, 13, width=3, doc='MCMM DIVCLK clock phase in increments of 1/8 the VCO period'),
+        'MMCM_ADCCLK_DELAY':    BitField(DRP, 0x0D, 0, width=6, doc='MCMM DIVCLK clock delay in increments of the VCO period'),
 
-	def capture_phase(self):
-		""" """
-		self.CAPTURE_SOURCE=0
-		self.CAPTURE_ALIGN=1
-		for i in range(8):
-			self.set_divclk_phase(i)
-			#self.CAPTURE_USER_WORD_NUMBER=i
-			self.pulse_bit('CAPTURE_TRIG')
-			#self.CAPTURE_ALIGN=0
-			print 'Word number: %i : ' % i, self.read(self.BITS['CAPTURE_PATTERN0'].addr,length=4)
-		self.CAPTURE_SOURCE=0
+        'MMCM_POWER':    BitField(DRP, 0x28, 0, width=16, doc='MCMM Power bits. Must be set to 0xFFFF in order to successfully program the other MMCM registers'),
 
-	def get_pattern(self,period=11):
-		"""
-		Captures N words samples with a periodicity of 'period'
-		"""
-		self.CAPTURE2_PERIOD=period & 0xf
-		d=np.zeros(4*period,np.uint8)
-		for i in range(period):
-			#print '  Acquiring pattern for delay %i' % (dly)
-			#dly=0
-			self.CAPTURE2_WORD_NUMBER=i
-			time.sleep(1/200e6*period*2) # make sure the data has time to be capture
-			d[4*i:4*(i+1)]=self.read('CAPTURE2_PATTERN0', type=np.uint8, length=4)
-		return d
+    }
 
-	def init(self, **kwargs):
-		# Do nothing if the FMC is not present
-		if not self.fpga.FMC_present:
-			self.PLL_CLK_SRC=1 # use system clock if the ADC is not present
-		else:
-			self.PLL_CLK_SRC=0 
+    def __init__(self, ant_ch_instance):
+        super(self.__class__, self).__init__(ant_ch_instance.fpga, ant_ch_instance.ant_number, ant_ch_instance.ADCDAQ_MODULE)
+        self._lock() # Prevent accidental addition of attributes (if, for example, a value is assigned to a wrongly-spelled property)
+
+    def set_delay(self, dly=[0, 0, 0, 0, 0, 0, 0, 0]):
+        """ Sets the tap delays 
+        WARNING: will work only if DIVCLK is clocking (i.e. ADC not in SYNC, and BUFR/PLL not in RESET)
+        """
+        if isinstance(dly, int):
+            dly = [dly]*8
+        elif len(dly) > 9:
+            raise Exception('Delay vector too long')
+
+        self.write(self.BITS['DELAY0'].addr, dly) # Set delay in registers
+        self.pulse_bit('IODELAY_RESET')
+
+    def set_clk_delay(self, dly):
+        """ Sets the tap delay on the clock line 
+        WARNING: will work only if DIVCLK is clocking (i.e. ADC not in SYNC, and BUFR/PLL not in RESET)
+        """
+        if not isinstance(dly, int):
+            raise Exception('Delay on the clock line must be a scalar')
+
+        self.write(self.BITS['CLK_DELAY'].addr, dly) # Set delay in registers
+        self.pulse_bit('CLK_IODELAY_RESET')
 
 
-	def status(self):
-		
-		print '-------------- ANT[%i].ADCDAQ STATUS --------------' % self.port_number 
+    def read_delay(self):
+        """ Reads the 8 delay tap values and return them as an array"""
+        return self.read(0x00, length=8) # Reads the delay in registers
 
-		print 'Clock source: %s' % ('ADC','SYSTEM CLOCK')[self.PLL_CLK_SRC]
+    def get_actual_delay(self):
+        """ Reads the 8 actual delay tap values (returned by the IODELAY themselves, not the last delay set point) and return them as an array"""
+        return self.read(0x80, length=8) # Reads the delay in registers
 
-		# fin=200
-		# input_div=1 if self.MMCM_CLKIN_BYPASS else (self.MMCM_CLKIN_HIGH + self.MMCM_CLKIN_LOW) 
-		# divclk_div=self.MMCM_DIVCLK_HIGH + self.MMCM_DIVCLK_LOW
-		# fb_div=self.MMCM_FB_HIGH + self.MMCM_FB_LOW
+    def set_divclk_phase(self, phase):
+        """
+        Sets DIVCLK phase on MCMM in inrements of 1/8 VCO cycles. Valid range is 0-512.
+        """
+        self.MMCM_RST = 1
+        self.MMCM_POWER = 0xFFFF
+        self.MMCM_DIVCLK_PHASE = phase & 0x07
+        self.MMCM_DIVCLK_DELAY = phase >> 3
+        self.MMCM_RST = 0
+
+    def set_adcclk_phase(self, phase):
+        """
+        Sets ADC_CLK phase on MCMM in inrements of 1/8 VCO cycles. Valid range is 0-512.
+        """
+        self.MMCM_RST = 1
+        self.MMCM_POWER = 0xFFFF
+        self.MMCM_ADCCLK_PHASE = phase & 0x07
+        self.MMCM_ADCCLK_DELAY = phase >> 3
+        self.MMCM_RST = 0
+
+    delay = property(set_delay, read_delay)
+
+#    def get_iodelayctrl_present(self):
+#        return self.IDELAYCTRL_PRESENT;
+
+#    def get_iodelayctrl_ready(self):
+#        return self.IDELAYCTRL_RDY;
+
+#    iodelayctrl_present=property(get_iodelayctrl_present)
+#    iodelayctrl_ready=property(get_iodelayctrl_ready)
+
+    def capture_print(self):
+        """
+        ** Not functional any more - Uses old CAPTURE logic **
+        Captures words 0 to 10 of a frame using the ADCDAQ capture logic and prints them.
+        """
+        self.CAPTURE_SOURCE = 1
+        self.CAPTURE_ALIGN = 0
+        for i in range(11):
+            self.CAPTURE_USER_WORD_NUMBER = i
+            self.pulse_bit('CAPTURE_TRIG')
+            print 'Word number: %i : ' % i, self.read(self.BITS['CAPTURE_PATTERN0'].addr, length=4)
+        self.CAPTURE_SOURCE = 0
+
+    def capture_phase(self):
+        """ 
+        ** Not functional any more - Uses old CAPTURE logic **
+        Sweeps the phase of DIVCLK over 8 increments and display the current CAPTURE word for each phase.
+        """
+        self.CAPTURE_SOURCE = 0
+        self.CAPTURE_ALIGN = 1
+        for i in range(8):
+            self.set_divclk_phase(i)
+            #self.CAPTURE_USER_WORD_NUMBER=i
+            self.pulse_bit('CAPTURE_TRIG')
+            #self.CAPTURE_ALIGN=0
+            print 'Word number: %i : ' % i, self.read(self.BITS['CAPTURE_PATTERN0'].addr, length=4)
+        self.CAPTURE_SOURCE = 0
+
+    def get_pattern(self, period=11):
+        """
+        Captures N words samples with a periodicity of 'period'
+        """
+        self.CAPTURE2_PERIOD = period & 0xf
+        pattern = np.zeros(4 * period, np.uint8)
+        for i in range(period):
+            #print '  Acquiring pattern for delay %i' % (dly)
+            #dly=0
+            self.CAPTURE2_WORD_NUMBER = i
+            time.sleep(1 / 200e6 * period * 2) # make sure the data has time to be capture
+            pattern[4*i : 4*(i+1)] = self.read('CAPTURE2_PATTERN0', type=np.uint8, length=4)
+        return pattern
+
+    def init(self, **kwargs):
+        """
+        Initializes the ADCDAQ module 
+        """
+        # Do nothing if the FMC is not present
+        if not self.fpga.FMC_present:
+            self.PLL_CLK_SRC = 1 # use system clock if the ADC is not present
+        else:
+            self.PLL_CLK_SRC = 0 
 
 
-		# print 'MMCM'
-		# print '  Input clock divider: HIGH:%i, LOW: %i, TOTAL: %i, BYPASS:%i' % (self.MMCM_CLKIN_HIGH, self.MMCM_CLKIN_LOW, self.MMCM_CLKIN_HIGH + self.MMCM_CLKIN_LOW,self.MMCM_CLKIN_BYPASS)
-		# print '  FB divider           HIGH:%i, LOW: %i, TOTAL: %i, PHASE: %i' % (self.MMCM_FB_HIGH, self.MMCM_FB_LOW, self.MMCM_FB_HIGH + self.MMCM_FB_LOW, self.MMCM_FB_PHASE)
-		# print '  DIVCLK divider       HIGH:%i, LOW: %i, TOTAL: %i, PHASE: %i, Delay: %i' % (self.MMCM_DIVCLK_HIGH, self.MMCM_DIVCLK_LOW, self.MMCM_DIVCLK_HIGH + self.MMCM_DIVCLK_LOW, self.MMCM_DIVCLK_PHASE, self.MMCM_DIVCLK_DELAY)
-		# print '  ADCCLK divider       HIGH:%i, LOW: %i, TOTAL: %i, PHASE: %i, Delay: %i' % (self.MMCM_ADCCLK_HIGH, self.MMCM_ADCCLK_LOW, self.MMCM_ADCCLK_HIGH + self.MMCM_ADCCLK_LOW, self.MMCM_ADCCLK_PHASE, self.MMCM_ADCCLK_DELAY)
-		# print '  Assmued input frequency: %.0f MHz'% fin
-		# print '  Computed PFD frequency: %.0f MHz'% (fin*1.0/input_div)
-		# print '  Computed VCO frequency: %.0f MHz'% (fin*1.0/input_div*fb_div)
-		# print '  Computed DIVCLK frequency: %.0f MHz' % (fin*1.0/input_div*fb_div/divclk_div)
+    def status(self):
+        """ 
+        Prints the ADCDAQ module status.
+        """        
+        print '-------------- ANT[%i].ADCDAQ STATUS --------------' % self.port_number 
 
+        print 'Clock source: %s' % ('ADC','SYSTEM CLOCK')[self.PLL_CLK_SRC]
+
+        # fin=200
+        # input_div=1 if self.MMCM_CLKIN_BYPASS else (self.MMCM_CLKIN_HIGH + self.MMCM_CLKIN_LOW) 
+        # divclk_div=self.MMCM_DIVCLK_HIGH + self.MMCM_DIVCLK_LOW
+        # fb_div=self.MMCM_FB_HIGH + self.MMCM_FB_LOW
+
+
+        # print 'MMCM'
+        # print '  Input clock divider: HIGH:%i, LOW: %i, TOTAL: %i, BYPASS:%i' % (self.MMCM_CLKIN_HIGH, self.MMCM_CLKIN_LOW, self.MMCM_CLKIN_HIGH + self.MMCM_CLKIN_LOW,self.MMCM_CLKIN_BYPASS)
+        # print '  FB divider           HIGH:%i, LOW: %i, TOTAL: %i, PHASE: %i' % (self.MMCM_FB_HIGH, self.MMCM_FB_LOW, self.MMCM_FB_HIGH + self.MMCM_FB_LOW, self.MMCM_FB_PHASE)
+        # print '  DIVCLK divider       HIGH:%i, LOW: %i, TOTAL: %i, PHASE: %i, Delay: %i' % (self.MMCM_DIVCLK_HIGH, self.MMCM_DIVCLK_LOW, self.MMCM_DIVCLK_HIGH + self.MMCM_DIVCLK_LOW, self.MMCM_DIVCLK_PHASE, self.MMCM_DIVCLK_DELAY)
+        # print '  ADCCLK divider       HIGH:%i, LOW: %i, TOTAL: %i, PHASE: %i, Delay: %i' % (self.MMCM_ADCCLK_HIGH, self.MMCM_ADCCLK_LOW, self.MMCM_ADCCLK_HIGH + self.MMCM_ADCCLK_LOW, self.MMCM_ADCCLK_PHASE, self.MMCM_ADCCLK_DELAY)
+        # print '  Assmued input frequency: %.0f MHz'% fin
+        # print '  Computed PFD frequency: %.0f MHz'% (fin*1.0/input_div)
+        # print '  Computed VCO frequency: %.0f MHz'% (fin*1.0/input_div*fb_div)
+        # print '  Computed DIVCLK frequency: %.0f MHz' % (fin*1.0/input_div*fb_div/divclk_div)
+
+        print

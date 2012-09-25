@@ -55,7 +55,12 @@ class GPIO_base(Module_base):
     TIMESTAMP_VALID = BitField(STATUS, 0x00, 7, doc='Timestamp data valid (i.e. can be read)')
     ADC_SYNC_READBACK = BitField(STATUS, 0x00, 0, doc='Reads back the SYNC bit for debugging')
     LOG2_FRAME_LENGTH = BitField(STATUS, 0x01, 0, width=8, doc='Number of time samples per frame')
-    NUMBER_OF_ANTENNAS = BitField(STATUS, 0x02, 0, width=8, doc='Number of implemented antenna processing pipelines')
+    NUMBER_OF_ANTENNAS = BitField(STATUS, 0x02, 0, width=4, doc='Number of implemented antenna processing pipelines')
+    NUMBER_OF_CORRELATORS = BitField(STATUS, 0x02, 4, width=4, doc='Number of implemented correlators')
+    NUMBER_OF_ANTENNAS_TO_CORRELATE = BitField(STATUS, 0x03, 0, width=4, doc='Number of antennas connected to the correlators')
+    IMPLEMENT_ANT = BitField(STATUS, 4, 0, width=8, doc='Indicates whether the antenna processor is implemented or if a dummy mmodule is put in place. There is one bit per antenna.')
+    IMPLEMENT_FFT = BitField(STATUS, 5, 0, width=8, doc='Indicates whether the antenna processor FFT is implemented. If not, it is bypassed and timestream data is fed to the scaler. There is one bit per antenna. ')
+    IMPLEMENT_CORR = BitField(STATUS, 6, 0, width=8, doc='Indicates whether the correlator is implemented. . There is one bit per correlator. ')
     TIMESTAMP = BitField(STATUS, 0x0A, 0, width=32, doc='Bitstream timestamp word')
 
 
