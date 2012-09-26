@@ -19,13 +19,13 @@ from pychime.core import chFPGA_receiver
 import pychime.plot_utils as pu
 from pychime.core import Inject as inj
 from pychime.common.tests.test_adc_fft_bin import test_adc_fft_bin
-from pychime.common.tests.test_adc_fft_bin import test_adc_fft_bin
 from pychime.common.tests.test_adc_fft_int_power import test_adc_fft_int_power
 from pychime.common.tests.test_adc_fft_level import test_adc_fft_level
 reload(chFPGA_controller) # just to make sure that any changes to the code are reloaded
 reload(chFPGA_receiver) # just to make sure that any changes to the code are reloaded
 reload(pu)
 reload(inj)
+
 
 # Default data and clock line delays for the two FMC boards/ML605 combination.
 # First 8 values are the delays for bits 0 to 7, 8th value is the delay for the clock line.
