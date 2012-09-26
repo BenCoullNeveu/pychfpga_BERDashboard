@@ -26,14 +26,14 @@ def set_inject_mode(fpga_ctrl, fpga_recv, bypass_FFT=False, channels=range(8)):
     fpga_ctrl.start_data_capture(burst_period_in_frames=1, number_of_bursts=0)
     fpga_recv.flush()
     for ch in channels: 
-        fpga_ctrl.ANT[ch].FR_DIST.reset_fifo()
+        fpga_ctrl.ANT[ch].SRCSEL.reset_fifo()
     ### changed to inject until see something coming out.  Record number of frames
     ### if get to 100, break out of the loop. 
     filling_buffer = True
     pipeline = 0
     while (filling_buffer):
         for ch in channels: 
-            fpga_ctrl.ANT[ch].FR_DIST.inject_frame()
+            fpga_ctrl.ANT[ch].SRCSEL.inject_frame()
         try:
             #fpga_recv.read_frames()
             print "Got data"
