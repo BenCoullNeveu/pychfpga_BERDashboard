@@ -66,7 +66,7 @@ def inject(fc, fr, channels=None, data=None):
     2012-09-18 JFC: Switched the order of the parameters
     2012-09-19 KMB: Switched back parameters to keep compatiblity
     """
-    #print data
+    
     if channels is None:
             channels = fc.get_default_channels()
             
@@ -74,7 +74,7 @@ def inject(fc, fr, channels=None, data=None):
 
     fc.set_global_trigger(False) # Stop injection buffers from being read out
     # Inject data
-    fc.inject_frame(data, channels)
+    fc.inject_frame(data=data, channels=channels)
 
     # Read the results. The frames can come in any order.
     fc.set_global_trigger(True) # Start reading of all injection buffers simulataneously
@@ -85,6 +85,7 @@ def inject(fc, fr, channels=None, data=None):
             timestamp = data['timestamp'] # set the timestamp
         elif timestamp != data['timestamp']:
             print 'Warning: incoming frames have different timestamps.'
+        #print data
         returned_data.update(data) # Add the frame to the dictionary
     return returned_data
 
