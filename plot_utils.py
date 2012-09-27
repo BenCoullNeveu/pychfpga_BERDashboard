@@ -25,8 +25,9 @@ import uuid
 # usial choices of packends are 'TkAgg' or 'Qt4Agg' 
 BACKEND_SELECTOR_LIST = {
      120196411245L: 'Qt4Agg', # JFC ASUS Computer
-     121377386969L: 'TkAgg'  # KMB Windows
-    }
+     121377386969L: 'TkAgg',  # KMB Windows Qt4Agg works ok
+     247356949117810: 'QT4Agg' # KMB mac QT4Agg, MacOSX (slow) and TkAgg also work not sure what is best
+         }
 NODE_ID = uuid.getnode()
 if NODE_ID in BACKEND_SELECTOR_LIST:
     matplotlib.use(BACKEND_SELECTOR_LIST[NODE_ID])
@@ -312,7 +313,7 @@ if __name__ == '__main__':
     #plot_TIMESTREAM_frames_multichannel(cr, channels=[5], raw=0, flush=0)
     c.ANT[0].FFT.BYPASS=1
     c.ANT[0].SCALER.BYPASS=1
-    plot_TIMESTREAM_frames_multichannel(cr, channels=[0], raw=0, flush=0)
+    plot_TIMESTREAM_frames_multichannel(cr, channels=[0,1,2,3,4,5,6,7], raw=0, flush=0)
 
 
     #c.ANT[0].SCALER.SHIFT_LEFT=1
