@@ -40,7 +40,7 @@ class test_BaseClass:
         Injects a DC level given by dc_level.  
         '''
         data = np.ones(2048)*dc_level
-        return inj.inject(self.fpga_ctrl,self.fpga_recv, channels, data)
+        return inj.inject(self.fpga_ctrl,self.fpga_recv, channels=channels, data=data)
         
     def inject_sine(self, sine_amp=1, sine_freq=1.0, channels=[0,1,2,3,4,5,6,7], loops= 20):
         '''
@@ -51,7 +51,7 @@ class test_BaseClass:
         data = sine_amp*np.sin(2.0*np.pi*freq*t)
         data = data.reshape(loops,2048)
         for datum in data:
-            data_output = inj.inject(self.fpga_ctrl,self.fpga_recv, channels, datum)
+            data_output = inj.inject(self.fpga_ctrl,self.fpga_recv, channels=channels, data=datum)
         return data_output
 
     def execute(self, channel ): 

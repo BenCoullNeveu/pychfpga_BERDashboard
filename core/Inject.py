@@ -36,8 +36,8 @@ def set_inject_mode(fpga_ctrl, fpga_recv, bypass_FFT=False, channels=range(8)):
             fpga_ctrl.ANT[ch].SRCSEL.inject_frame()
         try:
             #fpga_recv.read_frames()
-            print "Got data"
-            if ( pipeline > 20):
+            print "Injecting data to fill buffers"
+            if ( pipeline > 18):
                 filling_buffer=False
             else:
                 pipeline +=1
@@ -48,7 +48,11 @@ def set_inject_mode(fpga_ctrl, fpga_recv, bypass_FFT=False, channels=range(8)):
             break
                             
     time.sleep(0.5)
-    print fpga_recv.length()
+    nframes = fpga_recv.length()
+    print "Got back {0} out of 20".format(nframes)
+    for i in xrange(nframes):
+        print fpga_recv.read_frames()
+    
     fpga_recv.flush()
 
     #if fpga_recv.length():
@@ -69,9 +73,9 @@ def inject(fc, fr, channels=None, data=None):
     
     if channels is None:
             channels = fc.get_default_channels()
-            
+    #fr.flush()        
     returned_data = {}
-
+    #fr.read_frames(flush=1)
     fc.set_global_trigger(False) # Stop injection buffers from being read out
     # Inject data
     fc.inject_frame(data=data, channels=channels)
