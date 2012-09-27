@@ -25,7 +25,7 @@ import uuid
 # usial choices of packends are 'TkAgg' or 'Qt4Agg' 
 BACKEND_SELECTOR_LIST = {
      120196411245L: 'Qt4Agg', # JFC ASUS Computer
-     121377386969L: 'TkAgg'
+     121377386969L: 'TkAgg'  # KMB Windows
     }
 NODE_ID = uuid.getnode()
 if NODE_ID in BACKEND_SELECTOR_LIST:
@@ -300,26 +300,27 @@ if __name__ == '__main__':
     FREF = 10 # FMC Reference clock frequency
     # Create the new chFPGA object.
     c = chFPGA_controller.chFPGA_controller(adc_delay_table=ADC_DELAYS_REV2_SN0001)
-    c.sync()
+    
     channels=[0]
     # source can be:  'func_zero', func_one, func_ramp, func_real_ramp, inject, adcdaq_data, adcdaq_ramp
     c.set_data_source('adcdaq_data')
     c.set_ADC_mode(channels=channels, mode='data')
     c.start_data_capture(burst_period_in_seconds=0.1, number_of_bursts=0)
-
+    c.sync()
     
     cr = chFPGA_receiver.chFPGA_receiver()
     #plot_TIMESTREAM_frames_multichannel(cr, channels=[5], raw=0, flush=0)
+    c.ANT[0].FFT.BYPASS=1
+    c.ANT[0].SCALER.BYPASS=1
+    plot_TIMESTREAM_frames_multichannel(cr, channels=[0], raw=0, flush=0)
 
-    #plot_TIMESTREAM_frames_multichannel(c, channels=[0,1,2,3,4,5,6,7], raw=0, flush=0)
 
-    #c.ANT[0].FFT.BYPASS=0
-    #c.ANT[0].SCALER.BYPASS=0
     #c.ANT[0].SCALER.SHIFT_LEFT=1
     for channel in channels:
         c.ANT[channel].FFT.BYPASS=0
         c.ANT[channel].SCALER.BYPASS=0
         c.ANT[channel].SCALER.SHIFT_LEFT=0
+        c.ANT[channel].FFT.FFT_SHIFT= 2**7 - 1
 
 
     plot_SPECTRUM_frames(cr, channels=channels, raw=0, flush=0)
