@@ -23,7 +23,7 @@ import matplotlib.pyplot as plt
 
 class REFCLK_base(Module_base):
 
-    sync_delay=16
+    sync_delay=9 # default value.
 
     CONTROL=BitField.CONTROL
     STATUS=BitField.STATUS
@@ -316,7 +316,10 @@ class REFCLK_base(Module_base):
         #print ''.join(('0','1')[sample] for sample in samples)
 
     def status(self):
-        print '---------------------FMC REF CLK  ------------------------------------'
+        """
+        Displays the status of the REFCLK module.
+        """
+        print '-----------------------REFCLK------------------------------------'
         print 'SYNC Detection Enabled: %s' % (bool(self.ENABLE_SYNC_DETECTION))
         print '----------------------------------------------------------------------'
 

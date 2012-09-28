@@ -26,18 +26,18 @@ def set_inject_mode(fpga_ctrl, fpga_recv, bypass_FFT=False, channels=range(8)):
     fpga_ctrl.start_data_capture(burst_period_in_frames=1, number_of_bursts=0)
     fpga_recv.flush()
     for ch in channels: 
-        fpga_ctrl.ANT[ch].FR_DIST.reset_fifo()
+        fpga_ctrl.ANT[ch].SRCSEL.reset_fifo()
     ### changed to inject until see something coming out.  Record number of frames
     ### if get to 100, break out of the loop. 
     filling_buffer = True
     pipeline = 0
     while (filling_buffer):
         for ch in channels: 
-            fpga_ctrl.ANT[ch].FR_DIST.inject_frame()
+            fpga_ctrl.ANT[ch].SRCSEL.inject_frame()
         try:
             #fpga_recv.read_frames()
-            print "Got data"
-            if ( pipeline > 20):
+            print "Injecting data to fill buffers"
+            if ( pipeline > 18):
                 filling_buffer=False
             else:
                 pipeline +=1
@@ -48,7 +48,11 @@ def set_inject_mode(fpga_ctrl, fpga_recv, bypass_FFT=False, channels=range(8)):
             break
                             
     time.sleep(0.5)
-    print fpga_recv.length()
+    nframes = fpga_recv.length()
+    print "Got back {0} out of 20".format(nframes)
+    for i in xrange(nframes):
+        print fpga_recv.read_frames()
+    
     fpga_recv.flush()
 
     #if fpga_recv.length():
@@ -66,15 +70,15 @@ def inject(fc, fr, channels=None, data=None):
     2012-09-18 JFC: Switched the order of the parameters
     2012-09-19 KMB: Switched back parameters to keep compatiblity
     """
-    #print data
+    
     if channels is None:
             channels = fc.get_default_channels()
-            
+    #fr.flush()        
     returned_data = {}
-
+    #fr.read_frames(flush=1)
     fc.set_global_trigger(False) # Stop injection buffers from being read out
     # Inject data
-    fc.inject_frame(data, channels)
+    fc.inject_frame(data=data, channels=channels)
 
     # Read the results. The frames can come in any order.
     fc.set_global_trigger(True) # Start reading of all injection buffers simulataneously
@@ -85,6 +89,7 @@ def inject(fc, fr, channels=None, data=None):
             timestamp = data['timestamp'] # set the timestamp
         elif timestamp != data['timestamp']:
             print 'Warning: incoming frames have different timestamps.'
+        #print data
         returned_data.update(data) # Add the frame to the dictionary
     return returned_data
 

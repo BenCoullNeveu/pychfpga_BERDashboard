@@ -602,8 +602,12 @@ class chFPGA_controller(object):
         for ant in self.ANT:
             if ant.ant_number in channels:
                 print 'Setting FFT and SCALER bypass mode for Antenna %i' % ant.ant_number
-                ant.FFT.BYPASS = bypass_mode
-                ant.SCALER.BYPASS = bypass_mode
+                if (self.GPIO.IMPLEMENT_FFT & (1 << ant.ant_number)):
+                    ant.FFT.BYPASS = bypass_mode
+                    ant.SCALER.BYPASS = bypass_mode
+                else:
+                    ant.FFT.BYPASS = 1
+                    ant.SCALER.BYPASS = 1
 
     def set_global_trigger(self, trigger_state):
         """

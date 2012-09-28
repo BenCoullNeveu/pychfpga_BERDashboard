@@ -50,10 +50,11 @@ class test_corr(test_BaseClass):
         
     def execute(self): 
         ''' set bypass FFT and '''
-        self.fpga_ctr.set_FFT_bypass(True, channels=[0,1,2,3,4,5,6,7])
-        self.fpga_ctr.set_data_source('func_zero')
-        self.fpga_ctr.set_data_source('func_real_ramp', channels=[0,1,2,3])
-        self.fpga_ctr.start_data_capture(burst_period_in_seconds=1.0, number_of_bursts=0)
+        self.fpga_ctrl.set_FFT_bypass(True, channels=[0,1,2,3,4,5,6,7])
+        self.fpga_ctrl.set_data_source('func_zero')
+        self.fpga_ctrl.set_data_source('func_real_ramp', channels=[0,1,2,3])
+        self.fpga_ctrl.set_corr_reset(False)
+        self.fpga_ctrl.start_data_capture(burst_period_in_seconds=1.0, number_of_bursts=0)
         time.sleep(2)
         test = self.fpga_recv.read_frames()
         test = self.fpga_recv.read_frames()
