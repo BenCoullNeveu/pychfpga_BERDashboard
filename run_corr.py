@@ -11,29 +11,29 @@ History:
 from pychime.core import chFPGA_controller
 from pychime.core import chFPGA_receiver
 import numpy as np
-import time, pylab, file_utils
+import time, pylab, file_utils, os
 
-class run_corr(test_BaseClass):
+class run_corr():
     '''
-     Test class for testing chFPGA behavior.  Runs through all frequency bins and checks the Power level 
+    class for running chFPGA correlator
      out.  
     '''
     def __init__(self,fpga_ctrl, fpga_recv):
-    '''
-        The baseclass has one data member, called data. 
-        It is meant to hold the results of executing the algorithm once.
-        you must call alg_BaseClass.__init__(self) from your derived __init__
-        method.
-    '''
-    self.fpga_ctrl = fpga_ctrl
-    self.fpga_recv = fpga_recv
-    #set bypass FFT and initial settings'''
-    self.fpga_ctrl.set_FFT_bypass(True, channels=[0,1,2,3,4,5,6,7])
-    self.fpga_ctrl.set_data_source('func_zero')
-    self.fpga_ctrl.set_data_source('func_real_ramp', channels=[0,1,2,3])
-    self.fpga_ctrl.set_corr_reset(False)
-    self.fpga_ctrl.start_data_capture(burst_period_in_seconds=1.0, number_of_bursts=0)
-    time.sleep(2)
+        '''
+            The baseclass has one data member, called data. 
+            It is meant to hold the results of executing the algorithm once.
+            you must call alg_BaseClass.__init__(self) from your derived __init__
+            method.
+        '''
+        self.fpga_ctrl = fpga_ctrl
+        self.fpga_recv = fpga_recv
+        #set bypass FFT and initial settings'''
+        self.fpga_ctrl.set_FFT_bypass(True, channels=[0,1,2,3,4,5,6,7])
+        self.fpga_ctrl.set_data_source('func_zero')
+        self.fpga_ctrl.set_data_source('func_real_ramp', channels=[0,1,2,3])
+        self.fpga_ctrl.set_corr_reset(False)
+        self.fpga_ctrl.start_data_capture(burst_period_in_seconds=1.0, number_of_bursts=0)
+        time.sleep(2)
 
     def unscramble(self, data):
         '''
@@ -91,12 +91,15 @@ class run_corr(test_BaseClass):
 
     def init_file(self, fcount):
         filename = 'out'
-        nowtime=time.time()
-        #nowtime = 1338143259.2
-        basename = '\\Users\\kbandura\\chime\\data\\'+filename + '_'+ str(nowtime)+'\\'
-        print basename
-        os.mkdir(basename)
-        fname=basename+filename+str(time.time())+'.'
+        if fcount == 0:
+            nowtime=time.time()
+            #nowtime = 1338143259.2
+            basename = '\\Users\\kbandura\\chime\\data\\'+filename + '_'+ str(nowtime)+'\\'
+            #print basename
+            os.mkdir(basename)
+            os.chdir(basename)
+        fname=filename+str(time.time())+'.'
+        print fname
         fout = open(fname+'%04i'%fcount, 'w+b')
         #timeFileName = basename+'time_file.txt'
         #timefile = open(timeFileName, 'w+')
@@ -125,16 +128,22 @@ class run_corr(test_BaseClass):
 
     def execute(self):
         nfiles = 0
-        while nfiles < 4:
-            fileHandle = self.init_file(nfiles)
-            for i in xrange(NSEC):
-                spectrum, data = self.get_data()
-                interleave_a = convert_format(data)
-                for ia in interleave_a:
-                    fileHandle.write(ia)
-            fileHandle.close()
-            nfiles += 1
-
+        #Add spectrum file as well
+        try: 
+            while nfiles < 4:
+                fileHandle = self.init_file(nfiles)
+                for i in xrange(NSEC):
+                    spectrum, data = self.get_data()
+                    interleave_a = self.convert_format(data)
+                    for ia in interleave_a:
+                        fileHandle.write(ia)
+                    print '. ',
+                fileHandle.close()
+                nfiles += 1
+        except KeyboardInterrupt:
+            self.fpga_ctrl.close()
+            self.fpga_recv.close()
+            raise
 
 # Default data and clock line delays for the two FMC boards/ML605 combination.
 # First 8 values are the delays for bits 0 to 7, 8th value is the delay for the clock line.
@@ -162,6 +171,8 @@ if __name__ == "__main__":
     #channels=[0,1,2,3]
     corr = run_corr(c,r)
     corr.execute()
+    c.close()
+    r.close()
 
 
 
