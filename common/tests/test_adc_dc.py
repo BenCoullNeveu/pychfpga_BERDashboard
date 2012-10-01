@@ -22,7 +22,7 @@ class test_adc_dc(test_BaseClass):
         dcs = []
         for dc_level in dc_levels:
             dc_out = self.inject_dc(dc_level)
-            dc_out = self.inject_dc(dc_level)
+            #dc_out = self.inject_dc(dc_level)
             #print dc_fft_out
             print "DC level with " + str(dc_level) + " input is " + str(dc_out[0])
             dcs.append(dc_out[0])

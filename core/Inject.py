@@ -37,7 +37,7 @@ def set_inject_mode(fpga_ctrl, fpga_recv, bypass_FFT=False, channels=range(8)):
         try:
             #fpga_recv.read_frames()
             print "Injecting data to fill buffers"
-            if ( pipeline > 18):
+            if ( pipeline > 20):
                 filling_buffer=False
             else:
                 pipeline +=1
@@ -88,8 +88,9 @@ def inject(fc, fr, channels=None, data=None):
         if timestamp is None:
             timestamp = data['timestamp'] # set the timestamp
         elif timestamp != data['timestamp']:
-            print 'Warning: incoming frames have different timestamps.'
-        #print data
+            print 'Warning: incoming frames have different timestamps.' + str(timestamp)+ ' ' + str(data['timestamp'])
+            print data
+            print returned_data
         returned_data.update(data) # Add the frame to the dictionary
     return returned_data
 

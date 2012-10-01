@@ -125,8 +125,8 @@ if __name__ == '__main__':
     c.sync()
     #inj.set_inject_mode(c,r)
     #dcs = inj.check_fft_dc(c,r)
-    #adctest = test_adc_dc(c,r)
-    #stuff = adctest.execute()
+    adctest = test_adc_dc(c,r)
+    stuff = adctest.execute()
     # Displays the system frequencies
     c.FreqCtr.status()
     #adctest = test_adc_fft_bin(c,r)
