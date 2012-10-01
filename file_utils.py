@@ -7,6 +7,8 @@ file_utils.py script
 History:
     2012-09-28 KMB: First attempt 
 """
+import numpy as np
+import struct, time
 
 def write_header(datafile, est_clk, acc_len):
     ## Read gains from a file
