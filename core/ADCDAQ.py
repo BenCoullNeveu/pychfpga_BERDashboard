@@ -52,7 +52,7 @@ class ADCDAQ_base(Module_base):
         'CAPTURE_SOURCE' :     BitField(CONTROL,0x0A,5,doc='0: Word number is the one determined during the ALIGN process. 1: Word number is the one specified in USER_WORD_NUMBER'),
         'CAPTURE_USER_WORD_NUMBER' :     BitField(CONTROL,0x0A,0,4,doc='0: Word number is the one determined during the ALIGN process. 1: Word number is the one specified in USER_WORD_NUMBER'),
 
-        'SAMPLE_DELAY'         : BitField(CONTROL, 0x0B, 0,4,doc='Number of samples ti skip before starting data acquisition after a SYNC event'),
+        'SAMPLE_DELAY'         : BitField(CONTROL, 0x0B, 0,4,doc='Number of samples to skip before starting data acquisition after a SYNC event'),
 
         'CAPTURE2_PERIOD'     : BitField(CONTROL, 0x0C, 0, width=8, doc='Word capture period, from 0-255. 0 means 256 words'),
 
