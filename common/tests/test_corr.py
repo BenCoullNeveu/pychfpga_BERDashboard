@@ -4,7 +4,7 @@
 Class with testing function for testing the adc.
 '''
 
-from pychime.core import Inject as inj
+from pychime.core import Inject_tools as inj
 from pychime.common.tests.test_BaseClass import test_BaseClass
 import numpy as np
 import time, pylab

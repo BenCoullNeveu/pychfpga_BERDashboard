@@ -16,6 +16,8 @@ import SRCSEL
 import FFT
 import SCALER
 import PROBER    
+import FUNCGEN
+import INJECT
 
 class ANT_channel(object):
     """ Implements interface to one of the antenna processor pipeline"""
@@ -26,6 +28,8 @@ class ANT_channel(object):
     FFT_MODULE = 2
     SCALER_MODULE = 3
     PROBER_MODULE = 4
+    FUNCGEN_MODULE = 5
+    INJECT_MODULE = 6
 
     def __init__(self, ant_instance, ant_number):
         #super(ADC_chip,self).__init__(fpga)
@@ -37,7 +41,8 @@ class ANT_channel(object):
         self.FFT = FFT.FFT_base(self)
         self.SCALER = SCALER.SCALER_base(self)
         self.PROBER = PROBER.PROBER_base(self)
-        #self.CH_DIST=CH_DIST.CH_DIST_base(self)
+        self.FUNCGEN = FUNCGEN.FUNCGEN_base(self)
+        self.INJECT = INJECT.INJECT_base(self)
         self.frame_length = self.ant.frame_length
 
         
@@ -58,6 +63,8 @@ class ANT_channel(object):
         self.FFT.init()
         self.SCALER.init()
         self.PROBER.init()
+        self.FUNCGEN.init()
+        self.INJECT.init()
 
 
     def status(self):
@@ -68,8 +75,8 @@ class ANT_channel(object):
         self.FFT.status()
         self.SCALER.status()
         self.PROBER.status()
-
-
+        self.FUNCGEN.status()
+        self.INJECT.status()
 
 class ANT_base(object):
     """ Instantiates a container for all antenna processors available on the FPGA """

@@ -5,7 +5,7 @@ BaseClass for testing chime FPGA board.
 KMB:  2012-09-20, Changed to expect a dictionary from inject
 '''
 
-from pychime.core import Inject as inj
+from pychime.core import Inject_tools as inj
 import numpy as np
 
 class test_BaseClass:
