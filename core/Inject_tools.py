@@ -29,7 +29,7 @@ def set_inject_mode(fpga_ctrl, fpga_recv, bypass_FFT=False, channels=range(8)):
     ### changed to inject until see something coming out.  Record number of frames
     ### if get to 100, break out of the loop. 
     #filling_buffer = True
-    fpga_ctrl.set_trig(1) # Always send injected data
+    fpga_ctrl.set_trig(1) # Always send injected data 
     # For each of the antenna, inject frames until something rets into the receive buffer
     for ch in channels: 
         print 'Filling Channel %i data processing pipeline' %ch, 
