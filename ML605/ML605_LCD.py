@@ -72,6 +72,7 @@ class LCD_base(object):
         if col is not None or row is not None:
             self.set_addr(pos)
         for char in string:
+            print '.',
             self.write_data(ord(char))
 
 
@@ -107,14 +108,14 @@ class LCD_base(object):
         self.write_command(0b00000110) # Cursor move = increase, Shift=off
 
         # defines character 0, which is supposed to look like a little radiotelescope (just add a healthy dose of imagination)
-        self.define_char(0, (
-            0b00010000 ,
-            0b00011010 ,
-            0b00011100 ,
-            0b00011100 ,
-            0b00000111 ,
-            0b00000000 ,
-            0b00000000 ,
-            0b00000000 ) )
+        #self.define_char(0, (
+        #    0b00010000 ,
+        #    0b00011010 ,
+        #    0b00011100 ,
+        #    0b00011100 ,
+        #    0b00000111 ,
+        #    0b00000000 ,
+        #    0b00000000 ,
+        #    0b00000000 ) )
 
-        self.write('\000CHIME Pathfinder', col=0, row=0)
+        #self.write('\000CHIME Pathfinder', col=0, row=0)

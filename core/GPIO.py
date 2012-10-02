@@ -102,11 +102,13 @@ class GPIO_base(Module_base):
         self.pulse_bit('GLOBAL_RESET')
 
     def init(self):
-        """ Initializes the module operations"""
-        # reset the antenna processors so they stop sending data.
-        # We do not use ANT_RESET=1 because this implies a read, which might not get through if too much data is coming in
-        self.ANT_RESET = 1 # This replaces the direct access below which resets all bits in the word. Not sure why I did that. 
-        self.CORR_RESET = 0  
+        """ 
+        Initializes the GPIO module operations.
+        This puts the antenna processors and correlators in reset state."""
+        # reset the antenna processors. This causes them to stop sending data.
+        self.ANT_RESET = 1  
+        self.CORR_RESET = 1  
+        # In the alternate code below, we do not use self.ANT_RESET=1 to reset the antenna because this implies reading the control register, and the read data might not get through if too much data is coming in
         # ant_reset = self.bitfield('ANT_RESET')
         # self.write(ant_reset.addr, 1 << ant_reset.bit)
 
