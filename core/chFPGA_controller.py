@@ -612,6 +612,7 @@ class chFPGA_controller(object):
                     ant.FFT.BYPASS = 1
                     ant.SCALER.BYPASS = 1
         self.pulse_ant_reset();
+
     def set_global_trigger(self, trigger_state):
         """
         Sets the global trigger to the specified value.
@@ -635,6 +636,28 @@ class chFPGA_controller(object):
                 self.ANT[ch].INJECT.inject_frame(data[ch])
             else:
                 self.ANT[ch].INJECT.inject_frame(data)
+
+    def start_corr_capture(self,  integration_period=1.0, capture_period=None, verbose=1):
+        """
+        Instructs chFPGA to starts integrating and capturing the correlator outputs at the specified period. The captures data is sent over the Ethernet interface.
+        The capture period can be optionnaly specified independently from the integration period. If not specified, it is equal to the integration period.
+        This function does not receive the frames from the ethernet port. This has to be done separately.
+        History:
+            2012-10-02 JFC: Created
+        """
+
+        if capture_period is None:
+            capture_period = integration_period
+
+        capture_period_in_frames = int(capture_period*1.0/self.FRAME_PERIOD)
+        integration_period_in_frames = int(capture_period*1.0/self.FRAME_PERIOD)
+
+        self.set_corr_reset(1)            
+        for corr in self.CORR_BLOCK:
+            print 'Configuring correlator %i to integrate over %f seconds (over %i frames) and transmit data every %f seconds (over %i frames)' %  (corr.instance_number, integration_period, integration_period_in_frames, capture_period , capture_period_in_frames)
+            corr.ACC.RESET = 0
+            corr.ACC.config(integration_period=integration_period_in_frames, capture_period=capture_period_in_frames)
+        self.set_corr_reset(0)
                 
     def version(self):
         """

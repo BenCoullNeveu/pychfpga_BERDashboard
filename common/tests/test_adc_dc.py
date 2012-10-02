@@ -31,10 +31,10 @@ class test_adc_dc(test_BaseClass):
 
     def execute(self): 
         ''' set mode to inject and get dc packets out'''
-        inj.set_inject_mode(self.fpga_ctrl, self.fpga_recv)
+        inj.set_inject_mode(self.fpga_ctrl, self.fpga_recv, bypass_FFT=True)
         print self.inject_dc(0)
         print "initialized"
-        self.fpga_ctrl.set_FFT_bypass(True)
+        #self.fpga_ctrl.set_FFT_bypass(True)
         dcs = self.check_timestream_dc()        
         print "Test passed??  "
         return dcs

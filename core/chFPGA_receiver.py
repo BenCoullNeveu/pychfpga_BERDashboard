@@ -287,7 +287,7 @@ class chFPGA_receiver(object):
                     data[channel]=np.hstack((data[channel],raw_data));
         return data        
             
-    def read_corr_frames(self, frames=1, verbose=0, flush=0, timeout=3):
+    def read_corr_frames(self, frames=1, verbose=0, flush=0, timeout=3, raw=False):
         """
         Get corr frames that were captured by the capture thread.
 
@@ -297,6 +297,11 @@ class chFPGA_receiver(object):
         History:
             120913 KMB: Created from read_frames to read corr buffer
         """
+        Nant = 4 # Number of correlated antennas
+        Nproducts = (Nant*(Nant+1))/2 # Total number of correlation products
+        Nchannels_max = 256 # Maximum number of frequency channels that can be contained in a frame 
+        linear_map = lambda i,j:(Nant*(Nant+1)-(Nant-i)*(Nant-i+1))/2+(j-i) # Maps (i,j) (for j>=i) matrix coordinates into a linear array indexed from 0 to Nant*(Nant-1)/2-1: x0x0, x0x1, x0x2, x0x3, x1x1, x1x2, x1x3, x2x2, x2x3, x3x3
+        corr_data=np.zeros((Nproducts, Nchannels_max), dtype=complex)  # Dimensions are: (Number_of_products, number_of_frequency_channels)          
 
         # Acquire the data
         data={}
@@ -318,7 +323,6 @@ class chFPGA_receiver(object):
             in_frames =  data_block
             block_timestamp = 0
             data['timestamp'] = block_timestamp
-            
             for in_frame in in_frames[:]:
                 
 
@@ -327,17 +331,47 @@ class chFPGA_receiver(object):
                     break
                 else:    
                     (probe_id, mult_id, word_length, timestamp) = struct.unpack_from('>BHLL', in_frame)
-                    data['mult_id'] = mult_id
+                    #data['mult_id'] = mult_id
 
                 #Return numpy complex128's  Check if this shifting is correct
                 #not shifting through correctly yet.
                 #not sure if the word thing will work, might need indexes or something
                 raw_data = []
                 #in_frame[11+13*i:24+13*i] i from 0 to 512
+                word_number = 0
                 for word in in_frame[11:].reshape(512,13):
                     (flags, r1, r2, i1, i2) = struct.unpack_from('>BHLHL',word)
-                    raw_data.append(( r1 << 32 | r2 ) + 1.0j*(i1<<32 | i2))
+                    product = ((r1 << 32) | r2 ) + 1.0j * ((i1 << 32) | i2)
+                    raw_data.append(product)
+                    
+                    product_number = word_number %  Nant
+                    freq_channel = (word_number // Nant) *2
+                    # Compute the (i,j) index of each product
+                    if mult_id == 0:
+                        i_index = Nant - 1 - product_number
+                        j_index = Nant - 1 - product_number
+                        freq_channel_offset = 1
+                    elif mult_id == Nant:
+                        i_index = product_number
+                        j_index = product_number
+                        freq_channel_offset = 0
+                    elif product_number < mult_id: # if we have the 'A' peoducts
+                        i_index = Nant - 1 - mult_id
+                        j_index = Nant - mult_id + product_number
+                        freq_channel_offset = 0
+                    else:
+                        i_index = mult_id - 1
+                        j_index = mult_id + Nant - product_number - 1
+                        freq_channel_offset = 1
+                    linear_index = linear_map(i_index, j_index)       
+                    #print 'Multiplier #%i, word #%i, bin #%i, product #%i, (i,j)=(%i,%i), k=%i' %( mult_id, word_number, freq_channel+freq_channel_offset, product_number, i_index, j_index, linear_index )
+                    corr_data[linear_index, freq_channel+freq_channel_offset] = product
+                    word_number += 1   
                 raw_data = np.array(raw_data)
+        
+                
+
+                    
         
                 # Process the frame data Need to use Mult_ID to sort out what is what.
                 # include in data flags etc?
@@ -350,11 +384,19 @@ class chFPGA_receiver(object):
                     #pass
                 # Make sure there is an empty vector on the first storage so we can concatenate to it the new data
                 
-                if mult_id not in data:
-                    data[mult_id]=raw_data
-                else:
-                    data[mult_id]=np.hstack((data[mult_id],raw_data));
-        return data     
+                if mult_id in data:
+                    print 'Warning: correlator data is received multiple times from the same multiplier'
+ 
+                data[mult_id]=raw_data
+
+                #if mult_id not in data:
+                #    data[mult_id]=raw_data
+                #else:
+                #    data[mult_id]=np.hstack((data[mult_id],raw_data));
+        if raw:
+            return data
+        else:
+            return corr_data
 
 
 

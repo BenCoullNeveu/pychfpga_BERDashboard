@@ -24,7 +24,7 @@ class CORR_BLOCK_channel(object):
     def __init__(self, parent, instance_number):
         #super(ADC_chip,self).__init__(fpga)
         self.parent = parent # store current ADC number for this instance
-        self.instance_number = instance_number # store current ADC number for this instance
+        self.instance_number = instance_number # store current correlator number for this instance
         self.fpga = self.parent.fpga
         self.CH_DIST = CH_DIST.CH_DIST_base(self, self.fpga, self.fpga.CORR_PORT[instance_number], self.CH_DIST_MODULE)
         self.ACC = ACC.ACC_base(self, self.fpga, self.fpga.CORR_PORT[instance_number], self.ACC_MODULE)

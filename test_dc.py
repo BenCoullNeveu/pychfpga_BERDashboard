@@ -17,7 +17,7 @@ History:
 from pychime.core import chFPGA_controller
 from pychime.core import chFPGA_receiver
 import pychime.plot_utils as pu
-from pychime.core import Inject as inj
+from pychime.core import Inject_tools as inj
 from pychime.common.tests.test_adc_fft_bin import test_adc_fft_bin
 from pychime.common.tests.test_adc_fft_int_power import test_adc_fft_int_power
 from pychime.common.tests.test_adc_fft_level import test_adc_fft_level
