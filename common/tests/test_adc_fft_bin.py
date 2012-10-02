@@ -46,10 +46,13 @@ class test_adc_fft_bin(test_BaseClass):
         self.fpga_ctrl.ANT[0].FFT.FFT_SHIFT= 2**7 - 1
 
         x, spectra, tone = self.check_fft_bin_shape()
-        xs, sim_spec = pfb.sim_pfb(taps=4, L=2048, window_function=pfb.boxcar, bin_number=31, resolution=2**20)        
-        pylab.plot(x,20*np.log10(abs(tone)/abs(tone).max()))
-        pylab.plot(xs,20*np.log10(abs(sim_spec)/abs(sim_spec).max()))
+        xs, sim_spec = pfb.sim_pfb(taps=4, L=2048, window_function=pfb.boxcar, bin_number=31, resolution=2**20)
+        xs_exp, sim_spec_exp = pfb.sim_pfb(taps=4, L=2048, window_function=pfb.sinc_hanning_window, bin_number=31, resolution=2**20)
+        pylab.plot(x,20*np.log10(abs(tone)/abs(tone).max()), label='data')
+        pylab.plot(xs,20*np.log10(abs(sim_spec)/abs(sim_spec).max()), label='FFT expected')
+        pylab.plot(xs_exp,20*np.log10(abs(sim_spec_exp)/abs(sim_spec_exp).max()), label='PFB expected')
         pylab.xlim(x.min(),x.max())
         pylab.ylim(-60,0)
+        pylab.legend()
         pylab.savefig('Measured_vs_sim_binshape.pdf')
         return x, spectra, tone, xs, sim_spec

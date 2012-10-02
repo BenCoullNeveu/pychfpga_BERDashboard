@@ -22,6 +22,7 @@ from pychime.common.tests.test_adc_fft_bin import test_adc_fft_bin
 from pychime.common.tests.test_adc_fft_int_power import test_adc_fft_int_power
 from pychime.common.tests.test_adc_fft_level import test_adc_fft_level
 from pychime.common.tests.test_adc_dc import test_adc_dc
+import pychime.common.tests.test_corr as tc
 
 reload(chFPGA_controller) # just to make sure that any changes to the code are reloaded
 reload(chFPGA_receiver) # just to make sure that any changes to the code are reloaded
@@ -140,6 +141,9 @@ if __name__ == '__main__':
     #c.set_data_capture(burst_period=10000, number_of_bursts=0)
     # Continuously plot the ADC output
     #c.plot_ADC_frame(channels=[1], frames=512)
+
+    #
+    
     #c.close()
     #r.close()
 
