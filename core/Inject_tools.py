@@ -95,8 +95,9 @@ def inject(fc, fr, channels=None, data=None):
         if timestamp is None:
             timestamp = data['timestamp'] # set the timestamp
         elif timestamp != data['timestamp']:
-            print 'Warning: incoming frames have different timestamps.'
-        #print data
+            print 'Warning: incoming frames have different timestamps.' + str(timestamp)+ ' ' + str(data['timestamp'])
+            print data
+            print returned_data
         returned_data.update(data) # Add the frame to the dictionary
     return returned_data
 
