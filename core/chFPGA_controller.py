@@ -652,12 +652,14 @@ class chFPGA_controller(object):
         capture_period_in_frames = int(capture_period*1.0/self.FRAME_PERIOD)
         integration_period_in_frames = int(capture_period*1.0/self.FRAME_PERIOD)
 
+        self.set_ant_reset(1)            
         self.set_corr_reset(1)            
         for corr in self.CORR_BLOCK:
             print 'Configuring correlator %i to integrate over %f seconds (over %i frames) and transmit data every %f seconds (over %i frames)' %  (corr.instance_number, integration_period, integration_period_in_frames, capture_period , capture_period_in_frames)
             corr.ACC.RESET = 0
             corr.ACC.config(integration_period=integration_period_in_frames, capture_period=capture_period_in_frames)
         self.set_corr_reset(0)
+        self.set_ant_reset(0)            
                 
     def version(self):
         """
