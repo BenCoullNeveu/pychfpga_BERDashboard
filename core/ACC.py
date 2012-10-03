@@ -37,6 +37,7 @@ class ACC_base(Module_base):
     def config(self, integration_period, capture_period=None):
         """
         Configure the integration and capture period of the correlator accumulator.
+        All periods are specified as a number of frames.
         """
 
         if integration_period <= 0 or integration_period >= (2**32)-1: 
