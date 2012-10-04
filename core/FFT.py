@@ -46,7 +46,9 @@ class FFT_base(Module_base):
         #self.BYPASS = 0
         #self.SYNC_PERIOD *= 2
         #self.FFT_SHIFT= 2**3 - 1
-
+        self.PIPELINE_DELAY = 3230
+        #if self.PIPELINE_DELAY != self.MEASURED_PIPELINE_DELAY:
+        #    raise Exception('FFT pipeline delay is not set to the measured value!')
     def status(self):
         """ Displays the status of the data capture module"""
         print '-------------- ANT[%i].FFT STATUS --------------' % self.port_number 
