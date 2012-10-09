@@ -28,11 +28,12 @@ class run_corr():
         self.fpga_ctrl = fpga_ctrl
         self.fpga_recv = fpga_recv
         #set bypass FFT and initial settings'''
-        self.fpga_ctrl.set_FFT_bypass(True, channels=[0,1,2,3,4,5,6,7])
-        self.fpga_ctrl.set_data_source('func_zero')
-        self.fpga_ctrl.set_data_source('func_real_ramp', channels=[0,1,2,3])
-        self.fpga_ctrl.set_corr_reset(False)
+        self.fpga_ctrl.set_FFT_bypass(False, channels=[0,1,2,3,4,5,6,7])
+        self.fpga_ctrl.set_data_source('adc')
+        self.fpga_ctrl.set_adc_mode(mode='data')
+        #self.fpga_ctrl.set_corr_reset(False)
         self.fpga_ctrl.start_data_capture(burst_period_in_seconds=1.0, number_of_bursts=0)
+        self.fpga_ctrl.start_corr_capture()
         time.sleep(2)
 
     def unscramble(self, data):
@@ -84,9 +85,9 @@ class run_corr():
 
         spectrum = self.fpga_recv.read_frames()
         spectrum = self.clean_spec(spectrum)
-        output = self.fpga_recv.read_corr_frames()
-        dout = np.array([output[0],output[1],output[2],output[3],output[4]])
-        data = self.unscramble(dout)
+        data = self.fpga_recv.read_corr_frames()
+        #dout = np.array([output[0],output[1],output[2],output[3],output[4]])
+        #data = self.unscramble(dout)
         return spectrum, data
 
     def init_file(self, fcount):

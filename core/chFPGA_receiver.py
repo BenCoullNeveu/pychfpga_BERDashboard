@@ -307,7 +307,7 @@ class chFPGA_receiver(object):
         data={}
         #need to change flush to take a queue object
         if flush:
-            self.flush_frame_buffer()
+            self.flush()
             
         for j in range(frames):
         #j=0
@@ -339,7 +339,8 @@ class chFPGA_receiver(object):
                 raw_data = []
                 #in_frame[11+13*i:24+13*i] i from 0 to 512
                 word_number = 0
-                for word in in_frame[11:].reshape(512,13):
+                num_channels = len(in_frame[11:])/13
+                for word in in_frame[11:].reshape(num_channels,13):
                     (flags, r1, r2, i1, i2) = struct.unpack_from('>BHLHL',word)
                     product = ((r1 << 32) | r2 ) + 1.0j * ((i1 << 32) | i2)
                     raw_data.append(product)

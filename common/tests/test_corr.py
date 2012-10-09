@@ -55,9 +55,9 @@ class test_corr(test_BaseClass):
         self.fpga_ctrl.inject_frame(data=data, channels=channels)
         # Read the results. The frames can come in any order.
         self.fpga_ctrl.set_global_trigger(True) # Start reading of all injection buffers simulataneously
-        output = self.fpga_recv.read_corr_frames()
-        dout = np.array([output[0],output[1],output[2],output[3],output[4]])
-        data = self.unscramble(dout)
+        data = self.fpga_recv.read_corr_frames()
+        #dout = np.array([output[0],output[1],output[2],output[3],output[4]])
+        #data = self.unscramble(dout)
         return data
 
     def test_spectrum(self):
@@ -66,9 +66,10 @@ class test_corr(test_BaseClass):
         '''
         dc_levels = range(1,5)
         dcs = []
-        self.fpga_ctrl.set_FFT_bypass(True, channels=[0,1,2,3,4,5,6,7])
-        self.fpga_ctrl.set_corr_reset(False)
-        inj.set_inject_mode(self.fpga_ctrl, self.fpga_recv)
+        #self.fpga_ctrl.set_FFT_bypass(True, channels=[0,1,2,3,4,5,6,7])
+        #self.fpga_ctrl.set_corr_reset(False)
+        self.fpga_ctrl.start_corr_capture()
+        inj.set_inject_mode(self.fpga_ctrl, self.fpga_recv, bypass_FFT=True)
         print self.inject_dc(0)
         print "initialized"
         for dc_level in dc_levels:
@@ -82,16 +83,18 @@ class test_corr(test_BaseClass):
         ''' set bypass FFT and '''
         self.fpga_ctrl.set_FFT_bypass(True, channels=[0,1,2,3,4,5,6,7])
         #self.fpga_ctrl.set_data_source('func_zero')
-        self.fpga_ctrl.set_data_source('real_ramp', channels=[0,1,2,3])
-        self.fpga_ctrl.set_corr_reset(False)
+        self.fpga_ctrl.set_data_source('funcgen', channels=[0,1,2,3])
+        self.fpga_ctrl.set_funcgen_function(function='real_ramp')
+        #self.fpga_ctrl.set_corr_reset(False)
         self.fpga_ctrl.start_data_capture(burst_period_in_seconds=1.0, number_of_bursts=0)
+        self.fpga_ctrl.start_corr_capture()
         time.sleep(2)
-        test = self.fpga_recv.read_frames()
         #test = self.fpga_recv.read_frames()
-        output = self.fpga_recv.read_corr_frames()
+        #test = self.fpga_recv.read_frames()
+        data = self.fpga_recv.read_corr_frames()
         #output = self.fpga_recv.read_corr_frames()
-        dout = np.array([output[0],output[1],output[2],output[3],output[4]])
-        data = self.unscramble(dout)
+        #dout = np.array([output[0],output[1],output[2],output[3],output[4]])
+        #data = self.unscramble(dout)
         expected = np.load('expected_real_ramp_corr_1sec.npy')
         pylab.plot(abs(data[0,:256]))
         pylab.plot(abs(expected[0,:256]))
@@ -99,11 +102,30 @@ class test_corr(test_BaseClass):
         pylab.ylabel('abs correlation')
         pylab.savefig('Correlation_check.pdf')
         pylab.clf()
-        return data        
+        return data
+
+    def test_adc_ramp(self):
+        self.fpga_ctrl.set_data_source('adc', channels=[0,1,2,3,4,5,6,7])
+        self.fpga_ctrl.set_ADC_mode(mode='ramp')
+        self.fpga_ctrl.set_FFT_bypass(False, channels=[0,1,2,3,4,5,6,7])
+        self.fpga_ctrl.start_data_capture(burst_period_in_seconds=0.92, number_of_bursts=0)
+        self.fpga_ctrl.sync()
+        self.fpga_ctrl.start_corr_capture()
+        time.sleep(2)
+        self.fpga_recv.flush()
+        data = self.fpga_recv.read_corr_frames(flush=True)
+        time.sleep(2)
+        pylab.plot(abs(data[0,:256]))
+        #pylab.plot(abs(expected[0,:256]))
+        pylab.xlabel('Freq Channel')
+        pylab.ylabel('abs correlation')
+        pylab.savefig('Correlation_check_adc_ramp.pdf')
+        pylab.clf()
+        return data
         
     def execute(self): 
         self.fpga_ctrl.sync()
         data_ramp = self.test_ramp()
-        return data_ramp
-        data_inj = self.test_spectrum()
-        return data_ramp, data_inj
+        data_adc_ramp = self.test_adc_ramp()
+        #data_inj = self.test_spectrum()
+        return data_ramp, data_adc_ramp

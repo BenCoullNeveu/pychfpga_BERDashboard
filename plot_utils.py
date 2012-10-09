@@ -156,17 +156,17 @@ def plot_corr_frames(chFPGA, freqs=256, raw=0, flush=0):
     """ Plots incoming frames, expected to be a timestream """
     
     def anim_init():
-        output = chFPGA.read_corr_frames( flush=flush)
-        dout = np.array([output[0],output[1],output[2],output[3],output[4]])
-        a = unscramble(dout)
+        a = chFPGA.read_corr_frames( flush=flush)
+        #dout = np.array([output[0],output[1],output[2],output[3],output[4]])
+        #a = unscramble(dout)
         for line in lineObjects:
             line.set_data(range(len(a[0])),a[0])
         return lineObjects
                 
     def animate(i):
-        output = chFPGA.read_corr_frames( flush=flush)
-        dout = np.array([output[0],output[1],output[2],output[3],output[4]])
-        a = unscramble(dout)
+        a = chFPGA.read_corr_frames( flush=flush)
+        #dout = np.array([output[0],output[1],output[2],output[3],output[4]])
+        #a = unscramble(dout)
         for j,line in enumerate(lineObjects):
             line.set_ydata(a[j])
         return lineObjects
@@ -176,9 +176,9 @@ def plot_corr_frames(chFPGA, freqs=256, raw=0, flush=0):
     chanIndex = np.arange(freqs)
     lineObjects = range(ncorr)
     ax = fig.add_subplot(111, autoscale_on=True, xlim=(0, 2048), ylim=(-128, 128))
-    output = chFPGA.read_corr_frames( flush=flush)
-    dout = np.array([output[0],output[1],output[2],output[3],output[4]])
-    a = unscramble(dout)
+    a = chFPGA.read_corr_frames( flush=flush)
+    #dout = np.array([output[0],output[1],output[2],output[3],output[4]])
+    #a = unscramble(dout)
     for i in range(len(lineObjects)):
         lineObjects[i], = ax.plot(range(len(a[1])), a[1], '-', lw=2)  
     ani = animation.FuncAnimation(fig, animate, np.ones(500),

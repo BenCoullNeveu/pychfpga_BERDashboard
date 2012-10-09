@@ -38,6 +38,7 @@ def set_inject_mode(fpga_ctrl, fpga_recv, bypass_FFT=False, channels=range(8)):
             fpga_ctrl.ANT[ch].INJECT.inject_frame()
             pipeline_depth += 1
             print '.',
+            time.sleep(0.01)
         fpga_recv.flush();
         print 'Done. Pipeline depth is %i' % pipeline_depth
 
@@ -139,6 +140,16 @@ def ADC_check_frames(self, channel=0, frames=16, delay=None, verbose=0):
 
 
 
+def stop_inject_mode(fpga_ctrl, fpga_recv, bypass_FFT=False, channels=range(8)):
+    """ Stops all channels into injection mode"""
+    fpga_ctrl.stop_data_capture()
+    fpga_recv.send_every_frame(0)
+    fpga_ctrl.set_default_channels(channels) # sets which channels are used by default in subsequent commands
+    fpga_ctrl.set_FFT_bypass(bypass_FFT) # also resets the antenna processors
+    fpga_ctrl.set_data_source('adc') # also resets the antenna procesors
+    fpga_ctrl.pulse_ant_reset() # resets the antenna processing chain to eliminate any frames in transit in the processing pipeline. This clears the Injection FIFO as well.
+    fpga_recv.flush()
+    fpga_ctrl.start_data_capture(burst_period_in_seconds=1)
 
 if __name__ == '__main__':
     print "testing frame injection"
