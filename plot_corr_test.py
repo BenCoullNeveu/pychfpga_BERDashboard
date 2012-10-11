@@ -119,11 +119,11 @@ if __name__ == '__main__':
     c.sync()
     #inj.set_inject_mode(c,r)
     #dcs = inj.check_fft_dc(c,r)
-    # Displays the system frequencies
+    # Displays the system frequenciesS
     c.FreqCtr.status()
-    c.set_FFT_bypass(True, channels=[0,1,2,3,4,5,6,7])
-    c.set_data_source('funcgen', channels=[0,1,2,3])
-    c.func_gen_function(function='real_ramp')
+    c.set_FFT_bypass(False, channels=[0,1,2,3,4,5,6,7])
+    c.set_data_source('adc', channels=[0,1,2,3])
+    #c.set_funcgen_function(function='real_ramp')
     #c.CORR_BLOCK[0].CH_DIST.select_words(8)
     c.start_data_capture(burst_period_in_seconds=1.0, number_of_bursts=0)
     c.start_corr_capture()

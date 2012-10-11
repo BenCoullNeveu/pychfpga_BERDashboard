@@ -29,12 +29,22 @@ class run_corr():
         self.fpga_recv = fpga_recv
         #set bypass FFT and initial settings'''
         self.fpga_ctrl.set_FFT_bypass(False, channels=[0,1,2,3,4,5,6,7])
+
+# WE CHANGED THIS
+        for chan in range(8):
+            self.fpga_ctrl.ANT[chan].FFT.FFT_SHIFT=2**6-1
+            
+
+        
         self.fpga_ctrl.set_data_source('adc')
-        self.fpga_ctrl.set_adc_mode(mode='data')
+        self.fpga_ctrl.set_ADC_mode(mode='data')
         #self.fpga_ctrl.set_corr_reset(False)
-        self.fpga_ctrl.start_data_capture(burst_period_in_seconds=1.0, number_of_bursts=0)
+        self.fpga_ctrl.start_data_capture(burst_period_in_seconds=0.9, number_of_bursts=0)
         self.fpga_ctrl.start_corr_capture()
         time.sleep(2)
+        self.fpga_ctrl.sync()
+        self.fpga_recv.flush()
+
 
     def unscramble(self, data):
         '''
@@ -95,7 +105,7 @@ class run_corr():
         if fcount == 0:
             nowtime=time.time()
             #nowtime = 1338143259.2
-            basename = '\\Users\\kbandura\\chime\\data\\'+filename + '_'+ str(nowtime)+'\\'
+            basename = filename + '_'+ str(nowtime)+'\\'
             #print basename
             os.mkdir(basename)
             os.chdir(basename)
