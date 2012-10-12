@@ -52,7 +52,8 @@ class ACC_base(Module_base):
     def init(self, **kwargs):
         """ Initialize the accumulator module"""
         #self.config(500000)
-
+        self.PROBE_ID = 0xF0 + self.parent.instance_number
+        
     def status(self):
         """ Displays the status of the accumulator module"""
         print '-------------- CORR_BLOCK[%i] data capture --------------' % self.parent.instance_number 

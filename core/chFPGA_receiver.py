@@ -102,7 +102,7 @@ class ReceiverThread(threading.Thread):
                     #probe_id = struct.unpack_from('>B', self.data_buf)
                     (probe_id, stream_id, word_length, timestamp) = struct.unpack_from('>BHHL', self.data_buf)
                     #Correlator input                    
-                    if (probe_id == 0xFB):
+                    if (probe_id & 0xF0 == 0xF0):
                         #Correlator unpack first try very simple.  
                         if (stream_id < 5 ) :
                             if (stream_id == 4):
@@ -163,6 +163,11 @@ class chFPGA_receiver(object):
     LOG2_FRAME_LENGTH = 11
     FRAME_LENGTH = 2**LOG2_FRAME_LENGTH
 
+    CHANNELS_PER_CORR = 250
+    CHANNELS_PER_CORR_MAX = 256
+    NUMBER_OF_ANTENNAS_TO_CORRELATE = 5
+    NUMBER_OF_CORR = NUMBER_OF_ANTENNAS_TO_CORRELATE
+    
     def __init__(self, ip_address='10.10.10.11', port=41001, verbose=2):
 
         print '*** Opening receiver sockets ***'
@@ -297,11 +302,11 @@ class chFPGA_receiver(object):
         History:
             120913 KMB: Created from read_frames to read corr buffer
         """
-        Nant = 4 # Number of correlated antennas
+        Nant = self.NUMBER_OF_ANTENNAS_TO_CORRELATE # Number of correlated antennas c.GPIO.
         Nproducts = (Nant*(Nant+1))/2 # Total number of correlation products
-        Nchannels_max = 256 # Maximum number of frequency channels that can be contained in a frame 
+        Nchannels_max = self.CHANNELS_PER_CORR_MAX # Maximum number of frequency channels that can be contained in a frame CHANNELS_PER_CORR_MAX*NUMBER_OF_CORRELATORS
         linear_map = lambda i,j:(Nant*(Nant+1)-(Nant-i)*(Nant-i+1))/2+(j-i) # Maps (i,j) (for j>=i) matrix coordinates into a linear array indexed from 0 to Nant*(Nant-1)/2-1: x0x0, x0x1, x0x2, x0x3, x1x1, x1x2, x1x3, x2x2, x2x3, x3x3
-        corr_data=np.zeros((Nproducts, Nchannels_max), dtype=complex)  # Dimensions are: (Number_of_products, number_of_frequency_channels)          
+        corr_data=np.zeros((Nproducts, Nchannels_max *self.NUMBER_OF_CORRELATORS), dtype=complex)  # Dimensions are: (Number_of_products, number_of_frequency_channels)          
 
         # Acquire the data
         data={}
@@ -338,6 +343,7 @@ class chFPGA_receiver(object):
                 #not sure if the word thing will work, might need indexes or something
                 raw_data = []
                 #in_frame[11+13*i:24+13*i] i from 0 to 512
+                corr_number = probe_id & 0x0F
                 word_number = 0
                 num_channels = len(in_frame[11:])/13
                 for word in in_frame[11:].reshape(num_channels,13):
@@ -346,7 +352,7 @@ class chFPGA_receiver(object):
                     raw_data.append(product)
                     
                     product_number = word_number %  Nant
-                    freq_channel = (word_number // Nant) *2
+                    freq_channel = (word_number // Nant) *2 + corr_number*self.CHANNELS_PER_CORR
                     # Compute the (i,j) index of each product
                     if mult_id == 0:
                         i_index = Nant - 1 - product_number
