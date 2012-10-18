@@ -11,6 +11,7 @@ History:
     2011-09-08 JFC: Added FMC_REFCLK
     2011-09-25 JFC: Added fan RPM readout
     2012-05-31 JFC: Added data processing frequency readout. Cleanup status() display.
+    2012-10-17 JFC: Added correlator frequency
 """
 import numpy as np
 
@@ -35,7 +36,8 @@ class FreqCtr_base(object):
     'CLK200': 11,
     'CTRL_CLK': 12,
     'FAN': 13,
-    'DSP_CLK': 14,
+    'ANT_CLK': 14,
+    'CORR_CLK': 15,
     }
 
 
@@ -105,7 +107,8 @@ class FreqCtr_base(object):
         print 'System Frequencies:'
         print '   FPGA Board frequency:      %7.3f MHz' % (self.read_frequency('CLK200', gate_time=gate_time) / 1e6) 
         print '   CTRL_CLK frequency:        %7.3f MHz' % (self.read_frequency('CTRL_CLK', gate_time=gate_time) / 1e6) 
-        print '   Data processing frequency: %7.3f MHz (Source=%s)' % (self.read_frequency('DSP_CLK', gate_time=gate_time) / 1e6, ant_clock_source_string) 
+        print '   ANT_CLK frequency:         %7.3f MHz (Source=%s)' % (self.read_frequency('ANT_CLK', gate_time=gate_time) / 1e6, ant_clock_source_string) 
+        print '   Correlator frequency:      %7.3f MHz' % (self.read_frequency('CORR_CLK', gate_time=gate_time) / 1e6) 
         print '   FMC Reference frequency:   %7.3f MHz%s' % (self.read_frequency('FMC_REFCLK', gate_time=gate_time) / 1e6, fmc_present_string) 
         print '   MGT Ref clock frequency:   %7.3f MHz' % (self.read_frequency('MGT_REFCLK', gate_time=gate_time) / 1e6) 
         print '   MGT word frequency:        %7.3f MHz' % (self.read_frequency('MGT_USRCLK2', gate_time=gate_time) / 1e6) 

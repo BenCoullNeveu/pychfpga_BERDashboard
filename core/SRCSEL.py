@@ -11,6 +11,7 @@ SRCSEL.py module
     2012-05-29 JFC: Extracted from ANT.py
     2012-08-28 JFC: Moved SYNC_PERIOD to the FFT block
     2012-10-01 JFC: Moved INJECT and FUNCGEN out of here
+    2012-10-17 JFC: Fixed default source setting when there is no FMC
 """
 
 from Module import Module_base, BitField
@@ -64,7 +65,7 @@ class SRCSEL_base(Module_base):
         """ Initializes the antenna processing chain data source module """
         # Do nothing if the FMC is not present
         if not self.fpga.FMC_present:
-            self.set_data_source('func') # use the dunction generator if the ADC is not present
+            self.set_data_source('funcgen') # use the dunction generator if the ADC is not present
         else:
             self.set_data_source('adc') # use the ADC data
 

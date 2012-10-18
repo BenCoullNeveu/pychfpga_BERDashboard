@@ -5,9 +5,10 @@
 """
 FUNCGEN.py module 
  Implements interface to the internal function generator
-#
-# History:
-# 2012-10-01 JFC : Created from SRCSEL.py
+
+History:
+    2012-10-01 JFC : Created from SRCSEL.py
+    2012-10-17 JFC: Sets ramp as default function
 """
 
 from Module import Module_base, BitField
@@ -64,6 +65,7 @@ class FUNCGEN_base(Module_base):
 
     def init(self):
         """ Initializes the function generator """
+        self.set_function('ramp')
         pass
     
     def status(self):

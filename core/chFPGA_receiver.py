@@ -8,6 +8,9 @@ chFPGA_reader.py module
 
  History:
     2012-07-19 JFC: Created
+    2012-10-17 JFC: Modified behavior of receiver for:
+        a) If send_every_frame=False, discard the first block of frames after flush() avoid sending partial frame blocks
+        b) if the Queue is full, automatically pop an element before pushing a new one. Old data will be automatically flushed over time.
 """
 
 
@@ -34,7 +37,7 @@ class ReceiverThread(threading.Thread):
     queue_overflow = 0
     queue_corr_overflow = 0
     n_frames = 0
-    
+    store_data = 0 # do not store frame blocks if False
     def __init__(self, sock, queue, queue_corr, verbose = 1):
         self.sock = sock
         self.queue = queue
@@ -71,7 +74,7 @@ class ReceiverThread(threading.Thread):
         last_timestamp = 0
     #    last_delta = 0
         n = 0
-        n_corr = 0
+        total_queue_entries = 0
         #t0 = time.time()
         #last_display_time = t0
 #            expected_delta=self.ANT[0].PROBER.get_burst_period()
@@ -88,6 +91,7 @@ class ReceiverThread(threading.Thread):
                     nbytes = self.sock.recv_into(self.data)
                 except SocketIO.timeout:
                     pass
+                self.store_data = 0 # do not store data
                 self.queue.queue.clear();
                 self.queue_corr.queue.clear();
             else:
@@ -102,7 +106,7 @@ class ReceiverThread(threading.Thread):
                     #probe_id = struct.unpack_from('>B', self.data_buf)
                     (probe_id, stream_id, word_length, timestamp) = struct.unpack_from('>BHHL', self.data_buf)
                     #Correlator input                    
-                    if (probe_id & 0xF0 == 0xF0):
+                    if (probe_id & 0xF0 == 0xF0): # If correlator data
                         #Correlator unpack first try very simple.  
                         if (stream_id < 5 ) :
                             if (stream_id == 4):
@@ -117,29 +121,51 @@ class ReceiverThread(threading.Thread):
                             print "BAD STREAM ID?"
                             #Clear stuff? ERROR HANDLE
                     
-                    else:
-                        #Spectrum/timestream unpack (maybe break this up as well?)    
+                    elif (probe_id & 0xF0 == 0xA0): # if timestream or spectrum data
+                        # If we don't want to wait for all frames with the same timestanp to be grouped, put the frame immediately on the queue
                         if self._send_every_frame.is_set():
                             self.data_block[0,:] = self.data[:2048+9]
+                            # If the queue is full, make room by poping the oldest element
+                            if self.queue.full():
+                                self.queue.get()
+                            # Now try to write the data into the Queue. 
                             try:
                                 self.queue.put_nowait((timestamp, self.data_block[0:1,:].copy()))
                                 #print 'Stored a frame!!!'
                             except Queue.Full:
                                 self.queue_overflow += 1
-                        else:
-                            if (timestamp != last_timestamp):
+                        else: # otherwise store the data only when a new timestanp is received and the numbe of frames is not zero
+                            if (timestamp != last_timestamp) and (n != 0):
                                 #print 'trying to store a frame!!!'
-                                if n:
+                                if self.store_data: # False if this is the first block to be stored. In this case, do not store the data in case we got partial block after a flush()
+                                # If the queue is full, make room by poping the oldest element
+                                    if self.queue.full():
+                                        self.queue.get()
+                                    # Now write the block of frames to the queue
                                     try:
                                         #print 'Storing a frame!!!'
                                         self.queue.put_nowait((timestamp, self.data_block[0:n,:].copy()))
+                                        total_queue_entries += 1                        
+                                        #if not (total_queue_entries % 10):
+                                            #print '.',
                                     except Queue.Full:
                                         self.queue_overflow += 1
+                                        print 'Receiver Queue overflow... Should not happen...'
+                                else:
+                                    self.store_data = 1 # next time store the block
                                 last_timestamp = timestamp
                                 n = 0
                             # Copy the new vector into the block memory buffer
-                            self.data_block[n,:] = self.data[:2048+9]                    
-                            n += 1
+                            if n < 0 or n >= 8:
+                                print 'Receiver: received %i Timestrem/Spectrum frames with the same timestamp.' % n   
+                            elif nbytes != 2048 + 9:
+                                print 'Receiver: Timestrem/Spectrum frame has %i bytes instead of 2048+9=2057 bytes. First bytes are: 0x%s' % (nbytes, ' '.join('%02X' % c for c in self.data[:32]))                              
+                            else:
+                                self.data_block[n, :] = self.data[: 2048 + 9]                    
+                                n += 1
+                    else: # unknown frame format
+                        print 'Receiver: Frame of %i bytes with unknown identifier 0x%Xx has been received. It was discarded. First bytes are 0x%s' % (nbytes, (probe_id & 0xF0) >> 4, ' '.join('%02X' % c for c in self.data[:32]))                              
+                        
         print 'Frame acquisition thread is stopped'
 
     def status(self, print_delay=1):
@@ -166,8 +192,7 @@ class chFPGA_receiver(object):
     CHANNELS_PER_CORR = 250
     CHANNELS_PER_CORR_MAX = 256
     NUMBER_OF_ANTENNAS_TO_CORRELATE = 5
-    NUMBER_OF_CORR = NUMBER_OF_ANTENNAS_TO_CORRELATE
-    
+    NUMBER_OF_CORRELATORS = NUMBER_OF_ANTENNAS_TO_CORRELATE
     def __init__(self, ip_address='10.10.10.11', port=41001, verbose=2):
 
         print '*** Opening receiver sockets ***'
@@ -305,8 +330,8 @@ class chFPGA_receiver(object):
         Nant = self.NUMBER_OF_ANTENNAS_TO_CORRELATE # Number of correlated antennas c.GPIO.
         Nproducts = (Nant*(Nant+1))/2 # Total number of correlation products
         Nchannels_max = self.CHANNELS_PER_CORR_MAX # Maximum number of frequency channels that can be contained in a frame CHANNELS_PER_CORR_MAX*NUMBER_OF_CORRELATORS
-        linear_map = lambda i,j:(Nant*(Nant+1)-(Nant-i)*(Nant-i+1))/2+(j-i) # Maps (i,j) (for j>=i) matrix coordinates into a linear array indexed from 0 to Nant*(Nant-1)/2-1: x0x0, x0x1, x0x2, x0x3, x1x1, x1x2, x1x3, x2x2, x2x3, x3x3
-        corr_data=np.zeros((Nproducts, Nchannels_max *self.NUMBER_OF_CORRELATORS), dtype=complex)  # Dimensions are: (Number_of_products, number_of_frequency_channels)          
+        linear_map = lambda i, j : (Nant * (Nant + 1) - (Nant - i) * (Nant - i + 1)) / 2 + (j - i) # Maps (i,j) (for j>=i) matrix coordinates into a linear array indexed from 0 to Nant*(Nant-1)/2-1: x0x0, x0x1, x0x2, x0x3, x1x1, x1x2, x1x3, x2x2, x2x3, x3x3
+        corr_data=np.zeros((Nproducts, Nchannels_max * self.NUMBER_OF_CORRELATORS), dtype=complex)  # Dimensions are: (Number_of_products, number_of_frequency_channels)          
 
         # Acquire the data
         data={}

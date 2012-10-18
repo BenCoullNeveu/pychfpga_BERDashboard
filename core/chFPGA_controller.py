@@ -22,6 +22,7 @@ History:
         Implemented default channel managements
     2012-08-27 JFC : Fixed reference to common.util as pychime.common.util         
     2012-09-18 JFC: Added set_global_trig()
+    2012-10-17 JFC: Added an exception if wring function name is used in set_funcgen_function()
 """
 
 import numpy as np
@@ -202,7 +203,7 @@ class chFPGA_controller(object):
             self.ANT = ANT.ANT_base(self) # Antenna processors (ADCDAQ, SRCSEL, FFT, SCALER) for each input
     
             if verbose >= 2: print '  - CORR'
-            self.CORR_BLOCK = CORR_BLOCK.CORR_BLOCK_base(self) # Correlator (CH_DIST, CORR, ACC) for each correlator
+            self.CORR = CORR_BLOCK.CORR_BLOCK_base(self) # Correlator (CH_DIST, CORR, ACC) for each correlator
 
     
             # ---------------------------------------------------------------------
@@ -292,8 +293,8 @@ class chFPGA_controller(object):
 
         if self.IMPLEMENT_CORR:
             if verbose >= 2: print '  - CORR'
-            self.CORR_BLOCK.init()
-            self.CORR_BLOCK.status()
+            self.CORR.init()
+            self.CORR.status()
 
         if verbose >= 2: print '  - ADC BOARD'
         self.ADC_BOARD.init()
@@ -481,10 +482,10 @@ class chFPGA_controller(object):
         '''
         if (function is None) or (function.lower() not in self.ANT[0].FUNCGEN.FUNCTION_NAMES):
             print 'Valid functions are %s:' % ', '.join(self.ANT[0].FUNCGEN.FUNCTION_NAMES.keys())
-            return
+            raise Exception('Invalud function generator function string')
+
         if channels is None:
             channels = self.default_channels
-
      
         for ch in channels:
             ant = self.ANT[ch]
@@ -654,7 +655,7 @@ class chFPGA_controller(object):
 
         self.set_ant_reset(1)            
         self.set_corr_reset(1)            
-        for corr in self.CORR_BLOCK:
+        for corr in self.CORR:
             print 'Configuring correlator %i to integrate over %f seconds (over %i frames) and transmit data every %f seconds (over %i frames)' %  (corr.instance_number, integration_period, integration_period_in_frames, capture_period , capture_period_in_frames)
             corr.ACC.RESET = 0
             corr.ACC.config(integration_period=integration_period_in_frames, capture_period=capture_period_in_frames)
