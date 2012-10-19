@@ -193,10 +193,11 @@ class chFPGA_receiver(object):
     LOG2_FRAME_LENGTH = 11
     FRAME_LENGTH = 2**LOG2_FRAME_LENGTH
 
-    CHANNELS_PER_CORR = 250
-    CHANNELS_PER_CORR_MAX = 256
+    CHANNELS_PER_CORR = 204
+    CHANNELS_PER_CORR_MAX = 204
     NUMBER_OF_ANTENNAS_TO_CORRELATE = 5
     NUMBER_OF_CORRELATORS = NUMBER_OF_ANTENNAS_TO_CORRELATE
+    FREQ_CHANNELS = 1024
     def __init__(self, ip_address='10.10.10.11', port=41001, verbose=2):
 
         print '*** Opening receiver sockets ***'
@@ -335,7 +336,7 @@ class chFPGA_receiver(object):
         Nproducts = (Nant*(Nant+1))/2 # Total number of correlation products
         Nchannels_max = self.CHANNELS_PER_CORR_MAX # Maximum number of frequency channels that can be contained in a frame CHANNELS_PER_CORR_MAX*NUMBER_OF_CORRELATORS
         linear_map = lambda i, j : (Nant * (Nant + 1) - (Nant - i) * (Nant - i + 1)) / 2 + (j - i) # Maps (i,j) (for j>=i) matrix coordinates into a linear array indexed from 0 to Nant*(Nant-1)/2-1: x0x0, x0x1, x0x2, x0x3, x1x1, x1x2, x1x3, x2x2, x2x3, x3x3
-        corr_data=np.zeros((Nproducts, Nchannels_max * self.NUMBER_OF_CORRELATORS), dtype=complex)  # Dimensions are: (Number_of_products, number_of_frequency_channels)          
+        corr_data=np.zeros((Nproducts, self.FREQ_CHANNELS), dtype=complex)  # Dimensions are: (Number_of_products, number_of_frequency_channels)          
 
         # Acquire the data
         data={}
