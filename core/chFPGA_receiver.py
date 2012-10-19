@@ -26,7 +26,7 @@ import SocketIO
 
 
 class ReceiverThread(threading.Thread):        
-    BUF_SIZE=32768
+    BUF_SIZE=65536
     data = bytearray(BUF_SIZE)
     data_buf = buffer(data)
     data_block = np.zeros((8,2048+9), dtype=np.uint8)
@@ -74,6 +74,7 @@ class ReceiverThread(threading.Thread):
         last_timestamp = 0
     #    last_delta = 0
         n = 0
+        nc=0
         total_queue_entries = 0
         #t0 = time.time()
         #last_display_time = t0
@@ -107,16 +108,19 @@ class ReceiverThread(threading.Thread):
                     (probe_id, stream_id, word_length, timestamp) = struct.unpack_from('>BHHL', self.data_buf)
                     #Correlator input                    
                     if (probe_id & 0xF0 == 0xF0): # If correlator data
-                        #Correlator unpack first try very simple.  
+                        #Correlator unpack first try very simple. 
                         if (stream_id < 5 ) :
-                            if (stream_id == 4):
-                                self.corr_data_block[stream_id,:] = self.data[:self.corr_data_length]
+                            if (stream_id == 0) and (probe_id & 0x0F == 0) and (nc>0):
                                 try:
                                     self.queue_corr.put_nowait(self.corr_data_block.copy())
                                 except Queue.Full:
                                     self.queue_corr_overflow += 1
+                                self.corr_data_block[stream_id,:] = self.data[:self.corr_data_length]
+                                nc=1
                             else:
                                 self.corr_data_block[stream_id,:] = self.data[:self.corr_data_length]
+                                nc+=1
+
                         else:
                             print "BAD STREAM ID?"
                             #Clear stuff? ERROR HANDLE
