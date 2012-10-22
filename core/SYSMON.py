@@ -105,7 +105,7 @@ class SYSMON_base(object):
             12V Current:  Current sense resistor: 0.002 ohm (schematic is wrong, Hardware manual section 22 is right) , Amplifier gain (INA213): 50, Measured on Vaux<12>
             12V Voltage: Measured through a resistor divider (1/24) on Vaux<13>
         """
-        #return
+        return
         Vin=self.voltage(self.VAUX_VOLT_ADDR,vref=1.0)*24
         Iin=self.voltage(self.VAUX_CURR_ADDR,vref=1.0)/(0.002*50)
         print '--------------- VIRTEX 6 System Monitor statistics ---------------'

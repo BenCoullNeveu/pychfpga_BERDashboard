@@ -307,7 +307,7 @@ class chFPGA_controller(object):
             self.CORR.status()
 
         if verbose >= 2: print '  - ADC BOARD'
-        self.ADC_BOARD.init()
+        self.ADC_BOARD.init(sampling_frequency = sampling_frequency, reference_frequency=reference_frequency)
         self.ADC_BOARD.status()
 
 
@@ -333,7 +333,7 @@ class chFPGA_controller(object):
         
         print '*** Set ADC mode ***'
 
-        self.set_ADC_mode('data') # This implies a self.sync(), which will reset the antenna processors again to ensure data alignment
+        #self.set_ADC_mode('data') # This implies a self.sync(), which will reset the antenna processors again to ensure data alignment
         print '*** End of chFPGA initialization ***'
 
 
