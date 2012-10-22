@@ -31,8 +31,12 @@ class ReceiverThread(threading.Thread):
     data_buf = buffer(data)
     data_block = np.zeros((8,2048+9), dtype=np.uint8)
     #Number of frequency bin pairs, Number of antennas, Number of bytes per word, header
-    corr_data_length = 128*4*13+11 #in bytes
-    corr_data_block = np.zeros((5,corr_data_length), dtype=np.int8)
+    NUMBER_OF_CORRELATORS = 5
+    NUMBERS_OF_ANTENNAS_TO_CORRELATE = 5
+    NUMBER_OF_MULTIPLIERS = NUMBERS_OF_ANTENNAS_TO_CORRELATE + 1
+    MAX_NUMBER_OF_CHANNELS_PER_CORRELATOR = 128 
+    MAX_CORR_FRAME_LENGTH = 512*13+11 #in bytes. The accumulator size is always 512 words, each word being 13 bytes long. A 11 byte header is added. 
+    corr_data_block = np.zeros((NUMBER_OF_MULTIPLIERS * NUMBER_OF_CORRELATORS, MAX_CORR_FRAME_LENGTH), dtype=np.int8)
 #        frame_block = {'timestamp' :0, 'data':frame_data}        
     queue_overflow = 0
     queue_corr_overflow = 0
@@ -72,9 +76,11 @@ class ReceiverThread(threading.Thread):
     #    timeout=1
     #    frame_array=[]
         last_timestamp = 0
+        last_corr_timestamp = 0
+        last_corr_time = time.time()
     #    last_delta = 0
         n = 0
-        nc=0
+        nc=0 # current number of correlator frames stored
         total_queue_entries = 0
         #t0 = time.time()
         #last_display_time = t0
@@ -105,27 +111,42 @@ class ReceiverThread(threading.Thread):
                     self.n_frames += 1
 
                     #probe_id = struct.unpack_from('>B', self.data_buf)
-                    (probe_id, stream_id, word_length, timestamp) = struct.unpack_from('>BHHL', self.data_buf)
+                    frame_id=self.data[0] & 0xF0 # get the frame ID 
                     #Correlator input                    
-                    if (probe_id & 0xF0 == 0xF0): # If correlator data
+                    ###### CORRELATOR DATA HANDLER ###########
+                    if (frame_id == 0xF0): # If correlator data
+                        (corr_number, mult_number, stream_id, word_length, timestamp) = struct.unpack_from('>BHHHL', self.data_buf)
+                        corr_time = time.time()
                         #Correlator unpack first try very simple. 
-                        if (stream_id < 5 ) :
-                            if (stream_id == 0) and (probe_id & 0x0F == 0) and (nc>0):
+                        corr_number &= 0x0F # mask the FRAME ID bits
+                        if (mult_number < self.NUMBER_OF_MULTIPLIERS ) :
+                            if ((timestamp != last_corr_timestamp) ) and (nc>0): #if this is the beginning of a new correlator data block
+                                # If the queue is full, make room by poping the oldest element
+                                if self.queue_corr.full():
+                                    self.queue_corr.get()
+                               # Now try to write the data into the Queue. 
                                 try:
-                                    self.queue_corr.put_nowait(self.corr_data_block.copy())
+                                    self.queue_corr.put_nowait(self.corr_data_block[0:nc,:nbytes].copy())
+                                    #print 'Corr receiver: Pushing data to Queue with timestamp #%i (delta=%i), dt=%0.3f, # frames = %i' % (timestamp, timestamp - last_corr_timestamp, corr_time - last_corr_time, nc)
                                 except Queue.Full:
                                     self.queue_corr_overflow += 1
-                                self.corr_data_block[stream_id,:] = self.data[:self.corr_data_length]
-                                nc=1
+                                    print 'Corr Receiver Queue overflow... Should not happen...'
+                                nc = 0
+                                last_corr_timestamp = timestamp
+                                last_corr_time = corr_time
+                            if nc >= self.NUMBER_OF_MULTIPLIERS * self.NUMBER_OF_CORRELATORS:
+                                print 'Corr Receiver: Received extra correlator frames for Corr#%i Mult#%i' % (corr_number, mult_number)
                             else:
-                                self.corr_data_block[stream_id,:] = self.data[:self.corr_data_length]
-                                nc+=1
-
+                                #print 'Corr#%i Mult#%i ts=%i, time=%0.3f, dt=%0.3fs' % (corr_number, mult_number, timestamp, corr_time, corr_time-last_corr_time)
+                                self.corr_data_block[nc,:nbytes] = self.data[:nbytes]
+                                nc += 1
                         else:
-                            print "BAD STREAM ID?"
+                            print "Corr Receiver: Bad multiplier number"
                             #Clear stuff? ERROR HANDLE
                     
-                    elif (probe_id & 0xF0 == 0xA0): # if timestream or spectrum data
+                    ###### TIMESTREAM DATA HANDLER ###########
+                    elif (frame_id == 0xA0): # if timestream or spectrum data
+                        (probe_id, stream_id, word_length, timestamp) = struct.unpack_from('>BHHL', self.data_buf)
                         # If we don't want to wait for all frames with the same timestanp to be grouped, put the frame immediately on the queue
                         if self._send_every_frame.is_set():
                             self.data_block[0,:] = self.data[:2048+9]
@@ -154,19 +175,20 @@ class ReceiverThread(threading.Thread):
                                             #print '.',
                                     except Queue.Full:
                                         self.queue_overflow += 1
-                                        print 'Receiver Queue overflow... Should not happen...'
+                                        print 'Timestream Receiver Queue overflow... Should not happen...'
                                 else:
                                     self.store_data = 1 # next time store the block
                                 last_timestamp = timestamp
                                 n = 0
                             # Copy the new vector into the block memory buffer
                             if n < 0 or n >= 8:
-                                print 'Receiver: received %i Timestrem/Spectrum frames with the same timestamp.' % n   
+                                print 'Timestream Receiver: received %i Timestrem/Spectrum frames with the same timestamp.' % n   
                             elif nbytes != 2048 + 9:
-                                print 'Receiver: Timestrem/Spectrum frame has %i bytes instead of 2048+9=2057 bytes. First bytes are: 0x%s' % (nbytes, ' '.join('%02X' % c for c in self.data[:32]))                              
+                                print 'Timestream Receiver: Timestrem/Spectrum frame has %i bytes instead of 2048+9=2057 bytes. First bytes are: 0x%s' % (nbytes, ' '.join('%02X' % c for c in self.data[:32]))                              
                             else:
                                 self.data_block[n, :] = self.data[: 2048 + 9]                    
                                 n += 1
+                    ###### UNKNOWN FRAME TYPE###########
                     else: # unknown frame format
                         print 'Receiver: Frame of %i bytes with unknown identifier 0x%Xx has been received. It was discarded. First bytes are 0x%s' % (nbytes, (probe_id & 0xF0) >> 4, ' '.join('%02X' % c for c in self.data[:32]))                              
                         
@@ -322,15 +344,23 @@ class chFPGA_receiver(object):
                     data[channel]=np.hstack((data[channel],raw_data));
         return data        
             
-    def read_corr_frames(self, frames=1, verbose=0, flush=0, timeout=3, raw=False):
+    def read_corr_frames(self, flush=0, timeout=3, verbose=2):
         """
-        Get corr frames that were captured by the capture thread.
-
-        ##FIX THIS
+        Get correlator frames that were captured by the capture thread, combine them, and return a processed complex correlation array.
+            
         Parameters:
-            frames: Number of frames to acquire per channel. Limited by the buffer lengths in the FPGA
+            flush: when True, flushes the receive buffer before getting new data
+
+        Returns:
+            An complex array of integrated, cross-correlated spectrums  C(product_number, freq_bin_number) where 
+            product_number identifies the desired cross-corrleation, and freq_bin_index is the frrequency index.
+            The cross-correlations are ordered as follows: A(0)xA(0)*, A(0)xA(1)* ... A(0)xA(n-1)*, A(1)xA(1)*, ... A(1)xA(n-1)*, ... A(n-1)xA(n-1)* where n is the numbe rof correlated antennas. There are N*(N+1)/2 products.
+            For n=5 antennas, C(0), C(5), C(9), C(12), C(14) are the 5 auto-correlation spectrums of antennas 0 to 4.           
+        NOTES:
+            - The function assumes that the number of frequency channels processed by each correlator is the same for all correlators. The number is derived from the length of the frames.
         History:
             120913 KMB: Created from read_frames to read corr buffer
+            121021 JFC: Updated for multi-correlator data processing. 
         """
         Nant = self.NUMBER_OF_ANTENNAS_TO_CORRELATE # Number of correlated antennas c.GPIO.
         Nproducts = (Nant*(Nant+1))/2 # Total number of correlation products
@@ -339,101 +369,108 @@ class chFPGA_receiver(object):
         corr_data=np.zeros((Nproducts, self.FREQ_CHANNELS), dtype=complex)  # Dimensions are: (Number_of_products, number_of_frequency_channels)          
 
         # Acquire the data
-        data={}
+        #data={}
         #need to change flush to take a queue object
         if flush:
             self.flush()
             
-        for j in range(frames):
+        #for j in range(frames):
         #j=0
         #while 1:
             #j+=1
-            if verbose>1 or (verbose==1 and (j % 100 ==99 or j==frames-1)):
-                print 'Acquiring Frame %i (%.0f%%)' % ((j+1),(100*(j+1)/frames))
+        #    if verbose>1 or (verbose==1 and (j % 100 ==99 or j==frames-1)):
+        #        print 'Acquiring Frame %i (%.0f%%)' % ((j+1),(100*(j+1)/frames))
             #try:
-            data_block = self.frame_queue_corr.get(timeout=timeout)
-            #except Queue.`:
-            #    return None
-                
-            in_frames =  data_block
-            block_timestamp = 0
-            data['timestamp'] = block_timestamp
-            for in_frame in in_frames[:]:
-                
+        in_frames = self.frame_queue_corr.get(timeout=timeout)
+        #except Queue.`:
+        #    return None
+        if verbose >= 1:
+            print 'Got a data block of shape ', np.shape(in_frames)    
+        #in_frames =  data_block
+        #block_timestamp = 0
+        #data['timestamp'] = block_timestamp
+        for in_frame in in_frames[:]:
+            if(len(in_frame) < self.CORR_FRAME_HEADER_LENGTH):
+                print 'Bad header'
+                break
+            else:    
+                (frame_id, mult_id, stream_id, word_length, timestamp) = struct.unpack_from('>BHHHL', in_frame)
+                #data['mult_id'] = mult_id
 
-                if(len(in_frame) < self.CORR_FRAME_HEADER_LENGTH):
-                    print 'Bad header'
-                    break
-                else:    
-                    (probe_id, mult_id, word_length, timestamp) = struct.unpack_from('>BHLL', in_frame)
-                    #data['mult_id'] = mult_id
-
-                #Return numpy complex128's  Check if this shifting is correct
-                #not shifting through correctly yet.
-                #not sure if the word thing will work, might need indexes or something
-                raw_data = []
-                #in_frame[11+13*i:24+13*i] i from 0 to 512
-                corr_number = probe_id & 0x0F
-                word_number = 0
-                num_channels = len(in_frame[11:])/13
-                for word in in_frame[11:].reshape(num_channels,13):
-                    (flags, r1, r2, i1, i2) = struct.unpack_from('>BHLHL',word)
-                    product = ((r1 << 32) | r2 ) + 1.0j * ((i1 << 32) | i2)
-                    raw_data.append(product)
-                    
-                    product_number = word_number %  Nant
-                    freq_channel = (word_number // Nant) *2 + corr_number*self.CHANNELS_PER_CORR
-                    # Compute the (i,j) index of each product
-                    if mult_id == 0:
-                        i_index = Nant - 1 - product_number
-                        j_index = Nant - 1 - product_number
-                        freq_channel_offset = 1
-                    elif mult_id == Nant:
-                        i_index = product_number
-                        j_index = product_number
-                        freq_channel_offset = 0
-                    elif product_number < mult_id: # if we have the 'A' peoducts
-                        i_index = Nant - 1 - mult_id
-                        j_index = Nant - mult_id + product_number
-                        freq_channel_offset = 0
-                    else:
-                        i_index = mult_id - 1
-                        j_index = mult_id + Nant - product_number - 1
-                        freq_channel_offset = 1
-                    linear_index = linear_map(i_index, j_index)       
-                    #print 'Multiplier #%i, word #%i, bin #%i, product #%i, (i,j)=(%i,%i), k=%i' %( mult_id, word_number, freq_channel+freq_channel_offset, product_number, i_index, j_index, linear_index )
-                    corr_data[linear_index, freq_channel+freq_channel_offset] = product
-                    word_number += 1   
-                raw_data = np.array(raw_data)
-        
+            #Return numpy complex128's  Check if this shifting is correct
+            #not shifting through correctly yet.
+            #not sure if the word thing will work, might need indexes or something
+            raw_data = []
+            #in_frame[11+13*i:24+13*i] i from 0 to 512
+            corr_number = frame_id & 0x0F
+            word_number = 0
+            if len(in_frame[11:])%13:
+                print 'Error: number of product bytes (%i) not a multiple of 13' %  (in_frame[11:])
+            
+            num_products = len(in_frame[11:])/13 # Total number of products in the frame (for all channels)
+            if num_products % Nant:
+                print 'Error: number of products (%i)  not a multiple of the number of antennas (%i)' % (num_products, Nant) 
+            num_channels_per_correlator = num_products//Nant*2
+            for word in in_frame[11:].reshape(num_products,13):
+                (flags, r1, r2, i1, i2) = struct.unpack_from('>BHLHL',word)
+                product = ((r1 << 32) | r2 ) + 1.0j * ((i1 << 32) | i2)
+                raw_data.append(product)
                 
-
-                    
-        
-                # Process the frame data Need to use Mult_ID to sort out what is what.
-                # include in data flags etc?
+                product_number = word_number %  Nant
+                #freq_channel = (word_number // Nant) *2 + corr_number*self.CHANNELS_PER_CORR
+                freq_channel = (word_number // Nant) *2 + corr_number*num_channels_per_correlator # Let's assume that every corr frames have the same number of channels, and that the received frames have no missing data
+                # Compute the (i,j) index of each product
+                if mult_id == 0:
+                    i_index = Nant - 1 - product_number
+                    j_index = Nant - 1 - product_number
+                    freq_channel_offset = 1
+                elif mult_id == Nant:
+                    i_index = product_number
+                    j_index = product_number
+                    freq_channel_offset = 0
+                elif product_number < mult_id: # if we have the 'A' peoducts
+                    i_index = Nant - 1 - mult_id
+                    j_index = Nant - mult_id + product_number
+                    freq_channel_offset = 0
+                else:
+                    i_index = mult_id - 1
+                    j_index = mult_id + Nant - product_number - 1
+                    freq_channel_offset = 1
+                linear_index = linear_map(i_index, j_index)       
+                if verbose >= 2:
+                    print 'Multiplier #%i, word #%i, bin #%i, product #%i, (i,j)=(%i,%i), k=%i' %( mult_id, word_number, freq_channel+freq_channel_offset, product_number, i_index, j_index, linear_index )
+                corr_data[linear_index, freq_channel+freq_channel_offset] = product
+                word_number += 1   
+            #raw_data = np.array(raw_data)
+            if verbose >=3:
+                print 'Frame header information:  corr#=%i, mult#=%i, num_channels=%i, Word length=0x%X words, timestamp=0x%X ' % ( corr_number, mult_id, num_channels_per_correlator, word_length, timestamp )
+                #print data
+                #pass
     
-                #Format data from frame
-    
-                if verbose >=2:
-                    print 'Frame header information:  probe_id #=%i, mult_id #=%i, Word length=%i words, timestamp=%i ' % ( probe_id, mult_id, word_length, timestamp )
-                    print data
-                    #pass
-                # Make sure there is an empty vector on the first storage so we can concatenate to it the new data
+            
+
                 
-                if mult_id in data:
-                    print 'Warning: correlator data is received multiple times from the same multiplier'
+    
+            # Process the frame data Need to use Mult_ID to sort out what is what.
+            # include in data flags etc?
+
+            #Format data from frame
+
+            # Make sure there is an empty vector on the first storage so we can concatenate to it the new data
+            
+            #if mult_id in data:
+            #    print 'Warning: correlator data is received multiple times from the same multiplier'
  
-                data[mult_id]=raw_data
+            #data[mult_id]=raw_data
 
-                #if mult_id not in data:
-                #    data[mult_id]=raw_data
-                #else:
-                #    data[mult_id]=np.hstack((data[mult_id],raw_data));
-        if raw:
-            return data
-        else:
-            return corr_data
+            #if mult_id not in data:
+            #    data[mult_id]=raw_data
+            #else:
+            #    data[mult_id]=np.hstack((data[mult_id],raw_data));
+        #if raw:
+        #    return data
+        #else:
+        return corr_data
 
 
 

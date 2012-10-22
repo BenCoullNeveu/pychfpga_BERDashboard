@@ -128,10 +128,11 @@ class chFPGA_controller(object):
     
     # Basic system constants
     IMPLEMENT_CORR = True
-    NUMBER_OF_CORRELATORS = 1
-    NUMBER_OF_ANTENNAS = 8
-    LOG2_FRAME_LENGTH = 11
-    FRAME_LENGTH = 2**LOG2_FRAME_LENGTH # 2**11 = 2048 time samples per frame
+    NUMBER_OF_CORRELATORS = None # Will be set at initialization
+    NUMBER_OF_ANTENNAS = None # Will be set at initialization
+    NUMBER_OF_ANTENNAS_TO_CORRELATE = None # Will be set at initialization
+    LOG2_FRAME_LENGTH = None # Will be set at initialization
+    FRAME_LENGTH = None # 2**11 = 2048 time samples per frame
     ADC_CLK_SELECT = 1 # Antenna number from which the antenna processing will be clocked. This is hardwired in the firmware (need to use an ADCDAQ with a PLL)    
     #SAMPLING_FREQUENCY = 800e6 # in Hz
     #REFERENCE_FREQUENCY = 10e6 # in Hz
@@ -140,9 +141,9 @@ class chFPGA_controller(object):
     #FRAME_PERIOD = float(FRAME_LENGTH)/SAMPLING_FREQUENCY
 
     # Port numbers
-    ANT_PORT = range(NUMBER_OF_ANTENNAS) # Antennas are ports 0-7
-    SYSTEM_PORT = NUMBER_OF_ANTENNAS
-    CORR_PORT = range(NUMBER_OF_ANTENNAS+1, NUMBER_OF_ANTENNAS+1+ NUMBER_OF_CORRELATORS)
+    ANT_PORT = None # Antennas are ports 0-7
+    SYSTEM_PORT = 8 # Kludge. need to bring it back to zero.
+    CORR_PORT = None
     #MGT_PORT = NUMBER_OF_ANTENNAS+2 -- for future use, if needed
 
 
@@ -166,7 +167,6 @@ class chFPGA_controller(object):
         self.FRAME_PERIOD = None
         self.FMC_present = None  # indicates if the FMC board is present. If not, the modules will act accordingly.
 
-        self.default_channels = range(self.NUMBER_OF_ANTENNAS)
 
         print '*** Opening control communication sockets ***'
         # Create socket handled and open socket communications to the chFPGA board
@@ -181,8 +181,18 @@ class chFPGA_controller(object):
             # ---------------------------------------------------------------------
             # -- Create basic FPGA ressource handlers objects
             # ---------------------------------------------------------------------
-            if verbose >= 2: print '  - SYSMOD'
+            if verbose >= 2: print '  - GPIO'
             self.GPIO = GPIO.GPIO_base(self)
+            # get system constants from the FPGA
+            self.NUMBER_OF_CORRELATORS = self.GPIO.NUMBER_OF_CORRELATORS
+            self.NUMBER_OF_ANTENNAS = self.GPIO.NUMBER_OF_ANTENNAS
+            self.NUMBER_OF_ANTENNAS_TO_CORRELATE = self.GPIO.NUMBER_OF_ANTENNAS_TO_CORRELATE
+            self.LOG2_FRAME_LENGTH = self.GPIO.LOG2_FRAME_LENGTH
+            self.FRAME_LENGTH = 2**self.LOG2_FRAME_LENGTH # 2**11 = 2048 time samples per frame
+            self.ANT_PORT = range(self.NUMBER_OF_ANTENNAS) # Antennas are ports 0-7
+            self.SYSTEM_PORT = self.NUMBER_OF_ANTENNAS
+            self.CORR_PORT = range(self.NUMBER_OF_ANTENNAS+1, self.NUMBER_OF_ANTENNAS+1+ self.NUMBER_OF_CORRELATORS)
+            self.default_channels = range(self.NUMBER_OF_ANTENNAS)
 
             if verbose >= 2: print '  - I2C'
             self.I2C = I2C.I2C_base(self)

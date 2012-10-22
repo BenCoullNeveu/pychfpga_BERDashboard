@@ -29,25 +29,6 @@ class CORR_BLOCK_channel(object):
         self.CH_DIST = CH_DIST.CH_DIST_base(self, self.fpga, self.fpga.CORR_PORT[instance_number], self.CH_DIST_MODULE)
         self.ACC = ACC.ACC_base(self, self.fpga, self.fpga.CORR_PORT[instance_number], self.ACC_MODULE)
         
-#    def read(self, module, addr, *args, **kwargs): 
-#        """ Reads a memory-mapped value at address 'addr' from the specified correlator number 'module'."""
-#        return self.corr_block.read(self.corr_number, module, addr, *args, **kwargs)
-#
-#    def write(self, module, addr, data, *args, **kwargs): 
-#        """ Writes a memory-mapped value 'data' at address 'addr' to the specified correlator number 'module'."""
-#        return self.corr_block.write(self.corr_number, module, addr, data, *args, **kwargs)
-
-#    def read(self, module_number, addr, *args, **kwargs):
-#        """ Reads from the register of a module of a specified antenna processor"""
-#        fpga = self.fpga
-#        data = fpga.read(fpga.CORR_BLOCK_PORT[self.corr_number], module_number, addr, *args, **kwargs)
-#        return data
-#
-#    def write(self, module_number, addr, data, *args, **kwargs):
-#        """ Writes to the register of a module of a specified antenna processor"""
-#        fpga = self.fpga
-#        fpga.write(fpga.CORR_BLOCK_PORT[self.corr_number], module_number, addr, data, *args, **kwargs)
-
 
     def init(self):
         """ Inisializes all modules of a correlator block.""" 

@@ -74,7 +74,12 @@ class CH_DIST_base(Module_base):
         """ Initializes CH_DIST."""
         #self.select_words(self.fpga.FRAME_LENGTH//4) # enable tranmission of all words by default
         #array doesn't seem to work here....
-        self.select_words(range(self.parent.instance_number*102,self.parent.instance_number*102+102)) # enable tranmission 8 words, 16 freq channels by default
+        words_per_correlator = 100 # Maximum is 512/number of correlated antennas
+        corr_number = self.parent.instance_number
+        first_word = corr_number * words_per_correlator
+        last_word = first_word + words_per_correlator -1
+        self.select_words(range(first_word,last_word+1)) # enable tranmission 8 words, 16 freq channels by default
+
 
     def status(self):
         """Displays the status of CH_DIST."""
