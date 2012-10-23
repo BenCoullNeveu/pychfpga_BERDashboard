@@ -32,9 +32,9 @@ class ReceiverThread(threading.Thread):
     data_block = np.zeros((8,2048+9), dtype=np.uint8)
     #Number of frequency bin pairs, Number of antennas, Number of bytes per word, header
     NUMBER_OF_CORRELATORS = 5
-    NUMBERS_OF_ANTENNAS_TO_CORRELATE = 5
+    NUMBERS_OF_ANTENNAS_TO_CORRELATE = 4
     NUMBER_OF_MULTIPLIERS = NUMBERS_OF_ANTENNAS_TO_CORRELATE + 1
-    MAX_NUMBER_OF_CHANNELS_PER_CORRELATOR = 128 
+    #MAX_NUMBER_OF_CHANNELS_PER_CORRELATOR = 128 
     MAX_CORR_FRAME_LENGTH = 512*13+11 #in bytes. The accumulator size is always 512 words, each word being 13 bytes long. A 11 byte header is added. 
     corr_data_block = np.zeros((NUMBER_OF_MULTIPLIERS * NUMBER_OF_CORRELATORS, MAX_CORR_FRAME_LENGTH), dtype=np.int8)
 #        frame_block = {'timestamp' :0, 'data':frame_data}        
@@ -215,10 +215,10 @@ class chFPGA_receiver(object):
     LOG2_FRAME_LENGTH = 11
     FRAME_LENGTH = 2**LOG2_FRAME_LENGTH
 
-    CHANNELS_PER_CORR = 204
+    #CHANNELS_PER_CORR = 204
     CHANNELS_PER_CORR_MAX = 204
-    NUMBER_OF_ANTENNAS_TO_CORRELATE = 5
-    NUMBER_OF_CORRELATORS = NUMBER_OF_ANTENNAS_TO_CORRELATE
+    NUMBER_OF_ANTENNAS_TO_CORRELATE = 4
+    #NUMBER_OF_CORRELATORS = NUMBER_OF_ANTENNAS_TO_CORRELATE
     FREQ_CHANNELS = 1024
     def __init__(self, ip_address='10.10.10.11', port=41001, verbose=2):
 
@@ -438,7 +438,7 @@ class chFPGA_receiver(object):
                     freq_channel_offset = 1
                 linear_index = linear_map(i_index, j_index)       
                 if verbose >= 2:
-                    print 'Multiplier #%i, word #%i, bin #%i, product #%i, (i,j)=(%i,%i), k=%i' %( mult_id, word_number, freq_channel+freq_channel_offset, product_number, i_index, j_index, linear_index )
+                    print 'Corr #%i, Multiplier #%i, word #%i, product #%i, Freq bin #%i, (i,j)=(%i,%i), k=%i' %(corr_number, mult_id, word_number, product_number, freq_channel+freq_channel_offset, i_index, j_index, linear_index )
                 corr_data[linear_index, freq_channel+freq_channel_offset] = product
                 word_number += 1   
             #raw_data = np.array(raw_data)
