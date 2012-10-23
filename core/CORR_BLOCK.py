@@ -85,6 +85,11 @@ class CORR_BLOCK_base(object):
         for corr in self.CORR_BLOCKS:
             corr.init()
 
+    def select_words(self, words):
+        """ Initializes all correlators"""
+        for corr in self.CORR_BLOCKS:
+            corr.CH_DIST.select_words(words)
+
     def status(self):
         """ Displays the status of all correlators"""
         for corr in self.CORR_BLOCKS:

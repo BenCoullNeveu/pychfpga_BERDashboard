@@ -87,7 +87,7 @@ class ANT_base(object):
         # Create an instance of ADC_chip for each chip of the FMC board
         self.frame_length = fpga.FRAME_LENGTH
         self.ANT = []
-        for i in range(8):
+        for i in range(fpga.NUMBER_OF_ANTENNAS):
             self.ANT.append(ANT_channel(self, i))
 
     def __getitem__(self, key):
