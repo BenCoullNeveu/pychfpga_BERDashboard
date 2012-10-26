@@ -131,7 +131,7 @@ if __name__ == '__main__':
     #FREF = 10 # FMC Reference clock frequency 
 
     # Create the new chFPGA object.
-    c = chFPGA_controller.chFPGA_controller(adc_delay_table=ADC_DELAY_TABLE, init=1, sampling_frequency=800e6, reference_frequency=10e6) # pylint: disable=C0103
+    c = chFPGA_controller.chFPGA_controller(ip_address='10.10.10.12', adc_delay_table=ADC_DELAY_TABLE, init=1, sampling_frequency=800e6, reference_frequency=10e6) # pylint: disable=C0103
     r = chFPGA_receiver.chFPGA_receiver()
     ##c.sync()
     #inj.set_inject_mode(c,r)
