@@ -39,28 +39,6 @@ x module
         except KeyboardInterrupt:
             pass
 
-	def read_eye_diagram(self,channels=[0], offset=5):
-		self.set_ADC_mode('pulse') # generate pulse pattern
-
-		data={}
-		for ch in channels:
-			d=np.zeros((32,3),dtype=np.uint8)
-			print 'Reading channel %i' % (ch)
-			adcdaq=self.ANT[ch].ADCDAQ
-
-			#adcdaq.CAPTURE_ALIGN=1 # first capture will be done while aligning bits
-			for dly in range(32):
-				#print '  Acquiring pattern for delay %i' % (dly)
-				#dly=0
-				adcdaq.set_delay(dly)
-				#adcdaq.pulse_bit('CAPTURE_TRIG')
-				#adcdaq.wait_for_bit('CAPTURE_DONE')
-				#d[dly,:]=adcdaq.read(0x8B, type=np.uint8, length=3)
-				d[dly,:]=self.ANT[ch].ADCDAQ.get_pattern(period=11)[offset:offset+3];
-				#adcdaq.CAPTURE_ALIGN=0 # we no longer want to align the following captures so we can track the bits moving with the delays
-			data[ch]=d
-			#if np.sum(d[:,1])==0: raise
-		return data
 
 	def scan_delay(self,channels=[0],bit=0,phase=[0],delay=range(32),sync=1):
 		self.set_ADC_mode('pulse',sync=0) # generate pulse pattern, and sets CAPTURE period

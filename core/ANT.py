@@ -87,7 +87,7 @@ class ANT_base(object):
         # Create an instance of ADC_chip for each chip of the FMC board
         self.frame_length = fpga.FRAME_LENGTH
         self.ANT = []
-        for i in range(8):
+        for i in range(fpga.NUMBER_OF_ANTENNAS):
             self.ANT.append(ANT_channel(self, i))
 
     def __getitem__(self, key):
@@ -130,3 +130,13 @@ class ANT_base(object):
         """
         for i, dly in enumerate(adc_delay_table):    
             self.ANT[i].ADCDAQ.set_delay(dly) 
+
+    def print_ramp_errors(self):
+        try:
+            while 1:
+                for ant in self.ANT:
+                    print 'CH%i: %3i' % (ant.ant_number, ant.ADCDAQ.RAMP_ERR_CTR),
+                print
+        except KeyboardInterrupt:
+            pass
+        

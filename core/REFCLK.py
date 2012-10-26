@@ -63,6 +63,7 @@ class REFCLK_base(Module_base):
     def init(self):
         # Sets the REFCLK delay to zero by default.
         self.set_refclk_delay(0)
+        self.set_sync_delay(1)
 
         # If the board is not present, disable SYNC detection on REFCLK to prevent noise on the floating REFCLK lien to generate spurioys resets. 
         if self.fpga.FMC_present:
