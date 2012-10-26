@@ -32,7 +32,7 @@ class ReceiverThread(threading.Thread):
     data_block = np.zeros((8,2048+9), dtype=np.uint8)
     #Number of frequency bin pairs, Number of antennas, Number of bytes per word, header
     NUMBER_OF_CORRELATORS = 5
-    NUMBERS_OF_ANTENNAS_TO_CORRELATE = 5
+    NUMBERS_OF_ANTENNAS_TO_CORRELATE = 4
     NUMBER_OF_MULTIPLIERS = NUMBERS_OF_ANTENNAS_TO_CORRELATE + 1
     #MAX_NUMBER_OF_CHANNELS_PER_CORRELATOR = 128 
     MAX_CORR_FRAME_LENGTH = 512*13+11 #in bytes. The accumulator size is always 512 words, each word being 13 bytes long. A 11 byte header is added. 
