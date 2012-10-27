@@ -190,10 +190,10 @@ class ADCDAQ_base(Module_base):
         Initializes the ADCDAQ module 
         """
         # Do nothing if the FMC is not present
-        if not self.fpga.FMC_present:
-            self.PLL_CLK_SRC = 1 # 0 = ADC clk, 1 = SYSTEM clock. use system clock if the ADC is not present
+        if self.fpga.FMC_present:
+            self.PLL_CLK_SRC = 1 # ALways use system clock to solve our sync() crash problem
         else:
-            self.PLL_CLK_SRC = 0 # ALways use system clock to solve our sync() crash problem
+            self.PLL_CLK_SRC = 1 # 0 = ADC clk, 1 = SYSTEM clock. use system clock if the ADC is not present
 
 
     def status(self):

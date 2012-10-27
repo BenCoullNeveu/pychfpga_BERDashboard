@@ -74,7 +74,8 @@ class CH_DIST_base(Module_base):
         """ Initializes CH_DIST."""
         #self.select_words(self.fpga.FRAME_LENGTH//4) # enable tranmission of all words by default
         #array doesn't seem to work here....
-        words_per_correlator = 5 # Maximum is 512/number of correlated antennas
+        frequency_bins_per_correlator = 202 # must be even, max 1010 / number of correlated antennas
+        words_per_correlator = frequency_bins_per_correlator//2 # Maximum is 512/number of correlated antennas
         corr_number = self.parent.instance_number
         first_word = corr_number * words_per_correlator
         last_word = first_word + words_per_correlator -1

@@ -112,7 +112,8 @@ reload_modules()
 
 
 # -- chFPGA -- 
-
+class chFPGA_config(object):
+    pass    
     
 
 class chFPGA_controller(object):
@@ -127,12 +128,7 @@ class chFPGA_controller(object):
     """
     
     # Basic system constants
-    IMPLEMENT_CORR = False
-    NUMBER_OF_CORRELATORS = None # Will be set at initialization
-    NUMBER_OF_ANTENNAS = None # Will be set at initialization
-    NUMBER_OF_ANTENNAS_TO_CORRELATE = None # Will be set at initialization
-    LOG2_FRAME_LENGTH = None # Will be set at initialization
-    FRAME_LENGTH = None # 2**11 = 2048 time samples per frame
+    IMPLEMENT_CORR = True
     ADC_CLK_SELECT = 1 # Antenna number from which the antenna processing will be clocked. This is hardwired in the firmware (need to use an ADCDAQ with a PLL)    
     #SAMPLING_FREQUENCY = 800e6 # in Hz
     #REFERENCE_FREQUENCY = 10e6 # in Hz
@@ -336,7 +332,9 @@ class chFPGA_controller(object):
         self.set_ADC_mode('data') # This implies a self.sync(), which will reset the antenna processors again to ensure data alignment
         print '*** End of chFPGA initialization ***'
 
-
+    def update_config(self):
+        pass
+    
     def close(self):
         """ 
         Close chFPGA object, which releases the socket bindings

@@ -32,7 +32,7 @@ class ReceiverThread(threading.Thread):
     data_block = np.zeros((8,2048+9), dtype=np.uint8)
     #Number of frequency bin pairs, Number of antennas, Number of bytes per word, header
     NUMBER_OF_CORRELATORS = 5
-    NUMBERS_OF_ANTENNAS_TO_CORRELATE = 4
+    NUMBERS_OF_ANTENNAS_TO_CORRELATE = 5
     NUMBER_OF_MULTIPLIERS = NUMBERS_OF_ANTENNAS_TO_CORRELATE + 1
     #MAX_NUMBER_OF_CHANNELS_PER_CORRELATOR = 128 
     MAX_CORR_FRAME_LENGTH = 512*13+11 #in bytes. The accumulator size is always 512 words, each word being 13 bytes long. A 11 byte header is added. 
@@ -42,6 +42,8 @@ class ReceiverThread(threading.Thread):
     queue_corr_overflow = 0
     n_frames = 0
     store_data = 0 # do not store frame blocks if False
+    store_corr_data = 0 # do not store frame blocks if False
+    
     def __init__(self, sock, queue, queue_corr, verbose = 1):
         self.sock = sock
         self.queue = queue
@@ -99,6 +101,7 @@ class ReceiverThread(threading.Thread):
                 except SocketIO.timeout:
                     pass
                 self.store_data = 0 # do not store data
+                self.store_corr_data = 0 # do not store data
                 self.queue.queue.clear();
                 self.queue_corr.queue.clear();
             else:
@@ -122,15 +125,18 @@ class ReceiverThread(threading.Thread):
                         if (mult_number < self.NUMBER_OF_MULTIPLIERS ) :
                             if ((timestamp != last_corr_timestamp) or (corr_time-last_corr_time > 0.5) ) and (nc>0): #if this is the beginning of a new correlator data block
                                 # If the queue is full, make room by poping the oldest element
-                                if self.queue_corr.full():
-                                    self.queue_corr.get()
-                               # Now try to write the data into the Queue. 
-                                try:
-                                    self.queue_corr.put_nowait(self.corr_data_block[0:nc,:nbytes].copy())
-                                    #print 'Corr receiver: Pushing data to Queue with timestamp #%i (delta=%i), dt=%0.3f, # frames = %i' % (timestamp, timestamp - last_corr_timestamp, corr_time - last_corr_time, nc)
-                                except Queue.Full:
-                                    self.queue_corr_overflow += 1
-                                    print 'Corr Receiver Queue overflow... Should not happen...'
+                                if self.store_corr_data: # False if this is the first block to be stored. In this case, do not store the data in case we got partial block after a flush()
+                                    if self.queue_corr.full():
+                                        self.queue_corr.get()
+                                   # Now try to write the data into the Queue. 
+                                    try:
+                                        self.queue_corr.put_nowait(self.corr_data_block[0:nc,:nbytes].copy())
+                                        #print 'Corr receiver: Pushing data to Queue with timestamp #%i (delta=%i), dt=%0.3f, # frames = %i' % (timestamp, timestamp - last_corr_timestamp, corr_time - last_corr_time, nc)
+                                    except Queue.Full:
+                                        self.queue_corr_overflow += 1
+                                        print 'Corr Receiver Queue overflow... Should not happen...'
+                                else:
+                                    self.store_corr_data = 1 # next time store the block
                                 nc = 0
                                 last_corr_timestamp = timestamp
                                 last_corr_time = corr_time
@@ -402,7 +408,8 @@ class chFPGA_receiver(object):
             #not sure if the word thing will work, might need indexes or something
             #raw_data = []
             #in_frame[11+13*i:24+13*i] i from 0 to 512
-            print 'Frame data: %s' % (''.join('%02X' % np.uint8(c) for c in in_frame))
+            if verbose >= 4:
+                print 'Frame data: %s' % (''.join('%02X' % np.uint8(c) for c in in_frame))
             corr_number = frame_id & 0x0F
             word_number = 0
             if len(in_frame[11:])%13:
