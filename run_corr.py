@@ -46,37 +46,6 @@ class run_corr():
         self.fpga_recv.flush()
 
 
-    def unscramble(self, data):
-        '''
-        Assumes data is (5,512) in shape array
-        writes to (10,256) shape, where the 10 
-        are correlation pairs:  AA, AB,AC,AD,BB,BC,BD,CC,CD,DD
-        and the 256 are frequency channels.  Will need to further combine output from 4
-        Correlators to get all frequencies. Hopefully will see a pattern to put in for loop.  Also should change to 
-        better support the actual data coming out
-        '''
-        corr_output = np.zeros((10,256), dtype=np.complex)
-        corr_output[0,::2] = data[4,::4] #AA
-        corr_output[0,1::2] = data[0,3::4] #AA
-        corr_output[1,::2] = data[3,::4] #AB
-        corr_output[1,1::2] = data[1,3::4] #AB
-        corr_output[2,::2] = data[3,1::4] #AC
-        corr_output[2,1::2] = data[1,2::4] #AC
-        corr_output[3,::2] = data[3,2::4] #AD
-        corr_output[3,1::2] = data[1,1::4] #AD
-        corr_output[4,::2] = data[4,1::4] #BB
-        corr_output[4,1::2] = data[0,2::4] #BB
-        corr_output[5,::2] = data[2,::4] #BC
-        corr_output[5,1::2] = data[2,3::4] #BC
-        corr_output[6,::2] = data[2,1::4] #BD
-        corr_output[6,1::2] = data[2,2::4] #BD
-        corr_output[7,::2] = data[4,2::4] #CC
-        corr_output[7,1::2] = data[0,1::4] #CC
-        corr_output[8,::2] = data[1,::4] #CD
-        corr_output[8,1::2] = data[3,3::4] #CD
-        corr_output[9,::2] = data[4,3::4] #DD
-        corr_output[9,1::2] = data[0,::4] #DD
-        return corr_output
 
     def clean_spec(self,output):
         out_list=[]
@@ -123,7 +92,8 @@ class run_corr():
 
     def convert_format(self, accumulator):
         #want 1024 int32 real, int32 imag
-        interleave_a = np.zeros([10,2048],dtype=np.int32)
+        ncorr, nfreq = accumulator.shape
+        interleave_a = np.zeros([ncorr,2*nfreq],dtype=np.int32)
         gain = 1
         acc_real = (gain*accumulator).real.astype(np.int32)
         acc_imag = (gain*accumulator).imag.astype(np.int32)
@@ -131,7 +101,7 @@ class run_corr():
         #interleave_a[:,1::2] = acc_imag
         ## Find a better way?
         #Should be 1024 eventually
-        for i in range(256):
+        for i in range(nfreq):
             interleave_a[:,i * 2]     = acc_real[:,i]
             interleave_a[:,i * 2 + 1] = acc_imag[:,i]
         #print interleave_a
