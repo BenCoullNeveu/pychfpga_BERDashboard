@@ -130,3 +130,13 @@ class ANT_base(object):
         """
         for i, dly in enumerate(adc_delay_table):    
             self.ANT[i].ADCDAQ.set_delay(dly) 
+
+    def print_ramp_errors(self):
+        try:
+            while 1:
+                for ant in self.ANT:
+                    print 'CH%i: %3i' % (ant.ant_number, ant.ADCDAQ.RAMP_ERR_CTR),
+                print
+        except KeyboardInterrupt:
+            pass
+        

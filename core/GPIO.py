@@ -18,6 +18,7 @@ GPIO.py module
     2012-07-25 JFC: Renamed from SYSMOD.py to GPIO.py
     2012-09-18 JFC: Added set_global_trig()
     2012-09-20 JFC: Modified bitfield list into bitfield assignemnts. Added LOG2_FRAME_LENGTH and NUMBER_OF_ANTENNAS bitfields.
+    2012-10-21 JFC: Added HOST_FRAME_READ_RATE bitfield
 """
 
 from Module import Module_base, BitField
@@ -51,6 +52,8 @@ class GPIO_base(Module_base):
     CORR_RESET = BitField(CONTROL, 0x03, 5, doc='Correlator reset')
     CORR_IP_PORT_OFFSET = BitField(CONTROL, 0x03, 2, width=2, doc='Correlator output data IP port offset from the base port')
     DATA_IP_PORT_OFFSET = BitField(CONTROL, 0x03, 0, width=2, doc='Captured data IP port offset from the base port')
+    HOST_FRAME_READ_RATE = BitField(CONTROL, 0x04, 0, width=5, doc='Indicates how often the host UDP buffers are read. Used to throttle data transmision. Period = 2/125MHz*2^value ')
+
 
     TIMESTAMP_VALID = BitField(STATUS, 0x00, 7, doc='Timestamp data valid (i.e. can be read)')
     ADC_SYNC_READBACK = BitField(STATUS, 0x00, 0, doc='Reads back the SYNC bit for debugging')
@@ -111,7 +114,8 @@ class GPIO_base(Module_base):
         # In the alternate code below, we do not use self.ANT_RESET=1 to reset the antenna because this implies reading the control register, and the read data might not get through if too much data is coming in
         # ant_reset = self.bitfield('ANT_RESET')
         # self.write(ant_reset.addr, 1 << ant_reset.bit)
-
+        self.HOST_FRAME_READ_RATE = 22
+        
     def status(self):
         """ Displays the module status"""
         print '-------------------------SYSMOD--------------------------------------'

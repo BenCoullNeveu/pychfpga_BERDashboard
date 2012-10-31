@@ -28,59 +28,53 @@ class ADCDAQ_base(Module_base):
 
         # CONTROL BYTES
 
-        'DELAY0' :             BitField(CONTROL, 0x00, 0, width=5, doc='IODELAY value for the data line. Loaded the IODELAY_RST is pulsed.'),
-        'DELAY1' :             BitField(CONTROL, 0x01, 0, width=5, doc='IODELAY value for the data line. Loaded the IODELAY_RST is pulsed.'),
-        'DELAY2' :             BitField(CONTROL, 0x02, 0, width=5, doc='IODELAY value for the data line. Loaded the IODELAY_RST is pulsed.'),
-        'DELAY3' :             BitField(CONTROL, 0x03, 0, width=5, doc='IODELAY value for the data line. Loaded the IODELAY_RST is pulsed.'),
-        'DELAY4' :             BitField(CONTROL, 0x04, 0, width=5, doc='IODELAY value for the data line. Loaded the IODELAY_RST is pulsed.'),
-        'DELAY5' :             BitField(CONTROL, 0x05, 0, width=5, doc='IODELAY value for the data line. Loaded the IODELAY_RST is pulsed.'),
-        'DELAY6' :             BitField(CONTROL, 0x06, 0, width=5, doc='IODELAY value for the data line. Loaded the IODELAY_RST is pulsed.'),
-        'DELAY7' :             BitField(CONTROL, 0x07, 0, width=5, doc='IODELAY value for the data line. Loaded the IODELAY_RST is pulsed.'),
-        'CLK_DELAY' :          BitField(CONTROL, 0x08, 0, width=5, doc='IODELAY value for the clock line. Loaded the CLK_IODELAY_RST is pulsed.'),
+        'DELAY0' :             BitField(CONTROL, 0, 0, width=5, doc='IODELAY value for the data line. Loaded the IODELAY_RST is pulsed.'),
+        'DELAY1' :             BitField(CONTROL, 1, 0, width=5, doc='IODELAY value for the data line. Loaded the IODELAY_RST is pulsed.'),
+        'DELAY2' :             BitField(CONTROL, 2, 0, width=5, doc='IODELAY value for the data line. Loaded the IODELAY_RST is pulsed.'),
+        'DELAY3' :             BitField(CONTROL, 3, 0, width=5, doc='IODELAY value for the data line. Loaded the IODELAY_RST is pulsed.'),
+        'DELAY4' :             BitField(CONTROL, 4, 0, width=5, doc='IODELAY value for the data line. Loaded the IODELAY_RST is pulsed.'),
+        'DELAY5' :             BitField(CONTROL, 5, 0, width=5, doc='IODELAY value for the data line. Loaded the IODELAY_RST is pulsed.'),
+        'DELAY6' :             BitField(CONTROL, 6, 0, width=5, doc='IODELAY value for the data line. Loaded the IODELAY_RST is pulsed.'),
+        'DELAY7' :             BitField(CONTROL, 7, 0, width=5, doc='IODELAY value for the data line. Loaded the IODELAY_RST is pulsed.'),
+        'CLK_DELAY' :          BitField(CONTROL, 8, 0, width=5, doc='IODELAY value for the clock line. Loaded the CLK_IODELAY_RST is pulsed.'),
 
-        'MMCM_RST' :         BitField(CONTROL,0x09,7,doc='MCMM reset. Must be high when using DRP'),
-        'PLL_CLK_SRC' :     BitField(CONTROL,0x09,6,doc='Selects the data clock output source: 0=PLL output generated from the ADC clock, 1= 200 MHz system clock'),
-        'CLK_IODELAY_RESET' :     BitField(CONTROL,0x09,5,doc='Resets the IODELAY element in the clock path. This loads the delay values into the delay lines'),
-        'ENABLE_RAMP' :     BitField(CONTROL,0x09,4,doc='Enables transmission of a ramp. 0=inactive, 1=active'),
-        'IDELAYCTRL_RESET' :     BitField(CONTROL,0x09,3,doc='Resets the IDELAYCTRL. Forces it to recalibrate. '),
-        'BUFR_RESET' :         BitField(CONTROL,0x09,2,doc='Resets the BUFR.'),
-        'ISERDES_RESET' :     BitField(CONTROL,0x09,1,doc='Resets the ISERDES.'),
-        'IODELAY_RESET' :     BitField(CONTROL,0x09,0,doc='Resets the IODELAY element. This loads the delay values into the delay lines'),
+        'MMCM_RST' :           BitField(CONTROL, 9, 7, doc='MCMM reset. Must be high when using DRP'),
+        'PLL_CLK_SRC' :        BitField(CONTROL, 9, 6, doc='Selects the data clock output source: 0=PLL output generated from the ADC clock, 1= 200 MHz system clock'),
+        'CLK_IODELAY_RESET' :  BitField(CONTROL, 9, 5, doc='Resets the IODELAY element in the clock path. This loads the delay values into the delay lines'),
+        'ENABLE_RAMP' :        BitField(CONTROL, 9, 4, doc='Enables transmission of a ramp. 0=inactive, 1=active'),
+        'IDELAYCTRL_RESET' :   BitField(CONTROL, 9, 3, doc='Resets the IDELAYCTRL. Forces it to recalibrate. '),
+        'BUFR_RESET' :         BitField(CONTROL, 9, 2, doc='Resets the BUFR.'),
+        'ISERDES_RESET' :      BitField(CONTROL, 9, 1, doc='Resets the ISERDES.'),
+        'IODELAY_RESET' :      BitField(CONTROL, 9, 0, doc='Resets the IODELAY element. This loads the delay values into the delay lines'),
+        'RAMP_ERR_CLEAR' :     BitField(CONTROL, 10, 5, doc='Resets ramp error counter'),
+        'CLEAR_FIFO_FLAGS' :   BitField(CONTROL, 10, 4, doc='Resets sticky FIFO flags (Overflow, underflow etc)'),
 
-        'CAPTURE_TRIG' :     BitField(CONTROL,0x0A,7,doc='A 0-to-1 transition triggers capturing of a 4-byte word'),
-        'CAPTURE_ALIGN' :     BitField(CONTROL,0x0A,6,doc='1: Next capture alignes the non-zero byte to byte 1. 0: Capture next word on a 11-word periodiciry'),
-        'CAPTURE_SOURCE' :     BitField(CONTROL,0x0A,5,doc='0: Word number is the one determined during the ALIGN process. 1: Word number is the one specified in USER_WORD_NUMBER'),
-        'CAPTURE_USER_WORD_NUMBER' :     BitField(CONTROL,0x0A,0,4,doc='0: Word number is the one determined during the ALIGN process. 1: Word number is the one specified in USER_WORD_NUMBER'),
 
-        'SAMPLE_DELAY'         : BitField(CONTROL, 0x0B, 0,4,doc='Number of samples to skip before starting data acquisition after a SYNC event'),
+        'SAMPLE_DELAY':        BitField(CONTROL, 11, 0, 4,doc='Number of samples to skip before starting data acquisition after a SYNC event'),
 
-        'CAPTURE2_PERIOD'     : BitField(CONTROL, 0x0C, 0, width=8, doc='Word capture period, from 0-255. 0 means 256 words'),
-
-        'CAPTURE2_WORD_NUMBER' : BitField(CONTROL, 0x0D, 0, 8, doc='Word number to be capured in CAPTURE_PATTERN. Must be <=CAPTURE2_PERIOD-1 for data to be captured'),
+        'CAPTURE2_PERIOD':     BitField(CONTROL, 12, 0, width=8, doc='Word capture period, from 0-255. 0 means 256 words'),
+        'CAPTURE2_WORD_NUMBER':BitField(CONTROL, 13, 0, 8, doc='Word number to be capured in CAPTURE_PATTERN. Must be <=CAPTURE2_PERIOD-1 for data to be captured'),
 
         # STATUS BYTES
 
-        'CLK_DELAY_STATUS':    BitField(STATUS, 0x08, 0, width=5, doc='Current delay value of the CLK line IODELAY'),
-        'CAPTURE_DONE' :     BitField(STATUS, 0x09, 7, doc="'1' when capture is complete"),
-        'FIFO_OVERFLOW' :     BitField(STATUS, 0x09, 6, doc="'1' if the FIFO has overflowed. Reset by SERDES_SYNC."),
-        'FIFO_UNDERFLOW' :     BitField(STATUS, 0x09, 5, doc="'1' if the FIFO has underflowed.  Reset by SERDES_SYNC."),
-        'FIFO_EMPTY'         : BitField(STATUS, 0x09, 4, doc="'1' if the FIFO has been empty. Reset by SERDES_SYNC."),
-        'IDELAYCTRL_PRESENT':BitField(STATUS, 0x09, 1, doc='Indicate whether this ADCDAQ instantiated a IODELAYCTRL'),
-        'IDELAYCTRL_RDY'    : BitField(STATUS, 0x09, 0, doc='Indicate if the IODELAYCTRL has finished calibrating'),
+        'CLK_DELAY_STATUS':   BitField(STATUS, 8, 0, width=5, doc='Current delay value of the CLK line IODELAY'),
+        'CAPTURE_DONE' :      BitField(STATUS, 9, 7, doc="'1' when capture is complete"),
+        'IDELAYCTRL_PRESENT': BitField(STATUS, 9, 1, doc='Indicate whether this ADCDAQ instantiated a IODELAYCTRL'),
+        'IDELAYCTRL_RDY':     BitField(STATUS, 9, 0, doc='Indicate if the IODELAYCTRL has finished calibrating'),
 
-        'CAPTURE_PATTERN0'    : BitField(STATUS, 10, 0, 8, doc='Captured byte'),
-        'CAPTURE_PATTERN1'    : BitField(STATUS, 11, 0, 8, doc='Captured byte'),
-        'CAPTURE_PATTERN2'    : BitField(STATUS, 12, 0, 8, doc='Captured byte'),
-        'CAPTURE_PATTERN3'    : BitField(STATUS, 13, 0, 8, doc='Captured byte'),
+        'FIFO_OVERFLOW' :     BitField(STATUS, 10, 7, doc="'1' if the FIFO is currently in overflow. "),
+        'FIFO_UNDERFLOW':     BitField(STATUS, 10, 6, doc="'1' if the FIFO is currently in underflow.  "),
+        'FIFO_EMPTY':         BitField(STATUS, 10, 5, doc="'1' if the FIFO is currently empty. "),
+        'FIFO_OVERFLOW_STICKY' :     BitField(STATUS, 10, 4, doc="'1' if the FIFO has overflowed since last clear or reset. "),
+        'FIFO_UNDERFLOW_STICKY':     BitField(STATUS, 10, 3, doc="'1' if the FIFO has underflowed since last clear or reset.  "),
+        'FIFO_EMPTY_STICKY':         BitField(STATUS, 10, 2, doc="'1' if the FIFO has been empty since last clear or reset. "),
+        'RAMP_ERR_CTR'         : BitField(STATUS, 11, 0, width=8,doc='Counts how many words did not match the intrernal ramp generator'),
 
-
-        'CAPTURE_WORD_CTR' : BitField(STATUS, 14, 4, width=4, doc='Free running word counter for the capture engine'),
-        'CAPTURE_WORD_NUMBER' : BitField(STATUS, 14, 0, 4,doc='Word number determined by the automatic alignment process'),
 
         'RAMP_CTR'         : BitField(STATUS, 15, 0, width=8,doc='Free running word counter for readout interface, used to generate ramp at the ADCDAQ level'),
 
-        'FIFO_WR_COUNT'     : BitField(STATUS, 16, 0, width=8, doc='Number of words in the FIFO, as seen from the WR clock'),
-        'FIFO_RD_COUNT'     : BitField(STATUS, 17, 0, width=8, doc='Number of words in the FIFO, as seen from the RD clock (readout system)'),
+        'FIFO_WR_COUNT' :    BitField(STATUS, 16, 0, width=8, doc='Number of words in the FIFO, as seen from the WR clock'),
+        'FIFO_RD_COUNT' :    BitField(STATUS, 17, 0, width=8, doc='Number of words in the FIFO, as seen from the RD clock (readout system)'),
 
         'ADC_CLK_SAMPLE'     : BitField(STATUS, 18,0,doc='Non-delayed 400 MHz ADC clock sampled by REFCLK'),
 
@@ -116,6 +110,13 @@ class ADCDAQ_base(Module_base):
         super(self.__class__, self).__init__(ant_ch_instance.fpga, ant_ch_instance.ant_number, ant_ch_instance.ADCDAQ_MODULE)
         self._lock() # Prevent accidental addition of attributes (if, for example, a value is assigned to a wrongly-spelled property)
 
+    def set_ADCDAQ_mode(self, mode):
+        if mode =='data':
+            self.ENABLE_RAMP = 0
+        elif mode == 'ramp':
+            self.ENABLE_RAMP = 1
+        else:
+            raise Exception('Invalid ADCDAQ mode')
     def set_delay(self, dly=[0, 0, 0, 0, 0, 0, 0, 0]):
         """ Sets the tap delays 
         WARNING: will work only if DIVCLK is clocking (i.e. ADC not in SYNC, and BUFR/PLL not in RESET)
@@ -169,42 +170,6 @@ class ADCDAQ_base(Module_base):
 
     delay = property(set_delay, read_delay)
 
-#    def get_iodelayctrl_present(self):
-#        return self.IDELAYCTRL_PRESENT;
-
-#    def get_iodelayctrl_ready(self):
-#        return self.IDELAYCTRL_RDY;
-
-#    iodelayctrl_present=property(get_iodelayctrl_present)
-#    iodelayctrl_ready=property(get_iodelayctrl_ready)
-
-    def capture_print(self):
-        """
-        ** Not functional any more - Uses old CAPTURE logic **
-        Captures words 0 to 10 of a frame using the ADCDAQ capture logic and prints them.
-        """
-        self.CAPTURE_SOURCE = 1
-        self.CAPTURE_ALIGN = 0
-        for i in range(11):
-            self.CAPTURE_USER_WORD_NUMBER = i
-            self.pulse_bit('CAPTURE_TRIG')
-            print 'Word number: %i : ' % i, self.read(self.BITS['CAPTURE_PATTERN0'].addr, length=4)
-        self.CAPTURE_SOURCE = 0
-
-    def capture_phase(self):
-        """ 
-        ** Not functional any more - Uses old CAPTURE logic **
-        Sweeps the phase of DIVCLK over 8 increments and display the current CAPTURE word for each phase.
-        """
-        self.CAPTURE_SOURCE = 0
-        self.CAPTURE_ALIGN = 1
-        for i in range(8):
-            self.set_divclk_phase(i)
-            #self.CAPTURE_USER_WORD_NUMBER=i
-            self.pulse_bit('CAPTURE_TRIG')
-            #self.CAPTURE_ALIGN=0
-            print 'Word number: %i : ' % i, self.read(self.BITS['CAPTURE_PATTERN0'].addr, length=4)
-        self.CAPTURE_SOURCE = 0
 
     def get_pattern(self, period=11):
         """
@@ -225,10 +190,10 @@ class ADCDAQ_base(Module_base):
         Initializes the ADCDAQ module 
         """
         # Do nothing if the FMC is not present
-        if not self.fpga.FMC_present:
-            self.PLL_CLK_SRC = 1 # use system clock if the ADC is not present
+        if self.fpga.FMC_present:
+            self.PLL_CLK_SRC = 1 # ALways use system clock to solve our sync() crash problem
         else:
-            self.PLL_CLK_SRC = 0 
+            self.PLL_CLK_SRC = 1 # 0 = ADC clk, 1 = SYSTEM clock. use system clock if the ADC is not present
 
 
     def status(self):
@@ -238,7 +203,14 @@ class ADCDAQ_base(Module_base):
         print '-------------- ANT[%i].ADCDAQ STATUS --------------' % self.port_number 
 
         print 'Clock source: %s' % ('ADC','SYSTEM CLOCK')[self.PLL_CLK_SRC]
-
+        print 'Data Acquisition FIFO status'
+        print '   Flag        Current   Sticky'
+        print '   ----------- -------   ------'
+        print '   OVERFLOW    %5s     %5s' % (bool(self.FIFO_OVERFLOW), bool(self.FIFO_OVERFLOW_STICKY))
+        print '   UNDERFLOW   %5s     %5s' % (bool(self.FIFO_UNDERFLOW), bool(self.FIFO_UNDERFLOW_STICKY))
+        print '   EMPTY       %5s     %5s' % (bool(self.FIFO_EMPTY), bool(self.FIFO_EMPTY_STICKY))
+        print 'Number of ramp errors: %i', self.RAMP_ERR_CTR
+        
         # fin=200
         # input_div=1 if self.MMCM_CLKIN_BYPASS else (self.MMCM_CLKIN_HIGH + self.MMCM_CLKIN_LOW) 
         # divclk_div=self.MMCM_DIVCLK_HIGH + self.MMCM_DIVCLK_LOW

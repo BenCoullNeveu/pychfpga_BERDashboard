@@ -38,6 +38,7 @@ class FreqCtr_base(object):
     'FAN': 13,
     'ANT_CLK': 14,
     'CORR_CLK': 15,
+    'SYSMON_CLK': 16,
     }
 
 
@@ -107,6 +108,7 @@ class FreqCtr_base(object):
         print 'System Frequencies:'
         print '   FPGA Board frequency:      %7.3f MHz' % (self.read_frequency('CLK200', gate_time=gate_time) / 1e6) 
         print '   CTRL_CLK frequency:        %7.3f MHz' % (self.read_frequency('CTRL_CLK', gate_time=gate_time) / 1e6) 
+        #print '   SYSMON_CLK frequency:      %7.3f MHz' % (self.read_frequency('SYSMON_CLK', gate_time=gate_time) / 1e6) 
         print '   ANT_CLK frequency:         %7.3f MHz (Source=%s)' % (self.read_frequency('ANT_CLK', gate_time=gate_time) / 1e6, ant_clock_source_string) 
         print '   Correlator frequency:      %7.3f MHz' % (self.read_frequency('CORR_CLK', gate_time=gate_time) / 1e6) 
         print '   FMC Reference frequency:   %7.3f MHz%s' % (self.read_frequency('FMC_REFCLK', gate_time=gate_time) / 1e6, fmc_present_string) 

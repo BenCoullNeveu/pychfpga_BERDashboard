@@ -36,10 +36,9 @@ class REFCLK_base(Module_base):
     ENCODE_SYNC = BitField(CONTROL, 0x00, 4, doc='Generate a SYNC signal encoded on the 10 MHz clock output. Will SYNC the local FMC board only if the 10 MHz output is connected to the 10 MHz input of the local FMC board')
     SLAVE = BitField(CONTROL, 0x00, 3, doc='0=board is MASTER: SYNC SMA is an output, 1= board is SLAVE: SYNC SMA is an input')
 
-    SYNC_DELAY_RST = BitField(CONTROL, 0x01, 7, doc='Resets the SYNC line IODELAY and loads the delay value specified in SYNC_DELAY.')
+    REFCLK_SEL = BitField(CONTROL, 0x01, 7, doc='Selects the source of the REFCLK needed for SYNC generation. 0=FMC, 1=internal REFCLK generator.')
     ENABLE_SYNC_GENERATION = BitField(CONTROL, 0x01, 6, doc='Allows the internal state machine to generate the SYNC sequence (generate the ADC SYNC and resets the ADCDAQ SERDES and BUFG)')
     ENABLE_SYNC_DETECTION = BitField(CONTROL, 0x01, 5, doc='When 1, enable SYNC detection based on the Refecence clock pulse length. Disable if the FMC board is not present to prevent spurious resets of the data path.')
-    SYNC_DELAY = BitField(CONTROL, 0x01, 0, width=5, doc='Delay between the FMC Reference clock and the SYNC edge (0-31). Must pulse SYNC_DELAY_RST to load.')
 
     REFCLK_DELAY_RST = BitField(CONTROL,0x02, 7, doc='Resets the REFCLK line IODELAY and loads the delay value specified in REFCLK_DELAY.')
     REFCLK_DELAY = BitField(CONTROL,0x02, 0, width=5, doc='Delay applied to the FMC Reference clock within the FPGA (0-31). Must pulse REFCLK_DELAY_RST to load.')
@@ -64,14 +63,17 @@ class REFCLK_base(Module_base):
     def init(self):
         # Sets the REFCLK delay to zero by default.
         self.set_refclk_delay(0)
+        self.set_sync_delay(1)
 
         # If the board is not present, disable SYNC detection on REFCLK to prevent noise on the floating REFCLK lien to generate spurioys resets. 
         if self.fpga.FMC_present:
             self.ENABLE_SYNC_DETECTION = 1
             self.ENABLE_SYNC_GENERATION = 1
+            self.REFCLK_SEL = 0 # Use REFCLK coming from the FMC
         else:
             self.ENABLE_SYNC_DETECTION = 0
             self.ENABLE_SYNC_GENERATION = 0
+            self.REFCLK_SEL = 1 # Use internally generated REFCLK
             
 
     def sync(self, delay=None):
@@ -101,15 +103,6 @@ class REFCLK_base(Module_base):
         self.wait_for_bit('SYNC_DONE') # Wait until the SYNC process is completed
         #time.sleep(10e-3) # make sure the SYNC sequence is completed and that the ADC clock is running 
 
-    def inc_phase(self, inc_amount):
-        if inc_amount > 0:
-            self.PS_INCDEC = 1
-        else:
-            self.PS_INCDEC = 0
-        for i in range(abs(inc_amount)):
-            self.pulse_bit('PS_EN')
-            #while not self.PS_DONE: pass
-
     def set_sync_delay(self, delay):
         """
         Sets the delay of the SYNC pulse relative to the Reference Clock. Valid range is 0-31.
@@ -119,25 +112,6 @@ class REFCLK_base(Module_base):
         self.sync_delay = delay # Save the current delay value
         self.set_refclk_delay(delay)
 
-#    def set_refclk200_phase(self, phase):
-#        """
-#        Sets DIVCLK phase on MCMM in inrements of 1/8 VCO cycles. Valid range is 0-512.
-#        """
-#        self.MMCM_RST = 1
-#        self.MMCM_POWER = 0xFFFF
-#        self.MMCM_REFCLK200_PHASE = phase & 0x07
-#        self.MMCM_REFCLK200_DELAY = phase>>3
-#        self.MMCM_RST = 0
-
-
-    #def scan_refclk200_phase(self,sleep=0.3):
-    #    samples=[];
-    #    for phase in range(24): # FB=60, DIVOUT=3. Cycle = 8* DIVOUT
-    #        self.set_refclk200_phase(phase)
-    #        time.sleep(sleep)
-    #        samples.append(self.ADC_CLK_SAMPLE)
-    #    print ''.join(('0','1')[sample] for sample in samples)
-    #    #return samples
 
     def set_refclk_delay(self, delay):
         """
@@ -168,8 +142,8 @@ class REFCLK_base(Module_base):
         self.set_refclk_delay(0) # Return the reference clock delay to a known state
         return samples
 
-    def print_bit_vector(self, samples):
-        print self.bit_vector_to_string(samples)
+    def print_bit_vector(self, samples, mark):
+        print self.bit_vector_to_string(samples, mark)
 
 #    def bit_vector_to_string(self,samples):
 #
