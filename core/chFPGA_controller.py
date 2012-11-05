@@ -332,6 +332,11 @@ class chFPGA_controller(object):
         self.set_ADC_mode('data') # This implies a self.sync(), which will reset the antenna processors again to ensure data alignment
         print '*** End of chFPGA initialization ***'
 
+    def get_config(self):
+        config = chFPGA_config()
+        config.number_of_antennas_to_correlate = self.NUMBER_OF_ANTENNAS_TO_CORRELATE
+        return config
+        
     def update_config(self):
         pass
     
@@ -636,7 +641,8 @@ class chFPGA_controller(object):
                     ant.FFT.BYPASS = 1
                     ant.SCALER.BYPASS = 1
         self.pulse_ant_reset();
-
+        self.sync()
+        
     def set_global_trigger(self, trigger_state):
         """
         Sets the global trigger to the specified value.
@@ -684,6 +690,7 @@ class chFPGA_controller(object):
             corr.ACC.config(integration_period=integration_period_in_frames, capture_period=capture_period_in_frames)
         self.set_corr_reset(0)
         self.set_ant_reset(0)            
+        self.sync()
                 
     def version(self):
         """

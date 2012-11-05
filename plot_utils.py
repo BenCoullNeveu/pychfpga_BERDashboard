@@ -27,13 +27,14 @@ BACKEND_SELECTOR_LIST = {
      120196411245L: 'Qt4Agg', # JFC ASUS Computer
      121377386969L: 'TkAgg',  # KMB Windows Qt4Agg works ok
      247356949117810: 'QT4Agg', # KMB mac QT4Agg, MacOSX (slow) and TkAgg also work not sure what is best
-     272744403299581: 'TkAgg'  #chime DRAO machine
+     272744403299581: 'TkAgg',  #chime DRAO machine
+     255365641873525: 'QT4Agg', # McGill CHIME computer (ACER)
          }
 NODE_ID = uuid.getnode()
 if NODE_ID in BACKEND_SELECTOR_LIST:
     matplotlib.use(BACKEND_SELECTOR_LIST[NODE_ID])
 else:
-    matplotlib.use('TkAgg')
+    matplotlib.use('QT4Agg')
 
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation

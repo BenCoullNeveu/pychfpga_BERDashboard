@@ -226,7 +226,7 @@ class chFPGA_receiver(object):
     CHANNELS_PER_CORR_MAX = 512 // NUMBER_OF_ANTENNAS_TO_CORRELATE
     #NUMBER_OF_CORRELATORS = NUMBER_OF_ANTENNAS_TO_CORRELATE
     FREQ_CHANNELS_MAX = 1024
-    def __init__(self, ip_address='10.10.10.11', port=41001, verbose=2):
+    def __init__(self, chFPGA_config, ip_address='10.10.10.11', port=41001, verbose=2):
 
         print '*** Opening receiver sockets ***'
         # Create socket handled and open socket communications to the chFPGA board
@@ -239,7 +239,10 @@ class chFPGA_receiver(object):
         #self.frame_queue = multiprocessing.Queue(maxsize=1000)
         self.frame_receiver = ReceiverThread(self.sock.sock, self.frame_queue, self.frame_queue_corr, verbose=0)
         self.frame_receiver.start()
-
+        self.chFPGA_config = chFPGA_config
+        
+        self.NUMBER_OF_ANTENNAS_TO_CORRELATE = chFPGA_config.number_of_antennas_to_correlate
+        
     def __del__(self):
 
         self.close()
