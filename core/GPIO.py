@@ -114,7 +114,7 @@ class GPIO_base(Module_base):
         # In the alternate code below, we do not use self.ANT_RESET=1 to reset the antenna because this implies reading the control register, and the read data might not get through if too much data is coming in
         # ant_reset = self.bitfield('ANT_RESET')
         # self.write(ant_reset.addr, 1 << ant_reset.bit)
-        self.HOST_FRAME_READ_RATE = 22
+        self.HOST_FRAME_READ_RATE = 19
         
     def status(self):
         """ Displays the module status"""

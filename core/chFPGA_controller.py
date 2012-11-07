@@ -189,7 +189,10 @@ class chFPGA_controller(object):
             self.SYSTEM_PORT = self.NUMBER_OF_ANTENNAS
             self.CORR_PORT = range(self.NUMBER_OF_ANTENNAS+1, self.NUMBER_OF_ANTENNAS+1+ self.NUMBER_OF_CORRELATORS)
             self.default_channels = range(self.NUMBER_OF_ANTENNAS)
-
+            self.LIST_OF_ANTENNAS_WITH_FFT = [i for i in range(8) if bool(self.GPIO.IMPLEMENT_FFT & 2**i)]
+            #self.LIST_OF_IMPLEMENTED_CORRELATORS = [i for i in range(8) if bool(self.GPIO.IMPLEMENT_CORR & 2**i)]
+            self.LIST_OF_IMPLEMENTED_CORRELATORS = range(self.NUMBER_OF_CORRELATORS)
+                        
             if verbose >= 2: print '  - I2C'
             self.I2C = I2C.I2C_base(self)
 
@@ -692,11 +695,11 @@ class chFPGA_controller(object):
         self.set_ant_reset(0)            
         self.sync()
                 
-    def version(self):
+    def get_version(self):
         """
-        Displays the firmware revion currenting running on the FPGA (which si the date and time of bitstream generation)
+        Returns the firmware revion currenting running on the FPGA (which si the date and time of bitstream generation)
         """
-        print 'Firmware date is %s' % self.GPIO.get_bitstream_date()
+        return self.GPIO.get_bitstream_date()
 
     def read_eye_diagram(self,channels=[0], offset=5):
         self.set_ADC_mode('pulse') # generate pulse pattern
@@ -740,4 +743,14 @@ class chFPGA_controller(object):
             delays[ch]=m
 
         return delays
-       
+
+    def status(self):
+        print '----------- chFPGA status ---------------'
+        print ' Controller IP address: %s, port: %i ' % (self.sock.ip_address, self.sock.port_number)
+        print ' Firmware version: %s' % self.get_version()
+        print ' Number of antenna inputs: %i' %  self.NUMBER_OF_ANTENNAS
+        print ' Number of antennas with channelizers: %i (antennas %s)' % (len(self.LIST_OF_ANTENNAS_WITH_FFT), str(self.LIST_OF_ANTENNAS_WITH_FFT))
+        print ' Number of correlators: %i (correlators %s)' % (len(self.LIST_OF_IMPLEMENTED_CORRELATORS),str(self.LIST_OF_IMPLEMENTED_CORRELATORS))
+
+        self.FreqCtr.status()
+        

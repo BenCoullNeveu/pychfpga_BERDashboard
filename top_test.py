@@ -140,7 +140,7 @@ if __name__ == '__main__':
     #adctest = test_adc_dc(c,r)
     #stuff = adctest.execute()
     # Displays the system frequencies
-    c.FreqCtr.status()
+    c.status()
     #adctest = test_adc_fft_bin(c,r)
     #stuff = adctest.execute()
     #adctest = test_adc_fft_int_power(c,r)
