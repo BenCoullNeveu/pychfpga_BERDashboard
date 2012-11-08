@@ -426,7 +426,7 @@ class chFPGA_receiver(object):
                 print 'Frame header information:  corr#=%i, mult#=%i, num_channels in this corr=%i, Word length=0x%X words, timestamp=0x%X ' % ( corr_number, mult_id, num_channels_per_correlator, word_length, timestamp )
                 #pass
             for word in in_frame[11:].reshape(num_products,13):
-                (flags, r1, r2, i1, i2) = struct.unpack_from('>BHLHL',word)
+                (flags, r1, r2, i1, i2) = struct.unpack_from('>BhLhL',word)
                 product = ((r1 << 32) | r2 ) + 1.0j * ((i1 << 32) | i2)
                 #raw_data.append(product)
                 
