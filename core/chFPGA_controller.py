@@ -29,7 +29,8 @@ import numpy as np
 #import pdb
 
 from pychime.common import util
- 
+
+import Shared_variables # Note: do not reload this module or we will lose acces to the data in it
 import Module
 
 import SocketIO
@@ -162,12 +163,19 @@ class chFPGA_controller(object):
         self.reference_frequency = None
         self.FRAME_PERIOD = None
         self.FMC_present = None  # indicates if the FMC board is present. If not, the modules will act accordingly.
-
+        self.ip_address = ip_address # store the IP address so we can use it to delete the shared_variable
 
         print '*** Opening control communication sockets ***'
+
+        # Close the socket open by a previous instance
+        if ip_address in Shared_variables.controller_sock:
+            print 'Closing the socket open in a previous instance for IP address %s' % ip_address 
+            Shared_variables.controller_sock[ip_address].close()
+            del Shared_variables.controller_sock[ip_address]
+
         # Create socket handled and open socket communications to the chFPGA board
         self.sock = SocketIO.ControlSocket_base(ip_address, port_number)
-
+        Shared_variables.controller_sock[ip_address] = self.sock # Save the socket in a persistent storage so it can be closed if needed  
         try: # catch initialization errors so we can free the socket for future instantiation
             print '*** Instantiating modules ***'
             # Create handware handling objects 
@@ -348,6 +356,7 @@ class chFPGA_controller(object):
         Close chFPGA object, which releases the socket bindings
         """
         self.sock.close()
+        del Shared_variables.controller_sock[self.ip_address]
 
     def read(self, ant, module, addr, type=np.dtype('>u1'), length=1, incr=1):
         """ Reads memory-mapped byte(s) from the FPGA through the Ethernet interface.

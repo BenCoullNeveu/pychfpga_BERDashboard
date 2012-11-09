@@ -12,10 +12,11 @@ History:
     2011-09-25 JFC: Added fan RPM readout
     2012-05-31 JFC: Added data processing frequency readout. Cleanup status() display.
     2012-10-17 JFC: Added correlator frequency
+    2012-11-09 JFC: Modified to use Module. Uses fpga SYSTEM_CLOCK_FREQUENCY variable.
 """
-import numpy as np
+from Module import Module_base, BitField
 
-class FreqCtr_base(object):
+class FreqCtr_base(Module_base):
     """
     Implements the Frequency Counter Interface.
     """
@@ -41,6 +42,16 @@ class FreqCtr_base(object):
     'SYSMON_CLK': 16,
     }
 
+    # Create local variables for page numbers tomake the table more readable
+    CONTROL = BitField.CONTROL
+    STATUS = BitField.STATUS
+
+    GATE_COUNT = BitField(CONTROL, 3, 0, width=32, doc='Gate time, set in 200 MHz clocks')
+    SOURCE = BitField(CONTROL, 4, 4, width= 4, doc='Select signal to be measured')
+    START = BitField(CONTROL, 4, 0, doc='When 0, resets the frequency counter.  When high, counts the uncoming clock edges until the gate time is elapsed.')
+
+    FREQ_COUNT = BitField(STATUS, 3, 0, width=32, doc='Frequency count (number of rising edges seen on the source signal during the gate time)')
+    DONE = BitField(STATUS, 4, 0, doc='Frequency counting is complete (gate time has been reached).')
 
 
     # Registers
@@ -48,17 +59,19 @@ class FreqCtr_base(object):
     def __init__(self, fpga, verbose=1):
         self.fpga = fpga
         self.verbose = verbose
+        super(self.__class__, self).__init__(fpga, fpga.SYSTEM_PORT, fpga.SYSTEM_FREQ_CTR_MODULE)
+        self._lock() # prevent further property creation to avoid creating attrubutes by mistake
 
-    def read(self, addr, type=np.uint8):
-        """ Reads from the register of the frequency counter"""
-        fpga = self.fpga
-        data = fpga.Read(fpga.SYSTEM_PORT, fpga.SYSTEM_FREQ_CTR_MODULE, addr, type)
-        return data
-
-    def write(self, addr, data):
-        """ Writes to the register of the frequency counter"""
-        fpga = self.fpga
-        fpga.Write(fpga.SYSTEM_PORT, fpga.SYSTEM_FREQ_CTR_MODULE, addr, data)
+#    def read(self, addr, type=np.uint8):
+#        """ Reads from the register of the frequency counter"""
+#        fpga = self.fpga
+#        data = fpga.Read(fpga.SYSTEM_PORT, fpga.SYSTEM_FREQ_CTR_MODULE, addr, type)
+#        return data
+#
+#    def write(self, addr, data):
+#        """ Writes to the register of the frequency counter"""
+#        fpga = self.fpga
+#        fpga.Write(fpga.SYSTEM_PORT, fpga.SYSTEM_FREQ_CTR_MODULE, addr, data)
 
     def init(self):
         """
@@ -70,20 +83,24 @@ class FreqCtr_base(object):
     def read_frequency(self, port, gate_time=0.01):
         """ Reads the frequency (in Hz) of the specified frequency counter input port 
         """
-        ref_freq = 200e6
-        gate_ctr = np.array([ref_freq*gate_time], np.dtype('>u4'))
-        gate_ctr.dtype = np.uint8
+        ref_freq = self.fpga.SYSTEM_CLOCK_FREQUENCY
+        #gate_ctr = np.array([ref_freq*gate_time], np.dtype('>u4'))
+        #gate_ctr.dtype = np.uint8
+        gate_ctr = int(ref_freq*gate_time)
         #print gate_ctr
-        self.write(0x00, gate_ctr)
+        #self.write(0x00, gate_ctr)
+        self.GATE_COUNT = gate_ctr
 
         if type(port) is str:
             port = self.PORTS[port]
-
-        self.write(0x04, (port << 4) + 0x00) # Reset frequency counter
-        self.write(0x04, (port << 4) + 0x01) # Start frequency counter
-        while (self.read(0x84) & 0x01) == 0: 
+        self.SOURCE = port # Sets the signal source to be measured
+        self.START = 0 # Clears the counter       
+        self.START = 1 # starts the frequncy counter       
+        #self.write(0x04, (port << 4) + 0x00) # Reset frequency counter
+        #self.write(0x04, (port << 4) + 0x01) # Start frequency counter
+        while not self.DONE: 
             pass
-        freq = self.read(0x80, np.dtype('>u4'))
+        freq = self.FREQ_COUNT
         return freq * 2.0 / gate_time
 
     def status(self):
