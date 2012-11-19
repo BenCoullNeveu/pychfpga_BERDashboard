@@ -339,8 +339,11 @@ class chFPGA_controller(object):
         self.set_ant_reset(0) # disable antenna reset
         
         print '*** Set ADC mode ***'
-
+        self.set_funcgen_function('ramp')
+        self.set_data_source('funcgen')
         self.set_ADC_mode('data') # This implies a self.sync(), which will reset the antenna processors again to ensure data alignment
+        self.set_data_source('adc')
+
         print '*** End of chFPGA initialization ***'
 
     def get_config(self):
@@ -467,6 +470,15 @@ class chFPGA_controller(object):
         """
         self.GPIO.pulse_ant_reset() # resets all 
 
+    def reset(self):
+        """ Resets the antenna processor modules and collelators.
+        Memory-mapped registers are not affected.
+        """
+        self.set_ant_reset(1)            
+        self.set_corr_reset(1)            
+        self.set_corr_reset(0)
+        self.set_ant_reset(0)            
+
     def set_default_channels(self, channels):
         """
             Sets the default channels to use in other functions when not specifically specified.
@@ -498,7 +510,7 @@ class chFPGA_controller(object):
             ant = self.ANT[ch]
             ant.SRCSEL.set_data_source(source.lower())
         self.set_ant_reset(0) # Reset is needed to resyncronize the system with the new data 
-        self.sync() # SYNCs the ADC, and resets (again) the antenna processor to align the data with the ADC
+        #self.sync() # SYNCs the ADC, and resets (again) the antenna processor to align the data with the ADC
 
     def set_funcgen_function(self, function=None, a=1, b=0, channels=None):
         '''
@@ -652,8 +664,8 @@ class chFPGA_controller(object):
                 else:
                     ant.FFT.BYPASS = 1
                     ant.SCALER.BYPASS = 1
-        self.pulse_ant_reset();
-        self.sync()
+        self.reset();
+        #self.sync()
         
     def set_global_trigger(self, trigger_state):
         """
@@ -702,7 +714,7 @@ class chFPGA_controller(object):
             corr.ACC.config(integration_period=integration_period_in_frames, capture_period=capture_period_in_frames)
         self.set_corr_reset(0)
         self.set_ant_reset(0)            
-        self.sync()
+        #self.sync()
                 
     def get_version(self):
         """

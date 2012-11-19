@@ -59,6 +59,8 @@ class ADCDAQ_base(Module_base):
 
         'CLK_DELAY_STATUS':   BitField(STATUS, 8, 0, width=5, doc='Current delay value of the CLK line IODELAY'),
         'CAPTURE_DONE' :      BitField(STATUS, 9, 7, doc="'1' when capture is complete"),
+        'PLL_LOCKED':         BitField(STATUS, 9, 3, doc='Indicates if the PLL is locked  (only if one is implemented in this module)'),
+        'PLL_CLK_SRC_INT' :   BitField(STATUS, 9, 2, doc='Indicates the source of the data processing clock output: 0=PLL output generated from the ADC clock, 1= 200 MHz system clock. This bit allows to determine of the use of the system clock was forced due to the loss of the PLL clock or reset of the ADCDAQ logic.'),
         'IDELAYCTRL_PRESENT': BitField(STATUS, 9, 1, doc='Indicate whether this ADCDAQ instantiated a IODELAYCTRL'),
         'IDELAYCTRL_RDY':     BitField(STATUS, 9, 0, doc='Indicate if the IODELAYCTRL has finished calibrating'),
 
@@ -191,7 +193,7 @@ class ADCDAQ_base(Module_base):
         """
         # Do nothing if the FMC is not present
         if self.fpga.FMC_present:
-            self.PLL_CLK_SRC = 1 # 
+            self.PLL_CLK_SRC = 0 # 
         else:
             self.PLL_CLK_SRC = 1 # 0 = ADC clk, 1 = SYSTEM clock. use system clock if the ADC is not present
 
