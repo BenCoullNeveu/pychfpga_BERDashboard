@@ -32,7 +32,7 @@ class run_corr():
 
 # WE CHANGED THIS
         for chan in range(8):
-            self.fpga_ctrl.ANT[chan].FFT.FFT_SHIFT=2**6-1
+            self.fpga_ctrl.ANT[chan].FFT.FFT_SHIFT=2**5-1
             
 
         
@@ -40,7 +40,7 @@ class run_corr():
         self.fpga_ctrl.set_ADC_mode(mode='data')
         #self.fpga_ctrl.set_corr_reset(False)
         self.fpga_ctrl.start_data_capture(burst_period_in_seconds=0.9, number_of_bursts=0)
-        self.fpga_ctrl.start_corr_capture()
+        self.fpga_ctrl.start_corr_capture(integration_period=1.0)
         time.sleep(2)
         self.fpga_ctrl.sync()
         self.fpga_recv.flush()
@@ -64,31 +64,33 @@ class run_corr():
 
         spectrum = self.fpga_recv.read_frames()
         spectrum = self.clean_spec(spectrum)
-        data = self.fpga_recv.read_corr_frames()
+        data = self.fpga_recv.read_corr_frames(verbose=0)
         #dout = np.array([output[0],output[1],output[2],output[3],output[4]])
         #data = self.unscramble(dout)
         return spectrum, data
 
     def init_file(self, fcount):
         filename = 'out'
-        if fcount == 0:
-            nowtime=time.time()
-            #nowtime = 1338143259.2
-            basename = filename + '_'+ str(nowtime)+'\\'
-            #print basename
-            os.mkdir(basename)
-            os.chdir(basename)
+        #if fcount == 0:
         fname=filename+str(time.time())+'.'
         print fname
         fout = open(fname+'%04i'%fcount, 'w+b')
-        #timeFileName = basename+'time_file.txt'
-        #timefile = open(timeFileName, 'w+')
-        #temperatureFileName = basename+'temperature_file.txt'
-        #temperaturefile = open(temperatureFileName, 'w+')
         est_clk = 65
         acc_len = 65536 #fake for now
         file_utils.write_header(fout, est_clk, acc_len)
         return fout
+    def init_housekeeping(self):
+        nowtime=time.time()
+        #nowtime = 1338143259.2
+        basename = 'out_'+ str(nowtime)+'\\'
+        #print basename
+        os.mkdir(basename)
+        os.chdir(basename)
+        timeFileName = 'time_file.txt'
+        timefile = open(timeFileName, 'w+')
+        temperatureFileName = 'temperature_file.txt'
+        temperaturefile = open(temperatureFileName, 'w+')
+        return timefile, temperaturefile
 
     def convert_format(self, accumulator):
         #want 1024 int32 real, int32 imag
@@ -110,20 +112,30 @@ class run_corr():
     def execute(self):
         nfiles = 0
         #Add spectrum file as well
-        try: 
-            while nfiles < 4:
+        try:
+            timefile, temperaturefile = self.init_housekeeping()
+            while nfiles < 3000:
                 fileHandle = self.init_file(nfiles)
                 for i in xrange(NSEC):
+                    nowtime=time.time()
                     spectrum, data = self.get_data()
                     interleave_a = self.convert_format(data)
                     for ia in interleave_a:
                         fileHandle.write(ia)
                     print '. ',
+                    temperature = c.ADC_BOARD.AmbTemp.temperature
+                    temperaturefile.write(str(temperature) + '\n' )
+                    timefile.write(str(nowtime) + '\n')
                 fileHandle.close()
                 nfiles += 1
+            timefile.close()
+            temperaturefile.close()
         except KeyboardInterrupt:
             self.fpga_ctrl.close()
             self.fpga_recv.close()
+            timefile.close()
+            temperaturefile.close()
+            fileHandle.close()
             raise
 
 # Default data and clock line delays for the two FMC boards/ML605 combination.
@@ -145,8 +157,9 @@ ADC_DELAY_TABLE = ADC_DELAYS_REV2_SN0001 # select the table corresponding to the
 NSEC=60*60
 
 if __name__ == "__main__":
-    c = chFPGA_controller.chFPGA_controller(adc_delay_table=ADC_DELAY_TABLE) # pylint: disable=C0103
-    r = chFPGA_receiver.chFPGA_receiver()
+    c = chFPGA_controller.chFPGA_controller(ip_address='10.10.10.11', port_number=41000, adc_delay_table=ADC_DELAY_TABLE, init=1, sampling_frequency=850e6, reference_frequency=10e6) # pylint: disable=C0103
+    chFPGA_config = c.get_config()
+    r = chFPGA_receiver.chFPGA_receiver(chFPGA_config, ip_address='10.10.10.11', port=41001)
     c.sync()
 
     #channels=[0,1,2,3]
