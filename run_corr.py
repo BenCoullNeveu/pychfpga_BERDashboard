@@ -42,7 +42,7 @@ class run_corr():
         self.fpga_ctrl.start_data_capture(burst_period_in_seconds=0.9, number_of_bursts=0)
         self.fpga_ctrl.start_corr_capture(integration_period=1.0)
         time.sleep(2)
-        self.fpga_ctrl.sync()
+        #self.fpga_ctrl.sync()  #sync means crash!
         self.fpga_recv.flush()
 
 
@@ -160,7 +160,7 @@ if __name__ == "__main__":
     c = chFPGA_controller.chFPGA_controller(ip_address='10.10.10.11', port_number=41000, adc_delay_table=ADC_DELAY_TABLE, init=1, sampling_frequency=850e6, reference_frequency=10e6) # pylint: disable=C0103
     chFPGA_config = c.get_config()
     r = chFPGA_receiver.chFPGA_receiver(chFPGA_config, ip_address='10.10.10.11', port=41001)
-    c.sync()
+    #c.sync() sync means crash!!!
 
     #channels=[0,1,2,3]
     corr = run_corr(c,r)
