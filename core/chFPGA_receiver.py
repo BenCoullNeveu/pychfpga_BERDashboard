@@ -215,7 +215,7 @@ class ReceiverThread(threading.Thread):
 
 class chFPGA_receiver(object):
     # define constants
-    FRAME_BUFFER_LENGTH = 10
+    FRAME_BUFFER_LENGTH = 2#10
     FRAME_HEADER_LENGTH = 9
     CORR_FRAME_HEADER_LENGTH = 11
     LOG2_FRAME_LENGTH = 11
@@ -369,13 +369,14 @@ class chFPGA_receiver(object):
             - The function assumes that the number of frequency channels processed by each correlator is the same for all correlators. The number is derived from the length of the frames.
         History:
             120913 KMB: Created from read_frames to read corr buffer
-            121021 JFC: Updated for multi-correlator data processing. 
+            121021 JFC: Updated for multi-correlator data processing.
+            121126 JM: initialized corr_data as a matrix of nan (before it was started as matrix of zeros).
         """
         Nant = self.NUMBER_OF_ANTENNAS_TO_CORRELATE # Number of correlated antennas c.GPIO.
         Nproducts_max = (Nant*(Nant+1))/2 # Total number of correlation products
         #Nchannels_max = self.CHANNELS_PER_CORR_MAX # Maximum number of frequency channels that can be contained in a frame CHANNELS_PER_CORR_MAX*NUMBER_OF_CORRELATORS
         linear_map = lambda i, j : (Nant * (Nant + 1) - (Nant - i) * (Nant - i + 1)) / 2 + (j - i) # Maps (i,j) (for j>=i) matrix coordinates into a linear array indexed from 0 to Nant*(Nant-1)/2-1: x0x0, x0x1, x0x2, x0x3, x1x1, x1x2, x1x3, x2x2, x2x3, x3x3
-        corr_data=np.zeros((Nproducts_max, self.FREQ_CHANNELS_MAX), dtype=complex)  # Dimensions are: (Number_of_products, number_of_frequency_channels)          
+        corr_data=np.zeros((Nproducts_max, self.FREQ_CHANNELS_MAX), dtype=complex)*np.nan  # Dimensions are: (Number_of_products, number_of_frequency_channels)          
 
         # Acquire the data
         #data={}
