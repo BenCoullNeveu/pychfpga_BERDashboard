@@ -23,6 +23,7 @@ History:
     2012-08-27 JFC : Fixed reference to common.util as pychime.common.util         
     2012-09-18 JFC: Added set_global_trig()
     2012-10-17 JFC: Added an exception if wring function name is used in set_funcgen_function()
+    2012-11-28 JM: Added function set_gain()
 """
 
 import numpy as np
@@ -774,4 +775,20 @@ class chFPGA_controller(object):
         print ' Number of correlators: %i (correlators %s)' % (len(self.LIST_OF_IMPLEMENTED_CORRELATORS),str(self.LIST_OF_IMPLEMENTED_CORRELATORS))
 
         self.FreqCtr.status()
-        
+
+
+    def set_gain(self, log2_gain=0, channels=None):
+        """
+        Sets that gain of the scalar module. The convention for log2gain is that if log2gain=0 the FFT of 1 gives 1 at DC. The range of log2gain is -1 to 14
+
+        History:
+            2012-11-28 JM: Added this function
+        """
+
+        if channels is None:
+            channels = self.default_channels
+
+        for ant in self.ANT:
+            if ant.ant_number in channels:
+                print 'Setting gain of Antenna %i' % ant.ant_number
+                ant.SCALER.SHIFT_LEFT = 1 + log2_gain

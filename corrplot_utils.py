@@ -39,6 +39,7 @@ class corrplot_utils():
         >>import corrplot_utils
         >>m=corrplot_utils.corrplot_utils()     # Create corrplot_utils object
         >>m.widecorrplot(r,plottype=2,corrnum=[9,10,12],showlegend=1)   # Plot mag and phase of correlation indexes 9,10,12
+        >>c.set_gain(5) # Optional step. Modify the gain (range -1 to 14) of the scalar module to see the correlations properly (check set_gain() in chFPGA_controller)
 
         To stop the plotting type m.wideani._stop(). It is recommended that the plotting is stopped before creating other plots, closing the figure or
         deleting the object m.
@@ -198,6 +199,7 @@ class corrplot_utils():
         >>import corrplot_utils
         >>m=corrplot_utils.corrplot_utils()     # Create corrplot_utils object
         >>m.narrowcorrplot(r,[600,550.5],plottype=2,corrnum=[9,10,12],showlegend=1)   # Plot mag and phase of frequency bins 600 and 550.5MHz for correlation indexes 9,10,12.
+        >>c.set_gain(5) # Optional step. Modify the gain (range -1 to 14) of the scalar module to see the correlations properly (check set_gain() in chFPGA_controller)
 
         To stop the plotting type m.narrowani._stop(). It is recommended that the plotting is stopped before creating other plots, closing the figure or
         deleting the object m.        
@@ -379,6 +381,7 @@ class corrplot_utils():
         >>import corrplot_utils
         >>m=corrplot_utils.corrplot_utils()     # Create corrplot_utils object
         >>m.waterfallplot(r,corrnum=10,plottype=0)   # 3d mag Plot of last 100 frames for correlation index 10.
+        >>c.set_gain(5) # Optional step. Modify the gain (range -1 to 14) of the scalar module to see the correlations properly (check set_gain() in chFPGA_controller)
 
         To stop the plotting type m.wfallani._stop(). It is recommended that the plotting is stopped before creating other plots, closing the figure or
         deleting the object m.        
@@ -543,6 +546,7 @@ class corrplot_utils():
         >>import corrplot_utils
         >>m=corrplot_utils.corrplot_utils()     # Create corrplot_utils object
         >>m.matrixplot(r,corrnum=10,plottype=2)   # Plots (as matrix image) mag and phase of last 100 frames for correlation index 10.
+        >>c.set_gain(5) # Optional step. Modify the gain (range -1 to 14) of the scalar module to see the correlations properly (check set_gain() in chFPGA_controller)
 
         To stop the plotting type m.matani._stop(). It is recommended that the plotting is stopped before creating other plots, closing the figure or
         deleting the object m.            
