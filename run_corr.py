@@ -37,10 +37,22 @@ class run_corr():
 
         
         self.fpga_ctrl.set_data_source('adc')
-        self.fpga_ctrl.set_ADC_mode(mode='data')
+        #self.fpga_ctrl.set_ADC_mode(mode='data')
+        print "set adc mode"
+        time.sleep(1)
         #self.fpga_ctrl.set_corr_reset(False)
-        self.fpga_ctrl.start_data_capture(burst_period_in_seconds=0.9, number_of_bursts=0)
-        self.fpga_ctrl.start_corr_capture(integration_period=1.0)
+        #self.fpga_ctrl.start_data_capture(burst_period_in_seconds=0.9, number_of_bursts=0)
+        # self.fpga_ctrl.start_corr_capture(integration_period=1.0)
+        # print "set to 1s"
+        # time.sleep(3)
+        # self.fpga_ctrl.start_corr_capture(integration_period=0.1)
+        # print "set to 0.1s"
+        # time.sleep(2)
+        # self.fpga_ctrl.start_corr_capture(integration_period=0.05)
+        # print "set to 0.05s"
+        # time.sleep(2)
+        self.fpga_ctrl.start_corr_capture(integration_period=0.01)
+        print "set to 0.01s"
         time.sleep(2)
         #self.fpga_ctrl.sync()  #sync means crash!
         self.fpga_recv.flush()
@@ -62,12 +74,12 @@ class run_corr():
         
     def get_data(self): 
 
-        spectrum = self.fpga_recv.read_frames()
-        spectrum = self.clean_spec(spectrum)
+        #spectrum = self.fpga_recv.read_frames()
+        #spectrum = self.clean_spec(spectrum)
         data = self.fpga_recv.read_corr_frames(verbose=0)
         #dout = np.array([output[0],output[1],output[2],output[3],output[4]])
         #data = self.unscramble(dout)
-        return spectrum, data
+        return data
 
     def init_file(self, fcount):
         filename = 'out'
@@ -118,8 +130,9 @@ class run_corr():
                 fileHandle = self.init_file(nfiles)
                 for i in xrange(NSEC):
                     nowtime=time.time()
-                    spectrum, data = self.get_data()
+                    data = self.get_data()
                     interleave_a = self.convert_format(data)
+                    #interleave_a = data
                     for ia in interleave_a:
                         fileHandle.write(ia)
                     print '. ',
