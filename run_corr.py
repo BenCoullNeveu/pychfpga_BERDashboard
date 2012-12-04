@@ -42,8 +42,8 @@ class run_corr():
         time.sleep(1)
         #self.fpga_ctrl.set_corr_reset(False)
         #self.fpga_ctrl.start_data_capture(burst_period_in_seconds=0.9, number_of_bursts=0)
-        # self.fpga_ctrl.start_corr_capture(integration_period=1.0)
-        # print "set to 1s"
+        self.fpga_ctrl.start_corr_capture(integration_period=1.0)
+        print "set to 1s"
         # time.sleep(3)
         # self.fpga_ctrl.start_corr_capture(integration_period=0.1)
         # print "set to 0.1s"
@@ -51,8 +51,8 @@ class run_corr():
         # self.fpga_ctrl.start_corr_capture(integration_period=0.05)
         # print "set to 0.05s"
         # time.sleep(2)
-        self.fpga_ctrl.start_corr_capture(integration_period=0.01)
-        print "set to 0.01s"
+        #self.fpga_ctrl.start_corr_capture(integration_period=0.01)
+        #print "set to 0.01s"
         time.sleep(2)
         #self.fpga_ctrl.sync()  #sync means crash!
         self.fpga_recv.flush()
