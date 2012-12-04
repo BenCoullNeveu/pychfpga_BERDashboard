@@ -32,10 +32,9 @@ class run_corr():
 
 # WE CHANGED THIS
         for chan in range(8):
-            self.fpga_ctrl.ANT[chan].FFT.FFT_SHIFT=2**5-1
-            
+            self.fpga_ctrl.ANT[chan].FFT.FFT_SHIFT=2**5-1    
 
-        
+        self.fpga_ctrl.set_gain(log2_gain=1, channels=[0,1,2,3,4,5,6,7])
         self.fpga_ctrl.set_data_source('adc')
         #self.fpga_ctrl.set_ADC_mode(mode='data')
         print "set adc mode"
