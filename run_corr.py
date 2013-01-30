@@ -41,7 +41,8 @@ class run_corr():
         time.sleep(1)
         #self.fpga_ctrl.set_corr_reset(False)
         #self.fpga_ctrl.start_data_capture(burst_period_in_seconds=0.9, number_of_bursts=0)
-        self.fpga_ctrl.start_corr_capture(integration_period=1.0)
+        #Currently 0.25s is the fastest will go with regular reciever.
+        self.fpga_ctrl.start_corr_capture(integration_period=1)
         print "set to 1s"
         # time.sleep(3)
         # self.fpga_ctrl.start_corr_capture(integration_period=0.1)
