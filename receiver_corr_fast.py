@@ -11,7 +11,7 @@ import time
 
 import numpy as np
 
-import SocketIO
+import core.SocketIO as SocketIO
 
 class ReceiverThread(threading.Thread):        
     BUF_SIZE=65536
@@ -76,18 +76,15 @@ class ReceiverThread(threading.Thread):
                         if (mult_number < self.NUMBER_OF_MULTIPLIERS ) :
                             if ((timestamp != last_corr_timestamp) or (corr_time-last_corr_time > 0.5) ) and (nc>0): #if this is the beginning of a new correlator data block
                                 # If the queue is full, make room by poping the oldest element
-                                if self.store_corr_data: # False if this is the first block to be stored. In this case, do not store the data in case we got partial block after a flush()
-                                    if self.queue_corr.full():
-                                        self.queue_corr.get()
-                                   # Now try to write the data into the Queue. 
-                                    try:
-                                        self.queue_corr.put_nowait(self.corr_data_block[0:nc,:nbytes].copy())
-                                        #print 'Corr receiver: Pushing data to Queue with timestamp #%i (delta=%i), dt=%0.3f, # frames = %i' % (timestamp, timestamp - last_corr_timestamp, corr_time - last_corr_time, nc)
-                                    except Queue.Full:
-                                        self.queue_corr_overflow += 1
-                                        print 'Corr Receiver Queue overflow... Should not happen...'
-                                else:
-                                    self.store_corr_data = 1 # next time store the block
+                                if self.queue_corr.full():
+                                    self.queue_corr.get()
+                               # Now try to write the data into the Queue. 
+                                try:
+                                    self.queue_corr.put_nowait(self.corr_data_block[0:nc,:nbytes].copy())
+                                    #print 'Corr receiver: Pushing data to Queue with timestamp #%i (delta=%i), dt=%0.3f, # frames = %i' % (timestamp, timestamp - last_corr_timestamp, corr_time - last_corr_time, nc)
+                                except Queue.Full:
+                                    self.queue_corr_overflow += 1
+                                    print 'Corr Receiver Queue overflow... Should not happen...'
                                 nc = 0
                                 last_corr_timestamp = timestamp
                                 last_corr_time = corr_time
@@ -220,7 +217,10 @@ class chFPGA_receiver(object):
 if __name__=='__main__':        
     r = chFPGA_receiver()
     fb = open('data_testing.bin', 'a+b')
-    while True:
+    numbers = 0
+    while numbers < 256:
         data = r.frame_queue_corr.get(timeout=3)
         #data = r.read_corr_frames()
         fb.write(data)
+        numbers +=1
+    r.close()
