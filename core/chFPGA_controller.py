@@ -201,6 +201,7 @@ class chFPGA_controller(object):
             self.LIST_OF_ANTENNAS_WITH_FFT = [i for i in range(8) if bool(self.GPIO.IMPLEMENT_FFT & 2**i)]
             #self.LIST_OF_IMPLEMENTED_CORRELATORS = [i for i in range(8) if bool(self.GPIO.IMPLEMENT_CORR & 2**i)]
             self.LIST_OF_IMPLEMENTED_CORRELATORS = range(self.NUMBER_OF_CORRELATORS)
+            self.PLATFORM_ID = self.GPIO.PLATFORM_ID
                         
             if verbose >= 2: print '  - I2C'
             self.I2C = I2C.I2C_base(self)
@@ -298,7 +299,7 @@ class chFPGA_controller(object):
 
         #Only do for ML605, not KC705 board
         if verbose >= 2: print '  - SYSMON'
-        if self.GPIO.PLATFORM_ID < 1:
+        if self.PLATFORM_ID < 1:
             self.SYSMON.init()
             self.SYSMON.status()
         else:
@@ -313,7 +314,7 @@ class chFPGA_controller(object):
         self.ANT.init(delay_table=adc_delay_table)
         self.ANT.status()
 
-        if self.IMPLEMENT_CORR and self.NUMBER_OF_CORRELATORS>0:
+        if self.IMPLEMENT_CORR and self.NUMBER_OF_CORRELATORS>0 and self.PLATFORM_ID < 1:
             if verbose >= 2: print '  - CORR'
             self.CORR.init()
             self.CORR.status()
