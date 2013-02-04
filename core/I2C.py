@@ -83,8 +83,10 @@ class I2C_base(Module_base):
         if read_length<0 or read_length>4:
             print 'i2c_write_read: read_length is out of range'
             raise ValueError()
-
-        write_length=len(data)
+        if data is None:
+            write_length = 0
+        else:
+            write_length=len(data)
         if write_length>3:
             print 'i2c_write_read: write length is out of range'
             raise ValueError()

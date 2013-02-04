@@ -296,9 +296,13 @@ class chFPGA_controller(object):
         self.REFCLK.init()
         self.REFCLK.status()
 
+        #Only do for ML605, not KC705 board
         if verbose >= 2: print '  - SYSMON'
-        self.SYSMON.init()
-        self.SYSMON.status()
+        if self.GPIO.PLATFORM_ID < 1:
+            self.SYSMON.init()
+            self.SYSMON.status()
+        else:
+            print "     No SYSMON, not ML605 Board"
 
         if verbose >= 2: print '  - SPI'
         self.SPI.init()

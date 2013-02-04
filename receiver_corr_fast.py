@@ -218,7 +218,7 @@ if __name__=='__main__':
     r = chFPGA_receiver()
     fb = open('data_testing.bin', 'a+b')
     numbers = 0
-    while numbers < 256:
+    while numbers < 2560:
         data = r.frame_queue_corr.get(timeout=3)
         #data = r.read_corr_frames()
         fb.write(data)
