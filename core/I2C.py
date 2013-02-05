@@ -70,12 +70,12 @@ class I2C_base(Module_base):
     I2C_DEVICE_LIST_KC705 = {
         'FMC': 0x02
         } 
-    I2C_DEVICE_LIST_KC705 = 0x74
+    I2C_DEVICE_ADDR_KC705 = 0x74
 
     def set_i2c_switch(self, device_name):
         'Selects the active I2C sevice for the platforms that use a I2C switch'
         if self.fpga_instance.PLATFORM_ID == self.fpga_instance.PLATFORM_ID_KC705:
-            self.i2c_write(I2C_SWITCH_ADDR_KC705, I2C_DEVICE_LIST_KC705[device_name])    
+            self.i2c_write(addr=self.I2C_DEVICE_ADDR_KC705, data=[self.I2C_DEVICE_LIST_KC705[device_name]])    
 
     def i2c_write_read(self, port=0, addr=0, data=[0], read_length=0, verbose=False, noerror=False):
         """ 
