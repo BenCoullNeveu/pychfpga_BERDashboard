@@ -152,6 +152,9 @@ class chFPGA_controller(object):
     SYSTEM_REFCLK_MODULE = 4
     SYSTEM_I2C_MODULE = 5
 
+    PLATFORM_ID_ML605 = 0
+    PLATFORM_ID_KC705 = 1
+    
     def __init__(self, ip_address='10.10.10.11', port_number=41000, init=1, verbose=2, **kwargs):
         """
         Opens communication with the specified chFPGA. This does not affect the state and operations of chFPGA.
@@ -188,6 +191,7 @@ class chFPGA_controller(object):
             if verbose >= 2: print '  - GPIO'
             self.GPIO = GPIO.GPIO_base(self)
             # get system constants from the FPGA
+            self.PLATFORM_ID = self.GPIO.PLATFORM_ID
             self.NUMBER_OF_CORRELATORS = self.GPIO.NUMBER_OF_CORRELATORS
             self.NUMBER_OF_ANTENNAS = self.GPIO.NUMBER_OF_ANTENNAS
             self.NUMBER_OF_ANTENNAS_TO_CORRELATE = self.GPIO.NUMBER_OF_ANTENNAS_TO_CORRELATE
@@ -198,8 +202,8 @@ class chFPGA_controller(object):
             self.CORR_PORT = range(self.NUMBER_OF_ANTENNAS+1, self.NUMBER_OF_ANTENNAS+1+ self.NUMBER_OF_CORRELATORS)
             self.default_channels = range(self.NUMBER_OF_ANTENNAS)
             self.LIST_OF_ANTENNAS_WITH_FFT = [i for i in range(8) if bool(self.GPIO.IMPLEMENT_FFT & 2**i)]
-            #self.LIST_OF_IMPLEMENTED_CORRELATORS = [i for i in range(8) if bool(self.GPIO.IMPLEMENT_CORR & 2**i)]
-            self.LIST_OF_IMPLEMENTED_CORRELATORS = range(self.NUMBER_OF_CORRELATORS)
+            self.LIST_OF_IMPLEMENTED_CORRELATORS = [i for i in range(8) if bool(self.GPIO.IMPLEMENT_CORR & 2**i)]
+            #self.LIST_OF_IMPLEMENTED_CORRELATORS = range(self.NUMBER_OF_CORRELATORS)
                         
             if verbose >= 2: print '  - I2C'
             self.I2C = I2C.I2C_base(self)
@@ -308,7 +312,7 @@ class chFPGA_controller(object):
         self.ANT.init(delay_table=adc_delay_table)
         self.ANT.status()
 
-        if self.IMPLEMENT_CORR and self.NUMBER_OF_CORRELATORS>0:
+        if self.IMPLEMENT_CORR and self.NUMBER_OF_CORRELATORS>0 and False:
             if verbose >= 2: print '  - CORR'
             self.CORR.init()
             self.CORR.status()
