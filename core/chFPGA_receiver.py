@@ -215,7 +215,7 @@ class ReceiverThread(threading.Thread):
 
 class chFPGA_receiver(object):
     # define constants
-    FRAME_BUFFER_LENGTH = 10
+    FRAME_BUFFER_LENGTH = 2#10
     FRAME_HEADER_LENGTH = 9
     CORR_FRAME_HEADER_LENGTH = 11
     LOG2_FRAME_LENGTH = 11
@@ -226,6 +226,9 @@ class chFPGA_receiver(object):
     CHANNELS_PER_CORR_MAX = 512 // NUMBER_OF_ANTENNAS_TO_CORRELATE
     #NUMBER_OF_CORRELATORS = NUMBER_OF_ANTENNAS_TO_CORRELATE
     FREQ_CHANNELS_MAX = 1024
+    Y, X = np.mgrid[0:NUMBER_OF_ANTENNAS_TO_CORRELATE,0:NUMBER_OF_ANTENNAS_TO_CORRELATE]
+    K = X*NUMBER_OF_ANTENNAS_TO_CORRELATE - X*(X+1)/2 + Y
+
     def __init__(self, chFPGA_config, ip_address='10.10.10.11', port=41001, verbose=2):
 
         print '*** Opening receiver sockets ***'
@@ -279,7 +282,9 @@ class chFPGA_receiver(object):
     def length(self):
         """ Returns the number of entries in the receiver FIFO """
         
-        return self.frame_queue.qsize()        
+        return self.frame_queue.qsize()
+
+
             
     def read_frames(self, frames=1, verbose=0, raw=0, flush=0, timeout=3):
         """
@@ -369,13 +374,16 @@ class chFPGA_receiver(object):
             - The function assumes that the number of frequency channels processed by each correlator is the same for all correlators. The number is derived from the length of the frames.
         History:
             120913 KMB: Created from read_frames to read corr buffer
-            121021 JFC: Updated for multi-correlator data processing. 
+            121021 JFC: Updated for multi-correlator data processing.
+            121126 JM: initialized corr_data as a matrix of nan (before it was started as matrix of zeros).
         """
         Nant = self.NUMBER_OF_ANTENNAS_TO_CORRELATE # Number of correlated antennas c.GPIO.
         Nproducts_max = (Nant*(Nant+1))/2 # Total number of correlation products
         #Nchannels_max = self.CHANNELS_PER_CORR_MAX # Maximum number of frequency channels that can be contained in a frame CHANNELS_PER_CORR_MAX*NUMBER_OF_CORRELATORS
-        linear_map = lambda i, j : (Nant * (Nant + 1) - (Nant - i) * (Nant - i + 1)) / 2 + (j - i) # Maps (i,j) (for j>=i) matrix coordinates into a linear array indexed from 0 to Nant*(Nant-1)/2-1: x0x0, x0x1, x0x2, x0x3, x1x1, x1x2, x1x3, x2x2, x2x3, x3x3
-        corr_data=np.zeros((Nproducts_max, self.FREQ_CHANNELS_MAX), dtype=complex)  # Dimensions are: (Number_of_products, number_of_frequency_channels)          
+        ##linear_map = lambda i, j : (Nant * (Nant + 1) - (Nant - i) * (Nant - i + 1)) / 2 + (j - i) # Maps (i,j) (for j>=i) matrix coordinates into a linear array indexed from 0 to Nant*(Nant-1)/2-1: x0x0, x0x1, x0x2, x0x3, x1x1, x1x2, x1x3, x2x2, x2x3, x3x3
+        ### Replace linear map with a Matrix
+
+        corr_data=np.zeros((Nproducts_max, self.FREQ_CHANNELS_MAX), dtype=complex)*np.nan  # Dimensions are: (Number_of_products, number_of_frequency_channels)          
 
         # Acquire the data
         #data={}
@@ -450,7 +458,7 @@ class chFPGA_receiver(object):
                     i_index = mult_id - 1
                     j_index = mult_id + Nant - product_number - 1
                     freq_channel_offset = 1
-                linear_index = linear_map(i_index, j_index)       
+                linear_index = self.K[i_index, j_index]       
                 if verbose >= 3:
                     print '   Word #%i, product #%i, Freq bin #%i, (i,j)=(%i,%i), k=%i, , value = (%f + %fi)' %(word_number, product_number, freq_channel+freq_channel_offset, i_index, j_index, linear_index, product.real, product.imag )
                 corr_data[linear_index, freq_channel+freq_channel_offset] = product
