@@ -65,6 +65,7 @@ class GPIO_base(Module_base):
     IMPLEMENT_FFT = BitField(STATUS, 5, 0, width=8, doc='Indicates whether the antenna processor FFT is implemented. If not, it is bypassed and timestream data is fed to the scaler. There is one bit per antenna. ')
     IMPLEMENT_CORR = BitField(STATUS, 6, 0, width=8, doc='Indicates whether the correlator is implemented. . There is one bit per correlator. ')
     TIMESTAMP = BitField(STATUS, 0x0A, 0, width=32, doc='Bitstream timestamp word')
+    PLATFORM_ID = BitField(STATUS, 11, 0, width=8, doc='Which FPGA/board in use.  0 for ML605 eval board, 1 for KC705 evaluation board')
 
 
     def __init__(self, fpga):
@@ -114,7 +115,7 @@ class GPIO_base(Module_base):
         # In the alternate code below, we do not use self.ANT_RESET=1 to reset the antenna because this implies reading the control register, and the read data might not get through if too much data is coming in
         # ant_reset = self.bitfield('ANT_RESET')
         # self.write(ant_reset.addr, 1 << ant_reset.bit)
-        self.HOST_FRAME_READ_RATE = 16
+        self.HOST_FRAME_READ_RATE = 14
         
     def status(self):
         """ Displays the module status"""
