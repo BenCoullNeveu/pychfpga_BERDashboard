@@ -69,7 +69,7 @@ class GPIO_base(Module_base):
 
 
     def __init__(self, fpga):
-        super(self.__class__, self).__init__(fpga, fpga.SYSTEM_PORT, fpga.SYSTEM_SYSMOD_MODULE)
+        super(self.__class__, self).__init__(fpga, fpga.SYSTEM_PORT, fpga.SYSTEM_GPIO_MODULE)
         self._lock() # prevent further property creation to avoid creating attrubutes by mistake
 
 
@@ -119,7 +119,7 @@ class GPIO_base(Module_base):
         
     def status(self):
         """ Displays the module status"""
-        print '-------------------------SYSMOD--------------------------------------'
+        print '-------------------------GPIO--------------------------------------'
         print 'Bistream timestamp is: %s' % self.get_bitstream_date()
         print '----------------------------------------------------------------------'
 

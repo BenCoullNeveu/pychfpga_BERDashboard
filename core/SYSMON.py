@@ -71,7 +71,11 @@ class SYSMON_base(object):
         fpga.write(fpga.SYSTEM_PORT, fpga.SYSTEM_SYSMON_MODULE, 0x200 + 2 * (addr), [data & 0xFF, data >> 8]) # Sysmon data is LSB first
 
     def init(self):
-        if self.fpga_instance.PLATFORM_ID == self.fpga_instance.PLATFORM_ID_ML605:
+        fpga = self.fpga_instance
+        self.supported_by_platform = fpga.PLATFORM_ID in [fpga.PLATFORM_ID_ML605, fpga.PLATFORM_ID_KC705]
+        
+            
+        if self.supported_by_platform:
             self.write(self.CONFIG1_ADDR, 0x0000)
             self.write(self.CONFIG2_ADDR, 0x0000)
             self.write(self.SEQ_ADC_SEL1_ADDR, 0x3F01) # Enable all ADC channels
@@ -111,7 +115,7 @@ class SYSMON_base(object):
             12V Voltage: Measured through a resistor divider (1/24) on Vaux<13>
         """
         #return
-        if self.fpga_instance.PLATFORM_ID == self.fpga_instance.PLATFORM_ID_ML605:
+        if self.supported_by_platform:
             Vin = self.voltage(self.VAUX_VOLT_ADDR, vref=1.0) * 24
             Iin = self.voltage(self.VAUX_CURR_ADDR, vref=1.0) / (0.002 * 50)
             print '--------------- VIRTEX 6 System Monitor statistics ---------------'

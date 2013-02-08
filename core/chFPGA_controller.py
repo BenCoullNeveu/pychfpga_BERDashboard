@@ -149,7 +149,7 @@ class chFPGA_controller(object):
     SYSTEM_SPI_MODULE = 0
     SYSTEM_SYSMON_MODULE = 1
     SYSTEM_FREQ_CTR_MODULE = 2
-    SYSTEM_SYSMOD_MODULE = 3
+    SYSTEM_GPIO_MODULE = 3
     SYSTEM_REFCLK_MODULE = 4
     SYSTEM_I2C_MODULE = 5
 
@@ -274,7 +274,7 @@ class chFPGA_controller(object):
 
         print '*** Initializing modules ***'
 
-        if verbose >= 2: print '  - SYSMOD'
+        if verbose >= 2: print '  - GPIO'
         self.GPIO.init() # This stops the antenna procesors from sending data. Neeeded if the FPGA is flooding the buffers which prevent subsequent reads to come through
         #self.sock.flush_data_socket() # Now the the data stops coming, flush the buffers
         self.sock.flush()
@@ -303,11 +303,8 @@ class chFPGA_controller(object):
 
         #Only do for ML605, not KC705 board
         if verbose >= 2: print '  - SYSMON'
-        if self.PLATFORM_ID < 1:
-            self.SYSMON.init()
-            self.SYSMON.status()
-        else:
-            print "     No SYSMON, not ML605 Board"
+        self.SYSMON.init()
+        self.SYSMON.status()
 
         if verbose >= 2: print '  - SPI'
         self.SPI.init()
