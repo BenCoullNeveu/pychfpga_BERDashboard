@@ -45,11 +45,14 @@ class CH_DIST_base(Module_base):
         """
         Selects which frequency channels are going to be passed to this correlator. 
         A correlator normally process only a subset of the frequency channels because it receives those channels from all antennas but it has a limited computational bandwidth.
-        The correlation of all frequency channles is therefore usually spread over many correlator blocks, each procesing a different range of frequency channels.
+        The correlation of all frequency channels is therefore usually spread over many correlator blocks, each processing a different range of frequency channels.
 
-        Due to the inetrnal architecture of the system, the frequency channels are selected in pairs: an even and odd bin.
+        Due to the internal architecture of the system, the frequency channels are selected in pairs: an even and odd bin.
         Each pair is contained in a 32-bit word. This function selects which word to transmit.
         
+        In order to deal with a decreased buffer size, the number of contiguous words has been decreased to 16.  Default behavior
+        should be to have every 8th word selected.  
+
         If 'words_to_enable' is an integer, words 0 to (words_to_enable-1) are transmitted. (i.e channels 0 to 2*words_to_enable-1 are selected )
             select_words(4) selects words 0,1,2 and 3. and freq channels [0,1,2,3,4,5,6,7]
         If 'words_to_enable' is an array, the word numbers indicated in the arrays are selected.
@@ -74,12 +77,12 @@ class CH_DIST_base(Module_base):
         """ Initializes CH_DIST."""
         #self.select_words(self.fpga.FRAME_LENGTH//4) # enable tranmission of all words by default
         #array doesn't seem to work here....
-        frequency_bins_per_correlator = 202# 202 # must be even, max 1010 / number of correlated antennas
+        frequency_bins_per_correlator = 30 # 202-5chan correlator # must be even, max 1010 / number of correlated antennas 126-8 channel.  Should get this from config
         words_per_correlator = frequency_bins_per_correlator//2 # Maximum is 512/number of correlated antennas
         corr_number = self.parent.instance_number
-        first_word = corr_number * words_per_correlator
-        last_word = first_word + words_per_correlator -1
-        self.select_words(range(first_word,last_word+1)) # enable tranmission 8 words, 16 freq channels by default
+        first_word = corr_number
+        word_step = 8 #Spacing between words, currently should be 8 with 8 channel correlator #should get this from config
+        self.select_words(range(first_word,words_per_correlator*word_step,word_step)) # enable tranmission 8 words, 16 freq channels by default
 
 
     def status(self):

@@ -315,7 +315,7 @@ class chFPGA_controller(object):
         self.ANT.init(delay_table=adc_delay_table)
         self.ANT.status()
 
-        if self.IMPLEMENT_CORR and self.NUMBER_OF_CORRELATORS>0 and self.PLATFORM_ID < 1:
+        if self.IMPLEMENT_CORR and self.NUMBER_OF_CORRELATORS>0:
             if verbose >= 2: print '  - CORR'
             self.CORR.init()
             self.CORR.status()
