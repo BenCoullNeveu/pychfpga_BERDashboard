@@ -108,6 +108,17 @@ ADC_DELAYS_REV2_SN0001 = (
     [16]*8, #CH7
     )
 
+ADC_DELAYS_REV2_SN0001_KC705_FMC700 = (
+    [13,10,9,10,9,10,9,9], #CH0
+    [7]*8, #CH1 
+    [11,11,8,9,7,8,8,7], #CH2 
+    [6]*8, #CH3
+    [14]*8, #CH4
+    [14]*8, #CH5 
+    [13]*8, #CH6 
+    [0]*8, #CH7
+    )
+
 
 if __name__ == '__main__':        
     print '------------------------'
@@ -127,7 +138,7 @@ if __name__ == '__main__':
         pass
 
     #ADC_TEST_MODE = 0     #  0= normal, 1= ramp, 2=pulse (1 high, 10 low)
-    ADC_DELAY_TABLE = ADC_DELAYS_REV2_SN0001 # select the table corresponding to the FMC serial number
+    ADC_DELAY_TABLE = ADC_DELAYS_REV2_SN0001_KC705_FMC700 # select the table corresponding to the FMC serial number
     #FREF = 10 # FMC Reference clock frequency 
 
     # Create the new chFPGA object.
