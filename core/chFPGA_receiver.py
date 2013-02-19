@@ -445,7 +445,7 @@ class chFPGA_receiver(object):
                 freq_bin_product_number = product_number %  Nant  #Product index within a frequency bin pair 0-Nantenna
                 #freq_channel = (product_number // Nant) *2 + corr_number*self.CHANNELS_PER_CORR
                 #freq_channel = (product_number // Nant) *2 + corr_number*num_channels_per_correlator # Let's assume that every corr frames have the same number of channels, and that the received frames have no missing data
-                freq_channel = (product_number//Nant)*2*8 + corr_number*2 
+                freq_channel = (product_number//Nant)*2*5 + corr_number*2  #the 5 here needs to be gotten from chFPGA.config()
                 # Compute the (i,j) index of each product
                 if mult_id == 0:
                     i_index = Nant - 1 - freq_bin_product_number
