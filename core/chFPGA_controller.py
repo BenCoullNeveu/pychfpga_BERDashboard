@@ -807,7 +807,7 @@ class chFPGA_controller(object):
         expects a number  in the range 0b11111111111 (2047) and 0b00000000000 (0).  
 
         History:
-            2012-11-28 JM: Added this function
+            2013-02-19 KMB: Added this function
         """
 
         if channels is None:
