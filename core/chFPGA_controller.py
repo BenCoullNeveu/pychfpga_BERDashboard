@@ -356,6 +356,7 @@ class chFPGA_controller(object):
     def get_config(self):
         config = chFPGA_config()
         config.number_of_antennas_to_correlate = self.NUMBER_OF_ANTENNAS_TO_CORRELATE
+        config.number_of_correlators = self.NUMBER_OF_CORRELATORS
         return config
         
     def update_config(self):

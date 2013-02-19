@@ -25,6 +25,7 @@ class CH_DIST_base(Module_base):
     # Control bitfields
     RESET = BitField(CONTROL, 0x00, 7, doc="Reset the CH_DIST. Clears FIFO.")
     STREAM_ID = BitField(CONTROL, 0x02, 0, width=16, doc="Stream ID to be used for tagging the output frames")
+    NUMBER_OF_SELECTED_WORDS = BitField(CONTROL, 0x03, 0, width=8, doc="Number of words(frequency pairs) selected by this correlator.  Must match length of selected words")
 
     # Status bitfields
     FIFO_EMPTY = BitField(STATUS, 0x00, 7, doc="Active high when the data FIFO is empty")
@@ -71,13 +72,15 @@ class CH_DIST_base(Module_base):
             #print 'setting bit %i of byte %i' % ((j % 8), j//8)
             mask[j//8] |= (1<<(j % 8))
 
+        self.NUMBER_OF_SELECTED_WORDS = len(words_to_enable)
+
         self.write_ram(0x00, mask) # Enable transmission of selected bytes 
 
     def init(self):
         """ Initializes CH_DIST."""
         #self.select_words(self.fpga.FRAME_LENGTH//4) # enable tranmission of all words by default
         #array doesn't seem to work here....
-        frequency_bins_per_correlator = 30 # 202-5chan correlator # must be even, max 1010 / number of correlated antennas 126-8 channel.  Should get this from config
+        frequency_bins_per_correlator = 24 # 202-5chan correlator # must be even, max 1010 / number of correlated antennas 126-8 channel.  Should get this from config
         words_per_correlator = frequency_bins_per_correlator//2 # Maximum is 512/number of correlated antennas
         corr_number = self.parent.instance_number
         first_word = corr_number

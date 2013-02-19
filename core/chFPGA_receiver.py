@@ -32,8 +32,8 @@ class ReceiverThread(threading.Thread):
     data_block = np.zeros((8,2048+9), dtype=np.uint8)
     #Number of frequency bin pairs, Number of antennas, Number of bytes per word, header
     NUMBER_OF_CORRELATORS = 5
-    NUMBERS_OF_ANTENNAS_TO_CORRELATE = 8
-    NUMBER_OF_MULTIPLIERS = NUMBERS_OF_ANTENNAS_TO_CORRELATE + 1
+    NUMBER_OF_ANTENNAS_TO_CORRELATE = 5 #8
+    NUMBER_OF_MULTIPLIERS = NUMBER_OF_ANTENNAS_TO_CORRELATE + 1
     #MAX_NUMBER_OF_CHANNELS_PER_CORRELATOR = 128 
     MAX_CORR_FRAME_LENGTH = 512*13+11 #in bytes. The accumulator size is always 512 words, each word being 13 bytes long. A 11 byte header is added. 
     corr_data_block = np.zeros((NUMBER_OF_MULTIPLIERS * NUMBER_OF_CORRELATORS, MAX_CORR_FRAME_LENGTH), dtype=np.int8)
@@ -44,10 +44,13 @@ class ReceiverThread(threading.Thread):
     store_data = 0 # do not store frame blocks if False
     store_corr_data = 0 # do not store frame blocks if False
     
-    def __init__(self, sock, queue, queue_corr, verbose = 1):
+    def __init__(self, sock, queue, queue_corr, NUMBER_OF_ANTENNAS_TO_CORRELATE, NUMBER_OF_CORRELATORS, verbose = 1):
         self.sock = sock
         self.queue = queue
         self.queue_corr = queue_corr
+        self.NUMBER_OF_CORRELATORS = NUMBER_OF_CORRELATORS
+        self.NUMBER_OF_ANTENNAS_TO_CORRELATE = NUMBER_OF_ANTENNAS_TO_CORRELATE
+        self.NUMBER_OF_MULTIPLIERS = NUMBER_OF_ANTENNAS_TO_CORRELATE + 1
         self._stop = threading.Event()
         self._flush = threading.Event()
         self.verbose = verbose
@@ -222,7 +225,7 @@ class chFPGA_receiver(object):
     FRAME_LENGTH = 2**LOG2_FRAME_LENGTH
 
     #CHANNELS_PER_CORR = 204
-    NUMBER_OF_ANTENNAS_TO_CORRELATE = 8
+    NUMBER_OF_ANTENNAS_TO_CORRELATE = 5 #8
     CHANNELS_PER_CORR_MAX = 512 // NUMBER_OF_ANTENNAS_TO_CORRELATE
     #NUMBER_OF_CORRELATORS = NUMBER_OF_ANTENNAS_TO_CORRELATE
     FREQ_CHANNELS_MAX = 1024
@@ -235,16 +238,17 @@ class chFPGA_receiver(object):
         # Create socket handled and open socket communications to the chFPGA board
         self.sock=SocketIO.DataSocket_base(ip_address, port)
         #self.sock.open()
-
+        #Add configuration 
+        self.chFPGA_config = chFPGA_config
+        self.NUMBER_OF_ANTENNAS_TO_CORRELATE = chFPGA_config.number_of_antennas_to_correlate
+        self.NUMBER_OF_CORRELATORS = chFPGA_config.number_of_correlators
         # Create a frame a queue and a thread that will fill it
         self.frame_queue = Queue.Queue(maxsize=self.FRAME_BUFFER_LENGTH)
         self.frame_queue_corr = Queue.Queue(maxsize=self.FRAME_BUFFER_LENGTH)
         #self.frame_queue = multiprocessing.Queue(maxsize=1000)
-        self.frame_receiver = ReceiverThread(self.sock.sock, self.frame_queue, self.frame_queue_corr, verbose=0)
+        self.frame_receiver = ReceiverThread(self.sock.sock, self.frame_queue, self.frame_queue_corr, self.NUMBER_OF_ANTENNAS_TO_CORRELATE, self.NUMBER_OF_CORRELATORS, verbose=0)
         self.frame_receiver.start()
-        self.chFPGA_config = chFPGA_config
         
-        self.NUMBER_OF_ANTENNAS_TO_CORRELATE = chFPGA_config.number_of_antennas_to_correlate
         
     def __del__(self):
 
