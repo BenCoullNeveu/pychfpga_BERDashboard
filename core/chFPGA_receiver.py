@@ -225,12 +225,9 @@ class chFPGA_receiver(object):
     FRAME_LENGTH = 2**LOG2_FRAME_LENGTH
 
     #CHANNELS_PER_CORR = 204
-    NUMBER_OF_ANTENNAS_TO_CORRELATE = 5 #8
-    CHANNELS_PER_CORR_MAX = 512 // NUMBER_OF_ANTENNAS_TO_CORRELATE
+    #NUMBER_OF_ANTENNAS_TO_CORRELATE = 5 #8
     #NUMBER_OF_CORRELATORS = NUMBER_OF_ANTENNAS_TO_CORRELATE
     FREQ_CHANNELS_MAX = 1024
-    Y, X = np.mgrid[0:NUMBER_OF_ANTENNAS_TO_CORRELATE,0:NUMBER_OF_ANTENNAS_TO_CORRELATE]
-    K = X*NUMBER_OF_ANTENNAS_TO_CORRELATE - X*(X+1)/2 + Y
 
     def __init__(self, chFPGA_config, ip_address='10.10.10.11', port=41001, verbose=2):
 
@@ -242,12 +239,15 @@ class chFPGA_receiver(object):
         self.chFPGA_config = chFPGA_config
         self.NUMBER_OF_ANTENNAS_TO_CORRELATE = chFPGA_config.number_of_antennas_to_correlate
         self.NUMBER_OF_CORRELATORS = chFPGA_config.number_of_correlators
+        self.CHANNELS_PER_CORR_MAX = 512 // self.NUMBER_OF_ANTENNAS_TO_CORRELATE
         # Create a frame a queue and a thread that will fill it
         self.frame_queue = Queue.Queue(maxsize=self.FRAME_BUFFER_LENGTH)
         self.frame_queue_corr = Queue.Queue(maxsize=self.FRAME_BUFFER_LENGTH)
         #self.frame_queue = multiprocessing.Queue(maxsize=1000)
         self.frame_receiver = ReceiverThread(self.sock.sock, self.frame_queue, self.frame_queue_corr, self.NUMBER_OF_ANTENNAS_TO_CORRELATE, self.NUMBER_OF_CORRELATORS, verbose=0)
         self.frame_receiver.start()
+        X, Y = np.mgrid[0:self.NUMBER_OF_ANTENNAS_TO_CORRELATE,0:self.NUMBER_OF_ANTENNAS_TO_CORRELATE]
+        self.K = X*self.NUMBER_OF_ANTENNAS_TO_CORRELATE - X*(X+1)/2 + Y
         
         
     def __del__(self):
@@ -445,7 +445,7 @@ class chFPGA_receiver(object):
                 freq_bin_product_number = product_number %  Nant  #Product index within a frequency bin pair 0-Nantenna
                 #freq_channel = (product_number // Nant) *2 + corr_number*self.CHANNELS_PER_CORR
                 #freq_channel = (product_number // Nant) *2 + corr_number*num_channels_per_correlator # Let's assume that every corr frames have the same number of channels, and that the received frames have no missing data
-                freq_channel = (product_number//Nant)*2*5 + corr_number*2  #the 5 here needs to be gotten from chFPGA.config()
+                freq_channel = (product_number//Nant)*2*self.NUMBER_OF_ANTENNAS_TO_CORRELATE + corr_number*2  #the 5 here needs to be gotten from chFPGA.config()
                 # Compute the (i,j) index of each product
                 if mult_id == 0:
                     i_index = Nant - 1 - freq_bin_product_number

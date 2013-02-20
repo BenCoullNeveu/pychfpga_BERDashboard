@@ -52,7 +52,7 @@ class CH_DIST_base(Module_base):
         Each pair is contained in a 32-bit word. This function selects which word to transmit.
         
         In order to deal with a decreased buffer size, the number of contiguous words has been decreased to 16.  Default behavior
-        should be to have every 8th word selected.  
+        should be to have every Nth word selected where N is the number of antennas to be correlated.  
 
         If 'words_to_enable' is an integer, words 0 to (words_to_enable-1) are transmitted. (i.e channels 0 to 2*words_to_enable-1 are selected )
             select_words(4) selects words 0,1,2 and 3. and freq channels [0,1,2,3,4,5,6,7]
@@ -84,7 +84,7 @@ class CH_DIST_base(Module_base):
         words_per_correlator = frequency_bins_per_correlator//2 # Maximum is 512/number of correlated antennas
         corr_number = self.parent.instance_number
         first_word = corr_number
-        word_step = 5 #Spacing between words, currently should be 8 with 8 channel correlator #should get this from config
+        word_step = self.fpga.NUMBER_OF_ANTENNAS_TO_CORRELATE #Spacing between words, currently should be 8 with 8 channel correlator #should get this from config
         self.select_words(range(first_word,words_per_correlator*word_step,word_step)) # enable tranmission 8 words, 16 freq channels by default
 
 
