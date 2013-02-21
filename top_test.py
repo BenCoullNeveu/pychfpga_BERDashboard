@@ -22,6 +22,7 @@ from pychime.common.tests.test_adc_fft_bin import test_adc_fft_bin
 from pychime.common.tests.test_adc_fft_int_power import test_adc_fft_int_power
 from pychime.common.tests.test_adc_fft_level import test_adc_fft_level
 from pychime.common.tests.test_adc_dc import test_adc_dc
+from pychime.common.tests.test_adc_spectrum import test_adc_spectrum
 import pychime.common.tests.test_corr as tc
 
 reload(chFPGA_controller) # just to make sure that any changes to the code are reloaded
@@ -148,8 +149,8 @@ if __name__ == '__main__':
     ##c.sync()
     #inj.set_inject_mode(c,r)
     #dcs = inj.check_fft_dc(c,r)
-    #adctest = test_adc_dc(c,r)
-    #stuff = adctest.execute()
+    adctest = test_adc_spectrum(c,r)
+    stuff = adctest.execute()
     # Displays the system frequencies
     c.status()
     #adctest = test_adc_fft_bin(c,r)
