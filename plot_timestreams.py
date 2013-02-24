@@ -127,7 +127,7 @@ if __name__ == '__main__':
         pass
 
     #ADC_TEST_MODE = 0     #  0= normal, 1= ramp, 2=pulse (1 high, 10 low)
-    ADC_DELAY_TABLE = ADC_DELAYS_REV2_SN0001_KC705_FMC700 # select the table corresponding to the FMC serial number
+    ADC_DELAY_TABLE = ADC_DELAYS_REV2_SN0001 #ADC_DELAYS_REV2_SN0001_KC705_FMC700 # select the table corresponding to the FMC serial number
     #FREF = 10 # FMC Reference clock frequency 
 
     # Create the new chFPGA object.
@@ -152,8 +152,8 @@ if __name__ == '__main__':
     #c.start_data_capture(burst_period_in_seconds=1.0, number_of_bursts=0)
     #c.set_data_capture(burst_period=10000, number_of_bursts=0)
     # Continuously plot the ADC output
-    #c.set_FFT_bypass(True)
-    c.set_ADC_mode('ramp')
+    c.set_FFT_bypass(True)
+    #c.set_ADC_mode('data')
     c.start_data_capture(burst_period_in_seconds=0.11)
     pu.plot_TIMESTREAM_frames_multichannel(r,channels=[0,1,2,3,4,5,6,7])
 

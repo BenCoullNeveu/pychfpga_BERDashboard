@@ -34,18 +34,23 @@ class test_adc_spectrum(test_BaseClass):
         indicies2 = np.arange(freqs_nyquest2.size)
         indicies3 = np.concatenate([indicies1,indicies2])
         indicies = np.concatenate([indicies3,indicies1])
-        datas = np.empty(freqs.size, dtype=np.complex)
+        datas = np.empty([5,freqs.size], dtype=np.complex)
+        fl6062a.set_amplitude(2, signal_generator)
         for i,freq in enumerate(freqs):
             fl6062a.set_freq(freq, signal_generator)
             time.sleep(0.5)
             #self.fpga_recv.flush()
             data = self.fpga_recv.read_corr_frames(verbose=0,flush=True)
-            print freq/1e6, data[0,indicies[i]]
-            datas[i] = data[0,indicies[i]]
+            print freq/1e6, data[[0,5,9,12,14],indicies[i]]
+            datas[0,i] = data[0,indicies[i]]
+            datas[1,i] = data[5,indicies[i]]
+            datas[2,i] = data[9,indicies[i]]
+            datas[3,i] = data[12,indicies[i]]
+            datas[4,i] = data[14, indicies[i]]
         return freqs, datas
         
     def execute(self):
-        print "Make sure signal generator is connected to channel 1, " 
+        print "Make sure signal generator is connected to channel 1-5, " 
         test = raw_input("Press Enter to continue...")
         self.configure_board()
         self.fpga_recv.flush()
