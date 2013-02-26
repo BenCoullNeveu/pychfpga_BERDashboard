@@ -48,12 +48,12 @@ def save_timestream_frames(chFPGA_receiver, channels=[0], frames=256, filename='
     '''
         Saves data from Acquisition board to numpy array 
     '''
-    data_list = []
     if isinstance(channels,int): # make sure that channel is a array of channels
         channels=np.array([channels])
     elif isinstance(channels,list):
         channels=np.array(channels)
     nchan = channels.size
+    data_list = np.zeros((frames,nchan,2048), dtype=np.int8)
     chanIndex = np.arange(nchan)
     #chFPGA_receiver.frame_receiver._send_every_frame.clear()     
     chFPGA_receiver.send_every_frame(False)
@@ -66,7 +66,8 @@ def save_timestream_frames(chFPGA_receiver, channels=[0], frames=256, filename='
                 #print "trying to get a frame"
                 a = chFPGA_receiver.read_frames(verbose=0)
                 for chanNum in chanIndex:
-                        data_list.append(a[channels[chanNum]])
+                    data_list[number_of_frames,chanNum,:] = a[channels[chanNum]]
+                    #data_list.append(a[channels[chanNum]])
                 number_of_frames+=1
                 #print "got a frame"
                 if (number_of_frames % 100) == 0:
@@ -84,7 +85,7 @@ def save_timestream_frames(chFPGA_receiver, channels=[0], frames=256, filename='
         chFPGA_receiver.close()
         raise
     print "lost {0} to get {1}".format(missed, frames)
-    np.array(data_list)
+    #np.array(data_list)
     np.save(filename,data_list)
 
     print 'Saved {0} frames'.format(number_of_frames)
@@ -117,7 +118,7 @@ if __name__ == '__main__':
     c.start_data_capture(burst_period_in_seconds=0.05, number_of_bursts=0, channels=[0,1,2,3,4,5,6,7])
     n=0
     ftime = str(time.time())
-    while n < 100:
+    while n < 10:
         save_timestream_frames(r, channels=[0,1,2,3,4,5,6,7], frames=256, filename=ftime+'.{0:04d}.npy'.format(n))
         n+=1
     
