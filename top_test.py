@@ -139,7 +139,7 @@ if __name__ == '__main__':
         pass
 
     #ADC_TEST_MODE = 0     #  0= normal, 1= ramp, 2=pulse (1 high, 10 low)
-    ADC_DELAY_TABLE = ADC_DELAYS_REV2_SN0001 #ADC_DELAYS_REV2_SN0001_KC705_FMC700 # select the table corresponding to the FMC serial number
+    ADC_DELAY_TABLE = ADC_DELAYS_REV2_SN0001_KC705_FMC700 #ADC_DELAYS_REV2_SN0001 ## select the table corresponding to the FMC serial number
     #FREF = 10 # FMC Reference clock frequency 
 
     # Create the new chFPGA object.
