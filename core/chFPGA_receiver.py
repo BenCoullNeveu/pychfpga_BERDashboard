@@ -31,12 +31,12 @@ class ReceiverThread(threading.Thread):
     data_buf = buffer(data)
     data_block = np.zeros((8,2048+9), dtype=np.uint8)
     #Number of frequency bin pairs, Number of antennas, Number of bytes per word, header
-    NUMBER_OF_CORRELATORS = 5
-    NUMBER_OF_ANTENNAS_TO_CORRELATE = 5 #8
-    NUMBER_OF_MULTIPLIERS = NUMBER_OF_ANTENNAS_TO_CORRELATE + 1
+    #NUMBER_OF_CORRELATORS = 5
+    #NUMBER_OF_ANTENNAS_TO_CORRELATE = 5 #8
+    #NUMBER_OF_MULTIPLIERS = NUMBER_OF_ANTENNAS_TO_CORRELATE + 1
     #MAX_NUMBER_OF_CHANNELS_PER_CORRELATOR = 128 
     MAX_CORR_FRAME_LENGTH = 512*13+11 #in bytes. The accumulator size is always 512 words, each word being 13 bytes long. A 11 byte header is added. 
-    corr_data_block = np.zeros((NUMBER_OF_MULTIPLIERS * NUMBER_OF_CORRELATORS, MAX_CORR_FRAME_LENGTH), dtype=np.int8)
+    
 #        frame_block = {'timestamp' :0, 'data':frame_data}        
     queue_overflow = 0
     queue_corr_overflow = 0
@@ -51,6 +51,7 @@ class ReceiverThread(threading.Thread):
         self.NUMBER_OF_CORRELATORS = NUMBER_OF_CORRELATORS
         self.NUMBER_OF_ANTENNAS_TO_CORRELATE = NUMBER_OF_ANTENNAS_TO_CORRELATE
         self.NUMBER_OF_MULTIPLIERS = NUMBER_OF_ANTENNAS_TO_CORRELATE + 1
+        self.corr_data_block = np.zeros((self.NUMBER_OF_MULTIPLIERS * self.NUMBER_OF_CORRELATORS, self.MAX_CORR_FRAME_LENGTH), dtype=np.int8)
         self._stop = threading.Event()
         self._flush = threading.Event()
         self.verbose = verbose
@@ -445,7 +446,7 @@ class chFPGA_receiver(object):
                 freq_bin_product_number = product_number %  Nant  #Product index within a frequency bin pair 0-Nantenna
                 #freq_channel = (product_number // Nant) *2 + corr_number*self.CHANNELS_PER_CORR
                 #freq_channel = (product_number // Nant) *2 + corr_number*num_channels_per_correlator # Let's assume that every corr frames have the same number of channels, and that the received frames have no missing data
-                freq_channel = (product_number//Nant)*2*self.NUMBER_OF_ANTENNAS_TO_CORRELATE + corr_number*2  #the 5 here needs to be gotten from chFPGA.config()
+                freq_channel = (product_number//Nant)*2*Nant + corr_number*2  #the 5 here needs to be gotten from chFPGA.config()
                 # Compute the (i,j) index of each product
                 if mult_id == 0:
                     i_index = Nant - 1 - freq_bin_product_number

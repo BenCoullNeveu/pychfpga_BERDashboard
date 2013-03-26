@@ -71,7 +71,7 @@ class CH_DIST_base(Module_base):
         for j in words_to_enable:
             #print 'setting bit %i of byte %i' % ((j % 8), j//8)
             mask[j//8] |= (1<<(j % 8))
-
+        print (words_to_enable)
         self.NUMBER_OF_SELECTED_WORDS = len(words_to_enable)
 
         self.write_ram(0x00, mask) # Enable transmission of selected bytes 
@@ -80,12 +80,13 @@ class CH_DIST_base(Module_base):
         """ Initializes CH_DIST."""
         #self.select_words(self.fpga.FRAME_LENGTH//4) # enable tranmission of all words by default
         #array doesn't seem to work here....
-        frequency_bins_per_correlator = 202 # 202-5chan correlator # must be even, max 1010 / number of correlated antennas 126-8 channel.  Should get this from config
+        frequency_bins_per_correlator = 124 # 202-5chan correlator # must be even, max 1010 / number of correlated antennas 124-8 channel.  Should get this from config
         words_per_correlator = frequency_bins_per_correlator//2 # Maximum is 512/number of correlated antennas
         corr_number = self.parent.instance_number
         first_word = corr_number
         word_step = self.fpga.NUMBER_OF_ANTENNAS_TO_CORRELATE #Spacing between words, currently should be 8 with 8 channel correlator #should get this from config
         self.select_words(range(first_word,words_per_correlator*word_step,word_step)) # enable tranmission 8 words, 16 freq channels by default
+        #self.select_words(range(words_per_correlator)) # enable tranmission 8 words, 16 freq channels by default
 
 
     def status(self):

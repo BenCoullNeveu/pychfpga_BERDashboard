@@ -193,8 +193,11 @@ class chFPGA_controller(object):
             self.GPIO = GPIO.GPIO_base(self)
             # get system constants from the FPGA
             self.PLATFORM_ID = self.GPIO.PLATFORM_ID
-            self.NUMBER_OF_CORRELATORS = self.GPIO.NUMBER_OF_CORRELATORS
             self.NUMBER_OF_ANTENNAS = self.GPIO.NUMBER_OF_ANTENNAS
+            self.NUMBER_OF_CORRELATORS_MAX = self.GPIO.NUMBER_OF_CORRELATORS
+            self.LIST_OF_IMPLEMENTED_CORRELATORS = [i for i in range(8) if bool(self.GPIO.IMPLEMENT_CORR & 2**i) and i<self.NUMBER_OF_CORRELATORS_MAX]
+            #self.LIST_OF_IMPLEMENTED_CORRELATORS = range(self.NUMBER_OF_CORRELATORS)
+            self.NUMBER_OF_CORRELATORS = len(self.LIST_OF_IMPLEMENTED_CORRELATORS)
             self.NUMBER_OF_ANTENNAS_TO_CORRELATE = self.GPIO.NUMBER_OF_ANTENNAS_TO_CORRELATE
             self.LOG2_FRAME_LENGTH = self.GPIO.LOG2_FRAME_LENGTH
             self.FRAME_LENGTH = 2**self.LOG2_FRAME_LENGTH # 2**11 = 2048 time samples per frame
@@ -203,8 +206,6 @@ class chFPGA_controller(object):
             self.CORR_PORT = range(self.NUMBER_OF_ANTENNAS+1, self.NUMBER_OF_ANTENNAS+1+ self.NUMBER_OF_CORRELATORS)
             self.default_channels = range(self.NUMBER_OF_ANTENNAS)
             self.LIST_OF_ANTENNAS_WITH_FFT = [i for i in range(8) if bool(self.GPIO.IMPLEMENT_FFT & 2**i)]
-            #self.LIST_OF_IMPLEMENTED_CORRELATORS = [i for i in range(8) if bool(self.GPIO.IMPLEMENT_CORR & 2**i)]
-            self.LIST_OF_IMPLEMENTED_CORRELATORS = range(self.NUMBER_OF_CORRELATORS)
             self.PLATFORM_ID = self.GPIO.PLATFORM_ID
                         
             if verbose >= 2: print '  - I2C'
@@ -699,13 +700,16 @@ class chFPGA_controller(object):
             else:
                 self.ANT[ch].INJECT.inject_frame(data)
 
-    def start_corr_capture(self,  integration_period=1.0, capture_period=None, verbose=1):
+    def start_corr_capture(self,  integration_period=1.0, capture_period=None, corr_to_use=None, verbose=1):
         """
         Instructs chFPGA to starts integrating and capturing the correlator outputs at the specified period. The captures data is sent over the Ethernet interface.
         The capture period can be optionnaly specified independently from the integration period. If not specified, it is equal to the integration period.
         This function does not receive the frames from the ethernet port. This has to be done separately.
+
+        corr_to_use -> if not None, is a list specifying which to correlators to use
         History:
             2012-10-02 JFC: Created
+            2013-03-25 KMB
         """
 
         if capture_period is None:
@@ -715,11 +719,21 @@ class chFPGA_controller(object):
         integration_period_in_frames = int(capture_period*1.0/self.FRAME_PERIOD)
 
         self.set_ant_reset(1)            
-        self.set_corr_reset(1)            
-        for corr in self.CORR:
+        self.set_corr_reset(1)
+        if corr_to_use is None:     
+            corrs = self.LIST_OF_IMPLEMENTED_CORRELATORS
+            corrs_not_used = []
+        else:
+            corrs = corr_to_use
+            corrs_not_used = list(set(self.LIST_OF_IMPLEMENTED_CORRELATORS).difference(corr_to_use))
+        for corr_num in corrs:
+            corr = self.CORR[corr_num]
             print 'Configuring correlator %i to integrate over %f seconds (over %i frames) and transmit data every %f seconds (over %i frames)' %  (corr.instance_number, integration_period, integration_period_in_frames, capture_period , capture_period_in_frames)
             corr.ACC.RESET = 0
             corr.ACC.config(integration_period=integration_period_in_frames, capture_period=capture_period_in_frames)
+        for corr_num in corrs_not_used:
+            corr = self.CORR[corr_num]
+            corr.ACC.RESET = 1
         self.set_corr_reset(0)
         self.set_ant_reset(0)            
         #self.sync()
