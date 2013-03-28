@@ -38,26 +38,44 @@ class test_adc_spectrum(test_BaseClass):
         datas = np.empty([8,freqs.size], dtype=np.complex)
         fl6062a.set_amplitude(2, signal_generator)
         for i,freq in enumerate(freqs):
-            fl6062a.set_freq(freq, signal_generator)
-            time.sleep(0.5)
-            #self.fpga_recv.flush()
-            data_ts = self.fpga_recv.read_frames(verbose=0,flush=True)
-            data = np.zeros((8,1024), dtype=np.complex)
-            for j in xrange(8):
-                data[j] = np.fft.fft(data_ts[j])[:1024]
-            print freq/1e6, data[[0,1,2,3,4,5,6,7],indicies[i]]
-            for j in xrange(8):
-                datas[j,i] = data[j,indicies[i]]
+            if (i % 11) == 0:
+                fl6062a.set_freq(freq, signal_generator)
+                time.sleep(1.1)
+                #self.fpga_recv.flush()
+                data_ts = self.fpga_recv.read_frames(verbose=0,flush=True)
+                data = np.zeros((8,1024), dtype=np.complex) + 1e-8
+                for j in xrange(8):
+                    try:
+                        data[j] = np.fft.fft(data_ts[j])[:1024]
+                    except KeyError:
+                        print "missed data on channel " + str(j)
+                print freq/1e6, data[[0,1,2,3,4,5,6,7],indicies[i]]
+                for j in xrange(8):
+                    datas[j,i] = data[j,indicies[i]]
         return freqs, datas
         
+    def plot_response(self, data_return):
+        freqs = data_return[0]
+        datas = data_return[1]
+        pylab.clf()
+        for data in datas:
+            mask = (np.abs(data) > 500 ) & (np.abs(data) < 1e6)
+            pylab.plot(freqs[mask], 10*np.log10(np.abs(data[mask])),'.')
+        pylab.savefig('S21_8_chan.pdf')
+        pylab.clf()
+
     def execute(self):
         print "\nMake sure signal generator is connected to channel 1-8, " 
         test = raw_input("Press Enter to continue...")
-        self.configure_board()
-        self.fpga_recv.flush()
-        signal_generator = fl6062a.GPIB(address=2, to=5, ip='192.168.0.37')
-        fl6062a.set_freq(410e6,signal_generator)
-        data_return = self.measure_adc_response(signal_generator)
-        np.save('freq_sweep.npy', data_return[0])
-        np.save('analog_data.npy', data_return[1])
-        return data_return
+        try:
+            self.configure_board()
+            self.fpga_recv.flush()
+            signal_generator = fl6062a.GPIB(address=2, to=5, ip='192.168.0.37')
+            fl6062a.set_freq(410e6,signal_generator)
+            data_return = self.measure_adc_response(signal_generator)
+            np.save('freq_sweep.npy', data_return[0])
+            np.save('analog_data.npy', data_return[1])
+            self.plot_response(data_return)
+        except:
+            self.fpga_recv.close()
+            raise
