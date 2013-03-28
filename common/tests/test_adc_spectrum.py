@@ -15,11 +15,12 @@ class test_adc_spectrum(test_BaseClass):
      out.  
     '''
     def configure_board(self):
+        self.fpga_ctrl.set_corr_reset(True)
         self.fpga_ctrl.set_FFT_bypass(True, channels=[0,1,2,3,4,5,6,7])
         self.fpga_ctrl.set_data_source('adc', channels=[0,1,2,3,4,5,6,7])
         self.fpga_ctrl.set_ADC_mode(mode='data')
         time.sleep(1)
-        self.fpga_ctrl.start_data_capture(burst_period_in_seconds=0.1, channels=[0,1,2,3,4,5,6,7])
+        self.fpga_ctrl.start_data_capture(burst_period_in_seconds=0.9, channels=[0,1,2,3,4,5,6,7])
         #self.fpga_ctrl.sync()
         time.sleep(2)
         return
@@ -41,7 +42,9 @@ class test_adc_spectrum(test_BaseClass):
             time.sleep(0.5)
             #self.fpga_recv.flush()
             data_ts = self.fpga_recv.read_frames(verbose=0,flush=True)
-            data = np.fft.fft(data_ts)
+            data = np.zeros((8,1024), dtype=np.complex)
+            for j in xrange(8):
+                data[j] = np.fft.fft(data_ts[j])[:1024]
             print freq/1e6, data[[0,1,2,3,4,5,6,7],indicies[i]]
             for j in xrange(8):
                 datas[j,i] = data[j,indicies[i]]
