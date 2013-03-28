@@ -15,11 +15,11 @@ class test_adc_spectrum(test_BaseClass):
      out.  
     '''
     def configure_board(self):
-        self.fpga_ctrl.set_FFT_bypass(False, channels=[0,1,2,3,4,5,6,7])
+        self.fpga_ctrl.set_FFT_bypass(True, channels=[0,1,2,3,4,5,6,7])
         self.fpga_ctrl.set_data_source('adc', channels=[0,1,2,3,4,5,6,7])
         self.fpga_ctrl.set_ADC_mode(mode='data')
         time.sleep(1)
-        self.fpga_ctrl.start_corr_capture(integration_period=0.5)
+        self.fpga_ctrl.start_data_capture(burst_period_in_seconds=0.1, channels=[0,1,2,3,4,5,6,7])
         #self.fpga_ctrl.sync()
         time.sleep(2)
         return
@@ -34,23 +34,21 @@ class test_adc_spectrum(test_BaseClass):
         indicies2 = np.arange(freqs_nyquest2.size)
         indicies3 = np.concatenate([indicies1,indicies2])
         indicies = np.concatenate([indicies3,indicies1])
-        datas = np.empty([5,freqs.size], dtype=np.complex)
+        datas = np.empty([8,freqs.size], dtype=np.complex)
         fl6062a.set_amplitude(2, signal_generator)
         for i,freq in enumerate(freqs):
             fl6062a.set_freq(freq, signal_generator)
             time.sleep(0.5)
             #self.fpga_recv.flush()
-            data = self.fpga_recv.read_corr_frames(verbose=0,flush=True)
-            print freq/1e6, data[[0,5,9,12,14],indicies[i]]
-            datas[0,i] = data[0,indicies[i]]
-            datas[1,i] = data[5,indicies[i]]
-            datas[2,i] = data[9,indicies[i]]
-            datas[3,i] = data[12,indicies[i]]
-            datas[4,i] = data[14, indicies[i]]
+            data_ts = self.fpga_recv.read_frames(verbose=0,flush=True)
+            data = np.fft.fft(data_ts)
+            print freq/1e6, data[[0,1,2,3,4,5,6,7],indicies[i]]
+            for j in xrange(8):
+                datas[j,i] = data[j,indicies[i]]
         return freqs, datas
         
     def execute(self):
-        print "Make sure signal generator is connected to channel 1-5, " 
+        print "\nMake sure signal generator is connected to channel 1-8, " 
         test = raw_input("Press Enter to continue...")
         self.configure_board()
         self.fpga_recv.flush()
