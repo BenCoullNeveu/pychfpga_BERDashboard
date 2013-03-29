@@ -3,8 +3,8 @@
 # pylint: disable=W0312,C0301 
 
 """
-top_test.py script 
- Instantiates a chFPGA object 'c' for interactive testing. Import in ipython using "r -i top_test" so the created chFPGA object "c" is accessible in the ipython interactive workspace.
+save_raw_frames.py script 
+Saves raw timestream data to files.   
 
 
 #
@@ -92,8 +92,9 @@ def save_timestream_frames(chFPGA_receiver, channels=[0], frames=256, filename='
 
 if __name__ == '__main__':        
     print '------------------------'
-    print 'top_test.py: chFGPA test script'
-    print 'J.-F. Cliche'
+    print 'Raw Frame saving script'
+    print 'Command line mode'
+    print 'KMB'
     print '------------------------'
 
     # Delete previous instances of 'c' to make sure the sockets are closed. If not, the new object will not be able to open the socket.
