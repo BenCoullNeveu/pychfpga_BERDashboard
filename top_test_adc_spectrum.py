@@ -23,6 +23,7 @@ from pychime.common.tests.test_adc_fft_int_power import test_adc_fft_int_power
 from pychime.common.tests.test_adc_fft_level import test_adc_fft_level
 from pychime.common.tests.test_adc_dc import test_adc_dc
 from pychime.common.tests.test_adc_spectrum import test_adc_spectrum
+from pychime.common.tests.test_adc_histogram import test_adc_histogram
 import pychime.common.tests.test_corr as tc
 
 reload(chFPGA_controller) # just to make sure that any changes to the code are reloaded
@@ -149,8 +150,23 @@ if __name__ == '__main__':
     ##c.sync()
     #inj.set_inject_mode(c,r)
     #dcs = inj.check_fft_dc(c,r)
-    adctest = test_adc_spectrum(c,r)
-    stuff = adctest.execute()
+
+
+    print "\nMake sure signal generator is connected to channel 1-8, " 
+    test = raw_input("Press Enter to continue...")
+    fname = raw_input('Enter a file name:    (ADC_SN000 for example)')
+
+    ans_hist = raw_input("Run histogram test? ")
+    ans = raw_input('Run S21 test? ')
+    if (ans_hist == 'Y') or (ans_hist=='y'):
+        adctest = test_adc_histogram(c,r)
+        stuff = adctest.execute(fname)
+
+    if (ans == 'Y') or (ans=='y'):
+        adctest = test_adc_spectrum(c,r)
+        stuff = adctest.execute(fname)
+
+
     # Displays the system frequencies
     #c.status()
     #adctest = test_adc_fft_bin(c,r)

@@ -29,31 +29,29 @@ class test_adc_histogram(test_BaseClass):
     def configure_signal_generator(self,signal_generator):
         freq = 604296875.0
         fl6062a.set_freq(freq, signal_generator)
-        fl6062a.set_amplitude(2, signal_generator)
+        fl6062a.set_amplitude(10.5, signal_generator)
 
         
     def plot_histogram(self, filename):
-        datas = np.load(filename)
+        datas = np.load(filename + '.npy')
         pylab.clf()
         
         for i in xrange(8):
             pylab.hist(datas[:,i,:].flatten(), bins=256, range = (-128,127))
-            pylab.title(filename ' Channel '+str(i))
+            pylab.title(filename + ' Channel '+str(i))
+            pylab.xlim(-128,127)
             pylab.savefig(filename + '_chan' +str(i)+'.pdf')
             pylab.clf()
 
-    def execute(self):
-        print "\nMake sure signal generator is connected to channel 1-8, " 
-        test = raw_input("Press Enter to continue...")
+    def execute(self, fname ):
         try:
             self.configure_board()
             self.fpga_recv.flush()
             signal_generator = fl6062a.GPIB(address=2, to=5, ip='192.168.0.37')
             self.configure_signal_generator(signal_generator)
-            fname = raw_input('Enter a file name:    (ADC_SN000 for example)')
             filename = fname + '.npy'
             save_raw_frames.save_timestream_frames(self.fpga_recv, channels = [0,1,2,3,4,5,6,7], frames=256, filename = filename)
-            self.plot_histogram(filename)
+            self.plot_histogram(fname)
         except:
             self.fpga_recv.close()
             raise
