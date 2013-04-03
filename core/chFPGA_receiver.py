@@ -200,7 +200,7 @@ class ReceiverThread(threading.Thread):
                                 n += 1
                     ###### UNKNOWN FRAME TYPE###########
                     else: # unknown frame format
-                        print 'Receiver: Frame of %i bytes with unknown identifier 0x%Xx has been received. It was discarded. First bytes are 0x%s' % (nbytes, (probe_id & 0xF0) >> 4, ' '.join('%02X' % c for c in self.data[:32]))                              
+                        print 'Receiver: Frame of %i bytes with unknown identifier 0x%Xx has been received. It was discarded. First bytes are 0x%s' % (nbytes, (self.data[0] & 0xF0) >> 4, ' '.join('%02X' % c for c in self.data[:32]))                                                         
                         
         print 'Frame acquisition thread is stopped'
 
