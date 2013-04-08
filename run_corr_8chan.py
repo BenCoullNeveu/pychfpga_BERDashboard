@@ -127,7 +127,7 @@ class run_corr():
                     data = self.get_data()
                     #fileHandle.write(data)
                     interleave_a = self.convert_format(data)
-                    interleave_a = data
+                    ##interleave_a = data
                     for ia in interleave_a:
                         fileHandle.write(ia)
                     if (i % (1//self.integration_period)) == 0:
