@@ -125,11 +125,11 @@ class run_corr():
                 fileHandle = self.init_file(nfiles)
                 for i in xrange(3600):
                     data = self.get_data()
-                    fileHandle.write(data)
-                    #interleave_a = self.convert_format(data)
-                    #interleave_a = data
-                    #for ia in interleave_a:
-                    #    fileHandle.write(ia)
+                    #fileHandle.write(data)
+                    interleave_a = self.convert_format(data)
+                    interleave_a = data
+                    for ia in interleave_a:
+                        fileHandle.write(ia)
                     if (i % (1//self.integration_period)) == 0:
                         nowtime=time.time()
                         print '. ',
