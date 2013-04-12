@@ -18,19 +18,23 @@ class ReceiverThread(threading.Thread):
     data = bytearray(BUF_SIZE)
     data_buf = buffer(data)
     #Number of frequency bin pairs, Number of antennas, Number of bytes per word, header
-    NUMBER_OF_CORRELATORS = 5
-    NUMBERS_OF_ANTENNAS_TO_CORRELATE = 5
-    NUMBER_OF_MULTIPLIERS = NUMBERS_OF_ANTENNAS_TO_CORRELATE + 1
+    #NUMBER_OF_CORRELATORS = 8
+    #NUMBERS_OF_ANTENNAS_TO_CORRELATE = 8
+    #NUMBER_OF_MULTIPLIERS = NUMBERS_OF_ANTENNAS_TO_CORRELATE + 1
     #MAX_NUMBER_OF_CHANNELS_PER_CORRELATOR = 128 
     MAX_CORR_FRAME_LENGTH = 512*13+11 #in bytes. The accumulator size is always 512 words, each word being 13 bytes long. A 11 byte header is added. 
-    corr_data_block = np.zeros((NUMBER_OF_MULTIPLIERS * NUMBER_OF_CORRELATORS, MAX_CORR_FRAME_LENGTH), dtype=np.int8)      
+    #corr_data_block = np.zeros((NUMBER_OF_MULTIPLIERS * NUMBER_OF_CORRELATORS, MAX_CORR_FRAME_LENGTH), dtype=np.int8)      
     queue_overflow = 0
     queue_corr_overflow = 0
     n_frames = 0
     
-    def __init__(self, sock, queue_corr):
+    def __init__(self, sock, queue_corr,NUMBER_OF_ANTENNAS_TO_CORRELATE, NUMBER_OF_CORRELATORS):
         self.sock = sock
         self.queue_corr = queue_corr
+        self.NUMBER_OF_CORRELATORS = NUMBER_OF_CORRELATORS
+        self.NUMBER_OF_ANTENNAS_TO_CORRELATE = NUMBER_OF_ANTENNAS_TO_CORRELATE
+        self.NUMBER_OF_MULTIPLIERS = NUMBER_OF_ANTENNAS_TO_CORRELATE + 1
+        self.corr_data_block = np.zeros((self.NUMBER_OF_MULTIPLIERS * self.NUMBER_OF_CORRELATORS, self.MAX_CORR_FRAME_LENGTH), dtype=np.int8)
         self._stop = threading.Event()
         self._flush = threading.Event()
         self.print_delay = 1
@@ -95,12 +99,12 @@ class ReceiverThread(threading.Thread):
                                 self.corr_data_block[nc,:nbytes] = self.data[:nbytes]
                                 nc += 1
                         else:
-                            print "Corr Receiver: Bad multiplier number"
+                            print "Corr Receiver: Bad multiplier number " + str(mult_number)
                             #Clear stuff? ERROR HANDLE
                     
                     ###### UNKNOWN FRAME TYPE###########
                     else: # unknown frame format
-                        print 'Receiver: Frame of %i bytes with unknown identifier 0x%Xx has been received. It was discarded. First bytes are 0x%s' % (nbytes, (probe_id & 0xF0) >> 4, ' '.join('%02X' % c for c in self.data[:32]))                              
+                        print 'Receiver: Frame of %i bytes with unknown identifier 0x%Xx has been received. It was discarded. First bytes are 0x%s' % (nbytes, (self.data[0] & 0xF0) >> 4, ' '.join('%02X' % c for c in self.data[:32]))                              
                         
         print 'Frame acquisition thread is stopped'
 
@@ -126,7 +130,7 @@ class chFPGA_receiver(object):
     FRAME_LENGTH = 2**LOG2_FRAME_LENGTH
 
     #CHANNELS_PER_CORR = 204
-    NUMBER_OF_ANTENNAS_TO_CORRELATE = 5
+    NUMBER_OF_ANTENNAS_TO_CORRELATE = 8
     CHANNELS_PER_CORR_MAX = 512 // NUMBER_OF_ANTENNAS_TO_CORRELATE
     #NUMBER_OF_CORRELATORS = NUMBER_OF_ANTENNAS_TO_CORRELATE
     FREQ_CHANNELS_MAX = 1024
@@ -143,7 +147,7 @@ class chFPGA_receiver(object):
         self.CHANNELS_PER_CORR_MAX = 512 // self.NUMBER_OF_ANTENNAS_TO_CORRELATE
         # Create a frame a queue and a thread that will fill it
         self.frame_queue_corr = Queue.Queue(maxsize=self.FRAME_BUFFER_LENGTH)
-        self.frame_receiver = ReceiverThread(self.sock.sock, self.frame_queue_corr)
+        self.frame_receiver = ReceiverThread(self.sock.sock, self.frame_queue_corr, self.NUMBER_OF_ANTENNAS_TO_CORRELATE, self.NUMBER_OF_CORRELATORS)
         self.frame_receiver.start()
         X, Y = np.mgrid[0:self.NUMBER_OF_ANTENNAS_TO_CORRELATE,0:self.NUMBER_OF_ANTENNAS_TO_CORRELATE]
         self.K = X*self.NUMBER_OF_ANTENNAS_TO_CORRELATE - X*(X+1)/2 + Y

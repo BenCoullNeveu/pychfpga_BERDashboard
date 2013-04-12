@@ -159,6 +159,7 @@ if __name__ == '__main__':
             #c.ANT[chan].FFT.FFT_SHIFT=2**6-1
             c.ANT[chan].FFT.FFT_SHIFT=2**9-1
     c.start_data_capture(burst_period_in_seconds=0.23)
+    c.set_corr_reset(1)
     time.sleep(1)
     pu.plot_SPECTRUM_frames(r,channels=channels)
     

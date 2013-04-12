@@ -380,7 +380,7 @@ class chFPGA_controller(object):
         NBYTES = 0
         # Loop to read all required bytes (the FPGA does not support multi-byte reads (yet))
         for i in range(length*itemsize): 
-            s = chr(0x00+(NBYTES<<3)+(ant>>2))+chr(((ant&0x03)<<6)+(module<<2)+(addr>>8))+chr(addr&0xff)
+            s = chr(0x00+(NBYTES<<3)+(ant>>3))+chr(((ant&0x07)<<5)+(module<<2)+(addr>>8))+chr(addr&0xff)
             self.sock.write(s)
             data = self.sock.read()
             #if data[0]!=s[0]:
@@ -412,7 +412,7 @@ class chFPGA_controller(object):
         # build command packet
         #s=chr(0x80+ant+(0x40 if incr else 0))+chr((module<<2)+(addr>>8))+chr(addr&0xFF) 
         NBYTES = 0
-        string = chr(0x80 + (0x40 if incr else 0) + (NBYTES << 3) + (ant >> 2)) + chr(((ant & 0x03) << 6) + (module << 2) + (addr >> 8)) + chr(addr & 0xff)
+        string = chr(0x80 + (0x40 if incr else 0) + (NBYTES << 3) + (ant >> 3)) + chr(((ant & 0x07) << 5) + (module << 2) + (addr >> 8)) + chr(addr & 0xff)
 
         # Add the data to the string. The method depends on the data type
         if type(data) == str:
