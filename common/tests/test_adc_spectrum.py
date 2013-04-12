@@ -64,6 +64,7 @@ class test_adc_spectrum(test_BaseClass):
             pylab.plot(freqs[mask]/1e6, 10*np.log10(np.abs(data[mask])),'.')
         pylab.xlabel('Freq (MHz)')
         pylab.ylabel('dB')
+        pylab.legend(('Channel 0', 'Channel 1', 'Channel 2', 'Channel 3', 'Channel 4', 'Channel 5', 'Channel 6', 'Channel 7'), loc="upper left")
         pylab.savefig(fname + '_S21_8_chan.pdf')
         pylab.clf()
 
