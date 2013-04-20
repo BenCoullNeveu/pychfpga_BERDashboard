@@ -74,7 +74,9 @@ class REFCLK_base(Module_base):
             self.ENABLE_SYNC_DETECTION = 0
             self.ENABLE_SYNC_GENERATION = 0
             self.REFCLK_SEL = 1 # Use internally generated REFCLK
-            
+ 
+        # self.REFCLK_SEL = 1 # Use internally generated REFCLK ** debug***
+             
 
     def sync(self, delay=None):
         if delay is not None:

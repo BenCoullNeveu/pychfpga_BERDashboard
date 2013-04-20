@@ -33,7 +33,6 @@ from pychime.common import util
 
 import Shared_variables # Note: do not reload this module or we will lose acces to the data in it
 import Module
-
 import SocketIO
 
 # FPGA subsystems handlers
@@ -189,9 +188,14 @@ class chFPGA_controller(object):
             # ---------------------------------------------------------------------
             # -- Create basic FPGA ressource handlers objects
             # ---------------------------------------------------------------------
+
             if verbose >= 2: print '  - GPIO'
             self.GPIO = GPIO.GPIO_base(self)
             # get system constants from the FPGA
+
+            if init<0: # If init<0, we do not perform any communication with the FPGA, so we don't read the firmware configuration
+                return
+
             self.PLATFORM_ID = self.GPIO.PLATFORM_ID
             self.NUMBER_OF_ANTENNAS = self.GPIO.NUMBER_OF_ANTENNAS
             self.NUMBER_OF_CORRELATORS_MAX = self.GPIO.NUMBER_OF_CORRELATORS
@@ -206,7 +210,6 @@ class chFPGA_controller(object):
             self.CORR_PORT = range(self.NUMBER_OF_ANTENNAS+1, self.NUMBER_OF_ANTENNAS+1+ self.NUMBER_OF_CORRELATORS)
             self.default_channels = range(self.NUMBER_OF_ANTENNAS)
             self.LIST_OF_ANTENNAS_WITH_FFT = [i for i in range(8) if bool(self.GPIO.IMPLEMENT_FFT & 2**i)]
-            self.PLATFORM_ID = self.GPIO.PLATFORM_ID
                         
             if verbose >= 2: print '  - I2C'
             self.I2C = I2C.I2C_base(self)
@@ -249,13 +252,12 @@ class chFPGA_controller(object):
 
             self.ADC_BOARD = MGADC08.MGADC08_base(self)
             self.FMC_present = self.ADC_BOARD.is_present()
-               
+ 
         except SocketIO.timeout:
             self.close()
             raise
             # Initialize subsystems. This has to be done only once all subsystems are created because some subsystems depend on each other.
-
-        if init:
+        if init>0:
             self.init(**kwargs)
 
 

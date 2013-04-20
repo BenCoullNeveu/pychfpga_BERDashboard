@@ -47,7 +47,7 @@ class GPIO_base(Module_base):
     LCD_RW = BitField(CONTROL, 0x02, 5, doc='LCD Read/Write flag (0=write, 1=read)')
     LCD_DATA = BitField(CONTROL, 0x02, 0, width=4, doc='LCD 4-bit data bus')
 
-    USER_RESET = BitField(CONTROL, 0x03, 7, doc='User reset')
+    BLINKER_RESET = BitField(CONTROL, 0x03, 7, doc='When active, stops the LED blinker')
     ANT_RESET = BitField(CONTROL, 0x03, 6, doc='Antenna processing pipeline reset')
     CORR_RESET = BitField(CONTROL, 0x03, 5, doc='Correlator reset')
     CORR_IP_PORT_OFFSET = BitField(CONTROL, 0x03, 2, width=2, doc='Correlator output data IP port offset from the base port')
