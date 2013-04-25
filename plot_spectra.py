@@ -154,11 +154,13 @@ if __name__ == '__main__':
     # Continuously plot the ADC output
     c.set_ADC_mode('data')
     c.set_FFT_bypass(False)
+    c.set_gain(1)
     channels=[0,1,2,3,4,5,6,7]
-    for chan in channels:
-            #c.ANT[chan].FFT.FFT_SHIFT=2**6-1
-            c.ANT[chan].FFT.FFT_SHIFT=2**9-1
-    c.start_data_capture(burst_period_in_seconds=0.23)
+    # for chan in channels:
+    #         #c.ANT[chan].FFT.FFT_SHIFT=2**6-1
+    #         c.ANT[chan].FFT.FFT_SHIFT=2**6-1
+    c.set_FFT_shift(2**5-1)
+    c.start_data_capture(burst_period_in_seconds=0.5)
     c.set_corr_reset(1)
     time.sleep(1)
     pu.plot_SPECTRUM_frames(r,channels=channels)
