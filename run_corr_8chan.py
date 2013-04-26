@@ -51,11 +51,13 @@ class run_corr():
         # time.sleep(2)
         self.integration_period=integration_period
         self.HOUR = 3600/self.integration_period
+        self.fpga_ctrl.start_corr_capture(integration_period=0.27373734585)
         self.fpga_ctrl.start_corr_capture(integration_period=self.integration_period)
         print "set to " + str(self.integration_period) + "s"
         time.sleep(2)
         self.fpga_ctrl.sync()  #sync means crash!
         #self.fpga_recv.flush()
+        print 'Initialization Complete'
 
 
 
@@ -97,6 +99,7 @@ class run_corr():
         timefile = open(timeFileName, 'w+')
         temperatureFileName = 'temperature_file.txt'
         temperaturefile = open(temperatureFileName, 'w+')
+        print "Housekeeping established"
         return timefile, temperaturefile
 
     def convert_format(self, accumulator):
@@ -116,11 +119,25 @@ class run_corr():
         #print interleave_a
         return interleave_a
 
+    def check_corr_frame(self):
+        data = self.get_data()
+        nchan = (-1+np.sqrt(1+8*data.shape[0]))/2
+        pylab.clf()
+        for i in range(int(nchan)):
+            #get autocorrelation
+            k = i*nchan - i*(i+1)/2 + i
+            pylab.plot(abs(data[k].real))
+        pylab.yscale('log')
+        pylab.savefig('autocorr_plots.pdf')
+        pylab.clf()
+        print 'Made autocorrelation plot'
+
     def execute(self):
         nfiles = 0
         #Add spectrum file as well
         try:
             timefile, temperaturefile = self.init_housekeeping()
+            self.check_corr_frame()
             while nfiles < (3000):
                 fileHandle = self.init_file(nfiles)
                 for i in xrange(3600):
