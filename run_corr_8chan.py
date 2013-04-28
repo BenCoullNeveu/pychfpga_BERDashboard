@@ -13,6 +13,7 @@ from pychime.core import chFPGA_receiver
 from pychime import receiver_corr_fast
 import numpy as np
 import time, pylab, file_utils, os
+import pickle
 
 class run_corr():
     '''
@@ -28,15 +29,17 @@ class run_corr():
         '''
         self.fpga_ctrl = fpga_ctrl
         self.fpga_recv = fpga_recv
+        self.integration_period = integration_period
+        self.channels = range(8)
         #set bypass FFT and initial settings'''
-        self.fpga_ctrl.set_FFT_bypass(False, channels=[0,1,2,3,4,5,6,7])
-        self.fpga_ctrl.set_FFT_shift(fft_shift=2**5-1, channels=[0,1,2,3,4,5,6,7])
- 
-        self.fpga_ctrl.set_gain(log2_gain=1, channels=[0,1,2,3,4,5,6,7])
-        self.fpga_ctrl.set_data_source('adc')
+        print "Setting up data acquisition and signal processing chain"
+        self.fpga_ctrl.set_data_source('adc') # This should come first, as it reinitializes the whole signal processing chain.
+        self.fpga_ctrl.set_FFT_bypass(False, channels=self.channels)
+        self.fpga_ctrl.set_FFT_shift(fft_shift=2**5-1, channels=self.channels)
+        self.fpga_ctrl.set_gain(log2_gain=1, channels=self.channels)
         #self.fpga_ctrl.set_ADC_mode(mode='data')
-        print "set adc mode"
-        time.sleep(1)
+        #print "set adc mode"
+        #time.sleep(1)
         #self.fpga_ctrl.set_corr_reset(False)
         #self.fpga_ctrl.start_data_capture(burst_period_in_seconds=0.9, number_of_bursts=0)
         #Currently 0.25s is the fastest will go with regular reciever.
@@ -49,13 +52,19 @@ class run_corr():
         # self.fpga_ctrl.start_corr_capture(integration_period=0.05)
         # print "set to 0.05s"
         # time.sleep(2)
-        self.integration_period=integration_period
-        self.HOUR = 3600/self.integration_period
-        self.fpga_ctrl.start_corr_capture(integration_period=0.27373734585)
+        #self.HOUR = 3600/self.integration_period
+        #self.fpga_ctrl.start_corr_capture(integration_period=0.27373734585)
         self.fpga_ctrl.start_corr_capture(integration_period=self.integration_period)
-        print "set to " + str(self.integration_period) + "s"
-        time.sleep(2)
-        self.fpga_ctrl.sync()  #sync means crash!
+        print " Correlator started with an integration time of %0.1s s" % self.integration_period
+ 
+        print " Discarding first correlator frames to ensure the PFB frame buffers are full"
+        frames_to_discard = 5
+        for i in range(frames_to_discard):
+            print 'Discarding correlator frame %i/%i' % (i+1,frames_to_discard)
+            self.get_data()
+
+        #time.sleep(1)
+        #self.fpga_ctrl.sync()  #sync means crash!
         #self.fpga_recv.flush()
         print 'Initialization Complete'
 
@@ -88,6 +97,7 @@ class run_corr():
         acc_len = 65536 #fake for now
         file_utils.write_header(fout, est_clk, acc_len)
         return fout
+
     def init_housekeeping(self):
         nowtime=time.time()
         #nowtime = 1338143259.2
@@ -99,8 +109,10 @@ class run_corr():
         timefile = open(timeFileName, 'w+')
         temperatureFileName = 'temperature_file.txt'
         temperaturefile = open(temperatureFileName, 'w+')
+        datainfoFileName = 'data_info.txt'
+        datainfofile = open(datainfoFileName, 'w')
         print "Housekeeping established"
-        return timefile, temperaturefile
+        return datainfofile, timefile, temperaturefile
 
     def convert_format(self, accumulator):
         #want 1024 int32 real, int32 imag
@@ -135,9 +147,35 @@ class run_corr():
     def execute(self):
         nfiles = 0
         #Add spectrum file as well
+        datainfofile, timefile, temperaturefile = self.init_housekeeping()
+
+
         try:
-            timefile, temperaturefile = self.init_housekeeping()
+ 
+             # Prepare and save the data information
+            config = self.fpga_ctrl.get_config()
+            # Add useful info that is not already in the config structure
+            config.script_start_time = time.time()
+            # Add other info as needed
+            datainfofile.write(
+                '# Data information\n'
+                '# This data can be parsed back into a python dictionary using \n'
+                '#    mydict=dict(); execfile(''filename'', mydict)\n'
+                '# or it can be converted in attributes of the object ''myobject'' with\n'
+                '#    execfile(''filename'', myobject.__dict__)\n'
+                )
+            datainfofile.write(str(config))
+            datainfofile.write('\n\n')
+            datainfofile.write('# The Pickled version of the same information follows\n\n')
+            datainfofile.write('_pickled_data="""\n')
+            pickle.dump(config, datainfofile)
+            datainfofile.write('\n"""\n')
+            datainfofile.close()
+
             self.check_corr_frame()
+            # Debug by JFC
+            #for corr in self.fpga_ctrl.CORR:
+            #    corr.ACC.status()
             while nfiles < (3000):
                 fileHandle = self.init_file(nfiles)
                 for i in xrange(3600):
@@ -150,7 +188,7 @@ class run_corr():
                     #if (i % (1//self.integration_period)) == 0:
                     nowtime=time.time()
                     print '. ',
-                    temperature = c.ADC_BOARD.AmbTemp.temperature
+                    temperature = self.fpga_ctrl.ADC_BOARD.AmbTemp.temperature
                     temperaturefile.write(str(temperature) + '\n' )
                     timefile.write(str(nowtime) + '\n')
                 fileHandle.close()
@@ -160,12 +198,14 @@ class run_corr():
         except KeyboardInterrupt:
             self.fpga_ctrl.close()
             self.fpga_recv.close()
+            datainfofile.close()
             timefile.close()
             temperaturefile.close()
             fileHandle.close()
         except:
             self.fpga_ctrl.close()
             self.fpga_recv.close()
+            datainfofile.close()
             timefile.close()
             temperaturefile.close()
             fileHandle.close()
@@ -204,7 +244,7 @@ if __name__ == "__main__":
     #r = receiver_corr_fast.chFPGA_receiver(chFPGA_config, ip_address='10.10.10.11', port=41001)
     r = chFPGA_receiver.chFPGA_receiver(chFPGA_config, ip_address='10.10.10.11', port=41001)
     #c.sync() sync means crash!!!
-    corr = run_corr(c,r, integration_period=1.0)
+    corr = run_corr(c, r, integration_period=1.0)
     corr.execute()
     c.close()
     r.close()

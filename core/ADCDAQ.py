@@ -142,9 +142,9 @@ class ADCDAQ_base(Module_base):
         self.pulse_bit('CLK_IODELAY_RESET')
 
 
-    def read_delay(self):
+    def get_delay(self):
         """ Reads the 8 delay tap values and return them as an array"""
-        return self.read(0x00, length=8) # Reads the delay in registers
+        return list(self.read(0x00, length=8)) # Reads the delay in registers
 
     def get_actual_delay(self):
         """ Reads the 8 actual delay tap values (returned by the IODELAY themselves, not the last delay set point) and return them as an array"""
@@ -170,7 +170,7 @@ class ADCDAQ_base(Module_base):
         self.MMCM_ADCCLK_DELAY = phase >> 3
         self.MMCM_RST = 0
 
-    delay = property(set_delay, read_delay)
+    delay = property(set_delay, get_delay)
 
 
     def get_pattern(self, period=11):

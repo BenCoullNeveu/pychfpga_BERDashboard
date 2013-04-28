@@ -59,7 +59,14 @@ class SRCSEL_base(Module_base):
             raise Exception('Invalid data source name')
         else:
             self.DATA_SOURCE = self.DATA_SOURCE_NAMES[source_name]
-        
+
+    def get_data_source(self):
+        """
+        Gets the data source currently selected by the the SOURCE selector.
+        """
+        data_source_number = self.DATA_SOURCE # make sure we read this only once
+        return [key for (key,value) in self.DATA_SOURCE_NAMES.items() if value == data_source_number][0] 
+    
 
     def init(self):
         """ Initializes the antenna processing chain data source module """
