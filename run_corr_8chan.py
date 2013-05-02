@@ -105,9 +105,9 @@ class run_corr():
         os.mkdir(self.basename)
         os.chdir(self.basename)
         timeFileName = 'time_file.txt'
-        timefile = open(timeFileName, 'w+')
+        timefile = open(timeFileName, 'w')
         temperatureFileName = 'temperature_file.txt'
-        temperaturefile = open(temperatureFileName, 'w+')
+        temperaturefile = open(temperatureFileName, 'w')
         datainfoFileName = 'data_info.txt'
         datainfofile = open(datainfoFileName, 'w')
         print "Housekeeping established"
@@ -207,10 +207,11 @@ class run_corr():
                         fileHandle.write(ia)
                     #if (i % (1//self.integration_period)) == 0:
                     nowtime=time.time()
-                    print '. ',
                     temperature = self.fpga_ctrl.ADC_BOARD.AmbTemp.temperature
                     temperaturefile.write(str(temperature) + '\n' )
                     timefile.write(str(nowtime) + '\n')
+                    sys.stdout.write('. ')
+                    sys.stdout.flush()
                 fileHandle.close()
                 nfiles += 1
             timefile.close()

@@ -154,7 +154,7 @@ if __name__ == '__main__':
     ######adctest = test_adc_spectrum(c,r)
     ######stuff = adctest.execute()
     # Displays the system frequencies
-    c.status()
+    #c.status()
     #adctest = test_adc_fft_bin(c,r)
     #stuff = adctest.execute()
     #adctest = test_adc_fft_int_power(c,r)
