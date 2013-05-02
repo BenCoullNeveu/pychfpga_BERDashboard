@@ -759,7 +759,7 @@ class chFPGA_controller(object):
             capture_period = integration_period
 
         capture_period_in_frames = int(capture_period*1.0/self.FRAME_PERIOD)
-        integration_period_in_frames = int(capture_period*1.0/self.FRAME_PERIOD)
+        integration_period_in_frames = int(integration_period*1.0/self.FRAME_PERIOD)
 
         self.set_ant_reset(1)            
         self.set_corr_reset(1)
