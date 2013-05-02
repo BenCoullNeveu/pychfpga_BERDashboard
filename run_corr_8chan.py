@@ -105,9 +105,9 @@ class run_corr():
         os.mkdir(self.basename)
         os.chdir(self.basename)
         timeFileName = 'time_file.txt'
-        timefile = open(timeFileName, 'w')
+        timefile = open(timeFileName, 'w', 1)
         temperatureFileName = 'temperature_file.txt'
-        temperaturefile = open(temperatureFileName, 'w')
+        temperaturefile = open(temperatureFileName, 'w', 1)
         datainfoFileName = 'data_info.txt'
         datainfofile = open(datainfoFileName, 'w')
         print "Housekeeping established"
@@ -223,6 +223,7 @@ class run_corr():
             timefile.close()
             temperaturefile.close()
             fileHandle.close()
+            print "tried to close nicely"
         except:
             self.fpga_ctrl.close()
             self.fpga_recv.close()
@@ -264,7 +265,6 @@ if __name__ == "__main__":
     parser.add_argument('--show_graph', action = 'store_true', help='Shows the first autocorelation graph before proceeding')
     parser.add_argument('-n', '--no_data', action = 'store_true', help='Does not store any data.')
     args = parser.parse_args()
-
     c = chFPGA_controller.chFPGA_controller(ip_address='10.10.10.11', port_number=41000, adc_delay_table=ADC_DELAY_TABLE, init=1, sampling_frequency=850e6, reference_frequency=10e6) # pylint: disable=C0103
     chFPGA_config = c.get_config()
     #r = receiver_corr_fast.chFPGA_receiver(chFPGA_config, ip_address='10.10.10.11', port=41001)
@@ -274,6 +274,5 @@ if __name__ == "__main__":
     corr.execute()
     c.close()
     r.close()
-
 
 
