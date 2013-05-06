@@ -217,7 +217,7 @@ class run_corr():
                 nfiles += 1
             timefile.close()
             temperaturefile.close()
-        except KeyboardInterrupt:
+        except (KeyboardInterrupt, SystemExit):
             self.fpga_ctrl.close()
             self.fpga_recv.close()
             datainfofile.close()
