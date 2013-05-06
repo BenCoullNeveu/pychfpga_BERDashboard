@@ -177,6 +177,7 @@ class run_corr():
             config.job_basename = self.basename
             config.job_username = getpass.getuser()
             config.job_command = sys.argv
+            config.message = args.message
             # Add other info as needed
             datainfofile.write(
                 '# Data information\n'
@@ -264,6 +265,7 @@ if __name__ == "__main__":
     parser = argparse.ArgumentParser(description=__doc__.split('\n')[0]) # description is the first line of the docstring
     parser.add_argument('--show_graph', action = 'store_true', help='Shows the first autocorelation graph before proceeding')
     parser.add_argument('-n', '--no_data', action = 'store_true', help='Does not store any data.')
+    parser.add_argument('-m', '--message', help='Additional message to write to data header, in quotes "MESSAGE HERE"')
     args = parser.parse_args()
     c = chFPGA_controller.chFPGA_controller(ip_address='10.10.10.11', port_number=41000, adc_delay_table=ADC_DELAY_TABLE, init=1, sampling_frequency=850e6, reference_frequency=10e6) # pylint: disable=C0103
     chFPGA_config = c.get_config()
