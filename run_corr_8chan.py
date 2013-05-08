@@ -10,13 +10,13 @@ History:
 
 from pychime.core import chFPGA_controller
 from pychime.core import chFPGA_receiver_raw
-from pychime import receiver_corr_fast
 import numpy as np
 import time, pylab, file_utils, os
 import pickle
 import getpass #used to get username
 import sys
 import argparse
+import socket
 
 class run_corr():
     '''
@@ -88,7 +88,7 @@ class run_corr():
         
         
     def get_data(self): 
-        data = self.fpga_recv.read_corr_frames(verbose=0)
+        data = self.fpga_recv.read_corr_frames()
         return data
 
     def init_file(self, fcount):
@@ -208,10 +208,10 @@ class run_corr():
                     #     fileHandle.write(ia)
                     ##if (i % (1//self.integration_period)) == 0:
                     nowtime=time.time()
-                    try:
-                        temperature = self.fpga_ctrl.ADC_BOARD.AmbTemp.temperature
-                    except socket.timout:
-                        temperature = 'null'
+                    # try:
+                    temperature = self.fpga_ctrl.ADC_BOARD.AmbTemp.temperature
+                    # except socket.timout:
+                    #     temperature = 'null'
                     temperaturefile.write(str(temperature) + '\n' )
                     timefile.write(str(nowtime) + '\n')
                     sys.stdout.write('. ')
