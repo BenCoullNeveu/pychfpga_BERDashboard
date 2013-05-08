@@ -9,7 +9,7 @@ History:
 """
 
 from pychime.core import chFPGA_controller
-from pychime.core import chFPGA_receiver
+from pychime.core import chFPGA_receiver_raw
 from pychime import receiver_corr_fast
 import numpy as np
 import time, pylab, file_utils, os
@@ -201,14 +201,17 @@ class run_corr():
                 fileHandle = self.init_file(nfiles)
                 for i in xrange(3600):
                     data = self.get_data()
-                    #####fileHandle.write(data)
-                    interleave_a = self.convert_format(data)
-                    ##interleave_a = data
-                    for ia in interleave_a:
-                        fileHandle.write(ia)
-                    #if (i % (1//self.integration_period)) == 0:
+                    fileHandle.write(data)
+                    # interleave_a = self.convert_format(data)
+                    # ##interleave_a = data
+                    # for ia in interleave_a:
+                    #     fileHandle.write(ia)
+                    ##if (i % (1//self.integration_period)) == 0:
                     nowtime=time.time()
-                    temperature = self.fpga_ctrl.ADC_BOARD.AmbTemp.temperature
+                    try:
+                        temperature = self.fpga_ctrl.ADC_BOARD.AmbTemp.temperature
+                    except socket.timout:
+                        temperature = 'null'
                     temperaturefile.write(str(temperature) + '\n' )
                     timefile.write(str(nowtime) + '\n')
                     sys.stdout.write('. ')
@@ -272,7 +275,7 @@ if __name__ == "__main__":
     c = chFPGA_controller.chFPGA_controller(ip_address='10.10.10.11', port_number=41000, adc_delay_table=ADC_DELAY_TABLE, init=1, sampling_frequency=args.sampling_frequency*1e6, reference_frequency=10e6) # pylint: disable=C0103
     chFPGA_config = c.get_config()
     #r = receiver_corr_fast.chFPGA_receiver(chFPGA_config, ip_address='10.10.10.11', port=41001)
-    r = chFPGA_receiver.chFPGA_receiver(chFPGA_config, ip_address='10.10.10.11', port=41001)
+    r = chFPGA_receiver_raw.chFPGA_receiver(chFPGA_config, ip_address='10.10.10.11', port=41001)
     #c.sync() sync means crash!!!
     corr = run_corr(c, r, integration_period=1.0, args=args)
     corr.execute()

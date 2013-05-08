@@ -1,7 +1,7 @@
 #!/usr/bin/python
 
 '''
-Fast python corr reciever.  try to save faster.
+Fast python corr reciever.  try to save faster.  Doesn't process packets except to choose if a correlator packet
 '''
 
 import Queue
