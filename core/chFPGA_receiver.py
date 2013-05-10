@@ -442,7 +442,7 @@ class chFPGA_receiver(object):
             for word in in_frame[11:].reshape(num_products,13):
                 (flags, r1, r2, i1, i2) = struct.unpack_from('>BhLhL',word)
                 product = ((r1 << 32) | r2 ) + 1.0j * ((i1 << 32) | i2)
-                corr_data[corr2sorted[corr_number,mult_id,product_number]] = product
+                corr_data[self.corr2sorted[corr_number,mult_id,product_number,0], self.corr2sorted[corr_number,mult_id,product_number,1]] = product
                 product_number += 1   
             #raw_data = np.array(raw_data)
    
@@ -476,12 +476,12 @@ class chFPGA_receiver(object):
         Create Array of indicies that goes from corr_number, mult_id, and product_number to K and frequency
         '''
         Nant = self.NUMBER_OF_ANTENNAS_TO_CORRELATE
-        corr2sorted = np.empty((Nant,Nant+1,self.CHANNELS_PER_CORR_MAX, 2 ), dtype=int) #corr_number, mult_id, product_number to K, freq
+        corr2sorted = np.empty((Nant,Nant+1,512, 2 ), dtype=int) #corr_number, mult_id, product_number to K, freq
         mult_ids = np.arange(Nant+1)
         corr_numbers = np.arange(Nant)
-        product_numbers = np.arange(496)  #Need a better way to get this...
-        for mult_id in mult_ids:
-            for corr_number in corr_numbers:
+        product_numbers = np.arange(512)  #Need a better way to get this...
+        for corr_number in corr_numbers:
+            for mult_id in mult_ids:
                 for product_number in product_numbers:
                     freq_bin_product_number = product_number %  Nant  #Product index within a frequency bin pair 0-Nantenna
                     freq_channel = (product_number//Nant)*2*Nant + corr_number*2
@@ -503,6 +503,7 @@ class chFPGA_receiver(object):
                         j_index = mult_id + Nant - freq_bin_product_number - 1
                         freq_channel_offset = 1
                     linear_index = self.K[i_index, j_index]
+                    print corr_number, mult_id, product_number, linear_index, freq_channel+freq_channel_offset
                     corr2sorted[corr_number,mult_id,product_number] = [linear_index, freq_channel+freq_channel_offset]
         self.corr2sorted = corr2sorted
 
