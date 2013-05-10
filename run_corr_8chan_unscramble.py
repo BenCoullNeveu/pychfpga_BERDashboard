@@ -62,7 +62,7 @@ class run_corr():
         print " Correlator started with an integration time of %0.1s s" % self.integration_period
  
         print " Discarding first correlator frame(s) to ensure the PFB frame buffers are full"
-        frames_to_discard = 1
+        frames_to_discard = 5
         for i in range(frames_to_discard):
             print 'Discarding correlator frame %i/%i' % (i+1,frames_to_discard)
             self.get_data()
@@ -147,7 +147,8 @@ class run_corr():
         pylab.legend()
         if self.args.show_graph:
             pylab.show()
-        if not self.args.no_data:
+        else:
+        #if not self.args.no_data:
             pylab.savefig('autocorr_plots.pdf')
         #pylab.clf()
         print 'Made autocorrelation plot'
@@ -160,8 +161,8 @@ class run_corr():
         nfiles = 0
 
         #Add spectrum file as well
-        if not self.args.no_data:
-            datainfofile, timefile, temperaturefile = self.init_housekeeping()
+        #if not self.args.no_data:
+        datainfofile, timefile, temperaturefile = self.init_housekeeping()
 
         self.check_corr_frame()
 

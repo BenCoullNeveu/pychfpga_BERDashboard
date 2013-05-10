@@ -208,10 +208,10 @@ class run_corr():
                     #     fileHandle.write(ia)
                     ##if (i % (1//self.integration_period)) == 0:
                     nowtime=time.time()
-                    # try:
-                    temperature = self.fpga_ctrl.ADC_BOARD.AmbTemp.temperature
-                    # except socket.timout:
-                    #     temperature = 'null'
+                    try:
+                        temperature = self.fpga_ctrl.ADC_BOARD.AmbTemp.temperature
+                    except:
+                         temperature = 'null'
                     temperaturefile.write(str(temperature) + '\n' )
                     timefile.write(str(nowtime) + '\n')
                     sys.stdout.write('. ')
