@@ -503,7 +503,7 @@ class chFPGA_receiver(object):
                         j_index = mult_id + Nant - freq_bin_product_number - 1
                         freq_channel_offset = 1
                     linear_index = self.K[i_index, j_index]
-                    print corr_number, mult_id, product_number, linear_index, freq_channel+freq_channel_offset
+                    #print corr_number, mult_id, product_number, linear_index, freq_channel+freq_channel_offset
                     corr2sorted[corr_number,mult_id,product_number] = [linear_index, freq_channel+freq_channel_offset]
         self.corr2sorted = corr2sorted
 
