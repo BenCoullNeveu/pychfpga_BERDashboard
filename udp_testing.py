@@ -32,7 +32,7 @@ def server(port):
     print "Waiting for first packet to arrive...",
     sock.recvfrom(BUFSIZE)
     print "ok"
-    t0 = time.time()
+    #t0 = time.time()
     while 1:
         try:
             try:
@@ -42,11 +42,12 @@ def server(port):
                 break
             except KeyboardInterrupt: # #1755388 #926423
                 raise
-            t1 = time.time()
-            if not data:
-                break
-            history.append((len(data), t1-t0))
-            t0 = t1
+            #t1 = time.time()
+            #if not data:
+            #    break
+            #history.append((len(data), t1-t0))
+            #t0 = t1
+            print (repr(data[0]))
         except KeyboardInterrupt:
             print "Stopped"
             break
@@ -112,4 +113,4 @@ def show_stats(history, which):
 #            sys.exit(0)
 #    elif "server".startswith(sys.argv[1].lower()):
 history = server(PORT)
-show_stats(history, "server")
+#show_stats(history, "server")

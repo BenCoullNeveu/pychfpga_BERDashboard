@@ -198,22 +198,22 @@ class run_corr():
             # Debug by JFC
             #for corr in self.fpga_ctrl.CORR:
             #    corr.ACC.status()
-            while nfiles < (2):
+            while nfiles < (3000):
                 fileHandle = self.init_file(nfiles)
-                for i in xrange(25):
+                for i in xrange(3600):
                     data = self.get_data()
                     #####fileHandle.write(data)
                     interleave_a = self.convert_format(data)
                     ##interleave_a = data
                     for ia in interleave_a:
                         fileHandle.write(ia)
-                    #if (i % (1//self.integration_period)) == 0:
-                    nowtime=time.time()
-                    temperature = self.fpga_ctrl.ADC_BOARD.AmbTemp.temperature
-                    temperaturefile.write(str(temperature) + '\n' )
-                    timefile.write(str(nowtime) + '\n')
-                    sys.stdout.write('. ')
-                    sys.stdout.flush()
+                    if (i % (1//self.integration_period)) == 0:
+                        nowtime=time.time()
+                        temperature = self.fpga_ctrl.ADC_BOARD.AmbTemp.temperature
+                        temperaturefile.write(str(temperature) + '\n' )
+                        timefile.write(str(nowtime) + '\n')
+                        sys.stdout.write('. ')
+                        sys.stdout.flush()
                 fileHandle.close()
                 nfiles += 1
             timefile.close()
@@ -275,7 +275,7 @@ if __name__ == "__main__":
     #r = receiver_corr_fast.chFPGA_receiver(chFPGA_config, ip_address='10.10.10.11', port=41001)
     r = chFPGA_receiver.chFPGA_receiver(chFPGA_config, ip_address='10.10.10.11', port=41001)
     #c.sync() sync means crash!!!
-    corr = run_corr(c, r, integration_period=0.15, args=args)
+    corr = run_corr(c, r, integration_period=1.0, args=args)
     corr.execute()
     c.close()
     r.close()
