@@ -95,9 +95,9 @@ class run_corr():
         fname='%s.%04i' % (self.basename, fcount)
         print fname
         fout = open(fname, 'w+b')
-        est_clk = 65
-        acc_len = 65536 #fake for now
-        file_utils.write_header(fout, est_clk, acc_len)
+        #est_clk = 65
+        #acc_len = 65536 #fake for now
+        #file_utils.write_header(fout, est_clk, acc_len)
         return fout
 
     def init_housekeeping(self):
