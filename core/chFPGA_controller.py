@@ -386,6 +386,14 @@ class chFPGA_controller(object):
         config.correlator_capture_period_in_frames = [corr.ACC.CAPTURE_PERIOD for corr in self.CORR]
         config.correlator_integration_period_in_frames = [corr.ACC.INTEGRATION_PERIOD for corr in self.CORR]
         config.antenna_adc_data_acquisition_delay_tables  = self.ANT.get_delays()
+        config.FPGA_board_frequency = self.FreqCtr.read_frequency('CLK200', gate_time=0.05)
+        config.CTRL_clock_frequency = self.FreqCtr.read_frequency('CTRL_CLK', gate_time=0.05)
+        config.ant_clock = self.FreqCtr.read_frequency('ANT_CLK', gate_time=0.05)
+        config.correlator_clock = self.FreqCtr.read_frequency('CORR_CLK', gate_time=0.05)
+        config.fmc_ref_clock = self.FreqCtr.read_frequency('FMC_REFCLK', gate_time=0.05)
+        config.mgt_ref_clock = self.FreqCtr.read_frequency('MGT_REFCLK', gate_time=0.05)
+        config.mgt_word_clock = self.FreqCtr.read_frequency('MGT_USRCLK2', gate_time=0.05)
+        config.adc_clocks = [self.FreqCtr.read_frequency(('ADC_CLK'+str(i)), gate_time=0.05) for i in range(8)]
         # Add FFT shift, scaler gain, corr integration/capture period etc.
         return config
 
