@@ -92,7 +92,7 @@ class run_corr():
         return data
 
     def init_file(self, fcount):
-        fname='%s.%04i' % (self.basename, fcount)
+        fname= "{0}/out_{1}.{2:04g}".format(self.basename, time.strftime('%Y%m%dT%H%M%SZ', time.gmtime()),fcount) #'%s.%04i' % (self.basename, fcount)
         print fname
         fout = open(fname, 'w+b')
         #est_clk = 65
@@ -155,7 +155,7 @@ class run_corr():
     def execute(self):
 
         nowtime=time.time()
-        self.basename = 'out_%s' %  time.strftime('%Y%m%dT%H%M%SZ', time.gmtime()) # Use GMT time in ISO 8601 format as base filename
+        self.basename = '/data/out_%s' %  time.strftime('%Y%m%dT%H%M%SZ', time.gmtime()) # Use GMT time in ISO 8601 format as base filename
 
         nfiles = 0
 

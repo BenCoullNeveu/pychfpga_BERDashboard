@@ -62,18 +62,14 @@ class setup_corr():
     def execute(self):
 
         nowtime=time.time()
-        self.basename = 'out_%s' %  time.strftime('%Y%m%dT%H%M%SZ', time.gmtime()) # Use GMT time in ISO 8601 format as base filename
+        self.basename = '/data/out_%s' %  time.strftime('%Y%m%dT%H%M%SZ', time.gmtime()) # Use GMT time in ISO 8601 format as base filename
 
         nfiles = 0
 
         #Add spectrum file as well
-        if not self.args.no_data:
-            datainfofile, timefile, temperaturefile = self.init_housekeeping()
+        datainfofile, timefile, temperaturefile = self.init_housekeeping()
 
         self.check_corr_frame()
-
-        if self.args.no_data:
-            return
 
         try:
  
@@ -105,43 +101,31 @@ class setup_corr():
             #for corr in self.fpga_ctrl.CORR:
             #    corr.ACC.status()
             while nfiles < (3000):
-                fileHandle = self.init_file(nfiles)
                 for i in xrange(3600):
-                    data = self.get_data()
-                    fileHandle.write(data)
-                    # interleave_a = self.convert_format(data)
-                    # ##interleave_a = data
-                    # for ia in interleave_a:
-                    #     fileHandle.write(ia)
-                    if (i % (1//self.integration_period)) == 0:
-                        nowtime=time.time()
-                        try:
-                            temperature = self.fpga_ctrl.ADC_BOARD.AmbTemp.temperature
-                        except:
-                             temperature = 'null'
-                        temperaturefile.write(str(temperature) + '\n' )
-                        timefile.write(str(nowtime) + '\n')
-                        sys.stdout.write('. ')
-                        sys.stdout.flush()
-                fileHandle.close()
+                    time.sleep(1)
+                    nowtime=time.time()
+                    try:
+                        temperature = self.fpga_ctrl.ADC_BOARD.AmbTemp.temperature
+                    except:
+                         temperature = 'null'
+                    temperaturefile.write(str(temperature) + '\n' )
+                    timefile.write(str(nowtime) + '\n')
+                    sys.stdout.write('. ')
+                    sys.stdout.flush()
                 nfiles += 1
             timefile.close()
             temperaturefile.close()
         except (KeyboardInterrupt, SystemExit):
             self.fpga_ctrl.close()
-            self.fpga_recv.close()
             datainfofile.close()
             timefile.close()
             temperaturefile.close()
-            fileHandle.close()
             print "tried to close nicely"
         except:
             self.fpga_ctrl.close()
-            self.fpga_recv.close()
             datainfofile.close()
             timefile.close()
             temperaturefile.close()
-            fileHandle.close()
             raise
 
 # Default data and clock line delays for the two FMC boards/ML605 combination.
@@ -180,9 +164,8 @@ if __name__ == "__main__":
     c = chFPGA_controller.chFPGA_controller(ip_address='10.10.10.11', port_number=41000, adc_delay_table=ADC_DELAY_TABLE, init=1, sampling_frequency=args.sampling_frequency*1e6, reference_frequency=10e6) # pylint: disable=C0103
     chFPGA_config = c.get_config()
     #c.sync() sync means crash!!!
-    corr = setup_corr(c, integration_period=0.5, args=args)
+    corr = setup_corr(c, integration_period=0.1, args=args)
     corr.execute()
     c.close()
-    r.close()
 
 
