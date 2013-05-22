@@ -41,7 +41,8 @@ class setup_corr():
         self.fpga_ctrl.set_FFT_shift(fft_shift=2**5-1, channels=self.channels)
         self.fpga_ctrl.set_gain(log2_gain=1, channels=self.channels)
         self.fpga_ctrl.start_corr_capture(integration_period=self.integration_period)
-        print " Correlator started with an integration time of %0.1s s" % self.integration_period
+        #print self.integration_period
+        print " Correlator started with an integration time of %0.4s s" % self.integration_period
         print 'Initialization Complete'
 
 
@@ -68,8 +69,6 @@ class setup_corr():
 
         #Add spectrum file as well
         datainfofile, timefile, temperaturefile = self.init_housekeeping()
-
-        self.check_corr_frame()
 
         try:
  
@@ -164,7 +163,7 @@ if __name__ == "__main__":
     c = chFPGA_controller.chFPGA_controller(ip_address='10.10.10.11', port_number=41000, adc_delay_table=ADC_DELAY_TABLE, init=1, sampling_frequency=args.sampling_frequency*1e6, reference_frequency=10e6) # pylint: disable=C0103
     chFPGA_config = c.get_config()
     #c.sync() sync means crash!!!
-    corr = setup_corr(c, integration_period=0.1, args=args)
+    corr = setup_corr(c, integration_period=0.5, args=args)
     corr.execute()
     c.close()
 
