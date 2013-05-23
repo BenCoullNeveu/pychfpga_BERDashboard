@@ -163,7 +163,7 @@ class run_corr():
         if not self.args.no_data:
             datainfofile, timefile, temperaturefile = self.init_housekeeping()
 
-        self.check_corr_frame()
+        ##self.check_corr_frame() needs to be updated for unscrambling
 
         if self.args.no_data:
             return
@@ -277,7 +277,7 @@ if __name__ == "__main__":
     #r = receiver_corr_fast.chFPGA_receiver(chFPGA_config, ip_address='10.10.10.11', port=41001)
     r = chFPGA_receiver_raw.chFPGA_receiver(chFPGA_config, ip_address='10.10.10.11', port=41001)
     #c.sync() sync means crash!!!
-    corr = run_corr(c, r, integration_period=0.5, args=args)
+    corr = run_corr(c, r, integration_period=1.0, args=args)
     corr.execute()
     c.close()
     r.close()
