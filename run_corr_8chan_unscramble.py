@@ -62,7 +62,7 @@ class run_corr():
         print " Correlator started with an integration time of %0.1s s" % self.integration_period
  
         print " Discarding first correlator frame(s) to ensure the PFB frame buffers are full"
-        frames_to_discard = 5
+        frames_to_discard = 1
         for i in range(frames_to_discard):
             print 'Discarding correlator frame %i/%i' % (i+1,frames_to_discard)
             self.get_data()
@@ -145,24 +145,25 @@ class run_corr():
         pylab.rcParams['legend.loc']='best' # Tell pylab to use the best location for the legend
         pylab.grid(True, which='both')
         pylab.legend()
+        if ((not self.args.no_data)):
+            pylab.savefig(self.basename + '/autocorr_plots.pdf')
+        elif ((self.args.no_data) & self.args.show_graph):
+            pylab.savefig(self.basename + '_autocorr_plots.pdf')
         if self.args.show_graph:
             pylab.show()
-        else:
-        #if not self.args.no_data:
-            pylab.savefig('autocorr_plots.pdf')
         #pylab.clf()
         print 'Made autocorrelation plot'
 
     def execute(self):
 
         nowtime=time.time()
-        self.basename = 'out_%s' %  time.strftime('%Y%m%dT%H%M%SZ', time.gmtime()) # Use GMT time in ISO 8601 format as base filename
+        self.basename = '/data/out_%s' %  time.strftime('%Y%m%dT%H%M%SZ', time.gmtime()) # Use GMT time in ISO 8601 format as base filename
 
         nfiles = 0
 
         #Add spectrum file as well
-        #if not self.args.no_data:
-        datainfofile, timefile, temperaturefile = self.init_housekeeping()
+        if not self.args.no_data:
+            datainfofile, timefile, temperaturefile = self.init_housekeeping()
 
         self.check_corr_frame()
 
