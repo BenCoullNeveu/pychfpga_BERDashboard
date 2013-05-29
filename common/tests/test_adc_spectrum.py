@@ -6,6 +6,7 @@ Class to test the adc by sweeping an input tone and checking the correlator outp
 
 import numpy as np
 import time, pylab
+import matplotlib.font_manager 
 from pychime.common.tests.test_BaseClass import test_BaseClass
 from pychime.common.tests import fl6062a
 
@@ -64,7 +65,8 @@ class test_adc_spectrum(test_BaseClass):
             pylab.plot(freqs[mask]/1e6, 10*np.log10(np.abs(data[mask])),'.')
         pylab.xlabel('Freq (MHz)')
         pylab.ylabel('dB')
-        pylab.legend(('Channel 0', 'Channel 1', 'Channel 2', 'Channel 3', 'Channel 4', 'Channel 5', 'Channel 6', 'Channel 7'), loc="upper left")
+        leg_prop = matplotlib.font_manager.FontProperties(size=6)
+        pylab.legend(('Channel 0', 'Channel 1', 'Channel 2', 'Channel 3', 'Channel 4', 'Channel 5', 'Channel 6', 'Channel 7'), prop=leg_prop, loc="best")
         pylab.savefig(fname + '_S21_8_chan.pdf')
         pylab.clf()
 
