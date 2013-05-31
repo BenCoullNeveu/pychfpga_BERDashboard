@@ -153,7 +153,7 @@ if __name__ == '__main__':
     #c.set_data_capture(burst_period=10000, number_of_bursts=0)
     # Continuously plot the ADC output
     c.set_FFT_bypass(True)
-    #c.set_ADC_mode('data')
+    c.set_ADC_mode('ramp')
     c.set_corr_reset(1)
     c.start_data_capture(burst_period_in_seconds=0.21)
     pu.plot_TIMESTREAM_frames_multichannel(r,channels=[0,1,2,3,4,5,6,7])
