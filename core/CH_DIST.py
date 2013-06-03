@@ -85,7 +85,7 @@ class CH_DIST_base(Module_base):
         corr_number = self.parent.instance_number
         first_word = corr_number
         word_step = self.fpga.NUMBER_OF_ANTENNAS_TO_CORRELATE #Spacing between words, currently should be 8 with 8 channel correlator #should get this from config
-        self.select_words(range(first_word,words_per_correlator*word_step,word_step)) # enable tranmission 8 words, 16 freq channels by default
+        self.select_words(range(first_word, first_word + words_per_correlator*word_step, word_step)) # enable tranmission 8 words, 16 freq channels by default
         #self.select_words(range(words_per_correlator)) # enable tranmission 8 words, 16 freq channels by default
 
 

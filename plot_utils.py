@@ -125,13 +125,16 @@ def plot_SPECTRUM_frames(chFPGA, channels=[0], raw=0, flush=0):
         return lineMagObjects, linePhaseObjects
     
     def animate(i):
-        a = chFPGA.read_frames(raw=raw, flush=flush)
-        #print "animating"
-        for j,line in enumerate(lineMagObjects):
-            fa.real = a[channels[j]][::2]
-            fa.imag = a[channels[j]][1::2]
-            line.set_ydata(10*np.log10(np.abs(fa)**2+1e-2))
-            linePhaseObjects[j].set_ydata(np.angle(fa))
+        try:
+            a = chFPGA.read_frames(raw=raw, flush=flush)
+            #print "animating"
+            for j,line in enumerate(lineMagObjects):
+                fa.real = a[channels[j]][::2]
+                fa.imag = a[channels[j]][1::2]
+                line.set_ydata(10*np.log10(np.abs(fa)**2+1e-2))
+                linePhaseObjects[j].set_ydata(np.angle(fa))
+        except:
+            pass
         return lineMagObjects,linePhaseObjects
     
     nchan = channels.size
@@ -144,9 +147,13 @@ def plot_SPECTRUM_frames(chFPGA, channels=[0], raw=0, flush=0):
     axPhaseObjects = range(nchan)
     linePhaseObjects = range(nchan)
     a = chFPGA.read_frames(raw=raw, flush=flush)
-    fa = np.empty((a[channels[0]].size)/2,dtype=np.complex64)
-    fa.real = a[channels[0]][::2]
-    fa.imag = a[channels[0]][1::2]
+    try:
+        fa = np.empty((a[channels[0]].size)/2,dtype=np.complex64)
+        fa.real = a[channels[0]][::2]
+        fa.imag = a[channels[0]][1::2]
+    except KeyError:
+        print "didn't get a frame 0, just going to guess size and hope for later"
+        fa = np.ones(1024,dtype=np.complex64)
     for i,ax in enumerate(axMagObjects):
         ax = fig.add_subplot(2,nchan,i+1, autoscale_on=True, xlim=(0, 2048), ylim=(-128, 128))
         lineMagObjects[i], = ax.plot(range(len(fa)),10*np.log10(np.abs(fa)**2+1e-2), 'o-', lw=2)

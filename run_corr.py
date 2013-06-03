@@ -129,9 +129,9 @@ class run_corr():
         #Add spectrum file as well
         try:
             timefile, temperaturefile = self.init_housekeeping()
-            while nfiles < 3000:
+            while nfiles < (3000):
                 fileHandle = self.init_file(nfiles)
-                for i in xrange(int(self.HOUR)):
+                for i in xrange(3600):
                     data = self.get_data()
                     fileHandle.write(data)
                     #interleave_a = self.convert_format(data)
@@ -179,7 +179,7 @@ if __name__ == "__main__":
     #c.sync() sync means crash!!!
 
     #channels=[0,1,2,3]
-    corr = run_corr(c,r, integration_period=0.01)
+    corr = run_corr(c,r, integration_period=1)
     corr.execute()
     c.close()
     r.close()

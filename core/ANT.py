@@ -131,6 +131,12 @@ class ANT_base(object):
         for i, dly in enumerate(adc_delay_table):    
             self.ANT[i].ADCDAQ.set_delay(dly) 
 
+    def get_delays(self):
+        """
+        Return the delays currently in use for all ADC data lines.
+        """
+        return [ant.ADCDAQ.get_delay() for ant in self.ANT]
+
     def print_ramp_errors(self):
         try:
             while 1:

@@ -28,12 +28,12 @@ History:
 
 import numpy as np
 #import pdb
+import time
 
 from pychime.common import util
 
 import Shared_variables # Note: do not reload this module or we will lose acces to the data in it
 import Module
-
 import SocketIO
 
 # FPGA subsystems handlers
@@ -115,7 +115,8 @@ reload_modules()
 
 # -- chFPGA -- 
 class chFPGA_config(object):
-    pass    
+    def __str__(self):
+        return '\n'.join(['%s = %s' % (key, repr(value)) for (key,value) in sorted(vars(self).items())])    
     
 
 class chFPGA_controller(object):
@@ -189,9 +190,14 @@ class chFPGA_controller(object):
             # ---------------------------------------------------------------------
             # -- Create basic FPGA ressource handlers objects
             # ---------------------------------------------------------------------
+
             if verbose >= 2: print '  - GPIO'
             self.GPIO = GPIO.GPIO_base(self)
             # get system constants from the FPGA
+
+            if init<0: # If init<0, we do not perform any communication with the FPGA, so we don't read the firmware configuration
+                return
+
             self.PLATFORM_ID = self.GPIO.PLATFORM_ID
             self.NUMBER_OF_ANTENNAS = self.GPIO.NUMBER_OF_ANTENNAS
             self.NUMBER_OF_CORRELATORS_MAX = self.GPIO.NUMBER_OF_CORRELATORS
@@ -206,7 +212,6 @@ class chFPGA_controller(object):
             self.CORR_PORT = range(self.NUMBER_OF_ANTENNAS+1, self.NUMBER_OF_ANTENNAS+1+ self.NUMBER_OF_CORRELATORS)
             self.default_channels = range(self.NUMBER_OF_ANTENNAS)
             self.LIST_OF_ANTENNAS_WITH_FFT = [i for i in range(8) if bool(self.GPIO.IMPLEMENT_FFT & 2**i)]
-            self.PLATFORM_ID = self.GPIO.PLATFORM_ID
                         
             if verbose >= 2: print '  - I2C'
             self.I2C = I2C.I2C_base(self)
@@ -249,13 +254,12 @@ class chFPGA_controller(object):
 
             self.ADC_BOARD = MGADC08.MGADC08_base(self)
             self.FMC_present = self.ADC_BOARD.is_present()
-               
+ 
         except SocketIO.timeout:
             self.close()
             raise
             # Initialize subsystems. This has to be done only once all subsystems are created because some subsystems depend on each other.
-
-        if init:
+        if init>0:
             self.init(**kwargs)
 
 
@@ -355,10 +359,44 @@ class chFPGA_controller(object):
         print '*** End of chFPGA initialization ***'
 
     def get_config(self):
-        config = chFPGA_config()
+        config = chFPGA_config() # Create empty config container
+        # Add configuration parameters
+
+        config.config_protocol_version = (1,0)
+        config.config_capture_time = time.time()
+        config.system_firmware_version = self.get_version()
+        config.system_platform_id = self.PLATFORM_ID
         config.number_of_antennas_to_correlate = self.NUMBER_OF_ANTENNAS_TO_CORRELATE
         config.number_of_correlators = self.NUMBER_OF_CORRELATORS
+        config.number_of_antennas = self.NUMBER_OF_ANTENNAS
+        config.number_of_correlators_max = self.NUMBER_OF_CORRELATORS_MAX
+        config.system_list_of_implemented_correlators = self.LIST_OF_IMPLEMENTED_CORRELATORS
+        config.system_list_of_antennas_with_channelizers = self.LIST_OF_ANTENNAS_WITH_FFT
+        config.system_frame_length = self.FRAME_LENGTH
+        config.system_sampling_frequency = self.sampling_frequency
+        config.system_reference_frequency = self.reference_frequency
+        config.system_frame_period = self.FRAME_PERIOD
+
+        config.adc_board_temperature = self.ADC_BOARD.AmbTemp.temperature
+        config.adc_board_adc_chip_temperature = [adc.temperature for adc in self.ADC_BOARD.ADC]
+        config.antenna_data_source = self.get_data_source()
+        config.antenna_fft_bypass = self.get_FFT_bypass()
+        config.antenna_fft_shift_schedule = self.get_FFT_shift()
+        config.antenna_scaler_log2_gain = self.get_gain()
+        config.correlator_capture_period_in_frames = [corr.ACC.CAPTURE_PERIOD for corr in self.CORR]
+        config.correlator_integration_period_in_frames = [corr.ACC.INTEGRATION_PERIOD for corr in self.CORR]
+        config.antenna_adc_data_acquisition_delay_tables  = self.ANT.get_delays()
+        config.FPGA_board_frequency = self.FreqCtr.read_frequency('CLK200', gate_time=0.05)
+        config.CTRL_clock_frequency = self.FreqCtr.read_frequency('CTRL_CLK', gate_time=0.05)
+        config.ant_clock = self.FreqCtr.read_frequency('ANT_CLK', gate_time=0.05)
+        config.correlator_clock = self.FreqCtr.read_frequency('CORR_CLK', gate_time=0.05)
+        config.fmc_ref_clock = self.FreqCtr.read_frequency('FMC_REFCLK', gate_time=0.05)
+        config.mgt_ref_clock = self.FreqCtr.read_frequency('MGT_REFCLK', gate_time=0.05)
+        config.mgt_word_clock = self.FreqCtr.read_frequency('MGT_USRCLK2', gate_time=0.05)
+        config.adc_clocks = [self.FreqCtr.read_frequency(('ADC_CLK'+str(i)), gate_time=0.05) for i in range(8)]
+        # Add FFT shift, scaler gain, corr integration/capture period etc.
         return config
+
         
     def update_config(self):
         pass
@@ -380,7 +418,7 @@ class chFPGA_controller(object):
         NBYTES = 0
         # Loop to read all required bytes (the FPGA does not support multi-byte reads (yet))
         for i in range(length*itemsize): 
-            s = chr(0x00+(NBYTES<<3)+(ant>>2))+chr(((ant&0x03)<<6)+(module<<2)+(addr>>8))+chr(addr&0xff)
+            s = chr(0x00+(NBYTES<<3)+(ant>>3))+chr(((ant&0x07)<<5)+(module<<2)+(addr>>8))+chr(addr&0xff)
             self.sock.write(s)
             data = self.sock.read()
             #if data[0]!=s[0]:
@@ -412,7 +450,7 @@ class chFPGA_controller(object):
         # build command packet
         #s=chr(0x80+ant+(0x40 if incr else 0))+chr((module<<2)+(addr>>8))+chr(addr&0xFF) 
         NBYTES = 0
-        string = chr(0x80 + (0x40 if incr else 0) + (NBYTES << 3) + (ant >> 2)) + chr(((ant & 0x03) << 6) + (module << 2) + (addr >> 8)) + chr(addr & 0xff)
+        string = chr(0x80 + (0x40 if incr else 0) + (NBYTES << 3) + (ant >> 3)) + chr(((ant & 0x07) << 5) + (module << 2) + (addr >> 8)) + chr(addr & 0xff)
 
         # Add the data to the string. The method depends on the data type
         if type(data) == str:
@@ -520,6 +558,13 @@ class chFPGA_controller(object):
             ant.SRCSEL.set_data_source(source.lower())
         self.set_ant_reset(0) # Reset is needed to resyncronize the system with the new data 
         #self.sync() # SYNCs the ADC, and resets (again) the antenna processor to align the data with the ADC
+
+    def get_data_source(self):
+        '''
+            Returns a list of data source for all channels.
+        '''
+        return [ant.SRCSEL.get_data_source() for ant in self.ANT]        
+
 
     def set_funcgen_function(self, function=None, a=1, b=0, channels=None):
         '''
@@ -675,6 +720,12 @@ class chFPGA_controller(object):
                     ant.SCALER.BYPASS = 1
         self.reset();
         #self.sync()
+
+    def get_FFT_bypass(self):
+        """
+        Returns a list indicating if the FFT is bypassed or not for each antenna. 
+        """
+        return [bool(ant.FFT.BYPASS) for ant in self.ANT]
         
     def set_global_trigger(self, trigger_state):
         """
@@ -716,7 +767,7 @@ class chFPGA_controller(object):
             capture_period = integration_period
 
         capture_period_in_frames = int(capture_period*1.0/self.FRAME_PERIOD)
-        integration_period_in_frames = int(capture_period*1.0/self.FRAME_PERIOD)
+        integration_period_in_frames = int(integration_period*1.0/self.FRAME_PERIOD)
 
         self.set_ant_reset(1)            
         self.set_corr_reset(1)
@@ -814,6 +865,12 @@ class chFPGA_controller(object):
                 print 'Setting gain of Antenna %i' % ant.ant_number
                 ant.SCALER.SHIFT_LEFT = 1 + log2_gain
 
+    def get_gain(self):
+        """
+        Returns the log2 SCALER gain each antenna. 
+        """
+        return [ant.SCALER.SHIFT_LEFT-1 for ant in self.ANT]
+
 
     def set_FFT_shift(self, fft_shift=0b11111111111, channels=None):
         """
@@ -831,3 +888,9 @@ class chFPGA_controller(object):
             if ant.ant_number in channels:
                 print 'Setting FFT shift of antenna %i' % ant.ant_number
                 ant.FFT.FFT_SHIFT = fft_shift
+
+    def get_FFT_shift(self):
+        """
+        Returns the FFT shift schedule for each antenna. 
+        """
+        return [ant.FFT.FFT_SHIFT for ant in self.ANT]

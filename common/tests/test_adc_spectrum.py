@@ -6,6 +6,7 @@ Class to test the adc by sweeping an input tone and checking the correlator outp
 
 import numpy as np
 import time, pylab
+import matplotlib.font_manager 
 from pychime.common.tests.test_BaseClass import test_BaseClass
 from pychime.common.tests import fl6062a
 
@@ -15,11 +16,13 @@ class test_adc_spectrum(test_BaseClass):
      out.  
     '''
     def configure_board(self):
-        self.fpga_ctrl.set_FFT_bypass(False, channels=[0,1,2,3,4,5,6,7])
+        self.fpga_ctrl.set_corr_reset(True)
+        self.fpga_ctrl.set_FFT_bypass(True, channels=[0,1,2,3,4,5,6,7])
         self.fpga_ctrl.set_data_source('adc', channels=[0,1,2,3,4,5,6,7])
+        time.sleep(1)
         self.fpga_ctrl.set_ADC_mode(mode='data')
         time.sleep(1)
-        self.fpga_ctrl.start_corr_capture(integration_period=0.5)
+        self.fpga_ctrl.start_data_capture(burst_period_in_seconds=0.2, channels=[0,1,2,3,4,5,6,7])
         #self.fpga_ctrl.sync()
         time.sleep(2)
         return
@@ -34,29 +37,50 @@ class test_adc_spectrum(test_BaseClass):
         indicies2 = np.arange(freqs_nyquest2.size)
         indicies3 = np.concatenate([indicies1,indicies2])
         indicies = np.concatenate([indicies3,indicies1])
-        datas = np.empty([5,freqs.size], dtype=np.complex)
-        fl6062a.set_amplitude(2, signal_generator)
+        datas = np.empty([8,freqs.size], dtype=np.complex)
+        fl6062a.set_amplitude(5, signal_generator)
         for i,freq in enumerate(freqs):
-            fl6062a.set_freq(freq, signal_generator)
-            time.sleep(0.5)
-            #self.fpga_recv.flush()
-            data = self.fpga_recv.read_corr_frames(verbose=0,flush=True)
-            print freq/1e6, data[[0,5,9,12,14],indicies[i]]
-            datas[0,i] = data[0,indicies[i]]
-            datas[1,i] = data[5,indicies[i]]
-            datas[2,i] = data[9,indicies[i]]
-            datas[3,i] = data[12,indicies[i]]
-            datas[4,i] = data[14, indicies[i]]
+            if (i % 7) == 0:
+                fl6062a.set_freq(freq, signal_generator)
+                time.sleep(0.5)
+                #self.fpga_recv.flush()
+                data_ts = self.fpga_recv.read_frames(verbose=0,flush=True)
+                data = np.zeros((8,1024), dtype=np.complex) + 1e-8
+                for j in xrange(8):
+                    try:
+                        data[j] = np.fft.fft(data_ts[j])[:1024]
+                    except KeyError:
+                        print "missed data on channel " + str(j)
+                print freq/1e6, data[[0,1,2,3,4,5,6,7],indicies[i]]
+                for j in xrange(8):
+                    datas[j,i] = data[j,indicies[i]]
         return freqs, datas
         
-    def execute(self):
-        print "Make sure signal generator is connected to channel 1-5, " 
-        test = raw_input("Press Enter to continue...")
-        self.configure_board()
-        self.fpga_recv.flush()
-        signal_generator = fl6062a.GPIB(address=2, to=5, ip='192.168.0.37')
-        fl6062a.set_freq(410e6,signal_generator)
-        data_return = self.measure_adc_response(signal_generator)
-        np.save('freq_sweep.npy', data_return[0])
-        np.save('analog_data.npy', data_return[1])
-        return data_return
+    def plot_response(self, data_return, fname):
+        freqs = data_return[0]
+        datas = data_return[1]
+        pylab.clf()
+        for data in datas:
+            mask = (np.abs(data) > 500 ) & (np.abs(data) < 1e6)
+            pylab.plot(freqs[mask]/1e6, 10*np.log10(np.abs(data[mask])),'.')
+        pylab.xlabel('Freq (MHz)')
+        pylab.ylabel('dB')
+        leg_prop = matplotlib.font_manager.FontProperties(size=6)
+        pylab.legend(('Channel 0', 'Channel 1', 'Channel 2', 'Channel 3', 'Channel 4', 'Channel 5', 'Channel 6', 'Channel 7'), prop=leg_prop, loc="best")
+        pylab.savefig(fname + '_S21_8_chan.pdf')
+        pylab.clf()
+
+    def execute(self, fname):
+        try:
+            self.configure_board()
+            self.fpga_recv.flush()
+            signal_generator = fl6062a.GPIB(address=2, to=5, ip='192.168.0.37')
+            fl6062a.set_freq(410e6,signal_generator)
+            filename = fname + '.npy'
+            data_return = self.measure_adc_response(signal_generator)
+            np.save(fname+'_freq_sweep.npy', data_return[0])
+            np.save(fname + '_analog_data.npy', data_return[1])
+            self.plot_response(data_return, fname)
+        except:
+            self.fpga_recv.close()
+            raise

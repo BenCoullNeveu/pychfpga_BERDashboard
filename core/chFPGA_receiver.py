@@ -200,7 +200,7 @@ class ReceiverThread(threading.Thread):
                                 n += 1
                     ###### UNKNOWN FRAME TYPE###########
                     else: # unknown frame format
-                        print 'Receiver: Frame of %i bytes with unknown identifier 0x%Xx has been received. It was discarded. First bytes are 0x%s' % (nbytes, (probe_id & 0xF0) >> 4, ' '.join('%02X' % c for c in self.data[:32]))                              
+                        print 'Receiver: Frame of %i bytes with unknown identifier 0x%Xx has been received. It was discarded. First bytes are 0x%s' % (nbytes, (self.data[0] & 0xF0) >> 4, ' '.join('%02X' % c for c in self.data[:32]))                                                         
                         
         print 'Frame acquisition thread is stopped'
 
@@ -249,6 +249,7 @@ class chFPGA_receiver(object):
         self.frame_receiver.start()
         X, Y = np.mgrid[0:self.NUMBER_OF_ANTENNAS_TO_CORRELATE,0:self.NUMBER_OF_ANTENNAS_TO_CORRELATE]
         self.K = X*self.NUMBER_OF_ANTENNAS_TO_CORRELATE - X*(X+1)/2 + Y
+        self.define_sort_array()
         
         
     def __del__(self):
@@ -441,33 +442,7 @@ class chFPGA_receiver(object):
             for word in in_frame[11:].reshape(num_products,13):
                 (flags, r1, r2, i1, i2) = struct.unpack_from('>BhLhL',word)
                 product = ((r1 << 32) | r2 ) + 1.0j * ((i1 << 32) | i2)
-                #raw_data.append(product)
-                
-                freq_bin_product_number = product_number %  Nant  #Product index within a frequency bin pair 0-Nantenna
-                #freq_channel = (product_number // Nant) *2 + corr_number*self.CHANNELS_PER_CORR
-                #freq_channel = (product_number // Nant) *2 + corr_number*num_channels_per_correlator # Let's assume that every corr frames have the same number of channels, and that the received frames have no missing data
-                freq_channel = (product_number//Nant)*2*Nant + corr_number*2  #the 5 here needs to be gotten from chFPGA.config()
-                # Compute the (i,j) index of each product
-                if mult_id == 0:
-                    i_index = Nant - 1 - freq_bin_product_number
-                    j_index = Nant - 1 - freq_bin_product_number
-                    freq_channel_offset = 1
-                elif mult_id == Nant:
-                    i_index = freq_bin_product_number
-                    j_index = freq_bin_product_number
-                    freq_channel_offset = 0
-                elif freq_bin_product_number < mult_id: # if we have the 'A' peoducts
-                    i_index = Nant - 1 - mult_id
-                    j_index = Nant - mult_id + freq_bin_product_number
-                    freq_channel_offset = 0
-                else:
-                    i_index = mult_id - 1
-                    j_index = mult_id + Nant - freq_bin_product_number - 1
-                    freq_channel_offset = 1
-                linear_index = self.K[i_index, j_index]       
-                if verbose >= 3:
-                    print '   Word #%i, product #%i, Freq bin #%i, (i,j)=(%i,%i), k=%i, , value = (%f + %fi)' %(product_number, freq_bin_product_number, freq_channel+freq_channel_offset, i_index, j_index, linear_index, product.real, product.imag )
-                corr_data[linear_index, freq_channel+freq_channel_offset] = product
+                corr_data[self.corr2sorted[corr_number,mult_id,product_number,0], self.corr2sorted[corr_number,mult_id,product_number,1]] = product
                 product_number += 1   
             #raw_data = np.array(raw_data)
    
@@ -495,6 +470,43 @@ class chFPGA_receiver(object):
         #    return data
         #else:
         return corr_data
+
+    def define_sort_array(self):
+        '''
+        Create Array of indicies that goes from corr_number, mult_id, and product_number to K and frequency
+        '''
+        Nant = self.NUMBER_OF_ANTENNAS_TO_CORRELATE
+        corr2sorted = np.empty((Nant,Nant+1,512, 2 ), dtype=int) #corr_number, mult_id, product_number to K, freq
+        mult_ids = np.arange(Nant+1)
+        corr_numbers = np.arange(Nant)
+        product_numbers = np.arange(512)  #Need a better way to get this...
+        for corr_number in corr_numbers:
+            for mult_id in mult_ids:
+                for product_number in product_numbers:
+                    freq_bin_product_number = product_number %  Nant  #Product index within a frequency bin pair 0-Nantenna
+                    freq_channel = (product_number//Nant)*2*Nant + corr_number*2
+                    # Compute the (i,j) index of each product
+                    if mult_id == 0:
+                        i_index = Nant - 1 - freq_bin_product_number
+                        j_index = Nant - 1 - freq_bin_product_number
+                        freq_channel_offset = 1
+                    elif mult_id == Nant:
+                        i_index = freq_bin_product_number
+                        j_index = freq_bin_product_number
+                        freq_channel_offset = 0
+                    elif freq_bin_product_number < mult_id: # if we have the 'A' peoducts
+                        i_index = Nant - 1 - mult_id
+                        j_index = Nant - mult_id + freq_bin_product_number
+                        freq_channel_offset = 0
+                    else:
+                        i_index = mult_id - 1
+                        j_index = mult_id + Nant - freq_bin_product_number - 1
+                        freq_channel_offset = 1
+                    linear_index = self.K[i_index, j_index]
+                    #print corr_number, mult_id, product_number, linear_index, freq_channel+freq_channel_offset
+                    corr2sorted[corr_number,mult_id,product_number] = [linear_index, freq_channel+freq_channel_offset]
+        self.corr2sorted = corr2sorted
+
 
 
 
