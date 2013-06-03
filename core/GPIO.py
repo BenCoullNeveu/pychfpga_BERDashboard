@@ -110,11 +110,12 @@ class GPIO_base(Module_base):
         Initializes the GPIO module operations.
         This puts the antenna processors and correlators in reset state."""
         # reset the antenna processors. This causes them to stop sending data.
-        self.ANT_RESET = 1  
-        self.CORR_RESET = 1  
+        #self.ANT_RESET = 1  
+        #self.CORR_RESET = 1  
         # In the alternate code below, we do not use self.ANT_RESET=1 to reset the antenna because this implies reading the control register, and the read data might not get through if too much data is coming in
-        # ant_reset = self.bitfield('ANT_RESET')
-        # self.write(ant_reset.addr, 1 << ant_reset.bit)
+        ant_reset = self.bitfield('ANT_RESET')
+        #self.write(ant_reset.addr, 1 << ant_reset.bit)
+        self.write(ant_reset.addr, 0x60) # ** debug***
         self.HOST_FRAME_READ_RATE = 16  #Indicates how often the host UDP buffers are read. Used to throttle data transmision. Period = 2/125MHz*2^value
         
     def status(self):

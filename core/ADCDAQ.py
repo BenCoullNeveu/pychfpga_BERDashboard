@@ -78,12 +78,14 @@ class ADCDAQ_base(Module_base):
         'FIFO_WR_COUNT' :    BitField(STATUS, 16, 0, width=8, doc='Number of words in the FIFO, as seen from the WR clock'),
         'FIFO_RD_COUNT' :    BitField(STATUS, 17, 0, width=8, doc='Number of words in the FIFO, as seen from the RD clock (readout system)'),
 
-        'ADC_CLK_SAMPLE'     : BitField(STATUS, 18,0,doc='Non-delayed 400 MHz ADC clock sampled by REFCLK'),
+        'ADC_CLK_SAMPLE'     : BitField(STATUS, 18, 0,doc='Non-delayed 400 MHz ADC clock sampled by REFCLK'),
 
-        'CAPTURE2_PATTERN0' : BitField(STATUS, 19,0, width=8, doc='Captured byte'),
-        'CAPTURE2_PATTERN1' : BitField(STATUS, 20,0, width=8, doc='Captured byte'),
-        'CAPTURE2_PATTERN2' : BitField(STATUS, 21,0, width=8, doc='Captured byte'),
-        'CAPTURE2_PATTERN3' : BitField(STATUS, 22,0, width=8, doc='Captured byte'),
+        'CAPTURE2_PATTERN0' : BitField(STATUS, 19, 0, width=8, doc='Captured byte'),
+        'CAPTURE2_PATTERN1' : BitField(STATUS, 20, 0, width=8, doc='Captured byte'),
+        'CAPTURE2_PATTERN2' : BitField(STATUS, 21, 0, width=8, doc='Captured byte'),
+        'CAPTURE2_PATTERN3' : BitField(STATUS, 22, 0, width=8, doc='Captured byte'),
+
+        'BIT_ERR_CTR' : BitField(STATUS, 26, 0, width=32, doc='Word containing 8 4-bit counters that track ramp bit errors.'),
 
         # DRP Ports
         'MMCM_FB_LOW' :         BitField(DRP, 0x14, 0, width=6, doc='MCMM Feedback clock Low time (in VCO cycles)'),

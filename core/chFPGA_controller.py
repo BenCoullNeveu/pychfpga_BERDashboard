@@ -540,7 +540,23 @@ class chFPGA_controller(object):
         """
         return self.default_channels
 
-    def set_data_source(self, source=None, channels=None):
+    def set_data_path(self, source=None, function=None, a=1, b=0, adc_mode='data', adcdaq_mode='data', fft_enable=None, scaler_gain=None):
+        """
+            Single command used to set multiple data path settings. The data processing chain is:
+            ADC --> ADCDAQ --> |        |
+                   FUNCGEN --> | SRCSEL | --> FFT --> SCALER
+                    INJECT --> |        |
+        """
+        if function is not None:
+            self.set_funcgen_function(function=function, a=a, b-b, channels=channels)
+
+        if adcdaq_mode is not None:
+            self.set_adcdaq_mode(mode=adcdaq_mode, channels=channels)
+
+        if adc_mode is not None:
+            self.set_adc_mode(mode=adc_mode, channels=channels)
+
+    def set_data_source(self, source=None,  channels=None):
         '''
             Sets the data source on specified channels (or default channels if the channels are not specified).
         '''
@@ -558,6 +574,7 @@ class chFPGA_controller(object):
             ant.SRCSEL.set_data_source(source.lower())
         self.set_ant_reset(0) # Reset is needed to resyncronize the system with the new data 
         #self.sync() # SYNCs the ADC, and resets (again) the antenna processor to align the data with the ADC
+
 
     def get_data_source(self):
         '''
@@ -589,7 +606,7 @@ class chFPGA_controller(object):
         'pulse': (2, 11), # ADC sends ten 0x00 followed by one 0xff
         }    
 
-    def set_ADC_mode(self, mode='data', channels=None):
+    def set_adc_mode(self, mode='data', channels=None):
         """
         Sets the test mode of both ADCs, sets the proper CAPTURE period, and sends a SYNC.
             test_mode:
@@ -618,7 +635,9 @@ class chFPGA_controller(object):
 
         self.sync() # make sure the ADC mode is set and that capture  restarts properly with the right period
 
-    def set_ADCDAQ_mode(self, mode='data', channels=None):
+    set_ADC_mode = set_adc_mode # For legacy code compatibility
+
+    def set_adcdaq_mode(self, mode='data', channels=None):
         """
         Sets the source of the data acquisition module.
             test_mode:
@@ -632,6 +651,9 @@ class chFPGA_controller(object):
         for ch in channels:
             ant = self.ANT[ch]
             ant.ADCDAQ.set_ADCDAQ_mode(mode) # set the period so we are ready to capture data correctly after the SYNC resets the CAPTURE logic
+
+    set_ADCDAQ_mode = set_adcdaq_mode
+
 
     def set_ant_reset(self, state):
         self.GPIO.ANT_RESET = state
@@ -696,7 +718,7 @@ class chFPGA_controller(object):
         self.set_trig(1) # enables data transmission if continuous mode is selected
 #       self.set_ant_reset(0) # disable reset all 
 
-    def set_FFT_bypass(self, bypass_mode, channels=None):
+    def set_fft_bypass(self, bypass_mode, channels=None):
         """
         Determines in the FFT is bypassed or not. Sets the BYPASS flag on both the FFT and the SCALER modules.
         All antenna processors are reset to force the FFT to resynchronize to the frame boundaries.
@@ -721,12 +743,16 @@ class chFPGA_controller(object):
         self.reset();
         #self.sync()
 
+    set_FFT_bypass = set_fft_bypass # for legacy code compatibility
+
     def get_FFT_bypass(self):
         """
         Returns a list indicating if the FFT is bypassed or not for each antenna. 
         """
         return [bool(ant.FFT.BYPASS) for ant in self.ANT]
-        
+
+    get_FFT_bypass = get_fft_bypass # for legacy code compatiblity    
+
     def set_global_trigger(self, trigger_state):
         """
         Sets the global trigger to the specified value.
@@ -872,7 +898,7 @@ class chFPGA_controller(object):
         return [ant.SCALER.SHIFT_LEFT-1 for ant in self.ANT]
 
 
-    def set_FFT_shift(self, fft_shift=0b11111111111, channels=None):
+    def set_fft_shift(self, fft_shift=0b11111111111, channels=None):
         """
         Sets the FFT shift schedule for the FFT.  Each bit represents a divide by 2 for that stage of the FFT.  Default is to shift every stage.  11 stage FFT, so default is 2**11-1.
         expects a number  in the range 0b11111111111 (2047) and 0b00000000000 (0).  
@@ -889,8 +915,30 @@ class chFPGA_controller(object):
                 print 'Setting FFT shift of antenna %i' % ant.ant_number
                 ant.FFT.FFT_SHIFT = fft_shift
 
-    def get_FFT_shift(self):
+    set_FFT_shift = set_fft_shift  # For legacy code compatibility
+
+    def get_fft_shift(self):
         """
         Returns the FFT shift schedule for each antenna. 
         """
         return [ant.FFT.FFT_SHIFT for ant in self.ANT]
+
+    get_FFT_shift = get_fft_shift # for legacy compatibility
+
+    def print_ramp_errors(self):
+        """
+        Sets the ADC in ramp mode and compare the incoming ramp in real time with an internally generated ramp to combute the total number of words in error (and an error count for each bit)
+        """
+        set_adc_mode('ramp')
+        sync()
+        for ant in self.ANT:
+            ant.ADCDAQ.RAMP_ERR_CLR=1
+            ant.ADCDAQ.RAMP_ERR_CLR=0
+
+        try:
+            while 1:
+                for ant in self.ANT:
+                    print 'CH%i: %3i (%08X)' % (ant.ant_number, ant.ADCDAQ.RAMP_ERR_CTR, ant.ADCDAQ.BIT_ERR_CTR),
+                print
+        except KeyboardInterrupt:
+            pass
