@@ -315,6 +315,13 @@ class chFPGA_controller(object):
         self.SPI.init()
         self.SPI.status()
 
+        if verbose >= 2: print '  - ADC BOARD'
+        # We need to initialize the ADC board befor we set ANT because the delay blocks need a clock
+        self.ADC_BOARD.init(sampling_frequency = sampling_frequency, reference_frequency=reference_frequency)
+        self.ADC_BOARD.status()
+
+
+        self.FMC_present = self.ADC_BOARD.is_present()
 
         if verbose >= 2: print '  - ANT'
         self.ANT.init(delay_table=adc_delay_table)
@@ -325,13 +332,7 @@ class chFPGA_controller(object):
             self.CORR.init()
             self.CORR.status()
 
-        if verbose >= 2: print '  - ADC BOARD'
-        self.ADC_BOARD.init(sampling_frequency = sampling_frequency, reference_frequency=reference_frequency)
-        self.ADC_BOARD.status()
-
-
-        self.FMC_present = self.ADC_BOARD.is_present()
-
+  
 
         # MGT is disabled    
         #print '  - MGT_PLL'
@@ -836,10 +837,10 @@ class chFPGA_controller(object):
         """
         return self.GPIO.get_bitstream_date()
 
-    def get_adc_delays():
+    def get_adc_delays(self):
             return self.ANT.get_delays();
 
-    def set_adc_delays():
+    def set_adc_delays(self):
             return self.ANT.set_delays();
 
     def read_eye_diagram(self,channels=[0], offset=5):
@@ -989,6 +990,6 @@ class chFPGA_controller(object):
         except KeyboardInterrupt:
             pass
         total_word_errors = np.sum(word_error)
-        print 'There was %i word errors' % total_word_errors
+        print 'There were %i word errors' % total_word_errors
 
         return total_word_errors
