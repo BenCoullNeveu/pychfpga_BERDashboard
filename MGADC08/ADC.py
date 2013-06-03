@@ -80,6 +80,19 @@ class ADC_chip(object):
 	chip_id = property(lambda s: s.read(s.REG_CHIP_ID), lambda s, value: s.write(s.REG_CHIP_ID, value))
 	temperature = property(lambda s: s.adc.temperature(s.adc_number))
 
+	def get_test_mode(self):
+		"""
+		Reads the current test mode from the ADC and returns:
+		   0 = no test mode (data)
+		   1 = ramp
+		   2 = pulse
+		"""
+		control_reg = self.read(self.REG_CONTROL)
+		test_reg = self.read(self.REG_TEST)
+
+		return (0, 0, 1, 2)[bool(control_reg & 1<<12) * 2 + test_reg]
+
+
 	def get_temperature(self, **kwargs):
 		""" Returns the temparature of this ADC chip in degC, as measured on the internal diode through the SPI ADC temperature sensor. """
 		return self.adc.temperature(self.adc_number, **kwargs) 
@@ -173,6 +186,15 @@ class ADC_base(object):
 			adc.init(**kwargs)
 		self.sync()
 
+	def get_test_mode(self, **kwargs):
+		""" 
+		Returns the test mode ofthe ADCs. 
+		An error will be raised if the mode is not the same for both ADCs
+		"""
+		test_modes =  [adc.get_test_mode() for adc in self.ADC]
+		if not all([t==test_modes[0] for t in test_modes]):
+			raise SystemError('Error: ADC test modes are not all the same')
+		return test_modes[0]
 
 	def status(self):
 		""" Prints the status of all ADCs on the board"""

@@ -540,7 +540,7 @@ class chFPGA_controller(object):
         """
         return self.default_channels
 
-    def set_data_path(self, source=None, function=None, a=1, b=0, adc_mode='data', adcdaq_mode='data', fft_enable=None, scaler_gain=None):
+    def set_data_path(self, source=None, function=None, a=1, b=0, adc_mode='data', adcdaq_mode='data', fft_bypass=None, scaler_gain=None, channels=None):
         """
             Single command used to set multiple data path settings. The data processing chain is:
             ADC --> ADCDAQ --> |        |
@@ -548,11 +548,16 @@ class chFPGA_controller(object):
                     INJECT --> |        |
         """
         if function is not None:
-            self.set_funcgen_function(function=function, a=a, b-b, channels=channels)
+            self.set_funcgen_function(function=function, a=a, b=b, channels=channels)
 
         if adcdaq_mode is not None:
             self.set_adcdaq_mode(mode=adcdaq_mode, channels=channels)
 
+        if fft_bypass is not None:
+            self.set_fft_bypass(bypass_mode=fft_bypass, channels=channels)
+
+        if scaler_gain is not None:
+            self.set_gain(log2_gain=scaler_gain, channels=channels)
         if adc_mode is not None:
             self.set_adc_mode(mode=adc_mode, channels=channels)
 
@@ -636,6 +641,16 @@ class chFPGA_controller(object):
         self.sync() # make sure the ADC mode is set and that capture  restarts properly with the right period
 
     set_ADC_mode = set_adc_mode # For legacy code compatibility
+
+    def get_adc_mode(self):
+        """
+        Gets the current operating  mode of the ADCs.
+        """
+        if not self.ADC_BOARD.is_present():
+            print 'ADC Board not present. Ignoring get_adc_mode() command'
+            return None
+            
+        return self.ADC_BOARD.ADC.get_test_mode()
 
     def set_adcdaq_mode(self, mode='data', channels=None):
         """
@@ -745,7 +760,7 @@ class chFPGA_controller(object):
 
     set_FFT_bypass = set_fft_bypass # for legacy code compatibility
 
-    def get_FFT_bypass(self):
+    def get_fft_bypass(self):
         """
         Returns a list indicating if the FFT is bypassed or not for each antenna. 
         """
@@ -821,7 +836,15 @@ class chFPGA_controller(object):
         """
         return self.GPIO.get_bitstream_date()
 
+    def get_adc_delays():
+            return self.ANT.get_delays();
+
+    def set_adc_delays():
+            return self.ANT.set_delays();
+
     def read_eye_diagram(self,channels=[0], offset=5):
+        old_delays = self.get_adc_delays()
+        old_adc_mode = self.get_adc_mode()
         self.set_ADC_mode('pulse') # generate pulse pattern
 
         data={}
@@ -834,35 +857,49 @@ class chFPGA_controller(object):
                 adcdaq.set_delay(dly)
                 d[dly,:]=self.ANT[ch].ADCDAQ.get_pattern(period=11)[offset:offset+3];
             data[ch]=d
+        self.set_adc_delays(old_delays) # restore original delays before the function was called
+        self.adc_mode(old_adc_mode)
         return data
 
-    def compute_delays(self,channels=[0], offset=5):
-        data=self.read_eye_diagram(channels, offset=offset)
-        n=np.zeros((8,3),dtype=np.uint8)
+    def compute_adc_delays(self,channels=[0], offset=5):
+
+        current_delay = self.get_adc_delays()
+        data = self.read_eye_diagram(channels, offset=offset)
+        n = np.zeros((8, 3), dtype=np.uint8)
         delays={}
 
         for ch in channels:
             for bit in range(8):
-                mask=1<<bit
-                n[bit,:]=np.sum((data[ch] & mask)/mask,axis=0)
+                mask = 1 << bit
+                n[bit, :] = np.sum((data[ch] & mask) / mask, axis=0)
             #print 'n is ', n
 
-            n_min=np.min(n,axis=0) # minimum number of delay values that allowed the pulse in each slot
-            N=np.argmax(n_min) # slot with the maximum number of possible delays for all bits
-            N=1
+            n_min = np.min(n, axis=0) # minimum number of delay values that allowed the pulse in each slot
+            N = np.argmax(n_min) # slot with the maximum number of possible delays for all bits
+            N = 1
             print 'Aligning bits on sample #%i' % N
 
             print 'CHANNEL %i' % ch
-            m=np.zeros(8,dtype=np.uint8)
-            for bit in range(8):
-                mask=1<<bit
-                d=(data[ch][:,0] & mask)/mask
-                m[bit]=np.sum(d*range(32))/np.sum(d)
-                print 'Bit %i:' % bit, ''.join('.#!O'[d[i] +2*bool(m[bit]==i)] for i in range(len(d))), 'Delay = %2i' % m[bit]
+            computed_delay = np.zeros(8, dtype=np.uint8)
+            for bit_number in range(8):
+                mask = 1 << bit_number
+                d = (data[ch][:, 0] & mask) / mask
+                computed_delay[bit_number] = np.sum(d*range(32)) / np.sum(d)
+                bit_string = ''
+                for delay in range(len(d)):
+                    if delay == current_delay[bit_number]:
+                        bit_string += 'X'
+                    elif delay == computed_delay[bit_number]:
+                        bit_string += '!O'[d[delay]]
+                    else:
+                        bit_string += '.#'[d[delay]]
 
-            delays[ch]=m
+                print 'Bit %i: %s Delay = %2i' % (bit_number, bit_string, computed_delay[bit_number])
 
+            delays[ch]=computed_delay
         return delays
+
+    compute_delays = compute_adc_delays # For legacy software compatibility
 
     def status(self):
         print '----------- chFPGA status ---------------'
@@ -925,20 +962,33 @@ class chFPGA_controller(object):
 
     get_FFT_shift = get_fft_shift # for legacy compatibility
 
-    def print_ramp_errors(self):
+    def check_adc_data_acquisition(self, test_duration = 1):
         """
         Sets the ADC in ramp mode and compare the incoming ramp in real time with an internally generated ramp to combute the total number of words in error (and an error count for each bit)
         """
-        set_adc_mode('ramp')
-        sync()
-        for ant in self.ANT:
-            ant.ADCDAQ.RAMP_ERR_CLR=1
-            ant.ADCDAQ.RAMP_ERR_CLR=0
+        old_adc_mode = self.get_adc_mode()
+        self.set_adc_mode('ramp')
+        self.sync() # sync the board to make sure that data acquisition starts on the right ramp sample
 
+        # Clear the word and bit error counters
+        for ant in self.ANT:
+            ant.ADCDAQ.RAMP_ERR_CLEAR=1
+            ant.ADCDAQ.RAMP_ERR_CLEAR=0
+
+        t0 = time.time();
+        word_error = np.zeros(8)
+        bit_error = np.zeros((8,8))
         try:
-            while 1:
-                for ant in self.ANT:
+            while time.time() - t0 <= test_duration: 
+                for (i, ant) in enumerate(self.ANT):
+                    word_error[i] += ant.ADCDAQ.RAMP_ERR_CTR
+                    for bit_number in range(8):
+                        bit_error[i,bit_number] += ((ant.ADCDAQ.BIT_ERR_CTR >> (2** (bit_number*4))) & 0x0F)
                     print 'CH%i: %3i (%08X)' % (ant.ant_number, ant.ADCDAQ.RAMP_ERR_CTR, ant.ADCDAQ.BIT_ERR_CTR),
                 print
         except KeyboardInterrupt:
             pass
+        total_word_errors = np.sum(word_error)
+        print 'There was %i word errors' % total_word_errors
+
+        return total_word_errors
