@@ -319,7 +319,7 @@ class chFPGA_controller(object):
         # We need to initialize the ADC board befor we set ANT because the delay blocks need a clock
         self.ADC_BOARD.init(sampling_frequency = sampling_frequency, reference_frequency=reference_frequency)
         self.ADC_BOARD.status()
-
+        self.sync() # might be needed  to make sure that the clock is running to set delays
 
         self.FMC_present = self.ADC_BOARD.is_present()
 
@@ -840,8 +840,8 @@ class chFPGA_controller(object):
     def get_adc_delays(self):
             return self.ANT.get_delays();
 
-    def set_adc_delays(self):
-            return self.ANT.set_delays();
+    def set_adc_delays(self, delay_table):
+            return self.ANT.set_delays(delay_table);
 
     def read_eye_diagram(self,channels=[0], offset=5):
         old_delays = self.get_adc_delays()
