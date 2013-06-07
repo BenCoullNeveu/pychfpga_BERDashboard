@@ -166,7 +166,7 @@ if __name__ == "__main__":
     c = chFPGA_controller.chFPGA_controller(ip_address='10.10.10.11', port_number=41000, adc_delay_table=ADC_DELAY_TABLE, init=1, sampling_frequency=args.sampling_frequency*1e6, reference_frequency=10e6) # pylint: disable=C0103
     chFPGA_config = c.get_config()
     #c.sync() sync means crash!!!
-    corr = setup_corr(c, integration_period=0.5, args=args)
+    corr = setup_corr(c, integration_period=1.0, args=args)
     corr.execute()
     c.close()
 
