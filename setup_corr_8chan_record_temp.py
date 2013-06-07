@@ -9,14 +9,15 @@ History:
 """
 
 from pychime.core import chFPGA_controller
-from pychime.core import chFPGA_receiver_raw
+#from pychime.core import chFPGA_receiver_raw
 import numpy as np
 import time, pylab, file_utils, os
 import pickle
 import getpass #used to get username
 import sys
 import argparse
-import socket
+from subprocess import Popen
+#import socket
 
 class setup_corr():
     '''
@@ -95,7 +96,7 @@ class setup_corr():
             pickle.dump(config, datainfofile)
             datainfofile.write('\n"""\n')
             datainfofile.close()
-
+            proc = Popen(["./chr", "net", "41001", (self.basename+'/out_'+str(nowtime)+".h5"), str(nowtime)], cwd='/home/chime/pychime')
             # Debug by JFC
             #for corr in self.fpga_ctrl.CORR:
             #    corr.ACC.status()
@@ -119,12 +120,14 @@ class setup_corr():
             datainfofile.close()
             timefile.close()
             temperaturefile.close()
+            proc.terminate()
             print "tried to close nicely"
         except:
             self.fpga_ctrl.close()
             datainfofile.close()
             timefile.close()
             temperaturefile.close()
+            proc.terminate()
             raise
 
 # Default data and clock line delays for the two FMC boards/ML605 combination.
@@ -163,7 +166,7 @@ if __name__ == "__main__":
     c = chFPGA_controller.chFPGA_controller(ip_address='10.10.10.11', port_number=41000, adc_delay_table=ADC_DELAY_TABLE, init=1, sampling_frequency=args.sampling_frequency*1e6, reference_frequency=10e6) # pylint: disable=C0103
     chFPGA_config = c.get_config()
     #c.sync() sync means crash!!!
-    corr = setup_corr(c, integration_period=0.5, args=args)
+    corr = setup_corr(c, integration_period=1.0, args=args)
     corr.execute()
     c.close()
 
