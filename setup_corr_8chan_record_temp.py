@@ -17,6 +17,7 @@ import getpass #used to get username
 import sys
 import argparse
 from subprocess import Popen
+import signal
 #import socket
 
 class setup_corr():
@@ -116,18 +117,18 @@ class setup_corr():
             timefile.close()
             temperaturefile.close()
         except (KeyboardInterrupt, SystemExit):
+            proc.send_signal(signal.SIGINT)
             self.fpga_ctrl.close()
             datainfofile.close()
             timefile.close()
             temperaturefile.close()
-            proc.terminate()
             print "tried to close nicely"
         except:
+            proc.send_signal(signal.SIGINT)
             self.fpga_ctrl.close()
             datainfofile.close()
             timefile.close()
             temperaturefile.close()
-            proc.terminate()
             raise
 
 # Default data and clock line delays for the two FMC boards/ML605 combination.
@@ -166,7 +167,7 @@ if __name__ == "__main__":
     c = chFPGA_controller.chFPGA_controller(ip_address='10.10.10.11', port_number=41000, adc_delay_table=ADC_DELAY_TABLE, init=1, sampling_frequency=args.sampling_frequency*1e6, reference_frequency=10e6) # pylint: disable=C0103
     chFPGA_config = c.get_config()
     #c.sync() sync means crash!!!
-    corr = setup_corr(c, integration_period=0.5, args=args)
+    corr = setup_corr(c, integration_period=1.0, args=args)
     corr.execute()
     c.close()
 
