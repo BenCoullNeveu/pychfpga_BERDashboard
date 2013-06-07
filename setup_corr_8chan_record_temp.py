@@ -17,6 +17,7 @@ import getpass #used to get username
 import sys
 import argparse
 from subprocess import Popen
+import signal
 #import socket
 
 class setup_corr():
@@ -116,18 +117,18 @@ class setup_corr():
             timefile.close()
             temperaturefile.close()
         except (KeyboardInterrupt, SystemExit):
+            proc.send_signal(signal.SIGINT)
             self.fpga_ctrl.close()
             datainfofile.close()
             timefile.close()
             temperaturefile.close()
-            proc.terminate()
             print "tried to close nicely"
         except:
+            proc.send_signal(signal.SIGINT)
             self.fpga_ctrl.close()
             datainfofile.close()
             timefile.close()
             temperaturefile.close()
-            proc.terminate()
             raise
 
 # Default data and clock line delays for the two FMC boards/ML605 combination.

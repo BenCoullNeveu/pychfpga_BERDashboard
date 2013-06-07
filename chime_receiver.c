@@ -236,14 +236,7 @@ int main(int argc, char **argv) {
   corr_frame_id_value = (char) 0xF0;
 
 
-  lastTimestamp = 0;
-  first = 1;
 
-  // FILE *fp;
-  // fp=fopen("test.bin", "wb");
-  number_of_frames = 0;
-  tic = clock();
-  x=0;
   for (int loop_number = 0; loop_number < file_write_loops; ++loop_number)
   {
 
@@ -252,7 +245,15 @@ int main(int argc, char **argv) {
   fid=H5Fcreate(outfname,H5F_ACC_TRUNC,H5P_DEFAULT,H5P_DEFAULT);
   //hid_t H5PTcreate_fl( hid_t loc_id, const char * dset_name, hid_t dtype_id, hsize_t chunk_size, int compression )
   ptable = H5PTcreate_fl(fid, "Correlator_Data", my_dt, (hsize_t)1, -1);
+  lastTimestamp = 0;
+  first = 1;
 
+  // FILE *fp;
+  // fp=fopen("test.bin", "wb");
+  number_of_frames = 0;
+  tic = clock();
+  x=0;
+  
   while (x < 3600) {
 
     signal(SIGINT, sig_handler);
