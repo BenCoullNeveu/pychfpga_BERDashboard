@@ -67,24 +67,40 @@ if __name__ == '__main__':
     print "Results for BOARD", fname
     result = []
     ans = []
+    reas = []
+    range_val = []
     for i in range(whole_input_num):
         result.append(abs(1.0 - whole_input[i]/current[i]))
+        range_val.append(total_range[i]*current[i])
         if (result[i] < total_range[i]):
             ans.append('Pass')
-        else:
+            reas.append('Current is within %g +/- %g' %(current[i], range_val[i]))
+        elif ((1.0-whole_input[i]/current[i]) > 0):
             ans.append('Fail')
-        print "For", v1[i], "V power supply, the current is: ", whole_input[i], ". Result: ", ans[i]
+            reas.append('Current is too low below the range of %g +/- %g' %(current[i], range_val[i]))
+        elif ((1.0 - whole_input[i]/current[i] < 0)):
+            ans.append('Fail')
+            reas.append('Current is too high above the range of %g +/- %g' %(current[i], range_val[i]))
+        print "For", v1[i], "V power supply, the current is: ", whole_input[i], ". \nResult: ", ans[i], ". ", reas[i]
 
 #checking results for the 2 buck regular voltages
     bresult = []
     bans = []
+    breas = []
+    brange_val = []
     for i in range(buck_input_num):
         bresult.append(abs(1.0 - buck_input[i]/bvoltage[i]))
+        brange_val.append(brange[i]*bvoltage[i])
         if (bresult[i] <brange[i]):
             bans.append('Pass')
-        else:
+            breas.append('Voltage is within %g +/- %g' %(bvoltage[i], brange_val[i]))
+        elif ((1.0 - buck_input[i]/bvoltage[i]) > 0):
             bans.append('Fail')
-        print "For the buck regulato", v2[i], ", the current is: ", buck_input[i], ". Result: ", bans[i]
+            breas.append('Current is too low below the range of %g +/- %g' %(bvoltage[i], brange_val[i]))
+        elif ((1.0 - buck_input[i]/bvoltage[i]) < 0):
+            bans.append('Fail')
+            breas.append('Current is too high above the range of %g +/- %g' %(bvoltage[i], brange_val[i]))
+        print "For the buck regulators", v2[i], "V, the current is: ", buck_input[i], "Result: ", bans[i], ". ", breas[i]
 
 #writing the results to file
     fo = open(fname + "_log_file.txt", "a")
@@ -96,9 +112,9 @@ if __name__ == '__main__':
         fo.write("\nFor %g V buck regulators, the reference voltage is: %g" %(v2[i], bvoltage[i]))
     fo.write("\n\nThe currents drawn for each of the power supply: \n")
     for i in range(whole_input_num):
-        fo.write("\nFor %g V, the current reading is: %g. Result: %s"  %(v1[i], whole_input[i], ans[i]))
+        fo.write("\nFor %g V, the current reading is: %g. Result: %s. %s"  %(v1[i], whole_input[i], ans[i], reas[i]))
     for i in range(buck_input_num):
-        fo.write("\nFor %g V buck regulators, the voltage reading is: %g. Result: %s" %(v2[i], buck_input[i], bans[i]))
+        fo.write("\nFor %g V buck regulators, the voltage reading is: %g. Result: %s. %s" %(v2[i], buck_input[i], bans[i], breas[i]))
 
 #Overall test
     complete_array = ans + bans
