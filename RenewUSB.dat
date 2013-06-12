@@ -1,0 +1,66 @@
+Fri 06/07/2013, 11:12:53.41
+PCI\VEN_8086&DEV_283A&SUBSYS_01DD1028&REV_02\3&172E68DD&0&D7: Intel(R) ICH8 Family USB2 Enhanced Host Controller - 283A
+USB\ROOT_HUB20\4&22414BC4&0                                 : USB Root Hub
+USB\VID_0403&PID_6010&MI_01\6&292283C&6&0001                : USB Serial Converter B
+USB\ROOT_HUB20\4&B2007EB&0                                  : USB Root Hub
+USB\VID_0644&PID_0200\0000010E5B1B                          : USB Mass Storage Device
+USB\VID_0A16&PID_1200\10050300000023                        : USB Mass Storage Device
+USB\VID_0403&PID_6010&MI_00\6&292283C&7&0000                : USB Serial Converter A
+USB\VID_0A81&PID_0101\5&33D6647&0&1                         : USB Composite Device
+PCI\VEN_8086&DEV_2830&SUBSYS_01DD1028&REV_02\3&172E68DD&0&E8: Intel(R) ICH8 Family USB Universal Host Controller - 2830
+USB\VID_0403&PID_6010&MI_01\6&292283C&7&0001                : USB Serial Converter B
+PCI\VEN_8086&DEV_2831&SUBSYS_01DD1028&REV_02\3&172E68DD&0&E9: Intel(R) ICH8 Family USB Universal Host Controller - 2831
+USB\VID_0A16&PID_1200\5&FAE28C5&1&1                         : USB Mass Storage Device
+USB\VID_13FD&PID_0940\FFFFFFFFFFFFFFFFFFFFFFFF              : USB Mass Storage Device
+PCI\VEN_8086&DEV_2832&SUBSYS_01DD1028&REV_02\3&172E68DD&0&EA: Intel(R) ICH8 Family USB Universal Host Controller - 2832
+USB\VID_0A16&PID_1200\5&FAE28C5&2&1                         : USB Mass Storage Device
+USB\VID_19D2&PID_0192\5&22464D1&0&6                         : USB Composite Device
+USB\VID_0A81&PID_0101\5&39CE3D35&1&1                        : USB Composite Device
+PCI\VEN_8086&DEV_2834&SUBSYS_01DD1028&REV_02\3&172E68DD&0&D0: Intel(R) ICH8 Family USB Universal Host Controller - 2834
+USB\VID_0403&PID_6010\210203336963                          : USB Composite Device
+USB\VID_19D2&PID_0192\5&FAE28C5&0&2                         : USB Composite Device
+USB\ROOT_HUB\4&18151B00&0                                   : USB Root Hub
+PCI\VEN_8086&DEV_2835&SUBSYS_01DD1028&REV_02\3&172E68DD&0&D1: Intel(R) ICH8 Family USB Universal Host Controller - 2835
+USB\ROOT_HUB\4&21A622FE&0                                   : USB Root Hub
+USB\ROOT_HUB\4&2B6819FE&0                                   : USB Root Hub
+PCI\VEN_8086&DEV_2836&SUBSYS_01DD1028&REV_02\3&172E68DD&0&EF: Intel(R) ICH8 Family USB2 Enhanced Host Controller - 2836
+USB\ROOT_HUB\4&37156B71&0                                   : USB Root Hub
+USB\VID_0403&PID_6010&MI_00\6&292283C&6&0000                : USB Serial Converter A
+USB\ROOT_HUB\4&C583F7A&0                                    : USB Root Hub
+USB\ROOT_HUB20\4&22414BC4&0                                 : USB Root Hub
+USB\VID_19D2&PID_0192&MI_01\6&3507EC1F&0&0001               : ZTE Technologies MSM
+USB\VID_0644&PID_0200\0000010E5B1B                          : USB Mass Storage Device
+USBSTOR\DISK&VEN_TREK&PROD_TDMINIG4&REV_1.30\10050300000023&0: TREK TDMINIG4 USB Device
+USB\VID_04D8&PID_003F\5&A211576&0&2                         : USB Input Device
+USB\VID_19D2&PID_0192&MI_02\6&1B2BCE36&0&0002               : ZTE Technologies MSM
+USB\VID_03FD&PID_0007\5&39CE3D35&0&2                        : Xilinx Platform Cable USB Firmware Loader
+USB\VID_0403&PID_6010&MI_00\6&292283C&7&0000                : USB Serial Converter A
+USB\VID_413C&PID_2107\5&33D6647&2&2                         : USB Input Device
+USB\VID_19D2&PID_0192&MI_02\6&3507EC1F&0&0002               : ZTE Technologies MSM
+USB\VID_03FD&PID_0008\5&22464D1&0&4                         : Xilinx USB Cable
+USB\VID_0403&PID_6010&MI_01\6&292283C&7&0001                : Digilent Adept USB Device
+USB\VID_03FD&PID_0008\5&22464D1&0&6                         : Xilinx USB Cable
+USB\VID_413C&PID_2107\5&39CE3D35&1&2                        : USB Input Device
+USB\VID_0A81&PID_0101&MI_00\6&201F2562&0&0000               : USB Input Device
+USB\ROOT_HUB20\4&B2007EB&1                                  : USB Root Hub
+USB\VID_03FD&PID_0008\5&33D6647&0&2                         : Xilinx USB Cable
+USBSTOR\CDROM&VEN_MATSHITA&PROD_DVD-R___UJ-8A8&REV_HA13\FFFFFFFFFFFFFFFFFFFFFFFF&0: MATSHITA DVD-R   UJ-8A8 USB Device
+USB\VID_0A81&PID_0101&MI_01\6&201F2562&0&0001               : USB Input Device
+USB\VID_03FD&PID_0008\5&39CE3D35&0&2                        : Xilinx USB Cable
+USB\VID_413C&PID_2107\5&39CE3D35&1&1                        : USB Input Device
+USBSTOR\DISK&VEN_TREK&PROD_TDMINIG4&REV_1.30\6&A0EF355&0&10050300000023&0: TREK TDMINIG4 USB Device
+USB\VID_03FD&PID_000D\5&22464D1&0&4                         : Xilinx Embedded Platform USB Firmware Loader
+USBSTOR\DISK&VEN_TEAC&PROD_USB___HS-CF_CARD&REV_4.00\0000010E5B1B&0: TEAC USB   HS-CF Card USB Device
+USB\VID_03FD&PID_000D\5&22464D1&0&6                         : Xilinx Embedded Platform USB Firmware Loader
+USBSTOR\DISK&VEN_TREK&PROD_TDMINIG4&REV_1.30\6&22A81AFF&0&10050300000023&0: TREK TDMINIG4 USB Device
+USBSTOR\DISK&VEN_TEAC&PROD_USB___HS-MS_CARD&REV_4.00\0000010E5B1B&2: TEAC USB   HS-MS Card USB Device
+USB\VID_0A81&PID_0101&MI_00\6&A942FD2&0&0000                : USB Input Device
+USB\VID_19D2&PID_0192&MI_00\6&1B2BCE36&0&0000               : ZTE Technologies MSM
+USB\VID_0A81&PID_0101&MI_01\6&A942FD2&0&0001                : USB Input Device
+USBSTOR\DISK&VEN_TEAC&PROD_USB___HS-SD_CARD&REV_4.00\0000010E5B1B&3: TEAC USB   HS-SD Card USB Device
+USB\VID_19D2&PID_0192&MI_00\6&3507EC1F&0&0000               : ZTE Technologies MSM
+USB\VID_046D&PID_C016\5&39CE3D35&1&1                        : USB Input Device
+USB\VID_19D2&PID_0192&MI_01\6&1B2BCE36&0&0001               : ZTE Technologies MSM
+USBSTOR\DISK&VEN_TEAC&PROD_USB___HS-XD/SM&REV_4.00\0000010E5B1B&1: TEAC USB   HS-xD/SM USB Device
+Wed 06/12/2013, 10:33:37.44
+Wed 06/12/2013, 10:33:39.79
