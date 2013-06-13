@@ -37,7 +37,8 @@ class test_adc_spectrum(test_BaseClass):
         indicies2 = np.arange(freqs_nyquest2.size)
         indicies3 = np.concatenate([indicies1,indicies2])
         indicies = np.concatenate([indicies3,indicies1])
-        datas = np.empty([8,freqs.size], dtype=np.complex)
+        datas = np.zeros([8,freqs.size], dtype=np.complex)
+        all_timestreams = np.zeros([freqs.size,8,2048])
         fl6062a.set_amplitude(5, signal_generator)
         for i,freq in enumerate(freqs):
             if (i % 7) == 0:
@@ -49,12 +50,13 @@ class test_adc_spectrum(test_BaseClass):
                 for j in xrange(8):
                     try:
                         data[j] = np.fft.fft(data_ts[j])[:1024]
+                        all_timestreams[i,j,:] = data_ts[j]
                     except KeyError:
                         print "missed data on channel " + str(j)
                 print freq/1e6, data[[0,1,2,3,4,5,6,7],indicies[i]]
                 for j in xrange(8):
                     datas[j,i] = data[j,indicies[i]]
-        return freqs, datas
+        return freqs, datas, all_timestreams
         
     def plot_response(self, data_return, fname):
         freqs = data_return[0]
@@ -80,6 +82,7 @@ class test_adc_spectrum(test_BaseClass):
             data_return = self.measure_adc_response(signal_generator)
             np.save(fname+'_freq_sweep.npy', data_return[0])
             np.save(fname + '_analog_data.npy', data_return[1])
+            np.save(fname + "all_timestreams.npy", data_return[2])
             self.plot_response(data_return, fname)
         except:
             self.fpga_recv.close()
