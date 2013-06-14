@@ -19,7 +19,7 @@ class test_adc_histogram(test_BaseClass):
         self.fpga_ctrl.set_corr_reset(True)
         self.fpga_ctrl.set_FFT_bypass(True, channels=[0,1,2,3,4,5,6,7])
         self.fpga_ctrl.set_data_source('adc', channels=[0,1,2,3,4,5,6,7])
-        self.fpga_ctrl.set_ADC_mode(mode='data')
+        self.fpga_ctrl.set_ADC_mode(mode='ramp')
         time.sleep(1)
         self.fpga_ctrl.start_data_capture(burst_period_in_seconds=0.1, channels=[0,1,2,3,4,5,6,7])
         #self.fpga_ctrl.sync()
