@@ -7,7 +7,10 @@ History:
 2013-05-13 ADH: First version.
 """
 
-from pychime.core import chFPGA_controller as ch_fpga
+from chrec import chrec
+from pychime.core import chFPGA_controller
+import argparse
+import time
 
 # First 8 values are the delays for bits 0 to 7; 8th value is the delay for the
 # clock line.
@@ -34,25 +37,27 @@ ADC_DELAYS_REV2_SN0001_KC705_FMC700 = (
 )
 
 # Swop this out if the FMC serial number changes.
-DC_DELAY_TABLE = ADC_DELAYS_REV2_SN0001_KC705_FMC700
+ADC_DELAY_TABLE = ADC_DELAYS_REV2_SN0001_KC705_FMC700
 
 if __name__ == "__main__":
   # Get command line arguments.
   parser = argparse.ArgumentParser(description = __doc__.split('\n')[0])
   parser.add_argument("-m", "--message", \
-                      help = "Additional message to write to data header, " .\
+                      help = "Additional message to write to data header, " +\
                              "quotes (\"example message\")")
-  parser.add_argument("-f", "--samp_freq", action = "store", type = float \
-                      default = 850, 
+  parser.add_argument("-f", "--samp_freq", action = "store", type = float, \
+                      default = 850, \
                       help = "Sampling frequency of the ADC in MHz.")
   args = parser.parse_args()
 
   print "Sampling frequency is %0.3f MHz." % args.samp_freq
 
-  # Instantiate the FPGA controller.
-  fpga = chFPGA_controller.chFPGA_controller( \
-             ip_address = "10.10.10.11", port_number = 41000, \ 
-             adc_delay_table = ADC_DELAY_TABLE, init = 1, \
+  # Create the acquisition object.
+  acq = chrec.acq()
+
+  # Create the FPGA controller object.
+  fpga = chFPGA_controller.chFPGA_controller(ip_address = "10.10.10.11", \
+             port_number = 41000, adc_delay_table = ADC_DELAY_TABLE, init = 1, \
              sampling_frequency = args.samp_freq * 1e6, \
              reference_frequency = 10e6) # pylint: disable=C0103
 
@@ -68,4 +73,9 @@ if __name__ == "__main__":
   fpga.start_corr_capture(integration_period = int_period)
   print "Correlator started with an integration time of %.1f s" % (int_period)
 
+  # Start the acquisition.
+  acq.start(1234)
 
+  time.sleep(5.4)
+
+  acq.stop()
