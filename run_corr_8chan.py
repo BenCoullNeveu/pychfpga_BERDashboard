@@ -97,7 +97,7 @@ class setup_corr():
             pickle.dump(config, datainfofile)
             datainfofile.write('\n"""\n')
             datainfofile.close()
-            proc = Popen(["./chr", "net", "41001", (self.basename+'/out_'+str(nowtime)+".h5"), str(nowtime)], cwd='/home/chime/pychime')
+            proc = Popen(["./chr_old", "net", "41001", (self.basename+'/out_'+str(nowtime)+".h5"), str(nowtime)], cwd='/home/ahincks/code/pychime')
             # Debug by JFC
             #for corr in self.fpga_ctrl.CORR:
             #    corr.ACC.status()

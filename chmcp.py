@@ -7,7 +7,7 @@ History:
 2013-05-13 ADH: First version.
 """
 
-from chrec import chrec
+from chrx import chrx
 from pychime.core import chFPGA_controller
 import argparse
 import time
@@ -53,7 +53,7 @@ if __name__ == "__main__":
   print "Sampling frequency is %0.3f MHz." % args.samp_freq
 
   # Create the acquisition object.
-  acq = chrec.acq()
+  acq = chrx.acq()
 
   # Create the FPGA controller object.
   fpga = chFPGA_controller.chFPGA_controller(ip_address = "10.10.10.11", \
@@ -74,8 +74,8 @@ if __name__ == "__main__":
   print "Correlator started with an integration time of %.1f s" % (int_period)
 
   # Start the acquisition.
-  acq.start(1234)
+  acq.start(41001)
 
-  time.sleep(5.4)
+  time.sleep(10)
 
   acq.stop()
