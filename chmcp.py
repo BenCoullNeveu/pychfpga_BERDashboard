@@ -52,9 +52,6 @@ if __name__ == "__main__":
 
   print "Sampling frequency is %0.3f MHz." % args.samp_freq
 
-  # Create the acquisition object.
-  acq = chrx.acq()
-
   # Create the FPGA controller object.
   fpga = chFPGA_controller.chFPGA_controller(ip_address = "10.10.10.11", \
              port_number = 41000, adc_delay_table = ADC_DELAY_TABLE, init = 1, \
@@ -69,6 +66,12 @@ if __name__ == "__main__":
   fpga.set_FFT_shift(fft_shift = 2**5 - 1, channels = all_chan)
   fpga.set_gain(log2_gain = 1, channels = all_chan)
 
+  # Create the acquisition object.
+  acq = chrx.acq()
+
+  # Tell the acquisition object where to get the FPGA temperatures.
+  acq.set_fpga_temp_func(fpga.ADC_BOARD.AmbTemp.get_temperature)
+
   # Start the correlator.
   fpga.start_corr_capture(integration_period = int_period)
   print "Correlator started with an integration time of %.1f s" % (int_period)
@@ -76,6 +79,10 @@ if __name__ == "__main__":
   # Start the acquisition.
   acq.start(41001)
 
-  time.sleep(10)
-
-  acq.stop()
+  try:
+    while True:
+      time.sleep(1)
+      print fpga.ADC_BOARD.AmbTemp.get_temperature()
+    acq.stop()
+  except(KeyboardInterrupt, SystemExit):
+    acq.stop()
