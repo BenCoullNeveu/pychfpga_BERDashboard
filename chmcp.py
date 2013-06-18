@@ -69,9 +69,6 @@ if __name__ == "__main__":
   # Create the acquisition object.
   acq = chrx.acq()
 
-  # Tell the acquisition object where to get the FPGA temperatures.
-  acq.set_fpga_temp_func(fpga.ADC_BOARD.AmbTemp.get_temperature)
-
   # Start the correlator.
   fpga.start_corr_capture(integration_period = int_period)
   print "Correlator started with an integration time of %.1f s" % (int_period)
@@ -81,8 +78,9 @@ if __name__ == "__main__":
 
   try:
     while True:
-      time.sleep(1)
-      print fpga.ADC_BOARD.AmbTemp.get_temperature()
+      # Pass the acquisition object the board temperatures.
+      acq.pass_fpga_adc_temp(0, fpga.ADC_BOARD.AmbTemp.get_temperature())
+      time.sleep(1.0)
     acq.stop()
   except(KeyboardInterrupt, SystemExit):
     acq.stop()
