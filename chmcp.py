@@ -60,7 +60,7 @@ if __name__ == "__main__":
 
   # Set FPGA controller parameters.
   all_chan = range(8)
-  int_period = 1.0
+  int_period = 0.1
   fpga.set_data_source("adc") # This should come first.
   fpga.set_FFT_bypass(False, channels = all_chan)
   fpga.set_FFT_shift(fft_shift = 2**5 - 1, channels = all_chan)
@@ -68,6 +68,11 @@ if __name__ == "__main__":
 
   # Create the acquisition object.
   acq = chrx.acq()
+
+  # Create acquisition header.
+  acq.add_header_item("head1", [1, 2, 3, 4])
+  acq.add_header_item("head2", "val2")
+  acq.add_header_item("head3", 23.3222)
 
   # Start the correlator.
   fpga.start_corr_capture(integration_period = int_period)
