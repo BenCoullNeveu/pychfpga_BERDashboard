@@ -110,7 +110,7 @@ if __name__ == "__main__":
   print "Correlator started with an integration time of %.1f s" % (int_period)
 
   # Start the acquisition.
-  acq.start(41001)
+  acq.start(port = 41001, samp_per_frame = 50, frame_per_file = 1024)
 
   try:
     while True:
