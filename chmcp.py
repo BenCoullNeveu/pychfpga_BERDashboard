@@ -10,6 +10,8 @@ History:
 from chrx import chrx
 from pychime.core import chFPGA_controller
 import argparse
+import getpass
+import numpy as np
 import time
 
 # First 8 values are the delays for bits 0 to 7; 8th value is the delay for the
@@ -42,7 +44,7 @@ ADC_DELAY_TABLE = ADC_DELAYS_REV2_SN0001_KC705_FMC700
 if __name__ == "__main__":
   # Get command line arguments.
   parser = argparse.ArgumentParser(description = __doc__.split('\n')[0])
-  parser.add_argument("-m", "--message", \
+  parser.add_argument("-m", "--message", required = True, \
                       help = "Additional message to write to data header, " +\
                              "quotes (\"example message\")")
   parser.add_argument("-f", "--samp_freq", action = "store", type = float, \
@@ -69,10 +71,39 @@ if __name__ == "__main__":
   # Create the acquisition object.
   acq = chrx.acq()
 
-  # Create acquisition header.
-  acq.add_header_item("head1", [1, 2, 3, 4])
-  acq.add_header_item("head2", "val2")
-  acq.add_header_item("head3", 23.3222)
+  # Pass FPGA configuration variables to header.
+  config = vars(fpga.get_config())
+  for name in config:
+    val = config[name]
+
+    # Do the annoying conversion of numpy types to native Python types. Sigh.
+    if isinstance(val, (list, tuple)):
+      if isinstance(val[0], (list, tuple)):
+        val = reduce(lambda a, b: a + b, val)
+      if not isinstance(val[0], str):
+        try:
+          if val[0].dtype.kind in ('i', 'u', 'f'):
+            val = list(np.asscalar(x) for x in val)
+        except:
+          if type(val[0]) == bool:
+            val = list(int(x) for x in val)
+          else:
+            val = list(x for x in val)
+      print type(val[0])
+    else:
+      if not isinstance(val, str):
+        try:
+          if val.dtype.kind in ('i', 'u', 'f'):
+            val = np.asscalar(val)
+        except:
+          a = 1  # Placeholder.
+
+    # Now send FPGA information send to acquisition object's header.
+    acq.add_header_item(name, val)
+
+  # Add some more stuff to the header.
+  acq.add_header_item("run_message", args.message)
+  acq.add_header_item("system_user", getpass.getuser())
 
   # Start the correlator.
   fpga.start_corr_capture(integration_period = int_period)
