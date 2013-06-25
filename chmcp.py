@@ -63,15 +63,15 @@ if __name__ == "__main__":
   # Set FPGA controller parameters.
   all_chan = range(8)
   Nant = 8
-  int_period = 0.01
+  int_period = 0.25
   fpga.set_data_source("adc") # This should come first.
   fpga.set_FFT_bypass(False, channels = all_chan)
   fpga.set_FFT_shift(fft_shift = 2**5 - 1, channels = all_chan)
   fpga.set_gain(log2_gain = 1, channels = all_chan)
   #Make sure FPGA throttling is fast enough to send all the data
   #FPGA doesn't seem to change this without a reset...
-  read_rate = int(np.floor(np.log2(int_period*4*125e6/2/(Nant*(Nant+1)))))
-  fpga.GPIO.HOST_FRAME_READ_RATE = read_rate
+  #read_rate = int(np.floor(np.log2(int_period*4*125e6/2/(Nant*(Nant+1)))))
+  #fpga.GPIO.HOST_FRAME_READ_RATE = read_rate
 
   # Create the acquisition object.
   acq = chrx.acq()
@@ -115,7 +115,7 @@ if __name__ == "__main__":
   print "Correlator started with an integration time of %.1f s" % (int_period)
 
   # Start the acquisition.
-  acq.start(port = 41001, samp_per_frame = 100, frame_per_file = 1024)
+  acq.start(port = 41001, samp_per_frame = 40, frame_per_file = 360)
 
   try:
     while True:
