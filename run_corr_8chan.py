@@ -11,7 +11,7 @@ History:
 from pychime.core import chFPGA_controller
 #from pychime.core import chFPGA_receiver_raw
 import numpy as np
-import time, pylab, file_utils, os
+import time, pylab, os
 import pickle
 import getpass #used to get username
 import sys

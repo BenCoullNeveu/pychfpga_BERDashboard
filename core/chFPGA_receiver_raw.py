@@ -11,7 +11,7 @@ import time
 
 import numpy as np
 
-import core.SocketIO as SocketIO
+import SocketIO
 
 class ReceiverThread(threading.Thread):        
     BUF_SIZE=65536
