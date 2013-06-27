@@ -48,7 +48,7 @@ if __name__ == "__main__":
                       help = "Additional message to write to data header, " +\
                              "quotes (\"example message\")")
   parser.add_argument("-f", "--samp_freq", action = "store", type = float, \
-                      default = 850, \
+                      default = 800, \
                       help = "Sampling frequency of the ADC in MHz.")
   args = parser.parse_args()
 
