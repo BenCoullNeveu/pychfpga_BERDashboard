@@ -94,7 +94,6 @@ if __name__ == "__main__":
             val = list(int(x) for x in val)
           else:
             val = list(x for x in val)
-      print type(val[0])
     else:
       if not isinstance(val, str):
         try:
@@ -120,7 +119,7 @@ if __name__ == "__main__":
   try:
     while True:
       # Pass the acquisition object the board temperatures.
-      acq.pass_fpga_adc_temp(0, fpga.ADC_BOARD.AmbTemp.get_temperature())
+      acq.pass_fpga_amb_temp(0, fpga.ADC_BOARD.AmbTemp.get_temperature())
       time.sleep(1.0)
     acq.stop()
   except(KeyboardInterrupt, SystemExit):
