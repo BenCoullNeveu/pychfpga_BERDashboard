@@ -75,7 +75,6 @@ if __name__ == "__main__":
 
   # Create the acquisition object. Pass it the configuration settings so that it
   # can initialise.
-  print conf
   acq = chrx.acq(conf)
 
   # Create the FPGA controller object.
