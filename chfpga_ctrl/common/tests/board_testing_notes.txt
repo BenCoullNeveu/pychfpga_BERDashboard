@@ -1,0 +1,16 @@
+
+   FPGA Board frequency:      200.000 MHz
+   CTRL_CLK frequency:        125.000 MHz
+   ANT_CLK frequency:         200.000 MHz (S
+   Correlator frequency:      225.000 MHz
+   FMC Reference frequency:    10.000 MHz
+   MGT Ref clock frequency:     0.000 MHz
+   MGT word frequency:          0.000 MHz
+   ADC0 clock frequency:      200.000 MHz
+   ADC1 clock frequency:      200.000 MHz
+   ADC2 clock frequency:      200.000 MHz
+   ADC3 clock frequency:      200.000 MHz
+   ADC4 clock frequency:      200.000 MHz
+   ADC5 clock frequency:      200.000 MHz
+   ADC6 clock frequency:      199.999 MHz
+   ADC7 clock frequency:      200.000 MHz
