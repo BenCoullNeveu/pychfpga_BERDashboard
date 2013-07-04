@@ -50,7 +50,7 @@ if __name__ == "__main__":
         error = "Missing value or section."
       print "Error parsing %s: %s" % (sec_string, error)
     exit()
-
+        
   print "Sampling frequency is %0.3f MHz." % float(conf["fpga"]["samp_freq"])
 
   # Build up the adc_delay_table.
@@ -77,7 +77,6 @@ if __name__ == "__main__":
   # can initialise.
   print conf
   acq = chrx.acq(conf)
-  exit()
 
   # Create the FPGA controller object.
   fpga = chFPGA_controller.chFPGA_controller( \
@@ -92,8 +91,8 @@ if __name__ == "__main__":
   all_chan = range(conf["n_antenna"])
   fpga.set_data_source("adc") # This should come first.
   fpga.set_FFT_bypass(False, channels = all_chan)
-  fpga.set_FFT_shift(fft_shift = 2**5 - 1, channels = all_chan)
-  fpga.set_gain(log2_gain = 1, channels = all_chan)
+  fpga.set_FFT_shift(conf["fpga"]["fft_shift"], channels = all_chan)
+  fpga.set_gain(conf["fpga"]["log2_gain"], channels = all_chan)
 
   #Make sure FPGA throttling is fast enough to send all the data
   #FPGA doesn't seem to change this without a reset...
