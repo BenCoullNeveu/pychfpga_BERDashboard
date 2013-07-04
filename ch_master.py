@@ -143,7 +143,8 @@ if __name__ == "__main__":
 
   try:
     while True:
-      # Pass the acquisition object the board temperatures.
+      # Pass the acquisition object the board temperatures. This is a temporary
+      # way of doing this!
       acq.pass_fpga_amb_temp(0, fpga.ADC_BOARD.AmbTemp.get_temperature())
       time.sleep(1.0)
     acq.stop()

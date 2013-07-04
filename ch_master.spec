@@ -26,5 +26,6 @@ n_freq    = integer(min = 1)
   [[serial]]
     path = string
     n_adc = integer(min = 1)
+    timeout = float(min = 0)
     [[[channel]]]
   [[cal]]
