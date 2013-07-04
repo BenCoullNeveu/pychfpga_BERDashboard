@@ -9,37 +9,16 @@ History:
 
 from chrx import chrx
 from pychime.core import chFPGA_controller
+from configobj import *
+from ch_conf import conf_dict
+from validate import Validator
 import argparse
 import getpass
 import numpy as np
 import time
 
-# First 8 values are the delays for bits 0 to 7; 8th value is the delay for the
-# clock line.
-ADC_DELAYS_REV2_SN0001 = (
-  [20, 26, 25, 25, 25, 25, 25, 24], # Ch. 0
-  [23, 23, 23, 23, 23, 23, 23, 23], # Ch. 1 
-  [24, 22, 20, 20, 20, 20, 20, 17], # Ch. 2 
-  [19, 19, 19, 19, 19, 19, 19, 19], # Ch. 3
-  [17, 17, 17, 17, 17, 17, 17, 17], # Ch. 4
-  [17, 17, 17, 17, 17, 17, 17, 17], # Ch. 5 
-  [19, 19, 19, 18, 17, 16, 20, 20], # Ch. 6 
-  [16, 16, 16, 16, 16, 16, 16, 16]  # Ch. 7
-)
-
-ADC_DELAYS_REV2_SN0001_KC705_FMC700 = (
-  [13, 10,  9, 10,  9, 10,  9,  9], # Ch. 0
-  [ 7,  7,  7,  7,  7,  7,  7,  7], # Ch. 1 
-  [11, 11,  8,  9,  7,  8,  8,  7], # Ch. 2 
-  [ 6,  6,  6,  6,  6,  6,  6,  6], # Ch. 3
-  [14, 14, 14, 14, 14, 14, 14, 14], # Ch. 4
-  [14, 14, 14, 14, 14, 14, 14, 14], # Ch. 5 
-  [13, 13, 13, 13, 13, 13, 13, 13], # Ch. 6 
-  [ 0,  0,  0,  0,  0,  0,  0,  0], # Ch. 7
-)
-
 # Swop this out if the FMC serial number changes.
-ADC_DELAY_TABLE = ADC_DELAYS_REV2_SN0001_KC705_FMC700
+#ADC_DELAY_TABLE = ADC_DELAYS_REV2_SN0001_KC705_FMC700
 
 if __name__ == "__main__":
   # Get command line arguments.
@@ -47,39 +26,85 @@ if __name__ == "__main__":
   parser.add_argument("-m", "--message", required = True, \
                       help = "Additional message to write to data header, " +\
                              "quotes (\"example message\")")
-  parser.add_argument("-f", "--samp_freq", action = "store", type = float, \
-                      default = 800, \
-                      help = "Sampling frequency of the ADC in MHz.")
+  parser.add_argument("-c", "--conf_file", action = "store", \
+                      default = "ch_master.conf", \
+                      help = "Configuration file.")
+  parser.add_argument("-s", "--spec_file", action = "store", \
+                      default = "ch_master.spec", \
+                      help = "Configuration file specifications.")
   args = parser.parse_args()
 
-  print "Sampling frequency is %0.3f MHz." % args.samp_freq
+  val_conf = Validator()
+  conf = ConfigObj(args.conf_file, configspec = args.spec_file)
+  ret = conf.validate(val_conf, preserve_errors = True)
+
+  if ret != True:
+    for entry in flatten_errors(conf, ret):
+      sec_list, key, error = entry
+      if key is not None:
+        sec_list.append(key)
+      else:
+        sec_list.append("[missing section]")
+      sec_string = ".".join(sec_list)
+      if error == False:
+        error = "Missing value or section."
+      print "Error parsing %s: %s" % (sec_string, error)
+    exit()
+
+  print "Sampling frequency is %0.3f MHz." % float(conf["fpga"]["samp_freq"])
+
+  # Build up the adc_delay_table.
+  n = int(conf["n_antenna"])
+  adc_delay = []
+  for i in range(n):
+    name = "ch%02d" % i
+    tmp_delay = []
+    if not name in conf["fpga"]["adc_delay"]:
+      print "Could not find fpga.adc_delay.%s entry in configuration file." % \
+            (name)
+      exit()
+    else:
+      this_chan = conf["fpga"]["adc_delay"][name]
+    for j in range(len(this_chan)):
+      k = int(this_chan[j])
+      tmp_delay.append(k)
+    if len(tmp_delay) != 8:
+      print "Entry fpga.adc_delay.%s needs eight integer entries." % (name)
+      exit()
+    adc_delay.append(tmp_delay)
+
+  # Create the acquisition object. Pass it the configuration settings so that it
+  # can initialise.
+  print conf
+  acq = chrx.acq(conf)
+  exit()
 
   # Create the FPGA controller object.
-  fpga = chFPGA_controller.chFPGA_controller(ip_address = "10.10.10.11", \
-             port_number = 41000, adc_delay_table = ADC_DELAY_TABLE, init = 1, \
-             sampling_frequency = args.samp_freq * 1e6, \
-             reference_frequency = 10e6) # pylint: disable=C0103
+  fpga = chFPGA_controller.chFPGA_controller( \
+             ip_address = conf["fpga"]["ip_address"], \
+             port_number = conf["fpga"]["port"], \
+             adc_delay_table = adc_delay, \
+             init = 1, \
+             sampling_frequency = conf["fpga"]["samp_freq"] * 1e6, \
+             reference_frequency = conf["fpga"]["ref_freq"])
 
   # Set FPGA controller parameters.
-  all_chan = range(8)
-  Nant = 8
-  int_period = 0.25
+  all_chan = range(conf["n_antenna"])
   fpga.set_data_source("adc") # This should come first.
   fpga.set_FFT_bypass(False, channels = all_chan)
   fpga.set_FFT_shift(fft_shift = 2**5 - 1, channels = all_chan)
   fpga.set_gain(log2_gain = 1, channels = all_chan)
+
   #Make sure FPGA throttling is fast enough to send all the data
   #FPGA doesn't seem to change this without a reset...
-  #read_rate = int(np.floor(np.log2(int_period*4*125e6/2/(Nant*(Nant+1)))))
+  #read_rate = int(np.floor(np.log2(conf["fpga"]["int_period"] * 4 * 125e6 / \
+  #                2 / (conf["n_antenna"] * (conf["n_antenna"] + 1)))))
   #fpga.GPIO.HOST_FRAME_READ_RATE = read_rate
 
-  # Create the acquisition object.
-  acq = chrx.acq()
-
   # Pass FPGA configuration variables to header.
-  config = vars(fpga.get_config())
-  for name in config:
-    val = config[name]
+  fpga_conf = vars(fpga.get_config())
+  for name in fpga_conf:
+    val = fpga_conf[name]
 
     # Do the annoying conversion of numpy types to native Python types. Sigh.
     if isinstance(val, (list, tuple)):
@@ -110,11 +135,12 @@ if __name__ == "__main__":
   acq.add_header_item("system_user", getpass.getuser())
 
   # Start the correlator.
-  fpga.start_corr_capture(integration_period = int_period)
-  print "Correlator started with an integration time of %.1f s" % (int_period)
+  fpga.start_corr_capture(integration_period = conf["fpga"]["int_period"])
+  print "Correlator started with an integration time of %.1f s" % \
+        (conf["fpga"]["int_period"])
 
   # Start the acquisition.
-  acq.start(port = 41001, samp_per_frame = 40, frame_per_file = 360)
+  acq.start()
 
   try:
     while True:
