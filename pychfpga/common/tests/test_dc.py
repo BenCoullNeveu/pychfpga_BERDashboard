@@ -13,7 +13,7 @@ History:
     2011-09-09 JFC: Added global FREF 
     2011-10-11 JFC: Updated delay tables
 """
-import time
+
 from pychfpga.core import chFPGA_controller
 from pychfpga.core import chFPGA_receiver
 import pychfpga.plot_utils as pu
@@ -97,17 +97,6 @@ ADC_DELAYS_REV2_SN0001 = (
     [16]*8, #CH7
     )
 
-ADC_DELAYS_REV2_SN0001_KC705_FMC700 = (
-    [13,10,9,10,9,10,9,9], #CH0
-    [7]*8, #CH1 
-    [11,11,8,9,7,8,8,7], #CH2 
-    [6]*8, #CH3
-    [14]*8, #CH4
-    [14]*8, #CH5 
-    [13]*8, #CH6 
-    [0]*8, #CH7
-    )
-
 
 if __name__ == '__main__':        
     print '------------------------'
@@ -127,18 +116,17 @@ if __name__ == '__main__':
         pass
 
     #ADC_TEST_MODE = 0     #  0= normal, 1= ramp, 2=pulse (1 high, 10 low)
-    ADC_DELAY_TABLE = ADC_DELAYS_REV2_SN0001_KC705_FMC700 # select the table corresponding to the FMC serial number
+    ADC_DELAY_TABLE = ADC_DELAYS_REV2_SN0001 # select the table corresponding to the FMC serial number
     #FREF = 10 # FMC Reference clock frequency 
 
     # Create the new chFPGA object.
-    c = chFPGA_controller.chFPGA_controller(adc_delay_table=ADC_DELAY_TABLE, init=1, sampling_frequency=800e6, reference_frequency=10e6) # pylint: disable=C0103
-    chFPGA_config = c.get_config()
-    r = chFPGA_receiver.chFPGA_receiver(chFPGA_config, ip_address='10.10.10.11', port=41001)
-    ##c.sync()
+    c = chFPGA_controller.chFPGA_controller(adc_delay_table=ADC_DELAY_TABLE) # pylint: disable=C0103
+    r = chFPGA_receiver.chFPGA_receiver()
+    c.sync()
     #inj.set_inject_mode(c,r)
     #dcs = inj.check_fft_dc(c,r)
-    #adctest = test_adc_dc(c,r)
-    #stuff = adctest.execute()
+    adctest = test_adc_dc(c,r)
+    stuff = adctest.execute()
     # Displays the system frequencies
     c.FreqCtr.status()
     #adctest = test_adc_fft_bin(c,r)
@@ -152,21 +140,10 @@ if __name__ == '__main__':
     #c.start_data_capture(burst_period_in_seconds=1.0, number_of_bursts=0)
     #c.set_data_capture(burst_period=10000, number_of_bursts=0)
     # Continuously plot the ADC output
-    c.set_ADC_mode('data')
-    c.set_FFT_bypass(False)
-    c.set_gain(1)
-    channels=[0,1,2,3,4,5,6,7]
-    # for chan in channels:
-    #         #c.ANT[chan].FFT.FFT_SHIFT=2**6-1
-    #         c.ANT[chan].FFT.FFT_SHIFT=2**6-1
-    c.set_FFT_shift(2**5-1)
-    c.start_data_capture(burst_period_in_seconds=0.5)
-    c.set_corr_reset(1)
-    time.sleep(1)
-    pu.plot_SPECTRUM_frames(r,channels=channels)
-    
+    #c.plot_ADC_frame(channels=[1], frames=512)
+
     #
     
-    c.close()
-    r.close()
+    #c.close()
+    #r.close()
 

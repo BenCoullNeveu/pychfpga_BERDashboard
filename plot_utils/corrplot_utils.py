@@ -32,7 +32,7 @@ class corrplot_utils():
         - If magscale=1, then log10(magnitude) is plotted.
         - phaunits=0,1 for phase plotted in rad or deg respectively.
 
-        Example on how to use widecorrplot: Type on python shell (on pychime directory)
+        Example on how to use widecorrplot: Type on python shell (on pychfpga directory)
         >>run -i top_test()         #FPGA initialization. chFPGA_controller object created as c, chFPGA_receiver object created as r
         >>c.set_FFT_bypass(False)   #Enable FFT
         >>c.start_corr_capture()    #Enable correlators with integration period of one second (default)
@@ -192,7 +192,7 @@ class corrplot_utils():
         - If magscale=1, then log10(magnitude) is plotted.
         - phaunits=0,1 for phase plotted in rad or deg respectively.
 
-        Example on how to use narrowcorrplot: Type on python shell (on pychime directory)
+        Example on how to use narrowcorrplot: Type on python shell (on pychfpga directory)
         >>run -i top_test()         #FPGA initialization. chFPGA_controller object created as c, chFPGA_receiver object created as r
         >>c.set_FFT_bypass(False)   #Enable FFT
         >>c.start_corr_capture()    #Enable correlators with integration period of one second (default)
@@ -374,7 +374,7 @@ class corrplot_utils():
         - If magscale=1, then log10(magnitude) is plotted.
         - phaunits=0,1 for phase plotted in rad or deg respectively.
 
-        Example on how to use waterfallplot: Type on python shell (on pychime directory)
+        Example on how to use waterfallplot: Type on python shell (on pychfpga directory)
         >>run -i top_test()         #FPGA initialization. chFPGA_controller object created as c, chFPGA_receiver object created as r
         >>c.set_FFT_bypass(False)   #Enable FFT
         >>c.start_corr_capture()    #Enable correlators with integration period of one second (default)
@@ -539,7 +539,7 @@ class corrplot_utils():
         - If magscale=1, then log10(magnitude) is plotted.
         - phaunits=0,1 for phase plotted in rad or deg respectively.
 
-        Example on how to use matrixplot: Type on python shell (on pychime directory)
+        Example on how to use matrixplot: Type on python shell (on pychfpga directory)
         >>run -i top_test()         #FPGA initialization. chFPGA_controller object created as c, chFPGA_receiver object created as r
         >>c.set_FFT_bypass(False)   #Enable FFT
         >>c.start_corr_capture()    #Enable correlators with integration period of one second (default)

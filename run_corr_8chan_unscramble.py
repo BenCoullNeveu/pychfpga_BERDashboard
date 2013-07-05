@@ -8,9 +8,9 @@ History:
     2012-04-28 JFC: Cleanup. Added file_info. CHange date in filename to ISO format. 
 """
 
-from pychime.core import chFPGA_controller
-from pychime.core import chFPGA_receiver
-#from pychime import receiver_corr_fast
+from pychfpga.core import chFPGA_controller
+from pychfpga.core import chFPGA_receiver
+#from pychfpga import receiver_corr_fast
 import numpy as np
 import time, pylab, file_utils, os
 import pickle

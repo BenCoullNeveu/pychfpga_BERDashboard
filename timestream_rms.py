@@ -8,8 +8,8 @@ History:
     2012-12-04 KMB: First attempt 
 """
 
-from pychime.core import chFPGA_controller
-from pychime.core import chFPGA_receiver
+from pychfpga.core import chFPGA_controller
+from pychfpga.core import chFPGA_receiver
 import numpy as np
 import time, sys, os
 

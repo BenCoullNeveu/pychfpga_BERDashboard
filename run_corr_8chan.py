@@ -8,8 +8,8 @@ History:
     2012-04-28 JFC: Cleanup. Added file_info. CHange date in filename to ISO format. 
 """
 
-from pychime.core import chFPGA_controller
-#from pychime.core import chFPGA_receiver_raw
+from pychfpga.core import chFPGA_controller
+#from pychfpga.core import chFPGA_receiver_raw
 import numpy as np
 import time, pylab, os
 import pickle
@@ -97,7 +97,7 @@ class setup_corr():
             pickle.dump(config, datainfofile)
             datainfofile.write('\n"""\n')
             datainfofile.close()
-            proc = Popen(["./chr", "net", "41001", (self.basename+'/out_'+str(nowtime)+".h5"), str(nowtime)], cwd='/home/ahincks/code/pychime')
+            proc = Popen(["./chr", "net", "41001", (self.basename+'/out_'+str(nowtime)+".h5"), str(nowtime)], cwd='/home/ahincks/code/pychfpga')
             # Debug by JFC
             #for corr in self.fpga_ctrl.CORR:
             #    corr.ACC.status()

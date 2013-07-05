@@ -8,7 +8,7 @@ History:
 """
 
 from chrx import chrx
-from pychime.core import chFPGA_controller
+from pychfpga.core import chFPGA_controller
 from configobj import *
 #from ch_conf import conf_dict
 from validate import Validator

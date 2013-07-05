@@ -13,7 +13,7 @@ History:
     2011-09-09 JFC: Added global FREF 
     2011-10-11 JFC: Updated delay tables
 """
-import time
+
 from pychfpga.core import chFPGA_controller
 from pychfpga.core import chFPGA_receiver
 import pychfpga.plot_utils as pu
@@ -22,6 +22,7 @@ from pychfpga.common.tests.test_adc_fft_bin import test_adc_fft_bin
 from pychfpga.common.tests.test_adc_fft_int_power import test_adc_fft_int_power
 from pychfpga.common.tests.test_adc_fft_level import test_adc_fft_level
 from pychfpga.common.tests.test_adc_dc import test_adc_dc
+from pychfpga.common.tests.test_adc_spectrum import test_adc_spectrum
 import pychfpga.common.tests.test_corr as tc
 
 reload(chFPGA_controller) # just to make sure that any changes to the code are reloaded
@@ -32,16 +33,16 @@ reload(inj)
 
 # Default data and clock line delays for the two FMC boards/ML605 combination.
 # First 8 values are the delays for bits 0 to 7, 8th value is the delay for the clock line.
-SN001_ADC_DELAYS = (
-    [13,19,19,19,19,19,19,19]+[13], # CH0
-    [18]*8+[0], #CH1
-    [10]*8+[13], #CH2
-    [19]*8+[13], #CH3
-    [18]*8+[0], #CH4
-    [16]*8+[0], #CH5
-    [18]*8+[0], #CH6
-    [14]*8+[0] #CH7
-    )
+#SN001_ADC_DELAYS = (
+#    [13,19,19,19,19,19,19,19]+[13], # CH0
+#    [18]*8+[0], #CH1
+#    [10]*8+[13], #CH2
+#    [19]*8+[13], #CH3
+#    [18]*8+[0], #CH4
+#    [16]*8+[0], #CH5
+#    [18]*8+[0], #CH6
+#    [14]*8+[0] #CH7
+#    )
 # SN001_adc_delays=(
     # [5+16,8+16,8+16,8+16,8+16,8+16,8+16,8+16]+[0], # CH0
     # [2+16]*8+[0], #CH1
@@ -75,22 +76,33 @@ SN001_ADC_DELAYS = (
 #    [14]*8, #CH7 (BUFR)
 #    )
     
-SN002_ADC_DELAYS = (
-    [17,15,15,15,15,15,15,3]+[0], #CH0 (BUFR)
-    [15]*8, #CH1 (BUFR)
-    [27,14,29,29,29,29,29,15]+[0], #CH2 (PLL)
-    [15]*8+[0], #CH3 (PLL)
-    [17]*8, #CH4 (BUFR)
-    [17]*8, #CH5 (BUFR)
-    [18]*8, #CH6 (BUFR)
-    [14]*8, #CH7 (BUFR)
-    )
+#SN002_ADC_DELAYS = (
+#    [17,15,15,15,15,15,15,3]+[0], #CH0 (BUFR)
+#    [15]*8, #CH1 (BUFR)
+#    [27,14,29,29,29,29,29,15]+[0], #CH2 (PLL)
+#    [15]*8+[0], #CH3 (PLL)
+#    [17]*8, #CH4 (BUFR)
+#    [17]*8, #CH5 (BUFR)
+#    [18]*8, #CH6 (BUFR)
+#    [14]*8, #CH7 (BUFR)
+#    )
 
 ADC_DELAYS_REV2_SN0001 = (
     [20,26,25,25,25,25,25,24], #CH0
     [23]*8, #CH1 
     [24,22,20,20,20,20,20,17], #CH2 
     [19]*8+[0], #CH3
+    [17]*8, #CH4
+    [17]*8, #CH5 
+    [19,19,19,18,17,16,20,20], #CH6 
+    [16]*8, #CH7
+    )
+
+ADC_DELAYS_REV2_SN0001 = (
+    [20,26,25,25,25,25,25,24], #CH0
+    [22]*8, #CH1 
+    [22,22,20,20,20,20,20,19], #CH2 
+    [18]*8+[0], #CH3
     [17]*8, #CH4
     [17]*8, #CH5 
     [19,19,19,18,17,16,20,20], #CH6 
@@ -127,20 +139,20 @@ if __name__ == '__main__':
         pass
 
     #ADC_TEST_MODE = 0     #  0= normal, 1= ramp, 2=pulse (1 high, 10 low)
-    ADC_DELAY_TABLE = ADC_DELAYS_REV2_SN0001_KC705_FMC700 # select the table corresponding to the FMC serial number
+    ADC_DELAY_TABLE = ADC_DELAYS_REV2_SN0001 #ADC_DELAYS_REV2_SN0001_KC705_FMC700 #ADC_DELAYS_REV2_SN0001 ## select the table corresponding to the FMC serial number
     #FREF = 10 # FMC Reference clock frequency 
 
     # Create the new chFPGA object.
-    c = chFPGA_controller.chFPGA_controller(adc_delay_table=ADC_DELAY_TABLE, init=1, sampling_frequency=800e6, reference_frequency=10e6) # pylint: disable=C0103
+    c = chFPGA_controller.chFPGA_controller(ip_address='10.10.10.11', port_number=41000, adc_delay_table=ADC_DELAY_TABLE, init=1, sampling_frequency=800e6, reference_frequency=10e6) # pylint: disable=C0103
     chFPGA_config = c.get_config()
     r = chFPGA_receiver.chFPGA_receiver(chFPGA_config, ip_address='10.10.10.11', port=41001)
     ##c.sync()
     #inj.set_inject_mode(c,r)
     #dcs = inj.check_fft_dc(c,r)
-    #adctest = test_adc_dc(c,r)
-    #stuff = adctest.execute()
+    adctest = test_adc_spectrum(c,r)
+    stuff = adctest.execute()
     # Displays the system frequencies
-    c.FreqCtr.status()
+    #c.status()
     #adctest = test_adc_fft_bin(c,r)
     #stuff = adctest.execute()
     #adctest = test_adc_fft_int_power(c,r)
@@ -152,19 +164,8 @@ if __name__ == '__main__':
     #c.start_data_capture(burst_period_in_seconds=1.0, number_of_bursts=0)
     #c.set_data_capture(burst_period=10000, number_of_bursts=0)
     # Continuously plot the ADC output
-    c.set_ADC_mode('data')
-    c.set_FFT_bypass(False)
-    c.set_gain(1)
-    channels=[0,1,2,3,4,5,6,7]
-    # for chan in channels:
-    #         #c.ANT[chan].FFT.FFT_SHIFT=2**6-1
-    #         c.ANT[chan].FFT.FFT_SHIFT=2**6-1
-    c.set_FFT_shift(2**5-1)
-    c.start_data_capture(burst_period_in_seconds=0.5)
-    c.set_corr_reset(1)
-    time.sleep(1)
-    pu.plot_SPECTRUM_frames(r,channels=channels)
-    
+    #c.plot_ADC_frame(channels=[1], frames=512)
+
     #
     
     c.close()

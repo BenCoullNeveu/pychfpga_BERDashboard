@@ -14,15 +14,15 @@ History:
     2011-10-11 JFC: Updated delay tables
 """
 
-from pychime.core import chFPGA_controller
-from pychime.core import chFPGA_receiver
-import pychime.plot_utils as pu
-from pychime.core import Inject_tools as inj
-from pychime.common.tests.test_adc_fft_bin import test_adc_fft_bin
-from pychime.common.tests.test_adc_fft_int_power import test_adc_fft_int_power
-from pychime.common.tests.test_adc_fft_level import test_adc_fft_level
-from pychime.common.tests.test_adc_dc import test_adc_dc
-import pychime.common.tests.test_corr as tc
+from pychfpga.core import chFPGA_controller
+from pychfpga.core import chFPGA_receiver
+import pychfpga.plot_utils as pu
+from pychfpga.core import Inject_tools as inj
+from pychfpga.common.tests.test_adc_fft_bin import test_adc_fft_bin
+from pychfpga.common.tests.test_adc_fft_int_power import test_adc_fft_int_power
+from pychfpga.common.tests.test_adc_fft_level import test_adc_fft_level
+from pychfpga.common.tests.test_adc_dc import test_adc_dc
+import pychfpga.common.tests.test_corr as tc
 
 reload(chFPGA_controller) # just to make sure that any changes to the code are reloaded
 reload(chFPGA_receiver) # just to make sure that any changes to the code are reloaded
