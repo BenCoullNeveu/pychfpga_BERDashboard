@@ -8,19 +8,30 @@ History:
 """
 
 from chrx import chrx
-from pychfpga.core import chFPGA_controller
 from configobj import *
-#from ch_conf import conf_dict
+from pychfpga.core import chFPGA_controller
 from validate import Validator
 import argparse
 import getpass
+import logging
 import numpy as np
+import sys
 import time
 
 # Swop this out if the FMC serial number changes.
 #ADC_DELAY_TABLE = ADC_DELAYS_REV2_SN0001_KC705_FMC700
 
 if __name__ == "__main__":
+  # Set up logger.
+  log = logging.getLogger("")
+  log.setLevel(logging.DEBUG)
+  log_stdout = logging.StreamHandler(sys.stdout)
+  log_stdout.setLevel(logging.DEBUG)
+  log_fmt = logging.Formatter("%(asctime)s %(levelname)s >> %(message)s", \
+                              "%b %d %H:%M:%S")
+  log_stdout.setFormatter(log_fmt)
+  log.addHandler(log_stdout)
+
   # Get command line arguments.
   parser = argparse.ArgumentParser(description = __doc__.split('\n')[0])
   parser.add_argument("-m", "--message", required = True, \
@@ -48,10 +59,11 @@ if __name__ == "__main__":
       sec_string = ".".join(sec_list)
       if error == False:
         error = "Missing value or section."
-      print "Error parsing %s: %s" % (sec_string, error)
+      log.critical("Error parsing %s: %s" % (sec_string, error))
     exit()
         
-  print "Sampling frequency is %0.3f MHz." % float(conf["fpga"]["samp_freq"])
+  log.info("Sampling frequency is %0.3f MHz." % \
+           float(conf["fpga"]["samp_freq"]))
 
   # Build up the adc_delay_table.
   n = int(conf["n_antenna"])
@@ -60,8 +72,8 @@ if __name__ == "__main__":
     name = "ch%02d" % i
     tmp_delay = []
     if not name in conf["fpga"]["adc_delay"]:
-      print "Could not find fpga.adc_delay.%s entry in configuration file." % \
-            (name)
+      log.critical("Could not find fpga.adc_delay.%s entry in configuration " \
+                   "file." % (name))
       exit()
     else:
       this_chan = conf["fpga"]["adc_delay"][name]
@@ -69,13 +81,14 @@ if __name__ == "__main__":
       k = int(this_chan[j])
       tmp_delay.append(k)
     if len(tmp_delay) != 8:
-      print "Entry fpga.adc_delay.%s needs eight integer entries." % (name)
+      log.critical("Entry fpga.adc_delay.%s needs eight integer entries." % \
+                   (name))
       exit()
     adc_delay.append(tmp_delay)
 
   # Create the acquisition object. Pass it the configuration settings so that it
   # can initialise.
-  acq = chrx.acq(conf)
+  acq = chrx.acq(conf, log)
 
   # Create the FPGA controller object.
   fpga = chFPGA_controller.chFPGA_controller( \
@@ -98,6 +111,11 @@ if __name__ == "__main__":
   #read_rate = int(np.floor(np.log2(conf["fpga"]["int_period"] * 4 * 125e6 / \
   #                2 / (conf["n_antenna"] * (conf["n_antenna"] + 1)))))
   #fpga.GPIO.HOST_FRAME_READ_RATE = read_rate
+
+  # Start the correlator.
+  fpga.start_corr_capture(integration_period = conf["fpga"]["int_period"])
+  log.info("Correlator started with an integration time of %.1f s" % \
+           (conf["fpga"]["int_period"]))
 
   # Pass FPGA configuration variables to header.
   fpga_conf = vars(fpga.get_config())
@@ -132,11 +150,6 @@ if __name__ == "__main__":
   acq.add_header_item("run_message", args.message)
   acq.add_header_item("system_user", getpass.getuser())
 
-  # Start the correlator.
-  fpga.start_corr_capture(integration_period = conf["fpga"]["int_period"])
-  print "Correlator started with an integration time of %.1f s" % \
-        (conf["fpga"]["int_period"])
-
   # Start the acquisition.
   acq.start()
 
@@ -149,3 +162,5 @@ if __name__ == "__main__":
     acq.stop()
   except(KeyboardInterrupt, SystemExit):
     acq.stop()
+
+log.info("Exiting ch_master now.")
