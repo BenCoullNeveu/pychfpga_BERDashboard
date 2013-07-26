@@ -10,7 +10,7 @@ x module
 	2012-07-19 JFC: Created
 """
 
-    def sync(self, continuous=0, sleep=0, phase=None, delay=None, plot=0, verbose=0, local=1):
+def sync(self, continuous=0, sleep=0, phase=None, delay=None, plot=0, verbose=0, local=1):
         if phase is not None:
             self.ADC_PLL.init(phase=phase, verbose=verbose)
         if plot:
@@ -40,7 +40,7 @@ x module
             pass
 
 
-	def scan_delay(self,channels=[0],bit=0,phase=[0],delay=range(32),sync=1):
+def scan_delay(self,channels=[0],bit=0,phase=[0],delay=range(32),sync=1):
 		self.set_ADC_mode('pulse',sync=0) # generate pulse pattern, and sets CAPTURE period
 		for ch in channels:
 			print 'Reading channel %i' % (ch)
@@ -56,7 +56,7 @@ x module
 					data=adcdaq.get_pattern(period=11)
 					print 'CH%i DIVCLK phase: %2i, delay=%2i Bit %i: %s' % (ch,p,d,bit, ''.join(('0','1')[bool(d&(1<<bit))] for d in data))
 
-	def scan_divclk_phase(self,channel=0, bit=None):
+def scan_divclk_phase(self,channel=0, bit=None):
 		self.ADC.set_test_mode(2) # generate pulse pattern
 		ch = channel
 		for phase in range(32):
@@ -68,7 +68,7 @@ x module
 			else:
 				print 'DIVCLK Phase=%2i CH%i Bit %i: %s' % (phase,ch,bit, ''.join(('0','1')[bool(d&(1<<bit))] for d in data))
 
-	def compute_delays(self,channels=[0], offset=5):
+def compute_delays(self,channels=[0], offset=5):
 		data=self.read_eye_diagram(channels, offset=offset)
 		n=np.zeros((8,3),dtype=np.uint8)
 		delays={}
@@ -96,7 +96,7 @@ x module
 
 		return delays
 
-	def print_phase(self,channels=range(8), bit=None):
+def print_phase(self,channels=range(8), bit=None):
 		for phase in range(64):
 			self.ANT[1].ADCDAQ.set_divclk_phase(phase)
 			a= self.read_ADC_frame(channels=channels,reset=1,simulate=0,raw=1,verbose=0);
@@ -106,7 +106,7 @@ x module
 				else:
 					print 'DIVCLK Phase=%2i CH%i Bit %i: %s' % (phase,ch,bit, ''.join(('0','1')[bool(d&(1<<bit))] for d in data[:32]))
 
-	def scan_phase(self):
+def scan_phase(self):
 		for phase in range(0,200,5):
 			#for i in range(10):
 				self.sync(phase=phase,verbose=0)
@@ -116,7 +116,7 @@ x module
 			#raw_input('Press [ENTER]')
 
 
-	def ADC_plot_map(self, channel=0,bit=0):
+def ADC_plot_map(self, channel=0,bit=0):
 
 		old_delays=self.ADC_read_delay(channel)
 		m=np.zeros((32,1024),np.uint8)
@@ -130,7 +130,7 @@ x module
 		plt.imshow((m & (1<<bit))!=0,aspect='auto', interpolation='nearest', cmap=plt.gray(), filternorm=1)
 		plt.draw()
 		
-	def ADC_plot_frame_bits(self, channel=0, delay=None, simulate=0):
+def ADC_plot_frame_bits(self, channel=0, delay=None, simulate=0):
 
 		old_delays=self.ADC_read_delay(channel)
 		if delay:
@@ -147,4 +147,3 @@ x module
 			plt.plot(((a & (1<<bit))!=0) +2*bit,'b.-')
 #			hold(1)
 		plt.draw()
-

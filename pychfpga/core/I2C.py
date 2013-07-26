@@ -186,8 +186,9 @@ class I2C_base(Module_base):
         '''
         For KC705 Board, set the switch to FMC EEPROM by default
         '''
-        print '     Platform ID:  ' + str(self.fpga.PLATFORM_ID)
+        verbose = 0
+        if verbose >= 2: print '     Platform ID:  ' + str(self.fpga.PLATFORM_ID)
         if self.fpga.PLATFORM_ID == 1:
-            print '     Setting Default I2C to FMC HPC'
+            if verbose >= 2: print '     Setting Default I2C to FMC HPC'
             self.i2c_write(addr=0x74, data=[2])
         pass

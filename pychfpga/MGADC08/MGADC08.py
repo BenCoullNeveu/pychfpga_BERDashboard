@@ -38,7 +38,7 @@ def reload_modules(module_list=MODULE_LIST):
 class MGADC08_base(object):
     """ Implements wrapper object for MGADC08 FMC ADC board"""
 
-    def __init__(self, fpga_instance, verbose=2):
+    def __init__(self, fpga_instance, verbose=0):
         self.fpga = fpga_instance
         self._board_is_present = False # Will be checked later
         self.sampling_frequency = None
@@ -86,7 +86,7 @@ class MGADC08_base(object):
         }
          
 
-    def init(self, sampling_frequency=800e6, reference_frequency=10e6, verbose=2):
+    def init(self, sampling_frequency=800e6, reference_frequency=10e6, verbose=0):
         """ Initializes the FMC board modules""" 
 
 
@@ -101,7 +101,7 @@ class MGADC08_base(object):
             self.IOExpander.init()
     
             if verbose >= 2: print '  - ADC_PLL'
-            self.ADC_PLL.init(fout=2*self.sampling_frequency/1e6, fref=self.reference_frequency/1e6, verbose=1)
+            self.ADC_PLL.init(fout=2*self.sampling_frequency/1e6, fref=self.reference_frequency/1e6, verbose=0)
     
             if verbose >= 2: print '  - ADC'
             self.ADC.init()

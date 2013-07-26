@@ -71,7 +71,8 @@ class CH_DIST_base(Module_base):
         for j in words_to_enable:
             #print 'setting bit %i of byte %i' % ((j % 8), j//8)
             mask[j//8] |= (1<<(j % 8))
-        print (words_to_enable)
+        verbose = False
+        if verbose: print (words_to_enable)
         self.NUMBER_OF_SELECTED_WORDS = len(words_to_enable)
 
         self.write_ram(0x00, mask) # Enable transmission of selected bytes 

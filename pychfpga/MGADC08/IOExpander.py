@@ -74,7 +74,7 @@ class IOExpander_base(object):
         'SYNC_FF_BYPASS' : BitDef(PORT_B, 2, WR, 0), #SYNC FlipFlop Bypass: 0=Bypass, 1= Use FF (Note: It is not enough to set this bit for FF bypass. Resistors must also be set to route the buffered SYNC to the FF or the FF bypass input)
         }
 
-    def __init__(self, fpga, verbose=1):
+    def __init__(self, fpga, verbose=0):
         self.fpga = fpga
         self.verbose = verbose
         # Automatically generate properties for each of the IOExpander bits
@@ -134,7 +134,7 @@ class IOExpander_base(object):
                 break
 
 
-    def init(self, verbose=1):
+    def init(self, verbose=0):
         """ 
         Initializes the register of the IOExpander. Sets the GPIO bits direction and default values based on the 'BITS' table
         Call only after the SPI subsystem is initialized.
@@ -161,7 +161,7 @@ class IOExpander_base(object):
         self.write(self.REG_IODIRB, direction[self.PORT_B]) # 
         self.write(self.REG_GPIOA, val[self.PORT_A]) # 
         self.write(self.REG_GPIOB, val[self.PORT_B]) # 
-        print '************************************************* INIT IO EXPANDER ***********************************'
+        if verbose or self.verbose: print '************************************************* INIT IO EXPANDER ***********************************'
 
     def status(self):
         """ Displays the status of the IOExpander. """

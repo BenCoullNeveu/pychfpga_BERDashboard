@@ -22,7 +22,7 @@ import numpy as np
 
 class ADC_PLL_base(object):
 
-    def __init__(self,fpga,verbose=1):
+    def __init__(self,fpga,verbose=0):
         self.fpga=fpga
         self.verbose=verbose
 

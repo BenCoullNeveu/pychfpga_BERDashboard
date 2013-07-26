@@ -158,7 +158,7 @@ class chFPGA_controller(object):
     PLATFORM_ID_ML605 = 0
     PLATFORM_ID_KC705 = 1
     
-    def __init__(self, ip_address='10.10.10.11', port_number=41000, init=1, verbose=2, **kwargs):
+    def __init__(self, ip_address='10.10.10.11', port_number=41000, init=1, verbose=0, **kwargs):
         """
         Opens communication with the specified chFPGA. This does not affect the state and operations of chFPGA.
         """
@@ -172,11 +172,12 @@ class chFPGA_controller(object):
         self.ip_address = ip_address # store the IP address so we can use it to delete the shared_variable
         self.log = logging.getLogger("")
 
-        self.log.info("Opening control communication sockets ***")
+        self.log.info("Opening control communication sockets to FPGA.")
 
         # Close the socket open by a previous instance
         if ip_address in Shared_variables.controller_sock:
-            self.log.info('Closing the socket open in a previous instance for IP address %s' % ip_address)
+            self.log.info('Closing the socket open in a previous instance ' +\
+                          'for IP address %s' % ip_address)
             Shared_variables.controller_sock[ip_address].close()
             del Shared_variables.controller_sock[ip_address]
 
@@ -184,7 +185,7 @@ class chFPGA_controller(object):
         self.sock = SocketIO.ControlSocket_base(ip_address, port_number)
         Shared_variables.controller_sock[ip_address] = self.sock # Save the socket in a persistent storage so it can be closed if needed  
         try: # catch initialization errors so we can free the socket for future instantiation
-            self.log.info('*** Instantiating modules ***')
+            self.log.info('Instantiating FPGA modules.')
             # Create handware handling objects 
             #  NOTE: Does not initialize them yet because some modules are interdependent - we need to wait until all of them are instantiated.
             #  NOTE: The instantiation does not initiate communicattion with the hardware yet. this is done in the INIT phase.
@@ -193,7 +194,7 @@ class chFPGA_controller(object):
             # -- Create basic FPGA ressource handlers objects
             # ---------------------------------------------------------------------
 
-            if verbose >= 2: self.log.info('  - GPIO')
+            if verbose >= 2: self.log.debug('  - GPIO')
             self.GPIO = GPIO.GPIO_base(self)
             # get system constants from the FPGA
 
@@ -215,38 +216,38 @@ class chFPGA_controller(object):
             self.default_channels = range(self.NUMBER_OF_ANTENNAS)
             self.LIST_OF_ANTENNAS_WITH_FFT = [i for i in range(8) if bool(self.GPIO.IMPLEMENT_FFT & 2**i)]
                         
-            if verbose >= 2: self.log.info('  - I2C')
+            if verbose >= 2: self.log.debug('  - I2C')
             self.I2C = I2C.I2C_base(self)
 
-            if verbose >= 2: self.log.info('  - SYSMON')
+            if verbose >= 2: self.log.debug('  - SYSMON')
             self.SYSMON = SYSMON.SYSMON_base(self)
 
-            if verbose >= 2: self.log.info('  - SPI')
+            if verbose >= 2: self.log.debug('  - SPI')
             self.SPI = SPI.SPI_base(self)
 
-            if verbose >= 2: self.log.info('  - FreqCtr')
+            if verbose >= 2: self.log.debug('  - FreqCtr')
             self.FreqCtr = FreqCtr.FreqCtr_base(self)
 
-            if verbose >= 2: self.log.info('  - REFCLK')
+            if verbose >= 2: self.log.debug('  - REFCLK')
             self.REFCLK = REFCLK.REFCLK_base(self)
             
-            if verbose >= 2: self.log.info('  - ANT')
+            if verbose >= 2: self.log.debug('  - ANT')
             self.ANT = ANT.ANT_base(self) # Antenna processors (ADCDAQ, SRCSEL, FFT, SCALER) for each input
     
-            if verbose >= 2: self.log.info('  - CORR')
+            if verbose >= 2: self.log.debug('  - CORR')
             self.CORR = CORR_BLOCK.CORR_BLOCK_base(self) # Correlator (CH_DIST, CORR, ACC) for each correlator
 
     
             # ---------------------------------------------------------------------
             # -- Create ML605 ressource handlers objects
             # ---------------------------------------------------------------------
-            if verbose >= 2: self.log.info('  - ML605 PMBus')
+            if verbose >= 2: self.log.debug('  - ML605 PMBus')
             self.ML605_PMBus = ML605_PMBus.ML605_PMBus_base(self)
 
-            if verbose >= 2: self.log.info('  - ML605 PMBus')
+            if verbose >= 2: self.log.debug('  - ML605 PMBus')
             self.LCD = ML605_LCD.LCD_base(self.GPIO)
 
-            #if verbose>=2: self.log.info('  - MGT')
+            #if verbose>=2: self.log.debug('  - MGT')
             #self.MGT=MGT.MGT_base(self)
     
     
@@ -254,7 +255,7 @@ class chFPGA_controller(object):
             # -- Create MGADC08 FMC board ressource handlers objects
             # ---------------------------------------------------------------------
 
-            self.ADC_BOARD = MGADC08.MGADC08_base(self)
+            self.ADC_BOARD = MGADC08.MGADC08_base(self, verbose = 0)
             self.FMC_present = self.ADC_BOARD.is_present()
  
         except SocketIO.timeout:
@@ -268,9 +269,10 @@ class chFPGA_controller(object):
     def __del__(self):
 
         self.close()
-        self.log.info('__del__: Closed FPGA at IP address %s' % self.sock.ip_address)
+        self.log.debug('__del__: Closed FPGA at IP address %s' % \
+                       self.sock.ip_address)
 
-    def init(self, sampling_frequency=800e6, reference_frequency=10e6, adc_delay_table=None, verbose=2):
+    def init(self, sampling_frequency=800e6, reference_frequency=10e6, adc_delay_table=None, verbose=0):
         """
         Resets the chFPGA to a known state with specified parameters.
         """
@@ -279,73 +281,71 @@ class chFPGA_controller(object):
         self.reference_frequency = reference_frequency
         self.FRAME_PERIOD = float(self.FRAME_LENGTH)/self.sampling_frequency
 
-        self.log.info('*** Initializing modules ***')
+        self.log.info('Initializing FPGA modules.')
 
-        if verbose >= 2: self.log.info('  - GPIO')
+        if verbose >= 2: self.log.debug('  - GPIO')
         self.GPIO.init() # This stops the antenna procesors from sending data. Neeeded if the FPGA is flooding the buffers which prevent subsequent reads to come through
         #self.sock.flush_data_socket() # Now the the data stops coming, flush the buffers
         self.sock.flush()
-        self.GPIO.status()
+        if verbose >= 2: self.GPIO.status()
 
 
-        if verbose >= 2: self.log.info('  - I2C')
+        if verbose >= 2: self.log.debug('  - I2C')
         self.I2C.init()
 
-        if verbose >= 2: self.log.info('  - ML605 LCD')
+        if verbose >= 2: self.log.debug('  - ML605 LCD')
         self.LCD.init()
         self.LCD.write('CHIME FW Version', col=0, row=0)
         self.LCD.write('%s' % self.GPIO.get_bitstream_date(), col=0, row=1)
 
-        if verbose >= 2: self.log.info('  - ML605 PMBus')
+        if verbose >= 2: self.log.debug('  - ML605 PMBus')
         self.ML605_PMBus.init()
-        self.ML605_PMBus.status()
+        if verbose >= 2: self.ML605_PMBus.status()
 
 
 
          # Module depend on the FMC_present flag after this point
 
-        if verbose >= 2: self.log.info('  - REFCLK')
+        if verbose >= 2: self.log.debug('  - REFCLK')
         self.REFCLK.init()
-        self.REFCLK.status()
+        if verbose >= 2: self.REFCLK.status()
 
         #Only do for ML605, not KC705 board
-        if verbose >= 2: self.log.info('  - SYSMON')
+        if verbose >= 2: self.log.debug('  - SYSMON')
         self.SYSMON.init()
-        self.SYSMON.status()
+        if verbose >= 2: self.SYSMON.status()
 
-        if verbose >= 2: self.log.info('  - SPI')
+        if verbose >= 2: self.log.debug('  - SPI')
         self.SPI.init()
-        self.SPI.status()
+        if verbose >= 2: self.SPI.status()
 
-        if verbose >= 2: self.log.info('  - ADC BOARD')
+        if verbose >= 2: self.log.debug('  - ADC BOARD')
         # We need to initialize the ADC board befor we set ANT because the delay blocks need a clock
         self.ADC_BOARD.init(sampling_frequency = sampling_frequency, reference_frequency=reference_frequency)
-        self.ADC_BOARD.status()
+        if verbose >= 2: self.ADC_BOARD.status()
         self.sync() # might be needed  to make sure that the clock is running to set delays
 
         self.FMC_present = self.ADC_BOARD.is_present()
 
-        if verbose >= 2: self.log.info('  - ANT')
+        if verbose >= 2: self.log.debug('  - ANT')
         self.ANT.init(delay_table=adc_delay_table)
-        self.ANT.status()
+        if verbose >= 2: self.ANT.status()
 
         if self.IMPLEMENT_CORR and self.NUMBER_OF_CORRELATORS>0:
-            if verbose >= 2: self.log.info('  - CORR')
+            if verbose >= 2: self.log.debug('  - CORR')
             self.CORR.init()
-            self.CORR.status()
-
-  
+            if verbose >= 2: self.CORR.status()
 
         # MGT is disabled    
-        #self.log.info('  - MGT_PLL')
+        #self.log.debug('  - MGT_PLL')
         #self.MGT_PLL.init(fref=fref)
-        #self.log.info('  - MGT')
+        #self.log.debug('  - MGT')
         #self.MGT.init() # MGT_PLL must be initialized first
         if verbose >= 2: 
-            self.log.info('  - Done with initializations')
+            self.log.info("Done with initializations.")
 
 
-        #self.log.info('*** Setting ADCDAQ delays ***')
+        #self.log.info("Setting ADCDAQ delays.")
 
         #if adc_delay_table:
         #    self.ANT.set_delays(adc_delay_table)
@@ -353,13 +353,13 @@ class chFPGA_controller(object):
  
         self.set_ant_reset(0) # disable antenna reset
         
-        self.log.info('*** Set ADC mode ***')
+        self.log.info("Setting FPGA ADC mode")
         self.set_funcgen_function('ramp')
         self.set_data_source('funcgen')
         self.set_ADC_mode('data') # This implies a self.sync(), which will reset the antenna processors again to ensure data alignment
         self.set_data_source('adc')
 
-        self.log.info('*** End of chFPGA initialization ***')
+        self.log.info("End of chFPGA initialization.")
 
     def get_config(self):
         config = chFPGA_config() # Create empty config container
@@ -425,9 +425,9 @@ class chFPGA_controller(object):
             self.sock.write(s)
             data = self.sock.read()
             #if data[0]!=s[0]:
-            #    self.log.info("Read: ERROR: Returned ANT/SUB/ADDR (",   ata[0:2]," does not match request values (",   [0:2],")")
+            #    self.log.error("Read: ERROR: Returned ANT/SUB/ADDR (",   ata[0:2]," does not match request values (",   [0:2],")")
             if len(data) != 2:
-                self.log.info("Read: ERROR: %i bytes were returned" % len(data))
+                self.log.error("Read: ERROR: %i bytes were returned" % len(data))
             dout[i] = ord(data[1]) # store received byte
             if incr: addr += 1
         dout.dtype = np.dtype(type) # change interpretation of the byte array into a 'type' array
@@ -508,7 +508,7 @@ class chFPGA_controller(object):
 
     def sync(self, local=1, verbose=0):
         if verbose:
-            self.log.info('Sync...')
+            self.log.info("Sync...")
         if local:
             self.REFCLK.local_sync()
         else:
@@ -624,7 +624,7 @@ class chFPGA_controller(object):
         111212 JFC: Added this high-level function with string mode.
         """
         if not self.ADC_BOARD.is_present():
-            self.log.info('ADC Board not present. Ignoring set_ADC_mode() command')
+            self.log.warning('ADC Board not present. Ignoring set_ADC_mode() command')
             return
             
 
@@ -650,7 +650,7 @@ class chFPGA_controller(object):
         Gets the current operating  mode of the ADCs.
         """
         if not self.ADC_BOARD.is_present():
-            self.log.info('ADC Board not present. Ignoring get_adc_mode() command')
+            self.log.warning('ADC Board not present. Ignoring get_adc_mode() command')
             return None
             
         return self.ADC_BOARD.ADC.get_test_mode()
@@ -710,12 +710,13 @@ class chFPGA_controller(object):
         burst_period_in_frames = int(burst_period_in_frames)
 
         if verbose:
-            self.log.info('Configuring antennas %s to transmit %i-frame burst every %i frames (i.e .every %.3f ms) %s' %  ( \
-                channels.__repr__(),
-                frames_per_burst, 
-                burst_period_in_frames, 
-                burst_period_in_frames*self.FRAME_PERIOD*1000, 
-                ('continuously when TRIG=1' if not number_of_bursts else 'for a total of %i bursts' % number_of_bursts ) )) 
+            self.log.info("Configuring antennas %s to transmit %i-frame " +\
+                          "burst every %i frames (i.e .every %.3f ms) %s." %\
+                          (channels.__repr__(),
+                           frames_per_burst, 
+                           burst_period_in_frames, 
+                           burst_period_in_frames*self.FRAME_PERIOD*1000, 
+                           ('continuously when TRIG=1' if not number_of_bursts else 'for a total of %i bursts' % number_of_bursts ) )) 
             frames_per_second = len(channels)*frames_per_burst*1.0/self.FRAME_PERIOD/burst_period_in_frames
             bits_per_second = frames_per_second * 8 * self.FRAME_LENGTH
             self.log.info('Data rates are: %f kFrames/s, %f Mbits/s' % (frames_per_second/1e3, bits_per_second/1e6))
@@ -853,7 +854,7 @@ class chFPGA_controller(object):
         data={}
         for ch in channels:
             d=np.zeros((32,3),dtype=np.uint8)
-            self.log.info('Reading channel %i' % (ch))
+            self.log.info('Reading channel %i.' % (ch))
             adcdaq=self.ANT[ch].ADCDAQ
 
             for dly in range(32):

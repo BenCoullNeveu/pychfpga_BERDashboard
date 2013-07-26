@@ -1,0 +1,58 @@
+from distutils.core import setup, Extension
+import os, sys
+
+# Paths and filenames.
+init_dir    = "/etc/init"
+chime_dir   = "/etc/CHIME"
+bin_dir     = "/usr/sbin"
+target      = "ch_master"
+version     = "version"
+init_in     = "ch_master_daemon.conf"
+
+# Install the python packages.
+setup(name = "ch_acq",
+      version = "1.0",
+      packages = ["pychfpga", "pychfpga.core", "pychfpga.common", \
+                  "pychfpga.ML605", "pychfpga.MGADC08"],
+      ext_modules = [Extension("chrx", 
+                               ["chrx/acq.c", "chrx/chrx.c", "chrx/disc.c", \
+                                "chrx/fpga_acq.c", "chrx/frame.c", \
+                                "chrx/serial_adc.c", "chrx/util.c"],
+                               libraries = ["hdf5", "hdf5_hl", "m", "pthread"])]
+     )
+
+# If we are installing, copy things to system folders.
+if len(sys.argv) == 2 and sys.argv[1] == "install":
+  # Make sure the CHIME directory exists.
+  if not os.path.exists(chime_dir):
+    os.makedirs(chime_dir)
+
+  # Get the git tag number.
+  fd = os.popen("git describe --tags")
+  if not fd:
+    print "Could not run \"git describe --tags\"."
+  else:
+    tag = fd.read().replace("\n", "")
+    fd.close()
+
+  # Record tag.
+  print "Recording git tag \"%s\" to %s/%s." % (tag, chime_dir, version)
+  path = "%s/%s" % (chime_dir, version)
+  fp = open(path, "w")
+  if not fp:
+    print "Could not write to file %s." % (path)
+  else:
+    fp.write("%s\n" % tag)
+    fp.close()
+  
+  # Copy the configuration files to the CHIME directory.
+  print "Copying %s.conf and %s.conf to %s." % (target, target, chime_dir)
+  os.system("install -m 644 %s.conf %s.spec %s" % (target, target, chime_dir))
+  
+  # Copy the init script to the init directory.
+  print "Copying the init script to %s." % (init_dir)
+  os.system("install -m 644 %s %s/%s.conf" % (init_in, init_dir, target))
+  
+  # Copy ch_master to the path.
+  print "Copying %s.py to %s." % (target, bin_dir)
+  os.system("install -m 755 %s.py %s" % (target, bin_dir))
