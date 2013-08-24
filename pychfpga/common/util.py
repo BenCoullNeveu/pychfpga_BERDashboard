@@ -11,6 +11,7 @@ util.py module
 
 import __builtin__
 import numpy as np
+import logging
 
 def hex(arg):
 	""" Wrapper around the built-in hex function to allow hex conversion of arrays """ 
@@ -18,3 +19,14 @@ def hex(arg):
 		return '[%s]' % (' '.join(__builtin__.hex(a) for a in arg))
 	else:
 		return __builtin__.hex(arg)
+
+def reload_modules(module_list):
+    """ Reload modules specified in the list."""
+    log = logging.getLogger(__name__)
+    for module in module_list: 
+        log.debug('Reloading module %s' % (module.__name__))
+        reload(module)
+
+def reverse_dict(d):
+    """ Returns a reverse-lookup dictionnary of 'd'"""
+    return {v:k for (k, v) in d.items()}

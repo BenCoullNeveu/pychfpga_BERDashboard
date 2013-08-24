@@ -40,7 +40,7 @@ class GPIO_base(Module_base):
     FR_DIST_SYNC = BitField(CONTROL, 0x00, 2, doc='FR_DIST line. Common to all FR_DISTs.')
     ADC_RESET = BitField(CONTROL, 0x00, 0, doc='ADC RESET line. Common to both ADCs.')
 
-    BUCK_CLK_DIV = BitField(CONTROL, 0x01, 0, width=8, doc='Clock divider to set the BUCK SYNC frequency (2-255). Relative to the internal ADC word clock (200 MHz)')
+    BUCK_CLK_DIV = BitField(CONTROL, 0x01, 0, width=8, doc='Clock divider to set the BUCK SYNC frequency (2-255), where freq = 200 MHz/BUCK_CLK_DIV/2.')
 
     LCD_E = BitField(CONTROL, 0x02, 7, doc='LCD Enable')
     LCD_RS = BitField(CONTROL, 0x02, 6, doc='LCD RS (0=command, 1=data)')

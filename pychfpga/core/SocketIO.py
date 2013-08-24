@@ -14,6 +14,7 @@ History:
 """
 
 import socket
+import logging
 import numpy as np
 
 timeout = socket.timeout #110918 JFC
@@ -28,6 +29,8 @@ class ControlSocket_base(object):
 		self.port_number = port_number # Control port on the FPGA
 		self.address = (self.ip_address, self.port_number)
 		self.sock = None
+		self.logger = logging.getLogger(__name__)
+
 		self.open()
 	def open(self):
 		"""
@@ -38,14 +41,14 @@ class ControlSocket_base(object):
 		self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, self.BUFFER_LENGTH)
 		host_addr = get_host_addr(dest_addr=self.ip_address, netmask=self.netmask)
 		self.sock.bind((host_addr, self.port_number))
-		print 'Opened control UDP Socket'
-		print '    Control port: listening on %s:%i ' % (host_addr, self.port_number)
+		self.logger.info('Opened control UDP Socket')
+		self.logger.info('    Control port: listening on %s:%i ' % (host_addr, self.port_number))
 
 
 	def close(self):
 		"""Closes the socket"""
 		self.sock.close()
-		print 'Closed UDP control socket'
+		self.logger.info('Closed UDP control socket')
 
 	def write(self, data):
 		"""
@@ -89,6 +92,8 @@ class DataSocket_base(object):
 		self.ip_address = ip_address # IP of the chFPGA board. Used to determine the host address 
 		self.port_number = port_number # Data port on the host (Control port +1), to receive frame data
 		self.sock = None
+		self.logger = logging.getLogger(__name__)
+
 		self.open()
 
 	def open(self):
@@ -101,13 +106,13 @@ class DataSocket_base(object):
 		self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, self.BUFFER_LENGTH)
 		host_addr = get_host_addr(dest_addr=self.ip_address, netmask=self.netmask)
 		self.sock.bind((host_addr, self.port_number))
-		print 'Opened data UDP Socket'
-		print '    Data port:    listening on %s:%i ' % (host_addr, self.port_number)
+		self.logger.info('Opened data UDP Socket')
+		self.logger.info('    Data port:    listening on %s:%i ' % (host_addr, self.port_number))
 
 	def close(self):
 		"""Closes the communication socket"""
 		self.sock.close()
-		print 'Closed UDP data socket'
+		self.logger.info('Closed UDP data socket')
 
 	def flush(self):
 		"""Flushes the socket receive buffer."""
@@ -144,7 +149,7 @@ def get_host_addr(dest_addr, netmask='255.255.0.0', only_one=True):
 	host_addr_list = host_data[2] # get the list of IP addresses associated with this computer
 	dest_addr_vect = np.array(map(ord, socket.inet_aton(dest_addr))) # convert the target IP into a vector
 	netmask_vect = np.array(map(ord, socket.inet_aton(netmask))) # convert the net mask into a vector
-	
+
 	matched_addr = []
 	for host_addr in host_addr_list:
 		host_addr_vect = np.array(map(ord, socket.inet_aton(host_addr))) # convert the host address into a vector

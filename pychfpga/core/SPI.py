@@ -7,9 +7,11 @@ SPI.py module
 # History:
 # 2011-07-07 : JFC : Created from test code in chFPGA.py
 # 2011-07-13 JFC: added read_reg() and write_reg() to make code more manageable and reader-friendly
+# 2013-08-16 JFC: Cleanup. Used new BitFiield style. Removed all explicit address references. removed REV0 and moved ALT_TIMING and added PORT.
 """
 
 import numpy as np
+import time
 
 from Module import Module_base, BitField
 
@@ -17,67 +19,83 @@ __reload__=True
 
 class SPI_base(Module_base):
     # SPI addresses
-    SPI_ADC0_ADDR = 0    # ADC. R/W device. 8 bit address+RW, 16 bit data.
-    SPI_ADC1_ADDR = 1 # ADC. R/W device. 8 bit address+RW, 16 bit data.
+    SPI_ADC0_ADDR      = 0    # ADC. R/W device. 8 bit address+RW, 16 bit data.
+    SPI_ADC1_ADDR      = 1 # ADC. R/W device. 8 bit address+RW, 16 bit data.
     SPI_ADC0_TEMP_ADDR = 2 # ADC temperature sensor chip. Read only
     SPI_ADC1_TEMP_ADDR = 3 # ADC temperature sensor chip. Read only
-    SPI_AMB_TEMP_ADDR = 4 # Board temperature sensor chip. Read/Write device
-    SPI_PLL1_ADDR = (5, 1) # ADC PLL. The second element of the tuple indicates that we use the alternate timing 
-    #SPI_ADC_BIAS_ADDR=5 # Bias measurement ADC.  Read/Write device # Not present on Rev2 board
-    SPI_IO_EXP_ADDR = 6 # IO Expander. Read/Write device
-    SPI_PLL2_ADDR = 7 # MGT PLL. Write only.
+    SPI_AMB_TEMP_ADDR  = 4 # Board temperature sensor chip. Read/Write device
+    SPI_PLL1_ADDR      = (5, 1) # ADC PLL. The second element of the tuple indicates that we use the alternate timing 
+    #SPI_ADC_BIAS_ADDR =5 # Bias measurement ADC.  Read/Write device # Not present on Rev2 board
+    SPI_IO_EXP_ADDR    = 6 # IO Expander. Read/Write device
+    SPI_PLL2_ADDR      = 7 # MGT PLL. Write only.
 
     CONTROL = BitField.CONTROL
     STATUS = BitField.STATUS
 
-    BITS={
-        'ADDR' :     BitField(CONTROL, 0x04,4, 4, doc='Address of SPI device to communicate with'),
-        'RESET' :   BitField(CONTROL, 0x04, 3, doc='Resets the SPI state machine. NOTE: Only available on the HPC connector'),
-        'START' :   BitField(CONTROL, 0x04, 2, doc='A 0 to 1 transition on this bit starts SPI read/write'),
-        'BYTES' :   BitField(CONTROL, 0x04, 0, width=2, doc='Number of bytes in the SPI communication 0=1 Byte, 1=2 bytes, 2=3 bytes, 3=4 bytes'),
-
-        'DEFAULT_ADDR' :     BitField(CONTROL, 0x05, 4, width=3, doc='Default address of SPI device (enabled when there is no communication or ADC_PLL1 is accessed'),
-        'CLK_ENABLE' :         BitField(CONTROL, 0x05, 3, doc='When 1, enables the SPI clock'),
-        'REV0' :             BitField(CONTROL, 0x05, 2, doc='When 1, Indicates this is a Rev0 board protocol. When 0, the PLL_LE line is treates as a global CS'),
-        'ALT_TIMING' :         BitField(CONTROL, 0x05, 1, doc='When 1, uses the alternate timing where the CS is deactivated later. This is to be used with the ADC PLL.'),
-
-        'READY' :     BitField(STATUS, 0x04, 0, doc='High when SPI transaction is completed'),
-    }
-
+    TX_DATA        = BitField(CONTROL, 0x03, 0, width=32, doc='Data to be transmitted. MSB (bit 31) is transmited first.')
+    ADDR           = BitField(CONTROL, 0x04, 4, width=4, doc='Address of SPI device to communicate with')
+    RESET          = BitField(CONTROL, 0x04, 3, doc='Resets the SPI state machine. NOTE: Only available on the HPC connector')
+    START          = BitField(CONTROL, 0x04, 2, doc='A 0 to 1 transition on this bit starts SPI read/write')
+    BYTES          = BitField(CONTROL, 0x04, 0, width=2, doc='Number of bytes in the SPI communication 0=1 Byte, 1=2 bytes, 2=3 bytes, 3=4 bytes')
+    
+    DEFAULT_ADDR   = BitField(CONTROL, 0x05, 4, width=3, doc='Default address of SPI device (enabled when there is no communication or ADC_PLL1 is accessed')
+    CLK_ENABLE     = BitField(CONTROL, 0x05, 3, doc='When 1, enables the SPI clock')
+    ALT_TIMING     = BitField(CONTROL, 0x05, 2, doc='When 1, uses the alternate timing where the CS is deactivated later. This is to be used with the ADC PLL.')
+    PORT           = BitField(CONTROL, 0x05, 0, width=1, doc='Indicates which SPI port is used.')
+    RX_DATA        = BitField(STATUS, 0x03, 0, width=32, doc='Data received during the transaction. MSB (first received bit) is always on bit 31.')
+    READY          = BitField(STATUS, 0x04, 0, doc='High when SPI transaction is completed')
 
 
-    def __init__(self,fpga):
-        self.fpga_instance=fpga;
+
+    def __init__(self, fpga):
+        self.fpga_instance = fpga;
         super(self.__class__,self).__init__(fpga,fpga.SYSTEM_PORT, fpga.SYSTEM_SPI_MODULE)
+        self.current_port = 0
+        self._lock() # Prevent inadvertent changes to the class instance
 
-    def read_reg(self, addr, length=1,  type=np.uint8):
+    def read_reg(self, addr, length=1, type=np.uint8):
         """ Reads from the SPI control register"""
-        fpga=self.fpga_instance; # use a shorter variable name to access the FPGA instance attributes
-        data=fpga.Read(fpga.SYSTEM_PORT,fpga.SYSTEM_SPI_MODULE,addr, length=length, type=type)
+        fpga = self.fpga_instance; # use a shorter variable name to access the FPGA instance attributes
+        data = fpga.read(fpga.SYSTEM_PORT, fpga.SYSTEM_SPI_MODULE, addr, length=length, type=type)
         return data
-    def write_reg(self, addr, data,  type=np.uint8):
+
+    def write_reg(self, addr, data, type=np.uint8):
         """ Writes to the SPI control register"""
-        fpga=self.fpga_instance; # use a shorter variable name to access the FPGA instance attributes
-        length=fpga.Write(fpga.SYSTEM_PORT,fpga.SYSTEM_SPI_MODULE,addr,data);
+        fpga = self.fpga_instance; # use a shorter variable name to access the FPGA instance attributes
+        length = fpga.write(fpga.SYSTEM_PORT,fpga.SYSTEM_SPI_MODULE,addr,data);
         return length
 
-    def read_write(self, device=2, data=[0x00,0x00,0x00,0x00],  type=np.uint8, verbose=1):
+    def set_port(self, port):
+        """
+        Sets the SPI port to be used in subsequent transactions
+        """
+        self.current_port = port;
+
+    def read_write(self, device=2, data=[0x00,0x00,0x00,0x00],  type=np.uint8, port = None, verbose=1):
         """ Serially writes a word (1-4 bytes long) to the specified device on the SPI bus while reading serial data put the bus at the same time
         The written word must be padded so its total length covers the whole SPI transaction (read and write bits). 
         """
-        if isinstance(device,tuple):
-            self.ALT_TIMING=device[1]
-            device=device[0]
+        if port is not None:
+            self.set_port(port)
+        self.PORT = self.current_port
+
+        if isinstance(device, tuple):
+            self.ALT_TIMING = device[1]
+            device = device[0]
         else:
-            self.ALT_TIMING=0
-        
-        word_length=self.write_reg(0x000+0x00,data);
-        self.write_reg(0x000+0x04,[0x00+(device<<4)+(word_length-1)]);
-        self.write_reg(0x000+0x04,[0x04+(device<<4)+(word_length-1)]);
-        while not self.read_reg(0x080+0x04)&0x01: 
+            self.ALT_TIMING = 0
+        word_length = self.write_reg(self.get_addr('TX_DATA')-3, data); # make sure first byte of array is on Byte 0
+        self.ADDR = device
+        self.BYTES = word_length-1
+        self.START = 0
+        self.START = 1
+        # self.write_reg(0x000+0x04, [0x00+(device << 4) + (word_length-1)]);
+        # self.write_reg(0x000+0x04, [0x04+(device << 4) + (word_length-1)]);
+        while not self.READY: 
+            time.sleep(0.1)
             if verbose:
                 print '.',
-        data=self.read_reg(0x080+0x00, length=word_length, type=np.uint8)
+        data=self.read_reg(self.get_addr('RX_DATA')-3, length=word_length, type=np.uint8)
         read_length=np.dtype(type).itemsize
         data=data[-read_length:]
         data.dtype=np.dtype(type)

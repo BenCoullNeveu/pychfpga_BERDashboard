@@ -91,8 +91,12 @@ class ANT_base(object):
             self.ANT.append(ANT_channel(self, i))
 
     def __getitem__(self, key):
-        """    If the user indexes this object (ANT[n] instead of ANT) then return the antenna processor instance"""
+        """If the user indexes this object (ANT[n] instead of ANT) then return the antenna processor instance"""
         return self.ANT[key]
+
+    def __len__(self):
+        """Returns the number of antennas"""
+        return len(self.ANT)
 
     # Low-level access functions
 

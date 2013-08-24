@@ -22,13 +22,13 @@ import numpy as np
 
 class ADC_PLL_base(object):
 
-    def __init__(self,fpga,verbose=0):
-        self.fpga=fpga
+    def __init__(self, adc_board_instance, verbose=0):
+        self.adc_board = adc_board_instance
         self.verbose=verbose
 
     def write(self,data):
         """ Writes a 32-bit word to PLL (MSB first). The register address is contained in the word."""
-        spi=self.fpga.SPI
+        spi=self.adc_board.spi
         spi.read_write(spi.SPI_PLL1_ADDR, data)
 
     def init(self,fout=1600, fref=10, verbose=None, **args):
@@ -41,7 +41,7 @@ class ADC_PLL_base(object):
             - The reference clock x2 doubler or /2 divider are never enabled
         """
         # Do nothing if the FMC is not present
-        if not self.fpga.FMC_present:
+        if not self.adc_board.is_present():
             return
         
         if verbose is None:
@@ -158,7 +158,7 @@ class ADC_PLL_base(object):
         self.write(np.uint32(PLL_reg0)); # write Reg 0: 
         #self.write(np.uint32(PLL_reg0)); # write Reg 0: # To make sure DBR values are clocked in. 
 
-        self.fpga.ADC_BOARD.IOExpander.wait_for_bit('PLL1_LOCK', timeout=1)
+        self.adc_board.IOExpander.wait_for_bit('PLL1_LOCK', timeout=1)
         if verbose:
             print ' PLL is locked: %s' % bool(self.fpga.ADC_BOARD.IOExpander.PLL1_LOCK)
             print '----------------------------------------------------------------------'
@@ -167,7 +167,7 @@ class ADC_PLL_base(object):
 
     def status(self):
         print '---------------------FMC IO Expander------------------------------------'
-        if not self.fpga.FMC_present:
+        if not self.adc_board.is_present():
             print 'FMC board not present'
         print ' No status info'
         print '----------------------------------------------------------------------'

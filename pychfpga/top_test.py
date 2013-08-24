@@ -13,24 +13,27 @@ History:
     2011-09-09 JFC: Added global FREF 
     2011-10-11 JFC: Updated delay tables
 """
+import logging
+import argparse
 
 from pychfpga.core import chFPGA_controller
 from pychfpga.core import chFPGA_receiver
-import pychfpga.plot_utils as pu
+import plot_utils.plot_utils as pu
 from pychfpga.core import Inject_tools as inj
-from pychfpga.common.tests.test_adc_fft_bin import test_adc_fft_bin
-from pychfpga.common.tests.test_adc_fft_int_power import test_adc_fft_int_power
-from pychfpga.common.tests.test_adc_fft_level import test_adc_fft_level
-from pychfpga.common.tests.test_adc_dc import test_adc_dc
-from pychfpga.common.tests.test_adc_spectrum import test_adc_spectrum
-import pychfpga.common.tests.test_corr as tc
-from pychfpga import receiver_corr_fast
+# from pychfpga.common.tests.test_adc_fft_bin import test_adc_fft_bin
+# from pychfpga.common.tests.test_adc_fft_int_power import test_adc_fft_int_power
+# from pychfpga.common.tests.test_adc_fft_level import test_adc_fft_level
+# from pychfpga.common.tests.test_adc_dc import test_adc_dc
+# from pychfpga.common.tests.test_adc_spectrum import test_adc_spectrum
+# import pychfpga.common.tests.test_corr as tc
+# from pychfpga import receiver_corr_fast
 
 reload(chFPGA_controller) # just to make sure that any changes to the code are reloaded
 reload(chFPGA_receiver) # just to make sure that any changes to the code are reloaded
 reload(pu)
 reload(inj)
-reload(receiver_corr_fast)
+reload(logging) # needed to reset the logger config in case we change the formatting
+# reload(receiver_corr_fast)
 
 # Default data and clock line delays for the two FMC boards/ML605 combination.
 # First 8 values are the delays for bits 0 to 7, 8th value is the delay for the clock line.
@@ -88,6 +91,7 @@ reload(receiver_corr_fast)
 #    [14]*8, #CH7 (BUFR)
 #    )
 
+
 ADC_DELAYS_REV2_SN0001 = (
     [20,26,25,25,25,25,25,24], #CH0
     [23]*8, #CH1 
@@ -121,6 +125,25 @@ ADC_DELAYS_REV2_SN0001_KC705_FMC700 = (
     [0]*8, #CH7
     )
 
+ADC_DELAYS_MGK7MB_REV0_MGAC08_REV2 = (
+    ([6,25,25,25,25,25,25,25],     [4]*8), #CH0
+    ([21]*8,                       [3]*8), #CH1 
+    ([18,17,16,16,13,15,14,13],    [3]*8), #CH2 
+    ([13]*8,                       [3]*8), #CH3
+    ([9]*8,                        [3]*8), #CH4
+    ([14,12,12,12,12,12,12,12],    [3]*8), #CH5 
+    ([11,11,13,10,10,8,12,13],     [3]*8), #CH6 
+    ([12]*8,                       [4]*8), #CH7
+
+    ([12]*8,                       [4]*8), #CH8
+    ([12]*8,                       [4]*8), #CH9
+    ([12]*8,                       [4]*8), #CH10
+    ([12]*8,                       [4]*8), #CH11
+    ([12]*8,                       [4]*8), #CH12
+    ([12]*8,                       [4]*8), #CH13
+    ([12]*8,                       [4]*8), #CH14
+    ([12]*8,                       [4]*8)  #CH15
+    )
 
 if __name__ == '__main__':        
     print '------------------------'
@@ -128,6 +151,12 @@ if __name__ == '__main__':
     print 'J.-F. Cliche'
     print '------------------------'
 
+    parser = argparse.ArgumentParser(description=__doc__.split('\n')[0]) # description is the first line of the docstring
+    parser.add_argument('--init', action = 'store', type=int, default=1, help='Initialization level: -1: Just create sockets, 0: connect and read only. 1: initialize hardware')
+    parser.add_argument('-f', '--sampling_frequency', action = 'store', type=float, default=850, help='Sampling frequency of the ADC in MHz')
+    args = parser.parse_args()
+    print 'Using Init = %i' % args.init
+    print 'Using Sampling frequency of %0.3f MHz' % args.sampling_frequency
     # Delete previous instances of 'c' to make sure the sockets are closed. If not, the new object will not be able to open the socket.
     # pylint: disable=E0601    
     try:
@@ -139,14 +168,16 @@ if __name__ == '__main__':
     except NameError:
         pass
 
+    logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(name)-32s %(levelname)-10s : %(message)s')
+
     #ADC_TEST_MODE = 0     #  0= normal, 1= ramp, 2=pulse (1 high, 10 low)
-    ADC_DELAY_TABLE = ADC_DELAYS_REV2_SN0001_KC705_FMC700 #ADC_DELAYS_REV2_SN0001 ## select the table corresponding to the FMC serial number
+    ADC_DELAY_TABLE = ADC_DELAYS_MGK7MB_REV0_MGAC08_REV2 #ADC_DELAYS_REV2_SN0001 ## select the table corresponding to the FMC serial number
     #FREF = 10 # FMC Reference clock frequency 
 
     # Create the new chFPGA object.
-    c = chFPGA_controller.chFPGA_controller(ip_address='10.10.10.11', port_number=41000, adc_delay_table=ADC_DELAY_TABLE, init=1, sampling_frequency=850e6, reference_frequency=10e6) # pylint: disable=C0103
-    chFPGA_config = c.get_config()
-    r = chFPGA_receiver.chFPGA_receiver(chFPGA_config, ip_address='10.10.10.11', port=41001)
+    c = chFPGA_controller.chFPGA_controller(ip_address='10.10.10.11', port_number=41000, adc_delay_table=ADC_DELAY_TABLE, init=args.init, sampling_frequency=args.sampling_frequency * 1e6, reference_frequency=10e6) # pylint: disable=C0103
+#    chFPGA_config = c.get_config()
+#    r = chFPGA_receiver.chFPGA_receiver(chFPGA_config, ip_address='10.10.10.11', port=41001)
     #r = receiver_corr_fast.chFPGA_receiver(chFPGA_config, ip_address='10.10.10.11', port=41001)
     ##c.sync()
     #inj.set_inject_mode(c,r)
@@ -154,7 +185,7 @@ if __name__ == '__main__':
     ######adctest = test_adc_spectrum(c,r)
     ######stuff = adctest.execute()
     # Displays the system frequencies
-    c.status()
+#    c.status()
     #adctest = test_adc_fft_bin(c,r)
     #stuff = adctest.execute()
     #adctest = test_adc_fft_int_power(c,r)

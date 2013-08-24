@@ -101,7 +101,7 @@ class MGT_port_base(Module_base):
 		'TXOUTCLK_CTRL' : 	BitField(DRP,0x43,0,3,doc=''),
 		}
 
-	def __init__(self,fpga,MGT_number):
+	def __init__(self, fpga, MGT_number):
 		self.MGT_number=MGT_number
 		super(self.__class__,self).__init__(fpga,fpga.MGT_PORT, MGT_number)
 
@@ -109,32 +109,32 @@ class MGT_port_base(Module_base):
 			#print '  Defining property "%s"' % (field_name)
 
 			# Use function closures to create the callback function with arguments that won't be rebinded
-			fget=lambda s,_bit_name=field_name:s.read_sys_field(_bit_name) # Pass bit_name as a default argument to 'close' that variable (i.e. bind it now). Otherwise the function will use the value at call time (which is the last value assigned to that variable) 
-			fset=lambda s,value,_bit_name=field_name:s.write_sys_field(_bit_name,value)
-			setattr(self.__class__, field_name, property(fget, fset,doc=self.DRP_FIELDS[field_name].doc))
+			fget=lambda s, _bit_name=field_name:s.read_sys_field(_bit_name) # Pass bit_name as a default argument to 'close' that variable (i.e. bind it now). Otherwise the function will use the value at call time (which is the last value assigned to that variable) 
+			fset=lambda s, value,_bit_name=field_name:s.write_sys_field(_bit_name,value)
+			setattr(self.__class__, field_name, property(fget, fset, doc=self.DRP_FIELDS[field_name].doc))
 		self._lock()
 
-	def read_DRP(self,addr):
+	def read_DRP(self, addr):
 		""" 
 		Reads a 16-bit register of the MGT at specified word address 
 		"""
 		return self.read(0x200+2*(addr),type=np.dtype('<u2')); # Sysmon data is read LSB first
 
-	def write_DRP(self,addr,data):
+	def write_DRP(self, addr, data):
 		""" 
 		Writes a 16-bit register of the MGT at specified word address 
 		"""
-		self.write(0x200+2*(addr),[data &0xFF, (data>>8)&0xFF]); # Sysmon data is LSB first
+		self.write(0x200 + 2 * (addr), [data & 0xFF, (data >> 8) & 0xFF]); # Sysmon data is LSB first
 
-	def read_sys_field(self,bit_name):
+	def read_sys_field(self, bit_name):
 		""" Reads the field identified by the name 'bit_name' which is looked up in the BITS table to find the bit definition (port, bit position etc). Returns a boolean."""  
-		bit_def=self.DRP_FIELDS[bit_name]
-		data= self.read_DRP(bit_def.addr)
-		return data>>bit_def.bit & ((1<<bit_def.width)-1)
+		bit_def = self.DRP_FIELDS[bit_name]
+		data = self.read_DRP(bit_def.addr)
+		return data >> bit_def.bit & ((1 << bit_def.width) - 1)
 
-	def write_sys_field(self,bit_name,data):
+	def write_sys_field(self, bit_name,data):
 		""" Writes the field identified by the name 'bit_name' which is looked up in the BITS table to find the bit definition (port, bit position etc). Returns a boolean."""  
-		bit_def=self.DRP_FIELDS[bit_name]
+		bit_def = self.DRP_FIELDS[bit_name]
 		if (data>=2**bit_def.width) or data<0:
 			raise Exception('Bad value %i for parameter %s' % (data, bit_name))
 		old_data= self.read_DRP(bit_def.addr)
@@ -144,12 +144,12 @@ class MGT_port_base(Module_base):
 		self.write_DRP(bit_def.addr, new_data)
 
 	def rx_reset(self):
-		self.RX_DFE_OVERRIDE=1
+		self.RX_DFE_OVERRIDE = 1
 		#self.TAP1=8
-		self.RX_CDR_RESET=1;
-		self.RX_CDR_RESET=0;
-		self.RX_EYE_SCANMODE=1
-		self.RX_EYE_SCANMODE=0
+		self.RX_CDR_RESET = 1;
+		self.RX_CDR_RESET = 0;
+		self.RX_EYE_SCANMODE = 1
+		self.RX_EYE_SCANMODE = 0
 
 		while not self.RX_RESETDONE:
 			pass
@@ -157,18 +157,18 @@ class MGT_port_base(Module_base):
 	def init(self):
 		# Receiver set-up
 
-		self.RX_DFE_OVERRIDE=1
-		self.TAP1=8
-		self.TAP2=0
-		self.TAP3=0
-		self.TAP4=0
-		self.RX_EQMIX=0 # RX Equalizer
-		self.RX_EYE_SCANMODE=0
+		self.RX_DFE_OVERRIDE = 1
+		self.TAP1 = 8
+		self.TAP2 = 0
+		self.TAP3 = 0
+		self.TAP4 = 0
+		self.RX_EQMIX = 0 # RX Equalizer
+		self.RX_EYE_SCANMODE = 0
 
 		# Transmitter set-up
-		self.TX_DIFFCTRL=10 # Transmit power
-		self.TX_PREEMPHASIS=0
-		self.TX_POSTEMPHASIS=0
+		self.TX_DIFFCTRL = 10 # Transmit power
+		self.TX_PREEMPHASIS = 0
+		self.TX_POSTEMPHASIS = 0
 
 
 	def reset(self):

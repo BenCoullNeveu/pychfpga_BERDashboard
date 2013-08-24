@@ -18,29 +18,32 @@ import warnings
 import numpy as np
 
 class IOExpander_base(object):
+
+    _locked = False # when 1, prevents the object from being modified
+
     """ Class Providing interfaces to the IOExpander on the ADC FMC board. It is created by refering to a chFPGA object which is used to access the SPI interface""" 
     # Register addresses (assumes BANK=0, which is the default after power-up)
-    REG_IODIRA = 0x00
-    REG_IODIRB = 0x01
-    REG_IOPOLA = 0x02
-    REG_IOPOLB = 0x03
-    REG_GPINTENA = 0x04
+    REG_IODIRA   = 0x00 # GPIO pin is 1=input, 0 = output
+    REG_IODIRB   = 0x01
+    REG_IOPOLA   = 0x02 # 0= non-inverted, 1 = inverted
+    REG_IOPOLB   = 0x03
+    REG_GPINTENA = 0x04 # 1 = enable interrupt
     REG_GPINTENB = 0x05
-    REG_DEFVALA = 0x06
-    REG_DEFVALB = 0x07
-    REG_INTCONA = 0x08
-    REG_INTCONB = 0x09
-    REG_IOCON = 0x0A
-    REG_GPPUA = 0x0C
-    REG_GPPUB = 0x0D
-    REG_INTFA = 0x0E
-    REG_INTFB = 0x0F
-    REG_INTCAPA = 0x10
-    REG_INTCAPB = 0x11
-    REG_GPIOA = 0x12
-    REG_GPIOB = 0x13
-    REG_OLATA = 0x14
-    REG_OLATB = 0x15
+    REG_DEFVALA  = 0x06 # Comparison value for interrupts
+    REG_DEFVALB  = 0x07
+    REG_INTCONA  = 0x08 # Interrupt control
+    REG_INTCONB  = 0x09
+    REG_IOCON    = 0x0A # IO COntrol: Bit 7 = Bank, Bit 6 = MIRROR, Bit 7 = SEQOP, Bit 4: DISSLW (SDA slew), Bit 3: HAEN (Hardware addr enable (S17 only)), bit 2 = ODR (oupen drain INT line), Bit 1: INTPOL (Interrupt line polarity), Bit 0: Unused
+    REG_GPPUA    = 0x0C # Pullup resistor control: 1=Pull-up enabled
+    REG_GPPUB    = 0x0D
+    REG_INTFA    = 0x0E # INTFA: Interrupt flags (read only)
+    REG_INTFB    = 0x0F
+    REG_INTCAPA  = 0x10 # INTCAP: Interrupt capture
+    REG_INTCAPB  = 0x11
+    REG_GPIOA    = 0x12 # Port register: Reading returns the pin value, Writing changes the output latch value
+    REG_GPIOB    = 0x13
+    REG_OLATA    = 0x14 # Output latch: Reading returns the output latch value, Writing changes the output latch value 
+    REG_OLATB    = 0x15
 
     # --- Define GPIO bits for the IO Expander
     # Directions
@@ -57,21 +60,21 @@ class IOExpander_base(object):
             self.bit = bit
             self.dir = dir 
             self.default = default
-    # Bit configuration table:   name: (port,bit,dir (0=wr,1=rd), default_value)
+    # Bit configuration table:   name: (port, bit, dir (0=wr,1=rd), default_value)
     BITS = {
-        'ADC_RESET' :     BitDef(PORT_A, 0, WR, 1),
-        'PLL1_CE':         BitDef(PORT_A, 1, RD, 0),
-        'PLL1_LOCK' :     BitDef(PORT_A, 2, RD, 0),
-        'PLL1_MUTE' :     BitDef(PORT_A, 3, RD, 0),
-        'PLL1_MUXOUT' : BitDef(PORT_A, 4, RD, 0),
-        'PLL2_LOCK' :     BitDef(PORT_A, 5, RD, 0),
-        'LED0' :         BitDef(PORT_A, 6, WR, 1),  #changed to 0
-        'LED1_PLL2_RESET' : BitDef(PORT_A, 7, WR, 0), # default=0  to enable MGT_PLL
-        'LED2' :         BitDef(PORT_B, 0, WR, 1),
-        'LED3' :         BitDef(PORT_B, 1, WR, 1),
+        'ADC_RESET'        : BitDef(PORT_A, 0, WR, 1),
+        'PLL1_CE'          : BitDef(PORT_A, 1, RD, 0),
+        'PLL1_LOCK'        : BitDef(PORT_A, 2, RD, 0),
+        'PLL1_MUTE'        : BitDef(PORT_A, 3, RD, 0),
+        'PLL1_MUXOUT'      : BitDef(PORT_A, 4, RD, 0),
+        'PLL2_LOCK'        : BitDef(PORT_A, 5, RD, 0),
+        'LED0'             : BitDef(PORT_A, 6, WR, 1),  #changed to 0
+        'LED1_PLL2_RESET'  : BitDef(PORT_A, 7, WR, 0), # default=0 (read mde) to enable MGT_PLL (there is a pull-up on the line) and make sure the user does not inadvertantly resets the PLL while thinking he accesses the LED
+        'LED2'             : BitDef(PORT_B, 0, WR, 1),
+        'LED3'             : BitDef(PORT_B, 1, WR, 1),
         'REFCLK_INPUT_SEL' : BitDef(PORT_B, 3, WR, 1), ## kmb added for new fmc board clock set -> 1 is SMA, 0 is fmc
-        'SYNC_INPUT_SEL' : BitDef(PORT_B, 6, WR, 0), #SYNC source: 0=FPGA, 1= SMA
-        'SYNC_FF_BYPASS' : BitDef(PORT_B, 2, WR, 0), #SYNC FlipFlop Bypass: 0=Bypass, 1= Use FF (Note: It is not enough to set this bit for FF bypass. Resistors must also be set to route the buffered SYNC to the FF or the FF bypass input)
+        'SYNC_INPUT_SEL'   : BitDef(PORT_B, 6, WR, 0), #SYNC source: 0=FPGA, 1= SMA
+        'SYNC_FF_BYPASS'   : BitDef(PORT_B, 2, WR, 0), #SYNC FlipFlop Bypass: 0=Bypass, 1= Use FF (Note: It is not enough to set this bit for FF bypass. Resistors must also be set to route the buffered SYNC to the FF or the FF bypass input)
         }
 
     def __init__(self, fpga, verbose=0):
@@ -87,7 +90,22 @@ class IOExpander_base(object):
                 setattr(self.__class__, bit_name, property(fget))
             else:
                 setattr(self.__class__, bit_name, property(fget, fset))
+        self._lock() # Prevent further changes to the instance
 
+    def __setattr__(self, name, value):
+        """ Prevents creating new attributes to the class when _locked==1"""
+        if (not self._locked) or (hasattr(self, name)): # allow write if not locked or if attribute already exists
+#            print 'setting ',name
+            object.__setattr__(self, name, value)
+        else:
+            print "Class '%s' is locked: cannot assign new attribute '%s'" % (self, name)
+            raise AttributeError("This instance of class '%s' is locked: cannot assign new attribute '%s'" % (self.__class__.__name__, name)) # 120623 JFC
+
+    def _unlock(self):
+        self.__dict__['_locked'] = False
+        
+    def _lock(self):
+        self.__dict__['_locked'] = True
 
     def read(self, addr):
         """ Reads a IOExpander 8-bit register""" 
@@ -108,7 +126,7 @@ class IOExpander_base(object):
         return bool(data & (1 << bit_def.bit))
 
 
-    def write_gpio_bit(self, bit_name,data):
+    def write_gpio_bit(self, bit_name, data):
         """ Writes the IOExpander GPIO bit identified by the name 'bit_name' which is looked up in the BITS table to find the bit definition (port, bit position etc). The input data in converted in Boolean before being written."""  
         bit_def = self.BITS[bit_name]
         old_data = self.read(self.REG_OLATA + bit_def.port)

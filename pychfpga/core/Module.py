@@ -247,7 +247,12 @@ class Module_base(object):
                 raise Exception("'%s' is not a Bitfield" % bitfield_name)
             else:
                 return bitfield
-                
+    def get_addr(self, bitfield_name):
+        """
+        Returns the address of the register containing the specified bitfield.
+        """
+        return self.bitfield(bitfield_name).get_addr()
+        
     def pulse_bit(self, addr, bit=0): 
         """
         Pulses the specified bit to '1' then back to '0'. 

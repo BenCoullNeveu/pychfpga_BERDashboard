@@ -57,6 +57,7 @@ class ADCDAQ_base(Module_base):
 
         # STATUS BYTES
 
+        'DELAY0_STATUS':      BitField(STATUS, 0, 0, width=5, doc='Current delay value for the data line as read from the IODELAY.'),
         'CLK_DELAY_STATUS':   BitField(STATUS, 8, 0, width=5, doc='Current delay value of the CLK line IODELAY'),
         'CAPTURE_DONE' :      BitField(STATUS, 9, 7, doc="'1' when capture is complete"),
         'PLL_LOCKED':         BitField(STATUS, 9, 3, doc='Indicates if the PLL is locked  (only if one is implemented in this module)'),
@@ -121,17 +122,32 @@ class ADCDAQ_base(Module_base):
             self.ENABLE_RAMP = 1
         else:
             raise Exception('Invalid ADCDAQ mode')
-    def set_delay(self, dly=[0, 0, 0, 0, 0, 0, 0, 0]):
-        """ Sets the tap delays 
-        WARNING: will work only if DIVCLK is clocking (i.e. ADC not in SYNC, and BUFR/PLL not in RESET)
-        """
-        if isinstance(dly, int):
-            dly = [dly]*8
-        elif len(dly) > 9:
-            raise Exception('Delay vector too long')
 
-        self.write(self.BITS['DELAY0'].addr, dly) # Set delay in registers
-        self.pulse_bit('IODELAY_RESET')
+    def set_delay(self, dly=([0, 0, 0, 0, 0, 0, 0, 0, 0], None)):
+        """ 
+        Sets the data acquisition delays 
+        WARNING: will work only if DIVCLK is clocking (i.e. ADC not in SYNC, and BUFR/PLL not in RESET)
+        WARNING:  The sample delays will be valid only after the next SYNC event.
+        """
+
+        tap_delays = dly[0]
+        if tap_delays is not None:
+            if isinstance(tap_delays, int):
+                tap_delays = [tap_delays] * 8
+            elif len(tap_delays) > 9:
+                raise Exception('Tap Delay vector too long')
+            self.write(self.BITS['DELAY0'].addr, tap_delays) # Set delay in registers
+            self.pulse_bit('IODELAY_RESET')
+        sample_delays = dly[1]
+        if sample_delays is not None:
+            if isinstance(sample_delays, int):
+                sample_delays = [sample_delays] * 8
+            elif len(sample_delays) > 8:
+                raise Exception('Sample Delay vector too long')
+            self.SAMPLE_DELAY = sample_delays[0]
+
+
+
 
     def set_clk_delay(self, dly):
         """ Sets the tap delay on the clock line 
@@ -146,11 +162,15 @@ class ADCDAQ_base(Module_base):
 
     def get_delay(self):
         """ Reads the 8 delay tap values and return them as an array"""
-        return list(self.read(0x00, length=8)) # Reads the delay in registers
+        tap_delays =  list(self.read(self.BITS['DELAY0'].addr, length=8)) # Reads the delay in registers
+        sample_delays =  [self.SAMPLE_DELAY] * 8 # Reads the sample delays
+
+        return (tap_delays, sample_delays)
+
 
     def get_actual_delay(self):
         """ Reads the 8 actual delay tap values (returned by the IODELAY themselves, not the last delay set point) and return them as an array"""
-        return self.read(0x80, length=8) # Reads the delay in registers
+        return self.read(self.BITS['DELAY0_STATUS'].addr, length=8) # Reads the delay in registers
 
     def set_divclk_phase(self, phase):
         """
@@ -185,7 +205,7 @@ class ADCDAQ_base(Module_base):
             #print '  Acquiring pattern for delay %i' % (dly)
             #dly=0
             self.CAPTURE2_WORD_NUMBER = i
-            time.sleep(1 / 200e6 * period * 2) # make sure the data has time to be capture
+            time.sleep(1 / 200e6 * period * 2) # make sure the data has time to be captured
             pattern[4*i : 4*(i+1)] = self.read('CAPTURE2_PATTERN0', type=np.uint8, length=4)
         return pattern
 
