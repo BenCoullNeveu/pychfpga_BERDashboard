@@ -16,7 +16,7 @@ History:
 
 from pychfpga.core import chFPGA_controller
 from pychfpga.core import chFPGA_receiver
-import pychfpga.plot_utils as pu
+import plot_utils.plot_utils as pu
 from pychfpga.core import Inject_tools as inj
 from pychfpga.common.tests.test_adc_fft_bin import test_adc_fft_bin
 from pychfpga.common.tests.test_adc_fft_int_power import test_adc_fft_int_power
@@ -24,13 +24,13 @@ from pychfpga.common.tests.test_adc_fft_level import test_adc_fft_level
 from pychfpga.common.tests.test_adc_dc import test_adc_dc
 from pychfpga.common.tests.test_adc_spectrum import test_adc_spectrum
 import pychfpga.common.tests.test_corr as tc
-from pychfpga import receiver_corr_fast
+#import receiver_fast
 
 reload(chFPGA_controller) # just to make sure that any changes to the code are reloaded
 reload(chFPGA_receiver) # just to make sure that any changes to the code are reloaded
 reload(pu)
 reload(inj)
-reload(receiver_corr_fast)
+#reload(receiver_fast)
 
 # Default data and clock line delays for the two FMC boards/ML605 combination.
 # First 8 values are the delays for bits 0 to 7, 8th value is the delay for the clock line.
@@ -144,9 +144,16 @@ if __name__ == '__main__':
     #FREF = 10 # FMC Reference clock frequency 
 
     # Create the new chFPGA object.
-    c = chFPGA_controller.chFPGA_controller(ip_address='10.10.10.11', port_number=41000, adc_delay_table=ADC_DELAY_TABLE, init=1, sampling_frequency=850e6, reference_frequency=10e6) # pylint: disable=C0103
+    c = chFPGA_controller.chFPGA_controller(ip_address='10.10.10.12', port_number=41000, host_ip='10.10.10.22', adc_delay_table=ADC_DELAY_TABLE, init=1, sampling_frequency=800e6, reference_frequency=10e6) # pylint: disable=C0103
     chFPGA_config = c.get_config()
-    r = chFPGA_receiver.chFPGA_receiver(chFPGA_config, ip_address='10.10.10.11', port=41001)
+    c.status()
+    #c2 = chFPGA_controller.chFPGA_controller(ip_address='10.10.10.11', port_number=41000, host_ip='10.10.10.23', adc_delay_table=ADC_DELAY_TABLE, init=1, sampling_frequency=850e6, reference_frequency=10e6) # pylint: disable=C0103
+    #config2 = c2.get_config()
+    r = chFPGA_receiver.chFPGA_receiver(chFPGA_config, ip_address='10.10.10.12', port=41002, host_ip='10.10.10.22')
+    #r2 = chFPGA_receiver.chFPGA_receiver(config2, ip_address='10.10.10.11', port=41001, host_ip='10.10.10.23')
+    c.GPIO.DATA_IP_PORT_OFFSET=2
+    c.GPIO.CORR_IP_PORT_OFFSET=2
+    #c2.GPIO.DATA_IP_PORT_OFFSET=1
     #r = receiver_corr_fast.chFPGA_receiver(chFPGA_config, ip_address='10.10.10.11', port=41001)
     ##c.sync()
     #inj.set_inject_mode(c,r)
@@ -154,7 +161,8 @@ if __name__ == '__main__':
     ######adctest = test_adc_spectrum(c,r)
     ######stuff = adctest.execute()
     # Displays the system frequencies
-    c.status()
+    
+    #c2.status()
     #adctest = test_adc_fft_bin(c,r)
     #stuff = adctest.execute()
     #adctest = test_adc_fft_int_power(c,r)

@@ -158,7 +158,7 @@ class chFPGA_controller(object):
     PLATFORM_ID_ML605 = 0
     PLATFORM_ID_KC705 = 1
     
-    def __init__(self, ip_address='10.10.10.11', port_number=41000, init=1, verbose=0, **kwargs):
+    def __init__(self, ip_address='10.10.10.11', port_number=41000, init=1, verbose=0, host_ip=None, **kwargs):
         """
         Opens communication with the specified chFPGA. This does not affect the state and operations of chFPGA.
         """
@@ -182,7 +182,7 @@ class chFPGA_controller(object):
             del Shared_variables.controller_sock[ip_address]
 
         # Create socket handled and open socket communications to the chFPGA board
-        self.sock = SocketIO.ControlSocket_base(ip_address, port_number)
+        self.sock = SocketIO.ControlSocket_base(ip_address, port_number, host_ip=host_ip)
         Shared_variables.controller_sock[ip_address] = self.sock # Save the socket in a persistent storage so it can be closed if needed  
         try: # catch initialization errors so we can free the socket for future instantiation
             self.log.info('Instantiating FPGA modules.')
@@ -286,7 +286,7 @@ class chFPGA_controller(object):
         if verbose >= 2: self.log.debug('  - GPIO')
         self.GPIO.init() # This stops the antenna procesors from sending data. Neeeded if the FPGA is flooding the buffers which prevent subsequent reads to come through
         #self.sock.flush_data_socket() # Now the the data stops coming, flush the buffers
-        self.sock.flush()
+        #self.sock.flush()
         if verbose >= 2: self.GPIO.status()
 
 
@@ -422,8 +422,7 @@ class chFPGA_controller(object):
         # Loop to read all required bytes (the FPGA does not support multi-byte reads (yet))
         for i in range(length*itemsize): 
             s = chr(0x00+(NBYTES<<3)+(ant>>3))+chr(((ant&0x07)<<5)+(module<<2)+(addr>>8))+chr(addr&0xff)
-            self.sock.write(s)
-            data = self.sock.read()
+            data = self.sock.write_read(s)
             #if data[0]!=s[0]:
             #    self.log.error("Read: ERROR: Returned ANT/SUB/ADDR (",   ata[0:2]," does not match request values (",   [0:2],")")
             if len(data) != 2:
@@ -710,8 +709,7 @@ class chFPGA_controller(object):
         burst_period_in_frames = int(burst_period_in_frames)
 
         if verbose:
-            self.log.info("Configuring antennas %s to transmit %i-frame " +\
-                          "burst every %i frames (i.e .every %.3f ms) %s." %\
+            self.log.info("Configuring antennas %s to transmit %i-frame burst every %i frames (i.e .every %.3f ms) %s." %\
                           (channels.__repr__(),
                            frames_per_burst, 
                            burst_period_in_frames, 

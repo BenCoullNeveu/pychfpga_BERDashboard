@@ -230,11 +230,11 @@ class chFPGA_receiver(object):
     #NUMBER_OF_CORRELATORS = NUMBER_OF_ANTENNAS_TO_CORRELATE
     FREQ_CHANNELS_MAX = 1024
 
-    def __init__(self, chFPGA_config, ip_address='10.10.10.11', port=41001, verbose=2):
+    def __init__(self, chFPGA_config, ip_address='10.10.10.11', port=41001, verbose=2, host_ip=None):
 
         print '*** Opening receiver sockets ***'
         # Create socket handled and open socket communications to the chFPGA board
-        self.sock=SocketIO.DataSocket_base(ip_address, port)
+        self.sock=SocketIO.DataSocket_base(ip_address, port, host_ip=host_ip)
         #self.sock.open()
         #Add configuration 
         self.chFPGA_config = chFPGA_config

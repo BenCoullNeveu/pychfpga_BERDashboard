@@ -22,13 +22,14 @@ class ControlSocket_base(object):
 	"""Creates an object that represents the control socket communication link to the chFPGA.""" 
 	BUFFER_LENGTH = 32768
 	
-	def __init__(self, ip_address, port_number, netmask='255.255.0.0'):
+	def __init__(self, ip_address, port_number, netmask='255.255.0.0', host_ip=None):
 		self.netmask = netmask # network mask used to find the host address that is on the same subnet as the target IP. This does not affect the network adapter settings.
 		self.ip_address = ip_address
 		self.port_number = port_number # Control port on the FPGA
 		self.address = (self.ip_address, self.port_number)
+		self.host_ip = host_ip
 		self.sock = None
-		self.open()
+		#self.open()
 	def open(self):
 		"""
 		Open control communication socket to chFPGA. 
@@ -36,28 +37,50 @@ class ControlSocket_base(object):
 		self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 		self.sock.settimeout(2)
 		self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, self.BUFFER_LENGTH)
-		host_addr = get_host_addr(dest_addr=self.ip_address, netmask=self.netmask)
+		self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+		if self.host_ip:
+			host_addr = self.host_ip
+		else:
+			host_addr = get_host_addr(dest_addr=self.ip_address, netmask=self.netmask)
 		self.sock.bind((host_addr, self.port_number))
-		print 'Opened control UDP Socket'
-		print '    Control port: listening on %s:%i ' % (host_addr, self.port_number)
+		#self.bind()
+		#print 'Opened control UDP Socket'
+		#print '    Control port: listening on %s:%i ' % (host_addr, self.port_number)
 
+	# def bind(self):
+	# 	"""
+	# 	Binds socket for reading from FPGA
+	# 	"""
+	# 	if self.host_ip:
+	# 		host_addr = self.host_ip
+	# 	else:
+	# 		host_addr = get_host_addr(dest_addr=self.ip_address, netmask=self.netmask)
+	# 	self.sock.bind((host_addr, self.port_number))
 
 	def close(self):
 		"""Closes the socket"""
 		self.sock.close()
-		print 'Closed UDP control socket'
+		#print 'Closed UDP control socket'
 
 	def write(self, data):
 		"""
 		Writes a string to the control socket.
 		"""
+		self.open()
 		self.sock.sendto(data, self.address)
+		self.close()
 
-	def read(self):
+	def write_read(self, data_in):
 		"""
 		Reads a string from the control socket.
 		"""
+		#self.close()
+		self.open()
+		#self.bind()
+		self.sock.sendto(data_in, self.address)
 		data = self.sock.recv(self.BUFFER_LENGTH)
+		self.close()
+		#self.open()
 		return data
 
 
@@ -82,12 +105,13 @@ class DataSocket_base(object):
 
 	BUFFER_LENGTH = 32768
 
-	def __init__(self, ip_address, port_number, netmask='255.255.0.0'):
+	def __init__(self, ip_address, port_number, netmask='255.255.0.0', host_ip=None):
 
 		# Defines basic variables
 		self.netmask = netmask # network mask used to find the host address that is on the same subnet as the target IP. This does not affect the network adapter settings.
 		self.ip_address = ip_address # IP of the chFPGA board. Used to determine the host address 
 		self.port_number = port_number # Data port on the host (Control port +1), to receive frame data
+		self.host_ip = host_ip
 		self.sock = None
 		self.open()
 
@@ -99,7 +123,11 @@ class DataSocket_base(object):
 		self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 		self.sock.settimeout(2)
 		self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, self.BUFFER_LENGTH)
-		host_addr = get_host_addr(dest_addr=self.ip_address, netmask=self.netmask)
+		self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+		if self.host_ip:
+			host_addr = self.host_ip
+		else:
+			host_addr = get_host_addr(dest_addr=self.ip_address, netmask=self.netmask)
 		self.sock.bind((host_addr, self.port_number))
 		print 'Opened data UDP Socket'
 		print '    Data port:    listening on %s:%i ' % (host_addr, self.port_number)
