@@ -24,6 +24,7 @@ n_freq    = integer(min = 1)
     buf_len = integer(min = 1)
     spf = integer(min = 1)
   [[serial]]
+    disable = integer
     path = string
     timeout = float(min = 0)
     [[[channel]]]
