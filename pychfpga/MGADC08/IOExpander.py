@@ -16,12 +16,13 @@ IOExpander.py module
 import time
 import warnings
 import numpy as np
+import logging
 
 class IOExpander_base(object):
 
     _locked = False # when 1, prevents the object from being modified
 
-    """ Class Providing interfaces to the IOExpander on the ADC FMC board. It is created by refering to a chFPGA object which is used to access the SPI interface""" 
+    """ Class Providing interfaces to the IOExpander on the ADC FMC board.""" 
     # Register addresses (assumes BANK=0, which is the default after power-up)
     REG_IODIRA   = 0x00 # GPIO pin is 1=input, 0 = output
     REG_IODIRB   = 0x01
@@ -72,14 +73,16 @@ class IOExpander_base(object):
         'LED1_PLL2_RESET'  : BitDef(PORT_A, 7, WR, 0), # default=0 (read mde) to enable MGT_PLL (there is a pull-up on the line) and make sure the user does not inadvertantly resets the PLL while thinking he accesses the LED
         'LED2'             : BitDef(PORT_B, 0, WR, 1),
         'LED3'             : BitDef(PORT_B, 1, WR, 1),
-        'REFCLK_INPUT_SEL' : BitDef(PORT_B, 3, WR, 1), ## kmb added for new fmc board clock set -> 1 is SMA, 0 is fmc
+        'REFCLK_INPUT_SEL' : BitDef(PORT_B, 3, WR, 0), ## kmb added for new fmc board clock set -> 1 is SMA, 0 is fmc
         'SYNC_INPUT_SEL'   : BitDef(PORT_B, 6, WR, 0), #SYNC source: 0=FPGA, 1= SMA
         'SYNC_FF_BYPASS'   : BitDef(PORT_B, 2, WR, 0), #SYNC FlipFlop Bypass: 0=Bypass, 1= Use FF (Note: It is not enough to set this bit for FF bypass. Resistors must also be set to route the buffered SYNC to the FF or the FF bypass input)
         }
 
-    def __init__(self, fpga, verbose=0):
-        self.fpga = fpga
+    def __init__(self, adc_board, verbose=0):
+        self.adc_board = adc_board
         self.verbose = verbose
+        self.logger = logging.getLogger(__name__)
+
         # Automatically generate properties for each of the IOExpander bits
         for bit_name in self.BITS.keys():
             #print '  Defining property "%s" with port=, bit=' % (bit_name)
@@ -109,14 +112,14 @@ class IOExpander_base(object):
 
     def read(self, addr):
         """ Reads a IOExpander 8-bit register""" 
-        spi = self.fpga.SPI
-        data = spi.read_write(spi.SPI_IO_EXP_ADDR, [0x41, addr, 0x00], type=np.uint8)
+        brd = self.adc_board
+        data = brd.spi_read_write(brd.SPI_IO_EXP_ADDR, [0x41, addr, 0x00], type=np.uint8)
         return data
 
     def write(self, addr, data):
         """ Writes a IOExpander 8-bit register"""
-        spi = self.fpga.SPI
-        data = spi.read_write(spi.SPI_IO_EXP_ADDR, [0x40, addr, data])
+        brd = self.adc_board
+        data = brd.spi_read_write(brd.SPI_IO_EXP_ADDR, [0x40, addr, data])
 
     def read_gpio_bit(self, bit_name):
         """ Reads the IOExpander GPIO bit identified by the name 'bit_name' which is looked up in the BITS table to find the bit definition (port, bit position etc). Returns a boolean."""  
@@ -158,7 +161,7 @@ class IOExpander_base(object):
         Call only after the SPI subsystem is initialized.
         """
         # Do nothing if the FMC is not present
-        if not self.fpga.FMC_present:
+        if not self.adc_board.is_present():
             return
 
         bypass = 0
@@ -174,17 +177,15 @@ class IOExpander_base(object):
                 val[port] &= ~(1 << bit) # clear bit
                 val[port] |= (bit_def.default << bit) # set with new value
         if verbose or self.verbose:
-            print 'IOExpander config: IODIRA=%02X , IODIRB=%02X, GPIOA=%02X, GPIOB=%02X' % (direction[0], direction[1], val[0], val[1])
+            self.logger.debug('IOExpander config: IODIRA=%02X , IODIRB=%02X, GPIOA=%02X, GPIOB=%02X' % (direction[0], direction[1], val[0], val[1]))
         self.write(self.REG_IODIRA, direction[self.PORT_A]) # 
         self.write(self.REG_IODIRB, direction[self.PORT_B]) # 
         self.write(self.REG_GPIOA, val[self.PORT_A]) # 
         self.write(self.REG_GPIOB, val[self.PORT_B]) # 
-        if verbose or self.verbose: print '************************************************* INIT IO EXPANDER ***********************************'
 
     def status(self):
         """ Displays the status of the IOExpander. """
-        print '---------------------FMC IO Expander------------------------------------'
-        if not self.fpga.FMC_present:
-            print 'FMC board not present'
-        print ' No status info'
-        print '----------------------------------------------------------------------'
+        self.logger.info('--- FMC %i IO Expander' % self.adc_board.fmc_number)
+        if not self.adc_board.is_present():
+            self.logger.info('FMC board not present')
+        self.logger.info('No status info')

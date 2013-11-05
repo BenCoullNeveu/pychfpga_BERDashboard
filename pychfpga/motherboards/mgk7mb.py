@@ -59,6 +59,13 @@ class pca9575(object):
         self.i2c.select_bus('GPIO')
         self.i2c.write_read(self.address, data=[register, value])
 
+    def read(self, register):
+        """ 
+        Read a value to the specified register
+        """
+        self.i2c.select_bus('GPIO')
+        return self.i2c.write_read(self.address, data=[register], read_length=1)
+
 I2C_SWITCH_ADDR = 0b1110100
 
 class I2CWrapper(object):
@@ -163,10 +170,14 @@ class MGK7MB(object):
         """
 
         if fmc_number == 0:
+            self.gpio.write(0x0A, 0b00000000) # Turn off all power signals before we enable the GPIO outputs
             self.gpio.write(0x08, 0b10101000)
-            self.gpio.write(0x0A, 0b01010111*bool(state))
+            self.gpio.write(0x0A, 0b00000111*bool(state)) # Turn on power to board
+            self.gpio.write(0x0A, 0b01010111*bool(state)) # Set Power Good and CLKDIR to 1
         elif fmc_number == 1:
+            self.gpio.write(0x0B, 0b00000000) # Turn off all power signals before we enable the GPIO outputs
             self.gpio.write(0x09, 0b10101000)
+            self.gpio.write(0x0B, 0b00000111*bool(state))
             self.gpio.write(0x0B, 0b01010111*bool(state))
         else:
             raise self.sys.chFPGAException('FMC number %i is not a valid value' % fmc_number)

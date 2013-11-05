@@ -72,7 +72,7 @@ class SYSMON_base(object):
 
     def init(self):
         fpga = self.fpga_instance
-        self.supported_by_platform = fpga.PLATFORM_ID in [fpga.PLATFORM_ID_ML605, fpga.PLATFORM_ID_KC705]
+        self.supported_by_platform = fpga.PLATFORM_ID in [fpga.PLATFORM_ID_ML605, fpga.PLATFORM_ID_KC705, fpga.PLATFORM_ID_MGK7MB]
         
             
         if self.supported_by_platform:
@@ -91,7 +91,7 @@ class SYSMON_base(object):
 
 
     def temperature(self, addr):
-        """ Reads a registers of the FPGA system monitor and convert the result in Celcius """
+        """ Reads a registers of the FPGA system monitor and convert the result in Celsius """
         lsb = self.read(addr)
         temp = lsb / 64. * 503.975 / 1024. - 273.15
         return temp

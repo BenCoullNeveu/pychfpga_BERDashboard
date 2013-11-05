@@ -11,6 +11,8 @@ History:
     2012-08-31 JFC: Swapped addresses of PROBER and SCALER to match the same change in firmware
     2012-09-25 JFC: Renamed to FRAMER and FR_DIST to SRCSEL
 """
+import logging
+
 import ADCDAQ
 import SRCSEL
 import FFT
@@ -23,26 +25,30 @@ class ANT_channel(object):
     """ Implements interface to one of the antenna processor pipeline"""
 
     # Antenna processor module addresses
-    ADCDAQ_MODULE = 0
-    SRCSEL_MODULE = 1
-    FFT_MODULE = 2
-    SCALER_MODULE = 3
-    PROBER_MODULE = 4
+    ADCDAQ_MODULE  = 0
+    SRCSEL_MODULE  = 1
+    FFT_MODULE     = 2
+    SCALER_MODULE  = 3
+    PROBER_MODULE  = 4
     FUNCGEN_MODULE = 5
-    INJECT_MODULE = 6
+    INJECT_MODULE  = 6
 
     def __init__(self, ant_instance, ant_number):
         #super(ADC_chip,self).__init__(fpga)
         self.ant = ant_instance # store current ADC number for this instance
         self.ant_number = ant_number # store current ADC number for this instance
         self.fpga = self.ant.fpga
-        self.ADCDAQ = ADCDAQ.ADCDAQ_base(self)
-        self.SRCSEL = SRCSEL.SRCSEL_base(self)
-        self.FFT = FFT.FFT_base(self)
-        self.SCALER = SCALER.SCALER_base(self)
-        self.PROBER = PROBER.PROBER_base(self)
-        self.FUNCGEN = FUNCGEN.FUNCGEN_base(self)
-        self.INJECT = INJECT.INJECT_base(self)
+        self.logger = logging.getLogger(__name__)
+
+        port = self.fpga.ANT_PORT[self.ant_number]
+
+        self.ADCDAQ  = ADCDAQ.ADCDAQ_base(self, port, self.ADCDAQ_MODULE)
+        self.SRCSEL  = SRCSEL.SRCSEL_base(self, port, self.SRCSEL_MODULE)
+        self.FFT     = FFT.FFT_base(self, port, self.FFT_MODULE)
+        self.SCALER  = SCALER.SCALER_base(self, port, self.SCALER_MODULE)
+        self.PROBER  = PROBER.PROBER_base(self, port, self.PROBER_MODULE)
+        self.FUNCGEN = FUNCGEN.FUNCGEN_base(self, port, self.FUNCGEN_MODULE)
+        self.INJECT  = INJECT.INJECT_base(self, port, self.INJECT_MODULE)
         self.frame_length = self.ant.frame_length
 
         
@@ -58,25 +64,33 @@ class ANT_channel(object):
 
     def init(self):
         """ Initializes the antenna modules""" 
+        self.logger.info('Initializing modules for antenna #%i' % self.ant_number)
+        self.logger.debug('  - ADCDAQ')
         self.ADCDAQ.init()
+        self.logger.debug('  - SRCSEL')
         self.SRCSEL.init()
+        self.logger.debug('  - FFT')
         self.FFT.init()
+        self.logger.debug('  - SCALER')
         self.SCALER.init()
+        self.logger.debug('  - PROBER')
         self.PROBER.init()
+        self.logger.debug('  - FUNCGEN')
         self.FUNCGEN.init()
+        self.logger.debug('  - INJECT')
         self.INJECT.init()
 
 
     def status(self):
         """ Displays the status of the antenna modules""" 
-        print '======= ANTENNA NUMBER %i =============' % self.ant_number
-        self.ADCDAQ.status()
-        self.SRCSEL.status()
-        self.FFT.status()
-        self.SCALER.status()
-        self.PROBER.status()
-        self.FUNCGEN.status()
-        self.INJECT.status()
+        self.logger.info('======= ANTENNA NUMBER %i =============' % self.ant_number)
+        # self.ADCDAQ.status()
+        # self.SRCSEL.status()
+        # self.FFT.status()
+        # self.SCALER.status()
+        # self.PROBER.status()
+        # self.FUNCGEN.status()
+        # self.INJECT.status()
 
 class ANT_base(object):
     """ Instantiates a container for all antenna processors available on the FPGA """
@@ -84,6 +98,7 @@ class ANT_base(object):
     def __init__(self, fpga, verbose=0):
         self.fpga = fpga
         self.verbose = verbose
+        self.logger = logging.getLogger(__name__)
         # Create an instance of ADC_chip for each chip of the FMC board
         self.frame_length = fpga.FRAME_LENGTH
         self.ANT = []
@@ -114,9 +129,9 @@ class ANT_base(object):
     def init(self, delay_table=None):
         """ Initializes all antennas""" 
         for ant in self.ANT:
+            self.logger.debug('Initializing Antenna #%i' % ant.ant_number)
             ant.init()
 
-    
         if delay_table is not None:
             self.set_delays(delay_table)
 
@@ -132,8 +147,8 @@ class ANT_base(object):
         Sets the delays for all ADC data lines using the provided array.
         'adc_delay-table'  consists of a list of 8 arrays comprising 8 delay values each.
         """
-        for i, dly in enumerate(adc_delay_table):    
-            self.ANT[i].ADCDAQ.set_delay(dly) 
+        for i, ant in enumerate(self.ANT):    
+            ant.ADCDAQ.set_delay(adc_delay_table[i]) 
 
     def get_delays(self):
         """

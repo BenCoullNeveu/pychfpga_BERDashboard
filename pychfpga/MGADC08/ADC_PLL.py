@@ -19,17 +19,19 @@ History:
 """
 
 import numpy as np
+import logging
 
 class ADC_PLL_base(object):
 
-    def __init__(self, adc_board_instance, verbose=0):
-        self.adc_board = adc_board_instance
+    def __init__(self, adc_board, verbose=0):
+        self.adc_board = adc_board
         self.verbose=verbose
+        self.logger = logging.getLogger(__name__)
 
-    def write(self,data):
+    def write(self, data):
         """ Writes a 32-bit word to PLL (MSB first). The register address is contained in the word."""
-        spi=self.adc_board.spi
-        spi.read_write(spi.SPI_PLL1_ADDR, data)
+        brd = self.adc_board
+        brd.spi_read_write(brd.SPI_PLL1_ADDR, data)
 
     def init(self,fout=1600, fref=10, verbose=None, **args):
         """
@@ -61,10 +63,9 @@ class ADC_PLL_base(object):
             raise Exception('Output frequency is too low')
 
         if verbose:
-            print
-            print '--------------------- ADC PLL ------------------------------------'
-            print ' PLL Reference frequency         %7.3f MHz' % fref 
-            print ' Target ADC reference frequency: %7.3f MHz' % fout 
+            self.logger.info('--------------------- ADC PLL ------------------------------------')
+            self.logger.info(' PLL Reference frequency         %7.3f MHz' % fref )
+            self.logger.info(' Target ADC reference frequency: %7.3f MHz' % fout )
 
         # REGISTER 5
         LD_pin_mode=1 # 0=LOW, 1=Lock Detect, 2=Low, 3= High
@@ -122,25 +123,25 @@ class ADC_PLL_base(object):
             raise Exception('Integer division factor is out of range (it_div=%i, range is 23-65535)' % int_div)
 
         if verbose:
-            print ' Reference divide-by-2 enabled: %s' % bool(rdiv2) 
-            print ' PFB frequency: %.0f MHz' % (fref/(1+rdiv2)) 
-            print ' Integer multiplication factor: %i' % int_div 
-            print ' Fractional multiplication factor/modulus: %i/%i' % (frac_div,modulus) 
-            print ' Total multiplication factor: %i' % (int_div+float(frac_div)/modulus) 
-            print ' Feedback includes output dividor: %s' %  (not FB_select)
-            print ' VCO Frequency: %.3f MHz (%.0f MHz min, %.0f MHz max)' % (fvco,fmin,fmax)
-            print ' Output division factor: %i' % fdiv 
-            print ' Programmed output frequency: %.3f' % (float(fvco)/fdiv) 
+            self.logger.info( ' Reference divide-by-2 enabled: %s' % bool(rdiv2) )
+            self.logger.info( ' PFB frequency: %.0f MHz' % (fref/(1+rdiv2)) )
+            self.logger.info( ' Integer multiplication factor: %i' % int_div )
+            self.logger.info( ' Fractional multiplication factor/modulus: %i/%i' % (frac_div,modulus) )
+            self.logger.info( ' Total multiplication factor: %i' % (int_div+float(frac_div)/modulus) )
+            self.logger.info( ' Feedback includes output dividor: %s' %  (not FB_select))
+            self.logger.info( ' VCO Frequency: %.3f MHz (%.0f MHz min, %.0f MHz max)' % (fvco,fmin,fmax))
+            self.logger.info( ' Output division factor: %i' % fdiv )
+            self.logger.info( ' Programmed output frequency: %.3f' % (float(fvco)/fdiv) )
  
 
         # Override variable names if any is specified in the function call
         for (varname,value) in args.items():
             if varname in locals():
                 if verbose:
-                    print ' Setting %s = %i' % (varname, value)
+                    self.logger.info( ' Setting %s = %i' % (varname, value))
                 exec('%s=%i' % (varname, value))
             else:
-                print '"%s" is not a PLL variable' % varname
+                self.logger.info( '"%s" is not a PLL variable' % varname)
 
         PLL_reg5=np.uint32((LD_pin_mode<<22)+(0x3<<19)+5);
         PLL_reg4=np.uint32((FB_select<<23)+(RF_div<<20)+(band_sel_div<<12)+(vco_power_down<<11)+(mute_until_lock_detect<<10)+(AUX_sel<<9)+(AUX_enable<<8)+(AUX_power<<6)+(RF_enable<<5)+(RF_power<<3)+4)
@@ -160,15 +161,14 @@ class ADC_PLL_base(object):
 
         self.adc_board.IOExpander.wait_for_bit('PLL1_LOCK', timeout=1)
         if verbose:
-            print ' PLL is locked: %s' % bool(self.fpga.ADC_BOARD.IOExpander.PLL1_LOCK)
-            print '----------------------------------------------------------------------'
+            self.logger.info( ' PLL is locked: %s' % bool(self.fpga.ADC_BOARD.IOExpander.PLL1_LOCK))
+            self.logger.info( '----------------------------------------------------------------------')
 
         return (PLL_reg0,PLL_reg1,PLL_reg2,PLL_reg3,PLL_reg4,PLL_reg5);
 
     def status(self):
-        print '---------------------FMC IO Expander------------------------------------'
+        self.logger.info( '--- ADC PLL')
         if not self.adc_board.is_present():
-            print 'FMC board not present'
-        print ' No status info'
-        print '----------------------------------------------------------------------'
+            self.logger.info( 'FMC board not present')
+        self.logger.info( ' No status info')
 

@@ -79,7 +79,7 @@ class ADCDAQ_base(Module_base):
         'FIFO_WR_COUNT' :    BitField(STATUS, 16, 0, width=8, doc='Number of words in the FIFO, as seen from the WR clock'),
         'FIFO_RD_COUNT' :    BitField(STATUS, 17, 0, width=8, doc='Number of words in the FIFO, as seen from the RD clock (readout system)'),
 
-        'ADC_CLK_SAMPLE'     : BitField(STATUS, 18, 0,doc='Non-delayed 400 MHz ADC clock sampled by REFCLK'),
+        'ADC_CLK_SAMPLE' :   BitField(STATUS, 18, 0,doc='Non-delayed 400 MHz ADC clock sampled by REFCLK'),
 
         'CAPTURE2_PATTERN0' : BitField(STATUS, 19, 0, width=8, doc='Captured byte'),
         'CAPTURE2_PATTERN1' : BitField(STATUS, 20, 0, width=8, doc='Captured byte'),
@@ -89,30 +89,30 @@ class ADCDAQ_base(Module_base):
         'BIT_ERR_CTR' : BitField(STATUS, 26, 0, width=32, doc='Word containing 8 4-bit counters that track ramp bit errors.'),
 
         # DRP Ports
-        'MMCM_FB_LOW' :         BitField(DRP, 0x14, 0, width=6, doc='MCMM Feedback clock Low time (in VCO cycles)'),
-        'MMCM_FB_HIGH' :         BitField(DRP, 0x14, 6, width=6, doc='MCMM Feedback clock High time (in VCO cycles)'),
-        'MMCM_FB_PHASE' :         BitField(DRP, 0x14, 13, width=3, doc='MCMM Feedback clock phase in increments of 1/8 the VCO period'),
+        'MMCM_FB_LOW' :       BitField(DRP, 0x14, 0, width=6, doc='MCMM Feedback clock Low time (in VCO cycles)'),
+        'MMCM_FB_HIGH' :      BitField(DRP, 0x14, 6, width=6, doc='MCMM Feedback clock High time (in VCO cycles)'),
+        'MMCM_FB_PHASE' :     BitField(DRP, 0x14, 13, width=3, doc='MCMM Feedback clock phase in increments of 1/8 the VCO period'),
 
-        'MMCM_CLKIN_LOW' :         BitField(DRP, 0x16, 0, width=6, doc='MCMM Input clock divider Low time (in input clock cycles)'),
-        'MMCM_CLKIN_HIGH' :     BitField(DRP, 0x16, 6, width=6, doc='MCMM input clock divider High time (in input clock cycles)'),
-        'MMCM_CLKIN_BYPASS' :     BitField(DRP, 0x16, 12, doc='MCMM input clock divider bypass'),
+        'MMCM_CLKIN_LOW' :    BitField(DRP, 0x16, 0, width=6, doc='MCMM Input clock divider Low time (in input clock cycles)'),
+        'MMCM_CLKIN_HIGH' :   BitField(DRP, 0x16, 6, width=6, doc='MCMM input clock divider High time (in input clock cycles)'),
+        'MMCM_CLKIN_BYPASS' : BitField(DRP, 0x16, 12, doc='MCMM input clock divider bypass'),
 
-        'MMCM_DIVCLK_LOW' :     BitField(DRP, 0x0A, 0, width=6, doc='MCMM DIVCLK clock Low time (in VCO cycles)'),
-        'MMCM_DIVCLK_HIGH':     BitField(DRP, 0x0A, 6, width=6, doc='MCMM DIVCLK clock High time (in VCO cycles)'),
-        'MMCM_DIVCLK_PHASE':    BitField(DRP, 0x0A, 13, width=3, doc='MCMM DIVCLK clock phase in increments of 1/8 the VCO period'),
-        'MMCM_DIVCLK_DELAY':    BitField(DRP, 0x0B, 0, width=6, doc='MCMM DIVCLK clock delay in increments of the VCO period'),
+        'MMCM_DIVCLK_LOW' :   BitField(DRP, 0x0A, 0, width=6, doc='MCMM DIVCLK clock Low time (in VCO cycles)'),
+        'MMCM_DIVCLK_HIGH':   BitField(DRP, 0x0A, 6, width=6, doc='MCMM DIVCLK clock High time (in VCO cycles)'),
+        'MMCM_DIVCLK_PHASE':  BitField(DRP, 0x0A, 13, width=3, doc='MCMM DIVCLK clock phase in increments of 1/8 the VCO period'),
+        'MMCM_DIVCLK_DELAY':  BitField(DRP, 0x0B, 0, width=6, doc='MCMM DIVCLK clock delay in increments of the VCO period'),
 
-        'MMCM_ADCCLK_LOW' :     BitField(DRP, 0x0C, 0, width=6, doc='MCMM DIVCLK clock Low time (in VCO cycles)'),
-        'MMCM_ADCCLK_HIGH':     BitField(DRP, 0x0C, 6, width=6, doc='MCMM DIVCLK clock High time (in VCO cycles)'),
-        'MMCM_ADCCLK_PHASE':    BitField(DRP, 0x0C, 13, width=3, doc='MCMM DIVCLK clock phase in increments of 1/8 the VCO period'),
-        'MMCM_ADCCLK_DELAY':    BitField(DRP, 0x0D, 0, width=6, doc='MCMM DIVCLK clock delay in increments of the VCO period'),
+        'MMCM_ADCCLK_LOW' :   BitField(DRP, 0x0C, 0, width=6, doc='MCMM DIVCLK clock Low time (in VCO cycles)'),
+        'MMCM_ADCCLK_HIGH':   BitField(DRP, 0x0C, 6, width=6, doc='MCMM DIVCLK clock High time (in VCO cycles)'),
+        'MMCM_ADCCLK_PHASE':  BitField(DRP, 0x0C, 13, width=3, doc='MCMM DIVCLK clock phase in increments of 1/8 the VCO period'),
+        'MMCM_ADCCLK_DELAY':  BitField(DRP, 0x0D, 0, width=6, doc='MCMM DIVCLK clock delay in increments of the VCO period'),
 
-        'MMCM_POWER':    BitField(DRP, 0x28, 0, width=16, doc='MCMM Power bits. Must be set to 0xFFFF in order to successfully program the other MMCM registers'),
+        'MMCM_POWER':         BitField(DRP, 0x28, 0, width=16, doc='MCMM Power bits. Must be set to 0xFFFF in order to successfully program the other MMCM registers'),
 
     }
 
-    def __init__(self, ant_ch_instance):
-        super(self.__class__, self).__init__(ant_ch_instance.fpga, ant_ch_instance.ant_number, ant_ch_instance.ADCDAQ_MODULE)
+    def __init__(self, ant_ch_instance, port, module):
+        super(self.__class__, self).__init__(ant_ch_instance.fpga, port, module)
         self._lock() # Prevent accidental addition of attributes (if, for example, a value is assigned to a wrongly-spelled property)
 
     def set_ADCDAQ_mode(self, mode):
@@ -214,7 +214,7 @@ class ADCDAQ_base(Module_base):
         Initializes the ADCDAQ module 
         """
         # Do nothing if the FMC is not present
-        if self.fpga.FMC_present:
+        if self.fpga.FMC_present[0]:
             self.PLL_CLK_SRC = 0 #
             self.SAMPLE_DELAY = 3 #  Explicitly set the sample delay to zero 
         else:

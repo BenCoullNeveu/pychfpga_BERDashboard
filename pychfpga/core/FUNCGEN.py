@@ -11,8 +11,9 @@ History:
     2012-10-17 JFC: Sets ramp as default function
 """
 
-from Module import Module_base, BitField
+import logging
 
+from Module import Module_base, BitField
    
 class FUNCGEN_base(Module_base):
     """ Implements interface to the function generator within a procecessor pipeline"""
@@ -30,18 +31,19 @@ class FUNCGEN_base(Module_base):
         }    
     
     # Memory-mapped register definition
-    RESET = BitField(CONTROL, 0x00, 7, doc='Resets this module')
+    RESET    = BitField(CONTROL, 0x00, 7, doc='Resets this module')
     FUNCTION = BitField(CONTROL, 0x00, 0, width=3, doc="Selects the waveform to be generated")
-    BYTE_A = BitField(CONTROL, 0x01, 0, width=8, doc="Byte A to be used by the function generator")
-    BYTE_B = BitField(CONTROL, 0x02, 0, width=8, doc="Byte B to be used by the function generator")
-
+    BYTE_A   = BitField(CONTROL, 0x01, 0, width=8, doc="Byte A to be used by the function generator")
+    BYTE_B   = BitField(CONTROL, 0x02, 0, width=8, doc="Byte B to be used by the function generator")
+    
     RAMP_CTR = BitField(STATUS, 0x01, 0, width=8, doc="Last 8 bits of the ramp counter (for debuging)")
 
 
-    def __init__(self, ant_ch_instance):
+    def __init__(self, ant_ch_instance, port, module):
         self.ant = ant_ch_instance
         fpga = ant_ch_instance.fpga
-        super(self.__class__, self).__init__(fpga, fpga.ANT_PORT[ant_ch_instance.ant_number], ant_ch_instance.FUNCGEN_MODULE)
+        super(self.__class__, self).__init__(fpga, port, module)
+
         self._lock() # Prevent accidental addition of attributes (if, for example, a value is assigned to a wrongly-spelled property)
     # Specialized functions
 

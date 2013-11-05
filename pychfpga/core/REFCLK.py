@@ -17,6 +17,7 @@ REFCLK.py module
 
 from Module import Module_base, BitField
 
+import logging
 import time
 import numpy as np
 import matplotlib.pyplot as plt
@@ -64,7 +65,7 @@ class REFCLK_base(Module_base):
         # Sets the REFCLK delay to zero by default.
         self.set_refclk_delay(0)
         self.set_sync_delay(1)
-
+        self.logger = logging.getLogger(__name__)
         # If the board is not present, disable SYNC detection on REFCLK to prevent noise on the floating REFCLK lien to generate spurioys resets. 
         if self.fpga.FMC_present:
             self.ENABLE_SYNC_DETECTION = 1
@@ -176,7 +177,7 @@ class REFCLK_base(Module_base):
         s *= 1.0    
         v = np.average(s*np.cos(s*phi)+1j*np.sin(s*phi))
         if abs(v) < 2/np.pi/4:
-            print 'Warning: bad signal to noise in determining phase of ADC_CLK'
+            self.logger.warning('Warning: bad signal to noise in determining phase of ADC_CLK')
         delay = np.mod((np.angle(v)/(2*np.pi))*32, 32) # substract a quarter of cycle to get the rising edge position assuming a 50% duty cycle
 
         return delay
@@ -295,8 +296,7 @@ class REFCLK_base(Module_base):
         """
         Displays the status of the REFCLK module.
         """
-        print '-----------------------REFCLK------------------------------------'
-        print 'SYNC Detection Enabled: %s' % (bool(self.ENABLE_SYNC_DETECTION))
-        print '----------------------------------------------------------------------'
+        self.logger.info('-----------------------REFCLK------------------------------------')
+        self.logger.info('SYNC Detection Enabled: %s' % (bool(self.ENABLE_SYNC_DETECTION)))
 
 

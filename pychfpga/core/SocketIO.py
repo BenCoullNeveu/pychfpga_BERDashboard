@@ -18,6 +18,7 @@ import logging
 import numpy as np
 
 timeout = socket.timeout #110918 JFC
+TimeoutException = socket.timeout 
 
 class ControlSocket_base(object):
 	"""Creates an object that represents the control socket communication link to the chFPGA.""" 
@@ -77,6 +78,19 @@ class ControlSocket_base(object):
 			pass # do nothing
 			#print('Buffer is empty')
 		self.sock.settimeout(old_timeout)
+
+	def set_timeout(self, timeout):
+		"""
+		Sets the socket timeout value in seconds.
+		"""
+		self.sock.settimeout(timeout)
+
+	def get_timeout(self):
+		"""
+		Returns the current socket timeout value in seconds.
+		"""
+		return self.sock.gettimeout()
+
 
 
 

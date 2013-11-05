@@ -22,6 +22,7 @@ GPIO.py module
 """
 
 from Module import Module_base, BitField
+import logging
 
 #import numpy as np
 
@@ -34,11 +35,11 @@ class GPIO_base(Module_base):
 
     GLOBAL_TRIG = BitField(CONTROL, 0x00, 7, doc='Global trigger')
     BUCK_SYNC_ENABLE = BitField(CONTROL, 0x00, 6, doc='Enable generation of the Buck SYNC signals')
-    GLOBAL_RESET = BitField(CONTROL, 0x00, 5, doc='Resets the whole FPGA')
-    ADC_DAQ_BUFR_SYNC = BitField(CONTROL, 0x00, 4, doc='ADC_DAQ SYNC line. Common to all ADC_DAQs.')
-    ADC_DAQ_SERDES_SYNC = BitField(CONTROL, 0x00, 3, doc='ADC_DAQ SYNC line. Common to all ADC_DAQs.')
-    FR_DIST_SYNC = BitField(CONTROL, 0x00, 2, doc='FR_DIST line. Common to all FR_DISTs.')
-    ADC_RESET = BitField(CONTROL, 0x00, 0, doc='ADC RESET line. Common to both ADCs.')
+    CHAN_CLK_RESET = BitField(CONTROL, 0x00, 5, doc='Resets the channelizer clocks')
+    CHAN_CLK_SRC = BitField(CONTROL, 0x00, 4, doc='Selects the source of the channelizer clocks: 0: ADC clock, 1: 200 MHz system clock. CHAN_CLK_RESET or ADCDAQ_RESET must be asserted when doinf the change to allow the MMCM to lock properly to the new clock. ')
+    ADCDAQ_RESET = BitField(CONTROL, 0x00, 3, doc='Resets all ADCDAQ modules. This also resets the channelizer clock MMCM, the channelizers and the correlators.')
+    ADC1_RESET = BitField(CONTROL, 0x00, 1, doc='ADC RESET line for the ADC board on FMC1 slot. Common to both ADC chips on that board.')
+    ADC0_RESET = BitField(CONTROL, 0x00, 0, doc='ADC RESET line for the ADC board on FMC0 slot. Common to both ADC chips on that board.')
 
     BUCK_CLK_DIV = BitField(CONTROL, 0x01, 0, width=8, doc='Clock divider to set the BUCK SYNC frequency (2-255), where freq = 200 MHz/BUCK_CLK_DIV/2.')
 
@@ -53,23 +54,27 @@ class GPIO_base(Module_base):
     CORR_IP_PORT_OFFSET = BitField(CONTROL, 0x03, 2, width=2, doc='Correlator output data IP port offset from the base port')
     DATA_IP_PORT_OFFSET = BitField(CONTROL, 0x03, 0, width=2, doc='Captured data IP port offset from the base port')
     HOST_FRAME_READ_RATE = BitField(CONTROL, 0x04, 0, width=5, doc='Indicates how often the host UDP buffers are read. Used to throttle data transmision. Period = 2/125MHz*2^value ')
+    BUCK_PHASE = BitField(CONTROL, 0x0C, 0, width=64, doc='Phase of each of the 16 Buck sync lines. There are 16 possible phase values for each line. Bits 3:0 is for phase of line 0, bits 7:4 for phase of line 1 etc.')
+    IP_CONFIG = BitField(CONTROL, 0x10, 0, width=32, doc='IP configuration of this board. Bits 31:16 are the last two bytes of the IP address (base address is 10.10.XX.XX). Bits 15:0 is the base port number to which is added the offsets above. This register must be written in one single command packet')
+    TARGET_FPGA_SERIAL_NUMBER = BitField(CONTROL, 0x18, 0, width=64, doc='Target serial number')
 
-
-    TIMESTAMP_VALID = BitField(STATUS, 0x00, 7, doc='Timestamp data valid (i.e. can be read)')
-    ADC_SYNC_READBACK = BitField(STATUS, 0x00, 0, doc='Reads back the SYNC bit for debugging')
-    LOG2_FRAME_LENGTH = BitField(STATUS, 0x01, 0, width=8, doc='Number of time samples per frame')
-    NUMBER_OF_ANTENNAS = BitField(STATUS, 0x02, 0, width=4, doc='Number of implemented antenna processing pipelines')
-    NUMBER_OF_CORRELATORS = BitField(STATUS, 0x02, 4, width=4, doc='Number of implemented correlators')
-    NUMBER_OF_ANTENNAS_TO_CORRELATE = BitField(STATUS, 0x03, 0, width=4, doc='Number of antennas connected to the correlators')
-    IMPLEMENT_ANT = BitField(STATUS, 4, 0, width=8, doc='Indicates whether the antenna processor is implemented or if a dummy mmodule is put in place. There is one bit per antenna.')
-    IMPLEMENT_FFT = BitField(STATUS, 5, 0, width=8, doc='Indicates whether the antenna processor FFT is implemented. If not, it is bypassed and timestream data is fed to the scaler. There is one bit per antenna. ')
-    IMPLEMENT_CORR = BitField(STATUS, 6, 0, width=8, doc='Indicates whether the correlator is implemented. . There is one bit per correlator. ')
-    TIMESTAMP = BitField(STATUS, 0x0A, 0, width=32, doc='Bitstream timestamp word')
+    TIMESTAMP_VALID = BitField(STATUS, 0, 7, doc='Timestamp data valid (i.e. can be read)')
+    ADC_SYNC_READBACK = BitField(STATUS, 1, 0, doc='Reads back the SYNC bit for debugging')
+    LOG2_FRAME_LENGTH = BitField(STATUS, 1, 0, width=8, doc='Number of time samples per frame')
+    NUMBER_OF_ANTENNAS = BitField(STATUS, 2, 0, width=8, doc='Number of implemented antenna processing pipelines')
+    NUMBER_OF_CORRELATORS = BitField(STATUS, 3, 0, width=8, doc='Number of implemented correlators')
+    NUMBER_OF_ANTENNAS_TO_CORRELATE = BitField(STATUS, 4, 0, width=8, doc='Number of antennas connected to the correlators')
+#    IMPLEMENT_ANT = BitField(STATUS, 4, 0, width=8, doc='Indicates whether the antenna processor is implemented or if a dummy mmodule is put in place. There is one bit per antenna.')
+    IMPLEMENT_FFT = BitField(STATUS, 6, 0, width=16, doc='Indicates whether the antenna processor FFT is implemented. If not, it is bypassed and timestream data is fed to the scaler. There is one bit per antenna. ')
+#    IMPLEMENT_CORR = BitField(STATUS, 6, 0, width=8, doc='Indicates whether the correlator is implemented. . There is one bit per correlator. ')
+    TIMESTAMP = BitField(STATUS, 10, 0, width=32, doc='Bitstream timestamp word')
     PLATFORM_ID = BitField(STATUS, 11, 0, width=8, doc='Which FPGA/board in use.  0 for ML605 eval board, 1 for KC705 evaluation board')
+    FPGA_SERIAL_NUMBER = BitField(STATUS, 19, 0, width=64, doc='FPGA 57-bit serial number')
 
 
     def __init__(self, fpga):
         super(self.__class__, self).__init__(fpga, fpga.SYSTEM_PORT, fpga.SYSTEM_GPIO_MODULE)
+        self.logger = logging.getLogger(__name__)
         self._lock() # prevent further property creation to avoid creating attrubutes by mistake
 
 
@@ -120,9 +125,8 @@ class GPIO_base(Module_base):
         
     def status(self):
         """ Displays the module status"""
-        print '-------------------------GPIO--------------------------------------'
-        print 'Bistream timestamp is: %s' % self.get_bitstream_date()
-        print '----------------------------------------------------------------------'
+        self.logger.info('-------------------------GPIO--------------------------------------')
+        self.logger.info( 'Bistream timestamp is: %s' % self.get_bitstream_date())
 
 
 

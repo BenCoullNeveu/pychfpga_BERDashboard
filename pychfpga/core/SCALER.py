@@ -25,9 +25,9 @@ class SCALER_base(Module_base):
 
     # Define Status registers
 
-    def __init__(self, ant_ch_instance):
+    def __init__(self, ant_ch_instance, port, module):
          self.fpga = ant_ch_instance.fpga
-         super(self.__class__, self).__init__(self.fpga, ant_ch_instance.ant_number, ant_ch_instance.SCALER_MODULE)
+         super(self.__class__, self).__init__(self.fpga, port, module)
         
     def reset(self):
         """ Resets the SCALER module """

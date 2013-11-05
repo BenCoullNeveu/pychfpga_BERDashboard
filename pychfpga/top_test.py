@@ -15,6 +15,8 @@ History:
 """
 import logging
 import argparse
+import time
+
 
 from pychfpga.core import chFPGA_controller
 from pychfpga.core import chFPGA_receiver
@@ -135,32 +137,59 @@ ADC_DELAYS_MGK7MB_REV0_MGAC08_REV2 = (
     ([11,11,13,10,10,8,12,13],     [3]*8), #CH6 
     ([12]*8,                       [4]*8), #CH7
 
-    ([12]*8,                       [4]*8), #CH8
-    ([12]*8,                       [4]*8), #CH9
-    ([12]*8,                       [4]*8), #CH10
-    ([12]*8,                       [4]*8), #CH11
-    ([12]*8,                       [4]*8), #CH12
-    ([12]*8,                       [4]*8), #CH13
-    ([12]*8,                       [4]*8), #CH14
-    ([12]*8,                       [4]*8)  #CH15
+    ([15, 14, 16, 14, 13, 18, 15, 15],   [4]*8), #CH8
+    ([15, 19, 21, 18, 15, 18, 19, 20],                       [3]*8), #CH9
+    ([18, 18, 21, 20, 20, 20, 20, 16],                       [3]*8), #CH10
+    ([15, 15, 15, 14, 15, 13, 14, 15],                     [3]*8), #CH11
+    ([13, 15, 16, 12, 11, 16, 16, 15],                       [3]*8), #CH12
+    ([12, 12, 10, 11, 10, 11, 13, 10],                       [3]*8), #CH13
+    ([13, 15, 15, 14, 12, 11, 16, 14],                       [3]*8), #CH14
+    ([13, 15, 15, 17, 17, 18, 18, 14],                       [3]*8)  #CH15
+    )
+
+ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 = (
+    ([16]*8,     [4]*8), #CH0
+    ([7]*8,                       [3]*8), #CH1 
+    ([22]*8,    [3]*8), #CH2 
+    ([19]*8,                       [3]*8), #CH3
+    ([15]*8,                        [3]*8), #CH4
+    ([14, 13, 14, 14, 13, 14, 15, 14],    [3]*8), #CH5 
+    ([18]*8,     [3]*8), #CH6 
+    ([17]*8,                       [4]*8), #CH7
+
+    ([15, 17, 15, 18, 17, 14, 17, 15],   [4]*8), #CH8
+    ([16]*8,                       [3]*8), #CH9
+    ([20]*8,                       [3]*8), #CH10
+    ([18]*8,                     [3]*8), #CH11
+    ([15]*8,                       [3]*8), #CH12
+    ([18]*8,                       [3]*8), #CH13
+    ([18]*8,                       [3]*8), #CH14
+    ([16]*8,                       [3]*8)  #CH15
     )
 
 if __name__ == '__main__':        
-    print '------------------------'
-    print 'top_test.py: chFGPA test script'
-    print 'J.-F. Cliche'
-    print '------------------------'
-
     parser = argparse.ArgumentParser(description=__doc__.split('\n')[0]) # description is the first line of the docstring
     parser.add_argument('--init', action = 'store', type=int, default=1, help='Initialization level: -1: Just create sockets, 0: connect and read only. 1: initialize hardware')
     parser.add_argument('-f', '--sampling_frequency', action = 'store', type=float, default=850, help='Sampling frequency of the ADC in MHz')
+    parser.add_argument('-l', '--log_level', action = 'store', type=str, choices=['info','debug'], default='info', help='Logging level')
+    parser.add_argument('--ip', action = 'store', type=str, default='10.10.10.11', help='IP address of the board')
     args = parser.parse_args()
-    print 'Using Init = %i' % args.init
-    print 'Using Sampling frequency of %0.3f MHz' % args.sampling_frequency
+
+    log_level = {'info': logging.INFO, 'debug': logging.DEBUG}[args.log_level]
+    logging.basicConfig(level=log_level, format='%(asctime)s %(name)-32s %(levelname)-10s : %(message)s')
+
+    logger = logging.getLogger(__name__)
+    logger.info('------------------------')
+    logger.info('top_test.py: chFGPA test script')
+    logger.info('J.-F. Cliche')
+    logger.info('------------------------')
+
+    logger.info('Using Init = %i' % args.init)
+    logger.info('Using Sampling frequency of %0.3f MHz' % args.sampling_frequency)
     # Delete previous instances of 'c' to make sure the sockets are closed. If not, the new object will not be able to open the socket.
     # pylint: disable=E0601    
     try:
-        print 'Deleting previous chFPGA instances in current namespace'
+        logger.info('Deleting previous chFPGA instances in current namespace')
         c.close() # close sockets from previous objects to free them for the new one
         r.close() # close sockets from previous objects to free them for the new one
         del c
@@ -168,16 +197,19 @@ if __name__ == '__main__':
     except NameError:
         pass
 
-    logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(name)-32s %(levelname)-10s : %(message)s')
 
     #ADC_TEST_MODE = 0     #  0= normal, 1= ramp, 2=pulse (1 high, 10 low)
-    ADC_DELAY_TABLE = ADC_DELAYS_MGK7MB_REV0_MGAC08_REV2 #ADC_DELAYS_REV2_SN0001 ## select the table corresponding to the FMC serial number
+    ADC_DELAY_TABLE = ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 #ADC_DELAYS_REV2_SN0001 ## select the table corresponding to the FMC serial number
     #FREF = 10 # FMC Reference clock frequency 
 
     # Create the new chFPGA object.
-    c = chFPGA_controller.chFPGA_controller(ip_address='10.10.10.11', port_number=41000, adc_delay_table=ADC_DELAY_TABLE, init=args.init, sampling_frequency=args.sampling_frequency * 1e6, reference_frequency=10e6) # pylint: disable=C0103
-#    chFPGA_config = c.get_config()
-#    r = chFPGA_receiver.chFPGA_receiver(chFPGA_config, ip_address='10.10.10.11', port=41001)
+    c = chFPGA_controller.chFPGA_controller(ip_address=args.ip, port_number=41000, adc_delay_table=ADC_DELAY_TABLE, init=args.init, sampling_frequency=args.sampling_frequency * 1e6, reference_frequency=10e6) # pylint: disable=C0103
+
+    time.sleep(0.5)
+    logger.info('Getting config')
+    chFPGA_config = c.get_config()
+    logger.info('Starting receiver')
+    r = chFPGA_receiver.chFPGA_receiver(chFPGA_config, ip_address='10.10.10.11', port=41001)
     #r = receiver_corr_fast.chFPGA_receiver(chFPGA_config, ip_address='10.10.10.11', port=41001)
     ##c.sync()
     #inj.set_inject_mode(c,r)

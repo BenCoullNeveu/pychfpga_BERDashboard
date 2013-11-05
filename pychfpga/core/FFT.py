@@ -35,8 +35,8 @@ class FFT_base(Module_base):
     MEASURED_PIPELINE_DELAY = BitField(STATUS,0x01, 0, width=16, doc="Latency (in numbe rof clocks) of the CASPER PFB/FFT")
     OVERFLOW_COUNT = BitField(STATUS,0x02, 0, width=8, doc="Number of FFT overflows since reset (rolls back)")
 
-    def __init__(self,ant_ch_instance):
-        super(self.__class__,self).__init__(ant_ch_instance.fpga, ant_ch_instance.ant_number, ant_ch_instance.FFT_MODULE)
+    def __init__(self, ant_ch_instance, port, module):
+        super(self.__class__,self).__init__(ant_ch_instance.fpga, port, module)
         
     def reset(self):
         self.pulse_bit('RESET')

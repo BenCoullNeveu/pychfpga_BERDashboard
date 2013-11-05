@@ -160,12 +160,12 @@ class Module_base(object):
         lsb_addr = bitfield.addr - int(bitfield.bit//word_width)
         msb_addr = bitfield.addr - int((bitfield.bit+bitfield.width-1)//word_width)
         number_of_bytes = lsb_addr - msb_addr + 1
-        data_type = {1:np.dtype('>u1'), 2:np.dtype('>u2'), 4:np.dtype('>u4')}[number_of_bytes]
-        data = self.read(msb_addr, type=data_type)
+        data_type = {1:np.dtype('>u1'), 2:np.dtype('>u2'), 4:np.dtype('>u4'), 8:np.dtype('>u8')}[number_of_bytes]
+        data = int(self.read(msb_addr, type=data_type))
         if verbose:
             print 'Read port %i, module %i, addr: %i - %i, bit %i, width=%i, value=%i' % (self.port_number, self.module_number, msb_addr, lsb_addr, bitfield.bit, bitfield.width, data)
         #print 'Read bit at port %i, bit=%i, data: %X' % (bit_name,  bit_def.addr,bit_def.bit, data)
-        return (data>>bitfield.bit) & ((1<<bitfield.width)-1)
+        return (data >> bitfield.bit) & ((1 << bitfield.width) - 1)
 
     def write_field(self, bitfield, data):
         """ Writes the field identified by the name 'bit_name' which is looked up in the BITS table to find the bit definition (port, bit position etc). Returns a boolean."""  
@@ -191,9 +191,9 @@ class Module_base(object):
         lsb_addr = bitfield.addr - int(bitfield.bit/word_width)
         msb_addr = bitfield.addr - int((bitfield.bit+bitfield.width-1)/word_width)
         number_of_bytes = lsb_addr - msb_addr + 1
-        data_type = {1:np.dtype('>u1'), 2:np.dtype('>u2'), 4:np.dtype('>u4')}[number_of_bytes]
+        data_type = {1:np.dtype('>u1'), 2:np.dtype('>u2'), 4:np.dtype('>u4'), 8:np.dtype('>u8')}[number_of_bytes]
         
-        old_data = self.read(msb_addr, type=data_type)
+        old_data = int(self.read(msb_addr, type=data_type))
         mask = (2**bitfield.width-1)<<bitfield.bit
         new_data = old_data & ~mask
         new_data |= ((data << bitfield.bit) & mask) 

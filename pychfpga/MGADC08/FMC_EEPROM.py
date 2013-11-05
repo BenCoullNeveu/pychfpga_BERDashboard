@@ -9,7 +9,7 @@ FMC_EEPROM.py module
     2012-03-29 JFC : Created 
     2012-08-27 JFC : Fixed reference to common.util as pychfpga.common.util         
 """
-
+import logging
 from pychfpga.common import util
 
 
@@ -23,6 +23,7 @@ class FMC_EEPROM_base(object):
         self.i2c = i2c_handler
         self.fmc_name = fmc_name
         self.verbose = verbose
+        self.logger = logging.getLogger(__name__)
 
     def read(self, addr, length=1, **kwargs):
         """ Reads from the EEPROM"""
@@ -44,10 +45,9 @@ class FMC_EEPROM_base(object):
     
     def status(self):
         """ Shows EEPROM data"""
-        print '--------------- FMC EEPROM ---------------'
+        self.logger.info('-- FMC EEPROM ')
         try:
-            print 'FMC EEPROM data at address 0x00-0x03 is: ', util.hex(self.read(0, length=4))
+            self.logger.info('FMC EEPROM data at address 0x00-0x03 is: %s' % util.hex(self.read(0, length=4)))
         except:
-            print 'FMC EEPROM did not respond'
-        print '------------------------------------------'
+            self.logger.info('FMC EEPROM did not respond')
     

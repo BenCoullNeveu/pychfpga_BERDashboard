@@ -31,15 +31,26 @@ class FreqCtr_base(Module_base):
     'ADC_CLK5': 5,
     'ADC_CLK6': 6,
     'ADC_CLK7': 7,
-    'MGT_REFCLK': 8,
-    'MGT_USRCLK2': 9,
-    'FMC_REFCLK': 10,
-    'CLK200': 11,
-    'CTRL_CLK': 12,
-    'FAN': 13,
-    'ANT_CLK': 14,
-    'CORR_CLK': 15,
-    'SYSMON_CLK': 16,
+    'ADC_CLK8': 8,
+    'ADC_CLK9': 9,
+    'ADC_CLK10': 10,
+    'ADC_CLK11': 11,
+    'ADC_CLK12': 12,
+    'ADC_CLK13': 13,
+    'ADC_CLK14': 14,
+    'ADC_CLK15': 15,
+    'MGT_REFCLK': 16,
+    'MGT_USRCLK2': 17,
+    'FMC_REFCLK': 18,
+    'CLK200': 19,
+    'CTRL_CLK': 20,
+    'FAN': 21,
+    'ANT_CLK': 22,
+    'CORR_CLK': 23,
+    'SYSMON_CLK': 24,
+    'GPU_REFCLK': 25,
+    'GPU_DATACLK': 26,
+    'GPU_TXCLK': 27,
     }
 
     # Create local variables for page numbers tomake the table more readable
@@ -47,8 +58,8 @@ class FreqCtr_base(Module_base):
     STATUS = BitField.STATUS
 
     GATE_COUNT = BitField(CONTROL, 3, 0, width=32, doc='Gate time, set in 200 MHz clocks')
-    SOURCE = BitField(CONTROL, 4, 4, width= 4, doc='Select signal to be measured')
-    START = BitField(CONTROL, 4, 0, doc='When 0, resets the frequency counter.  When high, counts the uncoming clock edges until the gate time is elapsed.')
+    SOURCE = BitField(CONTROL, 4, 0, width= 7, doc='Select signal to be measured')
+    START = BitField(CONTROL, 4, 7, doc='When 0, resets the frequency counter.  When high, counts the uncoming clock edges until the gate time is elapsed.')
 
     FREQ_COUNT = BitField(STATUS, 3, 0, width=32, doc='Frequency count (number of rising edges seen on the source signal during the gate time)')
     DONE = BitField(STATUS, 4, 0, doc='Frequency counting is complete (gate time has been reached).')
@@ -115,23 +126,28 @@ class FreqCtr_base(Module_base):
         fan_gate_time = 0.2
         fan_resolution = 2.0 / fan_gate_time
 
-        if fpga.FMC_present:
+        if fpga.FMC_present[0]:
             fmc_present_string = ''
         else:
             fmc_present_string = ' (ADC board not present)'
 
-        ant_clock_source_string = ('ADC','SYSTEM CLOCK')[fpga.ANT[fpga.ADC_CLK_SELECT].ADCDAQ.PLL_CLK_SRC]        
+        PLL_CLK_SRC = fpga.GPIO.CHAN_CLK_SRC
+        ant_clock_source_string = ('ADC','SYSTEM CLOCK')[PLL_CLK_SRC]        
 
         print 'System Frequencies:'
-        print '   FPGA Board frequency:      %7.3f MHz' % (self.read_frequency('CLK200', gate_time=gate_time) / 1e6) 
+        print '   System clock frequency:      %7.3f MHz' % (self.read_frequency('CLK200', gate_time=gate_time) / 1e6) 
         print '   CTRL_CLK frequency:        %7.3f MHz' % (self.read_frequency('CTRL_CLK', gate_time=gate_time) / 1e6) 
         #print '   SYSMON_CLK frequency:      %7.3f MHz' % (self.read_frequency('SYSMON_CLK', gate_time=gate_time) / 1e6) 
-        print '   ANT_CLK frequency:         %7.3f MHz (Source=%s)' % (self.read_frequency('ANT_CLK', gate_time=gate_time) / 1e6, ant_clock_source_string) 
+        print '   Channelizer clock frequency: %7.3f MHz (Source= %i (%s))' % (self.read_frequency('ANT_CLK', gate_time=gate_time) / 1e6, PLL_CLK_SRC, ant_clock_source_string) 
         print '   Correlator frequency:      %7.3f MHz' % (self.read_frequency('CORR_CLK', gate_time=gate_time) / 1e6) 
-        print '   FMC Reference frequency:   %7.3f MHz%s' % (self.read_frequency('FMC_REFCLK', gate_time=gate_time) / 1e6, fmc_present_string) 
-        print '   MGT Ref clock frequency:   %7.3f MHz' % (self.read_frequency('MGT_REFCLK', gate_time=gate_time) / 1e6) 
-        print '   MGT word frequency:        %7.3f MHz' % (self.read_frequency('MGT_USRCLK2', gate_time=gate_time) / 1e6) 
-        for i in range(8):
+        print '   FMC0 Reference frequency:   %7.3f MHz%s' % (self.read_frequency('FMC_REFCLK', gate_time=gate_time) / 1e6, fmc_present_string) 
+        print '   FMC1 Reference frequency:   (data not available)' 
+        print '   GPU link Ref clock frequency:   %7.3f MHz' % (self.read_frequency('GPU_REFCLK', gate_time=gate_time) / 1e6) 
+        print '   GPU link data clock frequency:  %7.3f MHz' % (self.read_frequency('GPU_DATACLK', gate_time=gate_time) / 1e6) 
+        print '   GPU link TX clock frequency:    %7.3f MHz' % (self.read_frequency('GPU_TXCLK', gate_time=gate_time) / 1e6) 
+        # print '   MGT Ref clock frequency:   %7.3f MHz' % (self.read_frequency('MGT_REFCLK', gate_time=gate_time) / 1e6) 
+        # print '   MGT word frequency:        %7.3f MHz' % (self.read_frequency('MGT_USRCLK2', gate_time=gate_time) / 1e6) 
+        for i in range(fpga.NUMBER_OF_ANTENNAS):
             print '   ADC%i clock frequency:      %7.3f MHz%s' % (i, self.read_frequency('ADC_CLK%i' % i, gate_time=gate_time) / 1e6, fmc_present_string) 
         print '   Resolution          :    %10.6f MHz' % (resolution / 1e6) 
         print '   Gate time           :    %.3f s' % (gate_time) 

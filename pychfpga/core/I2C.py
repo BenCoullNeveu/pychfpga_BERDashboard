@@ -156,10 +156,9 @@ class I2C_base(Module_base):
         #data.dtype=np.dtype(type)
         if error_msg:
             error_msg = 'write_read:  The following errors occured while writing %i bytes and reading %i bytes on FPGA I2C port %i at address 0x%02x with data %s\n %s' % (write_length, read_length, self.current_port, addr,  hex(data), error_msg)
-        if verbose and error_msg:
-            print error_msg
-        if error_msg and not noerror:
+        if error_msg:
             self.logger.error(error_msg)
+        if error_msg and not noerror:
             raise SystemError(error_msg)
 
         return data
@@ -181,15 +180,15 @@ class I2C_base(Module_base):
     #     self.write(0x000+0x05,[0x00+(port<<5)])
 
     def status(self, verbose=0):
-        s=self.read(0x04,length=2)
-        print 'Current selected port: %i' % (s[0]&0b01100000)>>6
-        print 'Reset state: %i' % bool(s[1]&0x80)
-        print 'Force line SCK: %i, SDA: %i' % (bool(s[1]&0x02),bool(s[1]&0x01))
-        s=self.read(0x80,length=9)
-        print 'Read bytes:', hex(s[0:4])
-        print 'last state:', hex(s[4]>>4)
-        print 'SCK = %i, SDA= %i' %(bool(s[4]&0x02), bool(s[4]&0x01))
-        print 'ACK bits:', bin(s[5])
+        # s=self.read(0x04,length=2)
+        self.logger.info('Current selected port: %i' % self.PORT)
+        self.logger.info('Reset state: %i' % self.RESET)
+        self.logger.info('Force line SCK: %i, SDA: %i' % (self.FORCE_SCK, self.FORCE_SDA))
+        # s=self.read(0x80,length=9)
+        # print 'Read bytes:', hex(s[0:4])
+        # print 'last state:', hex(s[4]>>4)
+        # print 'SCK = %i, SDA= %i' %(bool(s[4]&0x02), bool(s[4]&0x01))
+        # print 'ACK bits:', bin(s[5])
         
     
 

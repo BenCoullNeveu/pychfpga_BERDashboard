@@ -41,9 +41,9 @@ class PROBER_base(Module_base):
     _DATA_FIFO_OVERFLOW = BitField(STATUS, 0x00, 3, doc="State of the DATA_FIFO_OVERFLOW signal (for debugging)")
     CAPTURE_ACTIVE = BitField(STATUS, 0x00, 0, doc="Active high if data capture is in progress (cleared when BURST_NUMBER bursts have been sent)")
     
-    def __init__(self, ant_instance):
+    def __init__(self, ant_instance, port, module):
         self.ant = ant_instance
-        super(self.__class__, self).__init__(ant_instance.fpga, ant_instance.ant_number, ant_instance.PROBER_MODULE)
+        super(self.__class__, self).__init__(ant_instance.fpga, port, module)
         self._lock() # Prevent accidental addition of attributes (if, for example, a value is assigned to a wrongly-spelled property)
     # Specialized functions
 

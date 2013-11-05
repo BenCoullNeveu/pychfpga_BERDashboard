@@ -12,6 +12,7 @@ SPI.py module
 
 import numpy as np
 import time
+import logging
 
 from Module import Module_base, BitField
 
@@ -19,15 +20,6 @@ __reload__=True
 
 class SPI_base(Module_base):
     # SPI addresses
-    SPI_ADC0_ADDR      = 0    # ADC. R/W device. 8 bit address+RW, 16 bit data.
-    SPI_ADC1_ADDR      = 1 # ADC. R/W device. 8 bit address+RW, 16 bit data.
-    SPI_ADC0_TEMP_ADDR = 2 # ADC temperature sensor chip. Read only
-    SPI_ADC1_TEMP_ADDR = 3 # ADC temperature sensor chip. Read only
-    SPI_AMB_TEMP_ADDR  = 4 # Board temperature sensor chip. Read/Write device
-    SPI_PLL1_ADDR      = (5, 1) # ADC PLL. The second element of the tuple indicates that we use the alternate timing 
-    #SPI_ADC_BIAS_ADDR =5 # Bias measurement ADC.  Read/Write device # Not present on Rev2 board
-    SPI_IO_EXP_ADDR    = 6 # IO Expander. Read/Write device
-    SPI_PLL2_ADDR      = 7 # MGT PLL. Write only.
 
     CONTROL = BitField.CONTROL
     STATUS = BitField.STATUS
@@ -51,6 +43,7 @@ class SPI_base(Module_base):
         self.fpga_instance = fpga;
         super(self.__class__,self).__init__(fpga,fpga.SYSTEM_PORT, fpga.SYSTEM_SPI_MODULE)
         self.current_port = 0
+        self.logger = logging.getLogger(__name__)
         self._lock() # Prevent inadvertent changes to the class instance
 
     def read_reg(self, addr, length=1, type=np.uint8):
@@ -102,10 +95,9 @@ class SPI_base(Module_base):
         return data[0]
 
     def init(self):
-        self.DEFAULT_ADDR=self.SPI_ADC1_TEMP_ADDR # Default SPI_ADDR<2:0> when not accessing the SPI devices or interfacing devices with addresses >=8
+        self.DEFAULT_ADDR = 3 # Default SPI_ADDR<2:0> when not accessing the SPI devices or interfacing devices with addresses >=8 (SPI_ADDR1_TEMP_ADDR)
         self.CLK_ENABLE=1 # enable SPI clock
 
     def status(self):
-        print '---------------------FMC SPI Interface------------------------------------'
-        print ' No status info'
-        print '----------------------------------------------------------------------'
+        self.logger.info('--- SPI Interface---')
+        self.logger.info(' No status info')

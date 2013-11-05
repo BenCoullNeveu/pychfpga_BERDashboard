@@ -33,10 +33,10 @@ class INJECT_base(Module_base):
     FIFO_LENGTH = BitField(STATUS, 0x01, 0, width=8, doc="Number of samples currently in the data FIFO (last 8 bits only)")
 
 
-    def __init__(self, ant_ch_instance):
+    def __init__(self, ant_ch_instance, port, module):
         self.ant = ant_ch_instance
         fpga = ant_ch_instance.fpga
-        super(self.__class__, self).__init__(fpga, fpga.ANT_PORT[ant_ch_instance.ant_number], ant_ch_instance.INJECT_MODULE)
+        super(self.__class__, self).__init__(fpga, port, module)
         self._lock() # Prevent accidental addition of attributes (if, for example, a value is assigned to a wrongly-spelled property)
     # Specialized functions
 

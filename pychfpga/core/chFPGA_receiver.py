@@ -29,7 +29,7 @@ class ReceiverThread(threading.Thread):
     BUF_SIZE=65536
     data = bytearray(BUF_SIZE)
     data_buf = buffer(data)
-    data_block = np.zeros((8,2048+9), dtype=np.uint8)
+    data_block = np.zeros((16,2048+9), dtype=np.uint8)
     #Number of frequency bin pairs, Number of antennas, Number of bytes per word, header
     #NUMBER_OF_CORRELATORS = 5
     #NUMBER_OF_ANTENNAS_TO_CORRELATE = 5 #8
@@ -191,7 +191,7 @@ class ReceiverThread(threading.Thread):
                                 last_timestamp = timestamp
                                 n = 0
                             # Copy the new vector into the block memory buffer
-                            if n < 0 or n >= 8:
+                            if n < 0 or n >= 16:
                                 print 'Timestream Receiver: received %i Timestrem/Spectrum frames with the same timestamp.' % n   
                             elif nbytes != 2048 + 9:
                                 print 'Timestream Receiver: Timestrem/Spectrum frame has %i bytes instead of 2048+9=2057 bytes. First bytes are: 0x%s' % (nbytes, ' '.join('%02X' % c for c in self.data[:32]))                              
@@ -240,7 +240,7 @@ class chFPGA_receiver(object):
         self.chFPGA_config = chFPGA_config
         self.NUMBER_OF_ANTENNAS_TO_CORRELATE = chFPGA_config.number_of_antennas_to_correlate
         self.NUMBER_OF_CORRELATORS = chFPGA_config.number_of_correlators
-        self.CHANNELS_PER_CORR_MAX = 512 // self.NUMBER_OF_ANTENNAS_TO_CORRELATE
+        self.CHANNELS_PER_CORR_MAX = 512 // max(1, self.NUMBER_OF_ANTENNAS_TO_CORRELATE)
         # Create a frame a queue and a thread that will fill it
         self.frame_queue = Queue.Queue(maxsize=self.FRAME_BUFFER_LENGTH)
         self.frame_queue_corr = Queue.Queue(maxsize=self.FRAME_BUFFER_LENGTH)
