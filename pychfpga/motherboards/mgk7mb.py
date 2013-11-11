@@ -143,6 +143,10 @@ class MGK7MB(object):
     """ Implements wrapper object for MGADC08 FMC ADC board"""
 
     NUMBER_OF_FMC_SLOTS = 2 # Indicates the number of FMC slots supported by this platform
+    GPIO_POWER_I2C_ADDR = 0b0100000
+    GPIO_SFP_QSFP_I2C_ADDR = 0b0100001
+    GPIO_SW_LEDS_ADDR = 0b0100010
+    GPIO_ARM_PHY_LEDS_ADDR = 0b0100011
 
     def __init__(self, system_instance, verbose=0):
         self.sys = system_instance
@@ -152,7 +156,7 @@ class MGK7MB(object):
         self.i2c = I2CWrapper(self.sys.fpga_I2C)
 
         if verbose >= 2: self.logger.info(' Instantiating I2C GPIO manager')
-        self.gpio = pca9575(self.i2c, 0b0100000)
+        self.gpio_power = pca9575(self.i2c, self.GPIO_POWER_I2C_ADDR)
 
 
 
@@ -170,17 +174,36 @@ class MGK7MB(object):
         """
 
         if fmc_number == 0:
-            self.gpio.write(0x0A, 0b00000000) # Turn off all power signals before we enable the GPIO outputs
-            self.gpio.write(0x08, 0b10101000)
-            self.gpio.write(0x0A, 0b00000111*bool(state)) # Turn on power to board
-            self.gpio.write(0x0A, 0b01010111*bool(state)) # Set Power Good and CLKDIR to 1
+            self.gpio_power.write(0x0A, 0b00000000) # Turn off all power signals before we enable the GPIO outputs
+            self.gpio_power.write(0x08, 0b10101000)
+            self.gpio_power.write(0x0A, 0b00000111*bool(state)) # Turn on power to board
+            self.gpio_power.write(0x0A, 0b01010111*bool(state)) # Set Power Good and CLKDIR to 1
         elif fmc_number == 1:
-            self.gpio.write(0x0B, 0b00000000) # Turn off all power signals before we enable the GPIO outputs
-            self.gpio.write(0x09, 0b10101000)
-            self.gpio.write(0x0B, 0b00000111*bool(state))
-            self.gpio.write(0x0B, 0b01010111*bool(state))
+            self.gpio_power.write(0x0B, 0b00000000) # Turn off all power signals before we enable the GPIO outputs
+            self.gpio_power.write(0x09, 0b10101000)
+            self.gpio_power.write(0x0B, 0b00000111*bool(state))
+            self.gpio_power.write(0x0B, 0b01010111*bool(state))
         else:
             raise self.sys.chFPGAException('FMC number %i is not a valid value' % fmc_number)
+
+    LED_TABLE = {
+        'LED1': (GPIO_SW_LEDS_ADDR, 1, 7), 
+        'LED2': (GPIO_SW_LEDS_ADDR, 1, 6), 
+        'LED3': (GPIO_SW_LEDS_ADDR, 1, 5), 
+        'LED4': (GPIO_SW_LEDS_ADDR, 1, 4), 
+        'LED5': (GPIO_SW_LEDS_ADDR, 1, 3), 
+        'LED6': (GPIO_SW_LEDS_ADDR, 1, 2), 
+        'LED7': (GPIO_SW_LEDS_ADDR, 1, 1), 
+        'LED8': (GPIO_SW_LEDS_ADDR, 1, 0), 
+        'LED9': (GPIO_ARM_PHY_LEDS_ADDR, 0, 0), 
+        'LED10': (GPIO_ARM_PHY_LEDS_ADDR, 0, 1), 
+        'LED11': (GPIO_ARM_PHY_LEDS_ADDR, 0, 2), 
+        'LED12': (GPIO_ARM_PHY_LEDS_ADDR, 0, 3)
+        }
+
+    def set_led(self, led_name, state):
+        old_value = 0
+
 
     def get_info(self):
         """ loads the info data on the motherboard """
