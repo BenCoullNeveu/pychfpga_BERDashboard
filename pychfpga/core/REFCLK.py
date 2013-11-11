@@ -84,6 +84,7 @@ class REFCLK_base(Module_base):
             self.set_sync_delay(delay)
         self.set_refclk_delay(self.sync_delay)
         self.pulse_bit('ENCODE_SYNC')
+        #time.sleep(0.1) # see if that help packet loss
         self.wait_for_bit('SYNC_DONE')
         #time.sleep(10e-3) # make sure the SYNC sequence is completed and that the ADC clock is running 
 
