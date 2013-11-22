@@ -40,10 +40,10 @@ class SRCSEL_base(Module_base):
     FRAME_CTR    = BitField(STATUS, 0x02, 0, width=8, doc="Number of frames sent into the antenna processing pipeline (last 8 bits only)")
 
 
-    def __init__(self, ant_ch_instance, port, module):
-        self.ant = ant_ch_instance
-        fpga = ant_ch_instance.fpga
-        super(self.__class__, self).__init__(fpga, port, module)
+    def __init__(self, fpga_instance, base_address, instance_number):
+        # self.ant = ant_ch_instance
+        # fpga = ant_ch_instance.fpga
+        super(self.__class__, self).__init__(fpga_instance, base_address, instance_number)
         self._lock() # Prevent accidental addition of attributes (if, for example, a value is assigned to a wrongly-spelled property)
     # Specialized functions
 
@@ -78,7 +78,7 @@ class SRCSEL_base(Module_base):
 
     def status(self):
         """ Displays the status of the antenna processing chain data source module """
-        print '-------------- ANT[%i].SRCSEL STATUS --------------' % self.port_number 
+        print '-------------- ANT[%i].SRCSEL STATUS --------------' % self.instance_number 
         print ' Data source number: %i' % self.DATA_SOURCE
         print ' Reset states:'
         print '    RST: %s' % bool(self.RST)

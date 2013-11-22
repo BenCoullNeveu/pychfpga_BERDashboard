@@ -145,34 +145,39 @@ class chFPGA_controller(object):
     #FRAME_PERIOD = float(FRAME_LENGTH)/SAMPLING_FREQUENCY
 
     # Port numbers
-    SYSTEM_PORT = 0 # This is always at zero so we can gather info from the FPGA before we know the number of antennas etc.
-    ANT_PORT = None # Antennas ports are determined dynamically based on the info from the firmware
-    CORR_PORT = None # Correlator ports are determined dynamically based on the info from the firmware
-    GPU_PORT = None
+    SYSTEM_BASE_ADDR   = 0x00000 # This is always at zero so we can gather info from the FPGA before we know the number of antennas etc.
+    CHAN_BASE_ADDR     = 0x20000 # Channelizer top address
+    CORR_BASE_ADDR     = 0x40000 # Correlator ports are determined dynamically based on the info from the firmware
+    GPU_LINK_BASE_ADDR = 0x60000
     #MGT_PORT = NUMBER_OF_ANTENNAS+2 -- for future use, if needed
 
+    CHAN_ADDR_INCREMENT = 0x02000 # Address increment between each channelizer address spaces
+    CORR_ADDR_INCREMENT = 0x02000 # Address increment between each correlator
+    GPU_LINK_ADDR_INCREMENT = 0x02000 # Address increment between each subsystem of the GPU links
 
     # SYSTEM Modules addresses
-    SYSTEM_GPIO_MODULE = 0
-    SYSTEM_SYSMON_MODULE = 1
-    SYSTEM_FREQ_CTR_MODULE = 2
-    SYSTEM_SPI_MODULE = 3
-    SYSTEM_REFCLK_MODULE = 4
-    SYSTEM_I2C_MODULE = 5
+    SYSTEM_GPIO_BASE_ADDR     = SYSTEM_BASE_ADDR + 0x00000
+    SYSTEM_SYSMON_BASE_ADDR   = SYSTEM_BASE_ADDR + 0x02000
+    SYSTEM_FREQ_CTR_BASE_ADDR = SYSTEM_BASE_ADDR + 0x04000
+    SYSTEM_SPI_BASE_ADDR      = SYSTEM_BASE_ADDR + 0x06000
+    SYSTEM_REFCLK_BASE_ADDR   = SYSTEM_BASE_ADDR + 0x08000
+    SYSTEM_I2C_BASE_ADDR      = SYSTEM_BASE_ADDR + 0x0A000
 
     GPIO_COOKIE_REG = 0x080 # Register address of the firmware cookie
     GPIO_IPCONFIG_REG = 0x08D # Register address of the first byte of the IP config word
     CHFPGA_COOKIE = 0x42 # Expected cookie value for chFPGA
+
     PLATFORM_ID_ML605 = 0
     PLATFORM_ID_KC705 = 1
-    PLATFORM_ID_MGK7MB = 2
+    PLATFORM_ID_MGK7MB_REV0 = 2
+    PLATFORM_ID_MGK7MB_REV2 = 3
 
     PLATFORM_ID_LIST = {
         # ID: ( Board name, class to instantiate)
-        0: ('Virtex 6 (XC6V240T-1 FFG1156) on Xilinx ML605 Evaluation board', None),
-        1: ('Kintex 7 (XC7K325T-2 FFG900C) on Xilinx KC705 Evaluation board', None),
-        2: ('Kintex 7 (XC7K420T-2 FFG901) on McGill MGK7MB / ICEBoard Rev0', mgk7mb.MGK7MB),
-        3: ('Kintex 7 (XC7K420T-2 FFG901) on McGill MGK7MB / ICEBoard Rev2', mgk7mb.MGK7MB),
+        PLATFORM_ID_ML605: ('Virtex 6 (XC6V240T-1 FFG1156) on Xilinx ML605 Evaluation board', None),
+        PLATFORM_ID_KC705: ('Kintex 7 (XC7K325T-2 FFG900C) on Xilinx KC705 Evaluation board', None),
+        PLATFORM_ID_MGK7MB_REV0: ('Kintex 7 (XC7K420T-2 FFG901) on McGill MGK7MB / ICEBoard Rev0', mgk7mb.MGK7MB),
+        PLATFORM_ID_MGK7MB_REV2: ('Kintex 7 (XC7K420T-2 FFG901) on McGill MGK7MB / ICEBoard Rev2', mgk7mb.MGK7MB),
     }
 
     def __init__(self, ip_address='10.10.10.11', port_number=41000, init=1, verbose=2, **kwargs):
@@ -225,7 +230,7 @@ class chFPGA_controller(object):
         self.log.info("Attempting to communicate with the FPGA")
 
         try:
-            cookie = self.read(self.SYSTEM_PORT, self.SYSTEM_GPIO_MODULE, self.GPIO_COOKIE_REG) # Read anything from the GPIO subsystem (which is always present on all versions of the FPGA)
+            cookie = self.read(self.SYSTEM_GPIO_BASE_ADDR + self.GPIO_COOKIE_REG) # Read anything from the GPIO subsystem (which is always present on all versions of the FPGA)
         except Exception as e:
             error_message = "Unable to communicate with the FPGA at address %s:%i due to the following exception: %s" % (ip_address, port_number, repr(e))
             self.close()
@@ -254,7 +259,7 @@ class chFPGA_controller(object):
             # ---------------------------------------------------------------------
 
             if verbose >= 2: self.log.debug('  - GPIO')
-            self.GPIO = GPIO.GPIO_base(self)
+            self.GPIO = GPIO.GPIO_base(self, self.SYSTEM_GPIO_BASE_ADDR)
             # get system constants from the FPGA
 
             self.log.info('Getting board info information')
@@ -314,37 +319,37 @@ class chFPGA_controller(object):
         # print '   Number of frequency channels per SQUID channel: %i' % self.NUMBER_OF_FREQUENCY_CHANNELS_PER_SQUID_CHANNEL
         # print '   Number of SQUID controllers supported: %i' % self.NUMBER_OF_SQUID_CONTROLLERS
                        
-            self.log.debug('Instantiating FPGA ressource handlers')
+            self.log.debug('Instantiating FPGA ressources')
 
             self.log.debug('  - I2C')
-            self.fpga_I2C = I2C.I2C_base(self)
+            self.fpga_I2C = I2C.I2C_base(self, self.SYSTEM_I2C_BASE_ADDR)
 
             self.log.debug('  - SYSMON')
-            self.SYSMON = SYSMON.SYSMON_base(self)
+            self.SYSMON = SYSMON.SYSMON_base(self, self.SYSTEM_SYSMON_BASE_ADDR)
 
             self.log.debug('  - SPI')
-            self.SPI = SPI.SPI_base(self)
+            self.SPI = SPI.SPI_base(self, self.SYSTEM_SPI_BASE_ADDR)
 
             self.log.debug('  - FreqCtr')
-            self.FreqCtr = FreqCtr.FreqCtr_base(self)
+            self.FreqCtr = FreqCtr.FreqCtr_base(self, self.SYSTEM_FREQ_CTR_BASE_ADDR)
 
             self.log.debug('  - REFCLK')
-            self.REFCLK = REFCLK.REFCLK_base(self)
+            self.REFCLK = REFCLK.REFCLK_base(self, self.SYSTEM_REFCLK_BASE_ADDR)
             
-            self.log.debug('  - ANT')
-            self.ANT = ANT.ANT_base(self) # Antenna processors (ADCDAQ, SRCSEL, FFT, SCALER) for each input
+            self.log.debug('  - CHAN')
+            self.ANT = ANT.ANT_base(self, self.CHAN_BASE_ADDR, self.CHAN_ADDR_INCREMENT) # Antenna processors (ADCDAQ, SRCSEL, FFT, SCALER) for each input
     
             self.log.debug('  - CORR')
-            self.CORR = CORR_BLOCK.CORR_BLOCK_base(self) # Correlator (CH_DIST, CORR, ACC) for each correlator
+            self.CORR = CORR_BLOCK.CORR_BLOCK_base(self, self.CORR_BASE_ADDR, self.CORR_ADDR_INCREMENT) # Correlator (CH_DIST, CORR, ACC) for each correlator
 
-            self.log.debug('  - GPU')
-            self.GPU = GPU.GPU_base(self) 
+            self.log.debug('  - GPU LINKS')
+            self.GPU = GPU.GPU_base(self, self.GPU_LINK_BASE_ADDR, self.GPU_LINK_ADDR_INCREMENT) 
 
             # ---------------------------------------------------------------------
             # -- Create motherboard ressource handlers objects
             # ---------------------------------------------------------------------
 
-            self.log.info('Instantiating motherboard ressource handlers')
+            self.log.info('Instantiating motherboard ressources')
             motherboard_cls = self.PLATFORM_ID_LIST[self.PLATFORM_ID][1]
             self.motherboard = motherboard_cls(self) # Creates the motherboard handler
 
@@ -459,15 +464,20 @@ class chFPGA_controller(object):
 
         self.sync() # might be needed  to make sure that the clock is running to set delays
 
+
 #        self.FMC_present = self.adc_board[0].is_present()
+        self.log.info('Initializing ADCs and Channelizers')
         self.log.debug('  - ANT')
         self.ANT.init(delay_table=adc_delay_table)
         self.ANT.status()
 
-        # if self.IMPLEMENT_CORR and self.NUMBER_OF_CORRELATORS>0:
-        #     self.log.debug('  - CORR')
-        #     self.CORR.init()
-        #     self.CORR.status()
+        self.log.info('Initializing FPGA correlators')
+        if self.NUMBER_OF_CORRELATORS>0:
+            self.log.debug('  - CORR')
+            self.CORR.init()
+            self.CORR.status()
+        else:
+            self.log.info('There are no FPGA correlators in this firmware build');
 
         # MGT is disabled    
         #self.log.debug('  - MGT_PLL')
@@ -499,7 +509,7 @@ class chFPGA_controller(object):
         Reads the FPGA and returns the cookie that identifies the firmware.
         This method can be called before any FPGA modules are instatiated. 
         """
-        return self.read(self.SYSTEM_PORT, self.SYSTEM_GPIO_MODULE, self.GPIO_COOKIE_REG) & 0x7F
+        return self.read(self.SYSTEM_GPIO_BASE_ADDR + self.GPIO_COOKIE_REG) & 0x7F
 
     def get_config(self):
         config = chFPGA_config() # Create empty config container
@@ -555,7 +565,7 @@ class chFPGA_controller(object):
         if self.ip_address in Shared_variables.controller_sock:
             del Shared_variables.controller_sock[self.ip_address]
 
-    def read(self, ant, module, addr, type=np.dtype('>u1'), length=1, incr=1):
+    def read(self, addr, type=np.dtype('>u1'), length=1, incr=1):
         """ Reads memory-mapped byte(s) from the FPGA through the Ethernet interface.
         Returns a numpy array where the bytes are intrepreted as a series of 'length' elements of type 'type'.
         """
@@ -565,7 +575,8 @@ class chFPGA_controller(object):
         NBYTES = 0
         # Loop to read all required bytes (the FPGA does not support multi-byte reads (yet))
         for i in range(length*itemsize): 
-            s = chr(0x00+(NBYTES<<3)+(ant>>3))+chr(((ant&0x07)<<5)+(module<<2)+(addr>>8))+chr(addr&0xff)
+            s = chr(0x00 + (0x40 if incr else 0) + (NBYTES<<4) + ((addr >> 16) & 0x0F)) + chr((addr >> 8) & 0xFF) + chr(addr & 0xff)
+
             try:
                 self.sock.write(s)
                 data = self.sock.read()
@@ -586,7 +597,7 @@ class chFPGA_controller(object):
             return dout
         
     
-    def write(self, ant, module, addr, data, incr=1):
+    def write(self, addr, data, incr=1):
         """ 
         Writes byte(s) to memory-mapped registers in the FPGA through the Ethernet interface.
         'data' can be:
@@ -599,8 +610,8 @@ class chFPGA_controller(object):
         """
         # build command packet
         #s=chr(0x80+ant+(0x40 if incr else 0))+chr((module<<2)+(addr>>8))+chr(addr&0xFF) 
-        NBYTES = 0
-        string = chr(0x80 + (0x40 if incr else 0) + (NBYTES << 3) + (ant >> 3)) + chr(((ant & 0x07) << 5) + (module << 2) + (addr >> 8)) + chr(addr & 0xff)
+
+        string = chr(0x80 + (0x40 if incr else 0) + ((addr >> 16) & 0x0F)) + chr((addr >> 8) & 0xFF) + chr(addr & 0xff)
 
         # Add the data to the string. The method depends on the data type
         if type(data) == str:
@@ -635,23 +646,23 @@ class chFPGA_controller(object):
     Read = read
     Write = write
 
-    def read_bit(self, port, module, addr, bit):
-        return (self.read(port, module, addr) & (1<<bit))!=0
+    def read_bit(self, addr, bit):
+        return (self.read(addr) & (1<<bit))!=0
 
-    def write_bit(self, port, module, addr, bit, data):
-        old_data = self.read(port,module,addr)
+    def write_bit(self, addr, bit, data):
+        old_data = self.read(addr)
         mask = 1<<bit
-        self.write(port, module, addr, (old_data & (~mask)) | (mask if data else 0))
+        self.write(addr, (old_data & (~mask)) | (mask if data else 0))
 
-    def write_mask(self, port, module, addr, mask, data):
-        old_data = self.read(port, module, addr)
-        self.write(port, module, addr, (old_data & (~mask)) | (mask & data))
+    def write_mask(self, addr, mask, data):
+        old_data = self.read(addr)
+        self.write(addr, (old_data & (~mask)) | (mask & data))
 
-    def pulse_bit(self, port, module, addr, bit):
-        old_data = self.read(port, module, addr)
+    def pulse_bit(self, addr, bit):
+        old_data = self.read(addr)
         mask = 1 << bit
-        self.write(port, module, addr, (old_data | mask))
-        self.write(port, module, addr, (old_data & (~mask)))
+        self.write(addr, (old_data | mask))
+        self.write(addr, (old_data & (~mask)))
 
     def sync(self, local=1, verbose=0):
         if verbose:
@@ -1014,6 +1025,7 @@ class chFPGA_controller(object):
             corr.ACC.RESET = 0
             corr.ACC.config(integration_period=integration_period_in_frames, capture_period=capture_period_in_frames)
         for corr_num in corrs_not_used:
+            self.log.info('Disabling correlator %i' %  (corr.instance_number))
             corr = self.CORR[corr_num]
             corr.ACC.RESET = 1
         self.set_corr_reset(0)

@@ -35,8 +35,8 @@ class FFT_base(Module_base):
     MEASURED_PIPELINE_DELAY = BitField(STATUS,0x01, 0, width=16, doc="Latency (in numbe rof clocks) of the CASPER PFB/FFT")
     OVERFLOW_COUNT = BitField(STATUS,0x02, 0, width=8, doc="Number of FFT overflows since reset (rolls back)")
 
-    def __init__(self, ant_ch_instance, port, module):
-        super(self.__class__,self).__init__(ant_ch_instance.fpga, port, module)
+    def __init__(self, fpga_instance, base_address, instance_number):
+        super(self.__class__,self).__init__(fpga_instance, base_address, instance_number)
         
     def reset(self):
         self.pulse_bit('RESET')
@@ -51,7 +51,7 @@ class FFT_base(Module_base):
         #    raise Exception('FFT pipeline delay is not set to the measured value!')
     def status(self):
         """ Displays the status of the data capture module"""
-        print '-------------- ANT[%i].FFT STATUS --------------' % self.port_number 
+        print '-------------- ANT[%i].FFT STATUS --------------' % self.instance_number 
         print ' FFT Bypass: %s' % (bool(self.BYPASS))
         print ' FFT SHIFT schedule: 0x%X' % (self.FFT_SHIFT)
         print ' CASPER block pipeling delay: Measured=%i, set point=%i:  clocks' % (self.MEASURED_PIPELINE_DELAY, self.PIPELINE_DELAY)

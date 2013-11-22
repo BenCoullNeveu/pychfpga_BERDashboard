@@ -25,9 +25,8 @@ class SCALER_base(Module_base):
 
     # Define Status registers
 
-    def __init__(self, ant_ch_instance, port, module):
-         self.fpga = ant_ch_instance.fpga
-         super(self.__class__, self).__init__(self.fpga, port, module)
+    def __init__(self, fpga_instance, base_address, instance_number):
+         super(self.__class__, self).__init__(fpga_instance, base_address, instance_number)
         
     def reset(self):
         """ Resets the SCALER module """
@@ -36,7 +35,7 @@ class SCALER_base(Module_base):
     def init(self):
         """ Initialize the SCALER module"""
         # Bypass the scaler by default if the FFT is not present
-        if (self.fpga.GPIO.IMPLEMENT_FFT & (1 << self.port_number)):
+        if (self.fpga.GPIO.IMPLEMENT_FFT & (1 << self.instance_number)):
           self.BYPASS = 0
         else:
           self.BYPASS = 1
@@ -45,7 +44,7 @@ class SCALER_base(Module_base):
 
     def status(self):
         """ Displays the status of the scaler module"""
-        print '-------------- ANT[%i].SCALER STATUS --------------' % self.port_number 
+        print '-------------- ANT[%i].SCALER STATUS --------------' % self.instance_number 
         print ' SCALER Bypass: %s' % (bool(self.BYPASS))
         print ' Shift left: %i' % self.SHIFT_LEFT
 

@@ -15,7 +15,9 @@ Todo:
 """
 import numpy as np
 
-class SYSMON_base(object):
+from Module import Module_base, BitField
+
+class SYSMON_base(Module_base):
     # Registers
     TEMP_ADDR = 0x00
     TEMP_MIN_ADDR = 0x24
@@ -51,54 +53,55 @@ class SYSMON_base(object):
 
 
 
-    def __init__(self, fpga, verbose=1):
-        self.fpga_instance = fpga
+    def __init__(self, fpga_instance, base_address, verbose=1):
         self.verbose = verbose
+        super(self.__class__, self).__init__(fpga_instance, base_address)
+
+        fpga = fpga_instance
+        self.supported_by_platform = fpga.PLATFORM_ID in [fpga.PLATFORM_ID_ML605, fpga.PLATFORM_ID_KC705, fpga.PLATFORM_ID_MGK7MB_REV0, fpga.PLATFORM_ID_MGK7MB_REV2]
+
+        self._lock() # Prevent accidental addition of attributes (if, for example, a value is assigned to a wrongly-spelled property)
 
 
-    def read(self, addr):
-        """ Reads a 16-bit register of the FPGA system monitor at specified word address 
-        """
-        fpga = self.fpga_instance
-        #fpga.write_bit(fpga.SYSTEM_PORT,fpga.SYSTEM_SYSMON_MODULE,0x00,0,bool(addr>=0x40))
-        return fpga.read(fpga.SYSTEM_PORT, fpga.SYSTEM_SYSMON_MODULE, 0x200 + 2 * (addr), type=np.dtype('<u2')) # Sysmon data is read LSB first
+    # def read(self, addr):
+    #     """ Reads a 16-bit register of the FPGA system monitor at specified word address 
+    #     """
+    #     fpga = self.fpga_instance
+    #     #fpga.write_bit(fpga.SYSTEM_PORT,fpga.SYSTEM_SYSMON_MODULE,0x00,0,bool(addr>=0x40))
+    #     return fpga.read(fpga.SYSTEM_PORT, fpga.SYSTEM_SYSMON_MODULE, 0x200 + 2 * (addr), type=np.dtype('<u2')) # Sysmon data is read LSB first
 
-    def write(self, addr, data):
-        """ Writes a 16-bit register of the FPGA system monitor at specified word address 
-        """
-        fpga = self.fpga_instance
-        #fpga.write_bit(fpga.SYSTEM_PORT,fpga.SYSTEM_SYSMON_MODULE,0x00,0,bool(addr>=0x40))
-        fpga.write(fpga.SYSTEM_PORT, fpga.SYSTEM_SYSMON_MODULE, 0x200 + 2 * (addr), [data & 0xFF, data >> 8]) # Sysmon data is LSB first
+    # def write(self, addr, data):
+    #     """ Writes a 16-bit register of the FPGA system monitor at specified word address 
+    #     """
+    #     fpga = self.fpga_instance
+    #     #fpga.write_bit(fpga.SYSTEM_PORT,fpga.SYSTEM_SYSMON_MODULE,0x00,0,bool(addr>=0x40))
+    #     fpga.write(fpga.SYSTEM_PORT, fpga.SYSTEM_SYSMON_MODULE, 0x200 + 2 * (addr), [data & 0xFF, data >> 8]) # Sysmon data is LSB first
 
     def init(self):
-        fpga = self.fpga_instance
-        self.supported_by_platform = fpga.PLATFORM_ID in [fpga.PLATFORM_ID_ML605, fpga.PLATFORM_ID_KC705, fpga.PLATFORM_ID_MGK7MB]
-        
-            
         if self.supported_by_platform:
-            self.write(self.CONFIG1_ADDR, 0x0000)
-            self.write(self.CONFIG2_ADDR, 0x0000)
-            self.write(self.SEQ_ADC_SEL1_ADDR, 0x3F01) # Enable all ADC channels
-            self.write(self.SEQ_ADC_SEL2_ADDR, 0xFFFF)
-            self.write(self.SEQ_ADC_AVG1_ADDR, 0x3F01) # All averaging
-            self.write(self.SEQ_ADC_AVG2_ADDR, 0xFFFF)
-            self.write(self.SEQ_ADC_MODE1_ADDR, 0x0000) # All external channels set to single-ended
-            self.write(self.SEQ_ADC_MODE2_ADDR, 0x0000)
-            self.write(self.SEQ_ADC_ACQTIME1_ADDR, 0x0000) # all set to normal acq time
-            self.write(self.SEQ_ADC_ACQTIME2_ADDR, 0x0000)
-            self.write(self.CONFIG1_ADDR, 0x3000) # 256 averages
-            self.write(self.CONFIG2_ADDR, 0x2000) # Enable ADC channel auto sequencing
+            self.write_drp(self.CONFIG1_ADDR, 0x0000)
+            self.write_drp(self.CONFIG2_ADDR, 0x0000)
+            self.write_drp(self.SEQ_ADC_SEL1_ADDR, 0x3F01) # Enable all ADC channels
+            self.write_drp(self.SEQ_ADC_SEL2_ADDR, 0xFFFF)
+            self.write_drp(self.SEQ_ADC_AVG1_ADDR, 0x3F01) # All averaging
+            self.write_drp(self.SEQ_ADC_AVG2_ADDR, 0xFFFF)
+            self.write_drp(self.SEQ_ADC_MODE1_ADDR, 0x0000) # All external channels set to single-ended
+            self.write_drp(self.SEQ_ADC_MODE2_ADDR, 0x0000)
+            self.write_drp(self.SEQ_ADC_ACQTIME1_ADDR, 0x0000) # all set to normal acq time
+            self.write_drp(self.SEQ_ADC_ACQTIME2_ADDR, 0x0000)
+            self.write_drp(self.CONFIG1_ADDR, 0x3000) # 256 averages
+            self.write_drp(self.CONFIG2_ADDR, 0x2000) # Enable ADC channel auto sequencing
 
 
     def temperature(self, addr):
         """ Reads a registers of the FPGA system monitor and convert the result in Celsius """
-        lsb = self.read(addr)
+        lsb = self.read_drp(addr)
         temp = lsb / 64. * 503.975 / 1024. - 273.15
         return temp
 
     def voltage(self, addr, vref=3.0):
         """ Reads a registers of the FPGA system monitor and convert the result in Volts """
-        lsb = self.read(addr)
+        lsb = self.read_drp(addr)
         volt = lsb / 64.0 * vref / 1024
         return volt
     

@@ -14,6 +14,7 @@ CH_DIST.py module
 #import time
 import numpy as np
 from Module import Module_base, BitField
+import logging
     
 
 class CH_DIST_base(Module_base):
@@ -30,12 +31,18 @@ class CH_DIST_base(Module_base):
     # Status bitfields
     FIFO_EMPTY = BitField(STATUS, 0x00, 7, doc="Active high when the data FIFO is empty")
     FIFO_OVERFLOW = BitField(STATUS, 0x00, 6, doc="Active high if the data FIFO is overflowing")
+    IS_RESET = BitField(STATUS, 0x00, 5, doc="High when the module reset line is active")
+    ALIGN_FIFO_OVERFLOW = BitField(STATUS, 0x00, 4, doc="Active high if any alignment FIFO is overflowing")
+    ALIGN_FIFO_UNDERFLOW = BitField(STATUS, 0x00, 3, doc="Active high if any alignment FIFO is underflowing")
     FRAME_CTR = BitField(STATUS, 0x01, 0, width=8, doc="Number of frames written into the FIFOs. Rolls over.")
+    ALIGN_FRAME_CTR = BitField(STATUS, 0x02, 0, width=8, doc="Number of frames received on lane 0 before the alignment FIFOs. Rolls over.")
 
-    def __init__(self, parent, fpga_instance, port_number, module_number):
-        self.parent = parent
-        self.fpga = fpga_instance
-        super(self.__class__, self).__init__(fpga_instance, port_number, module_number)
+    def __init__(self, fpga_instance, base_address, instance_number):
+        # self.parent = parent
+        # self.fpga = fpga_instance
+        super(self.__class__, self).__init__(fpga_instance, base_address, instance_number)
+        self.logger = logging.getLogger(__name__)
+
         self._lock()
     def reset(self):
         """Performs the soft reset of the CH_DIST module."""
@@ -71,8 +78,9 @@ class CH_DIST_base(Module_base):
         for j in words_to_enable:
             #print 'setting bit %i of byte %i' % ((j % 8), j//8)
             mask[j//8] |= (1<<(j % 8))
-        verbose = False
-        if verbose: print (words_to_enable)
+        # verbose = False
+        # if verbose: print (words_to_enable)
+        self.logger.debug('Enabling capture of the following frequency bin pairs on correlator %i: %s' %(self.instance_number, repr(words_to_enable))) 
         self.NUMBER_OF_SELECTED_WORDS = len(words_to_enable)
 
         self.write_ram(0x00, mask) # Enable transmission of selected bytes 
@@ -81,18 +89,20 @@ class CH_DIST_base(Module_base):
         """ Initializes CH_DIST."""
         #self.select_words(self.fpga.FRAME_LENGTH//4) # enable tranmission of all words by default
         #array doesn't seem to work here....
+#        frequency_bins_per_correlator = 124 # 202-5chan correlator # must be even, max 1010 / number of correlated antennas 124-8 channel.  Should get this from config
         frequency_bins_per_correlator = 124 # 202-5chan correlator # must be even, max 1010 / number of correlated antennas 124-8 channel.  Should get this from config
         words_per_correlator = frequency_bins_per_correlator//2 # Maximum is 512/number of correlated antennas
-        corr_number = self.parent.instance_number
+        corr_number = self.instance_number
         first_word = corr_number
         word_step = self.fpga.NUMBER_OF_ANTENNAS_TO_CORRELATE #Spacing between words, currently should be 8 with 8 channel correlator #should get this from config
+        # word_step = 20 #Spacing between words, currently should be 8 with 8 channel correlator #should get this from config
         self.select_words(range(first_word, first_word + words_per_correlator*word_step, word_step)) # enable tranmission 8 words, 16 freq channels by default
         #self.select_words(range(words_per_correlator)) # enable tranmission 8 words, 16 freq channels by default
 
 
     def status(self):
         """Displays the status of CH_DIST."""
-        print '-------------- CORR[%i].CH_DIST STATUS --------------' % (self.parent.instance_number)
+        print '-------------- CORR[%i].CH_DIST STATUS --------------' % (self.instance_number)
         print '   RESET: %i' % self.RESET
         print '   FIFO EMPTY: %i' % self.FIFO_EMPTY
         print '   FIFO OVERFLOW: %i' % self.FIFO_OVERFLOW

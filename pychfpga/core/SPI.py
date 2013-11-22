@@ -39,24 +39,24 @@ class SPI_base(Module_base):
 
 
 
-    def __init__(self, fpga):
+    def __init__(self, fpga, base_address):
         self.fpga_instance = fpga;
-        super(self.__class__,self).__init__(fpga,fpga.SYSTEM_PORT, fpga.SYSTEM_SPI_MODULE)
+        super(self.__class__,self).__init__(fpga, base_address)
         self.current_port = 0
         self.logger = logging.getLogger(__name__)
         self._lock() # Prevent inadvertent changes to the class instance
 
-    def read_reg(self, addr, length=1, type=np.uint8):
-        """ Reads from the SPI control register"""
-        fpga = self.fpga_instance; # use a shorter variable name to access the FPGA instance attributes
-        data = fpga.read(fpga.SYSTEM_PORT, fpga.SYSTEM_SPI_MODULE, addr, length=length, type=type)
-        return data
+    # def read_reg(self, addr, length=1, type=np.uint8):
+    #     """ Reads from the SPI control register"""
+    #     fpga = self.fpga_instance; # use a shorter variable name to access the FPGA instance attributes
+    #     data = fpga.read(fpga.SYSTEM_PORT, fpga.SYSTEM_SPI_MODULE, addr, length=length, type=type)
+    #     return data
 
-    def write_reg(self, addr, data, type=np.uint8):
-        """ Writes to the SPI control register"""
-        fpga = self.fpga_instance; # use a shorter variable name to access the FPGA instance attributes
-        length = fpga.write(fpga.SYSTEM_PORT,fpga.SYSTEM_SPI_MODULE,addr,data);
-        return length
+    # def write_reg(self, addr, data, type=np.uint8):
+    #     """ Writes to the SPI control register"""
+    #     fpga = self.fpga_instance; # use a shorter variable name to access the FPGA instance attributes
+    #     length = fpga.write(fpga.SYSTEM_PORT,fpga.SYSTEM_SPI_MODULE,addr,data);
+    #     return length
 
     def set_port(self, port):
         """
@@ -77,7 +77,7 @@ class SPI_base(Module_base):
             device = device[0]
         else:
             self.ALT_TIMING = 0
-        word_length = self.write_reg(self.get_addr('TX_DATA')-3, data); # make sure first byte of array is on Byte 0
+        word_length = self.write(self.get_addr('TX_DATA')-3, data); # make sure first byte of array is on Byte 0
         self.ADDR = device
         self.BYTES = word_length-1
         self.START = 0
@@ -88,7 +88,7 @@ class SPI_base(Module_base):
             time.sleep(0.1)
             if verbose:
                 print '.',
-        data=self.read_reg(self.get_addr('RX_DATA')-3, length=word_length, type=np.uint8)
+        data=self.read(self.get_addr('RX_DATA')-3, length=word_length, type=np.uint8)
         read_length=np.dtype(type).itemsize
         data=data[-read_length:]
         data.dtype=np.dtype(type)

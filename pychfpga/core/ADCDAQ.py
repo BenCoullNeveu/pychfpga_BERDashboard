@@ -111,8 +111,8 @@ class ADCDAQ_base(Module_base):
 
     }
 
-    def __init__(self, ant_ch_instance, port, module):
-        super(self.__class__, self).__init__(ant_ch_instance.fpga, port, module)
+    def __init__(self, fpga_instance, base_address, instance_number):
+        super(self.__class__, self).__init__(fpga_instance, base_address, instance_number)
         self._lock() # Prevent accidental addition of attributes (if, for example, a value is assigned to a wrongly-spelled property)
 
     def set_ADCDAQ_mode(self, mode):
@@ -225,7 +225,7 @@ class ADCDAQ_base(Module_base):
         """ 
         Prints the ADCDAQ module status.
         """        
-        print '-------------- ANT[%i].ADCDAQ STATUS --------------' % self.port_number 
+        print '-------------- ANT[%i].ADCDAQ STATUS --------------' % self.instance_number 
 
         print 'Clock source: %s' % ('ADC','SYSTEM CLOCK')[self.PLL_CLK_SRC]
         print 'Data Acquisition FIFO status'

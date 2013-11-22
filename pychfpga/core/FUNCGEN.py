@@ -39,11 +39,10 @@ class FUNCGEN_base(Module_base):
     RAMP_CTR = BitField(STATUS, 0x01, 0, width=8, doc="Last 8 bits of the ramp counter (for debuging)")
 
 
-    def __init__(self, ant_ch_instance, port, module):
-        self.ant = ant_ch_instance
-        fpga = ant_ch_instance.fpga
-        super(self.__class__, self).__init__(fpga, port, module)
-
+    def __init__(self, fpga_instance, base_address, instance_number):
+        # self.ant = ant_ch_instance
+        # fpga = ant_ch_instance.fpga
+        super(self.__class__, self).__init__(fpga_instance, base_address, instance_number)
         self._lock() # Prevent accidental addition of attributes (if, for example, a value is assigned to a wrongly-spelled property)
     # Specialized functions
 
@@ -72,7 +71,7 @@ class FUNCGEN_base(Module_base):
     
     def status(self):
         """ Displays the status of the function generator module """
-        print '-------------- ANT[%i].FUNCGEN STATUS --------------' % self.port_number 
+        print '-------------- ANT[%i].FUNCGEN STATUS --------------' % self.instance_number 
         print ' Function number: %i' % self.FUNCTION
         print ' Ramp counter status:'
         print '    RAMP_CTR: %i' % self.RAMP_CTR

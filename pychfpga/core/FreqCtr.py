@@ -67,10 +67,9 @@ class FreqCtr_base(Module_base):
 
     # Registers
 
-    def __init__(self, fpga, verbose=1):
-        self.fpga = fpga
+    def __init__(self, fpga_instance, base_address, verbose=1):
         self.verbose = verbose
-        super(self.__class__, self).__init__(fpga, fpga.SYSTEM_PORT, fpga.SYSTEM_FREQ_CTR_MODULE)
+        super(self.__class__, self).__init__(fpga_instance, base_address)
         self._lock() # prevent further property creation to avoid creating attrubutes by mistake
 
 #    def read(self, addr, type=np.uint8):

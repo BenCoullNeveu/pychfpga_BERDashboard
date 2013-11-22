@@ -41,9 +41,9 @@ class PROBER_base(Module_base):
     _DATA_FIFO_OVERFLOW = BitField(STATUS, 0x00, 3, doc="State of the DATA_FIFO_OVERFLOW signal (for debugging)")
     CAPTURE_ACTIVE = BitField(STATUS, 0x00, 0, doc="Active high if data capture is in progress (cleared when BURST_NUMBER bursts have been sent)")
     
-    def __init__(self, ant_instance, port, module):
-        self.ant = ant_instance
-        super(self.__class__, self).__init__(ant_instance.fpga, port, module)
+    def __init__(self, fpga_instance, base_address, instance_number):
+        # self.ant = ant_instance
+        super(self.__class__, self).__init__(fpga_instance, base_address, instance_number)
         self._lock() # Prevent accidental addition of attributes (if, for example, a value is assigned to a wrongly-spelled property)
     # Specialized functions
 
@@ -87,13 +87,13 @@ class PROBER_base(Module_base):
     def init(self, **kwargs):
         """ Initialize the data capture module"""
         #self.config_capture(1, 100) # Capture 1 frame every 100 frames
-        self.PROBE_ID = 0xA0+self.ant.ant_number
+        self.PROBE_ID = 0xA0+self.instance_number
         self.RESET = 1 # Make sure no data is being transmitted at reset
           
 
     def status(self):
         """ Displays the status of the data capture module"""
-        print '-------------- ANT[%i] data capture --------------' % self.port_number 
+        print '-------------- ANT[%i] data capture --------------' % self.instance_number 
         print ' Capture %i frame(s) every %i frames' % (self.BURST_LENGTH, self.get_burst_period()), 
         if self.BURST_NUMBER:
             print 'for %i bursts' % self.BURST_NUMBER

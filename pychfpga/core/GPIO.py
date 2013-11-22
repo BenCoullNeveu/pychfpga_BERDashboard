@@ -72,8 +72,8 @@ class GPIO_base(Module_base):
     FPGA_SERIAL_NUMBER = BitField(STATUS, 19, 0, width=64, doc='FPGA 57-bit serial number')
 
 
-    def __init__(self, fpga):
-        super(self.__class__, self).__init__(fpga, fpga.SYSTEM_PORT, fpga.SYSTEM_GPIO_MODULE)
+    def __init__(self, fpga, base_address):
+        super(self.__class__, self).__init__(fpga, base_address)
         self.logger = logging.getLogger(__name__)
         self._lock() # prevent further property creation to avoid creating attrubutes by mistake
 

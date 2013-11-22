@@ -64,9 +64,9 @@ class I2C_base(Module_base):
 
 
 
-    def __init__(self, fpga):
+    def __init__(self, fpga, base_address):
         self.fpga_instance = fpga;
-        super(self.__class__, self).__init__(fpga, fpga.SYSTEM_PORT, fpga.SYSTEM_I2C_MODULE)
+        super(self.__class__, self).__init__(fpga, base_address)
         self.current_port = None
         self.logger = logging.getLogger(__name__)
 

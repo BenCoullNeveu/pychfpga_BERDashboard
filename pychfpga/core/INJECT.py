@@ -23,20 +23,20 @@ class INJECT_base(Module_base):
 
     
     # Memory-mapped register definition
-    RESET = BitField(CONTROL, 0x00, 7, doc='Resets this module')
-
-    RST = BitField(STATUS, 0x00, 7, doc="debug")
-    SOFT_RESET = BitField(STATUS, 0x00, 5, doc="debug")
-    ANT_RESET = BitField(STATUS, 0x00, 4, doc="debug")
-    FIFO_EMPTY = BitField(STATUS, 0x00, 1, doc="Active high  when the data FIFO is empty")
+    RESET         = BitField(CONTROL, 0x00, 7, doc='Resets this module')
+    
+    RST           = BitField(STATUS, 0x00, 7, doc="debug")
+    SOFT_RESET    = BitField(STATUS, 0x00, 5, doc="debug")
+    ANT_RESET     = BitField(STATUS, 0x00, 4, doc="debug")
+    FIFO_EMPTY    = BitField(STATUS, 0x00, 1, doc="Active high  when the data FIFO is empty")
     FIFO_OVERFLOW = BitField(STATUS, 0x00, 0, doc="Active high if the data FIFO is overflowing")
-    FIFO_LENGTH = BitField(STATUS, 0x01, 0, width=8, doc="Number of samples currently in the data FIFO (last 8 bits only)")
+    FIFO_LENGTH   = BitField(STATUS, 0x01, 0, width=8, doc="Number of samples currently in the data FIFO (last 8 bits only)")
 
 
-    def __init__(self, ant_ch_instance, port, module):
-        self.ant = ant_ch_instance
-        fpga = ant_ch_instance.fpga
-        super(self.__class__, self).__init__(fpga, port, module)
+    def __init__(self, fpga_instance, base_address, instance_number):
+        # self.ant = ant_ch_instance
+        # fpga = ant_ch_instance.fpga
+        super(self.__class__, self).__init__(fpga_instance, base_address, instance_number)
         self._lock() # Prevent accidental addition of attributes (if, for example, a value is assigned to a wrongly-spelled property)
     # Specialized functions
 
@@ -53,11 +53,11 @@ class INJECT_base(Module_base):
 
         if data == None: # Send ramp
             if length == None:
-                length = self.ant.frame_length
+                length = self.fpga.FRAME_LENGTH
             frame = [(i % 256) for i in range(length)] #(i % 256)
         else:
             if length == None:
-                length = self.ant.frame_length #len(data)
+                length = self.fpga.FRAME_LENGTH#len(data)
             
             if type(data) == str :
                 data_length = len(data)
@@ -82,7 +82,7 @@ class INJECT_base(Module_base):
     
     def status(self):
         """ Displays the status of the data injector module """
-        print '-------------- ANT[%i].INJECT STATUS --------------' % self.port_number 
+        print '-------------- ANT[%i].INJECT STATUS --------------' % self.instance_number 
         print ' Reset states:'
         print '    RST: %s' % bool(self.RST)
         print '    ANT_RESET: %s' % bool(self.ANT_RESET)

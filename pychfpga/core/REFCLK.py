@@ -57,9 +57,9 @@ class REFCLK_base(Module_base):
     SYNC_DELAY_READBACK = BitField(STATUS, 0x02, 0, width=5,doc='Reads back the delay set onthe SYNC IODELAY')
 
 
-    def __init__(self, fpga):
+    def __init__(self, fpga, base_address):
         self.fpga = fpga
-        super(self.__class__, self).__init__(fpga, fpga.SYSTEM_PORT, fpga.SYSTEM_REFCLK_MODULE)
+        super(self.__class__, self).__init__(fpga, base_address)
 
     def init(self):
         # Sets the REFCLK delay to zero by default.

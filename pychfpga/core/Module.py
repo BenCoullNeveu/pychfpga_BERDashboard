@@ -80,11 +80,12 @@ class Module_base(object):
     BITS = {} # Should be overriden by the subclass
 
     
-    def __init__(self, fpga_instance, port_number, module_number):
+    def __init__(self, fpga_instance, base_address, instance_number=0):
         self._unlock()
         self.fpga = fpga_instance
-        self.port_number = port_number 
-        self.module_number = module_number
+        self.base_address = base_address 
+        self.instance_number = instance_number
+        # self.module_number = module_number
         for field_name, bitfield in self.BITS.items():
             setattr(self.__class__, field_name, bitfield)
 #            #print '  Defining property "%s"' % (bit_name)
@@ -124,19 +125,21 @@ class Module_base(object):
     def read(self, addr, *args, **kwargs):
         """ Reads bytes from the FPGA memory-mapped registers.""" 
         if isinstance(addr, int):
-            return self.fpga.read(self.port_number, self.module_number, addr, *args, **kwargs)
+            return self.fpga.read(self.base_address + addr, *args, **kwargs)
         elif isinstance(addr, str):
-            return self.fpga.read(self.port_number, self.module_number, self.BITS[addr].addr, *args, **kwargs)
+            return self.fpga.read(self.base_address + self.BITS[addr].addr, *args, **kwargs)
 
     def read_bit(self, addr, bit): 
         """ Reads a bit from a FPGA memory-mapped register.""" 
-        return bool(self.fpga.Read(self.port_number, self.module_number, addr) & (1<<bit))
+        return bool(self.fpga.Read(self.base_address + addr) & (1<<bit))
 
-    def read_DRP(self, addr):
+    def read_drp(self, addr):
         """
         Reads a DRP (Dynamic Reconfigurable Port) from one of the FPGA internal devices (PLL, SYSMON, MGT etc). 'addr' is the 16-bit DRP register address.
         """
         return self.read(0x200+2*addr, type=np.dtype('<u2'))
+
+    read_DRP = read_drp
 
     def read_RAM(self, addr, *args, **kwargs):
         """
@@ -163,7 +166,7 @@ class Module_base(object):
         data_type = {1:np.dtype('>u1'), 2:np.dtype('>u2'), 4:np.dtype('>u4'), 8:np.dtype('>u8')}[number_of_bytes]
         data = int(self.read(msb_addr, type=data_type))
         if verbose:
-            print 'Read port %i, module %i, addr: %i - %i, bit %i, width=%i, value=%i' % (self.port_number, self.module_number, msb_addr, lsb_addr, bitfield.bit, bitfield.width, data)
+            print 'Read base address %05X, addr: %i - %i, bit %i, width=%i, value=%i' % (self.base_address, msb_addr, lsb_addr, bitfield.bit, bitfield.width, data)
         #print 'Read bit at port %i, bit=%i, data: %X' % (bit_name,  bit_def.addr,bit_def.bit, data)
         return (data >> bitfield.bit) & ((1 << bitfield.width) - 1)
 
@@ -206,8 +209,10 @@ class Module_base(object):
         self.write(msb_addr, new_data)
 
     def write(self, addr, data, *args, **kwargs): 
-        """ Writes bytes to the FPGA memory-mapped registers"""
-        self.fpga.write(self.port_number, self.module_number, addr, data, *args, **kwargs)
+        """ Writes bytes to the FPGA memory-mapped registers.
+        Returns the number of bytes written.
+        """
+        return self.fpga.write(self.base_address + addr, data, *args, **kwargs)
 
     def write_ram(self, addr, data, *args, **kwargs): 
         """
@@ -215,12 +220,14 @@ class Module_base(object):
         """
         self.write(addr+0x200, data, *args, **kwargs)
 
-    def write_DRP(self, addr, data):
+    def write_drp(self, addr, data):
         """
         Writes a DRP (Dynamic Reconfigurable Port) of the FPGA internal devices (PLL, SYSMON, MGT etc). 
         'addr' is the 16-bit DRP register address.
         """
         self.write(0x200+2*addr, [data &0xFF, (data>>8)& 0xFF])
+
+    write_DRP = write_drp
 
     def write_bit(self, addr, bit): 
         """ Sets a bit of the FPGA memory-mapped registers"""
