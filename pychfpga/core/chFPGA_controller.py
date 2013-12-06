@@ -30,6 +30,8 @@ import logging
 import numpy as np
 #import pdb
 import time
+import struct
+import zlib
 
 from pychfpga.common import util
 
@@ -257,6 +259,11 @@ class chFPGA_controller(object):
 
             self.ADC_BOARD = MGADC08.MGADC08_base(self, verbose = 0)
             self.FMC_present = self.ADC_BOARD.is_present()
+            if self.FMC_present:
+                self.log.info("Getting ADC information")
+                self.adc_info = self.read_dict_from_eeprom()
+                self.adc_serial = int(self.adc_info['Serial #'])
+            self.motherboard_serial = self.get_motherboard_serial()
  
         except SocketIO.timeout:
             self.close()
@@ -397,6 +404,8 @@ class chFPGA_controller(object):
         config.mgt_ref_clock = self.FreqCtr.read_frequency('MGT_REFCLK', gate_time=0.05)
         config.mgt_word_clock = self.FreqCtr.read_frequency('MGT_USRCLK2', gate_time=0.05)
         config.adc_clocks = [self.FreqCtr.read_frequency(('ADC_CLK'+str(i)), gate_time=0.05) for i in range(8)]
+        config.adc_serial = self.adc_serial
+        config.motherboard_serial = self.get_motherboard_serial()
         # Add FFT shift, scaler gain, corr integration/capture period etc.
         return config
 
@@ -993,3 +1002,102 @@ class chFPGA_controller(object):
         self.log.info('There were %i word errors' % total_word_errors)
 
         return total_word_errors
+
+    def get_motherboard_serial(self):
+        serial = self.ADC_BOARD.FMC_EEPROM.read_DDR3_reg(122,length=4)
+        serial.dtype=np.dtype('<u4')
+        return int(serial[0])
+
+    def write_dict_to_eeprom(self):
+        """
+        Makes a dictionary. Writes a dictionary to the EEPROM.
+        """
+        ser_num = raw_input("Enter the serial number of the board (e.g. 0001):      ")
+        rev_num = raw_input("Enter the revision number of the board (e.g. 0):           ")
+        fab_run = raw_input("Enter the fabrication run of the board (e.g. 1):           ")
+        head_ver = raw_input("Enter the header version (e.g. 1):                ")
+        delay_tab = raw_input("Enter the delay table of the board:              ")
+        stat = raw_input("Enter the status of the board (0 = Working, 1 = In QC , 2 = Has problems but works, 3 = Failed):              ")
+        board_date = raw_input("Enter the date the last test was done (DD/MM/YYYY):             ")
+        site = raw_input("Enter the URL to find all the tests associated with this board:               ")
+        comments = raw_input("Enter any additional comments you may have about the board. If none, please put 'None':           ")
+        dict = {'Serial #': ser_num, 'Rev #': rev_num, 'Fabrication Run': fab_run, 'Header Version': head_ver, 'Delay Table': delay_tab, 'Status': stat, 'Date of last test': board_date, 'Website': site, 'Comments': comments}
+
+        nstring = str(dict)
+        chars = list(nstring)
+        intg = []
+        #convert every character in a spring into ASCII code
+        for i in range(len(chars)):
+            intg.append(ord(chars[i]))
+            self.ADC_BOARD.FMC_EEPROM.write(i+1, intg[i])
+        #sets first byte as 13
+        self.ADC_BOARD.FMC_EEPROM.write(0,13)
+        #figures out the CRC and writes to EEPROM
+        crcheck = zlib.crc32(nstring)
+        dictbyte = struct.pack('l', crcheck)
+        asciibyte = struct.unpack('BBBB', dictbyte)
+        for i in range(len(asciibyte)):
+                self.ADC_BOARD.FMC_EEPROM.write(len(chars)+1+i, asciibyte[i])
+
+    def read_dict_from_eeprom(self):
+        """
+        Reads the EEPROM for the dictionary stored.
+        """
+        i = 0
+        string = ''
+        ascii = self.ADC_BOARD.FMC_EEPROM.read(i)
+        #125 is the ASCII character for the } which is used in the dictionary. The 1000 characters is used to make sure this doesn't go indefinitely
+        #Converts each address in EEPROM to a character and put it together in a string
+        dictionary_is_present = False
+        for i in range(500):
+            if (ascii != 125) and (ascii != 255):
+                keep_trying = True
+                number_of_tries = 0
+                while(keep_trying):
+                    try:
+                        ascii = self.ADC_BOARD.FMC_EEPROM.read(i)
+                        keep_trying = False
+                        print '.',
+                    except:
+                        number_of_tries +=1
+                        if number_of_tries > 100:
+                            print "something is wrong with eeprom read"
+                            raise
+                        time.sleep(0.01)
+                        print 'e',
+                char = chr(ascii)
+                string = string + char
+                #print char
+            elif ascii == 125:
+                dictionary_is_present = True
+                break
+        dictbyte = ''
+        if dictionary_is_present == True:
+            print "Now reading checksum"
+            for i in range(4): #reads 4 bytes after dictionary
+                keep_trying = True
+                number_of_tries = 0
+                while(keep_trying):
+                    try:
+                        asciibyte = self.ADC_BOARD.FMC_EEPROM.read(len(string)+1+i)
+                        keep_trying = False
+                        print '.',
+                    except:
+                        number_of_tries +=1
+                        if number_of_tries > 100:
+                            print 'Something is wrong with eeprom read'
+                            raise
+                        time.sleep(0.01)
+                        print 'e',
+                byte_char = chr(asciibyte)
+                dictbyte = dictbyte + byte_char
+            crccheck = struct.unpack('i',dictbyte)
+            #print 'The dictionary stored on EEPROM is:      ' + str(string)
+            #print 'The CRC library check is:     ' + str(crccheck)
+            exec_string = "dict_out = " + string[1:]
+            exec exec_string
+        elif dictionary_is_present == False:
+            print 'No dictionary found on EEPROM. Did the board pass the quality control test?'
+        return dict_out
+
+
