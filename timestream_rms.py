@@ -57,9 +57,9 @@ def print_RMS(r):
 
 if __name__ == '__main__':
     ADC_DELAY_TABLE = ADC_DELAYS_REV2_SN0001_KC705_FMC700 # ADC_DELAYS_REV2_SN0001 # select the table corresponding to the FMC serial number
-    c = chFPGA_controller.chFPGA_controller(ip_address='10.10.10.11', port_number=41000, adc_delay_table=ADC_DELAY_TABLE, init=1, sampling_frequency=850e6, reference_frequency=10e6) # pylint: disable=C0103
+    c = chFPGA_controller.chFPGA_controller(ip_address='10.10.10.11', port_number=41000, host_ip="10.10.10.10", adc_delay_table=ADC_DELAY_TABLE, init=1, sampling_frequency=800e6, reference_frequency=10e6) # pylint: disable=C0103
     chFPGA_config = c.get_config()
-    r = chFPGA_receiver.chFPGA_receiver(chFPGA_config, ip_address='10.10.10.11', port=41001)
+    r = chFPGA_receiver.chFPGA_receiver(chFPGA_config, ip_address='10.10.10.11', port=41001, host_ip="10.10.10.10")
     c.set_FFT_bypass(True, channels=[0,1,2,3,4,5,6,7])
     c.start_data_capture(burst_period_in_seconds=1.5, number_of_bursts=0)
     time.sleep(2)
