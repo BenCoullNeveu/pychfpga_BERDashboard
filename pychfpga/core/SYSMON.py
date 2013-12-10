@@ -14,6 +14,7 @@ Todo:
     2013-02-05: This code should be adapted to support the Kintex 7 XADC
 """
 import numpy as np
+import logging
 
 from Module import Module_base, BitField
 
@@ -55,11 +56,10 @@ class SYSMON_base(Module_base):
 
     def __init__(self, fpga_instance, base_address, verbose=1):
         self.verbose = verbose
-        super(self.__class__, self).__init__(fpga_instance, base_address)
-
+        self.logger = logging.getLogger(__name__)
         fpga = fpga_instance
         self.supported_by_platform = fpga.PLATFORM_ID in [fpga.PLATFORM_ID_ML605, fpga.PLATFORM_ID_KC705, fpga.PLATFORM_ID_MGK7MB_REV0, fpga.PLATFORM_ID_MGK7MB_REV2]
-
+        super(self.__class__, self).__init__(fpga_instance, base_address)
         self._lock() # Prevent accidental addition of attributes (if, for example, a value is assigned to a wrongly-spelled property)
 
 
@@ -121,16 +121,17 @@ class SYSMON_base(Module_base):
         if self.supported_by_platform:
             Vin = self.voltage(self.VAUX_VOLT_ADDR, vref=1.0) * 24
             Iin = self.voltage(self.VAUX_CURR_ADDR, vref=1.0) / (0.002 * 50)
-            print '--------------- VIRTEX 6 System Monitor statistics ---------------'
-            print 'Core Temperature:   %5.1f C (%.2f C min, %.1f C max)' % (self.temperature(self.TEMP_ADDR), self.temperature(self.TEMP_MIN_ADDR), self.temperature(self.TEMP_MAX_ADDR))
-            print 'VccINT Voltage:     %5.2f V (%.2f V min, %.2f V max)' % (self.voltage(self.VCCINT_ADDR), self.voltage(self.VCCINT_MIN_ADDR), self.voltage(self.VCCINT_MAX_ADDR))
-            print 'VccINT Current:     %5.2f A, (ADC input= %.2f mV' % (self.voltage(self.VAUX_VPVN_ADDR, vref=1.0)/0.005, self.voltage(self.VAUX_VPVN_ADDR, vref=1.0) * 1000)
-            print 'VccAUX Voltage:     %5.2f V (%.2f V min, %.2f V max)' % (self.voltage(self.VCCAUX_ADDR), self.voltage(self.VCCAUX_MIN_ADDR), self.voltage(self.VCCAUX_MAX_ADDR))
-            print '12V Supply Voltage: %5.2f V (ADC input=%.2f V )' % (Vin, self.voltage(self.VAUX_VOLT_ADDR, vref=1.0))
-            print '12V Supply Current: %5.2f A (ADC input=%.2f V )' % (Iin, self.voltage(self.VAUX_CURR_ADDR, vref=1.0))
-            print '12V Power         : %5.2f W ' % (Vin * Iin)
-            print 'VREFP Voltage:      %5.2f V' % (self.voltage(self.VAUX_VREFP_ADDR))
-            print 'VREFN Voltage:      %5.2f V' % (self.voltage(self.VAUX_VREFN_ADDR))
-            print '------------------------------------------------------------------'
+            self.logger.info('--- System Monitor statistics')
+            self.logger.info('   Core Temperature:   %5.1f C (%.2f C min, %.1f C max)' % (self.temperature(self.TEMP_ADDR), self.temperature(self.TEMP_MIN_ADDR), self.temperature(self.TEMP_MAX_ADDR)))
+            self.logger.info('   VccINT Voltage:     %5.2f V (%.2f V min, %.2f V max)' % (self.voltage(self.VCCINT_ADDR), self.voltage(self.VCCINT_MIN_ADDR), self.voltage(self.VCCINT_MAX_ADDR)))
+            self.logger.info('   VccAUX Voltage:     %5.2f V (%.2f V min, %.2f V max)' % (self.voltage(self.VCCAUX_ADDR), self.voltage(self.VCCAUX_MIN_ADDR), self.voltage(self.VCCAUX_MAX_ADDR)))
+            if self.fpga.PLATFORM_ID == self.fpga.PLATFORM_ID_ML605:
+                self.logger.info('   VccINT Current:     %5.2f A, (ADC input= %.2f mV' % (self.voltage(self.VAUX_VPVN_ADDR, vref=1.0)/0.005, self.voltage(self.VAUX_VPVN_ADDR, vref=1.0) * 1000))
+                self.logger.info('   12V Supply Voltage: %5.2f V (ADC input=%.2f V )' % (Vin, self.voltage(self.VAUX_VOLT_ADDR, vref=1.0)))
+                self.logger.info('   12V Supply Current: %5.2f A (ADC input=%.2f V )' % (Iin, self.voltage(self.VAUX_CURR_ADDR, vref=1.0)))
+                self.logger.info('   12V Power         : %5.2f W ' % (Vin * Iin))
+            self.logger.info('   VREFP Voltage:      %5.2f V' % (self.voltage(self.VAUX_VREFP_ADDR)))
+            self.logger.info('   VREFN Voltage:      %5.2f V' % (self.voltage(self.VAUX_VREFN_ADDR)))
+
         else:
-            print 'Not supported on this platform'
+            self.logger.debug('SYSMON is not supported on this platform');

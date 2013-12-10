@@ -168,10 +168,23 @@ ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 = (
     )
 
 if __name__ == '__main__':        
+
+    try:
+        logger.info('Deleting previous chFPGA instances in current namespace')
+        c.close() # close sockets from previous objects to free them for the new one
+        r.close() # close sockets from previous objects to free them for the new one
+        del c
+        del r
+    except NameError:
+        pass
+
     parser = argparse.ArgumentParser(description=__doc__.split('\n')[0]) # description is the first line of the docstring
     parser.add_argument('--init', action = 'store', type=int, default=1, help='Initialization level: -1: Just create sockets, 0: connect and read only. 1: initialize hardware')
     parser.add_argument('-f', '--sampling_frequency', action = 'store', type=float, default=850, help='Sampling frequency of the ADC in MHz')
     parser.add_argument('-l', '--log_level', action = 'store', type=str, choices=['info','debug'], default='info', help='Logging level')
+    parser.add_argument('-w', '--data_width', action = 'store', type=int, choices=[4,8], default=8, help='Data width of each Re and Im component of the channelizer output')
+    parser.add_argument('-g', '--group_frames', action = 'store', type=int, default=4, help='Number of frames to group before sending to the GPU or FPGA correlator. The total size of the frame, including the header and ethernet obverhead, cannot exceed 8 kibytes.')
+    parser.add_argument('--enable_gpu_link', action = 'store', type=int, default=0, help='Enables the GPU link transmission')
     parser.add_argument('--ip', action = 'store', type=str, default='10.10.10.11', help='IP address of the board')
     args = parser.parse_args()
 
@@ -183,19 +196,12 @@ if __name__ == '__main__':
     logger.info('top_test.py: chFGPA test script')
     logger.info('J.-F. Cliche')
     logger.info('------------------------')
-
-    logger.info('Using Init = %i' % args.init)
-    logger.info('Using Sampling frequency of %0.3f MHz' % args.sampling_frequency)
+    logger.info('This module is called with the follwing parameters:' )
+    for (key,value) in args.__dict__.items():
+        logger.info('   %s = %s' % (key, repr(value)))
+    # logger.info('Using Sampling frequency of %0.3f MHz' % args.sampling_frequency)
     # Delete previous instances of 'c' to make sure the sockets are closed. If not, the new object will not be able to open the socket.
     # pylint: disable=E0601    
-    try:
-        logger.info('Deleting previous chFPGA instances in current namespace')
-        c.close() # close sockets from previous objects to free them for the new one
-        r.close() # close sockets from previous objects to free them for the new one
-        del c
-        del r
-    except NameError:
-        pass
 
 
     #ADC_TEST_MODE = 0     #  0= normal, 1= ramp, 2=pulse (1 high, 10 low)
@@ -203,12 +209,12 @@ if __name__ == '__main__':
     #FREF = 10 # FMC Reference clock frequency 
 
     # Create the new chFPGA object.
-    c = chFPGA_controller.chFPGA_controller(ip_address=args.ip, port_number=41000, adc_delay_table=ADC_DELAY_TABLE, init=args.init, sampling_frequency=args.sampling_frequency * 1e6, reference_frequency=10e6) # pylint: disable=C0103
+    c = chFPGA_controller.chFPGA_controller(ip_address=args.ip, port_number=41000, adc_delay_table=ADC_DELAY_TABLE, init=args.init, sampling_frequency=args.sampling_frequency * 1e6, reference_frequency=10e6, data_width=args.data_width, group_frames=args.group_frames, enable_gpu_link = args.enable_gpu_link) # pylint: disable=C0103
 
     time.sleep(0.5)
-    logger.info('Getting config')
+    logger.info('Getting chFPGA configuration')
     chFPGA_config = c.get_config()
-    logger.info('Starting receiver')
+    logger.info('Starting data/correlator receiver threads')
     r = chFPGA_receiver.chFPGA_receiver(chFPGA_config, ip_address='10.10.10.11', port=41001)
     #r = receiver_corr_fast.chFPGA_receiver(chFPGA_config, ip_address='10.10.10.11', port=41001)
     ##c.sync()

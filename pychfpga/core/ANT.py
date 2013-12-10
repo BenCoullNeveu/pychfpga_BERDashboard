@@ -63,11 +63,14 @@ class ANT_channel(object):
 
 
 
-    def init(self):
+    def init(self, fmc_present):
+
+        self.fmc_present = fmc_present
+
         """ Initializes the antenna modules""" 
-        self.logger.info('Initializing modules for antenna #%i' % self.ant_number)
+        self.logger.debug('Initializing modules for antenna #%i' % self.ant_number)
         self.logger.debug('  - ADCDAQ')
-        self.ADCDAQ.init()
+        self.ADCDAQ.init(fmc_present)
         self.logger.debug('  - SRCSEL')
         self.SRCSEL.init()
         self.logger.debug('  - FFT')
@@ -84,7 +87,7 @@ class ANT_channel(object):
 
     def status(self):
         """ Displays the status of the antenna modules""" 
-        self.logger.info('======= ANTENNA NUMBER %i =============' % self.ant_number)
+        #self.logger.info('=== ANTENNA NUMBER %i ' % self.ant_number)
         # self.ADCDAQ.status()
         # self.SRCSEL.status()
         # self.FFT.status()
@@ -128,11 +131,20 @@ class ANT_base(object):
     #     fpga = self.fpga
     #     fpga.write(fpga.ANT_PORT[ant_number], module_number, addr, data, *args, **kwargs)
 
-    def init(self, delay_table=None):
+    def init(self, delay_table=None, fmc_present=None):
         """ Initializes all antennas""" 
-        for ant in self.ANT:
-            self.logger.debug('Initializing Antenna #%i' % ant.ant_number)
-            ant.init()
+
+        # Selects which clock is used to clock the channelizes based on whether the ADC card that normally provides the clock is present or not.
+        if fmc_present[self.fpga.CHANNELIZERS_CLOCK_SOURCE]:
+            self.logger.info('Using the ADC to generate the channelizer clock')
+            self.fpga.GPIO.CHAN_CLK_SRC = 0 # uses the ADC clock to clock the channelizers
+        else:
+            self.logger.info('Using the internal clock to generate the channelizer clock since the ADC is not available')
+            self.fpga.GPIO.CHAN_CLK_SRC = 1 # uses the internal 200 MHz clock to clock the channelizer
+
+        for (i, ant) in enumerate(self.ANT):
+            self.logger.debug('Initializing Antenna #%i %s' % (ant.ant_number, '' if fmc_present[i] else '(No ADC board)'))
+            ant.init(fmc_present[i])
 
         if delay_table is not None:
             self.set_delays(delay_table)
@@ -157,6 +169,44 @@ class ANT_base(object):
         Return the delays currently in use for all ADC data lines.
         """
         return [ant.ADCDAQ.get_delay() for ant in self.ANT]
+
+    def set_data_width(self, width):
+        """
+        Set the number of bits used to represent the values computed by the channelizers.
+        All channelizers are set to the new setting.
+            width=4: data is 4 bits Real + 4 bits Imaginary
+            width=8: data is 8 bits Real + 8 bits Imaginary
+        """
+
+        if width==4:
+            is_four_bits = 1
+        elif width == 8:
+            is_four_bits = 0
+        else:
+            raise self.fpga.chFPGAException('Number of bits %i is invalid for the channelizers. Only 4 or 8 is allowed' % width)
+
+        # Set the channelizer data width
+        for ch in self.ANT:
+            ch.SCALER.FOUR_BITS = is_four_bits
+
+    def get_data_width(self):
+        """
+        Returns number of bits used to represent the values computed by the channelizers.
+        If all the channelizer are not set in the same mode, an error is raised.
+        """
+
+        four_bits = set() # use a set to uniquely record all the possible encountered states
+
+        for ch in self.ANT:
+            four_bits.add(ch.SCALER.FOUR_BITS)
+
+        if four_bits == set([0]):
+            return 8
+        elif four_bits == set([1]):
+            return 4
+        else:
+            raise self.fpga.chFPGAException("The channelizers are not set to the same data width.")
+
 
     def print_ramp_errors(self):
         try:

@@ -25,8 +25,10 @@ class CH_DIST_base(Module_base):
 
     # Control bitfields
     RESET = BitField(CONTROL, 0x00, 7, doc="Reset the CH_DIST. Clears FIFO.")
+    FOUR_BITS = BitField(CONTROL, 0x00, 6, doc="When '1', input data is assumed to be four bits only and the output words are repacked accordingly (4 complex numbers per word).")
     STREAM_ID = BitField(CONTROL, 0x02, 0, width=16, doc="Stream ID to be used for tagging the output frames")
     NUMBER_OF_SELECTED_WORDS = BitField(CONTROL, 0x03, 0, width=8, doc="Number of words(frequency pairs) selected by this correlator.  Must match length of selected words")
+    GROUP_FRAMES = BitField(CONTROL, 0x04, 0, width=8, doc="Number of input frames to pack into an output frames. 0=1, 1=2 etc...")
 
     # Status bitfields
     FIFO_EMPTY = BitField(STATUS, 0x00, 7, doc="Active high when the data FIFO is empty")
@@ -35,7 +37,8 @@ class CH_DIST_base(Module_base):
     ALIGN_FIFO_OVERFLOW = BitField(STATUS, 0x00, 4, doc="Active high if any alignment FIFO is overflowing")
     ALIGN_FIFO_UNDERFLOW = BitField(STATUS, 0x00, 3, doc="Active high if any alignment FIFO is underflowing")
     FRAME_CTR = BitField(STATUS, 0x01, 0, width=8, doc="Number of frames written into the FIFOs. Rolls over.")
-    ALIGN_FRAME_CTR = BitField(STATUS, 0x02, 0, width=8, doc="Number of frames received on lane 0 before the alignment FIFOs. Rolls over.")
+    IN_FRAME_CTR = BitField(STATUS, 0x02, 0, width=8, doc="Number of frames received on lane 0 before the alignment FIFOs. Rolls over.")
+    OUT_FRAME_CTR = BitField(STATUS, 0x03, 0, width=8, doc="Number of frames sebt out. Rolls over.")
 
     def __init__(self, fpga_instance, base_address, instance_number):
         # self.parent = parent
@@ -69,7 +72,7 @@ class CH_DIST_base(Module_base):
         If the FFT is bypassed, each word contains 4 8-bit ADC samples instead of a pair of frequency channels. 
         """
         # Initialize filter mask (8 flags per word)
-        mask = np.zeros(self.fpga.FRAME_LENGTH/4/8, np.uint8)
+        mask = np.zeros(self.fpga.FRAME_LENGTH/4/8, np.uint8) # frequency_bins_per_frame (FRAME_LENGTH/2) * words_per_frequency_bins (1/2) * mask_byte_per_word (1/8) 
 
         if isinstance(words_to_enable, int):
             words_to_enable = range(words_to_enable)
@@ -80,7 +83,7 @@ class CH_DIST_base(Module_base):
             mask[j//8] |= (1<<(j % 8))
         # verbose = False
         # if verbose: print (words_to_enable)
-        self.logger.debug('Enabling capture of the following frequency bin pairs on correlator %i: %s' %(self.instance_number, repr(words_to_enable))) 
+        self.logger.debug('Configuring lane %i of the crossbar to capture the following frequency bin pairs: %s' %(self.instance_number, repr(words_to_enable))) 
         self.NUMBER_OF_SELECTED_WORDS = len(words_to_enable)
 
         self.write_ram(0x00, mask) # Enable transmission of selected bytes 
@@ -90,21 +93,14 @@ class CH_DIST_base(Module_base):
         #self.select_words(self.fpga.FRAME_LENGTH//4) # enable tranmission of all words by default
         #array doesn't seem to work here....
 #        frequency_bins_per_correlator = 124 # 202-5chan correlator # must be even, max 1010 / number of correlated antennas 124-8 channel.  Should get this from config
-        frequency_bins_per_correlator = 124 # 202-5chan correlator # must be even, max 1010 / number of correlated antennas 124-8 channel.  Should get this from config
-        words_per_correlator = frequency_bins_per_correlator//2 # Maximum is 512/number of correlated antennas
-        corr_number = self.instance_number
-        first_word = corr_number
-        word_step = self.fpga.NUMBER_OF_ANTENNAS_TO_CORRELATE #Spacing between words, currently should be 8 with 8 channel correlator #should get this from config
-        # word_step = 20 #Spacing between words, currently should be 8 with 8 channel correlator #should get this from config
-        self.select_words(range(first_word, first_word + words_per_correlator*word_step, word_step)) # enable tranmission 8 words, 16 freq channels by default
         #self.select_words(range(words_per_correlator)) # enable tranmission 8 words, 16 freq channels by default
 
 
     def status(self):
         """Displays the status of CH_DIST."""
-        print '-------------- CORR[%i].CH_DIST STATUS --------------' % (self.instance_number)
-        print '   RESET: %i' % self.RESET
-        print '   FIFO EMPTY: %i' % self.FIFO_EMPTY
-        print '   FIFO OVERFLOW: %i' % self.FIFO_OVERFLOW
+        self.logger.debug('--- CROSSBAR.CH_DIST[%i] STATUS' % (self.instance_number))
+        self.logger.debug('   RESET: %i' % self.RESET)
+        self.logger.debug('   FIFO EMPTY: %i' % self.FIFO_EMPTY)
+        self.logger.debug('   FIFO OVERFLOW: %i' % self.FIFO_OVERFLOW)
 
 

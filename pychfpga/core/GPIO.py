@@ -61,15 +61,21 @@ class GPIO_base(Module_base):
     TIMESTAMP_VALID = BitField(STATUS, 0, 7, doc='Timestamp data valid (i.e. can be read)')
     ADC_SYNC_READBACK = BitField(STATUS, 1, 0, doc='Reads back the SYNC bit for debugging')
     LOG2_FRAME_LENGTH = BitField(STATUS, 1, 0, width=8, doc='Number of time samples per frame')
-    NUMBER_OF_ANTENNAS = BitField(STATUS, 2, 0, width=8, doc='Number of implemented antenna processing pipelines')
+    NUMBER_OF_CHANNELIZERS = BitField(STATUS, 2, 0, width=8, doc='Number of implemented antenna processing pipelines')
     NUMBER_OF_CORRELATORS = BitField(STATUS, 3, 0, width=8, doc='Number of implemented correlators')
-    NUMBER_OF_ANTENNAS_TO_CORRELATE = BitField(STATUS, 4, 0, width=8, doc='Number of antennas connected to the correlators')
+    NUMBER_OF_CHANNELIZERS_TO_CORRELATE = BitField(STATUS, 4, 0, width=8, doc='Number of channelizers handled by the correlators')
+    NUMBER_OF_CHANNELIZERS_WITH_FFT = BitField(STATUS, 5, 0, width=8, doc='Number of channelizers with FFT')
+    NUMBER_OF_GPU_LINKS = BitField(STATUS, 6, 0, width=8, doc='Number of implemented GPU links')
 #    IMPLEMENT_ANT = BitField(STATUS, 4, 0, width=8, doc='Indicates whether the antenna processor is implemented or if a dummy mmodule is put in place. There is one bit per antenna.')
     IMPLEMENT_FFT = BitField(STATUS, 6, 0, width=16, doc='Indicates whether the antenna processor FFT is implemented. If not, it is bypassed and timestream data is fed to the scaler. There is one bit per antenna. ')
 #    IMPLEMENT_CORR = BitField(STATUS, 6, 0, width=8, doc='Indicates whether the correlator is implemented. . There is one bit per correlator. ')
     TIMESTAMP = BitField(STATUS, 10, 0, width=32, doc='Bitstream timestamp word')
     PLATFORM_ID = BitField(STATUS, 11, 0, width=8, doc='Which FPGA/board in use.  0 for ML605 eval board, 1 for KC705 evaluation board')
     FPGA_SERIAL_NUMBER = BitField(STATUS, 19, 0, width=64, doc='FPGA 57-bit serial number')
+    NUMBER_OF_CROSSBAR_INPUTS = BitField(STATUS, 20, 0, width=8, doc='Number of channelizer feds to the crossbar outputs')
+    NUMBER_OF_CROSSBAR_OUTPUTS = BitField(STATUS, 21, 0, width=8, doc='Number of crossbar outputs')
+    PROTOCOL_VERSION = BitField(STATUS, 23, 0, width=16, doc='Protocol version used to manage host software compatibility.')
+    CHANNELIZERS_CLOCK_SOURCE = BitField(STATUS, 24, 0, width=8, doc='Indicates which ADC is used to provide the clock from all channelizers.')
 
 
     def __init__(self, fpga, base_address):

@@ -99,5 +99,6 @@ class SPI_base(Module_base):
         self.CLK_ENABLE=1 # enable SPI clock
 
     def status(self):
-        self.logger.info('--- SPI Interface---')
-        self.logger.info(' No status info')
+        # self.logger.info('--- SPI Interface---')
+        # self.logger.info(' No status info')
+        pass

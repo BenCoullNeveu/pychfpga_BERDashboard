@@ -26,6 +26,7 @@ class GTX_COMMON_base(Module_base):
     QPLL_LOCK          = BitField(STATUS, 1, 5, doc='')
     QPLL_RESET         = BitField(STATUS, 1, 4, doc='')
 
+# Add DRP registers here...
 
 
     def __init__(self, fpga_instance, base_address, instance_number):
@@ -64,6 +65,8 @@ class GTX_CHANNEL_base(Module_base):
     TX_RESET_DONE      = BitField(STATUS, 1, 7, doc='')
     RX_RESET_DONE      = BitField(STATUS, 1, 6, doc='')
 
+# Add DRP registers here...
+
     def __init__(self, fpga_instance, base_address, instance_number):
         # self.fpga = fpga
         self.logger = logging.getLogger(__name__)
@@ -92,10 +95,11 @@ class GPU_base(Module_base):
     TEST_ENABLE           = BitField(CONTROL, 0, 1, doc='When 1, enables trsnamission of test data over the link. Requires LINK_ENABLE=1.')
     RESET                 = BitField(CONTROL, 0, 2, doc='The cores are reset when this signal goes from 1 to 0')
 
-    FRAME_CTR         = BitField(STATUS, 2, 0, width=8, doc='')
+    NUMBER_OF_QUADS       = BitField(STATUS, 0, 0, width=8, doc='Number of QUADS')
+    NUMBER_OF_LINKS       = BitField(STATUS, 1, 0, width=8, doc='Number of QUADS')
 
-    NUMBER_OF_QUADS = 1
-    NUMBER_OF_LINKS = 1
+    FRAME_CTR         = BitField(STATUS, 3, 0, width=8, doc='Counts incoming frames on lane 0. Wraps around.')
+    WORD_CTR         = BitField(STATUS, 4, 0, width=8, doc='Word counter userd to generate the test patterns.')
 
     def __init__(self, fpga_instance, base_address, address_increment, verbose = 1):
         # self.fpga = fpga
@@ -116,7 +120,6 @@ class GPU_base(Module_base):
             self.CHANNEL.append(GTX_CHANNEL_base(fpga_instance, base_address + i * address_increment, j))
             i += 1
 
-
     def init(self):
         """ Initializes the GPU links""" 
         for (i, quad) in enumerate(self.QUAD):
@@ -126,6 +129,9 @@ class GPU_base(Module_base):
         for (i, ch) in enumerate(self.CHANNEL):
             self.logger.debug('Initializing GPU GTX CHANNEL #%i' % i)
             ch.init()
+
+    def set_enable(self, state):
+        self.LINK_ENABLE = state
 
     def status(self):
         """ Displays the status of the GPU GTX hardware""" 

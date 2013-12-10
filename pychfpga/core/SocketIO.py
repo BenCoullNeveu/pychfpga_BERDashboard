@@ -42,8 +42,8 @@ class ControlSocket_base(object):
 		self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, self.BUFFER_LENGTH)
 		host_addr = get_host_addr(dest_addr=self.ip_address, netmask=self.netmask)
 		self.sock.bind((host_addr, self.port_number))
-		self.logger.info('Opened control UDP Socket')
-		self.logger.info('    Control port: listening on %s:%i ' % (host_addr, self.port_number))
+		self.logger.info('   Opened control UDP Socket')
+		self.logger.info('   Control port: listening on %s:%i ' % (host_addr, self.port_number))
 
 
 	def close(self):

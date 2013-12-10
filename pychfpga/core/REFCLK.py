@@ -59,6 +59,7 @@ class REFCLK_base(Module_base):
 
     def __init__(self, fpga, base_address):
         self.fpga = fpga
+        self.logger = logging.getLogger(__name__)
         super(self.__class__, self).__init__(fpga, base_address)
 
     def init(self):
@@ -67,11 +68,13 @@ class REFCLK_base(Module_base):
         self.set_sync_delay(1)
         self.logger = logging.getLogger(__name__)
         # If the board is not present, disable SYNC detection on REFCLK to prevent noise on the floating REFCLK lien to generate spurioys resets. 
-        if self.fpga.FMC_present:
+        if self.fpga.FMC_present[0]:
+            self.logger.info('   REFCLK is using the 10 MHz reference clock from the ADC board')
             self.ENABLE_SYNC_DETECTION = 1
             self.ENABLE_SYNC_GENERATION = 1
             self.REFCLK_SEL = 0 # Use REFCLK coming from the FMC
         else:
+            self.logger.info('   REFCLK is using the 10 MHz reference clock from FPGA since the ADC board is not prresent in FMC slot 0')
             self.ENABLE_SYNC_DETECTION = 0
             self.ENABLE_SYNC_GENERATION = 0
             self.REFCLK_SEL = 1 # Use internally generated REFCLK
@@ -297,7 +300,7 @@ class REFCLK_base(Module_base):
         """
         Displays the status of the REFCLK module.
         """
-        self.logger.info('-----------------------REFCLK------------------------------------')
-        self.logger.info('SYNC Detection Enabled: %s' % (bool(self.ENABLE_SYNC_DETECTION)))
+        # self.logger.info('-----------------------REFCLK------------------------------------')
+        # self.logger.info('SYNC Detection Enabled: %s' % (bool(self.ENABLE_SYNC_DETECTION)))
 
 

@@ -21,6 +21,7 @@ class SCALER_base(Module_base):
     # Define Control registers
     RESET = BitField(CONTROL, 0x00, 7, doc="Reset the SCALER.")
     BYPASS = BitField(CONTROL, 0x00, 6, doc="Bypass the SCALER")
+    FOUR_BITS = BitField(CONTROL, 0x00, 5, doc="Enables 4-bit operation")
     SHIFT_LEFT = BitField(CONTROL, 0x00, 0, width=4, doc="Number of bits to shift left the incoming data")
 
     # Define Status registers

@@ -9,7 +9,6 @@ CORR_BLOCK.py module
  History:
  2012-06-21 : JFC : Created 
 """
-import CH_DIST
 import ACC
 
 
@@ -18,7 +17,7 @@ class CORR_BLOCK_channel(object):
 
     # Antenna processor module addresses
     CORR_MODULE_ADDR_INCREMENT = 0x00400
-    CH_DIST_ADDR_OFFSET = 0 * CORR_MODULE_ADDR_INCREMENT
+    # CH_DIST_ADDR_OFFSET = 0 * CORR_MODULE_ADDR_INCREMENT
     # CORR_MODULE = 1
     ACC_ADDR_OFFSET = 2 * CORR_MODULE_ADDR_INCREMENT
 
@@ -27,20 +26,20 @@ class CORR_BLOCK_channel(object):
         # self.parent = parent # store current ADC number for this instance
         self.instance_number = instance_number # store current correlator number for this instance
         # self.fpga = self.parent.fpga
-        self.CH_DIST = CH_DIST.CH_DIST_base(fpga_instance, base_address + self.CH_DIST_ADDR_OFFSET, instance_number)
+        # self.CH_DIST = CH_DIST.CH_DIST_base(fpga_instance, base_address + self.CH_DIST_ADDR_OFFSET, instance_number)
         self.ACC = ACC.ACC_base(fpga_instance, base_address + self.ACC_ADDR_OFFSET, instance_number)
         
 
     def init(self):
         """ Inisializes all modules of a correlator block.""" 
-        self.CH_DIST.init()
+        # self.CH_DIST.init()
         self.ACC.init()
 
 
     def status(self):
         """Displays the status of al the correlator blocks"""
         print '======= CORR_BLOCK[%i] =============' % self.instance_number
-        self.CH_DIST.status()
+        # self.CH_DIST.status()
         self.ACC.status()
 
 
@@ -67,10 +66,6 @@ class CORR_BLOCK_base(object):
         for corr in self.CORR_BLOCKS:
             corr.init()
 
-    def select_words(self, words):
-        """ Initializes all correlators"""
-        for corr in self.CORR_BLOCKS:
-            corr.CH_DIST.select_words(words)
 
     def status(self):
         """ Displays the status of all correlators"""

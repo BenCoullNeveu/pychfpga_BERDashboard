@@ -209,16 +209,15 @@ class ADCDAQ_base(Module_base):
             pattern[4*i : 4*(i+1)] = self.read('CAPTURE2_PATTERN0', type=np.uint8, length=4)
         return pattern
 
-    def init(self, **kwargs):
+    def init(self, fmc_present):
         """
         Initializes the ADCDAQ module 
         """
-        # Do nothing if the FMC is not present
-        if self.fpga.FMC_present[0]:
-            self.PLL_CLK_SRC = 0 #
-            self.SAMPLE_DELAY = 3 #  Explicitly set the sample delay to zero 
-        else:
-            self.PLL_CLK_SRC = 1 # 0 = ADC clk, 1 = SYSTEM clock. use system clock if the ADC is not present
+
+        # Enable ramp generation if the ADC board is absent. 
+        # That will ensure that data will come out of the ADCDAQ module even if there is no ADC clock signal.
+        # If only one channelizer is not producing output, the crossbar aligner will wait forever to align all the frames.
+        self.ENABLE_RAMP = not fmc_present 
 
 
     def status(self):
