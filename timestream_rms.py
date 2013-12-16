@@ -42,7 +42,10 @@ def print_RMS(r):
         try:
             a = r.read_frames()
             for chan in channels:
-                sys.stdout.write("ch%d %f\n" % (chan, np.log2(a[chan].std())))
+                try:
+                    sys.stdout.write("ch%d %f\n" % (chan, np.log2(a[chan].std())))
+                except KeyError:
+                    sys.stdout.write('Missing channnel %d\n' % (chan))
             for i in xrange(2):
                 sys.stdout.write("\n")
             time.sleep(1.5)
