@@ -40,12 +40,12 @@ class FMC_EEPROM_base(object):
         """ Initializes the EEPROM handling module (the EEPROM is not accected)"""
         pass
 
-    def read_DDR3_reg(self, addr):
+    def read_DDR3_reg(self, addr, length=1, **kwargs):
         """ Reads from the EEPROM"""
         i2c = self.fpga_instance.I2C
-        i2c_addr = 0x1b
-        i2c.i2c_write(0, i2c_addr, [addr]) # sets the address
-        data = i2c.i2c_read(0, i2c_addr, length=2) # reads a byte
+        i2c.set_i2c_switch('DDR')
+        i2c_addr = 0x50
+        data = i2c.i2c_write_read(0, i2c_addr, [addr], read_length=length, **kwargs) # reads a byte
         return data
 
 
