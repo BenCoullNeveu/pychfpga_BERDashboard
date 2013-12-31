@@ -1045,7 +1045,19 @@ class chFPGA_controller(object):
         """
         i = 0
         string = ''
-        ascii = self.ADC_BOARD.FMC_EEPROM.read(i)
+        keep_reading = True
+        number_of_tries = 0
+        while(keep_reading):
+             try:
+                  ascii = self.ADC_BOARD.FMC_EEPROM.read(i)
+                  keep_reading = False
+             except:
+                  number_of_tries += 1
+                  if number_of_tries > 100:
+                      print "something wrong with eeprom reading"
+                      raise
+                  print 'e',
+                  time.sleep(0.01)
         #125 is the ASCII character for the } which is used in the dictionary. The 1000 characters is used to make sure this doesn't go indefinitely
         #Converts each address in EEPROM to a character and put it together in a string
         dictionary_is_present = False
