@@ -68,8 +68,10 @@ class I2C_base(Module_base):
         super(self.__class__,self).__init__(fpga,fpga.SYSTEM_PORT, fpga.SYSTEM_I2C_MODULE)
 
     I2C_DEVICE_LIST_KC705 = {
-        'FMC': 0x02
+        'FMC': 0x02,
+        'DDR': 0x40
         } 
+        
     I2C_DEVICE_ADDR_KC705 = 0x74
 
     def set_i2c_switch(self, device_name):
