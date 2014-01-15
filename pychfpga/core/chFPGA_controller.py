@@ -1010,34 +1010,62 @@ class chFPGA_controller(object):
 
     def write_dict_to_eeprom(self):
         """
-        Makes a dictionary. Writes a dictionary to the EEPROM.
+        Makes a dictionary. Writes a dictionary to the EEPROM and also a CRCheck.
         """
         ser_num = raw_input("Enter the serial number of the board (e.g. 0001):      ")
-        rev_num = raw_input("Enter the revision number of the board (e.g. 0):           ")
-        fab_run = raw_input("Enter the fabrication run of the board (e.g. 1):           ")
-        head_ver = raw_input("Enter the header version (e.g. 1):                ")
-        delay_tab = raw_input("Enter the delay table of the board:              ")
-        stat = raw_input("Enter the status of the board (0 = Working, 1 = In QC , 2 = Has problems but works, 3 = Failed):              ")
-        board_date = raw_input("Enter the date the last test was done (DD/MM/YYYY):             ")
-        site = raw_input("Enter the URL to find all the tests associated with this board:               ")
-        comments = raw_input("Enter any additional comments you may have about the board. If none, please put 'None':           ")
-        dict = {'Serial #': ser_num, 'Rev #': rev_num, 'Fabrication Run': fab_run, 'Header Version': head_ver, 'Delay Table': delay_tab, 'Status': stat, 'Date of last test': board_date, 'Website': site, 'Comments': comments}
-
+        rev_num = raw_input("Enter the revision number of the board (e.g. 0):       ")
+        fab_run = raw_input("Enter the fabrication run of the board (e.g. 1):       ")
+        head_ver = raw_input("Enter the header version (e.g. 1):        ")
+        delay_tab = raw_input("Enter the delay table of the board:      ")
+        model = raw_input("Enter the model of the ADC (e.g. MGADC08):      ")
+        stat = raw_input("Enter the status of the board (0 = Working, 1 = In QC , 2 = Has problems but works, 3 = Failed):      ")
+        board_date = raw_input("Enter the date the last test was done (DD/MM/YYYY):         ")
+        site = raw_input("Enter the URL to find all the tests associated with this board:       ")
+        comments = raw_input("Enter any additional comments you may have about the board. If none, please put 'None'")
+        dict = {'Serial #': ser_num, 'Rev #': rev_num, 'Fabrication Run': fab_run, 'Header Version': head_ver, 'Model': model, 'Delay Table': delay_tab, 'Status': stat, 'Date of last test': board_date, 'Website': site, 'Comments': comments}
         nstring = str(dict)
         chars = list(nstring)
-        intg = []
+#        intg = []   
         #convert every character in a spring into ASCII code
+
         for i in range(len(chars)):
-            intg.append(ord(chars[i]))
-            self.ADC_BOARD.FMC_EEPROM.write(i+1, intg[i])
-        #sets first byte as 13
-        self.ADC_BOARD.FMC_EEPROM.write(0,13)
+            correct = False
+            while correct == False:
+                try:
+                    check = self.ADC_BOARD.FMC_EEPROM.read(i+1)
+                    if (check == ord(chars[i])):
+                        correct = True
+                    else:
+                        try:
+                            self.ADC_BOARD.FMC_EEPROM.write(i+1, ord(chars[i]))
+                        except SystemError:
+                            print 'error writing'
+                            pass
+                except SystemError:
+                    print 'error reading'
+                    pass
+        thirteen = False
+        while (thirteen == False):
+            try:
+                self.ADC_BOARD.FMC_EEPROM.write(0,13)
+                thirteen = True
+            except SystemError:
+                print 'error writing 13'
+                pass
         #figures out the CRC and writes to EEPROM
         crcheck = zlib.crc32(nstring)
         dictbyte = struct.pack('l', crcheck)
         asciibyte = struct.unpack('BBBB', dictbyte)
-        for i in range(len(asciibyte)):
+        print 'the crcheck is:' + str(crcheck)
+        #for i in range(len(asciibyte)):
+        i=0
+        while (i < len(asciibyte)): 
+            try:
                 self.ADC_BOARD.FMC_EEPROM.write(len(chars)+1+i, asciibyte[i])
+                i+=1
+            except SystemError:
+                pass
+
 
     def read_dict_from_eeprom(self):
         """
