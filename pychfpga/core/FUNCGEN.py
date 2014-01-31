@@ -32,6 +32,7 @@ class FUNCGEN_base(Module_base):
     
     # Memory-mapped register definition
     RESET    = BitField(CONTROL, 0x00, 7, doc='Resets this module')
+    USE_OVERFLOW = BitField(CONTROL, 0x00, 6, doc="when '1', overflow flags are generated when the outputs is 0x7F or 0x80")
     FUNCTION = BitField(CONTROL, 0x00, 0, width=3, doc="Selects the waveform to be generated")
     BYTE_A   = BitField(CONTROL, 0x01, 0, width=8, doc="Byte A to be used by the function generator")
     BYTE_B   = BitField(CONTROL, 0x02, 0, width=8, doc="Byte B to be used by the function generator")
@@ -67,6 +68,7 @@ class FUNCGEN_base(Module_base):
     def init(self):
         """ Initializes the function generator """
         self.set_function('ramp')
+        self.USE_OVERFLOW = 1
         pass
     
     def status(self):

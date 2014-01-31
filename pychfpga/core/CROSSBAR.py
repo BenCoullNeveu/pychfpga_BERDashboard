@@ -116,26 +116,31 @@ class CROSSBAR_base(object):
         Sets the numbr of channelizer frames to group in a single frame at the output of the crossbar.
         """
         for xbar in self.CROSSBAR:
-            xbar.CH_DIST.GROUP_FRAMES = group_size-1
+            xbar.CH_DIST.GROUP_FRAMES = group_size
 
     def get_frame_grouping(self):
         """
         returns the numbr of channelizer frames to group in a single frame at the output of the crossbar.
         """
-        return self.CROSSBAR[0].CH_DIST.GROUP_FRAMES+1
+        return self.CROSSBAR[0].CH_DIST.GROUP_FRAMES
 
-    def configure(self):
+    def configure(self, number_of_bins_per_crossbar_output= None):
         """
         Configure the channel selection.
         This should be done once the data width has been selected.
         """
         data_width = self.get_data_width()
         # Compute the minimum word spacing to allow the channel_selector time to forwared the data. 
-        # In 8-bit mode, N words come every clock from the channelizers, and it takes N clocks to send them away. So word spacing is N.
-        # In 4-bit mode, N words come every clock from the channelizers, and it takes N/2 clocks to send them away since we pack the words two by two. So word spacing is N/2.
-        word_step = self.fpga.NUMBER_OF_CROSSBAR_INPUTS * data_width / 8 
-        number_of_words_per_frame = self.fpga.FRAME_LENGTH / 4 # The FFT provides 2 complex values (4 numbers) per 4 input sample. 
-        number_of_channels_per_crossbar_output =  int (number_of_words_per_frame / word_step) # Number of channels that one channel selector can handle
+        # In 8-bit mode, 2*N bins come every clock from the channelizers, and it takes N clocks to send them away (2 per output word). So the bin spacing is N.
+        # In 4-bit mode, 2*N bins come every clock from the channelizers, and it takes N/2 clocks to send them away ( 4 per output word). So bin spacing is N/2.
+        bin_step = self.fpga.NUMBER_OF_CROSSBAR_INPUTS * data_width / 8 
+        number_of_bins_per_frame = self.fpga.FRAME_LENGTH / 2 # The FFT generates 2048 bins, but half of them are discarded 
+        #number_of_bins_per_frame = 2 # The FFT generates 2048 bins, but half of them are discarded 
+        if number_of_bins_per_crossbar_output is None:
+            number_of_bins_per_crossbar_output =  int (number_of_bins_per_frame / bin_step) # Number of channels that one channel selector can handle
+
+        if bin_step > self.fpga.NUMBER_OF_CROSSBAR_OUTPUTS:
+            self.logger.warning('   Only a fraction of the frequency bins can be mapped to the crossbar outputs because the total number of bits entering the crossbar exceeds the number of bits at its outputs.')
 
         # Check if the set-up is acceptable for the FPGA correlator (if present in the FPGA), and make corrections if needed
         if self.fpga.NUMBER_OF_CORRELATORS:
@@ -144,21 +149,22 @@ class CROSSBAR_base(object):
 
             max_correlator_frame_length_in_words = 511 # maximum number of words that the correlator can handle in a frame. This is limited by the ACCumulator buffer depth
             max_number_of_words_per_correlator = int( max_correlator_frame_length_in_words / self.fpga.NUMBER_OF_ANTENNAS_TO_CORRELATE ) # maximum number of words that can be selected
-            if number_of_channels_per_crossbar_output > max_number_of_words_per_correlator:
-                self.logger.info('   The number of frequency bins in each crossbar output was reduced from %i to %i due to the correlator accumulator memory limitation' % (number_of_channels_per_crossbar_output, max_number_of_words_per_correlator))
-                number_of_channels_per_crossbar_output = max_number_of_words_per_correlator
+            if number_of_bins_per_crossbar_output > 2*max_number_of_words_per_correlator:
+                self.logger.warning('   The number of frequency bins in each crossbar output was reduced from %i to %i due to the correlator accumulator memory limitation' % (number_of_bins_per_crossbar_output, max_number_of_words_per_correlator))
+                number_of_bins_per_crossbar_output = 2*max_number_of_words_per_correlator
 
         # Apply GPU Link limitations
         if self.fpga.NUMBER_OF_GPU_LINKS:
-            max_number_of_words_per_input_frame = 2047 // self.get_frame_grouping() * 8 / data_width / self.fpga.NUMBER_OF_CROSSBAR_INPUTS
-            if number_of_channels_per_crossbar_output > max_number_of_words_per_input_frame:
-                self.logger.info('   The number of frequency bins in each crossbar output was reduced from %i to %i due to the GPU link buffer size limitations' % (number_of_channels_per_crossbar_output, max_number_of_words_per_input_frame))
-                number_of_channels_per_crossbar_output = max_number_of_words_per_input_frame
+            max_number_of_words_per_input_frame = 4095 // self.get_frame_grouping() * 8 / data_width / self.fpga.NUMBER_OF_CROSSBAR_INPUTS
+            if number_of_bins_per_crossbar_output > 2*max_number_of_words_per_input_frame:
+                self.logger.warning('   The number of frequency bins in each crossbar output was reduced from %i to %i due to the GPU link buffer size limitations' % (number_of_bins_per_crossbar_output, max_number_of_words_per_input_frame))
+                number_of_bins_per_crossbar_output = 2*max_number_of_words_per_input_frame
         
-
         for (i, xbar) in enumerate(self.CROSSBAR):
-            word_list = np.arange(number_of_channels_per_crossbar_output)* word_step + i
-            xbar.CH_DIST.select_words(word_list) # enable tranmission 8 words, 16 freq channels by default
+            bin_list = np.arange(number_of_bins_per_crossbar_output)* bin_step + i
+            # xbar.CH_DIST.select_words(word_list) # enable tranmission 8 words, 16 freq channels by default
+#            bin_list = [0,8]
+            xbar.CH_DIST.select_bins(bin_list) # enable tranmission 8 words, 16 freq channels by default
 
     def status(self):
         """ Displays the status of all correlators"""

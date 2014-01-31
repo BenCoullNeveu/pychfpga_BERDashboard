@@ -285,6 +285,7 @@ class chFPGA_controller(object):
             # Get frame size info
             self.LOG2_FRAME_LENGTH = self.GPIO.LOG2_FRAME_LENGTH
             self.FRAME_LENGTH = 2**self.LOG2_FRAME_LENGTH # 2**11 = 2048 time samples per frame
+            self.NUMBER_OF_FREQUENCY_BINS = self.FRAME_LENGTH/2 # 1024 frequency bins per frame
 
             # Identify the number of channelizers and their properties
             self.CHANNELIZERS_CLOCK_SOURCE = self.GPIO.CHANNELIZERS_CLOCK_SOURCE 
@@ -1058,8 +1059,7 @@ class chFPGA_controller(object):
         self.log.info('Setting SCALER bypass mode for Antenna %s' % ', '.join([str(i) for i in channels]))
         for ant in self.ANT:
             if ant.ant_number in channels:
-                if ant.ant_number in self.LIST_OF_ANTENNAS_WITH_FFT:
-                    ant.SCALER.BYPASS = bypass_mode
+                ant.SCALER.BYPASS = bypass_mode
             # else:
             #     self.log.warning('Attemnpting to set SCALER bypass mode for antenna channel %i which is not present on this card' % ch)
 
