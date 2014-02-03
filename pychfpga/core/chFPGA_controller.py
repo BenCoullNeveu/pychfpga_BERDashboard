@@ -190,7 +190,7 @@ class chFPGA_controller(object):
         PLATFORM_ID_MGK7MB_REV2: ('Kintex 7 (XC7K420T-2 FFG901) on McGill MGK7MB / ICEBoard Rev2', mgk7mb.MGK7MB),
     }
 
-    def __init__(self, ip_address='10.10.10.11', port_number=41000, init=1, verbose=2, **kwargs):
+    def __init__(self, ip_address='10.10.10.11', port_number=41000, init=1, verbose=0, host_ip=None, **kwargs):
         """
         Opens communication with the specified chFPGA. This does not affect the state and operations of chFPGA.
         """
@@ -233,7 +233,7 @@ class chFPGA_controller(object):
 
 
         # Create socket handled and open socket communications to the chFPGA board
-        self.sock = SocketIO.ControlSocket_base(ip_address, port_number)
+        self.sock = SocketIO.ControlSocket_base(ip_address, port_number, host_ip=host_ip)
         Shared_variables.controller_sock[ip_address] = self.sock # Save the socket in a persistent storage so it can be closed if needed  
 
         if init < 0: # If init<0, we do not perform any communication with the FPGA, so we don't read the firmware configuration

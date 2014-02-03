@@ -186,6 +186,7 @@ if __name__ == '__main__':
     parser.add_argument('-g', '--group_frames', action = 'store', type=int, default=4, help='Number of frames to group before sending to the GPU or FPGA correlator. The total size of the frame, including the header and ethernet obverhead, cannot exceed 8 kibytes.')
     parser.add_argument('--enable_gpu_link', action = 'store', type=int, default=0, help='Enables the GPU link transmission')
     parser.add_argument('--ip', action = 'store', type=str, default='10.10.10.11', help='IP address of the board')
+    parser.add_argument('--host_ip', action = 'store', type=str, default=None, help='IP address of adapter through which the connection to the FPGA will be established. If not specified, the controller will attempt to identify the proper host based on the FPGA IP address.')
     args = parser.parse_args()
 
     log_level = {'info': logging.INFO, 'debug': logging.DEBUG}[args.log_level]
@@ -209,7 +210,7 @@ if __name__ == '__main__':
     #FREF = 10 # FMC Reference clock frequency 
 
     # Create the new chFPGA object.
-    c = chFPGA_controller.chFPGA_controller(ip_address=args.ip, port_number=41000, adc_delay_table=ADC_DELAY_TABLE, init=args.init, sampling_frequency=args.sampling_frequency * 1e6, reference_frequency=10e6, data_width=args.data_width, group_frames=args.group_frames, enable_gpu_link = args.enable_gpu_link) # pylint: disable=C0103
+    c = chFPGA_controller.chFPGA_controller(ip_address=args.ip, port_number=41000, adc_delay_table=ADC_DELAY_TABLE, init=args.init, sampling_frequency=args.sampling_frequency * 1e6, reference_frequency=10e6, data_width=args.data_width, group_frames=args.group_frames, enable_gpu_link = args.enable_gpu_link, host_ip = args.host_ip) # pylint: disable=C0103
 
     time.sleep(0.5)
     logger.info('Getting chFPGA configuration')

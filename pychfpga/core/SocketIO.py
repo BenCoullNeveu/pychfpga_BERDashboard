@@ -24,11 +24,12 @@ class ControlSocket_base(object):
 	"""Creates an object that represents the control socket communication link to the chFPGA.""" 
 	BUFFER_LENGTH = 32768
 	
-	def __init__(self, ip_address, port_number, netmask='255.255.0.0'):
+	def __init__(self, ip_address, port_number, netmask='255.255.0.0', host_ip=None):
 		self.netmask = netmask # network mask used to find the host address that is on the same subnet as the target IP. This does not affect the network adapter settings.
 		self.ip_address = ip_address
 		self.port_number = port_number # Control port on the FPGA
 		self.address = (self.ip_address, self.port_number)
+		self.host_ip = host_ip
 		self.sock = None
 		self.logger = logging.getLogger(__name__)
 
@@ -40,7 +41,11 @@ class ControlSocket_base(object):
 		self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 		self.sock.settimeout(2)
 		self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, self.BUFFER_LENGTH)
-		host_addr = get_host_addr(dest_addr=self.ip_address, netmask=self.netmask)
+		self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+		if self.host_ip:
+			host_addr = self.host_ip
+		else:
+			host_addr = get_host_addr(dest_addr=self.ip_address, netmask=self.netmask)
 		self.sock.bind((host_addr, self.port_number))
 		self.logger.info('   Opened control UDP Socket')
 		self.logger.info('   Control port: listening on %s:%i ' % (host_addr, self.port_number))
@@ -99,12 +104,13 @@ class DataSocket_base(object):
 
 	BUFFER_LENGTH = 32768
 
-	def __init__(self, ip_address, port_number, netmask='255.255.0.0'):
+	def __init__(self, ip_address, port_number, netmask='255.255.0.0', host_ip=None):
 
 		# Defines basic variables
 		self.netmask = netmask # network mask used to find the host address that is on the same subnet as the target IP. This does not affect the network adapter settings.
 		self.ip_address = ip_address # IP of the chFPGA board. Used to determine the host address 
 		self.port_number = port_number # Data port on the host (Control port +1), to receive frame data
+		self.host_ip = host_ip
 		self.sock = None
 		self.logger = logging.getLogger(__name__)
 
@@ -118,7 +124,11 @@ class DataSocket_base(object):
 		self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 		self.sock.settimeout(2)
 		self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, self.BUFFER_LENGTH)
-		host_addr = get_host_addr(dest_addr=self.ip_address, netmask=self.netmask)
+		self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+		if self.host_ip:
+			host_addr = self.host_ip
+		else:
+			host_addr = get_host_addr(dest_addr=self.ip_address, netmask=self.netmask)
 		self.sock.bind((host_addr, self.port_number))
 		self.logger.info('Opened data UDP Socket')
 		self.logger.info('    Data port:    listening on %s:%i ' % (host_addr, self.port_number))
