@@ -52,7 +52,7 @@ class SCALER_base(Module_base):
         #self.SHIFT_LEFT = 10
         self.SHIFT_LEFT = 31
         self.USE_GAIN_TABLE = 0
-        self.USE_OFFSET_BINARY = 0
+        self.USE_OFFSET_BINARY = 1
         self.set_fixed_gain(1)
 
 
