@@ -1,0 +1,79 @@
+from numpy import *
+from math import *
+import pylab as plt
+import time as tm
+import os
+import shutil
+import iceboardtest
+import sys
+
+def inspectiontest(username=None,board_sn=None,board_vn=None,boardmd=None):
+    if (username == None) or (board_sn == None) or (board_vn == None) or (board_md == None):
+        iceboardtest()
+    fname = 'board' + board_vn + '.txt'
+    file = open(fname, 'a')
+    file.write('\nInspection Test')
+    file.write('------')
+    date_str=iceboardtest.date_format(time.localtime())
+    file.write('Date : ' + date_str + '\n')
+    file.write('Tester: ' + username + '\n\n')
+    print 'For this test, please do NOT power up the board. Everything should be done with nothing connected to the power supply!'
+    print "It is highly suggested for you to view the board under the microscope to see everything properly."
+    print "When travelling with the board, please be VERY GENTLE."
+    print "Please write down any comments you wish to make (shorting, scratches, unsoldered parts, etc.) before continuing"
+    notimportant = raw_input("Press Enter to continue when you have done the above.... ")
+    
+    print 'Are there any unsoldered components?'
+    file.write('Soldering status: ')
+    unsol = raw_input("Enter ('Y' or 'N'):     ")
+    if unsol == 'Y' or unsol == 'y':
+        file.write('Bad. Unsoldered parts on board. \n')
+        file.write('Unsoldered parts: ')
+        print 'Please describe the unsoldered parts. Please be specific (describe the component names)'
+        solcomment = raw_input("Enter:     ")
+        file.write(solcomment + '\n')
+        file.close()
+        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+    else:
+        file.write('All soldering seems fine. \n')
+        soldering == False
+    print 'Are there any shorted components?'
+    file.write('Shorting status: ')
+    shorts = raw_input("Enter ('Y' or 'N') :   ")
+    if shorts == 'Y' or shorts == 'y':
+        file.write('Bad. Shorted components on board. \n')
+        file.write('Shorted parts: ')
+        print 'Please describe the shorted parts. Please be specific (describe the component names'
+        shocomments = raw_input("Enter:     ")
+        file.write(shocomment + '\n')
+        file.close()
+        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+    else:
+        file.write('No unwanted shorted components occur. \n')
+        shorting == False
+        
+    print "If there are any additional comments you wish to make (e.g. scratches), please describe below. (If none, enter 'None')"
+    comments = raw_input("Enter additional comments:    ")
+    file.write('Additional comments: ' + comments + '\n')
+    print "Are there any worrying issues regarding the board?"
+    lastminutecheck = raw_input("Enter 'Y' or 'N':     ")
+    if lastminutecheck == 'Y' or lastminutecheck == 'y':
+        print "Please describe any of these last concerns:"
+        otherissues = raw_input("Enter:     ")
+        file.write('Major issues: ' + otherissues)
+        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+    else:
+        file.write('Major issues: None \n')
+        
+    if soldering == False and shorting == False and issues = False:
+        file.write('Inspection test: PASS \n')
+        file.close()
+    else:
+        file.write('Inspection test: FAIL \n')
+        file.close()
+    print "Do you wish to proceed to another test?"
+    proceed = raw_input("Enter 'Y' or 'N':  ")
+    if proceed == 'Y' or proceed == 'y':
+        iceboardtest.choosetest(username,board_sn,board_vn,board_md)
+    else:
+        print 'Thank you for this testing process! The data has been saved. The testing program will now exit'
