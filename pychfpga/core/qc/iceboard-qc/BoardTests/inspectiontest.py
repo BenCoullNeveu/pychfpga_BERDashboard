@@ -7,14 +7,14 @@ import shutil
 import iceboardtest
 import sys
 
-def inspectiontest(username=None,board_sn=None,board_vn=None,boardmd=None):
+def inspectiontest(username=None,board_sn=None,board_vn=None,board_md=None):
     if (username == None) or (board_sn == None) or (board_vn == None) or (board_md == None):
         iceboardtest()
-    fname = 'board' + board_vn + '.txt'
+    fname = 'board' + board_sn + '.txt'
     file = open(fname, 'a')
-    file.write('\nInspection Test')
-    file.write('------')
-    date_str=iceboardtest.date_format(time.localtime())
+    file.write('\nInspection Test\n')
+    file.write('------\n')
+    date_str=iceboardtest.date_format(tm.localtime())
     file.write('Date : ' + date_str + '\n')
     file.write('Tester: ' + username + '\n\n')
     print 'For this test, please do NOT power up the board. Everything should be done with nothing connected to the power supply!'
@@ -36,7 +36,7 @@ def inspectiontest(username=None,board_sn=None,board_vn=None,boardmd=None):
         sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
     else:
         file.write('All soldering seems fine. \n')
-        soldering == False
+        soldering = False
     print 'Are there any shorted components?'
     file.write('Shorting status: ')
     shorts = raw_input("Enter ('Y' or 'N') :   ")
@@ -50,7 +50,7 @@ def inspectiontest(username=None,board_sn=None,board_vn=None,boardmd=None):
         sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
     else:
         file.write('No unwanted shorted components occur. \n')
-        shorting == False
+        shorting = False
         
     print "If there are any additional comments you wish to make (e.g. scratches), please describe below. (If none, enter 'None')"
     comments = raw_input("Enter additional comments:    ")
@@ -64,8 +64,9 @@ def inspectiontest(username=None,board_sn=None,board_vn=None,boardmd=None):
         sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
     else:
         file.write('Major issues: None \n')
+        issues = False
         
-    if soldering == False and shorting == False and issues = False:
+    if soldering == False and shorting == False and issues == False:
         file.write('Inspection test: PASS \n')
         file.close()
     else:
@@ -76,4 +77,4 @@ def inspectiontest(username=None,board_sn=None,board_vn=None,boardmd=None):
     if proceed == 'Y' or proceed == 'y':
         iceboardtest.choosetest(username,board_sn,board_vn,board_md)
     else:
-        print 'Thank you for this testing process! The data has been saved. The testing program will now exit'
+        sys.exit("Thank you for this testing process! The data has been saved. The testing program will now exit.")

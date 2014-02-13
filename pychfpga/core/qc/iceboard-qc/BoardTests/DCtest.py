@@ -7,14 +7,14 @@ import shutil
 import iceboardtest
 import sys
 
-def DCtest(username=None,board_sn=None,board_vn=None,boardmd=None):
+def DCtest(username=None,board_sn=None,board_vn=None,board_md=None):
     if (username == None) or (board_sn == None) or (board_vn == None) or (board_md == None):
         iceboardtest()
-    fname = 'board' + board_vn + '.txt'
+    fname = 'board' + board_sn + '.txt'
     file = open(fname, 'a')
-    file.write('\nDC Test')
-    file.write('------')
-    date_str=iceboardtest.date_format(time.localtime())
+    file.write('\n\nDC Test\n')
+    file.write('------\n')
+    date_str=iceboardtest.date_format(tm.localtime())
     file.write('Date : ' + date_str + '\n')
     file.write('Tester: ' + username + '\n\n')
     print 'For this test, please do power up the board. Please configure the set up to that as shown on https:// '
@@ -44,14 +44,43 @@ def DCtest(username=None,board_sn=None,board_vn=None,boardmd=None):
 
     file.write('================  ======== ======== ========\n')
     file.write('\n')
-    file.write('Regulator         Measured Expected Status\n')
+    file.write('Voltage Supply    Measured Expected Status\n')
     file.write('\n')
     file.write('================  ======== ======== ========\n')
     
-    print "Please probe the 12V regulator pin. Enter the resitance below (up to 3 sig. figs. , i.e. '1.00')."
-    V12 = int(input("Enter:     "))
-    file.write('12V               ' + str(V12) + '    ' + '12.0    ')
-    if abs((V12-12.00))/100. < 0.02:
+    print "Please read the voltage measurement on power supply. Enter the voltage below (up to 3 sig. figs. , i.e. '1.00')."
+    volt = float(input("Enter:     "))
+    file.write('Voltage           ' + str(volt) + '     ' + '12.0     ')
+    if abs((volt-16.00))/16. < 0.02:
+        file.write('Pass\n')
+    else:
+        file.write('Fail\n')
+        file.write('================  ======== ======== ========\n')
+        file.close()
+        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+
+    print "Please read the current measurement on power supply. Enter the voltage below (up to 3 sig. figs. , i.e. '1.00')."
+    cur = float(input("Enter:     "))
+    file.write('Current           ' + str(cur) + '     ' + '1.00     ')
+    if abs((cur-1.00))/1. < 0.02:
+        file.write('Pass\n')
+    else:
+        file.write('Fail\n')
+        file.write('================  ======== ======== ========\n')
+        file.close()
+        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+    file.write('================  ======== ======== ========\n\n')
+
+    file.write('================  ======== ======== ========\n')
+    file.write('\n')
+    file.write('Regulator         Measured Expected Status\n')
+    file.write('\n')
+    file.write('================  ======== ======== ========\n')
+
+    print "Please probe the 12V regulator pin. Enter the voltage below (up to 3 sig. figs. , i.e. '1.00')."
+    V12 = float(input("Enter:     "))
+    file.write('12V               ' + str(V12) + '     ' + '12.0     ')
+    if abs((V12-12.00))/12. < 0.02:
         file.write('Pass\n')
     else:
         file.write('Fail\n')
@@ -59,10 +88,10 @@ def DCtest(username=None,board_sn=None,board_vn=None,boardmd=None):
         file.close()
         sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
     
-    print "Please probe the Vadj regulator pin. Enter the resitance below (up to 3 sig. figs, i.e. '1.00')."
-    Vadj = int(input("Enter:     "))
-    file.write('Vadj              ' + str(Vadj) + '    ' + '2.50    ')
-    if abs((Vadj-2.50))/100. < 0.02:
+    print "Please probe the Vadj regulator pin. Enter the voltage below (up to 3 sig. figs, i.e. '1.00')."
+    Vadj = float(input("Enter:     "))
+    file.write('Vadj              ' + str(Vadj) + '     ' + '2.50     ')
+    if abs((Vadj-2.50))/2.5 < 0.02:
         file.write('Pass\n')
     else:
         file.write('Fail\n')
@@ -70,10 +99,10 @@ def DCtest(username=None,board_sn=None,board_vn=None,boardmd=None):
         file.close()
         sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
 
-    print "Please probe the 3V3 regulator pin. Enter the resitance below (up to 3 sig. figs. , i.e. '1.00')."
-    V3 = int(input("Enter:     "))
-    file.write('3V3               ' + str(V3) + '    ' + '3.30    ')
-    if abs((V3-3.30))/100. < 0.02:
+    print "Please probe the 3V3 regulator pin. Enter the voltage below (up to 3 sig. figs. , i.e. '1.00')."
+    V3 = float(input("Enter:     "))
+    file.write('3V3               ' + str(V3) + '     ' + '3.30     ')
+    if abs((V3-3.30))/3.3 < 0.02:
         file.write('Pass\n')
     else:
         file.write('Fail\n')
@@ -81,10 +110,12 @@ def DCtest(username=None,board_sn=None,board_vn=None,boardmd=None):
         file.close()
         sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
 
-    print "Please probe the 5V regulator pin. Enter the resitance below (up to 3 sig. figs., i.e. '1.00')."
-    V5 = int(input("Enter:     "))
-    file.write('5V                ' + str(V5) + '    ' + '5.50    ')
-    if abs(V5-5.50)/100. < 0.02:
+        print "Please probe the 3V3 regulator pin. Enter the voltage below (up to 3 sig. figs. , i.e. '1.00')."
+
+    print "Please probe the 5V regulator pin. Enter the voltage below (up to 3 sig. figs., i.e. '1.00')."
+    V5 = float(input("Enter:     "))
+    file.write('5V                ' + str(V5) + '     ' + '5.50     ')
+    if abs(V5-5.50)/5.5 < 0.02:
         file.write('Pass\n')
     else:
         file.write('Fail\n')
@@ -92,10 +123,13 @@ def DCtest(username=None,board_sn=None,board_vn=None,boardmd=None):
         file.close()
         sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
     
-    print "Please probe the 1VGTX regulator pin. Enter the resitance below (up to 3 sig. figs., i.e. '1.00')."
-    VGTX1 = int(input("Enter:     "))
-    file.write('1VGTX             ' + str(VGTX1) + '    ' + '1.00    ')
-    if abs(VGTX1-1.00)/100. < 0.02:
+    print "Please skip the buck regulator next to the power connector."
+    notimportant = raw_input("Press Enter to continue:  ")
+    
+    print "Please probe the 1VGTX regulator pin. Enter the voltage below (up to 3 sig. figs., i.e. '1.00')."
+    VGTX1 = float(input("Enter:     "))
+    file.write('1VGTX             ' + str(VGTX1) + '     ' + '1.00     ')
+    if abs(VGTX1-1.05)/1.05 < 0.02:
         file.write('Pass\n')
     else:
         file.write('Fail\n')
@@ -103,10 +137,10 @@ def DCtest(username=None,board_sn=None,board_vn=None,boardmd=None):
         file.close()
         sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
 
-    print "Please probe the 1.2VGTX regulator pin. Enter the resitance below (up to 3 sig. figs., i.e. '1.00')."
-    VGTX12 = int(input("Enter:     "))
-    file.write('1.2VGTX           ' + str(VGTX12) + '    ' + '1.20    ')
-    if abs(VGTX12-1.20)/100. < 0.02:
+    print "Please probe the 1.2VGTX regulator pin. Enter the voltage below (up to 3 sig. figs., i.e. '1.00')."
+    VGTX12 = float(input("Enter:     "))
+    file.write('1.2VGTX           ' + str(VGTX12) + '     ' + '1.20     ')
+    if abs(VGTX12-1.20)/1.2 < 0.02:
         file.write('Pass\n')
     else:
         file.write('Fail\n')
@@ -114,10 +148,10 @@ def DCtest(username=None,board_sn=None,board_vn=None,boardmd=None):
         file.close()
         sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
 
-    print "Please probe the 1VCORE regulator pin. Enter the resitance below (up to 3 sig. figs., i.e. '1.00')."
-    VCORE1 = int(input("Enter:     "))
-    file.write('1VCORE             ' + str(VCORE1) + '    ' + '1.00    ')
-    if abs(VCORE-1.00)/100. < 0.02:
+    print "Please probe the 1VCORE regulator pin. Enter the voltage below (up to 3 sig. figs., i.e. '1.00')."
+    VCORE1 = float(input("Enter:     "))
+    file.write('1VCORE            ' + str(VCORE1) + '     ' + '1.00     ')
+    if abs(VCORE1-1.00)/100. < 0.02:
         file.write('Pass\n')
     else:
         file.write('Fail\n')
@@ -125,9 +159,20 @@ def DCtest(username=None,board_sn=None,board_vn=None,boardmd=None):
         file.close()
         sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
 
-    print "Please probe the 1.8V regulator pin. Enter the resitance below (up to 3 sig. figs., i.e. '1.00')."
-    V18 = int(input("Enter:     "))
-    file.write('1.8V              ' + str(V18) + '    ' + '1.80    ')
+    print "Please probe the 1.5V regulator pin. Enter the voltage below (up to 3 sig. figs., i.e. '1.00')."
+    V15 = float(input("Enter:     "))
+    file.write('1.5V              ' + str(V15) + '     ' + '1.50     ')
+    if abs(V15-1.50)/100. < 0.02:
+        file.write('Pass\n')
+    else:
+        file.write('Fail\n')
+        file.write('================  ======== ======== ========\n')
+        file.close()
+        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+
+    print "Please probe the 1.8V regulator pin. Enter the voltage below (up to 3 sig. figs., i.e. '1.00')."
+    V18 = float(input("Enter:     "))
+    file.write('1.8V              ' + str(V18) + '     ' + '1.80     ')
     if abs(V18-1.80)/100. < 0.02:
         file.write('Pass\n')
     else:
@@ -136,17 +181,8 @@ def DCtest(username=None,board_sn=None,board_vn=None,boardmd=None):
         file.close()
         sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
 
-    print "Please probe the 1.5V regulator pin. Enter the resitance below (up to 3 sig. figs., i.e. '1.00')."
-    V15 = int(input("Enter:     "))
-    file.write('1.5V              ' + str(V15) + '    ' + '1.50    ')
-    if abs(V15-1.50)/100. < 0.02:
-        file.write('Pass\n')
-    else:
-        file.write('Fail\n')
-        file.write('================  ======== ======== ========\n')
-        file.close()
-        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
-    file.write('================  ======== ======== ========\n')
+
+    file.write('================  ======== ======== ========\n\n')
 
     file.write('DC Test Overall Status: Pass')
     file.close()
@@ -156,5 +192,5 @@ def DCtest(username=None,board_sn=None,board_vn=None,boardmd=None):
     if proceed == 'Y' or proceed == 'y':
         iceboardtest.choosetest(username,board_sn,board_vn,board_md)
     else:
-        print 'Thank you for this testing process! The data has been saved. The testing program will now exit.'
+        sys.exit("Thank you for this testing process! The data has been saved. The testing program will now exit.")
     
