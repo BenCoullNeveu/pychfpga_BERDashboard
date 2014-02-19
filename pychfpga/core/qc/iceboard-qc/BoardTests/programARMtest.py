@@ -52,24 +52,100 @@ def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None):
     print "Have any lights flashed after waiting a few minutes since board turned on?"
     lights = raw_input("Enter 'Y' or 'N': 	")
     if lights == 'Y' or lights == 'y':
-    	file.write('LED lights flashed after initiating board. Hints at proper connection and properly programmed SD card.\n\n')
+        file.write('LED lights flashed after initiating board. Hints at proper connection and properly programmed SD card.\n\n')
     print "Open up an Internet browser window. Log on to 10.10.10.1 by typing in 'https://10.10.10.1' in the adress bar."
     print "Ask Kevin for the username and password associated with the website."
     print "Click on the large computer icon on centre-left part of the website. (There will be text saying 'Clients:' below it"
     notimportant = raw_input("Press Enter to continue: 	")
 
     print "The icon should now be highlighted in blue. There will now be a list on the right hand side of the page."
-    print "On the list, find which of the MAC addres (left column) correponds to that of the board. A quick and "
+    print "On the list, find which of the MAC addresses (left column) correponds to that of the board. A quick and "
     print "dirty way of doing this is simply writing down all the IP addresses (right column) you see in the list, unplug the"
     print "Ethernet cable from the board, hit refresh, and see which of the IP address disappeared from the list."
+    print "Do this a few times to confirm that the MAC address is right."
     tm.sleep(2)
 
     print "Please enter the MAC address of the board below: "
     MACright = raw_input("Enter MAC address: ")
-    file.write('MAC address of right Ethernet connector: ' + MACright)
+    file.write('\nMAC address of right Ethernet connector: ' + MACright)
 
     print "Now we must change the IP address from this Ethernet port to match the serial number of board."
-    print "On left hand side of the page, under Advanced Settings, click on LAN."
+    print "On left hand side of the page, under Advanced Settings, click on LAN. On top of page, you should"
+    print "see some tabs. Click on the DHCP Server tab."
+    notimportant = raw_input("Press Enter to continue: 	")
+
+    print "What we want to do now is manually assign the IP address for this board. Scroll down to the Manually Assigned IP section."
+    print "From the drop-down box in the MAC address column, pick the one which corresponds to the board. Its corresponding IP address"
+    print "should appear in the column beside it. Change the IP address to 10.10.10.NUM where NUM is the serial number of the board."
+    print "(i.e. if the board has serial number 0009, its IP address should be 10.10.10.9  "
+    notimportant = raw_input('Press Enter to continue: 	')
+
+    print "Now, click on the + icon in the last column to add this IP address. DOUBLE CHECK to make sure it's the right IP address!"
+    notimportant = raw_input('Press Enter to continue: 	')
+    print "Are you sure you have the right IP address? Double check!"
+    notimportant = raw_input('Press Enter to continue: 	')
+    print "Once you're SURE it's the right IP address, click on Apply at the bottom of the table."
+    print "Write down the IP address of the board."
+    IPright = raw_input("Enter IP address: 	")
+    file.write('\nIP address of right Ethernet connector:  ' + IPright)
+
+    print "After programming the IP address, let's check to see if this works! Open up a Terminal window, such as git bash."
+    print "On the command line, type in 'ping IP' where IP is the IP address you've just assigned to it."
+    tm.sleep(2)
+    notimportant = raw_input("Press Enter to continue.")
+    print "You should be able to send and receive packets without any issues. The terminal window should say more or less something like so:"
+    print "$ping 10.10.10.9"
+    print "Pinging 10.10.10.9 with 32 bytes of data:"
+    print "Reply from 10.10.10.9: bytes=32 time<1ms TTL=64"
+    print "Reply from 10.10.10.9: bytes=32 time<1ms TTL=64"
+    print "Reply from 10.10.10.9: bytes=32 time<1ms TTL=64"
+    print "Reply from 10.10.10.9: bytes=32 time<1ms TTL=64"
+
+    print "Ping statistics for 10.10.10.9:"
+    print "Packets: Sent = 4, Received = 4, Lost = 0 (0% loss),"
+    print "Approximate round trip times in milli-seconds:"
+    print "Minimum = 0ms, Maximum = 0ms, Average = 0ms"
+
+    print "Are you able to ping the board and have a result like above?"
+    ping = raw_input("Enter 'Y' or 'N': 	")
+    if ping == 'Y' or ping == 'y':
+        file.write('\nPinging the board: Pass')
+    else:
+        file.write('\nPinging the board: Fail')
+        file.write('\nARM Programming Test Overall Status: Fail')
+        file.close()
+        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+    print "Let's try to log in via ssh onto the board! In your terminal window, type in 'ssh root@IP' where IP is the IP address of board."
+    print "Obtain the password from Kevin. At the command line, you should see you logged in as root@iceboard."
+    print "Were you successful in logging in via ssh "
+    ssh = raw_input("Enter 'Y' or 'N': 	")
+    if ssh == 'Y' or ssh == 'y':
+        file.write('\nLogging into the board via ssh: Pass')
+    else:
+        file.write('\nLogging into the board via ssh: Fail')
+        file.write('\nARM Programming Test Overall Status: Fail')
+        file.close()
+        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+    print "If there are any special concerns regarding the board for this test, please describe them below. If none, enter 'None'. "
+    comments = raw_input("Enter your comments: 	")
+    file.write('\nComments: ' + comments)
+
+    print "Has everything in this test gone smoothly?"
+    check = raw_input("Enter ('Y' or 'N'): 	")
+    if check == 'Y' or check == 'y':
+        file.write('\n\nARM Programming Test Overall Status: Pass')
+        file.close()
+    else:
+        file.write('\n\nARM Programming Test Overall Status: Fail')
+        file.close()
+        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+    print "Do you wish to proceed to another test?"
+    proceed = raw_input("Enter 'Y' or 'N':  ")
+    if proceed == 'Y' or proceed == 'y':
+        iceboardtest.choosetest(username,board_sn,board_vn,board_md)
+    else:
+        sys.exit("Thank you for this testing process! The data has been saved. The testing program will now exit.")
+
 
 
 

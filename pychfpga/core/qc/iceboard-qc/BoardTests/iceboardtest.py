@@ -6,7 +6,9 @@ import os
 import inspectiontest
 import resistancetest
 import DCtest
-
+import programARMtest
+import programFPGA
+import FPGAtest
 
 def starttest():
     print "**********************************************"
@@ -109,3 +111,11 @@ def choosetest(username=None,board_sn=None,board_vn=None,board_md=None):
     ARM = raw_input("Enter ('Y' or 'N'):     ")
     if ARM == 'Y' or ARM == 'y':
         programARMtest.programARMtest(username,board_sn,board_vn,board_md)
+    print "Do you wish to do the Programming the FPGA test?"
+    FPGA = raw_input("Enter ('Y' or 'N'):   ")
+    if FPGA == 'Y' or FPGA == 'y':
+        programFPGA.programFPGA(username,board_sn,board_vn,board_md)
+    print "Do you wish to do the FPGA test?"
+    FPGA2 = raw_input("Enter ('Y' or 'N'):      ")
+    if FPGA2 == 'Y' or FPGA == 'y':
+        FPGAtest.FPGAtest(username,board_sn,board_vn,board_md)
