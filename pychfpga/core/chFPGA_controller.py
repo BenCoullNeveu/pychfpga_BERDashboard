@@ -1294,8 +1294,8 @@ class chFPGA_controller(object):
                 Glin = None
                 Glog = None
             elif isinstance(gain_value, tuple):
-                Glin = gain_value(0)
-                Glog = gain_value(1)
+                Glin = gain_value[0]
+                Glog = gain_value[1]
             else: # if a scalar or a vector
                 Glin = gain_value
                 Glog = None
