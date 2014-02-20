@@ -28,7 +28,7 @@ class SCALER_base(Module_base):
     USE_OFFSET_BINARY = BitField(CONTROL, 0x01, 6, doc="When '1', offset binary encoding is used.")
     USE_GAIN_TABLE    = BitField(CONTROL, 0x01, 5, doc="When '1', the gain tables are used to apply a bin-by-bin complex gain. Otherwise, the fixed complex gain is used for all bins.")
     READ_COEFF_BANK   = BitField(CONTROL, 0x01, 4, doc="Indicates which bank of gain coefficients is to be used by the scaler")
-    WRITE_COEFF_BANK  = BitField(CONTROL, 0x01, 0, width=4, doc="Indicates which bank of gain coefficients is being written to")
+    WRITE_COEFF_BANK  = BitField(CONTROL, 0x01, 0, width=4, doc="Indicates in which data page the gain coefficients are being written to. Page 0-7 are coefficients fri bank0, Page 8-15 are for Bank 1 coefficients.")
     FIXED_GAIN_REAL   = BitField(CONTROL, 0x03, 0, width=16, doc="Real part of the fixed gain. Used when USE_GAIN_TABLE= '0'.")
     FIXED_GAIN_IMAG   = BitField(CONTROL, 0x05, 0, width=16, doc="Imaginary part of the fixed gain. Used when USE_GAIN_TABLE= '0'.")
 
@@ -51,9 +51,10 @@ class SCALER_base(Module_base):
         #self.BYPASS = 1
         #self.SHIFT_LEFT = 10
         self.SHIFT_LEFT = 31
-        self.USE_GAIN_TABLE = 0
-        self.USE_OFFSET_BINARY = 1
+        self.USE_GAIN_TABLE = 1
+        self.USE_OFFSET_BINARY = 0
         self.set_fixed_gain(1)
+        self.set_gain_table(1)
 
 
     def set_fixed_gain(self, complex_gain):
@@ -83,11 +84,15 @@ class SCALER_base(Module_base):
         if isinstance(gain_list, (int, float, complex)):
             gain_list = [complex(gain_list)]*self.fpga.NUMBER_OF_FREQUENCY_BINS
 
-        gain_table = np.zeros(4*self.fpga.NUMBER_OF_FREQUENCY_BINS, np.int8)
-        for bin, gain in enumerate(gain_list):
-            gain_table[4*bin:4*bin+4] = np.fromstring(struct.pack('<HH', gain.imag, gain.real), np.int8)
-
-        self.write_ram(bank*4*self.fpga.NUMBER_OF_FREQUENCY_BINS, gain_table)
+        page_table = np.zeros(512, np.int8)
+        for page in range(8): # there are 8 pages of coefficients per bank
+            for ix in range(128): # there are 128 coefficients per page ( 4 byte per coefficient = 512 bytes total per page)
+                bin = page*128 + ix
+                gain = gain_list[bin]
+                page_table[4*ix:4*ix+4] = np.fromstring(struct.pack('<hh', gain.imag, gain.real), np.int8)
+            self.WRITE_COEFF_BANK = 8*bank + page
+            print page_table
+            self.write_ram(0, np.uint8(page_table))
 
 
     def status(self):

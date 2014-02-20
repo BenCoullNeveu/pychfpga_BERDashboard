@@ -97,7 +97,10 @@ class ANT_channel(object):
         # self.INJECT.status()
 
 class ANT_base(object):
-    """ Instantiates a container for all channelizers available on the FPGA. 
+    """ 
+    Instantiates a container for all channelizers available on the FPGA. 
+    It mimics the basin functionnalities of a 'dict'.
+
     """
 
     def __init__(self, fpga, base_address, address_increment, verbose=0):
@@ -117,6 +120,26 @@ class ANT_base(object):
     def __len__(self):
         """Returns the number of antennas"""
         return len(self.ANT)
+
+    def __contains__(self, value):
+        """
+        """
+        return value in self.keys()
+
+    def keys(self):
+        """
+        """
+        return range(self.fpga.NUMBER_OF_ANTENNAS)
+
+    def values(self):
+        """
+        """
+        return self.ANT
+
+    def items(self):
+        """
+        """
+        return zip(self.keys(), self.values())
 
     # Low-level access functions
 

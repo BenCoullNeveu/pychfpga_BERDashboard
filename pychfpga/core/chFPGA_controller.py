@@ -222,25 +222,33 @@ class chFPGA_controller(object):
             del Shared_variables.controller_sock[ip_address]
 
         # # Set the IP address and port
-        # self.sock = SocketIO.ControlSocket_base('10.10.10.11', 41000)
+        # self.fpga = SocketIO.ControlSocket_base('10.10.10.11', 41000)
         # ip_bytes = socket.inet_aton(ip_address) # converts the IP address as a string of 4 bytes
         # ip_word = struct.unpack('>L', ip_bytes)[0] # convert IP into a 32 bit word
         # ipconfig_word = np.uint32( ((ip_word & 0xFFFF) << 16) | (port_number & 0xFFFF) )
         # self.log.info('Setting IPCONFIG word to 0x%08X' % ipconfig_word)
         # self.write(self.SYSTEM_PORT, self.SYSTEM_GPIO_MODULE, self.GPIO_IPCONFIG_REG, ipconfig_word)
-        # self.sock.close()
+        # self.fpga.close()
 
 
 
         # Create socket handled and open socket communications to the chFPGA board
-        self.sock = SocketIO.ControlSocket_base(ip_address, port_number, host_ip=host_ip)
-        Shared_variables.controller_sock[ip_address] = self.sock # Save the socket in a persistent storage so it can be closed if needed  
+        self.fpga = SocketIO.ControlSocket_base(ip_address, port_number, host_ip=host_ip)
+        Shared_variables.controller_sock[ip_address] = self.fpga # Save the socket in a persistent storage so it can be closed if needed  
+
+        # provide access to the FPGA read/write methods directly from this chFPGA object 
+        self.read = self.fpga.read
+        self.write = self.fpga.write
 
         if init < 0: # If init<0, we do not perform any communication with the FPGA, so we don't read the firmware configuration
             self.log.info('Upon user request (init < 0), communication with the FPGA are inhibited. Initialization sequence stops here. Use this for debug only.')
             return
 
         self.log.info("   Attempting to communicate with the FPGA")
+
+        #self.fpga.open(fpga_serial_number, ) # Open communication socket with the fpga with specified serial number and assign it the specified ip
+
+        self.fpga.open() # Open communication socket with the fpga
 
         try:
             cookie = self.read(self.SYSTEM_GPIO_BASE_ADDR + self.GPIO_COOKIE_REG) # Read anything from the GPIO subsystem (which is always present on all versions of the FPGA)
@@ -440,7 +448,7 @@ class chFPGA_controller(object):
 
         self.close()
         self.log.debug('__del__: Closed FPGA at IP address %s' % \
-                       self.sock.ip_address)
+                       self.fpga.ip_address)
 
     def init(self, sampling_frequency=800e6, reference_frequency=10e6, adc_delay_table=None, data_width=8, group_frames = 4, enable_gpu_link =0, verbose=0, **kwargs):
         """
@@ -459,8 +467,8 @@ class chFPGA_controller(object):
         self.log.debug('--- Initializing GPIO')
         self.GPIO.init() # This stops the antenna procesors from sending data. Neeeded if the FPGA is flooding the buffers which prevent subsequent reads to come through
         self.GPIO.BUCK_PHASE=0xfedcba9876543210 # debug
-        #self.sock.flush_data_socket() # Now the the data stops coming, flush the buffers
-        self.sock.flush()
+        #self.fpga.flush_data_socket() # Now the the data stops coming, flush the buffers
+        self.fpga.flush()
         if verbose >= 2: 
             self.GPIO.status()
 
@@ -635,97 +643,20 @@ class chFPGA_controller(object):
         """ 
         Close chFPGA object, which releases the socket bindings
         """
-        self.sock.close()
+        self.fpga.close()
         if self.ip_address in Shared_variables.controller_sock:
             del Shared_variables.controller_sock[self.ip_address]
 
-    def read(self, addr, type=np.dtype('>u1'), length=1, incr=1):
-        """ Reads memory-mapped byte(s) from the FPGA through the Ethernet interface.
-        Returns a numpy array where the bytes are intrepreted as a series of 'length' elements of type 'type'.
-        """
-
-        itemsize = np.dtype(type).itemsize # number of bytes contained in the destinaion vector type
-        dout = np.zeros(length*itemsize, np.int8) # initialize result vector as a byte array
-        NBYTES = 0
-        # Loop to read all required bytes (the FPGA does not support multi-byte reads (yet))
-        for i in range(length*itemsize): 
-            s = chr(0x00 + (0x40 if incr else 0) + (NBYTES<<4) + ((addr >> 16) & 0x0F)) + chr((addr >> 8) & 0xFF) + chr(addr & 0xff)
-
-            try:
-                self.sock.write(s)
-                data = self.sock.read()
-            except Exception as e:
-                raise chFPGAException('FPGA read command failed because of the following exception: %s' % repr(e))
-            #if data[0]!=s[0]:
-            #    self.log.error("Read: ERROR: Returned ANT/SUB/ADDR (",   ata[0:2]," does not match request values (",   [0:2],")")
-            if len(data) != 2:
-                raise chFPGAException("FPGA Read command returned %i bytes. 2 were expected." % len(data))
-            dout[i] = ord(data[1]) # store received byte
-            if incr: addr += 1
-        dout.dtype = np.dtype(type) # change interpretation of the byte array into a 'type' array
-
-        #if we requested a single value (length=1), returns the object, otherwise return a numpy array of objects
-        if len(dout) == 1:
-            return dout[0]
-        else:
-            return dout
-        
-    
-    def write(self, addr, data, incr=1):
-        """ 
-        Writes byte(s) to memory-mapped registers in the FPGA through the Ethernet interface.
-        'data' can be:
-            - String
-            - list of integers between 0 and 255
-            - numpy array of integers between 0 and 255
-            - 4 bytes in a numpy uint32. MSB is transmitted first
-            - 2 bytes in a numpy uint16. MSB is transmitted first
-            - 1 byte in a numpy uint8. 
-        """
-        # build command packet
-        #s=chr(0x80+ant+(0x40 if incr else 0))+chr((module<<2)+(addr>>8))+chr(addr&0xFF) 
-
-        string = chr(0x80 + (0x40 if incr else 0) + ((addr >> 16) & 0x0F)) + chr((addr >> 8) & 0xFF) + chr(addr & 0xff)
-
-        # Add the data to the string. The method depends on the data type
-        if type(data) == str:
-            string += data
-            length = len(data)
-        elif type(data) == list or type(data) == np.ndarray:
-            string += ''.join([chr(data[i]) for i in range(len(data))])
-            length = len(data)
-        elif type(data) == np.uint32:
-            length = 4
-            a = np.array([data], np.dtype('>u4')) # store as big endian (most significant byte first)
-            a.dtype = np.uint8
-            string += ''.join([chr(a[i]) for i in range(4)])
-        elif type(data) == np.uint16:
-            length = 2
-            a = np.array([data], np.dtype('>u2')) # store as big endian (most significant byte first)
-            a.dtype = np.uint8
-            string += ''.join([chr(a[i]) for i in range(2)])
-        elif type([data]) == np.uint8:
-            length = 1
-            a = np.array([data]) # store as big endian (most significant byte first)
-            a.dtype = np.uint8
-            string += chr(a[i])
-        else:
-            string += chr(data)
-            length = 1
-        self.sock.write(string)
-        return length
-        
-
     # Define Read and Write for legacy compatibility
-    Read = read
-    Write = write
+    # Read = read
+    # Write = write
 
     def read_bit(self, addr, bit):
-        return (self.read(addr) & (1<<bit))!=0
+        return (self.read(addr) & (1 << bit)) != 0
 
     def write_bit(self, addr, bit, data):
         old_data = self.read(addr)
-        mask = 1<<bit
+        mask = 1 << bit
         self.write(addr, (old_data & (~mask)) | (mask if data else 0))
 
     def write_mask(self, addr, mask, data):
@@ -775,13 +706,17 @@ class chFPGA_controller(object):
         """
         return self.default_channels
 
-    def set_data_path(self, source=None, function=None, a=1, b=0, adc_mode='data', adcdaq_mode='data', fft_bypass=None, scaler_gain=None, channels=None):
+    
+    def set_channelizer_config(self, data_source=None, function=None, a=1, b=0, adc_mode='data', adcdaq_mode='data', fft_bypass=None, fft_shift=None, scaler_bypass=None, gain=None, postscaler=None, channels=None):
         """
-            Single command used to set multiple data path settings. The data processing chain is:
+            Single command used to set multiple channelizer settings. The data processing chain is:
             ADC --> ADCDAQ --> |        |
                    FUNCGEN --> | SRCSEL | --> FFT --> SCALER
                     INJECT --> |        |
         """
+        if data_source is not None:
+            self.set_data_source(data_source, channels=channels)
+
         if function is not None:
             self.set_funcgen_function(function=function, a=a, b=b, channels=channels)
 
@@ -791,10 +726,16 @@ class chFPGA_controller(object):
         if fft_bypass is not None:
             self.set_fft_bypass(bypass_mode=fft_bypass, channels=channels)
 
-        if scaler_gain is not None:
-            self.set_gain(log2_gain=scaler_gain, channels=channels)
+        if fft_shift is not None:
+            self.set_fft_shift(fft_shift, channels=channels)
+
+        if gain is not None:
+            self.set_gain(gain = gain, postscaler = postscaler, channels=channels)
+
         if adc_mode is not None:
             self.set_adc_mode(mode=adc_mode)
+
+    set_data_path = set_channelizer_config # for legacy compatibility
 
     def set_data_source(self, source=None,  channels=None):
         '''
@@ -820,7 +761,7 @@ class chFPGA_controller(object):
         '''
             Returns a list of data source for all channels.
         '''
-        return [ant.SRCSEL.get_data_source() for ant in self.ANT]        
+        return [ant.SRCSEL.get_data_source() for ant in self.ANT.values()]        
 
 
     def set_funcgen_function(self, function=None, a=1, b=0, channels=None):
@@ -955,7 +896,7 @@ class chFPGA_controller(object):
         Stops the transmission of data.
         """
         self.GPIO.GLOBAL_TRIG = 0 # disable data transmission if continuous mode is currentlly selected
-        for ant in self.ANT:
+        for ant in self.ANT.values():
             ant.PROBER.RESET = 1
 
     def start_data_capture(self,  burst_period_in_seconds=None, burst_period_in_frames=None, frames_per_burst=1,  number_of_bursts=0,  channels=None, sync=1, verbose=1):
@@ -997,7 +938,7 @@ class chFPGA_controller(object):
 #        if clear_buffer:
 #            self.flush_frame_buffer()
             
-        for ant in self.ANT:
+        for ant in self.ANT.values():
             ant.PROBER.RESET = 1
             ant.PROBER.PROBE_ID = 0xA0 + ant.ant_number
             ant.PROBER.config_capture(frames_per_burst=frames_per_burst, burst_period=burst_period_in_frames, number_of_bursts=number_of_bursts)
@@ -1008,29 +949,32 @@ class chFPGA_controller(object):
         self.set_trig(1) # enables data transmission if continuous mode is selected
 #       self.set_ant_reset(0) # disable reset all 
 
-    def set_fft_bypass(self, bypass_mode, channels=None, set_scaler=True):
+    def set_fft_bypass(self, bypass_mode, channels=None):
         """
-        Sets the BYPASS flag on both the FFT (and optionnally the SCALER) modules.
+        Sets the BYPASS flag on both the FFT modules.
         If the list of channels is specified, only these channels will be set.
-        If 'set_scaler' is True, the corresponding SCALER bypass is set to the same state.
         All antenna processors are reset to force the FFT to resynchronize to the frame boundaries.
 
         History:
             2012-08-31 JFC: Added this function
             2012-10-02 JFC: Added antenna reset after bypass change to ensure the FFT is synced.
             2013-12-05 JFC: Changed behavior so only the specified channels are changed.
+            2014-02-09 JFC: Removed scaler bypass setting
         """
 
         if channels is None:
             channels = self.default_channels
 
-        for ant in self.ANT:
-            if ant.ant_number in channels:
-                self.log.info('Setting FFT%s bypass mode for Antenna %i' % (['','and SCALER'][bool(set_scaler)], ant.ant_number))
-                if ant.ant_number in self.LIST_OF_ANTENNAS_WITH_FFT:
-                    ant.FFT.BYPASS = bypass_mode
-                    if set_scaler:
-                        ant.SCALER.BYPASS = bypass_mode
+        configured_channels = set()
+        for ch in channels:
+            if ch not in self.ANT:
+                self.log.warning('FFT bypass mode on antena channel %i are not set because that channel is not available' % ch)
+            elif ch not in self.LIST_OF_ANTENNAS_WITH_FFT:
+                self.log.warning('FFT bypass mode on antena channel %i are not set because that channel does not have an FFT module' % ch)
+            else:
+                self.ANT[ch].FFT.BYPASS = bypass_mode
+                configured_channels.add(ch) 
+        self.log.info('Setting FFT bypass mode to %s for Antenna %s' % (str(bool(bypass_mode)), ', '.join([str(i) for i in configured_channels])))
         self.reset();
         #self.sync()
 
@@ -1040,7 +984,7 @@ class chFPGA_controller(object):
         """
         Returns a list indicating if the FFT is bypassed or not for each antenna. 
         """
-        return [bool(ant.FFT.BYPASS) for ant in self.ANT]
+        return [bool(ant.FFT.BYPASS) for ant in self.ANT.values()]
 
     get_FFT_bypass = get_fft_bypass # for legacy code compatiblity    
 
@@ -1057,7 +1001,7 @@ class chFPGA_controller(object):
             channels = self.default_channels
 
         self.log.info('Setting SCALER bypass mode for Antenna %s' % ', '.join([str(i) for i in channels]))
-        for ant in self.ANT:
+        for ant in self.ANT.values():
             if ant.ant_number in channels:
                 ant.SCALER.BYPASS = bypass_mode
             # else:
@@ -1068,7 +1012,7 @@ class chFPGA_controller(object):
         """
         Returns a list indicating if the SCALER is bypassed or not for each antenna. 
         """
-        return [bool(ant.SCALER.BYPASS) for ant in self.ANT]
+        return [bool(ant.SCALER.BYPASS) for ant in self.ANT.values()]
 
 
     def set_global_trigger(self, trigger_state):
@@ -1217,7 +1161,7 @@ class chFPGA_controller(object):
 
     def status(self):
         self.log.info('----------- chFPGA status ---------------')
-        self.log.info(' Controller IP address: %s, port: %i ' % (self.sock.ip_address, self.sock.port_number))
+        self.log.info(' Controller IP address: %s, port: %i ' % (self.fpga.ip_address, self.fpga.port_number))
         self.log.info(' Firmware version: %s' % self.get_version())
         self.log.info(' Number of antenna inputs: %i' %  self.NUMBER_OF_ANTENNAS)
         self.log.info(' Number of antennas with channelizers: %i (antennas %s)' % (len(self.LIST_OF_ANTENNAS_WITH_FFT), str(self.LIST_OF_ANTENNAS_WITH_FFT)))
@@ -1262,27 +1206,130 @@ class chFPGA_controller(object):
     def configure_crossbar(self):
         self.CROSSBAR.configure()
 
-    def set_gain(self, log2_gain=0, channels=None):
+    def set_gain(self, gain = None, postscaler = None, channels=None, use_fixed_gain = False):
         """
-        Sets that gain of the scalar module. The convention for log2gain is that if log2gain=0 the FFT of 1 gives 1 at DC. The range of log2gain is -1 to 14
+        Sets the gain between the (18+18) bits input of the scaler module (from the FFT) to its 4- or 8- bit scaler output. 
+        The gain can be set individually for every frequency bins and every ADC channel.
 
+        A gain consist of a tuple G=(Glin, Glog):
+            1) Glin is a linear complex gain which can be unique to each bin.  
+               It can be a scalar applied to every bin, or a 1024-point vector to specify a gain for evey bin.
+               The real and imaginary part of the linear gain are integer values ranging from -32768 to 32767. 
+ 
+            2) Glog is a binary scaling factor, which is an integer between 0 and 31 representing a power of two that multiplies the linear gain. 
+               This is a scalar common to every bin.
+
+        The actual gain between the scaler input and output for bin 'b' is:
+           4-bit mode: out/in = Glin(b) * 2**(Glog-31)
+           8-bit output: out/in = Glin(b) * 2**(Glog-27)
+
+        G can be specified in the following manner:
+           G = Glin              : Sets only the linear gain. Same as (Glin, None)
+           G = (Glin, None)      : Same as above
+           G = (None, Glog)      : Sets only the postscaler
+           G = (Glin, Glog)      : Sets both the linear gain and the postscaler
+
+        The 'gain' parameters can be specified as:
+            gain = G: the specified gain is applied only to the ADC channels specified in the list 'channels'. 
+            gain = {ch1: G1, ch2: G2 ...} : The gain is applied to specified channels, but only if they are included in 'channels'
+            gain = [ (ch1, G1),  (ch2, G2), ...]: Same thing, but in a list format
+            gain = [ (ch_list , G1), (ch_list2, G2), ...]: Same thing, but we can apply the gains to lists of channels
+
+        If 'channels' is None, it is applied to the default (active) channels (see set_default_channels()).
+
+        If 'postscaler' is specified, it will be used as default value when Glog = None.
+
+        'use_fixed_gain': if True, enables the use of fixed gain mode of the scaler module. In this case, 'gain' can only be a scalar. Is False by default. This is normally used 
+
+        Notes: 
+            1) The PFB/FFT has an intrisic gain of 512 (a constant FFT input of '1' will yield the value 512 in bin 0 at the input of the scaler.
+            2) If the FFT is bypassed, the 8-bit values from the ADC or the function generator are applied directly to the scaler input.
+            3) In 4-bit mode, the output value is taken from bits 31 to 34 of the postscaled-value. In 8-bit mode, bits 27 to 31 are used. 
+            4) A smaller postscaler value allows a larger gain to be used to acheive the same overall gain while providing more gain resolution. 
+            A gain of (1, 31) allows the function generator values to appear on the scaler output with an overall gain of 1 in 4-bit mode. This is equivalent to (2, 30), (4,29) ... (16384, 8), except that the latter offers more gain resolution.
+            A gain of (1, 27) dies the same in 8-bit mode.
+(16384, 8), except that the latter offers more gain resolution.
+
+        Examples:
+            set_gain(1) # Sets all gains to 1, leaves the poscslaler unchanged fro all antennas.
+            set_gain((1, None)) # Same thing
+            set_gain(postscaler = 26) # Sets postscaler on all antennas
+            set_gain((1,31)) # For all antennas, sets all gains to 1 and postscaler to 31
+            set_gain(16384,8) # In 4-bit, FFT enabled mode, outputs a value of '1' on bin 0 when the input of the FFT is a constant '1'.
+            set_gain(np.arange(1024), channels=[1,2,3])
+            set_gain({1: 16384, 4: 1300+15000*j, 5: np.arange(1024)}) # sets ADC channels 1-3 to a real gain of 16384, channel 4 to complex gain of (1300+15000j), and channels 5-7 with a gain ramp from 0 to 1023.
         History:
             2012-11-28 JM: Added this function
+            2014-02-08 JFC: Rewrote and documented this function for the new scaler supporting complex gain tables.
         """
+
+        # if postscaler is not None:
+        #     if postscaler<0 or postscaler>31:
+        #         raise chFPGAException('Invalid postscaler value');
+
+        #         if postscaler is not None
+
 
         if channels is None:
             channels = self.default_channels
 
-        for ant in self.ANT:
-            if ant.ant_number in channels:
-                self.log.info('Setting gain of Antenna %i' % ant.ant_number)
-                ant.SCALER.SHIFT_LEFT = 1 + log2_gain
+
+        # Convert to a list of channel-gain tuples
+        if isinstance(gain, list):
+            pass
+        elif isinstance(gain, dict):
+            gain = gain.items()
+        else: # if anything else including None, a scalar, a gain tuple etc.
+            gain = [ (channels, gain) ]
+
+
+        configured_channels = set()
+
+        for (channel_list, gain_value) in gain:
+            # Make sure channel_list is a list (in case we provide a single channel number)
+            if isinstance(channel_list, int):
+                channel_list = [channel_list]
+            # Extratc Glin and Glog from the specified gain value
+            if gain_value is None:
+                Glin = None
+                Glog = None
+            elif isinstance(gain_value, tuple):
+                Glin = gain_value(0)
+                Glog = gain_value(1)
+            else: # if a scalar or a vector
+                Glin = gain_value
+                Glog = None
+            # Replace default postscaler value if one is provided
+            if (Glog is None) and (postscaler is not None):
+                Glog = postscaler
+
+
+            for ch in channel_list: # process each channel
+                if ch not in channels: 
+                    continue
+                if ch not in self.ANT.keys():
+                    self.log.warning('Gains on antenna channel %i are not set because that channel is not available' % ch)
+                    continue
+                # Set the postscaler value
+                if Glog is not None:
+                    self.ANT[ch].SCALER.SHIFT_LEFT = Glog
+
+                if use_fixed_gain:
+                    if not np.isscalar(Glin):
+                        self.chFPGAException('Only scalar gains are allowed when using set_fixed_gain=True.')
+                    self.ANT[ch].SCALER.USE_GAIN_TABLE = 0
+                    self.ANT[ch].SCALER.set_fixed_gain(Glin)
+                else:
+                    self.ANT[ch].SCALER.USE_GAIN_TABLE = 1
+                    self.ANT[ch].SCALER.set_gain_table(Glin)
+                configured_channels.add(ch)
+        self.log.info('Setting scaler gains for Antenna %s' % ', '.join([str(i) for i in configured_channels]))
 
     def get_gain(self):
         """
         Returns the log2 SCALER gain each antenna. 
         """
-        return [ant.SCALER.SHIFT_LEFT-1 for ant in self.ANT]
+        return [ant.SCALER.SHIFT_LEFT-1 for ant in self.ANT.values()]
 
     def set_fmc_power(self, state):
         """
@@ -1318,7 +1365,7 @@ class chFPGA_controller(object):
         if channels is None:
             channels = self.default_channels
 
-        for ant in self.ANT:
+        for ant in self.ANT.values():
             if ant.ant_number in channels:
                 self.log.info('Setting FFT shift of antenna %i' % ant.ant_number)
                 ant.FFT.FFT_SHIFT = fft_shift
@@ -1329,7 +1376,7 @@ class chFPGA_controller(object):
         """
         Returns the FFT shift schedule for each antenna. 
         """
-        return [ant.FFT.FFT_SHIFT for ant in self.ANT]
+        return [ant.FFT.FFT_SHIFT for ant in self.ANT.values()]
 
     get_FFT_shift = get_fft_shift # for legacy compatibility
 
@@ -1342,7 +1389,7 @@ class chFPGA_controller(object):
         self.sync() # sync the board to make sure that data acquisition starts on the right ramp sample
 
         # Clear the word and bit error counters
-        for ant in self.ANT:
+        for ant in self.ANT.values():
             print 'Clearing antenna', ant.ant_number
             ant.ADCDAQ.RAMP_ERR_CLEAR=0
             ant.ADCDAQ.RAMP_ERR_CLEAR=1
@@ -1352,7 +1399,7 @@ class chFPGA_controller(object):
         bit_error = np.zeros((len(self.ANT), 8))
         try:
             while time.time() - t0 <= test_duration: 
-                for (i, ant) in enumerate(self.ANT):
+                for (i, ant) in self.ANT.items():
                     print  self.ANT[i].ADCDAQ.RAMP_ERR_CTR,
                     word_error[i] += ant.ADCDAQ.RAMP_ERR_CTR
                     for bit_number in range(8):
@@ -1371,8 +1418,8 @@ class chFPGA_controller(object):
         return total_word_errors
 
     def test_speed(self, n=1000, timeout=0.1):
-        old_timeout = self.sock.get_timeout()
-        self.sock.set_timeout(timeout)
+        old_timeout = self.fpga.get_timeout()
+        self.fpga.set_timeout(timeout)
         t0 = time.time()
         errors = 0
         trials = 0
@@ -1386,7 +1433,7 @@ class chFPGA_controller(object):
             except KeyboardInterrupt:
                 break
         t1 = time.time()
-        self.sock.set_timeout(old_timeout)
+        self.fpga.set_timeout(old_timeout)
         print '%i read operations performed in %.2f s (%.0f read/s) with %i errors (%0.3f%% errors)' % (trials, t1 - t0, float(n)/(t1 - t0), errors, float(errors)/float(trials)*100)
 
     def print_memory_map(self):

@@ -216,7 +216,7 @@ if __name__ == '__main__':
     logger.info('Getting chFPGA configuration')
     chFPGA_config = c.get_config()
     logger.info('Starting data/correlator receiver threads')
-    r = chFPGA_receiver.chFPGA_receiver(chFPGA_config, ip_address='10.10.10.11', port=41001)
+    r = chFPGA_receiver.chFPGA_receiver(chFPGA_config, ip_address=args.ip, port=41001, host_ip = args.host_ip)
     #r = receiver_corr_fast.chFPGA_receiver(chFPGA_config, ip_address='10.10.10.11', port=41001)
     ##c.sync()
     #inj.set_inject_mode(c,r)
