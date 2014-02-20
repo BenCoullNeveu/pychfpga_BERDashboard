@@ -9,6 +9,7 @@ import DCtest
 import programARMtest
 import programFPGA
 import FPGAtest
+import GTXtest
 
 def starttest():
     print "**********************************************"
@@ -117,5 +118,9 @@ def choosetest(username=None,board_sn=None,board_vn=None,board_md=None):
         programFPGA.programFPGA(username,board_sn,board_vn,board_md)
     print "Do you wish to do the FPGA test?"
     FPGA2 = raw_input("Enter ('Y' or 'N'):      ")
-    if FPGA2 == 'Y' or FPGA == 'y':
+    if FPGA2 == 'Y' or FPGA2 == 'y':
         FPGAtest.FPGAtest(username,board_sn,board_vn,board_md)
+    print "Do you wish to do the GTX test?"
+    GTX = raw_input("Enter ('Y' or 'N'):       ")
+    if GTX == 'Y' or GTX == 'y':
+        GTXtest.GTXtest(username,board_sn,board_vn,board_md)

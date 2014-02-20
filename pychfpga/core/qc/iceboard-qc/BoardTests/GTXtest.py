@@ -1,0 +1,131 @@
+from numpy import *
+from math import *
+import pylab as plt
+import time as tm
+import os
+import shutil
+import iceboardtest
+import sys
+import FPGAtest
+def GTXtest(username=None,board_sn=None,board_vn=None,board_md=None):
+    if (username == None) or (board_sn == None) or (board_vn == None) or (board_md == None):
+        iceboardtest.starttest()
+    fname = 'board' + board_sn + '.txt'
+    file = open(fname, 'a')
+    file.write('\n\nGTX Test\n')
+    file.write('------\n')
+    date_str=iceboardtest.date_format(tm.localtime())
+    file.write('Date : ' + date_str + '\n')
+    file.write('Tester: ' + username + '\n\n')
+
+    print "For this test, we NEED to have the same SET UP as that of the already programmed FPGA. You also need the JTAG and QSFP cables."
+    print "Please consult https:// for details regarding the materials. Or ask Kevin."
+    print "Let's get started. Is the board turned on and the set up same as that described from above?"
+    program = raw_input("Enter 'Y' or 'N': 	")
+    if program != 'Y' and program != 'y':
+        FPGAtest.FPGAtest(username,board_sn,board_vn,board_md)
+    print "Let's set evreything up! Grab the JTAG cable and connect all the wires to the JTAG pins. The pins are located on the left side of the fan."
+    print "Connect the cables accordingly by pin. Leave the n/c pin unconnected and connect VREF wire to 3V3 pin. All other labels should match."
+    print "Connect the JTAG USB to the computer."
+    notimportant = raw_input("Press Enter to continue:      ")
+    print "Now grab a QSFP cable. We need to connect the two scary-looking spiky connector along the bottom edge of the board together."
+    print "Please consult https:// for details regarding the board."
+    notimportant = raw_input("Press Enter to continue:      ")
+    print "Now let's open up ChipScope Pro's Analyzer program1 Go into the Start Menu."
+    print "Go to All Programs -> Xilink Design Tools -> ISE Design Suite 14.4 -> ChipScope Pro -> ChipScoe 64-bit -> Analyzer."
+    notimportant = raw_input("Press Enter to continue:      ")
+    print "In the new ChipScope window, on the left pane, right above the New Project pane, there should be two small icons."
+    print "You are currently selected on a grey P icon, click on the icon to its left, the black four squares icon thing."
+    print "This will detect the JTAG cable."
+    print "A pop-up window will appear, which detects the JTAG cable. Click on OK."
+    print "Sometimes it takes the program is very picky and will not work right away. If it happens try restarting the program."
+    notimportant = raw_input("Press Enter to continue:         ")
+
+    print "Now click on File, select the File that has '...\\icebertcore144\\chipscope_proj.cpj' in its name."
+    print "Click on No when it asks if you want to save the changes."
+    notimportant = raw_input("Press Enter to continue:         ")
+    print "When asked if you want to set up the IBERT core settings... click on No."
+    notimportant = raw_input("Press Enter to continue:      ")
+    print "On the menu bar, select Device, then DEV:0... then Configure."
+    notimportant = raw_input("Press Enter to continue:      ")
+    print "In the new pop-up window, click on Select New File button."
+    print "In Kevin's iceboard-qc git repository, go into the icebertcore144 directory."
+    print "Click on the example_chipscope_ibert.bit file and click Open. Then click on OK of the original pop-up window."
+    notimportant = raw_input("Press Enter to cotninue:      ")
+    print "Programming the with the new firmware will take a bit of time..."
+    print "You can see your status on the bottom right corner of the Analyzer window."
+    tm.sleep(3)
+    print "When asked if you want to set up the IBERT settings with ..., click on no."
+    print "Once completed, check to see there are 8 green GTX columns. The scrollbar is small at the bottom of the pane."
+    print "They will usually be labelled as GTX_X0Y20 to GTX_X027. Are they there?"
+    GTXcolumns = raw_input("Enter 'Y' or 'N':       ")
+    if GTXcolumns == 'Y' or GTXcolumns == 'y':
+        file.write('\nDetection of 8 Channels on the board after programming with Chipscope: Pass')
+    else:
+        file.write('\nDetection of 8 Channels on the board after programming with Chipscope: Fail')
+        file.write('\nGTX Test Overall Status: Fail')
+        file.close()
+        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+    print "You may also set the JTAG scan rate to about 1s (Kevin's favourite rate) just below the menu bar on top of the window."
+    print "Under the BERT settings, you now will want to do BERT reset. Click on Reset for the BERT reset for each of the 8 columns."
+    print "You now will want to wait a while, typically the RX Bit Error Ratio will be very low. (10E-10 ish)"
+    print "Are the bit error rates relatively small?"
+    biterrorsmall = raw_input("Enter 'Y' or 'N':        ")
+    if biterrorsmall != 'Y' and biterrorsmall != 'y':
+        file.write('\nBit error rate is larger than expected: ')
+        for i in range(8):
+            col = raw_input("Enter the column number of the green column:       ")
+            errorratei = raw_input("Enter the bit error rate of green column " + col + ": ")
+            file.write('\nBit Error Rate of Channel ' + col + ': ' + errorratei)
+        file.write('\nGTX Test Overall Status: Fail')
+        file.close()
+        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+    print "Are the RX Bit Error Count all 0's for the 8 green columns??"
+    errorcount = raw_input("Enter 'Y' or 'N':       ")
+    if errorcount == 'Y' or errorcount == 'y':
+        file.write('\nBit Error Count is all 0 for all 8 channels.')
+    else:
+        for i in range(8):
+            col = raw_input("Enter the column number of the green column:       ")
+            errorratei = raw_input("Enter the RX bit error count of green column " + col +": ")
+            file.write('\nBit Error Count of Channel ' + col + ': ' + errorratei)
+        file.write('\nGTX Test Overall Status: Fail')
+        file.close()
+        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+    print "Wait until the bit count ratio go down to below 10E-13."
+    notimportant = raw_input("Press Enter to continue:      ")
+    print "Do you succeed in achieving count ratios below 10E-13?"
+    ratio = raw_input("Enter 'Y' or 'N':        ")
+    if ratio != 'Y' and ratio != 'y':
+        file.write('\n\nBit error count ratio fails to decrease over time.')
+        file.write('\nGTX Test Overall Status: Fail')
+        file.close()
+        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+    print "Read the bit error ratio for each of the green columns"
+    for i in range(8):
+        col = raw_input("Enter the column number of the green column:       ")
+        errorratei = raw_input("Enter the RX bit error count of green column " + col +": ")
+        file.write('\nBit Error Ratio of Channel ' + col + ': ' + errorratei)
+    
+    print "If there are any special concerns regarding the board for this test, please describe them below. If none, enter 'None'. "
+    comments = raw_input("Enter your comments:  ")
+    file.write('\n\nComments: ' + comments)
+
+    print "Has everything in this test gone smoothly?"
+    check = raw_input("Enter ('Y' or 'N'):  ")
+    if check == 'Y' or check == 'y':
+        file.write('\n\nGTX Test Overall Status: Pass')
+        file.close()
+    else:
+        file.write('\n\nGTX Test Overall Status: Fail')
+        print "Please describe why below."
+        failure = raw_input("Enter your comments:       ")
+        file.write('\nComments:         ' + failure)
+        file.close()
+        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+    print "Do you wish to proceed to another test?"
+    proceed = raw_input("Enter 'Y' or 'N':  ")
+    if proceed == 'Y' or proceed == 'y':
+        iceboardtest.choosetest(username,board_sn,board_vn,board_md)
+    else:
+        sys.exit("Thank you for this testing process! The data has been saved. The testing program will now exit.")

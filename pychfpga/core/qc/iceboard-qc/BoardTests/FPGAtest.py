@@ -66,13 +66,19 @@ def FPGAtest(username=None,board_sn=None,board_vn=None,board_md=None):
         file.write('\nFPGA Test Overall Status: Fail')
         file.close()
         sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
-    print "Now let's write all these status! Be prepared for lots of copying and pasting!"
+    print "Now let's write all these status!"
+    print "!!!!!!!!!!!!!!!! WARNING !!!!!!!!!!!!!!!!!!!!!!!"
+    tm.sleep(1)
+    print "------------------------------------------------"
+    tm.sleep(1)
+    print "THE PART BELOW NEEDS REWORK. PLEASE CONSULT WITH AMY BEFORE CONTINUE."
+    notimportant = raw_input("Press Enter to continue.")
     print "Type in c.ANT.status() on the ipython command prompt. Enter the outputted results below."
     ANT = raw_input("Enter ANT status comments: 		")
     file.write('\n\nANT status output: ')
     file.write('\n' + ANT)
     print "Type in c.CORR.status() on the ipython command prompt. Enter the outputted results below."
-    CORR = raw_input("Enter ANT status comments: 		")
+    CORR = raw_input("Enter CORR status comments: 		")
     file.write('\n\nCORR status output: ')
     file.write('\n' + CORR)
     print "Type in c.FreqCtr.status() on the ipython command prompt. Enter the outputted results below."
@@ -110,6 +116,9 @@ def FPGAtest(username=None,board_sn=None,board_vn=None,board_md=None):
         file.close()
     else:
         file.write('\n\nFPGA Test Overall Status: Fail')
+        print "Please describe why below."
+        failure = raw_input("Enter your comments:       ")
+        file.write('\nComments:         ' + failure)
         file.close()
         sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
     print "Do you wish to proceed to another test?"

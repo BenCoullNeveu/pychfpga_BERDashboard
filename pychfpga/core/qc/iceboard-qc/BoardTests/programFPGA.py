@@ -62,6 +62,9 @@ def programFPGA(username=None,board_sn=None,board_vn=None,board_md=None):
         file.close()
     else:
         file.write('\n\nFPGA Programming Test Overall Status: Fail')
+        print "Please describe why below."
+        failure = raw_input("Enter your comments:       ")
+        file.write('\nComments:         ' + failure)
         file.close()
         sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
     print "Do you wish to proceed to another test?"
