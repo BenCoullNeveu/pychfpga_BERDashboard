@@ -262,7 +262,8 @@ class chFPGA_controller(object):
             if self.FMC_present:
                 self.log.info("Getting ADC information")
                 self.adc_info = self.read_dict_from_eeprom()
-                self.adc_serial = int(self.adc_info['Serial #'])
+                #self.adc_serial = int(self.adc_info['Serial #'])
+                self.adc_serial = self.adc_info['Serial #']
             self.motherboard_serial = self.get_motherboard_serial()
  
         except SocketIO.timeout:

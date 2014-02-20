@@ -59,5 +59,5 @@ if len(sys.argv) == 2 and sys.argv[1] == "install":
   os.system("install -m 755 %s.py %s" % (target, bin_dir))
   
   # Copy impact source to the CHIME directory.
-  print "Copying %s to %s." % (impact, chime_dir)
+#print "Copying %s to %s." % (impact, chime_dir)
   os.system("install -m 755 %s.py %s" % (target, bin_dir))
