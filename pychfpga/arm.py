@@ -9,13 +9,73 @@ import argparse
 import os.path
 import struct
 
+class FpgaMmi:
+    """
+    Base class that defines the memory-mapped interface to the FPGA.
+    This is used by Python code that handles the FPGA hardware directly (as opposed to handlers implemented into the ARM software)
+    This is a virtual class. All methods hereis are meand to be overrided by implementation-specific derived class.
+
+    Notes:
+       - 140223 JFC: Maybe should define __enter__ and __exit__ so we can use with 'with'
+       - 140223 JFC: Maybe add methods to allow packing multiple commands in a single packet. By default, the command queue is flushed at every write command.
+    """
+
+    def open():
+        pass
+
+    def close():
+        pass
+
+    def flush():
+        """
+        Sends any remaining read/write command that are pending in the command queue.
+        """
+        pass:
+
+    def read(addr, type=np.uint32, length=1):
+        """
+        Reads 'length' values of type 'type' starting from address 'addr'
+        """
+        pass
+
+    def write(addr, data, flush = True):
+        """
+        Writes data to the FPGA Memory-mapped space starting from address 'addr'.
+        The command is immediately sent if 'flush' is true. Otherwise the command is simply queued.
+        """
+        pass
+    def write_mask(addr, data, mask):
+        """
+        Writes data to the FPGA Memory-mapped space starting from address 'addr', but only affect bits that are set in mask.
+        This function assumes that the memory location can be read back.
+        """
+        pass
+
+class ArmFpgaMmi(FpgaMmi):
+    """
+    Provides access to the FPGA memory-mapped registers through the ARM processor.
+    Two implementations are possible:
+        Access is provided directly through the MMI socket (fastest)
+        Access is provided through the JSON interface (safer?)
+    """
+    pass
+
+class DirectFpgaMmi(FpgaMmi):
+    """
+    Provides access to the FPGA memory-mapped registers directly through the FPGA Ethernet link.
+    """
+
+
 class ARM(object):
 
 
     def __init__(self, ip_address):
         self.ip_address = ip_address
         self.logger = logging.getLogger(__name__)
- 
+        self.fpga_mmi = DirectFpgaMmi()
+        self.fpga_mmi.open()
+
+
     def configure_fpga(self, filename):
         """
         Configures the FPGA with the specified BIT or BIN file.
@@ -102,6 +162,27 @@ class ARM(object):
         else:
             self.logger.error('Programming failed')
             self.logger.error('Error message: %s' % resp_dict['error']['message'])
+
+
+    """
+    ARM I2C access methods.
+    Accesses the I2C busses controlled by the ARM directly.
+    The methods are implemented by JSON commands and may be imported by Tuber.
+    """
+    i2c_ports = {'port':0
+    }
+
+    # Maybe the methods below should be part of a I2C class
+    def i2c_set_port(port_id):
+        """
+        Sets the I2C interface to enable access to the specified port(s).
+        Multiple ports cans be enabled simultaneously.
+        """
+
+    def i2c_write_read(i2c_addr, data=None, length=None):
+        """
+        Basic I2C access function. Can perform a single read command, write command, or a SMBUS-compatible write followed by a restart and a read. 
+        """
 
 
 

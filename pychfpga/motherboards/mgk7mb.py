@@ -11,6 +11,8 @@ MGK7MB.py module
 """
 # MGADC08 FMC ADC board device handlers
 import logging
+
+import pca9575
 from common import util
 
 util.reload_modules([])
@@ -42,29 +44,6 @@ class tca9548a(object):
             raise chFPGAException('Must provide either port number(s) or a bit mask')
 
         self.i2c.write_read(self.switch_address, data=[bit_pattern])
-
-class pca9575(object):
-    """
-    Implements the interface to the I2C IO Extender.
-    """
-
-    def __init__(self, i2c_interface, address, verbose=0):
-        self.i2c = i2c_interface
-        self.address = address
-
-    def write(self, register, value):
-        """ 
-        Writes a value to the specified register
-        """
-        self.i2c.select_bus('GPIO')
-        self.i2c.write_read(self.address, data=[register, value])
-
-    def read(self, register):
-        """ 
-        Read a value to the specified register
-        """
-        self.i2c.select_bus('GPIO')
-        return self.i2c.write_read(self.address, data=[register], read_length=1)
 
 I2C_SWITCH_ADDR = 0b1110100
 
@@ -127,6 +106,9 @@ class I2CWrapper(object):
         return self.fpga_i2c.write_read(*args, **kwargs)
 
 class ddr3_eeprom(object):
+    """
+    Provides access to the ML605 DDR3 memory embedded EEPROM.
+    """
 
     def read_DDR3_reg(self, addr):
         """ Reads from the EEPROM"""
@@ -138,26 +120,78 @@ class ddr3_eeprom(object):
         data = i2c.write_read(i2c_addr, length=2) # reads a word
         return data
 
+class IceBoard(object):
+    """
+    Virtual class representing the IceBoard Rev2.
+    The methods and properties are actually implemented by derived classes in the following way:
+        - The low-level hardware access is made directly in python through the ARM or FPGA I2C links to the board.
+        - The low-level hardware access is implemented in the ARM< software, and all methods and properties are imported through tuber.
+    """
+    class IceBoardException(Exception):
+        pass
 
-class MGK7MB(object):
-    """ Implements wrapper object for MGADC08 FMC ADC board"""
+    def __init__(self, interface, arm_firmware=None, fpga_firmware = None):
+
+        """
+        Notes:
+            'arm_if' used for i2c. and arm-specific fw support. 
+            if arm_if: i2c_if = arm_if.i2c else: if fpga_if: i2c_if = fpga_if else raise IceBoardException('message')
+
+            'interface' provides a object through which the ARM and FPGA firmare is accessed. 
+        """
+
+        # arm = ARM(interface)
+        # fpga = FPGA(interface)
+
+        # self.arm_fw = arm_firmware
+        # self.fpga_fw = fpga_firmware
+        # if arm_firmware:
+        #     i2c_interface = arm_firmware.i2c
+        # elif fpga_firmware:
+        #     i2c_interface = fpga_firmware.i2c
+
+
+class MGK7MB(IceBoard):
+    """
+    Implements the interfaces to the IceBoard functionnalities in Python through the specified I2C interface (ARM or FPGA).
+    """
 
     NUMBER_OF_FMC_SLOTS = 2 # Indicates the number of FMC slots supported by this platform
+
+
     GPIO_POWER_I2C_ADDR = 0b0100000
     GPIO_SFP_QSFP_I2C_ADDR = 0b0100001
     GPIO_SW_LEDS_ADDR = 0b0100010
     GPIO_ARM_PHY_LEDS_ADDR = 0b0100011
 
-    def __init__(self, system_instance, verbose=0):
-        self.sys = system_instance
+    def __init__(self, i2c_interface, verbose=0):
+        
+        # self.sys = system_instance
         self.logger = logging.getLogger(__name__)
+        self.i2c = i2c_interface
 
         if verbose >= 2: self.logger.info(' Instantiating motherboard I2C manager')
-        self.i2c = I2CWrapper(self.sys.fpga_I2C)
+        self.i2c = I2CWrapper(self.i2c)
 
         if verbose >= 2: self.logger.info(' Instantiating I2C GPIO manager')
-        self.gpio_power = pca9575(self.i2c, self.GPIO_POWER_I2C_ADDR)
+        self.gpio_power = pca9575.pca9575(self.i2c, self.GPIO_POWER_I2C_ADDR, 'GPIO')
+        self.ioexpander_sw_leds = pca9575.pca9575(self.i2c, self.GPIO_SW_LEDS_ADDR, 'GPIO')
 
+        self.LED_TABLE = {
+            # name : (I2C address, byte, bit number (width))
+            'LED1': (self.ioexpander_sw_leds, 1, 7), 
+            'LED2': (self.ioexpander_sw_leds, 1, 6), 
+            'LED3': (self.ioexpander_sw_leds, 1, 5), 
+            'LED4': (self.ioexpander_sw_leds, 1, 4), 
+            'LED5': (self.ioexpander_sw_leds, 1, 3), 
+            'LED6': (self.ioexpander_sw_leds, 1, 2), 
+            'LED7': (self.ioexpander_sw_leds, 1, 1), 
+            'LED8': (self.ioexpander_sw_leds, 1, 0), 
+            'LED9': (GPIO_ARM_PHY_LEDS_ADDR, 0, 0), 
+            'LED10': (GPIO_ARM_PHY_LEDS_ADDR, 0, 1), 
+            'LED11': (GPIO_ARM_PHY_LEDS_ADDR, 0, 2), 
+            'LED12': (GPIO_ARM_PHY_LEDS_ADDR, 0, 3)
+            }
 
 
     def init(self):
@@ -171,39 +205,78 @@ class MGK7MB(object):
         """
         Enables or disables power of the specified FMC slot.
         'state' is converted to a boolean value so 0/1 can be used as well as False/True.
+        Proper power sequencing is done to prevent the FMC board switchers to create too much a current spike when enabled.
+
+        History:
+            140223 JFC: Modified to use register names.
+        Todo:
+            140223 JFC: used masked writes to avoid side effects.
         """
+        if isinstance(fmc_number, int):
+            fmc_number = [fmc_number]
 
-        if fmc_number == 0:
-            self.gpio_power.write(0x0A, 0b00000000) # Turn off all power signals before we enable the GPIO outputs
-            self.gpio_power.write(0x08, 0b10101000)
-            self.gpio_power.write(0x0A, 0b00000111*bool(state)) # Turn on power to board
-            self.gpio_power.write(0x0A, 0b01010111*bool(state)) # Set Power Good and CLKDIR to 1
-        elif fmc_number == 1:
-            self.gpio_power.write(0x0B, 0b00000000) # Turn off all power signals before we enable the GPIO outputs
-            self.gpio_power.write(0x09, 0b10101000)
-            self.gpio_power.write(0x0B, 0b00000111*bool(state))
-            self.gpio_power.write(0x0B, 0b01010111*bool(state))
-        else:
-            raise self.sys.chFPGAException('FMC number %i is not a valid value' % fmc_number)
+        for fmc in fmc_number:
+            if fmc not in range(self.NUMBER_OF_FMC_SLOTS):
+                raise self.IceBoardException('FMC number %i is not a valid value' % fmc)
+            else:
+                out_reg = 'OUT%i' % fmc # sets the register name to access based on the FMC number
+                cfg_reg = 'CFG%i' % fmc
+                self.gpio_power.write(out_reg, 0b00000000) # Turn off all power signals before we enable the GPIO outputs
+                self.gpio_power.write(cfg_reg, 0b10101000)
+                self.gpio_power.write(out_reg, 0b00000111*bool(state)) # Turn on power to board
+                self.gpio_power.write(out_reg, 0b01010111*bool(state)) # Set Power Good and CLKDIR to 1
 
-    LED_TABLE = {
-        'LED1': (GPIO_SW_LEDS_ADDR, 1, 7), 
-        'LED2': (GPIO_SW_LEDS_ADDR, 1, 6), 
-        'LED3': (GPIO_SW_LEDS_ADDR, 1, 5), 
-        'LED4': (GPIO_SW_LEDS_ADDR, 1, 4), 
-        'LED5': (GPIO_SW_LEDS_ADDR, 1, 3), 
-        'LED6': (GPIO_SW_LEDS_ADDR, 1, 2), 
-        'LED7': (GPIO_SW_LEDS_ADDR, 1, 1), 
-        'LED8': (GPIO_SW_LEDS_ADDR, 1, 0), 
-        'LED9': (GPIO_ARM_PHY_LEDS_ADDR, 0, 0), 
-        'LED10': (GPIO_ARM_PHY_LEDS_ADDR, 0, 1), 
-        'LED11': (GPIO_ARM_PHY_LEDS_ADDR, 0, 2), 
-        'LED12': (GPIO_ARM_PHY_LEDS_ADDR, 0, 3)
-        }
+
+    # The following table defines the LEDS found on the board
 
     def set_led(self, led_name, state):
-        old_value = 0
+        """
+        Set the LED(s) specified in 'led_name' to the the 'state'.
+        'led_name' can be a list of LED names found in LED_TABLE.
+        'state' can be a single boolean value, or an array with the same length as 'led_name'
+        """
+        if isinstance(led_name, str):
+            led_name = [ led_name]
 
+        for led in led_led_name:
+            if led not in self.LED_TABLE:
+                raise IceBoardException('Invalid LED name')
+            led_info = self.LED_TABLE[led]
+            io_expander = led_info[0]
+            led_byte = led_info[1]
+            led_bit = led_info[2]
+
+            io_expander.write('OUT%i' % led_byte, (1<<led_bit) * bool(state) , mask = 1<<led_bit)
+
+        pass # code not implemented
+    def get_led(self, led_name):
+        """
+        Returns the status of specified LED(s).
+        """
+
+    TEMP_SENSOR_TABLE = {}
+    def get_temperature(self, temperature_sensor_name):
+        """
+        Returns the current temperature measured on the specified sensor(s).
+        NOTE: some temperatures are taken from the FPGA inetrnal SYSTEM monitor.
+        """
+        pass # Not implemented yet
+
+    POWER_SENSOR_TABLE = {
+        # name : (i2c address, calibration)
+        }
+    def get_power(self, target):
+        """
+        Returns the voltage and current of the power monitoring system.
+        Includes power measured internally from  the FPGA's system monitor.
+        Multiple targets can be specified.
+        The power is returned as a (voltage, current) tuple.
+        """
+    def get_serial_number(self):
+        """
+        Returns the board's serial number. which is actually the FPGA's serial number.
+        """
+        self.fpga .get_serial_number(); # tentative code
 
     def get_info(self):
         """ loads the info data on the motherboard """
