@@ -141,6 +141,14 @@ if __name__ == "__main__":
   os.unlink(conf["acq"]["curfile"])
   os.symlink(acq_base_dir, conf["acq"]["curfile"])
 
+  # Lock the logfile.
+  log_file_lock = "%s/.ch_master.log.lock" % acq_base_dir
+  fp = open(log_file_lock, "w")
+  if not fp:
+    log.error("Could not create lockfile \"%s\"." % log_file_lock)
+  else:
+    fp.close()
+
   # Start writing to a log file in this directory.
   acq_log_path = "%s/ch_master.log" % (acq_base_dir)
   log_file = logging.FileHandler(acq_log_path)
@@ -239,4 +247,6 @@ if __name__ == "__main__":
   except(KeyboardInterrupt, SystemExit):
     acq.stop()
 
+# Remove log file lock and exit.
+os.remove(log_file_lock)
 log.info("Exiting ch_master now.")
