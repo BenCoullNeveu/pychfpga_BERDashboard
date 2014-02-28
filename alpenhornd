@@ -193,14 +193,16 @@ def update_node(node):
     if os.path.exists(fullpath):
       if di.md5sum_file(fullpath) == fcopy.file.md5sum:
         log.info("File is A-OK!")
-        fcopy.has_file == 'Y'
       else:
         log.error("File is corrupted!")
-        fcopy.has_file == 'X'
+        di.ArchiveFileCopy.update(has_file='X').where(
+           di.ArchiveFileCopy.id == fcopy.id).execute()
     else:
       log.error("File does not exist!")
       fcopy.has_file == 'N'
 
+  # Delete files.
+  # To be added.
 
   # Check for copy requests (only if this node can still grow).
   if node.growable:
