@@ -70,7 +70,6 @@ def starttest():
         choosetest(username,board_sn,board_vn,board_md)
         
 def date_format(date):
-    
     #finds the date, converts to string and adds 0 if <10 for day, month
     #day
     day=str(date[2])

@@ -14,7 +14,7 @@ def programFPGA(username=None,board_sn=None,board_vn=None,board_md=None):
     file = open(fname, 'a')
     file.write('\n\nProgramming the FPGA Test\n')
     file.write('------\n')
-    date_str=iceboardtest.date_format(tm.localtime())
+    date_str = iceboardtest.date_format(tm.localtime())
     file.write('Date : ' + date_str + '\n')
     file.write('Tester: ' + username + '\n\n')
 

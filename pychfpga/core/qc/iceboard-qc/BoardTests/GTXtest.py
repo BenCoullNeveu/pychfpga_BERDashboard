@@ -24,7 +24,7 @@ def GTXtest(username=None,board_sn=None,board_vn=None,board_md=None):
     program = raw_input("Enter 'Y' or 'N': 	")
     if program != 'Y' and program != 'y':
         FPGAtest.FPGAtest(username,board_sn,board_vn,board_md)
-    print "Let's set evreything up! Grab the JTAG cable and connect all the wires to the JTAG pins. The pins are located on the left side of the fan."
+    print "Let's set everything up! Grab the JTAG cable and connect all the wires to the JTAG pins. The pins are located on the left side of the fan."
     print "Connect the cables accordingly by pin. Leave the n/c pin unconnected and connect VREF wire to 3V3 pin. All other labels should match."
     print "Connect the JTAG USB to the computer."
     notimportant = raw_input("Press Enter to continue:      ")

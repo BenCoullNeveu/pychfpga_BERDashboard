@@ -62,7 +62,7 @@ def DCtest(username=None,board_sn=None,board_vn=None,board_md=None):
     print "Please read the current measurement on power supply. Enter the voltage below (up to 3 sig. figs. , i.e. '1.00')."
     cur = float(input("Enter:     "))
     file.write('Current           ' + str(cur) + '     ' + '1.00     ')
-    if abs((cur-1.00))/1. < 0.02:
+    if abs((cur-0.90))/0.9 < 0.15:
         file.write('Pass\n')
     else:
         file.write('Fail\n')
