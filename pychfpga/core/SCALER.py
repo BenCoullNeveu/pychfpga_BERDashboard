@@ -31,6 +31,7 @@ class SCALER_base(Module_base):
     WRITE_COEFF_BANK  = BitField(CONTROL, 0x01, 0, width=4, doc="Indicates in which data page the gain coefficients are being written to. Page 0-7 are coefficients fri bank0, Page 8-15 are for Bank 1 coefficients.")
     FIXED_GAIN_REAL   = BitField(CONTROL, 0x03, 0, width=16, doc="Real part of the fixed gain. Used when USE_GAIN_TABLE= '0'.")
     FIXED_GAIN_IMAG   = BitField(CONTROL, 0x05, 0, width=16, doc="Imaginary part of the fixed gain. Used when USE_GAIN_TABLE= '0'.")
+    ROUNDING_MODE = BitField(CONTROL, 0x06, 0, width=2, doc="Set rounding mode.  0b00->Truncate, 0b01->Round, 0b10->Convergent Rounding")
 
     # Define Status registers
 
