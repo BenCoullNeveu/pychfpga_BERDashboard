@@ -1206,6 +1206,59 @@ class chFPGA_controller(object):
     def configure_crossbar(self):
         self.CROSSBAR.configure()
 
+    def set_offset_binary_encoding(self, offset=True, channels=None, sync=True):
+        """
+        Set the output to be encoded in offset binary instead of 2's compliment
+        if sync is true, perform a sync afterward.  Necessary for data to continue flowing
+        """
+        if channels == None:
+            channels = self.default_channels
+
+        if ~isinstance(channels, list):
+            self.log.warning("channels must be a list")
+            return
+        else:
+            # Set the scaler to use offset binary
+            for channel in channels:
+                self.ANT[channel].SCALER.USE_OFFSET_BINARY=offset
+            if sync:
+                self.sync()
+
+    def set_send_flags(self, send_flags=True, crossbar_outputs=None, sync=True):
+        """
+        Configures the gpu output to send flags in the packets.
+        """
+        if crossbar_outputs == None:
+            crossbar_outputs = range(self.NUMBER_OF_CROSSBAR_OUTPUTS)
+
+        if ~isinstance(crossbar_outputs, list):
+            self.log.warning("crossbar_outputs must be a list")
+            return
+        else:
+            # Set the scaler to use offset binary
+            for output in crossbar_outputs:
+                self.CROSSBAR[output].CH_DIST.SEND_FLAGS=1
+            if sync:
+                self.sync()       
+
+    def set_offset_binary(self, offset=True, channels=None, sync=False):
+        """
+        Set the output to be encoded in offset binary instead of 2's compliment
+        if sync is true, perform a sync afterward.  Necessary for data to continue flowing
+        """
+        if channels == None:
+            channels = self.default_channels
+
+        if ~isinstance(channels, list):
+            self.log.warning("channels must be a list")
+            return
+        else:
+            # Set the scaler to use offset binary
+            for channel in channels:
+                self.ANT[channel].SCALER.USE_OFFSET_BINARY=offset
+            if sync:
+                self.sync()
+
     def set_gain(self, gain = None, postscaler = None, channels=None, use_fixed_gain = False):
         """
         Sets the gain between the (18+18) bits input of the scaler module (from the FFT) to its 4- or 8- bit scaler output. 
