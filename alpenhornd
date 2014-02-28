@@ -20,6 +20,7 @@ log.setLevel(logging.INFO)
 
 # Parameters.
 lockfile    = ".writing.lock"
+max_time_per_node_operation = 30
 
 
 
@@ -184,6 +185,9 @@ def update_node(node):
   if node.suspect:
     log.debug("Skipping suspected node \"%s\"." % node.name)
 
+  # Update amount of free space.
+  # To be added.
+
   # Check for file integrety.
   for fcopy in di.ArchiveFileCopy.select().where(
                  di.ArchiveFileCopy.node == node,
@@ -206,6 +210,7 @@ def update_node(node):
 
   # Check for copy requests (only if this node can still grow).
   if node.growable:
+    start_time = time.time()
     for req in di.ArchiveFileCopyRequest.select().where(
                   di.ArchiveFileCopyRequest.completed == False).where(
                   di.ArchiveFileCopyRequest.group_to == node.group):
@@ -220,6 +225,9 @@ def update_node(node):
                   "node \"%s\"." % (req.file.acq.name, req.file.name,
                                     req.node_from.name))
         continue
+
+      # Check that there is enough space available.
+      # To be added.
 
       # Constuct the origin and destination paths.
       from_path = "%s/%s/%s" % (req.node_from.root, req.file.acq.name, 
@@ -263,6 +271,8 @@ def update_node(node):
         di.ArchiveFileCopy.update(has_file = 'M').where(
            di.ArchiveFileCopy.file == req.file).execute()
 
+      if time.time() - start_time > max_time_per_node_operation:
+        break  # Don't hog all the time.
                                
 
 
