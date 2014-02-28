@@ -37,7 +37,7 @@ def node2group(node_name, group_name, force=False, nice=0):
                      di.ArchiveFileCopy.node == from_node and
                      di.ArchiveFileCopy.has_file == 'Y'))
 
-  copy = to_copy - from_copy
+  copy = from_copy - to_copy
   if not len(copy):
     print "No files to copy."
     return
