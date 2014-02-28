@@ -1214,7 +1214,7 @@ class chFPGA_controller(object):
         if channels == None:
             channels = self.default_channels
 
-        if ~isinstance(channels, list):
+        if not isinstance(channels, list):
             self.log.warning("channels must be a list")
             return
         else:
@@ -1231,7 +1231,7 @@ class chFPGA_controller(object):
         if crossbar_outputs == None:
             crossbar_outputs = range(self.NUMBER_OF_CROSSBAR_OUTPUTS)
 
-        if ~isinstance(crossbar_outputs, list):
+        if not isinstance(crossbar_outputs, list):
             self.log.warning("crossbar_outputs must be a list")
             return
         else:
@@ -1241,23 +1241,6 @@ class chFPGA_controller(object):
             if sync:
                 self.sync()       
 
-    def set_offset_binary(self, offset=True, channels=None, sync=False):
-        """
-        Set the output to be encoded in offset binary instead of 2's compliment
-        if sync is true, perform a sync afterward.  Necessary for data to continue flowing
-        """
-        if channels == None:
-            channels = self.default_channels
-
-        if ~isinstance(channels, list):
-            self.log.warning("channels must be a list")
-            return
-        else:
-            # Set the scaler to use offset binary
-            for channel in channels:
-                self.ANT[channel].SCALER.USE_OFFSET_BINARY=offset
-            if sync:
-                self.sync()
 
     def set_gain(self, gain = None, postscaler = None, channels=None, use_fixed_gain = False):
         """
