@@ -26,24 +26,21 @@ def node2group(node_name, group_name, force=False, nice=0):
   except pw.DoesNotExist:
     raise Exception("Group \"%s\" does not exist in the DB." % group_name)
 
-  to_copy = Set()
-  for to_node in di.StorageNode.select().where(di.StorageNode.group ==
-                                               to_group):
-    to_copy |= Set(di.ArchiveFileCopy.select().where(
-                      di.ArchiveFileCopy.node == to_node and
-                      di.ArchiveFileCopy.has_file == 'Y'))
+  copy = di.ArchiveFileCopy.select().where(
+            di.ArchiveFileCopy.node == from_node,
+            di.ArchiveFileCopy.has_file == 'Y',
+            ~(di.ArchiveFileCopy.file <<
+                di.ArchiveFile.select().join(di.ArchiveFileCopy).where(
+                di.ArchiveFileCopy.node <<
+                   di.StorageNode.select().where(
+                      di.StorageNode.group == to_group))))
 
-  from_copy = Set(di.ArchiveFileCopy.select().where(
-                     di.ArchiveFileCopy.node == from_node and
-                     di.ArchiveFileCopy.has_file == 'Y'))
-
-  copy = from_copy - to_copy
-  if not len(copy):
+  if not copy.count():
     print "No files to copy."
     return
 
   print "Will request that %d files be copied from node %s to group %s." % \
-        (len(copy), node_name, group_name)
+        (copy.count(), node_name, group_name)
   if not (force or ask_yesno("Do you want to proceed?")):
     print "Aborted."
     return
