@@ -150,7 +150,7 @@ def import_file(root, acq_name, file_name):
   # check again.
   if not file.copies.where(di.ArchiveFileCopy.node == node).count():
     copy = di.ArchiveFileCopy.create(file=file, node=node, has_file='Y',
-                                     wants_file = False)
+                                     wants_file = True)
     log.info("Registered file copy \"%s/%s\" do DB." % (acq_name, file_name))
 
   # Make sure information about the file exists in the DB.
@@ -184,11 +184,84 @@ def update_node(node):
   if node.suspect:
     log.debug("Skipping suspected node \"%s\"." % node.name)
 
-  # Check for copy requests.
-  for req in di.ArchiveFileCopyRequests.select().where(
-                di.ArchiveFileCopyRequests.completed == False and
-                di.ArchiveFileCopyRequests.group_to == node.group):
-    print req
+  # Check for file integrety.
+  for fcopy in di.ArchiveFileCopy.select().where(
+                 di.ArchiveFileCopy.node == node,
+                 di.ArchiveFileCopy.has_file == 'M'):
+    fullpath = "%s/%s/%s" % (node.root, fcopy.file.acq.name, fcopy.file.name)
+    log.info("Checking file \"%s\" on node \"%s\"." % (fullpath, node.name))
+    if os.path.exists(fullpath):
+      if di.md5sum_file(fullpath) == fcopy.file.md5sum:
+        log.info("File is A-OK!")
+        fcopy.has_file == 'Y'
+      else:
+        log.error("File is corrupted!")
+        fcopy.has_file == 'X'
+    else:
+      log.error("File does not exist!")
+      fcopy.has_file == 'N'
+
+
+  # Check for copy requests (only if this node can still grow).
+  if node.growable:
+    for req in di.ArchiveFileCopyRequest.select().where(
+                  di.ArchiveFileCopyRequest.completed == False).where(
+                  di.ArchiveFileCopyRequest.group_to == node.group):
+
+      # Only proceed if the source file actually exists (and is not corrupted).
+      try:
+        di.ArchiveFileCopy.get(di.ArchiveFileCopy.file == req.file,
+                               di.ArchiveFileCopy.node == req.node_from,
+                               di.ArchiveFileCopy.has_file == 'Y')
+      except pw.DoesNotExist:
+        log.error("Skipping request for %s/%s since it is not available on "
+                  "node \"%s\"." % (req.file.acq.name, req.file.name,
+                                    req.node_from.name))
+        continue
+
+      # Constuct the origin and destination paths.
+      from_path = "%s/%s/%s" % (req.node_from.root, req.file.acq.name, 
+                                req.file.name)
+      if req.node_from.host != node.host:
+        from_path = "%s:%s" % (req.node_from.address, from_path)
+      to_path = "%s/%s/" % (node.root, req.file.acq.name)
+      if not os.path.isdir(to_path):
+        log.info("Creating directory \"%s\"." % to_path)
+        os.mkdir(to_path)
+
+      # Giddy up!
+      log.info("Rsyncing file \"%s\"." % req.file.name)
+      if os.system("rsync -aqzpt %s %s" % (from_path, to_path)):
+        # If the copy didn't work, then the remote file may be corrupted.
+        di.ArchiveFileCopy.update(has_file = 'M').where(
+           di.ArchiveFileCopy.file == req.file).execute()
+        continue
+
+      # Check integrety.
+      md5sum = di.md5sum_file("%s/%s" % (to_path, req.file.name))
+      if md5sum == req.file.md5sum:
+        log.info("Successfully compared md5sum.")
+        di.ArchiveFileCopy.insert(file=req.file, node=node, has_file='Y',
+                                  wants_file='Y').execute()
+        di.ArchiveFileCopyRequest.update(completed=True).where(
+           di.ArchiveFileCopyRequest.file == req.file).where(
+           di.ArchiveFileCopyRequest.group_to == node.group).execute()
+      else:
+        log.error("Error with md5sum check: %s on node \"%s\", but %s on " \
+                  "this node, \"%s\"." % (req.file.md5sum, req.node_from.name,
+                  md5sum, node.name))
+        log.error("Removing file \"%s/%s\"." % (to_path, req.file.name))
+        try:
+          os.remove("%s/%s" % (to_path, req.file.name))
+        except:
+          log.error("Could not remove file.")
+        continue
+
+        # Since the md5sum failed, the remote file may be corrupted.
+        di.ArchiveFileCopy.update(has_file = 'M').where(
+           di.ArchiveFileCopy.file == req.file).execute()
+
+                               
 
 
 
@@ -230,7 +303,7 @@ if __name__ == "__main__":
   # Get the nodes mounted on this host.
   host = socket.gethostname()
   node_list = []
-  for node in di.StorageNode.select().where(di.StorageNode.host == host and
+  for node in di.StorageNode.select().where(di.StorageNode.host == host).where(
                                             di.StorageNode.mounted):
     node_list.append(node)
 
@@ -260,7 +333,9 @@ if __name__ == "__main__":
 
   try:
     while True:
-      time.sleep(1)
+      for node in di.StorageNode.select().where(di.StorageNode.host == host):
+        update_node(node)
+      time.sleep(10)
   except KeyboardInterrupt:
     for obs in obs_list:
       if obs:
