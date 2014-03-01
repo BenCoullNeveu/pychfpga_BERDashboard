@@ -67,9 +67,47 @@ def node2group(node_name, group_name, force=False, nice=0):
   sys.stdout.write("\n")
 
 
+def summary(width=80):
+  col1 = 15
+  col2 = 6
+  col3 = width - col1 - col2 - 10
+
+  print
+  print "Summary of Data Index at %s." % datetime.datetime.now()
+  hline = "+-%-*s-+-%*s-+-%-*s-+" % (col1, "-" * col1, col2, "-" * col2, \
+                                     col3, "-" * col3)
+  print hline
+  print "| %-*s | %*s | %-*s |" % (col1, "Node", col2, "N File", col3, \
+                                   "Mount Point")
+  print hline
+  for node in di.StorageNode.select():
+    n_file = di.ArchiveFileCopy.select().where(
+               di.ArchiveFileCopy.node == node).count()
+    if node.mounted:
+      mount_point = "%s:%s" % (node.host, node.root)
+    else:
+      mount_point = "<unmounted>"
+    print "| %-*s | %*d | %-*s |" % (col1, node.name, col2, n_file, col3, \
+                                     mount_point)
+  print hline
+  print
 
 def usage():
-  print "Usage!"
+  print "Usage: alpenhorn <command> <args>... [options]..."
+  print "Interact with data index in the CHIME DB."
+  print
+  print "Commands:"
+  print "  node2group <node> <group>"
+  print "    * Request transfer of files on <node> to <group>."
+  print "  summary"
+  print "    * Show the number of files and mount points for all nodes."
+  print
+  print "Options:"
+  print "  -f, --force      do not prompt user before making changes to the DB"
+  print "  -n, --nice       specify a \"nice\" value for the operation (not yet"
+  print "                   implemented)"
+  print
+  print "Copyright CHIME collaboration, 2013."
   exit(0)
 
 if __name__ == "__main__":
@@ -89,3 +127,9 @@ if __name__ == "__main__":
     if len(arg) != 3:
       usage()
     node2group(arg[1], arg[2], force=option.force, nice=option.nice)
+  elif cmd == "summary":
+    if len(arg) != 1:
+      usage()
+    summary()
+  else:
+    usage()
