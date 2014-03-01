@@ -2,6 +2,7 @@
 # Alpenhorn: announces the products of mountaineering CHIME instruments.
 
 from ch_util import data_index as di
+import datetime
 import h5py
 import logging
 import os
@@ -92,6 +93,16 @@ def get_filecorrinfo_keywords_from_h5(path):
 
 
 def import_file(root, acq_name, file_name):
+  """Import a file into the DB.
+
+  This routine adds the following to the database, if they do not already exist
+  (or might be corrupted).
+  - The acquisition that the file is a part of.
+  - Information on the acquisition, if it is of type "corr".
+  - The file.
+  - Information on the file, if it is of type "corr".
+  - Indicates that the file exists on this node.
+  """
   fullpath = "%s/%s/%s" % (root, acq_name, file_name)
 
   # Skip the file if ch_master.py still has a lock on it.
@@ -186,7 +197,12 @@ def update_node(node):
     log.debug("Skipping suspected node \"%s\"." % node.name)
 
   # Update amount of free space.
-  # To be added.
+  x = os.statvfs(node.root)
+  avail_gb = float(x.f_bavail) * x.f_bsize * 9.31323e-10
+  di.StorageNode.update(avail_gb=avail_gb,
+                        avail_gb_last_checked=datetime.datetime.now()).where(
+     di.StorageNode.id == node.id).execute()
+  log.info("Node \"%s\" has %.2f GB available." % (node.name, avail_gb))
 
   # Check for file integrety.
   for fcopy in di.ArchiveFileCopy.select().where(
@@ -230,8 +246,27 @@ def update_node(node):
                                     req.node_from.name))
         continue
 
+      # Only proceed if the destination file does not already exist.
+      try:
+        di.ArchiveFileCopy.get(di.ArchiveFileCopy.file == req.file,
+                               di.ArchiveFileCopy.node == node,
+                               di.ArchiveFileCopy.has_file == 'Y')
+        log.info("Skipping request for %s/%s since it already exists on " \
+                 "this node (\"%s\"), and updating DB to reflect this." % \
+                 (req.file.acq.name, req.file.name, node.name))
+        di.ArchiveFileCopyRequest.update(completed=True).where(
+                       di.ArchiveFileCopyRequest.file == req.file).where(
+                                    di.ArchiveFileCopyRequest.group_to ==
+                                    node.group).execute()
+        continue
+      except pw.DoesNotExist:
+        pass
+
       # Check that there is enough space available.
-      # To be added.
+      if avail_gb * 1e6 < 2.0 * req.file.size_b:
+        log.warning("Node \"%s\" is full: not adding datafile \"%s/%s\"." % \
+                    (node.name, req.file.acq.name, req.file.name))
+        continue
 
       # Constuct the origin and destination paths.
       from_path = "%s/%s/%s" % (req.node_from.root, req.file.acq.name, 
@@ -245,7 +280,7 @@ def update_node(node):
 
       # Giddy up!
       log.info("Rsyncing file \"%s\"." % req.file.name)
-      if os.system("rsync -aqzpt %s %s" % (from_path, to_path)):
+      if os.system("rsync -aqzpt -e \"ssh -q\" %s %s" % (from_path, to_path)):
         # If the copy didn't work, then the remote file may be corrupted.
         di.ArchiveFileCopy.update(has_file = 'M').where(
            di.ArchiveFileCopy.file == req.file).execute()
@@ -322,8 +357,6 @@ if __name__ == "__main__":
   for node in di.StorageNode.select().where(di.StorageNode.host == host).where(
                                             di.StorageNode.mounted):
     node_list.append(node)
-
-  # Get the node.
   if not len(node_list):
     raise Exception("No nodes on this host (\"%s\") registered in the DB!" % 
                     host)
