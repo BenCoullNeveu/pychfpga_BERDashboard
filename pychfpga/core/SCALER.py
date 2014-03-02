@@ -92,10 +92,24 @@ class SCALER_base(Module_base):
                 gain = gain_list[bin]
                 page_table[4*ix:4*ix+4] = np.fromstring(struct.pack('<hh', gain.imag, gain.real), np.int8)
             self.WRITE_COEFF_BANK = 8*bank + page
-            print page_table
+            #print page_table
             self.write_ram(0, np.uint8(page_table))
 
-
+    def get_gain_table(self, bank=0):
+        """
+        Gets the scaler's complex gain table for the specified bank.  Converts to numpy complex array. 
+        """
+        page_table = np.zeros(512, np.int8)
+        gain_table = np.zeros(self.fpga.NUMBER_OF_FREQUENCY_BINS, np.complex)
+        for page in range(8): # there are 8 pages of coefficients per bank
+            self.WRITE_COEFF_BANK = 8*bank + page # Sets which page/bank being read? Not sure if will work...
+            page_table = self.read_RAM(0)
+            for ix in range(128): # there are 128 coefficients per page ( 4 byte per coefficient = 512 bytes total per page)
+                bin = page*128 + ix
+                g_real, g_imag = struct.unpack('<hh',page_table[4*ix:4*ix+4])
+                gain_table[bin] = g_real +1j*g_imag
+        return gain_table
+        
     def status(self):
         """ Displays the status of the scaler module"""
         print '-------------- ANT[%i].SCALER STATUS --------------' % self.instance_number 

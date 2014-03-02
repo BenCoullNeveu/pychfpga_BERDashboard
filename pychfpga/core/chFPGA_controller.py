@@ -1363,9 +1363,11 @@ class chFPGA_controller(object):
 
     def get_gain(self):
         """
-        Returns the log2 SCALER gain each antenna. 
+        Returns the log2 SCALER gain each antenna, and the linear gain table used for each antenna or the fixed gain.
         """
-        return [ant.SCALER.SHIFT_LEFT-1 for ant in self.ANT.values()]
+        glog = [ant.SCALER.SHIFT_LEFT-1 for ant in self.ANT.values()]
+        glin = [ant.SCALER.get_gain_table() for ant in self.ANT.value()]
+        return glin, glog
 
     def set_fmc_power(self, state):
         """
