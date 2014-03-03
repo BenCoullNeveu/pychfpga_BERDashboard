@@ -106,7 +106,7 @@ class SCALER_base(Module_base):
             page_table = self.read_RAM(0, length=512)
             for ix in range(128): # there are 128 coefficients per page ( 4 byte per coefficient = 512 bytes total per page)
                 bin = page*128 + ix
-                g_real, g_imag = struct.unpack('<hh',page_table[4*ix:4*ix+4])
+                g_imag, g_real = struct.unpack('<hh',page_table[4*ix:4*ix+4])
                 gain_table[bin] = g_real +1j*g_imag
         return gain_table
         
