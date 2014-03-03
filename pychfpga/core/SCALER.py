@@ -103,7 +103,7 @@ class SCALER_base(Module_base):
         gain_table = np.zeros(self.fpga.NUMBER_OF_FREQUENCY_BINS, np.complex)
         for page in range(8): # there are 8 pages of coefficients per bank
             self.WRITE_COEFF_BANK = 8*bank + page # Sets which page/bank being read? Not sure if will work...
-            page_table = self.read_RAM(0)
+            page_table = self.read_RAM(0, length=512)
             for ix in range(128): # there are 128 coefficients per page ( 4 byte per coefficient = 512 bytes total per page)
                 bin = page*128 + ix
                 g_real, g_imag = struct.unpack('<hh',page_table[4*ix:4*ix+4])
