@@ -144,12 +144,12 @@ if __name__ == '__main__':
     #FREF = 10 # FMC Reference clock frequency 
 
     # Create the new chFPGA object.
-    c = chFPGA_controller.chFPGA_controller(ip_address='10.10.10.12', port_number=41000, host_ip='10.10.10.22', adc_delay_table=ADC_DELAY_TABLE, init=1, sampling_frequency=800e6, reference_frequency=10e6) # pylint: disable=C0103
+    c = chFPGA_controller.chFPGA_controller(ip_address='10.10.10.11', port_number=41000, host_ip='10.10.10.12', adc_delay_table=ADC_DELAY_TABLE, init=1, sampling_frequency=800e6, reference_frequency=10e6) # pylint: disable=C0103
     chFPGA_config = c.get_config()
     c.status()
     #c2 = chFPGA_controller.chFPGA_controller(ip_address='10.10.10.11', port_number=41000, host_ip='10.10.10.23', adc_delay_table=ADC_DELAY_TABLE, init=1, sampling_frequency=850e6, reference_frequency=10e6) # pylint: disable=C0103
     #config2 = c2.get_config()
-    r = chFPGA_receiver.chFPGA_receiver(chFPGA_config, ip_address='10.10.10.12', port=41002, host_ip='10.10.10.22')
+    r = chFPGA_receiver.chFPGA_receiver(chFPGA_config, ip_address='10.10.10.11', port=41002, host_ip='10.10.10.12')
     #r2 = chFPGA_receiver.chFPGA_receiver(config2, ip_address='10.10.10.11', port=41001, host_ip='10.10.10.23')
     c.GPIO.DATA_IP_PORT_OFFSET=2
     c.GPIO.CORR_IP_PORT_OFFSET=2
