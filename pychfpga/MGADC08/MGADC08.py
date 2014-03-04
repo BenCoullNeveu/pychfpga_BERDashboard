@@ -113,7 +113,7 @@ class MGADC08_base(object):
         self.logger.debug("Attempting to read FMC eeprom to determine board presence")
         data = self.eeprom.read(0, length=1, noerror=True, verbose=verbose)
         self.logger.debug("FMC eeprom returned the value: %i", data[0])
-        self._board_is_present = (data[0] == 13)
+        self._board_is_present = True #(data[0] == 13)
         #self.logger.info("is the ADC board present: %i" % self._board_is_present)
 
     def is_present(self):
