@@ -101,6 +101,19 @@ def calc_gains(g):
     glin[bad_values] = 2**14
     return glin, glog
 
+def fourier_filter(signal, num_components=15):
+    '''
+    Filters signal with top-hat in fourier space.  Padded with itself on either     side to improve edge behavior. 
+    Should extend to other windows.  
+    not assured to maintain signal size
+    '''
+    signal_length = signal.size
+    f_signal = np.fft.fft(np.r_[signal[signal_length/2:0:-1],signal,signal[-1:-signal_length/2:-1]])
+    f_signal[num_components:-num_components] = 0
+    filtered = np.fft.ifft(f_signal)[signal_length/2:-signal_length/2+1]
+    filtered = (filtered.real).astype(np.int).astype(np.complex)
+    return filtered
+
 if __name__ == '__main__':        
 
     try:
@@ -177,3 +190,7 @@ if __name__ == '__main__':
         glin = glin.astype(np.int).astype(np.complex)
         c.set_gain((glin,glog))
         time.sleep(1)
+    glin_final = fourier_filter(glin)
+    c.set_gain((glin_final,glog))
+    np.save('glin.npy',glin_final)
+    np.save('glog.npy', glog)
