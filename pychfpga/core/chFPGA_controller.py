@@ -72,6 +72,7 @@ import GPU
 from pychfpga.motherboards import ML605_LCD
 from pychfpga.motherboards import ML605_PMBus
 from pychfpga.motherboards import mgk7mb # McGill ICEBoard hardware ressources wrapper
+from pychfpga.icearray import iceboard
 
 # MGADC08 FMC ADC board device handlers
 from pychfpga.MGADC08 import MGADC08 
@@ -107,7 +108,8 @@ MODULE_LIST = (
         ACC,
         MGT,
         mgk7mb,
-        MGADC08
+        MGADC08,
+        iceboard
         )
 
 util.reload_modules(MODULE_LIST)

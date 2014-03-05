@@ -30,8 +30,9 @@ from pychfpga.core import Inject_tools as inj
 # import pychfpga.common.tests.test_corr as tc
 # from pychfpga import receiver_corr_fast
 
-reload(chFPGA_controller) # just to make sure that any changes to the code are reloaded
-reload(chFPGA_receiver) # just to make sure that any changes to the code are reloaded
+print 'Reloading modules'
+dreload(chFPGA_controller) # just to make sure that any changes to the code are reloaded
+dreload(chFPGA_receiver) # just to make sure that any changes to the code are reloaded
 reload(pu)
 reload(inj)
 reload(logging) # needed to reset the logger config in case we change the formatting

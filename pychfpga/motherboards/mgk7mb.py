@@ -17,8 +17,9 @@ import pca9575
 import tmp100
 
 from common import util
+from icearray import iceboard
 
-util.reload_modules([])
+util.reload_modules([iceboard])
 
 class tca9548a(object):
     """
@@ -123,38 +124,8 @@ class ddr3_eeprom(object):
         data = i2c.write_read(i2c_addr, length=2) # reads a word
         return data
 
-class IceBoard(object):
-    """
-    Virtual class representing the IceBoard Rev2.
-    The methods and properties are actually implemented by derived classes in the following way:
-        - The low-level hardware access is made directly in python through the ARM or FPGA I2C links to the board.
-        - The low-level hardware access is implemented in the ARM< software, and all methods and properties are imported through tuber.
-    """
-    class IceBoardException(Exception):
-        pass
 
-    def __init__(self, interface, arm_firmware=None, fpga_firmware = None):
-
-        """
-        Notes:
-            'arm_if' used for i2c. and arm-specific fw support. 
-            if arm_if: i2c_if = arm_if.i2c else: if fpga_if: i2c_if = fpga_if else raise IceBoardException('message')
-
-            'interface' provides a object through which the ARM and FPGA firmare is accessed. 
-        """
-
-        # arm = ARM(interface)
-        # fpga = FPGA(interface)
-
-        # self.arm_fw = arm_firmware
-        # self.fpga_fw = fpga_firmware
-        # if arm_firmware:
-        #     i2c_interface = arm_firmware.i2c
-        # elif fpga_firmware:
-        #     i2c_interface = fpga_firmware.i2c
-
-
-class MGK7MB(IceBoard):
+class MGK7MB(iceboard.IceBoard):
     """
     Implements the interfaces to the IceBoard functionnalities in Python through the specified I2C interface (ARM or FPGA).
     """

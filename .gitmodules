@@ -1,0 +1,3 @@
+[submodule "pychfpga/iceboard-python"]
+	path = pychfpga/iceboard-python
+	url = https://bitbucket.org/winterlandcosmology/iceboard-python
