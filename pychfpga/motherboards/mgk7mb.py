@@ -8,11 +8,14 @@ MGK7MB.py module
 
  History:
  2013-08-08 : JFC : Created
+ 2014-03-04 JM: modified set_led(), init() and set_fmc_power(), added get_led() for MGK7MB
 """
 # MGADC08 FMC ADC board device handlers
 import logging
 
 import pca9575
+import tmp100
+
 from common import util
 
 util.reload_modules([])
@@ -163,7 +166,12 @@ class MGK7MB(IceBoard):
     GPIO_SFP_QSFP_I2C_ADDR = 0b0100001
     GPIO_SW_LEDS_ADDR = 0b0100010
     GPIO_ARM_PHY_LEDS_ADDR = 0b0100011
-
+    
+    TMP_ARM_I2C_ADDR = 0b1001010
+    TMP_PHY_I2C_ADDR = 0b1001100
+    TMP_FPGA_I2C_ADDR = 0b1001011
+    TMP_POWER_I2C_ADDR = 0b1001000
+    
     def __init__(self, i2c_interface, verbose=0):
         
         # self.sys = system_instance
@@ -175,56 +183,102 @@ class MGK7MB(IceBoard):
 
         if verbose >= 2: self.logger.info(' Instantiating I2C GPIO manager')
         self.gpio_power = pca9575.pca9575(self.i2c, self.GPIO_POWER_I2C_ADDR, 'GPIO')
-        self.ioexpander_sw_leds = pca9575.pca9575(self.i2c, self.GPIO_SW_LEDS_ADDR, 'GPIO')
+        self.gpio_sw_leds = pca9575.pca9575(self.i2c, self.GPIO_SW_LEDS_ADDR, 'GPIO')
+        self.gpio_arm_phy_leds = pca9575.pca9575(self.i2c, self.GPIO_ARM_PHY_LEDS_ADDR, 'GPIO')
+        self.gpio_sfp_qsfp = pca9575.pca9575(self.i2c, self.GPIO_SFP_QSFP_I2C_ADDR, 'GPIO')
 
-        self.LED_TABLE = {
-            # name : (I2C address, byte, bit number (width))
-            'LED1': (self.ioexpander_sw_leds, 1, 7), 
-            'LED2': (self.ioexpander_sw_leds, 1, 6), 
-            'LED3': (self.ioexpander_sw_leds, 1, 5), 
-            'LED4': (self.ioexpander_sw_leds, 1, 4), 
-            'LED5': (self.ioexpander_sw_leds, 1, 3), 
-            'LED6': (self.ioexpander_sw_leds, 1, 2), 
-            'LED7': (self.ioexpander_sw_leds, 1, 1), 
-            'LED8': (self.ioexpander_sw_leds, 1, 0), 
-            'LED9': (GPIO_ARM_PHY_LEDS_ADDR, 0, 0), 
-            'LED10': (GPIO_ARM_PHY_LEDS_ADDR, 0, 1), 
-            'LED11': (GPIO_ARM_PHY_LEDS_ADDR, 0, 2), 
-            'LED12': (GPIO_ARM_PHY_LEDS_ADDR, 0, 3)
+        if verbose >= 2: self.logger.info(' Instantiating I2C temperature sensors')
+        self.tmp_power = tmp100.tmp100(self.i2c, self.TMP_POWER_I2C_ADDR, 'GPIO')
+        self.tmp_phy = tmp100.tmp100(self.i2c, self.TMP_PHY_I2C_ADDR, 'GPIO')
+        self.tmp_fpga = tmp100.tmp100(self.i2c, self.TMP_FPGA_I2C_ADDR, 'GPIO')
+        self.tmp_arm = tmp100.tmp100(self.i2c, self.TMP_ARM_I2C_ADDR, 'GPIO')
+                        
+        self.GPIO_EXPANDER_MAP = {
+            # name : (expander object, byte, bit number (width))
+            'GP_SW1': (self.gpio_sw_leds, 0, 0), 
+            'GP_SW2': (self.gpio_sw_leds, 0, 1), 
+            'GP_SW3': (self.gpio_sw_leds, 0, 2), 
+            'GP_SW4': (self.gpio_sw_leds, 0, 3), 
+            'GP_SW5': (self.gpio_sw_leds, 0, 4), 
+            'GP_SW6': (self.gpio_sw_leds, 0, 5), 
+            'GP_SW7': (self.gpio_sw_leds, 0, 6), 
+            'GP_SW8': (self.gpio_sw_leds, 0, 7),             
+            'GP_LED1': (self.gpio_sw_leds, 1, 7), 
+            'GP_LED2': (self.gpio_sw_leds, 1, 6), 
+            'GP_LED3': (self.gpio_sw_leds, 1, 5), 
+            'GP_LED4': (self.gpio_sw_leds, 1, 4), 
+            'GP_LED5': (self.gpio_sw_leds, 1, 3), 
+            'GP_LED6': (self.gpio_sw_leds, 1, 2), 
+            'GP_LED7': (self.gpio_sw_leds, 1, 1), 
+            'GP_LED8': (self.gpio_sw_leds, 1, 0), 
+            'GP_LED9': (self.gpio_arm_phy_leds, 0, 0), 
+            'GP_LED10': (self.gpio_arm_phy_leds, 0, 1), 
+            'GP_LED11': (self.gpio_arm_phy_leds, 0, 2), 
+            'GP_LED12': (self.gpio_arm_phy_leds, 0, 3),
+            'GTX1V8PowerFault': (self.gpio_arm_phy_leds, 0, 4), 
+            'PHYAPowerFault': (self.gpio_arm_phy_leds, 0, 5), 
+            'PHYBPowerFault': (self.gpio_arm_phy_leds, 0, 6), 
+            'ArmPowerFault': (self.gpio_arm_phy_leds, 0, 7)            
             }
 
 
     def init(self):
         """ Initializes the motherboard hardware"""
-        self.set_fmc_power(True)
+        self.init_gpio_expanders()
+        self.init_temp_sensors()
+        self.init_eeprom()
+        self.set_fmc_power()
+        
+    def init_gpio_expanders(self):
+        """
+        initializes GPIO expanders
+        
+        History
+        140304 JM: created. todo: make more flexible for I/O pin configuration of each expander. Need to confirm I/O pin config with JF        
+        """
+        self.gpio_power.init(cfg0_def=0b10101000, cfg1_def=0b10101000)
+        self.gpio_sw_leds.init(cfg1_def=0b00000000)
+        self.gpio_arm_phy_leds.init(cfg0_def=0b11110000)
+        self.gpio_sfp_qsfp()
+        
+    def init_temp_sensors(self):
+        """initializes GPIO expanders"""
+        pass    
+        
+    def init_eeprom(self):
+        """initializes EEPROM"""
+        pass                    
 
     def get_number_of_fmc_slots(self):
         return self.NUMBER_OF_FMC_SLOTS
 
-    def set_fmc_power(self, fmc_number, state):
+    def set_fmc_power(self, fmc_number=range(NUMBER_OF_FMC_SLOTS), state=[True]*NUMBER_OF_FMC_SLOTS):
         """
         Enables or disables power of the specified FMC slot.
-        'state' is converted to a boolean value so 0/1 can be used as well as False/True.
         Proper power sequencing is done to prevent the FMC board switchers to create too much a current spike when enabled.
 
         History:
             140223 JFC: Modified to use register names.
+            140304 JM: Modified it so a state for every fmc can be specified. For now, state is either a boolean or a list of booleans with the same length as 'fmc_number'
         Todo:
             140223 JFC: used masked writes to avoid side effects.
         """
         if isinstance(fmc_number, int):
             fmc_number = [fmc_number]
+            
+        if isinstance(state, bool):
+            state = [state]        
 
-        for fmc in fmc_number:
+        for (fmc,fmc_state) in zip(fmc_number,state):
             if fmc not in range(self.NUMBER_OF_FMC_SLOTS):
                 raise self.IceBoardException('FMC number %i is not a valid value' % fmc)
             else:
                 out_reg = 'OUT%i' % fmc # sets the register name to access based on the FMC number
-                cfg_reg = 'CFG%i' % fmc
+                #cfg_reg = 'CFG%i' % fmc
                 self.gpio_power.write(out_reg, 0b00000000) # Turn off all power signals before we enable the GPIO outputs
-                self.gpio_power.write(cfg_reg, 0b10101000)
-                self.gpio_power.write(out_reg, 0b00000111*bool(state)) # Turn on power to board
-                self.gpio_power.write(out_reg, 0b01010111*bool(state)) # Set Power Good and CLKDIR to 1
+                #self.gpio_power.write(cfg_reg, 0b10101000)
+                self.gpio_power.write(out_reg, 0b00000111*bool(fmc_state)) # Turn on power to board
+                self.gpio_power.write(out_reg, 0b01010111*bool(fmc_state)) # Set Power Good and CLKDIR to 1
 
 
     # The following table defines the LEDS found on the board
@@ -232,28 +286,48 @@ class MGK7MB(IceBoard):
     def set_led(self, led_name, state):
         """
         Set the LED(s) specified in 'led_name' to the the 'state'.
-        'led_name' can be a list of LED names found in LED_TABLE.
+        'led_name' can be a list of LED names found in GPIO_EXPANDER_MAP.
         'state' can be a single boolean value, or an array with the same length as 'led_name'
         """
         if isinstance(led_name, str):
-            led_name = [ led_name]
+            led_name = [led_name]
 
-        for led in led_led_name:
-            if led not in self.LED_TABLE:
+        if isinstance(state, bool):
+            state = [state]
+
+        for (led, led_state) in zip(led_name,state):
+            if led not in self.GPIO_EXPANDER_MAP:
                 raise IceBoardException('Invalid LED name')
-            led_info = self.LED_TABLE[led]
+                
+            led_info = self.GPIO_EXPANDER_MAP[led]
             io_expander = led_info[0]
             led_byte = led_info[1]
             led_bit = led_info[2]
+            
+            io_expander.write('CFG%i' % led_byte, 0b00000000 , mask = 1<<led_bit) # Configuring pin corresponding to led as output
+            io_expander.write('OUT%i' % led_byte, (1<<led_bit) * bool(led_state) , mask = 1<<led_bit)
 
-            io_expander.write('OUT%i' % led_byte, (1<<led_bit) * bool(state) , mask = 1<<led_bit)
-
-        pass # code not implemented
     def get_led(self, led_name):
         """
-        Returns the status of specified LED(s).
+        Returns the status of specified LED(s) in a dictionary led_status where each key is a led_name and the respective value is the led status.
         """
+        led_status={}
+        if isinstance(led_name, str):
+            led_name = [led_name]
 
+        for led in led_name:
+            if led not in self.GPIO_EXPANDER_MAP:
+                raise IceBoardException('Invalid LED name')
+                
+            led_info = self.GPIO_EXPANDER_MAP[led]
+            io_expander = led_info[0]
+            led_byte = led_info[1]
+            led_bit = led_info[2]
+            
+            led_status[led]=bool(io_expander.read('IN%i' % led_byte) & (1<<led_bit))
+            
+        return led_status
+    
     TEMP_SENSOR_TABLE = {}
     def get_temperature(self, temperature_sensor_name):
         """
