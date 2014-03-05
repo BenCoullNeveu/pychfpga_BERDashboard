@@ -11,7 +11,10 @@ n_freq    = integer(min = 1)
   ref_freq = float(min = 1)
   int_period = float(min = 0)
   fft_shift = integer(min = 1)
-  log2_gain = integer(min = 0)
+  gain = integer(min = 0)
+  data_width = integer(min = 4)
+  group_frames = integer(min = 1 )
+  host_ip = ip_addr
   [[adc_delay]]
 
 [acq]

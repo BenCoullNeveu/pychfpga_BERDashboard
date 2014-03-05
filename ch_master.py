@@ -131,15 +131,19 @@ if __name__ == "__main__":
              verbose = 0, \
              init = 1, \
              sampling_frequency = conf["fpga"]["samp_freq"] * 1e6, \
-             reference_frequency = conf["fpga"]["ref_freq"])
+             reference_frequency = conf["fpga"]["ref_freq"], \
+             data_width=conf["fpga"]["data_width"], \
+             group_frames=conf["fpga"]["group_frames"], \
+             enable_gpu_link = conf["fpga"]["enable_gpu_link"], \
+             host_ip = conf["fpga"]["host_ip"])
 
   # Set FPGA controller parameters.
   all_chan = range(conf["n_antenna"])
   fpga.set_data_source("adc") # This should come first.
   fpga.set_FFT_bypass(False, channels = all_chan)
   fpga.set_FFT_shift(conf["fpga"]["fft_shift"], channels = all_chan)
-  fpga.set_gain(conf["fpga"]["log2_gain"], channels = all_chan)
-
+  fpga.set_gain((1,conf["fpga"]["gain"]), channels = all_chan)
+  fpga.sync()
   #Make sure FPGA throttling is fast enough to send all the data
   #FPGA doesn't seem to change this without a reset...
   #read_rate = int(np.floor(np.log2(conf["fpga"]["int_period"] * 4 * 125e6 / \
@@ -147,7 +151,7 @@ if __name__ == "__main__":
   #fpga.GPIO.HOST_FRAME_READ_RATE = read_rate
 
   # Start the correlator.
-  fpga.start_corr_capture(integration_period = conf["fpga"]["int_period"])
+  ##fpga.start_corr_capture(integration_period = conf["fpga"]["int_period"])
   log.info("Correlator started with an integration time of %.1f s" % \
            (conf["fpga"]["int_period"]))
 
