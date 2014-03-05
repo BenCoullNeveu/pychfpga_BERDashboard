@@ -167,9 +167,12 @@ if __name__ == '__main__':
     c.set_adc_mode('data')
     c.set_fft_bypass(0)
     c.set_scaler_bypass(0)
+    c.set_send_flags()
+    c.set_offset_binary_encoding()
     default_log2_gain = 27
     c.set_gain((1,default_log2_gain))
     c.start_data_capture(burst_period_in_seconds=0.1)
+
 
     #for 4 bit number, check this
     idealRMS = 2.83
