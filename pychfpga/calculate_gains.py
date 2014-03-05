@@ -48,7 +48,7 @@ ADC_DELAYS_MGK7MB_REV0_MGAC08_REV2 = (
     )
 
 ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 = (
-    ([16]*8,     [4]*8), #CH0
+    ([16]*8,     [3]*8), #CH0
     ([7]*8,                       [3]*8), #CH1 
     ([22]*8,    [3]*8), #CH2 
     ([19]*8,                       [3]*8), #CH3
@@ -57,8 +57,8 @@ ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 = (
     ([18]*8,     [3]*8), #CH6 
     ([17]*8,                       [4]*8), #CH7
 
-    ([15, 17, 15, 18, 17, 14, 17, 15],   [4]*8), #CH8
-    ([16]*8,                       [3]*8), #CH9
+    ([15, 17, 15, 18, 17, 14, 17, 15],   [3]*8), #CH8
+    ([16]*8,                       [4]*8), #CH9
     ([20]*8,                       [3]*8), #CH10
     ([18]*8,                     [3]*8), #CH11
     ([15]*8,                       [3]*8), #CH12
@@ -114,7 +114,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description=__doc__.split('\n')[0]) # description is the first line of the docstring
     parser.add_argument('--init', action = 'store', type=int, default=1, help='Initialization level: -1: Just create sockets, 0: connect and read only. 1: initialize hardware')
-    parser.add_argument('-f', '--sampling_frequency', action = 'store', type=float, default=850, help='Sampling frequency of the ADC in MHz')
+    parser.add_argument('-f', '--sampling_frequency', action = 'store', type=float, default=800, help='Sampling frequency of the ADC in MHz')
     parser.add_argument('-l', '--log_level', action = 'store', type=str, choices=['info','debug'], default='info', help='Logging level')
     parser.add_argument('-w', '--data_width', action = 'store', type=int, choices=[4,8], default=8, help='Data width of each Re and Im component of the channelizer output')
     parser.add_argument('-g', '--group_frames', action = 'store', type=int, default=4, help='Number of frames to group before sending to the GPU or FPGA correlator. The total size of the frame, including the header and ethernet obverhead, cannot exceed 8 kibytes.')
@@ -154,7 +154,7 @@ if __name__ == '__main__':
     c.set_adc_mode('data')
     c.set_fft_bypass(0)
     c.set_scaler_bypass(0)
-    default_log2_gain = 22
+    default_log2_gain = 27
     c.set_gain((1,default_log2_gain))
     c.start_data_capture(burst_period_in_seconds=0.1)
 

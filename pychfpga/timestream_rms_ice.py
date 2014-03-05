@@ -36,7 +36,7 @@ ADC_DELAYS_REV2_SN0001_KC705_FMC700 = (
     )
 
 ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 = (
-    ([16]*8,     [4]*8), #CH0
+    ([16]*8,     [3]*8), #CH0
     ([7]*8,                       [3]*8), #CH1 
     ([22]*8,    [3]*8), #CH2 
     ([19]*8,                       [3]*8), #CH3
@@ -45,8 +45,8 @@ ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 = (
     ([18]*8,     [3]*8), #CH6 
     ([17]*8,                       [4]*8), #CH7
 
-    ([15, 17, 15, 18, 17, 14, 17, 15],   [4]*8), #CH8
-    ([16]*8,                       [3]*8), #CH9
+    ([15, 17, 15, 18, 17, 14, 17, 15],   [3]*8), #CH8
+    ([16]*8,                       [4]*8), #CH9
     ([20]*8,                       [3]*8), #CH10
     ([18]*8,                     [3]*8), #CH11
     ([15]*8,                       [3]*8), #CH12
@@ -77,9 +77,9 @@ def print_RMS(r):
 
 if __name__ == '__main__':
     ADC_DELAY_TABLE = ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 # ADC_DELAYS_REV2_SN0001 # select the table corresponding to the FMC serial number
-    c = chFPGA_controller.chFPGA_controller(ip_address='10.10.10.11', port_number=41000, adc_delay_table=ADC_DELAY_TABLE, init=1, sampling_frequency=800e6, reference_frequency=10e6, data_width=8, group_frames=2, enable_gpu_link = 1, host_ip = '10.10.10.83') # pylint: disable=C0103
+    c = chFPGA_controller.chFPGA_controller(ip_address='10.10.10.11', port_number=41000, adc_delay_table=ADC_DELAY_TABLE, init=1, sampling_frequency=800e6, reference_frequency=10e6, data_width=8, group_frames=2, enable_gpu_link = 1, host_ip = '10.10.10.200') # pylint: disable=C0103
     chFPGA_config = c.get_config()
-    r = chFPGA_receiver.chFPGA_receiver(chFPGA_config, ip_address='10.10.10.11', port=41001, host_ip = '10.10.10.83')
+    r = chFPGA_receiver.chFPGA_receiver(chFPGA_config, ip_address='10.10.10.11', port=41001, host_ip = '10.10.10.200')
     c.set_data_source('adc')
     c.set_adc_mode('data')
     c.set_FFT_bypass(True)
