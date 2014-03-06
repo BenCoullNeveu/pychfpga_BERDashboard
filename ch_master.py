@@ -113,11 +113,11 @@ if __name__ == "__main__":
     for j in range(len(this_chan)):
       k = int(this_chan[j])
       tmp_delay.append(k)
-    if len(tmp_delay) != 8:
-      log.critical("Entry fpga.adc_delay.%s needs eight integer entries." % \
+    if len(tmp_delay) != 16:
+      log.critical("Entry fpga.adc_delay.%s needs 16 integer entries." % \
                    (name))
       exit()
-    adc_delay.append(tmp_delay)
+    adc_delay.append((tmp_delay[:8],tmp_delay[8:]))
 
   # Create the acquisition object. Pass it the configuration settings so that it
   # can initialise.
