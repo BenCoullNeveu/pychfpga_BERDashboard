@@ -152,18 +152,25 @@ if __name__ == "__main__":
 
   # Start the correlator.
   ##fpga.start_corr_capture(integration_period = conf["fpga"]["int_period"])
-  log.info("Correlator started with an integration time of %.1f s" % \
-           (conf["fpga"]["int_period"]))
+  #log.info("Correlator started with an integration time of %.1f s" % \
+  #         (conf["fpga"]["int_period"]))
 
   # Pass FPGA configuration variables to header.
   fpga_conf = vars(fpga.get_config())
   for name in fpga_conf:
-    val = fpga_conf[name]
+    if name == 'antenna_scaler_log2_gain':
+      val = 27
+    elif name == 'antenna_adc_data_acquisition_delay_tables':
+      val = 42
+    else:
+      val = fpga_conf[name]
 
     # Do the annoying conversion of numpy types to native Python types. Sigh.
     if isinstance(val, (list, tuple)):
+      if len(val) == 0:
+       val = [0]
       if isinstance(val[0], (list, tuple)):
-        val = reduce(lambda a, b: a + b, val)
+        val = [item for sublist in val for item in sublist] #reduce(lambda a, b: a + b, val)
       if not isinstance(val[0], str):
         try:
           if val[0].dtype.kind in ('i', 'u', 'f'):
@@ -215,7 +222,7 @@ if __name__ == "__main__":
     while True:
       # Pass the acquisition object the board temperatures. This is a temporary
       # way of doing this!
-      acq.pass_fpga_amb_temp(0, fpga.ADC_BOARD.AmbTemp.get_temperature())
+      acq.pass_fpga_amb_temp(0, fpga.SYSMON.temperature())
       time.sleep(1.0)
     acq.stop()
   except(KeyboardInterrupt, SystemExit):

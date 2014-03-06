@@ -13,6 +13,7 @@ n_freq    = integer(min = 1)
   gain = integer(min = 0)
   data_width = integer(min = 4)
   group_frames = integer(min = 1 )
+  enable_gpu_link = integer(min = 0 )
   host_ip = ip_addr
   [[adc_delay]]
 
