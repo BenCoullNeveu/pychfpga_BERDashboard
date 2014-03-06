@@ -20,7 +20,7 @@ import AmbTemp
 import BiasADC
 import MGT_PLL
 import FMC_EEPROM
-from common import util
+from pychfpga.common import util
 
 MODULE_LIST = (
     AmbTemp,

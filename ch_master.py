@@ -18,7 +18,7 @@ import numpy as np
 import os
 import sys
 import time
-import MySQLdb
+#import MySQLdb
 
 if __name__ == "__main__":
   # Set up logger.

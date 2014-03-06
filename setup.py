@@ -13,11 +13,13 @@ init_in     = "ch_master_daemon.conf"
 setup(name = "ch_acq",
       version = "1.0",
       packages = ["pychfpga", "pychfpga.core", "pychfpga.common", \
-                  "pychfpga.ML605", "pychfpga.MGADC08"],
+                  "pychfpga.MGK7MB", "pychfpga.MGADC08", \
+                  "pychfpga.motherboards"],
       ext_modules = [Extension("chrx", 
                                ["chrx/acq.c", "chrx/chrx.c", "chrx/disc.c", \
                                 "chrx/fpga_acq.c", "chrx/frame.c", \
-                                "chrx/serial_adc.c", "chrx/util.c"],
+                                "chrx/gpu_acq.c", "chrx/serial_adc.c", \
+                                "chrx/util.c"],
                                libraries = ["hdf5", "hdf5_hl", "m", "pthread"])]
      )
 

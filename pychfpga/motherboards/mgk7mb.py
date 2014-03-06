@@ -11,7 +11,7 @@ MGK7MB.py module
 """
 # MGADC08 FMC ADC board device handlers
 import logging
-from common import util
+from pychfpga.common import util
 
 util.reload_modules([])
 
