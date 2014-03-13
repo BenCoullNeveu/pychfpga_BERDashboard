@@ -144,6 +144,9 @@ if __name__ == "__main__":
   fpga.set_FFT_shift(conf["fpga"]["fft_shift"], channels = all_chan)
   fpga.set_gain((1,conf["fpga"]["gain"]), channels = all_chan)
   fpga.sync()
+  fpga.set_send_flags()
+  fpga.set_offset_binary_encoding()
+  fpga.sync()
   #Make sure FPGA throttling is fast enough to send all the data
   #FPGA doesn't seem to change this without a reset...
   #read_rate = int(np.floor(np.log2(conf["fpga"]["int_period"] * 4 * 125e6 / \
