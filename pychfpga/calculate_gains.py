@@ -18,7 +18,7 @@ History:
 import logging
 import argparse
 import time
-
+import pickle
 
 from pychfpga.core import chFPGA_controller
 from pychfpga.core import chFPGA_receiver
@@ -67,12 +67,12 @@ ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 = (
     ([16]*8,                       [3]*8)  #CH15
     )
 
-def get_100_frames(r):
-    data_list = np.zeros((100,16,2048))
+def get_frames(r):
     chanIndex = np.arange(16)
     channels = np.arange(16)
     number_of_frames = 0
     frames = 100
+    data_list = np.zeros((frames,16,2048))
     while number_of_frames < frames:
         try:
             a = r.read_frames()
@@ -93,13 +93,18 @@ def calc_gains(g):
     #2**14 is max for linear gain
     #ignore dc component
     #check for nans
-    print g
+    #print g
     bad_values = (g > 2**31) | ~np.isfinite(g)
-    glog = int(np.ceil(np.log2(np.max(np.abs(g[~bad_values][1:])/2**14))))
-    glin = g/2**glog
+    g = np.ma.array(g,mask=bad_values)
+    glog = (np.ceil(np.log2(np.median(np.abs(g)/2**13,axis=1)))).astype(np.int)
+    glin = np.zeros(g.shape, dtype=np.complex)
+    for i, glog_single in enumerate(glog):
+        glin[i] = g[i]/2**glog[i]
+    glog.data[glog.mask == True] = np.median(glog)
+    glog.mask[glog.mask] = False
     glog +=4
     glin[bad_values] = 2**14
-    return glin, glog
+    return glin, glog.data
 
 def fourier_filter(signal, num_components=15):
     '''
@@ -107,6 +112,7 @@ def fourier_filter(signal, num_components=15):
     Should extend to other windows.  
     not assured to maintain signal size
     '''
+    signal = np.array(signal)
     signal_length = signal.size
     f_signal = np.fft.fft(np.r_[signal[signal_length/2:0:-1],signal,signal[-1:-signal_length/2:-1]])
     f_signal[num_components:-num_components] = 0
@@ -169,31 +175,38 @@ if __name__ == '__main__':
     c.set_scaler_bypass(0)
     c.set_send_flags()
     c.set_offset_binary_encoding()
-    default_log2_gain = 27
+    default_log2_gain = 26
     c.set_gain((1,default_log2_gain))
     c.start_data_capture(burst_period_in_seconds=0.1)
-
+    channels = range(16)
 
     #for 4 bit number, check this
     idealRMS = 2.83
-    glog = 13 # not sure why this isn't 9, but seemed to be the case.
+    #glog = 13 # not sure why this isn't 9, but seemed to be the case.
     rmss = []
     for i in range(8):
-        data = get_100_frames(r)
+        data = get_frames(r)
         # only do for channel 0 for now   
-        outrms = data[:,0,:].std(axis=0)
+        outrms = data[:,:,:].std(axis=0)
         rmss.append(outrms.mean())
         if i == 0:
-            g = idealRMS*2**default_log2_gain/outrms
+            g = outrms*2**(default_log2_gain-4)/idealRMS#idealRMS*2**(default_log2_gain-4)/outrms
         else:
-            g = idealRMS*glin*(2**(glog-4))/outrms
+            for j, glog1 in enumerate(glog):
+                g[j] = outrms[j]*glin[j]*(2**(glog[j]-4))/idealRMS #idealRMS*glin*(2**(glog-4))/outrms
         glin, glog = calc_gains(g)
         bad_gains = glin > 2**14
         glin[bad_gains] = 2**14
         glin = glin.astype(np.int).astype(np.complex)
-        c.set_gain((glin,glog))
+        gain = []
+        for channel in channels:
+            gain.append([channel,[glin[channel].tolist(), glog[channel]]])
+        c.set_gain(gain)
         time.sleep(1)
-    glin_final = fourier_filter(glin)
-    c.set_gain((glin_final,glog))
-    np.save('glin.npy',glin_final)
-    np.save('glog.npy', glog)
+    for channel in channels:
+        glin_final = fourier_filter(gain[channel][1][0])
+        gain[channel][1][0] = glin_final.tolist()
+    c.set_gain(gain)
+    output = open('gains.pkl','wb')
+    pickle.dump(gain, output)
+    #np.save('gain.npy',np.array(gain))

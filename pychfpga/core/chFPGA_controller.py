@@ -1329,7 +1329,7 @@ class chFPGA_controller(object):
             if gain_value is None:
                 Glin = None
                 Glog = None
-            elif isinstance(gain_value, tuple):
+            elif isinstance(gain_value, (tuple, list)):
                 Glin = gain_value[0]
                 Glog = gain_value[1]
             else: # if a scalar or a vector
@@ -1338,7 +1338,6 @@ class chFPGA_controller(object):
             # Replace default postscaler value if one is provided
             if (Glog is None) and (postscaler is not None):
                 Glog = postscaler
-
 
             for ch in channel_list: # process each channel
                 if ch not in channels: 
