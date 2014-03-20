@@ -619,7 +619,7 @@ class chFPGA_controller(object):
         config.antenna_data_source = self.get_data_source()
         config.antenna_fft_bypass = self.get_FFT_bypass()
         config.antenna_fft_shift_schedule = self.get_FFT_shift()
-        config.antenna_scaler_log2_gain = self.get_gain()
+        config.antenna_scaler_gain = self.get_gain()
         config.antenna_adc_data_acquisition_delay_tables  = self.ANT.get_delays()
         config.FPGA_board_frequency = self.FreqCtr.read_frequency('CLK200', gate_time=0.05)
         config.CTRL_clock_frequency = self.FreqCtr.read_frequency('CTRL_CLK', gate_time=0.05)
@@ -1369,7 +1369,7 @@ class chFPGA_controller(object):
         for ant in self.ANT.values():
             glog = ant.SCALER.SHIFT_LEFT
             glin = ant.SCALER.get_gain_table()
-            gain_list.append((ant.ant_number, (glin,glog)))
+            gain_list.append([ant.ant_number, [glin,glog]])
         return gain_list
 
     def set_fmc_power(self, state):

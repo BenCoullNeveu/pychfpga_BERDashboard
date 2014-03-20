@@ -20,6 +20,54 @@ import sys
 import time
 #import MySQLdb
 
+# Should put somewhere else.  flatten arbitrarily deep nested lists
+# from stack overflow
+def flatten(x):
+    result = []
+    for el in x:
+        if hasattr(el, "__iter__") and not isinstance(el, basestring):
+            result.extend(flatten(el))
+        else:
+            result.append(el)
+    return result
+
+def convert_types(val):
+      # Do the annoying conversion of numpy types to native Python types. Sigh.
+      found_complex = False
+      if isinstance(val, (list, tuple)):
+        if len(val) == 0:
+          val = [0]
+        #if isinstance(val[0], (list, tuple)):
+        val = flatten(val) #[item for sublist in val for item in sublist] #reduce(lambda a, b: a + b, val)
+        if not isinstance(val[0], str):
+          try:
+            if val[0].dtype.kind in ('i', 'u', 'f'):
+              val = list(np.asscalar(x) for x in val)
+          except:
+            if type(val[0]) == bool:
+              val = list(int(x) for x in val)
+            else:
+              val = list(x for x in val)
+          for i, val_element in enumerate(val):
+            #print val_element
+            if isinstance(val_element, complex):
+                val[i] = [val_element.real, val_element.imag]
+                found_complex = True
+            if isinstance(val_element, (int,np.uint8)):
+                val[i] = float(val_element)
+          if found_complex:
+            val = flatten(val)
+
+      else:
+        if not isinstance(val, str):
+          try:
+            if val.dtype.kind in ('i', 'u', 'f'):
+              val = np.asscalar(val)
+          except:
+              #hopefully already a int/float
+              a = 1  # Placeholder.
+      return val
+
 if __name__ == "__main__":
   # Set up logger.
   log = logging.getLogger("")
@@ -161,38 +209,22 @@ if __name__ == "__main__":
   # Pass FPGA configuration variables to header.
   fpga_conf = vars(fpga.get_config())
   for name in fpga_conf:
-    if name == 'antenna_scaler_log2_gain':
-      val = 27
-    elif name == 'antenna_adc_data_acquisition_delay_tables':
-      val = 42
+    #Hack for now since the gain table is too big to fit in one 64k header element
+    if name == 'antenna_scaler_gain':
+      all_val = fpga_conf[name]
+      for value in all_val:
+        val = convert_types(value)
+        val_name = name + str(int(val[0]))
+        #print val_name, val
+        acq.add_header_item(val_name, val)
     else:
+      #elif name == 'antenna_adc_data_acquisition_delay_tables':
+      #  val = 42
+      #else:
       val = fpga_conf[name]
-
-    # Do the annoying conversion of numpy types to native Python types. Sigh.
-    if isinstance(val, (list, tuple)):
-      if len(val) == 0:
-       val = [0]
-      if isinstance(val[0], (list, tuple)):
-        val = [item for sublist in val for item in sublist] #reduce(lambda a, b: a + b, val)
-      if not isinstance(val[0], str):
-        try:
-          if val[0].dtype.kind in ('i', 'u', 'f'):
-            val = list(np.asscalar(x) for x in val)
-        except:
-          if type(val[0]) == bool:
-            val = list(int(x) for x in val)
-          else:
-            val = list(x for x in val)
-    else:
-      if not isinstance(val, str):
-        try:
-          if val.dtype.kind in ('i', 'u', 'f'):
-            val = np.asscalar(val)
-        except:
-          a = 1  # Placeholder.
-
-    # Now send FPGA information send to acquisition object's header.
-    acq.add_header_item(name, val)
+      val = convert_types(val)
+      # Now send FPGA information send to acquisition object's header.
+      acq.add_header_item(name, val)
 
   # Add the system user to the header, for kicks. (It should normally be root.)
   acq.add_header_item("system_user", getpass.getuser())
