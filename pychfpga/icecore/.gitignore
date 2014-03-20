@@ -1,0 +1,8 @@
+*.swp
+*.pyc
+*.pyo
+*.bak
+*.orig
+/Archives
+*.7z
+.git
