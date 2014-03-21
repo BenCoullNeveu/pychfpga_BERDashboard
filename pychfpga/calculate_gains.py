@@ -120,7 +120,7 @@ def fourier_filter(signal, num_components=15):
     filtered = (filtered.real).astype(np.int).astype(np.complex)
     return filtered
 
-def calc_gains(c,r):
+def calculate_gains(c,r):
     c.set_data_source('adc')
     c.set_adc_mode('data')
     c.set_fft_bypass(0)
@@ -213,6 +213,6 @@ if __name__ == '__main__':
     chFPGA_config = c.get_config()
     logger.info('Starting data/correlator receiver threads')
     r = chFPGA_receiver.chFPGA_receiver(chFPGA_config, ip_address=args.ip, port=41001, host_ip = args.host_ip)
-    calc_gains(c,r)
+    calculate_gains(c,r)
 
     #np.save('gain.npy',np.array(gain))

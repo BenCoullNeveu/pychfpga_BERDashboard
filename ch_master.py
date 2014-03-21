@@ -195,11 +195,11 @@ if __name__ == "__main__":
   # Calculate new gains if necessary
   fpga_config = fpga.get_config()
   if args.compute_gain:
-      fpga_rec = chFPGA_receiver(fpga_config, \
+      fpga_rec = chFPGA_receiver.chFPGA_receiver(fpga_config, \
                     ip_address=conf["fpga"]["ip_address"], \
                     port=conf["fpga"]["rec_port"], \
                     host_ip = conf["fpga"]["host_ip"])
-      calculate_gains(fpga,fpga_rec)
+      calculate_gains.calculate_gains(fpga,fpga_rec)
       fpga_rec.close()
   gain_pkl_file = open(conf["fpga"]["gain_table_pkl"], "rb")
   gains = pickle.load(gain_pkl_file)
