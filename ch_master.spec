@@ -7,6 +7,7 @@ n_freq    = integer(min = 1)
 [fpga]
   ip_address = ip_addr
   port = integer(min = 1)
+  rec_port = integer(min = 1)
   samp_freq  = float(min = 1)
   ref_freq = float(min = 1)
   fft_shift = integer(min = 1)
@@ -15,6 +16,7 @@ n_freq    = integer(min = 1)
   group_frames = integer(min = 1 )
   enable_gpu_link = integer(min = 0 )
   host_ip = ip_addr
+  gain_table_pkl = string
   [[adc_delay]]
 
 [acq]

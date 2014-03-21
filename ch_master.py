@@ -10,6 +10,7 @@ History:
 import chrx
 from configobj import *
 from pychfpga.core import chFPGA_controller
+from pychfpga.core import chFPGA_receiver
 from validate import Validator
 import argparse
 import getpass
@@ -18,6 +19,8 @@ import numpy as np
 import os
 import sys
 import time
+import pickle
+from pychfpga import calculate_gains
 #import MySQLdb
 
 # Should put somewhere else.  flatten arbitrarily deep nested lists
@@ -65,7 +68,7 @@ def convert_types(val):
               val = np.asscalar(val)
           except:
               #hopefully already a int/float
-              a = 1  # Placeholder.
+              pass #a = 1  # Placeholder.
       return val
 
 if __name__ == "__main__":
@@ -93,6 +96,9 @@ if __name__ == "__main__":
   parser.add_argument("-s", "--spec_file", action = "store", \
                       default = "ch_master.spec", \
                       help = "Configuration file specifications.")
+  parser.add_argument("-a", "--compute_gain", action = "store", \
+                       default = 0, \
+                       help = "1 to calculate and save FFT scaler gains")
   args = parser.parse_args()
 
   # Be paranoid: if the executable is being run from /usr/sbin we can be 
@@ -186,11 +192,22 @@ if __name__ == "__main__":
              host_ip = conf["fpga"]["host_ip"])
 
   # Set FPGA controller parameters.
+  # Calculate new gains if necessary
+  fpga_config = fpga.get_config()
+  if args.compute_gain:
+      fpga_rec = chFPGA_receiver(fpga_config, \
+                    ip_address=conf["fpga"]["ip_address"], \
+                    port=conf["fpga"]["rec_port"], \
+                    host_ip = conf["fpga"]["host_ip"])
+      calculate_gains(fpga,fpga_rec)
+      fpga_rec.close()
+  gain_pkl_file = open(conf["fpga"]["gain_table_pkl"], "rb")
+  gains = pickle.load(gain_pkl_file)
   all_chan = range(conf["n_antenna"])
   fpga.set_data_source("adc") # This should come first.
   fpga.set_FFT_bypass(False, channels = all_chan)
   fpga.set_FFT_shift(conf["fpga"]["fft_shift"], channels = all_chan)
-  fpga.set_gain((1,conf["fpga"]["gain"]), channels = all_chan)
+  fpga.set_gain(gains, channels = all_chan)
   fpga.sync()
   fpga.set_send_flags()
   fpga.set_offset_binary_encoding()
