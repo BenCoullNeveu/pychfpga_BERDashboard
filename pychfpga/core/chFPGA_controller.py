@@ -1237,7 +1237,7 @@ class chFPGA_controller(object):
         else:
             # Set the scaler to use offset binary
             for output in crossbar_outputs:
-                self.CROSSBAR[output].CH_DIST.SEND_FLAGS=1
+                self.CROSSBAR[output].CH_DIST.SEND_FLAGS=send_flags
             if sync:
                 self.sync()       
 
