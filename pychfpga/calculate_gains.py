@@ -127,7 +127,7 @@ def calculate_gains(c,r):
     c.set_scaler_bypass(0)
     c.set_send_flags()
     c.set_offset_binary_encoding()
-    default_log2_gain = 26
+    default_log2_gain = 25
     c.set_gain((1,default_log2_gain))
     c.start_data_capture(burst_period_in_seconds=0.1)
     channels = range(16)
@@ -141,12 +141,14 @@ def calculate_gains(c,r):
         # only do for channel 0 for now   
         outrms = data[:,:,:].std(axis=0)
         rmss.append(outrms.mean())
+        print outrms.mean(axis=1)
         if i == 0:
-            g = outrms*2**(default_log2_gain-4)/idealRMS#idealRMS*2**(default_log2_gain-4)/outrms
+            g = idealRMS*2**(default_log2_gain-4)/outrms#idealRMS*2**(default_log2_gain-4)/outrms
         else:
             for j, glog1 in enumerate(glog):
-                g[j] = outrms[j]*glin[j]*(2**(glog[j]-4))/idealRMS #idealRMS*glin*(2**(glog-4))/outrms
+                g[j] = idealRMS*glin[j]*(2**(glog[j]-4))/outrms[j] #idealRMS*glin*(2**(glog-4))/outrms
         glin, glog = calc_gains(g)
+        print glog
         bad_gains = glin > 2**14
         glin[bad_gains] = 2**14
         glin = glin.astype(np.int).astype(np.complex)
