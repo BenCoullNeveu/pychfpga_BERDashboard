@@ -3,85 +3,20 @@ This module provide methods to access the functionnalities provided by the ARM p
 """
 import json, requests
 import base64
-import hashlib
 import logging
 import argparse
 import os.path
 import struct
 import socket
 
-class FpgaBitFile(object):
-    """
-    Container for an FPGA bit file.
-    """
+# def _add_class_logger(future_class_name, future_class_parents, future_class_attr):
+#     """
+#     Intercepts the class definition process in all class of this module to automatically add a logger attribute with the name of the module/class.
+#     """
 
-    def __init__(self, filename):
-        """
-        Initializes the objects and loads the bit file into memory.
-        """
-        self.logger = logging.getLogger(__name__)
-        self.filename = None
-        self.valid = False
-        self.timestamp = None
-        self.load(filename)
+#     future_class_attr['logger'] = logging.getLogger('%s.%s' % (__name__, future_class_name))
+#     return type(future_class_name, future_class_parents, future_class_attr)
 
-    def load(self, filename):
-        self.filename = filename
-        self.valid = False
-        extension = os.path.splitext(filename)[1].split('.')[-1]
-        extension = extension.lower()
-        self.logger.debug('File type: %s' % extension)
-        # print extension
-        self.logger.info('Reading file %s ...' % filename)
-        with open(filename, mode='rb') as file: # b is important -> binary
-            data = file.read()
-        self.logger.info('Read %0.3f Mbytes' % (len(data)/1e6))
-
-        if extension == 'bin':
-            pass
-        elif extension == 'bit':
-            pos = 0
-            # Field 1 - ignore
-            length = struct.unpack('>H',data[pos:pos+2])[0]
-            self.logger.debug('Field 1: %s' % data[pos+2:pos+2+length])
-            pos += length + 2
-            # Field 2 - always 'a'
-            length = struct.unpack('>H',data[pos:pos+2])[0]
-            field = data[pos+2:pos+2+length]
-            self.logger.debug('Field 2 (%i bytes): %s' % (length,field))
-            if field != 'a':
-                self.logger.error('This is not a valid bit file')
-                return
-            pos += length + 2
-            # Field 3
-            length = struct.unpack('>H',data[pos:pos+2])[0]
-            self.logger.debug('Field 3: %s' % data[pos+2:pos+2+length])
-            pos += length + 2
-            # Field 4
-            tag = data[pos]
-            length = struct.unpack('>H',data[pos+1:pos+2+1])[0]
-            self.logger.debug('Field 4 (tag=%s, length = %i bytes): %s' % (tag, length, data[pos+2+1:pos+2+1+length]))
-            pos += length + 2 + 1
-            # Field 5
-            tag = data[pos]
-            length = struct.unpack('>H',data[pos+1:pos+2+1])[0]
-            self.logger.debug('Field 5 (tag=%s, length = %i bytes): %s' % (tag, length, data[pos+2+1:pos+2+1+length]))
-            pos += length + 2 + 1
-            # Field 6
-            tag = data[pos]
-            length = struct.unpack('>H',data[pos+1:pos+2+1])[0]
-            self.logger.debug('Field 6 (tag=%s, length = %i bytes): %s' % (tag, length, data[pos+2+1:pos+2+1+length]))
-            pos += length + 2 + 1
-            # Field 7
-            tag = data[pos]
-            length = struct.unpack('>L',data[pos+1:pos+4+1])[0]
-            self.logger.debug('Field 7 (tag=%s, length= %i bytes): [configuration data]' % (tag, length))
-            pos += 4 + 1 # skip the header. Now points to cofiguration data
-            self.data = data[pos:]
-            self.valid = True
-        else:
-            self.logger.error('unknown file extension "%s"' % extension)
-            return
 
 
 class ArmException(Exception):
@@ -143,10 +78,11 @@ class Arm(object):
 
         url = 'http://%s/tuber' % self.ip_address
 
+        # compute MD5 sub as a hex string
+        md5_sum = bitfile.md5_string
+
         # Compute the base64-encoded string
         base64_string = base64.b64encode(bitfile.data)
-        # compute MD5 sub as a hex string
-        md5_sum = hashlib.md5(bitfile.data).hexdigest()
 
         self.logger.debug('Encoded data starts with: %s' % base64_string[:32])
         self.logger.debug('Encoded data is %0.3f Mbytes long' % (len(base64_string)/1e6))
