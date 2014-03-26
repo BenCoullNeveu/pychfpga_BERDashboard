@@ -173,14 +173,11 @@ if __name__ == "__main__":
              verbose = 0, \
              init = 1, \
              sampling_frequency = conf["fpga"]["samp_freq"] * 1e6, \
-<<<<<<< HEAD
              reference_frequency = conf["fpga"]["ref_freq"], \
              data_width=conf["fpga"]["data_width"], \
              group_frames=conf["fpga"]["group_frames"], \
              enable_gpu_link = conf["fpga"]["enable_gpu_link"], \
              host_ip = conf["fpga"]["host_ip"])
-=======
-             reference_frequency = conf["fpga"]["ref_freq"])
   fpga_conf = vars(fpga.get_config())
   
   # Create the output directory.
@@ -222,8 +219,6 @@ if __name__ == "__main__":
         
   log.info("Sampling frequency is %0.3f MHz." % \
            float(conf["fpga"]["samp_freq"]))
-
->>>>>>> master
 
   # Set FPGA controller parameters.
   # Calculate new gains if necessary
