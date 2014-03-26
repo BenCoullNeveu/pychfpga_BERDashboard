@@ -30,10 +30,9 @@ import logging
 import numpy as np
 #import pdb
 import time
-import struct
 import zlib
-
-from pychfpga.common import util
+import struct
+from pychime.common import util
 
 import Shared_variables # Note: do not reload this module or we will lose acces to the data in it
 import Module
@@ -1140,5 +1139,3 @@ class chFPGA_controller(object):
         elif dictionary_is_present == False:
             print 'No dictionary found on EEPROM. Did the board pass the quality control test?'
         return dict_out
-
-
