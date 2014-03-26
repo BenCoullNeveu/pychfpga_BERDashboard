@@ -211,7 +211,6 @@ class ControlSocket_base(object):
 
 
 
-
 class DataSocket_base(object):
     """Creates an object that represents the control socket communication link to the chFPGA.""" 
 

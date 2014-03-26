@@ -18,6 +18,7 @@ import logging
 import numpy as np
 import os
 import sys
+import socket
 import time
 import pickle
 from pychfpga import calculate_gains
@@ -70,6 +71,16 @@ def convert_types(val):
               #hopefully already a int/float
               pass #a = 1  # Placeholder.
       return val
+
+# Dictionary of correlators.
+correlator_hash = {"29821-0000-0003": "stone",
+                              "0001": "stone",      # This is a bug in the FPGA.
+                   "29821-0000-0033": "abbot",
+                              "0033": "abbot",
+                   "29821-0000-0028": "vincente"}
+
+# Current archive format version.
+archive_version = "1.0.0"
 
 if __name__ == "__main__":
   # Set up logger.
@@ -129,29 +140,6 @@ if __name__ == "__main__":
       log.critical("Error parsing %s: %s" % (sec_string, error))
     exit()
 
-  # Create the output directory.
-  time_str = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-  acq_base_dir = "%s/%s" % (conf["acq"]["base_path"], time_str)
-  os.makedirs(acq_base_dir)
-  if not os.path.exists(acq_base_dir):
-    log.critical("Could not create directory \"%s\"." % (acq_base_dir))
-    exit()
-
-  # Create a symbolic link to the output directory.
-  os.unlink(conf["acq"]["curfile"])
-  os.symlink(acq_base_dir, conf["acq"]["curfile"])
-
-  # Start writing to a log file in this directory.
-  acq_log_path = "%s/%s.log" % (acq_base_dir, time_str)
-  log_file = logging.FileHandler(acq_log_path)
-  log_file.setLevel(logging.DEBUG)
-  log_file.setFormatter(log_fmt)
-  log.addHandler(log_file)
-  log.info("Now logging to \"%s\"." % (acq_log_path))
-        
-  log.info("Sampling frequency is %0.3f MHz." % \
-           float(conf["fpga"]["samp_freq"]))
-
   # Build up the adc_delay_table.
   n = int(conf["n_antenna"])
   adc_delay = []
@@ -185,11 +173,57 @@ if __name__ == "__main__":
              verbose = 0, \
              init = 1, \
              sampling_frequency = conf["fpga"]["samp_freq"] * 1e6, \
+<<<<<<< HEAD
              reference_frequency = conf["fpga"]["ref_freq"], \
              data_width=conf["fpga"]["data_width"], \
              group_frames=conf["fpga"]["group_frames"], \
              enable_gpu_link = conf["fpga"]["enable_gpu_link"], \
              host_ip = conf["fpga"]["host_ip"])
+=======
+             reference_frequency = conf["fpga"]["ref_freq"])
+  fpga_conf = vars(fpga.get_config())
+  
+  # Create the output directory.
+  time_str = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+  try:
+    corr_name = correlator_hash[fpga_conf["adc_serial"]]
+  except KeyError:
+    try:
+      log.critical("Could not find hash for ADC serial number %s." %
+                   fpga_conf["adc_serial"])
+    except KeyError:
+      log.critical("Could not find key \"adc_serial\" in FPGA configuration.")
+  acq_base_dir = "%s/%s_%s_corr" % (conf["acq"]["base_path"], time_str, \
+                                   corr_name)
+  os.makedirs(acq_base_dir)
+  if not os.path.exists(acq_base_dir):
+    log.critical("Could not create directory \"%s\"." % (acq_base_dir))
+    exit()
+
+  # Create a symbolic link to the output directory.
+  os.unlink(conf["acq"]["curfile"])
+  os.symlink(acq_base_dir, conf["acq"]["curfile"])
+
+  # Lock the logfile.
+  log_file_lock = "%s/.ch_master.log.lock" % acq_base_dir
+  fp = open(log_file_lock, "w")
+  if not fp:
+    log.error("Could not create lockfile \"%s\"." % log_file_lock)
+  else:
+    fp.close()
+
+  # Start writing to a log file in this directory.
+  acq_log_path = "%s/ch_master.log" % (acq_base_dir)
+  log_file = logging.FileHandler(acq_log_path)
+  log_file.setLevel(logging.DEBUG)
+  log_file.setFormatter(log_fmt)
+  log.addHandler(log_file)
+  log.info("Now logging to \"%s\"." % (acq_log_path))
+        
+  log.info("Sampling frequency is %0.3f MHz." % \
+           float(conf["fpga"]["samp_freq"]))
+
+>>>>>>> master
 
   # Set FPGA controller parameters.
   # Calculate new gains if necessary
@@ -224,7 +258,6 @@ if __name__ == "__main__":
   #         (conf["fpga"]["int_period"]))
 
   # Pass FPGA configuration variables to header.
-  fpga_conf = vars(fpga.get_config())
   for name in fpga_conf:
     #Hack for now since the gain table is too big to fit in one 64k header element
     if name == 'antenna_scaler_gain':
@@ -243,8 +276,11 @@ if __name__ == "__main__":
       # Now send FPGA information send to acquisition object's header.
       acq.add_header_item(name, val)
 
-  # Add the system user to the header, for kicks. (It should normally be root.)
+  # Add some acquisition information to the header, for kicks.
   acq.add_header_item("system_user", getpass.getuser())
+  acq.add_header_item("collection_server", socket.gethostname())
+  acq.add_header_item("instrument_name", corr_name)
+  acq.add_header_item("archive_version", archive_version)
 
   # Get the git tag and write it to the header.
   if not len(args.git_tag):
@@ -280,4 +316,6 @@ if __name__ == "__main__":
   except(KeyboardInterrupt, SystemExit):
     acq.stop()
 
+# Remove log file lock and exit.
+os.remove(log_file_lock)
 log.info("Exiting ch_master now.")

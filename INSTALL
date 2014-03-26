@@ -17,6 +17,9 @@ Do:
 - Installs ch_master.py in /usr/sbin.
 )
 
+If you are a developer and want a local install for development, do instead:
+  sudo python setup.py develop
+
 
 RUNNING
 -------

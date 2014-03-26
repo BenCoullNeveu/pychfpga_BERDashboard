@@ -40,8 +40,6 @@ class FMC_EEPROM_base(object):
         """ Initializes the EEPROM handling module (the EEPROM is not accecssed)"""
         pass
 
-
-
     
     def status(self):
         """ Shows EEPROM data"""

@@ -7,7 +7,7 @@ Class with testing function for testing the adc.
 from pychfpga.core import Inject_tools as inj
 from pychfpga.common.tests.test_BaseClass import test_BaseClass
 import numpy as np
-import pychfpga.pffb as pfb
+#import pychfpga.pffb as pfb
 import pylab
 
 class test_adc_fft_bin(test_BaseClass):
