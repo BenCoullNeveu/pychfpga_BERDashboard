@@ -25,6 +25,7 @@ import MySQLdb
 correlator_hash = {"29821-0000-0003": "stone",
                               "0001": "stone",      # This is a bug in the FPGA.
                    "29821-0000-0033": "abbot",
+                              "0033": "abbot",
                    "29821-0000-0028": "vincente"}
 
 # Current archive format version.
