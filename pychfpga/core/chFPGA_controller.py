@@ -32,7 +32,7 @@ import numpy as np
 import time
 import zlib
 import struct
-from pychime.common import util
+from pychfpga.common import util
 
 import Shared_variables # Note: do not reload this module or we will lose acces to the data in it
 import Module
