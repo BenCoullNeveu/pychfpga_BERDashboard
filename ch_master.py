@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/local/bin/python2.7
 
 """
 Master control program for CHIME.
@@ -78,6 +78,8 @@ correlator_hash = {"29821-0000-0003": "stone",
                    "29821-0000-0033": "abbot",
                               "0033": "abbot",
                    "29821-0000-0028": "vincente"}
+CORRELATOR_16CH = "blanchard"   # Temporary, until we have a way of getting this
+                                # automatically.
 
 # Current archive format version.
 archive_version = "1.0.0"
@@ -183,7 +185,8 @@ if __name__ == "__main__":
   # Create the output directory.
   time_str = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
   try:
-    corr_name = correlator_hash[fpga_conf["adc_serial"]]
+#    corr_name = correlator_hash[fpga_conf["adc_serial"]]
+    corr_name = CORRELATOR_16CH
   except KeyError:
     try:
       log.critical("Could not find hash for ADC serial number %s." %
