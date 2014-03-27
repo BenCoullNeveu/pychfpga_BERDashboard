@@ -24,7 +24,7 @@ import pickle
 from pychfpga import calculate_gains
 #import MySQLdb
 
-# Should put somewhere else.  flatten arbitrarily deep nested lists
+# Should put somewhere else. Flatten arbitrarily deep nested lists
 # from stack overflow
 def flatten(x):
     result = []
@@ -42,7 +42,7 @@ def convert_types(val):
         if len(val) == 0:
           val = [0]
         #if isinstance(val[0], (list, tuple)):
-        val = flatten(val) #[item for sublist in val for item in sublist] #reduce(lambda a, b: a + b, val)
+        val = flatten(val)
         if not isinstance(val[0], str):
           try:
             if val[0].dtype.kind in ('i', 'u', 'f'):
@@ -68,8 +68,8 @@ def convert_types(val):
             if val.dtype.kind in ('i', 'u', 'f'):
               val = np.asscalar(val)
           except:
-              #hopefully already a int/float
-              pass #a = 1  # Placeholder.
+              # Hopefully already a int/float
+              pass
       return val
 
 # Dictionary of correlators.
@@ -94,10 +94,6 @@ if __name__ == "__main__":
                               "%b %d %H:%M:%S")
   log_stdout.setFormatter(log_fmt)
   log.addHandler(log_stdout)
-
-  #db = MySQLdb.connect(host = "142.103.235.202", user = "chime", \
-  #                     passwd = "penticton", db = "ch_data")
-  #dbc = db.cursor()
 
   # Get command line arguments.
   parser = argparse.ArgumentParser(description = __doc__.split('\n')[0])
@@ -294,15 +290,6 @@ if __name__ == "__main__":
 
   # Start the acquisition.
   acq.start(acq_base_dir)
-
-  # Push into the database.
-#  dbc.execute("INSERT INTO archive (name) VALUES (\"%s\");" % (acq.full_path))
-#  archive_id = db.insert_id()
-#  dbc.execute("INSERT INTO config (comment) VALUES (\"%s\");" % (args.message));
-#  config_id = db.insert_id()
-#  dbc.execute("UPDATE archive SET config_id = %d WHERE id = %d;" % \
-#              (config_id, archive_id))
-#  db.commit()
 
   try:
     while True:
