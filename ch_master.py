@@ -82,7 +82,7 @@ CORRELATOR_16CH = "blanchard"   # Temporary, until we have a way of getting this
                                 # automatically.
 
 # Current archive format version.
-archive_version = "1.0.0"
+archive_version = "2.0.0"
 
 if __name__ == "__main__":
   # Set up logger.
