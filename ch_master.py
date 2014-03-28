@@ -63,11 +63,13 @@ def convert_types(val):
             val = flatten(val)
 
       else:
+        if isinstance(val, long):
+          val = int(val)
         if not isinstance(val, str):
-          try:
-            if val.dtype.kind in ('i', 'u', 'f'):
-              val = np.asscalar(val)
-          except:
+            try:
+              if val.dtype.kind in ('i', 'u', 'f'):
+                 val = np.asscalar(val)
+            except:
               #hopefully already a int/float
               pass #a = 1  # Placeholder.
       return val
@@ -77,7 +79,8 @@ correlator_hash = {"29821-0000-0003": "stone",
                               "0001": "stone",      # This is a bug in the FPGA.
                    "29821-0000-0033": "abbot",
                               "0033": "abbot",
-                   "29821-0000-0028": "vincente"}
+                   "29821-0000-0028": "vincente",
+                              "0031": "blanchard"}
 
 # Current archive format version.
 archive_version = "1.0.0"
@@ -183,7 +186,7 @@ if __name__ == "__main__":
   # Create the output directory.
   time_str = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
   try:
-    corr_name = correlator_hash[fpga_conf["adc_serial"]]
+    corr_name = correlator_hash[fpga_conf["adc_serial"][0]]
   except KeyError:
     try:
       log.critical("Could not find hash for ADC serial number %s." %
@@ -269,6 +272,8 @@ if __name__ == "__main__":
       val = fpga_conf[name]
       val = convert_types(val)
       # Now send FPGA information send to acquisition object's header.
+      #print val
+      #print type(val)
       acq.add_header_item(name, val)
 
   # Add some acquisition information to the header, for kicks.

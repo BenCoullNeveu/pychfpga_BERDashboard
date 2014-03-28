@@ -12,6 +12,8 @@ MGADC08.py module
 # MGADC08 FMC ADC board device handlers
 import logging
 import numpy as np
+import time
+import struct
 
 import ADC
 import IOExpander
@@ -122,12 +124,75 @@ class MGADC08_base(object):
 
     def load_board_info(self):
         """ loads the info data block from the ADC board EEPROM into memory for future access. """
-        self._board_info = {
-            'Model': 'MGADC08',
-            'Revision': 'Unknown',
-            'SYNC delay': 0,
-            'ADC delays': []
-        }
+        i = 0
+        string = ''
+        keep_reading = True
+        number_of_tries = 0
+        while(keep_reading):
+             try:
+                  ascii = self.eeprom.read(i)
+                  keep_reading = False
+             except:
+                  number_of_tries += 1
+                  if number_of_tries > 100:
+                      print "something wrong with eeprom reading"
+                      raise
+                  print 'e',
+                  time.sleep(0.01)
+        #125 is the ASCII character for the } which is used in the dictionary. The 1000 characters is used to make sure this doesn't go indefinitely
+        #Converts each address in EEPROM to a character and put it together in a string
+        dictionary_is_present = False
+        for i in range(500):
+            if (ascii != 125) and (ascii != 255):
+                keep_trying = True
+                number_of_tries = 0
+                while(keep_trying):
+                    try:
+                        ascii = self.eeprom.read(i)
+                        keep_trying = False
+                        print '.',
+                    except:
+                        number_of_tries +=1
+                        if number_of_tries > 100:
+                            print "something is wrong with eeprom read"
+                            raise
+                        time.sleep(0.01)
+                        print 'e',
+                char = chr(ascii)
+                string = string + char
+                #print char
+            elif ascii == 125:
+                dictionary_is_present = True
+                break
+        dictbyte = ''
+        if dictionary_is_present == True:
+            print "Now reading checksum"
+            for i in range(4): #reads 4 bytes after dictionary
+                keep_trying = True
+                number_of_tries = 0
+                while(keep_trying):
+                    try:
+                        asciibyte = self.eeprom.read(len(string)+1+i)
+                        keep_trying = False
+                        print '.',
+                    except:
+                        number_of_tries +=1
+                        if number_of_tries > 100:
+                            print 'Something is wrong with eeprom read'
+                            raise
+                        time.sleep(0.01)
+                        print 'e',
+                byte_char = chr(asciibyte)
+                dictbyte = dictbyte + byte_char
+            crccheck = struct.unpack('i',dictbyte)
+            # Doesn't actually do the crc check yet.....
+            #print 'The dictionary stored on EEPROM is:      ' + str(string)
+            #print 'The CRC library check is:     ' + str(crccheck)
+            exec_string = "dict_out = " + string[1:]
+            exec exec_string
+        elif dictionary_is_present == False:
+            print 'No dictionary found on EEPROM. Did the board pass the quality control test?'
+        self._board_info = dict_out
 
     def init(self, sampling_frequency=800e6, reference_frequency=10e6, verbose=0):
         """ Initializes the FMC board modules"""
