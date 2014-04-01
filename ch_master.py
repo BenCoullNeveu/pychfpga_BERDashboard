@@ -181,6 +181,45 @@ if __name__ == "__main__":
              group_frames=conf["fpga"]["group_frames"], \
              enable_gpu_link = conf["fpga"]["enable_gpu_link"], \
              host_ip = conf["fpga"]["host_ip"])
+
+
+  # Set FPGA controller parameters.
+  # Calculate new gains if necessary
+  # Get config here to be able to create receiver object
+  fpga_config = fpga.get_config()
+  if args.compute_gain:
+      fpga_rec = chFPGA_receiver.chFPGA_receiver(fpga_config, \
+                    ip_address=conf["fpga"]["ip_address"], \
+                    port=conf["fpga"]["rec_port"], \
+                    host_ip = conf["fpga"]["host_ip"])
+      calculate_gains.calculate_gains(fpga,fpga_rec)
+      fpga_rec.close()
+  gain_pkl_file = open(conf["fpga"]["gain_table_pkl"], "rb")
+  gains = pickle.load(gain_pkl_file)
+  all_chan = range(conf["n_antenna"])
+  fpga.set_data_source("adc") # This should come first.
+  fpga.set_FFT_bypass(False, channels = all_chan)
+  fpga.set_FFT_shift(conf["fpga"]["fft_shift"], channels = all_chan)
+  fpga.set_gain(gains, channels = all_chan)
+  fpga.sync()
+  fpga.set_send_flags()
+  fpga.set_offset_binary_encoding()
+  fpga.sync()
+  #Make sure FPGA throttling is fast enough to send all the data
+  #FPGA doesn't seem to change this without a reset...
+  #read_rate = int(np.floor(np.log2(conf["fpga"]["int_period"] * 4 * 125e6 / \
+  #                2 / (conf["n_antenna"] * (conf["n_antenna"] + 1)))))
+  #fpga.GPIO.HOST_FRAME_READ_RATE = read_rate
+
+  # Start the correlator.
+  ##fpga.start_corr_capture(integration_period = conf["fpga"]["int_period"])
+  #log.info("Correlator started with an integration time of %.1f s" % \
+  #         (conf["fpga"]["int_period"]))
+  
+
+  
+  #Read the FPGA setting back from the FPGA
+
   fpga_conf = vars(fpga.get_config())
   
   # Create the output directory.
@@ -223,37 +262,6 @@ if __name__ == "__main__":
   log.info("Sampling frequency is %0.3f MHz." % \
            float(conf["fpga"]["samp_freq"]))
 
-  # Set FPGA controller parameters.
-  # Calculate new gains if necessary
-  fpga_config = fpga.get_config()
-  if args.compute_gain:
-      fpga_rec = chFPGA_receiver.chFPGA_receiver(fpga_config, \
-                    ip_address=conf["fpga"]["ip_address"], \
-                    port=conf["fpga"]["rec_port"], \
-                    host_ip = conf["fpga"]["host_ip"])
-      calculate_gains.calculate_gains(fpga,fpga_rec)
-      fpga_rec.close()
-  gain_pkl_file = open(conf["fpga"]["gain_table_pkl"], "rb")
-  gains = pickle.load(gain_pkl_file)
-  all_chan = range(conf["n_antenna"])
-  fpga.set_data_source("adc") # This should come first.
-  fpga.set_FFT_bypass(False, channels = all_chan)
-  fpga.set_FFT_shift(conf["fpga"]["fft_shift"], channels = all_chan)
-  fpga.set_gain(gains, channels = all_chan)
-  fpga.sync()
-  fpga.set_send_flags()
-  fpga.set_offset_binary_encoding()
-  fpga.sync()
-  #Make sure FPGA throttling is fast enough to send all the data
-  #FPGA doesn't seem to change this without a reset...
-  #read_rate = int(np.floor(np.log2(conf["fpga"]["int_period"] * 4 * 125e6 / \
-  #                2 / (conf["n_antenna"] * (conf["n_antenna"] + 1)))))
-  #fpga.GPIO.HOST_FRAME_READ_RATE = read_rate
-
-  # Start the correlator.
-  ##fpga.start_corr_capture(integration_period = conf["fpga"]["int_period"])
-  #log.info("Correlator started with an integration time of %.1f s" % \
-  #         (conf["fpga"]["int_period"]))
 
   # Pass FPGA configuration variables to header.
   for name in fpga_conf:
