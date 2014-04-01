@@ -633,8 +633,8 @@ class chFPGA_controller(object):
         config.mgt_ref_clock = self.FreqCtr.read_frequency('MGT_REFCLK', gate_time=0.05)
         config.mgt_word_clock = self.FreqCtr.read_frequency('MGT_USRCLK2', gate_time=0.05)
         config.adc_clocks = [self.FreqCtr.read_frequency(('ADC_CLK'+str(i)), gate_time=0.05) for i in range(8)]
-#        config.adc_serial = self.adc_serial
-#        config.motherboard_serial = self.get_motherboard_serial()
+        config.adc_serial = [fmc._board_info['Serial #'] for fmc in self.adc_board]
+        config.motherboard_serial = self.GPIO.FPGA_SERIAL_NUMBER
         # Add FFT shift, scaler gain, corr integration/capture period etc.
         return config
 

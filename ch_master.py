@@ -63,6 +63,8 @@ def convert_types(val):
             val = flatten(val)
 
       else:
+        if isinstance(val, long):
+          val = int(val)
         if not isinstance(val, str):
           try:
             if val.dtype.kind in ('i', 'u', 'f'):
@@ -77,7 +79,8 @@ correlator_hash = {"29821-0000-0003": "stone",
                               "0001": "stone",      # This is a bug in the FPGA.
                    "29821-0000-0033": "abbot",
                               "0033": "abbot",
-                   "29821-0000-0028": "vincente"}
+                   "29821-0000-0028": "vincente",
+                              "0029": "blanchard"}
 CORRELATOR_16CH = "blanchard"   # Temporary, until we have a way of getting this
                                 # automatically.
 
@@ -268,6 +271,8 @@ if __name__ == "__main__":
       val = fpga_conf[name]
       val = convert_types(val)
       # Now send FPGA information send to acquisition object's header.
+      #print val
+      #print type(val)
       acq.add_header_item(name, val)
 
   # Add some acquisition information to the header, for kicks.
