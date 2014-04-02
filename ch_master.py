@@ -100,7 +100,8 @@ if __name__ == "__main__":
   # Get command line arguments.
   parser = argparse.ArgumentParser(description = __doc__.split('\n')[0])
   parser.add_argument("-g", "--git-tag", action = "store", \
-                      default = "", help = "Git tag for current version.")
+                      default = "", help = "Current git tag, use: " + \
+                             "-g `git describe --tags` ")
   parser.add_argument("-c", "--conf_file", action = "store", \
                       default = "ch_master.conf", \
                       help = "Configuration file.")
