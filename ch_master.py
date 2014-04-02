@@ -80,7 +80,8 @@ correlator_hash = {"29821-0000-0003": "stone",
                    "29821-0000-0033": "abbot",
                               "0033": "abbot",
                    "29821-0000-0028": "vincente",
-                              "0029": "blanchard"}
+                              "0029": "blanchard",
+                              "0031": "testing"}
 
 # Current archive format version.
 archive_version = "1.0.0"
@@ -103,6 +104,8 @@ if __name__ == "__main__":
   parser.add_argument("-c", "--conf_file", action = "store", \
                       default = "ch_master.conf", \
                       help = "Configuration file.")
+  parser.add_argument("-n", "--notes", action = "store", default = "None.", \
+                      help = "Acquisition notes.")
   parser.add_argument("-s", "--spec_file", action = "store", \
                       default = "ch_master.spec", \
                       help = "Configuration file specifications.")
@@ -182,7 +185,7 @@ if __name__ == "__main__":
   # Create the output directory.
   time_str = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
   try:
-    corr_name = correlator_hash[fpga_conf["adc_serial"][0]]
+    corr_name = correlator_hash[fpga_conf["adc_serial"][0]][0]
   except KeyError:
     try:
       log.critical("Could not find hash for ADC serial number %s." %
@@ -289,6 +292,9 @@ if __name__ == "__main__":
     tag = args.git_tag
   log.info("Git version is %s." % (tag))
   acq.add_header_item("git_version_tag", tag)
+
+  # Add the user notes.
+  acq.add_header_item("notes", args.notes)
 
   # Start the acquisition.
   acq.start(acq_base_dir)
