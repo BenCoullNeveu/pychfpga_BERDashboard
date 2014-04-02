@@ -12,7 +12,7 @@ History:
 
 import time
 import numpy as np
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 
 from Module import Module_base, BitField
 from pychfpga.common import util
@@ -333,14 +333,14 @@ class MGT_base(Module_base):
 		else:
 			print 'Parameter "%s" does not exist in MGT[%i]' %(sweep_param,sweep_port)
 			raise Exception
-		plt.figure(2)
-		plt.clf()
-		plt.hold(1)
-		plt.grid(1)
-		plt.figure(3)
-		plt.clf()
-		plt.hold(1)
-		plt.grid(1)
+#		plt.figure(2)
+#		plt.clf()
+#		plt.hold(1)
+#		plt.grid(1)
+#		plt.figure(3)
+#		plt.clf()
+#		plt.hold(1)
+#		plt.grid(1)
 		try:
 			for param_value in sweep_range:
 				rx.RX_RESET=1;
@@ -349,11 +349,11 @@ class MGT_base(Module_base):
 				param_fn(param_value) # set the sweep parameter
 
 				offset=range(0,128,step);
-				plt.figure(1)
-				plt.clf()
-				plt.hold(1)
-				plt.axis([0,max(offset),-200,200])
-				plt.ylabel('RX Differential amplitude (mV)') 
+#				plt.figure(1)
+#				plt.clf()
+#				plt.hold(1)
+#				plt.axis([0,max(offset),-200,200])
+#				plt.ylabel('RX Differential amplitude (mV)') 
 				eye_avg=np.zeros(len(offset));
 				for j in range(Navg):
 					eye=np.zeros(len(offset));
@@ -363,22 +363,22 @@ class MGT_base(Module_base):
 						#print '*'*eye[i]
 					eye*=200./31
 					eye_avg+=eye
-					plt.plot(offset,eye,'r.')
-					plt.plot(offset,-eye,'r.')
-					plt.draw()
+#					plt.plot(offset,eye,'r.')
+#					plt.plot(offset,-eye,'r.')
+#					plt.draw()
 				eye_avg/=Navg
-				plt.figure(2)
-				plt.plot(offset,eye_avg,'k-')
-				plt.plot(offset,-eye_avg,'k-')
-				plt.draw()
+#				plt.figure(2)
+#				plt.plot(offset,eye_avg,'k-')
+#				plt.plot(offset,-eye_avg,'k-')
+#				plt.draw()
 				print '%s=%i, Eye max=%.1f mV' % (sweep_param, param_value, max(eye_avg))
 				eye_max.append(max(eye_avg))
-				plt.figure(3)
-				plt.clf()
-				plt.plot(sweep_range[:len(eye_max)],eye_max,'b.-')
-				plt.draw()
-				plt.xlabel(sweep_param)
-				plt.ylabel('Eye opening (mV)')
+#				plt.figure(3)
+#				plt.clf#()
+#				plt.plot(sweep_range[:len(eye_max)],eye_max,'b.-')
+#				plt.draw()
+#				plt.xlabel(sweep_param)
+#				plt.ylabel('Eye opening (mV)')
 		except KeyboardInterrupt:
 			pass
 		rx.RX_EYE_SCANMODE=0

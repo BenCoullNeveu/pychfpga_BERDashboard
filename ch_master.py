@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/local/bin/python2.7
 
 """
 Master control program for CHIME.
@@ -24,7 +24,7 @@ import pickle
 from pychfpga import calculate_gains
 #import MySQLdb
 
-# Should put somewhere else.  flatten arbitrarily deep nested lists
+# Should put somewhere else. Flatten arbitrarily deep nested lists
 # from stack overflow
 def flatten(x):
     result = []
@@ -42,7 +42,7 @@ def convert_types(val):
         if len(val) == 0:
           val = [0]
         #if isinstance(val[0], (list, tuple)):
-        val = flatten(val) #[item for sublist in val for item in sublist] #reduce(lambda a, b: a + b, val)
+        val = flatten(val)
         if not isinstance(val[0], str):
           try:
             if val[0].dtype.kind in ('i', 'u', 'f'):
@@ -66,12 +66,12 @@ def convert_types(val):
         if isinstance(val, long):
           val = int(val)
         if not isinstance(val, str):
-            try:
-              if val.dtype.kind in ('i', 'u', 'f'):
-                 val = np.asscalar(val)
-            except:
-              #hopefully already a int/float
-              pass #a = 1  # Placeholder.
+          try:
+            if val.dtype.kind in ('i', 'u', 'f'):
+              val = np.asscalar(val)
+          except:
+              # Hopefully already a int/float
+              pass
       return val
 
 # Dictionary of correlators.
@@ -80,7 +80,8 @@ correlator_hash = {"29821-0000-0003": "stone",
                    "29821-0000-0033": "abbot",
                               "0033": "abbot",
                    "29821-0000-0028": "vincente",
-                              "0029": "blanchard"}
+                              "0029": "blanchard",
+                              "0031": "testing"}
 
 # Current archive format version.
 archive_version = "1.0.0"
@@ -96,10 +97,6 @@ if __name__ == "__main__":
   log_stdout.setFormatter(log_fmt)
   log.addHandler(log_stdout)
 
-  #db = MySQLdb.connect(host = "142.103.235.202", user = "chime", \
-  #                     passwd = "penticton", db = "ch_data")
-  #dbc = db.cursor()
-
   # Get command line arguments.
   parser = argparse.ArgumentParser(description = __doc__.split('\n')[0])
   parser.add_argument("-g", "--git-tag", action = "store", \
@@ -107,6 +104,8 @@ if __name__ == "__main__":
   parser.add_argument("-c", "--conf_file", action = "store", \
                       default = "ch_master.conf", \
                       help = "Configuration file.")
+  parser.add_argument("-n", "--notes", action = "store", default = "None.", \
+                      help = "Acquisition notes.")
   parser.add_argument("-s", "--spec_file", action = "store", \
                       default = "ch_master.spec", \
                       help = "Configuration file specifications.")
@@ -225,7 +224,7 @@ if __name__ == "__main__":
   # Create the output directory.
   time_str = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
   try:
-    corr_name = correlator_hash[fpga_conf["adc_serial"][0]]
+    corr_name = correlator_hash[fpga_conf["adc_serial"][0]][0]
   except KeyError:
     try:
       log.critical("Could not find hash for ADC serial number %s." %
@@ -302,17 +301,11 @@ if __name__ == "__main__":
   log.info("Git version is %s." % (tag))
   acq.add_header_item("git_version_tag", tag)
 
+  # Add the user notes.
+  acq.add_header_item("notes", args.notes)
+
   # Start the acquisition.
   acq.start(acq_base_dir)
-
-  # Push into the database.
-#  dbc.execute("INSERT INTO archive (name) VALUES (\"%s\");" % (acq.full_path))
-#  archive_id = db.insert_id()
-#  dbc.execute("INSERT INTO config (comment) VALUES (\"%s\");" % (args.message));
-#  config_id = db.insert_id()
-#  dbc.execute("UPDATE archive SET config_id = %d WHERE id = %d;" % \
-#              (config_id, archive_id))
-#  db.commit()
 
   try:
     while True:
