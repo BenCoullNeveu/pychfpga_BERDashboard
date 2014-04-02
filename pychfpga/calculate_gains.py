@@ -96,13 +96,12 @@ def calc_gains(g):
     #print g
     bad_values = (g > 2**31) | ~np.isfinite(g)
     g = np.ma.array(g,mask=bad_values)
-    glog = (np.ceil(np.log2(np.median(np.abs(g)/2**13,axis=1)))).astype(np.int)
+    glog = (np.ceil(np.log2(np.ma.median(np.abs(g)/2**13,axis=1)))).astype(np.int)
     glin = np.zeros(g.shape, dtype=np.complex)
     for i, glog_single in enumerate(glog):
         glin[i] = g[i]/2**glog[i]
-    glog.data[glog.mask == True] = np.median(glog)
+    glog.data[glog.mask == True] = np.ma.median(glog)
     glog.mask[glog.mask] = False
-    glog +=4
     glin[bad_values] = 2**14
     return glin, glog.data
 
@@ -127,7 +126,7 @@ def calculate_gains(c,r):
     c.set_scaler_bypass(0)
     c.set_send_flags()
     c.set_offset_binary_encoding()
-    default_log2_gain = 25
+    default_log2_gain = 22
     c.set_gain((1,default_log2_gain))
     c.start_data_capture(burst_period_in_seconds=0.1)
     channels = range(16)
@@ -136,17 +135,19 @@ def calculate_gains(c,r):
     idealRMS = 2.83
     #glog = 13 # not sure why this isn't 9, but seemed to be the case.
     rmss = []
-    for i in range(8):
+    for i in range(18):
         data = get_frames(r)
         # only do for channel 0 for now   
         outrms = data[:,:,:].std(axis=0)
+        outrms[outrms < 0.8] = 0.8
         rmss.append(outrms.mean())
         print outrms.mean(axis=1)
         if i == 0:
-            g = idealRMS*2**(default_log2_gain-4)/outrms#idealRMS*2**(default_log2_gain-4)/outrms
+            g = idealRMS*2**(default_log2_gain)/outrms#idealRMS*2**(default_log2_gain-4)/outrms
         else:
             for j, glog1 in enumerate(glog):
-                g[j] = idealRMS*glin[j]*(2**(glog[j]-4))/outrms[j] #idealRMS*glin*(2**(glog-4))/outrms
+                g[j] = idealRMS*glin[j]*(2**(glog[j]))/outrms[j] #idealRMS*glin*(2**(glog-4))/outrms
+                g[j] = (20.0*g[j] + 80.0*glin[j]*(2**(glog[j])))/100.0
         glin, glog = calc_gains(g)
         print glog
         bad_gains = glin > 2**14
@@ -157,6 +158,8 @@ def calculate_gains(c,r):
             gain.append([channel,[glin[channel].tolist(), glog[channel]]])
         c.set_gain(gain)
         time.sleep(1)
+    out1 = open('gains_noisy.pkl', 'wb')
+    pickle.dump(gain,out1)
     for channel in channels:
         glin_final = fourier_filter(gain[channel][1][0])
         gain[channel][1][0] = glin_final.tolist()
