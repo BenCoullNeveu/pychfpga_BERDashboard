@@ -225,7 +225,7 @@ if __name__ == "__main__":
   # Create the output directory.
   time_str = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
   try:
-    corr_name = correlator_hash[fpga_conf["adc_serial"][0]][0]
+    corr_name = correlator_hash[fpga_conf["adc_serial"][0]]
   except KeyError:
     try:
       log.critical("Could not find hash for ADC serial number %s." %
