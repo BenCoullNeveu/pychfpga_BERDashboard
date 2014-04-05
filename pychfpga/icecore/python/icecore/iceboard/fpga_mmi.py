@@ -1,9 +1,9 @@
 #!/usr/bin/python
 # Disable pylint TAB warnings (W0312) and Line too long (=C0301)
-# pylint: disable=W0312,C0301 
+# pylint: disable=W0312,C0301
 
 """
-fpga_mmi.py module 
+fpga_mmi.py module
 Provides access to the memory-mapped interface of the FPGA through a socket.
 
  History:
@@ -29,7 +29,7 @@ class TimeoutException(Exception):
 class FpgaMmi:
     """
     Base class that defines the memory-mapped interface to the FPGA either through a direct link to the FPGA or through the ARM direct-access socket.
-    This is used by Python code that handles the FPGA firmware directly by toggling reading and writing to memopry-mapped registers. 
+    This is used by Python code that handles the FPGA firmware directly by toggling reading and writing to memopry-mapped registers.
 
     For now we implement only UDP sockets but TCP would work as well with minor changes. ZeroMQ sockets could probably be supported easily as well for efficient distribution of commands.
     TCP and ZeroMQ would work only through the ARM, through.
@@ -57,11 +57,11 @@ class FpgaMmi:
 
     def __exit__(self, etype, einst, etraceback):
             self.close()
-            
 
-    def open(self, interface_ip_addr, ip_addr, port_number, netmask='255.255.0.0',):
+
+    def open(self, interface_ip_addr, ip_addr, port_number, netmask='255.255.0.0', timeout = 2):
         """
-        Open control communication socket to FPGA 
+        Open control communication socket to FPGA
         """
 
         self.netmask = netmask # network mask used to find the host address that is on the same subnet as the target IP. This does not affect the network adapter settings.
@@ -76,7 +76,7 @@ class FpgaMmi:
 
         self.sock = udp.Udp()
         self.sock.open(if_ip_addr=self.interface_ip_addr, ip_addr = self.ip_addr, port_number = self.port_number)
-        self.sock.set_timeout(2)
+        self.sock.set_timeout(timeout)
 
         self.logger.info('   Opened control socket on %s:%i through interface %s' % (self.ip_addr, self.port_number, self.interface_ip_addr))
 
@@ -172,7 +172,7 @@ class FpgaMmi:
 
             dout[offset:offset+read_length] = np.fromstring(data[1:], dtype=np.uint8) # store received byte
 
-            if incr: 
+            if incr:
                 addr += read_length
             offset += read_length
 
@@ -220,7 +220,7 @@ class FpgaMmi:
         return dout
 
     def write(self, addr, data, incr=1):
-        """ 
+        """
         Writes byte(s) to memory-mapped registers in the FPGA through the Ethernet interface.
         'data' can be:
             - String
@@ -228,10 +228,10 @@ class FpgaMmi:
             - numpy array of integers between 0 and 255
             - 4 bytes in a numpy uint32. MSB is transmitted first
             - 2 bytes in a numpy uint16. MSB is transmitted first
-            - 1 byte in a numpy uint8. 
+            - 1 byte in a numpy uint8.
         """
         # build command packet
-        #s=chr(0x80+ant+(0x40 if incr else 0))+chr((module<<2)+(addr>>8))+chr(addr&0xFF) 
+        #s=chr(0x80+ant+(0x40 if incr else 0))+chr((module<<2)+(addr>>8))+chr(addr&0xFF)
 
         string = chr(0x80 + (0x40 if incr else 0) + ((addr >> 16) & 0x0F)) + chr((addr >> 8) & 0xFF) + chr(addr & 0xff)
 

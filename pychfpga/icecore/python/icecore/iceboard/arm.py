@@ -1,5 +1,5 @@
 """
-This module provide methods to access the functionnalities provided by the ARM processor on the McGill ICEBoard (MGK7MB) 
+This module provide methods to access the functionnalities provided by the ARM processor on the McGill ICEBoard (MGK7MB)
 """
 import json, requests
 import base64
@@ -27,13 +27,17 @@ class Arm(object):
 
 
     @staticmethod
-    def ping_tuber(ip_address, port=80, timeout = 0.1):
+    def ping_tuber_ip(ip_address, port=80, timeout = 0.1):
 
-        url = 'http://%s:%i/tuber' % (ip_address, port)
+        uri = 'http://%s:%i/tuber' % (ip_address, port)
+        return Arm.ping_tuber(uri, timeout)
+
+    @staticmethod
+    def ping_tuber(uri, timeout = 0.1):
 
         result = False
         try:
-            r=requests.post(url,'{}', headers={'Connection':'close'}, timeout=timeout)
+            r=requests.post(uri,'{}', headers={'Connection':'close'}, timeout=timeout)
             r.connection.close()
             result =  r.ok
         except requests.Timeout:
@@ -130,17 +134,17 @@ class Arm(object):
 
     # def i2c_write_read(i2c_addr, data=None, length=None):
     #     """
-    #     Basic I2C access function. Can perform a single read command, write command, or a SMBUS-compatible write followed by a restart and a read. 
+    #     Basic I2C access function. Can perform a single read command, write command, or a SMBUS-compatible write followed by a restart and a read.
     #     """
     #     pass
 
 
 
 
-if __name__ == '__main__':        
+if __name__ == '__main__':
 
     log_levels = {'info': logging.INFO, 'debug': logging.DEBUG}
-    
+
     parser = argparse.ArgumentParser(description=__doc__.split('\n')[0]) # description is the first line of the docstring
     parser.add_argument('--ip', action = 'store', type=str, default='10.10.10.108', help='IP address of the ARM processor')
     parser.add_argument('-l', '--log_level', action = 'store', type=str, choices=log_levels.keys(), default='info', help='Logging level')

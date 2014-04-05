@@ -19,3 +19,4 @@ this as a read-only folder.
 The Python code runs on Python 2.7 and requires the following packages:
    * futures  ( to have access to concurrent.futures, which executes multiple processes in parallel)
    * sqlalchemy ( the object-oriented high-level SQL database interface)
+   * requests (Still needed?)

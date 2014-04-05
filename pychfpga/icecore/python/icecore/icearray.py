@@ -450,9 +450,9 @@ class IceArray(object):
         # self.resource_database = IceResourceTable()
         self.interface_ip_addr = interface_ip_addr
 
-        # Create a hardware mapper
+        # Create a hardware mapper session
         self.hwmap = hardware_map.HardwareMap(echo=False) # JFC echo=False because we already have a logger that will catch the messages.
-
+        self.hwmap.interface_ip_addr = interface_ip_addr # store the host ip address to be used to talk to FPGAs (won't be needed when FPGA are accessed through the ARM)
         # Remove the logger handlers that is created for the SQLAlchemy Engine. We want to use our own top level handler.
         # If we don't do this, the SQLAlchemy messages get displayed twice
         sa_logger =  logging.getLogger('sqlalchemy.engine.base.Engine')
@@ -461,7 +461,16 @@ class IceArray(object):
             # print 'removing handler', sa_logger.handlers[0]
             sa_logger.removeHandler(sa_logger.handlers[0])
 
-        self.discover([0])
+        # self.discover()
+    def flush_all_sessions(self):
+        """ Flushes all queries in all database sessions, even those created on other IceArray instances.
+        """
+        self.hwmap.flush()
+
+    def close_all_sessions(self):
+        """ Close all database sessions, even those that were created on other iceboard instances.
+        """
+        self.hwmap.close_all()
 
     # def close(self):
     #     """
@@ -473,15 +482,14 @@ class IceArray(object):
     def discover(self, source_subarrays = [0] , timeout=0.1):
         """
         Discover all hardware and firmware resources on the specified
-        interface(s) and in the specified subarray(s) and returns a list of
-        those.
+        interface(s) and add them to the database.
         """
         # iceboard_resources = self._discover_iceboards(source_subarrays= source_subarrays, interface_ip= interface_ip, timeout = timeout)
-        discovered_iceboards = iceboard.IceBoard.discover(timeout = timeout, interface_ip_addr = self.interface_ip_addr)
+        iceboard.discover(self.hwmap, timeout = timeout, interface_ip_addr = self.interface_ip_addr)
 
         # self.d = discovered_iceboards
-        for ice in discovered_iceboards:
-            self.hwmap.add(ice)
+        # for ice in discovered_iceboards:
+        #     self.hwmap.add(ice)
         #self.hwmap.flush()
         # if iceboard_resources:
         #     resources.update(iceboard_resources)

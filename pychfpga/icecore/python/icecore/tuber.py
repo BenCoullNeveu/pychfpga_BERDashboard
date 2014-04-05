@@ -2,7 +2,7 @@
 Tuber object interface
 '''
 
-from sqlalchemy import Column, String
+# from sqlalchemy import Column, String
 
 ###
 ### Error classes
@@ -18,15 +18,20 @@ class TuberRemoteError(TuberError):
 ### Libraries
 ###
 
-import urllib2, urlparse, os
-from hardware_map import HWMResource
+import urllib2
+# from hardware_map import HWMResource
 
-try: import simplejson as json
-except ImportError: import json
+try:
+    import simplejson as json
+except ImportError:
+    import json
 
-class TuberHWMResource(HWMResource):
+# from attribute_publisher import AttributePublisher
+
+# class TuberHWMResource(HWMResource):
+class TuberHWMResource():
     '''A base class for HWMResources that correspond to TuberObjects.
-    
+
     This is a great way of using the HardwareMap to correspond with
     network resources over a HTTP tunnel. It hides most of the gory
     details and makes your networked resource look and behave like a
@@ -34,7 +39,7 @@ class TuberHWMResource(HWMResource):
 
     To use it, you should subclass this TuberHWMResource. This does a
     couple of things:
-    
+
     * Defines a table in the hardware mapper database, with mandatory
       "tuber_uri" and "tuber_objname" columns. You can add your own
       columns too, of course.
@@ -51,8 +56,26 @@ class TuberHWMResource(HWMResource):
     _hold_dispatcher = False
 
     __abstract__ = True
-    tuber_uri = Column(String, nullable=False)
-    tuber_objname = Column(String, nullable=False)
+    # JFC: Commented out Column assignments to try a non-database tuber
+    # tuber_uri = Column(String, nullable=False)
+    # tuber_objname = Column(String, nullable=False)
+
+    @staticmethod
+    def ping(uri, timeout = 0.1):
+        """
+        Returns a boolean inticating whether a tuber object is available at the specified URI.
+        """
+        try:
+            fh=urllib2.urlopen(uri, '{}', timeout=timeout)
+            fh.close()
+        except  urllib2.URLError:
+            return False
+        return True
+
+    def __init__(self, uri, object_name):
+        self.tuber_uri = uri
+        self.tuber_objname = object_name
+
 
     def hold(self, on_hold=True):
         '''Suspend tuber calls, and then dispatch several at once.'''
@@ -101,7 +124,7 @@ class TuberHWMResource(HWMResource):
         return d
 
     @property
-    def _tuber_meta(self, element=None):
+    def _tuber_meta(self):
         '''Retrieve metadata associated with the remote network resource.
 
         This data isn't strictly needed to construct "blind" JSON-RPC calls,
@@ -115,9 +138,20 @@ class TuberHWMResource(HWMResource):
         on-the-fly as they're needed.
         '''
 
-        if self._tuber_meta_cache and not element:
+        # Since ORM validation and default assignment happens during
+        # the SQL INSERT, this is easy to (if you forget to hwm.add(...)
+        # and hwm.commit() the new object.) Make a fuss.
+        if not self.tuber_objname or not self.tuber_uri:
+            raise TuberError("Objname (%s) or URI (%s) not specified!" % (
+                self.tuber_objname,
+                self.tuber_uri)
+            )
+
+        # Cache access.
+        if self._tuber_meta_cache:
             return self._tuber_meta_cache
 
+        # Not cached yet: load it.
         json_in = json.dumps({'object': self.tuber_objname})
         json_out = json.loads(urllib2.urlopen(self.tuber_uri, json_in).read())
 

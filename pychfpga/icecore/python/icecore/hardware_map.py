@@ -132,7 +132,8 @@ class HWMQuery(Query):
         # as a collection and call things like "count()" on it.
 
         # Refuse to parallellize access to _some_types_of_name
-        if name[0] == '_': raise AttributeError("Refusing to parallelize name '%s'" % name)
+        if name[0] == '_':
+            raise AttributeError("Refusing to parallelize name '%s' (because it begins with a '_')" % name)
 
         # See if this is something we can parallelize. Note that
         # AttributeError is the correct exception to return for
@@ -234,7 +235,7 @@ class HWMResource(Base):
 
 class HardwareMap(object):
 
-    def __new__(self, uri='sqlite:///:memory:', echo=False, **kwargs):
+    def __new__(self, uri='sqlite:///:memory:', echo=False, *args, **kwargs):
         # Connect to the database
         e = create_engine(
                 uri,
@@ -248,6 +249,10 @@ class HardwareMap(object):
         Base.metadata.create_all(e)
 
         # A HardwareMapper is actually just an augmented SQLAlchemy Session.
-        return sessionmaker(bind=e, query_cls=HWMQuery, **kwargs)()
+        return sessionmaker(
+                bind=e,
+                query_cls=HWMQuery,
+                *args,
+                **kwargs)()
 
 # vim: sts=4 ts=4 sw=4 tw=80 smarttab expandtab

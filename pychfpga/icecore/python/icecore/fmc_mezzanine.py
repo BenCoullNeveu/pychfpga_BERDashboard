@@ -5,6 +5,8 @@ from sqlalchemy.orm import relationship, backref
 
 from hardware_map import HWMResource
 
+import iceboard
+
 class FMCMezzanine(HWMResource):
     """FMC Mezzanine schema object.
 

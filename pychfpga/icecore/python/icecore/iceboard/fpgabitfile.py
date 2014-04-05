@@ -12,6 +12,12 @@ import struct
 class FpgaBitFile(object):
     """
     Represents an FPGA bit file.
+
+    TODO:
+       - check for 0xffffffffaa995566 prefix on the data.
+       - store metadata in accessible atttributes.
+    Notes:
+        BIT file format described in http://www.fpga-faq.com/FAQ_Pages/0026_Tell_me_about_bit_files.htm
     """
     # __metaclass__ = _add_class_logger # intercept the default class creator (type(...)) with one that adds a 'logger' atttribute with a 'module.class' name (why this? The name of this class is not accessible in __name__ until the class creation is completed)
 
@@ -40,8 +46,9 @@ class FpgaBitFile(object):
             data = file.read()
         self.logger.info('Read %0.3f Mbytes' % (len(data)/1e6))
 
-        if extension not in ['bit, bin']:
-            self.logger.error('unknown file extension "%s"' % extension)
+        if extension not in ['bit', 'bin']:
+            self.logger.error('Unknown file extension "%s"' % extension)
+            raise Exception('Unknown file extension')
 
         if extension == 'bit':
             pos = 0

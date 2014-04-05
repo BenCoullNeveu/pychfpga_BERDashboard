@@ -1,28 +1,21 @@
-"""Base schema for McGill hardware.
+"""Base object for IceBoard objects.
 
-You are strongly encouraged to use this framework for additional hardware. For
-example:
-
-   * An IceBoard committed to a particular purpose should be a subclass.
-     (See, for example, the dfmux schema in "schema_dfmux.py".)
-
-   * An entirely new kind of asset (e.g. a cable, a network switch, or a power
-     supply) should be a new class deriving from HWMResource.
-
-HWMResource is a subclass of the SQLAlchemy "declarative_base()" object. You
-are encouraged to consult their documentation for details.
+To specialize an IceBoard object for a particular experiment, you're
+encouraged to create a subclass. There should be good examples
+available.
 """
 
 from sqlalchemy import Column, Integer, String, ForeignKey, UniqueConstraint
-from sqlalchemy.orm import relationship, backref
+from sqlalchemy.orm import relationship
 
-from hardware_map import HWMResource
 from tuber import TuberHWMResource
+import fmc_mezzanine
+
 
 class IceBoard(TuberHWMResource):
     __tablename__ = 'iceboards'
     __table_args__ = (
-        UniqueConstraint('serial'),
+        UniqueConstraint('serial_number'),
     )
     __mapper_args__ = {
             'polymorphic_identity': 'iceboard',
@@ -31,6 +24,7 @@ class IceBoard(TuberHWMResource):
 
     pk = Column(Integer, primary_key=True)
     cls = Column(String, nullable=False)
+    tuber_objname = Column(String, nullable=False, default='iceboard')
 
     # Set up explicit mezz1 / mezz2 links.
     mezz1_pk = Column(Integer, ForeignKey('fmc_mezzanines.pk'), index=True)
@@ -47,7 +41,24 @@ class IceBoard(TuberHWMResource):
         primaryjoin="or_(FMCMezzanine.pk==IceBoard.mezz1_pk,FMCMezzanine.pk==IceBoard.mezz2_pk)",
     )
 
-    serial = Column(Integer)
+    serial_number = Column(Integer)
     revision = Column(Integer)
+
+    def configure_fpga(self, buf):
+        '''
+        Configures the FPGA with the specified buffer.
+
+        The buffer is an ordinary string object or similar, and
+        contains an already loaded .BIT or .BIN file. We hash it
+        here, but the FPGA itself is responsible for accepting
+        or rejecting it. (It's got internal checksums and will
+        notice if you pass it garbage.)
+        '''
+
+        import base64, hashlib
+
+        md5_string = hashlib.md5(buf).hexdigest()
+        b64_string = base64.b64encode(buf)
+        self.load_fpga_bitstream(b64_string, md5_string)
 
 # vim: sts=4 ts=4 sw=4 tw=80 smarttab expandtab

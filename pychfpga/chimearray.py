@@ -12,16 +12,20 @@ Defines ChimeArray class that Provides access to an array of ICEBoards and ICEBo
 #import time
 import argparse
 import logging
-
+import logging.handlers
+reload(logging) # clear any previous logger set-up that is stored in the logging module
+reload(logging.handlers) # we need to reload the handlers as well so they are inheriting from the newly loaded Handler class defined in freshly reloaded logging, not the old one. Otherwise we get errors.
 #import icecore.python.icecore as icecore
 import icecore
-
+import core.chFPGA_controller
 
 
 # class ChimeException(IceException):
 #     pass
 
-class ChimeArray(icecore.IceArray):
+#ChimeIceBoard = IceBoard(icecore.arm.ArmFirmware, ChimeFpgaFirmware)
+ChimeFpgaFirmware = core.chFPGA_controller.chFPGA_controller
+class ChimeArray(icecore.icearray.IceArray):
     """
     Provides access to arrays of ICEBoards and ICEBoxes.
     """
@@ -36,18 +40,19 @@ class ChimeArray(icecore.IceArray):
         """
 
         self.logger = logging.getLogger('%s.%s' % (type(self).__module__, type(self).__name__))
-        super(type(self), self).__init__(interface_ip_addr = interface_ip_addr, iceboard_class = icecore.IceBoard, mezz_class = None)
+        super(type(self), self).__init__(interface_ip_addr = interface_ip_addr, mezz_class = None)
 
 
 
 #####################################
 # Configure the various loggers to provide adequate levels of details
 
-logging.getLogger('iceboard.arm.FpgaBitFile').setLevel(logging.INFO)
-logging.getLogger('requests.packages').setLevel(logging.WARN)
-logging.getLogger('sqlalchemy.engine.base.Engine').setLevel(logging.INFO)
 
 if __name__ == '__main__':
+
+    logging.getLogger('iceboard.arm.FpgaBitFile').setLevel(logging.INFO)
+    logging.getLogger('requests.packages').setLevel(logging.WARN)
+    logging.getLogger('sqlalchemy.engine.base.Engine').setLevel(logging.DEBUG)
 
     if '__opened_sockets__' in globals(): # i.e. if __main__ has an __opened_sockets__ attribute
         while __opened_sockets__: # close all sockets so we won't get a 'socket already opened' error because of a previous run
@@ -64,9 +69,18 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     log_level = {'info': logging.INFO, 'debug': logging.DEBUG}[args.log_level]
-    logging.basicConfig(level=log_level, format='%(asctime)s %(name)-32s %(levelname)-10s : %(message)s')
+    # logging.basicConfig(level=log_level, format='%(asctime)s %(name)-32s %(levelname)-10s : %(message)s')
 
-    logger = logging.getLogger(__name__)
+    try:
+        del logger
+    except NameError:
+        pass
+    logger = logging.getLogger('')
+    logger.setLevel(log_level)
+    handler = logging.handlers.SysLogHandler()
+    # handler = logging.StreamHandler()
+    logger.addHandler(handler)
+
     logger.info('------------------------')
     logger.info('chimearray')
     logger.info('------------------------')
@@ -75,37 +89,17 @@ if __name__ == '__main__':
         logger.info('   %s = %s' % (key, repr(value)))
     # Create the new chFPGA object.
 
-
     ca = ChimeArray(args.if_ip)
+    #ca.close_all_sessions() # make sure all sessions that might be still open (for instance, if we run this script many times interactively) are closed. Otherwise an object might end up being assigned to multiple sessions.
+    ca.discover() # automatically update the hardware map database with discovered resources
     # ice.status()
 
-    bitfile = icecore.FpgaBitFile('../../chfpga/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit')#('../../../chfpga/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit')
+    bitfile = icecore.fpgabitfile.FpgaBitFile('../../chfpga/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit')#('../../../chfpga/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit')
     c = ca.get_iceboards([7, 14, 19]) # get one or more IceBoards
-#    c.configure_fpga(bitfile)
+    c.configure_fpga(bitfile)
+    # c.configure_fpga(bitfile, ChimeFpgaFirmware)
+    # c0 = ca.get_iceboards([7]).one() # get one IceBoards
+    # c0.configure_fpga(bitfile, ChimeFpgaFirmware)
+    # c0.configure_fpga(bitfile)
+    # c0.open()
 
-
-    # # Top level example #1
-    # c = ice.get_iceboard(['*5c', '*22'], lock = false) # get one or more IceBoards
-    # c.configure_fpga(bitfile= 'bitfile', ip_addr = 'auto', port = 'auto') # set the firmware and networking if using the FPGA direct networking system
-    # c.set_id(set_id_from_slot_and_crate) # Assign an experiment-specific id like 'R0C00S01' for Rack 0 Crate 0 Slot 1
-    # c.sortby('id')
-
-    # c.open() # establish connection to the firmware.  A ZMQ socket could be used if possible
-
-
-    # c.status() # each board shows its status in turn
-    # c.set_data_source('funcgen') # set data source on all boards at once
-    # c.get_fpga_serial() # returns a dictionary of values with the keys being the id
-    # c.close()
-
-
-    # # Top level example #1
-    # c.configure_fpga(['*5C', '*1c'], bitfile= 'bitfile', ip_addr = ['auto', '10.10.10.900'], port = ['auto', 41005]) # set the firmware and networking if using the FPGA direct networking system
-
-
-    # c = ice.get_iceboard('*5c') # get one or more IceBoards
-    # c.open() # establish connection to the firmware.  A ZMQ socket is used if possible
-
-    # c.status() # each board shows its status in turn
-    # c.set_data_source('funcgen') # set data source on all boards at once
-    # c.close()
