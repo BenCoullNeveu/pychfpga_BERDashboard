@@ -28,6 +28,8 @@ class FUNCGEN_base(Module_base):
         'ab' : 3, # Bytes alternate between A and B. 
         'ramp' : 4, # Successive bytes generate a repeating ramp from 0 to 255. 
         'real_ramp' : 5, # Generates a complex ramp from 0+0i to 255+0i on each successive (8+8) bits complex values (the imaginary part is always zero). 
+        '4bit_ramp' :6,
+        '4bit_real_ramp' :7,
         }    
     
     # Memory-mapped register definition
