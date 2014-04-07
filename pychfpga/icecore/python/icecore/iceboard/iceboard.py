@@ -18,6 +18,7 @@ available.
 """
 
 import logging
+import pickle
 
 from sqlalchemy import Column, Integer, String, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship, backref, reconstructor
@@ -97,27 +98,34 @@ class IceBoard(hardware_map.HWMResource, attribute_publisher.AttributeUser):
 
     pk = Column(Integer, primary_key=True)
     cls = Column(String, nullable=False)
+    serial_number = Column(Integer)
+    revision = Column(Integer)
+    locked = Column(Integer)
+
+    # ARM firmware-related definition
     tuber_uri = Column(String, nullable=False)
     tuber_objname = Column(String, nullable=False)
     tuber_objname = Column(String, nullable=False, default='iceboard')
-    serial_number = Column(Integer)
     arm_serial_number = Column(String)
+
+    # FPGA firmware-related definition
     fpga_ip_addr = Column(String)
     fpga_serial_number = Column(Integer)
+    fpga_firmware_crc = Column(Integer)
+    fpga_firmware_class = Column(String)
     interface_ip_addr = Column(String)
 
-    revision = Column(Integer)
-    locked = Column(Integer)
 
     # ------------------------
     # Define default non-database variables.
     # ------------------------
-    arm = None
-    fpga_user_cls = None # Class used to create the application-specific FPGA firmware handler. Is set when the FPGA is configured.
-    fpga_core = None # object handling the core FPGA fimware
-    fpga_user = None # object handling the application-specific FPGA firmware
-    hardware = None
+    arm = None # object handling the ARM firmware
+    fpga = None # object handling the FPGA fimware (both core and application-specific firmware)
+    hw = None # Object handling the IceBoard hardware
 
+    fpga_user_cls = FpgaFirmware # Class used to create the FPGA firmware handler. This attribute is set when the FPGA is configured.
+
+    _auto_open = False
     _self_reference = None # Used to ensure the object stays in memory and to check of the object has been opened
     # The direct UDP FPGA interface needs to know on which interface
     # the socket is to be opened. This information cannot be
@@ -130,16 +138,16 @@ class IceBoard(hardware_map.HWMResource, attribute_publisher.AttributeUser):
 
     # interface_ip_addr = property(_interface_ip_addr_error) # This will be overriden
 
-    def __init__(self, **kwargs):
+    def __init__(self, auto_open=True, **kwargs):
         """
         Creates an Iceboard that is accessed through the networking parameters specified in the database.
         """
 
-        super(type(self), self).__init__(tuber_objname='iceboard', **kwargs)
+        super(type(self), self).__init__(**kwargs)
 
         self.fpga_port_number = 41000 + 4*(self.serial_number)
         self.fpga_subarray = 0 # another thing we probably won't need
-
+        self._auto_open = auto_open
         self.logger = logging.getLogger(__name__)
         self.logger.debug('Instantiating Iceboard S/N %03i from direct instantiation' % (self.serial_number))
         self.logger.debug('S/N=%03i, uri=%s, fpga ip=%s' % (self.serial_number, self.tuber_uri, self.fpga_ip_addr))
@@ -161,6 +169,12 @@ class IceBoard(hardware_map.HWMResource, attribute_publisher.AttributeUser):
 
     # __getattr__ = attribute_publisher.AttributeUser.get_registered_attribute
     # __dir__ = attribute_publisher.AttributeUser.get_dir
+    def __getattr__(self,name):
+        self.logger.debug('calling top-level __getattr__(%s) for Iceboard object S/N %03i' % (name, self.serial_number))
+        # if not self._self_reference:
+        #     self.logger.debug('Automatically opening Iceboard object S/N %03i' % (self.serial_number))
+        #     self.open()
+        return super(type(self), self).__getattr__(name)
 
     def open(self):
         """
@@ -172,52 +186,55 @@ class IceBoard(hardware_map.HWMResource, attribute_publisher.AttributeUser):
         # Instantiate the ARM firmware handling object
         # We could skip this phase if we don't want to use the ARM (and the FPGA is programmed by other means)
         self.arm = tuber.TuberHWMResource(self.tuber_uri, self.tuber_objname)
-        self.register(self.arm) # Allow access to the fpga_core methods/attributes from this class
+        self.register(self.arm) # Allow access to the fpga methods/attributes from this class
 
         # Open communication with the FPGA and initialize the core firmware object (but leave the firmware in its current state)
         # We need this now to create the basic interface to the hardware (I2C, buck sync, FMC etc)
         self.logger.info('Instantiating core FPGA firmware handlers for board #%i' % (self.serial_number))
-        self.fpga_core = FpgaFirmware(self, self.fpga_ip_addr, self.fpga_port_number, interface_ip_addr=self.interface_ip_addr, serial_number = self.fpga_serial_number)
-        self.fpga_core.open()
-        self.register(self.fpga_core) # Allow access to the fpga_core methods/attributes from this class
+        # self.fpga = FpgaFirmware(self, self.fpga_ip_addr, self.fpga_port_number, interface_ip_addr=self.interface_ip_addr, serial_number = self.fpga_serial_number)
+        if self.fpga_firmware_class:
+            fpga_firmware_class = pickle.loads(self.fpga_firmware_class)
+        else:
+            self.logger.warning('FPGA firmware is not defined for board #%i. using core firmware instead' % (self.serial_number))
+            fpga_firmware_class = FpgaFirmware
+
+        self.fpga = fpga_firmware_class(motherboard=self, ip_addr=self.fpga_ip_addr, port_number=self.fpga_port_number, interface_ip_addr=self.interface_ip_addr, serial_number = self.fpga_serial_number) # Create a FPGA firmware object. This just initializes variables for now.
+        self.fpga.open_core() # open the core only
+        self.register(self.fpga, self.fpga.get_core_attributes()) # get attributes of the core FPGA firmware only. We'll add the full application-specific attributes later.
 
         # Instantiate hardware managers.
         # This requires an I2C link to the hardware, which for now is provided by the FPGA.
         self.logger.info('Instantiating IceBoard hardware handlers for board #%i' % (self.serial_number))
-        self.hardware = IceBoardHardware(self.fpga_core)
-        self.hardware.open()
-        self.register(self.hardware) # Allow access to the hardware methods/attributes from this class
+        self.hw = IceBoardHardware(self.fpga)
+        self.hw.open()
+        self.register(self.hw) # Allow access to the hardware methods/attributes from this class
+        self.i2c = self.hw.get_i2c_interface() # get standardized I2C interface that can be used more easily by the user firmware
 
-        # We can now create the application-specific firmware handlers, if there is any
-        if self.fpga_user_cls:
-            self.logger.info('Instantiating Application-specific FPGA firmware handlers for board #%i' % (self.serial_number))
-            self.fpga_user = self.fpga_user_cls(self) # here we need the serial number because we use the FPGA Ethernet interface.
-            self.fpga_user.open()
-            self.register(self.fpga_user) # Allow access to the fpga_user methods/attributes from this class
-        else:
-            self.logger.info('No application-specific FPGA firmware handlers available for IceBoard S/N #%i. Only basic functionnalities will be available' % (self.serial_number))
+        # We can now create the application-specific FPGA firmware handlers
+        self.logger.info('Instantiating Application-specific FPGA firmware handlers for board #%i' % (self.serial_number))
+        self.fpga.open() # Open the application-specific firmware
+        self.register(self.fpga) # Allow access to the fpga_user methods/attributes from this class
 
         self._self_reference = self # Create circular reference to prevent the object from being removed from memory until closed.
 
     def close(self):
 
-        if self.fpga_user:
+        if self.fpga:
             self.logger.info('Closing application-specific FPGA firmware handlers for board #%i' % (self.serial_number))
-            self.unregister(self.fpga_user)
-            self.fpga_user.close()
-            self.fpga_user = None
+            self.unregister(self.fpga)
+            self.fpga.close()
+            self.fpga = None
 
-        if self.hardware:
+        if self.hw:
             self.logger.info('Closing IceBoard hardware handlers for board #%i' % (self.serial_number))
-            self.unregister(self.hardware)
-            self.hardware.close()
-            self.hardware = None
+            self.unregister(self.hw)
+            self.hw.close()
+            self.hw = None
 
-        if self.fpga_core:
+        if self.fpga:
             self.logger.info('Closing core FPGA firmware handlers for board #%i' % (self.serial_number))
-            self.unregister(self.fpga_core)
-            self.fpga_core.close()
-            self.fpga_core = None
+            self.fpga.close_core()
+            self.fpga = None
 
         if self.arm:
             self.logger.info('Closing core arm firmware handlers for board #%i' % (self.serial_number))
@@ -283,7 +300,9 @@ class IceBoard(hardware_map.HWMResource, attribute_publisher.AttributeUser):
             self.logger.info('FPGA on board #%i at %s is already configured. Skipping configuration' % (self.serial_number, self.tuber_uri))
 
         self.fpga_user_cls = fpga_firmware_cls
-
+        self.fpga_firmware_class = pickle.dumps(fpga_firmware_cls)
+        self.fpga_firmware_crc = bitfile.crc32
+        # self.commit()
         # # Check which FPGAs respond to broadcasts after programming
         # self.logger.info('Checking again what FPGAs are on the network')
         # fpga_serials = FpgaFirmware.discover_fpgas(interfaces)

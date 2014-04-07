@@ -93,8 +93,8 @@ class tmp100(object):
         data=self.read('TEMP',read_length=2) #reading temperature (2 bytes)
         data=(data[0]<<8)+data[1]
         
-        if data >= 1<<15: #temperature is negative
-            temp = -(1<<16-data)/2.**8
+        if data >= (1<<15): #temperature is negative
+            temp = -((1<<16)-data)/2.**8
         else:
             temp = data/2.**8
             

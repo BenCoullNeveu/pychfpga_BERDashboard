@@ -7,6 +7,8 @@ which gives access to icecore.icearray, icecore.iceboard etc.
 This *won't* allow the user to do:
     >>> import icecore.iceboard # WON'T WORK
 because import does not use the 'icecore' object while processing the module path but
+   >>> from icecore import iceboard # WORKS
+
 """
 from python.icecore import icearray
 from python.icecore import attribute_publisher

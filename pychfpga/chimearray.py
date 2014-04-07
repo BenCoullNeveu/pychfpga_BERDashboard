@@ -17,14 +17,15 @@ reload(logging) # clear any previous logger set-up that is stored in the logging
 reload(logging.handlers) # we need to reload the handlers as well so they are inheriting from the newly loaded Handler class defined in freshly reloaded logging, not the old one. Otherwise we get errors.
 #import icecore.python.icecore as icecore
 import icecore
-import core.chFPGA_controller
+# import core.chFPGA_controller
 
 
 # class ChimeException(IceException):
 #     pass
 
 #ChimeIceBoard = IceBoard(icecore.arm.ArmFirmware, ChimeFpgaFirmware)
-ChimeFpgaFirmware = core.chFPGA_controller.chFPGA_controller
+from core.chFPGA_controller import chFPGA_controller as ChimeFpgaFirmware
+
 class ChimeArray(icecore.icearray.IceArray):
     """
     Provides access to arrays of ICEBoards and ICEBoxes.
@@ -96,10 +97,11 @@ if __name__ == '__main__':
 
     bitfile = icecore.fpgabitfile.FpgaBitFile('../../chfpga/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit')#('../../../chfpga/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit')
     c = ca.get_iceboards([7, 14, 19]) # get one or more IceBoards
-    c.configure_fpga(bitfile)
-    # c.configure_fpga(bitfile, ChimeFpgaFirmware)
+    # c.configure_fpga(bitfile)
+    c.configure_fpga(bitfile, ChimeFpgaFirmware)
     # c0 = ca.get_iceboards([7]).one() # get one IceBoards
     # c0.configure_fpga(bitfile, ChimeFpgaFirmware)
     # c0.configure_fpga(bitfile)
     # c0.open()
+    cc=c[0]
 

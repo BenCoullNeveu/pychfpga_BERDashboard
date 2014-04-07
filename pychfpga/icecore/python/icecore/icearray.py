@@ -486,7 +486,7 @@ class IceArray(object):
         """
         # iceboard_resources = self._discover_iceboards(source_subarrays= source_subarrays, interface_ip= interface_ip, timeout = timeout)
         iceboard.discover(self.hwmap, timeout = timeout, interface_ip_addr = self.interface_ip_addr)
-
+        self.hwmap.commit() # commit any changes made during discovery
         # self.d = discovered_iceboards
         # for ice in discovered_iceboards:
         #     self.hwmap.add(ice)

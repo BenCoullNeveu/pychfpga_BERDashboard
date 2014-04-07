@@ -76,6 +76,11 @@ class TuberHWMResource():
         self.tuber_uri = uri
         self.tuber_objname = object_name
 
+    def __enter__(self):
+        return self
+
+    def __exit__(self, type, value, traceback):
+        pass
 
     def hold(self, on_hold=True):
         '''Suspend tuber calls, and then dispatch several at once.'''

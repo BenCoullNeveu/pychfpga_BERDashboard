@@ -34,7 +34,8 @@ import numpy as np
 #import pdb
 import time
 
-# import icecore
+import icecore
+from icecore import fpga_firmware
 
 from pychfpga.common import util
 
@@ -129,7 +130,7 @@ class chFPGAException(Exception):
         self.logger.exception(message)
 
 
-class chFPGA_controller(object):
+class chFPGA_controller(fpga_firmware.FpgaFirmware):
     """
     Creates an object that connects to the specified chFPGA board and provides the methods to configure it and control its operations.
 
@@ -194,7 +195,7 @@ class chFPGA_controller(object):
     }
 
 
-    def __init__(self, motherboard, **kwargs):
+    def __init__(self, motherboard = None, **kwargs):
         """
         Creates the object providing the methods and attributes needed to
         operate the chFPGA firmware. This does not affect the state and
@@ -205,7 +206,7 @@ class chFPGA_controller(object):
             .i2c.select_bus(bus_name)  where bus_name is 'FMCA' or 'FMCB'
             .i2c.write_read(...)
         """
-        # super(type(self),self).__init__(motherboard=motherboard, ip_addr=ip_addr, port_number=port_number, interface_ip_addr=interface_ip_addr, serial_number=serial_number)
+        super(type(self),self).__init__(**kwargs)
         # Initialize instance attributes
         # For now, we do not know their values unless the system is initialized.
         # We may want to fix that by reading the FPGA states and determining those values.
@@ -254,7 +255,7 @@ class chFPGA_controller(object):
     def open(self, init=1, verbose=0, **kwargs):
 
         # super(type(self), self).open()
-        self.mmi = self.motherboard.fpga_core.mmi
+        # self.mmi = self.motherboard.fpga_core.mmi
         self.read = self.mmi.read
         self.write = self.mmi.write
 
@@ -381,7 +382,7 @@ class chFPGA_controller(object):
 
             # self.log.debug('=== Instantiating I2C')
             # self.fpga_I2C = I2C.I2C_base(self, self.SYSTEM_I2C_BASE_ADDR)
-            self.fpga_I2C = self.motherboard.fpga_core.base_i2c
+            self.fpga_I2C = self.motherboard.i2c
 
             self.log.debug('=== Instantiating SYSMON')
             self.SYSMON = SYSMON.SYSMON_base(self, self.SYSTEM_SYSMON_BASE_ADDR)
@@ -501,8 +502,8 @@ class chFPGA_controller(object):
             self.GPIO.status()
 
 
-        self.log.debug('--- Initializing I2C')
-        self.fpga_I2C.init()
+        # self.log.debug('--- Initializing I2C')
+        # self.fpga_I2C.init()
 
         # if verbose >= 2: self.log.debug('--- Initializing ML605 LCD')
         # self.LCD.init()

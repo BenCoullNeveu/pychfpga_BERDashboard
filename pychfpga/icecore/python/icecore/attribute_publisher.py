@@ -29,7 +29,7 @@ class AttributeUser(object):
         class
         """
         if name not in self._registered_objects:
-            AttributeError('The attribute %s cannot be found in any object registered with this class' % name)
+            raise AttributeError('The attribute %s cannot be found in any object registered with this class' % name)
         obj = self._registered_objects[name]
         return getattr(obj, name)
 
@@ -39,12 +39,12 @@ class AttributeUser(object):
         """
         return type(self).__dict__.keys() + self.__dict__.keys() + self._registered_objects.keys()
 
-    def register(self, obj, get_attributes_func=None, import_methods = True):
+    def register(self, obj, attribute_list=None, import_methods = True):
         """
         Register an object so its 'published' attributes can be accessed
         as if they were attributes of the object 'self'.
 
-        If the 'get_attributes_func' dunction is provided,  it is called to obtain the list of attributes to publish.
+        If 'attributes_list'  is provided, only the attributes in the list are published.
         Otherwise, if the source object has a get_attributes() method, this method is used to get the list.
         If none of those exist, the default attribute list is dir(obj) minus any attributes starting with '_'.
 
@@ -55,8 +55,8 @@ class AttributeUser(object):
         """
         self.logger.warning("Registering attributes from '%s'." % repr(obj))
 
-        if get_attributes_func:
-            attribute_names = get_attributes_func(obj)
+        if attribute_list:
+            attribute_names = attribute_list
         elif hasattr(obj, 'get_attributes'):
             attribute_names = obj.get_attributes()
         else:

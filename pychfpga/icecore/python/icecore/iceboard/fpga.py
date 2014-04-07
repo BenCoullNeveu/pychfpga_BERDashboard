@@ -142,7 +142,7 @@ class FpgaFirmware(AttributePublisher):
                 result= (None, None)
         return result
 
-    def __init__(self, motherboard, ip_addr, port_number, interface_ip_addr=None, broadcast_group = 0, serial_number = 0):
+    def __init__(self, ip_addr, port_number, interface_ip_addr=None, broadcast_group = 0, serial_number = 0):
         """
         Creates an FPGA object.
 
@@ -151,7 +151,7 @@ class FpgaFirmware(AttributePublisher):
         access is done through the ARM.
 
         """
-        self.motherboard = motherboard
+        # self.motherboard = motherboard
         self.ip_addr  = ip_addr
         self.port_number = port_number
         self.serial_number = serial_number
@@ -185,9 +185,25 @@ class FpgaFirmware(AttributePublisher):
         #     raise FpgaException('Platform ID 0x%02X is not recognized' % self.PLATFORM_ID)
         # self.NUMBER_OF_FMC_SLOTS = None
 
+    def get_core_attributes(self):
+        """
+        Returns a list of attributes published by the *core* fpga firmware
+        only even if 'self' represents an instance of a superclass of
+        FpgaFirmware.
+        """
+        core_attributes =  FpgaFirmware.__dict__.keys() + self.__dict__.keys()
+        return [name for name in core_attributes if name[0] !='_']
 
 
-    def open(self):
+    def open_core(self):
+        """
+        Opens the communication link with the core FPGA firmware.
+        This is called during the establishment of the link with the IceBoard (IceBoard.open()).
+
+        The application-specific code should use the 'open' method if needed,
+        which is called when the links to the IceBoard hardware are finished
+        establishing.
+        """
         if self.mmi:
             self.mmi.close()
         self.mmi = fpga_mmi.FpgaMmi(self.if_ip_addr, self.ip_addr, self.port_number)
@@ -199,11 +215,25 @@ class FpgaFirmware(AttributePublisher):
         self.logger.debug('=== Instantiating I2C')
         self.base_i2c = i2c.I2C_base(self.mmi, self.SYSTEM_I2C_BASE_ADDR)
 
-    def close(self):
+    def close_core(self):
+        """
+        Closes the link to the core FPGA firmware.
+        """
+
         self.base_gpio = None
         self.base_i2c = None
         self.mmi.close()
         self.mmi = None
+
+    def open(self):
+        """
+        Placeholder for the application-specific open method.
+        """
+
+    def close(self):
+        """
+        Placeholder for the application-specific close method.
+        """
 
     def read(self, *args, **kwargs):
         return self.mmi.read(*args, **kwargs)
@@ -216,7 +246,6 @@ class FpgaFirmware(AttributePublisher):
         Verifies if the FPGA firmeware is responding using the IP address of the board.
         """
         raise NotImplementedError
-
 
     def ping_broadcast(self, fpga_serial_number, timeout):
         """
