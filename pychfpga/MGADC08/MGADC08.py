@@ -115,7 +115,7 @@ class MGADC08_base(object):
         self.logger.debug("Attempting to read FMC eeprom to determine board presence")
         data = self.eeprom.read(0, length=1, noerror=True, verbose=verbose)
         self.logger.debug("FMC eeprom returned the value: %i", data[0])
-        self._board_is_present = True #(data[0] == 13)
+        self._board_is_present = (data[0] == 13) # True #
         #self.logger.info("is the ADC board present: %i" % self._board_is_present)
 
     def is_present(self):
@@ -160,7 +160,6 @@ class MGADC08_base(object):
                         print 'e',
                 char = chr(ascii)
                 string = string + char
-                #print char
             elif ascii == 125:
                 dictionary_is_present = True
                 break
