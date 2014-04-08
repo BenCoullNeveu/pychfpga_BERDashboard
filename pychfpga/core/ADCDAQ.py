@@ -165,7 +165,7 @@ class ADCDAQ_base(Module_base):
         tap_delays =  list(self.read(self.BITS['DELAY0'].addr, length=8)) # Reads the delay in registers
         sample_delays =  [self.SAMPLE_DELAY] * 8 # Reads the sample delays
 
-        return (tap_delays, sample_delays)
+        return [tap_delays, sample_delays]
 
 
     def get_actual_delay(self):

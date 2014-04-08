@@ -3,8 +3,9 @@
 # pylint: disable=W0312,C0301 
 
 """
-top_test.py script 
- Instantiates a chFPGA object 'c' for interactive testing. Import in ipython using "r -i top_test" so the created chFPGA object "c" is accessible in the ipython interactive workspace.
+calculate_gains.py script 
+ computes and sets ideal gain for 4bit gaussian noise.  
+
 
 
 #
@@ -12,121 +13,19 @@ History:
     2011-08-14 JFC: Created from chFPGA, which now only contains top test code.
     2011-09-09 JFC: Added global FREF 
     2011-10-11 JFC: Updated delay tables
+    2014-02-21 KMB: Created from top test
 """
 import logging
 import argparse
 import time
-
+import pickle
 
 from pychfpga.core import chFPGA_controller
 from pychfpga.core import chFPGA_receiver
-import plot_utils.plot_utils as pu
-from pychfpga.core import Inject_tools as inj
-# from pychfpga.common.tests.test_adc_fft_bin import test_adc_fft_bin
-# from pychfpga.common.tests.test_adc_fft_int_power import test_adc_fft_int_power
-# from pychfpga.common.tests.test_adc_fft_level import test_adc_fft_level
-# from pychfpga.common.tests.test_adc_dc import test_adc_dc
-# from pychfpga.common.tests.test_adc_spectrum import test_adc_spectrum
-# import pychfpga.common.tests.test_corr as tc
-# from pychfpga import receiver_corr_fast
 
-print 'Reloading modules'
-dreload(chFPGA_controller) # just to make sure that any changes to the code are reloaded
-dreload(chFPGA_receiver) # just to make sure that any changes to the code are reloaded
-reload(pu)
-reload(inj)
-reload(logging) # needed to reset the logger config in case we change the formatting
-# reload(receiver_corr_fast)
-
-# Default data and clock line delays for the two FMC boards/ML605 combination.
-# First 8 values are the delays for bits 0 to 7, 8th value is the delay for the clock line.
-#SN001_ADC_DELAYS = (
-#    [13,19,19,19,19,19,19,19]+[13], # CH0
-#    [18]*8+[0], #CH1
-#    [10]*8+[13], #CH2
-#    [19]*8+[13], #CH3
-#    [18]*8+[0], #CH4
-#    [16]*8+[0], #CH5
-#    [18]*8+[0], #CH6
-#    [14]*8+[0] #CH7
-#    )
-# SN001_adc_delays=(
-    # [5+16,8+16,8+16,8+16,8+16,8+16,8+16,8+16]+[0], # CH0
-    # [2+16]*8+[0], #CH1
-    # [5+16]*8+[0], #CH2
-    # [1+16]*8+[0], #CH3
-    # [16]*8+[0], #CH4
-    # [15]*8+[0], #CH5
-    # [18]*8+[0], #CH6
-    # [13]*8+[0] #CH7
-    # )
-
-# SN001_adc_delays=(
-    # [5,12,12,12,12,12,12,12]+[0], # CH0
-    # [8]*8+[0], #CH1
-    # [8]*8+[0], #CH2
-    # [6]*8+[0], #CH3
-    # [5]*8+[0], #CH4
-    # [4]*8+[0], #CH5
-    # [4]*8+[0], #CH6
-    # [4]*8+[0] #CH7
-    # )
-
-#SN002_adc_delays=(
-#    [16,22,22,22,22,22,22,22]+[0], #CH0 (BUFR)
-#    [21]*8, #CH1 (BUFR)
-#    [22]*8+[0], #CH2 (PLL)
-#    [18]*8+[0], #CH3 (PLL)
-#    [17]*8, #CH4 (BUFR)
-#    [17]*8, #CH5 (BUFR)
-#    [18]*8, #CH6 (BUFR)
-#    [14]*8, #CH7 (BUFR)
-#    )
-    
-#SN002_ADC_DELAYS = (
-#    [17,15,15,15,15,15,15,3]+[0], #CH0 (BUFR)
-#    [15]*8, #CH1 (BUFR)
-#    [27,14,29,29,29,29,29,15]+[0], #CH2 (PLL)
-#    [15]*8+[0], #CH3 (PLL)
-#    [17]*8, #CH4 (BUFR)
-#    [17]*8, #CH5 (BUFR)
-#    [18]*8, #CH6 (BUFR)
-#    [14]*8, #CH7 (BUFR)
-#    )
+import numpy as np
 
 
-ADC_DELAYS_REV2_SN0001 = (
-    [20,26,25,25,25,25,25,24], #CH0
-    [23]*8, #CH1 
-    [24,22,20,20,20,20,20,17], #CH2 
-    [19]*8+[0], #CH3
-    [17]*8, #CH4
-    [17]*8, #CH5 
-    [19,19,19,18,17,16,20,20], #CH6 
-    [16]*8, #CH7
-    )
-
-ADC_DELAYS_REV2_SN0001 = (
-    [20,26,25,25,25,25,25,24], #CH0
-    [22]*8, #CH1 
-    [22,22,20,20,20,20,20,19], #CH2 
-    [18]*8+[0], #CH3
-    [17]*8, #CH4
-    [17]*8, #CH5 
-    [19,19,19,18,17,16,20,20], #CH6 
-    [16]*8, #CH7
-    )
-
-ADC_DELAYS_REV2_SN0001_KC705_FMC700 = (
-    [13,10,9,10,9,10,9,9], #CH0
-    [7]*8, #CH1 
-    [11,11,8,9,7,8,8,7], #CH2 
-    [6]*8, #CH3
-    [14]*8, #CH4
-    [14]*8, #CH5 
-    [13]*8, #CH6 
-    [0]*8, #CH7
-    )
 
 ADC_DELAYS_MGK7MB_REV0_MGAC08_REV2 = (
     ([6,25,25,25,25,25,25,25],     [4]*8), #CH0
@@ -168,6 +67,108 @@ ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 = (
     ([16]*8,                       [3]*8)  #CH15
     )
 
+def get_frames(r):
+    chanIndex = np.arange(16)
+    channels = np.arange(16)
+    number_of_frames = 0
+    frames = 100
+    data_list = np.zeros((frames,16,2048))
+    while number_of_frames < frames:
+        try:
+            a = r.read_frames()
+            for chanNum in chanIndex:
+                data_list[number_of_frames,chanNum, :] = a[channels[chanNum]]
+            number_of_frames +=1
+        except KeyError:
+            pass
+            print "missed some data..."
+    data_list = data_list/2**4
+    data = data_list[:,:,::2] + 1.0j*data_list[:,:,1::2]
+    return data
+
+def calc_gains(g):
+    '''
+    Expects array in. returns (glin, glog)
+    '''
+    #2**14 is max for linear gain
+    #ignore dc component
+    #check for nans
+    #print g
+    bad_values = (g > 2**31) | ~np.isfinite(g)
+    g = np.ma.array(g,mask=bad_values)
+    glog = (np.ceil(np.log2(np.ma.median(np.abs(g)/2**13,axis=1)))).astype(np.int)
+    glin = np.zeros(g.shape, dtype=np.complex)
+    for i, glog_single in enumerate(glog):
+        glin[i] = g[i]/2**glog[i]
+    glog.data[glog.mask == True] = np.ma.median(glog)
+    glog.mask[glog.mask] = False
+    glin[bad_values] = 2**14
+    return glin, glog.data
+
+def fourier_filter(signal, num_components=15):
+    '''
+    Filters signal with top-hat in fourier space.  Padded with itself on either     side to improve edge behavior. 
+    Should extend to other windows.  
+    not assured to maintain signal size
+    '''
+    signal = np.array(signal)
+    signal_length = signal.size
+    f_signal = np.fft.fft(np.r_[signal[signal_length/2:0:-1],signal,signal[-1:-signal_length/2:-1]])
+    f_signal[num_components:-num_components] = 0
+    filtered = np.fft.ifft(f_signal)[signal_length/2:-signal_length/2+1]
+    filtered = (filtered.real).astype(np.int).astype(np.complex)
+    return filtered
+
+def calculate_gains(c,r):
+    c.set_data_source('adc')
+    c.set_adc_mode('data')
+    c.set_fft_bypass(0)
+    c.set_scaler_bypass(0)
+    c.set_send_flags()
+    c.set_offset_binary_encoding()
+    default_log2_gain = 25
+    c.set_gain((1,default_log2_gain))
+    c.start_data_capture(burst_period_in_seconds=0.1)
+    channels = range(16)
+
+    #for 4 bit number, check this
+    idealRMS = 2.83
+    #glog = 13 # not sure why this isn't 9, but seemed to be the case.
+    rmss = []
+    for i in range(18):
+        data = get_frames(r)
+        # only do for channel 0 for now   
+        outrms = data[:,:,:].std(axis=0)
+        outrms[outrms < 0.8] = 0.8
+        rmss.append(outrms.mean())
+        print outrms.mean(axis=1)
+        if i == 0:
+             g = idealRMS*2**(default_log2_gain)/outrms#idealRMS*2**(default_log2_gain-4)/outrms
+        else:
+            for j, glog1 in enumerate(glog):
+                g[j] = idealRMS*glin[j]*(2**(glog[j]))/outrms[j] #idealRMS*glin*(2**(glog-4))/outrms
+                g[j] = (20.0*g[j] + 80.0*glin[j]*(2**(glog[j])))/100.0
+        glin, glog = calc_gains(g)
+        print glog
+        bad_gains = glin > 2**14
+        glin[bad_gains] = 2**14
+        glin = glin.astype(np.int).astype(np.complex)
+        gain = []
+        for channel in channels:
+            gain.append([channel,[glin[channel].tolist(), glog[channel]]])
+        c.set_gain(gain)
+        time.sleep(1)
+    out1 = open('gains_noisy.pkl', 'wb')
+    pickle.dump(gain,out1)
+    for channel in channels:
+        glin_final = fourier_filter(gain[channel][1][0])
+        gain[channel][1][0] = glin_final.tolist()
+    c.set_gain(gain)
+    output = open('gains.pkl','wb')
+    pickle.dump(gain, output)
+    print "Scaler Gain set and saved"
+
+
 if __name__ == '__main__':        
 
     try:
@@ -181,7 +182,7 @@ if __name__ == '__main__':
 
     parser = argparse.ArgumentParser(description=__doc__.split('\n')[0]) # description is the first line of the docstring
     parser.add_argument('--init', action = 'store', type=int, default=1, help='Initialization level: -1: Just create sockets, 0: connect and read only. 1: initialize hardware')
-    parser.add_argument('-f', '--sampling_frequency', action = 'store', type=float, default=850, help='Sampling frequency of the ADC in MHz')
+    parser.add_argument('-f', '--sampling_frequency', action = 'store', type=float, default=800, help='Sampling frequency of the ADC in MHz')
     parser.add_argument('-l', '--log_level', action = 'store', type=str, choices=['info','debug'], default='info', help='Logging level')
     parser.add_argument('-w', '--data_width', action = 'store', type=int, choices=[4,8], default=8, help='Data width of each Re and Im component of the channelizer output')
     parser.add_argument('-g', '--group_frames', action = 'store', type=int, default=4, help='Number of frames to group before sending to the GPU or FPGA correlator. The total size of the frame, including the header and ethernet obverhead, cannot exceed 8 kibytes.')
@@ -195,8 +196,8 @@ if __name__ == '__main__':
 
     logger = logging.getLogger(__name__)
     logger.info('------------------------')
-    logger.info('top_test.py: chFGPA test script')
-    logger.info('J.-F. Cliche')
+    logger.info('calculate_gains.py: Calulates gains for ideal 4-bit noise contribution')
+    logger.info('Kevin Bandura')
     logger.info('------------------------')
     logger.info('This module is called with the follwing parameters:' )
     for (key,value) in args.__dict__.items():
@@ -206,7 +207,6 @@ if __name__ == '__main__':
     # pylint: disable=E0601    
 
 
-    #ADC_TEST_MODE = 0     #  0= normal, 1= ramp, 2=pulse (1 high, 10 low)
     ADC_DELAY_TABLE = ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 #ADC_DELAYS_REV2_SN0001 ## select the table corresponding to the FMC serial number
     #FREF = 10 # FMC Reference clock frequency 
 
@@ -218,29 +218,6 @@ if __name__ == '__main__':
     chFPGA_config = c.get_config()
     logger.info('Starting data/correlator receiver threads')
     r = chFPGA_receiver.chFPGA_receiver(chFPGA_config, ip_address=args.ip, port=41001, host_ip = args.host_ip)
-    #r = receiver_corr_fast.chFPGA_receiver(chFPGA_config, ip_address='10.10.10.11', port=41001)
-    ##c.sync()
-    #inj.set_inject_mode(c,r)
-    #dcs = inj.check_fft_dc(c,r)
-    ######adctest = test_adc_spectrum(c,r)
-    ######stuff = adctest.execute()
-    # Displays the system frequencies
-#    c.status()
-    #adctest = test_adc_fft_bin(c,r)
-    #stuff = adctest.execute()
-    #adctest = test_adc_fft_int_power(c,r)
-    #stuff = adctest.execute()
-    #import numpy as np
-    #stuff = np.array(stuff)
-    #np.save('convergance_of_pfb.npy', stuff)
-    #c.set_data_source('adcdaq_data')
-    #c.start_data_capture(burst_period_in_seconds=1.0, number_of_bursts=0)
-    #c.set_data_capture(burst_period=10000, number_of_bursts=0)
-    # Continuously plot the ADC output
-    #c.plot_ADC_frame(channels=[1], frames=512)
+    calculate_gains(c,r)
 
-    #
-    
-    #c.close()
-    #r.close()
-
+    #np.save('gain.npy',np.array(gain))

@@ -93,7 +93,7 @@ class SYSMON_base(Module_base):
             self.write_drp(self.CONFIG2_ADDR, 0x2000) # Enable ADC channel auto sequencing
 
 
-    def temperature(self, addr):
+    def temperature(self, addr=TEMP_ADDR):
         """ Reads a registers of the FPGA system monitor and convert the result in Celsius """
         lsb = self.read_drp(addr)
         temp = lsb / 64. * 503.975 / 1024. - 273.15

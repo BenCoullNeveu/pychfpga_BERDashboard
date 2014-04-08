@@ -648,7 +648,7 @@ class chFPGA_controller(fpga_firmware.FpgaFirmware):
         config.antenna_data_source = self.get_data_source()
         config.antenna_fft_bypass = self.get_FFT_bypass()
         config.antenna_fft_shift_schedule = self.get_FFT_shift()
-        config.antenna_scaler_log2_gain = self.get_gain()
+        config.antenna_scaler_gain = self.get_gain()
         config.antenna_adc_data_acquisition_delay_tables  = self.ANT.get_delays()
         config.FPGA_board_frequency = self.FreqCtr.read_frequency('CLK200', gate_time=0.05)
         config.CTRL_clock_frequency = self.FreqCtr.read_frequency('CTRL_CLK', gate_time=0.05)
@@ -661,6 +661,8 @@ class chFPGA_controller(fpga_firmware.FpgaFirmware):
         config.mgt_ref_clock = self.FreqCtr.read_frequency('MGT_REFCLK', gate_time=0.05)
         config.mgt_word_clock = self.FreqCtr.read_frequency('MGT_USRCLK2', gate_time=0.05)
         config.adc_clocks = [self.FreqCtr.read_frequency(('ADC_CLK'+str(i)), gate_time=0.05) for i in range(8)]
+        config.adc_serial = self.adc_serial
+        config.motherboard_serial = self.get_motherboard_serial()
         # Add FFT shift, scaler gain, corr integration/capture period etc.
         return config
 
@@ -1228,6 +1230,42 @@ class chFPGA_controller(fpga_firmware.FpgaFirmware):
     def configure_crossbar(self):
         self.CROSSBAR.configure()
 
+    def set_offset_binary_encoding(self, offset=True, channels=None, sync=True):
+        """
+        Set the output to be encoded in offset binary instead of 2's compliment
+        if sync is true, perform a sync afterward.  Necessary for data to continue flowing
+        """
+        if channels == None:
+            channels = self.default_channels
+
+        if not isinstance(channels, list):
+            self.log.warning("channels must be a list")
+            return
+        else:
+            # Set the scaler to use offset binary
+            for channel in channels:
+                self.ANT[channel].SCALER.USE_OFFSET_BINARY=offset
+            if sync:
+                self.sync()
+
+    def set_send_flags(self, send_flags=True, crossbar_outputs=None, sync=True):
+        """
+        Configures the gpu output to send flags in the packets.
+        """
+        if crossbar_outputs == None:
+            crossbar_outputs = range(self.NUMBER_OF_CROSSBAR_OUTPUTS)
+
+        if not isinstance(crossbar_outputs, list):
+            self.log.warning("crossbar_outputs must be a list")
+            return
+        else:
+            # Set the scaler to use offset binary
+            for output in crossbar_outputs:
+                self.CROSSBAR[output].CH_DIST.SEND_FLAGS=send_flags
+            if sync:
+                self.sync()       
+
+
     def set_gain(self, gain = None, postscaler = None, channels=None, use_fixed_gain = False):
         """
         Sets the gain between the (18+18) bits input of the scaler module (from the FFT) to its 4- or 8- bit scaler output.
@@ -1315,16 +1353,15 @@ class chFPGA_controller(fpga_firmware.FpgaFirmware):
             if gain_value is None:
                 Glin = None
                 Glog = None
-            elif isinstance(gain_value, tuple):
-                Glin = gain_value(0)
-                Glog = gain_value(1)
+            elif isinstance(gain_value, (tuple, list)):
+                Glin = gain_value[0]
+                Glog = gain_value[1]
             else: # if a scalar or a vector
                 Glin = gain_value
                 Glog = None
             # Replace default postscaler value if one is provided
             if (Glog is None) and (postscaler is not None):
                 Glog = postscaler
-
 
             for ch in channel_list: # process each channel
                 if ch not in channels:
@@ -1349,9 +1386,14 @@ class chFPGA_controller(fpga_firmware.FpgaFirmware):
 
     def get_gain(self):
         """
-        Returns the log2 SCALER gain each antenna.
+        Returns the log2 SCALER gain each antenna, and the linear gain table used for each antenna or the fixed gain.
         """
-        return [ant.SCALER.SHIFT_LEFT-1 for ant in self.ANT.values()]
+        gain_list = []
+        for ant in self.ANT.values():
+            glog = ant.SCALER.SHIFT_LEFT
+            glin = ant.SCALER.get_gain_table()
+            gain_list.append([ant.ant_number, [glin,glog]])
+        return gain_list
 
     def set_fmc_power(self, state):
         """

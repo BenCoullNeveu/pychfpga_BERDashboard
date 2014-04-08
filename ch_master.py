@@ -10,6 +10,7 @@ History:
 import chrx
 from configobj import *
 from pychfpga.core import chFPGA_controller
+from pychfpga.core import chFPGA_receiver
 from validate import Validator
 import argparse
 import getpass
@@ -17,8 +18,69 @@ import logging
 import numpy as np
 import os
 import sys
+import socket
 import time
-import MySQLdb
+import pickle
+from pychfpga import calculate_gains
+#import MySQLdb
+
+# Should put somewhere else.  flatten arbitrarily deep nested lists
+# from stack overflow
+def flatten(x):
+    result = []
+    for el in x:
+        if hasattr(el, "__iter__") and not isinstance(el, basestring):
+            result.extend(flatten(el))
+        else:
+            result.append(el)
+    return result
+
+def convert_types(val):
+      # Do the annoying conversion of numpy types to native Python types. Sigh.
+      found_complex = False
+      if isinstance(val, (list, tuple)):
+        if len(val) == 0:
+          val = [0]
+        #if isinstance(val[0], (list, tuple)):
+        val = flatten(val) #[item for sublist in val for item in sublist] #reduce(lambda a, b: a + b, val)
+        if not isinstance(val[0], str):
+          try:
+            if val[0].dtype.kind in ('i', 'u', 'f'):
+              val = list(np.asscalar(x) for x in val)
+          except:
+            if type(val[0]) == bool:
+              val = list(int(x) for x in val)
+            else:
+              val = list(x for x in val)
+          for i, val_element in enumerate(val):
+            #print val_element
+            if isinstance(val_element, complex):
+                val[i] = [val_element.real, val_element.imag]
+                found_complex = True
+            if isinstance(val_element, (int,np.uint8)):
+                val[i] = float(val_element)
+          if found_complex:
+            val = flatten(val)
+
+      else:
+        if not isinstance(val, str):
+          try:
+            if val.dtype.kind in ('i', 'u', 'f'):
+              val = np.asscalar(val)
+          except:
+              #hopefully already a int/float
+              pass #a = 1  # Placeholder.
+      return val
+
+# Dictionary of correlators.
+correlator_hash = {"29821-0000-0003": "stone",
+                              "0001": "stone",      # This is a bug in the FPGA.
+                   "29821-0000-0033": "abbot",
+                              "0033": "abbot",
+                   "29821-0000-0028": "vincente"}
+
+# Current archive format version.
+archive_version = "1.0.0"
 
 if __name__ == "__main__":
   # Set up logger.
@@ -45,6 +107,9 @@ if __name__ == "__main__":
   parser.add_argument("-s", "--spec_file", action = "store", \
                       default = "ch_master.spec", \
                       help = "Configuration file specifications.")
+  parser.add_argument("-a", "--compute_gain", action = "store", \
+                       default = 0, \
+                       help = "1 to calculate and save FFT scaler gains")
   args = parser.parse_args()
 
   # Be paranoid: if the executable is being run from /usr/sbin we can be 
@@ -75,29 +140,6 @@ if __name__ == "__main__":
       log.critical("Error parsing %s: %s" % (sec_string, error))
     exit()
 
-  # Create the output directory.
-  time_str = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-  acq_base_dir = "%s/%s" % (conf["acq"]["base_path"], time_str)
-  os.makedirs(acq_base_dir)
-  if not os.path.exists(acq_base_dir):
-    log.critical("Could not create directory \"%s\"." % (acq_base_dir))
-    exit()
-
-  # Create a symbolic link to the output directory.
-  os.unlink(conf["acq"]["curfile"])
-  os.symlink(acq_base_dir, conf["acq"]["curfile"])
-
-  # Start writing to a log file in this directory.
-  acq_log_path = "%s/%s.log" % (acq_base_dir, time_str)
-  log_file = logging.FileHandler(acq_log_path)
-  log_file.setLevel(logging.DEBUG)
-  log_file.setFormatter(log_fmt)
-  log.addHandler(log_file)
-  log.info("Now logging to \"%s\"." % (acq_log_path))
-        
-  log.info("Sampling frequency is %0.3f MHz." % \
-           float(conf["fpga"]["samp_freq"]))
-
   # Build up the adc_delay_table.
   n = int(conf["n_antenna"])
   adc_delay = []
@@ -113,11 +155,11 @@ if __name__ == "__main__":
     for j in range(len(this_chan)):
       k = int(this_chan[j])
       tmp_delay.append(k)
-    if len(tmp_delay) != 8:
-      log.critical("Entry fpga.adc_delay.%s needs eight integer entries." % \
+    if len(tmp_delay) != 16:
+      log.critical("Entry fpga.adc_delay.%s needs 16 integer entries." % \
                    (name))
       exit()
-    adc_delay.append(tmp_delay)
+    adc_delay.append((tmp_delay[:8],tmp_delay[8:]))
 
   # Create the acquisition object. Pass it the configuration settings so that it
   # can initialise.
@@ -131,15 +173,76 @@ if __name__ == "__main__":
              verbose = 0, \
              init = 1, \
              sampling_frequency = conf["fpga"]["samp_freq"] * 1e6, \
-             reference_frequency = conf["fpga"]["ref_freq"])
+             reference_frequency = conf["fpga"]["ref_freq"], \
+             data_width=conf["fpga"]["data_width"], \
+             group_frames=conf["fpga"]["group_frames"], \
+             enable_gpu_link = conf["fpga"]["enable_gpu_link"], \
+             host_ip = conf["fpga"]["host_ip"])
+  fpga_conf = vars(fpga.get_config())
+  
+  # Create the output directory.
+  time_str = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+  try:
+    corr_name = correlator_hash[fpga_conf["adc_serial"]]
+  except KeyError:
+    try:
+      log.critical("Could not find hash for ADC serial number %s." %
+                   fpga_conf["adc_serial"])
+    except KeyError:
+      log.critical("Could not find key \"adc_serial\" in FPGA configuration.")
+  acq_base_dir = "%s/%s_%s_corr" % (conf["acq"]["base_path"], time_str, \
+                                   corr_name)
+  os.makedirs(acq_base_dir)
+  if not os.path.exists(acq_base_dir):
+    log.critical("Could not create directory \"%s\"." % (acq_base_dir))
+    exit()
+
+  # Create a symbolic link to the output directory.
+  os.unlink(conf["acq"]["curfile"])
+  os.symlink(acq_base_dir, conf["acq"]["curfile"])
+
+  # Lock the logfile.
+  log_file_lock = "%s/.ch_master.log.lock" % acq_base_dir
+  fp = open(log_file_lock, "w")
+  if not fp:
+    log.error("Could not create lockfile \"%s\"." % log_file_lock)
+  else:
+    fp.close()
+
+  # Start writing to a log file in this directory.
+  acq_log_path = "%s/ch_master.log" % (acq_base_dir)
+  log_file = logging.FileHandler(acq_log_path)
+  log_file.setLevel(logging.DEBUG)
+  log_file.setFormatter(log_fmt)
+  log.addHandler(log_file)
+  log.info("Now logging to \"%s\"." % (acq_log_path))
+        
+  log.info("Sampling frequency is %0.3f MHz." % \
+           float(conf["fpga"]["samp_freq"]))
+
+>>>>>>> master
 
   # Set FPGA controller parameters.
+  # Calculate new gains if necessary
+  fpga_config = fpga.get_config()
+  if args.compute_gain:
+      fpga_rec = chFPGA_receiver.chFPGA_receiver(fpga_config, \
+                    ip_address=conf["fpga"]["ip_address"], \
+                    port=conf["fpga"]["rec_port"], \
+                    host_ip = conf["fpga"]["host_ip"])
+      calculate_gains.calculate_gains(fpga,fpga_rec)
+      fpga_rec.close()
+  gain_pkl_file = open(conf["fpga"]["gain_table_pkl"], "rb")
+  gains = pickle.load(gain_pkl_file)
   all_chan = range(conf["n_antenna"])
   fpga.set_data_source("adc") # This should come first.
   fpga.set_FFT_bypass(False, channels = all_chan)
   fpga.set_FFT_shift(conf["fpga"]["fft_shift"], channels = all_chan)
-  fpga.set_gain(conf["fpga"]["log2_gain"], channels = all_chan)
-
+  fpga.set_gain(gains, channels = all_chan)
+  fpga.sync()
+  fpga.set_send_flags()
+  fpga.set_offset_binary_encoding()
+  fpga.sync()
   #Make sure FPGA throttling is fast enough to send all the data
   #FPGA doesn't seem to change this without a reset...
   #read_rate = int(np.floor(np.log2(conf["fpga"]["int_period"] * 4 * 125e6 / \
@@ -147,41 +250,34 @@ if __name__ == "__main__":
   #fpga.GPIO.HOST_FRAME_READ_RATE = read_rate
 
   # Start the correlator.
-  fpga.start_corr_capture(integration_period = conf["fpga"]["int_period"])
-  log.info("Correlator started with an integration time of %.1f s" % \
-           (conf["fpga"]["int_period"]))
+  ##fpga.start_corr_capture(integration_period = conf["fpga"]["int_period"])
+  #log.info("Correlator started with an integration time of %.1f s" % \
+  #         (conf["fpga"]["int_period"]))
 
   # Pass FPGA configuration variables to header.
-  fpga_conf = vars(fpga.get_config())
   for name in fpga_conf:
-    val = fpga_conf[name]
-
-    # Do the annoying conversion of numpy types to native Python types. Sigh.
-    if isinstance(val, (list, tuple)):
-      if isinstance(val[0], (list, tuple)):
-        val = reduce(lambda a, b: a + b, val)
-      if not isinstance(val[0], str):
-        try:
-          if val[0].dtype.kind in ('i', 'u', 'f'):
-            val = list(np.asscalar(x) for x in val)
-        except:
-          if type(val[0]) == bool:
-            val = list(int(x) for x in val)
-          else:
-            val = list(x for x in val)
+    #Hack for now since the gain table is too big to fit in one 64k header element
+    if name == 'antenna_scaler_gain':
+      all_val = fpga_conf[name]
+      for value in all_val:
+        val = convert_types(value)
+        val_name = name + str(int(val[0]))
+        #print val_name, val
+        acq.add_header_item(val_name, val)
     else:
-      if not isinstance(val, str):
-        try:
-          if val.dtype.kind in ('i', 'u', 'f'):
-            val = np.asscalar(val)
-        except:
-          a = 1  # Placeholder.
+      #elif name == 'antenna_adc_data_acquisition_delay_tables':
+      #  val = 42
+      #else:
+      val = fpga_conf[name]
+      val = convert_types(val)
+      # Now send FPGA information send to acquisition object's header.
+      acq.add_header_item(name, val)
 
-    # Now send FPGA information send to acquisition object's header.
-    acq.add_header_item(name, val)
-
-  # Add the system user to the header, for kicks. (It should normally be root.)
+  # Add some acquisition information to the header, for kicks.
   acq.add_header_item("system_user", getpass.getuser())
+  acq.add_header_item("collection_server", socket.gethostname())
+  acq.add_header_item("instrument_name", corr_name)
+  acq.add_header_item("archive_version", archive_version)
 
   # Get the git tag and write it to the header.
   if not len(args.git_tag):
@@ -211,10 +307,12 @@ if __name__ == "__main__":
     while True:
       # Pass the acquisition object the board temperatures. This is a temporary
       # way of doing this!
-      acq.pass_fpga_amb_temp(0, fpga.ADC_BOARD.AmbTemp.get_temperature())
+      acq.pass_fpga_amb_temp(0, fpga.SYSMON.temperature())
       time.sleep(1.0)
     acq.stop()
   except(KeyboardInterrupt, SystemExit):
     acq.stop()
 
+# Remove log file lock and exit.
+os.remove(log_file_lock)
 log.info("Exiting ch_master now.")

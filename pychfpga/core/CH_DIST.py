@@ -30,6 +30,7 @@ class CH_DIST_base(Module_base):
     STREAM_ID = BitField(CONTROL, 0x02, 0, width=12, doc="Stream ID to be used for tagging the output frames")
     NUMBER_OF_SELECTED_WORDS = BitField(CONTROL, 0x03, 0, width=8, doc="Number of words(frequency pairs) selected by this correlator.  Must match length of selected words")
     GROUP_FRAMES = BitField(CONTROL, 0x04, 0, width=8, doc="Number of input frames to pack into an output frames. ")
+    SEND_FLAGS = BitField(CONTROL, 0x00, 4, doc="When '1' the gpu packets will contain scaler and adc flags")
 
     # Status bitfields
     FIFO_EMPTY = BitField(STATUS, 0x00, 7, doc="Active high when the data FIFO is empty")

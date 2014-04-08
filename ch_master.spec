@@ -7,11 +7,16 @@ n_freq    = integer(min = 1)
 [fpga]
   ip_address = ip_addr
   port = integer(min = 1)
+  rec_port = integer(min = 1)
   samp_freq  = float(min = 1)
   ref_freq = float(min = 1)
-  int_period = float(min = 0)
   fft_shift = integer(min = 1)
-  log2_gain = integer(min = 0)
+  gain = integer(min = 0)
+  data_width = integer(min = 4)
+  group_frames = integer(min = 1 )
+  enable_gpu_link = integer(min = 0 )
+  host_ip = ip_addr
+  gain_table_pkl = string
   [[adc_delay]]
 
 [acq]
@@ -24,6 +29,7 @@ n_freq    = integer(min = 1)
     buf_len = integer(min = 1)
     spf = integer(min = 1)
   [[serial]]
+    disable = integer
     path = string
     timeout = float(min = 0)
     [[[channel]]]
