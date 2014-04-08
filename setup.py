@@ -19,8 +19,7 @@ setup(name = "ch_acq",
       ext_modules = [Extension("chrx", 
                                ["chrx/acq.c", "chrx/chrx.c", "chrx/disc.c", \
                                 "chrx/fpga_acq.c", "chrx/frame.c", \
-                                "chrx/gpu_acq.c", "chrx/serial_adc.c", \
-                                "chrx/util.c"],
+                                "chrx/gpu_acq.c", "chrx/util.c"],
                                libraries = ["hdf5", "hdf5_hl", "m", "pthread"])]
      )
 

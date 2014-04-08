@@ -20,7 +20,7 @@ from Module import Module_base, BitField
 import logging
 import time
 import numpy as np
-import matplotlib.pyplot as plt
+#import matplotlib.pyplot as plt
 
 class REFCLK_base(Module_base):
 
@@ -225,22 +225,22 @@ class REFCLK_base(Module_base):
         """
         samples = [];
         # If plot=1, prepare the plots 
-        if plot:
-            plt.figure(1)
-            plt.clf()
-            plt.subplot(1,2,1)
-            plt.hold(1)
-            plt.axis([0, 128,min(delays)-1,max(delays)+1])
-            plt.xlabel('Time (tap delays)');
-            plt.ylabel('Sync delay (tap delays)');
-            plt.title('ADC0 clock waveform as a function of ADC_SYNC timing delay');
-            plt.subplot(1, 2, 2)
-            plt.hold(1)
-            plt.axis([0, 128,min(delays)-1, max(delays)+1])
-            plt.xlabel('Time (tap delays)');
-            plt.ylabel('Sync delay (tap delays)');
-            plt.title('ADC1 clock waveform as a function of ADC_SYNC timing delay');
-
+#        if plot:
+#            plt.figure(1)
+#            plt.clf()
+#            plt.subplot(1,2,1)
+#            plt.hold(1)
+#            plt.axis([0, 128,min(delays)-1,max(delays)+1])
+#            plt.xlabel('Time (tap delays)');
+#            plt.ylabel('Sync delay (tap delays)');
+#            plt.title('ADC0 clock waveform as a function of ADC_SYNC timing delay');
+#            plt.subplot(1, 2, 2)
+#            plt.hold(1)
+#            plt.axis([0, 128,min(delays)-1, max(delays)+1])
+#            plt.xlabel('Time (tap delays)');
+#            plt.ylabel('Sync delay (tap delays)');
+#            plt.title('ADC1 clock waveform as a function of ADC_SYNC timing delay');
+#
         if isinstance(delays,int):
             delays = [delays]
         phase = np.ones((8,len(delays)))*np.inf

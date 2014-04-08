@@ -82,7 +82,11 @@ def get_frames(r):
         except KeyError:
             pass
             print "missed some data..."
-    data_list = data_list/2**4
+    #data_list = data_list.astype(np.int8)
+    #data_list ^= np.int8(128)
+    #data_list /= 2**4
+    data_list = (data_list.astype(np.int8) ^ np.int8(128)) >> 4  
+    #data_list = (np.bitwise_xor(data_list.astype(np.int8), 128*np.ones(data_list.shape, dtype=np.int8)).astype(np.int8))/2**4 #data_list/2**4
     data = data_list[:,:,::2] + 1.0j*data_list[:,:,1::2]
     return data
 
@@ -123,16 +127,17 @@ def calculate_gains(c,r):
     c.set_data_source('adc')
     c.set_adc_mode('data')
     c.set_fft_bypass(0)
+    c.set_fft_shift(1367) #Not sure how to make this a constant
     c.set_scaler_bypass(0)
     c.set_send_flags()
     c.set_offset_binary_encoding()
-    default_log2_gain = 25
+    default_log2_gain = 22
     c.set_gain((1,default_log2_gain))
     c.start_data_capture(burst_period_in_seconds=0.1)
     channels = range(16)
 
-    #for 4 bit number, check this
-    idealRMS = 2.83
+    #for 4 bit number *sqrt2 since real and imag, check this
+    idealRMS = 2.83 * np.sqrt(2)
     #glog = 13 # not sure why this isn't 9, but seemed to be the case.
     rmss = []
     for i in range(18):
@@ -143,7 +148,7 @@ def calculate_gains(c,r):
         rmss.append(outrms.mean())
         print outrms.mean(axis=1)
         if i == 0:
-             g = idealRMS*2**(default_log2_gain)/outrms#idealRMS*2**(default_log2_gain-4)/outrms
+            g = idealRMS*2**(default_log2_gain)/outrms#idealRMS*2**(default_log2_gain-4)/outrms
         else:
             for j, glog1 in enumerate(glog):
                 g[j] = idealRMS*glin[j]*(2**(glog[j]))/outrms[j] #idealRMS*glin*(2**(glog-4))/outrms
