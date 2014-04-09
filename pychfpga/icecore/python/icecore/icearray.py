@@ -22,7 +22,7 @@ import numpy as np
 # import fpga_mmi
 import hardware_map
 import iceboard.iceboard as iceboard
-
+from iceboard.iceboard import IceBoard
 
 class IceException(Exception):
     pass
@@ -433,7 +433,7 @@ class IceArray(object):
     Provides access to arrays of ICEBoards and ICEBoxes.
     """
 
-    def __init__(self, iceboard_class = iceboard.IceBoard, mezz_class = None, interface_ip_addr=None):
+    def __init__(self, uri='sqlite:///:memory:', iceboard_class = IceBoard, mezz_class = None, interface_ip_addr=None):
         """
         'interface_ip_addr' is the IP address of the Ethernet interface
             that will be used for direct FPGA communications (either discovery
@@ -451,7 +451,7 @@ class IceArray(object):
         self.interface_ip_addr = interface_ip_addr
 
         # Create a hardware mapper session
-        self.hwmap = hardware_map.HardwareMap(echo=False) # JFC echo=False because we already have a logger that will catch the messages.
+        self.hwmap = hardware_map.HardwareMap(uri = uri, echo = False) # JFC echo=False because we already have a logger that will catch the messages.
         self.hwmap.interface_ip_addr = interface_ip_addr # store the host ip address to be used to talk to FPGAs (won't be needed when FPGA are accessed through the ARM)
         # Remove the logger handlers that is created for the SQLAlchemy Engine. We want to use our own top level handler.
         # If we don't do this, the SQLAlchemy messages get displayed twice
@@ -484,91 +484,16 @@ class IceArray(object):
         Discover all hardware and firmware resources on the specified
         interface(s) and add them to the database.
         """
-        # iceboard_resources = self._discover_iceboards(source_subarrays= source_subarrays, interface_ip= interface_ip, timeout = timeout)
         iceboard.discover(self.hwmap, timeout = timeout, interface_ip_addr = self.interface_ip_addr)
         self.hwmap.commit() # commit any changes made during discovery
-        # self.d = discovered_iceboards
-        # for ice in discovered_iceboards:
-        #     self.hwmap.add(ice)
-        #self.hwmap.flush()
-        # if iceboard_resources:
-        #     resources.update(iceboard_resources)
-        # self.resource_database += iceboard_resources
+        #
+    def load_iceboards(self, filename):
+        """
+        """
+        iceboard.load(self.hwmap, filename, interface_ip_addr = self.interface_ip_addr)
+        self.hwmap.commit() # commit any changes made during discovery
 
 
-    # def _discover_arms(self, timeout):
-    #     """
-    #     Populate the resource database with the list of available ARM processors offering a tuber interface.
-    #     'timout' indicates the time we wait for an answer before we decide that there is no arm processor.
-
-    #     For now, this function finds the ARMs by probing all addresses from a static tables, but once we have a broadcast discovery protocol the table will not be necessary.
-    #     """
-    #     for (arm_ip_addr, arm_serial_number, fpga_ip_addr, fpga_serial_number, board_serial_number, lock_flag) in ARM_TABLE:
-    #         if arm.Arm.ping_tuber(arm_ip_addr):
-    #             self.logger.debug('Found an ARM board with tuber at %s!' % (arm_ip_addr))
-    #             res = IceResource()
-    #             res.serial_number = board_serial_number # unique number, used as a database key index and as default filtering key
-    #             res.ressource_type = IceResource.ICEBOARD
-    #             res.interface_ip_addr = self.interface_ip_addr
-    #             res.arm_ip_addr = arm_ip_addr
-    #             res.arm_serial_number = arm_serial_number
-    #             res.fpga_ip_addr = fpga_ip_addr # will become obsolete one day when all comms are done through the arm
-    #             res.fpga_port = 41000 + 4*(board_serial_number)
-    #             res.fpga_serial_number = fpga_serial_number # We will be able to get this automatically once we can probe the FPGA throught the ARM, but we won't need it anymore at that point since it is used only to configure the FPGA ethernet interface.
-    #             res.fpga_subarray = 0 # another thing we probably won't need
-    #             res.protocol = None
-    #             res.index = None # slot number
-    #             res.info = None
-    #             res.parent = None
-    #             res.locked = lock_flag
-    #             res.arm = arm.Arm(res.arm_ip_addr) # create the arm object
-    #             # res.arm.open()
-    #             self.resource_database += res
-
-    #     #         for serial in serial_list:
-    #     #             res = IceResource()
-    #     #             res.ressource_type = IceResource.ICEBOARD
-    #     #             res.serial_number = int(serial)
-    #     #             res.fpga_serial_number = int(serial)
-    #     #             res.interface_ip_addr = if_addr
-    #     #             res.subarray = subarray
-    #     #             # Now, find the ARM info by looking at a static table until we have a way to get the information dynamically.
-    #     #             matching_arm_entries = [arm_table_item for arm_table_item in ARM_TABLE if IceResourceFilter(serial_number=arm_table_item[0]).match(res)]
-    #     #             if not matching_arm_entries:
-    #     #                 self.IceException('No ARM information was found for the ressource with serial %16X' % res.serial_number)
-    #     #             elif len(matching_arm_entries) > 1:
-    #     #                 self.IceException('Multiple ARM information entries was found for the ressource with serial %16X' % res.serial_number)
-    #     #             else:
-    #     #                 res.arm_ip_addr = matching_arm_entries[0][2]
-    #     #                 res.arm_serial_number = matching_arm_entries[0][1]
-    #     #             resources += res
-
-    #     # if not resources:
-    #     #    self.logger.info('   No ICE ressource was found on subarray %i through interface %s' % (subarray, if_addr))
-    #     #    return []
-    #     # else:
-    #     #    self.logger.info('The following ICE ressource were discovered')
-    #     #    for res in resources:
-    #     #         # pass
-    #     #        self.logger.info('   Type: %s, S/N: %16X' % (res.ressource_type, res.serial_number))
-    #     # # resources.update(dict(zip(serial_list, [None] * len(serial_list))))
-    #     # return resources
-
-    # # def _discover_iceboxes(self):
-    # #     """
-    # #     Scans ICEBoards
-    # #     """
-
-
-    # # def get_fpga_serials(if_addr, port_number=41000):
-    # #     """
-    # #     Finds the serial number of every FPGA in the network connected to the interface(s) with the address 'if_address'.
-    # #     'if_address' can be a list of interfaces.
-    # #     """
-    # #     sock = broadcast_open(if_addr, port_number)
-    # #     serial_list = self.broadcast_read(sock, 0x00080+12, type = np.dtype('>u8'))
-    # #     sock.close()
-    # #     return serial_list
 
     # def get_resources(self, *args, **kwargs):
     #     """
@@ -595,14 +520,16 @@ class IceArray(object):
     #     """
     #     return self.active_resources
 
-    def get_iceboards(self, serials=[]):
+    def get_iceboards(self, serials=[], *args, **kwargs):
         """
         Returns a list of all ICEBoards covered by the specified scope
         """
         if serials:
-            return self.hwmap.query(iceboard.IceBoard).filter(iceboard.IceBoard.serial_number.in_(serials))
-        else:
-            return self.hwmap.query(iceboard.IceBoard)
+            args.append(IceBoard.serial_number.in_(serials))
+        kwargs['locked']=0 # force selection of non-locked boards
+        if 'present' not in kwargs:
+            kwargs['present'] = 1
+        return self.hwmap.query(IceBoard).filter(*args).filter_by(**kwargs)
 
         # return self.get_resources(ressource_type=IceResource.ICEBOARD).select(*args, **kwargs)
 
@@ -630,6 +557,15 @@ logging.getLogger('sqlalchemy.engine.base.Engine').setLevel(logging.INFO)
 
 import iceboard.arm as arm
 
+def close_all_sockets():
+    """
+    Close all the sockets that has been opened and were registered in the main module __opened_sockets__ attribute.
+    """
+    import __main__
+    if '__opened_sockets__' in vars(__main__): # i.e. if __main__ has an __opened_sockets__ attribute
+        while __main__.__opened_sockets__: # close all sockets so we won't get a 'socket already opened' error because of a previous run
+            __main__.__opened_sockets__.pop().close()
+
 if __name__ == '__main__':
 
     # %load_ext autoreload
@@ -637,11 +573,7 @@ if __name__ == '__main__':
 
     # close any ice object that might be in this namespace
 
-    if '__opened_sockets__' in globals(): # i.e. if __main__ has an __opened_sockets__ attribute
-        while __opened_sockets__: # close all sockets so we won't get a 'socket already opened' error because of a previous run
-            __opened_sockets__.pop().close()
-
-
+    close_all_sockets()
     # try:
     #     ice.close()
     # except NameError:

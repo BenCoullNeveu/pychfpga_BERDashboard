@@ -33,7 +33,7 @@ class FpgaException(Exception):
     pass
 
 
-class FpgaFirmware(AttributePublisher):
+class FpgaCoreFirmware(AttributePublisher):
     """
     Provides access to  the basic functionnalities of the FPGA.
     """
@@ -189,9 +189,9 @@ class FpgaFirmware(AttributePublisher):
         """
         Returns a list of attributes published by the *core* fpga firmware
         only even if 'self' represents an instance of a superclass of
-        FpgaFirmware.
+        FpgaCoreFirmware.
         """
-        core_attributes =  FpgaFirmware.__dict__.keys() + self.__dict__.keys()
+        core_attributes =  FpgaCoreFirmware.__dict__.keys() + self.__dict__.keys()
         return [name for name in core_attributes if name[0] !='_']
 
 

@@ -28,7 +28,7 @@ from .. import hardware_map
 from .. import tuber
 
 # Force reloading of the hardware map module to allow this module
-# reloads to succeed We need to make sure we use a freshly created
+# reloads to succeed. We need to make sure we use a freshly created
 # hardware_map module because HWMResource uses with a new dynamically
 # created Base class that statically remembers the current schema.
 # Therefore, SQLAlchemy will complain that the table already exist) if
@@ -40,7 +40,7 @@ reload(tuber)
 
 # from .. import fmc_mezzanine
 
-from fpga import FpgaFirmware # Object giving access to the FPGA firmware
+from fpga import FpgaCoreFirmware # Object giving access to the FPGA firmware
 from iceboard_hardware import IceBoardHardware
 
 # import arm # object giving access to the ARM firmware
@@ -101,6 +101,8 @@ class IceBoard(hardware_map.HWMResource, attribute_publisher.AttributeUser):
     serial_number = Column(Integer)
     revision = Column(Integer)
     locked = Column(Integer)
+    subarray = Column(Integer)
+    present = Column(Integer, default = 0) # indicates if the board is currently present in the array
 
     # ARM firmware-related definition
     tuber_uri = Column(String, nullable=False)
@@ -123,7 +125,7 @@ class IceBoard(hardware_map.HWMResource, attribute_publisher.AttributeUser):
     fpga = None # object handling the FPGA fimware (both core and application-specific firmware)
     hw = None # Object handling the IceBoard hardware
 
-    fpga_user_cls = FpgaFirmware # Class used to create the FPGA firmware handler. This attribute is set when the FPGA is configured.
+    fpga_user_cls = FpgaCoreFirmware # Class used to create the FPGA firmware handler. This attribute is set when the FPGA is configured.
 
     _auto_open = False
     _self_reference = None # Used to ensure the object stays in memory and to check of the object has been opened
@@ -191,12 +193,12 @@ class IceBoard(hardware_map.HWMResource, attribute_publisher.AttributeUser):
         # Open communication with the FPGA and initialize the core firmware object (but leave the firmware in its current state)
         # We need this now to create the basic interface to the hardware (I2C, buck sync, FMC etc)
         self.logger.info('Instantiating core FPGA firmware handlers for board #%i' % (self.serial_number))
-        # self.fpga = FpgaFirmware(self, self.fpga_ip_addr, self.fpga_port_number, interface_ip_addr=self.interface_ip_addr, serial_number = self.fpga_serial_number)
+        # self.fpga = FpgaCoreFirmware(self, self.fpga_ip_addr, self.fpga_port_number, interface_ip_addr=self.interface_ip_addr, serial_number = self.fpga_serial_number)
         if self.fpga_firmware_class:
             fpga_firmware_class = pickle.loads(self.fpga_firmware_class)
         else:
             self.logger.warning('FPGA firmware is not defined for board #%i. using core firmware instead' % (self.serial_number))
-            fpga_firmware_class = FpgaFirmware
+            fpga_firmware_class = FpgaCoreFirmware
 
         self.fpga = fpga_firmware_class(motherboard=self, ip_addr=self.fpga_ip_addr, port_number=self.fpga_port_number, interface_ip_addr=self.interface_ip_addr, serial_number = self.fpga_serial_number) # Create a FPGA firmware object. This just initializes variables for now.
         self.fpga.open_core() # open the core only
@@ -209,6 +211,9 @@ class IceBoard(hardware_map.HWMResource, attribute_publisher.AttributeUser):
         self.hw.open()
         self.register(self.hw) # Allow access to the hardware methods/attributes from this class
         self.i2c = self.hw.get_i2c_interface() # get standardized I2C interface that can be used more easily by the user firmware
+
+        # Add backplane stuff
+
 
         # We can now create the application-specific FPGA firmware handlers
         self.logger.info('Instantiating Application-specific FPGA firmware handlers for board #%i' % (self.serial_number))
@@ -223,7 +228,6 @@ class IceBoard(hardware_map.HWMResource, attribute_publisher.AttributeUser):
             self.logger.info('Closing application-specific FPGA firmware handlers for board #%i' % (self.serial_number))
             self.unregister(self.fpga)
             self.fpga.close()
-            self.fpga = None
 
         if self.hw:
             self.logger.info('Closing IceBoard hardware handlers for board #%i' % (self.serial_number))
@@ -274,11 +278,11 @@ class IceBoard(hardware_map.HWMResource, attribute_publisher.AttributeUser):
 
         # Blindly attempts to configure the FPGA networking is case its firmware is already loaded. This will allow us to check if the firmware is already loaded.
         self.logger.info('Configuring FPGA networking parameters before checking if it is already programmed')
-        FpgaFirmware.set_networking_parameters(serial_number=self.fpga_serial_number, interface_ip_addr=self.interface_ip_addr, ip_addr=self.fpga_ip_addr, port_number=self.fpga_port_number, broadcast_group = 0)
+        FpgaCoreFirmware.set_networking_parameters(serial_number=self.fpga_serial_number, interface_ip_addr=self.interface_ip_addr, ip_addr=self.fpga_ip_addr, port_number=self.fpga_port_number, broadcast_group = 0)
 
         # Get FPGA configuration info so we can decide if the FPGA needs reprogramming
         self.logger.info('Checking if the FPGA on board S/N %03i is already programmed' % self.serial_number)
-        (serial, timestamp) = FpgaFirmware.get_fpga_config(interface_ip_addr=self.interface_ip_addr, ip_addr=self.fpga_ip_addr, port_number=self.fpga_port_number)
+        (serial, timestamp) = FpgaCoreFirmware.get_fpga_config(interface_ip_addr=self.interface_ip_addr, ip_addr=self.fpga_ip_addr, port_number=self.fpga_port_number)
 
         # Program the FPGA if it did not return the proper config info
         if serial != self.fpga_serial_number: # if the FPGA has not replied, we program it
@@ -289,9 +293,9 @@ class IceBoard(hardware_map.HWMResource, attribute_publisher.AttributeUser):
                 arm.load_fpga_bitstream(b64_string, md5_string)
             # Configure the FPGA networking foe the freshly programmed firmware
             self.logger.info('Configuring FPGA networking parameters after reprogramming')
-            FpgaFirmware.set_networking_parameters(serial_number=self.fpga_serial_number, interface_ip_addr=self.interface_ip_addr, ip_addr=self.fpga_ip_addr, port_number=self.fpga_port_number, broadcast_group = 0)
+            FpgaCoreFirmware.set_networking_parameters(serial_number=self.fpga_serial_number, interface_ip_addr=self.interface_ip_addr, ip_addr=self.fpga_ip_addr, port_number=self.fpga_port_number, broadcast_group = 0)
             # Check if the firmware is now responding with proper configuration info
-            (serial, timestamp) = FpgaFirmware.get_fpga_config(interface_ip_addr=self.interface_ip_addr, ip_addr=self.fpga_ip_addr, port_number=self.fpga_port_number)
+            (serial, timestamp) = FpgaCoreFirmware.get_fpga_config(interface_ip_addr=self.interface_ip_addr, ip_addr=self.fpga_ip_addr, port_number=self.fpga_port_number)
 
             # if the FPGA still does not reply to its assigned address after programming, raise an error
             if serial != self.fpga_serial_number:
@@ -305,7 +309,7 @@ class IceBoard(hardware_map.HWMResource, attribute_publisher.AttributeUser):
         # self.commit()
         # # Check which FPGAs respond to broadcasts after programming
         # self.logger.info('Checking again what FPGAs are on the network')
-        # fpga_serials = FpgaFirmware.discover_fpgas(interfaces)
+        # fpga_serials = FpgaCoreFirmware.discover_fpgas(interfaces)
         # if self.fpga_serial_number not in fpga_serials:
         #     self.logger.error('Failed to find FPGA on board #%i' % (self.serial_number))
 
@@ -317,7 +321,50 @@ class IceBoard(hardware_map.HWMResource, attribute_publisher.AttributeUser):
     def status(self):
         """Displays the status of the motherboard"""
 
-def discover(session, timeout, interface_ip_addr):
+def load(session, filename, interface_ip_addr=None):
+    """
+    Adds the Iceboard entries listed in the specified file into the database.
+    """
+    import csv
+
+    iceboards = session.query(IceBoard) # get all the iceboards from the database
+    keymap = dict(iceboards.values(IceBoard.serial_number, IceBoard.pk)) # get a dictionnary that maps the serial number to primary keys
+
+    with open(filename, 'rb') as file:
+        reader = csv.reader((line for line in file if not line.lstrip().startswith('#'))) # uses a generator to trip the comments
+        for (serial_number, tuber_uri, arm_serial_number, fpga_ip_addr, fpga_serial_number, locked, subarray) in reader:
+            serial_number = int(serial_number, 0)
+            tuber_uri = tuber_uri.strip("' ")
+            arm_serial_number = arm_serial_number.strip("' ")
+            fpga_ip_addr = fpga_ip_addr.strip("' ")
+            fpga_serial_number = int(fpga_serial_number, 0)
+            locked = int(locked, 0)
+            subarray = int(subarray, 0)
+
+            if serial_number in keymap:
+                ib = iceboards.get(keymap[serial_number])
+                ib.tuber_uri = tuber_uri
+                ib.arm_serial_number = arm_serial_number
+                ib.fpga_ip_addr = fpga_ip_addr
+                ib.fpga_serial_number = fpga_serial_number
+                ib.locked = locked
+                ib.subarray = subarray
+                ib.interface_ip_addr = interface_ip_addr
+            else:
+                ib = IceBoard(
+                    serial_number=serial_number,
+                    tuber_uri=tuber_uri,
+                    arm_serial_number=arm_serial_number,
+                    fpga_ip_addr=fpga_ip_addr,
+                    fpga_serial_number=fpga_serial_number,
+                    locked=locked ,
+                    subarray = subarray,
+                    interface_ip_addr = interface_ip_addr)
+                session.add(ib)
+    session.flush()
+
+
+def discover(session, timeout, interface_ip_addr=None):
     """
     Update the Iceboard table with the list of available
     Iceboards actually found on the network. 'timout' indicates the time we
@@ -339,45 +386,24 @@ def discover(session, timeout, interface_ip_addr):
     logger = logging.getLogger(__name__)
     logger.debug('Discovering boards')
 
-    # Temporary lookup table used to determine the ARM address based on the
-    # FPGA serial number since we don't have a way to find which ARM
-    # processor is out there.  Eventually the ARMs will have a discovery
-    # protocol that will allow us to get this information on the fly.  We
-    # use the ARM's MAC address as its unique serial number, but it could be
-    # anything.
-    #
-    # Note: JFC: I used to create a table of IceBoard objects but the hidden machinery of SQLAlchemy did not like that. It tried to generate SQL statements during the table creation, but the iceboards table did not exist yet
-    ARM_TABLE = [
-        # ARM IP address : (ARM Serial (MAC address), FPGA serial , board_number, locked)
-        #(serial_number, tuber_uri, arm_serial_number, fpga_ip_addr, fpga_serial_number, locked)
-        ( 7, 'http://10.10.10.57:80/tuber', '84:7E:40:6F:4A:F2', '10.10.10.37', 0x2069c2107eb05c, False),
-        (18, 'http://10.10.10.18:80/tuber', '84:7E:40:6F:CC:CA', '10.10.10.48', 0x24d046483e301c, True ),
-        ( 5, 'http://10.10.10.5:80/tuber' , '84:7E:40:6F:63:18', '10.10.10.35', 0,                False),
-        ( 9, 'http://10.10.10.9:80/tuber' , '84:7E:40:6F:D4:CA', '10.10.10.39', 0,                False),
-        ( 8, 'http://10.10.10.8:80/tuber' , '84:7E:40:6F:41:E8', '10.10.10.38', 0x6869c2107eb05c, False),
-        (19, 'http://10.10.10.19:80/tuber', '84:7E:40:6F:CC:82', '10.10.10.49', 0x1829c2107eb05c, False),
-        (14, 'http://10.10.10.14:80/tuber', '84:7E:40:6F:CC:BE', '10.10.10.44', 0x3829c2107eb05c, False),
-        (17, 'http://10.10.10.17:80/tuber', '84:7E:40:6F:CC:9C', '10.10.10.47', 0,                False),
-        (16, 'http://10.10.10.16:80/tuber', '84:7E:40:70:01:CA', '10.10.10.46', 0,                False),
-    ]
     logger.debug('Querying existing database entries')
 
     iceboards = session.query(IceBoard) # get all the iceboards from the database
-    database_serials = [ib.serial_number for ib in iceboards] # get the serial numbers of all boards known to the database
+    # database_serials = [ib.serial_number for ib in iceboards] # get the serial numbers of all boards known to the database
 
     # Now add any iceboard that we discover on the network and that is not already in the database
-    for (serial_number, tuber_uri, arm_serial_number, fpga_ip_addr, fpga_serial_number, locked) in ARM_TABLE:
-        if tuber.TuberHWMResource.ping(tuber_uri):
-            if serial_number in database_serials:
-                # print serial_number
-                logger.debug('Board S/N %i at %s already in database!' % (serial_number, tuber_uri))
-            else:
-                # print ib.serial_number
-                logger.debug('Found new board S/N %i at %s!' % (serial_number, tuber_uri))
-                ib = IceBoard(serial_number=serial_number, tuber_uri=tuber_uri, arm_serial_number=arm_serial_number, fpga_ip_addr=fpga_ip_addr, fpga_serial_number=fpga_serial_number, locked=locked, interface_ip_addr = interface_ip_addr)
-                ib.interface_ip_addr = interface_ip_addr # FIXME: to be removed
-                session.add(ib)
-    session.flush()
+    for ib in iceboards:
+        ib.present = tuber.TuberHWMResource.ping(ib.tuber_uri)
+    #         if serial_number in database_serials:
+    #             # print serial_number
+    #             logger.debug('Board S/N %i at %s already in database!' % (serial_number, tuber_uri))
+    #         else:
+    #             # print ib.serial_number
+    #             logger.debug('Found new board S/N %i at %s!' % (serial_number, tuber_uri))
+    #             ib = IceBoard(serial_number=serial_number, tuber_uri=tuber_uri, arm_serial_number=arm_serial_number, fpga_ip_addr=fpga_ip_addr, fpga_serial_number=fpga_serial_number, locked=locked, interface_ip_addr = interface_ip_addr)
+    #             ib.interface_ip_addr = interface_ip_addr # FIXME: to be removed
+    #             session.add(ib)
+    # session.flush()
     return
 
 # vim: sts=4 ts=4 sw=4 tw=80 smarttab expandtab

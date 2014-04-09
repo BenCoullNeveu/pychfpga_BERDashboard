@@ -1,18 +1,24 @@
-""" Exposes the modules we want accessible to the user
+""" Provide direct access to the Python modules located in the /python/icecore folder
 
-Assuming the user can access to top icecore folder, all the icecore functionnalities can be accessed by
-    >>> import icecore
-which gives access to icecore.icearray, icecore.iceboard etc.
+We redefine the __path__ variable of this module so the user can access the
+icecore Python modules without having to specify the whole path. For example, we can do:
 
-This *won't* allow the user to do:
-    >>> import icecore.iceboard # WON'T WORK
-because import does not use the 'icecore' object while processing the module path but
-   >>> from icecore import iceboard # WORKS
+    >>> import icecore.iceboard
+
+instead of
+
+    >>> import icecore.python.icecore.iceboard
+
+The contents of the following folders are directly exposed:
+    icecore/python/icecore => icecore
+    icecore/python/icecore/iceboard => iceboard
 
 """
-from python.icecore import icearray
-from python.icecore import attribute_publisher
-from python.icecore.iceboard import iceboard
-from python.icecore.iceboard import fpgabitfile
-from python.icecore.iceboard import fpga as fpga_firmware
+__path__=['icecore/python/icecore']
+#__path__=['icecore/python/icecore', 'icecore/python/icecore/iceboard']
+# from python.icecore import icearray
+# from python.icecore import attribute_publisher
+# from python.icecore.iceboard import iceboard
+# from python.icecore.iceboard import fpgabitfile
+# from python.icecore.iceboard import fpga as fpga_firmware
 

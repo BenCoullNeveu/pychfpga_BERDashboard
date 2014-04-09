@@ -45,7 +45,7 @@ class MGADC08_base(object):
     SPI_ADC0_TEMP_ADDR = 2 # ADC temperature sensor chip. Read only
     SPI_ADC1_TEMP_ADDR = 3 # ADC temperature sensor chip. Read only
     SPI_AMB_TEMP_ADDR  = 4 # Board temperature sensor chip. Read/Write device
-    SPI_PLL1_ADDR      = (5, 1) # ADC PLL. The second element of the tuple indicates that we use the alternate timing 
+    SPI_PLL1_ADDR      = (5, 1) # ADC PLL. The second element of the tuple indicates that we use the alternate timing
     #SPI_ADC_BIAS_ADDR =5 # Bias measurement ADC.  Read/Write device # Not present on Rev2 board
     SPI_IO_EXP_ADDR    = 6 # IO Expander. Read/Write device
     SPI_PLL2_ADDR      = 7 # MGT PLL. Write only.
@@ -95,7 +95,7 @@ class MGADC08_base(object):
 
     def spi_read_write(self, device, data,  type=np.uint8, verbose=None):
         """
-        Provides read/write function to access the SPI devices on this board. 
+        Provides read/write function to access the SPI devices on this board.
         """
         if verbose is None:
             verbose = self.verbose
@@ -115,7 +115,7 @@ class MGADC08_base(object):
         self.logger.debug("Attempting to read FMC eeprom to determine board presence")
         data = self.eeprom.read(0, length=1, noerror=True, verbose=verbose)
         self.logger.debug("FMC eeprom returned the value: %i", data[0])
-        self._board_is_present = True #(data[0] == 13)
+        self._board_is_present = (data[0] == 13)
         #self.logger.info("is the ADC board present: %i" % self._board_is_present)
 
     def is_present(self):

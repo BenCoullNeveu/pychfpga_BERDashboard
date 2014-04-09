@@ -34,8 +34,7 @@ import numpy as np
 #import pdb
 import time
 
-import icecore
-from icecore import fpga_firmware
+from icecore.iceboard.fpga import FpgaCoreFirmware
 
 from pychfpga.common import util
 
@@ -130,7 +129,7 @@ class chFPGAException(Exception):
         self.logger.exception(message)
 
 
-class chFPGA_controller(fpga_firmware.FpgaFirmware):
+class chFPGA_controller(FpgaCoreFirmware):
     """
     Creates an object that connects to the specified chFPGA board and provides the methods to configure it and control its operations.
 
@@ -1263,7 +1262,7 @@ class chFPGA_controller(fpga_firmware.FpgaFirmware):
             for output in crossbar_outputs:
                 self.CROSSBAR[output].CH_DIST.SEND_FLAGS=send_flags
             if sync:
-                self.sync()       
+                self.sync()
 
 
     def set_gain(self, gain = None, postscaler = None, channels=None, use_fixed_gain = False):
