@@ -18,7 +18,7 @@ ext_chrx = Extension("chrx",
                       "chrx/gpu_acq.c", "chrx/util.c"],
                       libraries = ["hdf5", "hdf5_hl", "m", "pthread"])
 
-ext_post = Exetension("post_acq.sse_transpose",
+ext_post = Extension("post_acq.sse_transpose",
                       ["post_acq/sse_transpose.pyx",
                        "post_acq/_sse_transpose.c"],
                       libraries = [],
