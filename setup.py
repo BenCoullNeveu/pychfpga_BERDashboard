@@ -1,6 +1,8 @@
 #from distutils.core import setup, Extension
 from setuptools import setup, Extension
 import os, sys
+#from Cython.Build import cythonize
+from Cython.Distutils import build_ext
 
 # Paths and filenames.
 init_dir    = "/etc/init"
@@ -10,17 +12,28 @@ target      = "ch_master"
 version     = "version"
 init_in     = "ch_master_daemon.conf"
 
+ext_chrx = Extension("chrx", 
+                     ["chrx/acq.c", "chrx/chrx.c", "chrx/disc.c", \
+                      "chrx/fpga_acq.c", "chrx/frame.c", \
+                      "chrx/gpu_acq.c", "chrx/util.c"],
+                      libraries = ["hdf5", "hdf5_hl", "m", "pthread"])
+
+ext_post = Exetension("post_acq.sse_transpose",
+                      ["post_acq/sse_transpose.pyx",
+                       "post_acq/_sse_transpose.c"],
+                      libraries = [],
+                      )
+
 # Install the python packages.
 setup(name = "ch_acq",
       version = "1.0",
       packages = ["pychfpga", "pychfpga.core", "pychfpga.common", \
                   "pychfpga.MGK7MB", "pychfpga.MGADC08", \
-                  "pychfpga.motherboards"],
-      ext_modules = [Extension("chrx", 
-                               ["chrx/acq.c", "chrx/chrx.c", "chrx/disc.c", \
-                                "chrx/fpga_acq.c", "chrx/frame.c", \
-                                "chrx/gpu_acq.c", "chrx/util.c"],
-                               libraries = ["hdf5", "hdf5_hl", "m", "pthread"])]
+                  "pychfpga.motherboards",
+                  "post_acq"
+                  ],
+      ext_modules = [ext_chrx, ext_post],
+      cmdclass = {'build_ext': build_ext},
      )
 
 # If we are installing, copy things to system folders.
