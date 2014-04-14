@@ -140,6 +140,8 @@ class chFPGA_controller(FpgaCoreFirmware):
         reference_frequency: frequency in Hz of the reference signal provided to the chFPGA. Typically 10 MHz.
     """
 
+    __mapper_args__ = {'polymorphic_identity': 'chime_fpga_firmware'}
+
     # Basic system constants
     IMPLEMENT_CORR = False
     ADC_CLK_SELECT = 1 # Antenna number from which the antenna processing will be clocked. This is hardwired in the firmware (need to use an ADCDAQ with a PLL)
@@ -194,7 +196,7 @@ class chFPGA_controller(FpgaCoreFirmware):
     }
 
 
-    def __init__(self, motherboard = None, **kwargs):
+    def __init__(self, motherboard = None, *args, **kwargs):
         """
         Creates the object providing the methods and attributes needed to
         operate the chFPGA firmware. This does not affect the state and
@@ -205,7 +207,7 @@ class chFPGA_controller(FpgaCoreFirmware):
             .i2c.select_bus(bus_name)  where bus_name is 'FMCA' or 'FMCB'
             .i2c.write_read(...)
         """
-        super(type(self),self).__init__(**kwargs)
+        super(type(self),self).__init__(*args, **kwargs)
         # Initialize instance attributes
         # For now, we do not know their values unless the system is initialized.
         # We may want to fix that by reading the FPGA states and determining those values.
@@ -409,7 +411,7 @@ class chFPGA_controller(FpgaCoreFirmware):
             self.GPU = GPU.GPU_base(self, self.GPU_LINK_BASE_ADDR, self.GPU_LINK_ADDR_INCREMENT)
 
             # Now that the firmware ressources are initialized, print more configuration info that requires access to these ressources
-            self.log.debug('      Data width is currently (Re+Im) = (%i+%i) bits (it might change later during initialization)' % (self.get_data_width(),self.get_data_width()))
+            # self.log.debug('      Data width is currently (Re+Im) = (%i+%i) bits (it might change later during initialization)' % (self.get_data_width(),self.get_data_width()))
 
             # ---------------------------------------------------------------------
             # -- Create motherboard ressource handlers objects
@@ -472,12 +474,12 @@ class chFPGA_controller(FpgaCoreFirmware):
     #     # if self.ip_address in Shared_variables.controller_sock:
     #     #     del Shared_variables.controller_sock[self.ip_address]
 
-    def __del__(self):
+    # def __del__(self):
 
-        self.close()
-        self.log.debug('__del__: Closed FPGA at IP address %s' % self.ip_addr)
+    #     self.close()
+    #     self.log.debug('__del__: Closed FPGA at IP address %s' % self.ip_addr)
 
-    def init(self, sampling_frequency=800e6, reference_frequency=10e6, adc_delay_table=None, data_width=8, group_frames = 4, enable_gpu_link =0, verbose=0, **kwargs):
+    def init(self, sampling_frequency=800e6, reference_frequency=10e6, adc_delay_table=None, data_width=4, group_frames = 4, enable_gpu_link =1, verbose=0, **kwargs):
         """
         Resets the chFPGA to a known state with specified parameters.
         """

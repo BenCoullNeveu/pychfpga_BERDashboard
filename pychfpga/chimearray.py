@@ -20,38 +20,33 @@ reload(logging.handlers) # we need to reload the handlers as well so they are in
 # import core.chFPGA_controller
 from icecore.icearray import IceArray, close_all_sockets
 from icecore.iceboard.fpgabitfile import FpgaBitFile
-
-# class ChimeException(IceException):
-#     pass
-
-#ChimeIceBoard = IceBoard(icecore.arm.ArmFirmware, ChimeFpgaFirmware)
 from core.chFPGA_controller import chFPGA_controller as ChimeFpgaFirmware
 
-class ChimeArray(IceArray):
-    """
-    Provides access to arrays of ICEBoards and ICEBoxes.
-    """
+# class ChimeArray(IceArray):
+#     """
+#     Provides access to arrays of ICEBoards and ICEBoxes.
+#     """
 
-    def __init__(self, interface_ip_addr, **kwargs):
-        """
-            'interface_ip' is the IP address of the Ethernet interface through which the array will be accessed.
-            If it is specified, a discovery request will be sent on this interface
+#     def __init__(self, interface_ip_addr, **kwargs):
+#         """
+#             'interface_ip' is the IP address of the Ethernet interface through which the array will be accessed.
+#             If it is specified, a discovery request will be sent on this interface
 
-        Todo:
-        2014-03-03 JFC: If interface_ip is not specified, the first call to discover() could scan all adapters and find on which one there are ICEBoards.
-        """
+#         Todo:
+#         2014-03-03 JFC: If interface_ip is not specified, the first call to discover() could scan all adapters and find on which one there are ICEBoards.
+#         """
 
-        self.logger = logging.getLogger('%s.%s' % (type(self).__module__, type(self).__name__))
-        super(type(self), self).__init__(interface_ip_addr = interface_ip_addr, **kwargs)
+#         self.logger = logging.getLogger('%s.%s' % (type(self).__module__, type(self).__name__))
+#         super(type(self), self).__init__(interface_ip_addr = interface_ip_addr, **kwargs)
 
 
 
 #####################################
-# Configure the various loggers to provide adequate levels of details
 
 
 if __name__ == '__main__':
 
+    # Configure the various loggers to provide adequate levels of details
     logging.getLogger('iceboard.arm.FpgaBitFile').setLevel(logging.INFO)
     logging.getLogger('requests.packages').setLevel(logging.WARN)
     logging.getLogger('sqlalchemy.engine.base.Engine').setLevel(logging.DEBUG)
@@ -90,22 +85,14 @@ if __name__ == '__main__':
         logger.info('   %s = %s' % (key, repr(value)))
     # Create the new chFPGA object.
 
-    ca = ChimeArray(args.if_ip, uri='sqlite:///test.db')
+    ca = IceArray(uri='sqlite:///test.db', interface_ip_addr=args.if_ip)
     ca.load_iceboards('iceboard_list.txt')
-    #ca.close_all_sessions() # make sure all sessions that might be still open (for instance, if we run this script many times interactively) are closed. Otherwise an object might end up being assigned to multiple sessions.
     ca.discover() # automatically update the hardware map database with discovered resources
-    # ice.status()
 
-    bitfile = FpgaBitFile('../../chfpga/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit')#('../../../chfpga/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit')
-#    c = ca.get_iceboards([7, 14, 19]) # get one or more IceBoards
-    c = ca.get_iceboards() # get one or more IceBoards
-    # c.configure_fpga(bitfile)
-    c.configure_fpga(bitfile, ChimeFpgaFirmware)
-    # c0 = ca.get_iceboards([7]).one() # get one IceBoards
-    # c0.configure_fpga(bitfile, ChimeFpgaFirmware)
-    # c0.configure_fpga(bitfile)
-    # c0.open()
+    bitfile_filename = '../../chfpga/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit'
+    fpga_bitstream = FpgaBitFile(bitfile_filename) # we have to create one bitstream object only.
+
+    c = ca.get_iceboards(subarray=0) # get one or more IceBoards from specified subarray
+    c.set_fpga_firmware(fpga_bitstream, ChimeFpgaFirmware, configure_fpga=True) # associate boards with specified firmware and configure the selected FPGA
+    c.open() # establish communication with the boards so we can access their attributes and methods
     cc=c[0]
-
-    # bp=ca.get_iceboxes().one()
-    # bp[0].get_slot_number()
