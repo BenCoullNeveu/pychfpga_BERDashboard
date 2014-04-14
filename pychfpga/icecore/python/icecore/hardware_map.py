@@ -59,8 +59,9 @@ import operator
 import functools
 
 from sqlalchemy import create_engine
+from sqlalchemy import Column, Integer, String, ForeignKey, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship, Query, sessionmaker
+from sqlalchemy.orm import relationship, Query, sessionmaker, backref, reconstructor
 
 Base = declarative_base()
 
@@ -242,7 +243,7 @@ class HardwareMap(object):
                 echo=echo,
                 connect_args={'check_same_thread':False}
         )
-
+        print 'using', uri
         # It's possible we're operating on an empty, in-memory database
         # (that's one of the use cases we anticipate) -- so ensure all
         # of the relevant tables have been created.

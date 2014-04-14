@@ -16,11 +16,12 @@ import logging
 # import struct
 # import socket
 
-import re
-import numpy as np
+# import re
+# import numpy as np
 # from Module import Module_base, BitField
 # import fpga_mmi
 import hardware_map
+
 import iceboard.iceboard as iceboard
 from iceboard.iceboard import IceBoard
 
@@ -430,10 +431,10 @@ class IceException(Exception):
 
 class IceArray(object):
     """
-    Provides access to arrays of ICEBoards and ICEBoxes.
+    Provides access to the ressources of the IceArray through the Icecore hardware manager.
     """
 
-    def __init__(self, uri='sqlite:///:memory:', iceboard_class = IceBoard, mezz_class = None, interface_ip_addr=None):
+    def __init__(self, uri='sqlite:///:memory:', interface_ip_addr=None,  mezz_class = None, *args, **kwargs):
         """
         'interface_ip_addr' is the IP address of the Ethernet interface
             that will be used for direct FPGA communications (either discovery
@@ -446,31 +447,38 @@ class IceArray(object):
             ICEBoards.
         """
 
+        # super(type(self), self).__init__(uri='sqlite:///:memory:', *args, **kwargs)
         self.logger = logging.getLogger(__name__)
-        # self.resource_database = IceResourceTable()
+        self.logger.debug('Init IceArray parent')
         self.interface_ip_addr = interface_ip_addr
 
-        # Create a hardware mapper session
-        self.hwmap = hardware_map.HardwareMap(uri = uri, echo = False) # JFC echo=False because we already have a logger that will catch the messages.
-        self.hwmap.interface_ip_addr = interface_ip_addr # store the host ip address to be used to talk to FPGAs (won't be needed when FPGA are accessed through the ARM)
+        self._hwmap = hardware_map.HardwareMap(uri=uri, *args, **kwargs)
         # Remove the logger handlers that is created for the SQLAlchemy Engine. We want to use our own top level handler.
         # If we don't do this, the SQLAlchemy messages get displayed twice
         sa_logger =  logging.getLogger('sqlalchemy.engine.base.Engine')
-        # sa_logger.handlers=[]
         while sa_logger.handlers:
-            # print 'removing handler', sa_logger.handlers[0]
             sa_logger.removeHandler(sa_logger.handlers[0])
 
-        # self.discover()
-    def flush_all_sessions(self):
-        """ Flushes all queries in all database sessions, even those created on other IceArray instances.
+    def __getattr__(self, name):
         """
-        self.hwmap.flush()
+        Redirects all attributes access to the hardware map (Session) object.
+        We do this because we can't just inherit a HardwareMap, because it does not return a HardwareMap object
+        """
+        return getattr(self._hwmap, name)
 
-    def close_all_sessions(self):
-        """ Close all database sessions, even those that were created on other iceboard instances.
-        """
-        self.hwmap.close_all()
+    def __dir__(self):
+        # return type(self).__dict__ + self.__dict__ + dir(self._hwmap)
+        return dir(self._hwmap)
+    #     # self.discover()
+    # def flush_all_sessions(self):
+    #     """ Flushes all queries in all database sessions, even those created on other IceArray instances.
+    #     """
+    #     self.flush()
+
+    # def close_all_sessions(self):
+    #     """ Close all database sessions, even those that were created on other iceboard instances.
+    #     """
+    #     self.close_all()
 
     # def close(self):
     #     """
@@ -484,14 +492,14 @@ class IceArray(object):
         Discover all hardware and firmware resources on the specified
         interface(s) and add them to the database.
         """
-        iceboard.discover(self.hwmap, timeout = timeout, interface_ip_addr = self.interface_ip_addr)
-        self.hwmap.commit() # commit any changes made during discovery
+        iceboard.discover(self, timeout = timeout, interface_ip_addr = self.interface_ip_addr)
+        self.commit() # commit any changes made during discovery
         #
     def load_iceboards(self, filename):
         """
         """
-        iceboard.load(self.hwmap, filename, interface_ip_addr = self.interface_ip_addr)
-        self.hwmap.commit() # commit any changes made during discovery
+        iceboard.load(self, filename, interface_ip_addr = self.interface_ip_addr)
+        self.commit() # commit any changes made during discovery
 
 
 
@@ -529,7 +537,7 @@ class IceArray(object):
         kwargs['locked']=0 # force selection of non-locked boards
         if 'present' not in kwargs:
             kwargs['present'] = 1
-        return self.hwmap.query(IceBoard).filter(*args).filter_by(**kwargs)
+        return self.query(IceBoard).filter(*args).filter_by(**kwargs)
 
         # return self.get_resources(ressource_type=IceResource.ICEBOARD).select(*args, **kwargs)
 

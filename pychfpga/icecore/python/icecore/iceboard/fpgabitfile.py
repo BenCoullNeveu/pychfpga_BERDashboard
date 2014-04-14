@@ -8,6 +8,7 @@ import logging
 import os.path
 import struct
 
+# from fpga import FpgaCoreFirmware
 
 class FpgaBitFile(object):
     """
@@ -21,6 +22,8 @@ class FpgaBitFile(object):
     """
     # __metaclass__ = _add_class_logger # intercept the default class creator (type(...)) with one that adds a 'logger' atttribute with a 'module.class' name (why this? The name of this class is not accessible in __name__ until the class creation is completed)
 
+    BIN_PREFIX = 0xffffffffaa995566
+
     def __init__(self, filename, loglevel = None):
         """
         Initializes the objects and loads the bit file into memory.
@@ -28,29 +31,28 @@ class FpgaBitFile(object):
         self.logger = logging.getLogger('%s.%s' % (type(self).__module__, type(self).__name__))
         if loglevel:
             self.logger.setLevel(loglevel)
-        self.filename = None
-        self.valid = False
+        self.filename = filename
         self.timestamp = None
-        self.load(filename)
         self.md5 = None
 
-    def load(self, filename):
-        self.filename = filename
         self.valid = False
-        extension = os.path.splitext(filename)[1].split('.')[-1]
-        extension = extension.lower()
-        self.logger.debug('File type: %s' % extension)
-        # print extension
+        # extension = os.path.splitext(file)[1].split('.')[-1]
+        # extension = extension.lower()
+        # self.logger.debug('File type: %s' % extension)
+        # # print extension
         self.logger.info('Reading file %s ...' % filename)
-        with open(filename, mode='rb') as file: # b is important -> binary
+        # with open(file, mode='rb') as file: # b is important -> binary
+        with open(filename, 'rb') as file:
             data = file.read()
         self.logger.info('Read %0.3f Mbytes' % (len(data)/1e6))
 
-        if extension not in ['bit', 'bin']:
-            self.logger.error('Unknown file extension "%s"' % extension)
-            raise Exception('Unknown file extension')
+        # if extension not in ['bit', 'bin']:
+        #     self.logger.error('Unknown file extension "%s"' % extension)
+        #     raise Exception('Unknown file extension')
 
-        if extension == 'bit':
+        is_bin = struct.unpack('>Q',data[0:8])[0] == self.BIN_PREFIX
+
+        if not is_bin:
             pos = 0
             # Field 1 - ignore
             length = struct.unpack('>H',data[pos:pos+2])[0]

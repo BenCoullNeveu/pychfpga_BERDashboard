@@ -25,30 +25,78 @@ import fpga_mmi
 # import pychfpga.core.SPI as spi
 import pychfpga.core.I2C as i2c
 import pychfpga.core.GPIO as gpio
+import pickle
+
+from .. hardware_map import HWMResource, Integer, Column, String, ForeignKey, UniqueConstraint, reconstructor
+from fpgabitfile import FpgaBitFile
+
 # import pychfpga.core.SYSMON as sysmon
 
-from ..attribute_publisher import AttributePublisher
+# from ..attribute_publisher import AttributePublisher
+
+class FpgaFirmware(HWMResource):
+    """
+    Represents the firmware that is running or to be run on the IceBoard FPGA.
+    """
+
+    __tablename__ = 'fpgafirmware'
+    # __table_args__ = (
+    #     UniqueConstraint('serial_number'),
+    # )
+    __mapper_args__ = {
+            'polymorphic_on': 'firmware_class',
+            'polymorphic_identity': 'fpgafirmware'
+    }
+
+    pk = Column(Integer, primary_key=True)
+    iceboard_pk = Column(Integer, ForeignKey('iceboards.pk'), nullable=False)
+
+    firmware_class = Column(String, nullable=False) # String that identifies the class of this object (is set to polymorphic_identity defined above, which is redefined by subclasses)
+    firmware_filename = Column(String, nullable=False)
+    firmware_crc32 = Column(Integer)
+
+    firmware_bitstream = None # we don't have access to the actual bistream data until it is loaded.
+
+
+    def __init__(self, bitstream_object):
+        self.logger = logging.getLogger(__name__)
+        self.firmware_filename = bitstream_object.filename
+        self.firmware_crc32 = bitstream_object.crc32
+        self.firmware_bitstream_object = bitstream_object
+
+    @reconstructor
+    def _init_from_database(self):
+        """
+        Re-creates the firmware object from the database data.
+        """
+        #try to reload the bitstream
+        self.logger = logging.getLogger(__name__)
+        # we leave the local self.bistream set to None.
+        # bitstream = FpgaBitFile(self.filename)
+        # if bitstream.crc32 != self.bitstream.crc32:
+        #     self.logger.warning('Bitstream does not have the expected CRC')
+        # self.firmware_class = pickle.loads(self.firmware_class_pickle)
+
 
 class FpgaException(Exception):
     pass
 
-
-class FpgaCoreFirmware(AttributePublisher):
+class FpgaCoreFirmware(FpgaFirmware):
     """
     Provides access to  the basic functionnalities of the FPGA.
     """
+
+    # __tablename__ = 'corefpgafirmware'
+    # __table_args__ = (
+    #     UniqueConstraint('serial_number'),
+    # )
+    __mapper_args__ = {'polymorphic_identity': 'core_fpga_firmware'}
+    # pk = Column(Integer, primary_key=True)
+
     BROADCAST_BASE_PORT = 41000
 
     SYSTEM_BASE_ADDR   = 0x00000 # This is always at zero so we can gather info from the FPGA before we know the number of antennas etc.
-
     SYSTEM_GPIO_BASE_ADDR     = SYSTEM_BASE_ADDR + 0x00000
-
-
-    SYSTEM_GPIO_BASE_ADDR     = SYSTEM_BASE_ADDR + 0x00000
-    SYSTEM_SYSMON_BASE_ADDR   = SYSTEM_BASE_ADDR + 0x02000
-    SYSTEM_FREQ_CTR_BASE_ADDR = SYSTEM_BASE_ADDR + 0x04000
-    SYSTEM_SPI_BASE_ADDR      = SYSTEM_BASE_ADDR + 0x06000
-    SYSTEM_REFCLK_BASE_ADDR   = SYSTEM_BASE_ADDR + 0x08000
     SYSTEM_I2C_BASE_ADDR      = SYSTEM_BASE_ADDR + 0x0A000
 
     # GPIO Register addresses
@@ -58,11 +106,12 @@ class FpgaCoreFirmware(AttributePublisher):
     FPGA_IP_SETUP_BASE_ADDR = SYSTEM_GPIO_BASE_ADDR + 0x00 + 13 # (13-18): target MAC, (19-22): target IP, (23-24): target_base_port, (25-32) = Target FPGA serial, (33): bit 7 = trigger, bits 3:2: mac source select, 1:0: broadcast group
     GPIO_IPCONFIG_REG = SYSTEM_GPIO_BASE_ADDR + 0x08D # Register address of the first byte of the IP config word
 
+    mmi = None # Memory-mapped interface object
 
-    PLATFORM_ID_ML605 = 0
-    PLATFORM_ID_KC705 = 1
-    PLATFORM_ID_MGK7MB_REV0 = 2
-    PLATFORM_ID_MGK7MB_REV2 = 3
+    # PLATFORM_ID_ML605 = 0
+    # PLATFORM_ID_KC705 = 1
+    # PLATFORM_ID_MGK7MB_REV0 = 2
+    # PLATFORM_ID_MGK7MB_REV2 = 3
 
     # PLATFORM_ID_LIST = {
     #     # ID: ( Board name, class to instantiate)
@@ -71,6 +120,7 @@ class FpgaCoreFirmware(AttributePublisher):
     #     # PLATFORM_ID_MGK7MB_REV0: ('Kintex 7 (XC7K420T-2 FFG901) on McGill MGK7MB / ICEBoard Rev0', mgk7mb.MGK7MB),
     #     # PLATFORM_ID_MGK7MB_REV2: ('Kintex 7 (XC7K420T-2 FFG901) on McGill MGK7MB / ICEBoard Rev2', mgk7mb.MGK7MB),
     # }
+
 
     @classmethod
     def discover_fpgas(cls, interface_ip_addr, source_subarrays = [0], timeout=0.1):
@@ -142,7 +192,7 @@ class FpgaCoreFirmware(AttributePublisher):
                 result= (None, None)
         return result
 
-    def __init__(self, ip_addr, port_number, interface_ip_addr=None, broadcast_group = 0, serial_number = 0):
+    def __init__(self, *args, **kwargs):
         """
         Creates an FPGA object.
 
@@ -151,39 +201,9 @@ class FpgaCoreFirmware(AttributePublisher):
         access is done through the ARM.
 
         """
+        FpgaFirmware.__init__(self, *args, **kwargs)
+        # super(type(self), self).__init__(*args, **kwargs)
         # self.motherboard = motherboard
-        self.ip_addr  = ip_addr
-        self.port_number = port_number
-        self.serial_number = serial_number
-        self.if_ip_addr = interface_ip_addr
-        self.broadcast_group = broadcast_group
-
-
-        self.logger = logging.getLogger(__name__)
-        self.mmi = None
-
-
-        if serial_number:
-            self.set_networking_parameters(serial_number, interface_ip_addr, ip_addr, port_number, broadcast_group = broadcast_group)
-
-        # self.open()
-
-
-
-        # self.logger.debug('=== Instantiating SYSMON')
-        # self.sysmon = sysmon.SYSMON_base(self.mmi, self.SYSTEM_SYSMON_BASE_ADDR)
-
-        # self.logger.debug('=== Instantiating SPI')
-        # self.spi = spi.SPI_base(self.mmi, self.SYSTEM_SPI_BASE_ADDR)
-
-        # self.logger.info('=== Getting board info information')
-
-        # return
-
-        # self.PLATFORM_ID = self.base_gpio.PLATFORM_ID
-        # if self.PLATFORM_ID not in self.PLATFORM_ID_LIST:
-        #     raise FpgaException('Platform ID 0x%02X is not recognized' % self.PLATFORM_ID)
-        # self.NUMBER_OF_FMC_SLOTS = None
 
     def get_core_attributes(self):
         """
@@ -194,8 +214,7 @@ class FpgaCoreFirmware(AttributePublisher):
         core_attributes =  FpgaCoreFirmware.__dict__.keys() + self.__dict__.keys()
         return [name for name in core_attributes if name[0] !='_']
 
-
-    def open_core(self):
+    def open_core(self, ip_addr, port_number, interface_ip_addr=None, broadcast_group = 0, serial_number = 0):
         """
         Opens the communication link with the core FPGA firmware.
         This is called during the establishment of the link with the IceBoard (IceBoard.open()).
@@ -204,8 +223,24 @@ class FpgaCoreFirmware(AttributePublisher):
         which is called when the links to the IceBoard hardware are finished
         establishing.
         """
+
+        # Store networking parameters for easy future reference
+        self.ip_addr  = ip_addr
+        self.port_number = port_number
+        self.serial_number = serial_number # FPGA serial number
+        self.if_ip_addr = interface_ip_addr # # interface IP address, needed to setup UDP communications and UDB broadcasts
+        self.broadcast_group = broadcast_group
+        self.logger = logging.getLogger(__name__)
+
+        # Close any previously opened memory-mapped interface to free the sockets
         if self.mmi:
             self.mmi.close()
+
+        # Set the FPGA communication networking parameters
+        if self.serial_number:
+            self.set_networking_parameters(self.serial_number, self.if_ip_addr, self.ip_addr, self.port_number, self.broadcast_group)
+
+        # Open communications with the FPGA memory mapped-interface
         self.mmi = fpga_mmi.FpgaMmi(self.if_ip_addr, self.ip_addr, self.port_number)
 
         self.logger.debug('=== Instantiating GPIO')
@@ -222,8 +257,9 @@ class FpgaCoreFirmware(AttributePublisher):
 
         self.base_gpio = None
         self.base_i2c = None
-        self.mmi.close()
-        self.mmi = None
+        if self.mmi:
+            self.mmi.close()
+            self.mmi = None
 
     def open(self):
         """
