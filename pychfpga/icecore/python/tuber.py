@@ -2,7 +2,7 @@
 Tuber object interface
 '''
 
-# from sqlalchemy import Column, String
+from sqlalchemy import Column, String, Integer
 
 ###
 ### Error classes
@@ -18,18 +18,13 @@ class TuberRemoteError(TuberError):
 ### Libraries
 ###
 
-import urllib2
-# from hardware_map import HWMResource
+import urllib2, urlparse, os
+from hardware_map import HWMResource
 
-try:
-    import simplejson as json
-except ImportError:
-    import json
+try: import simplejson as json
+except ImportError: import json
 
-# from attribute_publisher import AttributePublisher
-
-# class TuberHWMResource(HWMResource):
-class TuberHWMResource():
+class TuberHWMResource(HWMResource):
     '''A base class for HWMResources that correspond to TuberObjects.
 
     This is a great way of using the HardwareMap to correspond with
@@ -55,10 +50,11 @@ class TuberHWMResource():
     _tuber_meta_cache = None
     _hold_dispatcher = False
 
-    __abstract__ = True
-    # JFC: Commented out Column assignments to try a non-database tuber
-    # tuber_uri = Column(String, nullable=False)
-    # tuber_objname = Column(String, nullable=False)
+#    __abstract__ = True
+    __tablename__ = 'armfirmware'
+    pk = Column(Integer, primary_key=True)
+    tuber_uri = Column(String, nullable=False)
+    tuber_objname = Column(String, nullable=False)
 
     @staticmethod
     def ping(uri, timeout = 0.1):
@@ -72,9 +68,9 @@ class TuberHWMResource():
             return False
         return True
 
-    def __init__(self, uri, object_name):
-        self.tuber_uri = uri
-        self.tuber_objname = object_name
+    # def __init__(self, uri, object_name):
+    #     self.tuber_uri = uri
+    #     self.tuber_objname = object_name
 
     def __enter__(self):
         return self

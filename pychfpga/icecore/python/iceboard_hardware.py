@@ -9,10 +9,10 @@
 import logging
 
 # Import IceBoard hardware handlers
-import tmp100 # I2C Temperature sensor
-import pca9575 # I2C 16-bit IO Expander
-import tca9548a # I2C switch
-import ina230 # I2C Voltage and current monitor
+from lib import tmp100 # I2C Temperature sensor
+from lib import pca9575 # I2C 16-bit IO Expander
+from lib import tca9548a # I2C switch
+from lib import ina230 # I2C Voltage and current monitor
 
 class IceBoardHardwareException(Exception):
     pass
@@ -79,23 +79,31 @@ class IceBoardHardware(object):
         }
 
 
-    def __init__(self, fpga_core):
+    def __init__(self, iceboard):
         """
-        Creates all the I2C objects needed to interface the hardware.
-        For now, we can only do this when the FPGA is configured
-        because access is done through the FPGA.
+        Creates all the I2C objects needed to interface the hardware. In order to do this, the following methods will be required from the iceboard object:
+
+            - i2c_set_port(...) # Port number 0 (connected to the FPGA I2C switch) is used for all accesses
+            - i2c_write_read(...) # FPGA I2C engine
+
+        Those methods can be provided either by the ARM or the core FPGA firmware.
 
         For FPGA-based I2C:
             - fpga_core is not Null
             - fpga_core provides the following methods
-                - i2c_set_port(...) # Port number 0 (connected to the FPGA I2C switch) is used for all accesses
-                - i2c_write_read(...) # FPGA I2C engine
         """
 
         self._logger = logging.getLogger(__name__)
         self._logger.debug('Initializing Iceboard hardware')
-        self._fpga = fpga_core # the fpga object will be created once we configure the FPGA
-        self._i2c = I2CInterface(self._fpga.i2c_write_read, self._fpga.i2c_set_port, self._I2C_BUS_LIST, self._FPGA_I2C_SWITCH_ADDR)
+        self._iceboard = iceboard
+
+        # Create a standardized I2C interface to the hardware, whether it goes through the ARM or FPGA.
+        if hasattr(self._iceboard.arm, 'i2c_write_read') and hasattr(self._iceboard.arm, 'i2c_set_port'):
+            self._i2c = I2CInterface(self._iceboard.arm.i2c_write_read, self._iceboard.arm.i2c_set_port, self._I2C_BUS_LIST, self._ARM0_I2C_SWITCH_ADDR)
+        elif hasattr(self._iceboard.fpga, 'i2c_write_read') and hasattr(self._iceboard.fpga, 'i2c_set_port'):
+            self._i2c = I2CInterface(self._iceboard.i2c_write_read, self._iceboard.i2c_set_port, self._I2C_BUS_LIST, self._FPGA_I2C_SWITCH_ADDR)
+        else:
+            raise IceBoardHardwareException('Neither the ARM or FPGA provide a i2c_write_read() method needed to talk to the hardware')
 
         self._logger.info(' Instantiating I2C GPIO manager')
         self._gpio_power = pca9575.pca9575(self._i2c, self._GPIO_POWER_I2C_ADDR, 'GPIO')
@@ -407,7 +415,7 @@ class IceBoardHardware(object):
         Returns the board's serial number. which is actually the FPGA's
         serial number.
         """
-        return self._fpga.get_serial_number(); # tentative code
+        return self._iceboard.get_serial_number(); # tentative code
 
     def get_info(self):
         """Loads the info data on the motherboard"""

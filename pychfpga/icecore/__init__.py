@@ -1,24 +1,14 @@
-""" Provide direct access to the Python modules located in the /python/icecore folder
+""" Provide direct access to the Python modules located in the /python subfolder
 
 We redefine the __path__ variable of this module so the user can access the
-icecore Python modules without having to specify the whole path. For example, we can do:
+icecore Python modules without having to specify the whole path. For example, if the user named the icecore folder 'myicecore', we can do:
 
-    >>> import icecore.iceboard
+    >>> import myicecore.iceboard
 
 instead of
 
-    >>> import icecore.python.icecore.iceboard
-
-The contents of the following folders are directly exposed:
-    icecore/python/icecore => icecore
-    icecore/python/icecore/iceboard => iceboard
-
+    >>> import myicecore.python.iceboard
 """
-__path__=['icecore/python/icecore']
-#__path__=['icecore/python/icecore', 'icecore/python/icecore/iceboard']
-# from python.icecore import icearray
-# from python.icecore import attribute_publisher
-# from python.icecore.iceboard import iceboard
-# from python.icecore.iceboard import fpgabitfile
-# from python.icecore.iceboard import fpga as fpga_firmware
+__path__= [__path__[0] + '/python'] # __path__[0] is the name given by the user to this folder.
+#__path__= ['icecore/python'] # __path__[0] is the name given by the user to this folder.
 

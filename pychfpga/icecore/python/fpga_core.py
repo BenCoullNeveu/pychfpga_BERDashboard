@@ -3,95 +3,45 @@
 # pylint: disable=W0312,C0301
 
 """
-fpga.py module
+fpga_core.py module
 Provides access the basic functionnalities of the FPGA
 
  History:
         2014-03-07 JFC: Created
 """
-#import time
-import argparse
 import logging
-#import sys
 import struct
 import socket
-
-# import re
 import numpy as np
-# from Module import Module_base, BitField
-import fpga_mmi
 
-# import Module
-# import pychfpga.core.SPI as spi
-import pychfpga.core.I2C as i2c
+import pychfpga.core.I2C as i2c # to be fixed: tese modules should live in icecore.lib
 import pychfpga.core.GPIO as gpio
-import pickle
-
-from .. hardware_map import HWMResource, Integer, Column, String, ForeignKey, UniqueConstraint, reconstructor
-from fpgabitfile import FpgaBitFile
-
-# import pychfpga.core.SYSMON as sysmon
-
-# from ..attribute_publisher import AttributePublisher
-
-class FpgaFirmware(HWMResource):
-    """
-    Represents the firmware that is running or to be run on the IceBoard FPGA.
-    """
-
-    __tablename__ = 'fpgafirmware'
-    # __table_args__ = (
-    #     UniqueConstraint('serial_number'),
-    # )
-    __mapper_args__ = {
-            'polymorphic_on': 'firmware_class',
-            'polymorphic_identity': 'fpgafirmware'
-    }
-
-    pk = Column(Integer, primary_key=True)
-    iceboard_pk = Column(Integer, ForeignKey('iceboards.pk'), nullable=False)
-
-    firmware_class = Column(String, nullable=False) # String that identifies the class of this object (is set to polymorphic_identity defined above, which is redefined by subclasses)
-    firmware_filename = Column(String, nullable=False)
-    firmware_crc32 = Column(Integer)
-
-    firmware_bitstream = None # we don't have access to the actual bistream data until it is loaded.
-
-
-    def __init__(self, bitstream_object):
-        self.logger = logging.getLogger(__name__)
-        self.firmware_filename = bitstream_object.filename
-        self.firmware_crc32 = bitstream_object.crc32
-        self.firmware_bitstream_object = bitstream_object
-
-    @reconstructor
-    def _init_from_database(self):
-        """
-        Re-creates the firmware object from the database data.
-        """
-        #try to reload the bitstream
-        self.logger = logging.getLogger(__name__)
-        # we leave the local self.bistream set to None.
-        # bitstream = FpgaBitFile(self.filename)
-        # if bitstream.crc32 != self.bitstream.crc32:
-        #     self.logger.warning('Bitstream does not have the expected CRC')
-        # self.firmware_class = pickle.loads(self.firmware_class_pickle)
-
+from lib import fpga_mmi
+from fpga_firmware import FpgaFirmware
+from hardware_map import HWMResource, Integer, Column, String, ForeignKey, UniqueConstraint, reconstructor
 
 class FpgaException(Exception):
     pass
 
 class FpgaCoreFirmware(FpgaFirmware):
     """
-    Provides access to  the basic functionnalities of the FPGA.
+    Provides access to the basic functionnalities of the FPGA.
+
+    This class is meant to to provide access to functionnalities that are
+    present in all FPGA firmware using a common VHDL code base, such as:
+        - Buck sync control
+        - I2C interface to the hardware (if the ARM does not provide it)
+        - Configure and establish direct Ethernet communication with the FPGA
+        - Low-level access to the FPGA memory-mapped registers
+        - Basic post-configuration information:
+             - FPGA serial number
+             - Firmware version
+             - FPGA internal voltage and temperature monitoring
+             - etc.
+        - Control and monitoring of generic FMC Mezzanine I/O lines (I2C, etc.)
     """
 
-    # __tablename__ = 'corefpgafirmware'
-    # __table_args__ = (
-    #     UniqueConstraint('serial_number'),
-    # )
     __mapper_args__ = {'polymorphic_identity': 'core_fpga_firmware'}
-    # pk = Column(Integer, primary_key=True)
 
     BROADCAST_BASE_PORT = 41000
 
@@ -107,20 +57,6 @@ class FpgaCoreFirmware(FpgaFirmware):
     GPIO_IPCONFIG_REG = SYSTEM_GPIO_BASE_ADDR + 0x08D # Register address of the first byte of the IP config word
 
     mmi = None # Memory-mapped interface object
-
-    # PLATFORM_ID_ML605 = 0
-    # PLATFORM_ID_KC705 = 1
-    # PLATFORM_ID_MGK7MB_REV0 = 2
-    # PLATFORM_ID_MGK7MB_REV2 = 3
-
-    # PLATFORM_ID_LIST = {
-    #     # ID: ( Board name, class to instantiate)
-    #     PLATFORM_ID_ML605: ('Virtex 6 (XC6V240T-1 FFG1156) on Xilinx ML605 Evaluation board', None),
-    #     PLATFORM_ID_KC705: ('Kintex 7 (XC7K325T-2 FFG900C) on Xilinx KC705 Evaluation board', None),
-    #     # PLATFORM_ID_MGK7MB_REV0: ('Kintex 7 (XC7K420T-2 FFG901) on McGill MGK7MB / ICEBoard Rev0', mgk7mb.MGK7MB),
-    #     # PLATFORM_ID_MGK7MB_REV2: ('Kintex 7 (XC7K420T-2 FFG901) on McGill MGK7MB / ICEBoard Rev2', mgk7mb.MGK7MB),
-    # }
-
 
     @classmethod
     def discover_fpgas(cls, interface_ip_addr, source_subarrays = [0], timeout=0.1):
@@ -288,29 +224,6 @@ class FpgaCoreFirmware(FpgaFirmware):
         Verifies if the FPGA firmeware is responding using a broadcast.
         """
         raise NotImplementedError
-
-
-
-#    FPGA_IP_SETUP_BASE_ADDR = 0x00000+13 # (13-18): target MAC, (19-22): target IP, (23-24): target_base_port, (25-32) = Target FPGA serial, (33): bit 7 = trigger, bits 3:2: mac source select, 1:0: broadcast group
-
-    # def check_serial_number(self, target_serial_number):
-    #     """
-    #     Confirms that the FPGA returns the expected serial number
-    #     Assumes the MMI is open.
-    #     """
-    #     # with fpga_mmi.FpgaMmi(interface_ip_addr,  iceboard.fpga_ip_addr,  iceboard.fpga_port_number) as mmi:
-    #     self.logger.debug('Checking configuration')
-    #     # Now test communications woth the target address
-    #     try:
-    #        fpga_serial = self.get_serial_number()
-    #     except self.mmi.TimeoutException:
-    #        raise FpgaException('Unable to read FPGA serial number from address %s:%i' % (self.ip_addr, self.port_number))
-
-    #     self.logger.debug('FPGA at %s:%i reported a serial number of %016X' % ( self.ip_addr, self.port_number, self.serial_number))
-    #     if fpga_serial != self.serial_number:
-    #             raise FpgaException('FPGA at address %s:%i returned the wrong serial number %16X. Expecting %16X' % (self.ip_addr, self.port_number, fpga_serial, self.serial_number))
-
-    #     return True
 
     def get_serial_number(self):
            return self.mmi.read(self.FPGA_SERIAL_NUMBER_ADDR, type = np.dtype('>u8'))

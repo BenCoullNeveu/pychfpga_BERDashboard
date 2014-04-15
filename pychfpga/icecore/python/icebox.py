@@ -9,7 +9,8 @@
 import logging
 
 # Import IceBoard hardware handlers
-import tmp100 # I2C Temperature sensor
+from lib import tmp100 # I2C Temperature sensor
+from lib.fmc_eeprom import FMC_EEPROM
 # import pca9575 # I2C 16-bit IO Expander
 # import tca9548a # I2C switch
 # import ina230 # I2C Voltage and current monitor
@@ -52,9 +53,17 @@ class IceBox(object):
     # _POWER_ICE1V8_I2C_ADDR = 0b1001011
     # _POWER_ICE1V0GTX_I2C_ADDR = 0b1001111
 
+    @staticmethod
+    def get_backplane_info(iceboard):
+        logger = logging.getLogger(__name__)
+        logger.debug("Attempting to read backplane eeprom to determine board presence")
+        eeprom = FMC_EEPROM(iceboard.i2c, 'BP')
+        data = eeprom.read(0, length=1, noerror=True, verbose=1)
+        logger.debug("Backplane EEPROM returned the value: %i", data[0])
+        return (data[0], 0)
 
 
-    def __init__(self, i2c):
+    def __init__(self, iceboard):
         """
         Creates all the I2C objects needed to interface the hardware.
         For now, we can only do this when the FPGA is configured
@@ -69,7 +78,7 @@ class IceBox(object):
         self._I2C_BACKPLANE_BUS_NAME = 'BP'
         self._logger = logging.getLogger(__name__)
         self._logger.debug('Initializing Iceboard hardware')
-        self._i2c = i2c
+        self._i2c = iceboard.i2c
 
         self._logger.info(' Instantiating I2C GPIO manager')
         # self._gpio_power = pca9575.pca9575(self._i2c, self._GPIO_POWER_I2C_ADDR, 'GPIO')
