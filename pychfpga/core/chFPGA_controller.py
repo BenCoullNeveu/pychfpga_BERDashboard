@@ -34,7 +34,7 @@ import numpy as np
 #import pdb
 import time
 
-from icecore.iceboard.fpga import FpgaCoreFirmware
+from icecore.fpga_core import FpgaCoreFirmware
 
 from pychfpga.common import util
 
@@ -113,7 +113,7 @@ MODULE_LIST = (
         # iceboard
         )
 
-util.reload_modules(MODULE_LIST)
+# util.reload_modules(MODULE_LIST)
 
 
 # -- chFPGA --

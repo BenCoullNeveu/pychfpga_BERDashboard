@@ -15,6 +15,11 @@ import numpy as np
 import time
 import struct
 
+from sqlalchemy import Column, Integer, String, ForeignKey, UniqueConstraint
+from sqlalchemy.orm import relationship, backref
+
+from icecore.fmc_mezzanine import FMCMezzanine
+
 import ADC
 import IOExpander
 import ADC_PLL
@@ -24,19 +29,15 @@ import MGT_PLL
 import FMC_EEPROM
 from pychfpga.common import util
 
-MODULE_LIST = (
-    AmbTemp,
-    ADC,
-    IOExpander,
-    ADC_PLL,
-    BiasADC,
-    MGT_PLL,
-    FMC_EEPROM,
-)
+class MGADC08_base(FMCMezzanine):
+    __tablename__ = 'mgadc08'
 
-util.reload_modules(MODULE_LIST)
+    __mapper_args__ = {
+            'polymorphic_identity': '0x0D', # The MGADC08 EEPROM does not follow the FMC standard. The hex value of the first byte of the eeprom is used.
+   }
 
-class MGADC08_base(object):
+    pk = Column(Integer, ForeignKey('fmc_mezzanines.pk'), primary_key=True)
+
     """ Implements object that exposes the MGADC08 FMC ADC board hardware ressources"""
 
     # SPI port numbers specific to this board
@@ -52,8 +53,10 @@ class MGADC08_base(object):
 
     _board_is_present = False # Will be checked later
 
-    def __init__(self, system, fmc_number, fmc_name, verbose=0):
-        self.fpga = system
+    def __init__(self, motherboard, fmc_number, fmc_name, verbose=0):
+
+        self.type = 'mgadc08'
+        self.fpga = motherboard
         self.verbose = verbose
         self.fmc_number = fmc_number
         self.fmc_name = fmc_name

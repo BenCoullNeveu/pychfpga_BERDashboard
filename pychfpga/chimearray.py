@@ -4,7 +4,7 @@
 
 """
 chimearray.py module
-Defines ChimeArray class that Provides access to an array of ICEBoards and ICEBoxes (backplanes) configured for CHIME operation.
+Example code that demonstrate the use of the 'icecore' library to access arrays of IceBoards in the context of CHIME.
 
  History:
         2014-03-24 JFC: Created
@@ -15,31 +15,15 @@ import logging
 import logging.handlers
 reload(logging) # clear any previous logger set-up that is stored in the logging module
 reload(logging.handlers) # we need to reload the handlers as well so they are inheriting from the newly loaded Handler class defined in freshly reloaded logging, not the old one. Otherwise we get errors.
-#import icecore.python.icecore as icecore
-#import icecore
-# import core.chFPGA_controller
+
+from icecore import hardware_map
+from icecore import tuber
+reload(hardware_map)
+reload(tuber)
+
 from icecore.icearray import IceArray, close_all_sockets
-from icecore.iceboard.fpgabitfile import FpgaBitFile
+from icecore.fpgabitfile import FpgaBitFile
 from core.chFPGA_controller import chFPGA_controller as ChimeFpgaFirmware
-
-# class ChimeArray(IceArray):
-#     """
-#     Provides access to arrays of ICEBoards and ICEBoxes.
-#     """
-
-#     def __init__(self, interface_ip_addr, **kwargs):
-#         """
-#             'interface_ip' is the IP address of the Ethernet interface through which the array will be accessed.
-#             If it is specified, a discovery request will be sent on this interface
-
-#         Todo:
-#         2014-03-03 JFC: If interface_ip is not specified, the first call to discover() could scan all adapters and find on which one there are ICEBoards.
-#         """
-
-#         self.logger = logging.getLogger('%s.%s' % (type(self).__module__, type(self).__name__))
-#         super(type(self), self).__init__(interface_ip_addr = interface_ip_addr, **kwargs)
-
-
 
 #####################################
 
