@@ -4,6 +4,8 @@ import os, sys
 #from Cython.Build import cythonize
 from Cython.Distutils import build_ext
 
+import numpy as np
+
 # Paths and filenames.
 init_dir    = "/etc/init"
 chime_dir   = "/etc/CHIME"
@@ -18,10 +20,12 @@ ext_chrx = Extension("chrx",
                       "chrx/gpu_acq.c", "chrx/util.c"],
                       libraries = ["hdf5", "hdf5_hl", "m", "pthread"])
 
-ext_post = Extension("post_acq.sse_transpose",
-                      ["post_acq/sse_transpose.pyx",
-                       "post_acq/_sse_transpose.c"],
-                      libraries = [],
+ext_post = Extension("post_acq.transpose",
+                      ["post_acq/transpose.pyx", "post_acq/ctranspose.c"],
+                      libraries = ["gomp"],
+                      include_dirs=[np.get_include()],
+                      #extra_compile_args=['-fopenmp', '-O3'],
+                      extra_compile_args=['-fopenmp'],
                       )
 
 # Install the python packages.
