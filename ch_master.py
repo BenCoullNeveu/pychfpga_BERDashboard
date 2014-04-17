@@ -75,14 +75,12 @@ def convert_types(val):
       return val
 
 # Dictionary of correlators.
-correlator_hash = {"29821-0000-0003": "stone",
-                              "0001": "stone",      # This is a bug in the FPGA.
-                   "29821-0000-0033": "abbot",
-                              "0033": "abbot",
-                   "29821-0000-0028": "vincente",
-                              "0029": "blanchard"}
-CORRELATOR_16CH = "blanchard"   # Temporary, until we have a way of getting this
-                                # automatically.
+correlator_hash = {"stone"     : ["0001"],
+                   "abbot"     : ["0003"],
+                   "vincente"  : ["29821-0000-0028"],
+                   "blanchard" : ["0029"],
+                   "testing"   : ["0031", "0032"],
+                  }
 
 # Current archive format version.
 archive_version = "2.0.0"
@@ -101,10 +99,13 @@ if __name__ == "__main__":
   # Get command line arguments.
   parser = argparse.ArgumentParser(description = __doc__.split('\n')[0])
   parser.add_argument("-g", "--git-tag", action = "store", \
-                      default = "", help = "Git tag for current version.")
+                      default = "", help = "Current git tag, use: " + \
+                             "-g `git describe --tags` ")
   parser.add_argument("-c", "--conf_file", action = "store", \
                       default = "ch_master.conf", \
                       help = "Configuration file.")
+  parser.add_argument("-n", "--notes", action = "store", default = "None.", \
+                      help = "Acquisition notes.")
   parser.add_argument("-s", "--spec_file", action = "store", \
                       default = "ch_master.spec", \
                       help = "Configuration file specifications.")
@@ -179,16 +180,64 @@ if __name__ == "__main__":
              group_frames=conf["fpga"]["group_frames"], \
              enable_gpu_link = conf["fpga"]["enable_gpu_link"], \
              host_ip = conf["fpga"]["host_ip"])
+
+
+  # Set FPGA controller parameters.
+  # Calculate new gains if necessary
+  # Get config here to be able to create receiver object
+  fpga_config = fpga.get_config()
+  if args.compute_gain:
+      fpga_rec = chFPGA_receiver.chFPGA_receiver(fpga_config, \
+                    ip_address=conf["fpga"]["ip_address"], \
+                    port=conf["fpga"]["rec_port"], \
+                    host_ip = conf["fpga"]["host_ip"])
+      calculate_gains.calculate_gains(fpga,fpga_rec)
+      fpga_rec.close()
+  gain_pkl_file = open(conf["fpga"]["gain_table_pkl"], "rb")
+  gains = pickle.load(gain_pkl_file)
+  all_chan = range(conf["n_antenna"])
+  fpga.set_data_source("adc") # This should come first.
+  fpga.set_FFT_bypass(False, channels = all_chan)
+  fpga.set_FFT_shift(conf["fpga"]["fft_shift"], channels = all_chan)
+  fpga.set_gain(gains, channels = all_chan)
+  fpga.sync()
+  fpga.set_send_flags()
+  fpga.set_offset_binary_encoding()
+  fpga.sync()
+  #Make sure FPGA throttling is fast enough to send all the data
+  #FPGA doesn't seem to change this without a reset...
+  #read_rate = int(np.floor(np.log2(conf["fpga"]["int_period"] * 4 * 125e6 / \
+  #                2 / (conf["n_antenna"] * (conf["n_antenna"] + 1)))))
+  #fpga.GPIO.HOST_FRAME_READ_RATE = read_rate
+
+  # Start the correlator.
+  ##fpga.start_corr_capture(integration_period = conf["fpga"]["int_period"])
+  #log.info("Correlator started with an integration time of %.1f s" % \
+  #         (conf["fpga"]["int_period"]))
+  
+
+  
+  #Read the FPGA setting back from the FPGA
+
   fpga_conf = vars(fpga.get_config())
   
   # Create the output directory.
   time_str = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-  try:
-#    corr_name = correlator_hash[fpga_conf["adc_serial"]]
-    corr_name = CORRELATOR_16CH
-  except KeyError:
+  corr_name = None
+  for corr, ser_list in correlator_hash.iteritems():
+    not_found = False
+    for ser in fpga_conf["adc_serial"]:
+      print ser, ser_list
+      if not ser in ser_list:
+        not_found = True
+        break
+      if not_found:
+        continue
+      corr_name = corr
+      break
+  if not corr_name:
     try:
-      log.critical("Could not find hash for ADC serial number %s." %
+      log.critical("Could not find hash for ADC serial numbers %s." %
                    fpga_conf["adc_serial"])
     except KeyError:
       log.critical("Could not find key \"adc_serial\" in FPGA configuration.")
@@ -222,37 +271,6 @@ if __name__ == "__main__":
   log.info("Sampling frequency is %0.3f MHz." % \
            float(conf["fpga"]["samp_freq"]))
 
-  # Set FPGA controller parameters.
-  # Calculate new gains if necessary
-  fpga_config = fpga.get_config()
-  if args.compute_gain:
-      fpga_rec = chFPGA_receiver.chFPGA_receiver(fpga_config, \
-                    ip_address=conf["fpga"]["ip_address"], \
-                    port=conf["fpga"]["rec_port"], \
-                    host_ip = conf["fpga"]["host_ip"])
-      calculate_gains.calculate_gains(fpga,fpga_rec)
-      fpga_rec.close()
-  gain_pkl_file = open(conf["fpga"]["gain_table_pkl"], "rb")
-  gains = pickle.load(gain_pkl_file)
-  all_chan = range(conf["n_antenna"])
-  fpga.set_data_source("adc") # This should come first.
-  fpga.set_FFT_bypass(False, channels = all_chan)
-  fpga.set_FFT_shift(conf["fpga"]["fft_shift"], channels = all_chan)
-  fpga.set_gain(gains, channels = all_chan)
-  fpga.sync()
-  fpga.set_send_flags()
-  fpga.set_offset_binary_encoding()
-  fpga.sync()
-  #Make sure FPGA throttling is fast enough to send all the data
-  #FPGA doesn't seem to change this without a reset...
-  #read_rate = int(np.floor(np.log2(conf["fpga"]["int_period"] * 4 * 125e6 / \
-  #                2 / (conf["n_antenna"] * (conf["n_antenna"] + 1)))))
-  #fpga.GPIO.HOST_FRAME_READ_RATE = read_rate
-
-  # Start the correlator.
-  ##fpga.start_corr_capture(integration_period = conf["fpga"]["int_period"])
-  #log.info("Correlator started with an integration time of %.1f s" % \
-  #         (conf["fpga"]["int_period"]))
 
   # Pass FPGA configuration variables to header.
   for name in fpga_conf:
@@ -292,6 +310,9 @@ if __name__ == "__main__":
     tag = args.git_tag
   log.info("Git version is %s." % (tag))
   acq.add_header_item("git_version_tag", tag)
+
+  # Add the user notes.
+  acq.add_header_item("notes", args.notes)
 
   # Start the acquisition.
   acq.start(acq_base_dir)
