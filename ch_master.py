@@ -65,9 +65,11 @@ def convert_types(val):
       else:
         if isinstance(val, long):
           val = int(val)
+        elif isinstance(val, bool):
+          val = int(val)
         if not isinstance(val, str):
           try:
-            if val.dtype.kind in ('i', 'u', 'f'):
+            if val.dtype.kind in ('i', 'u', 'f', 'b'):
               val = np.asscalar(val)
           except:
               # Hopefully already a int/float
@@ -289,6 +291,7 @@ if __name__ == "__main__":
       val = fpga_conf[name]
       val = convert_types(val)
       # Now send FPGA information send to acquisition object's header.
+      #print name
       #print val
       #print type(val)
       acq.add_header_item(name, val)
