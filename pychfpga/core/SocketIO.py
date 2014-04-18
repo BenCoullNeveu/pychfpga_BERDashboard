@@ -115,6 +115,36 @@ class ControlSocket_base(object):
     #     self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 
 
+    def convert_to_string(self, data):
+        """
+        Converts a data in to a string.  Assumes either array/list of 1byte elements, a numpy uint of 1/2/4bytes, or a chr
+        """
+        data_type = type(data)
+        if data_type == str:
+            string = data
+            length = len(data)
+        elif data_type == list or data_type == np.ndarray:
+            string = ''.join([chr(data[i]) for i in range(len(data))])
+            length = len(data)
+        elif data_type == np.uint32:
+            length = 4
+            a = np.array([data], np.dtype('>u4')) # store as big endian (most significant byte first)
+            a.dtype = np.uint8
+            string = ''.join([chr(a[i]) for i in range(4)])
+        elif data_type == np.uint16:
+            length = 2
+            a = np.array([data], np.dtype('>u2')) # store as big endian (most significant byte first)
+            a.dtype = np.uint8
+            string = ''.join([chr(a[i]) for i in range(2)])
+        elif data_type == np.uint8:
+            length = 1
+            a = np.array([data]) # store as big endian (most significant byte first)
+            a.dtype = np.uint8
+            string = chr(a[0])
+        else:
+            string = chr(data)
+            length = 1
+        return string, length
 
     def read(self, addr, type=np.dtype('>u1'), length=1, incr=1):
         """
@@ -139,14 +169,20 @@ class ControlSocket_base(object):
             # print 'byte_length=', byte_length
 
             s = chr(0x00 + (0x40 if incr else 0) + (log2_length<<4) + ((addr >> 16) & 0x0F)) + chr((addr >> 8) & 0xFF) + chr(addr & 0xff)
-
-            try:
-                self.sock_write(s)
-                data = self.sock_read()
-            except Exception as e:
-                raise FPGAException('FPGA read command failed because of the following exception: %s' % repr(e))
-            #if data[0]!=s[0]:
-            #    self.log.error("Read: ERROR: Returned ANT/SUB/ADDR (",   ata[0:2]," does not match request values (",   [0:2],")")
+            retries = 0
+            while retries < 50:
+                try:
+                    self.sock_write(s)
+                    data = self.sock_read()
+                    break
+                except: #Exception as e: #Fix this to retry on timeout only
+                    retries += 1
+                    print "had to retry"
+                    #raise FPGAException('FPGA read command failed because of the following exception: %s' % repr(e))
+                #if data[0]!=s[0]:
+                #    self.log.error("Read: ERROR: Returned ANT/SUB/ADDR (",   ata[0:2]," does not match request values (",   [0:2],")")
+                if retries == 50:
+                    raise FPGAException('FPGA read command failed after 50 retries.')
             if len(data) != read_length + 1:
                 raise FPGAException("FPGA Read command returned %i bytes. %i were expected." % (len(data), read_length + 1))
 
@@ -182,31 +218,38 @@ class ControlSocket_base(object):
         string = chr(0x80 + (0x40 if incr else 0) + ((addr >> 16) & 0x0F)) + chr((addr >> 8) & 0xFF) + chr(addr & 0xff)
 
         # Add the data to the string. The method depends on the data type
-        if type(data) == str:
-            string += data
-            length = len(data)
-        elif type(data) == list or type(data) == np.ndarray:
-            string += ''.join([chr(data[i]) for i in range(len(data))])
-            length = len(data)
-        elif type(data) == np.uint32:
-            length = 4
-            a = np.array([data], np.dtype('>u4')) # store as big endian (most significant byte first)
-            a.dtype = np.uint8
-            string += ''.join([chr(a[i]) for i in range(4)])
-        elif type(data) == np.uint16:
-            length = 2
-            a = np.array([data], np.dtype('>u2')) # store as big endian (most significant byte first)
-            a.dtype = np.uint8
-            string += ''.join([chr(a[i]) for i in range(2)])
-        elif type([data]) == np.uint8:
-            length = 1
-            a = np.array([data]) # store as big endian (most significant byte first)
-            a.dtype = np.uint8
-            string += chr(a[i])
-        else:
-            string += chr(data)
-            length = 1
-        self.sock_write(string)
+        string1, length = self.convert_to_string(data)
+        string += string1
+        type_data = type(data)
+        # if type_data == list or type_data == np.ndarray:
+        #     element_type = np.uint8
+        # elif type_data == np.uint8 or type_data == np.uint16 or type_data == np.uint32:
+        #     element_type = type_data
+        # else:
+        #     element_type = np.uint8
+        data_check_retries = 0
+        while data_check_retries < 10:
+            write_retries = 0
+            while write_retries < 50:
+                try:
+                    self.sock_write(string)
+                    break
+                except:
+                    write_retries +=1
+                if write_retries == 50:
+                    raise FPGAException('FPGA write command failed after 50 retries.')
+            data_written = self.read(addr, length=length)
+            if type_data == str:
+                written_string = ''.join([chr(data_written[i]) for i in range(len(data_written))])
+            else:
+                written_string, written_length = self.convert_to_string(data_written)
+            if written_string == string1:
+                break
+            else:
+                data_check_retries += 1
+            if data_check_retries == 50:
+                raise FPGAException('FPGA write did not match read command failed after 50 retries.')
+
         return length
 
 

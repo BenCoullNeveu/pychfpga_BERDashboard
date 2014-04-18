@@ -163,7 +163,6 @@ class MGADC08_base(FMCMezzanine):
                         print 'e',
                 char = chr(ascii)
                 string = string + char
-                #print char
             elif ascii == 125:
                 dictionary_is_present = True
                 break
