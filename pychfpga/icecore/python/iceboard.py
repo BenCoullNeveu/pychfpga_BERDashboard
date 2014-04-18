@@ -240,7 +240,7 @@ class IceBoard(HWMResource, AttributeUser):
             self.logger.info('Closing core arm firmware handlers for board #%i' % (self.serial_number))
             self.unregister(self.arm)
             # self.arm.close() # Tuber has no close()
-            self.arm = None
+            # self.arm = None
 
         self._self_reference = None # Now the object can be garbage collected if no one else uses it
 
@@ -249,19 +249,28 @@ class IceBoard(HWMResource, AttributeUser):
         # get a list of all polymorphic strings of classes derived from FMCMezzanine
         available_mezz_types = {m.polymorphic_identity:m.class_ for m in inspect(FMCMezzanine).polymorphic_map.values()}
 
-        if force_type_string:
-            type_string = force_type_string
-        else:
-            type_string = FMCMezzanine.get_type_string(self.i2c, 'FMCA')
-        if type_string in available_mezz_types:
-            mezz_class = available_mezz_types[type_string]
-            self.mezz1 = mezz_class(motherboard=self, fmc_number=0, fmc_name='FMCA')
+        mezz_list = [(0, 'FMCA'), (1, 'FMCB')]
+
+        if self.mezz:
+            del self.mezz
+
+        for (fmc_number, fmc_name) in mezz_list:
+            if force_type_string:
+                type_string = force_type_string
+            else:
+                type_string = FMCMezzanine.get_type_string(self.i2c, fmc_name)
+
+            if type_string in available_mezz_types:
+                mezz_class = available_mezz_types[type_string]
+                self.mezz[fmc_number] = mezz_class(motherboard=self, fmc_number=fmc_number, fmc_name=fmc_name)
 
     def set_fpga_firmware(self, bitstream_object, firmware_class, configure_fpga = True):
 
         self.close()
 
         self.logger.debug('Assigning firmware object to board S/N%03i' % (self.serial_number))
+        if self.fpga:
+            del self.fpga
         self.fpga = firmware_class(motherboard=self, bitstream_object = bitstream_object) # Create a FPGA firmware object. This just initializes variables for now.
 
         # Configure the fpga if we asked for it.
@@ -299,38 +308,52 @@ class IceBoard(HWMResource, AttributeUser):
 
         if self.locked or (self.locked is None):
                 raise IceBoardException('Iceboard with serial %016X is locked and its FPGA cannot be configured' % self.serial_number)
-        # First, we check if the desired FPGA already replies to broadcasts.
-        # If so, we know it is programmed with *some* firmware and we can do further checks
-        # and potentially could avoid reprogramming the FPGA
 
-        # Blindly attempts to configure the FPGA networking is case its firmware is already loaded. This will allow us to check if the firmware is already loaded.
-        self.logger.info('Configuring FPGA networking parameters before checking if it is already programmed')
-        FpgaCoreFirmware.set_networking_parameters(serial_number=self.fpga_serial_number, interface_ip_addr=self.interface_ip_addr, ip_addr=self.fpga_ip_addr, port_number=self.fpga_port_number, broadcast_group = 0)
+        already_configured = False
 
-        # Get FPGA configuration info so we can decide if the FPGA needs reprogramming
-        self.logger.info('Checking if the FPGA on board S/N %03i is already programmed' % self.serial_number)
+        # First, try to get the FPGA configuration from the FPGA IP address  so we can decide if the FPGA needs reprogramming
+        self.logger.info('Checking the FPGA on board S/N %03i configuration' % self.serial_number)
         (serial, timestamp) = FpgaCoreFirmware.get_fpga_config(interface_ip_addr=self.interface_ip_addr, ip_addr=self.fpga_ip_addr, port_number=self.fpga_port_number)
 
+        # if the FPGA did not respond, maybe it is programmed but its IP address is not set.
+        #  So if we know the FPGA serial number, set its IP address and try again
+        if not serial and self.fpga_serial_number:
+            #  blindly attempts to configure the FPGA networking is case its firmware is already loaded. This will allow us to check if the firmware is already loaded.
+            self.logger.info('The FPGA on board S/N %03i did not respond. Attempting to configure its networking parameters' % self.serial_number)
+            FpgaCoreFirmware.set_networking_parameters(serial_number=self.fpga_serial_number, interface_ip_addr=self.interface_ip_addr, ip_addr=self.fpga_ip_addr, port_number=self.fpga_port_number, broadcast_group = 0)
+            self.logger.info('Rechecking the FPGA on board S/N %03i configuration' % self.serial_number)
+            (serial, timestamp) = FpgaCoreFirmware.get_fpga_config(interface_ip_addr=self.interface_ip_addr, ip_addr=self.fpga_ip_addr, port_number=self.fpga_port_number)
+            self.logger.info('The FPGA on board S/N %03i replied with serial=%r, timestamp=%r' % (self.serial_number, serial, timestamp))
+
+
+        already_configured = (serial and serial == self.fpga_serial_number)
+
         # Program the FPGA if it did not return the proper config info
-        if serial != self.fpga_serial_number: # if the FPGA has not replied, we program it
+        if not already_configured: # if the FPGA has not replied, we program it
             if not self.arm:
                 raise IceBoardException('The Iceboard does not have an ARM firmware object needed to configure the FPGA')
-            self.logger.info('Configuring FPGA on board #%i through tuber at  %s' % (self.serial_number, self.arm.tuber_uri))
+            self.logger.info('Configuring FPGA on board S/N %i through tuber at  %s' % (self.serial_number, self.arm.tuber_uri))
             md5_string = bitfile.md5_string
             b64_string = base64.b64encode(bitfile.data)
             # with TuberHWMResource(self.tuber_uri, self.tuber_objname) as arm:
-            arm.load_fpga_bitstream(b64_string, md5_string)
+            self.arm.load_fpga_bitstream(b64_string, md5_string)
             # Configure the FPGA networking foe the freshly programmed firmware
-            self.logger.info('Configuring FPGA networking parameters after reprogramming')
-            FpgaCoreFirmware.set_networking_parameters(serial_number=self.fpga_serial_number, interface_ip_addr=self.interface_ip_addr, ip_addr=self.fpga_ip_addr, port_number=self.fpga_port_number, broadcast_group = 0)
-            # Check if the firmware is now responding with proper configuration info
-            (serial, timestamp) = FpgaCoreFirmware.get_fpga_config(interface_ip_addr=self.interface_ip_addr, ip_addr=self.fpga_ip_addr, port_number=self.fpga_port_number)
 
-            # if the FPGA still does not reply to its assigned address after programming, raise an error
-            if serial != self.fpga_serial_number:
-                raise IceBoardException('Failed to program the FPGA on board #%i. Expected serial %014X, got %014X' % (self.serial_number, self.fpga_serial_number, serial))
+            if self.fpga_serial_number:
+                self.logger.info('Configuring FPGA networking parameters after reprogramming')
+                FpgaCoreFirmware.set_networking_parameters(serial_number=self.fpga_serial_number, interface_ip_addr=self.interface_ip_addr, ip_addr=self.fpga_ip_addr, port_number=self.fpga_port_number, broadcast_group = 0)
+                # Check if the firmware is now responding with proper configuration info
+                (serial, timestamp) = FpgaCoreFirmware.get_fpga_config(interface_ip_addr=self.interface_ip_addr, ip_addr=self.fpga_ip_addr, port_number=self.fpga_port_number)
+
+                # if the FPGA still does not reply to its assigned address after programming, raise an error
+                if not serial:
+                    raise IceBoardException('Failed to program the FPGA on board S/N %03i. The board did not reply after its IP address was configured.' % (self.serial_number))
+                elif serial != self.fpga_serial_number:
+                    raise IceBoardException('Failed to program the FPGA on board S/N %03i. Expected serial %014X, got %014X' % (self.serial_number, self.fpga_serial_number, serial))
+            else:
+                self.logger.warning('IP address on FPGA on board S/N %i is not set because the FPGA serial number is not known' % (self.serial_number))
         else:
-            self.logger.info('FPGA on Iceboard #%i is already configured. Skipping configuration' % (self.serial_number))
+            self.logger.info('FPGA on IceBoard S/N %03i is already configured. Skipping configuration' % (self.serial_number))
 
     def get_info(self):
         """Loads the info data on the motherboard"""

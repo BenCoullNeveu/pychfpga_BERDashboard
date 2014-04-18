@@ -23,6 +23,8 @@ reload(tuber)
 
 from icecore.icearray import IceArray, close_all_sockets
 from icecore.fpgabitfile import FpgaBitFile
+from icecore.iceboard import IceBoard
+
 from core.chFPGA_controller import chFPGA_controller as ChimeFpgaFirmware
 
 #####################################
@@ -69,6 +71,8 @@ if __name__ == '__main__':
         logger.info('   %s = %s' % (key, repr(value)))
     # Create the new chFPGA object.
 
+    IceArray.close_all_sessions() # close all previously opened sessions
+
     ca = IceArray(uri='sqlite:///test.db', interface_ip_addr=args.if_ip)
     ca.load_iceboards('iceboard_list.txt')
     ca.discover() # automatically update the hardware map database with discovered resources
@@ -76,7 +80,7 @@ if __name__ == '__main__':
     bitfile_filename = '../../chfpga/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit'
     fpga_bitstream = FpgaBitFile(bitfile_filename) # we have to create one bitstream object only.
 
-    c = ca.get_iceboards(subarray=0) # get one or more IceBoards from specified subarray
-    c.set_fpga_firmware(fpga_bitstream, ChimeFpgaFirmware, configure_fpga=True) # associate boards with specified firmware and configure the selected FPGA
-    c.open() # establish communication with the boards so we can access their attributes and methods
-    cc=c[0]
+    c = ca.get_iceboards(subarray=0).index_by(IceBoard.serial_number) # get one or more IceBoards from specified subarray
+    # c.set_fpga_firmware(fpga_bitstream, ChimeFpgaFirmware, configure_fpga=True) # associate boards with specified firmware and configure the selected FPGA
+    # c.open() # establish communication with the boards so we can access their attributes and methods
+    # cc=c[0]

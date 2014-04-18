@@ -212,6 +212,7 @@ class chFPGA_controller(FpgaCoreFirmware):
         # For now, we do not know their values unless the system is initialized.
         # We may want to fix that by reading the FPGA states and determining those values.
         self.motherboard = motherboard
+        self._self_reference = self # hack to make sure motherboard still exist
 
         self.sampling_frequency = None
         self.reference_frequency = None
@@ -257,6 +258,8 @@ class chFPGA_controller(FpgaCoreFirmware):
 
         # super(type(self), self).open()
         # self.mmi = self.motherboard.fpga_core.mmi
+        self.log = logging.getLogger(__name__)
+
         self.read = self.mmi.read
         self.write = self.mmi.write
 
@@ -1507,3 +1510,11 @@ class chFPGA_controller(FpgaCoreFirmware):
         sorted_map = sorted(self.MEMORY_MAP.items(), key=operator.itemgetter(1))
         for (module_name, addr) in sorted_map:
             print '0x%05X: %s%-20s' % (addr, '  '*module_name.count('/'), module_name)
+
+    def get_temperatures(self):
+        res = {}
+        res['FPGA_core']=self.SYSMON.temperature()
+        for (fmc_number, board) in enumerate(self.adc_board):
+            for (adc_number, adc) in enumerate(board.ADC):
+                res['FMC%i ADC%i'%(fmc_number, adc_number)] = adc.get_temperature()
+        return res

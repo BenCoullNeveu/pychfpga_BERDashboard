@@ -1,10 +1,10 @@
 #!/usr/bin/python
 # Disable pylint TAB warnings (W0312) and Line too long (=C0301)
-# pylint: disable=W0312,C0301 
+# pylint: disable=W0312,C0301
 
 """
-udp.py module 
-Provides a class that represents a UDP socket 
+udp.py module
+Provides a class that represents a UDP socket
 
  History:
         2014-03-04 JFC: Created
@@ -15,7 +15,7 @@ import __main__ as main # used to store a list of all opened sockets
 
 class Udp(object):
     """
-    Implements basic UDP socket handling. 
+    Implements basic UDP socket handling.
     """
 
     BROADCAST = '255.255.255.255'
@@ -50,8 +50,8 @@ class Udp(object):
         # sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
         #self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) # don't use REUSEADDR: many sockets get open and we then fail to receive replies
         self.sock.bind((if_ip_addr, port_number))
-        self.logger.debug('   Opened control UDP Socket')
-        self.logger.debug('   Opened socket on interface  %s:%i ' % (if_ip_addr, port_number))
+        # self.logger.debug('   Opened control UDP Socket')
+        # self.logger.debug('   Opened socket on interface  %s:%i ' % (if_ip_addr, port_number))
         return self.sock;
 
     def close(self):
@@ -61,7 +61,7 @@ class Udp(object):
             if hasattr(main, '__opened_sockets__'):
                 main.__opened_sockets__.discard(self.sock)
             self.sock=None
-        self.logger.debug('   Closed UDP control socket')
+        # self.logger.debug('   Closed UDP control socket')
 
     def send(self, data):
         """

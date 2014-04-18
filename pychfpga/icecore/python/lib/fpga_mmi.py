@@ -78,27 +78,12 @@ class FpgaMmi:
         self.sock.open(if_ip_addr=self.interface_ip_addr, ip_addr = self.ip_addr, port_number = self.port_number)
         self.sock.set_timeout(timeout)
 
-        self.logger.info('   Opened control socket on %s:%i through interface %s' % (self.ip_addr, self.port_number, self.interface_ip_addr))
-
+        # self.logger.info('   Opened control socket on %s:%i through interface %s' % (self.ip_addr, self.port_number, self.interface_ip_addr))
 
     def close(self):
         """Closes the socket"""
         self.sock.close()
-        self.logger.info('Closed control socket')
-
-    # def sock_send(self, data):
-    #     """
-    #     Writes a string to the control socket.
-    #     """
-    #     self.sock.sendto(data, self.address)
-
-    # def sock_recv(self):
-    #     """
-    #     Reads a string from the control socket.
-    #     """
-    #     data = self.sock.recv(self.BUFFER_LENGTH)
-    #     return data
-
+        # self.logger.info('Closed control socket')
 
     def flush(self):
         """Flushes the socket receive buffer."""
@@ -262,8 +247,6 @@ class FpgaMmi:
             length = 1
         self.sock.send(string)
         return length
-
-
 
     def write_mask(addr, data, mask):
         """

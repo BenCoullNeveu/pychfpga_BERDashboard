@@ -57,6 +57,7 @@ import urlparse
 import concurrent.futures
 import operator
 import functools
+import logging
 
 from sqlalchemy import create_engine
 from sqlalchemy import Column, Integer, String, ForeignKey, UniqueConstraint
@@ -78,6 +79,7 @@ class HWMQuery(Query):
     used to dispatch method calls on every class it contains.
     '''
     _hold_dispatcher = False
+    _index_column = None
 
     def hold(self, on_hold=True):
         self._hold_dispatcher = on_hold
@@ -93,16 +95,29 @@ class HWMQuery(Query):
         except AttributeError: return
         del self._calls
 
-        runner = lambda calls: ( c() for c in calls )
-
+        #runner = lambda calls: ( c() for c in calls )
+        def runner(calls):
+            logger = logging.getLogger(__name__)
+            logger.debug('Running threads calling %r' % calls)
+            return [ c() for c in calls ]
         # Uncomment this line to run single-threaded (debugging only!)
         #return zip(map(runner, calls))
-
         with concurrent.futures.ThreadPoolExecutor(max_workers=100) as e:
             # If you get a "zip() argument after * must be a sequence" error
             # here, see "http://bugs.python.org/issue4806". You can mask the
             # interpreter bug by running single-threaded (see above)
             return zip(*e.map(runner, calls))
+
+    def __dir__(self):
+        """
+        Lists all the attributes that are accessible from this instance and those that are common to all the results in the query.
+        Useful for tab completion.
+        """
+        # return type(self).__dict__ + self.__dict__ + dir(self._hwmap)
+        self.logger.info('calling dir')
+        local_attr = dir(type(self)) + self.__dict__.keys()
+        query_attr = [set(dir(x)) for x in self]
+        return local_attr + list(set.intersection(*query_attr))
 
     def __getattr__(self, name):
         '''Teach a collection of query results how to parallelize.
@@ -167,6 +182,42 @@ class HWMQuery(Query):
         # Fall-through to a function call.
         return self._call_proto(attrs, True)
 
+    def index_by(self, index_column=None):
+        """
+        Specifies the column to use as an index when indexing this object
+        using '[]'. If none is specified, the objects are indexed by the order
+        they were queried (original SQLAlchemy's Query behavior)
+
+        Example:
+            >>> c=ca.query(IceBoard).index_by(IceBoard.serial_number)
+            >>> c[7] # returns the iceboard with serial number 7
+        """
+        self._index_column = index_column
+        return self
+
+    def __getitem__(self, index):
+        """
+        If an indexing colums was specified with index_by(...) and the
+        provided index is a scalar (a string or an integer), return the
+        database where the indexing column matches the index. Otherwise
+        executes default SQLAlchemy indexing (indexes the object in the order
+        they were returned) which supports slices.
+
+        In the column indexing mode, an exception will be raised if the query
+        does not produce exactly one result (we call the .one() method)
+        """
+        if isinstance(index, (int,str)) and self._index_column: # we must not process slices because  first() and __getitem__ calls self[slice]
+            return self.filter(self._index_column == index).one()
+        else:
+            return super(type(self), self).__getitem__(index)
+
+
+    def __repr__(self):
+        """
+        Returns a human-readable representaion of the query results.
+        """
+        return 'Query currently yielding:\n' + '\n'.join('    %s object : %r' % (type(obj).__name__, obj) for obj in self)
+
     def call_with(self, func, *args, **kwargs):
         """Call some function across a collection of Query results.
 
@@ -224,6 +275,8 @@ class HWMQuery(Query):
                 return self.flush().pop()
 
         return proto
+
+
 
 class HWMResource(Base):
     '''Base class for Hardware Mapper resources to share.

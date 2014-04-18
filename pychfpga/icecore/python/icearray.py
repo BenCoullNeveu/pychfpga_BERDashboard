@@ -36,6 +36,14 @@ class IceArray(object):
     if communications are done through the ARM).
     """
 
+    @staticmethod
+    def close_all_sessions():
+        """
+        Close all existing sessions.
+        """
+        from sqlalchemy.orm.session import Session
+        Session.close_all()
+
     def __init__(self, uri='sqlite:///:memory:', interface_ip_addr=None,  *args, **kwargs):
         """
         'interface_ip_addr' is the IP address of the Ethernet interface
@@ -110,6 +118,7 @@ def close_all_sockets():
     if '__opened_sockets__' in vars(__main__): # i.e. if __main__ has an __opened_sockets__ attribute
         while __main__.__opened_sockets__: # close all sockets so we won't get a 'socket already opened' error because of a previous run
             __main__.__opened_sockets__.pop().close()
+
 
 if __name__ == '__main__':
     logging.getLogger('iceboard.arm.FpgaBitFile').setLevel(logging.INFO)

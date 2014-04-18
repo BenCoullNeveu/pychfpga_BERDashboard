@@ -90,7 +90,7 @@ class FpgaCoreFirmware(FpgaFirmware):
         return serial_list
 
     @classmethod
-    def set_networking_parameters(cls, serial_number, interface_ip_addr, ip_addr, port_number, broadcast_group=0):
+    def set_networking_parameters(cls, serial_number, interface_ip_addr, ip_addr, port_number, broadcast_group=0, number_of_trials = 3):
         """
         Sets the FPGA firmwarein the specified ICEboard to use the specified ip address and port.
         The board will be searched on the Ethernet interface associated with 'if_addr'
@@ -107,26 +107,37 @@ class FpgaCoreFirmware(FpgaFirmware):
         trig2 = chr(0x8C | broadcast_group)
 
         # Configure the FPGA through a UDP broadcast packet containing the target FPGA serial number
-        with fpga_mmi.FpgaMmi(interface_ip_addr, fpga_mmi.FpgaMmi.BROADCAST, cls.BROADCAST_BASE_PORT ) as mmi:
-            mmi.write(cls.FPGA_IP_SETUP_BASE_ADDR, ip_setup_string + trig1) # Send string with trigger flag cleared
-            mmi.write(cls.FPGA_IP_SETUP_BASE_ADDR, ip_setup_string + trig2) # resend with trigger flag set. The 0-to-1 transition will load the desired networking parameters
-            mmi.write(cls.FPGA_IP_SETUP_BASE_ADDR, [0] * len(ip_setup_string + trig2)) # Write zeros everywhere to make sure we stop latching data
-        logger.debug('FPGA S/N %016X is configured with address %s:%i' % (serial_number, ip_addr, port_number))
+        trial = 0
+        while trial < number_of_trials:
+            with fpga_mmi.FpgaMmi(interface_ip_addr, fpga_mmi.FpgaMmi.BROADCAST, cls.BROADCAST_BASE_PORT ) as mmi:
+                mmi.write(cls.FPGA_IP_SETUP_BASE_ADDR, ip_setup_string + trig1) # Send string with trigger flag cleared
+                mmi.write(cls.FPGA_IP_SETUP_BASE_ADDR, ip_setup_string + trig2) # resend with trigger flag set. The 0-to-1 transition will load the desired networking parameters
+                mmi.write(cls.FPGA_IP_SETUP_BASE_ADDR, [0] * len(ip_setup_string + trig2)) # Write zeros everywhere to make sure we stop latching data
+            logger.debug('FPGA S/N %016X is configured with address %s:%i' % (serial_number, ip_addr, port_number))
+            (serial, timestamp) = cls.get_fpga_config(interface_ip_addr=interface_ip_addr, ip_addr = ip_addr, port_number = port_number)
+            if serial and serial == serial_number:
+                return
+            else:
+                trial +=1
+        logger.debug('Unable to configure FPGA S/N %016X with address %s:%i' % (serial_number, ip_addr, port_number))
+
 
     @classmethod
-    def get_fpga_config(cls, interface_ip_addr, ip_addr, port_number, timeout = 0.1):
+    def get_fpga_config(cls, interface_ip_addr, ip_addr, port_number, timeout = 0.1, number_of_trials=3):
         """
         Returns basic information allowing to check if we talk to the right FPGA with the right firmware.
         Will not cause an exception if the FPGA fails to respond at the specified address. Instead, all fields will be None.
         """
+        trial = 0
         with fpga_mmi.FpgaMmi(interface_ip_addr, ip_addr, port_number, timeout = timeout ) as mmi:
-            try:
-                serial = mmi.read(cls.FPGA_SERIAL_NUMBER_ADDR, type = np.dtype('>u8'))
-                timestamp = mmi.read(cls.FPGA_TIMESTAMP_ADDR, type = np.dtype('>u4'))
-                result= (serial, timestamp)
-            except mmi.TimeoutException:
-                result= (None, None)
-        return result
+            while trial < number_of_trials:
+                try:
+                    serial = mmi.read(cls.FPGA_SERIAL_NUMBER_ADDR, type = np.dtype('>u8'))
+                    timestamp = mmi.read(cls.FPGA_TIMESTAMP_ADDR, type = np.dtype('>u4'))
+                    return (serial, timestamp)
+                except mmi.TimeoutException:
+                    trial += 1
+        return (None, None)
 
     def __init__(self, *args, **kwargs):
         """
