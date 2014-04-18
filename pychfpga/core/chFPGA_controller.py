@@ -626,7 +626,7 @@ class chFPGA_controller(FpgaCoreFirmware):
         config.config_capture_time = time.time()
         config.system_firmware_version = self.get_version()
         config.system_platform_id = self.PLATFORM_ID
-        config.system_ip_address = self.ip_address
+        config.system_ip_address = self.ip_addr
         config.system_base_port_number = self.port_number
         config.system_data_port_number = self.port_number + self.GPIO.DATA_IP_PORT_OFFSET
         config.system_corr_port_number = self.port_number + self.GPIO.CORR_IP_PORT_OFFSET
@@ -665,7 +665,8 @@ class chFPGA_controller(FpgaCoreFirmware):
         config.mgt_ref_clock = self.FreqCtr.read_frequency('MGT_REFCLK', gate_time=0.05)
         config.mgt_word_clock = self.FreqCtr.read_frequency('MGT_USRCLK2', gate_time=0.05)
         config.adc_clocks = [self.FreqCtr.read_frequency(('ADC_CLK'+str(i)), gate_time=0.05) for i in range(8)]
-        config.adc_serial = [fmc._board_info['Serial #'] for fmc in self.adc_board]
+        # config.adc_serial = [fmc._board_info['Serial #'] for fmc in self.adc_board]
+        config.adc_serial = 'Not available'
         config.motherboard_serial = self.GPIO.FPGA_SERIAL_NUMBER
         # Add FFT shift, scaler gain, corr integration/capture period etc.
         return config

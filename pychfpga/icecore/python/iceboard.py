@@ -174,7 +174,7 @@ class IceBoard(HWMResource, AttributeUser):
         #     self.open()
         return super(type(self), self).__getattr__(name)
 
-    def open(self):
+    def open(self, *args, **kwargs):
         """
         Establishes the connection with the hardware and firmware on the IceBoard and create all appropriate handling classes.
         """
@@ -214,7 +214,7 @@ class IceBoard(HWMResource, AttributeUser):
         if self.fpga:
             self.logger.info('Instantiating Application-specific FPGA firmware handlers for board #%i' % (self.serial_number))
             self.unregister(self.fpga)
-            self.fpga.open() # Open the application-specific firmware
+            self.fpga.open(*args, **kwargs) # Open the application-specific firmware
             self.register(self.fpga) # Allow access to the fpga_user methods/attributes from this class
 
         self._self_reference = self # Create circular reference to prevent the object from being removed from memory until closed.

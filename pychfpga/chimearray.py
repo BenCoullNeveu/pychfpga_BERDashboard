@@ -34,7 +34,7 @@ if __name__ == '__main__':
 
     # Configure the various loggers to provide adequate levels of details
     logging.getLogger('iceboard.arm.FpgaBitFile').setLevel(logging.INFO)
-    logging.getLogger('requests.packages').setLevel(logging.WARN)
+    # logging.getLogger('requests.packages').setLevel(logging.WARN)
     logging.getLogger('sqlalchemy.engine.base.Engine').setLevel(logging.DEBUG)
 
     close_all_sockets()

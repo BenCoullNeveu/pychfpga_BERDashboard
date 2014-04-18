@@ -13,6 +13,8 @@ import argparse
 import logging
 
 import hardware_map
+# reload(hardware_map) # make sure we get a new Base
+
 import iceboard
 from iceboard import IceBoard
 
