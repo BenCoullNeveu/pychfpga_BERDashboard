@@ -8,9 +8,20 @@ import iceboardtest
 import sys
 
 def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None):
-    if (username == None) or (board_sn == None) or (board_vn == None) or (board_md == None):
-        iceboardtest()
     fname = 'board' + board_sn + '.txt'
+    if os.path.isfile('board' + board_sn + '.txt') == False:
+        file = open(fname, 'w')
+        file.write('=========================\n')
+        file.write('ICE board ' + board_sn + 'QC testing\n') 
+        file.write('=========================\n')
+        file.write('Quality control testing results for ICE board serial number ' + board_sn + '\n')
+        file.write('Revision number: ' + board_vn + '\n')
+        file.write('Board model: ' + board_md + '\n')
+        date_str=date_format(tm.localtime())
+        file.write('File created on : ' + date_str + '\n')
+        file.write('\n')
+        file.close()
+        print "File 'board" + board_sn + ".txt' is created in directory."
     file = open(fname, 'a')
     file.write('\n\nProgramming the ARM Test\n')
     file.write('------\n')
@@ -40,6 +51,9 @@ def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None):
     print "For SW1, turn switches 2,3,5 on (up). For SW2, turn switches 2,4 on (up)."
     print "The switch configuration should look like below:"
     print "DUUDUDDD DUDUDDDD"
+    print "You will also need to flip the switches for the FPGA Config Mode. The set of 4 switches are located above the heat sink."
+    print "Flip the configuration to be UDDD."
+    print "Please note the orientation of the switch is upsidedown, so technically, switches 1,2,3 are actually up and 4 is down."
     print "When you have done so, you may proceed. You may consult https:// for details."
     notimportant = raw_input("Press Enter to continue: 	")
     print "Look at the bottom right corner of the board. There should be two Ethernet ports."

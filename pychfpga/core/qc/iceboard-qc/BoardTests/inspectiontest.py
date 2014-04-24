@@ -7,9 +7,21 @@ import shutil
 import iceboardtest
 import sys
 
-def inspectiontest(username=None,board_sn=None,board_vn=None,board_md=None):
-    if (username == None) or (board_sn == None) or (board_vn == None) or (board_md == None):
-        iceboardtest()
+def inspectiontest(username=str,board_sn=str,board_vn=str,board_md=str):
+    fname = 'board' + board_sn + '.txt'
+    if os.path.isfile('board' + board_sn + '.txt') == False:
+        file = open(fname, 'w')
+        file.write('=========================\n')
+        file.write('ICE board ' + board_sn + 'QC testing\n') 
+        file.write('=========================\n')
+        file.write('Quality control testing results for ICE board serial number ' + board_sn + '\n')
+        file.write('Revision number: ' + board_vn + '\n')
+        file.write('Board model: ' + board_md + '\n')
+        date_str=date_format(tm.localtime())
+        file.write('File created on : ' + date_str + '\n')
+        file.write('\n')
+        file.close()
+        print "File 'board" + board_sn + ".txt' is created in directory."
     fname = 'board' + board_sn + '.txt'
     file = open(fname, 'a')
     file.write('\nInspection Test\n')
@@ -43,7 +55,7 @@ def inspectiontest(username=None,board_sn=None,board_vn=None,board_md=None):
     if shorts == 'Y' or shorts == 'y':
         file.write('Bad. Shorted components on board. \n')
         file.write('Shorted parts: ')
-        print 'Please describe the shorted parts. Please be specific (describe the component names'
+        print 'Please describe the shorted parts. Please be specific (describe the component names)'
         shocomments = raw_input("Enter:     ")
         file.write(shocomment + '\n')
         file.close()

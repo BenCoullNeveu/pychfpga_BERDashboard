@@ -7,10 +7,21 @@ import shutil
 import iceboardtest
 import sys
 
-def programFPGA(username=None,board_sn=None,board_vn=None,board_md=None):
-    if (username == None) or (board_sn == None) or (board_vn == None) or (board_md == None):
-        iceboardtest.starttest()
+def programFPGA(username=str,board_sn=str,board_vn=str,board_md=str):
     fname = 'board' + board_sn + '.txt'
+    if os.path.isfile('board' + board_sn + '.txt') == False:
+        file = open(fname, 'w')
+        file.write('=========================\n')
+        file.write('ICE board ' + board_sn + 'QC testing\n') 
+        file.write('=========================\n')
+        file.write('Quality control testing results for ICE board serial number ' + board_sn + '\n')
+        file.write('Revision number: ' + board_vn + '\n')
+        file.write('Board model: ' + board_md + '\n')
+        date_str=date_format(tm.localtime())
+        file.write('File created on : ' + date_str + '\n')
+        file.write('\n')
+        file.close()
+        print "File 'board" + board_sn + ".txt' is created in directory."
     file = open(fname, 'a')
     file.write('\n\nProgramming the FPGA Test\n')
     file.write('------\n')
@@ -50,7 +61,7 @@ def programFPGA(username=None,board_sn=None,board_vn=None,board_md=None):
         file.write('\nFPGA Programming Test Overall Status: Fail')
         file.close()
         sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
-    print "You should also be able to see the current draw has gone up to about 1.4-1.5A. This is normal!"
+    print "You should also be able to see the current draw has gone up. This is normal!"
     print "If there are any special concerns regarding the board for this test, please describe them below. If none, enter 'None'. "
     comments = raw_input("Enter your comments:  ")
     file.write('\nComments: ' + comments)

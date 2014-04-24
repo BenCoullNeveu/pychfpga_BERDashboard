@@ -7,17 +7,28 @@ import shutil
 import iceboardtest
 import sys
 
-def DCtest(username=None,board_sn=None,board_vn=None,board_md=None):
-    if (username == None) or (board_sn == None) or (board_vn == None) or (board_md == None):
-        iceboardtest()
+def DCtest(username=str,board_sn=str,board_vn=str,board_md=str):
     fname = 'board' + board_sn + '.txt'
+    if os.path.isfile('board' + board_sn + '.txt') == False:
+        file = open(fname, 'w')
+        file.write('=========================\n')
+        file.write('ICE board ' + board_sn + 'QC testing\n') 
+        file.write('=========================\n')
+        file.write('Quality control testing results for ICE board serial number ' + board_sn + '\n')
+        file.write('Revision number: ' + board_vn + '\n')
+        file.write('Board model: ' + board_md + '\n')
+        date_str=date_format(tm.localtime())
+        file.write('File created on : ' + date_str + '\n')
+        file.write('\n')
+        file.close()
+        print "File 'board" + board_sn + ".txt' is created in directory."
     file = open(fname, 'a')
     file.write('\n\nDC Test\n')
     file.write('------\n')
     date_str=iceboardtest.date_format(tm.localtime())
     file.write('Date : ' + date_str + '\n')
     file.write('Tester: ' + username + '\n\n')
-    print 'For this test, please do power up the board. Please configure the set up to that as shown on https:// '
+    print 'For this test, please do power up the board. Please configure the set up to that as shown on http://kingspeak.physics.mcgill.ca/twiki/bin/view/Chime/IceBoardQCManual'
     print 'For this board, you will need a multimeter, a power supply, and a twisted pair cable with two banana plugs on one side to measure voltage.'
     notimportant = raw_input("Press Enter to continue:      ")
     print "Lay the board on a grounding mat in front of you"
@@ -186,7 +197,9 @@ def DCtest(username=None,board_sn=None,board_vn=None,board_md=None):
 
     file.write('DC Test Overall Status: Pass')
     file.close()
-
+    
+    print "If this hasn't been done, you should attach a heat sink on the FPGA at this point."
+    print "Please consult http://kingspeak.physics.mcgill.ca/twiki/bin/edit/Chime/IceBoardQCManual as this is not part of the testing process"
     print "Do you wish to proceed to another test?"
     proceed = raw_input("Enter 'Y' or 'N':  ")
     if proceed == 'Y' or proceed == 'y':

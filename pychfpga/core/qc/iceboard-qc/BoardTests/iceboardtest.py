@@ -6,6 +6,7 @@ import os
 import inspectiontest
 import resistancetest
 import DCtest
+import programPLLtest
 import programARMtest
 import programFPGA
 import FPGAtest
@@ -107,6 +108,10 @@ def choosetest(username=None,board_sn=None,board_vn=None,board_md=None):
     DC = raw_input("Enter ('Y' or 'N'):  ")
     if DC == 'Y' or DC == 'y':
         DCtest.DCtest(username,board_sn,board_vn,board_md)
+    print "Do you wish to do the Programming the PLL test?"
+    PLL = raw_input("Enter ('Y' or 'N'):  ")
+    if PLL == 'Y' or PLL == 'y':
+        programPLLtest.programPLLtest(username,board_sn,board_vn,board_md)
     print "Do you wish to do the Programming the ARM test?"
     ARM = raw_input("Enter ('Y' or 'N'):     ")
     if ARM == 'Y' or ARM == 'y':

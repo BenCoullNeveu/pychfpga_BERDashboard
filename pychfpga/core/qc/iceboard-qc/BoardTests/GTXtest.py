@@ -7,9 +7,21 @@ import shutil
 import iceboardtest
 import sys
 import FPGAtest
-def GTXtest(username=None,board_sn=None,board_vn=None,board_md=None):
-    if (username == None) or (board_sn == None) or (board_vn == None) or (board_md == None):
-        iceboardtest.starttest()
+def GTXtest(username=str,board_sn=str,board_vn=str,board_md=str):
+    fname = 'board' + board_sn + '.txt'
+    if os.path.isfile('board' + board_sn + '.txt') == False:
+        file = open(fname, 'w')
+        file.write('=========================\n')
+        file.write('ICE board ' + board_sn + 'QC testing\n') 
+        file.write('=========================\n')
+        file.write('Quality control testing results for ICE board serial number ' + board_sn + '\n')
+        file.write('Revision number: ' + board_vn + '\n')
+        file.write('Board model: ' + board_md + '\n')
+        date_str=date_format(tm.localtime())
+        file.write('File created on : ' + date_str + '\n')
+        file.write('\n')
+        file.close()
+        print "File 'board" + board_sn + ".txt' is created in directory."
     fname = 'board' + board_sn + '.txt'
     file = open(fname, 'a')
     file.write('\n\nGTX Test\n')
@@ -29,22 +41,22 @@ def GTXtest(username=None,board_sn=None,board_vn=None,board_md=None):
     print "Connect the JTAG USB to the computer."
     notimportant = raw_input("Press Enter to continue:      ")
     print "Now grab a QSFP cable. We need to connect the two scary-looking spiky connector along the bottom edge of the board together."
-    print "Please consult https:// for details regarding the board."
+    print "Please consult http://kingspeak.physics.mcgill.ca/twiki/bin/edit/Chime/IceBoardQCManual for details regarding the board."
     notimportant = raw_input("Press Enter to continue:      ")
-    print "Now let's open up ChipScope Pro's Analyzer program1 Go into the Start Menu."
+    print "Now let's open up ChipScope Pro's Analyzer program~ Go into the Start Menu."
     print "Go to All Programs -> Xilink Design Tools -> ISE Design Suite 14.4 -> ChipScope Pro -> ChipScoe 64-bit -> Analyzer."
     notimportant = raw_input("Press Enter to continue:      ")
     print "In the new ChipScope window, on the left pane, right above the New Project pane, there should be two small icons."
     print "You are currently selected on a grey P icon, click on the icon to its left, the black four squares icon thing."
     print "This will detect the JTAG cable."
-    print "A pop-up window will appear, which detects the JTAG cable. Click on OK."
+    print "A pop-up window may appear, which states it detects the JTAG cable. Click on OK if this is the case."
     print "Sometimes it takes the program is very picky and will not work right away. If it happens try restarting the program."
     notimportant = raw_input("Press Enter to continue:         ")
-
+    print "You should be able to see the grey P circle turn into a green P circle."
     print "Now click on File, select the File that has '...\\icebertcore144\\chipscope_proj.cpj' in its name."
-    print "Click on No when it asks if you want to save the changes."
+    print "Click on No when it asks if you want to save or set the changes."
     notimportant = raw_input("Press Enter to continue:         ")
-    print "When asked if you want to set up the IBERT core settings... click on No."
+    #print "When asked if you want to set up the IBERT core settings... click on No."
     notimportant = raw_input("Press Enter to continue:      ")
     print "On the menu bar, select Device, then DEV:0... then Configure."
     notimportant = raw_input("Press Enter to continue:      ")
@@ -55,6 +67,7 @@ def GTXtest(username=None,board_sn=None,board_vn=None,board_md=None):
     print "Programming the with the new firmware will take a bit of time..."
     print "You can see your status on the bottom right corner of the Analyzer window."
     tm.sleep(3)
+    print "When finished, check the left upperhanded pane. under DEV select UNIT. Double click on the option 'IBERT Console'. "
     print "When asked if you want to set up the IBERT settings with ..., click on no."
     print "Once completed, check to see there are 8 green GTX columns. The scrollbar is small at the bottom of the pane."
     print "They will usually be labelled as GTX_X0Y20 to GTX_X027. Are they there?"

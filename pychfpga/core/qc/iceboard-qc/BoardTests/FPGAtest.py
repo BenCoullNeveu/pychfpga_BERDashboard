@@ -7,9 +7,21 @@ import shutil
 import iceboardtest
 import sys
 import programFPGA
-def FPGAtest(username=None,board_sn=None,board_vn=None,board_md=None):
-    if (username == None) or (board_sn == None) or (board_vn == None) or (board_md == None):
-        iceboardtest.starttest()
+def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str):
+    fname = 'board' + board_sn + '.txt'
+    if os.path.isfile('board' + board_sn + '.txt') == False:
+        file = open(fname, 'w')
+        file.write('=========================\n')
+        file.write('ICE board ' + board_sn + 'QC testing\n') 
+        file.write('=========================\n')
+        file.write('Quality control testing results for ICE board serial number ' + board_sn + '\n')
+        file.write('Revision number: ' + board_vn + '\n')
+        file.write('Board model: ' + board_md + '\n')
+        date_str=date_format(tm.localtime())
+        file.write('File created on : ' + date_str + '\n')
+        file.write('\n')
+        file.close()
+        print "File 'board" + board_sn + ".txt' is created in directory."
     fname = 'board' + board_sn + '.txt'
     file = open(fname, 'a')
     file.write('\n\nFPGA Test\n')
@@ -19,7 +31,7 @@ def FPGAtest(username=None,board_sn=None,board_vn=None,board_md=None):
     file.write('Tester: ' + username + '\n\n')
 
     print "For this test, we NEED to have already programmed the FPGA. You also need the cable and an adapter for the board connector."
-    print "Please consult https:// for details regarding the connector. Or ask Kevin."
+    print "Please consult http://kingspeak.physics.mcgill.ca/twiki/bin/edit/Chime/IceBoardQCManual for details regarding the connector. Or ask Kevin."
     print "Let's get started. Is the board turned on and the FPGA has been programmed?"
     program = raw_input("Enter 'Y' or 'N': 	")
     if program != 'Y' and program != 'y':
@@ -71,7 +83,7 @@ def FPGAtest(username=None,board_sn=None,board_vn=None,board_md=None):
     tm.sleep(1)
     print "------------------------------------------------"
     tm.sleep(1)
-    print "THE PART BELOW NEEDS REWORK. PLEASE CONSULT WITH AMY BEFORE CONTINUE."
+    print "For the part below to work, please consult the website https://kingspeak.physics.mcgill.ca/twiki/bin/edit/Chime/IceBoardQCManual before continuing."
     notimportant = raw_input("Press Enter to continue.")
     print "Type in c.ANT.status() on the ipython command prompt. Enter the outputted results below."
     ANT = raw_input("Enter ANT status comments: 		")
