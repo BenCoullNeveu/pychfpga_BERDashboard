@@ -229,20 +229,21 @@ if __name__ == "__main__":
   for corr, ser_list in correlator_hash.iteritems():
     not_found = False
     for ser in fpga_conf["adc_serial"]:
-      print ser, ser_list
       if not ser in ser_list:
         not_found = True
         break
-      if not_found:
-        continue
-      corr_name = corr
-      break
+    if not_found:
+      continue
+    corr_name = corr
+    break
   if not corr_name:
     try:
       log.critical("Could not find hash for ADC serial numbers %s." %
                    fpga_conf["adc_serial"])
     except KeyError:
       log.critical("Could not find key \"adc_serial\" in FPGA configuration.")
+    exit()
+
   acq_base_dir = "%s/%s_%s_corr" % (conf["acq"]["base_path"], time_str, \
                                    corr_name)
   os.makedirs(acq_base_dir)
@@ -276,7 +277,8 @@ if __name__ == "__main__":
 
   # Pass FPGA configuration variables to header.
   for name in fpga_conf:
-    #Hack for now since the gain table is too big to fit in one 64k header element
+    #Hack for now since the gain table is too big to fit in one 64k header 
+    # element
     if name == 'antenna_scaler_gain':
       all_val = fpga_conf[name]
       for value in all_val:
