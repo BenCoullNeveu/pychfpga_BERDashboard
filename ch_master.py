@@ -64,9 +64,9 @@ def convert_types(val):
 
       else:
         if isinstance(val, long):
-          val = int(val)
+          val = str(val)
         elif isinstance(val, bool):
-          val = int(val)
+          val = str(val)
         if not isinstance(val, str):
           try:
             if val.dtype.kind in ('i', 'u', 'f', 'b'):
@@ -81,7 +81,7 @@ correlator_hash = {"stone"     : ["0001"],
                    "abbot"     : ["0003"],
                    "vincente"  : ["29821-0000-0028"],
                    "blanchard" : ["0029"],
-                   "testing"   : ["0031", "0032"],
+                   "testing"   : ["0023", "0022"],
                   }
 
 # Current archive format version.
@@ -320,7 +320,11 @@ if __name__ == "__main__":
   acq.add_header_item("notes", args.notes)
 
   # Start the acquisition.
-  acq.start(acq_base_dir)
+  print
+  print "%d" % fpga_conf["motherboard_serial"]
+  print
+  acq.start(acq_base_dir, ["%d" % fpga_conf["motherboard_serial"]], \
+            fpga_conf["adc_serial"])
 
   try:
     while True:
