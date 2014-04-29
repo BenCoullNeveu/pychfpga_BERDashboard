@@ -19,7 +19,13 @@ class AttributeUser(object):
     """
     Allows the use of published attributes in a class.
     """
-    _registered_objects = {}  # Dictionary containing all the object attributes attributes accessible directly from this class. Works in tandem with __get_attr__
+    # Dictionary containing all the object attributes attributes accessible
+    # directly from this class. Works in tandem with __get_attr__
+    _registered_objects = {}
+
+    def __init__(self):
+        print 'init _registered_objects'
+        self._registered_objects = {} # make sure we use an instance attribute for the dictionnary, otherwise the 'class' attribute of the same name will be used
 
     def __getattr__(self, name):
         """
@@ -63,9 +69,14 @@ class AttributeUser(object):
             attribute_names = [name for name in dir(obj) if name[0] !='_']
 
         for name in attribute_names:
+            self.logger.debug("registering attribute '%s' from '%s'. " % (name, obj))
             name = str(name) # remove unicode encoding
+            if name in dir(self):
+                self.logger.warning("Attribute '%s' from '%s' is not registered because it already exists in the target instance" % (name, obj))
+                continue
+
             if name in self._registered_objects:
-                self.logger.warning("Attribute collision while registering the attribute '%s'. The attribute will be overriden." % name)
+                self.logger.warning("Attribute '%s' is already registered by '%s'. The attribute will be overriden by '%s'." % (name, self._registered_objects[name], obj))
             # value = getattr(obj, name)
             # if import_methods and callable(value): # if this is a method
             #     setattr(self, name, value) # just copy the method in the destination object
@@ -79,6 +90,11 @@ class AttributeUser(object):
             if target is obj:
                 self.logger.warning("Unregistering attribute %s from '%s' if %s." % (name, target, repr(obj)))
                 del self._registered_objects[name]
+
+    def unregister_all(self):
+        """
+        """
+        self._registered_objects = {}
 
 # The following code is not used
 # ------------------------------

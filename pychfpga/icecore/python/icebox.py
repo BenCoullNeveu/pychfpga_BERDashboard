@@ -26,7 +26,9 @@ class IceBox(object):
     # Define hardware-specific constants
     #------------------------------------
     NUMBER_OF_SLOTS = 16 #
-
+    BACKPLANE_EEPROM_DATA_ADDRESS = 0x54 # covers 0x54 - 0x57
+    BACKPLANE_EEPROM_SERIAL_ADDRESS = 0x5C # 16 byte serial number starting at address 0
+    BACKPLANE_EEPROM_ADDRESS_WIDTH = 10
     # _FPGA_I2C_SWITCH_ADDR = 0b1110100
     # _ARM0_I2C_SWITCH_ADDR = 0b1110000
     # _ARM1_I2C_SWITCH_ADDR = 0b1110001
@@ -53,14 +55,14 @@ class IceBox(object):
     # _POWER_ICE1V8_I2C_ADDR = 0b1001011
     # _POWER_ICE1V0GTX_I2C_ADDR = 0b1001111
 
-    @staticmethod
-    def get_backplane_info(iceboard):
+    @classmethod
+    def get_backplane_info(cls, iceboard):
         logger = logging.getLogger(__name__)
         logger.debug("Attempting to read backplane eeprom to determine board presence")
-        eeprom = FMC_EEPROM(iceboard.i2c, 'BP')
+        eeprom = FMC_EEPROM(iceboard.i2c, 'BP', address=cls.BACKPLANE_EEPROM_DATA_ADDRESS, address_width=cls.BACKPLANE_EEPROM_ADDRESS_WIDTH)
         data = eeprom.read(0, length=1, noerror=True, verbose=1)
         logger.debug("Backplane EEPROM returned the value: %i", data[0])
-        return (data[0], 0)
+        return (data[0], None)
 
 
     def __init__(self, iceboard):
@@ -79,8 +81,13 @@ class IceBox(object):
         self._logger = logging.getLogger(__name__)
         self._logger.debug('Initializing Iceboard hardware')
         self._i2c = iceboard.i2c
+        self._iceboard_hw = iceboard.hw
+        self._iceboard = iceboard
 
-        self._logger.info(' Instantiating I2C GPIO manager')
+        self._logger.info(' Instantiating Backplane I2C resource managers')
+        self._eeprom = FMC_EEPROM(iceboard.i2c, 'BP', address=self.BACKPLANE_EEPROM_DATA_ADDRESS, address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH)
+        self._serial = FMC_EEPROM(iceboard.i2c, 'BP', address=self.BACKPLANE_EEPROM_SERIAL_ADDRESS, address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH)
+
         # self._gpio_power = pca9575.pca9575(self._i2c, self._GPIO_POWER_I2C_ADDR, 'GPIO')
         # self._gpio_sw_leds = pca9575.pca9575(self._i2c, self._GPIO_SW_LEDS_ADDR, 'GPIO')
         # self._gpio_arm_phy_leds = pca9575.pca9575(self._i2c, self._GPIO_ARM_PHY_LEDS_ADDR, 'GPIO')
@@ -161,6 +168,17 @@ class IceBox(object):
     def close(self):
         self._logger.info('Closing Icebox hardware')
 
+
+    # def get_backplane_info(self, iceboard):
+    #     # logger = logging.getLogger(__name__)
+    #     self._logger.debug("Attempting to read backplane eeprom to determine board presence")
+    #     # eeprom = FMC_EEPROM(iceboard.i2c, 'BP', address=cls.BACKPLANE_EEPROM_ADDRESS)
+    #     eeprom_data = self._eeprom.read(0, length=1, noerror=True, verbose=1)
+    #     self._logger.debug("Backplane EEPROM returned the value: %i", data[0])
+    #     slot_number = self._iceboard.get_slot_number()
+    #     return (eeprom_data[0], slot_number)
+
+
     def init(self):
         """Initializes the motherboard hardware to a known state"""
         # self._init_gpio_expanders()
@@ -231,15 +249,15 @@ class IceBox(object):
         """initializes EEPROM"""
         pass
 
-    def get_slot_number(self):
-        """
-        Returns the slot number in which the IceBoard is connected.
-        """
-        pass
-
     def get_number_of_slots(self):
         return self.NUMBER_OF_SLOTS
 
+    def read_eeprom(self, addr, length=1):
+        return self._eeprom.read(addr, length = length)
+
+    def get_eeprom_serial_number(self):
+        """ return the 128-bit hardware-coded EEPROM serial number as a hex string. """
+        return ''.join(['%02X' % v for v in self._serial.read(0x80, length=16)])
 
     def set_led(self, led_name, state):
         """

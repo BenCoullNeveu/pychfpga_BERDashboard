@@ -59,7 +59,7 @@ class FpgaMmi:
             self.close()
 
 
-    def open(self, interface_ip_addr, ip_addr, port_number, netmask='255.255.0.0', timeout = 2):
+    def open(self, interface_ip_addr, ip_addr, port_number, send_only = False, netmask='255.255.0.0', timeout = 2):
         """
         Open control communication socket to FPGA
         """
@@ -75,7 +75,7 @@ class FpgaMmi:
         #     self.interface_ip_addr = get_host_addr(dest_addr=self.ip_addr, netmask=self.netmask)
 
         self.sock = udp.Udp()
-        self.sock.open(if_ip_addr=self.interface_ip_addr, ip_addr = self.ip_addr, port_number = self.port_number)
+        self.sock.open(if_ip_addr=self.interface_ip_addr, ip_addr = self.ip_addr, port_number = self.port_number, send_only= send_only)
         self.sock.set_timeout(timeout)
 
         # self.logger.info('   Opened control socket on %s:%i through interface %s' % (self.ip_addr, self.port_number, self.interface_ip_addr))

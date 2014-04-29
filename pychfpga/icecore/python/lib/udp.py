@@ -28,7 +28,7 @@ class Udp(object):
         self.logger = logging.getLogger(__name__)
 
 
-    def open(self, if_ip_addr, ip_addr, port_number):
+    def open(self, if_ip_addr, ip_addr, port_number, send_only=False):
         """
         Opens a UDP socket at specified IP address and port over the specified interface.
         If ip_addr is Udp.BROADCAST, a broadcast socket will be opened.
@@ -49,7 +49,8 @@ class Udp(object):
             self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, True)
         # sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
         #self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) # don't use REUSEADDR: many sockets get open and we then fail to receive replies
-        self.sock.bind((if_ip_addr, port_number))
+        if not send_only:
+            self.sock.bind((if_ip_addr, port_number))
         # self.logger.debug('   Opened control UDP Socket')
         # self.logger.debug('   Opened socket on interface  %s:%i ' % (if_ip_addr, port_number))
         return self.sock;

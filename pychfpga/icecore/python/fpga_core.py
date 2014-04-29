@@ -43,23 +43,30 @@ class FpgaCoreFirmware(FpgaFirmware):
 
     __mapper_args__ = {'polymorphic_identity': 'core_fpga_firmware'}
 
-    BROADCAST_BASE_PORT = 41000
+    # FPGA firmware-related definition
+    # serial_number = Column(Integer)
+    # ip_addr = Column(String)
+    # port_number = Column(Integer)
 
-    SYSTEM_BASE_ADDR   = 0x00000 # This is always at zero so we can gather info from the FPGA before we know the number of antennas etc.
-    SYSTEM_GPIO_BASE_ADDR     = SYSTEM_BASE_ADDR + 0x00000
-    SYSTEM_I2C_BASE_ADDR      = SYSTEM_BASE_ADDR + 0x0A000
-
-    # GPIO Register addresses
-    GPIO_COOKIE_REG = 0x080 # Register address of the firmware cookie
-    FPGA_TIMESTAMP_ADDR = SYSTEM_GPIO_BASE_ADDR + 0x80 + 7
-    FPGA_SERIAL_NUMBER_ADDR = SYSTEM_GPIO_BASE_ADDR + 0x80 + 12
-    FPGA_IP_SETUP_BASE_ADDR = SYSTEM_GPIO_BASE_ADDR + 0x00 + 13 # (13-18): target MAC, (19-22): target IP, (23-24): target_base_port, (25-32) = Target FPGA serial, (33): bit 7 = trigger, bits 3:2: mac source select, 1:0: broadcast group
-    GPIO_IPCONFIG_REG = SYSTEM_GPIO_BASE_ADDR + 0x08D # Register address of the first byte of the IP config word
-
+    interface_ip_addr = None # This is a class attribute, common to all instances.
     mmi = None # Memory-mapped interface object
 
+    _BROADCAST_BASE_PORT = 41000
+
+    _SYSTEM_BASE_ADDR   = 0x00000 # This is always at zero so we can gather info from the FPGA before we know the number of antennas etc.
+    _SYSTEM_GPIO_BASE_ADDR     = _SYSTEM_BASE_ADDR + 0x00000
+    _SYSTEM_I2C_BASE_ADDR      = _SYSTEM_BASE_ADDR + 0x0A000
+
+    # GPIO Register addresses
+    _GPIO_COOKIE_REG = 0x080 # Register address of the firmware cookie
+    _FPGA_TIMESTAMP_ADDR = _SYSTEM_GPIO_BASE_ADDR + 0x80 + 7
+    _FPGA_SERIAL_NUMBER_ADDR = _SYSTEM_GPIO_BASE_ADDR + 0x80 + 12
+    _FPGA_IP_SETUP_BASE_ADDR = _SYSTEM_GPIO_BASE_ADDR + 0x00 + 13 # (13-18): target MAC, (19-22): target IP, (23-24): target_base_port, (25-32) = Target FPGA serial, (33): bit 7 = trigger, bits 3:2: mac source select, 1:0: broadcast group
+    _GPIO_IPCONFIG_REG = _SYSTEM_GPIO_BASE_ADDR + 0x08D # Register address of the first byte of the IP config word
+
+
     @classmethod
-    def discover_fpgas(cls, interface_ip_addr, source_subarrays = [0], timeout=0.1):
+    def discover_fpgas(cls, source_subarrays = [0], timeout=0.1):
         """
         Get the serial numbers of all FPGA directly connected on the network (i.e. not accessed through the ARM processor)
 
@@ -78,11 +85,11 @@ class FpgaCoreFirmware(FpgaFirmware):
         serial_list = []
          # for if_addr in interface_ip:
         for subarray in source_subarrays:
-            logger.debug('Searching ICEBoards on subarray %i through interface %s' % (subarray, interface_ip_addr))
+            logger.debug('Searching ICEBoards on subarray %i through interface %s' % (subarray, cls.interface_ip_addr))
 
-            with fpga_mmi.FpgaMmi(interface_ip_addr, fpga_mmi.FpgaMmi.BROADCAST, cls.BROADCAST_BASE_PORT + subarray) as mmi:
+            with fpga_mmi.FpgaMmi(cls.interface_ip_addr, fpga_mmi.FpgaMmi.BROADCAST, cls._BROADCAST_BASE_PORT + subarray, send_only=False) as mmi:
                 mmi.flush()
-                serials = mmi.broadcast_read(cls.FPGA_SERIAL_NUMBER_ADDR, type = np.dtype('>u8'), timeout = timeout)
+                serials = mmi.broadcast_read(cls._FPGA_SERIAL_NUMBER_ADDR, type = np.dtype('>u8'), timeout = timeout)
             serial_list += serials
 
         # self.mmi.open()
@@ -90,7 +97,7 @@ class FpgaCoreFirmware(FpgaFirmware):
         return serial_list
 
     @classmethod
-    def set_networking_parameters(cls, serial_number, interface_ip_addr, ip_addr, port_number, broadcast_group=0, number_of_trials = 3):
+    def set_networking_parameters(cls, serial_number, interface_ip_addr, ip_addr, port_number, broadcast_group=0, number_of_trials = 3, check=True):
         """
         Sets the FPGA firmwarein the specified ICEboard to use the specified ip address and port.
         The board will be searched on the Ethernet interface associated with 'if_addr'
@@ -99,7 +106,7 @@ class FpgaCoreFirmware(FpgaFirmware):
         """
 
         logger = logging.getLogger(__name__)
-        logger.debug('Broadcasting on port %i to configure FPGA S/N %016X with address %s:%i' % (cls.BROADCAST_BASE_PORT, serial_number, ip_addr, port_number))
+        logger.debug('Broadcasting on port %i to configure FPGA S/N %016X with address %s:%i' % (cls._BROADCAST_BASE_PORT, serial_number, ip_addr, port_number))
 
         # Build the array of bytes to fill the network configuration register block
         ip_setup_string = struct.pack('>H4s4sHQ', 0x1234, socket.inet_aton(ip_addr), socket.inet_aton(ip_addr), port_number, serial_number)
@@ -109,31 +116,34 @@ class FpgaCoreFirmware(FpgaFirmware):
         # Configure the FPGA through a UDP broadcast packet containing the target FPGA serial number
         trial = 0
         while trial < number_of_trials:
-            with fpga_mmi.FpgaMmi(interface_ip_addr, fpga_mmi.FpgaMmi.BROADCAST, cls.BROADCAST_BASE_PORT ) as mmi:
-                mmi.write(cls.FPGA_IP_SETUP_BASE_ADDR, ip_setup_string + trig1) # Send string with trigger flag cleared
-                mmi.write(cls.FPGA_IP_SETUP_BASE_ADDR, ip_setup_string + trig2) # resend with trigger flag set. The 0-to-1 transition will load the desired networking parameters
-                mmi.write(cls.FPGA_IP_SETUP_BASE_ADDR, [0] * len(ip_setup_string + trig2)) # Write zeros everywhere to make sure we stop latching data
-            logger.debug('FPGA S/N %016X is configured with address %s:%i' % (serial_number, ip_addr, port_number))
-            (serial, timestamp) = cls.get_fpga_config(interface_ip_addr=interface_ip_addr, ip_addr = ip_addr, port_number = port_number)
+            with fpga_mmi.FpgaMmi(interface_ip_addr, fpga_mmi.FpgaMmi.BROADCAST, cls._BROADCAST_BASE_PORT, send_only=True) as mmi:
+                mmi.write(cls._FPGA_IP_SETUP_BASE_ADDR, ip_setup_string + trig1) # Send string with trigger flag cleared
+                mmi.write(cls._FPGA_IP_SETUP_BASE_ADDR, ip_setup_string + trig2) # resend with trigger flag set. The 0-to-1 transition will load the desired networking parameters
+                mmi.write(cls._FPGA_IP_SETUP_BASE_ADDR, [0] * len(ip_setup_string + trig2)) # Write zeros everywhere to make sure we stop latching data
+            # logger.debug('FPGA S/N %016X is configured with address %s:%i' % (serial_number, ip_addr, port_number))
+            if not check:
+                return
+            (serial, timestamp) = cls.get_fpga_config(ip_addr = ip_addr, port_number = port_number)
             if serial and serial == serial_number:
                 return
             else:
+                logger.debug('Networking configuration of FPGA S/N %016X with address %s:%i failed.' % (serial_number, ip_addr, port_number))
                 trial +=1
         logger.debug('Unable to configure FPGA S/N %016X with address %s:%i' % (serial_number, ip_addr, port_number))
 
 
     @classmethod
-    def get_fpga_config(cls, interface_ip_addr, ip_addr, port_number, timeout = 0.1, number_of_trials=3):
+    def get_fpga_config(cls, ip_addr, port_number, timeout = 0.1, number_of_trials=3):
         """
         Returns basic information allowing to check if we talk to the right FPGA with the right firmware.
         Will not cause an exception if the FPGA fails to respond at the specified address. Instead, all fields will be None.
         """
         trial = 0
-        with fpga_mmi.FpgaMmi(interface_ip_addr, ip_addr, port_number, timeout = timeout ) as mmi:
+        with fpga_mmi.FpgaMmi(cls.interface_ip_addr, ip_addr, port_number, timeout = timeout ) as mmi:
             while trial < number_of_trials:
                 try:
-                    serial = mmi.read(cls.FPGA_SERIAL_NUMBER_ADDR, type = np.dtype('>u8'))
-                    timestamp = mmi.read(cls.FPGA_TIMESTAMP_ADDR, type = np.dtype('>u4'))
+                    serial = mmi.read(cls._FPGA_SERIAL_NUMBER_ADDR, type = np.dtype('>u8'))
+                    timestamp = mmi.read(cls._FPGA_TIMESTAMP_ADDR, type = np.dtype('>u4'))
                     return (serial, timestamp)
                 except mmi.TimeoutException:
                     trial += 1
@@ -158,10 +168,12 @@ class FpgaCoreFirmware(FpgaFirmware):
         only even if 'self' represents an instance of a superclass of
         FpgaCoreFirmware.
         """
-        core_attributes =  FpgaCoreFirmware.__dict__.keys() + self.__dict__.keys()
-        return [name for name in core_attributes if name[0] !='_']
+        # core_attributes =  FpgaCoreFirmware.__dict__.keys() + self.__dict__.keys()
+        # return [name for name in core_attributes if name[0] !='_']
+        return []
 
-    def open_core(self, ip_addr, port_number, interface_ip_addr=None, broadcast_group = 0, serial_number = 0):
+    # def open_core(self, ip_addr, port_number, interface_ip_addr=None, broadcast_group = 0, serial_number = 0):
+    def open_core(self, ip_addr, port_number, serial_number, broadcast_group = 0):
         """
         Opens the communication link with the core FPGA firmware.
         This is called during the establishment of the link with the IceBoard (IceBoard.open()).
@@ -175,9 +187,9 @@ class FpgaCoreFirmware(FpgaFirmware):
         self.ip_addr  = ip_addr
         self.port_number = port_number
         self.serial_number = serial_number # FPGA serial number
-        self.if_ip_addr = interface_ip_addr # # interface IP address, needed to setup UDP communications and UDB broadcasts
-        self.broadcast_group = broadcast_group
-        self.logger = logging.getLogger(__name__)
+        # self.interface_ip_addr = interface_ip_addr # # interface IP address, needed to setup UDP communications and UDB broadcasts
+        self._broadcast_group = broadcast_group
+        self._logger = logging.getLogger(__name__)
 
         # Close any previously opened memory-mapped interface to free the sockets
         if self.mmi:
@@ -185,25 +197,25 @@ class FpgaCoreFirmware(FpgaFirmware):
 
         # Set the FPGA communication networking parameters
         if self.serial_number:
-            self.set_networking_parameters(self.serial_number, self.if_ip_addr, self.ip_addr, self.port_number, self.broadcast_group)
+            self.set_networking_parameters(self.serial_number, self.interface_ip_addr, self.ip_addr, self.port_number, self._broadcast_group)
 
         # Open communications with the FPGA memory mapped-interface
-        self.mmi = fpga_mmi.FpgaMmi(self.if_ip_addr, self.ip_addr, self.port_number)
+        self.mmi = fpga_mmi.FpgaMmi(self.interface_ip_addr, self.ip_addr, self.port_number)
 
-        self.logger.debug('=== Instantiating GPIO')
-        self.base_gpio = gpio.GPIO_base(self.mmi, self.SYSTEM_GPIO_BASE_ADDR)
+        self._logger.debug('=== Instantiating GPIO')
+        self._base_gpio = gpio.GPIO_base(self.mmi, self._SYSTEM_GPIO_BASE_ADDR)
 
         # Instantiate the I2C handler
-        self.logger.debug('=== Instantiating I2C')
-        self.base_i2c = i2c.I2C_base(self.mmi, self.SYSTEM_I2C_BASE_ADDR)
+        self._logger.debug('=== Instantiating I2C')
+        self._base_i2c = i2c.I2C_base(self.mmi, self._SYSTEM_I2C_BASE_ADDR)
 
     def close_core(self):
         """
         Closes the link to the core FPGA firmware.
         """
 
-        self.base_gpio = None
-        self.base_i2c = None
+        self._base_gpio = None
+        self._base_i2c = None
         if self.mmi:
             self.mmi.close()
             self.mmi = None
@@ -237,20 +249,20 @@ class FpgaCoreFirmware(FpgaFirmware):
         raise NotImplementedError
 
     def get_serial_number(self):
-           return self.mmi.read(self.FPGA_SERIAL_NUMBER_ADDR, type = np.dtype('>u8'))
+           return self.mmi.read(self._FPGA_SERIAL_NUMBER_ADDR, type = np.dtype('>u8'))
 
     def get_fpga_cookie(self):
         """
         Reads the FPGA and returns the cookie that identifies the firmware.
         This method can be called before any FPGA modules are instatiated.
         """
-        return self.read(self.SYSTEM_GPIO_BASE_ADDR + self.base_gpio_COOKIE_REG) & 0x7F
+        return self.read(self._SYSTEM_GPIO_BASE_ADDR + self.base__gpio_COOKIE_REG) & 0x7F
 
     def get_version(self):
         """
         Returns the firmware revion currenting running on the FPGA (which si the date and time of bitstream generation)
         """
-        return self.base_gpio.get_bitstream_date()
+        return self._base_gpio.get_bitstream_date()
 
     def i2c_write_read(self, *args, **kwargs):
         """
@@ -259,12 +271,12 @@ class FpgaCoreFirmware(FpgaFirmware):
         Writes up to 3 bytes to the addressed I2C device and/or reads up to 4 bytes from that device after a restart.
         See the FPGA I2C module for detailed method description.
         """
-        return self.base_i2c.write_read(*args, **kwargs)
+        return self._base_i2c.write_read(*args, **kwargs)
 
     def i2c_set_port(self, *args, **kwargs):
         """
         Sets the FPGA hardware port over which the i2c communications will be made after this call.
         This selects the FPGA pins over which the communications is done, *not* the bus selection done by an I2C switch.
         """
-        return self.base_i2c.set_port(*args, **kwargs)
+        return self._base_i2c.set_port(*args, **kwargs)
 

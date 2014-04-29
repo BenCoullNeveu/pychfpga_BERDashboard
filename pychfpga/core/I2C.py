@@ -1,16 +1,16 @@
 #!/usr/bin/python
 # Disable pylint Line too long (=C0301)
-# pylint: disable=C0301 
+# pylint: disable=C0301
 
 """
-I2C.py module 
+I2C.py module
     Implements I2C interface of chFPGFA
 
 History:
     2012-03-29 JFC : Created from SPI.py
     2012-04-11 JFC : generalized write_read to allow simple read and writes. Trig the state machine (START) in two lines to make sure the 0-to-1 transition is not missed. Cleanup.
     2012-08-27 JFC : Fixed reference to common.util as pychfpga.common.util
-    2012-11-19 JFC: Fixed tabs. Changed how errors are handled. Now SystemError restuns error strings.         
+    2012-11-19 JFC: Fixed tabs. Changed how errors are handled. Now SystemError restuns error strings.
 """
 
 import logging
@@ -33,7 +33,7 @@ class I2C_base(Module_base):
         'START'           : BitField(CONTROL, 0x04, 7, doc='A 0 to 1 transition on this bit starts I2C transaction'),
         'BYTES2'          : BitField(CONTROL, 0x04, 4, width=3, doc='Number of bytes to read back from the same address after the write sequence'),
         'BYTES1'          : BitField(CONTROL, 0x04, 0, width=2, doc='Number of bytes in the I2C communication (excluding the address byte) 1=1 Byte, 1=2 bytes, 2=3 bytes'),
-        
+
         'RESET'           : BitField(CONTROL, 0x05, 7, doc='1 resets the I2C subsystem'),
         'ALWAYS_CLK'      : BitField(CONTROL, 0x05, 6, doc='Force the generation if a clock even when idle (will prevent the system from detecting idle bus state unless STOP events are seen'),
         'PORT'            : BitField(CONTROL, 0x05, 4, width=2, doc='I2C port number (0=FMC HPC EEPROM/ML605 EEPROM/ML605 EEPROM, 1=SMBus'),
@@ -41,7 +41,7 @@ class I2C_base(Module_base):
         'FORCE_SDA'       : BitField(CONTROL, 0x05, 2, doc='Enables forcing SDA to the state identified in FORCE_SDA_STATE'),
         'FORCE_SCK_STATE' : BitField(CONTROL, 0x05, 1, doc='State to which SCK is forces when FORCE_SCK=1'),
         'FORCE_SDA_STATE' : BitField(CONTROL, 0x05, 0, doc='State to which SDA is forces when FORCE_SDA=1'),
-        
+
         'IDLE'            : BitField(STATUS, 0x04, 7, doc='Indicates if the bus is idle'),
         'TIMEOUT'         : BitField(STATUS, 0x04, 4, doc='Indicates if a timeout has occured during the transaction'),
         'COLLISION'       : BitField(STATUS, 0x04, 3, doc='Indicates if the transaction experienced a collision'),
@@ -52,11 +52,11 @@ class I2C_base(Module_base):
 
 
         'ACK_STATUS' : BitField(STATUS, 0x05, 0, width=8,doc='Ack bits'),
-        
+
         'BYTE_CTR'   : BitField(STATUS, 0x06, 4, width=3, doc='Byte counter at end of transmission'),
         'DIR'        : BitField(STATUS, 0x06, 1, doc='Dirction at end of transmission'),
         'BIT_CTR'    : BitField(STATUS, 0x06, 0, width=3, doc='Bit counter at end of transmission'),
-        
+
         'START_CTR'  : BitField(STATUS, 0x07, 4, width=4, doc='Counts the number of START events'),
         'DONE_CTR'   : BitField(STATUS, 0x07, 0, width=4, doc='Counts the number of DONE events'),
 
@@ -72,13 +72,13 @@ class I2C_base(Module_base):
 
     # I2C_DEVICE_LIST_KC705 = {
     #     'FMC': 0x02
-    #     } 
+    #     }
     # I2C_DEVICE_ADDR_KC705 = 0x74
 
     # def set_switch(self, device_name):
     #     'Selects the active I2C sevice for the platforms that use a I2C switch'
     #     if self.fpga_instance.PLATFORM_ID == self.fpga_instance.PLATFORM_ID_KC705:
-    #         self.write(addr=self.I2C_DEVICE_ADDR_KC705, data=[self.I2C_DEVICE_LIST_KC705[device_name]])    
+    #         self.write(addr=self.I2C_DEVICE_ADDR_KC705, data=[self.I2C_DEVICE_LIST_KC705[device_name]])
 
     def set_port(self, port_number):
         """
@@ -91,10 +91,10 @@ class I2C_base(Module_base):
         self.logger.debug("Setting FPGA I2C port to %i" % port_number)
 
     def write_read(self, addr=0, data=[0], read_length=0, verbose=1, noerror=False):
-        """ 
-        When data=None, reads 'read_length' (0-3) bytes from the I2C device at specified I2C address in a single I2C transaction, 
-        or, if data is an non-empty array of 1-3 data bytes, writes the data to the specified I2C address, 
-        send a restart condition and reads 'read_length' (0-4) bytes. 
+        """
+        When data=None, reads 'read_length' (0-3) bytes from the I2C device at specified I2C address in a single I2C transaction,
+        or, if data is an non-empty array of 1-3 data bytes, writes the data to the specified I2C address,
+        send a restart condition and reads 'read_length' (0-4) bytes.
         """
         #verbose=1
 
@@ -119,7 +119,7 @@ class I2C_base(Module_base):
 
         #error = 0
         error_msg = ''
-        
+
         start_ctr = self.START_CTR
         done_ctr = self.DONE_CTR
 
@@ -128,8 +128,8 @@ class I2C_base(Module_base):
 
         self.write(0x000 + 0x05, self.current_port << 4) # disables RESET, set port number
 
-        if data is None: # if we do not write any date, we perform a single transaction with BYTES1=read_length and BYTES2=0 
-            self.write(0x000 + 0x00, [(addr << 1) + 0x01]) # write I2C address with read flag to the transmit buffer 
+        if data is None: # if we do not write any date, we perform a single transaction with BYTES1=read_length and BYTES2=0
+            self.write(0x000 + 0x00, [(addr << 1) + 0x01]) # write I2C address with read flag to the transmit buffer
             expected_ack = 2**(read_length + 1) - 1;
             self.write(0x000 + 0x04,[0x00 + read_length]) # Prepare to start transaction by clearing the START bit
             self.write(0x000 + 0x04,[0x80 + read_length]) # start transaction by creating a 0-to-1 trsnsition on the START bit. Do this as a separate transmission to make sure that the firmware registered the zero
@@ -147,34 +147,35 @@ class I2C_base(Module_base):
         start_ctr=(start_ctr+1) % 16
         done_ctr=(done_ctr+1) % 16
         if self.START_CTR != start_ctr:
-            error_msg +='write_read: communication error: start_ctr do not match. Read %i, expected %i\n' (self.START_CTR, start_ctr)
+            error_msg +='write_read: communication error: start_ctr do not match. Read %i, expected %i\n' % (self.START_CTR, start_ctr)
         if self.DONE_CTR != done_ctr:
-            error_msg += 'write_read: communication error: done_ctr do not match. Read %i, expected %i\n' (self.DONE_CTR, done_ctr)
+            error_msg += 'write_read: communication error: done_ctr do not match. Read %i, expected %i\n' % (self.DONE_CTR, done_ctr)
 
         #print 'I2C communication: ACK byte is 0x%02x' % ack
         data=data[-read_length:]
         #data.dtype=np.dtype(type)
         if error_msg:
             error_msg = 'write_read:  The following errors occured while writing %i bytes and reading %i bytes on FPGA I2C port %i at address 0x%02x with data %s\n %s' % (write_length, read_length, self.current_port, addr,  hex(data), error_msg)
-        if error_msg and not noerror:
-            self.logger.error(error_msg)
-        if error_msg and not noerror:
-            raise SystemError(error_msg)
+            if noerror:
+                self.logger.warn(error_msg)
+            else:
+                self.logger.error(error_msg)
+                raise SystemError(error_msg)
 
         return data
 
     def i2c_read(self, addr=0, length=1,  type=np.uint8, **kwargs):
-        """ Serially reads 0-3 bytes  bytes long) from the I2C bus at the specified I2C address 
+        """ Serially reads 0-3 bytes  bytes long) from the I2C bus at the specified I2C address
         """
         return self.write_read(addr=addr, data=None, read_length=length, **kwargs)
 
     def i2c_write(self, addr=0, data=[0], **kwargs):
-        """ Serially writes 1-3 bytes to the specified I2C node 
+        """ Serially writes 1-3 bytes to the specified I2C node
         """
         return self.write_read(addr=addr,data=data,read_length=0, **kwargs)
 
     # def reset(self, port=0, verbose=0):
-    #     """ 
+    #     """
     #     """
     #     self.write(0x000+0x05,[0x80+(port<<5)])
     #     self.write(0x000+0x05,[0x00+(port<<5)])
@@ -189,8 +190,8 @@ class I2C_base(Module_base):
         # print 'last state:', hex(s[4]>>4)
         # print 'SCK = %i, SDA= %i' %(bool(s[4]&0x02), bool(s[4]&0x01))
         # print 'ACK bits:', bin(s[5])
-        
-    
+
+
 
     def init(self, verbose = 0):
         '''

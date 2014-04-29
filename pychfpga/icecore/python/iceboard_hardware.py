@@ -101,7 +101,7 @@ class IceBoardHardware(object):
         if hasattr(self._iceboard.arm, 'i2c_write_read') and hasattr(self._iceboard.arm, 'i2c_set_port'):
             self._i2c = I2CInterface(self._iceboard.arm.i2c_write_read, self._iceboard.arm.i2c_set_port, self._I2C_BUS_LIST, self._ARM0_I2C_SWITCH_ADDR)
         elif hasattr(self._iceboard.fpga, 'i2c_write_read') and hasattr(self._iceboard.fpga, 'i2c_set_port'):
-            self._i2c = I2CInterface(self._iceboard.i2c_write_read, self._iceboard.i2c_set_port, self._I2C_BUS_LIST, self._FPGA_I2C_SWITCH_ADDR)
+            self._i2c = I2CInterface(self._iceboard.fpga.i2c_write_read, self._iceboard.fpga.i2c_set_port, self._I2C_BUS_LIST, self._FPGA_I2C_SWITCH_ADDR)
         else:
             raise IceBoardHardwareException('Neither the ARM or FPGA provide a i2c_write_read() method needed to talk to the hardware')
 
@@ -129,31 +129,38 @@ class IceBoardHardware(object):
         self._power_ice_1v8 = ina230.ina230(self._i2c, self._POWER_ICE1V8_I2C_ADDR, 'SMPS')
 
         self.GPIO_EXPANDER_MAP = {
-            # name : (expander object, byte, bit number (width))
-            'GP_SW1': (self._gpio_sw_leds, 0, 0),
-            'GP_SW2': (self._gpio_sw_leds, 0, 1),
-            'GP_SW3': (self._gpio_sw_leds, 0, 2),
-            'GP_SW4': (self._gpio_sw_leds, 0, 3),
-            'GP_SW5': (self._gpio_sw_leds, 0, 4),
-            'GP_SW6': (self._gpio_sw_leds, 0, 5),
-            'GP_SW7': (self._gpio_sw_leds, 0, 6),
-            'GP_SW8': (self._gpio_sw_leds, 0, 7),
-            'GP_LED1': (self._gpio_sw_leds, 1, 7),
-            'GP_LED2': (self._gpio_sw_leds, 1, 6),
-            'GP_LED3': (self._gpio_sw_leds, 1, 5),
-            'GP_LED4': (self._gpio_sw_leds, 1, 4),
-            'GP_LED5': (self._gpio_sw_leds, 1, 3),
-            'GP_LED6': (self._gpio_sw_leds, 1, 2),
-            'GP_LED7': (self._gpio_sw_leds, 1, 1),
-            'GP_LED8': (self._gpio_sw_leds, 1, 0),
-            'GP_LED9': (self._gpio_arm_phy_leds, 0, 0),
-            'GP_LED10': (self._gpio_arm_phy_leds, 0, 1),
-            'GP_LED11': (self._gpio_arm_phy_leds, 0, 2),
-            'GP_LED12': (self._gpio_arm_phy_leds, 0, 3),
-            'GTX1V8PowerFault': (self._gpio_arm_phy_leds, 0, 4),
-            'PHYAPowerFault': (self._gpio_arm_phy_leds, 0, 5),
-            'PHYBPowerFault': (self._gpio_arm_phy_leds, 0, 6),
-            'ArmPowerFault': (self._gpio_arm_phy_leds, 0, 7)
+            # name : (expander object, byte, lsb bit number,  width)
+            'GP_SW1': (self._gpio_sw_leds, 0, 0, 1),
+            'GP_SW2': (self._gpio_sw_leds, 0, 1, 1),
+            'GP_SW3': (self._gpio_sw_leds, 0, 2, 1),
+            'GP_SW4': (self._gpio_sw_leds, 0, 3, 1),
+            'GP_SW5': (self._gpio_sw_leds, 0, 4, 1),
+            'GP_SW6': (self._gpio_sw_leds, 0, 5, 1),
+            'GP_SW7': (self._gpio_sw_leds, 0, 6, 1),
+            'GP_SW8': (self._gpio_sw_leds, 0, 7, 1),
+            'GP_LED1': (self._gpio_sw_leds, 1, 7, 1),
+            'GP_LED2': (self._gpio_sw_leds, 1, 6, 1),
+            'GP_LED3': (self._gpio_sw_leds, 1, 5, 1),
+            'GP_LED4': (self._gpio_sw_leds, 1, 4, 1),
+            'GP_LED5': (self._gpio_sw_leds, 1, 3, 1),
+            'GP_LED6': (self._gpio_sw_leds, 1, 2, 1),
+            'GP_LED7': (self._gpio_sw_leds, 1, 1, 1),
+            'GP_LED8': (self._gpio_sw_leds, 1, 0, 1),
+            'GP_LED9': (self._gpio_arm_phy_leds, 0, 0, 1),
+            'GP_LED10': (self._gpio_arm_phy_leds, 0, 1, 1),
+            'GP_LED11': (self._gpio_arm_phy_leds, 0, 2, 1),
+            'GP_LED12': (self._gpio_arm_phy_leds, 0, 3, 1),
+            'GTX1V8PowerFault': (self._gpio_arm_phy_leds, 0, 4, 1),
+            'PHYAPowerFault': (self._gpio_arm_phy_leds, 0, 5, 1),
+            'PHYBPowerFault': (self._gpio_arm_phy_leds, 0, 6, 1),
+            'ArmPowerFault': (self._gpio_arm_phy_leds, 0, 7, 1),
+            'BP_GPIO0': (self._gpio_arm_phy_leds, 1, 0, 1),
+            'BP_GPIO1': (self._gpio_arm_phy_leds, 1, 1, 1),
+            'BP_GPIO2': (self._gpio_arm_phy_leds, 1, 2, 1),
+            'BP_GPIO3': (self._gpio_arm_phy_leds, 1, 3, 1),
+            'BP_GPIO4': (self._gpio_arm_phy_leds, 1, 4, 1),
+            'BP_GPIO5': (self._gpio_arm_phy_leds, 1, 5, 1),
+            'BP_SLOT_NUMBER': (self._gpio_arm_phy_leds, 1, 0, 4), # Also corresponds to BP_GPIO0-3
         }
 
         self.TEMPERATURE_SENSOR_TABLE = {
@@ -266,6 +273,15 @@ class IceBoardHardware(object):
 
     def get_number_of_fmc_slots(self):
         return self.NUMBER_OF_FMC_SLOTS
+
+    def _get_ioexpander_field(self, field_name):
+        (io_expander, byte, bit, width) = self.GPIO_EXPANDER_MAP[field_name]
+        value = io_expander.read('IN%i' % byte)
+        value = (value >> bit) & (2**width-1)
+        return value
+
+    def get_slot_number(self):
+        return self._get_ioexpander_field('BP_SLOT_NUMBER')
 
     def set_fmc_power(self, fmc_number=range(NUMBER_OF_FMC_SLOTS), state=[True]*NUMBER_OF_FMC_SLOTS):
         """
@@ -474,6 +490,6 @@ class I2CInterface(object):
         reads up to 4 bytes from that device after a restart. See
         the FPGA I2C module for detailed method description.
         """
-        self._logger.debug("Accessing I2C bus...")
+        # self._logger.debug("Accessing I2C bus...")
         return self.write_read_fn(*args, **kwargs)
 

@@ -1,9 +1,9 @@
 #!/usr/bin/python
 # Disable pylint Line too long (=C0301)
-# pylint: disable=C0301 
+# pylint: disable=C0301
 
 """
-SRCSEL.py module 
+SRCSEL.py module
  Implements interface to the antenna Source Selector module
 #
 # History:
@@ -15,7 +15,7 @@ SRCSEL.py module
 """
 
 from Module import Module_base, BitField
-    
+
 class SRCSEL_base(Module_base):
     """ Implements interface to the FR_DIST within a procecessor pipeline"""
     # Create local variables for page numbers tomake the table more readable
@@ -25,14 +25,14 @@ class SRCSEL_base(Module_base):
     DATA_SOURCE_NAMES = {
         'adc' : 0, # Data comes from the ADC
         'funcgen' : 1, # Data comes from the function generator
-        'inject' : 2, # Data is injected by the user  
-        }    
-    
+        'inject' : 2, # Data is injected by the user
+        }
+
     # Memory-mapped register definition
     RESET        = BitField(CONTROL, 0x00, 7, doc='Resets this module')
     CAPTURE_FLAG = BitField(CONTROL, 0x00, 5, doc="When '1', forces the CAPURE flag of the outgoing frames to be '1'. Could be used downstream.")
     DATA_SOURCE  = BitField(CONTROL, 0x00, 0, width=3, doc="Selects the Antenna processing block data source")
-    
+
     RST          = BitField(STATUS, 0x00, 7, doc="debug")
     SOFT_RESET   = BitField(STATUS, 0x00, 5, doc="debug")
     ANT_RESET    = BitField(STATUS, 0x00, 4, doc="debug")
@@ -65,20 +65,20 @@ class SRCSEL_base(Module_base):
         Gets the data source currently selected by the the SOURCE selector.
         """
         data_source_number = self.DATA_SOURCE # make sure we read this only once
-        return [key for (key,value) in self.DATA_SOURCE_NAMES.items() if value == data_source_number][0] 
-    
+        return [key for (key,value) in self.DATA_SOURCE_NAMES.items() if value == data_source_number][0]
+
 
     def init(self):
         """ Initializes the antenna processing chain data source module """
         # Do nothing if the FMC is not present
-        if not self.fpga.FMC_present:
+        if not self.fpga.is_fmc_present_for_channel(self.instance_number):
             self.set_data_source('funcgen') # use the dunction generator if the ADC is not present
         else:
             self.set_data_source('adc') # use the ADC data
 
     def status(self):
         """ Displays the status of the antenna processing chain data source module """
-        print '-------------- ANT[%i].SRCSEL STATUS --------------' % self.instance_number 
+        print '-------------- ANT[%i].SRCSEL STATUS --------------' % self.instance_number
         print ' Data source number: %i' % self.DATA_SOURCE
         print ' Reset states:'
         print '    RST: %s' % bool(self.RST)

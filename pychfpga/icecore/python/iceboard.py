@@ -47,6 +47,8 @@ from icebox import IceBox
 # import arm # object giving access to the ARM firmware
 # import hardware handlers
 
+iceboard_list = {}
+
 class IceBoardException(Exception):
     pass
 
@@ -77,20 +79,6 @@ class IceBoard(HWMResource, AttributeUser):
             'polymorphic_on': 'cls'
     }
 
-    # Set up explicit mezz1 / mezz2 links.
-    mezz1_pk = Column(Integer, ForeignKey('fmc_mezzanines.pk'), index=True)
-    mezz1 = relationship("FMCMezzanine", foreign_keys=[mezz1_pk])
-
-    mezz2_pk = Column(Integer, ForeignKey('fmc_mezzanines.pk'), index=True)
-    mezz2 = relationship("FMCMezzanine", foreign_keys=[mezz2_pk])
-
-    # # Although we've already catalogued the mezz linkages, it's sometimes
-    # # useful to use an array. (For example, it lets us trivially write
-    # # join() calls in HWM queries.)
-    mezz = relationship("FMCMezzanine",
-        uselist=True,
-        primaryjoin="or_(FMCMezzanine.pk==IceBoard.mezz1_pk,FMCMezzanine.pk==IceBoard.mezz2_pk)",
-    )
 
     #--------------------------
     # Define database columns associated with this object (in
@@ -118,7 +106,7 @@ class IceBoard(HWMResource, AttributeUser):
     fpga_serial_number = Column(Integer)
     # fpga_firmware_crc = Column(Integer)
     # fpga_firmware_class = Column(String)
-    interface_ip_addr = Column(String)
+    # interface_ip_addr = Column(String)
 
     fpga_pk = Column(Integer, ForeignKey('fpgafirmware.pk'))
     fpga = relationship("FpgaFirmware", uselist=False, cascade="all, delete, delete-orphan", single_parent=True) # one-to-one relationship with the firmware object. Make sure there is only one firmware object.
@@ -126,12 +114,31 @@ class IceBoard(HWMResource, AttributeUser):
     arm_pk = Column(Integer, ForeignKey('armfirmware.pk'))
     arm = relationship("TuberHWMResource", uselist=False, cascade="all, delete, delete-orphan", single_parent=True) # one-to-one relationship with the firmware object. Make sure there is only one firmware object.
 
-    # ------------------------
-    # Define default non-database variables.
-    # ------------------------
-    # arm = None # object handling the ARM firmware
-    hw = None # Object handling the IceBoard hardware
 
+    # Set up explicit mezz1 / mezz2 links.
+    mezz1_pk = Column(Integer, ForeignKey('fmc_mezzanines.pk'), index=True)
+    mezz1 = relationship("FMCMezzanine", foreign_keys=[mezz1_pk], uselist=False)
+
+    mezz2_pk = Column(Integer, ForeignKey('fmc_mezzanines.pk'), index=True)
+    mezz2 = relationship("FMCMezzanine", foreign_keys=[mezz2_pk], uselist=False)
+
+    # # Although we've already catalogued the mezz linkages, it's sometimes
+    # # useful to use an array. (For example, it lets us trivially write
+    # # join() calls in HWM queries.)
+    mezz = relationship("FMCMezzanine",
+        uselist=True,
+        primaryjoin="or_(FMCMezzanine.pk==IceBoard.mezz1_pk,FMCMezzanine.pk==IceBoard.mezz2_pk)",
+    )
+
+    # ---------------------------------------
+    # Define default non-database variables.
+    # ---------------------------------------
+    # These attributes need to be initialized when an Iceboard object is
+    # created explicitely by the program or implicitely from the database when
+    # the object is accessed.
+
+    hw = None # Object handling the IceBoard hardware
+    fpga_port_number = None
     _self_reference = None # Used to ensure the object stays in memory and to check of the object has been opened
 
     def __init__(self, auto_open=True, **kwargs):
@@ -168,13 +175,13 @@ class IceBoard(HWMResource, AttributeUser):
     # __getattr__ = attribute_publisher.AttributeUser.get_registered_attribute
     # __dir__ = attribute_publisher.AttributeUser.get_dir
     def __getattr__(self,name):
-        self.logger.debug('calling top-level __getattr__(%s) for Iceboard object S/N %03i' % (name, self.serial_number))
+        #self.logger.debug('calling top-level __getattr__(%s) for Iceboard object S/N %03i' % (name, self.serial_number))
         # if not self._self_reference:
         #     self.logger.debug('Automatically opening Iceboard object S/N %03i' % (self.serial_number))
         #     self.open()
         return super(type(self), self).__getattr__(name)
 
-    def open(self, *args, **kwargs):
+    def open(self, forced_mezz_type=None, *args, **kwargs):
         """
         Establishes the connection with the hardware and firmware on the IceBoard and create all appropriate handling classes.
         """
@@ -185,32 +192,41 @@ class IceBoard(HWMResource, AttributeUser):
         # We could skip this phase if we don't want to use the ARM (and the FPGA is programmed by other means)
         # self.arm = TuberHWMResource(self.tuber_uri, self.tuber_objname)
         if self.arm:
+            # We don't need to open an ARM object. Sockets are created on-the-fly when needed.
             self.register(self.arm) # Allow access to the fpga methods/attributes from this class
 
 
-        # Log a warning if no firmware has been associated with the FPGA
         if not self.fpga:
+            # Log a warning if no firmware has been associated with the FPGA
             self.logger.warning('FPGA firmware is not specified for this board. The FPGA-related methods will not be available. Use set_fpga_firmware() to set the firmware to use')
-
-        # Open communication with the FPGA and initialize the core firmware object (but leave the firmware in its current state)
-        # We need this now to create the basic interface that is needed for low-level hardware interface (I2C, buck sync, FMC SPI etc)
-        if self.fpga:
+        else:
+            # Open communication with the FPGA and initialize the core
+            # firmware object (but leave the firmware in its current state) We
+            # need this now to create the basic interface that is needed for
+            # low-level hardware interface (I2C, buck sync, FMC SPI etc)
             self.logger.info('Instantiating core FPGA firmware handlers for board #%i' % (self.serial_number))
-            self.fpga.open_core(ip_addr=self.fpga_ip_addr, port_number=self.fpga_port_number, interface_ip_addr=self.interface_ip_addr, serial_number = self.fpga_serial_number) # open the core functionnalities only for now
+            self.fpga.open_core(ip_addr=self.fpga_ip_addr, port_number=self.fpga_port_number, serial_number = self.fpga_serial_number) # open the core functionnalities only for now
             self.register(self.fpga, self.fpga.get_core_attributes()) # get attributes of the core FPGA firmware only. We'll add the full application-specific attributes later.
 
-        # Instantiate hardware managers.
-        # This requires an I2C link to the hardware (i2c_write_read() and i2c_set_port()), which should be provided either by the ARM or by the FPGA.
+        # Instantiate hardware managers. This requires an I2C link to the
+        # hardware (i2c_write_read() and i2c_set_port()), which should be
+        # provided either by the ARM or by the FPGA.
         self.logger.info('Instantiating IceBoard hardware handlers for board #%i' % (self.serial_number))
         self.hw = IceBoardHardware(iceboard=self)
         self.hw.open()
         self.register(self.hw) # Allow access to the hardware methods/attributes from this class
         self.i2c = self.hw.get_i2c_interface() # get standardized I2C interface that can be used more easily by the user firmware
+        # Read basic backplane information (backplane S/N, slot number) so we
+        # know where this board is in the array
+        self.slot_number = self.get_slot_number() # this method is provided by hw or arm
+        (self.backplane_serial, __) = IceBox.get_backplane_info(iceboard = self)
 
-        # Read basic backplane information (backplane S/N, slot number) so we know where this board is in the array
-        (self.backplane_serial, self.slot_number) = IceBox.get_backplane_info(iceboard=self)
+        # Detect the mezzanines
+        self.detect_mezz(force_type_string=forced_mezz_type)
 
-        # We can now create the full-fledged application-specific FPGA firmware handlers
+        # We can now create the full-fledged application-specific FPGA firmware handlers.
+        # The firmware has access to the methods offered by this iceboard. The following are typically used:
+        #   i2c, mezz
         if self.fpga:
             self.logger.info('Instantiating Application-specific FPGA firmware handlers for board #%i' % (self.serial_number))
             self.unregister(self.fpga)
@@ -221,14 +237,15 @@ class IceBoard(HWMResource, AttributeUser):
 
     def close(self):
 
+        self.unregister_all()
         if self.fpga:
             self.logger.info('Closing application-specific FPGA firmware handlers for board #%i' % (self.serial_number))
-            self.unregister(self.fpga)
+            # self.unregister(self.fpga)
             self.fpga.close()
 
         if self.hw:
             self.logger.info('Closing IceBoard hardware handlers for board #%i' % (self.serial_number))
-            self.unregister(self.hw)
+            # self.unregister(self.hw)
             self.hw.close()
             self.hw = None
 
@@ -238,7 +255,7 @@ class IceBoard(HWMResource, AttributeUser):
 
         if self.arm:
             self.logger.info('Closing core arm firmware handlers for board #%i' % (self.serial_number))
-            self.unregister(self.arm)
+            # self.unregister(self.arm)
             # self.arm.close() # Tuber has no close()
             # self.arm = None
 
@@ -249,10 +266,12 @@ class IceBoard(HWMResource, AttributeUser):
         # get a list of all polymorphic strings of classes derived from FMCMezzanine
         available_mezz_types = {m.polymorphic_identity:m.class_ for m in inspect(FMCMezzanine).polymorphic_map.values()}
 
-        mezz_list = [(0, 'FMCA'), (1, 'FMCB')]
+        mezz_list = enumerate(['FMCA','FMCB'])
 
-        if self.mezz:
-            del self.mezz
+        if self.mezz1:
+            del self.mezz1
+        if self.mezz2:
+            del self.mezz2
 
         for (fmc_number, fmc_name) in mezz_list:
             if force_type_string:
@@ -261,10 +280,13 @@ class IceBoard(HWMResource, AttributeUser):
                 type_string = FMCMezzanine.get_type_string(self.i2c, fmc_name)
 
             if type_string in available_mezz_types:
+                self.logger.info("FMC Mezzanine of type '%s' was detected in FMC slot #%i (%s)" % (type_string, fmc_number, fmc_name))
                 mezz_class = available_mezz_types[type_string]
-                self.mezz[fmc_number] = mezz_class(motherboard=self, fmc_number=fmc_number, fmc_name=fmc_name)
+                setattr(self, 'mezz%i' % (fmc_number+1), mezz_class(motherboard=self, fmc_number=fmc_number, fmc_name=fmc_name))
+            else:
+                self.logger.info("No recognized FMC Mezzanine was found in FMC slot #%i (%s)" % (fmc_number, fmc_name))
 
-    def set_fpga_firmware(self, bitstream_object, firmware_class, configure_fpga = True):
+    def set_fpga_firmware(self, bitstream_object, firmware_class, configure_fpga = True, force=False):
 
         self.close()
 
@@ -275,9 +297,9 @@ class IceBoard(HWMResource, AttributeUser):
 
         # Configure the fpga if we asked for it.
         if configure_fpga:
-            self.configure_fpga()
+            self.configure_fpga(force=force)
 
-    def configure_fpga(self):
+    def configure_fpga(self, force=False):
         """
         Configure the FPGAs on the ICEboard(s) with the specified bitstream.
 
@@ -313,23 +335,23 @@ class IceBoard(HWMResource, AttributeUser):
 
         # First, try to get the FPGA configuration from the FPGA IP address  so we can decide if the FPGA needs reprogramming
         self.logger.info('Checking the FPGA on board S/N %03i configuration' % self.serial_number)
-        (serial, timestamp) = FpgaCoreFirmware.get_fpga_config(interface_ip_addr=self.interface_ip_addr, ip_addr=self.fpga_ip_addr, port_number=self.fpga_port_number)
+        (serial, timestamp) = FpgaCoreFirmware.get_fpga_config(ip_addr=self.fpga_ip_addr, port_number=self.fpga_port_number)
 
-        # if the FPGA did not respond, maybe it is programmed but its IP address is not set.
-        #  So if we know the FPGA serial number, set its IP address and try again
-        if not serial and self.fpga_serial_number:
-            #  blindly attempts to configure the FPGA networking is case its firmware is already loaded. This will allow us to check if the firmware is already loaded.
-            self.logger.info('The FPGA on board S/N %03i did not respond. Attempting to configure its networking parameters' % self.serial_number)
-            FpgaCoreFirmware.set_networking_parameters(serial_number=self.fpga_serial_number, interface_ip_addr=self.interface_ip_addr, ip_addr=self.fpga_ip_addr, port_number=self.fpga_port_number, broadcast_group = 0)
-            self.logger.info('Rechecking the FPGA on board S/N %03i configuration' % self.serial_number)
-            (serial, timestamp) = FpgaCoreFirmware.get_fpga_config(interface_ip_addr=self.interface_ip_addr, ip_addr=self.fpga_ip_addr, port_number=self.fpga_port_number)
-            self.logger.info('The FPGA on board S/N %03i replied with serial=%r, timestamp=%r' % (self.serial_number, serial, timestamp))
+        # # if the FPGA did not respond, maybe it is programmed but its IP address is not set.
+        # #  So if we know the FPGA serial number, set its IP address and try again
+        # if not serial and self.fpga_serial_number:
+        #     #  blindly attempts to configure the FPGA networking is case its firmware is already loaded. This will allow us to check if the firmware is already loaded.
+        #     self.logger.info('The FPGA on board S/N %03i did not respond. Attempting to configure its networking parameters' % self.serial_number)
+        #     FpgaCoreFirmware.set_networking_parameters(serial_number=self.fpga_serial_number, interface_ip_addr=self.interface_ip_addr, ip_addr=self.fpga_ip_addr, port_number=self.fpga_port_number, broadcast_group = 0)
+        #     self.logger.info('Rechecking the FPGA on board S/N %03i configuration' % self.serial_number)
+        #     (serial, timestamp) = FpgaCoreFirmware.get_fpga_config(interface_ip_addr=self.interface_ip_addr, ip_addr=self.fpga_ip_addr, port_number=self.fpga_port_number)
+        #     self.logger.info('The FPGA on board S/N %03i replied with serial=%r, timestamp=%r' % (self.serial_number, serial, timestamp))
 
 
         already_configured = (serial and serial == self.fpga_serial_number)
 
         # Program the FPGA if it did not return the proper config info
-        if not already_configured: # if the FPGA has not replied, we program it
+        if not already_configured or force: # if the FPGA has not replied, we program it
             if not self.arm:
                 raise IceBoardException('The Iceboard does not have an ARM firmware object needed to configure the FPGA')
             self.logger.info('Configuring FPGA on board S/N %i through tuber at  %s' % (self.serial_number, self.arm.tuber_uri))
@@ -338,18 +360,20 @@ class IceBoard(HWMResource, AttributeUser):
             # with TuberHWMResource(self.tuber_uri, self.tuber_objname) as arm:
             self.arm.load_fpga_bitstream(b64_string, md5_string)
             # Configure the FPGA networking foe the freshly programmed firmware
+            self.logger.info('Done configuring FPGA on board S/N %i through tuber at  %s' % (self.serial_number, self.arm.tuber_uri))
 
             if self.fpga_serial_number:
-                self.logger.info('Configuring FPGA networking parameters after reprogramming')
-                FpgaCoreFirmware.set_networking_parameters(serial_number=self.fpga_serial_number, interface_ip_addr=self.interface_ip_addr, ip_addr=self.fpga_ip_addr, port_number=self.fpga_port_number, broadcast_group = 0)
-                # Check if the firmware is now responding with proper configuration info
-                (serial, timestamp) = FpgaCoreFirmware.get_fpga_config(interface_ip_addr=self.interface_ip_addr, ip_addr=self.fpga_ip_addr, port_number=self.fpga_port_number)
+                pass
+                # self.logger.info('Configuring FPGA networking parameters after reprogramming')
+                # FpgaCoreFirmware.set_networking_parameters(serial_number=self.fpga_serial_number, interface_ip_addr=self.interface_ip_addr, ip_addr=self.fpga_ip_addr, port_number=self.fpga_port_number, broadcast_group = 0, check=False)
+                # # Check if the firmware is now responding with proper configuration info
+                # (serial, timestamp) = FpgaCoreFirmware.get_fpga_config(interface_ip_addr=self.interface_ip_addr, ip_addr=self.fpga_ip_addr, port_number=self.fpga_port_number)
 
-                # if the FPGA still does not reply to its assigned address after programming, raise an error
-                if not serial:
-                    raise IceBoardException('Failed to program the FPGA on board S/N %03i. The board did not reply after its IP address was configured.' % (self.serial_number))
-                elif serial != self.fpga_serial_number:
-                    raise IceBoardException('Failed to program the FPGA on board S/N %03i. Expected serial %014X, got %014X' % (self.serial_number, self.fpga_serial_number, serial))
+                # # if the FPGA still does not reply to its assigned address after programming, raise an error
+                # if not serial:
+                #     raise IceBoardException('Failed to program the FPGA on board S/N %03i. The board did not reply after its IP address was configured.' % (self.serial_number))
+                # elif serial != self.fpga_serial_number:
+                #     raise IceBoardException('Failed to program the FPGA on board S/N %03i. Expected serial %014X, got %014X' % (self.serial_number, self.fpga_serial_number, serial))
             else:
                 self.logger.warning('IP address on FPGA on board S/N %i is not set because the FPGA serial number is not known' % (self.serial_number))
         else:
@@ -362,7 +386,7 @@ class IceBoard(HWMResource, AttributeUser):
     def status(self):
         """Displays the status of the motherboard"""
 
-def load(session, filename, interface_ip_addr=None):
+def load(session, filename):
     """
     Adds the Iceboard entries listed in the specified CSV file into the database.
     """
@@ -390,7 +414,6 @@ def load(session, filename, interface_ip_addr=None):
                 ib.fpga_serial_number = fpga_serial_number
                 ib.locked = locked
                 ib.subarray = subarray
-                ib.interface_ip_addr = interface_ip_addr
             else:
                 ib = IceBoard(
                     serial_number=serial_number,
@@ -399,13 +422,12 @@ def load(session, filename, interface_ip_addr=None):
                     fpga_ip_addr=fpga_ip_addr,
                     fpga_serial_number=fpga_serial_number,
                     locked=locked ,
-                    subarray = subarray,
-                    interface_ip_addr = interface_ip_addr)
+                    subarray = subarray)
                 session.add(ib)
     session.flush()
 
 
-def discover(session, timeout, interface_ip_addr=None):
+def discover(session, timeout):
     """
     Update the Iceboard table with the list of available
     Iceboards actually found on the network. 'timout' indicates the time we
@@ -433,12 +455,11 @@ def discover(session, timeout, interface_ip_addr=None):
 
     # Add entries for every new FPGA serial that is not already in the database
     database_serials = dict(iceboards.values(IceBoard.fpga_serial_number, IceBoard.pk)) # get the serial numbers of all known FPGAs
-    serials = FpgaCoreFirmware.discover_fpgas(interface_ip_addr = interface_ip_addr)
+    serials = FpgaCoreFirmware.discover_fpgas()
     for ser in serials:
         if ser not in database_serials:
             ib = IceBoard(
-                fpga_serial_number = int(ser),
-                interface_ip_addr = interface_ip_addr)
+                fpga_serial_number = int(ser))
             session.add(ib)
     session.commit()
 

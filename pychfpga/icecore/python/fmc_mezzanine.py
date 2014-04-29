@@ -37,8 +37,10 @@ class FMCMezzanine(HWMResource):
     cls = Column(String, nullable=False)
     type = Column(String, nullable=False)
     serial = Column(Integer)
-
     revision = Column(Integer)
+
+    class FMCMezzanineException(Exception):
+        pass
 
     @staticmethod
     def get_type_string(i2c, bus_name):
@@ -57,6 +59,22 @@ class FMCMezzanine(HWMResource):
         data = eeprom.read(0, length=1, noerror=True, verbose=1)
         logger.debug("FMC eeprom returned the value: %i", data[0])
         return '0x%02X' % data[0]
+
+    def __init__(self, motherboard, fmc_number, fmc_name, verbose=0):
+        self.logger = logging.getLogger(__name__)
+        self.motherboard = motherboard
+        self.verbose = verbose
+        self.fmc_number = fmc_number
+        self.fmc_name = fmc_name
+
+        # provide access to the resources needed to access the ADC board hardware
+        self.i2c = self.motherboard.i2c # I2C bus
+        # self.spi = self.motherboard.SPI # SPI bus
+
+        self.logger.debug('  - FMC EEPROM')
+        self.eeprom = FMC_EEPROM(self.i2c, self.fmc_name, verbose = verbose)
+        self.eeprom.init()
+
 
     def is_present(self):
         """ returns a boolean indicating whether the ADC board is present"""

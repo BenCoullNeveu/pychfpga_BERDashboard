@@ -58,7 +58,6 @@ import concurrent.futures
 import operator
 import functools
 import logging
-
 from sqlalchemy import create_engine
 from sqlalchemy import Column, Integer, String, ForeignKey, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
@@ -97,8 +96,8 @@ class HWMQuery(Query):
 
         #runner = lambda calls: ( c() for c in calls )
         def runner(calls):
-            logger = logging.getLogger(__name__)
-            logger.debug('Running threads calling %r' % calls)
+            # logger = logging.getLogger(__name__)
+            # logger.debug('Running threads calling %r' % calls)
             return [ c() for c in calls ]
         # Uncomment this line to run single-threaded (debugging only!)
         #return zip(map(runner, calls))

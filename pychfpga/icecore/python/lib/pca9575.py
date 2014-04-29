@@ -21,7 +21,7 @@ class pca9575(object):
     """
     REGISTER_TABLE = {
         'IN0': 0x00, # input port register
-        'IN1': 0x01, 
+        'IN1': 0x01,
         'INVRT0': 0x02,
         'INVRT1': 0x03,
         'BKEN0': 0x04,
@@ -40,7 +40,7 @@ class pca9575(object):
 
     def __init__(self, i2c_interface, address, port = 'GPIO', verbose=0):
         """
-        Creates an object that interfaces the PCS8575 I2C IO Extender. 
+        Creates an object that interfaces the PCS8575 I2C IO Extender.
         Access is done through the I2C object 'i2c_interface' at I2C address 'address' and on port 'port'.
         The i2c interface must provide the following methods:
             set_port()
@@ -55,18 +55,18 @@ class pca9575(object):
         Initialization of PCS8575 I2C IO Extender object
         cfg0_def, cfg1_def sets the default configuration of the I/O pins. By default all pins are inputs.
         """
-        
+
         self.write('CFG0', cfg0_def)
         self.write('CFG1', cfg1_def)
 
     def select(self):
         """
-        Selects the proper I2C port to talk to this device. 
+        Selects the proper I2C port to talk to this device.
         """
         self.i2c.select_bus(self.port)
 
     def write(self, register, value, mask = 0xff, select = True):
-        """ 
+        """
         Writes a byte to the specified register of the IO Expander.
         'register' can be the register address or the register name taken from REGISTER_TABLE.
         The I2C port for this device is set prior to the operation if 'select' is True.
@@ -88,16 +88,16 @@ class pca9575(object):
         self.i2c.write_read(self.address, data=[register, new_value])
 
     def read(self, register, select = True):
-        """ 
+        """
         Read a value to the specified register
         """
         # Convert port name a port address if the name is in the table. Otherwise use the argument as a port address directly.
         if register in self.REGISTER_TABLE:
             register = self.REGISTER_TABLE[register]
-            
+
         if select:
             self.select()
 
-        return self.i2c.write_read(self.address, data=[register], read_length=1)
+        return self.i2c.write_read(self.address, data=[register], read_length=1)[0]
 
 

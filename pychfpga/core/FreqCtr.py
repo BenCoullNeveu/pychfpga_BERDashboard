@@ -1,9 +1,9 @@
 #!/usr/bin/python
 # Disable pylint Line too long (=C0301)
-# pylint: disable=C0301 
+# pylint: disable=C0301
 
 """
-FreqCtr.py module 
+FreqCtr.py module
  Implements the Frequency Counter interface
 
 History:
@@ -91,9 +91,9 @@ class FreqCtr_base(Module_base):
 
 
     def read_frequency(self, port, gate_time=0.01):
-        """ Reads the frequency (in Hz) of the specified frequency counter input port 
+        """ Reads the frequency (in Hz) of the specified frequency counter input port
         """
-        ref_freq = self.fpga.SYSTEM_CLOCK_FREQUENCY
+        ref_freq = self.fpga._SYSTEM_CLOCK_FREQUENCY
         #gate_ctr = np.array([ref_freq*gate_time], np.dtype('>u4'))
         #gate_ctr.dtype = np.uint8
         gate_ctr = int(ref_freq*gate_time)
@@ -104,11 +104,11 @@ class FreqCtr_base(Module_base):
         if type(port) is str:
             port = self.PORTS[port]
         self.SOURCE = port # Sets the signal source to be measured
-        self.START = 0 # Clears the counter       
-        self.START = 1 # starts the frequncy counter       
+        self.START = 0 # Clears the counter
+        self.START = 1 # starts the frequncy counter
         #self.write(0x04, (port << 4) + 0x00) # Reset frequency counter
         #self.write(0x04, (port << 4) + 0x01) # Start frequency counter
-        while not self.DONE: 
+        while not self.DONE:
             pass
         freq = self.FREQ_COUNT
         return freq * 2.0 / gate_time
@@ -125,30 +125,30 @@ class FreqCtr_base(Module_base):
         fan_gate_time = 0.2
         fan_resolution = 2.0 / fan_gate_time
 
-        if fpga.FMC_present[0]:
+        if fpga.is_fmc_present(0):
             fmc_present_string = ''
         else:
             fmc_present_string = ' (ADC board not present)'
 
         PLL_CLK_SRC = fpga.GPIO.CHAN_CLK_SRC
-        ant_clock_source_string = ('ADC','SYSTEM CLOCK')[PLL_CLK_SRC]        
+        ant_clock_source_string = ('ADC','SYSTEM CLOCK')[PLL_CLK_SRC]
 
         print 'System Frequencies:'
-        print '   System clock frequency:      %7.3f MHz' % (self.read_frequency('CLK200', gate_time=gate_time) / 1e6) 
-        print '   CTRL_CLK frequency:        %7.3f MHz' % (self.read_frequency('CTRL_CLK', gate_time=gate_time) / 1e6) 
-        #print '   SYSMON_CLK frequency:      %7.3f MHz' % (self.read_frequency('SYSMON_CLK', gate_time=gate_time) / 1e6) 
-        print '   Channelizer clock frequency: %7.3f MHz (Source= %i (%s))' % (self.read_frequency('ANT_CLK', gate_time=gate_time) / 1e6, PLL_CLK_SRC, ant_clock_source_string) 
-        print '   Correlator frequency:      %7.3f MHz' % (self.read_frequency('CORR_CLK', gate_time=gate_time) / 1e6) 
-        print '   FMC0 Reference frequency:   %7.3f MHz%s' % (self.read_frequency('FMC_REFCLK', gate_time=gate_time) / 1e6, fmc_present_string) 
-        print '   FMC1 Reference frequency:   (data not available)' 
-        print '   GPU link Ref clock frequency:   %7.3f MHz' % (self.read_frequency('GPU_REFCLK', gate_time=gate_time) / 1e6) 
-        print '   GPU link data clock frequency:  %7.3f MHz' % (self.read_frequency('GPU_DATACLK', gate_time=gate_time) / 1e6) 
-        print '   GPU link TX clock frequency:    %7.3f MHz' % (self.read_frequency('GPU_TXCLK', gate_time=gate_time) / 1e6) 
-        # print '   MGT Ref clock frequency:   %7.3f MHz' % (self.read_frequency('MGT_REFCLK', gate_time=gate_time) / 1e6) 
-        # print '   MGT word frequency:        %7.3f MHz' % (self.read_frequency('MGT_USRCLK2', gate_time=gate_time) / 1e6) 
+        print '   System clock frequency:      %7.3f MHz' % (self.read_frequency('CLK200', gate_time=gate_time) / 1e6)
+        print '   CTRL_CLK frequency:        %7.3f MHz' % (self.read_frequency('CTRL_CLK', gate_time=gate_time) / 1e6)
+        #print '   SYSMON_CLK frequency:      %7.3f MHz' % (self.read_frequency('SYSMON_CLK', gate_time=gate_time) / 1e6)
+        print '   Channelizer clock frequency: %7.3f MHz (Source= %i (%s))' % (self.read_frequency('ANT_CLK', gate_time=gate_time) / 1e6, PLL_CLK_SRC, ant_clock_source_string)
+        print '   Correlator frequency:      %7.3f MHz' % (self.read_frequency('CORR_CLK', gate_time=gate_time) / 1e6)
+        print '   FMC0 Reference frequency:   %7.3f MHz%s' % (self.read_frequency('FMC_REFCLK', gate_time=gate_time) / 1e6, fmc_present_string)
+        print '   FMC1 Reference frequency:   (data not available)'
+        print '   GPU link Ref clock frequency:   %7.3f MHz' % (self.read_frequency('GPU_REFCLK', gate_time=gate_time) / 1e6)
+        print '   GPU link data clock frequency:  %7.3f MHz' % (self.read_frequency('GPU_DATACLK', gate_time=gate_time) / 1e6)
+        print '   GPU link TX clock frequency:    %7.3f MHz' % (self.read_frequency('GPU_TXCLK', gate_time=gate_time) / 1e6)
+        # print '   MGT Ref clock frequency:   %7.3f MHz' % (self.read_frequency('MGT_REFCLK', gate_time=gate_time) / 1e6)
+        # print '   MGT word frequency:        %7.3f MHz' % (self.read_frequency('MGT_USRCLK2', gate_time=gate_time) / 1e6)
         for i in range(fpga.NUMBER_OF_ANTENNAS):
-            print '   ADC%i clock frequency:      %7.3f MHz%s' % (i, self.read_frequency('ADC_CLK%i' % i, gate_time=gate_time) / 1e6, fmc_present_string) 
-        print '   Resolution          :    %10.6f MHz' % (resolution / 1e6) 
-        print '   Gate time           :    %.3f s' % (gate_time) 
-        print '   Fan speed:               %7.0f RPM (resolution %.0f RPM)' % (self.read_frequency('FAN', gate_time=fan_gate_time)*60. / 2, fan_resolution*60. / 2) # 1 Hz=60 RPM, divide by 2 because there is 2 pulses per fan turn  
+            print '   ADC%i clock frequency:      %7.3f MHz%s' % (i, self.read_frequency('ADC_CLK%i' % i, gate_time=gate_time) / 1e6, fmc_present_string)
+        print '   Resolution          :    %10.6f MHz' % (resolution / 1e6)
+        print '   Gate time           :    %.3f s' % (gate_time)
+        print '   Fan speed:               %7.0f RPM (resolution %.0f RPM)' % (self.read_frequency('FAN', gate_time=fan_gate_time)*60. / 2, fan_resolution*60. / 2) # 1 Hz=60 RPM, divide by 2 because there is 2 pulses per fan turn
 

@@ -123,10 +123,10 @@ class chFPGA_config(object):
 
 
 class chFPGAException(Exception):
-    logger = logging.getLogger('chFPGAException')
+    _logger = logging.getLogger('chFPGAException')
     def __init__(self, message):
         super(self.__class__, self).__init__(message)
-        self.logger.exception(message)
+        self._logger.exception(message)
 
 
 class chFPGA_controller(FpgaCoreFirmware):
@@ -143,56 +143,56 @@ class chFPGA_controller(FpgaCoreFirmware):
     __mapper_args__ = {'polymorphic_identity': 'chime_fpga_firmware'}
 
     # Basic system constants
-    IMPLEMENT_CORR = False
-    ADC_CLK_SELECT = 1 # Antenna number from which the antenna processing will be clocked. This is hardwired in the firmware (need to use an ADCDAQ with a PLL)
+    _IMPLEMENT_CORR = False
+    _ADC_CLK_SELECT = 1 # Antenna number from which the antenna processing will be clocked. This is hardwired in the firmware (need to use an ADCDAQ with a PLL)
     #SAMPLING_FREQUENCY = 800e6 # in Hz
     #REFERENCE_FREQUENCY = 10e6 # in Hz
-    SYSTEM_CLOCK_FREQUENCY = 200e6 # in Hz
-    FRAME_HEADER_LENGTH = 9
+    _SYSTEM_CLOCK_FREQUENCY = 200e6 # in Hz
+    _FRAME_HEADER_LENGTH = 9
     #FRAME_PERIOD = float(FRAME_LENGTH)/SAMPLING_FREQUENCY
 
     # Set the basic paramaters used to compute the address of each module
-    SYSTEM_BASE_ADDR   = 0x00000 # This is always at zero so we can gather info from the FPGA before we know the number of antennas etc.
-    CHAN_BASE_ADDR     = 0x20000 # Channelizer top address
-    CROSSBAR_BASE_ADDR  = 0x40000 # CROSSBAR top address
-    GPU_LINK_BASE_ADDR = 0x60000 # GPU Link top address
-    CORR_BASE_ADDR     = 0x80000 # Correlator ports are determined dynamically based on the info from the firmware
+    _SYSTEM_BASE_ADDR   = 0x00000 # This is always at zero so we can gather info from the FPGA before we know the number of antennas etc.
+    _CHAN_BASE_ADDR     = 0x20000 # Channelizer top address
+    _CROSSBAR_BASE_ADDR  = 0x40000 # CROSSBAR top address
+    _GPU_LINK_BASE_ADDR = 0x60000 # GPU Link top address
+    _CORR_BASE_ADDR     = 0x80000 # Correlator ports are determined dynamically based on the info from the firmware
     #MGT_PORT = NUMBER_OF_ANTENNAS+2 -- for future use, if needed
 
-    CHAN_ADDR_INCREMENT           = 0x02000 # Address increment between each channelizer address spaces
-    CROSSBAR_ADDR_INCREMENT        = 0x02000
-    GPU_LINK_ADDR_INCREMENT       = 0x02000 # Address increment between each subsystem of the GPU links
-    CORR_ADDR_INCREMENT           = 0x02000 # Address increment between each correlator
+    _CHAN_ADDR_INCREMENT           = 0x02000 # Address increment between each channelizer address spaces
+    _CROSSBAR_ADDR_INCREMENT        = 0x02000
+    _GPU_LINK_ADDR_INCREMENT       = 0x02000 # Address increment between each subsystem of the GPU links
+    _CORR_ADDR_INCREMENT           = 0x02000 # Address increment between each correlator
 
     # Build the memory map for every module of the system ( work in progress)
-    MEMORY_MAP = {}
-    MEMORY_MAP.update( ('SYSTEM/%s' % (module_name)                , 0x00000 + i * 0x02000                           ) for (i, module_name) in enumerate(['GPIO', 'SYSMON', 'FREQ_CTR', 'SPI', 'REFCLK', 'I2C']))
-    MEMORY_MAP.update( ('CHAN%i/%s' % (channel_number, module_name), 0x20000 + channel_number * 0x02000 + module_number * 0x00400) for (module_number, module_name) in enumerate(['ADCDAQ','SRCSEL','FFT', 'SCALER', 'PROBER', 'FUNCGEN', 'INJECT']) for channel_number in range(16))
+    # MEMORY_MAP = {}
+    # MEMORY_MAP.update( ('SYSTEM/%s' % (module_name)                , 0x00000 + i * 0x02000                           ) for (i, module_name) in enumerate(['GPIO', 'SYSMON', 'FREQ_CTR', 'SPI', 'REFCLK', 'I2C']))
+    # MEMORY_MAP.update( ('CHAN%i/%s' % (channel_number, module_name), 0x20000 + channel_number * 0x02000 + module_number * 0x00400) for (module_number, module_name) in enumerate(['ADCDAQ','SRCSEL','FFT', 'SCALER', 'PROBER', 'FUNCGEN', 'INJECT']) for channel_number in range(16))
 
 
     # SYSTEM Modules addresses
-    SYSTEM_GPIO_BASE_ADDR     = SYSTEM_BASE_ADDR + 0x00000
-    SYSTEM_SYSMON_BASE_ADDR   = SYSTEM_BASE_ADDR + 0x02000
-    SYSTEM_FREQ_CTR_BASE_ADDR = SYSTEM_BASE_ADDR + 0x04000
-    SYSTEM_SPI_BASE_ADDR      = SYSTEM_BASE_ADDR + 0x06000
-    SYSTEM_REFCLK_BASE_ADDR   = SYSTEM_BASE_ADDR + 0x08000
-    SYSTEM_I2C_BASE_ADDR      = SYSTEM_BASE_ADDR + 0x0A000
+    _SYSTEM_GPIO_BASE_ADDR     = _SYSTEM_BASE_ADDR + 0x00000
+    _SYSTEM_SYSMON_BASE_ADDR   = _SYSTEM_BASE_ADDR + 0x02000
+    _SYSTEM_FREQ_CTR_BASE_ADDR = _SYSTEM_BASE_ADDR + 0x04000
+    _SYSTEM_SPI_BASE_ADDR      = _SYSTEM_BASE_ADDR + 0x06000
+    _SYSTEM_REFCLK_BASE_ADDR   = _SYSTEM_BASE_ADDR + 0x08000
+    # SYSTEM_I2C_BASE_ADDR      = _SYSTEM_BASE_ADDR + 0x0A000
 
-    GPIO_COOKIE_REG = 0x080 # Register address of the firmware cookie
-    GPIO_IPCONFIG_REG = 0x08D # Register address of the first byte of the IP config word
-    CHFPGA_COOKIE = 0x42 # Expected cookie value for chFPGA
+    _GPIO_COOKIE_REG = 0x080 # Register address of the firmware cookie
+    _GPIO_IPCONFIG_REG = 0x08D # Register address of the first byte of the IP config word
+    _CHFPGA_COOKIE = 0x42 # Expected cookie value for chFPGA
 
-    PLATFORM_ID_ML605 = 0
-    PLATFORM_ID_KC705 = 1
-    PLATFORM_ID_MGK7MB_REV0 = 2
-    PLATFORM_ID_MGK7MB_REV2 = 3
+    _PLATFORM_ID_ML605 = 0
+    _PLATFORM_ID_KC705 = 1
+    _PLATFORM_ID_MGK7MB_REV0 = 2
+    _PLATFORM_ID_MGK7MB_REV2 = 3
 
-    PLATFORM_ID_LIST = {
+    _PLATFORM_ID_LIST = {
         # ID: ( Board name, class to instantiate)
-        PLATFORM_ID_ML605: ('Virtex 6 (XC6V240T-1 FFG1156) on Xilinx ML605 Evaluation board', None),
-        PLATFORM_ID_KC705: ('Kintex 7 (XC7K325T-2 FFG900C) on Xilinx KC705 Evaluation board', None),
-        PLATFORM_ID_MGK7MB_REV0: ('Kintex 7 (XC7K420T-2 FFG901) on McGill MGK7MB / ICEBoard Rev0', None),
-        PLATFORM_ID_MGK7MB_REV2: ('Kintex 7 (XC7K420T-2 FFG901) on McGill MGK7MB / ICEBoard Rev2', None),
+        _PLATFORM_ID_ML605: ('Virtex 6 (XC6V240T-1 FFG1156) on Xilinx ML605 Evaluation board', None),
+        _PLATFORM_ID_KC705: ('Kintex 7 (XC7K325T-2 FFG900C) on Xilinx KC705 Evaluation board', None),
+        _PLATFORM_ID_MGK7MB_REV0: ('Kintex 7 (XC7K420T-2 FFG901) on McGill MGK7MB / ICEBoard Rev0', None),
+        _PLATFORM_ID_MGK7MB_REV2: ('Kintex 7 (XC7K420T-2 FFG901) on McGill MGK7MB / ICEBoard Rev2', None),
     }
 
 
@@ -211,28 +211,28 @@ class chFPGA_controller(FpgaCoreFirmware):
         # Initialize instance attributes
         # For now, we do not know their values unless the system is initialized.
         # We may want to fix that by reading the FPGA states and determining those values.
-        self.motherboard = motherboard
+        self._motherboard = motherboard
         self._self_reference = self # hack to make sure motherboard still exist
 
-        self.sampling_frequency = None
-        self.reference_frequency = None
-        self.FRAME_PERIOD = None
-        self.FMC_present = []  # indicates if the FMC board is present. If not, the modules will act accordingly.
+        self._sampling_frequency = None
+        self._reference_frequency = None
+        self._FRAME_PERIOD = None
+        self._FMC_present = []  # indicates if the FMC board is present. If not, the modules will act accordingly.
         # self.ip_address = ip_address # store the IP address so we can use it to delete the shared_variable
         # self.port_number = port_number
 
-        self.log = logging.getLogger(__name__)
+        self._logger = logging.getLogger(__name__)
 
-        self.adc_board = []
+        self._adc_board = []
         # self.fpga = None
-        self.last_init_time = None
-        self.log.info("Creating chfpga_controller object ")
+        self._last_init_time = None
+        self._logger.info("Creating chfpga_controller object as %r" % (self))
 
-        # self.log.info("=== Opening control communication sockets to FPGA at %s:%i." % (ip_address, port_number))
+        # self._logger.info("=== Opening control communication sockets to FPGA at %s:%i." % (ip_address, port_number))
 
         # # Close the socket open by a previous instance
         # if ip_address in Shared_variables.controller_sock:
-        #     self.log.info('   Closing the socket open in a previous instance ' +
+        #     self._logger.info('   Closing the socket open in a previous instance ' +
         #                   'for IP address %s' % ip_address)
         #     Shared_variables.controller_sock[ip_address].close()
         #     del Shared_variables.controller_sock[ip_address]
@@ -242,8 +242,8 @@ class chFPGA_controller(FpgaCoreFirmware):
         # # ip_bytes = socket.inet_aton(ip_address) # converts the IP address as a string of 4 bytes
         # # ip_word = struct.unpack('>L', ip_bytes)[0] # convert IP into a 32 bit word
         # # ipconfig_word = np.uint32( ((ip_word & 0xFFFF) << 16) | (port_number & 0xFFFF) )
-        # # self.log.info('Setting IPCONFIG word to 0x%08X' % ipconfig_word)
-        # # self.write(self.SYSTEM_PORT, self.SYSTEM_GPIO_MODULE, self.GPIO_IPCONFIG_REG, ipconfig_word)
+        # # self._logger.info('Setting IPCONFIG word to 0x%08X' % ipconfig_word)
+        # # self.write(self.SYSTEM_PORT, self.SYSTEM_GPIO_MODULE, self._GPIO_IPCONFIG_REG, ipconfig_word)
         # # self.fpga.close()
 
 
@@ -257,38 +257,38 @@ class chFPGA_controller(FpgaCoreFirmware):
     def open(self, init=1, verbose=0, **kwargs):
 
         # super(type(self), self).open()
-        # self.mmi = self.motherboard.fpga_core.mmi
-        self.log = logging.getLogger(__name__)
+        # self.mmi = self._motherboard.fpga_core.mmi
+        self._logger = logging.getLogger(__name__)
 
         self.read = self.mmi.read
         self.write = self.mmi.write
 
         if init < 0: # If init<0, we do not perform any communication with the FPGA, so we don't read the firmware configuration
-            self.log.info('Upon user request (init < 0), communication with the FPGA are inhibited. Initialization sequence stops here. Use this for debug only.')
+            self._logger.info('Upon user request (init < 0), communication with the FPGA are inhibited. Initialization sequence stops here. Use this for debug only.')
             return
 
-        self.log.info("   Attempting to communicate with the FPGA")
+        self._logger.info("   Attempting to communicate with the FPGA")
 
         #self.fpga.open(fpga_serial_number, ) # Open communication socket with the fpga with specified serial number and assign it the specified ip
 
         # self.fpga.open() # Open communication socket with the fpga
 
         try:
-            cookie = self.read(self.SYSTEM_GPIO_BASE_ADDR + self.GPIO_COOKIE_REG) # Read anything from the GPIO subsystem (which is always present on all versions of the FPGA)
+            cookie = self.read(self._SYSTEM_GPIO_BASE_ADDR + self._GPIO_COOKIE_REG) # Read anything from the GPIO subsystem (which is always present on all versions of the FPGA)
         except Exception as e:
             error_message = "   Unable to communicate with the FPGA at address %s:%i due to the following exception: %s" % (self.ip_addr, self.port_number, repr(e))
             self.close()
             raise chFPGAException(error_message)
 
-        self.log.info("   Contact with the FPGA established")
+        self._logger.info("   Contact with the FPGA established")
 
-        if cookie != self.CHFPGA_COOKIE:
-            error_message = '   The firmware at %s:%i is not chFPGA. The magic cookie returned by the FPGA is 0x%02X, whereas we expected 0x%02X' % (self.ip_addr, self.port_number, cookie, self.CHFPGA_COOKIE)
-            self.log.error(error_message)
+        if cookie != self._CHFPGA_COOKIE:
+            error_message = '   The firmware at %s:%i is not chFPGA. The magic cookie returned by the FPGA is 0x%02X, whereas we expected 0x%02X' % (self.ip_addr, self.port_number, cookie, self._CHFPGA_COOKIE)
+            self._logger.error(error_message)
             self.close()
             raise chFPGAException(error_message)
 
-        self.log.info('   ---> Hello! This is chFPGA! <---')
+        self._logger.info('   ---> Hello! This is chFPGA! <---')
 
 
 
@@ -302,20 +302,20 @@ class chFPGA_controller(FpgaCoreFirmware):
             # -- Create basic FPGA ressource handlers objects
             # ---------------------------------------------------------------------
 
-            if verbose >= 2: self.log.debug('=== Instantiating GPIO')
-            self.GPIO = GPIO.GPIO_base(self, self.SYSTEM_GPIO_BASE_ADDR)
+            if verbose >= 2: self._logger.debug('=== Instantiating GPIO')
+            self.GPIO = GPIO.GPIO_base(self, self._SYSTEM_GPIO_BASE_ADDR)
             # get system constants from the FPGA
 
-            self.log.info('=== Getting board info information')
+            self._logger.info('=== Getting board info information')
 
             self.PLATFORM_ID = self.GPIO.PLATFORM_ID
-            if self.PLATFORM_ID not in self.PLATFORM_ID_LIST:
+            if self.PLATFORM_ID not in self._PLATFORM_ID_LIST:
                 raise chFPGAException('Platform ID 0x%02X is not recognized' % self.PLATFORM_ID)
             self._NUMBER_OF_FMC_SLOTS = 2
 
             # Get frame size info
-            self.LOG2_FRAME_LENGTH = self.GPIO.LOG2_FRAME_LENGTH
-            self.FRAME_LENGTH = 2**self.LOG2_FRAME_LENGTH # 2**11 = 2048 time samples per frame
+            self._LOG2_FRAME_LENGTH = self.GPIO.LOG2_FRAME_LENGTH
+            self.FRAME_LENGTH = 2**self._LOG2_FRAME_LENGTH # 2**11 = 2048 time samples per frame
             self.NUMBER_OF_FREQUENCY_BINS = self.FRAME_LENGTH/2 # 1024 frequency bins per frame
 
             # Identify the number of channelizers and their properties
@@ -337,7 +337,7 @@ class chFPGA_controller(FpgaCoreFirmware):
             # Get correlator info and their properties
             self.NUMBER_OF_CORRELATORS_MAX = self.GPIO.NUMBER_OF_CORRELATORS
             self.NUMBER_OF_CORRELATORS = self.GPIO.NUMBER_OF_CORRELATORS
-            #self.LIST_OF_IMPLEMENTED_CORRELATORS = [i for i in range(8) if bool(self.GPIO.IMPLEMENT_CORR & 2**i) and i<self.NUMBER_OF_CORRELATORS_MAX]
+            #self.LIST_OF_IMPLEMENTED_CORRELATORS = [i for i in range(8) if bool(self.GPIO._IMPLEMENT_CORR & 2**i) and i<self.NUMBER_OF_CORRELATORS_MAX]
             self.LIST_OF_IMPLEMENTED_CORRELATORS = range(self.NUMBER_OF_CORRELATORS)
 #            self.NUMBER_OF_CORRELATORS = len(self.LIST_OF_IMPLEMENTED_CORRELATORS)
             self.NUMBER_OF_ANTENNAS_TO_CORRELATE = self.GPIO.NUMBER_OF_CHANNELIZERS_TO_CORRELATE
@@ -353,13 +353,13 @@ class chFPGA_controller(FpgaCoreFirmware):
             #self.LIST_OF_ANTENNAS_WITH_FFT = [i for i in range(8) if bool(self.GPIO.IMPLEMENT_FFT & 2**i)]
 
 
-            self.log.info('   Hardware platform: %s' % self.PLATFORM_ID_LIST[self.PLATFORM_ID][0])
-            self.log.info('   Firmware timestamp: %s' % self.get_version())
-            self.log.info('   Number of channelizers: %i' %  self.NUMBER_OF_ANTENNAS)
-            self.log.info('   Number of channelizers with FFT: %i (antennas %s)' % (len(self.LIST_OF_ANTENNAS_WITH_FFT), str(self.LIST_OF_ANTENNAS_WITH_FFT)))
-            self.log.info('   Crossbar configuration: %i inputs x %i outputs' % (self.NUMBER_OF_CROSSBAR_INPUTS, self.NUMBER_OF_CROSSBAR_OUTPUTS))
-            self.log.info('   Number of correlators: %i (correlators %s)' % (len(self.LIST_OF_IMPLEMENTED_CORRELATORS),str(self.LIST_OF_IMPLEMENTED_CORRELATORS)))
-            self.log.info('   Number of channelizers supported by the correlators: %i ' % (self.NUMBER_OF_ANTENNAS_TO_CORRELATE))
+            self._logger.info('   Hardware platform: %s' % self._PLATFORM_ID_LIST[self.PLATFORM_ID][0])
+            self._logger.info('   Firmware timestamp: %s' % self.get_version())
+            self._logger.info('   Number of channelizers: %i' %  self.NUMBER_OF_ANTENNAS)
+            self._logger.info('   Number of channelizers with FFT: %i (antennas %s)' % (len(self.LIST_OF_ANTENNAS_WITH_FFT), str(self.LIST_OF_ANTENNAS_WITH_FFT)))
+            self._logger.info('   Crossbar configuration: %i inputs x %i outputs' % (self.NUMBER_OF_CROSSBAR_INPUTS, self.NUMBER_OF_CROSSBAR_OUTPUTS))
+            self._logger.info('   Number of correlators: %i (correlators %s)' % (len(self.LIST_OF_IMPLEMENTED_CORRELATORS),str(self.LIST_OF_IMPLEMENTED_CORRELATORS)))
+            self._logger.info('   Number of channelizers supported by the correlators: %i ' % (self.NUMBER_OF_ANTENNAS_TO_CORRELATE))
 
         # version = self.fpga.read(BASE_REGISTERS_BASE_ADDR + BASE_VERSION_REG)
         # firmware_timestamp = self.get_bitstream_timestamp()
@@ -382,79 +382,86 @@ class chFPGA_controller(FpgaCoreFirmware):
         # print '   Number of frequency channels per SQUID channel: %i' % self.NUMBER_OF_FREQUENCY_CHANNELS_PER_SQUID_CHANNEL
         # print '   Number of SQUID controllers supported: %i' % self.NUMBER_OF_SQUID_CONTROLLERS
 
-            self.log.info('=== Instantiating FPGA ressources')
+            self._logger.info('=== Instantiating FPGA ressources')
 
-            # self.log.debug('=== Instantiating I2C')
+            # self._logger.debug('=== Instantiating I2C')
             # self.fpga_I2C = I2C.I2C_base(self, self.SYSTEM_I2C_BASE_ADDR)
-            self.fpga_I2C = self.motherboard.i2c
+            #self.fpga_I2C = self._motherboard.i2c
 
-            self.log.debug('=== Instantiating SYSMON')
-            self.SYSMON = SYSMON.SYSMON_base(self, self.SYSTEM_SYSMON_BASE_ADDR)
+            self._logger.debug('=== Instantiating SYSMON')
+            self.SYSMON = SYSMON.SYSMON_base(self, self._SYSTEM_SYSMON_BASE_ADDR)
 
-            self.log.debug('=== Instantiating SPI')
-            self.SPI = SPI.SPI_base(self, self.SYSTEM_SPI_BASE_ADDR)
+            self._logger.debug('=== Instantiating SPI')
+            self.SPI = SPI.SPI_base(self, self._SYSTEM_SPI_BASE_ADDR)
 
-            self.log.debug('=== Instantiating FreqCtr')
-            self.FreqCtr = FreqCtr.FreqCtr_base(self, self.SYSTEM_FREQ_CTR_BASE_ADDR)
+            self._logger.debug('=== Instantiating FreqCtr')
+            self.FreqCtr = FreqCtr.FreqCtr_base(self, self._SYSTEM_FREQ_CTR_BASE_ADDR)
 
-            self.log.debug('=== Instantiating REFCLK')
-            self.REFCLK = REFCLK.REFCLK_base(self, self.SYSTEM_REFCLK_BASE_ADDR)
+            self._logger.debug('=== Instantiating REFCLK')
+            self.REFCLK = REFCLK.REFCLK_base(self, self._SYSTEM_REFCLK_BASE_ADDR)
 
-            self.log.debug('=== Instantiating CHAN')
-            self.ANT = ANT.ANT_base(self, self.CHAN_BASE_ADDR, self.CHAN_ADDR_INCREMENT) # Antenna processors (ADCDAQ, SRCSEL, FFT, SCALER) for each input
+            self._logger.debug('=== Instantiating CHAN')
+            self.ANT = ANT.ANT_base(self, self._CHAN_BASE_ADDR, self._CHAN_ADDR_INCREMENT) # Antenna processors (ADCDAQ, SRCSEL, FFT, SCALER) for each input
             self.ANT_FMC_NUMBER = [i//8 for i in range(self.NUMBER_OF_ANTENNAS)]
 
-            self.log.debug('=== Instantiating CROSSBAR')
-            self.CROSSBAR = CROSSBAR.CROSSBAR_base(self, self.CROSSBAR_BASE_ADDR, self.CROSSBAR_ADDR_INCREMENT) # CROSSBAR block
+            self._logger.debug('=== Instantiating CROSSBAR')
+            self.CROSSBAR = CROSSBAR.CROSSBAR_base(self, self._CROSSBAR_BASE_ADDR, self._CROSSBAR_ADDR_INCREMENT) # CROSSBAR block
 
-            self.log.debug('=== Instantiating CORR')
-            self.CORR = CORR_BLOCK.CORR_BLOCK_base(self, self.CORR_BASE_ADDR, self.CORR_ADDR_INCREMENT) # Correlator (XMUL, ACC) for each correlator
+            self._logger.debug('=== Instantiating CORR')
+            self.CORR = CORR_BLOCK.CORR_BLOCK_base(self, self._CORR_BASE_ADDR, self._CORR_ADDR_INCREMENT) # Correlator (XMUL, ACC) for each correlator
 
-            self.log.debug('=== Instantiating GPU LINKS')
-            self.GPU = GPU.GPU_base(self, self.GPU_LINK_BASE_ADDR, self.GPU_LINK_ADDR_INCREMENT)
+            self._logger.debug('=== Instantiating GPU LINKS')
+            self.GPU = GPU.GPU_base(self, self._GPU_LINK_BASE_ADDR, self._GPU_LINK_ADDR_INCREMENT)
 
             # Now that the firmware ressources are initialized, print more configuration info that requires access to these ressources
-            # self.log.debug('      Data width is currently (Re+Im) = (%i+%i) bits (it might change later during initialization)' % (self.get_data_width(),self.get_data_width()))
+            # self._logger.debug('      Data width is currently (Re+Im) = (%i+%i) bits (it might change later during initialization)' % (self.get_data_width(),self.get_data_width()))
 
             # ---------------------------------------------------------------------
             # -- Create motherboard ressource handlers objects
             # ---------------------------------------------------------------------
 
-            # self.log.info('=== Instantiating motherboard ressources handlers')
-            # motherboard_cls = self.PLATFORM_ID_LIST[self.PLATFORM_ID][1]
-            # self.motherboard = motherboard_cls(self) # Creates the motherboard handler
+            # self._logger.info('=== Instantiating motherboard ressources handlers')
+            # motherboard_cls = self._PLATFORM_ID_LIST[self.PLATFORM_ID][1]
+            # self._motherboard = motherboard_cls(self) # Creates the motherboard handler
 
-            # self._NUMBER_OF_FMC_SLOTS = self.motherboard.get_number_of_fmc_slots()
-            self.log.info('   This motherboard has %i FMC slots' % self.motherboard.NUMBER_OF_FMC_SLOTS)
+            # self._NUMBER_OF_FMC_SLOTS = self._motherboard.get_number_of_fmc_slots()
+            self._logger.info('   This motherboard has %i FMC slots' % self._motherboard.NUMBER_OF_FMC_SLOTS)
             #return
-            # self.log.debug('  - ML605 PMBus')
+            # self._logger.debug('  - ML605 PMBus')
             # self.ML605_PMBus = ML605_PMBus.ML605_PMBus_base(self)
 
-            # self.log.debug('  - ML605 PMBus')
+            # self._logger.debug('  - ML605 PMBus')
             # self.LCD = ML605_LCD.LCD_base(self.GPIO)
 
-            #if verbose>=2: self.log.debug('  - MGT')
+            #if verbose>=2: self._logger.debug('  - MGT')
             #self.MGT=MGT.MGT_base(self)
 
 
             # ---------------------------------------------------------------------
             # -- Create ADC board hardware ressource handlers objects
             # ---------------------------------------------------------------------
-            self.log.info('=== Instantiating FMC ressource handlers')
-            for fmc_number in range(self._NUMBER_OF_FMC_SLOTS):
-                fmc_name = ['FMCA', 'FMCB'][fmc_number]
-                self.log.debug('   Instantiating FMC #%i (%s)' % (fmc_number, fmc_name))
-                self.adc_board.append(MGADC08.MGADC08_base(self, fmc_number, fmc_name, verbose = verbose))
-                # Determine if the ADC board is present
-                # The 3.3V supply powering the EEPROM is always on, so we can determing what FMC board is present before we power the board
-                self.FMC_present.append(self.adc_board[fmc_number].is_present())
-                if self.FMC_present[fmc_number]:
-                    self.log.info('   An MGADC08 ADC Board is present on FMC slot %i' % (fmc_number))
+            self._logger.info('=== Analyzing available FMC Mezzanines')
+            self._adc_board = [self._motherboard.mezz1, self._motherboard.mezz2]
+            self._FMC_present = [False] * self._NUMBER_OF_FMC_SLOTS
+            self.ANT_FMC_IS_PRESENT = [False] * self.NUMBER_OF_ANTENNAS
+            for (fmc_number, fmc) in enumerate(self._adc_board):
+                # fmc_name = ['FMCA', 'FMCB'][fmc_number]
+                # self._logger.debug('   Instantiating FMC #%i (%s)' % (fmc_number, fmc_name))
+                # self._adc_board.append(MGADC08.MGADC08_base(self, fmc_number, fmc_name, verbose = verbose))
+                # # Determine if the ADC board is present
+                # # The 3.3V supply powering the EEPROM is always on, so we can determing what FMC board is present before we power the board
+                if fmc:
+                    self._FMC_present[fmc_number]= fmc.is_present()
+                if self._FMC_present[fmc_number]:
+                    self._logger.info('   An MGADC08 ADC Board is present on FMC slot %i' % (fmc_number))
                 else:
-                    self.log.warning('   An MGADC08 ADC Board is *not* present of FMC slot %i' % fmc_number)
+                    self._logger.warning('   An MGADC08 ADC Board is *not* present of FMC slot %i' % fmc_number)
 
             # Determine if the FMC board corresponding to each channelizer is present
-            self.ANT_FMC_IS_PRESENT = [self.adc_board[self.ANT_FMC_NUMBER[i]].is_present() for i in range(self.NUMBER_OF_ANTENNAS)]
+            # self.ANT_FMC_IS_PRESENT = [self._adc_board[self.ANT_FMC_NUMBER[i]].is_present() for i in range(self.NUMBER_OF_ANTENNAS)]
+            for (ant_number, fmc_number) in enumerate(self.ANT_FMC_NUMBER):
+                if self._adc_board[fmc_number]:
+                    self.ANT_FMC_IS_PRESENT[ant_number] = self._adc_board[fmc_number].is_present()
 
         except Exception as e:
             self.close()
@@ -468,19 +475,26 @@ class chFPGA_controller(FpgaCoreFirmware):
                 self.close()
                 raise chFPGAException('An exception has occured during module initialization. Sockets will be closed. The exception is %s' % repr(e))
 
+    def is_fmc_present_for_channel(self, channel_number):
+        return self.ANT_FMC_IS_PRESENT[channel_number]
+
+    def is_fmc_present(self, slot_number):
+        return self._FMC_present[slot_number]
+
     def close(self):
         """
         Close chFPGA object
         """
-        pass
-    #     self.fpga.close()
-    #     # if self.ip_address in Shared_variables.controller_sock:
-    #     #     del Shared_variables.controller_sock[self.ip_address]
+        # Close FMC boards
 
+        while getattr(self,'adc_board',None):
+            fmc=self._adc_board.pop()
+            if hasattr(fmc, 'close'):
+                fmc.close()
     # def __del__(self):
 
     #     self.close()
-    #     self.log.debug('__del__: Closed FPGA at IP address %s' % self.ip_addr)
+    #     self._logger.debug('__del__: Closed FPGA at IP address %s' % self.ip_addr)
 
     def init(self, sampling_frequency=800e6, reference_frequency=10e6, adc_delay_table=None, data_width=4, group_frames = 4, enable_gpu_link =1, verbose=0, **kwargs):
         """
@@ -489,15 +503,15 @@ class chFPGA_controller(FpgaCoreFirmware):
 
 
         for (key,value) in kwargs.items():
-            self.log.warning('Unknown arguments %s=%s. Ignoring.' % (key, repr(value)))
+            self._logger.warning('Unknown arguments %s=%s. Ignoring.' % (key, repr(value)))
 
-        self.sampling_frequency = sampling_frequency
+        self._sampling_frequency = sampling_frequency
         self.reference_frequency = reference_frequency
-        self.FRAME_PERIOD = float(self.FRAME_LENGTH)/self.sampling_frequency
+        self._FRAME_PERIOD = float(self.FRAME_LENGTH)/self._sampling_frequency
 
-        self.log.info('--- Initializing FPGA ressources')
+        self._logger.info('--- Initializing FPGA ressources')
 
-        self.log.debug('--- Initializing GPIO')
+        self._logger.debug('--- Initializing GPIO')
         self.GPIO.init() # This stops the antenna procesors from sending data. Neeeded if the FPGA is flooding the buffers which prevent subsequent reads to come through
         self.GPIO.BUCK_PHASE=0xfedcba9876543210 # debug
         #self.fpga.flush_data_socket() # Now the the data stops coming, flush the buffers
@@ -506,15 +520,15 @@ class chFPGA_controller(FpgaCoreFirmware):
             self.GPIO.status()
 
 
-        # self.log.debug('--- Initializing I2C')
+        # self._logger.debug('--- Initializing I2C')
         # self.fpga_I2C.init()
 
-        # if verbose >= 2: self.log.debug('--- Initializing ML605 LCD')
+        # if verbose >= 2: self._logger.debug('--- Initializing ML605 LCD')
         # self.LCD.init()
         # self.LCD.write('CHIME FW Version', col=0, row=0)
         # self.LCD.write('%s' % self.GPIO.get_bitstream_date(), col=0, row=1)
 
-        # if verbose >= 2: self.log.debug('--- Initializing ML605 PMBus')
+        # if verbose >= 2: self._logger.debug('--- Initializing ML605 PMBus')
         # self.ML605_PMBus.init()
         # if verbose >= 2: self.ML605_PMBus.status()
 
@@ -522,101 +536,99 @@ class chFPGA_controller(FpgaCoreFirmware):
 
          # Module depend on the FMC_present flag after this point
 
-        self.log.debug('--- Initializing REFCLK')
+        self._logger.debug('--- Initializing REFCLK')
         self.REFCLK.init()
         self.REFCLK.status()
 
         #Only do for ML605, not KC705 board
-        self.log.debug('--- Initializing SYSMON')
+        self._logger.debug('--- Initializing SYSMON')
         self.SYSMON.init()
         self.SYSMON.status()
 
-        self.log.debug('--- Initializing SPI')
+        self._logger.debug('--- Initializing SPI')
         self.SPI.init()
         self.SPI.status()
 
-        self.log.info('--- Initializing FMC slots')
+        self._logger.info('--- Initializing FMC slots')
 
-        for fmc in self.adc_board:
-            if fmc.is_present():
-                self.log.debug('   Powering up FMC%i', fmc.fmc_number)
+        for (fmc_number, fmc) in enumerate(self._adc_board):
+            if fmc and fmc.is_present():
+                self._logger.debug('   Powering up FMC%i', fmc_number)
                 fmc.set_power(True)
                 time.sleep(0.2) # Give it some time for the power to stabilize
                 # We need to initialize the ADC board befor we initialize ANT (and its data acquisition) because the delay blocks need a clock
-                self.log.debug('   Initializing FMC%i', fmc.fmc_number)
+                self._logger.debug('   Initializing FMC%i', fmc_number)
                 fmc.init(sampling_frequency = sampling_frequency, reference_frequency=reference_frequency)
                 fmc.status()
             else:
-                self.log.debug('   Skipping FMC%i initialization since no board is present in that slot', fmc.fmc_number)
+                self._logger.debug('   Skipping FMC%i initialization since no board is present in that slot', fmc_number)
 
         self.sync() # might be needed  to make sure that the clock is running to set delays
 
 
-#        self.FMC_present = self.adc_board[0].is_present()
-        self.log.debug('=== Initializing Channelizers')
+#        self._FMC_present = self._adc_board[0].is_present()
+        self._logger.debug('=== Initializing Channelizers')
         self.ANT.init(delay_table=adc_delay_table, fmc_present = self.ANT_FMC_IS_PRESENT)
         self.ANT.status()
 
-        self.log.debug('=== Initializing Crossbar')
+        self._logger.debug('=== Initializing Crossbar')
         if self.NUMBER_OF_CROSSBAR_OUTPUTS>0:
-            self.log.debug('  - CROSSBAR')
+            self._logger.debug('  - CROSSBAR')
             self.CROSSBAR.init()
             self.CROSSBAR.status()
         else:
-            self.log.warning("There are no CROSSBAR blocks in this firmware build (so there can't be data streamed to the correlators or GPU links!)");
+            self._logger.warning("There are no CROSSBAR blocks in this firmware build (so there can't be data streamed to the correlators or GPU links!)");
 
-        self.log.debug('=== Initializing FPGA correlators')
+        self._logger.debug('=== Initializing FPGA correlators')
         if self.NUMBER_OF_CORRELATORS>0:
-            self.log.debug('  - CORR')
+            self._logger.debug('  - CORR')
             self.CORR.init()
             self.CORR.status()
         else:
-            self.log.info('There are no FPGA correlators in this firmware build');
+            self._logger.info('There are no FPGA correlators in this firmware build');
 
         self.set_data_width(data_width)  #sets the data width of both the SCALER and CROSSBAR
-        self.log.info('Data width set to (Re+Im) = (%i+%i) bits' % (self.get_data_width(), self.get_data_width()))
+        self._logger.info('Data width set to (Re+Im) = (%i+%i) bits' % (self.get_data_width(), self.get_data_width()))
 
         self.CROSSBAR.set_frame_grouping(group_frames)
-        self.log.info('%i frames will be grouped to form the GPU/FPGA correlator streams' % (group_frames))
+        self._logger.info('%i frames will be grouped to form the GPU/FPGA correlator streams' % (group_frames))
 
         self.GPU.set_enable(enable_gpu_link)
 
         self.CROSSBAR.configure()
-        self.log.info('GPU link is currently %s' % (['Disabled','Enabled'][bool(enable_gpu_link)]))
+        self._logger.info('GPU link is currently %s' % (['Disabled','Enabled'][bool(enable_gpu_link)]))
 
         # MGT is disabled
-        #self.log.debug('  - MGT_PLL')
+        #self._logger.debug('  - MGT_PLL')
         #self.MGT_PLL.init(fref=fref)
-        #self.log.debug('  - MGT')
+        #self._logger.debug('  - MGT')
         #self.MGT.init() # MGT_PLL must be initialized first
 
-        self.log.info("Done with initializations.")
+        self._logger.info("Done with initializations.")
 
-
-        #self.log.info("Setting ADCDAQ delays.")
+        #self._logger.info("Setting ADCDAQ delays.")
 
         #if adc_delay_table:
         #    self.ANT.set_delays(adc_delay_table)
 
-
         self.set_ant_reset(0) # disable antenna reset
 
-        # self.log.info("Setting default data source")
+        # self._logger.info("Setting default data source")
         # self.set_funcgen_function('ramp')
         # self.set_data_source('funcgen')
         # self.set_ADC_mode('data') # This implies a self.sync(), which will reset the antenna processors again to ensure data alignment
         # self.set_data_source('adc')
 
-        self.log.info("End of chFPGA initialization.")
+        self._logger.info("End of chFPGA initialization.")
 
-        self.last_init_time = time.time()
+        self._last_init_time = time.time()
 
     def get_fpga_cookie(self):
         """
         Reads the FPGA and returns the cookie that identifies the firmware.
         This method can be called before any FPGA modules are instatiated.
         """
-        return self.read(self.SYSTEM_GPIO_BASE_ADDR + self.GPIO_COOKIE_REG) & 0x7F
+        return self.read(self._SYSTEM_GPIO_BASE_ADDR + self._GPIO_COOKIE_REG) & 0x7F
 
     def get_config(self):
         config = chFPGA_config() # Create empty config container
@@ -641,14 +653,15 @@ class chFPGA_controller(FpgaCoreFirmware):
         config.system_list_of_implemented_correlators = self.LIST_OF_IMPLEMENTED_CORRELATORS
 
         config.system_frame_length = self.FRAME_LENGTH
-        config.system_sampling_frequency = self.sampling_frequency
+        config.system_sampling_frequency = self._sampling_frequency
         config.system_reference_frequency = self.reference_frequency
-        config.system_frame_period = self.FRAME_PERIOD
+        config.system_frame_period = self._FRAME_PERIOD
 
-        config.adc_board_is_present = self.adc_board[0].is_present()
-        if self.adc_board[0].is_present():
-            config.adc_board_temperature = self.adc_board[0].AmbTemp.temperature
-            config.adc_board_adc_chip_temperature = [adc.get_temperature() for adc in self.adc_board[0].ADC]
+        config.adc_board_is_present = self._adc_board[0].is_present()
+        if self._adc_board[0].is_present():
+            config.adc_board_temperature = self._adc_board[0].AmbTemp.temperature
+            config.adc_board_adc_chip_temperature = [adc.get_temperature() for adc in self._adc_board[0].ADC]
+            config.adc_serial = [fmc._board_info['Serial #'] for fmc in self._adc_board]
         config.antenna_data_source = self.get_data_source()
         config.antenna_fft_bypass = self.get_FFT_bypass()
         config.antenna_fft_shift_schedule = self.get_FFT_shift()
@@ -657,7 +670,7 @@ class chFPGA_controller(FpgaCoreFirmware):
         config.FPGA_board_frequency = self.FreqCtr.read_frequency('CLK200', gate_time=0.05)
         config.CTRL_clock_frequency = self.FreqCtr.read_frequency('CTRL_CLK', gate_time=0.05)
         config.ant_clock = self.FreqCtr.read_frequency('ANT_CLK', gate_time=0.05)
-        if self.IMPLEMENT_CORR:
+        if self._IMPLEMENT_CORR:
             config.correlator_clock = self.FreqCtr.read_frequency('CORR_CLK', gate_time=0.05)
             config.correlator_capture_period_in_frames = [corr.ACC.CAPTURE_PERIOD for corr in self.CORR]
             config.correlator_integration_period_in_frames = [corr.ACC.INTEGRATION_PERIOD for corr in self.CORR]
@@ -665,8 +678,7 @@ class chFPGA_controller(FpgaCoreFirmware):
         config.mgt_ref_clock = self.FreqCtr.read_frequency('MGT_REFCLK', gate_time=0.05)
         config.mgt_word_clock = self.FreqCtr.read_frequency('MGT_USRCLK2', gate_time=0.05)
         config.adc_clocks = [self.FreqCtr.read_frequency(('ADC_CLK'+str(i)), gate_time=0.05) for i in range(8)]
-        # config.adc_serial = [fmc._board_info['Serial #'] for fmc in self.adc_board]
-        config.adc_serial = 'Not available'
+        # config.adc_serial = 'Not available'
         config.motherboard_serial = self.GPIO.FPGA_SERIAL_NUMBER
         # Add FFT shift, scaler gain, corr integration/capture period etc.
         return config
@@ -700,7 +712,7 @@ class chFPGA_controller(FpgaCoreFirmware):
 
     def sync(self, local=1, verbose=0):
         if verbose:
-            self.log.info("Sync...")
+            self._logger.info("Sync...")
         if local:
             self.REFCLK.local_sync()
         else:
@@ -771,7 +783,7 @@ class chFPGA_controller(FpgaCoreFirmware):
             Sets the data source on specified channels (or default channels if the channels are not specified).
         '''
         if (source is None) or (source.lower() not in self.ANT[0].SRCSEL.DATA_SOURCE_NAMES):
-            self.log.info('Valid data sources are %s:' % ', '.join(self.ANT[0].SRCSEL.DATA_SOURCE_NAMES.keys()))
+            self._logger.info('Valid data sources are %s:' % ', '.join(self.ANT[0].SRCSEL.DATA_SOURCE_NAMES.keys()))
             return
 
         if channels is None:
@@ -799,7 +811,7 @@ class chFPGA_controller(FpgaCoreFirmware):
         This may cause one frame to partially contain the new waveform.
         '''
         if (function is None) or (function.lower() not in self.ANT[0].FUNCGEN.FUNCTION_NAMES):
-            self.log.info('Valid functions are %s:' % ', '.join(self.ANT[0].FUNCGEN.FUNCTION_NAMES.keys()))
+            self._logger.info('Valid functions are %s:' % ', '.join(self.ANT[0].FUNCGEN.FUNCTION_NAMES.keys()))
             raise Exception('Invalid function generator function string')
 
         if channels is None:
@@ -818,12 +830,12 @@ class chFPGA_controller(FpgaCoreFirmware):
         if isinstance(channel, int):
             channel = [channel]
             board_number = channel // 8
-            return self.adc_board[board_number]
+            return self._adc_board[board_number]
         else:
             board_list=[]
             for ch in channel:
                 board_number = ch // 8
-                board_list.append(self.adc_board[board_number])
+                board_list.append(self._adc_board[board_number])
             return list(set(board_list))
 
 
@@ -862,7 +874,7 @@ class chFPGA_controller(FpgaCoreFirmware):
         adc_boards = self.get_adc_board(channels)
         for adc_board in adc_boards:
             if not adc_board.is_present():
-                self.log.warning('ADC Board of FMC slot #%i (%s) is not present. Ignoring set_ADC_mode() command for this board' % (adc_board.fmc_number, adc_board.fmc_name))
+                self._logger.warning('ADC Board of FMC slot #%i (%s) is not present. Ignoring set_ADC_mode() command for this board' % (adc_board.fmc_number, adc_board.fmc_name))
             else:
                 adc_board.ADC.set_test_mode(test_mode=mode_value)
 
@@ -884,7 +896,7 @@ class chFPGA_controller(FpgaCoreFirmware):
 
         mode_value = []
         # get the ADC mode number for every ADC board
-        for adc_board in self.adc_board:
+        for adc_board in self._adc_board:
             if adc_board.is_present():
                 mode_value.append(adc_board.ADC.get_test_mode())
         mode_value = list(set(mode_value)) # eliminate all duplicates. We should be left with only one mode number.
@@ -942,25 +954,25 @@ class chFPGA_controller(FpgaCoreFirmware):
             raise SystemError("You must specify either 'burst_period_in_frames' or bust_period_in_seconds'")
 
         if burst_period_in_seconds is not None:
-            burst_period_in_frames = max(float(burst_period_in_seconds)/self.FRAME_PERIOD, 1)
+            burst_period_in_frames = max(float(burst_period_in_seconds)/self._FRAME_PERIOD, 1)
 
 
         burst_period_in_frames = int(burst_period_in_frames)
         # print "%s" % channels.__repr__()
         # print "%i" frames_per_burst
         # print burst_period_in_frames
-        # print burst_period_in_frames*self.FRAME_PERIOD*1000
+        # print burst_period_in_frames*self._FRAME_PERIOD*1000
         # print ('continuously when TRIG=1' if not number_of_bursts else ('for a total of %i bursts' % number_of_bursts) )
         if verbose:
-            self.log.info("Configuring antennas %s to transmit %i-frame burst every %i frames (i.e .every %.3f ms) %s." %\
+            self._logger.info("Configuring antennas %s to transmit %i-frame burst every %i frames (i.e .every %.3f ms) %s." %\
                           (channels.__repr__(),
                            frames_per_burst,
                            burst_period_in_frames,
-                           burst_period_in_frames*self.FRAME_PERIOD*1000,
+                           burst_period_in_frames*self._FRAME_PERIOD*1000,
                            ('continuously when TRIG=1' if not number_of_bursts else ('for a total of %i bursts' % number_of_bursts) ) ))
-            frames_per_second = len(channels)*frames_per_burst*1.0/self.FRAME_PERIOD/burst_period_in_frames
+            frames_per_second = len(channels)*frames_per_burst*1.0/self._FRAME_PERIOD/burst_period_in_frames
             bits_per_second = frames_per_second * 8 * self.FRAME_LENGTH
-            self.log.info('Data rates are: %f kFrames/s, %f Mbits/s' % (frames_per_second/1e3, bits_per_second/1e6))
+            self._logger.info('Data rates are: %f kFrames/s, %f Mbits/s' % (frames_per_second/1e3, bits_per_second/1e6))
 
         self.set_trig(0) # disable data transmission if continuous mode is currentlly selected
 #        self.set_ant_reset(1) # resets all
@@ -972,7 +984,7 @@ class chFPGA_controller(FpgaCoreFirmware):
             ant.PROBER.PROBE_ID = 0xA0 + ant.ant_number
             ant.PROBER.config_capture(frames_per_burst=frames_per_burst, burst_period=burst_period_in_frames, number_of_bursts=number_of_bursts)
             if ant.ant_number in channels:
-                self.log.info('Enabling Capture for Antenna %i' % ant.ant_number)
+                self._logger.info('Enabling Capture for Antenna %i' % ant.ant_number)
                 ant.PROBER.RESET = 0
 
         self.set_trig(1) # enables data transmission if continuous mode is selected
@@ -997,13 +1009,13 @@ class chFPGA_controller(FpgaCoreFirmware):
         configured_channels = set()
         for ch in channels:
             if ch not in self.ANT:
-                self.log.warning('FFT bypass mode on antena channel %i are not set because that channel is not available' % ch)
+                self._logger.warning('FFT bypass mode on antena channel %i are not set because that channel is not available' % ch)
             elif ch not in self.LIST_OF_ANTENNAS_WITH_FFT:
-                self.log.warning('FFT bypass mode on antena channel %i are not set because that channel does not have an FFT module' % ch)
+                self._logger.warning('FFT bypass mode on antena channel %i are not set because that channel does not have an FFT module' % ch)
             else:
                 self.ANT[ch].FFT.BYPASS = bypass_mode
                 configured_channels.add(ch)
-        self.log.info('Setting FFT bypass mode to %s for Antenna %s' % (str(bool(bypass_mode)), ', '.join([str(i) for i in configured_channels])))
+        self._logger.info('Setting FFT bypass mode to %s for Antenna %s' % (str(bool(bypass_mode)), ', '.join([str(i) for i in configured_channels])))
         self.reset();
         #self.sync()
 
@@ -1029,12 +1041,12 @@ class chFPGA_controller(FpgaCoreFirmware):
         if channels is None:
             channels = self.default_channels
 
-        self.log.info('Setting SCALER bypass mode for Antenna %s' % ', '.join([str(i) for i in channels]))
+        self._logger.info('Setting SCALER bypass mode for Antenna %s' % ', '.join([str(i) for i in channels]))
         for ant in self.ANT.values():
             if ant.ant_number in channels:
                 ant.SCALER.BYPASS = bypass_mode
             # else:
-            #     self.log.warning('Attemnpting to set SCALER bypass mode for antenna channel %i which is not present on this card' % ch)
+            #     self._logger.warning('Attemnpting to set SCALER bypass mode for antenna channel %i which is not present on this card' % ch)
 
 
     def get_scaler_bypass(self):
@@ -1080,14 +1092,14 @@ class chFPGA_controller(FpgaCoreFirmware):
             2013-03-25 KMB
         """
 
-        if not self.last_init_time:
-            self.log.warning('The system is not initialized. This might not work.')
+        if not self._last_init_time:
+            self._logger.warning('The system is not initialized. This might not work.')
 
         if capture_period is None:
             capture_period = integration_period
 
-        capture_period_in_frames = int(capture_period*1.0/self.FRAME_PERIOD)
-        integration_period_in_frames = int(integration_period*1.0/self.FRAME_PERIOD)
+        capture_period_in_frames = int(capture_period*1.0/self._FRAME_PERIOD)
+        integration_period_in_frames = int(integration_period*1.0/self._FRAME_PERIOD)
 
         self.set_ant_reset(1)
         self.set_corr_reset(1)
@@ -1099,11 +1111,11 @@ class chFPGA_controller(FpgaCoreFirmware):
             corrs_not_used = list(set(self.LIST_OF_IMPLEMENTED_CORRELATORS).difference(corr_to_use))
         for corr_num in corrs:
             corr = self.CORR[corr_num]
-            self.log.info('Configuring correlator %i to integrate over %f seconds (over %i frames) and transmit data every %f seconds (over %i frames)' %  (corr.instance_number, integration_period, integration_period_in_frames, capture_period , capture_period_in_frames))
+            self._logger.info('Configuring correlator %i to integrate over %f seconds (over %i frames) and transmit data every %f seconds (over %i frames)' %  (corr.instance_number, integration_period, integration_period_in_frames, capture_period , capture_period_in_frames))
             corr.ACC.RESET = 0
             corr.ACC.config(integration_period=integration_period_in_frames, capture_period=capture_period_in_frames)
         for corr_num in corrs_not_used:
-            self.log.info('Disabling correlator %i' %  (corr.instance_number))
+            self._logger.info('Disabling correlator %i' %  (corr.instance_number))
             corr = self.CORR[corr_num]
             corr.ACC.RESET = 1
         self.set_corr_reset(0)
@@ -1134,7 +1146,7 @@ class chFPGA_controller(FpgaCoreFirmware):
         data={}
         for ch in channels:
             d = np.zeros((32, 3), dtype=np.uint8)
-            self.log.info('Reading channel %i.' % (ch))
+            self._logger.info('Reading channel %i.' % (ch))
             adcdaq = self.ANT[ch].ADCDAQ
 
             for dly in range(32):
@@ -1159,14 +1171,14 @@ class chFPGA_controller(FpgaCoreFirmware):
             for bit in range(8):
                 mask = 1 << bit
                 n[bit, :] = np.sum((data[ch] & mask) / mask, axis=0)
-            #self.log.info('n is ', n)
+            #self._logger.info('n is ', n)
 
             n_min = np.min(n, axis=0) # minimum number of delay values that allowed the pulse in each slot
             N = np.argmax(n_min) # slot with the maximum number of possible delays for all bits
             N = 1
-            self.log.info('Aligning bits on sample #%i' % N)
+            self._logger.info('Aligning bits on sample #%i' % N)
 
-            self.log.info('CHANNEL %i' % ch)
+            self._logger.info('CHANNEL %i' % ch)
             computed_delay = np.zeros(8, dtype=np.uint8)
             for bit_number in range(8):
                 mask = 1 << bit_number
@@ -1181,7 +1193,7 @@ class chFPGA_controller(FpgaCoreFirmware):
                     else:
                         bit_string += '.#'[d[delay]]
 
-                self.log.info('Bit %i: %s Delay = %2i' % (bit_number, bit_string, computed_delay[bit_number]))
+                self._logger.info('Bit %i: %s Delay = %2i' % (bit_number, bit_string, computed_delay[bit_number]))
 
             delays[ch]=computed_delay
         return delays
@@ -1189,12 +1201,12 @@ class chFPGA_controller(FpgaCoreFirmware):
     compute_delays = compute_adc_delays # For legacy software compatibility
 
     def status(self):
-        self.log.info('----------- chFPGA status ---------------')
-        self.log.info(' Controller IP address: %s, port: %i ' % (self.ip_addr, self.fpga.port_number))
-        self.log.info(' Firmware version: %s' % self.get_version())
-        self.log.info(' Number of antenna inputs: %i' %  self.NUMBER_OF_ANTENNAS)
-        self.log.info(' Number of antennas with channelizers: %i (antennas %s)' % (len(self.LIST_OF_ANTENNAS_WITH_FFT), str(self.LIST_OF_ANTENNAS_WITH_FFT)))
-        self.log.info(' Number of correlators: %i (correlators %s)' % (len(self.LIST_OF_IMPLEMENTED_CORRELATORS),str(self.LIST_OF_IMPLEMENTED_CORRELATORS)))
+        self._logger.info('----------- chFPGA status ---------------')
+        self._logger.info(' Controller IP address: %s, port: %i ' % (self.ip_addr, self.fpga.port_number))
+        self._logger.info(' Firmware version: %s' % self.get_version())
+        self._logger.info(' Number of antenna inputs: %i' %  self.NUMBER_OF_ANTENNAS)
+        self._logger.info(' Number of antennas with channelizers: %i (antennas %s)' % (len(self.LIST_OF_ANTENNAS_WITH_FFT), str(self.LIST_OF_ANTENNAS_WITH_FFT)))
+        self._logger.info(' Number of correlators: %i (correlators %s)' % (len(self.LIST_OF_IMPLEMENTED_CORRELATORS),str(self.LIST_OF_IMPLEMENTED_CORRELATORS)))
 
         self.FreqCtr.status()
 
@@ -1244,7 +1256,7 @@ class chFPGA_controller(FpgaCoreFirmware):
             channels = self.default_channels
 
         if not isinstance(channels, list):
-            self.log.warning("channels must be a list")
+            self._logger.warning("channels must be a list")
             return
         else:
             # Set the scaler to use offset binary
@@ -1261,7 +1273,7 @@ class chFPGA_controller(FpgaCoreFirmware):
             crossbar_outputs = range(self.NUMBER_OF_CROSSBAR_OUTPUTS)
 
         if not isinstance(crossbar_outputs, list):
-            self.log.warning("crossbar_outputs must be a list")
+            self._logger.warning("crossbar_outputs must be a list")
             return
         else:
             # Set the scaler to use offset binary
@@ -1372,7 +1384,7 @@ class chFPGA_controller(FpgaCoreFirmware):
                 if ch not in channels:
                     continue
                 if ch not in self.ANT.keys():
-                    self.log.warning('Gains on antenna channel %i are not set because that channel is not available' % ch)
+                    self._logger.warning('Gains on antenna channel %i are not set because that channel is not available' % ch)
                     continue
                 # Set the postscaler value
                 if Glog is not None:
@@ -1387,7 +1399,7 @@ class chFPGA_controller(FpgaCoreFirmware):
                     self.ANT[ch].SCALER.USE_GAIN_TABLE = 1
                     self.ANT[ch].SCALER.set_gain_table(Glin)
                 configured_channels.add(ch)
-        self.log.info('Setting scaler gains for Antenna %s' % ', '.join([str(i) for i in configured_channels]))
+        self._logger.info('Setting scaler gains for Antenna %s' % ', '.join([str(i) for i in configured_channels]))
 
     def get_gain(self):
         """
@@ -1400,26 +1412,26 @@ class chFPGA_controller(FpgaCoreFirmware):
             gain_list.append([ant.ant_number, [glin,glog]])
         return gain_list
 
-    def set_fmc_power(self, state):
-        """
-        Enable or disables power on one or both FMCs.
-        If 'state' is an integer or a boolean, all FMCs are set to the target state.
-        If 'state' is a tuple, each element specifies the state of one FMC slot starting from slot 0.
-        If 'state' is a dictionary, the FMC slot specified by the key is set to the corresponding value.
+    # def set_fmc_power(self, state):
+    #     """
+    #     Enable or disables power on one or both FMCs.
+    #     If 'state' is an integer or a boolean, all FMCs are set to the target state.
+    #     If 'state' is a tuple, each element specifies the state of one FMC slot starting from slot 0.
+    #     If 'state' is a dictionary, the FMC slot specified by the key is set to the corresponding value.
 
-        History:
-            2013-09-04 JFC: Added this function
-        """
+    #     History:
+    #         2013-09-04 JFC: Added this function
+    #     """
 
-        if isinstance(state, (int, bool)):
-            for fmc in self.adc_board:
-                fmc.set_power(state)
-        elif isinstance(state, (tuple, list)):
-            for (fmc_number, fmc_state) in enumerate(state):
-                self.adc_board[fmc_number].set_power(fmc_state)
-        elif isinstance(state, dict):
-            for (fmc_number, fmc_state) in state.items():
-                self.adc_board[fmc_number].set_power(fmc_state)
+    #     if isinstance(state, (int, bool)):
+    #         for fmc in self._adc_board:
+    #             fmc.set_power(state)
+    #     elif isinstance(state, (tuple, list)):
+    #         for (fmc_number, fmc_state) in enumerate(state):
+    #             self._adc_board[fmc_number].set_power(fmc_state)
+    #     elif isinstance(state, dict):
+    #         for (fmc_number, fmc_state) in state.items():
+    #             self._adc_board[fmc_number].set_power(fmc_state)
 
 
     def set_fft_shift(self, fft_shift=0b11111111111, channels=None):
@@ -1436,7 +1448,7 @@ class chFPGA_controller(FpgaCoreFirmware):
 
         for ant in self.ANT.values():
             if ant.ant_number in channels:
-                self.log.info('Setting FFT shift of antenna %i' % ant.ant_number)
+                self._logger.info('Setting FFT shift of antenna %i' % ant.ant_number)
                 ant.FFT.FFT_SHIFT = fft_shift
 
     set_FFT_shift = set_fft_shift  # For legacy code compatibility
@@ -1462,7 +1474,7 @@ class chFPGA_controller(FpgaCoreFirmware):
             print 'Clearing antenna', ant.ant_number
             ant.ADCDAQ.RAMP_ERR_CLEAR=0
             ant.ADCDAQ.RAMP_ERR_CLEAR=1
-        self.log.info('Measuring the data acquisition error rate over %0.1f seconds...' % test_duration)
+        self._logger.info('Measuring the data acquisition error rate over %0.1f seconds...' % test_duration)
         t0 = time.time();
         word_error = np.zeros(len(self.ANT))
         bit_error = np.zeros((len(self.ANT), 8))
@@ -1475,14 +1487,14 @@ class chFPGA_controller(FpgaCoreFirmware):
                         bit_error[i, bit_number] += ((ant.ADCDAQ.BIT_ERR_CTR >> (bit_number*4)) & 0x0F)
                     ant.ADCDAQ.RAMP_ERR_CLEAR = 0
                     ant.ADCDAQ.RAMP_ERR_CLEAR = 1
-                    # self.log.info('CH%i: %3i (%08X)' % (ant.ant_number, ant.ADCDAQ.RAMP_ERR_CTR, ant.ADCDAQ.BIT_ERR_CTR))
+                    # self._logger.info('CH%i: %3i (%08X)' % (ant.ant_number, ant.ADCDAQ.RAMP_ERR_CTR, ant.ADCDAQ.BIT_ERR_CTR))
         except KeyboardInterrupt:
             pass
 
         for (i, ant) in enumerate(self.ANT):
-            self.log.info('CH%i: %5i word errors, bit errors (7:0) = (%s)' % (ant.ant_number, word_error[i], ','.join('%3i' % e for e in bit_error[i,::-1])))
+            self._logger.info('CH%i: %5i word errors, bit errors (7:0) = (%s)' % (ant.ant_number, word_error[i], ','.join('%3i' % e for e in bit_error[i,::-1])))
         total_word_errors = np.sum(word_error)
-        self.log.info('There were %i word errors in total' % total_word_errors)
+        self._logger.info('There were %i word errors in total' % total_word_errors)
 #        self.set_adc_mode(old_adc_mode)
         return total_word_errors
 
@@ -1505,17 +1517,18 @@ class chFPGA_controller(FpgaCoreFirmware):
         self.fpga.set_timeout(old_timeout)
         print '%i read operations performed in %.2f s (%.0f read/s) with %i errors (%0.3f%% errors)' % (trials, t1 - t0, float(n)/(t1 - t0), errors, float(errors)/float(trials)*100)
 
-    def print_memory_map(self):
-        import operator
-        # map = ['%-20s:0x%05X' % (module_name, addr) for (module_name, addr) in self.MEMORY_MAP.items()]
-        sorted_map = sorted(self.MEMORY_MAP.items(), key=operator.itemgetter(1))
-        for (module_name, addr) in sorted_map:
-            print '0x%05X: %s%-20s' % (addr, '  '*module_name.count('/'), module_name)
+    # def print_memory_map(self):
+    #     import operator
+    #     # map = ['%-20s:0x%05X' % (module_name, addr) for (module_name, addr) in self.MEMORY_MAP.items()]
+    #     sorted_map = sorted(self.MEMORY_MAP.items(), key=operator.itemgetter(1))
+    #     for (module_name, addr) in sorted_map:
+    #         print '0x%05X: %s%-20s' % (addr, '  '*module_name.count('/'), module_name)
 
     def get_temperatures(self):
         res = {}
         res['FPGA_core']=self.SYSMON.temperature()
-        for (fmc_number, board) in enumerate(self.adc_board):
-            for (adc_number, adc) in enumerate(board.ADC):
-                res['FMC%i ADC%i'%(fmc_number, adc_number)] = adc.get_temperature()
+        for (fmc_number, board) in enumerate(self._adc_board):
+            if board:
+                for (adc_number, adc) in enumerate(board.ADC):
+                    res['FMC%i ADC%i'%(fmc_number, adc_number)] = adc.get_temperature()
         return res

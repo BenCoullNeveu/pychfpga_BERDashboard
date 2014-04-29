@@ -64,6 +64,12 @@ class IceArray(object):
         self.logger.debug('Init IceArray parent')
         self.interface_ip_addr = interface_ip_addr
 
+        # set the interface IP address on the FPGA irmware class attribute so
+        # this address is used for any firmware instances created on this
+        # computer.
+        import fpga_core
+        fpga_core.FpgaCoreFirmware.interface_ip_addr = interface_ip_addr
+
         self._hwmap = hardware_map.HardwareMap(uri=uri, *args, **kwargs)
         # Remove the logger handlers that is created for the SQLAlchemy Engine. We want to use our own top level handler.
         # If we don't do this, the SQLAlchemy messages get displayed twice
@@ -88,13 +94,13 @@ class IceArray(object):
         Discover all hardware and firmware resources on the specified
         interface(s) and add them to the database.
         """
-        iceboard.discover(self, timeout = timeout, interface_ip_addr = self.interface_ip_addr)
+        iceboard.discover(self, timeout = timeout)
         self.commit() # commit any changes made during discovery
         #
     def load_iceboards(self, filename):
         """
         """
-        iceboard.load(self, filename, interface_ip_addr = self.interface_ip_addr)
+        iceboard.load(self, filename)
         self.commit() # commit any changes made during discovery
 
     def get_iceboards(self, serials=[], *args, **kwargs):

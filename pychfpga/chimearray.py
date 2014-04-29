@@ -16,6 +16,19 @@ import logging.handlers
 reload(logging) # clear any previous logger set-up that is stored in the logging module
 reload(logging.handlers) # we need to reload the handlers as well so they are inheriting from the newly loaded Handler class defined in freshly reloaded logging, not the old one. Otherwise we get errors.
 
+# class MyLogger(logging.Logger):
+#     def __init__(self, name):
+#         logging.Logger.__init__(self, name)
+
+
+#     def makeRecord(self, *args, **kwargs):
+#         rec=super(type(self), self).makeRecord(*args, **kwargs)
+#         rec.context = __name__
+#         # rec.name = 'wowo'
+#         return rec
+
+# logging.setLoggerClass(MyLogger)
+
 from icecore import hardware_map
 from icecore import tuber
 reload(hardware_map)
@@ -29,13 +42,19 @@ from core.chFPGA_controller import chFPGA_controller as ChimeFpgaFirmware
 
 #####################################
 
+import inspect
+
+class CompletionFilter(object):
+    @staticmethod
+    def filter(record):
+        return not any(('completer.py' in ss[1] for ss in inspect.stack()))
 
 if __name__ == '__main__':
 
     # Configure the various loggers to provide adequate levels of details
     logging.getLogger('iceboard.arm.FpgaBitFile').setLevel(logging.INFO)
     # logging.getLogger('requests.packages').setLevel(logging.WARN)
-    logging.getLogger('sqlalchemy.engine.base.Engine').setLevel(logging.DEBUG)
+    logging.getLogger('sqlalchemy.engine.base.Engine').setLevel(logging.WARN)
 
     close_all_sockets()
 
@@ -49,9 +68,9 @@ if __name__ == '__main__':
     # parser.add_argument('--ip', action = 'store', type=str, default='10.10.10.11', help='IP address of the board')
     parser.add_argument('-i', '--if_ip', action = 'store', type=str, default=None, help='IP address of adapter through which the connection to the FPGA will be established. If not specified, the controller will attempt to identify the proper host based on the FPGA IP address.')
     args = parser.parse_args()
-
     log_level = {'info': logging.INFO, 'debug': logging.DEBUG}[args.log_level]
-    # logging.basicConfig(level=log_level, format='%(asctime)s %(name)-32s %(levelname)-10s : %(message)s')
+
+    # logging.basicConfig(level=log_level, format='%(asctime)s  %(context)s %(name)-32s %(levelname)-10s : %(message)s')
 
     try:
         del logger
@@ -61,6 +80,7 @@ if __name__ == '__main__':
     logger.setLevel(log_level)
     handler = logging.handlers.SysLogHandler()
     # handler = logging.StreamHandler()
+    # handler.addFilter(CompletionFilter)
     logger.addHandler(handler)
 
     logger.info('------------------------')
@@ -81,6 +101,6 @@ if __name__ == '__main__':
     fpga_bitstream = FpgaBitFile(bitfile_filename) # we have to create one bitstream object only.
 
     c = ca.get_iceboards(subarray=0).index_by(IceBoard.serial_number) # get one or more IceBoards from specified subarray
-    # c.set_fpga_firmware(fpga_bitstream, ChimeFpgaFirmware, configure_fpga=True) # associate boards with specified firmware and configure the selected FPGA
+    c.set_fpga_firmware(fpga_bitstream, ChimeFpgaFirmware, configure_fpga=True, force=False) # associate boards with specified firmware and configure the selected FPGA
     # c.open() # establish communication with the boards so we can access their attributes and methods
-    # cc=c[0]
+    cc=c[7]

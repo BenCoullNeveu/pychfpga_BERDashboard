@@ -1,9 +1,9 @@
 #!/usr/bin/python
 # Disable pylint Line too long (=C0301)
-# pylint: disable=C0301 
+# pylint: disable=C0301
 
 """
-SYSMON.py module 
+SYSMON.py module
  Implements the System Monitor interface
 
 History:
@@ -39,7 +39,7 @@ class SYSMON_base(Module_base):
 
     VAUX_VOLT_ADDR = 0x1C
     VAUX_CURR_ADDR = 0x1D
-    
+
     CONFIG1_ADDR = 0x40
     CONFIG2_ADDR = 0x41
     CONFIG3_ADDR = 0x42
@@ -58,20 +58,20 @@ class SYSMON_base(Module_base):
         self.verbose = verbose
         self.logger = logging.getLogger(__name__)
         fpga = fpga_instance
-        self.supported_by_platform = fpga.PLATFORM_ID in [fpga.PLATFORM_ID_ML605, fpga.PLATFORM_ID_KC705, fpga.PLATFORM_ID_MGK7MB_REV0, fpga.PLATFORM_ID_MGK7MB_REV2]
+        self.supported_by_platform = fpga.PLATFORM_ID in [fpga._PLATFORM_ID_ML605, fpga._PLATFORM_ID_KC705, fpga._PLATFORM_ID_MGK7MB_REV0, fpga._PLATFORM_ID_MGK7MB_REV2]
         super(self.__class__, self).__init__(fpga_instance, base_address)
         self._lock() # Prevent accidental addition of attributes (if, for example, a value is assigned to a wrongly-spelled property)
 
 
     # def read(self, addr):
-    #     """ Reads a 16-bit register of the FPGA system monitor at specified word address 
+    #     """ Reads a 16-bit register of the FPGA system monitor at specified word address
     #     """
     #     fpga = self.fpga_instance
     #     #fpga.write_bit(fpga.SYSTEM_PORT,fpga.SYSTEM_SYSMON_MODULE,0x00,0,bool(addr>=0x40))
     #     return fpga.read(fpga.SYSTEM_PORT, fpga.SYSTEM_SYSMON_MODULE, 0x200 + 2 * (addr), type=np.dtype('<u2')) # Sysmon data is read LSB first
 
     # def write(self, addr, data):
-    #     """ Writes a 16-bit register of the FPGA system monitor at specified word address 
+    #     """ Writes a 16-bit register of the FPGA system monitor at specified word address
     #     """
     #     fpga = self.fpga_instance
     #     #fpga.write_bit(fpga.SYSTEM_PORT,fpga.SYSTEM_SYSMON_MODULE,0x00,0,bool(addr>=0x40))
@@ -104,13 +104,13 @@ class SYSMON_base(Module_base):
         lsb = self.read_drp(addr)
         volt = lsb / 64.0 * vref / 1024
         return volt
-    
+
     def status(self):
         """
         Displays the Virtex 6 / ML605 System Monitor statistics
 
         NOTES:
-            ADC measurement is always differential (P-N). 
+            ADC measurement is always differential (P-N).
             All external ADC signals acquired in unipolar mode since the differential voltages  are never negative. 0-1 V (differential) corresponds to full range 0-0x3FF.
             VccINT and VccAUX voltages are measured internally. They have a gain of 1/3 before being fed to the ADC.
             VccINT Current: Measures current sense resistor (0.005 ohm) on VP/VN
@@ -125,7 +125,7 @@ class SYSMON_base(Module_base):
             self.logger.info('   Core Temperature:   %5.1f C (%.2f C min, %.1f C max)' % (self.temperature(self.TEMP_ADDR), self.temperature(self.TEMP_MIN_ADDR), self.temperature(self.TEMP_MAX_ADDR)))
             self.logger.info('   VccINT Voltage:     %5.2f V (%.2f V min, %.2f V max)' % (self.voltage(self.VCCINT_ADDR), self.voltage(self.VCCINT_MIN_ADDR), self.voltage(self.VCCINT_MAX_ADDR)))
             self.logger.info('   VccAUX Voltage:     %5.2f V (%.2f V min, %.2f V max)' % (self.voltage(self.VCCAUX_ADDR), self.voltage(self.VCCAUX_MIN_ADDR), self.voltage(self.VCCAUX_MAX_ADDR)))
-            if self.fpga.PLATFORM_ID == self.fpga.PLATFORM_ID_ML605:
+            if self.fpga.PLATFORM_ID == self.fpga._PLATFORM_ID_ML605:
                 self.logger.info('   VccINT Current:     %5.2f A, (ADC input= %.2f mV' % (self.voltage(self.VAUX_VPVN_ADDR, vref=1.0)/0.005, self.voltage(self.VAUX_VPVN_ADDR, vref=1.0) * 1000))
                 self.logger.info('   12V Supply Voltage: %5.2f V (ADC input=%.2f V )' % (Vin, self.voltage(self.VAUX_VOLT_ADDR, vref=1.0)))
                 self.logger.info('   12V Supply Current: %5.2f A (ADC input=%.2f V )' % (Iin, self.voltage(self.VAUX_CURR_ADDR, vref=1.0)))
