@@ -77,6 +77,26 @@ def convert_types(val):
               pass
       return val
 
+def get_fpga_hk(fpga, field):
+  ret = {}
+  for f in field.keys():
+    if f == "core_temp":
+      ret[f] = fpga.SYSMON.temperature()
+    elif f == "vcc_int":
+      ret[f] = fpga.SYSMON.voltage(fpga.SYSMON.VCCINT_ADDR)
+    elif f == "vcc_aux":
+      ret[f] = fpga.SYSMON.voltage(fpga.SYSMON.VCCAUX_ADDR)
+    elif f == "12v_supply":
+      ret[f] = fpga.SYSMON.voltage(fpga.SYSMON.VAUX_VOLT_ADDR, vref = 1.0)
+    elif f == "12v_supply_curr":
+      ret[f] = fpga.SYSMON.voltage(fpga.SYSMON.VAUX_CURR_ADDR, vref = 1.0)
+    elif f == "vrefp":
+      ret[f] = fpga.SYSMON.voltage(fpga.SYSMON.VAUX_VREFP_ADDR)
+    elif f == "vrefn":
+      ret[f] = fpga.SYSMON.voltage(fpga.SYSMON.VAUX_VREFN_ADDR)
+
+  return ret
+
 # Dictionary of correlators.
 correlator_hash = {"stone"     : ["0001"],
                    "abbot"     : ["0003"],
@@ -84,6 +104,17 @@ correlator_hash = {"stone"     : ["0001"],
                    "blanchard" : ["0029"],
                    "testing"   : ["0031", "0032"],
                   }
+
+# FPGA housekeeping.
+fpga_hk_field = {      "core_temp" : "deg C",
+                         "vcc_int" : "V",
+                         "vcc_aux" : "V",
+                      "12v_supply" : "V",
+                 "12v_supply_curr" : "A",
+                           "vrefp" : "V",
+                           "vrefn" : "V",
+                }
+
 
 # Current archive format version.
 archive_version = "2.0.0"
@@ -168,7 +199,7 @@ if __name__ == "__main__":
 
   # Create the acquisition object. Pass it the configuration settings so that it
   # can initialise.
-  acq = chrx.acq(conf, log)
+  acq = chrx.acq(conf, log, fpga_hk_field)
 
   # Create the FPGA controller object.
   fpga = chFPGA_controller.chFPGA_controller( \
@@ -328,9 +359,9 @@ if __name__ == "__main__":
     while True:
       # Pass the acquisition object the board temperatures. This is a temporary
       # way of doing this!
-      acq.pass_fpga_amb_temp(0, fpga.SYSMON.temperature(),
-                                fpga.SYSMON.voltage(fpga.SYSMON.VCCINT_ADDR))
-      time.sleep(5.0)
+      acq.pass_fpga_amb_temp(0, get_fpga_hk(fpga, fpga_hk_field))
+      log.info("Read FPGA housekeeping.")
+      time.sleep(conf["acq"]["fpga_hk"]["rate"])
     acq.stop()
   except(KeyboardInterrupt, SystemExit):
     acq.stop()
