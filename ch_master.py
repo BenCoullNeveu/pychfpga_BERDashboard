@@ -11,6 +11,7 @@ import chrx
 from configobj import *
 from pychfpga.core import chFPGA_controller
 from pychfpga.core import chFPGA_receiver
+from pychfpga.core import SYSMON
 from validate import Validator
 import argparse
 import getpass
@@ -81,7 +82,7 @@ correlator_hash = {"stone"     : ["0001"],
                    "abbot"     : ["0003"],
                    "vincente"  : ["29821-0000-0028"],
                    "blanchard" : ["0029"],
-                   "testing"   : ["0023", "0022"],
+                   "testing"   : ["0031", "0032"],
                   }
 
 # Current archive format version.
@@ -320,9 +321,6 @@ if __name__ == "__main__":
   acq.add_header_item("notes", args.notes)
 
   # Start the acquisition.
-  print
-  print "%d" % fpga_conf["motherboard_serial"]
-  print
   acq.start(acq_base_dir, ["%d" % fpga_conf["motherboard_serial"]], \
             fpga_conf["adc_serial"])
 
@@ -330,8 +328,9 @@ if __name__ == "__main__":
     while True:
       # Pass the acquisition object the board temperatures. This is a temporary
       # way of doing this!
-      acq.pass_fpga_amb_temp(0, fpga.SYSMON.temperature())
-      time.sleep(1.0)
+      acq.pass_fpga_amb_temp(0, fpga.SYSMON.temperature(),
+                                fpga.SYSMON.voltage(fpga.SYSMON.VCCINT_ADDR))
+      time.sleep(5.0)
     acq.stop()
   except(KeyboardInterrupt, SystemExit):
     acq.stop()
