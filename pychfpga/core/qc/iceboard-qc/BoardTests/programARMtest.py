@@ -6,8 +6,9 @@ import os
 import shutil
 import iceboardtest
 import sys
+import updateStatus
 
-def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None):
+def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None,testStatus = [ '', '', '', None, None, None, None, None, None, None, None, '' ]):
     fname = 'board' + board_sn + '.txt'
     if os.path.isfile('board' + board_sn + '.txt') == False:
         file = open(fname, 'w')
@@ -149,15 +150,18 @@ def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None):
     if check == 'Y' or check == 'y':
         file.write('\n\nARM Programming Test Overall Status: Pass')
         file.close()
+        testStatus = True
     else:
         file.write('\n\nARM Programming Test Overall Status: Fail')
         file.close()
+        testStatus = False
         sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
     print "Do you wish to proceed to another test?"
     proceed = raw_input("Enter 'Y' or 'N':  ")
     if proceed == 'Y' or proceed == 'y':
-        iceboardtest.choosetest(username,board_sn,board_vn,board_md)
+        iceboardtest.choosetest(username,board_sn,board_vn,board_md,testStatus)
     else:
+        updateStatus.update(testStatus)
         sys.exit("Thank you for this testing process! The data has been saved. The testing program will now exit.")
 
 

@@ -6,8 +6,9 @@ import os
 import shutil
 import iceboardtest
 import sys
+import updateStatus
 
-def DCtest(username=str,board_sn=str,board_vn=str,board_md=str):
+def DCtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = [ '', '', '', None, None, None, None, None, None, None, None, '' ]):
     fname = 'board' + board_sn + '.txt'
     if os.path.isfile('board' + board_sn + '.txt') == False:
         file = open(fname, 'w')
@@ -197,13 +198,15 @@ def DCtest(username=str,board_sn=str,board_vn=str,board_md=str):
 
     file.write('DC Test Overall Status: Pass')
     file.close()
+    testStatus[5] = True
     
     print "If this hasn't been done, you should attach a heat sink on the FPGA at this point."
     print "Please consult http://kingspeak.physics.mcgill.ca/twiki/bin/edit/Chime/IceBoardQCManual as this is not part of the testing process"
     print "Do you wish to proceed to another test?"
     proceed = raw_input("Enter 'Y' or 'N':  ")
     if proceed == 'Y' or proceed == 'y':
-        iceboardtest.choosetest(username,board_sn,board_vn,board_md)
+        iceboardtest.choosetest(username,board_sn,board_vn,board_md,testStatus)
     else:
+        updateStatus.update(testStatus)
         sys.exit("Thank you for this testing process! The data has been saved. The testing program will now exit.")
     

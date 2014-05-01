@@ -7,7 +7,8 @@ import shutil
 import iceboardtest
 import sys
 import FPGAtest
-def GTXtest(username=str,board_sn=str,board_vn=str,board_md=str):
+import updateStatus
+def GTXtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = [ '', '', '', None, None, None, None, None, None, None, None, '' ]):
     fname = 'board' + board_sn + '.txt'
     if os.path.isfile('board' + board_sn + '.txt') == False:
         file = open(fname, 'w')
@@ -35,7 +36,7 @@ def GTXtest(username=str,board_sn=str,board_vn=str,board_md=str):
     print "Let's get started. Is the board turned on and the set up same as that described from above?"
     program = raw_input("Enter 'Y' or 'N': 	")
     if program != 'Y' and program != 'y':
-        FPGAtest.FPGAtest(username,board_sn,board_vn,board_md)
+        FPGAtest.FPGAtest(username,board_sn,board_vn,board_md,testStatus = [ '', '', '', None, None, None, None, None, None, None, None, '' ])
     print "Let's set everything up! Grab the JTAG cable and connect all the wires to the JTAG pins. The pins are located on the left side of the fan."
     print "Connect the cables accordingly by pin. Leave the n/c pin unconnected and connect VREF wire to 3V3 pin. All other labels should match."
     print "Connect the JTAG USB to the computer."
@@ -129,16 +130,19 @@ def GTXtest(username=str,board_sn=str,board_vn=str,board_md=str):
     if check == 'Y' or check == 'y':
         file.write('\n\nGTX Test Overall Status: Pass')
         file.close()
+        testStatus[10] = True
     else:
         file.write('\n\nGTX Test Overall Status: Fail')
         print "Please describe why below."
         failure = raw_input("Enter your comments:       ")
         file.write('\nComments:         ' + failure)
         file.close()
+        testStatus[10] = False
         sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
     print "Do you wish to proceed to another test?"
     proceed = raw_input("Enter 'Y' or 'N':  ")
     if proceed == 'Y' or proceed == 'y':
-        iceboardtest.choosetest(username,board_sn,board_vn,board_md)
+        iceboardtest.choosetest(username,board_sn,board_vn,board_md,testStatus)
     else:
+        updateStatus.update(testStatus)
         sys.exit("Thank you for this testing process! The data has been saved. The testing program will now exit.")

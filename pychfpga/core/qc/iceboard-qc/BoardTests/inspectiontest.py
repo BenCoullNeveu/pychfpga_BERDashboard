@@ -6,8 +6,9 @@ import os
 import shutil
 import iceboardtest
 import sys
+import updateStatus
 
-def inspectiontest(username=str,board_sn=str,board_vn=str,board_md=str):
+def inspectiontest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = [ '', '', '', None, None, None, None, None, None, None, None, '' ]):
     fname = 'board' + board_sn + '.txt'
     if os.path.isfile('board' + board_sn + '.txt') == False:
         file = open(fname, 'w')
@@ -81,12 +82,15 @@ def inspectiontest(username=str,board_sn=str,board_vn=str,board_md=str):
     if soldering == False and shorting == False and issues == False:
         file.write('Inspection test: PASS \n')
         file.close()
+        testStatus[3] = True
     else:
         file.write('Inspection test: FAIL \n')
         file.close()
+        testStatus[3] = False
     print "Do you wish to proceed to another test?"
     proceed = raw_input("Enter 'Y' or 'N':  ")
     if proceed == 'Y' or proceed == 'y':
-        iceboardtest.choosetest(username,board_sn,board_vn,board_md)
+        iceboardtest.choosetest(username,board_sn,board_vn,board_md,testStatus)
     else:
+        updateStatus.update(testStatus)
         sys.exit("Thank you for this testing process! The data has been saved. The testing program will now exit.")

@@ -6,8 +6,9 @@ import os
 import shutil
 import iceboardtest
 import sys
+import updateStatus
 
-def programFPGA(username=str,board_sn=str,board_vn=str,board_md=str):
+def programFPGA(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = [ '', '', '', None, None, None, None, None, None, None, None, '' ]):
     fname = 'board' + board_sn + '.txt'
     if os.path.isfile('board' + board_sn + '.txt') == False:
         file = open(fname, 'w')
@@ -28,6 +29,10 @@ def programFPGA(username=str,board_sn=str,board_vn=str,board_md=str):
     date_str = iceboardtest.date_format(tm.localtime())
     file.write('Date : ' + date_str + '\n')
     file.write('Tester: ' + username + '\n\n')
+    
+    print"\ntesStatus: "
+    for element in testStatus:
+        print element
 
     print "Please have everything set up as that from the Programming ARM Test."
     print "Make sure you can ping the motherboard, in the same method as that of Programming ARM Test. You may need to turn the board on/off"
@@ -70,6 +75,7 @@ def programFPGA(username=str,board_sn=str,board_vn=str,board_md=str):
     check = raw_input("Enter ('Y' or 'N'):  ")
     if check == 'Y' or check == 'y':
         file.write('\n\nFPGA Programming Test Overall Status: Pass')
+        testStatus[8] = True
         file.close()
     else:
         file.write('\n\nFPGA Programming Test Overall Status: Fail')
@@ -77,10 +83,12 @@ def programFPGA(username=str,board_sn=str,board_vn=str,board_md=str):
         failure = raw_input("Enter your comments:       ")
         file.write('\nComments:         ' + failure)
         file.close()
+        testStatus[8] = False
         sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
     print "Do you wish to proceed to another test?"
     proceed = raw_input("Enter 'Y' or 'N':  ")
     if proceed == 'Y' or proceed == 'y':
-        iceboardtest.choosetest(username,board_sn,board_vn,board_md)
+        iceboardtest.choosetest(username,board_sn,board_vn,board_md,testStatus)
     else:
+        updateStatus.update(testStatus)
         sys.exit("Thank you for this testing process! The data has been saved. The testing program will now exit.")

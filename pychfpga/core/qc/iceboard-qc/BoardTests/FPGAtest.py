@@ -7,7 +7,8 @@ import shutil
 import iceboardtest
 import sys
 import programFPGA
-def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str):
+import updateStatus
+def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = [ '', '', '', None, None, None, None, None, None, None, None, '' ]):
     fname = 'board' + board_sn + '.txt'
     if os.path.isfile('board' + board_sn + '.txt') == False:
         file = open(fname, 'w')
@@ -126,16 +127,19 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str):
     if check == 'Y' or check == 'y':
         file.write('\n\nFPGA Test Overall Status: Pass')
         file.close()
+        testStatus[9] = True
     else:
         file.write('\n\nFPGA Test Overall Status: Fail')
         print "Please describe why below."
         failure = raw_input("Enter your comments:       ")
         file.write('\nComments:         ' + failure)
         file.close()
+        testStatus[9] = False
         sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
     print "Do you wish to proceed to another test?"
     proceed = raw_input("Enter 'Y' or 'N':  ")
     if proceed == 'Y' or proceed == 'y':
-        iceboardtest.choosetest(username,board_sn,board_vn,board_md)
+        iceboardtest.choosetest(username,board_sn,board_vn,board_md,testStatus)
     else:
+        updateStatus.update( testStatus )
         sys.exit("Thank you for this testing process! The data has been saved. The testing program will now exit.")

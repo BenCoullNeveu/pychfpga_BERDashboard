@@ -32,6 +32,9 @@ def starttest():
     board_vn = raw_input("Enter:	")
     print "What is the model of this board?"
     board_md = raw_input("Enter:	")
+    
+    #Pass/Fail status of tests. This list will be passed from method to method. [ tester's name, serial, revision, inspection, resistance, DC, PLL, ARM, FPGA, FPGA test, GTX, comments ]
+    testStatus = [ username, board_sn, board_vn, None, None, None, None, None, None, None, None, '' ]
 
     fname = 'board' + board_sn + '.txt'
     if os.path.isfile('board' + board_sn + '.txt') == False:
@@ -68,7 +71,7 @@ def starttest():
     choose = raw_input("Enter ('Y' or 'N'):  ")
 
     if choose == 'Y' or choose == 'y':
-        choosetest(username,board_sn,board_vn,board_md)
+        choosetest(username,board_sn,board_vn,board_md, testStatus)
         
 def date_format(date):
     #finds the date, converts to string and adds 0 if <10 for day, month
@@ -94,37 +97,37 @@ def date_format(date):
     #returns 'dd/mm/yyyy, hh:mm'
     return day + '/' + month + '/' + year + ', ' + hour + ':' + minute
 
-def choosetest(username=None,board_sn=None,board_vn=None,board_md=None):
+def choosetest(username=None,board_sn=None,board_vn=None,board_md=None, testStatus = [ '', '', '', None, None, None, None, None, None, None, None, '' ]):
     print "Do you wish to do the inspection test?"
     inspection = raw_input("Enter ('Y' or 'N'):  ")
 
     if inspection == 'Y' or inspection == 'y':
-        inspectiontest.inspectiontest(username,board_sn,board_vn,board_md)
+        inspectiontest.inspectiontest(username,board_sn,board_vn,board_md,testStatus)
     print "Do you wish to do the resistance test?"
     resistance = raw_input("Enter ('Y' or 'N'):  ")
     if resistance == 'Y' or resistance == 'y':
-        resistancetest.resistancetest(username,board_sn,board_vn,board_md)
+        resistancetest.resistancetest(username,board_sn,board_vn,board_md,testStatus)
     print "Do you wish to do the DC test?"
     DC = raw_input("Enter ('Y' or 'N'):  ")
     if DC == 'Y' or DC == 'y':
-        DCtest.DCtest(username,board_sn,board_vn,board_md)
+        DCtest.DCtest(username,board_sn,board_vn,board_md,testStatus)
     print "Do you wish to do the Programming the PLL test?"
     PLL = raw_input("Enter ('Y' or 'N'):  ")
     if PLL == 'Y' or PLL == 'y':
-        programPLLtest.programPLLtest(username,board_sn,board_vn,board_md)
+        programPLLtest.programPLLtest(username,board_sn,board_vn,board_md,testStatus)
     print "Do you wish to do the Programming the ARM test?"
     ARM = raw_input("Enter ('Y' or 'N'):     ")
     if ARM == 'Y' or ARM == 'y':
-        programARMtest.programARMtest(username,board_sn,board_vn,board_md)
+        programARMtest.programARMtest(username,board_sn,board_vn,board_md,testStatus)
     print "Do you wish to do the Programming the FPGA test?"
     FPGA = raw_input("Enter ('Y' or 'N'):   ")
     if FPGA == 'Y' or FPGA == 'y':
-        programFPGA.programFPGA(username,board_sn,board_vn,board_md)
+        programFPGA.programFPGA(username,board_sn,board_vn,board_md, testStatus)
     print "Do you wish to do the FPGA test?"
     FPGA2 = raw_input("Enter ('Y' or 'N'):      ")
     if FPGA2 == 'Y' or FPGA2 == 'y':
-        FPGAtest.FPGAtest(username,board_sn,board_vn,board_md)
+        FPGAtest.FPGAtest(username,board_sn,board_vn,board_md, testStatus)
     print "Do you wish to do the GTX test?"
     GTX = raw_input("Enter ('Y' or 'N'):       ")
     if GTX == 'Y' or GTX == 'y':
-        GTXtest.GTXtest(username,board_sn,board_vn,board_md)
+        GTXtest.GTXtest(username,board_sn,board_vn,board_md,testStatus)
