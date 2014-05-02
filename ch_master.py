@@ -336,6 +336,7 @@ if __name__ == "__main__":
   acq.add_header_item("collection_server", socket.gethostname())
   acq.add_header_item("instrument_name", corr_name)
   acq.add_header_item("archive_version", archive_version)
+  acq.add_header_item("acquisition_name", "%s_%s_corr" % (time_str, corr_name))
 
   # Get the git tag and write it to the header.
   if not len(args.git_tag):
