@@ -116,8 +116,9 @@ fpga_hk_field = {      "core_temp" : "deg C",
                 }
 
 
-# Current archive format version.
-archive_version = "2.0.0"
+# Current archive format version. Prefixed by "NT_" to signify that these data
+# do not have the time-transpose completed.
+archive_version = "NT_2.0.0"
 
 if __name__ == "__main__":
   # Set up logger.
