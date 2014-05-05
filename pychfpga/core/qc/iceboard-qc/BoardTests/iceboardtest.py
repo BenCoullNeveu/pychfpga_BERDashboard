@@ -96,7 +96,48 @@ def date_format(date):
     
     #returns 'dd/mm/yyyy, hh:mm'
     return day + '/' + month + '/' + year + ', ' + hour + ':' + minute
+    
+def choosetest(username=None,board_sn=None,board_vn=None,board_md=None,testStatus = [ '', '', '', None, None, None, None, None, None, None, None, '' ]):
+    print "Select the test you wish to procede to.\n"
+    print "1. Inspection test"
+    print "2. Resistance test."
+    print "3. DC test."
+    print "4. Programming PLL."
+    print "5. Programming the ARM."
+    print "6. Programming the FPGA."
+    print "7. FPGA test."
+    print "8. GTX test.\n"
+    choiceMade = False
+    while not choiceMade:
+        try:
+            choice = int(raw_input(""))
+            if choice <= 8 and choice >=1:
+                choiceMade = True
+            else:
+                print "Input not within range. Please try again."
+        except Exception, e:
+            print "What you entered was not expected."
+            print e
+            print "Please try again"
+    
+    if choice == 1:
+        inspectiontest.inspectiontest(username,board_sn,board_vn,board_md,testStatus)
+    elif choice == 2:
+        resistancetest.resistancetest(username,board_sn,board_vn,board_md,testStatus)
+    elif choice == 3:
+        DCtest.DCtest(username,board_sn,board_vn,board_md,testStatus)
+    elif choice == 4:
+        programPLLtest.programPLLtest(username,board_sn,board_vn,board_md,testStatus)    
+    elif choice == 5:
+        programARMtest.programARMtest(username,board_sn,board_vn,board_md,testStatus)
+    elif choice == 6:
+        programFPGA.programFPGA(username,board_sn,board_vn,board_md,testStatus)
+    elif choice == 7:
+        FPGAtest.FPGAtest(username,board_sn,board_vn,board_md, testStatus)
+    elif choice == 8:
+        GTXtest.GTXtest(username,board_sn,board_vn,board_md,testStatus)
 
+'''
 def choosetest(username=None,board_sn=None,board_vn=None,board_md=None, testStatus = [ '', '', '', None, None, None, None, None, None, None, None, '' ]):
     print "Do you wish to do the inspection test?"
     inspection = raw_input("Enter ('Y' or 'N'):  ")
@@ -131,3 +172,4 @@ def choosetest(username=None,board_sn=None,board_vn=None,board_md=None, testStat
     GTX = raw_input("Enter ('Y' or 'N'):       ")
     if GTX == 'Y' or GTX == 'y':
         GTXtest.GTXtest(username,board_sn,board_vn,board_md,testStatus)
+'''
