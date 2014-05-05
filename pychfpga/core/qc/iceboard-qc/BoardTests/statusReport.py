@@ -1,7 +1,7 @@
 import os
 import time
 
-#Takes input from user, returns array of True/False (and string for comments) for test status: [ tester's name, serial, revision, inspection, resistance, DC, PLL, ARM, FPGA, FGPA test, GTX, comments ]
+#Takes input from user, returns array of True/False (and string for comments) for test status: [ tester's name, serial, revision, inspection, resistance, DC, PLL, ARM, FPGA, FGPA test, GTX, modifications, comments ]
 def getBoardInfo():
     tester = raw_input("Please enter your name\t")
     board = raw_input("Please enter board serial number (e.g. 0025)\t")
@@ -16,9 +16,10 @@ def getBoardInfo():
     fpga = checkInput( raw_input("Program FPGA:\n") )
     fpgaTest = checkInput( raw_input("FPGA test:\n") )
     gtx = checkInput( raw_input("Program GTX:\n") )
+    mods = raw_input("Write down any component changes or other modifications here:\n")
     comments = raw_input("Add any additional comments here:\t")
     
-    return [ tester, board, revision, inspection, resistance, dc, pll, arm, fpga, fpgaTest, gtx, comments ]
+    return [ tester, board, revision, inspection, resistance, dc, pll, arm, fpga, fpgaTest, gtx, mods, comments ]
     
 def checkInput( input ):
     if input == 'y' or input == 'Y' or input == '':
@@ -31,7 +32,7 @@ def checkInput( input ):
         print "Can't parse input."
         return 'input error'
 
-#Format for LaTex inventory.tex document. Takes list of form [ tester's name, serial, revision, inspection, resistance, DC, PLL, ARM, FPGA, FPGA Test, GTX, comments ]. Returns full line as string.
+#Format for LaTex inventory.tex document. Takes list of form [ tester's name, serial, revision, inspection, resistance, DC, PLL, ARM, FPGA, FPGA Test, GTX, modifications, comments ]. Returns full line as string.
 def formatLatex( inputList ):
     newLine = '\hline ' + date_format(time.localtime()) + ' & ' + inputList[0] + ' & ' + inputList[1] + ' & ' + inputList[2]
     for i in range(3,11):
@@ -41,18 +42,19 @@ def formatLatex( inputList ):
             newLine += " & \\textcolor{red}{FAIL}"
         elif inputList[i] == None:
             newLine += " & N/A"
-    newLine += ' & ' + inputList[11] + ' \\\\ \n'
+    newLine += ' & ' + inputList[11] + ' & ' + inputList[12] + ' \\\\ \n'
     
     return newLine
     
-#Format for %fname.tex document. Takes list of form [ tester's name, serial, revision, inspection, resistance, DC, PLL, ARM, FPGA, FPGA test, GTX, comments ]. Returns block of lines as list.
+#Format for %fname.txt document. Takes list of form [ tester's name, serial, revision, inspection, resistance, DC, PLL, ARM, FPGA, FPGA test, GTX, modifications, comments ]. Returns block of lines as list.
 def formatTXT( inputList ):
     newLines = []
-    newLines.append("|Status report of most recent test (Please don't modify this line or add any lines in this block)\n")
-    newLines.append("|------\n")
-    newLines.append('|Date: ' + date_format(time.localtime()) + '\n')
-    newLines.append("|Tester: " + inputList[0] + "\n")
-    newLines.append("|\n")
+    newLines.append("Status report of most recent test (Please don't modify this line or add any lines in this block)\n")
+    newLines.append("------\n")
+    newLines.append('Date: ' + date_format(time.localtime()) + '\n')
+    newLines.append("\n")
+    newLines.append("Tester: " + inputList[0] + "\n")
+    newLines.append("\n")
     
     #Convert True/False/None to PASS/FAIL/N/A
     testResult = []
@@ -63,17 +65,21 @@ def formatTXT( inputList ):
             testResult.append("FAIL")
         elif inputList[i] == None:
             testResult.append("N/A")
-    newLines.append("|Inspection test: " + testResult[0] + "\n")
-    newLines.append("|Resistance test: " + testResult[1] + "\n")            
-    newLines.append("|DC test: " + testResult[2] + "\n")
-    newLines.append("|Program PLL: " + testResult[3] + "\n")
-    newLines.append("|Program ARM: " + testResult[4] + "\n")
-    newLines.append("|Program FPGA: " + testResult[5] + "\n")
-    newLines.append("|FPGA test: " + testResult[6] + "\n")
-    newLines.append("|Program GTX: " + testResult[7] + "\n")
-    newLines.append("|Comments: " + inputList[11] + "\n")
-    newLines.append("|\n")
-    newLines.append("|\n")
+    newLines.append("=================     ============================\n")
+    newLines.append("Inspection test:      " + testResult[0] + "\n")
+    newLines.append("Resistance test:      " + testResult[1] + "\n")            
+    newLines.append("DC test:              " + testResult[2] + "\n")
+    newLines.append("Program PLL:          " + testResult[3] + "\n")
+    newLines.append("Program ARM:          " + testResult[4] + "\n")
+    newLines.append("Program FPGA:         " + testResult[5] + "\n")
+    newLines.append("FPGA test:            " + testResult[6] + "\n")
+    newLines.append("Program GTX:          " + testResult[7] + "\n")
+    newLines.append("Modifications:        " + inputList[11] + "\n")
+    newLines.append("Comments:             " + inputList[12] + "\n")
+    newLines.append("=================     ============================\n")
+    newLines.append("\n")
+    newLines.append("(end of status report)\n")
+    newLines.append("\n")
     
     return newLines
         
@@ -99,7 +105,7 @@ def appendLatex( newLine = '' ):
     f.close()
     
 def appendTXT( fname, newLines = [] ):
-    STATUS_LINES_NUM = 16 #number of lines in block of text to append (and possibly overwrite)
+    STATUS_LINES_NUM = 21 #number of lines in block of text to append (and possibly overwrite)
     
     #check file exists
     if not os.path.isfile(fname):
@@ -114,23 +120,22 @@ def appendTXT( fname, newLines = [] ):
     linePos = 9 #default position to append, otherwise will append where previous report was
     foundLine = False
     for index, line in enumerate(content):
-        if line == "|Status report of most recent test (Please don't modify this line or add any lines in this block)\n":
+        if line == "Status report of most recent test (Please don't modify this line or add any lines in this block)\n":
             foundLine = True
             linePos = index
             break
     #check that previous status report exists and is in expected format. If it is as expected, delete previous status report with user confirmation.
     if foundLine:
         overwrite = True
-        for i in range(linePos, linePos + STATUS_LINES_NUM):
-            if content[i][0] != '|':
-                overwrite = False
-                print "\nThere is something wrong with the previous status report that was found (should be " + str(STATUS_LINES_NUM) + " lines, with last 2 empty, and every line beginning with a '|')."
-                print "To not take any chances, this script will not overwrite."
-                print "\nWould you like to append this status report to the previous one or quit?"
-                confirm = raw_input("Enter 'Y' or 'y' to continue, or anything else to quit.\t")
-                if confirm != 'Y' and confirm != 'y':
-                    print "\nStatus report not updated. You can do it manually by editing the file and running the updateStatus.updateManually()."
-                    return
+        if content[linePos + 19] != '(end of status report)\n':
+            overwrite = False
+            print "\nThere is something wrong with the previous status report that was found (should be " + str(STATUS_LINES_NUM) + " lines, ending with '(end of status report)' and an empty line."
+            print "To not take any chances, this script will not overwrite."
+            print "\nWould you like to append this status report to the previous one or quit?"
+            confirm = raw_input("Enter 'Y' or 'y' to continue, or anything else to quit.\t")
+            if confirm != 'Y' and confirm != 'y':
+                print "\nStatus report not updated. You can do it manually by editing the file and running the updateStatus.updateManually()."
+                return
         if overwrite:
             confirm = raw_input("\nThis will overwrite previous status report.\nEnter 'Y' or 'y' to continue, or anything else to quit.\t")
             if confirm != 'Y' and confirm != 'y':
