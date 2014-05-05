@@ -29,10 +29,6 @@ def programFPGA(username=str,board_sn=str,board_vn=str,board_md=str,testStatus =
     date_str = iceboardtest.date_format(tm.localtime())
     file.write('Date : ' + date_str + '\n')
     file.write('Tester: ' + username + '\n\n')
-    
-    print"\ntesStatus: "
-    for element in testStatus:
-        print element
 
     print "Please have everything set up as that from the Programming ARM Test."
     print "Make sure you can ping the motherboard, in the same method as that of Programming ARM Test. You may need to turn the board on/off"
