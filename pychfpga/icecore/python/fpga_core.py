@@ -17,15 +17,16 @@ import numpy as np
 import pychfpga.core.I2C as i2c # to be fixed: tese modules should live in icecore.lib
 import pychfpga.core.GPIO as gpio
 from lib import fpga_mmi
-from fpga_firmware import FpgaFirmware
+# from fpga_firmware import FpgaFirmware
 from hardware_map import HWMResource, Integer, Column, String, ForeignKey, UniqueConstraint, reconstructor
 
 class FpgaException(Exception):
     pass
 
-class FpgaCoreFirmware(FpgaFirmware):
+class FpgaCoreFirmware(HWMResource):
     """
     Provides access to the basic functionnalities of the FPGA.
+    This object is also a hardware map object that can store persistent information.
 
     This class is meant to to provide access to functionnalities that are
     present in all FPGA firmware using a common VHDL code base, such as:
@@ -40,8 +41,23 @@ class FpgaCoreFirmware(FpgaFirmware):
              - etc.
         - Control and monitoring of generic FMC Mezzanine I/O lines (I2C, etc.)
     """
+    __tablename__ = 'fpga_firmware'
 
-    __mapper_args__ = {'polymorphic_identity': 'core_fpga_firmware'}
+    # __mapper_args__ = {'polymorphic_identity': 'core_fpga_firmware'}
+    __mapper_args__ = {
+            'polymorphic_on': 'firmware_class',
+            'polymorphic_identity': 'core_fpga_firmware'
+    }
+    pk = Column(Integer, primary_key=True)
+    iceboard_pk = Column(Integer, ForeignKey('iceboards.pk'))
+    iceboard_serial_number = Column(Integer, ForeignKey('iceboards.serial_number'))
+    firmware_class = Column(String, nullable=False)
+
+    # ---------------------------------------
+    # Class variables (common to all instances)
+    # ---------------------------------------
+    _active_instances = {} # This contains a dictionary of all active (opened) firmware instances indexed by the board's serial number
+
 
     # FPGA firmware-related definition
     # serial_number = Column(Integer)
@@ -158,9 +174,24 @@ class FpgaCoreFirmware(FpgaFirmware):
         access is done through the ARM.
 
         """
-        FpgaFirmware.__init__(self, *args, **kwargs)
-        # super(type(self), self).__init__(*args, **kwargs)
+        # self.iceboard_pk = iceboard_pk
+        self.logger = logging.getLogger(__name__)
+        HWMResource.__init__(self, *args, **kwargs)
+        # super(type(self), self).__init__(*args, **kwargs) # This causes infinite recursive calls to this __init__
         # self.motherboard = motherboard
+        if self.is_open():
+            self.logger.error('Attempting to create a firmware instance for Iceboard S/N %s while an instance already exists' % self.iceboard_pk)
+
+    @reconstructor # SQLAlchemy decorator indicating that this method is to be called when the object is recreated from the database
+    def _init_from_database(self):
+        """
+        Reconstructs the Iceboard basic information from the database
+        entry and open the link to the Iceboard.
+        """
+        self.logger = logging.getLogger(__name__)
+
+        if self.is_open():
+            self.logger.error('Attempting to create a firmware instance from database for Iceboard S/N %s while an instance already exists' % self.iceboard_pk)
 
     def get_core_attributes(self):
         """
@@ -209,6 +240,8 @@ class FpgaCoreFirmware(FpgaFirmware):
         self._logger.debug('=== Instantiating I2C')
         self._base_i2c = i2c.I2C_base(self.mmi, self._SYSTEM_I2C_BASE_ADDR)
 
+        type(self)._active_instances[self.iceboard_pk] = self
+
     def close_core(self):
         """
         Closes the link to the core FPGA firmware.
@@ -219,6 +252,11 @@ class FpgaCoreFirmware(FpgaFirmware):
         if self.mmi:
             self.mmi.close()
             self.mmi = None
+
+        type(self)._active_instances.pop(self.iceboard_pk, None)
+
+    def is_open(self):
+        return self.iceboard_pk in type(self)._active_instances
 
     def open(self):
         """

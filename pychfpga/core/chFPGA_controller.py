@@ -196,7 +196,7 @@ class chFPGA_controller(FpgaCoreFirmware):
     }
 
 
-    def __init__(self, motherboard = None, *args, **kwargs):
+    def __init__(self, *args, **kwargs):
         """
         Creates the object providing the methods and attributes needed to
         operate the chFPGA firmware. This does not affect the state and
@@ -211,21 +211,20 @@ class chFPGA_controller(FpgaCoreFirmware):
         # Initialize instance attributes
         # For now, we do not know their values unless the system is initialized.
         # We may want to fix that by reading the FPGA states and determining those values.
-        self._motherboard = motherboard
-        self._self_reference = self # hack to make sure motherboard still exist
+        #self._motherboard = motherboard
 
         self._sampling_frequency = None
         self._reference_frequency = None
         self._FRAME_PERIOD = None
         self._FMC_present = []  # indicates if the FMC board is present. If not, the modules will act accordingly.
+        self._adc_board = []
+        self._last_init_time = None
         # self.ip_address = ip_address # store the IP address so we can use it to delete the shared_variable
         # self.port_number = port_number
 
         self._logger = logging.getLogger(__name__)
 
-        self._adc_board = []
         # self.fpga = None
-        self._last_init_time = None
         self._logger.info("Creating chfpga_controller object as %r" % (self))
 
         # self._logger.info("=== Opening control communication sockets to FPGA at %s:%i." % (ip_address, port_number))
@@ -254,11 +253,30 @@ class chFPGA_controller(FpgaCoreFirmware):
 
         # provide access to the FPGA read/write methods directly from this chFPGA object
 
-    def open(self, init=1, verbose=0, **kwargs):
+    from sqlalchemy.orm import reconstructor
+    @reconstructor # SQLAlchemy decorator indicating that this method is to be called when the object is recreated from the database
+    def _init_from_database(self):
+        """
+        Reconstructs the Iceboard basic information from the database
+        entry and open the link to the Iceboard.
+        """
+        self._logger = logging.getLogger(__name__)
+        self._logger.warning('CHFPGA_Controller %r was re-initialized from the database.' % self)
+        self._sampling_frequency = None
+        self._reference_frequency = None
+        self._FRAME_PERIOD = None
+        self._FMC_present = []  # indicates if the FMC board is present. If not, the modules will act accordingly.
+        self._adc_board = []
+        self._last_init_time = None
+
+    def open(self, motherboard, init=1, verbose=0, **kwargs):
 
         # super(type(self), self).open()
         # self.mmi = self._motherboard.fpga_core.mmi
         self._logger = logging.getLogger(__name__)
+        self._motherboard = motherboard
+
+        self._self_reference = self # hack to make sure motherboard still exist
 
         self.read = self.mmi.read
         self.write = self.mmi.write
@@ -1244,8 +1262,8 @@ class chFPGA_controller(FpgaCoreFirmware):
         else:
             raise chFPGAException("The channelizers and crossbar are not set to the same data width (chan=%i bits, xbar=%i bits). The data stream won't make much sense" % (chan_data_width, xbar_data_width))
 
-    def configure_crossbar(self):
-        self.CROSSBAR.configure()
+    def configure_crossbar(self, *args, **kwargs):
+        self.CROSSBAR.configure(*args, **kwargs)
 
     def set_offset_binary_encoding(self, offset=True, channels=None, sync=True):
         """

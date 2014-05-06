@@ -29,13 +29,21 @@ reload(logging.handlers) # we need to reload the handlers as well so they are in
 
 # logging.setLoggerClass(MyLogger)
 
+def delete_modules(module_name):
+    import sys
+    for name in [n for n in sys.modules.keys() if n.startswith(module_name)]:
+        del sys.modules[name]
+
+# delete_modules('sqlalchemy')
+# delete_modules('icecore')
+
 from icecore import hardware_map
 from icecore import tuber
-reload(hardware_map)
-reload(tuber)
+# reload(hardware_map)
+# reload(tuber)
 
 from icecore.icearray import IceArray, close_all_sockets
-from icecore.fpgabitfile import FpgaBitFile
+from icecore.fpga_bitstream import FpgaBitstream
 from icecore.iceboard import IceBoard
 
 from core.chFPGA_controller import chFPGA_controller as ChimeFpgaFirmware
@@ -52,7 +60,7 @@ class CompletionFilter(object):
 if __name__ == '__main__':
 
     # Configure the various loggers to provide adequate levels of details
-    logging.getLogger('iceboard.arm.FpgaBitFile').setLevel(logging.INFO)
+    logging.getLogger('icecore.fpga_bitstream.FpgaBitstream').setLevel(logging.DEBUG)
     # logging.getLogger('requests.packages').setLevel(logging.WARN)
     logging.getLogger('sqlalchemy.engine.base.Engine').setLevel(logging.WARN)
 
@@ -65,7 +73,7 @@ if __name__ == '__main__':
     # parser.add_argument('-w', '--data_width', action = 'store', type=int, choices=[4,8], default=8, help='Data width of each Re and Im component of the channelizer output')
     # parser.add_argument('-g', '--group_frames', action = 'store', type=int, default=4, help='Number of frames to group before sending to the GPU or FPGA correlator. The total size of the frame, including the header and ethernet obverhead, cannot exceed 8 kibytes.')
     # parser.add_argument('--enable_gpu_link', action = 'store', type=int, default=0, help='Enables the GPU link transmission')
-    # parser.add_argument('--ip', action = 'store', type=str, default='10.10.10.11', help='IP address of the board')
+    parser.add_argument('--force', action = 'store', type=bool, default=False, help='Forces reprogramming of the FPGAs even if they are already programmed')
     parser.add_argument('-i', '--if_ip', action = 'store', type=str, default=None, help='IP address of adapter through which the connection to the FPGA will be established. If not specified, the controller will attempt to identify the proper host based on the FPGA IP address.')
     args = parser.parse_args()
     log_level = {'info': logging.INFO, 'debug': logging.DEBUG}[args.log_level]
@@ -95,12 +103,13 @@ if __name__ == '__main__':
 
     ca = IceArray(uri='sqlite:///test.db', interface_ip_addr=args.if_ip)
     ca.load_iceboards('iceboard_list.txt')
+
     ca.discover() # automatically update the hardware map database with discovered resources
 
     bitfile_filename = '../../chfpga/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit'
-    fpga_bitstream = FpgaBitFile(bitfile_filename) # we have to create one bitstream object only.
+    fpga_bitstream = FpgaBitstream(bitfile_filename, ChimeFpgaFirmware) #
 
     c = ca.get_iceboards(subarray=0).index_by(IceBoard.serial_number) # get one or more IceBoards from specified subarray
-    c.set_fpga_firmware(fpga_bitstream, ChimeFpgaFirmware, configure_fpga=True, force=False) # associate boards with specified firmware and configure the selected FPGA
-    # c.open() # establish communication with the boards so we can access their attributes and methods
     cc=c[7]
+    cc.set_fpga_firmware(fpga_bitstream,  configure_fpga=True, force=args.force, store_in_database=True) # associate boards with specified firmware and configure the selected FPGA
+    # c.open() # establish communication with the boards so we can access their attributes and methods

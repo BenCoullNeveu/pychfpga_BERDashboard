@@ -1,0 +1,10 @@
+Package: iceboard-runtime
+Version: 0.0.1
+Description: Runtime (server, webpages) for generic IceBoard applications
+Section: iceboard/runtimes
+Proprity: optional
+Maintainer: Graeme Smecher
+Architecture: all
+Homepage: http://bitbucket.org/winterlandcosmology
+Source:
+Depends:

@@ -26,14 +26,13 @@ class FMCMezzanine(HWMResource):
 
     # Since there are two "mezz" references per ICEBoard, the backreference
     # has to be smart enough to accept either in the join.
-    # iceboard = relationship(
-    #     "IceBoard",
-    #     uselist=False,
-    #     primaryjoin="or_(FMCMezzanine.pk==IceBoard.mezz1_pk,FMCMezzanine.pk==IceBoard.mezz2_pk)",
-    # )
+    iceboard = relationship(
+        "IceBoard",
+        uselist=False,
+        primaryjoin="or_(FMCMezzanine.pk==IceBoard.mezz1_pk,FMCMezzanine.pk==IceBoard.mezz2_pk)",
+    )
 
     pk = Column(Integer, primary_key=True)
-
     cls = Column(String, nullable=False)
     type = Column(String, nullable=False)
     serial = Column(Integer)
@@ -80,5 +79,31 @@ class FMCMezzanine(HWMResource):
         """ returns a boolean indicating whether the ADC board is present"""
         return self._board_is_present
 
+    def eeprom_write(self, buf):
+        '''Writes a collection of bytes to the internal EEPROM.
+
+        Don't do this unless you're at McGill, and you're commissioning
+        and testing a new mezzanine! This method makes it trivial to
+        delete non-volatile data. Figuring out how to re-write the original
+        data is a tougher nut to crack.
+
+        According to FMC specs, the EEPROM is required to contain an
+        IPMI FRU descriptor. If you want to insert this kind of data,
+        you should use the 'ipmi_fru' module included in this Python
+        repository.
+
+        Since EEPROM contents are parsed by machine and used during
+        board bring-up, it's important that the data you write is valid.
+        You should refer to reference code (likely in the QC suite) rather
+        than trying to guess what structures belong in here.
+        '''
+
+        import base64
+
+        if self.pk==self.iceboard.mezz1_pk: mezz_number = 1
+        else: mezz_number = 2
+
+        b64_string = base64.b64encode(buf)
+        self.iceboard.mezz_eeprom_write(mezz_number, b64_string, 0)
 
 # vim: sts=4 ts=4 sw=4 tw=80 smarttab expandtab

@@ -10,5 +10,3 @@ instead of
     >>> import myicecore.python.iceboard
 """
 __path__= [__path__[0] + '/python'] # __path__[0] is the name given by the user to this folder.
-#__path__= ['icecore/python'] # __path__[0] is the name given by the user to this folder.
-

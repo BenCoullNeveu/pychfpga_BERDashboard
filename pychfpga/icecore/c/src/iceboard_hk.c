@@ -5,12 +5,7 @@
 #include "runtime.h"
 #include "support.h"
 
-tuber_property(iceboard, MOTHERBOARD_TEMPERATURE_POWER, json_string(MOTHERBOARD_TEMPERATURE_POWER));
-tuber_property(iceboard, MOTHERBOARD_TEMPERATURE_ARM, json_string(MOTHERBOARD_TEMPERATURE_ARM));
-tuber_property(iceboard, MOTHERBOARD_TEMPERATURE_FPGA, json_string(MOTHERBOARD_TEMPERATURE_FPGA));
-tuber_property(iceboard, MOTHERBOARD_TEMPERATURE_PHY, json_string(MOTHERBOARD_TEMPERATURE_PHY));
-
-tuber_method(iceboard, DOUBLE, get_motherboard_temperature,
+tuber_method(IceBoard, DOUBLE, get_motherboard_temperature,
 	"Retrieve the temperature from one of the motherboard's sensors.",
 	1, ((STRING_CONST, sensor, NULL, "Which sensor? (See description below)")),
 	"The following motherboard temperature sensors are recognized:\n"
@@ -41,17 +36,7 @@ tuber_method(iceboard, DOUBLE, get_motherboard_temperature,
 	return(i / 1000.);
 }
 
-tuber_property(iceboard, MOTHERBOARD_RAIL_VCC3V3, json_string(MOTHERBOARD_RAIL_VCC3V3));
-tuber_property(iceboard, MOTHERBOARD_RAIL_VCC12V0, json_string(MOTHERBOARD_RAIL_VCC12V0));
-tuber_property(iceboard, MOTHERBOARD_RAIL_VCC5V5, json_string(MOTHERBOARD_RAIL_VCC5V5));
-tuber_property(iceboard, MOTHERBOARD_RAIL_VCC1V0_GTX, json_string(MOTHERBOARD_RAIL_VCC1V0_GTX));
-tuber_property(iceboard, MOTHERBOARD_RAIL_VCC1V0, json_string(MOTHERBOARD_RAIL_VCC1V0));
-tuber_property(iceboard, MOTHERBOARD_RAIL_VCC1V2, json_string(MOTHERBOARD_RAIL_VCC1V2));
-tuber_property(iceboard, MOTHERBOARD_RAIL_VCC1V5, json_string(MOTHERBOARD_RAIL_VCC1V5));
-tuber_property(iceboard, MOTHERBOARD_RAIL_VCC1V8, json_string(MOTHERBOARD_RAIL_VCC1V8));
-tuber_property(iceboard, MOTHERBOARD_RAIL_VADJ, json_string(MOTHERBOARD_RAIL_VADJ));
-
-tuber_method(iceboard, DOUBLE, get_motherboard_voltage,
+tuber_method(IceBoard, DOUBLE, get_motherboard_voltage,
 	"Retrieve the voltage from one of the motherboard's sensors.",
 	1, ((STRING_CONST, rail, NULL, "Which rail? (See description below)")),
 	"The following motherboard rails are instrumented:\n"

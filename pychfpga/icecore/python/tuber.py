@@ -18,11 +18,26 @@ class TuberRemoteError(TuberError):
 ### Libraries
 ###
 
-import urllib2, urlparse, os
+import urllib2, urlparse, os, collections
 from hardware_map import HWMResource
 
 try: import simplejson as json
 except ImportError: import json
+
+def _tuber_json_object_hook(d):
+    '''
+    Convert JSON dictionaries into Python objects. This greatly clarifies
+    syntax: for example,
+
+        >>> d.units['HZ']
+        u'Hz'
+
+    ...becomes
+
+        >>> d.units.HZ
+        u'Hz'
+    '''
+    return collections.namedtuple('TuberResult', d.keys())(*d.values())
 
 class TuberHWMResource(HWMResource):
     '''A base class for HWMResources that correspond to TuberObjects.
@@ -95,33 +110,36 @@ class TuberHWMResource(HWMResource):
         del self._calls
 
         json_in = json.dumps(calls)
-        json_out = json.loads(urllib2.urlopen(self.tuber_uri, json_in).read())
+        json_out = json.loads(
+            urllib2.urlopen(self.tuber_uri, json_in).read(),
+            object_hook=_tuber_json_object_hook
+        )
 
         # TBD: I would love to postpone error-checking until we make use of
         # the relevant call, but I can't do that since we don't always look!
         # There is potentially a use for the "with" keyword here: could we
         # only permit lazy returns within a context?
         for r in json_out:
-            if ('error' in r) and r['error']:
-                raise TuberRemoteError(r['error']['message'])
+            if hasattr(r, 'error') and r.error:
+                raise TuberRemoteError(r.error.message)
 
-        return [ r['result'] for r in json_out ]
+        return [ r.result for r in json_out ]
 
     @property
     def __doc__(self):
         '''Construct DocStrings using metadata retrieved from the underlying resource.'''
         return "%s:\t%s\n\n%s" % (
-            self._tuber_meta['name'],
-            self._tuber_meta['summary'],
-            self._tuber_meta['explanation']
+            self._tuber_meta.name,
+            self._tuber_meta.summary,
+            self._tuber_meta.explanation
         )
 
     def __dir__(self):
         '''Provide a list of what's available here. (Used for tab-completion.)'''
 
         d = []
-        d.extend(self._tuber_meta['properties'])
-        d.extend(self._tuber_meta['methods'])
+        d.extend(self._tuber_meta.properties)
+        d.extend(self._tuber_meta.methods)
         return d
 
     @property
@@ -154,12 +172,15 @@ class TuberHWMResource(HWMResource):
 
         # Not cached yet: load it.
         json_in = json.dumps({'object': self.tuber_objname})
-        json_out = json.loads(urllib2.urlopen(self.tuber_uri, json_in).read())
+        json_out = json.loads(
+            urllib2.urlopen(self.tuber_uri, json_in).read(),
+            object_hook=_tuber_json_object_hook
+        )
 
-        if 'error' in json_out and json_out['error']:
-            raise TuberRemoteError(json_out['error'])
+        if json_out.error:
+            raise TuberRemoteError(json_out.error)
 
-        self._tuber_meta_cache = json_out['result']
+        self._tuber_meta_cache = json_out.result
         return self._tuber_meta
 
     ###
@@ -180,7 +201,7 @@ class TuberHWMResource(HWMResource):
 
         # Make sure this method is described by metadata
         meta = self._tuber_meta
-        if name not in meta['methods'] and name not in meta['properties']:
+        if name not in meta.methods and name not in meta.properties:
             raise TuberRemoteError("'%s' is not a valid attribute! Hint: use ipython, and try tab-completion." % name)
 
         # Retrieve any specific information tuber cares to share
@@ -188,10 +209,14 @@ class TuberHWMResource(HWMResource):
             'object': self.tuber_objname,
             'property': name
         })
-        json_out = json.loads(urllib2.urlopen(self.tuber_uri, json_in).read())
-        d = json_out['result']
 
-        if name in meta['methods']:
+        json_out = json.loads(
+            urllib2.urlopen(self.tuber_uri, json_in).read(),
+            object_hook=_tuber_json_object_hook
+        )
+        d = json_out.result
+
+        if name in meta.methods:
             def proto(*args, **kwargs):
                 if not hasattr(self, '_calls'):
                     self._calls = []
@@ -207,24 +232,24 @@ class TuberHWMResource(HWMResource):
             call = proto
 
             arg_text = ''
-            if 'args' in d and d['args'] is not None:
-                for arg in d['args']:
+            if hasattr(d, 'args') and d.args:
+                for arg in d.args:
                     arg_text += ("%s: %s\n" % (
-                        arg['name'],
-                        arg['description']
+                        arg.name,
+                        arg.description
                     )).expandtabs(12)
 
             call.__doc__ = "%s(%s)\n\n%s" % (
-                    d['name'],
-                    ', '.join([a['name'] for a in d['args'] ]),
-                    d['explanation']
+                    d.name,
+                    ', '.join([a.name for a in d.args]),
+                    d.explanation
             )
 
             setattr(self, name, call)
             return getattr(self, name)
 
         # Fall back on properties.
-        setattr(self, name, json_out['result'])
+        setattr(self, name, json_out.result)
         return getattr(self, name)
 
 # vim: sts=4 ts=4 sw=4 tw=80 smarttab expandtab

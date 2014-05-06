@@ -58,8 +58,8 @@ import concurrent.futures
 import operator
 import functools
 import logging
-from sqlalchemy import create_engine
-from sqlalchemy import Column, Integer, String, ForeignKey, UniqueConstraint
+from sqlalchemy import create_engine, inspect
+from sqlalchemy import Column, Integer, String, Binary, LargeBinary, DateTime, ForeignKey, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, Query, sessionmaker, backref, reconstructor
 

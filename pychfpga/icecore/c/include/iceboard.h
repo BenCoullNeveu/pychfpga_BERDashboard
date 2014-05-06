@@ -1,35 +1,53 @@
 #ifndef __ICEBOARD_H__
 #define __ICEBOARD_H__
 
-typedef struct iceboard {
+#include "runtime.h"
+#include "support.h"
+#include "iceboard_constants.h"
 
-} iceboard;
+#include <stdint.h>
 
-/* Units */
-/*#define UNIT_VOLTS			"UNIT_VOLTS"
-#define UNIT_AMPS			"UNIT_AMPS"
-#define UNIT_WATTS			"UNIT_WATTS"*/
+typedef struct IceBoard IceBoard;
 
-/* Temperature sensors */
-#define MOTHERBOARD_TEMPERATURE_POWER	"MOTHERBOARD_TEMPERATURE_POWER"
-#define MOTHERBOARD_TEMPERATURE_ARM	"MOTHERBOARD_TEMPERATURE_ARM"
-#define MOTHERBOARD_TEMPERATURE_FPGA	"MOTHERBOARD_TEMPERATURE_FPGA"
-#define MOTHERBOARD_TEMPERATURE_PHY	"MOTHERBOARD_TEMPERATURE_ARM"
+/*
+ * Types
+ */
 
-/* Motherboard power rails */
-#define MOTHERBOARD_RAIL_VCC3V3		"MOTHERBOARD_RAIL_VCC3V3"
-#define MOTHERBOARD_RAIL_VCC12V0	"MOTHERBOARD_RAIL_VCC12V0"
-#define MOTHERBOARD_RAIL_VCC5V5		"MOTHERBOARD_RAIL_VCC5V5"
-#define MOTHERBOARD_RAIL_VCC1V0_GTX	"MOTHERBOARD_RAIL_VCC1V0_GTX"
-#define MOTHERBOARD_RAIL_VCC1V0		"MOTHERBOARD_RAIL_VCC1V0"
-#define MOTHERBOARD_RAIL_VCC1V2		"MOTHERBOARD_RAIL_VCC1V2"
-#define MOTHERBOARD_RAIL_VCC1V5		"MOTHERBOARD_RAIL_VCC1V5"
-#define MOTHERBOARD_RAIL_VCC1V8		"MOTHERBOARD_RAIL_VCC1V8"
-#define MOTHERBOARD_RAIL_VADJ		"MOTHERBOARD_RAIL_VADJ"
+typedef int bool;
 
-#define MEZZANINE_RAIL_VCC3V3		"MEZZANINE_RAIL_VCC3V3"
-#define MEZZANINE_RAIL_VCC12V0		"MEZZANINE_RAIL_VCC12V0"
-#define MEZZANINE_RAIL_VADJ		"MEZZANINE_RAIL_VADJ"
+struct IceBoard {
+	uint32_t (*rread)(IceBoard *, uint32_t);
+	void (*rwrite)(IceBoard *, uint32_t, uint32_t);
+	void (*randeq)(IceBoard *, uint32_t, uint32_t);
+	void (*roreq)(IceBoard *, uint32_t, uint32_t);
+};
 
+/*
+ * IceBoard-wide methods
+ */
+
+IceBoard *new_IceBoard(void);
+void delete_IceBoard(IceBoard *);
+
+void IceBoard_set_mezz_power(IceBoard *self, int mezzanine, bool power);
+bool IceBoard_get_mezz_power(IceBoard *self, int mezzanine);
+
+double IceBoard_get_motherboard_temperature(IceBoard *, const char *);
+double IceBoard_get_motherboard_voltage(IceBoard *, const char *);
+
+double IceBoard_get_mezz_temperature(IceBoard *, int, const char *);
+double IceBoard_get_mezz_voltage(IceBoard *, int, const char *);
+
+bool IceBoard_is_fpga_programmed(IceBoard *);
+void IceBoard_disable_fpga(IceBoard *);
+
+/*
+ * Register access.
+ */
+
+uint32_t fpga_spi_rread(IceBoard *, uint32_t);
+void fpga_spi_rwrite(IceBoard *, uint32_t, uint32_t);
+void fpga_spi_randeq(IceBoard *, uint32_t, uint32_t);
+void fpga_spi_roreq(IceBoard *, uint32_t, uint32_t);
 
 #endif

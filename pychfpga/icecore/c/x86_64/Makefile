@@ -1,6 +1,6 @@
-SUBDIRS := 
+SUBDIRS := fastpath
 default: $(SUBDIRS)
-.PHONY: default tuber clean
+.PHONY: default $(SUBDIRS) clean
 
 $(SUBDIRS):
 	$(MAKE) -C $@

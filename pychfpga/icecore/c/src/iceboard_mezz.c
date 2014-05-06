@@ -6,7 +6,11 @@
 #include "support.h"
 #include "iceboard_hw.h"
 
-tuber_method(iceboard, VOID, set_mezzanine_power,
+#include "i2c_eeprom.h"
+#include "base64.h"
+#include "ipmi_frui.h"
+
+tuber_method(IceBoard, VOID, set_mezz_power,
 		"Turn on/off an FMC mezzanine",
 		2, (
 			(INTEGER, mezzanine, NULL, "Mezzanine number (1/2)"),
@@ -58,7 +62,7 @@ tuber_method(iceboard, VOID, set_mezzanine_power,
 	}
 }
 
-tuber_method(iceboard, BOOLEAN, get_mezzanine_power,
+tuber_method(IceBoard, BOOLEAN, get_mezz_power,
 		"Retrieve the current power status of an FMC mezzanine",
 		1, ((INTEGER, mezzanine, NULL, "Mezzanine number (1/2)")),
 		"This method only tells you whether an FMC mezzanine's power "
@@ -74,11 +78,7 @@ tuber_method(iceboard, BOOLEAN, get_mezzanine_power,
 	return(gpio_get(rail_12v0[mezzanine-1], 0));
 }
 
-tuber_property(iceboard, MEZZANINE_RAIL_VCC3V3, json_string(MEZZANINE_RAIL_VCC3V3));
-tuber_property(iceboard, MEZZANINE_RAIL_VCC12V0, json_string(MEZZANINE_RAIL_VCC12V0));
-tuber_property(iceboard, MEZZANINE_RAIL_VADJ, json_string(MEZZANINE_RAIL_VADJ));
-
-tuber_method(iceboard, DOUBLE, get_mezzanine_voltage,
+tuber_method(IceBoard, DOUBLE, get_mezz_voltage,
 		"Retrieve the voltage from one of the mezzanine's sensors.",
 		2, (
 			(INTEGER, mezzanine, NULL, "Mezzanine number (1/2)"),
@@ -123,3 +123,101 @@ tuber_method(iceboard, DOUBLE, get_mezzanine_voltage,
 	return(i / 1000.);
 }
 
+tuber_method(IceBoard, VOID, mezz_probe,
+		"Probe mezzanine.",
+		1, ((INTEGER, mezzanine, NULL, "Mezzanine number (1/2)")),
+		""
+) {
+	uint8_t buf[2048]; /* Not quite as big as possible, but pretty big */
+
+	i2c_eeprom_handle *h=NULL;
+	frui_parser *p=NULL;
+	frui *frui=NULL;
+
+	/* Read raw data from EEPROM */
+	if(!(h = i2c_eeprom_open("/dev/i2c-5"))) {
+		oops("Unable to open I2C EEPROM! Is there a mezzanine present?");
+		goto out;
+	}
+	if(i2c_eeprom_read(h, buf, 0, sizeof(buf)) != sizeof(buf)) {
+		oops("Error reading raw data from EEPROM!");
+		goto out;
+	}
+	i2c_eeprom_close(h);
+	h = NULL;
+
+	/* Try to parse into FRUI structure */
+	if(!(p = frui_parser_new()))
+		goto out;
+	if(!(frui = frui_parser_loadb(p, sizeof(buf), buf))) {
+		oops("Failed to parse IPMI FRU block! (Is this an uninitialized mezzanine?)");
+		goto out;
+	}
+	frui_parser_free(p);
+	p = NULL;
+
+	/* TODO: something, anything */
+
+	frui_free(frui);
+
+out:
+	if(h)
+		i2c_eeprom_close(h);
+	if(p)
+		frui_parser_free(p);
+	if(frui)
+		frui_free(frui);
+}
+
+tuber_method(IceBoard, VOID, mezz_eeprom_write,
+		"Write the I2C EEPROM associated with a mezzanine.",
+		3, (
+			(INTEGER, mezzanine, NULL, "Mezzanine number (1/2)"),
+			(STRING_CONST, b64, NULL, "EEPROM contents (base64 encoded)"),
+			(INTEGER, offset, json_integer(0), "Offset (default: 0)")
+		),
+		"The 'offset' parameter specifies where the data begins on the "
+		"EEPROM. IPMI blocks must begin at offset 0. There is no way, "
+		"apart from reading back contents, to verify that you didn't "
+		"overrun the EEPROM. If you did, you probably wrote data to the "
+		"wrong place."
+) {
+	char *buf = NULL;
+	int slen, blen;
+	i2c_eeprom_handle *h = NULL;
+
+	VALIDATE_BETWEEN(mezzanine, 1, NUM_MEZZ,);
+	VALIDATE_BETWEEN(offset, 0, 131072,);
+
+	if(!(h = i2c_eeprom_open("/dev/i2c-5"))) {
+		oops("Unable to open I2C device file!");
+		goto out;
+	}
+
+	if((slen = base64_validate_string(b64)) == -1) {
+		oops("Invalid base-64 string supplied!");
+		goto out;
+	}
+
+	blen = base64_size_blob(slen);
+	if(!(buf = malloc(blen + 1))) {
+		oops("Unable to allocate %i bytes for EEPROM block!", blen);
+		goto out;
+	}
+
+	if(base64_decode_string(slen, b64, blen, buf) == -1) {
+		oops("Error while decoding base-64 block!");
+		goto out;
+	}
+
+	/* Write EEPROM */
+	if(i2c_eeprom_write(h, buf, offset, blen) != blen)
+		oops("Error during EEPROM write!");
+	i2c_eeprom_close(h);
+
+out:
+	if(buf)
+		free(buf);
+	if(h)
+		i2c_eeprom_close(h);
+}
