@@ -1,7 +1,7 @@
 import os
 import time
 
-#Takes input from user, returns array of True/False (and string for comments) for test status: [ tester's name, serial, revision, inspection, resistance, DC, PLL, ARM, FPGA, FGPA test, GTX, modifications, comments ]
+#Takes input from user, returns array of True/False (and string for comments) for test status: [ tester's name, serial, revision, inspection, resistance, DC, PLL, ARM, FPGA, FGPA test, GTX, comments ]
 def getBoardInfo():
     tester = raw_input("Please enter your name\t")
     board = raw_input("Please enter board serial number (e.g. 0025)\t")
@@ -16,10 +16,9 @@ def getBoardInfo():
     fpga = checkInput( raw_input("Program FPGA:\n") )
     fpgaTest = checkInput( raw_input("FPGA test:\n") )
     gtx = checkInput( raw_input("Program GTX:\n") )
-    mods = raw_input("Write down any component changes or other modifications here:\n")
     comments = raw_input("Add any additional comments here:\t")
     
-    return [ tester, board, revision, inspection, resistance, dc, pll, arm, fpga, fpgaTest, gtx, mods, comments ]
+    return [ tester, board, revision, inspection, resistance, dc, pll, arm, fpga, fpgaTest, gtx, comments ]
     
 def checkInput( input ):
     if input == 'y' or input == 'Y' or input == '':
@@ -32,7 +31,7 @@ def checkInput( input ):
         print "Can't parse input."
         return 'input error'
 
-#Format for LaTex inventory.tex document. Takes list of form [ tester's name, serial, revision, inspection, resistance, DC, PLL, ARM, FPGA, FPGA Test, GTX, modifications, comments ]. Returns full line as string.
+#Format for LaTex inventory.tex document. Takes list of form [ tester's name, serial, revision, inspection, resistance, DC, PLL, ARM, FPGA, FPGA Test, GTX, comments ]. Returns full line as string.
 def formatLatex( inputList ):
     newLine = '\hline ' + date_format(time.localtime()) + ' & ' + inputList[0] + ' & ' + inputList[1] + ' & ' + inputList[2]
     for i in range(3,11):
@@ -42,11 +41,11 @@ def formatLatex( inputList ):
             newLine += " & \\textcolor{red}{FAIL}"
         elif inputList[i] == None:
             newLine += " & N/A"
-    newLine += ' & ' + inputList[11] + ' & ' + inputList[12] + ' \\\\ \n'
+    newLine += ' & ' + inputList[11] + ' \\\\ \n'
     
     return newLine
     
-#Format for %fname.txt document. Takes list of form [ tester's name, serial, revision, inspection, resistance, DC, PLL, ARM, FPGA, FPGA test, GTX, modifications, comments ]. Returns block of lines as list.
+#Format for %fname.txt document. Takes list of form [ tester's name, serial, revision, inspection, resistance, DC, PLL, ARM, FPGA, FPGA test, GTX, comments ]. Returns block of lines as list.
 def formatTXT( inputList ):
     newLines = []
     newLines.append("Status report of most recent test (Please don't modify this line or add any lines in this block)\n")
@@ -74,8 +73,7 @@ def formatTXT( inputList ):
     newLines.append("Program FPGA:         " + testResult[5] + "\n")
     newLines.append("FPGA test:            " + testResult[6] + "\n")
     newLines.append("Program GTX:          " + testResult[7] + "\n")
-    newLines.append("Modifications:        " + inputList[11] + "\n")
-    newLines.append("Comments:             " + inputList[12] + "\n")
+    newLines.append("Comments:             " + inputList[11] + "\n")
     newLines.append("=================     ============================\n")
     newLines.append("\n")
     newLines.append("(end of status report)\n")
@@ -104,8 +102,11 @@ def appendLatex( newLine = '' ):
     f.writelines(content)
     f.close()
     
+def STATUS_LINES( ): #dummy function to make lines constant accessible to other scripts
+    return 20
+    
 def appendTXT( fname, newLines = [] ):
-    STATUS_LINES_NUM = 21 #number of lines in block of text to append (and possibly overwrite)
+    STATUS_LINES_NUM = STATUS_LINES() #number of lines in block of text to append (and possibly overwrite)
     
     #check file exists
     if not os.path.isfile(fname):
@@ -127,7 +128,7 @@ def appendTXT( fname, newLines = [] ):
     #check that previous status report exists and is in expected format. If it is as expected, delete previous status report with user confirmation.
     if foundLine:
         overwrite = True
-        if content[linePos + 19] != '(end of status report)\n':
+        if content[linePos + STATUS_LINES_NUM - 2] != '(end of status report)\n':
             overwrite = False
             print "\nThere is something wrong with the previous status report that was found (should be " + str(STATUS_LINES_NUM) + " lines, ending with '(end of status report)' and an empty line."
             print "To not take any chances, this script will not overwrite."

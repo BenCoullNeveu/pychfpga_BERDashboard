@@ -8,7 +8,10 @@ import iceboardtest
 import sys
 import programFPGA
 import updateStatus
-def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = [ '', '', '', None, None, None, None, None, None, None, None, '', '' ]):
+def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = [ '', '', '', None, None, None, None, None, None, None, None, '' ]):
+    testStatus[0] = username #initialize testStatus
+    testStatus[1] = board_sn
+    testStatus[2] = board_vn
     fname = 'board' + board_sn + '.txt'
     if os.path.isfile('board' + board_sn + '.txt') == False:
         file = open(fname, 'w')
@@ -36,7 +39,7 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = [ 
     print "Let's get started. Is the board turned on and the FPGA has been programmed?"
     program = raw_input("Enter 'Y' or 'N': 	")
     if program != 'Y' and program != 'y':
-        programFPGA.programFPGA(username,board_sn,board_vn,board_md)
+        programFPGA.programFPGA(username,board_sn,board_vn,board_md,testStatus)
     
     print "We'll need to disconnect this computer from the lab network and connect the board directly to the network card of the PC."
     print "First, disconnect the Ethernet cable going from the computer to the router."

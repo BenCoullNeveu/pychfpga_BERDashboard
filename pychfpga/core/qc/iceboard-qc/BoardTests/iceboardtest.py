@@ -33,8 +33,8 @@ def starttest():
     print "What is the model of this board?"
     board_md = raw_input("Enter:	")
     
-    #Pass/Fail status of tests. This list will be passed from method to method. [ tester's name, serial, revision, inspection, resistance, DC, PLL, ARM, FPGA, FPGA test, GTX, modifications, comments ]
-    testStatus = [ username, board_sn, board_vn, None, None, None, None, None, None, None, None, '', '' ]
+    #Pass/Fail status of tests. This list will be passed from method to method. [ tester's name, serial, revision, inspection, resistance, DC, PLL, ARM, FPGA, FPGA test, GTX, comments ]
+    testStatus = [ username, board_sn, board_vn, None, None, None, None, None, None, None, None, '' ]
 
     fname = 'board' + board_sn + '.txt'
     if os.path.isfile('board' + board_sn + '.txt') == False:
@@ -97,7 +97,7 @@ def date_format(date):
     #returns 'dd/mm/yyyy, hh:mm'
     return day + '/' + month + '/' + year + ', ' + hour + ':' + minute
     
-def choosetest(username=None,board_sn=None,board_vn=None,board_md=None,testStatus = [ '', '', '', None, None, None, None, None, None, None, None, '', '' ]):
+def choosetest(username=None,board_sn=None,board_vn=None,board_md=None,testStatus = [ '', '', '', None, None, None, None, None, None, None, None, '' ]):
     print "Select the test you wish to procede to.\n"
     print "1. Inspection test"
     print "2. Resistance test."

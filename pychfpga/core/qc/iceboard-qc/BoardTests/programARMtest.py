@@ -8,7 +8,10 @@ import iceboardtest
 import sys
 import updateStatus
 
-def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None,testStatus = [ '', '', '', None, None, None, None, None, None, None, None, '', '' ]):
+def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None,testStatus = [ '', '', '', None, None, None, None, None, None, None, None, '' ]):
+    testStatus[0] = username #initialize testStatus
+    testStatus[1] = board_sn
+    testStatus[2] = board_vn
     fname = 'board' + board_sn + '.txt'
     if os.path.isfile('board' + board_sn + '.txt') == False:
         file = open(fname, 'w')
