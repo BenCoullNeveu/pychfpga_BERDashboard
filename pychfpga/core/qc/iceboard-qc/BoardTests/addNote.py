@@ -53,7 +53,7 @@ def appendNote( fname, newLines = [] ):
     f = open(fname, 'w')
     f.writelines(content)
     f.close()
-    print "Status report successfully written."
+    print "Successfully added note."
         
 def date_format(date):
     #finds the date, converts to string and adds 0 if <10 for day, month
