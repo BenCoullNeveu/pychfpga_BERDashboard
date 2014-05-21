@@ -48,8 +48,7 @@ def inspectiontest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
         print 'Please describe the unsoldered parts. Please be specific (describe the component names)'
         solcomment = raw_input("Enter:     ")
         file.write(solcomment + '\n')
-        file.close()
-        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+        soldering = True
     else:
         file.write('All soldering seems fine. \n')
         soldering = False
@@ -61,12 +60,22 @@ def inspectiontest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
         file.write('Shorted parts: ')
         print 'Please describe the shorted parts. Please be specific (describe the component names)'
         shocomments = raw_input("Enter:     ")
-        file.write(shocomment + '\n')
-        file.close()
-        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+        file.write(shocomments + '\n')
+        shorting = True
     else:
         file.write('No unwanted shorted components occur. \n')
         shorting = False
+        
+    print "Please inspect the GTX backplane connector pins on the back of the board (you will need the microscope). Are any of them bent or otherwise unusual?"
+    confirm = raw_input("Enter 'Y' or 'N':    ")
+    if confirm == 'Y' or confirm == 'y':
+        print "Describe the problematic pins and give their location (e.g. '4th pin of 1st column is bent')"
+        comment = raw_input("Enter:    ")
+        file.write('Problem with GTX backplane connector pins: ' + comment  + '\n')
+        GTX = True
+    else:
+        file.write('GTX backplane connector pins seem fine.\n')
+        GTX == False
         
     print "If there are any additional comments you wish to make (e.g. scratches), please describe below. (If none, enter 'None')"
     comments = raw_input("Enter additional comments:    ")
@@ -77,12 +86,12 @@ def inspectiontest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
         print "Please describe any of these last concerns:"
         otherissues = raw_input("Enter:     ")
         file.write('Major issues: ' + otherissues)
-        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+        issues = True
     else:
         file.write('Major issues: None \n')
         issues = False
         
-    if soldering == False and shorting == False and issues == False:
+    if soldering == False and shorting == False and issues == False and GTX == False:
         file.write('Inspection test: PASS \n')
         file.close()
         testStatus[3] = True
@@ -90,6 +99,7 @@ def inspectiontest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
         file.write('Inspection test: FAIL \n')
         file.close()
         testStatus[3] = False
+        sys.exit("Inspection test failed. It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
     print "Do you wish to proceed to another test?"
     proceed = raw_input("Enter 'Y' or 'N':  ")
     if proceed == 'Y' or proceed == 'y':
