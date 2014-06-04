@@ -53,7 +53,9 @@ columns.
 """
 
 import Queue as queue
+import os, sys, traceback
 import urlparse
+import threading
 import concurrent.futures
 import operator
 import functools
@@ -61,12 +63,100 @@ import logging
 from sqlalchemy import create_engine, inspect
 from sqlalchemy import Column, Integer, String, Boolean, Binary, LargeBinary, DateTime, ForeignKey, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship, Query, sessionmaker, backref, reconstructor, scoped_session
+from sqlalchemy.orm import relationship, Query, sessionmaker, backref, reconstructor, scoped_session, object_session
 
 Base = declarative_base()
 
 class HWMQueryException(Exception):
     pass
+
+class HWMQueryAttribute(object):
+    def __new__(cls, query_object, attribute_chain):
+        """ Return a HWMQueryAttributeBase instance with a __call__
+        method that has been tweaked to return the docstring of the target
+        method, and is initialized with a *copy* of the original query and attribute list.
+        """
+        logger = logging.getLogger(__name__)
+        logger.debug('calling __new__')
+        # ClassWithDoc = type(HWMQueryAttributeBase.__name__, HWMQueryAttributeBase.__bases__, dict(HWMQueryAttributeBase.__dict__))
+        class HWMQueryAttributeWithDoc(HWMQueryAttributeBase): pass
+        try:
+            target_method = HWMQueryAttributeBase.get_object(query_object.first(), attribute_chain) # get the attribute (method) described by the attribute object
+            call_method = lambda self_, *args, **kwargs: HWMQueryAttributeBase.__call__(self_,*args, **kwargs) # Create a new call method that we can modify below
+            HWMQueryAttributeWithDoc.__call__ = functools.update_wrapper(call_method, target_method) # Create a __call__ method that inherits the docstring from the target method
+        except AttributeError:
+            call_method = lambda self_: None
+            call_method.__doc__ = 'This object is not callable'
+            HWMQueryAttributeWithDoc.__call__ = call_method #functools.update_wrapper(call_method, lambda:None)
+        return HWMQueryAttributeWithDoc(query_object, attribute_chain)
+
+class HWMQueryAttributeBase(object):
+    """
+    Class representing an attribute or subattribute attached to Query results. The class does not store the attribute
+    objects itself, but rather keeps track of the attribute chain (i.e.
+    attr1.attr2.attr3 ...) that leads to the desired object. This allows the
+    objects to be reaccessed from another root object (i.e. from another session), allowing thread-safe operations.
+    """
+
+    # initialize variables so __getattr__() will not be called when they are accessed on a fresh instance
+    _query = None # iterable providing objects with common attributes
+    _attribute_chain = None # list of strings representing the attributes to access in order
+
+    def __init__(self, query_object, attribute_chain):
+        """ Creates an attribute object. 'attribute_chain' is a list of
+        attributes names that, when applied sequentially to the root object
+        'query_object', yields the desired attribute object.
+        """
+        self._logger = logging.getLogger(__name__)
+        self._query = query_object#._clone()
+        self._attribute_chain = list(attribute_chain)
+
+    def __repr__(self):
+        # return '%r.%s = [%r]' % (Query.__repr__(self._query), '.'.join(self._attribute_chain), ','.join(repr(obj) for obj in self))
+        return 'HWMQuery.%s= [%s]' % ('.'.join(self._attribute_chain), ','.join(repr(obj) for obj in self) )
+
+    def __iter__(self):
+        if self._query._use_concurrent_get:
+            return iter(self._query._concurrent_call(self._attribute_chain, None))
+        else:
+            return (self.get_object(obj, self._attribute_chain) for obj in self._query)
+
+    def __getattr__(self, attr_name):
+        """ Return another HWMQueryAttribute object that points to the specified sub-attribute"""
+        return HWMQueryAttribute(self._query, self._attribute_chain + [attr_name])
+
+
+    def __getitem__(self, index):
+        return self.get_object(self._query[index], self._attribute_chain)
+
+    def __len__(self):
+        return self._query.count()
+
+    def __dir__(self):
+        """
+        Lists all the attributes that are accessible from this attribute. Useful for tab completion.
+        """
+        self._logger.debug('Calling dir')
+        query_attr = [set(dir(obj)) for obj in self]
+        return list(set.intersection(*query_attr))
+
+
+    def __call__(self, *args, **kwargs):
+        """ Call the the attribute (method) on all elements of the root object concurrently with the specifid arguments. All calls are made with the same arguments."""
+        if self._query._use_concurrent_call:
+            return self._query._concurrent_call(self._attribute_chain, '__call__', *args, **kwargs)
+        else:
+            return [obj(*args, **kwargs) for obj in self]
+
+    @staticmethod
+    def get_object(source_obj, attribute_chain):
+        """
+        Returns the object represented by the attribute chain, starting from object source_obj.
+        """
+        attr = getattr(source_obj, attribute_chain[0])
+        for attr_name in attribute_chain[1:]:
+            attr = getattr(attr, attr_name)
+        return attr
 
 class HWMQuery(Query):
     '''HWMQuery object: A parallel-call extension to Query objects.
@@ -79,33 +169,113 @@ class HWMQuery(Query):
     '''
     _hold_dispatcher = False
     _index_column = None
+    _call_list = []
+    _use_concurrent_get = None
+    _use_concurrent_set = None
+    _use_concurrent_call = None
+
+    def __init__(self, entities, session=None, index_by = None, use_concurrent_get=False, use_concurrent_set=False, use_concurrent_call=True):
+        self._logger = logging.getLogger(__name__)
+        super(type(self), self).__init__(entities, session)
+        self._index_column = index_by
+        self._use_concurrent_get = use_concurrent_get
+        self._use_concurrent_set = use_concurrent_set
+        self._use_concurrent_call = use_concurrent_call
 
     def hold(self, on_hold=True):
-        self._hold_dispatcher = on_hold
+        self._hold_dispatcher = bool(on_hold)
         if not on_hold:
             return self.flush()
 
     def flush(self):
         # Always, after flushing, assume single-stepping.
         self._hold_dispatcher = False
+        return self._execute_concurrent_calls()
 
-        # Claim all pending calls. If there's nothing to do, don't try.
-        try: calls = self._calls
-        except AttributeError: return
-        del self._calls
+    def _concurrent_call(self, attribute_chain, access_method_name, *args, **kwargs):
+        """ Add a concurrent call to the list and execute if we are not on hold."""
+        assert not (self._hold_dispatcher==False and self._call_list), ' Hold is inactive but there are pending tasks in the call list'
+        self._call_list.append((attribute_chain, access_method_name, args, kwargs))
+        if not self._hold_dispatcher:
+            return self._execute_concurrent_calls()[0]
 
-        #runner = lambda calls: ( c() for c in calls )
-        def runner(calls):
-            # logger = logging.getLogger(__name__)
-            # logger.debug('Running threads calling %r' % calls)
-            return [ c() for c in calls ]
-        # Uncomment this line to run single-threaded (debugging only!)
-        #return zip(map(runner, calls))
+    def _execute_concurrent_calls(self):
+        """ Concurrently calls the methods on the attributes specified in the call list for every object
+        represented by the query. If the access method is 'None', the object itself is returned.
+
+        call_list is a list of tuples consisting of: (attribute, method, args, kwargs)
+        Where:
+            attribute_object: HWMQueryAttribute object representing the chain of attributes leading to the desired object
+            args (tuple) and kwargs (dict): arguments to pass to the method
+            method: if Null, the attribute is returned. If callable, the method is called with an query result as argument, plus arg and kwargs. If a string, the call is made with the method of the same name for this attribute.
+
+
+        To call an attribute (method): q._execute_concurrent_call(attr, '__call__', arg1, arg2, ... )
+        To set an attribute: q._execute_concurrent_call(attr, '__setattr__', attr_name, value)
+        To get an attribute: q._execute_concurrent_call(attr, None) # where attr describes the attribute itself
+                 or:         q._execute_concurrent_call(attr, '__getattr__', attr_name) # where attr describes the parent attribute
+        """
+        # define the function performed by each thread on each object
+        def runner((query_result, call_list, database_lock)):
+            logger = logging.getLogger(__name__)
+            try:
+                local_session = HardwareMap.scoped_session(autoflush=False) # get a thread-local session
+                # local_obj = local_session.query(type(query_result)).filter_by(pk=query_result.pk).one() # this works, but might not be very efficient
+                with database_lock:
+                    local_source_obj = local_session.merge(query_result) # this works as well
+                    object_session(query_result).expunge(query_result) # make sure the object from the original session will be reloaded once we are finished processing its counterpart in the thread-local session.
+                results = list()
+                for (attribute_chain, method, local_args, local_kwargs) in call_list:
+                    # if attribute_chain:
+                    target_obj = HWMQueryAttributeBase.get_object(local_source_obj, attribute_chain) # follow the attribute chain to get the last object
+                    logger.debug('Running thread calling object (%r).%s.%s(%s,%s) in session %r' % (query_result, '.'.join(attribute_chain), method, ','.join([repr(a) for a in local_args]), ','.join(['%s=%s' % (key,value) for (key,value) in local_kwargs.items()]), local_session))
+                    # else:
+                    #     target_obj = local_source_obj
+
+                    exc = None
+                    try:
+                        if callable(method):
+                            result = method(target_obj, *local_args, **local_kwargs)
+                        elif method:
+                            attribute_method = getattr(target_obj, method)
+                            result = attribute_method(*local_args, **local_kwargs)
+                        else:
+                            result = target_obj
+                    except Exception as exc:
+                        result = None
+                        # tracebackString = traceback.format_exc(limit=1)
+                        (exception_type, exception_args, exception_tb) = sys.exc_info()
+                        tb = traceback.extract_tb(exception_tb)
+                        tracebackString = ['    %s in .../%s:%i' % (fn, os.path.split(filename)[1], line) for (filename, line, fn, code) in tb]
+                        tracebackString[-1] += ('=> %r' % exception_args)
+                        e = HWMQueryException('Thread exception on object (%r.%s) = %r\nTraceback:\n%s' % (local_source_obj, '.'.join(attribute_chain), target_obj, '\n'.join(tracebackString)))
+                        self._logger.error(e)
+                        result = exc
+                    logger.debug('Thread for object %r.%s is returning %r' %  (local_source_obj, '.'.join(attribute_chain), result))
+                    results.append(result)
+                with database_lock:
+                    local_session.commit()
+                    local_session.close()
+                return results
+            except Exception as ee:
+                logger.error('Thread global exception %r' % ee)
+                return [None]
+        exception_list = []
+        database_lock = threading.Lock()
         with concurrent.futures.ThreadPoolExecutor(max_workers=100) as e:
-            # If you get a "zip() argument after * must be a sequence" error
-            # here, see "http://bugs.python.org/issue4806". You can mask the
-            # interpreter bug by running single-threaded (see above)
-            return zip(*e.map(runner, calls))
+            results = e.map(runner, zip(list(self), [self._call_list]*self.count(), [database_lock]*self.count()) ) # return a generator that will yield the results (in the right order)  as they become available.
+            try:
+                transposed_results= zip(*results) # rearrange the results in a tuple where each element is a vector containing the result of one call for all query objects.
+            except Exception as exc:
+                transposed_results = None
+                exception_list.append(exc)
+                self._logger.error('Exception in thread results : %r' % (exc))
+        self._call_list = [] # empty the call list
+        self._logger.debug('All threads returned %r' % transposed_results)
+        if exception_list:
+            raise HWMQueryException('The concurrent call generated the following exceptions: %s' % ','.join(repr(e) for e in exception_list))
+        else:
+            return transposed_results
 
     def __dir__(self):
         """
@@ -113,7 +283,7 @@ class HWMQuery(Query):
         Useful for tab completion.
         """
         # return type(self).__dict__ + self.__dict__ + dir(self._hwmap)
-        self.logger.info('calling dir')
+        self._logger.info('calling dir')
         local_attr = dir(type(self)) + self.__dict__.keys()
         query_attr = [set(dir(x)) for x in self]
         return local_attr + list(set.intersection(*query_attr))
@@ -142,7 +312,7 @@ class HWMQuery(Query):
         delegating them to each object in the Query results. It returns
         an array of results corresponding to each underlying object.
         '''
-
+#        self.logger.debug('call __getattr__')
         # Since this is a SQLAlchemy "Query" subclass, we can use it
         # as a collection and call things like "count()" on it.
 
@@ -155,31 +325,19 @@ class HWMQuery(Query):
         # "didn't-find-it" errors. If objects are mismatched, indicating a
         # programmer error, we return something angrier.
         if self.count() == 0:
-            raise AttributeError
+            raise AttributeError("Query is empty: there are no attributes to be found")
 
         # Generate an exception of only some of the objects have the
         # desired attribute. (If none of the objects have the attribute,
         # we want to raise the ordinary Python AttributeError. This
         # happens below.)
-        if len(set([hasattr(x,name) for x in self])) != 1:
-            raise HWMQueryException("Called with mismatching objects!");
-
-        # Get the specified attribute from all object
-        # Note that this raises an AttributeError, so it'll fail in just the
-        # right way if we are missing the attribute..
-        attrs = [ getattr(x, name) for x in self ]
-
-        # Ensure attributes are always, or never, callable.
-        # JFC: A class is callable. Are we safe here, or should we check the presence of __call__?
-        if len(set([callable(x) for x in self])) != 1:
-            raise HWMQueryException("Called with mismatching objects!");
-
-        # For non-callable attributes: treat like a property.
-        if not callable(attrs[0]):
-            return attrs
-
-        # Fall-through to a function call.
-        return self._call_proto(attrs, True)
+        attr_present = [hasattr(x, name) for x in self]
+        if not any(attr_present):
+            raise AttributeError
+        elif not all(attr_present):
+            raise HWMQueryException("Not all elements of the query contain the attribute '%s'" % name);
+        else:
+            return HWMQueryAttribute(self, [name])
 
     def index_by(self, index_column=None):
         """
@@ -194,6 +352,9 @@ class HWMQuery(Query):
         self._index_column = index_column
         return self
 
+    # def __len__(self):
+    #     return self.count()
+
     def __getitem__(self, index):
         """
         If an indexing colums was specified with index_by(...) and the
@@ -205,17 +366,16 @@ class HWMQuery(Query):
         In the column indexing mode, an exception will be raised if the query
         does not produce exactly one result (we call the .one() method)
         """
-        if isinstance(index, (int,str)) and self._index_column: # we must not process slices because  first() and __getitem__ calls self[slice]
+        if self._index_column and not isinstance(index, slice):  # we must not process slices because  Query.first() and Query.__getitem__ use self[slice] and would be really confused
             return self.filter(self._index_column == index).one()
         else:
             return super(type(self), self).__getitem__(index)
-
 
     def __repr__(self):
         """
         Returns a human-readable representaion of the query results.
         """
-        return 'Query currently yielding:\n' + '\n'.join('    %s object : %r' % (type(obj).__name__, obj) for obj in self)
+        return 'HWMQuery= [%s]' % ','.join(repr(obj) for obj in self)
 
     def call_with(self, func, *args, **kwargs):
         """Call some function across a collection of Query results.
@@ -230,52 +390,8 @@ class HWMQuery(Query):
 
             >>> results.call_with(do_something, x, foo, bar)
         """
-
-        return self._call_proto(func, False, *args, **kwargs)()
-
-    def _call_proto(self, func, already_bound=False, *args, **kwargs):
-        """Generate a function suitable for queueing a call and return it.
-
-        This function is called with either unbound functions (e.g. which
-        don't have a "self" associated with them yet) or partially-bound
-        functions (which already have selves.) The "already_bound" parameter
-        allows both cases to be handled uniformly.
-
-        If "already_bound", then func should be an array of functions. If not,
-        provide a single function and we'll specialize it our selves.
-        """
-
-        if not hasattr(self, '_calls'):
-            self._calls = [ list() for o in self ]
-
-        if already_bound:
-            try:
-                if len(func) != self.count(): raise TypeError
-            except TypeError:
-                raise HWMQueryException("Expected 'func' to be a list of %i functions!" % self.count())
-
-        # The decorator just steals the DocStrings etc. from the underlying
-        # function. It's a shame about the function signature: it's destroyed
-        # by Python, and there's no standard way to get it back. (There's an
-        # external 'decorators' module, but it's apparently hinky.)
-        @functools.wraps(func[0] if already_bound else func)
-        def proto(*args, **kwargs):
-
-            # Queue a function call.
-            if already_bound:
-                for (l, f) in zip(self._calls, func):
-                    l.append(functools.partial(f, *args, **kwargs))
-            else:
-                for (l, o) in zip(self._calls, self):
-                    l.append(functools.partial(func, o, *args, **kwargs))
-
-            # If we're supposed to dispatch it, do so after queueing.
-            if not self._hold_dispatcher:
-                return self.flush().pop()
-
-        return proto
-
-
+        return self._concurrent_call(None, func, *args, **kwargs)
+        # return self._call_proto(func, False, *args, **kwargs)()
 
 class HWMResource(Base):
     '''Base class for Hardware Mapper resources to share.
@@ -287,6 +403,8 @@ class HWMResource(Base):
     __abstract__ = True
 
 class HardwareMap(object):
+    #class attributes
+    scoped_session = None
 
     def __new__(self, uri='sqlite:///:memory:', echo=False, *args, **kwargs):
         # Connect to the database
@@ -307,6 +425,7 @@ class HardwareMap(object):
                 query_cls=HWMQuery,
                 *args,
                 **kwargs)
+        self.scoped_session = scoped_session(session_factory)
         # return scoped_session(session_factory)
         return session_factory()
 # vim: sts=4 ts=4 sw=4 tw=80 smarttab expandtab

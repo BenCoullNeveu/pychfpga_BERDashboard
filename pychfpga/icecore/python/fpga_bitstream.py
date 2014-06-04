@@ -150,7 +150,8 @@ class FpgaBitstream(HWMResource):
         # if bitstream.crc32 != self.bitstream.crc32:
         #     self.logger.warning('Bitstream does not have the expected CRC')
         # self.firmware_class = pickle.loads(self.firmware_class_pickle)
-
+    def __repr__(self):
+        return '<FpgaBitstream with CRC=%i>' % self.crc32
 
     def get_bitstream_data(self):
         """

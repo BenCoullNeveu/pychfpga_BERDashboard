@@ -72,11 +72,12 @@ class AttributeUser(object):
             # self.logger.debug("registering attribute '%s' from '%s'. " % (name, obj))
             name = str(name) # remove unicode encoding
             if name in dir(self):
-                self.logger.warning("Attribute '%s' from '%s' is not registered because it already exists in the target instance" % (name, obj))
+                # self.logger.warning("Attribute '%s' from '%s' is not registered because it already exists in the target instance" % (name, obj))
                 continue
 
             if name in self._registered_objects:
-                self.logger.warning("Attribute '%s' is already registered by '%s'. The attribute will be overriden by '%s'." % (name, self._registered_objects[name], obj))
+                # self.logger.warning("Attribute '%s' is already registered by '%s'. The attribute will be overriden by '%s'." % (name, self._registered_objects[name], obj))
+                pass
             # value = getattr(obj, name)
             # if import_methods and callable(value): # if this is a method
             #     setattr(self, name, value) # just copy the method in the destination object

@@ -451,7 +451,7 @@ class chFPGA_controller(FpgaCoreFirmware):
             # self._motherboard = motherboard_cls(self) # Creates the motherboard handler
 
             # self._NUMBER_OF_FMC_SLOTS = self._motherboard.get_number_of_fmc_slots()
-            self._logger.info('   This motherboard has %i FMC slots' % self._motherboard.NUMBER_OF_FMC_SLOTS)
+            self._logger.info('   This motherboard has %i FMC slots' % self._motherboard.hw.NUMBER_OF_FMC_SLOTS)
             #return
             # self._logger.debug('  - ML605 PMBus')
             # self.ML605_PMBus = ML605_PMBus.ML605_PMBus_base(self)
@@ -491,16 +491,16 @@ class chFPGA_controller(FpgaCoreFirmware):
 
         except Exception as e:
             self.close()
-            raise chFPGAException('An exception has occured during module instantiation. Sockets will be closed. The exception is %s' % repr(e))
-
+            # raise chFPGAException('An exception has occured during module instantiation. Sockets will be closed. The exception is %s' % repr(e))
+            raise
             # Initialize subsystems. This has to be done only once all subsystems are created because some subsystems depend on each other.
         if init > 0:
             try:
                 self.init(**kwargs)
             except Exception as e:
                 self.close()
-                raise chFPGAException('An exception has occured during module initialization. Sockets will be closed. The exception is %s' % repr(e))
-
+                # raise chFPGAException('An exception has occured during module initialization. Sockets will be closed. The exception is %s' % repr(e))
+                raise
     def is_fmc_present_for_channel(self, channel_number):
         return self.ANT_FMC_IS_PRESENT[channel_number]
 

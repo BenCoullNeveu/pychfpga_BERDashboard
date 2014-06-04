@@ -103,7 +103,7 @@ class MGADC08_base(FMCMezzanine):
         self.motherboard.fpga.REFCLK.local_sync()
 
     def set_power(self, state):
-        self.motherboard.set_fmc_power(self.fmc_number, state)
+        self.motherboard.hw.set_fmc_power(self.fmc_number, state)
 
     def check_FMC_presence(self, verbose=0):
         """ Checks if the FMC is present"""

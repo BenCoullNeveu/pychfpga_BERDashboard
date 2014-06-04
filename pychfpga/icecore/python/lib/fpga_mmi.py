@@ -153,7 +153,7 @@ class FpgaMmi:
             #if data[0]!=s[0]:
             #    self.log.error("Read: ERROR: Returned ANT/SUB/ADDR (",   ata[0:2]," does not match request values (",   [0:2],")")
             if len(data) != read_length + 1:
-                raise FpgaMmiException("FPGA Read command returned %i bytes. %i were expected." % (len(data), read_length + 1))
+                raise FpgaMmiException("FPGA Read command to %s:%i returned %i bytes (0x%s). %i were expected." % (self.ip_addr, self.port_number, len(data), ' '.join('%02X' % ord(b) for b in data), read_length + 1))
 
             dout[offset:offset+read_length] = np.fromstring(data[1:], dtype=np.uint8) # store received byte
 
