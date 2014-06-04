@@ -17,6 +17,7 @@ import hardware_map
 
 import iceboard
 from iceboard import IceBoard
+from icecore.fpga_bitstream import FpgaBitstream
 
 class IceException(Exception):
     pass
@@ -102,6 +103,13 @@ class IceArray(object):
         """
         iceboard.load(self, filename)
         self.commit() # commit any changes made during discovery
+
+    def get_fpga_bitstream(self, *args, **kwargs):
+        """ Get a bitstream from the database or create one if it does not exist. Returns the database object.
+        This is a proxy for FpgaBitstream.get_bitstream()
+        """
+        return FpgaBitstream.get_bitstream(self,*args, **kwargs)
+
 
     def get_iceboards(self, serials=[], *args, **kwargs):
         """

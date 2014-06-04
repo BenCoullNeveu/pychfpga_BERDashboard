@@ -43,17 +43,18 @@ class FMC_EEPROM(object):
             if (addr <0 or (addr+length-1) > (2**self.address_width-1)):
                 raise ValueError('Invalid EEPROM address range. All reads must be from adress 0x%x and 0x%x' % (0, (2**self.address_width-1)))
 
-        trial = 0
-        while True:
-            try:
-                self.i2c.select_bus(self.fmc_name)
-                break
-            except:
-                self.logger.warning('I2C Error while setting I2C switch to %s. Retrying...' % self.fmc_name)
-                trial +=1
-                if trial>retry:
-                    self.logger.error('Failed to set I2C switch to %s.' % (self.fmc_name))
-                    raise
+        # trial = 0
+        # while True:
+        try:
+            self.i2c.select_bus(self.fmc_name, retry=retry)
+                # break
+        except:
+                # self.logger.warning('I2C Error while setting I2C switch to %s. Retrying...' % self.fmc_name)
+                # trial +=1
+                # if trial>retry:
+            self.logger.error('Failed to set I2C switch to %s.' % (self.fmc_name))
+            raise
+
         data = np.array([], np.uint8)
         while length:
             # print '.',
@@ -62,18 +63,18 @@ class FMC_EEPROM(object):
                 addr_bytes = [0]
             else:
                 addr_bytes = self._get_addr_bytes(addr)
-            trial = 0
-            while True:
-                try:
+            # trial = 0
+            # while True:
+            try:
 
-                    block_data = self.i2c.write_read(self.address + addr_bytes[0], addr_bytes[1:], read_length=block_length, **kwargs) # reads a byte
-                    break
-                except:
-                    self.logger.warning('I2C Error while reading EEPROM at memory address %i. Retrying...' % addr)
-                    trial +=1
-                    if trial>retry:
-                        self.logger.error('Failed to read EEPROM at memory address %i after %i retries.' % (addr, retry))
-                        raise
+                block_data = self.i2c.write_read(self.address + addr_bytes[0], addr_bytes[1:], read_length=block_length, retry=retry, **kwargs) # reads a byte
+                    # break
+            except:
+                    # self.logger.warning('I2C Error while reading EEPROM at memory address %i. Retrying...' % addr)
+                    # trial +=1
+                    # if trial>retry:
+                self.logger.error('Failed to read EEPROM at memory address %i after %i retries.' % (addr, retry))
+                raise
             data = np.hstack((data, block_data))
             # print 'data=', data
             length -= block_length

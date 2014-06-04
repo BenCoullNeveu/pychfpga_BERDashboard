@@ -56,7 +56,7 @@ class FpgaCoreFirmware(HWMResource):
     # ---------------------------------------
     # Class variables (common to all instances)
     # ---------------------------------------
-    _active_instances = {} # This contains a dictionary of all active (opened) firmware instances indexed by the board's serial number
+    # _active_instances = {} # This contains a dictionary of all active (opened) firmware instances indexed by the board's serial number
 
 
     # FPGA firmware-related definition
@@ -66,7 +66,7 @@ class FpgaCoreFirmware(HWMResource):
 
     interface_ip_addr = None # This is a class attribute, common to all instances.
     mmi = None # Memory-mapped interface object
-
+    _is_open = None
     _BROADCAST_BASE_PORT = 41000
 
     _SYSTEM_BASE_ADDR   = 0x00000 # This is always at zero so we can gather info from the FPGA before we know the number of antennas etc.
@@ -146,7 +146,7 @@ class FpgaCoreFirmware(HWMResource):
                 logger.debug('Networking configuration of FPGA S/N %016X with address %s:%i failed.' % (serial_number, ip_addr, port_number))
                 trial +=1
         logger.debug('Unable to configure FPGA S/N %016X with address %s:%i' % (serial_number, ip_addr, port_number))
-
+        raise FpgaException('Unable to configure FPGA S/N %016X with address %s:%i' % (serial_number, ip_addr, port_number))
 
     @classmethod
     def get_fpga_config(cls, ip_addr, port_number, timeout = 0.1, number_of_trials=3):
@@ -155,11 +155,11 @@ class FpgaCoreFirmware(HWMResource):
         Will not cause an exception if the FPGA fails to respond at the specified address. Instead, all fields will be None.
         """
         trial = 0
-        with fpga_mmi.FpgaMmi(cls.interface_ip_addr, ip_addr, port_number, timeout = timeout ) as mmi:
+        with fpga_mmi.FpgaMmi(cls.interface_ip_addr, ip_addr, port_number) as mmi:
             while trial < number_of_trials:
                 try:
-                    serial = mmi.read(cls._FPGA_SERIAL_NUMBER_ADDR, type = np.dtype('>u8'))
-                    timestamp = mmi.read(cls._FPGA_TIMESTAMP_ADDR, type = np.dtype('>u4'))
+                    serial = mmi.read(cls._FPGA_SERIAL_NUMBER_ADDR, type = np.dtype('>u8'), timeout = timeout )
+                    timestamp = mmi.read(cls._FPGA_TIMESTAMP_ADDR, type = np.dtype('>u4'), timeout = timeout )
                     return (serial, timestamp)
                 except mmi.TimeoutException:
                     trial += 1
@@ -240,7 +240,8 @@ class FpgaCoreFirmware(HWMResource):
         self._logger.debug('=== Instantiating I2C')
         self._base_i2c = i2c.I2C_base(self.mmi, self._SYSTEM_I2C_BASE_ADDR)
 
-        type(self)._active_instances[self.iceboard_pk] = self
+        # type(self)._active_instances[self.iceboard_pk] = self
+        self._is_open = True
 
     def close_core(self):
         """
@@ -253,10 +254,12 @@ class FpgaCoreFirmware(HWMResource):
             self.mmi.close()
             self.mmi = None
 
-        type(self)._active_instances.pop(self.iceboard_pk, None)
+        # type(self)._active_instances.pop(self.iceboard_pk, None)
+        self._is_open = False
 
     def is_open(self):
-        return self.iceboard_pk in type(self)._active_instances
+        # return self.iceboard_pk in type(self)._active_instances
+        return bool(self._is_open)
 
     def open(self):
         """

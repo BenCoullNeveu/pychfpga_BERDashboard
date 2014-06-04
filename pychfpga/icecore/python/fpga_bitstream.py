@@ -21,6 +21,12 @@ import datetime
 from hardware_map import HWMResource, Integer, Column, String, Binary, LargeBinary, DateTime, ForeignKey, UniqueConstraint, reconstructor, inspect
 from fpga_core import FpgaCoreFirmware
 
+class FpgaBitstreamException(Exception):
+    def __init__(self, message, *args, **kwargs):
+        logger = logging.getLogger(__name__)
+        logger.error(message)
+        super(type(self), self).__init(message, *args, **kwargs)
+
 class FpgaBitstream(HWMResource):
     """ Represents the firmware that is running or to be run on the IceBoard FPGA.
 
@@ -37,7 +43,11 @@ class FpgaBitstream(HWMResource):
     #         'polymorphic_on': 'firmware_class',
     #         'polymorphic_identity': 'fpgafirmware'
     # }
+    __table_args__ = (
+        UniqueConstraint('crc32'),
+    )
 
+    # Database columns
     pk = Column(Integer, primary_key=True)
     polymorphic_class_name = Column(String, nullable=False) # String that identifies the polymorphic_identity of the class needed to handle the firmware
     class_name = Column(String, nullable=False) # String that identifies the class of this object
@@ -47,23 +57,85 @@ class FpgaBitstream(HWMResource):
     url = Column(String) # URL where the binary can be found if not stored locally in the database
     bitstream = Column(LargeBinary)
 
-    bitstream_cache = None
+    # Class attributes
     _active_instances = {} # class attributes indicating which instances have been created
 
-    def __init__(self, url, firmware_class):
-        """ Creates a bitstream object from the file specified by
+    # Instance attributes
+    bitstream_cache = None
+
+    @classmethod
+    def get_bitstream(cls, session, url=None, firmware_class = None, crc=None, persist=True):
+        """ Returns a bitstream object from the database or create a new
+        database entry if it does not exist yet. This function ensures that
+        the bistream row is unique in the database, and will not cause
+        set_fpga_firmware() to create new database entries concurrently.
+
+        A new entry will be created only if both 'url' and 'firmware_class' is
+        specified. However, if a bitstream with the same CRC exists in the
+        database, the database entry will be updated and returned.
+
+        Otherwise, the method will attempt to find a bitsream that
+        match the search criteria:
+
+            If 'url' is specified, it looks for a database entry that has the same CRC than the content of the file specified by 'url'
+            If 'crc32' is specified, it looks for the database entry that has the specified CRC
+
+        If multiple results are found, an error is raised.
+
+        'url' can be an actual URL or a filename.
+        """
+        logger = logging.getLogger(__name__)
+
+        new_bitstream_object = None
+
+        # if an URL is specified, load it so we can inspect its CRC and eventually add it to the database.
+        if url:
+            new_bitstream_object = FpgaBitstream(url, firmware_class, persist = persist)
+            crc = new_bitstream_object.crc32
+
+        if crc:
+            bitstream_objects = session.query(FpgaBitstream).filter_by(crc32 = crc) # find all entries with same CRC32
+
+        number_of_results = bitstream_objects.count()
+
+        if number_of_results>1:
+            raise FpgaBitstreamException('The database contains multiple reference of firmware with CRC %08X. Using the first one.' % crc)
+        if number_of_results:
+            logger.info('The database contains already contains an entry with CRC %08X. Updating that one.' % crc)
+            bitstream_object = bitstream_objects.first()
+            if firmware_class:
+                bitstream_object.set_firmware_class(firmware_class)
+                session.commit()
+            return bitstream_object
+        elif new_bitstream_object and firmware_class:
+            logger.info('The bitstream with CRC %08X does not exist in the database. Adding it.' % crc)
+            session.add(new_bitstream_object)
+            session.commit()
+            return new_bitstream_object
+        else:
+            raise FpgaBitstreamException('The bitstream with CRC %08X does not exist in the database, and a new entry cannot be created because of an invalid url or the firmware class was not specified.' % crc)
+
+    def __init__(self, url, firmware_class=None, persist=True):
+        """ Creates a bitstream object from the specified 'url'.
+        If 'persist' is True, the bitstream will be stored in the database.
         """
         self.logger = logging.getLogger(__name__)
 
-        polymorphic_identity = inspect(firmware_class).polymorphic_identity
-        self.polymorphic_class_name = polymorphic_identity
-        self.class_name = firmware_class.__name__
         self.url = url
         # If we manually create this bitstream object, we always fetch the
         # data immediately so we can get its CRC32 and other info and have a
         # cached version of it in memory.
         self.logger.info('Creating bitstream object explicitely')
-        self._load_bitstream()
+        self._load_bitstream(self.url)
+
+        if firmware_class:
+            self.set_firmware_class(firmware_class)
+
+        if persist:
+            self.persist_bitstream()
+
+        # fw = session.query(FpgaBitstream).filter_by(crc32 = bitstream_object.crc32) # find all entries with same CRC32
+        # number_of_results = fw.count()
 
     @reconstructor
     def _init_from_database(self):
@@ -79,24 +151,34 @@ class FpgaBitstream(HWMResource):
         #     self.logger.warning('Bitstream does not have the expected CRC')
         # self.firmware_class = pickle.loads(self.firmware_class_pickle)
 
-    def get_bitstream(self):
+
+    def get_bitstream_data(self):
         """
+        Fetch the bitstream from its storage (local cache, the database or the URL) and return it
         """
         if self.bitstream_cache:
-            return self.bitstream_cache
+            return self.bitstream_cache # return from the cache
         if self.bitstream:
-            return self.bitstream
+            return self.bitstream # return from the database
         self.logger.info('Reloading during get_bitstream')
-        self._load_bitstream()
-        return self.bitstream_cache
+        self._load_bitstream(self.url)
+        return self.bitstream_cache # return from the URL
 
     def persist_bitstream(self):
         """ Copy the cashed bitstream to the database"""
 
         self.logger.info('Persisting bitstream')
         if not self.bitstream_cache:
-            self._load_bitstream()
+            self._load_bitstream(self.url)
         self.bitstream = self.bitstream_cache
+
+    def set_firmware_class(self, firmware_class):
+        """ Set the database fields that allow the firmware handling class to be retreived.
+        """
+        polymorphic_identity = inspect(firmware_class).polymorphic_identity
+        self.polymorphic_class_name = polymorphic_identity
+        self.class_name = firmware_class.__name__
+
 
     def get_firmware_class(self):
         """ Return the class object that should be used to access the firmware
@@ -111,7 +193,7 @@ class FpgaBitstream(HWMResource):
 
     BIN_PREFIX = 0xffffffffaa995566
 
-    def _load_bitstream(self):
+    def _load_bitstream(self, url):
         """
         Loads the bitstream contained by the URL into the cache memory and fill the corresponding info fields.
 
@@ -122,16 +204,16 @@ class FpgaBitstream(HWMResource):
             BIT file format described in http://www.fpga-faq.com/FAQ_Pages/0026_Tell_me_about_bit_files.htm
         """
         # self.filename = filename
-        self.timestamp = None
-        self.md5 = None
-        self.valid = False
-        self.logger.info('Reading file from URL %s ...' % self.url)
-        if '://' in self.url:
-            with urllib2.urlopen(self.url) as res:
+        timestamp = None
+        md5_string = None
+
+        self.logger.info('Reading file from URL %s ...' % url)
+        if '://' in url:
+            with urllib2.urlopen(url) as res:
                 data = res.read()
         else:
              # Open as a file with relative path. mode='rb': b is important -> binary
-             with open(self.url, 'rb') as file:
+             with open(url, 'rb') as file:
                 data = file.read()
         self.logger.info('Read %0.3f Mbytes' % (len(data)/1e6))
 
@@ -178,16 +260,40 @@ class FpgaBitstream(HWMResource):
             length = struct.unpack('>L',data[pos+1:pos+4+1])[0]
             self.logger.debug('Field 7 (tag=%s, length= %i bytes): [configuration data]' % (tag, length))
             pos += 4 + 1 # skip the header. Now points to cofiguration data
-            self.bitstream_cache = data[pos:]
+            bitstream = data[pos:]
 
-            self.timestamp_string = firmware_date + ' ' + firmware_time
-            self.timestamp = datetime.datetime.strptime(firmware_date[:-1] + ' ' + firmware_time[:-1], '%Y/%m/%d %H:%M:%S')
-            self.valid = True
-
+            timestamp_string = firmware_date + ' ' + firmware_time
+            timestamp = datetime.datetime.strptime(firmware_date[:-1] + ' ' + firmware_time[:-1], '%Y/%m/%d %H:%M:%S')
+            valid = True
+        else:
+            bitstream = data
 
         # compute MD5 sum as a hex string
-        self.md5_string = hashlib.md5(self.bitstream_cache).hexdigest()
+        md5_string = hashlib.md5(bitstream).hexdigest()
         # compute CRC32 of the data
-        self.crc32 = zlib.crc32(self.bitstream_cache)
+        crc32 = zlib.crc32(bitstream)
 
+        self.crc32 = crc32
+        self.bitstream_cache = bitstream
+        self.timestamp_string = timestamp_string
+        self.timestamp = timestamp
+        self.md5_string = md5_string
         return
+
+    def add_to_database(self, session):
+        """
+        Add the bitstream object to the database using the specified session. The object will be updated if the database contains one with the same CRC32.
+        """
+        fw = session.query(FpgaBitstream).filter_by(crc32 = self.crc32) # find all entries with same CRC32
+        number_of_results = fw.count()
+        if number_of_results>1:
+            self.logger.warning('The database contains multiple reference of firmware with CRC %08X. Using the first one.' % self.crc32)
+        if number_of_results:
+            self.logger.info('The database contains already contains an entry with CRC %08X. Updating that one.' % self.crc32)
+            fpga_bitstream = fw.first()
+            fpga_bitstream.update(self) # update the database entry with the provided bitstream object and make sure the bistream is available
+            session.commit()
+        else:
+            self.logger.info('The bitstream with CRC %08X does not exist in the database. Adding it.' % self.crc32)
+            session.add(self)
+            session.commit()

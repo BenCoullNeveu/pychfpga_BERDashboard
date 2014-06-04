@@ -30,8 +30,9 @@ class Udp(object):
 
     def open(self, if_ip_addr, ip_addr, port_number, send_only=False):
         """
-        Opens a UDP socket at specified IP address and port over the specified interface.
-        If ip_addr is Udp.BROADCAST, a broadcast socket will be opened.
+        Opens a UDP socket at specified IP address and port over the specified
+        interface. If ip_addr is Udp.BROADCAST, a broadcast socket will be
+        opened.
         """
         self.port_number = port_number
         self.ip_addr = ip_addr
@@ -49,8 +50,12 @@ class Udp(object):
             self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, True)
         # sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
         #self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) # don't use REUSEADDR: many sockets get open and we then fail to receive replies
-        if not send_only:
-            self.sock.bind((if_ip_addr, port_number))
+
+        # Bind the UDP port to the specified interface. If we don't do this, the packet might be sent over the wrong (default) interface (which happened when the 10GbE was connected to the FPGA).
+        if send_only:
+            self.sock.bind((if_ip_addr, 0)) # We only want to send. Just bind to the adapter but not to  a specific port. This allows multiple sockets sending to the same (i.e. broadcast) destination to be open simultaneously.
+        else:
+            self.sock.bind((if_ip_addr, port_number)) # bind the socket to the specific interface and port number.In this mode only one socket can be opened at one time for this address.
         # self.logger.debug('   Opened control UDP Socket')
         # self.logger.debug('   Opened socket on interface  %s:%i ' % (if_ip_addr, port_number))
         return self.sock;

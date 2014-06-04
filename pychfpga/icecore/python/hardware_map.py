@@ -59,9 +59,9 @@ import operator
 import functools
 import logging
 from sqlalchemy import create_engine, inspect
-from sqlalchemy import Column, Integer, String, Binary, LargeBinary, DateTime, ForeignKey, UniqueConstraint
+from sqlalchemy import Column, Integer, String, Boolean, Binary, LargeBinary, DateTime, ForeignKey, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import relationship, Query, sessionmaker, backref, reconstructor
+from sqlalchemy.orm import relationship, Query, sessionmaker, backref, reconstructor, scoped_session
 
 Base = declarative_base()
 
@@ -302,10 +302,11 @@ class HardwareMap(object):
         Base.metadata.create_all(e)
 
         # A HardwareMapper is actually just an augmented SQLAlchemy Session.
-        return sessionmaker(
+        session_factory = sessionmaker(
                 bind=e,
                 query_cls=HWMQuery,
                 *args,
-                **kwargs)()
-
+                **kwargs)
+        # return scoped_session(session_factory)
+        return session_factory()
 # vim: sts=4 ts=4 sw=4 tw=80 smarttab expandtab

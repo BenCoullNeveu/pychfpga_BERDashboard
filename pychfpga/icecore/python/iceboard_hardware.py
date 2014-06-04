@@ -455,7 +455,7 @@ class I2CInterface(object):
         self._i2c_switch = tca9548a.tca9548a(self, _switch_addr)
         self._logger = logging.getLogger(__name__)
 
-    def select_bus(self, bus_names):
+    def select_bus(self, bus_names, *args, **kwargs):
         """
         Configure the I2C port and I2C switch so the following
         communications will access the desired I2C bus. 'bus_id'
@@ -482,7 +482,7 @@ class I2CInterface(object):
 
         self.set_port_fn(selected_fpga_port_number)
 
-        self._i2c_switch.set_port(selected_switch_port_numbers)
+        self._i2c_switch.set_port(selected_switch_port_numbers, *args, **kwargs)
 
     def write_read(self, *args, **kwargs):
         """

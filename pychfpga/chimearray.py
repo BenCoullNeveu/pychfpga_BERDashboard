@@ -51,6 +51,7 @@ from core.chFPGA_controller import chFPGA_controller as ChimeFpgaFirmware
 #####################################
 
 import inspect
+import __main__
 
 class CompletionFilter(object):
     @staticmethod
@@ -73,7 +74,7 @@ if __name__ == '__main__':
     # parser.add_argument('-w', '--data_width', action = 'store', type=int, choices=[4,8], default=8, help='Data width of each Re and Im component of the channelizer output')
     # parser.add_argument('-g', '--group_frames', action = 'store', type=int, default=4, help='Number of frames to group before sending to the GPU or FPGA correlator. The total size of the frame, including the header and ethernet obverhead, cannot exceed 8 kibytes.')
     # parser.add_argument('--enable_gpu_link', action = 'store', type=int, default=0, help='Enables the GPU link transmission')
-    parser.add_argument('--force', action = 'store', type=bool, default=False, help='Forces reprogramming of the FPGAs even if they are already programmed')
+    parser.add_argument('--force', action = 'store', type=int, default=0, help='Forces reprogramming of the FPGAs even if they are already programmed')
     parser.add_argument('-i', '--if_ip', action = 'store', type=str, default=None, help='IP address of adapter through which the connection to the FPGA will be established. If not specified, the controller will attempt to identify the proper host based on the FPGA IP address.')
     args = parser.parse_args()
     log_level = {'info': logging.INFO, 'debug': logging.DEBUG}[args.log_level]
@@ -103,13 +104,39 @@ if __name__ == '__main__':
 
     ca = IceArray(uri='sqlite:///test.db', interface_ip_addr=args.if_ip)
     ca.load_iceboards('iceboard_list.txt')
-
     ca.discover() # automatically update the hardware map database with discovered resources
 
     bitfile_filename = '../../chfpga/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit'
-    fpga_bitstream = FpgaBitstream(bitfile_filename, ChimeFpgaFirmware) #
+    # fpga_bitstream = FpgaBitstream(bitfile_filename, ChimeFpgaFirmware) #
+    # fpga_bitstream = FpgaBitstream.get_bitstream(ca, bitfile_filename, ChimeFpgaFirmware) # Get a new bitstream from the database (or create a new database entry if it does not exist yet)
+    fpga_bitstream = ca.get_fpga_bitstream(bitfile_filename, ChimeFpgaFirmware) # Get a new bitstream from the database (or create a new database entry if it does not exist yet)
+
+    # fpga_bitstream.add_to_database(ca)
+    # ca.add(fpga_bitstream)
+    # fpga_bitstream = FpgaBitstream.get_bitstream(url=bitfile_filename, ChimeFpgaFirmware)
+    # fpga_bitstream = FpgaBitstream.get_bitstream(url=bitfile_filename)
+    # fpga_bitstream = FpgaBitstream.get_bitstream(crc32=982738748)
+    # fpga_bitstream = FpgaBitstream.get_bitstream(timestamp='2014-02-13')
+    # fpga_bitstream = FpgaBitstream.get_bitstream(order=-1)
 
     c = ca.get_iceboards(subarray=0).index_by(IceBoard.serial_number) # get one or more IceBoards from specified subarray
-    cc=c[7]
-    cc.set_fpga_firmware(fpga_bitstream,  configure_fpga=True, force=args.force, store_in_database=True) # associate boards with specified firmware and configure the selected FPGA
+
+    # shortcut to index c[7] as c7 etc.
+    for (serial,ice) in [(ice.serial_number, ice) for ice in c]:
+        setattr(__main__, 'c%i' % serial, ice)
+    # c23.set_fpga_firmware(fpga_bitstream,  configure_fpga=True, force=args.force, store_in_database=True) # associate boards with specified firmware and configure the selected FPGA
+    # c24.set_fpga_firmware(fpga_bitstream,  configure_fpga=True, force=args.force, store_in_database=True) # associate boards with specified firmware and configure the selected FPGA
+    # c19.set_fpga_firmware(fpga_bitstream,  configure_fpga=True, force=args.force, store_in_database=True) # associate boards with specified firmware and configure the selected FPGA
+    # c23.open()
+    # c24.open()
+    # c19.open()
+    # b23=c23.fpga.BP_SHUFFLE
+    # b24=c24.fpga.BP_SHUFFLE
+    # b19=c19.fpga.BP_SHUFFLE
+    # g0=b24.gtx[0]
+    # g1=b23.gtx[1]
+    # g2=b24.gtx[3]
+    # g3=b19.gtx[2]
+
+    # cc.set_fpga_firmware(crc32=1910844937,  configure_fpga=True, force=args.force, store_in_database=True) # associate boards with specified firmware and configure the selected FPGA
     # c.open() # establish communication with the boards so we can access their attributes and methods

@@ -69,7 +69,7 @@ class AttributeUser(object):
             attribute_names = [name for name in dir(obj) if name[0] !='_']
 
         for name in attribute_names:
-            self.logger.debug("registering attribute '%s' from '%s'. " % (name, obj))
+            # self.logger.debug("registering attribute '%s' from '%s'. " % (name, obj))
             name = str(name) # remove unicode encoding
             if name in dir(self):
                 self.logger.warning("Attribute '%s' from '%s' is not registered because it already exists in the target instance" % (name, obj))
@@ -88,7 +88,7 @@ class AttributeUser(object):
         """
         for name,target in self._registered_objects.items():
             if target is obj:
-                self.logger.warning("Unregistering attribute %s from '%s' if %s." % (name, target, repr(obj)))
+                self.logger.debug("Unregistering attribute %s from '%s' if %s." % (name, target, repr(obj)))
                 del self._registered_objects[name]
 
     def unregister_all(self):

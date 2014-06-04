@@ -18,8 +18,9 @@ available.
 """
 
 import logging
+import threading
 
-from sqlalchemy import Column, Integer, String, ForeignKey, UniqueConstraint, inspect
+from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, UniqueConstraint, inspect
 from sqlalchemy.orm import relationship, backref, reconstructor, object_session
 
 from lib.attribute_publisher import AttributeUser
@@ -106,13 +107,14 @@ class IceBoard(HWMResource, AttributeUser):
     fpga_serial_number = Column(Integer)
     fpga_bitstream_pk = Column(Integer, ForeignKey('fpga_bitstream.pk'), index=True)
     fpga_bitstream = relationship("FpgaBitstream", foreign_keys=[fpga_bitstream_pk], uselist=False)
+    fpga_is_configured = Column(Boolean)
     # fpga_firmware_crc = Column(Integer)
     # fpga_firmware_class = Column(String)
     # interface_ip_addr = Column(String)
 
     # fpga_pk = Column(Integer, ForeignKey('fpgafirmware.pk'))
     # fpga = relationship("FpgaFirmware", uselist=False, cascade="all, delete, delete-orphan", single_parent=True) # one-to-one relationship with the firmware object. Make sure there is only one firmware object.
-    fpga = relationship("FpgaCoreFirmware", uselist=False, backref='iceboards', foreign_keys=[FpgaCoreFirmware.iceboard_pk], cascade="all, delete, delete-orphan", single_parent=True) # one-to-one relationship with the firmware object. Make sure there is only one firmware object.
+    # fpga = relationship("FpgaCoreFirmware", uselist=False, backref='iceboards', foreign_keys=[FpgaCoreFirmware.iceboard_pk], cascade="all, delete, delete-orphan", single_parent=True) # one-to-one relationship with the firmware object. Make sure there is only one firmware object.
 
     arm_pk = Column(Integer, ForeignKey('armfirmware.pk'))
     arm = relationship("TuberHWMResource", uselist=False, cascade="all, delete, delete-orphan", single_parent=True) # one-to-one relationship with the firmware object. Make sure there is only one firmware object.
@@ -137,7 +139,8 @@ class IceBoard(HWMResource, AttributeUser):
     # Class variables (common to all instances)
     # ---------------------------------------
     _active_instances = {} # This contains a dictionary of all active (opened) IceBoard instances indexed by the board's serial number
-
+    _fpga_instances = {}
+    _hw_instances = {}
     # ---------------------------------------
     # Default non-database instance variables defaults.
     # ---------------------------------------
@@ -145,15 +148,17 @@ class IceBoard(HWMResource, AttributeUser):
     # created explicitely by the program or implicitely from the database when
     # the object is accessed.
 
+    fpga = None
     hw = None # Object handling the IceBoard hardware
     fpga_port_number = None
-    _self_reference = None # Used to ensure the object stays in memory and to check of the object has been opened
+    # _self_reference = None # Used to ensure the object stays in memory and to check of the object has been opened
     _is_open = False
 
 
     def __init__(self, auto_open=True, **kwargs):
         """
         Creates an Iceboard that is accessed through the networking parameters specified in the database.
+        The created object does not have any fpga or hardware handlers yet. Those will be created when the Iceboard is opened.
         """
 
         super(type(self), self).__init__(**kwargs)
@@ -169,6 +174,7 @@ class IceBoard(HWMResource, AttributeUser):
         if self.serial_number and self.is_open():
             self.logger.error('Attempting to open object S/N %s from database while an instance already exists' % ('%03i' % self.serial_number if self.serial_number else self.serial_number))
 
+
     @reconstructor # SQLAlchemy decorator indicating that this method is to be called when the object is recreated from the database
     def _init_from_database(self):
         """
@@ -178,6 +184,12 @@ class IceBoard(HWMResource, AttributeUser):
         if self.serial_number:
             self.fpga_port_number = 41000 + 4*(self.serial_number)
         self.fpga_subarray = 0 # another thing we probably won't need
+
+        if self.serial_number in self._fpga_instances:
+            fpga = self._fpga_instances[self.serial_number]
+
+        if self.serial_number in self._hw_instances:
+            hw = self._hw_instances[self.serial_number]
 
         self.logger = logging.getLogger(__name__)
         self.logger.debug('Reconstructing Iceboard object S/N %s from database entry' % ('%03i' % self.serial_number if self.serial_number else self.serial_number))
@@ -202,6 +214,15 @@ class IceBoard(HWMResource, AttributeUser):
         Establishes the connection with the hardware and firmware on the IceBoard and create all appropriate handling classes.
         """
 
+        # if the FPGA handler instance was not created, check if one exists create it
+        if self.fpga is None:
+            if self.serial_number in self._fpga_instances:
+                self.fpga = self._fpga_instances[self.serial_number]
+            else:
+                firmware_class = self.fpga_bitstream.get_firmware_class()
+                self.fpga = firmware_class()
+                self._fpga_instances[self.serial_number]=self.fpga
+
         if self.serial_number and self.is_open():
             self.logger.error('Attempting to open object S/N %s while it is already opened' % ('%03i' % self.serial_number if self.serial_number else self.serial_number))
             return
@@ -216,12 +237,9 @@ class IceBoard(HWMResource, AttributeUser):
             self.register(self.arm) # Allow access to the fpga methods/attributes from this class
 
 
-        if not self.fpga:
-            # Log a warning if no firmware has been associated with the FPGA
-            self.logger.warning('FPGA firmware on IceBoard S/N %i is not specified for this board. The FPGA-related methods will not be available. Use set_fpga_firmware() to set the firmware to use' % self.serial_number)
-        elif not self.fpga_is_configured:
-            self.logger.warning('FPGA on IceBoard S/N %iif not configured. The FPGA-related methods will not be available.' % self.serial_number)
-        else:
+       # if not self.fpga.is_configured():
+       #      self.logger.warning('FPGA on IceBoard S/N %iif not configured. The FPGA-related methods will not be available.' % self.serial_number)
+       #  else:
             # Open communication with the FPGA and initialize the core
             # firmware object (but leave the firmware in its current state) We
             # need this now to create the basic interface that is needed for
@@ -255,7 +273,7 @@ class IceBoard(HWMResource, AttributeUser):
             self.fpga.open(motherboard=self, *args, **kwargs) # Open the application-specific firmware
             self.register(self.fpga) # Allow access to the fpga_user methods/attributes from this class
 
-        self._self_reference = self # Create circular reference to prevent the object from being removed from memory until closed.
+        # self._self_reference = self # Create circular reference to prevent the object from being removed from memory until closed.
         self._is_open = True
         type(self)._active_instances[self.serial_number] = self
 
@@ -282,7 +300,7 @@ class IceBoard(HWMResource, AttributeUser):
             # self.arm.close() # Tuber has no close()
             # self.arm = None
 
-        self._self_reference = None # Now the object can be garbage collected if no one else uses it
+        # self._self_reference = None # Now the object can be garbage collected if no one else uses it
         self._is_open = False
         type(self)._active_instances.pop(self.serial_number, None)
 
@@ -314,28 +332,52 @@ class IceBoard(HWMResource, AttributeUser):
             else:
                 self.logger.info("No recognized FMC Mezzanine was found in FMC slot #%i (%s)" % (fmc_number, fmc_name))
 
-    def set_fpga_firmware(self, bitstream_object, configure_fpga = True, force=False, store_in_database = True):
+    def set_fpga_firmware(self, bitstream_object, configure_fpga = True, force=False):
 
-        # First we check if the specified bistream object already exists in the database. If not, we add it.
-        if bitstream_object:
-            session = object_session(self) # get the session to which this object is associated
-            fw = session.query(FpgaBitstream).filter_by(crc32 = bitstream_object.crc32) # find all entries with same CRC32
-            number_of_results = fw.count()
-            if number_of_results>1:
-                self.logger.warning('The database contains multiple reference of firmware with CRC %08X. Using the first one.' % bitstream_object.crc32)
-            if number_of_results:
-                self.logger.info('The database contains already contains an entry with CRC %08X. Using that one.' % bitstream_object.crc32)
-                self.fpga_bitstream = fw.first()
-                self.fpga_bitstream.update(bitstream_object) # update the database entry with the provided bitstream object and make sure the bistream is available
-                # session.commit()
-            else:
-                self.logger.info('The bitstream with CRC %08X does not exist in the database. Adding it.' % bitstream_object.crc32)
-                self.fpga_bitstream = bitstream_object
-                session.add(self.fpga_bitstream)
-                # session.commit()
+        if self.fpga_bitstream:
+            del self.fpga_bitstream
+        self.fpga_bitstream = bitstream_object
+        # session = object_session(self)
+        # session.expire(self)
+        # with threading.Lock() as lock:
+        #     self.fpga_bitstream = bitstream_object
+        #     session = object_session(self)
+        #     while session._flushing:
+        #         pass
+        #     session.flush()
+        # # First we check if the specified bistream object already exists in the database. If not, we add it.
+        # if bitstream_object:
+        #     session = object_session(self) # get the session to which this object is associated
+        #     fw = session.query(FpgaBitstream).filter_by(crc32 = bitstream_object.crc32) # find all entries with same CRC32
+        #     number_of_results = fw.count()
+        #     if number_of_results>1:
+        #         self.logger.warning('The database contains multiple reference of firmware with CRC %08X. Using the first one.' % bitstream_object.crc32)
+        #     if number_of_results:
+        #         self.logger.info('The database contains already contains an entry with CRC %08X. Using that one.' % bitstream_object.crc32)
+        #         self.fpga_bitstream = fw.first()
+        #         self.fpga_bitstream.update(bitstream_object) # update the database entry with the provided bitstream object and make sure the bistream is available
+        #         # session.commit()
+        #     else:
+        #         self.logger.info('The bitstream with CRC %08X does not exist in the database. Adding it.' % bitstream_object.crc32)
+        #         self.fpga_bitstream = bitstream_object
+        #         session.add(self.fpga_bitstream)
+        #         # session.commit()
 
-            if store_in_database:
-                self.fpga_bitstream.persist_bitstream()
+        #     if store_in_database:
+        #         self.fpga_bitstream.persist_bitstream()
+
+        # elif crc32: # load bitstream with specified crc from database
+        #     session = object_session(self) # get the session to which this object is associated
+        #     fw = session.query(FpgaBitstream).filter_by(crc32 = crc32) # find all entries with same CRC32
+        #     number_of_results = fw.count()
+        #     if number_of_results>1:
+        #         self.logger.warning('The database contains multiple reference of firmware with CRC %08X. Using the first one.' % bitstream_object.crc32)
+        #     if number_of_results:
+        #         self.logger.info('Found the database entry with CRC %08X. Using that one.' % crc32)
+        #         self.fpga_bitstream = fw.first()
+        #     else:
+        #         self.logger.info('The bitstream with CRC %08X does not exist in the database.' % crc32)
+        #         raise IceBoardException('The bitstream with CRC %08X does not exist in the database.' % crc32)
 
         self.close()
 
@@ -344,17 +386,17 @@ class IceBoard(HWMResource, AttributeUser):
             del self.fpga
 
         #  Get the class that corresponds to the polymorphic identity name
-        firmware_class = self.fpga_bitstream.get_firmware_class()
+        fpga_firmware_class = self.fpga_bitstream.get_firmware_class()
 
-        self.logger.info("The FPGA firmware object for iceBoard S/N %i is '%s' (%r)" % (self.serial_number, self.fpga_bitstream.polymorphic_class_name, firmware_class))
+        self.logger.info("The FPGA firmware object for iceBoard S/N %i is '%s' (%r)" % (self.serial_number, self.fpga_bitstream.polymorphic_class_name, fpga_firmware_class))
 
-        self.fpga = firmware_class() # Create a FPGA firmware object. This does not do much more than linking the database object
+        # self.fpga = firmware_class() # Create a FPGA firmware object. This does not do much more than linking the database object
 
         # Configure the fpga if we asked for it.
         if configure_fpga:
             self.configure_fpga(force=force)
 
-        session.commit()
+        # session.commit()
 
     def configure_fpga(self, force=False):
         """
@@ -415,7 +457,7 @@ class IceBoard(HWMResource, AttributeUser):
                 raise IceBoardException('The Iceboard does not have an ARM firmware object needed to configure the FPGA')
             self.logger.info('Configuring FPGA on board S/N %i through tuber at  %s' % (self.serial_number, self.arm.tuber_uri))
             md5_string = self.fpga_bitstream.md5_string
-            b64_string = base64.b64encode(self.fpga_bitstream.get_bitstream())
+            b64_string = base64.b64encode(self.fpga_bitstream.get_bitstream_data())
             # with TuberHWMResource(self.tuber_uri, self.tuber_objname) as arm:
             self.arm.load_fpga_bitstream(b64_string, md5_string)
             # Configure the FPGA networking foe the freshly programmed firmware

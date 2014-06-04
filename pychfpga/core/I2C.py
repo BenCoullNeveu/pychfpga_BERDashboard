@@ -90,7 +90,7 @@ class I2C_base(Module_base):
         self.current_port = port_number
         self.logger.debug("Setting FPGA I2C port to %i" % port_number)
 
-    def write_read(self, addr=0, data=[0], read_length=0, verbose=1, noerror=False):
+    def write_read(self, addr=0, data=[0], read_length=0, verbose=1, noerror=False, retry=1):
         """
         When data=None, reads 'read_length' (0-3) bytes from the I2C device at specified I2C address in a single I2C transaction,
         or, if data is an non-empty array of 1-3 data bytes, writes the data to the specified I2C address,
@@ -126,43 +126,62 @@ class I2C_base(Module_base):
         if start_ctr != done_ctr:
             error_msg += 'write_read: start_ctr is different from done_ctr\n'
 
-        self.write(0x000 + 0x05, self.current_port << 4) # disables RESET, set port number
+        trial = 0
+        while True:
+            self.write(0x000 + 0x05, self.current_port << 4) # disables RESET, set port number
 
-        if data is None: # if we do not write any date, we perform a single transaction with BYTES1=read_length and BYTES2=0
-            self.write(0x000 + 0x00, [(addr << 1) + 0x01]) # write I2C address with read flag to the transmit buffer
-            expected_ack = 2**(read_length + 1) - 1;
-            self.write(0x000 + 0x04,[0x00 + read_length]) # Prepare to start transaction by clearing the START bit
-            self.write(0x000 + 0x04,[0x80 + read_length]) # start transaction by creating a 0-to-1 trsnsition on the START bit. Do this as a separate transmission to make sure that the firmware registered the zero
-        else: # if we write and optionnally read
-            self.write(0x000 + 0x00, [(addr << 1) + 0x00] + data) # write address with write flag and data in transmit buffer (4 bytes max)
-            expected_ack= 2**(read_length + write_length + 1 + (read_length != 0)) - 1
-            self.write(0x000 + 0x04,[0x00+(read_length << 4) + write_length]) # Prepare to start transaction by clearing the START bit
-            self.write(0x000 + 0x04,[0x80+(read_length << 4) + write_length]) # start transaction by creating a 0-to-1 trsnsition on the START bit. Do this as a separate transmission to make sure that the firmware registered the zero
-        self.wait_for_bit('DONE')
-        data=self.read(0x080+0x00, length=4, type=np.uint8)
-        ack=self.ACK_STATUS
-        if ack!=expected_ack:
-            #error=1
-            error_msg += 'write_read: communication error: did not receive correct ACK bits. Received 0x%02x, expected 0x%02x\n' % (ack, expected_ack)
-        start_ctr=(start_ctr+1) % 16
-        done_ctr=(done_ctr+1) % 16
+            idle = self.IDLE
+            if data is None: # if we do not write any date, we perform a single transaction with BYTES1=read_length and BYTES2=0
+                self.write(0x000 + 0x00, [(addr << 1) + 0x01]) # write I2C address with read flag to the transmit buffer
+                expected_ack = 2**(read_length + 1) - 1;
+                self.write(0x000 + 0x04,[0x00 + read_length]) # Prepare to start transaction by clearing the START bit
+                self.write(0x000 + 0x04,[0x80 + read_length]) # start transaction by creating a 0-to-1 trsnsition on the START bit. Do this as a separate transmission to make sure that the firmware registered the zero
+            else: # if we write and optionnally read
+                self.write(0x000 + 0x00, [(addr << 1) + 0x00] + data) # write address with write flag and data in transmit buffer (4 bytes max)
+                expected_ack= 2**(read_length + write_length + 1 + (read_length != 0)) - 1
+                self.write(0x000 + 0x04,[0x00+(read_length << 4) + write_length]) # Prepare to start transaction by clearing the START bit
+                self.write(0x000 + 0x04,[0x80+(read_length << 4) + write_length]) # start transaction by creating a 0-to-1 trsnsition on the START bit. Do this as a separate transmission to make sure that the firmware registered the zero
+            self.wait_for_bit('DONE')
+
+            # Increment the transaction counters to track how many start and done events we *should* have
+            start_ctr=(start_ctr+1) % 16
+            done_ctr=(done_ctr+1) % 16
+
+            if self.DONE_CTR != done_ctr:
+                self.logger.warn('write_read: Transaction is not completed yet!')
+
+            # Get the data that was read back
+            read_data=self.read(0x080+0x00, length=4, type=np.uint8)
+
+            # Check the ACK flags
+            ack=self.ACK_STATUS
+            if ack == expected_ack:
+                break
+            trial += 1
+            if trial > retry:
+                error_msg += 'write_read: communication error: did not receive correct ACK bits. Received 0x%02x, expected 0x%02x\n. ' % (ack, expected_ack)
+                break
+            else:
+                self.logger.warn('write_read: communication error: did not receive correct ACK bits. Received 0x%02x, expected 0x%02x\n. Start ctr: %i => %i, Done ctr: %i => %i, Idle: %i => %i, Collisiotn=%i, timeout=%i. Retrying...' % (ack, expected_ack, start_ctr, self.START_CTR, done_ctr, self.DONE_CTR, idle, self.IDLE, self.COLLISION, self.TIMEOUT))
+
+        # Che
         if self.START_CTR != start_ctr:
             error_msg +='write_read: communication error: start_ctr do not match. Read %i, expected %i\n' % (self.START_CTR, start_ctr)
         if self.DONE_CTR != done_ctr:
             error_msg += 'write_read: communication error: done_ctr do not match. Read %i, expected %i\n' % (self.DONE_CTR, done_ctr)
 
         #print 'I2C communication: ACK byte is 0x%02x' % ack
-        data=data[-read_length:]
+        read_data=read_data[-read_length:]
         #data.dtype=np.dtype(type)
         if error_msg:
-            error_msg = 'write_read:  The following errors occured while writing %i bytes and reading %i bytes on FPGA I2C port %i at address 0x%02x with data %s\n %s' % (write_length, read_length, self.current_port, addr,  hex(data), error_msg)
+            error_msg = 'write_read:  The following errors occured while writing %i bytes and reading %i bytes on FPGA I2C port %i at address 0x%02x with data %s\n %s' % (write_length, read_length, self.current_port, addr,  hex(read_data), error_msg)
             if noerror:
                 self.logger.warn(error_msg)
             else:
                 self.logger.error(error_msg)
                 raise SystemError(error_msg)
 
-        return data
+        return read_data
 
     def i2c_read(self, addr=0, length=1,  type=np.uint8, **kwargs):
         """ Serially reads 0-3 bytes  bytes long) from the I2C bus at the specified I2C address
