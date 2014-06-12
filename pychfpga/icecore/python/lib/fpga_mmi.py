@@ -111,7 +111,6 @@ class FpgaMmi:
         """
         return self.sock.get_timeout()
 
-
     def read(self, addr, type=np.dtype('>u1'), length=1, incr=1, timeout = None):
         """
         Reads memory-mapped byte(s) from the FPGA through the Ethernet interface.

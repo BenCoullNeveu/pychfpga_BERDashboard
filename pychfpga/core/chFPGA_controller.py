@@ -356,6 +356,7 @@ class chFPGA_controller(FpgaCoreFirmware):
             # Get GPU link configuration
             self.NUMBER_OF_GPU_LINKS = self.GPIO.NUMBER_OF_GPU_LINKS
 
+            self.NUMBER_OF_BP_SHUFFLE_LANES = 0
             # Get correlator info and their properties
             self.NUMBER_OF_CORRELATORS_MAX = self.GPIO.NUMBER_OF_CORRELATORS
             self.NUMBER_OF_CORRELATORS = self.GPIO.NUMBER_OF_CORRELATORS
@@ -429,8 +430,9 @@ class chFPGA_controller(FpgaCoreFirmware):
             self._logger.debug('=== Instantiating CROSSBAR')
             self.CROSSBAR = CROSSBAR.CROSSBAR_base(self, self._CROSSBAR_BASE_ADDR, self._CROSSBAR_ADDR_INCREMENT) # CROSSBAR block
 
-            self._logger.debug('=== Instantiating Backplane shuffle subsystem')
-            self.BP_SHUFFLE = shuffle.Shuffle(self, self._BP_SHUFFLE_BASE_ADDR, self._BP_SHUFFLE_ADDR_INCREMENT)
+            if self.NUMBER_OF_BP_SHUFFLE_LANES:
+                self._logger.debug('=== Instantiating Backplane shuffle subsystem')
+                self.BP_SHUFFLE = shuffle.Shuffle(self, self._BP_SHUFFLE_BASE_ADDR, self._BP_SHUFFLE_ADDR_INCREMENT)
 
             self._logger.debug('=== Instantiating CORR')
             self.CORR = CORR_BLOCK.CORR_BLOCK_base(self, self._CORR_BASE_ADDR, self._CORR_ADDR_INCREMENT) # Correlator (XMUL, ACC) for each correlator
@@ -606,9 +608,10 @@ class chFPGA_controller(FpgaCoreFirmware):
             self._logger.warning("There are no CROSSBAR blocks in this firmware build (so there can't be data streamed to the correlators or GPU links!)");
 
 
-        self._logger.debug('=== Initializing Backplane Shuffle')
-        self.BP_SHUFFLE.init()
-        # self.BP_SHUFFLE.status()
+        if self.NUMBER_OF_BP_SHUFFLE_LANES:
+            self._logger.debug('=== Initializing Backplane Shuffle')
+            self.BP_SHUFFLE.init()
+            # self.BP_SHUFFLE.status()
 
         self._logger.debug('=== Initializing FPGA correlators')
         if self.NUMBER_OF_CORRELATORS>0:
