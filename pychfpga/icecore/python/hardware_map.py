@@ -81,7 +81,7 @@ class HWMQueryAttribute(object):
         # ClassWithDoc = type(HWMQueryAttributeBase.__name__, HWMQueryAttributeBase.__bases__, dict(HWMQueryAttributeBase.__dict__))
         class HWMQueryAttributeWithDoc(HWMQueryAttributeBase): pass
         try:
-            target_method = HWMQueryAttributeBase.get_object(query_object.first(), attribute_chain) # get the attribute (method) described by the attribute object
+            target_method = HWMQueryAttributeBase._get_object(query_object.first(), attribute_chain) # get the attribute (method) described by the attribute object
             call_method = lambda self_, *args, **kwargs: HWMQueryAttributeBase.__call__(self_,*args, **kwargs) # Create a new call method that we can modify below
             HWMQueryAttributeWithDoc.__call__ = functools.update_wrapper(call_method, target_method) # Create a __call__ method that inherits the docstring from the target method
         except AttributeError:
@@ -119,7 +119,7 @@ class HWMQueryAttributeBase(object):
         if self._query._use_concurrent_get:
             return iter(self._query._concurrent_call(self._attribute_chain, None))
         else:
-            return (self.get_object(obj, self._attribute_chain) for obj in self._query)
+            return (self._get_object(obj, self._attribute_chain) for obj in self._query)
 
     def __getattr__(self, attr_name):
         """ Return another HWMQueryAttribute object that points to the specified sub-attribute"""
@@ -127,7 +127,8 @@ class HWMQueryAttributeBase(object):
 
 
     def __getitem__(self, index):
-        return self.get_object(self._query[index], self._attribute_chain)
+        # return self._get_object(self._query[index], self._attribute_chain)
+        return [self._get_object(obj)[index] for obj in self] # could be parallelized easily
 
     def __len__(self):
         return self._query.count()
@@ -149,7 +150,7 @@ class HWMQueryAttributeBase(object):
             return [obj(*args, **kwargs) for obj in self]
 
     @staticmethod
-    def get_object(source_obj, attribute_chain):
+    def _get_object(source_obj, attribute_chain):
         """
         Returns the object represented by the attribute chain, starting from object source_obj.
         """
@@ -227,7 +228,7 @@ class HWMQuery(Query):
                 results = list()
                 for (attribute_chain, method, local_args, local_kwargs) in call_list:
                     # if attribute_chain:
-                    target_obj = HWMQueryAttributeBase.get_object(local_source_obj, attribute_chain) # follow the attribute chain to get the last object
+                    target_obj = HWMQueryAttributeBase._get_object(local_source_obj, attribute_chain) # follow the attribute chain to get the last object
                     logger.debug('Running thread calling object (%r).%s.%s(%s,%s) in session %r' % (query_result, '.'.join(attribute_chain), method, ','.join([repr(a) for a in local_args]), ','.join(['%s=%s' % (key,value) for (key,value) in local_kwargs.items()]), local_session))
                     # else:
                     #     target_obj = local_source_obj
