@@ -18,7 +18,7 @@ class TuberRemoteError(TuberError):
 ### Libraries
 ###
 
-import urllib2, urlparse, os, collections
+import urllib2, urlparse, os, collections, socket
 from hardware_map import HWMResource
 
 try: import simplejson as json
@@ -79,7 +79,7 @@ class TuberHWMResource(HWMResource):
         try:
             fh=urllib2.urlopen(uri, '{}', timeout=timeout)
             fh.close()
-        except  urllib2.URLError:
+        except ( urllib2.URLError, socket.timeout) :
             return False
         return True
 

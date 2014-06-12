@@ -17,7 +17,7 @@ import hardware_map
 
 import iceboard
 from iceboard import IceBoard
-from icecore.fpga_bitstream import FpgaBitstream
+from fpga_bitstream import FpgaBitstream
 
 class IceException(Exception):
     pass
