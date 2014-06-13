@@ -111,16 +111,19 @@ class IceArray(object):
         return FpgaBitstream.get_bitstream(self,*args, **kwargs)
 
 
-    def get_iceboards(self, serials=[], *args, **kwargs):
+    def get_iceboards(self, serials=[], subarray=[], *args, **kwargs):
         """
         Returns a list of all ICEBoards covered by the specified scope
         """
+        new_args = list()
         if serials:
-            args.append(IceBoard.serial_number.in_(serials))
+            new_args.append(IceBoard.serial_number.in_(serials))
+        if subarray:
+            new_args.append(IceBoard.subarray.in_(subarray))
         kwargs['locked']=0 # force selection of non-locked boards
         if 'present' not in kwargs:
             kwargs['present'] = 1
-        return self.query(IceBoard).filter(*args).filter_by(**kwargs)
+        return self.query(IceBoard).filter(*tuple(new_args + list(args))).filter_by(**kwargs)
 
     def status(self):
         print 'The array contains the following resources'

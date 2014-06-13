@@ -113,7 +113,12 @@ class HWMQueryAttributeBase(object):
 
     def __repr__(self):
         # return '%r.%s = [%r]' % (Query.__repr__(self._query), '.'.join(self._attribute_chain), ','.join(repr(obj) for obj in self))
-        return 'HWMQuery.%s= [%s]' % ('.'.join(self._attribute_chain), ','.join(repr(obj) for obj in self) )
+        return 'HWMQuery%s = [%s]' % (self._get_access_chain_repr(), ','.join(repr(obj) for obj in self))
+
+    def _get_access_chain_repr(self):
+        """ Return a string representation of the access chain.
+        """
+        return ''.join(['.'+ access if isinstance(access,str) else access[3] for access in self._attribute_chain])
 
     def __iter__(self):
         if self._query._use_concurrent_get:
@@ -126,9 +131,10 @@ class HWMQueryAttributeBase(object):
         return HWMQueryAttribute(self._query, self._attribute_chain + [attr_name])
 
 
-    def __getitem__(self, index):
+    def __getitem__(self, *args, **kwargs):
         # return self._get_object(self._query[index], self._attribute_chain)
-        return [self._get_object(obj)[index] for obj in self] # could be parallelized easily
+        # return [self._get_object(obj)[index] for obj in self] # could be parallelized easily
+        return HWMQueryAttribute(self._query, self._attribute_chain + [('__getitem__', args, kwargs, '[%r]' % args[0])])
 
     def __len__(self):
         return self._query.count()
@@ -150,13 +156,22 @@ class HWMQueryAttributeBase(object):
             return [obj(*args, **kwargs) for obj in self]
 
     @staticmethod
-    def _get_object(source_obj, attribute_chain):
+    def _get_object(source_obj, access_chain):
         """
-        Returns the object represented by the attribute chain, starting from object source_obj.
+        Returns the object represented by the access chain, starting from object source_obj.
+        access_chain is a list of elements, each of which is:
+            - a string, which indicates the name of the attribute to fetch the derired value
+            - a (method_name, args, kwargs) tuple, indicating the method to call to fecth the desired value
+        The first element must be an attribute name string (i.e. no function calls are allowed).
         """
-        attr = getattr(source_obj, attribute_chain[0])
-        for attr_name in attribute_chain[1:]:
-            attr = getattr(attr, attr_name)
+        attr = getattr(source_obj, access_chain[0])
+        for attr_name in access_chain[1:]:
+            if isinstance(attr_name, str):
+                attr = getattr(attr, attr_name)
+            else:
+                (method_name, args, kwargs, _) = attr_name
+                method = getattr(attr, method_name)
+                attr = method(*args, **kwargs)
         return attr
 
 class HWMQuery(Query):
@@ -224,7 +239,7 @@ class HWMQuery(Query):
                 # local_obj = local_session.query(type(query_result)).filter_by(pk=query_result.pk).one() # this works, but might not be very efficient
                 with database_lock:
                     local_source_obj = local_session.merge(query_result) # this works as well
-                    object_session(query_result).expunge(query_result) # make sure the object from the original session will be reloaded once we are finished processing its counterpart in the thread-local session.
+                    # object_session(query_result).expunge(query_result) # make sure the object from the original session will be reloaded once we are finished processing its counterpart in the thread-local session.
                 results = list()
                 for (attribute_chain, method, local_args, local_kwargs) in call_list:
                     # if attribute_chain:
@@ -255,8 +270,11 @@ class HWMQuery(Query):
                     logger.debug('Thread for object %r.%s is returning %r' %  (local_source_obj, '.'.join(attribute_chain), result))
                     results.append(result)
                 with database_lock:
-                    local_session.commit()
+                    local_session.flush() # probably not necessary with close
                     local_session.close()
+                    # new_obj = object_session(query_result).merge(local_source_obj) # make sure the changes to the object are reflected in the original session. Hopefully this will not create a new object in a new memoty location...
+                    # if new_obj is not local_source_obj: print 'oops the object has changed'
+                object_session(query_result).expunge(query_result) # make sure the changes to the object are reflected in the original session. Hopefully this will not create a new object in a new memoty location...
                 return results
             except Exception as ee:
                 logger.error('Thread global exception %r' % ee)
@@ -272,7 +290,7 @@ class HWMQuery(Query):
                 exception_list.append(exc)
                 self._logger.error('Exception in thread results : %r' % (exc))
         self._call_list = [] # empty the call list
-        self._logger.debug('All threads returned %r' % transposed_results)
+        # self._logger.debug('All threads returned %r' % transposed_results) # resilting string is sometimes too big for syslog.
         if exception_list:
             raise HWMQueryException('The concurrent call generated the following exceptions: %s' % ','.join(repr(e) for e in exception_list))
         else:
