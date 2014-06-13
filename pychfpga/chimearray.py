@@ -76,6 +76,9 @@ if __name__ == '__main__':
     # parser.add_argument('--enable_gpu_link', action = 'store', type=int, default=0, help='Enables the GPU link transmission')
     parser.add_argument('--force', action = 'store', type=int, default=0, help='Forces reprogramming of the FPGAs even if they are already programmed')
     parser.add_argument('-i', '--if_ip', action = 'store', type=str, default=None, help='IP address of adapter through which the connection to the FPGA will be established. If not specified, the controller will attempt to identify the proper host based on the FPGA IP address.')
+    parser.add_argument('--bitfile', action = 'store', type=str, default= '../../chfpga/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit', 
+        help='Location of bitfile to program fpgas')
+    parser.add_argument('--subarray', action = 'store', type=int, default=2, help='Which subarray to use')
     args = parser.parse_args()
     log_level = {'info': logging.INFO, 'debug': logging.DEBUG}[args.log_level]
 
@@ -106,7 +109,7 @@ if __name__ == '__main__':
     ca.load_iceboards('iceboard_list.txt')
     ca.discover() # automatically update the hardware map database with discovered resources
 
-    bitfile_filename = '../../chfpga/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit'
+    bitfile_filename = args.bitfile
     # fpga_bitstream = FpgaBitstream(bitfile_filename, ChimeFpgaFirmware) #
     # fpga_bitstream = FpgaBitstream.get_bitstream(ca, bitfile_filename, ChimeFpgaFirmware) # Get a new bitstream from the database (or create a new database entry if it does not exist yet)
     fpga_bitstream = ca.get_fpga_bitstream(bitfile_filename, ChimeFpgaFirmware) # Get a new bitstream from the database (or create a new database entry if it does not exist yet)
@@ -119,7 +122,7 @@ if __name__ == '__main__':
     # fpga_bitstream = FpgaBitstream.get_bitstream(timestamp='2014-02-13')
     # fpga_bitstream = FpgaBitstream.get_bitstream(order=-1)
 
-    c = ca.get_iceboards(subarray=0).index_by(IceBoard.serial_number) # get one or more IceBoards from specified subarray
+    c = ca.get_iceboards(subarray=args.subarray).index_by(IceBoard.serial_number) # get one or more IceBoards from specified subarray
 
     # shortcut to index c[7] as c7 etc.
     for (serial,ice) in [(ice.serial_number, ice) for ice in c]:
