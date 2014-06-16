@@ -14,9 +14,9 @@ History:
     2011-10-11 JFC: Updated delay tables
 """
 
-from pychfpga.core import chFPGA_controller
+
 from pychfpga.core import chFPGA_receiver
-import pychfpga.plot_utils as pu
+#import pychfpga.plot_utils as pu
 import numpy as np
 import time
 
@@ -90,7 +90,8 @@ def save_timestream_frames(chFPGA_receiver, channels=[0], frames=256, filename='
 
     print 'Saved {0} frames'.format(number_of_frames)
 
-if __name__ == '__main__':        
+if __name__ == '__main__':
+    from pychfpga.core import chFPGA_controller        
     print '------------------------'
     print 'Raw Frame saving script'
     print 'Command line mode'

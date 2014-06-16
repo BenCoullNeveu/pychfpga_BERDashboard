@@ -20,7 +20,7 @@ import ast
 from sqlalchemy import Column, Integer, String, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship, backref
 
-from icecore.fmc_mezzanine import FMCMezzanine
+from ..icecore.fmc_mezzanine import FMCMezzanine
 
 import ADC
 import IOExpander
