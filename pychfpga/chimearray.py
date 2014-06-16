@@ -63,7 +63,7 @@ if __name__ == '__main__':
     # Configure the various loggers to provide adequate levels of details
     logging.getLogger('icecore.fpga_bitstream.FpgaBitstream').setLevel(logging.DEBUG)
     # logging.getLogger('requests.packages').setLevel(logging.WARN)
-    logging.getLogger('sqlalchemy.engine.base.Engine').setLevel(logging.WARN)
+    logging.getLogger('sqlalchemy.engine.base.Engine').setLevel(logging.INFO)
 
     close_all_sockets()
 
@@ -76,8 +76,8 @@ if __name__ == '__main__':
     # parser.add_argument('--enable_gpu_link', action = 'store', type=int, default=0, help='Enables the GPU link transmission')
     parser.add_argument('--force', action = 'store', type=int, default=0, help='Forces reprogramming of the FPGAs even if they are already programmed')
     parser.add_argument('-i', '--if_ip', action = 'store', type=str, default=None, help='IP address of adapter through which the connection to the FPGA will be established. If not specified, the controller will attempt to identify the proper host based on the FPGA IP address.')
-    parser.add_argument('--bitfile', action = 'store', type=str, default= '../../chfpga/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit', 
-        help='Location of bitfile to program fpgas')
+    parser.add_argument('--bitfile', action = 'store', type=str, default= '../../chfpga/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit',  help='Filename of the bitfile used to to program the FPGAs')
+    parser.add_argument('--bitfile_crc', action = 'store', type=int, help='CRC of the bitfile used to to program the FPGAs')
     #parser.add_argument('--subarray', action = 'store', type=int, default=2, help='Which subarray to use')
     args = parser.parse_args()
     log_level = {'info': logging.INFO, 'debug': logging.DEBUG}[args.log_level]
@@ -112,17 +112,14 @@ if __name__ == '__main__':
     bitfile_filename = args.bitfile
     # fpga_bitstream = FpgaBitstream(bitfile_filename, ChimeFpgaFirmware) #
     # fpga_bitstream = FpgaBitstream.get_bitstream(ca, bitfile_filename, ChimeFpgaFirmware) # Get a new bitstream from the database (or create a new database entry if it does not exist yet)
-    fpga_bitstream = ca.get_fpga_bitstream(bitfile_filename, ChimeFpgaFirmware) # Get a new bitstream from the database (or create a new database entry if it does not exist yet)
+    if args.bitfile_crc:
+        fpga_bitstream = ca.get_fpga_bitstream(crc = args.bitfile_crc) # Get a new bitstream from the database
+    else:
+        fpga_bitstream = ca.get_fpga_bitstream(args.bitfile, ChimeFpgaFirmware) # Get a new bitstream from the database (or create a new database entry if it does not exist yet)
 
-    # fpga_bitstream.add_to_database(ca)
-    # ca.add(fpga_bitstream)
-    # fpga_bitstream = FpgaBitstream.get_bitstream(url=bitfile_filename, ChimeFpgaFirmware)
-    # fpga_bitstream = FpgaBitstream.get_bitstream(url=bitfile_filename)
-    # fpga_bitstream = FpgaBitstream.get_bitstream(crc32=982738748)
-    # fpga_bitstream = FpgaBitstream.get_bitstream(timestamp='2014-02-13')
-    # fpga_bitstream = FpgaBitstream.get_bitstream(order=-1)
 
-    c = ca.get_iceboards(subarray=args.subarray).index_by(IceBoard.serial_number) # get one or more IceBoards from specified subarray
+    # c = ca.get_iceboards(subarray=args.subarray).index_by(IceBoard.serial_number) # get one or more IceBoards from specified subarray
+    c = ca.get_iceboards(subarray=args.subarray) # get one or more IceBoards from specified subarray
 
     # shortcut to index c[7] as c7 etc.
     for (serial,ice) in [(ice.serial_number, ice) for ice in c]:

@@ -22,6 +22,7 @@ import threading
 
 from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, UniqueConstraint, inspect
 from sqlalchemy.orm import relationship, backref, reconstructor, object_session
+from sqlalchemy import event
 
 from lib.attribute_publisher import AttributeUser
 from hardware_map import HWMResource
@@ -52,6 +53,8 @@ from icebox import IceBox
 
 class IceBoardException(Exception):
     pass
+
+
 
 class IceBoard(HWMResource, AttributeUser):
     """
@@ -106,7 +109,7 @@ class IceBoard(HWMResource, AttributeUser):
     fpga_ip_addr = Column(String)
     fpga_serial_number = Column(Integer)
     fpga_bitstream_pk = Column(Integer, ForeignKey('fpga_bitstream.pk'), index=True)
-    fpga_bitstream = relationship("FpgaBitstream", foreign_keys=[fpga_bitstream_pk], uselist=False)
+    fpga_bitstream = relationship("FpgaBitstream", foreign_keys=[fpga_bitstream_pk], uselist=False, lazy='joined')
     fpga_is_configured = Column(Boolean)
     # fpga_firmware_crc = Column(Integer)
     # fpga_firmware_class = Column(String)
@@ -117,22 +120,22 @@ class IceBoard(HWMResource, AttributeUser):
     # fpga = relationship("FpgaCoreFirmware", uselist=False, backref='iceboards', foreign_keys=[FpgaCoreFirmware.iceboard_pk], cascade="all, delete, delete-orphan", single_parent=True) # one-to-one relationship with the firmware object. Make sure there is only one firmware object.
 
     arm_pk = Column(Integer, ForeignKey('armfirmware.pk'))
-    arm = relationship("TuberHWMResource", uselist=False, cascade="all, delete, delete-orphan", single_parent=True) # one-to-one relationship with the firmware object. Make sure there is only one firmware object.
+    arm = relationship("TuberHWMResource", uselist=False, cascade="all, delete, delete-orphan", single_parent=True, lazy='joined') # one-to-one relationship with the firmware object. Make sure there is only one firmware object.
 
 
     # Set up explicit mezz1 / mezz2 links.
     mezz1_pk = Column(Integer, ForeignKey('fmc_mezzanines.pk'), index=True)
-    mezz1 = relationship("FMCMezzanine", foreign_keys=[mezz1_pk], uselist=False)
+    mezz1 = relationship("FMCMezzanine", foreign_keys=[mezz1_pk], uselist=False, lazy='joined')
 
     mezz2_pk = Column(Integer, ForeignKey('fmc_mezzanines.pk'), index=True)
-    mezz2 = relationship("FMCMezzanine", foreign_keys=[mezz2_pk], uselist=False)
+    mezz2 = relationship("FMCMezzanine", foreign_keys=[mezz2_pk], uselist=False, lazy='joined')
 
     # # Although we've already catalogued the mezz linkages, it's sometimes
     # # useful to use an array. (For example, it lets us trivially write
     # # join() calls in HWM queries.)
     mezz = relationship("FMCMezzanine",
         uselist=True,
-        primaryjoin="or_(FMCMezzanine.pk==IceBoard.mezz1_pk,FMCMezzanine.pk==IceBoard.mezz2_pk)",
+        primaryjoin="or_(FMCMezzanine.pk==IceBoard.mezz1_pk,FMCMezzanine.pk==IceBoard.mezz2_pk)", lazy='joined'
     )
 
     # ---------------------------------------
@@ -208,8 +211,9 @@ class IceBoard(HWMResource, AttributeUser):
         if self.mezz2:
             self.mezz2.motherboard = self
 
+
     def __repr__(self):
-        return 'Iceboard S/N %s' % ('%03i' % self.serial_number if self.serial_number else self.serial_number)
+        return 'Iceboard S/N %s @%08X' % ('%03i' % self.serial_number if self.serial_number else self.serial_number, id(self))
 
     # __getattr__ = attribute_publisher.AttributeUser.get_registered_attribute
     # __dir__ = attribute_publisher.AttributeUser.get_dir
@@ -227,8 +231,8 @@ class IceBoard(HWMResource, AttributeUser):
 
         # if the FPGA handler instance was not created, check if one exists create it
         if self.fpga is None:
-            if self.serial_number in self._fpga_instances:
-                self.fpga = self._fpga_instances[self.serial_number]
+            if self.serial_number in type(self)._fpga_instances:
+                self.fpga = type(self)._fpga_instances[self.serial_number]
                 self.fpga._motherboard = self
             else:
                 firmware_class = self.fpga_bitstream.get_firmware_class()
@@ -267,8 +271,8 @@ class IceBoard(HWMResource, AttributeUser):
         # provided either by the ARM or by the FPGA.
         self.logger.info('Instantiating IceBoard hardware handlers for board #%i' % (self.serial_number))
         if self.hw is None:
-            if self.serial_number in self._hw_instances:
-                self.hw = self._hw_instances[self.serial_number]
+            if self.serial_number in type(self)._hw_instances:
+                self.hw = type(self)._hw_instances[self.serial_number]
                 self.hw._iceboard = self
                 self.logger.warning('open: Reattached Iceboard S/N %03i to hardware object %r' % (self.serial_number, self.hw))
             else:
@@ -303,6 +307,7 @@ class IceBoard(HWMResource, AttributeUser):
         self.hw.set_led('GP_LED1',1) # Indicate that the Iceboard is ready
 
         # self._self_reference = self # Create circular reference to prevent the object from being removed from memory until closed.
+        self.arm_serial_number = 'allo!'
         self._is_open = True
         type(self)._active_instances[self.serial_number] = self
 
@@ -383,8 +388,8 @@ class IceBoard(HWMResource, AttributeUser):
         self.close()
 
         self.logger.debug('Assigning firmware object to board S/N%03i' % (self.serial_number))
-        if self.fpga:
-            del self.fpga
+        # if self.fpga:
+        #     del self.fpga
 
         #  Get the class that corresponds to the polymorphic identity name
         fpga_firmware_class = self.fpga_bitstream.get_firmware_class()
@@ -489,6 +494,28 @@ class IceBoard(HWMResource, AttributeUser):
 
     def status(self):
         """Displays the status of the motherboard"""
+
+
+
+@event.listens_for(IceBoard, 'expire')
+def receive_expire(target, attrs):
+    "listen for the 'expire' event"
+    logger = logging.getLogger(__name__)
+    logger.warn('%r has expired the folloging: %r' % ('Iceboard', attrs))
+
+@event.listens_for(IceBoard, 'refresh')
+def receive_refresh(target, context, attrs):
+    "listen for the 'refresh' event"
+    logger = logging.getLogger(__name__)
+    logger.warn('IceBoard %03i is refreshed (context=%r, attr=%r) ' % (target.serial_number, context, attrs))
+    if attrs or (attrs is None):
+        target._init_from_database()
+
+@event.listens_for(IceBoard, 'resurrect')
+def receive_resurrect(target):
+    "listen for the 'resurrect' event"
+    logger = logging.getLogger(__name__)
+    logger.error('IceBoard %03i is resurrected!' % (target.serial_number))
 
 def load(session, filename):
     """
