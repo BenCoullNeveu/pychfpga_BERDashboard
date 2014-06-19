@@ -17,6 +17,9 @@ n_freq    = integer(min = 1)
   enable_gpu_link = integer(min = 0 )
   host_ip = ip_addr
   gain_table_pkl = string
+  subarray = integer(min=0)
+  bitfile_name = string
+  force = integer(min=0)
   [[adc_delay]]
 
 [acq]

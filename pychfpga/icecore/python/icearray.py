@@ -88,7 +88,7 @@ class IceArray(object):
 
     def __dir__(self):
         # return type(self).__dict__ + self.__dict__ + dir(self._hwmap)
-        return dir(self._hwmap)
+        return dir(self._hwmap) + self.__dict__.keys()
 
     def discover(self, source_subarrays = [0] , timeout=0.1):
         """

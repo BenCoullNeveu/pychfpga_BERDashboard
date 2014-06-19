@@ -9,8 +9,10 @@ History:
 
 import chrx
 from configobj import *
-from pychfpga.core import chFPGA_controller
+from pychfpga.core.chFPGA_controller import chFPGA_controller as ChimeFpgaFirmware
 from pychfpga.core import chFPGA_receiver
+from pychfpga.icecore.icearray import IceArray, close_all_sockets
+from pychfpga.icecore.iceboard import IceBoard
 from validate import Validator
 import argparse
 import getpass
@@ -67,6 +69,8 @@ def convert_types(val):
           val = int(val)
         elif isinstance(val, bool):
           val = int(val)
+        elif isinstance(val, unicode):
+          val = str(val)
         if not isinstance(val, str):
           try:
             if val.dtype.kind in ('i', 'u', 'f', 'b'):
@@ -171,42 +175,68 @@ if __name__ == "__main__":
   acq = chrx.acq(conf, log)
 
   # Create the FPGA controller object.
-  fpga = chFPGA_controller.chFPGA_controller( \
-             ip_address = conf["fpga"]["ip_address"], \
-             port_number = conf["fpga"]["port"], \
-             adc_delay_table = adc_delay, \
-             verbose = 0, \
-             init = 1, \
-             sampling_frequency = conf["fpga"]["samp_freq"] * 1e6, \
-             reference_frequency = conf["fpga"]["ref_freq"], \
-             data_width=conf["fpga"]["data_width"], \
-             group_frames=conf["fpga"]["group_frames"], \
-             enable_gpu_link = conf["fpga"]["enable_gpu_link"], \
-             host_ip = conf["fpga"]["host_ip"])
+  # Will now create an array of controller objects indexed by serial number
+  # And program board firmware if needed/requested currently will always reprogram
+  close_all_sockets()
+  IceArray.close_all_sessions()
+  ca = IceArray(uri='sqlite:///test.db', interface_ip_addr=conf["fpga"]["host_ip"])
+  # Might want to move the list somewhere else/into conf file?
+  ca.load_iceboards('pychfpga/iceboard_list.txt')
+  ca.discover()
+  bitfile_filename = conf["fpga"]["bitfile_name"]
+  fpga_bitstream = ca.get_fpga_bitstream(bitfile_filename, ChimeFpgaFirmware)
+  c = ca.get_iceboards(subarray=[conf["fpga"]["subarray"]]).index_by(IceBoard.serial_number)
+  c.set_fpga_firmware(fpga_bitstream, force=conf["fpga"]["force"])
+  c.open( \
+        adc_delay_table=adc_delay, \
+        init=1, \
+        sampling_frequency=conf["fpga"]["samp_freq"] * 1e6, \
+        reference_frequency=conf["fpga"]["ref_freq"], \
+        data_width=conf["fpga"]["data_width"], \
+        group_frames=conf["fpga"]["group_frames"], \
+        enable_gpu_link = conf["fpga"]["enable_gpu_link"])
+
+  # fpga = chFPGA_controller.chFPGA_controller( \
+  #            ip_address = conf["fpga"]["ip_address"], \
+  #            port_number = conf["fpga"]["port"], \
+  #            adc_delay_table = adc_delay, \
+  #            verbose = 0, \
+  #            init = 1, \
+  #            sampling_frequency = conf["fpga"]["samp_freq"] * 1e6, \
+  #            reference_frequency = conf["fpga"]["ref_freq"], \
+  #            data_width=conf["fpga"]["data_width"], \
+  #            group_frames=conf["fpga"]["group_frames"], \
+  #            enable_gpu_link = conf["fpga"]["enable_gpu_link"], \
+  #            host_ip = conf["fpga"]["host_ip"])
 
 
   # Set FPGA controller parameters.
   # Calculate new gains if necessary
   # Get config here to be able to create receiver object
-  fpga_config = fpga.get_config()
+  # Gains will need to be able to handle multiple boards, currently file
+  # Will be overwritten when used for more than one board.  
+  # Make compute gains smarter -> write to db? need boards to actually be different
   if args.compute_gain:
-      fpga_rec = chFPGA_receiver.chFPGA_receiver(fpga_config, \
-                    ip_address=conf["fpga"]["ip_address"], \
-                    port=conf["fpga"]["rec_port"], \
-                    host_ip = conf["fpga"]["host_ip"])
-      calculate_gains.calculate_gains(fpga,fpga_rec)
-      fpga_rec.close()
+      #Shouldn't need for loop here, but initial testing failed in parallel.
+      for i, c_element in enumerate(c):
+        fpga_config = c_element.fpga.get_config()
+        fpga_rec = chFPGA_receiver.chFPGA_receiver(fpga_config, \
+                      ip_address=c_element.fpga_ip_addr, \
+                      port=c_element.fpga_port_number+1, \
+                      host_ip = conf["fpga"]["host_ip"])
+        calculate_gains.calculate_gains(c_element.fpga,fpga_rec)
+        fpga_rec.close()
   gain_pkl_file = open(conf["fpga"]["gain_table_pkl"], "rb")
   gains = pickle.load(gain_pkl_file)
   all_chan = range(conf["n_antenna"])
-  fpga.set_data_source("adc") # This should come first.
-  fpga.set_FFT_bypass(False, channels = all_chan)
-  fpga.set_FFT_shift(conf["fpga"]["fft_shift"], channels = all_chan)
-  fpga.set_gain(gains, channels = all_chan)
-  fpga.sync()
-  fpga.set_send_flags()
-  fpga.set_offset_binary_encoding()
-  fpga.sync()
+  c.fpga.set_data_source("adc") # This should come first.
+  c.fpga.set_FFT_bypass(False, channels = all_chan)
+  c.fpga.set_FFT_shift(conf["fpga"]["fft_shift"], channels = all_chan)
+  c.fpga.set_gain(gains, channels = all_chan)
+  c.fpga.sync()
+  c.fpga.set_send_flags()
+  c.fpga.set_offset_binary_encoding()
+  c.fpga.sync()
   #Make sure FPGA throttling is fast enough to send all the data
   #FPGA doesn't seem to change this without a reset...
   #read_rate = int(np.floor(np.log2(conf["fpga"]["int_period"] * 4 * 125e6 / \
@@ -221,13 +251,14 @@ if __name__ == "__main__":
 
   
   #Read the FPGA setting back from the FPGA
-
-  fpga_conf = vars(fpga.get_config())
+  # This will need to change to do multiple boards.  
+  for i, c_element in enumerate(c):
+    fpga_conf = vars(c_element.fpga.get_config())
   
   # Create the output directory.
   time_str = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
   try:
-    corr_name = correlator_hash[fpga_conf["adc_serial"][0]]
+    corr_name = correlator_hash[fpga_conf["adc_serial"]]
   except KeyError:
     try:
       log.critical("Could not find hash for ADC serial number %s." %
@@ -315,7 +346,7 @@ if __name__ == "__main__":
     while True:
       # Pass the acquisition object the board temperatures. This is a temporary
       # way of doing this!
-      acq.pass_fpga_amb_temp(0, fpga.SYSMON.temperature())
+      acq.pass_fpga_amb_temp(0, c.fpga.SYSMON.temperature()[0])
       time.sleep(1.0)
     acq.stop()
   except(KeyboardInterrupt, SystemExit):
