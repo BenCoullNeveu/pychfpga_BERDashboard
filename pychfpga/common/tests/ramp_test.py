@@ -5,7 +5,7 @@ for testing ADC-FPGA communication by sending ADC ramps.
 '''
 
 import numpy as np
-import time, pylab
+import time, pylab, csv
 from pychfpga.common.tests.test_BaseClass import test_BaseClass
 
 class test_adc_ramp_histogram(test_BaseClass):
@@ -19,7 +19,7 @@ class test_adc_ramp_histogram(test_BaseClass):
         self.fpga_ctrl.set_ADC_mode(mode='ramp')
         self.fpga_ctrl.set_gain((1,27))
         time.sleep(1)
-        self.fpga_ctrl.start_data_capture(burst_period_in_seconds=0.1, channels=range(16))
+        self.fpga_ctrl.start_data_capture(burst_period_in_seconds=0.5, channels=range(16))
         self.fpga_ctrl.sync()
         time.sleep(2)
         return
@@ -36,13 +36,30 @@ class test_adc_ramp_histogram(test_BaseClass):
             pylab.savefig(filename + '_chan' +str(i)+'.pdf')
             pylab.clf()
 
+    def compute_bit_errors(self, fname):
+        perfect_ramp = (np.arange(2048) % 256) - 128
+        bits = [1,2,4,8,16,32,64,128]
+        datas = np.load(fname + '.npy')
+        infocsv = open(fname+'.txt', 'w')
+        writer = csv.writer(infocsv)
+        for i in xrange(16):
+            xored = np.bitwise_xor(datas[:,i,:], perfect_ramp)
+            for bit in range(8):
+                bad_bit = np.mean(np.bitwise_and(xored, bits[bit]))/bits[bit]
+                writer.writerow([i, bit, bad_bit])
+                print 'chan {0}, bit {1}, error rate {2:.3f}'.format(i, bit, bad_bit)
+
+
+
     def execute(self, fname ):
         try:
             self.configure_board()
             self.fpga_recv.flush()
             filename = fname + '.npy'
             save_raw_frames.save_timestream_frames(self.fpga_recv, channels = range(16), frames=256, filename = filename)
+            self.fpga_ctrl.stop_data_capture()
             self.plot_histogram(fname)
+            self.compute_bit_errors(fname)
         except:
             self.fpga_recv.close()
             raise
@@ -107,8 +124,11 @@ if __name__ == '__main__':
         reference_frequency=10e6, data_width=8, \
         group_frames=1, \
         enable_gpu_link = 0)
-    rs = [chFPGA_receiver.chFPGA_receiver(c_element.fpga.get_config(), ip_address=c_element.fpga_ip_addr, port=c_element.fpga_port_number+1, host_ip = '10.10.10.83') for c_element in c]
+    print c.fpga.get_temperatures()
+    #rs = [chFPGA_receiver.chFPGA_receiver(c_element.fpga.get_config(), ip_address=c_element.fpga_ip_addr, port=c_element.fpga_port_number+1, host_ip = '10.10.10.83') for c_element in c]
     for i, c_element in enumerate(c):
-        test = test_adc_ramp_histogram(c_element.fpga, rs[i])
-        test.execute('ramp_testing_trial_'+str(i))
-    [r.close() for r in rs]
+        r = chFPGA_receiver.chFPGA_receiver(c_element.fpga.get_config(), ip_address=c_element.fpga_ip_addr, port=c_element.fpga_port_number+1, host_ip = '10.10.10.83')
+        test = test_adc_ramp_histogram(c_element.fpga, r)
+        test.execute('ramp_testing_trial_sn'+str(c_element.serial_number)+'_'+str(i))
+        r.close()
+    #[r.close() for r in rs]

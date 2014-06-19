@@ -78,6 +78,8 @@ def save_timestream_frames(chFPGA_receiver, channels=[0], frames=256, filename='
                 #chFPGA_receiver.flush()
                 missed += 1
                 pass
+            except ValueError:
+                print "got a weird frame... carrying on!"
             except:
                 chFPGA_receiver.close()
                 raise
