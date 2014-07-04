@@ -8,8 +8,10 @@ import iceboardtest
 import sys
 import programFPGA
 import updateStatus
-def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = [ '', '', '', None, None, None, None, None, None, None, None, '' ]):
-    testStatus[0] = username #initialize testStatus
+from statusReport import EMPTY_TEST_STATUS
+
+def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPTY_TEST_STATUS()):
+    testStatus[0] = username
     testStatus[1] = board_sn
     testStatus[2] = board_vn
     fname = 'board' + board_sn + '.txt'

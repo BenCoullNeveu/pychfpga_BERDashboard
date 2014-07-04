@@ -1,4 +1,5 @@
 import statusReport
+from statusReport import EMPTY_TEST_STATUS
 import addNote
 
 #This script manually gets the test status from a user and updates the relevent files.
@@ -12,7 +13,7 @@ def updateManually( ):
     if confirm == 'y' or confirm == 'Y':
         statusReport.appendTXT( fname, statusReport.formatTXT( board) )
         
-def update ( board = [ '', '', '', None, None, None, None, None, None, None, None, '' ] ):
+def update ( board = EMPTY_TEST_STATUS() ):
     confirm = raw_input( "Would you like to update the status report for this board? (this will overwrite previous status report) (y/n)\t" )
     if confirm != 'Y' and confirm != 'y':
         pass

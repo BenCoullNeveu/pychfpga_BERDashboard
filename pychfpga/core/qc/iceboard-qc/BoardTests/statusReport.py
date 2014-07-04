@@ -1,5 +1,13 @@
 import os
 import time
+from date_format import date_format
+
+#Constants for test functions
+def EMPTY_TEST_STATUS( ): #[ tester's name, serial, revision, inspection, resistance, DC, PLL, ARM, FPGA, FPGA test, GTX, comments ]
+    return [ '', '', '', None, None, None, None, None, None, None, None, '' ]
+
+def STATUS_LINES( ): #dummy function to make lines constant accessible to other scripts
+    return 20
 
 #Takes input from user, returns array of True/False (and string for comments) for test status: [ tester's name, serial, revision, inspection, resistance, DC, PLL, ARM, FPGA, FGPA test, GTX, comments ]
 def getBoardInfo():
@@ -102,9 +110,6 @@ def appendLatex( newLine = '' ):
     f.writelines(content)
     f.close()
     
-def STATUS_LINES( ): #dummy function to make lines constant accessible to other scripts
-    return 20
-    
 def appendTXT( fname, newLines = [] ):
     STATUS_LINES_NUM = STATUS_LINES() #number of lines in block of text to append (and possibly overwrite)
     
@@ -152,6 +157,7 @@ def appendTXT( fname, newLines = [] ):
     f.close()
     print "Status report successfully written."
     
+'''
 def date_format(date):
     #finds the date, converts to string and adds 0 if <10 for day, month
     #day
@@ -174,5 +180,5 @@ def date_format(date):
         minute ='0' + minute
     
     #returns 'dd/mm/yyyy, hh:mm'
-    return day + '/' + month + '/' + year + ', ' + hour + ':' + minute
+    return day + '/' + month + '/' + year + ', ' + hour + ':' + minute '''
     

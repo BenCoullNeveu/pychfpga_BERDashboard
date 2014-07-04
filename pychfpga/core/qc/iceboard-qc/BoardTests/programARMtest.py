@@ -7,9 +7,10 @@ import shutil
 import iceboardtest
 import sys
 import updateStatus
+from statusReport import EMPTY_TEST_STATUS
 
-def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None,testStatus = [ '', '', '', None, None, None, None, None, None, None, None, '' ]):
-    testStatus[0] = username #initialize testStatus
+def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None,testStatus = EMPTY_TEST_STATUS()):
+    testStatus[0] = username
     testStatus[1] = board_sn
     testStatus[2] = board_vn
     fname = 'board' + board_sn + '.txt'

@@ -7,9 +7,10 @@ import shutil
 import iceboardtest
 import sys
 import updateStatus
+from statusReport import EMPTY_TEST_STATUS
 
-def inspectiontest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = [ '', '', '', None, None, None, None, None, None, None, None, '' ]):
-    testStatus[0] = username #initialize testStatus
+def inspectiontest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPTY_TEST_STATUS()):
+    testStatus[0] = username
     testStatus[1] = board_sn
     testStatus[2] = board_vn
     fname = 'board' + board_sn + '.txt'
@@ -75,7 +76,7 @@ def inspectiontest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
         GTX = True
     else:
         file.write('GTX backplane connector pins seem fine.\n')
-        GTX == False
+        GTX = False
         
     print "If there are any additional comments you wish to make (e.g. scratches), please describe below. (If none, enter 'None')"
     comments = raw_input("Enter additional comments:    ")

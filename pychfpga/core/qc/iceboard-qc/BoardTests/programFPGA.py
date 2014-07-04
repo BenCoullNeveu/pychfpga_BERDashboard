@@ -7,8 +7,9 @@ import shutil
 import iceboardtest
 import sys
 import updateStatus
+from statusReport import EMPTY_TEST_STATUS
 
-def programFPGA(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = [ '', '', '', None, None, None, None, None, None, None, None, '' ]):
+def programFPGA(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPTY_TEST_STATUS()):
     testStatus[0] = username
     testStatus[1] = board_sn
     testStatus[2] = board_vn

@@ -8,8 +8,10 @@ import iceboardtest
 import sys
 import FPGAtest
 import updateStatus
-def GTXtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = [ '', '', '', None, None, None, None, None, None, None, None, '' ]):
-    testStatus[0] = username #initialize testStatus
+from statusReport import EMPTY_TEST_STATUS
+
+def GTXtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPTY_TEST_STATUS()):
+    testStatus[0] = username
     testStatus[1] = board_sn
     testStatus[2] = board_vn
     fname = 'board' + board_sn + '.txt'
@@ -39,7 +41,7 @@ def GTXtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = [ '
     print "Let's get started. Is the board turned on and the set up same as that described from above?"
     program = raw_input("Enter 'Y' or 'N': 	")
     if program != 'Y' and program != 'y':
-        FPGAtest.FPGAtest(username,board_sn,board_vn,board_md,testStatus = [ '', '', '', None, None, None, None, None, None, None, None, '' ])
+        FPGAtest.FPGAtest(username,board_sn,board_vn,board_md,testStatus)
     print "Let's set everything up! Grab the JTAG cable and connect all the wires to the JTAG pins. The pins are located on the left side of the fan."
     print "Connect the cables accordingly by pin. Leave the n/c pin unconnected and connect VREF wire to 3V3 pin. All other labels should match."
     print "Connect the JTAG USB to the computer."

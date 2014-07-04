@@ -11,6 +11,8 @@ import programARMtest
 import programFPGA
 import FPGAtest
 import GTXtest
+from statusReport import EMPTY_TEST_STATUS
+from date_format import date_format
 
 def starttest():
     print "**********************************************"
@@ -33,8 +35,8 @@ def starttest():
     print "What is the model of this board?"
     board_md = raw_input("Enter:	")
     
-    #Pass/Fail status of tests. This list will be passed from method to method. [ tester's name, serial, revision, inspection, resistance, DC, PLL, ARM, FPGA, FPGA test, GTX, comments ]
-    testStatus = [ username, board_sn, board_vn, None, None, None, None, None, None, None, None, '' ]
+    #Pass/Fail status of tests. This list will be passed from method to method.
+    testStatus = EMPTY_TEST_STATUS()
 
     fname = 'board' + board_sn + '.txt'
     if os.path.isfile('board' + board_sn + '.txt') == False:
@@ -72,7 +74,8 @@ def starttest():
 
     if choose == 'Y' or choose == 'y':
         choosetest(username,board_sn,board_vn,board_md, testStatus)
-        
+
+'''        
 def date_format(date):
     #finds the date, converts to string and adds 0 if <10 for day, month
     #day
@@ -95,9 +98,9 @@ def date_format(date):
         minute ='0' + minute
     
     #returns 'dd/mm/yyyy, hh:mm'
-    return day + '/' + month + '/' + year + ', ' + hour + ':' + minute
+    return day + '/' + month + '/' + year + ', ' + hour + ':' + minute '''
     
-def choosetest(username=None,board_sn=None,board_vn=None,board_md=None,testStatus = [ '', '', '', None, None, None, None, None, None, None, None, '' ]):
+def choosetest(username=None,board_sn=None,board_vn=None,board_md=None,testStatus = EMPTY_TEST_STATUS()):
     print "Select the test you wish to procede to.\n"
     print "1. Inspection test"
     print "2. Resistance test."
