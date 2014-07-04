@@ -60,6 +60,9 @@ class test_adc_ramp_histogram(test_BaseClass):
             self.fpga_ctrl.stop_data_capture()
             self.plot_histogram(fname)
             self.compute_bit_errors(fname)
+            confirm = raw_input('Start print_ramp_errors? This will print error counts until a KeyboardInterrupt. (y/n)\n')
+            if confirm == 'y' or confirm == 'Y':
+                self.fpga_ctrl.ANT.print_ramp_errors()
         except:
             self.fpga_recv.close()
             raise
@@ -127,7 +130,7 @@ if __name__ == '__main__':
     print c.fpga.get_temperatures()
     #rs = [chFPGA_receiver.chFPGA_receiver(c_element.fpga.get_config(), ip_address=c_element.fpga_ip_addr, port=c_element.fpga_port_number+1, host_ip = '10.10.10.83') for c_element in c]
     for i, c_element in enumerate(c):
-        r = chFPGA_receiver.chFPGA_receiver(c_element.fpga.get_config(), ip_address=c_element.fpga_ip_addr, port=c_element.fpga_port_number+1, host_ip = '10.10.10.83')
+        r = chFPGA_receiver.chFPGA_receiver(c_element.fpga.get_config(), ip_address=c_element.fpga_ip_addr, port=c_element.fpga_port_number+1, host_ip = args.if_ip)
         test = test_adc_ramp_histogram(c_element.fpga, r)
         test.execute('ramp_testing_trial_sn'+str(c_element.serial_number)+'_'+str(i))
         r.close()
