@@ -70,6 +70,7 @@ class test_adc_ramp_histogram(test_BaseClass):
 if __name__ == '__main__':
 
     import argparse
+    import logging
     from pychfpga import save_raw_frames
     # from pychfpga.icecore import hardware_map
     # from pychfpga.icecore import tuber
@@ -107,8 +108,22 @@ if __name__ == '__main__':
     parser.add_argument('-i', '--if_ip', action = 'store', type=str, default=None, help='IP address of adapter through which the connection to the FPGA will be established. If not specified, the controller will attempt to identify the proper host based on the FPGA IP address.')
     parser.add_argument('--bitfile', action = 'store', type=str, default= '../../chfpga/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit', 
         help='Location of bitfile to program fpgas')
+    parser.add_argument('-l', '--log_level', action = 'store', type =  str, default = 'info', help = 'Log level: accpets either "debug" or "info" (default).')
     #parser.add_argument('--subarray', action = 'store', type=int, default=2, help='Which subarray to use')
     args = parser.parse_args()
+    
+    log_level = {'info': logging.INFO, 'debug': logging.DEBUG}[args.log_level]
+    logging.basicConfig(level=log_level, format='%(asctime)s %(name)-32s %(levelname)-10s : %(message)s')
+    logging.getLogger('sqlalchemy.engine.base.Engine').setLevel(logging.WARN)
+
+    logger = logging.getLogger(__name__)
+    logger.info('------------------------')
+    logger.info('ramp_test.py: chFGPA ramp test script')
+    logger.info('------------------------')
+    logger.info('This module is called with the follwing parameters:' )
+    for (key,value) in args.__dict__.items():
+        logger.info('   %s = %s' % (key, repr(value)))
+        
     close_all_sockets()
     IceArray.close_all_sessions() # close all previously opened sessions
 
@@ -126,7 +141,8 @@ if __name__ == '__main__':
         sampling_frequency=800 * 1e6, \
         reference_frequency=10e6, data_width=8, \
         group_frames=1, \
-        enable_gpu_link = 0)
+        enable_gpu_link = 0, \
+        verbose=5)
     print c.fpga.get_temperatures()
     #rs = [chFPGA_receiver.chFPGA_receiver(c_element.fpga.get_config(), ip_address=c_element.fpga_ip_addr, port=c_element.fpga_port_number+1, host_ip = '10.10.10.83') for c_element in c]
     for i, c_element in enumerate(c):
