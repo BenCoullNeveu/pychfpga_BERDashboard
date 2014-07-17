@@ -35,7 +35,7 @@ def resistancetest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
     file.write('Date : ' + date_str + '\n')
     file.write('Tester: ' + username + '\n\n')
     print 'For this test, please do NOT power up the board. Everything should be done with nothing connected to the power supply!'
-    print 'For this board, you will need a multimeter set to measure voltage.'
+    print 'For this board, you will need a multimeter set to measure resistance.'
     notimportant = raw_input("Press Enter to continue:      ")
     print "Lay the board on a grounding mat in front of you"
     print "To properly orient the board, rotate the board until the McGill Cosmology logo is facing the right way as you look at the board"
