@@ -98,11 +98,12 @@ def get_fpga_hk(fpga, field):
   return ret
 
 # Dictionary of correlators.
-correlator_hash = {"stone"     : ["0001"],
-                   "abbot"     : ["0003"],
-                   "vincente"  : ["29821-0000-0028"],
-                   "blanchard" : ["0029"],
-                   "testing"   : ["0031", "0032"],
+correlator_hash = {"stone"        : ["0001"],
+                   "abbot"        : ["0003"],
+                   "vincente"     : ["29821-0000-0028"],
+                   "blanchard"    : ["0029"],
+                   "testing"      : ["0031", "0032"],
+                   "first9ucrate" : ["0034"]
                   }
 
 # FPGA housekeeping.
@@ -114,7 +115,6 @@ fpga_hk_field = {      "core_temp" : "deg C",
                            "vrefp" : "V",
                            "vrefn" : "V",
                 }
-
 
 # Current archive format version. Prefixed by "NT_" to signify that these data
 # do not have the time-transpose completed.
