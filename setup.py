@@ -31,7 +31,7 @@ ext_post_trans = Extension("post_acq.transpose",
                      # soemthing is wrong with my gcc. It switches to the
                      # clang assembler.
                      extra_compile_args=['-fopenmp', '-O3', '-march=native',
-                     '-Wa,-q'],
+                     '-Wa,-q', '-std=c99'],
                      #extra_compile_args=['-fopenmp', '-march=native'],
                      )
 
