@@ -65,9 +65,11 @@ def convert_types(val):
       else:
         if isinstance(val, long):
           val = int(val)
+        elif isinstance(val, bool):
+          val = int(val)
         if not isinstance(val, str):
           try:
-            if val.dtype.kind in ('i', 'u', 'f'):
+            if val.dtype.kind in ('i', 'u', 'f', 'b'):
               val = np.asscalar(val)
           except:
               # Hopefully already a int/float
@@ -81,7 +83,8 @@ correlator_hash = {"29821-0000-0003": "stone",
                               "0033": "abbot",
                    "29821-0000-0028": "vincente",
                               "0029": "blanchard",
-                              "0031": "testing"}
+                              "0031": "testing",
+                              "0034": "first9ucrate"}
 
 # Current archive format version.
 archive_version = "1.0.0"
@@ -280,6 +283,7 @@ if __name__ == "__main__":
       val = fpga_conf[name]
       val = convert_types(val)
       # Now send FPGA information send to acquisition object's header.
+      #print name
       #print val
       #print type(val)
       acq.add_header_item(name, val)
