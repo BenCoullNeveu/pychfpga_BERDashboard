@@ -101,7 +101,7 @@ def get_fpga_hk(fpga, field):
 correlator_hash = {"stone"     : ["0001"],
                    "abbot"     : ["0003"],
                    "vincente"  : ["29821-0000-0028"],
-                   "blanchard" : ["0029"],
+                   "blanchard" : ["0029", "0030"],
                    "testing"   : ["0031", "0032"],
                   }
 
