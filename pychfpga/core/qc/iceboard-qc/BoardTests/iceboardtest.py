@@ -101,7 +101,7 @@ def date_format(date):
     return day + '/' + month + '/' + year + ', ' + hour + ':' + minute '''
     
 def choosetest(username=None,board_sn=None,board_vn=None,board_md=None,testStatus = EMPTY_TEST_STATUS()):
-    print "Select the test you wish to procede to.\n"
+    print "Select the test you wish to proceed to.\n"
     print "1. Inspection test"
     print "2. Resistance test."
     print "3. DC test."
