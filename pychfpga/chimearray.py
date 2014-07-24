@@ -37,16 +37,16 @@ def delete_modules(module_name):
 # delete_modules('sqlalchemy')
 # delete_modules('icecore')
 
-from icecore import hardware_map
-from icecore import tuber
+from pychfpga.icecore import hardware_map
+from pychfpga.icecore import tuber
 # reload(hardware_map)
 # reload(tuber)
 
-from icecore.icearray import IceArray, close_all_sockets
-from icecore.fpga_bitstream import FpgaBitstream
-from icecore.iceboard import IceBoard
+from pychfpga.icecore.icearray import IceArray, close_all_sockets
+from pychfpga.icecore.fpga_bitstream import FpgaBitstream
+from pychfpga.icecore.iceboard import IceBoard
 
-from core.chFPGA_controller import chFPGA_controller as ChimeFpgaFirmware
+from pychfpga.core.chFPGA_controller import chFPGA_controller as ChimeFpgaFirmware
 
 #####################################
 
