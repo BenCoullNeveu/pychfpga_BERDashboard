@@ -159,6 +159,43 @@ def appendTXT( fname, newLines = [] ):
     f.close()
     print "Status report successfully written."
     
+def addRampTest( ):
+    '''
+    Used to add ramp test entries to the status report of board files when test was created
+    '''
+    board = raw_input("Enter board serial:\t")
+    while board != '0000':
+        status = raw_input("\nEnter 'y' or '' for a PASS, 'n' for a FAIL, or 'None' if the test wasn't performed.")
+        #read file as list
+        f = open("board" + board + ".txt", 'r')
+        content = f.readlines()
+        f.close()
+        #find status
+        foundLine = False
+        for index, line in enumerate(content):
+            if line[0:12] == "Program GTX:":
+                foundLine = True
+                linePos = index
+                break
+        if foundLine:
+            result = checkInput(status)
+            if result == True:
+                content[linePos+1:linePos+1] = "Ramp Test:            " + "PASS\n"
+            elif result == False:
+                content[linePos+1:linePos+1] = "Ramp Test:            " + "FAIL\n"
+            elif result == None:
+                content[linePos+1:linePos+1] = "Ramp Test:            " + "N/A\n"
+            elif result == 'input error':
+                print("Could not parse input for board " + board + ". Try again.")
+            f = open("board" + board + ".txt", 'w')
+            f.writelines(content)
+            f.close()
+            print("Successfully added '" + content[linePos+1] + "' to file.")
+        else:
+            print("Could not find previous test status for board " + board + " Try manually.")
+        board = raw_input("Enter board serial:\t")
+        
+    
 '''
 def date_format(date):
     #finds the date, converts to string and adds 0 if <10 for day, month
