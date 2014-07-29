@@ -67,7 +67,7 @@ def rampTest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
         bitfile_path = raw_input('Enter path:\t')
     
     # Get IP address
-    if_ip = '10.10.10.28'
+    if_ip = '10.10.10.33'
     confirm = raw_input('\nThis test requires the IP adress of this computer to communicate with the FPGA.\nUsing ' + if_ip + '. Is this correct? (y/n)\t')
     if confirm == 'n' or confirm == 'N':
         if_ip == raw_input('Enter your IP:\t')
@@ -120,7 +120,10 @@ def rampTest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     for i, c_element in enumerate(c):
         r = chFPGA_receiver.chFPGA_receiver(c_element.fpga.get_config(), ip_address=c_element.fpga_ip_addr, port=c_element.fpga_port_number+1, host_ip = if_ip)
         test = test_adc_ramp_histogram(c_element.fpga, r)
-        test.execute('ramp_tests/QC/sn' + board_sn + '/ramp_testing_trial_sn' + board_sn + '_' + str(i))
+        directory = 'ramp_tests/QC/sn' + board_sn
+        if not os.path.exists(directory):
+            os.makedirs(directory)
+        test.execute(directory + '/ramp_testing_trial_sn' + board_sn + '_' + str(i))
         r.close()
     #[r.close() for r in rs]
     
@@ -134,7 +137,7 @@ def rampTest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     print("\nPlease take a look at the output of the test: error ratios and histograms (found in console and BoardTests/ramp_tests respectively)")
     confirm = raw_input("Are there any non-zero error ratios, or non-flat histograms? (y/n)\t")
     if confirm == 'Y' or confirm == 'y':
-        test_pass = false
+        test_pass = False
         bit_errors = raw_input("\nIf there are any non-zero bit error ratios, enter the affected channels and bits (e.g. ch 10 bit 4, ch 1 bit 7, ...):\n")
         file.write("Bit errors found on: " + bit_errors)
         hist_errors = raw_input("If any of the histograms are not perfectly flat, enter the affected channels:\n")
@@ -144,7 +147,7 @@ def rampTest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
         print("\nSmall peaks around a flat histogram or small (< 0.1) error ratios may be attributed to timing issues with the ADC mezzanines, but a very distorted histogram may point to more serious issues.\n If this is found to be the case, the connector to the affected mezzanine or the traces, vias, and solder joints connecting it to the FPGA are possible culprits.")
     else:
         file.write("Ramp found no errors.")
-        test_pass = true
+        test_pass = True
     
     # End test
     print "If there are any special concerns regarding the board for this test, please describe them below. If none, enter 'None'. "
