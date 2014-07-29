@@ -3,11 +3,11 @@ import time
 from date_format import date_format
 
 #Constants for test functions
-def EMPTY_TEST_STATUS( ): #[ tester's name, serial, revision, inspection, resistance, DC, PLL, ARM, FPGA, FPGA test, GTX, comments ]
-    return [ '', '', '', None, None, None, None, None, None, None, None, '' ]
+def EMPTY_TEST_STATUS( ): #[ tester's name, serial, revision, inspection, resistance, DC, PLL, ARM, FPGA, FPGA test, GTX, ramp, comments ]
+    return [ '', '', '', None, None, None, None, None, None, None, None, None, '' ]
 
 def STATUS_LINES( ): #dummy function to make lines constant accessible to other scripts
-    return 20
+    return 21
 
 #Takes input from user, returns array of True/False (and string for comments) for test status: [ tester's name, serial, revision, inspection, resistance, DC, PLL, ARM, FPGA, FGPA test, GTX, comments ]
 def getBoardInfo():
@@ -24,9 +24,10 @@ def getBoardInfo():
     fpga = checkInput( raw_input("Program FPGA:\n") )
     fpgaTest = checkInput( raw_input("FPGA test:\n") )
     gtx = checkInput( raw_input("Program GTX:\n") )
+    ramp = checkInput( raw_input("Ramp test:\n"))
     comments = raw_input("Add any additional comments here:\t")
     
-    return [ tester, board, revision, inspection, resistance, dc, pll, arm, fpga, fpgaTest, gtx, comments ]
+    return [ tester, board, revision, inspection, resistance, dc, pll, arm, fpga, fpgaTest, gtx, ramp, comments ]
     
 def checkInput( input ):
     if input == 'y' or input == 'Y' or input == '':
@@ -42,7 +43,7 @@ def checkInput( input ):
 #Format for LaTex inventory.tex document. Takes list of form [ tester's name, serial, revision, inspection, resistance, DC, PLL, ARM, FPGA, FPGA Test, GTX, comments ]. Returns full line as string.
 def formatLatex( inputList ):
     newLine = '\hline ' + date_format(time.localtime()) + ' & ' + inputList[0] + ' & ' + inputList[1] + ' & ' + inputList[2]
-    for i in range(3,11):
+    for i in range(3,12):
         if inputList[i] ==  True:
             newLine += " & \\textcolor{green}{PASS}"
         elif inputList[i] == False:
@@ -65,7 +66,7 @@ def formatTXT( inputList ):
     
     #Convert True/False/None to PASS/FAIL/N/A
     testResult = []
-    for i in range(3, 11):
+    for i in range(3, 12):
         if inputList[i] ==  True:
             testResult.append("PASS")
         elif inputList[i] == False:
@@ -81,7 +82,8 @@ def formatTXT( inputList ):
     newLines.append("Program FPGA:         " + testResult[5] + "\n")
     newLines.append("FPGA test:            " + testResult[6] + "\n")
     newLines.append("Program GTX:          " + testResult[7] + "\n")
-    newLines.append("Comments:             " + inputList[11] + "\n")
+    newLines.append("Ramp Test:            " + testResult[8] + "\n")
+    newLines.append("Comments:             " + inputList[12] + "\n")
     newLines.append("=================     ============================\n")
     newLines.append("\n")
     newLines.append("(end of status report)\n")

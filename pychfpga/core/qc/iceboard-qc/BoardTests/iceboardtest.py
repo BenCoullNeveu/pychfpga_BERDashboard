@@ -11,6 +11,7 @@ import programARMtest
 import programFPGA
 import FPGAtest
 import GTXtest
+import rampTest
 from statusReport import EMPTY_TEST_STATUS
 from date_format import date_format
 
@@ -109,12 +110,13 @@ def choosetest(username=None,board_sn=None,board_vn=None,board_md=None,testStatu
     print "5. Programming the ARM."
     print "6. Programming the FPGA."
     print "7. FPGA test."
-    print "8. GTX test.\n"
+    print "8. GTX test."
+    print "9. Ramp test.\n"
     choiceMade = False
     while not choiceMade:
         try:
             choice = int(raw_input(""))
-            if choice <= 8 and choice >=1:
+            if choice <= 9 and choice >=1:
                 choiceMade = True
             else:
                 print "Input not within range. Please try again."
@@ -139,6 +141,8 @@ def choosetest(username=None,board_sn=None,board_vn=None,board_md=None,testStatu
         FPGAtest.FPGAtest(username,board_sn,board_vn,board_md, testStatus)
     elif choice == 8:
         GTXtest.GTXtest(username,board_sn,board_vn,board_md,testStatus)
+    elif choice == 9:
+        rampTest.rampTest(username, board_sn, board_vn, board_md, testStatus)
 
 ''' Old choosetest()
 def choosetest(username=None,board_sn=None,board_vn=None,board_md=None, testStatus = [ '', '', '', None, None, None, None, None, None, None, None, '' ]):
