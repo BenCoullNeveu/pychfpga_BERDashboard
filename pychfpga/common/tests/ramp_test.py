@@ -7,6 +7,7 @@ for testing ADC-FPGA communication by sending ADC ramps.
 import numpy as np
 import time, pylab, csv
 from pychfpga.common.tests.test_BaseClass import test_BaseClass
+from pychfpga import save_raw_frames
 
 class test_adc_ramp_histogram(test_BaseClass):
     '''
