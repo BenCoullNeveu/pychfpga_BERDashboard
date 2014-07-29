@@ -61,7 +61,7 @@ def rampTest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     from pychfpga.core import chFPGA_receiver
     
     # Get bitfile path
-    bitfile_path = '../../chfpga/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit'
+    bitfile_path = '../../chime/chFPGA/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit'
     confirm = raw_input('\nThis test requires a bitfile to program the FPGA.\nUsing path ' + bitfile_path + '. Would you like to modify it? (y/n)\t')
     if confirm == 'y' or confirm == 'Y':
         bitfile_path = raw_input('Enter path:\t')
@@ -106,7 +106,7 @@ def rampTest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     ca.discover() # automatically update the hardware map database with discovered resources
     
     fpga_bitstream = ca.get_fpga_bitstream(bitfile_path, ChimeFpgaFirmware) # Get a new bitstream from the database (or create a new database entry if it does not exist yet)
-    c = ca.get_iceboards(serial_number=board_sn).index_by(IceBoard.serial_number) # get IceBoard
+    c = ca.get_iceboards(serial_number=board_sn) # get IceBoard
     c.set_fpga_firmware(fpga_bitstream, force=force)
     c.open( \
         adc_delay_table=ADC_DELAY_TABLE, \
