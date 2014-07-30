@@ -8,6 +8,7 @@ import iceboardtest
 import sys
 import updateStatus
 from statusReport import EMPTY_TEST_STATUS
+from testFail import DCFail
 
 def DCtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPTY_TEST_STATUS()):
     testStatus[0] = username
@@ -73,7 +74,7 @@ def DCtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPT
         file.write('Fail\n')
         file.write('================  ======== ======== ========\n')
         file.close()
-        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+        DCFail((username, board_sn, board_vn, board_md, testStatus))
 
     print "Please read the current measurement on power supply. Enter the voltage below (up to 3 sig. figs. , i.e. '1.00')."
     cur = float(input("Enter:     "))
@@ -84,7 +85,7 @@ def DCtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPT
         file.write('Fail\n')
         file.write('================  ======== ======== ========\n')
         file.close()
-        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+        DCFail(username, board_sn, board_vn, board_md, testStatus)
     file.write('================  ======== ======== ========\n\n')
 
     file.write('================  ======== ======== ========\n')
@@ -102,7 +103,7 @@ def DCtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPT
         file.write('Fail\n')
         file.write('================  ======== ======== ========\n')
         file.close()
-        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+        DCFail(username, board_sn, board_vn, board_md, testStatus)
     
     print "Please probe the Vadj regulator pin. Enter the voltage below (up to 3 sig. figs, i.e. '1.00')."
     Vadj = float(input("Enter:     "))
@@ -113,7 +114,7 @@ def DCtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPT
         file.write('Fail\n')
         file.write('================  ======== ======== ========\n')
         file.close()
-        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+        DCFail(username, board_sn, board_vn, board_md, testStatus)
 
     print "Please probe the 3V3 regulator pin. Enter the voltage below (up to 3 sig. figs. , i.e. '1.00')."
     V3 = float(input("Enter:     "))
@@ -124,7 +125,7 @@ def DCtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPT
         file.write('Fail\n')
         file.write('================  ======== ======== ========\n')
         file.close()
-        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+        DCFail(username, board_sn, board_vn, board_md, testStatus)
 
         print "Please probe the 3V3 regulator pin. Enter the voltage below (up to 3 sig. figs. , i.e. '1.00')."
 
@@ -137,7 +138,7 @@ def DCtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPT
         file.write('Fail\n')
         file.write('================  ======== ======== ========\n')
         file.close()
-        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+        DCFail(username, board_sn, board_vn, board_md, testStatus)
     
     print "Please skip the buck regulator next to the power connector."
     notimportant = raw_input("Press Enter to continue:  ")
@@ -151,7 +152,7 @@ def DCtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPT
         file.write('Fail\n')
         file.write('================  ======== ======== ========\n')
         file.close()
-        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+        DCFail(username, board_sn, board_vn, board_md, testStatus)
 
     print "Please probe the 1.2VGTX regulator pin. Enter the voltage below (up to 3 sig. figs., i.e. '1.00')."
     VGTX12 = float(input("Enter:     "))
@@ -162,7 +163,7 @@ def DCtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPT
         file.write('Fail\n')
         file.write('================  ======== ======== ========\n')
         file.close()
-        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+        DCFail(username, board_sn, board_vn, board_md, testStatus)
 
     print "Please probe the 1VCORE regulator pin. Enter the voltage below (up to 3 sig. figs., i.e. '1.00')."
     VCORE1 = float(input("Enter:     "))
@@ -173,7 +174,7 @@ def DCtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPT
         file.write('Fail\n')
         file.write('================  ======== ======== ========\n')
         file.close()
-        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+        DCFail(username, board_sn, board_vn, board_md, testStatus)
 
     print "Please probe the 1.5V regulator pin. Enter the voltage below (up to 3 sig. figs., i.e. '1.00')."
     V15 = float(input("Enter:     "))
@@ -184,7 +185,7 @@ def DCtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPT
         file.write('Fail\n')
         file.write('================  ======== ======== ========\n')
         file.close()
-        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+        DCFail(username, board_sn, board_vn, board_md, testStatus)
 
     print "Please probe the 1.8V regulator pin. Enter the voltage below (up to 3 sig. figs., i.e. '1.00')."
     V18 = float(input("Enter:     "))
@@ -195,7 +196,7 @@ def DCtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPT
         file.write('Fail\n')
         file.write('================  ======== ======== ========\n')
         file.close()
-        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+        DCFail(username, board_sn, board_vn, board_md, testStatus)
 
 
     file.write('================  ======== ======== ========\n\n')
