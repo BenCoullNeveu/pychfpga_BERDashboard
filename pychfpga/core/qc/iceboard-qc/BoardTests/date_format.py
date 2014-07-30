@@ -1,5 +1,5 @@
 #Common date formatting for testing functions
-def date_format(date):
+def date_format(date, short = False):
     #finds the date, converts to string and adds 0 if <10 for day, month
     #day
     day=str(date[2])
@@ -20,5 +20,7 @@ def date_format(date):
     if int(minute)<10:
         minute ='0' + minute
     
-    #returns 'dd/mm/yyyy, hh:mm'
-    return day + '/' + month + '/' + year + ', ' + hour + ':' + minute
+    if short: # return 'dd/mm/yy'
+        return day + '/' + month + '/' + year[2:4]
+    else: # return 'dd/mm/yyyy, hh:mm'
+        return day + '/' + month + '/' + year + ', ' + hour + ':' + minute

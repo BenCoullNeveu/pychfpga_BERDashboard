@@ -74,16 +74,16 @@ def formatTXT( inputList ):
         elif inputList[i] == None:
             testResult.append("N/A")
     newLines.append("=================     ============================\n")
-    newLines.append("Inspection test:      " + testResult[0] + "\n")
-    newLines.append("Resistance test:      " + testResult[1] + "\n")            
-    newLines.append("DC test:              " + testResult[2] + "\n")
-    newLines.append("Program PLL:          " + testResult[3] + "\n")
-    newLines.append("Program ARM:          " + testResult[4] + "\n")
-    newLines.append("Program FPGA:         " + testResult[5] + "\n")
-    newLines.append("FPGA test:            " + testResult[6] + "\n")
-    newLines.append("Program GTX:          " + testResult[7] + "\n")
-    newLines.append("Ramp Test:            " + testResult[8] + "\n")
-    newLines.append("Comments:             " + inputList[12] + "\n")
+    newLines.append("Inspection test:      " + testResult[0] + "    " + "(" + date_format(time.localtime(), short = True) + ")\n")
+    newLines.append("Resistance test:      " + testResult[1] + "    " + "(" + date_format(time.localtime(), short = True) + ")\n")
+    newLines.append("DC test:              " + testResult[2] + "    " + "(" + date_format(time.localtime(), short = True) + ")\n")
+    newLines.append("Program PLL:          " + testResult[3] + "    " + "(" + date_format(time.localtime(), short = True) + ")\n")
+    newLines.append("Program ARM:          " + testResult[4] + "    " + "(" + date_format(time.localtime(), short = True) + ")\n")
+    newLines.append("Program FPGA:         " + testResult[5] + "    " + "(" + date_format(time.localtime(), short = True) + ")\n")
+    newLines.append("FPGA test:            " + testResult[6] + "    " + "(" + date_format(time.localtime(), short = True) + ")\n")
+    newLines.append("Program GTX:          " + testResult[7] + "    " + "(" + date_format(time.localtime(), short = True) + ")\n")
+    newLines.append("Ramp Test:            " + testResult[8] + "    " + "(" + date_format(time.localtime(), short = True) + ")\n")
+    newLines.append("Comments:             " + inputList[12] + "    " + "(" + date_format(time.localtime(), short = True) + ")\n")
     newLines.append("=================     ============================\n")
     newLines.append("\n")
     newLines.append("(end of status report)\n")
@@ -132,11 +132,11 @@ def appendTXT( fname, newLines = [] ):
             foundLine = True
             linePos = index
             break
-    #check that previous status report exists and is in expected format. If it is as expected, delete previous status report with user confirmation.
+    #check that previous status report exists and is in expected format. If it is as expected, update previous status report with new results.
     if foundLine:
-        overwrite = True
+        normal = True
         if content[linePos + STATUS_LINES_NUM - 2] != '(end of status report)\n':
-            overwrite = False
+            normal = False
             print "\nThere is something wrong with the previous status report that was found (should be " + str(STATUS_LINES_NUM) + " lines, ending with '(end of status report)' and an empty line."
             print "To not take any chances, this script will not overwrite."
             print "\nWould you like to append this status report to the previous one or quit?"
@@ -144,12 +144,18 @@ def appendTXT( fname, newLines = [] ):
             if confirm != 'Y' and confirm != 'y':
                 print "\nStatus report not updated. You can do it manually by editing the file and running the updateStatus.updateManually()."
                 return
-        if overwrite:
-            confirm = raw_input("\nThis will overwrite previous status report.\nEnter 'Y' or 'y' to continue, or anything else to quit.\t")
+        if normal:
+            confirm = raw_input("\nThis will update previous status report. Only new test results will be overwritten, others will maintain previous status.\nEnter 'Y' or 'y' to continue, or anything else to quit.\t")
             if confirm != 'Y' and confirm != 'y':
                 print "\nStatus report not updated. You can do it manually by editing the file and running the updateStatus.updateManually()."
                 return
-            else: del content[linePos:(linePos + STATUS_LINES_NUM)]
+            else:
+                # If the current status report has no result for a test (i.e. 'N/A'), use the result from previous report
+                oldLines = content[linePos:(linePos + STATUS_LINES_NUM)]
+                for index, line in enumerate(newLines):
+                    if line[len(line) - 18:len(line) - 15] == 'N/A':
+                        newLines[index] = oldLines[index]
+                del content[linePos:(linePos + STATUS_LINES_NUM)]
     else:
         print "\nDid not find previous status report. Writing to default position."
     #insert lines and write to file
