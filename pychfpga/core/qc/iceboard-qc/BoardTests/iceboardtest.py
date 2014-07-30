@@ -35,6 +35,8 @@ def starttest():
     board_vn = raw_input("Enter:	")
     print "What is the model of this board?"
     board_md = raw_input("Enter:	")
+    print "What is the PCB serial number of this board? It is printed on the top-left edge of the board, above the 'FMC B' label and components. (e.g. 04-14-017)"
+    pcb_sn = raw_input("Enter:\t")
     
     #Pass/Fail status of tests. This list will be passed from method to method.
     testStatus = EMPTY_TEST_STATUS()
@@ -48,6 +50,7 @@ def starttest():
         file.write('Quality control testing results for ICE board serial number ' + board_sn + '\n')
         file.write('Revision number: ' + board_vn + '\n')
         file.write('Board model: ' + board_md + '\n')
+        file.write('PCB serial: ' + pcb_sn + '\n')
         date_str=date_format(tm.localtime())
         file.write('File created on : ' + date_str + '\n')
         file.write('\n')
