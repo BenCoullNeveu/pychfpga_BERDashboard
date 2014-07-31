@@ -10,7 +10,7 @@ History:
 
 
 import matplotlib
-matplotlib.use('QT4Agg')
+matplotlib.use('Agg')    # Animations work well with QT4Agg backend. But in case there is no xserver, use Agg instead
 matplotlib.rcParams['toolbar'] = 'None'
 import numpy as np
 import matplotlib.pyplot as plt
@@ -23,7 +23,7 @@ import datetime
 import os
 
 
-def adc_histogram(fpgarec, frames_per_plot = 32, interval_sec = 1.):
+def adc_histogram(fpgarec, frames_per_plot = 128, interval_sec = 1.):
     """
     Plots histograms for all the ADC channels. fpgarec is the chFPGA_receiver object (previously created).
     frames_per_plot is the number of frames to get (per channel) before plotting the histograms. interval_sec is the interval to refresh plots in sec.
@@ -192,7 +192,7 @@ def adc_timestream(fpgarec, interval_sec = 1.):
         
 
 
-def adc_spectra(fpgarec, frames_per_plot = 32, interval_sec = 1.):
+def adc_spectra(fpgarec, frames_per_plot = 128, interval_sec = 1.):
     """
     Plots spectra for all the ADC channels. fpgarec is the chFPGA_receiver object (previously created).
     frames_per_plot is the number of spectra to average (per channel). interval_sec is the interval to refresh plots in sec.
@@ -315,7 +315,7 @@ def ice_setup(burst_period_in_seconds = 0.01, host_ip = '10.10.10.200'):
     Configuring the ICEBoard to send raw ADC data
     '''
     
-    logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(name)-32s %(levelname)-10s : %(message)s')
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s %(name)-32s %(levelname)-10s : %(message)s')
     ADC_DELAY_TABLE = ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 # ADC_DELAYS_REV2_SN0001 # select the table corresponding to the FMC serial number
     c = chFPGA_controller.chFPGA_controller(ip_address = '10.10.10.11', port_number = 41000, adc_delay_table=ADC_DELAY_TABLE, init = 1, sampling_frequency = 800e6,
                                             reference_frequency = 10e6, data_width = 8, group_frames = 2, enable_gpu_link = 1, host_ip = host_ip) # pylint: disable=C0103
@@ -342,16 +342,13 @@ if __name__ == '__main__':
                         help = 'Folder where the figure is saved. If not specified and save figure is True, figure is saved in working directory.')
     parser.add_argument('-p', '--plot_type', action = 'store', type = str, default = 'histogram', choices = ('histogram', 'timestream', 'spectra'), 
                         help = 'Type of plot: histogram (default), timestream or spectra.')
-    parser.add_argument('-d', '--not_save_figure', action = 'store_true', help = 'Do not save figure before terminate.')
-    parser.add_argument('-n', '--frames_per_plot', action = 'store', type = int, default = 32, help = 'Number of frames per plot for histogram and spectra plots.')
-    parser.add_argument('-t', '--interval_sec', action = 'store', type = float, default = 1., help = 'Interval to refresh plots in sec.')
+    parser.add_argument('-n', '--frames_per_plot', action = 'store', type = int, default = 128, help = 'Number of frames per plot for histogram and spectra plots.')
+    parser.add_argument('-t', '--interval_sec', action = 'store', type = float, default = 0.1, 
+                        help = 'Interval to refresh plots in sec (in general the refresh time depends on interval_sec and burst_period).')
     parser.add_argument('-i','--host_ip', action = 'store', type = str, default = '10.10.10.200', 
                         help = 'IP address of adapter through which the connection to the FPGA will be established. Default: lab gamma ip.')
     parser.add_argument('-b','--burst_period', action = 'store', type = float, default = 0.01, help = 'Burst period in seconds. Default: 0.01.')
     args = parser.parse_args()                
-    
-    logging.basicConfig(level=logging.DEBUG, format='%(asctime)s %(name)-32s %(levelname)-10s : %(message)s')
-    ADC_DELAY_TABLE = ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 # ADC_DELAYS_REV2_SN0001 # select the table corresponding to the FMC serial number
     
     
     if args.folder:
@@ -364,7 +361,7 @@ if __name__ == '__main__':
     c, r = ice_setup(burst_period_in_seconds = args.burst_period, host_ip = args.host_ip)
     print '\nICEBoard configuration successful'
     
-    print '\nStarting animation. Close figure to (save and) terminate\n'
+    print '\nStarting animation. Close figure to save and terminate. Press Ctrl+C to close without saving\n'
     if args.plot_type == 'histogram':
         fighandle = adc_histogram(r, frames_per_plot = args.frames_per_plot, interval_sec = args.interval_sec) 
     elif args.plot_type == 'timestream':
@@ -373,10 +370,10 @@ if __name__ == '__main__':
         fighandle = adc_spectra(r, frames_per_plot = args.frames_per_plot, interval_sec = args.interval_sec) 
 
              
-    if not args.not_save_figure:
-        figname += '/'+ args.plot_type+'_test_'+datetime.datetime.now().strftime("%Y%m%d_%H%M%S")+'.pdf'
-        print '\nSaving figure as '+figname
-        fighandle.savefig(figname, format='pdf')
+    figname += '/'+ args.plot_type+'_test_'+datetime.datetime.now().strftime("%Y%m%d_%H%M%S")+'.png'
+    print '\nSaving figure as '+figname
+    fighandle.set_size_inches((24., 11.725))
+    fighandle.savefig(figname, format='png')
 
     print '\nClosing FPGA controller and receiver objects'
     c.close()
