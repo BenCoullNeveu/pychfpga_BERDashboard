@@ -8,6 +8,7 @@ import iceboardtest
 import sys
 import updateStatus
 from statusReport import EMPTY_TEST_STATUS
+#from testFail import mtestFail, ArmFail
 
 def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None,testStatus = EMPTY_TEST_STATUS()):
     testStatus[0] = username
@@ -145,6 +146,26 @@ def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None,testS
         file.write('\nARM Programming Test Overall Status: Fail')
         file.close()
         sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+    
+    # Memory test
+    print("\nThe next step is to perform a memory test")
+    print("You will need a different SD card, labeled 'MTEST'. It should be in the drawer under the monitor.")
+    print("You will also need to read the RS232 from the board. For this, take the FTDI cable and three pin adapter (also in the drawer).")
+    print("Load the SD card into the board, flip it upside down, and find the RS232 connector (three small holes just to the left of the ARM).")
+    print("Attach the adapter and connect the yellow cable to the pin closest to the ARM, the black cable in the centre, and the orange one furthest from the ARM.")
+    print("Open up 'Termite' on the computer and boot up the board. You should see the RS232 output scroll across the screen.")
+    print("You must now reboot the board and interrupt the bootloader by entering any key in Termite IMMEDIATELY.")
+    print("Once you are in the shell, enter 'mtest' to begin the memory test.")
+    print("You should see it go through an iteration (printing one line) every few seconds. If you see a bunch of reading/writing scrolling across the screen,\nyou interrupted the boot too late. Try again and make sure you interrupt the first boot stage, immediately after it starts.")
+    print("Let mtest run through a few iterations (5-10) to confirm it doesn't produce any errors.")
+    errors = raw_input("\nDid mtest produce any errors? (y/n)\t")
+    if errors == 'Y' or errors == 'y':
+        file.write("\nMemory Test produces errors: FAIL\n")
+        file.write('\nARM Programming Test Overall Status: Fail\n')
+        #mtestFail(username, board_sn, board_vn, board_md, testStatus)
+    else:
+        file.write("\nMemory Test produces no errors: Pass\n")
+    
     print "If there are any special concerns regarding the board for this test, please describe them below. If none, enter 'None'. "
     comments = raw_input("Enter your comments: 	")
     file.write('\nComments: ' + comments)
