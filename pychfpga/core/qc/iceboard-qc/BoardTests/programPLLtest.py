@@ -7,7 +7,9 @@ import shutil
 import iceboardtest
 import sys
 import updateStatus
+from date_format import date_format
 from statusReport import EMPTY_TEST_STATUS
+from testFail import pllFail
 
 def programPLLtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPTY_TEST_STATUS()):
     testStatus[0] = username
@@ -54,18 +56,18 @@ def programPLLtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
     notimportant = raw_input("Press Enter to continue: ")
     print "In the Manager window, click on Start icon at the top."
     print "In the pop-up window, select 'Host Drive D:' and then click on Start."
-    print "Wait for the Virtual Machien to bootup."
+    print "Wait for the Virtual Machine to bootup."
     notimportant = raw_input("Press Enter to continue:  ")
-    print "After a while, you should on a Ubuntu desktop. "
+    print "After a while, you should find yourself on an Ubuntu desktop. "
     print "Turn on the power supply of the board."
     notimportant = raw_input("Press Enter to continue:  ")
     print "On the bottom of the Virtual Machine window, there are several small icons. RIGHT click on the USB icon (third from the left)."
     print "There should be an option that says FTDI ... If it is not selected, please click on it to have a checkmark beside it."
     print "If you don't see the FTDI option, you'll need to power cycle the board and attempt again."
-    notimportant = raw_input("Press ENter to continue:   ")
+    notimportant = raw_input("Press Enter to continue:   ")
     print "Open up a terminal window. (You can do so by click on the large swirly circular icon on the left"
     print "side of the desktop (which is the first one). In the searchbox, type in 'Terminal' and click on the icon (the box with >_ inside)."
-    print "Go to the git rdirectory, then cd to the iceboard-qc repository then go to the pll directory."
+    print "Go to the git directory, then cd to the iceboard-qc repository then go to the pll directory."
     notimportant = raw_input("Press enter to continue:   ")
     print "Since we have the brown wire connected to csn1, we'll need to run the pllprog1 executable."
     print "To do so, type in 'sudo ./pllprog1' in the terminal window."
@@ -77,39 +79,39 @@ def programPLLtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
         file.write('\n\nPLL Programming Test: Fail to program PLL1')
         file.write('\n\nPLL Programming Test Overall Status: Fail')
         file.close()
-        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+        pllFail(username,board_sn,board_vn,board_md,testStatus)
     print "OK, let's check to make sure the PLL test actually worked, power cycle the board as it is."
     print "Check the LED lights at the top left corner of the board. You should see one of the LEDs light up. This means the PLL is programmed!"
     print "Is this the case?"
     PLL1 = raw_input("Enter 'Y' or 'N':     ")
     if PLL1 == 'Y' or PLL1 == 'y':
-        file.write('\nThe LED lighted up after programming PLL1.')
+        file.write('\nThe LED lit up after programming PLL1.')
     else:
         file.write('\nThe LED failed to light up after programming PLL1. ')
         file.write('\nPLL Programming Test Overall Status: Fail')
         file.close()
-        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+        pllFail(username,board_sn,board_vn,board_md,testStatus)
     print "Let's program the other PLL. Turn off the board (for safety reasons) and switch the brown wire from csn1 pin to csn2 pin."
     print "Power on the board."
     notimportant = raw_input("Press Enter to continue:  ")
     print "In the Virtual Machine, type in 'sudo ./pllprog2' in the terminal window. Enter the password."
     print "Do you see an output as that described from PLL1?"
     PLL2output = raw_input("Enter 'Y' or 'N':   ")
-    if PLL1output == 'n' or PLL1output == 'N':
+    if PLL2output == 'n' or PLL2output == 'N':
         file.write('\n\nPLL Programming Test: Fail to program PLL2')
         file.write('\n\nPLL Programming Test Overall Status: Fail')
         file.close()
-        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+        pllFail(username,board_sn,board_vn,board_md,testStatus)
     print "Check the LED lights at the top left corner of the board. You should see another one of the LEDs light up. This means the PLL is programmed!"
     print "Is this the case?"
-    PLL1 = raw_input("Enter 'Y' or 'N':     ")
-    if PLL1 == 'Y' or PLL1 == 'y':
-        file.write('\nThe LED lighted up after programming PLL1.')
+    PLL2 = raw_input("Enter 'Y' or 'N':     ")
+    if PLL2 == 'Y' or PLL2 == 'y':
+        file.write('\nThe LED lit up after programming PLL2.')
     else:
-        file.write('\nThe LED failed to light up after programming PLL1. ')
+        file.write('\nThe LED failed to light up after programming PLL2. ')
         file.write('\nPLL Programming Test Overall Status: Fail')
         file.close()
-        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+        pllFail(username,board_sn,board_vn,board_md,testStatus)
     
     print "Has everything in this test gone smoothly?"
     check = raw_input("Enter ('Y' or 'N'): 	")
@@ -120,8 +122,7 @@ def programPLLtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
     else:
         file.write('\n\nPLL Programming Test Overall Status: Fail')
         file.close()
-        testStatus[6] = False
-        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+        pllFail(username,board_sn,board_vn,board_md,testStatus)
     print "Do you wish to proceed to another test?"
     proceed = raw_input("Enter 'Y' or 'N':  ")
     if proceed == 'Y' or proceed == 'y':

@@ -7,8 +7,9 @@ import shutil
 import iceboardtest
 import sys
 import updateStatus
+from date_format import date_format
 from statusReport import EMPTY_TEST_STATUS
-#from testFail import mtestFail, ArmFail
+from testFail import mtestFail, armFail
 
 def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None,testStatus = EMPTY_TEST_STATUS()):
     testStatus[0] = username
@@ -35,20 +36,18 @@ def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None,testS
     file.write('Date : ' + date_str + '\n')
     file.write('Tester: ' + username + '\n\n')
 
-    print "For this test, you'll need an Ethernet cable, D-link router and an microSD card."
+    print "For this test, you'll need an Ethernet cable, D-link router and an SD card."
     print "Please obtain a properly programmed SD card. If you cannot do so,"
     print "follow the instructions on http://"
     print "or seek help from someone (i.e. Kevin)."
     print "Insert the SD card in the slot on the top right corner of board. The card should slide"
     print "comfortably in with the golden plates facing down."
 
-    notimportant = raw_input("Press Enter to continue: 	")
-    print "Please set up the D-link router."
+    print "\nPlease set up the D-link router."
     print "Be sure an Ethernet cable links the lab network to one of the slots in the router."
     print "Be sure an Ethernet cable links this computer to the router."
-    notimportant = raw_input("Press Enter to continue:")
 
-    print "Look on the righthand side of the board. You should see a set of"
+    print "\nLook on the righthand side of the board. You should see a set of"
     print "switches labelled BTMode Switches. We'll need to configure them."
     print "Please leave the GP switches ALONE for this part."
 
@@ -61,59 +60,48 @@ def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None,testS
     print "Flip the configuration to be UDDD."
     print "Please note the orientation of the switch is upsidedown, so technically, switches 1,2,3 are actually up and 4 is down."
     print "When you have done so, you may proceed. You may consult https:// for details."
-    notimportant = raw_input("Press Enter to continue: 	")
-    print "Look at the bottom right corner of the board. There should be two Ethernet ports."
-    print "Connect an Ethernet cable going from this computer to the RIGHT-MOST OUTER port to the router."
-    print "Power on the board."
-    notimportant = raw_input("Press Enter to continue: 	")
 
-    print "Wait a few minutes, you should be able to see some LEDs flashing on right side of the board."
-    notimportant = raw_input("Press Enter to continue: 	")
-    print "Have any lights flashed after waiting a few minutes since board turned on?"
+    print "\nLook at the bottom right corner of the board. There should be two Ethernet ports."
+    print "Connect an Ethernet cable going from the LEFT-MOST INNER port to the router."
+    print "Power on the board."
+
+    print "\nWait a few minutes, you should be able to see some LEDs flashing on the right side of the board."
+    print "Have any lights flashed after waiting a few minutes since the board turned on?"
     lights = raw_input("Enter 'Y' or 'N': 	")
     if lights == 'Y' or lights == 'y':
         file.write('LED lights flashed after initiating board. Hints at proper connection and properly programmed SD card.\n\n')
-    print "Open up an Internet browser window. Log on to 10.10.10.1 by typing in 'https://10.10.10.1' in the adress bar."
+    print "\nOpen up an Internet browser window. Log on to 10.10.10.1 by typing in 'https://10.10.10.1' in the adress bar."
     print "Ask Kevin for the username and password associated with the website."
     print "Click on the large computer icon on centre-left part of the website. (There will be text saying 'Clients:' below it"
     notimportant = raw_input("Press Enter to continue: 	")
 
-    print "The icon should now be highlighted in blue. There will now be a list on the right hand side of the page."
+    print "\nThe icon should now be highlighted in blue. There will now be a list on the right hand side of the page."
     print "On the list, find which of the MAC addresses (left column) correponds to that of the board. A quick and "
     print "dirty way of doing this is simply writing down all the IP addresses (right column) you see in the list, unplug the"
     print "Ethernet cable from the board, hit refresh, and see which of the IP address disappeared from the list."
     print "Do this a few times to confirm that the MAC address is right."
-    tm.sleep(2)
 
     print "Please enter the MAC address of the board below: "
     MACright = raw_input("Enter MAC address: ")
-    file.write('\nMAC address of right Ethernet connector: ' + MACright)
+    file.write('\nMAC address of left Ethernet connector: ' + MACright)
 
-    print "Now we must change the IP address from this Ethernet port to match the serial number of board."
+    print "\nNow we must change the IP address from this Ethernet port to match the serial number of board."
     print "On left hand side of the page, under Advanced Settings, click on LAN. On top of page, you should"
     print "see some tabs. Click on the DHCP Server tab."
-    notimportant = raw_input("Press Enter to continue: 	")
 
     print "What we want to do now is manually assign the IP address for this board. Scroll down to the Manually Assigned IP section."
     print "From the drop-down box in the MAC address column, pick the one which corresponds to the board. Its corresponding IP address"
     print "should appear in the column beside it. Change the IP address to 10.10.10.NUM where NUM is the serial number of the board."
     print "(i.e. if the board has serial number 0009, its IP address should be 10.10.10.9  "
-    notimportant = raw_input('Press Enter to continue: 	')
 
     print "Now, click on the + icon in the last column to add this IP address. DOUBLE CHECK to make sure it's the right IP address!"
-    notimportant = raw_input('Press Enter to continue: 	')
-    print "Are you sure you have the right IP address? Double check!"
-    notimportant = raw_input('Press Enter to continue: 	')
-    print "Once you're SURE it's the right IP address, click on Apply at the bottom of the table."
     print "Write down the IP address of the board."
     IPright = raw_input("Enter IP address: 	")
-    file.write('\nIP address of right Ethernet connector:  ' + IPright)
+    file.write('\nIP address of left Ethernet connector:  ' + IPright)
 
-    print "After programming the IP address, let's check to see if this works! Open up a Terminal window, such as git bash."
+    print "\nAfter programming the IP address, let's check to see if this works! Open up a Terminal window, such as git bash."
     print "On the command line, type in 'ping IP' where IP is the IP address you've just assigned to it."
-    tm.sleep(2)
-    notimportant = raw_input("Press Enter to continue.")
-    print "You should be able to send and receive packets without any issues. The terminal window should say more or less something like so:"
+    print "You should be able to send and receive packets without any issues. The terminal window should say more or less something like so:\n"
     print "$ping 10.10.10.9"
     print "Pinging 10.10.10.9 with 32 bytes of data:"
     print "Reply from 10.10.10.9: bytes=32 time<1ms TTL=64"
@@ -126,7 +114,7 @@ def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None,testS
     print "Approximate round trip times in milli-seconds:"
     print "Minimum = 0ms, Maximum = 0ms, Average = 0ms"
 
-    print "Are you able to ping the board and have a result like above?"
+    print "\nAre you able to ping the board and have a result like above?"
     ping = raw_input("Enter 'Y' or 'N': 	")
     if ping == 'Y' or ping == 'y':
         file.write('\nPinging the board: Pass')
@@ -134,7 +122,7 @@ def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None,testS
         file.write('\nPinging the board: Fail')
         file.write('\nARM Programming Test Overall Status: Fail')
         file.close()
-        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+        armFail(username,board_sn,board_vn,board_md,testStatus)
     print "Let's try to log in via ssh onto the board! In your terminal window, type in 'ssh root@IP' where IP is the IP address of board."
     print "Obtain the password from Kevin. At the command line, you should see you logged in as root@iceboard."
     print "Were you successful in logging in via ssh "
@@ -145,7 +133,7 @@ def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None,testS
         file.write('\nLogging into the board via ssh: Fail')
         file.write('\nARM Programming Test Overall Status: Fail')
         file.close()
-        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+        armFail(username,board_sn,board_vn,board_md,testStatus)
     
     # Memory test
     print("\nThe next step is to perform a memory test")
@@ -162,7 +150,7 @@ def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None,testS
     if errors == 'Y' or errors == 'y':
         file.write("\nMemory Test produces errors: FAIL\n")
         file.write('\nARM Programming Test Overall Status: Fail\n')
-        #mtestFail(username, board_sn, board_vn, board_md, testStatus)
+        mtestFail(username, board_sn, board_vn, board_md, testStatus)
     else:
         file.write("\nMemory Test produces no errors: Pass\n")
     
@@ -180,7 +168,7 @@ def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None,testS
         file.write('\n\nARM Programming Test Overall Status: Fail')
         file.close()
         testStatus = False
-        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+        armFail(username,board_sn,board_vn,board_md,testStatus)
     print "Do you wish to proceed to another test?"
     proceed = raw_input("Enter 'Y' or 'N':  ")
     if proceed == 'Y' or proceed == 'y':

@@ -7,7 +7,9 @@ import shutil
 import iceboardtest
 import sys
 import updateStatus
+from date_format import date_format
 from statusReport import EMPTY_TEST_STATUS
+from testFail import resistanceFail
 
 def resistancetest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPTY_TEST_STATUS()):
     testStatus[0] = username
@@ -27,7 +29,6 @@ def resistancetest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
         file.write('\n')
         file.close()
         print "File 'board" + board_sn + ".txt' is created in directory."
-    fname = 'board' + board_sn + '.txt'
     file = open(fname, 'a')
     file.write('\nResistance Test\n')
     file.write('------\n')
@@ -35,13 +36,13 @@ def resistancetest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
     file.write('Date : ' + date_str + '\n')
     file.write('Tester: ' + username + '\n\n')
     print 'For this test, please do NOT power up the board. Everything should be done with nothing connected to the power supply!'
-    print 'For this board, you will need a multimeter set to measure resistance.'
+    print 'For this test, you will need a multimeter set to measure resistance.'
     notimportant = raw_input("Press Enter to continue:      ")
     print "Lay the board on a grounding mat in front of you"
     print "To properly orient the board, rotate the board until the McGill Cosmology logo is facing the right way as you look at the board"
     print "The buck regulators to be tested will go in a ANTICLOCKWISE order, starting off with the upper left-most regulator"
     print "If you're unsure about which regulator is which, please refer to 'https://' for an image guide"
-    print "All these regulators should be probed with respects to the board's GROUND. A good ground to pick is the ground to the power supply, i.e. centre screw on the connector on the left-hand side of the board"
+    print "All these regulators should be probed with respect to the board's GROUND. A good ground to pick is the ground to the power supply, i.e. centre screw on the connector on the left-hand side of the board"
     print "You should be probing the LONGER pin on the regulators."
     print "When probing, it's a good habit to press the probe testing the place of interest with the pin tightly pressed against your fingertips."
     print "Again, refer to the website for help."
@@ -62,7 +63,7 @@ def resistancetest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
         file.write('Fail\n')
         file.write('================  ======== ========\n')
         file.close()
-        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+        resistanceFail(username,board_sn,board_vn,board_md,testStatus)
     
     print "Please probe the Vadj regulator pin. Enter the resitance below (up to 2 decimal points, i.e. '1.00')."
     Vadj = float(input("Enter:     "))
@@ -73,7 +74,7 @@ def resistancetest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
         file.write('Fail\n')
         file.write('================  ======== ========\n')
         file.close()
-        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+        resistanceFail(username,board_sn,board_vn,board_md,testStatus)
 
     print "Please probe the 3V3 regulator pin. Enter the resitance below (up to 2 decimal points, i.e. '1.00')."
     V3 = float(input("Enter:     "))
@@ -84,7 +85,7 @@ def resistancetest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
         file.write('Fail\n')
         file.write('================  ======== ========\n')
         file.close()
-        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+        resistanceFail(username,board_sn,board_vn,board_md,testStatus)
 
     print "Please probe the 5V regulator pin. Enter the resitance below (up to 2 decimal points, i.e. '1.00')."
     V5 = float(input("Enter:     "))
@@ -95,7 +96,7 @@ def resistancetest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
         file.write('Fail\n')
         file.write('================  ======== ========\n')
         file.close()
-        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+        resistanceFail(username,board_sn,board_vn,board_md,testStatus)
 
     print "Please skip the buck regulator next to the power connector."
     notimportant = raw_input("Press Enter to continue:  ")
@@ -109,7 +110,7 @@ def resistancetest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
         file.write('Fail\n')
         file.write('================  ======== ========\n')
         file.close()
-        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+        resistanceFail(username,board_sn,board_vn,board_md,testStatus)
 
     print "Please probe the 1.2VGTX regulator pin. Enter the resitance below (up to 2 decimal points, i.e. '1.00')."
     VGTX12 = float(input("Enter:     "))
@@ -120,7 +121,7 @@ def resistancetest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
         file.write('Fail\n')
         file.write('================  ======== ========\n')
         file.close()
-        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+        resistanceFail(username,board_sn,board_vn,board_md,testStatus)
 
     print "Please probe the 1VCORE regulator pin. Enter the resitance below (up to 2 decimal points, i.e. '1.00')."
     VCORE1 = float(input("Enter:     "))
@@ -131,7 +132,7 @@ def resistancetest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
         file.write('Fail\n')
         file.write('================  ======== ========\n')
         file.close()
-        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+        resistanceFail(username,board_sn,board_vn,board_md,testStatus)
 
     print "Please probe the 1.5V regulator pin. Enter the resitance below (up to 2 decimal points, i.e. '1.00')."
     V15 = float(input("Enter:     "))
@@ -142,7 +143,7 @@ def resistancetest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
         file.write('Fail\n')
         file.write('================  ======== ========\n')
         file.close()
-        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+        resistanceFail(username,board_sn,board_vn,board_md,testStatus)
 
     print "Please probe the 1.8V regulator pin. Enter the resitance below (up to 2 decimal points, i.e. '1.00')."
     V18 = float(input("Enter:     "))
@@ -153,7 +154,7 @@ def resistancetest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
         file.write('Fail\n')
         file.write('================  ======== ========\n')
         file.close()
-        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+        resistanceFail(username,board_sn,board_vn,board_md,testStatus)
 
 
     file.write('================  ======== ========\n')

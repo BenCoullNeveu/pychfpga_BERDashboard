@@ -7,6 +7,7 @@ import shutil
 import iceboardtest
 import sys
 import updateStatus
+from date_format import date_format
 from statusReport import EMPTY_TEST_STATUS
 from testFail import DCFail
 
@@ -67,13 +68,14 @@ def DCtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPT
     
     print "Please read the voltage measurement on power supply. Enter the voltage below (up to 3 sig. figs. , i.e. '1.00')."
     volt = float(input("Enter:     "))
-    file.write('Voltage           ' + str(volt) + '     ' + '12.0     ')
+    file.write('Voltage           ' + str(volt) + '     ' + '16.0     ')
     if abs((volt-16.00))/16. < 0.02:
         file.write('Pass\n')
     else:
         file.write('Fail\n')
         file.write('================  ======== ======== ========\n')
         file.close()
+        print "\nThe board needs a 16V power supply.\n"
         DCFail((username, board_sn, board_vn, board_md, testStatus))
 
     print "Please read the current measurement on power supply. Enter the voltage below (up to 3 sig. figs. , i.e. '1.00')."
@@ -85,6 +87,7 @@ def DCtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPT
         file.write('Fail\n')
         file.write('================  ======== ======== ========\n')
         file.close()
+        print "\nCurrent not within acceptable range.\n"
         DCFail(username, board_sn, board_vn, board_md, testStatus)
     file.write('================  ======== ======== ========\n\n')
 

@@ -123,6 +123,9 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     SYSMON = raw_input("Enter SYSMON status comments: 		")
     file.write('\n\nSYSMON status output: ')
     file.write('\n' + SYSMON)
+    print "Type in c.fpga.GPIO.FPGA_SERIAL_NUMBER on the ipython command prompt. Enter the outputted result below."
+    FPGA_SERIAL = raw_input("Enter FPGA_SERIAL_NUMBER:\t")
+    file.write("\n\nFPGA serial number: " + FPGA_SERIAL)
     print "If there are any special concerns regarding the board for this test, please describe them below. If none, enter 'None'. "
     comments = raw_input("Enter your comments:  ")
     file.write('\n\nComments: ' + comments)

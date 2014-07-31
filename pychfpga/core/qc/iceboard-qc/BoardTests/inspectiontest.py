@@ -7,7 +7,9 @@ import shutil
 import iceboardtest
 import sys
 import updateStatus
+from date_format import date_format
 from statusReport import EMPTY_TEST_STATUS
+from testFail import inspectionFail
 
 def inspectiontest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPTY_TEST_STATUS()):
     testStatus[0] = username
@@ -37,10 +39,9 @@ def inspectiontest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
     print 'For this test, please do NOT power up the board. Everything should be done with nothing connected to the power supply!'
     print "It is highly suggested for you to view the board under the microscope to see everything properly."
     print "When travelling with the board, please be VERY GENTLE."
-    print "Please write down any comments you wish to make (shorting, scratches, unsoldered parts, etc.) before continuing"
     notimportant = raw_input("Press Enter to continue when you have done the above.... ")
     
-    print 'Are there any unsoldered components?'
+    print '\nAre there any unsoldered components?'
     file.write('Soldering status: ')
     unsol = raw_input("Enter ('Y' or 'N'):     ")
     if unsol == 'Y' or unsol == 'y':
@@ -99,8 +100,7 @@ def inspectiontest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
     else:
         file.write('Inspection test: FAIL \n')
         file.close()
-        testStatus[3] = False
-        sys.exit("Inspection test failed. It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
+        inspectionFail(username,board_sn,board_vn,board_md,testStatus)
     print "Do you wish to proceed to another test?"
     proceed = raw_input("Enter 'Y' or 'N':  ")
     if proceed == 'Y' or proceed == 'y':
