@@ -47,7 +47,7 @@ def programFPGA(username=str,board_sn=str,board_vn=str,board_md=str,testStatus =
     confirm = raw_input('Check that this is correct. Would you like to modify it? (y/n)\t')
     if confirm == 'y' or confirm == 'Y':
         ch_acq_path = raw_input("Enter path (ending with a '/'):\t")
-    print "If it is not already the case, set ch_acq to the 'master' git repository."
+    print "If it is not already the case, set ch_acq to the 'master' git branch."
     
     # We assume there is a proper bitfile to program the FPGA in
     # ../../chFPGA/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit

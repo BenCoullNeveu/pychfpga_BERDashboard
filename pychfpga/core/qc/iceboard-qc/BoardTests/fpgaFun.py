@@ -26,6 +26,9 @@ def programFpga(ch_acq_path, ip):
     a.configure_fpga(filename)
     
 def top_test(ch_acq_path, host_ip): # adpated from pychfpga/top_test
+    '''
+    Creates fpga_controller and fpga_receiver instances and returns them as [c,r].
+    '''
     import logging
     import sys
     import time
@@ -85,5 +88,7 @@ def top_test(ch_acq_path, host_ip): # adpated from pychfpga/top_test
     chFPGA_config = c.get_config()
     logger.info('Starting data/correlator receiver threads')
     r = chFPGA_receiver.chFPGA_receiver(chFPGA_config, ip_address=args.ip, port=41001, host_ip = args.host_ip)
+    
+    return [c,r]
     
     

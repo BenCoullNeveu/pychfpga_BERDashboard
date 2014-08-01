@@ -80,3 +80,9 @@ def fpgaProgFail(username=str,board_sn=str,board_vn=str,board_md=str,testStatus 
     
     genericFail(username, board_sn, board_vn, board_md, testStatus)
     
+def fpgaTestFail(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPTY_TEST_STATUS()):
+    testStatus[9] = False
+    print "\nFailed FPGA test."
+    
+    genericFail(username, board_sn, board_vn, board_md, testStatus)
+    
