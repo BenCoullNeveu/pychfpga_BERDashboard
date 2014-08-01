@@ -85,6 +85,18 @@ def fpgaProgFail(username=str,board_sn=str,board_vn=str,board_md=str,testStatus 
 def fpgaTestFail(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPTY_TEST_STATUS()):
     testStatus[9] = False
     print "\nFailed FPGA test."
+    print "If top_test is timing out, check all of the Ethernet connections, then reprogram the FPGA and try again."
+    print "Make sure you've tried at least a few times before giving up."
+    print "If you encounter another type of error, you may have to trace its cause."
+    print "\t'NameError: dict_out is not defined' usually points to a corrupted EEPROM on the Mezzanine."
+    # Other common errors?
+    
+    genericFail(username, board_sn, board_vn, board_md, testStatus)
+    
+def gtxFail(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPTY_TEST_STATUS()):
+    testStatus[10] = False
+    print "\nFailed GTX test."
+    print "Please report this issue." # Anything else?
     
     genericFail(username, board_sn, board_vn, board_md, testStatus)
     

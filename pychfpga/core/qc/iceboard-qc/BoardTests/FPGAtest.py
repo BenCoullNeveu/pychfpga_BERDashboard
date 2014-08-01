@@ -83,13 +83,16 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
             success = True
         except Exception as e:
             traceback.print_exc(e)
-            confirm = raw_input("\nTop_test did not run successfully. Do you want to try again? (y/n)\t")
+            print "\nTop_test did not run successfully."
+            confirm = raw_input("Do you want to try reprogramming the board and running it again? (y/n)\t")
             if confirm != 'Y' and confirm != 'y':
                 file.write('\nRunning top_test on board: Fail')
                 file.write("\n" + repr(e))
                 file.write('\nFPGA Test Overall Status: Fail')
                 file.close()
                 fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
+            else:
+                fpgaFun.programFPGA(ch_acq_path, '10.10.10.' + str(int(board_sn)))
         
     print "\nTop test should have been able to load without any problems or errors. You should also see the current draw to be above 2A at this point."
     if success:
@@ -109,11 +112,13 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
         '''
         def __enter__(self):
             self._stdout = sys.stdout
-            sys.stdout = self._stringio = StringIO()
+            self._stderr = sys.stderr
+            sys.stdout = sys.stderr = self._stringio = StringIO()
             return self
         def __exit__(self, *args):
             self.extend(self._stringio.getvalue().splitlines())
             sys.stdout = self._stdout
+            sys.stderr = self._stderr
     
     print "Let's try probing some temperatures on the board."
     with Capturing() as output:
@@ -294,13 +299,14 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
             file.write('\nFPGA Test Overall Status: Fail')
             file.close()
             fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
-        file.write(output)
+        file.write(output[0])
+        print output[0]
         # Save FPGA serial to separate file
         if not os.path.isfile('fpga_serials.txt'):
             serials_file = open('fpga_serials.txt', 'w')
         else:
             serials_file = open('fpga_serials.txt', 'a')
-        serials_file.write('\nBoard ' + board_sn + ': ' + hex(int(output)))
+        serials_file.write('\nBoard ' + board_sn + ': ' + hex(int(output[0])))
         serials_file.close()
     
     print "If there are any special concerns regarding the board for this test, please describe them below. If none, enter 'None'. "
