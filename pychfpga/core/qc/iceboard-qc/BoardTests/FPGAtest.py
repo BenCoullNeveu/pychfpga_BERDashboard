@@ -12,6 +12,7 @@ import updateStatus
 from date_format import date_format
 from statusReport import EMPTY_TEST_STATUS
 from testFail import fpgaTestFail
+import fpgaFun
 
 def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPTY_TEST_STATUS()):
     testStatus[0] = username
@@ -82,7 +83,7 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
             success = True
         except Exception as e:
             traceback.print_exc(e)
-            confirm = raw_input("Top_test did not run successfully. Do you want to try again")
+            confirm = raw_input("\nTop_test did not run successfully. Do you want to try again? (y/n)\t")
             if confirm != 'Y' and confirm != 'y':
                 file.write('\nRunning top_test on board: Fail')
                 file.write("\n" + repr(e))

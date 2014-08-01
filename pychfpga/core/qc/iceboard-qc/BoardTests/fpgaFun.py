@@ -87,7 +87,7 @@ def top_test(ch_acq_path, host_ip): # adpated from pychfpga/top_test
     logger.info('Getting chFPGA configuration')
     chFPGA_config = c.get_config()
     logger.info('Starting data/correlator receiver threads')
-    r = chFPGA_receiver.chFPGA_receiver(chFPGA_config, ip_address=args.ip, port=41001, host_ip = args.host_ip)
+    r = chFPGA_receiver.chFPGA_receiver(chFPGA_config, ip_address=ip, port=41001, host_ip = host_ip)
     
     return [c,r]
     

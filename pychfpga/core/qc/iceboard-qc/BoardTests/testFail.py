@@ -1,5 +1,7 @@
 import iceboardtest
+import sys
 from statusReport import EMPTY_TEST_STATUS
+import updateStatus
 '''
 Add functions here to deal with failures in specific tests.
 '''
