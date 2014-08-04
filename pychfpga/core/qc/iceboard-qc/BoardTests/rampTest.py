@@ -17,6 +17,7 @@ import csv
 import argparse
 import sys
 
+# TODO: If possible apdapt this function to work with ch_acq master branch
 def rampTest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPTY_TEST_STATUS()):
     testStatus[0] = username
     testStatus[1] = board_sn

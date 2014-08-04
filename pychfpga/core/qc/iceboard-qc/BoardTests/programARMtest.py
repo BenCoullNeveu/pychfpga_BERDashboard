@@ -37,9 +37,7 @@ def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None,testS
     file.write('Tester: ' + username + '\n\n')
 
     print "For this test, you'll need an Ethernet cable, D-link router and an SD card."
-    print "Please obtain a properly programmed SD card. If you cannot do so,"
-    print "follow the instructions on http://"
-    print "or seek help from someone (i.e. Kevin)."
+    print "Please obtain a properly programmed SD card. These should be available in the CHIME lab."
     print "Insert the SD card in the slot on the top right corner of board. The card should slide"
     print "comfortably in with the golden plates facing down."
 
@@ -59,7 +57,7 @@ def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None,testS
     print "You will also need to flip the switches for the FPGA Config Mode. The set of 4 switches are located above the heat sink."
     print "Flip the configuration to be UDDD."
     print "Please note the orientation of the switch is upsidedown, so technically, switches 1,2,3 are actually up and 4 is down."
-    print "When you have done so, you may proceed. You may consult https:// for details."
+    print "When you have done so, you may proceed." #  You may consult https:// for details."
 
     print "\nLook at the bottom right corner of the board. There should be two Ethernet ports."
     print "Connect an Ethernet cable going from the LEFT-MOST INNER port to the router."
@@ -124,7 +122,7 @@ def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None,testS
         file.close()
         armFail(username,board_sn,board_vn,board_md,testStatus)
     print "Let's try to log in via ssh onto the board! In your terminal window, type in 'ssh root@IP' where IP is the IP address of board."
-    print "Obtain the password from Kevin. At the command line, you should see you logged in as root@iceboard."
+    print "The password is blank. At the command line, you should see you logged in as root@iceboard."
     print "Were you successful in logging in via ssh "
     ssh = raw_input("Enter 'Y' or 'N': 	")
     if ssh == 'Y' or ssh == 'y':

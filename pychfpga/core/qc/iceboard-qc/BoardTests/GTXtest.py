@@ -38,7 +38,7 @@ def GTXtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMP
     file.write('Tester: ' + username + '\n\n')
 
     print "For this test, we NEED to have the same SET UP as that of the already programmed FPGA. You also need the JTAG and QSFP cables."
-    print "Please consult https:// for details regarding the materials. Or ask Kevin."
+    # print "Please consult https:// for details regarding the materials. Or ask Kevin."
     #print "Let's get started. Is the board turned on and the set up same as that described from above?"
     #program = raw_input("Enter 'Y' or 'N': 	")
     #if program != 'Y' and program != 'y':
@@ -48,7 +48,7 @@ def GTXtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMP
     print "Connect the JTAG USB to the computer."
 
     print "\nNow grab a QSFP cable. We need to connect the two scary-looking spiky connector along the bottom edge of the board together."
-    print "Please consult http://kingspeak.physics.mcgill.ca/twiki/bin/edit/Chime/IceBoardQCManual for details regarding the board."
+    # print "Please consult http://kingspeak.physics.mcgill.ca/twiki/bin/edit/Chime/IceBoardQCManual for details regarding the board."
     notimportant = raw_input("Press Enter to continue:      ")
     print "\nNow let's open up ChipScope Pro's Analyzer program~ Go into the Start Menu."
     print "Go to All Programs -> Xilink Design Tools -> ISE Design Suite 14.4 -> ChipScope Pro -> ChipScoe 64-bit -> Analyzer."

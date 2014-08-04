@@ -40,7 +40,7 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     file.write('Tester: ' + username + '\n\n')
 
     print "For this test, we NEED to have already programmed the FPGA. You also need an Ethernet cable and an adapter for the board connector."
-    print "Please consult http://kingspeak.physics.mcgill.ca/twiki/bin/edit/Chime/IceBoardQCManual for details regarding the connector. Or ask Kevin."
+    # print "Please consult http://kingspeak.physics.mcgill.ca/twiki/bin/edit/Chime/IceBoardQCManual for details regarding the connector. Or ask Kevin."
     print "Let's get started. Is the board turned on and the FPGA has been programmed?"
     program = raw_input("Enter 'Y' or 'N': 	")
     if program != 'Y' and program != 'y':
@@ -150,7 +150,7 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
                 print line
         probe = raw_input("Probe temperature? (y/n)\t")
     
-    print "\nDo you see a temperature difference that indicates the temperating is being probed correctly?"
+    print "\nDo you see a temperature difference that indicates the temperature is being probed correctly?"
     tempprobe = raw_input("Enter 'Y' or 'N': 		")
     if tempprobe == 'Y' or tempprobe == 'y':
         file.write('\nProbing FPGA temperature on board: Pass')
@@ -160,13 +160,9 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
         file.close()
         fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
         
-    print "\nNow let's write all these status!"
-    print "!!!!!!!!!!!!!!!! WARNING !!!!!!!!!!!!!!!!!!!!!!!"
-    print "------------------------------------------------"
-    tm.sleep(1)
-    print "For the part below to work, please consult the website https://kingspeak.physics.mcgill.ca/twiki/bin/edit/Chime/IceBoardQCManual before continuing."
+    # print "For the part below to work, please consult the website https://kingspeak.physics.mcgill.ca/twiki/bin/edit/Chime/IceBoardQCManual before continuing."
     
-    print "We will now call a few of the FPGA functions and record them."
+    print "\nWe will now call a few of the FPGA functions and record them."
     
     print "\nc.ANT.status():"
     file.write('\n\nANT status output: ')

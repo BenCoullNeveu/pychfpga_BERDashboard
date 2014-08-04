@@ -37,8 +37,8 @@ def programPLLtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
     file.write('Tester: ' + username + '\n\n')
 
     print "For this test, you'll need an FTDI cable and a jumper."
-    print "Please see http://kingspeak.physics.mcgill.ca/twiki/bin/edit/Chime/IceBoardQCManual for details"
-    print "or seek help from someone (i.e. Kevin). Make sure the board's connected to a power supply but turn it off for now."
+    # print "Please see http://kingspeak.physics.mcgill.ca/twiki/bin/edit/Chime/IceBoardQCManual for details"
+    print "Make sure the board is connected to a power supply but turn it off for now."
     print "Please attach a jumper for the 'Crystal' Jumper in the Clock Select Jumpers selection. "
     print "They are located on the left of the SD card slot. "
     notimportant = raw_input("Press Enter to continue: 	")

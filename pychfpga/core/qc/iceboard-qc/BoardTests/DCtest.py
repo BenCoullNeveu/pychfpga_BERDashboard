@@ -35,13 +35,13 @@ def DCtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPT
     date_str=iceboardtest.date_format(tm.localtime())
     file.write('Date : ' + date_str + '\n')
     file.write('Tester: ' + username + '\n\n')
-    print 'For this test, please do power up the board. Please configure the set up to that as shown on http://kingspeak.physics.mcgill.ca/twiki/bin/view/Chime/IceBoardQCManual'
+    print 'For this test, please do power up the board. '# Please configure the set up to that as shown on http://kingspeak.physics.mcgill.ca/twiki/bin/view/Chime/IceBoardQCManual'
     print 'For this board, you will need a multimeter, a power supply, and a twisted pair cable with two banana plugs on one side to measure voltage.'
     notimportant = raw_input("Press Enter to continue:      ")
     print "Lay the board on a grounding mat in front of you"
     print "To properly orient the board, rotate the board until the McGill Cosmology logo is facing the right way as you look at the board"
     print "The buck regulators to be tested will go in a ANTICLOCKWISE order, starting off with the upper left-most regulator"
-    print "If you're unsure about which regulator is which, please refer to 'https://' for an image guide"
+    # print "If you're unsure about which regulator is which, please refer to 'https://' for an image guide"
     print "All these regulators should be probed with respects to the board's GROUND. A good ground to pick is the ground to the power supply, i.e. centre screw on the connector on the left-hand side of the board"
     print "You should be probing the LONGER pin on the regulators."
     print "When probing, it's a good habit to press the probe testing the place of interest with the pin tightly pressed against your fingertips."
@@ -208,8 +208,8 @@ def DCtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPT
     file.close()
     testStatus[5] = True
     
-    print "If this hasn't been done, you should attach a heat sink on the FPGA at this point."
-    print "Please consult http://kingspeak.physics.mcgill.ca/twiki/bin/edit/Chime/IceBoardQCManual as this is not part of the testing process"
+    print "\nIf this hasn't been done, you should attach a heat sink on the FPGA at this point."
+    # print "Please consult http://kingspeak.physics.mcgill.ca/twiki/bin/edit/Chime/IceBoardQCManual as this is not part of the testing process"
     print "Do you wish to proceed to another test?"
     proceed = raw_input("Enter 'Y' or 'N':  ")
     if proceed == 'Y' or proceed == 'y':
