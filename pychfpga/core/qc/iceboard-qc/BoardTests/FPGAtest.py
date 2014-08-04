@@ -106,48 +106,46 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     # Capture standard output
     from cStringIO import StringIO
     import sys
+    import logging
     class Capturing(list):
         '''
-        Captures standard output. Taken from http://stackoverflow.com/a/16571630 .
+        Captures standard output and error. Taken from http://stackoverflow.com/a/16571630 .
         '''
         def __enter__(self):
             self._stdout = sys.stdout
             self._stderr = sys.stderr
             sys.stdout = sys.stderr = self._stringio = StringIO()
+            self._handler = logging.StreamHandler(self._stringio)
+            logging.getLogger().addHandler(self._handler)
             return self
         def __exit__(self, *args):
             self.extend(self._stringio.getvalue().splitlines())
             sys.stdout = self._stdout
             sys.stderr = self._stderr
+            logging.getLogger().removeHandler(self._handler)
     
     print "Let's try probing some temperatures on the board."
-    with Capturing() as output:
+    try:
+        c.SYSMON.status()
+    except Exception as e:
+        file.write('\nRunning top_test on board: Fail')
+        file.write("\n" + repr(e))
+        file.write('\nFPGA Test Overall Status: Fail')
+        file.close()
+        fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
+
+    print "\nYou should be able to read the core temperature of the FPGA. Now, move the fan away for the board and probe again. (And move the fan back.) "
+    probe = raw_input("Probe temperature? (y/n)\t")
+    while probe == 'y' or probe == 'Y':
         try:
-            c.SYSMON.status()
+            with Capturing() as output:
+                c.SYSMON.status()
         except Exception as e:
             file.write('\nRunning top_test on board: Fail')
             file.write("\n" + repr(e))
             file.write('\nFPGA Test Overall Status: Fail')
             file.close()
             fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
-        print "SYSMON.status()"
-        for line in output:
-            print line
-    print "\nYou should be able to read the core temperature of the FPGA. Now, move the fan away for the board and probe again. (And move the fan back.) "
-    probe = raw_input("Probe temperature? (y/n)\t")
-    while probe == 'y' or probe == 'Y':
-        with Capturing() as output:
-            try:
-                c.SYSMON.status()
-            except Exception as e:
-                file.write('\nRunning top_test on board: Fail')
-                file.write("\n" + repr(e))
-                file.write('\nFPGA Test Overall Status: Fail')
-                file.close()
-                fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
-            print "SYSMON.status()"
-            for line in output:
-                print line
         probe = raw_input("Probe temperature? (y/n)\t")
     
     print "\nDo you see a temperature difference that indicates the temperature is being probed correctly?"
@@ -166,146 +164,143 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     
     print "\nc.ANT.status():"
     file.write('\n\nANT status output: ')
-    with Capturing() as output:
-        try:
+    try:
+        with Capturing() as output:
             c.ANT.status()
-        except Exception as e:
-            file.write('\nRunning top_test on board: Fail')
-            file.write("\n" + repr(e))
-            file.write('\nFPGA Test Overall Status: Fail')
-            file.close()
-            fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
-        for line in output:
-            file.write('\n' + line)
-            print line
+    except Exception as e:
+        file.write('\nRunning top_test on board: Fail')
+        file.write("\n" + repr(e))
+        file.write('\nFPGA Test Overall Status: Fail')
+        file.close()
+        fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
+    for line in output:
+        file.write('\n' + line)
+        print line
     
     print "\nc.CORR.status():"
     file.write('\n\nCORR status output: ')
-    with Capturing() as output:
-        try:
+    try:
+        with Capturing() as output:
             c.CORR.status()
-        except Exception as e:
-            file.write('\nRunning top_test on board: Fail')
-            file.write("\n" + repr(e))
-            file.write('\nFPGA Test Overall Status: Fail')
-            file.close()
-            fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
-        for line in output:
-            file.write('\n' + line)
-            print line
-            
+    except Exception as e:
+        file.write('\nRunning top_test on board: Fail')
+        file.write("\n" + repr(e))
+        file.write('\nFPGA Test Overall Status: Fail')
+        file.close()
+        fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
+    for line in output:
+        file.write('\n' + line)
+        print line
+        
     print "\nc.FreqCtr.status():"
     file.write('\n\nFreqCtr status output: ')
-    with Capturing() as output:
-        try:
-            c.FreqCtr.status()
-        except Exception as e:
-            file.write('\nRunning top_test on board: Fail')
-            file.write("\n" + repr(e))
-            file.write('\nFPGA Test Overall Status: Fail')
-            file.close()
-            fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
-        for line in output:
-            file.write('\n' + line)
-            print line
+    try:
+        with Capturing() as output:
+           c.FreqCtr.status()
+    except Exception as e:
+        file.write('\nRunning top_test on board: Fail')
+        file.write("\n" + repr(e))
+        file.write('\nFPGA Test Overall Status: Fail')
+        file.close()
+        fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
+    for line in output:
+        file.write('\n' + line)
+        print line
     
     print "\nc.GPIO.status():"
     file.write('\n\nGPIO status output: ')
-    with Capturing() as output:
-        try:
+    try:
+        with Capturing() as output:
             c.GPIO.status()
-        except Exception as e:
-            file.write('\nRunning top_test on board: Fail')
-            file.write("\n" + repr(e))
-            file.write('\nFPGA Test Overall Status: Fail')
-            file.close()
-            fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
-        for line in output:
-            file.write('\n' + line)
-            print line
+    except Exception as e:
+        file.write('\nRunning top_test on board: Fail')
+        file.write("\n" + repr(e))
+        file.write('\nFPGA Test Overall Status: Fail')
+        file.close()
+        fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
+    for line in output:
+        file.write('\n' + line)
     
     print "\nc.GPU.status():"
     file.write('\n\nGPU status output: ')
-    with Capturing() as output:
-        try:
+    try:
+        with Capturing() as output:
             c.GPU.status()
-        except Exception as e:
-            file.write('\nRunning top_test on board: Fail')
-            file.write("\n" + repr(e))
-            file.write('\nFPGA Test Overall Status: Fail')
-            file.close()
-            fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
-        for line in output:
-            file.write('\n' + line)
-            print line
-    
+    except Exception as e:
+        file.write('\nRunning top_test on board: Fail')
+        file.write("\n" + repr(e))
+        file.write('\nFPGA Test Overall Status: Fail')
+        file.close()
+        fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
+    for line in output:
+        file.write('\n' + line)
+        print line
+
     print "\nc.REFCLK.status():"
     file.write('\n\nREFCLK status output: ')
-    with Capturing() as output:
-        try:
+    try:
+        with Capturing() as output:
             c.REFCLK.status()
-        except Exception as e:
-            file.write('\nRunning top_test on board: Fail')
-            file.write("\n" + repr(e))
-            file.write('\nFPGA Test Overall Status: Fail')
-            file.close()
-            fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
-        for line in output:
-            file.write('\n' + line)
-            print line
+    except Exception as e:
+        file.write('\nRunning top_test on board: Fail')
+        file.write("\n" + repr(e))
+        file.write('\nFPGA Test Overall Status: Fail')
+        file.close()
+        fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
+    for line in output:
+        file.write('\n' + line)
+        print line
     
     print "\nc.SPI.status():"
     file.write('\n\nSPI status output: ')
-    with Capturing() as output:
-        try:
+    try:
+        with Capturing() as output:
             c.SPI.status()
-        except Exception as e:
-            file.write('\nRunning top_test on board: Fail')
-            file.write("\n" + repr(e))
-            file.write('\nFPGA Test Overall Status: Fail')
-            file.close()
-            fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
-        for line in output:
-            file.write('\n' + line)
-            print line
+    except Exception as e:
+        file.write('\nRunning top_test on board: Fail')
+        file.write("\n" + repr(e))
+        file.write('\nFPGA Test Overall Status: Fail')
+        file.close()
+        fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
+    for line in output:
+        file.write('\n' + line)
+        print line
     
     print "\nc.SYSMON.status():"
     file.write('\n\nSYSMON status output: ')
-    with Capturing() as output:
-        try:
+    try:
+        with Capturing() as output:
             c.SYSMON.status()
-        except Exception as e:
-            file.write('\nRunning top_test on board: Fail')
-            file.write("\n" + repr(e))
-            file.write('\nFPGA Test Overall Status: Fail')
-            file.close()
-            fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
-        for line in output:
-            file.write('\n' + line)
-            print line
+    except Exception as e:
+        file.write('\nRunning top_test on board: Fail')
+        file.write("\n" + repr(e))
+        file.write('\nFPGA Test Overall Status: Fail')
+        file.close()
+        fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
+    for line in output:
+        file.write('\n' + line)
     
-    print "\nc.fpga.GPIO.FPGA_SERIAL_NUMBER:"
+    print "\nc.GPIO.FPGA_SERIAL_NUMBER:"
     file.write('\n\nFPGA serial number: ')
-    with Capturing() as output:
-        try:
-            c.fpga.GPIO.FPGA_SERIAL_NUMBER
-        except Exception as e:
-            file.write('\nRunning top_test on board: Fail')
-            file.write("\n" + repr(e))
-            file.write('\nFPGA Test Overall Status: Fail')
-            file.close()
-            fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
-        file.write(output[0])
-        print output[0]
-        # Save FPGA serial to separate file
-        if not os.path.isfile('fpga_serials.txt'):
-            serials_file = open('fpga_serials.txt', 'w')
-        else:
-            serials_file = open('fpga_serials.txt', 'a')
-        serials_file.write('\nBoard ' + board_sn + ': ' + hex(int(output[0])))
-        serials_file.close()
+    try:
+        fpga_serial = c.GPIO.FPGA_SERIAL_NUMBER
+    except Exception as e:
+        file.write('\nRunning top_test on board: Fail')
+        file.write("\n" + repr(e))
+        file.write('\nFPGA Test Overall Status: Fail')
+        file.close()
+        fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
+    file.write('\n' + str(fpga_serial))
+    print fpga_serial
+    # Save FPGA serial to separate file
+    if not os.path.isfile('fpga_serials.txt'):
+        serials_file = open('fpga_serials.txt', 'w')
+    else:
+        serials_file = open('fpga_serials.txt', 'a')
+    serials_file.write('\nBoard ' + board_sn + ': ' + hex(int(fpga_serial)))
+    serials_file.close()
     
-    print "If there are any special concerns regarding the board for this test, please describe them below. If none, enter 'None'. "
+    print "\nIf there are any special concerns regarding the board for this test, please describe them below. If none, enter 'None'. "
     comments = raw_input("Enter your comments:  ")
     file.write('\n\nComments: ' + comments)
 

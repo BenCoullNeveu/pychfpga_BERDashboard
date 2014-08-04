@@ -76,6 +76,7 @@ def top_test(ch_acq_path, host_ip): # adpated from pychfpga/top_test
     ADC_DELAY_TABLE = ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2
     
     logger = logging.getLogger(__name__)
+    logging.basicConfig(level=log_level, format='%(asctime)s %(name)-32s %(levelname)-10s : %(message)s')
     logger.info('------------------------')
     logger.info('top_test.py: chFGPA test script')
     logger.info('J.-F. Cliche')
