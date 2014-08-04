@@ -16,7 +16,7 @@ from statusReport import EMPTY_TEST_STATUS
 import csv
 import argparse
 import sys
-from fpgaFun import rampTest
+import fpgaFun
 
 # TODO: If possible apdapt this function to work with ch_acq master branch
 def rampTest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPTY_TEST_STATUS()):
@@ -80,9 +80,14 @@ def rampTest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     ([18]*8,                       [3]*8), #CH14
     ([16]*8,                       [3]*8)  #CH15
     )
+
+    # Make directory
+    directory = 'ramp_tests/QC/sn' + board_sn
+    if not os.path.exists(directory):
+        os.makedirs(directory)
     
     # Begin Ramp test
-    rampTest(ch_acq_path,if_ip,board_ip)
+    fpgaFun.rampTest(ch_acq_path,directory + '/ramp_testing_trial_sn' + board_sn,if_ip,board_ip)
     
     # Record results to file
     test_pass = False

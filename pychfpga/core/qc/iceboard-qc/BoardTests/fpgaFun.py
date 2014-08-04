@@ -92,11 +92,12 @@ def top_test(ch_acq_path, host_ip): # adpated from pychfpga/top_test
     
     return [c,r]
 
-def rampTest(ch_acq_path, host_ip, board_ip):
+def rampTest(ch_acq_path, directory, host_ip, board_ip):
     '''
     Run the ramp test on a single board connected to host_ip.
     '''
     # Import necessary pychfpga modules
+    import sys
     sys.path.append(ch_acq_path)
     from pychfpga.common.tests.ramp_test import test_adc_ramp_histogram
     from pychfpga import save_raw_frames
@@ -133,10 +134,7 @@ def rampTest(ch_acq_path, host_ip, board_ip):
     # Begin Ramp test
     print "\nBegin ramp test:"
     test = test_adc_ramp_histogram(c, r)
-    directory = 'ramp_tests/QC/sn' + board_sn
-    if not os.path.exists(directory):
-        os.makedirs(directory)
-    test.execute(directory + '/ramp_testing_trial_sn' + board_sn + '_' + str(i))
+    test.execute(directory)
     r.close()
     
     
