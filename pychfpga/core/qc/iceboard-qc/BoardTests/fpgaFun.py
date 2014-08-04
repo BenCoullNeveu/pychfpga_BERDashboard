@@ -72,7 +72,7 @@ def top_test(ch_acq_path, host_ip): # adpated from pychfpga/top_test
     log_level = logging.INFO
     data_width = 4
     group_frames = 2
-    enable_gpu_link = 1
+    enable_gpu_link = 0
     ADC_DELAY_TABLE = ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2
     
     logger = logging.getLogger(__name__)
@@ -91,5 +91,52 @@ def top_test(ch_acq_path, host_ip): # adpated from pychfpga/top_test
     r = chFPGA_receiver.chFPGA_receiver(chFPGA_config, ip_address=ip, port=41001, host_ip = host_ip)
     
     return [c,r]
+
+def rampTest(ch_acq_path, host_ip, board_ip):
+    '''
+    Run the ramp test on a single board connected to host_ip.
+    '''
+    # Import necessary pychfpga modules
+    sys.path.append(ch_acq_path)
+    from pychfpga.common.tests.ramp_test import test_adc_ramp_histogram
+    from pychfpga import save_raw_frames
+    from pychfpga.core.chFPGA_controller import chFPGA_controller as ChimeFpgaFirmware
+    from pychfpga.core import chFPGA_receiver
+    
+    # Timing for ADCs
+    ADC_DELAY_TABLE= (
+    ([16]*8,     [3]*8), #CH0
+    ([7]*8,                       [3]*8), #CH1
+    ([22]*8,    [3]*8), #CH2
+    ([19]*8,                       [3]*8), #CH3
+    ([15]*8,                        [3]*8), #CH4
+    ([14, 13, 14, 14, 13, 14, 15, 14],    [3]*8), #CH5
+    ([18]*8,     [3]*8), #CH6
+    ([17]*8,                       [4]*8), #CH7
+    
+    ([15, 17, 15, 18, 17, 14, 17, 15],   [3]*8), #CH8
+    ([16]*8,                       [4]*8), #CH9
+    ([20]*8,                       [3]*8), #CH10
+    ([18]*8,                     [3]*8), #CH11
+    ([15]*8,                       [3]*8), #CH12
+    ([18]*8,                       [3]*8), #CH13
+    ([18]*8,                       [3]*8), #CH14
+    ([16]*8,                       [3]*8)  #CH15
+    )
+    
+    print "\nProgramming FPGA:"
+    programFpga(ch_acq_path, board_ip)
+    
+    print "\nRunning top_test:"
+    [c,r] = top_test(ch_acq_path, host_ip)
+    
+    # Begin Ramp test
+    print "\nBegin ramp test:"
+    test = test_adc_ramp_histogram(c, r)
+    directory = 'ramp_tests/QC/sn' + board_sn
+    if not os.path.exists(directory):
+        os.makedirs(directory)
+    test.execute(directory + '/ramp_testing_trial_sn' + board_sn + '_' + str(i))
+    r.close()
     
     
