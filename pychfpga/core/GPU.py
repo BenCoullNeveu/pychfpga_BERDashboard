@@ -1,13 +1,13 @@
 #!/usr/bin/python
 # Disable pylint Line too long (=C0301)
-# pylint: disable=C0301 
+# pylint: disable=C0301
 
 """
-GPU.py module 
+GPU.py module
     Implements interface to the GPU links
 
 History:
-    2013-10-29 : JFC : Created 
+    2013-10-29 : JFC : Created
 """
 import logging
 from Module import Module_base, BitField
@@ -38,12 +38,12 @@ class GTX_COMMON_base(Module_base):
 
 
     def init(self):
-        """ Initializes the antenna modules""" 
+        """ Initializes the antenna modules"""
         self.logger.info('Initializing GPU GTX_COMMON  #%i' % self.instance_number)
 
 
     def status(self):
-        """ Displays the status of the antenna modules""" 
+        """ Displays the status of the antenna modules"""
         self.logger.info('--- GPU GTX COMMON %i ' % self.instance_number)
 
 
@@ -76,12 +76,12 @@ class GTX_CHANNEL_base(Module_base):
 
 
     def init(self):
-        """ Initializes the GTX CHANNEL block""" 
+        """ Initializes the GTX CHANNEL block"""
         self.logger.info('Initializing GTX_CHANNEL  #%i' % self.instance_number)
 
 
     def status(self):
-        """ Displays the status of the GTX_CHANNEL""" 
+        """ Displays the status of the GTX_CHANNEL"""
         self.logger.info('--- GPU GTX CHANNEL %i ' % self.instance_number)
 
 
@@ -121,7 +121,7 @@ class GPU_base(Module_base):
             i += 1
 
     def init(self):
-        """ Initializes the GPU links""" 
+        """ Initializes the GPU links"""
         for (i, quad) in enumerate(self.QUAD):
             self.logger.debug('Initializing GPU GTX QUAD #%i' % i)
             quad.init()
@@ -131,9 +131,10 @@ class GPU_base(Module_base):
             ch.init()
 
     def set_enable(self, state):
-        self.LINK_ENABLE = state
+#        self.LINK_ENABLE = state
+        pass
 
     def status(self):
-        """ Displays the status of the GPU GTX hardware""" 
+        """ Displays the status of the GPU GTX hardware"""
         # for gtx in self.GTX_COMMON:
         #     gtx.status()

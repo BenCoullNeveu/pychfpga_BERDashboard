@@ -54,6 +54,9 @@ from icebox import IceBox
 class IceBoardException(Exception):
     pass
 
+# class State(object):
+#     def __init__(ORM_class):
+#         self.ORM_class = ORM_class
 
 
 class IceBoard(HWMResource, AttributeUser):
@@ -150,6 +153,9 @@ class IceBoard(HWMResource, AttributeUser):
     # These attributes need to be initialized when an Iceboard object is
     # created explicitely by the program or implicitely from the database when
     # the object is accessed.
+
+    # state = IceBoardState()
+
 
     fpga = None
     hw = None # Object handling the IceBoard hardware
