@@ -39,7 +39,7 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     file.write('Date : ' + date_str + '\n')
     file.write('Tester: ' + username + '\n\n')
 
-    print "For this test, we NEED to have already programmed the FPGA. You also need an Ethernet cable and an adapter for the board connector."
+    print "\nFor this test, we NEED to have already programmed the FPGA. You also need an Ethernet cable and an adapter for the board connector."
     # print "Please consult http://kingspeak.physics.mcgill.ca/twiki/bin/edit/Chime/IceBoardQCManual for details regarding the connector. Or ask Kevin."
     print "Let's get started. Is the board turned on and the FPGA has been programmed?"
     program = raw_input("Enter 'Y' or 'N': 	")
@@ -47,21 +47,22 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
         print "\nWe must first program the FPGA.\n"
         programFPGA.programFPGA(username,board_sn,board_vn,board_md,testStatus)
     
-    print "We'll need to disconnect this computer from the lab network and connect the board directly to the network card of the PC."
+    print "\nWe'll need to disconnect this computer from the lab network and connect the board directly to the network card of the PC."
+    print "The PC's adapter must support gigabit ethernet, and have Jumbo Frames enabled."
     print "First, disconnect the Ethernet cable going from the computer to the router."
-    notimportant = raw_input("Press Enter to continue: 	")
-
     print "You should see three big silver long rectangular (QSFP) connectors on the bottom edge of the board. You should connect the adapter"
     print "for the connector to the connector to the right of these (the one besides the two scary-looking spiky connectors)."
     notimportant = raw_input("Press Enter to continue: 	")
 
     print "In the Network and Sharing Centre part of the PC, click on 'Change adapter settings' on the left pane."
     print "In Local Area Connection 2 connection, you should NOT see an 'x' on the icon for the connection."
-    notimportant = raw_input("Press Enter to continue: 	")
-    print "Right click on this icon and select Properties. In the pop-up window, highlight Internet Protocol Version 4"
+    
+    print "\nRight click on this icon and select Properties. In the pop-up window, highlight Internet Protocol Version 4"
     print "and click on the Properties button below. You should see the option set to 'use the following IP address'"
     print "Write down the IP address that appears below that line."
     host_ip = raw_input("Enter IP address: 		")
+    
+    print "\nIf Jumbo Frames are not enabled, do so by clicking on Configure > Advanced > Jumbo Frames in the previous Properties dialog."
     
     # Get correct ch_acq path
     ch_acq_path = '../../ch_acq/'
@@ -84,7 +85,7 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
         except Exception as e:
             traceback.print_exc(e)
             print "\nTop_test did not run successfully."
-            confirm = raw_input("Do you want to try reprogramming the board and running it again? (y/n)\t")
+            confirm = raw_input("Do you want to try reprogramming the board and try running it again? (y/n)\t")
             if confirm != 'Y' and confirm != 'y':
                 file.write('\nRunning top_test on board: Fail')
                 file.write("\n" + repr(e))

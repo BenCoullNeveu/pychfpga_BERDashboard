@@ -70,8 +70,8 @@ def top_test(ch_acq_path, host_ip): # adpated from pychfpga/top_test
     init = 1
     sampling_frequency = 800
     log_level = logging.INFO
-    data_width = 4
-    group_frames = 2
+    data_width = 8
+    group_frames = 1
     enable_gpu_link = 0
     ADC_DELAY_TABLE = ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2
     

@@ -18,7 +18,6 @@ import argparse
 import sys
 import fpgaFun
 
-# TODO: If possible apdapt this function to work with ch_acq master branch
 def rampTest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPTY_TEST_STATUS()):
     testStatus[0] = username
     testStatus[1] = board_sn
@@ -45,9 +44,16 @@ def rampTest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     file.write('Date : ' + date_str + '\n')
     file.write('Tester: ' + username + '\n\n')
     
+    # Intro
+    print "\nFor this test, you will need to have both CHIME ADC mezzanines mounted on the board."
+    print "As for the FPGA test, you need one ethernet cable going from the ARM port to the computer and one going from the SFP-Ethernet apdapter to the computer."
+    print "Make sure this last cable is connected to a gigabit port with Jumbo Frames enabled."
+    
+    print "\nYou should connect a fan to the FPGA heatsink, and ensure there is airflow over the mezzanine ADCs."
+    
     # Get correct ch_acq path
     ch_acq_path = '../../chime/ch_acq/'
-    confirm = raw_input('This test requires modules from ch_acq (make sure you are using iceboard_dev branch).\nUsing path ' + ch_acq_path + '. Would you like to modify it? (y/n)\t')
+    confirm = raw_input('\nThis test requires modules from ch_acq (make sure you are using master branch).\nUsing path ' + ch_acq_path + '. Would you like to modify it? (y/n)\t')
     if confirm == 'y' or confirm == 'Y':
         ch_acq_path = raw_input('Enter path:\t')
     
@@ -87,6 +93,7 @@ def rampTest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
         os.makedirs(directory)
     
     # Begin Ramp test
+    raw_input("\nPress Enter to begin ramp test:\t")
     fpgaFun.rampTest(ch_acq_path,directory + '/ramp_testing_trial_sn' + board_sn,if_ip,board_ip)
     
     # Record results to file
