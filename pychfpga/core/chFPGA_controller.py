@@ -356,7 +356,7 @@ class chFPGA_controller(FpgaCoreFirmware):
             # Get GPU link configuration
             self.NUMBER_OF_GPU_LINKS = self.GPIO.NUMBER_OF_GPU_LINKS
 
-            self.NUMBER_OF_BP_SHUFFLE_LANES = 0
+            self.NUMBER_OF_BP_SHUFFLE_LANES = 16
             # Get correlator info and their properties
             self.NUMBER_OF_CORRELATORS_MAX = self.GPIO.NUMBER_OF_CORRELATORS
             self.NUMBER_OF_CORRELATORS = self.GPIO.NUMBER_OF_CORRELATORS

@@ -52,6 +52,9 @@ SQLAlchemy's "eager" options and ensuring there are indices on the right
 columns.
 """
 
+import gevent, gevent.monkey
+gevent.monkey.patch_socket() # comment this out to disable green threads.
+
 import Queue as queue
 import os, sys, traceback
 import urlparse
@@ -77,7 +80,7 @@ class HWMQueryAttribute(object):
         method, and is initialized with a *copy* of the original query and attribute list.
         """
         logger = logging.getLogger(__name__)
-        logger.debug('calling __new__')
+        logger.debug('calling HWMQueryAttribute.__new__')
         # ClassWithDoc = type(HWMQueryAttributeBase.__name__, HWMQueryAttributeBase.__bases__, dict(HWMQueryAttributeBase.__dict__))
         class HWMQueryAttributeWithDoc(HWMQueryAttributeBase): pass
         try:
@@ -88,6 +91,8 @@ class HWMQueryAttribute(object):
             call_method = lambda self_: None
             call_method.__doc__ = 'This object is not callable'
             HWMQueryAttributeWithDoc.__call__ = call_method #functools.update_wrapper(call_method, lambda:None)
+        logger.debug('Done creating new HWMQueryAttribute')
+
         return HWMQueryAttributeWithDoc(query_object, attribute_chain)
 
 class HWMQueryAttributeBase(object):
@@ -232,19 +237,19 @@ class HWMQuery(Query):
                  or:         q._execute_concurrent_call(attr, '__getattr__', attr_name) # where attr describes the parent attribute
         """
         # define the function performed by each thread on each object
-        def runner((query_result, call_list, database_lock)):
+        def runner(query_result, call_list):
             logger = logging.getLogger(__name__)
             # Create a thread-local session, since SQLAlchemy sessions are not thread-safe.
             # We used to have autoflush=False to make sure flushing will not occur until we ask for it because we get Database is busy errors, but that does not seem to be needed anymode with the improved code
             # We disable 'expire_on_commit' to prevent SA from reloading the expired objects just after commit, which would then get rollbacked on the close()
-            local_session = HardwareMap.scoped_session(expire_on_commit=False) # get a thread-local session
+            # local_session = HardwareMap.scoped_session(expire_on_commit=False) # get a thread-local session
             try: # for now on catch any error and rollback the database if any error occur (except for errors caused by the method called by the user, see other try block below).
-                local_source_obj = local_session.merge(query_result) # move the object from the source session into out thread-local session
+                # local_source_obj = local_session.merge(query_result) # move the object from the source session into out thread-local session
                 results = list()
                 for (attribute_chain, method, local_args, local_kwargs) in call_list:
                     # if attribute_chain:
-                    target_obj = HWMQueryAttributeBase._get_object(local_source_obj, attribute_chain) # follow the attribute chain to get the last object
-                    logger.debug('Running thread calling object (%r).%s.%s(%s,%s) in session %r' % (query_result, '.'.join(attribute_chain), method, ','.join([repr(a) for a in local_args]), ','.join(['%s=%s' % (key,value) for (key,value) in local_kwargs.items()]), local_session))
+                    target_obj = HWMQueryAttributeBase._get_object(query_result, attribute_chain) # follow the attribute chain to get the last object
+                    logger.debug('Running thread calling object (%r).%s.%s(%s,%s)' % (query_result, '.'.join(attribute_chain), method, ','.join([repr(a) for a in local_args]), ','.join(['%s=%s' % (key,value) for (key,value) in local_kwargs.items()])))
 
                     # Perform the desired function on the attribute. Catch any error and return them in the result set instead of raisong an exception.
                     try:
@@ -263,43 +268,57 @@ class HWMQuery(Query):
                         tb = traceback.extract_tb(exception_tb)
                         tracebackString = ['    %s in .../%s:%i' % (fn, os.path.split(filename)[1], line) for (filename, line, fn, code) in tb]
                         tracebackString[-1] += ('=> %r' % exception_args)
-                        e = HWMQueryException('Exception on object (%r.%s) = %r\nTraceback:\n%s' % (local_source_obj, '.'.join(attribute_chain), target_obj, '\n'.join(tracebackString)))
+                        e = HWMQueryException('Exception on object (%r.%s) = %r\nTraceback:\n%s' % (query_result, '.'.join(attribute_chain), target_obj, '\n'.join(tracebackString)))
                         self._logger.error(e)
                         result = exc
-                    logger.debug('Thread for object %r.%s is returning %r' %  (local_source_obj, '.'.join(attribute_chain), result))
+                    logger.debug('Thread for object %r.%s is returning %r' %  (query_result, '.'.join(attribute_chain), result))
                     results.append(result)
-                    logger.debug('Added  %r for object %r result list' %  (result, local_source_obj))
-                with database_lock:
-                    self._logger.info('Flushing thread-local session for %r' % (target_obj))
-                    local_session.flush() # probably not necessary with close
-                    self._logger.info('Commiting thread-local session for %r' % (target_obj))
-                    local_session.commit() # probably not necessary with close
-                    self._logger.info('Closing thread-local session for %r' % (target_obj))
-                    local_session.close()
-                    self._logger.info('Thread-local session for %r is closed' % (target_obj))
+                    logger.debug('Added  %r for object %r result list' %  (result, query_result))
+                # with database_lock:
+                    # self._logger.info('Flushing thread-local session for %r' % (target_obj))
+                    # local_session.flush() # probably not necessary with close
+                    # self._logger.info('Commiting thread-local session for %r' % (target_obj))
+                    # local_session.commit() # probably not necessary with close
+                    # self._logger.info('Closing thread-local session for %r' % (target_obj))
+                    # local_session.close()
+                    # self._logger.info('Thread-local session for %r is closed' % (target_obj))
                     # new_obj = object_session(query_result).merge(local_source_obj) # make sure the changes to the object are reflected in the original session. Hopefully this will not create a new object in a new memoty location...
                     # if new_obj is not local_source_obj: print 'oops the object has changed'
                 # object_session(query_result).expunge(query_result) # make sure the changes to the object are reflected in the original session. Hopefully this will not create a new object in a new memoty location...
-                self._logger.info('Refreshing object %r in original session' % (query_result))
-                object_session(query_result).refresh(query_result) # make sure the changes to the object are reflected in the original session. Hopefully this will not create a new object in a new memoty location...
+                # self._logger.info('Refreshing object %r in original session' % (query_result))
                 # object_session(query_result).refresh(query_result) # make sure the changes to the object are reflected in the original session. Hopefully this will not create a new object in a new memoty location...
-                self._logger.info('Original object is refreshed. Exiting thread session for %r' % (query_result))
+                # object_session(query_result).refresh(query_result) # make sure the changes to the object are reflected in the original session. Hopefully this will not create a new object in a new memoty location...
+                # self._logger.info('Original object is refreshed. Exiting thread session for %r' % (query_result))
                 return results
             except Exception as ee:
                 logger.error('Thread exception %r' % ee)
-                local_session.rollback()
+                # local_session.rollback()
                 raise ee
                 # return [None]
         exception_list = []
         database_lock = threading.Lock()
-        with concurrent.futures.ThreadPoolExecutor(max_workers=100) as e:
-            results = e.map(runner, zip(list(self), [self._call_list]*self.count(), [database_lock]*self.count()) ) # return a generator that will yield the results (in the right order)  as they become available.
-            try:
-                transposed_results= zip(*results) # rearrange the results in a tuple where each element is a vector containing the result of one call for all query objects.
-            except Exception as exc:
-                transposed_results = None
-                exception_list.append(exc)
-                self._logger.error('Exception in thread results : %r' % (exc))
+
+        threads = [ gevent.spawn(runner, query_result, self._call_list) for query_result in self]
+        gevent.joinall(threads)
+
+        # Look for any exceptions; raise them if they exist.
+        for t in threads:
+            if t.exception:
+                exception_list.append(t.exception)
+
+
+        # Results are indexed backwards (i.e. [thread][call]). Transpose.
+        transposed_results = zip(*( t.value for t in threads ))
+
+        # with concurrent.futures.ThreadPoolExecutor(max_workers=100) as e:
+        #     results = e.map(runner, zip(list(self), [self._call_list]*self.count(), [database_lock]*self.count()) ) # return a generator that will yield the results (in the right order)  as they become available.
+        #     try:
+        #         transposed_results= zip(*results) # rearrange the results in a tuple where each element is a vector containing the result of one call for all query objects.
+        #     except Exception as exc:
+        #         transposed_results = None
+        #         exception_list.append(exc)
+        #         self._logger.error('Exception in thread results : %r' % (exc))
+
         self._call_list = [] # empty the call list
         # self._logger.debug('All threads returned %r' % transposed_results) # resilting string is sometimes too big for syslog.
         if exception_list:
@@ -363,6 +382,7 @@ class HWMQuery(Query):
         # happens below.)
         attr_present = [hasattr(x, name) for x in self]
         if not any(attr_present):
+            self._logger.error('Atttribute %s does not exist on any element of the query.' % name)
             raise AttributeError
         elif not all(attr_present):
             raise HWMQueryException("Not all elements of the query contain the attribute '%s'" % name);

@@ -102,9 +102,9 @@ class GTX(Module_base):
     RXDFELPMRESET = BitField(CONTROL, 10, 5, doc='') #gt_control_bytes(i)(10)(5);
     RXMONITORSEL  = BitField(CONTROL, 10, 3, width=2, doc='') #gt_control_bytes(i)(10)(4 downto 3);
     RXLPMHOLD     = BitField(CONTROL, 10, 1, width=2, doc='') #gt_control_bytes(i)(10)(2 downto 1);
-    RXDFEHOLD     = BitField(CONTROL, 11, 0, width=9, doc='') #gt_control_bytes(i)(11);
+    RXDFEHOLD     = BitField(CONTROL, 11, 0, width=9, doc='') # Bit 0: AGC, 1: LF, 2-5: TAP2-5, 6: UT, 7: VP, 8: OS
     RXLPMOVRD     = BitField(CONTROL, 12, 1, width=2, doc='') #gt_control_bytes(i)(10)(2 downto 1);
-    RXDFEOVRD     = BitField(CONTROL, 13, 0, width=9, doc='') #gt_control_bytes(i)(11);
+    RXDFEOVRD     = BitField(CONTROL, 13, 0, width=9, doc='') # Bit 0: AGC, 1: LF, 2-5: TAP2-5, 6: UT, 7: VP, 8: OS
 
     DMONITOROUT   = BitField(STATUS, 0, 0, width=8, doc='Debug')
     RXDATA        = BitField(STATUS, 4, 0, width=32)
@@ -136,6 +136,13 @@ class GTX(Module_base):
     TXBUF_EN          = BitField(DRP, 0x01c, 14, doc="")
     RXBUF_EN          = BitField(DRP, 0x09d, 1, doc="")
 
+    RX_DEBUG_CFG      = BitField(DRP, 0x0A5, 0, width=12, doc='')
+    DMONITOR_CFG0     = BitField(DRP, 0x086, 0, width=16, doc='Bits 15:0 of the DMONITOR_CFG register. Bit 15 should always be 1. Bit 0 enables DMONITOR output when 1.')
+    DMONITOR_CFG1     = BitField(DRP, 0x087, 0, width=8, doc='Bits 23:16 of the DMONITOR_CFG register. Should always be 0x00')
+    DMONITOR_SELECT   = BitField(DRP, 0x086, 0, doc='Bits 0 of the DMONITOR_CFG register. Enables DMONITOR output when 1.')
+    PCS_RSVD_ATTR_BIT6= BitField(DRP, 0x06F, 6, doc='Bit 6 of the PCS_RSVD_ATTR. Must be 1 to use DMONITOR.')
+    RX_DFE_GAIN_CFG0  = BitField(DRP, 0x01D, 0, width=16, doc='Bits 15:0 of RX_DFE_GAIN_CFG')
+    RX_DFE_GAIN_CFG0  = BitField(DRP, 0x01E, 0, width=7, doc='Bits 22:16 of RX_DFE_GAIN_CFG')
     ES_PMA_CFG        = BitField(DRP, 0x0A6, 0, width=9, doc='')
     ES_ERRDET_EN      = BitField(DRP, 0x03D, 9, doc='') #    0 FALSE 0 TRUE 1
     ES_EYE_SCAN_EN    = BitField(DRP, 0x03D, 8, doc='') #    0 FALSE 0 TRUE 1

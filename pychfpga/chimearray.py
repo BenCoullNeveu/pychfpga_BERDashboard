@@ -118,8 +118,8 @@ if __name__ == '__main__':
         fpga_bitstream = ca.get_fpga_bitstream(args.bitfile, ChimeFpgaFirmware) # Get a new bitstream from the database (or create a new database entry if it does not exist yet)
 
 
-    # c = ca.get_iceboards(subarray=args.subarray).index_by(IceBoard.serial_number) # get one or more IceBoards from specified subarray
-    c = ca.get_iceboards(subarray=args.subarray) # get one or more IceBoards from specified subarray
+    c = ca.get_iceboards(subarray=args.subarray).index_by(IceBoard.serial_number) # get one or more IceBoards from specified subarray
+    #c = ca.get_iceboards(subarray=args.subarray) # get one or more IceBoards from specified subarray
 
     # shortcut to index c[7] as c7 etc.
     for (serial,ice) in [(ice.serial_number, ice) for ice in c]:
