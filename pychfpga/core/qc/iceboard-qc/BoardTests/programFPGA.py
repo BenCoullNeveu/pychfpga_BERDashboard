@@ -55,7 +55,7 @@ def programFPGA(username=str,board_sn=str,board_vn=str,board_md=str,testStatus =
     print "\nWe will now program the FPGA."
     ip = raw_input("Enter IP address of board (i.e. 10.10.10.NUM):\t")
     raw_input("Press Enter to proceed with programming (this may take some time):\t")
-    fpgaFun.programFpga(ch_acq_path, ip)
+    fpgaFun.programFpga(ch_acq_path, ip) # Can include 3rd argument for custom bitfile path.
 
     #print 'Type in python pychfpga\\arm.py --ip 10.10.10.NUM -f "..\\chFPGA\\xilinx_projects\\CHFPGA_MGK7MB_REV2\\CHFPGA_MGK7MB_REV2.runs\\impl_Rev2\\chFPGA_MGK7MB_Rev2.bit" under this new directory'
     #print 'where NUM is the number of the board (such that 10.10.10.NUM is the IP address programmed onto the board).'

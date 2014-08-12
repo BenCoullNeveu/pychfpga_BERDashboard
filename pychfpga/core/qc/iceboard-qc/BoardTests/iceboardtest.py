@@ -63,14 +63,14 @@ def starttest():
     if (firsttime == 'Y') or (firsttime == 'y'):
         print "To do the QC test, please ensure you have the following:	"
         notimportant = raw_input("Press Enter to continue:		")
-        print "A multimeter\n A power supply\n Twisted pair cable with banana plugs on one side and probes on other (for power supply)\n JTAG cable\n "
-        print "If you have any questions regarding the items above, please consult the website at 'https://' "
+        print " A multimeter\n A power supply\n Twisted pair cable with banana plugs on one side and probes on other (for power supply)\n JTAG cable\n FTDI cable \n QSFP cable \n QSFP-Ethernet adapter"
+        # print "If you have any questions regarding the items above, please consult the website at 'https://' "
         notimportant = raw_input("Press Enter to continue:		")
         print "Please ensure this script is located under the file directory 'Boardtests'.\n"
         notimportant = raw_input("Press Enter to continue:		")
         print "This testing script consists of several tests listed below:\n"
-        print "Inspection Test\n Resistance Test\n DC test\n Programming PLL\n Programming ARM\n Programming FPGA\n FMC Test \n GTX Test\n"
-        print "It is highly suggested for you to perform the test in this order. Please begin performing a test by entering 'iceboardtest.TEST()' on ipython command line."
+        print "Inspection Test\n Resistance Test\n DC test\n Programming PLL\n Programming ARM\n Programming FPGA\n FPGA Test \n GTX Test\n Ramp Test"
+        print "It is highly suggested for you to perform the test in this order."
         print "Happy testing!"
 
     print "Do you wish to proceed to testing?"

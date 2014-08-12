@@ -2,15 +2,16 @@
 Set of functions used in iceboard qc script to program and test the FPGA.
 '''
 
-def programFpga(ch_acq_path, ip):
+def programFpga(ch_acq_path, ip, bitfile_path = "fpga_bitfile.bit"):
     import logging
     import sys
     # Append ch_acq to PATH
     sys.path.append(ch_acq_path)
     from pychfpga.arm import ARM
 
-    # Bitfile
-    filename = "../../chFPGA/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit"
+    # Bitfile path from chFPGA. Left here for reference, now that a bitfile is included in iceboard-qc.
+    # filename = "../../chFPGA/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit"
+    
     # Set log
     log_level = logging.INFO
     logger = logging.getLogger(__name__)

@@ -51,6 +51,7 @@ def programPLLtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
     notimportant = raw_input("Press Enter to continue:")
 
     print "Unfortunately, we cannot use Windows to program the boards. We must program the board through a virtual Linux machine."
+    print "If you are already running Linux, go ahead and ignore the following few lines."
     print "Click on the Windows start icon at the lower left corner of the screen. Select All Programs. Then click on Oracle VM VirtualBox directory."
     print "Click on Oracle VM VirtualBox program."
     notimportant = raw_input("Press Enter to continue: ")

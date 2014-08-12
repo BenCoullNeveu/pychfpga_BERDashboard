@@ -59,8 +59,8 @@ def rampTest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     
     # Get host IP address
     if_ip = '10.10.10.203'
-    confirm = raw_input('\nThis test requires the IP adress of the network adapter used to communicate with the FPGA.\nUsing ' + if_ip + '. Is this correct? (y/n)\t')
-    if confirm == 'n' or confirm == 'N':
+    confirm = raw_input('\nThis test requires the IP adress of the network adapter used to communicate with the FPGA.\nUsing ' + if_ip + '. Would you like to modify it? (y/n)\t')
+    if confirm == 'Y' or confirm == 'y':
         if_ip == raw_input('Enter your IP:\t')
     
     # Get board IP address
