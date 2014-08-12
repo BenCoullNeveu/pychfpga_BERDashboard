@@ -85,10 +85,18 @@ def top_test(ch_acq_path, host_ip): # adpated from pychfpga/top_test
     # get FPGA_controller
     c = chFPGA_controller.chFPGA_controller(ip_address=ip, port_number=41000, adc_delay_table=ADC_DELAY_TABLE, init=init, sampling_frequency=sampling_frequency * 1e6, reference_frequency=10e6, data_width=data_width, group_frames=group_frames, enable_gpu_link = enable_gpu_link, host_ip = host_ip)
     time.sleep(0.5)
-    logger.info('Getting chFPGA configuration')
-    chFPGA_config = c.get_config()
-    logger.info('Starting data/correlator receiver threads')
-    r = chFPGA_receiver.chFPGA_receiver(chFPGA_config, ip_address=ip, port=41001, host_ip = host_ip)
+    
+    # Check if at least one FMC board present
+    adc_present = c.FMC_present[0] or c.FMC_present[1]
+    if not adc_present:
+        logger.warning("No ADC boards are present, will not initialize a receiver.")
+        r = None
+        logger.warning("Returning receiver ('r') as None.")
+    else:
+        logger.info('Getting chFPGA configuration')
+        chFPGA_config = c.get_config()
+        logger.info('Starting data/correlator receiver threads')
+        r = chFPGA_receiver.chFPGA_receiver(chFPGA_config, ip_address=ip, port=41001, host_ip = host_ip)
     
     return [c,r]
 
