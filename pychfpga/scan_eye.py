@@ -553,6 +553,7 @@ def get_ber_vs_power(array, max_power, period=0.1):
     return data
 
 def plot_ber_vs_power(data):
+    for (ss,ds),(tx_power, ber) in data.items(): print '%10s'% ((ss,ds),), ','.join(['%6.1g' % b for b in ber])
     plt.figure(1)
     plt.clf()
 
