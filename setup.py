@@ -50,7 +50,7 @@ if len(sys.argv) == 2 and sys.argv[1] == "install":
     fp.close()
   
   # Copy the configuration files to the CHIME directory.
-  print "Copying %s.conf and %s.conf to %s." % (target, target, chime_dir)
+  print "Copying %s.conf and %s.spec to %s." % (target, target, chime_dir)
   os.system("install -m 644 %s.conf %s.spec %s" % (target, target, chime_dir))
   
   # Copy the init script to the init directory.

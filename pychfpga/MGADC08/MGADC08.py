@@ -14,6 +14,7 @@ import logging
 import numpy as np
 import time
 import struct
+import zlib
 
 import ADC
 import IOExpander
@@ -102,6 +103,7 @@ class MGADC08_base(object):
         return self.fpga.SPI.read_write(device = device, data = data, type = type, port = self.fmc_number, verbose = verbose)
 
     def adc_reset(self):
+
         self.fpga.GPIO.pulse_bit(('ADC0_RESET', 'ADC1_RESET')[self.fmc_number])
 
     def adc_sync(self):
@@ -192,6 +194,83 @@ class MGADC08_base(object):
         elif dictionary_is_present == False:
             print 'No dictionary found on EEPROM. Did the board pass the quality control test?'
         self._board_info = dict_out
+
+
+
+    def write_board_info(self, dict = None ):
+            """
+           Makes a dictionary or accepts dictionnary as input. Writes a dictionary to the EEPROM and also a CRCheck.
+           """
+            # Get dicitonary from user if none supplied
+            if dict == None:
+                ser_num = raw_input("Enter the serial number of the board (e.g. 0001):      ")
+                rev_num = raw_input("Enter the revision number of the board (e.g. 0): ")
+                fab_run = raw_input("Enter the fabrication run of the board (e.g. 1): ")
+                head_ver = raw_input("Enter the header version (e.g. 1): ")
+                delay_tab = raw_input("Enter the delay table of the board: ")
+                model = raw_input("Enter the model of the ADC (e.g. MGADC08):      ")
+                stat = raw_input("Enter the status of the board (0 = Working, 1 = In QC , 2 = Has problems but works, 3 = Failed): ")
+                board_date = raw_input("Enter the date the last test was done (DD/MM/YYYY): ")
+                site = raw_input("Enter the URL to find all the tests associated with this board: ")
+                comments = raw_input("Enter any additional comments you may have about the board. If none, please put 'None': ")
+                dict = {'Serial #': ser_num, \
+                        'Rev #': rev_num, \
+                        'Fabrication Run': fab_run, \
+                        'Header Version': head_ver, \
+                        'Model': model, \
+                        'Delay Table': delay_tab, \
+                        'Status': stat, \
+                        'Date of last test': board_date, \
+                        'Website': site, \
+                        'Comments': comments}
+            
+            # Parse dictionnary into ASCII char list
+            nstring = str(dict)
+            chars = list(nstring)
+            # Write dictionnary to EEPROM, checking each byte after write
+            for i in range(len(chars)):
+                correct = False
+                while not correct:
+                    try:
+                        check = self.eeprom.read(i+1)
+                        if (check == ord(chars[i])):
+                            correct = True
+                        else:
+                            try:
+                                self.eeprom.write(i+1, ord(chars[i]))
+                            except Exception as e:
+                                print self.logger.info('error writing to EEPROM, will retry: ' + e.message)
+                                pass
+                    except Exception as e:
+                        print self.logger.info('error reading from EEPROM, will retry: ' + e.message)
+                        pass
+            # Write 13 at the end of EEPROM
+            thirteen = False
+            while (thirteen == False):
+                try:
+                    self.eeprom.write(0,13)
+                    thirteen = True
+                except Exception as e:
+                    print self.logger.info('error writing 13 to EEPROM, will retry: ' + e.message)
+                    pass
+            # Figure out the CRC and write to EEPROM
+            crcheck = zlib.crc32(nstring)
+            dictbyte = struct.pack('l', crcheck)
+            asciibyte = struct.unpack('BBBB', dictbyte)
+            print 'the crcheck is:' + str(crcheck)
+            #for i in range(len(asciibyte)):
+            i=0
+            while (i < len(asciibyte)):
+                try:
+                    self.eeprom.write(len(chars)+1+i, asciibyte[i])
+                    i+=1
+                except Exception as e:
+                    self.logger.info("error writing CRC, will retry: " + e.message)
+                    pass
+               
+            # Read full EEPROM dictionary and print to log
+            self.load_board_info()
+            self.logger.info("Done. Read back EEPROM: \n" + str(self._board_info))
 
     def init(self, sampling_frequency=800e6, reference_frequency=10e6, verbose=0):
         """ Initializes the FMC board modules"""

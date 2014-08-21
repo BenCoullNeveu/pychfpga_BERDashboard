@@ -16,7 +16,7 @@ History:
 
 from pychfpga.core import chFPGA_controller
 from pychfpga.core import chFPGA_receiver
-import pychfpga.plot_utils as pu
+#import pychfpga.plot_utils as pu
 import numpy as np
 import time
 
