@@ -98,11 +98,12 @@ def get_fpga_hk(fpga, field):
   return ret
 
 # Dictionary of correlators.
-correlator_hash = {"stone"     : ["0001"],
-                   "abbot"     : ["0003"],
-                   "vincente"  : ["29821-0000-0028"],
-                   "blanchard" : ["0029", "0030"],
-                   "testing"   : ["0031", "0032"],
+correlator_hash = {"stone"        : ["0001"],
+                   "abbot"        : ["0003"],
+                   "vincente"     : ["29821-0000-0028"],
+                   "blanchard"    : ["0029"],
+                   "testing"      : ["0031", "0032"],
+                   "first9ucrate" : ["0034"]
                   }
 
 # FPGA housekeeping.
@@ -114,7 +115,6 @@ fpga_hk_field = {      "core_temp" : "deg C",
                            "vrefp" : "V",
                            "vrefn" : "V",
                 }
-
 
 # Current archive format version. Prefixed by "NT_" to signify that these data
 # do not have the time-transpose completed.
@@ -286,7 +286,7 @@ if __name__ == "__main__":
 
   # Create a symbolic link to the output directory.
   os.unlink(conf["acq"]["curfile"])
-  os.symlink(acq_base_dir, conf["acq"]["curfile"])
+  os.symlink("%s_%s_corr" % (time_str, corr_name), conf["acq"]["curfile"])
 
   # Lock the logfile.
   log_file_lock = "%s/.ch_master.log.lock" % acq_base_dir
@@ -337,6 +337,7 @@ if __name__ == "__main__":
   acq.add_header_item("instrument_name", corr_name)
   acq.add_header_item("archive_version", archive_version)
   acq.add_header_item("acquisition_name", "%s_%s_corr" % (time_str, corr_name))
+  acq.add_header_item("acquisition_type", "corr")
 
   # Get the git tag and write it to the header.
   if not len(args.git_tag):
