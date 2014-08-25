@@ -40,6 +40,7 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     file.write('Tester: ' + username + '\n\n')
 
     print "\nFor this test, we NEED to have already programmed the FPGA. You also need an Ethernet cable and an adapter for the board connector."
+    print "You must have already installed a heatsink on the FPGA, and you should run a fan over it for this test."
     # print "Please consult http://kingspeak.physics.mcgill.ca/twiki/bin/edit/Chime/IceBoardQCManual for details regarding the connector. Or ask Kevin."
     print "Let's get started. Is the board turned on and the FPGA has been programmed?"
     program = raw_input("Enter 'Y' or 'N': 	")

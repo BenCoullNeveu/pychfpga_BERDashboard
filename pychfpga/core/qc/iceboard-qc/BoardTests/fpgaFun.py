@@ -24,7 +24,7 @@ def programFpga(ch_acq_path, ip, bitfile_path = "fpga_bitfile.bit"):
     a = ARM(ip)
     logging.basicConfig(level=log_level)
     # Program FPGA
-    a.configure_fpga(filename)
+    a.configure_fpga(bitfile_path)
     
 def top_test(ch_acq_path, host_ip): # adpated from pychfpga/top_test
     '''

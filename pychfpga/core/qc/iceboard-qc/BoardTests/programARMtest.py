@@ -161,11 +161,11 @@ def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None,testS
     if check == 'Y' or check == 'y':
         file.write('\n\nARM Programming Test Overall Status: Pass')
         file.close()
-        testStatus = True
+        testStatus[7] = True
     else:
         file.write('\n\nARM Programming Test Overall Status: Fail')
         file.close()
-        testStatus = False
+        testStatus[7] = False
         armFail(username,board_sn,board_vn,board_md,testStatus)
     print "Do you wish to proceed to another test?"
     proceed = raw_input("Enter 'Y' or 'N':  ")

@@ -43,9 +43,9 @@ def DCtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPT
     print "The buck regulators to be tested will go in a ANTICLOCKWISE order, starting off with the upper left-most regulator"
     # print "If you're unsure about which regulator is which, please refer to 'https://' for an image guide"
     print "All these regulators should be probed with respects to the board's GROUND. A good ground to pick is the ground to the power supply, i.e. centre screw on the connector on the left-hand side of the board"
-    print "You should be probing the LONGER pin on the regulators."
+    print "You should be probing the LONGER pin on the regulators. We mean the one that extends out from ABOVE the coil."
     print "When probing, it's a good habit to press the probe testing the place of interest with the pin tightly pressed against your fingertips."
-    print "Again, refer to the website for help."
+    #print "Again, refer to the website for help."
     notimportant = raw_input("Press Enter to continue:  ")
     print "I M P O R T A N T"
     print "-----------------"

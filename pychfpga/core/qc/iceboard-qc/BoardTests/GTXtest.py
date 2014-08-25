@@ -49,6 +49,8 @@ def GTXtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMP
     print "You may want to inquire about either obtaining the software or to find out if an alternative test is available."
     confirm = raw_input("Do you have the necessary software to proceed to this test? (y/n)\t")
     if not (confirm == 'Y' or confirm == 'y'):
+        file.write('\n\nTester not able to perform GTX test at this time as proper software is not available.\nTest status: N/A')
+        testStatus[10] = None
         print "Do you wish to proceed to another test?"
         proceed = raw_input("Enter 'Y' or 'N':  ")
         if proceed == 'Y' or proceed == 'y':
