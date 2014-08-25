@@ -43,6 +43,19 @@ def GTXtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMP
     #program = raw_input("Enter 'Y' or 'N': 	")
     #if program != 'Y' and program != 'y':
     #    FPGAtest.FPGAtest(username,board_sn,board_vn,board_md,testStatus)
+    
+    print "\nThis test can only be run on a computer equipped with the Xilinx Chipscope Pro software."
+    print "\nIf this software is not available to you (e.g. you are using the Linux netbook), please skip this test for now."
+    print "You may want to inquire about either obtaining the software or to find out if an alternative test is available."
+    confirm = raw_input("Do you have the necessary software to proceed to this test? (y/n)\t")
+    if not (confirm == 'Y' or confirm == 'y'):
+        print "Do you wish to proceed to another test?"
+        proceed = raw_input("Enter 'Y' or 'N':  ")
+        if proceed == 'Y' or proceed == 'y':
+            iceboardtest.choosetest(username,board_sn,board_vn,board_md,testStatus)
+        else:
+            updateStatus.update(testStatus)
+            sys.exit("Thank you for this testing process! The data has been saved. The testing program will now exit.")
     print "\nLet's set everything up! Grab the JTAG cable and connect all the wires to the JTAG pins. The pins are located on the left side of the fan."
     print "Connect the cables accordingly by pin. Leave the n/c pin unconnected and connect VREF wire to 3V3 pin. All other labels should match."
     print "Connect the JTAG USB to the computer."
