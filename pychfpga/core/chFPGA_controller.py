@@ -430,9 +430,9 @@ class chFPGA_controller(FpgaCoreFirmware):
             self._logger.debug('=== Instantiating CROSSBAR')
             self.CROSSBAR = CROSSBAR.CROSSBAR_base(self, self._CROSSBAR_BASE_ADDR, self._CROSSBAR_ADDR_INCREMENT) # CROSSBAR block
 
-            if self.NUMBER_OF_BP_SHUFFLE_LANES:
-                self._logger.debug('=== Instantiating Backplane shuffle subsystem')
-                self.BP_SHUFFLE = shuffle.Shuffle(self, self._BP_SHUFFLE_BASE_ADDR, self._BP_SHUFFLE_ADDR_INCREMENT)
+            # if self.NUMBER_OF_BP_SHUFFLE_LANES:
+            #     self._logger.debug('=== Instantiating Backplane shuffle subsystem')
+            #     self.BP_SHUFFLE = shuffle.Shuffle(self, self._BP_SHUFFLE_BASE_ADDR, self._BP_SHUFFLE_ADDR_INCREMENT)
 
             self._logger.debug('=== Instantiating CORR')
             self.CORR = CORR_BLOCK.CORR_BLOCK_base(self, self._CORR_BASE_ADDR, self._CORR_ADDR_INCREMENT) # Correlator (XMUL, ACC) for each correlator
@@ -534,7 +534,7 @@ class chFPGA_controller(FpgaCoreFirmware):
             self._logger.warning('Unknown arguments %s=%s. Ignoring.' % (key, repr(value)))
 
         self._sampling_frequency = sampling_frequency
-        self.reference_frequency = reference_frequency
+        self._reference_frequency = reference_frequency
         self._FRAME_PERIOD = float(self.FRAME_LENGTH)/self._sampling_frequency
 
         self._logger.info('--- Initializing FPGA ressources')
@@ -608,10 +608,10 @@ class chFPGA_controller(FpgaCoreFirmware):
             self._logger.warning("There are no CROSSBAR blocks in this firmware build (so there can't be data streamed to the correlators or GPU links!)");
 
 
-        if self.NUMBER_OF_BP_SHUFFLE_LANES:
-            self._logger.debug('=== Initializing Backplane Shuffle')
-            self.BP_SHUFFLE.init()
-            # self.BP_SHUFFLE.status()
+        # if self.NUMBER_OF_BP_SHUFFLE_LANES:
+        #     self._logger.debug('=== Initializing Backplane Shuffle')
+        #     self.BP_SHUFFLE.init()
+        #     # self.BP_SHUFFLE.status()
 
         self._logger.debug('=== Initializing FPGA correlators')
         if self.NUMBER_OF_CORRELATORS>0:
@@ -689,7 +689,7 @@ class chFPGA_controller(FpgaCoreFirmware):
 
         config.system_frame_length = self.FRAME_LENGTH
         config.system_sampling_frequency = self._sampling_frequency
-        config.system_reference_frequency = self.reference_frequency
+        config.system_reference_frequency = self._reference_frequency
         config.system_frame_period = self._FRAME_PERIOD
 
         config.adc_board_is_present = self._adc_board[0].is_present()
@@ -863,7 +863,7 @@ class chFPGA_controller(FpgaCoreFirmware):
         """
 
         if isinstance(channel, int):
-            channel = [channel]
+            #channel = [channel]
             board_number = channel // 8
             return self._adc_board[board_number]
         else:

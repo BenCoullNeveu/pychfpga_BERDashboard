@@ -18,6 +18,7 @@ import Queue
 import threading
 import struct
 import time
+import select
 
 import numpy as np
 
@@ -95,13 +96,17 @@ class ReceiverThread(threading.Thread):
 #            bad_delta = 0
     #    data2 = bytearray(buf_size)        
         self.sock.settimeout(0.1)
+        #self.sock.setblocking(0)
         print 'Frame acquisition thread is running'
         while not self._stop.is_set():
             #data = self.sock.read_data(timeout_delay=timeout)
             # Read data from the UDP listening port
             if self._flush.is_set():
                 try:
-                    nbytes = self.sock.recv_into(self.data)
+                    r1, w1, e1 = select.select([self.sock], [], [])
+                    for e in r1:
+                        if e == self.sock:
+                            nbytes = self.sock.recv_into(self.data)
                 except SocketIO.timeout:
                     pass
                 self.store_data = 0 # do not store data
@@ -110,7 +115,10 @@ class ReceiverThread(threading.Thread):
                 self.queue_corr.queue.clear();
             else:
                 try:
-                    nbytes = self.sock.recv_into(self.data)
+                    r1, w1, e1 = select.select([self.sock], [], [])
+                    for e in r1:
+                        if e == self.sock:
+                            nbytes = self.sock.recv_into(self.data)
                 except SocketIO.timeout:
                     nbytes = 0
                 if nbytes:

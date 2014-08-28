@@ -88,7 +88,8 @@ correlator_hash = {"29821-0000-0003": "stone",
                    "29821-0000-0028": "vincente",
                               "0029": "blanchard",
                               "0031": "testing",
-                              "0015": "testing2"}
+                              "0015": "testing2",
+                              "0027": "mcgill_board"}
 
 # Current archive format version.
 archive_version = "1.0.0"
