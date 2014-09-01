@@ -286,7 +286,8 @@ if __name__ == "__main__":
 
   # Create a symbolic link to the output directory.
   os.unlink(conf["acq"]["curfile"])
-  os.symlink("%s_%s_corr" % (time_str, corr_name), conf["acq"]["curfile"])
+  os.symlink("%s/%s_%s_corr" % (conf["acq"]["base_path"], time_str, corr_name),
+             conf["acq"]["curfile"])
 
   # Lock the logfile.
   log_file_lock = "%s/.ch_master.log.lock" % acq_base_dir
