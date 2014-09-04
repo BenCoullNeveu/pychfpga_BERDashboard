@@ -46,8 +46,7 @@ ext_post_trunc = Extension("post_acq.truncate",
 setup(name = "ch_acq",
       version = "1.0",
       packages = ["pychfpga", "pychfpga.core", "pychfpga.common", \
-                  "pychfpga.MGK7MB", "pychfpga.MGADC08", \
-                  "pychfpga.motherboards",
+                  "pychfpga.icecore", "pychfpga.MGADC08", \
                   "post_acq"
                   ],
       ext_modules = [ext_chrx, ext_post_trunc, ext_post_trans],

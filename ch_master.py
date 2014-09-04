@@ -106,7 +106,8 @@ correlator_hash = {"stone"        : ["0001"],
                    "vincente"     : ["29821-0000-0028"],
                    "blanchard"    : ["0029","0030"],
                    "testing"      : ["0031", "0032"],
-                   "first9ucrate" : ["0034"]
+                   "first9ucrate" : ["0034"],
+                   "testing2": ["0031"]
                   }
 
 # FPGA housekeeping.
@@ -292,10 +293,15 @@ if __name__ == "__main__":
   corr_name = None
   for corr, ser_list in correlator_hash.iteritems():
     not_found = False
-    for ser in fpga_conf["adc_serial"]:
-      if not ser in ser_list:
-        not_found = True
-        break
+    if type(fpga_conf["adc_serial"]) is list:
+      for ser in fpga_conf["adc_serial"]:
+        if not ser in ser_list:
+          not_found = True
+          break
+    else:
+      print fpga_conf["adc_serial"]
+      if not fpga_conf["adc_serial"] in ser_list:
+          not_found = True
     if not_found:
       continue
     corr_name = corr
@@ -394,7 +400,8 @@ if __name__ == "__main__":
     while True:
       # Pass the acquisition object the board temperatures. This is a temporary
       # way of doing this!
-      acq.pass_fpga_amb_temp(0, get_fpga_hk(fpga, fpga_hk_field))
+      for c_element in c:
+        acq.pass_fpga_amb_temp(0, get_fpga_hk(c_element.fpga, fpga_hk_field))
       log.info("Read FPGA housekeeping.")
       time.sleep(conf["acq"]["fpga_hk"]["rate"])
     acq.stop()
