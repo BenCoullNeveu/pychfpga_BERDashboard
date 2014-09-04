@@ -80,19 +80,48 @@ def convert_types(val):
               pass
       return val
 
-# Dictionary of correlators.
-correlator_hash = {"29821-0000-0003": "stone",
-                              "0001": "stone",      # This is a bug in the FPGA.
-                   "29821-0000-0033": "abbot",
-                              "0033": "abbot",
-                   "29821-0000-0028": "vincente",
-                              "0029": "blanchard",
-                              "0031": "testing",
-                              "0015": "testing2",
-                              "0027": "mcgill_board"}
+def get_fpga_hk(fpga, field):
+  ret = {}
+  for f in field.keys():
+    if f == "core_temp":
+      ret[f] = fpga.SYSMON.temperature()
+    elif f == "vcc_int":
+      ret[f] = fpga.SYSMON.voltage(fpga.SYSMON.VCCINT_ADDR)
+    elif f == "vcc_aux":
+      ret[f] = fpga.SYSMON.voltage(fpga.SYSMON.VCCAUX_ADDR)
+    elif f == "12v_supply":
+      ret[f] = fpga.SYSMON.voltage(fpga.SYSMON.VAUX_VOLT_ADDR, vref = 1.0)
+    elif f == "12v_supply_curr":
+      ret[f] = fpga.SYSMON.voltage(fpga.SYSMON.VAUX_CURR_ADDR, vref = 1.0)
+    elif f == "vrefp":
+      ret[f] = fpga.SYSMON.voltage(fpga.SYSMON.VAUX_VREFP_ADDR)
+    elif f == "vrefn":
+      ret[f] = fpga.SYSMON.voltage(fpga.SYSMON.VAUX_VREFN_ADDR)
 
-# Current archive format version.
-archive_version = "1.0.0"
+  return ret
+
+# Dictionary of correlators.
+correlator_hash = {"stone"        : ["0001"],
+                   "abbot"        : ["0003"],
+                   "vincente"     : ["29821-0000-0028"],
+                   "blanchard"    : ["0029","0030"],
+                   "testing"      : ["0031", "0032"],
+                   "first9ucrate" : ["0034"]
+                  }
+
+# FPGA housekeeping.
+fpga_hk_field = {      "core_temp" : "deg C",
+                         "vcc_int" : "V",
+                         "vcc_aux" : "V",
+                      "12v_supply" : "V",
+                 "12v_supply_curr" : "A",
+                           "vrefp" : "V",
+                           "vrefn" : "V",
+                }
+
+# Current archive format version. Prefixed by "NT_" to signify that these data
+# do not have the time-transpose completed.
+archive_version = "NT_2.0.0"
 
 if __name__ == "__main__":
   # Set up logger.
@@ -174,7 +203,7 @@ if __name__ == "__main__":
 
   # Create the acquisition object. Pass it the configuration settings so that it
   # can initialise.
-  acq = chrx.acq(conf, log)
+  acq = chrx.acq(conf, log, fpga_hk_field)
 
   # Create the FPGA controller object.
   # Will now create an array of controller objects indexed by serial number
@@ -260,14 +289,25 @@ if __name__ == "__main__":
   
   # Create the output directory.
   time_str = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-  try:
-    corr_name = correlator_hash[fpga_conf["adc_serial"]]
-  except KeyError:
+  corr_name = None
+  for corr, ser_list in correlator_hash.iteritems():
+    not_found = False
+    for ser in fpga_conf["adc_serial"]:
+      if not ser in ser_list:
+        not_found = True
+        break
+    if not_found:
+      continue
+    corr_name = corr
+    break
+  if not corr_name:
     try:
-      log.critical("Could not find hash for ADC serial number %s." %
+      log.critical("Could not find hash for ADC serial numbers %s." %
                    fpga_conf["adc_serial"])
     except KeyError:
       log.critical("Could not find key \"adc_serial\" in FPGA configuration.")
+    exit()
+
   acq_base_dir = "%s/%s_%s_corr" % (conf["acq"]["base_path"], time_str, \
                                    corr_name)
   os.makedirs(acq_base_dir)
@@ -277,7 +317,8 @@ if __name__ == "__main__":
 
   # Create a symbolic link to the output directory.
   os.unlink(conf["acq"]["curfile"])
-  os.symlink(acq_base_dir, conf["acq"]["curfile"])
+  os.symlink("%s/%s_%s_corr" % (conf["acq"]["base_path"], time_str, corr_name),
+             conf["acq"]["curfile"])
 
   # Lock the logfile.
   log_file_lock = "%s/.ch_master.log.lock" % acq_base_dir
@@ -301,7 +342,8 @@ if __name__ == "__main__":
 
   # Pass FPGA configuration variables to header.
   for name in fpga_conf:
-    #Hack for now since the gain table is too big to fit in one 64k header element
+    #Hack for now since the gain table is too big to fit in one 64k header 
+    # element
     if name == 'antenna_scaler_gain':
       all_val = fpga_conf[name]
       for value in all_val:
@@ -326,6 +368,8 @@ if __name__ == "__main__":
   acq.add_header_item("collection_server", socket.gethostname())
   acq.add_header_item("instrument_name", corr_name)
   acq.add_header_item("archive_version", archive_version)
+  acq.add_header_item("acquisition_name", "%s_%s_corr" % (time_str, corr_name))
+  acq.add_header_item("acquisition_type", "corr")
 
   # Get the git tag and write it to the header.
   if not len(args.git_tag):
@@ -343,14 +387,16 @@ if __name__ == "__main__":
   acq.add_header_item("notes", args.notes)
 
   # Start the acquisition.
-  acq.start(acq_base_dir)
+  acq.start(acq_base_dir, ["%d" % fpga_conf["motherboard_serial"]], \
+            fpga_conf["adc_serial"])
 
   try:
     while True:
       # Pass the acquisition object the board temperatures. This is a temporary
       # way of doing this!
-      acq.pass_fpga_amb_temp(0, c.fpga.SYSMON.temperature()[0])
-      time.sleep(1.0)
+      acq.pass_fpga_amb_temp(0, get_fpga_hk(fpga, fpga_hk_field))
+      log.info("Read FPGA housekeeping.")
+      time.sleep(conf["acq"]["fpga_hk"]["rate"])
     acq.stop()
   except(KeyboardInterrupt, SystemExit):
     acq.stop()
