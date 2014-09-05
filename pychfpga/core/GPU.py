@@ -91,15 +91,16 @@ class GPU_base(Module_base):
     CONTROL = BitField.CONTROL
     STATUS = BitField.STATUS
 
-    LINK_ENABLE           = BitField(CONTROL, 0, 0, doc='When 1, enables trsnamission of data over the link.')
-    TEST_ENABLE           = BitField(CONTROL, 0, 1, doc='When 1, enables trsnamission of test data over the link. Requires LINK_ENABLE=1.')
-    RESET                 = BitField(CONTROL, 0, 2, doc='The cores are reset when this signal goes from 1 to 0')
+    # LINK_ENABLE           = BitField(CONTROL, 0, 0, doc='When 1, enables trsnamission of data over the link.')
+    CORE_RESET                 = BitField(CONTROL, 0, 2, doc='The GTX cores are reset when this signal goes from 1 to 0')
+    RESET                 = BitField(CONTROL, 1, 0, doc='Resets the MAC and the GTX core.')
+    TEST_ENABLE           = BitField(CONTROL, 1, 1, doc='When 1, enables trsnamission of test packets over the link.')
 
     NUMBER_OF_QUADS       = BitField(STATUS, 0, 0, width=8, doc='Number of QUADS')
     NUMBER_OF_LINKS       = BitField(STATUS, 1, 0, width=8, doc='Number of QUADS')
 
-    FRAME_CTR         = BitField(STATUS, 3, 0, width=8, doc='Counts incoming frames on lane 0. Wraps around.')
-    WORD_CTR         = BitField(STATUS, 4, 0, width=8, doc='Word counter userd to generate the test patterns.')
+    WORD_CTR         = BitField(STATUS, 5, 0, width=8, doc='Counter used to produce the test test pattern.')
+    # WORD_CTR         = BitField(STATUS, 4, 0, width=8, doc='Word counter userd to generate the test patterns.')
 
     def __init__(self, fpga_instance, base_address, address_increment, verbose = 1):
         # self.fpga = fpga

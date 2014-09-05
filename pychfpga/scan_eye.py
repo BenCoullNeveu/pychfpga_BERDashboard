@@ -494,6 +494,7 @@ def get_eye_matrix(array, h_step=10, v_step=40):
 
     for link in link_map:
         ((from_slot, from_lane), (to_slot, to_lane)) = link
+        print  "###### running from slot %i lane %i to slot %i lane %i #######" % ( from_slot, from_lane, to_slot, to_lane)
         gtx = [ib.fpga.BP_SHUFFLE.gtx[to_lane-1] for ib in array if ib.slot_number==to_slot-1][0]
         e=scan_eye(gtx, range(-32,32,h_step), range(-127,128,v_step), plot=1)
         link_ber[link] = e
@@ -628,3 +629,7 @@ def plot_power_vs_lane_separation(data):
         slot_sep.append(abs(ds-ss))
     plt.clf()
     plt.plot(slot_sep, power, '.')
+
+def packet_length(frames_per_packet=4, number_of_lanes=4, number_of_selected_bins=8):
+    data_per_frame = number_of_lanes * number_of_selected_bins
+    data_flags per frame = number_of_selected_bins

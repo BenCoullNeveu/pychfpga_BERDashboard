@@ -129,7 +129,7 @@ class GTX(Module_base):
     ERR_CTR       = BitField(STATUS, 11, 0, width=32)
     RXMONITOR     = BitField(STATUS, 12, 0, width=7, doc='Debug')
 
-    RX_PRBS_ERR_CNT   = BitField(DRP, 0x015C, 0, width=16, doc="Pattern checker errour counter since last RXPRBSCNTRESET")
+    RX_PRBS_ERR_CNT   = BitField(DRP, 0x015C, 0, width=16, doc="Pattern checker error counter since last RXPRBSCNTRESET")
     GEARBOX_MODE      = BitField(DRP, 0x01C, 0, width=3, doc="")
     RXGEARBOX_EN      = BitField(DRP, 0x04b, 15, doc="")
     TXGEARBOX_EN      = BitField(DRP, 0x01c, 5, doc="")
@@ -210,7 +210,8 @@ class GTX(Module_base):
     def init(self):
         """ Initializes the GTX CHANNEL block"""
         self.logger.info('Initializing GTX_CHANNEL  #%i' % self.instance_number)
-
+        self.configure()
+        self.reset_rx_equalizer()
 
     def status(self):
         """ Displays the status of the GTX_CHANNEL"""
@@ -221,76 +222,35 @@ class GTX(Module_base):
         self.CAPTURE_EN=0
         return self.RXDATA
 
-    # def scan_eye(self, horiz_offset=0, vert_offset=0, max_scaler = 15, ut_sign=0):
-    #     """
-    #     Return a (M x N) matrix of BER values for M horizontal and N vertical offsets.
-    #     Horiz_offset : -32 to 32
-    #     Vert offset: : -127 to 127
-    #     """
-    #     self.PMA_RSV2_5 = 1
-    #     self.ES_EYE_SCAN_EN = 1
-    #     self.ES_ERRDET_EN = 1
-    #     self.ES_SDATA_MASK0=0x00ff
-    #     self.ES_SDATA_MASK1=0x0000
-    #     self.ES_SDATA_MASK2=0xFF00
-    #     self.ES_SDATA_MASK3=0xFFFF
-    #     self.ES_SDATA_MASK4=0xFFFF
+    def configure(self):
+        """ Execute only when there is a clock """
+        self.SOURCE_SEL=0 # 0:Send user packets, 1: send TXDATA word
+        self.LOOPBACK = 0
+        self.TXPOLARITY=0
+        self.RXPOLARITY=0
+        self.TXPRBSSEL=0
+        self.RXPRBSSEL=0
+        self.SCRAMBLE_EN=1
+        self.DESCRAMBLE_EN=1
+        self.TXDIFFCTRL = 10
+        self.TXPRECURSOR = 0b00000 #DFE cannot compensate pre-cursor
+        self.TXPOSTCURSOR = 0b00000
+        self.RXMONITORSEL = 1 # 1=AGC, 2=UL, 3=VP loop
+        self.RX_DEBUG_CFG = 0b1011<<2
+        self.DMONITOR_SELECT = 1
+        self.PCS_RSVD_ATTR_BIT6 = 1
 
-    #     self.ES_QUAL_MASK0=0xFFFF
-    #     self.ES_QUAL_MASK1=0xFFFF
-    #     self.ES_QUAL_MASK2=0xFFFF
-    #     self.ES_QUAL_MASK3=0xFFFF
-    #     self.ES_QUAL_MASK4=0xFFFF
+    def reset_rx_equalizer(self):
+        """ Execute only when there is a clock """
+        self.RXDFELPMRESET=1
+        self.RXDFELPMRESET=0
 
-    #     if not np.isscalar(horiz_offset):
-    #         horiz_offset = [horiz_offset]
-
-    #     if not np.isscalar(vert_offset):
-    #         vert_offset = [vert_offset]
-
-    #     ber = zeros((len(horiz_offset), len(vert_offset)))
-    #     prescale = 0
-
-    #     sample_list = [(ih,iv, h,v, h**2+v**2) for iv,v in enumerate(vert_offset), for ih,h in enumerate(horiz_offset)]
-
-    #     sample_list.sort(key=lambda x: x(4))
-    #     sample_list.reverse()
-
-    #     for (ih, iv, h_offset, v_offset) in sample_list:
-
-    #         self.ES_VERT_OFFSET = (abs(v_offset)&0x7F) | (0x80 * (v_offset<0)) | (0x100 * bool(ut_sign))
-    #         self.ES_HORZ_OFFSET = h_offset & 0xFFF
-
-    #         print 'Horiz offset = %i, Vert offset = %i' % (h_offset, v_offset),
-
-    #         while True:
-    #             print '    Trying prescale=%i'%prescale
-    #             self.ES_PRESCALE = prescale
-    #             self.ES_CONTROL=0
-    #             self.ES_CONTROL=1
-    #             while self.ES_CONTROL_STATUS != 5:
-    #                 print '.',
-    #                 time.sleep(.2)
-    #             error_count = self.ES_ERROR_COUNT
-    #             sample_count = self.ES_SAMPLE_COUNT
-
-    #             if sample_count == 32767:
-    #                 if prescale == max_scale:
-    #                     break
-    #                 else:
-    #                     prescale = min(max_scale, prescale + 2)
-    #             elif sample_count < 1024:
-    #                 if prescale==0:
-    #                     break
-    #                 else:
-    #                     prescale = max(0, prescale-2)
-    #             else:
-    #                 break
-    #         sample_count *= 2**(1+prescale)
-    #         ber(ih,iv) = float(error_count)/float(sample_count)
-
-    #     print '    -> %i samples, %i errors, BER = %1.3e' % (sample_count, error_count,  ber)
-    #     return ber
+    def capture_rx_words(self, number_of_words = 1000):
+        """ Return a unique set of words seen on the rx link.
+        'number_of_words' words are sampled randomly, so not all words in a packet may appear in the set.
+        The values are resturned as a 8-digit hex value string.
+        """
+        return set(['%08x' % self.get_rxdata() for x in xrange(number_of_words)])
 
 class Shuffle(Module_base):
     """ Instantiates a container for all the shuffle ressources """
@@ -298,6 +258,8 @@ class Shuffle(Module_base):
     # LINK_ENABLE           = BitField(CONTROL, 0, 0, doc='When 1, enables trsnamission of data over the link.')
     # TEST_ENABLE           = BitField(CONTROL, 0, 1, doc='When 1, enables trsnamission of test data over the link. Requires LINK_ENABLE=1.')
     RESET                 = BitField(CONTROL, 0, 2, doc='The cores are reset when this signal goes from 1 to 0')
+
+    TX_TEST_ENABLE        = BitField(CONTROL, 1, 0, doc='')
 
     NUMBER_OF_QUADS       = BitField(STATUS, 0, 0, width=8, doc='Number of GTX quads (QPLLs)')
     NUMBER_OF_LINKS       = BitField(STATUS, 1, 0, width=8, doc='Number of lanes (GTX)')
@@ -309,6 +271,9 @@ class Shuffle(Module_base):
 
     FRAME_CTR             = BitField(STATUS, 3, 0, width=8, doc='Counts incoming frames on lane 0. Wraps around.')
     WORD_CTR              = BitField(STATUS, 4, 0, width=8, doc='Word counter userd to generate the test patterns.')
+
+    ERROR              = BitField(STATUS, 5, 0, width=8, doc='Current value of the receive Error bit for the first 8 lanes')
+    ERROR_CTR          = BitField(STATUS, 6, 0, width=8, doc='Number of errors so far on the 1st GTX lane (typically lane 1). 8 bits, wraps around.')
 
     def __init__(self, fpga_instance, base_address, address_increment, verbose = 1):
         # self.fpga = fpga
@@ -329,6 +294,8 @@ class Shuffle(Module_base):
             self.gtx.append(GTX(fpga_instance, base_address + i * address_increment, j))
             i += 1
 
+        self._lock()
+
     def init(self):
         """ Initializes the GPU links"""
         for (i, qpll) in enumerate(self.qpll):
@@ -338,6 +305,10 @@ class Shuffle(Module_base):
         for (i, gtx) in enumerate(self.gtx):
             self.logger.debug('Initializing GPU GTX CHANNEL #%i' % i)
             gtx.init()
+
+    def reset_rx_equalizers(self):
+        for g in self.gtx:
+            g.reset_rx_equalizer()
 
     def status(self):
         """ Displays the status of the GPU GTX hardware"""

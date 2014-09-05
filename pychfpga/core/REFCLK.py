@@ -31,30 +31,31 @@ class REFCLK_base(Module_base):
     DRP=BitField.DRP
 
     # CONTROL bytes
-    ADC_SYNC = BitField(CONTROL, 0x00, 7, doc='Force a SYNC to the ADC, synchronized on the FMC Reference clock, but bypasses the SYNC state machine that resets the IOSERDES and BUFR')
-    DCI_RESET = BitField(CONTROL, 0x00, 6, doc='Resets the DCI')
-    FORCE_SYNC = BitField(CONTROL, 0x00, 5, doc='Force the generation of a local SYNC sequence on the local board only. Has the same effect as a SYNC signed received on the 10 MHz clock.  The SYNC is synchronized to the 10 MHz output (transitions on its falling edge)')
-    ENCODE_SYNC = BitField(CONTROL, 0x00, 4, doc='Generate a SYNC signal encoded on the 10 MHz clock output. Will SYNC the local FMC board only if the 10 MHz output is connected to the 10 MHz input of the local FMC board')
-    SLAVE = BitField(CONTROL, 0x00, 3, doc='0=board is MASTER: SYNC SMA is an output, 1= board is SLAVE: SYNC SMA is an input')
+    ADC_SYNC               = BitField(CONTROL, 0x00, 7, doc='Force a SYNC to the ADC, synchronized on the FMC Reference clock, but bypasses the SYNC state machine that resets the IOSERDES and BUFR')
+    DCI_RESET              = BitField(CONTROL, 0x00, 6, doc='Resets the DCI')
+    FORCE_SYNC             = BitField(CONTROL, 0x00, 5, doc='Force the generation of a local SYNC sequence on the local board only. Has the same effect as a SYNC signed received on the 10 MHz clock.  The SYNC is synchronized to the 10 MHz output (transitions on its falling edge)')
+    ENCODE_SYNC            = BitField(CONTROL, 0x00, 4, doc='Generate a SYNC signal encoded on the 10 MHz clock output. Will SYNC the local FMC board only if the 10 MHz output is connected to the 10 MHz input of the local FMC board')
+    SLAVE                  = BitField(CONTROL, 0x00, 3, doc='1 allows the sync_in pin to trigger a SYNC sequence.')
 
-    REFCLK_SEL = BitField(CONTROL, 0x01, 7, doc='Selects the source of the REFCLK needed for SYNC generation. 0=FMC, 1=internal REFCLK generator.')
+    REFCLK_SEL             = BitField(CONTROL, 0x01, 7, doc='Selects the source of the REFCLK needed for SYNC generation. 0=FMC, 1=internal REFCLK generator.')
     ENABLE_SYNC_GENERATION = BitField(CONTROL, 0x01, 6, doc='Allows the internal state machine to generate the SYNC sequence (generate the ADC SYNC and resets the ADCDAQ SERDES and BUFG)')
-    ENABLE_SYNC_DETECTION = BitField(CONTROL, 0x01, 5, doc='When 1, enable SYNC detection based on the Refecence clock pulse length. Disable if the FMC board is not present to prevent spurious resets of the data path.')
+    ENABLE_SYNC_DETECTION  = BitField(CONTROL, 0x01, 5, doc='When 1, enable SYNC detection based on the Refecence clock pulse length. Disable if the FMC board is not present to prevent spurious resets of the data path.')
 
-    REFCLK_DELAY_RST = BitField(CONTROL,0x02, 7, doc='Resets the REFCLK line IODELAY and loads the delay value specified in REFCLK_DELAY.')
-    REFCLK_DELAY = BitField(CONTROL,0x02, 0, width=5, doc='Delay applied to the FMC Reference clock within the FPGA (0-31). Must pulse REFCLK_DELAY_RST to load.')
+    REFCLK_DELAY_RST       = BitField(CONTROL, 0x02, 7, doc='Resets the REFCLK line IODELAY and loads the delay value specified in REFCLK_DELAY.')
+    REFCLK_DELAY           = BitField(CONTROL, 0x02, 0, width=5, doc='Delay applied to the FMC Reference clock within the FPGA (0-31). Must pulse REFCLK_DELAY_RST to load.')
 
     # STATUS bytes
-    SYNC_CTR = BitField(STATUS, 0x00, 4, width=4, doc='Counts the SYNC events')
-    DCI_LOCKED = BitField(STATUS, 0x00, 3, doc='1 when DCI is locked')
-    RECOVERED_SYNC = BitField(STATUS, 0x00, 2, doc='1 when a SYNC signal encoded on the 10 MHz is detected ')
-    SYNC = BitField(STATUS, 0x00, 1, doc='Status on the internal SYNC signal, which is a combination of various sources (recovered from RefClk, from pin, from bit etc)')
-    SERDES_RST = BitField(STATUS, 0x00, 0, doc='Status of the SERDER Reset output line')
+    SYNC_CTR               = BitField(STATUS, 0x00, 4, width=4, doc='Counts the SYNC events')
+    DCI_LOCKED             = BitField(STATUS, 0x00, 3, doc='1 when DCI is locked')
+    RECOVERED_SYNC         = BitField(STATUS, 0x00, 2, doc='1 when a SYNC signal encoded on the 10 MHz is detected ')
+    SYNC                   = BitField(STATUS, 0x00, 1, doc='Status on the internal SYNC signal, which is a combination of various sources (recovered from RefClk, from pin, from bit etc)')
+    SERDES_RST             = BitField(STATUS, 0x00, 0, doc='Status of the SERDER Reset output line')
 
-    DIFF_COUNTER = BitField(STATUS, 0x01, 0, width=8, doc='DIfference between clocks')
+    DIFF_COUNTER           = BitField(STATUS, 0x01, 0, width=8, doc='DIfference between clocks')
 
-    SYNC_DONE = BitField(STATUS, 0x02, 5, doc='1 when the local SYNC process is completed')
-    SYNC_DELAY_READBACK = BitField(STATUS, 0x02, 0, width=5,doc='Reads back the delay set onthe SYNC IODELAY')
+    SYNC_DONE              = BitField(STATUS, 0x02, 5, doc='1 when the local SYNC process is completed')
+    SYNC_IN                = BitField(STATUS, 0x02, 0, doc='reflects the level on the sync_in port')
+    # SYNC_DELAY_READBACK  = BitField(STATUS, 0x02, 0, width=5,doc='Reads back the delay set onthe SYNC IODELAY')
 
 
     def __init__(self, fpga, base_address):

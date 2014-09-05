@@ -157,14 +157,15 @@ class chFPGA_controller(FpgaCoreFirmware):
     # Set the basic paramaters used to compute the address of each module
     _SYSTEM_BASE_ADDR     = 0x00000 # This is always at zero so we can gather info from the FPGA before we know the number of antennas etc.
     _CHAN_BASE_ADDR       = 0x20000 # Channelizer top address
-    _CROSSBAR_BASE_ADDR   = 0x40000 # CROSSBAR top address
+    _CROSSBAR1_BASE_ADDR  = 0x40000 # CROSSBAR top address
     _GPU_LINK_BASE_ADDR   = 0x60000 # GPU Link top address
     _CORR_BASE_ADDR       = 0x80000 # Correlator ports are determined dynamically based on the info from the firmware
     _BP_SHUFFLE_BASE_ADDR = 0xA0000
+    _CROSSBAR2_BASE_ADDR  = 0xC0000 # CROSSBAR top address
 
     _CHAN_ADDR_INCREMENT           = 0x02000 # Address increment between each channelizer address spaces
     _CROSSBAR_ADDR_INCREMENT       = 0x02000
-    _GPU_LINK_ADDR_INCREMENT       = 0x02000 # Address increment between each subsystem of the GPU links
+    _GPU_LINK_ADDR_INCREMENT       = 0x01000 # Address increment between each subsystem of the GPU links
     _CORR_ADDR_INCREMENT           = 0x02000 # Address increment between each correlator
     _BP_SHUFFLE_ADDR_INCREMENT     = 0x01000 # Address increment between each shuffle submodule
 
@@ -356,7 +357,7 @@ class chFPGA_controller(FpgaCoreFirmware):
             # Get GPU link configuration
             self.NUMBER_OF_GPU_LINKS = self.GPIO.NUMBER_OF_GPU_LINKS
 
-            self.NUMBER_OF_BP_SHUFFLE_LANES = 16
+            self.NUMBER_OF_BP_SHUFFLE_LANES = 1
             # Get correlator info and their properties
             self.NUMBER_OF_CORRELATORS_MAX = self.GPIO.NUMBER_OF_CORRELATORS
             self.NUMBER_OF_CORRELATORS = self.GPIO.NUMBER_OF_CORRELATORS
@@ -427,8 +428,12 @@ class chFPGA_controller(FpgaCoreFirmware):
             self.ANT = ANT.ANT_base(self, self._CHAN_BASE_ADDR, self._CHAN_ADDR_INCREMENT) # Antenna processors (ADCDAQ, SRCSEL, FFT, SCALER) for each input
             self.ANT_FMC_NUMBER = [i//8 for i in range(self.NUMBER_OF_ANTENNAS)]
 
-            self._logger.debug('=== Instantiating CROSSBAR')
-            self.CROSSBAR = CROSSBAR.CROSSBAR_base(self, self._CROSSBAR_BASE_ADDR, self._CROSSBAR_ADDR_INCREMENT) # CROSSBAR block
+            self._logger.debug('=== Instantiating 1st CROSSBAR')
+            self.CROSSBAR = CROSSBAR.CROSSBAR_base(self, self._CROSSBAR1_BASE_ADDR, self._CROSSBAR_ADDR_INCREMENT, crossbar_level=1) # CROSSBAR block
+
+            self._logger.debug('=== Instantiating 2nd CROSSBAR')
+            self.CROSSBAR2 = CROSSBAR.CROSSBAR_base(self, self._CROSSBAR2_BASE_ADDR, self._CROSSBAR_ADDR_INCREMENT, crossbar_level=2) # CROSSBAR block
+
 
             if self.NUMBER_OF_BP_SHUFFLE_LANES:
                 self._logger.debug('=== Instantiating Backplane shuffle subsystem')
@@ -599,13 +604,21 @@ class chFPGA_controller(FpgaCoreFirmware):
         self.ANT.init(delay_table=adc_delay_table, fmc_present = self.ANT_FMC_IS_PRESENT)
         self.ANT.status()
 
-        self._logger.debug('=== Initializing Crossbar')
+        self._logger.debug('=== Initializing 1st Crossbar')
         if self.NUMBER_OF_CROSSBAR_OUTPUTS>0:
-            self._logger.debug('  - CROSSBAR')
+            self._logger.debug('  - 1st CROSSBAR')
             self.CROSSBAR.init()
             self.CROSSBAR.status()
         else:
-            self._logger.warning("There are no CROSSBAR blocks in this firmware build (so there can't be data streamed to the correlators or GPU links!)");
+            self._logger.warning("There is no 1st CROSSBAR module in this firmware build (so there can't be data streamed to the correlators or GPU links!)");
+
+        self._logger.debug('=== Initializing 2nd Crossbar')
+        if self.NUMBER_OF_GPU_LINKS>0:
+            self._logger.debug('  - 2nd CROSSBAR')
+            self.CROSSBAR2.init()
+            self.CROSSBAR2.status()
+        else:
+            self._logger.warning("There is no 2nd CROSSBAR module in this firmware build (so there can't be data streamed to the correlators or GPU links!)");
 
 
         if self.NUMBER_OF_BP_SHUFFLE_LANES:
@@ -624,8 +637,8 @@ class chFPGA_controller(FpgaCoreFirmware):
         self.set_data_width(data_width)  #sets the data width of both the SCALER and CROSSBAR
         self._logger.info('Data width set to (Re+Im) = (%i+%i) bits' % (self.get_data_width(), self.get_data_width()))
 
-        self.CROSSBAR.set_frame_grouping(group_frames)
-        self._logger.info('%i frames will be grouped to form the GPU/FPGA correlator streams' % (group_frames))
+        self.CROSSBAR.set_frames_per_packet(group_frames)
+        self._logger.info('The 1st crossbar will pack %i frames per packet' % (group_frames))
 
         if self.GPIO.NUMBER_OF_GPU_LINKS:
             self.GPU.set_enable(enable_gpu_link)
