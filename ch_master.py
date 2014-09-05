@@ -88,7 +88,8 @@ correlator_hash = {"29821-0000-0003": "stone",
                    "29821-0000-0028": "vincente",
                               "0029": "blanchard",
                               "0031": "testing",
-                              "0015": "testing2"}
+                              "0015": "testing2",
+                              "0027": "mcgill_board"}
 
 # Current archive format version.
 archive_version = "1.0.0"
@@ -227,13 +228,14 @@ if __name__ == "__main__":
                       host_ip = conf["fpga"]["host_ip"])
         calculate_gains.calculate_gains(c_element.fpga,fpga_rec)
         fpga_rec.close()
-  gain_pkl_file = open(conf["fpga"]["gain_table_pkl"], "rb")
-  gains = pickle.load(gain_pkl_file)
   all_chan = range(conf["n_antenna"])
   c.fpga.set_data_source("adc") # This should come first.
   c.fpga.set_FFT_bypass(False, channels = all_chan)
   c.fpga.set_FFT_shift(conf["fpga"]["fft_shift"], channels = all_chan)
-  c.fpga.set_gain(gains, channels = all_chan)
+  for i, c_element in enumerate(c):      
+    gain_pkl_file = open('gains_'+str(c_element.fpga.GPIO.FPGA_SERIAL_NUMBER)+'.pkl', "rb")
+    gains = pickle.load(gain_pkl_file)
+    c_element.fpga.set_gain(gains, channels = all_chan)
   c.fpga.sync()
   c.fpga.set_send_flags()
   c.fpga.set_offset_binary_encoding()
