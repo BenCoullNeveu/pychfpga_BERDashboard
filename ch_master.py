@@ -107,7 +107,9 @@ correlator_hash = {"stone"        : ["0001"],
                    "blanchard"    : ["0029","0030"],
                    "testing"      : ["0031", "0032"],
                    "first9ucrate" : ["0034"],
-                   "testing2": ["0031"]
+                   "testing2": ["0031"],
+                   "slot16":['0034', '0036'],
+                   "slot15":['0005', '0006']
                   }
 
 # FPGA housekeeping.
@@ -211,7 +213,7 @@ if __name__ == "__main__":
   # And program board firmware if needed/requested currently will always reprogram
   close_all_sockets()
   IceArray.close_all_sessions()
-  ca = IceArray(uri='sqlite:///test.db', interface_ip_addr=conf["fpga"]["host_ip"])
+  ca = IceArray(uri=conf["fpga"]["db_file"], interface_ip_addr=conf["fpga"]["host_ip"])
   # Might want to move the list somewhere else/into conf file?
   ca.load_iceboards('pychfpga/iceboard_list.txt')
   ca.discover()
@@ -227,7 +229,11 @@ if __name__ == "__main__":
         data_width=conf["fpga"]["data_width"], \
         group_frames=conf["fpga"]["group_frames"], \
         enable_gpu_link = conf["fpga"]["enable_gpu_link"])
-
+  for cc in c:
+    cc.fpga.GPU.LINK_ENABLE=1
+  c.fpga.set_corr_reset(1)
+  time.sleep(0.1)
+  c.fpga.set_corr_reset(0)
   # fpga = chFPGA_controller.chFPGA_controller( \
   #            ip_address = conf["fpga"]["ip_address"], \
   #            port_number = conf["fpga"]["port"], \
@@ -270,6 +276,7 @@ if __name__ == "__main__":
   c.fpga.set_send_flags()
   c.fpga.set_offset_binary_encoding()
   c.fpga.sync()
+
   #Make sure FPGA throttling is fast enough to send all the data
   #FPGA doesn't seem to change this without a reset...
   #read_rate = int(np.floor(np.log2(conf["fpga"]["int_period"] * 4 * 125e6 / \
