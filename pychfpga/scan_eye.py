@@ -633,4 +633,4 @@ def plot_power_vs_lane_separation(data):
 
 def packet_length(frames_per_packet=4, number_of_lanes=4, number_of_selected_bins=8):
     data_per_frame = number_of_lanes * number_of_selected_bins
-    data_flags per frame = number_of_selected_bins
+    data_flags_per_frame = number_of_selected_bins
