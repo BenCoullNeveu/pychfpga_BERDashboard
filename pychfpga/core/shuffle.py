@@ -25,7 +25,6 @@ class QPLL(Module_base):
 
     QPLL_LOCK          = BitField(STATUS, 0, 0, doc='Indicates if the QPLL is locked')
 
-
     QPLL_INIT_CFG            = BitField(DRP, 0x0030, 0, width=16, doc="0-65535")
     QPLL_LPF                 = BitField(DRP, 0x0031, 11, width=4, doc="0-15")
     QPLL_INIT_CFG            = BitField(DRP, 0x0031, 0, width=8,   doc="0-255")
@@ -70,64 +69,86 @@ class QPLL(Module_base):
 class GTX(Module_base):
     """ Implements interface to a GTX_CHANNEL block """
 
-    RXPRBSCNTRESET = BitField(CONTROL, 0, 7, doc='Debug')
-    RXPRBSSEL      = BitField(CONTROL, 0, 4, width=3, doc='Debug')
-    RXCDRHOLD      = BitField(CONTROL, 0, 3, doc='Debug')
-    LOOPBACK       = BitField(CONTROL, 0, 0, width=3, doc='Debug') #-- '000' = normal operation
+
+    USER_RESET     = BitField(CONTROL, 0, 7, doc='')
+    USER_GTTXRESET = BitField(CONTROL, 0, 6, doc='')
+    TXINHIBIT      = BitField(CONTROL, 0, 5, doc='Debug')
+    TXPOSTCURSOR   = BitField(CONTROL, 0, 0, width=5, doc='Debug')
+
     TXDIFFCTRL     = BitField(CONTROL, 1, 4, width=4, doc='Debug')
-    TXINHIBIT      = BitField(CONTROL, 1, 3, doc='Debug')
-    TXPRBSFORCEERR = BitField(CONTROL, 1, 2, doc='Debug')
-    TXPOLARITY     = BitField(CONTROL, 1, 1, doc='Debug')
-    RXPOLARITY     = BitField(CONTROL, 1, 0, doc='Debug')
-    TXPOSTCURSOR   = BitField(CONTROL, 2, 0, width=5, doc='Debug')
-    TXPRECURSOR    = BitField(CONTROL, 3, 0, width=5, doc='Debug')
-    TXDATA         = BitField(CONTROL, 7, 0, width=32, doc='Debug')
+    LOOPBACK       = BitField(CONTROL, 1, 0, width=3, doc='Debug') #-- '000' = normal operation
 
-    TXPRBSSEL         = BitField(CONTROL, 8, 2, width=3, doc='Debug')
-    TXHEADER          = BitField(CONTROL, 8, 0, width=2, doc='Debug')
-    BLOCK_LOCK_RESET  = BitField(CONTROL, 8, 5, doc='')
-    SCRAMBLER_RESET   = BitField(CONTROL, 8, 6, doc='')
-    UNSCRAMBLER_RESET = BitField(CONTROL, 8, 7, doc='')
+    SOURCE_SEL     = BitField(CONTROL, 2, 7, doc='')
+    TXPRECURSOR    = BitField(CONTROL, 2, 2, width=5, doc='Debug')
+    TXHEADER       = BitField(CONTROL, 2, 0, width=2, doc='Debug')
 
-    SCRAMBLE_EN    = BitField(CONTROL, 9, 0, doc='')
-    DESCRAMBLE_EN  = BitField(CONTROL, 9, 1, doc='')
-    CAPTURE_EN     = BitField(CONTROL, 9, 2, doc='')
-    STOP_BITSLIP   = BitField(CONTROL, 9, 3, doc='')
-    USER_GTTXRESET = BitField(CONTROL, 9, 4, doc='')
-    USER_GTRXRESET = BitField(CONTROL, 9, 5, doc='')
-    SOURCE_SEL    = BitField(CONTROL, 9, 6, doc='')
-    DRP_BANK       = BitField(CONTROL, 9, 7, doc='')
+    TX_DATA_LSB    = BitField(CONTROL, 3, 0, width=8, doc='Debug')
 
-    RXLPMEN       = BitField(CONTROL, 10, 6, doc='') #gt_control_bytes(i)(10)(6);
-    RXDFELPMRESET = BitField(CONTROL, 10, 5, doc='') #gt_control_bytes(i)(10)(5);
-    RXMONITORSEL  = BitField(CONTROL, 10, 3, width=2, doc='') #gt_control_bytes(i)(10)(4 downto 3);
-    RXLPMHOLD     = BitField(CONTROL, 10, 1, width=2, doc='') #gt_control_bytes(i)(10)(2 downto 1);
-    RXDFEHOLD     = BitField(CONTROL, 11, 0, width=9, doc='') # Bit 0: AGC, 1: LF, 2-5: TAP2-5, 6: UT, 7: VP, 8: OS
-    RXLPMOVRD     = BitField(CONTROL, 12, 1, width=2, doc='') #gt_control_bytes(i)(10)(2 downto 1);
-    RXDFEOVRD     = BitField(CONTROL, 13, 0, width=9, doc='') # Bit 0: AGC, 1: LF, 2-5: TAP2-5, 6: UT, 7: VP, 8: OS
+    RXDFELPMRESET    = BitField(CONTROL, 4, 7, doc='') #gt_control_bytes(i)(10)(5);
+    USER_GTRXRESET   = BitField(CONTROL, 4, 6, doc='')
+    RXLPMEN          = BitField(CONTROL, 4, 5, doc='') #gt_control_bytes(i)(10)(6);
+    RXMONITORSEL     = BitField(CONTROL, 4, 3, width=2, doc='') #gt_control_bytes(i)(10)(4 downto 3);
+    CAPTURE_ENABLE   = BitField(CONTROL, 4, 2, doc='')
+    BLOCK_LOCK_RESET = BitField(CONTROL, 4, 1, doc='')
 
-    DMONITOROUT   = BitField(STATUS, 0, 0, width=8, doc='Debug')
-    RXDATA        = BitField(STATUS, 4, 0, width=32)
-    TXRESETDONE   = BitField(STATUS, 5, 7, doc='Debug')
-    RXRESETDONE   = BitField(STATUS, 5, 6, doc='Debug')
-    TXBUFSTATUS   = BitField(STATUS, 5, 4, width=2)
-    RXBUFSTATUS   = BitField(STATUS, 5, 1, width=3)
-    RXPRBSERR     = BitField(STATUS, 5, 0, doc='Debug')
-    TXUSERRDY     = BitField(STATUS, 6, 0, doc='Debug')
-    TX_RESETDONE  = BitField(STATUS, 6, 1, doc='Debug')
-    RX_RESETDONE  = BitField(STATUS, 6, 2, doc='Debug')
-    RX_CDRLOCKED  = BitField(STATUS, 6, 3, doc='Debug')
-    GTTXRESET     = BitField(STATUS, 6, 4, doc='Debug')
-    RXUSERRDY     = BitField(STATUS, 6, 5, doc='Debug')
+    # SCRAMBLER_RESET    = BitField(CONTROL, 0, 5, doc='')
+    # DESCRAMBLER_RESET  = BitField(CONTROL, 0, 4, doc='')
+    # SCRAMBLER_ENABLE   = BitField(CONTROL, 0, 3, doc='')
+    # DESCRAMBLER_ENABLE = BitField(CONTROL, 0, 2, doc='')
 
-    RXHEADER      = BitField(STATUS, 7, 0, width=2, doc='Debug')
-    BLOCK_LOCK    = BitField(STATUS, 7, 3, doc='Debug')
-    RXGEARBOXSLIP = BitField(STATUS, 7, 4, doc='Debug')
-    RXHEADERVALID = BitField(STATUS, 7, 5, doc='Debug')
-    GTRXRESET     = BitField(STATUS, 7, 6, doc='Debug')
+    RXPRBSCNTRESET = BitField(CONTROL, 5, 7, doc='Debug')
+    TXPRBSFORCEERR = BitField(CONTROL, 5, 6, doc='Debug')
+    TXPRBSSEL      = BitField(CONTROL, 5, 3, width=3, doc='Debug')
+    RXPRBSSEL      = BitField(CONTROL, 5, 0, width=3, doc='Debug')
 
-    ERR_CTR       = BitField(STATUS, 11, 0, width=32)
-    RXMONITOR     = BitField(STATUS, 12, 0, width=7, doc='Debug')
+
+    # RXCDRHOLD      = BitField(CONTROL, 0, 3, doc='Debug')
+    # TXPOLARITY     = BitField(CONTROL, 1, 1, doc='Debug')
+    # RXPOLARITY     = BitField(CONTROL, 1, 0, doc='Debug')
+
+    # BLOCK_LOCK_RESET  = BitField(CONTROL, 8, 5, doc='')
+    # SCRAMBLER_RESET   = BitField(CONTROL, 8, 6, doc='')
+    # UNSCRAMBLER_RESET = BitField(CONTROL, 8, 7, doc='')
+
+    # SCRAMBLE_EN    = BitField(CONTROL, 9, 0, doc='')
+    # DESCRAMBLE_EN  = BitField(CONTROL, 9, 1, doc='')
+    # CAPTURE_EN     = BitField(CONTROL, 9, 2, doc='')
+    # STOP_BITSLIP   = BitField(CONTROL, 9, 3, doc='')
+    # DRP_BANK       = BitField(CONTROL, 9, 7, doc='')
+
+    # RXLPMHOLD     = BitField(CONTROL, 10, 1, width=2, doc='') #gt_control_bytes(i)(10)(2 downto 1);
+    # RXDFEHOLD     = BitField(CONTROL, 11, 0, width=9, doc='') # Bit 0: AGC, 1: LF, 2-5: TAP2-5, 6: UT, 7: VP, 8: OS
+    # RXLPMOVRD     = BitField(CONTROL, 12, 1, width=2, doc='') #gt_control_bytes(i)(10)(2 downto 1);
+    # RXDFEOVRD     = BitField(CONTROL, 13, 0, width=9, doc='') # Bit 0: AGC, 1: LF, 2-5: TAP2-5, 6: UT, 7: VP, 8: OS
+
+    TX_RESETDONE  = BitField(STATUS, 0, 7, doc='Debug')
+    RX_RESETDONE  = BitField(STATUS, 0, 6, doc='Debug')
+    TXBUFSTATUS   = BitField(STATUS, 0, 4, width=2)
+    TXRESETDONE   = BitField(STATUS, 0, 3, doc='Debug')
+    RXRESETDONE   = BitField(STATUS, 0, 2, doc='Debug')
+    BLOCK_LOCK    = BitField(STATUS, 0, 1, doc='Debug')
+
+    RXHEADER      = BitField(STATUS, 1, 6, width=2, doc='Debug')
+    RXBUFSTATUS   = BitField(STATUS, 1, 0, width=3)
+
+    RXMONITOR     = BitField(STATUS, 2, 0, width=7, doc='Debug')
+
+    RXDATA        = BitField(STATUS, 6, 0, width=32)
+
+    ERR_CTR       = BitField(STATUS, 10, 0, width=32)
+
+    DMONITOROUT   = BitField(STATUS, 11, 0, width=8, doc='Debug')
+
+    # RXPRBSERR     = BitField(STATUS, 5, 0, doc='Debug')
+    # TXUSERRDY     = BitField(STATUS, 6, 0, doc='Debug')
+    # RX_CDRLOCKED  = BitField(STATUS, 6, 3, doc='Debug')
+    # GTTXRESET     = BitField(STATUS, 6, 4, doc='Debug')
+    # RXUSERRDY     = BitField(STATUS, 6, 5, doc='Debug')
+
+    # RXGEARBOXSLIP = BitField(STATUS, 7, 4, doc='Debug')
+    # RXHEADERVALID = BitField(STATUS, 7, 5, doc='Debug')
+    # GTRXRESET     = BitField(STATUS, 7, 6, doc='Debug')
+
 
     RX_PRBS_ERR_CNT   = BitField(DRP, 0x015C, 0, width=16, doc="Pattern checker error counter since last RXPRBSCNTRESET")
     GEARBOX_MODE      = BitField(DRP, 0x01C, 0, width=3, doc="")
@@ -179,34 +200,6 @@ class GTX(Module_base):
         self.logger = logging.getLogger(__name__)
         super(self.__class__, self).__init__(fpga_instance, base_address, instance_number)
 
-
-
-    # def read_drp(self, addr):
-    #     """
-    #     Reads a DRP (Dynamic Reconfigurable Port) from one of the FPGA internal devices (PLL, SYSMON, MGT etc). 'addr' is the 16-bit DRP register address.
-    #     """
-    #     addr = (2*addr) & 0x1FF
-    #     bank = (2*addr) >> 9
-    #     self.DRP_BANK = bank
-    #     value= self.read(0x200+addr, type=np.dtype('<u2'))
-    #     self.DRP_BANK = 0
-    #     return value
-
-    # read_DRP = read_drp
-
-    # def write_drp(self, addr, data):
-    #     """
-    #     Writes a DRP (Dynamic Reconfigurable Port) of the FPGA internal devices (PLL, SYSMON, MGT etc).
-    #     'addr' is the 16-bit DRP register address.
-    #     """
-    #     addr = (2*addr) & 0x1FF
-    #     bank = (2*addr) >> 9
-    #     self.DRP_BANK = bank
-    #     self.write(0x200+addr, [data &0xFF, (data>>8)& 0xFF])
-    #     self.DRP_BANK = 0
-
-    # write_DRP = write_drp
-
     def init(self):
         """ Initializes the GTX CHANNEL block"""
         self.logger.info('Initializing GTX_CHANNEL  #%i' % self.instance_number)
@@ -226,12 +219,10 @@ class GTX(Module_base):
         """ Execute only when there is a clock """
         self.SOURCE_SEL=0 # 0:Send user packets, 1: send TXDATA word
         self.LOOPBACK = 0
-        self.TXPOLARITY=0
-        self.RXPOLARITY=0
+        # self.TXPOLARITY=0
+        # self.RXPOLARITY=0
         self.TXPRBSSEL=0
         self.RXPRBSSEL=0
-        self.SCRAMBLE_EN=1
-        self.DESCRAMBLE_EN=1
         self.TXDIFFCTRL = 10
         self.TXPRECURSOR = 0b00000 #DFE cannot compensate pre-cursor
         self.TXPOSTCURSOR = 0b00000
@@ -255,25 +246,27 @@ class GTX(Module_base):
 class Shuffle(Module_base):
     """ Instantiates a container for all the shuffle ressources """
 
-    # LINK_ENABLE           = BitField(CONTROL, 0, 0, doc='When 1, enables trsnamission of data over the link.')
-    # TEST_ENABLE           = BitField(CONTROL, 0, 1, doc='When 1, enables trsnamission of test data over the link. Requires LINK_ENABLE=1.')
-    RESET                 = BitField(CONTROL, 0, 2, doc='The cores are reset when this signal goes from 1 to 0')
+    # # LINK_ENABLE           = BitField(CONTROL, 0, 0, doc='When 1, enables trsnamission of data over the link.')
+    # # TEST_ENABLE           = BitField(CONTROL, 0, 1, doc='When 1, enables trsnamission of test data over the link. Requires LINK_ENABLE=1.')
+    # RESET                 = BitField(CONTROL, 0, 2, doc='The cores are reset when this signal goes from 1 to 0')
 
-    TX_TEST_ENABLE        = BitField(CONTROL, 1, 0, doc='')
+    # XGLINK common control and status registers
+    CORE_RESET         = BitField(CONTROL, 0, 7, doc='The GTX cores are reset when this signal goes from 1 to 0')
+    TX_DATA_MSB        = BitField(CONTROL, 3, 0, width=16, doc='24 most significant bits of the data word that can be sent manually. This is common to all lanes.')
 
-    NUMBER_OF_QUADS       = BitField(STATUS, 0, 0, width=8, doc='Number of GTX quads (QPLLs)')
-    NUMBER_OF_LINKS       = BitField(STATUS, 1, 0, width=8, doc='Number of lanes (GTX)')
+    NUMBER_OF_QUADS    = BitField(STATUS, 0, 5, width=3, doc='Number of QUADS (QPLLs)')
+    NUMBER_OF_LINKS    = BitField(STATUS, 0, 0, width=5, doc='Number of links')
+    RESET_PULSE        = BitField(STATUS, 1, 5, doc='debug')
+    RESET_DONE         = BitField(STATUS, 1, 4, doc='debug')
+    QPLL_RESET_MON     = BitField(STATUS, 1, 4, doc='debug')
 
-    RESET_PULSE           = BitField(STATUS, 2, 5, doc='Debug')
-    RESET_DONE            = BitField(STATUS, 2, 4, doc='Debug')
-    QPLL_RESET            = BitField(STATUS, 2, 3, doc='Debug')
-    # RESET_COUNTER_DONE    = BitField(STATUS, 2, 0, doc='Debug')
+    # backplane link-specific registers
+    TX_TEST_ENABLE        = BitField(CONTROL, 4+0, 1, doc='')
+    RESET_STATS           = BitField(CONTROL, 4+0, 3, doc='')
+    LANE_SEL              = BitField(CONTROL, 4+0, 4, width=4, doc='')
 
-    FRAME_CTR             = BitField(STATUS, 3, 0, width=8, doc='Counts incoming frames on lane 0. Wraps around.')
-    WORD_CTR              = BitField(STATUS, 4, 0, width=8, doc='Word counter userd to generate the test patterns.')
-
-    ERROR              = BitField(STATUS, 5, 0, width=8, doc='Current value of the receive Error bit for the first 8 lanes')
-    ERROR_CTR          = BitField(STATUS, 6, 0, width=8, doc='Number of errors so far on the 1st GTX lane (typically lane 1). 8 bits, wraps around.')
+    FIFO_OVERFLOW         = BitField(STATUS, 2+0, 0, doc='Sticky fifo overflow bit for the selected lane. Is cleared when RESET_STATS=1.')
+    RX_ERROR_CTR          = BitField(STATUS, 2+1, 0, width=8, doc='Current value of the error counter for the selected lane. Saturates at 255. Is cleared when RESET_STATS=1.')
 
     def __init__(self, fpga_instance, base_address, address_increment, verbose = 1):
         # self.fpga = fpga
@@ -298,12 +291,13 @@ class Shuffle(Module_base):
 
     def init(self):
         """ Initializes the GPU links"""
+
         for (i, qpll) in enumerate(self.qpll):
-            self.logger.debug('Initializing GPU GTX QUAD #%i' % i)
+            self.logger.debug('Initializing Backplane link QUAD #%i' % i)
             qpll.init()
 
         for (i, gtx) in enumerate(self.gtx):
-            self.logger.debug('Initializing GPU GTX CHANNEL #%i' % i)
+            self.logger.debug('Initializing backplane link GTX #%i' % i)
             gtx.init()
 
     def reset_rx_equalizers(self):

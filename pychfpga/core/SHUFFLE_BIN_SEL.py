@@ -22,31 +22,26 @@ class SHUFFLE_BIN_SEL_base(Module_base):
     STATUS = BitField.STATUS
 
     # Control bitfields
-    RESET                       = BitField(CONTROL, 0x00, 7, doc="Reset the CH_DIST. Clears FIFO.")
-    # FOUR_BITS                = BitField(CONTROL, 0x00, 6, doc="When '1', input data is assumed to be four bits only and the output words are repacked accordingly (4 complex numbers per word).")
-    # USE_OFFSET_BINARY        = BitField(CONTROL, 0x00, 5, doc="When '1', indicates that the data uses offset binary encoding instead of 2's complement. Does not affect any processing here, but the flag is passed in the frame header.")
-    # SEND_FLAGS               = BitField(CONTROL, 0x00, 4, doc="When '1', the scaler and ADC/FFT flags are appended to the end of the data packet")
-    # DUAL_BINS                = BitField(CONTROL, 0x00, 3, doc="When '1', both bins coming out of the FFT are always selected simultaneously, allowing all the data from a channelizer to be packed into a single GPU lane. '0' is the default. ")
-    HEADER_CAPTURE_SEL         = BitField(CONTROL, 0x00, 1, width=4, doc=" Select from which lane the captured STREAM_ID and TIMESTAMP is accessed.")
-    HEADER_CAPTURE_EN          = BitField(CONTROL, 0x00, 0, doc="Enables capture of header info on all lanes simultaneously.")
+    RESET                       = BitField(CONTROL, 0, 7, doc="Reset the CH_DIST. Clears FIFO.")
+    HEADER_CAPTURE_DATA_SEL     = BitField(CONTROL, 0, 5, width=2, doc=" Select whether we capture Stream ID or timestamps.")
+    HEADER_CAPTURE_LANE_SEL     = BitField(CONTROL, 0, 1, width=4, doc=" Select from which lane the captured data is accessed.")
+    HEADER_CAPTURE_EN          = BitField(CONTROL, 0, 0, doc="Enables capture of header info on all lanes simultaneously.")
 
-    STREAM_ID                   = BitField(CONTROL, 0x02, 4, width=12, doc="Stream ID to be used for tagging the output frames")
-    NUMBER_OF_BINS_PER_FRAME    = BitField(CONTROL, 0x03, 0, width=11, doc="Number of bins extected in each incoming frame")
-    NUMBER_OF_WORDS_PER_BIN     = BitField(CONTROL, 0x04, 0, width=7, doc="Number of words expected in each bin. In 4-bit mode, 1 Word = 4 analog inputs")
-    NUMBER_OF_FRAMES_PER_PACKET = BitField(CONTROL, 0x05, 5, width=3, doc="Number of expected frames per packet. ")
-    NUMBER_OF_LANES             = BitField(CONTROL, 0x05, 0, width=5, doc="Number of lanes (from lane 0 to lane N-1) to include in the output")
+    STREAM_ID                   = BitField(CONTROL, 2, 4, width=12, doc="Stream ID to be used for tagging the output frames")
+    NUMBER_OF_BINS_PER_FRAME    = BitField(CONTROL, 3, 0, width=11, doc="Number of bins extected in each incoming frame")
+    NUMBER_OF_WORDS_PER_BIN     = BitField(CONTROL, 4, 0, width=7, doc="Number of words expected in each bin. In 4-bit mode, 1 Word = 4 analog inputs")
+    NUMBER_OF_FRAMES_PER_PACKET = BitField(CONTROL, 5, 5, width=3, doc="Number of expected frames per packet. ")
+    NUMBER_OF_LANES             = BitField(CONTROL, 5, 0, width=5, doc="Number of lanes (from lane 0 to lane N-1) to include in the output")
 
     # Status bitfields
-    FIFO_EMPTY               = BitField(STATUS, 0x00, 7, doc="Active high when the data FIFO is empty")
-    # FIFO_OVERFLOW            = BitField(STATUS, 0x00, 6, doc="Active high if the data FIFO is overflowing")
-    IS_RESET                 = BitField(STATUS, 0x00, 5, doc="High when the module reset line is active")
-    COMBINE_DATA_FLAGS       = BitField(STATUS, 0x00, 4, doc="Active high if this crossbar is configured to pack the data flags two by two. This is used for the 2nd crossbar, where the incoming data flags occupy only 16 bits of the words.")
-    STREAM_ID_CAPTURE        = BitField(STATUS, 0x02, 0, width=16, doc="")
-    TIMESTAMP_CAPTURE        = BitField(STATUS, 0x04, 0, width=16, doc="")
-
+    FIFO_EMPTY               = BitField(STATUS, 0, 7, doc="Active high when the data FIFO is empty")
+    # FIFO_OVERFLOW            = BitField(STATUS, 0, 6, doc="Active high if the data FIFO is overflowing")
+    IS_RESET                 = BitField(STATUS, 0, 5, doc="High when the module reset line is active")
+    COMBINE_DATA_FLAGS       = BitField(STATUS, 0, 4, doc="Active high if this crossbar is configured to pack the data flags two by two. This is used for the 2nd crossbar, where the incoming data flags occupy only 16 bits of the words.")
+    HEADER_CAPTURE_DATA      = BitField(STATUS, 1, 0, width=8, doc="")
+    # TIMESTAMP_CAPTURE        = BitField(STATUS, 4, 0, width=16, doc="")
     # IN_FRAME_CTR             = BitField(STATUS, 0x02, 0, width=8, doc="Number of frames received on lane 0 before the alignment FIFOs. Rolls over.")
-
-    LANE_CTR                = BitField(STATUS, 0x04, 0, width=4, doc="Debug")
+    # LANE_CTR                = BitField(STATUS, 0x04, 0, width=4, doc="Debug")
 
     def __init__(self, fpga_instance, base_address, instance_number):
         # self.parent = parent

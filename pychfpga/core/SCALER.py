@@ -1,9 +1,9 @@
 #!/usr/bin/python
 # Disable pylint TAB warnings (W0312) and Line too long (=C0301)
-# pylint: disable=W0312,C0301 
+# pylint: disable=W0312,C0301
 
 """
-SCALER.py module 
+SCALER.py module
  Implements interface to the SCALER
 
  History:
@@ -37,7 +37,7 @@ class SCALER_base(Module_base):
 
     def __init__(self, fpga_instance, base_address, instance_number):
          super(self.__class__, self).__init__(fpga_instance, base_address, instance_number)
-        
+
     def reset(self):
         """ Resets the SCALER module """
         self.pulse_bit('RESET')
@@ -97,22 +97,22 @@ class SCALER_base(Module_base):
 
     def get_gain_table(self, bank=0):
         """
-        Gets the scaler's complex gain table for the specified bank.  Converts to numpy complex array. 
+        Gets the scaler's complex gain table for the specified bank.  Converts to numpy complex array.
         """
         page_table = np.zeros(512, np.int8)
         gain_table = []#np.zeros(self.fpga.NUMBER_OF_FREQUENCY_BINS, np.complex)
         for page in range(8): # there are 8 pages of coefficients per bank
             self.WRITE_COEFF_BANK = 8*bank + page # Sets which page/bank being read? Not sure if will work...
-            page_table = self.read_RAM(0, length=512)
+            page_table = self.read_ram(0, length=512)
             for ix in range(128): # there are 128 coefficients per page ( 4 byte per coefficient = 512 bytes total per page)
                 bin = page*128 + ix
                 g_imag, g_real = struct.unpack('<hh',page_table[4*ix:4*ix+4])
                 gain_table.append(g_real +1j*g_imag) #[bin] = g_real +1j*g_imag
         return gain_table
-        
+
     def status(self):
         """ Displays the status of the scaler module"""
-        print '-------------- ANT[%i].SCALER STATUS --------------' % self.instance_number 
+        print '-------------- ANT[%i].SCALER STATUS --------------' % self.instance_number
         print ' SCALER Bypass: %s' % (bool(self.BYPASS))
         print ' Shift left: %i' % self.SHIFT_LEFT
 

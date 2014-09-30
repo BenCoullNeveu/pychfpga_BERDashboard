@@ -11,6 +11,7 @@ History:
     2012-04-11 JFC : generalized write_read to allow simple read and writes. Trig the state machine (START) in two lines to make sure the 0-to-1 transition is not missed. Cleanup.
     2012-08-27 JFC : Fixed reference to common.util as pychfpga.common.util
     2012-11-19 JFC: Fixed tabs. Changed how errors are handled. Now SystemError restuns error strings.
+    2014-09-29 JFC: changed code to use read_status() and write_control() so we don't have to assume anything on how to access the various address spaces.
 """
 
 import logging
@@ -24,7 +25,6 @@ __reload__=True
 class I2C_base(Module_base):
     # I2C addresses
     I2C_FMC_HPC_EPPROM_ADDR=0    # ADC. R/W device. 8 bit address+RW, 16 bit data.
-
 
     CONTROL=BitField.CONTROL
     STATUS=BitField.STATUS
@@ -69,16 +69,6 @@ class I2C_base(Module_base):
         super(self.__class__, self).__init__(fpga, base_address)
         self.current_port = None
         self.logger = logging.getLogger(__name__)
-
-    # I2C_DEVICE_LIST_KC705 = {
-    #     'FMC': 0x02
-    #     }
-    # I2C_DEVICE_ADDR_KC705 = 0x74
-
-    # def set_switch(self, device_name):
-    #     'Selects the active I2C sevice for the platforms that use a I2C switch'
-    #     if self.fpga_instance.PLATFORM_ID == self.fpga_instance.PLATFORM_ID_KC705:
-    #         self.write(addr=self.I2C_DEVICE_ADDR_KC705, data=[self.I2C_DEVICE_LIST_KC705[device_name]])
 
     def set_port(self, port_number):
         """
@@ -128,19 +118,19 @@ class I2C_base(Module_base):
 
         trial = 0
         while True:
-            self.write(0x000 + 0x05, self.current_port << 4) # disables RESET, set port number
+            self.write_control(0x05, self.current_port << 4) # disables RESET, set port number
 
             idle = self.IDLE
             if data is None: # if we do not write any date, we perform a single transaction with BYTES1=read_length and BYTES2=0
-                self.write(0x000 + 0x00, [(addr << 1) + 0x01]) # write I2C address with read flag to the transmit buffer
+                self.write_control(0x00, [(addr << 1) + 0x01]) # write I2C address with read flag to the transmit buffer
                 expected_ack = 2**(read_length + 1) - 1;
-                self.write(0x000 + 0x04,[0x00 + read_length]) # Prepare to start transaction by clearing the START bit
-                self.write(0x000 + 0x04,[0x80 + read_length]) # start transaction by creating a 0-to-1 trsnsition on the START bit. Do this as a separate transmission to make sure that the firmware registered the zero
+                self.write_control(0x04,[0x00 + read_length]) # Prepare to start transaction by clearing the START bit
+                self.write_control(0x04,[0x80 + read_length]) # start transaction by creating a 0-to-1 trsnsition on the START bit. Do this as a separate transmission to make sure that the firmware registered the zero
             else: # if we write and optionnally read
-                self.write(0x000 + 0x00, [(addr << 1) + 0x00] + data) # write address with write flag and data in transmit buffer (4 bytes max)
+                self.write_control(0x00, [(addr << 1) + 0x00] + data) # write address with write flag and data in transmit buffer (4 bytes max)
                 expected_ack= 2**(read_length + write_length + 1 + (read_length != 0)) - 1
-                self.write(0x000 + 0x04,[0x00+(read_length << 4) + write_length]) # Prepare to start transaction by clearing the START bit
-                self.write(0x000 + 0x04,[0x80+(read_length << 4) + write_length]) # start transaction by creating a 0-to-1 trsnsition on the START bit. Do this as a separate transmission to make sure that the firmware registered the zero
+                self.write_control(0x04,[0x00+(read_length << 4) + write_length]) # Prepare to start transaction by clearing the START bit
+                self.write_control(0x04,[0x80+(read_length << 4) + write_length]) # start transaction by creating a 0-to-1 trsnsition on the START bit. Do this as a separate transmission to make sure that the firmware registered the zero
             self.wait_for_bit('DONE')
 
             # Increment the transaction counters to track how many start and done events we *should* have
@@ -151,7 +141,7 @@ class I2C_base(Module_base):
                 self.logger.warn('write_read: Transaction is not completed yet!')
 
             # Get the data that was read back
-            read_data=self.read(0x080+0x00, length=4, type=np.uint8)
+            read_data=self.read_status(0x00, length=4, type=np.uint8)
 
             # Check the ACK flags
             ack=self.ACK_STATUS

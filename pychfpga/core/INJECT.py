@@ -1,9 +1,9 @@
 #!/usr/bin/python
 # Disable pylint Line too long (=C0301)
-# pylint: disable=C0301 
+# pylint: disable=C0301
 
 """
-INJECT.py module 
+INJECT.py module
  Implements interface to the antenna data injector module
 #
 # History:
@@ -14,17 +14,17 @@ import numpy as np
 from Module import Module_base, BitField
 
 
-    
+
 class INJECT_base(Module_base):
     """ Implements interface to the data injector module within a procecessor pipeline"""
     # Create local variables for page numbers tomake the table more readable
     CONTROL = BitField.CONTROL
     STATUS = BitField.STATUS
 
-    
+
     # Memory-mapped register definition
     RESET         = BitField(CONTROL, 0x00, 7, doc='Resets this module')
-    
+
     RST           = BitField(STATUS, 0x00, 7, doc="debug")
     SOFT_RESET    = BitField(STATUS, 0x00, 5, doc="debug")
     ANT_RESET     = BitField(STATUS, 0x00, 4, doc="debug")
@@ -58,7 +58,7 @@ class INJECT_base(Module_base):
         else:
             if length == None:
                 length = self.fpga.FRAME_LENGTH#len(data)
-            
+
             if type(data) == str :
                 data_length = len(data)
                 frame = [ord(data[i % data_length]) for i in range(length)]
@@ -72,17 +72,17 @@ class INJECT_base(Module_base):
                 frame = [data]*length
             else:
                 print 'Data should be an integer, a list, or numpy array'
-                
-        self.write_ram(0x00, frame, incr=0) # Write to FIFO
+
+        self.write_ram(0x00, frame) # Write to FIFO
 
 
     def init(self):
         """ Initializes the data injector"""
         pass
-    
+
     def status(self):
         """ Displays the status of the data injector module """
-        print '-------------- ANT[%i].INJECT STATUS --------------' % self.instance_number 
+        print '-------------- ANT[%i].INJECT STATUS --------------' % self.instance_number
         print ' Reset states:'
         print '    RST: %s' % bool(self.RST)
         print '    ANT_RESET: %s' % bool(self.ANT_RESET)
@@ -90,5 +90,5 @@ class INJECT_base(Module_base):
         print '    EMPTY: %s' % bool(self.FIFO_EMPTY)
         print '    OVERFLOW: %s' % bool(self.FIFO_OVERFLOW)
         print '    LENGTH: %i' % self.FIFO_LENGTH
- 
+
 
