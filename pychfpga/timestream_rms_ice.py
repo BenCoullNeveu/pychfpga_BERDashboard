@@ -92,10 +92,10 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__.split('\n')[0]) # description is the first line of the docstring
     parser.add_argument('--force', action = 'store', type=int, default=0, help='Forces reprogramming of the FPGAs even if they are already programmed')
     parser.add_argument('-i', '--if_ip', action = 'store', type=str, default=None, help='IP address of adapter through which the connection to the FPGA will be established. If not specified, the controller will attempt to identify the proper host based on the FPGA IP address.')
-    parser.add_argument('--bitfile', action = 'store', type=str, default= '../../chfpga/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit',  help='Filename of the bitfile used to to program the FPGAs')
-    parser.add_argument('--subarray', action = 'store', type=int, default=2, help='Which subarray to use')
+    parser.add_argument('--bitfile', action = 'store', type=str, default= '../chfpga/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit',  help='Filename of the bitfile used to to program the FPGAs')
+    parser.add_argument('-s', '--subarray', action = 'store', nargs='+', type=int, help='Space-separated list of subarrays to include')
     args = parser.parse_args()
-    log_level = {'info': logging.INFO, 'debug': logging.DEBUG}[args.log_level]
+    log_level = logging.DEBUG  #{'info': logging.INFO, 'debug': logging.DEBUG}[args.log_level]
 
     # logging.basicConfig(level=log_level, format='%(asctime)s  %(context)s %(name)-32s %(levelname)-10s : %(message)s')
 
@@ -110,11 +110,11 @@ if __name__ == '__main__':
     ADC_DELAY_TABLE = ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 # ADC_DELAYS_REV2_SN0001 # select the table corresponding to the FMC serial number
     IceArray.close_all_sessions() # close all previously opened sessions
     ca = IceArray(interface_ip_addr=args.if_ip)
-    ca.load_iceboards('iceboard_list.txt')
+    ca.load_iceboards('pychfpga/iceboard_list.txt')
     ca.discover() # automatically update the hardware map database with discovered resources
     bitfile_filename = args.bitfile
     fpga_bitstream = ca.get_fpga_bitstream(args.bitfile, ChimeFpgaFirmware) # Get a new bitstream from the database (or create a new database entry if it does not exist yet)
-    c = ca.get_iceboards(subarray=args.subarray).index_by(IceBoard.serial_number) # get one or more IceBoards from specified subarray
+    c = ca.get_iceboards(subarray=args.subarray)  #.index_by(IceBoard.serial_number) # get one or more IceBoards from specified subarray
     c.set_fpga_firmware(fpga_bitstream, force=args.force)
     c.open( \
         adc_delay_table=ADC_DELAY_TABLE, \
@@ -132,12 +132,12 @@ if __name__ == '__main__':
                       ip_address=c_element.fpga_ip_addr, \
                       port=c_element.fpga_port_number+1, \
                       host_ip = args.if_ip)
-        c_element.set_data_source('adc_element')
-        c_element.set_adc_mode('data')
-        c_element.set_FFT_bypass(True)
-        c_element.set_scaler_bypass(False)
-        c_element.set_gain((1,27))
-        c_element.start_data_capture(burst_period_in_seconds=1.5, number_of_bursts=0)
+        c_element.fpga.set_data_source('adc')
+        c_element.fpga.set_adc_mode('data')
+        c_element.fpga.set_FFT_bypass(True)
+        c_element.fpga.set_scaler_bypass(False)
+        c_element.fpga.set_gain((1,27))
+        c_element.fpga.start_data_capture(burst_period_in_seconds=1.5, number_of_bursts=0)
         time.sleep(2)
         print_RMS(r)
         r.close()
