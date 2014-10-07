@@ -5,6 +5,8 @@ for testing ADC-FPGA communication by sending ADC ramps.
 '''
 
 import numpy as np
+import matplotlib
+matplotlib.use('Agg')
 import time, pylab, csv
 from pychfpga.common.tests.test_BaseClass import test_BaseClass
 from pychfpga import save_raw_frames
@@ -61,9 +63,9 @@ class test_adc_ramp_histogram(test_BaseClass):
             self.fpga_ctrl.stop_data_capture()
             self.plot_histogram(fname)
             self.compute_bit_errors(fname)
-            confirm = raw_input('Start print_ramp_errors? This will print error counts until a KeyboardInterrupt. (y/n)\n')
-            if confirm == 'y' or confirm == 'Y':
-                self.fpga_ctrl.ANT.print_ramp_errors()
+            #confirm = raw_input('Start print_ramp_errors? This will print error counts until a KeyboardInterrupt. (y/n)\n')
+            #if confirm == 'y' or confirm == 'Y':
+            #    self.fpga_ctrl.ANT.print_ramp_errors()
         except:
             self.fpga_recv.close()
             raise
@@ -83,24 +85,44 @@ if __name__ == '__main__':
     from pychfpga.core.chFPGA_controller import chFPGA_controller as ChimeFpgaFirmware
     from pychfpga.core import chFPGA_receiver
     ADC_DELAY_TABLE= (
-    ([16]*8,     [3]*8), #CH0
-    ([7]*8,                       [3]*8), #CH1
-    ([22]*8,    [3]*8), #CH2
-    ([19]*8,                       [3]*8), #CH3
-    ([15]*8,                        [3]*8), #CH4
-    ([14, 13, 14, 14, 13, 14, 15, 14],    [3]*8), #CH5
-    ([18]*8,     [3]*8), #CH6
-    ([17]*8,                       [4]*8), #CH7
+    ([18, 18, 18, 16, 16, 17, 16, 17],     [3]*8), #CH0
+    ([23, 24, 22, 22, 23, 23, 22, 22],                       [4]*8), #CH1
+    ([25, 25, 25, 25, 25, 25, 25, 23],    [3]*8), #CH2
+    ([22, 23, 23, 22, 24, 22, 22, 21],                       [3]*8), #CH3
+    ([20, 22, 22, 22, 22, 21, 22, 22],                        [3]*8), #CH4
+    ([18, 18, 20, 19, 18, 19, 20, 18],    [3]*8), #CH5
+    ([23, 24, 22, 23, 23, 21, 23, 23],    [3]*8), #CH6
+    ([22, 20, 21, 23, 20, 21, 21, 21],                       [4]*8), #CH7
 
-    ([15, 17, 15, 18, 17, 14, 17, 15],   [3]*8), #CH8
-    ([16]*8,                       [4]*8), #CH9
-    ([20]*8,                       [3]*8), #CH10
-    ([18]*8,                     [3]*8), #CH11
-    ([15]*8,                       [3]*8), #CH12
-    ([18]*8,                       [3]*8), #CH13
-    ([18]*8,                       [3]*8), #CH14
-    ([16]*8,                       [3]*8)  #CH15
+    ([19, 21, 18, 20, 20, 18, 21, 18],   [3]*8), #CH8
+    ([20, 18, 17, 18, 18, 16, 20, 20],                       [4]*8), #CH9
+    ([24, 24, 20, 22, 20, 22, 21, 22],                       [3]*8), #CH10
+    ([22, 23, 22, 21, 22, 22, 22, 21],                     [3]*8), #CH11
+    ([20, 20, 21, 20, 19, 18, 18, 18],                       [3]*8), #CH12
+    ([23, 21, 21, 22, 19, 20, 23, 20],                       [3]*8), #CH13
+    ([22, 23, 23, 23, 23, 23, 23, 24],                       [3]*8), #CH14
+    ([17, 19, 18, 19, 19, 21, 19, 19],                       [3]*8)  #CH15
     )
+    #ADC_DELAY_TABLE= (
+    #([16]*8,     [3]*8), #CH0
+    #([7]*8,                       [3]*8), #CH1
+    #([22]*8,    [3]*8), #CH2
+    #([19]*8,                       [3]*8), #CH3
+    #([15]*8,                        [3]*8), #CH4
+    #([14, 13, 14, 14, 13, 14, 15, 14],    [3]*8), #CH5
+    #([18]*8,     [3]*8), #CH6
+    #([17]*8,                       [4]*8), #CH7
+
+    #([15, 17, 15, 18, 17, 14, 17, 15],   [3]*8), #CH8
+    #([16]*8,                       [4]*8), #CH9
+    #([20]*8,                       [3]*8), #CH10
+    #([18]*8,                     [3]*8), #CH11
+    #([15]*8,                       [3]*8), #CH12
+    #([18]*8,                       [3]*8), #CH13
+    #([18]*8,                       [3]*8), #CH14
+    #([16]*8,                       [3]*8)  #CH15
+    #)
+    parser = argparse.ArgumentParser(description=__doc__.split('\n')[0]) # description is the first line of the docstring
     parser = argparse.ArgumentParser(description=__doc__.split('\n')[0]) # description is the first line of the docstring
     parser.add_argument('-s', '--subarray', action = 'store', nargs='+', type=int, help='Space-separated list of subarrays to include')
     # parser.add_argument('-g', '--group_frames', action = 'store', type=int, default=4, help='Number of frames to group before sending to the GPU or FPGA correlator. The total size of the frame, including the header and ethernet obverhead, cannot exceed 8 kibytes.')

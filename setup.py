@@ -18,28 +18,28 @@ ext_chrx = Extension("chrx",
                    ["chrx/acq.c", "chrx/chrx.c", "chrx/disc.c", \
                     "chrx/fpga_acq.c", "chrx/frame.c", \
                     "chrx/gpu_acq.c", "chrx/util.c"],
-                   include_dirs = ['/home/gamma-user/Canopy/appdata/canopy-1.3.0.1715.rh5-x86_64/include'],
+                   include_dirs = ['/opt/anaconda/include'],
                    libraries = ["hdf5", "hdf5_hl", "m", "pthread"],
-                   library_dirs = ['/home/gamma-user/Canopy/appdata/canopy-1.3.0.1715.rh5-x86_64/lib'])
+                   library_dirs = ['/opt/anaconda/lib'])
 
 
 ext_post_trans = Extension("post_acq.transpose",
                      ["post_acq/transpose.pyx", "post_acq/ctranspose.c"],
                      libraries = ["gomp"],
-                     include_dirs=[np.get_include(), '/home/gamma-user/Canopy/appdata/canopy-1.3.0.1715.rh5-x86_64/include' ],
+                     include_dirs=[np.get_include(), '/opt/anaconda/include' ],
                      # '-Wa,-q' is max specific and only there because
                      # soemthing is wrong with my gcc. It switches to the
                      # clang assembler.
-                     extra_compile_args=['-fopenmp', '-O3', '-march=native',
-                     '-Wa,-q', '-std=c99'],
-                     #extra_compile_args=['-fopenmp', '-march=native'],
-                     library_dirs = ['/home/gamma-user/Canopy/appdata/canopy-1.3.0.1715.rh5-x86_64/lib'],
+                     ##extra_compile_args=['-fopenmp', '-O3', '-march=native',
+                     ##'-Wa,-q', '-std=c99'],
+                     extra_compile_args=['-fopenmp', '-march=native', '-std=c99'],
+                     library_dirs = ['/opt/anaconda/lib'],
                      )
 
 ext_post_trunc = Extension("post_acq.truncate",
                      ["post_acq/truncate.pyx"],
-                     include_dirs=[np.get_include(), '/home/gamma-user/Canopy/appdata/canopy-1.3.0.1715.rh5-x86_64/include'],
-                     library_dirs = ['/home/gamma-user/Canopy/appdata/canopy-1.3.0.1715.rh5-x86_64/lib'],
+                     include_dirs=[np.get_include(), '/opt/anaconda/include'],
+                     library_dirs = ['/opt/anaconda/lib'],
                      )
 
 # Install the python packages.
