@@ -128,9 +128,10 @@ class FpgaMmi:
         dout = np.zeros(byte_length, np.int8) # initialize result vector as a byte array
         offset = 0
         # Loop to read all required bytes (the FPGA does not support multi-byte reads (yet))
+        
+        old_timeout = self.get_timeout()
 
         if timeout:
-            old_timeout = self.get_timeout()
             self.set_timeout(timeout)
 
         while offset < byte_length:
@@ -147,10 +148,12 @@ class FpgaMmi:
                 try:
                     self.sock.send(s)
                     data = self.sock.recv()
+                    break
                 except self.sock.TimeoutException:
                     if retries < 10:
                         retries += 1
-                        self.set_timeout(self.get_timeout + 0.5)
+                        self.set_timeout(self.get_timeout() + 0.1)
+                        self.logger.debug('FPGA read failure increasing timeout to %s' % ( self.get_timeout()))
                     else:
                         raise self.TimeoutException
                 except Exception as e:
@@ -166,8 +169,8 @@ class FpgaMmi:
                 addr += read_length
             offset += read_length
 
-        if timeout:
-            self.set_timeout(old_timeout)
+        #if timeout:
+        self.set_timeout(old_timeout)
 
         dout.dtype = np.dtype(type) # change interpretation of the byte array into a 'type' array
 
