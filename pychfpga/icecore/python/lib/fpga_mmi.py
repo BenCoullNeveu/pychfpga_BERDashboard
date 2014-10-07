@@ -141,14 +141,19 @@ class FpgaMmi:
             # print 'byte_length=', byte_length
 
             s = chr(0x00 + (0x40 if incr else 0) + (log2_length<<4) + ((addr >> 16) & 0x0F)) + chr((addr >> 8) & 0xFF) + chr(addr & 0xff)
-
-            try:
-                self.sock.send(s)
-                data = self.sock.recv()
-            except self.sock.TimeoutException:
-                raise self.TimeoutException
-            except Exception as e:
-                raise FpgaMmiException('FPGA read command failed because of the following exception: %s' % repr(e))
+            retries = 0
+            # could be infinite loop here, but be safe.
+            while retries < 15:
+                try:
+                    self.sock.send(s)
+                    data = self.sock.recv()
+                except self.sock.TimeoutException:
+                    if retries < 10:
+                        retries += 1
+                    else:
+                        raise self.TimeoutException
+                except Exception as e:
+                    raise FpgaMmiException('FPGA read command failed because of the following exception: %s' % repr(e))
             #if data[0]!=s[0]:
             #    self.log.error("Read: ERROR: Returned ANT/SUB/ADDR (",   ata[0:2]," does not match request values (",   [0:2],")")
             if len(data) != read_length + 1:
