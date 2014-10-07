@@ -59,7 +59,7 @@ class FpgaMmi:
             self.close()
 
 
-    def open(self, interface_ip_addr, ip_addr, port_number, send_only = False, netmask='255.255.0.0', timeout = 2):
+    def open(self, interface_ip_addr, ip_addr, port_number, send_only = False, netmask='255.255.0.0', timeout = 0.5):
         """
         Open control communication socket to FPGA
         """
@@ -150,6 +150,7 @@ class FpgaMmi:
                 except self.sock.TimeoutException:
                     if retries < 10:
                         retries += 1
+                        self.set_timeout(self.get_timeout + 0.5)
                     else:
                         raise self.TimeoutException
                 except Exception as e:
