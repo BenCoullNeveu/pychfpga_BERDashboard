@@ -714,7 +714,7 @@ class chFPGA_controller(FpgaCoreFirmware):
         if self._adc_board[0].is_present():
             config.adc_board_temperature = self._adc_board[0].AmbTemp.temperature
             config.adc_board_adc_chip_temperature = [adc.get_temperature() for adc in self._adc_board[0].ADC]
-            config.adc_serial = self._adc_board[0]._board_info['Serial #'] #[fmc._board_info['Serial #'] for fmc in self._adc_board]
+            config.adc_serial =  [fmc._board_info['Serial #'] for fmc in self._adc_board] #self._adc_board[0]._board_info['Serial #']
         config.antenna_data_source = self.get_data_source()
         config.antenna_fft_bypass = self.get_FFT_bypass()
         config.antenna_fft_shift_schedule = self.get_FFT_shift()

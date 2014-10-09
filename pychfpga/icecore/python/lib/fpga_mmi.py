@@ -59,7 +59,7 @@ class FpgaMmi:
             self.close()
 
 
-    def open(self, interface_ip_addr, ip_addr, port_number, send_only = False, netmask='255.255.0.0', timeout = 2):
+    def open(self, interface_ip_addr, ip_addr, port_number, send_only = False, netmask='255.255.0.0', timeout = 0.5):
         """
         Open control communication socket to FPGA
         """
@@ -140,9 +140,10 @@ class FpgaMmi:
         dout = np.zeros(byte_length, np.int8) # initialize result vector as a byte array
         offset = 0
         # Loop to read all required bytes (the FPGA does not support multi-byte reads (yet))
+        
+        old_timeout = self.get_timeout()
 
         if timeout:
-            old_timeout = self.get_timeout()
             self.set_timeout(timeout)
 
         if addr & self._RAM_BASE_ADDR:
@@ -160,14 +161,22 @@ class FpgaMmi:
             # print 'byte_length=', byte_length
 
             s = chr((opcode << 5) | (log2_length<<3) + ((addr >> 16) & 0x07)) + chr((addr >> 8) & 0xFF) + chr(addr & 0xFF)
-
-            try:
-                self.sock.send(s)
-                data = self.sock.recv()
-            except self.sock.TimeoutException:
-                raise self.TimeoutException
-            except Exception as e:
-                raise FpgaMmiException('FPGA read command failed because of the following exception: %s' % repr(e))
+ 			retries = 0
+           # could be infinite loop here, but be safe.
+            while retries < 15:
+                try:
+                    self.sock.send(s)
+                    data = self.sock.recv()
+                    break
+                except self.sock.TimeoutException:
+                    if retries < 10:
+                        retries += 1
+                        self.set_timeout(self.get_timeout() + 0.1)
+                        self.logger.debug('FPGA read failure increasing timeout to %s' % ( self.get_timeout()))
+                    else:
+                        raise self.TimeoutException
+                except Exception as e:
+                    raise FpgaMmiException('FPGA read command failed because of the following exception: %s' % repr(e))
             #if data[0]!=s[0]:
             #    self.log.error("Read: ERROR: Returned ANT/SUB/ADDR (",   ata[0:2]," does not match request values (",   [0:2],")")
             if len(data) != read_length + 1:
@@ -178,8 +187,8 @@ class FpgaMmi:
             addr += read_length
             offset += read_length
 
-        if timeout:
-            self.set_timeout(old_timeout)
+        #if timeout:
+        self.set_timeout(old_timeout)
 
         dout.dtype = np.dtype(type) # change interpretation of the byte array into a 'type' array
 

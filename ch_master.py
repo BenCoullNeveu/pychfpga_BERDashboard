@@ -80,19 +80,63 @@ def convert_types(val):
               pass
       return val
 
-# Dictionary of correlators.
-correlator_hash = {"29821-0000-0003": "stone",
-                              "0001": "stone",      # This is a bug in the FPGA.
-                   "29821-0000-0033": "abbot",
-                              "0033": "abbot",
-                   "29821-0000-0028": "vincente",
-                              "0029": "blanchard",
-                              "0031": "testing",
-                              "0015": "testing2",
-                              "0027": "mcgill_board"}
+def get_fpga_hk(fpga, field):
+  ret = {}
+  for f in field.keys():
+    if f == "core_temp":
+      ret[f] = fpga.SYSMON.temperature()
+    elif f == "vcc_int":
+      ret[f] = fpga.SYSMON.voltage(fpga.SYSMON.VCCINT_ADDR)
+    elif f == "vcc_aux":
+      ret[f] = fpga.SYSMON.voltage(fpga.SYSMON.VCCAUX_ADDR)
+    elif f == "12v_supply":
+      ret[f] = fpga.SYSMON.voltage(fpga.SYSMON.VAUX_VOLT_ADDR, vref = 1.0)
+    elif f == "12v_supply_curr":
+      ret[f] = fpga.SYSMON.voltage(fpga.SYSMON.VAUX_CURR_ADDR, vref = 1.0)
+    elif f == "vrefp":
+      ret[f] = fpga.SYSMON.voltage(fpga.SYSMON.VAUX_VREFP_ADDR)
+    elif f == "vrefn":
+      ret[f] = fpga.SYSMON.voltage(fpga.SYSMON.VAUX_VREFN_ADDR)
 
-# Current archive format version.
-archive_version = "1.0.0"
+  return ret
+
+# Dictionary of correlators.
+correlator_hash = {"stone"        : ["0001"],
+                   "abbot"        : ["0003"],
+                   "vincente"     : ["29821-0000-0028"],
+                   "blanchard"    : ["0029","0030"],
+                   "slot7"      : ["0031", "0032"],
+                   "first9ucrate" : ["0034"],
+                   "testing2": ["0031"],
+                   "slot16":['0034', '0036'],
+                   "slot15":['0005', '0006'],
+                   "slot14":['0038', '0040'],
+                   "slot13":['0027', '0039'],
+                   "slot12":['0037', '0016'],
+                   "slot11":['0015', '0014'],
+                   "slot10":['0023', '0022'],
+                   "slot9":['0025', '0024'],
+                   "slot8":['0019', '0020'],
+                   "slot6":['0042', '0008'],
+                   "slot5":['0011', '0012'],
+                   "slot4":['0004', '0021'],
+                   "slot3":['0026', '0013'],
+                   "slot2":['0018', '0017']
+                  }
+
+# FPGA housekeeping.
+fpga_hk_field = {      "core_temp" : "deg C",
+                         "vcc_int" : "V",
+                         "vcc_aux" : "V",
+                      "12v_supply" : "V",
+                 "12v_supply_curr" : "A",
+                           "vrefp" : "V",
+                           "vrefn" : "V",
+                }
+
+# Current archive format version. Prefixed by "NT_" to signify that these data
+# do not have the time-transpose completed.
+archive_version = "NT_2.0.0"
 
 if __name__ == "__main__":
   # Set up logger.
@@ -174,14 +218,14 @@ if __name__ == "__main__":
 
   # Create the acquisition object. Pass it the configuration settings so that it
   # can initialise.
-  acq = chrx.acq(conf, log)
+  acq = chrx.acq(conf, log, fpga_hk_field)
 
   # Create the FPGA controller object.
   # Will now create an array of controller objects indexed by serial number
   # And program board firmware if needed/requested currently will always reprogram
   close_all_sockets()
   IceArray.close_all_sessions()
-  ca = IceArray(uri='sqlite:///test.db', interface_ip_addr=conf["fpga"]["host_ip"])
+  ca = IceArray(uri=conf["fpga"]["db_file"], interface_ip_addr=conf["fpga"]["host_ip"])
   # Might want to move the list somewhere else/into conf file?
   ca.load_iceboards('pychfpga/iceboard_list.txt')
   ca.discover()
@@ -197,7 +241,11 @@ if __name__ == "__main__":
         data_width=conf["fpga"]["data_width"], \
         group_frames=conf["fpga"]["group_frames"], \
         enable_gpu_link = conf["fpga"]["enable_gpu_link"])
-
+  for cc in c:
+    cc.fpga.GPU.LINK_ENABLE=1
+  c.fpga.set_corr_reset(1)
+  time.sleep(0.1)
+  c.fpga.set_corr_reset(0)
   # fpga = chFPGA_controller.chFPGA_controller( \
   #            ip_address = conf["fpga"]["ip_address"], \
   #            port_number = conf["fpga"]["port"], \
@@ -240,6 +288,7 @@ if __name__ == "__main__":
   c.fpga.set_send_flags()
   c.fpga.set_offset_binary_encoding()
   c.fpga.sync()
+
   #Make sure FPGA throttling is fast enough to send all the data
   #FPGA doesn't seem to change this without a reset...
   #read_rate = int(np.floor(np.log2(conf["fpga"]["int_period"] * 4 * 125e6 / \
@@ -260,14 +309,30 @@ if __name__ == "__main__":
   
   # Create the output directory.
   time_str = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-  try:
-    corr_name = correlator_hash[fpga_conf["adc_serial"]]
-  except KeyError:
+  corr_name = None
+  for corr, ser_list in correlator_hash.iteritems():
+    not_found = False
+    if type(fpga_conf["adc_serial"]) is list:
+      for ser in fpga_conf["adc_serial"]:
+        if not ser in ser_list:
+          not_found = True
+          break
+    else:
+      print fpga_conf["adc_serial"]
+      if not fpga_conf["adc_serial"] in ser_list:
+          not_found = True
+    if not_found:
+      continue
+    corr_name = corr
+    break
+  if not corr_name:
     try:
-      log.critical("Could not find hash for ADC serial number %s." %
+      log.critical("Could not find hash for ADC serial numbers %s." %
                    fpga_conf["adc_serial"])
     except KeyError:
       log.critical("Could not find key \"adc_serial\" in FPGA configuration.")
+    exit()
+
   acq_base_dir = "%s/%s_%s_corr" % (conf["acq"]["base_path"], time_str, \
                                    corr_name)
   os.makedirs(acq_base_dir)
@@ -277,7 +342,8 @@ if __name__ == "__main__":
 
   # Create a symbolic link to the output directory.
   os.unlink(conf["acq"]["curfile"])
-  os.symlink(acq_base_dir, conf["acq"]["curfile"])
+  os.symlink("%s/%s_%s_corr" % (conf["acq"]["base_path"], time_str, corr_name),
+             conf["acq"]["curfile"])
 
   # Lock the logfile.
   log_file_lock = "%s/.ch_master.log.lock" % acq_base_dir
@@ -301,7 +367,8 @@ if __name__ == "__main__":
 
   # Pass FPGA configuration variables to header.
   for name in fpga_conf:
-    #Hack for now since the gain table is too big to fit in one 64k header element
+    #Hack for now since the gain table is too big to fit in one 64k header 
+    # element
     if name == 'antenna_scaler_gain':
       all_val = fpga_conf[name]
       for value in all_val:
@@ -326,6 +393,8 @@ if __name__ == "__main__":
   acq.add_header_item("collection_server", socket.gethostname())
   acq.add_header_item("instrument_name", corr_name)
   acq.add_header_item("archive_version", archive_version)
+  acq.add_header_item("acquisition_name", "%s_%s_corr" % (time_str, corr_name))
+  acq.add_header_item("acquisition_type", "corr")
 
   # Get the git tag and write it to the header.
   if not len(args.git_tag):
@@ -343,14 +412,17 @@ if __name__ == "__main__":
   acq.add_header_item("notes", args.notes)
 
   # Start the acquisition.
-  acq.start(acq_base_dir)
+  acq.start(acq_base_dir, ["%d" % fpga_conf["motherboard_serial"]], \
+            fpga_conf["adc_serial"])
 
   try:
     while True:
       # Pass the acquisition object the board temperatures. This is a temporary
       # way of doing this!
-      acq.pass_fpga_amb_temp(0, c.fpga.SYSMON.temperature()[0])
-      time.sleep(1.0)
+      for c_element in c:
+        acq.pass_fpga_amb_temp(0, get_fpga_hk(c_element.fpga, fpga_hk_field))
+      log.info("Read FPGA housekeeping.")
+      time.sleep(conf["acq"]["fpga_hk"]["rate"])
     acq.stop()
   except(KeyboardInterrupt, SystemExit):
     acq.stop()
