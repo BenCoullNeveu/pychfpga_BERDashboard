@@ -140,7 +140,7 @@ class FpgaMmi:
         dout = np.zeros(byte_length, np.int8) # initialize result vector as a byte array
         offset = 0
         # Loop to read all required bytes (the FPGA does not support multi-byte reads (yet))
-        
+
         old_timeout = self.get_timeout()
 
         if timeout:
@@ -161,7 +161,7 @@ class FpgaMmi:
             # print 'byte_length=', byte_length
 
             s = chr((opcode << 5) | (log2_length<<3) + ((addr >> 16) & 0x07)) + chr((addr >> 8) & 0xFF) + chr(addr & 0xFF)
- 			retries = 0
+            retries = 0
            # could be infinite loop here, but be safe.
             while retries < 15:
                 try:

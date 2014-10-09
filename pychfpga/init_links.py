@@ -1,6 +1,6 @@
 import numpy as np
 
-def init_links(ib, frames_per_packet=4, cb1_lanes=16, cb1_bins=64, cb2_lanes=16, cb2_bins=8, cb2_bypass=False, bp_bypass=1):
+def init_links(ib, frames_per_packet=3, cb1_lanes=16, cb1_bins=64, cb2_lanes=8, cb2_bins=1, cb2_bypass=False, bp_bypass=1):
     ib.fpga.set_corr_reset(1)
     cb1=ib.fpga.CROSSBAR
     cb2=ib.fpga.CROSSBAR2
@@ -23,8 +23,8 @@ def init_links(ib, frames_per_packet=4, cb1_lanes=16, cb1_bins=64, cb2_lanes=16,
     for bs in cb1:
         bs.GROUP_FRAMES = frames_per_packet
         bs.NUMBER_OF_LANES = cb1_lanes
-        bs.select_bins(np.arange(cb1_bins) * cb1_minimum_bin_spacing)
-    #cb1.configure(cb1_bins)
+        #bs.select_bins(np.arange(cb1_bins) * cb1_minimum_bin_spacing)
+    cb1.configure(cb1_bins)
 
     for bs in cb2:
         if cb2_bypass:
