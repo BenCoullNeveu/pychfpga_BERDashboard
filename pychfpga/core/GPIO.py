@@ -76,6 +76,7 @@ class GPIO_base(Module_base):
     NUMBER_OF_CROSSBAR_OUTPUTS = BitField(STATUS, 21, 0, width=8, doc='Number of crossbar outputs')
     PROTOCOL_VERSION = BitField(STATUS, 23, 0, width=16, doc='Protocol version used to manage host software compatibility.')
     CHANNELIZERS_CLOCK_SOURCE = BitField(STATUS, 24, 0, width=8, doc='Indicates which ADC is used to provide the clock from all channelizers.')
+    NUMBER_OF_BP_SHUFFLE_LANES = BitField(STATUS, 36, 0, width=8, doc='Number of backplane links (including the direct internal link)')
 
 
     def __init__(self, fpga, base_address):

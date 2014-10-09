@@ -64,17 +64,17 @@ class CROSSBAR_base(Module_base):
     LANE_MONITOR_RESET            = BitField(CONTROL, 0, 4, doc='')
     LANE_MONITOR_SEL              = BitField(CONTROL, 0, 0, width=3, doc='')
 
-    LANE_MAP                      = BitField(CONTROL, 8, 0, width=64, doc='Lane map')
-    SOF_WINDOW_START              = BitField(CONTROL, 9, 0, width=8, doc='')
-    SOF_WINDOW_STOP               = BitField(CONTROL, 10, 0, width=8, doc='')
+    # LANE_MAP                      = BitField(CONTROL, 8, 0, width=64, doc='Lane map')
+    SOF_WINDOW_START              = BitField(CONTROL, 1, 0, width=8, doc='')
+    SOF_WINDOW_STOP               = BitField(CONTROL, 2, 0, width=8, doc='')
 
 
+    LANE_MONITOR                  = BitField(STATUS, 0, 0, width=8, doc='')
     INPUT_FRAME_CTR               = BitField(STATUS, 1, 0, width=8, doc='')
     ALIGN_FRAME_CTR               = BitField(STATUS, 2, 0, width=8, doc='')
     OUTPUT_FRAME_CTR              = BitField(STATUS, 3, 0, width=8, doc='')
-    LANE_MONITOR                  = BitField(STATUS, 5, 0, width=16, doc='')
-    CLK_CTR                       = BitField(STATUS, 6, 0, width=8, doc='')
-    FRAME_CLK_CTR                 = BitField(STATUS, 7, 0, width=8, doc='')
+    CLK_CTR                       = BitField(STATUS, 4, 0, width=8, doc='')
+    FRAME_CLK_CTR                 = BitField(STATUS, 5, 0, width=8, doc='')
 
     def __init__(self, fpga_instance, base_address, address_increment, crossbar_level=1, verbose=0):
         self.fpga = fpga_instance
@@ -202,7 +202,7 @@ class CROSSBAR_base(Module_base):
             if self.crossbar_level==1:
                 bin_list = np.arange(number_of_bins_per_crossbar_output)* 2 + i
             else:
-                bin_list = np.arange(number_of_bins_per_crossbar_output) + i
+                bin_list = np.arange(number_of_bins_per_crossbar_output) * 8 + i
             # xbar.CH_DIST.select_words(word_list) # enable tranmission 8 words, 16 freq channels by default
 #            bin_list = [0,8]
             bs.select_bins(bin_list) # enable tranmission 8 words, 16 freq channels by default

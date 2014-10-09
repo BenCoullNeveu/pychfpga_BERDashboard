@@ -359,7 +359,7 @@ class chFPGA_controller(FpgaCoreFirmware):
             # Get GPU link configuration
             self.NUMBER_OF_GPU_LINKS = self.GPIO.NUMBER_OF_GPU_LINKS
 
-            self.NUMBER_OF_BP_SHUFFLE_LANES = 16
+            self.NUMBER_OF_BP_SHUFFLE_LANES = self.GPIO.NUMBER_OF_BP_SHUFFLE_LANES
             # Get correlator info and their properties
             self.NUMBER_OF_CORRELATORS_MAX = self.GPIO.NUMBER_OF_CORRELATORS
             self.NUMBER_OF_CORRELATORS = self.GPIO.NUMBER_OF_CORRELATORS
@@ -433,18 +433,20 @@ class chFPGA_controller(FpgaCoreFirmware):
             self._logger.debug('=== Instantiating 1st CROSSBAR')
             self.CROSSBAR = CROSSBAR.CROSSBAR_base(self, self._CROSSBAR1_BASE_ADDR, self._CROSSBAR_ADDR_INCREMENT, crossbar_level=1) # CROSSBAR block
 
-            self._logger.debug('=== Instantiating 2nd CROSSBAR')
-            self.CROSSBAR2 = CROSSBAR.CROSSBAR_base(self, self._CROSSBAR2_BASE_ADDR, self._CROSSBAR_ADDR_INCREMENT, crossbar_level=2) # CROSSBAR block
 
 
             if self.NUMBER_OF_BP_SHUFFLE_LANES:
                 self._logger.debug('=== Instantiating Backplane shuffle subsystem')
                 self.BP_SHUFFLE = shuffle.Shuffle(self, self._BP_SHUFFLE_BASE_ADDR, self._BP_SHUFFLE_ADDR_INCREMENT)
 
+            if self.NUMBER_OF_BP_SHUFFLE_LANES and self.NUMBER_OF_GPU_LINKS:
+                self._logger.debug('=== Instantiating 2nd CROSSBAR')
+                self.CROSSBAR2 = CROSSBAR.CROSSBAR_base(self, self._CROSSBAR2_BASE_ADDR, self._CROSSBAR_ADDR_INCREMENT, crossbar_level=2) # CROSSBAR block
+
             self._logger.debug('=== Instantiating CORR')
             self.CORR = CORR_BLOCK.CORR_BLOCK_base(self, self._CORR_BASE_ADDR, self._CORR_ADDR_INCREMENT) # Correlator (XMUL, ACC) for each correlator
 
-            if self.GPIO.NUMBER_OF_GPU_LINKS:
+            if self.NUMBER_OF_GPU_LINKS:
                 self._logger.debug('=== Instantiating GPU LINKS')
                 self.GPU = GPU.GPU_base(self, self._GPU_LINK_BASE_ADDR, self._GPU_LINK_ADDR_INCREMENT)
 
@@ -614,19 +616,20 @@ class chFPGA_controller(FpgaCoreFirmware):
         else:
             self._logger.warning("There is no 1st CROSSBAR module in this firmware build (so there can't be data streamed to the correlators or GPU links!)");
 
-        self._logger.debug('=== Initializing 2nd Crossbar')
-        if self.NUMBER_OF_GPU_LINKS>0:
-            self._logger.debug('  - 2nd CROSSBAR')
-            self.CROSSBAR2.init()
-            self.CROSSBAR2.status()
-        else:
-            self._logger.warning("There is no 2nd CROSSBAR module in this firmware build (so there can't be data streamed to the correlators or GPU links!)");
 
 
         if self.NUMBER_OF_BP_SHUFFLE_LANES:
             self._logger.debug('=== Initializing Backplane Shuffle')
             self.BP_SHUFFLE.init()
             # self.BP_SHUFFLE.status()
+
+        self._logger.debug('=== Initializing 2nd Crossbar')
+        if self.NUMBER_OF_BP_SHUFFLE_LANES and self.NUMBER_OF_GPU_LINKS:
+            self._logger.debug('  - 2nd CROSSBAR')
+            self.CROSSBAR2.init()
+            self.CROSSBAR2.status()
+        else:
+            self._logger.warning("There is no 2nd CROSSBAR module in this firmware build");
 
         self._logger.debug('=== Initializing FPGA correlators')
         if self.NUMBER_OF_CORRELATORS>0:
