@@ -9,11 +9,11 @@
 import logging
 
 # Import IceBoard hardware handlers
-from lib import tmp100 # I2C Temperature sensor
+from lib import tmp421 # I2C Temperature sensor
 from lib.fmc_eeprom import FMC_EEPROM
-# import pca9575 # I2C 16-bit IO Expander
-# import tca9548a # I2C switch
-# import ina230 # I2C Voltage and current monitor
+import ina230 # I2C Voltage and current monitor
+import tmp421 # I2C temperature sensor
+import pca9698 # I2C 40-bit IO Expander
 
 class IceBoxException(Exception):
     pass
@@ -29,31 +29,15 @@ class IceBox(object):
     BACKPLANE_EEPROM_DATA_ADDRESS = 0x54 # covers 0x54 - 0x57
     BACKPLANE_EEPROM_SERIAL_ADDRESS = 0x5C # 16 byte serial number starting at address 0
     BACKPLANE_EEPROM_ADDRESS_WIDTH = 10
-    # _FPGA_I2C_SWITCH_ADDR = 0b1110100
-    # _ARM0_I2C_SWITCH_ADDR = 0b1110000
-    # _ARM1_I2C_SWITCH_ADDR = 0b1110001
-    # _ARM2_I2C_SWITCH_ADDR = 0b1110010
-    # _ARM3_I2C_SWITCH_ADDR = 0b1110011
+    
+    _QSFP_CTRL_SETA_ADDR = 0b0100000
+    _QSFP_CTRL_SETB_ADDR = 0b0100010
+    _RESETS_CTRL_ADDR = 0b0100100
+    
+    _TMP_SLOT1_ADDR = 0x4E
+    _TMP_SLOT16_ADDR = 0x4D
 
-    # _GPIO_POWER_I2C_ADDR = 0b0100000
-    # _GPIO_SFP_QSFP_I2C_ADDR = 0b0100001
-    # _GPIO_SW_LEDS_ADDR = 0b0100010
-    # _GPIO_ARM_PHY_LEDS_ADDR = 0b0100011
-
-    # _TMP_ARM_I2C_ADDR = 0b1001010
-    # _TMP_PHY_I2C_ADDR = 0b1001100
-    # _TMP_FPGA_I2C_ADDR = 0b1001011
-    # _TMP_POWER_I2C_ADDR = 0b1001000
-
-    # _POWER_ICEVADJ_I2C_ADDR = 0b1000011
-    # _POWER_ICE12V0_I2C_ADDR = 0b1000111
-    # _POWER_ICE5V0_I2C_ADDR = 0b1001000
-    # _POWER_ICE3V3_I2C_ADDR = 0b1001001
-    # _POWER_ICE1V5_I2C_ADDR = 0b1001100
-    # _POWER_ICE1V2_I2C_ADDR = 0b1001101
-    # _POWER_ICE1V0_I2C_ADDR = 0b1001110
-    # _POWER_ICE1V8_I2C_ADDR = 0b1001011
-    # _POWER_ICE1V0GTX_I2C_ADDR = 0b1001111
+    _POWER_3V3_ADDR = 0x40
 
     @classmethod
     def get_backplane_info(cls, iceboard):
@@ -88,76 +72,78 @@ class IceBox(object):
         self._eeprom = FMC_EEPROM(iceboard.i2c, 'BP', address=self.BACKPLANE_EEPROM_DATA_ADDRESS, address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH)
         self._serial = FMC_EEPROM(iceboard.i2c, 'BP', address=self.BACKPLANE_EEPROM_SERIAL_ADDRESS, address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH)
 
-        # self._gpio_power = pca9575.pca9575(self._i2c, self._GPIO_POWER_I2C_ADDR, 'GPIO')
-        # self._gpio_sw_leds = pca9575.pca9575(self._i2c, self._GPIO_SW_LEDS_ADDR, 'GPIO')
-        # self._gpio_arm_phy_leds = pca9575.pca9575(self._i2c, self._GPIO_ARM_PHY_LEDS_ADDR, 'GPIO')
-        # self._gpio_sfp_qsfp = pca9575.pca9575(self._i2c, self._GPIO_SFP_QSFP_I2C_ADDR, 'GPIO')
+        self._logger.info(' Instantiating Backplane I2C temperature sensors')
+        self._tmp_slot1 = tmp421.tmp421(self._i2c, self._TMP_SLOT1_ADDR, 'BP')
+        self._tmp_slot16 = tmp421.tmp421(self._i2c, self._TMP_SLOT16_ADDR, 'BP')
 
-        # self._logger.info(' Instantiating I2C temperature sensors')
-        # self._tmp_power = tmp100.tmp100(self._i2c, self._TMP_POWER_I2C_ADDR, 'GPIO')
-        # self._tmp_phy = tmp100.tmp100(self._i2c, self._TMP_PHY_I2C_ADDR, 'GPIO')
-        # self._tmp_fpga = tmp100.tmp100(self._i2c, self._TMP_FPGA_I2C_ADDR, 'GPIO')
-        # self._tmp_arm = tmp100.tmp100(self._i2c, self._TMP_ARM_I2C_ADDR, 'GPIO')
+        self._logger.info(' Instantiating Backplane I2C current/power monitor')
+        self._power_3v3 = ina230.ina230(self._i2c, self._POWER_3V3_ADDR, 'BP')
 
-        # self._logger.info(' Instantiating I2C current/power monitors')
-        # self._power_ice_3v3 = ina230.ina230(self._i2c, self._POWER_ICE3V3_I2C_ADDR, 'SMPS')
-        # self._power_ice_12v0 = ina230.ina230(self._i2c, self._POWER_ICE12V0_I2C_ADDR, 'SMPS')
-        # self._power_ice_5v0 = ina230.ina230(self._i2c, self._POWER_ICE5V0_I2C_ADDR, 'SMPS')
-        # self._power_ice_1v0_gtx = ina230.ina230(self._i2c, self._POWER_ICE1V0GTX_I2C_ADDR, 'SMPS')
-        # self._power_ice_vadj = ina230.ina230(self._i2c, self._POWER_ICEVADJ_I2C_ADDR, 'SMPS')
-        # self._power_ice_1v2 = ina230.ina230(self._i2c, self._POWER_ICE1V2_I2C_ADDR, 'SMPS')
-        # self._power_ice_1v5 = ina230.ina230(self._i2c, self._POWER_ICE1V5_I2C_ADDR, 'SMPS')
-        # self._power_ice_1v0 = ina230.ina230(self._i2c, self._POWER_ICE1V0_I2C_ADDR, 'SMPS')
-        # self._power_ice_1v8 = ina230.ina230(self._i2c, self._POWER_ICE1V8_I2C_ADDR, 'SMPS')
+        self._logger.info(' Instantiating Backplane I2C I/O expanders')
+        self._QSFP_CTRLA = pca9698.pca9698(self._i2c, self._QSFP_CTRL_SETA_ADDR, 'BP')
+        self._QSFP_CTRLB = pca9698.pca9698(self._i2c, self._QSFP_CTRL_SETB_ADDR, 'BP')
+        self._RESET_CTRL = pca9698.pca9698(self._i2c, self._RESETS_CTRL_ADDR, 'BP')
+         
+        self.QSFP_CTRL_MAP = {
+             # Slot num : (expander object, Register, bit number ModPrs, bit number Reset, bit number IntL, bit number ModSel)
+             1: (self._QSFP_CTRLA, 2,    0,1,2,3 ),
+             2: (self._QSFP_CTRLA, 2,    4,5,6,7 ),
+             3: (self._QSFP_CTRLA, 1,    0,1,2,3 ),
+             4: (self._QSFP_CTRLA, 1,    4,5,6,7 ),
+             5: (self._QSFP_CTRLA, 0,    0,1,2,3 ),
+             6: (self._QSFP_CTRLA, 0,    4,5,6,7 ),
+             7: (self._QSFP_CTRLA, 3,    0,1,2,3 ),
+             8: (self._QSFP_CTRLA, 3,    4,5,6,7 ),
+             
+             9: (self._QSFP_CTRLB, 2,    0,1,2,3 ),
+             10: (self._QSFP_CTRLB, 2,   4,5,6,7 ),
+             11: (self._QSFP_CTRLB, 1,   0,1,2,3 ),
+             12: (self._QSFP_CTRLB, 1,   4,5,6,7 ),
+             13: (self._QSFP_CTRLB, 0,   0,1,2,3 ),
+             14: (self._QSFP_CTRLB, 0,   4,5,6,7 ),
+             15: (self._QSFP_CTRLB, 3,   0,1,2,3 ),
+             16: (self._QSFP_CTRLB, 3,   4,5,6,7 )
+        }
+        
+        self.SLOT_RESETS_MAP = {
+            # Slot num : (expander object, ARM Register, Power Down Register, Bit number)
+            1: (self._RESET_CTRL, 1, 2, 0),
+            2: (self._RESET_CTRL, 1, 2, 1),
+            3: (self._RESET_CTRL, 1, 2, 2),
+            4: (self._RESET_CTRL, 1, 2, 3),
+            5: (self._RESET_CTRL, 1, 2, 4),
+            6: (self._RESET_CTRL, 1, 2, 5),
+            7: (self._RESET_CTRL, 1, 2, 6),
+            8: (self._RESET_CTRL, 1, 2, 7),
+            9: (self._RESET_CTRL,  3, 4, 0),
+            10: (self._RESET_CTRL, 3, 4, 1),
+            11: (self._RESET_CTRL, 3, 4, 2),
+            12: (self._RESET_CTRL, 3, 4, 3),
+            13: (self._RESET_CTRL, 3, 4, 4),
+            14: (self._RESET_CTRL, 3, 4, 5),
+            15: (self._RESET_CTRL, 3, 4, 6),
+            16: (self._RESET_CTRL, 3, 4, 7)
+        }
+        
+        self.FULLBP_RESETS_MAP = {
+             # ResetType : (expander object, Register, mask, inactive, active)
+             'ARM':       (self._RESET_CTRL, 0, 0b01000011, 0b00000001, 0b01000010),
+             'POWER':     (self._RESET_CTRL, 0, 0b01001100, 0b00000100, 0b01001000),
+             'LED':       (self._RESET_CTRL, 0, 0b10000000, 0b10000000, 0b00000000),
+             
+        }
+   
 
-        # self.GPIO_EXPANDER_MAP = {
-        #     # name : (expander object, byte, bit number (width))
-        #     'GP_SW1': (self._gpio_sw_leds, 0, 0),
-        #     'GP_SW2': (self._gpio_sw_leds, 0, 1),
-        #     'GP_SW3': (self._gpio_sw_leds, 0, 2),
-        #     'GP_SW4': (self._gpio_sw_leds, 0, 3),
-        #     'GP_SW5': (self._gpio_sw_leds, 0, 4),
-        #     'GP_SW6': (self._gpio_sw_leds, 0, 5),
-        #     'GP_SW7': (self._gpio_sw_leds, 0, 6),
-        #     'GP_SW8': (self._gpio_sw_leds, 0, 7),
-        #     'GP_LED1': (self._gpio_sw_leds, 1, 7),
-        #     'GP_LED2': (self._gpio_sw_leds, 1, 6),
-        #     'GP_LED3': (self._gpio_sw_leds, 1, 5),
-        #     'GP_LED4': (self._gpio_sw_leds, 1, 4),
-        #     'GP_LED5': (self._gpio_sw_leds, 1, 3),
-        #     'GP_LED6': (self._gpio_sw_leds, 1, 2),
-        #     'GP_LED7': (self._gpio_sw_leds, 1, 1),
-        #     'GP_LED8': (self._gpio_sw_leds, 1, 0),
-        #     'GP_LED9': (self._gpio_arm_phy_leds, 0, 0),
-        #     'GP_LED10': (self._gpio_arm_phy_leds, 0, 1),
-        #     'GP_LED11': (self._gpio_arm_phy_leds, 0, 2),
-        #     'GP_LED12': (self._gpio_arm_phy_leds, 0, 3),
-        #     'GTX1V8PowerFault': (self._gpio_arm_phy_leds, 0, 4),
-        #     'PHYAPowerFault': (self._gpio_arm_phy_leds, 0, 5),
-        #     'PHYBPowerFault': (self._gpio_arm_phy_leds, 0, 6),
-        #     'ArmPowerFault': (self._gpio_arm_phy_leds, 0, 7)
-        # }
+        self.TEMPERATURE_SENSOR_TABLE = {
+             # sensor name: tmp object
+             'TEMP_SLOT1': self._tmp_slot1,
+             'TEMP_SLOT16': self._tmp_slot16,
+         }
 
-        # self.TEMPERATURE_SENSOR_TABLE = {
-        #     # sensor name: tmp object
-        #     'TEMP_POWER': self._tmp_power,
-        #     'TEMP_PHY': self._tmp_phy,
-        #     'TEMP_FPGA': self._tmp_fpga,
-        #     'TEMP_ARM': self._tmp_arm
-        # }
-
-        # self.POWER_SENSOR_TABLE = {
-        #     # sensor name : (ina230 object, output voltage(volts), rshunt(inductor) (mohm), typical current(amps), current tolerance (0<tol<1))
-        #     'ICE_3V3': (self._power_ice_3v3, 3., 2.36, 8., 0.5),
-        #     'ICE_12V0': (self._power_ice_12v0, 12., 5.5, 3., 0.5),
-        #     'ICE_5V0': (self._power_ice_5v0, 5., 2.36, 11., 0.5),
-        #     'ICE_1V0_GTX': (self._power_ice_1v0_gtx, 1., 0.77, 16., 0.5),
-        #     'ICE_1V2': (self._power_ice_1v2, 1.2, 0.77, 8., 0.5),
-        #     'ICE_1V5': (self._power_ice_1v5, 1.5, 2.36, 3., 0.5),
-        #     'ICE_1V0': (self._power_ice_1v0, 1., 0.77, 16., 0.5),
-        #     'ICE_1V8': (self._power_ice_1v8, 1.8, 5.5, 1., 0.5),
-        #     'ICE_VADJ': (self._power_ice_vadj, 2.5, 2.36, 8., 0.5)
-        # }
+        self.POWER_SENSOR_TABLE = {
+             # sensor name : (ina230 object, output voltage(volts), rshunt(inductor) (mohm), typical current(amps), current tolerance (0<tol<1))
+             'BP_3V3': (self._power_ice_3v3, 3.3, 2.6, 2., 0.5),
+        }
 
     def open(self):
         """
@@ -185,6 +171,20 @@ class IceBox(object):
         # self._init_temperature_sensors()
         # self._init_eeprom()
         # self.set_fmc_power()
+        
+        self._init_QSFP_CTRL()
+        
+
+    def _init_QSFP_CTRL(self)
+        """
+        Initializes QSFP control IO expanders
+
+        History
+        141014 created:
+        """
+    
+    
+
 
     def _init_gpio_expanders(self):
         """
@@ -198,29 +198,25 @@ class IceBox(object):
         self._gpio_arm_phy_leds.init(cfg0_def=0b11110000)
         #self._gpio_sfp_qsfp.init(cfg0_def=0b00000000)
 
-    def _init_temperature_sensors(self, temperature_sensor_name=None, bit_resolution=12):
+    def _init_temperature_sensors(self, temperature_sensor_name=None):
         """
         initializes temperature sensors
-        'temperature_sensor_name' can be a list of temperature sensor names found in TEMPERATURE_SENSOR_TABLE. If temperature_sensor_name=None, all sensors in
-        'bit_resolution' is the number of bits of resolution of the temperature register. It can take values 9, 10, 11, 12
+        'temperature_sensor_name' can be a list of temperature sensor names found in TEMPERATURE_SENSOR_TABLE. 
 
         History:
         140318 JM: created
         """
-        if bit_resolution<9 or bit_resolution>12:
-            raise self.IceBoardHardwareException('bit_resolution is out of range')
-        else:
-            if temperature_sensor_name == None:
-                temperature_sensor_name = self.TEMPERATURE_SENSOR_TABLE.keys()
-            elif isinstance(temperature_sensor_name, str):
-                temperature_sensor_name = [temperature_sensor_name]
+        if temperature_sensor_name == None:
+            temperature_sensor_name = self.TEMPERATURE_SENSOR_TABLE.keys()
+        elif isinstance(temperature_sensor_name, str):
+            temperature_sensor_name = [temperature_sensor_name]
 
-            for temp_sensor in temperature_sensor_name:
-                if temp_sensor not in self.TEMPERATURE_SENSOR_TABLE:
-                    raise IceBoardHardwareException('Invalid temperature sensor name')
-                else:
-                    tmp_object = self.TEMPERATURE_SENSOR_TABLE[temp_sensor]
-                    tmp_object.init(bit_resolution)
+        for temp_sensor in temperature_sensor_name:
+            if temp_sensor not in self.TEMPERATURE_SENSOR_TABLE:
+                raise IceBoardHardwareException('Invalid temperature sensor name')
+            else:
+                tmp_object = self.TEMPERATURE_SENSOR_TABLE[temp_sensor]
+                tmp_object.init()
 
     def _init_power_sensors(self, power_sensor_name=None):
         """
