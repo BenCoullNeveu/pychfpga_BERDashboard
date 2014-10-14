@@ -9,11 +9,10 @@
 import logging
 
 # Import IceBoard hardware handlers
-from lib import tmp421 # I2C Temperature sensor
 from lib.fmc_eeprom import FMC_EEPROM
-import ina230 # I2C Voltage and current monitor
-import tmp421 # I2C temperature sensor
-import pca9698 # I2C 40-bit IO Expander
+from lib import ina230 # I2C Voltage and current monitor
+from lib import tmp421 # I2C temperature sensor
+from lib import pca9698 # I2C 40-bit IO Expander
 
 class IceBoxException(Exception):
     pass
@@ -29,11 +28,11 @@ class IceBox(object):
     BACKPLANE_EEPROM_DATA_ADDRESS = 0x54 # covers 0x54 - 0x57
     BACKPLANE_EEPROM_SERIAL_ADDRESS = 0x5C # 16 byte serial number starting at address 0
     BACKPLANE_EEPROM_ADDRESS_WIDTH = 10
-    
+
     _QSFP_CTRL_SETA_ADDR = 0b0100000
     _QSFP_CTRL_SETB_ADDR = 0b0100010
     _RESETS_CTRL_ADDR = 0b0100100
-    
+
     _TMP_SLOT1_ADDR = 0x4E
     _TMP_SLOT16_ADDR = 0x4D
 
@@ -83,7 +82,7 @@ class IceBox(object):
         self._QSFP_CTRLA = pca9698.pca9698(self._i2c, self._QSFP_CTRL_SETA_ADDR, 'BP')
         self._QSFP_CTRLB = pca9698.pca9698(self._i2c, self._QSFP_CTRL_SETB_ADDR, 'BP')
         self._RESET_CTRL = pca9698.pca9698(self._i2c, self._RESETS_CTRL_ADDR, 'BP')
-         
+
         self.QSFP_CTRL_MAP = {
              # Slot num : (expander object, Register, bit number ModPrs, bit number Reset, bit number IntL, bit number ModSel)
              1: (self._QSFP_CTRLA, 2,    0,1,2,3 ),
@@ -94,7 +93,7 @@ class IceBox(object):
              6: (self._QSFP_CTRLA, 0,    4,5,6,7 ),
              7: (self._QSFP_CTRLA, 3,    0,1,2,3 ),
              8: (self._QSFP_CTRLA, 3,    4,5,6,7 ),
-             
+
              9: (self._QSFP_CTRLB, 2,    0,1,2,3 ),
              10: (self._QSFP_CTRLB, 2,   4,5,6,7 ),
              11: (self._QSFP_CTRLB, 1,   0,1,2,3 ),
@@ -104,7 +103,7 @@ class IceBox(object):
              15: (self._QSFP_CTRLB, 3,   0,1,2,3 ),
              16: (self._QSFP_CTRLB, 3,   4,5,6,7 )
         }
-        
+
         self.SLOT_RESETS_MAP = {
             # Slot num : (expander object, ARM Register, Power Down Register, Bit number)
             1: (self._RESET_CTRL, 1, 2, 0),
@@ -124,15 +123,15 @@ class IceBox(object):
             15: (self._RESET_CTRL, 3, 4, 6),
             16: (self._RESET_CTRL, 3, 4, 7)
         }
-        
+
         self.FULLBP_RESETS_MAP = {
              # ResetType : (expander object, Register, mask, inactive, active)
              'ARM':       (self._RESET_CTRL, 0, 0b01000011, 0b00000001, 0b01000010),
              'POWER':     (self._RESET_CTRL, 0, 0b01001100, 0b00000100, 0b01001000),
              'LED':       (self._RESET_CTRL, 0, 0b10000000, 0b10000000, 0b00000000),
-             
+
         }
-   
+
 
         self.TEMPERATURE_SENSOR_TABLE = {
              # sensor name: tmp object
@@ -142,7 +141,7 @@ class IceBox(object):
 
         self.POWER_SENSOR_TABLE = {
              # sensor name : (ina230 object, output voltage(volts), rshunt(inductor) (mohm), typical current(amps), current tolerance (0<tol<1))
-             'BP_3V3': (self._power_ice_3v3, 3.3, 2.6, 2., 0.5),
+             'BP_3V3': (self._power_3v3, 3.3, 2.6, 2., 0.5),
         }
 
     def open(self):
@@ -171,19 +170,19 @@ class IceBox(object):
         # self._init_temperature_sensors()
         # self._init_eeprom()
         # self.set_fmc_power()
-        
-        self._init_QSFP_CTRL()
-        
 
-    def _init_QSFP_CTRL(self)
+        self._init_QSFP_CTRL()
+
+
+    def _init_QSFP_CTRL(self):
         """
         Initializes QSFP control IO expanders
 
         History
         141014 created:
         """
-    
-    
+
+
 
 
     def _init_gpio_expanders(self):
@@ -201,7 +200,7 @@ class IceBox(object):
     def _init_temperature_sensors(self, temperature_sensor_name=None):
         """
         initializes temperature sensors
-        'temperature_sensor_name' can be a list of temperature sensor names found in TEMPERATURE_SENSOR_TABLE. 
+        'temperature_sensor_name' can be a list of temperature sensor names found in TEMPERATURE_SENSOR_TABLE.
 
         History:
         140318 JM: created
@@ -375,7 +374,7 @@ class IceBox(object):
         Returns the board's serial number. which is actually the FPGA's
         serial number.
         """
-        return self._fpga.get_serial_number(); # tentative code
+        return self.get_eeprom_serial_number(); # tentative code
 
     def get_info(self):
         """Loads the info data on the motherboard"""
