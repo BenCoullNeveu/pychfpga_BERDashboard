@@ -163,8 +163,8 @@ class FpgaCoreFirmware(HWMResource):
         with fpga_mmi.FpgaMmi(cls.interface_ip_addr, ip_addr, port_number) as mmi:
             while trial < number_of_trials:
                 try:
-                    serial = mmi.read(cls._FPGA_SERIAL_NUMBER_ADDR, type = np.dtype('>u8'), timeout = timeout )
-                    timestamp = mmi.read(cls._FPGA_TIMESTAMP_ADDR, type = np.dtype('>u4'), timeout = timeout )
+                    serial = mmi.read(cls._FPGA_SERIAL_NUMBER_ADDR, type = np.dtype('>u8'), timeout = timeout, retry=0)
+                    timestamp = mmi.read(cls._FPGA_TIMESTAMP_ADDR, type = np.dtype('>u4'), timeout = timeout, retry=0)
                     return (serial, timestamp)
                 except mmi.TimeoutException:
                     trial += 1

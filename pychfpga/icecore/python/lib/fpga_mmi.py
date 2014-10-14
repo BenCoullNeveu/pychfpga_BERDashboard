@@ -123,7 +123,7 @@ class FpgaMmi:
     _STATUS_BASE_ADDR  = 0x080000
     _RAM_BASE_ADDR     = 0x100000
 
-    def read(self, addr, type=np.dtype('>u1'), length=1, timeout = None):
+    def read(self, addr, type=np.dtype('>u1'), length=1, timeout = None, retry=10):
         """
         Reads memory-mapped byte(s) from the FPGA through the Ethernet interface.
         'length' values of type 'type' are read. The Reads will be done in the minimum number of requests in order to read all bytes.
@@ -163,13 +163,13 @@ class FpgaMmi:
             s = chr((opcode << 5) | (log2_length<<3) + ((addr >> 16) & 0x07)) + chr((addr >> 8) & 0xFF) + chr(addr & 0xFF)
             retries = 0
            # could be infinite loop here, but be safe.
-            while retries < 15:
+            while True:
                 try:
                     self.sock.send(s)
                     data = self.sock.recv()
                     break
                 except self.sock.TimeoutException:
-                    if retries < 10:
+                    if retries < retry:
                         retries += 1
                         self.set_timeout(self.get_timeout() + 0.1)
                         self.logger.debug('FPGA read failure increasing timeout to %s' % ( self.get_timeout()))

@@ -14,7 +14,7 @@ def init_links(ib, frames_per_packet=3, cb1_lanes=16, cb1_bins=64, cb2_lanes=8, 
         raise Exception('Crossbar 2 number of input lanes must be a multiple of 2')
 
     words_per_bin = cb1_lanes / 4
-    cb1_minimum_bin_spacing = 2
+    cb1_minimum_bin_spacing = 16
     cb2_minimum_bin_spacing = 8
 
     for gtx in gpu_links.CHANNEL:
@@ -23,8 +23,8 @@ def init_links(ib, frames_per_packet=3, cb1_lanes=16, cb1_bins=64, cb2_lanes=8, 
     for bs in cb1:
         bs.GROUP_FRAMES = frames_per_packet
         bs.NUMBER_OF_LANES = cb1_lanes
-        #bs.select_bins(np.arange(cb1_bins) * cb1_minimum_bin_spacing)
-    cb1.configure(cb1_bins)
+        bs.select_bins(np.arange(cb1_bins) * cb1_minimum_bin_spacing)
+    #cb1.configure(cb1_bins)
 
     for bs in cb2:
         if cb2_bypass:
@@ -48,17 +48,24 @@ def init_links(ib, frames_per_packet=3, cb1_lanes=16, cb1_bins=64, cb2_lanes=8, 
     cb1_payload_size = header_size + packet_flags_size + frames_per_packet * (words_per_bin * cb1_bins + cb1_bins + 1) * 4
     cb1_eth_packet_size = (cb1_payload_size+eth_overhead+7)//8*8
     cb1_eth_data_rate = cb1_eth_packet_size * packet_rate * 8
-    #cb1_bp_data_rate = cb1_bp_packet_size * packet_rate * 8
 
-    print 'CROSSBAR1 output: payload = %i bytes, Ethernet packets = %i bytes, data rate = %0.2f Gbps (%0.2f%%)' % (cb1_payload_size, cb1_eth_packet_size, cb1_eth_data_rate/1e9, cb1_eth_data_rate/eth_data_rate*100)
+    cb1_bp_packet_size = (cb1_payload_size+bp_overhead+7)//8*8
+    cb1_bp_data_rate = cb1_bp_packet_size * packet_rate * 8
 
+    print 'CROSSBAR1 output: payload = %i bytes' % (cb1_payload_size)
+    print 'Backplane links: Packet size = %i bytes, data rate = %0.2f Gbps / %0.2f Gbps (%0.2f%%)' % (cb1_bp_packet_size, cb1_bp_data_rate/1e9, bp_data_rate / 1e9, cb1_bp_data_rate/bp_data_rate*100)
 
     cb2_payload_size = header_size + packet_flags_size + frames_per_packet * (words_per_bin * cb2_bins* cb2_lanes + 1*cb2_bins*cb2_lanes/2 + cb2_lanes) * 4
     cb2_eth_packet_size = (cb2_payload_size + eth_overhead + 7)// 8 * 8
     cb2_eth_data_rate = cb2_eth_packet_size * packet_rate * 8
     cb2_fifo_load = cb2_bins * words_per_bin * frames_per_packet - ( cb2_bins * words_per_bin* cb2_minimum_bin_spacing* frames_per_packet / 16)
-    print 'CROSSBAR2 output: payload = %i bytes, Ethernet packets = %i bytes, data rate = %0.2f Gbps (%0.2f%%)' % (cb2_payload_size, cb2_eth_packet_size, cb2_eth_data_rate/1e9, cb2_eth_data_rate/eth_data_rate*100)
-    print 'CROSSBAR2 peak FIFO load: %i (Max. 16)' % cb2_fifo_load
+    print 'CROSSBAR2 output: payload = %i bytes' % (cb2_payload_size)
+    print 'CROSSBAR2 peak FIFO load per frame: %i (Max. 16), Words per frame: %i (max %i)' % (cb2_fifo_load,cb2_payload_size/frames_per_packet, 512*bp_data_rate/32/200e6)
+
+    if cb2_bypass:
+        print 'GPU link (CROSSBAR1 data): UDP Payload = %i bytes, Ethernet packets = %i bytes, data rate = %0.2f Gbps (%0.2f%%)' % (cb1_payload_size, cb1_eth_packet_size, cb1_eth_data_rate/1e9, cb1_eth_data_rate/eth_data_rate*100)
+    else:
+        print 'GPU Link (CROSSBAR2 data): UDP Payload = %i bytes, Ethernet packets = %i bytes, data rate = %0.2f Gbps (%0.2f%%)' % (cb2_payload_size, cb2_eth_packet_size, cb2_eth_data_rate/1e9, cb2_eth_data_rate/eth_data_rate*100)
 
     #words_per_bin = cb1_lanes / 4
     #

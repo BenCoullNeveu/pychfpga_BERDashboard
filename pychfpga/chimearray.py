@@ -90,8 +90,8 @@ if __name__ == '__main__':
         pass
     logger = logging.getLogger('')
     logger.setLevel(log_level)
-    handler = logging.FileHandler('testing_offset.log')
-    #handler = logging.handlers.SysLogHandler()
+    # handler = logging.FileHandler('testing_offset.log')
+    handler = logging.handlers.SysLogHandler()
     # handler = logging.StreamHandler()
     # handler.addFilter(CompletionFilter)
     logger.addHandler(handler)
