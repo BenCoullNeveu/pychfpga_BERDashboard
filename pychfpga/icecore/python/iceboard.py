@@ -54,6 +54,9 @@ from icebox import IceBox
 class IceBoardException(Exception):
     pass
 
+# class State(object):
+#     def __init__(ORM_class):
+#         self.ORM_class = ORM_class
 
 
 class IceBoard(HWMResource, AttributeUser):
@@ -150,6 +153,9 @@ class IceBoard(HWMResource, AttributeUser):
     # These attributes need to be initialized when an Iceboard object is
     # created explicitely by the program or implicitely from the database when
     # the object is accessed.
+
+    # state = IceBoardState()
+
 
     fpga = None
     hw = None # Object handling the IceBoard hardware
@@ -506,9 +512,9 @@ def receive_expire(target, attrs):
 @event.listens_for(IceBoard, 'refresh')
 def receive_refresh(target, context, attrs):
     "listen for the 'refresh' event"
-    logger = logging.getLogger(__name__)
-    logger.warn('IceBoard %03i is refreshed (context=%r, attr=%r) ' % (target.serial_number, context, attrs))
     if attrs or (attrs is None):
+        logger = logging.getLogger(__name__)
+        logger.warn('IceBoard %03i is refreshed (context=%r, attr=%r) ' % (target.serial_number, context, attrs))
         target._init_from_database()
 
 @event.listens_for(IceBoard, 'resurrect')

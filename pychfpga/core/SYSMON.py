@@ -62,21 +62,6 @@ class SYSMON_base(Module_base):
         super(self.__class__, self).__init__(fpga_instance, base_address)
         self._lock() # Prevent accidental addition of attributes (if, for example, a value is assigned to a wrongly-spelled property)
 
-
-    # def read(self, addr):
-    #     """ Reads a 16-bit register of the FPGA system monitor at specified word address
-    #     """
-    #     fpga = self.fpga_instance
-    #     #fpga.write_bit(fpga.SYSTEM_PORT,fpga.SYSTEM_SYSMON_MODULE,0x00,0,bool(addr>=0x40))
-    #     return fpga.read(fpga.SYSTEM_PORT, fpga.SYSTEM_SYSMON_MODULE, 0x200 + 2 * (addr), type=np.dtype('<u2')) # Sysmon data is read LSB first
-
-    # def write(self, addr, data):
-    #     """ Writes a 16-bit register of the FPGA system monitor at specified word address
-    #     """
-    #     fpga = self.fpga_instance
-    #     #fpga.write_bit(fpga.SYSTEM_PORT,fpga.SYSTEM_SYSMON_MODULE,0x00,0,bool(addr>=0x40))
-    #     fpga.write(fpga.SYSTEM_PORT, fpga.SYSTEM_SYSMON_MODULE, 0x200 + 2 * (addr), [data & 0xFF, data >> 8]) # Sysmon data is LSB first
-
     def init(self):
         if self.supported_by_platform:
             self.write_drp(self.CONFIG1_ADDR, 0x0000)

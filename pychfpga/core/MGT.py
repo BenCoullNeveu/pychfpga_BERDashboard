@@ -1,13 +1,13 @@
 #!/usr/bin/python
 
 """
-MGT.py module 
+MGT.py module
  Implements interface to the MGT
 
 History:
-    2011-08-03 : JFC : Created 
+    2011-08-03 : JFC : Created
     2011-09-08 JFC: Removed property initialization message in _init_
-    2012-08-27 JFC : Fixed reference to common.util as pychfpga.common.util         
+    2012-08-27 JFC : Fixed reference to common.util as pychfpga.common.util
 """
 
 import time
@@ -84,7 +84,7 @@ class MGT_port_base(Module_base):
 		'TX_COUNT' : 		BitField(STATUS,0x8A,0,5,doc=''),
 
 		'TX_STATE' :		BitField(STATUS,0x080 + 20,4,4,doc=''),
-	
+
 		'RX_VALID' :		BitField(STATUS,0x080 + 21,7,doc=''),
 		'RX_ELEC_IDLE' :	BitField(STATUS,0x080 + 21,6,doc=''),
 
@@ -109,38 +109,39 @@ class MGT_port_base(Module_base):
 			#print '  Defining property "%s"' % (field_name)
 
 			# Use function closures to create the callback function with arguments that won't be rebinded
-			fget=lambda s, _bit_name=field_name:s.read_sys_field(_bit_name) # Pass bit_name as a default argument to 'close' that variable (i.e. bind it now). Otherwise the function will use the value at call time (which is the last value assigned to that variable) 
+			fget=lambda s, _bit_name=field_name:s.read_sys_field(_bit_name) # Pass bit_name as a default argument to 'close' that variable (i.e. bind it now). Otherwise the function will use the value at call time (which is the last value assigned to that variable)
 			fset=lambda s, value,_bit_name=field_name:s.write_sys_field(_bit_name,value)
 			setattr(self.__class__, field_name, property(fget, fset, doc=self.DRP_FIELDS[field_name].doc))
 		self._lock()
 
-	def read_DRP(self, addr):
-		""" 
-		Reads a 16-bit register of the MGT at specified word address 
-		"""
-		return self.read(0x200+2*(addr),type=np.dtype('<u2')); # Sysmon data is read LSB first
+	# Removed this because of the 0x200
+	# def read_DRP(self, addr):
+	# 	"""
+	# 	Reads a 16-bit register of the MGT at specified word address
+	# 	"""
+	# 	return self.read(0x200+2*(addr),type=np.dtype('<u2')); # Sysmon data is read LSB first
 
-	def write_DRP(self, addr, data):
-		""" 
-		Writes a 16-bit register of the MGT at specified word address 
-		"""
-		self.write(0x200 + 2 * (addr), [data & 0xFF, (data >> 8) & 0xFF]); # Sysmon data is LSB first
+	# def write_DRP(self, addr, data):
+	# 	"""
+	# 	Writes a 16-bit register of the MGT at specified word address
+	# 	"""
+	# 	self.write(0x200 + 2 * (addr), [data & 0xFF, (data >> 8) & 0xFF]); # Sysmon data is LSB first
 
 	def read_sys_field(self, bit_name):
-		""" Reads the field identified by the name 'bit_name' which is looked up in the BITS table to find the bit definition (port, bit position etc). Returns a boolean."""  
+		""" Reads the field identified by the name 'bit_name' which is looked up in the BITS table to find the bit definition (port, bit position etc). Returns a boolean."""
 		bit_def = self.DRP_FIELDS[bit_name]
 		data = self.read_DRP(bit_def.addr)
 		return data >> bit_def.bit & ((1 << bit_def.width) - 1)
 
 	def write_sys_field(self, bit_name,data):
-		""" Writes the field identified by the name 'bit_name' which is looked up in the BITS table to find the bit definition (port, bit position etc). Returns a boolean."""  
+		""" Writes the field identified by the name 'bit_name' which is looked up in the BITS table to find the bit definition (port, bit position etc). Returns a boolean."""
 		bit_def = self.DRP_FIELDS[bit_name]
 		if (data>=2**bit_def.width) or data<0:
 			raise Exception('Bad value %i for parameter %s' % (data, bit_name))
 		old_data= self.read_DRP(bit_def.addr)
 		mask=(2**bit_def.width-1)<<bit_def.bit
 		new_data = old_data & ~mask
-		new_data |= ((data << bit_def.bit) & mask) 
+		new_data |= ((data << bit_def.bit) & mask)
 		self.write_DRP(bit_def.addr, new_data)
 
 	def rx_reset(self):
@@ -198,11 +199,11 @@ class MGT_port_base(Module_base):
 
 
 
-		
+
 
 	def print_status(self):
 		try:
-			while 1: 
+			while 1:
 				print util.hex(self.read(0,length=5)), self.RX_LOSSOFSYNC, self.CLK_DLY_MON, self.EYE_HEIGHT, ' DFE Taps=[ %2i, %2i, %2i, %2i] ' % (self.TAP1_MON,self.TAP2_MON,self.TAP3_MON,self.TAP4_MON)
 		except KeyboardInterrupt:
 			pass
@@ -345,7 +346,7 @@ class MGT_base(Module_base):
 			for param_value in sweep_range:
 				rx.RX_RESET=1;
 				rx.RX_RESET=0;
-			
+
 				param_fn(param_value) # set the sweep parameter
 
 				offset=range(0,128,step);
@@ -353,7 +354,7 @@ class MGT_base(Module_base):
 #				plt.clf()
 #				plt.hold(1)
 #				plt.axis([0,max(offset),-200,200])
-#				plt.ylabel('RX Differential amplitude (mV)') 
+#				plt.ylabel('RX Differential amplitude (mV)')
 				eye_avg=np.zeros(len(offset));
 				for j in range(Navg):
 					eye=np.zeros(len(offset));

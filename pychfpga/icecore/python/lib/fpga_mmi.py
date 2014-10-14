@@ -59,7 +59,7 @@ class FpgaMmi:
             self.close()
 
 
-    def open(self, interface_ip_addr, ip_addr, port_number, send_only = False, netmask='255.255.0.0', timeout = 2):
+    def open(self, interface_ip_addr, ip_addr, port_number, send_only = False, netmask='255.255.0.0', timeout = 0.5):
         """
         Open control communication socket to FPGA
         """
@@ -111,7 +111,19 @@ class FpgaMmi:
         """
         return self.sock.get_timeout()
 
-    def read(self, addr, type=np.dtype('>u1'), length=1, incr=1, timeout = None):
+    OPCODE_WRITE_CONTROL = 0b100;
+    OPCODE_NOP           = 0b110;
+    OPCODE_WRITE_RAM     = 0b111;
+    OPCODE_READ_CONTROL  = 0b000;
+    OPCODE_READ_STATUS   = 0b010;
+    OPCODE_READ_RAM      = 0b011;
+
+    # Match those with what is used by Module
+    _CONTROL_BASE_ADDR = 0x000000
+    _STATUS_BASE_ADDR  = 0x080000
+    _RAM_BASE_ADDR     = 0x100000
+
+    def read(self, addr, type=np.dtype('>u1'), length=1, timeout = None):
         """
         Reads memory-mapped byte(s) from the FPGA through the Ethernet interface.
         'length' values of type 'type' are read. The Reads will be done in the minimum number of requests in order to read all bytes.
@@ -129,9 +141,17 @@ class FpgaMmi:
         offset = 0
         # Loop to read all required bytes (the FPGA does not support multi-byte reads (yet))
 
+        old_timeout = self.get_timeout()
+
         if timeout:
-            old_timeout = self.get_timeout()
             self.set_timeout(timeout)
+
+        if addr & self._RAM_BASE_ADDR:
+            opcode = self.OPCODE_READ_RAM
+        elif addr & self._STATUS_BASE_ADDR:
+            opcode = self.OPCODE_READ_STATUS
+        else:
+            opcode = self.OPCODE_READ_CONTROL
 
         while offset < byte_length:
             log2_length = min((byte_length-offset).bit_length()-1,3) # compute the log2 of the number of bytes to read, limited to 3 (i.e. 8 bytes)
@@ -140,15 +160,23 @@ class FpgaMmi:
             # print 'log2_length=', log2_length
             # print 'byte_length=', byte_length
 
-            s = chr(0x00 + (0x40 if incr else 0) + (log2_length<<4) + ((addr >> 16) & 0x0F)) + chr((addr >> 8) & 0xFF) + chr(addr & 0xff)
-
-            try:
-                self.sock.send(s)
-                data = self.sock.recv()
-            except self.sock.TimeoutException:
-                raise self.TimeoutException
-            except Exception as e:
-                raise FpgaMmiException('FPGA read command failed because of the following exception: %s' % repr(e))
+            s = chr((opcode << 5) | (log2_length<<3) + ((addr >> 16) & 0x07)) + chr((addr >> 8) & 0xFF) + chr(addr & 0xFF)
+            retries = 0
+           # could be infinite loop here, but be safe.
+            while retries < 15:
+                try:
+                    self.sock.send(s)
+                    data = self.sock.recv()
+                    break
+                except self.sock.TimeoutException:
+                    if retries < 10:
+                        retries += 1
+                        self.set_timeout(self.get_timeout() + 0.1)
+                        self.logger.debug('FPGA read failure increasing timeout to %s' % ( self.get_timeout()))
+                    else:
+                        raise self.TimeoutException
+                except Exception as e:
+                    raise FpgaMmiException('FPGA read command failed because of the following exception: %s' % repr(e))
             #if data[0]!=s[0]:
             #    self.log.error("Read: ERROR: Returned ANT/SUB/ADDR (",   ata[0:2]," does not match request values (",   [0:2],")")
             if len(data) != read_length + 1:
@@ -156,12 +184,11 @@ class FpgaMmi:
 
             dout[offset:offset+read_length] = np.fromstring(data[1:], dtype=np.uint8) # store received byte
 
-            if incr:
-                addr += read_length
+            addr += read_length
             offset += read_length
 
-        if timeout:
-            self.set_timeout(old_timeout)
+        #if timeout:
+        self.set_timeout(old_timeout)
 
         dout.dtype = np.dtype(type) # change interpretation of the byte array into a 'type' array
 
@@ -185,7 +212,14 @@ class FpgaMmi:
         dout = []
         # Loop to read all required bytes (the FPGA does not support multi-byte reads (yet))
 
-        s = chr(0x40 + (log2_length<<4) + ((addr >> 16) & 0x0F)) + chr((addr >> 8) & 0xFF) + chr(addr & 0xff)
+        if addr & self._RAM_BASE_ADDR:
+            opcode = self.OPCODE_READ_RAM
+        elif addr & self._STATUS_BASE_ADDR:
+            opcode = self.OPCODE_READ_STATUS
+        else:
+            opcode = self.OPCODE_READ_CONTROL
+
+        s = chr((opcode << 5) | (log2_length<<3) + ((addr >> 16) & 0x07)) + chr((addr >> 8) & 0xFF) + chr(addr & 0xFF)
 
         self.sock.send(s)
         self.sock.set_timeout(timeout)
@@ -203,7 +237,7 @@ class FpgaMmi:
             dout.append(np.fromstring(data[1:], dtype=type)[0]) # store received byte
         return dout
 
-    def write(self, addr, data, incr=1):
+    def write(self, addr, data):
         """
         Writes byte(s) to memory-mapped registers in the FPGA through the Ethernet interface.
         'data' can be:
@@ -217,7 +251,15 @@ class FpgaMmi:
         # build command packet
         #s=chr(0x80+ant+(0x40 if incr else 0))+chr((module<<2)+(addr>>8))+chr(addr&0xFF)
 
-        string = chr(0x80 + (0x40 if incr else 0) + ((addr >> 16) & 0x0F)) + chr((addr >> 8) & 0xFF) + chr(addr & 0xff)
+        if addr & self._RAM_BASE_ADDR:
+            opcode = self.OPCODE_WRITE_RAM
+        elif addr & self._STATUS_BASE_ADDR:
+            raise FpgaMmiException('FpgaMmi: Attempt to write to a STATUS register')
+        else:
+            opcode = self.OPCODE_WRITE_CONTROL
+
+        log2_length = 0 # is ignored for writes
+        string = chr((opcode << 5) | (log2_length<<3) + ((addr >> 16) & 0x07)) + chr((addr >> 8) & 0xFF) + chr(addr & 0xFF)
 
         # Add the data to the string. The method depends on the data type
         if type(data) == str:

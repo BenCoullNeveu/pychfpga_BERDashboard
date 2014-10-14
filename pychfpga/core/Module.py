@@ -19,6 +19,10 @@ Module.py module
 import numpy as np
 import time
 
+_CONTROL_BASE_ADDR = 0x000000
+_STATUS_BASE_ADDR = 0x080000
+_RAM_BASE_ADDR = 0x100000
+
 class BitField(object):
     """
     Holds the definition of a memory-mapped variable
@@ -29,6 +33,7 @@ class BitField(object):
     STATUS = 1 # STATUS bytes (read only)
     RAM = 2 # RAM or FIFO
     DRP = 3 # Dynamic Reconfiguration Port
+
 
     def __init__(self, page, addr, bit, width=1, default=None, doc='No documentation available'):
         self.page = page
@@ -49,13 +54,13 @@ class BitField(object):
         Returns the Memory-mapped address corresponding to the bit field
         """
         if self.page == self.CONTROL:
-            return 0x000+(self._addr & 0x07F)
+            return _CONTROL_BASE_ADDR + (self._addr & 0x07F)
         elif self.page == self.STATUS:
-            return 0x080+(self._addr & 0x07F)
+            return _STATUS_BASE_ADDR + (self._addr & 0x07F)
         elif self.page == self.RAM:
-            return 0x200+(self._addr & 0x1FF)
+            return _RAM_BASE_ADDR + (self._addr & 0x1FF)
         elif self.page == self.DRP:
-            return 0x200+((self._addr<<1) & 0x1FF)
+            return _RAM_BASE_ADDR + ((self._addr<<1) & 0x1FF)
 
     addr = property(get_addr, doc='Returns the memory-mapped address of the current bitfield item')
 
@@ -137,18 +142,20 @@ class Module_base(object):
         """
         Reads a DRP (Dynamic Reconfigurable Port) from one of the FPGA internal devices (PLL, SYSMON, MGT etc). 'addr' is the 16-bit DRP register address.
         """
-        return self.read(0x200 + ((2*addr) & 0x1ff) + (((2*addr)>>9)<<10), type=np.dtype('<u2'))
-        # Below is a temporary fix because reading DRM as two consecutive bytes does not work.
-        # lsb=self.read(0x200+2*addr)
-        # msb=self.read(0x200+2*addr+1)
-        # return 256*msb+lsb
-    read_DRP = read_drp
+        return self.read(_RAM_BASE_ADDR + 2*addr, type=np.dtype('<u2'))
+   # read_DRP = read_drp
 
-    def read_RAM(self, addr, *args, **kwargs):
+    def read_ram(self, addr, *args, **kwargs):
         """
         Reads a byte from the RAM space
         """
-        return self.read(0x200+2*addr, *args, **kwargs)
+        return self.read(_RAM_BASE_ADDR + addr, *args, **kwargs)
+
+    def read_status(self, addr, *args, **kwargs):
+        """
+        Reads byte(s) from the STATUS registers
+        """
+        return self.read(_STATUS_BASE_ADDR + addr, *args, **kwargs)
 
     def read_field(self, bitfield, verbose=0):
         """ Reads the field identified by the name 'bit_name' which is looked up in the BITS table to find the bit definition (port, bit position etc). Returns a boolean."""
@@ -221,14 +228,20 @@ class Module_base(object):
         """
         Writes within the RAM/FIFO address space of the module. Simply calls the write() function with the appropriate address offset.
         """
-        self.write(addr+0x200, data, *args, **kwargs)
+        return self.write(_RAM_BASE_ADDR + addr, data, *args, **kwargs)
+
+    def write_control(self, addr, data, *args, **kwargs):
+        """
+        Writes to control register(s).
+        """
+        return self.write(_CONTROL_BASE_ADDR + addr, data, *args, **kwargs)
 
     def write_drp(self, addr, data):
         """
         Writes a DRP (Dynamic Reconfigurable Port) of the FPGA internal devices (PLL, SYSMON, MGT etc).
         'addr' is the 16-bit DRP register address.
         """
-        self.write(0x200 + ((2*addr) & 0x1ff) + (((2*addr)>>9)<<10), [data &0xFF, (data>>8)& 0xFF])
+        return self.write(_RAM_BASE_ADDR + 2*addr, [data & 0xFF, (data >> 8) & 0xFF])
 
     write_DRP = write_drp
 

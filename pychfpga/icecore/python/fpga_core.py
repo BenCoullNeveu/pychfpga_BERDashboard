@@ -69,16 +69,21 @@ class FpgaCoreFirmware(HWMResource):
     _is_open = None
     _BROADCAST_BASE_PORT = 41000
 
-    _SYSTEM_BASE_ADDR   = 0x00000 # This is always at zero so we can gather info from the FPGA before we know the number of antennas etc.
-    _SYSTEM_GPIO_BASE_ADDR     = _SYSTEM_BASE_ADDR + 0x00000
-    _SYSTEM_I2C_BASE_ADDR      = _SYSTEM_BASE_ADDR + 0x0A000
+    _SYSTEM_BASE_ADDR      = 0x00000 # This is always at zero so we can gather info from the FPGA before we know the number of antennas etc.
+    _SYSTEM_GPIO_BASE_ADDR = _SYSTEM_BASE_ADDR + 0x00000
+    _SYSTEM_I2C_BASE_ADDR  = _SYSTEM_BASE_ADDR + 0x05000
+
+    _CONTROL_BASE_ADDR = fpga_mmi.FpgaMmi._CONTROL_BASE_ADDR
+    _STATUS_BASE_ADDR  = fpga_mmi.FpgaMmi._STATUS_BASE_ADDR
+    _RAM_BASE_ADDR     = fpga_mmi.FpgaMmi._RAM_BASE_ADDR
+
 
     # GPIO Register addresses
-    _GPIO_COOKIE_REG = 0x080 # Register address of the firmware cookie
-    _FPGA_TIMESTAMP_ADDR = _SYSTEM_GPIO_BASE_ADDR + 0x80 + 7
-    _FPGA_SERIAL_NUMBER_ADDR = _SYSTEM_GPIO_BASE_ADDR + 0x80 + 12
-    _FPGA_IP_SETUP_BASE_ADDR = _SYSTEM_GPIO_BASE_ADDR + 0x00 + 13 # (13-18): target MAC, (19-22): target IP, (23-24): target_base_port, (25-32) = Target FPGA serial, (33): bit 7 = trigger, bits 3:2: mac source select, 1:0: broadcast group
-    _GPIO_IPCONFIG_REG = _SYSTEM_GPIO_BASE_ADDR + 0x08D # Register address of the first byte of the IP config word
+    _GPIO_COOKIE_REG         = _STATUS_BASE_ADDR + _SYSTEM_GPIO_BASE_ADDR  # Register address of the firmware cookie
+    _FPGA_TIMESTAMP_ADDR     = _STATUS_BASE_ADDR + _SYSTEM_GPIO_BASE_ADDR + 7
+    _FPGA_SERIAL_NUMBER_ADDR = _STATUS_BASE_ADDR + _SYSTEM_GPIO_BASE_ADDR + 12
+    _FPGA_IP_SETUP_BASE_ADDR = _CONTROL_BASE_ADDR + _SYSTEM_GPIO_BASE_ADDR + 13 # (13-18): target MAC, (19-22): target IP, (23-24): target_base_port, (25-32) = Target FPGA serial, (33): bit 7 = trigger, bits 3:2: mac source select, 1:0: broadcast group
+    # _GPIO_IPCONFIG_REG       = _CONTROL_BASE_ADDR + _SYSTEM_GPIO_BASE_ADDR + 0x08D # Register address of the first byte of the IP config word
 
 
     @classmethod
@@ -297,7 +302,7 @@ class FpgaCoreFirmware(HWMResource):
         Reads the FPGA and returns the cookie that identifies the firmware.
         This method can be called before any FPGA modules are instatiated.
         """
-        return self.read(self._SYSTEM_GPIO_BASE_ADDR + self.base__gpio_COOKIE_REG) & 0x7F
+        return self.mmi.read(self._GPIO_COOKIE_REG) & 0x7F
 
     def get_version(self):
         """

@@ -1,19 +1,19 @@
 #!/usr/bin/python
 # Disable pylint Line too long (=C0301)
-# pylint: disable=C0301 
+# pylint: disable=C0301
 
 """
-GPIO.py module 
+GPIO.py module
  Implements SYSTEM-level interface
 #
 # History:
-    2011-08-25 JFC : Created 
-    2011-08-30 JFC: Added read_bitstream_* functions and status() 
+    2011-08-25 JFC : Created
+    2011-08-30 JFC: Added read_bitstream_* functions and status()
     2011-09-08 JFC: Added TIMESTAMP_VALID and ADC_SYNC_READBACK in field definitions
     2011-09-14 JFC: Added GLOBAL_RESET bit to match firmware
     2011-09-16 JFC: Added functions to pulse GLOBAL TRIG and GLOBAL RESET
     2011-09-19 JFC: Added ADC_DAQ_SYNC and FR_DIST_SYNC properties
-    2011-09-27 JFC: Split ADC_DAQ_SYNC into ADC_DAQ_BUFR_SYNC and ADC_DAQ_SERDES_SYNC 
+    2011-09-27 JFC: Split ADC_DAQ_SYNC into ADC_DAQ_BUFR_SYNC and ADC_DAQ_SERDES_SYNC
     2012-07-09 JFC: Assert ANT_RESET on init to allow communications through if the board is sending lots of data
     2012-07-25 JFC: Renamed from SYSMOD.py to GPIO.py
     2012-09-18 JFC: Added set_global_trig()
@@ -76,6 +76,7 @@ class GPIO_base(Module_base):
     NUMBER_OF_CROSSBAR_OUTPUTS = BitField(STATUS, 21, 0, width=8, doc='Number of crossbar outputs')
     PROTOCOL_VERSION = BitField(STATUS, 23, 0, width=16, doc='Protocol version used to manage host software compatibility.')
     CHANNELIZERS_CLOCK_SOURCE = BitField(STATUS, 24, 0, width=8, doc='Indicates which ADC is used to provide the clock from all channelizers.')
+    NUMBER_OF_BP_SHUFFLE_LANES = BitField(STATUS, 36, 0, width=8, doc='Number of backplane links (including the direct internal link)')
 
 
     def __init__(self, fpga, base_address):
@@ -84,8 +85,6 @@ class GPIO_base(Module_base):
         self._lock() # prevent further property creation to avoid creating attrubutes by mistake
 
 
-    #def read_bitstream_data(self):
-    #    return self.read(0x80+0x07, type=np.dtype('>u4'))
 
     def get_bitstream_date(self):
         """ Returns a string containing the date-time of the currrent firmware bitstream."""
@@ -117,18 +116,18 @@ class GPIO_base(Module_base):
         self.pulse_bit('GLOBAL_RESET')
 
     def init(self):
-        """ 
+        """
         Initializes the GPIO module operations.
         This puts the antenna processors and correlators in reset state."""
         # reset the antenna processors. This causes them to stop sending data.
-        self.ANT_RESET = 1  
-        self.CORR_RESET = 1  
+        self.ANT_RESET = 1
+        self.CORR_RESET = 1
         # In the alternate code below, we do not use self.ANT_RESET=1 to reset the antenna because this implies reading the control register, and the read data might not get through if too much data is coming in
         #ant_reset = self.bitfield('ANT_RESET')
         #self.write(ant_reset.addr, 1 << ant_reset.bit)
         #self.write(ant_reset.addr, 0x60) # ** debug  BEWARE: This resets the DATA and CORR IP addresses to zero!!!!!***
         self.HOST_FRAME_READ_RATE = 14  #Indicates how often the host UDP buffers are read. Used to throttle data transmision. Period = 2/125MHz*2^value
-        
+
     def status(self):
         """ Displays the module status"""
         self.logger.info('-------------------------GPIO--------------------------------------')

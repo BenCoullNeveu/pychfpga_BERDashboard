@@ -31,3 +31,5 @@ n_freq    = integer(min = 1)
     max_len = integer(min = 1)
     buf_len = integer(min = 1)
     spf = integer(min = 1)
+  [[fpga_hk]]
+    rate = integer(min = 1, default = 10)

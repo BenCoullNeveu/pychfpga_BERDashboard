@@ -40,7 +40,7 @@ from pychfpga.common import util
 
 # import Shared_variables # Note: do not reload this module or we will lose acces to the data in it
 import Module
-import SocketIO
+# import SocketIO
 
 # FPGA subsystems handlers
 import SPI
@@ -86,7 +86,7 @@ from pychfpga.MGADC08 import MGADC08
 
 MODULE_LIST = (
         util,
-        SocketIO,
+        # SocketIO,
         Module,
         SPI,
         I2C,
@@ -156,17 +156,20 @@ class chFPGA_controller(FpgaCoreFirmware):
 
     # Set the basic paramaters used to compute the address of each module
     _SYSTEM_BASE_ADDR     = 0x00000 # This is always at zero so we can gather info from the FPGA before we know the number of antennas etc.
-    _CHAN_BASE_ADDR       = 0x20000 # Channelizer top address
-    _CROSSBAR_BASE_ADDR   = 0x40000 # CROSSBAR top address
-    _GPU_LINK_BASE_ADDR   = 0x60000 # GPU Link top address
-    _CORR_BASE_ADDR       = 0x80000 # Correlator ports are determined dynamically based on the info from the firmware
-    _BP_SHUFFLE_BASE_ADDR = 0xA0000
+    _CHAN_BASE_ADDR       = 0x10000 # Channelizer top address
+    _CROSSBAR1_BASE_ADDR  = 0x20000 # CROSSBAR top address
+    _GPU_LINK_BASE_ADDR   = 0x30000 # GPU Link top address
+    _CORR_BASE_ADDR       = 0x40000 # Correlator ports are determined dynamically based on the info from the firmware
+    _BP_SHUFFLE_BASE_ADDR = 0x50000
+    _CROSSBAR2_BASE_ADDR  = 0x60000 # CROSSBAR top address
 
-    _CHAN_ADDR_INCREMENT           = 0x02000 # Address increment between each channelizer address spaces
-    _CROSSBAR_ADDR_INCREMENT       = 0x02000
-    _GPU_LINK_ADDR_INCREMENT       = 0x02000 # Address increment between each subsystem of the GPU links
-    _CORR_ADDR_INCREMENT           = 0x02000 # Address increment between each correlator
-    _BP_SHUFFLE_ADDR_INCREMENT     = 0x01000 # Address increment between each shuffle submodule
+    _CHAN_ADDR_INCREMENT           = 0x01000 # Address increment between each channelizer address spaces
+    _CROSSBAR_ADDR_INCREMENT       = 0x00800
+    _GPU_LINK_ADDR_INCREMENT       = 0x00800 # Address increment between each subsystem of the GPU links
+    _CORR_ADDR_INCREMENT           = 0x01000 # Address increment between each correlator
+    _BP_SHUFFLE_ADDR_INCREMENT     = 0x00800 # Address increment between each shuffle submodule
+
+    _CHAN_SUBMODULE_ADDR_INCREMENT = 0x00200 # Address increment between each submodule within a channelizer (ADCDAQ, FUNCGEN, FFT, SCALER etc.)
 
     # Build the memory map for every module of the system ( work in progress)
     # MEMORY_MAP = {}
@@ -176,14 +179,13 @@ class chFPGA_controller(FpgaCoreFirmware):
 
     # SYSTEM Modules addresses
     _SYSTEM_GPIO_BASE_ADDR     = _SYSTEM_BASE_ADDR + 0x00000
-    _SYSTEM_SYSMON_BASE_ADDR   = _SYSTEM_BASE_ADDR + 0x02000
-    _SYSTEM_FREQ_CTR_BASE_ADDR = _SYSTEM_BASE_ADDR + 0x04000
-    _SYSTEM_SPI_BASE_ADDR      = _SYSTEM_BASE_ADDR + 0x06000
-    _SYSTEM_REFCLK_BASE_ADDR   = _SYSTEM_BASE_ADDR + 0x08000
-    # SYSTEM_I2C_BASE_ADDR      = _SYSTEM_BASE_ADDR + 0x0A000
+    _SYSTEM_SYSMON_BASE_ADDR   = _SYSTEM_BASE_ADDR + 0x01000
+    _SYSTEM_FREQ_CTR_BASE_ADDR = _SYSTEM_BASE_ADDR + 0x02000
+    _SYSTEM_SPI_BASE_ADDR      = _SYSTEM_BASE_ADDR + 0x03000
+    _SYSTEM_REFCLK_BASE_ADDR   = _SYSTEM_BASE_ADDR + 0x04000
+    # SYSTEM_I2C_BASE_ADDR      = _SYSTEM_BASE_ADDR + 0x05000
 
-    _GPIO_COOKIE_REG = 0x080 # Register address of the firmware cookie
-    _GPIO_IPCONFIG_REG = 0x08D # Register address of the first byte of the IP config word
+    # _GPIO_COOKIE_REG = 0x00 # Register address of the firmware cookie
     _CHFPGA_COOKIE = 0x42 # Expected cookie value for chFPGA
 
     _PLATFORM_ID_ML605 = 0
@@ -296,7 +298,8 @@ class chFPGA_controller(FpgaCoreFirmware):
         # self.fpga.open() # Open communication socket with the fpga
 
         try:
-            cookie = self.read(self._SYSTEM_GPIO_BASE_ADDR + self._GPIO_COOKIE_REG) # Read anything from the GPIO subsystem (which is always present on all versions of the FPGA)
+            # cookie = self.read(self._SYSTEM_GPIO_BASE_ADDR + self.mmi._STATUS_BASE_ADDR) # Read anything from the GPIO subsystem (which is always present on all versions of the FPGA)
+            cookie = self.get_fpga_cookie() # Read the firmware version cookie from the GPIO subsystem (this is provided by the FPGA core firmware which is always present on all versions of the FPGA)
         except Exception as e:
             error_message = "   Unable to communicate with the FPGA at address %s:%i due to the following exception: %s" % (self.ip_addr, self.port_number, repr(e))
             self.close()
@@ -356,7 +359,7 @@ class chFPGA_controller(FpgaCoreFirmware):
             # Get GPU link configuration
             self.NUMBER_OF_GPU_LINKS = self.GPIO.NUMBER_OF_GPU_LINKS
 
-            self.NUMBER_OF_BP_SHUFFLE_LANES = 0
+            self.NUMBER_OF_BP_SHUFFLE_LANES = self.GPIO.NUMBER_OF_BP_SHUFFLE_LANES
             # Get correlator info and their properties
             self.NUMBER_OF_CORRELATORS_MAX = self.GPIO.NUMBER_OF_CORRELATORS
             self.NUMBER_OF_CORRELATORS = self.GPIO.NUMBER_OF_CORRELATORS
@@ -424,20 +427,26 @@ class chFPGA_controller(FpgaCoreFirmware):
             self.REFCLK = REFCLK.REFCLK_base(self, self._SYSTEM_REFCLK_BASE_ADDR)
 
             self._logger.debug('=== Instantiating CHAN')
-            self.ANT = ANT.ANT_base(self, self._CHAN_BASE_ADDR, self._CHAN_ADDR_INCREMENT) # Antenna processors (ADCDAQ, SRCSEL, FFT, SCALER) for each input
+            self.ANT = ANT.ANT_base(self, self._CHAN_BASE_ADDR, self._CHAN_ADDR_INCREMENT, self._CHAN_SUBMODULE_ADDR_INCREMENT) # Antenna processors (ADCDAQ, SRCSEL, FFT, SCALER) for each input
             self.ANT_FMC_NUMBER = [i//8 for i in range(self.NUMBER_OF_ANTENNAS)]
 
-            self._logger.debug('=== Instantiating CROSSBAR')
-            self.CROSSBAR = CROSSBAR.CROSSBAR_base(self, self._CROSSBAR_BASE_ADDR, self._CROSSBAR_ADDR_INCREMENT) # CROSSBAR block
+            self._logger.debug('=== Instantiating 1st CROSSBAR')
+            self.CROSSBAR = CROSSBAR.CROSSBAR_base(self, self._CROSSBAR1_BASE_ADDR, self._CROSSBAR_ADDR_INCREMENT, crossbar_level=1) # CROSSBAR block
+
+
 
             if self.NUMBER_OF_BP_SHUFFLE_LANES:
                 self._logger.debug('=== Instantiating Backplane shuffle subsystem')
                 self.BP_SHUFFLE = shuffle.Shuffle(self, self._BP_SHUFFLE_BASE_ADDR, self._BP_SHUFFLE_ADDR_INCREMENT)
 
+            if self.NUMBER_OF_BP_SHUFFLE_LANES and self.NUMBER_OF_GPU_LINKS:
+                self._logger.debug('=== Instantiating 2nd CROSSBAR')
+                self.CROSSBAR2 = CROSSBAR.CROSSBAR_base(self, self._CROSSBAR2_BASE_ADDR, self._CROSSBAR_ADDR_INCREMENT, crossbar_level=2) # CROSSBAR block
+
             self._logger.debug('=== Instantiating CORR')
             self.CORR = CORR_BLOCK.CORR_BLOCK_base(self, self._CORR_BASE_ADDR, self._CORR_ADDR_INCREMENT) # Correlator (XMUL, ACC) for each correlator
 
-            if self.GPIO.NUMBER_OF_GPU_LINKS:
+            if self.NUMBER_OF_GPU_LINKS:
                 self._logger.debug('=== Instantiating GPU LINKS')
                 self.GPU = GPU.GPU_base(self, self._GPU_LINK_BASE_ADDR, self._GPU_LINK_ADDR_INCREMENT)
 
@@ -534,7 +543,7 @@ class chFPGA_controller(FpgaCoreFirmware):
             self._logger.warning('Unknown arguments %s=%s. Ignoring.' % (key, repr(value)))
 
         self._sampling_frequency = sampling_frequency
-        self.reference_frequency = reference_frequency
+        self._reference_frequency = reference_frequency
         self._FRAME_PERIOD = float(self.FRAME_LENGTH)/self._sampling_frequency
 
         self._logger.info('--- Initializing FPGA ressources')
@@ -599,19 +608,28 @@ class chFPGA_controller(FpgaCoreFirmware):
         self.ANT.init(delay_table=adc_delay_table, fmc_present = self.ANT_FMC_IS_PRESENT)
         self.ANT.status()
 
-        self._logger.debug('=== Initializing Crossbar')
+        self._logger.debug('=== Initializing 1st Crossbar')
         if self.NUMBER_OF_CROSSBAR_OUTPUTS>0:
-            self._logger.debug('  - CROSSBAR')
+            self._logger.debug('  - 1st CROSSBAR')
             self.CROSSBAR.init()
             self.CROSSBAR.status()
         else:
-            self._logger.warning("There are no CROSSBAR blocks in this firmware build (so there can't be data streamed to the correlators or GPU links!)");
+            self._logger.warning("There is no 1st CROSSBAR module in this firmware build (so there can't be data streamed to the correlators or GPU links!)");
+
 
 
         if self.NUMBER_OF_BP_SHUFFLE_LANES:
             self._logger.debug('=== Initializing Backplane Shuffle')
             self.BP_SHUFFLE.init()
             # self.BP_SHUFFLE.status()
+
+        self._logger.debug('=== Initializing 2nd Crossbar')
+        if self.NUMBER_OF_BP_SHUFFLE_LANES and self.NUMBER_OF_GPU_LINKS:
+            self._logger.debug('  - 2nd CROSSBAR')
+            self.CROSSBAR2.init()
+            self.CROSSBAR2.status()
+        else:
+            self._logger.warning("There is no 2nd CROSSBAR module in this firmware build");
 
         self._logger.debug('=== Initializing FPGA correlators')
         if self.NUMBER_OF_CORRELATORS>0:
@@ -624,8 +642,8 @@ class chFPGA_controller(FpgaCoreFirmware):
         self.set_data_width(data_width)  #sets the data width of both the SCALER and CROSSBAR
         self._logger.info('Data width set to (Re+Im) = (%i+%i) bits' % (self.get_data_width(), self.get_data_width()))
 
-        self.CROSSBAR.set_frame_grouping(group_frames)
-        self._logger.info('%i frames will be grouped to form the GPU/FPGA correlator streams' % (group_frames))
+        self.CROSSBAR.set_frames_per_packet(group_frames)
+        self._logger.info('The 1st crossbar will pack %i frames per packet' % (group_frames))
 
         if self.GPIO.NUMBER_OF_GPU_LINKS:
             self.GPU.set_enable(enable_gpu_link)
@@ -658,12 +676,12 @@ class chFPGA_controller(FpgaCoreFirmware):
 
         self._last_init_time = time.time()
 
-    def get_fpga_cookie(self):
-        """
-        Reads the FPGA and returns the cookie that identifies the firmware.
-        This method can be called before any FPGA modules are instatiated.
-        """
-        return self.read(self._SYSTEM_GPIO_BASE_ADDR + self._GPIO_COOKIE_REG) & 0x7F
+    # def get_fpga_cookie(self):
+    #     """
+    #     Reads the FPGA and returns the cookie that identifies the firmware.
+    #     This method can be called before any FPGA modules are instatiated.
+    #     """
+    #     return self.read(self.mmi._STATUS_BASE_ADDR + self._SYSTEM_GPIO_BASE_ADDR + self._GPIO_COOKIE_REG) & 0x7F
 
     def get_config(self):
         config = chFPGA_config() # Create empty config container
@@ -689,14 +707,14 @@ class chFPGA_controller(FpgaCoreFirmware):
 
         config.system_frame_length = self.FRAME_LENGTH
         config.system_sampling_frequency = self._sampling_frequency
-        config.system_reference_frequency = self.reference_frequency
+        config.system_reference_frequency = self._reference_frequency
         config.system_frame_period = self._FRAME_PERIOD
 
         config.adc_board_is_present = self._adc_board[0].is_present()
         if self._adc_board[0].is_present():
             config.adc_board_temperature = self._adc_board[0].AmbTemp.temperature
             config.adc_board_adc_chip_temperature = [adc.get_temperature() for adc in self._adc_board[0].ADC]
-            config.adc_serial = self._adc_board[0]._board_info['Serial #'] #[fmc._board_info['Serial #'] for fmc in self._adc_board]
+            config.adc_serial =  [fmc._board_info['Serial #'] for fmc in self._adc_board] #self._adc_board[0]._board_info['Serial #']
         config.antenna_data_source = self.get_data_source()
         config.antenna_fft_bypass = self.get_FFT_bypass()
         config.antenna_fft_shift_schedule = self.get_FFT_shift()
@@ -863,7 +881,7 @@ class chFPGA_controller(FpgaCoreFirmware):
         """
 
         if isinstance(channel, int):
-            channel = [channel]
+            #channel = [channel]
             board_number = channel // 8
             return self._adc_board[board_number]
         else:

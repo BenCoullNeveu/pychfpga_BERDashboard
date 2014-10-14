@@ -119,22 +119,6 @@ class MGADC08_base(FMCMezzanine):
 
     def load_board_info(self, retry=10):
         """ Loads the info data block from the ADC board EEPROM using the old proprietary McGill format (not the FMC standard). """
-        # i = 0
-        # keep_reading = True
-        # number_of_tries = 0
-        # while(keep_reading):
-        #      try:
-        #           ascii = self.eeprom.read(i)
-        #           keep_reading = False
-        #      except:
-        #           number_of_tries += 1
-        #           if number_of_tries > 100:
-        #               print "something wrong with eeprom reading"
-        #               raise
-        #           print 'e',
-        #           time.sleep(0.01)
-        #125 is the ASCII character for the } which is used in the dictionary. The 1000 characters is used to make sure this doesn't go indefinitely
-        #Converts each address in EEPROM to a character and put it together in a string
 
         block_size = 32
         string = ''

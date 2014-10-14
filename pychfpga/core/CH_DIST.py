@@ -29,28 +29,30 @@ class CH_DIST_base(Module_base):
     USE_OFFSET_BINARY        = BitField(CONTROL, 0x00, 5, doc="When '1', indicates that the data uses offset binary encoding instead of 2's complement. Does not affect any processing here, but the flag is passed in the frame header.")
     SEND_FLAGS               = BitField(CONTROL, 0x00, 4, doc="When '1', the scaler and ADC/FFT flags are appended to the end of the data packet")
     DUAL_BINS                = BitField(CONTROL, 0x00, 3, doc="When '1', both bins coming out of the FFT are always selected simultaneously, allowing all the data from a channelizer to be packed into a single GPU lane. '0' is the default. ")
+    GROUP_FRAMES             = BitField(CONTROL, 0x00, 0, width=3, doc="Number of input frames to pack into an output frames. ")
+
     STREAM_ID                = BitField(CONTROL, 0x02, 4, width=12, doc="Stream ID to be used for tagging the output frames")
     NUMBER_OF_SELECTED_WORDS = BitField(CONTROL, 0x03, 0, width=11, doc="Number of words(frequency pairs) selected by this correlator.  Must match length of selected words")
-    GROUP_FRAMES             = BitField(CONTROL, 0x04, 0, width=8, doc="Number of input frames to pack into an output frames. ")
-    FIRST_INPUT              = BitField(CONTROL, 0x05, 4, width=4, doc="Index of the first channelizer to get data from ")
-    LAST_INPUT               = BitField(CONTROL, 0x05, 4, width=0, doc="Index of the last channelizer to get data from ")
+    NUMBER_OF_LANES          = BitField(CONTROL, 0x04, 0, width=5, doc="Number of lanes to include in output")
+    # LAST_INPUT               = BitField(CONTROL, 0x05, 4, width=0, doc="Index of the last channelizer to get data from ")
 
     # Status bitfields
     FIFO_EMPTY               = BitField(STATUS, 0x00, 7, doc="Active high when the data FIFO is empty")
     FIFO_OVERFLOW            = BitField(STATUS, 0x00, 6, doc="Active high if the data FIFO is overflowing")
     IS_RESET                 = BitField(STATUS, 0x00, 5, doc="High when the module reset line is active")
-    ALIGN_FIFO_OVERFLOW      = BitField(STATUS, 0x00, 4, doc="Active high if any alignment FIFO is overflowing")
-    ALIGN_FIFO_UNDERFLOW     = BitField(STATUS, 0x00, 3, doc="Active high if any alignment FIFO is underflowing")
-    FRAME_CTR                = BitField(STATUS, 0x01, 0, width=8, doc="Number of frames written into the FIFOs. Rolls over.")
-    IN_FRAME_CTR             = BitField(STATUS, 0x02, 0, width=8, doc="Number of frames received on lane 0 before the alignment FIFOs. Rolls over.")
+    EIGHT_BIT_SUPPORT        = BitField(STATUS, 0x00, 4, doc="")
+    FIFO_CTR                 = BitField(STATUS, 0x00, 2, width=2, doc="")
+    DATA_FLAGS_OVERFLOW      = BitField(STATUS, 0x00, 1, width=4, doc="Debug")
+    FRAME_FIFO_OVERFLOW      = BitField(STATUS, 0x00, 0, width=4, doc="Debug")
 
-    INPUT_CTR                = BitField(STATUS, 0x04, 0, width=4, doc="Debug")
-    SCALER_FLAG_FIFO_OVERFLOW= BitField(STATUS, 0x04, 4, doc="Debug")
-    ADC_FLAG_FIFO_OVERFLOW   = BitField(STATUS, 0x04, 5, doc="Debug")
-    DATA_FIFO_RD_EN          = BitField(STATUS, 0x04, 6, doc="Debug")
+    TIMESTAMP_CTR            = BitField(STATUS, 0x01, 0, width=8, doc="Last 8 bits of the current timestamp.")
+    # IN_FRAME_CTR             = BitField(STATUS, 0x02, 0, width=8, doc="Number of frames received on lane 0 before the alignment FIFOs. Rolls over.")
 
-    DATA_FIFO_VALID          = BitField(STATUS, 0x05, 0, width=4, doc="Debug")
-    DATA_FIFO_OVERFLOW       = BitField(STATUS, 0x05, 4, width=4, doc="Debug")
+    # INPUT_CTR                = BitField(STATUS, 0x04, 0, width=4, doc="Debug")
+    # SCALER_FLAG_FIFO_OVERFLOW= BitField(STATUS, 0x04, 4, doc="Debug")
+    # ADC_FLAG_FIFO_OVERFLOW   = BitField(STATUS, 0x04, 5, doc="Debug")
+    # DATA_FIFO_RD_EN          = BitField(STATUS, 0x04, 6, doc="Debug")
+
 
     def __init__(self, fpga_instance, base_address, instance_number):
         # self.parent = parent

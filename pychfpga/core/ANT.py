@@ -1,9 +1,9 @@
 #!/usr/bin/python
 # Disable pylint Line too long (=C0301)
-# pylint: disable=C0301 
+# pylint: disable=C0301
 
 """
-ANT.py module 
+ANT.py module
     Implements interface to the Antenna processors
 
 History:
@@ -17,24 +17,23 @@ import ADCDAQ
 import SRCSEL
 import FFT
 import SCALER
-import PROBER    
+import PROBER
 import FUNCGEN
 import INJECT
 
 class ANT_channel(object):
     """ Implements the interface to one of the channelizer"""
 
-    CHAN_MODULE_ADDR_INCREMENT = 0x00400
     # Antenna processor module addresses
-    ADCDAQ_OFFSET_ADDR  = 0 * CHAN_MODULE_ADDR_INCREMENT
-    SRCSEL_OFFSET_ADDR  = 1 * CHAN_MODULE_ADDR_INCREMENT
-    FFT_OFFSET_ADDR     = 2 * CHAN_MODULE_ADDR_INCREMENT
-    SCALER_OFFSET_ADDR  = 3 * CHAN_MODULE_ADDR_INCREMENT
-    PROBER_OFFSET_ADDR  = 4 * CHAN_MODULE_ADDR_INCREMENT
-    FUNCGEN_OFFSET_ADDR = 5 * CHAN_MODULE_ADDR_INCREMENT
-    INJECT_OFFSET_ADDR  = 6 * CHAN_MODULE_ADDR_INCREMENT
+    ADCDAQ_OFFSET_ADDR  = 0
+    SRCSEL_OFFSET_ADDR  = 1
+    FFT_OFFSET_ADDR     = 2
+    SCALER_OFFSET_ADDR  = 3
+    PROBER_OFFSET_ADDR  = 4
+    FUNCGEN_OFFSET_ADDR = 5
+    INJECT_OFFSET_ADDR  = 6
 
-    def __init__(self, fpga_instance, base_address, instance_number):
+    def __init__(self, fpga_instance, base_address, submodule_address_increment, instance_number):
         #super(ADC_chip,self).__init__(fpga)
         # self.ant = ant_instance # store current ADC number for this instance
         self.ant_number = instance_number # store current ADC number for this instance
@@ -43,22 +42,22 @@ class ANT_channel(object):
 
         # port = self.fpga.ANT_PORT[self.ant_number]
 
-        self.ADCDAQ  = ADCDAQ.ADCDAQ_base( fpga_instance,   base_address + self.ADCDAQ_OFFSET_ADDR,  instance_number)
-        self.SRCSEL  = SRCSEL.SRCSEL_base( fpga_instance,   base_address + self.SRCSEL_OFFSET_ADDR,  instance_number)
-        self.FFT     = FFT.FFT_base( fpga_instance,         base_address + self.FFT_OFFSET_ADDR,     instance_number)
-        self.SCALER  = SCALER.SCALER_base( fpga_instance,   base_address + self.SCALER_OFFSET_ADDR,  instance_number)
-        self.PROBER  = PROBER.PROBER_base( fpga_instance,   base_address + self.PROBER_OFFSET_ADDR,  instance_number)
-        self.FUNCGEN = FUNCGEN.FUNCGEN_base( fpga_instance, base_address + self.FUNCGEN_OFFSET_ADDR, instance_number)
-        self.INJECT  = INJECT.INJECT_base( fpga_instance,   base_address + self.INJECT_OFFSET_ADDR,  instance_number)
+        self.ADCDAQ  = ADCDAQ.ADCDAQ_base( fpga_instance,   base_address + self.ADCDAQ_OFFSET_ADDR*submodule_address_increment,  instance_number)
+        self.SRCSEL  = SRCSEL.SRCSEL_base( fpga_instance,   base_address + self.SRCSEL_OFFSET_ADDR*submodule_address_increment,  instance_number)
+        self.FFT     = FFT.FFT_base( fpga_instance,         base_address + self.FFT_OFFSET_ADDR*submodule_address_increment,     instance_number)
+        self.SCALER  = SCALER.SCALER_base( fpga_instance,   base_address + self.SCALER_OFFSET_ADDR*submodule_address_increment,  instance_number)
+        self.PROBER  = PROBER.PROBER_base( fpga_instance,   base_address + self.PROBER_OFFSET_ADDR*submodule_address_increment,  instance_number)
+        self.FUNCGEN = FUNCGEN.FUNCGEN_base( fpga_instance, base_address + self.FUNCGEN_OFFSET_ADDR*submodule_address_increment, instance_number)
+        self.INJECT  = INJECT.INJECT_base( fpga_instance,   base_address + self.INJECT_OFFSET_ADDR*submodule_address_increment,  instance_number)
         self.frame_length = self.fpga.FRAME_LENGTH
 
-        
-    # def read(self, module, addr, *args, **kwargs): 
-    #     """ Reads data from the specified module at the specified address""" 
+
+    # def read(self, module, addr, *args, **kwargs):
+    #     """ Reads data from the specified module at the specified address"""
     #     return self.fpga.read(self.ant_number, module, addr, *args, **kwargs)
 
-    # def write(self, module, addr, data, *args, **kwargs): 
-    #     """ Writes data to the specified module at the specified address""" 
+    # def write(self, module, addr, data, *args, **kwargs):
+    #     """ Writes data to the specified module at the specified address"""
     #     return self.ant.write(self.ant_number, module, addr, data, *args, **kwargs)
 
 
@@ -67,7 +66,7 @@ class ANT_channel(object):
 
         self.fmc_present = fmc_present
 
-        """ Initializes the antenna modules""" 
+        """ Initializes the antenna modules"""
         self.logger.debug('Initializing modules for antenna #%i' % self.ant_number)
         self.logger.debug('  - ADCDAQ')
         self.ADCDAQ.init(fmc_present)
@@ -86,7 +85,7 @@ class ANT_channel(object):
 
 
     def status(self):
-        """ Displays the status of the antenna modules""" 
+        """ Displays the status of the antenna modules"""
         #self.logger.info('=== ANTENNA NUMBER %i ' % self.ant_number)
         # self.ADCDAQ.status()
         # self.SRCSEL.status()
@@ -97,13 +96,13 @@ class ANT_channel(object):
         # self.INJECT.status()
 
 class ANT_base(object):
-    """ 
-    Instantiates a container for all channelizers available on the FPGA. 
+    """
+    Instantiates a container for all channelizers available on the FPGA.
     It mimics the basin functionnalities of a 'dict'.
 
     """
 
-    def __init__(self, fpga, base_address, address_increment, verbose=0):
+    def __init__(self, fpga, base_address, address_increment, submodule_address_increment, verbose=0):
         self.fpga = fpga
         self.verbose = verbose
         self.logger = logging.getLogger(__name__)
@@ -111,7 +110,7 @@ class ANT_base(object):
         self.frame_length = fpga.FRAME_LENGTH
         self.ANT = []
         for i in range(fpga.NUMBER_OF_ANTENNAS):
-            self.ANT.append(ANT_channel(self.fpga, base_address + i * address_increment, i))
+            self.ANT.append(ANT_channel(self.fpga, base_address + i * address_increment, submodule_address_increment, i))
 
     def __getitem__(self, key):
         """If the user indexes this object (ANT[n] instead of ANT) then return the antenna processor instance"""
@@ -155,7 +154,7 @@ class ANT_base(object):
     #     fpga.write(fpga.ANT_PORT[ant_number], module_number, addr, data, *args, **kwargs)
 
     def init(self, delay_table=None, fmc_present=None):
-        """ Initializes all antennas""" 
+        """ Initializes all antennas"""
 
         # Selects which clock is used to clock the channelizes based on whether the ADC card that normally provides the clock is present or not.
         if fmc_present[self.fpga.CHANNELIZERS_CLOCK_SOURCE]:
@@ -173,7 +172,7 @@ class ANT_base(object):
             self.set_delays(delay_table)
 
     def status(self):
-        """ Displays the status of all antennas""" 
+        """ Displays the status of all antennas"""
         for ant in self.ANT:
             ant.status()
 
@@ -184,8 +183,8 @@ class ANT_base(object):
         Sets the delays for all ADC data lines using the provided array.
         'adc_delay-table'  consists of a list of 8 arrays comprising 8 delay values each.
         """
-        for i, ant in enumerate(self.ANT):    
-            ant.ADCDAQ.set_delay(adc_delay_table[i]) 
+        for i, ant in enumerate(self.ANT):
+            ant.ADCDAQ.set_delay(adc_delay_table[i])
 
     def get_delays(self):
         """
@@ -239,4 +238,4 @@ class ANT_base(object):
                 print
         except KeyboardInterrupt:
             pass
-        
+
