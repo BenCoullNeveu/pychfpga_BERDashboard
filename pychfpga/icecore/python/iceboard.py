@@ -445,22 +445,21 @@ class IceBoard(HWMResource, AttributeUser):
 
         already_configured = False
 
-        # First, try to get the FPGA configuration from the FPGA IP address  so we can decide if the FPGA needs reprogramming
-        self.logger.info('Checking the FPGA on board S/N %03i configuration' % self.serial_number)
-        (serial, timestamp) = FpgaCoreFirmware.get_fpga_config(ip_addr=self.fpga_ip_addr, port_number=self.fpga_port_number)
+        if not force:
+            # First, try to get the FPGA configuration from the FPGA IP address  so we can decide if the FPGA needs reprogramming
+            self.logger.info('Checking the FPGA on board S/N %03i configuration' % self.serial_number)
+            (serial, timestamp) = FpgaCoreFirmware.get_fpga_config(ip_addr=self.fpga_ip_addr, port_number=self.fpga_port_number)
+            already_configured = (serial and serial == self.fpga_serial_number)
 
-        # # if the FPGA did not respond, maybe it is programmed but its IP address is not set.
-        # #  So if we know the FPGA serial number, set its IP address and try again
-        # if not serial and self.fpga_serial_number:
-        #     #  blindly attempts to configure the FPGA networking is case its firmware is already loaded. This will allow us to check if the firmware is already loaded.
-        #     self.logger.info('The FPGA on board S/N %03i did not respond. Attempting to configure its networking parameters' % self.serial_number)
-        #     FpgaCoreFirmware.set_networking_parameters(serial_number=self.fpga_serial_number, interface_ip_addr=self.interface_ip_addr, ip_addr=self.fpga_ip_addr, port_number=self.fpga_port_number, broadcast_group = 0)
-        #     self.logger.info('Rechecking the FPGA on board S/N %03i configuration' % self.serial_number)
-        #     (serial, timestamp) = FpgaCoreFirmware.get_fpga_config(interface_ip_addr=self.interface_ip_addr, ip_addr=self.fpga_ip_addr, port_number=self.fpga_port_number)
-        #     self.logger.info('The FPGA on board S/N %03i replied with serial=%r, timestamp=%r' % (self.serial_number, serial, timestamp))
-
-
-        already_configured = (serial and serial == self.fpga_serial_number)
+            # # if the FPGA did not respond, maybe it is programmed but its IP address is not set.
+            # #  So if we know the FPGA serial number, set its IP address and try again
+            # if not serial and self.fpga_serial_number:
+            #     #  blindly attempts to configure the FPGA networking is case its firmware is already loaded. This will allow us to check if the firmware is already loaded.
+            #     self.logger.info('The FPGA on board S/N %03i did not respond. Attempting to configure its networking parameters' % self.serial_number)
+            #     FpgaCoreFirmware.set_networking_parameters(serial_number=self.fpga_serial_number, interface_ip_addr=self.interface_ip_addr, ip_addr=self.fpga_ip_addr, port_number=self.fpga_port_number, broadcast_group = 0)
+            #     self.logger.info('Rechecking the FPGA on board S/N %03i configuration' % self.serial_number)
+            #     (serial, timestamp) = FpgaCoreFirmware.get_fpga_config(interface_ip_addr=self.interface_ip_addr, ip_addr=self.fpga_ip_addr, port_number=self.fpga_port_number)
+            #     self.logger.info('The FPGA on board S/N %03i replied with serial=%r, timestamp=%r' % (self.serial_number, serial, timestamp))
 
         # Program the FPGA if it did not return the proper config info
         if not already_configured or force: # if the FPGA has not replied, we program it
