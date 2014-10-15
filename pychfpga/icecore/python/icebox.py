@@ -82,7 +82,7 @@ class IceBox(object):
         self._QSFP_CTRLA = pca9698.pca9698(self._i2c, self._QSFP_CTRL_SETA_ADDR, 'BP')
         self._QSFP_CTRLB = pca9698.pca9698(self._i2c, self._QSFP_CTRL_SETB_ADDR, 'BP')
         self._RESET_CTRL = pca9698.pca9698(self._i2c, self._RESETS_CTRL_ADDR, 'BP')
-    
+
 
         self.QSFP_CTRL_MAP = {
              # Slot num : (expander object, Register, bit number ModPrs, bit number Reset, bit number IntL, bit number ModSel)
@@ -104,7 +104,7 @@ class IceBox(object):
              15: (self._QSFP_CTRLB, 3,   0,1,2,3 ),
              16: (self._QSFP_CTRLB, 3,   4,5,6,7 )
         }
-        
+
         self.QSFP_LED_MAP = {
              # Slot num : (expander object, Register, bit number)
              1: (self._QSFP_CTRLA, 4, 0),
@@ -125,7 +125,7 @@ class IceBox(object):
              15: (self._QSFP_CTRLB, 4, 6),
              16: (self._QSFP_CTRLB, 4, 7)
         }
-        
+
 
         self.SLOT_RESETS_MAP = {
             # Slot num : (expander object, ARM Register, Power Down Register, Bit number)
@@ -238,8 +238,8 @@ class IceBox(object):
         History:
         140320 JM: created
         """
-        
-        
+
+
         if power_sensor_name == None:
             power_sensor_name = self.POWER_SENSOR_TABLE.keys()
         elif isinstance(power_sensor_name, str):
@@ -262,9 +262,9 @@ class IceBox(object):
             """
             QSFPA_Ctrl=self._QSFP_CTRLA
             QSFPB_Ctrl=self._QSFP_CTRLB
-            
+
             QSFPA_Ctrl.init()
-            QSFPB_Ctrl.init()        
+            QSFPB_Ctrl.init()
 
     def _init_eeprom(self):
         """initializes EEPROM"""
@@ -408,8 +408,8 @@ class IceBox(object):
 
     def status(self):
         """Displays the status of the motherboard"""
-        
-    def set_QSFP_LED(self, slots, state):
+
+    def set_qsfp_led(self, slots, state):
         """
         Set the QSFP LED state for a given slot
         History:
@@ -419,26 +419,19 @@ class IceBox(object):
             slots = [slots]
 
         if isinstance(state, (bool, int)):
-            if state:
-                state = ([0] * len(slots))
-            else:
-                state = ([1] * len(slots))
+                state = ([bool(state)] * len(slots))
 
         for (slots, state) in zip(slots,state):
-            
-            if slots not in range(1,self.NUMBER_OF_SLOTS) :
-                raise IceBoardHardwareException('Invalid Slot number')
-            else:
-                LED_Control_list = self.QSFP_LED_MAP[slots]
-                LED_Control_Object=LED_Control_list[0]
-                LED_Control_Register=LED_Control_list[1]
-                LED_Control_BitNumber=LED_Control_list[2]
-                
-                LED_Control_Resister='CFG' + str(LED_Control_Register) #Converting the resister in the map into the correct string format
-                #Note that we are cheating here, we are flipping the bits on the IO Expander from input mode to output mode, inputs are default floating
-                #Turning on the LED requires a output of 0 which is the default state in output mode              
-                
-                LED_Control_Object.write(LED_Control_Resister, state & 0xFF, mask=1<<LED_Control_BitNumber)
 
-            
+            if slots not in range(1,self.NUMBER_OF_SLOTS + 1) :
+                raise IceBoxException('Invalid Slot number %i' % slots)
+            else:
+                (LED_Control_Object, LED_Control_Register, LED_Control_BitNumber) = self.QSFP_LED_MAP[slots]
+                LED_Control_Register='CFG%i' % LED_Control_Register #Converting the resister in the map into the correct string format
+                #Note that we are cheating here, we are flipping the bits on the IO Expander from input mode to output mode, inputs are default floating
+                #Turning on the LED requires a output of 0 which is the default state in output mode
+                mask = 1<<LED_Control_BitNumber
+                LED_Control_Object.write(LED_Control_Register, (not state) * mask, mask=mask)
+
+
 
