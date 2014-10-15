@@ -29,8 +29,8 @@ class IceBox(object):
     BACKPLANE_EEPROM_SERIAL_ADDRESS = 0x5C # 16 byte serial number starting at address 0
     BACKPLANE_EEPROM_ADDRESS_WIDTH = 10
     BACKPLANE_QSFP_ADDRESS=0x50 #QSFP standard address
-    BACKPLANE_QSFP_ADDRESS_WIDTH=7
-    
+    BACKPLANE_QSFP_ADDRESS_WIDTH=8
+
 
     _QSFP_CTRL_SETA_ADDR = 0b0100000
     _QSFP_CTRL_SETB_ADDR = 0b0100010
@@ -84,7 +84,7 @@ class IceBox(object):
 
         self._logger.info(' Instantiating Backplane I2C I/O expanders')
         self._qsfp_ctrla = pca9698.pca9698(self._i2c, self._QSFP_CTRL_SETA_ADDR, 'BP')
-        self._qstp_ctrlb = pca9698.pca9698(self._i2c, self._QSFP_CTRL_SETB_ADDR, 'BP')
+        self._qsfp_ctrlb = pca9698.pca9698(self._i2c, self._QSFP_CTRL_SETB_ADDR, 'BP')
         self._reset_ctrl = pca9698.pca9698(self._i2c, self._RESETS_CTRL_ADDR, 'BP')
 
 
@@ -99,7 +99,7 @@ class IceBox(object):
              7: (self._qsfp_ctrla, 3,    0,1,2,3 ),
              8: (self._qsfp_ctrla, 3,    4,5,6,7 ),
 
-             9: (self._qsfp_ctrlb, 2,    0,1,2,3 ),
+             9:  (self._qsfp_ctrlb, 2,   0,1,2,3 ),
              10: (self._qsfp_ctrlb, 2,   4,5,6,7 ),
              11: (self._qsfp_ctrlb, 1,   0,1,2,3 ),
              12: (self._qsfp_ctrlb, 1,   4,5,6,7 ),
@@ -127,7 +127,8 @@ class IceBox(object):
              13: (self._qsfp_ctrlb, 4, 4),
              14: (self._qsfp_ctrlb, 4, 5),
              15: (self._qsfp_ctrlb, 4, 6),
-             16: (self._qsfp_ctrlb, 4, 7)
+             16: (self._qsfp_ctrlb, 4, 7),
+             'LED1', (self._reset_ctrl, 0, 7)
         }
 
 
@@ -193,7 +194,7 @@ class IceBox(object):
 
     def init(self):
         """Initializes the backplane to a known state"""
-        
+
         self._init_qsfp_ctrl()
         self._init_eeprom()
         self._init_temperature_sensors()
@@ -256,7 +257,7 @@ class IceBox(object):
             qsfpa_ctrl.init(cfg0_def=0x55, cfg1_def=0x55,cfg2_def=0x55,cfg3_def=0x55,cfg4_def=0xff,out0_def=0xaa, out1_def=0xaa,out2_def=0xaa,out3_def=0xaa,out4_def=0)
             qsfpb_ctrl.init(cfg0_def=0x55, cfg1_def=0x55,cfg2_def=0x55,cfg3_def=0x55,cfg4_def=0xff,out0_def=0xaa, out1_def=0xaa,out2_def=0xaa,out3_def=0xaa,out4_def=0)
             #By default LEDs are off (dir=inputs , outputs=0), ModPrsL and IntL (dir=input, output = 0), ResetL and ModselL (dir=output, output=1)
-            
+
 
     def _init_eeprom(self):
         """initializes EEPROM"""
@@ -267,10 +268,10 @@ class IceBox(object):
 
     def read_eeprom(self, addr, length=1):
         return self._eeprom.read(addr, length = length)
-        
+
     def read_qsfp(self, addr, length=1):
         return self._qsfp_eeprom.read(addr, length = length)
-    
+
     def write_qsfp(self, addr, data):
         self._qsfp_eeprom.write(addr, data)
 
@@ -430,128 +431,112 @@ class IceBox(object):
                 #Turning on the LED requires a output of 0 which is the default state in output mode
                 mask = 1<<LED_Control_BitNumber
                 LED_Control_Object.write(LED_Control_Register, (not state) * mask, mask=mask)
-        
-        
-    def qsfp_reset(self, slots):
+
+
+    def qsfp_reset(self, slots, state=None):
         """
         reset the specified QSFPs , reset performed by pulling corresponding ResetL pins low
         History:
         141015 AJG & JF: created
         """
-        
+
         if isinstance(slots, int):
             slots = [slots]
-        
+
         for slotnum in slots:
 
             if slotnum not in range(1,self.NUMBER_OF_SLOTS + 1) :
                 raise IceBoxException('Invalid Slot number %i' % slotnum)
             else:
                 (qsfp_control_object, control_register, ModPrs_bitnum, ResetL_bitnum, IntL_bitnum, ModSelL_bitnum) = self.QSFP_CTRL_MAP[slotnum]
-                mask=1<<ResetL_bitnum
-                
-                qsfp_control_register='OUT%i' % control_register
-                qsfp_control_object.write(qsfp_control_register, 0*mask, mask=mask)
-                qsfp_control_object.write(qsfp_control_register, 1*mask, mask=mask)
-        
-    def qsfp_present(self, slots):
+                mask = 1<< ResetL_bitnum
+
+                qsfp_control_register = 'OUT%i' % control_register
+                if state is None:
+                    qsfp_control_object.write(qsfp_control_register, 0 * mask, mask=mask)
+                    qsfp_control_object.write(qsfp_control_register, 1 * mask, mask=mask)
+                else:
+                    qsfp_control_object.write(qsfp_control_register, bool(state) * mask, mask=mask)
+
+    def qsfp_present(self, slots=range(1, NUMBER_OF_SLOTS + 1)):
         """
         checks slots to see if QSFP present
         History:
         141015 AJG & JF: created
         """
-        
+
         if isinstance(slots, int):
             slots = [slots]
-        
-        present=[1]*len(slots)
-        
+
+        present=[]
+
         for slotnum in slots:
 
             if slotnum not in range(1,self.NUMBER_OF_SLOTS + 1) :
                 raise IceBoxException('Invalid Slot number %i' % slotnum)
             else:
                 (qsfp_control_object, control_register, ModPrs_bitnum, ResetL_bitnum, IntL_bitnum, ModSelL_bitnum) = self.QSFP_CTRL_MAP[slotnum]
-                                
+
                 qsfp_control_register='IN%i' % control_register
                 outputreg=qsfp_control_object.read(qsfp_control_register)
-            
-                present[slotnum-1]=not((outputreg & 1<<ModPrs_bitnum)>>ModPrs_bitnum)   #copying the info at this bit number into the status reg
-                
+
+                present.append(not((outputreg & (1 << ModPrs_bitnum)) >> ModPrs_bitnum))   #copying the info at this bit number into the status reg
+
         return present
-    
-    def qsfp_en_i2c(self, slot):
+
+    def qsfp_enable_i2c(self, slot, state):
         """
         Enables QSFP I2C - Pulls ModselL low
         History:
         141015 AJG & JF: created
         """
-        
-        if len(slot) != 1:
-            raise IceBoxException('Must perform action on one slot at a time')
+
+        if not isinstance(slot, int):
+            raise IceBoxException('Must perform action on one slot at a time. Slot must be an integer.')
         if slot not in range(1,self.NUMBER_OF_SLOTS + 1) :
             raise IceBoxException('Invalid Slot number %i' % slot)
-        if self.qsfp_present(slot) !=1:
+        if not self.qsfp_present(slot)[0]:
             raise IceBoxException('No QSFP device loaded on slot number %i' % slot)
-            
+
         (qsfp_control_object, control_register, ModPrs_bitnum, ResetL_bitnum, IntL_bitnum, ModSelL_bitnum) = self.QSFP_CTRL_MAP[slot]
 
-        mask=1<<ModSelL_bitnum
-        qsfp_control_register='OUT%i' % control_register
-        qsfp_control_object.write(qsfp_control_register, 0*mask, mask=mask)
-    
-    def qsfp_dis_i2c(self, slot):
-        """
-        Disables QSFP I2C - Pulls ModselL high
-        History:
-        141015 AJG & JF: created
-        """
-        
-        if len(slot) != 1:
-            raise IceBoxException('Must perform action on one slot at a time')
-        if slot not in range(1,self.NUMBER_OF_SLOTS + 1) :
-            raise IceBoxException('Invalid Slot number %i' % slot)
-        if self.qsfp_present(slot) !=1:
-            raise IceBoxException('No QSFP device loaded on slot number %i' % slot)
-            
-        (qsfp_control_object, control_register, ModPrs_bitnum, ResetL_bitnum, IntL_bitnum, ModSelL_bitnum) = self.QSFP_CTRL_MAP[slot]
+        mask = 1 << ModSelL_bitnum
+        qsfp_control_register = 'OUT%i' % control_register
+        qsfp_control_object.write(qsfp_control_register, (not state)*mask, mask=mask)
 
-        mask=1<<ModSelL_bitnum
-        qsfp_control_register='OUT%i' % control_register
-        qsfp_control_object.write(qsfp_control_register, 1*mask, mask=mask)
-    
-    
-    
-    def qsfp_i2c_read(self, slot, addr, length): 
+    def qsfp_i2c_read(self, slot, addr, length):
         """
         Reads QSFP eeprom on given slot slot. Enables I2C, reads, Disables I2C
         History:
         141015 AJG & JF: created
         """
-        
-        self.qsfp_en_i2c(self,slot=slot)
+
+        self.qsfp_enable_i2c(slot, True)
         data = self._qsfp_eeprom.read(addr=addr, length = length)
-        self.qsfp_dis_i2c(self,slot=slot)
-        
+        self.qsfp_enable_i2c(slot, False)
+
         return data
-        
-        
-        
-        
-        
-        
-                    
-        
-        
-        
-            
-            
-            
-             
-            
-        
-         
-         
-         
-         
+
+    def qsfp_i2c_read_str(self, slot, addr=148, length=16):
+        return ''.join([chr(x) for x in self.qsfp_i2c_read(slot, addr, length)])
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
