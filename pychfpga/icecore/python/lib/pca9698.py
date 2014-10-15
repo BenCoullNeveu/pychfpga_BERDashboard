@@ -91,17 +91,25 @@ class pca9698(object):
         self.address = address
         self.port = port
 
-    def init(self, cfg0_def=0b11111111, cfg1_def=0b11111111,cfg2_def=0b11111111,cfg3_def=0b11111111,cfg4_def=0b11111111, verbose=0):
+    def init(self, cfg0_def=0xff, cfg1_def=0xff,cfg2_def=0xff,cfg3_def=0xff,cfg4_def=0xff,out0_def=0, out1_def=0,out2_def=0,out3_def=0,out4_def=0, verbose=0):
         """
         Initialization of PCA9698 I2C IO Extender object
         cfg0_def..cfg4_def sets the default configuration of the I/O pins. By default all pins are inputs.
+        out0_def..out4_def sets the default output state to logic 0 when direction is set to output
         """
-
+            
         self.write('CFG0', cfg0_def)
         self.write('CFG1', cfg1_def)
         self.write('CFG2', cfg2_def)
         self.write('CFG3', cfg3_def)
         self.write('CFG4', cfg4_def)
+        
+        self.write('OUT0', out0_def)
+        self.write('OUT1', out1_def)
+        self.write('OUT2', out2_def)
+        self.write('OUT3', out3_def)
+        self.write('OUT4', out4_def)
+        
 
     def select(self):
         """

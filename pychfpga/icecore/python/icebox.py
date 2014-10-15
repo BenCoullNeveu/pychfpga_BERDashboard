@@ -28,6 +28,9 @@ class IceBox(object):
     BACKPLANE_EEPROM_DATA_ADDRESS = 0x54 # covers 0x54 - 0x57
     BACKPLANE_EEPROM_SERIAL_ADDRESS = 0x5C # 16 byte serial number starting at address 0
     BACKPLANE_EEPROM_ADDRESS_WIDTH = 10
+    BACKPLANE_QSFP_ADDRESS=0x50 #QSFP standard address
+    BACKPLANE_QSFP_ADDRESS_WIDTH=7
+    
 
     _QSFP_CTRL_SETA_ADDR = 0b0100000
     _QSFP_CTRL_SETB_ADDR = 0b0100010
@@ -70,6 +73,7 @@ class IceBox(object):
         self._logger.info(' Instantiating Backplane I2C resource managers')
         self._eeprom = FMC_EEPROM(iceboard.i2c, 'BP', address=self.BACKPLANE_EEPROM_DATA_ADDRESS, address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH)
         self._serial = FMC_EEPROM(iceboard.i2c, 'BP', address=self.BACKPLANE_EEPROM_SERIAL_ADDRESS, address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH)
+        self._qsfp_eeprom = FMC_EEPROM(iceboard.i2c, 'BP', address=self.BACKPLANE_QSFP_ADDRESS, address_width=self.BACKPLANE_QSFP_ADDRESS_WIDTH)
 
         self._logger.info(' Instantiating Backplane I2C temperature sensors')
         self._tmp_slot1 = tmp421.tmp421(self._i2c, self._TMP_SLOT1_ADDR, 'BP')
@@ -79,79 +83,79 @@ class IceBox(object):
         self._power_3v3 = ina230.ina230(self._i2c, self._POWER_3V3_ADDR, 'BP')
 
         self._logger.info(' Instantiating Backplane I2C I/O expanders')
-        self._QSFP_CTRLA = pca9698.pca9698(self._i2c, self._QSFP_CTRL_SETA_ADDR, 'BP')
-        self._QSFP_CTRLB = pca9698.pca9698(self._i2c, self._QSFP_CTRL_SETB_ADDR, 'BP')
-        self._RESET_CTRL = pca9698.pca9698(self._i2c, self._RESETS_CTRL_ADDR, 'BP')
+        self._qsfp_ctrla = pca9698.pca9698(self._i2c, self._QSFP_CTRL_SETA_ADDR, 'BP')
+        self._qstp_ctrlb = pca9698.pca9698(self._i2c, self._QSFP_CTRL_SETB_ADDR, 'BP')
+        self._reset_ctrl = pca9698.pca9698(self._i2c, self._RESETS_CTRL_ADDR, 'BP')
 
 
         self.QSFP_CTRL_MAP = {
              # Slot num : (expander object, Register, bit number ModPrs, bit number Reset, bit number IntL, bit number ModSel)
-             1: (self._QSFP_CTRLA, 2,    0,1,2,3 ),
-             2: (self._QSFP_CTRLA, 2,    4,5,6,7 ),
-             3: (self._QSFP_CTRLA, 1,    0,1,2,3 ),
-             4: (self._QSFP_CTRLA, 1,    4,5,6,7 ),
-             5: (self._QSFP_CTRLA, 0,    0,1,2,3 ),
-             6: (self._QSFP_CTRLA, 0,    4,5,6,7 ),
-             7: (self._QSFP_CTRLA, 3,    0,1,2,3 ),
-             8: (self._QSFP_CTRLA, 3,    4,5,6,7 ),
+             1: (self._qsfp_ctrla, 2,    0,1,2,3 ),
+             2: (self._qsfp_ctrla, 2,    4,5,6,7 ),
+             3: (self._qsfp_ctrla, 1,    0,1,2,3 ),
+             4: (self._qsfp_ctrla, 1,    4,5,6,7 ),
+             5: (self._qsfp_ctrla, 0,    0,1,2,3 ),
+             6: (self._qsfp_ctrla, 0,    4,5,6,7 ),
+             7: (self._qsfp_ctrla, 3,    0,1,2,3 ),
+             8: (self._qsfp_ctrla, 3,    4,5,6,7 ),
 
-             9: (self._QSFP_CTRLB, 2,    0,1,2,3 ),
-             10: (self._QSFP_CTRLB, 2,   4,5,6,7 ),
-             11: (self._QSFP_CTRLB, 1,   0,1,2,3 ),
-             12: (self._QSFP_CTRLB, 1,   4,5,6,7 ),
-             13: (self._QSFP_CTRLB, 0,   0,1,2,3 ),
-             14: (self._QSFP_CTRLB, 0,   4,5,6,7 ),
-             15: (self._QSFP_CTRLB, 3,   0,1,2,3 ),
-             16: (self._QSFP_CTRLB, 3,   4,5,6,7 )
+             9: (self._qsfp_ctrlb, 2,    0,1,2,3 ),
+             10: (self._qsfp_ctrlb, 2,   4,5,6,7 ),
+             11: (self._qsfp_ctrlb, 1,   0,1,2,3 ),
+             12: (self._qsfp_ctrlb, 1,   4,5,6,7 ),
+             13: (self._qsfp_ctrlb, 0,   0,1,2,3 ),
+             14: (self._qsfp_ctrlb, 0,   4,5,6,7 ),
+             15: (self._qsfp_ctrlb, 3,   0,1,2,3 ),
+             16: (self._qsfp_ctrlb, 3,   4,5,6,7 )
         }
 
         self.QSFP_LED_MAP = {
              # Slot num : (expander object, Register, bit number)
-             1: (self._QSFP_CTRLA, 4, 0),
-             2: (self._QSFP_CTRLA, 4, 1),
-             3: (self._QSFP_CTRLA, 4, 2),
-             4: (self._QSFP_CTRLA, 4, 3),
-             5: (self._QSFP_CTRLA, 4, 4),
-             6: (self._QSFP_CTRLA, 4, 5),
-             7: (self._QSFP_CTRLA, 4, 6),
-             8: (self._QSFP_CTRLA, 4, 7),
+             1: (self._qsfp_ctrla, 4, 0),
+             2: (self._qsfp_ctrla, 4, 1),
+             3: (self._qsfp_ctrla, 4, 2),
+             4: (self._qsfp_ctrla, 4, 3),
+             5: (self._qsfp_ctrla, 4, 4),
+             6: (self._qsfp_ctrla, 4, 5),
+             7: (self._qsfp_ctrla, 4, 6),
+             8: (self._qsfp_ctrla, 4, 7),
 
-             9: (self._QSFP_CTRLB, 4, 0),
-             10: (self._QSFP_CTRLB, 4, 1),
-             11: (self._QSFP_CTRLB, 4, 2),
-             12: (self._QSFP_CTRLB, 4, 3),
-             13: (self._QSFP_CTRLB, 4, 4),
-             14: (self._QSFP_CTRLB, 4, 5),
-             15: (self._QSFP_CTRLB, 4, 6),
-             16: (self._QSFP_CTRLB, 4, 7)
+             9: (self._qsfp_ctrlb, 4, 0),
+             10: (self._qsfp_ctrlb, 4, 1),
+             11: (self._qsfp_ctrlb, 4, 2),
+             12: (self._qsfp_ctrlb, 4, 3),
+             13: (self._qsfp_ctrlb, 4, 4),
+             14: (self._qsfp_ctrlb, 4, 5),
+             15: (self._qsfp_ctrlb, 4, 6),
+             16: (self._qsfp_ctrlb, 4, 7)
         }
 
 
         self.SLOT_RESETS_MAP = {
             # Slot num : (expander object, ARM Register, Power Down Register, Bit number)
-            1: (self._RESET_CTRL, 1, 2, 0),
-            2: (self._RESET_CTRL, 1, 2, 1),
-            3: (self._RESET_CTRL, 1, 2, 2),
-            4: (self._RESET_CTRL, 1, 2, 3),
-            5: (self._RESET_CTRL, 1, 2, 4),
-            6: (self._RESET_CTRL, 1, 2, 5),
-            7: (self._RESET_CTRL, 1, 2, 6),
-            8: (self._RESET_CTRL, 1, 2, 7),
-            9: (self._RESET_CTRL,  3, 4, 0),
-            10: (self._RESET_CTRL, 3, 4, 1),
-            11: (self._RESET_CTRL, 3, 4, 2),
-            12: (self._RESET_CTRL, 3, 4, 3),
-            13: (self._RESET_CTRL, 3, 4, 4),
-            14: (self._RESET_CTRL, 3, 4, 5),
-            15: (self._RESET_CTRL, 3, 4, 6),
-            16: (self._RESET_CTRL, 3, 4, 7)
+            1: (self._reset_ctrl, 1, 2, 0),
+            2: (self._reset_ctrl, 1, 2, 1),
+            3: (self._reset_ctrl, 1, 2, 2),
+            4: (self._reset_ctrl, 1, 2, 3),
+            5: (self._reset_ctrl, 1, 2, 4),
+            6: (self._reset_ctrl, 1, 2, 5),
+            7: (self._reset_ctrl, 1, 2, 6),
+            8: (self._reset_ctrl, 1, 2, 7),
+            9: (self._reset_ctrl,  3, 4, 0),
+            10: (self._reset_ctrl, 3, 4, 1),
+            11: (self._reset_ctrl, 3, 4, 2),
+            12: (self._reset_ctrl, 3, 4, 3),
+            13: (self._reset_ctrl, 3, 4, 4),
+            14: (self._reset_ctrl, 3, 4, 5),
+            15: (self._reset_ctrl, 3, 4, 6),
+            16: (self._reset_ctrl, 3, 4, 7)
         }
 
         self.FULLBP_RESETS_MAP = {
              # ResetType : (expander object, Register, mask, inactive, active)
-             'ARM':       (self._RESET_CTRL, 0, 0b01000011, 0b00000001, 0b01000010),
-             'POWER':     (self._RESET_CTRL, 0, 0b01001100, 0b00000100, 0b01001000),
-             'LED':       (self._RESET_CTRL, 0, 0b10000000, 0b10000000, 0b00000000),
+             'ARM':       (self._reset_ctrl, 0, 0b01000011, 0b00000001, 0b01000010),
+             'POWER':     (self._reset_ctrl, 0, 0b01001100, 0b00000100, 0b01001000),
+             'LED':       (self._reset_ctrl, 0, 0b10000000, 0b10000000, 0b00000000),
 
         }
 
@@ -188,26 +192,12 @@ class IceBox(object):
 
 
     def init(self):
-        """Initializes the motherboard hardware to a known state"""
-        # self._init_gpio_expanders()
-        # self._init_temperature_sensors()
-        # self._init_eeprom()
-        # self.set_fmc_power()
-
-        self._init_QSFP_CTRL()
-
-
-    def _init_gpio_expanders(self):
-        """
-        Initializes GPIO expanders
-
-        History
-        140304 JM: created. todo: make more flexible for I/O pin configuration of each expander. Need to confirm I/O pin config with JF
-        """
-        self._gpio_power.init(cfg0_def=0b10101000, cfg1_def=0b10101000)
-        self._gpio_sw_leds.init(cfg1_def=0b00000000)
-        self._gpio_arm_phy_leds.init(cfg0_def=0b11110000)
-        #self._gpio_sfp_qsfp.init(cfg0_def=0b00000000)
+        """Initializes the backplane to a known state"""
+        
+        self._init_qsfp_ctrl()
+        self._init_eeprom()
+        self._init_temperature_sensors()
+        self._init_power_sensors()
 
     def _init_temperature_sensors(self, temperature_sensor_name=None):
         """
@@ -224,7 +214,7 @@ class IceBox(object):
 
         for temp_sensor in temperature_sensor_name:
             if temp_sensor not in self.TEMPERATURE_SENSOR_TABLE:
-                raise IceBoardHardwareException('Invalid temperature sensor name')
+                raise IceBoxException('Invalid temperature sensor name')
             else:
                 tmp_object = self.TEMPERATURE_SENSOR_TABLE[temp_sensor]
                 tmp_object.init()
@@ -247,24 +237,26 @@ class IceBox(object):
 
         for power_sensor in power_sensor_name:
             if power_sensor not in self.POWER_SENSOR_TABLE:
-                raise IceBoardHardwareException('Invalid current/power monitor name')
+                raise IceBoxException('Invalid current/power monitor name')
             else:
                 power_sensor_list = self.POWER_SENSOR_TABLE[power_sensor]
                 power_sensor_object = power_sensor_list[0]
                 power_sensor_object.init(v_out=power_sensor_list[1], r_shunt=power_sensor_list[2], i_typ=power_sensor_list[3], tol_i=power_sensor_list[4])
 
 
-    def _init_QSFP_ctrl(self):
+    def _init_qsfp_ctrl(self):
             """
             initializes QSFP control
             History:
             141015 AJG: created
             """
-            QSFPA_Ctrl=self._QSFP_CTRLA
-            QSFPB_Ctrl=self._QSFP_CTRLB
+            qsfpa_ctrl=self._qsfp_ctrla
+            qsfpb_ctrl=self._qsfp_ctrlb
 
-            QSFPA_Ctrl.init()
-            QSFPB_Ctrl.init()
+            qsfpa_ctrl.init(cfg0_def=0x55, cfg1_def=0x55,cfg2_def=0x55,cfg3_def=0x55,cfg4_def=0xff,out0_def=0xaa, out1_def=0xaa,out2_def=0xaa,out3_def=0xaa,out4_def=0)
+            qsfpb_ctrl.init(cfg0_def=0x55, cfg1_def=0x55,cfg2_def=0x55,cfg3_def=0x55,cfg4_def=0xff,out0_def=0xaa, out1_def=0xaa,out2_def=0xaa,out3_def=0xaa,out4_def=0)
+            #By default LEDs are off (dir=inputs , outputs=0), ModPrsL and IntL (dir=input, output = 0), ResetL and ModselL (dir=output, output=1)
+            
 
     def _init_eeprom(self):
         """initializes EEPROM"""
@@ -275,6 +267,12 @@ class IceBox(object):
 
     def read_eeprom(self, addr, length=1):
         return self._eeprom.read(addr, length = length)
+        
+    def read_qsfp(self, addr, length=1):
+        return self._qsfp_eeprom.read(addr, length = length)
+    
+    def write_qsfp(self, addr, data):
+        self._qsfp_eeprom.write(addr, data)
 
     def get_eeprom_serial_number(self):
         """ return the 128-bit hardware-coded EEPROM serial number as a hex string. """
@@ -295,7 +293,7 @@ class IceBox(object):
 
         for (led, led_state) in zip(led_name,state):
             if led not in self.GPIO_EXPANDER_MAP:
-                raise IceBoardHardwareException('Invalid LED name')
+                raise IceBoxException('Invalid LED name')
             else:
                 led_info = self.GPIO_EXPANDER_MAP[led]
                 io_expander = led_info[0]
@@ -317,7 +315,7 @@ class IceBox(object):
 
         for led in led_name:
             if led not in self.GPIO_EXPANDER_MAP:
-                raise IceBoardHardwareException('Invalid LED name')
+                raise IceBoxException('Invalid LED name')
             else:
                 led_info = self.GPIO_EXPANDER_MAP[led]
                 io_expander = led_info[0]
@@ -351,7 +349,7 @@ class IceBox(object):
 
         for temp_sensor in temperature_sensor_name:
             if temp_sensor not in self.TEMPERATURE_SENSOR_TABLE:
-                raise IceBoardHardwareException('Invalid temperature sensor name')
+                raise IceBoxException('Invalid temperature sensor name')
             else:
                 tmp_object = self.TEMPERATURE_SENSOR_TABLE[temp_sensor]
                 temperature_dict[temp_sensor]=tmp_object.get_temperature()
@@ -366,10 +364,10 @@ class IceBox(object):
 
         Arguments:
 
-           'power_sensor_name' can be a list of temperature sensor
+           'power_sensor_name' can be a list of power sensor
             names found in POWER_SENSOR_TABLE. If
             power_sensor_name=None, measurements of all sensors in
-            TEMPERATURE_SENSOR_TABLE are returned.
+            power_sensor_table are returned.
 
         Returns dictionary with keys corresponding to the
         power_sensor_name names. The respective value is a (bus
@@ -386,7 +384,7 @@ class IceBox(object):
 
         for power_sensor in power_sensor_name:
             if power_sensor not in self.POWER_SENSOR_TABLE:
-                raise IceBoardHardwareException('Invalid power sensor name')
+                raise IceBoxException('Invalid power sensor name')
             else:
                 power_sensor_list = self.POWER_SENSOR_TABLE[power_sensor]
                 power_object = power_sensor_list[0]
@@ -413,7 +411,7 @@ class IceBox(object):
         """
         Set the QSFP LED state for a given slot
         History:
-        141015 AJG: created
+        141015 AJG & JF: created
         """
         if isinstance(slots, int):
             slots = [slots]
@@ -432,6 +430,128 @@ class IceBox(object):
                 #Turning on the LED requires a output of 0 which is the default state in output mode
                 mask = 1<<LED_Control_BitNumber
                 LED_Control_Object.write(LED_Control_Register, (not state) * mask, mask=mask)
+        
+        
+    def qsfp_reset(self, slots):
+        """
+        reset the specified QSFPs , reset performed by pulling corresponding ResetL pins low
+        History:
+        141015 AJG & JF: created
+        """
+        
+        if isinstance(slots, int):
+            slots = [slots]
+        
+        for slotnum in slots:
 
+            if slotnum not in range(1,self.NUMBER_OF_SLOTS + 1) :
+                raise IceBoxException('Invalid Slot number %i' % slotnum)
+            else:
+                (qsfp_control_object, control_register, ModPrs_bitnum, ResetL_bitnum, IntL_bitnum, ModSelL_bitnum) = self.QSFP_CTRL_MAP[slotnum]
+                mask=1<<ResetL_bitnum
+                
+                qsfp_control_register='OUT%i' % control_register
+                qsfp_control_object.write(qsfp_control_register, 0*mask, mask=mask)
+                qsfp_control_object.write(qsfp_control_register, 1*mask, mask=mask)
+        
+    def qsfp_present(self, slots):
+        """
+        checks slots to see if QSFP present
+        History:
+        141015 AJG & JF: created
+        """
+        
+        if isinstance(slots, int):
+            slots = [slots]
+        
+        present=[1]*len(slots)
+        
+        for slotnum in slots:
 
+            if slotnum not in range(1,self.NUMBER_OF_SLOTS + 1) :
+                raise IceBoxException('Invalid Slot number %i' % slotnum)
+            else:
+                (qsfp_control_object, control_register, ModPrs_bitnum, ResetL_bitnum, IntL_bitnum, ModSelL_bitnum) = self.QSFP_CTRL_MAP[slotnum]
+                                
+                qsfp_control_register='IN%i' % control_register
+                outputreg=qsfp_control_object.read(qsfp_control_register)
+            
+                present[slotnum-1]=not((outputreg & 1<<ModPrs_bitnum)>>ModPrs_bitnum)   #copying the info at this bit number into the status reg
+                
+        return present
+    
+    def qsfp_en_i2c(self, slot):
+        """
+        Enables QSFP I2C - Pulls ModselL low
+        History:
+        141015 AJG & JF: created
+        """
+        
+        if len(slot) != 1:
+            raise IceBoxException('Must perform action on one slot at a time')
+        if slot not in range(1,self.NUMBER_OF_SLOTS + 1) :
+            raise IceBoxException('Invalid Slot number %i' % slot)
+        if self.qsfp_present(slot) !=1:
+            raise IceBoxException('No QSFP device loaded on slot number %i' % slot)
+            
+        (qsfp_control_object, control_register, ModPrs_bitnum, ResetL_bitnum, IntL_bitnum, ModSelL_bitnum) = self.QSFP_CTRL_MAP[slot]
+
+        mask=1<<ModSelL_bitnum
+        qsfp_control_register='OUT%i' % control_register
+        qsfp_control_object.write(qsfp_control_register, 0*mask, mask=mask)
+    
+    def qsfp_dis_i2c(self, slot):
+        """
+        Disables QSFP I2C - Pulls ModselL high
+        History:
+        141015 AJG & JF: created
+        """
+        
+        if len(slot) != 1:
+            raise IceBoxException('Must perform action on one slot at a time')
+        if slot not in range(1,self.NUMBER_OF_SLOTS + 1) :
+            raise IceBoxException('Invalid Slot number %i' % slot)
+        if self.qsfp_present(slot) !=1:
+            raise IceBoxException('No QSFP device loaded on slot number %i' % slot)
+            
+        (qsfp_control_object, control_register, ModPrs_bitnum, ResetL_bitnum, IntL_bitnum, ModSelL_bitnum) = self.QSFP_CTRL_MAP[slot]
+
+        mask=1<<ModSelL_bitnum
+        qsfp_control_register='OUT%i' % control_register
+        qsfp_control_object.write(qsfp_control_register, 1*mask, mask=mask)
+    
+    
+    
+    def qsfp_i2c_read(self, slot, addr, length): 
+        """
+        Reads QSFP eeprom on given slot slot. Enables I2C, reads, Disables I2C
+        History:
+        141015 AJG & JF: created
+        """
+        
+        self.qsfp_en_i2c(self,slot=slot)
+        data = self._qsfp_eeprom.read(addr=addr, length = length)
+        self.qsfp_dis_i2c(self,slot=slot)
+        
+        return data
+        
+        
+        
+        
+        
+        
+                    
+        
+        
+        
+            
+            
+            
+             
+            
+        
+         
+         
+         
+         
 
