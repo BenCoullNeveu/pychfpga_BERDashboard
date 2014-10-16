@@ -127,8 +127,7 @@ class IceBox(object):
              13: (self._qsfp_ctrlb, 4, 4),
              14: (self._qsfp_ctrlb, 4, 5),
              15: (self._qsfp_ctrlb, 4, 6),
-             16: (self._qsfp_ctrlb, 4, 7),
-             'LED1', (self._reset_ctrl, 0, 7)
+             16: (self._qsfp_ctrlb, 4, 7)
         }
 
 
