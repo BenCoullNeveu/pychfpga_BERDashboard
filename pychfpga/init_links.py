@@ -27,10 +27,7 @@ def init_links(ib, frames_per_packet=3, cb1_lanes=16, cb1_bins=64, cb2_lanes=8, 
     #cb1.configure(cb1_bins)
 
     for bs in cb2:
-        if cb2_bypass:
-            bs.write(0, 0x41)
-        else:
-            bs.write(0, 0x01)
+        bs.LANE0_BYPASS = bool(cb2_bypass)
         bs.NUMBER_OF_FRAMES_PER_PACKET = frames_per_packet
         bs.NUMBER_OF_LANES = cb2_lanes
         bs.NUMBER_OF_BINS_PER_FRAME = cb1_bins
