@@ -109,7 +109,7 @@ class IceBox(object):
              16: (self._qsfp_ctrlb, 3,   4,5,6,7 )
         }
 
-        self.QSFP_LED_MAP = {
+        self.LED_MAP = {
              # Slot num : (expander object, Register, bit number)
              1: (self._qsfp_ctrla, 4, 0),
              2: (self._qsfp_ctrla, 4, 1),
@@ -128,7 +128,7 @@ class IceBox(object):
              14: (self._qsfp_ctrlb, 4, 5),
              15: (self._qsfp_ctrlb, 4, 6),
              16: (self._qsfp_ctrlb, 4, 7),
-             'LED1', (self._reset_ctrl, 0, 7)
+             'LED1': (self._reset_ctrl, 0, 7)
         }
 
 
@@ -171,6 +171,56 @@ class IceBox(object):
              # sensor name : (ina230 object, output voltage(volts), rshunt(inductor) (mohm), typical current(amps), current tolerance (0<tol<1))
              'BP_3V3': (self._power_3v3, 3.3, 2.6, 2., 0.5),
         }
+        
+        self.QSFP_EEPROM_MAP = {
+             # Register Name : (memory location, bytes, page)
+             'Identifier': (0, 1, 0),
+             'Status': (1, 2, 0),
+             'ChanStatusIntFlags': (3, 2, 0),
+             'ModMonIntFlags': (6, 2, 0),
+             'ChanMonIntFlags' : (9, 4, 0),
+             'MeasuredTemp' : (22, 2, 0),
+             'MeasuredSupV' : (26, 2, 0),
+             'ChanRxInPow': (34, 8, 0),
+             'ChanTxBias':(42, 8, 0),
+             'LaserDisable':(86, 1, 0),
+             'RateSelect':(87, 2, 0),
+             'RxAppSelect':(89, 4, 0),
+             'PowerSet':(93, 1, 0),
+             'TxAppSelect':(94, 4, 0),
+             'IntLMask_LOS':(100, 1, 0),
+             'IntLMask_TXFault':(101, 1, 0),
+             'IntLMask_Temp':(103, 1, 0),
+             'IntLMask_Vcc':(104, 1, 0),
+             'PageSelect':(127, 1, 0),
+             
+             'Identifier':(128, 1, 0),
+             'ExtIdentifier':(129, 1, 0),
+             'Connector':(130, 1, 0),
+             'CompCodes':(131, 8, 0),
+             'Encoding':(139, 1, 0),
+             'BitRate':(140, 1, 0),
+             'ExtRateSelectComp':(141, 1, 0),
+             'SupportedLengths':(142, 5, 0),
+             'DeviceTech':(147, 1, 0),
+             'VendName':(148, 16, 0),
+             'ExtTranCode':(164, 1, 0),
+             'VenOUI':(165, 3, 0),
+             'VenPN':(168, 16,0),
+             'VenRev':(184, 2,0),
+             'WaveLength':(186, 2, 0),
+             'MaxCaseTemp':(190, 1, 0),
+             'CCBase':(191, 1, 0),
+             'ExtOptions':(192, 4, 0),
+             'VenSN': (196, 16, 0),
+             'DateCode':(212, 8, 0),
+             'DiagMon':(220, 1, 0),
+             'EnhOpt':(221, 1, 0),
+             'CCExt':(223, 1, 0),
+             'VenSpecEEPROM':(224, 32, 0)    
+             ##The other pages don't seem useful to us at all.
+        }
+
 
     def open(self):
         """
@@ -269,12 +319,6 @@ class IceBox(object):
     def read_eeprom(self, addr, length=1):
         return self._eeprom.read(addr, length = length)
 
-    def read_qsfp(self, addr, length=1):
-        return self._qsfp_eeprom.read(addr, length = length)
-
-    def write_qsfp(self, addr, data):
-        self._qsfp_eeprom.write(addr, data)
-
     def get_eeprom_serial_number(self):
         """ return the 128-bit hardware-coded EEPROM serial number as a hex string. """
         return ''.join(['%02X' % v for v in self._serial.read(0x80, length=16)])
@@ -283,26 +327,25 @@ class IceBox(object):
         """
         Set the LED(s) specified in 'led_name' to the the 'state'.
         'led_name' can be a list of LED names found in
-        GPIO_EXPANDER_MAP.  'state' can be a single boolean value, or
+        LED_MAP.  'state' can be a single boolean value, or
         an array with the same length as 'led_name'
         """
-        if isinstance(led_name, str):
+        if isinstance(led_name, (str, int)):
             led_name = [led_name]
 
         if isinstance(state, (bool, int)):
             state = [state] * len(led_name)
 
         for (led, led_state) in zip(led_name,state):
-            if led not in self.GPIO_EXPANDER_MAP:
+            if led not in self.LED_MAP:
                 raise IceBoxException('Invalid LED name')
             else:
-                led_info = self.GPIO_EXPANDER_MAP[led]
-                io_expander = led_info[0]
-                led_byte = led_info[1]
-                led_bit = led_info[2]
-
-                io_expander.write('CFG%i' % led_byte, 0b00000000 , mask = 1<<led_bit) # Configuring pin corresponding to led as output
-                io_expander.write('OUT%i' % led_byte, (1<<led_bit) * bool(led_state) , mask = 1<<led_bit)
+                (led_control_object, led_control_register, led_control_bitnumber) = self.LED_MAP[led]
+                led_control_register='CFG%i' % led_control_register #Converting the resister in the map into the correct string format
+                #Note that we are cheating here, we are flipping the bits on the IO Expander from input mode to output mode, inputs are default floating
+                #Turning on the LED requires a output of 0 which is the default state in output mode
+                mask = 1<<led_control_bitnumber
+                led_control_object.write(led_control_register, (not led_state) * mask, mask=mask)
 
     def get_led(self, led_name):
         """
@@ -315,15 +358,16 @@ class IceBox(object):
             led_name = [led_name]
 
         for led in led_name:
-            if led not in self.GPIO_EXPANDER_MAP:
+            if led not in self.LED_MAP:
                 raise IceBoxException('Invalid LED name')
             else:
-                led_info = self.GPIO_EXPANDER_MAP[led]
-                io_expander = led_info[0]
-                led_byte = led_info[1]
-                led_bit = led_info[2]
-
-                led_status[led]=bool(io_expander.read('IN%i' % led_byte) & (1<<led_bit))
+                (led_control_object, led_control_register, led_control_bitnumber) = self.LED_MAP[led]
+                led_control_register='IN%i' % led_control_register #Converting the resister in the map into the correct string format
+                #Note that we are cheating here, we are flipping the bits on the IO Expander from input mode to output mode, inputs are default floating
+                #Turning on the LED requires a output of 0 which is the default state in output mode
+                mask = 1<<led_control_bitnumber
+                regout=led_control_object.read(led_control_register)
+                led_status[led]=bool( (regout & (1<<led_control_bitnumber))>>led_control_bitnumber)
 
         return led_status
 
@@ -425,12 +469,12 @@ class IceBox(object):
             if slots not in range(1,self.NUMBER_OF_SLOTS + 1) :
                 raise IceBoxException('Invalid Slot number %i' % slots)
             else:
-                (LED_Control_Object, LED_Control_Register, LED_Control_BitNumber) = self.QSFP_LED_MAP[slots]
-                LED_Control_Register='CFG%i' % LED_Control_Register #Converting the resister in the map into the correct string format
+                (led_control_object, led_control_register, led_control_bitnumber) = self.LED_MAP[slots]
+                led_control_register='CFG%i' % led_control_register #Converting the resister in the map into the correct string format
                 #Note that we are cheating here, we are flipping the bits on the IO Expander from input mode to output mode, inputs are default floating
                 #Turning on the LED requires a output of 0 which is the default state in output mode
-                mask = 1<<LED_Control_BitNumber
-                LED_Control_Object.write(LED_Control_Register, (not state) * mask, mask=mask)
+                mask = 1<<led_control_bitnumber
+                led_control_object.write(led_control_register, (not state) * mask, mask=mask)
 
 
     def qsfp_reset(self, slots, state=None):
@@ -458,7 +502,7 @@ class IceBox(object):
                 else:
                     qsfp_control_object.write(qsfp_control_register, bool(state) * mask, mask=mask)
 
-    def qsfp_present(self, slots=range(1, NUMBER_OF_SLOTS + 1)):
+    def qsfp_status(self, slots=range(1, NUMBER_OF_SLOTS + 1)):
         """
         checks slots to see if QSFP present
         History:
@@ -469,6 +513,10 @@ class IceBox(object):
             slots = [slots]
 
         present=[]
+        reset=[]
+        intl=[]
+        modsel=[]
+        
 
         for slotnum in slots:
 
@@ -481,8 +529,11 @@ class IceBox(object):
                 outputreg=qsfp_control_object.read(qsfp_control_register)
 
                 present.append(not((outputreg & (1 << ModPrs_bitnum)) >> ModPrs_bitnum))   #copying the info at this bit number into the status reg
+                reset.append(not((outputreg & (1 << ResetL_bitnum)) >> ResetL_bitnum))     #copying the info at this bit number into the status reg
+                intl.append(not((outputreg & (1 << IntL_bitnum)) >> IntL_bitnum))          #copying the info at this bit number into the status reg
+                modsel.append(not((outputreg & (1 << ModSelL_bitnum)) >> ModSelL_bitnum))  #copying the info at this bit number into the status reg
 
-        return present
+        return present, reset, intl, modsel
 
     def qsfp_enable_i2c(self, slot, state):
         """
@@ -495,7 +546,7 @@ class IceBox(object):
             raise IceBoxException('Must perform action on one slot at a time. Slot must be an integer.')
         if slot not in range(1,self.NUMBER_OF_SLOTS + 1) :
             raise IceBoxException('Invalid Slot number %i' % slot)
-        if not self.qsfp_present(slot)[0]:
+        if not self.qsfp_status(slot)[0][0]:  #Checking to see if QSPF present
             raise IceBoxException('No QSFP device loaded on slot number %i' % slot)
 
         (qsfp_control_object, control_register, ModPrs_bitnum, ResetL_bitnum, IntL_bitnum, ModSelL_bitnum) = self.QSFP_CTRL_MAP[slot]
@@ -504,7 +555,22 @@ class IceBox(object):
         qsfp_control_register = 'OUT%i' % control_register
         qsfp_control_object.write(qsfp_control_register, (not state)*mask, mask=mask)
 
-    def qsfp_i2c_read(self, slot, addr, length):
+    def write_qsfp(self, slot, addr, data, page=0):
+        
+        self.qsfp_enable_i2c(slot, True)
+        
+        if (page !=0):
+            self._qsfp_eeprom.write(addr=127, data=page, length =1) #Writing to page select register 
+
+        self._qsfp_eeprom.write(addr, data) #Writing at specified address
+
+        if (page !=0):
+            self._qsfp_eeprom.write(addr=127, data=0, length =1)  #Putting page back to 0
+                
+        self.qsfp_enable_i2c(slot, False)
+        
+
+    def read_qsfp(self, slot, addr, length=1, page=0):
         """
         Reads QSFP eeprom on given slot slot. Enables I2C, reads, Disables I2C
         History:
@@ -512,13 +578,25 @@ class IceBox(object):
         """
 
         self.qsfp_enable_i2c(slot, True)
-        data = self._qsfp_eeprom.read(addr=addr, length = length)
+        
+        if (page !=0):
+            self._qsfp_eeprom.write(addr=127, data=page, length =1) #Writing to page select register 
+        
+        data = self._qsfp_eeprom.read(addr=addr, length = length) #Reading at specified address
+
+        if (page !=0):
+            self._qsfp_eeprom.write(addr=127, data=0, length =1)  #Putting page back to 0
+        
         self.qsfp_enable_i2c(slot, False)
 
-        return data
+        return data        
 
-    def qsfp_i2c_read_str(self, slot, addr=148, length=16):
-        return ''.join([chr(x) for x in self.qsfp_i2c_read(slot, addr, length)])
+
+    def qsfp_i2c_read_str(self, slot, addr=148, length=16, page=0):
+        return ''.join([chr(x) for x in self.read_qsfp(slot, addr, length, page)])
+        
+
+        
 
 
 
