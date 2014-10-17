@@ -247,7 +247,7 @@ class IceBox(object):
         """Initializes the backplane to a known state"""
 
         self._init_qsfp_ctrl()
-        # self._init_reset_ctrl() # The power I2c bus needs to be bridged to the monitor I2C bus for this to work
+        self._init_reset_ctrl() # The power I2c bus needs to be bridged to the monitor I2C bus for this to work
         self._init_eeprom()
         self._init_temperature_sensors()
         self._init_power_sensors()
@@ -635,7 +635,7 @@ class IceBox(object):
                 qsfpdata.append(data)
         return qsfpdata
 
-    def reset_slot(self, slots, enable_reset, reset_type='ARM'):
+    def reset_slot(self, slots, state, reset_type='ARM'):
         """
         Performs a reset on the slots specified
         To ensure we dont screw up, must provide an Enable reset flag (can be a list). Must also provide reset type
@@ -644,7 +644,7 @@ class IceBox(object):
         """
 
 
-        if slots=='ALL' and enable_reset:  #We wish to perform a full crate reset
+        if slots=='ALL' and state:  #We wish to perform a full crate reset
             #if reset_type not in self.FULLBP_RESETS_MAP:
             #    IceBoxException('Unknown reset type %s' % reset_type)
             #else
@@ -670,43 +670,41 @@ class IceBox(object):
             if isinstance(slots, int):
                 slots = [slots]
 
-            if isinstance(enable_reset, (bool, int)):
-                    enable_reset = ([bool(enable_reset)] * len(slots))
+            if isinstance(state, (bool, int)):
+                    state = ([state] * len(slots))
 
             if isinstance(reset_type, (str)):
                     reset_type = ([str(reset_type)] * len(slots))
 
-            for (slot, isenabled, resettype) in zip(slots,enable_reset,reset_type):
-                if isenabled and slot == self._iceboard.slot_number:
+            for (slot, isenabled, resettype) in zip(slots, state, reset_type):
+                if slot == self._iceboard.slot_number:
                     print 'Warning, will not perform reset on the controlling slot %i' % slot
 
-                if isenabled and slot != self._iceboard.slot_number  :
-                    if slotnum not in range(1,self.NUMBER_OF_SLOTS + 1) :
-                        raise IceBoxException('Invalid Slot number %i' % slotnum)
+                # if isenabled and slot != self._iceboard.slot_number  :
+                elif slot not in range(1,self.NUMBER_OF_SLOTS + 1) :
+                    raise IceBoxException('Invalid Slot number %i' % slot)
+                else:
+                    (reset_control_obj, arm_reset_reg, power_down_reg, bitnumber) = self.SLOT_RESETS_MAP[slot]
+                    if resettype == 'ARM':
+                        reset_cfg_register='CFG%i' % arm_reset_reg
+                        reset_output_register='OUT%i' % arm_reset_reg
+                    elif resettype == 'PD':
+                        reset_cfg_register='CFG%i' % power_down_reg
+                        reset_output_register='OUT%i' % power_down_reg
                     else:
-                        (reset_control_obj, arm_reset_reg, power_down_reg, bitnumber) = self.SLOT_RESETS_MAP[slot]
-                        resettypeokay=1
-                        if resettype == 'ARM':
-                            reset_cfg_register='CFG%i' % arm_reset_reg
-                            reset_output_register='OUT%i' % arm_reset_reg
-                        elif resettype == 'PD':
-                            reset_cfg_register='CFG%i' % arm_reset_reg
-                            reset_output_register='OUT%i' % arm_reset_reg
-                        else:
-                            resettypeokay=0
-                            print 'Unknown reset type, will not perform reset on slot %i' % slot
+                        raise IceBoxException('Unknown reset type, will not perform reset on slot %i' % slot)
 
-                        if resettypeokay:
 
-                            mask = 1<<bitnumber
-                            reset_control_obj.write(reset_output_register,  0, mask) #Setting output register to logic 0 (reset active)
-                            reset_control_obj.write(reset_output_register,  0, mask) #Setting direction register from input to output - Performing reset
+                    if isenabled:
+                        mask = 1 << bitnumber
+                        reset_control_obj.write(reset_output_register,  0, mask) #Setting output register to logic 0 (reset active)
+                        reset_control_obj.write(reset_cfg_register,  0, mask) #Setting direction register from input to output - Performing reset
 
-                            #Assuming 0.5 second is sufficient
-                            time.sleep(0.5)
-
-                            reset_control_obj.write(reset_output_register,  1, mask) #Setting output register to logic 1 (reset inactive) - Removing reset
-                            reset_control_obj.write(reset_output_register,  1, mask) #Setting direction register from output to input - Back to default state
+                    if not isenabled or isenable=='pulse':
+                        #Assuming 0.5 second is sufficient
+                        time.sleep(0.5)
+                        reset_control_obj.write(reset_output_register,  mask, mask) #Setting output register to logic 1 (reset inactive) - Removing reset
+                        reset_control_obj.write(reset_cfg_register,  mask, mask) #Setting direction register from output to input - Back to default state
 
 
 
