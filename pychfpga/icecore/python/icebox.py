@@ -7,6 +7,7 @@
 """
 
 import logging
+import time
 
 # Import IceBoard hardware handlers
 from lib.fmc_eeprom import FMC_EEPROM
@@ -156,7 +157,7 @@ class IceBox(object):
              # ResetType : (expander object, Register, mask, inactive, active)
              'ARM':       (self._reset_ctrl, 0, 0b01000011, 0b00000001, 0b01000010),
              'POWER':     (self._reset_ctrl, 0, 0b01001100, 0b00000100, 0b01001000),
-             'LED':       (self._reset_ctrl, 0, 0b10000000, 0b10000000, 0b00000000),
+             'FPGA':      (self._reset_ctrl, 0, 0b01110000, 0b00010000, 0b01100000)
 
         }
 
@@ -173,51 +174,51 @@ class IceBox(object):
         }
         
         self.QSFP_EEPROM_MAP = {
-             # Register Name : (memory location, bytes, page)
-             'Identifier': (0, 1, 0),
-             'Status': (1, 2, 0),
-             'ChanStatusIntFlags': (3, 2, 0),
-             'ModMonIntFlags': (6, 2, 0),
-             'ChanMonIntFlags' : (9, 4, 0),
-             'MeasuredTemp' : (22, 2, 0),
-             'MeasuredSupV' : (26, 2, 0),
-             'ChanRxInPow': (34, 8, 0),
-             'ChanTxBias':(42, 8, 0),
-             'LaserDisable':(86, 1, 0),
-             'RateSelect':(87, 2, 0),
-             'RxAppSelect':(89, 4, 0),
-             'PowerSet':(93, 1, 0),
-             'TxAppSelect':(94, 4, 0),
-             'IntLMask_LOS':(100, 1, 0),
-             'IntLMask_TXFault':(101, 1, 0),
-             'IntLMask_Temp':(103, 1, 0),
-             'IntLMask_Vcc':(104, 1, 0),
-             'PageSelect':(127, 1, 0),
+             # Register Name : (datatype, memory location, bytes, page)   
+             'Identifier': ('bin', 0, 1, 0),
+             'Status': ('bin',1, 2, 0),
+             'ChanStatusIntFlags': ('bin',3, 2, 0),
+             'ModMonIntFlags': ('bin',6, 2, 0),
+             'ChanMonIntFlags' : ('bin',9, 4, 0),
+             'MeasuredTemp' : ('bin',22, 2, 0),
+             'MeasuredSupV' : ('bin',26, 2, 0),
+             'ChanRxInPow': ('bin',34, 8, 0),
+             'ChanTxBias':('bin',42, 8, 0),
+             'LaserDisable':('bin',86, 1, 0),
+             'RateSelect':('bin',87, 2, 0),
+             'RxAppSelect':('bin',89, 4, 0),
+             'PowerSet':('bin',93, 1, 0),
+             'TxAppSelect':('bin',94, 4, 0),
+             'IntLMask_LOS':('bin',100, 1, 0),
+             'IntLMask_TXFault':('bin',101, 1, 0),
+             'IntLMask_Temp':('bin',103, 1, 0),
+             'IntLMask_Vcc':('bin',104, 1, 0),
+             'PageSelect':('bin',127, 1, 0),
              
-             'Identifier':(128, 1, 0),
-             'ExtIdentifier':(129, 1, 0),
-             'Connector':(130, 1, 0),
-             'CompCodes':(131, 8, 0),
-             'Encoding':(139, 1, 0),
-             'BitRate':(140, 1, 0),
-             'ExtRateSelectComp':(141, 1, 0),
-             'SupportedLengths':(142, 5, 0),
-             'DeviceTech':(147, 1, 0),
-             'VendName':(148, 16, 0),
-             'ExtTranCode':(164, 1, 0),
-             'VenOUI':(165, 3, 0),
-             'VenPN':(168, 16,0),
-             'VenRev':(184, 2,0),
-             'WaveLength':(186, 2, 0),
-             'MaxCaseTemp':(190, 1, 0),
-             'CCBase':(191, 1, 0),
-             'ExtOptions':(192, 4, 0),
-             'VenSN': (196, 16, 0),
-             'DateCode':(212, 8, 0),
-             'DiagMon':(220, 1, 0),
-             'EnhOpt':(221, 1, 0),
-             'CCExt':(223, 1, 0),
-             'VenSpecEEPROM':(224, 32, 0)    
+             'Identifier':('bin',128, 1, 0),
+             'ExtIdentifier':('bin',129, 1, 0),
+             'Connector':('bin',130, 1, 0),
+             'CompCodes':('bin',131, 8, 0),
+             'Encoding':('bin',139, 1, 0),
+             'BitRate':('bin',140, 1, 0),
+             'ExtRateSelectComp':('bin',141, 1, 0),
+             'SupportedLengths':('bin',142, 5, 0),
+             'DeviceTech':('bin',147, 1, 0),
+             'VendName':('str',148, 16, 0),
+             'ExtTranCode':('bin',164, 1, 0),
+             'VenOUI':('str',165, 3, 0),
+             'VenPN':('str',168, 16,0),
+             'VenRev':('bin',184, 2,0),
+             'WaveLength':('bin',186, 2, 0),
+             'MaxCaseTemp':('bin',190, 1, 0),
+             'CCBase':('bin',191, 1, 0),
+             'ExtOptions':('bin',192, 4, 0),
+             'VenSN': ('str',196, 16, 0),
+             'DateCode':('str',212, 8, 0),
+             'DiagMon':('bin',220, 1, 0),
+             'EnhOpt':('bin',221, 1, 0),
+             'CCExt':('bin',223, 1, 0),
+             'VenSpecEEPROM':('str',224, 32, 0)      #no idea if a string or binary info
              ##The other pages don't seem useful to us at all.
         }
 
@@ -246,9 +247,11 @@ class IceBox(object):
         """Initializes the backplane to a known state"""
 
         self._init_qsfp_ctrl()
+        self._init_reset_ctrl()
         self._init_eeprom()
         self._init_temperature_sensors()
         self._init_power_sensors()
+        
 
     def _init_temperature_sensors(self, temperature_sensor_name=None):
         """
@@ -307,7 +310,18 @@ class IceBox(object):
             qsfpa_ctrl.init(cfg0_def=0x55, cfg1_def=0x55,cfg2_def=0x55,cfg3_def=0x55,cfg4_def=0xff,out0_def=0xaa, out1_def=0xaa,out2_def=0xaa,out3_def=0xaa,out4_def=0)
             qsfpb_ctrl.init(cfg0_def=0x55, cfg1_def=0x55,cfg2_def=0x55,cfg3_def=0x55,cfg4_def=0xff,out0_def=0xaa, out1_def=0xaa,out2_def=0xaa,out3_def=0xaa,out4_def=0)
             #By default LEDs are off (dir=inputs , outputs=0), ModPrsL and IntL (dir=input, output = 0), ResetL and ModselL (dir=output, output=1)
-
+            
+    def _init_reset_ctrl(self):
+            """
+            initializes reset control
+            History:
+            141075 AJG: created
+            """
+            reset_ctrl=self._reset_ctrl
+            
+            reset_ctrl.init(cfg0_def=0xFF, cfg1_def=0xFF,cfg2_def=0xFF,cfg3_def=0xFF,cfg4_def=0xFF,out0_def=0x15, out1_def=0xFF,out2_def=0xFF,out3_def=0xFF,out4_def=0xFF)
+            #By default setting all pins to inputs, with default output level logic 1 (no reset possible) for all banks except 0
+            #On bank 0, default levels are such that LED default is 0, Reset clear is active, and reset pins are functionality is maximily off 
 
     def _init_eeprom(self):
         """initializes EEPROM"""
@@ -365,7 +379,6 @@ class IceBox(object):
                 led_control_register='IN%i' % led_control_register #Converting the resister in the map into the correct string format
                 #Note that we are cheating here, we are flipping the bits on the IO Expander from input mode to output mode, inputs are default floating
                 #Turning on the LED requires a output of 0 which is the default state in output mode
-                mask = 1<<led_control_bitnumber
                 regout=led_control_object.read(led_control_register)
                 led_status[led]=bool( (regout & (1<<led_control_bitnumber))>>led_control_bitnumber)
 
@@ -440,8 +453,7 @@ class IceBox(object):
 
     def get_serial_number(self):
         """
-        Returns the board's serial number. which is actually the FPGA's
-        serial number.
+        Returns the board's serial number. 
         """
         return self.get_eeprom_serial_number(); # tentative code
 
@@ -591,9 +603,124 @@ class IceBox(object):
 
         return data        
 
-
     def qsfp_i2c_read_str(self, slot, addr=148, length=16, page=0):
         return ''.join([chr(x) for x in self.read_qsfp(slot, addr, length, page)])
+
+
+    def get_qsfp_info(self, slots=range(1, NUMBER_OF_SLOTS + 1)):
+        """
+        Gets all qsfp info marked up in the qsfp eeprom map for each slot
+        Data is returned as a list of dictionaries
+        History:
+        141015 AJG & JF: created
+        """
+
+        if isinstance(slots, int):
+            slots = [slots]
+            
+        qsfpdata=[]
+        for slotnum in slots:
+            
+            if slotnum not in range(1,self.NUMBER_OF_SLOTS + 1) :
+                raise IceBoxException('Invalid Slot number %i' % slotnum)
+            else:
+                data=[]
+                for position,key in enumerate(self.QSFP_EEPROM_MAP):
+                    (datatype, addr, length, page)=self.QSFP_EEPROM_MAP(key)
+                    
+                    if datatype == 'str': #String detected, converting to readable characters
+                        data[key]=self.qsfp_i2c_read_str(slot=slotnum, addr=addr, length=length, page=page)
+                    else: #assuming binary
+                        data[key]=self.read_qsfp(slot=slotnum, addr=addr, length=length, page=page)
+                        
+                qsfpdata.append(data)
+        return qsfpdata
+        
+    def reset_slot(self, slots, enable_reset, reset_type='ARM'):
+        """
+        Performs a reset on the slots specified
+        To ensure we dont screw up, must provide an Enable reset flag (can be a list). Must also provide reset type
+        History:
+        141015 AJG & JF: created
+        """
+        
+        
+        if slots=='ALL' and enable_reset:  #We wish to perform a full crate reset
+            #if reset_type not in self.FULLBP_RESETS_MAP:
+            #    IceBoxException('Unknown reset type %s' % reset_type)
+            #else
+            #    
+            #    (reset_control_obj, controlreg, mask, inactive, active) = self.FULLBP_RESETS_MAP[reset_type]
+            #    reset_cfg_register='CFG%i' % controlreg 
+            #    reset_output_register='OUT%i' % controlreg 
+            #    self.set_led('LED1', 1) #Turning LED on, so that we know a reset was performed
+            #    if reset_type=='ARM':
+            #    
+            #    elif reset_type=='POWER':
+            #        pass
+            #        
+            #    elif reset_type=='FPGA':
+            #        
+            #        
+            #        # ResetType : (expander object, Register, mask, inactive, active)
+            # 'ARM':       (self._reset_ctrl, 0, 0b01000011, 0b00000001, 0b01000010),
+            
+            pass
+        else:  #We wish to perform individual resets
+        
+            if isinstance(slots, int):
+                slots = [slots]
+            
+            if isinstance(enable_reset, (bool, int)):
+                    enable_reset = ([bool(enable_reset)] * len(slots))
+            
+            if isinstance(reset_type, (str)):
+                    reset_type = ([str(reset_type)] * len(slots))
+        
+            for (slot, isenabled, resettype) in zip(slots,enable_reset,reset_type):
+                if isenabled and slot == self._iceboard.slot_number:
+                    print 'Warning, will not perform reset on the controlling slot %i' % slot
+                    
+                if isenabled and slot != self._iceboard.slot_number  :
+                    if slotnum not in range(1,self.NUMBER_OF_SLOTS + 1) :
+                        raise IceBoxException('Invalid Slot number %i' % slotnum)
+                    else:
+                        (reset_control_obj, arm_reset_reg, power_down_reg, bitnumber) = self.SLOT_RESETS_MAP[slot]
+                        resettypeokay=1
+                        if resettype == 'ARM':
+                            reset_cfg_register='CFG%i' % arm_reset_reg 
+                            reset_output_register='OUT%i' % arm_reset_reg 
+                        elif resettype == 'PD': 
+                            reset_cfg_register='CFG%i' % arm_reset_reg 
+                            reset_output_register='OUT%i' % arm_reset_reg
+                        else:
+                            resettypeokay=0
+                            print 'Unknown reset type, will not perform reset on slot %i' % slot
+                                                   
+                        if resettypeokay:
+                            
+                            mask = 1<<bitnumber
+                            reset_control_obj.write(reset_output_register,  0, mask) #Setting output register to logic 0 (reset active)
+                            reset_control_obj.write(reset_output_register,  0, mask) #Setting direction register from input to output - Performing reset
+
+                            #Assuming 0.5 second is sufficient
+                            time.sleep(0.5) 
+                            
+                            reset_control_obj.write(reset_output_register,  1, mask) #Setting output register to logic 1 (reset inactive) - Removing reset
+                            reset_control_obj.write(reset_output_register,  1, mask) #Setting direction register from output to input - Back to default state
+                        
+                            
+                            
+            
+                    
+                
+
+
+    
+
+        
+        
+    
         
 
         
