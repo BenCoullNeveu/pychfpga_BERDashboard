@@ -111,24 +111,24 @@ class IceBox(object):
         }
 
         self.LED_MAP = {
-             # Slot num : (expander object, Register, bit number)
-             1: (self._qsfp_ctrla, 4, 0),
-             2: (self._qsfp_ctrla, 4, 1),
-             3: (self._qsfp_ctrla, 4, 2),
-             4: (self._qsfp_ctrla, 4, 3),
-             5: (self._qsfp_ctrla, 4, 4),
-             6: (self._qsfp_ctrla, 4, 5),
-             7: (self._qsfp_ctrla, 4, 6),
-             8: (self._qsfp_ctrla, 4, 7),
+             # LEDName : (expander object, Register, bit number)
+             'QSFP1': (self._qsfp_ctrla, 4, 0),
+             'QSFP2': (self._qsfp_ctrla, 4, 1),
+             'QSFP3': (self._qsfp_ctrla, 4, 2),
+             'QSFP4': (self._qsfp_ctrla, 4, 3),
+             'QSFP5': (self._qsfp_ctrla, 4, 4),
+             'QSFP6': (self._qsfp_ctrla, 4, 5),
+             'QSFP7': (self._qsfp_ctrla, 4, 6),
+             'QSFP8': (self._qsfp_ctrla, 4, 7),
 
-             9: (self._qsfp_ctrlb, 4, 0),
-             10: (self._qsfp_ctrlb, 4, 1),
-             11: (self._qsfp_ctrlb, 4, 2),
-             12: (self._qsfp_ctrlb, 4, 3),
-             13: (self._qsfp_ctrlb, 4, 4),
-             14: (self._qsfp_ctrlb, 4, 5),
-             15: (self._qsfp_ctrlb, 4, 6),
-             16: (self._qsfp_ctrlb, 4, 7),
+             'QSFP9': (self._qsfp_ctrlb, 4, 0),
+             'QSFP10': (self._qsfp_ctrlb, 4, 1),
+             'QSFP11': (self._qsfp_ctrlb, 4, 2),
+             'QSFP12': (self._qsfp_ctrlb, 4, 3),
+             'QSFP13': (self._qsfp_ctrlb, 4, 4),
+             'QSFP14': (self._qsfp_ctrlb, 4, 5),
+             'QSFP15': (self._qsfp_ctrlb, 4, 6),
+             'QSFP16': (self._qsfp_ctrlb, 4, 7),
              'LED1': (self._reset_ctrl, 0, 7)
         }
 
@@ -346,6 +346,11 @@ class IceBox(object):
         """
         if isinstance(led_name, (str, int)):
             led_name = [led_name]
+        
+        for pos, name in enumerate(led_name):
+            if isinstance(name, int):
+                name='QSFP%i' % name
+            led_name[pos]=name
 
         if isinstance(state, (bool, int)):
             state = [state] * len(led_name)
@@ -370,6 +375,11 @@ class IceBox(object):
         led_status = {}
         if isinstance(led_name, str):
             led_name = [led_name]
+            
+        for pos, name in enumerate(led_name):
+            if isinstance(name, int):
+                name='QSFP%i' % name
+            led_name[pos]=name
 
         for led in led_name:
             if led not in self.LED_MAP:
@@ -470,23 +480,14 @@ class IceBox(object):
         History:
         141015 AJG & JF: created
         """
-        if isinstance(slots, int):
+        if isinstance(slots, (int,str)):
             slots = [slots]
-
-        if isinstance(state, (bool, int)):
-                state = ([bool(state)] * len(slots))
-
-        for (slots, state) in zip(slots,state):
-
-            if slots not in range(1,self.NUMBER_OF_SLOTS + 1) :
+            
+        for slotnum in slots:
+            if slotnum not in range(1,self.NUMBER_OF_SLOTS + 1) :
                 raise IceBoxException('Invalid Slot number %i' % slots)
-            else:
-                (led_control_object, led_control_register, led_control_bitnumber) = self.LED_MAP[slots]
-                led_control_register='CFG%i' % led_control_register #Converting the resister in the map into the correct string format
-                #Note that we are cheating here, we are flipping the bits on the IO Expander from input mode to output mode, inputs are default floating
-                #Turning on the LED requires a output of 0 which is the default state in output mode
-                mask = 1<<led_control_bitnumber
-                led_control_object.write(led_control_register, (not state) * mask, mask=mask)
+        
+        self.set_led(slots, state)
 
 
     def qsfp_reset(self, slots, state=None):
@@ -637,34 +638,36 @@ class IceBox(object):
 
     def reset_slot(self, slots, state, reset_type='ARM'):
         """
-        Performs a reset on the slots specified
-        To ensure we dont screw up, must provide an Enable reset flag (can be a list). Must also provide reset type
+        Function performs Resets. If slots 'ALL' will perform full backplane reset, Type can be 'ARM', 'POWER' or'FPGA'
+        For full backplane reset state must be True.
+        
+        For individual slot reset (can be a list)
+        State must be True, False, or 'pulse', reset type must be 'ARM' or 'POWER'
+                
         History:
         141015 AJG & JF: created
         """
 
 
-        if slots=='ALL' and state:  #We wish to perform a full crate reset
-            #if reset_type not in self.FULLBP_RESETS_MAP:
-            #    IceBoxException('Unknown reset type %s' % reset_type)
-            #else
-            #
-            #    (reset_control_obj, controlreg, mask, inactive, active) = self.FULLBP_RESETS_MAP[reset_type]
-            #    reset_cfg_register='CFG%i' % controlreg
-            #    reset_output_register='OUT%i' % controlreg
-            #    self.set_led('LED1', 1) #Turning LED on, so that we know a reset was performed
-            #    if reset_type=='ARM':
-            #
-            #    elif reset_type=='POWER':
-            #        pass
-            #
-            #    elif reset_type=='FPGA':
-            #
-            #
-            #        # ResetType : (expander object, Register, mask, inactive, active)
-            # 'ARM':       (self._reset_ctrl, 0, 0b01000011, 0b00000001, 0b01000010),
-
-            pass
+        if slots=='ALL' and state==1:  #We wish to perform a full crate reset
+           
+            if reset_type not in self.FULLBP_RESETS_MAP:
+                IceBoxException('Unknown reset type %s' % reset_type)
+            else:
+            
+                (reset_control_obj, controlreg, mask, inactive, active) = self.FULLBP_RESETS_MAP[reset_type]
+                reset_cfg_register='CFG%i' % controlreg
+                reset_output_register='OUT%i' % controlreg
+                
+                
+                self.set_led('LED1', not(self.get_led('LED1'))) #Flipping state of LED so that we know a reset was performed
+                #not sure what the defualt LED state will be so this is a flip at the moment
+                
+                reset_control_obj.write(reset_output_register, active, mask) #Setting output register to reset value
+                reset_control_obj.write(reset_cfg_register,  mask, mask) #Setting direction register to output (this performs the reset)
+                
+                
+        
         else:  #We wish to perform individual resets
 
             if isinstance(slots, int):
@@ -688,19 +691,19 @@ class IceBox(object):
                     if resettype == 'ARM':
                         reset_cfg_register='CFG%i' % arm_reset_reg
                         reset_output_register='OUT%i' % arm_reset_reg
-                    elif resettype == 'PD':
+                    elif resettype == 'POWER':
                         reset_cfg_register='CFG%i' % power_down_reg
                         reset_output_register='OUT%i' % power_down_reg
                     else:
                         raise IceBoxException('Unknown reset type, will not perform reset on slot %i' % slot)
 
-
-                    if isenabled:
+                                       
+                    if isenabled==1 or isenabled=='pulse':  #Turning reset on
                         mask = 1 << bitnumber
                         reset_control_obj.write(reset_output_register,  0, mask) #Setting output register to logic 0 (reset active)
                         reset_control_obj.write(reset_cfg_register,  0, mask) #Setting direction register from input to output - Performing reset
 
-                    if not isenabled or isenable=='pulse':
+                    if isenabled==0 or isenabled=='pulse': #Turning reset off
                         #Assuming 0.5 second is sufficient
                         time.sleep(0.5)
                         reset_control_obj.write(reset_output_register,  mask, mask) #Setting output register to logic 1 (reset inactive) - Removing reset
