@@ -722,6 +722,7 @@ class IceBox(object):
 
                     if isenabled==0 or isenabled=='pulse': #Turning reset off
                         #Assuming 0.5 second is sufficient
+                        mask = 1 << bitnumber
                         time.sleep(0.5)
                         reset_control_obj.write(reset_output_register,  mask, mask) #Setting output register to logic 1 (reset inactive) - Removing reset
                         reset_control_obj.write(reset_cfg_register,  mask, mask) #Setting direction register from output to input - Back to default state
