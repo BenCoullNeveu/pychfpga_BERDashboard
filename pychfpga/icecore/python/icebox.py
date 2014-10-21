@@ -5,6 +5,7 @@
 """iceboard_hardware.py module: Provides a class to access the hardware of IceBoard
 (McGill Model MGK7MB).
 """
+from pychfpga.icecore.iceboard import IceBoard
 
 import logging
 import time
@@ -64,6 +65,12 @@ class IceBox(object):
                 - i2c_set_port(...) # Port number 0 (connected to the FPGA I2C switch) is used for all accesses
                 - i2c_write_read(...) # FPGA I2C engine
         """
+        
+        if type(iceboard)!=IceBoard:
+            raise IceBoxException('Please provide a single iceboard object')
+ 
+
+        
         self._I2C_BACKPLANE_BUS_NAME = 'BP'
         self._logger = logging.getLogger(__name__)
         self._logger.debug('Initializing Iceboard hardware')
