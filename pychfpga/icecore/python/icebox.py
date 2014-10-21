@@ -525,6 +525,8 @@ class IceBox(object):
         if isinstance(slots, int):
             slots = [slots]
 
+        output={}
+
         present=[]
         reset=[]
         intl=[]
@@ -546,7 +548,13 @@ class IceBox(object):
                 intl.append(not((outputreg & (1 << IntL_bitnum)) >> IntL_bitnum))          #copying the info at this bit number into the status reg
                 modsel.append(not((outputreg & (1 << ModSelL_bitnum)) >> ModSelL_bitnum))  #copying the info at this bit number into the status reg
 
-        return present, reset, intl, modsel
+        output['present']=present
+        output['reset']=reset
+        output['intl']=intl
+        output['modsel']=modsel
+        output['slots']=slots
+
+        return output
 
     def qsfp_enable_i2c(self, slot, state):
         """
@@ -559,7 +567,9 @@ class IceBox(object):
             raise IceBoxException('Must perform action on one slot at a time. Slot must be an integer.')
         if slot not in range(1,self.NUMBER_OF_SLOTS + 1) :
             raise IceBoxException('Invalid Slot number %i' % slot)
-        if not self.qsfp_status(slot)[0][0]:  #Checking to see if QSPF present
+        qstatus=self.qsfp_status(slot)
+
+        if not qstatus['present'][0]:  #Checking to see if QSPF present
             raise IceBoxException('No QSFP device loaded on slot number %i' % slot)
 
         (qsfp_control_object, control_register, ModPrs_bitnum, ResetL_bitnum, IntL_bitnum, ModSelL_bitnum) = self.QSFP_CTRL_MAP[slot]
@@ -618,6 +628,7 @@ class IceBox(object):
 
         if isinstance(slots, int):
             slots = [slots]
+        qstatus=self.qsfp_status(slots)
 
         qsfpdata=[]
         for slotnum in slots:
@@ -625,13 +636,19 @@ class IceBox(object):
             if slotnum not in range(1,self.NUMBER_OF_SLOTS + 1) :
                 raise IceBoxException('Invalid Slot number %i' % slotnum)
             else:
-                data={}
-                for (key, (datatype, addr, length, page)) in self.QSFP_EEPROM_MAP.items():
 
-                    if datatype == 'str': #String detected, converting to readable characters
-                        data[key]=self.qsfp_i2c_read_str(slot=slotnum, addr=addr, length=length, page=page)
-                    else: #assuming binary
-                        data[key]=self.read_qsfp(slot=slotnum, addr=addr, length=length, page=page)
+                data={}
+                data['QSFPNumber']=slotnum
+                data['QSFPPresent']=False
+
+                if qstatus['present'][slotnum-1]:
+                    data['QSFPPresent']=True
+                    for (key, (datatype, addr, length, page)) in self.QSFP_EEPROM_MAP.items():
+
+                        if datatype == 'str': #String detected, converting to readable characters
+                            data[key]=self.qsfp_i2c_read_str(slot=slotnum, addr=addr, length=length, page=page)
+                        else: #assuming binary
+                            data[key]=self.read_qsfp(slot=slotnum, addr=addr, length=length, page=page)
 
                 qsfpdata.append(data)
         return qsfpdata
@@ -652,7 +669,7 @@ class IceBox(object):
         if slots=='ALL' and state==1:  #We wish to perform a full crate reset
            
             if reset_type not in self.FULLBP_RESETS_MAP:
-                IceBoxException('Unknown reset type %s' % reset_type)
+                raise IceBoxException('Unknown reset type %s' % reset_type)
             else:
             
                 (reset_control_obj, controlreg, mask, inactive, active) = self.FULLBP_RESETS_MAP[reset_type]
@@ -660,11 +677,11 @@ class IceBox(object):
                 reset_output_register='OUT%i' % controlreg
                 
                 
-                self.set_led('LED1', not(self.get_led('LED1'))) #Flipping state of LED so that we know a reset was performed
+                self.set_led('LED1', not(self.get_led('LED1')['LED1'])) #Flipping state of LED so that we know a reset was performed
                 #not sure what the defualt LED state will be so this is a flip at the moment
                 
                 reset_control_obj.write(reset_output_register, active, mask) #Setting output register to reset value
-                reset_control_obj.write(reset_cfg_register,  mask, mask) #Setting direction register to output (this performs the reset)
+                reset_control_obj.write(reset_cfg_register,  0, mask) #Setting direction register to output (this performs the reset)
                 
                 
         
