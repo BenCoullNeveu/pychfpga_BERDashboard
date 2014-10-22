@@ -20,19 +20,19 @@ def init_links(ib, frames_per_packet=3, cb1_lanes=16, cb1_bins=64, cb2_lanes=8, 
     for gtx in gpu_links.CHANNEL:
         gtx.LOOPBACK = bp_bypass
 
-    for bs in cb1:
+    for (i, bs) in enumerate(cb1):
         bs.GROUP_FRAMES = frames_per_packet
         bs.NUMBER_OF_LANES = cb1_lanes
-        bs.select_bins(np.arange(cb1_bins) * cb1_minimum_bin_spacing)
+        bs.select_bins(np.arange(cb1_bins) * cb1_minimum_bin_spacing + i)
     #cb1.configure(cb1_bins)
 
-    for bs in cb2:
+    for (i, bs) in enumerate(cb2):
         bs.LANE0_BYPASS = bool(cb2_bypass)
         bs.NUMBER_OF_FRAMES_PER_PACKET = frames_per_packet
         bs.NUMBER_OF_LANES = cb2_lanes
         bs.NUMBER_OF_BINS_PER_FRAME = cb1_bins
         bs.NUMBER_OF_WORDS_PER_BIN = cb1_lanes/4
-        bs.select_bins(np.arange(cb2_bins) * cb2_minimum_bin_spacing)
+        bs.select_bins(np.arange(cb2_bins) * cb2_minimum_bin_spacing + i)
     #cb2.configure(cb2_bins)
 
     header_size = 16
