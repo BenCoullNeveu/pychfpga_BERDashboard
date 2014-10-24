@@ -5,8 +5,7 @@
 """iceboard_hardware.py module: Provides a class to access the hardware of IceBoard
 (McGill Model MGK7MB).
 """
-from pychfpga.icecore.iceboard import IceBoard
-
+import iceboard as ib
 import logging
 import time
 
@@ -27,9 +26,10 @@ class IceBox(object):
     # Define hardware-specific constants
     #------------------------------------
     NUMBER_OF_SLOTS = 16 #
-    BACKPLANE_EEPROM_DATA_ADDRESS = 0x54 # covers 0x54 - 0x57
-    BACKPLANE_EEPROM_SERIAL_ADDRESS = 0x5C # 16 byte serial number starting at address 0
-    BACKPLANE_EEPROM_ADDRESS_WIDTH = 10
+    BACKPLANE_EEPROM_DATA_ADDRESS = 0x54 # covers 0x54 - 0x57 ( 4 pages of 256 bytes, 1024 Bytes total)
+    BACKPLANE_EEPROM_SERIAL_ADDRESS = 0x5C # 16 byte serial number starting at memory address 0x80
+    BACKPLANE_EEPROM_ADDRESS_WIDTH = 10 # 2 bits are in the device address, the remaining are in the address byte following the command byte
+
     BACKPLANE_QSFP_ADDRESS=0x50 #QSFP standard address
     BACKPLANE_QSFP_ADDRESS_WIDTH=8
 
@@ -43,6 +43,89 @@ class IceBox(object):
 
     _POWER_3V3_ADDR = 0x40
 
+    # The following dictionnary describes the connectivity of the 10 Gbps mesh.
+    # It indicates which transmitter (slot and lane number) is feeding a specified receiver.
+    # The dictionnary is indexed by receiver number.
+    _BP_RX_TO_TX_MAP = {
+        # (rx_slot, rx_lane) <= (tx_slot_tx_lane)
+        # Slots are numbered from 1 to 16
+        # Lanes are numbered from 0 to 15. Lane 0 is internal to the FPGA.
+
+        (1,0):(1,0), # direct internal link in FPGA
+        (1,1):(12,1), (1,2):(10,11),  (1,3): (9,15),  (1,4): (6,8),  (1,5): (5,2),  (1,6): (3,8), (1,7): (8,6), (1,8):(2,10),
+        (1,9):(15,3), (1,10):(16,11), (1,11):(11,13), (1,12):(14,5), (1,13):(13,1), (1,14):(4,7), (1,15):(7,13),
+
+        (2,0):(2,0), # direct internal link in FPGA
+        (2,1):(11,11), (2,2) :(16,7),  (2,3) :(12,13),  (2,4) :(6,14),  (2,5) :(5,4),  (2,6) :(15,5), (2,7) :(8,2), (2,8):(3,10),
+        (2,9):(14,7),  (2,10):(13,2),  (2,11):(10,13),  (2,12):(9,13),  (2,13):(1,6),  (2,14):(4,8),  (2,15):(7,15),
+
+        (3,0):(3,0), # direct internal link in FPGA
+        (3,1):(9,12), (3,2):(12,14), (3,3):(14,11), (3,4):(11,12), (3,5):(5,8), (3,6):(2,6), (3,7):(8,4), (3,8):(4,10), (3,9):(6,4),
+        (3,10):(1,4), (3,11):(15,11), (3,12):(16,12), (3,13):(10,15), (3,14):(13,4), (3,15):(7,14), (4,1):(15,2),
+
+
+        (4,0):(4,0), # direct internal link in FPGA
+        (4,2):(16,2), (4,3):(11,1), (4,4):(6,2), (4,5):(12,2), (4,6):(3,6), (4,7):(8,12), (4,8):(5,10), (4,9):(2,2),
+        (4,10):(1,2), (4,11):(13,11), (4,12):(9,14), (4,13):(10,14), (4,14):(14,2), (4,15):(7,4),
+
+
+        (5,0):(5,0), # direct internal link in FPGA
+        (5,1):(9,2),  (5,2):(16,15), (5,3):(13,15),  (5,4):(15,15),  (5,5):(14,15), (5,6):(3,4),    (5,7):(8,8),  (5,8):(6,10),
+        (5,9):(2,11), (5,10):(1,1),  (5,11):(10,12), (5,12):(11,14), (5,13):(4,6),  (5,14):(12,15), (5,15):(7,8),
+
+        (6,0):(6,0), # direct internal link in FPGA
+        (6,1):(16,5), (6,2):(15,13), (6,3):(9,4), (6,4):(14,14), (6,5):(13,5), (6,6):(3,2), (6,7):(8,9), (6,8):(7,10),
+        (6,9):(2,12), (6,10):(1,11), (6,11):(10,2), (6,12):(12,4), (6,13):(5,6), (6,14):(4,4), (6,15):(11,4),
+
+
+        (7,0):(7,0), # direct internal link in FPGA
+        (7,1):(16,9), (7,2):(15,9), (7,3):(13,7), (7,4):(14,9), (7,5):(5,11), (7,6):(3,1), (7,7):(6,6), (7,8):(8,10),
+        (7,9):(2,13), (7,10):(1,12), (7,11):(9,8), (7,12):(12,10), (7,13):(10,4), (7,14):(4,2), (7,15):(11,15),
+
+
+        (8,0):(8,0), # direct internal link in FPGA
+        (8,1):(6,11), (8,2):(16,8), (8,3):(14,8), (8,4):(15,8), (8,5):(5,12), (8,6):(3,11), (8,7):(7,6), (8,8):(9,10),
+        (8,9):(2,14), (8,10):(1,13), (8,11):(10,8), (8,12):(13,8), (8,13):(12,8), (8,14):(4,1), (8,15):(11,8),
+
+        (9,0):(9,0), # direct internal link in FPGA
+        (9,1):(6,12), (9,2):(14,6), (9,3):(15,6), (9,4):(16,6), (9,5):(5,13), (9,6):(3,12), (9,7):(8,13), (9,8):(10,10),
+        (9,9):(2,15), (9,10):(1,14), (9,11):(12,6), (9,12):(13,6), (9,13):(11,6), (9,14):(4,11), (9,15):(7,12),
+
+
+        (10,0):(10,0), # direct internal link in FPGA
+        (10,1):(6,13), (10,2):(4,12), (10,3):(7,2), (10,4):(8,14), (10,5):(5,15), (10,6):(3,13), (10,7):(9,6),
+        (10,8):(11,10), (10,9):(2,1), (10,10):(1,15), (10,11):(16,14), (10,12):(15,14), (10,13):(14,13), (10,14):(13,14), (10,15):(12,11),
+
+        (11,0):(11,0), # direct internal link in FPGA
+        (11,1):(5,1), (11,2):(7,11), (11,3):(8,11), (11,4):(9,11), (11,5):(6,15), (11,6):(3,14), (11,7):(10,6),
+        (11,8):(12,7), (11,9):(2,5), (11,10):(1,3), (11,11):(4,13), (11,12):(16,4), (11,13):(15,4), (11,14):(14,4), (11,15):(13,13),
+
+        (12,0):(12,0), # direct internal link in FPGA
+        (12,1):(7,1), (12,2):(8,1), (12,3):(9,1), (12,4):(10,1), (12,5):(5,14), (12,6):(3,15), (12,7):(11,2),
+        (12,8):(13,10), (12,9):(2,7), (12,10):(1,5), (12,11):(15,1), (12,12):(16,1), (12,13):(14,1), (12,14):(4,14), (12,15):(6,1),
+
+        (13,0):(13,0), # direct internal link in FPGA
+        (13,1):(7,7), (13,2):(8,7), (13,3):(9,7), (13,4):(10,7), (13,5):(11,7), (13,6):(3,5), (13,7):(12,12),
+        (13,8):(14,10), (13,9):(2,9), (13,10):(1,7), (13,11):(16,3), (13,12):(5,7), (13,13):(15,7), (13,14):(4,15), (13,15):(6,7),
+
+        (14,0):(14,0), # direct internal link in FPGA
+        (14,1):(7,5), (14,2):(8,5), (14,3):(9,5), (14,4):(10,5), (14,5):(11,5), (14,6):(12,5), (14,7):(13,12),
+        (14,8):(15,10), (14,9):(2,8), (14,10):(1,9), (14,11):(5,5), (14,12):(6,5), (14,13):(4,5), (14,14):(3,7), (14,15):(16,13),
+
+
+        (15,0):(15,0), # direct internal link in FPGA
+        (15,1):(8,15), (15,2):(9,9), (15,3):(10,9), (15,4):(11,9), (15,5):(12,9), (15,6):(13,9), (15,7):(14,12),
+        (15,8):(16,10), (15,9):(2,4), (15,10):(1,10), (15,11):(6,9), (15,12):(7,9), (15,13):(5,9), (15,14):(4,9), (15,15):(3,9),
+
+
+        (16,0):(16,0), # direct internal link in FPGA
+        (16,1):(8,3), (16,2):(9,3), (16,3):(10,3), (16,4):(11,3), (16,5):(12,3), (16,6):(13,3), (16,7):(15,12),
+        (16,8):(14,3), (16,9):(7,3), (16,10):(1,8), (16,11):(5,3), (16,12):(6,3), (16,13):(4,3), (16,14):(3,3), (16,15):(2,3)
+    }
+
+    _BP_TX_TO_RX_MAP = {tx:rx for (rx,tx) in _BP_RX_TO_TX_MAP.items()}
+
+
     @classmethod
     def get_backplane_info(cls, iceboard):
         logger = logging.getLogger(__name__)
@@ -52,6 +135,13 @@ class IceBox(object):
         logger.debug("Backplane EEPROM returned the value: %i", data[0])
         return (data[0], None)
 
+    @classmethod
+    def get_matching_tx(cls, rx_slot_lane_tuple):
+        return cls._BP_RX_TO_TX_MAP[rx_slot_lane_tuple]
+
+    @classmethod
+    def get_matching_rx(cls, tx_slot_lane_tuple):
+        return cls._BP_TX_TO_RX_MAP[tx_slot_lane_tuple]
 
     def __init__(self, iceboard):
         """
@@ -65,12 +155,12 @@ class IceBox(object):
                 - i2c_set_port(...) # Port number 0 (connected to the FPGA I2C switch) is used for all accesses
                 - i2c_write_read(...) # FPGA I2C engine
         """
-        
-        if type(iceboard)!=IceBoard:
-            raise IceBoxException('Please provide a single iceboard object')
- 
 
-        
+        if type(iceboard)!=ib.IceBoard:
+            raise IceBoxException('Please provide a single iceboard object')
+
+
+
         self._I2C_BACKPLANE_BUS_NAME = 'BP'
         self._logger = logging.getLogger(__name__)
         self._logger.debug('Initializing Iceboard hardware')
@@ -353,7 +443,7 @@ class IceBox(object):
         """
         if isinstance(led_name, (str, int)):
             led_name = [led_name]
-        
+
         for pos, name in enumerate(led_name):
             if isinstance(name, int):
                 name='QSFP%i' % name
@@ -382,7 +472,7 @@ class IceBox(object):
         led_status = {}
         if isinstance(led_name, str):
             led_name = [led_name]
-            
+
         for pos, name in enumerate(led_name):
             if isinstance(name, int):
                 name='QSFP%i' % name
@@ -489,11 +579,11 @@ class IceBox(object):
         """
         if isinstance(slots, (int,str)):
             slots = [slots]
-            
+
         for slotnum in slots:
             if slotnum not in range(1,self.NUMBER_OF_SLOTS + 1) :
                 raise IceBoxException('Invalid Slot number %i' % slots)
-        
+
         self.set_led(slots, state)
 
 
@@ -664,34 +754,34 @@ class IceBox(object):
         """
         Function performs Resets. If slots 'ALL' will perform full backplane reset, Type can be 'ARM', 'POWER' or'FPGA'
         For full backplane reset state must be True.
-        
+
         For individual slot reset (can be a list)
         State must be True, False, or 'pulse', reset type must be 'ARM' or 'POWER'
-                
+
         History:
         141015 AJG & JF: created
         """
 
 
         if slots=='ALL' and state==1:  #We wish to perform a full crate reset
-           
+
             if reset_type not in self.FULLBP_RESETS_MAP:
                 raise IceBoxException('Unknown reset type %s' % reset_type)
             else:
-            
+
                 (reset_control_obj, controlreg, mask, inactive, active) = self.FULLBP_RESETS_MAP[reset_type]
                 reset_cfg_register='CFG%i' % controlreg
                 reset_output_register='OUT%i' % controlreg
-                
-                
+
+
                 self.set_led('LED1', not(self.get_led('LED1')['LED1'])) #Flipping state of LED so that we know a reset was performed
                 #not sure what the defualt LED state will be so this is a flip at the moment
-                
+
                 reset_control_obj.write(reset_output_register, active, mask) #Setting output register to reset value
                 reset_control_obj.write(reset_cfg_register,  0, mask) #Setting direction register to output (this performs the reset)
-                
-                
-        
+
+
+
         else:  #We wish to perform individual resets
 
             if isinstance(slots, int):
@@ -721,7 +811,7 @@ class IceBox(object):
                     else:
                         raise IceBoxException('Unknown reset type, will not perform reset on slot %i' % slot)
 
-                                       
+
                     if isenabled==1 or isenabled=='pulse':  #Turning reset on
                         mask = 1 << bitnumber
                         reset_control_obj.write(reset_output_register,  0, mask) #Setting output register to logic 0 (reset active)
