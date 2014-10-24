@@ -227,7 +227,7 @@ if __name__ == "__main__":
   IceArray.close_all_sessions()
   ca = IceArray(uri=conf["fpga"]["db_file"], interface_ip_addr=conf["fpga"]["host_ip"])
   # Might want to move the list somewhere else/into conf file?
-  ca.load_iceboards('pychfpga/iceboard_list.txt')
+  ca.load_iceboards('/home/chime/ch_acq/pychfpga/iceboard_list.txt')
   ca.discover()
   bitfile_filename = conf["fpga"]["bitfile_name"]
   fpga_bitstream = ca.get_fpga_bitstream(bitfile_filename, ChimeFpgaFirmware)
@@ -266,7 +266,7 @@ if __name__ == "__main__":
   # Gains will need to be able to handle multiple boards, currently file
   # Will be overwritten when used for more than one board.  
   # Make compute gains smarter -> write to db? need boards to actually be different
-  if args.compute_gain:
+  if (int(args.compute_gain) > 0):
       #Shouldn't need for loop here, but initial testing failed in parallel.
       for i, c_element in enumerate(c):
         fpga_config = c_element.fpga.get_config()
@@ -281,7 +281,7 @@ if __name__ == "__main__":
   c.fpga.set_FFT_bypass(False, channels = all_chan)
   c.fpga.set_FFT_shift(conf["fpga"]["fft_shift"], channels = all_chan)
   for i, c_element in enumerate(c):      
-    gain_pkl_file = open('gains_'+str(c_element.fpga.GPIO.FPGA_SERIAL_NUMBER)+'.pkl', "rb")
+    gain_pkl_file = open('/home/chime/ch_acq/gains_'+str(c_element.fpga.GPIO.FPGA_SERIAL_NUMBER)+'.pkl', "rb")
     gains = pickle.load(gain_pkl_file)
     c_element.fpga.set_gain(gains, channels = all_chan)
   c.fpga.sync()
