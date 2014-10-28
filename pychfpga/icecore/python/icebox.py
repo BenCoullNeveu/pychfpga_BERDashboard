@@ -5,7 +5,7 @@
 """iceboard_hardware.py module: Provides a class to access the hardware of IceBoard
 (McGill Model MGK7MB).
 """
-from pychfpga.icecore.iceboard import IceBoard
+#from iceboard import IceBoard
 
 import logging
 import time
@@ -65,10 +65,15 @@ class IceBox(object):
                 - i2c_set_port(...) # Port number 0 (connected to the FPGA I2C switch) is used for all accesses
                 - i2c_write_read(...) # FPGA I2C engine
         """
-        
-        if type(iceboard)!=IceBoard:
+        #import iceboard  as ib     
+        #if not isinstance(iceboard, ib.IceBoard):
+        #    raise IceBoxException('Please provide a single iceboard object')
+        try:
+            iter(iceboard)
+        except TypeError:
+            pass
+        else:
             raise IceBoxException('Please provide a single iceboard object')
- 
 
         
         self._I2C_BACKPLANE_BUS_NAME = 'BP'
@@ -697,7 +702,7 @@ class IceBox(object):
             if isinstance(slots, int):
                 slots = [slots]
 
-            if isinstance(state, (bool, int)):
+            if isinstance(state, (bool, int, str)):
                     state = ([state] * len(slots))
 
             if isinstance(reset_type, (str)):
@@ -720,8 +725,7 @@ class IceBox(object):
                         reset_output_register='OUT%i' % power_down_reg
                     else:
                         raise IceBoxException('Unknown reset type, will not perform reset on slot %i' % slot)
-
-                                       
+            
                     if isenabled==1 or isenabled=='pulse':  #Turning reset on
                         mask = 1 << bitnumber
                         reset_control_obj.write(reset_output_register,  0, mask) #Setting output register to logic 0 (reset active)
@@ -730,7 +734,8 @@ class IceBox(object):
                     if isenabled==0 or isenabled=='pulse': #Turning reset off
                         #Assuming 0.5 second is sufficient
                         mask = 1 << bitnumber
-                        time.sleep(0.5)
+                        if isenabled=='pulse':
+                            time.sleep(5)
                         reset_control_obj.write(reset_output_register,  mask, mask) #Setting output register to logic 1 (reset inactive) - Removing reset
                         reset_control_obj.write(reset_cfg_register,  mask, mask) #Setting direction register from output to input - Back to default state
 
