@@ -28,7 +28,7 @@ class CH_DIST_base(Module_base):
     FOUR_BITS                = BitField(CONTROL, 0x00, 6, doc="When '1', input data is assumed to be four bits only and the output words are repacked accordingly (4 complex numbers per word).")
     USE_OFFSET_BINARY        = BitField(CONTROL, 0x00, 5, doc="When '1', indicates that the data uses offset binary encoding instead of 2's complement. Does not affect any processing here, but the flag is passed in the frame header.")
     SEND_FLAGS               = BitField(CONTROL, 0x00, 4, doc="When '1', the scaler and ADC/FFT flags are appended to the end of the data packet")
-    DUAL_BINS                = BitField(CONTROL, 0x00, 3, doc="When '1', both bins coming out of the FFT are always selected simultaneously, allowing all the data from a channelizer to be packed into a single GPU lane. '0' is the default. ")
+    OVERFLOW_RESET           = BitField(CONTROL, 0x00, 3, doc="When '1', both bins coming out of the FFT are always selected simultaneously, allowing all the data from a channelizer to be packed into a single GPU lane. '0' is the default. ")
     GROUP_FRAMES             = BitField(CONTROL, 0x00, 0, width=3, doc="Number of input frames to pack into an output frames. ")
 
     STREAM_ID                = BitField(CONTROL, 0x02, 4, width=12, doc="Stream ID to be used for tagging the output frames")
@@ -41,7 +41,7 @@ class CH_DIST_base(Module_base):
     FIFO_OVERFLOW            = BitField(STATUS, 0x00, 6, doc="Active high if the data FIFO is overflowing")
     IS_RESET                 = BitField(STATUS, 0x00, 5, doc="High when the module reset line is active")
     EIGHT_BIT_SUPPORT        = BitField(STATUS, 0x00, 4, doc="")
-    FIFO_CTR                 = BitField(STATUS, 0x00, 2, width=2, doc="")
+    # FIFO_CTR                 = BitField(STATUS, 0x00, 2, width=2, doc="")
     DATA_FLAGS_OVERFLOW      = BitField(STATUS, 0x00, 1, width=4, doc="Debug")
     FRAME_FIFO_OVERFLOW      = BitField(STATUS, 0x00, 0, width=4, doc="Debug")
 

@@ -1,6 +1,9 @@
 import numpy as np
+import struct
+import icecore.icebox
 
-def init_links(ib, frames_per_packet=3, cb1_lanes=16, cb1_bins=64, cb2_lanes=8, cb2_bins=1, cb2_bypass=False, bp_bypass=1):
+def init_crossbars(ib, frames_per_packet=3, cb1_lanes=16, cb1_bins=64, cb2_lanes=8, cb2_bins=1, cb2_bypass=False, bp_bypass=1):
+    ib.fpga.set_ant_reset(1)
     ib.fpga.set_corr_reset(1)
     cb1=ib.fpga.CROSSBAR
     cb2=ib.fpga.CROSSBAR2
@@ -20,19 +23,19 @@ def init_links(ib, frames_per_packet=3, cb1_lanes=16, cb1_bins=64, cb2_lanes=8, 
     for gtx in gpu_links.CHANNEL:
         gtx.LOOPBACK = bp_bypass
 
-    for bs in cb1:
+    for (i, bs) in enumerate(cb1):
         bs.GROUP_FRAMES = frames_per_packet
         bs.NUMBER_OF_LANES = cb1_lanes
-        bs.select_bins(np.arange(cb1_bins) * cb1_minimum_bin_spacing)
+        bs.select_bins(np.arange(cb1_bins) * cb1_minimum_bin_spacing + i)
     #cb1.configure(cb1_bins)
 
-    for bs in cb2:
+    for (i, bs) in enumerate(cb2):
         bs.LANE0_BYPASS = bool(cb2_bypass)
         bs.NUMBER_OF_FRAMES_PER_PACKET = frames_per_packet
         bs.NUMBER_OF_LANES = cb2_lanes
         bs.NUMBER_OF_BINS_PER_FRAME = cb1_bins
         bs.NUMBER_OF_WORDS_PER_BIN = cb1_lanes/4
-        bs.select_bins(np.arange(cb2_bins) * cb2_minimum_bin_spacing)
+        bs.select_bins(np.arange(cb2_bins) * cb2_minimum_bin_spacing + i)
     #cb2.configure(cb2_bins)
 
     header_size = 16
@@ -73,3 +76,104 @@ def init_links(ib, frames_per_packet=3, cb1_lanes=16, cb1_bins=64, cb2_lanes=8, 
     #cb1[0].NUMBER_OF_LANES=4
     #cb1.configure(1)
     ib.fpga.set_corr_reset(0)
+    ib.fpga.set_ant_reset(0)
+
+class GpuData(object):
+    def __repr__(self):
+        return '\n'.join(['%10s = %r' % (name, value) for (name, value) in vars(self).items() if not name.startswith('_') and not name=='data'])
+
+def get_gpu_data(node_number, dna_number):
+    from subprocess import Popen, PIPE
+    p = Popen(['sudo','chi-exec','%i' % node_number, '/root/inspect_pkt_dna_select', 'dna%i' % dna_number], stdout=PIPE)
+    (data, stderr) = p.communicate()
+    split_data = data.split('\n')
+    d=[]
+    for line in split_data[2:]:
+        if line.startswith('Packet'):
+            break
+        split_line = line.lstrip().split(' ')
+        print split_line
+        d += [int(c,16) for c in split_line[2:2+min(len(split_line)-2, 16)] if c]
+    result=GpuData()
+    result.ethernet_packet_size = len(d)
+    result.mac_dst = ':'.join(['%02X' % c for c in d[0:6]])
+    result.mac_src = ':'.join(['%02X' % c for c in d[6:12]])
+    result.ethertype = '%04X' % (d[12]*256 + d[13])
+    result.ip_length = d[16]*256 + d[17]
+    result.ip_protocol = d[23]
+    result.ip_src = d[26:30]
+    result.ip_dst = d[30:34]
+    result.udp_src_port = d[34]*256 + d[35]
+    result.udp_dst_port = d[36]*256 + d[37]
+    result.udp_length = d[38]*256 + d[39] # includes 8 bytes of the UDP header
+    result.udp_payload_length = result.udp_length-8
+
+    d = d[42:42+result.udp_payload_length]
+
+    header = ''.join(chr(x) for x in d[0:16])
+    (result.cookie, __, result.stream_id, __, __, result.timestamp) = struct.unpack('<BBHLLL',header)
+    result.source_lane_number = result.stream_id & 0x00F
+
+    result.data = d[16:]
+
+    print 'UDP Payload = %i bytes, Ethernet packet=%i bytes' % (result.udp_payload_length, result.ethernet_packet_size)
+
+    return result
+
+
+def shuffle_init(c, sync_board):
+
+    tx_list=[]
+
+    # set-up transmitters
+    for i,bb in enumerate(c):
+
+        print '**** Initializing transmitters for Slot %02i (IceBoard SN%i) ****' % (bb.slot_number+1, bb.serial_number)
+        bb.fpga.set_corr_reset(0)
+        bb.fpga.set_data_source('funcgen')
+        # set all analog inputs to send the (slot_number, analog input) complex number on every bin
+        for j in range(len(bb.fpga.ANT)):
+            bb.fpga.set_funcgen_function('ab', a=(bb.slot_number+1)<<4, b=j<<4, channels=[j])
+
+        # set the stream ID of every transmitter to (slot_number, analog input) complex number on every bin
+        for j,cb in enumerate(bb.fpga.CROSSBAR):
+            tx_list.append((bb.slot_number+1, j))
+            cb.STREAM_ID = ((bb.slot_number+1)<<4) + j
+        # Make the board respond to SYNC triggers from the backplane
+        bb.fpga.REFCLK.SLAVE=1
+        # Initialize the crossbars to select and send data in a specific format
+        init_crossbars(bb, frames_per_packet=1, cb1_lanes=16, cb1_bins=1, cb2_lanes=4, cb2_bins=1, cb2_bypass=0)
+
+    # set-up receivers
+    for i,bb in enumerate(c):
+        # Disable all receivers for which there are no transmitters
+        for i,gtx in enumerate(bb.fpga.BP_SHUFFLE.gtx):
+            rx = (bb.slot_number+1, i+1)
+            tx = icecore.icebox.IceBox.get_matching_tx(rx)
+            if tx in tx_list:
+                print '%s is receiving from %s' % (rx, tx)
+                gtx.USER_GTRXRESET = 0
+            else:
+                print '%s has no corresponding transmitter' % (rx,)
+                gtx.USER_GTRXRESET = 1
+                gtx.USER_RESET = 1
+
+        bb.fpga.CROSSBAR2.SOF_WINDOW_STOP = 100
+        bb.fpga.BP_SHUFFLE.reset_rx_equalizers()
+        bb.fpga.REFCLK.sync() # needed
+
+    sync_board.fpga.REFCLK.sync()
+
+# r.fpga.CROSSBAR2[0].print_frame_info()
+
+
+
+# crx=b[0]
+# cb1=crx.fpga.CROSSBAR
+# cb2=crx.fpga.CROSSBAR2
+# bp=crx.fpga.BP_SHUFFLE
+# rx1=bp.gtx[0]
+# rx2=bp.gtx[1]
+# rx3=bp.gtx[2]
+# gpu=crx.fpga.GPU
+# bs2=cb2[0]
