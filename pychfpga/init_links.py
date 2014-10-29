@@ -1,5 +1,6 @@
 import numpy as np
 import struct
+import time
 import icecore.icebox
 
 def init_crossbars(ib, frames_per_packet=3, cb1_lanes=16, cb1_bins=64, cb2_lanes=8, cb2_bins=1, cb2_bypass=False, bp_bypass=1):
@@ -26,7 +27,7 @@ def init_crossbars(ib, frames_per_packet=3, cb1_lanes=16, cb1_bins=64, cb2_lanes
     for (i, bs) in enumerate(cb1):
         bs.GROUP_FRAMES = frames_per_packet
         bs.NUMBER_OF_LANES = cb1_lanes
-        bs.select_bins(np.arange(cb1_bins) * cb1_minimum_bin_spacing + i)
+        bs.select_bins(np.arange(cb1_bins) * cb1_minimum_bin_spacing + i*0)
     #cb1.configure(cb1_bins)
 
     for (i, bs) in enumerate(cb2):
@@ -35,7 +36,7 @@ def init_crossbars(ib, frames_per_packet=3, cb1_lanes=16, cb1_bins=64, cb2_lanes
         bs.NUMBER_OF_LANES = cb2_lanes
         bs.NUMBER_OF_BINS_PER_FRAME = cb1_bins
         bs.NUMBER_OF_WORDS_PER_BIN = cb1_lanes/4
-        bs.select_bins(np.arange(cb2_bins) * cb2_minimum_bin_spacing + i)
+        bs.select_bins(np.arange(cb2_bins) * cb2_minimum_bin_spacing + i*0)
     #cb2.configure(cb2_bins)
 
     header_size = 16
@@ -121,7 +122,7 @@ def get_gpu_data(node_number, dna_number):
     return result
 
 
-def shuffle_init(c, sync_board):
+def shuffle_init(c, sync_board, remap=False):
 
     tx_list=[]
 
@@ -141,8 +142,12 @@ def shuffle_init(c, sync_board):
             cb.STREAM_ID = ((bb.slot_number+1)<<4) + j
         # Make the board respond to SYNC triggers from the backplane
         bb.fpga.REFCLK.SLAVE=1
+
+        if remap:
+            bb.fpga.CROSSBAR2.set_lane_map(compute_lane_map(bb))
+
         # Initialize the crossbars to select and send data in a specific format
-        init_crossbars(bb, frames_per_packet=1, cb1_lanes=16, cb1_bins=1, cb2_lanes=4, cb2_bins=1, cb2_bypass=0)
+        init_crossbars(bb, frames_per_packet=1, cb1_lanes=16, cb1_bins=1, cb2_lanes=2, cb2_bins=2, cb2_bypass=1)
 
     # set-up receivers
     for i,bb in enumerate(c):
@@ -156,7 +161,7 @@ def shuffle_init(c, sync_board):
             else:
                 print '%s has no corresponding transmitter' % (rx,)
                 gtx.USER_GTRXRESET = 1
-                gtx.USER_RESET = 1
+                # gtx.USER_RESET = 1
 
         bb.fpga.CROSSBAR2.SOF_WINDOW_STOP = 100
         bb.fpga.BP_SHUFFLE.reset_rx_equalizers()
@@ -165,8 +170,36 @@ def shuffle_init(c, sync_board):
     sync_board.fpga.REFCLK.sync()
 
 # r.fpga.CROSSBAR2[0].print_frame_info()
+def compute_lane_map(c):
+    lane_map = np.zeros(16, dtype=np.int8)
+    for i in range(16):
+        rx = (c.slot_number+1, i)
+        tx = icecore.icebox.IceBox.get_matching_tx(rx)
+        print '%s is receiving from %s' % (rx, tx)
+        lane_map[tx[0]-1] = i
+    return lane_map
 
+def test_sync(c, sync_board):
+    sync_ctr = np.zeros(len(c), dtype=int)
+    for i,bb in enumerate(c):
+        bb.fpga.REFCLK.SLAVE=1
+        sync_ctr[i] = bb.fpga.REFCLK.SYNC_CTR
 
+    fail=0
+    for test_number in range(10):
+        print 'Trial # %i: Sending SYNC pulse from Solt %02i (Iceboard SN%i)' % (test_number+1, sync_board.slot_number+1, sync_board.serial_number)
+        sync_board.fpga.REFCLK.sync()
+        for i,bb in enumerate(c):
+            new_sync_ctr = bb.fpga.REFCLK.SYNC_CTR 
+            diff = (new_sync_ctr - sync_ctr[i]) & 0xF
+            sync_ctr[i] = bb.fpga.REFCLK.SYNC_CTR
+            fail += bool(diff!=1)
+            print '    Slot %02i (Iceboard SN%02i): Sync counter = %2i, diff = %2i => %s' % (bb.slot_number+1, bb.serial_number, new_sync_ctr, diff, ('FAILED!', 'PASS')[bool(diff==1)])
+        time.sleep(0.2)
+    if fail:
+        print 'SYNC Test has FAILED!'
+    else:
+        print 'SYNC Test has PASSED!'
 
 # crx=b[0]
 # cb1=crx.fpga.CROSSBAR

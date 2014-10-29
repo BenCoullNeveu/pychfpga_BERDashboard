@@ -199,6 +199,7 @@ class GTX(Module_base):
         # self.fpga = fpga
         self.logger = logging.getLogger(__name__)
         super(self.__class__, self).__init__(fpga_instance, base_address, instance_number)
+        self._lock()
 
     def init(self):
         """ Initializes the GTX CHANNEL block"""
@@ -211,8 +212,8 @@ class GTX(Module_base):
         self.logger.info('--- GPU GTX CHANNEL %i ' % self.instance_number)
 
     def get_rxdata(self):
-        self.CAPTURE_EN=1
-        self.CAPTURE_EN=0
+        self.CAPTURE_ENABLE=1
+        self.CAPTURE_ENABLE=0
         return self.RXDATA
 
     def configure(self):

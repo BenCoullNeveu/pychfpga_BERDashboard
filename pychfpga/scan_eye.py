@@ -331,19 +331,20 @@ def scan_links(array, tx_power=7):
 
     print 'Setting Transmitted ID'
     for ib in array:
+    	ib.fpga.BP_SHUFFLE.TX_DATA_MSB = 0xFF00 + ib.slot_number
         for lane,g in enumerate(ib.fpga.BP_SHUFFLE.gtx):
-            g.SOURCE_SEL=0 # 0:Send TXDATA , 1: SEND 10G Ethernet test packet
+            g.SOURCE_SEL=1 # 0:Send TXDATA , 1: SEND 10G Ethernet test packet
             g.LOOPBACK = 0
-            g.TXPOLARITY=0
-            g.RXPOLARITY=0
+            #g.TXPOLARITY=0
+            #g.RXPOLARITY=0
             g.TXPRBSSEL=0
             g.RXPRBSSEL=0
-            g.SCRAMBLE_EN=1
-            g.DESCRAMBLE_EN=1
+            #g.SCRAMBLE_EN=1
+            #g.DESCRAMBLE_EN=1
             g.TXDIFFCTRL = tx_power
-            g.TXDATA = 0xFFFF0000 + ib.slot_number*256 + lane
+            g.TX_DATA_LSB = lane
             g.TXHEADER=1
-            g.CAPTURE_EN = 1
+            g.CAPTURE_ENABLE = 1
             g.TXPRECURSOR = 0b00000 #DFE cannot compensate pre-cursor
             g.TXPOSTCURSOR = 0b00000
             g.RXMONITORSEL = 1 # 1=AGC, 2=UL, 3=VP loop

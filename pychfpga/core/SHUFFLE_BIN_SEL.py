@@ -37,10 +37,12 @@ class SHUFFLE_BIN_SEL_base(Module_base):
 
     # Status bitfields
     FIFO_EMPTY               = BitField(STATUS, 0, 7, doc="Active high when the data FIFO is empty")
-    FIFO_OVERFLOW            = BitField(STATUS, 0, 6, doc="Active high if any fo the data FIFO has overflowed since the last time the flag was cleared with FIFO_OVERFLOW_RESET")
     IS_RESET                 = BitField(STATUS, 0, 5, doc="High when the module reset line is active")
     COMBINE_DATA_FLAGS       = BitField(STATUS, 0, 4, doc="Active high if this crossbar is configured to pack the data flags two by two. This is used for the 2nd crossbar, where the incoming data flags occupy only 16 bits of the words.")
+    FLAGS_FIFO_OVERFLOW      = BitField(STATUS, 0, 3, doc="Active high if the flags FIFO has overflowed since the last time the flag was cleared with FIFO_OVERFLOW_RESET")
     HEADER_CAPTURE_DATA      = BitField(STATUS, 1, 0, width=8, doc="")
+
+    FIFO_OVERFLOW            = BitField(STATUS, 3, 0, width=16, doc="Active high if any fo the data FIFO has overflowed since the last time the flag was cleared with FIFO_OVERFLOW_RESET")
     # TIMESTAMP_CAPTURE        = BitField(STATUS, 4, 0, width=16, doc="")
     # IN_FRAME_CTR             = BitField(STATUS, 0x02, 0, width=8, doc="Number of frames received on lane 0 before the alignment FIFOs. Rolls over.")
     # LANE_CTR                = BitField(STATUS, 0x04, 0, width=4, doc="Debug")
@@ -113,9 +115,16 @@ class SHUFFLE_BIN_SEL_base(Module_base):
         self.HEADER_CAPTURE_EN=0
         ts=[]
         sid=[]
+
+        self.HEADER_CAPTURE_DATA_SEL=0
         for i in range(16):
-            self.HEADER_CAPTURE_SEL=i
-            sid.append(self.STREAM_ID_CAPTURE)
-            ts.append(self.TIMESTAMP_CAPTURE)
+            self.HEADER_CAPTURE_LANE_SEL=i
+            sid.append(self.HEADER_CAPTURE_DATA)
+
+        self.HEADER_CAPTURE_DATA_SEL=1
+        for i in range(16):
+            self.HEADER_CAPTURE_LANE_SEL=i
+            ts.append(self.HEADER_CAPTURE_DATA)
+
         for i in range(len(ts)):
             print 'Lane %02i: Stream ID=%04x, Frame = %04x (delta = %i)' % (i, sid[i], ts[i], ts[i]-ts[0])
