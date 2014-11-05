@@ -19,7 +19,7 @@ ext_chrx = Extension("chrx",
                     "chrx/fpga_acq.c", "chrx/frame.c", \
                     "chrx/gpu_acq.c", "chrx/util.c"],
                    include_dirs = ['/opt/anaconda/include'],
-                   libraries = ["hdf5", "hdf5_hl", "m", "pthread"]),
+                   libraries = ["hdf5", "hdf5_hl", "m", "pthread"],
                    library_dirs = ['/opt/anaconda/lib'])
 
 

@@ -189,7 +189,8 @@ if __name__ == '__main__':
       r = chFPGA_receiver.chFPGA_receiver(cc.fpga.get_config(), ip_address=cc.fpga_ip_addr, port=cc.fpga_port_number+1, host_ip = conf["fpga"]["host_ip"])
       test = test_adc_analog_histogram(cc.fpga, r)
       test.execute(args.output_name)
+      print cc.fpga.get_temperatures()
       r.close()
       #[r.close() for r in rs]
       cc.fpga.close()
-    close_all_sessions()
+    close_all_sockets()
