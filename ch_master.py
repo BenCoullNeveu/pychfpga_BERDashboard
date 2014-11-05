@@ -100,6 +100,10 @@ def get_fpga_hk(fpga, field):
 
   return ret
 
+# Backplane serial number---eventually this should be queried directly from the
+# hardware!
+crate_sn = "K7BP16-0004"
+
 # Dictionary of correlators.
 correlator_hash = {"stone"        : ["0001"],
                    "abbot"        : ["0003"],
@@ -136,7 +140,7 @@ fpga_hk_field = {      "core_temp" : "deg C",
 
 # Current archive format version. Prefixed by "NT_" to signify that these data
 # do not have the time-transpose completed.
-archive_version = "NT_2.0.0"
+archive_version = "NT_2.1.0"
 
 if __name__ == "__main__":
   # Set up logger.
@@ -412,8 +416,7 @@ if __name__ == "__main__":
   acq.add_header_item("notes", args.notes)
 
   # Start the acquisition.
-  acq.start(acq_base_dir, ["%d" % fpga_conf["motherboard_serial"]], \
-            fpga_conf["adc_serial"])
+  acq.start(acq_base_dir, crate_sn, int(conf["fpga"]["subarray"]))
 
   try:
     while True:

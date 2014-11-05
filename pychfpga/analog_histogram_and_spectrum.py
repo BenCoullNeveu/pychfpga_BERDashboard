@@ -8,7 +8,8 @@ import numpy as np
 import matplotlib
 matplotlib.use('Agg')
 import time, pylab, csv
-
+from validate import Validator
+from configobj import *
 
 class test_adc_analog_histogram:
     '''
@@ -82,7 +83,8 @@ if __name__ == '__main__':
     import argparse
     import logging
     from pychfpga import save_raw_frames
-
+    from pychfpga.icecore.icearray import IceArray, close_all_sockets
+    from pychfpga.icecore.iceboard import IceBoard
     from pychfpga.core.chFPGA_controller import chFPGA_controller as ChimeFpgaFirmware
     from pychfpga.core import chFPGA_receiver
     ADC_DELAY_TABLE= (
@@ -107,17 +109,25 @@ if __name__ == '__main__':
     parser = argparse.ArgumentParser(description=__doc__.split('\n')[0]) # description is the first line of the docstring
     # parser.add_argument('-g', '--group_frames', action = 'store', type=int, default=4, help='Number of frames to group before sending to the GPU or FPGA correlator. The total size of the frame, including the header and ethernet obverhead, cannot exceed 8 kibytes.')
     # parser.add_argument('--enable_gpu_link', action = 'store', type=int, default=0, help='Enables the GPU link transmission')
-    parser.add_argument('--ip', action = 'store', type=str, default='10.10.10.11', help='IP address of the board')
-    parser.add_argument('--host_ip', action = 'store', type=str, default=None, help='IP address of adapter through which the connection to the FPGA will be established. If not specified, the controller will attempt to identify the proper host based on the FPGA IP address.')
-    parser.add_argument('-l', '--log_level', action = 'store', type =  str, default = 'info', help = 'Log level: accpets either "debug" or "info" (default).')
+    parser.add_argument('--force', action = 'store', type=int, default=0, help='Forces reprogramming of the FPGAs even if they are already programmed')
+    parser.add_argument('--bitfile', action = 'store', type=str, default= '../chfpga/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit',  help='Filename of the bitfile used to to program the FPGAs')
+    #parser.add_argument('-s', '--subarray', action = 'store', nargs='+', type=int, help='Space-separated list of subarrays to include')
+    parser.add_argument('-l', '--log_level', action = 'store', type =  str, default = 'debug', help = 'Log level: accpets either "debug" or "info" (default).')
     parser.add_argument('-n', '--output_name', action = 'store', type = str, default = 'adc_data_test', help = 'Naming of output files without extension')
+    parser.add_argument("-c", "--conf_file", action = "store", \
+                      default = "ch_master.conf", \
+                      help = "Configuration file.")
+    parser.add_argument("-s", "--spec_file", action = "store", \
+                      default = "ch_master.spec", \
+                      help = "Configuration file specifications.")
     args = parser.parse_args()
     
     log_level = {'info': logging.INFO, 'debug': logging.DEBUG}[args.log_level]
-    logging.basicConfig(level=log_level, format='%(asctime)s %(name)-32s %(levelname)-10s : %(message)s')
-    logging.getLogger('sqlalchemy.engine.base.Engine').setLevel(logging.WARN)
+    logger = logging.getLogger('')
+    logger.setLevel(log_level)
+    handler = logging.FileHandler('histogram_and_analog_testing.log')
+    logger.addHandler(handler)
 
-    logger = logging.getLogger(__name__)
     logger.info('------------------------')
     logger.info('analog_input_test.py: chFGPA test script')
     logger.info('------------------------')
@@ -125,23 +135,61 @@ if __name__ == '__main__':
     for (key,value) in args.__dict__.items():
         logger.info('   %s = %s' % (key, repr(value)))
 
-    c = ChimeFpgaFirmware(ip_address=args.ip, \
-        port_number=41000, adc_delay_table=ADC_DELAY_TABLE, init=1, \
-        sampling_frequency=800 * 1e6, \
-        reference_frequency=10e6, data_width=8, \
-        group_frames=2, \
-        enable_gpu_link = 0, \
-        host_ip = args.host_ip) # pylint: disable=C0103
+    val_conf = Validator()
+    conf = ConfigObj(args.conf_file, configspec = args.spec_file)
+    ret = conf.validate(val_conf, preserve_errors = True)
+    # Build up the adc_delay_table.
+    n = int(conf["n_antenna"])
+    adc_delay = []
+    for i in range(n):
+      name = "ch%02d" % i
+      tmp_delay = []
+      if not name in conf["fpga"]["adc_delay"]:
+        log.critical("Could not find fpga.adc_delay.%s entry in configuration " \
+                   "file." % (name))
+        exit()
+      else:
+        this_chan = conf["fpga"]["adc_delay"][name]
+      for j in range(len(this_chan)):
+        k = int(this_chan[j])
+        tmp_delay.append(k)
+      if len(tmp_delay) != 16:
+        log.critical("Entry fpga.adc_delay.%s needs 16 integer entries." % \
+                   (name))
+        exit()
+      adc_delay.append((tmp_delay[:8],tmp_delay[8:]))
+    ca = IceArray(uri=conf["fpga"]["db_file"], interface_ip_addr=conf["fpga"]["host_ip"])
+    # Might want to move the list somewhere else/into conf file?
+    ca.load_iceboards('/home/chime/ch_acq/pychfpga/iceboard_list.txt')
+    ca.discover()
+    bitfile_filename = conf["fpga"]["bitfile_name"]
+    fpga_bitstream = ca.get_fpga_bitstream(bitfile_filename, ChimeFpgaFirmware)
+    c = ca.get_iceboards(subarray=[conf["fpga"]["subarray"]]).index_by(IceBoard.serial_number)
+    c.set_fpga_firmware(fpga_bitstream, force=args.force)
+    c.open( \
+        adc_delay_table=adc_delay, \
+        init=1, \
+        sampling_frequency=conf["fpga"]["samp_freq"] * 1e6, \
+        reference_frequency=conf["fpga"]["ref_freq"], \
+        data_width=8, \
+        group_frames=conf["fpga"]["group_frames"], \
+        enable_gpu_link = 0)
+    for cc in c:
+      cc.fpga.GPU.LINK_ENABLE=1
+    c.fpga.set_corr_reset(1)
+    time.sleep(0.1)
+    c.fpga.set_corr_reset(0)
    
-
-    print 'ADC 00', c.adc_board[0].ADC[0].get_temperature()
-    print 'ADC 01', c.adc_board[0].ADC[1].get_temperature()
-    print 'ADC 10', c.adc_board[1].ADC[0].get_temperature()
-    print 'ADC 11', c.adc_board[1].ADC[1].get_temperature()
-    #rs = [chFPGA_receiver.chFPGA_receiver(c_element.fpga.get_config(), ip_address=c_element.fpga_ip_addr, port=c_element.fpga_port_number+1, host_ip = '10.10.10.83') for c_element in c]
-
-    r = chFPGA_receiver.chFPGA_receiver(c.get_config(), ip_address=args.ip, port=41001, host_ip = args.host_ip)
-    test = test_adc_analog_histogram(c, r)
-    test.execute(args.output_name)
-    r.close()
-    #[r.close() for r in rs]
+    for cc in c:
+      print 'ADC 00', cc.fpga._adc_board[0].ADC[0].get_temperature()
+      print 'ADC 01', cc.fpga._adc_board[0].ADC[1].get_temperature()
+      print 'ADC 10', cc.fpga._adc_board[1].ADC[0].get_temperature()
+      print 'ADC 11', cc.fpga._adc_board[1].ADC[1].get_temperature()
+      #rs = [chFPGA_receiver.chFPGA_receiver(c_element.fpga.get_config(), ip_address=c_element.fpga_ip_addr, port=c_element.fpga_port_number+1, host_ip = '10.10.10.83') for c_element in c]
+      r = chFPGA_receiver.chFPGA_receiver(cc.fpga.get_config(), ip_address=cc.fpga_ip_addr, port=cc.fpga_port_number+1, host_ip = conf["fpga"]["host_ip"])
+      test = test_adc_analog_histogram(cc.fpga, r)
+      test.execute(args.output_name)
+      r.close()
+      #[r.close() for r in rs]
+      cc.fpga.close()
+    close_all_sessions()
