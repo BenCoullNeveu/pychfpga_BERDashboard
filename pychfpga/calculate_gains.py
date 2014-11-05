@@ -169,7 +169,7 @@ def calculate_gains(c,r):
         glin_final = fourier_filter(gain[channel][1][0])
         gain[channel][1][0] = glin_final.tolist()
     c.set_gain(gain)
-    output = open('gains_'+str(c.GPIO.FPGA_SERIAL_NUMBER)+'.pkl','wb')
+    output = open('/home/chime/ch_acq/gains_'+str(c.GPIO.FPGA_SERIAL_NUMBER)+'.pkl','wb')
     pickle.dump(gain, output)
     print "Scaler Gain set and saved"
 
