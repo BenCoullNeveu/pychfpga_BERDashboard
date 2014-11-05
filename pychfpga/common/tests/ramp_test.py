@@ -47,10 +47,10 @@ class test_adc_ramp_histogram(test_BaseClass):
         writer = csv.writer(infocsv)
         for i in xrange(16):
             xored = np.bitwise_xor(datas[:,i,:], perfect_ramp)
-            for bit in range(8):
-                bad_bit = np.mean(np.bitwise_and(xored, bits[bit]))/bits[bit]
-                writer.writerow([i, bit, bad_bit])
-                print 'chan {0}, bit {1}, error rate {2:.3f}'.format(i, bit, bad_bit)
+            for j,bit in enumerate(bits):
+                bad_bit = (np.bitwise_and(xored, bit)>>i).sum()*1.0/len(xored.flatten())
+                writer.writerow([i, j, bad_bit])
+                print 'chan {0}, bit {1}, error rate {2:.3f}'.format(i, j, bad_bit)
 
 
 
