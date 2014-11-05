@@ -534,7 +534,7 @@ def load(session, filename):
     keymap = dict(iceboards.values(IceBoard.serial_number, IceBoard.pk)) # get a dictionnary that maps the serial number to primary keys
 
     with open(filename, 'rb') as file:
-        reader = csv.reader((line for line in file if not line.lstrip().startswith('#'))) # uses a generator to trip the comments
+        reader = csv.reader((line.split('#')[0].rstrip() for line in file if line.split('#')[0].strip())) # uses a generator to strip the comments
         for (serial_number, tuber_uri, arm_serial_number, fpga_ip_addr, fpga_serial_number, locked, subarray) in reader:
             serial_number = int(serial_number, 0)
             tuber_uri = tuber_uri.strip("' ")

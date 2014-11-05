@@ -111,20 +111,24 @@ class SHUFFLE_BIN_SEL_base(Module_base):
 
     def print_frame_info(self):
         bs = self
-        self.HEADER_CAPTURE_EN=1
-        self.HEADER_CAPTURE_EN=0
         ts=[]
         sid=[]
 
+        # get 8 bits of stream ID
         self.HEADER_CAPTURE_DATA_SEL=0
+        self.HEADER_CAPTURE_EN=1
+        self.HEADER_CAPTURE_EN=0
         for i in range(16):
             self.HEADER_CAPTURE_LANE_SEL=i
             sid.append(self.HEADER_CAPTURE_DATA)
 
+        # get lsb of timestamp
         self.HEADER_CAPTURE_DATA_SEL=1
+        self.HEADER_CAPTURE_EN=1
+        self.HEADER_CAPTURE_EN=0
         for i in range(16):
             self.HEADER_CAPTURE_LANE_SEL=i
             ts.append(self.HEADER_CAPTURE_DATA)
 
         for i in range(len(ts)):
-            print 'Lane %02i: Stream ID=%04x, Frame = %04x (delta = %i)' % (i, sid[i], ts[i], ts[i]-ts[0])
+            print 'Lane %02i: Stream ID=0x%02x, Frame = 0x%02x (delta = %i)' % (i, sid[i], ts[i], ts[i]-ts[0])

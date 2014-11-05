@@ -22,7 +22,7 @@ class FUNCGEN_base(Module_base):
     STATUS = BitField.STATUS
 
     FUNCTION_NAMES = {
-        'zero' : 0, # All bytes are zero
+        '4bit_split_ramp' : 0, # Generates 0x0000, 0x0010, 0x0020, .. 0x00F0, 0x1000, 0x1010 ...
         'a' : 1, # All bytes are Byte A
         'b' : 2, # All bytes are Byte B
         'ab' : 3, # Bytes alternate between A and B.

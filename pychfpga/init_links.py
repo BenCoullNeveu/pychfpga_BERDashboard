@@ -27,7 +27,10 @@ def init_crossbars(ib, frames_per_packet=3, cb1_lanes=16, cb1_bins=64, cb2_lanes
     for (i, bs) in enumerate(cb1):
         bs.GROUP_FRAMES = frames_per_packet
         bs.NUMBER_OF_LANES = cb1_lanes
-        bs.select_bins(np.arange(cb1_bins) * cb1_minimum_bin_spacing + i*0)
+        tx = (ib.slot_number+1, i)
+        destination_slot = icecore.icebox.IceBox.get_matching_rx(tx)[0]
+        bs.select_bins(np.arange(cb1_bins) * cb1_minimum_bin_spacing + (destination_slot-1))
+        # bs.select_bins(np.arange(800))
     #cb1.configure(cb1_bins)
 
     for (i, bs) in enumerate(cb2):
@@ -36,7 +39,7 @@ def init_crossbars(ib, frames_per_packet=3, cb1_lanes=16, cb1_bins=64, cb2_lanes
         bs.NUMBER_OF_LANES = cb2_lanes
         bs.NUMBER_OF_BINS_PER_FRAME = cb1_bins
         bs.NUMBER_OF_WORDS_PER_BIN = cb1_lanes/4
-        bs.select_bins(np.arange(cb2_bins) * cb2_minimum_bin_spacing + i*0)
+        bs.select_bins(np.arange(cb2_bins) * cb2_minimum_bin_spacing + i)
     #cb2.configure(cb2_bins)
 
     header_size = 16
@@ -93,7 +96,7 @@ def get_gpu_data(node_number, dna_number):
         if line.startswith('Packet'):
             break
         split_line = line.lstrip().split(' ')
-        print split_line
+        # print split_line
         d += [int(c,16) for c in split_line[2:2+min(len(split_line)-2, 16)] if c]
     result=GpuData()
     result.ethernet_packet_size = len(d)
@@ -122,7 +125,7 @@ def get_gpu_data(node_number, dna_number):
     return result
 
 
-def shuffle_init(c, sync_board, remap=False):
+def shuffle_init(c, sync_board, remap=False, frames_per_packet=1, cb1_lanes=4, cb1_bins=16, cb2_lanes=2, cb2_bins=1, cb2_bypass=0):
 
     tx_list=[]
 
@@ -134,20 +137,26 @@ def shuffle_init(c, sync_board, remap=False):
         bb.fpga.set_data_source('funcgen')
         # set all analog inputs to send the (slot_number, analog input) complex number on every bin
         for j in range(len(bb.fpga.ANT)):
-            bb.fpga.set_funcgen_function('ab', a=(bb.slot_number+1)<<4, b=j<<4, channels=[j])
+            # bb.fpga.set_funcgen_function('ab', a=(bb.slot_number+1-1)<<4, b=j<<4, channels=[j])
+            bb.fpga.set_funcgen_function('4bit_split_ramp')
 
         # set the stream ID of every transmitter to (slot_number, analog input) complex number on every bin
         for j,cb in enumerate(bb.fpga.CROSSBAR):
-            tx_list.append((bb.slot_number+1, j))
-            cb.STREAM_ID = ((bb.slot_number+1)<<4) + j
+            cb.STREAM_ID = bb.slot_number+1-1
+
+        for j,cb in enumerate(bb.fpga.CROSSBAR2):
+            cb.STREAM_ID = bb.slot_number+1-1
         # Make the board respond to SYNC triggers from the backplane
         bb.fpga.REFCLK.SLAVE=1
+
+        for j,gtx in enumerate(bb.fpga.BP_SHUFFLE.gtx):
+            tx_list.append((bb.slot_number+1, j+1))
 
         if remap:
             bb.fpga.CROSSBAR2.set_lane_map(compute_lane_map(bb))
 
         # Initialize the crossbars to select and send data in a specific format
-        init_crossbars(bb, frames_per_packet=1, cb1_lanes=16, cb1_bins=1, cb2_lanes=2, cb2_bins=2, cb2_bypass=1)
+        init_crossbars(bb, frames_per_packet=frames_per_packet, cb1_lanes=cb1_lanes, cb1_bins=cb1_bins, cb2_lanes=cb2_lanes, cb2_bins=cb2_bins, cb2_bypass=cb2_bypass)
 
     # set-up receivers
     for i,bb in enumerate(c):
@@ -187,10 +196,10 @@ def test_sync(c, sync_board):
 
     fail=0
     for test_number in range(10):
-        print 'Trial # %i: Sending SYNC pulse from Solt %02i (Iceboard SN%i)' % (test_number+1, sync_board.slot_number+1, sync_board.serial_number)
+        print 'Trial # %i: Sending SYNC pulse from Slot %02i (Iceboard SN%i)' % (test_number+1, sync_board.slot_number+1, sync_board.serial_number)
         sync_board.fpga.REFCLK.sync()
         for i,bb in enumerate(c):
-            new_sync_ctr = bb.fpga.REFCLK.SYNC_CTR 
+            new_sync_ctr = bb.fpga.REFCLK.SYNC_CTR
             diff = (new_sync_ctr - sync_ctr[i]) & 0xF
             sync_ctr[i] = bb.fpga.REFCLK.SYNC_CTR
             fail += bool(diff!=1)
@@ -201,6 +210,13 @@ def test_sync(c, sync_board):
     else:
         print 'SYNC Test has PASSED!'
 
+def check_gpu_data(nodes):
+    if isinstance(nodes,int):
+        nodes=[nodes]
+    for node in nodes:
+        for port in range(8):
+            errors=np.sum( np.array(get_gpu_data(node,port).data[:256])!=np.arange(256))
+            print 'GPU Node %2i port %2i has %i error(s)' % (node, port, errors)
 # crx=b[0]
 # cb1=crx.fpga.CROSSBAR
 # cb2=crx.fpga.CROSSBAR2
@@ -210,3 +226,41 @@ def test_sync(c, sync_board):
 # rx3=bp.gtx[2]
 # gpu=crx.fpga.GPU
 # bs2=cb2[0]
+def print_frame_info(self):
+        bs = self
+        ts=[]
+        sid=[]
+
+        # get 8 bits of stream ID
+        self.HEADER_CAPTURE_DATA_SEL=0
+        self.HEADER_CAPTURE_EN=1
+        self.HEADER_CAPTURE_EN=0
+        for i in range(16):
+            self.HEADER_CAPTURE_LANE_SEL=i
+            sid.append(self.HEADER_CAPTURE_DATA)
+
+        # get lsb of timestamp
+        self.HEADER_CAPTURE_DATA_SEL=1
+        self.HEADER_CAPTURE_EN=1
+        self.HEADER_CAPTURE_EN=0
+        for i in range(16):
+            self.HEADER_CAPTURE_LANE_SEL=i
+            ts.append(self.HEADER_CAPTURE_DATA)
+
+        for i in range(len(ts)):
+            print 'Lane %02i: Stream ID=0x%02x, Frame = 0x%02x (delta = %i)' % (i, sid[i], ts[i], ts[i]-ts[0])
+
+def reopen(boards, bitstream):
+    for ib in boards:
+        if ib.is_open():
+            print 'IceBoard SN%i (Slot #%i) is already opened' % (ib.serial_number, ib.slot_number+1)
+        else:
+            while not ib.is_open():
+                print 'Trying to open IceBoard SN%i ' % (ib.serial_number)
+                try:
+                    ib.set_fpga_firmware(bitstream, force=1)
+                    ib.open()
+                    print 'IceBoard SN%i (Slot #%i) is now opened' % (ib.serial_number, ib.slot_number+1)
+                    break
+                except:
+                    print 'Failed to open IceBoard SN%i. Retrying' % (ib.serial_number)
