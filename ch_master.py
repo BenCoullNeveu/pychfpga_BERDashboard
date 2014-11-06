@@ -339,6 +339,9 @@ if __name__ == "__main__":
         except KeyError:
           log.critical("Could not find key \"adc_serial\" in FPGA configuration.")
         exit()
+  else:
+      time_str = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+      corr_name = "NoFGPA_information"
 
   acq_base_dir = "%s/%s_%s_corr" % (conf["acq"]["base_path"], time_str, \
                                    corr_name)
