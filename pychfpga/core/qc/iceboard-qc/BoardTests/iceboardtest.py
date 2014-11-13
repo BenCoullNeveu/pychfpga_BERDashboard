@@ -12,6 +12,8 @@ import programFPGA
 import FPGAtest
 import GTXtest
 import rampTest
+import testFail
+import traceback
 from statusReport import EMPTY_TEST_STATUS
 from date_format import date_format
 
@@ -75,9 +77,15 @@ def starttest():
 
     print "Do you wish to proceed to testing?"
     choose = raw_input("Enter ('Y' or 'N'):  ")
-
+    
     if choose == 'Y' or choose == 'y':
-        choosetest(username,board_sn,board_vn,board_md, testStatus)
+        try:
+            choosetest(username,board_sn,board_vn,board_md,testStatus)
+        except:
+            print("\nSomething went wrong\n")
+            traceback.print_exc()
+            testFail.genericFail(username,board_sn,board_vn,board_md,testStatus)
+        
 
 '''        
 def date_format(date):
