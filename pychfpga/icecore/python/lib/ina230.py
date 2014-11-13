@@ -57,6 +57,7 @@ class ina230(object):
                         
         self.write('CONF', 0x8000, mask=0x8000) # Generating system reset
         self.write('CAL', self.cal) # Writing calibration value to CAL register to read current and power
+        self.write('CONF',0x4F27 )
 
     def select(self):
         """
@@ -114,9 +115,7 @@ class ina230(object):
         """ 
         Reads value from V_SHUNT register and returns the corresponding shunt voltage in Volts
         """ 
-        vshunt = self.read(self.REGISTER_TABLE['V_SHUNT'])
-        if vshunt >= (1<<15): # vshunt is negative
-            vshunt = vshunt-(1<<16)
+        vshunt = np.int16(self.read(self.REGISTER_TABLE['V_SHUNT']))
                                   
         return vshunt*self.v_shunt_lsb                
         
@@ -124,9 +123,7 @@ class ina230(object):
         """ 
         Reads value from CURRENT register and returns the corresponding current in Amps
         """  
-        current = self.read(self.REGISTER_TABLE['CURRENT'])
-        if current >= (1<<15): # current is negative
-            current = current-(1<<16)   
+        current = np.int16(self.read(self.REGISTER_TABLE['CURRENT']))
                            
         return current*self.current_lsb                        
         
