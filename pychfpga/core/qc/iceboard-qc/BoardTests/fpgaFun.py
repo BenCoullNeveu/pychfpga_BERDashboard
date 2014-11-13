@@ -2,29 +2,58 @@
 Set of functions used in iceboard qc script to program and test the FPGA.
 '''
 
-def programFpga(ch_acq_path, ip, bitfile_path = "fpga_bitfile.bit"):
+def programFpga(ch_acq_path, host_ip, board_sn,  bitfile_path = "fpga_bitfile.bit"):
     import logging
     import sys
     # Append ch_acq to PATH
     sys.path.append(ch_acq_path)
-    from pychfpga.arm import ARM
+    
+    # Import icecore dependencies
+    from icecore import hardware_map
+    from icecore.icearray import IceArray, close_all_sockets
+    from icecore.fpgabitfile import FpgaBitFile
+    from icecore.iceboard import IceBoard
+    from core.chFPGA_controller import chFPGA_controller
+    from pychfpga.core import chFPGA_receiver
+    from pychfpga.core import Inject_tools as inj
 
     # Bitfile path from chFPGA. Left here for reference, now that a bitfile is included in iceboard-qc.
     # filename = "../../chFPGA/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit"
     
     # Set log
     log_level = logging.INFO
-    logger = logging.getLogger(__name__)
     logging.basicConfig(level=log_level, format='%(asctime)s %(name)-32s %(levelname)-10s : %(message)s')
-    logger.info('------------------------')
-    logger.info('ARM processor method')
-    logger.info('J.-F. Cliche')
-    logger.info('------------------------')
+    logging.getLogger('sqlalchemy.engine.base.Engine').setLevel(logging.WARN)
+    logger = logging.getLogger(__name__)
+    logger = logging.getLogger(__name__)
     logger.info('Using IP address %s' % ip)
-    a = ARM(ip)
-    logging.basicConfig(level=log_level)
-    # Program FPGA
-    a.configure_fpga(bitfile_path)
+    
+    close_all_sockets() # close any previously opened sockets
+    try:
+        logger.info('Deleting previous chFPGA instances in current namespace')
+        r.close() # close sockets from previous objects to free them for the new one
+        del r
+    except NameError:
+        pass
+    
+    # Close all previous sessions with the layout/hardware map database
+    IceArray.close_all_sessions()
+
+    # Create the array object and update the hardware database from a file and from auto-discovery
+    array = IceArray(uri='sqlite:///test.db', interface_ip_addr=host_ip)
+    array.load_iceboards('iceboard_list.txt') # update iceboard definitions in database with the data in this CSV file so we can start with an empty database if needed
+    array.discover() # automatically update the hardware map database with discovered resources. This will probe the boards and will update the 'present' field.
+
+    # Load in memory the CHIME firmware to be used with the iceboards
+    fpga_bitstream = FpgaBitFile(bitfile_path)
+
+    # Query the database for iceboard with given serial number
+    c = array.get_iceboards(serial_number=int(board_sn)).one()
+
+    # Program the iceboard with the specified firmware and assiciate it with the corresponding Python handler class
+    # (if the FPGA  is already programmed, this will be instantaneous)
+    c.set_fpga_firmware(fpga_bitstream, chFPGA_controller, configure_fpga=True, force=True)
+    return c
     
 def top_test(ch_acq_path, host_ip): # adpated from pychfpga/top_test
     '''
