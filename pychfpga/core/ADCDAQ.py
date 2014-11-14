@@ -1,9 +1,9 @@
 #!/usr/bin/python
 # Disable pylint Line too long (=C0301)
-# pylint: disable=C0301 
+# pylint: disable=C0301
 
 """
-ADCDAQ.py module 
+ADCDAQ.py module
  Implements the interface to the ADC data acquisition module
 
 History:
@@ -54,6 +54,7 @@ class ADCDAQ_base(Module_base):
 
         'CAPTURE2_PERIOD':     BitField(CONTROL, 12, 0, width=8, doc='Word capture period, from 0-255. 0 means 256 words'),
         'CAPTURE2_WORD_NUMBER':BitField(CONTROL, 13, 0, 8, doc='Word number to be capured in CAPTURE_PATTERN. Must be <=CAPTURE2_PERIOD-1 for data to be captured'),
+        'BYTE_MASK':           BitField(CONTROL, 14, 0, width=8, doc='"AND"s the ADC values'),
 
         # STATUS BYTES
 
@@ -124,8 +125,8 @@ class ADCDAQ_base(Module_base):
             raise Exception('Invalid ADCDAQ mode')
 
     def set_delay(self, dly=([0, 0, 0, 0, 0, 0, 0, 0, 0], None)):
-        """ 
-        Sets the data acquisition delays 
+        """
+        Sets the data acquisition delays
         WARNING: will work only if DIVCLK is clocking (i.e. ADC not in SYNC, and BUFR/PLL not in RESET)
         WARNING:  The sample delays will be valid only after the next SYNC event.
         """
@@ -150,7 +151,7 @@ class ADCDAQ_base(Module_base):
 
 
     def set_clk_delay(self, dly):
-        """ Sets the tap delay on the clock line 
+        """ Sets the tap delay on the clock line
         WARNING: will work only if DIVCLK is clocking (i.e. ADC not in SYNC, and BUFR/PLL not in RESET)
         """
         if not isinstance(dly, int):
@@ -211,20 +212,20 @@ class ADCDAQ_base(Module_base):
 
     def init(self, fmc_present):
         """
-        Initializes the ADCDAQ module 
+        Initializes the ADCDAQ module
         """
 
-        # Enable ramp generation if the ADC board is absent. 
+        # Enable ramp generation if the ADC board is absent.
         # That will ensure that data will come out of the ADCDAQ module even if there is no ADC clock signal.
         # If only one channelizer is not producing output, the crossbar aligner will wait forever to align all the frames.
-        self.ENABLE_RAMP = not fmc_present 
+        self.ENABLE_RAMP = not fmc_present
 
 
     def status(self):
-        """ 
+        """
         Prints the ADCDAQ module status.
-        """        
-        print '-------------- ANT[%i].ADCDAQ STATUS --------------' % self.instance_number 
+        """
+        print '-------------- ANT[%i].ADCDAQ STATUS --------------' % self.instance_number
 
         print 'Clock source: %s' % ('ADC','SYSTEM CLOCK')[self.PLL_CLK_SRC]
         print 'Data Acquisition FIFO status'
@@ -234,9 +235,9 @@ class ADCDAQ_base(Module_base):
         print '   UNDERFLOW   %5s     %5s' % (bool(self.FIFO_UNDERFLOW), bool(self.FIFO_UNDERFLOW_STICKY))
         print '   EMPTY       %5s     %5s' % (bool(self.FIFO_EMPTY), bool(self.FIFO_EMPTY_STICKY))
         print 'Number of ramp errors: %i', self.RAMP_ERR_CTR
-        
+
         # fin=200
-        # input_div=1 if self.MMCM_CLKIN_BYPASS else (self.MMCM_CLKIN_HIGH + self.MMCM_CLKIN_LOW) 
+        # input_div=1 if self.MMCM_CLKIN_BYPASS else (self.MMCM_CLKIN_HIGH + self.MMCM_CLKIN_LOW)
         # divclk_div=self.MMCM_DIVCLK_HIGH + self.MMCM_DIVCLK_LOW
         # fb_div=self.MMCM_FB_HIGH + self.MMCM_FB_LOW
 
