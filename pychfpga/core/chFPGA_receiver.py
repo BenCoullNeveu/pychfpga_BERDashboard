@@ -210,6 +210,8 @@ class ReceiverThread(threading.Thread):
                     else: # unknown frame format
                         print 'Receiver: Frame of %i bytes with unknown identifier 0x%Xx has been received. It was discarded. First bytes are 0x%s' % (nbytes, (self.data[0] & 0xF0) >> 4, ' '.join('%02X' % c for c in self.data[:32]))                                                         
                         
+        self.queue.task_done()
+        self.queue_corr.task_done()
         print 'Frame acquisition thread is stopped'
 
     def status(self, print_delay=1):
@@ -270,7 +272,8 @@ class chFPGA_receiver(object):
         Close object, which releases the socket bindings
         """
         self.frame_receiver.stop()
-        self.frame_receiver.join()
+        #self.frame_queue_corr.join()
+        #self.frame_queue.join()
         self.sock.close()
 
 

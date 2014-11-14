@@ -1210,7 +1210,7 @@ class chFPGA_controller(FpgaCoreFirmware):
         self.set_adc_mode(old_adc_mode)
         return data
 
-    def compute_adc_delays(self, channels=[0], offset=[2,3,3,3,3,3,3,3, 4,3,3,3,3,3,3,3]):
+    def compute_adc_delays(self, channels=[0], offset=[2,3,3,3,3,3,3,3, 4,3,3,3,3,3,3,3], print_results=True):
         """
         Measures the eye diagram of the ADC digital data lines and computes the optimum delays to ensure reliable data acquisition.
         """
@@ -1232,6 +1232,8 @@ class chFPGA_controller(FpgaCoreFirmware):
             self._logger.info('Aligning bits on sample #%i' % N)
 
             self._logger.info('CHANNEL %i' % ch)
+            if print_results:
+                    print('CHANNEL %i (delay = %i)' % (ch, offset[ch]))
             computed_delay = np.zeros(8, dtype=np.uint8)
             for bit_number in range(8):
                 mask = 1 << bit_number
@@ -1245,8 +1247,10 @@ class chFPGA_controller(FpgaCoreFirmware):
                         bit_string += '!O'[d[delay]]
                     else:
                         bit_string += '.#'[d[delay]]
-
-                self._logger.info('Bit %i: %s Delay = %2i' % (bit_number, bit_string, computed_delay[bit_number]))
+                s='Bit %i: %s Delay = %2i' % (bit_number, bit_string, computed_delay[bit_number])
+                if print_results:
+                        print s
+                self._logger.info(s)
 
             delays[ch]=computed_delay
         return delays

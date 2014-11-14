@@ -64,8 +64,15 @@ class IceBoardHardware(object):
     _POWER_ICE1V0_I2C_ADDR = 0b1001110
     _POWER_ICE1V8_I2C_ADDR = 0b1001011
     _POWER_ICE1V0GTX_I2C_ADDR = 0b1001111
+    
+    _POWER_FMCA12V0_I2C_ADDR = 0b1000000
+    _POWER_FMCA3V3_I2C_ADDR =  0b1000001
+    _POWER_FMCAVADJ_I2C_ADDR = 0b1000010
 
-
+    _POWER_FMCB12V0_I2C_ADDR = 0b1000100 
+    _POWER_FMCB3V3_I2C_ADDR =  0b1000101
+    _POWER_FMCBVADJ_I2C_ADDR = 0b1000110
+    
     _I2C_BUS_LIST = {
         "FMC": (0, 0), # equivalent to FMCA. Included for backwards compatibility with single-FMC code
         "FMCA": (0, 0),
@@ -127,6 +134,14 @@ class IceBoardHardware(object):
         self._power_ice_1v5 = ina230.ina230(self._i2c, self._POWER_ICE1V5_I2C_ADDR, 'SMPS')
         self._power_ice_1v0 = ina230.ina230(self._i2c, self._POWER_ICE1V0_I2C_ADDR, 'SMPS')
         self._power_ice_1v8 = ina230.ina230(self._i2c, self._POWER_ICE1V8_I2C_ADDR, 'SMPS')
+        
+        self._power_fmca_12v0 = ina230.ina230(self._i2c, self._POWER_FMCA12V0_I2C_ADDR, 'SMPS')
+        self._power_fmca_3v3 = ina230.ina230(self._i2c, self._POWER_FMCA3V3_I2C_ADDR, 'SMPS')
+        self._power_fmca_vadj = ina230.ina230(self._i2c, self._POWER_FMCAVADJ_I2C_ADDR, 'SMPS')
+        
+        self._power_fmcb_12v0 = ina230.ina230(self._i2c, self._POWER_FMCB12V0_I2C_ADDR, 'SMPS')
+        self._power_fmcb_3v3 = ina230.ina230(self._i2c, self._POWER_FMCB3V3_I2C_ADDR, 'SMPS')
+        self._power_fmcb_vadj = ina230.ina230(self._i2c, self._POWER_FMCBVADJ_I2C_ADDR, 'SMPS')
 
         self.GPIO_EXPANDER_MAP = {
             # name : (expander object, byte, lsb bit number,  width)
@@ -173,15 +188,21 @@ class IceBoardHardware(object):
 
         self.POWER_SENSOR_TABLE = {
             # sensor name : (ina230 object, output voltage(volts), rshunt(inductor) (mohm), typical current(amps), current tolerance (0<tol<1))
-            'ICE_3V3': (self._power_ice_3v3, 3., 2.36, 8., 0.5),
-            'ICE_12V0': (self._power_ice_12v0, 12., 5.5, 3., 0.5),
-            'ICE_5V0': (self._power_ice_5v0, 5., 2.36, 11., 0.5),
-            'ICE_1V0_GTX': (self._power_ice_1v0_gtx, 1., 0.77, 16., 0.5),
-            'ICE_1V2': (self._power_ice_1v2, 1.2, 0.77, 8., 0.5),
-            'ICE_1V5': (self._power_ice_1v5, 1.5, 2.36, 3., 0.5),
-            'ICE_1V0': (self._power_ice_1v0, 1., 0.77, 16., 0.5),
-            'ICE_1V8': (self._power_ice_1v8, 1.8, 5.5, 1., 0.5),
-            'ICE_VADJ': (self._power_ice_vadj, 2.5, 2.36, 8., 0.5)
+            'ICE_3V3': (self._power_ice_3v3, 3., 2.36, 8., 0.5),         #SER1360-182L
+            'ICE_12V0': (self._power_ice_12v0, 12., 5.5, 3., 0.5),       #SER1360-602L
+            'ICE_5V0': (self._power_ice_5v0, 5., 2.36, 11., 0.5),        #SER1360-182L
+            'ICE_1V0_GTX': (self._power_ice_1v0_gtx, 1., 0.77, 16., 0.5),#SER1360-331L
+            'ICE_1V2': (self._power_ice_1v2, 1.2, 0.77, 8., 0.5),        #SER1360-651L
+            'ICE_1V5': (self._power_ice_1v5, 1.5, 2.36, 3., 0.5),        #SER1360-182L
+            'ICE_1V0': (self._power_ice_1v0, 1., 0.77, 16., 0.5),        #SER1360-331L
+            'ICE_1V8': (self._power_ice_1v8, 1.8, 5.5, 1., 0.5),         #SER1360-602L
+            'ICE_VADJ': (self._power_ice_vadj, 2.5, 2.36, 8., 0.5),
+            'FMCA_12V0': (self._power_fmca_12v0, 12., 5, 2., 0.5),
+            'FMCB_12V0': (self._power_fmcb_12v0, 12., 5, 2., 0.5),
+            'FMCA_3V3': (self._power_fmca_3v3, 3., 5, 5., 0.5),
+            'FMCB_3V3': (self._power_fmcb_3v3, 3., 5, 5., 0.5),
+            'FMCA_VADJ': (self._power_fmca_vadj, 2.5, 5, 1., 0.5),
+            'FMCB_VADJ': (self._power_fmcb_vadj, 2.5, 5, 1., 0.5)
         }
 
     def open(self):
@@ -201,6 +222,7 @@ class IceBoardHardware(object):
         self._init_temperature_sensors()
         self._init_eeprom()
         self.set_fmc_power()
+        self._init_power_sensors()
 
     def _init_gpio_expanders(self):
         """
