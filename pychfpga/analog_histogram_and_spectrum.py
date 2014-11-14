@@ -22,6 +22,11 @@ class test_adc_analog_histogram:
         self.fpga_ctrl = fpga_ctrl
         self.fpga_recv = fpga_recv
 
+    def remap(data):
+        remapping = [12,13,14,15,8,9,10,11,4,5,6,7,0,1,2,3]
+        datas = data[:,remapping,:]
+        return datas
+
     def configure_board(self):
         self.fpga_ctrl.set_fft_bypass(True, channels=range(16))
         self.fpga_ctrl.set_scaler_bypass(False, channels=range(16))
@@ -36,28 +41,30 @@ class test_adc_analog_histogram:
 
         
     def plot_histogram(self, filename):
-        datas = np.load(filename + '.npy')
+        data = np.load(filename + '.npy')
+        datas = self.remap(data)
         pylab.clf()
         
         for i in xrange(16):
             pylab.hist(datas[:,i,:].flatten(), bins=256, range = (-128,127))
             rms = datas[:,i,:].flatten().std()
-            pylab.title(filename + ' Histogram Channel '+str(i+1) + ' RMS ' + str(rms))
+            pylab.title(filename + ' Histogram Channel '+str(i) + ' RMS ' + str(rms))
             pylab.xlim(-128,127)
-            pylab.savefig(filename + 'histogram_chan' +str(i+1)+'.pdf')
+            pylab.savefig(filename + 'histogram_chan' +str(i)+'.pdf')
             pylab.clf()
 
 
     def spectrum(self, fname):
-        datas = np.load(fname + '.npy')
+        data = np.load(fname + '.npy')
+        datas = self.remap(data)
         spectra = np.fft.fft(datas, axis=2)[:,:,:1024]
         spectrum = (np.abs(spectra)**2).mean(axis=0)
         pylab.clf()
         for i in range(16):
             pylab.plot(10.0*np.log10(np.abs(spectrum[i,:])))
-            pylab.title(fname + ' Spectrum for Channel '+str(i+1))
+            pylab.title(fname + ' Spectrum for Channel '+str(i))
             pylab.ylim(20,80)
-            pylab.savefig(fname + '_spectrum_chan' +str(i+1)+'.pdf')
+            pylab.savefig(fname + '_spectrum_chan' +str(i)+'.pdf')
             pylab.clf()
 
 
@@ -162,7 +169,7 @@ if __name__ == '__main__':
     # Might want to move the list somewhere else/into conf file?
     ca.load_iceboards('/home/chime/ch_acq/pychfpga/iceboard_list.txt')
     ca.discover()
-    bitfile_filename = conf["fpga"]["bitfile_name"]
+    bitfile_filename = args.bitfile #conf["fpga"]["bitfile_name"]
     fpga_bitstream = ca.get_fpga_bitstream(bitfile_filename, ChimeFpgaFirmware)
     c = ca.get_iceboards(subarray=[conf["fpga"]["subarray"]]).index_by(IceBoard.serial_number)
     c.set_fpga_firmware(fpga_bitstream, force=args.force)
@@ -174,12 +181,13 @@ if __name__ == '__main__':
         data_width=8, \
         group_frames=conf["fpga"]["group_frames"], \
         enable_gpu_link = 0)
-    for cc in c:
-      cc.fpga.GPU.LINK_ENABLE=1
+    #for cc in c:
+    #  cc.fpga.GPU.LINK_ENABLE=1
     c.fpga.set_corr_reset(1)
     time.sleep(0.1)
     c.fpga.set_corr_reset(0)
-   
+    print c.serial_number
+    print c.slot_number
     for cc in c:
       print 'ADC 00', cc.fpga._adc_board[0].ADC[0].get_temperature()
       print 'ADC 01', cc.fpga._adc_board[0].ADC[1].get_temperature()

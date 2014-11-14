@@ -169,6 +169,9 @@ if __name__ == "__main__":
   parser.add_argument("-a", "--compute_gain", action = "store", \
                        default = 0, \
                        help = "1 to calculate and save FFT scaler gains")
+  parser.add_argument("-f", "--configure_fpga", action = "store", \
+                       default = 1, \
+                       help = "1 configure and control fpga.  0 to ignore fpga and just get data from gpu")
   args = parser.parse_args()
 
   # Be paranoid: if the executable is being run from /usr/sbin we can be 
@@ -223,119 +226,122 @@ if __name__ == "__main__":
   # Create the acquisition object. Pass it the configuration settings so that it
   # can initialise.
   acq = chrx.acq(conf, log, fpga_hk_field)
+  if (int(args.configure_fpga) > 0): 
+      # Create the FPGA controller object.
+      # Will now create an array of controller objects indexed by serial number
+      # And program board firmware if needed/requested currently will always reprogram
+      close_all_sockets()
+      IceArray.close_all_sessions()
+      ca = IceArray(uri=conf["fpga"]["db_file"], interface_ip_addr=conf["fpga"]["host_ip"])
+      # Might want to move the list somewhere else/into conf file?
+      ca.load_iceboards('/home/chime/ch_acq/pychfpga/iceboard_list.txt')
+      ca.discover()
+      bitfile_filename = conf["fpga"]["bitfile_name"]
+      fpga_bitstream = ca.get_fpga_bitstream(bitfile_filename, ChimeFpgaFirmware)
+      c = ca.get_iceboards(subarray=[conf["fpga"]["subarray"]]).index_by(IceBoard.serial_number)
+      c.set_fpga_firmware(fpga_bitstream, force=conf["fpga"]["force"])
+      c.open( \
+            adc_delay_table=adc_delay, \
+            init=1, \
+            sampling_frequency=conf["fpga"]["samp_freq"] * 1e6, \
+            reference_frequency=conf["fpga"]["ref_freq"], \
+            data_width=conf["fpga"]["data_width"], \
+            group_frames=conf["fpga"]["group_frames"], \
+            enable_gpu_link = conf["fpga"]["enable_gpu_link"])
+      for cc in c:
+        cc.fpga.GPU.LINK_ENABLE=1
+      c.fpga.set_corr_reset(1)
+      time.sleep(0.1)
+      c.fpga.set_corr_reset(0)
+      # fpga = chFPGA_controller.chFPGA_controller( \
+      #            ip_address = conf["fpga"]["ip_address"], \
+      #            port_number = conf["fpga"]["port"], \
+      #            adc_delay_table = adc_delay, \
+      #            verbose = 0, \
+      #            init = 1, \
+      #            sampling_frequency = conf["fpga"]["samp_freq"] * 1e6, \
+      #            reference_frequency = conf["fpga"]["ref_freq"], \
+      #            data_width=conf["fpga"]["data_width"], \
+      #            group_frames=conf["fpga"]["group_frames"], \
+      #            enable_gpu_link = conf["fpga"]["enable_gpu_link"], \
+      #            host_ip = conf["fpga"]["host_ip"])
 
-  # Create the FPGA controller object.
-  # Will now create an array of controller objects indexed by serial number
-  # And program board firmware if needed/requested currently will always reprogram
-  close_all_sockets()
-  IceArray.close_all_sessions()
-  ca = IceArray(uri=conf["fpga"]["db_file"], interface_ip_addr=conf["fpga"]["host_ip"])
-  # Might want to move the list somewhere else/into conf file?
-  ca.load_iceboards('/home/chime/ch_acq/pychfpga/iceboard_list.txt')
-  ca.discover()
-  bitfile_filename = conf["fpga"]["bitfile_name"]
-  fpga_bitstream = ca.get_fpga_bitstream(bitfile_filename, ChimeFpgaFirmware)
-  c = ca.get_iceboards(subarray=[conf["fpga"]["subarray"]]).index_by(IceBoard.serial_number)
-  c.set_fpga_firmware(fpga_bitstream, force=conf["fpga"]["force"])
-  c.open( \
-        adc_delay_table=adc_delay, \
-        init=1, \
-        sampling_frequency=conf["fpga"]["samp_freq"] * 1e6, \
-        reference_frequency=conf["fpga"]["ref_freq"], \
-        data_width=conf["fpga"]["data_width"], \
-        group_frames=conf["fpga"]["group_frames"], \
-        enable_gpu_link = conf["fpga"]["enable_gpu_link"])
-  for cc in c:
-    cc.fpga.GPU.LINK_ENABLE=1
-  c.fpga.set_corr_reset(1)
-  time.sleep(0.1)
-  c.fpga.set_corr_reset(0)
-  # fpga = chFPGA_controller.chFPGA_controller( \
-  #            ip_address = conf["fpga"]["ip_address"], \
-  #            port_number = conf["fpga"]["port"], \
-  #            adc_delay_table = adc_delay, \
-  #            verbose = 0, \
-  #            init = 1, \
-  #            sampling_frequency = conf["fpga"]["samp_freq"] * 1e6, \
-  #            reference_frequency = conf["fpga"]["ref_freq"], \
-  #            data_width=conf["fpga"]["data_width"], \
-  #            group_frames=conf["fpga"]["group_frames"], \
-  #            enable_gpu_link = conf["fpga"]["enable_gpu_link"], \
-  #            host_ip = conf["fpga"]["host_ip"])
 
+      # Set FPGA controller parameters.
+      # Calculate new gains if necessary
+      # Get config here to be able to create receiver object
+      # Gains will need to be able to handle multiple boards, currently file
+      # Will be overwritten when used for more than one board.  
+      # Make compute gains smarter -> write to db? need boards to actually be different
+      if (int(args.compute_gain) > 0):
+          #Shouldn't need for loop here, but initial testing failed in parallel.
+          for i, c_element in enumerate(c):
+            fpga_config = c_element.fpga.get_config()
+            fpga_rec = chFPGA_receiver.chFPGA_receiver(fpga_config, \
+                          ip_address=c_element.fpga_ip_addr, \
+                          port=c_element.fpga_port_number+1, \
+                          host_ip = conf["fpga"]["host_ip"])
+            calculate_gains.calculate_gains(c_element.fpga,fpga_rec)
+            fpga_rec.close()
+      all_chan = range(conf["n_antenna"])
+      c.fpga.set_data_source("adc") # This should come first.
+      c.fpga.set_FFT_bypass(False, channels = all_chan)
+      c.fpga.set_FFT_shift(conf["fpga"]["fft_shift"], channels = all_chan)
+      for i, c_element in enumerate(c):      
+        gain_pkl_file = open('/home/chime/ch_acq/gains_'+str(c_element.fpga.GPIO.FPGA_SERIAL_NUMBER)+'.pkl', "rb")
+        gains = pickle.load(gain_pkl_file)
+        c_element.fpga.set_gain(gains, channels = all_chan)
+      c.fpga.sync()
+      c.fpga.set_send_flags()
+      c.fpga.set_offset_binary_encoding()
+      c.fpga.sync()
 
-  # Set FPGA controller parameters.
-  # Calculate new gains if necessary
-  # Get config here to be able to create receiver object
-  # Gains will need to be able to handle multiple boards, currently file
-  # Will be overwritten when used for more than one board.  
-  # Make compute gains smarter -> write to db? need boards to actually be different
-  if (int(args.compute_gain) > 0):
-      #Shouldn't need for loop here, but initial testing failed in parallel.
+      #Make sure FPGA throttling is fast enough to send all the data
+      #FPGA doesn't seem to change this without a reset...
+      #read_rate = int(np.floor(np.log2(conf["fpga"]["int_period"] * 4 * 125e6 / \
+      #                2 / (conf["n_antenna"] * (conf["n_antenna"] + 1)))))
+      #fpga.GPIO.HOST_FRAME_READ_RATE = read_rate
+
+      # Start the correlator.
+      ##fpga.start_corr_capture(integration_period = conf["fpga"]["int_period"])
+      #log.info("Correlator started with an integration time of %.1f s" % \
+      #         (conf["fpga"]["int_period"]))
+      
+
+      
+      #Read the FPGA setting back from the FPGA
+      # This will need to change to do multiple boards.  
       for i, c_element in enumerate(c):
-        fpga_config = c_element.fpga.get_config()
-        fpga_rec = chFPGA_receiver.chFPGA_receiver(fpga_config, \
-                      ip_address=c_element.fpga_ip_addr, \
-                      port=c_element.fpga_port_number+1, \
-                      host_ip = conf["fpga"]["host_ip"])
-        calculate_gains.calculate_gains(c_element.fpga,fpga_rec)
-        fpga_rec.close()
-  all_chan = range(conf["n_antenna"])
-  c.fpga.set_data_source("adc") # This should come first.
-  c.fpga.set_FFT_bypass(False, channels = all_chan)
-  c.fpga.set_FFT_shift(conf["fpga"]["fft_shift"], channels = all_chan)
-  for i, c_element in enumerate(c):      
-    gain_pkl_file = open('/home/chime/ch_acq/gains_'+str(c_element.fpga.GPIO.FPGA_SERIAL_NUMBER)+'.pkl', "rb")
-    gains = pickle.load(gain_pkl_file)
-    c_element.fpga.set_gain(gains, channels = all_chan)
-  c.fpga.sync()
-  c.fpga.set_send_flags()
-  c.fpga.set_offset_binary_encoding()
-  c.fpga.sync()
-
-  #Make sure FPGA throttling is fast enough to send all the data
-  #FPGA doesn't seem to change this without a reset...
-  #read_rate = int(np.floor(np.log2(conf["fpga"]["int_period"] * 4 * 125e6 / \
-  #                2 / (conf["n_antenna"] * (conf["n_antenna"] + 1)))))
-  #fpga.GPIO.HOST_FRAME_READ_RATE = read_rate
-
-  # Start the correlator.
-  ##fpga.start_corr_capture(integration_period = conf["fpga"]["int_period"])
-  #log.info("Correlator started with an integration time of %.1f s" % \
-  #         (conf["fpga"]["int_period"]))
-  
-
-  
-  #Read the FPGA setting back from the FPGA
-  # This will need to change to do multiple boards.  
-  for i, c_element in enumerate(c):
-    fpga_conf = vars(c_element.fpga.get_config())
-  
-  # Create the output directory.
-  time_str = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-  corr_name = None
-  for corr, ser_list in correlator_hash.iteritems():
-    not_found = False
-    if type(fpga_conf["adc_serial"]) is list:
-      for ser in fpga_conf["adc_serial"]:
-        if not ser in ser_list:
-          not_found = True
-          break
-    else:
-      print fpga_conf["adc_serial"]
-      if not fpga_conf["adc_serial"] in ser_list:
-          not_found = True
-    if not_found:
-      continue
-    corr_name = corr
-    break
-  if not corr_name:
-    try:
-      log.critical("Could not find hash for ADC serial numbers %s." %
-                   fpga_conf["adc_serial"])
-    except KeyError:
-      log.critical("Could not find key \"adc_serial\" in FPGA configuration.")
-    exit()
+        fpga_conf = vars(c_element.fpga.get_config())
+      
+      # Create the output directory.
+      time_str = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+      corr_name = None
+      for corr, ser_list in correlator_hash.iteritems():
+        not_found = False
+        if type(fpga_conf["adc_serial"]) is list:
+          for ser in fpga_conf["adc_serial"]:
+            if not ser in ser_list:
+              not_found = True
+              break
+        else:
+          print fpga_conf["adc_serial"]
+          if not fpga_conf["adc_serial"] in ser_list:
+              not_found = True
+        if not_found:
+          continue
+        corr_name = corr
+        break
+      if not corr_name:
+        try:
+          log.critical("Could not find hash for ADC serial numbers %s." %
+                       fpga_conf["adc_serial"])
+        except KeyError:
+          log.critical("Could not find key \"adc_serial\" in FPGA configuration.")
+        exit()
+  else:
+      time_str = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+      corr_name = "NoFGPA_information"
 
   acq_base_dir = "%s/%s_%s_corr" % (conf["acq"]["base_path"], time_str, \
                                    corr_name)
@@ -368,29 +374,31 @@ if __name__ == "__main__":
   log.info("Sampling frequency is %0.3f MHz." % \
            float(conf["fpga"]["samp_freq"]))
 
-
-  # Pass FPGA configuration variables to header.
-  for name in fpga_conf:
-    #Hack for now since the gain table is too big to fit in one 64k header 
-    # element
-    if name == 'antenna_scaler_gain':
-      all_val = fpga_conf[name]
-      for value in all_val:
-        val = convert_types(value)
-        val_name = name + str(int(val[0]))
-        #print val_name, val
-        acq.add_header_item(val_name, val)
-    else:
-      #elif name == 'antenna_adc_data_acquisition_delay_tables':
-      #  val = 42
-      #else:
-      val = fpga_conf[name]
-      val = convert_types(val)
-      # Now send FPGA information send to acquisition object's header.
-      #print name
-      #print val
-      #print type(val)
-      acq.add_header_item(name, val)
+  if (int(args.configure_fpga) > 0):
+      # Pass FPGA configuration variables to header.
+      for name in fpga_conf:
+        #Hack for now since the gain table is too big to fit in one 64k header 
+        # element
+        if name == 'antenna_scaler_gain':
+          all_val = fpga_conf[name]
+          for value in all_val:
+            val = convert_types(value)
+            val_name = name + str(int(val[0]))
+            #print val_name, val
+            acq.add_header_item(val_name, val)
+        else:
+          #elif name == 'antenna_adc_data_acquisition_delay_tables':
+          #  val = 42
+          #else:
+          val = fpga_conf[name]
+          val = convert_types(val)
+          # Now send FPGA information send to acquisition object's header.
+          #print name
+          #print val
+          #print type(val)
+          acq.add_header_item(name, val)
+  else:
+    acq.add_header_item("fpga_info", "no communication with fpga for this dataset")
 
   # Add some acquisition information to the header, for kicks.
   acq.add_header_item("system_user", getpass.getuser())
@@ -422,9 +430,12 @@ if __name__ == "__main__":
     while True:
       # Pass the acquisition object the board temperatures. This is a temporary
       # way of doing this!
-      for c_element in c:
-        acq.pass_fpga_amb_temp(0, get_fpga_hk(c_element.fpga, fpga_hk_field))
-      log.info("Read FPGA housekeeping.")
+      if (int(args.configure_fpga) > 0):
+        for c_element in c:
+          acq.pass_fpga_amb_temp(0, get_fpga_hk(c_element.fpga, fpga_hk_field))
+        log.info("Read FPGA housekeeping.")
+      else:
+        log.info("acquiring data...")
       time.sleep(conf["acq"]["fpga_hk"]["rate"])
     acq.stop()
   except(KeyboardInterrupt, SystemExit):
