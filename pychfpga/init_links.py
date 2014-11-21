@@ -258,7 +258,7 @@ def reopen(boards, bitstream):
             print 'IceBoard SN%i (Slot #%i) is already opened' % (ib.serial_number, ib.slot_number+1)
         else:
             while not ib.is_open():
-                print 'Trying to open IceBoard SN%i ' % (ib.serial_number)
+                print 'Reprogramming FPGA on IceBoard SN%i ' % (ib.serial_number)
                 try:
                     ib.set_fpga_firmware(bitstream, force=1)
                     ib.open()
@@ -306,3 +306,14 @@ def set_adc_mask(boards, value):
     for ib in boards:
         for ant in ib.fpga.ANT:
             ant.ADCDAQ.BYTE_MASK = value
+
+def print_fmc_power(boards):
+    sensor_list = ['FMCA_12V0', 'FMCA_3V3','FMCA_VADJ','FMCB_12V0','FMCB_3V3','FMCB_VADJ']
+    for b in boards:
+        for sensor in sensor_list:
+            t=b.hw.get_power(sensor)[sensor]
+            if t[0] is not None:
+                print '%0.1fV@%0.2fA=%0.1fW ' % (t[0], t[2], t[3]),
+            else:
+                print 'None                 ',
+        print

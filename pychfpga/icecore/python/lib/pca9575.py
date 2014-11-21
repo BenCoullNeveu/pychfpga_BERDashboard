@@ -50,11 +50,16 @@ class pca9575(object):
         self.address = address
         self.port = port
 
-    def init(self, cfg0_def=0b11111111, cfg1_def=0b11111111, verbose=0):
+    def init(self, cfg0_def=0b11111111, cfg1_def=0b11111111, out0_default=None, out1_default=None, verbose=0):
         """
         Initialization of PCS8575 I2C IO Extender object
         cfg0_def, cfg1_def sets the default configuration of the I/O pins. By default all pins are inputs.
         """
+        if out0_default is not None:
+            self.write('OUT0', out0_default);
+
+        if out1_default is not None:
+            self.write('OUT1', out1_default);
 
         self.write('CFG0', cfg0_def)
         self.write('CFG1', cfg1_def)
