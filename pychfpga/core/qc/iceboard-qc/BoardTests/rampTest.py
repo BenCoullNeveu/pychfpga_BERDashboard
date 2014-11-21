@@ -46,8 +46,9 @@ def rampTest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     
     # Intro
     print "\nFor this test, you will need to have both CHIME ADC mezzanines mounted on the board."
-    print "As for the FPGA test, you need one ethernet cable going from the ARM port to the computer and one going from the SFP-Ethernet apdapter to the computer."
-    print "Make sure this last cable is connected to a gigabit port with Jumbo Frames enabled."
+    print "As for the FPGA test, you need an ethernet cable going from the ARM port to the network"
+    print "and another from the SFP-Ethernet apdapter to the network."
+    print "Make sure the computer you are using is connected to the network via a gigabit port with Jumbo Frames enabled."
     
     print "\nYou should connect a fan to the FPGA heatsink, and ensure there is airflow over the mezzanine ADCs."
     
@@ -56,15 +57,6 @@ def rampTest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     confirm = raw_input('\nThis test requires modules from ch_acq (make sure you are using master branch).\nUsing path ' + ch_acq_path + '. Would you like to modify it? (y/n)\t')
     if confirm == 'y' or confirm == 'Y':
         ch_acq_path = raw_input('Enter path:\t')
-    
-    # Get host IP address
-    if_ip = '10.10.10.203'
-    confirm = raw_input('\nThis test requires the IP adress of the network adapter used to communicate with the FPGA.\nUsing ' + if_ip + '. Would you like to modify it? (y/n)\t')
-    if confirm == 'Y' or confirm == 'y':
-        if_ip == raw_input('Enter your IP:\t')
-    
-    # Get board IP address
-    board_ip = raw_input("\nPlease enter the board's IP address:\t")
     
     # Timing for ADCs
     ADC_DELAY_TABLE= (
@@ -94,7 +86,7 @@ def rampTest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     
     # Begin Ramp test
     raw_input("\nPress Enter to begin ramp test:\t")
-    fpgaFun.rampTest(ch_acq_path,directory + '/ramp_testing_trial_sn' + board_sn,if_ip,board_ip)
+    fpgaFun.rampTest(board_sn, directory + '/ramp_testing_trial_sn' + board_sn, ch_acq_path=ch_acq_path)
     
     # Record results to file
     test_pass = False

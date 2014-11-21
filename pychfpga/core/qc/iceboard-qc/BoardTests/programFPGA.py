@@ -49,20 +49,24 @@ def programFPGA(username=str,board_sn=str,board_vn=str,board_md=str,testStatus =
     if confirm == 'y' or confirm == 'Y':
         ch_acq_path = raw_input("Enter path (ending with a '/'):\t")
     print "If it is not already the case, set ch_acq to the 'master' git branch."
-    
-    # We assume there is a proper bitfile to program the FPGA in
-    # ../../chFPGA/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit
-    
-    print "\nWe will now program the FPGA."
-    ip = raw_input("Enter IP address of board (i.e. 10.10.10.NUM):\t")
-    raw_input("Press Enter to proceed with programming (this may take some time):\t")
-    fpgaFun.programFpga(ch_acq_path, ip) # Can include 3rd argument for custom bitfile path.
 
+    # Get FPGA serial and append to iceboard_list.txt
+        # Obtain FPGA serial [...]
+    fpga_sn = ""
+    fpgaFun.editList(board_sn,fpga_ip='10.10.10.1',fpga_sn=fpga_sn,locked='0',subarray='2')
+
+    
+    print "\nWe will now program the FPGA of board " + board_sn + "."
+    print "You need to have successfully run the 'Program ARM' in its entirety, or be sure that the ARM addresses were entered in database."
+    raw_input("Press Enter to proceed with programming (this may take some time):\t")
+    fpgaFun.programFpga(board_sn,ch_acq_path=ch_acq_path,force=True)
+
+    # Command to program FPGA using arm.py in old ch_acq, for reference
     #print 'Type in python pychfpga\\arm.py --ip 10.10.10.NUM -f "..\\chFPGA\\xilinx_projects\\CHFPGA_MGK7MB_REV2\\CHFPGA_MGK7MB_REV2.runs\\impl_Rev2\\chFPGA_MGK7MB_Rev2.bit" under this new directory'
     #print 'where NUM is the number of the board (such that 10.10.10.NUM is the IP address programmed onto the board).'
     #notimportant = raw_input("Press Enter to continue:  ")
 
-    print "\nCheck the last line of the block of text. Does it say 'Programming successful'?"
+    print "\nCheck the last line of the block of text. Does it say 'Done configuring FPGA'?"
     program = raw_input("Enter 'Y' or 'N':  ")
     if program == 'Y' or program == 'y':
         file.write('Output stating programming successful: Pass')

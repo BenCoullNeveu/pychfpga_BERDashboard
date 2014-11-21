@@ -39,31 +39,16 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     file.write('Date : ' + date_str + '\n')
     file.write('Tester: ' + username + '\n\n')
 
-    print "\nFor this test, we NEED to have already programmed the FPGA. You also need an Ethernet cable and an adapter for the board connector."
+    print "\nFor this test, you need an Ethernet cable and an adapter for the board connector."
     print "You must have already installed a heatsink on the FPGA, and you should run a fan over it for this test."
     # print "Please consult http://kingspeak.physics.mcgill.ca/twiki/bin/edit/Chime/IceBoardQCManual for details regarding the connector. Or ask Kevin."
-    print "Let's get started. Is the board turned on and the FPGA has been programmed?"
+    print "Let's get started. Have you ran the 'Program FPGA' test, or are the FPGA addresses already in database?"
     program = raw_input("Enter 'Y' or 'N': 	")
     if program != 'Y' and program != 'y':
-        print "\nWe must first program the FPGA.\n"
+        print "\nWe must first run 'Program the FPGA'.\n"
         programFPGA.programFPGA(username,board_sn,board_vn,board_md,testStatus)
     
-    print "\nWe'll need to disconnect this computer from the lab network and connect the board directly to the network card of the PC."
-    print "The PC's adapter must support gigabit ethernet, and have Jumbo Frames enabled."
-    print "First, disconnect the Ethernet cable going from the computer to the router."
-    print "You should see three big silver long rectangular (QSFP) connectors on the bottom edge of the board. You should connect the adapter"
-    print "for the connector to the connector to the right of these (the one besides the two scary-looking spiky connectors)."
-    notimportant = raw_input("Press Enter to continue: 	")
-
-    print "In the Network and Sharing Centre part of the PC, click on 'Change adapter settings' on the left pane."
-    print "In Local Area Connection 2 connection, you should NOT see an 'x' on the icon for the connection."
-    
-    print "\nRight click on this icon and select Properties. In the pop-up window, highlight Internet Protocol Version 4"
-    print "and click on the Properties button below. You should see the option set to 'use the following IP address'"
-    print "Write down the IP address that appears below that line."
-    host_ip = raw_input("Enter IP address: 		")
-    
-    print "\nIf Jumbo Frames are not enabled, do so by clicking on Configure > Advanced > Jumbo Frames in the previous Properties dialog."
+    print "\nFirst, connect the board's ethernet port to the network and also connect the FPGA to the network using the SFTP to ethernet adapter."
     
     # Get correct ch_acq path
     ch_acq_path = '../../ch_acq/'
@@ -72,31 +57,26 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     if confirm == 'y' or confirm == 'Y':
         ch_acq_path = raw_input("Enter path (ending with a '/'):\t")
     print "If it is not already the case, set ch_acq to the 'master' git branch."
-    
+
+    # Program FPGA
+    print "\nProgramming FPGA:"
+    raw_input("Press Enter to proceed (this may take some time):\t")
+    fpgaFun.programFpga(board_sn,ch_acq_path=ch_acq_path)
+
     # Run top_test
     print "\nWe will now attempt to run top_test."
-    # ip = raw_input("Enter IP address of board (i.e. 10.10.10.NUM):\t")
     raw_input("Press Enter to proceed with top_test (this may take some time):\t")
     success = False
     [c,r] = [None,None]
-    while not success:
-        try:
-            [c,r] = fpgaFun.top_test(ch_acq_path, host_ip)
-            success = True
-        except Exception as e:
-            traceback.print_exc(e)
-            print "\nTop_test did not run successfully."
-            confirm = raw_input("Do you want to try reprogramming the board and try running it again? (y/n)\t")
-            if confirm != 'Y' and confirm != 'y':
-                file.write('\nRunning top_test on board: Fail')
-                file.write("\n" + repr(e))
-                file.write('\nFPGA Test Overall Status: Fail')
-                file.close()
-                fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
-            else:
-                fpgaFun.programFPGA(ch_acq_path, '10.10.10.' + str(int(board_sn)))
+    try:
+        [c,r] = fpgaFun.top_test(ch_acq_path, host_ip)
+        success = True
+    except Exception as e:
+        traceback.print_exc(e)
+        print "\nTop_test did not run successfully."
         
-    print "\nTop test should have been able to load without any problems or errors. You should also see the current draw to be above 2A at this point."
+    print "\nTop test should have been able to load without any problems or errors."
+    print "You should also see the current draw to be above 2A at this point."
     if success:
         file.write('\nRunning top_test on board: Pass')
     else:
