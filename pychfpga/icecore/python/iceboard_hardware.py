@@ -55,24 +55,24 @@ class IceBoardHardware(object):
     _TMP_FPGA_I2C_ADDR = 0b1001011
     _TMP_POWER_I2C_ADDR = 0b1001000
 
-    _POWER_ICEVADJ_I2C_ADDR = 0b1000011
-    _POWER_ICE12V0_I2C_ADDR = 0b1000111
-    _POWER_ICE5V0_I2C_ADDR = 0b1001000
-    _POWER_ICE3V3_I2C_ADDR = 0b1001001
-    _POWER_ICE1V5_I2C_ADDR = 0b1001100
-    _POWER_ICE1V2_I2C_ADDR = 0b1001101
-    _POWER_ICE1V0_I2C_ADDR = 0b1001110
-    _POWER_ICE1V8_I2C_ADDR = 0b1001011
-    _POWER_ICE1V0GTX_I2C_ADDR = 0b1001111
-    
-    _POWER_FMCA12V0_I2C_ADDR = 0b1000000
-    _POWER_FMCA3V3_I2C_ADDR =  0b1000001
-    _POWER_FMCAVADJ_I2C_ADDR = 0b1000010
+    _POWER_ICEVADJ_I2C_ADDR = 0b1000011 #0x43
+    _POWER_ICE12V0_I2C_ADDR = 0b1000111 #0x47
+    _POWER_ICE5V0_I2C_ADDR = 0b1001000 #0x48
+    _POWER_ICE3V3_I2C_ADDR = 0b1001001 #0x49
+    _POWER_ICE1V5_I2C_ADDR = 0b1001100 #0x4C
+    _POWER_ICE1V2_I2C_ADDR = 0b1001101 #0x4D
+    _POWER_ICE1V0_I2C_ADDR = 0b1001110 #0x4E
+    _POWER_ICE1V8_I2C_ADDR = 0b1001011 #0x4B
+    _POWER_ICE1V0GTX_I2C_ADDR = 0b1001111 #0x4F
 
-    _POWER_FMCB12V0_I2C_ADDR = 0b1000100 
-    _POWER_FMCB3V3_I2C_ADDR =  0b1000101
-    _POWER_FMCBVADJ_I2C_ADDR = 0b1000110
-    
+    _POWER_FMCA12V0_I2C_ADDR = 0b1000000 #0x40
+    _POWER_FMCA3V3_I2C_ADDR =  0b1000001 #0x41
+    _POWER_FMCAVADJ_I2C_ADDR = 0b1000010 #0x42
+
+    _POWER_FMCB12V0_I2C_ADDR = 0b1000100 #0x44
+    _POWER_FMCB3V3_I2C_ADDR =  0b1000101 #0x45
+    _POWER_FMCBVADJ_I2C_ADDR = 0b1000110 #0x46
+
     _I2C_BUS_LIST = {
         "FMC": (0, 0), # equivalent to FMCA. Included for backwards compatibility with single-FMC code
         "FMCA": (0, 0),
@@ -134,11 +134,11 @@ class IceBoardHardware(object):
         self._power_ice_1v5 = ina230.ina230(self._i2c, self._POWER_ICE1V5_I2C_ADDR, 'SMPS')
         self._power_ice_1v0 = ina230.ina230(self._i2c, self._POWER_ICE1V0_I2C_ADDR, 'SMPS')
         self._power_ice_1v8 = ina230.ina230(self._i2c, self._POWER_ICE1V8_I2C_ADDR, 'SMPS')
-        
+
         self._power_fmca_12v0 = ina230.ina230(self._i2c, self._POWER_FMCA12V0_I2C_ADDR, 'SMPS')
         self._power_fmca_3v3 = ina230.ina230(self._i2c, self._POWER_FMCA3V3_I2C_ADDR, 'SMPS')
         self._power_fmca_vadj = ina230.ina230(self._i2c, self._POWER_FMCAVADJ_I2C_ADDR, 'SMPS')
-        
+
         self._power_fmcb_12v0 = ina230.ina230(self._i2c, self._POWER_FMCB12V0_I2C_ADDR, 'SMPS')
         self._power_fmcb_3v3 = ina230.ina230(self._i2c, self._POWER_FMCB3V3_I2C_ADDR, 'SMPS')
         self._power_fmcb_vadj = ina230.ina230(self._i2c, self._POWER_FMCBVADJ_I2C_ADDR, 'SMPS')
@@ -217,11 +217,13 @@ class IceBoardHardware(object):
             self._i2c = None
 
     def init(self):
-        """Initializes the motherboard hardware to a known state"""
+        """Initializes the motherboard hardware to a known state.
+        This will turn off FMC power.
+        """
         self._init_gpio_expanders()
         self._init_temperature_sensors()
         self._init_eeprom()
-        self.set_fmc_power()
+        # self.set_fmc_power()
         self._init_power_sensors()
 
     def _init_gpio_expanders(self):
@@ -231,7 +233,7 @@ class IceBoardHardware(object):
         History
         140304 JM: created. todo: make more flexible for I/O pin configuration of each expander. Need to confirm I/O pin config with JF
         """
-        self._gpio_power.init(cfg0_def=0b10101000, cfg1_def=0b10101000)
+        self._gpio_power.init(cfg0_def=0b10101000, cfg1_def=0b10101000, out0_default = 0, out1_default = 0)
         self._gpio_sw_leds.init(cfg1_def=0b00000000)
         self._gpio_arm_phy_leds.init(cfg0_def=0b11110000)
         #self._gpio_sfp_qsfp.init(cfg0_def=0b00000000)
@@ -239,14 +241,14 @@ class IceBoardHardware(object):
     def _init_temperature_sensors(self, temperature_sensor_name=None, bit_resolution=12):
         """
         initializes temperature sensors
-        'temperature_sensor_name' can be a list of temperature sensor names found in TEMPERATURE_SENSOR_TABLE. If temperature_sensor_name=None, all sensors in
+        'temperature_sensor_name' can be a list of temperature sensor names found in TEMPERATURE_SENSOR_TABLE. If temperature_sensor_name=None, all sensors in the list are initialized.
         'bit_resolution' is the number of bits of resolution of the temperature register. It can take values 9, 10, 11, 12
 
         History:
         140318 JM: created
         """
         if bit_resolution<9 or bit_resolution>12:
-            raise self.IceBoardHardwareException('bit_resolution is out of range')
+            raise self.IceBoardHardwareException('Bit_resolution is out of range. Must be 9,10,11 or 12 bits')
         else:
             if temperature_sensor_name == None:
                 temperature_sensor_name = self.TEMPERATURE_SENSOR_TABLE.keys()
@@ -255,11 +257,13 @@ class IceBoardHardware(object):
 
             for temp_sensor in temperature_sensor_name:
                 if temp_sensor not in self.TEMPERATURE_SENSOR_TABLE:
-                    raise IceBoardHardwareException('Invalid temperature sensor name')
+                    raise IceBoardHardwareException('Invalid temperature sensor name. Valid names are %s' % ','.join(self.TEMPERATURE_SENSOR_TABLE.keys()))
                 else:
                     tmp_object = self.TEMPERATURE_SENSOR_TABLE[temp_sensor]
-                    tmp_object.init(bit_resolution)
-
+                    try:
+                        tmp_object.init(bit_resolution)
+                    except:
+                        self._logger.info('Iceboard SN%03i temperature sensor %s failed to initialize.' % (self._iceboard.serial_number, temp_sensor))
     def _init_power_sensors(self, power_sensor_name=None):
         """
         initializes current/power monitors
@@ -276,12 +280,13 @@ class IceBoardHardware(object):
 
         for power_sensor in power_sensor_name:
             if power_sensor not in self.POWER_SENSOR_TABLE:
-                raise IceBoardHardwareException('Invalid current/power monitor name')
+               raise IceBoardHardwareException('Invalid power sensor name. Valid names are %s' % ','.join(self.POWER_SENSOR_TABLE.keys()))
             else:
-                power_sensor_list = self.POWER_SENSOR_TABLE[power_sensor]
-                power_sensor_object = power_sensor_list[0]
-                power_sensor_object.init(v_out=power_sensor_list[1], r_shunt=power_sensor_list[2], i_typ=power_sensor_list[3], tol_i=power_sensor_list[4])
-
+                power_sensor_object, v_out, r_shunt, i_typ, tol_i = self.POWER_SENSOR_TABLE[power_sensor]
+                try:
+                    power_sensor_object.init(v_out=v_out, r_shunt=r_shunt, i_typ=i_typ, tol_i=tol_i)
+                except:
+                    self._logger.info('Iceboard SN%03i power sensor %s failed to initialize.' % (self._iceboard.serial_number, power_sensor))
 
     def _init_eeprom(self):
         """initializes EEPROM"""
@@ -328,7 +333,7 @@ class IceBoardHardware(object):
             else:
                 out_reg = 'OUT%i' % fmc # sets the register name to access based on the FMC number
                 #cfg_reg = 'CFG%i' % fmc
-                self._gpio_power.write(out_reg, 0b00000000) # Turn off all power signals before we enable the GPIO outputs
+                # self._gpio_power.write(out_reg, 0b00000000) # Turn off all power signals before we enable the GPIO outputs
                 #self._gpio_power.write(cfg_reg, 0b10101000)
                 self._gpio_power.write(out_reg, 0b00000111*bool(fmc_state)) # Turn on power to board
                 self._gpio_power.write(out_reg, 0b01010111*bool(fmc_state)) # Set Power Good and CLKDIR to 1
@@ -439,11 +444,21 @@ class IceBoardHardware(object):
 
         for power_sensor in power_sensor_name:
             if power_sensor not in self.POWER_SENSOR_TABLE:
-                raise IceBoardHardwareException('Invalid power sensor name')
+                raise IceBoardHardwareException('Invalid power sensor name. Valid names are %s.' % ','.join(self.POWER_SENSOR_TABLE.keys()))
             else:
-                power_sensor_list = self.POWER_SENSOR_TABLE[power_sensor]
-                power_object = power_sensor_list[0]
-                power_dict[power_sensor]=(power_object.get_bus_voltage(), power_object.get_shunt_voltage(), power_object.get_current(), power_object.get_power())
+                power_sensor_object = self.POWER_SENSOR_TABLE[power_sensor][0]
+
+                try:
+                    bus_voltage = power_sensor_object.get_bus_voltage()
+                    shunt_voltage = power_sensor_object.get_shunt_voltage()
+                    current = power_sensor_object.get_current()
+                    power =  power_sensor_object.get_power()
+                except:
+                    bus_voltage = None
+                    shunt_voltage = None
+                    current = None
+                    power = None
+                power_dict[power_sensor]=(bus_voltage, shunt_voltage, current, power)
 
         return power_dict
 

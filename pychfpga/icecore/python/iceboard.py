@@ -286,7 +286,7 @@ class IceBoard(HWMResource, AttributeUser):
                 type(self)._hw_instances[self.serial_number]=self.hw
 
 
-        self.hw.open()
+        self.hw.init()
         # self.register(self.hw) # Allow access to the hardware methods/attributes from this class
         self.i2c = self.hw.get_i2c_interface() # get standardized I2C interface that can be used more easily by the user firmware
         self.hw.set_led('GP_LED2',1) # Hardware link is on
