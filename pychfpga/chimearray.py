@@ -47,6 +47,7 @@ from pychfpga.icecore.fpga_bitstream import FpgaBitstream
 from pychfpga.icecore.iceboard import IceBoard
 
 from pychfpga.core.chFPGA_controller import chFPGA_controller as ChimeFpgaFirmware
+from icecore.fpga_core import FpgaCoreFirmware as f
 
 #####################################
 
@@ -141,3 +142,8 @@ if __name__ == '__main__':
 
     # cc.set_fpga_firmware(crc32=1910844937,  configure_fpga=True, force=args.force, store_in_database=True) # associate boards with specified firmware and configure the selected FPGA
     # c.open() # establish communication with the boards so we can access their attributes and methods
+
+    #Discover new fpgas:
+    #f.interface_ip_addr = '10.10.10.203'  #your computer IP
+    #f.discover_fpgas()  #List of all fpga serial numbers on your network that have been programmed.
+    # #returned as decimal, do hex(number) to get in hex and add to table.

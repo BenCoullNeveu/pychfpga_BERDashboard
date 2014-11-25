@@ -22,7 +22,7 @@ class test_adc_ramp_histogram(test_BaseClass):
         self.fpga_ctrl.set_ADC_mode(mode='ramp')
         self.fpga_ctrl.set_gain((1,27))
         time.sleep(1)
-        self.fpga_ctrl.start_data_capture(burst_period_in_seconds=0.5, channels=range(16))
+        self.fpga_ctrl.start_data_capture(burst_period_in_seconds=0.1, channels=range(16))
         self.fpga_ctrl.sync()
         time.sleep(2)
         return
@@ -48,7 +48,7 @@ class test_adc_ramp_histogram(test_BaseClass):
         for i in xrange(16):
             xored = np.bitwise_xor(datas[:,i,:], perfect_ramp)
             for j,bit in enumerate(bits):
-                bad_bit = (np.bitwise_and(xored, bit)>>i).sum()*1.0/len(xored.flatten())
+                bad_bit = (np.bitwise_and(xored, bit)>>j).sum()*1.0/len(xored.flatten())
                 writer.writerow([i, j, bad_bit])
                 print 'chan {0}, bit {1}, error rate {2:.3f}'.format(i, j, bad_bit)
 
