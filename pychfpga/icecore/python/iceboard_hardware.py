@@ -23,6 +23,7 @@ class IceBoardHardware(object):
         - GPIO input/output
         - Temperature sensors
         - Power monitoring for every rail (voltage,current)
+        - Motherboard EEPROM
 
     This class implements these methods by issuring I2C commands
     through the I2C interface provided either by the FPGA or by the
@@ -39,51 +40,57 @@ class IceBoardHardware(object):
     #------------------------------------
     NUMBER_OF_FMC_SLOTS = 2 # Indicates the number of FMC slots supported by this platform
 
-    _FPGA_I2C_SWITCH_ADDR = 0b1110100
-    _ARM0_I2C_SWITCH_ADDR = 0b1110000
-    _ARM1_I2C_SWITCH_ADDR = 0b1110001
-    _ARM2_I2C_SWITCH_ADDR = 0b1110010
-    _ARM3_I2C_SWITCH_ADDR = 0b1110011
+    # I2C switch addresses (visible on all buses on a specific port)
+    _FPGA_I2C_SWITCH_ADDR = 0b1110100 #0x74
+    _ARM0_I2C_SWITCH_ADDR = 0b1110000 #0x70
+    _ARM1_I2C_SWITCH_ADDR = 0b1110001 #0x71
+    _ARM2_I2C_SWITCH_ADDR = 0b1110010 #0x72
+    _ARM3_I2C_SWITCH_ADDR = 0b1110011 #0x73
 
-    _GPIO_POWER_I2C_ADDR = 0b0100000
-    _GPIO_SFP_QSFP_I2C_ADDR = 0b0100001
-    _GPIO_SW_LEDS_ADDR = 0b0100010
-    _GPIO_ARM_PHY_LEDS_ADDR = 0b0100011
-
-    _TMP_ARM_I2C_ADDR = 0b1001010
-    _TMP_PHY_I2C_ADDR = 0b1001100
-    _TMP_FPGA_I2C_ADDR = 0b1001011
-    _TMP_POWER_I2C_ADDR = 0b1001000
-
-    _POWER_ICEVADJ_I2C_ADDR = 0b1000011 #0x43
-    _POWER_ICE12V0_I2C_ADDR = 0b1000111 #0x47
-    _POWER_ICE5V0_I2C_ADDR = 0b1001000 #0x48
-    _POWER_ICE3V3_I2C_ADDR = 0b1001001 #0x49
-    _POWER_ICE1V5_I2C_ADDR = 0b1001100 #0x4C
-    _POWER_ICE1V2_I2C_ADDR = 0b1001101 #0x4D
-    _POWER_ICE1V0_I2C_ADDR = 0b1001110 #0x4E
-    _POWER_ICE1V8_I2C_ADDR = 0b1001011 #0x4B
-    _POWER_ICE1V0GTX_I2C_ADDR = 0b1001111 #0x4F
-
-    _POWER_FMCA12V0_I2C_ADDR = 0b1000000 #0x40
-    _POWER_FMCA3V3_I2C_ADDR =  0b1000001 #0x41
-    _POWER_FMCAVADJ_I2C_ADDR = 0b1000010 #0x42
-
-    _POWER_FMCB12V0_I2C_ADDR = 0b1000100 #0x44
-    _POWER_FMCB3V3_I2C_ADDR =  0b1000101 #0x45
-    _POWER_FMCBVADJ_I2C_ADDR = 0b1000110 #0x46
-
-    _I2C_BUS_LIST = {
-        "FMC": (0, 0), # equivalent to FMCA. Included for backwards compatibility with single-FMC code
-        "FMCA": (0, 0),
-        "FMCB": (0, 1),
+    FPGA_I2C_BUS_LIST = {
+        # Bus name, (FPGA I2C port, I2C switch enable bit)
+        "FMC":   (0, 0), # equivalent to FMCA. Included for backwards compatibility with single-FMC code
+        "FMCA":  (0, 0),
+        "FMCB":  (0, 1),
         "QSFPA": (0, 2),
         "QSFPB": (0, 3),
-        "SFP": (0, 4),
-        "SMPS": (0, 5),
-        "BP": (0, 6),
-        "GPIO": (0, 7)
+        "SFP":   (0, 4),
+        "SMPS":  (0, 5),
+        "BP":    (0, 6),
+        "GPIO":  (0, 7)
         }
+
+    #IO Expanders, on GPIO bus
+    _GPIO_POWER_I2C_ADDR    = 0b0100000 #0x20
+    _GPIO_SFP_QSFP_I2C_ADDR = 0b0100001 #0x21
+    _GPIO_SW_LEDS_ADDR      = 0b0100010 #0x22
+    _GPIO_ARM_PHY_LEDS_ADDR = 0b0100011 #0x23
+
+    # Temperature sensors, on GPIO bus
+    _TMP_ARM_I2C_ADDR   = 0b1001010 #0x4A
+    _TMP_PHY_I2C_ADDR   = 0b1001100 #0x4C
+    _TMP_FPGA_I2C_ADDR  = 0b1001011 #0x4B
+    _TMP_POWER_I2C_ADDR = 0b1001000 #0x48
+
+    # Power monitors, on SMPS bus
+    _POWER_ICEVADJ_I2C_ADDR   = 0b1000011 #0x43
+    _POWER_ICE12V0_I2C_ADDR   = 0b1000111 #0x47
+    _POWER_ICE5V0_I2C_ADDR    = 0b1001000 #0x48
+    _POWER_ICE3V3_I2C_ADDR    = 0b1001001 #0x49
+    _POWER_ICE1V5_I2C_ADDR    = 0b1001100 #0x4C
+    _POWER_ICE1V2_I2C_ADDR    = 0b1001101 #0x4D
+    _POWER_ICE1V0_I2C_ADDR    = 0b1001110 #0x4E
+    _POWER_ICE1V8_I2C_ADDR    = 0b1001011 #0x4B
+    _POWER_ICE1V0GTX_I2C_ADDR = 0b1001111 #0x4F
+
+    _POWER_FMCA12V0_I2C_ADDR  = 0b1000000 #0x40
+    _POWER_FMCA3V3_I2C_ADDR   = 0b1000001 #0x41
+    _POWER_FMCAVADJ_I2C_ADDR  = 0b1000010 #0x42
+
+    _POWER_FMCB12V0_I2C_ADDR  = 0b1000100 #0x44
+    _POWER_FMCB3V3_I2C_ADDR   = 0b1000101 #0x45
+    _POWER_FMCBVADJ_I2C_ADDR  = 0b1000110 #0x46
+
 
 
     def __init__(self, iceboard):
@@ -103,14 +110,7 @@ class IceBoardHardware(object):
         self._logger = logging.getLogger(__name__)
         self._logger.debug('Initializing Iceboard hardware')
         self._iceboard = iceboard
-
-        # Create a standardized I2C interface to the hardware, whether it goes through the ARM or FPGA.
-        if hasattr(self._iceboard.arm, 'i2c_write_read') and hasattr(self._iceboard.arm, 'i2c_set_port'):
-            self._i2c = I2CInterface(self._iceboard.arm.i2c_write_read, self._iceboard.arm.i2c_set_port, self._I2C_BUS_LIST, self._ARM0_I2C_SWITCH_ADDR)
-        elif hasattr(self._iceboard.fpga, 'i2c_write_read') and hasattr(self._iceboard.fpga, 'i2c_set_port'):
-            self._i2c = I2CInterface(self._iceboard.fpga.i2c_write_read, self._iceboard.fpga.i2c_set_port, self._I2C_BUS_LIST, self._FPGA_I2C_SWITCH_ADDR)
-        else:
-            raise IceBoardHardwareException('Neither the ARM or FPGA provide a i2c_write_read() method needed to talk to the hardware')
+        self._i2c = self._iceboard.i2c
 
         self._logger.info(' Instantiating I2C GPIO manager')
         self._gpio_power = pca9575.pca9575(self._i2c, self._GPIO_POWER_I2C_ADDR, 'GPIO')

@@ -34,8 +34,10 @@ class FpgaBitstream(HWMResource):
     memory when the object is created by the user or when the get_data()
     method is called if it not already loaded.
 
-    If store_in_database is true, the bistream will also be stored in the
-    database for future use.
+    The bitstream is added to the database from a URI by get_bitstream().
+    Normally, the bitstream data is only kept in memory and is not not stored in the database.
+    If the parameter persist=True is provided, the bistream
+    will also be stored in the database for future use.
     """
 
     __tablename__ = 'fpga_bitstream'
@@ -49,8 +51,8 @@ class FpgaBitstream(HWMResource):
 
     # Database columns
     pk = Column(Integer, primary_key=True)
-    polymorphic_class_name = Column(String, nullable=False) # String that identifies the polymorphic_identity of the class needed to handle the firmware
-    class_name = Column(String, nullable=False) # String that identifies the class of this object
+    # polymorphic_class_name = Column(String, nullable=False) # String that identifies the polymorphic_identity of the class needed to handle the firmware
+    class_name = Column(String, nullable=False) # String that identifies the Python class that operates with this FPGA firmware
     crc32 = Column(Integer)
     md5_string = Column(String)
     timestamp = Column(DateTime)
@@ -104,7 +106,7 @@ class FpgaBitstream(HWMResource):
             logger.info('The database contains already contains an entry with CRC %08X. Updating that one.' % crc)
             bitstream_object = bitstream_objects.first()
             if firmware_class:
-                bitstream_object.set_firmware_class(firmware_class)
+                # bitstream_object.set_firmware_class(firmware_class)
                 session.commit()
             return bitstream_object
         elif new_bitstream_object and firmware_class:
@@ -128,8 +130,9 @@ class FpgaBitstream(HWMResource):
         self.logger.info('Creating bitstream object explicitely')
         self._load_bitstream(self.url)
 
-        if firmware_class:
-            self.set_firmware_class(firmware_class)
+        # if firmware_class:
+        #     self.set_firmware_class(firmware_class)
+        self.class_name = firmware_class.__name__
 
         if persist:
             self.persist_bitstream()
@@ -173,19 +176,19 @@ class FpgaBitstream(HWMResource):
             self._load_bitstream(self.url)
         self.bitstream = self.bitstream_cache
 
-    def set_firmware_class(self, firmware_class):
-        """ Set the database fields that allow the firmware handling class to be retreived.
-        """
-        polymorphic_identity = inspect(firmware_class).polymorphic_identity
-        self.polymorphic_class_name = polymorphic_identity
-        self.class_name = firmware_class.__name__
+    # def set_firmware_class(self, firmware_class):
+    #     """ Set the database fields that allow the firmware handling class to be retreived.
+    #     """
+    #     polymorphic_identity = inspect(firmware_class).polymorphic_identity
+    #     self.polymorphic_class_name = polymorphic_identity
+    #     self.class_name = firmware_class.__name__
 
 
-    def get_firmware_class(self):
-        """ Return the class object that should be used to access the firmware
-        functionnalities corresponding to this bistream.
-        """
-        return inspect(FpgaCoreFirmware).polymorphic_map[self.polymorphic_class_name].class_
+    # def get_firmware_class(self):
+    #     """ Return the class object that should be used to access the firmware
+    #     functionnalities corresponding to this bistream.
+    #     """
+    #     return inspect(FpgaCoreFirmware).polymorphic_map[self.polymorphic_class_name].class_
 
     def update(self, bitstream_object):
         """ Update the current object with the data contained with the provided one."""

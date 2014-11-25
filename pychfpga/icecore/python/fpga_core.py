@@ -18,12 +18,12 @@ import pychfpga.core.I2C as i2c # to be fixed: tese modules should live in iceco
 import pychfpga.core.GPIO as gpio
 from lib import fpga_mmi
 # from fpga_firmware import FpgaFirmware
-from hardware_map import HWMResource, Integer, Column, String, ForeignKey, UniqueConstraint, reconstructor
+# from hardware_map import HWMResource, Integer, Column, String, ForeignKey, UniqueConstraint, reconstructor
 
 class FpgaException(Exception):
     pass
 
-class FpgaCoreFirmware(HWMResource):
+class FpgaCoreFirmware(object):
     """
     Provides access to the basic functionnalities of the FPGA.
     This object is also a hardware map object that can store persistent information.
@@ -41,17 +41,17 @@ class FpgaCoreFirmware(HWMResource):
              - etc.
         - Control and monitoring of generic FMC Mezzanine I/O lines (I2C, etc.)
     """
-    __tablename__ = 'fpga_firmware'
+    # __tablename__ = 'fpga_firmware'
 
-    # __mapper_args__ = {'polymorphic_identity': 'core_fpga_firmware'}
-    __mapper_args__ = {
-            'polymorphic_on': 'firmware_class',
-            'polymorphic_identity': 'core_fpga_firmware'
-    }
-    pk = Column(Integer, primary_key=True)
-    iceboard_pk = Column(Integer, ForeignKey('iceboards.pk'))
-    iceboard_serial_number = Column(Integer, ForeignKey('iceboards.serial_number'))
-    firmware_class = Column(String, nullable=False)
+    # # __mapper_args__ = {'polymorphic_identity': 'core_fpga_firmware'}
+    # __mapper_args__ = {
+    #         'polymorphic_on': 'firmware_class',
+    #         'polymorphic_identity': 'core_fpga_firmware'
+    # }
+    # pk = Column(Integer, primary_key=True)
+    # iceboard_pk = Column(Integer, ForeignKey('iceboards.pk'))
+    # iceboard_serial_number = Column(Integer, ForeignKey('iceboards.serial_number'))
+    # firmware_class = Column(String, nullable=False)
 
     # ---------------------------------------
     # Class variables (common to all instances)
@@ -91,7 +91,9 @@ class FpgaCoreFirmware(HWMResource):
         """
         Get the serial numbers of all FPGA directly connected on the network (i.e. not accessed through the ARM processor)
 
-        NOTE: This function should not be called when the MMI interface is opened.
+        NOTE:
+            - This function should not be called when the MMI interface is opened.
+            - This function is supported only for direct Ethernet connections to the FPGA
         """
         logger = logging.getLogger(__name__)
 
@@ -124,6 +126,10 @@ class FpgaCoreFirmware(HWMResource):
         The board will be searched on the Ethernet interface associated with 'if_addr'
         If no ip address or port is specified, a port/address will be automatically assigned based on the interface address.
         An exception will be raised if the board cannot be found on the network of if another board uses the same ip address.
+
+        NOTE:
+            - This function is supported only for direct Ethernet connections to the FPGA
+
         """
 
         logger = logging.getLogger(__name__)
@@ -181,22 +187,22 @@ class FpgaCoreFirmware(HWMResource):
         """
         # self.iceboard_pk = iceboard_pk
         self.logger = logging.getLogger(__name__)
-        HWMResource.__init__(self, *args, **kwargs)
+        # HWMResource.__init__(self, *args, **kwargs)
         # super(type(self), self).__init__(*args, **kwargs) # This causes infinite recursive calls to this __init__
         # self.motherboard = motherboard
         if self.is_open():
             self.logger.error('Attempting to create a firmware instance for Iceboard S/N %s while an instance already exists' % self.iceboard_pk)
 
-    @reconstructor # SQLAlchemy decorator indicating that this method is to be called when the object is recreated from the database
-    def _init_from_database(self):
-        """
-        Reconstructs the Iceboard basic information from the database
-        entry and open the link to the Iceboard.
-        """
-        self.logger = logging.getLogger(__name__)
+    # @reconstructor # SQLAlchemy decorator indicating that this method is to be called when the object is recreated from the database
+    # def _init_from_database(self):
+    #     """
+    #     Reconstructs the Iceboard basic information from the database
+    #     entry and open the link to the Iceboard.
+    #     """
+    #     self.logger = logging.getLogger(__name__)
 
-        if self.is_open():
-            self.logger.error('Attempting to create a firmware instance from database for Iceboard S/N %s while an instance already exists' % self.iceboard_pk)
+    #     if self.is_open():
+    #         self.logger.error('Attempting to create a firmware instance from database for Iceboard S/N %s while an instance already exists' % self.iceboard_pk)
 
     def get_core_attributes(self):
         """
@@ -217,6 +223,9 @@ class FpgaCoreFirmware(HWMResource):
         The application-specific code should use the 'open' method if needed,
         which is called when the links to the IceBoard hardware are finished
         establishing.
+
+        TODO:
+            - Add MMI type as a parameter: Direct FPGA Ethernet, Direct ARM (SPI or PCIe), or Tuber (peek/poke)
         """
 
         # Store networking parameters for easy future reference
@@ -266,33 +275,33 @@ class FpgaCoreFirmware(HWMResource):
         # return self.iceboard_pk in type(self)._active_instances
         return bool(self._is_open)
 
-    def open(self):
-        """
-        Placeholder for the application-specific open method.
-        """
+    # def open(self):
+    #     """
+    #     Placeholder for the application-specific open method.
+    #     """
 
-    def close(self):
-        """
-        Placeholder for the application-specific close method.
-        """
+    # def close(self):
+    #     """
+    #     Placeholder for the application-specific close method.
+    #     """
 
-    def read(self, *args, **kwargs):
+    def mmi_read(self, *args, **kwargs):
         return self.mmi.read(*args, **kwargs)
 
-    def write(self, *args, **kwargs):
+    def mmi_write(self, *args, **kwargs):
         self.mmi.write(*args, **kwargs)
 
-    def ping_mmi(self, ip_addr, timeout):
+    def mmi_ping(self, ip_addr, timeout):
         """
         Verifies if the FPGA firmeware is responding using the IP address of the board.
         """
         raise NotImplementedError
 
-    def ping_broadcast(self, fpga_serial_number, timeout):
-        """
-        Verifies if the FPGA firmeware is responding using a broadcast.
-        """
-        raise NotImplementedError
+    # def ping_broadcast(self, fpga_serial_number, timeout):
+    #     """
+    #     Verifies if the FPGA firmeware is responding using a broadcast.
+    #     """
+    #     raise NotImplementedError
 
     def get_serial_number(self):
            return self.mmi.read(self._FPGA_SERIAL_NUMBER_ADDR, type = np.dtype('>u8'))
@@ -310,7 +319,7 @@ class FpgaCoreFirmware(HWMResource):
         """
         return self._base_gpio.get_bitstream_date()
 
-    def i2c_write_read(self, *args, **kwargs):
+    def fpga_i2c_write_read(self, *args, **kwargs):
         """
         Performs I2C read, write or SMB-compatible combined write/read operations
         (SMB or its subset PMB require the register address to be written and then data to be read immediately after an I2C restart. It cannot be done in separate write and read  operations)
@@ -319,7 +328,7 @@ class FpgaCoreFirmware(HWMResource):
         """
         return self._base_i2c.write_read(*args, **kwargs)
 
-    def i2c_set_port(self, *args, **kwargs):
+    def fpga_i2c_set_port(self, *args, **kwargs):
         """
         Sets the FPGA hardware port over which the i2c communications will be made after this call.
         This selects the FPGA pins over which the communications is done, *not* the bus selection done by an I2C switch.

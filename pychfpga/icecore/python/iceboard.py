@@ -26,25 +26,16 @@ from sqlalchemy import event
 
 from lib.attribute_publisher import AttributeUser
 from hardware_map import HWMResource
-from tuber import TuberHWMResource
+# from tuber import TuberHWMResource
 from fmc_mezzanine import FMCMezzanine
 
-# Force reloading of the hardware map module to allow this module
-# reloads to succeed. We need to make sure we use a freshly created
-# hardware_map module because HWMResource uses with a new dynamically
-# created Base class that statically remembers the current schema.
-# Therefore, SQLAlchemy will complain that the table already exist) if
-# we reloan this module and try to create an instrumented class that
-# already exists in the schema.
 
-# reload(hardware_map)
-# reload(tuber)
-
-# import fpga
 from fpga_bitstream import FpgaBitstream
 from fpga_core import FpgaCoreFirmware
 from iceboard_hardware import IceBoardHardware
 import icebox # don't use from .. import ... because of circular import problems
+from tuber import LocalPythonHandler
+from tuber import Tuber
 
 # import arm # object giving access to the ARM firmware
 # import hardware handlers
@@ -59,9 +50,9 @@ class IceBoardException(Exception):
 #         self.ORM_class = ORM_class
 
 
-class IceBoard(HWMResource, AttributeUser):
+class IceBoard(HWMResource, LocalPythonHandler):
     """
-    Provides access to the basic functions of an IceBoard Rev2/Rev3.
+    Provides access to the basic functions of an IceBoard.
 
     This object inherits from a generic Hardware Manager resource,
     which allows the iceboard objects to be added to the hardware
@@ -100,7 +91,7 @@ class IceBoard(HWMResource, AttributeUser):
     subarray = Column(Integer)
     present = Column(Integer, default = 0) # indicates if the board is currently present in the array
     slot_number = Column(Integer)
-    backplane_serial_number = Column(Integer)
+    backplane_serial_number = Column(Integer) # should be replaced by a backplane reference object
 
     # ARM firmware-related definition
     # tuber_uri = Column(String)
@@ -122,8 +113,26 @@ class IceBoard(HWMResource, AttributeUser):
     # fpga = relationship("FpgaFirmware", uselist=False, cascade="all, delete, delete-orphan", single_parent=True) # one-to-one relationship with the firmware object. Make sure there is only one firmware object.
     # fpga = relationship("FpgaCoreFirmware", uselist=False, backref='iceboards', foreign_keys=[FpgaCoreFirmware.iceboard_pk], cascade="all, delete, delete-orphan", single_parent=True) # one-to-one relationship with the firmware object. Make sure there is only one firmware object.
 
-    arm_pk = Column(Integer, ForeignKey('armfirmware.pk'))
-    arm = relationship("TuberHWMResource", uselist=False, cascade="all, delete, delete-orphan", single_parent=True, lazy='joined') # one-to-one relationship with the firmware object. Make sure there is only one firmware object.
+
+
+    # The core handler describes where to find the methods and attributes needed to operate the
+    # core functionnalities of the Iceboard (typically offered by the on-board ARM
+    # processor through a JSON/HTTP interface (tuber)
+    core_handler = None
+    core_handler_uri = Column(String)
+    core_handler_class = Column(String)
+    # core_handler = relationship("TuberHWMResource", uselist=False, cascade="all, delete, delete-orphan", single_parent=True, lazy='joined') # one-to-one relationship with the firmware object. Make sure there is only one firmware object.
+    # core_handler_pk = Column(Integer, ForeignKey('armfirmware.pk'))
+
+
+    # The application handler describes where to find the application-specific
+    # methods and attributes to operate the Iceboard programmed with a
+    # specific ARM and FPGA firmware
+    app_handler = None
+    app_handler_uri = Column(String)
+    app_handler_class = Column(String)
+    # app_handler = relationship("AppHandlerHWMResource", uselist=False, cascade="all, delete, delete-orphan", single_parent=True, lazy='joined') # one-to-one relationship with the firmware object. Make sure there is only one firmware object.
+    # app_handler_pk = Column(Integer, ForeignKey('app_handler.pk'))
 
 
     # Set up explicit mezz1 / mezz2 links.
@@ -141,240 +150,65 @@ class IceBoard(HWMResource, AttributeUser):
         primaryjoin="or_(FMCMezzanine.pk==IceBoard.mezz1_pk,FMCMezzanine.pk==IceBoard.mezz2_pk)", lazy='joined'
     )
 
-    # ---------------------------------------
-    # Class variables (common to all instances)
-    # ---------------------------------------
-    _active_instances = {} # This contains a dictionary of all active (opened) IceBoard instances indexed by the board's serial number
-    _fpga_instances = {}
-    _hw_instances = {}
-    # ---------------------------------------
-    # Default non-database instance variables defaults.
-    # ---------------------------------------
-    # These attributes need to be initialized when an Iceboard object is
-    # created explicitely by the program or implicitely from the database when
-    # the object is accessed.
+    def __init__(self, **kwargs):
+        """
+        Creates an Iceboard that is accessed through the networking parameters specified in the database.
+        The created object does not have any fpga or hardware handlers yet. Those will be created when the Iceboard is opened.
+        """
+        self.logger = logging.getLogger(__name__)
+        self.logger.info('Creating instance for IceBoard S/N %r' % (self.serial_number))
 
-    # state = IceBoardState()
+        super(type(self), self).__init__(**kwargs)
 
+        self._init()
 
-    fpga = None
-    hw = None # Object handling the IceBoard hardware
-    fpga_port_number = None
-    # _self_reference = None # Used to ensure the object stays in memory and to check of the object has been opened
-    _is_open = False
-
-
-    def __init__(self, auto_open=True, **kwargs):
+    @reconstructor # SQLAlchemy decorator indicating that this method is to be called when the object is recreated from the database
+    def _init_from_database(self, **kwargs):
         """
         Creates an Iceboard that is accessed through the networking parameters specified in the database.
         The created object does not have any fpga or hardware handlers yet. Those will be created when the Iceboard is opened.
         """
 
-        super(type(self), self).__init__(**kwargs)
-
-        if self.serial_number:
-            self.fpga_port_number = 41000 + 4*(self.serial_number)
-        self.fpga_subarray = 0 # another thing we probably won't need
-        # self._auto_open = auto_open
         self.logger = logging.getLogger(__name__)
-        self.logger.debug('Instantiating Iceboard S/N %s from direct instantiation' % ('%03i' % self.serial_number if self.serial_number else self.serial_number))
-        self.logger.debug('S/N=%s, uri=%s, fpga ip=%s' % ('%03i' % self.serial_number if self.serial_number else self.serial_number, self.arm.tuber_uri if self.arm else None, self.fpga_ip_addr))
+        self.logger.info('Recreating instance from database for for IceBoard S/N %r' % (self.serial_number))
 
-        if self.serial_number and self.is_open():
-            self.logger.error('Attempting to open object S/N %s from database while an instance already exists' % ('%03i' % self.serial_number if self.serial_number else self.serial_number))
+        self._init()
 
-
-    @reconstructor # SQLAlchemy decorator indicating that this method is to be called when the object is recreated from the database
-    def _init_from_database(self):
+    def _init(self):
         """
-        Reconstructs the Iceboard basic information from the database
-        entry and open the link to the Iceboard.
+        Creates an Iceboard that is accessed through the networking parameters specified in the database.
+        The created object does not have any fpga or hardware handlers yet. Those will be created when the Iceboard is opened.
         """
-        self.logger = logging.getLogger(__name__)
-        self.logger.debug('Reconstructing Iceboard object S/N %s from database entry' % ('%03i' % self.serial_number if self.serial_number else self.serial_number))
 
-        if self.serial_number:
-            self.fpga_port_number = 41000 + 4*(self.serial_number)
-        self.fpga_subarray = 0 # another thing we probably won't need
+        # Assign the core handler. It is always a tuber handler because in the minimum we need to have fpga programming methods that can only exist remotely on the ARM processor.
+        self.core_handler = Tuber(self.core_handler_uri, self.core_handler_class)
 
-        # re-attaching dynamic attributes
-        if self.serial_number in self._fpga_instances:
-            self.fpga = self._fpga_instances[self.serial_number]
-            self.fpga._motherboard = self
-            self.logger.warning('Reattached Iceboard S/N %03i to fpga object %r' % (self.serial_number, self.fpga))
-
-        if self.serial_number in self._hw_instances:
-            self.hw = self._hw_instances[self.serial_number]
-            self.hw._iceboard = self
-
-            self.logger.warning('Reattached Iceboard S/N %03i to hardware object %r' % (self.serial_number, self.hw))
-            self.register(self.hw)
-            self.i2c = self.hw.get_i2c_interface()
-        # if self.serial_number and self.is_open():
-        #     self.logger.warning('The reconstructed Iceboard S/N %s object was already opened' % ('%03i' % self.serial_number if self.serial_number else self.serial_number))
-        if self.mezz1:
-            self.mezz1.motherboard = self
-        if self.mezz2:
-            self.mezz2.motherboard = self
-
+        # Assign the application handler. In this case, this one can be a local Python handler class or a remote tuber handler
+        if self.is_local_python_handler(self.app_handler_class):
+            self.app_handler = self.get_local_python_handler(self.app_handler_class, self.serial_number, iceboard = self)
+        elif self.app_handler_uri and Tuber.ping(self.app_handler_uri):
+            self.app_handler = Tuber(self.app_handler_uri, self.app_handler_class)
+        else:
+            self.app_handler = None
+        if not self.app_handler:
+            self.logger.error('IceBoard S/N %r does not have a valid application handler' % (self.serial_number))
+        else:
+            self.logger.info('IceBoard S/N %r application handler is %r' % (self.serial_number, self.app_handler))
 
     def __repr__(self):
         return 'Iceboard S/N %s @%08X' % ('%03i' % self.serial_number if self.serial_number else self.serial_number, id(self))
 
     # __getattr__ = attribute_publisher.AttributeUser.get_registered_attribute
-    # __dir__ = attribute_publisher.AttributeUser.get_dir
-    def __getattr__(self,name):
-        #self.logger.debug('calling top-level __getattr__(%s) for Iceboard object S/N %03i' % (name, self.serial_number))
-        # if not self._self_reference:
-        #     self.logger.debug('Automatically opening Iceboard object S/N %03i' % (self.serial_number))
-        #     self.open()
-        return super(type(self), self).__getattr__(name)
+    def __dir__(self):
+        """ Returns the list of attributes of this class and of those of the core and application handlers."""
+        return type(self).__dict__.keys() + self.__dict__.keys() + dir(self.core_handler) + dir(self.app_handler)
 
-    def open(self, forced_mezz_type=None, *args, **kwargs):
-        """
-        Establishes the connection with the hardware and firmware on the IceBoard and create all appropriate handling classes.
-        """
+    def __getattr__(self, name):
+        if hasattr(self.core_handler, name):
+            return getattr(self.core_handler, name)
+        else:
+            return getattr(self.app_handler, name)
 
-        # if the FPGA handler instance was not created, check if one exists create it
-        if self.fpga is None:
-            if self.serial_number in type(self)._fpga_instances:
-                self.fpga = type(self)._fpga_instances[self.serial_number]
-                self.fpga._motherboard = self
-            else:
-                firmware_class = self.fpga_bitstream.get_firmware_class()
-                self.fpga = firmware_class()
-                type(self)._fpga_instances[self.serial_number]=self.fpga
-
-        if self.serial_number and self.is_open():
-            self.logger.error('Attempting to open IceBoard S/N %s while it is already opened. Aborting.' % ('%03i' % self.serial_number if self.serial_number else self.serial_number))
-            return
-
-        # self.close() # Make sure we cleanly close everything and free resources before creating new ones
-
-        # Instantiate the ARM firmware handling object
-        # We could skip this phase if we don't want to use the ARM (and the FPGA is programmed by other means)
-        # self.arm = TuberHWMResource(self.tuber_uri, self.tuber_objname)
-        # if self.arm:
-        #     # We don't need to open an ARM object. Sockets are created on-the-fly when needed.
-        #     self.register(self.arm) # Allow access to the fpga methods/attributes from this class
-
-
-       # if not self.fpga.is_configured():
-       #      self.logger.warning('FPGA on IceBoard S/N %iif not configured. The FPGA-related methods will not be available.' % self.serial_number)
-       #  else:
-            # Open communication with the FPGA and initialize the core
-            # firmware object (but leave the firmware in its current state) We
-            # need this now to create the basic interface that is needed for
-            # low-level hardware interface (I2C, buck sync, FMC SPI etc)
-        self.logger.info('Instantiating core FPGA firmware handlers for board #%i' % (self.serial_number))
-        self.fpga.open_core(ip_addr=self.fpga_ip_addr, port_number=self.fpga_port_number, serial_number = self.fpga_serial_number) # open the core functionnalities only for now
-        # self.register(self.fpga, self.fpga.get_core_attributes()) # get attributes of the core FPGA firmware only. We'll add the full application-specific attributes later.
-
-
-
-        # Instantiate hardware managers. This requires an I2C link to the
-        # hardware (i2c_write_read() and i2c_set_port()), which should be
-        # provided either by the ARM or by the FPGA.
-        self.logger.info('Instantiating IceBoard hardware handlers for board #%i' % (self.serial_number))
-        if self.hw is None:
-            if self.serial_number in type(self)._hw_instances:
-                self.hw = type(self)._hw_instances[self.serial_number]
-                self.hw._iceboard = self
-                self.logger.warning('open: Reattached Iceboard S/N %03i to hardware object %r' % (self.serial_number, self.hw))
-            else:
-                self.hw = IceBoardHardware(iceboard=self)
-                type(self)._hw_instances[self.serial_number]=self.hw
-
-
-        self.hw.init()
-        # self.register(self.hw) # Allow access to the hardware methods/attributes from this class
-        self.i2c = self.hw.get_i2c_interface() # get standardized I2C interface that can be used more easily by the user firmware
-        self.hw.set_led('GP_LED2',1) # Hardware link is on
-        self.hw.set_led('GP_LED1',0) # Full FPGA firmware is not yet on
-
-        # ----------------------------------
-        # Read basic backplane information (backplane S/N, slot number) so we
-        # know where this board is in the array
-        self.slot_number = self.hw.get_slot_number() # this method is provided by hw or arm
-        (self.backplane_serial, __) = icebox.IceBox.get_backplane_info(iceboard = self)
-
-        # Detect the mezzanines
-        self.detect_mezz(force_type_string=forced_mezz_type)
-
-        # We can now create the full-fledged application-specific FPGA firmware handlers.
-        # The firmware has access to the methods offered by this iceboard. The following are typically used:
-        #   i2c, mezz
-        if self.fpga:
-            self.logger.info('Instantiating Application-specific FPGA firmware handlers for board #%i' % (self.serial_number))
-            # self.unregister(self.fpga)
-            self.fpga.open(motherboard=self, *args, **kwargs) # Open the application-specific firmware
-            # self.register(self.fpga) # Allow access to the fpga_user methods/attributes from this class
-
-        self.hw.set_led('GP_LED1',1) # Indicate that the Iceboard is ready
-
-        # self._self_reference = self # Create circular reference to prevent the object from being removed from memory until closed.
-        self.arm_serial_number = 'allo!'
-        self._is_open = True
-        type(self)._active_instances[self.serial_number] = self
-
-    def close(self):
-        self.unregister_all()
-        if self.fpga:
-            self.logger.info('Closing application-specific FPGA firmware handlers for board #%i' % (self.serial_number))
-            # self.unregister(self.fpga)
-            self.fpga.close()
-
-        if self.hw:
-            self.logger.info('Closing IceBoard hardware handlers for board #%i' % (self.serial_number))
-            # self.unregister(self.hw)
-            self.hw.close()
-            self.hw = None
-        type(self)._hw_instances.pop(self.serial_number, None)
-
-        if self.fpga:
-            self.logger.info('Closing core FPGA firmware handlers for board #%i' % (self.serial_number))
-            self.fpga.close_core()
-            self.fpga = None
-        type(self)._fpga_instances.pop(self.serial_number, None)
-
-        if self.arm:
-            self.logger.info('Closing core arm firmware handlers for board #%i' % (self.serial_number))
-            # self.unregister(self.arm)
-            # self.arm.close() # Tuber has no close()
-            # self.arm = None
-
-        # self._self_reference = None # Now the object can be garbage collected if no one else uses it
-        self._is_open = False
-        type(self)._active_instances.pop(self.serial_number, None)
-
-    def is_open(self):
-        return self._is_open
-        # return self.serial_number in type(self)._active_instances
-
-    def detect_mezz(self, force_type_string=None):
-
-        # get a list of all polymorphic strings of classes derived from FMCMezzanine
-        available_mezz_types = {m.polymorphic_identity:m.class_ for m in inspect(FMCMezzanine).polymorphic_map.values()}
-
-        mezz_list = enumerate(['FMCA','FMCB'])
-
-        if self.mezz1:
-            del self.mezz1
-        if self.mezz2:
-            del self.mezz2
-
-        for (fmc_number, fmc_name) in mezz_list:
-            if force_type_string:
-                type_string = force_type_string
-            else:
-                type_string = FMCMezzanine.get_type_string(self.i2c, fmc_name)
-
-            if type_string in available_mezz_types:
-                self.logger.info("FMC Mezzanine of type '%s' was detected in FMC slot #%i (%s)" % (type_string, fmc_number, fmc_name))
-                mezz_class = available_mezz_types[type_string]
-                setattr(self, 'mezz%i' % (fmc_number+1), mezz_class(motherboard=self, fmc_number=fmc_number, fmc_name=fmc_name))
-            else:
-                self.logger.info("No recognized FMC Mezzanine was found in FMC slot #%i (%s)" % (fmc_number, fmc_name))
 
     def set_fpga_firmware(self, bitstream_object, configure_fpga = True, force=False):
 
@@ -398,9 +232,9 @@ class IceBoard(HWMResource, AttributeUser):
         #     del self.fpga
 
         #  Get the class that corresponds to the polymorphic identity name
-        fpga_firmware_class = self.fpga_bitstream.get_firmware_class()
+        # fpga_firmware_class = self.fpga_bitstream.get_firmware_class()
 
-        self.logger.info("The FPGA firmware object for iceBoard S/N %i is '%s' (%r)" % (self.serial_number, self.fpga_bitstream.polymorphic_class_name, fpga_firmware_class))
+        self.logger.info("The FPGA firmware object for iceBoard S/N %i is %r" % (self.serial_number, self.fpga_bitstream))
 
         # self.fpga = firmware_class() # Create a FPGA firmware object. This does not do much more than linking the database object
 
@@ -464,15 +298,14 @@ class IceBoard(HWMResource, AttributeUser):
         # Program the FPGA if it did not return the proper config info
         if not already_configured or force: # if the FPGA has not replied, we program it
             self.fpga_is_configured = False
-            if not self.arm:
-                raise IceBoardException('The Iceboard does not have an ARM firmware object needed to configure the FPGA')
-            self.logger.info('Configuring FPGA on board S/N %i through tuber at  %s' % (self.serial_number, self.arm.tuber_uri))
+            if not hasattr(self, 'load_fpga_bitstream'):
+                raise IceBoardException("The Iceboard does not have the 'load_fpga_bitstream' method needed to configure the FPGA")
+            self.logger.info('Configuring FPGA on board S/N %i' % (self.serial_number))
             md5_string = self.fpga_bitstream.md5_string
             b64_string = base64.b64encode(self.fpga_bitstream.get_bitstream_data())
-            # with TuberHWMResource(self.tuber_uri, self.tuber_objname) as arm:
-            self.arm.load_fpga_bitstream(b64_string, md5_string)
+            self.load_fpga_bitstream(b64_string, md5_string)
             # Configure the FPGA networking foe the freshly programmed firmware
-            self.logger.info('Done configuring FPGA on board S/N %i through tuber at  %s' % (self.serial_number, self.arm.tuber_uri))
+            self.logger.info('Done configuring FPGA on board S/N %i' % (self.serial_number))
 
             if self.fpga_serial_number:
                 pass
@@ -501,12 +334,15 @@ class IceBoard(HWMResource, AttributeUser):
         """Displays the status of the motherboard"""
 
 
+# A few hooks to log when SQLAlchemy manipulates ORM objects . This is for
+# debugging, to better understand how often an object is being changed.
+# Results are often surprising.
 
 @event.listens_for(IceBoard, 'expire')
 def receive_expire(target, attrs):
     "listen for the 'expire' event"
     logger = logging.getLogger(__name__)
-    logger.warn('%r has expired the folloging: %r' % ('Iceboard', attrs))
+    logger.warn('IceBoard ??? has expired the following attribute(s): %r' % (attrs)) # cannot use target.serial_number for some reason
 
 @event.listens_for(IceBoard, 'refresh')
 def receive_refresh(target, context, attrs):
@@ -547,7 +383,11 @@ def load(session, filename):
             if serial_number in keymap:
                 logger.info('IceBoard S/N %03i already exists in the database. Updating columns from file.' % serial_number)
                 ib = iceboards.get(keymap[serial_number])
-                ib.arm = TuberHWMResource(tuber_uri = tuber_uri, tuber_objname = 'iceboard')
+                ib.core_handler_uri = tuber_uri
+                ib.core_handler_class = 'iceboard'
+                ib.app_handler_uri = None
+                ib.app_handler_class = 'chfpga'
+
                 ib.arm_serial_number = arm_serial_number
                 ib.fpga_ip_addr = fpga_ip_addr
                 ib.fpga_serial_number = fpga_serial_number
@@ -557,7 +397,11 @@ def load(session, filename):
                 logger.info('IceBoard S/N %03i does not exist in the database. Creating from file.' % serial_number)
                 ib = IceBoard(
                     serial_number=serial_number,
-                    arm = TuberHWMResource(tuber_uri=tuber_uri, tuber_objname = 'iceboard'),
+                    # arm = TuberHWMResource(tuber_uri=tuber_uri, tuber_objname = 'iceboard'),
+                    core_handler_uri = tuber_uri ,
+                    core_handler_class = 'iceboard',
+                    app_handler_uri = None ,
+                    app_handler_class = 'chfpga',
                     arm_serial_number=arm_serial_number,
                     fpga_ip_addr=fpga_ip_addr,
                     fpga_serial_number=fpga_serial_number,
@@ -595,9 +439,9 @@ def discover(session, timeout):
 
     # Check if each iceboard actually responds to tuber requests
     for ib in iceboards:
-        if ib.arm and ib.arm.tuber_uri:
-            ib.present = TuberHWMResource.ping(ib.arm.tuber_uri)
-            logger.info('Discovery: The IceBoard S/N %03i ping result at URI= %s is %s' % (ib.serial_number, ib.arm.tuber_uri, bool(ib.present)))
+        if ib.core_handler_uri:
+            ib.present = Tuber.ping(ib.core_handler_uri)
+            logger.info('Discovery: The IceBoard S/N %03i ping result at URI= %s is %s' % (ib.serial_number, ib.core_handler_uri, bool(ib.present)))
     session.commit()
 
     # Issue log messages for FPGA serial that were detected but are not already in the database
@@ -606,7 +450,7 @@ def discover(session, timeout):
     serials = FpgaCoreFirmware.discover_fpgas()
     for ser in serials:
         if ser not in database_serials:
-            logger.info('A FPGA with serial number %08X was detected on the network but is not in the database' % ser)
+            logger.info('A FPGA with serial number %08X was detected on the network but is not in the database. Is this a new board?' % ser)
     #         ib = IceBoard(
     #             fpga_serial_number = int(ser))
     #         session.add(ib)

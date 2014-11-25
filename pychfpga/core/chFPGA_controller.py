@@ -34,7 +34,8 @@ import numpy as np
 #import pdb
 import time
 
-from pychfpga.icecore.fpga_core import FpgaCoreFirmware
+from pychfpga.icecore.app_handler import IceBoardAppHandler
+from pychfpga.icecore.iceboard import IceBoard
 
 from pychfpga.common import util
 
@@ -132,7 +133,7 @@ class chFPGAException(Exception):
         self._logger.exception(message)
 
 
-class chFPGA_controller(FpgaCoreFirmware):
+class chFPGA_controller(IceBoardAppHandler):
     """
     Creates an object that connects to the specified chFPGA board and provides the methods to configure it and control its operations.
 
@@ -259,30 +260,35 @@ class chFPGA_controller(FpgaCoreFirmware):
 
         # provide access to the FPGA read/write methods directly from this chFPGA object
 
-    from sqlalchemy.orm import reconstructor
-    @reconstructor # SQLAlchemy decorator indicating that this method is to be called when the object is recreated from the database
-    def _init_from_database(self):
-        """
-        Reconstructs the Iceboard basic information from the database
-        entry and open the link to the Iceboard.
-        """
-        self._logger = logging.getLogger(__name__)
-        self._logger.warning('CHFPGA_Controller %r was re-initialized from the database.' % self)
-        self._sampling_frequency = None
-        self._reference_frequency = None
-        self._FRAME_PERIOD = None
-        self._FMC_present = []  # indicates if the FMC board is present. If not, the modules will act accordingly.
-        self._adc_board = []
-        self._last_init_time = None
+    # from sqlalchemy.orm import reconstructor
+    # @reconstructor # SQLAlchemy decorator indicating that this method is to be called when the object is recreated from the database
+    # def _init_from_database(self):
+    #     """
+    #     Reconstructs the Iceboard basic information from the database
+    #     entry and open the link to the Iceboard.
+    #     """
+    #     self._logger = logging.getLogger(__name__)
+    #     self._logger.warning('CHFPGA_Controller %r was re-initialized from the database.' % self)
+    #     self._sampling_frequency = None
+    #     self._reference_frequency = None
+    #     self._FRAME_PERIOD = None
+    #     self._FMC_present = []  # indicates if the FMC board is present. If not, the modules will act accordingly.
+    #     self._adc_board = []
+    #     self._last_init_time = None
 
-    def open(self, motherboard, init=1, verbose=0, **kwargs):
+    def open(self, init=1, verbose=0, *args, **kwargs):
+
+        self._logger = logging.getLogger(__name__)
+
+        super(type(self),self).open(*args, **kwargs)
 
         # super(type(self), self).open()
         # self.mmi = self._motherboard.fpga_core.mmi
-        self._logger = logging.getLogger(__name__)
-        self._motherboard = motherboard
+        # self._motherboard = motherboard
 
-        self._self_reference = self # hack to make sure motherboard still exist
+        self.logger.info('Instantiating Application-specific FPGA firmware handlers for board #%i' % (self.serial_number))
+
+        # self._self_reference = self # hack to make sure motherboard still exist
 
         self.read = self.mmi.read
         self.write = self.mmi.write
@@ -462,7 +468,7 @@ class chFPGA_controller(FpgaCoreFirmware):
             # self._motherboard = motherboard_cls(self) # Creates the motherboard handler
 
             # self._NUMBER_OF_FMC_SLOTS = self._motherboard.get_number_of_fmc_slots()
-            self._logger.info('   This motherboard has %i FMC slots' % self._motherboard.hw.NUMBER_OF_FMC_SLOTS)
+            self._logger.info('   This motherboard has %i FMC slots' % self.hw.NUMBER_OF_FMC_SLOTS)
             #return
             # self._logger.debug('  - ML605 PMBus')
             # self.ML605_PMBus = ML605_PMBus.ML605_PMBus_base(self)
@@ -478,7 +484,8 @@ class chFPGA_controller(FpgaCoreFirmware):
             # -- Create ADC board hardware ressource handlers objects
             # ---------------------------------------------------------------------
             self._logger.info('=== Analyzing available FMC Mezzanines')
-            self._adc_board = [self._motherboard.mezz1, self._motherboard.mezz2]
+            # self._adc_board = [self._motherboard.mezz1, self._motherboard.mezz2]
+            self._adc_board = [self.mezz1_handler, self.mezz2_handler]
             self._FMC_present = [False] * self._NUMBER_OF_FMC_SLOTS
             self.ANT_FMC_IS_PRESENT = [False] * self.NUMBER_OF_ANTENNAS
             for (fmc_number, fmc) in enumerate(self._adc_board):
@@ -499,6 +506,10 @@ class chFPGA_controller(FpgaCoreFirmware):
             for (ant_number, fmc_number) in enumerate(self.ANT_FMC_NUMBER):
                 if self._adc_board[fmc_number]:
                     self.ANT_FMC_IS_PRESENT[ant_number] = self._adc_board[fmc_number].is_present()
+
+            # self.unregister(self.fpga)
+
+            self.hw.set_led('GP_LED1',1) # Indicate that the Iceboard is ready
 
         except Exception as e:
             self.close()
@@ -1589,3 +1600,6 @@ class chFPGA_controller(FpgaCoreFirmware):
                 for (adc_number, adc) in enumerate(board.ADC):
                     res['FMC%i ADC%i'%(fmc_number, adc_number)] = adc.get_temperature()
         return res
+
+# Register the class as a Iceboard handler
+IceBoard.add_local_python_handler('chfpga', chFPGA_controller)

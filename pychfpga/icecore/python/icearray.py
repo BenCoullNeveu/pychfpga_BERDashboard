@@ -24,7 +24,10 @@ class IceException(Exception):
 
 class IceArray(object):
     """
-    Provides access to the ressources of the IceArray by using the HardwareManager.
+    Provides access to the ressources of the IceArray by using the
+    HardwareManager. An IceArray is essentially a SQL Session, from which you can issue
+    queries to retrieve hardware items described in the HardwareManager
+    database. This class also adds some helper functions to simplify operations of the array.
 
     This class specializes the HardwareManager by providing methods that are aware of specific hardware such as:
        - IceBoards
@@ -50,8 +53,7 @@ class IceArray(object):
     def __init__(self, uri='sqlite:///:memory:', interface_ip_addr=None,  *args, **kwargs):
         """
         'interface_ip_addr' is the IP address of the Ethernet interface
-            that will be used for direct FPGA communications (either discovery
-            broadcasts or for opening command/data sockets)
+            that will be used for direct UDP FPGA communications.
 
         Todo:
 

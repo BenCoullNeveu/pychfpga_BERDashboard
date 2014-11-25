@@ -39,7 +39,81 @@ def _tuber_json_object_hook(d):
     '''
     return collections.namedtuple('TuberResult', d.keys())(*d.values())
 
-class TuberHWMResource(HWMResource):
+class LocalPythonHandler(object):
+    """
+    Registers Python classes locally accessible to the user and
+    maintains a list of all instances of those classes so they can be accessed
+    by (class_name, class_id) tuples.
+    """
+
+    _local_python_handler_classes = {} # Dictionary containing class_name:class
+    _local_python_handler_instances = {} # Dictionary containing (class_name, id):instance
+
+    @classmethod
+    def add_local_python_handler(cls, class_name, class_):
+        cls._local_python_handler_classes[class_name]=class_
+
+    def is_local_python_handler(self, class_name):
+        return class_name in type(self)._local_python_handler_classes
+
+    def get_local_python_handler(self, obj_name, obj_id, *args, **kwargs):
+        if (obj_name, obj_id) not in type(self)._local_python_handler_instances:
+            obj = type(self)._local_python_handler_classes[obj_name](*args, **kwargs)
+            type(self)._local_python_handler_instances[(obj_name, obj_id)] = obj
+            return obj
+        else:
+            return type(self)._local_python_handler_instances[(obj_name, obj_id)]
+
+
+class Handler(object):
+    """ Proof of concept of a handler object, which is an object that provides
+    methods and attributes located remotely or locally.
+
+    Local access to Python object is performed if the object's class is
+    registered to the Handler. Otherwise remote access is done through Tuber.
+
+    Handlers have these restrictions:
+       - attributes and methods whise name begin with '_' are not accessible
+       - modification to the object attributes must be done by a setter
+         function provided by the object.
+       - methods or attribute access can only return string or numeric values,
+         or lists or dictionnary thereof
+
+    Notes:
+
+       - JFC: The way this is written, direct local access of python classes
+         is currently more flexible than remote access because we do not need
+         the return value to be serializable. We therefore can dig down the
+         hierarchies and index objects directly, which is heavily used for
+         debugging. Remote access through Tuber would not allow this,
+         therefore potentially causing code compatibility issues if the code
+         is moved remotely. Depending on the philosophy of the system, we
+         might want to restrict local access capabilities to match that of
+         remote access (unless we use a more flexible RPC protocol (like RpyC)
+         and are willing run python remotely).
+    """
+
+    def __init__(self, uri, obj_name, obj_id, *args, **kwargs):
+        """
+        uri: Address used to access the resource remotely
+        class_name: Name of the class to be accessed
+        key: ID used to uniquely identify each instance of the class. This is typucally the primary key of a database object.
+        """
+
+        if DirectAccess.is_direct_access(obj_name):
+            self.resource = DirectAccess.get_object(obj_name, obj_id)
+        elif uri:
+            self.resource = Tuber(uri, obj_name)
+        else:
+            self.resource = None
+
+    def __dir__(self):
+        return dir(self.resource)
+    def __getattr__(self, name):
+        return getattr(self.resource, name)
+
+
+class Tuber(object):
     '''A base class for HWMResources that correspond to TuberObjects.
 
     This is a great way of using the HardwareMap to correspond with
@@ -65,11 +139,14 @@ class TuberHWMResource(HWMResource):
     _tuber_meta_cache = None
     _hold_dispatcher = False
 
+
+
+
 #    __abstract__ = True
-    __tablename__ = 'armfirmware'
-    pk = Column(Integer, primary_key=True)
-    tuber_uri = Column(String, nullable=False)
-    tuber_objname = Column(String, nullable=False)
+    # __tablename__ = 'armfirmware'
+    # pk = Column(Integer, primary_key=True)
+    # tuber_uri = Column(String, nullable=False)
+    # tuber_objname = Column(String, nullable=False)
 
     @staticmethod
     def ping(uri, timeout = 0.1):
@@ -83,9 +160,14 @@ class TuberHWMResource(HWMResource):
             return False
         return True
 
-    # def __init__(self, uri, object_name):
-    #     self.tuber_uri = uri
-    #     self.tuber_objname = object_name
+    def __init__(self, uri, obj_name):
+        """
+        uri: Address used to access the resource remotely
+        class_name: Name of the class to be accessed
+        key: ID used to uniquely identify each instance of the class. This is typucally the primary key of a database object.
+        """
+        self.tuber_uri = uri
+        self.tuber_objname = obj_name
 
     def __enter__(self):
         return self
