@@ -39,13 +39,7 @@ def programFpga(board_sn, ch_acq_path = '../../ch_acq/', host_ip = None,  bitfil
     except NameError:
         pass
     
-    # Close all previous sessions with the layout/hardware map database
-    IceArray.close_all_sessions()
-
-    # Create the array object and update the hardware database from a file and from auto-discovery
-    array = IceArray(uri='sqlite:///test.db', interface_ip_addr=host_ip)
-    array.load_iceboards('iceboard_list.txt') # update iceboard definitions in database with the data in this CSV file so we can start with an empty database if needed
-    array.discover() # automatically update the hardware map database with discovered resources. This will probe the boards and will update the 'present' field.
+    array = reload_list(host_ip=host_ip)
 
     # Load in memory the CHIME firmware to be used with the iceboards
     fpga_bitstream = array.get_fpga_bitstream(bitfile_path, chFPGA_controller)
@@ -55,10 +49,15 @@ def programFpga(board_sn, ch_acq_path = '../../ch_acq/', host_ip = None,  bitfil
 
     # Program the iceboard with the specified firmware and assiciate it with the corresponding Python handler class
     # (if the FPGA  is already programmed, this will be instantaneous)
-    c.set_fpga_firmware(fpga_bitstream, chFPGA_controller, force=force)
+    c.set_fpga_firmware(fpga_bitstream, configure_fpga=True, force=force)
     return c
+
+def discover_fpgas(host_ip):
+    from pychfpga.icecore.fpga_core import FpgaCoreFirmware
+    FpgaCoreFirmware.interface_ip_addr = host_ip
+    return FpgaCoreFirmware.discover_fpgas()
     
-def top_test(board_sn, ch_acq_path='../../ch_acq/', host_ip=None):
+def top_test(board_sn, ch_acq_path='../../ch_acq/', host_ip=None, force=False):
     '''
     Creates fpga_controller and fpga_receiver instances and returns them as [c,r].
     :param ch_acq_path: will be added to PYTHONPATH. defaults to '../../ch_acq/'
@@ -116,7 +115,7 @@ def top_test(board_sn, ch_acq_path='../../ch_acq/', host_ip=None):
     logger.info('------------------------')
     
     # get FPGA_controller
-    c = programFpga(board_sn, ch_acq_path=ch_acq_path, host_ip=host_ip, force = False)
+    c = programFpga(board_sn, ch_acq_path=ch_acq_path, host_ip=host_ip, force=force)
     c.open(\
         adc_delay_table=ADC_DELAY_TABLE, \
         init=init, \
@@ -186,7 +185,18 @@ def rampTest(board_sn, directory, ch_acq_path='../../ch_acq/', host_ip=None):
     test.execute(directory)
     r.close()
 
-def readList(fname="iceboard_list.txt"):
+def reload_list(fname="iceboard_list.txt", host_ip=None):
+    from pychfpga.icecore.icearray import IceArray, close_all_sockets
+    # Close all previous sessions with the layout/hardware map database
+    IceArray.close_all_sessions()
+
+    # Create the array object and update the hardware database from a file and from auto-discovery
+    array = IceArray(uri='sqlite:///test.db', interface_ip_addr=host_ip)
+    array.load_iceboards('iceboard_list.txt') # update iceboard definitions in database with the data in this CSV file so we can start with an empty database if needed
+    array.discover() # automatically update the hardware map database with discovered resources. This will probe the boards and will update the 'present' field.
+    return array
+
+def read_list(fname="iceboard_list.txt"):
     '''
     Reads file iceboard_list.txt and returns a 2D list with contents of table.
     :param fname: File name of board list. defaults to "iceboard_list.txt"
@@ -208,7 +218,7 @@ def readList(fname="iceboard_list.txt"):
     content_grid = [[j.strip() for j in i] for i in content_grid]
     return content_grid
     
-def editList(board_sn, arm_ip=None, arm_mac=None, fpga_ip=None, fpga_sn=None, locked=None, subarray=None):
+def edit_list(board_sn, arm_ip=None, arm_mac=None, fpga_ip=None, fpga_sn=None, locked=None, subarray=None):
     '''
     Edit the line from iceboard_list.txt corresponding to some board.
     :param board_sn: e.g. '0012'
@@ -222,8 +232,8 @@ def editList(board_sn, arm_ip=None, arm_mac=None, fpga_ip=None, fpga_sn=None, lo
     import os
 
     # Read file and create if doesn't exist
-    fname = "iceboard_list_copy.txt"
-    content = readList(fname)
+    fname = "iceboard_list.txt"
+    content = read_list(fname)
     if len(content) == 0 and (not os.path.isfile(fname)):
         header = "# sn,                      ARM/tuber_uri,      ARM MAC address,      fpga_ip_addr, fpga_serial_number, locked, subarray"
         file = open(fname, 'w')
@@ -251,7 +261,7 @@ def editList(board_sn, arm_ip=None, arm_mac=None, fpga_ip=None, fpga_sn=None, lo
     if line_index is None:
             line_index = len(content)
             line = [str(int(board_sn))]
-            line[1:7] = [""] * 6
+            line[1:7] = ["0"] * 6
 
     # Edit line and add to content
     for index, val in enumerate([arm_ip, arm_mac, fpga_ip, fpga_sn, locked, subarray]):
@@ -263,18 +273,17 @@ def editList(board_sn, arm_ip=None, arm_mac=None, fpga_ip=None, fpga_sn=None, lo
         content.append(line)
 
     # Format table with fixed column width
-    COLUMN_WIDTHS = (4, 35, 21, 18, 18, 4, 9)
+    COLUMN_WIDTHS = (4, 35, 21, 18, 18, 6, 9)
     for i, lin in enumerate(content):
         for j, val in enumerate(lin):
             if COLUMN_WIDTHS[j] - len(val) < 0:
-                print "Supplied argument '" + val + "' is longer than the allowed column width of the table."
-                print "Please check your values and try again."
+                print "Supplied argument '" + val + "' in row " + str(i) + ", column " + str(j) + "  is longer than the allowed column width of the table."
+                print "Formatting will be off. Please check your values and try again."
             while COLUMN_WIDTHS[j] - len(content[i][j]) > 0: # Have to use content[i][j] to actually modify value, val is not in scope
                 content[i][j] = " " + content[i][j]
     # Add '\n' to every line except last
     for i, lin in enumerate(content[0:len(content)-1]):
         content[i][-1] = lin[-1] + '\n'
-    print content
     content = [','.join(l) for l in content]
 
     # Write formatted table to file
