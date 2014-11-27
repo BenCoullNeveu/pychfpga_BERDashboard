@@ -39,33 +39,33 @@ def _tuber_json_object_hook(d):
     '''
     return collections.namedtuple('TuberResult', d.keys())(*d.values())
 
-class LocalPythonHandler(object):
-    """
-    Registers Python classes locally accessible to the user and
-    maintains a list of all instances of those classes so they can be accessed
-    by (class_name, class_id) tuples.
-    """
+# class LocalPythonHandler(object):
+#     """
+#     Registers Python classes locally accessible to the user and
+#     maintains a list of all instances of those classes so they can be accessed
+#     by (class_name, class_id) tuples.
+#     """
 
-    _local_python_handler_classes = {} # Dictionary containing class_name:class
-    _local_python_handler_instances = {} # Dictionary containing (class_name, id):instance
+#     _local_python_handler_classes = {} # Dictionary containing class_name:class
+#     _local_python_handler_instances = {} # Dictionary containing (class_name, id):instance
 
-    @classmethod
-    def add_local_python_handler(cls, class_name, class_):
-        cls._local_python_handler_classes[class_name]=class_
+#     @classmethod
+#     def add_local_python_handler(cls, class_name, class_):
+#         cls._local_python_handler_classes[class_name]=class_
 
-    def is_local_python_handler(self, class_name):
-        return class_name in type(self)._local_python_handler_classes
+#     def is_local_python_handler(self, class_name):
+#         return class_name in type(self)._local_python_handler_classes
 
-    def get_local_python_handler(self, obj_name, obj_id, *args, **kwargs):
-        if (obj_name, obj_id) not in type(self)._local_python_handler_instances:
-            obj = type(self)._local_python_handler_classes[obj_name](*args, **kwargs)
-            type(self)._local_python_handler_instances[(obj_name, obj_id)] = obj
-            return obj
-        else:
-            return type(self)._local_python_handler_instances[(obj_name, obj_id)]
+#     def get_local_python_handler(self, obj_name, obj_id, *args, **kwargs):
+#         if (obj_name, obj_id) not in type(self)._local_python_handler_instances:
+#             obj = type(self)._local_python_handler_classes[obj_name](*args, **kwargs)
+#             type(self)._local_python_handler_instances[(obj_name, obj_id)] = obj
+#             return obj
+#         else:
+#             return type(self)._local_python_handler_instances[(obj_name, obj_id)]
 
 
-class Handler(object):
+class HandlerManager(object):
     """ Proof of concept of a handler object, which is an object that provides
     methods and attributes located remotely or locally.
 
@@ -93,27 +93,69 @@ class Handler(object):
          and are willing run python remotely).
     """
 
-    def __init__(self, uri, obj_name, obj_id, *args, **kwargs):
+    # Class attributes
+    _core_handler_list = {} # (handler_key: handler)
+    _app_handler_list = {} # (handler_key: handler)
+    _local_python_handler_classes = {} # Dictionary containing handler_name: python class
+
+    # Instance attributes
+    core_handler = None
+    app_handler = None
+
+    @classmethod
+    def add_local_python_handler(cls, class_name, class_):
+        cls._local_python_handler_classes[class_name]=class_
+
+    def set_handlers(self, arm_uri, core_handler_name, app_handler_name, object_id, *args, **kwargs):
         """
         uri: Address used to access the resource remotely
         class_name: Name of the class to be accessed
         key: ID used to uniquely identify each instance of the class. This is typucally the primary key of a database object.
         """
 
-        if DirectAccess.is_direct_access(obj_name):
-            self.resource = DirectAccess.get_object(obj_name, obj_id)
-        elif uri:
-            self.resource = Tuber(uri, obj_name)
+        core_handler_key = (type(self), core_handler_name, object_id)
+        if core_handler_key in self._core_handler_list:
+            self.core_handler = self._core_handler_list[core_handler_key]
+        elif arm_uri and core_handler_name:
+            self.core_handler = TuberObject(arm_uri, core_handler_name)
+            type(self)._core_handler_list[core_handler_key] = self.core_handler # Store thr handler for future uses
         else:
-            self.resource = None
+            self.core_handler = None
+
+        if not self.core_handler:
+            self.logger.error('%r does not have a valid core handler' % self)
+        else:
+            self.logger.info('%r core handler is %r' % (self, self.core_handler))
+
+        app_handler_key = (type(self), core_handler_name, object_id)
+        if app_handler_key in self._app_handler_list:
+            self.app_handler = self._app_handler_list[app_handler_key]
+        elif app_handler_name in self._local_python_handler_classes:
+            obj = type(self)._local_python_handler_classes[app_handler_name](orm_object = self, core_handler = self.core_handler, *args, **kwargs)
+            type(self)._app_handler_list[app_handler_key] = obj
+        elif arm_uri and app_handler_name:
+            self.app_handler = TuberObject(arm_uri, app_handler_name)
+            type(self)._app_handler_list[app_handler_key] = self.app_handler # Store thr handler for future uses
+        else:
+            self.app_handler = None
+
+        if not self.app_handler:
+            self.logger.error('%r does not have a valid application handler' % self)
+        else:
+            self.logger.info('%r application handler is %r' % (self, self.app_handler))
 
     def __dir__(self):
-        return dir(self.resource)
+        """ Returns the list of attributes of this class and of those of the core and application handlers."""
+        return type(self).__dict__.keys() + self.__dict__.keys() + dir(self.core_handler) + dir(self.app_handler)
+
     def __getattr__(self, name):
-        return getattr(self.resource, name)
+        if self.core_handler and hasattr(self.core_handler, name):
+            return getattr(self.core_handler, name)
+        elif self.app_handler:
+            return getattr(self.app_handler, name)
 
 
-class Tuber(object):
+class TuberObject(object):
     '''A base class for HWMResources that correspond to TuberObjects.
 
     This is a great way of using the HardwareMap to correspond with

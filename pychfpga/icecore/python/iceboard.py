@@ -18,13 +18,13 @@ available.
 """
 
 import logging
-import threading
+# import threading
 
 from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, UniqueConstraint, inspect
 from sqlalchemy.orm import relationship, backref, reconstructor, object_session
 from sqlalchemy import event
 
-from lib.attribute_publisher import AttributeUser
+# from lib.attribute_publisher import AttributeUser
 from hardware_map import HWMResource
 # from tuber import TuberHWMResource
 from fmc_mezzanine import FMCMezzanine
@@ -32,10 +32,10 @@ from fmc_mezzanine import FMCMezzanine
 
 from fpga_bitstream import FpgaBitstream
 from fpga_core import FpgaCoreFirmware
-from iceboard_hardware import IceBoardHardware
+# from iceboard_hardware import IceBoardHardware
 import icebox # don't use from .. import ... because of circular import problems
-from tuber import LocalPythonHandler
-from tuber import Tuber
+from tuber import HandlerManager
+from tuber import TuberObject
 
 # import arm # object giving access to the ARM firmware
 # import hardware handlers
@@ -45,12 +45,8 @@ from tuber import Tuber
 class IceBoardException(Exception):
     pass
 
-# class State(object):
-#     def __init__(ORM_class):
-#         self.ORM_class = ORM_class
-
-
-class IceBoard(HWMResource, LocalPythonHandler):
+#
+class IceBoard(HWMResource, HandlerManager):
     """
     Provides access to the basic functions of an IceBoard.
 
@@ -114,26 +110,15 @@ class IceBoard(HWMResource, LocalPythonHandler):
     # fpga = relationship("FpgaCoreFirmware", uselist=False, backref='iceboards', foreign_keys=[FpgaCoreFirmware.iceboard_pk], cascade="all, delete, delete-orphan", single_parent=True) # one-to-one relationship with the firmware object. Make sure there is only one firmware object.
 
 
+    # handler = None
+
 
     # The core handler describes where to find the methods and attributes needed to operate the
     # core functionnalities of the Iceboard (typically offered by the on-board ARM
     # processor through a JSON/HTTP interface (tuber)
-    core_handler = None
-    core_handler_uri = Column(String)
-    core_handler_class = Column(String)
-    # core_handler = relationship("TuberHWMResource", uselist=False, cascade="all, delete, delete-orphan", single_parent=True, lazy='joined') # one-to-one relationship with the firmware object. Make sure there is only one firmware object.
-    # core_handler_pk = Column(Integer, ForeignKey('armfirmware.pk'))
-
-
-    # The application handler describes where to find the application-specific
-    # methods and attributes to operate the Iceboard programmed with a
-    # specific ARM and FPGA firmware
-    app_handler = None
-    app_handler_uri = Column(String)
-    app_handler_class = Column(String)
-    # app_handler = relationship("AppHandlerHWMResource", uselist=False, cascade="all, delete, delete-orphan", single_parent=True, lazy='joined') # one-to-one relationship with the firmware object. Make sure there is only one firmware object.
-    # app_handler_pk = Column(Integer, ForeignKey('app_handler.pk'))
-
+    arm_uri = Column(String)
+    core_handler_name = Column(String)
+    app_handler_name = Column(String)
 
     # Set up explicit mezz1 / mezz2 links.
     mezz1_pk = Column(Integer, ForeignKey('fmc_mezzanines.pk'), index=True)
@@ -159,8 +144,7 @@ class IceBoard(HWMResource, LocalPythonHandler):
         self.logger.info('Creating instance for IceBoard S/N %r' % (self.serial_number))
 
         super(type(self), self).__init__(**kwargs)
-
-        self._init()
+        self.set_handlers(self.arm_uri, self.core_handler_name, self.app_handler_name, self.pk)
 
     @reconstructor # SQLAlchemy decorator indicating that this method is to be called when the object is recreated from the database
     def _init_from_database(self, **kwargs):
@@ -168,46 +152,46 @@ class IceBoard(HWMResource, LocalPythonHandler):
         Creates an Iceboard that is accessed through the networking parameters specified in the database.
         The created object does not have any fpga or hardware handlers yet. Those will be created when the Iceboard is opened.
         """
-
         self.logger = logging.getLogger(__name__)
         self.logger.info('Recreating instance from database for for IceBoard S/N %r' % (self.serial_number))
+        self.set_handlers(self.arm_uri, self.core_handler_name, self.app_handler_name, self.pk)
 
-        self._init()
+    #     self._init()
 
-    def _init(self):
-        """
-        Creates an Iceboard that is accessed through the networking parameters specified in the database.
-        The created object does not have any fpga or hardware handlers yet. Those will be created when the Iceboard is opened.
-        """
+    # def _init(self):
+    #     """
+    #     Creates an Iceboard that is accessed through the networking parameters specified in the database.
+    #     The created object does not have any fpga or hardware handlers yet. Those will be created when the Iceboard is opened.
+    #     """
 
-        # Assign the core handler. It is always a tuber handler because in the minimum we need to have fpga programming methods that can only exist remotely on the ARM processor.
-        self.core_handler = Tuber(self.core_handler_uri, self.core_handler_class)
+    #     # Assign the core handler. It is always a tuber handler because in the minimum we need to have fpga programming methods that can only exist remotely on the ARM processor.
+    #     self.core_handler = Tuber(self.core_handler_uri, self.core_handler_class)
 
-        # Assign the application handler. In this case, this one can be a local Python handler class or a remote tuber handler
-        if self.is_local_python_handler(self.app_handler_class):
-            self.app_handler = self.get_local_python_handler(self.app_handler_class, self.serial_number, iceboard = self)
-        elif self.app_handler_uri and Tuber.ping(self.app_handler_uri):
-            self.app_handler = Tuber(self.app_handler_uri, self.app_handler_class)
-        else:
-            self.app_handler = None
-        if not self.app_handler:
-            self.logger.error('IceBoard S/N %r does not have a valid application handler' % (self.serial_number))
-        else:
-            self.logger.info('IceBoard S/N %r application handler is %r' % (self.serial_number, self.app_handler))
+    #     # Assign the application handler. In this case, this one can be a local Python handler class or a remote tuber handler
+    #     if self.is_local_python_handler(self.app_handler_class):
+    #         self.app_handler = self.get_local_python_handler(self.app_handler_class, self.serial_number, iceboard = self)
+    #     elif self.app_handler_uri and Tuber.ping(self.app_handler_uri):
+    #         self.app_handler = Tuber(self.app_handler_uri, self.app_handler_class)
+    #     else:
+    #         self.app_handler = None
+    #     if not self.app_handler:
+    #         self.logger.error('IceBoard S/N %r does not have a valid application handler' % (self.serial_number))
+    #     else:
+    #         self.logger.info('IceBoard S/N %r application handler is %r' % (self.serial_number, self.app_handler))
 
     def __repr__(self):
         return 'Iceboard S/N %s @%08X' % ('%03i' % self.serial_number if self.serial_number else self.serial_number, id(self))
 
     # __getattr__ = attribute_publisher.AttributeUser.get_registered_attribute
-    def __dir__(self):
-        """ Returns the list of attributes of this class and of those of the core and application handlers."""
-        return type(self).__dict__.keys() + self.__dict__.keys() + dir(self.core_handler) + dir(self.app_handler)
+    # def __dir__(self):
+    #     """ Returns the list of attributes of this class and of those of the core and application handlers."""
+    #     return type(self).__dict__.keys() + self.__dict__.keys() + dir(self.core_handler) + dir(self.app_handler)
 
-    def __getattr__(self, name):
-        if hasattr(self.core_handler, name):
-            return getattr(self.core_handler, name)
-        else:
-            return getattr(self.app_handler, name)
+    # def __getattr__(self, name):
+    #     if hasattr(self.core_handler, name):
+    #         return getattr(self.core_handler, name)
+    #     else:
+    #         return getattr(self.app_handler, name)
 
 
     def set_fpga_firmware(self, bitstream_object, configure_fpga = True, force=False):
@@ -383,10 +367,9 @@ def load(session, filename):
             if serial_number in keymap:
                 logger.info('IceBoard S/N %03i already exists in the database. Updating columns from file.' % serial_number)
                 ib = iceboards.get(keymap[serial_number])
-                ib.core_handler_uri = tuber_uri
-                ib.core_handler_class = 'iceboard'
-                ib.app_handler_uri = None
-                ib.app_handler_class = 'chfpga'
+                ib.arm_uri = tuber_uri
+                ib.core_handler_name = 'iceboard'
+                ib.app_handler_name = 'chfpga'
 
                 ib.arm_serial_number = arm_serial_number
                 ib.fpga_ip_addr = fpga_ip_addr
@@ -398,10 +381,9 @@ def load(session, filename):
                 ib = IceBoard(
                     serial_number=serial_number,
                     # arm = TuberHWMResource(tuber_uri=tuber_uri, tuber_objname = 'iceboard'),
-                    core_handler_uri = tuber_uri ,
-                    core_handler_class = 'iceboard',
-                    app_handler_uri = None ,
-                    app_handler_class = 'chfpga',
+                    arm_uri = tuber_uri ,
+                    core_handler_name = 'iceboard',
+                    app_handler_name = 'chfpga',
                     arm_serial_number=arm_serial_number,
                     fpga_ip_addr=fpga_ip_addr,
                     fpga_serial_number=fpga_serial_number,
@@ -439,9 +421,9 @@ def discover(session, timeout):
 
     # Check if each iceboard actually responds to tuber requests
     for ib in iceboards:
-        if ib.core_handler_uri:
-            ib.present = Tuber.ping(ib.core_handler_uri)
-            logger.info('Discovery: The IceBoard S/N %03i ping result at URI= %s is %s' % (ib.serial_number, ib.core_handler_uri, bool(ib.present)))
+        if ib.arm_uri:
+            ib.present = TuberObject.ping(ib.arm_uri)
+            logger.info('Discovery: The IceBoard S/N %03i ping result at URI= %s is %s' % (ib.serial_number, ib.arm_uri, bool(ib.present)))
     session.commit()
 
     # Issue log messages for FPGA serial that were detected but are not already in the database

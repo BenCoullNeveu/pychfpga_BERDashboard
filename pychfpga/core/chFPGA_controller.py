@@ -35,7 +35,7 @@ import numpy as np
 import time
 
 from pychfpga.icecore.app_handler import IceBoardAppHandler
-from pychfpga.icecore.iceboard import IceBoard
+from pychfpga.icecore.tuber import HandlerManager
 
 from pychfpga.common import util
 
@@ -1602,4 +1602,4 @@ class chFPGA_controller(IceBoardAppHandler):
         return res
 
 # Register the class as a Iceboard handler
-IceBoard.add_local_python_handler('chfpga', chFPGA_controller)
+HandlerManager.add_local_python_handler('chfpga', chFPGA_controller)

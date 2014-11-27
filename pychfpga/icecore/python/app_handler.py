@@ -20,14 +20,14 @@ available.
 import logging
 # import threading
 
-from sqlalchemy import Column, Integer, String, Boolean, ForeignKey, UniqueConstraint, inspect
+from sqlalchemy import inspect
 # from sqlalchemy.orm import relationship, backref, reconstructor, object_session
 # from sqlalchemy import event
 
 # from lib.attribute_publisher import AttributeUser
 # from hardware_map import HWMResource
 # from tuber import TuberHWMResource
-from tuber import Handler
+# from tuber import Handler
 from fmc_mezzanine import FMCMezzanine
 
 # Force reloading of the hardware map module to allow this module
@@ -81,7 +81,7 @@ class IceBoardAppHandler(FpgaCoreFirmware):
     Python-based application-specific FPGA firmware and hardware handler are meant to be derived from this class.
     """
 
-    def __init__(self, iceboard = None, **kwargs):
+    def __init__(self, orm_object= None, core_handler = None, *args, **kwargs):
         """
         Creates an Iceboard that is accessed through the networking parameters specified in the database.
         The created object does not have any fpga or hardware handlers yet. Those will be created when the Iceboard is opened.
@@ -91,6 +91,8 @@ class IceBoardAppHandler(FpgaCoreFirmware):
 
         # Store iceboard ORM information
         # The iceboard object is an ORM object and is guaranteed to be valid only during this function, so we cannot use ut for future accesses.
+
+        iceboard = orm_object
 
         self.serial_number = iceboard.serial_number
         self.fpga_ip_addr = iceboard.fpga_ip_addr
@@ -102,6 +104,7 @@ class IceBoardAppHandler(FpgaCoreFirmware):
         self.i2c = None
         self.mezz1_handler = iceboard.mezz1 # Fragile. Reference will become stale as ORM object move in and out of memory. Must fix
         self.mezz2_handler = iceboard.mezz2
+        self.core_handler = core_handler
 
         self.logger = logging.getLogger(__name__)
         self.logger.debug('Instantiating Iceboard S/N %r at %r:%r from direct instantiation' % (self.serial_number, self.fpga_ip_addr, self.fpga_port_number))
