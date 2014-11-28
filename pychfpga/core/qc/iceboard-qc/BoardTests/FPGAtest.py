@@ -280,13 +280,39 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
         fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
     file.write('\n' + str(fpga_serial))
     print fpga_serial
-    # Save FPGA serial to separate file
-    if not os.path.isfile('fpga_serials.txt'):
-        serials_file = open('fpga_serials.txt', 'w')
-    else:
-        serials_file = open('fpga_serials.txt', 'a')
-    serials_file.write('\nBoard ' + board_sn + ': ' + hex(int(fpga_serial)))
-    serials_file.close()
+
+    # Probe on i2c interface
+    # It would be good to check these values against expected ones
+    c.hw.init() # initialize i2c
+    print "\nProbing i2c sensors:"
+    file.write("\n\ni2c sensors output:")
+    print "\nc.hw.get_temperature():"
+    file.write('\n\nget_temperature output:\n')
+    try:
+        temps = c.hw.get_temperature()
+    except Exception as e:
+        file.write('\nRunning top_test on board: Fail')
+        file.write("\n" + repr(e))
+        file.write('\nFPGA Test Overall Status: Fail')
+        file.close()
+        fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
+    for key, value in temps.iteritems():
+        file.write(key + ": " + repr(value) + "\n")
+        print key + ": " + repr(value)
+
+    print "\nc.hw.get_power():"
+    file.write('\nget_power output:\n')
+    try:
+        power = c.hw.get_power()
+    except Exception as e:
+        file.write('\nRunning top_test on board: Fail')
+        file.write("\n" + repr(e))
+        file.write('\nFPGA Test Overall Status: Fail')
+        file.close()
+        fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
+    for key, value in power.iteritems():
+        file.write(key + ": " + repr(value) + "\n")
+        print key + ": " + repr(value)
     
     print "\nIf there are any special concerns regarding the board for this test, please describe them below. If none, enter 'None'. "
     comments = raw_input("Enter your comments:  ")
