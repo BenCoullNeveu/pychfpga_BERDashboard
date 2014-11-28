@@ -199,6 +199,7 @@ class IceBoardHardware(object):
         """Initializes the motherboard hardware to a known state"""
         self._init_gpio_expanders()
         self._init_temperature_sensors()
+        self._init_power_sensors()
         self._init_eeprom()
         self.set_fmc_power()
 
