@@ -73,7 +73,7 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     success = False
     [c,r] = [None,None]
     try:
-        [c,r] = fpgaFun.top_test(ch_acq_path, host_ip)
+        [c,r] = fpgaFun.top_test(board_sn, ch_acq_path=ch_acq_path, host_ip=host_ip)
         success = True
     except Exception as e:
         traceback.print_exc(e)
@@ -101,7 +101,7 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
         '''
         def __enter__(self):
             self._stdout = sys.stdout
-            self._stderr = sys.stderr
+            #self._stderr = sys.stderr
             sys.stdout = sys.stderr = self._stringio = StringIO()
             self._handler = logging.StreamHandler(self._stringio)
             logging.getLogger().addHandler(self._handler)
@@ -109,12 +109,12 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
         def __exit__(self, *args):
             self.extend(self._stringio.getvalue().splitlines())
             sys.stdout = self._stdout
-            sys.stderr = self._stderr
+            #sys.stderr = self._stderr
             logging.getLogger().removeHandler(self._handler)
     
     print "Let's try probing some temperatures on the board."
     try:
-        c.fpga.fpga.SYSMON.status()
+        c.fpga.SYSMON.status()
     except Exception as e:
         file.write('\nRunning top_test on board: Fail')
         file.write("\n" + repr(e))

@@ -118,7 +118,7 @@ def programFPGA(username=str,board_sn=str,board_vn=str,board_md=str,testStatus =
         iceboard_list = fpgaFun.read_list()
         for line in iceboard_list[1:len(iceboard_list)]:
             for i in doesnt_exist:
-                if int(line[4]) == int(serial[i]): # WHY DOES PYTHON THINK line[4] IS A HEX??
+                if int(line[4],16) == int(serial[i]):
                     if int(line[0]) == int(board_sn):
                         already_in_list = True
                         break
@@ -150,14 +150,19 @@ def programFPGA(username=str,board_sn=str,board_vn=str,board_md=str,testStatus =
             current_ip = line[3]
             break
     if current_ip is None or len(current_ip.strip("'")) < 7:
-        fpga_ip = "'10.10.3." + str(board_sn) + "'"
+        fpga_ip = "'10.10.3." + str(int(board_sn)) + "'"
+        print "\nAssigning IP address " + fpga_ip + " to FPGA."
     else:
-        fpga_ip = current_ip
-    print "\nAssigning IP address " + fpga_ip + " to FPGA."
-    print "Adding serial number " + fpga_sn + " to database."
+        print "\nFPGA already has assigned IP " + current_ip + "  in iceboard_list file. Will leave it as is."
+        fpga_ip = None
+    if fpga_sn is not None:
+        print "Adding serial number " + fpga_sn + " to database."
+    else:
+        print "FPGA already had serial number "
     fpgaFun.edit_list(board_sn,fpga_sn=fpga_sn,fpga_ip=fpga_ip,locked='0')
 
     # Reload modified list
+    print "\nReloading iceboard_list..."
     fpgaFun.reload_list(host_ip=host_ip)
 
     print "\nIf there are any special concerns regarding the board for this test, please describe them below. If none, enter 'None'. "

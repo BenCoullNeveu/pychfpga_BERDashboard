@@ -70,6 +70,7 @@ def top_test(board_sn, ch_acq_path='../../ch_acq/', host_ip=None, force=False):
     # Append ch_acq to PATH
     sys.path.append(ch_acq_path)
     from pychfpga.core import chFPGA_receiver
+    from pychfpga.icecore.icearray import close_all_sockets
     
     ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 = (
     ([16]*8,     [3]*8), #CH0
@@ -113,7 +114,8 @@ def top_test(board_sn, ch_acq_path='../../ch_acq/', host_ip=None, force=False):
     logger.info('------------------------')
     logger.info('top_test for ICEboard QC')
     logger.info('------------------------')
-    
+
+    close_all_sockets()
     # get FPGA_controller
     c = programFpga(board_sn, ch_acq_path=ch_acq_path, host_ip=host_ip, force=force)
     c.open(\
