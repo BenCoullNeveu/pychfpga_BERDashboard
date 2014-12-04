@@ -47,6 +47,10 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     host_ip = config['host_ip']
     ch_acq_path = config['ch_acq_path']
 
+    # Import expected values for i2c
+    temps_exp = yaml.load(open('expected_values/i2c_temps.yaml'))
+    power_exp = yaml.load(open('expected_values/i2c_power.yaml'))
+
     print "\nFor this test, you need two Ethernet cables and an SFP/Ethernet adapter for the board."
     print "You must have already installed a heatsink on the FPGA, and you should run a fan over it for this test."
     # print "Please consult http://kingspeak.physics.mcgill.ca/twiki/bin/edit/Chime/IceBoardQCManual for details regarding the connector. Or ask Kevin."
@@ -286,33 +290,76 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     c.hw.init() # initialize i2c
     print "\nProbing i2c sensors:"
     file.write("\n\ni2c sensors output:")
-    print "\nc.hw.get_temperature():"
-    file.write('\n\nget_temperature output:\n')
+    print "\nc.hw.get_temperature()\n:"
     try:
         temps = c.hw.get_temperature()
     except Exception as e:
-        file.write('\nRunning top_test on board: Fail')
+        file.write('\nEncountered error trying to run hw.get_temperature(): Fail')
         file.write("\n" + repr(e))
         file.write('\nFPGA Test Overall Status: Fail')
         file.close()
         fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
-    for key, value in temps.iteritems():
-        file.write(key + ": " + repr(value) + "\n")
-        print key + ": " + repr(value)
+
+    # Check results against expected values
+    fail = False
+    fail_list = []
+    file.write('\nExpected range is ' + str(temps_exp['MIN']) + ' C to ' + str(temps_exp['MAX']) + ' C\n')
+    file.write('\n' + "%15s%6s%8s" % ('Sensor', 'T(C)', 'Result'))
+    file.write('\n' + '=' * 15 + ' ' + '=' * 5 + ' ' + '=' * 7)
+    for key in temps:
+        if temps[key] > temps_exp['MAX'] or temps[key] < temps_exp['MIN']:
+            fail = True
+            fail_list.append(key)
+            formatted_temp = "%-15s%6.2f%8s" % (key, temps[key], 'FAIL')
+            file.write('\n' + formatted_temp)
+            print formatted_temp
+        else:
+            formatted_temp = "%-15s%6.2f%8s" % (key, temps[key], 'PASS')
+            file.write('\n' + formatted_temp)
+            print formatted_temp
+    if fail:
+        file.write('\nSome temperature readings ' + repr(fail_list) + '  were outside reasonable range: Fail')
+        file.write('\nFPGA Test Overall Status: Fail')
+        file.close()
+        print '\nTemperature(s) ' + key + ' are bad! Read ' + str(temps[key]) + '. Please POWER DOWN the board and investigate the issue before continuing.'
+        fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
 
     print "\nc.hw.get_power():"
     file.write('\nget_power output:\n')
     try:
         power = c.hw.get_power()
     except Exception as e:
-        file.write('\nRunning top_test on board: Fail')
+        file.write('\nEncountered error trying to run hw.get_power(): Fail')
         file.write("\n" + repr(e))
         file.write('\nFPGA Test Overall Status: Fail')
         file.close()
         fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
+    file.write("\n%15s%5s%12s%12s%12s" % ('Sensor', 'V', '????', '????', '????'))
+    file.write('\n' + '=' * 15 + ' ' + '=' * 4 + ' ' + ('=' * 11 + ' ') * 3)
     for key, value in power.iteritems():
-        file.write(key + ": " + repr(value) + "\n")
-        print key + ": " + repr(value)
+        formatted_power = "%-15s%5.2f%12.6f%12.6f%12.6f" % (key, value[0], value[1], value[2], value[3])
+        file.write('\n' + formatted_power)
+        print formatted_power
+
+    # Check results against expected values
+    fail = False
+    fail_list = []
+    for key in power:
+        if abs(val - power_exp[key][0]) / power_exp[key][0] > power_exp['TOLERANCE_V']: # Check value of voltage
+            fail = True
+            fail_list.append(key)
+            file.write('\nFAIL: ' + key + ' is ' + str(power[key]) + ', outside the expected ' + str(power_exp[key]) + ' +/-' + str(power_exp['TOLERANCE_V']*100) + '%')
+        for index, val in enumerate(power[key][1:len(power[key])]): # Check other power measurements
+            if abs(val - power_exp[key][index]) / power_exp[key][index] > power_exp['TOLERANCE_ELSE']:
+                fail = True
+                fail_list.append(key)
+                file.write('\nFAIL: ' + key + ' is ' + str(power[key]) + ', outside the expected ' + str(power_exp[key]) + ' +/-' + str(power_exp['TOLERANCE_ELSE']*100) + '%')
+    if fail:
+        file.write('\nSome power readings ' + repr(fail_list) + '  were outside acceptable range: Fail')
+        file.write('\nFPGA Test Overall Status: Fail')
+        file.close()
+        print '\nPower readings ' + repr(fail_list) + ' were outside acceptable range! Please POWER DOWN the board and investigate the issue before continuing.'
+        fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
     
     print "\nIf there are any special concerns regarding the board for this test, please describe them below. If none, enter 'None'. "
     comments = raw_input("Enter your comments:  ")
