@@ -17,10 +17,12 @@ class test_adc_ramp_histogram(test_BaseClass):
     '''
     def configure_board(self):
         self.fpga_ctrl.set_fft_bypass(True, channels=range(16))
-        self.fpga_ctrl.set_scaler_bypass(False, channels=range(16))
+        self.fpga_ctrl.set_scaler_bypass(True, channels=range(16))
         self.fpga_ctrl.set_data_source('adc', channels=range(16))
         self.fpga_ctrl.set_ADC_mode(mode='ramp')
-        self.fpga_ctrl.set_gain((1,27))
+        #self.fpga_ctrl.set_gain((1,27))
+        self.fpga_ctrl.set_data_width(8)
+        self.fpga_ctrl.set_offset_binary_encoding(0)
         time.sleep(1)
         self.fpga_ctrl.start_data_capture(burst_period_in_seconds=0.1, channels=range(16))
         self.fpga_ctrl.sync()

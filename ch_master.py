@@ -24,6 +24,7 @@ import socket
 import time
 import pickle
 from pychfpga import calculate_gains
+from pychfpga.init_links import *
 #import MySQLdb
 
 # Should put somewhere else. Flatten arbitrarily deep nested lists
@@ -241,6 +242,7 @@ if __name__ == "__main__":
       fpga_bitstream = ca.get_fpga_bitstream(bitfile_filename, ChimeFpgaFirmware)
       c = ca.get_iceboards(subarray=[conf["fpga"]["subarray"]]).index_by(IceBoard.serial_number)
       c.set_fpga_firmware(fpga_bitstream, force=conf["fpga"]["force"])
+      #Will need to loop this with different delay tables, or reset delay tables later....
       c.open( \
             adc_delay_table=adc_delay, \
             init=1, \
@@ -288,14 +290,17 @@ if __name__ == "__main__":
       c.fpga.set_data_source("adc") # This should come first.
       c.fpga.set_FFT_bypass(False, channels = all_chan)
       c.fpga.set_FFT_shift(conf["fpga"]["fft_shift"], channels = all_chan)
-      for i, c_element in enumerate(c):      
-        gain_pkl_file = open('/home/chime/ch_acq/gains_'+str(c_element.fpga.GPIO.FPGA_SERIAL_NUMBER)+'.pkl', "rb")
-        gains = pickle.load(gain_pkl_file)
-        c_element.fpga.set_gain(gains, channels = all_chan)
+      # init gains function kind of a hack.  Should fix.  
+      init_gains(c)
+      # for i, c_element in enumerate(c):      
+      #   gain_pkl_file = open('/home/chime/ch_acq/gains_'+str(c_element.fpga.GPIO.FPGA_SERIAL_NUMBER)+'.pkl', "rb")
+      #   gains = pickle.load(gain_pkl_file)
+      #   c_element.fpga.set_gain(gains, channels = all_chan)
       c.fpga.sync()
       c.fpga.set_send_flags()
       c.fpga.set_offset_binary_encoding()
       c.fpga.sync()
+      shuffle_init(list(c),c8,frames_per_packet=4, cb1_lanes=16, cb1_bins=64, cb2_lanes=16, cb2_bins=8, cb2_bypass=0, remap=1 )
 
       #Make sure FPGA throttling is fast enough to send all the data
       #FPGA doesn't seem to change this without a reset...
@@ -310,29 +315,34 @@ if __name__ == "__main__":
       
 
       
-      #Read the FPGA setting back from the FPGA
-      # This will need to change to do multiple boards.  
+      #Read the FPGA setting back from the FPGA 
+      fpga_conf = {}
       for i, c_element in enumerate(c):
-        fpga_conf = vars(c_element.fpga.get_config())
+        fpga_conf[c_element.slot_number] = vars(c_element.fpga.get_config()) 
       
       # Create the output directory.
       time_str = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
       corr_name = None
-      for corr, ser_list in correlator_hash.iteritems():
-        not_found = False
-        if type(fpga_conf["adc_serial"]) is list:
-          for ser in fpga_conf["adc_serial"]:
-            if not ser in ser_list:
-              not_found = True
-              break
-        else:
-          print fpga_conf["adc_serial"]
-          if not fpga_conf["adc_serial"] in ser_list:
-              not_found = True
-        if not_found:
-          continue
-        corr_name = corr
-        break
+      if (len(fpga_conf) == 1):
+        fpga_conf = fpga_conf[fpga_conf.keys()[0]]
+        for corr, ser_list in correlator_hash.iteritems():
+          not_found = False
+          if type(fpga_conf["adc_serial"]) is list:
+            for ser in fpga_conf["adc_serial"]:
+              if not ser in ser_list:
+                not_found = True
+                break
+          else:
+            print fpga_conf["adc_serial"]
+            if not fpga_conf["adc_serial"] in ser_list:
+                not_found = True
+          if not_found:
+            continue
+          corr_name = corr
+          break
+      else:
+        #Assume array is whole pathfinder.
+        corr_name = 'CHIME_Pathfinder'
       if not corr_name:
         try:
           log.critical("Could not find hash for ADC serial numbers %s." %
