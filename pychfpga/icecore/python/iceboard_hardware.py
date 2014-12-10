@@ -222,6 +222,7 @@ class IceBoardHardware(object):
         """
         self._init_gpio_expanders()
         self._init_temperature_sensors()
+        self._init_power_sensors()
         self._init_eeprom()
         # self.set_fmc_power()
         self._init_power_sensors()
