@@ -143,6 +143,8 @@ fpga_hk_field = {      "core_temp" : "deg C",
 # do not have the time-transpose completed.
 archive_version = "NT_2.1.0"
 
+remap_adc_sma =  [12,13,14,15,8,9,10,11,4,5,6,7,0,1,2,3]
+
 if __name__ == "__main__":
   # Set up logger.
   log = logging.getLogger("")
@@ -387,27 +389,31 @@ if __name__ == "__main__":
 
   if (int(args.configure_fpga) > 0):
       # Pass FPGA configuration variables to header.
-      for name in fpga_conf:
-        #Hack for now since the gain table is too big to fit in one 64k header 
-        # element
-        if name == 'antenna_scaler_gain':
-          all_val = fpga_conf[name]
-          for value in all_val:
-            val = convert_types(value)
-            val_name = name + str(int(val[0]))
-            #print val_name, val
-            acq.add_header_item(val_name, val)
-        else:
-          #elif name == 'antenna_adc_data_acquisition_delay_tables':
-          #  val = 42
-          #else:
-          val = fpga_conf[name]
-          val = convert_types(val)
-          # Now send FPGA information send to acquisition object's header.
-          #print name
-          #print val
-          #print type(val)
-          acq.add_header_item(name, val)
+      #hacked now to 'work' but not a final solution
+      # just adds slot number to each name
+      for fpga_slot, slot_conf in fpga_conf.items():
+        for name in slot_conf:
+          #Hack for now since the gain table is too big to fit in one 64k header 
+          # order of this table scrambled to be 0-15 bottom to top of board. 
+          if name == 'antenna_scaler_gain':
+            all_val = fpga_conf[name]
+            for value in all_val:
+              val = convert_types(value)
+              val_name = 'slot_'+ str(fpga_slot) + '_' + name + str(remap_adc_sma[int(val[0])])
+              #print val_name, val
+              acq.add_header_item(val_name, val)
+          else:
+            #elif name == 'antenna_adc_data_acquisition_delay_tables':
+            #  val = 42
+            #else:
+            val = fpga_conf[name]
+            val = convert_types(val)
+            # Now send FPGA information send to acquisition object's header.
+            #print name
+            #print val
+            #print type(val)
+            name = 'slot_'+ str(fpga_slot) + '_' + name
+            acq.add_header_item(name, val)
   else:
     acq.add_header_item("fpga_info", "no communication with fpga for this dataset")
 
