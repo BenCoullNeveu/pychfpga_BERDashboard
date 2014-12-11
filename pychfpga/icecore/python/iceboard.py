@@ -5,15 +5,22 @@
 """iceboard.py module: Defines the base object for an IceBoard
 (McGill Model MGK7MB).
 
-To specialize an IceBoard object for a particular experiment, you're
-encouraged to create a subclass. There should be good examples
-available.
+To specialise an IceBoard object for a particular experiment, you can simply
+change the 'app_handler_name' field in the hardware map to your specific
+application, and the object will connect to the appropriate code either on the
+on-board ARM processor or to local Python objects, assuming those exist. If no
+application is provided, the board will provide only its core
+functionnalities.
+
+Alternatively, you can subclass IceBoard to hard-code the application handler
+name and add additional hardware map properties if needed.
 
 
  History:
     2014-03-04 JFC: Created
     2014-03-18 JM: Added get_temperature and init_temp_sensors
     2014-03-26 JFC: Integrated tuber
+    2014-12-11 JFC: Implemented handler philosophy.
 
 """
 

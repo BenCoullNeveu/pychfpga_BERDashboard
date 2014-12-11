@@ -456,12 +456,15 @@ class HWMHandlerManager(object):
     Local access to Python object is performed if the object's class is
     registered to the Handler. Otherwise remote access is done through Tuber.
 
-    Handlers have these restrictions:
+    Remote (Tuber) handlers have these restrictions:
        - attributes and methods whise name begin with '_' are not accessible
        - modification to the object attributes must be done by a setter
          function provided by the object.
        - methods or attribute access can only return string or numeric values,
          or lists or dictionnary thereof
+
+    Local (Python) handlers do not have access restrictions. They can be used
+    as any other Python object.
 
     Notes:
 
@@ -482,41 +485,61 @@ class HWMHandlerManager(object):
     _local_python_handler_classes = {} # Dictionary containing handler_name: python class
 
     # Instance attributes
-    _handler = None
+    _handler = None # current handler instance for this object
 
     @classmethod
     def add_local_python_handler(cls, class_name, class_):
+        """ Register a Python class 'class_' as a handler named 'class_name'
+        for the target Hardware map object.
+
+        This handler will be used as an application handler if its name
+        matches the name provided with set_handler(), otherwise a tuber
+        handler will be used.
+
+        If the handler is passed a core handler at initialization, it must
+        make visible the methods and attributes of this core object.
+        """
         cls._local_python_handler_classes[class_name]=class_
 
     def get_handler(self):
+        """ Return the current handler for this Hardware Map instance.
+        """
         return self._handler
 
     @property
     def handler(self):
+        """ Return the current handler for this Hardware Map instance.
+        """
         return self._handler
 
     def set_handler(self, tuber_uri=None, core_handler_name=None, app_handler_name=None, object_id=None, *args, **kwargs):
         """
-        tuber_uri: Address used to access remote handlers (typically the ARM processor on an iceBoard)
-        core_handler_name: Name of the core handler, (typically a remote handler)
-        app_handler_name: Name of the application-specific handler, found locally or remotely
-        object_id: ID used to uniquely identify each instance of the class. This is preferably linked to a unique hardware serial number, but a database primary key can probably be used safely.
+        Sets the handler to be used with this Hardware Map instance uniquely
+        identified by 'object_id'. If a handler has been created previously,
+        it is reattached, otherwise a new one is created.
+
+        Arguments:
+            tuber_uri: Address used to access remote handlers (typically the ARM processor on an iceBoard)
+            core_handler_name: Name of the core handler, (typically a remote handler)
+            app_handler_name: Name of the application-specific handler, found locally or remotely
+            object_id: ID used to uniquely identify each instance of the class. This is preferably linked to a unique hardware serial number, but a database primary key can probably be used safely.
         """
         logger = logging.getLogger(__name__)
 
         logger.info('set_handler: setting handler %r with tuber_uri=%r, core=%r, app=%r, id=%r' % (self, tuber_uri, core_handler_name, app_handler_name, object_id))
 
+        # if app_handler_name and object_id:
+        #     handler_key = (app_handler_name, object_id)
+        # elif core_handler_name and object_id:
+        #     handler_key = (core_handler_name, object_id)
+        # else:
+        #     handler_key = None
 
-        if app_handler_name and object_id:
-            handler_key = (app_handler_name, object_id)
-        elif core_handler_name and object_id:
-            handler_key = (core_handler_name, object_id)
-        else:
-            handler_key = None
+        handler_key = object_id
 
         logger.info('set_handler: handler key for %r is %r' % (self, handler_key))
 
-        combined_handler_names = [h for h in [core_handler_name, app_handler_name] if h]
+        combined_handler_names = [h for h in [core_handler_name, app_handler_name] if h] # may be used to call tuber with multiple objects if supported
 
         if handler_key in self._handler_list:
             self._handler = self._handler_list[handler_key]
@@ -554,18 +577,17 @@ class HWMHandlerManager(object):
         raise AttributeError
 
     def update_handler(self):
-        """ Calls the hwm_update() method of the haldler with this hardware
+        """ Calls the hwm_update() method of the handler with this hardware
         mapped object as an argument to inform on changes in the database
         object.
         """
-
         if hasattr(self._handler,'hwm_update'):
             self._handler.hwm_update(self)
 
     def init_handler(self):
-        """ Default handler initializer. The user shall
-        override this function to specify what hanbdlers to use for this specific
-        Hardware map object.
+        """ Default handler initializer. The user shall override this function
+        to specify what handlers to use for this specific Hardware map
+        object.
 
         This is called whenever a managed HWM object is created from scratch
         or from the database and is used to create the corresponding handler
