@@ -13,6 +13,7 @@ from lib import tmp100 # I2C Temperature sensor
 from lib import pca9575 # I2C 16-bit IO Expander
 from lib import tca9548a # I2C switch
 from lib import ina230 # I2C Voltage and current monitor
+from lib import eeprom
 
 class IceBoardHardwareException(Exception):
     pass
@@ -59,6 +60,22 @@ class IceBoardHardware(object):
         "BP":    (0, 6),
         "GPIO":  (0, 7)
         }
+
+    # FMC EEPROM, on FMCA or FMCB
+    _FMC_EEPROM_ADDR = 0x50    # 0x50 (0x51 is also used for the 2nd page of large eeprom with address width > 16 bits).
+    _FMC_EEPROM_ADDR_WIDTH = 7 # FMC EEPROM internal addresses are 7 bits wide.
+    _FMC_EEPROM_PAGE_SIZE = 8 #
+
+    # Oversize , non-FMC-standard EEPROM found on some McGill Mezzanines
+    _MCGILL_FMC_EEPROM_ADDR_WIDTH = 17 # FMC EEPROM internal addresses are is 17 bits wide. (2 bytes as data, 1 bit in lsb of I2C address)
+    _MCGILL_FMC_EEPROM_PAGE_SIZE = 256 #
+
+    # Motherboard EEPROM
+    _MOTHERBOARD_EEPROM_DATA_ADDR = 0x57    #
+    _MOTHERBOARD_EEPROM_SERIAL_ADDR = 0x5F    #
+    _MOTHERBOARD_EEPROM_ADDR_WIDTH = 7 # EEPROM internal addresses are is 17 bits wide. (2 bytes as data, 1 bit in lsb of I2C address)
+    _MOTHERBOARD_EEPROM_PAGE_SIZE = 8 #
+
 
     #IO Expanders, on GPIO bus
     _GPIO_POWER_I2C_ADDR    = 0b0100000 #0x20
@@ -112,6 +129,33 @@ class IceBoardHardware(object):
         self._iceboard = iceboard
         self._i2c = self._iceboard.i2c
 
+        self._logger.info(' Instantiating Motherboard EEPROM managers')
+        self._motherboard_eeprom_data = eeprom.eeprom(self._i2c, self._MOTHERBOARD_EEPROM_DATA_ADDR, 'GPIO', self._MOTHERBOARD_EEPROM_ADDR_WIDTH, self._MOTHERBOARD_EEPROM_PAGE_SIZE)
+        self._motherboard_eeprom_serial = eeprom.eeprom(self._i2c, self._MOTHERBOARD_EEPROM_SERIAL_ADDR, 'GPIO', self._MOTHERBOARD_EEPROM_ADDR_WIDTH, self._MOTHERBOARD_EEPROM_PAGE_SIZE)
+
+        self._logger.info(' Instantiating FMC EEPROM managers')
+        # We check if the EEPROM has multiple pages, and if so, we *assume* that
+        # the EEPROM is a large eeprom with 2 bytes of address.
+        # Otherwise we assume the EEPROM has a single byte of addressing.
+        #
+        # If the EEPROM is multipage but has a single address page (4Kbit,
+        # 8kbit or 16kbit EEPROMs), then the EEPROM contents will be
+        # corrupted, even by read operations, because the second address byte
+        # will be interpreted as data to be written.
+        #
+        # It would be equally bad if there has another I2C device at the address following the EEPROM address.
+        if self._is_multipage_fmc_eeprom(self._i2c, 'FMCA', self._FMC_EEPROM_ADDR):
+            self._logger.info('Detected multipage EEPROM on FMCA. Assuming >16-bit addressing.')
+            self._fmca_eeprom = eeprom.eeprom(self._i2c, self._FMC_EEPROM_ADDR, 'FMCA', self._MCGILL_FMC_EEPROM_ADDR_WIDTH, self._MCGILL_FMC_EEPROM_PAGE_SIZE)
+        else:
+            self._fmca_eeprom = eeprom.eeprom(self._i2c, self._FMC_EEPROM_ADDR, 'FMCA', self._FMC_EEPROM_ADDR_WIDTH, self._FMC_EEPROM_PAGE_SIZE)
+
+        if self._is_multipage_fmc_eeprom(self._i2c, 'FMCB', self._FMC_EEPROM_ADDR):
+            self._logger.info('Detected multipage EEPROM on FMCB. Assuming >16-bit addressing.')
+            self._fmcb_eeprom = eeprom.eeprom(self._i2c, self._FMC_EEPROM_ADDR, 'FMCB', self._MCGILL_FMC_EEPROM_ADDR_WIDTH, self._MCGILL_FMC_EEPROM_PAGE_SIZE)
+        else:
+            self._fmcb_eeprom = eeprom.eeprom(self._i2c, self._FMC_EEPROM_ADDR, 'FMCB', self._FMC_EEPROM_ADDR_WIDTH, self._FMC_EEPROM_PAGE_SIZE)
+
         self._logger.info(' Instantiating I2C GPIO manager')
         self._gpio_power = pca9575.pca9575(self._i2c, self._GPIO_POWER_I2C_ADDR, 'GPIO')
         self._gpio_sw_leds = pca9575.pca9575(self._i2c, self._GPIO_SW_LEDS_ADDR, 'GPIO')
@@ -142,6 +186,11 @@ class IceBoardHardware(object):
         self._power_fmcb_12v0 = ina230.ina230(self._i2c, self._POWER_FMCB12V0_I2C_ADDR, 'SMPS')
         self._power_fmcb_3v3 = ina230.ina230(self._i2c, self._POWER_FMCB3V3_I2C_ADDR, 'SMPS')
         self._power_fmcb_vadj = ina230.ina230(self._i2c, self._POWER_FMCBVADJ_I2C_ADDR, 'SMPS')
+
+        self._FMC_EEPROM_TABLE = {
+            1: self._fmca_eeprom,
+            2: self._fmcb_eeprom
+            }
 
         self.GPIO_EXPANDER_MAP = {
             # name : (expander object, byte, lsb bit number,  width)
@@ -222,7 +271,6 @@ class IceBoardHardware(object):
         """
         self._init_gpio_expanders()
         self._init_temperature_sensors()
-        self._init_eeprom()
         # self.set_fmc_power()
         self._init_power_sensors()
 
@@ -288,9 +336,6 @@ class IceBoardHardware(object):
                 except:
                     self._logger.info('Iceboard SN%03i power sensor %s failed to initialize.' % (self._iceboard.serial_number, power_sensor))
 
-    def _init_eeprom(self):
-        """initializes EEPROM"""
-        pass
 
     def get_i2c_interface(self):
         """
@@ -310,7 +355,39 @@ class IceBoardHardware(object):
     def get_slot_number(self):
         return self._get_ioexpander_field('BP_SLOT_NUMBER')
 
-    def set_fmc_power(self, fmc_number=range(NUMBER_OF_FMC_SLOTS), state=[True]*NUMBER_OF_FMC_SLOTS):
+    def read_motherboard_eeprom(self, addr, length, **kwargs):
+        return self._motherboard_eeprom_data.read(addr, length, **kwargs)
+
+    def write_motherboard_eeprom(self, addr, data, **kwargs):
+        return self._motherboard_eeprom_data.write(addr, data, **kwargs)
+
+    def _is_multipage_fmc_eeprom(self, i2c_interface, i2c_bus, i2c_addr):
+        """ Detects if the FMC EEPROM on the specified I2c bus and at
+        i2c base address offers multiple pages of data space.
+
+        This is done by doing a dummy access (no read, no write, just an
+        address byte) to the following i2c address and see if there is an
+        error. This will tell whether the EEPROM has multiple pages selected
+        by the I2c address, but not how many address bytes the device requires.
+
+        This method assumes there is no other valid devices at i2c_address+1 on that i2c bus.
+        """
+        i2c_interface.select_bus(i2c_bus)
+        try:
+            i2c_interface.write_read(i2c_addr + 1, data=[], read_length=0) # perform a dummy access
+        except i2c_interface.I2CException:
+            return False
+        return True
+
+    def read_mezzanine_eeprom(self, mezzanine, addr, length, **kwargs):
+        eeprom_object = self._FMC_EEPROM_TABLE[mezzanine]
+        return eeprom_object.read(addr, length, **kwargs)
+
+    def write_mezzanine_eeprom(self, mezzanine, addr, data, **kwargs):
+        eeprom_object = self._FMC_EEPROM_TABLE[mezzanine]
+        return eeprom_object.write(addr, data, **kwargs)
+
+    def set_mezzanine_power(self, fmc_number=range(NUMBER_OF_FMC_SLOTS), state=[True]*NUMBER_OF_FMC_SLOTS):
         """
         Enables or disables power of the specified FMC slot.
         Proper power sequencing is done to prevent the FMC board switchers to create too much a current spike when enabled.
@@ -484,6 +561,9 @@ class I2CInterface(object):
     a standardized way, whether the access is done through the
     FPGA or through the ARM.
     """
+
+    I2CException = SystemError # Exception object to expect from I2C communication errors
+
     def __init__(self, write_read_fn, port_select_fn, bus_table, _switch_addr, verbose = None):
         self.write_read_fn = write_read_fn
         self.set_port_fn = port_select_fn

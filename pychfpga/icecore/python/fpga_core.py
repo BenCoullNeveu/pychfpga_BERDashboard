@@ -16,66 +16,51 @@ import numpy as np
 
 import pychfpga.core.I2C as i2c # to be fixed: tese modules should live in icecore.lib
 import pychfpga.core.GPIO as gpio
-from lib import fpga_mmi
-# from fpga_firmware import FpgaFirmware
-# from hardware_map import HWMResource, Integer, Column, String, ForeignKey, UniqueConstraint, reconstructor
+from iceboard_hardware import I2CInterface
+from iceboard_hardware import IceBoardHardware
 
 class FpgaException(Exception):
     pass
 
 class FpgaCoreFirmware(object):
     """
-    Provides access to the basic functionnalities of the FPGA.
-    This object is also a hardware map object that can store persistent information.
+    Provides access to the functionnalities that are present in all FPGA
+    firmware using the common VHDL IceBoard code base, such as:
 
-    This class is meant to to provide access to functionnalities that are
-    present in all FPGA firmware using a common VHDL code base, such as:
-        - Buck sync control
-        - I2C interface to the hardware (if the ARM does not provide it)
+        - Low-level access to the memory-mapped registers in the FPGA firmware
+          (through the FPGA Ethernet port or through the ARM processor)
+        - Power Switcher phase and frequency controls
+        - low-level I2C interface to the IceBoard and backplane hardware
         - Configure and establish direct Ethernet communication with the FPGA
-        - Low-level access to the FPGA memory-mapped registers
         - Basic post-configuration information:
              - FPGA serial number
              - Firmware version
+             - Firmware timestamp
+             - Firmware cookie
              - FPGA internal voltage and temperature monitoring
              - etc.
-        - Control and monitoring of generic FMC Mezzanine I/O lines (I2C, etc.)
+        - Control and monitoring of FMC Mezzanines
+
     """
-    # __tablename__ = 'fpga_firmware'
-
-    # # __mapper_args__ = {'polymorphic_identity': 'core_fpga_firmware'}
-    # __mapper_args__ = {
-    #         'polymorphic_on': 'firmware_class',
-    #         'polymorphic_identity': 'core_fpga_firmware'
-    # }
-    # pk = Column(Integer, primary_key=True)
-    # iceboard_pk = Column(Integer, ForeignKey('iceboards.pk'))
-    # iceboard_serial_number = Column(Integer, ForeignKey('iceboards.serial_number'))
-    # firmware_class = Column(String, nullable=False)
 
     # ---------------------------------------
-    # Class variables (common to all instances)
+    # Class attributes (common to all instances)
     # ---------------------------------------
-    # _active_instances = {} # This contains a dictionary of all active (opened) firmware instances indexed by the board's serial number
-
-
-    # FPGA firmware-related definition
-    # serial_number = Column(Integer)
-    # ip_addr = Column(String)
-    # port_number = Column(Integer)
+    MMI_FPGA_ETHERNET = "fpga_ethernet"
+    MMI_ARM_SPI = "arm_spi"
+    MMI_ARM_ETHERNET = "arm_ethernet"
 
     interface_ip_addr = None # This is a class attribute, common to all instances.
-    mmi = None # Memory-mapped interface object
-    _is_open = None
     _BROADCAST_BASE_PORT = 41000
 
     _SYSTEM_BASE_ADDR      = 0x00000 # This is always at zero so we can gather info from the FPGA before we know the number of antennas etc.
     _SYSTEM_GPIO_BASE_ADDR = _SYSTEM_BASE_ADDR + 0x00000
     _SYSTEM_I2C_BASE_ADDR  = _SYSTEM_BASE_ADDR + 0x05000
 
-    _CONTROL_BASE_ADDR = fpga_mmi.FpgaMmi._CONTROL_BASE_ADDR
-    _STATUS_BASE_ADDR  = fpga_mmi.FpgaMmi._STATUS_BASE_ADDR
-    _RAM_BASE_ADDR     = fpga_mmi.FpgaMmi._RAM_BASE_ADDR
+    # Match those with what is used by Module
+    _CONTROL_BASE_ADDR = 0x000000
+    _STATUS_BASE_ADDR  = 0x080000
+    _RAM_BASE_ADDR     = 0x100000
 
 
     # GPIO Register addresses
@@ -85,137 +70,40 @@ class FpgaCoreFirmware(object):
     _FPGA_IP_SETUP_BASE_ADDR = _CONTROL_BASE_ADDR + _SYSTEM_GPIO_BASE_ADDR + 13 # (13-18): target MAC, (19-22): target IP, (23-24): target_base_port, (25-32) = Target FPGA serial, (33): bit 7 = trigger, bits 3:2: mac source select, 1:0: broadcast group
     # _GPIO_IPCONFIG_REG       = _CONTROL_BASE_ADDR + _SYSTEM_GPIO_BASE_ADDR + 0x08D # Register address of the first byte of the IP config word
 
+    # ---------------------------------------
+    # Instance attributes
+    # ---------------------------------------
+    mmi = None # Memory-mapped interface object
+    _is_core_open = None
 
-    @classmethod
-    def discover_fpgas(cls, source_subarrays = [0], timeout=0.1):
+
+    class AutoOpen(object):
+        """ This class is a placeholder for the unopened MMI interface object. Whenever
+        someone tried to access an MMI attribute, the parent's open() function
+        is called to establish the MMI link.
         """
-        Get the serial numbers of all FPGA directly connected on the network (i.e. not accessed through the ARM processor)
+        def __init__(self, core):
+            self.core = core
+        def __getattr__(self, name):
+            self.core.open_core()
+            return getattr(self.core.mmi, name)
+        def close(self): pass
 
-        NOTE:
-            - This function should not be called when the MMI interface is opened.
-            - This function is supported only for direct Ethernet connections to the FPGA
+    def __init__(self, **kwargs):
+        """ Initializes the object providing the core FPGA firmware functionalities
         """
-        logger = logging.getLogger(__name__)
-
-        if isinstance(source_subarrays, int):
-            source_subarrays = [source_subarrays]
-
-        # preserves closes the current mmi to free the socket
-        # if self.mmi:
-        #     self.mmi.close()
-
-        # resources = IceResourceTable() # create an empty resource list
-        serial_list = []
-         # for if_addr in interface_ip:
-        for subarray in source_subarrays:
-            logger.debug('Searching ICEBoards on subarray %i through interface %s' % (subarray, cls.interface_ip_addr))
-
-            with fpga_mmi.FpgaMmi(cls.interface_ip_addr, fpga_mmi.FpgaMmi.BROADCAST, cls._BROADCAST_BASE_PORT + subarray, send_only=False) as mmi:
-                mmi.flush()
-                serials = mmi.broadcast_read(cls._FPGA_SERIAL_NUMBER_ADDR, type = np.dtype('>u8'), timeout = timeout)
-            serial_list += serials
-
-        # self.mmi.open()
-
-        return serial_list
-
-    @classmethod
-    def set_networking_parameters(cls, serial_number, interface_ip_addr, ip_addr, port_number, broadcast_group=0, number_of_trials = 3, check=True):
-        """
-        Sets the FPGA firmwarein the specified ICEboard to use the specified ip address and port.
-        The board will be searched on the Ethernet interface associated with 'if_addr'
-        If no ip address or port is specified, a port/address will be automatically assigned based on the interface address.
-        An exception will be raised if the board cannot be found on the network of if another board uses the same ip address.
-
-        NOTE:
-            - This function is supported only for direct Ethernet connections to the FPGA
-
-        """
-
-        logger = logging.getLogger(__name__)
-        logger.debug('Broadcasting on port %i to configure FPGA S/N %016X with address %s:%i' % (cls._BROADCAST_BASE_PORT, serial_number, ip_addr, port_number))
-
-        # Build the array of bytes to fill the network configuration register block
-        ip_setup_string = struct.pack('>H4s4sHQ', 0x1234, socket.inet_aton(ip_addr), socket.inet_aton(ip_addr), port_number, serial_number)
-        trig1 = chr(0x0C | broadcast_group)
-        trig2 = chr(0x8C | broadcast_group)
-
-        # Configure the FPGA through a UDP broadcast packet containing the target FPGA serial number
-        trial = 0
-        while trial < number_of_trials:
-            with fpga_mmi.FpgaMmi(interface_ip_addr, fpga_mmi.FpgaMmi.BROADCAST, cls._BROADCAST_BASE_PORT, send_only=True) as mmi:
-                mmi.write(cls._FPGA_IP_SETUP_BASE_ADDR, ip_setup_string + trig1) # Send string with trigger flag cleared
-                mmi.write(cls._FPGA_IP_SETUP_BASE_ADDR, ip_setup_string + trig2) # resend with trigger flag set. The 0-to-1 transition will load the desired networking parameters
-                mmi.write(cls._FPGA_IP_SETUP_BASE_ADDR, [0] * len(ip_setup_string + trig2)) # Write zeros everywhere to make sure we stop latching data
-            # logger.debug('FPGA S/N %016X is configured with address %s:%i' % (serial_number, ip_addr, port_number))
-            if not check:
-                return
-            (serial, timestamp) = cls.get_fpga_config(ip_addr = ip_addr, port_number = port_number)
-            if serial and serial == serial_number:
-                return
-            else:
-                logger.debug('Networking configuration of FPGA S/N %016X with address %s:%i failed.' % (serial_number, ip_addr, port_number))
-                trial +=1
-        logger.debug('Unable to configure FPGA S/N %016X with address %s:%i' % (serial_number, ip_addr, port_number))
-        raise FpgaException('Unable to configure FPGA S/N %016X with address %s:%i' % (serial_number, ip_addr, port_number))
-
-    @classmethod
-    def get_fpga_config(cls, ip_addr, port_number, timeout = 0.1, number_of_trials=3):
-        """
-        Returns basic information allowing to check if we talk to the right FPGA with the right firmware.
-        Will not cause an exception if the FPGA fails to respond at the specified address. Instead, all fields will be None.
-        """
-        trial = 0
-        with fpga_mmi.FpgaMmi(cls.interface_ip_addr, ip_addr, port_number) as mmi:
-            while trial < number_of_trials:
-                try:
-                    serial = mmi.read(cls._FPGA_SERIAL_NUMBER_ADDR, type = np.dtype('>u8'), timeout = timeout, retry=0)
-                    timestamp = mmi.read(cls._FPGA_TIMESTAMP_ADDR, type = np.dtype('>u4'), timeout = timeout, retry=0)
-                    return (serial, timestamp)
-                except mmi.TimeoutException:
-                    trial += 1
-        return (None, None)
-
-    def __init__(self, *args, **kwargs):
-        """
-        Creates an FPGA object.
-
-        We provide the serial number to configure the FPGA direct ethernet
-        interface with the specified network parameters. This is not needed if
-        access is done through the ARM.
-
-        """
-        # self.iceboard_pk = iceboard_pk
         self.logger = logging.getLogger(__name__)
-        # HWMResource.__init__(self, *args, **kwargs)
-        # super(type(self), self).__init__(*args, **kwargs) # This causes infinite recursive calls to this __init__
-        # self.motherboard = motherboard
-        if self.is_open():
+
+        super(FpgaCoreFirmware, self).__init__(**kwargs) # pass all arguments to superclasses. All superclass must call super() to be collaborative. We use keywords arguments only because we don't want to assume what parameters the subclasses need.
+
+        if self.is_core_open():
             self.logger.error('Attempting to create a firmware instance for Iceboard S/N %s while an instance already exists' % self.iceboard_pk)
 
-    # @reconstructor # SQLAlchemy decorator indicating that this method is to be called when the object is recreated from the database
-    # def _init_from_database(self):
-    #     """
-    #     Reconstructs the Iceboard basic information from the database
-    #     entry and open the link to the Iceboard.
-    #     """
-    #     self.logger = logging.getLogger(__name__)
+        self.fpga_mmi_type = self.MMI_FPGA_ETHERNET # This type of MMI interface requires self.fpga_ip_addr, self.fpga_port_number and self.fpga_serial_number
+        self.mmi = self.AutoOpen(self) # open the MMI interface automatically if we try to access it.
+        self.i2c = None
 
-    #     if self.is_open():
-    #         self.logger.error('Attempting to create a firmware instance from database for Iceboard S/N %s while an instance already exists' % self.iceboard_pk)
-
-    def get_core_attributes(self):
-        """
-        Returns a list of attributes published by the *core* fpga firmware
-        only even if 'self' represents an instance of a superclass of
-        FpgaCoreFirmware.
-        """
-        # core_attributes =  FpgaCoreFirmware.__dict__.keys() + self.__dict__.keys()
-        # return [name for name in core_attributes if name[0] !='_']
-        return []
-
-    # def open_core(self, ip_addr, port_number, interface_ip_addr=None, broadcast_group = 0, serial_number = 0):
-    def open_core(self, ip_addr, port_number, serial_number, broadcast_group = 0):
+    def open_core(self):
         """
         Opens the communication link with the core FPGA firmware.
         This is called during the establishment of the link with the IceBoard (IceBoard.open()).
@@ -224,38 +112,41 @@ class FpgaCoreFirmware(object):
         which is called when the links to the IceBoard hardware are finished
         establishing.
 
-        TODO:
-            - Add MMI type as a parameter: Direct FPGA Ethernet, Direct ARM (SPI or PCIe), or Tuber (peek/poke)
-        """
+       """
 
         # Store networking parameters for easy future reference
-        self.ip_addr  = ip_addr
-        self.port_number = port_number
-        self.serial_number = serial_number # FPGA serial number
+        # self.ip_addr  = ip_addr
+        # self.port_number = port_number
+        # # self.serial_number = serial_number # FPGA serial number
         # self.interface_ip_addr = interface_ip_addr # # interface IP address, needed to setup UDP communications and UDB broadcasts
-        self._broadcast_group = broadcast_group
-        self._logger = logging.getLogger(__name__)
+        # self._broadcast_group = broadcast_group
+
+        if not self.is_fpga_programmed():
+            raise FpgaException("Attempting to access the  Iceboard S/N %s FPGA's Memory-mapped interface while the FPGA is not yet programmed with a bitstream" % self.serial_number)
 
         # Close any previously opened memory-mapped interface to free the sockets
         if self.mmi:
             self.mmi.close()
 
-        # Set the FPGA communication networking parameters
-        if self.serial_number:
-            self.set_networking_parameters(self.serial_number, self.interface_ip_addr, self.ip_addr, self.port_number, self._broadcast_group)
-
         # Open communications with the FPGA memory mapped-interface
-        self.mmi = fpga_mmi.FpgaMmi(self.interface_ip_addr, self.ip_addr, self.port_number)
+        if self.fpga_mmi_type == self.MMI_FPGA_ETHERNET:
+            from lib.fpga_mmi import FpgaMmi
+            self.mmi = FpgaMmi(self.fpga_ip_addr, self.fpga_port_number, fpga_serial_number = self.fpga_serial_number, set_fpga_networking_parameters = True)
 
-        self._logger.debug('=== Instantiating GPIO')
+        self.mmi.open()
+
+        self.logger.debug('=== Instantiating core GPIO')
         self._base_gpio = gpio.GPIO_base(self.mmi, self._SYSTEM_GPIO_BASE_ADDR)
 
         # Instantiate the I2C handler
-        self._logger.debug('=== Instantiating I2C')
+        self.logger.debug('=== Instantiating core I2C')
         self._base_i2c = i2c.I2C_base(self.mmi, self._SYSTEM_I2C_BASE_ADDR)
 
-        # type(self)._active_instances[self.iceboard_pk] = self
-        self._is_open = True
+        # Create a standardized I2C interface to the IceBoard hardware through the FPGA
+        if not self.i2c: # If i2c interface not already provided my the ARM
+            self.i2c = I2CInterface(self.fpga_i2c_write_read, self.fpga_i2c_set_port, IceBoardHardware.FPGA_I2C_BUS_LIST, IceBoardHardware._FPGA_I2C_SWITCH_ADDR)
+
+        self._is_core_open = True
 
     def close_core(self):
         """
@@ -266,24 +157,12 @@ class FpgaCoreFirmware(object):
         self._base_i2c = None
         if self.mmi:
             self.mmi.close()
-            self.mmi = None
+            self.mmi = self.AutoOpen(self) # open the MMI interface automatically if we try to access it.
+        self._is_core_open = False
 
-        # type(self)._active_instances.pop(self.iceboard_pk, None)
-        self._is_open = False
-
-    def is_open(self):
+    def is_core_open(self):
         # return self.iceboard_pk in type(self)._active_instances
-        return bool(self._is_open)
-
-    # def open(self):
-    #     """
-    #     Placeholder for the application-specific open method.
-    #     """
-
-    # def close(self):
-    #     """
-    #     Placeholder for the application-specific close method.
-    #     """
+        return bool(self._is_core_open)
 
     def mmi_read(self, *args, **kwargs):
         return self.mmi.read(*args, **kwargs)
@@ -291,29 +170,17 @@ class FpgaCoreFirmware(object):
     def mmi_write(self, *args, **kwargs):
         self.mmi.write(*args, **kwargs)
 
-    def mmi_ping(self, ip_addr, timeout):
-        """
-        Verifies if the FPGA firmeware is responding using the IP address of the board.
-        """
-        raise NotImplementedError
-
-    # def ping_broadcast(self, fpga_serial_number, timeout):
-    #     """
-    #     Verifies if the FPGA firmeware is responding using a broadcast.
-    #     """
-    #     raise NotImplementedError
-
-    def get_serial_number(self):
+    def get_fpga_serial_number(self):
            return self.mmi.read(self._FPGA_SERIAL_NUMBER_ADDR, type = np.dtype('>u8'))
 
-    def get_fpga_cookie(self):
+    def get_fpga_firmware_cookie(self):
         """
         Reads the FPGA and returns the cookie that identifies the firmware.
         This method can be called before any FPGA modules are instatiated.
         """
         return self.mmi.read(self._GPIO_COOKIE_REG) & 0x7F
 
-    def get_version(self):
+    def get_fpga_firmware_version(self):
         """
         Returns the firmware revion currenting running on the FPGA (which si the date and time of bitstream generation)
         """

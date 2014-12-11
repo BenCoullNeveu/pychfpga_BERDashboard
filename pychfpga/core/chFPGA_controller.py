@@ -34,8 +34,8 @@ import numpy as np
 #import pdb
 import time
 
-from pychfpga.icecore.app_handler import IceBoardAppHandler
-from pychfpga.icecore.tuber import HandlerManager
+from pychfpga.icecore.handler import IceBoardHandler
+from pychfpga.icecore.iceboard import IceBoard
 
 from pychfpga.common import util
 
@@ -80,42 +80,42 @@ import GPU
 # from pychfpga.motherboards import mgk7mb # McGill ICEBoard hardware ressources wrapper
 
 # MGADC08 FMC ADC board device handlers
-from pychfpga.MGADC08 import MGADC08
+#from pychfpga.MGADC08 import MGADC08
 
 # -- Module reloader --
 # Reload modules if we are debugging in case the source code has changed
 
-MODULE_LIST = (
-        util,
-        # SocketIO,
-        Module,
-        SPI,
-        I2C,
-        GPIO,
-        SYSMON,
-        REFCLK,
-        MGADC08,
-        # ML605_LCD,
-        FreqCtr,
-        # ML605_PMBus,
-        ANT,
-        ADCDAQ,
-        SRCSEL,
-        INJECT,
-        FUNCGEN,
-        FFT,
-        SCALER,
-        PROBER,
-        CORR_BLOCK,
-        CROSSBAR,
-        GPU,
-        shuffle,
-        ACC,
-        MGT,
-        # mgk7mb,
-        MGADC08,
-        # iceboard
-        )
+# MODULE_LIST = (
+#         util,
+#         # SocketIO,
+#         Module,
+#         SPI,
+#         I2C,
+#         GPIO,
+#         SYSMON,
+#         REFCLK,
+# #        MGADC08,
+#         # ML605_LCD,
+#         FreqCtr,
+#         # ML605_PMBus,
+#         ANT,
+#         ADCDAQ,
+#         SRCSEL,
+#         INJECT,
+#         FUNCGEN,
+#         FFT,
+#         SCALER,
+#         PROBER,
+#         CORR_BLOCK,
+#         CROSSBAR,
+#         GPU,
+#         shuffle,
+#         ACC,
+#         MGT,
+#         # mgk7mb,
+# #        MGADC08,
+#         # iceboard
+#         )
 
 # util.reload_modules(MODULE_LIST)
 
@@ -133,7 +133,7 @@ class chFPGAException(Exception):
         self._logger.exception(message)
 
 
-class chFPGA_controller(IceBoardAppHandler):
+class chFPGA_controller(IceBoardHandler):
     """
     Creates an object that connects to the specified chFPGA board and provides the methods to configure it and control its operations.
 
@@ -203,7 +203,7 @@ class chFPGA_controller(IceBoardAppHandler):
     }
 
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, **kwargs):
         """
         Creates the object providing the methods and attributes needed to
         operate the chFPGA firmware. This does not affect the state and
@@ -214,11 +214,10 @@ class chFPGA_controller(IceBoardAppHandler):
             .i2c.select_bus(bus_name)  where bus_name is 'FMCA' or 'FMCB'
             .i2c.write_read(...)
         """
-        super(type(self),self).__init__(*args, **kwargs)
+        super(type(self),self).__init__(**kwargs)
         # Initialize instance attributes
         # For now, we do not know their values unless the system is initialized.
         # We may want to fix that by reading the FPGA states and determining those values.
-        #self._motherboard = motherboard
 
         self._sampling_frequency = None
         self._reference_frequency = None
@@ -226,65 +225,17 @@ class chFPGA_controller(IceBoardAppHandler):
         self._FMC_present = []  # indicates if the FMC board is present. If not, the modules will act accordingly.
         self._adc_board = []
         self._last_init_time = None
-        # self.ip_address = ip_address # store the IP address so we can use it to delete the shared_variable
-        # self.port_number = port_number
 
         self._logger = logging.getLogger(__name__)
 
-        # self.fpga = None
         self._logger.info("Creating chfpga_controller object as %r" % (self))
 
-        # self._logger.info("=== Opening control communication sockets to FPGA at %s:%i." % (ip_address, port_number))
-
-        # # Close the socket open by a previous instance
-        # if ip_address in Shared_variables.controller_sock:
-        #     self._logger.info('   Closing the socket open in a previous instance ' +
-        #                   'for IP address %s' % ip_address)
-        #     Shared_variables.controller_sock[ip_address].close()
-        #     del Shared_variables.controller_sock[ip_address]
-
-        # # # Set the IP address and port
-        # # self.fpga = SocketIO.ControlSocket_base('10.10.10.11', 41000)
-        # # ip_bytes = socket.inet_aton(ip_address) # converts the IP address as a string of 4 bytes
-        # # ip_word = struct.unpack('>L', ip_bytes)[0] # convert IP into a 32 bit word
-        # # ipconfig_word = np.uint32( ((ip_word & 0xFFFF) << 16) | (port_number & 0xFFFF) )
-        # # self._logger.info('Setting IPCONFIG word to 0x%08X' % ipconfig_word)
-        # # self.write(self.SYSTEM_PORT, self.SYSTEM_GPIO_MODULE, self._GPIO_IPCONFIG_REG, ipconfig_word)
-        # # self.fpga.close()
-
-
-
-        # # Create socket handled and open socket communications to the chFPGA board
-        # self.fpga = SocketIO.ControlSocket_base(ip_address, port_number, host_ip=host_ip)
-        # Shared_variables.controller_sock[ip_address] = self.fpga # Save the socket in a persistent storage so it can be closed if needed
-
-        # provide access to the FPGA read/write methods directly from this chFPGA object
-
-    # from sqlalchemy.orm import reconstructor
-    # @reconstructor # SQLAlchemy decorator indicating that this method is to be called when the object is recreated from the database
-    # def _init_from_database(self):
-    #     """
-    #     Reconstructs the Iceboard basic information from the database
-    #     entry and open the link to the Iceboard.
-    #     """
-    #     self._logger = logging.getLogger(__name__)
-    #     self._logger.warning('CHFPGA_Controller %r was re-initialized from the database.' % self)
-    #     self._sampling_frequency = None
-    #     self._reference_frequency = None
-    #     self._FRAME_PERIOD = None
-    #     self._FMC_present = []  # indicates if the FMC board is present. If not, the modules will act accordingly.
-    #     self._adc_board = []
-    #     self._last_init_time = None
 
     def open(self, init=1, verbose=0, *args, **kwargs):
 
         self._logger = logging.getLogger(__name__)
 
         super(type(self),self).open(*args, **kwargs)
-
-        # super(type(self), self).open()
-        # self.mmi = self._motherboard.fpga_core.mmi
-        # self._motherboard = motherboard
 
         self.logger.info('Instantiating Application-specific FPGA firmware handlers for board #%i' % (self.serial_number))
 
@@ -305,7 +256,7 @@ class chFPGA_controller(IceBoardAppHandler):
 
         try:
             # cookie = self.read(self._SYSTEM_GPIO_BASE_ADDR + self.mmi._STATUS_BASE_ADDR) # Read anything from the GPIO subsystem (which is always present on all versions of the FPGA)
-            cookie = self.get_fpga_cookie() # Read the firmware version cookie from the GPIO subsystem (this is provided by the FPGA core firmware which is always present on all versions of the FPGA)
+            cookie = self.get_fpga_firmware_cookie() # Read the firmware version cookie from the GPIO subsystem (this is provided by the FPGA core firmware which is always present on all versions of the FPGA)
         except Exception as e:
             error_message = "   Unable to communicate with the FPGA at address %s:%i due to the following exception: %s" % (self.ip_addr, self.port_number, repr(e))
             self.close()
@@ -485,7 +436,7 @@ class chFPGA_controller(IceBoardAppHandler):
             # ---------------------------------------------------------------------
             self._logger.info('=== Analyzing available FMC Mezzanines')
             # self._adc_board = [self._motherboard.mezz1, self._motherboard.mezz2]
-            self._adc_board = [self.mezz1_handler, self.mezz2_handler]
+            self._adc_board = [self._mezz1_handler, self._mezz2_handler]
             self._FMC_present = [False] * self._NUMBER_OF_FMC_SLOTS
             self.ANT_FMC_IS_PRESENT = [False] * self.NUMBER_OF_ANTENNAS
             for (fmc_number, fmc) in enumerate(self._adc_board):
@@ -535,7 +486,7 @@ class chFPGA_controller(IceBoardAppHandler):
         """
         # Close FMC boards
 
-        while getattr(self,'adc_board',None):
+        while self._adc_board:
             fmc=self._adc_board.pop()
             if hasattr(fmc, 'close'):
                 fmc.close()
@@ -1271,7 +1222,7 @@ class chFPGA_controller(IceBoardAppHandler):
     def status(self):
         self._logger.info('----------- chFPGA status ---------------')
         self._logger.info(' Controller IP address: %s, port: %i ' % (self.ip_addr, self.fpga.port_number))
-        self._logger.info(' Firmware version: %s' % self.get_version())
+        self._logger.info(' Firmware version: %s' % self.get_fpga_firmware_version())
         self._logger.info(' Number of antenna inputs: %i' %  self.NUMBER_OF_ANTENNAS)
         self._logger.info(' Number of antennas with channelizers: %i (antennas %s)' % (len(self.LIST_OF_ANTENNAS_WITH_FFT), str(self.LIST_OF_ANTENNAS_WITH_FFT)))
         self._logger.info(' Number of correlators: %i (correlators %s)' % (len(self.LIST_OF_IMPLEMENTED_CORRELATORS),str(self.LIST_OF_IMPLEMENTED_CORRELATORS)))
@@ -1602,4 +1553,4 @@ class chFPGA_controller(IceBoardAppHandler):
         return res
 
 # Register the class as a Iceboard handler
-HandlerManager.add_local_python_handler('chfpga', chFPGA_controller)
+IceBoard.add_local_python_handler('chfpga', chFPGA_controller)

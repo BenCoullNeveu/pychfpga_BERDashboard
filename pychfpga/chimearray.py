@@ -37,8 +37,8 @@ def delete_modules(module_name):
 # delete_modules('sqlalchemy')
 # delete_modules('icecore')
 
-from pychfpga.icecore import hardware_map
-from pychfpga.icecore import tuber
+# from pychfpga.icecore import hardware_map
+# from pychfpga.icecore import tuber
 # reload(hardware_map)
 # reload(tuber)
 
@@ -47,7 +47,7 @@ from pychfpga.icecore.fpga_bitstream import FpgaBitstream
 from pychfpga.icecore.iceboard import IceBoard
 
 from pychfpga.core.chFPGA_controller import chFPGA_controller as ChimeFpgaFirmware
-
+import MGADC08.MGADC08
 #####################################
 
 import inspect
@@ -108,7 +108,8 @@ if __name__ == '__main__':
 
     ca = IceArray(uri='sqlite:///test.db', interface_ip_addr=args.if_ip)
     ca.load_iceboards('iceboard_list.txt')
-    ca.discover() # automatically update the hardware map database with discovered resources
+    ca.discover(timeout=0.05) # automatically update the hardware map database with discovered resources
+
 
     bitfile_filename = args.bitfile
     # fpga_bitstream = FpgaBitstream(bitfile_filename, ChimeFpgaFirmware) #
@@ -118,13 +119,14 @@ if __name__ == '__main__':
     else:
         fpga_bitstream = ca.get_fpga_bitstream(args.bitfile, ChimeFpgaFirmware) # Get a new bitstream from the database (or create a new database entry if it does not exist yet)
 
-
     c = ca.get_iceboards(subarray=args.subarray).index_by(IceBoard.serial_number) # get one or more IceBoards from specified subarray
     #c = ca.get_iceboards(subarray=args.subarray) # get one or more IceBoards from specified subarray
 
     # shortcut to index c[7] as c7 etc.
-    for (serial,ice) in [(ice.serial_number, ice) for ice in c]:
-        setattr(__main__, 'c%i' % serial, ice)
+    print 'The following IceBoards were found in Subarray %r through interface %s:' % (args.subarray, args.if_ip)
+    for ib in c:
+        print '  c%r = IceBoard S/N%r in slot %r' % (ib.serial_number, ib.serial_number, ib.slot_number)
+        setattr(__main__, 'c%i' % ib.serial_number, ib)
     # c23.set_fpga_firmware(fpga_bitstream,  configure_fpga=True, force=args.force, store_in_database=True) # associate boards with specified firmware and configure the selected FPGA
     # c24.set_fpga_firmware(fpga_bitstream,  configure_fpga=True, force=args.force, store_in_database=True) # associate boards with specified firmware and configure the selected FPGA
     # c19.set_fpga_firmware(fpga_bitstream,  configure_fpga=True, force=args.force, store_in_database=True) # associate boards with specified firmware and configure the selected FPGA

@@ -14,33 +14,33 @@ import logging
 import numpy as np
 import time
 import struct
-import zlib
-import ast
+# import zlib
+# import ast
 
 from sqlalchemy import Column, Integer, String, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship, backref
 
-from ..icecore.fmc_mezzanine import FMCMezzanine
+from pychfpga.icecore import fmc_mezzanine
 
+# Import mezzanine-specific modules
 import ADC
 import IOExpander
 import ADC_PLL
 import AmbTemp
-# import BiasADC
 import MGT_PLL
-# import FMC_EEPROM
-from pychfpga.common import util
 
-class MGADC08_base(FMCMezzanine):
+class MGADC08_base(fmc_mezzanine.FMCMezzanine):
     __tablename__ = 'mgadc08'
 
-    __mapper_args__ = {
-            'polymorphic_identity': '0x0D', # The MGADC08 EEPROM does not follow the FMC standard. The hex value of the first byte of the eeprom is used.
-   }
-
-    pk = Column(Integer, ForeignKey('fmc_mezzanines.pk'), primary_key=True)
+    __mapper_args__ = {'polymorphic_identity': 'MGADC08'} # Must match the model number found in the Mezzanine EEPROM (case sensitive)
+    _pk = Column(Integer, ForeignKey('fmc_mezzanines._pk'), primary_key=True)
 
     """ Implements object that exposes the MGADC08 FMC ADC board hardware ressources"""
+
+    def __init__(self, **kwargs):
+        super(MGADC08_base, self).__init__(**kwargs)
+
+class MGADC08_Handler(object):
 
     # SPI port numbers specific to this board
     SPI_ADC0_ADDR      = 0    # ADC. R/W device. 8 bit address+RW, 16 bit data.
@@ -55,22 +55,18 @@ class MGADC08_base(FMCMezzanine):
 
     _board_is_present = False # Will be checked later
 
-    def __init__(self, *args, **kwargs):
+    def __init__(self, **kwargs):
 
-        super(type(self), self).__init__(*args, **kwargs)
-        self.type = 'mgadc08'
+        # self.type = 'mgadc08'
         self._board_is_present = None
         self.sampling_frequency = None
         self.reference_frequency = None
-        self._board_info = {}
-
-        # self.logger = logging.getLogger(__name__)
-
+        # self._board_info = {}
 
         self.check_FMC_presence()
 
         if self.is_present():
-            self._board_info = self.load_board_info()
+            # self._board_info = self.load_board_info()
             self.logger.debug('  - ADC')
             self.ADC = ADC.ADC_base(adc_board = self)
             self.logger.debug('  - IOExpander')
@@ -81,8 +77,10 @@ class MGADC08_base(FMCMezzanine):
             self.AmbTemp = AmbTemp.AmbTemp_base(adc_board = self)
             # self.logger.debug('  - MGT_PLL')
             # self.MGT_PLL = MGT_PLL.MGT_PLL_base(self.motherboard)
-            # self.logger.debug('  - BiasADC')
-            # self.BiasADC = BiasADC.BiasADC_base(self.motherboard)
+
+    def hwm_update(hwm_object):
+        self.motherboard = hwm_object.iceboard.handler
+        self.mezzanine_number = hwm_object.mezzanine
 
     ############################################
     # Methods available to the board hardware
@@ -107,43 +105,43 @@ class MGADC08_base(FMCMezzanine):
 
     def check_FMC_presence(self, verbose=0):
         """ Checks if the FMC is present"""
-        self.logger.debug("Attempting to read FMC eeprom to determine board presence")
-        data = self.eeprom.read(0, length=1, noerror=True, verbose=verbose)
-        self.logger.debug("FMC eeprom returned the value: %i", data[0])
-        self._board_is_present = (data[0] == 13)
+        # self.logger.debug("Attempting to read FMC eeprom to determine board presence")
+        # data = self.eeprom.read(0, length=1, noerror=True, verbose=verbose)
+        # self.logger.debug("FMC eeprom returned the value: %i", data[0])
+        self._board_is_present = self.motherboard.get_mezzanine_type(self.mezzanine_number) == self.polymorphic_identity
         #self.logger.info("is the ADC board present: %i" % self._board_is_present)
 
     def is_present(self):
         """ returns a boolean indicating whether the ADC board is present"""
         return self._board_is_present
 
-    def load_board_info(self, retry=10):
-        """ Loads the info data block from the ADC board EEPROM using the old proprietary McGill format (not the FMC standard). """
+    # def load_board_info(self, retry=10):
+    #     """ Loads the info data block from the ADC board EEPROM using the old proprietary McGill format (not the FMC standard). """
 
-        block_size = 32
-        string = ''
-        for i in range(512 / block_size): # read 32 blocks of 16 bytes
-            data_block = self.eeprom.read(i * block_size, length=block_size, retry=retry)
-            string += data_block.tostring()
-            if ('}' in data_block) or (chr(255) in data_block):
-                break
-        # print 'EEPROM data block is', string
+    #     block_size = 32
+    #     string = ''
+    #     for i in range(512 / block_size): # read 32 blocks of 16 bytes
+    #         data_block = self.eeprom.read(i * block_size, length=block_size, retry=retry)
+    #         string += data_block.tostring()
+    #         if ('}' in data_block) or (chr(255) in data_block):
+    #             break
+    #     # print 'EEPROM data block is', string
 
-        last_char = string.find('}')
-        if last_char<0:
-            self.logger.error('No dictionary found on EEPROM. Did the board pass the quality control test?')
-            return None
+    #     last_char = string.find('}')
+    #     if last_char<0:
+    #         self.logger.error('No dictionary found on EEPROM. Did the board pass the quality control test?')
+    #         return None
 
-        string = string[1:last_char+1] # keep only the dict definition string: remove first char (board ID) and stop at last '}'.
+    #     string = string[1:last_char+1] # keep only the dict definition string: remove first char (board ID) and stop at last '}'.
 
-        # Read checksum
-        crc_string = self.eeprom.read(last_char+1, length=4, retry=retry).tostring()
-        crc = struct.unpack('i', crc_string)[0]
-        computed_crc = zlib.crc32(string)
-        if computed_crc != crc:
-            raise self.FMCMezzanineException('FMC EEPROM CRC is invalid. Read crc = %08X, computed crc = %08X' % (crc, computed_crc))
-        dict_out = ast.literal_eval(string) # safer than using eval
-        return dict_out
+    #     # Read checksum
+    #     crc_string = self.eeprom.read(last_char+1, length=4, retry=retry).tostring()
+    #     crc = struct.unpack('i', crc_string)[0]
+    #     computed_crc = zlib.crc32(string)
+    #     if computed_crc != crc:
+    #         raise self.FMCMezzanineException('FMC EEPROM CRC is invalid. Read crc = %08X, computed crc = %08X' % (crc, computed_crc))
+    #     dict_out = ast.literal_eval(string) # safer than using eval
+    #     return dict_out
 
     def init(self, sampling_frequency=800e6, reference_frequency=10e6, verbose=0):
         """ Initializes the FMC board modules"""
@@ -174,3 +172,5 @@ class MGADC08_base(FMCMezzanine):
             self.IOExpander.status()
             self.ADC_PLL.status()
             self.ADC.status()
+
+MGADC08_base.add_local_python_handler('mgadc08', MGADC08_Handler)

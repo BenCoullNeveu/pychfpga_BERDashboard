@@ -52,23 +52,29 @@ SQLAlchemy's "eager" options and ensuring there are indices on the right
 columns.
 """
 
-import gevent, gevent.monkey
-gevent.monkey.patch_socket() # comment this out to disable green threads.
+import gevent
+import gevent.monkey
+gevent.monkey.patch_socket()  # comment this out to disable green threads.
 
-import Queue as queue
+# import Queue as queue
 import os, sys, traceback
-import urlparse
+# import urlparse
 import threading
-import concurrent.futures
-import operator
+# import concurrent.futures
+# import operator
 import functools
 import logging
+import sqlalchemy
+import tuber
+
+# Make commonly used sqlalchemy classes available through this module
 from sqlalchemy import create_engine, inspect
 from sqlalchemy import Column, Integer, String, Boolean, Binary, LargeBinary, DateTime, ForeignKey, UniqueConstraint
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import relationship, Query, sessionmaker, backref, reconstructor, scoped_session, object_session
+from sqlalchemy.event import listen
 
-Base = declarative_base()
+Base = sqlalchemy.ext.declarative.declarative_base()
 
 class HWMQueryException(Exception):
     pass
@@ -443,6 +449,160 @@ class HWMQuery(Query):
         return self._concurrent_call(None, func, *args, **kwargs)
         # return self._call_proto(func, False, *args, **kwargs)()
 
+class HWMHandlerManager(object):
+    """ Proof of concept of a handler object, which is an object that provides
+    methods and attributes located remotely or locally.
+
+    Local access to Python object is performed if the object's class is
+    registered to the Handler. Otherwise remote access is done through Tuber.
+
+    Handlers have these restrictions:
+       - attributes and methods whise name begin with '_' are not accessible
+       - modification to the object attributes must be done by a setter
+         function provided by the object.
+       - methods or attribute access can only return string or numeric values,
+         or lists or dictionnary thereof
+
+    Notes:
+
+       - JFC: The way this is written, direct local access of python classes
+         is currently more flexible than remote access because we do not need
+         the return value to be serializable. We therefore can dig down the
+         hierarchies and index objects directly, which is heavily used for
+         debugging. Remote access through Tuber would not allow this,
+         therefore potentially causing code compatibility issues if the code
+         is moved remotely. Depending on the philosophy of the system, we
+         might want to restrict local access capabilities to match that of
+         remote access (unless we use a more flexible RPC protocol (like RpyC)
+         and are willing run python remotely).
+    """
+
+    # Class attributes
+    _handler_list = {} # (handler_key: handler)
+    _local_python_handler_classes = {} # Dictionary containing handler_name: python class
+
+    # Instance attributes
+    _handler = None
+
+    @classmethod
+    def add_local_python_handler(cls, class_name, class_):
+        cls._local_python_handler_classes[class_name]=class_
+
+    def get_handler(self):
+        return self._handler
+
+    @property
+    def handler(self):
+        return self._handler
+
+    def set_handler(self, tuber_uri=None, core_handler_name=None, app_handler_name=None, object_id=None, *args, **kwargs):
+        """
+        tuber_uri: Address used to access remote handlers (typically the ARM processor on an iceBoard)
+        core_handler_name: Name of the core handler, (typically a remote handler)
+        app_handler_name: Name of the application-specific handler, found locally or remotely
+        object_id: ID used to uniquely identify each instance of the class. This is preferably linked to a unique hardware serial number, but a database primary key can probably be used safely.
+        """
+        logger = logging.getLogger(__name__)
+
+        logger.info('set_handler: setting handler %r with tuber_uri=%r, core=%r, app=%r, id=%r' % (self, tuber_uri, core_handler_name, app_handler_name, object_id))
+
+
+        if app_handler_name and object_id:
+            handler_key = (app_handler_name, object_id)
+        elif core_handler_name and object_id:
+            handler_key = (core_handler_name, object_id)
+        else:
+            handler_key = None
+
+        logger.info('set_handler: handler key for %r is %r' % (self, handler_key))
+
+        combined_handler_names = [h for h in [core_handler_name, app_handler_name] if h]
+
+        if handler_key in self._handler_list:
+            self._handler = self._handler_list[handler_key]
+        elif handler_key and app_handler_name in self._local_python_handler_classes:
+            handler_class = type(self)._local_python_handler_classes[app_handler_name]
+            if tuber_uri and core_handler_name:
+                core_handler = tuber.TuberObject(tuber_uri, core_handler_name)
+            else:
+                core_handler = None
+            self._handler = handler_class(hwm_object = self, core_handler = core_handler, *args, **kwargs)
+            type(self)._handler_list[handler_key] = self._handler # register the handler for this instance
+        elif handler_key and tuber_uri and combined_handler_names:
+            self._handler = tuber.TuberObject(tuber_uri, combined_handler_names)
+            type(self)._handler_list[handler_key] = self._handler # Store thr handler for future uses
+        else:
+            self._handler = None
+
+
+        if not self._handler:
+            logger.error('set_handler: %r does not have a valid handler' % self)
+        else:
+            logger.info('set_handler: %r handler is %r' % (self, self._handler))
+
+        self.update_handler()
+
+    def __dir__(self):
+        """ Return the list of attributes of this class and of those of the handler."""
+        return type(self).__dict__.keys() + self.__dict__.keys() + (dir(self._handler) if self._handler else [])
+
+    def __getattr__(self, name):
+        """ Return the value of an attribute if it exists in the handler """
+        # print "Handler is getting attribute '%s' for %r's handler" % (name, self)
+        if self._handler:
+            return getattr(self._handler, name)
+        raise AttributeError
+
+    def update_handler(self):
+        """ Calls the hwm_update() method of the haldler with this hardware
+        mapped object as an argument to inform on changes in the database
+        object.
+        """
+
+        if hasattr(self._handler,'hwm_update'):
+            self._handler.hwm_update(self)
+
+    def init_handler(self):
+        """ Default handler initializer. The user shall
+        override this function to specify what hanbdlers to use for this specific
+        Hardware map object.
+
+        This is called whenever a managed HWM object is created from scratch
+        or from the database and is used to create the corresponding handler
+        or reconnect to the existing handler.
+
+        This function shall call self.set_handler(...) and provide tuber_URI,
+        core handler name and application name as needed for this object. It
+        must also provide an ID that uniquely identifies this HWM object
+        instance.
+        """
+        self.set_handler(app_handler_name=self._cls, object_id=self._pk)
+
+    @classmethod
+    def __declare_last__(cls):
+        """Special SQLAlchemy class method that is called when the class
+        definition is complete. We use it to set-up the event listener that will
+        inform the handler when the ORM object has changed.
+        """
+
+        def _hwm_update_event(instance, event_name):
+            logger = logging.getLogger(__name__)
+            logger.info("handler_update: Update Event '%s' on instance %r" % (event_name, instance))
+            instance.update_handler()
+            # if hasattr(instance, 'get_handler'):
+            #     handler = instance.get_handler()
+            #     if hasattr(handler,'hwm_update'):
+            #         handler.hwm_update(instance)
+        def _hwm_init_event(instance, event_name):
+            logger = logging.getLogger(__name__)
+            logger.info("handler_init: Init Event '%s' on instance %r" % (event_name, instance))
+            instance.init_handler()
+
+        listen(cls, 'load', lambda target, context: _hwm_init_event( target, event_name='load'))
+        listen(cls, 'init', lambda target, *args, **kwargs: _hwm_init_event( target, event_name='init'))
+        listen(cls, 'refresh', lambda target, context, attrs: _hwm_update_event( target, event_name='refresh'))
+        listen(cls, 'after_update', lambda mapper, connection, target: _hwm_update_event( target, event_name='after_update'))
+
 class HWMResource(Base):
     '''Base class for Hardware Mapper resources to share.
 
@@ -452,17 +612,120 @@ class HWMResource(Base):
     '''
     __abstract__ = True
 
+    @property
+    def hwm(self):
+        '''Retrieve the :class:`HardwareMap` that stores this object.'''
+        return sqlalchemy.orm.object_session(self)
+
+
+class TuberHWMResource(HWMResource, tuber.TuberObject):
+    '''A base class for HWMResources that correspond to TuberObjects.'''
+    __abstract__ = True
+
+    hostname = sqlalchemy.Column(
+        sqlalchemy.String,
+        doc="The hostname (or IP) to use for this resource.")
+
+
+class macro(object):
+    '''Decorator for "macros" that performs some rudimentary typechecking.
+
+    Macros are functions used with query objects that are parallelized
+    directly, i.e.
+
+    >>> @macro(ReadoutChannel)
+    ... def print_channel(c):
+    ...     print c.channel
+
+    >>> hwm.query(ReadoutChannel).call_with(print_channel)
+
+    The "print_channel" function ends up executing once for each
+    ReadoutChannel in the query. See the "algorithm" decorator for an
+    alternative.
+
+    You do not need to use this macro to get this behaviour; it's the
+    default case. We encourage use of the decorator anyway, for
+    typechecking and to give context for the function being called.
+    '''
+    def __init__(dec, cls):
+        dec.__valid_class = cls
+
+    def __call__(dec, func):
+        @functools.wraps(func)
+        def typechecked(self, *args, **kwargs):
+            if dec.__valid_class and not issubclass(self.__class__, dec.__valid_class):
+                raise TypeError("Macro called with wrong types! Expected %s" % dec.__valid_class.__name__)
+            return func(self, *args, **kwargs)
+
+        return typechecked
+
+
+class algorithm(object):
+    '''Decorator for "algorithms".
+
+    This decorator is used as follows:
+
+    >>> @algorithm(ReadoutChannel)
+    ... def print_channel(cs):
+    ...     print cs.channel
+
+    >>> hwm.query(ReadoutChannel).call_with(print_channel)
+
+    Note that the "print_channel" function is called *once*, and is passed
+    in a HWMQuery of ReadoutChannels that can be iterated over. When we
+    bump into the "print" statement, an array of integers is assembled.
+
+    If you do not use the @algorithm decorator, you get @macro behaviour
+    (the print_channel function will be called once for each ReadoutChannel
+    object in the query results.)
+    '''
+    def __init__(dec, cls):
+        dec.__valid_class = cls
+
+    def __call__(dec, func):
+
+        @functools.wraps(func)
+        def typechecked(self, *args, **kwargs):
+            if not issubclass(self.__class__, HWMQuery):
+                raise TypeError("Macro called with non-HWMQuery!")
+            if dec.__valid_class and not all([issubclass(x.__class__, dec.__valid_class) for x in self]):
+                raise TypeError("Macro called with wrong types! Expected %s" % dec.__valid_class.__name__)
+            return func(self, *args, **kwargs)
+
+        # Flag so call_with doesn't parallelize
+        typechecked._hwm_call_with_outer = True
+        return typechecked
+
+
+class Boolean(sqlalchemy.types.TypeDecorator):
+    '''A Boolean lookalike for column definitions, accepting "true"/"false".
+
+    Use this instead of sqlalchemy.Boolean when the column might be initialized
+    with string values, e.g. from CSV entries.
+    '''
+
+    impl = sqlalchemy.types.Boolean
+
+    def process_bind_param(self, value, dialect):
+        if isinstance(value, str):
+            if value.lower()=='true':
+                return True
+            if value.lower()=='false':
+                return False
+        return value
+
 class HardwareMap(object):
     #class attributes
     scoped_session = None
 
     def __new__(self, uri='sqlite:///:memory:', echo=False, *args, **kwargs):
         # Connect to the database
-        e = create_engine(
-                uri,
-                echo=echo,
-                connect_args={'check_same_thread':False}
-        )
+        # e = create_engine(
+        #         uri,
+        #         echo=echo,
+        #         connect_args={'check_same_thread':False}
+        # )
+        e = sqlalchemy.create_engine(uri, echo=echo)
         print 'using', uri
         # It's possible we're operating on an empty, in-memory database
         # (that's one of the use cases we anticipate) -- so ensure all
@@ -475,7 +738,7 @@ class HardwareMap(object):
                 query_cls=HWMQuery,
                 *args,
                 **kwargs)
-        self.scoped_session = scoped_session(session_factory)
+        # self.scoped_session = scoped_session(session_factory)
         # return scoped_session(session_factory)
         return session_factory()
 # vim: sts=4 ts=4 sw=4 tw=80 smarttab expandtab

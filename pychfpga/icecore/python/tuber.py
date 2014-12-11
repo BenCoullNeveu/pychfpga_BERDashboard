@@ -2,27 +2,33 @@
 Tuber object interface
 '''
 
-from sqlalchemy import Column, String, Integer
+import functools
+import urllib2
+import urlparse
+import os
+import collections
 
-###
-### Error classes
-###
+#
+# Error classes
+#
+
 
 class TuberError(Exception):
     pass
 
+
 class TuberRemoteError(TuberError):
     pass
 
-###
-### Libraries
-###
+#
+# Libraries
+#
 
-import urllib2, urlparse, os, collections, socket
-from hardware_map import HWMResource
+try:
+    import simplejson as json
+except ImportError:
+    import json
 
-try: import simplejson as json
-except ImportError: import json
 
 def _tuber_json_object_hook(d):
     '''
@@ -39,183 +45,177 @@ def _tuber_json_object_hook(d):
     '''
     return collections.namedtuple('TuberResult', d.keys())(*d.values())
 
-# class LocalPythonHandler(object):
-#     """
-#     Registers Python classes locally accessible to the user and
-#     maintains a list of all instances of those classes so they can be accessed
-#     by (class_name, class_id) tuples.
-#     """
 
-#     _local_python_handler_classes = {} # Dictionary containing class_name:class
-#     _local_python_handler_instances = {} # Dictionary containing (class_name, id):instance
+class TuberCategory(object):
+    '''This decorator pulls Tuber functions into ORM objects based on categories.
 
-#     @classmethod
-#     def add_local_python_handler(cls, class_name, class_):
-#         cls._local_python_handler_classes[class_name]=class_
+    Here's an example. If "ib" is an IceBoard object, and you have the
+    ordinary IceBoard function set_mezzanine_power(), you can run the
+    following:
 
-#     def is_local_python_handler(self, class_name):
-#         return class_name in type(self)._local_python_handler_classes
+        >>> ib.set_mezzanine_power(True, 1)
 
-#     def get_local_python_handler(self, obj_name, obj_id, *args, **kwargs):
-#         if (obj_name, obj_id) not in type(self)._local_python_handler_instances:
-#             obj = type(self)._local_python_handler_classes[obj_name](*args, **kwargs)
-#             type(self)._local_python_handler_instances[(obj_name, obj_id)] = obj
-#             return obj
-#         else:
-#             return type(self)._local_python_handler_instances[(obj_name, obj_id)]
+    You also have the following ORM object:
 
+        >>> m = ib.mezz1
+        >>> print m.mezz_number
+        1
 
-class HandlerManager(object):
-    """ Proof of concept of a handler object, which is an object that provides
-    methods and attributes located remotely or locally.
+    Rather than accessing mezzanine methods through the IceBoard, it
+    seems more logical to do things like this:
 
-    Local access to Python object is performed if the object's class is
-    registered to the Handler. Otherwise remote access is done through Tuber.
+        >>> m.set_mezzanine_power(True)
 
-    Handlers have these restrictions:
-       - attributes and methods whise name begin with '_' are not accessible
-       - modification to the object attributes must be done by a setter
-         function provided by the object.
-       - methods or attribute access can only return string or numeric values,
-         or lists or dictionnary thereof
+    The TuberCategory decorator allows this kind of call. Borrowing from
+    FMCMezzanine again, we invoke the TuberCategory decorator as follows:
 
-    Notes:
+        @tuber.TuberCategory("Mezzanine", lambda m: m.iceboard,
+            {"mezzanine": lambda m: m.mezz_number })
+        class FMCMezzanine(HWMResource):
+            [...]
 
-       - JFC: The way this is written, direct local access of python classes
-         is currently more flexible than remote access because we do not need
-         the return value to be serializable. We therefore can dig down the
-         hierarchies and index objects directly, which is heavily used for
-         debugging. Remote access through Tuber would not allow this,
-         therefore potentially causing code compatibility issues if the code
-         is moved remotely. Depending on the philosophy of the system, we
-         might want to restrict local access capabilities to match that of
-         remote access (unless we use a more flexible RPC protocol (like RpyC)
-         and are willing run python remotely).
-    """
+    The decorator intercepts Tuber functions that claim to be members
+    of the "Mezzanine" category, and using the FMCMezzanine object's
+    mezz_number property, fills in "mezzanine" parameters before
+    dispatching the function call back to the mezzanine's "iceboard"
+    property.
 
-    # Class attributes
-    _core_handler_list = {} # (handler_key: handler)
-    _app_handler_list = {} # (handler_key: handler)
-    _local_python_handler_classes = {} # Dictionary containing handler_name: python class
+    "Categories" are exported by C code. For example, try the following:
 
-    # Instance attributes
-    core_handler = None
-    app_handler = None
+        $ curl -d '{"object":"IceBoard","property":"set_mezzanine_power"}' \
+                http://iceboard004.local/tuber|json_pp
 
-    @classmethod
-    def add_local_python_handler(cls, class_name, class_):
-        cls._local_python_handler_classes[class_name]=class_
+    This shell command asks the IceBoard to describe its 'set_mezzanine_power'
+    call. The response includes:
 
-    def set_handlers(self, arm_uri, core_handler_name, app_handler_name, object_id, *args, **kwargs):
-        """
-        uri: Address used to access the resource remotely
-        class_name: Name of the class to be accessed
-        key: ID used to uniquely identify each instance of the class. This is typucally the primary key of a database object.
-        """
+        "categories": [ "IceBoard", "Mezzanine" ]'
+    '''
 
-        core_handler_key = (type(self), core_handler_name, object_id)
-        if core_handler_key in self._core_handler_list:
-            self.core_handler = self._core_handler_list[core_handler_key]
-        elif arm_uri and core_handler_name:
-            self.core_handler = TuberObject(arm_uri, core_handler_name)
-            type(self)._core_handler_list[core_handler_key] = self.core_handler # Store thr handler for future uses
-        else:
-            self.core_handler = None
+    def __init__(self, category, getobject, **arg_mappers):
+        self.category = category
+        self.getobject = getobject
+        self.arg_mappers = arg_mappers
 
-        if not self.core_handler:
-            self.logger.error('%r does not have a valid core handler' % self)
-        else:
-            self.logger.info('%r core handler is %r' % (self, self.core_handler))
+    def __call__(decorator, cls):
 
-        app_handler_key = (type(self), core_handler_name, object_id)
-        if app_handler_key in self._app_handler_list:
-            self.app_handler = self._app_handler_list[app_handler_key]
-        elif app_handler_name in self._local_python_handler_classes:
-            obj = type(self)._local_python_handler_classes[app_handler_name](orm_object = self, core_handler = self.core_handler, *args, **kwargs)
-            type(self)._app_handler_list[app_handler_key] = obj
-        elif arm_uri and app_handler_name:
-            self.app_handler = TuberObject(arm_uri, app_handler_name)
-            type(self)._app_handler_list[app_handler_key] = self.app_handler # Store thr handler for future uses
-        else:
-            self.app_handler = None
+        def __getattr__(self, name):
+            '''This is a fall-through replacement for __getattr__.
 
-        if not self.app_handler:
-            self.logger.error('%r does not have a valid application handler' % self)
-        else:
-            self.logger.info('%r application handler is %r' % (self, self.app_handler))
+            We assume we're capturing a function call that's missing
+            arguments. We fill in these arguments and dispatch the call.
+            '''
 
-    def __dir__(self):
-        """ Returns the list of attributes of this class and of those of the core and application handlers."""
-        return type(self).__dict__.keys() + self.__dict__.keys() + dir(self.core_handler) + dir(self.app_handler)
+            # Retrieve an arbitrary instance of the object so we can return a
+            # DocString-preserving version. Since 'proto' is cached, we can't
+            # use __m for the actual function call (since it might be attached
+            # to the wrong object.) As a necessary side-effect, this raises an
+            # AttributeException if the attribute doesn't actually exist on the
+            # upstream object.
+            __m = getattr(decorator.getobject(self), name)
 
-    def __getattr__(self, name):
-        if self.core_handler and hasattr(self.core_handler, name):
-            return getattr(self.core_handler, name)
-        elif self.app_handler:
-            return getattr(self.app_handler, name)
+            # Fill in the parameters we know about; leave the rest.
+            @functools.wraps(__m)
+            def proto(self, *args, **kwargs):
+
+                # Retrieve the object and method. This must happen within proto
+                # to ensure we get 'method' from the right object.
+                o = decorator.getobject(self)
+                method = getattr(o, name)
+
+                # Convert the argument map to an { argument : value }
+                # dictionary for the Tuber function. Apply it.
+                kwargs.update({n: f(self) for (n, f) in decorator.arg_mappers.iteritems()})
+
+                return method(*args, **kwargs)
+
+            # Set the class method; return the bound version
+            setattr(self.__class__, name, proto)
+            return getattr(self, name)
+
+        def __dir__(self):
+            '''Retrieve a list of class properties/methods that are relevant.
+
+            We try to grab the original list of attributes from the ORM,
+            and then augment it with any Tuber functions in our category.
+            '''
+
+            o = decorator.getobject(self)
+            d = dir(super(self.__class__, self))
+            (meta, metap, metam) = o._tuber_get_meta()
+            for m in meta.methods:
+                if hasattr(metam[m], 'categories') and decorator.category in metam[m].categories:
+                    d.append(m)
+            return d
+
+        # Augment the class and return it.
+        cls.__getattr__ = __getattr__
+        cls.__dir__ = __dir__
+        cls.hold = lambda self: decorator.getobject(self).hold()
+        cls.flush = lambda self: decorator.getobject(self).flush()
+
+        return cls
+
 
 
 class TuberObject(object):
-    '''A base class for HWMResources that correspond to TuberObjects.
+    '''A base class for TuberObjects.
 
-    This is a great way of using the HardwareMap to correspond with
-    network resources over a HTTP tunnel. It hides most of the gory
-    details and makes your networked resource look and behave like a
-    local Python object.
+    This is a great way of using Python to correspond with network resources
+    over a HTTP tunnel. It hides most of the gory details and makes your
+    networked resource look and behave like a local Python object.
 
-    To use it, you should subclass this TuberHWMResource. This does a
-    couple of things:
-
-    * Defines a table in the hardware mapper database, with mandatory
-      "tuber_uri" and "tuber_objname" columns. You can add your own
-      columns too, of course.
-
-    * Inherits the "tuber" calling mechanism, to seamlessly tunnel
-      remote calls.
-
-    We used to support the use of shared libraries (via URLs like
-    'file:///path/to/the/library.so'). If this is desirable, I'll
-    have to re-instate it.
+    To use it, you should subclass this TuberObject.
     '''
 
-    _tuber_meta_cache = None
     _hold_dispatcher = False
-
-
-
-
-#    __abstract__ = True
-    # __tablename__ = 'armfirmware'
-    # pk = Column(Integer, primary_key=True)
-    # tuber_uri = Column(String, nullable=False)
-    # tuber_objname = Column(String, nullable=False)
+    _tuber_uri = None
+    _tuber_objname = None
 
     @staticmethod
     def ping(uri, timeout = 0.1):
         """
         Returns a boolean inticating whether a tuber object is available at the specified URI.
         """
+        import socket
         try:
             fh=urllib2.urlopen(uri, '{}', timeout=timeout)
             fh.close()
-        except ( urllib2.URLError, socket.timeout) :
+        except ( urllib2.URLError, socket.timeout) : # some machines return socket.timeout
             return False
         return True
 
-    def __init__(self, uri, obj_name):
+    # Graeme's code below
+    # def __init__(self, hostname='localhost'):
+    #     self.hostname = hostname
+
+    def __init__(self, uri, obj_name=None):
         """
         uri: Address used to access the resource remotely
         class_name: Name of the class to be accessed
         key: ID used to uniquely identify each instance of the class. This is typucally the primary key of a database object.
         """
-        self.tuber_uri = uri
-        self.tuber_objname = obj_name
+        self.hostname = uri # temporary patch
+        self._tuber_uri = uri
+        self._tuber_objname = obj_name
 
-    def __enter__(self):
-        return self
+    @property
+    def tuber_uri(self):
+        '''Retrieve the URI associated with this TuberResource.'''
 
-    def __exit__(self, type, value, traceback):
-        pass
+        if self._tuber_uri: # if a URI was specified at object initialization, use it
+            return self._tuber_uri
+        elif self.hostname: # other wise use the hostname specified in the superclass
+            return 'http://%s/tuber' % self.hostname
+        else:
+            raise TuberError("Mandatory 'hostname' or 'tuber_uri' attribute not specified!")
+
+    @property
+    def tuber_objname(self):
+        '''Retrieve the name of the object providing resources through tuber.'''
+        # Get target object name
+        # If we used tuber as an independent object, use the object name provided at __init__, otherwise use the superclass name
+        return self._tuber_objname or self.__class__.__name__
+
 
     def hold(self, on_hold=True):
         '''Suspend tuber calls, and then dispatch several at once.'''
@@ -229,8 +229,10 @@ class TuberObject(object):
         self._hold_dispatcher = False
 
         # Claim all pending calls. If there's nothing to do, don't try.
-        try: calls = self._calls
-        except AttributeError: return
+        try:
+            calls = self._calls
+        except AttributeError:
+            return
         del self._calls
 
         json_in = json.dumps(calls)
@@ -247,27 +249,26 @@ class TuberObject(object):
             if hasattr(r, 'error') and r.error:
                 raise TuberRemoteError(r.error.message)
 
-        return [ r.result for r in json_out ]
+        return [r.result for r in json_out]
 
     @property
     def __doc__(self):
         '''Construct DocStrings using metadata retrieved from the underlying resource.'''
+
+        (meta, _, _) = self._tuber_get_meta()
         return "%s:\t%s\n\n%s" % (
-            self._tuber_meta.name,
-            self._tuber_meta.summary,
-            self._tuber_meta.explanation
+            meta.name,
+            meta.summary,
+            meta.explanation
         )
 
     def __dir__(self):
         '''Provide a list of what's available here. (Used for tab-completion.)'''
 
-        d = []
-        d.extend(self._tuber_meta.properties)
-        d.extend(self._tuber_meta.methods)
-        return d
+        (meta, _, _) = self._tuber_get_meta()
+        return meta.properties + meta.methods
 
-    @property
-    def _tuber_meta(self):
+    def _tuber_get_meta(self):
         '''Retrieve metadata associated with the remote network resource.
 
         This data isn't strictly needed to construct "blind" JSON-RPC calls,
@@ -281,67 +282,98 @@ class TuberObject(object):
         on-the-fly as they're needed.
         '''
 
-        # Since ORM validation and default assignment happens during
-        # the SQL INSERT, this is easy to (if you forget to hwm.add(...)
-        # and hwm.commit() the new object.) Make a fuss.
-        if not self.tuber_objname or not self.tuber_uri:
-            raise TuberError("Objname (%s) or URI (%s) not specified!" % (
-                self.tuber_objname,
-                self.tuber_uri)
+        if not self.tuber_uri:
+            meta = _tuber_json_object_hook({"properties": [], "methods": []})
+            return (meta, [], [])
+
+        if hasattr(self, '_tuber_meta'):
+            return (
+                self._tuber_meta,
+                self._tuber_meta_properties,
+                self._tuber_meta_methods
             )
 
-        # Cache access.
-        if self._tuber_meta_cache:
-            return self._tuber_meta_cache
-
-        # Not cached yet: load it.
         json_in = json.dumps({'object': self.tuber_objname})
+        json_out = json.loads(
+            urllib2.urlopen(self.tuber_uri, json_in).read(),
+            object_hook=_tuber_json_object_hook,
+        )
+        meta = json_out.result
+        props = {}
+        methods = {}
+
+        if not meta: # Harden Tuber in case the target tuber_objname does not exist
+            meta = _tuber_json_object_hook({"properties": [], "methods": []})
+
+        # Retrieve all properties
+        json_in = json.dumps([{
+            'object': self.tuber_objname,
+            'property': p} for p in meta.properties])
         json_out = json.loads(
             urllib2.urlopen(self.tuber_uri, json_in).read(),
             object_hook=_tuber_json_object_hook
         )
+        for p, r in zip(meta.properties, json_out):
+            props[p] = r.result
+        # Retrieve all methods
+        json_in = json.dumps([{
+            'object': self.tuber_objname,
+            'property': p} for p in meta.methods])
+        json_out = json.loads(
+            urllib2.urlopen(self.tuber_uri, json_in).read(),
+            object_hook=_tuber_json_object_hook
+        )
+        for m, r in zip(meta.methods, json_out):
+            methods[m] = r.result
 
-        if json_out.error:
-            raise TuberRemoteError(json_out.error)
+        self._tuber_meta_properties = props
+        self._tuber_meta_methods = methods
+        self._tuber_meta = meta
 
-        self._tuber_meta_cache = json_out.result
-        return self._tuber_meta
+        return (
+            self._tuber_meta,
+            self._tuber_meta_properties,
+            self._tuber_meta_methods
+        )
 
-    ###
-    ### Remote function call magic
-    ###
+    #
+    # Remote function call magic
+    #
 
     def __getattr__(self, name):
         '''
         This function is called to get attributes (e.g. class variables and
-        functions) that don't exist on "self". Because we build up a cache of
-        descriptors for things we've seen before, we only see this call when
-        we get an erroneous call, or need to build up a new descriptor for
-        something we haven't seen yet.
+        functions) that don't exist on "self". Since we build up a cache of
+        descriptors for things we've seen before, we don't need to avoid
+        round-trips to the board for metadata in the following code.
         '''
 
-        # Refuse to access to _some_types_of_name
-        if name[0]=='_': raise AttributeError("Refusing to access '%s'" % name)
+        # Refuse to __getattr__ a couple of special names used elsewhere.
+        # These are mostly hints for SQLAlchemy or IPython.
+        if name in ('_sa_instance_state',
+                    '_calls', '_tuber_meta',
+                    '_ipython_display_', 'trait_names', '_getAttributeNames',
+                    'getdoc', '__wrapped__', '__call__',
+                    '_repr_html_', '_repr_svg_', '_repr_jpeg_',
+                    '_repr_png_', '_repr_json_', '_repr_javascript_',
+                    '_repr_latex_', '_repr_pdf_'):
+            raise AttributeError
 
-        # Make sure this method is described by metadata
-        meta = self._tuber_meta
+        # Make sure this request corresponds to something in the underlying
+        # TuberObject.
+        (meta, metap, metam) = self._tuber_get_meta()
         if name not in meta.methods and name not in meta.properties:
-            raise TuberRemoteError("'%s' is not a valid attribute! Hint: use ipython, and try tab-completion." % name)
+            raise AttributeError("'%s' is not a valid Tuber method or property!" % name)
 
-        # Retrieve any specific information tuber cares to share
-        json_in = json.dumps({
-            'object': self.tuber_objname,
-            'property': name
-        })
-
-        json_out = json.loads(
-            urllib2.urlopen(self.tuber_uri, json_in).read(),
-            object_hook=_tuber_json_object_hook
-        )
-        d = json_out.result
+        if name in meta.properties:
+            # Fall back on properties.
+            setattr(self, name, metap[name])
+            return getattr(self, name)
 
         if name in meta.methods:
-            def proto(*args, **kwargs):
+            d = metam[name]
+
+            def proto(self, *args, **kwargs):
                 if not hasattr(self, '_calls'):
                     self._calls = []
                 self._calls.append({
@@ -353,7 +385,6 @@ class TuberObject(object):
 
                 if not self._hold_dispatcher:
                     return self.flush()[0]
-            call = proto
 
             arg_text = ''
             if hasattr(d, 'args') and d.args:
@@ -363,17 +394,13 @@ class TuberObject(object):
                         arg.description
                     )).expandtabs(12)
 
-            call.__doc__ = "%s(%s)\n\n%s" % (
-                    d.name,
-                    ', '.join([a.name for a in d.args]),
-                    d.explanation
+            proto.__doc__ = "%s(%s)\n\n%s" % (
+                d.name,
+                ', '.join([a.name for a in d.args]),
+                d.explanation
             )
 
-            setattr(self, name, call)
+            setattr(self.__class__, name, proto)
             return getattr(self, name)
-
-        # Fall back on properties.
-        setattr(self, name, json_out.result)
-        return getattr(self, name)
 
 # vim: sts=4 ts=4 sw=4 tw=80 smarttab expandtab
