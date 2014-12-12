@@ -76,7 +76,7 @@ def DCtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPT
         file.write('================  ======== ======== ========\n')
         file.close()
         print "\nThe board needs a 16V power supply.\n"
-        DCFail((username, board_sn, board_vn, board_md, testStatus))
+        DCFail(username, board_sn, board_vn, board_md, testStatus)
 
     print "Please read the current measurement on power supply. Enter the voltage below (up to 3 sig. figs. , i.e. '1.00')."
     cur = float(input("Enter:     "))

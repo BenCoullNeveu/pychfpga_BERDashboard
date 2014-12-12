@@ -202,7 +202,7 @@ def read_list(fname="iceboard_list.txt"):
     '''
     Reads file iceboard_list.txt and returns a 2D list with contents of table.
     :param fname: File name of board list. defaults to "iceboard_list.txt"
-    :return: 2D list of ARM and FPGA adresses. If file not found, returns empty list.
+    :return: 2D list of ARM and FPGA addresses. If file not found, returns empty list.
     '''
     import os
 

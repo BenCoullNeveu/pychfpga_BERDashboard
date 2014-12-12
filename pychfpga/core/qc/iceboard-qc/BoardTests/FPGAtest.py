@@ -327,6 +327,14 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     print "\nc.hw.get_power():"
     file.write('\nget_power output:\n')
     try:
+        # Check if a mezzanine is connected and turn on if not
+        mezz_present = c.fpga.is_fmc_present(0) or c.fpga.is_fmc_present(1)
+        if not mezz_present:
+            pass # Turn on FMC voltage
+        else:
+            print "\nThere is a mezzanine connected to the board. We will not measure FMC voltage."
+            print "To complete the test by measuring FMC voltages, please power down the board, disconnect all mezzanines and try again.\n"
+            file.write("\n\nThere is a mezzanine connected, so FMC voltages were NOT checked.\n")
         power = c.hw.get_power()
     except Exception as e:
         file.write('\nEncountered error trying to run hw.get_power(): Fail')
@@ -340,20 +348,29 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
         formatted_power = "%-15s%5.2f%12.6f%12.6f%12.6f" % (key, value[0], value[1], value[2], value[3])
         file.write('\n' + formatted_power)
         print formatted_power
-
+    
     # Check results against expected values
     fail = False
     fail_list = []
     for key in power:
-        if abs(val - power_exp[key][0]) / power_exp[key][0] > power_exp['TOLERANCE_V']: # Check value of voltage
+        if key[0:3] == 'FMC': # For FMCs, check only voltage
+            if mezz_present:
+                continue
+            else: # for now, do nothing, as I don't have expected values
+                #if abs(power[key][0] - power_exp[key][0]) / power_exp[key][0] > power_exp['TOLERANCE_V']: # Check value of voltage
+                #    fail = True
+                #    fail_list.append(key)
+                #    file.write('\nFAIL: ' + key + ' is ' + str(power[key]) + ', outside the expected ' + str(power_exp[key]) + ' +/-' + str(power_exp['TOLERANCE_V']*100) + '%')
+                pass
+        if abs(power[key][0] - power_exp[key][0]) / power_exp[key][0] > power_exp['TOLERANCE_V']: # Check value of voltage
             fail = True
             fail_list.append(key)
             file.write('\nFAIL: ' + key + ' is ' + str(power[key]) + ', outside the expected ' + str(power_exp[key]) + ' +/-' + str(power_exp['TOLERANCE_V']*100) + '%')
-        for index, val in enumerate(power[key][1:len(power[key])]): # Check other power measurements
-            if abs(val - power_exp[key][index]) / power_exp[key][index] > power_exp['TOLERANCE_ELSE']:
-                fail = True
-                fail_list.append(key)
-                file.write('\nFAIL: ' + key + ' is ' + str(power[key]) + ', outside the expected ' + str(power_exp[key]) + ' +/-' + str(power_exp['TOLERANCE_ELSE']*100) + '%')
+        #for index, val in enumerate(power[key][1:len(power[key])]): # Check other power measurements
+        #    if abs(val - power_exp[key][index]) / power_exp[key][index] > power_exp['TOLERANCE_ELSE']:
+        #        fail = True
+        #        fail_list.append(key)
+        #        file.write('\nFAIL: ' + key + ' is ' + str(power[key]) + ', outside the expected ' + str(power_exp[key]) + ' +/-' + str(power_exp['TOLERANCE_ELSE']*100) + '%')
     if fail:
         file.write('\nSome power readings ' + repr(fail_list) + '  were outside acceptable range: Fail')
         file.write('\nFPGA Test Overall Status: Fail')

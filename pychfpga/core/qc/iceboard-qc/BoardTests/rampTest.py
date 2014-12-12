@@ -44,6 +44,14 @@ def rampTest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     file.write('Date : ' + date_str + '\n')
     file.write('Tester: ' + username + '\n\n')
     
+    # Import parameters from config
+    import yaml
+    config = yaml.load(open('config.yaml'))
+    if username == None:
+        username = config['user']
+    host_ip = config['host_ip']
+    ch_acq_path = config['ch_acq_path']
+    
     # Intro
     print "\nFor this test, you will need to have both CHIME ADC mezzanines mounted on the board."
     print "As for the FPGA test, you need an ethernet cable going from the ARM port to the network"
@@ -86,7 +94,7 @@ def rampTest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     
     # Begin Ramp test
     raw_input("\nPress Enter to begin ramp test:\t")
-    fpgaFun.rampTest(board_sn, directory + '/ramp_testing_trial_sn' + board_sn, ch_acq_path=ch_acq_path)
+    fpgaFun.rampTest(board_sn, directory + '/ramp_testing_trial_sn' + board_sn, ch_acq_path=ch_acq_path, host_ip=host_ip)
     
     # Record results to file
     test_pass = False
