@@ -28,7 +28,6 @@ History:
 
 import logging
 import numpy as np
-from matplotlib.mlab import find
 # import socket #needed for inet_aton
 # import struct
 
@@ -1236,7 +1235,7 @@ class chFPGA_controller(FpgaCoreFirmware):
         
         for chan in channels:
             t=self.read_eye_diagram(channels=[chan], offset=[0]*16, noffsets=11) #Creating an offset / delay table 11 columns 32 rows
-            if (find(t[chan]==0)).any() and (find(t[chan]==255)).any() : #Have found both 0 and 255 in the table - Means no stuck bits
+            if (t[chan]==0).sum() and (t[chan]==255).sum() : #Have found both 0 and 255 in the table - Means no stuck bits
                 stuckbits.append(False)
             else:
                 stuckbits.append(True) #Stuck bits detected
@@ -1249,7 +1248,7 @@ class chFPGA_controller(FpgaCoreFirmware):
             for adcbits in range(0,8):
                 pulsedata=t[chan][:,offset]
                 mask=1<<adcbits #looking at one adc bit at a time
-                chosendelay= ((mask & pulsedata)*np.arange(32)).sum()/(mask & pulsedata).sum() #performing a center of mass claculation to pick eye location
+                chosendelay= int(((mask & pulsedata)*np.arange(32)).sum()/(mask & pulsedata).sum()) #performing a center of mass claculation to pick eye location
                 changood.append( (((t[chan][:,offset])[chosendelay]) & mask)>>adcbits) #Checking what the bit level at the eye center is
                 bitdelay.append(chosendelay )
                 self._logger.info( 'Warning: Center of eye diagram on bit %i of channel %i has glitch ' % (adcbits, chan))
