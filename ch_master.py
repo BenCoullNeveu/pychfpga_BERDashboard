@@ -24,6 +24,7 @@ import socket
 import time
 import pickle
 from pychfpga import calculate_gains
+from pychfpga.init_links import *
 #import MySQLdb
 
 # Should put somewhere else. Flatten arbitrarily deep nested lists
@@ -142,6 +143,8 @@ fpga_hk_field = {      "core_temp" : "deg C",
 # do not have the time-transpose completed.
 archive_version = "NT_2.1.0"
 
+remap_adc_sma =  [12,13,14,15,8,9,10,11,4,5,6,7,0,1,2,3]
+
 if __name__ == "__main__":
   # Set up logger.
   log = logging.getLogger("")
@@ -203,25 +206,26 @@ if __name__ == "__main__":
     exit()
 
   # Build up the adc_delay_table.
-  n = int(conf["n_antenna"])
-  adc_delay = []
-  for i in range(n):
-    name = "ch%02d" % i
-    tmp_delay = []
-    if not name in conf["fpga"]["adc_delay"]:
-      log.critical("Could not find fpga.adc_delay.%s entry in configuration " \
-                   "file." % (name))
-      exit()
-    else:
-      this_chan = conf["fpga"]["adc_delay"][name]
-    for j in range(len(this_chan)):
-      k = int(this_chan[j])
-      tmp_delay.append(k)
-    if len(tmp_delay) != 16:
-      log.critical("Entry fpga.adc_delay.%s needs 16 integer entries." % \
-                   (name))
-      exit()
-    adc_delay.append((tmp_delay[:8],tmp_delay[8:]))
+  if (int(args.configure_fpga) > 0):
+    n = int(conf["n_antenna"])
+    adc_delay = []
+    for i in range(n):
+      name = "ch%02d" % i
+      tmp_delay = []
+      if not name in conf["fpga"]["adc_delay"]:
+        log.critical("Could not find fpga.adc_delay.%s entry in configuration " \
+                     "file." % (name))
+        exit()
+      else:
+        this_chan = conf["fpga"]["adc_delay"][name]
+      for j in range(len(this_chan)):
+        k = int(this_chan[j])
+        tmp_delay.append(k)
+      if len(tmp_delay) != 16:
+        log.critical("Entry fpga.adc_delay.%s needs 16 integer entries." % \
+                     (name))
+        exit()
+      adc_delay.append((tmp_delay[:8],tmp_delay[8:]))
 
   # Create the acquisition object. Pass it the configuration settings so that it
   # can initialise.
@@ -240,6 +244,7 @@ if __name__ == "__main__":
       fpga_bitstream = ca.get_fpga_bitstream(bitfile_filename, ChimeFpgaFirmware)
       c = ca.get_iceboards(subarray=[conf["fpga"]["subarray"]]).index_by(IceBoard.serial_number)
       c.set_fpga_firmware(fpga_bitstream, force=conf["fpga"]["force"])
+      #Will need to loop this with different delay tables, or reset delay tables later....
       c.open( \
             adc_delay_table=adc_delay, \
             init=1, \
@@ -287,14 +292,17 @@ if __name__ == "__main__":
       c.fpga.set_data_source("adc") # This should come first.
       c.fpga.set_FFT_bypass(False, channels = all_chan)
       c.fpga.set_FFT_shift(conf["fpga"]["fft_shift"], channels = all_chan)
-      for i, c_element in enumerate(c):      
-        gain_pkl_file = open('/home/chime/ch_acq/gains_'+str(c_element.fpga.GPIO.FPGA_SERIAL_NUMBER)+'.pkl', "rb")
-        gains = pickle.load(gain_pkl_file)
-        c_element.fpga.set_gain(gains, channels = all_chan)
+      # init gains function kind of a hack.  Should fix.  
+      init_gains(c)
+      # for i, c_element in enumerate(c):      
+      #   gain_pkl_file = open('/home/chime/ch_acq/gains_'+str(c_element.fpga.GPIO.FPGA_SERIAL_NUMBER)+'.pkl', "rb")
+      #   gains = pickle.load(gain_pkl_file)
+      #   c_element.fpga.set_gain(gains, channels = all_chan)
       c.fpga.sync()
       c.fpga.set_send_flags()
       c.fpga.set_offset_binary_encoding()
       c.fpga.sync()
+      shuffle_init(list(c),c8,frames_per_packet=4, cb1_lanes=16, cb1_bins=64, cb2_lanes=16, cb2_bins=8, cb2_bypass=0, remap=1 )
 
       #Make sure FPGA throttling is fast enough to send all the data
       #FPGA doesn't seem to change this without a reset...
@@ -309,29 +317,34 @@ if __name__ == "__main__":
       
 
       
-      #Read the FPGA setting back from the FPGA
-      # This will need to change to do multiple boards.  
+      #Read the FPGA setting back from the FPGA 
+      fpga_conf = {}
       for i, c_element in enumerate(c):
-        fpga_conf = vars(c_element.fpga.get_config())
+        fpga_conf[c_element.slot_number] = vars(c_element.fpga.get_config()) 
       
       # Create the output directory.
       time_str = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
       corr_name = None
-      for corr, ser_list in correlator_hash.iteritems():
-        not_found = False
-        if type(fpga_conf["adc_serial"]) is list:
-          for ser in fpga_conf["adc_serial"]:
-            if not ser in ser_list:
-              not_found = True
-              break
-        else:
-          print fpga_conf["adc_serial"]
-          if not fpga_conf["adc_serial"] in ser_list:
-              not_found = True
-        if not_found:
-          continue
-        corr_name = corr
-        break
+      if (len(fpga_conf) == 1):
+        fpga_conf = fpga_conf[fpga_conf.keys()[0]]
+        for corr, ser_list in correlator_hash.iteritems():
+          not_found = False
+          if type(fpga_conf["adc_serial"]) is list:
+            for ser in fpga_conf["adc_serial"]:
+              if not ser in ser_list:
+                not_found = True
+                break
+          else:
+            print fpga_conf["adc_serial"]
+            if not fpga_conf["adc_serial"] in ser_list:
+                not_found = True
+          if not_found:
+            continue
+          corr_name = corr
+          break
+      else:
+        #Assume array is whole pathfinder.
+        corr_name = 'CHIME_Pathfinder'
       if not corr_name:
         try:
           log.critical("Could not find hash for ADC serial numbers %s." %
@@ -376,27 +389,31 @@ if __name__ == "__main__":
 
   if (int(args.configure_fpga) > 0):
       # Pass FPGA configuration variables to header.
-      for name in fpga_conf:
-        #Hack for now since the gain table is too big to fit in one 64k header 
-        # element
-        if name == 'antenna_scaler_gain':
-          all_val = fpga_conf[name]
-          for value in all_val:
-            val = convert_types(value)
-            val_name = name + str(int(val[0]))
-            #print val_name, val
-            acq.add_header_item(val_name, val)
-        else:
-          #elif name == 'antenna_adc_data_acquisition_delay_tables':
-          #  val = 42
-          #else:
-          val = fpga_conf[name]
-          val = convert_types(val)
-          # Now send FPGA information send to acquisition object's header.
-          #print name
-          #print val
-          #print type(val)
-          acq.add_header_item(name, val)
+      #hacked now to 'work' but not a final solution
+      # just adds slot number to each name
+      for fpga_slot, slot_conf in fpga_conf.items():
+        for name in slot_conf:
+          #Hack for now since the gain table is too big to fit in one 64k header 
+          # order of this table scrambled to be 0-15 bottom to top of board. 
+          if name == 'antenna_scaler_gain':
+            all_val = fpga_conf[name]
+            for value in all_val:
+              val = convert_types(value)
+              val_name = 'slot_'+ str(fpga_slot) + '_' + name + str(remap_adc_sma[int(val[0])])
+              #print val_name, val
+              acq.add_header_item(val_name, val)
+          else:
+            #elif name == 'antenna_adc_data_acquisition_delay_tables':
+            #  val = 42
+            #else:
+            val = fpga_conf[name]
+            val = convert_types(val)
+            # Now send FPGA information send to acquisition object's header.
+            #print name
+            #print val
+            #print type(val)
+            name = 'slot_'+ str(fpga_slot) + '_' + name
+            acq.add_header_item(name, val)
   else:
     acq.add_header_item("fpga_info", "no communication with fpga for this dataset")
 

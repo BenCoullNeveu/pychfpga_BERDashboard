@@ -711,11 +711,22 @@ class chFPGA_controller(FpgaCoreFirmware):
         config.system_reference_frequency = self._reference_frequency
         config.system_frame_period = self._FRAME_PERIOD
 
-        config.adc_board_is_present = self._adc_board[0].is_present()
-        if self._adc_board[0].is_present():
-            config.adc_board_temperature = self._adc_board[0].AmbTemp.temperature
-            config.adc_board_adc_chip_temperature = [adc.get_temperature() for adc in self._adc_board[0].ADC]
-            config.adc_serial =  [fmc._board_info['Serial #'] for fmc in self._adc_board] #self._adc_board[0]._board_info['Serial #']
+        config.adc_serial = [] # initialize list for adc serials
+        config.adc_board_temperature = [] # for adc board temps [ [ADC0, ADC1], [ADC2, ADC3] ]
+        config.adc_board_adc_chip_temperature = [] # for adc chip temps [ [ADC0, ADC1], [ADC2, ADC3] ]
+        if (self._adc_board[0] is not None):
+            config.adc_board_is_present = self._adc_board[0].is_present()
+            config.adc_board_temperature.append(self._adc_board[0].AmbTemp.get_temperature())
+            config.adc_board_adc_chip_temperature.append([adc.get_temperature() for adc in self._adc_board[0].ADC])
+            config.adc_serial.append(self._adc_board[0]._board_info['Serial #']) #self._adc_board[0]._board_info['Serial #']
+        elif (self._adc_board[1] is not None):
+            config.adc_board_is_present = self._adc_board[1].is_present()
+            config.adc_board_temperature.append(self._adc_board[1].AmbTemp.get_temperature())
+            config.adc_board_adc_chip_temperature.append([adc.get_temperature() for adc in self._adc_board[1].ADC])
+            config.adc_serial.append(self._adc_board[1]._board_info['Serial #']) #self._adc_board[0]._board_info['Serial #']
+        else:
+            config.adc_board_is_present = False
+
         config.antenna_data_source = self.get_data_source()
         config.antenna_fft_bypass = self.get_FFT_bypass()
         config.antenna_fft_shift_schedule = self.get_FFT_shift()
