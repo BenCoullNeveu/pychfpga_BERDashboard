@@ -479,13 +479,23 @@ class HWMHandlerManager(object):
          remote access (unless we use a more flexible RPC protocol (like RpyC)
          and are willing run python remotely).
     """
+    class UpdateHandler(object):
+        """ Create an instance-based '_handler' attribute when accessed.
+        This is a non-data descriptor (no __set__() method) , so Python will access the instance attribute instead if it exists.
+        """
+        def __get__(self, obj, objtype):
+            obj._handler = obj.init_handler()
+            return obj._handler
+        def __delete__(self, obj):
+            pass
 
     # Class attributes
-    _handler_list = {} # (handler_key: handler)
+    # _handler_registry = {} # (handler_key: handler)
     _local_python_handler_classes = {} # Dictionary containing handler_name: python class
+    _handler = UpdateHandler() # If no instance _handler exist, access to _handler will invoke the data descriptor to create the instance _handler
+    _handler = None # If no instance _handler exist, access to _handler will invoke the data descriptor to create the instance _handler
 
     # Instance attributes
-    _handler = None # current handler instance for this object
 
     @classmethod
     def add_local_python_handler(cls, class_name, class_):
@@ -504,12 +514,16 @@ class HWMHandlerManager(object):
     def get_handler(self):
         """ Return the current handler for this Hardware Map instance.
         """
+        if not self._handler:
+            self.init_handler()
         return self._handler
 
     @property
     def handler(self):
         """ Return the current handler for this Hardware Map instance.
         """
+        if not self._handler:
+            self.init_handler()
         return self._handler
 
     def set_handler(self, tuber_uri=None, core_handler_name=None, app_handler_name=None, object_id=None, *args, **kwargs):
@@ -526,52 +540,64 @@ class HWMHandlerManager(object):
         """
         logger = logging.getLogger(__name__)
 
-        logger.info('set_handler: setting handler %r with tuber_uri=%r, core=%r, app=%r, id=%r' % (self, tuber_uri, core_handler_name, app_handler_name, object_id))
-
-        # if app_handler_name and object_id:
-        #     handler_key = (app_handler_name, object_id)
-        # elif core_handler_name and object_id:
-        #     handler_key = (core_handler_name, object_id)
-        # else:
-        #     handler_key = None
+        logger.info('HWMHandlerManager: setting handler %r with tuber_uri=%r, core=%r, app=%r, id=%r' % (self, tuber_uri, core_handler_name, app_handler_name, object_id))
 
         handler_key = object_id
+        self._handler = None
 
-        logger.info('set_handler: handler key for %r is %r' % (self, handler_key))
+        if handler_key:
 
-        combined_handler_names = [h for h in [core_handler_name, app_handler_name] if h] # may be used to call tuber with multiple objects if supported
+            # Make sure the top superclass has its own registery of handlers
+            if not hasattr(type(self), '_handler_registry'):
+                type(self)._handler_registry = {}
 
-        if handler_key in self._handler_list:
-            self._handler = self._handler_list[handler_key]
-        elif handler_key and app_handler_name in self._local_python_handler_classes:
-            handler_class = type(self)._local_python_handler_classes[app_handler_name]
-            if tuber_uri and core_handler_name:
-                core_handler = tuber.TuberObject(tuber_uri, core_handler_name)
-            else:
-                core_handler = None
-            self._handler = handler_class(hwm_object = self, core_handler = core_handler, *args, **kwargs)
-            type(self)._handler_list[handler_key] = self._handler # register the handler for this instance
-        elif handler_key and tuber_uri and combined_handler_names:
-            self._handler = tuber.TuberObject(tuber_uri, combined_handler_names)
-            type(self)._handler_list[handler_key] = self._handler # Store thr handler for future uses
-        else:
-            self._handler = None
+            # If the key exists in the handler registry, retreive the handler from it
+            if handler_key in self._handler_registry:
+                logger.info('HWMHandlerManager: Reusing registered handler for %r' % self)
+                self._handler = self._handler_registry[handler_key]
+                self.update_handler()
 
+            # If not, let's create a handler.
+            # If there is a local python class for the specified application handler, create it. We pass it a tuber core handler.
+            elif app_handler_name in self._local_python_handler_classes:
+                handler_class = type(self)._local_python_handler_classes[app_handler_name]
+                if tuber_uri and core_handler_name:
+                    core_handler = tuber.TuberObject(tuber_uri, core_handler_name)
+                else:
+                    core_handler = None
+                logger.info('HWMHandlerManager: Creating Python handler %s for %r' % (app_handler_name, self))
+                self._handler = handler_class(hwm_object = self, core_handler = core_handler, *args, **kwargs)
+                type(self)._handler_registry[handler_key] = self._handler # register the handler for this instance
+                self.update_handler()
+            # If there is no local application handler, then we must have only remote (tuber) handlers
+            # If there is a valid tuber URI and a valid core of application handler name, create a tuber for them
+            elif tuber_uri and (core_handler or app_handler):
+                combined_handler_names = [h for h in [core_handler_name, app_handler_name] if h] # may be used to call tuber with multiple objects if supported
+                self._handler = tuber.TuberObject(tuber_uri, combined_handler_names)
+                type(self)._handler_registry[handler_key] = self._handler # Store thr handler for future uses
+                self.update_handler()
+            # Otherwise, no luck. We don't have enough information to create a handler right now.
+            logger.error('HWMHandlerManager: Could not create a valid handler for %r' % self)
 
         if not self._handler:
-            logger.error('set_handler: %r does not have a valid handler' % self)
+            logger.info('HWMHandlerManager: %r does not have a valid handler (yet)' % self)
         else:
-            logger.info('set_handler: %r handler is %r' % (self, self._handler))
-
-        self.update_handler()
+            logger.info('HWMHandlerManager: %r handler is %r' % (self, self._handler))
 
     def __dir__(self):
         """ Return the list of attributes of this class and of those of the handler."""
-        return type(self).__dict__.keys() + self.__dict__.keys() + (dir(self._handler) if self._handler else [])
+        if not self._handler: # if the handler is invalid, try to get a valid one
+            self.init_handler()
+        return list(set(type(self).__dict__.keys() + self.__dict__.keys() + (dir(self._handler) if self._handler else [])))
 
     def __getattr__(self, name):
         """ Return the value of an attribute if it exists in the handler """
         # print "Handler is getting attribute '%s' for %r's handler" % (name, self)
+        # If we have a valid handler, try to access the attribute from it immediately
+        if self._handler:
+            return getattr(self._handler, name)
+        # If we do not have a valid handler, try to create one and get the attribute from it
+        self.init_handler()
         if self._handler:
             return getattr(self._handler, name)
         raise AttributeError
@@ -583,6 +609,12 @@ class HWMHandlerManager(object):
         """
         if hasattr(self._handler,'hwm_update'):
             self._handler.hwm_update(self)
+
+    def __init__(self, *args, **kwargs):
+        # logger = logging.getLogger(__name__)
+        # logger.debug('HWMHandlerManager: calling __init__ for %r' % (self))
+        # self.init_handler()
+        super(HWMHandlerManager, self).__init__() # This essentially call object.__init(), so there are no  parameters to pass.
 
     def init_handler(self):
         """ Default handler initializer. The user shall override this function
@@ -609,21 +641,49 @@ class HWMHandlerManager(object):
 
         def _hwm_update_event(instance, event_name):
             logger = logging.getLogger(__name__)
-            logger.info("handler_update: Update Event '%s' on instance %r" % (event_name, instance))
-            instance.update_handler()
+            logger.info("HWMHandlerManager: Update Event '%s' on instance %r" % (event_name, instance))
+            instance.init_handler()
+            # instance.update_handler()
             # if hasattr(instance, 'get_handler'):
             #     handler = instance.get_handler()
             #     if hasattr(handler,'hwm_update'):
             #         handler.hwm_update(instance)
         def _hwm_init_event(instance, event_name):
             logger = logging.getLogger(__name__)
-            logger.info("handler_init: Init Event '%s' on instance %r" % (event_name, instance))
-            instance.init_handler()
+            logger.info("HWMHandlerManager: Init Event '%s' on instance %r" % (event_name, instance))
+            instance._handler = None # invalidate the handler, so it will be created
+            # instance.init_handler()
 
         listen(cls, 'load', lambda target, context: _hwm_init_event( target, event_name='load'))
-        listen(cls, 'init', lambda target, *args, **kwargs: _hwm_init_event( target, event_name='init'))
-        listen(cls, 'refresh', lambda target, context, attrs: _hwm_update_event( target, event_name='refresh'))
-        listen(cls, 'after_update', lambda mapper, connection, target: _hwm_update_event( target, event_name='after_update'))
+        listen(cls, 'init', lambda target, *args, **kwargs: _hwm_init_event( target, event_name='init')) # useless: it is called before the object's attribute are populated
+        listen(cls, 'refresh', lambda target, context, attrs: _hwm_init_event( target, event_name='refresh'))
+        listen(cls, 'after_update', lambda mapper, connection, target: _hwm_init_event( target, event_name='after_update'))
+        # listen(cls._pk, 'set', lambda target, value, oldvalue, initiator: _hwm_init_event( target, event_name='set _pk to %r' % value)) # Not useful because this is called before the value is actually set.
+
+class Handler(object):
+    """
+    Basic handler. All handlers should be derived from this class.
+    """
+
+    def __init__(self, hwm_object= None, core_handler=None, **kwargs):
+        self.core_handler = core_handler # is needed by __getattr__
+        self.hwm_update(hwm_object) # import database columns values that we need for this class and its superclasses: serial_number
+        self.logger = logging.getLogger(__name__)
+        self.logger.debug('Handler: Instantiating Handler for %r' % (self))
+        super(Handler, self).__init__() # This is just calling 'object', so we strip all parameters
+
+    def __dir__(self):
+        class_attributes = [item  for class_ in type(self).mro() for item in class_.__dict__.keys()]
+        instance_attributes = self.__dict__.keys()
+        core_handler_attributes = dir(self.core_handler)
+        return list(set(class_attributes + instance_attributes + core_handler_attributes))
+
+    def __getattr__(self, name):
+        if self.core_handler:
+            return getattr(self.core_handler, name)
+        else:
+            return AttributeError
+
 
 class HWMResource(Base):
     '''Base class for Hardware Mapper resources to share.
@@ -639,6 +699,10 @@ class HWMResource(Base):
         '''Retrieve the :class:`HardwareMap` that stores this object.'''
         return sqlalchemy.orm.object_session(self)
 
+    def __init__(self, *args, **kwargs):
+        Base.__init__(self, *args, **kwargs)
+        super(Base, self).__init__(*args, **kwargs) # Go to the next MRO object *after* Base
+
 
 class TuberHWMResource(HWMResource, tuber.TuberObject):
     '''A base class for HWMResources that correspond to TuberObjects.'''
@@ -648,6 +712,8 @@ class TuberHWMResource(HWMResource, tuber.TuberObject):
         sqlalchemy.String,
         doc="The hostname (or IP) to use for this resource.")
 
+    def __init__(self, *args, **kwargs):
+        super(TuberHWMResource, self).__init__(*args, **kwargs) # Needed to allow multiple inheritance to work
 
 class macro(object):
     '''Decorator for "macros" that performs some rudimentary typechecking.

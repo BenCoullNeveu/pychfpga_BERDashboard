@@ -44,9 +44,10 @@ from sqlalchemy import inspect
 
 # import fpga
 from fpga_bitstream import FpgaBitstream
-from fpga_core import FpgaCoreFirmware
 from iceboard_hardware import IceBoardHardware
 from tuber import TuberObject, TuberRemoteError
+import fpga_core
+import iceboard
 import icebox # don't use from .. import ... because of circular import problems
 
 # import arm # object giving access to the ARM firmware
@@ -59,7 +60,7 @@ class IceBoardException(Exception):
     pass
 
 
-class IceBoardHandler(FpgaCoreFirmware):
+class chFPGAHandler(iceboard.IceBoardHandler, fpga_core.FpgaCoreFirmware):
     """
     Provides access to the basic functions of an IceBoard Rev2/Rev3.
 
@@ -95,63 +96,11 @@ class IceBoardHandler(FpgaCoreFirmware):
         Creates an Iceboard that is accessed through the networking parameters specified in the database.
         The created object does not have any fpga or hardware handlers yet. Those will be created when the Iceboard is opened.
         """
-        # if tuber_uri and core_handler_name:
-        #     TuberObject.__init__(self, tuber_uri, core_handler_name)
-        # super(type(self), self).__init__(**kwargs)
 
-        # Store iceboard ORM information.
-        #
-        # Note: Do not store a reference to the ORM object itself, because ORM
-        # objects come in and out of existance and change location in memory.
-
-        self.logger = logging.getLogger(__name__)
-
-        self.core_handler = core_handler # is needed by __getattr__
-        self.hwm_update(hwm_object) # import database columns values that we need for this class and its superclasses: serial_number
-
-        self.logger.debug('Instantiating Handler for Iceboard S/N %r' % (self.serial_number))
-
+        super(chFPGAHandler, self).__init__(**kwargs)
         self._mezzanine_ipmi_cache = {1:None, 2: None}
-
         self._is_open = None
         self.hw = self.AutoOpenHardware(self)
-        # self.arm = None # For iceboard_hardware compatibility. Need to fix.
-
-        super(IceBoardHandler, self).__init__(**kwargs)
-
-    def __dir__(self):
-        class_attributes = [item  for class_ in type(self).mro() for item in class_.__dict__.keys()]
-        instance_attributes = self.__dict__.keys()
-        core_handler_attributes = dir(self.core_handler)
-        return list(set(class_attributes + instance_attributes + core_handler_attributes))
-
-    def __getattr__(self, name):
-        # print "IceBoardAppHandler %r is getting '%s'" % (self, name)
-        return getattr(self.core_handler, name)
-
-    def hwm_update(self, hwm_object):
-        """ Is called when the Hardware Map object has been changed.
-
-        This is typicaly called when:
-            - The object is created
-            - The object is reloaded from the database
-            - The object is written back to the database with flush() of commit()
-
-        This update function is *NOT* called on every attribute change of the
-        object, but only when the change is refleched in the database.
-        """
-        self.serial_number = hwm_object.serial_number
-        self.fpga_ip_addr = hwm_object.fpga_ip_addr
-        if self.serial_number:
-            self.fpga_port_number = 41000 + 4*(self.serial_number)
-        self.fpga_serial_number = hwm_object.fpga_serial_number
-        self._mezz1_handler = None
-        self._mezz2_handler = None
-        if 1 in hwm_object.mezzanine and hasattr(hwm_object.mezzanine[1], 'get_handler'):
-            self.mezz1_handler = hwm_object.mezzanine[1].handler # Fragile. Reference will become stale as ORM object move in and out of memory. Must fix
-        if 2 in hwm_object.mezzanine and hasattr(hwm_object.mezzanine[2], 'get_handler'):
-            self.mezz2_handler = hwm_object.mezzanine[2].handler # Fragile. Reference will become stale as ORM object move in and out of memory. Must fix
-        self.logger.info('IceBoard SN%r hwm_update: mezz1=%r, mezz2=%r' % (self.serial_number, self._mezz1_handler, self._mezz2_handler))
 
 
     def open(self, forced_mezz_type=None, *args, **kwargs):

@@ -58,7 +58,7 @@ class IceBoardException(Exception):
     pass
 
 #
-class IceBoard(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
+class IceBoard(  hardware_map.HWMResource, hardware_map.HWMHandlerManager):
 # class IceBoard(hardware_map.HWMResource):
     """
     Provides access to the basic functions of an IceBoard.
@@ -129,7 +129,7 @@ class IceBoard(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
     app_handler_name = Column(String)
 
 
-
+    # Is this useful?
     mezzanines = relationship(
         "FMCMezzanine",
         lazy="dynamic",
@@ -150,7 +150,7 @@ class IceBoard(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
         self.logger = logging.getLogger(__name__)
         self.logger.info('IceBoard: Creating instance for IceBoard S/N %r' % (self.serial_number))
 
-        super(type(self), self).__init__(*args, **kwargs)
+        super(IceBoard, self).__init__(*args, **kwargs)
         # self.set_handler(self.tuber_uri, self.core_handler_name, self.app_handler_name, self._pk)
 
     @reconstructor # SQLAlchemy decorator indicating that this method is to be called when the object is recreated from the database
@@ -352,10 +352,14 @@ class IceBoard(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
                     if sc.polymorphic_identity == part_number:
                         MezzClass = sc.class_
             if MezzClass:
-                self.mezzanine[m] = MezzClass(mezzanine=m, serial=serial)
+                self.logger.info('IceBoard SN%r detect_mezzanines: Creating Mezzanine Serial %s in Mezzanine %i' % (self.serial_number, serial, m))
+                new_mezz = MezzClass(mezzanine=m, serial=serial, type='') # 'type' cannnot be None so we give it an empty string
+                self.hwm.add(new_mezz)
+                self.hwm.commit()
+                self.mezzanine[m] = new_mezz
             else:
                 self.logger.warning("IceBoard SN%r detect_mezzanines(): There is no known FMC Mezzanine object with polymorphic map name '%r' for Mezzanine %r" % (self.serial_number, part_number, m))
-                self.mezzanine[m] = None
+                # self.mezzanine[m] = None
         self.update_handler() # added by JF to let the handlers update for the new mezz
 
     # def detect_mezz(self, force_type_string=None):
@@ -385,6 +389,72 @@ class IceBoard(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
 
 
 
+class IceBoardHandler(hardware_map.Handler):
+    """
+    Basic Python handler for the IceBoard, which provides a standardized Memory-Mapped interface to the FPGA firmware.
+    This firmware-specific application handler should subclass this class.
+
+    This class will change in the future to better handle MMI types. The
+    default might be that mmi_read() and mmi_write() are provided by the arm
+    through Tuber (in which case we can remove all MMI stuff here), but they
+    don't exist yet so we provide them here.
+
+    If we want a 'direct' ARM interface or direct FPGA Ethernet interfaces, we
+    could simply override those methods in a superclass.
+    """
+    # Define types of Memory-Mapped interfaces to the firmware
+    MMI_FPGA_ETHERNET = "fpga" # Talk directly to the FPGA through its Ethernet SFP module. This interface requires self.fpga_ip_addr, self.fpga_port_number and self.fpga_serial_number
+    MMI_ARM_TUBER = "tuber" # (Tentative) Interface through Tuber's peek & poke methods.
+    MMI_ARM_DIRECT = "direct" # (Tentative) Direct bypass MMI interface through the ARM. The address:port is provided by Tuber.
+
+    class AutoOpenMMI(object):
+        """ This class is a proxy for the unopened MMI interface object. Whenever
+        someone tries to access an MMI attribute, the mmi object is created, opened and assigned to the parent object.
+        """
+        def __init__(self, parent, mmi_type):
+            self._parent = parent
+            self._mmi_type = parent
+        def __getattr__(self, name):
+            if self._mmi_type == self.MMI_FPGA_ETHERNET:
+                from lib.fpga_mmi import FpgaMmi
+                mmi = FpgaMmi(self._parent.fpga_ip_addr, self._parent.fpga_port_number, fpga_serial_number = self._parent.fpga_serial_number, set_fpga_networking_parameters = True)
+            self._parent.mmi.open()
+            return getattr(self.core.mmi, name)
+        def close(self): pass # Ignore attempts to close an MMI interface that does not exist yet
+
+    fpga_mmi_type = MMI_FPGA_ETHERNET # Have this as a static attribute for now. Later we'll pass it as an argument
+
+
+    def __init__(self, **kwargs):
+        super(IceBoardHandler, self).__init__(**kwargs)
+        self.mmi = self.AutoOpenMMI(self, self.fpga_mmi_type) # open the MMI interface automatically when we try to access it. We don't open it now because we might instantiate handlers for boards we never use.
+
+    def open(self):
+        self.mmi.open()
+
+    def close(self):
+        self.mmi.close()
+        self.mmi = self.AutoOpenMMI(self, self.fpga_mmi_type) # open the MMI interface automatically when we try to access it. We don't open it now because we might instantiate handlers for boards we never use.
+
+    def hwm_update(self, hwm_object):
+        """ Is called when the Hardware Map object might have changed to reflect those changes in the handler.
+        """
+        self.logger.info('IceBoardHandler: hwm_update() on %r' % (self))
+        self.serial_number = hwm_object.serial_number
+        self.fpga_ip_addr = hwm_object.fpga_ip_addr
+        if self.serial_number:
+            self.fpga_port_number = 41000 + 4*(self.serial_number)
+        self.fpga_serial_number = hwm_object.fpga_serial_number
+        self._mezz1_handler = None
+        self._mezz2_handler = None
+        self.mezzanine = {key: hwm_mezz.handler for (key, hwm_mezz) in hwm_object.mezzanine.items()}
+        self.logger.info('IceBoardHandler: hwm_update(): IceBoard SN%r has mezz1=%r, mezz2=%r' % (self.serial_number, self._mezz1_handler, self._mezz2_handler))
+
+    def mmi_read(self, *args, **kwargs):
+        return self.mmi.read(*args, **kwargs)
+
+    def mmi_write(self, *args, **kwargs):
+        self.mmi.write(*args, **kwargs)
 
 
     # # Issue log messages for FPGA serial that were detected but are not already in the database

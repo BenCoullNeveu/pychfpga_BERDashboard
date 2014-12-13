@@ -46,9 +46,6 @@ class FpgaCoreFirmware(object):
     # ---------------------------------------
     # Class attributes (common to all instances)
     # ---------------------------------------
-    MMI_FPGA_ETHERNET = "fpga_ethernet"
-    MMI_ARM_SPI = "arm_spi"
-    MMI_ARM_ETHERNET = "arm_ethernet"
 
     interface_ip_addr = None # This is a class attribute, common to all instances.
     _BROADCAST_BASE_PORT = 41000
@@ -73,21 +70,10 @@ class FpgaCoreFirmware(object):
     # ---------------------------------------
     # Instance attributes
     # ---------------------------------------
-    mmi = None # Memory-mapped interface object
+    # mmi = None # Memory-mapped interface object
     _is_core_open = None
 
 
-    class AutoOpen(object):
-        """ This class is a placeholder for the unopened MMI interface object. Whenever
-        someone tried to access an MMI attribute, the parent's open() function
-        is called to establish the MMI link.
-        """
-        def __init__(self, core):
-            self.core = core
-        def __getattr__(self, name):
-            self.core.open_core()
-            return getattr(self.core.mmi, name)
-        def close(self): pass
 
     def __init__(self, **kwargs):
         """ Initializes the object providing the core FPGA firmware functionalities
@@ -99,8 +85,8 @@ class FpgaCoreFirmware(object):
         if self.is_core_open():
             self.logger.error('Attempting to create a firmware instance for Iceboard S/N %s while an instance already exists' % self.iceboard_pk)
 
-        self.fpga_mmi_type = self.MMI_FPGA_ETHERNET # This type of MMI interface requires self.fpga_ip_addr, self.fpga_port_number and self.fpga_serial_number
-        self.mmi = self.AutoOpen(self) # open the MMI interface automatically if we try to access it.
+        # self.fpga_mmi_type = self.MMI_FPGA_ETHERNET
+        # self.mmi = self.AutoOpenMMI(self, self.MMI_FPGA_ETHERNET) # open the MMI interface automatically when we try to access it.
         self.i2c = None
 
     def open_core(self):
@@ -120,20 +106,21 @@ class FpgaCoreFirmware(object):
         # # self.serial_number = serial_number # FPGA serial number
         # self.interface_ip_addr = interface_ip_addr # # interface IP address, needed to setup UDP communications and UDB broadcasts
         # self._broadcast_group = broadcast_group
+        super(FpgaCoreFirmware,self).open()
 
         if not self.is_fpga_programmed():
             raise FpgaException("Attempting to access the  Iceboard S/N %s FPGA's Memory-mapped interface while the FPGA is not yet programmed with a bitstream" % self.serial_number)
 
-        # Close any previously opened memory-mapped interface to free the sockets
-        if self.mmi:
-            self.mmi.close()
+        # # Close any previously opened memory-mapped interface to free the sockets
+        # if self.mmi:
+        #     self.mmi.close()
 
         # Open communications with the FPGA memory mapped-interface
-        if self.fpga_mmi_type == self.MMI_FPGA_ETHERNET:
-            from lib.fpga_mmi import FpgaMmi
-            self.mmi = FpgaMmi(self.fpga_ip_addr, self.fpga_port_number, fpga_serial_number = self.fpga_serial_number, set_fpga_networking_parameters = True)
+        # if self.fpga_mmi_type == self.MMI_FPGA_ETHERNET:
+        #     from lib.fpga_mmi import FpgaMmi
+        #     self.mmi = FpgaMmi(self.fpga_ip_addr, self.fpga_port_number, fpga_serial_number = self.fpga_serial_number, set_fpga_networking_parameters = True)
 
-        self.mmi.open()
+        # self.mmi.open()
 
         self.logger.debug('=== Instantiating core GPIO')
         self._base_gpio = gpio.GPIO_base(self.mmi, self._SYSTEM_GPIO_BASE_ADDR)
@@ -155,20 +142,15 @@ class FpgaCoreFirmware(object):
 
         self._base_gpio = None
         self._base_i2c = None
-        if self.mmi:
-            self.mmi.close()
-            self.mmi = self.AutoOpen(self) # open the MMI interface automatically if we try to access it.
+        # if self.mmi:
+        #     self.mmi.close()
+        #     self.mmi = self.AutoOpen(self) # open the MMI interface automatically if we try to access it.
         self._is_core_open = False
 
     def is_core_open(self):
         # return self.iceboard_pk in type(self)._active_instances
         return bool(self._is_core_open)
 
-    def mmi_read(self, *args, **kwargs):
-        return self.mmi.read(*args, **kwargs)
-
-    def mmi_write(self, *args, **kwargs):
-        self.mmi.write(*args, **kwargs)
 
     def get_fpga_serial_number(self):
            return self.mmi.read(self._FPGA_SERIAL_NUMBER_ADDR, type = np.dtype('>u8'))

@@ -106,7 +106,8 @@ if __name__ == '__main__':
 
     IceArray.close_all_sessions() # close all previously opened sessions
 
-    ca = IceArray(uri='sqlite:///test.db', interface_ip_addr=args.if_ip)
+    # ca = IceArray(uri='sqlite:///test.db', interface_ip_addr=args.if_ip)
+    ca = IceArray(interface_ip_addr=args.if_ip)
     ca.load_iceboards('iceboard_list.txt')
     ca.discover(timeout=0.05) # automatically update the hardware map database with discovered resources
 

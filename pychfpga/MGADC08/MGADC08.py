@@ -40,7 +40,7 @@ class MGADC08_base(fmc_mezzanine.FMCMezzanine):
     def __init__(self, **kwargs):
         super(MGADC08_base, self).__init__(**kwargs)
 
-class MGADC08_Handler(object):
+class MGADC08_Handler(fmc_mezzanine.FMCMezzanineHandler):
 
     # SPI port numbers specific to this board
     SPI_ADC0_ADDR      = 0    # ADC. R/W device. 8 bit address+RW, 16 bit data.
@@ -56,7 +56,7 @@ class MGADC08_Handler(object):
     _board_is_present = False # Will be checked later
 
     def __init__(self, **kwargs):
-
+        super(MGADC08_Handler, self).__init__(**kwargs)
         # self.type = 'mgadc08'
         self._board_is_present = None
         self.sampling_frequency = None
@@ -77,10 +77,6 @@ class MGADC08_Handler(object):
             self.AmbTemp = AmbTemp.AmbTemp_base(adc_board = self)
             # self.logger.debug('  - MGT_PLL')
             # self.MGT_PLL = MGT_PLL.MGT_PLL_base(self.motherboard)
-
-    def hwm_update(hwm_object):
-        self.motherboard = hwm_object.iceboard.handler
-        self.mezzanine_number = hwm_object.mezzanine
 
     ############################################
     # Methods available to the board hardware
@@ -108,7 +104,7 @@ class MGADC08_Handler(object):
         # self.logger.debug("Attempting to read FMC eeprom to determine board presence")
         # data = self.eeprom.read(0, length=1, noerror=True, verbose=verbose)
         # self.logger.debug("FMC eeprom returned the value: %i", data[0])
-        self._board_is_present = self.motherboard.get_mezzanine_type(self.mezzanine_number) == self.polymorphic_identity
+        self._board_is_present = self.motherboard._get_mezzanine_type(self.mezzanine_number) == self.polymorphic_identity
         #self.logger.info("is the ADC board present: %i" % self._board_is_present)
 
     def is_present(self):
@@ -173,4 +169,4 @@ class MGADC08_Handler(object):
             self.ADC_PLL.status()
             self.ADC.status()
 
-MGADC08_base.add_local_python_handler('mgadc08', MGADC08_Handler)
+MGADC08_base.add_local_python_handler('MGADC08', MGADC08_Handler) # case must match the IPMI data

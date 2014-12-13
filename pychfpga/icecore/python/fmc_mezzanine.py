@@ -56,14 +56,14 @@ class FMCMezzanine(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
         self.logger = logging.getLogger(__name__)
         self.logger.info('Creating instance for Mezzanine %r' % (self))
 
-        # super(FMCMezzanine, self).__init__(**kwargs) # allow the superclasses to initialize
+        super(FMCMezzanine, self).__init__(**kwargs) # allow the superclasses to initialize
         # self.set_handler(app_handler_name=self._cls, object_id=self._pk)
 
     @reconstructor # SQLAlchemy decorator indicating that this method is to be called when the object is recreated from the database
     def _init_from_database(self, **kwargs):
-        """ Create an Iceboard object from database and link it with its handler """
+        """ Create an Mezzanine object from database and link it with its handler """
         self.logger = logging.getLogger(__name__)
-        # self.logger.info('Recreating instance from database for Mezzanine %r' % (self))
+        self.logger.info('Recreating instance from database for Mezzanine %r' % (self))
         # self.set_handler(app_handler_name=self._cls, object_id=self._pk)
 
     def init_handler(self):
@@ -100,5 +100,16 @@ class FMCMezzanine(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
     def is_present(self):
         """ returns a boolean indicating whether the ADC board is present"""
         return self.iceboard.is_mezzanine_present(self.mezzanine)
+
+class FMCMezzanineHandler(hardware_map.Handler):
+    """
+    Defined a basic FMC Mezzanine Python handler.
+    """
+
+    def hwm_update(self, hwm_object):
+        """ Import the main Mezzanine properties needed by the handler to operate the mezzanine.
+        """
+        self.motherboard = hwm_object.iceboard.handler
+        self.mezzanine_number = hwm_object.mezzanine
 
 # vim: sts=4 ts=4 sw=4 tw=80 smarttab expandtab
