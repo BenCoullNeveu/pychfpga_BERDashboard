@@ -10,10 +10,11 @@ Provides access to the memory-mapped interface of the FPGA through a socket.
         2014-03-04 JFC: Created
 """
 import logging
+import __main__
 # import struct
 import numpy as np
-import udp
-from  .. fpga_core import FpgaCoreFirmware as FpgaCore
+import lib.udp as udp
+from chfpga_handler import chFPGAHandler as chFPGAHandler
 
 class FpgaMmiException(Exception):
     pass
@@ -38,15 +39,15 @@ class FpgaMmi:
     PROTO_TCP = 'TCP'
     TimeoutException = TimeoutException
 
-    _BROADCAST_BASE_PORT = FpgaCore._BROADCAST_BASE_PORT
-    _FPGA_IP_SETUP_BASE_ADDR = FpgaCore._FPGA_IP_SETUP_BASE_ADDR
-    _FPGA_SERIAL_NUMBER_ADDR = FpgaCore._FPGA_SERIAL_NUMBER_ADDR
-    _FPGA_TIMESTAMP_ADDR = FpgaCore._FPGA_TIMESTAMP_ADDR
+    _BROADCAST_BASE_PORT = chFPGAHandler._BROADCAST_BASE_PORT
+    _FPGA_IP_SETUP_BASE_ADDR = chFPGAHandler._FPGA_IP_SETUP_BASE_ADDR
+    _FPGA_SERIAL_NUMBER_ADDR = chFPGAHandler._FPGA_SERIAL_NUMBER_ADDR
+    _FPGA_TIMESTAMP_ADDR = chFPGAHandler._FPGA_TIMESTAMP_ADDR
 
     # Match those with what is used by Module
-    _CONTROL_BASE_ADDR = FpgaCore._CONTROL_BASE_ADDR
-    _STATUS_BASE_ADDR  = FpgaCore._STATUS_BASE_ADDR
-    _RAM_BASE_ADDR     = FpgaCore._RAM_BASE_ADDR
+    _CONTROL_BASE_ADDR = chFPGAHandler._CONTROL_BASE_ADDR
+    _STATUS_BASE_ADDR  = chFPGAHandler._STATUS_BASE_ADDR
+    _RAM_BASE_ADDR     = chFPGAHandler._RAM_BASE_ADDR
 
 
     OPCODE_WRITE_CONTROL = 0b100;
@@ -66,6 +67,10 @@ class FpgaMmi:
         self.address = (self.ip_addr, self.port_number)
         if interface_ip_addr:
             self.interface_ip_addr = interface_ip_addr
+        elif hasattr(__main__, '_host_interface_ip_addr'):
+            self.interface_ip_addr =__main__._host_interface_ip_addr
+        else:
+            raise FpgaMmiException('An interface IP address is required for UDP comminication with the FPGA')
         self.fpga_serial_number = fpga_serial_number # used to select specific FPGAs during broadcasts
         self.set_fpga_networking_parameters = set_fpga_networking_parameters
         self.send_only = send_only

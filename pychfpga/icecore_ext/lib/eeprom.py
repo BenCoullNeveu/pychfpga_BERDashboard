@@ -15,7 +15,9 @@ import numpy as np
 class eeprom(object):
     """ Implements an EEPROM interface optimized for I2C access through the FPGA"""
 
-    def __init__(self, i2c_handler, address, bus_name, address_width, write_page_size, verbose=1):
+    class EEPROMException(Exception): pass
+
+    def __init__(self, i2c_handler, address, bus_name, address_width, write_page_size=0, verbose=1):
         self.i2c = i2c_handler
         self.bus_name = bus_name
         self.verbose = verbose
@@ -91,6 +93,9 @@ class eeprom(object):
         """ Writes to the EEPROM.
         Data can be a string, list of numpy array.
         """
+
+        if not self.write_page_size:
+            raise EEPROMException('EEPROM is not writable (write page size is zero)')
 
         # make sure the data is always a list
         if isinstance(data, int):

@@ -6,12 +6,12 @@
 (McGill Model MGK7MB).
 """
 
-import iceboard as ib
+# import iceboard as ib
 import logging
 import time
 
 # Import IceBoard hardware handlers
-from lib.fmc_eeprom import FMC_EEPROM
+from lib.eeprom import eeprom as EEPROM
 from lib import ina230 # I2C Voltage and current monitor
 from lib import tmp421 # I2C temperature sensor
 from lib import pca9698 # I2C 40-bit IO Expander
@@ -30,6 +30,7 @@ class IceBox(object):
     BACKPLANE_EEPROM_DATA_ADDRESS = 0x54 # covers 0x54 - 0x57 ( 4 pages of 256 bytes, 1024 Bytes total)
     BACKPLANE_EEPROM_SERIAL_ADDRESS = 0x5C # 16 byte serial number starting at memory address 0x80
     BACKPLANE_EEPROM_ADDRESS_WIDTH = 10 # 2 bits are in the device address, the remaining are in the address byte following the command byte
+    BACKPLANE_EEPROM_PAGE_SIZE = 16 #
 
     BACKPLANE_QSFP_ADDRESS=0x50 #QSFP standard address
     BACKPLANE_QSFP_ADDRESS_WIDTH=8
@@ -131,7 +132,7 @@ class IceBox(object):
     def get_backplane_info(cls, iceboard):
         logger = logging.getLogger(__name__)
         logger.debug("Attempting to read backplane eeprom to determine board presence")
-        eeprom = FMC_EEPROM(iceboard.i2c, 'BP', address=cls.BACKPLANE_EEPROM_DATA_ADDRESS, address_width=cls.BACKPLANE_EEPROM_ADDRESS_WIDTH)
+        eeprom = EEPROM(iceboard.i2c, 'BP', address=cls.BACKPLANE_EEPROM_DATA_ADDRESS, address_width=cls.BACKPLANE_EEPROM_ADDRESS_WIDTH, write_page_size = cls.BACKPLANE_EEPROM_PAGE_SIZE)
         data = eeprom.read(0, length=1, noerror=True, verbose=1)
         logger.debug("Backplane EEPROM returned the value: %i", data[0])
         return (data[0], None)
@@ -156,11 +157,11 @@ class IceBox(object):
                 - i2c_set_port(...) # Port number 0 (connected to the FPGA I2C switch) is used for all accesses
                 - i2c_write_read(...) # FPGA I2C engine
         """
-        
-        #import iceboard  as ib     
+
+        #import iceboard  as ib
         #if not isinstance(iceboard, ib.IceBoard):
         #    raise IceBoxException('Please provide a single iceboard object')
-       
+
         try:
             iter(iceboard)
         except TypeError:
@@ -181,9 +182,9 @@ class IceBox(object):
         self._iceboard = iceboard
 
         self._logger.info(' Instantiating Backplane I2C resource managers')
-        self._eeprom = FMC_EEPROM(iceboard.i2c, 'BP', address=self.BACKPLANE_EEPROM_DATA_ADDRESS, address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH)
-        self._serial = FMC_EEPROM(iceboard.i2c, 'BP', address=self.BACKPLANE_EEPROM_SERIAL_ADDRESS, address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH)
-        self._qsfp_eeprom = FMC_EEPROM(iceboard.i2c, 'BP', address=self.BACKPLANE_QSFP_ADDRESS, address_width=self.BACKPLANE_QSFP_ADDRESS_WIDTH)
+        self._eeprom = EEPROM(iceboard.i2c, 'BP', address=self.BACKPLANE_EEPROM_DATA_ADDRESS, address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH, write_page_size = cls.BACKPLANE_EEPROM_PAGE_SIZE)
+        self._serial = EEPROM(iceboard.i2c, 'BP', address=self.BACKPLANE_EEPROM_SERIAL_ADDRESS, address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH, write_page_size = cls.BACKPLANE_EEPROM_PAGE_SIZE)
+        self._qsfp_eeprom = EEPROM(iceboard.i2c, 'BP', address=self.BACKPLANE_QSFP_ADDRESS, address_width=self.BACKPLANE_QSFP_ADDRESS_WIDTH)
 
         self._logger.info(' Instantiating Backplane I2C temperature sensors')
         self._tmp_slot1 = tmp421.tmp421(self._i2c, self._TMP_SLOT1_ADDR, 'BP')
@@ -345,7 +346,7 @@ class IceBox(object):
     # def get_backplane_info(self, iceboard):
     #     # logger = logging.getLogger(__name__)
     #     self._logger.debug("Attempting to read backplane eeprom to determine board presence")
-    #     # eeprom = FMC_EEPROM(iceboard.i2c, 'BP', address=cls.BACKPLANE_EEPROM_ADDRESS)
+    #     # eeprom = EEPROM(iceboard.i2c, 'BP', address=cls.BACKPLANE_EEPROM_ADDRESS)
     #     eeprom_data = self._eeprom.read(0, length=1, noerror=True, verbose=1)
     #     self._logger.debug("Backplane EEPROM returned the value: %i", data[0])
     #     slot_number = self._iceboard.get_slot_number()
@@ -822,10 +823,10 @@ class IceBox(object):
                         reset_output_register='OUT%i' % power_down_reg
                     else:
                         raise IceBoxException('Unknown reset type, will not perform reset on slot %i' % slot)
-                    
+
                     mask = 1 << bitnumber
                     if isenabled==1 or isenabled=='pulse':  #Turning reset on
-                        
+
                         reset_control_obj.write(reset_output_register,  0, mask) #Setting output register to logic 0 (reset active)
                         reset_control_obj.write(reset_cfg_register,  0, mask) #Setting direction register from input to output - Performing reset
 

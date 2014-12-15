@@ -19,7 +19,6 @@ import urllib2
 import datetime
 
 from hardware_map import HWMResource, Integer, Column, String, Binary, LargeBinary, DateTime, ForeignKey, UniqueConstraint, reconstructor, inspect
-from fpga_core import FpgaCoreFirmware
 
 class FpgaBitstreamException(Exception):
     def __init__(self, message, *args, **kwargs):

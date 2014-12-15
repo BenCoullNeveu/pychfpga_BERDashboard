@@ -1,0 +1,497 @@
+#!/usr/bin/python
+# Disable pylint Line too long (=C0301)
+# pylint: C0301
+
+"""iceboard.py module: Defines the base object for an IceBoard
+(McGill Model MGK7MB).
+
+To specialize an IceBoard object for a particular experiment, you're
+encouraged to create a subclass. There should be good examples
+available.
+
+
+ History:
+    2014-03-04 JFC: Created
+    2014-03-18 JM: Added get_temperature and init_temp_sensors
+    2014-03-26 JFC: Integrated tuber
+    2014-11-24 JFC: Modified IceBoard into IceBoardAppHandler
+"""
+
+import logging
+# import threading
+
+# from sqlalchemy import inspect
+
+# from sqlalchemy.orm import relationship, backref, reconstructor, object_session
+# from sqlalchemy import event
+
+# from lib.attribute_publisher import AttributeUser
+# from hardware_map import HWMResource
+# from tuber import TuberHWMResource
+# from tuber import Handler
+# from fmc_mezzanine import FMCMezzanine
+
+# Force reloading of the hardware map module to allow this module
+# reloads to succeed. We need to make sure we use a freshly created
+# hardware_map module because HWMResource uses with a new dynamically
+# created Base class that statically remembers the current schema.
+# Therefore, SQLAlchemy will complain that the table already exist) if
+# we reloan this module and try to create an instrumented class that
+# already exists in the schema.
+
+# reload(hardware_map)
+# reload(tuber)
+
+# import fpga
+# from fpga_bitstream import FpgaBitstream
+from pychfpga.icecore import iceboard
+from pychfpga.icecore import tuber # Used to get TuberRemoteError
+
+from pychfpga.core import I2C as i2c
+from pychfpga.core import GPIO as gpio
+
+from iceboard_hardware import IceBoardHardware
+from iceboard_hardware import I2CInterface
+# import fpga_core
+import icebox # don't use from .. import ... because of circular import problems
+
+# import arm # object giving access to the ARM firmware
+# import hardware handlers
+
+# iceboard_list = {}
+
+
+class IceBoardException(Exception):
+    pass
+
+
+
+class chFPGAHandler(iceboard.IceBoardHandler):
+    """
+    Provides basic access to IceBoard firmware and hardware.
+
+    This object inherits from a generic Hardware Manager resource,
+    which allows the iceboard objects to be added to the hardware
+    map database.
+
+    The methods and properties have access to the hardware or firmware
+    in one of the the following ways:
+        - The low-level hardware access is made directly in python
+          through the ARM or FPGA I2C links to the board.
+        - The low-level hardware access is implemented in the ARM<
+          software, and all methods and properties are imported
+          through tuber.
+
+    Python-based application-specific FPGA firmware and hardware handler are meant to be derived from this class.
+    """
+
+    interface_ip_addr = None # This is a class attribute, common to all instances.
+    _BROADCAST_BASE_PORT = 41000
+
+    _SYSTEM_BASE_ADDR      = 0x00000 # This is always at zero so we can gather info from the FPGA before we know the number of antennas etc.
+    _SYSTEM_GPIO_BASE_ADDR = _SYSTEM_BASE_ADDR + 0x00000
+    _SYSTEM_I2C_BASE_ADDR  = _SYSTEM_BASE_ADDR + 0x05000
+
+    # Match those with what is used by Module
+    _CONTROL_BASE_ADDR = 0x000000
+    _STATUS_BASE_ADDR  = 0x080000
+    _RAM_BASE_ADDR     = 0x100000
+
+
+    # GPIO Register addresses
+    _GPIO_COOKIE_REG         = _STATUS_BASE_ADDR + _SYSTEM_GPIO_BASE_ADDR  # Register address of the firmware cookie
+    _FPGA_TIMESTAMP_ADDR     = _STATUS_BASE_ADDR + _SYSTEM_GPIO_BASE_ADDR + 7
+    _FPGA_SERIAL_NUMBER_ADDR = _STATUS_BASE_ADDR + _SYSTEM_GPIO_BASE_ADDR + 12
+    _FPGA_IP_SETUP_BASE_ADDR = _CONTROL_BASE_ADDR + _SYSTEM_GPIO_BASE_ADDR + 13 # (13-18): target MAC, (19-22): target IP, (23-24): target_base_port, (25-32) = Target FPGA serial, (33): bit 7 = trigger, bits 3:2: mac source select, 1:0: broadcast group
+    # _GPIO_IPCONFIG_REG       = _CONTROL_BASE_ADDR + _SYSTEM_GPIO_BASE_ADDR + 0x08D # Register address of the first byte of the IP config word
+
+    # ---------------------------------------
+    # Instance attributes
+    # ---------------------------------------
+    # mmi = None # Memory-mapped interface object
+    _is_core_open = None
+
+
+
+    # class AutoOpenMMI(AutoOpen):
+    #     """ This class is a proxy for the unopened MMI interface object. Whenever
+    #     someone tries to access an MMI attribute, the mmi object is created, opened and assigned to the parent object.
+    #     """
+    #     def open(self, parent):
+    #         from lib.fpga_mmi import FpgaMmi
+    #         return FpgaMmi(parent.fpga_ip_addr, parent.fpga_port_number, fpga_serial_number = parent.fpga_serial_number, set_fpga_networking_parameters = True)
+
+
+    # class AutoOpenHardware(object):
+    #     """ This class is a placeholder for the unopened hardwre interface object. Whenever
+    #     someone tried to access a hardware attribute or method, the hardware object is created.
+    #     """
+    #     _attribute_name = 'hw'
+    #     def open(self, parent):
+    #         if not parent.iceboard.is_core_open(): # make sure we have all the core funtionnalities (i.e. I2C) before creating hardware objects
+    #             parent.iceboard.open_core()
+    #         return IceBoardHardware(iceboard=self.iceboard)
+
+    def set_auto_open_attributes(self, attribute_names, open_method):
+        """ Create a number of attributes that will be created by
+        'open_method' only when one of them is accessed.
+
+        This is useful since hardware map queries can instantiate boards that
+        we do not actually want to communicate with and may not event be
+        physically present. With this method, we can delay communications with
+        those iceboards until really need it.
+        """
+        class AutoOpen(object):
+            """ This class takes the place of an object, and will call 'open_method'
+            on the fly whenever one of its attributes is accessed.
+            """
+            def __init__(self, parent, attribute_name, open_method):
+                self._parent = parent
+                self._attribute_name = attribute_name
+                self._open_method = open_method
+            def __getattr__(self, name):
+                self._open_method()
+                # setattr(self._parent, self._attribute_name, obj)
+                return getattr(getattr(self._parent, self._attribute_name), name)
+            def __nonzero__(self):
+                return False # act as if this class was None
+
+        for attribute_name in attribute_names:
+            setattr(self, attribute_name, AutoOpen(self, attribute_name, open_method))
+
+    def __init__(self, **kwargs):
+        """
+        Creates an Iceboard that is accessed through the networking parameters specified in the database.
+        The created object does not have any fpga or hardware handlers yet. Those will be created when the Iceboard is opened.
+        """
+
+        super(chFPGAHandler, self).__init__(**kwargs)
+        self._mezzanine_ipmi_cache = {1:None, 2: None}
+        self._is_open = None
+        self._is_core_open = None
+        # self.mmi = None # open the MMI interface automatically when we try to access it. We don't open it now because we might instantiate handlers for boards we never use.
+        # self.hw = None # open the interface to the IceBoard hardware if we try to access it.
+        # self.i2c = None
+
+        self.set_auto_open_attributes(['mmi','hw', 'i2c', 'core_gpio', 'core_i2c'], self.open_core)
+
+        # if self.is_core_open():
+        #     self.logger.error('Attempting to create a firmware instance for Iceboard S/N %s while an instance already exists' % self.iceboard_pk)
+
+        # self.fpga_mmi_type = self.MMI_FPGA_ETHERNET
+        # self.mmi = self.AutoOpenMMI(self, self.MMI_FPGA_ETHERNET) # open the MMI interface automatically when we try to access it.
+
+        # self.auto_open('mmi', open_mmi)
+        # self.auto_open('hw', open_hw)
+
+    def hwm_update(self, hwm_object):
+        """ Is called when the Hardware Map object might have changed to reflect those changes in the handler.
+        """
+        super(chFPGAHandler, self).hwm_update(hwm_object)
+        self.logger.info('chFPGAHandler: %r.hwm_update()' % (self))
+        self.fpga_ip_addr = hwm_object.fpga_ip_addr
+        if self.serial_number:
+            self.fpga_port_number = 41000 + 4*(self.serial_number)
+        self.fpga_serial_number = hwm_object.fpga_serial_number
+
+    #------------------------------------------------------------------
+    # CHIME-specific MMI interface
+    #------------------------------------------------------------------
+    # Uses direct Ethernet link to the FPGA SFP port to send commands in a UDP packet.
+    #
+    # As the Chime Firmware pre-dates the icecore firmware, we do not use the
+    # standard icecore interface to the FPGA, but that might change in the
+    # future if warranted.
+    #------------------------------------------------------------------
+
+    def mmi_read(self, *args, **kwargs):
+        """ Read a single 32-bit word read at specified byte address."""
+        return self.mmi.read(*args, **kwargs)
+
+    def mmi_write(self, *args, **kwargs):
+        self.mmi.write(*args, **kwargs)
+
+    def close_hw(self):
+        if self.hw:
+            self.hw.close()
+        self.hw = self.AutoOpen(self, 'hw', self.get_hw) # open the MMI interface automatically when we try to access it. We don't open it now because we might instantiate handlers for boards we never use.
+
+    def open_core(self):
+        """
+        Establishes the connection with the hardware and firmware on the IceBoard and create all appropriate handling classes.
+        """
+
+        if not self.is_fpga_programmed():
+            raise FpgaException("Attempting to access the  Iceboard S/N %s FPGA's Memory-mapped interface while the FPGA is not yet programmed with a bitstream" % self.serial_number)
+
+        # if the FPGA handler instance was not created, check if one exists create it
+        if self.is_core_open():
+            self.logger.warning('Attempting to open IceBoard S/N %r core while it is already opened. Ignoring.' % (self.serial_number))
+            return
+
+        self.logger.info('IceBoard SN %r: core_open() is called' % (self.serial_number))
+
+        # Open MMI
+        from . import fpga_mmi
+        self.mmi = fpga_mmi.FpgaMmi(ip_addr=self.fpga_ip_addr, port_number=self.fpga_port_number, fpga_serial_number=self.fpga_serial_number, set_fpga_networking_parameters = True)
+        self.mmi.open()
+
+        # Open FPGA's GPIO and I2C interfaces
+        self.core_gpio = gpio.GPIO_base(self.mmi, self._SYSTEM_GPIO_BASE_ADDR)
+        self.core_i2c = i2c.I2C_base(self.mmi, self._SYSTEM_I2C_BASE_ADDR)
+
+        # Create standardized I2C interface
+        self.i2c = I2CInterface(self.fpga_i2c_write_read, self.fpga_i2c_set_port, IceBoardHardware.FPGA_I2C_BUS_LIST, IceBoardHardware._FPGA_I2C_SWITCH_ADDR)
+
+        # Open IceBoard hardware manager object
+        self.hw = IceBoardHardware(iceboard=self)
+        self.hw.open()
+
+        self._is_core_open = True
+
+    def close_core(self):
+
+        if self.mmi: self.mmi.close()
+        if self.hw: self.hw.close()
+        self.set_auto_open_attributes(['mmi','hw', 'i2c', 'core_gpio', 'core_i2c'], self.open_core)
+        self._is_core_open = False
+
+    def is_core_open(self):
+        # return self.iceboard_pk in type(self)._active_instances
+        return bool(self._is_core_open)
+
+    def open(self):
+
+        self.logger.info('chFPGAHandler: %r.open() is called' % (self))
+        self.hw.init()
+
+        self.hw.set_led('GP_LED2',1) # Hardware link is on
+        self.hw.set_led('GP_LED1',0) # Full FPGA firmware is not yet on
+
+        # ----------------------------------
+        # Read basic backplane information (backplane S/N, slot number) so we
+        # know where this board is in the array
+        self.slot_number = self.get_slot_number() # this method is provided by hw or arm
+        (self.backplane_serial, __) = icebox.IceBox.get_backplane_info(iceboard = self)
+
+        # Detect the mezzanines
+        # self.detect_mezz(force_type_string=forced_mezz_type)
+
+        self._is_open = True
+
+    def close(self):
+        # self.unregister_all()
+        if self.fpga:
+            self.logger.info('Closing application-specific FPGA firmware handlers for board #%i' % (self.serial_number))
+            # self.unregister(self.fpga)
+            self.fpga.close()
+
+            self.hw.close()
+
+        if self.fpga:
+            self.logger.info('Closing core FPGA firmware handlers for board #%i' % (self.serial_number))
+            self.fpga.close_core()
+            self.fpga = None
+        # type(self)._fpga_instances.pop(self.serial_number, None)
+
+        # if self.arm:
+        #     self.logger.info('Closing core arm firmware handlers for board #%i' % (self.serial_number))
+            # self.unregister(self.arm)
+            # self.arm.close() # Tuber has no close()
+            # self.arm = None
+
+        # self._self_reference = None # Now the object can be garbage collected if no one else uses it
+        self._is_open = False
+        # type(self)._active_instances.pop(self.serial_number, None)
+        self._base_gpio = None
+        self._base_i2c = None
+        # if self.mmi:
+        #     self.mmi.close()
+        #     self.mmi = self.AutoOpen(self) # open the MMI interface automatically if we try to access it.
+        self._is_core_open = False
+
+    def is_open(self):
+        return self._is_open
+        # return self.serial_number in type(self)._active_instances
+
+    def is_core_open(self):
+        # return self.iceboard_pk in type(self)._active_instances
+        return bool(self._is_core_open)
+
+
+    def get_fpga_serial_number(self):
+           return self.mmi_read(self._FPGA_SERIAL_NUMBER_ADDR, type = np.dtype('>u8'))
+
+    def get_fpga_firmware_cookie(self):
+        """
+        Reads the FPGA and returns the cookie that identifies the firmware.
+        This method can be called before any FPGA modules are instatiated.
+        """
+        return self.mmi_read(self._GPIO_COOKIE_REG) & 0x7F
+
+    def get_fpga_firmware_version(self):
+        """
+        Returns the firmware revion currenting running on the FPGA (which si the date and time of bitstream generation)
+        """
+        return self.core_gpio.get_bitstream_date()
+
+    def fpga_i2c_write_read(self, *args, **kwargs):
+        """
+        Performs I2C read, write or SMB-compatible combined write/read operations
+        (SMB or its subset PMB require the register address to be written and then data to be read immediately after an I2C restart. It cannot be done in separate write and read  operations)
+        Writes up to 3 bytes to the addressed I2C device and/or reads up to 4 bytes from that device after a restart.
+        See the FPGA I2C module for detailed method description.
+        """
+        return self.core_i2c.write_read(*args, **kwargs)
+
+    def fpga_i2c_set_port(self, *args, **kwargs):
+        """
+        Sets the FPGA hardware port over which the i2c communications will be made after this call.
+        This selects the FPGA pins over which the communications is done, *not* the bus selection done by an I2C switch.
+        """
+        return self.core_i2c.set_port(*args, **kwargs)
+
+
+
+    def get_slot_number(self):
+        """ Reads the slot number from the IO Expander. This is not necessarily the slot number stored in the hardware map.
+        Slots numbers range from 1 to 16. A slot number of 0 or None indicates that the board is not connected to a backplane.
+        NOTE: It would be nice if the ARM could provide this function.
+        """
+        return self.hw.get_slot_number()
+
+    def get_number_of_mezzanine_slots(self):
+        """ Returns the number of mezzanine slots supported by this board (not the number of boards actually populated).
+        NOTE: It would be nice if the ARM could provide this function.
+        """
+        return self.hw.NUMBER_OF_FMC_SLOTS
+
+    def _mezzanine_eeprom_read(self, mezzanine, addr, length,**kwargs):
+        """ Reads the EEPROM on the specified mezzanine.
+        NOTE: It would be nice if the ARM could provide this function.
+        NOTE: Why not maintain the action_scope naming: _read_mezzanine_eeprom() to be consistent with the rest of the API
+        """
+        return self.hw.read_mezzanine_eeprom(mezzanine, addr, length, **kwargs)
+
+    def _get_mezzanine_ipmi(self, mezzanine):
+        """ Returns the IMPI data for the mezzanine located on slot 'mezzanine' (1 or 2). Returns None if no mezzanine is present.
+
+        This method overrides the ARM method of the same name so we can
+        correctly read MGADC08 mezzanines which have a non-standard EEPROM
+        data structure.
+        """
+        if not self.is_mezzanine_present(mezzanine): # Check mezzanine presence using the FMC PRSNT line.
+            return None
+
+        try:
+            return self.core_handler._get_mezzanine_ipmi(mezzanine) # Try to get the ipmi data from tuber
+        except tuber.TuberRemoteError:
+            return self._get_mezzanine_mcgill_ipmi(mezzanine)
+
+
+    def _get_mezzanine_mcgill_ipmi(self, mezzanine, retry=10):
+        """ Loads the info data block from the mezzanine EEPROM using the old
+        proprietary McGill format (not the FMC standard), and return the data
+        converted into the standard FRU object..
+
+        The ad-hoc McGill format is deprecated. It consists of a ID byte (0x0d
+        for MGADC08) followed by a ASCII-pickeled dictionary of properties. The
+        end of the dictionary is detected by the closing curly brace '}'.
+        """
+        import struct
+        import zlib
+        import ast # used for safe McGill-format mezzanine EEPROM parsing
+
+        if self._mezzanine_ipmi_cache[mezzanine]:
+            return self._mezzanine_ipmi_cache[mezzanine]
+
+        self._mezzanine_ipmi_cache[mezzanine] = None
+
+        id_byte = ord(self._mezzanine_eeprom_read(mezzanine, addr=0 , length=1, noerror=True)[0])
+
+        if id_byte != 0x0d:
+            self.logger.error('The EEPROM on mezzanine %i dies not have a valid ID' % mezzanine)
+            return None
+
+        # Read the eeprom block by block until we detect the end of the dictionary
+        block_size = 32
+        string = ''
+        for i in range(512 / block_size): # read 32 blocks of 16 bytes
+            data_block = self._mezzanine_eeprom_read(mezzanine, addr= i * block_size, length=block_size, retry=retry)
+            string += data_block
+            if ('}' in data_block) or (chr(255) in data_block):
+                break
+
+        last_char = string.find('}')
+        if last_char<0:
+            self.logger.error('No dictionary found on EEPROM. Did the board pass the quality control test?')
+            return None
+
+        string = string[1:last_char+1] # keep only the dict definition string: remove first char (board ID) and stop at last '}'.
+
+        # Read checksum
+        crc_string = self._mezzanine_eeprom_read(mezzanine, last_char+1, length=4, retry=retry)
+        crc = struct.unpack('i', crc_string)[0]
+        computed_crc = zlib.crc32(string)
+        if computed_crc != crc:
+            raise self.IceBoardException('FMC EEPROM CRC is invalid. Read crc = %08X, computed crc = %08X' % (crc, computed_crc))
+        dict_out = ast.literal_eval(string) # safer than using eval
+
+        from hw.ipmi_fru import FRU, Board, Product, MultiDict
+        from datetime import datetime
+
+        # Extract standard FRU information from McGill data structure
+        part_number = dict_out.pop('Model', 'Unknown')
+        serial_number = dict_out.pop('Serial #', 'Unknown')
+        product_version = dict_out.pop('Rev #', 'Unknown')
+        mfg_date_str = dict_out.get('Date of last test', None)
+        if mfg_date_str:
+            mfg_date = datetime.strptime(mfg_date_str, '%d/%m/%Y')
+        else:
+            mfg_date = None
+
+
+        fru = FRU(
+            board=Board(
+                mfg_date=mfg_date,
+                manufacturer="Winterland",
+                product_name="McGill Mezzanine",
+                part_number=part_number,
+                serial_number=serial_number,
+                fru_file="",
+            ),
+            product=Product(
+                manufacturer="Winterland",
+                product_name="McGill Mezzanine",
+                part_number=part_number,
+                product_version=product_version,
+                serial_number=serial_number,
+                asset_tag="",
+                fru_file="",
+            ),
+            multi=MultiDict(dict_out)
+        )
+
+
+        self._mezzanine_ipmi_cache[mezzanine] = fru
+
+        return fru
+
+    def _get_mezzanine_type(self, mezzanine):
+        """ Returns the type of mezzanine located on slot 'mezzanine' (1 or 2).
+        Returns None if no mezzanine is present.
+
+        This method overrides the ARM method of the same name so we can
+        correctly identify MGADC08 mezzanines which have a non-standard EEPROM
+        data structure.
+        """
+        ipmi = self._get_mezzanine_ipmi(mezzanine)
+        if ipmi and hasattr(ipmi,'product') and hasattr(ipmi.product, 'part_number'):
+            return  ipmi.product.part_number
+        else:
+            return None
+
+
+
+
+# vim: sts=4 ts=4 sw=4 tw=80 smarttab expandtab

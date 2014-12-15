@@ -80,7 +80,7 @@ class GPIO_base(Module_base):
 
 
     def __init__(self, fpga, base_address):
-        super(self.__class__, self).__init__(fpga, base_address)
+        super(GPIO_base, self).__init__(fpga, base_address)
         self.logger = logging.getLogger(__name__)
         self._lock() # prevent further property creation to avoid creating attrubutes by mistake
 

@@ -566,7 +566,7 @@ class HWMHandlerManager(object):
                 else:
                     core_handler = None
                 logger.info('HWMHandlerManager: Creating Python handler %s for %r' % (app_handler_name, self))
-                self._handler = handler_class(hwm_object = self, core_handler = core_handler, *args, **kwargs)
+                self._handler = handler_class(core_handler = core_handler, *args, **kwargs)
                 type(self)._handler_registry[handler_key] = self._handler # register the handler for this instance
                 self.update_handler()
             # If there is no local application handler, then we must have only remote (tuber) handlers
@@ -662,12 +662,11 @@ class HWMHandlerManager(object):
 
 class Handler(object):
     """
-    Basic handler. All handlers should be derived from this class.
+    Basic generic handler base class. All handlers should be derived from this class.
     """
 
-    def __init__(self, hwm_object= None, core_handler=None, **kwargs):
+    def __init__(self, core_handler=None, **kwargs):
         self.core_handler = core_handler # is needed by __getattr__
-        self.hwm_update(hwm_object) # import database columns values that we need for this class and its superclasses: serial_number
         self.logger = logging.getLogger(__name__)
         self.logger.debug('Handler: Instantiating Handler for %r' % (self))
         super(Handler, self).__init__() # This is just calling 'object', so we strip all parameters
@@ -683,6 +682,14 @@ class Handler(object):
             return getattr(self.core_handler, name)
         else:
             return AttributeError
+
+    def hwm_update(self, hwm_object):
+        """ Is called when the Hardware Map object might have changed to
+        reflect those changes in the handler. The superclass mush redefine
+        this and can use super(). This class is mainly provided to allow safe
+        super() calls.
+        """
+        pass
 
 
 class HWMResource(Base):

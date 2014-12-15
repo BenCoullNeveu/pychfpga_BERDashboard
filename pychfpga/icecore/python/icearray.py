@@ -11,7 +11,7 @@ Provides access to an array of ICEBoards and ICEBoxes (backplanes)
 """
 import argparse
 import logging
-
+import __main__ # used to store host_ip_address
 import hardware_map
 # reload(hardware_map) # make sure we get a new Base
 
@@ -70,9 +70,9 @@ class IceArray(object):
         # set the interface IP address on the FPGA irmware class attribute so
         # this address is used for any firmware instances created on this
         # computer.
-        from lib import fpga_mmi # used for direct FPGA serial discovery
+        from icecore_ext import fpga_mmi # used for direct FPGA serial discovery
         # import fpga_core
-        fpga_mmi.FpgaMmi.interface_ip_addr = interface_ip_addr
+        __main__._host_interface_ip_addr = interface_ip_addr
 
         self._hwmap = hardware_map.HardwareMap(uri=uri, *args, **kwargs)
         # Remove the logger handlers that is created for the SQLAlchemy Engine. We want to use our own top level handler.

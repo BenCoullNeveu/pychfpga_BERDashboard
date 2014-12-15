@@ -34,7 +34,7 @@ import numpy as np
 #import pdb
 import time
 
-from pychfpga.icecore.handler import IceBoardHandler
+from pychfpga.icecore_ext.chfpga_handler import chFPGAHandler
 from pychfpga.icecore.iceboard import IceBoard
 
 from pychfpga.common import util
@@ -133,7 +133,7 @@ class chFPGAException(Exception):
         self._logger.exception(message)
 
 
-class chFPGA_controller(IceBoardHandler):
+class chFPGA_controller(chFPGAHandler):
     """
     Creates an object that connects to the specified chFPGA board and provides the methods to configure it and control its operations.
 

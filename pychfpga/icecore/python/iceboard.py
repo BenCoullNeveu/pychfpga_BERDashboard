@@ -43,9 +43,9 @@ import fmc_mezzanine # used import x to avoid circular import problem
 
 
 from fpga_bitstream import FpgaBitstream
-from fpga_core import FpgaCoreFirmware
+# from fpga_core import FpgaCoreFirmware
 # from iceboard_hardware import IceBoardHardware
-import icebox # don't use from .. import ... because of circular import problems
+# import icebox # don't use from .. import ... because of circular import problems
 # from handler import HWMHandlerManager
 from tuber import TuberObject
 
@@ -168,8 +168,6 @@ class IceBoard(  hardware_map.HWMResource, hardware_map.HWMHandlerManager):
         return '%s S/N %r @%08X' % (self.__class__.__name__, self.serial_number, id(self)) # Used by JF
         # return "%s(%r)" % (self.__class__.__name__, self.hostname) # Used by Graeme
 
-
-
     def set_fpga_firmware(self, bitstream_object, configure_fpga = True, force=False):
 
         # print 'calling with', self, bitstream_object
@@ -275,7 +273,13 @@ class IceBoard(  hardware_map.HWMResource, hardware_map.HWMHandlerManager):
             self.logger.info('FPGA on IceBoard S/N %03i is already configured. Skipping configuration' % (self.serial_number))
             self.fpga_is_configured = True
 
-    def _eeprom_write_ipmi(self, part_number, serial_number, product_version):
+    def _eeprom_write_ipmi(self, *args, **kwargs): # for backwards compatibility to suggested new name
+        return  self._write_motherboard_spi_eeprom_ipmi(*args, **kwargs)
+
+    def _write_motherboard_spi_eeprom_base64(self, *args, **kwargs): # method renaming
+        return  self._motherboard_eeprom_write_base64(*args, **kwargs)
+
+    def _write_motherboard_spi_eeprom_ipmi(self, part_number, serial_number, product_version):
         '''Write IPMI-formatted EEPROM for IceBoards.
 
         These fields are read back and parsed by software, so you have
@@ -318,7 +322,7 @@ class IceBoard(  hardware_map.HWMResource, hardware_map.HWMHandlerManager):
         )
         import base64
         b64_string = base64.b64encode(fru.encode())
-        return self._motherboard_eeprom_write_base64(b64_string)
+        return self._write_motherboard_spi_eeprom_base64(b64_string)
 
     def detect_mezzanines(self):
         '''Detect and instantiate mezzanines attached to a dfmux.
@@ -391,71 +395,62 @@ class IceBoard(  hardware_map.HWMResource, hardware_map.HWMHandlerManager):
 
 class IceBoardHandler(hardware_map.Handler):
     """
-    Basic Python handler for the IceBoard, which provides a standardized Memory-Mapped interface to the FPGA firmware.
-    This firmware-specific application handler should subclass this class.
+    Basic Python handler for the IceBoard, which provides a standardized
+    Memory-Mapped interface to the FPGA firmware. This firmware-specific
+    application handler should subclass this class.
 
-    This class will change in the future to better handle MMI types. The
-    default might be that mmi_read() and mmi_write() are provided by the arm
-    through Tuber (in which case we can remove all MMI stuff here), but they
-    don't exist yet so we provide them here.
+    The MMI is provided through the mmi_read() and mmi_write() methods.
 
-    If we want a 'direct' ARM interface or direct FPGA Ethernet interfaces, we
-    could simply override those methods in a superclass.
+    For now, those are provided through Tuber using the SPI peek/poke methods
+    assuming the core firmware provides such an interface. But this will
+    evolve as we a faster PCIe link to the FPGA. Also, mmi_read/write might
+    completely bypass Tuber's HTTP/JSON overhead and go through an ARM's port that forwards the
+    packets directly to the FPGA for maximum speed.
+
+    Note that CHIME's chFPGA handler overrides these methods in a superclass to implement an
+    MMI that interfaces directly to the FPGA through the SFP Ethernet port
+    using a separate socket.
     """
     # Define types of Memory-Mapped interfaces to the firmware
     MMI_FPGA_ETHERNET = "fpga" # Talk directly to the FPGA through its Ethernet SFP module. This interface requires self.fpga_ip_addr, self.fpga_port_number and self.fpga_serial_number
     MMI_ARM_TUBER = "tuber" # (Tentative) Interface through Tuber's peek & poke methods.
     MMI_ARM_DIRECT = "direct" # (Tentative) Direct bypass MMI interface through the ARM. The address:port is provided by Tuber.
 
-    class AutoOpenMMI(object):
-        """ This class is a proxy for the unopened MMI interface object. Whenever
-        someone tries to access an MMI attribute, the mmi object is created, opened and assigned to the parent object.
-        """
-        def __init__(self, parent, mmi_type):
-            self._parent = parent
-            self._mmi_type = parent
-        def __getattr__(self, name):
-            if self._mmi_type == self.MMI_FPGA_ETHERNET:
-                from lib.fpga_mmi import FpgaMmi
-                mmi = FpgaMmi(self._parent.fpga_ip_addr, self._parent.fpga_port_number, fpga_serial_number = self._parent.fpga_serial_number, set_fpga_networking_parameters = True)
-            self._parent.mmi.open()
-            return getattr(self.core.mmi, name)
-        def close(self): pass # Ignore attempts to close an MMI interface that does not exist yet
 
     fpga_mmi_type = MMI_FPGA_ETHERNET # Have this as a static attribute for now. Later we'll pass it as an argument
 
 
     def __init__(self, **kwargs):
         super(IceBoardHandler, self).__init__(**kwargs)
-        self.mmi = self.AutoOpenMMI(self, self.fpga_mmi_type) # open the MMI interface automatically when we try to access it. We don't open it now because we might instantiate handlers for boards we never use.
-
-    def open(self):
-        self.mmi.open()
-
-    def close(self):
-        self.mmi.close()
-        self.mmi = self.AutoOpenMMI(self, self.fpga_mmi_type) # open the MMI interface automatically when we try to access it. We don't open it now because we might instantiate handlers for boards we never use.
 
     def hwm_update(self, hwm_object):
         """ Is called when the Hardware Map object might have changed to reflect those changes in the handler.
         """
-        self.logger.info('IceBoardHandler: hwm_update() on %r' % (self))
+        super(IceBoardHandler, self).hwm_update(hwm_object)
+        self.logger.info('IceBoardHandler: %r.hwm_update()' % (self))
         self.serial_number = hwm_object.serial_number
-        self.fpga_ip_addr = hwm_object.fpga_ip_addr
-        if self.serial_number:
-            self.fpga_port_number = 41000 + 4*(self.serial_number)
-        self.fpga_serial_number = hwm_object.fpga_serial_number
-        self._mezz1_handler = None
-        self._mezz2_handler = None
         self.mezzanine = {key: hwm_mezz.handler for (key, hwm_mezz) in hwm_object.mezzanine.items()}
-        self.logger.info('IceBoardHandler: hwm_update(): IceBoard SN%r has mezz1=%r, mezz2=%r' % (self.serial_number, self._mezz1_handler, self._mezz2_handler))
+        self.logger.info('IceBoardHandler: %r.hwm_update(): has mezzanines %r' % (self, self.mezzanine))
 
-    def mmi_read(self, *args, **kwargs):
-        return self.mmi.read(*args, **kwargs)
+    def mmi_read(self, addr):
+        """ Read a single 32-bit word at specified byte address."""
+        return self.fpga_spi_peek(addr)
 
-    def mmi_write(self, *args, **kwargs):
-        self.mmi.write(*args, **kwargs)
+    def mmi_write(self, addr, value):
+        """ Write a single 32-bit word at specified byte address."""
+        self._fpga_spi_poke(addr, value)
 
+
+    def get_slot_number(self):
+        """ Reads the GPIO to determine in which slot number this IceBoard is connected.
+            Will return None of the board is not connected to a backplane (i.e. if the backplane I2C EEPROM does not respond).
+        """
+        raise NotImplementedError()
+
+    def get_fpga_serial_number(self):
+        """ Returns the FPGA DNA 57-bit unique serial number from the FPGA itself.
+        """
+        raise NotImplementedError()
 
     # # Issue log messages for FPGA serial that were detected but are not already in the database
     # # This can help manually adding boards in the database
