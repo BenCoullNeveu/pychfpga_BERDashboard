@@ -156,7 +156,6 @@ class TuberCategory(object):
         return cls
 
 
-
 class TuberObject(object):
     '''A base class for TuberObjects.
 

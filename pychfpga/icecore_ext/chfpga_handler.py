@@ -1,49 +1,9 @@
-#!/usr/bin/python
-# Disable pylint Line too long (=C0301)
-# pylint: C0301
-
-"""iceboard.py module: Defines the base object for an IceBoard
-(McGill Model MGK7MB).
-
-To specialize an IceBoard object for a particular experiment, you're
-encouraged to create a subclass. There should be good examples
-available.
-
-
- History:
-    2014-03-04 JFC: Created
-    2014-03-18 JM: Added get_temperature and init_temp_sensors
-    2014-03-26 JFC: Integrated tuber
-    2014-11-24 JFC: Modified IceBoard into IceBoardAppHandler
+""" Basic handler for chFPGA firmware.
 """
 
 import logging
-# import threading
 
-# from sqlalchemy import inspect
-
-# from sqlalchemy.orm import relationship, backref, reconstructor, object_session
-# from sqlalchemy import event
-
-# from lib.attribute_publisher import AttributeUser
-# from hardware_map import HWMResource
-# from tuber import TuberHWMResource
-# from tuber import Handler
-# from fmc_mezzanine import FMCMezzanine
-
-# Force reloading of the hardware map module to allow this module
-# reloads to succeed. We need to make sure we use a freshly created
-# hardware_map module because HWMResource uses with a new dynamically
-# created Base class that statically remembers the current schema.
-# Therefore, SQLAlchemy will complain that the table already exist) if
-# we reloan this module and try to create an instrumented class that
-# already exists in the schema.
-
-# reload(hardware_map)
-# reload(tuber)
-
-# import fpga
-# from fpga_bitstream import FpgaBitstream
+# Note: cannot use relative imports (..icecore ir ..core) below because the top script is usually in  .., so .. is not considered a package and we can't go there
 from pychfpga.icecore import iceboard
 from pychfpga.icecore import tuber # Used to get TuberRemoteError
 
@@ -52,19 +12,13 @@ from pychfpga.core import GPIO as gpio
 
 from iceboard_hardware import IceBoardHardware
 from iceboard_hardware import I2CInterface
-# import fpga_core
 import icebox # don't use from .. import ... because of circular import problems
 
-# import arm # object giving access to the ARM firmware
-# import hardware handlers
 
-# iceboard_list = {}
+# class IceBoardException(Exception):
+#     pass
 
-
-class IceBoardException(Exception):
-    pass
-
-
+IceBoardException = iceboard.IceBoardException
 
 class chFPGAHandler(iceboard.IceBoardHandler):
     """
@@ -85,7 +39,6 @@ class chFPGAHandler(iceboard.IceBoardHandler):
     Python-based application-specific FPGA firmware and hardware handler are meant to be derived from this class.
     """
 
-    interface_ip_addr = None # This is a class attribute, common to all instances.
     _BROADCAST_BASE_PORT = 41000
 
     _SYSTEM_BASE_ADDR      = 0x00000 # This is always at zero so we can gather info from the FPGA before we know the number of antennas etc.
@@ -110,27 +63,6 @@ class chFPGAHandler(iceboard.IceBoardHandler):
     # ---------------------------------------
     # mmi = None # Memory-mapped interface object
     _is_core_open = None
-
-
-
-    # class AutoOpenMMI(AutoOpen):
-    #     """ This class is a proxy for the unopened MMI interface object. Whenever
-    #     someone tries to access an MMI attribute, the mmi object is created, opened and assigned to the parent object.
-    #     """
-    #     def open(self, parent):
-    #         from lib.fpga_mmi import FpgaMmi
-    #         return FpgaMmi(parent.fpga_ip_addr, parent.fpga_port_number, fpga_serial_number = parent.fpga_serial_number, set_fpga_networking_parameters = True)
-
-
-    # class AutoOpenHardware(object):
-    #     """ This class is a placeholder for the unopened hardwre interface object. Whenever
-    #     someone tried to access a hardware attribute or method, the hardware object is created.
-    #     """
-    #     _attribute_name = 'hw'
-    #     def open(self, parent):
-    #         if not parent.iceboard.is_core_open(): # make sure we have all the core funtionnalities (i.e. I2C) before creating hardware objects
-    #             parent.iceboard.open_core()
-    #         return IceBoardHardware(iceboard=self.iceboard)
 
     def set_auto_open_attributes(self, attribute_names, open_method):
         """ Create a number of attributes that will be created by
@@ -169,20 +101,9 @@ class chFPGAHandler(iceboard.IceBoardHandler):
         self._mezzanine_ipmi_cache = {1:None, 2: None}
         self._is_open = None
         self._is_core_open = None
-        # self.mmi = None # open the MMI interface automatically when we try to access it. We don't open it now because we might instantiate handlers for boards we never use.
-        # self.hw = None # open the interface to the IceBoard hardware if we try to access it.
-        # self.i2c = None
 
         self.set_auto_open_attributes(['mmi','hw', 'i2c', 'core_gpio', 'core_i2c'], self.open_core)
 
-        # if self.is_core_open():
-        #     self.logger.error('Attempting to create a firmware instance for Iceboard S/N %s while an instance already exists' % self.iceboard_pk)
-
-        # self.fpga_mmi_type = self.MMI_FPGA_ETHERNET
-        # self.mmi = self.AutoOpenMMI(self, self.MMI_FPGA_ETHERNET) # open the MMI interface automatically when we try to access it.
-
-        # self.auto_open('mmi', open_mmi)
-        # self.auto_open('hw', open_hw)
 
     def hwm_update(self, hwm_object):
         """ Is called when the Hardware Map object might have changed to reflect those changes in the handler.
@@ -210,11 +131,6 @@ class chFPGAHandler(iceboard.IceBoardHandler):
 
     def mmi_write(self, *args, **kwargs):
         self.mmi.write(*args, **kwargs)
-
-    def close_hw(self):
-        if self.hw:
-            self.hw.close()
-        self.hw = self.AutoOpen(self, 'hw', self.get_hw) # open the MMI interface automatically when we try to access it. We don't open it now because we might instantiate handlers for boards we never use.
 
     def open_core(self):
         """
@@ -280,44 +196,11 @@ class chFPGAHandler(iceboard.IceBoardHandler):
         self._is_open = True
 
     def close(self):
-        # self.unregister_all()
-        if self.fpga:
-            self.logger.info('Closing application-specific FPGA firmware handlers for board #%i' % (self.serial_number))
-            # self.unregister(self.fpga)
-            self.fpga.close()
-
-            self.hw.close()
-
-        if self.fpga:
-            self.logger.info('Closing core FPGA firmware handlers for board #%i' % (self.serial_number))
-            self.fpga.close_core()
-            self.fpga = None
-        # type(self)._fpga_instances.pop(self.serial_number, None)
-
-        # if self.arm:
-        #     self.logger.info('Closing core arm firmware handlers for board #%i' % (self.serial_number))
-            # self.unregister(self.arm)
-            # self.arm.close() # Tuber has no close()
-            # self.arm = None
-
-        # self._self_reference = None # Now the object can be garbage collected if no one else uses it
+        self.close_core()
         self._is_open = False
-        # type(self)._active_instances.pop(self.serial_number, None)
-        self._base_gpio = None
-        self._base_i2c = None
-        # if self.mmi:
-        #     self.mmi.close()
-        #     self.mmi = self.AutoOpen(self) # open the MMI interface automatically if we try to access it.
-        self._is_core_open = False
 
     def is_open(self):
         return self._is_open
-        # return self.serial_number in type(self)._active_instances
-
-    def is_core_open(self):
-        # return self.iceboard_pk in type(self)._active_instances
-        return bool(self._is_core_open)
-
 
     def get_fpga_serial_number(self):
            return self.mmi_read(self._FPGA_SERIAL_NUMBER_ADDR, type = np.dtype('>u8'))
@@ -350,8 +233,6 @@ class chFPGAHandler(iceboard.IceBoardHandler):
         This selects the FPGA pins over which the communications is done, *not* the bus selection done by an I2C switch.
         """
         return self.core_i2c.set_port(*args, **kwargs)
-
-
 
     def get_slot_number(self):
         """ Reads the slot number from the IO Expander. This is not necessarily the slot number stored in the hardware map.
@@ -490,8 +371,5 @@ class chFPGAHandler(iceboard.IceBoardHandler):
             return  ipmi.product.part_number
         else:
             return None
-
-
-
 
 # vim: sts=4 ts=4 sw=4 tw=80 smarttab expandtab
