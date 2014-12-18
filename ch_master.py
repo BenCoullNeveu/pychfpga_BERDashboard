@@ -144,6 +144,7 @@ fpga_hk_field = {      "core_temp" : "deg C",
 archive_version = "NT_2.1.0"
 
 remap_adc_sma =  [12,13,14,15,8,9,10,11,4,5,6,7,0,1,2,3]
+remap_slot = [5,1,4,0,13,9,12,8,15,11,14,10,7,3,6,2]
 
 if __name__ == "__main__":
   # Set up logger.
@@ -404,7 +405,7 @@ if __name__ == "__main__":
             all_val = slot_conf[name]
             for value in all_val:
               val = convert_types(value)
-              val_name = 'slot_'+ str(fpga_slot) + '_' + name + str(remap_adc_sma[int(val[0])])
+              val_name = 'ID_'+str(16 * remap_slot[fpga_slot] + remap_adc_sma[int(val[0])])+'_slot_'+ str(fpga_slot+1) + '_' + name + str(remap_adc_sma[int(val[0])])
               #print val_name, val
               acq.add_header_item(val_name, val)
           else:
@@ -419,7 +420,7 @@ if __name__ == "__main__":
             #print name
             #print val
             #print type(val)
-            name = 'slot_'+ str(fpga_slot) + '_' + name
+            name = 'Slot_'+ str(fpga_slot+1) + '_' + name
             acq.add_header_item(name, val)
   else:
     acq.add_header_item("fpga_info", "no communication with fpga for this dataset")
