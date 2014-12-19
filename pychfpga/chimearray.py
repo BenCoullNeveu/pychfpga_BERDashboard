@@ -106,9 +106,9 @@ if __name__ == '__main__':
 
     IceArray.close_all_sessions() # close all previously opened sessions
 
-    ca = IceArray(uri='sqlite:///test.db', interface_ip_addr=args.if_ip)
-    # ca = IceArray(interface_ip_addr=args.if_ip)
-    ca.load_iceboards('iceboard_list.txt')
+    # ca = IceArray(uri='sqlite:///test.db', interface_ip_addr=args.if_ip)
+    ca = IceArray(interface_ip_addr=args.if_ip)
+    # ca.load_iceboards('iceboard_list.txt')
     ca.discover(timeout=0.05) # automatically update the hardware map database with discovered resources
 
 
@@ -126,7 +126,7 @@ if __name__ == '__main__':
     # shortcut to index c[7] as c7 etc.
     print 'The following IceBoards were found in Subarray %r through interface %s:' % (args.subarray, args.if_ip)
     for ib in c:
-        print '  c%i = IceBoard S/N%s in slot %r' % (int(ib.serial_number), ib.serial_number, ib.slot_number)
+        print '  c%i = IceBoard SN%s in slot %r' % (int(ib.serial_number), ib.serial_number, ib.slot_number)
         setattr(__main__, 'c%i' % int(ib.serial_number), ib)
     # c23.set_fpga_firmware(fpga_bitstream,  configure_fpga=True, force=args.force, store_in_database=True) # associate boards with specified firmware and configure the selected FPGA
     # c24.set_fpga_firmware(fpga_bitstream,  configure_fpga=True, force=args.force, store_in_database=True) # associate boards with specified firmware and configure the selected FPGA

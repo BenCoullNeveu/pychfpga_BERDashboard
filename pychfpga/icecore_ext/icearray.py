@@ -13,9 +13,10 @@ import argparse
 import logging
 import __main__ # used to store host_ip_address
 import csv
+import re # used by mdns_discovery
 from sqlalchemy.orm.session import Session
 
-
+from . import mdns_discovery
 from pychfpga.icecore import hardware_map
 from pychfpga.icecore.iceboard import IceBoard
 from pychfpga.icecore.fpga_bitstream import FpgaBitstream
@@ -92,12 +93,14 @@ class IceArray(object):
         # return type(self).__dict__ + self.__dict__ + dir(self._hwmap)
         return dir(self._hwmap) + self.__dict__.keys()
 
-    def discover(self, timeout=0.1):
+    def __repr__(self):
+        return '%s' % self.__class__.__name__
+    def discover(self, timeout=0.5):
         """
         Discover all hardware and firmware resources on the specified
         interface(s) and add them to the database.
         """
-        self.discover_iceboards(timeout = timeout)
+        self.discover_iceboards_using_mdns(timeout = timeout, default_app_name='chfpga', default_subarray= 100)
         self.commit() # commit any changes made during discovery
         #
 
@@ -150,6 +153,41 @@ class IceArray(object):
             if ib.tuber_uri:
                 ib.present = TuberObject.ping(ib.tuber_uri)
                 logger.info('Discovery: The IceBoard S/N %s ping result at URI= %s is %s' % (ib.serial_number, ib.tuber_uri, ib.present))
+
+    def discover_iceboards_using_mdns(self, timeout=0.5, default_app_name = '', default_subarray = 0):
+        self.logger.debug('%r: Discovering IceBoards through mDNS' % self)
+        providers = mdns_discovery.browse('_ssh._tcp', browse_timeout=timeout, resolve_timeout=timeout)
+
+        iceboards = self.query(IceBoard) # get all the iceboards from the database
+        keymap = dict(iceboards.values(IceBoard.tuber_uri, IceBoard._pk)) # get a dictionnary that maps the serial number to primary keys
+
+        for provider in providers:
+            host = provider['host']
+            port = provider['port']
+            serial_number = re.findall(r'\w+?(\d+)\.local\.$', host)
+            tuber_uri = 'http://%s:80/tuber' % host
+            print host, serial_number
+            if not serial_number:
+                continue
+            serial_number = int(serial_number[0])
+            self.logger.debug('%r: mDNS discover: IceBoard SN %s found at %s:%s' % (self, serial_number, host, port))
+
+            if tuber_uri in keymap:
+                ib = iceboards.get(keymap[tuber_uri])
+                ib.core_handler_name = 'IceBoard'
+                ib.app_handler_name = default_app_name
+                ib.subarray = default_subarray
+            else:
+                self.logger.info('%r: IceBoard SN%s does not exist in the database. Creating from file.' % (self, serial_number))
+                ib = IceBoard(
+                    serial_number=serial_number,
+                    # arm = TuberHWMResource(tuber_uri=tuber_uri, tuber_objname = 'IceBoard'),
+                    tuber_uri = tuber_uri,
+                    core_handler_name = 'IceBoard',
+                    app_handler_name=default_app_name,
+                    subarray = default_subarray
+                    )
+                self.add(ib)
 
     def discover_fpga_serial_numbers(self, timeout=0.3, only_new = True, print_on_screen=True):
         """
