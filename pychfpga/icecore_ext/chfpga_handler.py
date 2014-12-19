@@ -39,6 +39,9 @@ class chFPGAHandler(iceboard.IceBoardHandler):
     Python-based application-specific FPGA firmware and hardware handler are meant to be derived from this class.
     """
 
+    __handler_for__ = iceboard.IceBoard
+    __handler_name__= 'chfpga_unused'
+
     _BROADCAST_BASE_PORT = 41000
 
     _SYSTEM_BASE_ADDR      = 0x00000 # This is always at zero so we can gather info from the FPGA before we know the number of antennas etc.
@@ -63,6 +66,9 @@ class chFPGAHandler(iceboard.IceBoardHandler):
     # ---------------------------------------
     # mmi = None # Memory-mapped interface object
     _is_core_open = None
+
+    fpga_ip_addr = None
+    fpga_serial_number = None # will be obsolete when we can get this from the ARM
 
     def set_auto_open_attributes(self, attribute_names, open_method):
         """ Create a number of attributes that will be created by
@@ -110,10 +116,6 @@ class chFPGAHandler(iceboard.IceBoardHandler):
         """
         super(chFPGAHandler, self).hwm_update(hwm_object)
         self.logger.info('chFPGAHandler: %r.hwm_update()' % (self))
-        self.fpga_ip_addr = hwm_object.fpga_ip_addr
-        if self.serial_number:
-            self.fpga_port_number = 41000 + 4*(self.serial_number)
-        self.fpga_serial_number = hwm_object.fpga_serial_number
 
     #------------------------------------------------------------------
     # CHIME-specific MMI interface
@@ -126,16 +128,33 @@ class chFPGAHandler(iceboard.IceBoardHandler):
     #------------------------------------------------------------------
 
     def mmi_read(self, *args, **kwargs):
-        """ Read a single 32-bit word read at specified byte address."""
+        """ Read bytes at specified byte address through direct access to the FPGA."""
         return self.mmi.read(*args, **kwargs)
 
     def mmi_write(self, *args, **kwargs):
+        """ Write bytes at specified byte address through direct access to the FPGA."""
         self.mmi.write(*args, **kwargs)
+
+    def spi_mmi_read(self, addr):
+        """ Read a single 32-bit word at specified byte address through the ARM<->FPGA SPI link."""
+        return self._fpga_spi_peek(addr)
+
+    def spi_mmi_write(self, addr, value):
+        """ Write a single 32-bit word at specified byte address through the ARM<->FPGA SPI link."""
+        self._fpga_spi_poke(addr, value)
 
     def open_core(self):
         """
         Establishes the connection with the hardware and firmware on the IceBoard and create all appropriate handling classes.
         """
+        import socket
+
+        self.fpga_serial_number = self.get_fpga_serial_number() # Get SN from the SPI link
+        ip = socket.inet_aton(self._get_arm_ip()) #
+        self.fpga_ip_addr = socket.inet_ntoa(ip[:2]+chr(3)+ip[3]) # *** JFC temporary hack
+        if self.serial_number:
+            self.fpga_port_number = 41000 + 4 * int(self.serial_number) # *** JFC: another temporary hack
+
 
         if not self.is_fpga_programmed():
             raise FpgaException("Attempting to access the  Iceboard S/N %s FPGA's Memory-mapped interface while the FPGA is not yet programmed with a bitstream" % self.serial_number)
@@ -203,7 +222,12 @@ class chFPGAHandler(iceboard.IceBoardHandler):
         return self._is_open
 
     def get_fpga_serial_number(self):
-           return self.mmi_read(self._FPGA_SERIAL_NUMBER_ADDR, type = np.dtype('>u8'))
+
+        serial_number = (self.spi_mmi_read(4 * 3) & 0xFFFFFFFF) | ((self.spi_mmi_read(4 * 4) & 0xFFFFFFFF) << 32)
+
+        return serial_number
+        # if self.mmi:
+        #     return self.mmi_read(self._FPGA_SERIAL_NUMBER_ADDR, type = np.dtype('>u8'))
 
     def get_fpga_firmware_cookie(self):
         """
@@ -241,11 +265,6 @@ class chFPGAHandler(iceboard.IceBoardHandler):
         """
         return self.hw.get_slot_number()
 
-    def get_number_of_mezzanine_slots(self):
-        """ Returns the number of mezzanine slots supported by this board (not the number of boards actually populated).
-        NOTE: It would be nice if the ARM could provide this function.
-        """
-        return self.hw.NUMBER_OF_FMC_SLOTS
 
     def _mezzanine_eeprom_read(self, mezzanine, addr, length,**kwargs):
         """ Reads the EEPROM on the specified mezzanine.

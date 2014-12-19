@@ -42,6 +42,9 @@ class MGADC08_base(fmc_mezzanine.FMCMezzanine):
 
 class MGADC08_Handler(fmc_mezzanine.FMCMezzanineHandler):
 
+    __handler_for__ = MGADC08_base
+    __handler_name__= 'MGADC08'
+
     # SPI port numbers specific to this board
     SPI_ADC0_ADDR      = 0    # ADC. R/W device. 8 bit address+RW, 16 bit data.
     SPI_ADC1_ADDR      = 1 # ADC. R/W device. 8 bit address+RW, 16 bit data.

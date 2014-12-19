@@ -12,12 +12,14 @@ Provides access to an array of ICEBoards and ICEBoxes (backplanes)
 import argparse
 import logging
 import __main__ # used to store host_ip_address
-import hardware_map
-# reload(hardware_map) # make sure we get a new Base
+import csv
+from sqlalchemy.orm.session import Session
 
-import iceboard
-from iceboard import IceBoard
-from fpga_bitstream import FpgaBitstream
+
+from pychfpga.icecore import hardware_map
+from pychfpga.icecore.iceboard import IceBoard
+from pychfpga.icecore.fpga_bitstream import FpgaBitstream
+from pychfpga.icecore.tuber import TuberObject # used to ping boards
 
 class IceException(Exception):
     pass
@@ -47,7 +49,6 @@ class IceArray(object):
         """
         Close all existing sessions.
         """
-        from sqlalchemy.orm.session import Session
         Session.close_all()
 
     def __init__(self, uri='sqlite:///:memory:', interface_ip_addr=None,  *args, **kwargs):
@@ -70,8 +71,6 @@ class IceArray(object):
         # set the interface IP address on the FPGA irmware class attribute so
         # this address is used for any firmware instances created on this
         # computer.
-        from icecore_ext import fpga_mmi # used for direct FPGA serial discovery
-        # import fpga_core
         __main__._host_interface_ip_addr = interface_ip_addr
 
         self._hwmap = hardware_map.HardwareMap(uri=uri, *args, **kwargs)
@@ -117,9 +116,9 @@ class IceArray(object):
             new_args.append(IceBoard.serial_number.in_(serials))
         if subarray:
             new_args.append(IceBoard.subarray.in_(subarray))
-        kwargs['locked']=0 # force selection of non-locked boards
-        if 'present' not in kwargs:
-            kwargs['present'] = 1
+        # kwargs['locked']=0 # force selection of non-locked boards
+        # if 'present' not in kwargs:
+        #     kwargs['present'] = 1
         return self.query(IceBoard).filter(*tuple(new_args + list(args))).filter_by(**kwargs)
 
     def discover_iceboards(self, timeout=0.1):
@@ -141,7 +140,6 @@ class IceArray(object):
             board serial number: from board's EEPROM
 
         """
-        from tuber import TuberObject
         logger = logging.getLogger(__name__)
         logger.debug('Discovering IceBoards')
 
@@ -151,7 +149,7 @@ class IceArray(object):
         for ib in iceboards:
             if ib.tuber_uri:
                 ib.present = TuberObject.ping(ib.tuber_uri)
-                logger.info('Discovery: The IceBoard S/N %03i ping result at URI= %s is %s' % (ib.serial_number, ib.tuber_uri, bool(ib.present)))
+                logger.info('Discovery: The IceBoard S/N %s ping result at URI= %s is %s' % (ib.serial_number, ib.tuber_uri, ib.present))
 
     def discover_fpga_serial_numbers(self, timeout=0.3, only_new = True, print_on_screen=True):
         """
@@ -163,7 +161,7 @@ class IceArray(object):
         /!\ WARNING: This can disrupt operations of all FPGAs on the network as we are requesting all FPGAs to direct their Ethernet packets on the broadcast port of this machine.
         """
 
-        from lib import fpga_mmi # used for direct FPGA serial discovery
+        import fpga_mmi # used for direct FPGA serial discovery
 
         logger = logging.getLogger(__name__)
         logger.debug('Discovering new FPGAs')
@@ -187,7 +185,6 @@ class IceArray(object):
         """
         Adds the Iceboard entries listed in the specified CSV file into the database.
         """
-        import csv
         session = self
         logger = logging.getLogger(__name__)
 
@@ -196,39 +193,30 @@ class IceArray(object):
 
         with open(filename, 'rb') as file:
             reader = csv.reader((line.split('#')[0].rstrip() for line in file if line.split('#')[0].strip())) # uses a generator to strip the comments
-            for (serial_number, tuber_uri, arm_serial_number, fpga_ip_addr, fpga_serial_number, locked, subarray) in reader:
-                serial_number = int(serial_number, 0)
+            for (serial_number, tuber_uri, arm_mac_address, app_handler_name, fpga_ip_addr, fpga_serial_number, locked, subarray) in reader:
+                serial_number = serial_number.strip("' ")
                 tuber_uri = tuber_uri.strip("' ")
-                arm_serial_number = arm_serial_number.strip("' ")
-                fpga_ip_addr = fpga_ip_addr.strip("' ")
-                fpga_serial_number = int(fpga_serial_number, 0)
-                locked = int(locked, 0)
+                app_handler_name = app_handler_name.strip("' ")
+                # fpga_ip_addr = fpga_ip_addr.strip("' ")
+                # fpga_serial_number = int(fpga_serial_number, 0)
+                # locked = int(locked, 0)
                 subarray = int(subarray, 0)
 
                 if serial_number in keymap:
-                    logger.info('IceBoard S/N %03i already exists in the database. Updating columns from file.' % serial_number)
+                    logger.info('IceBoard SN%s already exists in the database. Updating columns from file.' % serial_number)
                     ib = iceboards.get(keymap[serial_number])
                     ib.tuber_uri = tuber_uri
                     ib.core_handler_name = 'IceBoard'
-                    ib.app_handler_name = 'chfpga'
-
-                    ib.arm_serial_number = arm_serial_number
-                    ib.fpga_ip_addr = fpga_ip_addr
-                    ib.fpga_serial_number = fpga_serial_number
-                    ib.locked = locked
+                    ib.app_handler_name = app_handler_name
                     ib.subarray = subarray
                 else:
-                    logger.info('IceBoard S/N %03i does not exist in the database. Creating from file.' % serial_number)
+                    logger.info('IceBoard SN%s does not exist in the database. Creating from file.' % serial_number)
                     ib = IceBoard(
                         serial_number=serial_number,
                         # arm = TuberHWMResource(tuber_uri=tuber_uri, tuber_objname = 'IceBoard'),
                         tuber_uri = tuber_uri ,
                         core_handler_name = 'IceBoard',
-                        app_handler_name = 'chfpga',
-                        arm_serial_number=arm_serial_number,
-                        fpga_ip_addr=fpga_ip_addr,
-                        fpga_serial_number=fpga_serial_number,
-                        locked=locked ,
+                        app_handler_name=app_handler_name,
                         subarray = subarray
                         )
                     session.add(ib)
@@ -239,36 +227,10 @@ class IceArray(object):
         print 'The array contains the following resources'
         print self.get_iceboards()
 
-    # def detect_mezz(self, force_type_string=None):
-
-    #     # get a list of all polymorphic strings of classes derived from FMCMezzanine
-    #     available_mezz_types = {m.polymorphic_identity:m.class_ for m in inspect(FMCMezzanine).polymorphic_map.values()}
-
-    #     mezz_list = enumerate(['FMCA','FMCB'])
-
-    #     if self.mezz1:
-    #         del self.mezz1
-    #     if self.mezz2:
-    #         del self.mezz2
-
-    #     for (fmc_number, fmc_name) in mezz_list:
-    #         if force_type_string:
-    #             type_string = force_type_string
-    #         else:
-    #             type_string = FMCMezzanine.get_type_string(self.i2c, fmc_name)
-
-    #         if type_string in available_mezz_types:
-    #             self.logger.info("FMC Mezzanine of type '%s' was detected in FMC slot #%i (%s)" % (type_string, fmc_number, fmc_name))
-    #             mezz_class = available_mezz_types[type_string]
-    #             setattr(self, 'mezz%i' % (fmc_number+1), mezz_class(motherboard=self, fmc_number=fmc_number, fmc_name=fmc_name))
-    #         else:
-    #             self.logger.info("No recognized FMC Mezzanine was found in FMC slot #%i (%s)" % (fmc_number, fmc_name))
-
 def close_all_sockets():
     """
     Close all the sockets that has been opened and were registered in the main module __opened_sockets__ attribute.
     """
-    import __main__
     if '__opened_sockets__' in vars(__main__): # i.e. if __main__ has an __opened_sockets__ attribute
         while __main__.__opened_sockets__: # close all sockets so we won't get a 'socket already opened' error because of a previous run
             __main__.__opened_sockets__.pop().close()

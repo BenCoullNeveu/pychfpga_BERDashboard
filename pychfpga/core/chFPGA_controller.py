@@ -144,7 +144,9 @@ class chFPGA_controller(chFPGAHandler):
         reference_frequency: frequency in Hz of the reference signal provided to the chFPGA. Typically 10 MHz.
     """
 
-    __mapper_args__ = {'polymorphic_identity': 'chime_fpga_firmware'}
+    __handler_for__ = IceBoard
+    __handler_name__= 'chfpga'
+
 
     # Basic system constants
     _IMPLEMENT_CORR = False
@@ -1552,5 +1554,3 @@ class chFPGA_controller(chFPGAHandler):
                     res['FMC%i ADC%i'%(fmc_number, adc_number)] = adc.get_temperature()
         return res
 
-# Register the class as a Iceboard handler
-IceBoard.add_local_python_handler('chfpga', chFPGA_controller)
