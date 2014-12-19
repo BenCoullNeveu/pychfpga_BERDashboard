@@ -24,7 +24,7 @@ import hardware_map
 import tuber
 
 import fmc_mezzanine # used import x to avoid circular import problem
-from fpga_bitstream import FpgaBitstream
+import fpga_bitstream
 
 
 class IceCrate(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
@@ -184,7 +184,7 @@ class IceBoard(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
         import base64
 
         # *** JFC: Could just use str(buf) and define FpgaBistream accordingly.
-        if isinstance(buf, FpgaBitstream):
+        if isinstance(buf, fpga_bitstream.FpgaBitstream):
             buf = buf.get_bitstream_data()
 
         if hasattr(self, 'close'):

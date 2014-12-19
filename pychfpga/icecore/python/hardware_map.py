@@ -670,14 +670,18 @@ class HWMHandlerManager(object):
         # add after_insert?
 
 class HandlerMeta(type):
+    """ Intercept the creation of a Handler subclass to automatically register it with the associated HWM object.
+
+    The Handler subclass must define the following attributes:
+        __handler_for__ = HWM_object #  HWM object to which this handler is associated with. HWM_object must be a subclass of HWMHandlerManager.
+        __handler_name__ = 'some string' #  The name under which the handler can be found. Allows the
+    """
     def __init__(cls, classname, bases, dict_):
         if '__handler_for__' not in dict_ or '__handler_name__' not in dict_:
             raise AttributeError("Both '__handler_for__' and '__handler_name__' must be specified in Handler class %r" % classname)
         base = dict_['__handler_for__']
         name = dict_['__handler_name__']
         if base and name:
-            print 'Registering (%s,%s) into %r. dir()=%s' % (name, cls, base, dir(base))
-            print 'Base has add_local_python_handler? %s' % hasattr(base, 'add_local_python_handler')
             if not issubclass(base, HWMHandlerManager):
                 raise AttributeError("The class assigned to '__handler_for__' must be a subclass of HWMHandlerManager for %r" % classname)
             base.add_local_python_handler(name, cls)
