@@ -1,0 +1,1 @@
+include ../../mak/fastpath.mak

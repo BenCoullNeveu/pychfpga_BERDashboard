@@ -1,0 +1,10 @@
+Package: iceboard-www
+Version: 1~20140825
+Description: Web front-end for IceBoard
+Section: science
+Priority: optional
+Maintainer: Graeme Smecher
+Architecture: all
+Homepage: http://bitbucket.org/winterlandcosmology
+Source:
+Depends:
