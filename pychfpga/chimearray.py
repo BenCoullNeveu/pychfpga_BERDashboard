@@ -34,29 +34,22 @@ def delete_modules(module_name):
     for name in [n for n in sys.modules.keys() if n.startswith(module_name)]:
         del sys.modules[name]
 
-# delete_modules('sqlalchemy')
-# delete_modules('icecore')
-
-# from pychfpga.icecore import hardware_map
-# from pychfpga.icecore import tuber
-# reload(hardware_map)
-# reload(tuber)
 
 from pychfpga.icecore_ext.icearray import IceArray, close_all_sockets
-from pychfpga.icecore.fpga_bitstream import FpgaBitstream
+# from pychfpga.icecore.fpga_bitstream import FpgaBitstream
 from pychfpga.icecore.iceboard import IceBoard
 
-from pychfpga.core.chFPGA_controller import chFPGA_controller as ChimeFpgaFirmware
-import MGADC08.MGADC08
+from pychfpga.core.chFPGA_controller import chFPGA_controller as chfpgaHandler
+# import MGADC08.MGADC08
 #####################################
 
-import inspect
-import __main__
+# import inspect
+# import __main__
 
-class CompletionFilter(object):
-    @staticmethod
-    def filter(record):
-        return not any(('completer.py' in ss[1] for ss in inspect.stack()))
+# class CompletionFilter(object):
+#     @staticmethod
+#     def filter(record):
+#         return not any(('completer.py' in ss[1] for ss in inspect.stack()))
 
 if __name__ == '__main__':
 
@@ -104,30 +97,37 @@ if __name__ == '__main__':
         logger.info('   %s = %s' % (key, repr(value)))
     # Create the new chFPGA object.
 
-    IceArray.close_all_sessions() # close all previously opened sessions
+    # IceArray.close_all_sessions() # close all previously opened sessions
 
     # ca = IceArray(uri='sqlite:///test.db', interface_ip_addr=args.if_ip)
     ca = IceArray(interface_ip_addr=args.if_ip)
     # ca.load_iceboards('iceboard_list.txt')
-    ca.discover(timeout=0.05) # automatically update the hardware map database with discovered resources
+    # ca.discover(timeout=2) # automatically update the hardware map database with discovered resources
 
 
-    bitfile_filename = args.bitfile
-    # fpga_bitstream = FpgaBitstream(bitfile_filename, ChimeFpgaFirmware) #
-    # fpga_bitstream = FpgaBitstream.get_bitstream(ca, bitfile_filename, ChimeFpgaFirmware) # Get a new bitstream from the database (or create a new database entry if it does not exist yet)
-    if args.bitfile_crc:
-        fpga_bitstream = ca.get_fpga_bitstream(crc = args.bitfile_crc) # Get a new bitstream from the database
-    else:
-        fpga_bitstream = ca.get_fpga_bitstream(args.bitfile, ChimeFpgaFirmware) # Get a new bitstream from the database (or create a new database entry if it does not exist yet)
+    # bitfile_filename = args.bitfile
+    # # fpga_bitstream = FpgaBitstream(bitfile_filename, ChimeFpgaFirmware) #
+    # # fpga_bitstream = FpgaBitstream.get_bitstream(ca, bitfile_filename, ChimeFpgaFirmware) # Get a new bitstream from the database (or create a new database entry if it does not exist yet)
+    # if args.bitfile_crc:
+    #     fpga_bitstream = ca.get_fpga_bitstream(crc = args.bitfile_crc) # Get a new bitstream from the database
+    # else:
+    #     fpga_bitstream = ca.get_fpga_bitstream(args.bitfile, ChimeFpgaFirmware) # Get a new bitstream from the database (or create a new database entry if it does not exist yet)
+    chfpgaHandler.register_fpga_bitstream(url = args.bitfile, tag= None)
 
-    c = ca.get_iceboards(subarray=args.subarray).index_by(IceBoard.serial_number) # get one or more IceBoards from specified subarray
+    # c = ca.get_iceboards(subarray=args.subarray).index_by(IceBoard.serial_number) # get one or more IceBoards from specified subarray
     #c = ca.get_iceboards(subarray=args.subarray) # get one or more IceBoards from specified subarray
 
+    c7 = IceBoard(tuber_uri='http://10.10.10.57/tuber', serial_number='7')
+    ca.add(c7)
+    ca.flush()
+    c7.set_application(chfpgaHandler, configure_fpga=True, tag=None)
+
     # shortcut to index c[7] as c7 etc.
-    print 'The following IceBoards were found in Subarray %r through interface %s:' % (args.subarray, args.if_ip)
-    for ib in c:
-        print '  c%i = IceBoard SN%s in slot %r' % (int(ib.serial_number), ib.serial_number, ib.slot_number)
-        setattr(__main__, 'c%i' % int(ib.serial_number), ib)
+    # print 'The following IceBoards were found in Subarray %r through interface %s:' % (args.subarray, args.if_ip)
+    # for ib in c:
+    #     print '  c%i = IceBoard SN%s in slot %r' % (int(ib.serial_number), ib.serial_number, ib.slot_number)
+    #     setattr(__main__, 'c%i' % int(ib.serial_number), ib)
+
     # c23.set_fpga_firmware(fpga_bitstream,  configure_fpga=True, force=args.force, store_in_database=True) # associate boards with specified firmware and configure the selected FPGA
     # c24.set_fpga_firmware(fpga_bitstream,  configure_fpga=True, force=args.force, store_in_database=True) # associate boards with specified firmware and configure the selected FPGA
     # c19.set_fpga_firmware(fpga_bitstream,  configure_fpga=True, force=args.force, store_in_database=True) # associate boards with specified firmware and configure the selected FPGA

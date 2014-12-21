@@ -114,34 +114,6 @@ class MGADC08_Handler(fmc_mezzanine.FMCMezzanineHandler):
         """ returns a boolean indicating whether the ADC board is present"""
         return self._board_is_present
 
-    # def load_board_info(self, retry=10):
-    #     """ Loads the info data block from the ADC board EEPROM using the old proprietary McGill format (not the FMC standard). """
-
-    #     block_size = 32
-    #     string = ''
-    #     for i in range(512 / block_size): # read 32 blocks of 16 bytes
-    #         data_block = self.eeprom.read(i * block_size, length=block_size, retry=retry)
-    #         string += data_block.tostring()
-    #         if ('}' in data_block) or (chr(255) in data_block):
-    #             break
-    #     # print 'EEPROM data block is', string
-
-    #     last_char = string.find('}')
-    #     if last_char<0:
-    #         self.logger.error('No dictionary found on EEPROM. Did the board pass the quality control test?')
-    #         return None
-
-    #     string = string[1:last_char+1] # keep only the dict definition string: remove first char (board ID) and stop at last '}'.
-
-    #     # Read checksum
-    #     crc_string = self.eeprom.read(last_char+1, length=4, retry=retry).tostring()
-    #     crc = struct.unpack('i', crc_string)[0]
-    #     computed_crc = zlib.crc32(string)
-    #     if computed_crc != crc:
-    #         raise self.FMCMezzanineException('FMC EEPROM CRC is invalid. Read crc = %08X, computed crc = %08X' % (crc, computed_crc))
-    #     dict_out = ast.literal_eval(string) # safer than using eval
-    #     return dict_out
-
     def init(self, sampling_frequency=800e6, reference_frequency=10e6, verbose=0):
         """ Initializes the FMC board modules"""
 
@@ -171,5 +143,3 @@ class MGADC08_Handler(fmc_mezzanine.FMCMezzanineHandler):
             self.IOExpander.status()
             self.ADC_PLL.status()
             self.ADC.status()
-
-MGADC08_base.add_local_python_handler('MGADC08', MGADC08_Handler) # case must match the IPMI data

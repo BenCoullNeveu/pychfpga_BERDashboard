@@ -2,6 +2,7 @@
 """
 
 import logging
+from datetime import datetime
 
 # Note: cannot use relative imports (..icecore ir ..core) below because the top script is usually in  .., so .. is not considered a package and we can't go there
 from pychfpga.icecore import iceboard
@@ -13,6 +14,8 @@ from pychfpga.core import GPIO as gpio
 from iceboard_hardware import IceBoardHardware
 from iceboard_hardware import I2CInterface
 import icebox # don't use from .. import ... because of circular import problems
+
+from pychfpga.icecore.hw.ipmi_fru import FRU, Board, Product, MultiDict
 
 
 # class IceBoardException(Exception):
@@ -337,8 +340,6 @@ class chFPGAHandler(iceboard.IceBoardHandler):
             raise self.IceBoardException('FMC EEPROM CRC is invalid. Read crc = %08X, computed crc = %08X' % (crc, computed_crc))
         dict_out = ast.literal_eval(string) # safer than using eval
 
-        from hw.ipmi_fru import FRU, Board, Product, MultiDict
-        from datetime import datetime
 
         # Extract standard FRU information from McGill data structure
         part_number = dict_out.pop('Model', 'Unknown')
