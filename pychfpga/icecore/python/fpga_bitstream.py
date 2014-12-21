@@ -191,9 +191,6 @@ class FpgaBitstream(HWMResource):
         """
         Loads the bitstream contained by the URL into the cache memory and fill the corresponding info fields.
 
-        TODO:
-           - check for 0xffffffffaa995566 prefix on the data.
-
         Notes:
             BIT file format described in http://www.fpga-faq.com/FAQ_Pages/0026_Tell_me_about_bit_files.htm
         """

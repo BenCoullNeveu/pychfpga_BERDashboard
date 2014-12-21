@@ -262,7 +262,13 @@ class TuberObject(object):
 
         # Say something about the call
         l = logging.getLogger(__name__)
-        l.debug('%r: %s => %s (%f sec)' % (self, json_in, json_out, t2-t1))
+        l.debug('%r: %s => %s (%f sec)' % (
+            self,
+            json_in[:1024], json_out[:1024],
+            t2-t1))
+
+
+
 
         # TBD: I would love to postpone error-checking until we make use of
         # the relevant call, but I can't do that since we don't always look!

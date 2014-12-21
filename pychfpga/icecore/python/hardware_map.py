@@ -518,16 +518,15 @@ class HWMHandlerManager(object):
 
     # Class attributes
     # _handler_registry = {} # (handler_key: handler)
-    _local_python_handler_classes = {} # Dictionary containing handler_name: python class
     _handler = UpdateHandler() # If no instance _handler exist, access to _handler will invoke the data descriptor to create the instance _handler
     _handler = None # If no instance _handler exist, access to _handler will invoke the data descriptor to create the instance _handler
 
     # Instance attributes
 
     @classmethod
-    def add_local_python_handler(cls, class_name, class_):
+    def register_handler(cls, class_, class_name=None):
         """ Register a Python class 'class_' as a handler named 'class_name'
-        for the target Hardware map object.
+        for the target Hardware Map object.
 
         This handler will be used as an application handler if its name
         matches the name provided with set_handler(), otherwise a tuber
@@ -536,6 +535,12 @@ class HWMHandlerManager(object):
         If the handler is passed a core handler at initialization, it must
         make visible the methods and attributes of this core object.
         """
+        # Make sure this class has its own handler registry so we don't access the subclass registry
+        if '_local_python_handler_classes' not in cls.__dict__:
+            cls._local_python_handler_classes = {}
+
+        if not class_name:
+            class_name = class_.__name__
         cls._local_python_handler_classes[class_name]=class_
 
     def get_handler(self):
@@ -571,10 +576,11 @@ class HWMHandlerManager(object):
 
         handler_key = (object_id, handler_name) #we include handler_name to properly handle boards with multiple personnalities
         self._handler = None
-        if handler_key:
+        if object_id and handler_name:
 
-            # Make sure the top superclass has its own registery of handlers
-            if not hasattr(type(self), '_handler_registry'):
+            # Make sure the top superclass has its own registery of handlers.
+            # We use .__dict__ to ensure we do not access the subclass version of the attribute
+            if  '_handler_registry' not in type(self).__dict__:
                 type(self)._handler_registry = {}
 
             # If the key exists in the handler registry, retreive the handler from it
@@ -616,7 +622,7 @@ class HWMHandlerManager(object):
         self.init_handler()
         if self._handler:
             return getattr(self._handler, name)
-        raise AttributeError
+        raise AttributeError('Unknown attribute %s for %r. This could be because this instance has no valid handler yet' % (name, self))
 
     def update_handler(self):
         """ Calls the hwm_update() method of the handler with this hardware
@@ -684,7 +690,7 @@ class HandlerMeta(type):
         if base and name:
             if not issubclass(base, HWMHandlerManager):
                 raise AttributeError("The class assigned to '__handler_for__' must be a subclass of HWMHandlerManager for %r" % classname)
-            base.add_local_python_handler(name, cls)
+            base.register_handler(cls, name)
         type.__init__(cls, classname, bases, dict_)
 
 class Handler(object):

@@ -403,7 +403,7 @@ class FRU(object):
             product_str + \
             multi_str
 
-                def as_dict(self):
+    def as_dict(self):
         """ Return the FRU information as a dictionary.
         """
         return {
@@ -416,5 +416,5 @@ class FRU(object):
 
     def __str__(self):
         return str(self.as_dict())
-        
+
 # vim: sts=4 ts=4 sw=4 tw=80 smarttab expandtab

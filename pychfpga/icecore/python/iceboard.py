@@ -24,7 +24,7 @@ import hardware_map
 import tuber
 
 import fmc_mezzanine # used import x to avoid circular import problem
-import fpga_bitstream
+#import fpga_bitstream
 
 
 class IceCrate(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
@@ -134,9 +134,6 @@ class IceBoard(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
         self.logger = logging.getLogger(__name__)
         self.logger.info('%r: Recreating instance from database' % (self))
 
-    def set_application_handler(self, application_name=None):
-        self.app_handler_name = application_name
-        self.init_handler()
 
     def init_handler(self):
         """ Create or re-attach a handler to this HWM object.
@@ -170,6 +167,12 @@ class IceBoard(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
                                   else ('hostname=%s' % self.tuber_uri)
                               )
 
+    def set_application(self, handler=None, configure_fpga=True, force=False, tag = None):
+        self.app_handler_name = handler.__handler_name__
+        self.init_handler()
+        if configure_fpga:
+            bitstream = self.get_fpga_bitstream(tag) # This method is provided by the handler
+            self.set_fpga_bitstream(bitstream, force=force)
 
     def set_fpga_bitstream(self, buf, force=True):
         '''
@@ -184,7 +187,7 @@ class IceBoard(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
         import base64
 
         # *** JFC: Could just use str(buf) and define FpgaBistream accordingly.
-        if isinstance(buf, fpga_bitstream.FpgaBitstream):
+        if isinstance(buf, FpgaBitstream):
             buf = buf.get_bitstream_data()
 
         if hasattr(self, 'close'):
@@ -256,8 +259,8 @@ class IceBoard(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
 # ***************
 
 	# *** JFC: Maybe should just assert if the the mezzanine type is corect, with optional database update
-    def detect_mezzanines(self):
-        '''Detect and instantiate mezzanines attached to a dfmux.
+    def detect_mezzanines(self, update=False):
+        '''Detect mezzanines attached to the Iceboard, and instantiate them if update=True.
 
         This method uses IPMI data on the mezzanine's EEPROMs to guide
         itself.
@@ -265,17 +268,14 @@ class IceBoard(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
         You do NOT need to use this method if the mezzanines present in the system are
         already explicitely specified in the YAML hardware maps.
         '''
+
+        mezz_class = {}
         for m in range(1, self.get_number_of_mezzanine_slots() + 1):
 
-            # Don't re-discover mezzanines.
-            if m in self.mezzanine:
-                continue
-
             # MezzClass = MissingMezzanine # Used by Graeme
-            MezzClass = None # Used by JF
             part_number = None
             serial = None
-
+            mezz_class[m] = None
             # If a mezzanine is present, ask it (from EEPROM) what kind
             # of mezzanine it is. Try to instantiate a mezz-specific
             # class.
@@ -283,20 +283,34 @@ class IceBoard(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
                 ipmi = self._get_mezzanine_ipmi(m)
                 part_number = ipmi.product.part_number
                 serial = ipmi.product.serial_number
-                self.logger.info('IceBoard SN%r detect_mezzanines(): Detected Mezzanine Model: %s Serial %s in Mezzanine %i' % (self.serial_number, part_number, serial, m))
+                self.logger.info('%r: detect_mezzanines(): Detected Mezzanine Model: %s Serial %s in Mezzanine %i' % (self, part_number, serial, m))
                 for sc in class_mapper(fmc_mezzanine.FMCMezzanine).self_and_descendants:
                     if sc.polymorphic_identity == part_number:
-                        MezzClass = sc.class_
-            if MezzClass:
-                self.logger.info('IceBoard SN%r detect_mezzanines: Creating Mezzanine Serial %s in Mezzanine %i' % (self.serial_number, serial, m))
-                new_mezz = MezzClass(mezzanine=m, serial=serial, type='') # 'type' cannnot be None so we give it an empty string
-                self.hwm.add(new_mezz)
-                self.hwm.commit()
-                self.mezzanine[m] = new_mezz
-            else:
+                        mezz_class[m] = sc.class_
+
+            if not mezz_class[m]:
                 self.logger.warning("IceBoard SN%r detect_mezzanines(): There is no known FMC Mezzanine object with polymorphic map name '%r' for Mezzanine %r" % (self.serial_number, part_number, m))
-                # self.mezzanine[m] = None
-        self.update_handler() # added by JF to let the handlers update for the new mezz
+
+            if update:
+                if not self.hwm:
+                    raise SystemError('%r: detect_mezzanines(): Attempt to add new mezzanine objects while  the IceBoard is not yet added to the hardware map. '% self)
+
+                if m in self.mezzanine:
+                    del(self.mezzanine[m])
+
+                if mezz_class[m]:
+                    self.logger.info('%r: detect_mezzanines(): Creating Mezzanine Serial %s in Mezzanine %i' % (self, serial, m))
+                    new_mezz = mezz_class[m](mezzanine=m, serial=serial, type='') # 'type' cannnot be None so we give it an empty string
+                    self.hwm.add(new_mezz)
+                    self.hwm.flush()
+                    self.mezzanine[m] = new_mezz
+                else:
+                    self.logger.warning("IceBoard SN%r detect_mezzanines(): There is no known FMC Mezzanine object with polymorphic map name '%r' for Mezzanine %r" % (self.serial_number, part_number, m))
+                    # self.mezzanine[m] = None
+
+        if update:
+            self.update_handler() # added by JF to let the handlers update for the new mezz
+        return mezz_class
 
 
 class IceBoardHandler(hardware_map.Handler):
@@ -319,8 +333,15 @@ class IceBoardHandler(hardware_map.Handler):
     MMI that interfaces directly to the FPGA through the SFP Ethernet port
     using a separate socket.
     """
+
+    # The following attributes must be redefined in every subclasses
     __handler_for__ = IceBoard
     __handler_name__ = 'IceBoard'
+
+    _bitstream_register = {} # tag: (url, buffer) : contains the list of bitstreams that are associated with this object
+
+    serial_number= None
+    mezzanine = {}
 
     def __init__(self, tuber_uri=None, tuber_object = 'IceBoard', **kwargs):
 
@@ -343,6 +364,9 @@ class IceBoardHandler(hardware_map.Handler):
         else:
             return AttributeError
 
+    def __repr__(self):
+        return '%s for %s SN%s' % (self.__class__.__name__, self.__handler_for__.__name__,  self.serial_number)
+
     def hwm_update(self, hwm_object):
         """ Is called when the Hardware Map object might have changed to reflect those changes in the handler.
         """
@@ -352,6 +376,25 @@ class IceBoardHandler(hardware_map.Handler):
         self.mezzanine = {key: hwm_mezz.handler for (key, hwm_mezz) in hwm_object.mezzanine.items()}
         self.logger.info('IceBoardHandler: %r.hwm_update(): has mezzanines %r' % (self, self.mezzanine))
 
+
+    #---------------------
+    # Bitstream nanagement
+    #----------------------
+    @classmethod
+    def register_fpga_bitstream(cls, url, tag=None):
+        cls._bitstream_register[tag] = FpgaBitstream(url, load=False) # Bitstream is not loaded yet
+
+    def get_fpga_bitstream(self, tag=None):
+        """ Return the bitstream associated with this handler.
+        """
+        if tag not in self._bitstream_register:
+            raise AttributeError('%r: The specified bitstream has not been attributed to for this class' % self)
+        return self._bitstream_register[tag].get_bitstream()
+
+    #---------------------
+    # Memory-mapped interface
+    #----------------------
+
     def mmi_read(self, addr):
         """ Read a single 32-bit word at specified byte address."""
         return self._fpga_spi_peek(addr)
@@ -360,6 +403,10 @@ class IceBoardHandler(hardware_map.Handler):
         """ Write a single 32-bit word at specified byte address."""
         self._fpga_spi_poke(addr, value)
 
+
+    #---------------------
+    # Core methods
+    #----------------------
 
     def get_number_of_mezzanine_slots(self):
         """ Returns the number of mezzanine slots supported by this board .
@@ -373,5 +420,146 @@ class IceBoardHandler(hardware_map.Handler):
             Will return None of the board is not connected to a backplane (i.e. if the backplane I2C EEPROM does not respond).
         """
         raise NotImplementedError()
+
+""" ORM object that describes the firmware that is associated with the FPGA.
+"""
+
+
+
+
+import logging
+import hashlib
+import zlib
+import logging
+import os.path
+import struct
+import urllib2
+import datetime
+
+class FpgaBitstream(object):
+    """ Represents the firmware that is running or to be run on the IceBoard FPGA.
+
+    The firmware is represented by a URL in the database, and is cached in
+    memory when the object is created by the user or when the get_data()
+    method is called if it not already loaded.
+
+    The bitstream is added to the database from a URI by get_bitstream().
+    Normally, the bitstream data is only kept in memory and is not not stored in the database.
+    If the parameter persist=True is provided, the bistream
+    will also be stored in the database for future use.
+    """
+
+    crc32 = None
+    md5_string = None
+    timestamp = None
+    url = None # URL where the binary can be found if not stored locally in the database
+    bitstream_cache = None
+
+
+    def __init__(self, url, load=True):
+        """ Creates a bitstream object from the specified 'url'.
+        """
+        self.logger = logging.getLogger(__name__)
+
+        self.url = url
+        if load:
+            self.load_bitstream()
+
+    def __repr__(self):
+        return '%s' % (self.__class__.__name__)
+
+    def get_bitstream(self):
+        """
+        Fetch the bitstream.
+        """
+        if self.bitstream_cache:
+            return self.bitstream_cache # return from the cache
+        self.logger.info('%r: Reloading during get_bitstream' % self)
+        self.load_bitstream()
+        return self.bitstream_cache # return from the URL
+
+    def load_bitstream(self):
+        """
+        Loads the bitstream contained by the URL into the cache memory and fill the corresponding info fields.
+
+        Notes:
+            BIT file format described in http://www.fpga-faq.com/FAQ_Pages/0026_Tell_me_about_bit_files.htm
+        """
+        BIN_PREFIX = 0xffffffffaa995566
+
+        timestamp = None
+        md5_string = None
+
+        self.logger.info('Reading file from URL %s ...' % self.url)
+        if '://' in self.url:
+            with urllib2.urlopen(self.url) as res:
+                data = res.read()
+        else:
+             # Open as a file with relative path. mode='rb': b is important -> binary
+             with open(self.url, 'rb') as file:
+                data = file.read()
+        self.logger.info('Read %0.3f Mbytes' % (len(data)/1e6))
+
+        is_bin = struct.unpack('>Q',data[0:8])[0] == BIN_PREFIX
+
+        if not is_bin:
+            pos = 0
+            # Field 1 - ignore
+            length = struct.unpack('>H',data[pos:pos+2])[0]
+            self.logger.debug('Field 1: 0x%s' % ''.join(['%0X' % ord(c) for c in data[pos+2:pos+2+length]]))
+            pos += length + 2
+            # Field 2 - always 'a'
+            length = struct.unpack('>H',data[pos:pos+2])[0]
+            field = data[pos+2:pos+2+length]
+            self.logger.debug('Field 2 (%i bytes): %s' % (length,field))
+            if field != 'a':
+                self.logger.error('This is not a valid bit file')
+                return
+            pos += length + 2
+            # Field 3
+            length = struct.unpack('>H',data[pos:pos+2])[0]
+            self.logger.debug('Field 3: %s' % data[pos+2:pos+2+length])
+            pos += length + 2
+            # Field 4
+            tag = data[pos]
+            length = struct.unpack('>H',data[pos+1:pos+2+1])[0]
+            fpga_model = data[pos+2+1:pos+2+1+length]
+            self.logger.debug('Field 4 (tag=%s, length = %i bytes): %s' % (tag, length, fpga_model))
+            pos += length + 2 + 1
+            # Field 5
+            tag = data[pos]
+            length = struct.unpack('>H',data[pos+1:pos+2+1])[0]
+            firmware_date = data[pos+2+1:pos+2+1+length]
+            self.logger.debug('Field 5 (tag=%s, length = %i bytes): %s' % (tag, length, firmware_date))
+            pos += length + 2 + 1
+            # Field 6
+            tag = data[pos]
+            length = struct.unpack('>H',data[pos+1:pos+2+1])[0]
+            firmware_time = data[pos+2+1:pos+2+1+length]
+            self.logger.debug('Field 6 (tag=%s, length = %i bytes): %s' % (tag, length, data[pos+2+1:pos+2+1+length]))
+            pos += length + 2 + 1
+            # Field 7
+            tag = data[pos]
+            length = struct.unpack('>L',data[pos+1:pos+4+1])[0]
+            self.logger.debug('Field 7 (tag=%s, length= %i bytes): [configuration data]' % (tag, length))
+            pos += 4 + 1 # skip the header. Now points to cofiguration data
+            bitstream = data[pos:]
+
+            timestamp_string = firmware_date + ' ' + firmware_time
+            timestamp = datetime.datetime.strptime(firmware_date[:-1] + ' ' + firmware_time[:-1], '%Y/%m/%d %H:%M:%S')
+            valid = True
+        else:
+            bitstream = data
+
+        md5_string = hashlib.md5(bitstream).hexdigest() # compute MD5 sum as a hex string
+        crc32 = zlib.crc32(bitstream) # compute CRC32 of the data
+
+        self.bitstream_cache = bitstream
+        self.crc32 = crc32
+        self.md5_string = md5_string
+        self.timestamp_string = timestamp_string
+        self.timestamp = timestamp
+        return
+
 
 # vim: sts=4 ts=4 sw=4 tw=78 smarttab expandtab
