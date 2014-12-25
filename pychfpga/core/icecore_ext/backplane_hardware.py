@@ -5,20 +5,19 @@
 import logging
 import time
 
-# Import IceBoard hardware handlers
 from lib.eeprom import eeprom as EEPROM
 from lib import ina230 # I2C Voltage and current monitor
 from lib import tmp421 # I2C temperature sensor
 from lib import pca9698 # I2C 40-bit IO Expander
 
-class IceBoxException(Exception):
-    pass
 
-class IceBox(object):
-    """
-    Provides access to the IceBox (IceBoard backplane):
-    """
+class BackplaneHardware(object):
+    """ Class defining the object that allows access to the backplane hardware.
 
+    In the current implementation, this class is instantiated by each
+    IceBoard. The IceCrate handler accesses this class through the master
+    iceboard in the crate.
+    """
     #------------------------------------
     # Define hardware-specific constants
     #------------------------------------
@@ -125,15 +124,6 @@ class IceBox(object):
 
 
     @classmethod
-    def get_backplane_info(cls, iceboard):
-        logger = logging.getLogger(__name__)
-        logger.debug("Attempting to read backplane eeprom to determine board presence")
-        eeprom = EEPROM(iceboard.i2c, 'BP', address=cls.BACKPLANE_EEPROM_DATA_ADDRESS, address_width=cls.BACKPLANE_EEPROM_ADDRESS_WIDTH, write_page_size = cls.BACKPLANE_EEPROM_PAGE_SIZE)
-        data = eeprom.read(0, length=1, noerror=True, verbose=1)
-        logger.debug("Backplane EEPROM returned the value: %i", data[0])
-        return (data[0], None)
-
-    @classmethod
     def get_matching_tx(cls, rx_slot_lane_tuple):
         return cls._BP_RX_TO_TX_MAP[rx_slot_lane_tuple]
 
@@ -142,45 +132,32 @@ class IceBox(object):
         return cls._BP_TX_TO_RX_MAP[tx_slot_lane_tuple]
 
     def __init__(self, iceboard):
+        """ Create all the I2C objects needed to interface the backplane hardware.
+
+        This instance keeps a local reference to 'iceboard', which is a
+        reference to the IceBoard handler (not the HWM object, as this is a
+        transient object). 'iceoard' must provide:
+
+            - iceboard.i2c: a I2C interface object that provides standardized
+              I2C access (handles switch config, bus names etc)
+
+            - iceoard.slot_number: the backplane slot numbe ron which this
+              iceboard is, so we don't reset ourself
+
         """
-        Creates all the I2C objects needed to interface the hardware.
-        For now, we can only do this when the FPGA is configured
-        because access is done through the FPGA.
 
-        For FPGA-based I2C:
-            - fpga_core is not Null
-            - fpga_core provides the following methods
-                - i2c_set_port(...) # Port number 0 (connected to the FPGA I2C switch) is used for all accesses
-                - i2c_write_read(...) # FPGA I2C engine
-        """
+        self._logger = logging.getLogger(__name__)
+        self._logger.debug('%r: Initializing backplane hardware' % self)
 
-        #import iceboard  as ib
-        #if not isinstance(iceboard, ib.IceBoard):
-        #    raise IceBoxException('Please provide a single iceboard object')
-
-        try:
-            iter(iceboard)
-        except TypeError:
-            pass
-        else:
-            raise IceBoxException('Please provide a single iceboard object')
-#
-#        if type(iceboard)!=ib.IceBoard:
-#            raise IceBoxException('Please provide a single iceboard object')
-#
-
+        self._iceboard = iceboard
+        self._i2c = iceboard.i2c
 
         self._I2C_BACKPLANE_BUS_NAME = 'BP'
-        self._logger = logging.getLogger(__name__)
-        self._logger.debug('Initializing Iceboard hardware')
-        self._i2c = iceboard.i2c
-        self._iceboard_hw = iceboard.hw
-        self._iceboard = iceboard
 
         self._logger.info(' Instantiating Backplane I2C resource managers')
-        self._eeprom = EEPROM(iceboard.i2c, 'BP', address=self.BACKPLANE_EEPROM_DATA_ADDRESS, address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH, write_page_size = cls.BACKPLANE_EEPROM_PAGE_SIZE)
-        self._serial = EEPROM(iceboard.i2c, 'BP', address=self.BACKPLANE_EEPROM_SERIAL_ADDRESS, address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH, write_page_size = cls.BACKPLANE_EEPROM_PAGE_SIZE)
-        self._qsfp_eeprom = EEPROM(iceboard.i2c, 'BP', address=self.BACKPLANE_QSFP_ADDRESS, address_width=self.BACKPLANE_QSFP_ADDRESS_WIDTH)
+        self._eeprom_data = EEPROM(iceboard.i2c, bus_name='BP', address=self.BACKPLANE_EEPROM_DATA_ADDRESS, address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH, write_page_size = self.BACKPLANE_EEPROM_PAGE_SIZE)
+        self._eeprom_serial = EEPROM(iceboard.i2c, bus_name='BP', address=self.BACKPLANE_EEPROM_SERIAL_ADDRESS, address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH, write_page_size = self.BACKPLANE_EEPROM_PAGE_SIZE)
+        self._qsfp_eeprom = EEPROM(iceboard.i2c, bus_name='BP', address=self.BACKPLANE_QSFP_ADDRESS, address_width=self.BACKPLANE_QSFP_ADDRESS_WIDTH)
 
         self._logger.info(' Instantiating Backplane I2C temperature sensors')
         self._tmp_slot1 = tmp421.tmp421(self._i2c, self._TMP_SLOT1_ADDR, 'BP')
@@ -338,19 +315,8 @@ class IceBox(object):
     def close(self):
         self._logger.info('Closing Icebox hardware')
 
-
-    # def get_backplane_info(self, iceboard):
-    #     # logger = logging.getLogger(__name__)
-    #     self._logger.debug("Attempting to read backplane eeprom to determine board presence")
-    #     # eeprom = EEPROM(iceboard.i2c, 'BP', address=cls.BACKPLANE_EEPROM_ADDRESS)
-    #     eeprom_data = self._eeprom.read(0, length=1, noerror=True, verbose=1)
-    #     self._logger.debug("Backplane EEPROM returned the value: %i", data[0])
-    #     slot_number = self._iceboard.get_slot_number()
-    #     return (eeprom_data[0], slot_number)
-
-
     def init(self):
-        """Initializes the backplane to a known state"""
+        """Initializes the backplane hardware to a known state"""
 
         self._init_qsfp_ctrl()
         self._init_reset_ctrl() # The power I2c bus needs to be bridged to the monitor I2C bus for this to work
@@ -374,7 +340,7 @@ class IceBox(object):
 
         for temp_sensor in temperature_sensor_name:
             if temp_sensor not in self.TEMPERATURE_SENSOR_TABLE:
-                raise IceBoxException('Invalid temperature sensor name')
+                raise ValueError('Invalid temperature sensor name')
             else:
                 tmp_object = self.TEMPERATURE_SENSOR_TABLE[temp_sensor]
                 tmp_object.init()
@@ -397,7 +363,7 @@ class IceBox(object):
 
         for power_sensor in power_sensor_name:
             if power_sensor not in self.POWER_SENSOR_TABLE:
-                raise IceBoxException('Invalid current/power monitor name')
+                raise ValueError('Invalid current/power monitor name')
             else:
                 power_sensor_list = self.POWER_SENSOR_TABLE[power_sensor]
                 power_sensor_object = power_sensor_list[0]
@@ -436,12 +402,23 @@ class IceBox(object):
     def get_number_of_slots(self):
         return self.NUMBER_OF_SLOTS
 
-    def read_eeprom(self, addr, length=1):
-        return self._eeprom.read(addr, length = length)
+    def read_backplane_eeprom(self, addr, length=1, **kwargs):
+        return self._eeprom_data.read(addr, length, **kwargs)
 
-    def get_eeprom_serial_number(self):
+    def write_backplane_eeprom(self, addr, data, **kwargs):
+        return self._eeprom_data.write(addr, data, **kwargs)
+
+    def is_backplane_present(self):
+        """ Detect if the backplane is present by probing its EEPROM with a dummy I2C acces.
+        """
+        return self._eeprom_data.is_present() # perform a dummy access
+
+    # def read_eeprom(self, addr, length=1):
+    #     return self._eeprom.read(addr, length = length)
+
+    def get_backplane_eeprom_serial_number(self):
         """ return the 128-bit hardware-coded EEPROM serial number as a hex string. """
-        return ''.join(['%02X' % v for v in self._serial.read(0x80, length=16)])
+        return ''.join(['%02X' % ord(v) for v in self._eeprom_serial.read(0x80, length=16)])
 
     def set_led(self, led_name, state):
         """
@@ -463,7 +440,7 @@ class IceBox(object):
 
         for (led, led_state) in zip(led_name,state):
             if led not in self.LED_MAP:
-                raise IceBoxException('Invalid LED name')
+                raise ValueError('Invalid LED name')
             else:
                 (led_control_object, led_control_register, led_control_bitnumber) = self.LED_MAP[led]
                 led_control_register='CFG%i' % led_control_register #Converting the resister in the map into the correct string format
@@ -489,7 +466,7 @@ class IceBox(object):
 
         for led in led_name:
             if led not in self.LED_MAP:
-                raise IceBoxException('Invalid LED name')
+                raise ValueError('Invalid LED name')
             else:
                 (led_control_object, led_control_register, led_control_bitnumber) = self.LED_MAP[led]
                 led_control_register='IN%i' % led_control_register #Converting the resister in the map into the correct string format
@@ -523,7 +500,7 @@ class IceBox(object):
 
         for temp_sensor in temperature_sensor_name:
             if temp_sensor not in self.TEMPERATURE_SENSOR_TABLE:
-                raise IceBoxException('Invalid temperature sensor name')
+                raise ValueError('Invalid temperature sensor name')
             else:
                 tmp_object = self.TEMPERATURE_SENSOR_TABLE[temp_sensor]
                 temperature_dict[temp_sensor]=tmp_object.get_temperature()
@@ -558,7 +535,7 @@ class IceBox(object):
 
         for power_sensor in power_sensor_name:
             if power_sensor not in self.POWER_SENSOR_TABLE:
-                raise IceBoxException('Invalid power sensor name')
+                raise ValueError('Invalid power sensor name')
             else:
                 power_sensor_list = self.POWER_SENSOR_TABLE[power_sensor]
                 power_object = power_sensor_list[0]
@@ -571,7 +548,7 @@ class IceBox(object):
         """
         Returns the board's serial number.
         """
-        return self.get_eeprom_serial_number(); # tentative code
+        return self.get_backplane_eeprom_serial_number(); # tentative code
 
     def get_info(self):
         """Loads the info data on the motherboard"""
@@ -591,7 +568,7 @@ class IceBox(object):
 
         for slotnum in slots:
             if slotnum not in range(1,self.NUMBER_OF_SLOTS + 1) :
-                raise IceBoxException('Invalid Slot number %i' % slots)
+                raise ValueError('Invalid Slot number %i' % slots)
 
         self.set_led(slots, state)
 
@@ -609,7 +586,7 @@ class IceBox(object):
         for slotnum in slots:
 
             if slotnum not in range(1,self.NUMBER_OF_SLOTS + 1) :
-                raise IceBoxException('Invalid Slot number %i' % slotnum)
+                raise ValueError('Invalid Slot number %i' % slotnum)
             else:
                 (qsfp_control_object, control_register, ModPrs_bitnum, ResetL_bitnum, IntL_bitnum, ModSelL_bitnum) = self.QSFP_CTRL_MAP[slotnum]
                 mask = 1<< ResetL_bitnum
@@ -642,7 +619,7 @@ class IceBox(object):
         for slotnum in slots:
 
             if slotnum not in range(1,self.NUMBER_OF_SLOTS + 1) :
-                raise IceBoxException('Invalid Slot number %i' % slotnum)
+                raise ValueError('Invalid Slot number %i' % slotnum)
             else:
                 (qsfp_control_object, control_register, ModPrs_bitnum, ResetL_bitnum, IntL_bitnum, ModSelL_bitnum) = self.QSFP_CTRL_MAP[slotnum]
 
@@ -670,13 +647,13 @@ class IceBox(object):
         """
 
         if not isinstance(slot, int):
-            raise IceBoxException('Must perform action on one slot at a time. Slot must be an integer.')
+            raise ValueError('Must perform action on one slot at a time. Slot must be an integer.')
         if slot not in range(1,self.NUMBER_OF_SLOTS + 1) :
-            raise IceBoxException('Invalid Slot number %i' % slot)
+            raise ValueError('Invalid Slot number %i' % slot)
         qstatus=self.qsfp_status(slot)
 
         if not qstatus['present'][0]:  #Checking to see if QSPF present
-            raise IceBoxException('No QSFP device loaded on slot number %i' % slot)
+            raise RuntimeError('No QSFP device loaded on slot number %i' % slot)
 
         (qsfp_control_object, control_register, ModPrs_bitnum, ResetL_bitnum, IntL_bitnum, ModSelL_bitnum) = self.QSFP_CTRL_MAP[slot]
 
@@ -740,7 +717,7 @@ class IceBox(object):
         for slotnum in slots:
 
             if slotnum not in range(1,self.NUMBER_OF_SLOTS + 1) :
-                raise IceBoxException('Invalid Slot number %i' % slotnum)
+                raise ValueError('Invalid Slot number %i' % slotnum)
             else:
 
                 data={}
@@ -775,7 +752,7 @@ class IceBox(object):
         if slots=='ALL' and state==1:  #We wish to perform a full crate reset
 
             if reset_type not in self.FULLBP_RESETS_MAP:
-                raise IceBoxException('Unknown reset type %s' % reset_type)
+                raise ValueError('Unknown reset type %s' % reset_type)
             else:
 
                 (reset_control_obj, controlreg, mask, inactive, active) = self.FULLBP_RESETS_MAP[reset_type]
@@ -808,7 +785,7 @@ class IceBox(object):
 
                 # if isenabled and slot != self._iceboard.slot_number  :
                 elif slot not in range(1,self.NUMBER_OF_SLOTS + 1) :
-                    raise IceBoxException('Invalid Slot number %i' % slot)
+                    raise ValueError('Invalid Slot number %i' % slot)
                 else:
                     (reset_control_obj, arm_reset_reg, power_down_reg, bitnumber) = self.SLOT_RESETS_MAP[slot]
                     if resettype == 'ARM':
@@ -818,7 +795,7 @@ class IceBox(object):
                         reset_cfg_register='CFG%i' % power_down_reg
                         reset_output_register='OUT%i' % power_down_reg
                     else:
-                        raise IceBoxException('Unknown reset type, will not perform reset on slot %i' % slot)
+                        raise ValueError('Unknown reset type, will not perform reset on slot %i' % slot)
 
                     mask = 1 << bitnumber
                     if isenabled==1 or isenabled=='pulse':  #Turning reset on

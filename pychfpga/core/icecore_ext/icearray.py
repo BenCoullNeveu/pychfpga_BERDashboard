@@ -17,10 +17,10 @@ import re # used by mdns_discovery
 from sqlalchemy.orm.session import Session
 
 from . import mdns_discovery
-from pychfpga.icecore import hardware_map
-from pychfpga.icecore.iceboard import IceBoard
-from pychfpga.icecore.fpga_bitstream import FpgaBitstream
-from pychfpga.icecore.tuber import TuberObject # used to ping boards
+from ..icecore import hardware_map
+from ..icecore.iceboard import IceBoard
+from ..icecore.fpga_bitstream import FpgaBitstream
+from ..icecore.tuber import TuberObject # used to ping boards
 
 class IceException(Exception):
     pass
@@ -69,9 +69,8 @@ class IceArray(object):
         self.logger.debug('Init IceArray parent')
         self.interface_ip_addr = interface_ip_addr
 
-        # set the interface IP address on the FPGA irmware class attribute so
-        # this address is used for any firmware instances created on this
-        # computer.
+        # Set the interface IP address that will be used to bind UDP sockets
+        # for direct FPGA MMI interfaces.
         __main__._host_interface_ip_addr = interface_ip_addr
 
         self._hwmap = hardware_map.HardwareMap(uri=uri, *args, **kwargs)
@@ -95,6 +94,7 @@ class IceArray(object):
 
     def __repr__(self):
         return '%s' % self.__class__.__name__
+
     def discover(self, timeout=0.5):
         """
         Discover all hardware and firmware resources on the specified

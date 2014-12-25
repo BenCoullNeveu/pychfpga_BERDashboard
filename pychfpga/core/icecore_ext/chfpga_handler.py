@@ -5,17 +5,21 @@ import logging
 from datetime import datetime
 
 # Note: cannot use relative imports (..icecore ir ..core) below because the top script is usually in  .., so .. is not considered a package and we can't go there
-from pychfpga.icecore import iceboard
-from pychfpga.icecore import tuber # Used to get TuberRemoteError
+from ..icecore import iceboard
+from ..icecore import tuber # Used to get TuberRemoteError
+from ..icecore.hw import ipmi_fru # Used to get TuberRemoteError
+from ..icecore.hw.ipmi_fru import FRU, Board, Product, Chassis, MultiDict, CHASSIS_SUBCHASSIS
 
-from pychfpga.core import I2C as i2c
-from pychfpga.core import GPIO as gpio
 
-from iceboard_hardware import IceBoardHardware
-from iceboard_hardware import I2CInterface
-import icebox # don't use from .. import ... because of circular import problems
+from .. import I2C as i2c
+from .. import GPIO as gpio
 
-from pychfpga.icecore.hw.ipmi_fru import FRU, Board, Product, MultiDict
+from . import icecrate_handler # this module is not referenced here, but loading it registers the handler with IceCrate.
+from .iceboard_hardware import IceBoardHardware
+from .iceboard_hardware import I2CInterface
+from .backplane_hardware import BackplaneHardware
+# import icebox # don't use from .. import ... because of circular import problems
+
 
 
 # class IceBoardException(Exception):
@@ -24,22 +28,16 @@ from pychfpga.icecore.hw.ipmi_fru import FRU, Board, Product, MultiDict
 IceBoardException = iceboard.IceBoardException
 
 class chFPGAHandler(iceboard.IceBoardHandler):
-    """
-    Provides basic access to IceBoard firmware and hardware.
+    """   Provides basic access to CHIME-specific basic IceBoard firmware and hardware resources.
 
-    This object inherits from a generic Hardware Manager resource,
-    which allows the iceboard objects to be added to the hardware
-    map database.
+    Differences with the standard Iceboard handler:
 
-    The methods and properties have access to the hardware or firmware
-    in one of the the following ways:
-        - The low-level hardware access is made directly in python
-          through the ARM or FPGA I2C links to the board.
-        - The low-level hardware access is implemented in the ARM<
-          software, and all methods and properties are imported
-          through tuber.
+    - A direct FPGA Ethernet-based 8-bit Memory Map Interface is provided
+    - Access to the IceBoard hardware is provided through the FPGA I2C interface. Most of the equivalent methods are provided by the ARM, but missing methods are offered through this FPGA interface.
+    - Acces to the backplane hardware. This is used by the IceCrate handler to provide backplane services.
+    - The standard ARM mezzanine identification methods are intecepted to allow support for non-IPMI McGill ADC mezzanine boards.
 
-    Python-based application-specific FPGA firmware and hardware handler are meant to be derived from this class.
+     Python-based application-specific FPGA firmware and hardware handler are meant to be derived from this class.
     """
 
     __handler_for__ = iceboard.IceBoard
@@ -110,8 +108,8 @@ class chFPGAHandler(iceboard.IceBoardHandler):
         self._mezzanine_ipmi_cache = {1:None, 2: None}
         self._is_open = None
         self._is_core_open = None
-
-        self.set_auto_open_attributes(['mmi','hw', 'i2c', 'core_gpio', 'core_i2c'], self.open_core)
+        self._core_auto_open_attributes = ['mmi','hw', 'bp', 'i2c', 'core_gpio', 'core_i2c']
+        self.set_auto_open_attributes(self._core_auto_open_attributes, self.open_core)
 
 
     def hwm_update(self, hwm_object):
@@ -185,13 +183,17 @@ class chFPGAHandler(iceboard.IceBoardHandler):
         self.hw = IceBoardHardware(iceboard=self)
         self.hw.open()
 
+        self.bp = BackplaneHardware(iceboard=self)
+        self.bp.open()
+
         self._is_core_open = True
 
     def close_core(self):
 
         if self.mmi: self.mmi.close()
         if self.hw: self.hw.close()
-        self.set_auto_open_attributes(['mmi','hw', 'i2c', 'core_gpio', 'core_i2c'], self.open_core)
+        if self.bp: self.bp.close()
+        self.set_auto_open_attributes(self._core_auto_open_attributes, self.open_core)
         self._is_core_open = False
 
     def is_core_open(self):
@@ -210,7 +212,7 @@ class chFPGAHandler(iceboard.IceBoardHandler):
         # Read basic backplane information (backplane S/N, slot number) so we
         # know where this board is in the array
         self.slot_number = self.get_slot_number() # this method is provided by hw or arm
-        (self.backplane_serial, __) = icebox.IceBox.get_backplane_info(iceboard = self)
+        # (self.backplane_serial, __) = icebox.IceBox.get_backplane_info(iceboard = self)
 
         # Detect the mezzanines
         # self.detect_mezz(force_type_string=forced_mezz_type)
@@ -261,13 +263,6 @@ class chFPGAHandler(iceboard.IceBoardHandler):
         """
         return self.core_i2c.set_port(*args, **kwargs)
 
-    def get_slot_number(self):
-        """ Reads the slot number from the IO Expander. This is not necessarily the slot number stored in the hardware map.
-        Slots numbers range from 1 to 16. A slot number of 0 or None indicates that the board is not connected to a backplane.
-        NOTE: It would be nice if the ARM could provide this function.
-        """
-        return self.hw.get_slot_number()
-
 
     def _mezzanine_eeprom_read(self, mezzanine, addr, length,**kwargs):
         """ Reads the EEPROM on the specified mezzanine.
@@ -286,7 +281,9 @@ class chFPGAHandler(iceboard.IceBoardHandler):
         if not self.is_mezzanine_present(mezzanine): # Check mezzanine presence using the FMC PRSNT line.
             return None
 
+
         try:
+            # *** JFC: broken now. fixme
             return self.core_handler._get_mezzanine_ipmi(mezzanine) # Try to get the ipmi data from tuber
         except tuber.TuberRemoteError:
             return self._get_mezzanine_mcgill_ipmi(mezzanine)
@@ -391,5 +388,67 @@ class chFPGAHandler(iceboard.IceBoardHandler):
             return  ipmi.product.part_number
         else:
             return None
+
+    # Backplane management
+
+    def get_slot_number(self):
+        """ Reads the slot number from the IO Expander. This is not necessarily the slot number stored in the hardware map.
+        Slots numbers range from 1 to 16. A slot number of 0 or None indicates that the board is not connected to a backplane.
+        NOTE: It would be nice if the ARM could provide this function.
+        """
+        if self.is_backplane_present():
+            return self.hw.get_slot_number()
+        else:
+            return None
+
+    def is_backplane_present(self):
+        """ Checks if the Iceoard is connected to a backplane by probing the backplane's EEPROM.
+        """
+        return self.bp.is_backplane_present()
+
+    def read_backplane_eeprom_ipmi(self):
+        """ Return the IPMI data found on the backplane EEPROM.
+        """
+        return FRU.decode(self.bp.read_backplane_eeprom)
+
+    def write_backplane_eeprom_ipmi(self, part_number, serial_number, product_version ):
+        '''Write IPMI-formatted data to the backplane EEPROM.
+
+        These fields are read back and parsed by software, so you have
+        to get them right or things will misbehave. This method currently
+        expects the following formatting:
+
+        >>> m._eeprom_write_ipmi(
+        ...     part_number="MGK7MB",
+        ...     serial_number="004",
+        ...     product_version="2")
+
+        DON'T fill incorrect values unless they're visibly incorrect,
+        since this data tends to be useful when debugging physical
+        problems (e.g. tracing board history). Incorrect data that
+        pretends to be valid can make this kind of debugging very painful.
+        '''
+
+
+        chassis_type= CHASSIS_SUBCHASSIS
+
+        fru = FRU(
+            chassis=Chassis(
+                type_code=chassis_type,
+                part_number=part_number,
+                serial_number=serial_number
+            ),
+
+            product=Product(
+                manufacturer="Winterland",
+                product_name="IceCrate",
+                part_number=part_number,
+                product_version=product_version,
+                serial_number=serial_number,
+                asset_tag="",
+                fru_file="",
+            )
+        )
+        return self.bp.write_backplane_eeprom(0, fru.encode())
 
 # vim: sts=4 ts=4 sw=4 tw=80 smarttab expandtab

@@ -41,23 +41,21 @@ class eeprom(object):
         return bytes
 
     def read(self, addr, length=1, retry=0, **kwargs):
-        """ Reads from the EEPROM
-        Data is returned as a string
+        """ Reads from the EEPROM. Data is returned as a string.
+
+        if length == -1, the data is read from the specified address until the end of the EEPROM.
         """
+
+        if length == -1:
+            length = (1 << self.address_width) - addr
 
         if addr is not None:
             if (addr <0 or (addr+length-1) > (2**self.address_width-1)):
                 raise ValueError('Invalid EEPROM address range. All reads must be from adress 0x%x and 0x%x' % (0, (2**self.address_width-1)))
 
-        # trial = 0
-        # while True:
         try:
             self.i2c.select_bus(self.bus_name, retry=retry)
-                # break
         except:
-                # self.logger.warning('I2C Error while setting I2C switch to %s. Retrying...' % self.bus_name)
-                # trial +=1
-                # if trial>retry:
             self.logger.error('Failed to set I2C switch to %s.' % (self.bus_name))
             raise
 
@@ -123,6 +121,16 @@ class eeprom(object):
         self.i2c.select_bus(self.bus_name)
         addr_bytes = self._get_addr_bytes(addr)
         self.i2c.write_read(self.address + addr_bytes[0], addr_bytes[1:], read_length = 0, **kwargs) # sets the address
+
+    def is_present(self, page = 0):
+        """ Test the presence of the EEPROM for specified page (i.e. I2C address offset)
+        """
+        self.i2c.select_bus(self.bus_name, retry=3)
+        try:
+            self.i2c.write_read(self.address + page, data=[], read_length=0, retry=0 ) #dummy I2C acces
+        except self.i2c.I2CException:
+            return False
+        return True
 
     def init(self):
         """ Initializes the EEPROM handling module (the EEPROM is not accecssed)"""
