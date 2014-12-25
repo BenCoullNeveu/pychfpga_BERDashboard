@@ -29,18 +29,16 @@ reload(logging.handlers) # we need to reload the handlers as well so they are in
 
 # logging.setLoggerClass(MyLogger)
 
-def delete_modules(module_name):
-    import sys
-    for name in [n for n in sys.modules.keys() if n.startswith(module_name)]:
-        del sys.modules[name]
+# def delete_modules(module_name):
+#     import sys
+#     for name in [n for n in sys.modules.keys() if n.startswith(module_name)]:
+#         del sys.modules[name]
 
+from core import FpgaBitstream
+from core import IceArray, close_all_sockets
+from core import IceBoard
+from core.chFPGA_controller import chFPGA_controller as chfpgaHandler
 
-from pychfpga.icecore_ext.icearray import IceArray, close_all_sockets
-# from pychfpga.icecore.fpga_bitstream import FpgaBitstream
-from pychfpga.icecore.iceboard import IceBoard
-
-from pychfpga.core.chFPGA_controller import chFPGA_controller as chfpgaHandler
-# import MGADC08.MGADC08
 #####################################
 
 # import inspect
@@ -100,6 +98,9 @@ if __name__ == '__main__':
     # IceArray.close_all_sessions() # close all previously opened sessions
 
     # ca = IceArray(uri='sqlite:///test.db', interface_ip_addr=args.if_ip)
+
+    chfpgaHandler.register_fpga_bitstream(FpgaBitstream(url = args.bitfile, load=False), tag= None)
+
     ca = IceArray(interface_ip_addr=args.if_ip)
     # ca.load_iceboards('iceboard_list.txt')
     # ca.discover(timeout=2) # automatically update the hardware map database with discovered resources
@@ -112,16 +113,15 @@ if __name__ == '__main__':
     #     fpga_bitstream = ca.get_fpga_bitstream(crc = args.bitfile_crc) # Get a new bitstream from the database
     # else:
     #     fpga_bitstream = ca.get_fpga_bitstream(args.bitfile, ChimeFpgaFirmware) # Get a new bitstream from the database (or create a new database entry if it does not exist yet)
-    chfpgaHandler.register_fpga_bitstream(url = args.bitfile, tag= None)
 
     # c = ca.get_iceboards(subarray=args.subarray).index_by(IceBoard.serial_number) # get one or more IceBoards from specified subarray
     #c = ca.get_iceboards(subarray=args.subarray) # get one or more IceBoards from specified subarray
 
-    c7 = IceBoard(tuber_uri='http://10.10.10.57/tuber', serial_number='7')
-    ca.add(c7)
-    ca.flush()
-    c7.set_application(chfpgaHandler, configure_fpga=True, tag=None)
-
+    c7 = IceBoard(tuber_uri='http://10.10.10.57/tuber', serial_number='7', app_handler = chfpgaHandler)
+    ca.add(c7) # Add the iceboard to the hardware map
+    ca.flush() # Execute pending operatins to make sure the IceBoard is assigned a primary key
+    # c7.set_application(chfpgaHandler, configure_fpga=True, tag=None)
+    c7.set_fpga_bitstream(force=args.force or None) # Program the FPGA
     # shortcut to index c[7] as c7 etc.
     # print 'The following IceBoards were found in Subarray %r through interface %s:' % (args.subarray, args.if_ip)
     # for ib in c:
