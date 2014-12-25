@@ -1,0 +1,37 @@
+<div class="row">
+
+	<div class="col-md-6">
+		<h1>Mezzanine 1</h1>
+
+		<p>
+			Mezzanine A is
+				<strong ng-if="!m1_present">not</strong> present and
+				<strong ng-if="!m1_powered">not</strong> powered.
+		</p>
+
+		<button type="button"
+				class="btn btn-warning"
+				ng-click="ib.set_mezzanine_power(false, 1); ib.flush()">
+			Turn off mezzanine 1
+		</button>
+	</div>
+
+	<div class="col-md-6">
+		<h1>Mezzanine 2</h1>
+
+		<p>
+			Mezzanine B is
+				<strong ng-if="!m2_present">not</strong> present and
+				<strong ng-if="!m2_powered">not</strong> powered.
+		</p>
+
+		<button type="button"
+				class="btn btn-warning"
+				ng-click="ib.set_mezzanine_power(false, 2); ib.flush()">
+			Turn off mezzanine 2
+		</button>
+	</div>
+
+</div>
+
+<!-- vim: set ts=2 sw=2 tw=0: -->
