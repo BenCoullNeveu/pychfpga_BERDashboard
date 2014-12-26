@@ -1,9 +1,0 @@
-{
-	extern "C"
-	{
-		oops;
-		tuber_voops;
-		tuber_error_clear;
-		tuber_error_fetch;
-	};
-};
