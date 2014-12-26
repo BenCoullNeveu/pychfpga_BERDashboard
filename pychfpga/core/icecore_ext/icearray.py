@@ -19,7 +19,6 @@ from sqlalchemy.orm.session import Session
 from . import mdns_discovery
 from ..icecore import hardware_map
 from ..icecore.iceboard import IceBoard
-from ..icecore.fpga_bitstream import FpgaBitstream
 from ..icecore.tuber import TuberObject # used to ping boards
 
 class IceException(Exception):
@@ -104,11 +103,6 @@ class IceArray(object):
         self.commit() # commit any changes made during discovery
         #
 
-    def get_fpga_bitstream(self, *args, **kwargs):
-        """ Get a bitstream from the database or create one if it does not exist. Returns the database object.
-        This is a proxy for FpgaBitstream.get_bitstream()
-        """
-        return FpgaBitstream.get_bitstream(self,*args, **kwargs)
 
     def get_iceboards(self, serials=[], subarray=[], *args, **kwargs):
         """
