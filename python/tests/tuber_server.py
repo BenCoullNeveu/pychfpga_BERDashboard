@@ -125,20 +125,27 @@ def register(port, objname, obj):
 
 def launch():
 
-    startup_semaphore = threading.Semaphore(0)
-    # Start up a background webserver for each of them.
+    # We need to ensure the server thread starts up fully before creating any
+    # client interactions. We do this using a semaphore.
+    s = threading.Semaphore(0)
 
+    # Start up a background webserver
     def start_tornado():
         application = Application([
             (r"/tuber", TuberHandler),
         ])
         for (port, _) in _objectregistry:
             application.listen(port)
+
+        # The client may now resume
+        s.release()
+
         IOLoop.instance().start()
 
     global _thread
     _thread = threading.Thread(target=start_tornado)
     _thread.start()
+    s.acquire()
 
 
 def kill():

@@ -21,7 +21,8 @@ We use this combination to test the following:
 '''
 
 from hardware_map import HardwareMap, HWMResource
-from iceboard import IceBoard
+from iceboard import IceBoard, IceCrate
+from fmc_mezzanine import FMCMezzanine
 
 from sqlalchemy import Column, Integer, String, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship, backref

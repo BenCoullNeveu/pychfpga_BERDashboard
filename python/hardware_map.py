@@ -516,12 +516,7 @@ class HWMHandlerManager(object):
         def __delete__(self, obj):
             pass
 
-    # Class attributes
-    # _handler_registry = {} # (handler_key: handler)
-    _handler = UpdateHandler() # If no instance _handler exist, access to _handler will invoke the data descriptor to create the instance _handler
     _handler = None # If no instance _handler exist, access to _handler will invoke the data descriptor to create the instance _handler
-
-    # Instance attributes
 
     @classmethod
     def register_handler(cls, class_, class_name=None):
@@ -536,12 +531,12 @@ class HWMHandlerManager(object):
         make visible the methods and attributes of this core object.
         """
         # Make sure this class has its own handler registry so we don't access the subclass registry
-        if '_local_python_handler_classes' not in cls.__dict__:
-            cls._local_python_handler_classes = {}
+        if '_handler_class_registry' not in cls.__dict__:
+            cls._handler_class_registry = {}
 
         if not class_name:
             class_name = class_.__name__
-        cls._local_python_handler_classes[class_name]=class_
+        cls._handler_class_registry[class_name]=class_
 
     def get_handler(self):
         """ Return the current handler for this Hardware Map instance.
@@ -580,22 +575,22 @@ class HWMHandlerManager(object):
 
             # Make sure the top superclass has its own registery of handlers.
             # We use .__dict__ to ensure we do not access the subclass version of the attribute
-            if  '_handler_registry' not in type(self).__dict__:
-                type(self)._handler_registry = {}
+            if  '_handler_instance_registry' not in type(self).__dict__:
+                type(self)._handler_instance_registry = {}
 
             # If the key exists in the handler registry, retreive the handler from it
-            if handler_key in self._handler_registry:
+            if handler_key in self._handler_instance_registry:
                 logger.info('%r(HWMHandlerManager): Reusing registered handler' % self)
-                self._handler = self._handler_registry[handler_key]
+                self._handler = self._handler_instance_registry[handler_key]
                 self.update_handler()
 
             # If not, let's create a handler.
             # If there is a local python class for the specified application handler, create it. We pass it a tuber core handler.
-            elif handler_name in self._local_python_handler_classes:
-                handler_class = self._local_python_handler_classes[handler_name]
+            elif handler_name in self._handler_class_registry:
+                handler_class = self._handler_class_registry[handler_name]
                 logger.info('%r(HWMHandlerManager): Creating handler %s' % (self, handler_name))
                 self._handler = handler_class(**kwargs)
-                type(self)._handler_registry[handler_key] = self._handler # register the handler for this instance
+                type(self)._handler_instance_registry[handler_key] = self._handler # register the handler for this instance
                 self.update_handler()
             else:
                 logger.error('%r: HWMHandlerManager: No handler was found with the name %r. Using an empty handler instead.' % (self, handler_name))
@@ -608,6 +603,7 @@ class HWMHandlerManager(object):
 
     def __dir__(self):
         """ Return the list of attributes of this class and of those of the handler."""
+        # *** JFC: May need to e fixed for multiple inheritance (use MRO)
         if not self._handler: # if the handler is invalid, try to get a valid one
             self.init_handler()
         return list(set(type(self).__dict__.keys() + self.__dict__.keys() + (dir(self._handler) if self._handler else [])))
@@ -689,7 +685,7 @@ class HandlerMeta(type):
         name = dict_['__handler_name__']
         if base and name:
             if not issubclass(base, HWMHandlerManager):
-                raise AttributeError("The class assigned to '__handler_for__' must be a subclass of HWMHandlerManager for %r" % classname)
+                raise AttributeError("%s defined '__handler_for__'=%r, but the target class is not a subclass of HWMHandlerManager" % (classname, base))
             base.register_handler(cls, name)
         type.__init__(cls, classname, bases, dict_)
 
@@ -710,7 +706,7 @@ class Handler(object):
         """
         self.logger = logging.getLogger(__name__)
         self.logger.debug('Handler: Instantiating Handler for %r' % (self))
-        super(Handler, self).__init__() # This is just calling 'object', so we strip all parameters
+        super(Handler, self).__init__(**kwargs) # This is just calling 'object', so we strip all parameters
 
     def hwm_update(self, hwm_object):
         """ Is called when the Hardware Map object might have changed to
@@ -736,10 +732,16 @@ class HWMResource(Base):
         return sqlalchemy.orm.object_session(self)
 
     def __init__(self, *args, **kwargs):
+
+        # SQLAlchemy 's Base is not collaborative: it will break the MRO
+        # access chain, so some superclass objects might never be initialized.
+        # We explicitely call Base's __init__() and the next item in the MRO
+        # chain to solve this problem.
+
         Base.__init__(self, *args, **kwargs)
         super(Base, self).__init__(*args, **kwargs) # Go to the next MRO object *after* Base
 
-
+# *** JFC: Is this needed anymore?
 class TuberHWMResource(HWMResource, tuber.TuberObject):
     '''A base class for HWMResources that correspond to TuberObjects.'''
     __abstract__ = True
