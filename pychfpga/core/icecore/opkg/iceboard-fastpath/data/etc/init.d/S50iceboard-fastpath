@@ -1,0 +1,34 @@
+#!/bin/sh
+
+start() {
+        echo -n "Starting iceboard fastpath: "
+        umask 077
+        /sbin/start-stop-daemon -S -q -b -p /var/run/fastpath.pid --exec /usr/sbin/fastpath -- -w /home/www -p 80
+        echo "OK"
+}
+stop() {
+	echo -n "Stopping iceboard fastpath: "
+	/sbin/start-stop-daemon -K -q -p /var/run/fastpath.pid
+	echo "OK"
+}
+restart() {
+	stop
+	start
+}
+
+case "$1" in
+	start)
+		start
+		;;
+	stop)
+		stop
+		;;
+	restart|reload)
+		restart
+		;;
+	*)
+		echo "Usage: $0 {start|stop|restart}"
+		exit 1
+esac
+
+exit $?

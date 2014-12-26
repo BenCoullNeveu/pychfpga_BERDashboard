@@ -1,0 +1,9 @@
+*.xml
+*.xdc
+*.dcp
+*.v
+*.vhdl
+*.mif
+*/*/
+*.vho
+*.upgrade_log
