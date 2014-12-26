@@ -102,7 +102,6 @@ class TuberCategory(object):
         self.category = category
         self.getobject = getobject
         self.arg_mappers = arg_mappers
-
     def __call__(decorator, cls):
 
         def __getattr__(self, name):
@@ -205,7 +204,7 @@ class TuberObject(object):
     # def __init__(self, hostname='localhost'):
     #     self.hostname = hostname
 
-    def __init__(self, uri, obj_name=None):
+    def __init__(self, uri=None, obj_name=None, **kwargs):
         """
         uri: Address used to access the resource remotely
         class_name: Name of the class to be accessed
@@ -214,6 +213,8 @@ class TuberObject(object):
         self.hostname = uri # temporary patch
         self._tuber_uri = uri
         self._tuber_objname = obj_name
+        print kwargs
+        super(TuberObject, self).__init__(**kwargs) # Make tuber collaborative
 
     @property
     def tuber_uri(self):
@@ -295,7 +296,10 @@ class TuberObject(object):
         '''Provide a list of what's here. (Used for tab-completion.)'''
 
         (meta, _, _) = self._tuber_get_meta()
-        return meta.properties + meta.methods
+        # We need to gather all class attributes from the MRO chain so we don't hide other superclasses
+        class_attributes = [item  for class_ in type(self).mro() for item in class_.__dict__.keys()]
+        instance_attributes = self.__dict__.keys()
+        return list(set(class_attributes + instance_attributes + meta.properties + meta.methods))
 
     def _tuber_get_meta(self):
         '''Retrieve metadata associated with the remote network resource.

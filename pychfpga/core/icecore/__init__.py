@@ -49,8 +49,11 @@ from hardware_map import (
 )
 
 from iceboard import (
-    IceCrate,
-    IceBoard # *** JFC: will move to its own module
+    IceBoard
+)
+
+from icecrate import (
+    IceCrate
 )
 
 from fmc_mezzanine import (
