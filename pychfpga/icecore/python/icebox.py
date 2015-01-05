@@ -835,6 +835,33 @@ class IceBox(object):
                         reset_control_obj.write(reset_output_register,  mask, mask) #Setting output register to logic 1 (reset inactive) - Removing reset
                         reset_control_obj.write(reset_cfg_register,  mask, mask) #Setting direction register from output to input - Back to default state
 
+    def flash_leds(self, testduration=60, pausetime=0.5):
+        """
+        Turns all the LEDs on then turns them off one a a time until all off
+        will repeat until the the time duration of the test has passed the specified test duration
+
+        History:
+        141218 AJG : created
+        """
+        timestart=time.time()
+        runtime=0
+        
+        while runtime < testduration:
+            
+            for ledname in self.LED_MAP.keys():
+                self.set_led(ledname, 1) #Turn on LEDs
+            
+            time.sleep(pausetime)
+
+            for ledname in self.LED_MAP.keys():
+                self.set_led(ledname,0) #Turn off LEDs
+                
+            runtime=time.time()-timestart
+                
+            
+
+
+
 
 
 
