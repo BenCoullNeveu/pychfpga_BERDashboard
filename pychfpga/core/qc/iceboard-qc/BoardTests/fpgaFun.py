@@ -155,29 +155,37 @@ def rampTest(board_sn, directory, ch_acq_path='../../ch_acq/', host_ip=None):
     sys.path.append(ch_acq_path)
     from pychfpga.common.tests.ramp_test import test_adc_ramp_histogram
     
-    # Timing for ADCs
-    ADC_DELAY_TABLE= (
-    ([16]*8,     [3]*8), #CH0
-    ([7]*8,                       [3]*8), #CH1
-    ([22]*8,    [3]*8), #CH2
-    ([19]*8,                       [3]*8), #CH3
-    ([15]*8,                        [3]*8), #CH4
-    ([14, 13, 14, 14, 13, 14, 15, 14],    [3]*8), #CH5
-    ([18]*8,     [3]*8), #CH6
-    ([17]*8,                       [4]*8), #CH7
-    
-    ([15, 17, 15, 18, 17, 14, 17, 15],   [3]*8), #CH8
-    ([16]*8,                       [4]*8), #CH9
-    ([20]*8,                       [3]*8), #CH10
-    ([18]*8,                     [3]*8), #CH11
-    ([15]*8,                       [3]*8), #CH12
-    ([18]*8,                       [3]*8), #CH13
-    ([18]*8,                       [3]*8), #CH14
-    ([16]*8,                       [3]*8)  #CH15
-    )
-    
     print "\nRunning top_test:"
     [c,r] = top_test(board_sn, ch_acq_path=ch_acq_path, host_ip=host_ip)
+    
+    # Timing for ADCs. Calculate proper offsets for this board.
+    ADC_DELAY_TABLE, stuck_bits, bitposgood = c.fpga.compute_adc_delay_offsets(channels=[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15])
+    print "Computed delay table:"
+    print repr(ADC_DELAY_TABLE)
+    print "Stuck bit flags (0 indicates a stuck bit):"
+    print repr(bitposgood)
+    #ADC_DELAY_TABLE= (
+    #([16]*8,     [3]*8), #CH0
+    #([7]*8,                       [3]*8), #CH1
+    #([22]*8,    [3]*8), #CH2
+    #([19]*8,                       [3]*8), #CH3
+    #([15]*8,                        [3]*8), #CH4
+    #([14, 13, 14, 14, 13, 14, 15, 14],    [3]*8), #CH5
+    #([18]*8,     [3]*8), #CH6
+    #([17]*8,                       [4]*8), #CH7
+    #
+    #([15, 17, 15, 18, 17, 14, 17, 15],   [3]*8), #CH8
+    #([16]*8,                       [4]*8), #CH9
+    #([20]*8,                       [3]*8), #CH10
+    #([18]*8,                     [3]*8), #CH11
+    #([15]*8,                       [3]*8), #CH12
+    #([18]*8,                       [3]*8), #CH13
+    #([18]*8,                       [3]*8), #CH14
+    #([16]*8,                       [3]*8)  #CH15
+    #)
+    
+    # Set ADC delays
+    c.fpga.set_adc_delays(ADC_DELAY_TABLE)
 
     # Record serials of mezzanines
 

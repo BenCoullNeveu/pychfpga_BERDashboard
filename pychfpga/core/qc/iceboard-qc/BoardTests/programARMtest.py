@@ -11,6 +11,7 @@ from date_format import date_format
 from statusReport import EMPTY_TEST_STATUS
 from testFail import mtestFail, armFail
 import git
+from fpgaFun import read_list, edit_list
 
 def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None,testStatus = EMPTY_TEST_STATUS()):
     testStatus[0] = username
@@ -101,6 +102,31 @@ def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None,testS
     IPright = raw_input("Enter IP address: 	")
     file.write('\nIP address of left Ethernet connector:  ' + IPright)
 
+    # Add MAC and IP to iceboard_list.txt file
+    content = read_list()
+    current_ip = None
+    current_mac = None
+    for line in content[1:len(content)]:
+        if int(line[0]) == int(board_sn):
+            current_ip = line[1]
+            current_mac = line[2]
+            break
+        else:
+            pass
+    if current_ip is None or len(current_ip) < 20:
+        print "No previous valid assigned IP. Adding " + IPright + " to list."
+        new_ip = "'http://" + IPright + ":80/tuber'"
+    else:
+        print "Found IP already in list. " + current_ip + " It will not be modified."
+        new_ip = None
+    if current_mac is None or len(current_mac) < 18:
+        print "No previous valid assigned MAC. Adding " + MACright + " to list."
+        new_mac = "'" + MACright + "'"
+    else:
+        print "Found MAC already in list. " + current_mac + " It will not be modified."
+        new_mac = None
+    edit_list(board_sn, arm_ip = new_ip, arm_mac = new_mac)
+    
     print "\nAfter programming the IP address, let's check to see if this works! Open up a Terminal window, such as git bash."
     print "On the command line, type in 'ping IP' where IP is the IP address you've just assigned to it."
     print "You should be able to send and receive packets without any issues. The terminal window should say more or less something like so:\n"

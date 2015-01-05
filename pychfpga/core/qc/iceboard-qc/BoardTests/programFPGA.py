@@ -117,7 +117,7 @@ def programFPGA(username=str,board_sn=str,board_vn=str,board_md=str,testStatus =
         fpgaProgFail(username,board_sn,board_vn,board_md,testStatus)
     # Identify which serial is new
     elif len(serial) == 1:
-        fpga_sn = str(hex(int(serial[0])))
+        fpga_sn = '0x%x' % serial[0]
     else:
         doesnt_exist = range(0,len(serial))
         already_in_list = False
@@ -146,7 +146,7 @@ def programFPGA(username=str,board_sn=str,board_vn=str,board_md=str,testStatus =
             file.close()
             fpgaProgFail(username,board_sn,board_vn,board_md,testStatus)
         else:
-            fpga_sn = str(hex(serial[doesnt_exist[0]]))
+            fpga_sn = '0x%x' % serial[doesnt_exist[0]]
 
     # Assign IP to FPGA
     current_ip = None

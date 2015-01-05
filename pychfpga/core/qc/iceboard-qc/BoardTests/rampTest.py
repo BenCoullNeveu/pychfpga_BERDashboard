@@ -65,33 +65,6 @@ def rampTest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     print "Make sure the computer you are using is connected to the network via a gigabit port with Jumbo Frames enabled."
     
     print "\nYou should connect a fan to the FPGA heatsink, and ensure there is airflow over the mezzanine ADCs."
-    
-    # Get correct ch_acq path
-    ch_acq_path = '../../chime/ch_acq/'
-    confirm = raw_input('\nThis test requires modules from ch_acq (make sure you are using master branch).\nUsing path ' + ch_acq_path + '. Would you like to modify it? (y/n)\t')
-    if confirm == 'y' or confirm == 'Y':
-        ch_acq_path = raw_input('Enter path:\t')
-    
-    # Timing for ADCs
-    ADC_DELAY_TABLE= (
-    ([16]*8,     [3]*8), #CH0
-    ([7]*8,                       [3]*8), #CH1
-    ([22]*8,    [3]*8), #CH2
-    ([19]*8,                       [3]*8), #CH3
-    ([15]*8,                        [3]*8), #CH4
-    ([14, 13, 14, 14, 13, 14, 15, 14],    [3]*8), #CH5
-    ([18]*8,     [3]*8), #CH6
-    ([17]*8,                       [4]*8), #CH7
-    
-    ([15, 17, 15, 18, 17, 14, 17, 15],   [3]*8), #CH8
-    ([16]*8,                       [4]*8), #CH9
-    ([20]*8,                       [3]*8), #CH10
-    ([18]*8,                     [3]*8), #CH11
-    ([15]*8,                       [3]*8), #CH12
-    ([18]*8,                       [3]*8), #CH13
-    ([18]*8,                       [3]*8), #CH14
-    ([16]*8,                       [3]*8)  #CH15
-    )
 
     # Make directory
     directory = 'ramp_tests/QC/sn' + board_sn

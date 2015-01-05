@@ -348,7 +348,7 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
         file.write('\nFPGA Test Overall Status: Fail')
         file.close()
         fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
-    file.write("\n%15s%5s%12s%12s%12s" % ('Sensor', 'V', '????', '????', '????'))
+    file.write("\n%15s%5s%12s%12s%12s" % ('Sensor', 'V', 'shunt', 'current', 'power'))
     file.write('\n' + '=' * 15 + ' ' + '=' * 4 + ' ' + ('=' * 11 + ' ') * 3)
     for key, value in power.iteritems():
         formatted_power = "%-15s%5.2f%12.6f%12.6f%12.6f" % (key, value[0], value[1], value[2], value[3])
@@ -360,14 +360,15 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     fail_list = []
     for key in power:
         if key[0:3] == 'FMC': # For FMCs, check only voltage
-            if mezz_present:
-                continue
-            else: # for now, do nothing, as I don't have expected values
-                #if abs(power[key][0] - power_exp[key][0]) / power_exp[key][0] > power_exp['TOLERANCE_V']: # Check value of voltage
-                #    fail = True
-                #    fail_list.append(key)
-                #    file.write('\nFAIL: ' + key + ' is ' + str(power[key]) + ', outside the expected ' + str(power_exp[key]) + ' +/-' + str(power_exp['TOLERANCE_V']*100) + '%')
-                pass
+            continue
+            #if mezz_present:
+            #    continue
+            #else: # for now, do nothing, as I don't have expected values
+            #    #if abs(power[key][0] - power_exp[key][0]) / power_exp[key][0] > power_exp['TOLERANCE_V']: # Check value of voltage
+            #    #    fail = True
+            #    #    fail_list.append(key)
+            #    #    file.write('\nFAIL: ' + key + ' is ' + str(power[key]) + ', outside the expected ' + str(power_exp[key]) + ' +/-' + str(power_exp['TOLERANCE_V']*100) + '%')
+            #    pass
         if abs(power[key][0] - power_exp[key][0]) / power_exp[key][0] > power_exp['TOLERANCE_V']: # Check value of voltage
             fail = True
             fail_list.append(key)

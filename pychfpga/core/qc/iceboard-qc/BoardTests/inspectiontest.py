@@ -34,7 +34,7 @@ def inspectiontest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
     file = open(fname, 'a')
     file.write('\nInspection Test\n')
     file.write('------\n')
-    date_str=iceboardtest.date_format(tm.localtime())
+    date_str=date_format(tm.localtime())
     file.write('Date : ' + date_str + '\n')
     file.write('Tester: ' + username + '\n')
     repo = git.Repo()
