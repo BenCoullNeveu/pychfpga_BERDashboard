@@ -257,6 +257,13 @@ if __name__ == "__main__":
             data_width=conf["fpga"]["data_width"], \
             group_frames=conf["fpga"]["group_frames"], \
             enable_gpu_link = conf["fpga"]["enable_gpu_link"])
+      #Temp solution to load adc_delay from table...
+      try:
+          delays = pickle.load(open('pychfpga/delay_table_updated19_17.pkl'))
+          for ice in c:                                             
+              ice.fpga.set_adc_delays(delays[ice.serial_number])
+      except:
+          log.info("Error loading/setting delay tables.  Using default from config file for all boards")
       for cc in c:
         cc.fpga.GPU.LINK_ENABLE=1
         print "SN {0}, SLOT {1}".format(cc.serial_number, cc.slot_number)
