@@ -11,6 +11,7 @@ import updateStatus
 from date_format import date_format
 from statusReport import EMPTY_TEST_STATUS
 from testFail import gtxFail
+import git
 
 def GTXtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPTY_TEST_STATUS()):
     testStatus[0] = username
@@ -35,7 +36,10 @@ def GTXtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMP
     file.write('------\n')
     date_str=iceboardtest.date_format(tm.localtime())
     file.write('Date : ' + date_str + '\n')
-    file.write('Tester: ' + username + '\n\n')
+    file.write('Tester: ' + username + '\n')
+    repo = git.Repo()
+    file.write("On branch '" + repo.active_branch + "' with commit " + str(repo.commit('HEAD')) + " of iceboard-qc.\n\n")
+    file.flush()
 
     print "For this test, we NEED to have the same SET UP as that of the already programmed FPGA. You also need the JTAG and QSFP cables."
     # print "Please consult https:// for details regarding the materials. Or ask Kevin."

@@ -10,6 +10,7 @@ import updateStatus
 from date_format import date_format
 from statusReport import EMPTY_TEST_STATUS
 from testFail import DCFail
+import git
 
 def DCtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPTY_TEST_STATUS()):
     testStatus[0] = username
@@ -34,7 +35,11 @@ def DCtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPT
     file.write('------\n')
     date_str=iceboardtest.date_format(tm.localtime())
     file.write('Date : ' + date_str + '\n')
-    file.write('Tester: ' + username + '\n\n')
+    file.write('Tester: ' + username + '\n')
+    repo = git.Repo()
+    file.write("On branch '" + repo.active_branch + "' with commit " + str(repo.commit('HEAD')) + " of iceboard-qc.\n\n")
+    file.flush()
+
     print 'For this test, please do power up the board. '# Please configure the set up to that as shown on http://kingspeak.physics.mcgill.ca/twiki/bin/view/Chime/IceBoardQCManual'
     print 'For this board, you will need a multimeter, a power supply, and a twisted pair cable with two banana plugs on one side to measure voltage.'
     notimportant = raw_input("Press Enter to continue:      ")

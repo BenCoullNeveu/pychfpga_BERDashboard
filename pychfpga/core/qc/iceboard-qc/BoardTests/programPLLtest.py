@@ -10,6 +10,7 @@ import updateStatus
 from date_format import date_format
 from statusReport import EMPTY_TEST_STATUS
 from testFail import pllFail
+import git
 
 def programPLLtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPTY_TEST_STATUS()):
     testStatus[0] = username
@@ -34,7 +35,10 @@ def programPLLtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
     file.write('------\n')
     date_str=iceboardtest.date_format(tm.localtime())
     file.write('Date : ' + date_str + '\n')
-    file.write('Tester: ' + username + '\n\n')
+    file.write('Tester: ' + username + '\n')
+    repo = git.Repo()
+    file.write("On branch '" + repo.active_branch + "' with commit " + str(repo.commit('HEAD')) + " of iceboard-qc.\n\n")
+    file.flush()
 
     print "For this test, you'll need an FTDI cable and a jumper."
     # print "Please see http://kingspeak.physics.mcgill.ca/twiki/bin/edit/Chime/IceBoardQCManual for details"

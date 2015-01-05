@@ -10,6 +10,7 @@ import updateStatus
 from date_format import date_format
 from statusReport import EMPTY_TEST_STATUS
 from testFail import inspectionFail
+import git
 
 def inspectiontest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPTY_TEST_STATUS()):
     testStatus[0] = username
@@ -35,7 +36,11 @@ def inspectiontest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
     file.write('------\n')
     date_str=iceboardtest.date_format(tm.localtime())
     file.write('Date : ' + date_str + '\n')
-    file.write('Tester: ' + username + '\n\n')
+    file.write('Tester: ' + username + '\n')
+    repo = git.Repo()
+    file.write("On branch '" + repo.active_branch + "' with commit " + str(repo.commit('HEAD')) + " of iceboard-qc.\n\n")
+    file.flush()
+
     print 'For this test, please do NOT power up the board. Everything should be done with nothing connected to the power supply!'
     print "It is highly suggested for you to view the board under the microscope to see everything properly."
     print "When travelling with the board, please be VERY GENTLE."

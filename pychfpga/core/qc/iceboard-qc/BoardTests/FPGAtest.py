@@ -13,6 +13,7 @@ from date_format import date_format
 from statusReport import EMPTY_TEST_STATUS
 from testFail import fpgaTestFail
 import fpgaFun
+import git
 
 def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPTY_TEST_STATUS()):
     testStatus[0] = username
@@ -37,7 +38,12 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     file.write('------\n')
     date_str=iceboardtest.date_format(tm.localtime())
     file.write('Date : ' + date_str + '\n')
-    file.write('Tester: ' + username + '\n\n')
+    file.write('Tester: ' + username + '\n')
+    ice_qc_repo = git.Repo()
+    file.write("On branch '" + ice_qc_repo.active_branch + "' with commit " + str(ice_qc_repo.commit('HEAD')) + " of iceboard-qc.\n")
+    ch_acq_repo = git.Repo("../../ch_acq/")
+    file.write("On branch '" + ch_acq_repo.active_branch + "' with commit " + str(ch_acq_repo.commit('HEAD')) + " of ch_acq.\n\n")
+    file.flush()
 
     # Import parameters from config
     import yaml
