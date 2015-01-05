@@ -37,7 +37,7 @@ def DCtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPT
     file.write('Date : ' + date_str + '\n')
     file.write('Tester: ' + username + '\n')
     repo = git.Repo()
-    file.write("On branch '" + repo.active_branch + "' with commit " + str(repo.commit('HEAD')) + " of iceboard-qc.\n\n")
+    file.write("On branch '" + str(repo.active_branch) + "' with commit " + str(repo.commit('HEAD')) + " of iceboard-qc.\n\n")
     file.flush()
 
     print 'For this test, please do power up the board. '# Please configure the set up to that as shown on http://kingspeak.physics.mcgill.ca/twiki/bin/view/Chime/IceBoardQCManual'

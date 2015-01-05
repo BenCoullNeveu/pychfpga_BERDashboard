@@ -38,7 +38,7 @@ def GTXtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMP
     file.write('Date : ' + date_str + '\n')
     file.write('Tester: ' + username + '\n')
     repo = git.Repo()
-    file.write("On branch '" + repo.active_branch + "' with commit " + str(repo.commit('HEAD')) + " of iceboard-qc.\n\n")
+    file.write("On branch '" + str(repo.active_branch) + "' with commit " + str(repo.commit('HEAD')) + " of iceboard-qc.\n\n")
     file.flush()
 
     print "For this test, we NEED to have the same SET UP as that of the already programmed FPGA. You also need the JTAG and QSFP cables."

@@ -38,7 +38,7 @@ def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None,testS
     file.write('Date : ' + date_str + '\n')
     file.write('Tester: ' + username + '\n')
     repo = git.Repo()
-    file.write("On branch '" + repo.active_branch + "' with commit " + str(repo.commit('HEAD')) + " of iceboard-qc.\n\n")
+    file.write("On branch '" + str(repo.active_branch) + "' with commit " + str(repo.commit('HEAD')) + " of iceboard-qc.\n\n")
     file.flush()
 
     print "For this test, you'll need an Ethernet cable, D-link router and an SD card."

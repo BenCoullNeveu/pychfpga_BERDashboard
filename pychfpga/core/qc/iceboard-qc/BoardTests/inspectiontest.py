@@ -38,7 +38,7 @@ def inspectiontest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
     file.write('Date : ' + date_str + '\n')
     file.write('Tester: ' + username + '\n')
     repo = git.Repo()
-    file.write("On branch '" + repo.active_branch + "' with commit " + str(repo.commit('HEAD')) + " of iceboard-qc.\n\n")
+    file.write("On branch '" + str(repo.active_branch) + "' with commit " + str(repo.commit('HEAD')) + " of iceboard-qc.\n\n")
     file.flush()
 
     print 'For this test, please do NOT power up the board. Everything should be done with nothing connected to the power supply!'
