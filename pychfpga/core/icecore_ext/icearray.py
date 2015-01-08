@@ -11,9 +11,9 @@ Provides access to an array of ICEBoards and ICEBoxes (backplanes)
 """
 import argparse
 import logging
-import __main__ # used to store host_ip_address
+import __main__  # used to store host_ip_address
 import csv
-import re # used by mdns_discovery
+import re  # used by mdns_discovery
 from sqlalchemy.orm.session import Session
 
 from ..icecore import hardware_map
