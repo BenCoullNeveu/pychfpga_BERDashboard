@@ -55,6 +55,7 @@ def programFPGA(username=str,board_sn=str,board_vn=str,board_md=str,testStatus =
     print "You need to have already installed a heatsink on the FPGA, and running a fan over it is recommended."
     print "Make sure you can ping the motherboard, in the same method as that of Programming ARM Test. You may need to turn the board on/off"
     print "a few times to make sure it works."
+    print "Please make sure the ethernet cable has a good connection with the SFP adapter to ensure no communication problems."
     
     # Get correct ch_acq path
     if ch_acq_path is None:

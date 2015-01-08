@@ -91,28 +91,27 @@ def GTXtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMP
 
     print "\nWhen finished, check the upper-left pane. Under DEV select UNIT. Double click on the option 'IBERT Console'. "
     print "When asked if you want to set up the IBERT settings with ..., click on no."
-    print "Once completed, check to see there are 8 green GTX columns. The scrollbar is small at the bottom of the pane."
-    print "They will usually be labelled as GTX_X0Y20 to GTX_X027. Are they there?"
+    print "Once completed, check to see ALL the GTX columns (from 0 to 27) are GREEN, with the EXCEPTION of GTX 19 (which is the SFP connection link)."
+    print "The scrollbar is small at the bottom of the pane. Are the columns all green (except perhaps GTX 19)?"
     GTXcolumns = raw_input("Enter 'Y' or 'N':       ")
     if GTXcolumns == 'Y' or GTXcolumns == 'y':
-        file.write('\nDetection of 8 Channels on the board after programming with Chipscope: Pass')
+        file.write('\nDetection of all Channels (except maybe GTX 19) on the board after programming with Chipscope: Pass')
     else:
-        file.write('\nDetection of 8 Channels on the board after programming with Chipscope: Fail')
+        file.write('\nDetection of all Channels (except maybe GTX 19) on the board after programming with Chipscope: Fail')
         file.write('\nGTX Test Overall Status: Fail')
         file.close()
         gtxFail(username,board_sn,board_vn,board_md,testStatus)
     print "\nYou may also set the JTAG scan rate to about 1s (Kevin's favourite rate) just below the menu bar on top of the window."
     print "Under the BERT settings, you now will want to do BERT reset. Click on Reset for the BERT reset for each of the 8 columns."
     print "You now will want to wait a while, typically the RX Bit Error Ratio will be very low. (10E-10 ish)"
-    print "Are any of the bit error rates significantly larger than this?"
+    print "Are any of the bit error rates for green columns significantly larger than this?"
     biterrorlarge = raw_input("Enter 'Y' or 'N':        ")
     if biterrorlarge == 'Y' or biterrorlarge == 'y':
         file.write('\nBit error rate is larger than expected: ')
-        col = raw_input("Enter the column number of the FIRST green column:       ")
-        for i in range(8):
-            errorratei = raw_input("Enter the bit error rate of green column " + col + ": ")
-            file.write('\nBit Error Rate of Channel ' + col + ': ' + errorratei)
-            col = str(int(col) + 1)
+        col = raw_input("Enter the column numbers which have significantly larger error ratios:       ")
+        file.write('\nColumns which have significantly larger error ratios: ' + col)
+        errorratei = raw_input("Enter the bit error rates of the columns you entered above in the same order:  ")
+        file.write('\nBit Error Rate of problematic Channels respectively: ' + errorratei)
         file.write('\nGTX Test Overall Status: Fail')
         file.close()
         gtxFail(username,board_sn,board_vn,board_md,testStatus)
@@ -122,11 +121,10 @@ def GTXtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMP
         file.write('\nBit Error Count is all 0 for all 8 channels.')
     else:
         file.write('\nBit Error Count is non-zero for some channels after reset.')
-        col = raw_input("Enter the column number of the FIRST green column:       ")
-        for i in range(8):
-            errorratei = raw_input("Enter the RX bit error count of green column " + col +": ")
-            file.write('\nBit Error Count of Channel ' + col + ': ' + errorratei)
-            col = str(int(col) + 1)
+        col = raw_input("Enter the column numbers which have non-zero error counts:       ")
+        file.write('\nColumns which have non-zero error counts: ' + col)
+        errorratei = raw_input("Enter the RX bit error count of columns you entered above in the same order: ")
+        file.write('\nBit Error Count of problematic Channels respectively: ' + errorratei)
         file.write('\nGTX Test Overall Status: Fail')
         file.close()
         gtxFail(username,board_sn,board_vn,board_md,testStatus)
@@ -136,11 +134,10 @@ def GTXtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMP
     ratio = raw_input("Enter 'Y' or 'N':        ")
     if ratio != 'Y' and ratio != 'y':
         file.write('\n\nBit error count ratio fails to decrease over time.')
-        col = raw_input("Enter the column number of the FIRST green column:       ")
-        for i in range(8):
-            errorratei = raw_input("Enter the bit error rate of green column " + col + ": ")
-            file.write('\nBit Error Rate of Channel ' + col + ': ' + errorratei)
-            col = str(int(col) + 1)
+        col = raw_input("Enter the column numbers of which error rates do not fall on order of 10E-13:       ")
+        file.write('\nColumns whose error rates do not fall on order of 10E-13: ' + col)
+        errorratei = raw_input("Enter the bit error rate of columns you entered above in the same order: ")
+        file.write('\nBit Error Rate of problematic Channels respectively: ' + errorratei)
         file.write('\nGTX Test Overall Status: Fail')
         file.close()
         gtxFail(username,board_sn,board_vn,board_md,testStatus)
