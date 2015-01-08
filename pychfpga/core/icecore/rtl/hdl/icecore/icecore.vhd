@@ -100,26 +100,79 @@ architecture IMPL of icecore is
 	signal reset_125, reset_200, reset_20, reset_20_90, reset_20_180: std_logic; -- Internal RESET after the clocks are stable
 
 	-- Control bus
-	signal ctl_addr, ctl_din, ctl_dout: std_logic_vector(31 downto 0) := (others => '0');
-	signal ctl_rreq, ctl_rack, ctl_wreq, ctl_wack: std_logic := '0';
+	signal spi_addr, spi_rdat, spi_wdat: std_logic_vector(31 downto 0) := (others => '0');
+	signal spi_rreq, spi_rack, spi_wreq, spi_wack: std_logic := '0';
 
+	constant CORE_REG_BUS_NUMBER: integer := 0;
+	constant IRIG_BUS_NUMBER: integer := 1;
+	constant USER_BUS_NUMBER: integer := 2;
+	constant NUMBER_OF_BUSES: integer := 3;
 
-	-- Define module addresses
-	constant BASE_ADDR: integer := 0; -- Core Control register
-	constant TS_CTL_ADDR: integer := 1;
-	constant NUMBER_OF_MODULES: integer := 2;
+	signal ctl_addr: slv32_array(0 to NUMBER_OF_BUSES-1);
+	signal ctl_wdat: slv32_array(0 to NUMBER_OF_BUSES-1);
+	signal ctl_rdat: slv32_array(0 to NUMBER_OF_BUSES-1) := (others=>(others=>'0')); -- initialized in case a slave is not connected
+	signal ctl_rreq, ctl_rack, ctl_wreq, ctl_wack: std_logic_vector(0 to NUMBER_OF_BUSES-1) := (others=>'0');
 
 	signal addr: unsigned(18 downto 0) := (others => '0');
 	signal addr_dly: unsigned(18 downto 0) := (others => '0');
 	signal din_dly: std_logic_vector(31 downto 0) := (others => '0');
 
-	-- Bus control signals for each module, packed into arrays
-	signal rreq, rack, wreq, wack: std_logic_vector(0 to NUMBER_OF_MODULES-1) := (others => '0');
-	signal dout: SLV32_ARRAY_TYPE(0 to NUMBER_OF_MODULES-1) := (others=> (others=>'0'));
 
 	signal firmware_crc32: std_logic_vector(31 downto 0);
+	signal firmware_timestamp: std_logic_vector(31 downto 0);
+	signal firmware_timestamp_valid: std_logic;
+
+	signal dna_clk: std_logic;
+	signal dna_dout: std_logic;
+	signal dna_read: std_logic :='1'; -- First clock is a read
+	signal dna_shift: std_logic := '1'; -- Will start shifting as soon as read is disabled
+	signal dna_ctr: unsigned(5 downto 0) := to_unsigned(57-1, 6); -- Will shift 57 times
+	signal fpga_serial_number: std_logic_vector(56 downto 0) := (others=>'0'); -- Need to initialize because we do not shift all the 64 bits
+
+	signal fpga_ip_address: std_logic_vector(31 downto 0) := X"0A0A0A0B";
+	signal fpga_ip_port: std_logic_vector(15 downto 0) := X"A028"; -- 41000
+	signal fpga_mac_address: std_logic_vector(47 downto 0) := X"123456789ABC";
+
+	constant NUMBER_OF_CORE_REGISTERS: integer := 10;
+	signal core_reg_wr_value : slv32_array(0 to NUMBER_OF_CORE_REGISTERS-1);
+	signal core_reg_rd_value : slv32_array(0 to NUMBER_OF_CORE_REGISTERS-1);
+	constant core_reg_default_values : slv32_array(0 to NUMBER_OF_CORE_REGISTERS-1) := (
+		7 => X"12345678",
+		8 => X"9ABC_A028",
+		9 => X"0A0A0A0B",
+		others => X"00000000" );
+
+
+	constant NUMBER_OF_USER_REGS: integer := 10;
+	signal user_reg_wr_value : slv32_array(0 to NUMBER_OF_USER_REGS-1);
+	signal user_reg_rd_value : slv32_array(0 to NUMBER_OF_USER_REGS-1);
 
 begin
+
+-------------------------
+-- Core Register assignments
+-------------------------
+
+-- Register Read values
+core_reg_rd_value(0) <= x"beefface"; -- (Read only) Core firmware cookie
+core_reg_rd_value(1) <= APPLICATION_COOKIE; -- (Read only) Application firmware cookie
+core_reg_rd_value(2) <= APPLICATION_FLAGS; -- (Read only) Application Flags: Kintex 7
+core_reg_rd_value(3) <= firmware_crc32; -- (Read/Write with readback) Firmware CRC32, computed by the host application and stored here for future reference
+core_reg_rd_value(4) <= firmware_timestamp; -- (Read only) Firmware timestamp, taken from the USER_ACCESS data filled in when the bitstream file was generated
+core_reg_rd_value(5) <= fpga_serial_number(31 downto 0); -- (Read only)
+core_reg_rd_value(6) <= "0000000" & fpga_serial_number(56 downto 32); -- (Read only)
+core_reg_rd_value(7) <= fpga_mac_address(31 downto 0); -- (Read/Write with readback)
+core_reg_rd_value(8) <= fpga_mac_address(47 downto 32) & fpga_ip_port; -- (Read/Write with readback)
+core_reg_rd_value(9) <= fpga_ip_address; -- (Read/Write with readback)
+-- core_reg_rd_value(7 to 9) <= core_reg_wr_value(7 to 9); -- Readback FPGA  Ethernet parameters
+
+-- Register write values
+firmware_crc32                 <= core_reg_wr_value(3);
+fpga_mac_address(31 downto 0)  <= core_reg_wr_value(7);
+fpga_mac_address(47 downto 32) <= core_reg_wr_value(8)(31 downto 16);
+fpga_ip_port                   <= core_reg_wr_value(8)(15 downto 0);
+fpga_ip_address                <= core_reg_wr_value(9);
+
 
 	-------------------------------------------------------------------
 	-- Instantiate System clocks
@@ -159,22 +212,22 @@ begin
 	clk125 <= clk125_int;
 
 	buck_sync0: entity work.buck_sync
-	port map (
-		clk_200mhz   => clk200_int,
+		port map (
+			clk_200mhz   => clk200_int,
 
-		sync_fmca    => fmca_mezz_buck_sync,
-		sync_fmcb    => fmcb_mezz_buck_sync,
+			sync_fmca    => fmca_mezz_buck_sync,
+			sync_fmcb    => fmcb_mezz_buck_sync,
 
-		sync_1v0     => sync_1v0,
-		sync_1v8     => sync_1v8,
-		sync_1v0_gtx => sync_1v0_gtx,
-		sync_5v0     => sync_5v0,
-		sync_1v2     => sync_1v2,
-		sync_vadj    => sync_vadj,
-		sync_1v5     => sync_1v5,
-		sync_3v3     => sync_3v3,
-		sync_12v0    => sync_12v0
-	);
+			sync_1v0     => sync_1v0,
+			sync_1v8     => sync_1v8,
+			sync_1v0_gtx => sync_1v0_gtx,
+			sync_5v0     => sync_5v0,
+			sync_1v2     => sync_1v2,
+			sync_vadj    => sync_vadj,
+			sync_1v5     => sync_1v5,
+			sync_3v3     => sync_3v3,
+			sync_12v0    => sync_12v0
+		);
 
 	---------------------------------------------------------------------
 	-- ARM <-> FPGA serial interface
@@ -182,21 +235,139 @@ begin
 	-- Is used to communicate memory-mapped read/writes commands from the ARM to the FPGA and return the data to the ARM
 
 	arm_spi0: entity work.arm_spi port map (
-		clk => clk125_int,
-		reset => '0', -- redundant; cs_n does the same thing
-
-		din => ctl_dout,
-		dout => ctl_din,
-		addr => ctl_addr,
-		rreq => ctl_rreq,
-		rack => ctl_rack,
-		wreq => ctl_wreq,
-		wack => ctl_wack,
-
+		-- SPI interface
 		sck => arm_spi_sck,
 		miso => arm_spi_miso,
 		mosi => arm_spi_mosi,
-		cs_n => arm_spi_cs_n
+		cs_n => arm_spi_cs_n,
+
+		-- Master bus interface
+		m_addr => spi_addr,
+		m_rdat => spi_rdat,
+		m_wdat => spi_wdat,
+		m_rreq => spi_rreq,
+		m_rack => spi_rack,
+		m_wreq => spi_wreq,
+		m_wack => spi_wack,
+
+		clk => clk125_int,
+		reset => '0' -- redundant; cs_n does the same thing
+
+	);
+
+
+	---------------------------------------------------------------------
+	-- BUS interconnect
+	---------------------------------------------------------------------
+	-- Used to connect multiple slaves to the bus master . For now this is very primitive as there is no address-based routing.
+	-- This should one day be replaced by a full-fledged AXI4 interconnect.
+
+	bus_interconnect0: entity work.bus_interconnect
+		generic map (
+			NUMBER_OF_MASTER_INTERFACES => NUMBER_OF_BUSES
+		)
+		port map (
+
+			-- Slave interface (from master)
+			s_addr => spi_addr,
+			s_wdat => spi_wdat,
+			s_rdat => spi_rdat,
+			s_rreq => spi_rreq,
+			s_rack => spi_rack,
+			s_wreq => spi_wreq,
+			s_wack => spi_wack,
+
+			-- Master interfaces (to slaves)
+			m_addr => ctl_addr,
+			m_wdat => ctl_rdat,
+			m_rdat => ctl_wdat,
+			m_rreq => ctl_rreq,
+			m_rack => ctl_rack,
+			m_wreq => ctl_wreq,
+			m_wack => ctl_wack,
+
+			clk => clk125_int
+			);
+
+
+	---------------------------------------------------------------------
+	-- Core registers
+	---------------------------------------------------------------------
+	-- Provide basic information on the hardware and firmware
+
+core_regs0: entity work.register_array
+	generic map(
+		ADDRESS_MASK => X"000000" & "------XX",
+		NUMBER_OF_REGISTERS => NUMBER_OF_CORE_REGISTERS,
+		DEFAULT_REGISTER_VALUES => core_reg_default_values,
+		ADDRESS_WIDTH => 32,
+		SIM => SIM --! Indicates this is running as a simulation. Used to accelerate simulations
+	)
+	port map (
+		-- Control interface (*** JFC: to be replaced by an AXI4-Lite bus)
+		s_addr => ctl_addr(CORE_REG_BUS_NUMBER),
+		s_wdat => ctl_wdat(CORE_REG_BUS_NUMBER),
+		s_rdat => ctl_rdat(CORE_REG_BUS_NUMBER),
+		s_wreq => ctl_wreq(CORE_REG_BUS_NUMBER),
+		s_wack => ctl_wack(CORE_REG_BUS_NUMBER),
+		s_rreq => ctl_rreq(CORE_REG_BUS_NUMBER),
+		s_rack => ctl_rack(CORE_REG_BUS_NUMBER),
+
+		-- Register interface
+		reg_wr_value  => core_reg_wr_value,
+		reg_rd_value  => core_reg_rd_value,
+
+		clk => clk125_int -- Clocks both control and register interface
+	);
+
+
+
+-- core_regs0: entity work.core_registers
+-- 	generic map(
+-- 		ADDRESS_MASK => X"000000" & "------XX", -- addr(31:8) must match 0x000000 , register word address is 6 bits, last 2 bits are ignored as addresses must be on word boundaries only
+-- 		-- ADDRESS_MASK => "000000000000000000000000------XX",
+-- 		APPLICATION_COOKIE => X"00000002",
+-- 		APPLICATION_FLAGS => X"30000000",
+-- 		SIM => FALSE --! Indicates this is running as a simulation. Used to accelerate simulations
+-- 	)
+-- 	port map (
+-- 		-- Control interface (*** JFC: to be replaced by an AXI4-Lite bus)
+-- 		addr => ctl_addr(CORE_REG_BUS_NUMBER),
+-- 		din  => ctl_wdat(CORE_REG_BUS_NUMBER),
+-- 		wreq => ctl_wreq(CORE_REG_BUS_NUMBER),
+-- 		rreq => ctl_rreq(CORE_REG_BUS_NUMBER),
+-- 		wack => ctl_wack(CORE_REG_BUS_NUMBER),
+-- 		rack => ctl_rack(CORE_REG_BUS_NUMBER),
+-- 		dout => ctl_rdat(CORE_REG_BUS_NUMBER),
+
+-- 		clk  => clk125_int, -- interface clock
+
+-- 		dna_clk => clk20 -- dna clock, <97 MHz
+-- 	);
+
+app_regs0: entity work.register_array
+	generic map(
+		ADDRESS_MASK => X"000001" & "------XX", -- up to 64 registers starting at 0x0000_0100
+		NUMBER_OF_REGISTERS => NUMBER_OF_USER_REGS,
+		DEFAULT_REGISTER_VALUES => (0 to NUMBER_OF_USER_REGS-1 => X"AAAAAAAA"),
+		ADDRESS_WIDTH => 32,
+		SIM => SIM --! Indicates this is running as a simulation. Used to accelerate simulations
+	)
+	port map (
+		-- Control interface (*** JFC: to be replaced by an AXI4-Lite bus)
+		s_addr => ctl_addr(USER_BUS_NUMBER),
+		s_wdat => ctl_wdat(USER_BUS_NUMBER),
+		s_wreq => ctl_wreq(USER_BUS_NUMBER),
+		s_rreq => ctl_rreq(USER_BUS_NUMBER),
+		s_wack => ctl_wack(USER_BUS_NUMBER),
+		s_rdat => ctl_rdat(USER_BUS_NUMBER),
+		s_rack => ctl_rack(USER_BUS_NUMBER),
+
+		-- Register interface
+		reg_wr_value  => user_reg_wr_value,
+		reg_rd_value  => user_reg_rd_value,
+
+		clk => clk125_int -- Clocks both control and register interface
 	);
 
 	---------------------------------------------------------------------
@@ -205,26 +376,77 @@ begin
 	-- Timestamp decoders
 	-- To be enabled later
 timestamp_gen: if IMPLEMENT_TIMESTAMP=TRUE generate
-	timestamp0: entity work.timestamp port map (
-		clk        => clk125_int,
-		clk_200mhz => clk200_int,
+	timestamp0: entity work.timestamp
+		port map (
+			clk        => clk125_int,
+			clk_200mhz => clk200_int,
 
-		irig_bp    => irig_bp,
-		irig_sma   => irig_sma,
+			irig_bp    => irig_bp,
+			irig_sma   => irig_sma,
 
-		ts_out           => irigb_timestamp,
-		timing_reset_200 => open,
-		calibration_out  => open,
+			ts_out           => irigb_timestamp,
+			timing_reset_200 => open,
+			calibration_out  => open,
 
-		addr => addr_dly(4 downto 0),
-		rreq => rreq(TS_CTL_ADDR),
-		rack => rack(TS_CTL_ADDR),
-		wreq => wreq(TS_CTL_ADDR),
-		wack => wack(TS_CTL_ADDR),
-		din  => din_dly,
-		dout => dout(TS_CTL_ADDR)
-	);
+			addr => unsigned(ctl_addr(IRIG_BUS_NUMBER)(4 downto 0)),
+			rreq => ctl_rreq(IRIG_BUS_NUMBER),
+			rack => ctl_rack(IRIG_BUS_NUMBER),
+			wreq => ctl_wreq(IRIG_BUS_NUMBER),
+			wack => ctl_wack(IRIG_BUS_NUMBER),
+			din  => ctl_wdat(IRIG_BUS_NUMBER),
+			dout => ctl_rdat(IRIG_BUS_NUMBER)
+		);
 end generate;
+
+
+
+	---------------------------------------------------------------------
+	-- USER ACCESS port
+	---------------------------------------------------------------------
+-- Accesses the timestamp (or user-defined data) that was inserted during bitstream generation.
+
+
+usr_access0: USR_ACCESSE2
+	port map(
+		CFGCLK => open,--1-bit Configuration Clock output
+		DATA => firmware_timestamp,--32-bit Configuration Data output
+		DATAVALID => firmware_timestamp_valid --1-bit Active high data validoutput
+		);
+
+	---------------------------------------------------------------------
+	-- DNA port
+	---------------------------------------------------------------------
+-- Accesses the 57-bit FPGA unique serial number
+dna_clk <= clk20;
+
+dna0 : DNA_PORT
+	generic map (
+		SIM_DNA_VALUE => X"000000000000000" -- Specifies a sample 57-bit DNA value for simulation
+	)
+	port map (
+		DOUT => dna_dout, -- 1-bit output: DNA output data.
+		CLK => dna_clk, -- 1-bit input: Clock input.
+		DIN => '0', -- 1-bit input: User data input pin.
+		READ => dna_read, -- 1-bit input: Active high load DNA, active low read input.
+		SHIFT => dna_shift -- 1-bit input: Active high shift enable input.
+	);
+
+-- Process to read the DNA serial port and reconstruct the 57 bit serial number
+dna_proc: process(dna_clk)
+	begin
+		if rising_edge(dna_clk) then
+			dna_read <='0';
+			if dna_read='0' and dna_shift='1' then -- when data is ready and we have not finished shifting
+				fpga_serial_number <= std_logic_vector(shift_left(unsigned(fpga_serial_number), 1));
+				fpga_serial_number(0) <= dna_dout;
+				dna_ctr <= dna_ctr - 1;
+				if dna_ctr = 0 then
+					dna_shift <= '0';
+				end if;
+			end if;
+		end if;
+	end process;
+
 
 	---------------------------------------------------------------------
 	-- Internal ADC/System monitor
@@ -269,7 +491,7 @@ end generate;
 		ALM                 => open,
 		BUSY                => open,
 		CHANNEL             => open,
-		DO(15 downto 0)     => open,
+		DO                  => open,
 		DRDY                => open,
 		EOC                 => open,
 		EOS                 => open,
@@ -282,71 +504,5 @@ end generate;
 		VP                  => '0'
 	);
 
-	addr <= unsigned(ctl_addr(20 downto 2));
-
-	---------------------------------------------------------------------
-	-- Core control registers
-	---------------------------------------------------------------------
-
-	bus_if: process(clk125_int)
-		variable ipif_dout_var: std_logic_vector(31 downto 0);
-	begin
-		if rising_edge(clk125_int) then
-			-- Combine data buses (inactive buses are set to '0' so they can all be combined with 'or')
-			ipif_dout_var := dout(0);
-			for i in 1 to NUMBER_OF_MODULES-1 loop
-				ipif_dout_var := ipif_dout_var or dout(i);
-			end loop;
-
-			ctl_dout <= ipif_dout_var;
-			ctl_rack <= or_reduce(rack);
-			ctl_wack <= or_reduce(wack);
-
-			-- clear request to all modules by default
-			rreq <= (others=>'0');
-			wreq <= (others=>'0');
-
-			-- set the rreq and wreq if the currently addressed module.
-			rreq(to_integer(addr(18 downto 14))) <= ctl_rreq;
-			wreq(to_integer(addr(18 downto 14))) <= ctl_wreq;
-
-			-- Because we generate module requests with a
-			-- clock cycle's worth of delay, we should also
-			-- latch data and address inputs.
-			addr_dly <= addr;
-			din_dly <= ctl_din;
-
-			------------------------------------------------
-			-- BASE MEMORY-MAPPED REGISTERS
-			------------------------------------------------
-
-			-- Immediately ack any requests.
-			-- Note that the ack is delayed by one clock, so back-to-back writes are not possible.
-			wack(BASE_ADDR) <= wreq(BASE_ADDR);
-			rack(BASE_ADDR) <= rreq(BASE_ADDR);
-
-			-- Make sure that dout is 0 when not used to allow 'or' combining of all module buses
-			dout(BASE_ADDR) <= (others => '0'); --! important!
-			-- Process Reads
-			if rreq(BASE_ADDR)='1' then
-				case to_integer(addr_dly(4 downto 0)) is --! Last 10 bits of address is used to index base registers
-					when 0 => dout(BASE_ADDR) <= x"beefface"; -- Core firmware cookie
-					when 1 => dout(BASE_ADDR) <= APPLICATION_COOKIE; -- Application firmware cookie
-					when 2 => dout(BASE_ADDR) <= APPLICATION_FLAGS; -- Application Flags: Kintex 7
-					when 3 => dout(BASE_ADDR) <= firmware_crc32; -- Firmware CRC32, computed by the host application and stored here for future reference
-					when others => -- nop
-				end case;
-			end if;
-
-			-- Writes
-			if wreq(BASE_ADDR)='1' then
-				case to_integer(addr_dly(4 downto 0)) is
-					when 3 => firmware_crc32 <= din_dly;
-					when others => -- nop
-				end case;
-			end if;
-
-		end if; -- clk125
-	end process;
 
 end IMPL;

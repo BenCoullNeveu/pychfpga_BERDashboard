@@ -79,6 +79,8 @@ architecture IMPL of clocks is
 	signal LOCKED: STD_LOGIC;
 	signal CLK_CTR: UNSIGNED(3 downto 0) :=X"F";
 
+	signal async_reset: std_logic;
+
 	-- Internal clock signals (fully buffered and ready to export)
 	signal clk200_int, clk125_int, clk20_int, clk20_90_int, clk20_180_int : STD_LOGIC;
 
@@ -312,30 +314,33 @@ use_sfp125: if CLOCK_INPUT="SFP125" generate
 end generate;
 
 --! reset process: Keep the reset line active until the PLL is locked for a few cycles.
+async_reset <= rst_in or (not locked);
 clk200_reset : entity work.sync_reset port map (
 	clk => clk200_int ,
-	async_reset => rst_in or (not locked),
+	async_reset => async_reset,
 	reset_out => clk200_reset_out
 );
+
+
 clk125_reset : entity work.sync_reset port map (
 	clk => clk125_int,
-	async_reset => rst_in or (not locked),
+	async_reset => async_reset,
 	reset_out => clk125_reset_out
 );
 
 clk20_reset0 : entity work.sync_reset port map (
 	clk => clk20_int,
-	async_reset => rst_in or (not locked),
+	async_reset => async_reset,
 	reset_out => clk20_reset_out
 );
 clk20_reset90 : entity work.sync_reset port map (
 	clk => clk20_90_int,
-	async_reset => rst_in or (not locked),
+	async_reset => async_reset,
 	reset_out => clk20_90_reset_out
 );
 clk20_reset180 : entity work.sync_reset port map (
 	clk => clk20_180_int,
-	async_reset => rst_in or (not locked),
+	async_reset => async_reset,
 	reset_out => clk20_180_reset_out
 );
 

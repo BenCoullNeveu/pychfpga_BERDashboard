@@ -82,7 +82,10 @@ architecture behav of timestamp is
 	signal timing_reset_force, timing_reset_force_sync1, timing_reset_force_sync2 : std_logic := '0';
 	attribute async_reg of timing_reset_force_sync1, timing_reset_force_sync2 : signal is "true";
 
+	signal irig_vect : std_logic_vector(0 to 3);
 begin
+
+	irig_vect <=  irig_bp & irig_test & irig_sma & '0'; -- Combine all irig signal source in a single vector
 
 	enc : irigb_encoder port map (
 		clk_200mhz => clk_200mhz,
@@ -91,7 +94,7 @@ begin
 
 	dec : irigb_decoder port map (
 		clk_200mhz => clk_200mhz,
-		irig => irig_bp & irig_test & irig_sma & '0',
+		irig => irig_vect,
 		source => irig_source_sync2,
 		ts => ts
 	);

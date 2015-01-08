@@ -94,8 +94,9 @@ arm_spi_miso <= arm_spi_miso_int;
 
 icecore0: entity work.icecore
 	generic map (
-		MASTER_CLOCK_SOURCE                    => MASTER_CLOCK_SOURCE,
-		SIM                                    => SIM
+		MASTER_CLOCK_SOURCE => MASTER_CLOCK_SOURCE,
+		IMPLEMENT_TIMESTAMP => FALSE,
+		SIM                 => SIM
 	) port map (
 		arm_spi_sck => arm_spi_sck,
 		arm_spi_miso => arm_spi_miso_int,

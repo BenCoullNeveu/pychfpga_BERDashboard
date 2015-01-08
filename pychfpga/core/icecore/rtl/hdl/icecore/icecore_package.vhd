@@ -33,6 +33,8 @@ package icecore_package is
 	type SLV8_ARRAY_TYPE is array (NATURAL RANGE <>) of std_logic_vector(7 downto 0);
 	type SLV16_ARRAY_TYPE is array (NATURAL RANGE <>) of std_logic_vector(15 downto 0);
 	type SLV32_ARRAY_TYPE is array (NATURAL RANGE <>) of std_logic_vector(31 downto 0);
+	subtype slv32 is std_logic_vector(31 downto 0);
+	type slv32_array is array (NATURAL RANGE <>) of std_logic_vector(31 downto 0);
 
 	type U16_ARRAY_TYPE is array(integer range <>) of unsigned(15 downto 0);
 	type U32_ARRAY_TYPE is array(integer range <>) of unsigned(31 downto 0);

@@ -11,11 +11,14 @@ entity arm_spi is port (
 	mosi : in std_logic;
 	cs_n : in std_logic;
 
-	addr : out std_logic_vector(31 downto 0);
-	din : in std_logic_vector(31 downto 0);
-	dout : out std_logic_vector(31 downto 0);
-	wreq, rreq : out std_logic;
-	wack, rack : in std_logic
+	m_addr : out std_logic_vector(31 downto 0);
+	m_rreq : out std_logic;
+	m_rdat : in std_logic_vector(31 downto 0);
+	m_rack : in std_logic;
+
+	m_wreq : out std_logic;
+	m_wdat : out std_logic_vector(31 downto 0);
+	m_wack : in std_logic
 );
 end arm_spi;
 
@@ -74,7 +77,7 @@ begin
 				if sck_dly="100" then
 					mosi_shreg <= mosi_shreg(6 downto 0) & mosi_dly;
 					mosi_shreg_count <= mosi_shreg_count + 1;
-					
+
 					if mosi_shreg_count=7 then
 						mosi_shreg_strobe <= '1';
 					end if;
@@ -114,32 +117,32 @@ begin
 	begin
 		if rising_edge(clk) then
 
-			rreq <= '0';
-			wreq <= '0';
+			m_rreq <= '0';
+			m_wreq <= '0';
 
 			miso_shreg_ld <= '0';
 
 			if reset='1' or cs_n='1' then
 				spi_state <= SPI_IDLE;
-				addr <= (others => '0');
-				dout <= (others => '0');
+				m_addr <= (others => '0');
+				m_wdat <= (others => '0');
 			else
 
 				case spi_state is
 					when SPI_IDLE =>
 						if mosi_shreg_strobe='1' then
-							addr(7 downto 0) <= mosi_shreg(7 downto 2) & "00";
+							m_addr(7 downto 0) <= mosi_shreg(7 downto 2) & "00";
 							op <= mosi_shreg(1 downto 0);
 							spi_state <= SPI_A1;
 						end if;
 					when SPI_A1 =>
 						if mosi_shreg_strobe='1' then
-							addr(15 downto 8) <= mosi_shreg;
+							m_addr(15 downto 8) <= mosi_shreg;
 							spi_state <= SPI_A2;
 						end if;
 					when SPI_A2 =>
 						if mosi_shreg_strobe='1' then
-							addr(23 downto 16) <= mosi_shreg;
+							m_addr(23 downto 16) <= mosi_shreg;
 							spi_state <= SPI_A3;
 						end if;
 					when SPI_A3 =>
@@ -147,14 +150,14 @@ begin
 						-- diverge depending on the operation: for reads,
 						-- we need to dispatch them immediately.
 						if mosi_shreg_strobe='1' then
-							addr(31 downto 24) <= mosi_shreg;
+							m_addr(31 downto 24) <= mosi_shreg;
 
 							case op is
 								when "00" => -- read! Dispatch immediately.
-									rreq <= '1';
+									m_rreq <= '1';
 									spi_state <= SPI_RW;
 
-								when "01" => -- write
+								when "01" => -- writ
 									spi_state <= SPI_W1;
 
 								when others => -- eek!
@@ -167,9 +170,9 @@ begin
 					--
 					when SPI_RW =>
 						-- TODO: add read timeout
-						if rack='1' then
-							din_latched <= din(din_latched'range);
-							miso_shreg_in <= din(7 downto 0);
+						if m_rack='1' then
+							din_latched <= m_rdat(din_latched'range);
+							miso_shreg_in <= m_rdat(7 downto 0);
 							miso_shreg_ld <= '1';
 							spi_state <= SPI_R1;
 						end if;
@@ -197,25 +200,25 @@ begin
 					--
 					when SPI_W1 =>
 						if mosi_shreg_strobe='1' then
-							dout(7 downto 0) <= mosi_shreg;
+							m_wdat(7 downto 0) <= mosi_shreg;
 							spi_state <= SPI_W2;
 						end if;
 					when SPI_W2 =>
 						if mosi_shreg_strobe='1' then
-							dout(15 downto 8) <= mosi_shreg;
+							m_wdat(15 downto 8) <= mosi_shreg;
 							spi_state <= SPI_W3;
 						end if;
 					when SPI_W3 =>
 						if mosi_shreg_strobe='1' then
-							dout(23 downto 16) <= mosi_shreg;
+							m_wdat(23 downto 16) <= mosi_shreg;
 							spi_state <= SPI_W4;
 						end if;
 					when SPI_W4 =>
 						-- Dispatch the write. TODO: timeouts and
-						-- listen for wack?
+						-- listen for m_wack?
 						if mosi_shreg_strobe='1' then
-							dout(31 downto 24) <= mosi_shreg;
-							wreq <= '1';
+							m_wdat(31 downto 24) <= mosi_shreg;
+							m_wreq <= '1';
 							spi_state <= SPI_IDLE;
 						end if;
 
