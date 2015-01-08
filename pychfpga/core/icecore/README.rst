@@ -19,9 +19,13 @@ Requirements
 
 The Python code runs on Python 2.7 and requires the following packages:
    * numpy
-   * sqlalchemy ( the object-oriented high-level SQL database interface)
-   * gevents (coperative, lightweight multi-threading)
+   * sqlalchemy ( the object-oriented high-level SQL database interface, used to manage the hardware map)
+   * gevent (coperative, lightweight multi-threading used to sendcommands to multiple boards simultaneously)
    * yaml (PyYAML, to process text-based YAML hardware map files)
+
+Optional:
+   * pybonjour (used to automatically discover Iceboards on the local network through mDNS (experimental feature))
+
 Usage
 --------
 

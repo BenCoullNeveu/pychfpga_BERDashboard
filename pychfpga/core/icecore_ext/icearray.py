@@ -16,7 +16,6 @@ import csv
 import re # used by mdns_discovery
 from sqlalchemy.orm.session import Session
 
-from . import mdns_discovery
 from ..icecore import hardware_map
 from ..icecore.iceboard import IceBoard
 from ..icecore.tuber import TuberObject # used to ping boards
@@ -150,10 +149,16 @@ class IceArray(object):
 
     def discover_iceboards_using_mdns(self, timeout=0.5, default_app_name = '', default_subarray = 0):
         self.logger.debug('%r: Discovering IceBoards through mDNS' % self)
+
+        from . import mdns_discovery # We import here so we don't need pyonjour module if this feature is not needed
+
         providers = mdns_discovery.browse('_ssh._tcp', browse_timeout=timeout, resolve_timeout=timeout)
 
         iceboards = self.query(IceBoard) # get all the iceboards from the database
-        keymap = dict(iceboards.values(IceBoard.tuber_uri, IceBoard._pk)) # get a dictionnary that maps the serial number to primary keys
+        if iceboards:
+            keymap = dict(iceboards.values(IceBoard.tuber_uri, IceBoard._pk)) # get a dictionnary that maps the serial number to primary keys
+        else:
+            keymap = {}
 
         for provider in providers:
             host = provider['host']
