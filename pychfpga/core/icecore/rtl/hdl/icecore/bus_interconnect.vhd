@@ -1,6 +1,6 @@
 ----------------------------------------------------------------------------------
 --! @file
---! @brief Core firmware registers extected to be present on every IceBoard application
+--! @brief
 -- Company: McGill University
 -- Engineers: JF Cliche (JFC Inc) & Graeme Smecher (Three-Speed Logic, Inc)
 --

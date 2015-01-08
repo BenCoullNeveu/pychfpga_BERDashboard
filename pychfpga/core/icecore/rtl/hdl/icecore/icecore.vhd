@@ -211,28 +211,12 @@ fpga_ip_address                <= core_reg_wr_value(9);
 	clk200 <= clk200_int;
 	clk125 <= clk125_int;
 
-	buck_sync0: entity work.buck_sync
-		port map (
-			clk_200mhz   => clk200_int,
-
-			sync_fmca    => fmca_mezz_buck_sync,
-			sync_fmcb    => fmcb_mezz_buck_sync,
-
-			sync_1v0     => sync_1v0,
-			sync_1v8     => sync_1v8,
-			sync_1v0_gtx => sync_1v0_gtx,
-			sync_5v0     => sync_5v0,
-			sync_1v2     => sync_1v2,
-			sync_vadj    => sync_vadj,
-			sync_1v5     => sync_1v5,
-			sync_3v3     => sync_3v3,
-			sync_12v0    => sync_12v0
-		);
 
 	---------------------------------------------------------------------
 	-- ARM <-> FPGA serial interface
 	---------------------------------------------------------------------
 	-- Is used to communicate memory-mapped read/writes commands from the ARM to the FPGA and return the data to the ARM
+	---------------------------------------------------------------------
 
 	arm_spi0: entity work.arm_spi port map (
 		-- SPI interface
@@ -261,6 +245,7 @@ fpga_ip_address                <= core_reg_wr_value(9);
 	---------------------------------------------------------------------
 	-- Used to connect multiple slaves to the bus master . For now this is very primitive as there is no address-based routing.
 	-- This should one day be replaced by a full-fledged AXI4 interconnect.
+	---------------------------------------------------------------------
 
 	bus_interconnect0: entity work.bus_interconnect
 		generic map (
@@ -279,12 +264,14 @@ fpga_ip_address                <= core_reg_wr_value(9);
 
 			-- Master interfaces (to slaves)
 			m_addr => ctl_addr,
-			m_wdat => ctl_rdat,
-			m_rdat => ctl_wdat,
-			m_rreq => ctl_rreq,
-			m_rack => ctl_rack,
+
+			m_wdat => ctl_wdat,
 			m_wreq => ctl_wreq,
 			m_wack => ctl_wack,
+
+			m_rdat => ctl_rdat,
+			m_rreq => ctl_rreq,
+			m_rack => ctl_rack,
 
 			clk => clk125_int
 			);
@@ -294,6 +281,7 @@ fpga_ip_address                <= core_reg_wr_value(9);
 	-- Core registers
 	---------------------------------------------------------------------
 	-- Provide basic information on the hardware and firmware
+	---------------------------------------------------------------------
 
 core_regs0: entity work.register_array
 	generic map(
@@ -345,6 +333,8 @@ core_regs0: entity work.register_array
 -- 		dna_clk => clk20 -- dna clock, <97 MHz
 -- 	);
 
+user_reg_rd_value <= user_reg_wr_value; -- all registers are readback
+
 app_regs0: entity work.register_array
 	generic map(
 		ADDRESS_MASK => X"000001" & "------XX", -- up to 64 registers starting at 0x0000_0100
@@ -369,6 +359,28 @@ app_regs0: entity work.register_array
 
 		clk => clk125_int -- Clocks both control and register interface
 	);
+
+	---------------------------------------------------------------------
+	-- Buck regulators synchronization signals
+	---------------------------------------------------------------------
+	-- Proper phasing of regulators is required to minimize noise during large load transients
+	buck_sync0: entity work.buck_sync
+		port map (
+			clk_200mhz   => clk200_int,
+
+			sync_fmca    => fmca_mezz_buck_sync,
+			sync_fmcb    => fmcb_mezz_buck_sync,
+
+			sync_1v0     => sync_1v0,
+			sync_1v8     => sync_1v8,
+			sync_1v0_gtx => sync_1v0_gtx,
+			sync_5v0     => sync_5v0,
+			sync_1v2     => sync_1v2,
+			sync_vadj    => sync_vadj,
+			sync_1v5     => sync_1v5,
+			sync_3v3     => sync_3v3,
+			sync_12v0    => sync_12v0
+		);
 
 	---------------------------------------------------------------------
 	-- IRIG-B timestamp receiver
