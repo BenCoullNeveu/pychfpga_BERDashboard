@@ -191,3 +191,6 @@ def choosetest(username=None,board_sn=None,board_vn=None,board_md=None, testStat
     if GTX == 'Y' or GTX == 'y':
         GTXtest.GTXtest(username,board_sn,board_vn,board_md,testStatus)
 '''
+
+if __name__ == "__main__":
+    starttest()

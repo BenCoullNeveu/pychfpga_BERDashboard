@@ -73,7 +73,7 @@ def rampTest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     
     # Begin Ramp test
     raw_input("\nPress Enter to begin ramp test:\t")
-    fpgaFun.rampTest(board_sn, directory + '/ramp_testing_trial_sn' + board_sn, ch_acq_path=ch_acq_path, host_ip=host_ip)
+    [ delay_table, stuck_bits ] = fpgaFun.rampTest(board_sn, directory + '/ramp_testing_trial_sn' + board_sn, ch_acq_path=ch_acq_path, host_ip=host_ip)
     
     # Record results to file
     test_pass = False
@@ -96,6 +96,14 @@ def rampTest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     else:
         error = raw_input("Can you describe the error?\t")
         file.write("Ramp test failed to run: " + error + "\n")
+    file.write('\n\nComputed ADC delay table:\n')
+    file.write('\n::\n')
+    for line in delay_table:
+        file.write('\n   ' +  repr(line) + ',\\')
+    file.write('\n\nStuck bit flags (1 means no stuck bit):\n')
+    file.write('\n::\n')
+    for line in stuck_bits:
+        file.write('\n   ' +  repr(line) + ',\\')
     
     # End test
     print "\nIf there are any special concerns regarding the board for this test, please describe them below. If none, enter 'None'. "
@@ -107,14 +115,14 @@ def rampTest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     if check == 'Y' or check == 'y':
         file.write('\n\nRamp Test Overall Status: Pass')
         file.close()
-        testStatus[10] = (True and test_pass)
+        testStatus[11] = test_pass
     else:
         file.write('\n\nRamp Test Overall Status: Fail')
         print "Please describe why below."
         failure = raw_input("Enter your comments:       ")
         file.write('\nComments:         ' + failure)
         file.close()
-        testStatus[10] = False
+        testStatus[11] = False
         # Must modify this behaviour
         sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
     print "Do you wish to proceed to another test?"

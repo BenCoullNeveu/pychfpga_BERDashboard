@@ -148,6 +148,7 @@ def rampTest(board_sn, directory, ch_acq_path='../../ch_acq/', host_ip=None):
     :param host_ip: IP address of adapter used by computer to communicate with FPGA
     :param board_sn: e.g. '0021'
     :param directory: directory to save ramp_test results in (e.g. histogram PDFs and data)
+    :return [ ADC_DELAY_TABLES, stuck_bits ]: returns results of compute_adc_delay_offsets
     '''
 
     # Import necessary pychfpga modules
@@ -194,6 +195,7 @@ def rampTest(board_sn, directory, ch_acq_path='../../ch_acq/', host_ip=None):
     test = test_adc_ramp_histogram(c.fpga, r)
     test.execute(directory)
     r.close()
+    return [ADC_DELAY_TABLE, stuck_bits]
 
 def reload_list(fname="iceboard_list.txt", host_ip=None):
     from pychfpga.icecore.icearray import IceArray, close_all_sockets

@@ -377,6 +377,7 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
             fail = True
             fail_list.append(key)
             file.write('\nFAIL: ' + key + ' is ' + str(power[key]) + ', outside the expected ' + str(power_exp[key]) + ' +/-' + str(power_exp['TOLERANCE_V']*100) + '%')
+        file.write('\nDID NOT check power/current sensors against expected values.')
         #for index, val in enumerate(power[key][1:len(power[key])]): # Check other power measurements
         #    if abs(val - power_exp[key][index]) / power_exp[key][index] > power_exp['TOLERANCE_ELSE']:
         #        fail = True

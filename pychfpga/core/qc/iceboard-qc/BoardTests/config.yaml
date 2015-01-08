@@ -1,7 +1,7 @@
 # Config file. Save the parameters specific to your system here to avoid having to enter them manually.
 
 # System specific parameters
-host_ip: '10.10.10.47'# IP address of the network adapter communicating with FPGA (must be gigabit) (e.g. '10.10.10.10')
+host_ip: '10.10.10.218'# IP address of the network adapter communicating with FPGA (must be gigabit) (e.g. '10.10.10.10')
 ch_acq_path: '../../ch_acq/'# Path of ch_acq git repository (e.g. '../../ch_acq/' note the '/' at the end). Must be set to latest commit of master branch.
 user: 'Tristan'# Name of person running the QC.
 
