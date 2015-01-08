@@ -128,6 +128,7 @@ class chFPGA_config(object):
 
 class chFPGAException(Exception):
     _logger = logging.getLogger('chFPGAException')
+
     def __init__(self, message):
         super(self.__class__, self).__init__(message)
         self._logger.exception(message)
@@ -135,7 +136,8 @@ class chFPGAException(Exception):
 
 class chFPGA_controller(chFPGAHandler):
     """
-    Creates an object that connects to the specified chFPGA board and provides the methods to configure it and control its operations.
+    Creates an object that connects to the specified chFPGA board and provides
+    the methods to configure it and control its operations.
 
     Arguments:
         ip_address : string indicating the IP address of the chFPGA board, e.g. "10.10.10.11"
@@ -189,7 +191,6 @@ class chFPGA_controller(chFPGAHandler):
     # SYSTEM_I2C_BASE_ADDR      = _SYSTEM_BASE_ADDR + 0x05000
 
     # _GPIO_COOKIE_REG = 0x00 # Register address of the firmware cookie
-    _CHFPGA_COOKIE = 0x42 # Expected cookie value for chFPGA
 
     _PLATFORM_ID_ML605 = 0
     _PLATFORM_ID_KC705 = 1
