@@ -310,8 +310,9 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     fail = False
     fail_list = []
     file.write('\nExpected range is ' + str(temps_exp['MIN']) + ' C to ' + str(temps_exp['MAX']) + ' C\n')
-    file.write('\n' + "%15s%6s%8s" % ('Sensor', 'T(C)', 'Result'))
     file.write('\n' + '=' * 15 + ' ' + '=' * 5 + ' ' + '=' * 7)
+    file.write('\n\n' + "%15s%6s%8s" % ('Sensor', 'T(C)', 'Result'))
+    file.write('\n\n' + '=' * 15 + ' ' + '=' * 5 + ' ' + '=' * 7)
     for key in temps:
         if temps[key] > temps_exp['MAX'] or temps[key] < temps_exp['MIN']:
             fail = True
@@ -323,6 +324,7 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
             formatted_temp = "%-15s%6.2f%8s" % (key, temps[key], 'PASS')
             file.write('\n' + formatted_temp)
             print formatted_temp
+    file.write('\n' + '=' * 15 + ' ' + '=' * 5 + ' ' + '=' * 7 + '\n')
     if fail:
         file.write('\nSome temperature readings ' + repr(fail_list) + '  were outside reasonable range: Fail')
         file.write('\nFPGA Test Overall Status: Fail')
@@ -348,12 +350,14 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
         file.write('\nFPGA Test Overall Status: Fail')
         file.close()
         fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
-    file.write("\n%15s%5s%12s%12s%12s" % ('Sensor', 'V', 'shunt', 'current', 'power'))
     file.write('\n' + '=' * 15 + ' ' + '=' * 4 + ' ' + ('=' * 11 + ' ') * 3)
+    file.write("\n\n%15s%5s%12s%12s%12s" % ('Sensor', 'V', 'shunt', 'current', 'power'))
+    file.write('\n\n' + '=' * 15 + ' ' + '=' * 4 + ' ' + ('=' * 11 + ' ') * 3)
     for key, value in power.iteritems():
         formatted_power = "%-15s%5.2f%12.6f%12.6f%12.6f" % (key, value[0], value[1], value[2], value[3])
         file.write('\n' + formatted_power)
         print formatted_power
+    file.write('\n' + '=' * 15 + ' ' + '=' * 4 + ' ' + ('=' * 11 + ' ') * 3 + '\n')
     
     # Check results against expected values
     fail = False
