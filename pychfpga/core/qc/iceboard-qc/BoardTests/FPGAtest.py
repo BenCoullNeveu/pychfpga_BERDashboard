@@ -171,8 +171,9 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
         file.write('\nFPGA Test Overall Status: Fail')
         file.close()
         fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
+    file.write('\n\n::\n')
     for line in output:
-        file.write('\n' + line)
+        file.write('\n   ' + line)
         print line
     
     print "\nc.fpga.CORR.status():"
@@ -186,8 +187,9 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
         file.write('\nFPGA Test Overall Status: Fail')
         file.close()
         fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
+    file.write('\n\n::\n')
     for line in output:
-        file.write('\n' + line)
+        file.write('\n   ' + line)
         print line
         
     print "\nc.fpga.FreqCtr.status():"
@@ -201,8 +203,9 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
         file.write('\nFPGA Test Overall Status: Fail')
         file.close()
         fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
+    file.write('\n\n::\n')
     for line in output:
-        file.write('\n' + line)
+        file.write('\n   ' + line)
         print line
     
     print "\nc.fpga.GPIO.status():"
@@ -216,8 +219,9 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
         file.write('\nFPGA Test Overall Status: Fail')
         file.close()
         fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
+    file.write('\n\n::\n')
     for line in output:
-        file.write('\n' + line)
+        file.write('\n   ' + line)
     
     print "\nc.fpga.GPU.status():"
     file.write('\n\nGPU status output: ')
@@ -230,8 +234,9 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
         file.write('\nFPGA Test Overall Status: Fail')
         file.close()
         fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
+    file.write('\n\n::\n')
     for line in output:
-        file.write('\n' + line)
+        file.write('\n   ' + line)
         print line
 
     print "\nc.fpga.REFCLK.status():"
@@ -245,8 +250,9 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
         file.write('\nFPGA Test Overall Status: Fail')
         file.close()
         fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
+    file.write('\n\n::\n')
     for line in output:
-        file.write('\n' + line)
+        file.write('\n   ' + line)
         print line
     
     print "\nc.fpga.SPI.status():"
@@ -260,8 +266,9 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
         file.write('\nFPGA Test Overall Status: Fail')
         file.close()
         fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
+    file.write('\n\n::\n')
     for line in output:
-        file.write('\n' + line)
+        file.write('\n   ' + line)
         print line
     
     print "\nc.fpga.SYSMON.status():"
@@ -275,8 +282,9 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
         file.write('\nFPGA Test Overall Status: Fail')
         file.close()
         fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
+    file.write('\n\n::\n')
     for line in output:
-        file.write('\n' + line)
+        file.write('\n   ' + line)
     
     print "\nc.fpga.GPIO.FPGA_SERIAL_NUMBER:"
     file.write('\n\nFPGA serial number: ')
@@ -288,7 +296,8 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
         file.write('\nFPGA Test Overall Status: Fail')
         file.close()
         fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
-    file.write('\n' + str(fpga_serial))
+    file.write('\n\n::\n')
+    file.write('\n   ' + str(fpga_serial))
     print fpga_serial
 
     # Probe on i2c interface
@@ -350,14 +359,14 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
         file.write('\nFPGA Test Overall Status: Fail')
         file.close()
         fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
-    file.write('\n' + '=' * 15 + ' ' + '=' * 4 + ' ' + ('=' * 11 + ' ') * 3)
-    file.write("\n\n%15s%5s%12s%12s%12s" % ('Sensor', 'V', 'shunt', 'current', 'power'))
-    file.write('\n\n' + '=' * 15 + ' ' + '=' * 4 + ' ' + ('=' * 11 + ' ') * 3)
+    file.write('\n' + '=' * 15 + ' ' + '=' * 5 + ' ' + ('=' * 11 + ' ') * 3)
+    file.write("\n\n%15s%6s%12s%12s%12s" % ('Sensor', 'V', 'shunt', 'current', 'power'))
+    file.write('\n\n' + '=' * 15 + ' ' + '=' * 5 + ' ' + ('=' * 11 + ' ') * 3)
     for key, value in power.iteritems():
-        formatted_power = "%-15s%5.2f%12.6f%12.6f%12.6f" % (key, value[0], value[1], value[2], value[3])
+        formatted_power = "%-15s%6.2f%12.6f%12.6f%12.6f" % (key, value[0], value[1], value[2], value[3])
         file.write('\n' + formatted_power)
         print formatted_power
-    file.write('\n' + '=' * 15 + ' ' + '=' * 4 + ' ' + ('=' * 11 + ' ') * 3 + '\n')
+    file.write('\n' + '=' * 15 + ' ' + '=' * 5 + ' ' + ('=' * 11 + ' ') * 3 + '\n')
     
     # Check results against expected values
     fail = False
