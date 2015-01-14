@@ -40,24 +40,32 @@ __path__= [__path__[0] + '/python']
 # *** JFC: Allows Method 3
 # *** JFC: Need to add .python if Method 1 is not allowed
 from hardware_map import (
-    Base, HWMQueryException,
-    HWMQuery, HWMResource, TuberHWMResource,
-    macro, algorithm, HardwareMap,
+    Base,
+    HWMQueryException,
+    HWMQuery,
+    HWMResource,
+    TuberHWMResource,
+    macro, algorithm,
+    HardwareMap,
     Boolean,
     Session,
     set_session_class,
+    Handler,
 )
 
 from iceboard import (
-    IceBoard
+    IceBoard,
+    IceBoardHandler
 )
 
 from icecrate import (
-    IceCrate
+    IceCrate,
+    IceCrateHandler
 )
 
 from fmc_mezzanine import (
     FMCMezzanine,
+    FMCMezzanineHandler
 )
 
 from session import (

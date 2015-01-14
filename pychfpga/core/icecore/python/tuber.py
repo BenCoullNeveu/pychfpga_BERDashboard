@@ -54,7 +54,8 @@ def _tuber_json_object_hook(d):
 
 
 class TuberCategory(object):
-    '''This decorator pulls Tuber functions into ORM objects based on categories.
+    '''This decorator pulls Tuber functions into ORM objects based on
+    categories.
 
     Here's an example. If "ib" is an IceBoard object, and you have the
     ordinary IceBoard function set_mezzanine_power(), you can run the
@@ -102,6 +103,7 @@ class TuberCategory(object):
         self.category = category
         self.getobject = getobject
         self.arg_mappers = arg_mappers
+
     def __call__(decorator, cls):
 
         def __getattr__(self, name):
@@ -184,17 +186,17 @@ class TuberObject(object):
     '''
 
     _hold_dispatcher = False
-    _tuber_uri = None
+    _hostname = None
     _tuber_objname = None
 
     @staticmethod
-    def ping(uri, timeout = 0.1):
+    def ping(hostname, timeout = 0.1):
         """
-        Returns a boolean inticating whether a tuber object is available at the specified URI.
+        Returns a boolean inticating whether a tuber object is available at the specified ARM hostname.
         """
         import socket
         try:
-            fh=urllib2.urlopen(uri, '{}', timeout=timeout)
+            fh = urllib2.urlopen('http://%s/tuber' % hostname, '{}', timeout=timeout)
             fh.close()
         except ( urllib2.URLError, socket.timeout) : # some machines return socket.timeout
             return False
@@ -204,34 +206,31 @@ class TuberObject(object):
     # def __init__(self, hostname='localhost'):
     #     self.hostname = hostname
 
-    def __init__(self, uri=None, obj_name=None, **kwargs):
+    def __init__(self, hostname=None, obj_name=None, **kwargs):
         """
         uri: Address used to access the resource remotely
-        class_name: Name of the class to be accessed
-        key: ID used to uniquely identify each instance of the class. This is typucally the primary key of a database object.
+        obj_name: Name of the Tuber object to be accessed
         """
-        self.hostname = uri # temporary patch
-        self._tuber_uri = uri
+        self._hostname = hostname  # ***JFC: temporary patch
         self._tuber_objname = obj_name
-        print kwargs
-        super(TuberObject, self).__init__(**kwargs) # Make tuber collaborative
+        super(TuberObject, self).__init__(**kwargs)  # Make tuber collaborative
 
     @property
     def tuber_uri(self):
         '''Retrieve the URI associated with this TuberResource.'''
 
-        if self._tuber_uri: # if a URI was specified at object initialization, use it
-            return self._tuber_uri
-        elif self.hostname: # other wise use the hostname specified in the superclass
-            return 'http://%s/tuber' % self.hostname
+        if self._hostname:
+            return 'http://%s/tuber' % self._hostname
         else:
-            raise TuberError("Mandatory 'hostname' or 'tuber_uri' attribute not specified!")
+            raise TuberError("Mandatory 'hostname' attribute not specified!")
 
     @property
     def tuber_objname(self):
-        '''Retrieve the name of the object providing resources through tuber.'''
-        # Get target object name
-        # If we used tuber as an independent object, use the object name provided at __init__, otherwise use the superclass name
+        '''Retrieve the name of the object providing resources through
+        tuber.'''
+        # Get target object name If we used tuber as an independent object,
+        # use the object name provided at __init__, otherwise use the
+        # superclass name
         return self._tuber_objname or self.__class__.__name__
 
 
@@ -268,9 +267,6 @@ class TuberObject(object):
             json_in[:1024], json_out[:1024],
             t2-t1))
 
-
-
-
         # TBD: I would love to postpone error-checking until we make use of
         # the relevant call, but I can't do that since we don't always look!
         # There is potentially a use for the "with" keyword here: could we
@@ -296,10 +292,16 @@ class TuberObject(object):
         '''Provide a list of what's here. (Used for tab-completion.)'''
 
         (meta, _, _) = self._tuber_get_meta()
-        # We need to gather all class attributes from the MRO chain so we don't hide other superclasses
-        class_attributes = [item  for class_ in type(self).mro() for item in class_.__dict__.keys()]
+        # We need to gather all class attributes from the MRO chain so we
+        # don't hide other superclasses
+        class_attributes = [item for class_ in type(self).mro()
+                            for item in class_.__dict__.keys()]
         instance_attributes = self.__dict__.keys()
-        return list(set(class_attributes + instance_attributes + meta.properties + meta.methods))
+        return list(set(class_attributes +
+                        instance_attributes +
+                        meta.properties +
+                        meta.methods)
+                    )
 
     def _tuber_get_meta(self):
         '''Retrieve metadata associated with the remote network resource.

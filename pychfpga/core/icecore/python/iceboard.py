@@ -33,20 +33,23 @@ class IceBoardException(Exception):
 
 
 class IceBoard(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
-    """
-    Provides access to the basic functions of an IceBoard.
+    """ Provides access to the basic functions of an IceBoard.
 
-    This object inherits from a generic Hardware Manager resource,
+    This object inherits from a generic Hardware Map Resource (HWMResource),
     which allows the iceboard objects to be added to the hardware
     map database.
 
-    The methods and properties have access to the hardware or firmware
-    in one of the the following ways:
-        - The low-level hardware access is made directly in python
-          through the ARM or FPGA I2C links to the board.
-        - The low-level hardware access is implemented in the ARM<
-          software, and all methods and properties are imported
-          through tuber.
+    This object also inherits from a Hardware Map Handler Manager
+    (HWMHandlerManager) which always keeps this object connected to the
+    appropriate Handler object instance that persists in memory.
+
+    All methods and attributes provided by the handler (in the handler itself
+    or through Tuber) are accessible as if they belonged to this ORM object.
+
+    The IceBoard object can be associated with multiple handlers in order to
+    represent boards runing different FPGA firmware. The handler are
+    identified by the app_handler_name column, of the '_cls_ column if the
+    former is not defined.
 
     Project-specific classes are meant to be derived from this class.
     """
@@ -73,10 +76,18 @@ class IceBoard(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
 
     subarray = Column(Integer)
 
-    tuber_uri = Column(String)  # The URI used to access remote handlers (used to be 'hostname')
+    # ** JFC: Should be arm_ip_address or arm_hostname?
+    hostname = Column(String)  # The host name of the ARM on the IceBoard
 
-    # *** JFC: those might be redundant now
-    core_handler_name = Column(String)
+    # *** JFC: app_handler_name is used to allow the hardware map to specify
+    #     which type of handler (i.e. FPGA firmware) is associated with this
+    #     board without having to hard-code this in a subclass. Having the
+    #     user to specify the '_cls' seems dangerous as it plays with the
+    #     SQLAlchemy innards and will cause obscure error messaged.
+    #
+    #     This parameter could be renamed 'handler_name', 'handler',
+    #     'personality', 'application' etc.
+    #
     app_handler_name = Column(String)
 
     mezzanines = relationship(
@@ -117,21 +128,20 @@ class IceBoard(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
         This is called whenever this instance of an HWM object has been
         created, recreated from the database, or changed.
 
-        The default action is to connect to a handler that is registered under
-        the name specified in '_cls'. In addition to offering its
-        own attributes, the handler also provides the methods and properties
-        obtained from Tuber for the default object name defined by the handler.
+        The default action is to connect to a handler class that is registered
+        under the name specified in '_cls'. The handler instances are uniquely
+        identified by the primary key '_pk'. The handler is passed the
+        'hostname' column value to allow its Tuber machinery to connect to
+        the ARM.
 
         The default handler for IceBoard is IceBoardHandler, which provides
         Tuber's 'IceBoard' methods and properties in addition to basic Pyhton
-        helper methods.
-
-        A subclass if IceBoard can or course redefine this method to connect
-        to any other handler and Tuber object.
+        helper methods. A subclass of IceBoard can or course redefine this
+        method to connect to any other handler and Tuber object.
         """
         self.set_handler(object_id=self._pk,
-                         handler_name=self.app_handler_name or self._cls,
-                         tuber_uri=self.tuber_uri)
+                         handler_name=self.app_handler_name or self._cls, # *** JFC: we should use one or the other, not both?
+                         hostname=self.hostname)
 
     def __repr__(self):
         """ Provides a concise string representation of this Iceboard that is
@@ -145,7 +155,7 @@ class IceBoard(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
             self.__class__.__name__,
             ('slot=%s' % self.slot_number) if self.crate else
             ('serial=%s' % self.serial_number) if self.serial_number else
-            ('hostname=%s' % self.tuber_uri)
+            ('hostname=%s' % self.hostname)
             )
 
     def set_application(self, handler=None,
@@ -158,18 +168,14 @@ class IceBoard(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
     def set_fpga_bitstream(self, buf=None, tag=None, force=False):
         ''' Configures the FPGA with the specified bitstream.
 
-        If a buffer 'buf' is explicitely provided, the bitstream it contains
-        will be used to configure the FPGA. Otherwise, the bitstream
-        associated with the current handler with the specifiec 'tag' will be
-        loaded.
+        The bitstream associated with the current handler with the specifiec 'tag' will be
+        loaded. However, if a buffer 'buf' is explicitely provided, that bitstream will be used instead.,
 
-        The buffer is an object where str(buf) returns the content of a .BIT
-        or .BIN file.
+        The 'buf' can be any an object where str(buf) returns the content of a .BIT
+        or .BIN file (which includes a buffer, a string, or other objects defining __str__()).
 
-
-        The FPGA will not be reconfigured it already has a bitstream with the
-        same signature. Setting 'force' to True for force reconfiguration in
-        any cases.
+        By default, the FPGA will not be reconfigured it already has a bitstream with the
+        same CRC signature. That behavior can be changed by specifying the 'force' argument:
 
             force = True: FPGA will always be configured
             force = False: FPGA will be configured if it is not configured or
@@ -187,7 +193,7 @@ class IceBoard(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
         else:
             buf = str(buf)
 
-        crc32 = zlib.crc32(buf)  # compute CRC32 of the data
+        crc32 = zlib.crc32(buf) & 0xFFFFFFFF  # compute CRC32 of the data
 
         if not self.is_fpga_programmed() or force \
            or (force is not None and (self.get_fpga_bitstream_crc() != crc32)):
@@ -354,8 +360,7 @@ class IceBoard(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
 
 
 class IceBoardHandler(hardware_map.Handler, tuber.TuberObject):
-    """
-    Basic Python handler for the IceBoard.
+    """ Basic Python handler for the IceBoard.
 
     It provides:
        - access to the methods and attributes provided by the ARM-based
@@ -365,15 +370,26 @@ class IceBoardHandler(hardware_map.Handler, tuber.TuberObject):
 
     Firmware-specific application handlers should subclass this class.
 
-    For now, the MMI interface is provided through Tuber using the SPI
-    peek/poke methods assuming the core firmware provides such an interface.
-    But this will evolve as we bypass Tuber's HTTP/JSON overhead and go
+    Any object provided by this this handler can be accessed at any
+    hierarchical level. However, objects that are probided by Tuber have these
+    restrictions:
+
+       - attributes and methods whise name begin with '_' are not accessible
+       - modification to the object attributes must be done by a setter
+         function provided by the object.
+       - methods or attribute access can only return string or numeric values,
+         or lists or dictionnary thereof
+
+    NOTE 1: For now, the MMI interface is provided through Tuber using its
+    peek/poke methods, but the interface may transparenly offer faster access
+    methods by redefining the fpga_mmi_read/write methods. For example, the
+    MMI commands might one day bypass Tuber's HTTP/JSON overhead and go
     through a separate ARM port that forwards the packets directly to the FPGA
     through SPI or PCIe for maximum speed.
 
-    Note that CHIME's chFPGA handler overrides these methods in a superclass
-    to implement an MMI that interfaces directly to the FPGA through the SFP
-    Ethernet port using a separate socket.
+    NOTE 2: This handler does not define a MMI interface that uses the FPGA's
+    ethernet port (e.g. CHIME) . Such functionnality is to be provided by a
+    superclass of this handler if the firmware supports it.
     """
 
     # The following attributes must be redefined in every subclasses
@@ -397,15 +413,17 @@ class IceBoardHandler(hardware_map.Handler, tuber.TuberObject):
     serial_number = None
     mezzanine = {}
 
-    def __init__(self, tuber_uri=None,
-                 tuber_object='IceBoard', **kwargs):
+    def __init__(self, hostname=None, tuber_object='IceBoard', **kwargs):
         super(IceBoardHandler, self).__init__(
-            uri=tuber_uri, obj_name=tuber_object, **kwargs)
+            hostname=hostname, obj_name=tuber_object, **kwargs)
 
     def __repr__(self):
-        return '%s (handler for %r SN%s)' % (
+        """ Get an unique string representation for this handler instance.
+
+        It should preferably stay below 32 characters long to fit in syslog tag fields.
+        """
+        return '%s(SN%s)' % (
             self.__class__.__name__,
-            self.__handler_for__.__name__,
             self.serial_number)
 
     def hwm_update(self, hwm_object):
@@ -463,7 +481,7 @@ class IceBoardHandler(hardware_map.Handler, tuber.TuberObject):
         """ Read a single 32-bit word at specified byte address through the
         SPI interface.
         """
-        return self.fpga_tuber_mmi_read(addr)
+        return self.fpga_tuber_mmi_read(addr) & 0xFFFFFFFF
 
     def fpga_mmi_write(self, addr, value):
         """ Write a single 32-bit word at specified byte address through the
@@ -647,13 +665,5 @@ class IceBoardHandler(hardware_map.Handler, tuber.TuberObject):
         string = '%04i-%02i-%02i %02i:%02i:%02i' % (
             year + 2000, month, day, hour, minutes, seconds)
         return string
-
-    # def get_number_of_mezzanine_slots(self):
-    #     """ Returns the number of mezzanine slots supported by this board .
-
-    #     NOTE: It would be nice if the ARM could provide this function.
-    #     """
-    #     return 2
-
 
 # vim: sts=4 ts=4 sw=4 tw=78 smarttab expandtab

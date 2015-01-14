@@ -77,150 +77,32 @@ import gevent.monkey
 u'foo'.encode('idna')  # workaround for github.com/gevent/gevent/issues/349
 gevent.monkey.patch_socket()  # comment this out to disable green threads.
 
-import os, sys
-import sys
-import traceback
-
 import functools
 import collections
 import time
 import logging
+import os
+import sys
+import traceback
+from collections import OrderedDict
 
 import sqlalchemy
 import sqlalchemy.orm
 import sqlalchemy.ext.declarative
 import sqlalchemy.types
-
-from . import tuber
-
-# *** To cleanup
-# Make commonly used sqlalchemy classes available through this module
-from sqlalchemy import create_engine, inspect
-from sqlalchemy import Column, Integer, String, Boolean, Binary, LargeBinary, DateTime, ForeignKey, UniqueConstraint
-from sqlalchemy.orm import relationship, Query, sessionmaker, backref, reconstructor, scoped_session, object_session
 from sqlalchemy.event import listen
+
+from . import tuber  # **JFC: I stick to relative imports to avoid user-config-dependent problems
 
 Base = sqlalchemy.ext.declarative.declarative_base()
 
 
+# *** JFC: We should probably remove this. Standard exceptions should do
 class HWMQueryException(Exception):
     pass
 
 
-# class HWMQueryAttribute(object):
-#     def __new__(cls, query_object, attribute_chain):
-#         """ Return a HWMQueryAttributeBase instance with a __call__
-#         method that has been tweaked to return the docstring of the target
-#         method, and is initialized with a *copy* of the original query and attribute list.
-#         """
-#         logger = logging.getLogger(__name__)
-#         logger.debug('calling HWMQueryAttribute.__new__')
-# ClassWithDoc = type(HWMQueryAttributeBase.__name__, HWMQueryAttributeBase.__bases__, dict(HWMQueryAttributeBase.__dict__))
-#         class HWMQueryAttributeWithDoc(HWMQueryAttributeBase): pass
-#         try:
-# target_method = HWMQueryAttributeBase._get_object(query_object.first(), attribute_chain) # get the attribute (method) described by the attribute object
-# call_method = lambda self_, *args, **kwargs: HWMQueryAttributeBase.__call__(self_,*args, **kwargs) # Create a new call method that we can modify below
-# HWMQueryAttributeWithDoc.__call__ = functools.update_wrapper(call_method, target_method) # Create a __call__ method that inherits the docstring from the target method
-#         except AttributeError:
-#             call_method = lambda self_: None
-#             call_method.__doc__ = 'This object is not callable'
-# HWMQueryAttributeWithDoc.__call__ = call_method #functools.update_wrapper(call_method, lambda:None)
-#         logger.debug('Done creating new HWMQueryAttribute')
-
-#         return HWMQueryAttributeWithDoc(query_object, attribute_chain)
-
-# class HWMQueryAttributeBase(object):
-#     """
-#     Class representing an attribute or subattribute attached to Query results. The class does not store the attribute
-#     objects itself, but rather keeps track of the attribute chain (i.e.
-#     attr1.attr2.attr3 ...) that leads to the desired object. This allows the
-#     objects to be reaccessed from another root object (i.e. from another session), allowing thread-safe operations.
-#     """
-
-# initialize variables so __getattr__() will not be called when they are accessed on a fresh instance
-# _query = None # iterable providing objects with common attributes
-# _attribute_chain = None # list of strings representing the attributes to
-# access in order
-
-#     def __init__(self, query_object, attribute_chain):
-#         """ Creates an attribute object. 'attribute_chain' is a list of
-#         attributes names that, when applied sequentially to the root object
-#         'query_object', yields the desired attribute object.
-#         """
-#         self._logger = logging.getLogger(__name__)
-# self._query = query_object#._clone()
-#         self._attribute_chain = list(attribute_chain)
-
-#     def __repr__(self):
-# return '%r.%s = [%r]' % (Query.__repr__(self._query), '.'.join(self._attribute_chain), ','.join(repr(obj) for obj in self))
-# return 'HWMQuery%s = [%s]' % (self._get_access_chain_repr(),
-# ','.join(repr(obj) for obj in self))
-
-#     def _get_access_chain_repr(self):
-#         """ Return a string representation of the access chain.
-#         """
-# return ''.join(['.'+ access if isinstance(access,str) else access[3] for
-# access in self._attribute_chain])
-
-#     def __iter__(self):
-#         if self._query._use_concurrent_get:
-#             return iter(self._query._concurrent_call(self._attribute_chain, None))
-#         else:
-# return (self._get_object(obj, self._attribute_chain) for obj in
-# self._query)
-
-#     def __getattr__(self, attr_name):
-#         """ Return another HWMQueryAttribute object that points to the specified sub-attribute"""
-# return HWMQueryAttribute(self._query, self._attribute_chain +
-# [attr_name])
-
-
-#     def __getitem__(self, *args, **kwargs):
-# return self._get_object(self._query[index], self._attribute_chain)
-# return [self._get_object(obj)[index] for obj in self] # could be parallelized easily
-# return HWMQueryAttribute(self._query, self._attribute_chain +
-# [('__getitem__', args, kwargs, '[%r]' % args[0])])
-
-#     def __len__(self):
-#         return self._query.count()
-
-#     def __dir__(self):
-#         """
-#         Lists all the attributes that are accessible from this attribute. Useful for tab completion.
-#         """
-#         self._logger.debug('Calling dir')
-#         query_attr = [set(dir(obj)) for obj in self]
-#         return list(set.intersection(*query_attr))
-
-
-#     def __call__(self, *args, **kwargs):
-#         """ Call the the attribute (method) on all elements of the root object concurrently with the specifid arguments. All calls are made with the same arguments."""
-#         if self._query._use_concurrent_call:
-#             return self._query._concurrent_call(self._attribute_chain, '__call__', *args, **kwargs)
-#         else:
-#             return [obj(*args, **kwargs) for obj in self]
-
-#     @staticmethod
-#     def _get_object(source_obj, access_chain):
-#         """
-#         Returns the object represented by the access chain, starting from object source_obj.
-#         access_chain is a list of elements, each of which is:
-#             - a string, which indicates the name of the attribute to fetch the derired value
-#             - a (method_name, args, kwargs) tuple, indicating the method to call to fecth the desired value
-#         The first element must be an attribute name string (i.e. no function calls are allowed).
-#         """
-#         attr = getattr(source_obj, access_chain[0])
-#         for attr_name in access_chain[1:]:
-#             if isinstance(attr_name, str):
-#                 attr = getattr(attr, attr_name)
-#             else:
-#                 (method_name, args, kwargs, _) = attr_name
-#                 method = getattr(attr, method_name)
-#                 attr = method(*args, **kwargs)
-#         return attr
-
-class HWMQuery(object):
-
+class HWMQuery(sqlalchemy.orm.Query):
     '''HWMQuery object: A parallel-call extension to Query objects.
 
     This is also pretty well internal; you shouldn't have to use it directly.
@@ -229,51 +111,8 @@ class HWMQuery(object):
     This is an extension to SQLAlchemy's Query object. A HWMQuery can be
     used to dispatch method calls on every class it contains.
     '''
-    _hold_dispatcher = False
-    _index_column = None
-    _call_list = []
-    # _query = None # Query associated with this object
-    _results = []  # List of objects associated with this object
-    _exceptions = []
-    _use_concurrent_get = None
-    _use_concurrent_set = None
-    _use_concurrent_call = None
 
-    def __init__(self, entities, session=None, is_query=True, original_query=None, index_by=None):
-        self._logger = logging.getLogger(__name__)
-        self._is_query = is_query
-        if is_query:
-            self._query = Query(entities, session)
-            self._results = list(self._query)
-            self._exceptions = [None] * len(self._results)
-        else:
-            self._query = original_query
-            self._results = entities
-            self._exceptions = [None] * len(self._results)
-
-        self._index_column = index_by
-        # self._use_concurrent_get = use_concurrent_get
-        # self._use_concurrent_set = use_concurrent_set
-        # self._use_concurrent_call = use_concurrent_call
-
-    def __iter__(self):
-        return iter(self._results)
-
-    def __len__(self):
-        return len(self._results)
-
-    def __nonzero__(self):
-        return bool(self._results)
-
-    def __dir__(self):
-        """
-        Lists all the attributes that are accessible from this instance and
-        those that are common to all the results in the query. Useful for tab
-        completion.
-        """
-        local_attr = dir(type(self)) + self.__dict__.keys()
-        query_attr = [set(dir(x)) for x in self]
-        return local_attr + list(set.intersection(*query_attr))
+    _algorithm_registry = {}
 
     def __getattr__(self, name):
         '''Teach a collection of query results how to parallelize.
@@ -301,177 +140,87 @@ class HWMQuery(object):
         delegating them to each object in the Query results. It returns
         an array of results corresponding to each underlying object.
         '''
-#        self.logger.debug('call __getattr__')
+
         # Since this is a SQLAlchemy "Query" subclass, we can use it
         # as a collection and call things like "count()" on it.
 
         # Refuse to parallellize access to special names
-        # if name[0] == '_':
-        #     raise AttributeError("Refusing to parallelize name '%s' (because it begins with a '_')" % name)
-        if self._is_query and hasattr(self._query, name):
-            return getattr(self._query, name)
-        # See if this is something we can parallelize. Note that
-        # AttributeError is the correct exception to return for
-        # "didn't-find-it" errors. If objects are mismatched, indicating a
-        # programmer error, we return something angrier.
-        if not self._results:
-            raise AttributeError(
-                "Query is empty: there are no attributes to be found")
+        if name in ('_orm_only_adapt', '_calls'):
+            raise AttributeError()
 
-        # Generate an exception of none or only some of the objects have the
-        # desired attribute. Otherwise create a new HWMQuery object with the
-        # desired attributes.
-        attr_present = [hasattr(result, name) for result in self._results]
+        # First, try algorithms from the registry.
+        for (cls, algs) in self._algorithm_registry.iteritems():
+            if not issubclass(self.column_descriptions[0]['type'], cls):
+                continue
+            for a in algs:
+                if name == a.__name__:
+                    @functools.wraps(a)
+                    def alg(*args, **kwargs):
+                        return a(self, *args, **kwargs)
+                    return alg
+
+        # Next, try attributes/methods from contained objects.
+        # Special case: if the query returned no results, we can't reliably
+        # ask it for attributes. Treat this as an error (we can sometimes
+        # do the right thing, but not always.)
+        if self.count() == 0:
+            raise AttributeError("Can't request attribute '%s' from a Query "
+                                 "with no results!" % name)
+
+        # Generate an exception of only some of the objects have the
+        # desired attribute. (If none of the objects have the attribute,
+        # we want to raise the ordinary Python AttributeError. This
+        # happens below.)
+        attr_present = [hasattr(obj, name) for obj in self]
         if not any(attr_present):
             raise AttributeError(
-                "Attribute %s does not exist on any element of the current results" % name)
+                "Attribute '%s' does not exist on any element "
+                "of the query" % name)
         elif not all(attr_present):
             raise AttributeError(
-                "Attribute %s must exist on all elements of the current results" % name)
-        else:
-            return HWMQuery([getattr(result, name) for result in self._results], is_query=False, original_query=self._query)
+                "Attribute '%s' does not exist on *ALL* elements "
+                "of the query" % name)
 
-    def __call__(self, *args, **kwargs):
-        return self._concurrent_call('__call__', *args, **kwargs)
+        # Get the specified attribute from all objects.
+        attrs = [getattr(x, name) for x in self]
 
-    def hold(self, on_hold=True):
-        """ Set the hold mode """
-        self._hold_dispatcher = bool(on_hold)
-        if not on_hold:
-            return self.flush()
+        return HWMQueryAttributes(attrs)
 
-    def flush(self):
-        """ Disable hold and execute any pending commands, and return the results"""
-        # Always, after flushing, assume single-stepping.
-        self._hold_dispatcher = False
-        return self._execute_concurrent_calls()
+    def __dir__(self):
+        """Retrieve a list of interesting attributes."""
 
-    def _concurrent_call(self, method, *args, **kwargs):
-        """ Add a concurrent call to the list and execute if we are not on hold."""
-        assert not (self._hold_dispatcher == False and self._call_list), \
-            ' Hold is inactive but there are pending tasks in the call list'
-        self._call_list.append((method, args, kwargs))
-        if not self._hold_dispatcher:
-            return self._execute_concurrent_calls()[0]
+        # ***JFC: This original following line just returns the dir of a super
+        # object, which is not the dir of a Query object.
+        # s = set(dir(super(HWMQuery, self)))
 
-    @staticmethod
-    def _get_traceback_strings():
-        """ Return a compact traceback message as a list of strings"""
-        (exception_type, exception_args, exception_tb) = sys.exc_info()
-        tb = traceback.extract_tb(exception_tb)
-        tracebackString = ['    %s in .../%s:%i' %
-                           (fn, os.path.split(filename)[1], line) for (filename, line, fn, code) in tb]
-        tracebackString[-1] += ('=> %r' % exception_args)
+        # Get instance attributes
+        # Add class attributes from all classes in the MRO
+        # Add methods/propertiescommon to all query objects
+        s = set(self.__dict__.keys()) | \
+            set.union(*[set(dir(cls)) for cls in type(self).mro()]) | \
+            set.intersection(*[set(dir(obj)) for obj in self])
 
-    def _execute_concurrent_calls(self):
-        """ Concurrently calls the methods on the attributes specified in the call list for every
-        object represented by the query. If the access method is 'None', the object itself is
-        returned.
+        # Add algorithms from the registry.
+        for (cls, algs) in self._algorithm_registry.iteritems():
+            if issubclass(self.column_descriptions[0]['type'], cls):
+                s.update([a.__name__ for a in algs])
 
-        call_list is a list of tuples consisting of: (attribute, method, args, kwargs)
-        Where:
-            attribute_object: HWMQueryAttribute object representing the chain of attributes leading to the desired object
-            args (tuple) and kwargs (dict): arguments to pass to the method
-            method: if Null, the attribute is returned. If callable, the method is called with an query result as argument, plus arg and kwargs. If a string, the call is made with the method of the same name for this attribute.
+        return [str(item) for item in s]  # Remove unicode stings
 
-
-        To call an attribute (method): q._execute_concurrent_call(attr, '__call__', arg1, arg2, ... )
-        To set an attribute: q._execute_concurrent_call(attr, '__setattr__', attr_name, value)
-        To get an attribute: q._execute_concurrent_call(attr, None) # where attr describes the attribute itself
-                 or:         q._execute_concurrent_call(attr, '__getattr__', attr_name) # where attr describes the parent attribute
-        """
-        # define the function performed by each thread on each object
-        def runner(hwm_object, target_object, call_list):
-            '''Run calls on a single ORM object.'''
-            logger = logging.getLogger(__name__)
-            results = []
-            exceptions = []
-            for (method_name, local_args, local_kwargs) in call_list:
-                # logger.debug('Running thread calling object (%r).%s.%s(%s,%s)' % (query_result, '.'.join(attribute_chain), method, ','.join([repr(a) for a in local_args]), ','.join(['%s=%s' % (key,value) for (key,value) in local_kwargs.items()])))
-
-                # Perform the desired function on the attribute. Catch any
-                # error and return them in the result set instead of raisong an
-                # exception.
-                try:
-                    target_object_method = getattr(target_object, method_name)
-                    results.append(
-                        target_object_method(*local_args, **local_kwargs))
-                    exceptions.append(None)
-                except Exception as exc:
-                    # Add a None result in case of an exception
-                    results.append(None)
-                    exceptions.append(exc)
-                    # e = "%r: Thread Exception while accessing %r.%r()\n \
-                    #     Exception is: %r\n \
-                    #     Traceback is:\n%s" \
-                    #     % (hwm_object, target_object, method_name, exc, '\n'.join(self.__class__._get_traceback_strings()))
-                    e = '%r: accessing %r : Exception: %r' % (
-                        hwm_object, method_name, exc)
-                    logger.error(e)
-            logger.debug('%r: Thread for object %r is returning %r' %
-                         (hwm_object, target_object, results))
-            return results
-
-        threads = [gevent.spawn(runner, self._query[i], self._results[i], self._call_list)
-                   for i in range(len(self._results))]
-        gevent.joinall(threads)
-
-        exceptions = [t.exception for t in threads]
-        results = [t.value for t in threads]
-
-        # Results are indexed backwards (i.e. [thread][call]). Transpose.
-        return results
-        transposed_results = zip(*(t.value for t in threads))
-
-        self._call_list = []  # empty the call list
-        # self._logger.debug('All threads returned %r' % transposed_results) #
-        # resilting string is sometimes too big for syslog.
-        if exception_list:
-            raise HWMQueryException('The concurrent call generated the following exceptions: %s' % ','.join(
-                repr(e) for e in exception_list))
-        else:
-            return transposed_results
-
-    def index_by(self, index_column=None):
-        """
-        Specifies the column to use as an index when indexing this object
-        using '[]'. If none is specified, the objects are indexed by the order
-        they were queried (original SQLAlchemy's Query behavior)
-
-        Example:
-            >>> c=ca.query(IceBoard).index_by(IceBoard.serial_number)
-            >>> c[7] # returns the iceboard with serial number 7
-        """
-        self._index_column = index_column
-        return self
-
-    # def __len__(self):
-    #     return self.count()
-
-    def __getitem__(self, index):
-        """
-        If an indexing colums was specified with index_by(...) and the
-        provided index is a scalar (a string or an integer), return the
-        database where the indexing column matches the index. Otherwise
-        executes default SQLAlchemy indexing (indexes the object in the order
-        they were returned) which supports slices.
-
-        In the column indexing mode, an exception will be raised if the query
-        does not produce exactly one result (we call the .one() method)
-        """
-        if self._index_column and not isinstance(index, slice):  # we must not process slices because  Query.first() and Query.__getitem__ use self[slice] and would be really confused
-            return self.filter(self._index_column == index).one()
-        else:
-            return super(HWMQuery, self).__getitem__(index)
-
-    def __repr__(self):
-        """
-        Returns a human-readable representaion of the query results.
-        """
-        return 'HWMQuery= [%s]' % ','.join(repr(obj) for obj in self)
-
+    # *** do we keep this for legacy support?
     def call_with(self, func, *args, **kwargs):
         """Call some function across a collection of Query results.
+
+        if 'func' possess the variable '_hwm_call_with_outer', that function
+        is called with the whole HWMQuery passed as its first argument
+        followed by the *args and **kwargs (as if 'func' was an unbound method
+        of the HWMQuery object)
+
+        Otherwise, the function is treated as an unbound method and will be
+        concurrently called for each instance of the Query results by passing
+        it that instance as its first argument, followed by the common
+        arguments *args and **kwargs (as if 'func' was an unbound method of
+        the objects selected by the query).
 
         Let's say you want to do "something" with a set of Query results:
 
@@ -481,55 +230,333 @@ class HWMQuery(object):
         multi-threaded context.) Using this function, you can do so as
         follows:
 
-            >>> results.call_with(do_something, x, foo, bar)
+            >>> results.call_with(do_something, foo, bar)
         """
-        return self._concurrent_call(None, func, *args, **kwargs)
-        # return self._call_proto(func, False, *args, **kwargs)()
+        # If 'func' is smart enough not to want a parallelized call, obey it.
+        if hasattr(func, '_hwm_call_with_outer'):
+            return func(self, *args, **kwargs)
+
+        return concurrent_call([func] * self.count(), self, *args, **kwargs)
+
+    def as_dict(self, keys=None, convert_fn=None):
+        """
+        Returns the query object as a dictionary indexed with the specified
+        keys.
+
+        if 'keys' is an Instrumented Attribute, the dictionary will be indexed
+        by the value of this attribute. If convert_fn is specified, the
+        attribute values will be converted using that function.
+
+        If keys is a iterable, the values are used directly as an index.
+
+        If the keys parameter is omitted or evaluates as False, the objects are
+        indexed from 0 to len(x)-1 and the returned collection will behave
+        similarly to a list or tuple.
+
+        Note: once the object is converted in a dict, query operations can no
+        longer be performed, and the collection will no longer track database
+        changes.
+
+        Example:
+            >>> d = ca.query(IceBoard).as_dict(IceBoard.serial_number, int)
+            >>> d[7] # returns the iceboard with serial number 7
+        """
+        if isinstance(keys, sqlalchemy.orm.attributes.InstrumentedAttribute):
+            keys = [key[0] for key in self.values(keys)]
+            if convert_fn:
+                keys = [convert_fn(key) for key in keys]
+
+        return HWMQueryAttributes(self, keys)
+
+
+class HWMQueryAttributes(object):
+    """
+    Class representing a collection of objects that can be accessed and/or
+    called concurrently.
+
+    The collection is stored as a mapping, and is populated with the elements
+    of the iterable 'objects' using the keys provided in 'keys'. If 'keys' is
+    None, the keys are integers from 0 to len(objects)-1 to mimic a list.
+
+    The mapping operates like an ordered dictionary and offers the same methods
+    (.items(), .keys(), __len__() etc...) with the exception that the mapping
+    itself returns an iterable to the objects, not their keys. This behavior is
+    consistent with a HWMQuery object.
+
+
+    Calling the mapping will concurrently call every object with the provided
+    arguments and will return the result in another HWMQueryAttributes with
+    identical keys.
+
+    Accessing an attribute of the mapping will return a new HWMQueryAttribute
+    containing the that attribute for each of the element of the mapping.
+
+    Indexing the mapping will return the object with the corresponding key.
+    Slices are not supported.
+
+    Calling .getitem(index) on the array will return another mapping where each
+    element was indexed with index.
+
+    As a convenience, the object masquerade as the first element of its
+    collection if that object is callable, and therefore inherits its docstring
+    and call signature, which allows ipython to provide useful hilts during
+    interactive sessions.
+
+    Examples:
+
+    >>> class Obj(object):
+    >>>     def __init__(self, x): self.x = x
+    >>>     def fn(self, y): return (self.x,y)
+    >>>     z=5
+    >>>
+    >>> coll = HWMQueryAttributes([Obj(1), Obj(2), Obj(3), (Obj(4)])
+    >>> print coll[3]
+    >>> <__main__.Obj object at 0x000000000BF68320>
+    >>> print list(coll)
+    [<__main__.Obj object at 0x000000000BF68278>, <__main__.Obj object at 0x000000000BF682B0>, <__main__.Obj object at 0x000000000BF682E8>, <__main__.Obj object at 0x000000000BF68320>]
+    >>> print list(coll.z)
+    [5, 5, 5, 5]
+    >>> t1 = coll.fn(10)
+    >>> print list(t1)
+    [(1, 10), (2, 10), (3, 10), (4, 10)]
+    >>> t1[3]
+    (4, 10)
+    >>> print list(t1.getitem(1))
+    [10, 10, 10, 10]
+    """
+
+    # We define those so __setattr__ does not try to send them to objects
+    # during __init__.
+    _has_keys = None
+    _proto = None
+    _dict = None
+    logger = None
+
+    def __init__(self, objects, keys=None):
+        # Do not define a docstring here: for some reason ipython will use it
+        # instead of the dynamic __doc__ defined below.
+        self.logger = logging.getLogger(__name__)
+        self._has_keys = bool(keys)
+        object_list = list(objects)  # in case object = generator or HWMQuery
+        # Get the object that this class will mimic
+        self._proto = object_list[0] if object_list else None
+        self._dict = OrderedDict(
+            zip(keys or range(len(object_list)), object_list))
+
+    def __repr__(self):
+        if self._has_keys:
+            return '%s containing:\n{%s}' % (
+                type(self).__name__,
+                ',\n'.join('%s:%r' % (key, value) for
+                    (key, value) in self.items())
+                )
+        else:
+            return '%s containing:\n[%s]' % (
+                type(self).__name__,
+                ',\n'.join(['%r' % value for value in self])
+                )
+
+    def __dir__(self):
+        """Retrieve a list of interesting attributes."""
+        s = (set(self.__dict__.keys()) |
+             set.union(*[set(dir(cls)) for cls in type(self).mro()]) |
+             set.intersection(*[set(dir(obj)) for obj in self]))
+        return [str(item) for item in s]
+
+    # Copy the main attributes of _proto so this class can masquerade as it. We
+    # could have used a decorator to do this, but it's less obvious and not
+    # much shorter
+    __doc__ = property(lambda self: self._proto.__doc__)
+    __class__ = property(lambda self: self._proto.__class__)
+    __name__ = property(lambda self: self._proto.__name__)
+    im_func = property(lambda self: self._proto.im_func)
+    func_code = property(lambda self: self._proto.func_code)
+    func_defaults = property(lambda self: self._proto.func_defaults)
+
+    # Offer a subset of OrderedDict methods. We could just have inherited dict,
+    # but methods that change the dict would have been available, and it is
+    # also tricky to redefine __iter__
+    def __iter__(self): return self._dict.itervalues()
+    def __len__(self): return self._dict.__len__()
+    def __reversed__(self): return self._dict.__reversed__()
+    def items(self): return self._dict.items()
+    def iteritems(self): return self._dict.iteritems()
+    def keys(self): return self._dict.keys()
+    def iterkeys(self): return self._dict.iterkeys()
+    def values(self): return self._dict.values()
+    def itervalues(self): return self._dict.itervalues()
+    def __getitem__(self, index): return self._dict.__getitem__(index)
+
+    def __call__(self, *args, **kwargs):
+        """ Concurrently calls every element of the collection with the
+        provided arguments, and resurn the results in a new HWMQueryAttributes
+        object.
+
+        It is assumed that we have either functions or already bound methods,
+        so we don't have to pass those an object-specific parameter.
+        """
+        results = concurrent_call(self.values(), None, *args, **kwargs)
+        return HWMQueryAttributes(
+            results,
+            self._has_keys and self._dict.keys())
+
+    def getitem(self, index):
+        return self.__getattr__('__getitem__')(index)
+
+    def __getattr__(self, name):
+        """Return a collection of attribute 'name' from each of the current
+        objects.
+        """
+        if not self:
+            raise AttributeError("There are no objects in the list")
+        self._check_collection_attributes(name)
+        return HWMQueryAttributes(
+            [getattr(obj, name) for obj in self],
+            self._has_keys and self._dict.keys())
+
+    def __setattr__(self, name, value):
+        """ Sets a value on a collection of objects.
+        """
+        try:
+            object.__getattribute__(self, name)  # check is attribute exists
+            return object.__setattr__(self, name, value)
+        except AttributeError:  # if attributes does not exist
+            if self._dict:  # 'for obj in self' will call _dict.__len__()
+                self._check_collection_attributes(name)
+                for obj in self:
+                    setattr(obj, name, value)
+
+    def _check_collection_attributes(self, name):
+        """ Checks if all members of the collection has the specified
+        attribute name, otherwise raise an exception"""
+        attr_present = [hasattr(obj, name) for obj in self]
+        if not any(attr_present):
+            raise AttributeError(
+                "Attribute %s does not exist on any element "
+                "of the current results" % name)
+        elif not all(attr_present):
+            raise AttributeError(
+                "Attribute %s must exist on all elements "
+                "of the current results" % name)
+
+    def _self_hasattr(self, name):
+        """ Checks if the current object has attribute 'name', but don't check
+        the collection"""
+        try:
+            object.__getattribute__(self, name)
+            return True
+        except AttributeError:
+            return False
+
+
+def concurrent_call(func_list, variable_arg_list, *args, **kwargs):
+    """ Concurrently call all functions or methods listed in 'func_list'. If
+    'variable_arg_list' is not none, each function will be called with its
+    first argument taken from the corresponding element in that list.
+    Position- and keyword arguments common to all calls can also be passed.
+    """
+
+    has_arg_list = variable_arg_list is not None
+
+    if variable_arg_list is None:
+        variable_arg_list = [None] * len(func_list)
+
+    def runner(func, variable_arg):
+        logger = logging.getLogger(__name__)
+        try:
+            if has_arg_list:
+                return func(variable_arg, *args, **kwargs)
+            else:
+                return func(*args, **kwargs)
+        except Exception as e:
+            e = (
+                'Thread: Error while accessing %s(%r,...)' %
+                (func, variable_arg) +
+                'Exception is: %r\n' % e +
+                'Traceback is:\n%s' % ('\n'.join(_get_traceback_strings()))
+                )
+            logger.error(e)
+            raise
+
+    threads = [gevent.spawn(runner, func, variable_arg)
+               for (func, variable_arg) in zip(func_list, variable_arg_list)]
+    try:
+        # Some exceptions (mainly Control+C; gevent 1.0 release notes) are
+        # caught and re-raised in joinall(), instead of being funneled
+        # into the thread's .exception property. If we don't kill the
+        # threads that didn't complete, they resume unexpectedly the next
+        # time we enter the event loop.
+        gevent.joinall(threads)
+    except BaseException as e:
+        # Because these are co-operative threads, t.kill() will not
+        # actually kill the thread until a thread-switch opportunity, i.e.
+        # a socket operation. This means an infinite loop will just get
+        # re-entered by kill(), and you'll have to control+C a second time
+        # to break out (at which point you still have zombie
+        # green-threads.)
+        [t.kill() for t in threads]
+        raise e
+
+    # Look for any exceptions; raise them if they exist.
+    for x in threads:
+        if x.exception:
+            raise x.exception
+
+    # Results are indexed backwards (i.e. [thread][call]). Transpose.
+    return (x.value for x in threads)
+
+
+def _get_traceback_strings():
+    """ Return a compact traceback message as a list of strings that is
+    convenient for loging purposes.
+
+    This must be called only after an exception has occured.
+    """
+    (exception_type, exception_args, exception_tb) = sys.exc_info()
+    tb = traceback.extract_tb(exception_tb)
+    tracebackString = [
+        '    %s in .../%s:%i' %
+        (fn, os.path.split(filename)[1], line) for
+        (filename, line, fn, code) in tb]
+    tracebackString[-1] += ('=> %r' % exception_args)
+    return tracebackString
 
 
 class HWMHandlerManager(object):
 
-    """ Proof of concept of a handler object, which is an object that provides
-    methods and attributes located remotely or locally.
+    """Maintains a registry of handler classes and instances and make sure the
+    handlers are created and re-linked to the relevant HardwareMap ORM object
+    so that the handler's attributes and methods are always available to that
+    object even if the ORM object comes in and out of existence at various
+    memory locations as part of normal SQLAlchemy operations.
 
-    Local access to Python object is performed if the object's class is
-    registered to the Handler. Otherwise remote access is done through Tuber.
+    The ORM object only need to inherit from this class in order to have a
+    handler that is managed automatically.
 
-    Remote (Tuber) handlers have these restrictions:
-       - attributes and methods whise name begin with '_' are not accessible
-       - modification to the object attributes must be done by a setter
-         function provided by the object.
-       - methods or attribute access can only return string or numeric values,
-         or lists or dictionnary thereof
+    Handlers classes are registered using the '_register_handler()' class
+    method. This is usually done automatically when the Handler class is
+    created.
 
-    Local (Python) handlers do not have access restrictions. They can be used
-    as any other Python object.
+    If someone attemps to access an attribute that does not exist in the HWM
+    object, the attribute is fetched from the handler.
 
-    Notes:
+    If a current handler is not defined, the manager looks into its handler
+    instance registry to find a handler already existing for this ORM instance
+    based on a unique key (typically the ORM's primary key). If the handler is
+    found, the current handler is set to this one.
 
-       - JFC: The way this is written, direct local access of python classes
-         is currently more flexible than remote access because we do not need
-         the return value to be serializable. We therefore can dig down the
-         hierarchies and index objects directly, which is heavily used for
-         debugging. Remote access through Tuber would not allow this,
-         therefore potentially causing code compatibility issues if the code
-         is moved remotely. Depending on the philosophy of the system, we
-         might want to restrict local access capabilities to match that of
-         remote access (unless we use a more flexible RPC protocol (like RpyC)
-         and are willing run python remotely).
+    If not, the manager looks into its handler class registry to see if there
+    is a handler class that matches the handler name associated with this HWM
+    object. The handler name is typically the polymorphic name of the HWM
+    object. If a matching  handler class is found, a new handler is created
+    and registered.
+
+    Changes to the ORM object are tracked using event listeners. Any change to
+    the ORM object invalidate the current handler in order to force the
+    handler-instance to be re-linked. This also force the manager to call the
+    handler's HWM_update() method so that the handler known about ORM object
+    changes and can grab column values if needed.
     """
-    class UpdateHandler(object):
-
-        """ Create an instance-based '_handler' attribute when accessed.
-        This is a non-data descriptor (no __set__() method) , so Python will access the instance attribute instead if it exists.
-        """
-
-        def __get__(self, obj, objtype):
-            obj._handler = obj.init_handler()
-            return obj._handler
-
-        def __delete__(self, obj):
-            pass
 
     # If no instance _handler exist, access to _handler will invoke the data
     # descriptor to create the instance _handler
@@ -574,19 +601,26 @@ class HWMHandlerManager(object):
     def set_handler(self, object_id=None, handler_name=None, **kwargs):
         """
         Sets the handler to be used with this Hardware Map instance uniquely
-        identified by 'object_id'. If a handler has been created previously,
-        it is reattached, otherwise a new one is created.
+        identified by 'object_id'. If a handler has been created previously, it
+        is reattached, otherwise a new one is created.
 
         Arguments:
-            tuber_uri: Address used to access remote handlers (typically the ARM processor on an iceBoard)
-            core_handler_name: Name of the core handler, (typically a remote handler)
-            app_handler_name: Name of the application-specific handler, found locally or remotely
-            object_id: ID used to uniquely identify each instance of the class. This is preferably linked to a unique hardware serial number, but a database primary key can probably be used safely.
+            - tuber_uri: Address used to access remote handlers (typically the
+              ARM processor on an iceBoard)
+            - core_handler_name: Name of the core handler, (typically a remote
+              handler)
+            - app_handler_name: Name of the application-specific handler, found
+              locally or remotely
+            - object_id: ID used to uniquely identify each instance of the
+              class. This is preferably linked to a unique hardware serial
+              number, but a database primary key can probably be used safely.
         """
         logger = logging.getLogger(__name__)
 
-        logger.info('%r(HWMHandlerManager): setting handler with id=%r and handler_name=%s, using  arguments %r ' % (
-            self, object_id, handler_name, kwargs))
+        logger.info(
+            '%r: HWMHandlerManager: setting handler with id=%r and '
+            'handler_name=%s, using  arguments %r ' %
+            (self, object_id, handler_name, kwargs))
 
         # we include handler_name to properly handle boards with multiple
         # personnalities
@@ -604,7 +638,7 @@ class HWMHandlerManager(object):
             # from it
             if handler_key in self._handler_instance_registry:
                 logger.info(
-                    '%r(HWMHandlerManager): Reusing registered handler' % self)
+                    '%r: HWMHandlerManager: Reusing registered handler' % self)
                 self._handler = self._handler_instance_registry[handler_key]
                 self.update_handler()
 
@@ -614,46 +648,51 @@ class HWMHandlerManager(object):
             elif handler_name in self._handler_class_registry:
                 handler_class = self._handler_class_registry[handler_name]
                 logger.info(
-                    '%r(HWMHandlerManager): Creating handler %s' % (self, handler_name))
+                    '%r: HWMHandlerManager:Creating handler %s' %
+                    (self, handler_name))
                 self._handler = handler_class(**kwargs)
                 # register the handler for this instance
                 type(self)._handler_instance_registry[
                     handler_key] = self._handler
                 self.update_handler()
             else:
-                logger.error('%r: HWMHandlerManager: No handler was found with the name %r. Using an empty handler instead.' % (
-                    self, handler_name))
-                self._handler = Handler(**kwargs)
+                logger.error(
+                    '%r: HWMHandlerManager: No handler was found with the '
+                    ' name %r. Using an empty handler instead.' %
+                    (self, handler_name))
+                raise NameError("No handler named '%s' was found for %r" %
+                                (handler_name, self))
+                # self._handler = Handler(**kwargs)
 
         if not self._handler:
             logger.info(
-                '%r(HWMHandlerManager): does not have a valid handler (yet)' % self)
+                '%r: HWMHandlerManager: does not have a valid handler (yet)' %
+                self)
         else:
-            logger.info('%r(HWMHandlerManager): handler is %r' %
+            logger.info('%r: HWMHandlerManager: handler is %r' %
                         (self, self._handler))
 
     def __dir__(self):
-        """ Return the list of attributes of this class and of those of the handler."""
-        # *** JFC: May need to e fixed for multiple inheritance (use MRO)
-        # if the handler is invalid, try to get a valid one
+        """ Return the list of attributes of this class and of those of the
+        handler.
+        """
         if not self._handler:
             self.init_handler()
-        return list(set(type(self).__dict__.keys() + self.__dict__.keys() + (dir(self._handler) if self._handler else [])))
+        return list(
+            set(self.__dict__.keys()) |
+            set.union(*[set(dir(cls)) for cls in type(self).mro()]) |
+            set(dir(self._handler) if self._handler else []))
 
     def __getattr__(self, name):
         """ Return the value of an attribute if it exists in the handler """
-        # print "Handler is getting attribute '%s' for %r's handler" % (name, self)
-        # If we have a valid handler, try to access the attribute from it
-        # immediately
+        if not self._handler:
+            self.init_handler()
         if self._handler:
             return getattr(self._handler, name)
-        # If we do not have a valid handler, try to create one and get the
-        # attribute from it
-        self.init_handler()
-        if self._handler:
-            return getattr(self._handler, name)
-        raise AttributeError(
-            'Unknown attribute %s for %r. This could be because this instance has no valid handler yet' % (name, self))
+        else:
+            raise AttributeError(
+                'Unknown attribute %s for %r. This could be because this '
+                'instance has no valid handler yet' % (name, self))
 
     def update_handler(self):
         """ Calls the hwm_update() method of the handler with this hardware
@@ -692,15 +731,16 @@ class HWMHandlerManager(object):
 
     @classmethod
     def __declare_last__(cls):
-        """Define the event listeners that let the system know that the handler needs to be refreshed.
+        """Define the event listeners that let the system know that the handler
+        needs to be refreshed.
 
-        __declare_last__ is a special SQLAlchemy class method that is called when the class
-        definition is complete.
+        __declare_last__ is a special SQLAlchemy class method that is called
+        when the class definition is complete.
         """
 
         def _hwm_init_event(instance, event_name):
             logger = logging.getLogger(__name__)
-            logger.info("%r(HWMHandlerManager): Init Event '%s' " %
+            logger.debug("%r:HWMHandlerManager: Init Event '%s' " %
                         (instance, event_name))
             # invalidate the handler, so it will be created
             instance._handler = None
@@ -718,23 +758,35 @@ class HWMHandlerManager(object):
 
 
 class HandlerMeta(type):
-
-    """ Intercept the creation of a Handler subclass to automatically register it with the associated HWM object.
+    """ Intercept the creation of a Handler subclass to automatically register
+    it with the associated HWM object.
 
     The Handler subclass must define the following attributes:
-        __handler_for__ = HWM_object #  HWM object to which this handler is associated with. HWM_object must be a subclass of HWMHandlerManager.
-        __handler_name__ = 'some string' #  The name under which the handler can be found. Allows the
+
+        - __handler_for__ = HWM_object #  HWM object to which this handler is
+          associated with. HWM_object must be a subclass of HWMHandlerManager.
+
+        - __handler_name__ = 'some string' #  The name under which the handler
+          can be found. Allows the
     """
     def __init__(cls, classname, bases, dict_):
-        if '__handler_for__' not in dict_ or '__handler_name__' not in dict_:
+        if '__handler_for__' not in dict_:
             raise AttributeError(
-                "Both '__handler_for__' and '__handler_name__' must be specified in Handler class %r" % classname)
+                "'__handler_for__' must be specified in Handler class %r"
+                % classname)
         base = dict_['__handler_for__']
-        name = dict_['__handler_name__']
+
+        if '__handler_name__' in dict_:
+            name = dict_['__handler_name__']
+        else:
+            name = classname
+
         if base and name:
             if not issubclass(base, HWMHandlerManager):
                 raise AttributeError(
-                    "%s defined '__handler_for__'=%r, but the target class is not a subclass of HWMHandlerManager" % (classname, base))
+                    "%s defined '__handler_for__'=%r, but the target class "
+                    "is not a subclass of HWMHandlerManager" %
+                    (classname, base))
             base.register_handler(cls, name)
         type.__init__(cls, classname, bases, dict_)
 
@@ -753,8 +805,8 @@ class Handler(object):
     def __init__(self, **kwargs):
         """ Initialize a basic handler.
 
-        By convention, all handlers __init__() only take keyword arguments to ensure
-        consistency across the super/subclass hierarchy.
+        By convention, all handlers __init__() only take keyword arguments to
+        ensure consistency across the super/subclass hierarchy.
         """
         self.logger = logging.getLogger(__name__)
         self.logger.debug('Handler: Instantiating Handler for %r' % (self))
@@ -812,6 +864,7 @@ class TuberHWMResource(HWMResource, tuber.TuberObject):
         super(TuberHWMResource, self).__init__(*args, **kwargs)
 
 
+# *** JFC: should be 'called register_hwm_object_method()'
 class macro(object):
 
     '''Decorator for "macros" that performs some rudimentary typechecking.
@@ -869,6 +922,7 @@ class macro(object):
         return wrapper
 
 
+# *** JFC: should be 'called register_hwm_query_method()'
 class algorithm(object):
 
     '''Decorator for "algorithms".
