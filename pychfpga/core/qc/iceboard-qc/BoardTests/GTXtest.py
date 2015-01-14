@@ -128,21 +128,21 @@ def GTXtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMP
         file.write('\nGTX Test Overall Status: Fail')
         file.close()
         gtxFail(username,board_sn,board_vn,board_md,testStatus)
-    print "Wait until the bit count ratio go down to the order of 10E-13."
+    print "Wait until the bit count ratio go down to the order of 1E-14."
     notimportant = raw_input("Press Enter to continue:      ")
-    print "Do you succeed in achieving count ratios on the order of 10E-13?"
+    print "Do you succeed in achieving count ratios on the order of 1E-14?"
     ratio = raw_input("Enter 'Y' or 'N':        ")
     if ratio != 'Y' and ratio != 'y':
         file.write('\n\nBit error count ratio fails to decrease over time.')
         col = raw_input("Enter the column numbers of which error rates do not fall on order of 10E-13:       ")
-        file.write('\nColumns whose error rates do not fall on order of 10E-13: ' + col)
+        file.write('\nColumns whose error rates do not fall on order of 1E-14: ' + col)
         errorratei = raw_input("Enter the bit error rate of columns you entered above in the same order: ")
         file.write('\nBit Error Rate of problematic Channels respectively: ' + errorratei)
         file.write('\nGTX Test Overall Status: Fail')
         file.close()
         gtxFail(username,board_sn,board_vn,board_md,testStatus)
     else:
-        file.write('\n\nBit error count falls to order 10E-13 over time.')
+        file.write('\n\nBit error count falls to order 1E-14 over time.')
     
     print "\nIf there are any special concerns regarding the board for this test, please describe them below. If none, enter 'None'. "
     comments = raw_input("Enter your comments:  ")

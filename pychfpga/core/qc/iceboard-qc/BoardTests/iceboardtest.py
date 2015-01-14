@@ -20,8 +20,6 @@ from date_format import date_format
 def starttest():
     print "**********************************************"
     print "|I C E B O A R D  T E S T I N G  S C R I P T  |"
-    print "|A. Tang (qing.tang@mail.mcgill.ca)           |"
-    print "|Version 1.0 	                              |"
     print "**********************************************"
     tm.sleep(2)
 
