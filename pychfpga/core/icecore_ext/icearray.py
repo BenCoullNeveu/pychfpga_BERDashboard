@@ -18,7 +18,9 @@ from sqlalchemy.orm.session import Session
 
 from ..icecore import hardware_map
 from ..icecore.iceboard import IceBoard
-from ..icecore.tuber import TuberObject # used to ping boards
+from ..icecore.tuber import TuberObject  # used to ping boards
+from ..icecore.session import load_session
+
 
 class IceException(Exception):
     pass
@@ -123,14 +125,17 @@ class IceArray(object):
         Iceboards actually found on the network. 'timout' indicates the time we
         wait for an answer before we decide that there is no board.
 
-        For now, this function just checks if all IceBoards currently in the database are present by
-        verifying if their ARM processors offer a tuber interface.
+        For now, this function just checks if all IceBoards currently in the
+        database are present by verifying if their ARM processors offer a
+        tuber interface.
 
-        Once we have a broadcast discovery protocol in the ARM we will be able to add complete new fields.
-        In that case we will broadcast a identification
-        request, and every board will reply back a packet, which will reveal their
-        IP address and any other information in the packet. Once we have that, we can contact tuber
-        to obtain all the information needed to create an IceBoard object. This includes:
+        Once we have a broadcast discovery protocol in the ARM we will be able
+        to add complete new fields. In that case we will broadcast a
+        identification request, and every board will reply back a packet,
+        which will reveal their IP address and any other information in the
+        packet. Once we have that, we can contact tuber to obtain all the
+        information needed to create an IceBoard object. This includes:
+
             arm serial number: from arm (needed?)
             fpga serial number: from JTAG,
             board serial number: from board's EEPROM
@@ -217,6 +222,10 @@ class IceArray(object):
                 if print_on_screen: print message
                 new_serials.append(ser)
         return new_serials
+
+    def load_yaml_hardware_map(self, stream):
+        self._hwmap.close()  # close current session
+        self._hwmap = load_session(stream)
 
     def load_iceboards(self, filename):
         """

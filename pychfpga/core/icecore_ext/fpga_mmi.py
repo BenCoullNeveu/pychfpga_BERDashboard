@@ -16,23 +16,29 @@ import numpy as np
 import lib.udp as udp
 from chfpga_handler import chFPGAHandler as chFPGAHandler
 
+
 class FpgaMmiException(Exception):
     pass
+
 
 class TimeoutException(Exception):
     pass
 
+
 class FpgaMmi:
     """
-    Base class that defines the memory-mapped interface to the FPGA either through a direct link to the FPGA or through the ARM direct-access socket.
-    This is used by Python code that handles the FPGA firmware directly by toggling reading and writing to memopry-mapped registers.
+    Base class that defines the memory-mapped interface to the FPGA
+    through a direct Ethernet link to the FPGA.
 
-    For now we implement only UDP sockets but TCP would work as well with minor changes. ZeroMQ sockets could probably be supported easily as well for efficient distribution of commands.
-    TCP and ZeroMQ would work only through the ARM, through.
+    This is used by Python code that handles the FPGA firmware directly by
+    toggling reading and writing to memopry-mapped registers.
 
     Notes:
-       - 140223 JFC: Maybe should define __enter__ and __exit__ so we can use with 'with'
-       - 140223 JFC: Maybe add methods to allow packing multiple commands in a single packet. By default, the command queue is flushed at every write command.
+       - 140223 JFC: Maybe should define __enter__ and __exit__ so we can use
+         with 'with'
+       - 140223 JFC: Maybe add methods to allow packing multiple commands in a
+         single packet. By default, the command queue is flushed at every
+         write command.
     """
     BROADCAST_IP_ADDR = udp.Udp.BROADCAST
     PROTO_UDP = 'UDP'
@@ -57,26 +63,33 @@ class FpgaMmi:
     OPCODE_READ_STATUS   = 0b010;
     OPCODE_READ_RAM      = 0b011;
 
-
-
-    def __init__(self, ip_addr, port_number, interface_ip_addr=None, fpga_serial_number = None, set_fpga_networking_parameters = True, send_only = False, netmask='255.255.0.0', timeout = 0.5):
+    def __init__(self,
+                 ip_addr,
+                 port_number,
+                 interface_ip_addr=None,
+                 fpga_serial_number=None,
+                 set_fpga_networking_parameters=True,
+                 send_only=False,
+                 netmask='255.255.0.0',
+                 timeout=0.5):
         self.logger = logging.getLogger(__name__)
-        self.netmask = netmask # network mask used to find the host address that is on the same subnet as the target IP. This does not affect the network adapter settings.
+        self.netmask = netmask  # network mask used to find the host address that is on the same subnet as the target IP. This does not affect the network adapter settings.
         self.ip_addr = ip_addr
-        self.port_number = port_number # Control port on the FPGA
+        self.port_number = port_number  # Control port on the FPGA
         self.address = (self.ip_addr, self.port_number)
         if interface_ip_addr:
             self.interface_ip_addr = interface_ip_addr
         elif hasattr(__main__, '_host_interface_ip_addr'):
-            self.interface_ip_addr =__main__._host_interface_ip_addr
+            self.interface_ip_addr = __main__._host_interface_ip_addr
         else:
-            raise FpgaMmiException('An interface IP address is required for UDP comminication with the FPGA')
-        self.fpga_serial_number = fpga_serial_number # used to select specific FPGAs during broadcasts
+            raise FpgaMmiException(
+                'An interface IP address is required for UDP comminication '
+                'with the FPGA')
+        self.fpga_serial_number = fpga_serial_number  # used to select specific FPGAs during broadcasts
         self.set_fpga_networking_parameters = set_fpga_networking_parameters
         self.send_only = send_only
         self.timeout = timeout
-        self.udp = None;
-
+        self.udp = None
 
     def __enter__(self):
             self.open()
@@ -85,25 +98,20 @@ class FpgaMmi:
     def __exit__(self, etype, einst, etraceback):
             self.close()
 
-
     def open(self):
         """
         Open control communication socket to FPGA
         """
 
-        # if interface_ip_addr:
-        #     self.interface_ip_addr = interface_ip_addr
-        # else:
-        #     self.interface_ip_addr = get_host_addr(dest_addr=self.ip_addr, netmask=self.netmask)
-
-
         # Set the FPGA communication networking parameters
         if self.set_fpga_networking_parameters and self.fpga_serial_number:
-            self.close() # make sure the current socket is closed
+            self.close()  # make sure the current socket is closed
             self._set_fpga_networking_parameters()
 
         self.udp = udp.Udp()
-        self.udp.open(if_ip_addr=self.interface_ip_addr, ip_addr = self.ip_addr, port_number = self.port_number, send_only= self.send_only)
+        self.udp.open(
+            if_ip_addr=self.interface_ip_addr, ip_addr = self.ip_addr,
+            port_number = self.port_number, send_only= self.send_only)
         self.udp.set_timeout(self.timeout)
 
         # self.logger.info('   Opened control socket on %s:%i through interface %s' % (self.ip_addr, self.port_number, self.interface_ip_addr))
@@ -114,34 +122,50 @@ class FpgaMmi:
             self.udp.close()
         # self.logger.info('Closed control socket')
 
-    def _set_fpga_networking_parameters(self, number_of_trials = 3, check=True):
+    def _set_fpga_networking_parameters(
+            self, number_of_trials=3, check=True):
         """
-        Sets the FPGA firmware in the specified ICEboard to use the specified ip address and port.
-        An exception will be raised if the board cannot be found on the network of if another board uses the same ip address.
+        Sets the FPGA firmware in the specified ICEboard to use the specified
+        ip address and port.
+
+        An exception will be raised if the board cannot be found on the
+        network of if another board uses the same ip address.
 
         NOTE:
-            - This function is supported only for direct Ethernet connections to the FPGA
-            - This function cannot be called if the UDP link is already established.
-            - The broadcast is send only: the FPGAs are not asked to reply to the broadcast. Consequently, the call will not affect the return addresses of these FPGAs.
+            - This function is supported only for direct Ethernet connections
+              to the FPGA
+            - This function cannot be called if the UDP link is already
+              established.
+            - The broadcast is send only: the FPGAs are not asked to reply to
+              the broadcast. Consequently, the call will not affect the return
+              addresses of these FPGAs.
 
         """
-        import socket # used for inet_aton()
+        import socket  # used for inet_aton()
         import struct
+
         ip_addr = self.ip_addr
         port_number = self.port_number
         serial_number = self.fpga_serial_number
         broadcast_group = 0
-        interface_ip_addr = self.interface_ip_addr
+        # interface_ip_addr = self.interface_ip_addr
 
         logger = logging.getLogger(__name__)
-        logger.debug('Broadcasting on port %i to configure FPGA S/N %016X with address %s:%i' % (self._BROADCAST_BASE_PORT, serial_number, ip_addr, port_number))
+        logger.debug(
+            'Broadcasting on port %i to configure FPGA S/N %016X '
+            'with address %s:%i' %
+            (self._BROADCAST_BASE_PORT, serial_number, ip_addr, port_number))
 
-        # Build the array of bytes to fill the network configuration register block
-        ip_setup_string = struct.pack('>H4s4sHQ', 0x1234, socket.inet_aton(ip_addr), socket.inet_aton(ip_addr), port_number, serial_number)
+        # Build the array of bytes to fill the network configuration register
+        # block
+        ip_setup_string = struct.pack(
+            '>H4s4sHQ', 0x1234, socket.inet_aton(ip_addr),
+            socket.inet_aton(ip_addr), port_number, serial_number)
         trig1 = chr(0x0C | broadcast_group)
         trig2 = chr(0x8C | broadcast_group)
 
-        # Configure the FPGA through a UDP broadcast packet containing the target FPGA serial number
+        # Configure the FPGA through a UDP broadcast packet containing the
+        # target FPGA serial number
         trial = 0
         while trial < number_of_trials:
             with FpgaMmi(FpgaMmi.BROADCAST_IP_ADDR, FpgaMmi._BROADCAST_BASE_PORT, set_fpga_networking_parameters = False, send_only=True) as mmi:
@@ -160,13 +184,18 @@ class FpgaMmi:
         logger.debug('Unable to configure FPGA S/N %016X with address %s:%i' % (serial_number, ip_addr, port_number))
         raise FpgaMmiException('Unable to configure FPGA S/N %016X with address %s:%i' % (serial_number, ip_addr, port_number))
 
-    def get_fpga_config(self, ip_addr, port_number, timeout = 0.1, number_of_trials=3):
+    def get_fpga_config(self, ip_addr, port_number,
+                        timeout=0.1, number_of_trials=3):
         """
-        Returns basic information allowing to check if we talk to the right FPGA with the right firmware.
-        Will not cause an exception if the FPGA fails to respond at the specified address. Instead, all fields will be None.
+        Returns basic information allowing to check if we talk to the right
+        FPGA with the right firmware.
+
+        Will not cause an exception if the FPGA fails to respond at the
+        specified address. Instead, all fields will be None.
         """
         trial = 0
-        with FpgaMmi(self.ip_addr, self.port_number, set_fpga_networking_parameters = False) as mmi:
+        with FpgaMmi(self.ip_addr, self.port_number,
+                     set_fpga_networking_parameters=False) as mmi:
             while trial < number_of_trials:
                 try:
                     serial = mmi.read(self._FPGA_SERIAL_NUMBER_ADDR, type = np.dtype('>u8'), timeout = timeout, retry=0)
@@ -175,7 +204,6 @@ class FpgaMmi:
                 except mmi.TimeoutException:
                     trial += 1
         return (None, None)
-
 
     def flush(self):
         """Flushes the socket receive buffer."""
@@ -187,7 +215,7 @@ class FpgaMmi:
                 if len(data) == 0:
                     break
         except self.udp.TimeoutException:
-            pass # do nothing
+            pass  # do nothing
             #print('Buffer is empty')
         self.udp.set_timeout(old_timeout)
 
@@ -203,22 +231,30 @@ class FpgaMmi:
         """
         return self.udp.get_timeout()
 
-
-    def read(self, addr, type=np.dtype('>u1'), length=1, timeout = None, retry=10):
+    def read(self, addr, type=np.dtype('>u1'), length=1,
+             timeout=None, retry=10):
         """
-        Reads memory-mapped byte(s) from the FPGA through the Ethernet interface.
-        'length' values of type 'type' are read. The Reads will be done in the minimum number of requests in order to read all bytes.
-        Returns a numpy array where the bytes are intrepreted as a series of 'length' elements of type 'type'.
+        Reads memory-mapped byte(s) from the FPGA through the Ethernet
+        interface.
 
-        2014-02-06 JFC: Now reads multiple bytes at a time to improve efficiency by using the length field in the command word.
+        'length' values of type 'type' are read. The Reads will be done in the
+        minimum number of requests in order to read all bytes.
+
+        Returns a numpy array where the bytes are intrepreted as a series of
+        'length' elements of type 'type'.
+
+        2014-02-06 JFC: Now reads multiple bytes at a time to improve
+        efficiency by using the length field in the command word.
         """
 
         if self.udp.is_broadcast():
-            raise Exception('standard read cannot be used in broadcast mode as there might be many returned values. Use broadcast_read() instead.')
+            raise Exception(
+                'standard read cannot be used in broadcast mode as there '
+                'might be many returned values. Use broadcast_read() instead.')
 
-        itemsize = np.dtype(type).itemsize # number of bytes contained in the destinaion vector type
-        byte_length = length*itemsize ; # total number of bytes to read
-        dout = np.zeros(byte_length, np.int8) # initialize result vector as a byte array
+        itemsize = np.dtype(type).itemsize  # number of bytes contained in the destinaion vector type
+        byte_length = length*itemsize  # total number of bytes to read
+        dout = np.zeros(byte_length, np.int8)  # initialize result vector as a byte array
         offset = 0
         # Loop to read all required bytes (the FPGA does not support multi-byte reads (yet))
 
@@ -281,9 +317,14 @@ class FpgaMmi:
 
     def broadcast_read(self, addr, type=np.dtype('>u8'), timeout=.5):
         """
-        Reads memory-mapped object from multiple FPGAs through a broadcast request.
-        Returns a array of type 'type' containing the values that were returned by all FPGAs.
-        This command can read only a single object that is 1,2,4 or 8 bytes wide.
+        Reads memory-mapped object from multiple FPGAs through a broadcast
+        request.
+
+        Returns a array of type 'type' containing the values that were
+        returned by all FPGAs.
+
+        This command can read only a single object that is 1,2,4 or 8 bytes
+        wide.
         """
 
         byte_length = np.dtype(type).itemsize # number of bytes contained in the destinaion vector type
@@ -372,20 +413,27 @@ class FpgaMmi:
 
     def write_mask(addr, data, mask):
         """
-        Writes data to the FPGA Memory-mapped space starting from address 'addr', but only affect bits that are set in mask.
+        Writes data to the FPGA Memory-mapped space starting from address
+        'addr', but only affect bits that are set in mask.
+
         This function assumes that the memory location can be read back.
         """
-        raise Exception('write_mask() is not supported by the current firmware')
+        raise Exception(
+            'write_mask() is not supported by the current firmware')
 
 
-def discover_fpgas(interface_ip_addr = None, source_subarrays = [0], timeout=0.1):
+def discover_fpgas(interface_ip_addr=None, source_subarrays=[0], timeout=0.1):
     """
-    Get the serial numbers of all FPGA directly connected on the network (i.e. not accessed through the ARM processor)
+    Get the serial numbers of all FPGA directly connected on the network (i.e.
+    not accessed through the ARM processor)
 
     NOTE:
         - This function should not be called when the MMI interface is opened.
-        - This function is supported only for direct Ethernet connections to the FPGA
-        - /!\ Calling this function will disrupt operations of all FPGAs in the network as reading from them cause them to redirect their outputs to this machine on the broadcast port.
+        - This function is supported only for direct Ethernet connections to
+          the FPGA
+        - /!\ Calling this function will disrupt operations of all FPGAs in
+          the network as reading from them cause them to redirect their
+          outputs to this machine on the broadcast port.
     """
     logger = logging.getLogger(__name__)
 
@@ -395,11 +443,21 @@ def discover_fpgas(interface_ip_addr = None, source_subarrays = [0], timeout=0.1
     serial_list = []
      # for if_addr in interface_ip:
     for subarray in source_subarrays:
-        logger.debug('Searching ICEBoards on subarray %i through interface %s' % (subarray, interface_ip_addr))
+        logger.debug(
+            'Searching ICEBoards on subarray %i through interface %s' %
+            (subarray, interface_ip_addr))
 
-        with FpgaMmi(FpgaMmi.BROADCAST_IP_ADDR, FpgaMmi._BROADCAST_BASE_PORT + subarray, interface_ip_addr =interface_ip_addr, set_fpga_networking_parameters = False, send_only=False) as mmi:
+        with FpgaMmi(
+                FpgaMmi.BROADCAST_IP_ADDR,
+                FpgaMmi._BROADCAST_BASE_PORT + subarray,
+                interface_ip_addr=interface_ip_addr,
+                set_fpga_networking_parameters=False,
+                send_only=False) as mmi:
             mmi.flush()
-            serials = mmi.broadcast_read(FpgaMmi._FPGA_SERIAL_NUMBER_ADDR, type = np.dtype('>u8'), timeout = timeout)
+            serials = mmi.broadcast_read(
+                FpgaMmi._FPGA_SERIAL_NUMBER_ADDR,
+                type=np.dtype('>u8'),
+                timeout=timeout)
         serial_list += serials
 
     return serial_list

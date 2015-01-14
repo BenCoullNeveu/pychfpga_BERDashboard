@@ -8,6 +8,7 @@ import zlib
 import struct
 import urllib2
 import datetime
+import os
 
 
 class FpgaBitstream(object):
@@ -34,11 +35,12 @@ class FpgaBitstream(object):
         self.logger = logging.getLogger(__name__)
 
         self.url = url
+        self.filename = os.path.split(self.url)[1]
         if load:
             self.load_bitstream()
 
     def __repr__(self):
-        return '%s %s' % (self.__class__.__name__, self.timestamp_string)
+        return '%s(%s)' % (self.__class__.__name__, self.filename)
 
     def __str__(self):
         """ Fetch and return the bitstream as a string.
@@ -69,7 +71,8 @@ class FpgaBitstream(object):
         timestamp = None
         md5_string = None
 
-        self.logger.info('Reading file from URL %s ...' % self.url)
+        self.logger.info('%.32r: Reading file from URL %s ...' %
+                         (self, self.url))
         if '://' in self.url:
             with urllib2.urlopen(self.url) as res:
                 data = res.read()
@@ -78,7 +81,7 @@ class FpgaBitstream(object):
             # binary
             with open(self.url, 'rb') as file:
                 data = file.read()
-        self.logger.info('Read %0.3f Mbytes' % (len(data)/1e6))
+        self.logger.info('%.32r: Read %0.3f MBytes' % (self, len(data) / 1e6))
 
         is_bin = struct.unpack('>Q', data[0:8])[0] == BIN_PREFIX
 
@@ -86,42 +89,55 @@ class FpgaBitstream(object):
             pos = 0
             # Field 1 - ignore
             length = struct.unpack('>H', data[pos:pos+2])[0]
-            self.logger.debug('Field 1: 0x%s' % ''.join(['%0X' % ord(c) for c in data[pos + 2: pos + 2 + length]]))
+            self.logger.debug(
+                '%.32r: Field 1: 0x%s' % (self, ''.join(
+                    ['%0X' % ord(c) for c in data[pos+2: pos+2+length]]))
+                )
             pos += length + 2
             # Field 2 - always 'a'
             length = struct.unpack('>H', data[pos:pos+2])[0]
             field = data[pos + 2: pos + 2 + length]
-            self.logger.debug('Field 2 (%i bytes): %s' % (length, field))
+            self.logger.debug(
+                '%.32r: Field 2 (%i bytes): %s' % (self, length, field))
             if field != 'a':
                 self.logger.error('This is not a valid bit file')
                 return
             pos += length + 2
             # Field 3
             length = struct.unpack('>H', data[pos:pos+2])[0]
-            self.logger.debug('Field 3: %s' % data[pos+2:pos+2+length])
+            self.logger.debug(
+                '%.32r: Field 3: %s' % (self, data[pos+2:pos+2+length]))
             pos += length + 2
             # Field 4
             tag = data[pos]
             length = struct.unpack('>H', data[pos+1: pos+2+1])[0]
-            fpga_model = data[pos+2+1:pos+2+1+length]
-            self.logger.debug('Field 4 (tag=%s, length = %i bytes): %s' % (tag, length, fpga_model))
+            fpga_model = data[pos+2+1: pos+2+1+length]
+            self.logger.debug(
+                '%.32r: Field 4 (tag=%s, length = %i bytes): %s' %
+                (self, tag, length, fpga_model))
             pos += length + 2 + 1
             # Field 5
             tag = data[pos]
             length = struct.unpack('>H', data[pos+1: pos+2+1])[0]
-            firmware_date = data[pos+2+1:pos+2+1+length]
-            self.logger.debug('Field 5 (tag=%s, length = %i bytes): %s' % (tag, length, firmware_date))
+            firmware_date = data[pos+2+1: pos+2+1+length]
+            self.logger.debug(
+                '%.32r: Field 5 (tag=%s, length = %i bytes): %s' %
+                (self, tag, length, firmware_date))
             pos += length + 2 + 1
             # Field 6
             tag = data[pos]
             length = struct.unpack('>H', data[pos+1: pos+2+1])[0]
             firmware_time = data[pos+2+1: pos+2+1+length]
-            self.logger.debug('Field 6 (tag=%s, length = %i bytes): %s' % (tag, length, data[pos+2+1: pos+2+1+length]))
+            self.logger.debug(
+                '%.32r: Field 6 (tag=%s, length = %i bytes): %s' %
+                (self, tag, length, data[pos+2+1: pos+2+1+length]))
             pos += length + 2 + 1
             # Field 7
             tag = data[pos]
             length = struct.unpack('>L', data[pos+1: pos+4+1])[0]
-            self.logger.debug('Field 7 (tag=%s, length= %i bytes): [configuration data]' % (tag, length))
+            self.logger.debug(
+                '%.32r: Field 7 (tag=%s, length= %i bytes): [data]' %
+                (self, tag, length))
             pos += 4 + 1  # skip the header. Now points to cofiguration data
             bitstream = data[pos:]
 
@@ -129,6 +145,16 @@ class FpgaBitstream(object):
             timestamp = datetime.datetime.strptime(
                 firmware_date[:-1] + ' ' +
                 firmware_time[:-1], '%Y/%m/%d %H:%M:%S')
+
+            # I thought the the remaining bitstream should start with the
+            # proper cookie but there seems to be additional bytes before it.
+            # So we disable the test.
+            # prefix = struct.unpack('>Q', bitstream[0:8])[0]
+            # if prefix != BIN_PREFIX:
+            #     self.logger.error(
+            #    '%.32r: This is not a valid bit file. Header is 0x%016X' %
+            #     (self, prefix))
+
         else:
             bitstream = data
 

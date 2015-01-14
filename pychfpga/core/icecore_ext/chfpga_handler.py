@@ -5,23 +5,22 @@ import logging
 from datetime import datetime
 
 from ..icecore import iceboard
-from ..icecore import tuber # Used to get TuberRemoteError
-from ..icecore.hw import ipmi_fru # Used to get TuberRemoteError
+from ..icecore import tuber  # Used to get TuberRemoteError
 from ..icecore.hw.ipmi_fru import FRU, Board, Product, Chassis, MultiDict, CHASSIS_SUBCHASSIS
 
 
 from .. import I2C as i2c
 from .. import GPIO as gpio
 
-from . import icecrate_handler # this module is not referenced here, but loading it registers the handler with IceCrate.
+from . import icecrate_handler  # this module is not referenced here, but loading it registers the handler with IceCrate.
 from .iceboard_hardware import IceBoardHardware
 from .iceboard_hardware import I2CInterface
 from .backplane_hardware import BackplaneHardware
 # import icebox # don't use from .. import ... because of circular import problems
 
 
-
 IceBoardException = iceboard.IceBoardException
+
 
 class chFPGAHandler(iceboard.IceBoardHandler):
     """ Provides basic access to CHIME-specific basic IceBoard firmware and
@@ -43,7 +42,7 @@ class chFPGAHandler(iceboard.IceBoardHandler):
     """
 
     __handler_for__ = iceboard.IceBoard
-    __handler_name__ = 'chfpga_unused'
+    # __handler_name__ = 'chfpgaHandler'
 
     _BROADCAST_BASE_PORT = 41000
 
@@ -64,6 +63,12 @@ class chFPGAHandler(iceboard.IceBoardHandler):
     _FPGA_SERIAL_NUMBER_ADDR = _STATUS_BASE_ADDR + _SYSTEM_GPIO_BASE_ADDR + 12
     _FPGA_IP_SETUP_BASE_ADDR = _CONTROL_BASE_ADDR + _SYSTEM_GPIO_BASE_ADDR + 13 # (13-18): target MAC, (19-22): target IP, (23-24): target_base_port, (25-32) = Target FPGA serial, (33): bit 7 = trigger, bits 3:2: mac source select, 1:0: broadcast group
     # _GPIO_IPCONFIG_REG       = _CONTROL_BASE_ADDR + _SYSTEM_GPIO_BASE_ADDR + 0x08D # Register address of the first byte of the IP config word
+
+    # SPI Application registers
+    _FPGA_MAC_ADDR_LSW_ADDR         = 4 * 7
+    _FPGA_MAC_ADDR_MSW_IP_PORT_ADDR = 4 * 8
+    _FPGA_IP_ADDR_ADDR              = 4 * 9
+    _XILINX_OUI = 0x000A35
 
     # ---------------------------------------
     # Instance attributes
@@ -167,6 +172,8 @@ class chFPGAHandler(iceboard.IceBoardHandler):
         IceBoard and create all appropriate handling classes.
         """
         import socket
+        import struct
+
         cookie = self.get_fpga_application_cookie()
         if cookie != self._CHFPGA_COOKIE:
             raise RuntimeError(
@@ -174,10 +181,21 @@ class chFPGAHandler(iceboard.IceBoardHandler):
                 'Cannot access chFPGA-specific methods and resources.')
 
         self.fpga_serial_number = self.get_fpga_serial_number()  # Get SN from the SPI link
-        ip = socket.inet_aton(self._get_arm_ip())  #
-        self.fpga_ip_addr = socket.inet_ntoa(ip[:2]+chr(3)+ip[3])  # *** JFC temporary hack
+
+        ip_packed = socket.inet_aton(self._get_arm_ip())  #
+        ip_packed = ip_packed[:2] + chr(3) + ip_packed[3]
+
+
+        # mac = socket.inet_aton(self._get_arm_mac())  #
+        mac_packed = struct.pack('>H4s', 0x1234, ip_packed)
+
+        self.fpga_ip_addr = socket.inet_ntoa(ip_packed)  # *** JFC temporary hack
         if self.serial_number:
             self.fpga_port_number = 41000 + 4 * int(self.serial_number)  # *** JFC: another temporary hack
+
+        self.fpga_mmi_write(self._FPGA_MAC_ADDR_LSW_ADDR, struct.unpack('>I', mac_packed[2:6])[0])
+        self.fpga_mmi_write(self._FPGA_MAC_ADDR_MSW_IP_PORT_ADDR, (struct.unpack('>H', mac_packed[0:2])[0] << 16) | self.fpga_port_number)
+        self.fpga_mmi_write(self._FPGA_IP_ADDR_ADDR, struct.unpack('>I', ip_packed)[0])
 
         if not self.is_fpga_programmed():
             raise RuntimeError(
@@ -202,7 +220,7 @@ class chFPGAHandler(iceboard.IceBoardHandler):
             ip_addr=self.fpga_ip_addr,
             port_number=self.fpga_port_number,
             fpga_serial_number=self.fpga_serial_number,
-            set_fpga_networking_parameters=True)
+            set_fpga_networking_parameters=False)
         self.mmi.open()
 
         # Open FPGA's GPIO and I2C interfaces

@@ -98,12 +98,25 @@ if __name__ == '__main__':
     # IceArray.close_all_sessions() # close all previously opened sessions
 
     # ca = IceArray(uri='sqlite:///test.db', interface_ip_addr=args.if_ip)
-
-    chfpgaHandler.register_fpga_bitstream(FpgaBitstream(url = args.bitfile, load=False), tag= None)
+    fpga_bitstream = FpgaBitstream(url=args.bitfile, load=False)
+    chfpgaHandler.register_fpga_bitstream(fpga_bitstream, tag=None)
 
     ca = IceArray(interface_ip_addr=args.if_ip)
-    # ca.load_iceboards('iceboard_list.txt')
+
+    ca.load_yaml_hardware_map('''
+            !HardwareMap
+                - !IceBoard {hostname: iceboard0007.local, serial_number: "0007", app_handler_name: "chFPGAHandler"}
+            ''')
+
+        # ib = hwm.query(IceBoard).one()
+        # assert ib.serial == "004"
+        # assert ib.hostname == 'iceboard004.local'
     # ca.discover(timeout=2) # automatically update the hardware map database with discovered resources
+
+    c = ca.get_iceboards().as_dict(IceBoard.serial_number, int)
+    c7 = c[7]
+    # c7.set_application(chfpgaHandler)
+
 
 
     # bitfile_filename = args.bitfile
@@ -117,11 +130,11 @@ if __name__ == '__main__':
     # c = ca.get_iceboards(subarray=args.subarray).index_by(IceBoard.serial_number) # get one or more IceBoards from specified subarray
     #c = ca.get_iceboards(subarray=args.subarray) # get one or more IceBoards from specified subarray
 
-    c7 = IceBoard(tuber_uri='http://10.10.10.57/tuber', serial_number='7', app_handler = chfpgaHandler)
-    ca.add(c7) # Add the iceboard to the hardware map
-    ca.flush() # Execute pending operatins to make sure the IceBoard is assigned a primary key
+    # c7 = IceBoard(tuber_uri='http://10.10.10.7/tuber', serial_number='7', app_handler = chfpgaHandler)
+    # ca.add(c7) # Add the iceboard to the hardware map
+    # ca.flush() # Execute pending operatins to make sure the IceBoard is assigned a primary key
     # c7.set_application(chfpgaHandler, configure_fpga=True, tag=None)
-    c7.set_fpga_bitstream(force=args.force or None) # Program the FPGA
+    # c7.set_fpga_bitstream(force=args.force or None) # Program the FPGA
     # shortcut to index c[7] as c7 etc.
     # print 'The following IceBoards were found in Subarray %r through interface %s:' % (args.subarray, args.if_ip)
     # for ib in c:
