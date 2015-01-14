@@ -262,11 +262,12 @@ if __name__ == "__main__":
           delays = pickle.load(open('pychfpga/delay_table_updated19_17.pkl'))
           for ice in c:                                             
               ice.fpga.set_adc_delays(delays[ice.serial_number])
+              print "set delays on SN {0}, SLOT {1}".format(ice.serial_number, ice.slot_number)
       except:
           log.info("Error loading/setting delay tables.  Using default from config file for all boards")
       for cc in c:
         cc.fpga.GPU.LINK_ENABLE=1
-        print "SN {0}, SLOT {1}".format(cc.serial_number, cc.slot_number)
+        print "GPU link enabled on SN {0}, SLOT {1}".format(cc.serial_number, cc.slot_number)
       c.fpga.set_corr_reset(1)
       time.sleep(0.1)
       c.fpga.set_corr_reset(0)
@@ -357,7 +358,7 @@ if __name__ == "__main__":
       else:
         #Assume array is whole pathfinder.
         #need to change this
-        corr_name = 'CHIME_Pathfinder'
+        corr_name = 'pathfinder'
       if not corr_name:
         try:
           log.critical("Could not find hash for ADC serial numbers %s." %
