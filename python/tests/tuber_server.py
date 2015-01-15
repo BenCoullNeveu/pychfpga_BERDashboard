@@ -78,10 +78,13 @@ class TuberHandler(RequestHandler):
 
         if methodname and hasattr(obj, methodname):
             # Returning the results from a method call
-            attr = getattr(obj, methodname)
+            method = getattr(obj, methodname)
             args = request['args'] if 'args' in request else []
             kwargs = request['kwargs'] if 'kwargs' in request else {}
-            result = yield attr(*args, **kwargs)
+            try:
+                result = yield method(*args, **kwargs)
+            except Exception as e:
+                raise Return({'error': {'message': e.message}})
             raise Return({'result': result})
 
         if propertyname and hasattr(obj, propertyname):

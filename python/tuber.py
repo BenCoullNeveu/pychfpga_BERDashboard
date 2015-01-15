@@ -9,15 +9,24 @@ import os
 import collections
 import logging
 import time
+import textwrap
+
+import tornado.concurrent
+import tornado.ioloop
+import tornado.httpclient
+import tornado.gen
+
+# Prefer simplejson (it's compatible, but faster)
+try:
+    import simplejson as json
+except ImportError:
+    import json
 
 __all__ = [
     "TuberError", "TuberRemoteError",
     "TuberCategory", "TuberObject",
+    "Parallelizable", "LazyFuture",
 ]
-
-#
-# Error classes
-#
 
 
 class TuberError(Exception):
@@ -27,34 +36,206 @@ class TuberError(Exception):
 class TuberRemoteError(TuberError):
     pass
 
-#
-# Libraries
-#
-
-try:
-    import simplejson as json
-except ImportError:
-    import json
-
 
 def _tuber_json_object_hook(d):
-    '''
-    Convert JSON dictionaries into Python objects. This greatly clarifies
-    syntax: for example,
-
-        >>> d.units['HZ']
-        u'Hz'
-
-    ...becomes
-
-        >>> d.units.HZ
-        u'Hz'
-    '''
+    '''Convert JSON dictionaries into Python objects.'''
     return collections.namedtuple('TuberResult', d.keys())(*d.values())
 
 
+class Parallelizable(object):
+    '''Base class for calls that can be emitted asynchronously.'''
+
+    def __call__(self, *args, **kwargs):
+        '''Stub for ordinary, serial call'''
+        raise NotImplementedError()
+
+    @tornado.gen.coroutine
+    def __call_async__(self, io_loop, *args, **kwargs):
+        '''Stub for asynchronous call that returns a Future'''
+        raise NotImplementedError()
+
+
+class LazyFuture(tornado.concurrent.Future):
+    '''Wrap Tornado's Future, but automatically trigger flush operations.
+
+    Otherwise, code like this:
+
+        >>> with d.tuber_context() as c:
+        ...     r = c.get_frequency(
+        ...         d.UNITS.HZ, d.TARGET.CARRIER, 1, 1, 1)
+        ...     c.set_frequency(
+        ...         r.result(), d.UNITS.HZ, d.TARGET.DEMOD, 1, 1, 1)
+
+    ...will deadlock, since we're deliberately holding back execution until the
+    end of the context block. Since we hold a single call queue, we can always
+    flush portions of it until we have enough data to proceed.
+    '''
+
+    def __init__(self, ctx, **kwargs):
+        super(LazyFuture, self).__init__(**kwargs)
+        self.ctx = ctx
+
+    def result(self, timeout=None):
+        self.ctx._tuber_flush_sync(self)
+        return super(LazyFuture, self).result(timeout)
+
+    def exception(self, timeout=None):
+        self.ctx._tuber_flush_sync(self)
+        return super(LazyFuture, self).exception(timeout)
+
+
+class Context(object):
+    '''A context container for TuberCalls. Permits calls to be aggregated.
+
+    Using this interface, you can write code like:
+
+        >>> with d.tuber_context() as ctx:
+        ...     p = ctx.get_mezzanine_power(2)
+        ...     f = ctx.get_frequency(
+        ...         ctx.UNITS.HZ, ctx.TARGET.CARRIER, 1, 1, 1)
+        ...     ctx.set_frequency(
+        ...         f.result(), ctx.UNITS.HZ, ctx.TARGET.DEMOD, 1, 1, 1)
+        ... print p.result()
+        True
+
+    Commands are dispatched to the board strictly in-order, but are
+    automatically bundled up to reduce traffic. In this example, the first two
+    calls are dispatched together, since "p.result()" is not used until later.
+
+    Note that you will *not* catch exceptions unless you check for them
+    explicitly. For example, in this code:
+
+        >>> with d.tuber_context() as ctx:
+        ...     p = ctx.get_mezzanine_power(3)
+
+    the function call is executed, and generates an exception. The exception is
+    embedded in 'p' and will not be raised unless you call 'p.result()'!
+    '''
+
+    def __init__(self, obj, io_loop, **ctx_kwargs):
+        self.calls = []
+        self.obj = obj
+        self.io_loop = io_loop
+        self.ctx_kwargs = ctx_kwargs
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        if self.calls:
+            self._tuber_flush_sync()
+
+    def _tuber_flush_prepare(self, until=None):
+        '''Figure out which calls we need to run.
+
+        If specified, "until" tells us a particular call (and any preceding
+        calls) need to be resolved.  If "until" is not specified, the entire
+        queue is emptied.
+        '''
+
+        calls = []
+        futures = []
+        while self.calls:
+            (n, f, a, k) = self.calls.pop(0)
+
+            calls.append({
+                'object': self.obj._tuber_objname,
+                'method': n,
+                'args': a,
+                'kwargs': k
+            })
+            futures.append(f)
+
+            if f == until:
+                break
+
+        return (calls, futures)
+
+    @tornado.gen.coroutine
+    def _tuber_flush_async(self, until=None):
+        '''Break off a set of calls and return them for execution.'''
+
+        (calls, futures) = self._tuber_flush_prepare(until)
+
+        if calls:
+            # Create a HTTP request to complete the call. This is a coroutine,
+            # so we queue the call and then suspend execution (via 'yield')
+            # until it's complete.
+
+            client = tornado.httpclient.AsyncHTTPClient()
+            request = tornado.httpclient.HTTPRequest(
+                url=self.obj.tuber_uri,
+                method='POST',
+                body=json.dumps(calls))
+
+            t1 = time.time()
+            response = yield client.fetch(request)
+            t2 = time.time()
+
+            # Say something about the call
+            l = logging.getLogger(__name__)
+            l.debug('%r: %s => %s (%f sec)' % (
+                self, calls, response.body, t2-t1))
+
+            self._tuber_flush_finalize(response.body, futures)
+
+    def _tuber_flush_sync(self, until=None):
+        (calls, futures) = self._tuber_flush_prepare(until)
+
+        if calls:
+            t1 = time.time()
+            response = urllib2.urlopen(
+                self.obj.tuber_uri,
+                json.dumps(calls)).read()
+            t2 = time.time()
+
+            # Say something about the call
+            l = logging.getLogger(__name__)
+            l.debug('%r: %s => %s (%f sec)' % (self, calls, response, t2-t1))
+
+            self._tuber_flush_finalize(response, futures)
+
+    def _tuber_flush_finalize(self, response, futures):
+
+        json_out = json.loads(
+            response,
+            object_hook=_tuber_json_object_hook)
+
+        # Resolve futures
+        for (f, r) in zip(futures, json_out):
+            if hasattr(r, 'error') and r.error:
+                f.set_exception(TuberRemoteError(r.error.message))
+            else:
+                f.set_result(r.result)
+
+    def __getattr__(self, name):
+
+        (meta, metap, metam) = self.obj._tuber_get_meta()
+
+        # Properties are available immediately.
+        if name in metap:
+            return getattr(self.obj, name)
+
+        # Queue methods calls.
+        if name in metam:
+            future = LazyFuture(self)
+
+            def caller(*args, **kwargs):
+
+                # Add extra arguments where they're provided
+                kwargs = kwargs.copy()
+                kwargs.update(self.ctx_kwargs)
+
+                self.calls.append((name, future, args, kwargs))
+                return future
+
+            return caller
+
+        raise AttributeError("'%s' is not a valid method or property!" % name)
+
+
 class TuberCategory(object):
-    '''This decorator pulls Tuber functions into ORM objects based on categories.
+    '''Pull Tuber functions into ORM objects based on categories.
 
     Here's an example. If "ib" is an IceBoard object, and you have the
     ordinary IceBoard function set_mezzanine_power(), you can run the
@@ -102,7 +283,15 @@ class TuberCategory(object):
         self.category = category
         self.getobject = getobject
         self.arg_mappers = arg_mappers
+
     def __call__(decorator, cls):
+
+        def tuber_context(self, io_loop=tornado.ioloop.IOLoop()):
+            obj = decorator.getobject(self)
+            kwargs = {n: f(self) for (n, f) in decorator.arg_mappers.items()}
+            return Context(obj, io_loop, **kwargs)
+
+        cls.tuber_context = tuber_context
 
         def __getattr__(self, name):
             '''This is a fall-through replacement for __getattr__.
@@ -117,36 +306,40 @@ class TuberCategory(object):
             # to the wrong object.) As a necessary side-effect, this raises an
             # AttributeException if the attribute doesn't actually exist on the
             # upstream object.
-            __m = getattr(decorator.getobject(self), name)
+            obj = decorator.getobject(self)
+            m = getattr(obj, name)
 
-            # Fill in the parameters we know about; leave the rest.
-            @functools.wraps(__m)
-            def proto(self, *args, **kwargs):
+            if isinstance(m, Parallelizable):
+                class Proto(Parallelizable):
 
-                # Retrieve the object and method. This must happen within proto
-                # to ensure we get 'method' from the right object.
-                o = decorator.getobject(self)
-                method = getattr(o, name)
+                    def __init__(p):
+                        functools.update_wrapper(p, m.__call__)
 
-                # Convert the argument map to an { argument : value }
-                # dictionary for the Tuber function.
-                extra_kwargs = {n: f(self)
-                                for n, f in decorator.arg_mappers.items()}
-                kwargs.update(extra_kwargs)
+                    def __call__(p, *args, **kwargs):
+                        kwargs = kwargs.copy()
+                        kwargs.update({
+                            n: f(self)
+                            for (n, f) in decorator.arg_mappers.items()
+                        })
+                        return m.__call__(*args, **kwargs)
 
-                l = logging.getLogger(__name__)
-                l.debug('%r.%s(...) => %r.%s(%s, ...)' % (
-                    self, name,
-                    o, name,
-                    ', '.join(['%s=%r' % (k, v)
-                               for k, v in extra_kwargs.items()])
-                ))
+                    @tornado.gen.coroutine
+                    def __call_async__(p, io_loop, *args, **kwargs):
+                        kwargs = kwargs.copy()
+                        kwargs.update({
+                            n: f(self)
+                            for (n, f) in decorator.arg_mappers.items()
+                        })
+                        with obj.tuber_context(io_loop) as ctx:
+                            f = getattr(ctx, name)(*args, **kwargs)
+                            yield ctx._tuber_flush_async()
+                        raise tornado.gen.Return(f.result())
 
-                return method(*args, **kwargs)
+                return Proto()
 
-            # Set the class method; return the bound version
-            setattr(self.__class__, name, proto)
-            return getattr(self, name)
+            raise AttributeError()
+
+        cls.__getattr__ = __getattr__
 
         def __dir__(self):
             '''Retrieve a list of class properties/methods that are relevant.
@@ -164,11 +357,7 @@ class TuberCategory(object):
                     d.append(m)
             return d
 
-        # Augment the class and return it.
-        cls.__getattr__ = __getattr__
         cls.__dir__ = __dir__
-        cls.hold = lambda self: decorator.getobject(self).hold()
-        cls.flush = lambda self: decorator.getobject(self).flush()
 
         return cls
 
@@ -183,103 +372,38 @@ class TuberObject(object):
     To use it, you should subclass this TuberObject.
     '''
 
-    _hold_dispatcher = False
-    _tuber_uri = None
-    _tuber_objname = None
+    _tuber_objname = property(lambda self: self._tuber_local_objname or self.__class__.__name__)
 
     @staticmethod
-    def ping(uri, timeout = 0.1):
+    def ping(hostname, timeout = 0.1):
         """
-        Returns a boolean inticating whether a tuber object is available at the specified URI.
+        Returns a boolean inticating whether a tuber object is available at the specified ARM hostname.
         """
         import socket
         try:
-            fh=urllib2.urlopen(uri, '{}', timeout=timeout)
+            fh = urllib2.urlopen('http://%s/tuber' % hostname, '{}', timeout=timeout)
             fh.close()
         except ( urllib2.URLError, socket.timeout) : # some machines return socket.timeout
             return False
         return True
 
-    # Graeme's code below
-    # def __init__(self, hostname='localhost'):
-    #     self.hostname = hostname
-
-    def __init__(self, uri=None, obj_name=None, **kwargs):
+    def __init__(self, hostname='localhost', objname=None, **kwargs):
         """
         uri: Address used to access the resource remotely
-        class_name: Name of the class to be accessed
-        key: ID used to uniquely identify each instance of the class. This is typucally the primary key of a database object.
+        obj_name: Name of the Tuber object to be accessed
         """
-        self.hostname = uri # temporary patch
-        self._tuber_uri = uri
-        self._tuber_objname = obj_name
-        print kwargs
-        super(TuberObject, self).__init__(**kwargs) # Make tuber collaborative
+        self._hostname = hostname  # ***JFC: temporary patch
+		if objname:
+        	self._tuber_local_objname = objname
+        super(TuberObject, self).__init__(**kwargs)  # Make tuber collaborative
 
     @property
     def tuber_uri(self):
         '''Retrieve the URI associated with this TuberResource.'''
 
-        if self._tuber_uri: # if a URI was specified at object initialization, use it
-            return self._tuber_uri
-        elif self.hostname: # other wise use the hostname specified in the superclass
-            return 'http://%s/tuber' % self.hostname
-        else:
-            raise TuberError("Mandatory 'hostname' or 'tuber_uri' attribute not specified!")
-
-    @property
-    def tuber_objname(self):
-        '''Retrieve the name of the object providing resources through tuber.'''
-        # Get target object name
-        # If we used tuber as an independent object, use the object name provided at __init__, otherwise use the superclass name
-        return self._tuber_objname or self.__class__.__name__
-
-
-    def hold(self, on_hold=True):
-        '''Suspend tuber calls, and then dispatch several at once.'''
-        self._hold_dispatcher = on_hold
-        if not on_hold:
-            return self.flush()
-
-    def flush(self):
-        '''Dispatch any suspended calls and collect their results.'''
-        # Always, after flushing, assume single-stepping.
-        self._hold_dispatcher = False
-
-        # Claim all pending calls. If there's nothing to do, don't try.
-        try:
-            calls = self._calls
-        except AttributeError:
-            return
-        del self._calls
-
-        json_in = json.dumps(calls)
-        t1 = time.time()
-        json_out = json.loads(
-            urllib2.urlopen(self.tuber_uri, json_in).read(),
-            object_hook=_tuber_json_object_hook
-        )
-        t2 = time.time()
-
-        # Say something about the call
-        l = logging.getLogger(__name__)
-        l.debug('%r: %s => %s (%f sec)' % (
-            self,
-            json_in[:1024], json_out[:1024],
-            t2-t1))
-
-
-
-
-        # TBD: I would love to postpone error-checking until we make use of
-        # the relevant call, but I can't do that since we don't always look!
-        # There is potentially a use for the "with" keyword here: could we
-        # only permit lazy returns within a context?
-        for r in json_out:
-            if hasattr(r, 'error') and r.error:
-                raise TuberRemoteError(r.error.message)
-
-        return [r.result for r in json_out]
+        if not self._hostname: #***  JFC: we use an underscore to avoid conflicts with the superclass (should be two underscores?)
+            raise TuberError("Mandatory 'hostname' attribute not specified!")
+        return 'http://%s/tuber' % self._hostname
 
     @property
     def __doc__(self):
@@ -296,10 +420,16 @@ class TuberObject(object):
         '''Provide a list of what's here. (Used for tab-completion.)'''
 
         (meta, _, _) = self._tuber_get_meta()
-        # We need to gather all class attributes from the MRO chain so we don't hide other superclasses
-        class_attributes = [item  for class_ in type(self).mro() for item in class_.__dict__.keys()]
+        # We need to gather all class attributes from the MRO chain so we
+        # don't hide other superclasses
+        class_attributes = [item for class_ in type(self).mro()
+                            for item in class_.__dict__.keys()]
         instance_attributes = self.__dict__.keys()
-        return list(set(class_attributes + instance_attributes + meta.properties + meta.methods))
+        return list(set(class_attributes +
+                        instance_attributes +
+                        meta.properties +
+                        meta.methods)
+                    )
 
     def _tuber_get_meta(self):
         '''Retrieve metadata associated with the remote network resource.
@@ -315,7 +445,7 @@ class TuberObject(object):
         on-the-fly as they're needed.
         '''
 
-        if not self.tuber_uri:
+        if not self._hostname:
             meta = _tuber_json_object_hook({"properties": [], "methods": []})
             return (meta, [], [])
 
@@ -330,8 +460,7 @@ class TuberObject(object):
         t1 = time.time()
         json_out = json.loads(
             urllib2.urlopen(self.tuber_uri, json_in).read(),
-            object_hook=_tuber_json_object_hook,
-        )
+            object_hook=_tuber_json_object_hook)
         t2 = time.time()
 
         # Say something about the retrieval
@@ -347,7 +476,7 @@ class TuberObject(object):
 
         # Retrieve all properties
         json_in = json.dumps([{
-            'object': self.tuber_objname,
+            'object': self._tuber_objname,
             'property': p} for p in meta.properties])
         json_out = json.loads(
             urllib2.urlopen(self.tuber_uri, json_in).read(),
@@ -358,7 +487,7 @@ class TuberObject(object):
 
         # Retrieve all methods
         json_in = json.dumps([{
-            'object': self.tuber_objname,
+            'object': self._tuber_objname,
             'property': p} for p in meta.methods])
         json_out = json.loads(
             urllib2.urlopen(self.tuber_uri, json_in).read(),
@@ -377,12 +506,9 @@ class TuberObject(object):
             self._tuber_meta_methods
         )
 
-    #
-    # Remote function call magic
-    #
-
     def __getattr__(self, name):
-        '''
+        '''Remote function call magic.
+
         This function is called to get attributes (e.g. class variables and
         functions) that don't exist on "self". Since we build up a cache of
         descriptors for things we've seen before, we don't need to avoid
@@ -391,14 +517,13 @@ class TuberObject(object):
 
         # Refuse to __getattr__ a couple of special names used elsewhere.
         # These are mostly hints for SQLAlchemy or IPython.
-        if name in ('_sa_instance_state',
-                    '_calls', '_tuber_meta',
+        if name in ('_sa_instance_state', '_tuber_meta',
                     '_ipython_display_', 'trait_names', '_getAttributeNames',
                     'getdoc', '__wrapped__', '__call__',
                     '_repr_html_', '_repr_svg_', '_repr_jpeg_',
                     '_repr_png_', '_repr_json_', '_repr_javascript_',
                     '_repr_latex_', '_repr_pdf_'):
-            raise AttributeError
+            raise AttributeError()
 
         # Make sure this request corresponds to something in the underlying
         # TuberObject.
@@ -415,34 +540,42 @@ class TuberObject(object):
         if name in meta.methods:
             d = metam[name]
 
-            def proto(self, *args, **kwargs):
-                if not hasattr(self, '_calls'):
-                    self._calls = []
-                self._calls.append({
-                    'object': self.tuber_objname,
-                    'method': name,
-                    'args': args,
-                    'kwargs': kwargs
-                })
+            # Generate a callable prototype
+            class Proto(Parallelizable):
 
-                if not self._hold_dispatcher:
-                    return self.flush()[0]
+                def __init__(self, obj):
+                    self._obj = obj
 
-            arg_text = ''
-            if hasattr(d, 'args') and d.args:
-                for arg in d.args:
-                    arg_text += ("%s: %s\n" % (
-                        arg.name,
+                def __call__(self, *args, **kwargs):
+                    with self._obj.tuber_context() as ctx:
+                        return getattr(ctx, name)(*args, **kwargs).result()
+
+                @tornado.gen.coroutine
+                def __call_async__(self, io_loop, *args, **kwargs):
+                    with self._obj.tuber_context(io_loop=io_loop) as ctx:
+                        f = getattr(ctx, name)(*args, **kwargs)
+                        yield ctx._tuber_flush_async()
+                    raise tornado.gen.Return(f.result())
+
+            # Add dynamically generated DocStrings
+            Proto.__call__.__func__.__doc__ = textwrap.dedent('''
+                {name}({args_short})
+
+                {args_long}
+
+                {explanation}''').format(
+                name=d.name,
+                args_short=', '.join([a.name for a in d.args]),
+                args_long='\n'.join([
+                    "    {:<16} {}".format(
+                        arg.name + ":",
                         arg.description
-                    )).expandtabs(12)
-
-            proto.__doc__ = "%s(%s)\n\n%s" % (
-                d.name,
-                ', '.join([a.name for a in d.args]),
-                d.explanation
+                    ) for arg in d.args]),
+                explanation=d.explanation
             )
 
-            setattr(self.__class__, name, proto)
+            # Cache this object with the class (so we don't do this often)
+            setattr(self, name, Proto(self))
             return getattr(self, name)
 
 # vim: sts=4 ts=4 sw=4 tw=78 smarttab expandtab

@@ -21,8 +21,6 @@ We use this combination to test the following:
 '''
 
 from hardware_map import HardwareMap, HWMResource
-from iceboard import IceBoard, IceCrate
-from fmc_mezzanine import FMCMezzanine
 
 from sqlalchemy import Column, Integer, String, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship, backref
@@ -62,6 +60,8 @@ class DummyChild(HWMResource):
     def double_serial(self):
         return 2*self.serial
 
+    def double_argument(self, arg):
+        return 2*arg
 
 class DummyParentSubclass(DummyParent):
     __mapper_args__ = {'polymorphic_identity': 'subclass'}
@@ -84,16 +84,19 @@ class InstantiationTestCase(unittest.TestCase):
         cls._hwm.commit()
 
     def test_parent_subclass(self):
+        '''Testing if querying a subclass returns only subclasses'''
         s = self._hwm.query(DummyParentSubclass)
         assert s.count() == 1
         assert set(s.serial) == set([125])
 
     def test_parents(self):
+        '''Testing if querying a class returns itself and its subclasses'''
         s = self._hwm.query(DummyParent)
         assert s.count() == 2
         assert set(s.serial) == set([125, 126])
 
     def test_children(self):
+        '''Testing to see if we can access child classes'''
         s = self._hwm.query(DummyChild)
         assert s.count() == 2
 
@@ -108,5 +111,8 @@ class InstantiationTestCase(unittest.TestCase):
 
         # method calls
         assert set(s.double_serial()) == set([2*123, 2*124])
+
+        # method calls with arguments
+        assert list(s.double_argument(3)) == [6, 6]
 
 # vim: sts=4 ts=4 sw=4 tw=78 smarttab expandtab

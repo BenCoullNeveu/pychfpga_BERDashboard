@@ -58,6 +58,9 @@ import mimetypes
 import logging.config
 import hardware_map
 
+import iceboard
+import fmc_mezzanine
+
 
 class HWMCSVConstructor(object):
     '''When parsing a !tagged CSV filename, generate instances of 'cls'.
@@ -262,6 +265,75 @@ def hwm_lookup_constructor(loader, node):
     return obj
 
 
+class AttributeMappingTouchup(object):
+    '''Correctly assign indexes for SQLAlchemy attribute_mapped_collections.
+
+    HWM objects like FMCMezzanines come with index columns like "mezzanine",
+    which indicate their position in a collection (dfmux.mezzanines) starting
+    from 1. This idiom is convenient in ORM-land, but awkward to support in
+    YAML serialization. For example, we would have:
+
+        # BROKEN EXAMPLE
+        !Dfmux
+            hostname: iceboard004.local
+            mezzanines: [ !MGMEZZ04 { serial: FMC2_001, mezzanine: 2 } ]
+
+    The mezzanine number is not really a property of the mezzanine itself --
+    and it's even more awkward when mezzanines are stored separately from their
+    dfmuxes and referred by alias:
+
+        # BROKEN EXAMPLE
+        - &foo_mezz !MGMEZZ04 { serial: FMC2_001, mezzanine: 2 }
+        - !Dfmux
+            hostname: iceboard004.local
+            mezzanines: [ *foo_mezz ]
+
+    Instead, this touchup allows us to express mezzanines as ordinary lists:
+
+        !Dfmux
+            hostname: iceboard004.local
+            mezzanines: [ None, !MGMEZZ04 { serial: FMC2_001 } ]
+
+    ...or as a mapping:
+
+        !Dfmux
+            hostname: iceboard004.local
+            mezzanines:
+                2: !MGMEZZ04 { serial: FMC2_001 }
+    '''
+
+    def __init__(self, group_attribute, member_attribute):
+        self._group_attribute = group_attribute
+        self._member_attribute = member_attribute
+
+    def __call__(self, loader, mapping):
+
+        if self._group_attribute in mapping:
+            values = mapping[self._group_attribute]
+
+            if isinstance(values, list):
+                # We've been provided a list. Start numbering at 1.
+                for (index, value) in enumerate(values):
+                    if not value:
+                        continue
+                    setattr(value, self._member_attribute, index+1)
+
+                mapping[self._group_attribute] = [v for v in values if v]
+
+            elif isinstance(values, dict):
+                # We've been provided a dictionary. Assume the keys
+                # provide the numbering.
+                for (key, value) in values.iteritems():
+                    if not value:
+                        continue
+                    setattr(value, self._member_attribute, key)
+
+                mapping[self._group_attribute] = [v for v in values.values() if v]
+
+            else:
+                raise TypeError("Expected a list, got '%r'!" % values)
+
+
 def logging_constructor(loader, node):
     '''A YAML constructor for Python logging.config.dictConfig() entries'''
 
@@ -280,6 +352,21 @@ class YAMLLoader(yaml.SafeLoader):
         self.add_constructor(u'!logging', logging_constructor)
         self.add_constructor(u'!HardwareMap', hwm_constructor)
         self.add_constructor(u'!HWMLookup', hwm_lookup_constructor)
+
+        # IceCore Objects
+        self.add_constructor(
+            '!IceCrate',
+            HWMConstructor(
+                lambda l: iceboard.IceCrate,
+                AttributeMappingTouchup('slots', 'slot')))
+
+        self.add_constructor(
+            '!IceBoard',
+            HWMConstructor(
+                lambda l: iceboard.IceBoard,
+                AttributeMappingTouchup('mezzanines', 'mezzanine')))
+
+        self.add_constructor('!FMCMezzanine', lambda l: fmc_mezzanine.FMCMezzanine)
 
 
 def set_yaml_loader_class(cls):
