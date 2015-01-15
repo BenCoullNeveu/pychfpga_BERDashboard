@@ -100,10 +100,12 @@ class IceArray(object):
         Discover all hardware and firmware resources on the specified
         interface(s) and add them to the database.
         """
-        self.discover_iceboards_using_mdns(timeout = timeout, default_app_name='chfpga', default_subarray= 100)
-        self.commit() # commit any changes made during discovery
+        self.discover_iceboards_using_mdns(
+            timeout=timeout,
+            default_app_name='chfpga',
+            default_subarray=100)
+        self.commit()  # commit any changes made during discovery
         #
-
 
     def get_iceboards(self, serials=[], subarray=[], *args, **kwargs):
         """
@@ -117,7 +119,8 @@ class IceArray(object):
         # kwargs['locked']=0 # force selection of non-locked boards
         # if 'present' not in kwargs:
         #     kwargs['present'] = 1
-        return self.query(IceBoard).filter(*tuple(new_args + list(args))).filter_by(**kwargs)
+        return self.query(IceBoard).filter(*tuple(new_args + list(args)))\
+            .filter_by(**kwargs)
 
     def discover_iceboards(self, timeout=0.1):
         """
@@ -144,24 +147,47 @@ class IceArray(object):
         logger = logging.getLogger(__name__)
         logger.debug('Discovering IceBoards')
 
-        iceboards = self.query(IceBoard) # get all the iceboards from the database
+        iceboards = self.query(IceBoard)  # get all the iceboards from the database
 
         # Check if each iceboard actually responds to tuber requests
         for ib in iceboards:
-            if ib.tuber_uri:
-                ib.present = TuberObject.ping(ib.tuber_uri)
-                logger.info('Discovery: The IceBoard S/N %s ping result at URI= %s is %s' % (ib.serial_number, ib.tuber_uri, ib.present))
+            if ib.hostname:
+                ib.present = TuberObject.ping(ib.hostname)
+                logger.info('Discovery: The IceBoard S/N %s ping result at URI= %s is %s' % (ib.serial_number, ib.hostname, ib.present))
 
-    def discover_iceboards_using_mdns(self, timeout=0.5, default_app_name = '', default_subarray = 0):
+    def discover_iceboards_using_mdns(self,
+                                      timeout=0.5,
+                                      update=False,
+                                      default_app_name='',
+                                      default_subarray=0,
+                                      print_results=True):
+        """ Discover IceBoards on the subnet using mDNS discovery.
+
+        if 'update' is True, the in-memory hardware map is updated with the
+        discovered boards. New boards are assigned with the hostname and
+        serial number obtained from mDNS, but are assigned handlers and
+        subarrays defined by the default_app_name and default_subarray
+        parameters.
+
+        if print_results is True, the discovered boards are display on screen.
+        The discovery results are always logged.
+        """
+
         self.logger.debug('%r: Discovering IceBoards through mDNS' % self)
 
-        from . import mdns_discovery # We import here so we don't need pyonjour module if this feature is not needed
+        # We import pybonjour here so we don't need to have this module
+        # installed if this feature is not needed
+        from . import mdns_discovery
 
-        providers = mdns_discovery.browse('_ssh._tcp', browse_timeout=timeout, resolve_timeout=timeout)
+        providers = mdns_discovery.browse(
+            '_ssh._tcp', browse_timeout=timeout, resolve_timeout=timeout)
 
-        iceboards = self.query(IceBoard) # get all the iceboards from the database
+        # Get all the iceboards from the database
+        iceboards = self.query(IceBoard)
+
+        # Get a dictionnary that maps the iceboard serial number to primary keys
         if iceboards:
-            keymap = dict(iceboards.values(IceBoard.tuber_uri, IceBoard._pk)) # get a dictionnary that maps the serial number to primary keys
+            keymap = dict(iceboards.values(IceBoard.hostname, IceBoard._pk))
         else:
             keymap = {}
 
@@ -169,29 +195,34 @@ class IceArray(object):
             host = provider['host']
             port = provider['port']
             serial_number = re.findall(r'\w+?(\d+)\.local\.$', host)
-            tuber_uri = 'http://%s:80/tuber' % host
-            print host, serial_number
+            # hostname = 'http://%s:80/tuber' % host
+            hostname = host
             if not serial_number:
                 continue
             serial_number = int(serial_number[0])
-            self.logger.debug('%r: mDNS discover: IceBoard SN %s found at %s:%s' % (self, serial_number, host, port))
-
-            if tuber_uri in keymap:
-                ib = iceboards.get(keymap[tuber_uri])
-                ib.core_handler_name = 'IceBoard'
-                ib.app_handler_name = default_app_name
-                ib.subarray = default_subarray
-            else:
-                self.logger.info('%r: IceBoard SN%s does not exist in the database. Creating from file.' % (self, serial_number))
-                ib = IceBoard(
-                    serial_number=serial_number,
-                    # arm = TuberHWMResource(tuber_uri=tuber_uri, tuber_objname = 'IceBoard'),
-                    tuber_uri = tuber_uri,
-                    core_handler_name = 'IceBoard',
-                    app_handler_name=default_app_name,
-                    subarray = default_subarray
-                    )
-                self.add(ib)
+            message = ('%r: mDNS discover: IceBoard SN %s found at %s:%s'
+                       % (self, serial_number, host, port))
+            self.logger.info(message)
+            if print_results:
+                print message
+            if update:
+                if hostname in keymap:
+                    ib = iceboards.get(keymap[hostname])
+                    ib.core_handler_name = 'IceBoard'
+                    ib.app_handler_name = default_app_name
+                    ib.subarray = default_subarray
+                else:
+                    self.logger.info(
+                        '%r: IceBoard SN%s does not exist in the database. '
+                        'Creating from file.' % (self, serial_number))
+                    ib = IceBoard(
+                        serial_number=serial_number,
+                        hostname=hostname,
+                        app_handler_name=default_app_name,
+                        subarray=default_subarray
+                        )
+                    self.add(ib)
+                self.flush()
 
     def discover_fpga_serial_numbers(self, timeout=0.3, only_new = True, print_on_screen=True):
         """
@@ -239,9 +270,9 @@ class IceArray(object):
 
         with open(filename, 'rb') as file:
             reader = csv.reader((line.split('#')[0].rstrip() for line in file if line.split('#')[0].strip())) # uses a generator to strip the comments
-            for (serial_number, tuber_uri, arm_mac_address, app_handler_name, fpga_ip_addr, fpga_serial_number, locked, subarray) in reader:
+            for (serial_number, hostname, arm_mac_address, app_handler_name, fpga_ip_addr, fpga_serial_number, locked, subarray) in reader:
                 serial_number = serial_number.strip("' ")
-                tuber_uri = tuber_uri.strip("' ")
+                hostname = hostname.strip("' ")
                 app_handler_name = app_handler_name.strip("' ")
                 # fpga_ip_addr = fpga_ip_addr.strip("' ")
                 # fpga_serial_number = int(fpga_serial_number, 0)
@@ -251,7 +282,7 @@ class IceArray(object):
                 if serial_number in keymap:
                     logger.info('IceBoard SN%s already exists in the database. Updating columns from file.' % serial_number)
                     ib = iceboards.get(keymap[serial_number])
-                    ib.tuber_uri = tuber_uri
+                    ib.hostname = hostname
                     ib.core_handler_name = 'IceBoard'
                     ib.app_handler_name = app_handler_name
                     ib.subarray = subarray
@@ -259,8 +290,8 @@ class IceArray(object):
                     logger.info('IceBoard SN%s does not exist in the database. Creating from file.' % serial_number)
                     ib = IceBoard(
                         serial_number=serial_number,
-                        # arm = TuberHWMResource(tuber_uri=tuber_uri, tuber_objname = 'IceBoard'),
-                        tuber_uri = tuber_uri ,
+                        # arm = TuberHWMResource(hostname=hostname, tuber_objname = 'IceBoard'),
+                        hostname = hostname ,
                         core_handler_name = 'IceBoard',
                         app_handler_name=app_handler_name,
                         subarray = subarray

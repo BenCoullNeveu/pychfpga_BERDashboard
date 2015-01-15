@@ -13,26 +13,7 @@ Example code that demonstrate the use of the 'icecore' library to access arrays 
 import argparse
 import logging
 import logging.handlers
-reload(logging) # clear any previous logger set-up that is stored in the logging module
-reload(logging.handlers) # we need to reload the handlers as well so they are inheriting from the newly loaded Handler class defined in freshly reloaded logging, not the old one. Otherwise we get errors.
-
-# class MyLogger(logging.Logger):
-#     def __init__(self, name):
-#         logging.Logger.__init__(self, name)
-
-
-#     def makeRecord(self, *args, **kwargs):
-#         rec=super(type(self), self).makeRecord(*args, **kwargs)
-#         rec.context = __name__
-#         # rec.name = 'wowo'
-#         return rec
-
-# logging.setLoggerClass(MyLogger)
-
-# def delete_modules(module_name):
-#     import sys
-#     for name in [n for n in sys.modules.keys() if n.startswith(module_name)]:
-#         del sys.modules[name]
+import __main__
 
 from core import FpgaBitstream
 from core import IceArray, close_all_sockets
@@ -41,16 +22,11 @@ from core.chFPGA_controller import chFPGA_controller as chfpgaHandler
 
 #####################################
 
-# import inspect
-# import __main__
-
-# class CompletionFilter(object):
-#     @staticmethod
-#     def filter(record):
-#         return not any(('completer.py' in ss[1] for ss in inspect.stack()))
 
 if __name__ == '__main__':
 
+    reload(logging) # clear any previous logger set-up that is stored in the logging module
+    reload(logging.handlers) # we need to reload the handlers as well so they are inheriting from the newly loaded Handler class defined in freshly reloaded logging, not the old one. Otherwise we get errors.
     # Configure the various loggers to provide adequate levels of details
     logging.getLogger('icecore.fpga_bitstream.FpgaBitstream').setLevel(logging.DEBUG)
     # logging.getLogger('requests.packages').setLevel(logging.WARN)
@@ -87,12 +63,10 @@ if __name__ == '__main__':
     # handler.addFilter(CompletionFilter)
     logger.addHandler(handler)
 
-    logger.info('------------------------')
-    logger.info('chimearray')
-    logger.info('------------------------')
-    logger.info('This module is called with the follwing parameters:' )
-    for (key,value) in args.__dict__.items():
-        logger.info('   %s = %s' % (key, repr(value)))
+    logger.info('%s: ------------------------' % __file__)
+    logger.info('%s: C H I M E A R R A Y' % __file__)
+    logger.info('%s: ------------------------' % __file__)
+    logger.info('%s: Called with: %s' % (__file__, ', '.join('%s=%s' % (key, repr(value)) for (key,value) in args.__dict__.items())))
     # Create the new chFPGA object.
 
     # IceArray.close_all_sessions() # close all previously opened sessions
@@ -105,7 +79,7 @@ if __name__ == '__main__':
 
     ca.load_yaml_hardware_map('''
             !HardwareMap
-                - !IceBoard {hostname: iceboard0007.local, serial_number: "0007", app_handler_name: "chFPGAHandler"}
+                - !IceBoard {hostname: iceboard0007.local, serial_number: "0007", subarray: 100, app_handler_name: "chFPGAHandler"}
             ''')
 
         # ib = hwm.query(IceBoard).one()
@@ -114,7 +88,7 @@ if __name__ == '__main__':
     # ca.discover(timeout=2) # automatically update the hardware map database with discovered resources
 
     c = ca.get_iceboards().as_dict(IceBoard.serial_number, int)
-    c7 = c[7]
+    # c7 = c[7]
     # c7.set_application(chfpgaHandler)
 
 
@@ -136,10 +110,10 @@ if __name__ == '__main__':
     # c7.set_application(chfpgaHandler, configure_fpga=True, tag=None)
     # c7.set_fpga_bitstream(force=args.force or None) # Program the FPGA
     # shortcut to index c[7] as c7 etc.
-    # print 'The following IceBoards were found in Subarray %r through interface %s:' % (args.subarray, args.if_ip)
-    # for ib in c:
-    #     print '  c%i = IceBoard SN%s in slot %r' % (int(ib.serial_number), ib.serial_number, ib.slot_number)
-    #     setattr(__main__, 'c%i' % int(ib.serial_number), ib)
+    print 'The following IceBoards were found in Subarray %r through interface %s:' % (args.subarray, args.if_ip)
+    for ib in c:
+        print "  c%i = IceBoard SN%s in slot %r. Handler = '%s'" % (int(ib.serial_number), ib.serial_number, ib.slot_number, ib.app_handler_name)
+        setattr(__main__, 'c%i' % int(ib.serial_number), ib)
 
     # c23.set_fpga_firmware(fpga_bitstream,  configure_fpga=True, force=args.force, store_in_database=True) # associate boards with specified firmware and configure the selected FPGA
     # c24.set_fpga_firmware(fpga_bitstream,  configure_fpga=True, force=args.force, store_in_database=True) # associate boards with specified firmware and configure the selected FPGA
