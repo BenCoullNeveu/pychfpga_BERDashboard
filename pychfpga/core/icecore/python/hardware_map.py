@@ -61,21 +61,8 @@ __all__ = [
     "set_session_class",
 ]
 
-# Monkey patching will work fine until "real" asynchronous hits the major
-# Python distributions. After a long wade through the various options, it
-# looks like Tulip (3.x) / Trollius (2.x) are the future. But, Trollius
-# is still stabilizing. In particular, we want aiohttp, and we want it on
-# Windows, OS X, and Linux, in standard distributions. We're not there yet.
-#
-# See, for example, http://sdiehl.github.io/gevent-tutorial/
-# 'While monkey-patching is still evil, in this case it is a "useful evil".'
-#
-# For now, this does the trick, and it's *so* much faster and cleaner than
-# trying to keep threading and SQLAlchemy integrated.
-import gevent
-import gevent.monkey
-u'foo'.encode('idna')  # workaround for github.com/gevent/gevent/issues/349
-gevent.monkey.patch_socket()  # comment this out to disable green threads.
+import tornado.gen
+import tornado.ioloop
 
 import functools
 import collections
@@ -456,54 +443,45 @@ def concurrent_call(func_list, variable_arg_list, *args, **kwargs):
     Position- and keyword arguments common to all calls can also be passed.
     """
 
-    has_arg_list = variable_arg_list is not None
+    #has_arg_list = variable_arg_list is not None
 
-    if variable_arg_list is None:
-        variable_arg_list = [None] * len(func_list)
+    if variable_arg_list is not None:
+        func_list = [functools.partial(func, arg) for (func, arg) in zip(func_list, variable_arg_list)]
 
-    def runner(func, variable_arg):
-        logger = logging.getLogger(__name__)
-        try:
-            if has_arg_list:
-                return func(variable_arg, *args, **kwargs)
-            else:
-                return func(*args, **kwargs)
-        except Exception as e:
-            e = (
-                'Thread: Error while accessing %s(%r,...)' %
-                (func, variable_arg) +
-                'Exception is: %r\n' % e +
-                'Traceback is:\n%s' % ('\n'.join(_get_traceback_strings()))
-                )
-            logger.error(e)
-            raise
 
-    threads = [gevent.spawn(runner, func, variable_arg)
-               for (func, variable_arg) in zip(func_list, variable_arg_list)]
-    try:
-        # Some exceptions (mainly Control+C; gevent 1.0 release notes) are
-        # caught and re-raised in joinall(), instead of being funneled
-        # into the thread's .exception property. If we don't kill the
-        # threads that didn't complete, they resume unexpectedly the next
-        # time we enter the event loop.
-        gevent.joinall(threads)
-    except BaseException as e:
-        # Because these are co-operative threads, t.kill() will not
-        # actually kill the thread until a thread-switch opportunity, i.e.
-        # a socket operation. This means an infinite loop will just get
-        # re-entered by kill(), and you'll have to control+C a second time
-        # to break out (at which point you still have zombie
-        # green-threads.)
-        [t.kill() for t in threads]
-        raise e
+    # If the underlying calls can be parallelized using a Tornado IO
+    # loop, do so. Because we use call_sync, we create a new IOLoop
+    # instance to contain the execution.
+    if all([isinstance(f, tuber.Parallelizable) for f in func_list]):
+                old_loop = tornado.ioloop.IOLoop.current()
+                io_loop = tornado.ioloop.IOLoop()
+                io_loop.make_current()
+                fs = [f.__call_async__(io_loop, *args, **kwargs)
+                      for f in func_list]
+                io_loop.run_sync(tornado.gen.coroutine(lambda: (yield fs)))
+                old_loop.make_current()
+                return [f.result() for f in fs]
 
-    # Look for any exceptions; raise them if they exist.
-    for x in threads:
-        if x.exception:
-            raise x.exception
+            # Otherwise, fall back on a looped invocation.
+            return [f(*args, **kwargs) for f in func_list]
 
-    # Results are indexed backwards (i.e. [thread][call]). Transpose.
-    return (x.value for x in threads)
+#    def runner(func, variable_arg):
+#        logger = logging.getLogger(__name__)
+#        try:
+#            if has_arg_list:
+#                return func(variable_arg, *args, **kwargs)
+#            else:
+#                return func(*args, **kwargs)
+#        except Exception as e:
+#            e = (
+#                'Thread: Error while accessing %s(%r,...)' %
+#                (func, variable_arg) +
+#                'Exception is: %r\n' % e +
+#                'Traceback is:\n%s' % ('\n'.join(_get_traceback_strings()))
+#                )
+#            logger.error(e)
+#            raise
+
 
 
 def _get_traceback_strings():
@@ -823,7 +801,6 @@ class Handler(object):
 
 
 class HWMResource(Base):
-
     '''Base class for Hardware Mapper resources to share.
 
     You should inherit from this class in order to create a Hardware-Mapped
@@ -851,7 +828,6 @@ class HWMResource(Base):
 
 # *** JFC: Is this needed anymore?
 class TuberHWMResource(HWMResource, tuber.TuberObject):
-
     '''A base class for HWMResources that correspond to TuberObjects.'''
     __abstract__ = True
 
@@ -866,7 +842,6 @@ class TuberHWMResource(HWMResource, tuber.TuberObject):
 
 # *** JFC: should be 'called register_hwm_object_method()'
 class macro(object):
-
     '''Decorator for "macros" that performs some rudimentary typechecking.
 
     Macros are functions used with query objects that are parallelized
@@ -910,7 +885,7 @@ class macro(object):
             # Say something about the call
             l = logging.getLogger(__name__)
             l.debug('%r: Invoked %s(...) (%f sec)' % (
-                self, func.__name__, t2 - t1))
+                self, func.__name__, t2-t1))
 
             return r
 
@@ -924,7 +899,6 @@ class macro(object):
 
 # *** JFC: should be 'called register_hwm_query_method()'
 class algorithm(object):
-
     '''Decorator for "algorithms".
 
     This decorator is used as follows:

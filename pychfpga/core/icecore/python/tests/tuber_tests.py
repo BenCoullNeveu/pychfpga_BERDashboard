@@ -19,6 +19,7 @@ import unittest
 import time
 
 import tuber_server
+import tuber
 
 from tornado.ioloop import IOLoop
 from tornado.gen import Task, coroutine
@@ -31,6 +32,7 @@ class RemoteObject(object):
     def __init__(self, port):
         self.__port = port
         self.__n = 0
+        self.__x = 0
 
     @coroutine
     def set_n(self, new_n):
@@ -43,6 +45,16 @@ class RemoteObject(object):
         return self.__n
 
     @coroutine
+    def set_x(self, x):
+        '''Set a parameter that only allows incrementing.'''
+        assert self.__x + 1 == x
+        self.__x = x
+
+    @coroutine
+    def get_x(self):
+        return self.__x
+
+    @coroutine
     def get_port(self):
         return self.__port
 
@@ -53,6 +65,8 @@ class RemoteObject(object):
 
 # Mock ORM objects
 class DummyTuberClass(TuberHWMResource):
+    '''A local representation for the fake remote object.'''
+
     __tablename__ = __name__ + 'dummy_parent'
     __table_args__ = (UniqueConstraint('cls', 'port'),)
     __mapper_args__ = {'polymorphic_identity': 'base', 'polymorphic_on': 'cls'}
@@ -94,18 +108,22 @@ class InstantiationTestCase(unittest.TestCase):
         tuber_server.kill()
 
     def test_random_tuber_calls(self):
+        '''Trying a few fake TuberCalls'''
 
         # Set "n" on all tuber classes
         tubers = self._hwm.query(DummyTuberClass)
         assert tubers.count() == 10
         tubers.set_n(10)
-        assert set(tubers.get_n()) == set([10])
+        ns = tubers.get_n()
+        assert set(ns) == set([10]), "Unexpected n set %r" % ns
 
         # Ensure we can retrieve the correct, distinct port numbers from
         # each object and compare them with our ORM ports.
         assert tuple(tubers.get_port()) == tuple(tubers.port)
 
     def test_concurrency(self):
+        '''Trying to see if concurrency actually speeds things up'''
+
         # See if we can sleep for 0.5s per object, and come back in ~0.5s
         tubers = self._hwm.query(DummyTuberClass)
         t1 = time.time()
@@ -113,5 +131,33 @@ class InstantiationTestCase(unittest.TestCase):
         t2 = time.time()
 
         assert t2-t1 < 1
+
+    def test_context(self):
+        '''Trying context manager operations'''
+
+        t = self._hwm.query(DummyTuberClass).first()
+        with t.tuber_context() as ctx:
+
+            # Increment "x" according to the context. Should not dispatch.
+            ctx.set_x(1)
+            assert t.get_x() == 0
+
+            # Now trigger a dispatch and ensure it worked.
+            assert ctx.get_x().result() == 1
+            assert t.get_x() == 1
+
+            # Now queue 2 calls and call them in sequence.
+            ctx.set_x(2)
+            ctx.set_x(3)
+            assert ctx.get_x().result() == 3
+
+    def test_context_error(self):
+        '''Testing context managers with errors'''
+
+        # Cause a Future to generate an error.
+        t = self._hwm.query(DummyTuberClass).first()
+        with t.tuber_context() as ctx:
+            r = ctx.set_x()
+        assert isinstance(r.exception(), tuber.TuberRemoteError)
 
 # vim: sts=4 ts=4 sw=4 tw=78 smarttab expandtab
