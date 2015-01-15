@@ -392,10 +392,13 @@ class TuberObject(object):
         uri: Address used to access the resource remotely
         obj_name: Name of the Tuber object to be accessed
         """
-        self._hostname = hostname  # ***JFC: temporary patch
-		if objname:
-        	self._tuber_local_objname = objname
+        self._hostname = hostname
+        if objname:
+            self._tuber_local_objname = objname
         super(TuberObject, self).__init__(**kwargs)  # Make tuber collaborative
+
+    def tuber_context(self, io_loop=tornado.ioloop.IOLoop()):
+        return Context(self, io_loop)
 
     @property
     def tuber_uri(self):
@@ -456,7 +459,7 @@ class TuberObject(object):
                 self._tuber_meta_methods
             )
 
-        json_in = json.dumps({'object': self.tuber_objname})
+        json_in = json.dumps({'object': self._tuber_objname})
         t1 = time.time()
         json_out = json.loads(
             urllib2.urlopen(self.tuber_uri, json_in).read(),

@@ -446,25 +446,29 @@ def concurrent_call(func_list, variable_arg_list, *args, **kwargs):
     #has_arg_list = variable_arg_list is not None
 
     if variable_arg_list is not None:
-        func_list = [functools.partial(func, arg) for (func, arg) in zip(func_list, variable_arg_list)]
-
+        func_list = [functools.partial(func, arg) for (func, arg)
+                     in zip(func_list, variable_arg_list)]
 
     # If the underlying calls can be parallelized using a Tornado IO
     # loop, do so. Because we use call_sync, we create a new IOLoop
     # instance to contain the execution.
     if all([isinstance(f, tuber.Parallelizable) for f in func_list]):
-                old_loop = tornado.ioloop.IOLoop.current()
-                io_loop = tornado.ioloop.IOLoop()
-                io_loop.make_current()
-                fs = [f.__call_async__(io_loop, *args, **kwargs)
-                      for f in func_list]
-                io_loop.run_sync(tornado.gen.coroutine(lambda: (yield fs)))
-                old_loop.make_current()
-                return [f.result() for f in fs]
+        old_loop = tornado.ioloop.IOLoop.current()
+        io_loop = tornado.ioloop.IOLoop()
+        io_loop.make_current()
+        fs = [f.__call_async__(io_loop, *args, **kwargs)
+              for f in func_list]
+        io_loop.run_sync(tornado.gen.coroutine(lambda: (yield fs)))
+        old_loop.make_current()
+        return [f.result() for f in fs]
+    else:
+        # Otherwise, fall back on a looped invocation.
+        return [f(*args, **kwargs) for f in func_list]
 
-            # Otherwise, fall back on a looped invocation.
-            return [f(*args, **kwargs) for f in func_list]
-
+# *** JFC: With tornado integration, we lost the following code to provide
+#     nice logging of exceptions during threads. Maybe this is not needed
+#     anymore. I'll leave it here for a few days just it case.
+#
 #    def runner(func, variable_arg):
 #        logger = logging.getLogger(__name__)
 #        try:
@@ -481,7 +485,6 @@ def concurrent_call(func_list, variable_arg_list, *args, **kwargs):
 #                )
 #            logger.error(e)
 #            raise
-
 
 
 def _get_traceback_strings():
@@ -635,8 +638,8 @@ class HWMHandlerManager(object):
                 self.update_handler()
             else:
                 logger.error(
-                    '%r: HWMHandlerManager: No handler was found with the '
-                    ' name %r. Using an empty handler instead.' %
+                    "%r: HWMHandlerManager: No handler was found with the "
+                    " name '%s.'" %
                     (self, handler_name))
                 raise NameError("No handler named '%s' was found for %r" %
                                 (handler_name, self))
@@ -718,7 +721,7 @@ class HWMHandlerManager(object):
 
         def _hwm_init_event(instance, event_name):
             logger = logging.getLogger(__name__)
-            logger.debug("%r:HWMHandlerManager: Init Event '%s' " %
+            logger.debug("%r: HWMHandlerManager: Init Event '%s' " %
                         (instance, event_name))
             # invalidate the handler, so it will be created
             instance._handler = None
@@ -757,13 +760,15 @@ class HandlerMeta(type):
         if '__handler_name__' in dict_:
             name = dict_['__handler_name__']
         else:
+
             name = classname
+            dict_['__handler_name__'] = name
 
         if base and name:
             if not issubclass(base, HWMHandlerManager):
                 raise AttributeError(
                     "%s defined '__handler_for__'=%r, but the target class "
-                    "is not a subclass of HWMHandlerManager" %
+                    "is not a superclass of HWMHandlerManager" %
                     (classname, base))
             base.register_handler(cls, name)
         type.__init__(cls, classname, bases, dict_)

@@ -105,20 +105,24 @@ class IceBoard(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
         doc='''The IceBoard's mezzanines, indexed as you would expect
             (1 for mezzanine A, 2 for mezzanine B).''')
 
-    def __init__(self, app_handler=None, **kwargs):
+    def __init__(self, app_handler_name=None, **kwargs):
         """ Create a new Iceboard object from scratch and link it with its
         handler """
         self.logger = logging.getLogger(__name__)
         self.logger.info('%r: Creating instance' % (self))
-        super(IceBoard, self).__init__(**kwargs)
-        if app_handler:
-            self.app_handler_name = app_handler.__handler_name__
 
-    # *** JFC: just used for logging during debugging. will be removed.
+        # As a convenience, we can pass a Handler object as the
+        # app_handler_name and we'll extract the name from it.
+        if issubclass(type(app_handler_name), hardware_map.Handler):
+            app_handler_name = app_handler_name.__handler_name__
+
+        super(IceBoard, self).__init__(app_handler_name=app_handler_name,
+                                       **kwargs)
+
+    # *** JFC: just used for logging during debugging. will be removed. Unless
+    #     we want to rely on the instance to always have a logger.
     @reconstructor
     def _init_from_database(self, **kwargs):
-        """ Create an Iceboard object from database and link it with its
-        handler. """
         self.logger = logging.getLogger(__name__)
         self.logger.info('%r: Recreating instance from database' % (self))
 
@@ -129,18 +133,24 @@ class IceBoard(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
         created, recreated from the database, or changed.
 
         The default action is to connect to a handler class that is registered
-        under the name specified in '_cls'. The handler instances are uniquely
-        identified by the primary key '_pk'. The handler is passed the
-        'hostname' column value to allow its Tuber machinery to connect to
-        the ARM.
+        under the name specified in 'app_handler_name'.
+
+        The handler instances are uniquely identified by the primary key
+        '_pk'. The handler is passed the 'hostname' column value to allow its
+        Tuber machinery to connect to the ARM.
 
         The default handler for IceBoard is IceBoardHandler, which provides
         Tuber's 'IceBoard' methods and properties in addition to basic Pyhton
         helper methods. A subclass of IceBoard can or course redefine this
         method to connect to any other handler and Tuber object.
         """
+        # *** JFC: Concerning the handler name, I would recommend using
+        #     'app_handler_name' or any better-named user column rather than
+        #     '_cls'. Having two options is confusing. We still can do
+        #     polymorphism-based handler selection by having the superclasses
+        #     redefine their own default for 'app_handler_name'
         self.set_handler(object_id=self._pk,
-                         handler_name=self.app_handler_name or self._cls, # *** JFC: we should use one or the other, not both?
+                         handler_name=self.app_handler_name,
                          hostname=self.hostname)
 
     def __repr__(self):
@@ -154,28 +164,49 @@ class IceBoard(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
             repr(self.crate) + '.' if self.crate else '',
             self.__class__.__name__,
             ('slot=%s' % self.slot_number) if self.crate else
-            ('serial=%s' % self.serial_number) if self.serial_number else
+            ('SN%s' % self.serial_number) if self.serial_number else
             ('hostname=%s' % self.hostname)
             )
 
-    def set_application(self, handler=None,
-                        configure_fpga=False, force=False, tag=None):
-        self.app_handler_name = handler.__handler_name__
-        self.init_handler()
+    # *** JFC: This was named set_application. Maybe another name would be better?
+    def set_app_handler(self,
+                        handler=None,
+                        bitstream=None,
+                        configure_fpga=False,
+                        force=False,
+                        tag=None):
+        """ Helper function used to specify the handler and bitstream
+        associated with this IceBoard.
+
+        Example: To set all the boards on an array to now run Dfmux application with a specific firmware:
+            iceboards = hwm.query(Iceboards)
+            iceboards.set_app_handler(DfMuxHandler, dfmux_bistream_v20, tag='2.0', configure_fpga=True)
+        """
+        if handler:
+            self.app_handler_name = handler.__handler_name__
+            self.init_handler()
+        if bitstream:
+            self.register_fpga_bitstream(bitstream, tag=tag)
         if configure_fpga:
             self.set_fpga_bitstream(tag=tag, force=force)
 
+    # *** JFC: The philosophy of this command is now more to configure the
+    #     fpga than to specify which bitstream to use. With this change of
+    #     paradigm, I wonder if we should rename it back to configure_fpga().
     def set_fpga_bitstream(self, buf=None, tag=None, force=False):
         ''' Configures the FPGA with the specified bitstream.
 
-        The bitstream associated with the current handler with the specifiec 'tag' will be
-        loaded. However, if a buffer 'buf' is explicitely provided, that bitstream will be used instead.,
+        The bitstream associated with the current handler with the specifiec
+        'tag' will be loaded. However, if a buffer 'buf' is explicitely
+        provided, that bitstream will be used instead.,
 
-        The 'buf' can be any an object where str(buf) returns the content of a .BIT
-        or .BIN file (which includes a buffer, a string, or other objects defining __str__()).
+        The 'buf' can be any an object where str(buf) returns the content of a
+        .BIT or .BIN file (which includes a buffer, a string, or other objects
+        defining __str__()).
 
-        By default, the FPGA will not be reconfigured it already has a bitstream with the
-        same CRC signature. That behavior can be changed by specifying the 'force' argument:
+        By default, the FPGA will not be reconfigured it already has a
+        bitstream with the same CRC signature. That behavior can be changed by
+        specifying the 'force' argument:
 
             force = True: FPGA will always be configured
             force = False: FPGA will be configured if it is not configured or
@@ -207,8 +238,12 @@ class IceBoard(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
                 '%r: FPGA is already configured. Skipping configuration' % self
                 )
 
-    # *** JFC: Change to have the default behavior to only return the
+    # *** JFC: Changed to have the default behavior to only return the
     #     mezzanines that were detected.
+    # *** JFC: We could put the update part in a separate function, maybe
+    #     outside IceBoard
+    # *** JFC: Maybe we should add a check=True option to raise an error if
+    #     the hardware map does not match reality
     def detect_mezzanines(self, update=False):
         '''Detect mezzanines attached to the Iceboard, and instantiate them if
         update=True.
@@ -282,7 +317,7 @@ class IceBoard(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
             self.update_handler()  # Let the handlers update for the new mezz
         return mezz_class
 
-    # *** JFC: Not sure if detect_icecrate would be a better name
+    # *** JFC: detect_icecrate would be a more consistent name
     def detect_backplane(self, update=False):
         '''Detect the Icecrate on which the Iceboard is attached, and
         instantiate them if update=True. If an IceCrate with the same serial
@@ -394,7 +429,6 @@ class IceBoardHandler(hardware_map.Handler, tuber.TuberObject):
 
     # The following attributes must be redefined in every subclasses
     __handler_for__ = IceBoard
-    __handler_name__ = 'IceBoard'
 
     # Core FPGA firmware registers
     FPGA_CORE_FIRMWARE_COOKIE_ADDR        = 4 * 0
@@ -415,7 +449,7 @@ class IceBoardHandler(hardware_map.Handler, tuber.TuberObject):
 
     def __init__(self, hostname=None, tuber_object='IceBoard', **kwargs):
         super(IceBoardHandler, self).__init__(
-            hostname=hostname, obj_name=tuber_object, **kwargs)
+            hostname=hostname, objname=tuber_object, **kwargs)
 
     def __repr__(self):
         """ Get an unique string representation for this handler instance.
@@ -643,10 +677,11 @@ class IceBoardHandler(hardware_map.Handler, tuber.TuberObject):
         return self.fpga_mmi_read(self.FPGA_APPLICATION_FIRMWARE_COOKIE_ADDR)
 
     def get_fpga_serial_number(self):
-
+        """ Return the FPGA serial number, as read from the FPGA's core
+        firmware throught the MMI interface. """
         serial_number = (
-            self.fpga_mmi_read(self.FPGA_SERIAL_NUMBER_LSW_ADDR) & 0xFFFFFFFF |
-            ((self.fpga_mmi_read(self.FPGA_SERIAL_NUMBER_MSW_ADDR) & 0xFFFFFFFF) << 32)
+            self.fpga_mmi_read(self.FPGA_SERIAL_NUMBER_LSW_ADDR) |
+            (self.fpga_mmi_read(self.FPGA_SERIAL_NUMBER_MSW_ADDR) << 32)
             )
 
         return serial_number
