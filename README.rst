@@ -20,11 +20,12 @@ Requirements
 The Python code runs on Python 2.7 and requires the following packages:
    * numpy
    * sqlalchemy ( the object-oriented high-level SQL database interface, used to manage the hardware map)
-   * gevent (coperative, lightweight multi-threading used to sendcommands to multiple boards simultaneously)
+   * tornado (Python web framework and asynchronous networking library used to send commands to multiple boards simultaneously)
    * yaml (PyYAML, to process text-based YAML hardware map files)
 
 Optional:
    * pybonjour (used to automatically discover Iceboards on the local network through mDNS (experimental feature))
+   * lxml (used to generate HTML reports with the Quality Control scripts)
 
 Usage
 --------
