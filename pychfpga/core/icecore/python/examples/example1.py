@@ -2,25 +2,43 @@
 Icecore example Example code that demonstrate the use of the 'icecore' library
 to access arrays of IceBoards and use that talk to the example FPGA firmware.
 
-Use these examples with the example FPGA firmware also found in
-    icecore/rtl/iceboard_top_example.vhd
 
-This script should be placed in the folder that also contains the icecore
-folder so it can find the icecore package and bit files.
+You can execute this script in ipython with:
+
+run -i example1.py --log_target test.log --log_level debug --iceboards 10.10.10.7
+
+You must specify the iceboard hostname (or ip address) with --iceboards.
+
+--log_target is either, 'syslog', 'stream' for screen logging, or a filename.
+
+--log_level is either 'debug' or 'info'
+
+-- bitstream specifies the filename of the FPGA bitstream. If not specified,
+   it defaults to the example FPGA firmware found in
+       icecore/rtl/projects/iceboard_top_example/iceboard_top_example.runs/impl_1/iceboard_top_example.bit
+
+By using the option '-i' with the ipython 'run' command, your ipython session
+will have interactive access to all the variables that have been created by
+the script. This is useful to play around with the iceboard object.
 """
 
 import logging
 import time
 import sys
 
-# Make sure that you have access to the IceCore package
+# Our example design uses the dummy 'examples/icecore' package which
+# redirects to the top icecore package. If you run this in another folder than
+# /examples or use another package name,  update the imports below and make
+# sure that the package is accessible from the script location.
 from icecore import IceBoard, IceBoardHandler
 from icecore.session import load_session as load_yaml_hardware_map
 
+from example_helper import get_command_line_arguments
 
 #---------------------------------------------------------------------------
 class FpgaBitstream(object):
-    """ Helper object used to load and store a FPGA bitstream."""
+    """ Helper object used to load and store a FPGA bitstream. You don't have
+    to use it, but it makes the code look nicer"""
     bitstream = None
 
     def __init__(self, filename):
@@ -84,24 +102,28 @@ class ExampleIceBoardHandler(IceBoardHandler):
         self.fpga_mmi_write(self.LED_CONTROL_REG_ADDR, bool(led1) | (bool(led2) << 1))
 
 
-def example1(log_handler=logging.StreamHandler, log_level=logging.DEBUG, bitfile=None, iceboard_serial_numbers=['0007']):
+if __name__ == '__main__':
     """
     Demonstrates typical uses of the IceCore infrastructure.
 
-    We first create a hardware map that lists all the available iceboards. We
+    We first create a hardware map that describes the available iceboards. We
     then query that hardware map to select iceboards, we configure the
     firmware, and run little tests that make use of the features available in
     the example FPGA firmware.
     """
 
+    # Get command line arguments
+    args = get_command_line_arguments()
+
     # Set-up logging
     logger = logging.getLogger('')
-    logger.setLevel(log_level)
-    logger.addHandler(log_handler)
+    logger.setLevel(args.log_level)
+    logger.addHandler(args.log_handler)
 
-    # Load the bitstream and assign it to the handler
-    fpga_bitstream = FpgaBitstream(bitfile) if bitfile else None
-    ExampleIceBoardHandler.register_fpga_bitstream(fpga_bitstream)
+    # Load the bitstream and assign it to our handler
+    if args.bitfile:
+        fpga_bitstream = FpgaBitstream(args.bitfile)
+        ExampleIceBoardHandler.register_fpga_bitstream(fpga_bitstream)
 
     # Create a YAML hardware map. Normally this loaded from a text file that
     # was created by the user for a specific experiment, but we dynamically
@@ -109,8 +131,8 @@ def example1(log_handler=logging.StreamHandler, log_level=logging.DEBUG, bitfile
     # when running this example.
     yaml_hwm = """
         !HardwareMap
-        - !IceBoard {{hostname: iceboard{0}.local, serial_number: "{0}", app_handler_name: "ExampleIceBoardHandler"}}
-        """.format(*iceboard_serial_numbers)
+        - !IceBoard {{hostname: {0}, app_handler_name: "ExampleIceBoardHandler"}}
+        """.format(args.iceboards[0])
 
     # Load the hardware map, which defines every piece of the hardware in the
     # array. For now, we have only one IceBoard.
@@ -144,4 +166,3 @@ def example1(log_handler=logging.StreamHandler, log_level=logging.DEBUG, bitfile
         time.sleep(0.3)
     print 'Done.'
 
-    return locals() # make variables in this function available to the calling function

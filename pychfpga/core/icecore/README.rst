@@ -25,6 +25,7 @@ The Python code runs on Python 2.7 and requires the following packages:
 
 Optional:
    * pybonjour (used to automatically discover Iceboards on the local network through mDNS (experimental feature))
+   * lxml (used to generate HTML reports with the Quality Control scripts)
 
 Usage
 --------
