@@ -42,7 +42,7 @@ class chFPGAHandler(iceboard.IceBoardHandler):
     """
 
     __handler_for__ = iceboard.IceBoard
-    # __handler_name__ = 'chfpgaHandler'
+    # __handler_name__ = 'chFPGAHandler'
 
     _BROADCAST_BASE_PORT = 41000
 
@@ -180,6 +180,7 @@ class chFPGAHandler(iceboard.IceBoardHandler):
                 'The firmware currently configured on the FPGA is not chFPGA. '
                 'Cannot access chFPGA-specific methods and resources.')
 
+
         self.fpga_serial_number = self.get_fpga_serial_number()  # Get SN from the SPI link
 
         ip_packed = socket.inet_aton(self._get_arm_ip())  #
@@ -190,8 +191,18 @@ class chFPGAHandler(iceboard.IceBoardHandler):
         mac_packed = struct.pack('>H4s', 0x1234, ip_packed)
 
         self.fpga_ip_addr = socket.inet_ntoa(ip_packed)  # *** JFC temporary hack
-        if self.serial_number:
-            self.fpga_port_number = 41000 + 4 * int(self.serial_number)  # *** JFC: another temporary hack
+
+        # If the board does not have an integer serial number, we use that to compute the port number so multiple computers can send commands to the board.
+        # Otherwise, a locally available UDP port is used.
+        try:
+            serial_number_as_int = int(self.serial_number)
+        except (TypeError, ValueError):
+            serial_number_as_int = None
+
+        if serial_number_as_int:
+            self.fpga_port_number = 41000 + 4 * serial_number_as_int
+        else:
+            self.fpga_port_number = self.get_unused_udp_port()
 
         self.fpga_mmi_write(self._FPGA_MAC_ADDR_LSW_ADDR, struct.unpack('>I', mac_packed[2:6])[0])
         self.fpga_mmi_write(self._FPGA_MAC_ADDR_MSW_IP_PORT_ADDR, (struct.unpack('>H', mac_packed[0:2])[0] << 16) | self.fpga_port_number)
@@ -284,6 +295,16 @@ class chFPGAHandler(iceboard.IceBoardHandler):
 
     def is_open(self):
         return self._is_open
+
+
+    def get_unused_udp_port(self):
+        """ Returns a locally unused UDP port number."""
+        import socket
+        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        s.bind(('localhost', 0))
+        addr, port = s.getsockname()
+        s.close()
+        return port
 
     def get_fpga_firmware_cookie(self):
         """
