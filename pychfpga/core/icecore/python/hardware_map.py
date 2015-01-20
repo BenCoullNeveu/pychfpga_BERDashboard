@@ -563,6 +563,12 @@ class HWMHandlerManager(object):
         if not class_name:
             class_name = class_.__name__
         cls._handler_class_registry[class_name] = class_
+        logger = logging.getLogger(__name__)
+        logger.debug(
+            '%r: HWMHandlerManager: Registering Handler %r '
+            'under handler_name=%s' %
+            (cls, class_, class_name))
+
 
     def get_handler(self):
         """ Return the current handler for this Hardware Map instance.
@@ -626,8 +632,8 @@ class HWMHandlerManager(object):
             # If not, let's create a handler.
             # If there is a local python class for the specified application
             # handler, create it. We pass it a tuber core handler.
-            elif handler_name in self._handler_class_registry:
-                handler_class = self._handler_class_registry[handler_name]
+            elif handler_name in type(self)._handler_class_registry:
+                handler_class = type(self)._handler_class_registry[handler_name]
                 logger.info(
                     '%r: HWMHandlerManager:Creating handler %s' %
                     (self, handler_name))
@@ -748,21 +754,28 @@ class HandlerMeta(type):
           associated with. HWM_object must be a subclass of HWMHandlerManager.
 
         - __handler_name__ = 'some string' #  The name under which the handler
-          can be found. Allows the
+          can be found. If not specified, the Handler class name is used.
     """
     def __init__(cls, classname, bases, dict_):
+        logger = logging.getLogger(__name__)
+        # logger.debug('%r: Calling meta' % cls)
+        type.__init__(cls, classname, bases, dict_)
         if '__handler_for__' not in dict_:
             raise AttributeError(
                 "'__handler_for__' must be specified in Handler class %r"
                 % classname)
-        base = dict_['__handler_for__']
+        base = cls.__handler_for__
 
-        if '__handler_name__' in dict_:
-            name = dict_['__handler_name__']
+        if '__handler_name__' in dict_ and dict_['__handler_name__']:
+            name = cls.__handler_name__
         else:
-
             name = classname
-            dict_['__handler_name__'] = name
+            cls.__handler_name__ = name
+            # print '%r: %s has no handler name. Use %s' % (cls, classname, name) # *** JFC debug
+
+        logger.debug(
+            "%r: Registering to %r under handler_name '%s'"
+            % (cls, base, name))
 
         if base and name:
             if not issubclass(base, HWMHandlerManager):
@@ -771,8 +784,8 @@ class HandlerMeta(type):
                     "is not a superclass of HWMHandlerManager" %
                     (classname, base))
             base.register_handler(cls, name)
-        type.__init__(cls, classname, bases, dict_)
-
+        # cls.__handler_name__ = name
+        # print 'After init, class %s has name %s' % (base, name)
 
 class Handler(object):
 
