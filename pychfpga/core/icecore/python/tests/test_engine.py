@@ -3,17 +3,23 @@ import lxml.objectify
 import lxml.html
 import docutils.core
 import inspect
-import datetime
+import os
 
-from functools import partial, wraps
+import matplotlib.pyplot as plt
+import numpy as np
+import StringIO
+import base64
+import urllib
 
 __all__ = [
     "GROUP", "CASE",
     "TITLE", "DESCRIPTION", "DETAILS", "PASSED",
+    "SUMMARY",
     "CONTEXT", "ITEM", "NAME", "VALUE",
     "P", "IMG", "A",
     "TestGroup",
     "IncompleteError",
+    "PLOT"
 ]
 
 class IncompleteError(Exception):
@@ -74,13 +80,13 @@ class TestGroup(object):
     def run(self, *args, **kwargs):
         '''Run this TestGroup and any of its children.
 
-        Tests are discovered via gen() (which you should override in a
+        Tests are discovered via test_list() (which you should override in a
         subclass.)
         '''
 
         passed = None
 
-        for tc in self.gen():
+        for tc in self.test_list():
             if isinstance(tc, TestGroup):
                 pf = tc.run(*args, **kwargs)
                 self._docs.append(tc.document())
@@ -89,21 +95,27 @@ class TestGroup(object):
 
                 results = tc(*args, **kwargs)
                 if isinstance(results, bool):
-                    (pf, annotations) = (results, [])
+                    annotations = PASSED(results)
                 else:
-                    (pf, annotations) = (results[0], list(results[1:]))
+                    annotations = list(results)  # *** allow returning a generator
+                    pass_result = [x.text for x in annotations if x.tag == 'passed']
+                    if len(pass_result) != 1:
+                        raise RuntimeError('There must be one PASSED element in this test')
+                    else:
+                        pf = bool(pass_result[0])
+                    # (pf, annotations) = (results[0], list(results[1:]))
                 self._docs.append(CASE(*[
                     TITLE(title),
                     DESCRIPTION(*description),
-                    PASSED(pf),
+                    # PASSED(pf),
                 ] + annotations))
-            passed = (pf if passed is None else passed & pf)
+            passed = (pf if passed is None else passed and pf)
 
         self._passed = passed
         self._complete = True
         return passed
 
-    def gen(self):
+    def test_list(self):
         '''Returns a generator that provides tests in this TestGroup.
 
         Override this method to add tests.'''
@@ -161,11 +173,14 @@ class TestGroup(object):
         '''Export as XML'''
         return lxml.etree.tostring(self.document(), pretty_print=True)
 
-    def html(self):
+    def html(self, stylesheet=None):
         '''Export as HTML'''
 
+        if stylesheet is None:
+            stylesheet = os.sep.join(__file__.split(os.sep)[:-1]+['qc.xsl'])
+
         # Load the stylesheet that translates to HTML
-        xslt = lxml.etree.parse(open("qc.xsl"))
+        xslt = lxml.etree.parse(open(stylesheet))
         html_dom = lxml.etree.XSLT(xslt)(self.document())
         return lxml.etree.tostring(html_dom, pretty_print=True)
 
@@ -173,6 +188,19 @@ class TestGroup(object):
         # Write transformed HTML to disk.
         with open(filename, "w") as f:
             f.write(self.html())
+
+def get_plot_as_uri(format='png'):
+        ''
+        io = StringIO.StringIO()
+        plt.gcf().savefig(io, format=format)
+        io.seek(0)
+        return 'data:image/png;base64,' + urllib.quote(base64.b64encode(io.buf))
+
+def PLOT(caption='No Caption', format = 'png'):
+    return DETAILS(
+        P(caption),
+        IMG(src=get_plot_as_uri(format=format))
+    )
 
 # vim: sts=4 ts=4 sw=4 tw=78 smarttab expandtab
 
