@@ -14,6 +14,8 @@
             </head>
 
             <body>
+                <div id="synopsis_data" style="display:none"><xsl:value-of select="group/synopsis_data" /></div>
+
                 <div class="container" role="main">
                     <!-- Activate templates. -->
                     <xsl:apply-templates />
@@ -31,7 +33,7 @@
         <div class="page-header">
             <h1>
                 <xsl:attribute name="id">ref_<xsl:number format="1" level="multiple" count="group|case" /></xsl:attribute>
-                <xsl:value-of select="title"/>
+                <xsl:value-of select="title"/> (<xsl:value-of select="testname" />)
             </h1>
         </div>
 
@@ -135,14 +137,15 @@
         <!-- Title and link anchor (for TOC links) -->
         <h3>
             <xsl:attribute name="id">ref_<xsl:number format="1" level="multiple" count="group|case" /></xsl:attribute>
-            <xsl:value-of select="title"/>
+            <xsl:value-of select="title"/>(<xsl:value-of select="testname" />)
         </h3>
 
         <!-- Description -->
         <xsl:copy-of select="description/*" />
 
         <!-- Details -->
-        <xsl:copy-of select="details/*" />
+        <xsl:copy-of select="details" />
+        <!-- <xsl:copy-of select="details/*" /> -->
     </xsl:template>
 
     <!-- Suppress default rule -->

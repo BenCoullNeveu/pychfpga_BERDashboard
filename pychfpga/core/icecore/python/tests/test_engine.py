@@ -4,12 +4,14 @@ import lxml.html
 import docutils.core
 import inspect
 import os
+import json
 
 import matplotlib.pyplot as plt
 import numpy as np
 import StringIO
 import base64
 import urllib
+import datetime
 
 __all__ = [
     "GROUP", "CASE",
@@ -19,7 +21,7 @@ __all__ = [
     "P", "IMG", "A",
     "TestGroup",
     "IncompleteError",
-    "PLOT"
+    "PLOT", "load_html", "get_synopsis_from_html"
 ]
 
 class IncompleteError(Exception):
@@ -47,6 +49,11 @@ DESCRIPTION = lxml.objectify.E.description
 DETAILS = lxml.objectify.E.details
 PASSED = lxml.objectify.E.passed
 SUMMARY = lxml.objectify.E.summary
+TESTNAME = lxml.objectify.E.testname
+TESTPATH = lxml.objectify.E.testpath
+TESTDATE = lxml.objectify.E.testdate
+SYNOPSIS_DATA = lxml.objectify.E.synopsis_data
+
 
 # For "description", "details", and "summary", some HTML elements are useful
 # for styling.
@@ -76,6 +83,7 @@ class TestGroup(object):
         self._docs = []
         self._complete = False
         self._details = None
+        self.etree = None
 
     def run(self, *args, **kwargs):
         '''Run this TestGroup and any of its children.
@@ -83,28 +91,50 @@ class TestGroup(object):
         Tests are discovered via test_list() (which you should override in a
         subclass.)
         '''
+        self._run('', *args, **kwargs)
+        self.etree = self.document()
+        syn = self.synopsis()
+        self.etree.append(SYNOPSIS_DATA(json.dumps(syn)))
 
+        return syn
+
+    def _run(self, testpath, *args, **kwargs):
+        '''Run this TestGroup and any of its children and use the provided test path to name tests hierarchically.
+        '''
+        self._testpath = testpath + ('.' if testpath else '') + self.__class__.__name__
         passed = None
 
         for tc in self.test_list():
             if isinstance(tc, TestGroup):
-                pf = tc.run(*args, **kwargs)
+                pf = tc._run(self._testpath, *args, **kwargs)
                 self._docs.append(tc.document())
             else:
+                testpath = self._testpath + '.' + tc.__name__
                 (title, description) = self._document_from_docstrings(tc, inspect.getdoc(tc))
-
                 results = tc(*args, **kwargs)
                 if isinstance(results, bool):
-                    annotations = PASSED(results)
+                    results = [PASSED(results)]
+
+                pf = []
+                annotations = []
+                for r in results:
+                    if isinstance(r, bool):
+                        r = PASSED(r)
+                    if not hasattr(r, 'tag'):
+                        print '%s yielded %r, converting into DETAILS' % (testpath, r)
+                        r = DETAILS(str(r))
+                    if r.tag == 'passed':
+                        pf.append(r.text)
+                    annotations.append(r)
+                if len(pf) != 1:
+                    raise RuntimeError('There must be one PASSED element in %s' % testpath)
                 else:
-                    annotations = list(results)  # *** allow returning a generator
-                    pass_result = [x.text for x in annotations if x.tag == 'passed']
-                    if len(pass_result) != 1:
-                        raise RuntimeError('There must be one PASSED element in this test')
-                    else:
-                        pf = bool(pass_result[0])
-                    # (pf, annotations) = (results[0], list(results[1:]))
+                    pf = bool(pf[0])
+                # (pf, annotations) = (results[0], list(results[1:]))
                 self._docs.append(CASE(*[
+                    TESTNAME(tc.__name__),
+                    TESTPATH(testpath),
+                    TESTDATE(datetime.datetime.now().isoformat()),
                     TITLE(title),
                     DESCRIPTION(*description),
                     # PASSED(pf),
@@ -152,6 +182,9 @@ class TestGroup(object):
         (title, description) = self._document_from_docstrings(self, inspect.getdoc(TestGroup))
 
         results = [
+            TESTNAME(self.__class__.__name__),
+            TESTPATH(self._testpath),
+            TESTDATE(datetime.datetime.now().isoformat()),
             TITLE(title),
             DESCRIPTION(*description),
             PASSED(self._passed),
@@ -159,7 +192,7 @@ class TestGroup(object):
 
         if self._context:
             results.append(CONTEXT(*[ITEM(NAME(k), VALUE(v))
-                                   for (k,v) in self._context.items()]))
+                                   for (k, v) in self._context.items()]))
 
         if self._details:
             results.append(DETAILS(self._details))
@@ -169,19 +202,45 @@ class TestGroup(object):
 
         return GROUP(*results)
 
+    def synopsis(self):
+        if self.etree is None:
+            raise RuntimeError('The test has not been run yet')
+        return [(str(x.testdate), str(x.testpath), str(x.passed), str(x.summary) if hasattr(x, 'summary') else '') for x in self.etree.iter(['case', 'group'])]
+
+    def synopsis_as_strings(self):
+        syn = self.synopsis()
+        col_width = [0, 0, 0, 0]
+        for item in syn:
+            for (i, field) in enumerate(item):
+                    col_width[i] = max(col_width[i], len(str(field)))
+        format_ = '| ' + ' | '.join('%%-%is' % width for width in col_width) + ' |'
+
+        return [format_ % item for item in syn]
+
     def xml(self):
+        if self.etree is None:
+            raise RuntimeError('The test has not been run yet')
+
         '''Export as XML'''
-        return lxml.etree.tostring(self.document(), pretty_print=True)
+        return lxml.etree.tostring(self.etree, pretty_print=True)
+
+    def write_xml(self, filename):
+        # Write transformed HTML to disk.
+        with open(filename, "w") as f:
+            f.write(self.xml())
 
     def html(self, stylesheet=None):
         '''Export as HTML'''
+
+        if self.etree is None:
+            raise RuntimeError('The test has not been run yet')
 
         if stylesheet is None:
             stylesheet = os.sep.join(__file__.split(os.sep)[:-1]+['qc.xsl'])
 
         # Load the stylesheet that translates to HTML
         xslt = lxml.etree.parse(open(stylesheet))
-        html_dom = lxml.etree.XSLT(xslt)(self.document())
+        html_dom = lxml.etree.XSLT(xslt)(self.etree)
         return lxml.etree.tostring(html_dom, pretty_print=True)
 
     def write_html(self, filename):
@@ -189,18 +248,36 @@ class TestGroup(object):
         with open(filename, "w") as f:
             f.write(self.html())
 
+
 def get_plot_as_uri(format='png'):
         ''
         io = StringIO.StringIO()
         plt.gcf().savefig(io, format=format)
         io.seek(0)
-        return 'data:image/png;base64,' + urllib.quote(base64.b64encode(io.buf))
+        return ('data:image/%s;base64,' % format +
+                urllib.quote(base64.b64encode(io.buf))
+                )
 
-def PLOT(caption='No Caption', format = 'png'):
+def PLOT(caption='No Caption', format='png'):
     return DETAILS(
         P(caption),
         IMG(src=get_plot_as_uri(format=format))
     )
 
-# vim: sts=4 ts=4 sw=4 tw=78 smarttab expandtab
 
+def load_html(filename):
+    with open(filename) as file_:
+        f = file_.read()
+    return lxml.etree.fromstring(f)
+
+
+def get_synopsis_from_html(filename):
+    e = load_html(filename)
+    syn_data = e.xpath('//div[@id="synopsis_data"]')
+    if len(syn_data) > 1:
+        raise RuntimeError('HTML file contain many synopses!')
+    elif len(syn_data) == 0:
+        return []
+    else:
+        return json.loads(syn_data[0].text)
+# vim: sts=4 ts=4 sw=4 tw=78 smarttab expandtab

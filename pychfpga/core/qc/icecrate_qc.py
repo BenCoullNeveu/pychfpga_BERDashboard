@@ -18,6 +18,14 @@ class MGK7BP16QC(TestGroup):
 
     def test_list(self):
         yield I2CTests()
+        yield self.dummy_test
+
+    def dummy_test(self, ib):
+        """ Dummy test function.
+
+        No description
+        """
+        yield PASSED(True)
 
 
 class I2CTests(TestGroup):
@@ -39,7 +47,9 @@ class I2CTests(TestGroup):
         yield PASSED(is_present)
 
         yield SUMMARY("Backplane is %spresent" % ('' if is_present else 'NOT '))
-        yield DETAILS(P('This was a good test'))
+
+        d= {1:1, 2:2, 3:3}
+        yield DETAILS(P('This was a good test. result is %r' % d))
 
     def get_eeprom_serial_number(self, ib):
         """ Get the backplane EEPROM serial number.
@@ -51,8 +61,12 @@ class I2CTests(TestGroup):
 
         yield PASSED(bool(serial)) # This is the PASS/FAIL criteria
 
-        yield SUMMARY("Backplane serial is  0x%s" % (serial))
+        yield SUMMARY("Backplane serial ]</div> is 0x%s" % (serial))
         yield DETAILS(P('This was a good test'))
+        yield DETAILS(P('A very good test indeed'))
+        yield DETAILS('A test without P')
+        yield 'And a detail witout DETAIL'
+
 
     def test_image(self, mezzanine):
         '''Here's something that always fails, descriptively.'''
@@ -166,5 +180,6 @@ if __name__=='__main__':
         })
     te.run(ib)
     te.write_html('qc.html')
-
+    te.write_xml('qc.xml')
+    print '\n'.join(te.synopsis_as_strings())
 # vim: sts=4 ts=4 sw=4 tw=78 smarttab expandtab
