@@ -41,10 +41,9 @@ class Udp(object):
 
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         # store the socket in the mail module so it will live persistently until the session is closed. Is used to close all sockets when debugging.
-        if hasattr(main, '__opened_sockets__'):
-            main.__opened_sockets__.add(self.sock)
-        else:
-            main.__opened_sockets__= set([self.sock])
+        if not hasattr(main, '__opened_sockets__'):
+            main.__opened_sockets__= set()
+        main.__opened_sockets__.add(self.sock)
 
         if ip_addr == self.BROADCAST:
             self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, True)

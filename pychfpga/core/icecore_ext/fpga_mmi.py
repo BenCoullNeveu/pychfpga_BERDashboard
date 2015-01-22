@@ -55,13 +55,12 @@ class FpgaMmi:
     _STATUS_BASE_ADDR  = chFPGAHandler._STATUS_BASE_ADDR
     _RAM_BASE_ADDR     = chFPGAHandler._RAM_BASE_ADDR
 
-
-    OPCODE_WRITE_CONTROL = 0b100;
-    OPCODE_NOP           = 0b110;
-    OPCODE_WRITE_RAM     = 0b111;
-    OPCODE_READ_CONTROL  = 0b000;
-    OPCODE_READ_STATUS   = 0b010;
-    OPCODE_READ_RAM      = 0b011;
+    OPCODE_WRITE_CONTROL = 0b100
+    OPCODE_NOP           = 0b110
+    OPCODE_WRITE_RAM     = 0b111
+    OPCODE_READ_CONTROL  = 0b000
+    OPCODE_READ_STATUS   = 0b010
+    OPCODE_READ_RAM      = 0b011
 
     def __init__(self,
                  ip_addr,
@@ -110,8 +109,8 @@ class FpgaMmi:
 
         self.udp = udp.Udp()
         self.udp.open(
-            if_ip_addr=self.interface_ip_addr, ip_addr = self.ip_addr,
-            port_number = self.port_number, send_only= self.send_only)
+            if_ip_addr=self.interface_ip_addr, ip_addr=self.ip_addr,
+            port_number=self.port_number, send_only=self.send_only)
         self.udp.set_timeout(self.timeout)
 
         # self.logger.info('   Opened control socket on %s:%i through interface %s' % (self.ip_addr, self.port_number, self.interface_ip_addr))
@@ -168,14 +167,14 @@ class FpgaMmi:
         # target FPGA serial number
         trial = 0
         while trial < number_of_trials:
-            with FpgaMmi(FpgaMmi.BROADCAST_IP_ADDR, FpgaMmi._BROADCAST_BASE_PORT, set_fpga_networking_parameters = False, send_only=True) as mmi:
+            with FpgaMmi(FpgaMmi.BROADCAST_IP_ADDR, FpgaMmi._BROADCAST_BASE_PORT, set_fpga_networking_parameters=False, send_only=True) as mmi:
                 mmi.write(self._FPGA_IP_SETUP_BASE_ADDR, ip_setup_string + trig1) # Send string with trigger flag cleared
                 mmi.write(self._FPGA_IP_SETUP_BASE_ADDR, ip_setup_string + trig2) # resend with trigger flag set. The 0-to-1 transition will load the desired networking parameters
                 mmi.write(self._FPGA_IP_SETUP_BASE_ADDR, [0] * len(ip_setup_string + trig2)) # Write zeros everywhere to make sure we stop latching data
             # logger.debug('FPGA S/N %016X is configured with address %s:%i' % (serial_number, ip_addr, port_number))
             if not check:
                 return
-            (serial, timestamp) = self.get_fpga_config(ip_addr = ip_addr, port_number = port_number)
+            (serial, timestamp) = self.get_fpga_config(ip_addr=ip_addr, port_number=port_number)
             if serial and serial == serial_number:
                 return
             else:
@@ -198,8 +197,8 @@ class FpgaMmi:
                      set_fpga_networking_parameters=False) as mmi:
             while trial < number_of_trials:
                 try:
-                    serial = mmi.read(self._FPGA_SERIAL_NUMBER_ADDR, type = np.dtype('>u8'), timeout = timeout, retry=0)
-                    timestamp = mmi.read(self._FPGA_TIMESTAMP_ADDR, type = np.dtype('>u4'), timeout = timeout, retry=0)
+                    serial = mmi.read(self._FPGA_SERIAL_NUMBER_ADDR, type=np.dtype('>u8'), timeout=timeout, retry=0)
+                    timestamp = mmi.read(self._FPGA_TIMESTAMP_ADDR, type=np.dtype('>u4'), timeout=timeout, retry=0)
                     return (serial, timestamp)
                 except mmi.TimeoutException:
                     trial += 1
@@ -216,7 +215,7 @@ class FpgaMmi:
                     break
         except self.udp.TimeoutException:
             pass  # do nothing
-            #print('Buffer is empty')
+            # print('Buffer is empty')
         self.udp.set_timeout(old_timeout)
 
     def set_timeout(self, timeout):
@@ -253,7 +252,7 @@ class FpgaMmi:
                 'might be many returned values. Use broadcast_read() instead.')
 
         itemsize = np.dtype(type).itemsize  # number of bytes contained in the destinaion vector type
-        byte_length = length*itemsize  # total number of bytes to read
+        byte_length = length * itemsize  # total number of bytes to read
         dout = np.zeros(byte_length, np.int8)  # initialize result vector as a byte array
         offset = 0
         # Loop to read all required bytes (the FPGA does not support multi-byte reads (yet))
@@ -271,15 +270,18 @@ class FpgaMmi:
             opcode = self.OPCODE_READ_CONTROL
 
         while offset < byte_length:
-            log2_length = min((byte_length-offset).bit_length()-1,3) # compute the log2 of the number of bytes to read, limited to 3 (i.e. 8 bytes)
-            read_length = 1<<log2_length # number of bytes to read in this iteration
+            log2_length = min((byte_length - offset).bit_length() - 1, 3)  # compute the log2 of the number of bytes to read, limited to 3 (i.e. 8 bytes)
+            read_length = 1 << log2_length  # number of bytes to read in this iteration
             # print 'offset=', offset
             # print 'log2_length=', log2_length
             # print 'byte_length=', byte_length
 
-            s = chr((opcode << 5) | (log2_length<<3) + ((addr >> 16) & 0x07)) + chr((addr >> 8) & 0xFF) + chr(addr & 0xFF)
+            s = (chr((opcode << 5) | (log2_length << 3) +
+                     ((addr >> 16) & 0x07)) +
+                 chr((addr >> 8) & 0xFF) +
+                 chr(addr & 0xFF))
             retries = 0
-           # could be infinite loop here, but be safe.
+           #  could be infinite loop here, but be safe.
             while True:
                 try:
                     self.udp.send(s)
@@ -289,17 +291,28 @@ class FpgaMmi:
                     if retries < retry:
                         retries += 1
                         self.set_timeout(self.get_timeout() + 0.1)
-                        self.logger.debug('FPGA read failure increasing timeout to %s' % ( self.get_timeout()))
+                        self.logger.debug(
+                            'FPGA read failure increasing timeout to %s' %
+                            (self.get_timeout()))
                     else:
                         raise self.TimeoutException
                 except Exception as e:
-                    raise FpgaMmiException('FPGA read command failed because of the following exception: %s' % repr(e))
-            #if data[0]!=s[0]:
-            #    self.log.error("Read: ERROR: Returned ANT/SUB/ADDR (",   ata[0:2]," does not match request values (",   [0:2],")")
-            if len(data) != read_length + 1:
-                raise FpgaMmiException("FPGA Read command to %s:%i returned %i bytes (0x%s). %i were expected." % (self.ip_addr, self.port_number, len(data), ' '.join('%02X' % ord(b) for b in data), read_length + 1))
+                    raise FpgaMmiException(
+                        'FPGA read command failed because of the following '
+                        'exception: %r' % e)
 
-            dout[offset:offset+read_length] = np.fromstring(data[1:], dtype=np.uint8) # store received byte
+            if len(data) != read_length + 1:
+                raise FpgaMmiException(
+                    "FPGA Read command to %s:%i returned %i bytes (0x%s). "
+                    "%i were expected." % (
+                        self.ip_addr,
+                        self.port_number,
+                        len(data),
+                        ' '.join('%02X' % ord(b) for b in data),
+                        read_length + 1)
+                    )
+
+            dout[offset:offset+read_length] = np.fromstring(data[1:], dtype=np.uint8)  # store received byte
 
             addr += read_length
             offset += read_length
@@ -327,9 +340,9 @@ class FpgaMmi:
         wide.
         """
 
-        byte_length = np.dtype(type).itemsize # number of bytes contained in the destinaion vector type
-        log2_length = byte_length.bit_length()-1 # compute the log2 of the number of bytes to read, limited to 3 (i.e. 8 bytes)
-        read_length = 1<<log2_length # number of bytes to read in this iteration
+        byte_length = np.dtype(type).itemsize  # number of bytes contained in the destinaion vector type
+        log2_length = byte_length.bit_length()-1  # compute the log2 of the number of bytes to read, limited to 3 (i.e. 8 bytes)
+        read_length = 1 << log2_length  # number of bytes to read in this iteration
         # dout = np.zeros(byte_length, np.int8) # initialize result vector as a byte array
         dout = []
         # Loop to read all required bytes (the FPGA does not support multi-byte reads (yet))
@@ -341,27 +354,33 @@ class FpgaMmi:
         else:
             opcode = self.OPCODE_READ_CONTROL
 
-        s = chr((opcode << 5) | (log2_length<<3) + ((addr >> 16) & 0x07)) + chr((addr >> 8) & 0xFF) + chr(addr & 0xFF)
+        s = (chr((opcode << 5) | (log2_length << 3) + ((addr >> 16) & 0x07)) +
+             chr((addr >> 8) & 0xFF) +
+             chr(addr & 0xFF))
 
         self.udp.send(s)
         self.udp.set_timeout(timeout)
         while True:
             try:
                 data = self.udp.recv()
-                if data == s: # ignore the command packet that was broadcasted back to us
+                if data == s:  # ignore the command packet that was broadcasted back to us
                     continue
-            except self.udp.TimeoutException :
+            except self.udp.TimeoutException:
                 break
 
             if len(data) != read_length + 1:
-                raise FpgaMmiException("FPGA Read command returned %i bytes. %i were expected." % (len(data), read_length + 1))
+                raise FpgaMmiException(
+                    "FPGA Read command returned %i bytes. %i were expected." %
+                    (len(data), read_length + 1))
 
-            dout.append(np.fromstring(data[1:], dtype=type)[0]) # store received byte
+            dout.append(np.fromstring(data[1:], dtype=type)[0])  # store received byte
         return dout
 
     def write(self, addr, data):
         """
-        Writes byte(s) to memory-mapped registers in the FPGA through the Ethernet interface.
+        Writes byte(s) to memory-mapped registers in the FPGA through the
+        Ethernet interface.
+
         'data' can be:
             - String
             - list of integers between 0 and 255
@@ -376,12 +395,16 @@ class FpgaMmi:
         if addr & self._RAM_BASE_ADDR:
             opcode = self.OPCODE_WRITE_RAM
         elif addr & self._STATUS_BASE_ADDR:
-            raise FpgaMmiException('FpgaMmi: Attempt to write to a STATUS register')
+            raise FpgaMmiException(
+                'FpgaMmi: Attempt to write to a STATUS register')
         else:
             opcode = self.OPCODE_WRITE_CONTROL
 
-        log2_length = 0 # is ignored for writes
-        string = chr((opcode << 5) | (log2_length<<3) + ((addr >> 16) & 0x07)) + chr((addr >> 8) & 0xFF) + chr(addr & 0xFF)
+        log2_length = 0  # is ignored for writes
+        string = (
+            chr((opcode << 5) | (log2_length << 3) + ((addr >> 16) & 0x07)) +
+            chr((addr >> 8) & 0xFF) +
+            chr(addr & 0xFF))
 
         # Add the data to the string. The method depends on the data type
         if type(data) == str:
@@ -392,17 +415,17 @@ class FpgaMmi:
             length = len(data)
         elif type(data) == np.uint32:
             length = 4
-            a = np.array([data], np.dtype('>u4')) # store as big endian (most significant byte first)
+            a = np.array([data], np.dtype('>u4'))  # store as big endian (most significant byte first)
             a.dtype = np.uint8
             string += ''.join([chr(a[i]) for i in range(4)])
         elif type(data) == np.uint16:
             length = 2
-            a = np.array([data], np.dtype('>u2')) # store as big endian (most significant byte first)
+            a = np.array([data], np.dtype('>u2'))  # store as big endian (most significant byte first)
             a.dtype = np.uint8
             string += ''.join([chr(a[i]) for i in range(2)])
         elif type([data]) == np.uint8:
             length = 1
-            a = np.array([data]) # store as big endian (most significant byte first)
+            a = np.array([data])  # store as big endian (most significant byte first)
             a.dtype = np.uint8
             string += chr(a[i])
         else:
@@ -441,7 +464,7 @@ def discover_fpgas(interface_ip_addr=None, source_subarrays=[0], timeout=0.1):
         source_subarrays = [source_subarrays]
 
     serial_list = []
-     # for if_addr in interface_ip:
+    #  for if_addr in interface_ip:
     for subarray in source_subarrays:
         logger.debug(
             'Searching ICEBoards on subarray %i through interface %s' %
