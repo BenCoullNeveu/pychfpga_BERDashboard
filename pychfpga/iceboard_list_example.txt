@@ -20,3 +20,6 @@
 31, 'http://10.10.10.31:80/tuber', '84:7E:40:6F:D4:E8', '10.10.3.31', 0x30f046483eb01c,   0,      2   # Penticton Slot 5
 32, 'http://10.10.10.32:80/tuber', '84:7E:40:6F:CC:C4', '10.10.3.32', 0x381046483e301c,   0,      2   # Penticton Slot 12 #  Used used
 34, 'http://10.10.10.34:80/tuber', '84:7E:40:6D:1C:F8', '10.10.3.34', 0x18e886483e3014,   0,      101 # McGill, Dodgy Rev4
+35, 'http://10.10.10.35:80/tuber', '84:7E:40:6D:F4:88', '10.10.3.35', 0x58a8c27149b054,   0,      102 # McGill, new Rev4
+36, 'http://10.10.10.36:80/tuber', '84:7E:40:6D:B5:0A', '10.10.3.36', 0x206886483e301c,   0,      111 # McGill, new Rev4
+37, 'http://10.10.10.37:80/tuber', '84:7E:40:6D:F4:80', '10.10.3.37', 0x70a8c27149b054,   0,      111 # McGill, new Rev4 second handsoldered memory

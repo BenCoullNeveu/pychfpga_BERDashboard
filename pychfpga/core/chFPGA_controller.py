@@ -1198,30 +1198,73 @@ class chFPGA_controller(FpgaCoreFirmware):
     def set_adc_delays(self, delay_table):
             return self.ANT.set_delays(delay_table);
 
-    def read_eye_diagram(self, channels=[0], offset=5):
+    def read_eye_diagram(self, channels=[0], offset=5, noffsets=3):
         """
         Measures the eye diagram of the ADC digital data lines using the ADCDAQ capture feature.
+        By default takes data at 3 offset locations (0,1,2), but can measure more
         """
         old_delays = self.get_adc_delays()
         old_adc_mode = self.get_adc_mode()
-        # self.set_adc_delays((None, 0)); # Set all sampling delays to zero
+        self.set_adc_delays([[ [0]*8, [0]*8]] * 16); # Set all sampling delays and offsets to zero
         self.set_adc_mode('pulse') # generate pulse pattern
 
         data={}
         for ch in channels:
-            d = np.zeros((32, 3), dtype=np.uint8)
+            d = np.zeros((32, noffsets), dtype=np.uint8)
             self._logger.info('Reading channel %i.' % (ch))
             adcdaq = self.ANT[ch].ADCDAQ
 
             for dly in range(32):
                 adcdaq.set_delay((dly, None))
-                d[dly, :] = self.ANT[ch].ADCDAQ.get_pattern(period=11)[offset[ch]:offset[ch] + 3];
+                d[dly, :] = self.ANT[ch].ADCDAQ.get_pattern(period=11)[offset[ch]:offset[ch] + noffsets];
             data[ch] = d
         self.set_adc_delays(old_delays) # restore original delays before the function was called
         self.set_adc_mode(old_adc_mode)
-        return data
+        return data        
+        
 
-    def compute_adc_delays(self, channels=[0], offset=[2,3,3,3,3,3,3,3, 4,3,3,3,3,3,3,3]):
+    def compute_adc_delay_offsets(self, channels=[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]):
+        """
+        Measures the eye diagram of the ADC digital data lines and computes the permisable offset to ensure reliable data acquisition.
+        Returns a delay/offset table (delaytable), flags any stuck bits (stuckbits), provides the logic level at the chosen eye 
+        sampling point (bitposgood)  and in that order. Note that stuck bits should all be false, bitposgood should be all 1s
+        """
+        delaytable=[]
+        stuckbits=[]
+        bitposgood=[]
+        
+        for chan in channels:
+            t=self.read_eye_diagram(channels=[chan], offset=[0]*16, noffsets=11) #Creating an offset / delay table 11 columns 32 rows
+            if (t[chan]==0).sum() and (t[chan]==255).sum() : #Have found both 0 and 255 in the table - Means no stuck bits
+                stuckbits.append(False)
+            else:
+                stuckbits.append(True) #Stuck bits detected
+
+
+            offset=np.where(t[chan].sum(axis=0) == t[chan].sum(axis=0).max())[0][0]  #Choosing the offset by looking at the offset/delay table and picking the column with the highest sum (i.e most 255s)
+           
+            bitdelay=[]
+            changood=[]
+            for adcbits in range(0,8):
+                pulsedata=t[chan][:,offset]
+                mask=1<<adcbits #looking at one adc bit at a time
+                chosendelay= int(((mask & pulsedata)*np.arange(32)).sum()/(mask & pulsedata).sum()) #performing a center of mass claculation to pick eye location
+                changood.append( (((t[chan][:,offset])[chosendelay]) & mask)>>adcbits) #Checking what the bit level at the eye center is
+                bitdelay.append(chosendelay )
+                self._logger.info( 'Warning: Center of eye diagram on bit %i of channel %i has glitch ' % (adcbits, chan))
+           
+            offset=offset-3  #The difference in offset between a pulse waveform and a ramp
+            if offset<0:  #An untested wrap around conddition (Adam 12/12/2014)
+                offset=offset+11
+                
+            delaytable.append( [bitdelay, [offset]*8]) #Building the delay table
+            bitposgood.append( [changood]) #Building the eye diagram good table
+        
+        return delaytable, stuckbits, bitposgood
+
+          
+
+    def compute_adc_delays(self, channels=[0], offset=[2,3,3,3,3,3,3,3, 4,3,3,3,3,3,3,3], print_results=True):
         """
         Measures the eye diagram of the ADC digital data lines and computes the optimum delays to ensure reliable data acquisition.
         """
@@ -1243,6 +1286,8 @@ class chFPGA_controller(FpgaCoreFirmware):
             self._logger.info('Aligning bits on sample #%i' % N)
 
             self._logger.info('CHANNEL %i' % ch)
+            if print_results:
+                    print('CHANNEL %i (delay = %i)' % (ch, offset[ch]))
             computed_delay = np.zeros(8, dtype=np.uint8)
             for bit_number in range(8):
                 mask = 1 << bit_number
@@ -1256,8 +1301,10 @@ class chFPGA_controller(FpgaCoreFirmware):
                         bit_string += '!O'[d[delay]]
                     else:
                         bit_string += '.#'[d[delay]]
-
-                self._logger.info('Bit %i: %s Delay = %2i' % (bit_number, bit_string, computed_delay[bit_number]))
+                s='Bit %i: %s Delay = %2i' % (bit_number, bit_string, computed_delay[bit_number])
+                if print_results:
+                        print s
+                self._logger.info(s)
 
             delays[ch]=computed_delay
         return delays

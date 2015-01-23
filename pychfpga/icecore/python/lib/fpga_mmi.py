@@ -172,7 +172,7 @@ class FpgaMmi:
                     if retries < retry:
                         retries += 1
                         self.set_timeout(self.get_timeout() + 0.1)
-                        self.logger.debug('FPGA read failure increasing timeout to %s' % ( self.get_timeout()))
+                        self.logger.debug('FPGA read failure at ip %s increasing timeout to %s' % ( self.ip_addr, self.get_timeout()))
                     else:
                         raise self.TimeoutException
                 except Exception as e:

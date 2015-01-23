@@ -134,12 +134,14 @@ def shuffle_init(c, sync_board, remap=False, frames_per_packet=1, cb1_lanes=4, c
 
         print '**** Initializing transmitters for Slot %02i (IceBoard SN%i) ****' % (bb.slot_number+1, bb.serial_number)
         bb.fpga.set_corr_reset(0)
-        bb.fpga.set_data_source('funcgen')
+        # bb.fpga.set_data_source('funcgen')
+        # bb.fpga.set_funcgen_function('a', a=0)
+        bb.fpga.set_data_source('adc')
         # set all analog inputs to send the (slot_number, analog input) complex number on every bin
         for j in range(len(bb.fpga.ANT)):
-            # bb.fpga.set_funcgen_function('ab', a=(bb.slot_number+1-1)<<4, b=j<<4, channels=[j])
-            bb.fpga.set_funcgen_function('4bit_split_ramp')
-
+            bb.fpga.set_funcgen_function('ab', a=(bb.slot_number+1-1)<<4, b=j<<4, channels=[j])
+            # bb.fpga.set_funcgen_function('4bit_split_ramp')
+            pass
         # set the stream ID of every transmitter to (slot_number, analog input) complex number on every bin
         for j,cb in enumerate(bb.fpga.CROSSBAR):
             cb.STREAM_ID = bb.slot_number+1-1
@@ -176,7 +178,7 @@ def shuffle_init(c, sync_board, remap=False, frames_per_packet=1, cb1_lanes=4, c
         bb.fpga.BP_SHUFFLE.reset_rx_equalizers()
         bb.fpga.REFCLK.sync() # needed
 
-    sync_board.fpga.REFCLK.sync()
+    soft_sync(c, sync_board)
 
 # r.fpga.CROSSBAR2[0].print_frame_info()
 def compute_lane_map(c):
@@ -256,7 +258,7 @@ def reopen(boards, bitstream):
             print 'IceBoard SN%i (Slot #%i) is already opened' % (ib.serial_number, ib.slot_number+1)
         else:
             while not ib.is_open():
-                print 'Trying to open IceBoard SN%i ' % (ib.serial_number)
+                print 'Reprogramming FPGA on IceBoard SN%i ' % (ib.serial_number)
                 try:
                     ib.set_fpga_firmware(bitstream, force=1)
                     ib.open()
@@ -264,3 +266,54 @@ def reopen(boards, bitstream):
                     break
                 except:
                     print 'Failed to open IceBoard SN%i. Retrying' % (ib.serial_number)
+
+def init_gains(c):
+    import pickle
+    ww = [[w.slot_number + 1, w.fpga_serial_number, w.serial_number] for w in c]
+    for w1 in ww:
+        if w1[0] !=1:
+            g_array = pickle.load(open('/home/chime/ch_acq/gains_'+str(w1[1])+'.pkl', 'rb'))
+        else:
+            g_array = pickle.load(open('/home/chime/ch_acq/gains.pkl', 'rb'))
+        print 'Setting gains on IceBoard SN%03i' % w1[2]
+        c[w1[2]].fpga.set_gain(g_array)
+
+def soft_sync(boards, sync_board):
+
+    boards = list(boards)
+    print 'Masking ADC data before sync'
+    for ib in boards:
+        for ant in ib.fpga.ANT:
+            ant.ADCDAQ.BYTE_MASK = 0
+
+    print 'Initiating global sync'
+    sync_board.fpga.REFCLK.sync()
+
+    print 'Unmasking ADC data'
+    for ib in boards:
+        for ant in ib.fpga.ANT:
+            ant.ADCDAQ.BYTE_MASK = 255
+
+def print_temperatures(boards):
+    t=[(b.slot_number, b.serial_number, b.fpga.SYSMON.temperature()) for b in boards]
+    t.sort()
+    for (slot, serial_number, fpga_temp) in t:
+        print 'Slot %2i (SN%02i): FPGA %2.1f C' % (slot, serial_number, fpga_temp)
+
+def set_adc_mask(boards, value):
+
+    boards = list(boards)
+    for ib in boards:
+        for ant in ib.fpga.ANT:
+            ant.ADCDAQ.BYTE_MASK = value
+
+def print_fmc_power(boards):
+    sensor_list = ['FMCA_12V0', 'FMCA_3V3','FMCA_VADJ','FMCB_12V0','FMCB_3V3','FMCB_VADJ']
+    for b in boards:
+        for sensor in sensor_list:
+            t=b.hw.get_power(sensor)[sensor]
+            if t[0] is not None:
+                print '%0.1fV@%0.2fA=%0.1fW ' % (t[0], t[2], t[3]),
+            else:
+                print 'None                 ',
+        print

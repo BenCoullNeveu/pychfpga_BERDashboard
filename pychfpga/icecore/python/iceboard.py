@@ -286,7 +286,7 @@ class IceBoard(HWMResource, AttributeUser):
                 type(self)._hw_instances[self.serial_number]=self.hw
 
 
-        self.hw.open()
+        self.hw.init()
         # self.register(self.hw) # Allow access to the hardware methods/attributes from this class
         self.i2c = self.hw.get_i2c_interface() # get standardized I2C interface that can be used more easily by the user firmware
         self.hw.set_led('GP_LED2',1) # Hardware link is on
@@ -470,7 +470,7 @@ class IceBoard(HWMResource, AttributeUser):
             md5_string = self.fpga_bitstream.md5_string
             b64_string = base64.b64encode(self.fpga_bitstream.get_bitstream_data())
             # with TuberHWMResource(self.tuber_uri, self.tuber_objname) as arm:
-            self.arm.load_fpga_bitstream(b64_string, md5_string)
+            self.arm._set_fpga_bitstream_base64(b64_string)
             # Configure the FPGA networking foe the freshly programmed firmware
             self.logger.info('Done configuring FPGA on board S/N %i through tuber at  %s' % (self.serial_number, self.arm.tuber_uri))
 
@@ -547,7 +547,7 @@ def load(session, filename):
             if serial_number in keymap:
                 logger.info('IceBoard S/N %03i already exists in the database. Updating columns from file.' % serial_number)
                 ib = iceboards.get(keymap[serial_number])
-                ib.arm = TuberHWMResource(tuber_uri = tuber_uri, tuber_objname = 'iceboard')
+                ib.arm = TuberHWMResource(tuber_uri = tuber_uri, tuber_objname = 'IceBoard')
                 ib.arm_serial_number = arm_serial_number
                 ib.fpga_ip_addr = fpga_ip_addr
                 ib.fpga_serial_number = fpga_serial_number
@@ -557,7 +557,7 @@ def load(session, filename):
                 logger.info('IceBoard S/N %03i does not exist in the database. Creating from file.' % serial_number)
                 ib = IceBoard(
                     serial_number=serial_number,
-                    arm = TuberHWMResource(tuber_uri=tuber_uri, tuber_objname = 'iceboard'),
+                    arm = TuberHWMResource(tuber_uri=tuber_uri, tuber_objname = 'IceBoard'),
                     arm_serial_number=arm_serial_number,
                     fpga_ip_addr=fpga_ip_addr,
                     fpga_serial_number=fpga_serial_number,
