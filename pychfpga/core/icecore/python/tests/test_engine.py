@@ -6,6 +6,7 @@ import inspect
 import os
 import json
 
+from copy import deepcopy
 import matplotlib.pyplot as plt
 import numpy as np
 import StringIO
@@ -21,8 +22,9 @@ __all__ = [
     "P", "IMG", "A",
     "TestGroup",
     "IncompleteError",
-    "PLOT", "load_html", "get_synopsis_from_html"
+    "PLOT", "load_html", "get_synopsis_from_xml", 'load_xml'
 ]
+
 
 class IncompleteError(Exception):
     pass
@@ -218,11 +220,30 @@ class TestGroup(object):
         return [format_ % item for item in syn]
 
     def xml(self):
+        '''Export as XML, with embedded XSL stylesheet so the browser can show the formatted data'''
         if self.etree is None:
             raise RuntimeError('The test has not been run yet')
 
-        '''Export as XML'''
-        return lxml.etree.tostring(self.etree, pretty_print=True)
+        # get the XSL style sheet
+        stylesheet = os.sep.join(__file__.split(os.sep)[:-1]+['qc.xsl'])
+        xsl = lxml.etree.parse(open(stylesheet))
+
+        # Create an empty XML document
+        xml = lxml.etree.XML(
+            '<?xml version="1.0" encoding="UTF-8"?> \n'
+            '<!DOCTYPE root [<!ATTLIST xsl:stylesheet id ID  #REQUIRED>]> \n'
+            '<?xml-stylesheet type="text/xsl" href="#xslt"?>\n'
+            '<root></root>\n')
+        xml = lxml.etree.ElementTree(xml)
+
+        # Get the root object of the empty document
+        root = xml.getroot()
+        # Add the XSL stylesheet to root
+        root.append(xsl.getroot())
+        # Add the data to root
+        root.append(deepcopy(self.etree)) #use deepcopy because this seems to change the original object
+
+        return lxml.etree.tostring(xml, pretty_print=True)
 
     def write_xml(self, filename):
         # Write transformed HTML to disk.
@@ -268,16 +289,19 @@ def PLOT(caption='No Caption', format='png'):
 def load_html(filename):
     with open(filename) as file_:
         f = file_.read()
-    return lxml.etree.fromstring(f)
+    return lxml.objectify.fromstring(f)
 
 
-def get_synopsis_from_html(filename):
+def load_xml(filename):
+    with open(filename) as file_:
+        t = lxml.etree.parse(file_)
+    return t
+
+
+def get_synopsis_from_xml(filename):
     e = load_html(filename)
-    syn_data = e.xpath('//div[@id="synopsis_data"]')
-    if len(syn_data) > 1:
-        raise RuntimeError('HTML file contain many synopses!')
-    elif len(syn_data) == 0:
-        return []
-    else:
-        return json.loads(syn_data[0].text)
+    return get_synopsis(e)
+
+def get_synopsis(etree):
+    return [(str(x.testdate), str(x.testpath), str(x.passed), str(x.summary) if hasattr(x, 'summary') else '') for x in etree.iter(['case', 'group'])]
 # vim: sts=4 ts=4 sw=4 tw=78 smarttab expandtab

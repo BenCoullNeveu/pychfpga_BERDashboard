@@ -1,8 +1,7 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<xsl:stylesheet xmlns:xsl="http://www.w3.org/1999/XSL/Transform" version="1.0">
-
+<xsl:stylesheet id="xslt" version="1.0" xmlns:xsl="http://www.w3.org/1999/XSL/Transform">
     <!-- Root element: emit HTML boilerplate -->
-    <xsl:template match="/">
+    <xsl:template match="root">
         <html>
             <head>
                 <meta charset="utf-8" />

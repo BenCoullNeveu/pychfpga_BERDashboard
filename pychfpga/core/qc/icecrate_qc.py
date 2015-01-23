@@ -66,7 +66,11 @@ class I2CTests(TestGroup):
         yield DETAILS(P('A very good test indeed'))
         yield DETAILS('A test without P')
         yield 'And a detail witout DETAIL'
-
+        yield """ This is a very long
+        multi-line comment. """
+        yield P(""" and this is
+        another one that doen't show""")
+        yield 123
 
     def test_image(self, mezzanine):
         '''Here's something that always fails, descriptively.'''
