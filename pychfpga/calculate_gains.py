@@ -129,7 +129,7 @@ def calculate_gains(c,r):
     c.set_fft_bypass(0)
     c.set_fft_shift(1367) #Not sure how to make this a constant
     c.set_scaler_bypass(0)
-    c.set_send_flags()
+    #c.set_send_flags()
     c.set_offset_binary_encoding()
     default_log2_gain = 22
     c.set_gain((1,default_log2_gain))

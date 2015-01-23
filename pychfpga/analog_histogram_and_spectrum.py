@@ -187,13 +187,14 @@ if __name__ == '__main__':
     c.fpga.set_corr_reset(1)
     time.sleep(0.1)
     c.fpga.set_corr_reset(0)
-    print c.serial_number
-    print c.slot_number
+
     for cc in c:
-      print 'ADC 00', cc.fpga._adc_board[0].ADC[0].get_temperature()
-      print 'ADC 01', cc.fpga._adc_board[0].ADC[1].get_temperature()
-      print 'ADC 10', cc.fpga._adc_board[1].ADC[0].get_temperature()
-      print 'ADC 11', cc.fpga._adc_board[1].ADC[1].get_temperature()
+      print cc.serial_number
+      print cc.slot_number
+      #print 'ADC 00', cc.fpga._adc_board[0].ADC[0].get_temperature()
+      #print 'ADC 01', cc.fpga._adc_board[0].ADC[1].get_temperature()
+      #print 'ADC 10', cc.fpga._adc_board[1].ADC[0].get_temperature()
+      #print 'ADC 11', cc.fpga._adc_board[1].ADC[1].get_temperature()
       #rs = [chFPGA_receiver.chFPGA_receiver(c_element.fpga.get_config(), ip_address=c_element.fpga_ip_addr, port=c_element.fpga_port_number+1, host_ip = '10.10.10.83') for c_element in c]
       r = chFPGA_receiver.chFPGA_receiver(cc.fpga.get_config(), ip_address=cc.fpga_ip_addr, port=cc.fpga_port_number+1, host_ip = conf["fpga"]["host_ip"])
       test = test_adc_analog_histogram(cc.fpga, r)
