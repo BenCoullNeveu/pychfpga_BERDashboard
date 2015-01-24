@@ -10,6 +10,7 @@ matplotlib.use('Agg')
 import time, pylab, csv
 from validate import Validator
 from configobj import *
+import pickle
 
 class test_adc_analog_histogram:
     '''
@@ -187,6 +188,14 @@ if __name__ == '__main__':
     c.fpga.set_corr_reset(1)
     time.sleep(0.1)
     c.fpga.set_corr_reset(0)
+
+    try:
+          delays = pickle.load(open('/home/kbandura/git/ch_acq/pychfpga/delay_table_updated19_17.pkl'))
+          for ice in c:                                             
+              ice.fpga.set_adc_delays(delays[ice.serial_number])
+              print "set delays on SN {0}, SLOT {1}".format(ice.serial_number, ice.slot_number + 1)
+    except:
+          log.info("Error loading/setting delay tables.  Using default config for remainder of boards")
 
     for cc in c:
       print cc.serial_number
