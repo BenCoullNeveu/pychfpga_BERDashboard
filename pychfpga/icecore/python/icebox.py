@@ -806,7 +806,7 @@ class IceBox(object):
                     reset_type = ([str(reset_type)] * len(slots))
 
             for (slot, isenabled, resettype) in zip(slots, state, reset_type):
-                if slot == self._iceboard.slot_number:
+                if slot == self._iceboard.slot_number+1:
                     print 'Warning, will not perform reset on the controlling slot %i' % slot
 
                 # if isenabled and slot != self._iceboard.slot_number  :
@@ -857,7 +857,27 @@ class IceBox(object):
                 self.set_led(ledname,0) #Turn off LEDs
                 
             runtime=time.time()-timestart
+    
+    def cont_read_eeprom(self, testduration=60, pausetime=0.5):
+        """
+        Repeately reads the eeprom  - a test function
+
+        History:
+        141218 AJG : created
+        """
+        timestart=time.time()
+        runtime=0
+        
+        while runtime < testduration:
+            try:
+                time.sleep(pausetime)
+                self.read_eeprom( addr=1, length=1)
+            
                 
+            except:
+                pass
+                                
+            runtime=time.time()-timestart
             
 
 
