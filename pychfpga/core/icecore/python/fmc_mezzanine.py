@@ -7,9 +7,9 @@ from sqlalchemy.orm import relationship, backref
 from sqlalchemy.orm import reconstructor
 
 import hardware_map
+from . import handler
 
-
-class FMCMezzanine(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
+class FMCMezzanine(hardware_map.HWMResource, handler.HWMHandlerManager):
     """FMC Mezzanine schema object.
 
     This is an abstract class. To specialize it for a particular FMC
@@ -101,7 +101,7 @@ class FMCMezzanine(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
         """ returns a boolean indicating whether the ADC board is present"""
         return self.iceboard.is_mezzanine_present(self.mezzanine)
 
-class FMCMezzanineHandler(hardware_map.Handler):
+class FMCMezzanineHandler(handler.Handler):
     """
     Defined a basic FMC Mezzanine Python handler.
     """

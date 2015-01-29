@@ -95,8 +95,6 @@ class TestGroup(object):
         '''
         self._run('', *args, **kwargs)
         self.etree = self.document()
-        syn = self.synopsis()
-        self.etree.append(SYNOPSIS_DATA(json.dumps(syn)))
 
         return syn
 
@@ -207,7 +205,7 @@ class TestGroup(object):
     def synopsis(self):
         if self.etree is None:
             raise RuntimeError('The test has not been run yet')
-        return [(str(x.testdate), str(x.testpath), str(x.passed), str(x.summary) if hasattr(x, 'summary') else '') for x in self.etree.iter(['case', 'group'])]
+        return get_synopsis(self)
 
     def synopsis_as_strings(self):
         syn = self.synopsis()

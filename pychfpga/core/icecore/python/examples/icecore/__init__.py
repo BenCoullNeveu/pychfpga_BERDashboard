@@ -13,7 +13,11 @@ from hardware_map import (
     Boolean,
     Session,
     set_session_class,
-    Handler,
+)
+
+from handler import (
+    HWMHandlerManager,
+    Handler
 )
 
 from iceboard import (

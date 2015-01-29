@@ -25,14 +25,14 @@ import hardware_map
 import tuber
 import fmc_mezzanine  # used import x to avoid circular import problem
 import icecrate
-
+import handler
 
 # *** JFC:To be removed
 class IceBoardException(Exception):
     pass
 
 
-class IceBoard(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
+class IceBoard(hardware_map.HWMResource, handler.HWMHandlerManager):
     """ Provides access to the basic functions of an IceBoard.
 
     This object inherits from a generic Hardware Map Resource (HWMResource),
@@ -113,7 +113,7 @@ class IceBoard(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
 
         # As a convenience, we can pass a Handler object as the
         # app_handler_name and we'll extract the name from it.
-        if issubclass(type(app_handler_name), hardware_map.Handler):
+        if issubclass(type(app_handler_name), handler.Handler):
             app_handler_name = app_handler_name.__handler_name__
 
         super(IceBoard, self).__init__(app_handler_name=app_handler_name,
@@ -394,7 +394,7 @@ class IceBoard(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
         return icecrate_class
 
 
-class IceBoardHandler(hardware_map.Handler, tuber.TuberObject):
+class IceBoardHandler(handler.Handler, tuber.TuberObject):
     """ Basic Python handler for the IceBoard.
 
     It provides:
@@ -563,7 +563,7 @@ class IceBoardHandler(hardware_map.Handler, tuber.TuberObject):
 
         >>> m._eeprom_write_ipmi(
         ...     part_number="MGK7MB",
-        ...     serial_number="004",
+        ...     serial_number="0004",
         ...     product_version="2")
 
         DON'T fill incorrect values unless they're visibly incorrect,
