@@ -1251,7 +1251,7 @@ class chFPGA_controller(FpgaCoreFirmware):
                 chosendelay= int(((mask & pulsedata)*np.arange(32)).sum()/(mask & pulsedata).sum()) #performing a center of mass claculation to pick eye location
                 changood.append( (((t[chan][:,offset])[chosendelay]) & mask)>>adcbits) #Checking what the bit level at the eye center is
                 bitdelay.append(chosendelay )
-                self._logger.info( 'Warning: Center of eye diagram on bit %i of channel %i has glitch ' % (adcbits, chan))
+                #self._logger.info( 'Warning: Center of eye diagram on bit %i of channel %i has glitch ' % (adcbits, chan))
            
             offset=offset-3  #The difference in offset between a pulse waveform and a ramp
             if offset<0:  #An untested wrap around conddition (Adam 12/12/2014)
