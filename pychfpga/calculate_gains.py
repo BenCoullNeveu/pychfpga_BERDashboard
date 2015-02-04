@@ -21,7 +21,8 @@ import time
 import pickle
 
 from pychfpga.core import chFPGA_controller
-from pychfpga.core import chFPGA_receiver
+#from pychfpga.core import chFPGA_receiver
+from timestream_receiver import get_frame
 
 import numpy as np
 
@@ -67,7 +68,7 @@ ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 = (
     ([16]*8,                       [3]*8)  #CH15
     )
 
-def get_frames(r):
+def get_frames(port):
     chanIndex = np.arange(16)
     channels = np.arange(16)
     number_of_frames = 0
@@ -75,9 +76,10 @@ def get_frames(r):
     data_list = np.zeros((frames,16,2048))
     while number_of_frames < frames:
         try:
-            a = r.read_frames()
-            for chanNum in chanIndex:
-                data_list[number_of_frames,chanNum, :] = a[channels[chanNum]]
+            a = get_frame(port)
+            data_list[number_of_frames,:,:] = a.values()[0]
+            #for chanNum in chanIndex:
+            #    data_list[number_of_frames,chanNum, :] = a[channels[chanNum]]
             number_of_frames +=1
         except KeyError:
             pass
@@ -123,7 +125,7 @@ def fourier_filter(signal, num_components=15):
     filtered = (filtered.real).astype(np.int).astype(np.complex)
     return filtered
 
-def calculate_gains(c,r):
+def calculate_gains(c, port):
     c.set_data_source('adc')
     c.set_adc_mode('data')
     c.set_fft_bypass(0)
@@ -133,15 +135,15 @@ def calculate_gains(c,r):
     c.set_offset_binary_encoding()
     default_log2_gain = 22
     c.set_gain((1,default_log2_gain))
-    c.start_data_capture(burst_period_in_seconds=0.1)
+    c.start_data_capture(burst_period_in_seconds=0.0025)
+    c.sync()
     channels = range(16)
-
     #for 4 bit number *sqrt2 since real and imag, check this
     idealRMS = 2.83 * np.sqrt(2)
     #glog = 13 # not sure why this isn't 9, but seemed to be the case.
     rmss = []
     for i in range(18):
-        data = get_frames(r)
+        data = get_frames(port)
         # only do for channel 0 for now   
         outrms = data[:,:,:].std(axis=0)
         outrms[outrms < 0.8] = 0.8
@@ -179,9 +181,9 @@ if __name__ == '__main__':
     try:
         logger.info('Deleting previous chFPGA instances in current namespace')
         c.close() # close sockets from previous objects to free them for the new one
-        r.close() # close sockets from previous objects to free them for the new one
+        #r.close() # close sockets from previous objects to free them for the new one
         del c
-        del r
+        #del r
     except NameError:
         pass
 
@@ -222,7 +224,7 @@ if __name__ == '__main__':
     logger.info('Getting chFPGA configuration')
     chFPGA_config = c.get_config()
     logger.info('Starting data/correlator receiver threads')
-    r = chFPGA_receiver.chFPGA_receiver(chFPGA_config, ip_address=args.ip, port=41001, host_ip = args.host_ip)
-    calculate_gains(c,r)
+    #r = chFPGA_receiver.chFPGA_receiver(chFPGA_config, ip_address=args.ip, port=41001, host_ip = args.host_ip)
+    calculate_gains(c,'41001')
 
     #np.save('gain.npy',np.array(gain))
