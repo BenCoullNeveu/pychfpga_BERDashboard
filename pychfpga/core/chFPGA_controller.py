@@ -238,7 +238,7 @@ class chFPGA_controller(chFPGAHandler):
 
         self._logger = logging.getLogger(__name__)
 
-        super(type(self),self).open(*args, **kwargs)
+        super(type(self), self).open(*args, **kwargs)
 
         self.logger.info('Instantiating Application-specific FPGA firmware handlers for board #%i' % (self.serial_number))
 
@@ -259,7 +259,7 @@ class chFPGA_controller(chFPGAHandler):
 
         try:
             # cookie = self.read(self._SYSTEM_GPIO_BASE_ADDR + self.mmi._STATUS_BASE_ADDR) # Read anything from the GPIO subsystem (which is always present on all versions of the FPGA)
-            cookie = self.get_fpga_firmware_cookie() # Read the firmware version cookie from the GPIO subsystem (this is provided by the FPGA core firmware which is always present on all versions of the FPGA)
+            cookie = self.get_fpga_firmware_cookie()  # Read the firmware version cookie from the GPIO subsystem (this is provided by the FPGA core firmware which is always present on all versions of the FPGA)
         except Exception as e:
             error_message = "   Unable to communicate with the FPGA at address %s:%i due to the following exception: %s" % (self.ip_addr, self.port_number, repr(e))
             self.close()
