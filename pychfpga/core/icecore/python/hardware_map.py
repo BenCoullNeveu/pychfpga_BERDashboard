@@ -524,8 +524,9 @@ class HWMResource(Base):
         # chain to solve this problem.
 
         Base.__init__(self, *args, **kwargs)
-        # Go to the next MRO object *after* Base
-        super(Base, self).__init__(*args, **kwargs)
+        # Go to the next MRO object *after* Base. The Base Init will have
+        # consumed all the parameters, so we pass none to the next level.
+        super(Base, self).__init__()
 
 
 # *** JFC: Is this needed anymore?

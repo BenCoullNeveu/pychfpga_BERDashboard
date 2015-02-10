@@ -51,6 +51,9 @@ class FMCMezzanine(hardware_map.HWMResource, handler.HWMHandlerManager):
     class FMCMezzanineException(Exception):
         pass
 
+    def __repr__(self):
+        return '%s(%s)' % (self.__class__.__name__, self.serial)
+
     def __init__(self, **kwargs):
         """ Create a new Mezzanine object from scratch and link it with its handler """
         self.logger = logging.getLogger(__name__)
@@ -107,6 +110,9 @@ class FMCMezzanineHandler(handler.Handler):
     """
     __handler_for__ = FMCMezzanine
     __handler_name__= 'FMCMezzanine'
+
+    def __repr__(self):
+        return '%s' % self.__class__.__name__
 
     def hwm_update(self, hwm_object):
         """ Import the main Mezzanine properties needed by the handler to operate the mezzanine.

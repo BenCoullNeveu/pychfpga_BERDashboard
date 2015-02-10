@@ -105,19 +105,23 @@ class IceBoard(hardware_map.HWMResource, handler.HWMHandlerManager):
         doc='''The IceBoard's mezzanines, indexed as you would expect
             (1 for mezzanine A, 2 for mezzanine B).''')
 
-    def __init__(self, app_handler_name=None, **kwargs):
-        """ Create a new Iceboard object from scratch and link it with its
-        handler """
-        self.logger = logging.getLogger(__name__)
-        self.logger.info('%r: Creating instance' % (self))
+    def __init__(self, hostname=None, app_handler_name='IceBoardHandler', **kwargs):
+        """ Create a new Iceboard object from scratch. """
 
         # As a convenience, we can pass a Handler object as the
         # app_handler_name and we'll extract the name from it.
         if issubclass(type(app_handler_name), handler.Handler):
             app_handler_name = app_handler_name.__handler_name__
 
-        super(IceBoard, self).__init__(app_handler_name=app_handler_name,
-                                       **kwargs)
+        # Populate the object instrumented attributes
+        super(IceBoard, self).__init__(
+            hostname=hostname,
+            app_handler_name=app_handler_name,
+            **kwargs)
+
+        self.logger = logging.getLogger(__name__)
+        self.logger.info('%r: Creating instance with args %r' % (self, kwargs))
+
 
     # *** JFC: just used for logging during debugging. will be removed. Unless
     #     we want to rely on the instance to always have a logger.
@@ -126,32 +130,39 @@ class IceBoard(hardware_map.HWMResource, handler.HWMHandlerManager):
         self.logger = logging.getLogger(__name__)
         self.logger.info('%r: Recreating instance from database' % (self))
 
-    def init_handler(self):
-        """ Create or re-attach a handler to this HWM object.
+    def get_handler(self):
+        """ Return the handler for this HWM object.
 
-        This is called whenever this instance of an HWM object has been
-        created, recreated from the database, or changed.
+        This method calls _get_handler(...) with the arguments to uniquely
+        identify this IceBoard instance, which handler to use, and pass
+        arguments to the handler constructor if one needs to be created.
 
-        The default action is to connect to a handler class that is registered
-        under the name specified in 'app_handler_name'.
+        For the Iceboard, we override the default get_handler() to do the following:
 
-        The handler instances are uniquely identified by the primary key
-        '_pk'. The handler is passed the 'hostname' column value to allow its
-        Tuber machinery to connect to the ARM.
+            - The unique HWM instance id is based on the hostname. This allows
+              the handler to exist even if the HWM object does not yet have a
+              primary key or serial number.
 
-        The default handler for IceBoard is IceBoardHandler, which provides
-        Tuber's 'IceBoard' methods and properties in addition to basic Pyhton
-        helper methods. A subclass of IceBoard can or course redefine this
-        method to connect to any other handler and Tuber object.
+            - The handler name is taken from the 'app_handler_name' column to
+              allow the user to easily define and change what firmware
+              and software the IceBoard should be running.
+
+            - We pass the hostname as the argument to allow Tuber
+              initialization when a new Handler is created
+
+        get_handler() is only called whenever there is no cached handler
+        object (when HWM object has been created, recreated from the database,
+        or moved in memory).
         """
         # *** JFC: Concerning the handler name, I would recommend using
         #     'app_handler_name' or any better-named user column rather than
         #     '_cls'. Having two options is confusing. We still can do
         #     polymorphism-based handler selection by having the superclasses
         #     redefine their own default for 'app_handler_name'
-        self.set_handler(object_id=self._pk,
-                         handler_name=self.app_handler_name,
-                         hostname=self.hostname)
+        return self._get_handler(
+            object_id=self.hostname,
+            handler_name=self.app_handler_name,
+            hostname=self.hostname)
 
     def __repr__(self):
         """ Provides a concise string representation of this Iceboard that is
@@ -165,7 +176,7 @@ class IceBoard(hardware_map.HWMResource, handler.HWMHandlerManager):
             self.__class__.__name__,
             ('slot=%s' % self.slot_number) if self.crate else
             ('SN%s' % self.serial_number) if self.serial_number else
-            ('hostname=%s' % self.hostname)
+            ('%s' % self.hostname)
             )
 
     # *** JFC: This was named set_application. Maybe another name would be better?
@@ -184,7 +195,7 @@ class IceBoard(hardware_map.HWMResource, handler.HWMHandlerManager):
         """
         if handler:
             self.app_handler_name = handler.__handler_name__
-            self.init_handler()
+            self.update_handler()
         if bitstream:
             self.register_fpga_bitstream(bitstream, tag=tag)
         if configure_fpga:
@@ -448,6 +459,7 @@ class IceBoardHandler(handler.Handler, tuber.TuberObject):
     mezzanine = {}
 
     def __init__(self, hostname=None, tuber_object='IceBoard', **kwargs):
+        self.hostname = hostname
         super(IceBoardHandler, self).__init__(
             hostname=hostname, objname=tuber_object, **kwargs)
 
@@ -456,9 +468,9 @@ class IceBoardHandler(handler.Handler, tuber.TuberObject):
 
         It should preferably stay below 32 characters long to fit in syslog tag fields.
         """
-        return '%s(SN%s)' % (
+        return '%s(%s)' % (
             self.__class__.__name__,
-            self.serial_number)
+            'SN'+self.serial_number if self.serial_number else self.hostname)
 
     def hwm_update(self, hwm_object):
         """ Is called when the Hardware Map object might have changed to
