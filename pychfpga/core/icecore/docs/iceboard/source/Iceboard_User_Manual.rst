@@ -242,7 +242,7 @@ output is fed to the FPGA directly (FPGA_CLK_RAW) to provide a copy of the
 clock that is always present (independet of the PLL configuration) and that
 has a well defined phase relative to the high quality FMC reference clocks.
 
-
+Two PLL chips are used to generate the various clocks required by the ARM and FPGA. The
 .. _TableDefaultPLLConfig:
 .. table::  PLL Default Configuration Information
 
