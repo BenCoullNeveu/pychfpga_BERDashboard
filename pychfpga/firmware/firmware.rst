@@ -8,17 +8,17 @@ Without Git-Annex:
 
 If you've never used git annex before:
 
-on a mac:
+on a mac::
 
     $ brew install git-annex
 
-on linux:
+on linux::
     $ sudo apt-get install git-annex
 
-
 If you haven't used a onedrive remote, first follow
-these instructions: (not necessary to have/use your own account or have onedrive client installed, this
- accesses the onedrive api with python)
+these instructions
+(not necessary to have/use your own account or have onedrive client installed, this
+accesses the onedrive api with python)::
 
 http://git-annex.branchable.com/tips/skydriveannex/
 
@@ -48,13 +48,13 @@ Make the file executable, and link it into PATH
 
 With Git-Annex:
 ---------------
-Now that you have the prerequisits, run:
+Now that you have the prerequisits, run::
 
     $ git annex enableremote skydrive
 
 This will open a browser, enter chime.correlator@outlook.com as the user, and standard chime password (ask if you don't know),
 click yes, then copy the full link in the browser.
-then run:
+then run::
 
     $ export OAUTH='fullLink'
     $ git annex enableremote skydrive
@@ -70,13 +70,13 @@ Untar the file to get the full image.
 Create SD card on a mac:
 ---------
 
-Find which drive is SD card:
+Find which drive is SD card::
     $ sudo diskutil list
 (be sure you are correct, as this can wipe your system if used incorrectly)
 
-Unmount it:
+Unmount it::
     $ sudo diskutil umountDisk /dev/disk3
-Clone the image, then safely remove:
+Clone the image, then safely remove::
 
     $ sudo dd if=iceboard_chime28.img of=/dev/rdisk3 bs=10m
     $ sudo diskutil umountDisk /dev/disk3
@@ -85,16 +85,16 @@ Clone the image, then safely remove:
 Linux:
 ------
 
-Find the drive:
+Find the drive::
     $ lsblk
 (be sure you are correct, as this can wipe your system if used incorrectly)
 
-Unmount it:
+Unmount it::
     $ sudo umount /dev/sdb1
     $ sudo umount /dev/sdb2
     ...
 
-Clone the image, safely remove:
+Clone the image, safely remove::
     $ sudo dd if=iceboard_chime28.img of=/dev/sdb bs=10M
     $ sudo umount /dev/sdb1
     $ sudo umount /dev/sdb2
