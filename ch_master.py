@@ -295,12 +295,12 @@ if __name__ == "__main__":
           #Shouldn't need for loop here, but initial testing failed in parallel.
           for i, c_element in enumerate(c):
             fpga_config = c_element.fpga.get_config()
-            fpga_rec = chFPGA_receiver.chFPGA_receiver(fpga_config, \
-                          ip_address=c_element.fpga_ip_addr, \
-                          port=c_element.fpga_port_number+1, \
-                          host_ip = conf["fpga"]["host_ip"])
-            calculate_gains.calculate_gains(c_element.fpga,fpga_rec)
-            fpga_rec.close()
+            #fpga_rec = chFPGA_receiver.chFPGA_receiver(fpga_config, \
+            #              ip_address=c_element.fpga_ip_addr, \
+            #              port=c_element.fpga_port_number+1, \
+            #              host_ip = conf["fpga"]["host_ip"])
+            calculate_gains.calculate_gains(c_element.fpga,str(c_element.fpga_port_number+1))
+            #fpga_rec.close()
       all_chan = range(16)#range(conf["n_antenna"])
       c.fpga.set_data_source("adc") # This should come first.
       c.fpga.set_FFT_bypass(False, channels = all_chan)

@@ -135,7 +135,7 @@ def calculate_gains(c, port):
     c.set_offset_binary_encoding()
     default_log2_gain = 22
     c.set_gain((1,default_log2_gain))
-    c.start_data_capture(burst_period_in_seconds=0.0025)
+    c.start_data_capture(burst_period_in_seconds=0.001)
     c.sync()
     channels = range(16)
     #for 4 bit number *sqrt2 since real and imag, check this
@@ -171,9 +171,10 @@ def calculate_gains(c, port):
         glin_final = fourier_filter(gain[channel][1][0])
         gain[channel][1][0] = glin_final.tolist()
     c.set_gain(gain)
-    output = open('/home/chime/ch_acq/gains_'+str(c.GPIO.FPGA_SERIAL_NUMBER)+'.pkl','wb')
+    output = open('gains_'+str(c.GPIO.FPGA_SERIAL_NUMBER)+'.pkl','wb')
     pickle.dump(gain, output)
     print "Scaler Gain set and saved"
+    c.stop_data_capture()
 
 
 if __name__ == '__main__':        

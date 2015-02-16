@@ -16,12 +16,12 @@ class test_adc_analog_histogram:
     '''
      Test class for testing Analog data.   
     '''
-    def __init__(self,fpga_ctrl, fpga_recv):
+    def __init__(self,fpga_ctrl, port):
         '''
             Need fpga controller and receiver objects to get started.
         '''
         self.fpga_ctrl = fpga_ctrl
-        self.fpga_recv = fpga_recv
+        self.port = port
 
     def remap(self, data):
         remapping = [12,13,14,15,8,9,10,11,4,5,6,7,0,1,2,3]
@@ -36,7 +36,7 @@ class test_adc_analog_histogram:
         self.fpga_ctrl.set_gain((1,27))
         self.fpga_ctrl.set_offset_binary_encoding(0)
         time.sleep(1)
-        self.fpga_ctrl.start_data_capture(burst_period_in_seconds=0.1, channels=range(16))
+        self.fpga_ctrl.start_data_capture(burst_period_in_seconds=0.005, channels=range(16))
         self.fpga_ctrl.sync()
         time.sleep(2)
         return
@@ -66,6 +66,7 @@ class test_adc_analog_histogram:
             pylab.plot(10.0*np.log10(np.abs(spectrum[i,:])))
             pylab.title(fname + ' Spectrum for Channel '+str(i))
             pylab.ylim(20,80)
+            pylab.grid()
             pylab.savefig(fname + '_spectrum_chan' +str(i)+'.pdf')
             pylab.clf()
 
@@ -73,9 +74,9 @@ class test_adc_analog_histogram:
     def execute(self, fname ):
         try:
             self.configure_board()
-            self.fpga_recv.flush()
+            #self.fpga_recv.flush()
             filename = fname + '.npy'
-            save_raw_frames.save_timestream_frames(self.fpga_recv, channels = range(16), frames=256, filename = filename)
+            save_raw_frames.save_timestream_frames(self.port, channels = range(16), frames=256, filename = filename)
             self.fpga_ctrl.stop_data_capture()
             self.plot_histogram(fname)
             self.spectrum(fname)
@@ -95,7 +96,7 @@ if __name__ == '__main__':
     from pychfpga.icecore.icearray import IceArray, close_all_sockets
     from pychfpga.icecore.iceboard import IceBoard
     from pychfpga.core.chFPGA_controller import chFPGA_controller as ChimeFpgaFirmware
-    from pychfpga.core import chFPGA_receiver
+    #from pychfpga.core import chFPGA_receiver
     ADC_DELAY_TABLE= (
     ([16]*8,     [3]*8), #CH0
     ([7]*8,                       [3]*8), #CH1
@@ -205,8 +206,8 @@ if __name__ == '__main__':
       #print 'ADC 10', cc.fpga._adc_board[1].ADC[0].get_temperature()
       #print 'ADC 11', cc.fpga._adc_board[1].ADC[1].get_temperature()
       #rs = [chFPGA_receiver.chFPGA_receiver(c_element.fpga.get_config(), ip_address=c_element.fpga_ip_addr, port=c_element.fpga_port_number+1, host_ip = '10.10.10.83') for c_element in c]
-      r = chFPGA_receiver.chFPGA_receiver(cc.fpga.get_config(), ip_address=cc.fpga_ip_addr, port=cc.fpga_port_number+1, host_ip = conf["fpga"]["host_ip"])
-      test = test_adc_analog_histogram(cc.fpga, r)
+      #r = chFPGA_receiver.chFPGA_receiver(cc.fpga.get_config(), ip_address=cc.fpga_ip_addr, port=cc.fpga_port_number+1, host_ip = conf["fpga"]["host_ip"])
+      test = test_adc_analog_histogram(cc.fpga, str(cc.fpga_port_number+1))
       test.execute(args.output_name)
       print cc.fpga.get_temperatures()
       r.close()
