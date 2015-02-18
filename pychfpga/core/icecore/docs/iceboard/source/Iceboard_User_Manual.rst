@@ -118,7 +118,7 @@ connections as follows:
     #. Jumpers and switch configuration
 
        + SW9 FPGA configuration mode set to 'Slave Serial' (M2:0 = 0b000, 'ON' means '1') to allow programming by the ARM
-         (See :ref:`SectionFpgaCOnfigModeSwitches`)
+         (See :ref:`SectionFpgaConfigModeSwitches`)
        + SW1 ARM boot configuration:  Switch 1-8 = 0b01101000 ('ON means '1')
        + SW2 ARM boot configuration:  Switch 1-8 = 0b01010000 ('ON means '1')
        + SW6 GP Switches: any setting is ok
@@ -231,6 +231,9 @@ The source of the 10 MHz reference clock is selected by installing the jumper in
     | Backplane        | J7 or no jumper |
     +------------------+-----------------+
 
+Clock fanout
+------------
+
 The selected 10 MHz clock source is fed to a ultra-low jitter clock MUX/fanout
 chip (U17, a LMK00304SQ). The clock source is selected by the MUX section
 based on the jumper settings and is outputted as 4 LVDS signals, two of which
@@ -242,7 +245,23 @@ output is fed to the FPGA directly (FPGA_CLK_RAW) to provide a copy of the
 clock that is always present (independet of the PLL configuration) and that
 has a well defined phase relative to the high quality FMC reference clocks.
 
-Two PLL chips are used to generate the various clocks required by the ARM and FPGA. The
+PLLs
+----
+
+Two PLL chips are used to generate the various clocks required by the ARM and
+FPGA. The non-volatile memory in the PLLs can be programmed through SPI
+interface to generate a set of pre-defined frequencies at startup without FPGA
+and ARM intervention. The IceBoard is factory-programmed to generate the
+mandatory frequencies  needed by the ARM and its PHY (20 MHz, 25 MHz, 100 MHz)
+in addition to frequencies that are typically used by the FPGA (125 MHz for 1G
+Ethernet communications and core system, 156.25 MHz for 10G Ethernet links).
+Some frequency references are duplicated and are fed to multiple MGT
+references in order to reach all the MGTs that are typically used in an array
+(e.g 10G backplane shuffle  uses 15 MGTs and need at least two 156.25 MHz
+references, 10G QSFP links need 8 MGTs and require another 156.25 MHz
+reference, etc).
+
+
 .. _TableDefaultPLLConfig:
 .. table::  PLL Default Configuration Information
 
@@ -270,13 +289,13 @@ Two PLL chips are used to generate the various clocks required by the ARM and FP
     |      | Out 4  | 10 MHz     | FPGA MGTCLKREF1_115                            | Feedback bypass, for access to original 10 MHz reference, AC coupled  |
     +------+--------+------------+------------------------------------------------+-----------------------------------------------------------------------+
 
+PLL Programming
+---------------
 
 
 
-.. note::  The PLLs are factory-programmed and do not need to be programmed by the user.
 
-
-.. _SectionFpgaCOnfigModeSwitches:
+.. _SectionFpgaConfigModeSwitches:
 
 FPGA Configuration Mode switches
 --------------------------------
@@ -285,6 +304,7 @@ FPGA Configuration Mode switches
 The FPGA configuration mode is set by the SW9 DIP switches
 (:ref:`image<FigFPGAConfigSwitches>`, :ref:`switch definition <SWnTable>`).
 The 'ON' position corresponds to a binary '1'. The modes are listed in :ref:`TableFPGAConfModes`.
+See [UG470]_ for more details on FPGA configuration modes.
 
 The FPGA is normally programmed by the ARM processor using the Slave Serial
 mode (The ARM generates the programming clock, and the data is sent serially
@@ -346,7 +366,7 @@ and is therefore not recommended.
     +--------+--------------------+
 
 
-* see [UG470]_ for more details
+
 
 .. _SectionGTXselection:
 
