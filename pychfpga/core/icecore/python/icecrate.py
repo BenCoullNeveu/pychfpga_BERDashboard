@@ -11,7 +11,7 @@ from sqlalchemy.orm.collections import attribute_mapped_collection
 from . import hardware_map
 from . import handler
 
-class IceCrate(hardware_map.HWMResource, handler.HWMHandlerManager):
+class IceCrate(hardware_map.HWMResource, handler.HandlerObject):
     __tablename__ = 'icecrates'
     __table_args__ = (
         UniqueConstraint('serial'),

@@ -15,6 +15,8 @@ import logging
 import base64
 import zlib  # used to compute crc32
 
+import inspect
+
 from sqlalchemy import Column, Integer, String, ForeignKey
 from sqlalchemy import UniqueConstraint
 from sqlalchemy.orm import relationship, backref
@@ -23,16 +25,12 @@ from sqlalchemy.orm.collections import attribute_mapped_collection
 
 import hardware_map
 import tuber
+import handler
 import fmc_mezzanine  # used import x to avoid circular import problem
 import icecrate
-import handler
-
-# *** JFC:To be removed
-class IceBoardException(Exception):
-    pass
 
 
-class IceBoard(hardware_map.HWMResource, handler.HWMHandlerManager):
+class IceBoard(hardware_map.HWMResource, handler.HandlerObject):
     """ Provides access to the basic functions of an IceBoard.
 
     This object inherits from a generic Hardware Map Resource (HWMResource),
@@ -76,19 +74,12 @@ class IceBoard(hardware_map.HWMResource, handler.HWMHandlerManager):
 
     subarray = Column(Integer)
 
-    # ** JFC: Should be arm_ip_address or arm_hostname?
-    hostname = Column(String)  # The host name of the ARM on the IceBoard
+    hostname = Column(
+        String,
+        doc="The hostname (or IP) to use for this resource.")
 
-    # *** JFC: app_handler_name is used to allow the hardware map to specify
-    #     which type of handler (i.e. FPGA firmware) is associated with this
-    #     board without having to hard-code this in a subclass. Having the
-    #     user to specify the '_cls' seems dangerous as it plays with the
-    #     SQLAlchemy innards and will cause obscure error messaged.
-    #
-    #     This parameter could be renamed 'handler_name', 'handler',
-    #     'personality', 'application' etc.
-    #
-    app_handler_name = Column(String)
+    # # Specify which type of handler is associated with this firmware
+    # handler_name = Column(String)
 
     mezzanines = relationship(
         "FMCMezzanine",
@@ -105,18 +96,22 @@ class IceBoard(hardware_map.HWMResource, handler.HWMHandlerManager):
         doc='''The IceBoard's mezzanines, indexed as you would expect
             (1 for mezzanine A, 2 for mezzanine B).''')
 
-    def __init__(self, hostname=None, app_handler_name='IceBoardHandler', **kwargs):
+
+    # Define a unique key to represent this instance
+    handler_id = property(lambda self: self.hostname)
+
+    def __init__(self, hostname=None, handler_name='IceBoardHandler', **kwargs):
         """ Create a new Iceboard object from scratch. """
 
         # As a convenience, we can pass a Handler object as the
         # app_handler_name and we'll extract the name from it.
-        if issubclass(type(app_handler_name), handler.Handler):
-            app_handler_name = app_handler_name.__handler_name__
+        if inspect.isclass(handler_name) and issubclass(handler_name, handler.Handler):
+            handler_name = handler_name.__handler_name__
 
         # Populate the object instrumented attributes
         super(IceBoard, self).__init__(
             hostname=hostname,
-            app_handler_name=app_handler_name,
+            # handler_name=handler_name,
             **kwargs)
 
         self.logger = logging.getLogger(__name__)
@@ -130,39 +125,47 @@ class IceBoard(hardware_map.HWMResource, handler.HWMHandlerManager):
         self.logger = logging.getLogger(__name__)
         self.logger.info('%r: Recreating instance from database' % (self))
 
-    def get_handler(self):
-        """ Return the handler for this HWM object.
+   # @property
+    # def handler_id(self):
+    #     return self.hostname
 
-        This method calls _get_handler(...) with the arguments to uniquely
-        identify this IceBoard instance, which handler to use, and pass
-        arguments to the handler constructor if one needs to be created.
+    # @property
+    # def handler_name(self):
+    #     return self.app_handler_name
 
-        For the Iceboard, we override the default get_handler() to do the following:
 
-            - The unique HWM instance id is based on the hostname. This allows
-              the handler to exist even if the HWM object does not yet have a
-              primary key or serial number.
+    # def get_handler(self):
+    #     """ Return the handler for this HWM object.
 
-            - The handler name is taken from the 'app_handler_name' column to
-              allow the user to easily define and change what firmware
-              and software the IceBoard should be running.
+    #     This method calls _get_handler(...) with the arguments to uniquely
+    #     identify this IceBoard instance, which handler to use, and pass
+    #     arguments to the handler constructor if one needs to be created.
 
-            - We pass the hostname as the argument to allow Tuber
-              initialization when a new Handler is created
+    #     For the Iceboard, we override the default get_handler() to do the following:
 
-        get_handler() is only called whenever there is no cached handler
-        object (when HWM object has been created, recreated from the database,
-        or moved in memory).
-        """
-        # *** JFC: Concerning the handler name, I would recommend using
-        #     'app_handler_name' or any better-named user column rather than
-        #     '_cls'. Having two options is confusing. We still can do
-        #     polymorphism-based handler selection by having the superclasses
-        #     redefine their own default for 'app_handler_name'
-        return self._get_handler(
-            object_id=self.hostname,
-            handler_name=self.app_handler_name,
-            hostname=self.hostname)
+    #         - The unique HWM instance id is based on the hostname. This allows
+    #           the handler to exist even if the HWM object does not yet have a
+    #           primary key or serial number.
+
+    #         - The handler name is taken from the 'app_handler_name' column to
+    #           allow the user to easily define and change what firmware
+    #           and software the IceBoard should be running.
+
+    #         - We pass the hostname as the argument to allow Tuber
+    #           initialization when a new Handler is created
+
+    #     get_handler() is only called whenever there is no cached handler
+    #     object (when HWM object has been created, recreated from the database,
+    #     or moved in memory).
+    #     """
+    #    return self._get_handler(
+    #         object_id=self.hostname,
+    #         handler_name=self.handler,
+    #         hostname=self.hostname)
+
+    # *** JFC: making __dir__ collaborative in multiple inheritance context is hard. This is a bad fix.
+    # def __dir__(self):
+    #     return list(set.union(set(tuber.TuberObject.__dir__(self)), set(handler.HandlerObject.__dir__(self))))
 
     def __repr__(self):
         """ Provides a concise string representation of this Iceboard that is
@@ -438,7 +441,7 @@ class IceBoardHandler(handler.Handler, tuber.TuberObject):
     superclass of this handler if the firmware supports it.
     """
 
-    # The following attributes must be redefined in every subclasses
+    # Make this class (and any subclass) register with IceBoard
     __handler_for__ = IceBoard
 
     # Core FPGA firmware registers
@@ -456,12 +459,12 @@ class IceBoardHandler(handler.Handler, tuber.TuberObject):
     # _bitstream_crc = None  # CRC32 of the currently configured bitstream
 
     serial_number = None
+    hostname = None
+    tuber_objname = 'IceBoard'
     mezzanine = {}
 
-    def __init__(self, hostname=None, tuber_object='IceBoard', **kwargs):
-        self.hostname = hostname
-        super(IceBoardHandler, self).__init__(
-            hostname=hostname, objname=tuber_object, **kwargs)
+    def __init__(self):
+        super(IceBoardHandler, self).__init__()
 
     def __repr__(self):
         """ Get an unique string representation for this handler instance.
@@ -478,6 +481,7 @@ class IceBoardHandler(handler.Handler, tuber.TuberObject):
         """
         super(IceBoardHandler, self).hwm_update(hwm_object)
         self.logger.info('%r: hwm_update()' % (self))
+        self.hostname = hwm_object.hostname
         self.serial_number = hwm_object.serial_number
         self.mezzanine = {
             key: hwm_mezz.handler for (key, hwm_mezz) in

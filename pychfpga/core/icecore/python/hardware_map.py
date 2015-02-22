@@ -466,7 +466,7 @@ def concurrent_call(func_list, variable_arg_list, *args, **kwargs):
 
 # *** JFC: With tornado integration, we lost the following code to provide
 #     nice logging of exceptions during threads. Maybe this is not needed
-#     anymore. I'll leave it here for a few days just it case.
+#     anymore. I'll leave it until it's clear we don't need it.
 #
 #    def runner(func, variable_arg):
 #        logger = logging.getLogger(__name__)
@@ -528,19 +528,6 @@ class HWMResource(Base):
         # consumed all the parameters, so we pass none to the next level.
         super(Base, self).__init__()
 
-
-# *** JFC: Is this needed anymore?
-class TuberHWMResource(HWMResource, tuber.TuberObject):
-    '''A base class for HWMResources that correspond to TuberObjects.'''
-    __abstract__ = True
-
-    hostname = sqlalchemy.Column(
-        sqlalchemy.String,
-        doc="The hostname (or IP) to use for this resource.")
-
-    def __init__(self, *args, **kwargs):
-        # Needed to allow multiple inheritance to work
-        super(TuberHWMResource, self).__init__(*args, **kwargs)
 
 
 # *** JFC: should be 'called register_hwm_object_method()'

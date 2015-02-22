@@ -31,45 +31,54 @@ This module exposes the following classes:
 """
 
 import logging
-import hardware_map
+import collections
 
 # from sqlalchemy.event import listen
 
 
-class HWMHandlerManager(object):
+class HandlerObject(object):
 
-    """Connects an ORM object to a handler and forwards attribute accesses to it.
+    """Automatically create and persistently associate a python class (a
+    handler) to a 'volatile' parent object and forwards attribute accesses to it.
 
-    An ORM object only need to inherit from this class in order to have a
-    handler that is managed automatically.
+    HandlerObject is useful to add memory-persistent attributes and methods to
+    SQLAlchemy's ORM objects which otherwise regularly clear all their non-
+    database attributes as those objects come in and out of existence at
+    various memory locations as part of normal SQLAlchemy operations.
 
+    When a handler needs to be accessed on a parent object instance,
+    HandlerObject looks for an already existing one in its handler instance
+    registry using the unique parent instance key provided by the 'handler_id'
+    property which is provided by the parent class.
 
-    HWMHandlerManager maintains a registry of handler classes and handler
-    instances and make sure the handlers are created and re-linked to the
-    relevant HardwareMap ORM object. The handler is thus always available even
-    if the ORM object comes in and out of existence at various memory
-    locations as part of normal SQLAlchemy operations.
+    If no handler is found, HandlerObject looks into its handler class
+    registry to see if there is a handler class that matches the handler name
+    provided by the 'handler_name' attribute. If a matching handler class is
+    found, a new handler instance is created and registered. Otherwise, an
+    error is raised.
 
-    The manager looks into its handler instance registry to find a handler
-    already existing for this ORM instance based on a unique key.
+    The user shall define a handler by defining a class that inherits from the
+    Handler class. This will cause the class to be automatically registered
+    with the parent object class.
 
-    If not, the manager looks into its handler class registry to see if there
-    is a handler class that matches the handler name associated with this HWM
-    object. The handler name is typically the polymorphic name of the HWM
-    object. If a matching  handler class is found, a new handler is created
-    and registered.
+    HandlerObject defines __getattr__ and __dir__ to give the parent object
+    access to all of the handler's attributes. Setting an attribute sets it in
+    the parent object.
 
-    HWMHandlerManager defines __getattr__ and __setattr__ so that  handler's
-    attributes and methods can be accessed as if they were part of the ORM
-    object.
+    The parent object only need to inherit from this class and define
+    'handler_id' and 'handler_name' in order to have handler that is
+    automatically managed.
 
-    Handlers classes are registered using the 'register_handler()' class
-    method. This is usually done automatically when the Handler class is
-    created.
+    The default 'handler_id' assumes the parent is a SQLAlchemy ORM object and
+    will use the primary keys as a unique instance id.
+
+    The default 'handler_name' refers to the last Handler to be defined for
+    this particular parent object. This works only if the user intends to use
+    a single handler for this parent object.
     """
 
-    # If no instance _handler exist, access to _handler will invoke the data
-    # descriptor to create the instance _handler
+    # Default fallback values for new objects (prevents infinite recursive
+    # __getattr__)
     _handler = None
     _handler_enable = True
 
@@ -77,57 +86,33 @@ class HWMHandlerManager(object):
     def register_handler(cls, class_, class_name):
         """ Register a Python class 'class_' as a handler named 'class_name'
         for the target Hardware Map object.
-
-        This handler will be used as an application handler if its name
-        matches the name provided with set_handler(), otherwise a tuber
-        handler will be used.
-
-        If the handler is passed a core handler at initialization, it must
-        make visible the methods and attributes of this core object.
         """
         # Make sure this class has its own handler registry so we don't access
-        # the subclass' registry
+        # the registry from a superclass. We keep track of the registeration
+        # order with an OrderedDict so we can use the last registered class by
+        # default.
         if '_handler_class_registry' not in cls.__dict__:
-            cls._handler_class_registry = {}
+            cls._handler_class_registry = collections.OrderedDict()
 
         # Add the class to the registry
         cls._handler_class_registry[class_name] = class_
 
-        # logger = logging.getLogger(__name__)
-        # logger.debug(
-        #     '%r: HWMHandlerManager: Registering Handler %r '
-        #     'under handler_name=%s' %
-        #     (cls, class_, class_name))
-
     @property
     def handler(self):
-        """ Return the current handler for this Hardware Map instance.
+        """ Return the current handler for this Hardware Map instance. Also cache the handler value for fast access.
         """
-        # This is a shortcut to speed-up access
-        if self._handler_enable and self._handler:
-            return self._handler
         if not self._handler_enable:
             return None
-
-        # The following is called only when the handler is new, was lost
-        # because of SQLAlchemy operations or because we forced it. It should
-        # not happen often.
-
-        # We temporarily disable handler access while calling
-        # get_handler() so it can access attributes without causing
-        # infinite recursion loops
-        handler_enable = self._handler_enable
-        self._handler_enable = False
-        try:
-            self._handler = self.get_handler()
-        except AttributeError:
-            self._handler = None
-            raise AttributeError
-        finally:
-            self._handler_enable = handler_enable
+        elif self._handler:  # Return cached value if available
+            return self._handler
+        else:
+            # The following is called only when the handler is new, was lost
+            # because of SQLAlchemy operations or because we forced it. It should
+            # not happen often.
+            self._handler = self._get_handler()
             return self._handler
 
-    def _get_handler(self, object_id=None, handler_name=None, **kwargs):
+    def _get_handler(self):
         """ Return the handler to be used with this Hardware Map instance.
 
         'object_id' is the key that uniquely identifies the HWM object
@@ -146,14 +131,24 @@ class HWMHandlerManager(object):
 
         logger = logging.getLogger(__name__)
 
+        # Get the handler id and name.
+        # We temporarily disable handler access while accessing
+        # handler_id and handler_name to avoid causing
+        # infinite recursion loops (especially in in __getattr__)
+        try:
+            old_handler_enable = self._handler_enable
+            self._handler_enable = False
+            object_id = self.handler_id
+            handler_name = self.handler_name
+        except:
+            raise
+        finally:  # Make sure we always re-enable handler access
+            self._handler_enable = old_handler_enable
+
         logger.info(
             '%r: HWMHandlerManager: setting handler with id=%r and '
-            'handler_name=%s, using  arguments %r ' %
-            (self, object_id, handler_name, kwargs))
-
-        # we include handler_name to properly handle boards with multiple
-        # personnalities
-        handler_key = (object_id, handler_name)
+            'handler_name=%s' %
+            (self, object_id, handler_name))
 
         if object_id and handler_name:
 
@@ -163,14 +158,16 @@ class HWMHandlerManager(object):
             if '_handler_instance_registry' not in type(self).__dict__:
                 type(self)._handler_instance_registry = {}
 
+            handler_key = (object_id, handler_name)
+
             # If the key exists in the handler registry, retreive the handler
             # from it
             if handler_key in self._handler_instance_registry:
                 logger.info(
                     '%r: HWMHandlerManager: Reusing registered handler' % self)
-                new_handler = self._handler_instance_registry[handler_key]
-                new_handler.hwm_update(self)
-                return new_handler
+                handler = self._handler_instance_registry[handler_key]
+                handler.hwm_update(self)
+                return handler
             # If not, let's create a handler by looking up the handler class
             # in the handler class registry.
             elif handler_name in type(self)._handler_class_registry:
@@ -178,7 +175,7 @@ class HWMHandlerManager(object):
                 logger.info(
                     '%r: HWMHandlerManager:Creating handler %s' %
                     (self, handler_name))
-                new_handler = handler_class(**kwargs)
+                new_handler = handler_class()
                 # register the handler for this instance
                 type(self)._handler_instance_registry[handler_key] = new_handler
                 new_handler.hwm_update(self)
@@ -190,7 +187,7 @@ class HWMHandlerManager(object):
                     (self, handler_name))
                 raise NameError("No handler named '%s' was found for %r" %
                                 (handler_name, self))
-        else: #  if we don't have a valid handler key
+        else:  # if we don't have a valid handler key
             logger.info(
                 '%r: HWMHandlerManager: does not have a valid handler (yet)' %
                 self)
@@ -209,34 +206,24 @@ class HWMHandlerManager(object):
     def __getattr__(self, name):
         """ Return the value of an attribute if it exists in the handler """
 
+        # ** JFC: For debugging. Remove when we are satisfied with this check.
         if self._handler_enable:
             self._check_for_local_attribute_corruption()
-        # logger = logging.getLogger(__name__)
-        # import inspect, os
-        # # # logger.debug('%r: getattr: handler_enable is %s' % (self, self._handler_enable))
-        # tracebackString = '\n'.join([
-        #     '    %s in .../%s:%i' %
-        #     (fn, os.path.split(filename)[1], line) for
-        #     (__, filename, line, fn, code,__) in inspect.stack()])
-        # logger.debug("getattr: %s is getting '%s'\n%s" % (type(self), name,  tracebackString))
-
-        # Quick access bypass: catch most of the calls.
-        # if self._handler_enable and self._handler:
-        #     return getattr(self._handler, name)
 
         h = self.handler
-        if h:
+        if h and hasattr(h, name):
             result = getattr(h, name)
             if callable(result):  # cache callable objects for faster access
                 setattr(self, name, result)
             return result
         else:
-            # JFC: I used to associate am AttributeError message that includes
-            # the repr of the failing object, but this repr can potentially
-            # check for non-existing attributes (like 'crate') which creates
-            # an infinite loop. So we stick with a plain AttributeError.
-            raise AttributeError
+            sup = super(HandlerObject, self)
+            if hasattr(sup, name):
+                return getattr(sup, name)
+            raise AttributeError("Attribute '%s' cannot be found in %s" % (name, object.__repr__(self)))
 
+    # *** JFC: This method will be deleted when we are satisfied that
+    #     SQLAlchemy behaves as we expect
     def _check_for_local_attribute_corruption(self):
         """ Debugging method used to check if the ORM object's non-database
         attributes have been corrupted due to SQLAlchemy operations.
@@ -276,67 +263,30 @@ class HWMHandlerManager(object):
         self._handler = None
         self.handler  # Force handler reconnection and update
 
+    @property
+    def handler_id(self):
+        """ Default method to get key that identifies uniquely this HWM instance.
 
-    def get_handler(self):
-        """ Default method to get the handler for this object.
-
-        This method shall return the handler obtained by calling
-            self._get_handler(object_id=..., handler_name=..., kwarg1, kwarg2... )
-
-        The user shall override this method to specify the parameter that
-        uniquely identified the HWM object instance (object_id), and if no
-        handler already exist, what is the name of the target handler class
-        (handler_name) and what keyword arguments to pass during its creation
-        (kwargs1, kwargs2...).
-
-        The default behavior is to:
-            - Identify the HWM object instance by its primary keys (which
-               exist only once the object has been added to the database).
-            - Use the name of the only handler registered for this HWM object.
-              If there are more than one registerd handler, raise an exception.
-            - Pass no additional argument to the handler initializer.
-
-        See the IceBoard.get_handler() for an example.
+        The default behavior is to Identify the HWM object instance by a tuple
+        containing the values of all its primary keys (which exist only once
+        the object has been added to the database).
         """
-        # get a unike instance ID based on the value of all primary keys
-        object_id = [getattr(self, key.name)
-                     for key in self.__mapper__.primary_key]
+        return [getattr(self, key.name)
+             for key in self.__mapper__.primary_key]
+
+    @property
+    def handler_name(self):
+        """ Default method to get handler name associated with this object.
+
+        The default behavior is to use the last handler registered for this
+        class.
+        """
 
         # Get the handler name of the only available handler (we use __dict__ to check on this class handler registry, not its subclasses)
-        if '_handler_class_registry' in type(self).__dict__ and len(self._handler_class_registry) == 1:
-            handler_name = self._handler_class_registry[0]
+        if '_handler_class_registry' in type(self).__dict__ and len(self._handler_class_registry) >= 1:
+            return self._handler_class_registry.keys()[-1]
         else:
-            raise RuntimeError('%r: HWMHandlerManager: The default get_handler() requires that exactly one handler be registerd for this object.' % self)
-
-        return self._get_handler(object_id=object_id,
-                                 handler_name=handler_name)
-
-    # @classmethod
-    # def __declare_last__(cls):
-    #     """Define the event listeners that let the system know that the handler
-    #     needs to be refreshed.
-
-    #     __declare_last__ is a special SQLAlchemy class method that is called
-    #     when the class definition is complete.
-    #     """
-
-    #     def _hwm_init_event(instance, event_name):
-    #         logger = logging.getLogger(__name__)
-    #         logger.debug("%r: HWMHandlerManager: Init Event '%s' " %
-    #                      (instance, event_name))
-    #         # invalidate the handler, so it will be created
-    #         instance._handler = None
-
-    #     listen(cls, 'load', lambda target,
-    #            context: _hwm_init_event(target, event_name='load'))
-    #     # useless: it is called before the object's attribute are populated
-    #     listen(cls, 'init', lambda target, *args, **
-    #            kwargs: _hwm_init_event(target, event_name='init'))
-    #     listen(cls, 'refresh', lambda target, context,
-    #            attrs: _hwm_init_event(target, event_name='refresh'))
-    #     listen(cls, 'after_update', lambda mapper, connection,
-    #            target: _hwm_init_event(target, event_name='after_update'))
-    #     # add after_insert?
+            raise RuntimeError('%r: HWMHandlerManager: The default get_handler() requires that at least one handler be registerd for this object.' % self)
 
 
 class HandlerMeta(type):
@@ -357,15 +307,13 @@ class HandlerMeta(type):
 
         type.__init__(cls, classname, bases, dict_)
 
-        # Check if __handler_for__ is defined and get its value. We look it up
-        # in dict_ and not cls to make sure it is defined in this new
-        # superclass, not a subclass
-        if '__handler_for__' not in dict_:
+        # Check if __handler_for__ is defined and get its value.
+        if not hasattr(cls, '__handler_for__'):
             raise AttributeError(
                 "'__handler_for__' must be specified in Handler class %r"
                 % classname)
         base = cls.__handler_for__
-        if base is not None and not issubclass(base, HWMHandlerManager):
+        if base is not None and not issubclass(base, HandlerObject):
             raise AttributeError(
                 "%s defined '__handler_for__'=%r, but the target class "
                 "is not a superclass of HWMHandlerManager" %
@@ -395,14 +343,18 @@ class Handler(object):
     class.
 
     Be sure to call super(...)._method_name(...) if one of the methods in this
-    class or one of its superclass are overriden.
+    class or one of its subclass are overriden.
     """
     __metaclass__ = HandlerMeta
 
     __handler_for__ = None  # Do not register this handler
     __handler_name__ = None
 
-    def __init__(self, **kwargs):
+    @classmethod
+    def get_handler_name(cls):
+        return cls.__handler_name__
+
+    def __init__(self):
         """ Initialize a basic handler.
 
         By convention, all handlers __init__() only take keyword arguments to
@@ -410,7 +362,7 @@ class Handler(object):
         """
         self.logger = logging.getLogger(__name__)
         self.logger.debug('%r: Instantiating Handler' % (self))
-        super(Handler, self).__init__(**kwargs)
+        super(Handler, self).__init__()
 
     def hwm_update(self, hwm_object):
         """ Allow the handler to obtain data from the HWM object to which it

@@ -44,7 +44,6 @@ from hardware_map import (
     HWMQueryException,
     HWMQuery,
     HWMResource,
-    TuberHWMResource,
     macro, algorithm,
     HardwareMap,
     Boolean,
@@ -52,8 +51,15 @@ from hardware_map import (
     set_session_class,
 )
 
+from tuber import (
+    TuberError,
+    TuberRemoteError,
+    TuberCategory,
+    TuberObject,
+)
+
 from handler import (
-    HWMHandlerManager,
+    HandlerObject,
     Handler
 )
 
@@ -82,11 +88,5 @@ from session import (
     set_yaml_loader_class,
 )
 
-from tuber import (
-    TuberError,
-    TuberRemoteError,
-    TuberCategory,
-    TuberObject,
-)
 
 # vim: sts=4 ts=4 sw=4 tw=78 smarttab expandtab

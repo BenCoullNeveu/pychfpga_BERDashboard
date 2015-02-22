@@ -9,7 +9,7 @@ from sqlalchemy.orm import reconstructor
 import hardware_map
 from . import handler
 
-class FMCMezzanine(hardware_map.HWMResource, handler.HWMHandlerManager):
+class FMCMezzanine(hardware_map.HWMResource, handler.HandlerObject):
     """FMC Mezzanine schema object.
 
     This is an abstract class. To specialize it for a particular FMC

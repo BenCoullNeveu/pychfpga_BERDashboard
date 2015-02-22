@@ -139,7 +139,7 @@ class Context(object):
             (n, f, a, k) = self.calls.pop(0)
 
             calls.append({
-                'object': self.obj._tuber_objname,
+                'object': self.obj.tuber_objname,
                 'method': n,
                 'args': a,
                 'kwargs': k
@@ -372,12 +372,11 @@ class TuberObject(object):
     To use it, you should subclass this TuberObject.
     '''
 
-    _tuber_objname = property(lambda self: self._tuber_local_objname or self.__class__.__name__)
-
     @staticmethod
-    def ping(hostname, timeout = 0.1):
+    def ping(hostname, timeout=0.1):
         """
-        Returns a boolean inticating whether a tuber object is available at the specified ARM hostname.
+        Returns a boolean inticating whether a tuber object is available at
+        the specified ARM hostname.
         """
         import socket
         try:
@@ -387,15 +386,10 @@ class TuberObject(object):
             return False
         return True
 
-    def __init__(self, hostname='localhost', objname=None, **kwargs):
+    def __init__(self):
         """
-        uri: Address used to access the resource remotely
-        obj_name: Name of the Tuber object to be accessed
         """
-        self._hostname = hostname
-        if objname:
-            self._tuber_local_objname = objname
-        super(TuberObject, self).__init__(**kwargs)  # Make tuber collaborative
+        pass
 
     def tuber_context(self, io_loop=tornado.ioloop.IOLoop()):
         return Context(self, io_loop)
@@ -404,9 +398,15 @@ class TuberObject(object):
     def tuber_uri(self):
         '''Retrieve the URI associated with this TuberResource.'''
 
-        if not self._hostname: #***  JFC: we use an underscore to avoid conflicts with the superclass (should be two underscores?)
+        if not self.hostname: #***  JFC: we use an underscore to avoid conflicts with the superclass (should be two underscores?)
             raise TuberError("Mandatory 'hostname' attribute not specified!")
-        return 'http://%s/tuber' % self._hostname
+        return 'http://%s/tuber' % self.hostname
+
+    @property
+    def tuber_objname(self):
+        '''Retrieve the Tuber object name.'''
+        return self.__class__.__name__
+
 
     @property
     def __doc__(self):
@@ -448,7 +448,7 @@ class TuberObject(object):
         on-the-fly as they're needed.
         '''
 
-        if not self._hostname:
+        if not self.hostname:
             meta = _tuber_json_object_hook({"properties": [], "methods": []})
             return (meta, [], [])
 
@@ -459,7 +459,7 @@ class TuberObject(object):
                 self._tuber_meta_methods
             )
 
-        json_in = json.dumps({'object': self._tuber_objname})
+        json_in = json.dumps({'object': self.tuber_objname})
         t1 = time.time()
         json_out = json.loads(
             urllib2.urlopen(self.tuber_uri, json_in).read(),
@@ -479,7 +479,7 @@ class TuberObject(object):
 
         # Retrieve all properties
         json_in = json.dumps([{
-            'object': self._tuber_objname,
+            'object': self.tuber_objname,
             'property': p} for p in meta.properties])
         json_out = json.loads(
             urllib2.urlopen(self.tuber_uri, json_in).read(),
@@ -490,7 +490,7 @@ class TuberObject(object):
 
         # Retrieve all methods
         json_in = json.dumps([{
-            'object': self._tuber_objname,
+            'object': self.tuber_objname,
             'property': p} for p in meta.methods])
         json_out = json.loads(
             urllib2.urlopen(self.tuber_uri, json_in).read(),
@@ -532,6 +532,9 @@ class TuberObject(object):
         # TuberObject.
         (meta, metap, metam) = self._tuber_get_meta()
         if name not in meta.methods and name not in meta.properties:
+            sup = super(TuberObject, self)
+            if hasattr(sup, name):
+                return getattr(sup, name)
             raise AttributeError(
                 "'%s' is not a valid method or property!" % name)
 
