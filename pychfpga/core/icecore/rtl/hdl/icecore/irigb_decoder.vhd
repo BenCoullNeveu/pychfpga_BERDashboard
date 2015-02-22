@@ -8,6 +8,7 @@ entity irigb_decoder is port (
 	clk_200mhz : in std_logic;
 	irig : in std_logic_vector(0 to 3);
 	source : in unsigned(1 downto 0);
+	pps: out std_logic;
 	ts : out irigb
 );
 end irigb_decoder;
@@ -125,9 +126,10 @@ begin
 				sbs <= (others => '0');
 			end if;
 
-			-- Otherwise, we proceed through states.
+			-- If we switch the irig source, invalidate the state so we can start anew
 			if source_dly1 /= source_dly2 then
 				state <= STUFFED;
+			-- Otherwise, we proceed through states.
 			elsif state/=STUFFED and (strobe_1 or strobe_0 or strobe_p)='1' then
 				state <= state_type'val(state_type'pos(state) + 1);
 			end if;
@@ -228,7 +230,10 @@ begin
 				ss <= ss + 1;
 			end if;
 
+			pps <= '0';
 			if state=P0 and strobe_p='1' then
+			-- generate a PPS rising edge on the rising edge following the last
+				pps <= '1';
 				-- Latch timestamp
 				ts_pre.s <= s;
 				ts_pre.m <= m;
@@ -241,6 +246,11 @@ begin
 
 				ss <= (others => '0');
 			end if;
+
+			-- -- Clear PPD 0.5 seconds after the beginning of a frame to yield a 50% duty cycle.
+			-- if ss = 100000 then
+			-- 	pps <= '0';
+			-- end if;
 
 			ts <= ts_pre;
 
