@@ -5,6 +5,8 @@ import docutils.core
 import inspect
 import os
 import json
+import sys
+import traceback
 
 from copy import deepcopy
 import matplotlib.pyplot as plt
@@ -19,10 +21,10 @@ __all__ = [
     "TITLE", "DESCRIPTION", "DETAILS", "PASSED",
     "SUMMARY",
     "CONTEXT", "ITEM", "NAME", "VALUE",
-    "P", "IMG", "A",
+    "P", "IMG", "A", "CODE", "PRE",
     "TestGroup",
     "IncompleteError",
-    "PLOT", "load_html", "get_synopsis_from_xml", 'load_xml'
+    "PLOT", "load_html", "get_synopsis", "get_synopsis_from_xml", 'load_xml'
 ]
 
 
@@ -62,6 +64,8 @@ SYNOPSIS_DATA = lxml.objectify.E.synopsis_data
 P = lxml.objectify.E.p
 IMG = lxml.objectify.E.img
 A = lxml.objectify.E.A
+CODE = lxml.objectify.E.code
+PRE = lxml.objectify.E.pre
 
 
 class TestGroup(object):
@@ -86,6 +90,8 @@ class TestGroup(object):
         self._complete = False
         self._details = None
         self.etree = None
+        self._passed = False
+        self._complete = False
 
     def run(self, *args, **kwargs):
         '''Run this TestGroup and any of its children.
@@ -93,43 +99,64 @@ class TestGroup(object):
         Tests are discovered via test_list() (which you should override in a
         subclass.)
         '''
-        self._run('', *args, **kwargs)
-        self.etree = self.document()
+        try:
+            self._run('', False, *args, **kwargs)
+        except Exception:
+            raise
+        finally:
+            self.etree = self.document()
 
-        return syn
+        # return syn
 
-    def _run(self, testpath, *args, **kwargs):
+    def _run(self, testpath, skip, *args, **kwargs):
         '''Run this TestGroup and any of its children and use the provided test path to name tests hierarchically.
         '''
         self._testpath = testpath + ('.' if testpath else '') + self.__class__.__name__
         passed = None
-
         for tc in self.test_list():
             if isinstance(tc, TestGroup):
-                pf = tc._run(self._testpath, *args, **kwargs)
+                try:
+                    pf = tc._run(self._testpath, skip, *args, **kwargs)
+                except Exception as exception:
+                    pf = False
+                    raise exception
                 self._docs.append(tc.document())
             else:
                 testpath = self._testpath + '.' + tc.__name__
                 (title, description) = self._document_from_docstrings(tc, inspect.getdoc(tc))
-                results = tc(*args, **kwargs)
-                if isinstance(results, bool):
-                    results = [PASSED(results)]
-
+                if skip:
+                    results = [PASSED('Skipped'), SUMMARY('This test case was skipped due to previous exception')]
+                else:
+                    results = tc(*args, **kwargs)
+                    if isinstance(results, bool):
+                        results = [PASSED(results)]
                 pf = []
                 annotations = []
-                for r in results:
-                    if isinstance(r, bool):
-                        r = PASSED(r)
-                    if not hasattr(r, 'tag'):
-                        print '%s yielded %r, converting into DETAILS' % (testpath, r)
-                        r = DETAILS(str(r))
-                    if r.tag == 'passed':
-                        pf.append(r.text)
-                    annotations.append(r)
-                if len(pf) != 1:
-                    raise RuntimeError('There must be one PASSED element in %s' % testpath)
-                else:
-                    pf = bool(pf[0])
+                exception = None
+                try:
+                    for r in results:
+                        if isinstance(r, bool):
+                            r = PASSED(r)
+                        if not hasattr(r, 'tag'):
+                            print '%s yielded %r, converting into DETAILS' % (testpath, r)
+                            r = DETAILS(str(r))
+                        if r.tag == 'passed':
+                            pf.append(r.text)
+                        annotations.append(r)
+                    if len(pf) != 1:
+                        raise RuntimeError('There must be one PASSED element in %s' % testpath)
+                    else:
+                        pf = bool(pf[0])
+                except Exception as exception:
+                    annotations.extend([
+                        PASSED(False),
+                        SUMMARY('Exception was raised!'),
+                        DETAILS('This test case failed with the following Exception: %s' % exception),
+                        DETAILS('Traceback:'),
+                        DETAILS(CODE(PRE('\n'.join(self.get_traceback()))))]
+                        )
+                        # [DETAILS(P(tb)) for tb in self.get_traceback()])
+                    skip = True
                 # (pf, annotations) = (results[0], list(results[1:]))
                 self._docs.append(CASE(*[
                     TESTNAME(tc.__name__),
@@ -137,8 +164,10 @@ class TestGroup(object):
                     TESTDATE(datetime.datetime.now().isoformat()),
                     TITLE(title),
                     DESCRIPTION(*description),
-                    # PASSED(pf),
                 ] + annotations))
+                if exception:
+                    raise
+
             passed = (pf if passed is None else passed and pf)
 
         self._passed = passed
@@ -151,6 +180,21 @@ class TestGroup(object):
         Override this method to add tests.'''
         return
         yield
+
+    def get_traceback(self):
+        """ Return a compact traceback message as a list of strings that is
+        convenient for loging purposes.
+
+        This must be called only after an exception has occured.
+        """
+        (exception_type, exception_args, exception_tb) = sys.exc_info()
+        tb = traceback.extract_tb(exception_tb)
+        tracebackString = []
+        for (filename, line, fn, code) in tb:
+            tracebackString.append('in %s from .../%s' % (fn + '(...)', os.path.split(filename)[1]))
+            tracebackString.append('---> %5i      %s' % (line, code))
+        tracebackString.append('%r' % exception_args)
+        return tracebackString
 
     @staticmethod
     def _document_from_docstrings(thing, default):
@@ -174,9 +218,9 @@ class TestGroup(object):
     def document(self):
         '''Compile this algorithm's documentation into an etree GROUP.'''
 
-        if not self._complete:
-            raise IncompleteError("Can't document an algorithm that "
-                                  "hasn't completed yet!")
+        # if not self._complete:
+        #     raise IncompleteError("Can't document an algorithm that "
+        #                           "hasn't completed yet!")
 
         # Grab information from DocStrings
         (title, description) = self._document_from_docstrings(self, inspect.getdoc(TestGroup))
@@ -205,7 +249,7 @@ class TestGroup(object):
     def synopsis(self):
         if self.etree is None:
             raise RuntimeError('The test has not been run yet')
-        return get_synopsis(self)
+        return get_synopsis(self.etree)
 
     def synopsis_as_strings(self):
         syn = self.synopsis()
