@@ -34,8 +34,6 @@ class FpgaMmi:
     toggling reading and writing to memopry-mapped registers.
 
     Notes:
-       - 140223 JFC: Maybe should define __enter__ and __exit__ so we can use
-         with 'with'
        - 140223 JFC: Maybe add methods to allow packing multiple commands in a
          single packet. By default, the command queue is flushed at every
          write command.
@@ -68,7 +66,6 @@ class FpgaMmi:
                  interface_ip_addr=None,
                  fpga_serial_number=None,
                  set_fpga_networking_parameters=True,
-                 send_only=False,
                  netmask='255.255.0.0',
                  timeout=0.5):
         self.logger = logging.getLogger(__name__)
@@ -76,19 +73,11 @@ class FpgaMmi:
         self.ip_addr = ip_addr
         self.port_number = port_number  # Control port on the FPGA
         self.address = (self.ip_addr, self.port_number)
-        if interface_ip_addr:
-            self.interface_ip_addr = interface_ip_addr
-        elif hasattr(__main__, '_host_interface_ip_addr'):
-            self.interface_ip_addr = __main__._host_interface_ip_addr
-        else:
-            raise FpgaMmiException(
-                'An interface IP address is required for UDP comminication '
-                'with the FPGA')
         self.fpga_serial_number = fpga_serial_number  # used to select specific FPGAs during broadcasts
         self.set_fpga_networking_parameters = set_fpga_networking_parameters
-        self.send_only = send_only
         self.timeout = timeout
         self.udp = None
+        self.interface_ip_addr = interface_ip_addr
 
     def __enter__(self):
             self.open()
@@ -107,12 +96,13 @@ class FpgaMmi:
             self.close()  # make sure the current socket is closed
             self._set_fpga_networking_parameters()
 
-        self.udp = udp.Udp()
-        self.udp.open(
-            if_ip_addr=self.interface_ip_addr, ip_addr=self.ip_addr,
-            port_number=self.port_number, send_only=self.send_only)
-        self.udp.set_timeout(self.timeout)
+        self.udp = udp.Udp(
+            remote_ip_addr=self.ip_addr,
+            remote_port_number=self.port_number,
+            if_ip_addr=self.interface_ip_addr)
 
+        self.udp.set_timeout(self.timeout)
+        self.local_port_number = self.udp.local_port_number
         # self.logger.info('   Opened control socket on %s:%i through interface %s' % (self.ip_addr, self.port_number, self.interface_ip_addr))
 
     def close(self):
@@ -167,7 +157,7 @@ class FpgaMmi:
         # target FPGA serial number
         trial = 0
         while trial < number_of_trials:
-            with FpgaMmi(FpgaMmi.BROADCAST_IP_ADDR, FpgaMmi._BROADCAST_BASE_PORT, set_fpga_networking_parameters=False, send_only=True) as mmi:
+            with FpgaMmi(FpgaMmi.BROADCAST_IP_ADDR, FpgaMmi._BROADCAST_BASE_PORT, set_fpga_networking_parameters=False) as mmi:
                 mmi.write(self._FPGA_IP_SETUP_BASE_ADDR, ip_setup_string + trig1) # Send string with trigger flag cleared
                 mmi.write(self._FPGA_IP_SETUP_BASE_ADDR, ip_setup_string + trig2) # resend with trigger flag set. The 0-to-1 transition will load the desired networking parameters
                 mmi.write(self._FPGA_IP_SETUP_BASE_ADDR, [0] * len(ip_setup_string + trig2)) # Write zeros everywhere to make sure we stop latching data
@@ -474,8 +464,7 @@ def discover_fpgas(interface_ip_addr=None, source_subarrays=[0], timeout=0.1):
                 FpgaMmi.BROADCAST_IP_ADDR,
                 FpgaMmi._BROADCAST_BASE_PORT + subarray,
                 interface_ip_addr=interface_ip_addr,
-                set_fpga_networking_parameters=False,
-                send_only=False) as mmi:
+                set_fpga_networking_parameters=False) as mmi:
             mmi.flush()
             serials = mmi.broadcast_read(
                 FpgaMmi._FPGA_SERIAL_NUMBER_ADDR,

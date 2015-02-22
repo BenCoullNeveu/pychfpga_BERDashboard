@@ -1,9 +1,9 @@
 #!/usr/bin/python
 # Disable pylint TAB warnings (W0312) and Line too long (=C0301)
-# pylint: disable=W0312,C0301 
+# pylint: disable=W0312,C0301
 
 """
-socketIO.py module. Implements socket communications to chFPGA 
+socketIO.py module. Implements socket communications to chFPGA
 
 
 History:
@@ -16,9 +16,10 @@ History:
 import socket
 import logging
 import numpy as np
+import __main__
 
-timeout = socket.timeout #110918 JFC
-TimeoutException = socket.timeout 
+timeout = socket.timeout  #110918 JFC
+TimeoutException = socket.timeout
 
 class FPGAException(Exception):
     logger = logging.getLogger('FPGAException')
@@ -28,9 +29,9 @@ class FPGAException(Exception):
 
 
 class ControlSocket_base(object):
-    """Creates an object that represents the control socket communication link to the chFPGA.""" 
+    """Creates an object that represents the control socket communication link to the chFPGA."""
     BUFFER_LENGTH = 32768
-    
+
     def __init__(self, ip_address, port_number=41000, netmask='255.255.0.0', host_ip=None):
         self.netmask = netmask # network mask used to find the host address that is on the same subnet as the target IP. This does not affect the network adapter settings.
         self.ip_address = ip_address
@@ -48,7 +49,7 @@ class ControlSocket_base(object):
 
     def open(self, broadcast = False):
         """
-        Open control communication socket to chFPGA. 
+        Open control communication socket to chFPGA.
         """
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.sock.settimeout(2)
@@ -188,7 +189,7 @@ class ControlSocket_base(object):
 
             dout[offset:offset+read_length] = np.fromstring(data[1:], dtype=np.uint8) # store received byte
 
-            if incr: 
+            if incr:
                 addr += read_length
             offset += read_length
 
@@ -199,10 +200,10 @@ class ControlSocket_base(object):
             return dout[0]
         else:
             return dout
-        
-    
+
+
     def write(self, addr, data, incr=1):
-        """ 
+        """
         Writes byte(s) to memory-mapped registers in the FPGA through the Ethernet interface.
         'data' can be:
             - String
@@ -210,10 +211,10 @@ class ControlSocket_base(object):
             - numpy array of integers between 0 and 255
             - 4 bytes in a numpy uint32. MSB is transmitted first
             - 2 bytes in a numpy uint16. MSB is transmitted first
-            - 1 byte in a numpy uint8. 
+            - 1 byte in a numpy uint8.
         """
         # build command packet
-        #s=chr(0x80+ant+(0x40 if incr else 0))+chr((module<<2)+(addr>>8))+chr(addr&0xFF) 
+        #s=chr(0x80+ant+(0x40 if incr else 0))+chr((module<<2)+(addr>>8))+chr(addr&0xFF)
 
         string = chr(0x80 + (0x40 if incr else 0) + ((addr >> 16) & 0x0F)) + chr((addr >> 8) & 0xFF) + chr(addr & 0xff)
 
@@ -255,7 +256,7 @@ class ControlSocket_base(object):
 
 
 class DataSocket_base(object):
-    """Creates an object that represents the control socket communication link to the chFPGA.""" 
+    """Creates an object that represents the control socket communication link to the chFPGA."""
 
     BUFFER_LENGTH = 32768
 
@@ -263,11 +264,18 @@ class DataSocket_base(object):
 
         # Defines basic variables
         self.netmask = netmask # network mask used to find the host address that is on the same subnet as the target IP. This does not affect the network adapter settings.
-        self.ip_address = ip_address # IP of the chFPGA board. Used to determine the host address 
+        self.ip_address = ip_address # IP of the chFPGA board. Used to determine the host address
         self.port_number = port_number # Data port on the host (Control port +1), to receive frame data
-        self.host_ip = host_ip
         self.sock = None
         self.logger = logging.getLogger(__name__)
+        self.host_ip = host_ip
+        if host_ip:
+            self.host_ip = host_ip
+        if hasattr(__main__, '_host_interface_ip_addr') and __main__._host_interface_ip_addr:
+            self.host_ip = __main__._host_interface_ip_addr
+        else:
+            self.host_ip = get_host_addr(dest_addr=self.ip_address, netmask=self.netmask)
+
 
         self.open()
 
@@ -276,18 +284,22 @@ class DataSocket_base(object):
         Open data communication socket communications to chFPGA. This is a listen-only socket.
         """
 
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        if hasattr(__main__, '__opened_sockets__') and self.port_number in __main__.__opened_sockets__:
+            self.sock = __main__.__opened_sockets__[self.port_number]
+        else:
+            self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            self.sock.bind((self.host_ip, self.port_number))
+
         self.sock.settimeout(2)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, self.BUFFER_LENGTH)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        if self.host_ip:
-            host_addr = self.host_ip
-        else:
-            host_addr = get_host_addr(dest_addr=self.ip_address, netmask=self.netmask)
-        self.logger.debug('Using host address %s' % host_addr)
-        self.sock.bind((host_addr, self.port_number))
-        self.logger.info('Opened data UDP Socket')
-        self.logger.info('    Data port:    listening on %s:%i ' % (host_addr, self.port_number))
+
+        self.logger.debug('%r: Using host address %s' % (self, self.host_ip))
+        self.logger.info('%r: Opened data UDP Socket' % self)
+        self.logger.info('%r:     Data port:    listening on %s:%i ' % (self, self.host_ip, self.port_number))
+
+    def __repr__(self):
+        return 'RecvSocketIO(%s)' % self.ip_address
 
     def close(self):
         """Closes the communication socket"""
@@ -316,7 +328,7 @@ class DataSocket_base(object):
             self.sock.settimeout(timeout_delay)
         else:
             self.sock.settimeout(0.1)
-        
+
         data = self.sock.recv(self.BUFFER_LENGTH)
         return data
 
@@ -338,5 +350,5 @@ def get_host_addr(dest_addr, netmask='255.255.0.0', only_one=True):
     if only_one and len(matched_addr) != 1:
         raise SystemError('Could not determine the host address. Found %i possible matches for %s/%s on the following adapters for %s : %s' % (len(matched_addr), dest_addr, netmask, host_data[0], ', '.join(host_addr_list)))
     return matched_addr[0]
-        
+
 

@@ -1,8 +1,9 @@
 """ Basic handler for chFPGA firmware.
 """
 
-import logging
 from datetime import datetime
+import socket
+import struct
 
 from ..icecore import iceboard
 from ..icecore import tuber  # Used to get TuberRemoteError
@@ -17,10 +18,6 @@ from .iceboard_hardware import IceBoardHardware
 from .iceboard_hardware import I2CInterface
 from .backplane_hardware import BackplaneHardware
 # import icebox # don't use from .. import ... because of circular import problems
-
-
-IceBoardException = iceboard.IceBoardException
-
 
 class chFPGAHandler(iceboard.IceBoardHandler):
     """ Provides basic access to CHIME-specific basic IceBoard firmware and
@@ -41,9 +38,7 @@ class chFPGAHandler(iceboard.IceBoardHandler):
      meant to be derived from this class.
     """
 
-    __handler_for__ = iceboard.IceBoard
-    # __handler_name__ = 'chFPGAHandler'
-
+    _FPGA_CONTROL_BASE_PORT = 41000
     _BROADCAST_BASE_PORT = 41000
 
     _SYSTEM_BASE_ADDR      = 0x00000 # This is always at zero so we can gather info from the FPGA before we know the number of antennas etc.
@@ -55,7 +50,7 @@ class chFPGAHandler(iceboard.IceBoardHandler):
     _STATUS_BASE_ADDR  = 0x080000
     _RAM_BASE_ADDR     = 0x100000
 
-    _CHFPGA_COOKIE = 0x42 # Expected cookie value for chFPGA
+    _CHFPGA_COOKIE = 0x42 # Expected cookie value for chFPGA, both on the SPI and UDP MMI
 
     # GPIO Register addresses
     _GPIO_COOKIE_REG         = _STATUS_BASE_ADDR + _SYSTEM_GPIO_BASE_ADDR  # Register address of the firmware cookie
@@ -68,6 +63,7 @@ class chFPGAHandler(iceboard.IceBoardHandler):
     _FPGA_MAC_ADDR_LSW_ADDR         = 4 * 7
     _FPGA_MAC_ADDR_MSW_IP_PORT_ADDR = 4 * 8
     _FPGA_IP_ADDR_ADDR              = 4 * 9
+    _IRIGB_ADDR                     = 4 * 10
     _XILINX_OUI = 0x000A35
 
     # ---------------------------------------
@@ -137,16 +133,16 @@ class chFPGAHandler(iceboard.IceBoardHandler):
         super(chFPGAHandler, self).hwm_update(hwm_object)
         self.logger.info('chFPGAHandler: %r.hwm_update()' % (self))
 
-    #------------------------------------------------------------------
+    # ------------------------------------------------------------------
     # CHIME-specific MMI interface
-    #------------------------------------------------------------------
+    # ------------------------------------------------------------------
     # Uses direct Ethernet link to the FPGA SFP port to send commands in a UDP
     # packet.
     #
     # As the Chime Firmware pre-dates the icecore firmware, we do not use the
     # standard icecore interface to the FPGA, but that might change in the
     # future if warranted.
-    #------------------------------------------------------------------
+    # ------------------------------------------------------------------
 
     def mmi_read(self, *args, **kwargs):
         """ Read bytes at specified byte address through direct access to the
@@ -171,8 +167,6 @@ class chFPGAHandler(iceboard.IceBoardHandler):
         Establishes the connection with the hardware and firmware on the
         IceBoard and create all appropriate handling classes.
         """
-        import socket
-        import struct
 
         cookie = self.get_fpga_application_cookie()
         if cookie != self._CHFPGA_COOKIE:
@@ -180,30 +174,30 @@ class chFPGAHandler(iceboard.IceBoardHandler):
                 'The firmware currently configured on the FPGA is not chFPGA. '
                 'Cannot access chFPGA-specific methods and resources.')
 
-
         self.fpga_serial_number = self.get_fpga_serial_number()  # Get SN from the SPI link
 
+        # Get the address of the interface through which we can access the board over UDP
+        if self.hostname:
+            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            s.connect((self.hostname, 80))
+            (self.interface_ip_addr, _) = s.getsockname()
+            s.close()
+        else:
+            self.interface_ip_addr = None
+
+        # Compute the IP address to use for the FPGA UDP interface
+        # For now, we replace a.b.c.d by a.b.3.d
         ip_packed = socket.inet_aton(self._get_arm_ip())  #
         ip_packed = ip_packed[:2] + chr(3) + ip_packed[3]
+        self.fpga_ip_addr = socket.inet_ntoa(ip_packed)
 
-
+        # Compute a MAC address for the FPGA
         # mac = socket.inet_aton(self._get_arm_mac())  #
         mac_packed = struct.pack('>H4s', 0x1234, ip_packed)
 
-        self.fpga_ip_addr = socket.inet_ntoa(ip_packed)  # *** JFC temporary hack
+        self.fpga_port_number = self._FPGA_CONTROL_BASE_PORT
 
-        # If the board does not have an integer serial number, we use that to compute the port number so multiple computers can send commands to the board.
-        # Otherwise, a locally available UDP port is used.
-        try:
-            serial_number_as_int = int(self.serial_number)
-        except (TypeError, ValueError):
-            serial_number_as_int = None
-
-        if serial_number_as_int:
-            self.fpga_port_number = 41000 + 4 * serial_number_as_int
-        else:
-            self.fpga_port_number = self.get_unused_udp_port()
-
+        # Set the FPGA Networking parameters over the ARM-FPGA SPI interface
         self.fpga_mmi_write(self._FPGA_MAC_ADDR_LSW_ADDR, struct.unpack('>I', mac_packed[2:6])[0])
         self.fpga_mmi_write(self._FPGA_MAC_ADDR_MSW_IP_PORT_ADDR, (struct.unpack('>H', mac_packed[0:2])[0] << 16) | self.fpga_port_number)
         self.fpga_mmi_write(self._FPGA_IP_ADDR_ADDR, struct.unpack('>I', ip_packed)[0])
@@ -225,17 +219,58 @@ class chFPGAHandler(iceboard.IceBoardHandler):
         self.logger.info(
             '%r: core_open() is called' % (self))
 
-        # Open MMI
+        # Open MMI interface
         from . import fpga_mmi
         self.mmi = fpga_mmi.FpgaMmi(
             ip_addr=self.fpga_ip_addr,
             port_number=self.fpga_port_number,
             fpga_serial_number=self.fpga_serial_number,
+            interface_ip_addr=self.interface_ip_addr,
             set_fpga_networking_parameters=False)
         self.mmi.open()
+        self.local_port_number = self.mmi.local_port_number
 
-        # Open FPGA's GPIO and I2C interfaces
+
+        # Preallocate consecutive port numbers for data and correlator streaming
+        from .lib import udp
+        for i in [1, 2, 3]:
+            udp.Udp(
+                remote_ip_addr=self.fpga_ip_addr,
+                remote_port_number=self.fpga_port_number,
+                local_port_number=self.local_port_number + i,
+                if_ip_addr=self.interface_ip_addr)
+
+
+        # Open FPGA's GPIO interfaces and check if we have basic communications
         self.core_gpio = gpio.GPIO_base(self.mmi, self._SYSTEM_GPIO_BASE_ADDR)
+
+
+        # -------------------------------------------------------------------------
+        # Check if we can communicate with the FPGA over the direct Ethernet link by reading the mmi cookie (not the SPI one)
+        # -------------------------------------------------------------------------
+        self.logger.info("%r: Attempting to communicate with the FPGA over direct Ethernet link" % self)
+        try:
+            cookie = self.get_fpga_firmware_cookie()  # Read the firmware version cookie from the GPIO subsystem (this is provided by the FPGA core firmware which is always present on all versions of the FPGA)
+        except Exception as e:
+            error_message = "%r: Unable to communicate with the FPGA at address %s:%i due to the following exception: %s" % (self, self.fpga_ip_addr, self.fpga_port_number, repr(e))
+            self.close()
+            self.logger.error(error_message)
+            raise
+
+        # -------------------------------------------------------------------------
+        # Double check the mmi cookie is corect
+        # -------------------------------------------------------------------------
+
+        if cookie != self._CHFPGA_COOKIE:
+            error_message = '%r: The firmware at %s:%i is not chFPGA. The magic cookie returned by the FPGA is 0x%02X, whereas we expected 0x%02X' % (self, self.fpga_ip_addr, self.fpga_port_number, cookie, self._CHFPGA_COOKIE)
+            self.logger.error(error_message)
+            self.close()
+            raise RuntimeError(error_message)
+
+        self.logger.info("%r: Direct ethernet connection with the FPGA established" % self)
+
+        # Open FPGA's I2C interfaces
+
         self.core_i2c = i2c.I2C_base(self.mmi, self._SYSTEM_I2C_BASE_ADDR)
 
         # Create standardized I2C interface
@@ -426,7 +461,7 @@ class chFPGAHandler(iceboard.IceBoardHandler):
         crc = struct.unpack('i', crc_string)[0]
         computed_crc = zlib.crc32(string)
         if computed_crc != crc:
-            raise self.IceBoardException(
+            raise RuntimeError(
                 'FMC EEPROM CRC is invalid. Read crc = %08X, '
                 'computed crc = %08X' % (crc, computed_crc))
         dict_out = ast.literal_eval(string)  # safer than using eval

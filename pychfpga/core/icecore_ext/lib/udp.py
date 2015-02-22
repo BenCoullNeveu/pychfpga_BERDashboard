@@ -11,7 +11,7 @@ Provides a class that represents a UDP socket
 """
 import logging
 import socket
-import __main__ as main # used to store a list of all opened sockets
+import __main__  # used to store a list of all opened sockets
 
 class Udp(object):
     """
@@ -24,48 +24,62 @@ class Udp(object):
     timeout = socket.timeout
     TimeoutException = socket.timeout
 
-    def __init__(self):
+    def __init__(self, remote_ip_addr, remote_port_number, local_port_number=0, if_ip_addr=None):
         self.logger = logging.getLogger(__name__)
+        self.port_number = remote_port_number
+        self.ip_addr = remote_ip_addr
+        self.address = (remote_ip_addr, remote_port_number)
+        self.local_port_number = local_port_number
 
+        if if_ip_addr:
+            self.if_ip_addr = if_ip_addr
+        elif hasattr(__main__, '_host_interface_ip_addr') and __main__._host_interface_ip_addr:
+            self.if_ip_addr = __main__._host_interface_ip_addr
+        else:
+            raise RuntimeError(
+                'An interface IP address is required for UDP communication '
+                'with the FPGA')
 
-    def open(self, if_ip_addr, ip_addr, port_number, send_only=False):
+        self.open()
+
+    def open(self):
         """
         Opens a UDP socket at specified IP address and port over the specified
         interface. If ip_addr is Udp.BROADCAST, a broadcast socket will be
         opened.
         """
-        self.port_number = port_number
-        self.ip_addr = ip_addr
-        self.if_ip_addr = if_ip_addr
-        self.address = (ip_addr, port_number)
 
-        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        # store the socket in the mail module so it will live persistently until the session is closed. Is used to close all sockets when debugging.
-        if not hasattr(main, '__opened_sockets__'):
-            main.__opened_sockets__= set()
-        main.__opened_sockets__.add(self.sock)
+        # Make sure there is a list of opened sockets
+        if not hasattr(__main__, '__opened_sockets__'):
+            __main__.__opened_sockets__ = {}
 
-        if ip_addr == self.BROADCAST:
-            self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, True)
-        # sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
-        #self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) # don't use REUSEADDR: many sockets get open and we then fail to receive replies
-
-        # Bind the UDP port to the specified interface. If we don't do this, the packet might be sent over the wrong (default) interface (which happened when the 10GbE was connected to the FPGA).
-        if send_only:
-            self.sock.bind((if_ip_addr, 0)) # We only want to send. Just bind to the adapter but not to  a specific port. This allows multiple sockets sending to the same (i.e. broadcast) destination to be open simultaneously.
+        # If we want to use a specific local port that was previously reserved, use its socket.
+        if self.local_port_number and self.local_port_number in __main__.__opened_sockets__:
+            self.sock = __main__.__opened_sockets__[self.local_port_number]
         else:
-            self.sock.bind((if_ip_addr, port_number)) # bind the socket to the specific interface and port number.In this mode only one socket can be opened at one time for this address.
-        # self.logger.debug('   Opened control UDP Socket')
-        # self.logger.debug('   Opened socket on interface  %s:%i ' % (if_ip_addr, port_number))
-        return self.sock;
+            self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            if self.ip_addr == self.BROADCAST:
+                self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, True)
+            # sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
+            #self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) # don't use REUSEADDR: many sockets get open and we then fail to receive replies
+
+            # Bind the UDP port to the specified interface.
+            # We need to specify the interface explicitely because the packet might be sent over the wrong (default) interface (which happened when the 10GbE was connected to the FPGA).
+            self.sock.bind((self.if_ip_addr, self.local_port_number))
+            (addr, port) = self.sock.getsockname()
+            self.local_port_number = port
+            # store the socket in the main module so it will live persistently until the Python session is closed.
+            __main__.__opened_sockets__[self.local_port_number] = self.sock
+
+        return self.sock
 
     def close(self):
-        """Closes the socket"""
+        """Close the UDP socket"""
         if self.sock:
             self.sock.close()
-            if hasattr(main, '__opened_sockets__'):
-                main.__opened_sockets__.discard(self.sock)
-            self.sock=None
+            # if hasattr(__main__, '__opened_sockets__') and self.local_port_number in __main__.__opened_sockets__:
+            #     __main__.__opened_sockets__.discard(self.local_port_number)
+            self.sock = None
         # self.logger.debug('   Closed UDP control socket')
 
     def send(self, data):

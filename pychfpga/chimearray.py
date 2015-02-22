@@ -79,7 +79,7 @@ if __name__ == '__main__':
 
     ca.load_yaml_hardware_map('''
             !HardwareMap
-                - !IceBoard {hostname: iceboard0007.local, serial_number: "0007", subarray: 100, app_handler_name: "chFPGAHandler"}
+                - !IceBoard {hostname: iceboard0007.local, serial_number: "0007", subarray: 100, handler_name: "chFPGAHandler"}
             ''')
 
         # ib = hwm.query(IceBoard).one()
@@ -112,7 +112,7 @@ if __name__ == '__main__':
     # shortcut to index c[7] as c7 etc.
     print 'The following IceBoards were found in Subarray %r through interface %s:' % (args.subarray, args.if_ip)
     for ib in c:
-        print "  c%i = IceBoard SN%s in slot %r. Handler = '%s'" % (int(ib.serial_number), ib.serial_number, ib.slot_number, ib.app_handler_name)
+        print "  c%i = IceBoard SN%s in slot %r. Handler = '%s'" % (int(ib.serial_number), ib.serial_number, ib.slot_number, ib.handler_name)
         setattr(__main__, 'c%i' % int(ib.serial_number), ib)
 
     # c23.set_fpga_firmware(fpga_bitstream,  configure_fpga=True, force=args.force, store_in_database=True) # associate boards with specified firmware and configure the selected FPGA
