@@ -66,9 +66,9 @@ class LazyFuture(tornado.concurrent.Future):
         ...     c.set_frequency(
         ...         r.result(), d.UNITS.HZ, d.TARGET.DEMOD, 1, 1, 1)
 
-    ...will deadlock, since we're deliberately holding back execution until the
-    end of the context block. Since we hold a single call queue, we can always
-    flush portions of it until we have enough data to proceed.
+    ...will deadlock, since we're deliberately holding back execution until
+    the end of the context block. Since we hold a single call queue, we can
+    always flush portions of it until we have enough data to proceed.
     '''
 
     def __init__(self, ctx, **kwargs):
@@ -139,7 +139,7 @@ class Context(object):
             (n, f, a, k) = self.calls.pop(0)
 
             calls.append({
-                'object': self.obj._tuber_objname,
+                'object': self.obj.tuber_objname,
                 'method': n,
                 'args': a,
                 'kwargs': k
@@ -300,12 +300,6 @@ class TuberCategory(object):
             arguments. We fill in these arguments and dispatch the call.
             '''
 
-            # Retrieve an arbitrary instance of the object so we can return a
-            # DocString-preserving version. Since 'proto' is cached, we can't
-            # use __m for the actual function call (since it might be attached
-            # to the wrong object.) As a necessary side-effect, this raises an
-            # AttributeException if the attribute doesn't actually exist on the
-            # upstream object.
             obj = decorator.getobject(self)
             m = getattr(obj, name)
 
@@ -372,12 +366,11 @@ class TuberObject(object):
     To use it, you should subclass this TuberObject.
     '''
 
-    _tuber_objname = property(lambda self: self._tuber_local_objname or self.__class__.__name__)
-
     @staticmethod
-    def ping(hostname, timeout = 0.1):
+    def ping(hostname, timeout=0.1):
         """
-        Returns a boolean inticating whether a tuber object is available at the specified ARM hostname.
+        Returns a boolean inticating whether a tuber object is available at
+        the specified ARM hostname.
         """
         import socket
         try:
@@ -387,15 +380,10 @@ class TuberObject(object):
             return False
         return True
 
-    def __init__(self, hostname='localhost', objname=None, **kwargs):
+    def __init__(self):
         """
-        uri: Address used to access the resource remotely
-        obj_name: Name of the Tuber object to be accessed
         """
-        self._hostname = hostname
-        if objname:
-            self._tuber_local_objname = objname
-        super(TuberObject, self).__init__(**kwargs)  # Make tuber collaborative
+        pass
 
     def tuber_context(self, io_loop=tornado.ioloop.IOLoop()):
         return Context(self, io_loop)
@@ -403,10 +391,12 @@ class TuberObject(object):
     @property
     def tuber_uri(self):
         '''Retrieve the URI associated with this TuberResource.'''
+        raise NotImplementedError("Subclass needs to define tuber_uri!")
 
-        if not self._hostname: #***  JFC: we use an underscore to avoid conflicts with the superclass (should be two underscores?)
-            raise TuberError("Mandatory 'hostname' attribute not specified!")
-        return 'http://%s/tuber' % self._hostname
+    @property
+    def tuber_objname(self):
+        '''Retrieve the Tuber Object associated with this TuberResource.'''
+        return self.__class__.__name__
 
     @property
     def __doc__(self):
@@ -448,7 +438,7 @@ class TuberObject(object):
         on-the-fly as they're needed.
         '''
 
-        if not self._hostname:
+        if not self.tuber_uri:
             meta = _tuber_json_object_hook({"properties": [], "methods": []})
             return (meta, [], [])
 
@@ -459,7 +449,7 @@ class TuberObject(object):
                 self._tuber_meta_methods
             )
 
-        json_in = json.dumps({'object': self._tuber_objname})
+        json_in = json.dumps({'object': self.tuber_objname})
         t1 = time.time()
         json_out = json.loads(
             urllib2.urlopen(self.tuber_uri, json_in).read(),
@@ -479,7 +469,7 @@ class TuberObject(object):
 
         # Retrieve all properties
         json_in = json.dumps([{
-            'object': self._tuber_objname,
+            'object': self.tuber_objname,
             'property': p} for p in meta.properties])
         json_out = json.loads(
             urllib2.urlopen(self.tuber_uri, json_in).read(),
@@ -490,7 +480,7 @@ class TuberObject(object):
 
         # Retrieve all methods
         json_in = json.dumps([{
-            'object': self._tuber_objname,
+            'object': self.tuber_objname,
             'property': p} for p in meta.methods])
         json_out = json.loads(
             urllib2.urlopen(self.tuber_uri, json_in).read(),

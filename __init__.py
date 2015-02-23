@@ -44,19 +44,30 @@ from hardware_map import (
     HWMQueryException,
     HWMQuery,
     HWMResource,
-    TuberHWMResource,
     macro, algorithm,
     HardwareMap,
     Boolean,
     Session,
     set_session_class,
-    Handler,
+)
+
+from tuber import (
+    TuberError,
+    TuberRemoteError,
+    TuberCategory,
+    TuberObject,
+)
+
+from handler import (
+    HandlerObject,
+    Handler
 )
 
 from iceboard import (
     IceBoard,
     IceBoardHandler
 )
+
 
 from icecrate import (
     IceCrate,
@@ -77,11 +88,5 @@ from session import (
     set_yaml_loader_class,
 )
 
-from tuber import (
-    TuberError,
-    TuberRemoteError,
-    TuberCategory,
-    TuberObject,
-)
 
 # vim: sts=4 ts=4 sw=4 tw=78 smarttab expandtab

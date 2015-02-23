@@ -9,9 +9,9 @@ from sqlalchemy.orm import reconstructor, object_session, class_mapper
 from sqlalchemy.orm.collections import attribute_mapped_collection
 
 from . import hardware_map
+from . import handler
 
-
-class IceCrate(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
+class IceCrate(hardware_map.HWMResource, handler.HandlerObject):
     __tablename__ = 'icecrates'
     __table_args__ = (
         UniqueConstraint('serial'),
@@ -50,7 +50,7 @@ class IceCrate(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
         self.set_handler(object_id=self._pk, handler_name=self._cls)
 
 
-class IceCrateHandler(hardware_map.Handler):
+class IceCrateHandler(handler.Handler):
     """
     Basic Python handler for the IceCrate.
     """

@@ -131,7 +131,7 @@ if __name__ == '__main__':
     # when running this example.
     yaml_hwm = """
         !HardwareMap
-        - !IceBoard {{hostname: {0}, app_handler_name: "ExampleIceBoardHandler"}}
+        - !IceBoard {{hostname: {0}, handler_name: "ExampleIceBoardHandler"}}
         """.format(args.iceboards[0])
 
     # Load the hardware map, which defines every piece of the hardware in the

@@ -7,9 +7,9 @@ from sqlalchemy.orm import relationship, backref
 from sqlalchemy.orm import reconstructor
 
 import hardware_map
+from . import handler
 
-
-class FMCMezzanine(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
+class FMCMezzanine(hardware_map.HWMResource, handler.HandlerObject):
     """FMC Mezzanine schema object.
 
     This is an abstract class. To specialize it for a particular FMC
@@ -50,6 +50,9 @@ class FMCMezzanine(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
 
     class FMCMezzanineException(Exception):
         pass
+
+    def __repr__(self):
+        return '%s(%s)' % (self.__class__.__name__, self.serial)
 
     def __init__(self, **kwargs):
         """ Create a new Mezzanine object from scratch and link it with its handler """
@@ -101,12 +104,15 @@ class FMCMezzanine(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
         """ returns a boolean indicating whether the ADC board is present"""
         return self.iceboard.is_mezzanine_present(self.mezzanine)
 
-class FMCMezzanineHandler(hardware_map.Handler):
+class FMCMezzanineHandler(handler.Handler):
     """
     Defined a basic FMC Mezzanine Python handler.
     """
     __handler_for__ = FMCMezzanine
     __handler_name__= 'FMCMezzanine'
+
+    def __repr__(self):
+        return '%s' % self.__class__.__name__
 
     def hwm_update(self, hwm_object):
         """ Import the main Mezzanine properties needed by the handler to operate the mezzanine.

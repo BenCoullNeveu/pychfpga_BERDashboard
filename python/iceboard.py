@@ -15,6 +15,8 @@ import logging
 import base64
 import zlib  # used to compute crc32
 
+import inspect
+
 from sqlalchemy import Column, Integer, String, ForeignKey
 from sqlalchemy import UniqueConstraint
 from sqlalchemy.orm import relationship, backref
@@ -23,16 +25,12 @@ from sqlalchemy.orm.collections import attribute_mapped_collection
 
 import hardware_map
 import tuber
+import handler
 import fmc_mezzanine  # used import x to avoid circular import problem
 import icecrate
 
 
-# *** JFC:To be removed
-class IceBoardException(Exception):
-    pass
-
-
-class IceBoard(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
+class IceBoard(hardware_map.HWMResource, handler.HandlerObject):
     """ Provides access to the basic functions of an IceBoard.
 
     This object inherits from a generic Hardware Map Resource (HWMResource),
@@ -76,19 +74,12 @@ class IceBoard(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
 
     subarray = Column(Integer)
 
-    # ** JFC: Should be arm_ip_address or arm_hostname?
-    hostname = Column(String)  # The host name of the ARM on the IceBoard
+    hostname = Column(
+        String,
+        doc="The hostname (or IP) to use for this resource.")
 
-    # *** JFC: app_handler_name is used to allow the hardware map to specify
-    #     which type of handler (i.e. FPGA firmware) is associated with this
-    #     board without having to hard-code this in a subclass. Having the
-    #     user to specify the '_cls' seems dangerous as it plays with the
-    #     SQLAlchemy innards and will cause obscure error messaged.
-    #
-    #     This parameter could be renamed 'handler_name', 'handler',
-    #     'personality', 'application' etc.
-    #
-    app_handler_name = Column(String)
+    # # Specify which type of handler is associated with this firmware
+    # handler_name = Column(String)
 
     mezzanines = relationship(
         "FMCMezzanine",
@@ -105,19 +96,27 @@ class IceBoard(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
         doc='''The IceBoard's mezzanines, indexed as you would expect
             (1 for mezzanine A, 2 for mezzanine B).''')
 
-    def __init__(self, app_handler_name=None, **kwargs):
-        """ Create a new Iceboard object from scratch and link it with its
-        handler """
-        self.logger = logging.getLogger(__name__)
-        self.logger.info('%r: Creating instance' % (self))
+
+    # Define a unique key to represent this instance
+    handler_id = property(lambda self: self.hostname)
+
+    def __init__(self, hostname=None, handler_name='IceBoardHandler', **kwargs):
+        """ Create a new Iceboard object from scratch. """
 
         # As a convenience, we can pass a Handler object as the
         # app_handler_name and we'll extract the name from it.
-        if issubclass(type(app_handler_name), hardware_map.Handler):
-            app_handler_name = app_handler_name.__handler_name__
+        if inspect.isclass(handler_name) and issubclass(handler_name, handler.Handler):
+            handler_name = handler_name.__handler_name__
 
-        super(IceBoard, self).__init__(app_handler_name=app_handler_name,
-                                       **kwargs)
+        # Populate the object instrumented attributes
+        super(IceBoard, self).__init__(
+            hostname=hostname,
+            # handler_name=handler_name,
+            **kwargs)
+
+        self.logger = logging.getLogger(__name__)
+        self.logger.info('%r: Creating instance with args %r' % (self, kwargs))
+
 
     # *** JFC: just used for logging during debugging. will be removed. Unless
     #     we want to rely on the instance to always have a logger.
@@ -126,32 +125,47 @@ class IceBoard(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
         self.logger = logging.getLogger(__name__)
         self.logger.info('%r: Recreating instance from database' % (self))
 
-    def init_handler(self):
-        """ Create or re-attach a handler to this HWM object.
+   # @property
+    # def handler_id(self):
+    #     return self.hostname
 
-        This is called whenever this instance of an HWM object has been
-        created, recreated from the database, or changed.
+    # @property
+    # def handler_name(self):
+    #     return self.app_handler_name
 
-        The default action is to connect to a handler class that is registered
-        under the name specified in 'app_handler_name'.
 
-        The handler instances are uniquely identified by the primary key
-        '_pk'. The handler is passed the 'hostname' column value to allow its
-        Tuber machinery to connect to the ARM.
+    # def get_handler(self):
+    #     """ Return the handler for this HWM object.
 
-        The default handler for IceBoard is IceBoardHandler, which provides
-        Tuber's 'IceBoard' methods and properties in addition to basic Pyhton
-        helper methods. A subclass of IceBoard can or course redefine this
-        method to connect to any other handler and Tuber object.
-        """
-        # *** JFC: Concerning the handler name, I would recommend using
-        #     'app_handler_name' or any better-named user column rather than
-        #     '_cls'. Having two options is confusing. We still can do
-        #     polymorphism-based handler selection by having the superclasses
-        #     redefine their own default for 'app_handler_name'
-        self.set_handler(object_id=self._pk,
-                         handler_name=self.app_handler_name,
-                         hostname=self.hostname)
+    #     This method calls _get_handler(...) with the arguments to uniquely
+    #     identify this IceBoard instance, which handler to use, and pass
+    #     arguments to the handler constructor if one needs to be created.
+
+    #     For the Iceboard, we override the default get_handler() to do the following:
+
+    #         - The unique HWM instance id is based on the hostname. This allows
+    #           the handler to exist even if the HWM object does not yet have a
+    #           primary key or serial number.
+
+    #         - The handler name is taken from the 'app_handler_name' column to
+    #           allow the user to easily define and change what firmware
+    #           and software the IceBoard should be running.
+
+    #         - We pass the hostname as the argument to allow Tuber
+    #           initialization when a new Handler is created
+
+    #     get_handler() is only called whenever there is no cached handler
+    #     object (when HWM object has been created, recreated from the database,
+    #     or moved in memory).
+    #     """
+    #    return self._get_handler(
+    #         object_id=self.hostname,
+    #         handler_name=self.handler,
+    #         hostname=self.hostname)
+
+    # *** JFC: making __dir__ collaborative in multiple inheritance context is hard. This is a bad fix.
+    # def __dir__(self):
+    #     return list(set.union(set(tuber.TuberObject.__dir__(self)), set(handler.HandlerObject.__dir__(self))))
 
     def __repr__(self):
         """ Provides a concise string representation of this Iceboard that is
@@ -165,7 +179,7 @@ class IceBoard(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
             self.__class__.__name__,
             ('slot=%s' % self.slot_number) if self.crate else
             ('SN%s' % self.serial_number) if self.serial_number else
-            ('hostname=%s' % self.hostname)
+            ('%s' % self.hostname)
             )
 
     # *** JFC: This was named set_application. Maybe another name would be better?
@@ -184,7 +198,7 @@ class IceBoard(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
         """
         if handler:
             self.app_handler_name = handler.__handler_name__
-            self.init_handler()
+            self.update_handler()
         if bitstream:
             self.register_fpga_bitstream(bitstream, tag=tag)
         if configure_fpga:
@@ -394,7 +408,7 @@ class IceBoard(hardware_map.HWMResource, hardware_map.HWMHandlerManager):
         return icecrate_class
 
 
-class IceBoardHandler(hardware_map.Handler, tuber.TuberObject):
+class IceBoardHandler(handler.Handler, tuber.TuberObject):
     """ Basic Python handler for the IceBoard.
 
     It provides:
@@ -427,7 +441,7 @@ class IceBoardHandler(hardware_map.Handler, tuber.TuberObject):
     superclass of this handler if the firmware supports it.
     """
 
-    # The following attributes must be redefined in every subclasses
+    # Make this class (and any subclass) register with IceBoard
     __handler_for__ = IceBoard
 
     # Core FPGA firmware registers
@@ -445,20 +459,21 @@ class IceBoardHandler(hardware_map.Handler, tuber.TuberObject):
     # _bitstream_crc = None  # CRC32 of the currently configured bitstream
 
     serial_number = None
+    hostname = None
+    tuber_objname = 'IceBoard'
     mezzanine = {}
 
-    def __init__(self, hostname=None, tuber_object='IceBoard', **kwargs):
-        super(IceBoardHandler, self).__init__(
-            hostname=hostname, objname=tuber_object, **kwargs)
+    def __init__(self):
+        super(IceBoardHandler, self).__init__()
 
     def __repr__(self):
         """ Get an unique string representation for this handler instance.
 
         It should preferably stay below 32 characters long to fit in syslog tag fields.
         """
-        return '%s(SN%s)' % (
+        return '%s(%s)' % (
             self.__class__.__name__,
-            self.serial_number)
+            'SN'+self.serial_number if self.serial_number else self.hostname)
 
     def hwm_update(self, hwm_object):
         """ Is called when the Hardware Map object might have changed to
@@ -466,6 +481,7 @@ class IceBoardHandler(hardware_map.Handler, tuber.TuberObject):
         """
         super(IceBoardHandler, self).hwm_update(hwm_object)
         self.logger.info('%r: hwm_update()' % (self))
+        self.hostname = hwm_object.hostname
         self.serial_number = hwm_object.serial_number
         self.mezzanine = {
             key: hwm_mezz.handler for (key, hwm_mezz) in
@@ -563,7 +579,7 @@ class IceBoardHandler(hardware_map.Handler, tuber.TuberObject):
 
         >>> m._eeprom_write_ipmi(
         ...     part_number="MGK7MB",
-        ...     serial_number="004",
+        ...     serial_number="0004",
         ...     product_version="2")
 
         DON'T fill incorrect values unless they're visibly incorrect,
