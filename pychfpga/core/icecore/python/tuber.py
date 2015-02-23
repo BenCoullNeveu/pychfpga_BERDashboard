@@ -66,9 +66,9 @@ class LazyFuture(tornado.concurrent.Future):
         ...     c.set_frequency(
         ...         r.result(), d.UNITS.HZ, d.TARGET.DEMOD, 1, 1, 1)
 
-    ...will deadlock, since we're deliberately holding back execution until the
-    end of the context block. Since we hold a single call queue, we can always
-    flush portions of it until we have enough data to proceed.
+    ...will deadlock, since we're deliberately holding back execution until
+    the end of the context block. Since we hold a single call queue, we can
+    always flush portions of it until we have enough data to proceed.
     '''
 
     def __init__(self, ctx, **kwargs):
@@ -300,12 +300,6 @@ class TuberCategory(object):
             arguments. We fill in these arguments and dispatch the call.
             '''
 
-            # Retrieve an arbitrary instance of the object so we can return a
-            # DocString-preserving version. Since 'proto' is cached, we can't
-            # use __m for the actual function call (since it might be attached
-            # to the wrong object.) As a necessary side-effect, this raises an
-            # AttributeException if the attribute doesn't actually exist on the
-            # upstream object.
             obj = decorator.getobject(self)
             m = getattr(obj, name)
 
@@ -397,16 +391,12 @@ class TuberObject(object):
     @property
     def tuber_uri(self):
         '''Retrieve the URI associated with this TuberResource.'''
-
-        if not self.hostname: #***  JFC: we use an underscore to avoid conflicts with the superclass (should be two underscores?)
-            raise TuberError("Mandatory 'hostname' attribute not specified!")
-        return 'http://%s/tuber' % self.hostname
+        raise NotImplementedError("Subclass needs to define tuber_uri!")
 
     @property
     def tuber_objname(self):
-        '''Retrieve the Tuber object name.'''
+        '''Retrieve the Tuber Object associated with this TuberResource.'''
         return self.__class__.__name__
-
 
     @property
     def __doc__(self):
@@ -448,7 +438,7 @@ class TuberObject(object):
         on-the-fly as they're needed.
         '''
 
-        if not self.hostname:
+        if not self.tuber_uri:
             meta = _tuber_json_object_hook({"properties": [], "methods": []})
             return (meta, [], [])
 
@@ -532,9 +522,6 @@ class TuberObject(object):
         # TuberObject.
         (meta, metap, metam) = self._tuber_get_meta()
         if name not in meta.methods and name not in meta.properties:
-            sup = super(TuberObject, self)
-            if hasattr(sup, name):
-                return getattr(sup, name)
             raise AttributeError(
                 "'%s' is not a valid method or property!" % name)
 

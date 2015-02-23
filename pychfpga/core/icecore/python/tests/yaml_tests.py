@@ -9,7 +9,7 @@ You must execute these tests from the top level:
 '''
 
 from hardware_map import HardwareMap, HWMResource
-from iceboard import IceBoard
+from schema import IceBoard
 from session import load_session
 
 import unittest

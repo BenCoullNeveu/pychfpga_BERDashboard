@@ -57,9 +57,7 @@ import sys
 import mimetypes
 import logging.config
 import hardware_map
-
-import iceboard
-import fmc_mezzanine
+import schema
 
 
 class HWMCSVConstructor(object):
@@ -357,16 +355,16 @@ class YAMLLoader(yaml.SafeLoader):
         self.add_constructor(
             '!IceCrate',
             HWMConstructor(
-                lambda l: iceboard.IceCrate,
+                lambda l: schema.IceCrate,
                 AttributeMappingTouchup('slots', 'slot')))
 
         self.add_constructor(
             '!IceBoard',
             HWMConstructor(
-                lambda l: iceboard.IceBoard,
+                lambda l: schema.IceBoard,
                 AttributeMappingTouchup('mezzanines', 'mezzanine')))
 
-        self.add_constructor('!FMCMezzanine', lambda l: fmc_mezzanine.FMCMezzanine)
+        self.add_constructor('!FMCMezzanine', lambda l: schema.FMCMezzanine)
 
 
 def set_yaml_loader_class(cls):
