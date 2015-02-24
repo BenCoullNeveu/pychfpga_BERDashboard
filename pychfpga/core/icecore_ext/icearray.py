@@ -17,7 +17,7 @@ import re  # used by mdns_discovery
 from sqlalchemy.orm.session import Session
 
 from ..icecore import hardware_map
-from ..icecore.iceboard import IceBoard
+from ..icecore.hwm_assets import IceBoard
 from ..icecore.tuber import TuberObject  # used to ping boards
 from ..icecore.session import load_session
 

@@ -35,7 +35,6 @@ import numpy as np
 import time
 
 from .icecore_ext.chfpga_handler import chFPGAHandler
-from .icecore.iceboard import IceBoard
 
 from pychfpga.common import util
 

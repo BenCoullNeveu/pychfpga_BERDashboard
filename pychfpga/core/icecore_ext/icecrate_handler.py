@@ -3,19 +3,18 @@
 
 import logging
 
-from ..icecore import icecrate
+from ..icecore.handler_assets import IceCrateHandler
 
 
 # This class is necessarily loaded *after** IceCrateHandler, as it was
 # imported above in the icecrate module. So this handler overrides the
 # standard IceCrate handler since it uses the same handler name as the default
 # handler.
-class IceCratePythonHandler(icecrate.IceCrateHandler):
+class IceCratePythonHandler(IceCrateHandler):
     """ IceCrate handler that provides access to the backplane through the IceBoard's 'bp' object:
     """
 
-    __handler_for__ = icecrate.IceCrate
-    __handler_name__ = icecrate.IceCrateHandler.__handler_name__ # Overrides the standard IceCrate handler
+    __handler_name__ = IceCrateHandler.__handler_name__ # Overrides the standard IceCrate handler
 
     def __getattr__(self, name):
         """ Fetches attributes from the master iceboard's backplane handling object 'bp'
