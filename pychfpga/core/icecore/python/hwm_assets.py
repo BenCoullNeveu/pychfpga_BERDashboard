@@ -12,23 +12,25 @@ import contextlib
 import logging
 import functools
 import time
+import inspect
+import datetime
+import base64
+import zlib  # used to compute crc32
 
 from sqlalchemy import Column, Integer, String, ForeignKey
 from sqlalchemy import UniqueConstraint, CheckConstraint
 from sqlalchemy.orm import relationship, backref
+from sqlalchemy.orm import reconstructor, class_mapper
 from sqlalchemy.orm.collections import attribute_mapped_collection
 
-from . import hardware_map, tuber
+from . import hardware_map
+from . import tuber
+from . import handler
 
 from hw import ipmi_fru
-import datetime
-import base64
 
 
-@tuber.TuberCategory(
-    "Backplane",
-    lambda b: b.slots.first())
-class IceCrate(hardware_map.HWMResource):
+class _IceCrate(hardware_map.HWMResource):
     __tablename__ = 'icecrates'
     __table_args__ = (
         UniqueConstraint('serial'),
@@ -210,13 +212,52 @@ class IceCrate(hardware_map.HWMResource):
                                  missing)
 
 
-class IceBoard(hardware_map.HWMResource, tuber.TuberObject):
+class IceCrate(_IceCrate, handler.HandlerObject):
+    __mapper_args__ = {
+        'polymorphic_on': '_cls',
+        'polymorphic_identity': 'MGK7BP'
+    }
+    _cls = Column(String, nullable=False)
+
+    def init_handler(self):
+        """ Create or re-attach a handler to this HWM object.
+        """
+        self.set_handler(object_id=self._pk, handler_name=self._cls)
+
+# @tuber.TuberCategory(
+#     "Backplane",
+#     lambda b: b.slots.first())
+# class IceCrate(_IceCrate):
+#     pass
+
+
+class IceBoard(hardware_map.HWMResource, handler.HandlerObject):
+    """ Provides access to the basic functions of an IceBoard.
+
+    This object inherits from a generic Hardware Map Resource (HWMResource),
+    which allows the iceboard objects to be added to the hardware
+    map database.
+
+    This object also inherits from a Hardware Map Handler Manager
+    (HWMHandlerManager) which always keeps this object connected to the
+    appropriate Handler object instance that persists in memory.
+
+    All methods and attributes provided by the handler (in the handler itself
+    or through Tuber) are accessible as if they belonged to this ORM object.
+
+    The IceBoard object can be associated with multiple handlers in order to
+    represent boards runing different FPGA firmware. The handler are
+    identified by the app_handler_name column, of the '_cls_ column if the
+    former is not defined.
+
+    Project-specific classes are meant to be derived from this class.
+    """
     __tablename__ = 'iceboards'
     __table_args__ = (
-        UniqueConstraint('serial'),
+        UniqueConstraint('serial_number'),
     )
     __mapper_args__ = {
-        'polymorphic_identity': "IceBoard",
+        'polymorphic_identity': 'IceBoard',  # ***JFC: why core.iceboard.IceBoard
         'polymorphic_on': '_cls'
     }
 
@@ -224,11 +265,22 @@ class IceBoard(hardware_map.HWMResource, tuber.TuberObject):
     _cls = Column(String, nullable=False)
     _icecrate_pk = Column(Integer, ForeignKey('icecrates._pk'), index=True)
 
-    hostname = Column(String,
-                      doc="The hostname (or IP) to use for this resource.")
-    serial = Column(String,
-                    doc="The serial number written on the board (verbatim!)")
-    slot = Column(Integer, doc="The IceCrate slot occupied by this board")
+    serial_number = Column(
+        String,
+        doc="The serial number written on the board (verbatim!)")
+
+    slot_number = Column(
+        Integer,
+        doc="The IceCrate slot occupied by this board")
+
+    subarray = Column(Integer)
+
+    hostname = Column(
+        String,
+        doc="The hostname (or IP) to use for this resource.")
+
+    # # Specify which type of handler is associated with this firmware
+    # handler_name = Column(String)
 
     mezzanines = relationship(
         "FMCMezzanine",
@@ -245,145 +297,321 @@ class IceBoard(hardware_map.HWMResource, tuber.TuberObject):
         doc='''The IceBoard's mezzanines, indexed as you would expect
             (1 for mezzanine A, 2 for mezzanine B).''')
 
+
+    # Define a unique key to represent this instance
+    handler_id = property(lambda self: self.hostname)
+
+    def __init__(self, hostname=None, handler_name='IceBoardHandler', **kwargs):
+        """ Create a new Iceboard object from scratch. """
+
+        # As a convenience, we can pass a Handler object as the
+        # app_handler_name and we'll extract the name from it.
+        if inspect.isclass(handler_name) and issubclass(handler_name, handler.Handler):
+            handler_name = handler_name.__handler_name__
+
+        # Populate the object instrumented attributes
+        super(IceBoard, self).__init__(
+            hostname=hostname,
+            # handler_name=handler_name,
+            **kwargs)
+
+        self.logger = logging.getLogger(__name__)
+        self.logger.info('%r: Creating instance with args %r' % (self, kwargs))
+
+
+    # *** JFC: just used for logging during debugging. will be removed. Unless
+    #     we want to rely on the instance to always have a logger.
+    @reconstructor
+    def _init_from_database(self, **kwargs):
+        self.logger = logging.getLogger(__name__)
+        self.logger.info('%r: Recreating instance from database' % (self))
+
+   # @property
+    # def handler_id(self):
+    #     return self.hostname
+
+    # @property
+    # def handler_name(self):
+    #     return self.app_handler_name
+
+
+    # def get_handler(self):
+    #     """ Return the handler for this HWM object.
+
+    #     This method calls _get_handler(...) with the arguments to uniquely
+    #     identify this IceBoard instance, which handler to use, and pass
+    #     arguments to the handler constructor if one needs to be created.
+
+    #     For the Iceboard, we override the default get_handler() to do the following:
+
+    #         - The unique HWM instance id is based on the hostname. This allows
+    #           the handler to exist even if the HWM object does not yet have a
+    #           primary key or serial number.
+
+    #         - The handler name is taken from the 'app_handler_name' column to
+    #           allow the user to easily define and change what firmware
+    #           and software the IceBoard should be running.
+
+    #         - We pass the hostname as the argument to allow Tuber
+    #           initialization when a new Handler is created
+
+    #     get_handler() is only called whenever there is no cached handler
+    #     object (when HWM object has been created, recreated from the database,
+    #     or moved in memory).
+    #     """
+    #    return self._get_handler(
+    #         object_id=self.hostname,
+    #         handler_name=self.handler,
+    #         hostname=self.hostname)
+
+    # *** JFC: making __dir__ collaborative in multiple inheritance context is hard. This is a bad fix.
+    # def __dir__(self):
+    #     return list(set.union(set(tuber.TuberObject.__dir__(self)), set(handler.HandlerObject.__dir__(self))))
+
     def __repr__(self):
-        return "%r.%s(%s)" % (self.crate, self.__class__.__name__,
-                              'slot=%s' % self.slot if self.crate
-                              else 'serial=%s' % self.serial if self.serial
-                              else 'hostname=%s' % self.hostname)
+        """ Provides a concise string representation of this Iceboard that is
+        informative enough to be used for logs.
 
-    def set_fpga_bitstream(self, buf):
+        This string is typically used in syslog tags (32 characters max,
+        alphanumeric characters only).
+        """
+        return "%s%s(%s)" % (
+            repr(self.crate) + '.' if self.crate else '',
+            self.__class__.__name__,
+            ('slot=%s' % self.slot_number) if self.crate else
+            ('SN%s' % self.serial_number) if self.serial_number else
+            ('%s' % self.hostname)
+            )
+
+    # *** JFC: This was named set_application. Maybe another name would be better?
+    def set_app_handler(self,
+                        handler=None,
+                        bitstream=None,
+                        configure_fpga=False,
+                        force=False,
+                        tag=None):
+        """ Helper function used to specify the handler and bitstream
+        associated with this IceBoard.
+
+        Example: To set all the boards on an array to now run Dfmux application with a specific firmware:
+            iceboards = hwm.query(Iceboards)
+            iceboards.set_app_handler(DfMuxHandler, dfmux_bistream_v20, tag='2.0', configure_fpga=True)
+        """
+        if handler:
+            self.app_handler_name = handler.__handler_name__
+            self.update_handler()
+        if bitstream:
+            self.register_fpga_bitstream(bitstream, tag=tag)
+        if configure_fpga:
+            self.set_fpga_bitstream(tag=tag, force=force)
+
+    # *** JFC: The philosophy of this command is now more to configure the
+    #     fpga than to specify which bitstream to use. With this change of
+    #     paradigm, I wonder if we should rename it back to configure_fpga().
+    def set_fpga_bitstream(self, buf=None, tag=None, force=False):
+        ''' Configures the FPGA with the specified bitstream.
+
+        The bitstream associated with the current handler with the specifiec
+        'tag' will be loaded. However, if a buffer 'buf' is explicitely
+        provided, that bitstream will be used instead.,
+
+        The 'buf' can be any an object where str(buf) returns the content of a
+        .BIT or .BIN file (which includes a buffer, a string, or other objects
+        defining __str__()).
+
+        By default, the FPGA will not be reconfigured it already has a
+        bitstream with the same CRC signature. That behavior can be changed by
+        specifying the 'force' argument:
+
+            force = True: FPGA will always be configured
+            force = False: FPGA will be configured if it is not configured or
+                    if bitstream CRC differ
+            force = None: FPGA will be configured only if it is not configured
         '''
-        Configures the FPGA with the specified buffer.
+        if hasattr(self, 'close'):
+            self.close()
 
-        The buffer is an ordinary string object or similar, and
-        contains an already loaded .BIT or .BIN file.
-        '''
-        b64_string = base64.b64encode(buf)
-        self._set_fpga_bitstream_base64(b64_string)
+        # If the bitstream is not explicitely provided, ask the handler to
+        # provide it. The str() of the returned object must yield the valid
+        # bitstream buffer in a string.
+        if buf is None:
+            buf = str(self.get_fpga_bitstream(tag))
+        else:
+            buf = str(buf)
 
-    def _eeprom_write_ipmi(self, part_number, serial_number, product_version):
-        '''Write IPMI-formatted EEPROM for IceBoards.
+        crc32 = zlib.crc32(buf) & 0xFFFFFFFF  # compute CRC32 of the data
 
-        These fields are read back and parsed by software, so you have
-        to get them right or things will misbehave. This method currently
-        expects the following formatting:
+        if not self.is_fpga_programmed() or force \
+           or (force is not None and (self.get_fpga_bitstream_crc() != crc32)):
+            self.logger.info('%r: Configuring FPGA' % self)
+            b64_string = base64.b64encode(str(buf))
+            self._set_fpga_bitstream_base64(b64_string)
+            self.set_fpga_bitstream_crc(crc32)
+            self.logger.info('%r: Done configuring FPGA' % self)
+        else:
+            self.logger.info(
+                '%r: FPGA is already configured. Skipping configuration' % self
+                )
 
-        >>> m._eeprom_write_ipmi(
-        ...     part_number="MGK7MB",
-        ...     serial_number="004",
-        ...     product_version="2")
+    # *** JFC: Changed to have the default behavior to only return the
+    #     mezzanines that were detected.
+    # *** JFC: We could put the update part in a separate function, maybe
+    #     outside IceBoard
+    # *** JFC: Maybe we should add a check=True option to raise an error if
+    #     the hardware map does not match reality
+    def detect_mezzanines(self, update=False):
+        '''Detect mezzanines attached to the Iceboard, and instantiate them if
+        update=True.
 
-        DON'T fill incorrect values unless they're visibly incorrect,
-        since this data tends to be useful when debugging physical
-        problems (e.g. tracing board history). Incorrect data that
-        pretends to be valid can make this kind of debugging very painful.
-        '''
+        This method uses IPMI data on the mezzanine's EEPROMs to guide
+        itself.
 
-        fru = ipmi_fru.FRU(
-            board=ipmi_fru.Board(
-                mfg_date=datetime.datetime.now(),
-                manufacturer="Winterland",
-                product_name="IceBoard",
-                part_number=part_number,
-                serial_number=serial_number,
-                fru_file="",
-            ),
-            product=ipmi_fru.Product(
-                manufacturer="Winterland",
-                product_name="IceBoard",
-                part_number=part_number,
-                product_version=product_version,
-                serial_number=serial_number,
-                asset_tag="",
-                fru_file="",
-            ),
-            # multi=Multi(...), when it's supported by this code
-        )
-        b64_string = base64.b64encode(fru.encode())
-        return self._motherboard_eeprom_write_base64(b64_string)
-
-    def _backplane_eeprom_write_ipmi(self,
-                                     part_number,
-                                     serial_number,
-                                     product_version):
-        '''Write IPMI-formatted EEPROM for IceCrates.
-
-        These fields are read back and parsed by software, so you have
-        to get them right or things will misbehave. This method currently
-        expects the following formatting:
-
-        >>> m._backplane_eeprom_write_ipmi(
-        ...     part_number="MGK7BP",
-        ...     serial_number="001",
-        ...     product_version="00")
-
-        DON'T fill incorrect values unless they're visibly incorrect,
-        since this data tends to be useful when debugging physical
-        problems (e.g. tracing board history). Incorrect data that
-        pretends to be valid can make this kind of debugging very painful.
-
-        This method is attached to an IceBoard instead of an IceCrate since
-        you can't properly address an IceCrate unless its EEPROM has already
-        been programmed. Chickens and eggs.
-        '''
-
-        fru = ipmi_fru.FRU(
-            board=ipmi_fru.Board(
-                mfg_date=datetime.datetime.now(),
-                manufacturer="Winterland",
-                product_name="IceCrate",
-                part_number=part_number,
-                serial_number=serial_number,
-                fru_file="",
-            ),
-            product=ipmi_fru.Product(
-                manufacturer="Winterland",
-                product_name="IceCrate",
-                part_number=part_number,
-                product_version=product_version,
-                serial_number=serial_number,
-                asset_tag="",
-                fru_file="",
-            ),
-            # multi=Multi(...), when it's supported by this code
-        )
-        b64_string = base64.b64encode(fru.encode())
-        return self._backplane_eeprom_write_base64(b64_string)
-
-    @property
-    def tuber_uri(self):
-        '''Smarter, IceBoard-aware tuber_uri.
-
-        The version of 'tuber_uri' in tuber.py doesn't know about calculating
-        hostnames from serials, for instance.
+        You do NOT need to use this method if the mezzanines present in the
+        system are already explicitely specified in the YAML hardware maps.
         '''
 
-        if self.hostname:
-            # We have a hostname; just use it.
-            return 'http://{}/tuber'.format(self.hostname)
+        mezz_class = {}
+        for m in range(1, self.NUM_MEZZANINES + 1):
 
-        if self.serial:
-            # We have a serial number; compute the hostname.
-            return 'http://iceboard{}.local/tuber'.format(self.serial)
+            # MezzClass = MissingMezzanine # Used by Graeme
+            part_number = None
+            serial = None
+            mezz_class[m] = None
+            # If a mezzanine is present, ask it (from EEPROM) what kind
+            # of mezzanine it is. Try to instantiate a mezz-specific
+            # class.
+            if self.is_mezzanine_present(m):
+                ipmi = self._get_mezzanine_ipmi(m)
+                part_number = ipmi.product.part_number
+                serial = ipmi.product.serial_number
+                self.logger.info(
+                    '%r: detect_mezzanines(): Detected Mezzanine '
+                    'Model: %s Serial %s in Mezzanine %i'
+                    % (self, part_number, serial, m))
+                for sc in class_mapper(fmc_mezzanine.FMCMezzanine).self_and_descendants:
+                    if sc.polymorphic_identity == part_number:
+                        mezz_class[m] = sc.class_
 
-        if self.slot and self.crate:
-            # We're in a specified slot in a crate. For now, that means we
-            # need IceCrate.resolve() to be called. When I2C contention on the
-            # backplane isn't an issue, this is also enough to compute the
-            # hostname (i.e. slot3.crate001.local).
-            raise NameError("Slot and crate supplied, but you haven't called "
-                            "'resolve' on the crate yet. Until you do, I "
-                            "don't know how to talk to boards.")
+            if not mezz_class[m]:
+                self.logger.warning(
+                    "IceBoard SN%r detect_mezzanines(): There is no known "
+                    "FMC Mezzanine object with polymorphic map name '%r' "
+                    "for Mezzanine %r" % (self.serial_number, part_number, m))
 
-        raise NameError("Couldn't figure out a Tuber URI for this object! "
-                        "I need serial or crate information.")
+            if update:
+                if not self.hwm:
+                    raise SystemError(
+                        '%r: detect_mezzanines(): Attempt to add new '
+                        'mezzanine objects while the IceBoard is not yet '
+                        'added to the  hardware map. ' % self)
+
+                if m in self.mezzanine:
+                    del(self.mezzanine[m])
+
+                if mezz_class[m]:
+                    self.logger.info(
+                        '%r: detect_mezzanines(): Creating Mezzanine '
+                        'Serial %s in Mezzanine %i' % (self, serial, m))
+                    new_mezz = mezz_class[m](
+                        mezzanine=m,
+                        serial=serial,
+                        type='' # 'type' cannnot be None so we give it an empty string
+                        )
+                    self.hwm.add(new_mezz)
+                    self.hwm.flush()
+                    self.mezzanine[m] = new_mezz
+                else:
+                    self.logger.warning(
+                        "IceBoard SN%r detect_mezzanines(): There is no known "
+                        "FMC Mezzanine object with polymorphic map name '%r' "
+                        "for Mezzanine %r"
+                        % (self.serial_number, part_number, m))
+                    # self.mezzanine[m] = None
+
+        if update:
+            self.update_handler()  # Let the handlers update for the new mezz
+        return mezz_class
+
+    # *** JFC: detect_icecrate would be a more consistent name
+    def detect_backplane(self, update=False):
+        '''Detect the Icecrate on which the Iceboard is attached, and
+        instantiate them if update=True. If an IceCrate with the same serial
+        number already exists, this IceBoard is added to it on the
+        corresponding slot number.
+
+        This method uses IPMI data on the backplane's EEPROMs to guide
+        itself.
+
+        You do NOT need to use this method if the backplane is
+        already explicitely specified in the YAML hardware maps.
+        '''
+
+        icecrate_class = {}
+        part_number = None
+        serial = None
+        if self.is_backplane_present():
+            ipmi = self.read_backplane_eeprom_ipmi()
+            part_number = ipmi.product.part_number
+            serial = ipmi.product.serial_number
+            slot_number = self.get_slot_number()
+            self.logger.info(
+                '%r: detect_backplane(): '
+                'Detected Backplane Model: %s Serial %s'
+                % (self, part_number, serial)
+                )
+
+            for sc in class_mapper(icecrate.IceCrate).self_and_descendants:
+                if sc.polymorphic_identity == part_number:
+                    icecrate_class = sc.class_
+
+        if not icecrate_class:
+            self.logger.warning(
+                "%r:  detect_backplane(): "
+                "There is no known backplane object with "
+                "polymorphic map name '%r'"
+                % (self.serial_number, part_number))
+
+        if icecrate_class and update:
+            if not self.hwm:
+                raise SystemError(
+                    '%r: detect_backplane(): Attempt to update new backplane '
+                    'object while the IceBoard is not yet added to the '
+                    'hardware map. ' % self)
+
+            # Assign slot number to IceBoard because the IceCrate will grab
+            # that info upon IceBoard assignment to a slot
+            self.slot_number = slot_number
+            self.hwm.flush()
+
+            if self.crate:  # if there is already an icecrate
+                if isinstance(self.crate, icecrate_class) \
+                        and self.crate.serial == serial:
+                    self.crate.slot[slot_number] = self
+                else:
+                    del(self.crate)
+
+            if not self.crate:
+                self.logger.info(
+                    '%r: detect_backplane(): Creating IceCrate %s'
+                    % (self, serial))
+                new_crate = icecrate_class(serial=serial)
+                self.hwm.add(new_crate)
+                self.crate = new_crate
+                self.hwm.flush()
+
+            # Assign this iceboard to the proper crate slot. Note that the
+            # 'slot_number' index is ignored after the flush. The
+            # IceBoard.slot_number is the real index.
+            self.crate.slot[slot_number] = self
+            self.hwm.flush()
+            # Let the handlers update for the new crate info
+            self.update_handler()
+        return icecrate_class
 
 
-@tuber.TuberCategory(
-    "Mezzanine",
-    lambda m: m.iceboard,
-    mezzanine=lambda m: m.mezzanine)
-class FMCMezzanine(hardware_map.HWMResource):
+
+
+class FMCMezzanine(hardware_map.HWMResource, handler.HandlerObject):
     """FMC Mezzanine schema object.
 
     This is an abstract class. To specialize it for a particular FMC
@@ -407,16 +635,44 @@ class FMCMezzanine(hardware_map.HWMResource):
     _cls = Column(String, nullable=False)
     _iceboard_pk = Column(Integer, ForeignKey('iceboards._pk'), index=True)
 
-    serial = Column(String)
+    # serial = Column(String) # Used by Graeme
+    serial = Column(Integer) # Used by JFC
     mezzanine = Column(Integer)
 
+    # # Since there are two "mezz" references per ICEBoard, the backreference
+    # # has to be smart enough to accept either in the join.
+    # iceboard = relationship(
+    #     "IceBoard",
+    #     uselist=False,
+    #     primaryjoin="or_(FMCMezzanine.pk==IceBoard.mezz1_pk,FMCMezzanine.pk==IceBoard.mezz2_pk)",
+    # )
+
+    type = Column(String, nullable=False) # should this be equivalent to _cls?
+    revision = Column(Integer)
+
+    class FMCMezzanineException(Exception):
+        pass
+
     def __repr__(self):
-        return "%r.%s(%r,%r)" % (
-            self.iceboard,
-            self.__class__.__name__,
-            self.mezzanine,
-            self.serial
-        )
+        return '%s(%s)' % (self.__class__.__name__, self.serial)
+
+    def __init__(self, **kwargs):
+        """ Create a new Mezzanine object from scratch and link it with its handler """
+        self.logger = logging.getLogger(__name__)
+        self.logger.info('Creating instance for Mezzanine %r' % (self))
+
+        super(FMCMezzanine, self).__init__(**kwargs) # allow the superclasses to initialize
+        # self.set_handler(app_handler_name=self._cls, object_id=self._pk)
+
+    @reconstructor # SQLAlchemy decorator indicating that this method is to be called when the object is recreated from the database
+    def _init_from_database(self, **kwargs):
+        """ Create an Mezzanine object from database and link it with its handler """
+        self.logger = logging.getLogger(__name__)
+        self.logger.info('Recreating instance from database for Mezzanine %r' % (self))
+        # self.set_handler(app_handler_name=self._cls, object_id=self._pk)
+
+    def init_handler(self):
+        self.set_handler(app_handler_name=self._cls, object_id=self._pk)
 
     def eeprom_write(self, buf):
         '''Writes a collection of bytes to the internal EEPROM.
@@ -436,11 +692,18 @@ class FMCMezzanine(hardware_map.HWMResource):
         You should refer to reference code (likely in the QC suite) rather
         than trying to guess what structures belong in here.
         '''
+
+        import base64
+
         b64_string = base64.b64encode(buf)
         self.iceboard._mezzanine_eeprom_write_base64(
             self.mezzanine,
             b64_string,
             0
         )
+
+    def is_present(self):
+        """ returns a boolean indicating whether the ADC board is present"""
+        return self.iceboard.is_mezzanine_present(self.mezzanine)
 
 # vim: sts=4 ts=4 sw=4 tw=78 smarttab expandtab
