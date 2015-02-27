@@ -191,7 +191,7 @@ if __name__ == '__main__':
     c.fpga.set_corr_reset(0)
 
     try:
-          delays = pickle.load(open('/home/kbandura/git/ch_acq/pychfpga/delay_table_updated19_17.pkl'))
+          delays = pickle.load(open('/home/kbandura/git/ch_acq/pychfpga/delays_feb17_2015.pkl'))
           for ice in c:                                             
               ice.fpga.set_adc_delays(delays[ice.serial_number])
               print "set delays on SN {0}, SLOT {1}".format(ice.serial_number, ice.slot_number + 1)

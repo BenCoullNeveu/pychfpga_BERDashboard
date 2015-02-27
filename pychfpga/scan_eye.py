@@ -332,11 +332,16 @@ def get_ber(array, link_list, period=0.1, tx_power = None):
         #    #    print 'locked',
         #    #    break
         #dest_gtx.RXPRBSCNTRESET=1
+        dest_gtx.RXDFELPMRESET=1
+        time.sleep(0.001)
+        dest_gtx.RXDFELPMRESET=0
+        time.sleep(0.001)
         dest_gtx.RXPRBSCNTRESET=1
         dest_gtx.RXPRBSSEL=4
         dest_gtx.RXDFELPMRESET=1
+        time.sleep(0.001)
         dest_gtx.RXDFELPMRESET=0
-        #time.sleep(period)
+        time.sleep(0.001)
         dest_gtx.RXPRBSCNTRESET=0
         time.sleep(period)
         cnt=dest_gtx.ERR_CTR

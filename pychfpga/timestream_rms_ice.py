@@ -9,10 +9,12 @@ History:
 """
 
 
-from pychfpga.core import chFPGA_receiver
+#from pychfpga.core import chFPGA_receiver
+from timestream_receiver import get_frame
 import numpy as np
 import time, sys, os, logging
 import argparse
+import pickle
 
 from pychfpga.icecore import hardware_map
 from pychfpga.icecore import tuber
@@ -64,14 +66,14 @@ ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 = (
     ([16]*8,                       [3]*8)  #CH15
     )
 
-def print_RMS(r):
+def print_RMS(port):
     channels = [0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]
     cont = True
     while cont:
         try:
-            a = r.read_frames()
+            a = get_frame(port)
             for chan in channels:
-                sys.stdout.write("ch%d %f\n" % (chan, np.log2(a[chan].std())))
+                sys.stdout.write("ch%d %f\n" % (chan, np.log2(a.values()[0][chan,:].std())))
             for i in xrange(2):
                 sys.stdout.write("\n")
             time.sleep(1.5)
@@ -110,7 +112,7 @@ if __name__ == '__main__':
     ADC_DELAY_TABLE = ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 # ADC_DELAYS_REV2_SN0001 # select the table corresponding to the FMC serial number
     IceArray.close_all_sessions() # close all previously opened sessions
     ca = IceArray(interface_ip_addr=args.if_ip)
-    ca.load_iceboards('pychfpga/iceboard_list.txt')
+    ca.load_iceboards('pychfpga/iceboard_list16x16.txt')
     ca.discover() # automatically update the hardware map database with discovered resources
     bitfile_filename = args.bitfile
     fpga_bitstream = ca.get_fpga_bitstream(args.bitfile, ChimeFpgaFirmware) # Get a new bitstream from the database (or create a new database entry if it does not exist yet)
@@ -123,24 +125,29 @@ if __name__ == '__main__':
         data_width=4, \
         group_frames=4, \
         enable_gpu_link = 1)
+    delays = pickle.load(open('/home/kbandura/git/ch_acq/pychfpga/delays_feb17_2015.pkl'))
     c.fpga.set_corr_reset(1)
     time.sleep(0.1)
     c.fpga.set_corr_reset(0)
     for i, c_element in enumerate(c):
+        c_element.fpga.set_adc_delays(delays[c_element.serial_number])
         chFPGA_config = c_element.fpga.get_config()
-        r = chFPGA_receiver.chFPGA_receiver(chFPGA_config, \
-                      ip_address=c_element.fpga_ip_addr, \
-                      port=c_element.fpga_port_number+1, \
-                      host_ip = args.if_ip)
+        #r = chFPGA_receiver.chFPGA_receiver(chFPGA_config, \
+        #              ip_address=c_element.fpga_ip_addr, \
+        #              port=c_element.fpga_port_number+1, \
+        #              host_ip = args.if_ip)
+        port = str(c_element.fpga_port_number+1)
         c_element.fpga.set_data_source('adc')
         c_element.fpga.set_adc_mode('data')
         c_element.fpga.set_FFT_bypass(True)
-        c_element.fpga.set_scaler_bypass(False)
+        c_element.fpga.set_scaler_bypass(True)
         c_element.fpga.set_gain((1,27))
-        c_element.fpga.start_data_capture(burst_period_in_seconds=1.5, number_of_bursts=0)
-        time.sleep(2)
-        print_RMS(r)
-        r.close()
+        c_element.fpga.set_offset_binary_encoding(0)
+        c_element.fpga.start_data_capture(burst_period_in_seconds=0.1, number_of_bursts=0)
+        c_element.fpga.sync()
+        time.sleep(4)
+        print_RMS(port)
+        #r.close()
 
 
 
