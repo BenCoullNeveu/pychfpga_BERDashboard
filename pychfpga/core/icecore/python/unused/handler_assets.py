@@ -148,6 +148,8 @@ class IceBoardHandler(handler.Handler, tuber.TuberObject):
         raise NameError("Couldn't figure out a Tuber URI for this object! "
                         "I need serial or crate information.")
 
+
+
     def __repr__(self):
         """ Get an unique string representation for this handler instance.
 
@@ -160,11 +162,15 @@ class IceBoardHandler(handler.Handler, tuber.TuberObject):
     def hwm_update(self, hwm_object):
         """ Is called when the Hardware Map object might have changed to
         reflect those changes in the handler.
+
+        Note: This might be called when accessing an attribute from
+        hwm_object. Make sure we access only existing attributes to avoid
+        intinite recursion loops.
         """
         super(IceBoardHandler, self).hwm_update(hwm_object)
         self.logger.info('%r: hwm_update()' % (self))
         self.hostname = hwm_object.hostname
-        self.serial_number = hwm_object.serial_number
+        self.serial_number = hwm_object.serial
         self.mezzanine = {
             key: hwm_mezz.handler for (key, hwm_mezz) in
             hwm_object.mezzanine.items()
@@ -188,6 +194,52 @@ class IceBoardHandler(handler.Handler, tuber.TuberObject):
         also access the relevant bitstream.
         """
         cls._bitstream_register[tag] = bitstream
+
+    def set_fpga_bitstream(self, buf=None, tag=None, force=False):
+        '''
+        Configures the FPGA with the specified bitstream.
+
+        The bitstream associated with the current handler with the specifiec
+        'tag' will be loaded. However, if a buffer 'buf' is explicitely
+        provided, that bitstream will be used instead.,
+
+        The 'buf' can be any an object where str(buf) returns the content of a
+        .BIT or .BIN file (which includes a buffer, a string, or other objects
+        defining __str__()).
+
+        By default, the FPGA will not be reconfigured it already has a
+        bitstream with the same CRC signature. That behavior can be changed by
+        specifying the 'force' argument:
+
+            force = True: FPGA will always be configured
+            force = False: FPGA will be configured if it is not configured or
+                    if bitstream CRC differ
+            force = None: FPGA will be configured only if it is not configured
+        '''
+        if hasattr(self, 'close'):
+            self.close()
+
+        # If the bitstream is not explicitely provided, ask the handler to
+        # provide it. The str() of the returned object must yield the valid
+        # bitstream buffer in a string.
+        if buf is None:
+            buf = str(self.get_fpga_bitstream(tag))
+        else:
+            buf = str(buf)
+
+        crc32 = zlib.crc32(buf) & 0xFFFFFFFF  # compute CRC32 of the data
+
+        if not self.is_fpga_programmed() or force \
+           or (force is not None and (self.get_fpga_bitstream_crc() != crc32)):
+            self.logger.info('%r: Configuring FPGA' % self)
+            b64_string = base64.b64encode(str(buf))
+            self._set_fpga_bitstream_base64(b64_string)
+            self.set_fpga_bitstream_crc(crc32)
+            self.logger.info('%r: Done configuring FPGA' % self)
+        else:
+            self.logger.info(
+                '%r: FPGA is already configured. Skipping configuration' % self
+                )
 
     def get_fpga_bitstream(self, tag=None):
         """ Return the bitstream associated with this handler for the supplied

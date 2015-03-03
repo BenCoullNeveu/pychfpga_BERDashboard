@@ -263,11 +263,11 @@ class DataSocket_base(object):
     def __init__(self, ip_address, port_number, netmask='255.255.0.0', host_ip=None):
 
         # Defines basic variables
+        self.logger = logging.getLogger(__name__)
         self.netmask = netmask # network mask used to find the host address that is on the same subnet as the target IP. This does not affect the network adapter settings.
         self.ip_address = ip_address # IP of the chFPGA board. Used to determine the host address
         self.port_number = port_number # Data port on the host (Control port +1), to receive frame data
         self.sock = None
-        self.logger = logging.getLogger(__name__)
         self.host_ip = host_ip
         if host_ip:
             self.host_ip = host_ip
@@ -283,10 +283,14 @@ class DataSocket_base(object):
         """
         Open data communication socket communications to chFPGA. This is a listen-only socket.
         """
+        if not hasattr(__main__, '__opened_sockets__'):
+            __main__.__opened_sockets__ = {}
 
-        if hasattr(__main__, '__opened_sockets__') and self.port_number in __main__.__opened_sockets__:
+        if self.port_number in __main__.__opened_sockets__:
             self.sock = __main__.__opened_sockets__[self.port_number]
+            self.logger.info('%r: reusing existing socket %i' % (self, self.port_number))
         else:
+            self.logger.info('%r: Creating new socket %s:%i' % (self, self.host_ip, self.port_number))
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
             self.sock.bind((self.host_ip, self.port_number))
 
@@ -303,8 +307,11 @@ class DataSocket_base(object):
 
     def close(self):
         """Closes the communication socket"""
-        self.sock.close()
-        self.logger.info('Closed UDP data socket')
+        if self.port_number not in __main__.__opened_sockets__:
+            self.sock.close()
+            self.logger.info('%r: Closed UDP data socket' % self)
+        else:
+            self.logger.info('%r: Closed UDP link, socket left open for future use' % self)
 
     def flush(self):
         """Flushes the socket receive buffer."""

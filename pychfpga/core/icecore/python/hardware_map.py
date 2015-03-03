@@ -502,6 +502,26 @@ def _get_traceback_strings():
     return tracebackString
 
 
+# class HWMResourceProxy(object):
+#     def __init__(self, obj):
+#         self._proxy_query = sqlalchemy.orm.object_session(obj).query(type(obj))
+#         self._proxy_key = sqlalchemy.orm.object_mapper(obj).primary_key_from_instance(obj)
+#         self.obj = obj
+
+#     @property
+#     def _proxy_object(self):
+#         return self._proxy_query.get(self._proxy_key)
+#         # return self.obj
+#     def __getattr__(self, name):
+#         import inspect
+#         logger = logging.getLogger(__name__)
+#         ss = '\n'.join("%25s:%3i in %15s(...) --> %s" % (ss[1][-25:],ss[2],ss[3],ss[4]) for ss in inspect.stack()[1:15])
+#         logger.info("%sProxy: calling __getattr__('%s'). \n %s" % (type(self.obj).__name__, name, ss))
+#         return getattr(self._proxy_object, name)
+
+#     def __dir__(self):
+#         return dir(self._proxy_object)
+
 class HWMResource(Base):
     '''Base class for Hardware Mapper resources to share.
 
@@ -515,6 +535,18 @@ class HWMResource(Base):
     def hwm(self):
         '''Retrieve the :class:`HardwareMap` that stores this object.'''
         return sqlalchemy.orm.object_session(self)
+
+    def self_getter(self):
+        """ Returns a function that provides a reference that can be safely
+        used anytime to reference this ORM object, even if the object moves in
+        memory.
+        """
+        keys = sqlalchemy.orm.object_mapper(self).primary_key_from_instance(self)
+        session = sqlalchemy.orm.object_session(self)
+        if all(keys) and session is not None:
+            query = session.query(type(self))
+            return lambda: query.get(keys)  # Closure: closes on query and keys
+        raise RuntimeError('Cannot get a dynamic reference to an object that is not added to the database')
 
     def __init__(self, *args, **kwargs):
 

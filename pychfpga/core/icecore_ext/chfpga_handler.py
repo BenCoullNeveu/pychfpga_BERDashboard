@@ -1,11 +1,12 @@
 """ Basic handler for chFPGA firmware.
 """
 
+import logging
 from datetime import datetime
 import socket
 import struct
 
-from ..icecore.handler_assets import IceBoardHandler
+from ..icecore.hwm_assets import IceBoardHandler
 from ..icecore import tuber  # Used to get TuberRemoteError
 from ..icecore.hw.ipmi_fru import FRU, Board, Product, Chassis, MultiDict, CHASSIS_SUBCHASSIS
 
@@ -116,8 +117,8 @@ class chFPGAHandler(IceBoardHandler):
         The created object does not have any fpga or hardware handlers yet.
         Those will be created when the Iceboard is opened.
         """
-
         super(chFPGAHandler, self).__init__(**kwargs)
+        self.logger = logging.getLogger(__name__)
         self._mezzanine_ipmi_cache = {1: None, 2: None}
         self._is_open = None
         self._is_core_open = None
@@ -331,16 +332,6 @@ class chFPGAHandler(IceBoardHandler):
     def is_open(self):
         return self._is_open
 
-
-    def get_unused_udp_port(self):
-        """ Returns a locally unused UDP port number."""
-        import socket
-        s = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        s.bind(('localhost', 0))
-        addr, port = s.getsockname()
-        s.close()
-        return port
-
     def get_fpga_firmware_cookie(self):
         """
         Reads the FPGA and returns the cookie that identifies the firmware.
@@ -504,9 +495,9 @@ class chFPGAHandler(IceBoardHandler):
         """ Returns the type of mezzanine located on slot 'mezzanine' (1 or 2).
         Returns None if no mezzanine is present.
 
-        This method overrides the ARM method of the same name so we can
-        correctly identify MGADC08 mezzanines which have a non-standard EEPROM
-        data structure.
+        This method overrides the ARM method of the same name so we can call
+        our own _get_mezzanine_ipmi() which can correctly read non-standard
+        MGADC08 EEPROM data structure.
         """
         ipmi = self._get_mezzanine_ipmi(mezzanine)
         if ipmi and hasattr(ipmi,'product') and hasattr(ipmi.product, 'part_number'):
@@ -516,67 +507,31 @@ class chFPGAHandler(IceBoardHandler):
 
     # Backplane management
 
-    def get_slot_number(self):
-        """ Reads the slot number from the IO Expander. This is not
-        necessarily the slot number stored in the hardware map. Slots numbers
-        range from 1 to 16. A slot number of 0 or None indicates that the
-        board is not connected to a backplane.
+    # # Now supported by the ARM
+    # def get_slot_number(self):
+    #     """ Reads the slot number from the IO Expander. This is not
+    #     necessarily the slot number stored in the hardware map. Slots numbers
+    #     range from 1 to 16. A slot number of 0 or None indicates that the
+    #     board is not connected to a backplane.
 
-        NOTE: It would be nice if the ARM could provide this function.
-        """
-        if self.is_backplane_present():
-            return self.hw.get_slot_number()
-        else:
-            return None
+    #     NOTE: It would be nice if the ARM could provide this function.
+    #     """
+    #     if self.is_backplane_present():
+    #         return self.hw.get_slot_number()
+    #     else:
+    #         return None
 
-    def is_backplane_present(self):
-        """ Checks if the Iceoard is connected to a backplane by probing the
-        backplane's EEPROM.
-        """
-        return self.bp.is_backplane_present()
+    # # Now supported by the ARM
+    # def is_backplane_present(self):
+    #     """ Checks if the Iceoard is connected to a backplane by probing the
+    #     backplane's EEPROM.
+    #     """
+    #     return self.bp.is_backplane_present()
 
     def read_backplane_eeprom_ipmi(self):
         """ Return the IPMI data found on the backplane EEPROM.
         """
         return FRU.decode(self.bp.read_backplane_eeprom)
 
-    def write_backplane_eeprom_ipmi(self, part_number, serial_number, product_version):
-        '''Write IPMI-formatted data to the backplane EEPROM.
-
-        These fields are read back and parsed by software, so you have
-        to get them right or things will misbehave. This method currently
-        expects the following formatting:
-
-        >>> m._eeprom_write_ipmi(
-        ...     part_number="MGK7MB",
-        ...     serial_number="004",
-        ...     product_version="2")
-
-        DON'T fill incorrect values unless they're visibly incorrect,
-        since this data tends to be useful when debugging physical
-        problems (e.g. tracing board history). Incorrect data that
-        pretends to be valid can make this kind of debugging very painful.
-        '''
-
-        chassis_type = CHASSIS_SUBCHASSIS
-
-        fru = FRU(
-            chassis=Chassis(
-                type_code=chassis_type,
-                part_number=part_number,
-                serial_number=serial_number
-            ),
-
-            product=Product(
-                manufacturer="Winterland",
-                product_name="IceCrate",
-                part_number=part_number,
-                product_version=product_version,
-                serial_number=serial_number,
-                asset_tag="",
-                fru_file="",
-            )
-        )
-        return self.bp.write_backplane_eeprom(0, fru.encode())
 
 # vim: sts=4 ts=4 sw=4 tw=80 smarttab expandtab

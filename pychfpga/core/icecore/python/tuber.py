@@ -508,6 +508,9 @@ class TuberObject(object):
         round-trips to the board for metadata in the following code.
         '''
 
+        logger = logging.getLogger(__name__)
+        logger.info("%s: calling Tuber __getattr__('%s')" % (type(self).__name__, name))
+
         # Refuse to __getattr__ a couple of special names used elsewhere.
         # These are mostly hints for SQLAlchemy or IPython.
         if name in ('_sa_instance_state', '_tuber_meta',

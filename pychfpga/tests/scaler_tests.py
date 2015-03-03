@@ -8,9 +8,10 @@ import numpy as np
 # NOTE: PYTHONPATH must be set so 'pychfpga' can be found
 from pychfpga.core.icecore.tests import *
 
-from pychfpga.core.icecore import IceBoard, hardware_map
+from pychfpga.core.icecore import IceBoard, IceCrate, hardware_map
 from pychfpga.core.chFPGA_controller import chFPGA_controller
 from pychfpga.core.chFPGA_receiver import chFPGA_receiver
+from pychfpga.core.icecore.session import load_session as load_yaml_hardware_map
 
 class ScalerTests(TestGroup):
     '''Tests the chFPGA SCALER operation.
@@ -222,40 +223,59 @@ if __name__=='__main__':
 
     # Associate the bitstream with the target Handler
     fpga_bitstream = FpgaBitstream(args.bitfile)
-    chFPGA_controller.register_fpga_bitstream(fpga_bitstream)
+    # chFPGA_controller.register_fpga_bitstream(fpga_bitstream)
 
 
     # -------------------------------
     # Create IceBoard
     # -------------------------------
 
-    # Create the IceBoard instance
-    # ib = IceBoard(hostname=args.iceboards[0], handler_name=chFPGA_controller.get_handler_name())
-    ib = IceBoard(hostname=args.iceboards[0])
+    # # Create the IceBoard instance
+    # # ib = IceBoard(hostname=args.iceboards[0], handler_name=chFPGA_controller.get_handler_name())
+    # ib = IceBoard(hostname=args.iceboards[0])
+    # ib.handler.register_fpga_bitstream(fpga_bitstream)
 
-    # Add it to the hardware map
-    hwm = hardware_map.HardwareMap()
-    hwm.add(ib)
-    hwm.commit()
+    # # Add it to the hardware map
+    # hwm = hardware_map.HardwareMap()
+    # hwm.add(ib)
+    # hwm.commit()
+
+
+    yaml_hwm = """
+        !HardwareMap
+            - !IceCrate
+                serial: "003"
+                slots:
+                    3:  !IceBoard {{hostname: {0} }}
+                    2:  !IceBoard {{}}
+        """.format(args.iceboards[0])
+
+    hwm = load_yaml_hardware_map(yaml_hwm)
+    # hwm.expire_all() # force all objects to reload, forcing their handlers to update
+    ic = hwm.query(IceCrate).one()
+    ib = hwm.query(IceBoard).first()
+
+    ib.set_handler(chFPGA_controller, fpga_bitstream)
+
 
     # Configure the FPGA with the bitstream associated with the handler
     ib.set_fpga_bitstream()
-
-    test_filename = 'results/scaler_test'
-    # Get the backplane test engine and execute the tests
-    te = ScalerTests(context={
-        "Date": datetime.datetime.now(),
-        "Bitstream filename": args.bitfile,
-        "Bitstream CRC32": '0x%08X' % ib.get_fpga_bitstream_crc(),
-        "Master Iceboard hostname": args.iceboards[0],
-        "Iceboard handler name": type(ib.handler).__handler_name__,
-        })
-    try:
-        te.run(ib)
-    except Exception:
-        raise
-    finally:
-        te.write_xml(test_filename + '.xml')
-        # te.write_html(test_filename + '.html')
-        print '\n'.join(te.synopsis_as_strings())
+    ib.open()
+    # test_filename = 'results/scaler_test'
+    # # Get the backplane test engine and execute the tests
+    # te = ScalerTests(context={
+    #     "Date": datetime.datetime.now(),
+    #     "Bitstream filename": args.bitfile,
+    #     "Bitstream CRC32": '0x%08X' % ib.get_fpga_bitstream_crc(),
+    #     "Master Iceboard hostname": args.iceboards[0],
+    #     "Iceboard handler name": type(ib.handler).__handler_name__,
+    #     })
+    # try:
+    #     te.run(ib)
+    # except Exception:
+    #     raise
+    # finally:
+    #     te.write_xml(test_filename + '.xml')
+    #     # te.write_html(test_filename + '.html')
+    #     print '\n'.join(te.synopsis_as_strings())
 # vim: sts=4 ts=4 sw=4 tw=78 smarttab expandtab

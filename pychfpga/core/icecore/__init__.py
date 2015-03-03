@@ -67,14 +67,11 @@ from hwm_assets import (
     IceBoard,
     IceCrate,
     FMCMezzanine,
-)
-
-
-from handler_assets import (
     IceBoardHandler,
     FMCMezzanineHandler,
     IceCrateHandler
 )
+
 
 # from iceboard import (
 #     IceBoard,
