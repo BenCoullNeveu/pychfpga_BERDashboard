@@ -8,7 +8,7 @@ import numpy as np
 # NOTE: PYTHONPATH must be set so 'pychfpga' can be found
 from pychfpga.core.icecore.tests import *
 
-from pychfpga.core.icecore import IceBoard, IceCrate, hardware_map
+from pychfpga.core.icecore import IceBoard, IceBoardHandler, IceCrate, hardware_map
 from pychfpga.core.chFPGA_controller import chFPGA_controller
 from pychfpga.core.chFPGA_receiver import chFPGA_receiver
 from pychfpga.core.icecore.session import load_session as load_yaml_hardware_map
@@ -255,7 +255,7 @@ if __name__=='__main__':
     ic = hwm.query(IceCrate).one()
     ib = hwm.query(IceBoard).first()
 
-    ib.set_handler(chFPGA_controller, fpga_bitstream)
+    ib.set_handler(IceBoardHandler, fpga_bitstream)
 
 
     # Configure the FPGA with the bitstream associated with the handler

@@ -360,6 +360,7 @@ class IceBoard(hardware_map.HWMResource, handler.HandlerObject):
         if configure_fpga:
             self.set_fpga_bitstream(tag=tag, force=force)
 
+IceBoard.register()
 
 class IceBoardHandler(handler.Handler, tuber.TuberObject):
     """ Basic Python handler for the IceBoard.

@@ -77,6 +77,7 @@ import sqlalchemy
 import sqlalchemy.orm
 import sqlalchemy.ext.declarative
 import sqlalchemy.types
+from sqlalchemy.event import listen
 
 from . import tuber  # **JFC: I stick to relative imports to avoid user-config-dependent problems
 
@@ -551,7 +552,7 @@ class HWMResource(Base):
     def __init__(self, *args, **kwargs):
 
         # SQLAlchemy 's Base is not collaborative: it will break the MRO
-        # access chain, so some superclass objects might never be initialized.
+        # access chain, so some subclass objects might never be initialized.
         # We explicitely call Base's __init__() and the next item in the MRO
         # chain to solve this problem.
 
@@ -560,6 +561,44 @@ class HWMResource(Base):
         # consumed all the parameters, so we pass none to the next level.
         super(Base, self).__init__()
 
+    def hwm_update(self):
+        pass
+
+    @classmethod
+    def register(cls):
+        """Define the event listeners that let the system know that the handler
+        needs to be refreshed.
+
+        __declare_last__ is a special SQLAlchemy class method that is called
+        when the class definition is complete.
+        """
+
+        def _hwm_event(instance, event_name):
+            logger = logging.getLogger(__name__)
+            logger.debug("%s: The event '%s' has occured (handler=%s)" %
+                         (instance.__class__.__name__, event_name, bool(instance._handler)))
+            # instance.hwm_update()
+
+        for (prop_name, prop) in cls.__mapper__._props.items():
+            listen(prop, 'set', lambda target, value, oldvalue, initiator, prop_name_=prop_name:
+                   _hwm_event(target, 'set(%s=%s)' % (prop_name_, value)))
+            listen(prop, 'append', lambda target, value, initiator, prop_name_=prop_name:
+                   _hwm_event(target, 'append(%s=%s)' % (prop_name_, value)))
+            listen(prop, 'remove', lambda target, value, initiator, prop_name_=prop_name:
+                   _hwm_event(target, 'remove(%s=%s)' % (prop_name_, value)))
+
+        listen(cls, 'load', lambda target, context:
+               _hwm_event(target, 'load'))
+        listen(cls, 'expire', lambda target, attr:
+               _hwm_event(target, 'expire(%s)' % None))
+        # listen(cls, 'refresh', lambda target, context, attrs:
+        #        _hwm_event(target, 'refresh(%s)' % None))
+        # # useless: it is called before the object's attribute are populated
+        # listen(cls, 'init', lambda target, *args, **kwargs:
+        #     _hwm_init_event(target, event_name='init'))
+        # listen(cls, 'after_update', lambda mapper, connection, target:
+        #     _hwm_init_event(target, event_name='after_update'))
+        # add after_insert?
 
 
 # *** JFC: should be 'called register_hwm_object_method()'

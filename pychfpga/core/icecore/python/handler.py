@@ -149,7 +149,6 @@ class HandlerObject(object):
             # exceptions if the ORM attributes they refer to do not exist yet.
             object_id = self.handler_id
             handler_name = self.handler_name
-
         finally:  # make sure we set _handle_enable to its previous state
             self._handler_enable = old_handler_enable
 
@@ -208,7 +207,7 @@ class HandlerObject(object):
     def __getattr__(self, name):
         """ Return the value of an attribute if it exists in the handler """
         logger = logging.getLogger(__name__)
-        logger.info("%s: calling __getattr__('%s') with enable=%s" % (type(self).__name__, name, self._handler_enable))
+        # logger.info("%s: calling __getattr__('%s') with enable=%s" % (type(self).__name__, name, self._handler_enable))
 
         # __getattr__ will be called if *properties* fail with AttributeError.
         # We don't want to look up some of those in the handler.
@@ -240,7 +239,7 @@ class HandlerObject(object):
             finally:
                 h._parent_enable = old_parent_enable
         # Not found, pass request to next subclass
-        logger.info("%s: handler.%s not found. Calling super." % (type(self).__name__, name))
+        # logger.info("%s: handler.%s not found. Calling super." % (type(self).__name__, name))
         try:
             return super(HandlerObject, self).__getattr__(name)
         except AttributeError:
@@ -389,7 +388,7 @@ class Handler(object):
         import inspect
         logger = logging.getLogger(__name__)
         ss = '\n'.join("%25s:%3i in %15s(...) --> %s" % (ss[1][-25:],ss[2],ss[3],ss[4]) for ss in inspect.stack()[1:15])
-        logger.info("%s: calling __getattr__('%s'), stack=\n%s" % (type(self).__name__, name, ss))
+        # logger.info("%s: calling __getattr__('%s'), stack=\n%s" % (type(self).__name__, name, ss))
 
         if self._parent_getter and self._parent_enable:
             parent = self._parent_getter()
