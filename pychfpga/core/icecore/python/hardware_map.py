@@ -503,26 +503,6 @@ def _get_traceback_strings():
     return tracebackString
 
 
-# class HWMResourceProxy(object):
-#     def __init__(self, obj):
-#         self._proxy_query = sqlalchemy.orm.object_session(obj).query(type(obj))
-#         self._proxy_key = sqlalchemy.orm.object_mapper(obj).primary_key_from_instance(obj)
-#         self.obj = obj
-
-#     @property
-#     def _proxy_object(self):
-#         return self._proxy_query.get(self._proxy_key)
-#         # return self.obj
-#     def __getattr__(self, name):
-#         import inspect
-#         logger = logging.getLogger(__name__)
-#         ss = '\n'.join("%25s:%3i in %15s(...) --> %s" % (ss[1][-25:],ss[2],ss[3],ss[4]) for ss in inspect.stack()[1:15])
-#         logger.info("%sProxy: calling __getattr__('%s'). \n %s" % (type(self.obj).__name__, name, ss))
-#         return getattr(self._proxy_object, name)
-
-#     def __dir__(self):
-#         return dir(self._proxy_object)
-
 class HWMResource(Base):
     '''Base class for Hardware Mapper resources to share.
 
@@ -538,16 +518,18 @@ class HWMResource(Base):
         return sqlalchemy.orm.object_session(self)
 
     def self_getter(self):
-        """ Returns a function that provides a reference that can be safely
-        used anytime to reference this ORM object, even if the object moves in
-        memory.
+        """ Returns a getter function that returns a reference to the current ORM
+        object. This function can safely be called anytime from anywhere to
+        access this ORM object. The object will be loaded from the database if
+        it is not already in memory.
         """
         keys = sqlalchemy.orm.object_mapper(self).primary_key_from_instance(self)
         session = sqlalchemy.orm.object_session(self)
         if all(keys) and session is not None:
             query = session.query(type(self))
             return lambda: query.get(keys)  # Closure: closes on query and keys
-        raise RuntimeError('Cannot get a dynamic reference to an object that is not added to the database')
+        raise RuntimeError('Cannot get a dynamic reference to an object '
+                           ' that is not yet added to the database')
 
     def __init__(self, *args, **kwargs):
 
@@ -560,45 +542,6 @@ class HWMResource(Base):
         # Go to the next MRO object *after* Base. The Base Init will have
         # consumed all the parameters, so we pass none to the next level.
         super(Base, self).__init__()
-
-    def hwm_update(self):
-        pass
-
-    @classmethod
-    def register(cls):
-        """Define the event listeners that let the system know that the handler
-        needs to be refreshed.
-
-        __declare_last__ is a special SQLAlchemy class method that is called
-        when the class definition is complete.
-        """
-
-        def _hwm_event(instance, event_name):
-            logger = logging.getLogger(__name__)
-            logger.debug("%s: The event '%s' has occured (handler=%s)" %
-                         (instance.__class__.__name__, event_name, bool(instance._handler)))
-            # instance.hwm_update()
-
-        for (prop_name, prop) in cls.__mapper__._props.items():
-            listen(prop, 'set', lambda target, value, oldvalue, initiator, prop_name_=prop_name:
-                   _hwm_event(target, 'set(%s=%s)' % (prop_name_, value)))
-            listen(prop, 'append', lambda target, value, initiator, prop_name_=prop_name:
-                   _hwm_event(target, 'append(%s=%s)' % (prop_name_, value)))
-            listen(prop, 'remove', lambda target, value, initiator, prop_name_=prop_name:
-                   _hwm_event(target, 'remove(%s=%s)' % (prop_name_, value)))
-
-        listen(cls, 'load', lambda target, context:
-               _hwm_event(target, 'load'))
-        listen(cls, 'expire', lambda target, attr:
-               _hwm_event(target, 'expire(%s)' % None))
-        # listen(cls, 'refresh', lambda target, context, attrs:
-        #        _hwm_event(target, 'refresh(%s)' % None))
-        # # useless: it is called before the object's attribute are populated
-        # listen(cls, 'init', lambda target, *args, **kwargs:
-        #     _hwm_init_event(target, event_name='init'))
-        # listen(cls, 'after_update', lambda mapper, connection, target:
-        #     _hwm_init_event(target, event_name='after_update'))
-        # add after_insert?
 
 
 # *** JFC: should be 'called register_hwm_object_method()'
