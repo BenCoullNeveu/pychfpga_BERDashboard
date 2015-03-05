@@ -193,7 +193,8 @@ if __name__ == '__main__':
     try:
           delays = pickle.load(open('/home/kbandura/git/ch_acq/pychfpga/delays_feb17_2015.pkl'))
           for ice in c:                                             
-              ice.fpga.set_adc_delays(delays[ice.serial_number])
+              #oo = ice.fpga.compute_adc_delay_offsets()
+              ice.fpga.set_adc_delays( delays[ice.serial_number] )  #oo[0])
               print "set delays on SN {0}, SLOT {1}".format(ice.serial_number, ice.slot_number + 1)
     except:
           log.info("Error loading/setting delay tables.  Using default config for remainder of boards")
@@ -210,7 +211,7 @@ if __name__ == '__main__':
       test = test_adc_analog_histogram(cc.fpga, str(cc.fpga_port_number+1))
       test.execute(args.output_name)
       print cc.fpga.get_temperatures()
-      r.close()
+      #r.close()
       #[r.close() for r in rs]
-      cc.fpga.close()
+      #cc.fpga.close()
     close_all_sockets()

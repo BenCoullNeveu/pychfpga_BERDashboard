@@ -205,6 +205,7 @@ def scan_links(array, tx_power=7):
             g.CAPTURE_ENABLE = 1
             g.TXPRECURSOR = 0b00000 #DFE cannot compensate pre-cursor
             g.TXPOSTCURSOR = 0b00000
+            g.RXLPMEN = 0 #Go to DFE mode instead of LPM
             g.RXMONITORSEL = 1 # 1=AGC, 2=UL, 3=VP loop
             g.RX_DEBUG_CFG = 0b1011<<2
             #g.DMONITOR_CFG1 = 0
