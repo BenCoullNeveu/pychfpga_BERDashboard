@@ -77,7 +77,6 @@ import sqlalchemy
 import sqlalchemy.orm
 import sqlalchemy.ext.declarative
 import sqlalchemy.types
-from sqlalchemy.event import listen
 
 from . import tuber  # **JFC: I stick to relative imports to avoid user-config-dependent problems
 

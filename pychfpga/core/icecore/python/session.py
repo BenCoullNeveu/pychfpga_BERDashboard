@@ -340,6 +340,16 @@ def logging_constructor(loader, node):
     return n
 
 
+icecore_object_registry = {}  # class_name: (class, (group_attribute, member_attribute)
+
+def register_yaml_object(object_, object_name=None, transform=None):
+    if not object_name:
+        object_name = object_.__name__
+    if not transform:
+        transform = (None, None)
+    icecore_object_registry[object_name] = (object_, transform)
+
+
 class YAMLLoader(yaml.SafeLoader):
 
     def __init__(self, *args, **kwargs):
@@ -351,20 +361,27 @@ class YAMLLoader(yaml.SafeLoader):
         self.add_constructor(u'!HardwareMap', hwm_constructor)
         self.add_constructor(u'!HWMLookup', hwm_lookup_constructor)
 
-        # IceCore Objects
-        self.add_constructor(
-            '!IceCrate',
-            HWMConstructor(
-                lambda l: hwm_assets.IceCrate,
-                AttributeMappingTouchup('slots', 'slot')))
+        for (obj_name, (obj, (group_attr, member_attr))) in icecore_object_registry.items():
+            self.add_constructor(
+                '!' + obj_name,
+                HWMConstructor(
+                    lambda l, obj_=obj: obj_,
+                    AttributeMappingTouchup(group_attr, member_attr)))
 
-        self.add_constructor(
-            '!IceBoard',
-            HWMConstructor(
-                lambda l: hwm_assets.IceBoard,
-                AttributeMappingTouchup('mezzanines', 'mezzanine')))
+        # # IceCore Objects
+        # self.add_constructor(
+        #     '!IceCrate',
+        #     HWMConstructor(
+        #         lambda l: hwm_assets.IceCrate,
+        #         AttributeMappingTouchup('slots', 'slot')))
 
-        self.add_constructor('!FMCMezzanine', lambda l: hwm_assets.FMCMezzanine)
+        # self.add_constructor(
+        #     '!IceBoard',
+        #     HWMConstructor(
+        #         lambda l: hwm_assets.IceBoard,
+        #         AttributeMappingTouchup('mezzanines', 'mezzanine')))
+
+        # self.add_constructor('!FMCMezzanine', lambda l: hwm_assets.FMCMezzanine)
 
 
 def set_yaml_loader_class(cls):

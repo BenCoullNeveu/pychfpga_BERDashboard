@@ -66,7 +66,13 @@ from handler import (
 from hwm_assets import (
     IceBoard,
     IceCrate,
-    FMCMezzanine,
+    FMCMezzanine
+)
+
+from hwm_handler_assets import (
+    IceBoardORM,
+    IceCrateORM,
+    FMCMezzanineORM,
     IceBoardHandler,
     FMCMezzanineHandler,
     IceCrateHandler
