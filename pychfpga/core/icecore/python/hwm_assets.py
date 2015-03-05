@@ -223,15 +223,15 @@ class IceCrateHandler(handler.Handler):
     Basic Python handler for the IceCrate.
     """
     __handler_for__ = IceCrate
+    __handler_parent_attributes__ = {'slot': None, 'serial': None}
 
     @property
     def master_iceboard(self):
-        iceboards = self.get_parent().slot.items()
+        iceboards = self.slot.items()
         return (sorted(iceboards)[0][1] if iceboards else None)
 
     def __repr__(self):
-        parent = self.get_parent()
-        return '%s(SN%s)' % (self.__class__.__name__, parent.serial)
+        return '%s(SN%s)' % (self.__class__.__name__, self.serial)
 
 
 class IceBoard(hardware_map.HWMResource, handler.HandlerObject):
@@ -397,6 +397,13 @@ class IceBoardHandler(handler.Handler, tuber.TuberObject):
 
     # Make this class (and any subclass) register with IceBoard
     __handler_for__ = IceBoard
+    __handler_parent_attributes__ = {
+        'hostname': None,
+        'serial': None,
+        'slot': None,
+        'crate': lambda ib: ib.crate.handler,
+        'mezzanine': lambda ib: { key: hwm_mezz.handler for (key, hwm_mezz) in ib.mezzanine.items()}
+        }
 
     # Core FPGA firmware registers (delete when moved to the ARM)
     FPGA_CORE_FIRMWARE_COOKIE_ADDR        = 4 * 0
@@ -413,6 +420,7 @@ class IceBoardHandler(handler.Handler, tuber.TuberObject):
 
     tuber_objname = 'IceBoard'
 
+    # hostname = HWMAttribute
     @property
     def tuber_uri(self):
         '''Smarter, IceBoard-aware tuber_uri.
@@ -420,16 +428,15 @@ class IceBoardHandler(handler.Handler, tuber.TuberObject):
         The version of 'tuber_uri' in tuber.py doesn't know about calculating
         hostnames from serials, for instance.
         '''
-        parent = self.get_parent()
-        if parent.hostname:
+        if self.hostname:
             # We have a hostname; just use it.
-            return 'http://{}/tuber'.format(parent.hostname)
+            return 'http://{}/tuber'.format(self.hostname)
 
-        if parent.serial:
+        if self.serial:
             # We have a serial number; compute the hostname.
-            return 'http://iceboard{}.local/tuber'.format(parent.serial)
+            return 'http://iceboard{}.local/tuber'.format(self.serial)
 
-        if parent.slot and parent.crate:
+        if self.slot and self.crate:
             # We're in a specified slot in a crate. For now, that means we
             # need IceCrate.resolve() to be called. When I2C contention on the
             # backplane isn't an issue, this is also enough to compute the
@@ -444,25 +451,6 @@ class IceBoardHandler(handler.Handler, tuber.TuberObject):
     def __init__(self, **kwargs):
         self.logger = logging.getLogger(__name__)
         super(IceBoardHandler, self).__init__(**kwargs)
-        # self.hostname = self.parent.hostname
-
-    # def hwm_update(self, parent):
-    #     """ Is called when the Hardware Map object might have changed to
-    #     reflect those changes in the handler.
-
-    #     Note: This might be called when accessing an attribute from
-    #     parent. Make sure we access only existing attributes.
-    #     """
-    #     # parent = self.parent
-    #     super(IceBoardHandler, self).hwm_update(parent)
-    #     self.hostname = parent.hostname
-    #     self.serial = parent.serial
-    #     self.slot = parent.slot
-    #     self.crate = parent.crate.handler if parent.crate else None
-    #     self.mezzanine = {
-    #         key: hwm_mezz.handler for (key, hwm_mezz) in
-    #         parent.mezzanine.items()
-    #         }
 
     def __repr__(self):
         """ Provides a concise string representation of this Iceboard that is
@@ -470,16 +458,13 @@ class IceBoardHandler(handler.Handler, tuber.TuberObject):
         This string is typically used in syslog tags (32 characters max,
         alphanumeric characters only).
         """
-        # logger = logging.getLogger(__name__)
-        # print ("%s: calling __repr__, stack=\n%s" % (type(self).__name__,  '\n\n'.join("%25s:%3i in %15s(...) --> %s" % (ss[1][-25:],ss[2],ss[3],ss[4]) for ss in inspect.stack()[1:15])))
-        parent = self.get_parent()
 
-        if parent.crate and parent.slot:
-            return "%s(C%s.S%02i)" % (self.__class__.__name__,  parent.crate.serial, parent.slot)
-        if parent.serial:
-            return "%s(SN%s)" % (self.__class__.__name__,  parent.serial)
-        if parent.hostname:
-            return "%s(%s)" % (self.__class__.__name__,  parent.hostname)
+        if self.crate and self.slot:
+            return "%s(C%s.S%02i)" % (self.__class__.__name__,  self.crate.serial, self.slot)
+        if self.serial:
+            return "%s(SN%s)" % (self.__class__.__name__,  self.serial)
+        if self.hostname:
+            return "%s(%s)" % (self.__class__.__name__,  self.hostname)
         return "%s(?)" % (self.__class__.__name__)
 
     #----------------------------

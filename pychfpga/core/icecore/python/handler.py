@@ -2,8 +2,8 @@
 
 A Handler is a user-defined, persistent Python object that is dynamically
 linked to a volatile object in order to into extend its attributes and
-methods. They are typically used to provide stateful methods to SQLAlchemy ORM
-objects
+methods. They are typically used to provide stateful methods linked to
+SQLAlchemy ORM objects
 
 Handlers behave as normal Python objects.  All their instance attributes will
 persist until the object is no longer used, as opposed to ORM objects that
@@ -12,7 +12,7 @@ the background operation of the ORM engine. This, for instance, allows the
 handler to store hardware state information, opened sockets or other runtime-
 specific information that should not live in the database.
 
-Handlers instances are only created only once, and are reattached to the
+Handlers instances are only created once, and are reattached to the
 parent object if the handler link has been erased by the parent.
 
 Multiple Handler classes can be registered to an ORM class, allowing the ORM
@@ -34,6 +34,7 @@ This module exposes the following classes:
 import logging
 import collections
 import sys
+import inspect
 
 # from sqlalchemy.event import listen
 
@@ -41,12 +42,8 @@ import sys
 class HandlerObject(object):
 
     """Automatically create and persistently associate a python class (a
-    handler) to a 'volatile' parent object and forwards attribute accesses to it.
-
-    HandlerObject is useful to add memory-persistent attributes and methods to
-    SQLAlchemy's ORM objects which otherwise regularly clear all their non-
-    database attributes as those objects come in and out of existence at
-    various memory locations as part of normal SQLAlchemy operations.
+    handler) to a 'volatile' parent object and forwards attribute accesses to
+    it.
 
     When a handler needs to be accessed on a parent object instance,
     HandlerObject looks for an already existing one in its handler instance
@@ -59,29 +56,34 @@ class HandlerObject(object):
     found, a new handler instance is created and registered. Otherwise, an
     error is raised.
 
-    The user shall define a handler by defining a class that inherits from the
-    Handler class. This will cause the class to be automatically registered
-    with the parent object class.
+    The user defines a handler by subclassing the Handler class. The Handler
+    class (or to be precise, its meta-class)  will automatically register the
+    handler class to the specified parent object class.
+
+    The 'handler' property always refers to the handler instance if it exist
+    or can be created.
 
     HandlerObject defines __getattr__ and __dir__ to give the parent object
-    access to all of the handler's attributes. Setting an attribute sets it in
-    the parent object.
+    access to all of the handler's attributes. Setting an attribute always
+    sets it in the parent object, so use obj.handler.x=value instead of
+    obj.x=value to set the attribute x in the handler.
 
     To have a handler, the parent object only need to inherit from this class
     and optionally define 'handler_id' and 'handler_name' to uniquely identify
     the parent instance and which of the registered handler is to be used with
     this parent instance.
 
-    The default 'handler_id' assumes the parent is a SQLAlchemy ORM object and
-    will use its primary keys as a unique instance id.
+    If not specified, the default 'handler_id' assumes the parent is a
+    SQLAlchemy ORM object and will use its primary keys as a unique instance
+    id.
 
-    The default 'handler_name' refers to the last Handler to be defined for
-    this particular parent class.
+    'handler_name' defaults to None, meaning that no handler will be created.
     """
 
     # Default fallback values to prevents recursive __getattr__ calls
     _handler = None
     _handler_enable = True
+    _cache_callables = True  # True if we want to cache callable objects
 
     @classmethod
     def register_handler(cls, class_, class_name):
@@ -132,7 +134,7 @@ class HandlerObject(object):
         if not self._handler_enable:
             return None
 
-        # self._check_for_local_attribute_corruption()  # Temporary. See method.
+        self._check_for_local_attribute_corruption()  # Temporary. See method.
 
         if self._handler:  # Promptly return cached value if available
             return self._handler
@@ -149,7 +151,7 @@ class HandlerObject(object):
             # exceptions if the ORM attributes they refer to do not exist yet.
             object_id = self.handler_id
             handler_name = self.handler_name
-        finally:  # make sure we set _handle_enable to its previous state
+        finally:  # make sure we set _handle_enable back to its previous state
             self._handler_enable = old_handler_enable
 
         if not object_id or not handler_name:  # No unique id, no handler
@@ -170,7 +172,7 @@ class HandlerObject(object):
                 (self, object_id, handler_name))
             handler = self._handler_instance_registry[handler_key]
             self._handler = handler
-            handler.hwm_update(self)
+            # handler.hwm_update(self)
             return handler
 
         # If not, let's create a handler by looking up the handler class
@@ -185,7 +187,7 @@ class HandlerObject(object):
             # register the handler for this instance
             type(self)._handler_instance_registry[handler_key] = handler
             self._handler = handler
-            handler.hwm_update(self)
+            # handler.hwm_update(self)
             return handler
 
         # Oops, we could not create a handler
@@ -206,20 +208,20 @@ class HandlerObject(object):
 
     def __getattr__(self, name):
         """ Return the value of an attribute if it exists in the handler """
-        logger = logging.getLogger(__name__)
-        # logger.info("%s: calling __getattr__('%s') with enable=%s" % (type(self).__name__, name, self._handler_enable))
 
         # __getattr__ will be called if *properties* fail with AttributeError.
         # We don't want to look up some of those in the handler.
         if name in ['handler', 'handler_id', 'handler_name']:
-            logger.warn("%s: '%s' property raised an AttributeError" %
-                        (type(self).__name__, name))
+            logger = logging.getLogger(__name__)
+            logger.debug("%s: '%s' property raised an AttributeError" %
+                         (type(self).__name__, name))
             raise AttributeError
 
+        # The following attributes are not handler-related
         if name in ['_sa_instance_state']:
             raise AttributeError
 
-        # self._check_for_local_attribute_corruption()  # Temporary. See method.
+        self._check_for_local_attribute_corruption()  # Temporary. See method.
 
         # Exceptions in the handler getting code means something is wrong.
         # Promote AttributeErrors to RuntimeErrors, to make sure these errors
@@ -230,21 +232,16 @@ class HandlerObject(object):
         except AttributeError:  # Re-raise, but preserve traceback info
             raise RuntimeError, sys.exc_info()[1], sys.exc_info()[2]
         if h:
-            try:
-                old_parent_enable = h._parent_enable
-                h._parent_enable = False
-                return getattr(h, name)
-            except AttributeError:
-                pass
-            finally:
-                h._parent_enable = old_parent_enable
+            result = getattr(h, name)
+            if callable(result) and self._cache_callables:
+                setattr(self, name, result)
+            return result
         # Not found, pass request to next subclass
-        # logger.info("%s: handler.%s not found. Calling super." % (type(self).__name__, name))
         try:
             return super(HandlerObject, self).__getattr__(name)
-        except AttributeError:
+        except AttributeError:  # if there is no _getattr_ or _getattr_ fails
             raise AttributeError("Attribute '%s' cannot be found in %s" %
-                             (name, object.__repr__(self)))
+                                 (name, object.__repr__(self)))
 
     def update_handler(self):
         """ Forces the handler to be reconnected to the HWM object, which also
@@ -295,11 +292,7 @@ class HandlerObject(object):
             return
         handler_enabled = self._handler_enable
         self._handler_enable = False
-        try:
-            primary_key_values = [getattr(self, key.name)
-                                  for key in self.__mapper__.primary_key]
-        except AttributeError:
-            primary_key_values = [None]
+        primary_key_values = self.__mapper__.primary_key_from_instance(self)
         if all(primary_key_values):  # if all primary keys exist
             if hasattr(self, '_primary_key_values') and \
                            self._primary_key_values != primary_key_values:
@@ -363,61 +356,71 @@ class Handler(object):
     Basic generic handler base class. All handlers should be derived from this
     class.
 
-    Be sure to call super(...)._method_name(...) if one of the methods in this
-    class or one of its subclass are overriden.
+    If the handler is provided with a 'parent_getter' function, all attributes
+    listed in the __handler_parent_attributes__ dictionary will be fetched
+    from the parent object returned by parent_getter() if they do not exist
+    locally.
+
+    If the function associated with each attribute in
+    __handler_parent_attributes__ is None, the attribute with the same name is
+    fetched from the parent. Otherwise, the function is called with the parent
+    object as argument and the resulting value is returned.
+
+    Setting an attribute always sets it locally in the handler. Local
+    attributes always hide the parent attributes with the same name. This
+    could be used to locally cache attributes values for faster access if we
+    know that the parent value will not change.
+
+    If no parent is specified, the handler will function normally with its
+    local attributes only.
     """
     __metaclass__ = HandlerMeta
 
     __handler_for__ = None  # Do not register this handler
     __handler_name__ = None
+    __handler_parent_attributes__ = []
 
     @classmethod
     def get_handler_name(cls):
         return cls.__handler_name__
 
     def __init__(self, parent_getter=None, **kwargs):
+        """ Create the handler.
+
+        If no parent is specified, the attributes listed in the
+        __handler_parent_attributes__ are all created locally and initialized
+        to None. The superclass can provide different default values if
+        needed.
+
+        The keyword paramaters are used to set the Handler attributes with the
+        same name.
+        """
+        self.logger = logging.getLogger(__name__)
         self._parent_getter = parent_getter
-        self._parent_enable = bool(parent_getter)
+        if not parent_getter:
+            for name in self.__handler_parent_attributes__.keys():
+                setattr(self, name, None)
         for (name, value) in kwargs.items():
             setattr(self, name, value)
 
-    def get_parent(self):
-        return self._parent_getter() if self._parent_getter else self
-
     def __getattr__(self, name):
-        import inspect
-        logger = logging.getLogger(__name__)
-        ss = '\n'.join("%25s:%3i in %15s(...) --> %s" % (ss[1][-25:],ss[2],ss[3],ss[4]) for ss in inspect.stack()[1:15])
-        # logger.info("%s: calling __getattr__('%s'), stack=\n%s" % (type(self).__name__, name, ss))
-
-        if self._parent_getter and self._parent_enable:
-            parent = self._parent_getter()
-            try:
-                old_handler_enable = parent._handler_enable
-                parent._handler_enable = False
-                logger.info("%s: getting parent.%s" % (type(self).__name__, name))
-                return getattr(parent, name)
-            except AttributeError:
-                logger.info("%s: parent.%s raised an AttributeError, passing to super" % (type(self).__name__, name))
-            finally:
-                parent._handler_enable = old_handler_enable
-        try:
-            return super(Handler, self).__getattr__(name)
-        except AttributeError:
-            raise AttributeError("Attribute '%s' cannot be found in %s" %
-                                 (name, object.__repr__(self)))
-
-    def hwm_update(self, parent):
-        """ Allow the handler to obtain data from the parent object to which
-        it is associated.
-
-        This is called when the handler is created or reconnected to the
-        parent, which also happens when the parent object's update_handler()
-        method is invoked in the parent object.
-
-        This method is meant to make a local *copy* of the attributes of the
-        parent that may be needed for the handler operation. It is very
-        important to never store references to any object that may move or
-        disappear (such as ORM other objects).
+        """ Forward non-existing attribute access to the parent object if
+        there is one.
         """
-        pass
+        if self._parent_getter and name in self.__handler_parent_attributes__:
+            self.logger.info("%s: getting parent.%s" % (type(self).__name__, name))
+            fn = self.__handler_parent_attributes__[name]
+            return (fn(self._parent_getter()) if fn else
+                    getattr(self._parent_getter(), name))
+        else:  # There's nothing to be obtained from the parent
+            try:  # so forward the request to the next in the MRO list
+                return super(Handler, self).__getattr__(name)
+            except AttributeError:  # no __getattr__, or __getattr_ failed
+                raise AttributeError("Attribute '%s' cannot be found in %s" %
+                                     (name, object.__repr__(self)))
+
+
+def get_traceback():
+    return '\n'.join(
+        "%25s:%3i in %15s(...) --> %s" % (ss[1][-25:], ss[2], ss[3], ss[4])
+        for ss in inspect.stack()[1:15])

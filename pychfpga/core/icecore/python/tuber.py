@@ -292,6 +292,7 @@ class TuberCategory(object):
             return Context(obj, io_loop, **kwargs)
 
         cls.tuber_context = tuber_context
+        original_getattr = cls.__getattr__
 
         def __getattr__(self, name):
             '''This is a fall-through replacement for __getattr__.
@@ -299,6 +300,10 @@ class TuberCategory(object):
             We assume we're capturing a function call that's missing
             arguments. We fill in these arguments and dispatch the call.
             '''
+            try:  # Process the original  __getattr__ of the decorated class
+                return original_getattr(self, name)
+            except AttributeError:  # not found, let's have a go ourselves
+                pass
 
             obj = decorator.getobject(self)
             m = getattr(obj, name)
