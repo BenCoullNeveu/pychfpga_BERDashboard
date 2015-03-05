@@ -1196,7 +1196,44 @@ class chFPGA_controller(FpgaCoreFirmware):
             return self.ANT.get_delays();
 
     def set_adc_delays(self, delay_table):
-            return self.ANT.set_delays(delay_table);
+            """
+            Sets adc delay table, check if get ramp errors, and retrys to set delays till no 
+            errors or tried 10 times.  On 10 tries will continue but just report error.
+            """
+            ntries=0
+            while ntries < 10:
+                delay_return = self.ANT.set_delays(delay_table)
+                err = self.check_ramp_errors()
+                if err==0:
+                    break
+            if ntries == 10:
+                self._logger.error("After setting delays still had ramp errors after 10 tries.")
+            return delay_return
+
+    def check_ramp_errors(self):
+        """
+        Uses internal ramp error checker, returns 0 if no errors,
+        otherwise returns total number of word errors.
+        """
+        old_adc_mode = self.get_adc_mode()
+        self.set_adc_mode('ramp')
+        self.sync()
+        # Clear the word and bit error counters
+        for ant in self.ANT.values():
+            ant.ADCDAQ.RAMP_ERR_CLEAR = 0
+            ant.ADCDAQ.RAMP_ERR_CLEAR = 1
+        t0 = time.time()
+        word_error = np.zeros(len(self.ANT))
+        while time.time() - t0 <= 0.1:
+                for (i, ant) in self.ANT.items():
+                    word_error[i] += ant.ADCDAQ.RAMP_ERR_CTR
+                    ant.ADCDAQ.RAMP_ERR_CLEAR = 0
+                    ant.ADCDAQ.RAMP_ERR_CLEAR = 1
+        word_errors = sum(word_error)
+        self.set_adc_mode(old_adc_mode)
+        self.sync()
+        return word_errors
+
 
     def read_eye_diagram(self, channels=[0], offset=5, noffsets=3):
         """
