@@ -130,7 +130,7 @@ if __name__ == '__main__':
     time.sleep(0.1)
     c.fpga.set_corr_reset(0)
     for i, c_element in enumerate(c):
-        c_element.fpga.set_adc_delays(delays[c_element.serial_number])
+        c_element.fpga.set_adc_delays_with_check(delays[c_element.serial_number])
         chFPGA_config = c_element.fpga.get_config()
         #r = chFPGA_receiver.chFPGA_receiver(chFPGA_config, \
         #              ip_address=c_element.fpga_ip_addr, \

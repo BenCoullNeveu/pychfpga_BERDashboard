@@ -194,7 +194,7 @@ if __name__ == '__main__':
           delays = pickle.load(open('/home/kbandura/git/ch_acq/pychfpga/delays_feb17_2015.pkl'))
           for ice in c:                                             
               #oo = ice.fpga.compute_adc_delay_offsets()
-              ice.fpga.set_adc_delays( delays[ice.serial_number] )  #oo[0])
+              ice.fpga.set_adc_delays_with_check( delays[ice.serial_number] )  #oo[0])
               print "set delays on SN {0}, SLOT {1}".format(ice.serial_number, ice.slot_number + 1)
     except:
           log.info("Error loading/setting delay tables.  Using default config for remainder of boards")
