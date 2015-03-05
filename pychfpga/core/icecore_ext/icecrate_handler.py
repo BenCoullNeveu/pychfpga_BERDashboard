@@ -3,7 +3,7 @@
 
 import logging
 
-from ..icecore.hwm_assets import IceCrateHandler
+from ..icecore.hwm_handler_assets import IceCrateHandler
 
 
 # This class is necessarily loaded *after** IceCrateHandler, as it was

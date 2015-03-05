@@ -6,7 +6,7 @@ from datetime import datetime
 import socket
 import struct
 
-from ..icecore.hwm_assets import IceBoardHandler
+from ..icecore.hwm_handler_assets import IceBoardHandler
 from ..icecore import tuber  # Used to get TuberRemoteError
 from ..icecore.hw.ipmi_fru import FRU, Board, Product, Chassis, MultiDict, CHASSIS_SUBCHASSIS
 
