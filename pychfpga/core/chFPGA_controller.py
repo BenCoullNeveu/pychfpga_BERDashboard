@@ -1205,15 +1205,16 @@ class chFPGA_controller(FpgaCoreFirmware):
             On 10 tries will continue but just report error.
             """
             ntries = 0
-            while ntries < 10:
+            while ntries < 15:
                 delay_return = self.ANT.set_delays(delay_table)
                 err = self.check_ramp_errors()
                 if err == 0:
                     break
                 else:
-                    self_logger.info( "{0} errors after setring delays, retrying...".format(err) )
-            if ntries == 10:
-                self._logger.error("After setting delays still had ramp errors after 10 tries.")
+                    self._logger.info( "{0} errors after setring delays, retrying...".format(err) )
+                ntries += 1
+            if ntries == 15:
+                self._logger.info("After setting delays still had ramp errors after 15 tries.")
             return delay_return
 
     def check_ramp_errors(self):
