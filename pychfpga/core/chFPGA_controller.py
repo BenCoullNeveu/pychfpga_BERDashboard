@@ -1193,19 +1193,25 @@ class chFPGA_controller(FpgaCoreFirmware):
         return self.GPIO.get_bitstream_date()
 
     def get_adc_delays(self):
-            return self.ANT.get_delays();
+            return self.ANT.get_delays()
 
     def set_adc_delays(self, delay_table):
+        return self.ANT.set_delays(delay_table)
+
+    def set_adc_delays_with_check(self, delay_table):
             """
-            Sets adc delay table, check if get ramp errors, and retrys to set delays till no 
-            errors or tried 10 times.  On 10 tries will continue but just report error.
+            Sets adc delay table, check if get ramp errors,
+            and retrys to set delays till no errors or tried 10 times.
+            On 10 tries will continue but just report error.
             """
-            ntries=0
+            ntries = 0
             while ntries < 10:
                 delay_return = self.ANT.set_delays(delay_table)
                 err = self.check_ramp_errors()
-                if err==0:
+                if err == 0:
                     break
+                else:
+                    self_logger.info( "{0} errors after setring delays, retrying...".format(err) )
             if ntries == 10:
                 self._logger.error("After setting delays still had ramp errors after 10 tries.")
             return delay_return
