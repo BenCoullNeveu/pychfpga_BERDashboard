@@ -8,7 +8,7 @@ import numpy as np
 # NOTE: PYTHONPATH must be set so 'pychfpga' can be found
 from pychfpga.core.icecore.tests import *
 
-from pychfpga.core.icecore import IceBoardORM, IceBoardHandler, IceCrateORM, hardware_map
+from pychfpga.core.icecore import HWMIceBoard, IceBoardHandler, HWMIceCrate, hardware_map
 from pychfpga.core.chFPGA_controller import chFPGA_controller
 from pychfpga.core.chFPGA_receiver import chFPGA_receiver
 from pychfpga.core.icecore.session import load_session as load_yaml_hardware_map
@@ -243,17 +243,37 @@ if __name__=='__main__':
 
     yaml_hwm = """
         !HardwareMap
-            - !IceCrateORM
+            - !HWMIceCrate
                 serial: "003"
                 slots:
-                    3:  !IceBoardORM {{hostname: {0} }}
-                    2:  !IceBoardORM {{}}
+                    3:  !HWMIceBoard {{hostname: {0} }}
+                    2:  !HWMIceBoard {{}}
         """.format(args.iceboards[0])
 
+    # yaml_hwm = """
+    #     !IceCrateHandler
+    #         serial: "003"
+    #         slot:
+    #             &s1 3:  !IceBoardHandler {{hostname: {0}, slot: *s1}}
+    #             &s2 2:  !IceBoardHandler {{slot: *s2}}
+    #     """.format(args.iceboards[0])
+
+    # yaml_hwm = """
+    #     &A x: [*A]
+    #     """
+
+
     hwm = load_yaml_hardware_map(yaml_hwm)
-    # hwm.expire_all() # force all objects to reload, forcing their handlers to update
-    ic = hwm.query(IceCrateORM).one()
-    ib = hwm.query(IceBoardORM).first()
+
+
+    # for ib in  hwm.query(HWMIceBoard):
+    #     if ib.hostname:
+    #         ib._initialize_backplane()
+
+    ic = hwm.query(HWMIceCrate).one()
+    ib = hwm.query(HWMIceBoard).first()
+
+    # ic = load_yaml_hardware_map(yaml_hwm)
 
     # ib.set_handler(IceBoardHandler, fpga_bitstream)
     ib.set_handler(chFPGA_controller, fpga_bitstream)

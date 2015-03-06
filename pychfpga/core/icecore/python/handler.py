@@ -396,6 +396,8 @@ class Handler(object):
         same name.
         """
         self.logger = logging.getLogger(__name__)
+        self.logger.debug("%s: Creating with args %s"
+                        % (self.__class__.__name__, kwargs))
         self._parent_getter = parent_getter
         if not parent_getter:
             for name in self.__handler_parent_attributes__.keys():

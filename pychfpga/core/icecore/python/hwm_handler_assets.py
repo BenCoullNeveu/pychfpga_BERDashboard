@@ -18,19 +18,19 @@ from .hwm_assets import _IceBoardCore, _IceBoardPythonSupport
 from .hwm_assets import _FMCMezzanineCore, _FMCMezzaninePythonSupport
 
 
-class IceCrateORM(_IceCrateCore, handler.HandlerObject):
+class HWMIceCrate(_IceCrateCore, handler.HandlerObject):
     __mapper_args__ = {
-        'polymorphic_identity': "IceCrateORM"
+        'polymorphic_identity': "HWMIceCrate"
     }
     handler_name = 'IceCrateHandler'
 
 
-@tuber.TuberCategory("Backplane", lambda b: b.master_iceboard)
+@tuber.TuberCategory("Backplane", lambda ic: ic.master_iceboard)
 class IceCrateHandler(handler.Handler):
     """
     Basic Python handler for the IceCrate.
     """
-    __handler_for__ = IceCrateORM
+    __handler_for__ = HWMIceCrate
     __handler_parent_attributes__ = {'slot': None, 'serial': None}
 
     @property
@@ -42,7 +42,7 @@ class IceCrateHandler(handler.Handler):
         return '%s(SN%s)' % (self.__class__.__name__, self.serial)
 
 
-class IceBoardORM(_IceBoardCore, handler.HandlerObject):
+class HWMIceBoard(_IceBoardCore, handler.HandlerObject):
     """ Provides access to the basic functions of an IceBoard.
 
     This object inherits from a generic Hardware Map Resource (HWMResource),
@@ -50,7 +50,7 @@ class IceBoardORM(_IceBoardCore, handler.HandlerObject):
     map database.
 
     This object also inherits from a Hardware Map Handler Manager
-    (HWMHandlerManager) which always keeps this object connected to the
+    (HandlerObject) which always keeps this object connected to the
     appropriate Handler object instance that persists in memory.
 
     All methods and attributes provided by the handler (in the handler itself
@@ -64,7 +64,7 @@ class IceBoardORM(_IceBoardCore, handler.HandlerObject):
     """
 
     __mapper_args__ = {
-        'polymorphic_identity': "IceBoardORM"
+        'polymorphic_identity': "HWMIceBoard"
     }
 
     handler_name = Column(
@@ -89,7 +89,7 @@ class IceBoardORM(_IceBoardCore, handler.HandlerObject):
             handler_name = handler_name.__handler_name__
 
         # Populate the object instrumented attributes
-        super(IceBoardORM, self).__init__(
+        super(HWMIceBoard, self).__init__(
             hostname=hostname,
             handler_name=handler_name,
             **kwargs)
@@ -156,7 +156,7 @@ class IceBoardORM(_IceBoardCore, handler.HandlerObject):
                     '%r: detect_mezzanines(): Detected Mezzanine '
                     'Model: %s Serial %s in Mezzanine %i'
                     % (self, part_number, serial, m))
-                for sc in class_mapper(FMCMezzanineORM).self_and_descendants:
+                for sc in class_mapper(HWMFMCMezzanine).self_and_descendants:
                     if sc.polymorphic_identity == part_number:
                         mezz_class[m] = sc.class_
 
@@ -228,7 +228,7 @@ class IceBoardORM(_IceBoardCore, handler.HandlerObject):
                 % (self, part_number, serial)
                 )
 
-            for sc in class_mapper(IceCrateORM).self_and_descendants:
+            for sc in class_mapper(HWMIceCrate).self_and_descendants:
                 if sc.polymorphic_identity == part_number:
                     icecrate_class = sc.class_
 
@@ -312,7 +312,7 @@ class IceBoardHandler(_IceBoardPythonSupport, handler.Handler,
     """
 
     # Make this class (and any subclass) register with IceBoard
-    __handler_for__ = IceBoardORM
+    __handler_for__ = HWMIceBoard
     __handler_parent_attributes__ = {
         'hostname': None,
         'serial': None,
@@ -607,11 +607,11 @@ class IceBoardHandler(_IceBoardPythonSupport, handler.Handler,
             print '%-30s: %s' % (method_name, method_properties.summary)
 
 
-class FMCMezzanineORM(_FMCMezzanineCore,  handler.HandlerObject):
+class HWMFMCMezzanine(_FMCMezzanineCore,  handler.HandlerObject):
     """FMC Mezzanine schema object.
     """
     __mapper_args__ = {
-        'polymorphic_identity': "FMCMezzanineORM"
+        'polymorphic_identity': "HWMFMCMezzanine"
     }
     handler_name = 'FMCMezzanineHandler'
 
@@ -622,7 +622,7 @@ class FMCMezzanineHandler(_FMCMezzaninePythonSupport, handler.Handler):
     """
     Provides the methods needed to operate a mezzanine.
     """
-    __handler_for__ = FMCMezzanineORM
+    __handler_for__ = HWMFMCMezzanine
 
     def hwm_update(self, parent):
         """ Import from the HWM object the main attributes needed to
@@ -646,6 +646,8 @@ class FMCMezzanineHandler(_FMCMezzaninePythonSupport, handler.Handler):
 # ---------------------------------------------
 # Register IceCore objects into the YAML parser
 
-session.register_yaml_object(IceCrateORM, transform=('slots', 'slot'))
-session.register_yaml_object(IceBoardORM, transform=('mezzanines', 'mezzanine'))
-session.register_yaml_object(FMCMezzanineORM)
+session.register_yaml_object(HWMIceCrate, transform=('slots', 'slot'))
+session.register_yaml_object(IceCrateHandler)
+session.register_yaml_object(HWMIceBoard, transform=('mezzanines', 'mezzanine'))
+session.register_yaml_object(IceBoardHandler)
+session.register_yaml_object(HWMFMCMezzanine)

@@ -70,9 +70,9 @@ from hwm_assets import (
 )
 
 from hwm_handler_assets import (
-    IceBoardORM,
-    IceCrateORM,
-    FMCMezzanineORM,
+    HWMIceBoard,
+    HWMIceCrate,
+    HWMFMCMezzanine,
     IceBoardHandler,
     FMCMezzanineHandler,
     IceCrateHandler
