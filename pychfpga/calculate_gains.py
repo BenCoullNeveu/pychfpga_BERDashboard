@@ -111,6 +111,26 @@ def calc_gains(g):
     glin[bad_values] = 2**14
     return glin, glog.data
 
+def flag_rfi(signal, fit, threshold):
+    '''
+    Identifies RFI in the signal spectrum by finding larger than expected jumps in the signal.
+    Returns array of flags for each bin
+    '''
+    rfmask = abs(signal) > abs(threshold*fit)
+    signal.mask = rfmask|signal.mask
+
+def poly_filter(signal, threshold, degree=10):
+    '''
+    Filters signal using a polynomial fit. Ignores RFI in calculating the polynomial.
+    '''
+    x = np.ma.array(np.arange(len(signal)), mask = signal.mask)
+    fit = np.polyfit(np.ma.compressed(x), np.ma.compressed(signal), degree)
+    #fit = np.polyfit(flagged, x, degree)
+    fitarr = np.poly1d(fit)(np.arange(len(signal)))
+    flag_rfi(signal, fitarr, threshold)
+    return fitarr
+
+>>>>>>> Stashed changes
 def fourier_filter(signal, num_components=15):
     '''
     Filters signal with top-hat in fourier space.  Padded with itself on either     side to improve edge behavior. 
@@ -125,7 +145,20 @@ def fourier_filter(signal, num_components=15):
     filtered = (filtered.real).astype(np.int).astype(np.complex)
     return filtered
 
+def iterative_poly_fit(signal, mask = None):
+    degree = 1
+    threshold = 1.2
+    masked = np.ma.array(np.log(signal), mask=mask)
+    while threshold > 1.01:
+        fitarr = poly_filter(masked, threshold, degree)
+        threshold = 1 + (threshold - 1)*0.8
+        if degree < 16:
+            degree += 2
+    filtered = signal/fitarr
+    return filtered
+        
 def calculate_gains(c, port):
+>>>>>>> Stashed changes
     c.set_data_source('adc')
     c.set_adc_mode('data')
     c.set_fft_bypass(0)
@@ -168,7 +201,8 @@ def calculate_gains(c, port):
     out1 = open('gains_noisy.pkl', 'wb')
     pickle.dump(gain,out1)
     for channel in channels:
-        glin_final = fourier_filter(gain[channel][1][0])
+        #glin_final = fourier_filter(gain[channel][1][0])
+        glin_final = iterative_poly_filter(gain[channel][1][0])
         gain[channel][1][0] = glin_final.tolist()
     c.set_gain(gain)
     output = open('/home/chime/ch_acq/gains_'+str(c.GPIO.FPGA_SERIAL_NUMBER)+'.pkl','wb')
