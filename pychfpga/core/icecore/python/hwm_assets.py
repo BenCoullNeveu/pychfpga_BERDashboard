@@ -22,8 +22,7 @@ from sqlalchemy.orm.collections import attribute_mapped_collection
 
 from . import hardware_map
 from . import tuber
-from . import handler
-
+from . import session
 from hw import ipmi_fru
 
 
@@ -510,6 +509,13 @@ class _FMCMezzaninePythonSupport(object):
                      mezzanine=lambda m: m.mezzanine)
 class FMCMezzanine(_FMCMezzanineCore, _FMCMezzaninePythonSupport):
     pass
+
+# ---------------------------------------------
+# Register IceCore objects into the YAML parser
+
+session.register_yaml_object(IceCrate, transform=('slots', 'slot'))
+session.register_yaml_object(IceBoard, transform=('mezzanines', 'mezzanine'))
+session.register_yaml_object(FMCMezzanine)
 
 
 # vim: sts=4 ts=4 sw=4 tw=78 smarttab expandtab

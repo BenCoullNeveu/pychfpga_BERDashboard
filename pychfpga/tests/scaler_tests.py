@@ -8,7 +8,7 @@ import numpy as np
 # NOTE: PYTHONPATH must be set so 'pychfpga' can be found
 from pychfpga.core.icecore.tests import *
 
-from pychfpga.core.icecore import HWMIceBoard, IceBoardHandler, HWMIceCrate, hardware_map
+from pychfpga.core.icecore import IceBoard, HWMIceBoard, IceBoardHandler, IceCrate, HWMIceCrate, hardware_map
 from pychfpga.core.chFPGA_controller import chFPGA_controller
 from pychfpga.core.chFPGA_receiver import chFPGA_receiver
 from pychfpga.core.icecore.session import load_session as load_yaml_hardware_map
@@ -243,11 +243,11 @@ if __name__=='__main__':
 
     yaml_hwm = """
         !HardwareMap
-            - !HWMIceCrate
+            - !IceCrate
                 serial: "003"
                 slots:
-                    3:  !HWMIceBoard {{hostname: {0} }}
-                    2:  !HWMIceBoard {{}}
+                    3:  !IceBoard {{hostname: {0} }}
+                    2:  !IceBoard {{}}
         """.format(args.iceboards[0])
 
     # yaml_hwm = """
@@ -270,8 +270,8 @@ if __name__=='__main__':
     #     if ib.hostname:
     #         ib._initialize_backplane()
 
-    ic = hwm.query(HWMIceCrate).one()
-    ib = hwm.query(HWMIceBoard).first()
+    ic = hwm.query(IceCrate).one()
+    ib = hwm.query(IceBoard).first()
 
     # ic = load_yaml_hardware_map(yaml_hwm)
 
