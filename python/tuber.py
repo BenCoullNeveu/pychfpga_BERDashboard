@@ -292,6 +292,7 @@ class TuberCategory(object):
             return Context(obj, io_loop, **kwargs)
 
         cls.tuber_context = tuber_context
+        original_getattr = getattr(cls, '__getattr__', None)
 
         def __getattr__(self, name):
             '''This is a fall-through replacement for __getattr__.
@@ -299,6 +300,11 @@ class TuberCategory(object):
             We assume we're capturing a function call that's missing
             arguments. We fill in these arguments and dispatch the call.
             '''
+            if original_getattr:
+                try:  # Process the original  __getattr__ of the decorated class
+                    return original_getattr(self, name)
+                except AttributeError:  # not found, let's have a go ourselves
+                    pass
 
             obj = decorator.getobject(self)
             m = getattr(obj, name)
@@ -507,6 +513,9 @@ class TuberObject(object):
         descriptors for things we've seen before, we don't need to avoid
         round-trips to the board for metadata in the following code.
         '''
+
+        logger = logging.getLogger(__name__)
+        logger.info("%s: calling Tuber __getattr__('%s')" % (type(self).__name__, name))
 
         # Refuse to __getattr__ a couple of special names used elsewhere.
         # These are mostly hints for SQLAlchemy or IPython.

@@ -12,49 +12,47 @@ import contextlib
 import logging
 import functools
 import time
+import datetime
+import base64
 
 from sqlalchemy import Column, Integer, String, ForeignKey
 from sqlalchemy import UniqueConstraint, CheckConstraint
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy.orm.collections import attribute_mapped_collection
 
-from . import hardware_map, tuber
-
+from . import hardware_map
+from . import tuber
+from . import session
 from hw import ipmi_fru
-import datetime
-import base64
 
 
-@tuber.TuberCategory(
-    "Backplane",
-    lambda b: b.slots.first())
-class IceCrate(hardware_map.HWMResource):
+class _IceCrateCore(hardware_map.HWMResource):
     __tablename__ = 'icecrates'
     __table_args__ = (
         UniqueConstraint('serial'),
     )
-    __mapper_args__ = {'polymorphic_identity': __package__}
+    __mapper_args__ = {'polymorphic_identity': '_IceCrateCore'}
 
     _pk = Column(Integer, primary_key=True)
     serial = Column(String,
-                    doc="The serial number written on the board (verbatim!)")
+                    doc="The serial number written on the board (e.g. '001')")
 
     slots = relationship(
-        "IceBoard",
+        "_IceBoardCore",
         lazy="dynamic",
         query_class=hardware_map.HWMQuery,
         doc='''A SQLAlchemy subquery corresponding to this IceCrate's
             IceBoards. If you want to index this array using slot index,
-            you should use 'iceboard' instead.''')
+            you should use 'slot' instead.''')
 
     slot = relationship(
-        "IceBoard",
-        backref=backref("crate"),
+        "_IceBoardCore",
+        back_populates="crate",  # 'crate' is defined explicitely in IceBoard
         collection_class=attribute_mapped_collection('slot'),
         doc="The IceCrate's IceBoards, indexed as you would expect.")
 
     def __repr__(self):
-        return "%s(%r)" % (self.__class__.__name__, self.serial)
+        return "%s(SN%s)" % (self.__class__.__name__, self.serial)
 
     def resolve(self, timeout=5, bail_on_unexpected=True):
         '''Automatically detect boards in a crate.
@@ -210,13 +208,32 @@ class IceCrate(hardware_map.HWMResource):
                                  missing)
 
 
-class IceBoard(hardware_map.HWMResource, tuber.TuberObject):
+@session.register_yaml_object
+@tuber.TuberCategory("Backplane", lambda b: b.slots.first())
+class IceCrate(_IceCrateCore):
+    yaml_transforms = {'move_index': ('slots', 'slot')}
+    __mapper_args__ = {
+        'polymorphic_identity': 'IceCrate',
+    }
+    pass
+
+
+class _IceBoardCore(hardware_map.HWMResource):
+    """ Provides access to the basic functions of an IceBoard.
+
+    This object inherits from a generic Hardware Map Resource (HWMResource),
+    which allows the iceboard objects to be added to the hardware
+    map database.
+
+
+    Project-specific classes are meant to be derived from this class.
+    """
     __tablename__ = 'iceboards'
     __table_args__ = (
         UniqueConstraint('serial'),
     )
     __mapper_args__ = {
-        'polymorphic_identity': "IceBoard",
+        'polymorphic_identity': "_IceBoardCore",
         'polymorphic_on': '_cls'
     }
 
@@ -229,6 +246,11 @@ class IceBoard(hardware_map.HWMResource, tuber.TuberObject):
     serial = Column(String,
                     doc="The serial number written on the board (verbatim!)")
     slot = Column(Integer, doc="The IceCrate slot occupied by this board")
+
+    crate = relationship(
+        "_IceCrateCore",
+        back_populates="slot",
+        doc="The IceCrate in which this Iceboard is connected.")
 
     mezzanines = relationship(
         "FMCMezzanine",
@@ -245,21 +267,33 @@ class IceBoard(hardware_map.HWMResource, tuber.TuberObject):
         doc='''The IceBoard's mezzanines, indexed as you would expect
             (1 for mezzanine A, 2 for mezzanine B).''')
 
+    subarray = Column(
+        Integer,
+        doc="Arbitrary string used to group and select subsets of Iceboard")
+
+
     def __repr__(self):
-        return "%r.%s(%s)" % (self.crate, self.__class__.__name__,
-                              'slot=%s' % self.slot if self.crate
-                              else 'serial=%s' % self.serial if self.serial
-                              else 'hostname=%s' % self.hostname)
+        """ Provides a concise string representation of this Iceboard that is
+        informative enough to be used for logs.
+        """
+        if self.crate and self.slot:
+            return "%s(C%s.S%02i)" % (self.__class__.__name__,
+                                      self.crate.serial, self.slot)
+        if self.serial:
+            return "%s(SN%s)" % (self.__class__.__name__,  self.serial)
+        if self.hostname:
+            return "%s(%s)" % (self.__class__.__name__,  self.hostname)
+        return "%s(?)" % (self.__class__.__name__)
 
-    def set_fpga_bitstream(self, buf):
-        '''
-        Configures the FPGA with the specified buffer.
 
-        The buffer is an ordinary string object or similar, and
-        contains an already loaded .BIT or .BIN file.
-        '''
-        b64_string = base64.b64encode(buf)
-        self._set_fpga_bitstream_base64(b64_string)
+class _IceBoardPythonSupport(object):
+    #-------------------------------------
+    # Python Motherboard EEPROM management
+    #-------------------------------------
+
+    # *** JFC:  Suggested method renaming
+    def _write_motherboard_spi_eeprom_ipmi(self, *args, **kwargs):
+        return self._eeprom_write_ipmi(*args, **kwargs)
 
     def _eeprom_write_ipmi(self, part_number, serial_number, product_version):
         '''Write IPMI-formatted EEPROM for IceBoards.
@@ -270,7 +304,7 @@ class IceBoard(hardware_map.HWMResource, tuber.TuberObject):
 
         >>> m._eeprom_write_ipmi(
         ...     part_number="MGK7MB",
-        ...     serial_number="004",
+        ...     serial_number="0004",
         ...     product_version="2")
 
         DON'T fill incorrect values unless they're visibly incorrect,
@@ -302,6 +336,15 @@ class IceBoard(hardware_map.HWMResource, tuber.TuberObject):
         b64_string = base64.b64encode(fru.encode())
         return self._motherboard_eeprom_write_base64(b64_string)
 
+    #-----------------------------------
+    # Python Backplane EEPROM management
+    #-----------------------------------
+
+    # *** JFC: Proposed renaming
+    def _write_backplane_eeprom_ipmi(self, *args, **kwargs):
+        return self._backplane_eeprom_write_ipmi(*args, **kwargs)
+
+
     def _backplane_eeprom_write_ipmi(self,
                                      part_number,
                                      serial_number,
@@ -315,7 +358,7 @@ class IceBoard(hardware_map.HWMResource, tuber.TuberObject):
         >>> m._backplane_eeprom_write_ipmi(
         ...     part_number="MGK7BP",
         ...     serial_number="001",
-        ...     product_version="00")
+        ...     product_version="0")
 
         DON'T fill incorrect values unless they're visibly incorrect,
         since this data tends to be useful when debugging physical
@@ -326,8 +369,14 @@ class IceBoard(hardware_map.HWMResource, tuber.TuberObject):
         you can't properly address an IceCrate unless its EEPROM has already
         been programmed. Chickens and eggs.
         '''
+        chassis_type = ipmi_fru.CHASSIS_SUBCHASSIS
 
         fru = ipmi_fru.FRU(
+            chassis=ipmi_fru.Chassis(
+                type_code=chassis_type,
+                part_number=part_number,
+                serial_number=serial_number
+            ),
             board=ipmi_fru.Board(
                 mfg_date=datetime.datetime.now(),
                 manufacturer="Winterland",
@@ -350,6 +399,14 @@ class IceBoard(hardware_map.HWMResource, tuber.TuberObject):
         b64_string = base64.b64encode(fru.encode())
         return self._backplane_eeprom_write_base64(b64_string)
 
+@session.register_yaml_object
+class IceBoard(_IceBoardCore, _IceBoardPythonSupport, tuber.TuberObject):
+
+    yaml_transforms = {'move_index': ('mezzanines', 'mezzanine')}
+
+    __mapper_args__ = {
+        'polymorphic_identity': "IceBoard",
+    }
     @property
     def tuber_uri(self):
         '''Smarter, IceBoard-aware tuber_uri.
@@ -378,12 +435,19 @@ class IceBoard(hardware_map.HWMResource, tuber.TuberObject):
         raise NameError("Couldn't figure out a Tuber URI for this object! "
                         "I need serial or crate information.")
 
+    def set_fpga_bitstream(self, buf):
+        '''
+        Configures the FPGA with the specified buffer.
 
-@tuber.TuberCategory(
-    "Mezzanine",
-    lambda m: m.iceboard,
-    mezzanine=lambda m: m.mezzanine)
-class FMCMezzanine(hardware_map.HWMResource):
+        The buffer is an ordinary string object or similar, and
+        contains an already loaded .BIT or .BIN file.
+        '''
+        b64_string = base64.b64encode(buf)
+        self._set_fpga_bitstream_base64(b64_string)
+
+
+
+class _FMCMezzanineCore(hardware_map.HWMResource):
     """FMC Mezzanine schema object.
 
     This is an abstract class. To specialize it for a particular FMC
@@ -411,13 +475,14 @@ class FMCMezzanine(hardware_map.HWMResource):
     mezzanine = Column(Integer)
 
     def __repr__(self):
+        # return '%s(%s)' % (self.__class__.__name__, self.serial)
         return "%r.%s(%r,%r)" % (
             self.iceboard,
             self.__class__.__name__,
             self.mezzanine,
-            self.serial
-        )
+            self.serial)
 
+class _FMCMezzaninePythonSupport(object):
     def eeprom_write(self, buf):
         '''Writes a collection of bytes to the internal EEPROM.
 
@@ -442,5 +507,15 @@ class FMCMezzanine(hardware_map.HWMResource):
             b64_string,
             0
         )
+
+
+@session.register_yaml_object
+@tuber.TuberCategory("Mezzanine", lambda m: m.iceboard,
+                     mezzanine=lambda m: m.mezzanine)
+class FMCMezzanine(_FMCMezzanineCore, _FMCMezzaninePythonSupport):
+    pass
+
+
+
 
 # vim: sts=4 ts=4 sw=4 tw=78 smarttab expandtab

@@ -516,10 +516,24 @@ class HWMResource(Base):
         '''Retrieve the :class:`HardwareMap` that stores this object.'''
         return sqlalchemy.orm.object_session(self)
 
+    def self_getter(self):
+        """ Returns a getter function that returns a reference to the current ORM
+        object. This function can safely be called anytime from anywhere to
+        access this ORM object. The object will be loaded from the database if
+        it is not already in memory.
+        """
+        keys = sqlalchemy.orm.object_mapper(self).primary_key_from_instance(self)
+        session = sqlalchemy.orm.object_session(self)
+        if all(keys) and session is not None:
+            query = session.query(type(self))
+            return lambda: query.get(keys)  # Closure: closes on query and keys
+        raise RuntimeError('Cannot get a dynamic reference to an object '
+                           ' that is not yet added to the database')
+
     def __init__(self, *args, **kwargs):
 
         # SQLAlchemy 's Base is not collaborative: it will break the MRO
-        # access chain, so some superclass objects might never be initialized.
+        # access chain, so some subclass objects might never be initialized.
         # We explicitely call Base's __init__() and the next item in the MRO
         # chain to solve this problem.
 
@@ -527,7 +541,6 @@ class HWMResource(Base):
         # Go to the next MRO object *after* Base. The Base Init will have
         # consumed all the parameters, so we pass none to the next level.
         super(Base, self).__init__()
-
 
 
 # *** JFC: should be 'called register_hwm_object_method()'
