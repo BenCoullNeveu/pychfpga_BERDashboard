@@ -5,9 +5,7 @@ import inspect
 import base64
 import zlib  # used to compute crc32
 
-from sqlalchemy import Column, Integer, String, ForeignKey
-from sqlalchemy import UniqueConstraint, CheckConstraint
-from sqlalchemy.orm import relationship, backref
+from sqlalchemy import Column, String
 from sqlalchemy.orm import class_mapper
 
 from . import tuber
@@ -18,13 +16,16 @@ from .hwm_assets import _IceBoardCore, _IceBoardPythonSupport
 from .hwm_assets import _FMCMezzanineCore, _FMCMezzaninePythonSupport
 
 
+@session.register_yaml_object
 class HWMIceCrate(_IceCrateCore, handler.HandlerObject):
+    yaml_transforms = {'move_index': ('slots', 'slot')}
+
     __mapper_args__ = {
         'polymorphic_identity': "HWMIceCrate"
     }
     handler_name = 'IceCrateHandler'
 
-
+@session.register_yaml_object
 @tuber.TuberCategory("Backplane", lambda ic: ic.master_iceboard)
 class IceCrateHandler(handler.Handler):
     """
@@ -42,6 +43,7 @@ class IceCrateHandler(handler.Handler):
         return '%s(SN%s)' % (self.__class__.__name__, self.serial)
 
 
+@session.register_yaml_object
 class HWMIceBoard(_IceBoardCore, handler.HandlerObject):
     """ Provides access to the basic functions of an IceBoard.
 
@@ -62,6 +64,8 @@ class HWMIceBoard(_IceBoardCore, handler.HandlerObject):
 
     Project-specific classes are meant to be derived from this class.
     """
+
+    yaml_transforms = {'move_index': ('mezzanines', 'mezzanine')}
 
     __mapper_args__ = {
         'polymorphic_identity': "HWMIceBoard"
@@ -277,6 +281,7 @@ class HWMIceBoard(_IceBoardCore, handler.HandlerObject):
         return icecrate_class
 
 
+@session.register_yaml_object
 class IceBoardHandler(_IceBoardPythonSupport, handler.Handler,
                       tuber.TuberObject):
     """ Basic Python handler for the IceBoard.
@@ -607,6 +612,7 @@ class IceBoardHandler(_IceBoardPythonSupport, handler.Handler,
             print '%-30s: %s' % (method_name, method_properties.summary)
 
 
+@session.register_yaml_object
 class HWMFMCMezzanine(_FMCMezzanineCore,  handler.HandlerObject):
     """FMC Mezzanine schema object.
     """
@@ -616,6 +622,7 @@ class HWMFMCMezzanine(_FMCMezzanineCore,  handler.HandlerObject):
     handler_name = 'FMCMezzanineHandler'
 
 
+@session.register_yaml_object
 @tuber.TuberCategory("Mezzanine", lambda m: m.iceboard,
                      mezzanine=lambda m: m.mezzanine)
 class FMCMezzanineHandler(_FMCMezzaninePythonSupport, handler.Handler):
@@ -643,11 +650,3 @@ class FMCMezzanineHandler(_FMCMezzaninePythonSupport, handler.Handler):
         """ returns a boolean indicating whether the ADC board is present"""
         return self.iceboard.is_mezzanine_present(self.mezzanine)
 
-# ---------------------------------------------
-# Register IceCore objects into the YAML parser
-
-session.register_yaml_object(HWMIceCrate, transform=('slots', 'slot'))
-session.register_yaml_object(IceCrateHandler)
-session.register_yaml_object(HWMIceBoard, transform=('mezzanines', 'mezzanine'))
-session.register_yaml_object(IceBoardHandler)
-session.register_yaml_object(HWMFMCMezzanine)

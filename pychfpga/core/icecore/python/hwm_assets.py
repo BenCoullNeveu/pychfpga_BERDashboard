@@ -208,8 +208,10 @@ class _IceCrateCore(hardware_map.HWMResource):
                                  missing)
 
 
+@session.register_yaml_object
 @tuber.TuberCategory("Backplane", lambda b: b.slots.first())
 class IceCrate(_IceCrateCore):
+    yaml_transforms = {'move_index': ('slots', 'slot')}
     __mapper_args__ = {
         'polymorphic_identity': 'IceCrate',
     }
@@ -397,8 +399,10 @@ class _IceBoardPythonSupport(object):
         b64_string = base64.b64encode(fru.encode())
         return self._backplane_eeprom_write_base64(b64_string)
 
-
+@session.register_yaml_object
 class IceBoard(_IceBoardCore, _IceBoardPythonSupport, tuber.TuberObject):
+
+    yaml_transforms = {'move_index': ('mezzanines', 'mezzanine')}
 
     __mapper_args__ = {
         'polymorphic_identity': "IceBoard",
@@ -505,17 +509,13 @@ class _FMCMezzaninePythonSupport(object):
         )
 
 
+@session.register_yaml_object
 @tuber.TuberCategory("Mezzanine", lambda m: m.iceboard,
                      mezzanine=lambda m: m.mezzanine)
 class FMCMezzanine(_FMCMezzanineCore, _FMCMezzaninePythonSupport):
     pass
 
-# ---------------------------------------------
-# Register IceCore objects into the YAML parser
 
-session.register_yaml_object(IceCrate, transform=('slots', 'slot'))
-session.register_yaml_object(IceBoard, transform=('mezzanines', 'mezzanine'))
-session.register_yaml_object(FMCMezzanine)
 
 
 # vim: sts=4 ts=4 sw=4 tw=78 smarttab expandtab
