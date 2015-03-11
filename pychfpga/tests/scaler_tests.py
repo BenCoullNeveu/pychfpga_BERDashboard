@@ -276,12 +276,12 @@ if __name__=='__main__':
     # ic = load_yaml_hardware_map(yaml_hwm)
 
     # ib.set_handler(IceBoardHandler, fpga_bitstream)
-    ib.set_handler(chFPGA_controller, fpga_bitstream)
+    # ib.set_handler(chFPGA_controller, fpga_bitstream)
 
 
     # Configure the FPGA with the bitstream associated with the handler
-    ib.set_fpga_bitstream()
-    ib.open()
+    # ib.set_fpga_bitstream()
+    # ib.open()
     # test_filename = 'results/scaler_test'
     # # Get the backplane test engine and execute the tests
     # te = ScalerTests(context={
