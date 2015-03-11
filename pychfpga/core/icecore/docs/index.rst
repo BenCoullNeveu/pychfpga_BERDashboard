@@ -67,6 +67,7 @@ How-To Guides
    :maxdepth: 1
 
    howto/building_a_flash_card
+   howto/nfs_root
 
 .. Firmware
 .. --------

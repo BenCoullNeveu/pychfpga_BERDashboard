@@ -20,15 +20,24 @@ Components
    Early bootloader (a minimal version of u-boot), required to initialize
    hardware before loading the second-stage bootloader.
 
+   * Git repository: https://bitbucket.org/winterlandcosmology/iceboard-uboot
+   * Documentation: :doc:`bootloader`.
+
 **Second-Stage Bootloader** (`u-boot.bin`)
    A more fully-featured bootloader, capable of loading and booting Linux (as
    well as network booting and other more complex functions.) The second-stage
    bootloader is distributed as `u-boot.bin`.
 
+   * Git repository: https://bitbucket.org/winterlandcosmology/iceboard-uboot
+   * Documentation: :doc:`bootloader`.
+
 **Linux Kernel** (`uImage`)
    The IceBoard runs TI's 2.6.37 branch of the Linux kernel. As of February
    2015, it looks like an upgrade to modern kernels (v3.20 or later) will be
    feasible.
+
+   * Git repository: https://bitbucket.org/winterlandcosmology/iceboard-linux
+   * Documentation: :doc:`kernel`.
 
 **Root Filesystem** (`rootfs.tar.bz2`)
    The root filesystem contains a stripped-down Linux distribution with a
@@ -36,11 +45,17 @@ Components
    card, the root filesystem occupies a separate EXT2 partition from the above
    components.
 
+   * Git repository: https://bitbucket.org/winterlandcosmology/iceboard-buildroot
+   * Documentation: :doc:`rootfs`.
+
 **Application Stack**
    The application stack consists of both IceBoard- and experiment-specific
    components, including hardware support libraries, and the board's web
    interface. These components are distributed as `.opk` files, and are
    installed into the flash card's EXT2 partition.
+
+   * Git repository: https://bitbucket.org/winterlandcosmology/icecore
+   * Documentation: :doc:`app_server`.
 
 **FPGA Bitstream**
    Although the FPGA bitstream is properly "gateware" or "RTL" (not
