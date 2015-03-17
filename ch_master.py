@@ -259,7 +259,7 @@ if __name__ == "__main__":
             enable_gpu_link = conf["fpga"]["enable_gpu_link"])
       #Temp solution to load adc_delay from table...
       try:
-          delays = pickle.load(open('pychfpga/delays_feb17_2015.pkl'))
+          delays = pickle.load(open('pychfpga/delays_mar14_2015_no_errors.pkl'))
           for ice in c:                                             
               ice.fpga.set_adc_delays_with_check(delays[ice.serial_number])
               print "set delays on SN {0}, SLOT {1}".format(ice.serial_number, ice.slot_number)

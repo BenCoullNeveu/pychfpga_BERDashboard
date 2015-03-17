@@ -89,6 +89,7 @@ def save_timestream_frames(port, channels=[0], frames=256, filename='data.npy'):
         raise
     print "lost {0} to get {1}".format(missed, frames)
     #np.array(data_list)
+    print filename
     np.save(filename,data_list)
 
     print 'Saved {0} frames'.format(number_of_frames)

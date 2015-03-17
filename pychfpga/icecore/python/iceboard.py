@@ -44,7 +44,7 @@ from fmc_mezzanine import FMCMezzanine
 from fpga_bitstream import FpgaBitstream
 from fpga_core import FpgaCoreFirmware
 from iceboard_hardware import IceBoardHardware
-import icebox # don't use from .. import ... because of circular import problems
+#import icebox # don't use from .. import ... because of circular import problems
 
 # import arm # object giving access to the ARM firmware
 # import hardware handlers
@@ -296,7 +296,7 @@ class IceBoard(HWMResource, AttributeUser):
         # Read basic backplane information (backplane S/N, slot number) so we
         # know where this board is in the array
         self.slot_number = self.hw.get_slot_number() # this method is provided by hw or arm
-        (self.backplane_serial, __) = icebox.IceBox.get_backplane_info(iceboard = self)
+        #(self.backplane_serial, __) = icebox.IceBox.get_backplane_info(iceboard = self)
 
         # Detect the mezzanines
         self.detect_mezz(force_type_string=forced_mezz_type)

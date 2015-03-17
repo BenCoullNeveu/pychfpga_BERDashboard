@@ -43,7 +43,7 @@ class test_adc_analog_histogram:
 
         
     def plot_histogram(self, filename):
-        data = np.load(filename + '.npy')
+        data = np.load(filename + 'raw_data.npy')
         datas = self.remap(data)
         pylab.clf()
         
@@ -57,7 +57,7 @@ class test_adc_analog_histogram:
 
 
     def spectrum(self, fname):
-        data = np.load(fname + '.npy')
+        data = np.load(fname + 'raw_data.npy')
         datas = self.remap(data)
         spectra = np.fft.fft(datas, axis=2)[:,:,:1024]
         spectrum = (np.abs(spectra)**2).mean(axis=0)
@@ -67,7 +67,7 @@ class test_adc_analog_histogram:
             pylab.title(fname + ' Spectrum for Channel '+str(i))
             pylab.ylim(20,80)
             pylab.grid()
-            pylab.savefig(fname + '_spectrum_chan' +str(i)+'.pdf')
+            pylab.savefig(fname + 'spectrum_chan' +str(i)+'.pdf')
             pylab.clf()
 
 
@@ -75,7 +75,8 @@ class test_adc_analog_histogram:
         try:
             self.configure_board()
             #self.fpga_recv.flush()
-            filename = fname + '.npy'
+            filename = fname + 'raw_data.npy'
+            print filename
             save_raw_frames.save_timestream_frames(self.port, channels = range(16), frames=256, filename = filename)
             self.fpga_ctrl.stop_data_capture()
             self.plot_histogram(fname)
@@ -155,7 +156,7 @@ if __name__ == '__main__':
       name = "ch%02d" % i
       tmp_delay = []
       if not name in conf["fpga"]["adc_delay"]:
-        log.critical("Could not find fpga.adc_delay.%s entry in configuration " \
+        logger.critical("Could not find fpga.adc_delay.%s entry in configuration " \
                    "file." % (name))
         exit()
       else:
@@ -164,7 +165,7 @@ if __name__ == '__main__':
         k = int(this_chan[j])
         tmp_delay.append(k)
       if len(tmp_delay) != 16:
-        log.critical("Entry fpga.adc_delay.%s needs 16 integer entries." % \
+        logger.critical("Entry fpga.adc_delay.%s needs 16 integer entries." % \
                    (name))
         exit()
       adc_delay.append((tmp_delay[:8],tmp_delay[8:]))
@@ -191,13 +192,13 @@ if __name__ == '__main__':
     c.fpga.set_corr_reset(0)
 
     try:
-          delays = pickle.load(open('/home/kbandura/git/ch_acq/pychfpga/delays_feb17_2015.pkl'))
+          delays = pickle.load(open('/home/kbandura/git/ch_acq/pychfpga/delays_mar14_2015_no_errors.pkl'))
           for ice in c:                                             
               #oo = ice.fpga.compute_adc_delay_offsets()
               ice.fpga.set_adc_delays_with_check( delays[ice.serial_number] )  #oo[0])
-              print "set delays on SN {0}, SLOT {1}".format(ice.serial_number, ice.slot_number + 1)
+              logger.info( "set delays on SN {0}, SLOT {1}".format(ice.serial_number, ice.slot_number + 1))
     except:
-          log.info("Error loading/setting delay tables.  Using default config for remainder of boards")
+          logger.info("Error loading/setting delay tables.  Using default config for remainder of boards")
 
     for cc in c:
       print cc.serial_number
