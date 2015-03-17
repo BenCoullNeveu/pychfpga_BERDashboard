@@ -261,7 +261,7 @@ if __name__ == "__main__":
       try:
           delays = pickle.load(open('pychfpga/delays_feb17_2015.pkl'))
           for ice in c:                                             
-              ice.fpga.set_adc_delays(delays[ice.serial_number])
+              ice.fpga.set_adc_delays_with_check(delays[ice.serial_number])
               print "set delays on SN {0}, SLOT {1}".format(ice.serial_number, ice.slot_number)
       except:
           log.info("Error loading/setting delay tables.  Using default from config file for all boards")
