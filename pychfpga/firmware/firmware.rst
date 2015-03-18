@@ -48,15 +48,15 @@ Make the file executable, and link it into PATH
 
 With Git-Annex:
 ---------------
-Now that you have the prerequisits, run::
+Now that you have the prerequisites, cd back to your ch_acq folder and run::
 
     $ git annex enableremote skydrive
 
 This will open a browser, enter chime.correlator@outlook.com as the user, and standard chime password (ask if you don't know),
-click yes, then copy the full link in the browser.
+click yes, then copy the URL in the browser.
 then run::
 
-    $ export OAUTH='fullLink'
+    $ export OAUTH='[URL]'
     $ git annex enableremote skydrive
 
 If successful should now be able to get firmware releases. for example:
@@ -98,7 +98,7 @@ Clone the image, safely remove::
     $ sudo dd if=iceboard_chime28.img of=/dev/sdb bs=10M
     $ sudo umount /dev/sdb1
     $ sudo umount /dev/sdb2
-    $ sudo eject eject /dev/sdb
+    $ sudo eject /dev/sdb
 (the eject command here may error, is important on some distros...)
 
 
