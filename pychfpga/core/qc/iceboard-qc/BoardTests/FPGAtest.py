@@ -175,7 +175,7 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     for line in output:
         file.write('\n   ' + line)
         print line
-    
+
     print "\nc.fpga.CORR.status():"
     file.write('\n\nCORR status output: ')
     try:
