@@ -7,4 +7,4 @@ user: 'Tristan'# Name of person running the QC.
 
 # Other info
 bitfile_commit: '4a5d6a7' # Please record the git commit (from chFPGA) from which the current the fpga_bitfile.bit was taken
-			  # Note that bitfile_alt is a new version, which is not yet supported by softwar; it is included in the repository for testing purposes.
+# Note that bitfile_alt is a new version, which is not yet supported by softwar; it is included in the repository for testing purposes.
