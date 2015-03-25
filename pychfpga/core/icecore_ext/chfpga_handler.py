@@ -6,7 +6,7 @@ from datetime import datetime
 import socket
 import struct
 
-from ..icecore.hwm_handler_assets import IceBoardHandler
+from ..icecore import IceBoardPlusHandler
 from ..icecore import tuber  # Used to get TuberRemoteError
 from ..icecore.hw.ipmi_fru import FRU, Board, Product, Chassis, MultiDict, CHASSIS_SUBCHASSIS
 
@@ -20,7 +20,7 @@ from .iceboard_hardware import I2CInterface
 from .backplane_hardware import BackplaneHardware
 # import icebox # don't use from .. import ... because of circular import problems
 
-class chFPGAHandler(IceBoardHandler):
+class chFPGAHandler(IceBoardPlusHandler):
     """ Provides basic access to CHIME-specific basic IceBoard firmware and
     hardware resources.
 
@@ -317,7 +317,7 @@ class chFPGAHandler(IceBoardHandler):
         # ----------------------------------
         # Read basic backplane information (backplane S/N, slot number) so we
         # know where this board is in the array
-        self.slot_number = self.get_slot_number()  # this method is provided by hw or arm
+        #self.slot_number = self.get_slot_number()  # this method is provided by hw or arm
         # (self.backplane_serial, __) = icebox.IceBox.get_backplane_info(iceboard = self)
 
         # Detect the mezzanines

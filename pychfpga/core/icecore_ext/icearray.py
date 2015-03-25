@@ -15,6 +15,7 @@ import __main__  # used to store host_ip_address
 import csv
 import re  # used by mdns_discovery
 from sqlalchemy.orm.session import Session
+from sqlalchemy.orm import class_mapper
 
 from ..icecore import hardware_map
 from ..icecore.hwm_assets import IceBoard
@@ -253,6 +254,165 @@ class IceArray(object):
                 if print_on_screen: print message
                 new_serials.append(ser)
         return new_serials
+
+    # ----------------------------------------------------------------
+    # Extra methods, possible candidates for deletion if no longer used
+    # ----------------------------------------------------------------
+
+    # *** JFC: Changed to have the default behavior to only return the
+    #     mezzanines that were detected.
+    # *** JFC: We could put the update part in a separate function, maybe
+    #     outside IceBoard
+    # *** JFC: Maybe we should add a check=True option to raise an error if
+    #     the hardware map does not match reality
+    def detect_mezzanines(self, update=False):
+        '''Detect mezzanines attached to the Iceboard, and instantiate them if
+        update=True.
+
+        This method uses IPMI data on the mezzanine's EEPROMs to guide
+        itself.
+
+        You do NOT need to use this method if the mezzanines present in the
+        system are already explicitely specified in the YAML hardware maps.
+        '''
+
+        mezz_class = {}
+        for m in range(1, self.NUM_MEZZANINES + 1):
+
+            # MezzClass = MissingMezzanine # Used by Graeme
+            part_number = None
+            serial = None
+            mezz_class[m] = None
+            # If a mezzanine is present, ask it (from EEPROM) what kind
+            # of mezzanine it is. Try to instantiate a mezz-specific
+            # class.
+            if self.is_mezzanine_present(m):
+                ipmi = self._get_mezzanine_ipmi(m)
+                part_number = ipmi.product.part_number
+                serial = ipmi.product.serial_number
+                self.logger.info(
+                    '%r: detect_mezzanines(): Detected Mezzanine '
+                    'Model: %s Serial %s in Mezzanine %i'
+                    % (self, part_number, serial, m))
+                for sc in class_mapper(HWMFMCMezzanine).self_and_descendants:
+                    if sc.polymorphic_identity == part_number:
+                        mezz_class[m] = sc.class_
+
+            if not mezz_class[m]:
+                self.logger.warning(
+                    "IceBoard SN%r detect_mezzanines(): There is no known "
+                    "FMC Mezzanine object with polymorphic map name '%r' "
+                    "for Mezzanine %r" % (self.serial_number, part_number, m))
+
+            if update:
+                if not self.hwm:
+                    raise SystemError(
+                        '%r: detect_mezzanines(): Attempt to add new '
+                        'mezzanine objects while the IceBoard is not yet '
+                        'added to the  hardware map. ' % self)
+
+                if m in self.mezzanine:
+                    del(self.mezzanine[m])
+
+                if mezz_class[m]:
+                    self.logger.info(
+                        '%r: detect_mezzanines(): Creating Mezzanine '
+                        'Serial %s in Mezzanine %i' % (self, serial, m))
+                    new_mezz = mezz_class[m](
+                        mezzanine=m,
+                        serial=serial,
+                        type=''  # 'type' cannnot be None
+                        )
+                    self.hwm.add(new_mezz)
+                    self.hwm.flush()
+                    self.mezzanine[m] = new_mezz
+                else:
+                    self.logger.warning(
+                        "IceBoard SN%r detect_mezzanines(): There is no known "
+                        "FMC Mezzanine object with polymorphic map name '%r' "
+                        "for Mezzanine %r"
+                        % (self.serial_number, part_number, m))
+                    # self.mezzanine[m] = None
+
+        if update:
+            self.update_handler()  # Let the handlers update for the new mezz
+        return mezz_class
+
+    # *** JFC: detect_icecrate would be a more consistent name
+    def detect_backplane(self, update=False):
+        '''Detect the Icecrate on which the Iceboard is attached, and
+        instantiate them if update=True. If an IceCrate with the same serial
+        number already exists, this IceBoard is added to it on the
+        corresponding slot number.
+
+        This method uses IPMI data on the backplane's EEPROMs to guide
+        itself.
+
+        You do NOT need to use this method if the backplane is
+        already explicitely specified in the YAML hardware maps.
+        '''
+
+        icecrate_class = {}
+        part_number = None
+        serial = None
+        if self.is_backplane_present():
+            ipmi = self.read_backplane_eeprom_ipmi()
+            part_number = ipmi.product.part_number
+            serial = ipmi.product.serial_number
+            slot_number = self.get_slot_number()
+            self.logger.info(
+                '%r: detect_backplane(): '
+                'Detected Backplane Model: %s Serial %s'
+                % (self, part_number, serial)
+                )
+
+            for sc in class_mapper(HWMIceCrate).self_and_descendants:
+                if sc.polymorphic_identity == part_number:
+                    icecrate_class = sc.class_
+
+        if not icecrate_class:
+            self.logger.warning(
+                "%r:  detect_backplane(): "
+                "There is no known backplane object with "
+                "polymorphic map name '%r'"
+                % (self.serial_number, part_number))
+
+        if icecrate_class and update:
+            if not self.hwm:
+                raise SystemError(
+                    '%r: detect_backplane(): Attempt to update new backplane '
+                    'object while the IceBoard is not yet added to the '
+                    'hardware map. ' % self)
+
+            # Assign slot number to IceBoard because the IceCrate will grab
+            # that info upon IceBoard assignment to a slot
+            self.slot_number = slot_number
+            self.hwm.flush()
+
+            if self.crate:  # if there is already an icecrate
+                if isinstance(self.crate, icecrate_class) \
+                        and self.crate.serial == serial:
+                    self.crate.slot[slot_number] = self
+                else:
+                    del(self.crate)
+
+            if not self.crate:
+                self.logger.info(
+                    '%r: detect_backplane(): Creating IceCrate %s'
+                    % (self, serial))
+                new_crate = icecrate_class(serial=serial)
+                self.hwm.add(new_crate)
+                self.crate = new_crate
+                self.hwm.flush()
+
+            # Assign this iceboard to the proper crate slot. Note that the
+            # 'slot_number' index is ignored after the flush. The
+            # IceBoard.slot_number is the real index.
+            self.crate.slot[slot_number] = self
+            self.hwm.flush()
+            # Let the handlers update for the new crate info
+            self.update_handler()
+        return icecrate_class
 
     def load_yaml_hardware_map(self, stream):
         self._hwmap.close()  # close current session

@@ -8,7 +8,7 @@ import numpy as np
 # NOTE: PYTHONPATH must be set so 'pychfpga' can be found
 from pychfpga.core.icecore.tests import *
 
-from pychfpga.core.icecore import IceBoard, HWMIceBoard, IceBoardHandler, IceCrate, HWMIceCrate, hardware_map
+from pychfpga.core.icecore import IceBoard, IceBoardHandler, IceCrate, hardware_map
 from pychfpga.core.chFPGA_controller import chFPGA_controller
 from pychfpga.core.chFPGA_receiver import chFPGA_receiver
 from pychfpga.core.icecore.session import load_session as load_yaml_hardware_map
@@ -188,15 +188,6 @@ if __name__=='__main__':
 
     __main__._host_interface_ip_addr = args.if_ip
 
-    # -------------------------------
-    # Check if specified iceboards are on-line before going any further
-    # -------------------------------
-    from pychfpga.core.icecore import TuberObject
-    for arm_hostname in args.iceboards:
-        iceboard_is_present = TuberObject.ping(arm_hostname)
-        if not iceboard_is_present:
-            raise RuntimeError("Iceboard could not be found at '%s'"
-                               % arm_hostname)
 
     # -------------------------------
     # Set-up logging
@@ -240,14 +231,12 @@ if __name__=='__main__':
     # hwm.add(ib)
     # hwm.commit()
 
-
     yaml_hwm = """
         !HardwareMap
             - !IceCrate
                 serial: "003"
                 slots:
-                    3:  !IceBoard {{hostname: {0} }}
-                    2:  !IceBoard {{}}
+                    16:  !IceBoardPlus {{hostname: {0} }}
         """.format(args.iceboards[0])
 
     # yaml_hwm = """
@@ -262,8 +251,16 @@ if __name__=='__main__':
     #     &A x: [*A]
     #     """
 
-
     hwm = load_yaml_hardware_map(yaml_hwm)
+
+    # -------------------------------
+    # Check if specified iceboards are on-line before going any further
+    # -------------------------------
+    # from pychfpga.core.icecore import TuberObject
+    for ib in hwm.query(IceBoard):
+        if not ib.ping():
+            raise RuntimeError("%r could not be found at '%s'"
+                               % (ib, ib.tuber_uri))
 
 
     # for ib in  hwm.query(HWMIceBoard):
@@ -275,13 +272,13 @@ if __name__=='__main__':
 
     # ic = load_yaml_hardware_map(yaml_hwm)
 
-    # ib.set_handler(IceBoardHandler, fpga_bitstream)
-    # ib.set_handler(chFPGA_controller, fpga_bitstream)
+    # ib.set_handler(IceBoardPlusHandler, fpga_bitstream)
+    ib.set_handler(chFPGA_controller, fpga_bitstream)
 
 
     # Configure the FPGA with the bitstream associated with the handler
-    # ib.set_fpga_bitstream()
-    # ib.open()
+    ib.set_fpga_bitstream()
+    ib.open()
     # test_filename = 'results/scaler_test'
     # # Get the backplane test engine and execute the tests
     # te = ScalerTests(context={
