@@ -54,7 +54,7 @@ columns.
 
 __all__ = [
     "Base", "HWMQueryException",
-    "HWMQuery", "HWMResource", "TuberHWMResource",
+    "HWMQuery", "HWMResource",
     "macro", "algorithm", "HardwareMap",
     "Boolean",
     "Session",
@@ -68,9 +68,6 @@ import functools
 import collections
 import time
 import logging
-import os
-import sys
-import traceback
 from collections import OrderedDict
 
 import sqlalchemy
@@ -78,12 +75,11 @@ import sqlalchemy.orm
 import sqlalchemy.ext.declarative
 import sqlalchemy.types
 
-from . import tuber  # **JFC: I stick to relative imports to avoid user-config-dependent problems
+from . import tuber
 
 Base = sqlalchemy.ext.declarative.declarative_base()
 
 
-# *** JFC: We should probably remove this. Standard exceptions should do
 class HWMQueryException(Exception):
     pass
 
@@ -193,7 +189,6 @@ class HWMQuery(sqlalchemy.orm.Query):
 
         return [str(item) for item in s]  # Remove unicode stings
 
-    # *** do we keep this for legacy support?
     def call_with(self, func, *args, **kwargs):
         """Call some function across a collection of Query results.
 
@@ -226,22 +221,27 @@ class HWMQuery(sqlalchemy.orm.Query):
 
     def as_dict(self, keys=None, convert_fn=None):
         """
-        Returns the query object as a dictionary indexed with the specified
-        keys.
+        Returns the query results as a dictionary-like HMWQueryAttribute
+        object which is indexed with the specified keys. The collection can be
+        used the same way as a HWMQuery, except that the results are will be
+        indexed by the specified keys.
 
         if 'keys' is an Instrumented Attribute, the dictionary will be indexed
         by the value of this attribute. If convert_fn is specified, the
         attribute values will be converted using that function.
 
-        If keys is a iterable, the values are used directly as an index.
+        If 'keys' is a iterable, the values of 'keys' are used directly as an
+        index.
 
         If the keys parameter is omitted or evaluates as False, the objects are
         indexed from 0 to len(x)-1 and the returned collection will behave
         similarly to a list or tuple.
 
-        Note: once the object is converted in a dict, query operations can no
-        longer be performed, and the collection will no longer track database
-        changes.
+        if 'convert_fn' is specified, the key values are passed through the
+        specified function before being passed to the HWMQueryAttributes
+        object. Note: once the object is converted to a HWMQueryAttribute,
+        query operations can no longer be performed, and the collection will
+        no longer track database changes.
 
         Example:
             >>> d = ca.query(IceBoard).as_dict(IceBoard.serial_number, int)
@@ -251,14 +251,14 @@ class HWMQuery(sqlalchemy.orm.Query):
             keys = [key[0] for key in self.values(keys)]
             if convert_fn:
                 keys = [convert_fn(key) for key in keys]
-
         return HWMQueryAttributes(self, keys)
 
 
 class HWMQueryAttributes(object):
     """
     Class representing a collection of objects that can be accessed and/or
-    called concurrently.
+    called concurrently at any level in a hierarchy of objects. This enable
+    concurrent access in object-oriented programs.
 
     The collection is stored as a mapping, and is populated with the elements
     of the iterable 'objects' using the keys provided in 'keys'. If 'keys' is
@@ -268,7 +268,6 @@ class HWMQueryAttributes(object):
     (.items(), .keys(), __len__() etc...) with the exception that the mapping
     itself returns an iterable to the objects, not their keys. This behavior is
     consistent with a HWMQuery object.
-
 
     Calling the mapping will concurrently call every object with the provided
     arguments and will return the result in another HWMQueryAttributes with
@@ -295,7 +294,7 @@ class HWMQueryAttributes(object):
     >>>     def fn(self, y): return (self.x,y)
     >>>     z=5
     >>>
-    >>> coll = HWMQueryAttributes([Obj(1), Obj(2), Obj(3), (Obj(4)])
+    >>> coll = HWMQueryAttributes([Obj(1), Obj(2), Obj(3), Obj(4)])
     >>> print coll[3]
     >>> <__main__.Obj object at 0x000000000BF68320>
     >>> print list(coll)
@@ -349,9 +348,7 @@ class HWMQueryAttributes(object):
              set.intersection(*[set(dir(obj)) for obj in self]))
         return [str(item) for item in s]
 
-    # Copy the main attributes of _proto so this class can masquerade as it. We
-    # could have used a decorator to do this, but it's less obvious and not
-    # much shorter
+    # Copy the main attributes of _proto so this class can masquerade as it.
     __doc__ = property(lambda self: self._proto.__doc__)
     __class__ = property(lambda self: self._proto.__class__)
     __name__ = property(lambda self: self._proto.__name__)
@@ -382,9 +379,8 @@ class HWMQueryAttributes(object):
         so we don't have to pass those an object-specific parameter.
         """
         results = concurrent_call(self.values(), None, *args, **kwargs)
-        return HWMQueryAttributes(
-            results,
-            self._has_keys and self._dict.keys())
+        return HWMQueryAttributes(results,
+                                  self._has_keys and self._dict.keys())
 
     def getitem(self, index):
         return self.__getattr__('__getitem__')(index)
@@ -417,22 +413,11 @@ class HWMQueryAttributes(object):
         attribute name, otherwise raise an exception"""
         attr_present = [hasattr(obj, name) for obj in self]
         if not any(attr_present):
-            raise AttributeError(
-                "Attribute %s does not exist on any element "
-                "of the current results" % name)
+            raise AttributeError("Attribute %s does not exist on any element "
+                                 "of the current results" % name)
         elif not all(attr_present):
-            raise AttributeError(
-                "Attribute %s must exist on all elements "
-                "of the current results" % name)
-
-    def _self_hasattr(self, name):
-        """ Checks if the current object has attribute 'name', but don't check
-        the collection"""
-        try:
-            object.__getattribute__(self, name)
-            return True
-        except AttributeError:
-            return False
+            raise AttributeError("Attribute %s must exist on all elements "
+                                 "of the current results" % name)
 
 
 def concurrent_call(func_list, variable_arg_list, *args, **kwargs):
@@ -441,8 +426,6 @@ def concurrent_call(func_list, variable_arg_list, *args, **kwargs):
     first argument taken from the corresponding element in that list.
     Position- and keyword arguments common to all calls can also be passed.
     """
-
-    #  has_arg_list = variable_arg_list is not None
 
     if variable_arg_list is not None:
         func_list = [functools.partial(func, arg) for (func, arg)
@@ -463,43 +446,6 @@ def concurrent_call(func_list, variable_arg_list, *args, **kwargs):
     else:
         # Otherwise, fall back on a looped invocation.
         return [f(*args, **kwargs) for f in func_list]
-
-# *** JFC: With tornado integration, we lost the following code to provide
-#     nice logging of exceptions during threads. Maybe this is not needed
-#     anymore. I'll leave it until it's clear we don't need it.
-#
-#    def runner(func, variable_arg):
-#        logger = logging.getLogger(__name__)
-#        try:
-#            if has_arg_list:
-#                return func(variable_arg, *args, **kwargs)
-#            else:
-#                return func(*args, **kwargs)
-#        except Exception as e:
-#            e = (
-#                'Thread: Error while accessing %s(%r,...)' %
-#                (func, variable_arg) +
-#                'Exception is: %r\n' % e +
-#                'Traceback is:\n%s' % ('\n'.join(_get_traceback_strings()))
-#                )
-#            logger.error(e)
-#            raise
-
-
-def _get_traceback_strings():
-    """ Return a compact traceback message as a list of strings that is
-    convenient for loging purposes.
-
-    This must be called only after an exception has occured.
-    """
-    (exception_type, exception_args, exception_tb) = sys.exc_info()
-    tb = traceback.extract_tb(exception_tb)
-    tracebackString = [
-        '    %s in .../%s:%i' %
-        (fn, os.path.split(filename)[1], line) for
-        (filename, line, fn, code) in tb]
-    tracebackString[-1] += ('=> %r' % exception_args)
-    return tracebackString
 
 
 class HWMResource(Base):
@@ -543,7 +489,6 @@ class HWMResource(Base):
         super(Base, self).__init__()
 
 
-# *** JFC: should be 'called register_hwm_object_method()'
 class macro(object):
     '''Decorator for "macros" that performs some rudimentary typechecking.
 
@@ -600,7 +545,6 @@ class macro(object):
         return wrapper
 
 
-# *** JFC: should be 'called register_hwm_query_method()'
 class algorithm(object):
     '''Decorator for "algorithms".
 
@@ -668,7 +612,6 @@ class algorithm(object):
 
 
 class Boolean(sqlalchemy.types.TypeDecorator):
-
     '''A Boolean lookalike for column definitions, accepting "true"/"false".
 
     Use this instead of sqlalchemy.Boolean when the column might be initialized
@@ -687,7 +630,6 @@ class Boolean(sqlalchemy.types.TypeDecorator):
 
 
 class Session(sqlalchemy.orm.Session):
-
     '''Subclass SQLAlchemy's 'Session' object.
 
     This subclass is not used here, but it provides a way for experiment code

@@ -372,17 +372,16 @@ class TuberObject(object):
     To use it, you should subclass this TuberObject.
     '''
 
-    @staticmethod
-    def ping(hostname, timeout=0.1):
+    def ping(self, timeout=0.1):
         """
         Returns a boolean inticating whether a tuber object is available at
         the specified ARM hostname.
         """
         import socket
         try:
-            fh = urllib2.urlopen('http://%s/tuber' % hostname, '{}', timeout=timeout)
+            fh = urllib2.urlopen(self.tuber_uri, '{}', timeout=timeout)
             fh.close()
-        except ( urllib2.URLError, socket.timeout) : # some machines return socket.timeout
+        except (urllib2.URLError, socket.timeout):  # Macs return timeout
             return False
         return True
 
@@ -513,9 +512,6 @@ class TuberObject(object):
         descriptors for things we've seen before, we don't need to avoid
         round-trips to the board for metadata in the following code.
         '''
-
-        logger = logging.getLogger(__name__)
-        logger.info("%s: calling Tuber __getattr__('%s')" % (type(self).__name__, name))
 
         # Refuse to __getattr__ a couple of special names used elsewhere.
         # These are mostly hints for SQLAlchemy or IPython.
