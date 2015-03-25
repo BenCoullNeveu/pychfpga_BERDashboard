@@ -1457,6 +1457,20 @@ class chFPGA_controller(chFPGAHandler):
 
     get_FFT_shift = get_fft_shift # for legacy compatibility
 
+    def set_user_output_source(self, source):
+        """ Selects the signal to be sent to the SMA-A connector of this IceBoard. 'source' is the source name (as a string). """
+        self.GPIO.set_user_output_source(source)
+
+    def get_user_output_source(self):
+        """ Return the name of the source currently routed to SMA-A"""
+        return self.GPIO.get_user_output_source()
+
+    def set_frame_pwm(self, offset, high_time, period, reset=False):
+        """ Sets the frame-based PWM generator. All times are stated as the numbe rof frames. A SYNC is needed after changes."""
+        self.GPIO.set_pwm(offset, high_time, period, reset=False)
+        if reset:
+            self.sync()
+
     def check_adc_data_acquisition(self, test_duration=1):
         """
         Sets the ADC in ramp mode and compare the incoming ramp in real time with an internally generated ramp to combute the total number of words in error (and an error count for each bit)
