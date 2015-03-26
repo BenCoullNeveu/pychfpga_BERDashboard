@@ -60,6 +60,7 @@ class GPIO_base(Module_base):
     PWM_OFFSET                          = BitField(CONTROL, 34, 0, width=32, doc='Number of events (frames) to delay before starting to generate the first High of the PWM output')
     PWM_HIGH_TIME                       = BitField(CONTROL, 38, 0, width=32, doc='Number of events (frames) to keep the PWM output at High')
     PWM_PERIOD                          = BitField(CONTROL, 42, 0, width=32, doc='Number of events (frames) between PWM High (i.e PWM period)')
+    PWM_RESET                           = BitField(CONTROL, 46, 7, doc='Resets the PWM generator')
     USER_MUX_SOURCE                     = BitField(CONTROL, 46, 0, width=2, doc='Selects which signal is sent to the SMA-A output. 0=PWM, 1=PPS, 2=SYNC, 3=200MHz ADC clock')
 
     TIMESTAMP_VALID                     = BitField(STATUS, 0, 7, doc='Timestamp data valid (i.e. can be read)')
@@ -128,7 +129,8 @@ class GPIO_base(Module_base):
         self.PWM_HIGH_TIME = high_time
         self.PWM_PERIOD = period
         if reset:
-            self.pulse_ant_reset()
+            self.PWM_RESET = 1
+            self.PWM_RESET = 0
 
     def get_pwm(self):
         """ Return the current values of the frame-based PWM generator as a
