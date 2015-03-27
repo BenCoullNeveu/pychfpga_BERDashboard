@@ -184,6 +184,7 @@ if __name__=='__main__':
     parser.add_argument('-s', '--subarray', action='store', nargs='+', type=int, help='Space-separated list of subarrays to include')
     parser.add_argument('-f', '--bitfile', action='store', type=str, default= default_bitfile,  help='Filename of the bitfile used to to program the FPGAs')
     parser.add_argument('-i', '--if_ip', action='store', type=str, default=None, help='IP address of adapter through which the connection to the FPGA will be established. This is used solely for direct UDP communications with the FPGA.')
+    parser.add_argument('--force', action='store', type=int, default=0, help='Force FPGA programming even if the firmware is already programmed.')
     args = parser.parse_args()
 
     __main__._host_interface_ip_addr = args.if_ip
@@ -277,7 +278,7 @@ if __name__=='__main__':
 
 
     # Configure the FPGA with the bitstream associated with the handler
-    ib.set_fpga_bitstream()
+    ib.set_fpga_bitstream(force=args.force)
     ib.open()
     # test_filename = 'results/scaler_test'
     # # Get the backplane test engine and execute the tests

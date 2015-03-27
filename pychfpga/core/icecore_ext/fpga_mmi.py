@@ -221,7 +221,7 @@ class FpgaMmi:
         return self.udp.get_timeout()
 
     def read(self, addr, type=np.dtype('>u1'), length=1,
-             timeout=None, retry=10):
+             timeout=None, retry=1):
         """
         Reads memory-mapped byte(s) from the FPGA through the Ethernet
         interface.
@@ -280,7 +280,7 @@ class FpgaMmi:
                 except self.udp.TimeoutException:
                     if retries < retry:
                         retries += 1
-                        self.set_timeout(self.get_timeout() + 0.1)
+                        self.set_timeout(self.get_timeout() * 2)
                         self.logger.debug(
                             'FPGA read failure increasing timeout to %s' %
                             (self.get_timeout()))
@@ -290,6 +290,8 @@ class FpgaMmi:
                     raise FpgaMmiException(
                         'FPGA read command failed because of the following '
                         'exception: %r' % e)
+                finally:
+                    self.set_timeout(old_timeout)
 
             if len(data) != read_length + 1:
                 raise FpgaMmiException(
@@ -306,9 +308,6 @@ class FpgaMmi:
 
             addr += read_length
             offset += read_length
-
-        #if timeout:
-        self.set_timeout(old_timeout)
 
         dout.dtype = np.dtype(type) # change interpretation of the byte array into a 'type' array
 
