@@ -305,9 +305,9 @@ class IceBoardHandler(handler.Handler, tuber.TuberObject):
     # Provide access to hardware_map attributes as if they were local
     hostname = HandlerParentAttribute(lambda ib: ib.hostname)
     serial = HandlerParentAttribute(lambda ib: ib.serial)
-    crate = HandlerParentAttribute(lambda ib: ib.crate.handler)
+    crate = HandlerParentAttribute(lambda ib: ib.crate.handler if ib.crate else None)
     slot = HandlerParentAttribute(lambda ib: ib.slot)
-    mezzanine = HandlerParentAttribute(lambda ib: {slot:mezz.handler for (slot,mezz) in ib.mezzanine.items()}, {})
+    mezzanine = HandlerParentAttribute(lambda ib: {slot: mezz.handler if mezz else None for (slot, mezz) in ib.mezzanine.items()}, {})
     tuber_objname = HandlerParentAttribute(lambda ib: ib.__class__.__name__, 'IceBoard')
 
     @property

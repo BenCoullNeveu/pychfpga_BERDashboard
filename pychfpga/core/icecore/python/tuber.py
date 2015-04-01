@@ -174,7 +174,7 @@ class Context(object):
 
             # Say something about the call
             l = logging.getLogger(__name__)
-            l.debug('%r: %s => %s (%f sec)' % (
+            l.debug('%r: %.500s => %.500s (%f sec)' % (
                 self, calls, response.body, t2-t1))
 
             self._tuber_flush_finalize(response.body, futures)
@@ -191,8 +191,7 @@ class Context(object):
 
             # Say something about the call
             l = logging.getLogger(__name__)
-            l.debug('%r: %s => %s (%f sec)' % (self, calls, response, t2-t1))
-
+            l.debug('%r: %.500s => %.500s (%f sec)' % (self, calls, response, t2-t1))
             self._tuber_flush_finalize(response, futures)
 
     def _tuber_flush_finalize(self, response, futures):
@@ -463,7 +462,7 @@ class TuberObject(object):
 
         # Say something about the retrieval
         l = logging.getLogger(__name__)
-        l.debug('%r: Retrieved Tuber metadata (%f sec)' % (self, t2-t1))
+        l.debug('%r: Retrieved Tuber metadata (%f sec)' % self, t2-t1))
 
         meta = json_out.result
         props = {}

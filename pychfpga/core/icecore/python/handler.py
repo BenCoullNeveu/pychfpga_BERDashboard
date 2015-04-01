@@ -85,7 +85,9 @@ class HandlerObject(object):
     _handler_disable = False
     # Default non-data descriptors: can be overriden by instance attributes
     handler_name = None
-    handler_id = property(lambda self: tuple(self.__mapper__.primary_key_from_instance(self)))
+    handler_id = property(lambda self: tuple(
+        [self._sa_instance_state.session_id] +  # Make handler unique to each session
+        self.__mapper__.primary_key_from_instance(self)))
 
     @property
     def handler(self):
@@ -209,6 +211,10 @@ class HandlerMeta(type):
         if base and name:
             logger.info("%s: Registering to parent object '%s' as '%s'"
                         % (cls.__name__, base.__name__, name))
+            if '_handler_class_registry' not in base.__dict__:
+                base._handler_class_registry = {}  # Create a class-local class registry
+            if '_handler_instance_registry' not in base.__dict__:
+                base._handler_instance_registry = {}  # Create a class-local instance registry
             base._handler_class_registry[name] = cls  # Add the class
         else:
             logger.info("%s: Was not registered" % (cls.__name__))
@@ -223,8 +229,10 @@ class HandlerParentAttribute(object):
 
     def __get__(self, obj, objtype=None):
         parent = obj.parent
-        return self._getter(parent) if parent else self._default
-
+        try:  # Elevate AttributeError to RuntimeError, otherwise weird
+            return self._getter(parent) if parent else self._default
+        except AttributeError:  # Re-raise, but preserve traceback info
+            raise RuntimeError, sys.exc_info()[1], sys.exc_info()[2]
 
 class Handler(object):
     """ Basic generic handler base class. All handlers should be derived from this
