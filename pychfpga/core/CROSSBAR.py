@@ -18,64 +18,30 @@ from Module import Module_base, BitField
 import CH_DIST
 import SHUFFLE_BIN_SEL
 
-
-reload(CH_DIST)
-reload(SHUFFLE_BIN_SEL)
-
-
-# class CROSSBAR_channel(object):
-#     """ Implements interface to one of the correlator"""
-
-#     # Antenna processor module addresses
-#     # CORR_MODULE_ADDR_INCREMENT = 0x00400
-#     # CH_DIST_ADDR_OFFSET = 0 * CORR_MODULE_ADDR_INCREMENT
-
-#     def __init__(self, fpga_instance, base_address, instance_number):
-#         #super(ADC_chip,self).__init__(fpga)
-#         # self.parent = parent # store current ADC number for this instance
-#         self.instance_number = instance_number # store current correlator number for this instance
-#         # self.fpga = self.parent.fpga
-#         self.logger = logging.getLogger(__name__)
-#         self.CH_DIST = CH_DIST.CH_DIST_base(fpga_instance, base_address, instance_number)
-
-
-#     def init(self):
-#         """ Inisializes all modules of a crossbar block."""
-#         self.logger.debug('=== Initializing CROSBAR[%i]' % self.instance_number)
-#         self.CH_DIST.init()
-
-
-#     def status(self):
-#         """Displays the status of a crossbar block"""
-#         self.logger.debug('=== Instantiating CROSBAR[%i]' % self.instance_number)
-#         self.CH_DIST.status()
-
-
-
 class CROSSBAR_base(Module_base):
     """ Instantiates a container for all correlators blocks"""
 
     CONTROL = BitField.CONTROL
     STATUS = BitField.STATUS
 
-    FRAME_CLK_SEL                 = BitField(CONTROL, 0, 7, doc='')
-    ALIGN_RESET                   = BitField(CONTROL, 0, 6, doc='')
-    REMAP_RESET                   = BitField(CONTROL, 0, 5, doc='')
-    LANE_MONITOR_RESET            = BitField(CONTROL, 0, 4, doc='')
-    LANE_MONITOR_SEL              = BitField(CONTROL, 0, 0, width=3, doc='')
+    FRAME_CLK_SEL      = BitField(CONTROL, 0, 7, doc='')
+    ALIGN_RESET        = BitField(CONTROL, 0, 6, doc='')
+    REMAP_RESET        = BitField(CONTROL, 0, 5, doc='')
+    LANE_MONITOR_RESET = BitField(CONTROL, 0, 4, doc='')
+    LANE_MONITOR_SEL   = BitField(CONTROL, 0, 0, width=3, doc='')
 
-    SOF_WINDOW_START              = BitField(CONTROL, 1, 0, width=8, doc='')
-    SOF_WINDOW_STOP               = BitField(CONTROL, 2, 0, width=8, doc='')
-    LANE_MAP_BYTE0                = BitField(CONTROL, 3, 0, width=8, doc='Lane map')
-    LANE_MAP_BYTE7                = BitField(CONTROL, 10, 0, width=8, doc='Lane map')
+    SOF_WINDOW_START   = BitField(CONTROL, 1, 0, width=8, doc='')
+    SOF_WINDOW_STOP    = BitField(CONTROL, 2, 0, width=8, doc='')
+    LANE_MAP_BYTE0     = BitField(CONTROL, 3, 0, width=8, doc='Lane map')
+    LANE_MAP_BYTE7     = BitField(CONTROL, 10, 0, width=8, doc='Lane map')
 
 
-    LANE_MONITOR                  = BitField(STATUS, 1, 0, width=16, doc='')
-    INPUT_FRAME_CTR               = BitField(STATUS, 2, 0, width=8, doc='')
-    ALIGN_FRAME_CTR               = BitField(STATUS, 3, 0, width=8, doc='')
-    OUTPUT_FRAME_CTR              = BitField(STATUS, 4, 0, width=8, doc='')
-    CLK_CTR                       = BitField(STATUS, 5, 0, width=8, doc='')
-    FRAME_CLK_CTR                 = BitField(STATUS, 6, 0, width=8, doc='')
+    LANE_MONITOR       = BitField(STATUS, 1, 0, width=16, doc='')
+    INPUT_FRAME_CTR    = BitField(STATUS, 2, 0, width=8, doc='')
+    ALIGN_FRAME_CTR    = BitField(STATUS, 3, 0, width=8, doc='')
+    OUTPUT_FRAME_CTR   = BitField(STATUS, 4, 0, width=8, doc='')
+    CLK_CTR            = BitField(STATUS, 5, 0, width=8, doc='')
+    FRAME_CLK_CTR      = BitField(STATUS, 6, 0, width=8, doc='')
 
     def __init__(self, fpga_instance, base_address, address_increment, crossbar_level=1, verbose=0):
         self.fpga = fpga_instance
@@ -98,8 +64,6 @@ class CROSSBAR_base(Module_base):
     def __getitem__(self, key):
         """    Returns the correlator instance specified by the index"""
         return self.BIN_SEL[key]
-
-
 
     def init(self):
         """ Initializes all correlators"""
@@ -125,7 +89,7 @@ class CROSSBAR_base(Module_base):
         elif width == 8:
             is_four_bits = 0
         else:
-            raise self.fpga.chFPGAException('Number of bits %i is invalid for the channelizers. Only 4 or 8 is allowed' % width)
+            raise ValueError('Number of bits %i is invalid for the channelizers. Only 4 or 8 is allowed' % width)
 
         # Set the channelizer data width
         for bs in self.BIN_SEL:
@@ -136,29 +100,28 @@ class CROSSBAR_base(Module_base):
         Returns number of bits used by the crossbar.
         If all the crossbar sub-units  are not set in the same mode, an error is raised.
         """
+        if not self.BIN_SEL:
+            return None
 
-        four_bits = set() # use a set to uniquely record all the possible encountered states
+        four_bits = {bs.FOUR_BITS for bs in self.BIN_SEL}  # use a set to uniquely record all the possible encountered states
 
-        for bs in self.BIN_SEL:
-            four_bits.add(bs.FOUR_BITS)
-
-        if four_bits == set([0]):
+        if four_bits == {0}:
             return 8
-        elif four_bits == set([1]):
+        elif four_bits == {1}:
             return 4
         else:
-            raise self.fpga.chFPGAException("The crossbars are not set to the same data width.")
+            raise ValueError("The crossbars are not all set to the same data width.")
 
     def set_frames_per_packet(self, group_size):
         """
-        Sets the numbr of channelizer frames to group in a single frame at the output of the crossbar.
+        Set the number of frame per packets.
         """
         for bs in self.BIN_SEL:
             bs.GROUP_FRAMES = group_size
 
     def get_frames_per_packet(self):
         """
-        returns the numbr of channelizer frames to group in a single frame at the output of the crossbar.
+        Return the number of frames per packets.
         """
         return self.BIN_SEL[0].GROUP_FRAMES
 
@@ -167,7 +130,7 @@ class CROSSBAR_base(Module_base):
     	NOTE: Lanes are numbered from 0 to 15.
     	"""
         if len(lane_map)!=self.NUMBER_OF_CROSSBAR_INPUTS:
-            raise self.fpga.chFPGAException('Lane map must be a list of %i values' % self.NUMBER_OF_CROSSBAR_INPUTS)
+            raise TypeError('Lane map must be a list of %i values' % self.NUMBER_OF_CROSSBAR_INPUTS)
 
         lane_map_bytes = np.zeros(self.NUMBER_OF_CROSSBAR_INPUTS/2, dtype=np.uint8)
         for i,lane in enumerate(lane_map):

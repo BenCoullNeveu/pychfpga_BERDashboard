@@ -64,7 +64,7 @@ class SCALER_base(Module_base):
         """
 
         if complex_gain.real<-32768 or complex_gain.real > 32767 or complex_gain.imag<-32768 or complex_gain.imag>32767:
-            self.fpga.chFPGAException("Invalid fixed gain")
+            raise ValueError("Invalid fixed gain")
 
         self.FIXED_GAIN_REAL = np.int16(complex_gain.real)
         self.FIXED_GAIN_IMAG = np.int16(complex_gain.imag)

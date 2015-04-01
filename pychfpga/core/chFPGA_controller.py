@@ -216,6 +216,9 @@ class chFPGA_controller(chFPGAHandler):
         # For now, we do not know their values unless the system is initialized.
         # We may want to fix that by reading the FPGA states and determining those values.
 
+        self._logger = logging.getLogger(__name__)
+        self._logger.info("Creating chfpga_controller object as %r" % (self))
+
         self._sampling_frequency = None
         self._reference_frequency = None
         self._FRAME_PERIOD = None
@@ -223,20 +226,10 @@ class chFPGA_controller(chFPGAHandler):
         self._adc_board = []
         self._last_init_time = None
 
-        self._logger = logging.getLogger(__name__)
-
-        self._logger.info("Creating chfpga_controller object as %r" % (self))
-
-
     def open(self, init=1, verbose=0, *args, **kwargs):
 
-        self._logger = logging.getLogger(__name__)
-
-        super(type(self), self).open(*args, **kwargs)
-
+        super(chFPGA_controller, self).open(*args, **kwargs)
         self.logger.info('%r: Instantiating chFPGA firmware handlers objects' % (self))
-
-        # self._self_reference = self # hack to make sure motherboard still exist
 
         self.read = self.mmi.read
         self.write = self.mmi.write
@@ -244,9 +237,7 @@ class chFPGA_controller(chFPGAHandler):
         if init < 0: # If init<0, we do not perform any communication with the FPGA, so we don't read the firmware configuration
             self._logger.info('%r: Upon user request (init < 0), communication with the FPGA are inhibited. Initialization sequence stops here. Use this for debug only.' % self)
             return
-
         self._logger.info('%r:    ---> Hello! This is chFPGA! <---' % self)
-
 
         try:  # catch initialization errors so we can free the socket for future instantiation
 
@@ -266,7 +257,7 @@ class chFPGA_controller(chFPGAHandler):
 
             self.PLATFORM_ID = self.GPIO.PLATFORM_ID
             if self.PLATFORM_ID not in self._PLATFORM_ID_LIST:
-                raise chFPGAException('%r: Platform ID 0x%02X is not recognized' % (self, self.PLATFORM_ID))
+                raise RuntimeError('%r: Platform ID 0x%02X is not recognized' % (self, self.PLATFORM_ID))
             self._NUMBER_OF_FMC_SLOTS = 2
 
             # Get frame size info
@@ -571,7 +562,7 @@ class chFPGA_controller(chFPGAHandler):
             self._logger.warning("%r: There is no 2nd CROSSBAR module in this firmware build" % self);
 
         self._logger.debug('%r: === Initializing FPGA correlators' % self)
-        if self.NUMBER_OF_CORRELATORS>0:
+        if self.NUMBER_OF_CORRELATORS > 0:
             self._logger.debug('%r:  - CORR' % self)
             self.CORR.init()
             self.CORR.status()
@@ -1234,17 +1225,13 @@ class chFPGA_controller(chFPGAHandler):
         Returns number of bits used to represent the values computed by the channelizers and used by the GPU link and FPGA correlators.
         If all the hardware modules are not set in the same mode, an error is raised.
         """
-
         # get the channelizer and crossbar data width
         chan_data_width = self.ANT.get_data_width()
         xbar_data_width = self.CROSSBAR.get_data_width()
 
-        if chan_data_width == 8 and xbar_data_width == 8:
-            return 8
-        elif chan_data_width == 4 and xbar_data_width == 4:
-            return 4
-        else:
+        if xbar_data_width and xbar_data_width != chan_data_width:
             raise RuntimeError("The channelizers and crossbar are not set to the same data width (chan=%i bits, xbar=%i bits). The data stream won't make much sense" % (chan_data_width, xbar_data_width))
+        return chan_data_width
 
     def configure_crossbar(self, *args, **kwargs):
         self.CROSSBAR.configure(*args, **kwargs)
@@ -1388,7 +1375,7 @@ class chFPGA_controller(chFPGAHandler):
 
                 if use_fixed_gain:
                     if not np.isscalar(Glin):
-                        self.chFPGAException('%r: Only scalar gains are allowed when using set_fixed_gain=True.' % self)
+                        raise TypeError('%r: Only scalar gains are allowed when using set_fixed_gain=True.' % self)
                     self.ANT[ch].SCALER.USE_GAIN_TABLE = 0
                     self.ANT[ch].SCALER.set_fixed_gain(Glin)
                 else:
@@ -1518,7 +1505,7 @@ class chFPGA_controller(chFPGAHandler):
             try:
                 trials += 1
                 self.get_fpga_cookie()
-            except chFPGAException:
+            except IOError:
                 errors += 1
                 print 'error on transaction #%i' % i
             except KeyboardInterrupt:

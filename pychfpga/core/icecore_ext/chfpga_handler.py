@@ -2,7 +2,9 @@
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timedelta
+from calendar import timegm
+
 import socket
 import struct
 
@@ -64,7 +66,16 @@ class chFPGAHandler(IceBoardPlusHandler):
     _FPGA_MAC_ADDR_LSW_ADDR         = 4 * 7
     _FPGA_MAC_ADDR_MSW_IP_PORT_ADDR = 4 * 8
     _FPGA_IP_ADDR_ADDR              = 4 * 9
-    _IRIGB_ADDR                     = 4 * 10
+    _IRIGB_SAMPLE0_ADDR             = 4 * 10
+    _IRIGB_SAMPLE1_ADDR             = 4 * 11
+    _IRIGB_SAMPLE2_ADDR             = 4 * 12
+
+    _IRIGB_TARGET0_ADDR             = 4 * 13
+    _IRIGB_TARGET1_ADDR             = 4 * 14
+    _IRIGB_TARGET2_ADDR             = 4 * 15
+    _IRIGB_EVENT_CTR_ADDR           = 4 * 16
+
+
     _XILINX_OUI = 0x000A35
 
     # ---------------------------------------
@@ -126,13 +137,6 @@ class chFPGAHandler(IceBoardPlusHandler):
             ['mmi', 'hw', 'bp', 'i2c', 'core_gpio', 'core_i2c']
         self.set_auto_open_attributes(
             self._core_auto_open_attributes, self.open_core)
-
-    def hwm_update(self, hwm_object):
-        """ Is called when the Hardware Map object might have changed to
-        reflect those changes in the handler.
-        """
-        super(chFPGAHandler, self).hwm_update(hwm_object)
-        self.logger.info('chFPGAHandler: %r.hwm_update()' % (self))
 
     # ------------------------------------------------------------------
     # CHIME-specific MMI interface
@@ -308,9 +312,10 @@ class chFPGAHandler(IceBoardPlusHandler):
 
     def open(self):
 
-        self.logger.info('chFPGAHandler: %r.open() is called' % (self))
-        self.hw.init()
+        self.logger.info('%.32r: open() is called' % (self))
+        self.open_core()
 
+        self.hw.init()
         self.hw.set_led('GP_LED2', 1)  # Hardware link is on
         self.hw.set_led('GP_LED1', 0)  # Full FPGA firmware is not yet on
 
@@ -533,5 +538,73 @@ class chFPGAHandler(IceBoardPlusHandler):
         """
         return FRU.decode(self.bp.read_backplane_eeprom)
 
+    class _IrigTimestamp(object):
+        pass
 
+    def _get_irigb_time(self, trig=True):
+        # Capture current time
+        if trig:
+            w2 = self.fpga_mmi_read(self._IRIGB_SAMPLE2_ADDR)
+            self.fpga_mmi_write(self._IRIGB_SAMPLE2_ADDR, w2 | (1 << 29))
+            self.fpga_mmi_write(self._IRIGB_SAMPLE2_ADDR, w2 & ~(1 << 29))
+
+        w0 = self.fpga_mmi_read(self._IRIGB_SAMPLE0_ADDR)
+        w1 = self.fpga_mmi_read(self._IRIGB_SAMPLE1_ADDR)
+        w2 = self.fpga_mmi_read(self._IRIGB_SAMPLE2_ADDR)
+
+        # t0 = self.fpga_mmi_read(self._IRIGB_TARGET0_ADDR)
+        t1 = self.fpga_mmi_read(self._IRIGB_TARGET1_ADDR)
+        # t2 = self.fpga_mmi_read(self._IRIGB_TARGET2_ADDR)
+        e0 = self.fpga_mmi_read(self._IRIGB_EVENT_CTR_ADDR)
+
+        ts = self._IrigTimestamp()
+        ts.pps = (w0 >> 26) & ((1 << 6) - 1)
+        ts.sbs = (w0 >> 8) & ((1 << 18) - 1)
+        ts.y = (w0 >> 0) & ((1 << 8) - 1)
+        ts.d = (w1 >> 20) & ((1 << 9) - 1)
+        ts.h = (w1 >> 14) & ((1 << 6) - 1)
+        ts.m = (w1 >> 7) & ((1 << 7) - 1)
+        ts.s = (w1 >> 0) & ((1 << 7) - 1)
+        ts.ss = (w2 >> 0) & ((1 << 28) - 1)
+        ts.source = (w1 >> 30) & ((1 << 2) - 1)
+        ts.recent = (w1 >> 29) & 1
+        ts.datetime = datetime(ts.y + 2000, 1, 1) + timedelta(ts.d-1, ts.s, ts.ss/100., 0, ts.m, ts.h)
+        ts.before_target = (t1 >> 31) & 1
+        ts.done = (t1 >> 30) & 1
+        ts.nano = int(timegm((ts.y+2000, 1, 1, 0, 0, 0))*1e9) + (ts.d*24*3600 + ts.h*3600 + ts.m*60 + ts.s)*1000000000 + ts.ss*10
+        ts.event_ctr = e0
+        return ts
+
+    def _set_irigb_target_time(self, dt=None, offset=5):
+
+        if dt is None:
+            dt = self._get_irigb_time().datetime
+            self.logger.info('%.32r: Current IRIGB time is %s' % (self, dt.isoformat()))
+
+        dt += timedelta(0, offset)
+        self.logger.info('%.32r: Setting IRIGB target time to %s' % (self, dt.isoformat()))
+
+        y = dt.year % 100
+        d = (dt - datetime(dt.year, 1, 1)).days + 1
+        h = dt.hour
+        m = dt.minute
+        s = dt.second
+        ss = dt.microsecond * 100
+
+        t0 = (y << 0)
+        t1 = (d << 20) | (h << 14) | (m << 7) | (s << 0)
+        t2 = (1 << 31) | (ss << 0)
+
+        self.fpga_mmi_write(self._IRIGB_TARGET0_ADDR, t0)
+        self.fpga_mmi_write(self._IRIGB_TARGET1_ADDR, t1)
+        self.fpga_mmi_write(self._IRIGB_TARGET2_ADDR, t2)
+
+    def _capture_event(self, trig=True):
+        if trig:
+            w2 = self.fpga_mmi_read(self._IRIGB_SAMPLE2_ADDR)
+            self.fpga_mmi_write(self._IRIGB_SAMPLE2_ADDR, w2 & ~(1 << 28))
+            self.fpga_mmi_write(self._IRIGB_SAMPLE2_ADDR, w2 | (1 << 28))
+
+        ts = self._get_irigb_time(trig=0)  # The event trigger will automatically trig IRIGB
+        return (ts.event_ctr, ts.datetime)
 # vim: sts=4 ts=4 sw=4 tw=80 smarttab expandtab

@@ -8,7 +8,7 @@ import numpy as np
 # NOTE: PYTHONPATH must be set so 'pychfpga' can be found
 from pychfpga.core.icecore.tests import *
 
-from pychfpga.core.icecore import IceBoard, IceBoardHandler, IceCrate, hardware_map
+from pychfpga.core.icecore import IceBoardPlus, IceBoardPlusHandler, IceCrate, HardwareMap
 from pychfpga.core.chFPGA_controller import chFPGA_controller
 from pychfpga.core.chFPGA_receiver import chFPGA_receiver
 from pychfpga.core.icecore.session import load_session as load_yaml_hardware_map
@@ -252,13 +252,22 @@ if __name__=='__main__':
     #     &A x: [*A]
     #     """
 
-    hwm = load_yaml_hardware_map(yaml_hwm)
+    # hwm = load_yaml_hardware_map(yaml_hwm)
+
+
+    # -------------------------------
+    # Create a hardware map consisting of a bunch of iceboards
+    # -------------------------------
+    hwm = HardwareMap()  # Create empty hardware map
+    for hostname in args.iceboards:
+        hwm.add(IceBoardPlus(hostname=hostname))
+    hwm.flush()
 
     # -------------------------------
     # Check if specified iceboards are on-line before going any further
     # -------------------------------
     # from pychfpga.core.icecore import TuberObject
-    for ib in hwm.query(IceBoard):
+    for ib in hwm.query(IceBoardPlus):
         if not ib.ping():
             raise RuntimeError("%r could not be found at '%s'"
                                % (ib, ib.tuber_uri))
@@ -268,8 +277,10 @@ if __name__=='__main__':
     #     if ib.hostname:
     #         ib._initialize_backplane()
 
-    ic = hwm.query(IceCrate).one()
-    ib = hwm.query(IceBoard).first()
+    ib = hwm.query(IceBoardPlus)
+    # ic = hwm.query(IceCrate).one()
+    ib1 = ib[0]
+    ib2 = ib[1]
 
     # ic = load_yaml_hardware_map(yaml_hwm)
 
@@ -279,7 +290,7 @@ if __name__=='__main__':
 
     # Configure the FPGA with the bitstream associated with the handler
     ib.set_fpga_bitstream(force=args.force)
-    ib.open()
+    # ib.open()
     # test_filename = 'results/scaler_test'
     # # Get the backplane test engine and execute the tests
     # te = ScalerTests(context={
