@@ -462,7 +462,7 @@ class TuberObject(object):
 
         # Say something about the retrieval
         l = logging.getLogger(__name__)
-        l.debug('%r: Retrieved Tuber metadata (%f sec)' % self, t2-t1))
+        l.debug('%r: Retrieved Tuber metadata (%f sec)' % (self, t2-t1))
 
         meta = json_out.result
         props = {}

@@ -311,7 +311,7 @@ class IceBoardHardware(object):
                     try:
                         tmp_object.init(bit_resolution)
                     except:
-                        self._logger.info('Iceboard SN%03i temperature sensor %s failed to initialize.' % (self._iceboard.serial_number, temp_sensor))
+                        self._logger.info('Iceboard SN%s temperature sensor %s failed to initialize.' % (self._iceboard.serial, temp_sensor))
     def _init_power_sensors(self, power_sensor_name=None):
         """
         initializes current/power monitors
@@ -334,7 +334,7 @@ class IceBoardHardware(object):
                 try:
                     power_sensor_object.init(v_out=v_out, r_shunt=r_shunt, i_typ=i_typ, tol_i=tol_i)
                 except:
-                    self._logger.info('Iceboard SN%03i power sensor %s failed to initialize.' % (self._iceboard.serial_number, power_sensor))
+                    self._logger.info('Iceboard SN%s power sensor %s failed to initialize.' % (self._iceboard.serial, power_sensor))
 
 
     def get_i2c_interface(self):

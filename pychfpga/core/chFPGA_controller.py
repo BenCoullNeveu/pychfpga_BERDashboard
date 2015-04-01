@@ -228,7 +228,7 @@ class chFPGA_controller(chFPGAHandler):
 
     def open(self, init=1, verbose=0, *args, **kwargs):
 
-        super(chFPGA_controller, self).open(*args, **kwargs)
+        super(chFPGA_controller, self).open()
         self.logger.info('%r: Instantiating chFPGA firmware handlers objects' % (self))
 
         self.read = self.mmi.read
