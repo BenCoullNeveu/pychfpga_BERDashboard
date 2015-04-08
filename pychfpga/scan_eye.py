@@ -172,7 +172,7 @@ def scan_eye(self, horiz_offset=range(-32,32,4), vert_offset=range(-127,127,16),
                         break
                 else:
                     ih=ih+dir
-        plt.imshow(np.log10(ber+1e-12), origin='lower', extent=(min(horiz_offset),max(horiz_offset),min(vert_offset),max(vert_offset)), aspect=0.1, vmin=-12, vmax=1)
+        #plt.imshow(np.log10(ber+1e-12), origin='lower', extent=(min(horiz_offset),max(horiz_offset),min(vert_offset),max(vert_offset)), aspect=0.1, vmin=-12, vmax=1)
         return ber
 
 def scan_links(array, tx_power=7):
