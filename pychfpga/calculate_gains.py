@@ -155,8 +155,8 @@ def iterative_poly_filter(signal):
         threshold = 1 + (threshold - 1)*0.8
         if degree < 15:
             degree += 2
+    fitarr[masked.mask] = masked.data[masked.mask]
     filtered = np.exp(fitarr)
-    filtered[masked.mask] = masked.data
     filtered = (filtered.real).astype(np.int).astype(np.complex)
     return filtered
 
