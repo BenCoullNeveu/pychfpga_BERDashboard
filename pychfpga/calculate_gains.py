@@ -143,18 +143,18 @@ def poly_filter(signal, threshold, degree=10):
     flag_rfi(signal, fitarr, threshold)
     return fitarr
 
-def iterative_poly_filter(signal, mask=None):
+def iterative_poly_filter(signal):
+    mask = np.ma.make_mask_none((len(signal),))
+    #The first bin is always bad for some reason
+    mask[0] = True
     degree = 1
     threshold = 1.2
     masked = np.ma.array(np.log(signal), mask=mask)
     while threshold > 1.01:
         fitarr = poly_filter(masked, threshold, degree)
         threshold = 1 + (threshold - 1)*0.8
-        if degree < 17:
+        if degree < 15:
             degree += 2
-        elif degree == 17:
-            if np.std(poly_filter(masked, threshold, degree)-masked) < np.std(fitarr-masked):
-                degree += 1
     filtered = np.exp(fitarr)
     filtered[masked.mask] = masked.data
     filtered = (filtered.real).astype(np.int).astype(np.complex)
