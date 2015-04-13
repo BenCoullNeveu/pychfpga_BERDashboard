@@ -155,9 +155,9 @@ def iterative_poly_filter(signal):
         threshold = 1 + (threshold - 1)*0.8
         if degree < 20:
             degree += 2
-    fitarr[masked.mask] = masked.data[masked.mask]
     filtered = np.exp(fitarr)
     filtered = (filtered.real).astype(np.int).astype(np.complex)
+    filtered[masked.mask] = signal[masked.mask]
     return filtered
 
 def calculate_gains(c, port):
