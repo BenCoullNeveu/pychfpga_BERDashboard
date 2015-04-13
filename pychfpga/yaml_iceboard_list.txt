@@ -1,6 +1,6 @@
 !HardwareMap
    - !IceBoardPlus { serial: "0005", hostname: "10.10.10.5",  handler_name: "chFPGA_controller", subarray: 2  , slot:  1 }  # Penticton Slot 1
-   - !IceBoardPlus { serial: "0007", hostname: "10.10.10.57", handler_name: "chFPGA_controller", subarray: 100, slot: -1 }  # McGill JF Rev2 Development board
+   - !IceBoardPlus { serial: "0007", hostname: "10.10.10.7",  handler_name: "chFPGA_controller", subarray: 100, slot:  5 }  # McGill JF Rev2 Development board
    - !IceBoardPlus { serial: "0009", hostname: "10.10.10.9",  handler_name: "chFPGA_controller", subarray: 1  , slot: -1 }  # Not present
    - !IceBoardPlus { serial: "0008", hostname: "10.10.10.8",  handler_name: "chFPGA_controller", subarray: 2  , slot: 16 }  # Penticton Slot 16, SYNC master
    - !IceBoardPlus { serial: "0012", hostname: "10.10.10.12", handler_name: "chFPGA_controller", subarray: 3  , slot: -1 }  # Former Penticton Slot 6
@@ -17,9 +17,10 @@
    - !IceBoardPlus { serial: "0026", hostname: "10.10.10.26", handler_name: "chFPGA_controller", subarray: 2  , slot:  2 }  # Penticton Slot 2
    - !IceBoardPlus { serial: "0027", hostname: "10.10.10.27", handler_name: "chFPGA_controller", subarray: 2  , slot: 13 }  # Penticton Slot 13
    - !IceBoardPlus { serial: "0030", hostname: "10.10.10.30", handler_name: "chFPGA_controller", subarray: 2  , slot:  4 }  # Penticton Slot 4
-   - !IceBoardPlus { serial: "0031", hostname: "10.10.10.31", handler_name: "chFPGA_controller", subarray: 2  , slot:  5 }  # Penticton Slot 5
-   - !IceBoardPlus { serial: "0032", hostname: "10.10.10.32", handler_name: "chFPGA_controller", subarray: 2  , slot: 12 }  # Penticton Slot 12  Used used
+   #- !IceBoardPlus { serial: "0031", hostname: "10.10.10.31", handler_name: "chFPGA_controller", subarray: 2  , slot:  5 }  # Penticton Slot 5
+   #- !IceBoardPlus { serial: "0032", hostname: "10.10.10.32", handler_name: "chFPGA_controller", subarray: 2  , slot: 12 }  # Penticton Slot 12  Used used
    - !IceBoardPlus { serial: "0034", hostname: "10.10.10.34", handler_name: "chFPGA_controller", subarray: 101, slot: -1 }  # McGill, Dodgy Rev4
    - !IceBoardPlus { serial: "0047", hostname: "10.10.10.47", handler_name: "chFPGA_controller", subarray: 104, slot: -1 }  # broken brought back
    - !IceBoardPlus { serial: "0055", hostname: "10.10.10.55", handler_name: "chFPGA_controller", subarray: 2  , slot:  9 }  # Penticton slot 9
    - !IceBoardPlus { serial: "0063", hostname: "10.10.10.63", handler_name: "chFPGA_controller", subarray: 2  , slot:  7 }  # Penticton slot 7
+   - !IceBoardPlus { serial: "0058", hostname: "10.10.10.58", handler_name: "chFPGA_controller", subarray: 100, slot: 12 }  # McGill JF  Development board
