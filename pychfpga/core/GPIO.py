@@ -66,7 +66,7 @@ class GPIO_base(Module_base):
     PWM_HIGH_TIME                       = BitField(CONTROL, 41, 0, width=32, doc='Number of events (frames) to keep the PWM output at High')
     PWM_PERIOD                          = BitField(CONTROL, 45, 0, width=32, doc='Number of events (frames) between PWM High (i.e PWM period)')
     PWM_RESET                           = BitField(CONTROL, 46, 7, width=1, doc='Resets the PWM generator')
-    USER_MUX_SOURCE                     = BitField(CONTROL, 46, 0, width=2, doc='Selects which signal is sent to the SMA-A output. 0=PWM, 1=PPS, 2=SYNC, 3=200MHz ADC clock')
+    USER_MUX_SOURCE                     = BitField(CONTROL, 46, 0, width=3, doc='Selects which signal is sent to the SMA-A output. 0=PWM, 1=PPS, 2=SYNC, 3=IRIGB Trigger, 4=BP Buck Sync')
 
     TIMESTAMP_VALID                     = BitField(STATUS, 0, 7, doc='Timestamp data valid (i.e. can be read)')
     ADC_SYNC_READBACK                   = BitField(STATUS, 1, 0, doc='Reads back the SYNC bit for debugging')
@@ -146,7 +146,8 @@ class GPIO_base(Module_base):
         'pwm': 0,  # Output from the frame-based pwm generator
         'pps': 1,  # 1 PPS signal from the IRIG-B decoder
         'sync': 2,  # User-generated SYNC signal
-        'adc_clk': 3}  # 200 MHz ADC clock from ADCDAQ[0]
+        'irigb_trig': 3,
+        'bp_sync': 4}  # Backplane SYNC signal
 
     def set_user_output_source(self, source):
         """ Set the user output source. 'source' is a string."""

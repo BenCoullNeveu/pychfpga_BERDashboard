@@ -271,7 +271,7 @@ if __name__=='__main__':
         if not ib.ping():
             raise RuntimeError("%r could not be found at '%s'"
                                % (ib, ib.tuber_uri))
-
+    c=[ib for ib in hwm.query(IceBoardPlus) if ib.ping()]
 
     # for ib in  hwm.query(HWMIceBoard):
     #     if ib.hostname:
@@ -280,7 +280,7 @@ if __name__=='__main__':
     ib = hwm.query(IceBoardPlus)
     # ic = hwm.query(IceCrate).one()
     ib1 = ib[0]
-    ib2 = ib[1]
+    # ib2 = ib[1]
 
     # ic = load_yaml_hardware_map(yaml_hwm)
 

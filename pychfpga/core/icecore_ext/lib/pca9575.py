@@ -12,8 +12,6 @@ pca9575: Implememnts access to a TCA9548A I2C switch.
  2014-03-18 JM: Fixed read function to allow reading by register name, not only by register address
                 Fixed masking in write function
 """
-# MGADC08 FMC ADC board device handlers
-import logging
 
 class pca9575(object):
     """
@@ -38,7 +36,7 @@ class pca9575(object):
         'INTS1': 0x0F
         }
 
-    def __init__(self, i2c_interface, address, port = 'GPIO', verbose=0):
+    def __init__(self, i2c_interface, address, port='GPIO', verbose=0):
         """
         Creates an object that interfaces the PCS8575 I2C IO Extender.
         Access is done through the I2C object 'i2c_interface' at I2C address 'address' and on port 'port'.
@@ -48,7 +46,7 @@ class pca9575(object):
         """
         self.i2c = i2c_interface
         self.address = address
-        self.port = port
+        self.bus_name = port
 
     def init(self, cfg0_def=0b11111111, cfg1_def=0b11111111, out0_default=None, out1_default=None, verbose=0):
         """
@@ -56,21 +54,21 @@ class pca9575(object):
         cfg0_def, cfg1_def sets the default configuration of the I/O pins. By default all pins are inputs.
         """
         if out0_default is not None:
-            self.write('OUT0', out0_default);
+            self.write_reg('OUT0', out0_default);
 
         if out1_default is not None:
-            self.write('OUT1', out1_default);
+            self.write_reg('OUT1', out1_default);
 
-        self.write('CFG0', cfg0_def)
-        self.write('CFG1', cfg1_def)
+        self.write_reg('CFG0', cfg0_def)
+        self.write_reg('CFG1', cfg1_def)
 
     def select(self):
         """
         Selects the proper I2C port to talk to this device.
         """
-        self.i2c.select_bus(self.port)
+        self.i2c.select_bus(self.bus_name)
 
-    def write(self, register, value, mask = 0xff, select = True):
+    def write_reg(self, register, value, mask=0xff, select=True):
         """
         Writes a byte to the specified register of the IO Expander.
         'register' can be the register address or the register name taken from REGISTER_TABLE.
@@ -92,7 +90,7 @@ class pca9575(object):
 
         self.i2c.write_read(self.address, data=[register, new_value])
 
-    def read(self, register, select = True):
+    def read_reg(self, register, select=True):
         """
         Read a value to the specified register
         """
@@ -105,4 +103,8 @@ class pca9575(object):
 
         return self.i2c.write_read(self.address, data=[register], read_length=1)[0]
 
+    def write(self, byte, value, mask=0xff, select=True):
+        self.write_reg('OUT%i' % byte, value, mask=mask, select=select)
 
+    def read(self, byte, select=True):
+        return self.read_reg('IN%i' % byte, select=select)

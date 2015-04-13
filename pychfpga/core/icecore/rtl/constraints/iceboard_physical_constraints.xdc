@@ -233,8 +233,8 @@ set_property PACKAGE_PIN R20 [get_ports arm_spi_cs_n]
 # | bp_time_n      | AH30     | BP_IO0_N           |        SW2               | time_n
 # | bp_trig_p      | AJ29     | BP_IO1_P           |        SW3               | trig_p
 # | bp_trig_n      | AK30     | BP_IO1_N           |        SW4               | trig_n
-# | bp_io2_p       | AK28     | BP_IO2_P           |        SW5               | -
-# | bp_io2_n       | AK29     | BP_IO2_N           |        SW6               | -
+# | bp_io2_p       | AK28     | BP_IO2_P           |        SW5               | gpio_int
+# | bp_io2_n       | AK29     | BP_IO2_N           |        SW6               | buck_sync
 # | fpga_led1      | W24      | BP_IO3             |        SW7  FPGA_LED1    | slotid_cap0
 #
 # All single-ended signals are LVCMOS25

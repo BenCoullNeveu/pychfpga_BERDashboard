@@ -375,8 +375,10 @@ class chFPGAHandler(IceBoardPlusHandler):
         """
         return self.core_i2c.set_port(*args, **kwargs)
 
-    def _mezzanine_eeprom_read(self, mezzanine, addr, length,**kwargs):
+    def _mezzanine_eeprom_read(self, mezzanine, addr, length, **kwargs):
         """ Reads the EEPROM on the specified mezzanine.
+
+        If length == -1, the data is read from the specified address until the end of the EEPROM.
 
         NOTE: It would be nice if the ARM could provide this function.
 
@@ -398,7 +400,7 @@ class chFPGAHandler(IceBoardPlusHandler):
 
         try:
             # *** JFC: broken now. fixme
-            return self.core_handler._get_mezzanine_ipmi(mezzanine)  # Try to get the ipmi data from tuber
+            return tuber.TuberObject.__getattr__(self,'_get_mezzanine_ipmi')(mezzanine)  # Try to get the ipmi data from tuber
         except tuber.TuberRemoteError:
             return self._get_mezzanine_mcgill_ipmi(mezzanine)
 
@@ -463,7 +465,7 @@ class chFPGAHandler(IceBoardPlusHandler):
         dict_out = ast.literal_eval(string)  # safer than using eval
 
         # Extract standard FRU information from McGill data structure
-        part_number = dict_out.pop('Model', 'Unknown')
+        part_number = dict_out.pop('Model', 'MGADC08')
         serial_number = dict_out.pop('Serial #', 'Unknown')
         product_version = dict_out.pop('Rev #', 'Unknown')
         mfg_date_str = dict_out.get('Date of last test', None)
@@ -506,9 +508,80 @@ class chFPGAHandler(IceBoardPlusHandler):
         """
         ipmi = self._get_mezzanine_ipmi(mezzanine)
         if ipmi and hasattr(ipmi,'product') and hasattr(ipmi.product, 'part_number'):
-            return  ipmi.product.part_number
+            return ipmi.product.part_number
         else:
             return None
+
+    def discover_mezzanines(self, update=True):
+        '''Detect mezzanines attached to the Iceboard, and instantiate them if
+        update=True.
+
+        This method uses IPMI data on the mezzanine's EEPROMs to guide
+        itself.
+
+        You do NOT need to use this method if the mezzanines present in the
+        system are already explicitely specified in the YAML hardware maps.
+        '''
+
+        mezz_class = {}
+        for m in range(1, self.NUM_MEZZANINES + 1):
+
+            # MezzClass = MissingMezzanine # Used by Graeme
+            part_number = None
+            serial = None
+            mezz_class[m] = None
+            # If a mezzanine is present, ask it (from EEPROM) what kind
+            # of mezzanine it is. Try to instantiate a mezz-specific
+            # class.
+            if self.is_mezzanine_present(m):
+                ipmi = self._get_mezzanine_ipmi(m)
+                part_number = ipmi.product.part_number
+                serial = ipmi.product.serial_number
+                self.logger.info(
+                    '%r: detect_mezzanines(): Detected Mezzanine '
+                    'Model: %s Serial %s in Mezzanine %i'
+                    % (self, part_number, serial, m))
+                for sc in class_mapper(HWMFMCMezzanine).self_and_descendants:
+                    if sc.polymorphic_identity == part_number:
+                        mezz_class[m] = sc.class_
+
+            if not mezz_class[m]:
+                self.logger.warning(
+                    "IceBoard SN%r detect_mezzanines(): There is no known "
+                    "FMC Mezzanine object with polymorphic map name '%r' "
+                    "for Mezzanine %r" % (self.serial_number, part_number, m))
+
+            if update:
+                orm = self.get_parent()
+                if not orm.hwm:
+                    raise SystemError(
+                        '%r: detect_mezzanines(): Attempt to add new '
+                        'mezzanine objects while the IceBoard is not yet '
+                        'added to the  hardware map. ' % self)
+
+                if m in orm.mezzanine:
+                    del(orm.mezzanine[m])
+
+                if mezz_class[m]:
+                    self.logger.info(
+                        '%r: detect_mezzanines(): Creating Mezzanine '
+                        'Serial %s in Mezzanine %i' % (self, serial, m))
+                    new_mezz = mezz_class[m](
+                        mezzanine=m,
+                        serial=serial,
+                        type=''  # 'type' cannnot be None
+                        )
+                    orm.hwm.add(new_mezz)
+                    orm.hwm.flush()
+                    orm.mezzanine[m] = new_mezz
+                else:
+                    self.logger.warning(
+                        "IceBoard SN%r detect_mezzanines(): There is no known "
+                        "FMC Mezzanine object with polymorphic map name '%r' "
+                        "for Mezzanine %r"
+                        % (self.serial_number, part_number, m))
+                    # self.mezzanine[m] = None
+        return mezz_class
 
     # Backplane management
 
@@ -547,6 +620,8 @@ class chFPGAHandler(IceBoardPlusHandler):
             w2 = self.fpga_mmi_read(self._IRIGB_SAMPLE2_ADDR)
             self.fpga_mmi_write(self._IRIGB_SAMPLE2_ADDR, w2 | (1 << 29))
             self.fpga_mmi_write(self._IRIGB_SAMPLE2_ADDR, w2 & ~(1 << 29))
+            while not self.fpga_mmi_read(self._IRIGB_TARGET1_ADDR) & (1<<29):
+                pass
 
         w0 = self.fpga_mmi_read(self._IRIGB_SAMPLE0_ADDR)
         w1 = self.fpga_mmi_read(self._IRIGB_SAMPLE1_ADDR)
@@ -575,21 +650,21 @@ class chFPGAHandler(IceBoardPlusHandler):
         ts.event_ctr = e0
         return ts
 
-    def _set_irigb_target_time(self, dt=None, offset=5):
+    def _set_irigb_target_time(self, dt=None, offset=5, nano_offset=0):
 
         if dt is None:
             dt = self._get_irigb_time().datetime
             self.logger.info('%.32r: Current IRIGB time is %s' % (self, dt.isoformat()))
 
         dt += timedelta(0, offset)
-        self.logger.info('%.32r: Setting IRIGB target time to %s' % (self, dt.isoformat()))
+        self.logger.info('%.32r: Setting IRIGB target time to %s + %3i ns' % (self, dt.isoformat(), nano_offset))
 
         y = dt.year % 100
         d = (dt - datetime(dt.year, 1, 1)).days + 1
         h = dt.hour
         m = dt.minute
         s = dt.second
-        ss = dt.microsecond * 100
+        ss = dt.microsecond * 100 + int(nano_offset/10)
 
         t0 = (y << 0)
         t1 = (d << 20) | (h << 14) | (m << 7) | (s << 0)

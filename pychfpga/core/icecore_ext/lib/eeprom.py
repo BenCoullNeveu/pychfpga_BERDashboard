@@ -87,7 +87,7 @@ class eeprom(object):
             # print length
         return data
 
-    def write(self, addr, data, **kwargs):
+    def write(self, addr, data, select=True,  **kwargs):
         """ Writes to the EEPROM.
         Data can be a string, list of numpy array.
         """
@@ -103,7 +103,8 @@ class eeprom(object):
         else:
             data = list(data)
 
-        self.i2c.select_bus(self.bus_name)
+        if select:
+            self.i2c.select_bus(self.bus_name)
 
         while data:
             addr_bytes = self._get_addr_bytes(addr)

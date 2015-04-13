@@ -6,9 +6,10 @@ import logging
 import time
 
 from lib.eeprom import eeprom as EEPROM
-from lib import ina230 # I2C Voltage and current monitor
-from lib import tmp421 # I2C temperature sensor
-from lib import pca9698 # I2C 40-bit IO Expander
+from lib import ina230  # I2C Voltage and current monitor
+from lib import tmp421  # I2C temperature sensor
+from lib import pca9698  # I2C 40-bit IO Expander
+from lib import amc6821  # I2C fan Controller
 
 
 class BackplaneHardware(object):
@@ -37,6 +38,8 @@ class BackplaneHardware(object):
 
     _TMP_SLOT1_ADDR = 0x4E
     _TMP_SLOT16_ADDR = 0x4D
+
+    _FAN_CTRL_ADDR = 0x18  # AMC6821 Fan controller, connected on backplane external I2C connector
 
     _POWER_3V3_ADDR = 0x40
 
@@ -125,7 +128,7 @@ class BackplaneHardware(object):
         (16, 8): (14, 3), (16, 9): (7, 3), (16, 10): (1, 8), (16, 11): (5, 3), (16, 12): (6, 3), (16, 13): (4, 3), (16, 14): (3, 3), (16, 15): (2, 3)
     }
 
-    _BP_TX_TO_RX_MAP = {tx:rx for (rx,tx) in _BP_RX_TO_TX_MAP.items()}
+    _BP_TX_TO_RX_MAP = {tx:rx for (rx, tx) in _BP_RX_TO_TX_MAP.items()}
 
 
     @classmethod
@@ -176,6 +179,9 @@ class BackplaneHardware(object):
         self._qsfp_ctrlb = pca9698.pca9698(self._i2c, self._QSFP_CTRL_SETB_ADDR, 'BP')
         self._reset_ctrl = pca9698.pca9698(self._i2c, self._RESETS_CTRL_ADDR, 'BP')
 
+        if self._i2c.is_present(self._FAN_CTRL_ADDR, 'BP'):
+            self._logger.debug('%r: Creating fan controller object' % self)
+            self._fan_ctrl = amc6821.AMC6821(self._i2c, self._FAN_CTRL_ADDR, 'BP')
 
         self.QSFP_CTRL_MAP = {
              # Slot num : (expander object, Register, bit number ModPrs, bit number Reset, bit number IntL, bit number ModSel)

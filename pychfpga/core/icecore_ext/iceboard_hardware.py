@@ -14,9 +14,33 @@ from lib import pca9575 # I2C 16-bit IO Expander
 from lib import tca9548a # I2C switch
 from lib import ina230 # I2C Voltage and current monitor
 from lib import eeprom
+from lib import qsfp
 
-class IceBoardHardwareException(Exception):
-    pass
+class GPIO(object):
+    """Provides a single-point, abstracted access to all GPIO bits found on the IceBoard"""
+
+    def __init__(self, gpio_table):
+        self._gpio_table = gpio_table
+
+    def read(self, name, select=True):
+        if name not in self._gpio_table:
+            raise RuntimeError("'%s'  is not a valid QSFP Control bit name" % name)
+        (io_expander, byte, bit, width) = self._gpio_table[name]
+        value = io_expander.read(byte, select=select)
+        value = (value >> bit) & ((1 << width)-1)
+        return value
+
+    def write(self, name, value, select=True):
+        if name not in self._gpio_table:
+            raise ValueError("'%s'  is not a valid GPIO name" % name)
+        (io_expander, byte, bit, width) = self._gpio_table[name]
+        if width == 1:
+            value = bool(value)
+        elif value < 0 or value >= (1 << width):
+            raise ValueError("%i is an invalid value for GPIO field '%s'" % (value, name))
+        io_expander.write(byte, value << bit, mask= ((1 << width)-1) << bit, select=select)
+
+
 class IceBoardHardware(object):
     """
     Provides access to the hardware of an IceBoard Rev2/Rev3, including:
@@ -192,7 +216,8 @@ class IceBoardHardware(object):
             2: self._fmcb_eeprom
             }
 
-        self.GPIO_EXPANDER_MAP = {
+
+        self._gpio = GPIO(gpio_table={
             # name : (expander object, byte, lsb bit number,  width)
             'GP_SW1': (self._gpio_sw_leds, 0, 0, 1),
             'GP_SW2': (self._gpio_sw_leds, 0, 1, 1),
@@ -224,8 +249,21 @@ class IceBoardHardware(object):
             'BP_GPIO3': (self._gpio_arm_phy_leds, 1, 3, 1),
             'BP_GPIO4': (self._gpio_arm_phy_leds, 1, 4, 1),
             'BP_GPIO5': (self._gpio_arm_phy_leds, 1, 5, 1),
-            'BP_SLOT_NUMBER': (self._gpio_arm_phy_leds, 1, 0, 4), # Also corresponds to BP_GPIO0-3
-        }
+            'BP_SLOT_NUMBER': (self._gpio_arm_phy_leds, 1, 0, 4),  # Also corresponds to BP_GPIO0-3
+            'QSFPA_ModPrsL': (self._gpio_sfp_qsfp, 0, 0, 1),
+            'QSFPA_ResetL': (self._gpio_sfp_qsfp, 0, 2, 1),
+            'QSFPA_IntL': (self._gpio_sfp_qsfp, 0, 1, 1),
+            'QSFPA_LPMode': (self._gpio_sfp_qsfp, 0, 4, 1),
+            'QSFPA_ModSelL': (self._gpio_sfp_qsfp, 0, 3, 1),
+            'QSFPB_ModPrsL': (self._gpio_sfp_qsfp, 0, 5, 1),
+            'QSFPB_ResetL': (self._gpio_sfp_qsfp, 0, 7, 1),
+            'QSFPB_IntL': (self._gpio_sfp_qsfp, 0, 6, 1),
+            'QSFPB_LPMode': (self._gpio_sfp_qsfp, 1, 5, 1),
+            'QSFPB_ModSelL': (self._gpio_sfp_qsfp, 1, 4, 1)
+        })
+
+        self._qsfpa = qsfp.QSFP(self._i2c, 'QSFPA', self._gpio)
+        self._qsfpb = qsfp.QSFP(self._i2c, 'QSFPB', self._gpio)
 
         self.TEMPERATURE_SENSOR_TABLE = {
             # sensor name: tmp object
@@ -284,7 +322,7 @@ class IceBoardHardware(object):
         self._gpio_power.init(cfg0_def=0b10101000, cfg1_def=0b10101000, out0_default = 0, out1_default = 0)
         self._gpio_sw_leds.init(cfg1_def=0b00000000)
         self._gpio_arm_phy_leds.init(cfg0_def=0b11110000)
-        #self._gpio_sfp_qsfp.init(cfg0_def=0b00000000)
+        self._gpio_sfp_qsfp.init(cfg0_def=0b10011100, cfg1_def=0b00110000)
 
     def _init_temperature_sensors(self, temperature_sensor_name=None, bit_resolution=12):
         """
@@ -296,7 +334,7 @@ class IceBoardHardware(object):
         140318 JM: created
         """
         if bit_resolution<9 or bit_resolution>12:
-            raise self.IceBoardHardwareException('Bit_resolution is out of range. Must be 9,10,11 or 12 bits')
+            raise self.ValueError('Bit_resolution is out of range. Must be 9,10,11 or 12 bits')
         else:
             if temperature_sensor_name == None:
                 temperature_sensor_name = self.TEMPERATURE_SENSOR_TABLE.keys()
@@ -305,7 +343,7 @@ class IceBoardHardware(object):
 
             for temp_sensor in temperature_sensor_name:
                 if temp_sensor not in self.TEMPERATURE_SENSOR_TABLE:
-                    raise IceBoardHardwareException('Invalid temperature sensor name. Valid names are %s' % ','.join(self.TEMPERATURE_SENSOR_TABLE.keys()))
+                    raise ValueError('Invalid temperature sensor name. Valid names are %s' % ','.join(self.TEMPERATURE_SENSOR_TABLE.keys()))
                 else:
                     tmp_object = self.TEMPERATURE_SENSOR_TABLE[temp_sensor]
                     try:
@@ -328,7 +366,7 @@ class IceBoardHardware(object):
 
         for power_sensor in power_sensor_name:
             if power_sensor not in self.POWER_SENSOR_TABLE:
-               raise IceBoardHardwareException('Invalid power sensor name. Valid names are %s' % ','.join(self.POWER_SENSOR_TABLE.keys()))
+               raise ValueError('Invalid power sensor name. Valid names are %s' % ','.join(self.POWER_SENSOR_TABLE.keys()))
             else:
                 power_sensor_object, v_out, r_shunt, i_typ, tol_i = self.POWER_SENSOR_TABLE[power_sensor]
                 try:
@@ -348,7 +386,7 @@ class IceBoardHardware(object):
 
     def _get_ioexpander_field(self, field_name):
         (io_expander, byte, bit, width) = self.GPIO_EXPANDER_MAP[field_name]
-        value = io_expander.read('IN%i' % byte)
+        value = io_expander.read(byte)
         value = (value >> bit) & (2**width-1)
         return value
 
@@ -406,14 +444,14 @@ class IceBoardHardware(object):
 
         for (fmc,fmc_state) in zip(fmc_number,state):
             if fmc not in range(self.NUMBER_OF_FMC_SLOTS):
-                raise self.IceBoardHardwareException('FMC number %i is not a valid value' % fmc)
+                raise ValueError('FMC number %i is not a valid value' % fmc)
             else:
                 out_reg = 'OUT%i' % fmc # sets the register name to access based on the FMC number
                 #cfg_reg = 'CFG%i' % fmc
                 # self._gpio_power.write(out_reg, 0b00000000) # Turn off all power signals before we enable the GPIO outputs
                 #self._gpio_power.write(cfg_reg, 0b10101000)
-                self._gpio_power.write(out_reg, 0b00000111*bool(fmc_state)) # Turn on power to board
-                self._gpio_power.write(out_reg, 0b01010111*bool(fmc_state)) # Set Power Good and CLKDIR to 1
+                self._gpio_power.write(fmc, 0b00000111*bool(fmc_state)) # Turn on power to board
+                self._gpio_power.write(fmc, 0b01010111*bool(fmc_state)) # Set Power Good and CLKDIR to 1
 
     def set_led(self, led_name, state):
         """
@@ -430,15 +468,15 @@ class IceBoardHardware(object):
 
         for (led, led_state) in zip(led_name,state):
             if led not in self.GPIO_EXPANDER_MAP:
-                raise IceBoardHardwareException('Invalid LED name')
+                raise ValueError('Invalid LED name')
             else:
                 led_info = self.GPIO_EXPANDER_MAP[led]
                 io_expander = led_info[0]
                 led_byte = led_info[1]
                 led_bit = led_info[2]
 
-                io_expander.write('CFG%i' % led_byte, 0b00000000 , mask = 1<<led_bit) # Configuring pin corresponding to led as output
-                io_expander.write('OUT%i' % led_byte, (1<<led_bit) * bool(led_state) , mask = 1<<led_bit)
+                io_expander.write_reg('CFG%i' % led_byte, 0b00000000 , mask = 1<<led_bit) # Configuring pin corresponding to led as output
+                io_expander.write(led_byte, (1<<led_bit) * bool(led_state) , mask = 1<<led_bit)
 
     def get_led(self, led_name):
         """
@@ -452,14 +490,14 @@ class IceBoardHardware(object):
 
         for led in led_name:
             if led not in self.GPIO_EXPANDER_MAP:
-                raise IceBoardHardwareException('Invalid LED name')
+                raise ValueError('Invalid LED name')
             else:
                 led_info = self.GPIO_EXPANDER_MAP[led]
                 io_expander = led_info[0]
                 led_byte = led_info[1]
                 led_bit = led_info[2]
 
-                led_status[led]=bool(io_expander.read('IN%i' % led_byte) & (1<<led_bit))
+                led_status[led]=bool(io_expander.read(led_byte) & (1 << led_bit))
 
         return led_status
 
@@ -486,7 +524,7 @@ class IceBoardHardware(object):
 
         for temp_sensor in temperature_sensor_name:
             if temp_sensor not in self.TEMPERATURE_SENSOR_TABLE:
-                raise IceBoardHardwareException('Invalid temperature sensor name')
+                raise ValueError('Invalid temperature sensor name')
             else:
                 tmp_object = self.TEMPERATURE_SENSOR_TABLE[temp_sensor]
                 temperature_dict[temp_sensor]=tmp_object.get_temperature()
@@ -521,7 +559,7 @@ class IceBoardHardware(object):
 
         for power_sensor in power_sensor_name:
             if power_sensor not in self.POWER_SENSOR_TABLE:
-                raise IceBoardHardwareException('Invalid power sensor name. Valid names are %s.' % ','.join(self.POWER_SENSOR_TABLE.keys()))
+                raise ValueError('Invalid power sensor name. Valid names are %s.' % ','.join(self.POWER_SENSOR_TABLE.keys()))
             else:
                 power_sensor_object = self.POWER_SENSOR_TABLE[power_sensor][0]
 
@@ -610,3 +648,13 @@ class I2CInterface(object):
         # self._logger.debug("Accessing I2C bus...")
         return self.write_read_fn(*args, **kwargs)
 
+    def is_present(self, addr, bus_name=None):
+        """ Test the presence of an I2C device at the specified address.
+        """
+        if bus_name:
+            self.select_bus(bus_name, retry=3)
+        try:
+            self.write_read(addr, data=[], read_length=0, retry=0 ) #dummy I2C acces
+        except self.I2CException:
+            return False
+        return True
