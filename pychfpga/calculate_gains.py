@@ -153,7 +153,7 @@ def iterative_poly_filter(signal):
     while threshold > 1.01:
         fitarr = poly_filter(masked, threshold, degree)
         threshold = 1 + (threshold - 1)*0.8
-        if degree < 15:
+        if degree < 20:
             degree += 2
     fitarr[masked.mask] = masked.data[masked.mask]
     filtered = np.exp(fitarr)
@@ -202,12 +202,14 @@ def calculate_gains(c, port):
         time.sleep(1)
     out1 = open('gains_noisy.pkl', 'wb')
     pickle.dump(gain,out1)
+    out1.close()
     for channel in channels:
         glin_final = iterative_poly_filter(gain[channel][1][0])
         gain[channel][1][0] = glin_final.tolist()
     c.set_gain(gain)
     output = open('gains_'+str(c.GPIO.FPGA_SERIAL_NUMBER)+'.pkl','wb')
     pickle.dump(gain, output)
+    output.close()
     print "Scaler Gain set and saved"
     c.stop_data_capture()
 
