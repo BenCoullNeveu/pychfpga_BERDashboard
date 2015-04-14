@@ -384,14 +384,8 @@ class IceBoardHardware(object):
     def get_number_of_fmc_slots(self):
         return self.NUMBER_OF_FMC_SLOTS
 
-    def _get_ioexpander_field(self, field_name):
-        (io_expander, byte, bit, width) = self.GPIO_EXPANDER_MAP[field_name]
-        value = io_expander.read(byte)
-        value = (value >> bit) & (2**width-1)
-        return value
-
     def get_slot_number(self):
-        return self._get_ioexpander_field('BP_SLOT_NUMBER')
+        return self._gpio.read('BP_SLOT_NUMBER')
 
     def read_motherboard_eeprom(self, addr, length, **kwargs):
         return self._motherboard_eeprom_data.read(addr, length, **kwargs)
@@ -446,18 +440,18 @@ class IceBoardHardware(object):
             if fmc not in range(self.NUMBER_OF_FMC_SLOTS):
                 raise ValueError('FMC number %i is not a valid value' % fmc)
             else:
-                out_reg = 'OUT%i' % fmc # sets the register name to access based on the FMC number
+                # out_reg = 'OUT%i' % fmc # sets the register name to access based on the FMC number
                 #cfg_reg = 'CFG%i' % fmc
                 # self._gpio_power.write(out_reg, 0b00000000) # Turn off all power signals before we enable the GPIO outputs
                 #self._gpio_power.write(cfg_reg, 0b10101000)
-                self._gpio_power.write(fmc, 0b00000111*bool(fmc_state)) # Turn on power to board
-                self._gpio_power.write(fmc, 0b01010111*bool(fmc_state)) # Set Power Good and CLKDIR to 1
+                self._gpio_power.write(fmc, 0b00000111*bool(fmc_state))  # Turn on power to board
+                self._gpio_power.write(fmc, 0b01010111*bool(fmc_state))  # Set Power Good and CLKDIR to 1
 
     def set_led(self, led_name, state):
         """
         Set the LED(s) specified in 'led_name' to the the 'state'.
         'led_name' can be a list of LED names found in
-        GPIO_EXPANDER_MAP.  'state' can be a single boolean value, or
+        gpio object.  'state' can be a single boolean value, or
         an array with the same length as 'led_name'
         """
         if isinstance(led_name, str):
@@ -466,17 +460,8 @@ class IceBoardHardware(object):
         if isinstance(state, (bool, int)):
             state = [state] * len(led_name)
 
-        for (led, led_state) in zip(led_name,state):
-            if led not in self.GPIO_EXPANDER_MAP:
-                raise ValueError('Invalid LED name')
-            else:
-                led_info = self.GPIO_EXPANDER_MAP[led]
-                io_expander = led_info[0]
-                led_byte = led_info[1]
-                led_bit = led_info[2]
-
-                io_expander.write_reg('CFG%i' % led_byte, 0b00000000 , mask = 1<<led_bit) # Configuring pin corresponding to led as output
-                io_expander.write(led_byte, (1<<led_bit) * bool(led_state) , mask = 1<<led_bit)
+        for (led, led_state) in zip(led_name, state):
+            self._gpio.write(led, led_state)
 
     def get_led(self, led_name):
         """
@@ -489,15 +474,7 @@ class IceBoardHardware(object):
             led_name = [led_name]
 
         for led in led_name:
-            if led not in self.GPIO_EXPANDER_MAP:
-                raise ValueError('Invalid LED name')
-            else:
-                led_info = self.GPIO_EXPANDER_MAP[led]
-                io_expander = led_info[0]
-                led_byte = led_info[1]
-                led_bit = led_info[2]
-
-                led_status[led]=bool(io_expander.read(led_byte) & (1 << led_bit))
+            led_status[led] = self._gpio.read(led)
 
         return led_status
 
@@ -527,7 +504,7 @@ class IceBoardHardware(object):
                 raise ValueError('Invalid temperature sensor name')
             else:
                 tmp_object = self.TEMPERATURE_SENSOR_TABLE[temp_sensor]
-                temperature_dict[temp_sensor]=tmp_object.get_temperature()
+                temperature_dict[temp_sensor] = tmp_object.get_temperature()
 
         return temperature_dict
 

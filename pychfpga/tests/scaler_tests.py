@@ -160,13 +160,20 @@ class FpgaBitstream(object):
     to use it, but it makes the code look nicer"""
     bitstream = None
 
-    def __init__(self, filename):
-        with open(filename, 'rb') as file_:
-            self.bitstream = file_.read()
-
+    def __init__(self, filename, auto_reload=True):
+        self.filename = filename
+        self.auto_reload = auto_reload
+        if not self.auto_reload:
+            self._load()
     def __str__(self):
         """ Return the bitstream as a string. """
+        if self.auto_reload:
+            self._load()
         return self.bitstream
+    def _load(self):
+        with open(self.filename, 'rb') as file_:
+            self.bitstream = file_.read()
+
 
 if __name__=='__main__':
 

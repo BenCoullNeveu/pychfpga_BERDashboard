@@ -337,6 +337,13 @@ class chFPGAHandler(IceBoardPlusHandler):
     def is_open(self):
         return self._is_open
 
+    def ping_fpga(self):
+        try:
+            self.mmi_read(self._GPIO_COOKIE_REG, timeout=0.3)
+            return True
+        except IOError:
+            return False
+
     def get_fpga_firmware_cookie(self):
         """
         Reads the FPGA and returns the cookie that identifies the firmware.

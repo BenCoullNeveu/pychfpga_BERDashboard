@@ -10,8 +10,6 @@ Provides access to the memory-mapped interface of the FPGA through a socket.
         2014-03-04 JFC: Created
 """
 import logging
-import __main__
-# import struct
 import numpy as np
 import lib.udp as udp
 from chfpga_handler import chFPGAHandler as chFPGAHandler
@@ -21,7 +19,7 @@ class FpgaMmiException(Exception):
     pass
 
 
-class TimeoutException(Exception):
+class TimeoutException(IOError):
     pass
 
 
