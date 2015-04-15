@@ -385,7 +385,7 @@ class IceBoardHardware(object):
         return self.NUMBER_OF_FMC_SLOTS
 
     def get_slot_number(self):
-        return self._gpio.read('BP_SLOT_NUMBER')
+        return self._gpio.read('BP_SLOT_NUMBER') + 1
 
     def read_motherboard_eeprom(self, addr, length, **kwargs):
         return self._motherboard_eeprom_data.read(addr, length, **kwargs)
@@ -419,33 +419,33 @@ class IceBoardHardware(object):
         eeprom_object = self._FMC_EEPROM_TABLE[mezzanine]
         return eeprom_object.write(addr, data, **kwargs)
 
-    def set_mezzanine_power(self, fmc_number=range(NUMBER_OF_FMC_SLOTS), state=[True]*NUMBER_OF_FMC_SLOTS):
-        """
-        Enables or disables power of the specified FMC slot.
-        Proper power sequencing is done to prevent the FMC board switchers to create too much a current spike when enabled.
+    # def set_mezzanine_power(self, fmc_number=range(NUMBER_OF_FMC_SLOTS), state=[True]*NUMBER_OF_FMC_SLOTS):
+    #     """
+    #     Enables or disables power of the specified FMC slot.
+    #     Proper power sequencing is done to prevent the FMC board switchers to create too much a current spike when enabled.
 
-        History:
-            140223 JFC: Modified to use register names.
-            140304 JM: Modified it so a state for every fmc can be specified. For now, state is either a boolean or a list of booleans with the same length as 'fmc_number'
-        Todo:
-            140223 JFC: used masked writes to avoid side effects.
-        """
-        if isinstance(fmc_number, int):
-            fmc_number = [fmc_number]
+    #     History:
+    #         140223 JFC: Modified to use register names.
+    #         140304 JM: Modified it so a state for every fmc can be specified. For now, state is either a boolean or a list of booleans with the same length as 'fmc_number'
+    #     Todo:
+    #         140223 JFC: used masked writes to avoid side effects.
+    #     """
+    #     if isinstance(fmc_number, int):
+    #         fmc_number = [fmc_number]
 
-        if isinstance(state, (bool, int)):
-            state = [state] * len(fmc_number)
+    #     if isinstance(state, (bool, int)):
+    #         state = [state] * len(fmc_number)
 
-        for (fmc,fmc_state) in zip(fmc_number,state):
-            if fmc not in range(self.NUMBER_OF_FMC_SLOTS):
-                raise ValueError('FMC number %i is not a valid value' % fmc)
-            else:
-                # out_reg = 'OUT%i' % fmc # sets the register name to access based on the FMC number
-                #cfg_reg = 'CFG%i' % fmc
-                # self._gpio_power.write(out_reg, 0b00000000) # Turn off all power signals before we enable the GPIO outputs
-                #self._gpio_power.write(cfg_reg, 0b10101000)
-                self._gpio_power.write(fmc, 0b00000111*bool(fmc_state))  # Turn on power to board
-                self._gpio_power.write(fmc, 0b01010111*bool(fmc_state))  # Set Power Good and CLKDIR to 1
+    #     for (fmc,fmc_state) in zip(fmc_number,state):
+    #         if fmc not in range(self.NUMBER_OF_FMC_SLOTS):
+    #             raise ValueError('FMC number %i is not a valid value' % fmc)
+    #         else:
+    #             # out_reg = 'OUT%i' % fmc # sets the register name to access based on the FMC number
+    #             #cfg_reg = 'CFG%i' % fmc
+    #             # self._gpio_power.write(out_reg, 0b00000000) # Turn off all power signals before we enable the GPIO outputs
+    #             #self._gpio_power.write(cfg_reg, 0b10101000)
+    #             self._gpio_power.write(fmc, 0b00000111*bool(fmc_state))  # Turn on power to board
+    #             self._gpio_power.write(fmc, 0b01010111*bool(fmc_state))  # Set Power Good and CLKDIR to 1
 
     def set_led(self, led_name, state):
         """

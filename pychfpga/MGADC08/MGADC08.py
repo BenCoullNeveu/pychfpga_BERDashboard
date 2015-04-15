@@ -68,19 +68,22 @@ class MGADC08_Handler(FMCMezzanineHandler):
         # self._board_info = {}
 
         #self.check_FMC_presence()
+        self.verbose = False
         self._board_is_present = True
+
         self.motherboard = self.iceboard
+        self.fmc_number = self.mezzanine-1
 
         if self.is_present():
             # self._board_info = self.load_board_info()
             self.logger.debug('  - ADC')
-            self.ADC = ADC.ADC_base(adc_board = self)
+            self.ADC = ADC.ADC_base(adc_board=self)
             self.logger.debug('  - IOExpander')
-            self.IOExpander = IOExpander.IOExpander_base(adc_board = self)
+            self.IOExpander = IOExpander.IOExpander_base(adc_board=self)
             self.logger.debug('  - ADC_PLL')
-            self.ADC_PLL = ADC_PLL.ADC_PLL_base(adc_board = self)
+            self.ADC_PLL = ADC_PLL.ADC_PLL_base(adc_board=self)
             self.logger.debug('  - AmbTemp')
-            self.AmbTemp = AmbTemp.AmbTemp_base(adc_board = self)
+            self.AmbTemp = AmbTemp.AmbTemp_base(adc_board=self)
             # self.logger.debug('  - MGT_PLL')
             # self.MGT_PLL = MGT_PLL.MGT_PLL_base(self.motherboard)
 
@@ -94,23 +97,23 @@ class MGADC08_Handler(FMCMezzanineHandler):
         """
         if verbose is None:
             verbose = self.verbose
-        return self.motherboard.fpga.SPI.read_write(device = device, data = data, type = type, port = self.fmc_number, verbose = verbose)
+        return self.iceboard.SPI.read_write(device=device, data=data, type=type, port=self.mezzanine-1, verbose=verbose)
 
     def adc_reset(self):
-        self.motherboard.fpga.GPIO.pulse_bit(('ADC0_RESET', 'ADC1_RESET')[self.fmc_number])
+        self.iceboard.GPIO.pulse_bit(('ADC0_RESET', 'ADC1_RESET')[self.mezzanine-1])
 
     def adc_sync(self):
-        self.motherboard.fpga.REFCLK.local_sync()
+        self.iceboard.REFCLK.local_sync()
 
     def set_power(self, state):
-        self.motherboard.hw.set_fmc_power(self.fmc_number, state)
+        self.iceboard.set_mezzanine_power(bool(state), self.mezzanine)
 
     def check_FMC_presence(self, verbose=0):
         """ Checks if the FMC is present"""
         # self.logger.debug("Attempting to read FMC eeprom to determine board presence")
         # data = self.eeprom.read(0, length=1, noerror=True, verbose=verbose)
         # self.logger.debug("FMC eeprom returned the value: %i", data[0])
-        self._board_is_present = self.motherboard._get_mezzanine_type(self.mezzanine_number) == self.polymorphic_identity
+        self._board_is_present = self.iceboard._get_mezzanine_type(self.mezzanine) == self.polymorphic_identity
         #self.logger.info("is the ADC board present: %i" % self._board_is_present)
 
     def is_present(self):
@@ -123,7 +126,7 @@ class MGADC08_Handler(FMCMezzanineHandler):
         if self.is_present():
             self.sampling_frequency = sampling_frequency
             self.reference_frequency = reference_frequency
-            self.logger.info('Initializing MGADC08 on FMC%i' % self.fmc_number)
+            self.logger.info('Initializing MGADC08 on Mezzanine %i' % self.mezzanine)
             self.logger.debug('  - AmbTemp')
             self.AmbTemp.init()
 
@@ -138,10 +141,9 @@ class MGADC08_Handler(FMCMezzanineHandler):
 
     def status(self):
         """ Displays the status of the ADC board"""
-        self.logger.info('Status of MGADC08 ADC board on FMC%i' % self.fmc_number)
+        self.logger.info('Status of MGADC08 ADC board on Mezzanine %i' % self.mezzanine)
         self.logger.info('  ADC board is %s' % (('not present', 'present')[bool(self.is_present())]))
         if self.is_present():
-            self.eeprom.status()
             self.AmbTemp.status()
             self.IOExpander.status()
             self.ADC_PLL.status()

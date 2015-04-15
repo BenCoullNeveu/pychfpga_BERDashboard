@@ -9,6 +9,7 @@ import numpy as np
 from pychfpga.core.icecore.tests import *
 
 from pychfpga.core.icecore import IceBoardPlus, IceBoardPlusHandler, IceCrate, HardwareMap
+from pychfpga.MGADC08 import MGADC08
 from pychfpga.core.chFPGA_controller import chFPGA_controller
 from pychfpga.core.chFPGA_receiver import chFPGA_receiver
 from pychfpga.core.icecore.session import load_session as load_yaml_hardware_map
@@ -274,17 +275,19 @@ if __name__=='__main__':
     # Check if specified iceboards are on-line before going any further
     # -------------------------------
     # from pychfpga.core.icecore import TuberObject
-    for ib in hwm.query(IceBoardPlus):
-        if not ib.ping():
+    ib = hwm.query(IceBoardPlus)
+
+    for i in ib:
+        if not i.ping():
             raise RuntimeError("%r could not be found at '%s'"
                                % (ib, ib.tuber_uri))
-    c=[ib for ib in hwm.query(IceBoardPlus) if ib.ping()]
+    # c=[ib for ib in hwm.query(IceBoardPlus) if ib.ping()]
 
+    # for cc in c:
     # for ib in  hwm.query(HWMIceBoard):
     #     if ib.hostname:
     #         ib._initialize_backplane()
 
-    ib = hwm.query(IceBoardPlus)
     # ic = hwm.query(IceCrate).one()
     ib1 = ib[0]
     # ib2 = ib[1]
@@ -293,11 +296,14 @@ if __name__=='__main__':
 
     # ib.set_handler(IceBoardPlusHandler, fpga_bitstream)
     ib.set_handler(chFPGA_controller, fpga_bitstream)
+    ib.discover_mezzanines()
 
 
     # Configure the FPGA with the bitstream associated with the handler
     ib.set_fpga_bitstream(force=args.force)
-    # ib.open()
+
+
+    ib.open()
     # test_filename = 'results/scaler_test'
     # # Get the backplane test engine and execute the tests
     # te = ScalerTests(context={
