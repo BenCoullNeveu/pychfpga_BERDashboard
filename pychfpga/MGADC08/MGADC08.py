@@ -20,7 +20,8 @@ import struct
 from sqlalchemy import Column, Integer, String, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship, backref
 
-from pychfpga.icecore import fmc_mezzanine
+from pychfpga.core.icecore import FMCMezzanine
+from pychfpga.core.icecore import FMCMezzanineHandler
 
 # Import mezzanine-specific modules
 import ADC
@@ -29,9 +30,9 @@ import ADC_PLL
 import AmbTemp
 import MGT_PLL
 
-class MGADC08_base(fmc_mezzanine.FMCMezzanine):
+class MGADC08_base(FMCMezzanine):
     __tablename__ = 'mgadc08'
-
+    handler_name = 'MGADC08'
     __mapper_args__ = {'polymorphic_identity': 'MGADC08'} # Must match the model number found in the Mezzanine EEPROM (case sensitive)
     _pk = Column(Integer, ForeignKey('fmc_mezzanines._pk'), primary_key=True)
 
@@ -40,7 +41,7 @@ class MGADC08_base(fmc_mezzanine.FMCMezzanine):
     def __init__(self, **kwargs):
         super(MGADC08_base, self).__init__(**kwargs)
 
-class MGADC08_Handler(fmc_mezzanine.FMCMezzanineHandler):
+class MGADC08_Handler(FMCMezzanineHandler):
 
     __handler_for__ = MGADC08_base
     __handler_name__= 'MGADC08'
@@ -66,7 +67,9 @@ class MGADC08_Handler(fmc_mezzanine.FMCMezzanineHandler):
         self.reference_frequency = None
         # self._board_info = {}
 
-        self.check_FMC_presence()
+        #self.check_FMC_presence()
+        self._board_is_present = True
+        self.motherboard = self.iceboard
 
         if self.is_present():
             # self._board_info = self.load_board_info()

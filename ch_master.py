@@ -26,6 +26,8 @@ import socket
 import time
 import pickle
 from pychfpga import calculate_gains
+
+from pychfpga.MGADC08 import MGADC08
 #import MySQLdb
 
 # Should put somewhere else. Flatten arbitrarily deep nested lists
@@ -268,6 +270,7 @@ if __name__ == "__main__":
 
       # c = ca.get_iceboards(subarray=[conf["fpga"]["subarray"]]).index_by(IceBoard.serial_number)
       # c.set_fpga_firmware(fpga_bitstream, force=conf["fpga"]["force"])
+      #c.discover_mezzanines()
       c.open( \
             adc_delay_table=adc_delay, \
             init=1, \

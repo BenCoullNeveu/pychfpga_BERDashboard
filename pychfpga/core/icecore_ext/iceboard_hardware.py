@@ -322,7 +322,7 @@ class IceBoardHardware(object):
         self._gpio_power.init(cfg0_def=0b10101000, cfg1_def=0b10101000, out0_default = 0, out1_default = 0)
         self._gpio_sw_leds.init(cfg1_def=0b00000000)
         self._gpio_arm_phy_leds.init(cfg0_def=0b11110000)
-        self._gpio_sfp_qsfp.init(cfg0_def=0b10011100, cfg1_def=0b00110000)
+        self._gpio_sfp_qsfp.init(cfg0_def=0b01100011, cfg1_def=0b11001111)
 
     def _init_temperature_sensors(self, temperature_sensor_name=None, bit_resolution=12):
         """

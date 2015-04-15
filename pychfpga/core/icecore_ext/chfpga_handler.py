@@ -8,6 +8,8 @@ from calendar import timegm
 import socket
 import struct
 
+from sqlalchemy.orm import class_mapper
+from ..icecore.hwm_assets import FMCMezzanine
 from ..icecore import IceBoardPlusHandler
 from ..icecore import tuber  # Used to get TuberRemoteError
 from ..icecore.hw.ipmi_fru import FRU, Board, Product, Chassis, MultiDict, CHASSIS_SUBCHASSIS
@@ -394,7 +396,7 @@ class chFPGAHandler(IceBoardPlusHandler):
         """
         return self.hw.read_mezzanine_eeprom(mezzanine, addr, length, **kwargs)
 
-    def _get_mezzanine_ipmi(self, mezzanine):
+    def _get_mezzanine_mcgill_ipmi(self, mezzanine, retry=3):
         """ Returns the IMPI data for the mezzanine located on slot
         'mezzanine' (1 or 2). Returns None if no mezzanine is present.
 
@@ -409,17 +411,7 @@ class chFPGAHandler(IceBoardPlusHandler):
             # *** JFC: broken now. fixme
             return tuber.TuberObject.__getattr__(self,'_get_mezzanine_ipmi')(mezzanine)  # Try to get the ipmi data from tuber
         except tuber.TuberRemoteError:
-            return self._get_mezzanine_mcgill_ipmi(mezzanine)
-
-    def _get_mezzanine_mcgill_ipmi(self, mezzanine, retry=10):
-        """ Loads the info data block from the mezzanine EEPROM using the old
-        proprietary McGill format (not the FMC standard), and return the data
-        converted into the standard FRU object..
-
-        The ad-hoc McGill format is deprecated. It consists of a ID byte (0x0d
-        for MGADC08) followed by a ASCII-pickeled dictionary of properties. The
-        end of the dictionary is detected by the closing curly brace '}'.
-        """
+            pass
         import struct
         import zlib
         import ast  # used for safe McGill-format mezzanine EEPROM parsing
@@ -476,9 +468,9 @@ class chFPGAHandler(IceBoardPlusHandler):
         serial_number = dict_out.pop('Serial #', 'Unknown')
         product_version = dict_out.pop('Rev #', 'Unknown')
         mfg_date_str = dict_out.get('Date of last test', None)
-        if mfg_date_str:
+        try: 
             mfg_date = datetime.strptime(mfg_date_str, '%d/%m/%Y')
-        else:
+        except ValueError:
             mfg_date = None
 
         fru = FRU(
@@ -513,7 +505,7 @@ class chFPGAHandler(IceBoardPlusHandler):
         our own _get_mezzanine_ipmi() which can correctly read non-standard
         MGADC08 EEPROM data structure.
         """
-        ipmi = self._get_mezzanine_ipmi(mezzanine)
+        ipmi = self._get_mezzanine_mcgill_ipmi(mezzanine)
         if ipmi and hasattr(ipmi,'product') and hasattr(ipmi.product, 'part_number'):
             return ipmi.product.part_number
         else:
@@ -541,14 +533,14 @@ class chFPGAHandler(IceBoardPlusHandler):
             # of mezzanine it is. Try to instantiate a mezz-specific
             # class.
             if self.is_mezzanine_present(m):
-                ipmi = self._get_mezzanine_ipmi(m)
+                ipmi = self._get_mezzanine_mcgill_ipmi(m)
                 part_number = ipmi.product.part_number
                 serial = ipmi.product.serial_number
                 self.logger.info(
                     '%r: detect_mezzanines(): Detected Mezzanine '
                     'Model: %s Serial %s in Mezzanine %i'
                     % (self, part_number, serial, m))
-                for sc in class_mapper(HWMFMCMezzanine).self_and_descendants:
+                for sc in class_mapper(FMCMezzanine).self_and_descendants:
                     if sc.polymorphic_identity == part_number:
                         mezz_class[m] = sc.class_
 
@@ -556,10 +548,10 @@ class chFPGAHandler(IceBoardPlusHandler):
                 self.logger.warning(
                     "IceBoard SN%r detect_mezzanines(): There is no known "
                     "FMC Mezzanine object with polymorphic map name '%r' "
-                    "for Mezzanine %r" % (self.serial_number, part_number, m))
+                    "for Mezzanine %r" % (self.serial, part_number, m))
 
             if update:
-                orm = self.get_parent()
+                orm = self.parent
                 if not orm.hwm:
                     raise SystemError(
                         '%r: detect_mezzanines(): Attempt to add new '
@@ -575,8 +567,8 @@ class chFPGAHandler(IceBoardPlusHandler):
                         'Serial %s in Mezzanine %i' % (self, serial, m))
                     new_mezz = mezz_class[m](
                         mezzanine=m,
-                        serial=serial,
-                        type=''  # 'type' cannnot be None
+                        serial=serial
+                        #type=''  # 'type' cannnot be None
                         )
                     orm.hwm.add(new_mezz)
                     orm.hwm.flush()
@@ -586,7 +578,7 @@ class chFPGAHandler(IceBoardPlusHandler):
                         "IceBoard SN%r detect_mezzanines(): There is no known "
                         "FMC Mezzanine object with polymorphic map name '%r' "
                         "for Mezzanine %r"
-                        % (self.serial_number, part_number, m))
+                        % (self.serial, part_number, m))
                     # self.mezzanine[m] = None
         return mezz_class
 

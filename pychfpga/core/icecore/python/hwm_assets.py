@@ -512,6 +512,10 @@ class FMCMezzanineHandler(handler.Handler):
     """
     __handler_for__ = FMCMezzanine
 
+    iceboard = HandlerParentAttribute(lambda ib: ib.iceboard)
+    serial = HandlerParentAttribute(lambda ib: ib.serial)
+    mezzanine = HandlerParentAttribute(lambda ib: ib.mezzanine)
+
     def eeprom_write(self, buf):
         '''Writes a collection of bytes to the internal EEPROM.
 
