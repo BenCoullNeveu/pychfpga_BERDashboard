@@ -270,7 +270,7 @@ if __name__ == "__main__":
 
       # c = ca.get_iceboards(subarray=[conf["fpga"]["subarray"]]).index_by(IceBoard.serial_number)
       # c.set_fpga_firmware(fpga_bitstream, force=conf["fpga"]["force"])
-      #c.discover_mezzanines()
+      c.discover_mezzanines()
       c.open( \
             adc_delay_table=adc_delay, \
             init=1, \
@@ -319,12 +319,12 @@ if __name__ == "__main__":
       c.set_FFT_bypass(False, channels = all_chan)
       c.set_FFT_shift(conf["fpga"]["fft_shift"], channels = all_chan)
       for i, c_element in enumerate(c):
-        gain_pkl_file = open('/home/chime/ch_acq/gains_'+str(c_element.GPIO.FPGA_SERIAL_NUMBER)+'.pkl', "rb")
+        gain_pkl_file = open('gains.pkl', 'rb')#open('/home/chime/ch_acq/gains_'+str(c_element.GPIO.FPGA_SERIAL_NUMBER)+'.pkl', "rb")
         gains = pickle.load(gain_pkl_file)
         c_element.set_gain(gains, channels = all_chan)
       c.sync()
-      c.set_send_flags()
-      c.set_offset_binary_encoding()
+      #c.set_send_flags()
+      #c.set_offset_binary_encoding()
       c.sync()
 
       #Make sure FPGA throttling is fast enough to send all the data
