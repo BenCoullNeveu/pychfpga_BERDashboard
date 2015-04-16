@@ -7,7 +7,7 @@ History:
 2013-05-13 ADH: First version.
 """
 
-# import chrx
+import chrx
 from configobj import *
 from pychfpga.core.icecore.session import load_session as load_yaml
 from pychfpga.core.chFPGA_controller import chFPGA_controller
@@ -242,7 +242,7 @@ if __name__ == "__main__":
 
   # Create the acquisition object. Pass it the configuration settings so that it
   # can initialise.
-  # acq = chrx.acq(conf, log, fpga_hk_field)
+  acq = chrx.acq(conf, log, fpga_hk_field)
   if (int(args.configure_fpga) > 0):
       # Create the FPGA controller object.
       # Will now create an array of controller objects indexed by serial number
@@ -325,7 +325,7 @@ if __name__ == "__main__":
       c.sync()
       #c.set_send_flags()
       #c.set_offset_binary_encoding()
-      c.sync()
+      #c.sync()
 
       #Make sure FPGA throttling is fast enough to send all the data
       #FPGA doesn't seem to change this without a reset...
@@ -348,21 +348,27 @@ if __name__ == "__main__":
       # Create the output directory.
       time_str = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
       corr_name = None
-      for corr, ser_list in correlator_hash.iteritems():
-        not_found = False
-        if type(fpga_conf["adc_serial"]) is list:
-          for ser in fpga_conf["adc_serial"]:
-            if not ser in ser_list:
-              not_found = True
-              break
-        else:
-          print fpga_conf["adc_serial"]
-          if not fpga_conf["adc_serial"] in ser_list:
-              not_found = True
-        if not_found:
-          continue
-        corr_name = corr
-        break
+      if (len(fpga_conf) == 1):
+        fpga_conf1 = fpga_conf[fpga_conf.keys()[0]]
+        for corr, ser_list in correlator_hash.iteritems():
+          not_found = False
+          if type(fpga_conf1["adc_serial"]) is list:
+            for ser in fpga_conf1["adc_serial"]:
+              if not ser in ser_list:
+                not_found = True
+                break
+          else:
+            print fpga_conf1["adc_serial"]
+            if not fpga_conf1["adc_serial"] in ser_list:
+                not_found = True
+          if not_found:
+            continue
+          corr_name = corr
+          break
+      else:
+        #Assume array is whole pathfinder.
+        #need to change this
+        corr_name = 'pathfinder'
       if not corr_name:
         try:
           log.critical("Could not find hash for ADC serial numbers %s." %
@@ -463,7 +469,7 @@ if __name__ == "__main__":
       # way of doing this!
       if (int(args.configure_fpga) > 0):
         for c_element in c:
-          acq.pass_fpga_amb_temp(0, get_fpga_hk(c_element.fpga, fpga_hk_field))
+          acq.pass_fpga_amb_temp(0, get_fpga_hk(c_element, fpga_hk_field))
         log.info("Read FPGA housekeeping.")
       else:
         log.info("acquiring data...")
