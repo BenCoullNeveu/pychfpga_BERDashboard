@@ -296,11 +296,12 @@ if __name__=='__main__':
 
     # ib.set_handler(IceBoardPlusHandler, fpga_bitstream)
     ib.set_handler(chFPGA_controller, fpga_bitstream)
-    ib.discover_mezzanines()
 
 
     # Configure the FPGA with the bitstream associated with the handler
     ib.set_fpga_bitstream(force=args.force)
+
+    ib.discover_mezzanines()  # For now we need the FPGA to read the Mezz EEPROM...
 
 
     ib.open()
