@@ -50,7 +50,7 @@ class test_adc_analog_histogram:
         for i in xrange(16):
             pylab.hist(datas[:,i,:].flatten(), bins=256, range = (-128,127))
             rms = datas[:,i,:].flatten().std()
-            pylab.title(filename + ' Histogram Channel '+str(i) + ' RMS ' + str(rms))
+            pylab.title(filename + ' Histogram\n Channel '+str(i) + ' RMS ' + str(rms))
             pylab.xlim(-128,127)
             pylab.savefig(filename + 'histogram_chan' +str(i)+'.pdf')
             pylab.clf()
@@ -64,7 +64,7 @@ class test_adc_analog_histogram:
         pylab.clf()
         for i in range(16):
             pylab.plot(10.0*np.log10(np.abs(spectrum[i,:])))
-            pylab.title(fname + ' Spectrum for Channel '+str(i))
+            pylab.title(fname + '\n Spectrum for Channel '+str(i))
             pylab.ylim(20,80)
             pylab.grid()
             pylab.savefig(fname + 'spectrum_chan' +str(i)+'.pdf')
