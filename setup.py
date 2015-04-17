@@ -45,7 +45,7 @@ ext_chrx = Extension("chrx",
 setup(name = "ch_acq",
       version = "1.0",
       packages = ["pychfpga", "pychfpga.core", "pychfpga.common", \
-                  "pychfpga.icecore", "pychfpga.MGADC08", \
+                  "pychfpga.MGADC08", \
                   "post_acq"
                   ],
       ext_modules = [ext_chrx], #, ext_post_trunc, ext_post_trans],

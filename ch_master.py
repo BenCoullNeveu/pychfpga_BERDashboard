@@ -12,7 +12,6 @@ from configobj import *
 from pychfpga.core.icecore.session import load_session as load_yaml
 from pychfpga.core.chFPGA_controller import chFPGA_controller as ChimeFpgaFirmware
 from pychfpga.core import chFPGA_receiver
-from pychfpga.icecore.icearray import IceArray, close_all_sockets
 from pychfpga.core.icecore import IceBoardPlus
 from validate import Validator
 import argparse
@@ -287,13 +286,13 @@ if __name__ == "__main__":
       try:
           delays = pickle.load(open('pychfpga/delays_mar14_2015_no_errors.pkl'))
           for ice in c:                                             
-              ice.fpga.set_adc_delays_with_check(delays[ice.serial_number])
-              print "set delays on SN {0}, SLOT {1}".format(ice.serial_number, ice.slot_number)
+              ice.fpga.set_adc_delays_with_check(delays[ice.serial])
+              print "set delays on SN {0}, SLOT {1}".format(ice.serial, ice.slot)
       except:
           log.info("Error loading/setting delay tables.  Using default from config file for all boards")
       for cc in c:
         cc.GPU.LINK_ENABLE=1
-        print "GPU link enabled on SN {0}, SLOT {1}".format(cc.serial_number, cc.slot_number)
+        print "GPU link enabled on SN {0}, SLOT {1}".format(cc.serial, cc.slot)
       c.set_corr_reset(1)
       time.sleep(0.1)
       c.set_corr_reset(0)
@@ -338,10 +337,11 @@ if __name__ == "__main__":
       #   gains = pickle.load(gain_pkl_file)
       #   c_element.fpga.set_gain(gains, channels = all_chan)
       c.sync()
-      c.set_send_flags()
+      #c.set_send_flags()
       c.set_offset_binary_encoding()
       c.sync()
-      shuffle_init(list(c),c[8],frames_per_packet=4, cb1_lanes=16, cb1_bins=64, cb2_lanes=16, cb2_bins=8, cb2_bypass=0, remap=1 )
+      # This is another hack. Have to fix it for DRAO. REALLY: HAVE TO CHANGE IT
+      shuffle_init(list(c),c[0],frames_per_packet=4, cb1_lanes=16, cb1_bins=64, cb2_lanes=16, cb2_bins=8, cb2_bypass=0, remap=1 )
 
       #Make sure FPGA throttling is fast enough to send all the data
       #FPGA doesn't seem to change this without a reset...
@@ -360,7 +360,7 @@ if __name__ == "__main__":
       #Read the FPGA setting back from the FPGA 
       fpga_conf = {}
       for i, c_element in enumerate(c):
-        fpga_conf[c_element.slot_number] = vars(c_element.get_config()) 
+        fpga_conf[c_element.slot] = vars(c_element.get_config()) 
       
       # Create the output directory.
       time_str = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
@@ -379,6 +379,7 @@ if __name__ == "__main__":
             if not fpga_conf1["adc_serial"] in ser_list:
                 not_found = True
           if not_found:
+            corr_name = repr(c[0])
             continue
           corr_name = corr
           break

@@ -1,14 +1,14 @@
 import numpy as np
 import struct
 import time
-import icecore.icebox
+#import core.icecore.icebox
 
 def init_crossbars(ib, frames_per_packet=3, cb1_lanes=16, cb1_bins=64, cb2_lanes=8, cb2_bins=1, cb2_bypass=False, bp_bypass=1):
-    ib.fpga.set_ant_reset(1)
-    ib.fpga.set_corr_reset(1)
-    cb1=ib.fpga.CROSSBAR
-    cb2=ib.fpga.CROSSBAR2
-    gpu_links=ib.fpga.GPU
+    ib.set_ant_reset(1)
+    ib.set_corr_reset(1)
+    cb1=ib.CROSSBAR
+    cb2=ib.CROSSBAR2
+    gpu_links=ib.GPU
 
     if frames_per_packet<1 or frames_per_packet>4:
         raise Exception('Number of frames per packet must be between 1 and 4')
@@ -27,8 +27,8 @@ def init_crossbars(ib, frames_per_packet=3, cb1_lanes=16, cb1_bins=64, cb2_lanes
     for (i, bs) in enumerate(cb1):
         bs.GROUP_FRAMES = frames_per_packet
         bs.NUMBER_OF_LANES = cb1_lanes
-        tx = (ib.slot_number+1, i)
-        destination_slot = icecore.icebox.IceBox.get_matching_rx(tx)[0]
+        tx = (ib.slot, i)
+        destination_slot = ib.bp.get_matching_rx(tx)[0]
         bs.select_bins(np.arange(cb1_bins) * cb1_minimum_bin_spacing + (destination_slot-1))
         # bs.select_bins(np.arange(800))
     #cb1.configure(cb1_bins)
@@ -79,8 +79,8 @@ def init_crossbars(ib, frames_per_packet=3, cb1_lanes=16, cb1_bins=64, cb2_lanes
     #cb1[0].GROUP_FRAMES=1
     #cb1[0].NUMBER_OF_LANES=4
     #cb1.configure(1)
-    ib.fpga.set_corr_reset(0)
-    ib.fpga.set_ant_reset(0)
+    ib.set_corr_reset(0)
+    ib.set_ant_reset(0)
 
 class GpuData(object):
     def __repr__(self):
@@ -132,30 +132,30 @@ def shuffle_init(c, sync_board, remap=False, frames_per_packet=1, cb1_lanes=4, c
     # set-up transmitters
     for i,bb in enumerate(c):
 
-        print '**** Initializing transmitters for Slot %02i (IceBoard SN%i) ****' % (bb.slot_number+1, bb.serial_number)
-        bb.fpga.set_corr_reset(0)
-        # bb.fpga.set_data_source('funcgen')
-        # bb.fpga.set_funcgen_function('a', a=0)
-        bb.fpga.set_data_source('adc')
+        print '**** Initializing transmitters for Slot %02i (IceBoard SN%s) ****' % (bb.slot, bb.serial)
+        bb.set_corr_reset(0)
+        # bb.set_data_source('funcgen')
+        # bb.set_funcgen_function('a', a=0)
+        bb.set_data_source('adc')
         # set all analog inputs to send the (slot_number, analog input) complex number on every bin
-        for j in range(len(bb.fpga.ANT)):
-            bb.fpga.set_funcgen_function('ab', a=(bb.slot_number+1-1)<<4, b=j<<4, channels=[j])
-            # bb.fpga.set_funcgen_function('4bit_split_ramp')
+        for j in range(len(bb.ANT)):
+            bb.set_funcgen_function('ab', a=(bb.slot-1)<<4, b=j<<4, channels=[j])
+            # bb.set_funcgen_function('4bit_split_ramp')
             pass
         # set the stream ID of every transmitter to (slot_number, analog input) complex number on every bin
-        for j,cb in enumerate(bb.fpga.CROSSBAR):
-            cb.STREAM_ID = bb.slot_number+1-1
+        for j,cb in enumerate(bb.CROSSBAR):
+            cb.STREAM_ID = bb.slot-1
 
-        for j,cb in enumerate(bb.fpga.CROSSBAR2):
-            cb.STREAM_ID = bb.slot_number+1-1
+        for j,cb in enumerate(bb.CROSSBAR2):
+            cb.STREAM_ID = bb.slot-1
         # Make the board respond to SYNC triggers from the backplane
-        bb.fpga.REFCLK.SLAVE=1
+        bb.REFCLK.SLAVE=1
 
-        for j,gtx in enumerate(bb.fpga.BP_SHUFFLE.gtx):
-            tx_list.append((bb.slot_number+1, j+1))
+        for j,gtx in enumerate(bb.BP_SHUFFLE.gtx):
+            tx_list.append((bb.slot, j+1))
 
         if remap:
-            bb.fpga.CROSSBAR2.set_lane_map(compute_lane_map(bb))
+            bb.CROSSBAR2.set_lane_map(compute_lane_map(bb))
 
         # Initialize the crossbars to select and send data in a specific format
         init_crossbars(bb, frames_per_packet=frames_per_packet, cb1_lanes=cb1_lanes, cb1_bins=cb1_bins, cb2_lanes=cb2_lanes, cb2_bins=cb2_bins, cb2_bypass=cb2_bypass)
@@ -163,9 +163,9 @@ def shuffle_init(c, sync_board, remap=False, frames_per_packet=1, cb1_lanes=4, c
     # set-up receivers
     for i,bb in enumerate(c):
         # Disable all receivers for which there are no transmitters
-        for i,gtx in enumerate(bb.fpga.BP_SHUFFLE.gtx):
-            rx = (bb.slot_number+1, i+1)
-            tx = icecore.icebox.IceBox.get_matching_tx(rx)
+        for i,gtx in enumerate(bb.BP_SHUFFLE.gtx):
+            rx = (bb.slot, i+1)
+            tx = bb.bp.get_matching_tx(rx)
             if tx in tx_list:
                 print '%s is receiving from %s' % (rx, tx)
                 gtx.USER_GTRXRESET = 0
@@ -174,18 +174,18 @@ def shuffle_init(c, sync_board, remap=False, frames_per_packet=1, cb1_lanes=4, c
                 gtx.USER_GTRXRESET = 1
                 # gtx.USER_RESET = 1
 
-        bb.fpga.CROSSBAR2.SOF_WINDOW_STOP = 100
-        bb.fpga.BP_SHUFFLE.reset_rx_equalizers()
-        bb.fpga.REFCLK.sync() # needed
+        bb.CROSSBAR2.SOF_WINDOW_STOP = 100
+        bb.BP_SHUFFLE.reset_rx_equalizers()
+        bb.REFCLK.sync() # needed
 
     soft_sync(c, sync_board)
 
-# r.fpga.CROSSBAR2[0].print_frame_info()
+# r.CROSSBAR2[0].print_frame_info()
 def compute_lane_map(c):
     lane_map = np.zeros(16, dtype=np.int8)
     for i in range(16):
-        rx = (c.slot_number+1, i)
-        tx = icecore.icebox.IceBox.get_matching_tx(rx)
+        rx = (c.slot, i)
+        tx = c.bp.get_matching_tx(rx)
         print '%s is receiving from %s' % (rx, tx)
         lane_map[tx[0]-1] = i
     return lane_map
@@ -193,19 +193,19 @@ def compute_lane_map(c):
 def test_sync(c, sync_board):
     sync_ctr = np.zeros(len(c), dtype=int)
     for i,bb in enumerate(c):
-        bb.fpga.REFCLK.SLAVE=1
-        sync_ctr[i] = bb.fpga.REFCLK.SYNC_CTR
+        bb.REFCLK.SLAVE=1
+        sync_ctr[i] = bb.REFCLK.SYNC_CTR
 
     fail=0
     for test_number in range(10):
-        print 'Trial # %i: Sending SYNC pulse from Slot %02i (Iceboard SN%i)' % (test_number+1, sync_board.slot_number+1, sync_board.serial_number)
-        sync_board.fpga.REFCLK.sync()
+        print 'Trial # %i: Sending SYNC pulse from Slot %02i (Iceboard SN%s)' % (test_number+1, sync_board.slot, sync_board.serial)
+        sync_board.REFCLK.sync()
         for i,bb in enumerate(c):
-            new_sync_ctr = bb.fpga.REFCLK.SYNC_CTR
+            new_sync_ctr = bb.REFCLK.SYNC_CTR
             diff = (new_sync_ctr - sync_ctr[i]) & 0xF
-            sync_ctr[i] = bb.fpga.REFCLK.SYNC_CTR
+            sync_ctr[i] = bb.REFCLK.SYNC_CTR
             fail += bool(diff!=1)
-            print '    Slot %02i (Iceboard SN%02i): Sync counter = %2i, diff = %2i => %s' % (bb.slot_number+1, bb.serial_number, new_sync_ctr, diff, ('FAILED!', 'PASS')[bool(diff==1)])
+            print '    Slot %02i (Iceboard SN%s): Sync counter = %2i, diff = %2i => %s' % (bb.slot, bb.serial, new_sync_ctr, diff, ('FAILED!', 'PASS')[bool(diff==1)])
         time.sleep(0.2)
     if fail:
         print 'SYNC Test has FAILED!'
@@ -220,13 +220,13 @@ def check_gpu_data(nodes):
             errors=np.sum( np.array(get_gpu_data(node,port).data[:256])!=np.arange(256))
             print 'GPU Node %2i port %2i has %i error(s)' % (node, port, errors)
 # crx=b[0]
-# cb1=crx.fpga.CROSSBAR
-# cb2=crx.fpga.CROSSBAR2
-# bp=crx.fpga.BP_SHUFFLE
+# cb1=crx.CROSSBAR
+# cb2=crx.CROSSBAR2
+# bp=crx.BP_SHUFFLE
 # rx1=bp.gtx[0]
 # rx2=bp.gtx[1]
 # rx3=bp.gtx[2]
-# gpu=crx.fpga.GPU
+# gpu=crx.GPU
 # bs2=cb2[0]
 def print_frame_info(self):
         bs = self
@@ -255,56 +255,56 @@ def print_frame_info(self):
 def reopen(boards, bitstream):
     for ib in boards:
         if ib.is_open():
-            print 'IceBoard SN%i (Slot #%i) is already opened' % (ib.serial_number, ib.slot_number+1)
+            print 'IceBoard SN%i (Slot #%s) is already opened' % (ib.serial, ib.slot)
         else:
             while not ib.is_open():
-                print 'Reprogramming FPGA on IceBoard SN%i ' % (ib.serial_number)
+                print 'Reprogramming FPGA on IceBoard SN%s ' % (ib.serial)
                 try:
                     ib.set_fpga_firmware(bitstream, force=1)
                     ib.open()
-                    print 'IceBoard SN%i (Slot #%i) is now opened' % (ib.serial_number, ib.slot_number+1)
+                    print 'IceBoard SN%s (Slot #%i) is now opened' % (ib.serial, ib.slot)
                     break
                 except:
-                    print 'Failed to open IceBoard SN%i. Retrying' % (ib.serial_number)
+                    print 'Failed to open IceBoard SN%s. Retrying' % (ib.serial)
 
 def init_gains(c):
     import pickle
-    ww = [[w.slot_number + 1, w.fpga_serial_number, w.serial_number] for w in c]
-    for w1 in ww:
-        #if w1[0] !=1:
-        g_array = pickle.load(open('/home/chime/ch_acq/gains_'+str(w1[1])+'.pkl', 'rb'))
-        #else:
-        #    g_array = pickle.load(open('/home/chime/ch_acq/gains.pkl', 'rb'))
-        print 'Setting gains on IceBoard SN%03i' % w1[2]
-        c[w1[2]].fpga.set_gain(g_array)
+    for cc in c:
+        try:
+            g_array = pickle.load(open('gains_'+str(cc.fpga_serial_number)+'.pkl', 'rb'))
+        except:
+            g_array = pickle.load(open('gains.pkl', 'rb'))
+            print 'Could not find gain settings for %r. Using default gain settings.' %cc
+        print 'Setting gains on IceBoard SN%s' % cc.serial
+        cc.set_gain(g_array)
 
 def soft_sync(boards, sync_board):
 
     boards = list(boards)
     print 'Masking ADC data before sync'
     for ib in boards:
-        for ant in ib.fpga.ANT:
+        for ant in ib.ANT:
             ant.ADCDAQ.BYTE_MASK = 0
 
     print 'Initiating global sync'
-    sync_board.fpga.REFCLK.sync()
+    sync_board.REFCLK.sync()
 
     print 'Unmasking ADC data'
     for ib in boards:
-        for ant in ib.fpga.ANT:
+        for ant in ib.ANT:
             ant.ADCDAQ.BYTE_MASK = 255
 
 def print_temperatures(boards):
-    t=[(b.slot_number, b.serial_number, b.fpga.SYSMON.temperature()) for b in boards]
+    t=[(b.slot, b.serial, b.SYSMON.temperature()) for b in boards]
     t.sort()
     for (slot, serial_number, fpga_temp) in t:
-        print 'Slot %2i (SN%02i): FPGA %2.1f C' % (slot, serial_number, fpga_temp)
+        print 'Slot %2i (SN%s): FPGA %2.1f C' % (slot, serial_number, fpga_temp)
 
 def set_adc_mask(boards, value):
 
     boards = list(boards)
     for ib in boards:
-        for ant in ib.fpga.ANT:
+        for ant in ib.ANT:
             ant.ADCDAQ.BYTE_MASK = value
 
 def print_fmc_power(boards):
