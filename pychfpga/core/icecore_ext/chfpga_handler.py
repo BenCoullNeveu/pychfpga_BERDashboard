@@ -175,6 +175,10 @@ class chFPGAHandler(IceBoardPlusHandler):
         IceBoard and create all appropriate handling classes.
         """
 
+        if not self.is_fpga_programmed():
+            raise RuntimeError(
+                'The FPGA is not programmed. Cannot access chFPGA-specific methods and resources.')
+
         cookie = self.get_fpga_application_cookie()
         if cookie != self._CHFPGA_COOKIE:
             raise RuntimeError(
@@ -468,7 +472,7 @@ class chFPGAHandler(IceBoardPlusHandler):
         serial_number = dict_out.pop('Serial #', 'Unknown')
         product_version = dict_out.pop('Rev #', 'Unknown')
         mfg_date_str = dict_out.get('Date of last test', None)
-        try: 
+        try:
             mfg_date = datetime.strptime(mfg_date_str, '%d/%m/%Y')
         except ValueError:
             mfg_date = None
