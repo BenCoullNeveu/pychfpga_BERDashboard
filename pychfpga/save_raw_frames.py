@@ -15,11 +15,11 @@ History:
 """
 
 
-from pychfpga.core import chFPGA_receiver
+#from pychfpga.core import chFPGA_receiver
 #import pychfpga.plot_utils as pu
 import numpy as np
 import time
-
+from timestream_receiver import get_frame
 
 
 ADC_DELAYS_REV2_SN0001 = (
@@ -44,7 +44,7 @@ ADC_DELAYS_REV2_SN0001 = (
     [16]*8, #CH7
     )
 
-def save_timestream_frames(chFPGA_receiver, channels=[0], frames=256, filename='data.npy'):    
+def save_timestream_frames(port, channels=[0], frames=256, filename='data.npy'):    
     '''
         Saves data from Acquisition board to numpy array 
     '''
@@ -56,7 +56,7 @@ def save_timestream_frames(chFPGA_receiver, channels=[0], frames=256, filename='
     data_list = np.zeros((frames,nchan,2048), dtype=np.int8)
     chanIndex = np.arange(nchan)
     #chFPGA_receiver.frame_receiver._send_every_frame.clear()     
-    chFPGA_receiver.send_every_frame(False)
+    #chFPGA_receiver.send_every_frame(False)
     number_of_frames=0
     missed = 0
     print "Starting Timestream acquisition"
@@ -64,10 +64,11 @@ def save_timestream_frames(chFPGA_receiver, channels=[0], frames=256, filename='
         while (frames==0) or (frames!=0 and number_of_frames<frames):
             try:
                 #print "trying to get a frame"
-                a = chFPGA_receiver.read_frames(verbose=0)
-                for chanNum in chanIndex:
-                    data_list[number_of_frames,chanNum,:] = a[channels[chanNum]]
-                    #data_list.append(a[channels[chanNum]])
+                a = get_frame(port) #chFPGA_receiver.read_frames(verbose=0)
+                #for chanNum in chanIndex:
+                #    data_list[number_of_frames,chanNum,:] = a[channels[chanNum]]
+                #    #data_list.append(a[channels[chanNum]])
+                data_list[number_of_frames,:,:] = a.values()[0]
                 number_of_frames+=1
                 #print "got a frame"
                 if (number_of_frames % 100) == 0:
@@ -81,13 +82,14 @@ def save_timestream_frames(chFPGA_receiver, channels=[0], frames=256, filename='
             except ValueError:
                 print "got a weird frame... carrying on!"
             except:
-                chFPGA_receiver.close()
+                #chFPGA_receiver.close()
                 raise
     except KeyboardInterrupt:
         chFPGA_receiver.close()
         raise
     print "lost {0} to get {1}".format(missed, frames)
     #np.array(data_list)
+    print filename
     np.save(filename,data_list)
 
     print 'Saved {0} frames'.format(number_of_frames)
@@ -105,9 +107,9 @@ if __name__ == '__main__':
     try:
         print 'Deleting previous chFPGA instances in current namespace'
         c.close() # close sockets from previous objects to free them for the new one
-        r.close() # close sockets from previous objects to free them for the new one
+        #r.close() # close sockets from previous objects to free them for the new one
         del c
-        del r
+        #del r
     except NameError:
         pass
 
@@ -117,15 +119,15 @@ if __name__ == '__main__':
     # Create the new chFPGA object.
     c = chFPGA_controller.chFPGA_controller(ip_address='10.10.10.11', port_number=41000, adc_delay_table=ADC_DELAY_TABLE, init=1, sampling_frequency=850e6, reference_frequency=10e6) # pylint: disable=C0103
     chFPGA_config = c.get_config()
-    r = chFPGA_receiver.chFPGA_receiver(chFPGA_config, ip_address='10.10.10.11', port=41001)
+    #r = chFPGA_receiver.chFPGA_receiver(chFPGA_config, ip_address='10.10.10.11', port=41001)
     c.set_FFT_bypass(True, channels=[0,1,2,3,4,5,6,7])
     c.start_data_capture(burst_period_in_seconds=0.05, number_of_bursts=0, channels=[0,1,2,3,4,5,6,7])
     n=0
     ftime = str(time.time())
     while n < 10:
-        save_timestream_frames(r, channels=[0,1,2,3,4,5,6,7], frames=256, filename=ftime+'.{0:04d}.npy'.format(n))
+        save_timestream_frames('41001', channels=[0,1,2,3,4,5,6,7], frames=256, filename=ftime+'.{0:04d}.npy'.format(n))
         n+=1
     
     c.close()
-    r.close()
+    #r.close()
 

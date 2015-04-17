@@ -172,7 +172,7 @@ def scan_eye(self, horiz_offset=range(-32,32,4), vert_offset=range(-127,127,16),
                         break
                 else:
                     ih=ih+dir
-        plt.imshow(np.log10(ber+1e-12), origin='lower', extent=(min(horiz_offset),max(horiz_offset),min(vert_offset),max(vert_offset)), aspect=0.1, vmin=-12, vmax=1)
+        #plt.imshow(np.log10(ber+1e-12), origin='lower', extent=(min(horiz_offset),max(horiz_offset),min(vert_offset),max(vert_offset)), aspect=0.1, vmin=-12, vmax=1)
         return ber
 
 def scan_links(array, tx_power=7):
@@ -205,6 +205,7 @@ def scan_links(array, tx_power=7):
             g.CAPTURE_ENABLE = 1
             g.TXPRECURSOR = 0b00000 #DFE cannot compensate pre-cursor
             g.TXPOSTCURSOR = 0b00000
+            g.RXLPMEN = 0 #Go to DFE mode instead of LPM
             g.RXMONITORSEL = 1 # 1=AGC, 2=UL, 3=VP loop
             g.RX_DEBUG_CFG = 0b1011<<2
             #g.DMONITOR_CFG1 = 0
@@ -332,11 +333,16 @@ def get_ber(array, link_list, period=0.1, tx_power = None):
         #    #    print 'locked',
         #    #    break
         #dest_gtx.RXPRBSCNTRESET=1
+        dest_gtx.RXDFELPMRESET=1
+        time.sleep(0.001)
+        dest_gtx.RXDFELPMRESET=0
+        time.sleep(0.001)
         dest_gtx.RXPRBSCNTRESET=1
         dest_gtx.RXPRBSSEL=4
         dest_gtx.RXDFELPMRESET=1
+        time.sleep(0.001)
         dest_gtx.RXDFELPMRESET=0
-        #time.sleep(period)
+        time.sleep(0.001)
         dest_gtx.RXPRBSCNTRESET=0
         time.sleep(period)
         cnt=dest_gtx.ERR_CTR

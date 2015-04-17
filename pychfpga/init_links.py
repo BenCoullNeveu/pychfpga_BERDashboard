@@ -271,10 +271,10 @@ def init_gains(c):
     import pickle
     ww = [[w.slot_number + 1, w.fpga_serial_number, w.serial_number] for w in c]
     for w1 in ww:
-        if w1[0] !=1:
-            g_array = pickle.load(open('/home/chime/ch_acq/gains_'+str(w1[1])+'.pkl', 'rb'))
-        else:
-            g_array = pickle.load(open('/home/chime/ch_acq/gains.pkl', 'rb'))
+        #if w1[0] !=1:
+        g_array = pickle.load(open('/home/chime/ch_acq/gains_'+str(w1[1])+'.pkl', 'rb'))
+        #else:
+        #    g_array = pickle.load(open('/home/chime/ch_acq/gains.pkl', 'rb'))
         print 'Setting gains on IceBoard SN%03i' % w1[2]
         c[w1[2]].fpga.set_gain(g_array)
 
