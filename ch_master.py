@@ -65,6 +65,8 @@ def convert_types(val):
                 val[i] = float(val_element)
           if found_complex:
             val = flatten(val)
+          else:
+            val = list(int(x) for x in val)
 
       else:
         if isinstance(val, long):
@@ -340,8 +342,16 @@ if __name__ == "__main__":
       #c.set_send_flags()
       c.set_offset_binary_encoding()
       c.sync()
+      # Get sync_board. Currently board SN0008 (slot 16)
+      sync_board = None
+      for ib in c:
+        if ib.serial == '0008':
+          sync_board = ib
+          break
+      if sync_board == None:
+        sync_board = c[0]
       # This is another hack. Have to fix it for DRAO. REALLY: HAVE TO CHANGE IT
-      shuffle_init(list(c),c[0],frames_per_packet=4, cb1_lanes=16, cb1_bins=64, cb2_lanes=16, cb2_bins=8, cb2_bypass=0, remap=1 )
+      shuffle_init(list(c),sync_board,frames_per_packet=4, cb1_lanes=16, cb1_bins=64, cb2_lanes=16, cb2_bins=8, cb2_bypass=0, remap=1 )
 
       #Make sure FPGA throttling is fast enough to send all the data
       #FPGA doesn't seem to change this without a reset...
@@ -441,7 +451,7 @@ if __name__ == "__main__":
             all_val = slot_conf[name]
             for value in all_val:
               val = convert_types(value)
-              val_name = 'ID_'+str(16 * remap_slot[fpga_slot] + remap_adc_sma[int(val[0])])+'_slot_'+ str(fpga_slot+1) + '_' + name + str(remap_adc_sma[int(val[0])])
+              val_name = 'ID_'+str(16 * remap_slot[fpga_slot-1] + remap_adc_sma[int(val[0])])+'_slot_'+ str(fpga_slot) + '_' + name + str(remap_adc_sma[int(val[0])])
               #print val_name, val
               acq.add_header_item(val_name, val)
           else:
@@ -456,7 +466,7 @@ if __name__ == "__main__":
             #print name
             #print val
             #print type(val)
-            name = 'Slot_'+ str(fpga_slot+1) + '_' + name
+            name = 'Slot_'+ str(fpga_slot) + '_' + name
             acq.add_header_item(name, val)
   else:
     acq.add_header_item("fpga_info", "no communication with fpga for this dataset")
