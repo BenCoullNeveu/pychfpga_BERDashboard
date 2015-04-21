@@ -158,7 +158,12 @@ def iterative_poly_filter(signal):
     filtered = np.exp(fitarr)
     filtered = (filtered.real).astype(np.int).astype(np.complex)
     filtered[masked.mask] = signal[masked.mask]
-    return filtered
+    return filtered, masked.mask
+
+def hybrid_filter(signal):
+    fill, mask = iterative_poly_filter(signal)
+    signal[mask] = fill[mask]
+    return fourier_filter(signal)
 
 def calculate_gains(c, port):
     c.set_data_source('adc')
@@ -204,7 +209,7 @@ def calculate_gains(c, port):
     pickle.dump(gain,out1)
     out1.close()
     for channel in channels:
-        glin_final = iterative_poly_filter(gain[channel][1][0])
+        glin_final = hybrid_filter(gain[channel][1][0])
         gain[channel][1][0] = glin_final.tolist()
     c.set_gain(gain)
     output = open('gains_'+str(c.GPIO.FPGA_SERIAL_NUMBER)+'.pkl','wb')
