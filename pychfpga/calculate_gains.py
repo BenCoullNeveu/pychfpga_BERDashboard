@@ -200,7 +200,7 @@ def calculate_gains(c, port):
             gain.append([channel,[glin[channel].tolist(), glog[channel]]])
         c.set_gain(gain)
         time.sleep(1)
-    out1 = open('gains_noisy.pkl', 'wb')
+    out1 = open('gains_noisy_{0}.pkl'.format(c.GPIO.FPGA_SERIAL_NUMBER), 'wb')
     pickle.dump(gain,out1)
     out1.close()
     for channel in channels:
