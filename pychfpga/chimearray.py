@@ -8,6 +8,7 @@ Example code that demonstrate the use of the 'icecore' library to access arrays 
 
  History:
         2014-03-24 JFC: Created
+        2015-04-20 JM: cleaned and simplified (was very messy). Tested with chfpga firmware git tag 8428bb965 and ch_acq software tag adfad2520
 """
 #import time
 import argparse
@@ -15,10 +16,12 @@ import logging
 import logging.handlers
 import __main__
 
-from core import FpgaBitstream
-from core import IceArray, close_all_sockets
-from core import IceBoard
-from core.chFPGA_controller import chFPGA_controller as chfpgaHandler
+# IT IS IMPORTANT TO START THE PATH AT CHFPGA
+from pychfpga.MGADC08 import MGADC08
+from pychfpga.core.icecore.session import load_session as load_yaml
+from pychfpga.core.icecore import IceBoardPlus
+from pychfpga.core.chFPGA_controller import chFPGA_controller
+from pychfpga.core import close_all_sockets
 
 #####################################
 
@@ -27,41 +30,43 @@ if __name__ == '__main__':
 
     reload(logging) # clear any previous logger set-up that is stored in the logging module
     reload(logging.handlers) # we need to reload the handlers as well so they are inheriting from the newly loaded Handler class defined in freshly reloaded logging, not the old one. Otherwise we get errors.
-    # Configure the various loggers to provide adequate levels of details
-    logging.getLogger('icecore.fpga_bitstream.FpgaBitstream').setLevel(logging.DEBUG)
-    # logging.getLogger('requests.packages').setLevel(logging.WARN)
-    logging.getLogger('sqlalchemy.engine.base.Engine').setLevel(logging.INFO)
 
     close_all_sockets()
 
     parser = argparse.ArgumentParser(description=__doc__.split('\n')[0]) # description is the first line of the docstring
-    # parser.add_argument('--init', action = 'store', type=int, default=1, help='Initialization level: -1: Just create sockets, 0: connect and read only. 1: initialize hardware')
-    # parser.add_argument('-f', '--sampling_frequency', action = 'store', type=float, default=850, help='Sampling frequency of the ADC in MHz')
+    parser.add_argument('-t', '--log_target', action='store', type=str, default='syslog', help="Logging target ('stream', 'syslog' or a filename)")
     parser.add_argument('-l', '--log_level', action = 'store', type=str, choices=['info','debug'], default='debug', help='Logging level')
-    parser.add_argument('-s', '--subarray', action = 'store', nargs='+', type=int, help='Space-separated list of subarrays to include')
-    # parser.add_argument('-g', '--group_frames', action = 'store', type=int, default=4, help='Number of frames to group before sending to the GPU or FPGA correlator. The total size of the frame, including the header and ethernet obverhead, cannot exceed 8 kibytes.')
-    # parser.add_argument('--enable_gpu_link', action = 'store', type=int, default=0, help='Enables the GPU link transmission')
-    parser.add_argument('--force', action = 'store', type=int, default=0, help='Forces reprogramming of the FPGAs even if they are already programmed')
+    parser.add_argument('-s', '--subarray', action = 'store', type=int, help='Subarrays to include')
+    parser.add_argument('-f', '--force', action = 'store', type=int, default=0, help='Forces reprogramming of the FPGAs even if they are already programmed')
     parser.add_argument('-i', '--if_ip', action = 'store', type=str, default=None, help='IP address of adapter through which the connection to the FPGA will be established. If not specified, the controller will attempt to identify the proper host based on the FPGA IP address.')
-    parser.add_argument('--bitfile', action = 'store', type=str, default= '../../chfpga/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit',  help='Filename of the bitfile used to to program the FPGAs')
-    parser.add_argument('--bitfile_crc', action = 'store', type=int, help='CRC of the bitfile used to to program the FPGAs')
-    #parser.add_argument('--subarray', action = 'store', type=int, default=2, help='Which subarray to use')
+    parser.add_argument('-b', '--bitfile', action = 'store', type=str, default= '../../chfpga/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit',  help='Filename of the bitfile used to to program the FPGAs')
+    parser.add_argument('-y', '--yamlfile', action = 'store', type=str, default= 'yaml_iceboard_list.txt',  help='Yaml file with list of boards and their respective IP addresses and handlers.')
     args = parser.parse_args()
-    log_level = {'info': logging.INFO, 'debug': logging.DEBUG}[args.log_level]
+    log_levels = {'info': logging.INFO, 'debug': logging.DEBUG}
 
-    # logging.basicConfig(level=log_level, format='%(asctime)s  %(context)s %(name)-32s %(levelname)-10s : %(message)s')
+    #__main__._host_interface_ip_addr = args.if_ip # NOT NEEDED SO FAR BUT ANYWAYS
 
-    try:
-        del logger
-    except NameError:
-        pass
+    # -------------------------------
+    # Set-up logging
+    # -------------------------------
+
     logger = logging.getLogger('')
-    logger.setLevel(log_level)
-    # handler = logging.FileHandler('testing_offset.log')
-    handler = logging.handlers.SysLogHandler()
-    # handler = logging.StreamHandler()
-    # handler.addFilter(CompletionFilter)
-    logger.addHandler(handler)
+    logger.handlers = []  # Clear all existing handlers
+
+    # Make sure SQLAlchemy does not log too much
+    sql_logger = logging.getLogger('sqlalchemy.engine.base.Engine')
+    sql_logger.setLevel(logging.INFO)
+
+    if args.log_target == 'stream':
+        log_handler = logging.StreamHandler()
+    elif args.log_target == 'syslog':
+        log_handler = logging.handlers.SysLogHandler()
+    else:
+        log_handler = logging.FileHandler(args.log_target)
+
+    # Set-up log for this test run
+    logger.setLevel(log_levels[args.log_level])
+    logger.addHandler(log_handler)
 
     logger.info('%s: ------------------------' % __file__)
     logger.info('%s: C H I M E A R R A Y' % __file__)
@@ -69,65 +74,23 @@ if __name__ == '__main__':
     logger.info('%s: Called with: %s' % (__file__, ', '.join('%s=%s' % (key, repr(value)) for (key,value) in args.__dict__.items())))
     # Create the new chFPGA object.
 
-    # IceArray.close_all_sessions() # close all previously opened sessions
+    # Get fpga bitstream
+    with open(args.bitfile, 'rb') as bitfile:
+        fpga_bitstream = bitfile.read()
 
-    # ca = IceArray(uri='sqlite:///test.db', interface_ip_addr=args.if_ip)
-    fpga_bitstream = FpgaBitstream(url=args.bitfile, load=False)
-    chfpgaHandler.register_fpga_bitstream(fpga_bitstream, tag=None)
+    # Create new fpga query object
+    with open(args.yamlfile, 'rb') as yamlfile:
+        ca =  load_yaml(yamlfile)   
+    c = ca.query(IceBoardPlus).filter_by(subarray=args.subarray) # c is kind of standard notation for a list of iceboards now.
+    
+    # Associate the fpga_bitstream with the target Handler    
+    c.set_handler(chFPGA_controller, fpga_bitstream)
+    
+    # Program fpga
+    c.set_fpga_bitstream(force = args.force)
 
-    ca = IceArray(interface_ip_addr=args.if_ip)
-
-    ca.load_yaml_hardware_map('''
-            !HardwareMap
-                - !IceBoard {hostname: iceboard0007.local, serial_number: "0007", subarray: 100, handler_name: "chFPGAHandler"}
-            ''')
-
-        # ib = hwm.query(IceBoard).one()
-        # assert ib.serial == "004"
-        # assert ib.hostname == 'iceboard004.local'
-    # ca.discover(timeout=2) # automatically update the hardware map database with discovered resources
-
-    c = ca.get_iceboards().as_dict(IceBoard.serial_number, int)
-    # c7 = c[7]
-    # c7.set_application(chfpgaHandler)
-
-
-
-    # bitfile_filename = args.bitfile
-    # # fpga_bitstream = FpgaBitstream(bitfile_filename, ChimeFpgaFirmware) #
-    # # fpga_bitstream = FpgaBitstream.get_bitstream(ca, bitfile_filename, ChimeFpgaFirmware) # Get a new bitstream from the database (or create a new database entry if it does not exist yet)
-    # if args.bitfile_crc:
-    #     fpga_bitstream = ca.get_fpga_bitstream(crc = args.bitfile_crc) # Get a new bitstream from the database
-    # else:
-    #     fpga_bitstream = ca.get_fpga_bitstream(args.bitfile, ChimeFpgaFirmware) # Get a new bitstream from the database (or create a new database entry if it does not exist yet)
-
-    # c = ca.get_iceboards(subarray=args.subarray).index_by(IceBoard.serial_number) # get one or more IceBoards from specified subarray
-    #c = ca.get_iceboards(subarray=args.subarray) # get one or more IceBoards from specified subarray
-
-    # c7 = IceBoard(tuber_uri='http://10.10.10.7/tuber', serial_number='7', app_handler = chfpgaHandler)
-    # ca.add(c7) # Add the iceboard to the hardware map
-    # ca.flush() # Execute pending operatins to make sure the IceBoard is assigned a primary key
-    # c7.set_application(chfpgaHandler, configure_fpga=True, tag=None)
-    # c7.set_fpga_bitstream(force=args.force or None) # Program the FPGA
-    # shortcut to index c[7] as c7 etc.
+    # Print resuts
     print 'The following IceBoards were found in Subarray %r through interface %s:' % (args.subarray, args.if_ip)
     for ib in c:
-        print "  c%i = IceBoard SN%s in slot %r. Handler = '%s'" % (int(ib.serial_number), ib.serial_number, ib.slot_number, ib.handler_name)
-        setattr(__main__, 'c%i' % int(ib.serial_number), ib)
-
-    # c23.set_fpga_firmware(fpga_bitstream,  configure_fpga=True, force=args.force, store_in_database=True) # associate boards with specified firmware and configure the selected FPGA
-    # c24.set_fpga_firmware(fpga_bitstream,  configure_fpga=True, force=args.force, store_in_database=True) # associate boards with specified firmware and configure the selected FPGA
-    # c19.set_fpga_firmware(fpga_bitstream,  configure_fpga=True, force=args.force, store_in_database=True) # associate boards with specified firmware and configure the selected FPGA
-    # c23.open()
-    # c24.open()
-    # c19.open()
-    # b23=c23.fpga.BP_SHUFFLE
-    # b24=c24.fpga.BP_SHUFFLE
-    # b19=c19.fpga.BP_SHUFFLE
-    # g0=b24.gtx[0]
-    # g1=b23.gtx[1]
-    # g2=b24.gtx[3]
-    # g3=b19.gtx[2]
-
-    # cc.set_fpga_firmware(crc32=1910844937,  configure_fpga=True, force=args.force, store_in_database=True) # associate boards with specified firmware and configure the selected FPGA
-    # c.open() # establish communication with the boards so we can access their attributes and methods
+        print "  c%i = IceBoard SN%s in slot %r. Handler = '%s'" % (int(ib.serial), ib.serial, ib.slot, ib.handler_name)
+        #setattr(__main__, 'c%i' % int(ib.serial), ib) #TAB COMPLETION DOES NOT WORK WITH THIS
