@@ -149,7 +149,7 @@ def shuffle_init(c, sync_board, remap=False, frames_per_packet=1, cb1_lanes=4, c
         for j,cb in enumerate(bb.CROSSBAR2):
             cb.STREAM_ID = bb.slot-1
         # Make the board respond to SYNC triggers from the backplane
-        bb.REFCLK.SLAVE=1
+        bb.REFCLK.set_sync_source('bp')#bb.REFCLK.SLAVE=1
 
         for j,gtx in enumerate(bb.BP_SHUFFLE.gtx):
             tx_list.append((bb.slot, j+1))
@@ -178,6 +178,7 @@ def shuffle_init(c, sync_board, remap=False, frames_per_packet=1, cb1_lanes=4, c
         bb.BP_SHUFFLE.reset_rx_equalizers()
         bb.REFCLK.sync() # needed
 
+    sync_board.set_user_output_source('sync')
     soft_sync(c, sync_board)
 
 # r.CROSSBAR2[0].print_frame_info()

@@ -8,7 +8,7 @@ Example code that demonstrate the use of the 'icecore' library to access arrays 
 
  History:
         2014-03-24 JFC: Created
-        2015-04-20 JM: cleaned and simplified (was very messy). Tested with chfpga firmware git tag 8428bb965 and ch_acq software tag adfad2520
+        2015-04-20 JM: cleaned and simplified (was very messy). Tested with chfpga firmware git tag 8428bb965 and ch_acq software tag dd6df7b5
 """
 #import time
 import argparse
