@@ -23,7 +23,7 @@ import sys
 import socket
 import time
 import pickle
-from pychfpga import calculate_gains
+#from pychfpga import calculate_gains
 from pychfpga.init_links import *
 #import MySQLdb
 
@@ -232,7 +232,7 @@ if __name__ == "__main__":
 
   # Create the acquisition object. Pass it the configuration settings so that it
   # can initialise.
-  acq = chrx.acq(conf, log, fpga_hk_field)
+  acq = chrx.acq(conf, log, 16, fpga_hk_field)
   if (int(args.configure_fpga) > 0): 
       # Create the FPGA controller object.
       # Will now create an array of controller objects indexed by serial number
@@ -403,31 +403,24 @@ if __name__ == "__main__":
 
   if (int(args.configure_fpga) > 0):
       # Pass FPGA configuration variables to header.
-      #hacked now to 'work' but not a final solution
-      # just adds slot number to each name
       for fpga_slot, slot_conf in fpga_conf.items():
         for name in slot_conf:
           if name == 'antenna_scaler_gain':
             # Eventually, the gains will be updated whenever they change,
             # presumably by moving this call somewhere in the loop at the end 
             # of this program.
-            acq.pass_fpga_gain(remap_slot[fpga_slot], val)
+            for val in slot_conf[name]:
+              v = convert_types(val)
+              inp = remap_slot[fpga_slot] * 16 + remap_adc_sma[int(val[0])]
+              acq.pass_fpga_gain(inp, v)
           else:
-            #elif name == 'antenna_adc_data_acquisition_delay_tables':
-            #  val = 42
-            #else:
-            #print name
-            #print fpga_slot
             val = slot_conf[name]
             val = convert_types(val)
-            # Now send FPGA information send to acquisition object's header.
-            #print name
-            #print val
-            #print type(val)
             name = 'Slot_'+ str(fpga_slot+1) + '_' + name
             acq.add_header_item(name, val)
   else:
-    acq.add_header_item("fpga_info", "no communication with fpga for this dataset")
+    acq.add_header_item("fpga_info",
+                        "no communication with fpga for this dataset")
 
   # Add some acquisition information to the header, for kicks.
   acq.add_header_item("system_user", getpass.getuser())
@@ -436,6 +429,8 @@ if __name__ == "__main__":
   acq.add_header_item("archive_version", archive_version)
   acq.add_header_item("acquisition_name", "%s_%s_corr" % (time_str, corr_name))
   acq.add_header_item("acquisition_type", "corr")
+
+  print "sldfkjslkdjfslkdfj"
 
   # Get the git tag and write it to the header.
   if not len(args.git_tag):
@@ -452,16 +447,22 @@ if __name__ == "__main__":
   # Add the user notes.
   acq.add_header_item("notes", args.notes)
 
+  print "sldfkjslkdjfslkdfj"
+
   # Start the acquisition.
   acq.start(acq_base_dir, crate_sn, int(conf["fpga"]["subarray"]))
+
+  print "sldfkjslkdjfslkdfj"
 
   try:
     while True:
       # Pass the acquisition object the board temperatures. This is a temporary
       # way of doing this!
       if (int(args.configure_fpga) > 0):
+        i = 0
         for c_element in c:
-          acq.pass_fpga_amb_temp(0, get_fpga_hk(c_element.fpga, fpga_hk_field))
+          acq.pass_fpga_amb_temp(i, get_fpga_hk(c_element.fpga, fpga_hk_field))
+          i += 1
         log.info("Read FPGA housekeeping.")
       else:
         log.info("acquiring data...")
