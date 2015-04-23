@@ -23,7 +23,7 @@ import sys
 import socket
 import time
 import pickle
-#from pychfpga import calculate_gains
+from pychfpga import calculate_gains
 from pychfpga.init_links import *
 #import MySQLdb
 
@@ -430,8 +430,6 @@ if __name__ == "__main__":
   acq.add_header_item("acquisition_name", "%s_%s_corr" % (time_str, corr_name))
   acq.add_header_item("acquisition_type", "corr")
 
-  print "sldfkjslkdjfslkdfj"
-
   # Get the git tag and write it to the header.
   if not len(args.git_tag):
     fp = open("/etc/CHIME/version", "r")
@@ -447,12 +445,8 @@ if __name__ == "__main__":
   # Add the user notes.
   acq.add_header_item("notes", args.notes)
 
-  print "sldfkjslkdjfslkdfj"
-
   # Start the acquisition.
   acq.start(acq_base_dir, crate_sn, int(conf["fpga"]["subarray"]))
-
-  print "sldfkjslkdjfslkdfj"
 
   try:
     while True:
