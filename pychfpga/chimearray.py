@@ -34,7 +34,7 @@ if __name__ == '__main__':
     close_all_sockets()
 
     parser = argparse.ArgumentParser(description=__doc__.split('\n')[0]) # description is the first line of the docstring
-    parser.add_argument('-t', '--log_target', action='store', type=str, default='syslog', help="Logging target ('stream', 'syslog' or a filename)")
+    parser.add_argument('-t', '--log_target', action='store', type=str, default='stream', help="Logging target ('stream', 'syslog' or a filename)")
     parser.add_argument('-l', '--log_level', action = 'store', type=str, choices=['info','debug'], default='debug', help='Logging level')
     parser.add_argument('-s', '--subarray', action = 'store', type=int, help='Subarrays to include')
     parser.add_argument('-f', '--force', action = 'store', type=int, default=0, help='Forces reprogramming of the FPGAs even if they are already programmed')
