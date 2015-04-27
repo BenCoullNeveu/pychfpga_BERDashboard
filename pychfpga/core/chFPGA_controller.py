@@ -1574,3 +1574,88 @@ class chFPGA_controller(chFPGAHandler):
                 for (adc_number, adc) in enumerate(board.ADC):
                     res['FMC%i ADC%i'%(fmc_number, adc_number)] = adc.get_temperature()
         return res
+
+    def init_crossbars(self, frames_per_packet=3, cb1_lanes=16, cb1_bins=64, cb2_lanes=8, cb2_bins=1, cb2_bypass=False, bp_bypass=1):
+        """ Initializes the 1st and 2nd crossbar to reorder and package the channelizer data send to the GPU correlators in the desired format.
+
+        `ib` is the IceBoard to be configured.
+        """
+        self.set_ant_reset(1)
+        self.set_corr_reset(1)
+        cb1 = self.CROSSBAR
+        cb2 = self.CROSSBAR2
+        gpu_links = self.GPU
+
+        if frames_per_packet < 1 or frames_per_packet > 4:
+            raise ValueError('Number of frames per packet must be between 1 and 4')
+        if cb1_lanes not in [4,8,12,16]:
+            raise ValueError('Crossbar 1 number of input lanes must be 4,8,12 or 16')
+        if cb2_lanes % 2:
+            raise ValueError('Crossbar 2 number of input lanes must be a multiple of 2')
+
+        self._logger.info('%r: Configuring crossbars 1 & 2 with frames_per_packet=%i, cb1_lanes=%i, cb1_bins=64, cb2_lanes=%i, cb2_bins=%i, cb2_bypass=%s, bp_bypass=%s' % (self, cb1_lanes, cb1_bins, cb2_lanes, cb2_bins, bool(cb2_bypass), bool(bp_bypass)))
+
+        words_per_bin = cb1_lanes / 4
+        cb1_minimum_bin_spacing = 16
+        cb2_minimum_bin_spacing = 8
+
+        for gtx in gpu_links.CHANNEL:
+            gtx.LOOPBACK = bp_bypass
+
+        for (i, bs) in enumerate(cb1):
+            bs.GROUP_FRAMES = frames_per_packet
+            bs.NUMBER_OF_LANES = cb1_lanes
+            tx = (self.slot, i)  # unique transmitter id (slot, lane)
+            destination_slot = self.bp.get_matching_rx(tx)[0]
+            bs.select_bins(np.arange(cb1_bins) * cb1_minimum_bin_spacing + (destination_slot-1))
+            # bs.select_bins(np.arange(800))
+        #cb1.configure(cb1_bins)
+
+        for (i, bs) in enumerate(cb2):
+            bs.BYPASS = bool(cb2_bypass)
+            bs.NUMBER_OF_FRAMES_PER_PACKET = frames_per_packet
+            bs.NUMBER_OF_LANES = cb2_lanes
+            bs.NUMBER_OF_BINS_PER_FRAME = cb1_bins
+            bs.NUMBER_OF_WORDS_PER_BIN = cb1_lanes/4
+            bs.select_bins(np.arange(cb2_bins) * cb2_minimum_bin_spacing + i)
+        #cb2.configure(cb2_bins)
+
+        header_size = 16
+        packet_flags_size = 4
+        eth_overhead = 42
+        bp_overhead = 8
+        eth_data_rate = 156.25e6 * 66 * 32/33
+        bp_data_rate = 156.25e6* 50 * 32/33
+        packet_rate = 800e6/2048/frames_per_packet
+        cb1_payload_size = header_size + packet_flags_size + frames_per_packet * (words_per_bin * cb1_bins + cb1_bins + 1) * 4
+        cb1_eth_packet_size = (cb1_payload_size+eth_overhead+7)//8*8
+        cb1_eth_data_rate = cb1_eth_packet_size * packet_rate * 8
+
+
+        cb1_bp_packet_size = (cb1_payload_size+bp_overhead+7)//8*8
+        cb1_bp_data_rate = cb1_bp_packet_size * packet_rate * 8
+
+        self._logger.info('%.32r: CROSSBAR1 output: payload = %i bytes' % (self, cb1_payload_size))
+        self._logger.info('%.32r: Backplane links: Packet size = %i bytes, data rate = %0.2f Gbps / %0.2f Gbps (%0.2f%%)' % (self, cb1_bp_packet_size, cb1_bp_data_rate/1e9, bp_data_rate / 1e9, cb1_bp_data_rate/bp_data_rate*100))
+
+        cb2_payload_size = header_size + packet_flags_size + frames_per_packet * (words_per_bin * cb2_bins* cb2_lanes + 1*cb2_bins*cb2_lanes/2 + cb2_lanes) * 4
+        cb2_eth_packet_size = (cb2_payload_size + eth_overhead + 7) // 8 * 8
+        cb2_eth_data_rate = cb2_eth_packet_size * packet_rate * 8
+        cb2_fifo_load = cb2_bins * words_per_bin * frames_per_packet - ( cb2_bins * words_per_bin* cb2_minimum_bin_spacing* frames_per_packet / 16)
+        self._logger.info('%.32r: CROSSBAR2 output: payload = %i bytes' % (self, cb2_payload_size))
+        self._logger.info('%.32r: CROSSBAR2 peak FIFO load per frame: %i (Max. 16), Words per frame: %i (max %i)' % (self, cb2_fifo_load,cb2_payload_size/frames_per_packet, 512*bp_data_rate/32/200e6))
+
+        if cb2_bypass:
+            self._logger.info('%.32r: GPU link (CROSSBAR1 data): UDP Payload = %i bytes, Ethernet packets = %i bytes, data rate = %0.2f Gbps (%0.2f%%)' % (self, cb1_payload_size, cb1_eth_packet_size, cb1_eth_data_rate/1e9, cb1_eth_data_rate/eth_data_rate*100))
+        else:
+            self._logger.info('%.32r: GPU Link (CROSSBAR2 data): UDP Payload = %i bytes, Ethernet packets = %i bytes, data rate = %0.2f Gbps (%0.2f%%)' % (self, cb2_payload_size, cb2_eth_packet_size, cb2_eth_data_rate/1e9, cb2_eth_data_rate/eth_data_rate*100))
+
+        self.set_corr_reset(0)
+        self.set_ant_reset(0)
+
+    def set_crate_fan_speed(self, speed):
+        """ Set the speed of the crate fan. `speed` is a value from 0 to 100.
+        """
+        if not self.bp._fan_ctrl_present:
+            raise RuntimeError('There is no fan controller connected on the backplane I2C bus')
+        self.bp._fan_ctrl.set_duty_cycle(speed)

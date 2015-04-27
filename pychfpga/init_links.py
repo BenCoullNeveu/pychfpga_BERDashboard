@@ -1,86 +1,9 @@
 import numpy as np
 import struct
 import time
+import logging
 #import core.icecore.icebox
 
-def init_crossbars(ib, frames_per_packet=3, cb1_lanes=16, cb1_bins=64, cb2_lanes=8, cb2_bins=1, cb2_bypass=False, bp_bypass=1):
-    ib.set_ant_reset(1)
-    ib.set_corr_reset(1)
-    cb1=ib.CROSSBAR
-    cb2=ib.CROSSBAR2
-    gpu_links=ib.GPU
-
-    if frames_per_packet<1 or frames_per_packet>4:
-        raise Exception('Number of frames per packet must be between 1 and 4')
-    if cb1_lanes % 4:
-        raise Exception('Crossbar 1 number of input lanes must be a multiple of 4')
-    if cb2_lanes % 2:
-        raise Exception('Crossbar 2 number of input lanes must be a multiple of 2')
-
-    words_per_bin = cb1_lanes / 4
-    cb1_minimum_bin_spacing = 16
-    cb2_minimum_bin_spacing = 8
-
-    for gtx in gpu_links.CHANNEL:
-        gtx.LOOPBACK = bp_bypass
-
-    for (i, bs) in enumerate(cb1):
-        bs.GROUP_FRAMES = frames_per_packet
-        bs.NUMBER_OF_LANES = cb1_lanes
-        tx = (ib.slot, i)
-        destination_slot = ib.bp.get_matching_rx(tx)[0]
-        bs.select_bins(np.arange(cb1_bins) * cb1_minimum_bin_spacing + (destination_slot-1))
-        # bs.select_bins(np.arange(800))
-    #cb1.configure(cb1_bins)
-
-    for (i, bs) in enumerate(cb2):
-        bs.LANE0_BYPASS = bool(cb2_bypass)
-        bs.NUMBER_OF_FRAMES_PER_PACKET = frames_per_packet
-        bs.NUMBER_OF_LANES = cb2_lanes
-        bs.NUMBER_OF_BINS_PER_FRAME = cb1_bins
-        bs.NUMBER_OF_WORDS_PER_BIN = cb1_lanes/4
-        bs.select_bins(np.arange(cb2_bins) * cb2_minimum_bin_spacing + i)
-    #cb2.configure(cb2_bins)
-
-    header_size = 16
-    packet_flags_size = 4
-    eth_overhead = 42
-    bp_overhead = 8
-    eth_data_rate = 156.25e6 * 66 * 32/33
-    bp_data_rate = 156.25e6* 50 * 32/33
-    packet_rate = 800e6/2048/frames_per_packet
-    cb1_payload_size = header_size + packet_flags_size + frames_per_packet * (words_per_bin * cb1_bins + cb1_bins + 1) * 4
-    cb1_eth_packet_size = (cb1_payload_size+eth_overhead+7)//8*8
-    cb1_eth_data_rate = cb1_eth_packet_size * packet_rate * 8
-
-    cb1_bp_packet_size = (cb1_payload_size+bp_overhead+7)//8*8
-    cb1_bp_data_rate = cb1_bp_packet_size * packet_rate * 8
-
-    print 'CROSSBAR1 output: payload = %i bytes' % (cb1_payload_size)
-    print 'Backplane links: Packet size = %i bytes, data rate = %0.2f Gbps / %0.2f Gbps (%0.2f%%)' % (cb1_bp_packet_size, cb1_bp_data_rate/1e9, bp_data_rate / 1e9, cb1_bp_data_rate/bp_data_rate*100)
-
-    cb2_payload_size = header_size + packet_flags_size + frames_per_packet * (words_per_bin * cb2_bins* cb2_lanes + 1*cb2_bins*cb2_lanes/2 + cb2_lanes) * 4
-    cb2_eth_packet_size = (cb2_payload_size + eth_overhead + 7)// 8 * 8
-    cb2_eth_data_rate = cb2_eth_packet_size * packet_rate * 8
-    cb2_fifo_load = cb2_bins * words_per_bin * frames_per_packet - ( cb2_bins * words_per_bin* cb2_minimum_bin_spacing* frames_per_packet / 16)
-    print 'CROSSBAR2 output: payload = %i bytes' % (cb2_payload_size)
-    print 'CROSSBAR2 peak FIFO load per frame: %i (Max. 16), Words per frame: %i (max %i)' % (cb2_fifo_load,cb2_payload_size/frames_per_packet, 512*bp_data_rate/32/200e6)
-
-    if cb2_bypass:
-        print 'GPU link (CROSSBAR1 data): UDP Payload = %i bytes, Ethernet packets = %i bytes, data rate = %0.2f Gbps (%0.2f%%)' % (cb1_payload_size, cb1_eth_packet_size, cb1_eth_data_rate/1e9, cb1_eth_data_rate/eth_data_rate*100)
-    else:
-        print 'GPU Link (CROSSBAR2 data): UDP Payload = %i bytes, Ethernet packets = %i bytes, data rate = %0.2f Gbps (%0.2f%%)' % (cb2_payload_size, cb2_eth_packet_size, cb2_eth_data_rate/1e9, cb2_eth_data_rate/eth_data_rate*100)
-
-    #words_per_bin = cb1_lanes / 4
-    #
-    #
-    #bs0=cb2[0]
-    #bs0.write(0,0x41)
-    #cb1[0].GROUP_FRAMES=1
-    #cb1[0].NUMBER_OF_LANES=4
-    #cb1.configure(1)
-    ib.set_corr_reset(0)
-    ib.set_ant_reset(0)
 
 class GpuData(object):
     def __repr__(self):
@@ -125,14 +48,22 @@ def get_gpu_data(node_number, dna_number):
     return result
 
 
-def shuffle_init(c, sync_board, remap=False, frames_per_packet=1, cb1_lanes=4, cb1_bins=16, cb2_lanes=2, cb2_bins=1, cb2_bypass=0):
+def shuffle_init(c, sync_board, remap=False, frames_per_packet=1, cb1_lanes=4, cb1_bins=16, cb2_lanes=2, cb2_bins=1, cb2_bypass=0, bp_bypass=0):
+    """ Setup the crossbars and data shuffling in every board of the array.
+    """
+    tx_list = []
+    logger = logging.getLogger(__name__)
 
-    tx_list=[]
+    crate_set = set([cc.crate for cc in c])
+    if len(crate_set) != 1:
+        raise RuntimeError('All boards must be in the same crate. The provided set of Iceboards have the following crates: %r' % crate_set)
+    crate = crate_set.pop()
+
+    logger.info('%.32r: Configuring crate-wide data shuffling with frames_per_packet=%i, cb1_lanes=%i, cb1_bins=64, cb2_lanes=%i, cb2_bins=%i, cb2_bypass=%s, bp_bypass=%s' % (crate, cb1_lanes, cb1_bins, cb2_lanes, cb2_bins, bool(cb2_bypass), bool(bp_bypass)))
 
     # set-up transmitters
     for i,bb in enumerate(c):
-
-        print '**** Initializing transmitters for Slot %02i (IceBoard SN%s) ****' % (bb.slot, bb.serial)
+        logger.info('%.32r: **** Initializing transmitters for Slot %02i (IceBoard SN%s) ****' % (crate, bb.slot, bb.serial))
         bb.set_corr_reset(0)
         # bb.set_data_source('funcgen')
         # bb.set_funcgen_function('a', a=0)
@@ -148,9 +79,11 @@ def shuffle_init(c, sync_board, remap=False, frames_per_packet=1, cb1_lanes=4, c
 
         for j,cb in enumerate(bb.CROSSBAR2):
             cb.STREAM_ID = bb.slot-1
+
         # Make the board respond to SYNC triggers from the backplane
         bb.REFCLK.set_sync_source('bp')#bb.REFCLK.SLAVE=1
 
+        tx_list.append((bb.slot, 0))  # Register Bypass lane (lane 0) as a transmitter in this slot
         for j,gtx in enumerate(bb.BP_SHUFFLE.gtx):
             tx_list.append((bb.slot, j+1))
 
@@ -158,19 +91,17 @@ def shuffle_init(c, sync_board, remap=False, frames_per_packet=1, cb1_lanes=4, c
             bb.CROSSBAR2.set_lane_map(compute_lane_map(bb))
 
         # Initialize the crossbars to select and send data in a specific format
-        init_crossbars(bb, frames_per_packet=frames_per_packet, cb1_lanes=cb1_lanes, cb1_bins=cb1_bins, cb2_lanes=cb2_lanes, cb2_bins=cb2_bins, cb2_bypass=cb2_bypass)
+        bb.init_crossbars(frames_per_packet=frames_per_packet, cb1_lanes=cb1_lanes, cb1_bins=cb1_bins, cb2_lanes=cb2_lanes, cb2_bins=cb2_bins, cb2_bypass=cb2_bypass)
 
     # set-up receivers
-    for i,bb in enumerate(c):
+    for i, bb in enumerate(c):
         # Disable all receivers for which there are no transmitters
-        for i,gtx in enumerate(bb.BP_SHUFFLE.gtx):
+        for i, gtx in enumerate(bb.BP_SHUFFLE.gtx):
             rx = (bb.slot, i+1)
             tx = bb.bp.get_matching_tx(rx)
             if tx in tx_list:
-                print '%s is receiving from %s' % (rx, tx)
                 gtx.USER_GTRXRESET = 0
             else:
-                print '%s has no corresponding transmitter' % (rx,)
                 gtx.USER_GTRXRESET = 1
                 # gtx.USER_RESET = 1
 
@@ -178,7 +109,16 @@ def shuffle_init(c, sync_board, remap=False, frames_per_packet=1, cb1_lanes=4, c
         bb.BP_SHUFFLE.reset_rx_equalizers()
         bb.REFCLK.sync() # needed
 
-    sync_board.set_user_output_source('sync')
+ # set-up receivers
+    for bb in c:
+        for i in range(bb.NUMBER_OF_CROSSBAR_OUTPUTS):
+            rx = (bb.slot, i)
+            tx = bb.bp.get_matching_tx(rx)
+            if tx in tx_list:
+                logger.info('%.32r: %s is receiving from %s' % (bb.crate, rx, tx))
+            else:
+                logger.info('%.32r: %s has no corresponding transmitter' % (bb.crate, rx,))
+
     soft_sync(c, sync_board)
 
 # r.CROSSBAR2[0].print_frame_info()
@@ -280,7 +220,7 @@ def init_gains(c):
         cc.set_gain(g_array)
 
 def soft_sync(boards, sync_board):
-
+    """ Synchronize all boards"""
     boards = list(boards)
     print 'Masking ADC data before sync'
     for ib in boards:
@@ -296,7 +236,7 @@ def soft_sync(boards, sync_board):
             ant.ADCDAQ.BYTE_MASK = 255
 
 def print_temperatures(boards):
-    t=[(b.slot, b.serial, b.SYSMON.temperature()) for b in boards]
+    t = [(b.slot, b.serial, b.SYSMON.temperature()) for b in boards]
     t.sort()
     for (slot, serial_number, fpga_temp) in t:
         print 'Slot %2i (SN%s): FPGA %2.1f C' % (slot, serial_number, fpga_temp)
@@ -312,9 +252,9 @@ def print_fmc_power(boards):
     sensor_list = ['FMCA_12V0', 'FMCA_3V3','FMCA_VADJ','FMCB_12V0','FMCB_3V3','FMCB_VADJ']
     for b in boards:
         for sensor in sensor_list:
-            t=b.hw.get_power(sensor)[sensor]
-            if t[0] is not None:
-                print '%0.1fV@%0.2fA=%0.1fW ' % (t[0], t[2], t[3]),
+            (voltage, current, power) = b.hw.get_power(sensor)[sensor]
+            if voltage is not None:
+                print '%0.1fV@%0.2fA=%0.1fW ' % (voltage, current, power),
             else:
                 print 'None                 ',
         print

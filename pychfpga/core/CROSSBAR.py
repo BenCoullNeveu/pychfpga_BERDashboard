@@ -36,7 +36,9 @@ class CROSSBAR_base(Module_base):
     LANE_MAP_BYTE7     = BitField(CONTROL, 10, 0, width=8, doc='Lane map')
 
 
-    LANE_MONITOR       = BitField(STATUS, 1, 0, width=16, doc='')
+    CB1_LANE_MONITOR   = BitField(STATUS, 0, 0, width=8, doc='')
+    CB1_BIN_CTR        = BitField(STATUS, 1, 0, width=8, doc='')
+    CB2_LANE_MONITOR   = BitField(STATUS, 1, 0, width=16, doc='')
     INPUT_FRAME_CTR    = BitField(STATUS, 2, 0, width=8, doc='')
     ALIGN_FRAME_CTR    = BitField(STATUS, 3, 0, width=8, doc='')
     OUTPUT_FRAME_CTR   = BitField(STATUS, 4, 0, width=8, doc='')
@@ -196,20 +198,31 @@ class CROSSBAR_base(Module_base):
             bs.status()
 
     def print_lane_monitor(self):
-        lane_monitor_info = {
-            0: 'input frame detect',
-            1: 'fifo frame detect',
-            2: 'align frame detect',
-            3: 'output frame detect',
-            4: 'remap frame detect',
-            5: 'align fifo overflow (real time)',
-            6: 'align fifo overflow (sticky)',
-            7: 'align fifo tvalid (real time)'
-            }
+        if self.crossbar_level == 1:
+            lane_monitor_info = {
+                0: 'reset',
+                5: 'align fifo overflow (real time)',
+                6: 'align fifo overflow (sticky)',
+                }
+        else:
+            lane_monitor_info = {
+                0: 'input frame detect',
+                1: 'fifo frame detect',
+                2: 'align frame detect',
+                3: 'output frame detect',
+                4: 'remap frame detect',
+                5: 'align fifo overflow (real time)',
+                6: 'align fifo overflow (sticky)',
+                7: 'align fifo tvalid (real time)'
+                }
 
         self.LANE_MONITOR_RESET=1
         self.LANE_MONITOR_RESET=0
         for (ix,name) in lane_monitor_info.items():
             self.LANE_MONITOR_SEL = ix
-            value = self.LANE_MONITOR
-            print '%32s = %s' % (name, '{:016b}'.format(value))
+            if self.crossbar_level == 1:
+                value = self.CB1_LANE_MONITOR
+                print '%32s = %s' % (name, '{:08b}'.format(value))
+            else:
+                value = self.CB2_LANE_MONITOR
+                print '%32s = %s' % (name, '{:016b}'.format(value))

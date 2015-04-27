@@ -213,17 +213,22 @@ class REFCLK_base(Module_base):
         return vv
 
 
-    def compute_sync_delay(self, ADC_list = [0,7], sleep=0.001, repeat=1, delays=range(32), plot=False):
+    def compute_sync_delay(self, ADC_list=[0, 7], sleep=0.001, repeat=1, delays=range(32), plot=False):
         """
-        Computes and sets the recommended SYNC pulse timing to ensure that it will meet the ADC timing requirments.
+        Computes and sets the recommended SYNC pulse timing to ensure that it
+        will meet the ADC timing requirments.
 
-        This is done by sweeping the timing of the SYNC pulse over a range of 2.5 ns in 32 steps (78.125 ps steps) and for
-        each delay synchronize the ADC and measure the waveform of the 400 MHz ADC output clock.
-        Phase discontinuities will be seen where the timing requirments is not met
-        (i.e. the SYNC falling edge is too close to the 1600 MHz ADC input clock and the setup or hold requirements are not met).
+        This is done by sweeping the timing of the SYNC pulse over a range of
+        2.5 ns in 32 steps (78.125 ps steps) and for each delay synchronize
+        the ADC and measure the waveform of the 400 MHz ADC output clock.
+        Phase discontinuities will be seen where the timing requirments is not
+        met (i.e. the SYNC falling edge is too close to the 1600 MHz ADC input
+        clock and the setup or hold requirements are not met).
 
-        The algorithm then look for those discontinuities, and compute the delay that will place the SYNC between the first two first ones.
-        This is done for all ADC simultaneously. The average SYNC timing for all ADCs is used as the optimal value.
+        The algorithm then look for those discontinuities, and computes the
+        delay that will place the SYNC between the two first ones. This
+        is done for all ADC simultaneously. The average SYNC timing for all
+        ADCs is used as the optimal value.
 
         NOTE: This will work only of the ADC board is configured to SYNC the ADC directly from the SYNC signal coming from the FPGA.
         On REV2 boards, this means:

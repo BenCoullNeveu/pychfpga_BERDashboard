@@ -127,8 +127,8 @@ class CH_DIST_base(Module_base):
             mask[j//8] |= (1<<(j % 8))
         # verbose = False
         # if verbose: print (bins_to_enable)
-        self.logger.debug('Configuring lane %i of the crossbar to capture %i frequency bins: %s' % ( self.instance_number, len(bins_to_enable), repr(bins_to_enable)))
-        self.logger.debug('Mask pattern is: %s' % ( ' '.join('%02X'% byte for byte in mask)))
+        self.logger.info('%.32r: BIN_SEL: Configuring lane %i of the crossbar to capture %i frequency bins: %s' % (self.fpga, self.instance_number, len(bins_to_enable), repr(bins_to_enable)))
+        # self.logger.debug('Mask pattern is: %s' % ( ' '.join('%02X'% byte for byte in mask)))
         self.NUMBER_OF_SELECTED_WORDS = len(bins_to_enable)
 
         self.write_ram(0x00, mask) # Enable transmission of selected bytes

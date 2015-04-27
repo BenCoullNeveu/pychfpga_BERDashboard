@@ -317,18 +317,25 @@ class IceBoardHardware(object):
         Initializes GPIO expanders
 
         History
-        140304 JM: created. todo: make more flexible for I/O pin configuration of each expander. Need to confirm I/O pin config with JF
+
+        140304 JM: created. todo: make more flexible for I/O pin configuration
+        of each expander. Need to confirm I/O pin config with JF
         """
-        self._gpio_power.init(cfg0_def=0b10101000, cfg1_def=0b10101000, out0_default = 0, out1_default = 0)
+        self._gpio_power.init(cfg0_def=0b10101000, cfg1_def=0b10101000,
+                              out0_default=0, out1_default=0)
         self._gpio_sw_leds.init(cfg1_def=0b00000000)
         self._gpio_arm_phy_leds.init(cfg0_def=0b11110000)
         self._gpio_sfp_qsfp.init(cfg0_def=0b01100011, cfg1_def=0b11001111)
 
     def _init_temperature_sensors(self, temperature_sensor_name=None, bit_resolution=12):
-        """
-        initializes temperature sensors
-        'temperature_sensor_name' can be a list of temperature sensor names found in TEMPERATURE_SENSOR_TABLE. If temperature_sensor_name=None, all sensors in the list are initialized.
-        'bit_resolution' is the number of bits of resolution of the temperature register. It can take values 9, 10, 11, 12
+        """ Initialize temperature sensors.
+
+        'temperature_sensor_name' can be a list of temperature sensor names
+        found in TEMPERATURE_SENSOR_TABLE. If temperature_sensor_name=None,
+        all sensors in the list are initialized.
+
+        'bit_resolution' is the number of bits of resolution of the
+        temperature register. It can take values 9, 10, 11, 12
 
         History:
         140318 JM: created
@@ -349,7 +356,8 @@ class IceBoardHardware(object):
                     try:
                         tmp_object.init(bit_resolution)
                     except:
-                        self._logger.info('Iceboard SN%s temperature sensor %s failed to initialize.' % (self._iceboard.serial, temp_sensor))
+                        self._logger.info('%.32r: Temperature sensor %s failed to initialize.' % (self._iceboard, temp_sensor))
+
     def _init_power_sensors(self, power_sensor_name=None):
         """
         initializes current/power monitors
@@ -372,7 +380,7 @@ class IceBoardHardware(object):
                 try:
                     power_sensor_object.init(v_out=v_out, r_shunt=r_shunt, i_typ=i_typ, tol_i=tol_i)
                 except:
-                    self._logger.info('Iceboard SN%s power sensor %s failed to initialize.' % (self._iceboard.serial, power_sensor))
+                    self._logger.info('%.32r: Power sensor %s failed to initialize.' % (self._iceboard, power_sensor))
 
 
     def get_i2c_interface(self):
@@ -579,7 +587,7 @@ class I2CInterface(object):
 
     I2CException = SystemError # Exception object to expect from I2C communication errors
 
-    def __init__(self, write_read_fn, port_select_fn, bus_table, _switch_addr, verbose = None):
+    def __init__(self, write_read_fn, port_select_fn, bus_table, _switch_addr, verbose=None):
         self.write_read_fn = write_read_fn
         self.set_port_fn = port_select_fn
         self._I2C_BUS_LIST = bus_table
@@ -610,9 +618,10 @@ class I2CInterface(object):
             elif selected_fpga_port_number != fpga_port_number:
                 self._logger.error("I2C bus '%s' is not on the same FPGA port as the other buses" % (bus_name) )
             selected_switch_port_numbers.append(switch_port_number)
-            self._logger.debug("Enabling I2C bus %s" % bus_name)
+            # self._logger.debug("Enabling I2C bus %s" % bus_name)
 
-        self.set_port_fn(selected_fpga_port_number)
+        if selected_fpga_port_number is not None:
+            self.set_port_fn(selected_fpga_port_number)
 
         self._i2c_switch.set_port(selected_switch_port_numbers, *args, **kwargs)
 

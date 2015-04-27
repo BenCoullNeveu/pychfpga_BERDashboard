@@ -3,8 +3,8 @@
 
 # import iceboard as ib
 import logging
+import numpy as np
 from .eeprom import eeprom as EEPROM
-
 
 class QSFP(object):
     """ Class defining the interface to a QSFP+ cable.
@@ -19,7 +19,10 @@ class QSFP(object):
          'ChanMonIntFlags' : ('bin', 9, 4, 0),
          'MeasuredTemp' : ('bin', 22, 2, 0),
          'MeasuredSupV' : ('bin', 26, 2, 0),
-         'ChanRxInPow': ('bin', 34, 8, 0),
+         'RxPow1': ('bin', 34, 8, 0),
+         'RxPow2': ('bin', 36, 8, 0),
+         'RxPow3': ('bin', 38, 8, 0),
+         'RxPow4': ('bin', 40, 8, 0),
          'ChanTxBias':('bin', 42, 8, 0),
          'LaserDisable':('bin', 86, 1, 0),
          'RateSelect':('bin', 87, 2, 0),
@@ -74,7 +77,7 @@ class QSFP(object):
         self._address = address
         self._gpio = gpio
 
-        self._qsfp_eeprom = EEPROM(self._i2c, bus_name=self._bus_name, address=self._address, address_width=8)
+        self._qsfp_eeprom = EEPROM(self._i2c, bus_name=self._bus_name, address=self._address, address_width=8, write_page_size=256)
 
     def open(self):
         pass
@@ -83,7 +86,10 @@ class QSFP(object):
         pass
 
     def init(self):
-        """Initializes the backplane hardware to a known state"""
+        """Initializes the QSFP module to a known state (enable it)"""
+        self.reset()
+        self.enable_i2c(False)
+        self.set_power_mode(0)  # Low power
 
     def set_control_bit(self, name, value, select=True):
         self._gpio.write(self._bus_name + '_' + name, value, select=select)
@@ -124,10 +130,20 @@ class QSFP(object):
     def is_present(self):
         return not self.get_control_bit('ModPrsL')
 
+    def set_power_mode(self, state):
+        """ 0 = low power, 1 = High power """
+        self.set_control_bit('LPMode', not state)
+
+    def get_power_mode(self):
+        return not self.get_control_bit('LPMode')
+
     def write(self, addr, data, page=0, enable=True):
 
         if enable:
             self.enable_i2c(True)
+
+        if addr in self.QSFP_EEPROM_MAP:
+            (__, addr, __, page) = self.QSFP_EEPROM_MAP[addr]
 
         if page:
             self._qsfp_eeprom.write(addr=127, data=page, length=1)  # Writing to page select register
@@ -149,6 +165,9 @@ class QSFP(object):
         if enable:
             self.enable_i2c(True)
 
+        if addr in self.QSFP_EEPROM_MAP:
+            (__, addr, __, page) = self.QSFP_EEPROM_MAP[addr]
+
         if page:
             self._qsfp_eeprom.write(addr=127, data=page, length=1) #Writing to page select register
 
@@ -168,6 +187,22 @@ class QSFP(object):
         self.enable_i2c(False)
         return data
 
+    def read_word(self, addr, page=0, type=np.uint16, enable=True):
+        """ Read 16-bit word as an unsigned big endian. """
+        data = self.read(addr, length=2, page=page, enable=enable)
+        return type((ord(data[0]) << 8) + ord(data[1]))
+
+    def get_temperature(self):
+        word = self.read_word('MeasuredTemp', type=np.int16)
+        return word / 256.
+
+    def get_supply_voltage(self):
+        return self.read_word('MeasuredSupV') * 100e-6
+
+    def get_rx_power(self):
+        """ Return the optical power (in Watts) received by each of the 4 channels"""
+        return [self.read_word('RxPow%i' % chan) * 0.1e-6 for chan in [1 , 2, 3, 4]]
+
     def get_info(self):
         """
         Gets all qsfp info marked up in the qsfp eeprom map for each slot
@@ -175,6 +210,17 @@ class QSFP(object):
         History:
         141015 AJG & JF: created
         """
+        print 'Hardware lines'
+        print '--------------'
+        print 'Module is Present: %s' % bool(self.is_present())
+        print 'Module I2C is Responding: %s' % bool(self._qsfp_eeprom.is_present())
+        print 'Module type: %s' % ['Low power', 'High power'][self.get_power_mode()]
+        print 'I2C info'
+        print '--------------'
+        print '   Module temperature: %0.1f C' % self.get_temperature()
+        print '   Module supply voltage: %0.2f V' % self.get_supply_voltage()
+        print '   Received optical power: %s' % ', '.join(['Ch%i=%0.3f mW' % (i+1, rx_pow/1e-3) for (i,rx_pow) in enumerate(self.get_rx_power())])
+
         data = {}
         for (key, (datatype, addr, length, page)) in self.QSFP_EEPROM_MAP.items():
             if datatype == 'str': #String detected, converting to readable characters

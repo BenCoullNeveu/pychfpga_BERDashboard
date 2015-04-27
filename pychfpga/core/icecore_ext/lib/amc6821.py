@@ -22,7 +22,6 @@ class AMC6821(object):
 
     def __init__(self, i2c, address=0x18, bus_name='BP'):
         """ Create a fan controller object.
-
         """
         self._logger = logging.getLogger(__name__)
         self._logger.debug('%.32r: Instantiating AMC6821 Fan controller object' % self)
@@ -39,7 +38,10 @@ class AMC6821(object):
 
     def init(self):
         """Initializes the backplane hardware to a known state"""
-        self.write('START', 1)
+        # self.write('START', 1)
+
+        self.write(0x00, 0x9C)  # Set software duty cycle mode, invert PWM polarity (high=ON), start temperature & PWM monitoring
+        # self.set_duty_cycle(100)
 
     def select(self):
         """
@@ -81,10 +83,10 @@ class AMC6821(object):
         if select:
             self._i2c.select_bus(self._bus_name)
 
-        if width==8:
+        if width == 8:
             self._i2c.write_read(self._address, data=[register, value])
         else:
-            mask = ((1<<width)-1) << bit
+            mask = ((1 << width)-1) << bit
             old_value = self._i2c.write_read(self._address, data=[register], read_length=1)  #self.i2c.write_read(self.address, read_length=1)
             new_value = (old_value & (~ mask)) | (value & mask)
             self._i2c.write_read(self._address, data=[register, new_value])

@@ -28,13 +28,13 @@ class BackplaneHardware(object):
     BACKPLANE_EEPROM_ADDRESS_WIDTH = 10  # 2 bits are in the device address, the remaining are in the address byte following the command byte
     BACKPLANE_EEPROM_PAGE_SIZE = 16 #
 
-    BACKPLANE_QSFP_ADDRESS = 0x50  #QSFP standard address
+    BACKPLANE_QSFP_ADDRESS = 0x50  # QSFP standard address (it is the same for all QSFPs)
     BACKPLANE_QSFP_ADDRESS_WIDTH = 8
 
 
-    _QSFP_CTRL_SETA_ADDR = 0b0100000
-    _QSFP_CTRL_SETB_ADDR = 0b0100010
-    _RESETS_CTRL_ADDR = 0b0100100
+    _QSFP_CTRL_SETA_ADDR = 0x20
+    _QSFP_CTRL_SETB_ADDR = 0x22
+    _RESETS_CTRL_ADDR = 0x24
 
     _TMP_SLOT1_ADDR = 0x4E
     _TMP_SLOT16_ADDR = 0x4D
@@ -160,8 +160,6 @@ class BackplaneHardware(object):
         self._iceboard = iceboard
         self._i2c = iceboard.i2c
 
-        self._I2C_BACKPLANE_BUS_NAME = 'BP'
-
         self._logger.info(' Instantiating Backplane I2C resource managers')
         self._eeprom_data = EEPROM(iceboard.i2c, bus_name='BP', address=self.BACKPLANE_EEPROM_DATA_ADDRESS, address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH, write_page_size = self.BACKPLANE_EEPROM_PAGE_SIZE)
         self._eeprom_serial = EEPROM(iceboard.i2c, bus_name='BP', address=self.BACKPLANE_EEPROM_SERIAL_ADDRESS, address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH, write_page_size = self.BACKPLANE_EEPROM_PAGE_SIZE)
@@ -179,9 +177,7 @@ class BackplaneHardware(object):
         self._qsfp_ctrlb = pca9698.pca9698(self._i2c, self._QSFP_CTRL_SETB_ADDR, 'BP')
         self._reset_ctrl = pca9698.pca9698(self._i2c, self._RESETS_CTRL_ADDR, 'BP')
 
-        if self._i2c.is_present(self._FAN_CTRL_ADDR, 'BP'):
-            self._logger.debug('%r: Creating fan controller object' % self)
-            self._fan_ctrl = amc6821.AMC6821(self._i2c, self._FAN_CTRL_ADDR, 'BP')
+        self._fan_ctrl = amc6821.AMC6821(self._i2c, self._FAN_CTRL_ADDR, 'BP')
 
         self.QSFP_CTRL_MAP = {
              # Slot num : (expander object, Register, bit number ModPrs, bit number Reset, bit number IntL, bit number ModSel)
@@ -329,12 +325,22 @@ class BackplaneHardware(object):
     def init(self):
         """Initializes the backplane hardware to a known state"""
 
+
+        # Check if the fan controller is connected
+        self._fan_ctrl_present = self._fan_ctrl.is_present()
+
+        # Check if the power/reset control IO expander is accessible
+        self._reset_ctrl_present = self._reset_ctrl.is_present()
+
         self._init_qsfp_ctrl()
-        self._init_reset_ctrl() # The power I2c bus needs to be bridged to the monitor I2C bus for this to work
+        if self._reset_ctrl_present:
+            self._init_reset_ctrl()  # The power I2c bus needs to be bridged to the monitor I2C bus for this to work
         self._init_eeprom()
         self._init_temperature_sensors()
         self._init_power_sensors()
-
+        if self._fan_ctrl_present:
+            self._fan_ctrl.init()
+        self._i2c.select_bus([])  # Make sure we don't load the bus
 
     def _init_temperature_sensors(self, temperature_sensor_name=None):
         """
@@ -344,7 +350,7 @@ class BackplaneHardware(object):
         History:
         140318 JM: created
         """
-        if temperature_sensor_name == None:
+        if temperature_sensor_name is None:
             temperature_sensor_name = self.TEMPERATURE_SENSOR_TABLE.keys()
         elif isinstance(temperature_sensor_name, str):
             temperature_sensor_name = [temperature_sensor_name]
@@ -395,16 +401,18 @@ class BackplaneHardware(object):
             #By default LEDs are off (dir=inputs , outputs=0), ModPrsL and IntL (dir=input, output = 0), ResetL and ModselL (dir=output, output=1)
 
     def _init_reset_ctrl(self):
-            """
-            initializes reset control
-            History:
-            141075 AJG: created
-            """
-            reset_ctrl=self._reset_ctrl
-
-            reset_ctrl.init(cfg0_def=0xFF, cfg1_def=0xFF,cfg2_def=0xFF,cfg3_def=0xFF,cfg4_def=0xFF,out0_def=0x15, out1_def=0xFF,out2_def=0xFF,out3_def=0xFF,out4_def=0xFF)
-            #By default setting all pins to inputs, with default output level logic 1 (no reset possible) for all banks except 0
-            #On bank 0, default levels are such that LED default is 0, Reset clear is active, and reset pins are functionality is maximily off
+        """
+        initializes reset control
+        History:
+        141075 AJG: created
+        """
+        self._reset_ctrl.init(
+            cfg0_def=0xFF, cfg1_def=0xFF, cfg2_def=0xFF,
+            cfg3_def=0xFF, cfg4_def=0xFF,
+            out0_def=0x15, out1_def=0xFF, out2_def=0xFF,
+            out3_def=0xFF, out4_def=0xFF)
+        #By default setting all pins to inputs, with default output level logic 1 (no reset possible) for all banks except 0
+        #On bank 0, default levels are such that LED default is 0, Reset clear is active, and reset pins are functionality is maximily off
 
     def _init_eeprom(self):
         """initializes EEPROM"""
@@ -419,10 +427,10 @@ class BackplaneHardware(object):
     def write_backplane_eeprom(self, addr, data, **kwargs):
         return self._eeprom_data.write(addr, data, **kwargs)
 
-    def is_backplane_present(self):
-        """ Detect if the backplane is present by probing its EEPROM with a dummy I2C acces.
-        """
-        return self._eeprom_data.is_present() # perform a dummy access
+    # def is_backplane_present(self):
+    #     """ Detect if the backplane is present by probing its EEPROM with a dummy I2C acces.
+    #     """
+    #     return self._eeprom_data.is_present() # perform a dummy access
 
     # def read_eeprom(self, addr, length=1):
     #     return self._eeprom.read(addr, length = length)
@@ -711,7 +719,6 @@ class BackplaneHardware(object):
     def qsfp_i2c_read_str(self, slot, addr=148, length=16, page=0):
         return ''.join([chr(x) for x in self.read_qsfp(slot, addr, length, page)])
 
-
     def get_qsfp_info(self, slots=range(1, NUMBER_OF_SLOTS + 1)):
         """
         Gets all qsfp info marked up in the qsfp eeprom map for each slot
@@ -758,18 +765,17 @@ class BackplaneHardware(object):
         History:
         141015 AJG & JF: created
         """
-
+        if not self._reset_ctrl_present:
+            raise RuntimeError('The Power/Reset backplane I/O Expander was not detected at init. Was the POW I2C bus accessible?')
 
         if slots=='ALL' and state==1:  #We wish to perform a full crate reset
 
             if reset_type not in self.FULLBP_RESETS_MAP:
                 raise ValueError('Unknown reset type %s' % reset_type)
             else:
-
                 (reset_control_obj, controlreg, mask, inactive, active) = self.FULLBP_RESETS_MAP[reset_type]
                 reset_cfg_register='CFG%i' % controlreg
                 reset_output_register='OUT%i' % controlreg
-
 
                 self.set_led('LED1', not(self.get_led('LED1')['LED1'])) #Flipping state of LED so that we know a reset was performed
                 #not sure what the defualt LED state will be so this is a flip at the moment
@@ -777,10 +783,7 @@ class BackplaneHardware(object):
                 reset_control_obj.write(reset_output_register, active, mask) #Setting output register to reset value
                 reset_control_obj.write(reset_cfg_register,  0, mask) #Setting direction register to output (this performs the reset)
 
-
-
         else:  #We wish to perform individual resets
-
             if isinstance(slots, int):
                 slots = [slots]
 
@@ -795,26 +798,26 @@ class BackplaneHardware(object):
                     print 'Warning, will not perform reset on the controlling slot %i' % slot
 
                 # if isenabled and slot != self._iceboard.slot_number  :
-                elif slot not in range(1,self.NUMBER_OF_SLOTS + 1) :
+                elif slot not in range(1, self.NUMBER_OF_SLOTS + 1) :
                     raise ValueError('Invalid Slot number %i' % slot)
                 else:
                     (reset_control_obj, arm_reset_reg, power_down_reg, bitnumber) = self.SLOT_RESETS_MAP[slot]
                     if resettype == 'ARM':
-                        reset_cfg_register='CFG%i' % arm_reset_reg
-                        reset_output_register='OUT%i' % arm_reset_reg
+                        reset_cfg_register ='CFG%i' % arm_reset_reg
+                        reset_output_register = 'OUT%i' % arm_reset_reg
                     elif resettype == 'POWER':
-                        reset_cfg_register='CFG%i' % power_down_reg
-                        reset_output_register='OUT%i' % power_down_reg
+                        reset_cfg_register = 'CFG%i' % power_down_reg
+                        reset_output_register = 'OUT%i' % power_down_reg
                     else:
                         raise ValueError('Unknown reset type, will not perform reset on slot %i' % slot)
 
                     mask = 1 << bitnumber
-                    if isenabled==1 or isenabled=='pulse':  #Turning reset on
+                    if isenabled == 1 or isenabled == 'pulse':  # Turning reset on
 
-                        reset_control_obj.write(reset_output_register,  0, mask) #Setting output register to logic 0 (reset active)
-                        reset_control_obj.write(reset_cfg_register,  0, mask) #Setting direction register from input to output - Performing reset
+                        reset_control_obj.write(reset_output_register, 0, mask) #Setting output register to logic 0 (reset active)
+                        reset_control_obj.write(reset_cfg_register, 0, mask) #Setting direction register from input to output - Performing reset
 
-                    if isenabled==0 or isenabled=='pulse': #Turning reset off
+                    if isenabled == 0 or isenabled == 'pulse':  #Turning reset off
                         if isenabled=='pulse':
                             time.sleep(2)
                         reset_control_obj.write(reset_output_register,  mask, mask) #Setting output register to logic 1 (reset inactive) - Removing reset

@@ -23,7 +23,7 @@ class SHUFFLE_BIN_SEL_base(Module_base):
 
     # Control bitfields
     RESET                       = BitField(CONTROL, 0, 7, doc="Reset the CH_DIST. Clears FIFO.")
-    LANE0_BYPASS                = BitField(CONTROL, 0, 6, doc="When high, routes input lane 0 diretrly to the output.")
+    BYPASS                      = BitField(CONTROL, 0, 6, doc="When high, routes input lane 'x' directly to the output, where x in the index of this bin selector.")
     HEADER_CAPTURE_DATA_SEL     = BitField(CONTROL, 0, 5, doc=" Select whether we capture Stream ID or timestamps.")
     HEADER_CAPTURE_LANE_SEL     = BitField(CONTROL, 0, 1, width=4, doc=" Select from which lane the captured data is accessed.")
     HEADER_CAPTURE_EN           = BitField(CONTROL, 0, 0, doc="Enables capture of header info on all lanes simultaneously.")

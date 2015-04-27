@@ -31,20 +31,18 @@ import AmbTemp
 import MGT_PLL
 
 class MGADC08_base(FMCMezzanine):
+    handler_name = 'MGADC08_Handler'
+    __ipmi_part_number__ = 'MGADC08'  # Must match part number in IPMI data. Used for auto-discovery.
+
     __tablename__ = 'mgadc08'
-    handler_name = 'MGADC08'
-    __mapper_args__ = {'polymorphic_identity': 'MGADC08'} # Must match the model number found in the Mezzanine EEPROM (case sensitive)
+    __mapper_args__ = {'polymorphic_identity': 'MGADC08'}
     _pk = Column(Integer, ForeignKey('fmc_mezzanines._pk'), primary_key=True)
 
     """ Implements object that exposes the MGADC08 FMC ADC board hardware ressources"""
 
-    def __init__(self, **kwargs):
-        super(MGADC08_base, self).__init__(**kwargs)
-
 class MGADC08_Handler(FMCMezzanineHandler):
 
     __handler_for__ = MGADC08_base
-    __handler_name__= 'MGADC08'
 
     # SPI port numbers specific to this board
     SPI_ADC0_ADDR      = 0    # ADC. R/W device. 8 bit address+RW, 16 bit data.

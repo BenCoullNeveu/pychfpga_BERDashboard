@@ -78,7 +78,7 @@ class I2C_base(Module_base):
             self.logger.error('write_read: port number is out of range')
             raise ValueError()
         self.current_port = port_number
-        self.logger.debug("Setting FPGA I2C port to %i" % port_number)
+        # self.logger.debug("Setting FPGA I2C port to %i" % port_number)
 
     def write_read(self, addr=0, data=[0], read_length=0, verbose=1, noerror=False, retry=1):
         """
@@ -105,7 +105,7 @@ class I2C_base(Module_base):
                 raise ValueError()
 
         #if verbose:
-        self.logger.debug('write_read:  writing %i byte(s) and reading %i byte(s) at FPGA port %i at address 0x%02x with the following data: %s' % (write_length, read_length, self.current_port, addr, hex(data)))
+        # self.logger.debug('write_read:  writing %i byte(s) and reading %i byte(s) at FPGA port %i at address 0x%02x with the following data: %s' % (write_length, read_length, self.current_port, addr, hex(data)))
 
         #error = 0
         error_msg = ''

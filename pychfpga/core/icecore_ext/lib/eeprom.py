@@ -93,7 +93,7 @@ class eeprom(object):
         """
 
         if not self.write_page_size:
-            raise EEPROMException('EEPROM is not writable (write page size is zero)')
+            raise RuntimeError('EEPROM is not writable (write page size is zero)')
 
         # make sure the data is always a list
         if isinstance(data, int):

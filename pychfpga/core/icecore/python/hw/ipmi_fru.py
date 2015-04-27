@@ -44,7 +44,7 @@ board's QC scripts.)
 
 import struct
 import json
-from datetime import datetime
+from datetime import datetime, timedelta
 from collections import OrderedDict
 # Chassis type codes
 CHASSIS_OTHER = 0x01
@@ -87,6 +87,42 @@ MULTI_EXTENDED_COMPATIBILITY_RECORD = 0x05
 MULTI_OEM_RECORD_FIRST = 0xC0
 MULTI_OEM_RECORD_LAST = 0x0FF
 
+#  Helper functions used to decode EEPROM data
+
+def get_area_data(read_fn, start_addr, area_name=''):
+    """
+    """
+    # Get the first 3 bytes of data so we can do some checks and figure out the whole block length
+    data = read_fn(start_addr, 3)
+    version = ord(data[0])
+    if version != 0x01:
+        raise ValueError('Unsupported version in the IPMI %s field' % area_name)
+    length = ord(data[1]) * 8
+    # Now get all the data in the block and process it
+    data = read_fn(start_addr, length)
+    if sum(map(ord, data)) & 0xff:
+        raise ValueError('Bad ckecksum in the IPMI %s field' % area_name)
+    return data
+
+
+def get_area_fields(data, area_name=''):
+    """ Extract all fields in an area data block.
+    """
+    offset = 0
+    fields = []
+    while True:
+        type_ = ord(data[offset]) & 0xC0
+        length = ord(data[offset]) & 0x3F
+        offset += 1
+        if type_ != 0xC0:
+            raise ValueError('Unsupported field type 0x%02X' % type_)
+        if length == 1:
+            break
+        else:
+            fields.append(data[offset:offset + length])
+            offset += length
+    return fields
+
 
 class Internal(object):
     def __init__(self, data):
@@ -126,7 +162,7 @@ class Chassis(object):
             'BBB B%is B%is B x 0q' % (lprt, lser),
             0x01,            # version
             length / 8,      # length
-            self.type_code,  # language code (english)
+            self.type_code,  # chassis type
             0xc0 | lprt, self.part_number,
             0xc0 | lser, self.serial_number,
             0xc1
@@ -137,43 +173,13 @@ class Chassis(object):
 
     @classmethod
     def decode(cls, read_fn, start_addr):
-        type_code, fields = get_fields(read_fn, start_addr, has_language = False, field_name = cls.__name__)
-        part_number = fields[0]
-        serial_number = fields[1]
-        return cls(type_code=type_code, part_number=part_number, serial_number=serial_number)
+        data = get_area_data(read_fn, start_addr, area_name=cls.__name__)
+        chassis_type = data[2]
+        fields = get_area_fields(data[3:], area_name=cls.__name__)
+        return cls(type_code=chassis_type,
+                   part_number=fields[0],
+                   serial_number=fields[1])
 
-def get_fields(read_fn, start_addr, has_language, field_name=''):
-    """
-    """
-    # Get the first 3 bytes of data so we can do some checks and figure out the whole block length
-    data = read_fn(start_addr, 3)
-    version = ord(data[0])
-    if version != 0x01:
-        raise ValueError('Unsupported version in the IPMI %s field' % field_name)
-    length = ord(data[1]) * 8
-    data = data[:length]
-    type_or_language = ord(data[2])
-    if has_language and type_or_language != 0x00:
-        raise ValueError('Unsupported language in the IPMI %s field' % field_name)
-
-    # Now get all the data in the block and process it
-    data = read_fn(start_addr, length)
-    if sum(map(ord, data)) & 0xff:
-        raise ValueError('Bad ckecksum in the IPMI %s field' % field_name)
-    offset = 3
-    fields = []
-    while True:
-        type_ = ord(data[offset]) & 0xC0
-        length = ord(data[offset]) & 0x3F
-        offset += 1
-        if type_ != 0xC0:
-            raise ValueError('Unsupported field type')
-        if length == 1:
-            break
-        else:
-            fields.append(data[offset:offset + length])
-            offset += length
-    return (type_or_language,  fields)
 
 class Board(object):
     def __init__(self,
@@ -232,8 +238,19 @@ class Board(object):
 
     @classmethod
     def decode(cls, read_fn, start_addr):
-        (_, fields) = get_fields(read_fn, start_addr, has_language = True, field_name = cls.__name__)
-        return cls(*fields)
+        data = get_area_data(read_fn, start_addr, area_name=cls.__name__)
+        language_code = ord(data[2])
+        if language_code != 0x00:
+            raise ValueError('Unsupported language code 0x%02x in the IPMI %s area' % (language_code, cls.__name__))
+        mfg_minutes = ord(data[3]) + ord(data[4])*256 + ord(data[5])*65536
+        mfg_date = datetime(1996, 1, 1) + timedelta(0, 60*mfg_minutes)
+        fields = get_area_fields(data[6:], area_name=cls.__name__)
+        return cls(mfg_date=mfg_date,
+                   manufacturer=fields[0],
+                   product_name=fields[1],
+                   serial_number=fields[2],
+                   part_number=fields[3],
+                   fru_file=fields[4])
 
 
 class Product(object):
@@ -292,9 +309,18 @@ class Product(object):
 
     @classmethod
     def decode(cls, read_fn, start_addr):
-        (_, fields) = get_fields(read_fn, start_addr, has_language = True, field_name = cls.__name__)
-        return cls(*fields)
-
+        data = get_area_data(read_fn, start_addr, area_name=cls.__name__)
+        language_code = ord(data[2])
+        if language_code != 0x00:
+            raise ValueError('Unsupported language code 0x%02x in the IPMI %s area' % (language_code, cls.__name__))
+        fields = get_area_fields(data[3:], area_name=cls.__name__)
+        return cls(manufacturer=fields[0],
+                   product_name=fields[1],
+                   part_number=fields[2],
+                   product_version=fields[3],
+                   serial_number=fields[4],
+                   asset_tag=fields[5],
+                   fru_file=fields[6])
 
 class Multi(object):
     def __init__(self,

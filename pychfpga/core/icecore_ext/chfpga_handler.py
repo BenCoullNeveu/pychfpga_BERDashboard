@@ -8,8 +8,6 @@ from calendar import timegm
 import socket
 import struct
 
-from sqlalchemy.orm import class_mapper
-from ..icecore.hwm_assets import FMCMezzanine
 from ..icecore import IceBoardPlusHandler
 from ..icecore import tuber  # Used to get TuberRemoteError
 from ..icecore.hw.ipmi_fru import FRU, Board, Product, Chassis, MultiDict, CHASSIS_SUBCHASSIS
@@ -297,6 +295,7 @@ class chFPGAHandler(IceBoardPlusHandler):
 
         self.bp = BackplaneHardware(iceboard=self)
         self.bp.open()
+        self.bp.init()
 
         self._is_core_open = True
 
@@ -515,76 +514,6 @@ class chFPGAHandler(IceBoardPlusHandler):
         else:
             return None
 
-    def discover_mezzanines(self, update=True):
-        '''Detect mezzanines attached to the Iceboard, and instantiate them if
-        update=True.
-
-        This method uses IPMI data on the mezzanine's EEPROMs to guide
-        itself.
-
-        You do NOT need to use this method if the mezzanines present in the
-        system are already explicitely specified in the YAML hardware maps.
-        '''
-
-        mezz_class = {}
-        for m in range(1, self.NUM_MEZZANINES + 1):
-
-            # MezzClass = MissingMezzanine # Used by Graeme
-            part_number = None
-            serial = None
-            mezz_class[m] = None
-            # If a mezzanine is present, ask it (from EEPROM) what kind
-            # of mezzanine it is. Try to instantiate a mezz-specific
-            # class.
-            if self.is_mezzanine_present(m):
-                ipmi = self._get_mezzanine_mcgill_ipmi(m)
-                part_number = ipmi.product.part_number
-                serial = ipmi.product.serial_number
-                self.logger.info(
-                    '%r: detect_mezzanines(): Detected Mezzanine '
-                    'Model: %s Serial %s in Mezzanine %i'
-                    % (self, part_number, serial, m))
-                for sc in class_mapper(FMCMezzanine).self_and_descendants:
-                    if sc.polymorphic_identity == part_number:
-                        mezz_class[m] = sc.class_
-
-            if not mezz_class[m]:
-                self.logger.warning(
-                    "IceBoard SN%r detect_mezzanines(): There is no known "
-                    "FMC Mezzanine object with polymorphic map name '%r' "
-                    "for Mezzanine %r" % (self.serial, part_number, m))
-
-            if update:
-                orm = self.parent
-                if not orm.hwm:
-                    raise SystemError(
-                        '%r: detect_mezzanines(): Attempt to add new '
-                        'mezzanine objects while the IceBoard is not yet '
-                        'added to the  hardware map. ' % self)
-
-                if m in orm.mezzanine:
-                    del(orm.mezzanine[m])
-
-                if mezz_class[m]:
-                    self.logger.info(
-                        '%r: detect_mezzanines(): Creating Mezzanine '
-                        'Serial %s in Mezzanine %i' % (self, serial, m))
-                    new_mezz = mezz_class[m](
-                        mezzanine=m,
-                        serial=serial
-                        #type=''  # 'type' cannnot be None
-                        )
-                    orm.hwm.add(new_mezz)
-                    orm.hwm.flush()
-                    orm.mezzanine[m] = new_mezz
-                else:
-                    self.logger.warning(
-                        "IceBoard SN%r detect_mezzanines(): There is no known "
-                        "FMC Mezzanine object with polymorphic map name '%r' "
-                        "for Mezzanine %r"
-                        % (self.serial, part_number, m))
-                    # self.mezzanine[m] = None
-        return mezz_class
 
     # Backplane management
 

@@ -36,6 +36,8 @@ class IceCrate(hardware_map.HWMResource, handler.HandlerObject):
     __table_args__ = (UniqueConstraint('serial'),)
     __mapper_args__ = {'polymorphic_identity': 'IceCrate'}
 
+    __ipmi_part_number__ = 'MGK7BP'  # Must match part number in IPMI data
+
     _pk = Column(Integer, primary_key=True)
     serial = Column(String,
                     doc="The serial number written on the board (e.g. '001')")
@@ -368,7 +370,7 @@ class IceBoardHandler(handler.Handler, tuber.TuberObject):
     #-------------------------------------
 
     def _eeprom_write_ipmi(self, part_number, serial_number, product_version):
-        '''Write IPMI-formatted EEPROM for IceBoards.
+        '''Write crrmatted EEPROM for IceBoards.
 
         These fields are read back and parsed by software, so you have
         to get them right or things will misbehave. This method currently
@@ -487,6 +489,7 @@ class FMCMezzanine(hardware_map.HWMResource, handler.HandlerObject):
             name='check_mezz_number'
         ),
     )
+    __ipmi_part_number__ = 'Generic'  # Must match part number in IPMI data
 
     _pk = Column(Integer, primary_key=True)
     _cls = Column(String, nullable=False)

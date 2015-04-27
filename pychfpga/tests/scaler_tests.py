@@ -12,7 +12,7 @@ from pychfpga.core.icecore import IceBoardPlus, IceBoardPlusHandler, IceCrate, H
 from pychfpga.MGADC08 import MGADC08
 from pychfpga.core.chFPGA_controller import chFPGA_controller
 from pychfpga.core.chFPGA_receiver import chFPGA_receiver
-from pychfpga.core.icecore.session import load_session as load_yaml_hardware_map
+from pychfpga.core.icecore.session import load_session as load_yaml
 
 class ScalerTests(TestGroup):
     '''Tests the chFPGA SCALER operation.
@@ -240,13 +240,13 @@ if __name__=='__main__':
     # hwm.add(ib)
     # hwm.commit()
 
-    yaml_hwm = """
-        !HardwareMap
-            - !IceCrate
-                serial: "003"
-                slots:
-                    16:  !IceBoardPlus {{hostname: {0} }}
-        """.format(args.iceboards[0])
+    # yaml_hwm = """
+    #     !HardwareMap
+    #         - !IceCrate
+    #             serial: "003"
+    #             slots:
+    #                 16:  !IceBoardPlus {{hostname: {0} }}
+    #     """.format(args.iceboards[0])
 
     # yaml_hwm = """
     #     !IceCrateHandler
@@ -260,49 +260,48 @@ if __name__=='__main__':
     #     &A x: [*A]
     #     """
 
-    # hwm = load_yaml_hardware_map(yaml_hwm)
+    # hwm = load_yaml(yaml_hwm)
 
 
     # -------------------------------
     # Create a hardware map consisting of a bunch of iceboards
     # -------------------------------
     hwm = HardwareMap()  # Create empty hardware map
-    for hostname in args.iceboards:
-        hwm.add(IceBoardPlus(hostname=hostname))
+
+    # Add iceboards. For now, we know only their hostname
+    if args.iceboards:
+        for hostname in args.iceboards:
+            hwm.add(IceBoardPlus(hostname=hostname))
     hwm.flush()
 
     # -------------------------------
     # Check if specified iceboards are on-line before going any further
     # -------------------------------
-    # from pychfpga.core.icecore import TuberObject
     ib = hwm.query(IceBoardPlus)
 
     for i in ib:
         if not i.ping():
             raise RuntimeError("%r could not be found at '%s'"
-                               % (ib, ib.tuber_uri))
-    # c=[ib for ib in hwm.query(IceBoardPlus) if ib.ping()]
+                               % (i, i.tuber_uri))
 
-    # for cc in c:
-    # for ib in  hwm.query(HWMIceBoard):
-    #     if ib.hostname:
-    #         ib._initialize_backplane()
-
-    # ic = hwm.query(IceCrate).one()
-    ib1 = ib[0]
-    # ib2 = ib[1]
-
-    # ic = load_yaml_hardware_map(yaml_hwm)
-
-    # ib.set_handler(IceBoardPlusHandler, fpga_bitstream)
     ib.set_handler(chFPGA_controller, fpga_bitstream)
-
+    # ib.set_handler(IceBoardPlusHandler, fpga_bitstream)
 
     # Configure the FPGA with the bitstream associated with the handler
     ib.set_fpga_bitstream(force=args.force)
 
-    ib.discover_mezzanines()  # For now we need the FPGA to read the Mezz EEPROM...
+    ib.discover_serial()  # auto-discover the serial number of every IceBoard
+    ib.discover_crate()  # auto-discover crates and add them to the hardware map (requires chFPGA_controller handler for now)
+    ib.discover_mezzanines() # auto-discover mezzanines and add them to the hardware map (requires chFPGA_controller handler to read McGill MGADC08 EEPROMs)
 
+
+    # get the icecrate
+    ic_query = hwm.query(IceCrate)
+    if ic_query.count():
+        ic = ic_query.one()
+
+    ib1 = ib[0]
+    # ib2 = ib[1]
 
     ib.open()
     # test_filename = 'results/scaler_test'
