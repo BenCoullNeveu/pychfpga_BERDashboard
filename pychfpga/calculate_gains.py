@@ -66,6 +66,80 @@ ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 = (
     ([16]*8,                       [3]*8)  #CH15
     )
 
+class GainCalc(object): 
+    def update(self, signal):
+        self.signal = signal
+        self.mask = np.ma.make_mask_none((len(signal),))
+        #The first bin is always bad for some reason
+        self.mask[0] = True
+        self.masked = np.ma.array(np.log(signal), mask=self.mask)
+    
+    def fourier_filter(self, signal, num_components):
+        '''
+        Filters signal with top-hat in fourier space.  Padded with itself on either     side to improve edge behavior. 
+        Should extend to other windows.  
+        not assured to maintain signal size
+        '''
+        signal = np.array(signal)
+        signal_length = signal.size
+        f_signal = np.fft.fft(np.r_[signal[signal_length/2:0:-1],signal,signal[-1:-signal_length/2:-1]])
+        f_signal[num_components:-num_components] = 0
+        filtered = np.fft.ifft(f_signal)[signal_length/2:-signal_length/2+1]
+        filtered = (filtered.real).astype(np.int).astype(np.complex)
+        return filtered
+    
+    def flag_rfi(self, in_arr, fit, threshold):
+        '''
+        Identifies RFI in the signal spectrum by finding larger than expected jumps in the signal.
+        Returns array of flags for each bin
+        '''
+        rfmask = abs(in_arr) < abs(fit/threshold)
+        in_arr.mask = rfmask|in_arr.mask
+        
+    def poly_filter(self, signal, threshold, degree):
+        '''
+        Filters signal using a polynomial fit. Ignores RFI in calculating the polynomial.
+        '''
+        x = np.ma.array(np.arange(len(signal)), mask=signal.mask)
+        fit = np.polyfit(np.ma.compressed(x), np.ma.compressed(signal), degree)
+        #fit = np.polyfit(flagged, x, degree)
+        fitarr = np.poly1d(fit)(np.arange(len(signal)))
+        self.flag_rfi(signal, fitarr, threshold)
+        return fitarr
+    
+    def iterative_poly_filter(self, signal):
+        mask = np.ma.make_mask_none((len(signal),))
+        #The first bin is always bad for some reason
+        mask[0] = True
+        degree = 1
+        threshold = 1.2
+        masked = np.ma.array(np.log(signal), mask=mask)
+        while threshold > 1.01:
+            fitarr = self.poly_filter(masked, threshold, degree)
+            threshold = 1 + (threshold - 1)*0.8
+            if degree < 15:
+                degree += 2
+        filtered = np.exp(fitarr)
+        filtered = (filtered.real).astype(np.int).astype(np.complex)
+        return filtered, masked.mask
+    
+    def run(self, filtertype='hybrid', num_components = 50):
+        if filtertype == 'fourier':
+            output = self.fourier_filter(self.signal, num_components)
+        elif filtertype == 'poly' or filtertype == 'hybrid':
+            output, mask = self.iterative_poly_filter(self.signal)
+            if filtertype == 'hybrid':
+                in_arr = self.signal.copy()
+                in_arr[mask] = output[mask]
+                output = self.fourier_filter(in_arr, num_components)
+            output[mask] = self.signal[mask]
+        else:
+            raise ValueError
+        output = (output.real).astype(np.int).astype(np.complex)
+        return output
+    
+    
+    
 
 def get_frames(port):
     chanIndex = np.arange(16)
@@ -110,61 +184,6 @@ def calc_gains(g):
     glin[bad_values] = 2**14
     return glin, glog.data
 
-def fourier_filter(signal, num_components=15):
-    '''
-    Filters signal with top-hat in fourier space.  Padded with itself on either     side to improve edge behavior. 
-    Should extend to other windows.  
-    not assured to maintain signal size
-    '''
-    signal = np.array(signal)
-    signal_length = signal.size
-    f_signal = np.fft.fft(np.r_[signal[signal_length/2:0:-1],signal,signal[-1:-signal_length/2:-1]])
-    f_signal[num_components:-num_components] = 0
-    filtered = np.fft.ifft(f_signal)[signal_length/2:-signal_length/2+1]
-    filtered = (filtered.real).astype(np.int).astype(np.complex)
-    return filtered
-
-def flag_rfi(signal, fit, threshold):
-    '''
-    Identifies RFI in the signal spectrum by finding larger than expected jumps in the signal.
-    Returns array of flags for each bin
-    '''
-    rfmask = abs(signal) < abs(fit/threshold)
-    signal.mask = rfmask|signal.mask
-    
-def poly_filter(signal, threshold, degree=10):
-    '''
-    Filters signal using a polynomial fit. Ignores RFI in calculating the polynomial.
-    '''
-    x = np.ma.array(np.arange(len(signal)), mask=signal.mask)
-    fit = np.polyfit(np.ma.compressed(x), np.ma.compressed(signal), degree)
-    #fit = np.polyfit(flagged, x, degree)
-    fitarr = np.poly1d(fit)(np.arange(len(signal)))
-    flag_rfi(signal, fitarr, threshold)
-    return fitarr
-
-def iterative_poly_filter(signal):
-    mask = np.ma.make_mask_none((len(signal),))
-    #The first bin is always bad for some reason
-    mask[0] = True
-    degree = 1
-    threshold = 1.2
-    masked = np.ma.array(np.log(signal), mask=mask)
-    while threshold > 1.01:
-        fitarr = poly_filter(masked, threshold, degree)
-        threshold = 1 + (threshold - 1)*0.8
-        if degree < 20:
-            degree += 2
-    filtered = np.exp(fitarr)
-    filtered = (filtered.real).astype(np.int).astype(np.complex)
-    filtered[masked.mask] = signal[masked.mask]
-    return filtered, masked.mask
-
-def hybrid_filter(signal):
-    fill, mask = iterative_poly_filter(signal)
-    signal[mask] = fill[mask]
-    return fourier_filter(signal)
-
 def calculate_gains(c, port):
     c.set_data_source('adc')
     c.set_adc_mode('data')
@@ -208,8 +227,10 @@ def calculate_gains(c, port):
     out1 = open('gains_noisy_{0}.pkl'.format(c.GPIO.FPGA_SERIAL_NUMBER), 'wb')
     pickle.dump(gain,out1)
     out1.close()
+    Calc = GainCalc()
     for channel in channels:
-        glin_final = hybrid_filter(gain[channel][1][0])
+        Calc.update(gain[channel][1][0])
+        glin_final = Calc.run()
         gain[channel][1][0] = glin_final.tolist()
     c.set_gain(gain)
     output = open('gains_'+str(c.GPIO.FPGA_SERIAL_NUMBER)+'.pkl','wb')
