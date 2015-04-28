@@ -86,7 +86,7 @@ class chFPGAHandler(IceBoardPlusHandler):
 
     fpga_ip_addr = None
     fpga_serial_number = None  # will be obsolete when we can get this from the ARM
-
+    interface_ip_addr = None  # Is automatically detected by opening a TCP connection to the ARM
     def set_auto_open_attributes(self, attribute_names, open_method):
         """ Create a number of attributes that will be created by
         'open_method' only when one of them is accessed.

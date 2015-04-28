@@ -621,6 +621,7 @@ class chFPGA_controller(chFPGAHandler):
         config.config_capture_time = time.time()
         config.system_firmware_version = self.get_version()
         config.system_platform_id = self.PLATFORM_ID
+        config.system_interface_ip_address = self.interface_ip_addr
         config.system_fpga_ip_address = self.fpga_ip_addr
         config.system_fpga_port_number = self.fpga_port_number
         config.system_local_command_port_number = self.local_port_number
@@ -1166,7 +1167,7 @@ class chFPGA_controller(chFPGAHandler):
         self.set_adc_mode(old_adc_mode)
         self.sync()
         return word_errors
-        
+
 
     def read_eye_diagram(self, channels=[0], offset=5):
         """

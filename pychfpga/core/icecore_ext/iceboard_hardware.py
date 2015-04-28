@@ -259,7 +259,13 @@ class IceBoardHardware(object):
             'QSFPB_ResetL': (self._gpio_sfp_qsfp, 0, 7, 1),
             'QSFPB_IntL': (self._gpio_sfp_qsfp, 0, 6, 1),
             'QSFPB_LPMode': (self._gpio_sfp_qsfp, 1, 5, 1),
-            'QSFPB_ModSelL': (self._gpio_sfp_qsfp, 1, 4, 1)
+            'QSFPB_ModSelL': (self._gpio_sfp_qsfp, 1, 4, 1),
+            'SFP_LOS': (self._gpio_power, 0, 7, 1),
+            'SFP_TxFault': (self._gpio_sfp_qsfp, 1, 0, 1),
+            'SFP_TxDisable': (self._gpio_sfp_qsfp, 1, 1, 1),
+            'SFP_RS0': (self._gpio_sfp_qsfp, 1, 2, 1),
+            'SFP_RS1': (self._gpio_sfp_qsfp, 1, 3, 1),
+            'SFP_ModSelL': (self._gpio_power, 1, 7, 1)
         })
 
         self._qsfpa = qsfp.QSFP(self._i2c, 'QSFPA', self._gpio)
