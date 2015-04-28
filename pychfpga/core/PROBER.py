@@ -54,6 +54,19 @@ class PROBER_base(Module_base):
         """ Clears the data FIFO"""
         self.pulse_bit('FIFO_RESET')
 
+    DATA_SOURCE_TABLE = {
+        'adc': 0,
+        'scaler': 1}
+
+    def set_data_source(self, source):
+        if isinstance(source, str):
+            if source in self.DATA_SOURCE_TABLE:
+                source = self.DATA_SOURCE_TABLE[source]
+            else:
+                ValueError("Unknown data capture source '%s'. Valid sources are %s." % (source, ','.join(self.DATA_SOURCE_TABKE.keys())))
+        self.SOURCE_SEL = source
+
+
     def set_burst_period(self, burst_period):
         """ Sets the interval between data capture bursts. The period is specified in number of frames. This method is used because the property does not yet handle multi-byte values well."""
         self.BURST_PERIOD0 = burst_period & 0xff

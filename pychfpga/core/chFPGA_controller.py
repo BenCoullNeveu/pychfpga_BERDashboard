@@ -921,21 +921,31 @@ class chFPGA_controller(chFPGAHandler):
         for ant in self.ANT.values():
             ant.PROBER.RESET = 1
 
-    def start_data_capture(self,  burst_period_in_seconds=None, burst_period_in_frames=None, frames_per_burst=1,  number_of_bursts=0,  channels=None, sync=1, verbose=1):
+    def start_data_capture(self, period=None, frames_per_burst=1,  number_of_bursts=0,  channels=None, source='scaler', sync=1, verbose=1, burst_period_in_seconds=None, burst_period_in_frames=None):
         """
-        Triggers the capture of the specified number of frames in the FPGA for transmission over the Ethernet port.
+        Triggers the capture and transmission of ADC (pre-FFT) or SCALER (post FFT) data frames the Ethernet port.
         This function does not receive the frames from the ethernet port. This has to be done separately.
-        History:
-            2012-08-31 JFC: Fixed bandwidth computation
+
+        Data is sent as N bursts ('number_of_bursts') of M frames ('frames_per_burst') .
+        If 'number_of_bursts' is zero or not specified, burst transmission is continuous.
+
+        Burst repetition rate is set either as a period specified in seconds
+        ('period' or 'burst_period_in_seconds') or as a number of frames
+        ('burst_period_in-frames').
+
+        'source' selects the data source and is either 'adc' or 'scaler'. Default is 'scaler'.
         """
         if channels is None:
             channels = self.default_channels
 
-        if ( (burst_period_in_frames is None) and (burst_period_in_seconds is None)) or ((burst_period_in_frames is not None) and (burst_period_in_seconds is not None)) :
-            raise ValueError("You must specify either 'burst_period_in_frames' or bust_period_in_seconds'")
-
         if burst_period_in_seconds is not None:
-            burst_period_in_frames = max(float(burst_period_in_seconds)/self._FRAME_PERIOD, 1)
+            period = burst_period_in_seconds
+
+        if ( (burst_period_in_frames is None) and (period is None)) or ((burst_period_in_frames is not None) and (period is not None)) :
+            raise ValueError("You must specify either 'period' or 'burst_period_in_frames' ")
+
+        if period is not None:
+            burst_period_in_frames = max(float(period)/self._FRAME_PERIOD, 1)
 
 
         burst_period_in_frames = int(burst_period_in_frames)
@@ -962,6 +972,7 @@ class chFPGA_controller(chFPGAHandler):
 #            self.flush_frame_buffer()
 
         for ant in self.ANT.values():
+            ant.PROBER.set_data_source(source)
             ant.PROBER.RESET = 1
             ant.PROBER.PROBE_ID = 0xA0 + ant.ant_number
             ant.PROBER.config_capture(frames_per_burst=frames_per_burst, burst_period=burst_period_in_frames, number_of_bursts=number_of_bursts)

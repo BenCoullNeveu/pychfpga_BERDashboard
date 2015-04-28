@@ -212,7 +212,7 @@ if __name__ == '__main__':
     parser.add_argument('-b', '--iceboards', action='store', nargs='+', type=str, help="Space-separated list of the iceboard hostnames (e.g. 10.10.10.7 or iceboard0007.local if the mDNS system is operational")
     parser.add_argument('-s', '--subarray', action='store', nargs='+', type=int, help='Space-separated list of subarrays to include')
     parser.add_argument('--bitfile', action='store', type=str, default= default_bitfile,  help='Filename of the bitfile used to to program the FPGAs')
-    parser.add_argument('-f', '--sampling_frequency', action = 'store', type=float, default=850, help='Sampling frequency of the ADC in MHz')
+    parser.add_argument('-f', '--sampling_frequency', action = 'store', type=float, default=800, help='Sampling frequency of the ADC in MHz')
     parser.add_argument('-i', '--if_ip', action='store', type=str, default=None, help='IP address of adapter through which the connection to the FPGA will be established. This is used solely for direct UDP communications with the FPGA.')
     parser.add_argument('--force', action='store', type=int, default=0, help='Force FPGA programming even if the firmware is already programmed.')
     parser.add_argument('-w', '--data_width', action = 'store', type=int, choices=[4,8], default=8, help='Data width of each Re and Im component of the channelizer output')
@@ -292,7 +292,7 @@ if __name__ == '__main__':
     # -------------------------------
     ib = hwm.query(IceBoardPlus)
 
-    for i in c:
+    for i in ib:
         if not i.ping():
             raise RuntimeError("%r could not be found at '%s'"
                                % (i, i.tuber_uri))
