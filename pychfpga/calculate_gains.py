@@ -1,17 +1,17 @@
 #!/usr/bin/python
 # Disable pylint TAB warnings (W0312) and Line too long (=C0301)
-# pylint: disable=W0312,C0301 
+# pylint: disable=W0312,C0301
 
 """
-calculate_gains.py script 
- computes and sets ideal gain for 4bit gaussian noise.  
+calculate_gains.py script
+ computes and sets ideal gain for 4bit gaussian noise.
 
 
 
 #
 History:
     2011-08-14 JFC: Created from chFPGA, which now only contains top test code.
-    2011-09-09 JFC: Added global FREF 
+    2011-09-09 JFC: Added global FREF
     2011-10-11 JFC: Updated delay tables
     2014-02-21 KMB: Created from top test
 """
@@ -26,16 +26,14 @@ from timestream_receiver import get_frame
 
 import numpy as np
 
-
-
 ADC_DELAYS_MGK7MB_REV0_MGAC08_REV2 = (
     ([6,25,25,25,25,25,25,25],     [4]*8), #CH0
-    ([21]*8,                       [3]*8), #CH1 
-    ([18,17,16,16,13,15,14,13],    [3]*8), #CH2 
+    ([21]*8,                       [3]*8), #CH1
+    ([18,17,16,16,13,15,14,13],    [3]*8), #CH2
     ([13]*8,                       [3]*8), #CH3
     ([9]*8,                        [3]*8), #CH4
-    ([14,12,12,12,12,12,12,12],    [3]*8), #CH5 
-    ([11,11,13,10,10,8,12,13],     [3]*8), #CH6 
+    ([14,12,12,12,12,12,12,12],    [3]*8), #CH5
+    ([11,11,13,10,10,8,12,13],     [3]*8), #CH6
     ([12]*8,                       [4]*8), #CH7
 
     ([15, 14, 16, 14, 13, 18, 15, 15],   [4]*8), #CH8
@@ -50,12 +48,12 @@ ADC_DELAYS_MGK7MB_REV0_MGAC08_REV2 = (
 
 ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 = (
     ([16]*8,     [3]*8), #CH0
-    ([7]*8,                       [3]*8), #CH1 
-    ([22]*8,    [3]*8), #CH2 
+    ([7]*8,                       [3]*8), #CH1
+    ([22]*8,    [3]*8), #CH2
     ([19]*8,                       [3]*8), #CH3
     ([15]*8,                        [3]*8), #CH4
-    ([14, 13, 14, 14, 13, 14, 15, 14],    [3]*8), #CH5 
-    ([18]*8,     [3]*8), #CH6 
+    ([14, 13, 14, 14, 13, 14, 15, 14],    [3]*8), #CH5
+    ([18]*8,     [3]*8), #CH6
     ([17]*8,                       [4]*8), #CH7
 
     ([15, 17, 15, 18, 17, 14, 17, 15],   [3]*8), #CH8
@@ -68,26 +66,101 @@ ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 = (
     ([16]*8,                       [3]*8)  #CH15
     )
 
+class GainCalc(object): 
+    def update(self, signal):
+        self.signal = signal
+        self.mask = np.ma.make_mask_none((len(signal),))
+        #The first bin is always bad for some reason
+        self.mask[0] = True
+        self.masked = np.ma.array(np.log(signal), mask=self.mask)
+    
+    def fourier_filter(self, signal, num_components):
+        '''
+        Filters signal with top-hat in fourier space.  Padded with itself on either     side to improve edge behavior. 
+        Should extend to other windows.  
+        not assured to maintain signal size
+        '''
+        signal = np.array(signal)
+        signal_length = signal.size
+        f_signal = np.fft.fft(np.r_[signal[signal_length/2:0:-1],signal,signal[-1:-signal_length/2:-1]])
+        f_signal[num_components:-num_components] = 0
+        filtered = np.fft.ifft(f_signal)[signal_length/2:-signal_length/2+1]
+        filtered = (filtered.real).astype(np.int).astype(np.complex)
+        return filtered
+    
+    def flag_rfi(self, in_arr, fit, threshold):
+        '''
+        Identifies RFI in the signal spectrum by finding larger than expected jumps in the signal.
+        Returns array of flags for each bin
+        '''
+        rfmask = abs(in_arr) < abs(fit/threshold)
+        in_arr.mask = rfmask|in_arr.mask
+        
+    def poly_filter(self, signal, threshold, degree):
+        '''
+        Filters signal using a polynomial fit. Ignores RFI in calculating the polynomial.
+        '''
+        x = np.ma.array(np.arange(len(signal)), mask=signal.mask)
+        fit = np.polyfit(np.ma.compressed(x), np.ma.compressed(signal), degree)
+        #fit = np.polyfit(flagged, x, degree)
+        fitarr = np.poly1d(fit)(np.arange(len(signal)))
+        self.flag_rfi(signal, fitarr, threshold)
+        return fitarr
+    
+    def iterative_poly_filter(self, signal):
+        mask = np.ma.make_mask_none((len(signal),))
+        #The first bin is always bad for some reason
+        mask[0] = True
+        degree = 1
+        threshold = 1.2
+        masked = np.ma.array(np.log(signal), mask=mask)
+        while threshold > 1.01:
+            fitarr = self.poly_filter(masked, threshold, degree)
+            threshold = 1 + (threshold - 1)*0.8
+            if degree < 15:
+                degree += 2
+        filtered = np.exp(fitarr)
+        filtered = (filtered.real).astype(np.int).astype(np.complex)
+        return filtered, masked.mask
+    
+    def run(self, filtertype='hybrid', num_components = 50):
+        if filtertype == 'fourier':
+            output = self.fourier_filter(self.signal, num_components)
+        elif filtertype == 'poly' or filtertype == 'hybrid':
+            output, mask = self.iterative_poly_filter(self.signal)
+            if filtertype == 'hybrid':
+                in_arr = self.signal.copy()
+                in_arr[mask] = output[mask]
+                output = self.fourier_filter(in_arr, num_components)
+            output[mask] = self.signal[mask]
+        else:
+            raise ValueError
+        output = (output.real).astype(np.int).astype(np.complex)
+        return output
+    
+    
+    
+
 def get_frames(port):
     chanIndex = np.arange(16)
     channels = np.arange(16)
     number_of_frames = 0
     frames = 100
-    data_list = np.zeros((frames,16,2048))
+    data_list = np.zeros((frames, 16, 2048))
     while number_of_frames < frames:
         try:
             a = get_frame(port)
-            data_list[number_of_frames,:,:] = a.values()[0]
+            data_list[number_of_frames, :, :] = a.values()[0]
             #for chanNum in chanIndex:
             #    data_list[number_of_frames,chanNum, :] = a[channels[chanNum]]
-            number_of_frames +=1
+            number_of_frames += 1
         except KeyError:
             pass
             print "missed some data..."
     #data_list = data_list.astype(np.int8)
     #data_list ^= np.int8(128)
     #data_list /= 2**4
-    data_list = (data_list.astype(np.int8) ^ np.int8(128)) >> 4  
+    data_list = (data_list.astype(np.int8) ^ np.int8(128)) >> 4
     #data_list = (np.bitwise_xor(data_list.astype(np.int8), 128*np.ones(data_list.shape, dtype=np.int8)).astype(np.int8))/2**4 #data_list/2**4
     data = data_list[:,:,::2] + 1.0j*data_list[:,:,1::2]
     return data
@@ -110,20 +183,6 @@ def calc_gains(g):
     glog.mask[glog.mask] = False
     glin[bad_values] = 2**14
     return glin, glog.data
-
-def fourier_filter(signal, num_components=15):
-    '''
-    Filters signal with top-hat in fourier space.  Padded with itself on either     side to improve edge behavior. 
-    Should extend to other windows.  
-    not assured to maintain signal size
-    '''
-    signal = np.array(signal)
-    signal_length = signal.size
-    f_signal = np.fft.fft(np.r_[signal[signal_length/2:0:-1],signal,signal[-1:-signal_length/2:-1]])
-    f_signal[num_components:-num_components] = 0
-    filtered = np.fft.ifft(f_signal)[signal_length/2:-signal_length/2+1]
-    filtered = (filtered.real).astype(np.int).astype(np.complex)
-    return filtered
 
 def calculate_gains(c, port):
     c.set_data_source('adc')
@@ -165,14 +224,18 @@ def calculate_gains(c, port):
             gain.append([channel,[glin[channel].tolist(), glog[channel]]])
         c.set_gain(gain)
         time.sleep(1)
-    out1 = open('gains_noisy.pkl', 'wb')
+    out1 = open('gains_noisy_{0}.pkl'.format(c.GPIO.FPGA_SERIAL_NUMBER), 'wb')
     pickle.dump(gain,out1)
+    out1.close()
+    Calc = GainCalc()
     for channel in channels:
-        glin_final = fourier_filter(gain[channel][1][0])
+        Calc.update(gain[channel][1][0])
+        glin_final = Calc.run()
         gain[channel][1][0] = glin_final.tolist()
     c.set_gain(gain)
-    output = open('/home/chime/ch_acq/gains_'+str(c.GPIO.FPGA_SERIAL_NUMBER)+'.pkl','wb')
+    output = open('gains_'+str(c.GPIO.FPGA_SERIAL_NUMBER)+'.pkl','wb')
     pickle.dump(gain, output)
+    output.close()
     print "Scaler Gain set and saved"
     c.stop_data_capture()
 
