@@ -83,7 +83,7 @@ def shuffle_init(c, sync_board, frames_per_packet=1, cb1_lanes=4, cb1_bins=16, c
             cb.STREAM_ID = bb.slot-1
 
         # Make the board respond to SYNC triggers from the backplane
-        # bb.REFCLK.set_sync_source('bp')#bb.REFCLK.SLAVE=1
+        bb.REFCLK.set_sync_source('bp')#bb.REFCLK.SLAVE=1
 
         tx_list.append((bb.slot, 0))  # Register Bypass lane (lane 0) as a transmitter in this slot
         for j,gtx in enumerate(bb.BP_SHUFFLE.gtx):
