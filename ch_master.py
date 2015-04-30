@@ -193,9 +193,9 @@ if __name__ == "__main__":
                        help = "1 configure and control fpga.  0 to ignore fpga and just get data from gpu")
   args = parser.parse_args()
 
-  # Be paranoid: if the executable is being run from /usr/sbin we can be 
+  # Be paranoid: if the executable is being run from /usr/sbin we can be
   # reasonably assured that the git tag recorded in /etc/CHIME is correct. If it
-  # is not being run from there, force the user manually insert the git tag as 
+  # is not being run from there, force the user manually insert the git tag as
   # an option.
   if sys.argv[0] != "/usr/sbin/ch_master.py":
     if not len(args.git_tag):
@@ -248,7 +248,7 @@ if __name__ == "__main__":
   # Create the acquisition object. Pass it the configuration settings so that it
   # can initialise.
   acq = chrx.acq(conf, log, fpga_hk_field)
-  if (int(args.configure_fpga) > 0): 
+  if (int(args.configure_fpga) > 0):
       # Create the FPGA controller object.
       # Will now create an array of controller objects indexed by serial number
       # And program board firmware if needed/requested currently will always reprogram
@@ -287,7 +287,7 @@ if __name__ == "__main__":
       #Temp solution to load adc_delay from table...
       try:
           delays = pickle.load(open('pychfpga/delays_mar14_2015_no_errors.pkl'))
-          for ice in c:                                             
+          for ice in c:
               ice.fpga.set_adc_delays_with_check(delays[int(ice.serial)])
               print "set delays on SN {0}, SLOT {1}".format(ice.serial, ice.slot)
       except:
@@ -316,7 +316,7 @@ if __name__ == "__main__":
       # Calculate new gains if necessary
       # Get config here to be able to create receiver object
       # Gains will need to be able to handle multiple boards, currently file
-      # Will be overwritten when used for more than one board.  
+      # Will be overwritten when used for more than one board.
       # Make compute gains smarter -> write to db? need boards to actually be different
       if (int(args.compute_gain) > 0):
           #Shouldn't need for loop here, but initial testing failed in parallel.
@@ -332,9 +332,9 @@ if __name__ == "__main__":
       c.set_data_source("adc") # This should come first.
       c.set_FFT_bypass(False, channels = all_chan)
       c.set_FFT_shift(conf["fpga"]["fft_shift"], channels = all_chan)
-      # init gains function kind of a hack.  Should fix.  
+      # init gains function kind of a hack.  Should fix.
       init_gains(c)
-      # for i, c_element in enumerate(c):      
+      # for i, c_element in enumerate(c):
       #   gain_pkl_file = open('/home/chime/ch_acq/gains_'+str(c_element.fpga.GPIO.FPGA_SERIAL_NUMBER)+'.pkl', "rb")
       #   gains = pickle.load(gain_pkl_file)
       #   c_element.fpga.set_gain(gains, channels = all_chan)
@@ -351,7 +351,7 @@ if __name__ == "__main__":
       if sync_board == None:
         sync_board = c[0]
       # This is another hack. Have to fix it for DRAO. REALLY: HAVE TO CHANGE IT
-      shuffle_init(list(c),sync_board,frames_per_packet=4, cb1_lanes=16, cb1_bins=64, cb2_lanes=16, cb2_bins=8, cb2_bypass=0, remap=1 )
+      shuffle_init(list(c),sync_board,frames_per_packet=4, cb1_lanes=16, cb1_bins=64, cb2_lanes=16, cb2_bins=8, cb2_bypass=0, remap=True )
 
       #Make sure FPGA throttling is fast enough to send all the data
       #FPGA doesn't seem to change this without a reset...
@@ -364,14 +364,14 @@ if __name__ == "__main__":
       #log.info("Correlator started with an integration time of %.1f s" % \
       #         (conf["fpga"]["int_period"]))
 
-      
 
-      
-      #Read the FPGA setting back from the FPGA 
+
+
+      #Read the FPGA setting back from the FPGA
       fpga_conf = {}
       for i, c_element in enumerate(c):
-        fpga_conf[c_element.slot] = vars(c_element.get_config()) 
-      
+        fpga_conf[c_element.slot] = vars(c_element.get_config())
+
       # Create the output directory.
       time_str = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
       corr_name = None
@@ -435,7 +435,7 @@ if __name__ == "__main__":
   log_file.setFormatter(log_fmt)
   log.addHandler(log_file)
   log.info("Now logging to \"%s\"." % (acq_log_path))
-        
+
   log.info("Sampling frequency is %0.3f MHz." % \
            float(conf["fpga"]["samp_freq"]))
 
@@ -445,8 +445,8 @@ if __name__ == "__main__":
       # just adds slot number to each name
       for fpga_slot, slot_conf in fpga_conf.items():
         for name in slot_conf:
-          #Hack for now since the gain table is too big to fit in one 64k header 
-          # order of this table scrambled to be 0-15 bottom to top of board. 
+          #Hack for now since the gain table is too big to fit in one 64k header
+          # order of this table scrambled to be 0-15 bottom to top of board.
           if name == 'antenna_scaler_gain':
             all_val = slot_conf[name]
             for value in all_val:

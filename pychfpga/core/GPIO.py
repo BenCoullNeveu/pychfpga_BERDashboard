@@ -143,9 +143,9 @@ class GPIO_base(Module_base):
         return (self.PWM_OFFSET, self.PWM_HIGH_TIME, self.PWM_PERIOD)
 
     USER_OUTPUT_SOURCE_TABLE = {
-        'pwm': 0,  # Output from the frame-based pwm generator
+        'sync': 0,  # User-generated SYNC signal
         'pps': 1,  # 1 PPS signal from the IRIG-B decoder
-        'sync': 2,  # User-generated SYNC signal
+        'pwm': 2,  # Output from the frame-based pwm generator
         'irigb_trig': 3,
         'bp_sync': 4}  # Backplane SYNC signal
 

@@ -268,7 +268,6 @@ if __name__ == '__main__':
 
 
     # Associate the bitstream with the target Handler
-    fpga_bitstream = FpgaBitstream(args.bitfile)
     # chFPGA_controller.register_fpga_bitstream(fpga_bitstream)
 
     # Close all previous sessions with the layout/hardware map database
@@ -298,9 +297,13 @@ if __name__ == '__main__':
                                % (i, i.tuber_uri))
 
 
-    ib.set_handler(chFPGA_controller, fpga_bitstream)
     # Configure the FPGA with the bitstream associated with the handler
-    ib.set_fpga_bitstream(force=args.force)
+    if args.force > -1:
+        fpga_bitstream = FpgaBitstream(args.bitfile)
+        ib.set_handler(chFPGA_controller, fpga_bitstream)
+        ib.set_fpga_bitstream(force=args.force)
+    else:
+        ib.set_handler(chFPGA_controller)
 
     ib.discover_serial()  # auto-discover the serial number of every IceBoard
     # ib.discover_crate()  # auto-discover crates and add them to the hardware map (requires chFPGA_controller handler for now)
