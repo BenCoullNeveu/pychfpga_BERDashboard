@@ -68,7 +68,7 @@ ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 = (
 
 class GainCalc(object): 
     def update(self, signal):
-        self.signal = signal
+        self.signal = np.array(signal)
         self.mask = np.ma.make_mask_none((len(signal),))
         #The first bin is always bad for some reason
         self.mask[0] = True
@@ -233,7 +233,7 @@ def calculate_gains(c, port):
         glin_final = Calc.run()
         gain[channel][1][0] = glin_final.tolist()
     c.set_gain(gain)
-    output = open('gains_'+str(c.GPIO.FPGA_SERIAL_NUMBER)+'.pkl','wb')
+    output = open('/home/chime/ch_acq/gains_'+str(c.GPIO.FPGA_SERIAL_NUMBER)+'.pkl','wb')
     pickle.dump(gain, output)
     output.close()
     print "Scaler Gain set and saved"
