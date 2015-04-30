@@ -61,6 +61,8 @@ def shuffle_init(c, sync_board, remap=False, frames_per_packet=1, cb1_lanes=4, c
 
     logger.info('%.32r: Configuring crate-wide data shuffling with frames_per_packet=%i, cb1_lanes=%i, cb1_bins=64, cb2_lanes=%i, cb2_bins=%i, cb2_bypass=%s, bp_bypass=%s' % (crate, cb1_lanes, cb1_bins, cb2_lanes, cb2_bins, bool(cb2_bypass), bool(bp_bypass)))
 
+    # Set SMA output of sync board to be sync signal
+    sync_board.set_user_output_source('sync')
     # set-up transmitters
     for i,bb in enumerate(c):
         logger.info('%.32r: **** Initializing transmitters for Slot %02i (IceBoard SN%s) ****' % (crate, bb.slot, bb.serial))
