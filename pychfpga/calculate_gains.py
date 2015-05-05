@@ -66,13 +66,17 @@ ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 = (
     ([16]*8,                       [3]*8)  #CH15
     )
 
-class GainCalc(object): 
+class GainCalc(object):
+    def __init__(self, zero=False):
+        self.zero = zero
+        self.mask = None
+
     def update(self, signal):
         self.signal = np.array(signal)
-        self.mask = np.ma.make_mask_none((len(signal),))
+        mask = np.ma.make_mask_none((len(signal),))
         #The first bin is always bad for some reason
-        self.mask[0] = True
-        self.masked = np.ma.array(np.log(signal), mask=self.mask)
+        mask[0] = True
+        self.masked = np.ma.array(np.log(signal), mask=mask)
     
     def fourier_filter(self, signal, num_components):
         '''
@@ -87,7 +91,7 @@ class GainCalc(object):
         filtered = np.fft.ifft(f_signal)[signal_length/2:-signal_length/2+1]
         filtered = (filtered.real).astype(np.int).astype(np.complex)
         return filtered
-    
+
     def flag_rfi(self, in_arr, fit, threshold):
         '''
         Identifies RFI in the signal spectrum by finding larger than expected jumps in the signal.
@@ -95,7 +99,7 @@ class GainCalc(object):
         '''
         rfmask = abs(in_arr) < abs(fit/threshold)
         in_arr.mask = rfmask|in_arr.mask
-        
+
     def poly_filter(self, signal, threshold, degree):
         '''
         Filters signal using a polynomial fit. Ignores RFI in calculating the polynomial.
@@ -106,7 +110,7 @@ class GainCalc(object):
         fitarr = np.poly1d(fit)(np.arange(len(signal)))
         self.flag_rfi(signal, fitarr, threshold)
         return fitarr
-    
+
     def iterative_poly_filter(self, signal):
         mask = np.ma.make_mask_none((len(signal),))
         #The first bin is always bad for some reason
@@ -122,24 +126,26 @@ class GainCalc(object):
         filtered = np.exp(fitarr)
         filtered = (filtered.real).astype(np.int).astype(np.complex)
         return filtered, masked.mask
-    
+
     def run(self, filtertype='hybrid', num_components = 50):
         if filtertype == 'fourier':
             output = self.fourier_filter(self.signal, num_components)
         elif filtertype == 'poly' or filtertype == 'hybrid':
             output, mask = self.iterative_poly_filter(self.signal)
+            self.mask = mask
             if filtertype == 'hybrid':
                 in_arr = self.signal.copy()
                 in_arr[mask] = output[mask]
                 output = self.fourier_filter(in_arr, num_components)
-            output[mask] = self.signal[mask]
+            if self.zero:
+                output[mask] = 0
+            else:
+                output[mask] = self.signal[mask]
         else:
             raise ValueError
         output = (output.real).astype(np.int).astype(np.complex)
         return output
-    
-    
-    
+
 
 def get_frames(port):
     chanIndex = np.arange(16)
@@ -165,6 +171,7 @@ def get_frames(port):
     data = data_list[:,:,::2] + 1.0j*data_list[:,:,1::2]
     return data
 
+
 def calc_gains(g):
     '''
     Expects array in. returns (glin, glog)
@@ -183,6 +190,7 @@ def calc_gains(g):
     glog.mask[glog.mask] = False
     glin[bad_values] = 2**14
     return glin, glog.data
+
 
 def calculate_gains(c, port):
     c.set_data_source('adc')
@@ -228,11 +236,14 @@ def calculate_gains(c, port):
     pickle.dump(gain,out1)
     out1.close()
     Calc = GainCalc()
+    flags = []
     for channel in channels:
         Calc.update(gain[channel][1][0])
         glin_final = Calc.run()
         gain[channel][1][0] = glin_final.tolist()
+        flags.append(Calc.mask)
     c.set_gain(gain)
+    c.freq_flags = flags
     output = open('/home/chime/ch_acq/gains_'+str(c.GPIO.FPGA_SERIAL_NUMBER)+'.pkl','wb')
     pickle.dump(gain, output)
     output.close()
