@@ -25,6 +25,28 @@ from pychfpga.core import close_all_sockets
 
 #####################################
 
+# Default data and clock line delays for the two FMC boards/ML605 combination.
+# First 8 values are the delays for bits 0 to 7, 8th value is the delay for the clock line.
+ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 = (
+    ([16]*8,     [3]*8), #CH0
+    ([7]*8,                       [3]*8), #CH1
+    ([22]*8,    [3]*8), #CH2
+    ([19]*8,                       [3]*8), #CH3
+    ([15]*8,                        [3]*8), #CH4
+    ([14, 13, 14, 14, 13, 14, 15, 14],    [3]*8), #CH5
+    ([18]*8,     [3]*8), #CH6
+    ([17]*8,                       [4]*8), #CH7
+
+    ([15, 17, 15, 18, 17, 14, 17, 15],   [3]*8), #CH8
+    ([16]*8,                       [4]*8), #CH9
+    ([20]*8,                       [3]*8), #CH10
+    ([18]*8,                     [3]*8), #CH11
+    ([15]*8,                       [3]*8), #CH12
+    ([18]*8,                       [3]*8), #CH13
+    ([18]*8,                       [3]*8), #CH14
+    ([16]*8,                       [3]*8)  #CH15
+    )
+
 
 if __name__ == '__main__':
 
@@ -38,14 +60,21 @@ if __name__ == '__main__':
     parser.add_argument('-l', '--log_level', action = 'store', type=str, choices=['info','debug'], default='debug', help='Logging level')
     parser.add_argument('-s', '--subarray', action = 'store', type=int, help='Subarrays to include')
     parser.add_argument('-f', '--force', action = 'store', type=int, default=0, help='Forces reprogramming of the FPGAs even if they are already programmed')
-    parser.add_argument('-i', '--if_ip', action = 'store', type=str, default=None, help='IP address of adapter through which the connection to the FPGA will be established. If not specified, the controller will attempt to identify the proper host based on the FPGA IP address.')
+    #parser.add_argument('-i', '--if_ip', action = 'store', type=str, default=None, help='IP address of adapter through which the connection to the FPGA will be established. If not specified, the controller will attempt to identify the proper host based on the FPGA IP address.')
     parser.add_argument('-b', '--bitfile', action = 'store', type=str, default= '../../chfpga/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit',  help='Filename of the bitfile used to to program the FPGAs')
     parser.add_argument('-y', '--yamlfile', action = 'store', type=str, default= 'yaml_iceboard_list.txt',  help='Yaml file with list of boards and their respective IP addresses and handlers.')
+    parser.add_argument('-w', '--data_width', action = 'store', type=int, choices=[4,8], default=4, help='Data width of each Re and Im component of the channelizer output')
+    parser.add_argument('-g', '--group_frames', action = 'store', type=int, default=4, help='Number of frames to group before sending to the GPU or FPGA correlator. The total size of the frame, including the header and ethernet obverhead, cannot exceed 8 kibytes.')
+    parser.add_argument('-e', '--enable_gpu_link', action = 'store', type=int, default=0, help='Enables the GPU link transmission')
+    parser.add_argument('-n', '--init', action = 'store', type=int, default=1, help='Initialization level: -1: Just create sockets, 0: connect and read only. 1: initialize hardware')    
+    parser.add_argument('-o', '--open_boards', action = 'store', type=int, default=0, help='Establish communication with the boards and initialize the firmware and software')
     args = parser.parse_args()
     log_levels = {'info': logging.INFO, 'debug': logging.DEBUG}
 
     #__main__._host_interface_ip_addr = args.if_ip # NOT NEEDED SO FAR BUT ANYWAYS
 
+    # Select delay table
+    ADC_DELAY_TABLE = ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 
     # -------------------------------
     # Set-up logging
     # -------------------------------
@@ -90,7 +119,19 @@ if __name__ == '__main__':
     c.set_fpga_bitstream(force = args.force)
 
     # Print resuts
-    print 'The following IceBoards were found in Subarray %r through interface %s:' % (args.subarray, args.if_ip)
+    print 'The following IceBoards were found in Subarray %r:' % args.subarray
     for ib in c:
-        print "  c%i = IceBoard SN%s in slot %r. Handler = '%s'" % (int(ib.serial), ib.serial, ib.slot, ib.handler_name)
+        print "  IceBoard SN%s in slot %r. Handler = '%s'" % (ib.serial, ib.slot, ib.handler_name)
         #setattr(__main__, 'c%i' % int(ib.serial), ib) #TAB COMPLETION DOES NOT WORK WITH THIS
+
+    # Open boards
+    if args.open_boards:
+        # Discover mezzanines
+        c.discover_mezzanines()
+        # Establish communication with the board and initialize the firmware and software
+        c.open(adc_delay_table=ADC_DELAY_TABLE,
+               init=args.init,
+               sampling_frequency=800e6,
+               reference_frequency=10e6, data_width=args.data_width,
+               group_frames=args.group_frames,
+               enable_gpu_link = args.enable_gpu_link)
