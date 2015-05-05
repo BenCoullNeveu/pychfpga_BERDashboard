@@ -172,6 +172,14 @@ if __name__ == "__main__":
   log_stdout.setFormatter(log_fmt)
   log.addHandler(log_stdout)
 
+  # Debugging log, this should be removed/moved to data dir also
+  # Start writing to a log file in this directory.
+  logname = "ch_master_debug.log"
+  log_to_file = logging.FileHandler(logname)
+  log_file.setLevel(logging.DEBUG)
+  log_file.setFormatter(log_fmt)
+  log.addHandler(log_to_file)
+
   # Get command line arguments.
   parser = argparse.ArgumentParser(description = __doc__.split('\n')[0])
   parser.add_argument("-g", "--git-tag", action = "store", \
