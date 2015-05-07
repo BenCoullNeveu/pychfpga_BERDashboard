@@ -176,8 +176,8 @@ if __name__ == "__main__":
   # Start writing to a log file in this directory.
   logname = "ch_master_debug.log"
   log_to_file = logging.FileHandler(logname)
-  log_file.setLevel(logging.DEBUG)
-  log_file.setFormatter(log_fmt)
+  log_to_file.setLevel(logging.DEBUG)
+  log_to_file.setFormatter(log_fmt)
   log.addHandler(log_to_file)
 
   # Get command line arguments.
@@ -293,16 +293,16 @@ if __name__ == "__main__":
             group_frames=conf["fpga"]["group_frames"], \
             enable_gpu_link = conf["fpga"]["enable_gpu_link"])
       #Temp solution to load adc_delay from table...
-      try:
-          delays = pickle.load(open('pychfpga/delays_mar14_2015_no_errors.pkl'))
-          for ice in c:
-              ice.fpga.set_adc_delays_with_check(delays[int(ice.serial)])
-              print "set delays on SN {0}, SLOT {1}".format(ice.serial, ice.slot)
-      except:
-          log.info("Error loading/setting delay tables.  Using default from config file for all boards")
+      #try:
+      delays = pickle.load(open('pychfpga/delays_mar14_2015_no_errors.pkl'))
+      for ice in c:
+          ice.set_adc_delays_with_check(delays[int(ice.serial)])
+          log.info("set delays on SN {0}, SLOT {1}".format(ice.serial, ice.slot))
+      #except:
+      #    log.info("Error loading/setting delay tables.  Using default from config file for all boards")
       for cc in c:
         cc.GPU.LINK_ENABLE=1
-        print "GPU link enabled on SN {0}, SLOT {1}".format(cc.serial, cc.slot)
+        log.info("GPU link enabled on SN {0}, SLOT {1}".format(cc.serial, cc.slot))
       c.set_corr_reset(1)
       time.sleep(0.1)
       c.set_corr_reset(0)
@@ -334,7 +334,7 @@ if __name__ == "__main__":
             #              ip_address=c_element.fpga_ip_addr, \
             #              port=c_element.fpga_port_number+1, \
             #              host_ip = conf["fpga"]["host_ip"])
-            calculate_gains.calculate_gains(c_element.fpga,str(c_element.fpga_port_number+1))
+            calculate_gains.calculate_gains(c_element,str(c_element.fpga_port_number+1))
             #fpga_rec.close()
       all_chan = range(16)#range(conf["n_antenna"])
       c.set_data_source("adc") # This should come first.
@@ -457,12 +457,12 @@ if __name__ == "__main__":
             # of this program.
             for val in slot_conf[name]:
               v = convert_types(val)
-              inp = remap_slot[fpga_slot] * 16 + remap_adc_sma[int(val[0])]
+              inp = remap_slot[fpga_slot-1] * 16 + remap_adc_sma[int(val[0])]
               acq.pass_fpga_gain(inp, v)
           else:
             val = slot_conf[name]
             val = convert_types(val)
-            name = 'Slot_'+ str(fpga_slot+1) + '_' + name
+            name = 'Slot_'+ str(fpga_slot) + '_' + name
             acq.add_header_item(name, val)
   else:
     acq.add_header_item("fpga_info",
@@ -501,7 +501,7 @@ if __name__ == "__main__":
       if (int(args.configure_fpga) > 0):
         i = 0
         for c_element in c:
-          acq.pass_fpga_amb_temp(i, get_fpga_hk(c_element.fpga, fpga_hk_field))
+          acq.pass_fpga_amb_temp(i, get_fpga_hk(c_element, fpga_hk_field))
           i += 1
         log.info("Read FPGA housekeeping.")
       else:

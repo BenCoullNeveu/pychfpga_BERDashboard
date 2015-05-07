@@ -134,9 +134,9 @@ def compute_lane_map(c):
     return lane_map
 
 def test_sync(c, sync_board):
-    sync_ctr = np.zeros(len(c), dtype=int)
+    sync_ctr = np.zeros(len(list(c)), dtype=int)
     for i,bb in enumerate(c):
-        bb.REFCLK.SLAVE=1
+        bb.REFCLK.set_sync_source('bp')#bb.REFCLK.SLAVE=1
         sync_ctr[i] = bb.REFCLK.SYNC_CTR
 
     fail=0
