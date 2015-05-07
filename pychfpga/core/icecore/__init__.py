@@ -49,6 +49,7 @@ from hwm_assets import (
 from hwm_extra_assets import (
     IceBoardPlus,
     IceBoardPlusHandler,
+    discover_iceboards
 )
 
 from session import (

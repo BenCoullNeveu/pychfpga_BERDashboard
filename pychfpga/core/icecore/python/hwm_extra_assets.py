@@ -7,6 +7,7 @@ import zlib  # used to compute crc32
 import functools  # Used in iceboard discovery
 import tornado  # Used in iceboard discovery
 import time  # Used in iceboard discovery
+import socket  # used in iceboard discrovery (itoa())
 
 from sqlalchemy import Column, String, Integer
 from sqlalchemy.orm import class_mapper
@@ -15,7 +16,127 @@ from . import handler
 from . import session
 # from .hwm_assets import _IceCrateCore
 from .hwm_assets import IceBoard, IceBoardHandler, FMCMezzanine, IceCrate
+from .hardware_map import async, async_return
 # from .hwm_assets import _FMCMezzanineCore, _FMCMezzaninePythonSupport
+
+def discover_iceboards(hwm, crate=None, timeout=5):
+    """Automatically detect iceboards on the network and update hardware map accordingly.
+    """
+    import pybonjour  # only needed here, and not always installed
+
+    if isinstance(crate,str):
+        crate = [crate]
+
+    logger = logging.getLogger(__name__)
+    fds = []
+
+    def resolve_callback(sdRef, flags, iface, err, fullname,
+                         host, port, txtRecord, io_loop):
+        if err != pybonjour.kDNSServiceErr_NoError:
+            return
+
+        # Parse TXT records. That's where the IceBoard publishes data.
+        tr = pybonjour.TXTRecord.parse(txtRecord)
+        logger.debug('DNS-sd: resolving txtRecord=%s (tr=%r)' % (txtRecord, tr))
+        if 'motherboard-serial' not in tr:
+            logger.warn("DNS-SD: IceBoard at %s was discovered but cannot be added to the hardware map because it does not publish a serial number" % (host))
+            return
+        ib_serial = tr['motherboard-serial']
+
+        existing_ib = hwm.query(IceBoardPlus).filter_by(serial=ib_serial)
+        if existing_ib.count():
+            logger.debug("DNS-SD: IceBoard at %s with serial %s already exists in the hardware map. No action is taken." % (host, ib_serial))
+            return
+
+        ib = IceBoardPlus(hostname=host, serial=ib_serial)
+
+        bp_slot = tr['backplane-slot'] if 'backplane-slot' in tr else None
+        bp_part_number = tr['backplane-part'] if 'backplane-part' in tr else None
+        bp_serial = tr['backplane-serial'] if 'backplane-serial' in tr else None
+
+        ib.slot = bp_slot
+
+        if bp_serial is not None and (crate is None or bp_serial in crate):
+            # Find is there is IceCrate-derived superclass that handles this part number
+            if bp_part_number is not None:
+                icecrate_class = None
+                for mapper in class_mapper(IceCrate).self_and_descendants:
+                    if mapper.class_.__ipmi_part_number__ == bp_part_number:
+                        icecrate_class = mapper.class_
+                if icecrate_class:
+                    logger.info('discover_iceboards: Discovered IceCrate Model %s SN%s' % (bp_part_number, bp_serial))
+                    # Check is a crate with the same serial number already exists
+                    existing_crate = hwm.query(icecrate_class).filter_by(serial=bp_serial)
+                    if existing_crate.count():  # If so, assign it to this iceboard
+                        ib.crate = existing_crate.one()
+                    else:  # otherwise create a new one and assign it
+                        ib.crate = icecrate_class(serial=bp_serial)
+                        hwm.add(ib.crate)
+                        hwm.flush() # make sure the board will pop up in queries so we can know if the board already exist in the hwm
+            hwm.add(ib)
+            hwm.flush()
+            logger.info("discover_iceboards: Discovered IceBoard serial %s at %s (crate SN%s, slot %s)" % (ib_serial, host, bp_serial, bp_slot))
+
+            def query_record_callback(sdRef, flags, interfaceIndex, errorCode, fullname,
+                                      rrtype, rrclass, rdata, ttl, ib):
+                if errorCode == pybonjour.kDNSServiceErr_NoError:
+                    ib_ip_addr = socket.inet_ntoa(rdata)
+                    logger.info("discover_iceboards: IceBoard SN%s hostname %s was resolved and updated to %s" % (ib.serial, ib.hostname, ib_ip_addr))
+                    ib.hostname = ib_ip_addr
+
+            query_sdRef = \
+                pybonjour.DNSServiceQueryRecord(interfaceIndex=iface,
+                                                fullname=host,
+                                                rrtype=pybonjour.kDNSServiceType_A,
+                                                callBack=functools.partial(query_record_callback, ib=ib))
+            fds.append(query_sdRef)
+            io_loop.add_handler(
+                query_sdRef.fileno(),
+                lambda fd, events: pybonjour.DNSServiceProcessResult(query_sdRef),
+                io_loop.READ)
+
+
+
+    def browse_callback(sdRef, flags, iface, err, service,
+                        regtype, replyDomain, io_loop):
+
+        if (err != pybonjour.kDNSServiceErr_NoError) or \
+                not (flags & pybonjour.kDNSServiceFlagsAdd):
+            return
+
+        resolver = pybonjour.DNSServiceResolve(
+            0, iface, service, regtype, replyDomain,
+            callBack=functools.partial(resolve_callback, io_loop=io_loop))
+        fds.append(resolver)
+        io_loop.add_handler(
+            resolver.fileno(),
+            lambda fd, events: pybonjour.DNSServiceProcessResult(resolver),
+            io_loop.READ)
+
+    # Create a local, captive IOLoop. We use this to epoll() on
+    # Bonjour file descriptors.
+    io_loop = tornado.ioloop.IOLoop()
+    io_loop.add_timeout(time.time()+timeout, lambda: io_loop.stop())
+
+    browser = pybonjour.DNSServiceBrowse(
+        regtype='_tuber-jsonrpc._tcp',
+        callBack=functools.partial(browse_callback, io_loop=io_loop))
+
+    fds.append(browser)
+
+    io_loop.add_handler(
+        browser.fileno(),
+        lambda fd, events: pybonjour.DNSServiceProcessResult(browser),
+        io_loop.READ)
+
+    # Go!
+    io_loop.start()
+
+    # Clean up after Bonjour
+    for fd in fds:
+        fd.close()
+
+    hwm.commit()
 
 
 @session.register_yaml_object()
@@ -246,83 +367,6 @@ class IceBoardPlus(IceBoard):
             # self.hwm.flush()
         return icecrate_class
 
-    @classmethod
-    def discover_iceboards(cls, hwm, timeout=5, update=True, bail_on_unexpected=True):
-        """Automatically detect iceboards on the network and update hardware map accordingly if `update=True`.
-        """
-
-        import pybonjour  # only needed here, and not always installed
-
-        logger = logging.getLogger(__name__)
-        fds = []
-
-        def resolve_callback(sdRef, flags, iface, err, fullname,
-                             host, port, txtRecord, io_loop):
-            if err != pybonjour.kDNSServiceErr_NoError:
-                return
-
-            # Parse TXT records. That's where the IceBoard publishes data.
-            tr = pybonjour.TXTRecord.parse(txtRecord)
-            logger.debug('DNS-sd: resolving txtRecord=%s (tr=%r)' % (txtRecord, tr))
-            if 'motherboard-serial' not in tr:
-                logger.warn("DNS-SD: IceBoard at %s was discovered but cannot be added to the hardware map because it does not publish a serial number" % (host))
-            else:
-                serial = tr['motherboard-serial']
-                existing_ib = hwm.query(IceBoardPlus).filter_by(serial=serial)
-                if existing_ib.count():
-                    logger.debug("DNS-SD: IceBoard at %s with serial %s already exists in the hardware map. No action is taken." % (host, serial))
-                else:
-                    ib = IceBoardPlus(hostname=host, serial=serial)
-                    hwm.add(ib)
-                    logger.debug("DNS-SD: IceBoard serial %s at %s was discovered and added to the hardware map" % (serial, host))
-
-        def browse_callback(sdRef, flags, iface, err, service,
-                            regtype, replyDomain, io_loop):
-
-            if (err != pybonjour.kDNSServiceErr_NoError) or \
-                    not (flags & pybonjour.kDNSServiceFlagsAdd):
-                return
-
-            resolver = pybonjour.DNSServiceResolve(
-                0, iface, service, regtype, replyDomain,
-                callBack=functools.partial(resolve_callback, io_loop=io_loop))
-            fds.append(resolver)
-            io_loop.add_handler(
-                resolver.fileno(),
-                lambda fd, events: pybonjour.DNSServiceProcessResult(resolver),
-                io_loop.READ)
-
-        # Create a local, captive IOLoop. We use this to epoll() on
-        # Bonjour file descriptors.
-        io_loop = tornado.ioloop.IOLoop()
-        io_loop.add_timeout(time.time()+timeout, lambda: io_loop.stop())
-
-        browser = pybonjour.DNSServiceBrowse(
-            regtype='_tuber-jsonrpc._tcp',
-            callBack=functools.partial(browse_callback, io_loop=io_loop))
-
-        fds.append(browser)
-
-        io_loop.add_handler(
-            browser.fileno(),
-            lambda fd, events: pybonjour.DNSServiceProcessResult(browser),
-            io_loop.READ)
-
-        # Go!
-        io_loop.start()
-
-        # Clean up after Bonjour
-        for fd in fds:
-            fd.close()
-
-        hwm.flush()
-
-        # ib = hwm.query(IceBoardPlus)
-        # for i in ib:
-        #     i._initialize_backplane()
-        #     # i.discover_serial()
-        #     i.discover_crate()
-        #     i.discover_mezzanines()
 
 @session.register_yaml_object()
 class IceBoardPlusHandler(IceBoardHandler):
@@ -392,6 +436,7 @@ class IceBoardPlusHandler(IceBoardHandler):
         """
         cls._bitstream_register[tag] = bitstream
 
+    @async
     def set_fpga_bitstream(self, buf=None, tag=None, force=False):
         '''
         Configures the FPGA with the specified bitstream.
@@ -430,7 +475,8 @@ class IceBoardPlusHandler(IceBoardHandler):
            or (force is not None and (self.get_fpga_bitstream_crc() != crc32)):
             self.logger.info('%r: Configuring FPGA' % self)
             b64_string = base64.b64encode(str(buf))
-            self._set_fpga_bitstream_base64(b64_string)
+            # self._set_fpga_bitstream_base64(b64_string)
+            yield self._set_fpga_bitstream_base64.async(b64_string)
             self.set_fpga_bitstream_crc(crc32)
             self.logger.info('%r: Done configuring FPGA' % self)
         else:
