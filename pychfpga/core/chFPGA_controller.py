@@ -1600,7 +1600,6 @@ class chFPGA_controller(chFPGAHandler):
         self.set_corr_reset(1)
         cb1 = self.CROSSBAR
         cb2 = self.CROSSBAR2
-        gpu_links = self.GPU
 
         if frames_per_packet < 1 or frames_per_packet > 4:
             raise ValueError('Number of frames per packet must be between 1 and 4')
@@ -1620,10 +1619,11 @@ class chFPGA_controller(chFPGAHandler):
         # for gtx in gpu_links.CHANNEL:
         #     gtx.LOOPBACK = bp_bypass
 
+        # Select the bins so slot 0 receives bins 0-63, slot 1 has 64-127 ... slot 15 hs 960-1023
         for (i, bs) in enumerate(cb1):
             bs.GROUP_FRAMES = frames_per_packet
             bs.NUMBER_OF_LANES = cb1_lanes
-            if remap:
+            if remap and not bp_bypass:
                 tx = (self.slot, i)  # unique transmitter id (slot, lane)
                 destination_slot = self.bp.get_matching_rx(tx)[0]
                 bs.select_bins(np.arange(cb1_bins) * cb1_minimum_bin_spacing + (destination_slot-1))

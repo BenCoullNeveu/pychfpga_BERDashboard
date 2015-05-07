@@ -30,7 +30,7 @@ import __main__
 # from pychfpga.icecore.icearray import IceArray, close_all_sockets
 # from pychfpga.icecore.fpgabitfile import FpgaBitFile
 
-from core.icecore import IceBoardPlus, IceBoardPlusHandler, IceCrate, HardwareMap
+from core.icecore import IceBoardPlus, IceBoardPlusHandler, IceCrate, HardwareMap, discover_iceboards
 from core.chFPGA_controller import chFPGA_controller
 from core.chFPGA_receiver import chFPGA_receiver
 
@@ -51,7 +51,7 @@ import plot_utils.plot_utils as pu
 # import pychfpga.common.tests.test_corr as tc
 # from pychfpga import receiver_corr_fast
 
-print 'Reloading modules'
+# print 'Reloading modules'
 # dreload(chFPGA_controller) # just to make sure that any changes to the code are reloaded
 #dreload(chFPGA_receiver) # just to make sure that any changes to the code are reloaded
 reload(pu)
@@ -296,30 +296,31 @@ if __name__ == '__main__':
             raise RuntimeError("%r could not be found at '%s'"
                                % (i, i.tuber_uri))
 
+    if ib.count():
 
-    # Configure the FPGA with the bitstream associated with the handler
-    if args.force > -1:
-        fpga_bitstream = FpgaBitstream(args.bitfile)
-        ib.set_handler(chFPGA_controller, fpga_bitstream)
-        ib.set_fpga_bitstream(force=args.force)
-    else:
-        ib.set_handler(chFPGA_controller)
+        # Configure the FPGA with the bitstream associated with the handler
+        if args.force > -1:
+            fpga_bitstream = FpgaBitstream(args.bitfile)
+            ib.set_handler(chFPGA_controller, fpga_bitstream)
+            ib.set_fpga_bitstream(force=args.force)
+        else:
+            ib.set_handler(chFPGA_controller)
 
-    ib.discover_serial()  # auto-discover the serial number of every IceBoard
-    # ib.discover_crate()  # auto-discover crates and add them to the hardware map (requires chFPGA_controller handler for now)
-    ib.discover_mezzanines() # auto-discover mezzanines and add them to the hardware map (requires chFPGA_controller handler to read McGill MGADC08 EEPROMs)
+        ib.discover_serial()  # auto-discover the serial number of every IceBoard
+        # ib.discover_crate()  # auto-discover crates and add them to the hardware map (requires chFPGA_controller handler for now)
+        ib.discover_mezzanines() # auto-discover mezzanines and add them to the hardware map (requires chFPGA_controller handler to read McGill MGADC08 EEPROMs)
 
-    c=ib[0]
+        c=ib[0]
 
-    # Establish communication with the board and initialize the firmware and software
-    c.open(adc_delay_table=ADC_DELAY_TABLE,
-           init=args.init,
-           sampling_frequency=args.sampling_frequency * 1e6,
-           reference_frequency=10e6, data_width=args.data_width,
-           group_frames=args.group_frames,
-           enable_gpu_link = args.enable_gpu_link)
+        # Establish communication with the board and initialize the firmware and software
+        c.open(adc_delay_table=ADC_DELAY_TABLE,
+               init=args.init,
+               sampling_frequency=args.sampling_frequency * 1e6,
+               reference_frequency=10e6, data_width=args.data_width,
+               group_frames=args.group_frames,
+               enable_gpu_link = args.enable_gpu_link)
 
-    logger.info('Getting chFPGA configuration')
-    chFPGA_config = c.get_config()
-    logger.info('Starting data/correlator receiver threads')
-    r = chFPGA_receiver(chFPGA_config)
+        logger.info('Getting chFPGA configuration')
+        chFPGA_config = c.get_config()
+        logger.info('Starting data/correlator receiver threads')
+        r = chFPGA_receiver(chFPGA_config)
