@@ -85,10 +85,10 @@ class QSFP(object):
     def close(self):
         pass
 
-    def init(self):
+    def init(self, enable_i2c=False):
         """Initializes the QSFP module to a known state (enable it)"""
         self.reset()
-        self.enable_i2c(False)
+        self.enable_i2c(enable_i2c)  # Note: Enable by default only of this is the only device at that address on the bus
         self.set_power_mode(0)  # Low power
 
     def set_control_bit(self, name, value, select=True):

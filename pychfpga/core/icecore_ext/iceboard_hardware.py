@@ -333,6 +333,10 @@ class IceBoardHardware(object):
         self._gpio_arm_phy_leds.init(cfg0_def=0b11110000)
         self._gpio_sfp_qsfp.init(cfg0_def=0b01100011, cfg1_def=0b11001111)
 
+        # Initialize the QSFPs. This sets the reset and LowPower mode. Some QSFP+ modules (like the 3M AOCs) will not work without this.
+        self._qsfpa.init()
+        self._qsfpb.init()
+
     def _init_temperature_sensors(self, temperature_sensor_name=None, bit_resolution=12):
         """ Initialize temperature sensors.
 
