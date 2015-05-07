@@ -93,7 +93,7 @@ def shuffle_init(c, sync_board, frames_per_packet=1, cb1_lanes=4, cb1_bins=16, c
             bb.CROSSBAR2.set_lane_map(compute_lane_map(bb))
 
         # Initialize the crossbars to select and send data in a specific format
-        bb.init_crossbars(frames_per_packet=frames_per_packet, cb1_lanes=cb1_lanes, cb1_bins=cb1_bins, cb2_lanes=cb2_lanes, cb2_bins=cb2_bins, cb2_bypass=cb2_bypass, remap=remap)
+        bb.init_crossbars(frames_per_packet=frames_per_packet, cb1_lanes=cb1_lanes, cb1_bins=cb1_bins, cb2_lanes=cb2_lanes, cb2_bins=cb2_bins, cb2_bypass=cb2_bypass, remap=remap, bp_bypass=bp_bypass)
 
     # set-up receivers
     for i, bb in enumerate(c):
