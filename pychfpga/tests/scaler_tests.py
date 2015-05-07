@@ -1,18 +1,14 @@
-import argparse
-import logging
-import __main__
 
 import matplotlib.pyplot as plt
 import numpy as np
 
-# NOTE: PYTHONPATH must be set so 'pychfpga' can be found
 from pychfpga.core.icecore.tests import *
 
-from pychfpga.core.icecore import IceBoardPlus, IceBoardPlusHandler, IceCrate, HardwareMap
-from pychfpga.MGADC08 import MGADC08
-from pychfpga.core.chFPGA_controller import chFPGA_controller
+# from pychfpga.core.icecore import IceBoardPlus, IceBoardPlusHandler, IceCrate, HardwareMap
+# from pychfpga.MGADC08 import MGADC08
+# from pychfpga.core.chFPGA_controller import chFPGA_controller
 from pychfpga.core.chFPGA_receiver import chFPGA_receiver
-from pychfpga.core.icecore.session import load_session as load_yaml
+# from pychfpga.core.icecore.session import load_session as load_yaml
 
 class ScalerTests(TestGroup):
     '''Tests the chFPGA SCALER operation.
@@ -22,7 +18,7 @@ class ScalerTests(TestGroup):
 
     def test_list(self):
         yield self.chfpga_init
-        yield self.dummy_test
+        yield self.bypass_tests
 
     def chfpga_init(self, ib):
         """ Initialize chFPGA firmware.
@@ -33,13 +29,29 @@ class ScalerTests(TestGroup):
 
         yield PASSED(True)
 
-    def dummy_test(self, ib):
-        """ Dummy test function.
+    def bypass_tests(self, ib):
+        """ Scaler bypass tests.
 
-        No description
+        Check that the function generator data can be routed directly to the
+        scaler output when the FFT and SCALER is bypassed.
         """
-        yield PASSED(True)
+        ib.set_data_source('funcgen')
+        ib.set_funcgen_function('a', a=1)
+        ib.set_fft_bypass(True)
+        ib.set_scaler_bypass(True)
+        ib.start_data_capture(period=0.5, source='scaler')
 
+        yield self.PASSED
+        yield """ Testing Scaler bypass """
+        ib.r.flush()  #
+        data = ib.r.read_frames()  # Read data from all channels
+        data = ib.r.read_frames()  # Read data from all channels
+        for ch in range(16):
+            if any(data[ch]):
+                yield 'Ch%i contains non-zero data' % ch
+                yield self.FAILED
+            else:
+                yield 'Ch%i data is all zero' % ch
 
 # class I2CTests(TestGroup):
 #     '''I2C tests'''
@@ -156,169 +168,5 @@ class ScalerTests(TestGroup):
 #             return True
 #         return False, SUMMARY("got %s, expected %s" % (got, expected))
 
-class FpgaBitstream(object):
-    """ Helper object used to load and store a FPGA bitstream. You don't have
-    to use it, but it makes the code look nicer"""
-    bitstream = None
-
-    def __init__(self, filename, auto_reload=True):
-        self.filename = filename
-        self.auto_reload = auto_reload
-        if not self.auto_reload:
-            self._load()
-    def __str__(self):
-        """ Return the bitstream as a string. """
-        if self.auto_reload:
-            self._load()
-        return self.bitstream
-    def _load(self):
-        with open(self.filename, 'rb') as file_:
-            self.bitstream = file_.read()
 
 
-if __name__=='__main__':
-
-    # Get command line arguments
-    default_bitfile = (
-        '../../../chfpga/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/CHFPGA_MGK7MB_REV2.bit')
-
-    # Configure the various loggers to provide adequate levels of details
-    log_levels = {'info': logging.INFO, 'debug': logging.DEBUG}
-
-    parser = argparse.ArgumentParser(description=__doc__.split('\n')[0]) # description is the first line of the docstring
-    parser.add_argument('-t', '--log_target', action='store', type=str, default='syslog', help="Logging target ('stream', 'syslog' or a filename)")
-    parser.add_argument('-l', '--log_level', action='store', type=str, choices=log_levels, default='debug', help='Logging level')
-    parser.add_argument('-b', '--iceboards', action='store', nargs='+', type=str, help="Space-separated list of the iceboard hostnames (e.g. 10.10.10.7 or iceboard0007.local if the mDNS system is operational")
-    parser.add_argument('-s', '--subarray', action='store', nargs='+', type=int, help='Space-separated list of subarrays to include')
-    parser.add_argument('-f', '--bitfile', action='store', type=str, default= default_bitfile,  help='Filename of the bitfile used to to program the FPGAs')
-    parser.add_argument('-i', '--if_ip', action='store', type=str, default=None, help='IP address of adapter through which the connection to the FPGA will be established. This is used solely for direct UDP communications with the FPGA.')
-    parser.add_argument('--force', action='store', type=int, default=0, help='Force FPGA programming even if the firmware is already programmed.')
-    args = parser.parse_args()
-
-    __main__._host_interface_ip_addr = args.if_ip
-
-
-    # -------------------------------
-    # Set-up logging
-    # -------------------------------
-
-    logger = logging.getLogger('')
-    logger.handlers = []  # Clear all existing handlers
-
-    # Make sure SQLAlchemy does not log too much
-    sql_logger = logging.getLogger('sqlalchemy.engine.base.Engine')
-    sql_logger.setLevel(logging.INFO)
-
-    if args.log_target == 'stream':
-        log_handler = logging.StreamHandler()
-    elif args.log_target == 'syslog':
-        log_handler = logging.handlers.SysLogHandler()
-    else:
-        log_handler = logging.FileHandler(args.log_target)
-
-    # Set-up log for this test run
-    logger.setLevel(log_levels[args.log_level])
-    logger.addHandler(log_handler)
-
-
-    # Associate the bitstream with the target Handler
-    fpga_bitstream = FpgaBitstream(args.bitfile)
-    # chFPGA_controller.register_fpga_bitstream(fpga_bitstream)
-
-
-    # -------------------------------
-    # Create IceBoard
-    # -------------------------------
-
-    # # Create the IceBoard instance
-    # # ib = IceBoard(hostname=args.iceboards[0], handler_name=chFPGA_controller.get_handler_name())
-    # ib = IceBoard(hostname=args.iceboards[0])
-    # ib.handler.register_fpga_bitstream(fpga_bitstream)
-
-    # # Add it to the hardware map
-    # hwm = hardware_map.HardwareMap()
-    # hwm.add(ib)
-    # hwm.commit()
-
-    # yaml_hwm = """
-    #     !HardwareMap
-    #         - !IceCrate
-    #             serial: "003"
-    #             slots:
-    #                 16:  !IceBoardPlus {{hostname: {0} }}
-    #     """.format(args.iceboards[0])
-
-    # yaml_hwm = """
-    #     !IceCrateHandler
-    #         serial: "003"
-    #         slot:
-    #             &s1 3:  !IceBoardHandler {{hostname: {0}, slot: *s1}}
-    #             &s2 2:  !IceBoardHandler {{slot: *s2}}
-    #     """.format(args.iceboards[0])
-
-    # yaml_hwm = """
-    #     &A x: [*A]
-    #     """
-
-    # hwm = load_yaml(yaml_hwm)
-
-
-    # -------------------------------
-    # Create a hardware map consisting of a bunch of iceboards
-    # -------------------------------
-    hwm = HardwareMap()  # Create empty hardware map
-
-    # Add iceboards. For now, we know only their hostname
-    if args.iceboards:
-        for hostname in args.iceboards:
-            hwm.add(IceBoardPlus(hostname=hostname))
-    hwm.flush()
-
-    # -------------------------------
-    # Check if specified iceboards are on-line before going any further
-    # -------------------------------
-    ib = hwm.query(IceBoardPlus)
-
-    for i in ib:
-        if not i.ping():
-            raise RuntimeError("%r could not be found at '%s'"
-                               % (i, i.tuber_uri))
-
-    ib.set_handler(chFPGA_controller, fpga_bitstream)
-    # ib.set_handler(IceBoardPlusHandler, fpga_bitstream)
-
-    # Configure the FPGA with the bitstream associated with the handler
-    ib.set_fpga_bitstream(force=args.force)
-
-    ib.discover_serial()  # auto-discover the serial number of every IceBoard
-    ib.discover_crate()  # auto-discover crates and add them to the hardware map (requires chFPGA_controller handler for now)
-    ib.discover_mezzanines() # auto-discover mezzanines and add them to the hardware map (requires chFPGA_controller handler to read McGill MGADC08 EEPROMs)
-
-
-    # get the icecrate
-    ic_query = hwm.query(IceCrate)
-    if ic_query.count():
-        ic = ic_query.one()
-
-    ib1 = ib[0]
-    # ib2 = ib[1]
-
-    ib.open()
-    # test_filename = 'results/scaler_test'
-    # # Get the backplane test engine and execute the tests
-    # te = ScalerTests(context={
-    #     "Date": datetime.datetime.now(),
-    #     "Bitstream filename": args.bitfile,
-    #     "Bitstream CRC32": '0x%08X' % ib.get_fpga_bitstream_crc(),
-    #     "Master Iceboard hostname": args.iceboards[0],
-    #     "Iceboard handler name": type(ib.handler).__handler_name__,
-    #     })
-    # try:
-    #     te.run(ib)
-    # except Exception:
-    #     raise
-    # finally:
-    #     te.write_xml(test_filename + '.xml')
-    #     # te.write_html(test_filename + '.html')
-    #     print '\n'.join(te.synopsis_as_strings())
-# vim: sts=4 ts=4 sw=4 tw=78 smarttab expandtab

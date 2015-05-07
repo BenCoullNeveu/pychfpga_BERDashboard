@@ -77,7 +77,6 @@ class TestGroup(object):
     * They should fix it.
     * They can use `ReStructuredText <http://docutils.sourceforge.net/rst.html>`_
     '''
-
     def __init__(self, context={}):
         '''Create a TestGroup.
 
@@ -92,6 +91,9 @@ class TestGroup(object):
         self.etree = None
         self._passed = False
         self._complete = False
+
+        self.FAILED = PASSED(False)
+        self.PASSED = PASSED(True)
 
     def run(self, *args, **kwargs):
         '''Run this TestGroup and any of its children.
@@ -127,10 +129,10 @@ class TestGroup(object):
                 if skip:
                     results = [PASSED('Skipped'), SUMMARY('This test case was skipped due to previous exception')]
                 else:
-                    results = tc(*args, **kwargs)
-                    if isinstance(results, bool):
+                    results = tc(*args, **kwargs)  # obtain the generator
+                    if isinstance(results, bool):  # if not a generator
                         results = [PASSED(results)]
-                pf = []
+                pf = []  # list of the value of pass/failed objects that were yielded
                 annotations = []
                 exception = None
                 try:
@@ -143,10 +145,10 @@ class TestGroup(object):
                         if r.tag == 'passed':
                             pf.append(r.text)
                         annotations.append(r)
-                    if len(pf) != 1:
-                        raise RuntimeError('There must be one PASSED element in %s' % testpath)
+                    if not len(pf):
+                        raise RuntimeError('There must be at least one PASSED element in %s' % testpath)
                     else:
-                        pf = bool(pf[0])
+                        pf = all([bool(p) for p in pf])  # all PASSED fields must be true
                 except Exception as exception:
                     annotations.extend([
                         PASSED(False),
@@ -175,11 +177,10 @@ class TestGroup(object):
         return passed
 
     def test_list(self):
-        '''Returns a generator that provides tests in this TestGroup.
+        '''Returns a iterable (a generator or a list) that enumerates the methods to be called in this TestGroup.
 
         Override this method to add tests.'''
-        return
-        yield
+        return []
 
     def get_traceback(self):
         """ Return a compact traceback message as a list of strings that is
