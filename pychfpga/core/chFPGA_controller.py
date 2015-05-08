@@ -745,7 +745,7 @@ class chFPGA_controller(FpgaCoreFirmware):
         # config.adc_serial = 'Not available'
         config.motherboard_serial = self.GPIO.FPGA_SERIAL_NUMBER
         # Add FFT shift, scaler gain, corr integration/capture period etc.
-        config.freq_flags = self.freq_flags
+        #config.freq_flags = self.freq_flags
         return config
 
 
