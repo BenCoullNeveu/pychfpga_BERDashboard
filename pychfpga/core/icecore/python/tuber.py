@@ -120,6 +120,7 @@ class Context(object):
             # until it's complete.
 
             client = tornado.httpclient.AsyncHTTPClient()
+            client.configure(None, max_clients=16)
             request = tornado.httpclient.HTTPRequest(
                 url=self.obj.tuber_uri,
                 method='POST',
