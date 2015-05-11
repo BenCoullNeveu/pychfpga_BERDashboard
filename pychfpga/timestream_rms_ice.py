@@ -125,7 +125,7 @@ if __name__ == '__main__':
         data_width=4, \
         group_frames=4, \
         enable_gpu_link = 1)
-    delays = pickle.load(open('/home/kbandura/git/ch_acq/pychfpga/delays_feb17_2015.pkl'))
+    delays = pickle.load(open('/home/kbandura/git/ch_acq/pychfpga/delays_mar14_2015_no_errors.pkl'))
     c.fpga.set_corr_reset(1)
     time.sleep(0.1)
     c.fpga.set_corr_reset(0)
