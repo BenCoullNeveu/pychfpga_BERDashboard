@@ -1,6 +1,5 @@
 # Files to be ignored by git
 .DS_STORE # OS X
 config.yaml # Don't push user config
-board_files/_build/*
 #board_files/* # These should be synced using Seafile/Dropbox
 #_build/* # Also to be synced
