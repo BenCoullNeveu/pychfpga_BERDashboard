@@ -7,7 +7,7 @@ def addNote( fname ):
 
 def getNotes( ):
     input = raw_input("Please enter any modified components or other relevant notes here (these will be added to the 'Board Notes' section at top of file):\n")
-    return [ '|' + date_format(time.localtime()) + ':    ' + input + '\n\n']
+    return [ '| ' + date_format(time.localtime()) + ':    ' + input + '\n\n']
 
 def appendNote( fname, newLines = [] ):
     #check file exists
