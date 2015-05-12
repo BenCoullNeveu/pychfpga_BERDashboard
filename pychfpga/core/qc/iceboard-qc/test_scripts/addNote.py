@@ -7,7 +7,7 @@ def addNote( fname ):
 
 def getNotes( ):
     input = raw_input("Please enter any modified components or other relevant notes here (these will be added to the 'Board Notes' section at top of file):\n")
-    return [ date_format(time.localtime()) + ':    ' + input + '\n\n']
+    return [ '|' + date_format(time.localtime()) + ':    ' + input + '\n\n']
 
 def appendNote( fname, newLines = [] ):
     #check file exists
@@ -40,7 +40,7 @@ def appendNote( fname, newLines = [] ):
     if not foundNotes:
         newLines.insert(0,"------\n")
         newLines.insert(0,"Board Notes\n")
-        newLines.append("(add here)\n")
+        newLines.append("|(add here)\n")
         newLines.append("\n")
         print("Did not find previous Notes. Creating new section.")
         for index, line in enumerate(content):
