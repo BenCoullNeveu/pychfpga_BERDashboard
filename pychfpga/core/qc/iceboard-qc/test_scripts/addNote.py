@@ -7,7 +7,7 @@ def addNote( fname ):
 
 def getNotes( ):
     input = raw_input("Please enter any modified components or other relevant notes here (these will be added to the 'Board Notes' section at top of file):\n")
-    return [ date_format(time.localtime()) + ':    ' + input + '\n']
+    return [ date_format(time.localtime()) + ':    ' + input + '\n\n']
 
 def appendNote( fname, newLines = [] ):
     #check file exists
@@ -18,7 +18,7 @@ def appendNote( fname, newLines = [] ):
     f = open(fname, 'r')
     content = f.readlines()
     f.close()
-    
+
     #look for marker line in file
     linePos = 9 #default position to append, otherwise will append where previous Notes were, or following status report
     foundNotes = False
@@ -47,14 +47,14 @@ def appendNote( fname, newLines = [] ):
             if line == "Status report of most recent test (Please don't modify this line or add any lines in this block)\n":
                 linePos = index + STATUS_LINES()
                 break
-    
+
     #insert lines and write to file
     content[linePos:linePos] = newLines
     f = open(fname, 'w')
     f.writelines(content)
     f.close()
     print "Successfully added note."
-        
+
 def date_format(date):
     #finds the date, converts to string and adds 0 if <10 for day, month
     #day
@@ -75,7 +75,6 @@ def date_format(date):
     minute=str(date[4])
     if int(minute)<10:
         minute ='0' + minute
-    
+
     #returns 'dd/mm/yyyy, hh:mm'
     return day + '/' + month + '/' + year + ', ' + hour + ':' + minute
-    
