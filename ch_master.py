@@ -494,6 +494,10 @@ if __name__ == "__main__":
   # Start the acquisition.
   acq.start(acq_base_dir, crate_sn, int(conf["fpga"]["subarray"]))
 
+  if (int(args.configure_fpga) > 0):
+    c.CROSSBAR.LANE_MONITOR_SEL = 6
+    c.CROSSBAR2.LANE_MONITOR_SEL = 6
+
   try:
     while True:
       # Pass the acquisition object the board temperatures. This is a temporary
@@ -503,6 +507,8 @@ if __name__ == "__main__":
         for c_element in c:
           acq.pass_fpga_amb_temp(i, get_fpga_hk(c_element, fpga_hk_field))
           i += 1
+          log.debug("Crossbar1 fifo overflow %d "  % c_element.CROSSBAR.CB1_LANE_MONITOR )
+          log.debug("Crossbar2 fifo overflow %d "  % c_element.CROSSBAR2.CB2_LANE_MONITOR )
         log.info("Read FPGA housekeeping.")
       else:
         log.info("acquiring data...")
