@@ -93,22 +93,38 @@ class SCALER_base(Module_base):
     #     """
     #     return np.int16(self.FIXED_GAIN_REAL) + 1j*np.int16(self.FIXED_GAIN_IMAG)
 
-    def set_gain_table(self, gain_list, bank = 0):
+    def set_gain_table(self, gain_list, bank=0):
         """
         Sets the scaler's complex gain table for the specified bank.
         """
+        total_bins = self.fpga.NUMBER_OF_FREQUENCY_BINS
         if isinstance(gain_list, (int, float, complex)):
-            gain_list = [complex(gain_list)]*self.fpga.NUMBER_OF_FREQUENCY_BINS
+            gains = np.array([complex(gain_list)]*total_bins)
+        else:
+            gains = np.array(gain_list)
 
-        page_table = np.zeros(512, np.int8)
+        if any(gains.real < -32768) or any(gains.real > 32767) or any(gains.real != gains.real.astype('<i2')) or \
+           any(gains.imag < -32768) or any(gains.imag > 32767) or any(gains.imag != gains.imag.astype('<i2')):
+            raise ValueError('All real or imaginary parts of the gains must be integers between -32768 and 32767')
+
+        if len(gains) != total_bins:
+            raise ValueError('Either a scalar gain or a 1024 element gain vector must be provided')
+
+        gain_string = np.reshape(np.vstack((gains.real, gains.imag)).T, 2 * total_bins).astype('<i2').tostring()
+
+        # page_table = np.zeros(512, np.int8)
         for page in range(8): # there are 8 pages of coefficients per bank
-            for ix in range(128): # there are 128 coefficients per page ( 4 byte per coefficient = 512 bytes total per page)
-                bin = page*128 + ix
-                gain = gain_list[bin]
-                page_table[4*ix:4*ix+4] = np.fromstring(struct.pack('<hh', gain.imag, gain.real), np.int8)
-            self.WRITE_COEFF_BANK = 8*bank + page
+            self.WRITE_COEFF_BANK = 8 * bank + page
+            self.write_ram(0, gain_string[512 * page: 512 * (page + 1)])
+            # for ix in range(128): # there are 128 coefficients per page ( 4 byte per coefficient = 512 bytes total per page)
+            #     bin = page*128 + ix
+            #     gain = gain_list[bin]
+            #     page_table[4*ix:4*ix+4] = np.fromstring(struct.pack('<hh', gain.imag, gain.real), np.int8)
+
             #print page_table
-            self.write_ram(0, np.uint8(page_table))
+            # self.write_ram(0, np.uint8(page_table))
+
+
 
     def get_gain_table(self, bank=0):
         """

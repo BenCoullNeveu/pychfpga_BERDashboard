@@ -823,6 +823,12 @@ class BackplaneHardware(object):
                         reset_control_obj.write(reset_output_register,  mask, mask) #Setting output register to logic 1 (reset inactive) - Removing reset
                         reset_control_obj.write(reset_cfg_register,  mask, mask) #Setting direction register from output to input - Back to default state
 
+    def set_fan_speed(self, speed):
+        """ Set the speed of the crate fan. `speed` is a value from 0 to 100.
+        """
+        if not self._fan_ctrl_present:
+            raise RuntimeError('There is no fan controller connected on the backplane I2C bus')
+        self._fan_ctrl.set_duty_cycle(speed)
 
 
 

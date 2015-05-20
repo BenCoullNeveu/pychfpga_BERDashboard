@@ -51,23 +51,25 @@ class FpgaMmi:
     _STATUS_BASE_ADDR  = chFPGAHandler._STATUS_BASE_ADDR
     _RAM_BASE_ADDR     = chFPGAHandler._RAM_BASE_ADDR
 
-    OPCODE_WRITE_CONTROL = 0b100
-    OPCODE_NOP           = 0b110
-    OPCODE_WRITE_RAM     = 0b111
-    OPCODE_READ_CONTROL  = 0b000
-    OPCODE_READ_STATUS   = 0b010
-    OPCODE_READ_RAM      = 0b011
+    OPCODE_WRITE_CONTROL      = 0b100
+    OPCODE_WRITE_CONTROL_MASK = 0b101
+    OPCODE_NOP                = 0b110
+    OPCODE_WRITE_RAM          = 0b111
+    OPCODE_READ_CONTROL       = 0b000
+    OPCODE_READ_STATUS        = 0b010
+    OPCODE_READ_RAM           = 0b011
 
     def __init__(self,
                  ip_addr,
                  port_number,
                  interface_ip_addr=None,
                  fpga_serial_number=None,
-                 set_fpga_networking_parameters=True,
-                 netmask='255.255.0.0',
+                 set_fpga_networking_parameters=False,
                  timeout=0.5):
+        """
+         'fpga_serial_number' is needed only if we set the FPGA networking using UDP broadcasts (set_fpga_networking_parameters is True)
+        """
         self.logger = logging.getLogger(__name__)
-        self.netmask = netmask  # network mask used to find the host address that is on the same subnet as the target IP. This does not affect the network adapter settings.
         self.ip_addr = ip_addr
         self.port_number = port_number  # Control port on the FPGA
         self.address = (self.ip_addr, self.port_number)
@@ -76,6 +78,8 @@ class FpgaMmi:
         self.timeout = timeout
         self.udp = None
         self.interface_ip_addr = interface_ip_addr
+        self.send_counter = 0
+        self.recv_counter = 0
 
     def __enter__(self):
             self.open()
@@ -112,8 +116,10 @@ class FpgaMmi:
     def _set_fpga_networking_parameters(
             self, number_of_trials=3, check=True):
         """
-        Sets the FPGA firmware in the specified ICEboard to use the specified
-        ip address and port.
+        Send UDP broadcasts to set the FPGA firmware in the specified ICEboard to use the specified
+        ip address and port. This requires that the FPGA serial number (fpga_serial_number) is known.
+
+        This is not needed if the FPGA networking parameters are set through the ARM SPI link to the FPGA.
 
         An exception will be raised if the board cannot be found on the
         network of if another board uses the same ip address.
@@ -123,7 +129,7 @@ class FpgaMmi:
               to the FPGA
             - This function cannot be called if the UDP link is already
               established.
-            - The broadcast is send only: the FPGAs are not asked to reply to
+            - The broadcast is 'send only': the FPGAs are not asked to reply to
               the broadcast. Consequently, the call will not affect the return
               addresses of these FPGAs.
 
@@ -155,7 +161,7 @@ class FpgaMmi:
         # target FPGA serial number
         trial = 0
         while trial < number_of_trials:
-            with FpgaMmi(FpgaMmi.BROADCAST_IP_ADDR, FpgaMmi._BROADCAST_BASE_PORT, set_fpga_networking_parameters=False) as mmi:
+            with FpgaMmi(FpgaMmi.BROADCAST_IP_ADDR, FpgaMmi._BROADCAST_BASE_PORT) as mmi:
                 mmi.write(self._FPGA_IP_SETUP_BASE_ADDR, ip_setup_string + trig1) # Send string with trigger flag cleared
                 mmi.write(self._FPGA_IP_SETUP_BASE_ADDR, ip_setup_string + trig2) # resend with trigger flag set. The 0-to-1 transition will load the desired networking parameters
                 mmi.write(self._FPGA_IP_SETUP_BASE_ADDR, [0] * len(ip_setup_string + trig2)) # Write zeros everywhere to make sure we stop latching data
@@ -181,8 +187,7 @@ class FpgaMmi:
         specified address. Instead, all fields will be None.
         """
         trial = 0
-        with FpgaMmi(self.ip_addr, self.port_number,
-                     set_fpga_networking_parameters=False) as mmi:
+        with FpgaMmi(self.ip_addr, self.port_number) as mmi:
             while trial < number_of_trials:
                 try:
                     serial = mmi.read(self._FPGA_SERIAL_NUMBER_ADDR, type=np.dtype('>u8'), timeout=timeout, retry=0)
@@ -192,10 +197,10 @@ class FpgaMmi:
                     trial += 1
         return (None, None)
 
-    def flush(self):
+    def flush(self, timeout=0.05):
         """Flushes the socket receive buffer."""
         old_timeout = self.udp.get_timeout()
-        self.udp.set_timeout(0.1)
+        self.udp.set_timeout(timeout)
         try:
             while True:
                 data = self.udp.recv()
@@ -273,7 +278,9 @@ class FpgaMmi:
             while True:
                 try:
                     self.udp.send(s)
+                    self.send_counter += 1
                     data = self.udp.recv()
+                    self.recv_counter += 1
                     break
                 except self.udp.TimeoutException:
                     if retries < retry:
@@ -346,6 +353,8 @@ class FpgaMmi:
              chr(addr & 0xFF))
 
         self.udp.send(s)
+        self.send_counter += 1
+        self.recv_counter += 1  # We expect only one packet back
         self.udp.set_timeout(timeout)
         while True:
             try:
@@ -363,7 +372,23 @@ class FpgaMmi:
             dout.append(np.fromstring(data[1:], dtype=type)[0])  # store received byte
         return dout
 
-    def write(self, addr, data):
+    def _to_string(self, data):
+        if isinstance(data, str):
+            return data
+        elif isinstance(data, (list, np.ndarray)):
+            return ''.join([chr(c) for c in data])
+        if isinstance(data, int):
+            return chr(data)
+        elif isinstance(data, np.uint32):
+            return np.array(data, '>u4').tostring()  # store as big endian (most significant byte first)
+        elif isinstance(data, np.uint16):
+            return np.array(data, '>u2').tostring()  # store as big endian (most significant byte first)
+        elif isinstance(data, np.uint8):
+            return np.array(data, '>u1').tostring()  # store as big endian (most significant byte first)
+        else:
+            return chr(data)
+
+    def write(self, addr, data, mask=None):
         """
         Writes byte(s) to memory-mapped registers in the FPGA through the
         Ethernet interface.
@@ -376,60 +401,34 @@ class FpgaMmi:
             - 2 bytes in a numpy uint16. MSB is transmitted first
             - 1 byte in a numpy uint8.
         """
-        # build command packet
-        #s=chr(0x80+ant+(0x40 if incr else 0))+chr((module<<2)+(addr>>8))+chr(addr&0xFF)
 
         if addr & self._RAM_BASE_ADDR:
             opcode = self.OPCODE_WRITE_RAM
         elif addr & self._STATUS_BASE_ADDR:
             raise FpgaMmiException(
                 'FpgaMmi: Attempt to write to a STATUS register')
-        else:
+        elif mask is None:
             opcode = self.OPCODE_WRITE_CONTROL
+        else:
+            opcode = self.OPCODE_WRITE_CONTROL_MASK
 
-        log2_length = 0  # is ignored for writes
-        string = (
-            chr((opcode << 5) | (log2_length << 3) + ((addr >> 16) & 0x07)) +
+        command_string = (
+            chr((opcode << 5) | ((addr >> 16) & 0x07)) +
             chr((addr >> 8) & 0xFF) +
             chr(addr & 0xFF))
 
-        # Add the data to the string. The method depends on the data type
-        if type(data) == str:
-            string += data
-            length = len(data)
-        elif type(data) == list or type(data) == np.ndarray:
-            string += ''.join([chr(data[i]) for i in range(len(data))])
-            length = len(data)
-        elif type(data) == np.uint32:
-            length = 4
-            a = np.array([data], np.dtype('>u4'))  # store as big endian (most significant byte first)
-            a.dtype = np.uint8
-            string += ''.join([chr(a[i]) for i in range(4)])
-        elif type(data) == np.uint16:
-            length = 2
-            a = np.array([data], np.dtype('>u2'))  # store as big endian (most significant byte first)
-            a.dtype = np.uint8
-            string += ''.join([chr(a[i]) for i in range(2)])
-        elif type([data]) == np.uint8:
-            length = 1
-            a = np.array([data])  # store as big endian (most significant byte first)
-            a.dtype = np.uint8
-            string += chr(a[i])
-        else:
-            string += chr(data)
-            length = 1
-        self.udp.send(string)
+        data_string = self._to_string(data)
+        length = len(data_string)
+
+        # If there is a mask, interleave the data with the masks
+        if mask is not None:
+            mask_string = self._to_string(mask)
+            data_string = ''.join(
+                [d+m for (d, m) in zip(data_string, mask_string)])
+
+        self.udp.send(command_string + data_string)
+        self.send_counter += 1
         return length
-
-    def write_mask(addr, data, mask):
-        """
-        Writes data to the FPGA Memory-mapped space starting from address
-        'addr', but only affect bits that are set in mask.
-
-        This function assumes that the memory location can be read back.
-        """
-        raise Exception(
-            'write_mask() is not supported by the current firmware')
 
 
 def discover_fpgas(interface_ip_addr=None, source_subarrays=[0], timeout=0.1):
@@ -460,8 +459,7 @@ def discover_fpgas(interface_ip_addr=None, source_subarrays=[0], timeout=0.1):
         with FpgaMmi(
                 FpgaMmi.BROADCAST_IP_ADDR,
                 FpgaMmi._BROADCAST_BASE_PORT + subarray,
-                interface_ip_addr=interface_ip_addr,
-                set_fpga_networking_parameters=False) as mmi:
+                interface_ip_addr=interface_ip_addr) as mmi:
             mmi.flush()
             serials = mmi.broadcast_read(
                 FpgaMmi._FPGA_SERIAL_NUMBER_ADDR,

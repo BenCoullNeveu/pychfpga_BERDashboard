@@ -21,10 +21,11 @@ __all__ = [
     "TITLE", "DESCRIPTION", "DETAILS", "PASSED",
     "SUMMARY",
     "CONTEXT", "ITEM", "NAME", "VALUE",
-    "P", "IMG", "A", "CODE", "PRE",
+    "P", "IMG", "A", "CODE", "PRE", "TT",
     "TestGroup",
     "IncompleteError",
-    "PLOT", "load_html", "get_synopsis", "get_synopsis_from_xml", 'load_xml'
+    "PLOT", "load_html", "get_synopsis", "get_synopsis_from_xml", 'load_xml',
+    'print_flush'
 ]
 
 
@@ -66,7 +67,10 @@ IMG = lxml.objectify.E.img
 A = lxml.objectify.E.A
 CODE = lxml.objectify.E.code
 PRE = lxml.objectify.E.pre
+TT = lxml.objectify.E.tt
 
+def print_flush():
+    os.sys.stdout.flush()
 
 class TestGroup(object):
     '''Test title
@@ -87,7 +91,7 @@ class TestGroup(object):
         self._context = context
         self._docs = []
         self._complete = False
-        self._details = None
+        # self._details = None
         self.etree = None
         self._passed = False
         self._complete = False
@@ -113,15 +117,16 @@ class TestGroup(object):
     def _run(self, testpath, skip, *args, **kwargs):
         '''Run this TestGroup and any of its children and use the provided test path to name tests hierarchically.
         '''
-        self._testpath = testpath + ('.' if testpath else '') + self.__class__.__name__
-        passed = None
+        self._testpath = (testpath + '.' if testpath else '') + self.__class__.__name__
+        passed = True
         for tc in self.test_list():
             if isinstance(tc, TestGroup):
                 try:
                     pf = tc._run(self._testpath, skip, *args, **kwargs)
+                    passed = passed and pf
                 except Exception as exception:
-                    pf = False
-                    raise exception
+                    passed = False
+                    raise
                 self._docs.append(tc.document())
             else:
                 testpath = self._testpath + '.' + tc.__name__
@@ -132,7 +137,7 @@ class TestGroup(object):
                     results = tc(*args, **kwargs)  # obtain the generator
                     if isinstance(results, bool):  # if not a generator
                         results = [PASSED(results)]
-                pf = []  # list of the value of pass/failed objects that were yielded
+                pass_fail_tags = []  # list of the value of pass/failed objects that were yielded
                 annotations = []
                 exception = None
                 try:
@@ -140,15 +145,13 @@ class TestGroup(object):
                         if isinstance(r, bool):
                             r = PASSED(r)
                         if not hasattr(r, 'tag'):
-                            print '%s yielded %r, converting into DETAILS' % (testpath, r)
                             r = DETAILS(str(r))
                         if r.tag == 'passed':
-                            pf.append(r.text)
+                            pass_fail_tags.append(r.text == 'true')
                         annotations.append(r)
-                    if not len(pf):
+                    if not len(pass_fail_tags):
                         raise RuntimeError('There must be at least one PASSED element in %s' % testpath)
-                    else:
-                        pf = all([bool(p) for p in pf])  # all PASSED fields must be true
+                    passed = all(pass_fail_tags)  # all PASSED fields must be true
                 except Exception as exception:
                     annotations.extend([
                         PASSED(False),
@@ -159,7 +162,8 @@ class TestGroup(object):
                         )
                         # [DETAILS(P(tb)) for tb in self.get_traceback()])
                     skip = True
-                # (pf, annotations) = (results[0], list(results[1:]))
+                    passed = False
+                # (pass_fail_tags, annotations) = (results[0], list(results[1:]))
                 self._docs.append(CASE(*[
                     TESTNAME(tc.__name__),
                     TESTPATH(testpath),
@@ -170,7 +174,7 @@ class TestGroup(object):
                 if exception:
                     raise
 
-            passed = (pf if passed is None else passed and pf)
+            # passed = (pass_fail_tags if passed is None else passed and pass_fail_tags)
 
         self._passed = passed
         self._complete = True
@@ -239,8 +243,8 @@ class TestGroup(object):
             results.append(CONTEXT(*[ITEM(NAME(k), VALUE(v))
                                    for (k, v) in self._context.items()]))
 
-        if self._details:
-            results.append(DETAILS(self._details))
+        # if self._details:
+        #     results.append(DETAILS(self._details))
 
         if self._docs:
             results.extend(self._docs)

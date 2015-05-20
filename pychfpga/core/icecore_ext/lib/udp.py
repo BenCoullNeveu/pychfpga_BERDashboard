@@ -24,7 +24,7 @@ class Udp(object):
     timeout = socket.timeout
     TimeoutException = socket.timeout
 
-    def __init__(self, remote_ip_addr, remote_port_number, local_port_number=0, if_ip_addr=None):
+    def __init__(self, remote_ip_addr=None, remote_port_number=None, local_port_number=0, if_ip_addr=None):
         self.logger = logging.getLogger(__name__)
         self.port_number = remote_port_number
         self.ip_addr = remote_ip_addr

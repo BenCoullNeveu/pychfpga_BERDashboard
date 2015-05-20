@@ -254,20 +254,18 @@ class TuberCategory(object):
                     pass
 
                 @tornado.gen.coroutine
-                def __call_async__(*args, **kwargs):
+                def coroutine(*args, **kwargs):
                     kwargs = kwargs.copy()
                     kwargs.update({
                         n: f(self)
                         for (n, f) in decorator.arg_mappers.items()
                     })
-                    result = yield hardware_map.asynchronously(
-                        getattr(parent, name), *args, **kwargs)
+                    result = yield getattr(parent, name).async(*args, **kwargs)
                     raise tornado.gen.Return(result)
 
                 # Don't cache this with the class; it's bound to a particular
                 # instance.
-                p = CategoryProto(coroutine=__call_async__)
-                p.__doc__ = inspect.getdoc(m)
+                p = CategoryProto(coroutine=coroutine, doc=inspect.getdoc(m))
                 return p
 
             raise AttributeError()

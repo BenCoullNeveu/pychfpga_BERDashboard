@@ -4,6 +4,7 @@
 import logging
 from datetime import datetime, timedelta
 from calendar import timegm
+import time
 
 import socket
 import struct
@@ -20,6 +21,8 @@ from . import icecrate_handler  # this module is not referenced here, but loadin
 from .iceboard_hardware import IceBoardHardware
 from .iceboard_hardware import I2CInterface
 from .backplane_hardware import BackplaneHardware
+from .lib import udp
+
 # import icebox # don't use from .. import ... because of circular import problems
 
 class chFPGAHandler(IceBoardPlusHandler):
@@ -74,51 +77,40 @@ class chFPGAHandler(IceBoardPlusHandler):
     _IRIGB_TARGET1_ADDR             = 4 * 14
     _IRIGB_TARGET2_ADDR             = 4 * 15
     _IRIGB_EVENT_CTR_ADDR           = 4 * 16
-
+    _BP_BUCK_SYNC_ADDR              = 4 * 17
+    _BP_BUCK_SYNC_ADDR2             = 4 * 18
+    _SFP_STATUS_ADDR                = 4 * 19
+    _REMOTE_IP_PORT_ADDR            = 4 * 20
 
     _XILINX_OUI = 0x000A35
 
     # ---------------------------------------
     # Instance attributes
     # ---------------------------------------
-    # mmi = None # Memory-mapped interface object
-    _is_core_open = None
 
     fpga_ip_addr = None
-    fpga_serial_number = None  # will be obsolete when we can get this from the ARM
     interface_ip_addr = None  # Is automatically detected by opening a TCP connection to the ARM
-    def set_auto_open_attributes(self, attribute_names, open_method):
-        """ Create a number of attributes that will be created by
-        'open_method' only when one of them is accessed.
 
-        This is useful since hardware map queries can instantiate boards that
-        we do not actually want to communicate with and may not event be
-        physically present. With this method, we can delay communications with
-        those iceboards until really need it.
+
+    class AutoOpen(object):
+        """ Automatcally call the specified 'open' method that creates an
+        attribute if the attribute is accessed and is not yet defined.
         """
-        class AutoOpen(object):
-            """ This class takes the place of an object, and will call
-            'open_method' on the fly whenever one of its attributes is
-            accessed.
-            """
-            def __init__(self, parent, attribute_name, open_method):
-                self._parent = parent
-                self._attribute_name = attribute_name
-                self._open_method = open_method
+        def __init__(self, open_method, attribute_name):
+            self._open_method = open_method
+            self._attribute_name = attribute_name
 
-            def __getattr__(self, name):
-                self._open_method()
-                # setattr(self._parent, self._attribute_name, obj)
-                return getattr(
-                    getattr(self._parent, self._attribute_name), name)
+        def __get__(self, object, class_):
+            print 'Auto-open %s' % self._attribute_name
+            getattr(object, self._open_method)()  # Execute the open method
+            return getattr(object, self._attribute_name)  # Get target object
 
-            def __nonzero__(self):
-                return False  # act as if this class was None
-
-        for attribute_name in attribute_names:
-            setattr(self,
-                    attribute_name,
-                    AutoOpen(self, attribute_name, open_method))
+    mmi       = AutoOpen('open_core', 'mmi')
+    i2c       = AutoOpen('open_core', 'i2c')
+    core_gpio = AutoOpen('open_core', 'core_gpio')
+    core_i2c  = AutoOpen('open_core', 'core_i2c')
+    hw        = AutoOpen('open_hw', 'hw')
+    bp        = AutoOpen('open_bp', 'bp')
 
     def __init__(self, **kwargs):
         """
@@ -131,22 +123,19 @@ class chFPGAHandler(IceBoardPlusHandler):
         super(chFPGAHandler, self).__init__(**kwargs)
         self.logger = logging.getLogger(__name__)
         self._mezzanine_ipmi_cache = {1: None, 2: None}
-        self._is_open = None
         self._is_core_open = None
-        self._core_auto_open_attributes = \
-            ['mmi', 'hw', 'bp', 'i2c', 'core_gpio', 'core_i2c']
-        self.set_auto_open_attributes(
-            self._core_auto_open_attributes, self.open_core)
+        self._is_hw_open = None
+        self._is_bp_open = None
+        self._is_open = None
 
     # ------------------------------------------------------------------
     # CHIME-specific MMI interface
     # ------------------------------------------------------------------
-    # Uses direct Ethernet link to the FPGA SFP port to send commands in a UDP
-    # packet.
+    # Uses direct Ethernet link to the FPGA SFP port to read and write
+    # firmware registers using UDP packets.
     #
-    # As the Chime Firmware pre-dates the icecore firmware, we do not use the
-    # standard icecore interface to the FPGA, but that might change in the
-    # future if warranted.
+    # As the CHIME Firmware pre-dates the ARM-to-FPGA communication link, we
+    # generally do not use that (slower) link except for basic core functions.
     # ------------------------------------------------------------------
 
     def mmi_read(self, *args, **kwargs):
@@ -172,20 +161,32 @@ class chFPGAHandler(IceBoardPlusHandler):
         Establishes the connection with the hardware and firmware on the
         IceBoard and create all appropriate handling classes.
         """
+        print '%r: opening core' % self
+
+        # if not self.is_fpga_programmed():
+        #     raise RuntimeError(
+        #         'The FPGA is not programmed. Cannot access chFPGA-specific methods and resources.')
 
         if not self.is_fpga_programmed():
             raise RuntimeError(
-                'The FPGA is not programmed. Cannot access chFPGA-specific methods and resources.')
+                "%r: The FPGA is not programmed with a bitstream . "
+                'Direct UDP link to FPGA and other chFPGA-specific methods and '
+                'resources are not available.' % (self ))
 
+        # Check the FPGA firmware cookie obtained through the ARM SPI interface to the FPGA
         cookie = self.get_fpga_application_cookie()
         if cookie != self._CHFPGA_COOKIE:
             raise RuntimeError(
-                'The firmware currently configured on the FPGA is not chFPGA. '
-                'Cannot access chFPGA-specific methods and resources.')
+                '%r: The firmware currently configured on the FPGA is not chFPGA (got cookie 0x%04X instead of 0x%04X). '
+                'Direct UDP link to FPGA and other chFPGA-specific methods and '
+                'resources are not available.' % (self, cookie, self._CHFPGA_COOKIE))
 
-        self.fpga_serial_number = self.get_fpga_serial_number()  # Get SN from the SPI link
+        # self.fpga_serial_number = self.get_fpga_serial_number()  # Get SN from the SPI link (slow)
 
-        # Get the address of the interface through which we can access the board over UDP
+        # Get the address of the interface through which we can access the
+        # board over UDP by opening a TCP socket to the ARM and inspeting the
+        # interface that was used. This assumes that both the ARM and FPGAs
+        # are accessed through the same interface.
         if self.hostname:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.connect((self.hostname, 80))
@@ -194,94 +195,67 @@ class chFPGAHandler(IceBoardPlusHandler):
         else:
             self.interface_ip_addr = None
 
-        # Compute the IP address to use for the FPGA UDP interface
-        # For now, we replace a.b.c.d by a.b.3.d
+        # Compute the IP address to use for the FPGA UDP interface For now, we
+        # replace a.b.c.d by a.b.3.d. We need to find a more generic mechanism
+        # for this (like obtaining another IP from the DHCP server)
         ip_packed = socket.inet_aton(self._get_arm_ip())  #
         ip_packed = ip_packed[:2] + chr(3) + ip_packed[3]
-        self.fpga_ip_addr = socket.inet_ntoa(ip_packed)
+        fpga_ip_addr = socket.inet_ntoa(ip_packed)
 
-        # Compute a MAC address for the FPGA
-        # mac = socket.inet_aton(self._get_arm_mac())  #
-        mac_packed = struct.pack('>H4s', 0x1234, ip_packed)
+        # Set-up the FPGA networking parameters using the ARM-SPI link to the FPGA
+        self.set_fpga_control_networking_parameters(fpga_ip_addr=fpga_ip_addr)
 
-        self.fpga_port_number = self._FPGA_CONTROL_BASE_PORT
-
-        # Set the FPGA Networking parameters over the ARM-FPGA SPI interface
-        self.fpga_mmi_write(self._FPGA_MAC_ADDR_LSW_ADDR, struct.unpack('>I', mac_packed[2:6])[0])
-        self.fpga_mmi_write(self._FPGA_MAC_ADDR_MSW_IP_PORT_ADDR, (struct.unpack('>H', mac_packed[0:2])[0] << 16) | self.fpga_port_number)
-        self.fpga_mmi_write(self._FPGA_IP_ADDR_ADDR, struct.unpack('>I', ip_packed)[0])
-
-        if not self.is_fpga_programmed():
-            raise RuntimeError(
-                "%r: Attempting to access the FPGA's Memory-mapped interface "
-                "while the FPGA is not yet programmed with a bitstream"
-                % (self))
 
         # if the FPGA handler instance was not created, check if one exists
         # create it
         if self.is_core_open():
             self.logger.warning(
-                '%r: Attempting to open core while it is already opened. '
+                '%.32r: Attempting to open core while it is already opened. '
                 'Ignoring.' % (self))
             return
 
-        self.logger.info(
-            '%r: core_open() is called' % (self))
-
-        # Open MMI interface
+        # -------------------------------------------------------------------------
+        # Open the UDP MMI interface
+        # -------------------------------------------------------------------------
         from . import fpga_mmi
         self.mmi = fpga_mmi.FpgaMmi(
             ip_addr=self.fpga_ip_addr,
             port_number=self.fpga_port_number,
-            fpga_serial_number=self.fpga_serial_number,
-            interface_ip_addr=self.interface_ip_addr,
-            set_fpga_networking_parameters=False)
+            interface_ip_addr=self.interface_ip_addr)
         self.mmi.open()
         self.local_port_number = self.mmi.local_port_number
 
-
-        # Preallocate consecutive port numbers for data and correlator streaming
-        from .lib import udp
-        for i in [1, 2, 3]:
-            udp.Udp(
-                remote_ip_addr=self.fpga_ip_addr,
-                remote_port_number=self.fpga_port_number,
-                local_port_number=self.local_port_number + i,
-                if_ip_addr=self.interface_ip_addr)
-
-
-        # Open FPGA's GPIO interfaces and check if we have basic communications
+        # -------------------------------------------------------------------------
+        # Open FPGA's GPIO module interface
+        # -------------------------------------------------------------------------
         self.core_gpio = gpio.GPIO_base(self.mmi, self._SYSTEM_GPIO_BASE_ADDR)
 
-
         # -------------------------------------------------------------------------
-        # Check if we can communicate with the FPGA over the direct Ethernet link by reading the mmi cookie (not the SPI one)
+        # Check if we can communicate with the FPGA over the direct Ethernet
+        # link by reading the UDP MMI cookie (not the SPI one) and check if
+        # the cookie correspond to the chFPGA firmware.
         # -------------------------------------------------------------------------
-        self.logger.info("%r: Attempting to communicate with the FPGA over direct Ethernet link" % self)
+        self.logger.info("%.32r: Attempting to communicate with the FPGA over direct Ethernet link" % self)
         try:
             cookie = self.get_fpga_firmware_cookie()  # Read the firmware version cookie from the GPIO subsystem (this is provided by the FPGA core firmware which is always present on all versions of the FPGA)
-        except Exception as e:
-            error_message = "%r: Unable to communicate with the FPGA at address %s:%i due to the following exception: %s" % (self, self.fpga_ip_addr, self.fpga_port_number, repr(e))
+        except IOError as e:
+            error_message = "%.32r: Unable to communicate with the FPGA at address %s:%i due to the following exception: %s" % (self, self.fpga_ip_addr, self.fpga_port_number, repr(e))
             self.close()
             self.logger.error(error_message)
             raise
 
-        # -------------------------------------------------------------------------
-        # Double check the mmi cookie is corect
-        # -------------------------------------------------------------------------
-
         if cookie != self._CHFPGA_COOKIE:
-            error_message = '%r: The firmware at %s:%i is not chFPGA. The magic cookie returned by the FPGA is 0x%02X, whereas we expected 0x%02X' % (self, self.fpga_ip_addr, self.fpga_port_number, cookie, self._CHFPGA_COOKIE)
+            error_message = '%.32r: The firmware at %s:%i is not chFPGA. The magic cookie returned by the FPGA is 0x%02X, whereas we expected 0x%02X' % (self, self.fpga_ip_addr, self.fpga_port_number, cookie, self._CHFPGA_COOKIE)
             self.logger.error(error_message)
             self.close()
             raise RuntimeError(error_message)
 
-        self.logger.info("%r: Direct ethernet connection with the FPGA established" % self)
+        self.logger.info("%.32r: Established a UDP/Ethernet connection with the FPGA" % self)
 
+        # -------------------------------------------------------------------------
         # Open FPGA's I2C interfaces
-
+        # -------------------------------------------------------------------------
         self.core_i2c = i2c.I2C_base(self.mmi, self._SYSTEM_I2C_BASE_ADDR)
-
         # Create standardized I2C interface
         self.i2c = I2CInterface(
             self.fpga_i2c_write_read,
@@ -289,31 +263,45 @@ class chFPGAHandler(IceBoardPlusHandler):
             IceBoardHardware.FPGA_I2C_BUS_LIST,
             IceBoardHardware._FPGA_I2C_SWITCH_ADDR)
 
-        # Open IceBoard hardware manager object
-        self.hw = IceBoardHardware(iceboard=self)
-        self.hw.open()
-
-        self.bp = BackplaneHardware(iceboard=self)
-        self.bp.open()
-        self.bp.init()
-
         self._is_core_open = True
 
     def close_core(self):
+        self.close_bp()
+        self.close_hw()
 
-        if self.mmi:
+        if self._is_core_open:
             self.mmi.close()
-        if self.hw:
-            self.hw.close()
-        if self.bp:
-            self.bp.close()
-        self.set_auto_open_attributes(self._core_auto_open_attributes,
-                                      self.open_core)
-        self._is_core_open = False
+            # Make the AutoOpen data descriptior visible again
+            del self.mmi, self.core_i2c, self.core_gpio, self.i2c
+            self._is_core_open = False
 
     def is_core_open(self):
         # return self.iceboard_pk in type(self)._active_instances
         return bool(self._is_core_open)
+
+    def open_hw(self):
+        # Open IceBoard hardware manager object
+        self.hw = IceBoardHardware(iceboard=self)
+        self._is_hw_open = True
+        self.hw.open()
+
+    def close_hw(self):
+        if self._is_hw_open:
+            self.hw.close()
+            del self.hw
+            self._is_hw_open = False
+
+    def open_bp(self):
+        self.bp = BackplaneHardware(iceboard=self)
+        self._is_bp_open = True
+        self.bp.open()
+        self.bp.init()
+
+    def close_bp(self):
+        if self._is_bp_open:
+            self.bp.close()
+            del self.bp
+            self._is_bp_open = False
 
     def open(self):
 
@@ -324,15 +312,6 @@ class chFPGAHandler(IceBoardPlusHandler):
         self.hw.set_led('GP_LED2', 1)  # Hardware link is on
         self.hw.set_led('GP_LED1', 0)  # Full FPGA firmware is not yet on
 
-        # ----------------------------------
-        # Read basic backplane information (backplane S/N, slot number) so we
-        # know where this board is in the array
-        #self.slot_number = self.get_slot_number()  # this method is provided by hw or arm
-        # (self.backplane_serial, __) = icebox.IceBox.get_backplane_info(iceboard = self)
-
-        # Detect the mezzanines
-        # self.detect_mezz(force_type_string=forced_mezz_type)
-
         self._is_open = True
 
     def close(self):
@@ -342,12 +321,86 @@ class chFPGAHandler(IceBoardPlusHandler):
     def is_open(self):
         return self._is_open
 
-    def ping_fpga(self):
+    def ping_fpga(self, timeout=0.3):
+        # Open the core right now if needed so we don't mask IOError exceptions this could generate
+        if not self.is_core_open():
+            self.open_core()
         try:
-            self.mmi_read(self._GPIO_COOKIE_REG, timeout=0.3)
+            self.mmi_read(self._GPIO_COOKIE_REG, timeout=timeout)
             return True
         except IOError:
             return False
+
+    def check_command_count(self, reset=False):
+        """ Returns a boolen that checks if the number of command and replies sent to/from the FPGA
+        by the Python memory mapped interface matches the counts tallied by the FPGA
+        firmware.
+
+        Since both ends drop packets that have invalid CRCs, this should
+        detect any transmission error in addition to UDP packets dropped by
+        the switches, routers or the networking stack on the host computer.
+
+        The packet counts are modulo 256, so a loss of a multiple of 256 packets will not be detected.
+
+        If 'reset' is True, the MMI counters are reset to the FPGA values in order to clear the error on future checks.
+        """
+
+        (cmd, rply) = self.core_gpio.get_command_count()
+        valid = (cmd == self.mmi.send_counter & 0xFF) and (rply == self.mmi.recv_counter & 0xFF)
+        if reset:
+            self.mmi.send_counter = cmd
+            self.mmi.recv_counter = rply
+        return valid
+
+    def set_fpga_control_networking_parameters(self, fpga_mac_addr=None, fpga_ip_addr=None, fpga_port_number=_FPGA_CONTROL_BASE_PORT, local_port=0):
+        """ Set the FPGA UDP networking parameters using the ARM SPI MMI link.
+        'fpga_ip_addr' is a mandatory string in the format of 'a.b.c.d', where a,b,c and d are decimal numbers.
+
+        'fpga_port_number' is the port to which command packets are sent to on the FPGA. This port is 41000 by default.
+
+        'fpga_mac_addr' is a string representing the MAC address of the FPGA in the format 'xx:xx:xx:xx:xx:xx, where
+        'xx' is a hex number'. If fpga_mac_addr is None, an arbitrary MAC address is
+        created using the IP address to ensure its uniqueness.
+
+        'local port' is the port number to which command replies are sent
+        back. If 'local_port' is 0 (default), the command reply packets will
+        be sent back to source port number of the last command packet received
+        by the FPGA (which presumably is the command that sollicited the
+        reply) .
+        """
+
+        ip_packed = socket.inet_aton(fpga_ip_addr)  #
+
+        # Compute a MAC address for the FPGA
+        # mac = socket.inet_aton(self._get_arm_mac())  #
+        if fpga_mac_addr is None:
+            mac_packed = struct.pack('>H4s', 0x1234, ip_packed)
+            fpga_mac_addr = ':'.join(['%02X' % ord(c) for c in mac_packed])
+        else:
+            mac_packed = [chr(int(s, 16)) for s in fpga_mac_addr.split(':')]
+
+        self.fpga_mac_addr = fpga_mac_addr
+        self.fpga_port_number = fpga_port_number
+        self.fpga_ip_addr = fpga_ip_addr
+
+        # Set the FPGA Networking parameters over the ARM-FPGA SPI interface
+        self.fpga_mmi_write(self._FPGA_MAC_ADDR_LSW_ADDR, struct.unpack('>I', mac_packed[2:6])[0])
+        self.fpga_mmi_write(self._FPGA_MAC_ADDR_MSW_IP_PORT_ADDR, (struct.unpack('>H', mac_packed[0:2])[0] << 16) | fpga_port_number)
+        self.fpga_mmi_write(self._FPGA_IP_ADDR_ADDR, struct.unpack('>I', ip_packed)[0])
+
+    def set_local_data_port_number(self, port):
+        """ Sets the port number to which the FPGA is sending its captured data stream on the control network.
+
+        If port==0, the data is sent to the control port number + 1.
+        """
+        word = self.fpga_mmi_read(self._REMOTE_IP_PORT_ADDR)
+        self.fpga_mmi_write(self._REMOTE_IP_PORT_ADDR, (word & 0xFFFF) | (port << 16))
+
+    def get_local_data_port_number(self):
+        """ Return the port number to which the FPGA is sending its captured data stream on the control network.
+        """
+        return self.fpga_mmi_read(self._REMOTE_IP_PORT_ADDR) >> 16
+
 
     def get_fpga_firmware_cookie(self):
         """
@@ -546,23 +599,62 @@ class chFPGAHandler(IceBoardPlusHandler):
     class _IrigTimestamp(object):
         pass
 
-    def _get_irigb_time(self, trig=True):
+    _IRIGB_SOURCE_TABLE = {
+        'bp_trig': 0,
+        'bp_time': 1
+        }
+
+    def set_irigb_source(self, source):
+        """ Set the source of the IRIG-B signal."""
+        if source not in self._IRIGB_SOURCE_TABLE:
+            raise ValueError('Invalid IRIG-B source name. Valid names are %s' % ', '.join(self._IRIGB_SOURCE_TABLE.keys()))
+        w2 = self.fpga_mmi_read(self._IRIGB_SAMPLE2_ADDR)
+        self.fpga_mmi_write(self._IRIGB_SAMPLE2_ADDR, (w2 & 0x3FFFFFFF) | (self._IRIGB_SOURCE_TABLE[source] << 30))
+
+    def get_irigb_source(self):
+        """ Get the name of the current source of the IRIG-B signal."""
+        source = self.fpga_mmi_read(self._IRIGB_SAMPLE2_ADDR) >> 30
+
+        for (source_name, source_number) in self._IRIGB_SOURCE_TABLE.items():
+            if source == source_number:
+                return source_name
+        raise ValueError('The IRIG-B module has an unknown source')
+
+    _IRIGB_TIME_FORMAT = {
+        'datetime': lambda ts: ts.datetime,
+        'nano' : lambda ts: ts.nano,
+        'datetime+': lambda ts: (ts.datetime, ts.nano % 1000)
+        }
+
+
+    def _get_irigb_time(self, trig=True, format='datetime'):
+        """ Reads the IRIG-B time from the time decoder and returns an object
+        that contains all the time information gathered from it.
+
+        If trig=True, the time of the next 10 MHz reference clock rising edge
+        is measured and returned. Otherwise, the last captured time is returned.
+        """
+        if format not in self._IRIGB_TIME_FORMAT:
+            raise ValueError('Invalid time format. Valid formats are: %s' % (', '.join(self._IRIGB_TIME_FORMAT.keys())))
+
         # Capture current time
         if trig:
             w2 = self.fpga_mmi_read(self._IRIGB_SAMPLE2_ADDR)
-            self.fpga_mmi_write(self._IRIGB_SAMPLE2_ADDR, w2 | (1 << 29))
             self.fpga_mmi_write(self._IRIGB_SAMPLE2_ADDR, w2 & ~(1 << 29))
-            while not self.fpga_mmi_read(self._IRIGB_TARGET1_ADDR) & (1<<29):
-                pass
+            self.fpga_mmi_write(self._IRIGB_SAMPLE2_ADDR, w2 | (1 << 29))  # Create a rising edge
+            t0 = time.time()
+            while not self.fpga_mmi_read(self._IRIGB_TARGET1_ADDR) & (1 << 29):
+                if time.time() - t0 > 1:
+                    raise RuntimeError('Timeout while waiting for a Reference clock edge')
 
         w0 = self.fpga_mmi_read(self._IRIGB_SAMPLE0_ADDR)
         w1 = self.fpga_mmi_read(self._IRIGB_SAMPLE1_ADDR)
         w2 = self.fpga_mmi_read(self._IRIGB_SAMPLE2_ADDR)
 
         # t0 = self.fpga_mmi_read(self._IRIGB_TARGET0_ADDR)
-        t1 = self.fpga_mmi_read(self._IRIGB_TARGET1_ADDR)
+        # t1 = self.fpga_mmi_read(self._IRIGB_TARGET1_ADDR)
         # t2 = self.fpga_mmi_read(self._IRIGB_TARGET2_ADDR)
-        e0 = self.fpga_mmi_read(self._IRIGB_EVENT_CTR_ADDR)
+        # e0 = self.fpga_mmi_read(self._IRIGB_EVENT_CTR_ADDR)
 
         ts = self._IrigTimestamp()
         ts.pps = (w0 >> 26) & ((1 << 6) - 1)
@@ -575,28 +667,53 @@ class chFPGAHandler(IceBoardPlusHandler):
         ts.ss = (w2 >> 0) & ((1 << 28) - 1)
         ts.source = (w1 >> 30) & ((1 << 2) - 1)
         ts.recent = (w1 >> 29) & 1
-        ts.datetime = datetime(ts.y + 2000, 1, 1) + timedelta(ts.d-1, ts.s, ts.ss/100., 0, ts.m, ts.h)
-        ts.before_target = (t1 >> 31) & 1
-        ts.done = (t1 >> 30) & 1
+        ts.datetime = datetime(ts.y + 2000, 1, 1) + timedelta(ts.d-1, ts.s, ts.ss//100, 0, ts.m, ts.h)
+        # ts.before_target = (t1 >> 31) & 1
+        # ts.done = (t1 >> 30) & 1
         ts.nano = int(timegm((ts.y+2000, 1, 1, 0, 0, 0))*1e9) + (ts.d*24*3600 + ts.h*3600 + ts.m*60 + ts.s)*1000000000 + ts.ss*10
-        ts.event_ctr = e0
-        return ts
+        # ts.event_ctr = e0
+        if not ts.recent:
+            raise RuntimeError('Invalid IRIG-B signal')
 
-    def _set_irigb_target_time(self, dt=None, offset=5, nano_offset=0):
+        return self._IRIGB_TIME_FORMAT[format](ts)
 
-        if dt is None:
-            dt = self._get_irigb_time().datetime
+    def set_irigb_trigger_time(self, datetime_=None, delay=None):
+        """ Sets the time at which the IRIG-B module will generate a trigger
+        that can be used to synchronize boards.
+
+        'datetime_' is the base target time in the Python as a 'datetime' object.
+
+        'delay' is a time offset in seconds that is added to 'datetime_' so set
+        the target time. It defaults to zero.
+
+        If the trigger is used for synchronizing boards, the delay should be a
+        multiple of 100 ns in order to ensure alignment with the 10 MHz
+        reference clock and ensure deterministic start of the syncronization
+        state machine.
+
+        If 'datetime_' and 'delay' are None, the trigger time is set 3 seconds after the current time.
+        """
+        if datetime_ is None:
+            dt = self._get_irigb_time(trig=True, format='datetime')
             self.logger.info('%.32r: Current IRIGB time is %s' % (self, dt.isoformat()))
+            if delay is None:
+                delay = 3
+        else:
+            dt = datetime_
+            if delay is None:
+                delay = 0
 
-        dt += timedelta(0, offset)
-        self.logger.info('%.32r: Setting IRIGB target time to %s + %3i ns' % (self, dt.isoformat(), nano_offset))
+        nano_delay = int(delay * 1e9) % 1000  # Get submicrosecond delay in nanosecond units
+        delay = int(delay * 1e6)/1e6  # Round delay to the microsecond
+        dt += timedelta(0, delay)
+        self.logger.info('%.32r: Setting IRIGB target time to %s + %3i ns' % (self, dt.isoformat(), nano_delay))
 
         y = dt.year % 100
         d = (dt - datetime(dt.year, 1, 1)).days + 1
         h = dt.hour
         m = dt.minute
         s = dt.second
-        ss = dt.microsecond * 100 + int(nano_offset/10)
+        ss = dt.microsecond * 100 + int(nano_delay/10)
 
         t0 = (y << 0)
         t1 = (d << 20) | (h << 14) | (m << 7) | (s << 0)
@@ -606,12 +723,70 @@ class chFPGAHandler(IceBoardPlusHandler):
         self.fpga_mmi_write(self._IRIGB_TARGET1_ADDR, t1)
         self.fpga_mmi_write(self._IRIGB_TARGET2_ADDR, t2)
 
-    def _capture_event(self, trig=True):
+    def is_irigb_before_trigger_time(self):
+        """ Is true if the current IRIGB is before the target trigger time that was previously set-up.
+        """
+        t1 = self.fpga_mmi_read(self._IRIGB_TARGET1_ADDR)
+        return bool((t1 >> 31) & 1)
+
+    def capture_frame_time(self, trig=True, format='nano'):
+        """ Captures the IRIG-B of the first sample of the next frame coming
+        out of the ADC data acquisition module.
+
+        The returned time is (frame_number, time), where frame_number is the
+        number of the frame that was measured, and time is the IRIG-B time in
+        a format specified by 'format' (see get_irigb_time() for available
+        formats).
+
+        NOTE1: floats do not have enough resolution to represent the current
+        time down to nanoseconds (as opposed to Pythin int's which have
+        infinite resolution), so beware of conversions.
+
+        NOTE2: The method will generate a timeout error if there is no data
+        coming out of the data acquisition module.
+
+        NOTE3: There is a delay between the time the first sample of a packet
+        is taken and the time the packet comes out of the data acquistion
+        module (due to initial dropping of a few frames and the FIFO filling-
+        delay).
+        """
+
         if trig:
             w2 = self.fpga_mmi_read(self._IRIGB_SAMPLE2_ADDR)
             self.fpga_mmi_write(self._IRIGB_SAMPLE2_ADDR, w2 & ~(1 << 28))
             self.fpga_mmi_write(self._IRIGB_SAMPLE2_ADDR, w2 | (1 << 28))
+            t0 = time.time()
+            while 1:
+                t1 = time.time()
+            # while 1:
+            #     time.time()
+                # if t1 - t0 > 1:
+                #     raise RuntimeError('Timeout while waiting for a Frame. Is data flowing out of the ADC data acquisition module?')
+        event_number = self.fpga_mmi_read(self._IRIGB_EVENT_CTR_ADDR)
+        time = self._get_irigb_time(trig=0, format=format)  # The event trigger will automatically trig IRIGB
+        return (event_number, time)
 
-        ts = self._get_irigb_time(trig=0)  # The event trigger will automatically trig IRIGB
-        return (ts.event_ctr, ts.datetime)
+    def capture_refclk_time(self, trig=True, format='nano'):
+        """ Measures the time at which the next 10MHz reference clock rising
+        edge occurs.
+
+        The returned time is an integer representing the number of nanoseconds
+        since Jan 1st 2000.
+
+        This can be used to measure the drift of the 10 MHz clock relative to
+        the IRIG-B time.
+        """
+        return self._get_irigb_time(trig=trig, format=format)  #
+
+    def get_irigb_time(self, trig=True, format='datetime'):
+        """ Return the current time as decoded on the IRIG-B input. The time
+        is returned in a format specified by 'format':
+
+        'datetime': Python 'datetime' object (with a microsecond resolution)
+        'datetime+': A (dt,nano) tuple where dt is a datetime object, and nano is the number of nanoseconds within the second.
+        'nano': An integer representing the number of nanoseconds since Jan 1st 2000.
+        """
+        return self._get_irigb_time(trig=trig, format=format)
+
+
 # vim: sts=4 ts=4 sw=4 tw=80 smarttab expandtab

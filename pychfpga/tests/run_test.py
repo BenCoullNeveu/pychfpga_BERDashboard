@@ -11,26 +11,28 @@ import logging
 import __main__
 import datetime
 import sys
+import importlib
 
 from pychfpga.core.icecore import IceBoardPlus, IceBoardPlusHandler, IceCrate, HardwareMap, discover_iceboards
 from pychfpga.MGADC08 import MGADC08
 from pychfpga.core.chFPGA_controller import chFPGA_controller
 from pychfpga.core.chFPGA_receiver import chFPGA_receiver
 from pychfpga.core.icecore.session import load_session as load_yaml
+from pychfpga.core.icecore.tests import TestGroup
 
 # import all test modules
 import scaler_tests
 
-test_classes = {
-    'scaler': scaler_tests.ScalerTests
-    }
+# test_classes = {
+#     'scaler': scaler_tests.ScalerTests
+#     }
 
-# Reload all modules in case they were changed
-for m in {sys.modules[c.__module__] for c in test_classes.values()}:
-    print 'Reloading module %s' % m.__name__
-    reload(m)
-for n,c in test_classes.items():
-    test_classes[n] = getattr(sys.modules[c.__module__], c.__name__)
+# # Reload all modules in case they were changed
+# for m in {sys.modules[c.__module__] for c in test_classes.values()}:
+#     print 'Reloading module %s' % m.__name__
+#     reload(m)
+# for n,c in test_classes.items():
+#     test_classes[n] = getattr(sys.modules[c.__module__], c.__name__)
 
 class FpgaBitstream(object):
     """ Helper object used to load and store a FPGA bitstream. You don't have
@@ -45,7 +47,11 @@ class FpgaBitstream(object):
     def __str__(self):
         """ Return the bitstream as a string. """
         if self.auto_reload:
-            self._load()
+            try:
+                self._load()
+            except IOError:
+                if not self.bitstream:
+                    raise
         return self.bitstream
     def _load(self):
         with open(self.filename, 'rb') as file_:
@@ -97,10 +103,10 @@ if __name__=='__main__':
 
     parser.add_argument('-i', '--iceboards', action='store', nargs='+', type=str, help="Space-separated list of the iceboard hostnames (e.g. 10.10.10.7 or iceboard0007.local if the mDNS system is operational")
     parser.add_argument('-d', '--discover', action='store_true', help="Discover all boards and crates on the network using mDNS and add them to the hardware map")
-    parser.add_argument('-c', '--crate', action='store', type=str, help="Select only boards in the specified crate serial number")
+    parser.add_argument('-c', '--crate', action='store', type=str, help="Discover and select only boards in the specified crate serial number")
     parser.add_argument('-s', '--slot', action='store', type=str, help="Select only boards in the specified slot(s)")
-    parser.add_argument('--force', action='store', type=int, default=0, help='Force FPGA programming even if the firmware is already programmed. If -1, the FPGA is not configured.')
-    parser.add_argument('--bitfile', action='store', type=str, default= default_bitfile,  help='Filename of the bitfile used to to program the FPGAs')
+    parser.add_argument('--force', action='store', type=int, default=-1, help='Force FPGA programming even if the firmware is already programmed. If -1, the FPGA is not configured.')
+    parser.add_argument('--bitfile', action='store', type=str, default=default_bitfile,  help='Filename of the bitfile used to to program the FPGAs')
 
 
     # parser.add_argument('-s', '--subarray', action='store', nargs='+', type=int, help='Space-separated list of subarrays to include')
@@ -165,29 +171,23 @@ if __name__=='__main__':
 
     # Discover additional boards and crates on the network using mDNS
     if args.discover:
-        if not args.crate:
-            raise NameError('Must specify a crate number when using auto-discovery')
         discover_iceboards(hwm)
+    elif args.crate:
+        discover_iceboards(hwm, crate=args.crate)
 
-    ib = hwm.query(IceBoardPlus)
-    print 'The following boards were specified and/or discovered:'
+    # Query all iceboards, and apply slot numbe rfilter if applicable
+    if args.slot:
+        ib = hwm.query(IceBoardPlus).filter_by(slot=args.slot)
+    else:
+        ib = hwm.query(IceBoardPlus)
+    # Query all IceCrates
+        ic = hwm.query(IceCrate)
+
+
+    print 'The following IceBoards were selected:'
     for i in ib:
         print 'Crate SN%s, slot %2i: Iceboard SN%s at %s (ping =%s)' % (i.crate.serial, i.slot, i.serial, i.hostname, i.ping())
 
-    if args.crate:
-        ic = hwm.query(IceCrate).filter_by(serial=args.crate).one()
-    else:
-        ic = hwm.query(IceCrate)
-        if ic.count():
-            ic = ic.one()
-        else:
-            ic = None
-
-    # Filter by crate and slot number
-    if ic:
-        ib = ib.filter_by(crate=ic)
-    if args.slot:
-        ib = ib.filter_by(slot=args.slot)
 
     # -------------------------------
     # Check if specified iceboards are on-line before going any further
@@ -201,7 +201,9 @@ if __name__=='__main__':
         if args.force > -1:
             ib.set_fpga_bitstream(force=args.force)
 
-        ib.discover_mezzanines() # auto-discover mezzanines and add them to the hardware map (requires chFPGA_controller handler to read McGill MGADC08 EEPROMs)
+        # Auto-discover mezzanines and add them to the hardware map (requires
+        # chFPGA_controller firmware and handler to read McGill MGADC08 EEPROMs)
+        ib.discover_mezzanines()
 
         print 'The following boards were selected:'
         for i in ib:
@@ -217,29 +219,40 @@ if __name__=='__main__':
                     group_frames=args.frames_per_packet,
                     enable_gpu_link=args.enable_gpu_link)
 
-        # logger.info('Getting chFPGA configuration')
-        # chFPGA_config = c.get_config()
-        # logger.info('Starting data/correlator receiver threads')
-
-        # r = chFPGA_receiver(chFPGA_config)
+    # -------------------------------------------
+    # Run the tests on selected boards and crates
+    # -------------------------------------------
 
     for test_name in args.test_names:
-        test_module = test_classes[test_name]
-        for i in ib:
-            test_filename = 'results/%s_IceBoard_SN%s' % (test_name, i.serial)
-            te = test_module(context={
+        test_name_split = test_name.split('.')
+        module_name = '.'.join(test_name_split[0:-1])
+        test_class_name = test_name_split[-1]
+
+        module = importlib.import_module(module_name)
+        reload(module)  # Make sure the module is up to date
+        test_class = getattr(module, test_class_name)
+
+        if not issubclass(test_class, TestGroup):
+            raise TypeError('The test class must be derived from TestGroup')
+
+        # for i in ib:
+        test_filename = 'results/%s' % (test_name)
+        te = test_class(context={
                 "Date": datetime.datetime.now(),
                 "Bitstream filename": args.bitfile,
                 "Bitstream CRC32": '0x%08X' % i.get_fpga_bitstream_crc(),
                 "Master Iceboard hostname": i.hostname,
                 "Iceboard handler name": type(i.handler).__handler_name__,
                 })
-            try:
-                te.run(i)
-            except Exception:
-                raise
-            finally:
-                te.write_xml(test_filename + '.xml')
-                # te.write_html(test_filename + '.html')
-                print '\n'.join(te.synopsis_as_strings())
+        try:
+            te.run(iceboards=ib, crates=ic)
+        except Exception:
+            raise
+        finally:
+            print
+            print '---------------- TESt COMPLETED --------------------'
+            te.write_xml(test_filename + '.xml')
+            # te.write_html(test_filename + '.html')
+            print 'TEST SYNOPSIS:'
+            print '\n'.join(te.synopsis_as_strings())
 # vim: sts=4 ts=4 sw=4 tw=78 smarttab expandtab

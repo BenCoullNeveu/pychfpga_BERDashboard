@@ -414,6 +414,8 @@ class IceBoardPlusHandler(IceBoardHandler):
     FPGA_SERIAL_NUMBER_LSW_ADDR           = 4 * 5
     FPGA_SERIAL_NUMBER_MSW_ADDR           = 4 * 6
 
+    NUMBER_OF_FMC_SLOTS = 2
+
     # _bitstream_register contains a list of bitstreams that are associated
     # with this object. Format: tag: bitstream_object
     _bitstream_register = {}

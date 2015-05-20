@@ -20,47 +20,37 @@ import numpy as np
 from pychfpga.common.util import hex
 from Module import Module_base, BitField
 
-__reload__=True
+# __reload__ = True
 
 class I2C_base(Module_base):
     # I2C addresses
-    I2C_FMC_HPC_EPPROM_ADDR=0    # ADC. R/W device. 8 bit address+RW, 16 bit data.
+    # I2C_FMC_HPC_EPPROM_ADDR = 0    # ADC. R/W device. 8 bit address+RW, 16 bit data.
 
-    CONTROL=BitField.CONTROL
-    STATUS=BitField.STATUS
+    CONTROL = BitField.CONTROL
+    STATUS = BitField.STATUS
 
-    BITS={
-        'START'           : BitField(CONTROL, 0x04, 7, doc='A 0 to 1 transition on this bit starts I2C transaction'),
-        'BYTES2'          : BitField(CONTROL, 0x04, 4, width=3, doc='Number of bytes to read back from the same address after the write sequence'),
-        'BYTES1'          : BitField(CONTROL, 0x04, 0, width=2, doc='Number of bytes in the I2C communication (excluding the address byte) 1=1 Byte, 1=2 bytes, 2=3 bytes'),
-
-        'RESET'           : BitField(CONTROL, 0x05, 7, doc='1 resets the I2C subsystem'),
-        'ALWAYS_CLK'      : BitField(CONTROL, 0x05, 6, doc='Force the generation if a clock even when idle (will prevent the system from detecting idle bus state unless STOP events are seen'),
-        'PORT'            : BitField(CONTROL, 0x05, 4, width=2, doc='I2C port number (0=FMC HPC EEPROM/ML605 EEPROM/ML605 EEPROM, 1=SMBus'),
-        'FORCE_SCK'       : BitField(CONTROL, 0x05, 3, doc='Enables forcing SCK to the state identified in FORCE_SCK_STATE'),
-        'FORCE_SDA'       : BitField(CONTROL, 0x05, 2, doc='Enables forcing SDA to the state identified in FORCE_SDA_STATE'),
-        'FORCE_SCK_STATE' : BitField(CONTROL, 0x05, 1, doc='State to which SCK is forces when FORCE_SCK=1'),
-        'FORCE_SDA_STATE' : BitField(CONTROL, 0x05, 0, doc='State to which SDA is forces when FORCE_SDA=1'),
-
-        'IDLE'            : BitField(STATUS, 0x04, 7, doc='Indicates if the bus is idle'),
-        'TIMEOUT'         : BitField(STATUS, 0x04, 4, doc='Indicates if a timeout has occured during the transaction'),
-        'COLLISION'       : BitField(STATUS, 0x04, 3, doc='Indicates if the transaction experienced a collision'),
-        'SCK'             : BitField(STATUS, 0x04, 2, doc='State of the SCK line'),
-        'SDA'             : BitField(STATUS, 0x04, 1, doc='State of the SDA line'),
-        'DONE'            : BitField(STATUS, 0x04, 0, doc='High when I2C transaction is completed'),
-
-
-
-        'ACK_STATUS' : BitField(STATUS, 0x05, 0, width=8,doc='Ack bits'),
-
-        'BYTE_CTR'   : BitField(STATUS, 0x06, 4, width=3, doc='Byte counter at end of transmission'),
-        'DIR'        : BitField(STATUS, 0x06, 1, doc='Dirction at end of transmission'),
-        'BIT_CTR'    : BitField(STATUS, 0x06, 0, width=3, doc='Bit counter at end of transmission'),
-
-        'START_CTR'  : BitField(STATUS, 0x07, 4, width=4, doc='Counts the number of START events'),
-        'DONE_CTR'   : BitField(STATUS, 0x07, 0, width=4, doc='Counts the number of DONE events'),
-
-    }
+    START           = BitField(CONTROL, 0x04, 7, doc='A 0 to 1 transition on this bit starts I2C transaction')
+    BYTES2          = BitField(CONTROL, 0x04, 4, width=3, doc='Number of bytes to read back from the same address after the write sequence')
+    BYTES1          = BitField(CONTROL, 0x04, 0, width=2, doc='Number of bytes in the I2C communication (excluding the address byte) 1=1 Byte, 1=2 bytes, 2=3 bytes')
+    RESET           = BitField(CONTROL, 0x05, 7, doc='1 resets the I2C subsystem')
+    ALWAYS_CLK      = BitField(CONTROL, 0x05, 6, doc='Force the generation if a clock even when idle (will prevent the system from detecting idle bus state unless STOP events are seen')
+    PORT            = BitField(CONTROL, 0x05, 4, width=2, doc='I2C port number (0=FMC HPC EEPROM/ML605 EEPROM/ML605 EEPROM, 1=SMBus')
+    FORCE_SCK       = BitField(CONTROL, 0x05, 3, doc='Enables forcing SCK to the state identified in FORCE_SCK_STATE')
+    FORCE_SDA       = BitField(CONTROL, 0x05, 2, doc='Enables forcing SDA to the state identified in FORCE_SDA_STATE')
+    FORCE_SCK_STATE = BitField(CONTROL, 0x05, 1, doc='State to which SCK is forces when FORCE_SCK=1')
+    FORCE_SDA_STATE = BitField(CONTROL, 0x05, 0, doc='State to which SDA is forces when FORCE_SDA=1')
+    IDLE            = BitField(STATUS, 0x04, 7, doc='Indicates if the bus is idle')
+    TIMEOUT         = BitField(STATUS, 0x04, 4, doc='Indicates if a timeout has occured during the transaction')
+    COLLISION       = BitField(STATUS, 0x04, 3, doc='Indicates if the transaction experienced a collision')
+    SCK             = BitField(STATUS, 0x04, 2, doc='State of the SCK line')
+    SDA             = BitField(STATUS, 0x04, 1, doc='State of the SDA line')
+    DONE            = BitField(STATUS, 0x04, 0, doc='High when I2C transaction is completed')
+    ACK_STATUS      = BitField(STATUS, 0x05, 0, width=8,doc='Ack bits')
+    BYTE_CTR        = BitField(STATUS, 0x06, 4, width=3, doc='Byte counter at end of transmission')
+    DIR             = BitField(STATUS, 0x06, 1, doc='Dirction at end of transmission')
+    BIT_CTR         = BitField(STATUS, 0x06, 0, width=3, doc='Bit counter at end of transmission')
+    START_CTR       = BitField(STATUS, 0x07, 4, width=4, doc='Counts the number of START events')
+    DONE_CTR        = BitField(STATUS, 0x07, 0, width=4, doc='Counts the number of DONE events')
 
 
 

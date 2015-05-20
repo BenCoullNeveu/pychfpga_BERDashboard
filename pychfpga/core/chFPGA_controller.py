@@ -212,13 +212,13 @@ class chFPGA_controller(chFPGAHandler):
             .i2c.select_bus(bus_name)  where bus_name is 'FMCA' or 'FMCB'
             .i2c.write_read(...)
         """
-        super(type(self),self).__init__(**kwargs)
+        super(chFPGA_controller, self).__init__(**kwargs)
         # Initialize instance attributes
         # For now, we do not know their values unless the system is initialized.
         # We may want to fix that by reading the FPGA states and determining those values.
 
         self._logger = logging.getLogger(__name__)
-        self._logger.info("Creating chfpga_controller object as %r" % (self))
+        self._logger.info("%.32r: Creating chFPGA_controller object" % (self))
 
         self._sampling_frequency = None
         self._reference_frequency = None
@@ -310,32 +310,7 @@ class chFPGA_controller(chFPGAHandler):
             self._logger.info('%r: Number of correlators: %i (correlators %s)' % (self, len(self.LIST_OF_IMPLEMENTED_CORRELATORS),str(self.LIST_OF_IMPLEMENTED_CORRELATORS)))
             self._logger.info('%r: Number of channelizers supported by the correlators: %i ' % (self, self.NUMBER_OF_ANTENNAS_TO_CORRELATE))
 
-        # version = self.fpga.read(BASE_REGISTERS_BASE_ADDR + BASE_VERSION_REG)
-        # firmware_timestamp = self.get_bitstream_timestamp()
-        # config_reg1 = self.fpga.read(BASE_REGISTERS_BASE_ADDR + BASE_CONFIG1_REG)
-        # config_reg2 = self.fpga.read(BASE_REGISTERS_BASE_ADDR + BASE_CONFIG2_REG)
-
-        # self.NUMBER_OF_MEZZANINES                           = (config_reg1 >> 0) & 0xFF
-        # self.NUMBER_OF_SQUID_CHANNELS_PER_MEZZANINE         = (config_reg1 >> 8) & 0xFF
-        # self.NUMBER_OF_FREQUENCY_CHANNELS_PER_SQUID_CHANNEL = (config_reg1 >> 16) & 0xFF
-        # self.NUMBER_OF_SQUID_CONTROLLERS                    = (config_reg1 >> 24) & 0xFF
-        # self.PLATFORM_ID                                    = (config_reg2 >> 24) & 0xFF
-        # self.PLATFORM_DESCRIPTION = PLATFORM_DESCRIPTION_LIST[self.PLATFORM_ID];
-
-        # print '   Hardware platform:', self.PLATFORM_DESCRIPTION
-        # print '   Firmware timestamp:', firmware_timestamp
-        # print '   Firmware Magic Cookie: 0x%08X' % cookie
-        # print '   Firmware version number: %i' % version
-        # print '   Number of mezzanines supported: %i' % self.NUMBER_OF_MEZZANINES;
-        # print '   Number of SQUID Channels/mezzanine: %i' % self.NUMBER_OF_SQUID_CHANNELS_PER_MEZZANINE
-        # print '   Number of frequency channels per SQUID channel: %i' % self.NUMBER_OF_FREQUENCY_CHANNELS_PER_SQUID_CHANNEL
-        # print '   Number of SQUID controllers supported: %i' % self.NUMBER_OF_SQUID_CONTROLLERS
-
             self._logger.info('%r: === Instantiating FPGA ressources' % self)
-
-            # self._logger.debug('%r: === Instantiating I2C' % self)
-            # self.fpga_I2C = I2C.I2C_base(self, self.SYSTEM_I2C_BASE_ADDR)
-            #self.fpga_I2C = self._motherboard.i2c
 
             self._logger.debug('%r: === Instantiating SYSMON' % self)
             self.SYSMON = SYSMON.SYSMON_base(self, self._SYSTEM_SYSMON_BASE_ADDR)
@@ -356,8 +331,6 @@ class chFPGA_controller(chFPGAHandler):
             self._logger.debug('%r: === Instantiating 1st CROSSBAR' % self)
             self.CROSSBAR = CROSSBAR.CROSSBAR_base(self, self._CROSSBAR1_BASE_ADDR, self._CROSSBAR_ADDR_INCREMENT, crossbar_level=1) # CROSSBAR block
 
-
-
             if self.NUMBER_OF_BP_SHUFFLE_LANES:
                 self._logger.debug('%r: === Instantiating Backplane shuffle subsystem' % self)
                 self.BP_SHUFFLE = shuffle.Shuffle(self, self._BP_SHUFFLE_BASE_ADDR, self._BP_SHUFFLE_ADDR_INCREMENT)
@@ -373,35 +346,13 @@ class chFPGA_controller(chFPGAHandler):
                 self._logger.debug('%r: === Instantiating GPU LINKS' % self)
                 self.GPU = GPU.GPU_base(self, self._GPU_LINK_BASE_ADDR, self._GPU_LINK_ADDR_INCREMENT)
 
-            # Now that the firmware ressources are initialized, print more configuration info that requires access to these ressources
-            # self._logger.debug('      Data width is currently (Re+Im) = (%i+%i) bits (it might change later during initialization)' % (self.get_data_width(),self.get_data_width()))
-
-            # ---------------------------------------------------------------------
-            # -- Create motherboard ressource handlers objects
-            # ---------------------------------------------------------------------
-
-            # self._logger.info('=== Instantiating motherboard ressources handlers')
-            # motherboard_cls = self._PLATFORM_ID_LIST[self.PLATFORM_ID][1]
-            # self._motherboard = motherboard_cls(self) # Creates the motherboard handler
-
-            # self._NUMBER_OF_FMC_SLOTS = self._motherboard.get_number_of_fmc_slots()
-            self._logger.info('%r: This motherboard has %i FMC slots' % (self, self.hw.NUMBER_OF_FMC_SLOTS))
-            #return
-            # self._logger.debug('  - ML605 PMBus')
-            # self.ML605_PMBus = ML605_PMBus.ML605_PMBus_base(self)
-
-            # self._logger.debug('  - ML605 PMBus')
-            # self.LCD = ML605_LCD.LCD_base(self.GPIO)
-
-            #if verbose>=2: self._logger.debug('  - MGT')
-            #self.MGT=MGT.MGT_base(self)
-
+            self._logger.info('%r: This motherboard has %i FMC slots' % (self, self.NUMBER_OF_FMC_SLOTS))
 
             # ---------------------------------------------------------------------
             # -- Create ADC board hardware ressource handlers objects
             # ---------------------------------------------------------------------
+
             self._logger.info('%r: === Analyzing available FMC Mezzanines' % self)
-            # self._adc_board = [self._motherboard.mezz1, self._motherboard.mezz2]
             self._adc_board = [
                 self.mezzanine.get(1, None),
                 self.mezzanine.get(2, None)]
@@ -409,13 +360,8 @@ class chFPGA_controller(chFPGAHandler):
             self._FMC_present = [False] * self._NUMBER_OF_FMC_SLOTS
             self.ANT_FMC_IS_PRESENT = [False] * self.NUMBER_OF_ANTENNAS
             for (fmc_number, fmc) in enumerate(self._adc_board):
-                # fmc_name = ['FMCA', 'FMCB'][fmc_number]
-                # self._logger.debug('   Instantiating FMC #%i (%s)' % (fmc_number, fmc_name))
-                # self._adc_board.append(MGADC08.MGADC08_base(self, fmc_number, fmc_name, verbose = verbose))
-                # # Determine if the ADC board is present
-                # # The 3.3V supply powering the EEPROM is always on, so we can determing what FMC board is present before we power the board
                 if fmc:
-                    self._FMC_present[fmc_number]= fmc.is_present()
+                    self._FMC_present[fmc_number] = fmc.is_present()
                 if self._FMC_present[fmc_number]:
                     self._logger.info('%r:   An MGADC08 ADC Board is present on FMC slot %i' % (self, fmc_number))
                 else:
@@ -426,8 +372,6 @@ class chFPGA_controller(chFPGAHandler):
             for (ant_number, fmc_number) in enumerate(self.ANT_FMC_NUMBER):
                 if self._adc_board[fmc_number]:
                     self.ANT_FMC_IS_PRESENT[ant_number] = self._adc_board[fmc_number].is_present()
-
-            # self.unregister(self.fpga)
 
             self.hw.set_led('GP_LED1',1) # Indicate that the Iceboard is ready
 
@@ -454,19 +398,23 @@ class chFPGA_controller(chFPGAHandler):
         Close chFPGA object
         """
         # Close FMC boards
-
         while self._adc_board:
             fmc=self._adc_board.pop()
             if hasattr(fmc, 'close'):
                 fmc.close()
-    # def __del__(self):
+        super(chFPGA_controller, self).close()  # Make sure we close underlying sytems (sockets, etc)
 
-    #     self.close()
-    #     self._logger.debug('__del__: Closed FPGA at IP address %s' % self.ip_addr)
 
-    def init(self, sampling_frequency=800e6, reference_frequency=10e6, adc_delay_table=None, data_width=4, group_frames = 4, enable_gpu_link =1, verbose=0, **kwargs):
-        """
-        Resets the chFPGA to a known state with specified parameters.
+    def init(self,
+             sampling_frequency=800e6,
+             reference_frequency=10e6,
+             adc_delay_table=None,
+             data_width=4,
+             group_frames=4,
+             enable_gpu_link=1,
+             verbose=0,
+             **kwargs):
+        """ Resets the chFPGA firmware to a known state with the specified parameters.
         """
 
 
@@ -625,7 +573,7 @@ class chFPGA_controller(chFPGAHandler):
         config.system_fpga_ip_address = self.fpga_ip_addr
         config.system_fpga_port_number = self.fpga_port_number
         config.system_local_command_port_number = self.local_port_number
-        config.system_local_data_port_number = self.local_port_number + self.GPIO.DATA_IP_PORT_OFFSET
+        config.system_local_data_port_number = self.get_local_data_port_number()
         config.system_local_corr_port_number = self.local_port_number + self.GPIO.CORR_IP_PORT_OFFSET
 
 
@@ -666,17 +614,12 @@ class chFPGA_controller(chFPGAHandler):
         # config.adc_serial = 'Not available'
         config.motherboard_serial = self.GPIO.FPGA_SERIAL_NUMBER
         # Add FFT shift, scaler gain, corr integration/capture period etc.
-        config.freq_flags = self.freq_flags
+        # config.freq_flags = self.freq_flags  # JFC: what is that?
         return config
 
 
     def update_config(self):
         pass
-
-
-    # Define Read and Write for legacy compatibility
-    # Read = read
-    # Write = write
 
     def read_bit(self, addr, bit):
         return (self.read(addr) & (1 << bit)) != 0
@@ -822,33 +765,32 @@ class chFPGA_controller(chFPGAHandler):
                 board_list.append(self._adc_board[board_number])
             return list(set(board_list))
 
-
     ADC_MODE_NAMES = {
         # name, mode number, period (in 4-bytes words)
-        'data' : (0, 64), # ADC sends analog data
-        'ramp' : (1, 64), # ADC sends ramp from 0 to 255
-        'pulse': (2, 11), # ADC sends ten 0x00 followed by one 0xff
+        'data': (0, 64),  # ADC sends analog data
+        'ramp': (1, 64),  # ADC sends ramp from 0 to 255
+        'pulse': (2, 11),  # ADC sends ten 0x00 followed by one 0xff
         }
 
     # ADC_MODE_NAMES_REVERSED = util.reverse_dict(ADC_MODE_NAMES)
 
     def set_adc_mode(self, mode='data', channels=None):
         """
-        Sets the operating mode of the all the ADCs, sets the proper CAPTURE period, and sends a SYNC to actuate the change.
+        Sets the operating mode of the all the ADCs, sets the proper CAPTURE
+        period, and sends a SYNC to actuate the change.
+
         By default, all ADCs on any board handling the specified channels are set to the desired mode.
         If no channels are specified, the default channel list is used.
         Again: both ADCs on every target board are set, even if we specify channels handled by only one adc chip.
-            mode:
-                'data': Normal mode (ADC output contains analog samples)
-                'ramp': Ramp mode (ADC output contains repeating 0-255 pattern. Note that ADCDAQ inverts bit 7 during acquisition to convert offset binary to 2's complement binary)
-                'pulse': Strobe mode (ADC output contains one 0xFF followed by ten 0x00. It repeats with a pariod of 11. Same comment as above)
-        111212 JFC: Added this high-level function with string mode.
-        131024 JFC: Implemented multi-board.
+
+        mode:
+            'data': Normal mode (ADC output contains analog samples)
+            'ramp': Ramp mode (ADC output contains repeating 0-255 pattern. Note that ADCDAQ inverts bit 7 during acquisition to convert offset binary to 2's complement binary)
+            'pulse': Strobe mode (ADC output contains one 0xFF followed by ten 0x00. It repeats with a pariod of 11. Same comment as above)
         """
         if mode.lower() not in self.ADC_MODE_NAMES:
             raise ValueError("Invalid ADC mode '%s'. Valid modes are %s" % (mode, ', '.join(self.ADC_MODE_NAMES.keys())))
         (mode_value, capture_period) = self.ADC_MODE_NAMES[mode.lower()]
-
 
         if channels is None:
             channels = self.default_channels
@@ -873,7 +815,9 @@ class chFPGA_controller(chFPGAHandler):
 
     def get_adc_mode(self):
         """
-        Gets the current operating mode of all the ADCs as a string. This assumes all the ADCs are operating in the same mode. If not, an error message will be returned.
+        Gets the current operating mode of all the ADCs as a string. This
+        assumes all the ADCs are operating in the same mode. If not, an error
+        message will be returned.
         """
 
         mode_value = []
@@ -890,9 +834,10 @@ class chFPGA_controller(chFPGAHandler):
     def set_adcdaq_mode(self, mode='data', channels=None):
         """
         Sets the source of the data acquisition module.
-            test_mode:
-                'data': the ADCDAAQ module sends data from the ADC
-                'ramp': The ADCDAQ sens an internally generated ramp
+
+        test_mode:
+            'data': the ADCDAAQ module sends data from the ADC
+            'ramp': The ADCDAQ sens an internally generated ramp
         """
 
         if channels is None:
@@ -924,17 +869,20 @@ class chFPGA_controller(chFPGAHandler):
 
     def start_data_capture(self, period=None, frames_per_burst=1,  number_of_bursts=0,  channels=None, source='scaler', sync=1, verbose=1, burst_period_in_seconds=None, burst_period_in_frames=None):
         """
-        Triggers the capture and transmission of ADC (pre-FFT) or SCALER (post FFT) data frames the Ethernet port.
-        This function does not receive the frames from the ethernet port. This has to be done separately.
+        Triggers the capture and transmission of ADC (pre-FFT) or SCALER (post
+        FFT) data frames the Ethernet port. This function does not receive the
+        frames from the ethernet port. This has to be done separately.
 
-        Data is sent as N bursts ('number_of_bursts') of M frames ('frames_per_burst') .
-        If 'number_of_bursts' is zero or not specified, burst transmission is continuous.
+        Data is sent as N bursts ('number_of_bursts') of M frames
+        ('frames_per_burst') . If 'number_of_bursts' is zero or not specified,
+        burst transmission is continuous.
 
         Burst repetition rate is set either as a period specified in seconds
         ('period' or 'burst_period_in_seconds') or as a number of frames
         ('burst_period_in-frames').
 
-        'source' selects the data source and is either 'adc' or 'scaler'. Default is 'scaler'.
+        'source' selects the data source and is either 'adc' or 'scaler'.
+        Default is 'scaler'.
         """
         if channels is None:
             channels = self.default_channels
@@ -1453,27 +1401,6 @@ class chFPGA_controller(chFPGAHandler):
             gain_list.append([ant.ant_number, [glin,glog]])
         return gain_list
 
-    # def set_fmc_power(self, state):
-    #     """
-    #     Enable or disables power on one or both FMCs.
-    #     If 'state' is an integer or a boolean, all FMCs are set to the target state.
-    #     If 'state' is a tuple, each element specifies the state of one FMC slot starting from slot 0.
-    #     If 'state' is a dictionary, the FMC slot specified by the key is set to the corresponding value.
-
-    #     History:
-    #         2013-09-04 JFC: Added this function
-    #     """
-
-    #     if isinstance(state, (int, bool)):
-    #         for fmc in self._adc_board:
-    #             fmc.set_power(state)
-    #     elif isinstance(state, (tuple, list)):
-    #         for (fmc_number, fmc_state) in enumerate(state):
-    #             self._adc_board[fmc_number].set_power(fmc_state)
-    #     elif isinstance(state, dict):
-    #         for (fmc_number, fmc_state) in state.items():
-    #             self._adc_board[fmc_number].set_power(fmc_state)
-
 
     def set_fft_shift(self, fft_shift=0b11111111111, channels=None):
         """
@@ -1572,13 +1499,6 @@ class chFPGA_controller(chFPGAHandler):
         self.fpga.set_timeout(old_timeout)
         print '%i read operations performed in %.2f s (%.0f read/s) with %i errors (%0.3f%% errors)' % (trials, t1 - t0, float(n)/(t1 - t0), errors, float(errors)/float(trials)*100)
 
-    # def print_memory_map(self):
-    #     import operator
-    #     # map = ['%-20s:0x%05X' % (module_name, addr) for (module_name, addr) in self.MEMORY_MAP.items()]
-    #     sorted_map = sorted(self.MEMORY_MAP.items(), key=operator.itemgetter(1))
-    #     for (module_name, addr) in sorted_map:
-    #         print '0x%05X: %s%-20s' % (addr, '  '*module_name.count('/'), module_name)
-
     def get_temperatures(self):
         res = {}
         res['FPGA_core']=self.SYSMON.temperature()
@@ -1625,7 +1545,7 @@ class chFPGA_controller(chFPGAHandler):
             bs.NUMBER_OF_LANES = cb1_lanes
             if remap and not bp_bypass:
                 tx = (self.slot, i)  # unique transmitter id (slot, lane)
-                destination_slot = self.bp.get_matching_rx(tx)[0]
+                destination_slot = self.crate.get_matching_rx(tx)[0]
                 bs.select_bins(np.arange(cb1_bins) * cb1_minimum_bin_spacing + (destination_slot-1))
             else:
                 bs.select_bins(np.arange(cb1_bins) * cb1_minimum_bin_spacing)
@@ -1674,48 +1594,47 @@ class chFPGA_controller(chFPGAHandler):
         self.set_corr_reset(0)
         self.set_ant_reset(0)
 
-    def set_crate_fan_speed(self, speed):
-        """ Set the speed of the crate fan. `speed` is a value from 0 to 100.
+    def compute_adc_delay_offsets(self, channels=range(16)):
         """
-        if not self.bp._fan_ctrl_present:
-            raise RuntimeError('There is no fan controller connected on the backplane I2C bus')
-        self.bp._fan_ctrl.set_duty_cycle(speed)
+        Measures the eye diagram of the ADC digital data lines and computes
+        the permisable offset to ensure reliable data acquisition.
 
-    def compute_adc_delay_offsets(self, channels=[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15]):
+        Returns a delay/offset table (delaytable), flags any stuck bits
+        (stuckbits), provides the logic level at the chosen eye sampling point
+        (bitposgood)  and in that order. Note that stuck bits should all be
+        false, bitposgood should be all 1s
         """
-        Measures the eye diagram of the ADC digital data lines and computes the permisable offset to ensure reliable data acquisition.
-        Returns a delay/offset table (delaytable), flags any stuck bits (stuckbits), provides the logic level at the chosen eye 
-        sampling point (bitposgood)  and in that order. Note that stuck bits should all be false, bitposgood should be all 1s
-        """
-        delaytable=[]
-        stuckbits=[]
-        bitposgood=[]
-        
+        delaytable = []
+        stuckbits = []
+        bitposgood = []
+
         for chan in channels:
-            t=self.read_eye_diagram(channels=[chan], offset=[0]*16, noffsets=11) #Creating an offset / delay table 11 columns 32 rows
-            if (t[chan]==0).sum() and (t[chan]==255).sum() : #Have found both 0 and 255 in the table - Means no stuck bits
+            t=self.read_eye_diagram(channels=[chan], offset=[0]*16, noffsets=11)  # Creating an offset / delay table 11 columns 32 rows
+            if (t[chan] == 0).sum() and (t[chan] == 255).sum():  # Have found both 0 and 255 in the table - Means no stuck bits
                 stuckbits.append(False)
             else:
-                stuckbits.append(True) #Stuck bits detected
+                stuckbits.append(True)  # Stuck bits detected
 
 
-            offset=np.where(t[chan].sum(axis=0) == t[chan].sum(axis=0).max())[0][0]  #Choosing the offset by looking at the offset/delay table and picking the column with the highest sum (i.e most 255s)
-           
-            bitdelay=[]
-            changood=[]
+            offset = np.where(t[chan].sum(axis=0) == t[chan].sum(axis=0).max())[0][0]  # Choosing the offset by looking at the offset/delay table and picking the column with the highest sum (i.e most 255s)
+
+            bitdelay = []
+            changood = []
             for adcbits in range(0,8):
-                pulsedata=t[chan][:,offset]
-                mask=1<<adcbits #looking at one adc bit at a time
-                chosendelay= int(((mask & pulsedata)*np.arange(32)).sum()/(mask & pulsedata).sum()) #performing a center of mass claculation to pick eye location
-                changood.append( (((t[chan][:,offset])[chosendelay]) & mask)>>adcbits) #Checking what the bit level at the eye center is
-                bitdelay.append(chosendelay )
+                pulsedata = t[chan][:,offset]
+                mask = 1 << adcbits #looking at one adc bit at a time
+                chosendelay = int(((mask & pulsedata)*np.arange(32)).sum()/(mask & pulsedata).sum())  #performing a center of mass claculation to pick eye location
+                changood.append( (((t[chan][:, offset])[chosendelay]) & mask) >> adcbits)  # Checking what the bit level at the eye center is
+                bitdelay.append(chosendelay)
                 #self._logger.info( 'Warning: Center of eye diagram on bit %i of channel %i has glitch ' % (adcbits, chan))
-           
-            offset=offset-3  #The difference in offset between a pulse waveform and a ramp
-            if offset<0:  #An untested wrap around conddition (Adam 12/12/2014)
-                offset=offset+11
-                
-            delaytable.append( [bitdelay, [offset]*8]) #Building the delay table
-            bitposgood.append( [changood]) #Building the eye diagram good table
-        
+
+            offset = offset - 3  #The difference in offset between a pulse waveform and a ramp
+            if offset < 0:  # An untested wrap around conddition (Adam 12/12/2014)
+                offset = offset + 11
+
+            delaytable.append([bitdelay, [offset]*8])  # Building the delay table
+            bitposgood.append([changood])  # Building the eye diagram good table
+
         return delaytable, stuckbits, bitposgood
+
+
