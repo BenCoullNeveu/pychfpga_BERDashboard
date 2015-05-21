@@ -346,38 +346,37 @@ class HWMQuery(sqlalchemy.orm.Query):
         used the same way as a HWMQuery, except that the results are will be
         indexed by the specified keys.
 
-        if 'keys' is an Instrumented Attribute, the dictionary will be indexed
-        by the value of this attribute. If convert_fn is specified, the
-        attribute values will be converted using that function.
+        if 'keys' is an Instrumented Attribute or a string representine the
+        name of such an attribute, the dictionary will be indexed by the value
+        of this attribute. If convert_fn is specified, the attribute values
+        will be converted using that function.
 
         If 'keys' is a iterable, the values of 'keys' are used directly as an
         index.
 
         If the keys parameter is omitted or evaluates as False, the objects are
         indexed from 0 to len(x)-1 and the returned collection will behave
-        similarly to a list or tuple.
+        similarly to a list.
 
-        if 'convert_fn' is specified, the key values are passed through the
-        specified function before being passed to the HWMQueryAttributes
-        object. Note: once the object is converted to a HWMQueryAttribute,
+        Note: once the object is converted to a HWMQueryAttribute,
         query operations can no longer be performed, and the collection will
         no longer track database changes.
 
         Example:
-            >>> d = ca.query(IceBoard).as_dict(IceBoard.serial_number, int)
+            >>> d = hwm.query(IceBoard).as_dict(IceBoard.serial, int)  # or .as_dict('serial', int)
             >>> d[7] # returns the iceboard with serial number 7
         """
         # If keys is a string, find the corresponding column object
         if isinstance(keys, str):
             keys = getattr(type(self[0]), keys, None)
+            if not isinstance(keys, sqlalchemy.orm.attributes.InstrumentedAttribute):
+                raise ValueError("Invalid attribute name")
 
         if isinstance(keys, sqlalchemy.orm.attributes.InstrumentedAttribute):
             keys = [key[0] for key in self.values(keys)]
             if convert_fn:
                 keys = [convert_fn(key) for key in keys]
-            return HWMQueryAttributes(self, keys)
-        else:
-            raise ValueError("Invalid attribute name or object")
+        return HWMQueryAttributes(self, keys)
 
 class HWMQueryAttributes(object):
     """
@@ -450,8 +449,10 @@ class HWMQueryAttributes(object):
         object_list = list(objects)  # in case object = generator or HWMQuery
         # Get the object that this class will mimic
         self._proto = object_list[0] if object_list else None
-        self._dict = OrderedDict(
-            zip(keys or range(len(object_list)), object_list))
+        keys = keys or range(len(object_list))
+        if len(set(keys)) != len(object_list):
+            raise ValueError('Keys are not unique')
+        self._dict = OrderedDict(sorted(zip(keys, object_list)))
 
     def __repr__(self):
         if self._has_keys:
