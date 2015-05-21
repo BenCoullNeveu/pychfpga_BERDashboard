@@ -23,7 +23,7 @@ import sys
 import socket
 import time
 import pickle
-#from pychfpga import calculate_gains
+from pychfpga import calculate_gains
 from pychfpga.init_links import *
 #import MySQLdb
 
