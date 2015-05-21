@@ -34,7 +34,7 @@ class DataSocket_base(object):
 
     BUFFER_LENGTH = 32768
 
-    def __init__(self, ip_address, port_number, netmask='255.255.0.0', host_ip=None):
+    def __init__(self, ip_address, port_number=0, netmask='255.255.0.0', host_ip=None):
 
         # Defines basic variables
         self.logger = logging.getLogger(__name__)
@@ -60,13 +60,16 @@ class DataSocket_base(object):
         if not hasattr(__main__, '__opened_sockets__'):
             __main__.__opened_sockets__ = {}
 
-        if self.port_number in __main__.__opened_sockets__:
-            self.sock = __main__.__opened_sockets__[self.port_number]
-            self.logger.info('%r: reusing existing socket %i' % (self, self.port_number))
-        else:
-            self.logger.info('%r: Creating new socket %s:%i' % (self, self.host_ip, self.port_number))
-            self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            self.sock.bind((self.host_ip, self.port_number))
+        # if self.port_number in __main__.__opened_sockets__:
+        #     self.sock = __main__.__opened_sockets__[self.port_number]
+        #     self.logger.info('%r: reusing existing socket %i' % (self, self.port_number))
+        # else:
+        self.logger.info('%r: Creating new socket %s:%i' % (self, self.host_ip, self.port_number))
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.sock.bind((self.host_ip, self.port_number))
+
+        if not self.port_number:
+            (_, self.port_number) = self.sock.getsockname()
 
         self.sock.settimeout(2)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, self.BUFFER_LENGTH)
@@ -123,7 +126,7 @@ def get_host_addr(dest_addr, netmask='255.255.0.0', only_one=True):
         import netifaces
         host_addr_list = [netifaces.ifaddresses(iface)[netifaces.AF_INET][0]['addr'] for iface in netifaces.interfaces()] # This method to get all the host ip addresses works both on Linux and Windows
     except: # If netifaces not installed, try the old way (Works on Windows but may not work on Linux)
-        host_addr_list = host_data[2] # get the list of IP addresses associated with this computer  
+        host_addr_list = host_data[2] # get the list of IP addresses associated with this computer
     dest_addr_vect = np.array(map(ord, socket.inet_aton(dest_addr))) # convert the target IP into a vector
     netmask_vect = np.array(map(ord, socket.inet_aton(netmask))) # convert the net mask into a vector
 

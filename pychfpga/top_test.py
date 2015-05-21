@@ -324,3 +324,5 @@ if __name__ == '__main__':
         chFPGA_config = c.get_config()
         logger.info('Starting data/correlator receiver threads')
         r = chFPGA_receiver(chFPGA_config)
+        c.set_local_data_port_number(r.port_number)
+

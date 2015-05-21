@@ -245,10 +245,9 @@ class chFPGA_receiver(object):
         print '*** Opening receiver sockets ***'
         # Create socket handled and open socket communications to the chFPGA board
         self.ip_address = chFPGA_config.system_fpga_ip_address
-        self.port_number = chFPGA_config.system_local_data_port_number
         self.host_ip = chFPGA_config.system_interface_ip_address
-
-        self.sock = SocketIO.DataSocket_base(self.ip_address, self.port_number, host_ip=self.host_ip)
+        self.sock = SocketIO.DataSocket_base(self.ip_address, host_ip=self.host_ip)
+        self.port_number = self.sock.port_number
         #self.sock.open()
         #Add configuration
         self.chFPGA_config = chFPGA_config

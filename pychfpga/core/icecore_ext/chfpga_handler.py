@@ -567,30 +567,6 @@ class chFPGAHandler(IceBoardPlusHandler):
         else:
             return None
 
-
-    # Backplane management
-
-    # # Now supported by the ARM
-    # def get_slot_number(self):
-    #     """ Reads the slot number from the IO Expander. This is not
-    #     necessarily the slot number stored in the hardware map. Slots numbers
-    #     range from 1 to 16. A slot number of 0 or None indicates that the
-    #     board is not connected to a backplane.
-
-    #     NOTE: It would be nice if the ARM could provide this function.
-    #     """
-    #     if self.is_backplane_present():
-    #         return self.hw.get_slot_number()
-    #     else:
-    #         return None
-
-    # # Now supported by the ARM
-    # def is_backplane_present(self):
-    #     """ Checks if the Iceoard is connected to a backplane by probing the
-    #     backplane's EEPROM.
-    #     """
-    #     return self.bp.is_backplane_present()
-
     def read_backplane_eeprom_ipmi(self):
         """ Return the IPMI data found on the backplane EEPROM.
         """
@@ -623,7 +599,7 @@ class chFPGAHandler(IceBoardPlusHandler):
     _IRIGB_TIME_FORMAT = {
         'datetime': lambda ts: ts.datetime,
         'nano' : lambda ts: ts.nano,
-        'datetime+': lambda ts: (ts.datetime, ts.nano % 1000)
+        'datetime+': lambda ts: (ts.datetime, ts.nano % 1000000000)
         }
 
 
@@ -634,6 +610,7 @@ class chFPGAHandler(IceBoardPlusHandler):
         If trig=True, the time of the next 10 MHz reference clock rising edge
         is measured and returned. Otherwise, the last captured time is returned.
         """
+
         if format not in self._IRIGB_TIME_FORMAT:
             raise ValueError('Invalid time format. Valid formats are: %s' % (', '.join(self._IRIGB_TIME_FORMAT.keys())))
 
@@ -751,20 +728,18 @@ class chFPGAHandler(IceBoardPlusHandler):
         delay).
         """
 
+
         if trig:
             w2 = self.fpga_mmi_read(self._IRIGB_SAMPLE2_ADDR)
             self.fpga_mmi_write(self._IRIGB_SAMPLE2_ADDR, w2 & ~(1 << 28))
             self.fpga_mmi_write(self._IRIGB_SAMPLE2_ADDR, w2 | (1 << 28))
             t0 = time.time()
-            while 1:
-                t1 = time.time()
-            # while 1:
-            #     time.time()
-                # if t1 - t0 > 1:
-                #     raise RuntimeError('Timeout while waiting for a Frame. Is data flowing out of the ADC data acquisition module?')
+            while not self.fpga_mmi_read(self._IRIGB_TARGET1_ADDR) & (1 << 30):
+                    if time.time() - t0 > 1:
+                        raise RuntimeError('Timeout while waiting for a Frame. Is data flowing out of the ADC data acquisition module?')
         event_number = self.fpga_mmi_read(self._IRIGB_EVENT_CTR_ADDR)
-        time = self._get_irigb_time(trig=0, format=format)  # The event trigger will automatically trig IRIGB
-        return (event_number, time)
+        captured_time = self._get_irigb_time(trig=0, format=format)  # The event trigger will automatically trig IRIGB
+        return (event_number, captured_time)
 
     def capture_refclk_time(self, trig=True, format='nano'):
         """ Measures the time at which the next 10MHz reference clock rising
