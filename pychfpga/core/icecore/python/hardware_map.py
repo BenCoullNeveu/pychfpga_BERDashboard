@@ -132,9 +132,11 @@ class Parallelizable(object):
             io_loop.close()
             old_loop.make_current()
 
-    def async_call_with(self, vararg_list):
-        args = list(vararg_list)
-        return async_call([self]*len(args), args)
+    def async_call_with(self, vararg_list, *args, **kwargs):
+        """ Call this asynchronous function concurrently for with every value
+        of the iterable vararg_list as first parameter. """
+        arg_list = list(vararg_list)
+        return async_call([self]*len(arg_list), arg_list, *args, **kwargs)
 
 def async(func):
     """ Decorator that converts a function or method in a future-returning coroutine
@@ -365,12 +367,17 @@ class HWMQuery(sqlalchemy.orm.Query):
             >>> d = ca.query(IceBoard).as_dict(IceBoard.serial_number, int)
             >>> d[7] # returns the iceboard with serial number 7
         """
+        # If keys is a string, find the corresponding column object
+        if isinstance(keys, str):
+            keys = getattr(type(self[0]), keys, None)
+
         if isinstance(keys, sqlalchemy.orm.attributes.InstrumentedAttribute):
             keys = [key[0] for key in self.values(keys)]
             if convert_fn:
                 keys = [convert_fn(key) for key in keys]
-        return HWMQueryAttributes(self, keys)
-
+            return HWMQueryAttributes(self, keys)
+        else:
+            raise ValueError("Invalid attribute name or object")
 
 class HWMQueryAttributes(object):
     """
