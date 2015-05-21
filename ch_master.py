@@ -88,19 +88,29 @@ def get_fpga_hk(fpga, field):
   ret = {}
   for f in field.keys():
     if f == "core_temp":
-      ret[f] = fpga.SYSMON.temperature()
-    elif f == "vcc_int":
-      ret[f] = fpga.SYSMON.voltage(fpga.SYSMON.VCCINT_ADDR)
-    elif f == "vcc_aux":
-      ret[f] = fpga.SYSMON.voltage(fpga.SYSMON.VCCAUX_ADDR)
+      ret[f] = fpga.get_motherboard_temperature(fpga.TEMPERATURE_SENSOR.MB_FPGA_DIE)
+    elif f == "VCC1V0":
+      ret[f] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VCC1V0)
+    elif f == "VCC1V0_GTX":
+      ret[f] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VCC1V0_GTX)
     elif f == "12v_supply":
-      ret[f] = fpga.SYSMON.voltage(fpga.SYSMON.VAUX_VOLT_ADDR, vref = 1.0)
+      ret[f] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VCC12V0)
     elif f == "12v_supply_curr":
-      ret[f] = fpga.SYSMON.voltage(fpga.SYSMON.VAUX_CURR_ADDR, vref = 1.0)
-    elif f == "vrefp":
-      ret[f] = fpga.SYSMON.voltage(fpga.SYSMON.VAUX_VREFP_ADDR)
-    elif f == "vrefn":
-      ret[f] = fpga.SYSMON.voltage(fpga.SYSMON.VAUX_VREFN_ADDR)
+      ret[f] = fpga.get_motherboard_current(fpga.RAIL.MB_VCC12V0)
+    elif f == "VCC5V5":
+      ret[f] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VCC5V5)
+    elif f == "VCC1V5":
+      ret[f] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VCC1V5)
+    elif f == "VCC1V2":
+      ret[f] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VCC1V2)
+    elif f == "VCC3V3":
+      ret[f] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VCC3V3)
+    elif f == "VCC1V8":
+      ret[f] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VCC1V8)
+    elif f == "VCC1V8":
+      ret[f] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VADJ)
+    elif f == "VADJ":
+      ret[f] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VADJ)
 
   return ret
 
@@ -134,12 +144,16 @@ correlator_hash = {"stone"        : ["0001"],
 
 # FPGA housekeeping.
 fpga_hk_field = {      "core_temp" : "deg C",
-                         "vcc_int" : "V",
-                         "vcc_aux" : "V",
-                      "12v_supply" : "V",
-                 "12v_supply_curr" : "A",
-                           "vrefp" : "V",
-                           "vrefn" : "V",
+                         "VCC1V0" : "V",
+                         "VCC1V0_GTX" : "V",
+                      "VCC12V0" : "V",
+                 "VCC12V0_curr" : "A",
+                           "VCC5V5" : "V",
+                           "VCC1V5" : "V",
+                           "VCC1V2" : "V",
+                           "VCC3V3" : "V",
+                           "VCC1V8" : "V",
+                           "VADJ" : "V",
                 }
 
 # Current archive format version. Prefixed by "NT_" to signify that these data
@@ -494,6 +508,14 @@ if __name__ == "__main__":
   # Start the acquisition.
   acq.start(acq_base_dir, crate_sn, int(conf["fpga"]["subarray"]))
 
+  if (int(args.configure_fpga) > 0):
+    c.CROSSBAR.LANE_MONITOR_RESET=1
+    c.CROSSBAR.LANE_MONITOR_RESET=0
+    c.CROSSBAR2.LANE_MONITOR_RESET=1
+    c.CROSSBAR2.LANE_MONITOR_RESET=0
+    c.CROSSBAR.LANE_MONITOR_SEL = 6
+    c.CROSSBAR2.LANE_MONITOR_SEL = 6
+
   try:
     while True:
       # Pass the acquisition object the board temperatures. This is a temporary
@@ -503,6 +525,9 @@ if __name__ == "__main__":
         for c_element in c:
           acq.pass_fpga_amb_temp(i, get_fpga_hk(c_element, fpga_hk_field))
           i += 1
+          log.debug("Slot number: %d "  % c_element.slot )
+          log.debug("Crossbar1 fifo overflow %d "  % c_element.CROSSBAR.CB1_LANE_MONITOR )
+          log.debug("Crossbar2 fifo overflow %d "  % c_element.CROSSBAR2.CB2_LANE_MONITOR )
         log.info("Read FPGA housekeeping.")
       else:
         log.info("acquiring data...")
