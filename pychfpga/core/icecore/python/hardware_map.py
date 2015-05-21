@@ -132,6 +132,10 @@ class Parallelizable(object):
             io_loop.close()
             old_loop.make_current()
 
+    def async_call_with(self, vararg_list):
+        args = list(vararg_list)
+        return async_call([self]*len(args), args)
+
 def async(func):
     """ Decorator that converts a function or method in a future-returning coroutine
     and wraps it into a Parallelizable object that can be called synchronously
