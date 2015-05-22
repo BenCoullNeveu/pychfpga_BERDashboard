@@ -340,31 +340,30 @@ def logging_constructor(loader, node):
     return n
 
 
-yaml_object_registry = {}  # class_name: (class, (group_attribute, member_attribute)
+def register_yaml_object(yaml_tag=None, transforms={}):
+    """ Class decorator that adds the decorated class to the YAML class
+    registry.
 
+    If 'yaml_tag' parametr is specified,  this attribute is used as the yaml
+    tag (the prefixing '!' must not be included). Otherwise the tag name is
+    based on the class name.
 
-def register_yaml_object(cls):
-    """ Class decorator that add the decorated class to the YAML class registry.
-
-    If the class defines the 'yaml_tag' attribute, this attribute is used as
-    the yaml tag (the prefixing '!' must be included). Otherwise the tag name
-    is based on the class name.
-
-    If the 'yaml_transforms' attribute is defined, the specified transforms
-    are applied when the YAML object is loaded. The transforms are specified
-    as a dictionary, where thr key is the transform type, and the values is a
-    tuple of argument specific to this transform.
+    If the 'transforms' attribute is defined, the specified transforms are
+    applied when the YAML object is loaded. The transforms are specified as a
+    dictionary, where the key is the transform type, and the values is a tuple
+    of argument specific to this transform.
     """
-    if hasattr(cls, 'yaml_tag') and cls.yaml_tag is not None:
-        yaml_tag = cls.yaml_tag
-    else:
-        yaml_tag = '!' + cls.__name__
-    transform_list = []
-    for (action, params) in getattr(cls, 'yaml_transforms', {}).items():
-        if action == 'move_index':
-            transform_list.append(AttributeMappingTouchup(*params))
-    YAMLLoader.add_constructor(yaml_tag, HWMConstructor(lambda l: cls, transform_list))
-    return cls
+    def decorator(cls):
+        tag = '!' + (yaml_tag or cls.__name__)
+        transform_list = []
+        for (action, params) in transforms.items():
+            if action == 'move_index':
+                transform_list.append(AttributeMappingTouchup(*params))
+        YAMLLoader.add_constructor(
+            tag, HWMConstructor(lambda l: cls, transform_list))
+        return cls
+    return decorator
+
 
 class YAMLLoader(yaml.SafeLoader):
 
@@ -376,6 +375,7 @@ class YAMLLoader(yaml.SafeLoader):
         self.add_constructor(u'!logging', logging_constructor)
         self.add_constructor(u'!HardwareMap', hwm_constructor)
         self.add_constructor(u'!HWMLookup', hwm_lookup_constructor)
+
 
 def set_yaml_loader_class(cls):
     '''Override the YAMLLoader class used to create sessions.'''
