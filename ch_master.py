@@ -239,8 +239,8 @@ if __name__ == "__main__":
       name = "ch%02d" % i
       tmp_delay = []
       if not name in conf["fpga"]["adc_delay"]:
-        log.critical("Could not find fpga.adc_delay.%s entry in configuration " \
-                     "file." % (name))
+        log.critical("Could not find fpga.adc_delay.%s entry in " \
+                     "configuration file." % (name))
         exit()
       else:
         this_chan = conf["fpga"]["adc_delay"][name]
