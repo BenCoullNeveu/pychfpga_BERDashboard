@@ -284,6 +284,7 @@ if __name__ == "__main__":
       # c = ca.get_iceboards(subarray=[conf["fpga"]["subarray"]]).index_by(IceBoard.serial_number)
       # c.set_fpga_firmware(fpga_bitstream, force=conf["fpga"]["force"])
       c.discover_mezzanines()
+      c.discover_crate()
       c.open( \
             adc_delay_table=adc_delay, \
             init=1, \

@@ -14,7 +14,7 @@ class IceCrateHandlerExt(IceCrateHandler):
     """ IceCrate handler that provides access to the backplane through the IceBoard's 'bp' object:
     """
 
-    #__handler_name__ = IceCrateHandler.__handler_name__ # Overrides the standard IceCrate handler
+    __handler_name__ = IceCrateHandler.__handler_name__ # Overrides the standard IceCrate handler
 
     def __getattr__(self, name):
         """ Fetches attributes from the master iceboard's backplane handling object 'bp'
