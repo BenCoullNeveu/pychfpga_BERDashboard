@@ -23,6 +23,8 @@ from hardware_map import (
     Boolean,
     Session,
     set_session_class,
+    async,
+    async_return
 )
 
 from tuber import (
@@ -49,6 +51,7 @@ from hwm_assets import (
 from hwm_extra_assets import (
     IceBoardPlus,
     IceBoardPlusHandler,
+    discover_iceboards
 )
 
 from session import (

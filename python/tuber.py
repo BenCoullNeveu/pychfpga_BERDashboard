@@ -2,7 +2,7 @@
 Tuber object interface
 '''
 
-import functools
+import inspect
 import urllib2
 import urlparse
 import os
@@ -10,11 +10,14 @@ import collections
 import logging
 import time
 import textwrap
+import warnings
 
 import tornado.concurrent
 import tornado.ioloop
 import tornado.httpclient
 import tornado.gen
+
+import hardware_map
 
 # Prefer simplejson (it's compatible, but faster)
 try:
@@ -25,7 +28,6 @@ except ImportError:
 __all__ = [
     "TuberError", "TuberRemoteError",
     "TuberCategory", "TuberObject",
-    "Parallelizable", "LazyFuture",
 ]
 
 
@@ -40,48 +42,6 @@ class TuberRemoteError(TuberError):
 def _tuber_json_object_hook(d):
     '''Convert JSON dictionaries into Python objects.'''
     return collections.namedtuple('TuberResult', d.keys())(*d.values())
-
-
-class Parallelizable(object):
-    '''Base class for calls that can be emitted asynchronously.'''
-
-    def __call__(self, *args, **kwargs):
-        '''Stub for ordinary, serial call'''
-        raise NotImplementedError()
-
-    @tornado.gen.coroutine
-    def __call_async__(self, io_loop, *args, **kwargs):
-        '''Stub for asynchronous call that returns a Future'''
-        raise NotImplementedError()
-
-
-class LazyFuture(tornado.concurrent.Future):
-    '''Wrap Tornado's Future, but automatically trigger flush operations.
-
-    Otherwise, code like this:
-
-        >>> with d.tuber_context() as c:
-        ...     r = c.get_frequency(
-        ...         d.UNITS.HZ, d.TARGET.CARRIER, 1, 1, 1)
-        ...     c.set_frequency(
-        ...         r.result(), d.UNITS.HZ, d.TARGET.DEMOD, 1, 1, 1)
-
-    ...will deadlock, since we're deliberately holding back execution until
-    the end of the context block. Since we hold a single call queue, we can
-    always flush portions of it until we have enough data to proceed.
-    '''
-
-    def __init__(self, ctx, **kwargs):
-        super(LazyFuture, self).__init__(**kwargs)
-        self.ctx = ctx
-
-    def result(self, timeout=None):
-        self.ctx._tuber_flush_sync(self)
-        return super(LazyFuture, self).result(timeout)
-
-    def exception(self, timeout=None):
-        self.ctx._tuber_flush_sync(self)
-        return super(LazyFuture, self).exception(timeout)
 
 
 class Context(object):
@@ -112,26 +72,34 @@ class Context(object):
     embedded in 'p' and will not be raised unless you call 'p.result()'!
     '''
 
-    def __init__(self, obj, io_loop, **ctx_kwargs):
+    def __init__(self, obj, **ctx_kwargs):
         self.calls = []
         self.obj = obj
-        self.io_loop = io_loop
         self.ctx_kwargs = ctx_kwargs
 
     def __enter__(self):
         return self
 
     def __exit__(self, exc_type, exc_val, exc_tb):
+        # We need to make sure everything in the context is executed and
+        # flushed.
         if self.calls:
-            self._tuber_flush_sync()
+            warnings.warn("Dispatch queue not empty when leaving Context! "
+                          "If you want this code to run in parallel, you "
+                          "need to use 'yield' within the context.")
 
-    def _tuber_flush_prepare(self, until=None):
-        '''Figure out which calls we need to run.
+            old_loop = tornado.ioloop.IOLoop.current()
+            try:
+                io_loop = tornado.ioloop.IOLoop()
+                io_loop.make_current()
+                io_loop.run_sync(self._tuber_flush_async)
+            finally:
+                io_loop.close()
+                old_loop.make_current()
 
-        If specified, "until" tells us a particular call (and any preceding
-        calls) need to be resolved.  If "until" is not specified, the entire
-        queue is emptied.
-        '''
+    @tornado.gen.coroutine
+    def _tuber_flush_async(self):
+        '''Break off a set of calls and return them for execution.'''
 
         calls = []
         futures = []
@@ -146,67 +114,39 @@ class Context(object):
             })
             futures.append(f)
 
-            if f == until:
-                break
-
-        return (calls, futures)
-
-    @tornado.gen.coroutine
-    def _tuber_flush_async(self, until=None):
-        '''Break off a set of calls and return them for execution.'''
-
-        (calls, futures) = self._tuber_flush_prepare(until)
-
         if calls:
             # Create a HTTP request to complete the call. This is a coroutine,
             # so we queue the call and then suspend execution (via 'yield')
             # until it's complete.
 
             client = tornado.httpclient.AsyncHTTPClient()
+            client.configure(None, max_clients=16)
             request = tornado.httpclient.HTTPRequest(
                 url=self.obj.tuber_uri,
                 method='POST',
-                body=json.dumps(calls))
+                body=json.dumps(calls),
+                connect_timeout=10,
+                request_timeout=10 * 60) # permit calls to be really slow
 
             t1 = time.time()
             response = yield client.fetch(request)
             t2 = time.time()
 
             # Say something about the call
-            l = logging.getLogger(__name__)
-            l.debug('%r: %s => %s (%f sec)' % (
-                self, calls, response.body, t2-t1))
+            # l = logging.getLogger(__name__)
+            # l.debug('%r: %.500s => %.500s (%f sec)' % (
+            #     self, calls, response.body, t2-t1))
 
-            self._tuber_flush_finalize(response.body, futures)
+            json_out = json.loads(
+                response.body,
+                object_hook=_tuber_json_object_hook)
 
-    def _tuber_flush_sync(self, until=None):
-        (calls, futures) = self._tuber_flush_prepare(until)
-
-        if calls:
-            t1 = time.time()
-            response = urllib2.urlopen(
-                self.obj.tuber_uri,
-                json.dumps(calls)).read()
-            t2 = time.time()
-
-            # Say something about the call
-            l = logging.getLogger(__name__)
-            l.debug('%r: %s => %s (%f sec)' % (self, calls, response, t2-t1))
-
-            self._tuber_flush_finalize(response, futures)
-
-    def _tuber_flush_finalize(self, response, futures):
-
-        json_out = json.loads(
-            response,
-            object_hook=_tuber_json_object_hook)
-
-        # Resolve futures
-        for (f, r) in zip(futures, json_out):
-            if hasattr(r, 'error') and r.error:
-                f.set_exception(TuberRemoteError(r.error.message))
-            else:
-                f.set_result(r.result)
+            # Resolve futures
+            for (f, r) in zip(futures, json_out):
+                if hasattr(r, 'error') and r.error:
+                    f.set_exception(TuberRemoteError(r.error.message))
+                else:
+                    f.set_result(r.result)
 
     def __getattr__(self, name):
 
@@ -218,7 +158,7 @@ class Context(object):
 
         # Queue methods calls.
         if name in metam:
-            future = LazyFuture(self)
+            future = tornado.concurrent.Future()
 
             def caller(*args, **kwargs):
 
@@ -227,6 +167,12 @@ class Context(object):
                 kwargs.update(self.ctx_kwargs)
 
                 self.calls.append((name, future, args, kwargs))
+
+                # Schedule a queue flush in the future so this call is
+                # guaranteed to get dispatched
+                io_loop = tornado.ioloop.IOLoop.current()
+                io_loop.add_callback(self._tuber_flush_async)
+
                 return future
 
             return caller
@@ -286,13 +232,12 @@ class TuberCategory(object):
 
     def __call__(decorator, cls):
 
-        def tuber_context(self, io_loop=tornado.ioloop.IOLoop()):
+        def tuber_context(self):
             obj = decorator.getobject(self)
             kwargs = {n: f(self) for (n, f) in decorator.arg_mappers.items()}
-            return Context(obj, io_loop, **kwargs)
+            return Context(obj, **kwargs)
 
         cls.tuber_context = tuber_context
-        original_getattr = getattr(cls, '__getattr__', None)
 
         def __getattr__(self, name):
             '''This is a fall-through replacement for __getattr__.
@@ -300,42 +245,28 @@ class TuberCategory(object):
             We assume we're capturing a function call that's missing
             arguments. We fill in these arguments and dispatch the call.
             '''
-            if original_getattr:
-                try:  # Process the original  __getattr__ of the decorated class
-                    return original_getattr(self, name)
-                except AttributeError:  # not found, let's have a go ourselves
+
+            parent = decorator.getobject(self)
+            m = getattr(parent, name)
+
+            if isinstance(m, hardware_map.Parallelizable):
+                class CategoryProto(hardware_map.Parallelizable):
                     pass
 
-            obj = decorator.getobject(self)
-            m = getattr(obj, name)
+                @tornado.gen.coroutine
+                def coroutine(*args, **kwargs):
+                    kwargs = kwargs.copy()
+                    kwargs.update({
+                        n: f(self)
+                        for (n, f) in decorator.arg_mappers.items()
+                    })
+                    result = yield getattr(parent, name).async(*args, **kwargs)
+                    raise tornado.gen.Return(result)
 
-            if isinstance(m, Parallelizable):
-                class Proto(Parallelizable):
-
-                    def __init__(p):
-                        functools.update_wrapper(p, m.__call__)
-
-                    def __call__(p, *args, **kwargs):
-                        kwargs = kwargs.copy()
-                        kwargs.update({
-                            n: f(self)
-                            for (n, f) in decorator.arg_mappers.items()
-                        })
-                        return m.__call__(*args, **kwargs)
-
-                    @tornado.gen.coroutine
-                    def __call_async__(p, io_loop, *args, **kwargs):
-                        kwargs = kwargs.copy()
-                        kwargs.update({
-                            n: f(self)
-                            for (n, f) in decorator.arg_mappers.items()
-                        })
-                        with obj.tuber_context(io_loop) as ctx:
-                            f = getattr(ctx, name)(*args, **kwargs)
-                            yield ctx._tuber_flush_async()
-                        raise tornado.gen.Return(f.result())
-
-                return Proto()
+                # Don't cache this with the class; it's bound to a particular
+                # instance.
+                p = CategoryProto(coroutine=coroutine, doc=inspect.getdoc(m))
+                return p
 
             raise AttributeError()
 
@@ -385,13 +316,8 @@ class TuberObject(object):
             return False
         return True
 
-    def __init__(self):
-        """
-        """
-        pass
-
-    def tuber_context(self, io_loop=tornado.ioloop.IOLoop()):
-        return Context(self, io_loop)
+    def tuber_context(self):
+        return Context(self)
 
     @property
     def tuber_uri(self):
@@ -515,12 +441,9 @@ class TuberObject(object):
 
         # Refuse to __getattr__ a couple of special names used elsewhere.
         # These are mostly hints for SQLAlchemy or IPython.
-        if name in ('_sa_instance_state', '_tuber_meta',
-                    '_ipython_display_', 'trait_names', '_getAttributeNames',
-                    'getdoc', '__wrapped__', '__call__',
-                    '_repr_html_', '_repr_svg_', '_repr_jpeg_',
-                    '_repr_png_', '_repr_json_', '_repr_javascript_',
-                    '_repr_latex_', '_repr_pdf_'):
+        if name.startswith(('_sa', '_tuber', '_repr', '_ipython')) \
+                or name in ('trait_names', '_getAttributeNames',
+                            'getdoc', '__wrapped__', '__call__'):
             raise AttributeError()
 
         # Make sure this request corresponds to something in the underlying
@@ -539,24 +462,20 @@ class TuberObject(object):
             d = metam[name]
 
             # Generate a callable prototype
-            class Proto(Parallelizable):
+            class TuberProto(hardware_map.Parallelizable):
+                pass
 
-                def __init__(self, obj):
-                    self._obj = obj
+            @tornado.gen.coroutine
+            def __call_async__(obj, *args, **kwargs):
+                with obj.tuber_context() as ctx:
+                    f = getattr(ctx, name)(*args, **kwargs)
+                    yield ctx._tuber_flush_async()
+                raise tornado.gen.Return((yield f))
 
-                def __call__(self, *args, **kwargs):
-                    with self._obj.tuber_context() as ctx:
-                        return getattr(ctx, name)(*args, **kwargs).result()
-
-                @tornado.gen.coroutine
-                def __call_async__(self, io_loop, *args, **kwargs):
-                    with self._obj.tuber_context(io_loop=io_loop) as ctx:
-                        f = getattr(ctx, name)(*args, **kwargs)
-                        yield ctx._tuber_flush_async()
-                    raise tornado.gen.Return(f.result())
+            p = TuberProto(coroutine=__call_async__)
 
             # Add dynamically generated DocStrings
-            Proto.__call__.__func__.__doc__ = textwrap.dedent('''
+            p.__doc__ = textwrap.dedent('''
                 {name}({args_short})
 
                 {args_long}
@@ -569,11 +488,11 @@ class TuberObject(object):
                         arg.name + ":",
                         arg.description
                     ) for arg in d.args]),
-                explanation=d.explanation
+                explanation='\n'.join(textwrap.wrap(d.explanation))
             )
 
-            # Cache this object with the class (so we don't do this often)
-            setattr(self, name, Proto(self))
+            # Associate as a class method.
+            setattr(self.__class__, name, p)
             return getattr(self, name)
 
 # vim: sts=4 ts=4 sw=4 tw=78 smarttab expandtab

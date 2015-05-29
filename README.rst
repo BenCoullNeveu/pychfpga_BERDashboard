@@ -1,5 +1,5 @@
-Icecore Preview
-===============
+Icecore Framework
+=================
 
 This folder contains preview code of the ICE software/firmware development
 framework.

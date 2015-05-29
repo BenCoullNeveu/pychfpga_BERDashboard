@@ -4,14 +4,139 @@ import logging
 import inspect
 import base64
 import zlib  # used to compute crc32
+import functools  # Used in iceboard discovery
+import tornado  # Used in iceboard discovery
+import time  # Used in iceboard discovery
+import socket  # used in iceboard discrovery (itoa())
 
 from sqlalchemy import Column, String, Integer
+from sqlalchemy.orm import class_mapper
 
 from . import handler
 from . import session
 # from .hwm_assets import _IceCrateCore
-from .hwm_assets import IceBoard, IceBoardHandler
+from .hwm_assets import IceBoard, IceBoardHandler, FMCMezzanine, IceCrate
+from .hardware_map import async, async_return
 # from .hwm_assets import _FMCMezzanineCore, _FMCMezzaninePythonSupport
+
+def discover_iceboards(hwm, crate=None, timeout=5):
+    """Automatically detect iceboards on the network and update hardware map accordingly.
+    """
+    import pybonjour  # only needed here, and not always installed
+
+    if isinstance(crate,str):
+        crate = [crate]
+
+    logger = logging.getLogger(__name__)
+    fds = []
+
+    def resolve_callback(sdRef, flags, iface, err, fullname,
+                         host, port, txtRecord, io_loop):
+        if err != pybonjour.kDNSServiceErr_NoError:
+            return
+
+        # Parse TXT records. That's where the IceBoard publishes data.
+        tr = pybonjour.TXTRecord.parse(txtRecord)
+        logger.debug('DNS-sd: resolving txtRecord=%s (tr=%r)' % (txtRecord, tr))
+        if 'motherboard-serial' not in tr:
+            logger.warn("DNS-SD: IceBoard at %s was discovered but cannot be added to the hardware map because it does not publish a serial number" % (host))
+            return
+        ib_serial = tr['motherboard-serial']
+
+        existing_ib = hwm.query(IceBoardPlus).filter_by(serial=ib_serial)
+        if existing_ib.count():
+            logger.debug("DNS-SD: IceBoard at %s with serial %s already exists in the hardware map. No action is taken." % (host, ib_serial))
+            return
+
+        ib = IceBoardPlus(hostname=host, serial=ib_serial)
+
+        bp_slot = tr['backplane-slot'] if 'backplane-slot' in tr else None
+        bp_part_number = tr['backplane-part'] if 'backplane-part' in tr else None
+        bp_serial = tr['backplane-serial'] if 'backplane-serial' in tr else None
+
+        ib.slot = bp_slot
+
+        if bp_serial is not None and (crate is None or bp_serial in crate):
+            # Find is there is IceCrate-derived superclass that handles this part number
+            if bp_part_number is not None:
+                icecrate_class = None
+                for mapper in class_mapper(IceCrate).self_and_descendants:
+                    if mapper.class_.__ipmi_part_number__ == bp_part_number:
+                        icecrate_class = mapper.class_
+                if icecrate_class:
+                    logger.info('discover_iceboards: Discovered IceCrate Model %s SN%s' % (bp_part_number, bp_serial))
+                    # Check is a crate with the same serial number already exists
+                    existing_crate = hwm.query(icecrate_class).filter_by(serial=bp_serial)
+                    if existing_crate.count():  # If so, assign it to this iceboard
+                        ib.crate = existing_crate.one()
+                    else:  # otherwise create a new one and assign it
+                        ib.crate = icecrate_class(serial=bp_serial)
+                        hwm.add(ib.crate)
+                        hwm.flush() # make sure the board will pop up in queries so we can know if the board already exist in the hwm
+            hwm.add(ib)
+            hwm.flush()
+            logger.info("discover_iceboards: Discovered IceBoard serial %s at %s (crate SN%s, slot %s)" % (ib_serial, host, bp_serial, bp_slot))
+
+            def query_record_callback(sdRef, flags, interfaceIndex, errorCode, fullname,
+                                      rrtype, rrclass, rdata, ttl, ib):
+                if errorCode == pybonjour.kDNSServiceErr_NoError:
+                    ib_ip_addr = socket.inet_ntoa(rdata)
+                    logger.info("discover_iceboards: IceBoard SN%s hostname %s was resolved and updated to %s" % (ib.serial, ib.hostname, ib_ip_addr))
+                    ib.hostname = ib_ip_addr
+
+            query_sdRef = \
+                pybonjour.DNSServiceQueryRecord(interfaceIndex=iface,
+                                                fullname=host,
+                                                rrtype=pybonjour.kDNSServiceType_A,
+                                                callBack=functools.partial(query_record_callback, ib=ib))
+            fds.append(query_sdRef)
+            io_loop.add_handler(
+                query_sdRef.fileno(),
+                lambda fd, events: pybonjour.DNSServiceProcessResult(query_sdRef),
+                io_loop.READ)
+
+
+
+    def browse_callback(sdRef, flags, iface, err, service,
+                        regtype, replyDomain, io_loop):
+
+        if (err != pybonjour.kDNSServiceErr_NoError) or \
+                not (flags & pybonjour.kDNSServiceFlagsAdd):
+            return
+
+        resolver = pybonjour.DNSServiceResolve(
+            0, iface, service, regtype, replyDomain,
+            callBack=functools.partial(resolve_callback, io_loop=io_loop))
+        fds.append(resolver)
+        io_loop.add_handler(
+            resolver.fileno(),
+            lambda fd, events: pybonjour.DNSServiceProcessResult(resolver),
+            io_loop.READ)
+
+    # Create a local, captive IOLoop. We use this to epoll() on
+    # Bonjour file descriptors.
+    io_loop = tornado.ioloop.IOLoop()
+    io_loop.add_timeout(time.time()+timeout, lambda: io_loop.stop())
+
+    browser = pybonjour.DNSServiceBrowse(
+        regtype='_tuber-jsonrpc._tcp',
+        callBack=functools.partial(browse_callback, io_loop=io_loop))
+
+    fds.append(browser)
+
+    io_loop.add_handler(
+        browser.fileno(),
+        lambda fd, events: pybonjour.DNSServiceProcessResult(browser),
+        io_loop.READ)
+
+    # Go!
+    io_loop.start()
+
+    # Clean up after Bonjour
+    for fd in fds:
+        fd.close()
+
+    hwm.commit()
 
 
 @session.register_yaml_object()
@@ -79,6 +204,169 @@ class IceBoardPlus(IceBoard):
         if configure_fpga:
             self.set_fpga_bitstream(tag=tag, force=force)
 
+    def discover_serial(self, update=True):
+        """ Discover the serial number of this IceBoard from its IPMI data, and update the hardware map accordingly if `update=True`"""
+        try:
+            actual_serial = str(self.get_motherboard_serial())
+        except:  #  Deal with uninitialized boards
+            actual_serial = None
+
+        if update:
+            if not actual_serial:
+                self.logger.warn('%r: Could not read the board serial number from IPMI storage or serial number is null. Serial number is not updated.' % (self))
+            elif self.serial and actual_serial != self.serial:
+                self.logger.warn('%r: The discovered serial number differs from the current (hardware map) one. Updating to the discovered value.' % (self))
+            self.serial = actual_serial
+            self.hwm.flush()
+        return self.serial
+
+    def discover_slot(self, update=True):
+        """ Discover the slot number of this IceBoard, and update the hardware map accordingly if `update=True`"""
+        actual_slot = self.get_backplane_slot()
+        if update:
+            if not actual_slot:
+                self.logger.warn('%r: The board is not connected to a backplane. Slot number is not updated.' % (self))
+            elif self.slot and actual_slot != self.slot:
+                self.logger.warn('%r: The discovered slot number differs from the current (hardware map) one. Updating to the discovered slot.' % (self))
+            self.slot = actual_slot
+            self.hwm.flush()
+        return self.slot
+
+    def discover_mezzanines(self, update=True):
+        '''Detect mezzanines attached to the Iceboard and update the hardware map accordingly if
+        update=True.
+
+        This method uses IPMI data on the mezzanine's EEPROMs to guide itself.
+        New Mezzanine objects that match the IPMI product number are added in
+        the hardware map if found.
+
+        You do NOT need to use this method if the mezzanines present in the
+        system are already explicitely specified in the YAML hardware maps.
+        '''
+        mezz_class = {}
+        for m in range(1, self.NUM_MEZZANINES + 1):
+
+            # MezzClass = MissingMezzanine # Used by Graeme
+            part_number = None
+            serial = None
+            mezz_class[m] = None
+            # If a mezzanine is present, ask it (from EEPROM) what kind
+            # of mezzanine it is. Try to instantiate a mezz-specific
+            # class.
+            if self.is_mezzanine_present(m):
+                ipmi = self._get_mezzanine_mcgill_ipmi(m)
+                part_number = ipmi.product.part_number
+                serial = ipmi.product.serial_number
+                self.logger.info(
+                    '%r: detect_mezzanines(): Detected Mezzanine '
+                    'Model: %s Serial %s in Mezzanine %i'
+                    % (self, part_number, serial, m))
+                for mapper in class_mapper(FMCMezzanine).self_and_descendants:
+                    if mapper.class_.__ipmi_part_number__ == part_number:
+                        mezz_class[m] = mapper.class_
+
+            if update:
+                if not self.hwm:
+                    raise SystemError(
+                        '%r: detect_mezzanines(): Attempt to add new '
+                        'mezzanine objects while the IceBoard is not yet '
+                        'added to the  hardware map. ' % self)
+
+                if m in self.mezzanine:
+                    del(self.mezzanine[m])
+
+            if not mezz_class[m]:
+                self.logger.warning(
+                    "%r: detect_mezzanines(): There is no known "
+                    "class for Mezzanine object of type '%r' "
+                    "in mezzanine slot %r" % (self, part_number, m))
+            elif update:
+                self.logger.info(
+                    '%r: detect_mezzanines(): Creating Mezzanine '
+                    'Serial %s in Mezzanine %i' % (self, serial, m))
+                new_mezz = mezz_class[m](
+                    mezzanine=m,
+                    serial=serial
+                    #type=''  # 'type' cannnot be None
+                    )
+                self.hwm.add(new_mezz)
+                self.hwm.flush()
+                self.mezzanine[m] = new_mezz
+        return mezz_class
+
+    def discover_crate(self, update=True):
+        """ Detect the Icecrate and slot number on which this Iceboard is
+        attached by reading the backplane IPMI data, and update the hardware
+        map accordingly if `update=True`. An IceCrate object is created if it
+        does not already exist.
+
+        You do NOT need to use this method if the backplane is already
+        explicitely specified in the YAML hardware maps.
+        """
+
+        icecrate_class = {}
+        part_number = None
+        serial = None
+        if self.is_backplane_present():
+            ipmi = self.read_backplane_eeprom_ipmi()  # To be replaced by a working ARM equivalent
+            part_number = ipmi.product.part_number
+            serial = ipmi.product.serial_number
+            slot_number = self.get_backplane_slot()
+            self.logger.info(
+                '%.32r: detect_crate(): '
+                'Detected Backplane Model: %s Serial %s'
+                % (self, part_number, serial)
+                )
+
+            for mapper in class_mapper(IceCrate).self_and_descendants:
+                if mapper.class_.__ipmi_part_number__ == part_number:
+                    icecrate_class = mapper.class_
+
+        if not icecrate_class:
+            self.logger.warning(
+                "%.32r: detect_crate(): "
+                "There is no known backplane object with "
+                "polymorphic map name '%r'"
+                % (self, part_number))
+
+        if icecrate_class and update:
+            if not self.hwm:
+                raise SystemError(
+                    '%.32r: detect_crate(): Attempt to update new backplane '
+                    'object while the IceBoard is not yet added to the '
+                    'hardware map. ' % self)
+
+            # Assign slot number to IceBoard because the IceCrate will grab
+            # that info upon IceBoard assignment to a slot
+            self.slot = slot_number
+            self.hwm.flush()
+
+            if self.crate:  # if there is already an icecrate
+                if isinstance(self.crate, icecrate_class) \
+                        and self.crate.serial != serial:
+                    del(self.crate)
+
+            if not self.crate:
+                self.logger.info(
+                    '%.32r: detect_crate(): Creating IceCrate %s'
+                    % (self, serial))
+                # Chech is a crate with the same serial number already exists
+                existing_crate = self.hwm.query(icecrate_class).filter_by(serial=serial)
+                if existing_crate.count():  # If so, assign it to this iceboard
+                    self.crate = existing_crate.one()
+                else:  # otherwise create a new one and assign it
+                    new_crate = icecrate_class(serial=serial)
+                    self.crate = new_crate
+                    self.hwm.add(new_crate)
+                self.hwm.flush()
+
+            # Assign this iceboard to the proper crate slot. Note that the
+            # 'slot_number' index is ignored after the flush. The
+            # IceBoard.slot_number is the real index.
+            # self.crate.slot[slot_number] = self
+            # self.hwm.flush()
+        return icecrate_class
+
 
 @session.register_yaml_object()
 class IceBoardPlusHandler(IceBoardHandler):
@@ -114,7 +402,6 @@ class IceBoardPlusHandler(IceBoardHandler):
     subclass of this handler if the firmware supports it.
     """
 
-
     __handler_for__ = IceBoardPlus # register this class (and any subclass)
     tuber_objname = 'IceBoard'
 
@@ -127,10 +414,13 @@ class IceBoardPlusHandler(IceBoardHandler):
     FPGA_SERIAL_NUMBER_LSW_ADDR           = 4 * 5
     FPGA_SERIAL_NUMBER_MSW_ADDR           = 4 * 6
 
+    NUMBER_OF_FMC_SLOTS = 2
+
     # _bitstream_register contains a list of bitstreams that are associated
     # with this object. Format: tag: bitstream_object
     _bitstream_register = {}
 
+    _backplane_initialized = False  # Indicate if we have initialized the backplane access yet
     # ----------------------------
     # Python Bitstream management
     # ----------------------------
@@ -148,6 +438,7 @@ class IceBoardPlusHandler(IceBoardHandler):
         """
         cls._bitstream_register[tag] = bitstream
 
+    @async
     def set_fpga_bitstream(self, buf=None, tag=None, force=False):
         '''
         Configures the FPGA with the specified bitstream.
@@ -186,7 +477,8 @@ class IceBoardPlusHandler(IceBoardHandler):
            or (force is not None and (self.get_fpga_bitstream_crc() != crc32)):
             self.logger.info('%r: Configuring FPGA' % self)
             b64_string = base64.b64encode(str(buf))
-            self._set_fpga_bitstream_base64(b64_string)
+            # self._set_fpga_bitstream_base64(b64_string)
+            yield self._set_fpga_bitstream_base64.async(b64_string)
             self.set_fpga_bitstream_crc(crc32)
             self.logger.info('%r: Done configuring FPGA' % self)
         else:
@@ -263,7 +555,18 @@ class IceBoardPlusHandler(IceBoardHandler):
     def read_backplane_eeprom_ipmi(self):
         """ Return the IPMI data found on the backplane EEPROM.
         """
-        raise NotImplementedError()
+        # Make sure the ARM has initialized its access to the backplane.
+        # This will go away when the ARMs can arbitrate their access correctly.
+        if not self._backplane_initialized:
+            self._initialize_backplane()
+            self._backplane_initialized = True
+
+        return self._get_backplane_ipmi()  # Use the ARM method by default
+
+    # def get_motherboard_serial(self):
+    #     """ Read the motherboard serial number from the IPMI data. """
+    #     ipmi = self._get_motherboard_ipmi()
+    #     return str(ipmi.board.serial_number)
 
     # *** JFC: We now have the equivalent ARM method. Will delete this when we
     #     confirm it behaves the same.
@@ -303,13 +606,13 @@ class IceBoardPlusHandler(IceBoardHandler):
             # self._bitstream_crc = None
             self.fpga_mmi_write(self.FPGA_FIRMWARE_CRC32_ADDR, 0)
 
-    def clear_fpga_bitstream(self):
-        """ Stop the operation of the FPGA.
+    # def clear_fpga_bitstream(self):
+    #     """ Stop the operation of the FPGA.
 
-        Could be used if we detect that we don't have the right kind of
-        mezzanines.
-        """
-        raise NotImplementedError()
+    #     Could be used if we detect that we don't have the right kind of
+    #     mezzanines.
+    #     """
+    #     raise NotImplementedError()
 
     # Core firmware functions
 
@@ -350,6 +653,7 @@ class IceBoardPlusHandler(IceBoardHandler):
         timestamp_string = '%04i-%02i-%02i %02i:%02i:%02i' % (
             year + 2000, month, day, hour, minutes, seconds)
         return timestamp_string
+
 
     def print_tuber_methods(self):
         ''' Print all the methods provided by tuber, with a shoirt

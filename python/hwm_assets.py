@@ -36,6 +36,8 @@ class IceCrate(hardware_map.HWMResource, handler.HandlerObject):
     __table_args__ = (UniqueConstraint('serial'),)
     __mapper_args__ = {'polymorphic_identity': 'IceCrate'}
 
+    __ipmi_part_number__ = 'MGK7BP'  # Must match part number in IPMI data
+
     _pk = Column(Integer, primary_key=True)
     serial = Column(String,
                     doc="The serial number written on the board (e.g. '001')")
@@ -305,9 +307,9 @@ class IceBoardHandler(handler.Handler, tuber.TuberObject):
     # Provide access to hardware_map attributes as if they were local
     hostname = HandlerParentAttribute(lambda ib: ib.hostname)
     serial = HandlerParentAttribute(lambda ib: ib.serial)
-    crate = HandlerParentAttribute(lambda ib: ib.crate.handler)
+    crate = HandlerParentAttribute(lambda ib: ib.crate.handler if ib.crate else None)
     slot = HandlerParentAttribute(lambda ib: ib.slot)
-    mezzanine = HandlerParentAttribute(lambda ib: {slot:mezz.handler for (slot,mezz) in ib.mezzanine.items()}, {})
+    mezzanine = HandlerParentAttribute(lambda ib: {slot: mezz.handler if mezz else None for (slot, mezz) in ib.mezzanine.items()}, {})
     tuber_objname = HandlerParentAttribute(lambda ib: ib.__class__.__name__, 'IceBoard')
 
     @property
@@ -368,7 +370,7 @@ class IceBoardHandler(handler.Handler, tuber.TuberObject):
     #-------------------------------------
 
     def _eeprom_write_ipmi(self, part_number, serial_number, product_version):
-        '''Write IPMI-formatted EEPROM for IceBoards.
+        '''Write crrmatted EEPROM for IceBoards.
 
         These fields are read back and parsed by software, so you have
         to get them right or things will misbehave. This method currently
@@ -487,6 +489,7 @@ class FMCMezzanine(hardware_map.HWMResource, handler.HandlerObject):
             name='check_mezz_number'
         ),
     )
+    __ipmi_part_number__ = 'Generic'  # Must match part number in IPMI data
 
     _pk = Column(Integer, primary_key=True)
     _cls = Column(String, nullable=False)
@@ -511,6 +514,10 @@ class FMCMezzanineHandler(handler.Handler):
     Provides the basic methods needed to operate a mezzanine.
     """
     __handler_for__ = FMCMezzanine
+
+    iceboard = HandlerParentAttribute(lambda ib: ib.iceboard)
+    serial = HandlerParentAttribute(lambda ib: ib.serial)
+    mezzanine = HandlerParentAttribute(lambda ib: ib.mezzanine)
 
     def eeprom_write(self, buf):
         '''Writes a collection of bytes to the internal EEPROM.

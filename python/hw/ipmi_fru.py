@@ -32,7 +32,7 @@ You can create a fully-populated (if meaningless) FRU as follows:
             "asset_tag",
             "fru_file"
         ),
-        #Multi(...), when it's supported by this code
+        Multi(data_string), # or MultiDict(dict)
     )
 
 Since these binary blobs are machine-parsed and used by on-board code to
@@ -43,8 +43,9 @@ board's QC scripts.)
 '''
 
 import struct
-from datetime import datetime
-
+import json
+from datetime import datetime, timedelta
+from collections import OrderedDict
 # Chassis type codes
 CHASSIS_OTHER = 0x01
 CHASSIS_UNKNOWN = 0x02
@@ -86,6 +87,42 @@ MULTI_EXTENDED_COMPATIBILITY_RECORD = 0x05
 MULTI_OEM_RECORD_FIRST = 0xC0
 MULTI_OEM_RECORD_LAST = 0x0FF
 
+#  Helper functions used to decode EEPROM data
+
+def get_area_data(read_fn, start_addr, area_name=''):
+    """
+    """
+    # Get the first 3 bytes of data so we can do some checks and figure out the whole block length
+    data = read_fn(start_addr, 3)
+    version = ord(data[0])
+    if version != 0x01:
+        raise ValueError('Unsupported version in the IPMI %s field' % area_name)
+    length = ord(data[1]) * 8
+    # Now get all the data in the block and process it
+    data = read_fn(start_addr, length)
+    if sum(map(ord, data)) & 0xff:
+        raise ValueError('Bad ckecksum in the IPMI %s field' % area_name)
+    return data
+
+
+def get_area_fields(data, area_name=''):
+    """ Extract all fields in an area data block.
+    """
+    offset = 0
+    fields = []
+    while True:
+        type_ = ord(data[offset]) & 0xC0
+        length = ord(data[offset]) & 0x3F
+        offset += 1
+        if type_ != 0xC0:
+            raise ValueError('Unsupported field type 0x%02X' % type_)
+        if length == 1:
+            break
+        else:
+            fields.append(data[offset:offset + length])
+            offset += length
+    return fields
+
 
 class Internal(object):
     def __init__(self, data):
@@ -95,9 +132,16 @@ class Internal(object):
         """Reduce to a string containing binary IPMI data."""
         return struct.pack('B %is 0q' % len(self.data), 0x01, self.data)
 
+    @classmethod
+    def decode(cls, read_function, start, max_length):
+        data = read_function(start, max_length)
+        version = ord(data[0])
+        if version != 0x01:
+            raise ValueError('Unsupported version in the IPMI %s field' % cls.__name__)
+        return cls(data[1:])
 
 class Chassis(object):
-    def __init__(self, type_code, part_number, serial_number):
+    def __init__(self, type_code=CHASSIS_UNKNOWN, part_number='', serial_number=''):
         self.type_code = type_code
         self.part_number = part_number
         self.serial_number = serial_number
@@ -118,7 +162,7 @@ class Chassis(object):
             'BBB B%is B%is B x 0q' % (lprt, lser),
             0x01,            # version
             length / 8,      # length
-            self.type_code,  # language code (english)
+            self.type_code,  # chassis type
             0xc0 | lprt, self.part_number,
             0xc0 | lser, self.serial_number,
             0xc1
@@ -127,15 +171,24 @@ class Chassis(object):
         # Replace last byte with checksum
         return x[:-1] + chr((-sum(map(ord, x)) & 0xff))
 
+    @classmethod
+    def decode(cls, read_fn, start_addr):
+        data = get_area_data(read_fn, start_addr, area_name=cls.__name__)
+        chassis_type = data[2]
+        fields = get_area_fields(data[3:], area_name=cls.__name__)
+        return cls(type_code=chassis_type,
+                   part_number=fields[0],
+                   serial_number=fields[1])
+
 
 class Board(object):
     def __init__(self,
-                 mfg_date,
-                 manufacturer,
-                 product_name,
-                 serial_number,
-                 part_number,
-                 fru_file):
+                 mfg_date=0,
+                 manufacturer='',
+                 product_name='',
+                 serial_number='',
+                 part_number='',
+                 fru_file=''):
 
             self.mfg_date = mfg_date
             self.manufacturer = manufacturer
@@ -183,16 +236,32 @@ class Board(object):
         # Replace last byte with checksum
         return x[:-1] + chr((-sum(map(ord, x)) & 0xff))
 
+    @classmethod
+    def decode(cls, read_fn, start_addr):
+        data = get_area_data(read_fn, start_addr, area_name=cls.__name__)
+        language_code = ord(data[2])
+        if language_code != 0x00:
+            raise ValueError('Unsupported language code 0x%02x in the IPMI %s area' % (language_code, cls.__name__))
+        mfg_minutes = ord(data[3]) + ord(data[4])*256 + ord(data[5])*65536
+        mfg_date = datetime(1996, 1, 1) + timedelta(0, 60*mfg_minutes)
+        fields = get_area_fields(data[6:], area_name=cls.__name__)
+        return cls(mfg_date=mfg_date,
+                   manufacturer=fields[0],
+                   product_name=fields[1],
+                   serial_number=fields[2],
+                   part_number=fields[3],
+                   fru_file=fields[4])
+
 
 class Product(object):
     def __init__(self,
-                 manufacturer,
-                 product_name,
-                 part_number,
-                 product_version,
-                 serial_number,
-                 asset_tag,
-                 fru_file):
+                 manufacturer='',
+                 product_name='',
+                 part_number='',
+                 product_version='',
+                 serial_number='',
+                 asset_tag='',
+                 fru_file=''):
 
         self.manufacturer = manufacturer
         self.product_name = product_name
@@ -237,6 +306,114 @@ class Product(object):
 
         # Replace last byte with checksum
         return x[:-1] + chr((-sum(map(ord, x)) & 0xff))
+
+    @classmethod
+    def decode(cls, read_fn, start_addr):
+        data = get_area_data(read_fn, start_addr, area_name=cls.__name__)
+        language_code = ord(data[2])
+        if language_code != 0x00:
+            raise ValueError('Unsupported language code 0x%02x in the IPMI %s area' % (language_code, cls.__name__))
+        fields = get_area_fields(data[3:], area_name=cls.__name__)
+        return cls(manufacturer=fields[0],
+                   product_name=fields[1],
+                   part_number=fields[2],
+                   product_version=fields[3],
+                   serial_number=fields[4],
+                   asset_tag=fields[5],
+                   fru_file=fields[6])
+
+class Multi(object):
+    def __init__(self,
+        string='',
+        type_id=MULTI_OEM_RECORD_FIRST,
+        end_of_list=True):
+
+        self.string = string
+        self.type_id = type_id
+        self.end_of_list = end_of_list
+
+    def encode(self):
+        """
+        Returns a string containing a MultiRecords that contain the specified string.
+        Multirecords do not need to be aligned to 8-byte boundaries, so no padding in included.
+        """
+        if len(self.string) > 255:
+            raise TypeError('String length exceeds 255 characters')
+        # Build up the header structure.
+        header = chr(self.type_id) + chr(0x80 * bool(self.end_of_list) | 0x02) + chr(len(self.string))
+        header += chr((-sum(map(ord, self.string)) & 0xff)) # add record checksum
+        header += chr((-sum(map(ord, header)) & 0xff)) # add header checksum
+        return header + self.string
+
+class MultiDict(object):
+    """ Represents a dictionary into a number of Multi records encoded in Json format.
+
+    Typical Usage:
+    x = FRU(
+        Internal(...),
+        Chassis(...),
+        Board(...),
+        Product(...),
+        MultiDict(user_dictionary)
+    )
+
+    All Multi blocks are type ID=0xC0.
+
+    The Multi blocks are filled by alphabetical dictionary key name until a block size
+    (including the block identifier) exceeds 255 characters, at which point a
+    new block is created.
+
+    Each block is a JSON dictionary containing the fields:
+        MultiType: 'json_v1' # Used by the decoder to identify the data format
+        Record: (integer) # Record number, starting at 1
+        Data: (dict) # Subset of the dictionary items that fits in this block
+
+    There is no attempt to reorder dictionary items in order to make blocks as
+    big as possible. There is no compression, or blank space removal. Since
+    Multi records are just daisy-chained at the end of the other IPMI blocks
+    and are not addressed by the IPMI Common Header block, we do not have the
+    2K limitation and can fill the typically bigger eeproms with Multi data.
+
+    The function will fail if a dictionary item is too large to fit in a single Multi block.
+    """
+
+    def __init__(self, data):
+        multi_string = ""
+        record_number = 1
+        remaining_data = dict(data) # create a copy of the dictionary, as we are going to remove data from it
+        block_data = OrderedDict()
+        block_dict = OrderedDict()
+        # json_data = ""
+        self.multi = []
+
+        while remaining_data:
+            test_key = sorted(remaining_data.keys())[0]
+            test_data = OrderedDict(block_data)
+            test_data[test_key] = remaining_data[test_key]
+            test_dict = OrderedDict([('MultiType','json_v1'), ('Record',record_number), ('Data',test_data)])
+            test_json_data = json.dumps(test_dict)
+            if len(test_json_data) > 255:
+                # multi_string += Multi(json_data, end_of_list = False).encode()
+                block_data = OrderedDict()
+                record_number += 1
+                self.multi.append(block_dict)
+            else:
+                # json_data = test_json_data
+                block_data = test_data
+                block_dict = test_dict
+                remaining_data.pop(test_key)
+        # multi_string += Multi(json_data, end_of_list = True).encode()
+        self.multi.append(block_dict)
+
+        # return multi_string
+
+
+    def encode(self):
+        multi_string = ""
+        for multi in self.multi[:-1]:
+            multi_string += Multi(json.dumps(multi), end_of_list = False).encode()
+        multi_string += Multi(json.dumps(self.multi[-1]), end_of_list = True).encode()
+        return multi_string
 
 
 class FRU(object):
@@ -307,5 +484,95 @@ class FRU(object):
             board_str + \
             product_str + \
             multi_str
+
+    def as_dict(self):
+        """ Return the FRU information as a dictionary.
+        """
+        return {
+            'internal': self.internal.__dict__ if self.internal else None,
+            'chassis': self.chassis.__dict__ if self.chassis else None,
+            'board': self.board.__dict__ if self.board else None,
+            'product': self.product.__dict__ if self.product else None,
+            'multi': self.multi.__dict__ if self.multi else None
+            }
+
+    def __str__(self):
+        """  Provide a nicely formatted version of the IPMI data
+        """
+        result = 'IPMI data block:\n'
+        for block_name in [name for name in vars(self) if not name.startswith('_')]:
+            block = getattr(self, block_name)
+            if block:
+                result += '   %s:\n' % block_name
+                for field_name in [name for name in vars(block) if not name.startswith('_')]:
+                    result += '      %s: %r\n' % (field_name, getattr(block, field_name))
+            else:
+                result += '   %s: Empty\n' % block_name
+        return result
+
+    @classmethod
+    def decode(cls, read_function):
+        """ Convert IPMI binary data into a FRU object.
+
+        'str = read_function(addr, length) is called to obtain the IPMI binary data.  If length = -1, all data from addr to the end of the IPMI storage should be returned.
+
+        """
+        buf = read_function(0, 8) # read common header (8 bytes)
+        if sum(map(ord, buf)) & 0xff:
+            raise ValueError('Bad ckecksum in the IPMI Common Header. Is the EEPROM initialized?')
+        (
+            version,
+            internal_offset,
+            chassis_offset,
+            board_offset,
+            product_offset,
+            multi_offset,
+            pad
+         ) = struct.unpack("B BBBBB B x", buf)
+
+        if version != 0x01:
+            raise ValueError('Bad version 0x%02X in the IPMI Common Header. Is the EEPROM initialized?' % version)
+        if pad:
+            raise ValueError('Bad pad 0x%02X in the IPMI Common Header. Is the EEPROM initialized?' % pad)
+
+        # Convert offsets to actual addresses
+        internal_offset *= 8
+        chassis_offset *= 8
+        board_offset *= 8
+        product_offset *= 8
+        multi_offset *= 8
+
+
+        # Internal block
+        #
+        # This block has no intrinsic length. We limit its content to the
+        # beginning of the following block. If there is no following block, we
+        # use the rest of the storage.
+        if internal_offset:
+            next_block_offset = min(
+                [offset for offset in (chassis_offset, board_offset, product_offset, multi_offset) if offset > internal_offset],
+                0)
+            max_length = next_block_offset - internal_offset if next_block_offset else -1 # max_length = -1 means read until end of storage
+            internal = Internal.decode(internal_offset, read_function, max_length)
+        else:
+            internal = None
+
+        chassis = Chassis.decode(read_function, chassis_offset) if chassis_offset else None
+        board   = Board.decode(read_function, board_offset)     if board_offset else None
+        product = Product.decode(read_function, product_offset) if product_offset else None
+
+        if multi_offset:
+            raise ValueError('Sorry, Multi fields are not supported yet.')
+        else:
+            multi = None # Not supported yet
+
+        return FRU(
+                 internal=internal,
+                 chassis=chassis,
+                 board=board,
+                 product=product,
+                 multi=multi
+                 )
+
 
 # vim: sts=4 ts=4 sw=4 tw=80 smarttab expandtab
