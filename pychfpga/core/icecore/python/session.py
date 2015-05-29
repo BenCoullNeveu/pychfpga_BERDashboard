@@ -57,7 +57,6 @@ import sys
 import mimetypes
 import logging.config
 import hardware_map
-import hwm_assets
 
 
 class HWMCSVConstructor(object):

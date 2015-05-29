@@ -263,7 +263,6 @@ class TuberCategory(object):
 
             if isinstance(m, async.Parallelizable):
                 class CategoryProto(async.Parallelizable):
-                    pass
 
                     @tornado.gen.coroutine
                     def __call_async__(p, *args, **kwargs):
@@ -500,7 +499,6 @@ class TuberObject(object):
                     ) for arg in d.args]),
                 explanation='\n'.join(textwrap.wrap(d.explanation))
             )
-            print 'doc is', p.__doc__
             # Associate as a class method.
             setattr(self.__class__, name, p)
             return getattr(self, name)

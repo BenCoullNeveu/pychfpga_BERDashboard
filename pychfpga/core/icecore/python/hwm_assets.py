@@ -27,7 +27,7 @@ from hw import ipmi_fru
 import datetime
 import base64
 
-@session.register_yaml_object(transforms={'move_index': ('slots', 'slot')})
+@session.register_yaml_object():  # Todo: Add transforms={'move_index': ('slots', 'slot')}
 class IceCrate(hardware_map.HWMResource, handler.HandlerObject):
     handler_name = 'IceCrateHandler'
     __tablename__ = 'icecrates'
@@ -232,7 +232,7 @@ class IceCrateHandler(handler.Handler):
         return '%s(SN%s)' % (self.__class__.__name__, self.serial)
 
 
-@session.register_yaml_object(transforms={'move_index': ('mezzanines', 'mezzanine')})
+@session.register_yaml_object()  # Todo: add transforms={'move_index': ('mezzanines', 'mezzanine')}
 class IceBoard(hardware_map.HWMResource, handler.HandlerObject):
     """ Provides access to the basic functions of an IceBoard.
 
@@ -476,7 +476,6 @@ class IceBoardHandler(handler.Handler, tuber.TuberObject):
 
 @session.register_yaml_object()
 class FMCMezzanine(hardware_map.HWMResource, handler.HandlerObject):
-    pass
     """FMC Mezzanine schema object.
 
     This is an abstract class. To specialize it for a particular FMC
