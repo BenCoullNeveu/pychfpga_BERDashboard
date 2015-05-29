@@ -84,35 +84,34 @@ def convert_types(val):
               pass
       return val
 
-def get_fpga_hk(fpga, field):
-  ret = {}
-  for f in field.keys():
-    if f == "core_temp":
-      ret[f] = fpga.get_motherboard_temperature(fpga.TEMPERATURE_SENSOR.MB_FPGA_DIE)
-    elif f == "VCC1V0":
-      ret[f] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VCC1V0)
-    elif f == "VCC1V0_GTX":
-      ret[f] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VCC1V0_GTX)
-    elif f == "12v_supply":
-      ret[f] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VCC12V0)
-    elif f == "12v_supply_curr":
-      ret[f] = fpga.get_motherboard_current(fpga.RAIL.MB_VCC12V0)
-    elif f == "VCC5V5":
-      ret[f] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VCC5V5)
-    elif f == "VCC1V5":
-      ret[f] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VCC1V5)
-    elif f == "VCC1V2":
-      ret[f] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VCC1V2)
-    elif f == "VCC3V3":
-      ret[f] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VCC3V3)
-    elif f == "VCC1V8":
-      ret[f] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VCC1V8)
-    elif f == "VCC1V8":
-      ret[f] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VADJ)
-    elif f == "VADJ":
-      ret[f] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VADJ)
+def get_fpga_hk(fpga):
+    ret = {}
+    ret["core_temp"] = fpga.get_motherboard_temperature(fpga.TEMPERATURE_SENSOR.MB_FPGA_DIE)
+    # ret["VCC1V0"] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VCC1V0)
+    # ret["VCC1V0_GTX"] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VCC1V0_GTX)
+    # ret["VCC12V0"] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VCC12V0)
+    # ret["VCC12V0_curr"] = fpga.get_motherboard_current(fpga.RAIL.MB_VCC12V0)
+    # ret["VCC5V5"] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VCC5V5)
+    # ret["VCC1V5"] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VCC1V5)
+    # ret["VCC1V2"] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VCC1V2)
+    # ret["VCC3V3"] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VCC3V3)
+    # ret["VCC1V8"] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VCC1V8)
+    # ret["VADJ"] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VADJ)
+    return ret
 
-  return ret
+# FPGA housekeeping.
+fpga_hk_field = {      "core_temp" : "deg C",
+                       # "VCC1V0" : "V",
+                       # "VCC1V0_GTX" : "V",
+                       # "VCC12V0" : "V",
+                       # "VCC12V0_curr" : "A",
+                       # "VCC5V5" : "V",
+                       # "VCC1V5" : "V",
+                       # "VCC1V2" : "V",
+                       # "VCC3V3" : "V",
+                       # "VCC1V8" : "V",
+                       # "VADJ" : "V",
+                }
 
 # Backplane serial number---eventually this should be queried directly from the
 # hardware!
@@ -142,19 +141,6 @@ correlator_hash = {"stone"        : ["0001"],
                    "slot2":['0018', '0017']
                   }
 
-# FPGA housekeeping.
-fpga_hk_field = {      "core_temp" : "deg C",
-                         "VCC1V0" : "V",
-                         "VCC1V0_GTX" : "V",
-                      "VCC12V0" : "V",
-                 "VCC12V0_curr" : "A",
-                           "VCC5V5" : "V",
-                           "VCC1V5" : "V",
-                           "VCC1V2" : "V",
-                           "VCC3V3" : "V",
-                           "VCC1V8" : "V",
-                           "VADJ" : "V",
-                }
 
 # Current archive format version. Prefixed by "NT_" to signify that these data
 # do not have the time-transpose completed.
@@ -253,8 +239,8 @@ if __name__ == "__main__":
       name = "ch%02d" % i
       tmp_delay = []
       if not name in conf["fpga"]["adc_delay"]:
-        log.critical("Could not find fpga.adc_delay.%s entry in configuration " \
-                     "file." % (name))
+        log.critical("Could not find fpga.adc_delay.%s entry in " \
+                     "configuration file." % (name))
         exit()
       else:
         this_chan = conf["fpga"]["adc_delay"][name]
@@ -298,6 +284,7 @@ if __name__ == "__main__":
       # c = ca.get_iceboards(subarray=[conf["fpga"]["subarray"]]).index_by(IceBoard.serial_number)
       # c.set_fpga_firmware(fpga_bitstream, force=conf["fpga"]["force"])
       c.discover_mezzanines()
+      c.discover_crate()
       c.open( \
             adc_delay_table=adc_delay, \
             init=1, \
@@ -523,11 +510,11 @@ if __name__ == "__main__":
       if (int(args.configure_fpga) > 0):
         i = 0
         for c_element in c:
-          acq.pass_fpga_amb_temp(i, get_fpga_hk(c_element, fpga_hk_field))
+          acq.pass_fpga_amb_temp(i, get_fpga_hk(c_element))
           i += 1
-          log.debug("Slot number: %d "  % c_element.slot )
-          log.debug("Crossbar1 fifo overflow %d "  % c_element.CROSSBAR.CB1_LANE_MONITOR )
-          log.debug("Crossbar2 fifo overflow %d "  % c_element.CROSSBAR2.CB2_LANE_MONITOR )
+          #log.debug("Slot number: %d "  % c_element.slot )
+          #log.debug("Crossbar1 fifo overflow %d "  % c_element.CROSSBAR.CB1_LANE_MONITOR )
+          #log.debug("Crossbar2 fifo overflow %d "  % c_element.CROSSBAR2.CB2_LANE_MONITOR )
         log.info("Read FPGA housekeeping.")
       else:
         log.info("acquiring data...")
