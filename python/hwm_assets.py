@@ -27,7 +27,7 @@ from hw import ipmi_fru
 import datetime
 import base64
 
-@session.register_yaml_object():  # Todo: Add transforms={'move_index': ('slots', 'slot')}
+@session.register_yaml_object()  # Todo: Add transforms={'move_index': ('slots', 'slot')}
 class IceCrate(hardware_map.HWMResource, handler.HandlerObject):
     handler_name = 'IceCrateHandler'
     __tablename__ = 'icecrates'
