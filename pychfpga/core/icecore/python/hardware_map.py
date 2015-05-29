@@ -64,134 +64,24 @@ __all__ = [
 import tornado.gen
 import tornado.ioloop
 
-import functools
-import collections
-import time
-import logging
-from collections import OrderedDict
-import types
 import inspect
+import collections
+import logging
+import types
 
 import sqlalchemy
 import sqlalchemy.orm
 import sqlalchemy.ext.declarative
 import sqlalchemy.types
 
-from . import tuber
+import async
+import tuber
 
 Base = sqlalchemy.ext.declarative.declarative_base()
 
 
 class HWMQueryException(Exception):
     pass
-
-
-class Parallelizable(object):
-    """Base class for calls that can be emitted asynchronously."""
-
-    def __init__(self, coroutine, doc=None):
-        # """ Create  the Paralleizable object that wraps the Tornado coroutine
-        # (i.e. when called, the coroutine returns a Future).
-
-        # We assume that 'coroutine' is an unbound method or function.
-        #  """
-        self.async = coroutine
-        self.doc = doc
-
-    def __get__(self, instance, owner):
-        """If this object is accessed through an instance, return a Parallel
-        object that refer to the coroutine bound to that instance.
-
-        NOTE: this will work only for Parallelizable classes defined as a class attribute, not an instance attribute.
-        """
-
-        if instance is None:
-            return self  # Unbound, with nothing to bind to.
-        else:
-            return self.__class__(coroutine=functools.partial(self.async, instance), doc=inspect.getdoc(self.async))
-
-    __doc__ = property(lambda self: self.doc or self.async.__doc__)
-    # __class__ = property(lambda self: self.async.__class__)
-    # __name__ = property(lambda self: self.async.__name__)
-    # im_func = property(lambda self: self.async.im_func)
-    # func_code = property(lambda self: self.async.func_code)
-    # func_defaults = property(lambda self: self.async.func_defaults)
-
-    def __call__(self, *args, **kwargs):
-        # """ Call the coroutine as a normal synchronous call. This launches an
-        # IOLoop that runs until the coroutine has returned its value.
-        # """
-        old_loop = tornado.ioloop.IOLoop.current()
-        try:
-            io_loop = tornado.ioloop.IOLoop()
-            io_loop.make_current()
-            future = self.async(*args, **kwargs)
-            io_loop.run_sync(tornado.gen.coroutine(lambda: (yield future)))
-            return future.result()
-        finally:
-            io_loop.close()
-            old_loop.make_current()
-
-    def async_call_with(self, vararg_list, *args, **kwargs):
-        """ Call this asynchronous function concurrently for with every value
-        of the iterable vararg_list as first parameter. """
-        arg_list = list(vararg_list)
-        return async_call([self]*len(arg_list), arg_list, *args, **kwargs)
-
-def async(func):
-    """ Decorator that converts a function or method in a future-returning coroutine
-    and wraps it into a Parallelizable object that can be called synchronously
-    (as a normal blocking call, using a=func(...)) or asynchronously (using
-    a=yield func.async(...)).
-    """
-    return Parallelizable(coroutine=tornado.gen.coroutine(func))
-
-def async_return(value):
-    """ Return a value from a coroutine. """
-    raise tornado.gen.Return(value)
-
-def async_call(func_list, variable_arg_list, *args, **kwargs):
-    """ Concurrently call all functions or methods listed in 'func_list'. If
-    'variable_arg_list' is not none, each function will be called with its
-    first argument taken from the corresponding element in that list. Position
-    and keyword arguments that are common to all calls can also be passed.
-    """
-
-    if variable_arg_list is not None:
-        func_list = [functools.partial(func, arg) for (func, arg)
-                     in zip(func_list, variable_arg_list)]
-
-    if all([isinstance(f, Parallelizable) for f in func_list]): # If all the functions are coroutines
-        @async        #  Create a Parallelizable object that runs all coroutines in parallel
-        def p(*args, **kwargs):
-            async_return((yield [f.async(*args, **kwargs) for f in func_list]))
-        return p(*args, **kwargs)
-    else:  # Otherwise, fall back on a looped invocation.
-        return [f(*args, **kwargs) for f in func_list]
-
-
-def asynchronously(p, *args, **kwargs):
-    '''Helper function to call a Parallelizable and get a Future.
-
-    This is useful when writing parallel code. The following:
-
-        @pydfmux.algorithm(pydfmux.Dfmux)
-        def my_alg(ds):
-            yield [asynchronously(d.set_frequency, a, b, c) for d in ds]
-
-    ...will dispatch 'set_frequency' on all of the 'ds' objects
-    asynchronously. It will run much faster than the following:
-
-        @pydfmux.algorithm(pydfmux.Dfmux)
-        def my_alg(ds):
-            for d in ds:
-                d.set_frequency(a, b, c)
-    '''
-
-    if not isinstance(p, Parallelizable):
-        raise TypeError("asynchronously() must receive a Paralellizable as "
-                        "its first argument!")
-    return p.async(p.instance, *args, **kwargs)
 
 
 class HWMQuery(sqlalchemy.orm.Query):
@@ -244,12 +134,8 @@ class HWMQuery(sqlalchemy.orm.Query):
         for (cls, algs) in self._algorithm_registry.iteritems():
             if not issubclass(self.column_descriptions[0]['type'], cls):
                 continue
-            for a in algs:
-                if name == a.__name__:
-                    @functools.wraps(a)
-                    def alg(*args, **kwargs):
-                        return a(self, *args, **kwargs)
-                    return alg
+            if name in algs:
+                return algs[name](self)  # bind with this HWMQuery
 
         # Next, try attributes/methods from contained objects.
         # Special case: if the query returned no results, we can't reliably
@@ -333,11 +219,12 @@ class HWMQuery(sqlalchemy.orm.Query):
 
             >>> results.call_with(do_something, foo, bar)
         """
-        # If 'func' is smart enough not to want a parallelized call, obey it.
-        if hasattr(func, '_hwm_call_with_outer'):
+
+        # If 'func' is an algorithm, it doesn't want a parallelized call.
+        if isinstance(func, AlgMarker):
             return func(self, *args, **kwargs)
 
-        return async_call([func] * self.count(), self, *args, **kwargs)
+        return async.async_call([func] * self.count(), self, *args, **kwargs)
 
     def as_dict(self, keys=None, convert_fn=None):
         """
@@ -350,6 +237,7 @@ class HWMQuery(sqlalchemy.orm.Query):
         name of such an attribute, the dictionary will be indexed by the value
         of this attribute. If convert_fn is specified, the attribute values
         will be converted using that function.
+
 
         If 'keys' is a iterable, the values of 'keys' are used directly as an
         index.
@@ -452,7 +340,7 @@ class HWMQueryAttributes(object):
         keys = keys or range(len(object_list))
         if len(set(keys)) != len(object_list):
             raise ValueError('Keys are not unique')
-        self._dict = OrderedDict(sorted(zip(keys, object_list)))
+        self._dict = collections.OrderedDict(sorted(zip(keys, object_list)))
 
     def __repr__(self):
         if self._has_keys:
@@ -505,7 +393,7 @@ class HWMQueryAttributes(object):
         # so we don't have to pass those an object-specific parameter.
         # NOTE: Leave this docstring commented to allow ipython to see the target object doc
         # """
-        results = async_call(self.values(), None, *args, **kwargs)
+        results = async.async_call(self.values(), None, *args, **kwargs)
         return HWMQueryAttributes(results,
                                   self._has_keys and self._dict.keys())
 
@@ -545,7 +433,6 @@ class HWMQueryAttributes(object):
         elif not all(attr_present):
             raise AttributeError("Attribute %s must exist on all elements "
                                  "of the current results" % name)
-
 
 
 
@@ -590,6 +477,11 @@ class HWMResource(Base):
         super(Base, self).__init__()
 
 
+class MacroMarker(object):
+    '''Marker class so we can test macros using isinstance(..., MacroMarker)'''
+    pass
+
+
 class macro(object):
     '''Decorator for "macros" that performs some rudimentary typechecking.
 
@@ -621,27 +513,26 @@ class macro(object):
 
         vcs = dec.__valid_classes
 
-        class MacroProto(Parallelizable, MacroMarker):
-            pass
+        class MacroProto(async.Parallelizable, MacroMarker):
+            @tornado.gen.coroutine
+            def __call_async__(self, obj, *args, **kwargs):
 
-        @tornado.gen.coroutine
-        def __call_async__(self, obj, *args, **kwargs):
+                # Check that the macro was called with an allowed class
+                if vcs and not issubclass(obj.__class__, vcs):
+                    raise TypeError(
+                        "Macro called with wrong types! Expected %s, got %s" % (
+                            ', '.join([cls.__name__ for cls in vcs]),
+                            obj.__class__))
 
-            # Check that the macro was called with an allowed class
-            if vcs and not issubclass(obj.__class__, vcs):
-                raise TypeError(
-                    "Macro called with wrong types! Expected %s, got %s" % (
-                        ', '.join([cls.__name__ for cls in vcs]),
-                        obj.__class__))
+                # Say something about the call
+                l = logging.getLogger(__name__)
+                l.debug('%r: Invoking %s(...)' % (obj, func.__name__))
 
-            # Say something about the call
-            l = logging.getLogger(__name__)
-            l.debug('%r: Invoking %s(...)' % (obj, func.__name__))
+                # Invoke the macro.
+                return func(obj, *args, **kwargs)
 
-            # Invoke the macro.
-            return func(obj, *args, **kwargs)
-
-        p = MacroProto(coroutine=__call_async__, doc=inspect.getdoc(func))
+        p = MacroProto()
+        p.__doc__ = inspect.getdoc(func)
 
         # Register this algorithm with the class it's used on.
         if dec.__register:
@@ -706,14 +597,15 @@ class algorithm(object):
 
             return r
 
-        class AlgProto(Parallelizable, AlgMarker):
+        class AlgProto(async.Parallelizable, AlgMarker):
             __name__ = name
 
-        @tornado.gen.coroutine
-        def __call_async__(self, *args, **kwargs):
-            return wrapper(*args, **kwargs)
+            @tornado.gen.coroutine
+            def __call_async__(self, *args, **kwargs):
+                return wrapper(*args, **kwargs)
 
-        p = AlgProto(coroutine=__call_async__, doc=inspect.getdoc(func))
+        p = AlgProto()
+        p.__doc__ = inspect.getdoc(func)
 
         # Register this algorithm with the HWMQuery.
         if dec.__register:

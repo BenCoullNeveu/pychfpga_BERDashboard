@@ -22,10 +22,14 @@ from hardware_map import (
     HardwareMap,
     Boolean,
     Session,
-    set_session_class,
-    async,
-    async_return
+    set_session_class
 )
+
+from async import (
+    async,
+    async_return,
+    asynchronously
+    )
 
 from tuber import (
     TuberError,
