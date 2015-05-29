@@ -186,7 +186,7 @@ if __name__=='__main__':
 
     print 'The following IceBoards were selected:'
     for i in ib:
-        print 'Crate SN%s, slot %2i: Iceboard SN%s at %s (ping =%s)' % (i.crate.serial, i.slot, i.serial, i.hostname, i.ping())
+        print 'Crate SN%s, slot %2i: Iceboard SN%s at %s (ping =%s)' % (i.crate.serial if i.crate else None, i.slot, i.serial, i.hostname, i.ping())
 
 
     # -------------------------------
@@ -208,7 +208,7 @@ if __name__=='__main__':
         print 'The following boards were selected:'
         for i in ib:
             mezz = ['%s SN%s' % (m.__ipmi_part_number__, m.serial) if m else 'None' for m in [i.mezzanine.get(1,None), i.mezzanine.get(2,None)]]
-            print 'Crate SN%s, slot %2i: Iceboard SN%s at %s (ping =%s), Mezz1=%s, Mezz2=%s' % (i.crate.serial, i.slot, i.serial, i.hostname, i.ping(), mezz[0], mezz[1])
+            print 'Crate SN%s, slot %2i: Iceboard SN%s at %s (ping =%s), Mezz1=%s, Mezz2=%s' % (i.crate.serial if i.crate else None, i.slot, i.serial, i.hostname, i.ping(), mezz[0], mezz[1])
 
         if args.init > -1:
             ib.open(adc_delay_table=ADC_DELAY_TABLE,
