@@ -1,4 +1,4 @@
-""" Base object for IceCrate (McGill Model MGK7BP).
+""" Enhanced IceBoard and IceCrate objects that support local python support code and auto-discovery.
 """
 import logging
 import inspect
@@ -14,17 +14,16 @@ from sqlalchemy.orm import class_mapper
 
 from . import handler
 from . import session
-# from .hwm_assets import _IceCrateCore
-from .hwm_assets import IceBoard, IceBoardHandler, FMCMezzanine, IceCrate
-from .hardware_map import async, async_return
-# from .hwm_assets import _FMCMezzanineCore, _FMCMezzaninePythonSupport
+from .async import async, async_return
+from .hwm_assets import IceBoard, IceBoardHandler, FMCMezzanine, IceCrate, IceCrateHandler
+
 
 def discover_iceboards(hwm, crate=None, timeout=5):
-    """Automatically detect iceboards on the network and update hardware map accordingly.
+    """ Automatically detect iceboards on the network and update hardware map accordingly.
     """
     import pybonjour  # only needed here, and not always installed
 
-    if isinstance(crate,str):
+    if isinstance(crate, str):
         crate = [crate]
 
     logger = logging.getLogger(__name__)
@@ -159,6 +158,7 @@ class IceBoardPlus(IceBoard):
     """
 
     __mapper_args__ = {'polymorphic_identity': "IceBoardPlus"}
+    __ipmi_part_number__ = 'MGK7MB'  # Must match part number in IPMI data
 
     handler_name = Column(
         String, doc="The name of the handler to use for this resource.")
@@ -301,14 +301,14 @@ class IceBoardPlus(IceBoard):
         does not already exist.
 
         You do NOT need to use this method if the backplane is already
-        explicitely specified in the YAML hardware maps.
+        explicitely specified for this IceBoard in the YAML hardware maps.
         """
 
         icecrate_class = {}
         part_number = None
         serial = None
         if self.is_backplane_present():
-            ipmi = self.read_backplane_eeprom_ipmi()  # To be replaced by a working ARM equivalent
+            ipmi = self._get_backplane_ipmi()  # Tuber call
             part_number = ipmi.product.part_number
             serial = ipmi.product.serial_number
             slot_number = self.get_backplane_slot()
@@ -319,7 +319,10 @@ class IceBoardPlus(IceBoard):
                 )
 
             for mapper in class_mapper(IceCrate).self_and_descendants:
-                if mapper.class_.__ipmi_part_number__ == part_number:
+                class_part_numbers = mapper.class_.__ipmi_part_number__
+                if not isinstance(class_part_numbers, (list,tuple)):
+                    class_part_numbers = [class_part_numbers]
+                if part_number in class_part_numbers:
                     icecrate_class = mapper.class_
 
         if not icecrate_class:
