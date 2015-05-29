@@ -110,7 +110,7 @@ class chFPGAHandler(IceBoardPlusHandler):
     core_gpio = AutoOpen('open_core', 'core_gpio')
     core_i2c  = AutoOpen('open_core', 'core_i2c')
     hw        = AutoOpen('open_hw', 'hw')
-    bp        = AutoOpen('open_bp', 'bp')
+    # bp        = AutoOpen('open_bp', 'bp')
 
     def __init__(self, **kwargs):
         """
@@ -125,7 +125,7 @@ class chFPGAHandler(IceBoardPlusHandler):
         self._mezzanine_ipmi_cache = {1: None, 2: None}
         self._is_core_open = None
         self._is_hw_open = None
-        self._is_bp_open = None
+        # self._is_bp_open = None
         self._is_open = None
 
     # ------------------------------------------------------------------
@@ -266,7 +266,7 @@ class chFPGAHandler(IceBoardPlusHandler):
         self._is_core_open = True
 
     def close_core(self):
-        self.close_bp()
+        # self.close_bp()
         self.close_hw()
 
         if self._is_core_open:
@@ -291,17 +291,17 @@ class chFPGAHandler(IceBoardPlusHandler):
             del self.hw
             self._is_hw_open = False
 
-    def open_bp(self):
-        self.bp = BackplaneHardware(iceboard=self)
-        self._is_bp_open = True
-        self.bp.open()
-        self.bp.init()
+    # def open_bp(self):
+    #     self.bp = BackplaneHardware(iceboard=self)
+    #     self._is_bp_open = True
+    #     self.bp.open()
+    #     self.bp.init()
 
-    def close_bp(self):
-        if self._is_bp_open:
-            self.bp.close()
-            del self.bp
-            self._is_bp_open = False
+    # def close_bp(self):
+    #     if self._is_bp_open:
+    #         self.bp.close()
+    #         del self.bp
+    #         self._is_bp_open = False
 
     def open(self):
 
@@ -570,7 +570,7 @@ class chFPGAHandler(IceBoardPlusHandler):
     def read_backplane_eeprom_ipmi(self):
         """ Return the IPMI data found on the backplane EEPROM.
         """
-        return FRU.decode(self.bp.read_backplane_eeprom)
+        return FRU.decode(self.crate.read_backplane_eeprom)
 
     class _IrigTimestamp(object):
         pass
