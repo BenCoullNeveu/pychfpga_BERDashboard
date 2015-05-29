@@ -50,6 +50,12 @@ class GTX_CHANNEL_base(Module_base):
     CONTROL = BitField.CONTROL
     STATUS = BitField.STATUS
 
+    TXINHIBIT      = BitField(CONTROL, 0, 5, doc='Debug')
+    TXPOSTCURSOR   = BitField(CONTROL, 0, 0, width=5, doc='Debug')
+    USER_GTTXRESET = BitField(CONTROL, 0, 6, doc='')
+    TXPRECURSOR    = BitField(CONTROL, 2, 2, width=5, doc='Debug')
+    TXDIFFCTRL     = BitField(CONTROL, 1, 4, width=4, doc='Debug')
+
     # PCS_LOCK           = BitField(STATUS, 0, 0, doc='PCS Lock from core_status vector')
     # FEC_OK             = BitField(STATUS, 0, 1, doc='FEC OK from core_status vector')
     # TRAINING_DONE      = BitField(STATUS, 0, 2, doc='TRAINING_DONE from core_status vector')

@@ -29,10 +29,10 @@ class BitField(object):
     It is implemented as a data descriptor shch that calls the read_field() and write_field() properties of the parent object when accessed.
     """
     # Page values
-    CONTROL = 0 # Control bytes (read/write)
-    STATUS = 1 # STATUS bytes (read only)
-    RAM = 2 # RAM or FIFO
-    DRP = 3 # Dynamic Reconfiguration Port
+    CONTROL = 0  # Control bytes (read/write)
+    STATUS = 1  # STATUS bytes (read only)
+    RAM = 2  # RAM or FIFO
+    DRP = 3  # Dynamic Reconfiguration Port
 
 
     def __init__(self, page, addr, bit, width=1, default=None, doc='No documentation available'):
@@ -60,18 +60,9 @@ class BitField(object):
         elif self.page == self.RAM:
             return _RAM_BASE_ADDR + (self._addr & 0x1FF)
         elif self.page == self.DRP:
-            return _RAM_BASE_ADDR + ((self._addr<<1) & 0x1FF)
+            return _RAM_BASE_ADDR + ((self._addr << 1) & 0x1FF)
 
     addr = property(get_addr, doc='Returns the memory-mapped address of the current bitfield item')
-
-##@staticmethod
-#def bitfield_property(*args, **kwargs):
-#    """ creates a property that accesses bit fields in the memory-mapped space"""
-#    bitfield = BitField(*args, **kwargs) # Creates a bitfield structure
-#    fget = lambda s, _bitfield = bitfield : s.read_field(_bitfield) # Pass bit_name as a default argument to 'close' that variable (i.e. bind it now). Otherwise the function will use the value at call time (which is the last value assigned to that variable)
-#    fset = lambda s, value, _bitfield = bitfield : s.write_field(_bitfield, value)
-#    fdoc = bitfield.doc
-#    return property(fget, fset, doc=fdoc)
 
 class Module_base(object):
     """ Implements basic interfaces to a module. It is intended to be inherited by a subclass that specializes to specific modules"""
@@ -82,8 +73,7 @@ class Module_base(object):
     DRP = BitField.DRP
 
     #BitDef=BitDef_base # make class accessible to subclass (somehow the class is not inherited directly)
-    BITS = {} # Should be overriden by the subclass
-
+    # BITS = {} # Should be overriden by the subclass
 
     def __init__(self, fpga_instance, base_address, instance_number=0):
         self._unlock()
@@ -91,21 +81,18 @@ class Module_base(object):
         self.base_address = base_address
         self.instance_number = instance_number
         # self.module_number = module_number
-        for field_name, bitfield in self.BITS.items():
-            setattr(self.__class__, field_name, bitfield)
-#            #print '  Defining property "%s"' % (bit_name)
-#
-#            # Use function closures to create the callback function with arguments that won't be rebinded
-#            fget = lambda s, _bitfield = bitfield : s.read_field(_bitfield) # Pass bit_name as a default argument to 'close' that variable (i.e. bind it now). Otherwise the function will use the value at call time (which is the last value assigned to that variable)
-#            fset = lambda s, value,_bitfield = bitfield : s.write_field(_bitfield,value)
-##            if self.BITS[bit_name].page ==0x10:
-##                setattr(self.__class__, bit_name, property(fget,doc=self.BITS[bit_name].doc))
-##            else:
-#            setattr(self.__class__, bit_name, property(fget, fset, doc=self.BITS[bit_name].doc))
+        # for field_name, bitfield in self.BITS.items():
+        #     setattr(self.__class__, field_name, bitfield)
+        #     print ' OBSOLETE:  Defining property "%s"' % (field_name)
 
     def __setattr__(self, name, value):
         """ Prevents creating new attributes to the class when _locked==1"""
-        if (not self._locked) or (hasattr(self, name)): # allow write if not locked or if attribute already exists
+        # Allow write only if not locked or if attribute already exists in the
+        # class. We do not use hasattr(self,name) because this invokes
+        # __getattr__(self,name), which will retreive bitfield values over the
+        # network and slows down the program needlessly.
+        if (not self._locked) or name in self.__class__.__dict__ or name in self.__dict__:
+
 #            print 'setting ',name
             object.__setattr__(self, name, value)
         else:
@@ -121,6 +108,7 @@ class Module_base(object):
         if index in self.BITS:
             index = self.BITS[index].addr
         self.write(index, value)
+
     def _unlock(self):
         self.__dict__['_locked'] = False
 
@@ -136,14 +124,15 @@ class Module_base(object):
 
     def read_bit(self, addr, bit):
         """ Reads a bit from a FPGA memory-mapped register."""
-        return bool(self.fpga.Read(self.base_address + addr) & (1<<bit))
+        return bool(self.fpga.Read(self.base_address + addr) & (1 << bit))
 
     def read_drp(self, addr):
         """
-        Reads a DRP (Dynamic Reconfigurable Port) from one of the FPGA internal devices (PLL, SYSMON, MGT etc). 'addr' is the 16-bit DRP register address.
+        Reads a DRP (Dynamic Reconfigurable Port) from one of the FPGA
+        internal devices (PLL, SYSMON, MGT etc). 'addr' is the 16-bit DRP
+        register address.
         """
         return self.read(_RAM_BASE_ADDR + 2*addr, type=np.dtype('<u2'))
-   # read_DRP = read_drp
 
     def read_ram(self, addr, *args, **kwargs):
         """
@@ -158,7 +147,9 @@ class Module_base(object):
         return self.read(_STATUS_BASE_ADDR + addr, *args, **kwargs)
 
     def read_field(self, bitfield, verbose=0):
-        """ Reads the field identified by the name 'bit_name' which is looked up in the BITS table to find the bit definition (port, bit position etc). Returns a boolean."""
+        """ Reads the field identified by the name 'bit_name' which is looked
+        up in the BITS table to find the bit definition (port, bit position
+        etc). Returns a boolean."""
 #        if isinstance(bit_name, BitField):
 #            bit_def = bit_name
 #            bit_name = '(unspecified)'
@@ -167,13 +158,16 @@ class Module_base(object):
 
         if bitfield.page == BitField.DRP:
             data = self.read_drp(bitfield._addr) # read 16-bit value
-            return (data>>bitfield.bit) & ((1<<bitfield.width)-1)
+            return (data >> bitfield.bit) & ((1 << bitfield.width)-1)
 
         word_width = 8
         lsb_addr = bitfield.addr - int(bitfield.bit//word_width)
         msb_addr = bitfield.addr - int((bitfield.bit+bitfield.width-1)//word_width)
         number_of_bytes = lsb_addr - msb_addr + 1
-        data_type = {1:np.dtype('>u1'), 2:np.dtype('>u2'), 4:np.dtype('>u4'), 8:np.dtype('>u8')}[number_of_bytes]
+        data_type = {1: np.dtype('>u1'),
+                     2: np.dtype('>u2'),
+                     4: np.dtype('>u4'),
+                     8: np.dtype('>u8')}[number_of_bytes]
         data = int(self.read(msb_addr, type=data_type))
         if verbose:
             print 'Read base address %05X, addr: %i - %i, bit %i, width=%i, value=%i' % (self.base_address, msb_addr, lsb_addr, bitfield.bit, bitfield.width, data)
@@ -189,34 +183,44 @@ class Module_base(object):
 #            bit_def=self.BITS[bit_name]
         #print 'Writing field',bit_name
 
-        if (data>=2**bitfield.width) or data<0:
+        if (data >= 2**bitfield.width) or data < 0:
             raise Exception('Bad value %i for memory-mapped property %s' % (data, bitfield))
 
         if bitfield.page == BitField.DRP:
-            old_data = self.read_drp(bitfield._addr) # read 16-bit value
-            mask = (2**bitfield.width-1)<<bitfield.bit
+            old_data = self.read_drp(bitfield._addr)  # read 16-bit value
+            mask = (2**bitfield.width-1) << bitfield.bit
             new_data = old_data & ~mask
             new_data |= ((data << bitfield.bit) & mask)
             self.write_drp(bitfield._addr, new_data)
             return
 
-        word_width = 8
-        lsb_addr = bitfield.addr - int(bitfield.bit/word_width)
-        msb_addr = bitfield.addr - int((bitfield.bit+bitfield.width-1)/word_width)
-        number_of_bytes = lsb_addr - msb_addr + 1
-        data_type = {1:np.dtype('>u1'), 2:np.dtype('>u2'), 4:np.dtype('>u4'), 8:np.dtype('>u8')}[number_of_bytes]
+        # word_width = 8
+        # lsb_addr = bitfield.addr - int(bitfield.bit / word_width)
+        number_of_bytes = (bitfield.bit + bitfield.width-1) // 8 + 1
+         # = lsb_addr - msb_addr + 1
+        mask_string = np.array(((1 << bitfield.width)-1) << bitfield.bit, '>u8').tostring()
+        data_string = np.array(data << bitfield.bit, '>u8').tostring()
+        self.write(bitfield.addr - number_of_bytes + 1,
+                   data_string[-number_of_bytes:],
+                   mask=mask_string[-number_of_bytes:])
 
-        old_data = int(self.read(msb_addr, type=data_type))
-        mask = (2**bitfield.width-1)<<bitfield.bit
-        new_data = old_data & ~mask
-        new_data |= ((data << bitfield.bit) & mask)
-        #print 'Read ,bit "%s" at port %i, bit=%i, data: %X' % (bit_name,  bit_def.port,bit_def.bit, data)
-        #print 'old data, new_data=', hex(old_data), hex(new_data)
-        #print 'type=',type(new_data)
-        new_data = np.array([new_data], dtype=data_type)
-        new_data.dtype = np.uint8
-        #print new_data
-        self.write(msb_addr, new_data)
+
+        # data_type = {1: np.dtype('>u1'),
+        #              2: np.dtype('>u2'),
+        #              4: np.dtype('>u4'),
+        #              8: np.dtype('>u8')}[number_of_bytes]
+
+        # old_data = int(self.read(msb_addr, type=data_type))
+        # mask = (2**bitfield.width-1)<<bitfield.bit
+        # new_data = old_data & ~mask
+        # new_data |= ((data << bitfield.bit) & mask)
+        # #print 'Read ,bit "%s" at port %i, bit=%i, data: %X' % (bit_name,  bit_def.port,bit_def.bit, data)
+        # #print 'old data, new_data=', hex(old_data), hex(new_data)
+        # #print 'type=',type(new_data)
+        # new_data = np.array([new_data], dtype=data_type)
+        # new_data.dtype = np.uint8
+        # #print new_data
+        # self.write(msb_addr, new_data)
 
     def write(self, addr, data, *args, **kwargs):
         """ Writes bytes to the FPGA memory-mapped registers.
@@ -247,7 +251,7 @@ class Module_base(object):
 
     def write_bit(self, addr, bit):
         """ Sets a bit of the FPGA memory-mapped registers"""
-        mask = (1<<bit)
+        mask = (1 << bit)
         old_value = self.read(addr)
         self.write(addr, old_value & ~mask)
         self.write(addr, old_value | mask)
@@ -262,7 +266,7 @@ class Module_base(object):
         This is used to access the attributes and methods of the bitfield objects, since this is a python data descriptor and direct access calls its fget() method instead of returning the object.
         """
         class_attributes = vars(type(self))
-        if bitfield_name not in class_attributes: # is the variable an attribute of this class
+        if bitfield_name not in class_attributes:  # is the variable an attribute of this class
             raise Exception("The BitField '%s' is not defined" % bitfield_name)
         else:
             bitfield = class_attributes[bitfield_name]
@@ -270,6 +274,7 @@ class Module_base(object):
                 raise Exception("'%s' is not a Bitfield" % bitfield_name)
             else:
                 return bitfield
+
     def get_addr(self, bitfield_name):
         """
         Returns the address of the register containing the specified bitfield.
@@ -290,7 +295,6 @@ class Module_base(object):
             else:
                 (addr, bit) = (bitfield.addr, bitfield.bit)
 
-
         mask = (1<<bit)
         old_value = self.read(addr)
         self.write(addr, old_value | mask) # Set bit to '1'
@@ -298,7 +302,7 @@ class Module_base(object):
 
     def wait_for_bit(self, addr, bit=0, timeout=1):
         """
-        Wait for spoecified bit to become '1'.
+        Wait for specified bit to become '1'.
         if 'addr' is numeric, the bit 'bit' at address 'addr' is pulsed.
         If 'addr' is a string containing the name of a bit field, then this bit is pulsed.
         """
@@ -309,13 +313,7 @@ class Module_base(object):
             else:
                 (addr, bit) = (bitfield.addr, bitfield.bit)
 
-        #if addr in self.BITS:
-        #    field_def = self.BITS[addr]
-        #    if field_def.width != 1:
-        #        raise Exception('The bit field must be a single bit (width=1)')
-        #    (addr, bit) = (field_def.addr, field_def.bit)
-
-        mask = (1<<bit)
+        mask = (1 << bit)
         t0 = time.time()
         while 1:
             if self.read(addr) & mask:
@@ -323,38 +321,38 @@ class Module_base(object):
             if (time.time()-t0)>timeout:
                 raise(Warning('Timeout exceeded while waiting for status bit'))
 
-    def read_all_fields(self, format = '%(name)-30s = %(page_name)7s(0x%(addr)-02X)[%(bit_range)-5s]:  %(value)5i, 0x%(hex_value)-4s, 0b%(bin_value)s', sort = ['page','name']):
+    def read_all_fields(self, format='%(name)-30s = %(page_name)7s(0x%(addr)-02X)[%(bit_range)-5s]:  %(value)5i, 0x%(hex_value)-4s, 0b%(bin_value)s', sort = ['page','name']):
         """ Returns a list of all bitfields and their values.
             Each element of the list is a dictionary describing the bitfield with the following keys:
                 name (str), page (int), page_name (str), addr (int), bit (int), bit_range (str), width (int), doc (str), value (int), bin_value (str)
             'sort' indicated on which field(s) to sort the list
             If a 'format' string is specified, a list of  strings formatted using the specified format is returned instead.
         """
-        def entries(): # generator to list all the bitfield values
+        def entries():  # generator to list all the bitfield values
             for (name, bitfield) in vars(type(self)).items():
                 if type(bitfield) is BitField:
-                    value = getattr(self,name)
-                    entry = { 'name': name,
-                              'page': bitfield.page,
-                              'page_name': ('CONTROL', 'STATUS', 'RAM', 'DRP')[bitfield.page],
-                              'addr': bitfield._addr,
-                              'bit' : bitfield.bit,
-                              'bit_range' : '%i'%bitfield.bit if bitfield.width<=1 else '%i:%i' % (bitfield.bit+bitfield.width-1, bitfield.bit),
-                              'width' : bitfield.width,
-                              'doc' : bitfield.doc,
-                              'value': value,
-                              'bin_value': ('{0:0%ib}'%bitfield.width).format(value),
-                              'hex_value': ('{0:0%iX}'% int((bitfield.width+3)/4)).format(value)
-                              }
+                    value = getattr(self, name)
+                    entry = {'name': name,
+                             'page': bitfield.page,
+                             'page_name': ('CONTROL', 'STATUS', 'RAM', 'DRP')[bitfield.page],
+                             'addr': bitfield._addr,
+                             'bit' : bitfield.bit,
+                             'bit_range' : '%i' % bitfield.bit if bitfield.width<=1 else '%i:%i' % (bitfield.bit+bitfield.width-1, bitfield.bit),
+                             'width' : bitfield.width,
+                             'doc' : bitfield.doc,
+                             'value': value,
+                             'bin_value': ('{0:0%ib}' % bitfield.width).format(value),
+                             'hex_value': ('{0:0%iX}' % int((bitfield.width+3)/4)).format(value)
+                             }
                     yield entry
         table = list(entries())
         if not format:
             return table
         if sort:
-            if not isinstance(sort,list):
+            if not isinstance(sort, list):
                 sort = [sort]
             for sort_key in sort[::-1]:
-                table.sort(key=lambda x:x[sort_key])
+                table.sort(key=lambda x: x[sort_key])
         if format:
             return [format % entry for entry in table]
         else:

@@ -172,25 +172,25 @@ def scan_eye(self, horiz_offset=range(-32,32,4), vert_offset=range(-127,127,16),
                         break
                 else:
                     ih=ih+dir
-        plt.imshow(np.log10(ber+1e-12), origin='lower', extent=(min(horiz_offset),max(horiz_offset),min(vert_offset),max(vert_offset)), aspect=0.1, vmin=-12, vmax=1)
+        #plt.imshow(np.log10(ber+1e-12), origin='lower', extent=(min(horiz_offset),max(horiz_offset),min(vert_offset),max(vert_offset)), aspect=0.1, vmin=-12, vmax=1)
         return ber
 
 def scan_links(array, tx_power=7):
     array = [ib for ib in array if ib.is_open()]
-    slot = [ib.slot_number for ib in array]
+    slot = [ib.slot-1 for ib in array]
     if len(set(slot)) != len(slot):
         raise SystemError('Slot numbers are not unique!')
 
     #for ib in array:
-    #    ib.fpga.BP_SHUFFLE.RESET=1
+    #    ib.BP_SHUFFLE.RESET=1
     #    time.sleep(0.1)
-    #    ib.fpga.BP_SHUFFLE.RESET=0
+    #    ib.BP_SHUFFLE.RESET=0
     #    time.sleep(0.1)
 
     print 'Setting Transmitted ID'
     for ib in array:
-    	ib.fpga.BP_SHUFFLE.TX_DATA_MSB = 0xFF00 + ib.slot_number
-        for lane,g in enumerate(ib.fpga.BP_SHUFFLE.gtx):
+    	ib.BP_SHUFFLE.TX_DATA_MSB = 0xFF00 + ib.slot-1
+        for lane,g in enumerate(ib.BP_SHUFFLE.gtx):
             g.SOURCE_SEL=1 # 0:Send TXDATA , 1: SEND 10G Ethernet test packet
             g.LOOPBACK = 0
             #g.TXPOLARITY=0
@@ -205,6 +205,7 @@ def scan_links(array, tx_power=7):
             g.CAPTURE_ENABLE = 1
             g.TXPRECURSOR = 0b00000 #DFE cannot compensate pre-cursor
             g.TXPOSTCURSOR = 0b00000
+            g.RXLPMEN = 0 #Go to DFE mode instead of LPM
             g.RXMONITORSEL = 1 # 1=AGC, 2=UL, 3=VP loop
             g.RX_DEBUG_CFG = 0b1011<<2
             #g.DMONITOR_CFG1 = 0
@@ -219,11 +220,11 @@ def scan_links(array, tx_power=7):
 
     print 'Resetting the GTXes'
     for ib in array:
-        #ib.fpga.BP_SHUFFLE.RESET=1
+        #ib.BP_SHUFFLE.RESET=1
         #time.sleep(0.1)
-        #ib.fpga.BP_SHUFFLE.RESET=0
+        #ib.BP_SHUFFLE.RESET=0
         #time.sleep(0.1)
-        for g in ib.fpga.BP_SHUFFLE.gtx:
+        for g in ib.BP_SHUFFLE.gtx:
             g.RXDFELPMRESET=1
             g.RXDFELPMRESET=0
             #g.RXDFEOVRD=1
@@ -238,13 +239,13 @@ def scan_links(array, tx_power=7):
     link_matrix = [[None]*16 for x in range(16)]
     serial_number = ['N/A'] * 16
     for ib in array:
-        #print 'Slot %i' % (ib.slot_number+1)
-        dest_slot = ib.slot_number
-        serial_number[dest_slot] = ib.serial_number
-        for lane,g in enumerate(ib.fpga.BP_SHUFFLE.gtx):
+        #print 'Slot %i' % (ib.slot)
+        dest_slot = ib.slot-1
+        serial_number[dest_slot] = ib.serial
+        for lane,g in enumerate(ib.BP_SHUFFLE.gtx):
             for trial in range(3):
                 rxdata = g.get_rxdata()
-                #print '   Slot %i Lane %i received %08X' % (    ib.slot_number+1, lane+1,  rxdata)
+                #print '   Slot %i Lane %i received %08X' % (    ib.slot, lane+1,  rxdata)
                 source_slot = int((rxdata >>8) & 0xFF)
                 source_lane = int((rxdata) & 0xFF)
                 source_valid = (rxdata >>16) == 0xFFFF
@@ -252,18 +253,18 @@ def scan_links(array, tx_power=7):
                 if source_valid:
                     break
             if source_valid:
-                print 'Slot %2i Lane %2i is receiving data from Slot %2i Lane %2i (received word = 0x%08X, RXMONITOROUT= %x, DMONITOROUT=%x)' % (ib.slot_number+1, lane+1, source_slot+1, source_lane+1, rxdata, g.RXMONITOR, g.DMONITOROUT)
+                print 'Slot %2i Lane %2i is receiving data from Slot %2i Lane %2i (received word = 0x%08X, RXMONITOROUT= %x, DMONITOROUT=%x)' % (ib.slot, lane+1, source_slot+1, source_lane+1, rxdata, g.RXMONITOR, g.DMONITOROUT)
                 link_matrix[dest_slot][lane]='S%02iL%02i' % (source_slot+1, source_lane+1)
                 if (dest_slot+1, lane+1) in BP_RX_TO_TX_MAP and BP_RX_TO_TX_MAP[(dest_slot+1, lane+1)] != (source_slot+1, source_lane+1):
                     link_matrix[dest_slot][lane] += '(S%iL%i!)' % BP_RX_TO_TX_MAP[(dest_slot+1, lane+1)]
-                link_list.append(((source_slot+1, source_lane+1), (ib.slot_number+1, lane+1)))
+                link_list.append(((source_slot+1, source_lane+1), (ib.slot, lane+1)))
 
             elif maybe:
-                print 'Slot %2i Lane %2i is receiving some data but cannot determine source (received word = 0x%08X, RXMONITOROUT= %x, DMONITOROUT=%x)' % (ib.slot_number+1, lane+1, rxdata, g.RXMONITOR, g.DMONITOROUT)
+                print 'Slot %2i Lane %2i is receiving some data but cannot determine source (received word = 0x%08X, RXMONITOROUT= %x, DMONITOROUT=%x)' % (ib.slot, lane+1, rxdata, g.RXMONITOR, g.DMONITOROUT)
                 #link_matrix[dest_slot][lane]='?'
                 if (dest_slot+1, lane+1) in BP_RX_TO_TX_MAP:
                     link_matrix[dest_slot][lane] = '(S%iL%i?)' % BP_RX_TO_TX_MAP[(dest_slot+1, lane+1)]
-                    link_list.append((BP_RX_TO_TX_MAP[(dest_slot+1, lane+1)], (ib.slot_number+1, lane+1)))
+                    link_list.append((BP_RX_TO_TX_MAP[(dest_slot+1, lane+1)], (ib.slot, lane+1)))
                 else:
                     link_matrix[dest_slot][lane]='?'
             #else:
@@ -271,7 +272,7 @@ def scan_links(array, tx_power=7):
             #        link_matrix[dest_slot][lane] = 'NC (S%iL%i)' % BP_RX_TO_TX_MAP[(dest_slot+1, lane+1)]
 
             #if source_valid or maybe:
-            #    link_list.append(((source_slot+1, source_lane+1), (ib.slot_number+1, lane+1)))
+            #    link_list.append(((source_slot+1, source_lane+1), (ib.slot, lane+1)))
 
     print 'Slot-> ' + ' '.join(['%-10i' % (slot+1) for slot in range(16)])
     print 'S/N -> ' + ' '.join(['%-10s' % (sn) for sn in serial_number])
@@ -288,7 +289,7 @@ def scan_links(array, tx_power=7):
 def get_ber(array, link_list, period=0.1, tx_power = None):
 
     link_list.sort(key=lambda ((ss,sl),(ds,dl)): ss*16+ds)
-    ib_map = {ib.slot_number+1:ib for ib in array}
+    ib_map = {ib.slot:ib for ib in array}
     ber_table={}
     for ((ss,sl),(ds,dl)) in link_list:
         if ss not in ib_map or ds not in ib_map:
@@ -297,15 +298,15 @@ def get_ber(array, link_list, period=0.1, tx_power = None):
         dest_ib = ib_map[ds]
         if not source_ib.is_open() or not dest_ib.is_open():
             continue
-        source_gtx = source_ib.fpga.BP_SHUFFLE.gtx[sl-1]
-        dest_gtx = dest_ib.fpga.BP_SHUFFLE.gtx[dl-1]
+        source_gtx = source_ib.BP_SHUFFLE.gtx[sl-1]
+        dest_gtx = dest_ib.BP_SHUFFLE.gtx[dl-1]
 
         if tx_power is not None:
             source_gtx.TXDIFFCTRL=tx_power
 
         source_gtx.TXPRBSSEL=4
 
-        print 'Measuring BER for Slots %2i->%2i (SN%03i, GTX[%2i])=> (SN%03i, GTX[%2i])' % (ss, ds, source_ib.serial_number, sl-1,  dest_ib.serial_number, dl-1),
+        print 'Measuring BER for Slots %2i->%2i (SN%s, GTX[%2i])=> (SN%s, GTX[%2i])' % (ss, ds, source_ib.serial, sl-1,  dest_ib.serial, dl-1),
 
         # First, make sure we can get errors by setting the wrong RX PRBS Sequence
         dest_gtx.RXPRBSCNTRESET=1
@@ -332,11 +333,16 @@ def get_ber(array, link_list, period=0.1, tx_power = None):
         #    #    print 'locked',
         #    #    break
         #dest_gtx.RXPRBSCNTRESET=1
+        dest_gtx.RXDFELPMRESET=1
+        time.sleep(0.001)
+        dest_gtx.RXDFELPMRESET=0
+        time.sleep(0.001)
         dest_gtx.RXPRBSCNTRESET=1
         dest_gtx.RXPRBSSEL=4
         dest_gtx.RXDFELPMRESET=1
+        time.sleep(0.001)
         dest_gtx.RXDFELPMRESET=0
-        #time.sleep(period)
+        time.sleep(0.001)
         dest_gtx.RXPRBSCNTRESET=0
         time.sleep(period)
         cnt=dest_gtx.ERR_CTR
@@ -354,7 +360,7 @@ def get_eye_matrix(array, h_step=10, v_step=40):
     for link in link_map:
         ((from_slot, from_lane), (to_slot, to_lane)) = link
         print  "###### running from slot %i lane %i to slot %i lane %i #######" % ( from_slot, from_lane, to_slot, to_lane)
-        gtx = [ib.fpga.BP_SHUFFLE.gtx[to_lane-1] for ib in array if ib.slot_number==to_slot-1][0]
+        gtx = [ib.BP_SHUFFLE.gtx[to_lane-1] for ib in array if ib.slot==to_slot][0]
         e=scan_eye(gtx, range(-32,32,h_step), range(-127,128,v_step), plot=1)
         link_ber[link] = e
     return link_ber

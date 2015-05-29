@@ -38,15 +38,15 @@ class CH_DIST_base(Module_base):
 
     # Status bitfields
     FIFO_EMPTY               = BitField(STATUS, 0x00, 7, doc="Active high when the data FIFO is empty")
-    FIFO_OVERFLOW            = BitField(STATUS, 0x00, 6, doc="Active high if the data FIFO is overflowing")
+    FIFO_OVERFLOW            = BitField(STATUS, 0x00, 6, doc="'1' if the data FIFO is overflowing (sticky, cleared by OVERFLOW_RESET=1)")
     IS_RESET                 = BitField(STATUS, 0x00, 5, doc="High when the module reset line is active")
-    EIGHT_BIT_SUPPORT        = BitField(STATUS, 0x00, 4, doc="")
-    # FIFO_CTR                 = BitField(STATUS, 0x00, 2, width=2, doc="")
-    DATA_FLAGS_OVERFLOW      = BitField(STATUS, 0x00, 1, width=4, doc="Debug")
-    FRAME_FIFO_OVERFLOW      = BitField(STATUS, 0x00, 0, width=4, doc="Debug")
+    EIGHT_BIT_SUPPORT        = BitField(STATUS, 0x00, 4, doc="'1' when the module supports (8+8) bit operation")
+    FRAME_PER_PACKET_CTR     = BitField(STATUS, 0x00, 2, width=2, doc="Currently processed frame in the packet")
+    DATA_FLAGS_OVERFLOW      = BitField(STATUS, 0x00, 1, doc="'1' if the data flag FIFO (scaler flags) is overflowing (sticky, cleared by OVERFLOW_RESET=1)")
+    FRAME_FIFO_OVERFLOW      = BitField(STATUS, 0x00, 0, doc="'1' if the frame flag FIFO (ADC flags) is overflowing (sticky, cleared by OVERFLOW_RESET=1)")
 
     TIMESTAMP_CTR            = BitField(STATUS, 0x01, 0, width=8, doc="Last 8 bits of the current timestamp.")
-    # IN_FRAME_CTR             = BitField(STATUS, 0x02, 0, width=8, doc="Number of frames received on lane 0 before the alignment FIFOs. Rolls over.")
+    IN_FRAME_CTR             = BitField(STATUS, 0x02, 0, width=8, doc="Number of frames received. Rolls over.")
 
     # INPUT_CTR                = BitField(STATUS, 0x04, 0, width=4, doc="Debug")
     # SCALER_FLAG_FIFO_OVERFLOW= BitField(STATUS, 0x04, 4, doc="Debug")
@@ -127,8 +127,8 @@ class CH_DIST_base(Module_base):
             mask[j//8] |= (1<<(j % 8))
         # verbose = False
         # if verbose: print (bins_to_enable)
-        self.logger.debug('Configuring lane %i of the crossbar to capture %i frequency bins: %s' % ( self.instance_number, len(bins_to_enable), repr(bins_to_enable)))
-        self.logger.debug('Mask pattern is: %s' % ( ' '.join('%02X'% byte for byte in mask)))
+        self.logger.info('%.32r: BIN_SEL: Configuring lane %i of the crossbar to capture %i frequency bins: %s' % (self.fpga, self.instance_number, len(bins_to_enable), repr(bins_to_enable)))
+        # self.logger.debug('Mask pattern is: %s' % ( ' '.join('%02X'% byte for byte in mask)))
         self.NUMBER_OF_SELECTED_WORDS = len(bins_to_enable)
 
         self.write_ram(0x00, mask) # Enable transmission of selected bytes

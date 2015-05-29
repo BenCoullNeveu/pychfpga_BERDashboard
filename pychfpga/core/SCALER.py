@@ -26,12 +26,27 @@ class SCALER_base(Module_base):
     FOUR_BITS         = BitField(CONTROL, 0x00, 5, doc="Enables 4-bit operation")
     SHIFT_LEFT        = BitField(CONTROL, 0x00, 0, width=5, doc="Number of bits to shift left the incoming data")
     USE_OFFSET_BINARY = BitField(CONTROL, 0x01, 6, doc="When '1', offset binary encoding is used.")
-    USE_GAIN_TABLE    = BitField(CONTROL, 0x01, 5, doc="When '1', the gain tables are used to apply a bin-by-bin complex gain. Otherwise, the fixed complex gain is used for all bins.")
-    READ_COEFF_BANK   = BitField(CONTROL, 0x01, 4, doc="Indicates which bank of gain coefficients is to be used by the scaler")
+    # USE_GAIN_TABLE    = BitField(CONTROL, 0x01, 5, doc="When '1', the gain tables are used to apply a bin-by-bin complex gain. Otherwise, the fixed complex gain is used for all bins.")
+    READ_COEFF_BANK   = BitField(CONTROL, 0x01, 4, doc="Target gain coefficients bank to be used by the scaler")
     WRITE_COEFF_BANK  = BitField(CONTROL, 0x01, 0, width=4, doc="Indicates in which data page the gain coefficients are being written to. Page 0-7 are coefficients fri bank0, Page 8-15 are for Bank 1 coefficients.")
-    FIXED_GAIN_REAL   = BitField(CONTROL, 0x03, 0, width=16, doc="Real part of the fixed gain. Used when USE_GAIN_TABLE= '0'.")
-    FIXED_GAIN_IMAG   = BitField(CONTROL, 0x05, 0, width=16, doc="Imaginary part of the fixed gain. Used when USE_GAIN_TABLE= '0'.")
-    ROUNDING_MODE = BitField(CONTROL, 0x06, 0, width=2, doc="Set rounding mode.  0b00->Truncate, 0b01->Round, 0b10->Convergent Rounding")
+
+    STATS_CAPTURE                 = BitField(CONTROL, 0x02, 7, doc="When '1', New saturation/overflow stats are captured")
+    SATURATE_ON_MINUS_7           = BitField(CONTROL, 0x02, 6, doc="When '1', Values will saturate at -7 instead of -8.")
+    ZERO_ON_SATURATION            = BitField(CONTROL, 0x02, 5, doc="When '1', Both real and Imaginary parts are zeroed when either of them overflow.")
+    SYNCHRONIZE_GAIN_BANK         = BitField(CONTROL, 0x02, 4, doc="When '1', The target bank number will be enabled at the target frame number.")
+    ROUNDING_MODE                 = BitField(CONTROL, 0x02, 0, width=2, doc="Set rounding mode.  0: Truncate, 1: Round, 2: Convergent Rounding")
+
+    STATS_FRAME_COUNT             = BitField(CONTROL, 0x05, 0, width=24, doc="Number of frames to inclue in stats results.")
+    GAIN_BANK_SWITCH_FRAME_NUMBER = BitField(CONTROL, 0x09, 0, width=32, doc="Frame number at which the target gain bak is to be activated.")
+
+    STATS_READY             = BitField(STATUS, 0x00, 7, doc="Indicates that new stats results are ready")
+    CURRENT_GAIN_BANK       = BitField(STATUS, 0x00, 6, doc="Currently active gain bank.")
+    EIGHT_BIT_SUPPORT       = BitField(STATUS, 0x00, 5, doc="'1' when the SCALER supports 8-bit output")
+
+    STATS_SCALER_OVERFLOWS = BitField(STATUS, 0x02, 0, width=16, doc="Stats result: number of scaler overflows")
+    STATS_ADC_OVERFLOWS    = BitField(STATUS, 0x04, 0, width=16, doc="Stats result: number of ADC overflows")
+    FRAME_CTR              = BitField(STATUS, 0x05, 0, width=8, doc="Free running frame counter (last 8 bits)")
+
 
     # Define Status registers
 
@@ -52,48 +67,64 @@ class SCALER_base(Module_base):
         #self.BYPASS = 1
         #self.SHIFT_LEFT = 10
         self.SHIFT_LEFT = 31
-        self.USE_GAIN_TABLE = 1
-        self.USE_OFFSET_BINARY = 0
-        self.set_fixed_gain(1)
+        # self.USE_GAIN_TABLE = 1
+        self.USE_OFFSET_BINARY = 1
+        # self.set_fixed_gain(1)
         self.set_gain_table(1)
 
 
-    def set_fixed_gain(self, complex_gain):
-        """
-        Sets the scaler's fixed gain complex value.
-        """
+    # def set_fixed_gain(self, complex_gain):
+    #     """
+    #     Sets the scaler's fixed gain complex value.
+    #     """
 
-        if complex_gain.real<-32768 or complex_gain.real > 32767 or complex_gain.imag<-32768 or complex_gain.imag>32767:
-            self.fpga.chFPGAException("Invalid fixed gain")
+    #     if complex_gain.real<-32768 or complex_gain.real > 32767 or complex_gain.imag<-32768 or complex_gain.imag>32767:
+    #         raise ValueError("Invalid fixed gain")
 
-        self.FIXED_GAIN_REAL = np.int16(complex_gain.real)
-        self.FIXED_GAIN_IMAG = np.int16(complex_gain.imag)
+    #     self.FIXED_GAIN_REAL = np.int16(complex_gain.real)
+    #     self.FIXED_GAIN_IMAG = np.int16(complex_gain.imag)
 
-        # if use_gain_table is not None:
-        #     self.USE_GAIN_TABLE = use_gain_table
+    #     # if use_gain_table is not None:
+    #     #     self.USE_GAIN_TABLE = use_gain_table
 
-    def get_fixed_gain(self):
-        """
-        Returns the scaler's fixed gain complex value.
-        """
-        return np.int16(self.FIXED_GAIN_REAL) + 1j*np.int16(self.FIXED_GAIN_IMAG)
+    # def get_fixed_gain(self):
+    #     """
+    #     Returns the scaler's fixed gain complex value.
+    #     """
+    #     return np.int16(self.FIXED_GAIN_REAL) + 1j*np.int16(self.FIXED_GAIN_IMAG)
 
-    def set_gain_table(self, gain_list, bank = 0):
+    def set_gain_table(self, gain_list, bank=0):
         """
         Sets the scaler's complex gain table for the specified bank.
         """
+        total_bins = self.fpga.NUMBER_OF_FREQUENCY_BINS
         if isinstance(gain_list, (int, float, complex)):
-            gain_list = [complex(gain_list)]*self.fpga.NUMBER_OF_FREQUENCY_BINS
+            gains = np.array([complex(gain_list)]*total_bins)
+        else:
+            gains = np.array(gain_list)
 
-        page_table = np.zeros(512, np.int8)
+        if any(gains.real < -32768) or any(gains.real > 32767) or any(gains.real != gains.real.astype('<i2')) or \
+           any(gains.imag < -32768) or any(gains.imag > 32767) or any(gains.imag != gains.imag.astype('<i2')):
+            raise ValueError('All real or imaginary parts of the gains must be integers between -32768 and 32767')
+
+        if len(gains) != total_bins:
+            raise ValueError('Either a scalar gain or a 1024 element gain vector must be provided')
+
+        gain_string = np.reshape(np.vstack((gains.real, gains.imag)).T, 2 * total_bins).astype('<i2').tostring()
+
+        # page_table = np.zeros(512, np.int8)
         for page in range(8): # there are 8 pages of coefficients per bank
-            for ix in range(128): # there are 128 coefficients per page ( 4 byte per coefficient = 512 bytes total per page)
-                bin = page*128 + ix
-                gain = gain_list[bin]
-                page_table[4*ix:4*ix+4] = np.fromstring(struct.pack('<hh', gain.imag, gain.real), np.int8)
-            self.WRITE_COEFF_BANK = 8*bank + page
+            self.WRITE_COEFF_BANK = 8 * bank + page
+            self.write_ram(0, gain_string[512 * page: 512 * (page + 1)])
+            # for ix in range(128): # there are 128 coefficients per page ( 4 byte per coefficient = 512 bytes total per page)
+            #     bin = page*128 + ix
+            #     gain = gain_list[bin]
+            #     page_table[4*ix:4*ix+4] = np.fromstring(struct.pack('<hh', gain.imag, gain.real), np.int8)
+
             #print page_table
-            self.write_ram(0, np.uint8(page_table))
+            # self.write_ram(0, np.uint8(page_table))
+
+
 
     def get_gain_table(self, bank=0):
         """
