@@ -216,7 +216,7 @@ def init_gains(c):
         try:
             g_array = pickle.load(open('/home/chime/ch_acq/gains_'+str(cc.fpga_serial_number)+'.pkl', 'rb'))
         except:
-            g_array = pickle.load(open('gains.pkl', 'rb'))
+            g_array = pickle.load(open('/home/chime/ch_acq/gains.pkl', 'rb'))
             print 'Could not find gain settings for %r. Using default gain settings.' %cc
         print 'Setting gains on IceBoard SN%s' % cc.serial
         cc.set_gain(g_array)
