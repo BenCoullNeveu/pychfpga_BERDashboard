@@ -369,13 +369,13 @@ if __name__ == "__main__":
       c.set_offset_binary_encoding()
       c.sync()
       # Get sync_board. Currently board SN0008 (slot 16)
-      #sync_board = None
-      #for ib in c:
-      #  if ib.serial == '0008':
-      #    sync_board = ib
-      #    break
-      #if sync_board == None:
-      #  sync_board = c[0]
+      sync_board = None
+      for ib in c:
+        if ib.serial == '0008':
+          sync_board = ib
+          break
+      if sync_board == None:
+        sync_board = c[0]
       # Get noise injectionn gating board. Currently board SN0005 (slot 1)
       ni_board = None
       if args.ni_enable:
@@ -386,7 +386,7 @@ if __name__ == "__main__":
         assert args.ni_enable and (ni_board != None), 'Noise injection gating board SN%s not found in subarray %d' %(args.ni_board, conf["fpga"]["subarray"])
       # This is another hack. Have to fix it for DRAO. REALLY: HAVE TO CHANGE IT
       # shuffle_init(list(c),sync_board,frames_per_packet=4, cb1_lanes=16, cb1_bins=64, cb2_lanes=16, cb2_bins=8, cb2_bypass=0, remap=True )
-      shuffle_init(list(c),ni_board, frames_per_packet=4, cb1_lanes=16, cb1_bins=64, cb2_lanes=16, cb2_bins=8, cb2_bypass=0, remap=True,
+      shuffle_init(list(c),ni_board, sync_board, frames_per_packet=4, cb1_lanes=16, cb1_bins=64, cb2_lanes=16, cb2_bins=8, cb2_bypass=0, remap=True,
                    ni_enable = args.ni_enable, ni_offset = args.ni_offset, 
                    ni_high_time = args.ni_high_time, ni_period = args.ni_period)
 

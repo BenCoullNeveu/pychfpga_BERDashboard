@@ -48,7 +48,7 @@ def get_gpu_data(node_number, dna_number):
     return result
 
 #def shuffle_init(c, sync_board, frames_per_packet=1, cb1_lanes=4, cb1_bins=16, cb2_lanes=2, cb2_bins=1, cb2_bypass=0, bp_bypass=0, remap=True):
-def shuffle_init(c, ni_board, frames_per_packet=1, cb1_lanes=4, cb1_bins=16, cb2_lanes=2, cb2_bins=1, cb2_bypass=0, bp_bypass=0, remap=True,
+def shuffle_init(c, ni_board, sync_board, frames_per_packet=1, cb1_lanes=4, cb1_bins=16, cb2_lanes=2, cb2_bins=1, cb2_bypass=0, bp_bypass=0, remap=True,
                  ni_enable = False, ni_offset = 0, ni_high_time = 8388608, ni_period = 16777216):
     """ Setup the crossbars and data shuffling in every board of the array.
     """
@@ -62,8 +62,8 @@ def shuffle_init(c, ni_board, frames_per_packet=1, cb1_lanes=4, cb1_bins=16, cb2
 
     logger.info('%.32r: Configuring crate-wide data shuffling with frames_per_packet=%i, cb1_lanes=%i, cb1_bins=64, cb2_lanes=%i, cb2_bins=%i, cb2_bypass=%s, bp_bypass=%s' % (crate, cb1_lanes, cb1_bins, cb2_lanes, cb2_bins, bool(cb2_bypass), bool(bp_bypass)))
 
-    # Set SMA output of sync board to be sync signal
-    #sync_board.set_user_output_source('sync')
+    # Set SMA output of sync board to be irigb trigger sync signal (was 'sync')
+    sync_board.set_user_output_source('irigb_trig')
     # set-up transmitters
     for i,bb in enumerate(c):
         logger.info('%.32r: **** Initializing transmitters for Slot %02i (IceBoard SN%s) ****' % (crate, bb.slot, bb.serial))
@@ -86,8 +86,8 @@ def shuffle_init(c, ni_board, frames_per_packet=1, cb1_lanes=4, cb1_bins=16, cb2
         # Set the source of the IRIG-B signal
         bb.set_irigb_source('bp_time')
         # Set the source of the SYNC signal to irigb
-        #bb.REFCLK.set_sync_source('bp')#bb.REFCLK.SLAVE=1
-        bb.REFCLK.set_sync_source('irigb')
+        bb.REFCLK.set_sync_source('bp')#bb.REFCLK.SLAVE=1
+        #bb.REFCLK.set_sync_source('irigb')
 
         tx_list.append((bb.slot, 0))  # Register Bypass lane (lane 0) as a transmitter in this slot
         for j,gtx in enumerate(bb.BP_SHUFFLE.gtx):
@@ -132,7 +132,8 @@ def shuffle_init(c, ni_board, frames_per_packet=1, cb1_lanes=4, cb1_bins=16, cb2
         
     # sync boards
     #soft_sync(c, sync_board)
-    irigb_sync(c, delay=5)
+    #irigb_sync(c, delay=5)
+    time_soft_sync(c, sync_board, delay=5)
 
 
 # r.CROSSBAR2[0].print_frame_info()
@@ -243,6 +244,25 @@ def soft_sync(boards, sync_board):
 
     print 'Initiating global sync'
     sync_board.REFCLK.sync()
+
+    print 'Unmasking ADC data'
+    for ib in boards:
+        for ant in ib.ANT:
+            ant.ADCDAQ.BYTE_MASK = 255
+
+def time_soft_sync(boards, sync_board, delay):
+    """ Synchronize all boards"""
+    boards = list(boards)
+    print 'Masking ADC data before sync'
+    for ib in boards:
+        for ant in ib.ANT:
+            ant.ADCDAQ.BYTE_MASK = 0
+    
+    # Get current time
+    current_time = sync_board.get_irigb_time()
+    print 'Setting IRIG-B sync after %d seconds' %delay
+    # Send sync pulse delay seconds in the future
+    sync_board.set_irigb_trigger_time(current_time, delay)
 
     print 'Unmasking ADC data'
     for ib in boards:
