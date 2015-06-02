@@ -47,8 +47,9 @@ def get_gpu_data(node_number, dna_number):
 
     return result
 
-
-def shuffle_init(c, sync_board, frames_per_packet=1, cb1_lanes=4, cb1_bins=16, cb2_lanes=2, cb2_bins=1, cb2_bypass=0, bp_bypass=0, remap=True):
+#def shuffle_init(c, sync_board, frames_per_packet=1, cb1_lanes=4, cb1_bins=16, cb2_lanes=2, cb2_bins=1, cb2_bypass=0, bp_bypass=0, remap=True):
+def shuffle_init(c, ni_board, frames_per_packet=1, cb1_lanes=4, cb1_bins=16, cb2_lanes=2, cb2_bins=1, cb2_bypass=0, bp_bypass=0, remap=True,
+                 ni_enable = False, ni_offset = 0, ni_high_time = 8388608, ni_period = 16777216):
     """ Setup the crossbars and data shuffling in every board of the array.
     """
     tx_list = []
@@ -62,7 +63,7 @@ def shuffle_init(c, sync_board, frames_per_packet=1, cb1_lanes=4, cb1_bins=16, c
     logger.info('%.32r: Configuring crate-wide data shuffling with frames_per_packet=%i, cb1_lanes=%i, cb1_bins=64, cb2_lanes=%i, cb2_bins=%i, cb2_bypass=%s, bp_bypass=%s' % (crate, cb1_lanes, cb1_bins, cb2_lanes, cb2_bins, bool(cb2_bypass), bool(bp_bypass)))
 
     # Set SMA output of sync board to be sync signal
-    sync_board.set_user_output_source('sync')
+    #sync_board.set_user_output_source('sync')
     # set-up transmitters
     for i,bb in enumerate(c):
         logger.info('%.32r: **** Initializing transmitters for Slot %02i (IceBoard SN%s) ****' % (crate, bb.slot, bb.serial))
@@ -82,8 +83,11 @@ def shuffle_init(c, sync_board, frames_per_packet=1, cb1_lanes=4, cb1_bins=16, c
         for j,cb in enumerate(bb.CROSSBAR2):
             cb.STREAM_ID = bb.slot-1
 
-        # Make the board respond to SYNC triggers from the backplane
-        bb.REFCLK.set_sync_source('bp')#bb.REFCLK.SLAVE=1
+        # Set the source of the IRIG-B signal
+        bb.set_irigb_source('bp_time')
+        # Set the source of the SYNC signal to irigb
+        #bb.REFCLK.set_sync_source('bp')#bb.REFCLK.SLAVE=1
+        bb.REFCLK.set_sync_source('irigb')
 
         tx_list.append((bb.slot, 0))  # Register Bypass lane (lane 0) as a transmitter in this slot
         for j,gtx in enumerate(bb.BP_SHUFFLE.gtx):
@@ -121,7 +125,15 @@ def shuffle_init(c, sync_board, frames_per_packet=1, cb1_lanes=4, cb1_bins=16, c
             else:
                 logger.info('%.32r: %s has no corresponding transmitter' % (bb.crate, rx,))
 
-    soft_sync(c, sync_board)
+    # Configure noise injection gating signal
+    if ni_enable:
+        ni_board.set_user_output_source('pwm')
+        ni_board.set_frame_pwm(ni_offset, ni_high_time, ni_period)
+        
+    # sync boards
+    #soft_sync(c, sync_board)
+    irigb_sync(c, delay=5)
+
 
 # r.CROSSBAR2[0].print_frame_info()
 def compute_lane_map(c):
@@ -236,6 +248,16 @@ def soft_sync(boards, sync_board):
     for ib in boards:
         for ant in ib.ANT:
             ant.ADCDAQ.BYTE_MASK = 255
+
+def irigb_sync(boards, delay):
+    """ Synchronize all boards"""
+
+    # Get current time
+    current_time = boards[0].get_irigb_time()
+    print 'Setting IRIG-B sync after %d seconds' %delay
+    for cc in boards:
+        cc.set_irigb_trigger_time(current_time, delay)
+
 
 def print_temperatures(boards):
     t = [(b.slot, b.serial, b.SYSMON.temperature()) for b in boards]

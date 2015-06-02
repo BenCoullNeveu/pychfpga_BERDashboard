@@ -5,6 +5,7 @@ Master control program for CHIME.
 #
 History:
 2013-05-13 ADH: First version.
+2015-05-30 JM: Modified to work with new icecore and handle noise injection gating
 """
 
 import chrx
@@ -199,6 +200,22 @@ if __name__ == "__main__":
   parser.add_argument("-f", "--configure_fpga", action = "store", \
                        default = 1, \
                        help = "1 configure and control fpga.  0 to ignore fpga and just get data from gpu")
+  # Parameters for noise injection
+  parser.add_argument("-i", "--ni_enable", action = "store", \
+                       default = 0, \
+                       help = "Enable the pwm signal for noise injection gating")
+  parser.add_argument("-b", "--ni_board", action = "store", \
+                       type=str, default = '0005', \
+                       help = "Enable the pwm signal for noise injection gating")
+  parser.add_argument("-o", "--ni_offset", action = "store", \
+                       type=int, default=0, \
+                       help = "Offset, in frames, of the pwm signal for noise injection gating")
+  parser.add_argument("-u", "--ni_high_time", action = "store", \
+                       type=int, default=16777216, \
+                       help = "High time, in frames, of the pwm signal for noise injection gating. Default 16777216 frames (~43 secs)")
+  parser.add_argument("-p", "--ni_period", action = "store", \
+                       type=int, default=33554432, \
+                       help = "Period, in frames, of the pwm signal for noise injection gating. Default 33554432 frames (~86 secs)")
   args = parser.parse_args()
 
   # Be paranoid: if the executable is being run from /usr/sbin we can be
@@ -352,15 +369,26 @@ if __name__ == "__main__":
       c.set_offset_binary_encoding()
       c.sync()
       # Get sync_board. Currently board SN0008 (slot 16)
-      sync_board = None
-      for ib in c:
-        if ib.serial == '0008':
-          sync_board = ib
-          break
-      if sync_board == None:
-        sync_board = c[0]
+      #sync_board = None
+      #for ib in c:
+      #  if ib.serial == '0008':
+      #    sync_board = ib
+      #    break
+      #if sync_board == None:
+      #  sync_board = c[0]
+      # Get noise injectionn gating board. Currently board SN0005 (slot 1)
+      ni_board = None
+      if args.ni_enable:
+        for ib in c:
+          if ib.serial == args.ni_board:
+            ni_board = ib
+            break
+        assert args.ni_enable and (ni_board != None), 'Noise injection gating board SN%s not found in subarray %d' %(args.ni_board, conf["fpga"]["subarray"])
       # This is another hack. Have to fix it for DRAO. REALLY: HAVE TO CHANGE IT
-      shuffle_init(list(c),sync_board,frames_per_packet=4, cb1_lanes=16, cb1_bins=64, cb2_lanes=16, cb2_bins=8, cb2_bypass=0, remap=True )
+      # shuffle_init(list(c),sync_board,frames_per_packet=4, cb1_lanes=16, cb1_bins=64, cb2_lanes=16, cb2_bins=8, cb2_bypass=0, remap=True )
+      shuffle_init(list(c),ni_board, frames_per_packet=4, cb1_lanes=16, cb1_bins=64, cb2_lanes=16, cb2_bins=8, cb2_bypass=0, remap=True,
+                   ni_enable = args.ni_enable, ni_offset = args.ni_offset, 
+                   ni_high_time = args.ni_high_time, ni_period = args.ni_period)
 
       #Make sure FPGA throttling is fast enough to send all the data
       #FPGA doesn't seem to change this without a reset...

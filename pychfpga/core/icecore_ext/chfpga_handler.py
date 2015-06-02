@@ -599,11 +599,12 @@ class chFPGAHandler(IceBoardPlusHandler):
     _IRIGB_TIME_FORMAT = {
         'datetime': lambda ts: ts.datetime,
         'nano' : lambda ts: ts.nano,
-        'datetime+': lambda ts: (ts.datetime, ts.nano % 1000000000)
+        'datetime+': lambda ts: (ts.datetime, ts.nano % 1000000000),
+        'raw': lambda ts: ts
         }
 
 
-    def _get_irigb_time(self, trig=True, format='datetime'):
+    def _get_irigb_time(self, trig=True, format='datetime', noerror=False):
         """ Reads the IRIG-B time from the time decoder and returns an object
         that contains all the time information gathered from it.
 
@@ -649,7 +650,7 @@ class chFPGAHandler(IceBoardPlusHandler):
         # ts.done = (t1 >> 30) & 1
         ts.nano = int(timegm((ts.y+2000, 1, 1, 0, 0, 0))*1e9) + (ts.d*24*3600 + ts.h*3600 + ts.m*60 + ts.s)*1000000000 + ts.ss*10
         # ts.event_ctr = e0
-        if not ts.recent:
+        if not ts.recent and not noerror:
             raise RuntimeError('Invalid IRIG-B signal')
 
         return self._IRIGB_TIME_FORMAT[format](ts)
