@@ -70,12 +70,12 @@ def shuffle_init(c, ni_board, sync_board, frames_per_packet=1, cb1_lanes=4, cb1_
         bb.set_corr_reset(0)
         # bb.set_data_source('funcgen')
         # bb.set_funcgen_function('a', a=0)
-        bb.set_data_source('adc')
+        #bb.set_data_source('adc')
         # set all analog inputs to send the (slot_number, analog input) complex number on every bin
-        for j in range(len(bb.ANT)):
-            bb.set_funcgen_function('ab', a=(bb.slot-1)<<4, b=j<<4, channels=[j])
+        #for j in range(len(bb.ANT)):
+        #    bb.set_funcgen_function('ab', a=(bb.slot-1)<<4, b=j<<4, channels=[j])
             # bb.set_funcgen_function('4bit_split_ramp')
-            pass
+        #    pass
         # set the stream ID of every transmitter to (slot_number, analog input) complex number on every bin
         for j,cb in enumerate(bb.CROSSBAR):
             cb.STREAM_ID = bb.slot-1
@@ -227,7 +227,7 @@ def init_gains(c):
     import pickle
     for cc in c:
         try:
-            g_array = pickle.load(open('/home/chime/ch_acq/gains_'+str(cc.fpga_serial_number)+'.pkl', 'rb'))
+            g_array = pickle.load(open('/home/chime/ch_acq/gains_'+str(cc.get_fpga_serial_number())+'.pkl', 'rb'))
         except:
             g_array = pickle.load(open('/home/chime/ch_acq/gains.pkl', 'rb'))
             print 'Could not find gain settings for %r. Using default gain settings.' %cc

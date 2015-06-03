@@ -318,9 +318,9 @@ if __name__ == "__main__":
           log.info("set delays on SN {0}, SLOT {1}".format(ice.serial, ice.slot))
       #except:
       #    log.info("Error loading/setting delay tables.  Using default from config file for all boards")
-      for cc in c:
-        cc.GPU.LINK_ENABLE=1
-        log.info("GPU link enabled on SN {0}, SLOT {1}".format(cc.serial, cc.slot))
+      #for cc in c:
+      #  cc.GPU.LINK_ENABLE=1
+      #  log.info("GPU link enabled on SN {0}, SLOT {1}".format(cc.serial, cc.slot))
       c.set_corr_reset(1)
       time.sleep(0.1)
       c.set_corr_reset(0)
@@ -369,13 +369,14 @@ if __name__ == "__main__":
       c.set_offset_binary_encoding()
       c.sync()
       # Get sync_board. Currently board SN0008 (slot 16)
-      sync_board = None
-      for ib in c:
-        if ib.serial == '0008':
-          sync_board = ib
-          break
-      if sync_board == None:
-        sync_board = c[0]
+      #sync_board = None
+      #for ib in c:
+      #  if ib.serial == '0008':
+      #    sync_board = ib
+      #    break
+      #if sync_board == None:
+      #  sync_board = c[0]
+      sync_board = c(serial='0008')
       # Get noise injectionn gating board. Currently board SN0005 (slot 1)
       ni_board = None
       if args.ni_enable:
