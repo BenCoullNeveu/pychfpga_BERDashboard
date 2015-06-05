@@ -26,9 +26,9 @@ dataset = {    "barometer": {"type": "pressure"},
                "windSpeed": {"type": "speed"},
                  "windDir": {"type": "direction"},
                 "windGust": {"type": "speed"},
-             "windGustDir": {"type": "speed"},
-                "rainRate": {"type": "pressure"},
-                    "rain": {"type": "pressure"},
+             "windGustDir": {"type": "direction"},
+                "rainRate": {"type": "rate"},
+                    "rain": {"type": "amount"},
                 "dewpoint": {"type": "temperature"},
                "windchill": {"type": "temperature"},
                "heatindex": {"type": "temperature"}}
@@ -37,7 +37,10 @@ units = {   "pressure": "hPa",
          "temperature": "deg C",
              "percent": "%",
                "speed": "km/h",
-           "direction": "deg"}
+           "direction": "deg",
+                "rate": "mm/hr",
+              "amount": "mm"
+          }
 
 # Parse command line and get .conf information.
 parser = argparse.ArgumentParser(description = __doc__.split("\n")[0])
@@ -107,7 +110,9 @@ for i in range(data.shape[0]):
       elif t == "temperature":
         data[i, j] = (data[i, j] - 32.0) * 5.0 / 9.0 # F to C
       elif t == "speed":
-        data[i, j] = data[i, j] * 1.60934 # mi/h to km/h
+        data[i, j] = data[i, j] * 1.60934 # mi/h to km/ha
+      elif t == "amount" or t == "rate":
+        data[i, j] = data[i, j] * 25.4 # inch to mm
 
 # Get the git tag and for writing to header.
 if not arg.git_tag:
