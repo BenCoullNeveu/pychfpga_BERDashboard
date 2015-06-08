@@ -28,6 +28,7 @@ from pychfpga import calculate_gains
 from pychfpga.MGADC08 import MGADC08
 from pychfpga.init_links import *
 #import MySQLdb
+from pychfpga.core.icecore.hardware_map import asynchronously, async_return, async
 
 # Should put somewhere else. Flatten arbitrarily deep nested lists
 # from stack overflow
@@ -85,9 +86,11 @@ def convert_types(val):
               pass
       return val
 
+@async
 def get_fpga_hk(fpga):
-    ret = {}
-    ret["core_temp"] = fpga.get_motherboard_temperature(fpga.TEMPERATURE_SENSOR.MB_FPGA_DIE)
+    """this should parallelize to make one call for all sensors"""
+    with fpga.tuber_context() as ctx:
+        t = yield ctx.get_motherboard_temperature(fpga.TEMPERATURE_SENSOR.MB_FPGA_DIE)
     # ret["VCC1V0"] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VCC1V0)
     # ret["VCC1V0_GTX"] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VCC1V0_GTX)
     # ret["VCC12V0"] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VCC12V0)
@@ -98,7 +101,14 @@ def get_fpga_hk(fpga):
     # ret["VCC3V3"] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VCC3V3)
     # ret["VCC1V8"] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VCC1V8)
     # ret["VADJ"] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VADJ)
-    return ret
+    async_return(t)
+
+#should be more elegant way...but list fields here to stay compatible
+hk_fields_list = ["core_temp"]
+
+@async
+def get_all_fpga_slots_hk(c):
+    async_return( (yield [get_fpga_hk.async(cc) for cc in c])  )
 
 # FPGA housekeeping.
 fpga_hk_field = {      "core_temp" : "deg C",
@@ -543,14 +553,18 @@ if __name__ == "__main__":
       # Pass the acquisition object the board temperatures. This is a temporary
       # way of doing this!
       if (int(args.configure_fpga) > 0):
-        i = 0
-        for c_element in c:
-          acq.pass_fpga_amb_temp(i, get_fpga_hk(c_element))
-          i += 1
-          #log.debug("Slot number: %d "  % c_element.slot )
-          #log.debug("Crossbar1 fifo overflow %d "  % c_element.CROSSBAR.CB1_LANE_MONITOR )
-          #log.debug("Crossbar2 fifo overflow %d "  % c_element.CROSSBAR2.CB2_LANE_MONITOR )
-        log.info("Read FPGA housekeeping.")
+        try:
+            hk_return = get_all_fpga_slots_hk(c)
+            i = 0
+            for hk in hk_return:
+              acq.pass_fpga_amb_temp(i, {hk_fields_list[0] : hk})
+              i += 1
+              #log.debug("Slot number: %d "  % c_element.slot )
+              #log.debug("Crossbar1 fifo overflow %d "  % c_element.CROSSBAR.CB1_LANE_MONITOR )
+              #log.debug("Crossbar2 fifo overflow %d "  % c_element.CROSSBAR2.CB2_LANE_MONITOR )
+            log.info("Read FPGA housekeeping.")
+        except:
+            log.critical("Did not get FPGA housekeeping, still aquiring data...")
       else:
         log.info("acquiring data...")
       time.sleep(conf["acq"]["fpga_hk"]["rate"])
