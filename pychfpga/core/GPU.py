@@ -80,7 +80,7 @@ class GTX_CHANNEL_base(Module_base):
     def init(self):
         """ Initializes the GTX CHANNEL block"""
         self.logger.info('Initializing GTX_CHANNEL  #%i' % self.instance_number)
-
+        self.TXDIFFCTRL = 8
 
     def status(self):
         """ Displays the status of the GTX_CHANNEL"""

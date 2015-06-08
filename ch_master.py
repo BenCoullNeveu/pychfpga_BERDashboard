@@ -205,7 +205,7 @@ if __name__ == "__main__":
                        default = 0, \
                        help = "Enable the pwm signal for noise injection gating")
   parser.add_argument("-b", "--ni_board", action = "store", \
-                       type=str, default = '0005', \
+                       type=str, default = '0026', \
                        help = "Enable the pwm signal for noise injection gating")
   parser.add_argument("-o", "--ni_offset", action = "store", \
                        type=int, default=0, \
@@ -344,8 +344,21 @@ if __name__ == "__main__":
       # Gains will need to be able to handle multiple boards, currently file
       # Will be overwritten when used for more than one board.
       # Make compute gains smarter -> write to db? need boards to actually be different
+      ni_board = None
+      if args.ni_enable:
+        for ib in c:
+          if ib.serial == args.ni_board:
+            ni_board = ib
+            break  
+      # Get noise injectionn gating board. Currently board SN0005 (slot 1)
+      assert args.ni_enable and (ni_board != None), 'Noise injection gating board SN%s not found in subarray %d' %(args.ni_board, conf["fpga"]["subarray"])
+      
       if (int(args.compute_gain) > 0):
           #Shouldn't need for loop here, but initial testing failed in parallel.
+          if args.ni_enable:
+              ni_board.set_user_output_source('pwm')
+              ni_board.set_frame_pwm(0, 3, 4)
+              ni_board.sync()
           for i, c_element in enumerate(c):
             fpga_config = c_element.get_config()
             #fpga_rec = chFPGA_receiver.chFPGA_receiver(fpga_config, \
@@ -377,14 +390,7 @@ if __name__ == "__main__":
       #if sync_board == None:
       #  sync_board = c[0]
       sync_board = c(serial='0008')
-      # Get noise injectionn gating board. Currently board SN0005 (slot 1)
-      ni_board = None
-      if args.ni_enable:
-        for ib in c:
-          if ib.serial == args.ni_board:
-            ni_board = ib
-            break
-        assert args.ni_enable and (ni_board != None), 'Noise injection gating board SN%s not found in subarray %d' %(args.ni_board, conf["fpga"]["subarray"])
+
       # This is another hack. Have to fix it for DRAO. REALLY: HAVE TO CHANGE IT
       # shuffle_init(list(c),sync_board,frames_per_packet=4, cb1_lanes=16, cb1_bins=64, cb2_lanes=16, cb2_bins=8, cb2_bypass=0, remap=True )
       shuffle_init(list(c),ni_board, sync_board, frames_per_packet=4, cb1_lanes=16, cb1_bins=64, cb2_lanes=16, cb2_bins=8, cb2_bypass=0, remap=True,

@@ -111,7 +111,7 @@ def shuffle_init(c, ni_board, sync_board, frames_per_packet=1, cb1_lanes=4, cb1_
                 gtx.USER_GTRXRESET = 1
                 # gtx.USER_RESET = 1
 
-        bb.CROSSBAR2.SOF_WINDOW_STOP = 100
+        bb.CROSSBAR2.SOF_WINDOW_STOP = 200
         bb.BP_SHUFFLE.reset_rx_equalizers()
         bb.REFCLK.sync() # needed
 
@@ -227,10 +227,10 @@ def init_gains(c):
     import pickle
     for cc in c:
         try:
-            g_array = pickle.load(open('/home/chime/ch_acq/gains_'+str(cc.get_fpga_serial_number())+'.pkl', 'rb'))
+            g_array = pickle.load(open('/home/chime/ch_acq/gains_'+str(cc.GPIO.FPGA_SERIAL_NUMBER)+'.pkl', 'rb'))
         except:
             g_array = pickle.load(open('/home/chime/ch_acq/gains.pkl', 'rb'))
-            print 'Could not find gain settings for %r. Using default gain settings.' %cc
+            print 'Could not find gain settings for %r, sn %i. Using default gain settings.' % (cc, cc.get_fpga_serial_number())
         print 'Setting gains on IceBoard SN%s' % cc.serial
         cc.set_gain(g_array)
 

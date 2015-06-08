@@ -202,12 +202,14 @@ def calculate_gains(c, port):
     c.set_offset_binary_encoding()
     default_log2_gain = 22
     c.set_gain((1,default_log2_gain))
+    c.set_local_data_port_number(int(port))
     c.start_data_capture(burst_period_in_seconds=0.001)
     c.sync()
     channels = range(16)
     #for 4 bit number *sqrt2 since real and imag, check this
     idealRMS = 2.83 * np.sqrt(2)
     #glog = 13 # not sure why this isn't 9, but seemed to be the case.
+    print "configured for sending data to port {0}".format(port)
     rmss = []
     for i in range(18):
         data = get_frames(port)
