@@ -81,7 +81,7 @@ def shuffle_init(c, ni_board, sync_board, dsmap, frames_per_packet=1, cb1_lanes=
             cb.STREAM_ID = dsmap[bb.slot-1]
 
         for j,cb in enumerate(bb.CROSSBAR2):
-            cb.STREAM_ID = bb.slot-1
+            cb.STREAM_ID = dsmap[bb.slot-1]
 
         # Set the source of the IRIG-B signal
         bb.set_irigb_source('bp_time')
