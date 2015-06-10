@@ -1,3 +1,7 @@
+'''
+Script for launching ICEboard quality control testing suite.
+To use just run as 'python iceboardtest.py' or 'run iceboardtest.py' in ipython.
+'''
 from numpy import *
 import os
 import inspectiontest
@@ -19,9 +23,9 @@ def starttest():
     if doesn't already exist, then proceeds to testing.
     '''
 
-    print "**********************************************"
-    print "|I C E B O A R D  T E S T I N G  S C R I P T  |"
-    print "**********************************************"
+    print "***********************************************"
+    print "| I C E B O A R D  T E S T I N G  S C R I P T |"
+    print "***********************************************"
 
     # Import parameters from config
     import yaml
@@ -29,34 +33,39 @@ def starttest():
         config = yaml.load(open('config.yaml'))
         username = config['user']
         board_md = config['board_md']
+        res_dir = config['results_directory']
     else:
         print "Did not find config.yaml file. Will use default values from config_example.yaml.\n"
         config = yaml.load(open('config_example.yaml'))
         username = config['user']
         board_md = config['board_md']
+        res_dir = config['results_directory']
+
+    #Pass/Fail status of tests. This list will be passed from method to method.
+    testStatus = EMPTY_TEST_STATUS()
 
     print "Welcome fellow CHIME member to the Iceboard testing script!"
-    print "We'll need some information from you... Please enter everything prompted below correctly."
+    print "We'll need some information from you... Please enter everything as prompted below:"
     print "What is your name? (if left blank, will use config.yaml entry)"
     uname_input = raw_input("Enter:	")
     if not uname_input.strip() == '':
         username = uname_input
     print "What is the serial number of the board? (e.g. 0009) Please be CONSISTENT in your file naming!!"
     board_sn = raw_input("Enter:	")
-    fname = 'board' + board_sn + '.txt'
+    print "What is the revision of this board? (e.g. Rev1)"
+    board_vn = raw_input("Enter:	")
+    fname = os.path.join(res_dir, 'board' + board_sn + '.txt')
     if not os.path.isfile(fname): # Only necessary if file doesn't already exist
-        print "What is the revision of this board? (e.g. Rev1)"
-        board_vn = raw_input("Enter:	")
         #print "What is the model of this board?" Moved this to 'config.yaml'
         #board_md = raw_input("Enter:	")
         print "What is the PCB serial number of this board? It is printed on the top-left edge of the board, above " \
               "the 'FMC B' label and components. (e.g. 04-14-017)"
         # TODO: Is this still the case on the new boards (PCB serial location)?
         pcb_sn = raw_input("Enter:\t")
+    else:
+        print "\nA file already exists for this board. Will record following results there."
+        pcb_sn = None # This is only needed if a new file is being created
     
-    #Pass/Fail status of tests. This list will be passed from method to method.
-    testStatus = EMPTY_TEST_STATUS()
-
     if not os.path.isfile(fname):
         new_file_header(fname, board_sn, board_md, board_vn, pcb_sn) # Create new file with header
 

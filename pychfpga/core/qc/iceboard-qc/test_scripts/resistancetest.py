@@ -1,9 +1,6 @@
 from numpy import *
-from math import *
-import pylab as plt
 import time as tm
 import os
-import shutil
 import iceboardtest
 import sys
 import updateStatus

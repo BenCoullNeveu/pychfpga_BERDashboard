@@ -10,7 +10,6 @@ def genericFail(username=str,board_sn=str,board_vn=str,board_md=str,testStatus =
     '''
     Generic fail process to be called at the end of specific fail functions.
     '''
-    print("\nThe failure of this test has been recorded.")
     print("\nIMPORTANT: If you have any reason whatsoever to suspect it is unsafe to proceed with further testing,\nplease check with someone and fix the problem appropriately before continuing with the tests.")
     raw_input("Press Enter once you've read the warning:\t")
     print("\nIf you are confident it is safe to do so, would you like to carry on testing?")

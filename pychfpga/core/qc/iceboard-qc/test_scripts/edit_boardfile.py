@@ -23,9 +23,9 @@ def new_file_header(fname, board_sn, board_md, board_vn, pcb_sn):
         file.write('| File created on : ' + date_str + '\n')
         file.write('\n')
         file.close()
-        print "File 'board" + board_sn + ".txt' is created in directory."
+        print "File 'board" + board_sn + ".txt' is created in directory.\n"
     else:
-        print "File already exists! Leaving as is."
+        print "File already exists! Leaving as is.\n"
 
 def addNote( fname ):
     '''
