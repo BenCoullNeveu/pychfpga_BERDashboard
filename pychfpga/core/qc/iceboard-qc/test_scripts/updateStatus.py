@@ -2,7 +2,7 @@ import statusReport
 from statusReport import EMPTY_TEST_STATUS
 import addNote
 
-#This script manually gets the test status from a user and updates the relevent files.
+#This script manually gets the test status from a user and updates the relevant files.
 def updateManually( ):
     board = statusReport.getBoardInfo()
 #    confirm = raw_input("\nWould you like to append these results to the inventory.tex file? (y/n)\t")
