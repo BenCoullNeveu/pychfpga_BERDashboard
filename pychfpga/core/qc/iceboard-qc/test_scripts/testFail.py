@@ -1,7 +1,7 @@
 import iceboardtest
 import sys
 from statusReport import EMPTY_TEST_STATUS
-import updateStatus
+from edit_boardfile import updateStatus
 '''
 Add functions here to deal with failures in specific tests.
 '''
@@ -14,11 +14,9 @@ def genericFail(username=str,board_sn=str,board_vn=str,board_md=str,testStatus =
     raw_input("Press Enter once you've read the warning:\t")
     print("\nIf you are confident it is safe to do so, would you like to carry on testing?")
     confirm = raw_input("Enter y/n:\t")
-    if confirm == 'Y' or confirm == 'y':
-        iceboardtest.choosetest(username, board_sn, board_vn, board_md, testStatus)
-    else:
-        updateStatus.update(testStatus)
-        sys.exit("Thank you for this testing process! The data has been saved. The testing program will now exit.")
+    if not (confirm == 'Y' or confirm == 'y'):
+        updateStatus(testStatus)
+        sys.exit("\nThank you for this testing process! The data has been saved. The testing program will now exit.")
     
 def inspectionFail(username,board_sn,board_vn,board_md,testStatus = EMPTY_TEST_STATUS()):
     testStatus[3] = False

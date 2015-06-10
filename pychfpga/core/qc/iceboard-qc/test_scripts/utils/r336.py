@@ -1,5 +1,5 @@
 from addNote import appendNote
-from date_format import date_format
+from other_stuff import date_format
 import time
 
 board = raw_input("Enter board serial:\t")

@@ -1,5 +1,5 @@
 from statusReport import STATUS_LINES
-from date_format import date_format
+from other_stuff import date_format
 import time
 import os
 

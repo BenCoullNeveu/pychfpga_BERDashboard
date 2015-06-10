@@ -2,12 +2,13 @@
 Functions that were previously found in their own 'addNote.py' and 'updateStatus.py' have been moved here.
 '''
 
-from date_format import date_format
+from other_stuff import date_format
 from statusReport import STATUS_LINES
 import time
 import os
 import statusReport
 from statusReport import EMPTY_TEST_STATUS
+from other_stuff import read_config
 
 def new_file_header(fname, board_sn, board_md, board_vn, pcb_sn):
     if not os.path.isfile(fname):
@@ -21,9 +22,9 @@ def new_file_header(fname, board_sn, board_md, board_vn, pcb_sn):
         file.write('| PCB serial: ' + pcb_sn + '\n')
         date_str=date_format(time.localtime())
         file.write('| File created on : ' + date_str + '\n')
-        file.write('\n')
+        file.write('\n\n---------------------\n\n')
         file.close()
-        print "File 'board" + board_sn + ".txt' is created in directory.\n"
+        print "File " + fname + " was created.\n"
     else:
         print "File already exists! Leaving as is.\n"
 
@@ -33,7 +34,7 @@ def addNote( fname ):
     :param fname: Name of board file to append to (e.g. 'board0012.txt')
     '''
     input = raw_input("Please enter any modified components or other relevant notes here (these will be added to the 'Board Notes' section at top of file):\n")
-    appendNote( fname, ['| ' + date_format(time.localtime()) + ':    ' + input + '\n\n'] )
+    appendNote( fname, ['| ' + date_format(time.localtime()) + ':    ' + input + '\n'] )
 
 def appendNote( fname, newLines = [] ):
     '''
@@ -60,7 +61,7 @@ def appendNote( fname, newLines = [] ):
             linePos = index
             foundEnd = False
             for index2, line2 in enumerate(content,index): #find end marker
-                if line2 == '(add here)\n':
+                if line2 == '| (add here)\n':
                     linePos = index2 - index
                     foundEnd = True
                     break
@@ -70,9 +71,9 @@ def appendNote( fname, newLines = [] ):
             print("Found previous Notes. Will append to these.")
             break
     if not foundNotes:
-        newLines.insert(0,"------\n")
+        newLines.insert(0,"-----------\n")
         newLines.insert(0,"Board Notes\n")
-        newLines.append("|(add here)\n")
+        newLines.append("| (add here)\n")
         newLines.append("\n")
         print("Did not find previous Notes. Creating new section.")
         for index, line in enumerate(content):
@@ -96,7 +97,7 @@ def updateStatusManually( ):
 #    confirm = raw_input("\nWould you like to append these results to the inventory.tex file? (y/n)\t")
 #    if confirm == 'y' or confirm == 'Y':
 #        statusReport.appendLatex( statusReport.formatLatex(board) )
-    fname = 'board' + str(board[1]) + '.txt'
+    fname = os.path.join(read_config()['results_directory'],'board' + str(board[1]) + '.txt')
     confirm = raw_input("\nWould you like to add these results to the " + fname + " file status report? (y/n)\t")
     if confirm == 'y' or confirm == 'Y':
         statusReport.appendTXT( fname, statusReport.formatTXT( board) )
@@ -106,6 +107,7 @@ def updateStatus( board = EMPTY_TEST_STATUS() ):
     Updates test status to the supplied list of results.
     :param board: List of test results for that board. Uses format from 'statusReport.EMPTY_TEST_STATUS()'.
     '''
+    fname = os.path.join(read_config()['results_directory'],'board' + str(board[1]) + '.txt')
     confirm = raw_input( "Would you like to update the status report for this board? (this will overwrite previous status report) (y/n)\t" )
     if confirm != 'Y' and confirm != 'y':
         pass
@@ -113,11 +115,10 @@ def updateStatus( board = EMPTY_TEST_STATUS() ):
 #        confirm = raw_input("\nWould you like to append these results to the inventory.tex file? (y/n)\t")
 #        if confirm == 'y' or confirm == 'Y':
 #            statusReport.appendLatex( statusReport.formatLatex(board) )
-        fname = 'board' + str(board[1]) + '.txt'
         statusReport.appendTXT( fname, statusReport.formatTXT( board ) )
 
     confirm = raw_input( "\nWould you like to add anything to the 'Board Notes' at the top of the file? (y/n)\t" )
     if confirm != 'Y' and confirm != 'y':
         return
     else:
-        addNote( 'board' + board[1] + '.txt' )
+        addNote( fname )

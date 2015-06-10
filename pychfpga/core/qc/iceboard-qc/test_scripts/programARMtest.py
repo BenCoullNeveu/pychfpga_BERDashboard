@@ -7,7 +7,7 @@ import shutil
 import iceboardtest
 import sys
 import updateStatus
-from date_format import date_format
+from other_stuff import date_format
 from statusReport import EMPTY_TEST_STATUS
 from testFail import mtestFail, armFail
 import git

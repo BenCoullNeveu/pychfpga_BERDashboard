@@ -1,6 +1,6 @@
 import os
 import time
-from date_format import date_format
+from other_stuff import date_format
 
 #Constants for test functions
 def EMPTY_TEST_STATUS( ): #[ tester's name, serial, revision, inspection, resistance, DC, PLL, ARM, FPGA, FPGA test, GTX, ramp, comments ]
@@ -58,7 +58,7 @@ def formatLatex( inputList ):
 def formatTXT( inputList ):
     newLines = []
     newLines.append("Status report of most recent test (Please don't modify this line or add any lines in this block)\n")
-    newLines.append("------\n")
+    newLines.append("-------------------------------------------------------------------------------------------------\n")
     newLines.append('Date: ' + date_format(time.localtime()) + '\n')
     newLines.append("\n")
     newLines.append("Tester: " + inputList[0] + "\n")
