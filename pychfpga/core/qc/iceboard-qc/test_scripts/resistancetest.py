@@ -63,9 +63,8 @@ def resistancetest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
         file.write('Fail\n')
         file.write('================  ================ ========\n')
         file.close()
-        resistanceFail(username,board_sn,board_vn,board_md,testStatus)
-        return testStatus
-    
+        return resistanceFail(username,board_sn,board_vn,board_md,testStatus)
+
     print "Please probe the Vadj regulator pin. Enter the resitance below (up to 2 decimal points, i.e. '1.00')."
     Vadj = float(input("Enter:     "))
     file.write('%-16s  %-16.2f ' % ( 'Vadj', (Vadj) ))
@@ -75,8 +74,7 @@ def resistancetest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
         file.write('Fail\n')
         file.write('================  ================ ========\n')
         file.close()
-        resistanceFail(username,board_sn,board_vn,board_md,testStatus)
-        return testStatus
+        return resistanceFail(username,board_sn,board_vn,board_md,testStatus)
 
     print "Please probe the 3V3 regulator pin. Enter the resitance below (up to 2 decimal points, i.e. '1.00')."
     V3 = float(input("Enter:     "))
@@ -87,8 +85,7 @@ def resistancetest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
         file.write('Fail\n')
         file.write('================  ================ ========\n')
         file.close()
-        resistanceFail(username,board_sn,board_vn,board_md,testStatus)
-        return testStatus
+        return resistanceFail(username,board_sn,board_vn,board_md,testStatus)
 
     print "Please probe the 5V regulator pin. Enter the resitance below (up to 2 decimal points, i.e. '1.00')."
     V5 = float(input("Enter:     "))
@@ -99,8 +96,7 @@ def resistancetest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
         file.write('Fail\n')
         file.write('================  ================ ========\n')
         file.close()
-        resistanceFail(username,board_sn,board_vn,board_md,testStatus)
-        return testStatus
+        return resistanceFail(username,board_sn,board_vn,board_md,testStatus)
 
     print "Please skip the buck regulator next to the power connector."
     raw_input("Press Enter to continue:  ")
@@ -114,8 +110,7 @@ def resistancetest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
         file.write('Fail\n')
         file.write('================  ================ ========\n')
         file.close()
-        resistanceFail(username,board_sn,board_vn,board_md,testStatus)
-        return testStatus
+        return resistanceFail(username,board_sn,board_vn,board_md,testStatus)
 
     print "Please probe the 1.2VGTX regulator pin. Enter the resitance below (up to 2 decimal points, i.e. '1.00')."
     VGTX12 = float(input("Enter:     "))
@@ -126,8 +121,7 @@ def resistancetest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
         file.write('Fail\n')
         file.write('================  ================ ========\n')
         file.close()
-        resistanceFail(username,board_sn,board_vn,board_md,testStatus)
-        return testStatus
+        return resistanceFail(username,board_sn,board_vn,board_md,testStatus)
 
     print "Please probe the 1VCORE regulator pin. Enter the resitance below (up to 2 decimal points, i.e. '1.00')."
     VCORE1 = float(input("Enter:     "))
@@ -138,8 +132,7 @@ def resistancetest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
         file.write('Fail\n')
         file.write('================  ================ ========\n')
         file.close()
-        resistanceFail(username,board_sn,board_vn,board_md,testStatus)
-        return testStatus
+        return resistanceFail(username,board_sn,board_vn,board_md,testStatus)
 
     print "Please probe the 1.5V regulator pin. Enter the resitance below (up to 2 decimal points, i.e. '1.00')."
     V15 = float(input("Enter:     "))
@@ -150,8 +143,7 @@ def resistancetest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
         file.write('Fail\n')
         file.write('================  ================ ========\n')
         file.close()
-        resistanceFail(username,board_sn,board_vn,board_md,testStatus)
-        return testStatus
+        return resistanceFail(username,board_sn,board_vn,board_md,testStatus)
 
     print "Please probe the 1.8V regulator pin. Enter the resitance below (up to 2 decimal points, i.e. '1.00')."
     V18 = float(input("Enter:     "))
@@ -162,8 +154,7 @@ def resistancetest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
         file.write('Fail\n')
         file.write('================  ================ ========\n')
         file.close()
-        resistanceFail(username,board_sn,board_vn,board_md,testStatus)
-        return testStatus
+        return resistanceFail(username,board_sn,board_vn,board_md,testStatus)
 
     file.write('================  ================ ========\n')
 

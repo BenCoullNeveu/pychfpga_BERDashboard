@@ -26,6 +26,7 @@ def inspectionFail(username,board_sn,board_vn,board_md,testStatus = EMPTY_TEST_S
     print "Otherwise, INTERRUPT testing immediately until the problem has been dealt with."
     
     genericFail(username, board_sn, board_vn, board_md, testStatus)
+    return testStatus
     
 def resistanceFail(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPTY_TEST_STATUS()):
     testStatus[4] = False
@@ -33,6 +34,7 @@ def resistanceFail(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
     print "\nIt is unsafe to proceed to further testing. Please INTERRUPT testing and fix the problem."
     
     genericFail(username, board_sn, board_vn, board_md, testStatus)
+    return testStatus
 
 def DCFail(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPTY_TEST_STATUS()):
     testStatus[5] = False
@@ -42,6 +44,7 @@ def DCFail(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPT
     raw_input("Press Enter to continue:\t")
     
     genericFail(username, board_sn, board_vn, board_md, testStatus)
+    return testStatus
     
 def pllFail(username,board_sn,board_vn,board_md,testStatus = EMPTY_TEST_STATUS()):
     testStatus[6] = False
@@ -50,6 +53,7 @@ def pllFail(username,board_sn,board_vn,board_md,testStatus = EMPTY_TEST_STATUS()
     print "Without programmed PLLs it will not be possible to run the next tests (e.g. ARM, FPGA)."
     
     genericFail(username, board_sn, board_vn, board_md, testStatus)
+    return testStatus
     
 def mtestFail(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPTY_TEST_STATUS()):
     testStatus[7] = False
@@ -58,6 +62,7 @@ def mtestFail(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = E
     print("Tests that require the use of the ARM (FPGA tests) may fail if the memory is problematic.")
     
     genericFail(username, board_sn, board_vn, board_md, testStatus)
+    return testStatus
     
 def armFail(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPTY_TEST_STATUS()):
     testStatus[7] = False
@@ -68,6 +73,7 @@ def armFail(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMP
     print "Tests that require the use of the ARM (FPGA tests) will not be able to run if it does not boot up."
     
     genericFail(username, board_sn, board_vn, board_md, testStatus)
+    return testStatus
     
 def fpgaProgFail(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPTY_TEST_STATUS()):
     testStatus[8] = False
@@ -79,6 +85,7 @@ def fpgaProgFail(username=str,board_sn=str,board_vn=str,board_md=str,testStatus 
     print "Otherwise, investigate potential soldering or PCB issues."
     
     genericFail(username, board_sn, board_vn, board_md, testStatus)
+    return testStatus
     
 def fpgaTestFail(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPTY_TEST_STATUS()):
     testStatus[9] = False
@@ -91,6 +98,7 @@ def fpgaTestFail(username=str,board_sn=str,board_vn=str,board_md=str,testStatus 
     # Other common errors?
     
     genericFail(username, board_sn, board_vn, board_md, testStatus)
+    return testStatus
     
 def gtxFail(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPTY_TEST_STATUS()):
     testStatus[10] = False
@@ -98,6 +106,7 @@ def gtxFail(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMP
     print "Please report this issue." # Anything else?
     
     genericFail(username, board_sn, board_vn, board_md, testStatus)
+    return testStatus
     
 def rampFail(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPTY_TEST_STATUS()):
     testStatus[11] = False
@@ -111,4 +120,5 @@ def rampFail(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     print "\tJumbo Frames are enabled on the gigabit adapter going from SFP-ethernet adapter to computer."
     
     genericFail(username, board_sn, board_vn, board_md, testStatus)
+    return testStatus
     

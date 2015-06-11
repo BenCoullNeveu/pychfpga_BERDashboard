@@ -78,7 +78,6 @@ def DCtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPT
         file.close()
         print "\nThe board needs a 16V power supply.\n"
         DCFail(username, board_sn, board_vn, board_md, testStatus)
-        return testStatus
 
     print "Please read the current measurement on power supply. Enter the voltage below (up to 3 sig. figs. , i.e. '1.00')."
     cur = float(input("Enter:     "))
@@ -90,8 +89,7 @@ def DCtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPT
         file.write('================  ======== ======== ========\n')
         file.close()
         print "\nCurrent not within acceptable range.\n"
-        DCFail(username, board_sn, board_vn, board_md, testStatus)
-        return testStatus
+        return DCFail(username, board_sn, board_vn, board_md, testStatus)
     file.write('================  ======== ======== ========\n\n')
 
     file.write('================  ======== ======== ========\n')
@@ -109,9 +107,8 @@ def DCtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPT
         file.write('Fail\n')
         file.write('================  ======== ======== ========\n')
         file.close()
-        DCFail(username, board_sn, board_vn, board_md, testStatus)
-        return testStatus
-    
+        return DCFail(username, board_sn, board_vn, board_md, testStatus)
+
     print "Please probe the Vadj regulator pin. Enter the voltage below (up to 3 sig. figs, i.e. '1.00')."
     Vadj = float(input("Enter:     "))
     file.write('%-16s  %-8.2f %-8.2f ' % ('Vadj', Vadj, 2.50 ))
@@ -121,8 +118,7 @@ def DCtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPT
         file.write('Fail\n')
         file.write('================  ======== ======== ========\n')
         file.close()
-        DCFail(username, board_sn, board_vn, board_md, testStatus)
-        return testStatus
+        return DCFail(username, board_sn, board_vn, board_md, testStatus)
 
     print "Please probe the 3V3 regulator pin. Enter the voltage below (up to 3 sig. figs. , i.e. '1.00')."
     V3 = float(input("Enter:     "))
@@ -133,8 +129,7 @@ def DCtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPT
         file.write('Fail\n')
         file.write('================  ======== ======== ========\n')
         file.close()
-        DCFail(username, board_sn, board_vn, board_md, testStatus)
-        return testStatus
+        return DCFail(username, board_sn, board_vn, board_md, testStatus)
 
     print "Please probe the 5V regulator pin. Enter the voltage below (up to 3 sig. figs., i.e. '1.00')."
     V5 = float(input("Enter:     "))
@@ -145,11 +140,10 @@ def DCtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPT
         file.write('Fail\n')
         file.write('================  ======== ======== ========\n')
         file.close()
-        DCFail(username, board_sn, board_vn, board_md, testStatus)
-        return testStatus
-    
+        return DCFail(username, board_sn, board_vn, board_md, testStatus)
+
     print "Please skip the buck regulator next to the power connector."
-    notimportant = raw_input("Press Enter to continue:  ")
+    raw_input("Press Enter to continue:  ")
     
     print "Please probe the 1VGTX regulator pin. Enter the voltage below (up to 3 sig. figs., i.e. '1.00')."
     VGTX1 = float(input("Enter:     "))
@@ -160,8 +154,7 @@ def DCtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPT
         file.write('Fail\n')
         file.write('================  ======== ======== ========\n')
         file.close()
-        DCFail(username, board_sn, board_vn, board_md, testStatus)
-        return testStatus
+        return DCFail(username, board_sn, board_vn, board_md, testStatus)
 
     print "Please probe the 1.2VGTX regulator pin. Enter the voltage below (up to 3 sig. figs., i.e. '1.00')."
     VGTX12 = float(input("Enter:     "))
@@ -172,8 +165,7 @@ def DCtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPT
         file.write('Fail\n')
         file.write('================  ======== ======== ========\n')
         file.close()
-        DCFail(username, board_sn, board_vn, board_md, testStatus)
-        return testStatus
+        return DCFail(username, board_sn, board_vn, board_md, testStatus)
 
     print "Please probe the 1VCORE regulator pin. Enter the voltage below (up to 3 sig. figs., i.e. '1.00')."
     VCORE1 = float(input("Enter:     "))
@@ -184,8 +176,7 @@ def DCtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPT
         file.write('Fail\n')
         file.write('================  ======== ======== ========\n')
         file.close()
-        DCFail(username, board_sn, board_vn, board_md, testStatus)
-        return testStatus
+        return DCFail(username, board_sn, board_vn, board_md, testStatus)
 
     print "Please probe the 1.5V regulator pin. Enter the voltage below (up to 3 sig. figs., i.e. '1.00')."
     V15 = float(input("Enter:     "))
@@ -196,8 +187,7 @@ def DCtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPT
         file.write('Fail\n')
         file.write('================  ======== ======== ========\n')
         file.close()
-        DCFail(username, board_sn, board_vn, board_md, testStatus)
-        return testStatus
+        return DCFail(username, board_sn, board_vn, board_md, testStatus)
 
     print "Please probe the 1.8V regulator pin. Enter the voltage below (up to 3 sig. figs., i.e. '1.00')."
     V18 = float(input("Enter:     "))
@@ -208,8 +198,7 @@ def DCtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPT
         file.write('Fail\n')
         file.write('================  ======== ======== ========\n')
         file.close()
-        DCFail(username, board_sn, board_vn, board_md, testStatus)
-        return testStatus
+        return DCFail(username, board_sn, board_vn, board_md, testStatus)
 
     file.write('================  ======== ======== ========\n\n')
 

@@ -100,6 +100,6 @@ def inspectiontest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
     else:
         file.write('\n**Inspection test: FAIL** \n')
         file.close()
-        inspectionFail(username,board_sn,board_vn,board_md,testStatus)
+        return inspectionFail(username,board_sn,board_vn,board_md,testStatus)
 
     return testStatus
