@@ -20,6 +20,7 @@ n_freq    = integer(min = 1)
   subarray = integer(min=0)
   bitfile_name = string
   force = integer(min=0)
+  destination_slots = int_list(min=0, max=15)
   [[adc_delay]]
 
 [gpu]

@@ -403,7 +403,8 @@ if __name__ == "__main__":
 
       # This is another hack. Have to fix it for DRAO. REALLY: HAVE TO CHANGE IT
       # shuffle_init(list(c),sync_board,frames_per_packet=4, cb1_lanes=16, cb1_bins=64, cb2_lanes=16, cb2_bins=8, cb2_bypass=0, remap=True )
-      shuffle_init(list(c),ni_board, sync_board, dsmap = conf["fpga"]["destination_slots"], frames_per_packet=4, cb1_lanes=16, cb1_bins=64, cb2_lanes=16, cb2_bins=8, cb2_bypass=0, remap=True,
+      d_slots = conf['fpga']['destination_slots'] #[int(ii) for ii in conf["fpga"]["destination_slots"]]
+      shuffle_init(list(c),ni_board, sync_board, dsmap = d_slots, frames_per_packet=4, cb1_lanes=16, cb1_bins=64, cb2_lanes=16, cb2_bins=8, cb2_bypass=0, remap=True,
                    ni_enable = args.ni_enable, ni_offset = args.ni_offset, 
                    ni_high_time = args.ni_high_time, ni_period = args.ni_period)
 
