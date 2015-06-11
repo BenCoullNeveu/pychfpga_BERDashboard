@@ -30,7 +30,7 @@ def inspectionFail(username,board_sn,board_vn,board_md,testStatus = EMPTY_TEST_S
 def resistanceFail(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPTY_TEST_STATUS()):
     testStatus[4] = False
     print "\nFailed Resistance test."
-    print "\nIt is unsafe to proceed to further testing. Please interrupt testing and fix the problem."
+    print "\nIt is unsafe to proceed to further testing. Please INTERRUPT testing and fix the problem."
     
     genericFail(username, board_sn, board_vn, board_md, testStatus)
 

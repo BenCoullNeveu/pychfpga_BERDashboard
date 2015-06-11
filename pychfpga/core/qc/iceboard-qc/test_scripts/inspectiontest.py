@@ -2,14 +2,10 @@ from numpy import *
 import time as tm
 import os
 import iceboardtest
-import sys
-import updateStatus
 from other_stuff import date_format
-from other_stuff import read_config
-from edit_boardfile import new_file_header
+from other_stuff import read_config, get_repo
 from statusReport import EMPTY_TEST_STATUS
 from testFail import inspectionFail
-import git
 
 def inspectiontest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPTY_TEST_STATUS()):
     # Update testStatus (needed if running this test independently of iceboardtest.py
@@ -25,6 +21,7 @@ def inspectiontest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
         print "There is no existing file for this board."
         print "Redirecting to 'iceboardtest.py' to create a new board file.\n"
         iceboardtest.starttest()
+        return testStatus
 
     # Open file and start test
     file = open(fname, 'a')
@@ -33,8 +30,9 @@ def inspectiontest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
     date_str=date_format(tm.localtime())
     file.write('| Date : ' + date_str + '\n')
     file.write('| Tester: ' + username + '\n')
-    repo = git.Repo('../') #TODO: change this when moving to ch_acq
-    file.write("| On branch '" + str(repo.active_branch) + "' with commit " + str(repo.commit('HEAD')) + " of iceboard-qc.\n\n")
+    repo = get_repo()
+    file.write("| On branch '" + str(repo.active_branch) + "' with commit " + str(repo.commit('HEAD')) + \
+           " of " + os.path.split(os.path.dirname(repo.git_dir))[-1] + ".\n\n")
     file.flush()
 
     print 'For this test, please do NOT power up the board. Everything should be done with nothing connected to the power supply!'

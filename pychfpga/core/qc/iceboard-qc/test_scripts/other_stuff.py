@@ -21,6 +21,13 @@ def read_config():
         config['default_config'] = True
     return config
 
+def get_repo(repo_name='iceboard_qc'):
+    ''' Just returns an instance of the specified git repository
+    :return: Repo object for the specified repository (iceboard_qc or ch_acq or chFPGA, though not all implemented yet)
+    '''
+    import git
+    return git.Repo('../') #TODO: change this when moving to ch_acq
+
 #Common date formatting for testing functions
 def date_format(date, short = False):
     '''
