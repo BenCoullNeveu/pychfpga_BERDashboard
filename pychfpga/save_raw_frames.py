@@ -21,6 +21,8 @@ import logging.handlers
 import __main__
 import numpy as np
 import time
+from timestream_receiver import get_frame
+
 
 # IT IS IMPORTANT TO START THE PATH AT CHFPGA
 from pychfpga.MGADC08 import MGADC08
@@ -53,6 +55,57 @@ ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 = (
     ([18]*8,                       [3]*8), #CH14
     ([16]*8,                       [3]*8)  #CH15
     )
+
+
+def save_timestream_frames(port, channels=[0], frames=256, filename='data.npy'):
+    '''
+        Saves data from Acquisition board to numpy array
+    '''
+    if isinstance(channels,int): # make sure that channel is a array of channels
+        channels=np.array([channels])
+    elif isinstance(channels,list):
+        channels=np.array(channels)
+    nchan = channels.size
+    data_list = np.zeros((frames,nchan,2048), dtype=np.int8)
+    chanIndex = np.arange(nchan)
+    #chFPGA_receiver.frame_receiver._send_every_frame.clear()
+    #chFPGA_receiver.send_every_frame(False)
+    number_of_frames=0
+    missed = 0
+    print "Starting Timestream acquisition"
+    try:
+        while (frames==0) or (frames!=0 and number_of_frames<frames):
+            try:
+                #print "trying to get a frame"
+                a = get_frame(port) #chFPGA_receiver.read_frames(verbose=0)
+                #for chanNum in chanIndex:
+                #    data_list[number_of_frames,chanNum,:] = a[channels[chanNum]]
+                #    #data_list.append(a[channels[chanNum]])
+                data_list[number_of_frames,:,:] = a.values()[0]
+                number_of_frames+=1
+                #print "got a frame"
+                if (number_of_frames % 100) == 0:
+                    print 'Captured {0} frames'.format(number_of_frames)
+            except KeyError:
+                print "missing a frame, skipping"
+                print a
+                #chFPGA_receiver.flush()
+                missed += 1
+                pass
+            except ValueError:
+                print "got a weird frame... carrying on!"
+            except:
+                #chFPGA_receiver.close()
+                raise
+    except KeyboardInterrupt:
+        chFPGA_receiver.close()
+        raise
+    print "lost {0} to get {1}".format(missed, frames)
+    #np.array(data_list)
+    print filename
+    np.save(filename,data_list)
+
+    print 'Saved {0} frames'.format(number_of_frames)
 
 
 if __name__ == '__main__':
