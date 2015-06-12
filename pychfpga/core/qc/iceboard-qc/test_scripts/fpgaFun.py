@@ -208,13 +208,19 @@ def reload_list(fname="iceboard_list.txt", host_ip=None):
     array.discover() # automatically update the hardware map database with discovered resources. This will probe the boards and will update the 'present' field.
     return array
 
-def read_list(fname="iceboard_list.txt"):
+def read_list(fname=None):
     '''
     Reads file iceboard_list.txt and returns a 2D list with contents of table.
     :param fname: File name of board list. defaults to "iceboard_list.txt"
     :return: 2D list of ARM and FPGA addresses. If file not found, returns empty list.
     '''
     import os
+    from other_stuff import read_config
+
+    # Find iceboard_list.txt if not supplied
+    if fname is None:
+        config = read_config()
+        fname = os.path.join(config['results_directory'], "iceboard_list.txt")
 
     # Check file exists
     if not os.path.isfile(fname):
@@ -242,9 +248,13 @@ def edit_list(board_sn, arm_ip=None, arm_mac=None, fpga_ip=None, fpga_sn=None, l
     :param subarray: e.g. '1'
     '''
     import os
+    from other_stuff import read_config
+
+    # Get iceboard_list.txt path from config
+    config = read_config()
+    fname = os.path.join(config['results_directory'], "iceboard_list.txt")
 
     # Read file and create if doesn't exist
-    fname = "iceboard_list.txt"
     content = read_list(fname)
     if len(content) == 0 and (not os.path.isfile(fname)):
         header = "# sn,                      ARM/tuber_uri,      ARM MAC address,      fpga_ip_addr, fpga_serial_number, locked, subarray"

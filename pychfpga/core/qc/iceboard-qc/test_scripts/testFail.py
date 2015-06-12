@@ -56,6 +56,8 @@ def pllFail(username,board_sn,board_vn,board_md,testStatus = EMPTY_TEST_STATUS()
     return testStatus
     
 def mtestFail(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPTY_TEST_STATUS()):
+    ''' This test is not performed currently.
+    '''
     testStatus[7] = False
     print("\nFailed memory test.")
     print("Things to investigate: correct RAM IC mounted on board, soldering issues, possibility of PCB issues.")
@@ -67,7 +69,7 @@ def mtestFail(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = E
 def armFail(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPTY_TEST_STATUS()):
     testStatus[7] = False
     print "\nFailed programming ARM."
-    print "You may want to try running this test again, double checking all ethernet connections and adresses."
+    print "You may want to try running this test again, double checking all Ethernet connections and addresses."
     print "Make sure you've tried at least a few times before giving up."
     print "\nIf the ARM refuses to boot, things to investigate: cables and ports, PLLs programmed, correct RAM IC mounted on board, soldering issues, possibility of PCB issues."
     print "Tests that require the use of the ARM (FPGA tests) will not be able to run if it does not boot up."

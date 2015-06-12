@@ -1,44 +1,35 @@
 from numpy import *
-from math import *
-import pylab as plt
 import time as tm
 import os
-import shutil
 import iceboardtest
-import sys
-import FPGAtest
-import updateStatus
-from other_stuff import date_format
+from other_stuff import date_format, read_config, get_repo
 from statusReport import EMPTY_TEST_STATUS
 from testFail import gtxFail
-import git
 
 def GTXtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPTY_TEST_STATUS()):
     testStatus[0] = username
     testStatus[1] = board_sn
     testStatus[2] = board_vn
-    fname = 'board' + board_sn + '.txt'
-    if os.path.isfile('board' + board_sn + '.txt') == False:
-        file = open(fname, 'w')
-        file.write('=========================\n')
-        file.write('ICE board ' + board_sn + 'QC testing\n') 
-        file.write('=========================\n')
-        file.write('Quality control testing results for ICE board serial number ' + board_sn + '\n')
-        file.write('Revision number: ' + board_vn + '\n')
-        file.write('Board model: ' + board_md + '\n')
-        date_str=date_format(tm.localtime())
-        file.write('File created on : ' + date_str + '\n')
-        file.write('\n')
-        file.close()
-        print "File 'board" + board_sn + ".txt' is created in directory."
+    # Get config
+    config = read_config()
+
+    # Check file exists for this board
+    fname = os.path.join(config['results_directory'], 'board' + board_sn + '.txt')
+    if not os.path.isfile(fname):
+        print "There is no existing file for this board."
+        print "Redirecting to 'iceboardtest.py' to create a new board file.\n"
+        iceboardtest.starttest()
+        return testStatus
+
     file = open(fname, 'a')
     file.write('\n\nGTX Test\n')
-    file.write('------\n')
-    date_str=iceboardtest.date_format(tm.localtime())
-    file.write('Date : ' + date_str + '\n')
-    file.write('Tester: ' + username + '\n')
-    repo = git.Repo()
-    file.write("On branch '" + str(repo.active_branch) + "' with commit " + str(repo.commit('HEAD')) + " of iceboard-qc.\n\n")
+    file.write('----------\n')
+    date_str=date_format(tm.localtime())
+    file.write('| Date : ' + date_str + '\n')
+    file.write('| Tester: ' + username + '\n')
+    repo = get_repo()
+    file.write("| On branch '" + str(repo.active_branch) + "' with commit " + str(repo.commit('HEAD')) + \
+           " of " + os.path.split(os.path.dirname(repo.git_dir))[-1] + ".\n\n")
     file.flush()
 
     print "For this test, we NEED to have the same SET UP as that of the already programmed FPGA. You also need the JTAG and QSFP cables."
@@ -55,20 +46,14 @@ def GTXtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMP
     if not (confirm == 'Y' or confirm == 'y'):
         file.write('\n\nTester not able to perform GTX test at this time as proper software is not available.\nTest status: N/A')
         testStatus[10] = None
-        print "Do you wish to proceed to another test?"
-        proceed = raw_input("Enter 'Y' or 'N':  ")
-        if proceed == 'Y' or proceed == 'y':
-            iceboardtest.choosetest(username,board_sn,board_vn,board_md,testStatus)
-        else:
-            updateStatus.update(testStatus)
-            sys.exit("Thank you for this testing process! The data has been saved. The testing program will now exit.")
+        return testStatus
     print "\nLet's set everything up! Grab the JTAG cable and connect all the wires to the JTAG pins. The pins are located on the left side of the fan."
     print "Connect the cables accordingly by pin. Leave the n/c pin unconnected and connect VREF wire to 3V3 pin. All other labels should match."
     print "Connect the JTAG USB to the computer."
 
     print "\nNow grab a QSFP cable. We need to connect the two scary-looking spiky connector along the bottom edge of the board together."
     # print "Please consult http://kingspeak.physics.mcgill.ca/twiki/bin/edit/Chime/IceBoardQCManual for details regarding the board."
-    notimportant = raw_input("Press Enter to continue:      ")
+    raw_input("Press Enter to continue:      ")
     print "\nNow let's open up ChipScope Pro's Analyzer program~ Go into the Start Menu."
     print "Go to All Programs -> Xilink Design Tools -> ISE Design Suite 14.4 -> ChipScope Pro -> ChipScoe 64-bit -> Analyzer."
     print "In the new ChipScope window, on the left pane, right above the New Project pane, there should be two small icons."
@@ -76,11 +61,11 @@ def GTXtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMP
     print "This will detect the JTAG cable."
     print "A pop-up window may appear, which states it detects the JTAG cable. Click on OK if this is the case."
     print "Sometimes it takes the program is very picky and will not work right away. If it happens try restarting the program."
-    notimportant = raw_input("Press Enter to continue:         ")
+    raw_input("Press Enter to continue:         ")
     print "\nYou should be able to see the grey P circle turn into a green P circle."
     print "Now click on File, select the File that has '...\\icebertcore144\\chipscope_proj.cpj' in its name."
     print "Click on No when it asks if you want to save or set the changes."
-    notimportant = raw_input("Press Enter to continue:         ")
+    raw_input("Press Enter to continue:         ")
     #print "When asked if you want to set up the IBERT core settings... click on No."
     print "\nOn the menu bar, select Device, then DEV:0... then Configure."
     print "In the new pop-up window, click on Select New File button."
@@ -98,9 +83,9 @@ def GTXtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMP
         file.write('\nDetection of all Channels (except maybe GTX 19) on the board after programming with Chipscope: Pass')
     else:
         file.write('\nDetection of all Channels (except maybe GTX 19) on the board after programming with Chipscope: Fail')
-        file.write('\nGTX Test Overall Status: Fail')
+        file.write('\n\n**GTX Test Overall Status: Fail**')
         file.close()
-        gtxFail(username,board_sn,board_vn,board_md,testStatus)
+        return gtxFail(username,board_sn,board_vn,board_md,testStatus)
     print "\nYou may also set the JTAG scan rate to about 1s (Kevin's favourite rate) just below the menu bar on top of the window."
     print "Under the BERT settings, you now will want to do BERT reset. Click on Reset for the BERT reset for each of the 8 columns."
     print "You now will want to wait a while, typically the RX Bit Error Ratio will be very low. (10E-10 ish)"
@@ -112,9 +97,9 @@ def GTXtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMP
         file.write('\nColumns which have significantly larger error ratios: ' + col)
         errorratei = raw_input("Enter the bit error rates of the columns you entered above in the same order:  ")
         file.write('\nBit Error Rate of problematic Channels respectively: ' + errorratei)
-        file.write('\nGTX Test Overall Status: Fail')
+        file.write('\n\n**GTX Test Overall Status: Fail**')
         file.close()
-        gtxFail(username,board_sn,board_vn,board_md,testStatus)
+        return gtxFail(username,board_sn,board_vn,board_md,testStatus)
     print "\nAre the RX Bit Error Count all 0's for the 8 green columns??"
     errorcount = raw_input("Enter 'Y' or 'N':       ")
     if errorcount == 'Y' or errorcount == 'y':
@@ -125,11 +110,11 @@ def GTXtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMP
         file.write('\nColumns which have non-zero error counts: ' + col)
         errorratei = raw_input("Enter the RX bit error count of columns you entered above in the same order: ")
         file.write('\nBit Error Count of problematic Channels respectively: ' + errorratei)
-        file.write('\nGTX Test Overall Status: Fail')
+        file.write('\n\n**GTX Test Overall Status: Fail**')
         file.close()
-        gtxFail(username,board_sn,board_vn,board_md,testStatus)
+        return gtxFail(username,board_sn,board_vn,board_md,testStatus)
     print "Wait until the bit count ratio go down to the order of 1E-14."
-    notimportant = raw_input("Press Enter to continue:      ")
+    raw_input("Press Enter to continue:      ")
     print "Do you succeed in achieving count ratios on the order of 1E-14?"
     ratio = raw_input("Enter 'Y' or 'N':        ")
     if ratio != 'Y' and ratio != 'y':
@@ -138,9 +123,9 @@ def GTXtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMP
         file.write('\nColumns whose error rates do not fall on order of 1E-14: ' + col)
         errorratei = raw_input("Enter the bit error rate of columns you entered above in the same order: ")
         file.write('\nBit Error Rate of problematic Channels respectively: ' + errorratei)
-        file.write('\nGTX Test Overall Status: Fail')
+        file.write('\n\n**GTX Test Overall Status: Fail**')
         file.close()
-        gtxFail(username,board_sn,board_vn,board_md,testStatus)
+        return gtxFail(username,board_sn,board_vn,board_md,testStatus)
     else:
         file.write('\n\nBit error count falls to order 1E-14 over time.')
     
@@ -151,21 +136,16 @@ def GTXtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMP
     print "Has everything in this test gone smoothly?"
     check = raw_input("Enter ('Y' or 'N'):  ")
     if check == 'Y' or check == 'y':
-        file.write('\n\nGTX Test Overall Status: Pass')
+        file.write('\n\n**GTX Test Overall Status: Pass**')
         file.close()
         testStatus[10] = True
     else:
-        file.write('\n\nGTX Test Overall Status: Fail')
+        file.write('\n\n**GTX Test Overall Status: Fail**')
         print "Please describe why below."
         failure = raw_input("Enter your comments:       ")
         file.write('\nComments:         ' + failure)
         file.close()
         testStatus[10] = False
-        gtxFail(username,board_sn,board_vn,board_md,testStatus)
-    print "Do you wish to proceed to another test?"
-    proceed = raw_input("Enter 'Y' or 'N':  ")
-    if proceed == 'Y' or proceed == 'y':
-        iceboardtest.choosetest(username,board_sn,board_vn,board_md,testStatus)
-    else:
-        updateStatus.update(testStatus)
-        sys.exit("Thank you for this testing process! The data has been saved. The testing program will now exit.")
+        return gtxFail(username,board_sn,board_vn,board_md,testStatus)
+
+    return testStatus

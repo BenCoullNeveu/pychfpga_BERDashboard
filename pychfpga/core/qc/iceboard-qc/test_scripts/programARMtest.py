@@ -1,44 +1,36 @@
 from numpy import *
-from math import *
-import pylab as plt
 import time as tm
 import os
-import shutil
 import iceboardtest
-import sys
-import updateStatus
-from other_stuff import date_format
+from other_stuff import date_format, read_config, get_repo
 from statusReport import EMPTY_TEST_STATUS
 from testFail import mtestFail, armFail
-import git
 from fpgaFun import read_list, edit_list
 
 def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None,testStatus = EMPTY_TEST_STATUS()):
     testStatus[0] = username
     testStatus[1] = board_sn
     testStatus[2] = board_vn
-    fname = 'board' + board_sn + '.txt'
-    if os.path.isfile('board' + board_sn + '.txt') == False:
-        file = open(fname, 'w')
-        file.write('=========================\n')
-        file.write('ICE board ' + board_sn + 'QC testing\n') 
-        file.write('=========================\n')
-        file.write('Quality control testing results for ICE board serial number ' + board_sn + '\n')
-        file.write('Revision number: ' + board_vn + '\n')
-        file.write('Board model: ' + board_md + '\n')
-        date_str=date_format(tm.localtime())
-        file.write('File created on : ' + date_str + '\n')
-        file.write('\n')
-        file.close()
-        print "File 'board" + board_sn + ".txt' is created in directory."
+    # Get config
+    config = read_config()
+
+    # Check file exists for this board
+    fname = os.path.join(config['results_directory'], 'board' + board_sn + '.txt')
+    if not os.path.isfile(fname):
+        print "There is no existing file for this board."
+        print "Redirecting to 'iceboardtest.py' to create a new board file.\n"
+        iceboardtest.starttest()
+        return testStatus
+
     file = open(fname, 'a')
     file.write('\n\nProgramming the ARM Test\n')
-    file.write('------\n')
-    date_str=iceboardtest.date_format(tm.localtime())
-    file.write('Date : ' + date_str + '\n')
-    file.write('Tester: ' + username + '\n')
-    repo = git.Repo()
-    file.write("On branch '" + str(repo.active_branch) + "' with commit " + str(repo.commit('HEAD')) + " of iceboard-qc.\n\n")
+    file.write('-------------------------\n')
+    date_str=date_format(tm.localtime())
+    file.write('| Date : ' + date_str + '\n')
+    file.write('| Tester: ' + username + '\n')
+    repo = get_repo()
+    file.write("| On branch '" + str(repo.active_branch) + "' with commit " + str(repo.commit('HEAD')) +
+               " of " + os.path.split(os.path.dirname(repo.git_dir))[-1] + ".\n\n")
     file.flush()
 
     print "For this test, you'll need an Ethernet cable, D-link router and an SD card."
@@ -54,7 +46,7 @@ def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None,testS
     print "switches labelled BTMode Switches. We'll need to configure them."
     print "Please leave the GP switches ALONE for this part."
 
-    notimportant = raw_input("Press Enter to continue: 	")
+    raw_input("Press Enter to continue: 	")
 
     print "For SW1, turn switches 2,3,5 on (up). For SW2, turn switches 2,4 on (up)."
     print "The switch configuration should look like below:"
@@ -73,20 +65,19 @@ def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None,testS
     lights = raw_input("Enter 'Y' or 'N': 	")
     if lights == 'Y' or lights == 'y':
         file.write('LED lights flashed after initiating board. Hints at proper connection and properly programmed SD card.\n\n')
-    print "\nOpen up an Internet browser window. Log on to 10.10.10.1 by typing in 'https://10.10.10.1' in the adress bar."
-    print "Ask Kevin for the username and password associated with the website."
-    print "Click on the large computer icon on centre-left part of the website. (There will be text saying 'Clients:' below it"
-    notimportant = raw_input("Press Enter to continue: 	")
+    else:
+        file.write('N.B. LED lights *DID NOT flash* after initiating board.\n\n')
+    print "\nLogin to the router's control panel at 10.10.10.1 using a browser."
+    print "Open the 'Clients' page (large computer icon on the main page)."
+    raw_input("Press Enter to continue: 	")
 
-    print "\nThe icon should now be highlighted in blue. There will now be a list on the right hand side of the page."
-    print "On the list, find which of the MAC addresses (left column) correponds to that of the board. A quick and "
-    print "dirty way of doing this is simply writing down all the IP addresses (right column) you see in the list, unplug the"
-    print "Ethernet cable from the board, hit refresh, and see which of the IP address disappeared from the list."
+    print "Look at the list of clients and find which one of the MAC addresses (left column) correponds to this board. A quick "
+    print "way of doing this is to simply unplug the Ethernet cable from the board and note which MAC/IP in the list vanishes."
     print "Do this a few times to confirm that the MAC address is right."
 
     print "Please enter the MAC address of the board below: "
     MACright = raw_input("Enter MAC address: ")
-    file.write('\nMAC address of left Ethernet connector: ' + MACright)
+    file.write('MAC address of left Ethernet connector: ' + MACright)
 
     print "\nNow we must change the IP address from this Ethernet port to match the serial number of board."
     print "On left hand side of the page, under Advanced Settings, click on LAN. On top of page, you should"
@@ -100,7 +91,7 @@ def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None,testS
     print "Now, click on the + icon in the last column to add this IP address. DOUBLE CHECK to make sure it's the right IP address!"
     print "Write down the IP address of the board."
     IPright = raw_input("Enter IP address: 	")
-    file.write('\nIP address of left Ethernet connector:  ' + IPright)
+    file.write('\n\nIP address of left Ethernet connector:  ' + IPright)
 
     # Add MAC and IP to iceboard_list.txt file
     content = read_list()
@@ -114,10 +105,10 @@ def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None,testS
         else:
             pass
     if current_ip is None or len(current_ip) < 20:
-        print "No previous valid assigned IP. Adding " + IPright + " to list."
+        print "\nNo previous valid assigned IP. Adding " + IPright + " to list."
         new_ip = "'http://" + IPright + ":80/tuber'"
     else:
-        print "Found IP already in list. " + current_ip + " It will not be modified."
+        print "\nFound IP already in list. " + current_ip + " It will not be modified."
         new_ip = None
     if current_mac is None or len(current_mac) < 18:
         print "No previous valid assigned MAC. Adding " + MACright + " to list."
@@ -145,23 +136,23 @@ def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None,testS
     print "\nAre you able to ping the board and have a result like above?"
     ping = raw_input("Enter 'Y' or 'N': 	")
     if ping == 'Y' or ping == 'y':
-        file.write('\nPinging the board: Pass')
+        file.write('\n\nPinging the board: Pass')
     else:
-        file.write('\nPinging the board: Fail')
-        file.write('\nARM Programming Test Overall Status: Fail')
+        file.write('\n\nPinging the board: Fail')
+        file.write('\n\n**ARM Programming Test Overall Status: Fail**\n')
         file.close()
-        armFail(username,board_sn,board_vn,board_md,testStatus)
+        return armFail(username,board_sn,board_vn,board_md,testStatus)
     print "Let's try to log in via ssh onto the board! In your terminal window, type in 'ssh root@IP' where IP is the IP address of board."
     print "The password is blank. At the command line, you should see you logged in as root@iceboard."
     print "Were you successful in logging in via ssh "
     ssh = raw_input("Enter 'Y' or 'N': 	")
     if ssh == 'Y' or ssh == 'y':
-        file.write('\nLogging into the board via ssh: Pass')
+        file.write('\n\nLogging into the board via ssh: Pass')
     else:
-        file.write('\nLogging into the board via ssh: Fail')
-        file.write('\nARM Programming Test Overall Status: Fail')
+        file.write('\n\nLogging into the board via ssh: Fail')
+        file.write('\n\n**ARM Programming Test Overall Status: Fail**\n')
         file.close()
-        armFail(username,board_sn,board_vn,board_md,testStatus)
+        return armFail(username,board_sn,board_vn,board_md,testStatus)
     
     # Memory test
     #print("\nThe next step is to perform a memory test")
@@ -184,26 +175,21 @@ def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None,testS
     
     print "If there are any special concerns regarding the board for this test, please describe them below. If none, enter 'None'. "
     comments = raw_input("Enter your comments: 	")
-    file.write('\nComments: ' + comments)
+    file.write('\n\nComments: ' + comments)
 
     print "Has everything in this test gone smoothly?"
     check = raw_input("Enter ('Y' or 'N'): 	")
     if check == 'Y' or check == 'y':
-        file.write('\n\nARM Programming Test Overall Status: Pass')
+        file.write('\n\n**ARM Programming Test Overall Status: Pass**\n')
         file.close()
         testStatus[7] = True
     else:
-        file.write('\n\nARM Programming Test Overall Status: Fail')
+        file.write('\n\n**ARM Programming Test Overall Status: Fail**\n')
         file.close()
         testStatus[7] = False
-        armFail(username,board_sn,board_vn,board_md,testStatus)
-    print "Do you wish to proceed to another test?"
-    proceed = raw_input("Enter 'Y' or 'N':  ")
-    if proceed == 'Y' or proceed == 'y':
-        iceboardtest.choosetest(username,board_sn,board_vn,board_md,testStatus)
-    else:
-        updateStatus.update(testStatus)
-        sys.exit("Thank you for this testing process! The data has been saved. The testing program will now exit.")
+        return armFail(username,board_sn,board_vn,board_md,testStatus)
+
+    return testStatus
 
 
 

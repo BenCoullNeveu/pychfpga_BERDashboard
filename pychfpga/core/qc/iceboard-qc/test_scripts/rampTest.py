@@ -5,57 +5,46 @@ ramp test script for ICEboard QC (uses test class from ch_acq/pychfpga/common/te
 '''
 
 from numpy import *
-from math import *
-import pylab as plt
 import time as tm
 import os
-import shutil
 import iceboardtest
-import updateStatus
+from other_stuff import read_config, get_repo, date_format
 from statusReport import EMPTY_TEST_STATUS
-import csv
-import argparse
-import sys
+from testFail import rampFail
 import fpgaFun
-import git
 
 def rampTest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPTY_TEST_STATUS()):
     testStatus[0] = username
     testStatus[1] = board_sn
     testStatus[2] = board_vn
-    fname = 'board' + board_sn + '.txt'
-    if os.path.isfile('board' + board_sn + '.txt') == False:
-        file = open(fname, 'w')
-        file.write('=========================\n')
-        file.write('ICE board ' + board_sn + 'QC testing\n') 
-        file.write('=========================\n')
-        file.write('Quality control testing results for ICE board serial number ' + board_sn + '\n')
-        file.write('Revision number: ' + board_vn + '\n')
-        file.write('Board model: ' + board_md + '\n')
-        date_str=date_format(tm.localtime())
-        file.write('File created on : ' + date_str + '\n')
-        file.write('\n')
-        file.close()
-        print "File 'board" + board_sn + ".txt' is created in directory."
-    fname = 'board' + board_sn + '.txt'
+    # Get config
+    config = read_config()
+
+    # Check file exists for this board
+    fname = os.path.join(config['results_directory'], 'board' + board_sn + '.txt')
+    if not os.path.isfile(fname):
+        print "There is no existing file for this board."
+        print "Redirecting to 'iceboardtest.py' to create a new board file.\n"
+        iceboardtest.starttest()
+        return testStatus
+
+    # Open file and start test
     file = open(fname, 'a')
     file.write('\n\nRamp test\n')
-    file.write('------\n')
-    date_str=iceboardtest.date_format(tm.localtime())
-    file.write('Date : ' + date_str + '\n')
-    file.write('Tester: ' + username + '\n')
+    file.write('-----------\n')
+    date_str=date_format(tm.localtime())
+    file.write('| Date : ' + date_str + '\n')
+    file.write('| Tester: ' + username + '\n')
+    repo = get_repo()
+    file.write("| On branch '" + str(repo.active_branch) + "' with commit " + str(repo.commit('HEAD')) + \
+           " of " + os.path.split(os.path.dirname(repo.git_dir))[-1] + ".\n")
     adc_a = raw_input("Enter the 4-digit serial number of the ADC mezzanine plugged in slot A of the ICEBOARD: " )
     adc_b = raw_input("Enter the 4-digit serial number of the ADC mezzanine plugged in slot B of the ICEBOARD: " )
-    file.write('Using ADC #' + adc_a + ' on FMC slot A and ADC #' + adc_b + ' on FMC slot B.\n')
-    ice_qc_repo = git.Repo()
-    file.write("On branch '" + str(ice_qc_repo.active_branch) + "' with commit " + str(ice_qc_repo.commit('HEAD')) + " of iceboard-qc.\n")
-    ch_acq_repo = git.Repo("../../ch_acq/")
-    file.write("On branch '" + str(ch_acq_repo.active_branch) + "' with commit " + str(ch_acq_repo.commit('HEAD')) + " of ch_acq.\n\n")
+    file.write('| Using ADC #' + adc_a + ' on FMC slot A and ADC #' + adc_b + ' on FMC slot B.\n\n')
     file.flush()
     
     # Import parameters from config
-    import yaml
-    config = yaml.load(open('config.yaml'))
+    config = read_config()
     if username == None:
         username = config['user']
     host_ip = config['host_ip']
@@ -70,7 +59,7 @@ def rampTest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     print "\nYou should connect a fan to the FPGA heatsink, and ensure there is airflow over the mezzanine ADCs."
 
     # Make directory
-    directory = 'ramp_tests/QC/sn' + board_sn
+    directory = os.path.join(config['results_directory'], 'ramp_tests/QC/sn' + board_sn)
     if not os.path.exists(directory):
         os.makedirs(directory)
     
@@ -116,24 +105,18 @@ def rampTest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     print "Has everything in this test gone smoothly?"
     check = raw_input("Enter ('Y' or 'N'):  ")
     if check == 'Y' or check == 'y':
-        file.write('\n\nRamp Test Overall Status: Pass')
+        file.write('\n\n**Ramp Test Overall Status: Pass**')
         file.close()
         testStatus[11] = test_pass
     else:
-        file.write('\n\nRamp Test Overall Status: Fail')
+        file.write('\n\n**Ramp Test Overall Status: Fail**')
         print "Please describe why below."
         failure = raw_input("Enter your comments:       ")
-        file.write('\nComments:         ' + failure)
+        file.write('\n\nComments:         ' + failure)
         file.close()
         testStatus[11] = False
-        # Must modify this behaviour
-        sys.exit("It is unsafe to proceed any further testing. Please check with someone and fix the problem appropriately before proceeding")
-    print "Do you wish to proceed to another test?"
-    proceed = raw_input("Enter 'Y' or 'N':  ")
-    if proceed == 'Y' or proceed == 'y':
-        iceboardtest.choosetest(username,board_sn,board_vn,board_md,testStatus)
-    else:
-        updateStatus.update( testStatus )
-        sys.exit("Thank you for this testing process! The data has been saved. The testing program will now exit.") 
+        return rampFail(username,board_sn,board_vn,board_md,testStatus)
+
+    return testStatus
 
 

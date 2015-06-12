@@ -1,74 +1,53 @@
 from numpy import *
-from math import *
-import pylab as plt
 import time as tm
 import os
-import shutil
 import iceboardtest
-import sys
-import updateStatus
-from other_stuff import date_format
+from other_stuff import date_format, get_repo, read_config
 from statusReport import EMPTY_TEST_STATUS
 from testFail import fpgaProgFail
 import fpgaFun
-import git
 
 def programFPGA(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPTY_TEST_STATUS()):
     testStatus[0] = username
     testStatus[1] = board_sn
     testStatus[2] = board_vn
-    fname = 'board' + board_sn + '.txt'
-    if os.path.isfile('board' + board_sn + '.txt') == False:
-        file = open(fname, 'w')
-        file.write('=========================\n')
-        file.write('ICE board ' + board_sn + 'QC testing\n') 
-        file.write('=========================\n')
-        file.write('Quality control testing results for ICE board serial number ' + board_sn + '\n')
-        file.write('Revision number: ' + board_vn + '\n')
-        file.write('Board model: ' + board_md + '\n')
-        date_str=date_format(tm.localtime())
-        file.write('File created on : ' + date_str + '\n')
-        file.write('\n')
-        file.close()
-        print "File 'board" + board_sn + ".txt' is created in directory."
+    # Get config
+    config = read_config()
+
+    # Check file exists for this board
+    fname = os.path.join(config['results_directory'], 'board' + board_sn + '.txt')
+    if not os.path.isfile(fname):
+        print "There is no existing file for this board."
+        print "Redirecting to 'iceboardtest.py' to create a new board file.\n"
+        iceboardtest.starttest()
+        return testStatus
+
     file = open(fname, 'a')
     file.write('\n\nProgramming the FPGA Test\n')
-    file.write('------\n')
-    date_str = iceboardtest.date_format(tm.localtime())
-    file.write('Date : ' + date_str + '\n')
-    file.write('Tester: ' + username + '\n')
-    ice_qc_repo = git.Repo()
-    file.write("On branch '" + str(ice_qc_repo.active_branch) + "' with commit " + str(ice_qc_repo.commit('HEAD')) + " of iceboard-qc.\n")
-    ch_acq_repo = git.Repo("../../ch_acq/")
-    file.write("On branch '" + str(ch_acq_repo.active_branch) + "' with commit " + str(ch_acq_repo.commit('HEAD')) + " of ch_acq.\n\n")
+    file.write('-----------------------------\n')
+    date_str = date_format(tm.localtime())
+    file.write('| Date : ' + date_str + '\n')
+    file.write('| Tester: ' + username + '\n')
+    repo = get_repo()
+    file.write("| On branch '" + str(repo.active_branch) + "' with commit " + str(repo.commit('HEAD')) + \
+           " of " + os.path.split(os.path.dirname(repo.git_dir))[-1] + ".\n")
     file.flush()
 
     # Import parameters from config
-    import yaml
-    config = yaml.load(open('config.yaml'))
     if username == None:
         username = config['user']
     host_ip = config['host_ip']
     ch_acq_path = config['ch_acq_path']
 
-    print "Please have everything set up as that from the Programming ARM Test."
+    print "Please have everything set up as for the Programming the ARM Test."
     print "You need to have already installed a heatsink on the FPGA, and running a fan over it is recommended."
     print "Make sure you can ping the motherboard, in the same method as that of Programming ARM Test. You may need to turn the board on/off"
     print "a few times to make sure it works."
-    print "Please make sure the ethernet cable has a good connection with the SFP adapter to ensure no communication problems."
-    
-    # Get correct ch_acq path
-    if ch_acq_path is None:
-        ch_acq_path = '../../ch_acq/'
-        print '\nThis test requires modules from ch_acq.\nUsing path ' + ch_acq_path + '.'
-        confirm = raw_input('Check that this is correct. Would you like to modify it? (y/n)\t')
-        if confirm == 'y' or confirm == 'Y':
-            ch_acq_path = raw_input("Enter path (ending with a '/'):\t")
-    print "\nIf it is not already the case, set ch_acq to the 'master' git branch."
+    print "Please make sure the Ethernet cable has a good connection with the SFP adapter to ensure no communication problems."
 
     # Get host_ip
     if host_ip is None:
-        host_ip = raw_input("\nEnter the IP of the network adpater you will use to communicate with FPGA (must be gigabit)\n")
+        host_ip = raw_input("\nEnter the IP of the network adapter you will use to communicate with FPGA (must be gigabit)\n")
     
     print "\nWe will now program the FPGA of board " + board_sn + "."
     print "You need to have successfully run the 'Program ARM' in its entirety, or be sure that the ARM addresses were entered in database."
@@ -86,18 +65,18 @@ def programFPGA(username=str,board_sn=str,board_vn=str,board_md=str,testStatus =
         file.write('Output stating programming successful: Pass')
     else:
         file.write('Output stating programming successful: Fail')
-        file.write('\nFPGA Programming Test Overall Status: Fail')
+        file.write('\n\n**FPGA Programming Test Overall Status: Fail**')
         file.close()
-        fpgaProgFail(username,board_sn,board_vn,board_md,testStatus)
+        return fpgaProgFail(username,board_sn,board_vn,board_md,testStatus)
     print "\nCheck to see there are blinking red lights at the bottom edge of the FPGA. Are they there?"
     lights = raw_input("Enter 'Y' or 'N':   ")
     if lights == 'Y' or lights == 'y':
         file.write('\nBlinking red lights seen on board: Pass')
     else:
         file.write('\nBlinking red lights seen on board: Fail')
-        file.write('\nFPGA Programming Test Overall Status: Fail')
+        file.write('\n\n**FPGA Programming Test Overall Status: Fail**')
         file.close()
-        fpgaProgFail(username,board_sn,board_vn,board_md,testStatus)
+        return fpgaProgFail(username,board_sn,board_vn,board_md,testStatus)
     print "\nYou should also be able to see the current draw has gone up. This is normal!"
 
     # Get FPGA serial and append to iceboard_list.txt
@@ -105,17 +84,17 @@ def programFPGA(username=str,board_sn=str,board_vn=str,board_md=str,testStatus =
     if len(iceboard_list) == 0:
         print "\nCould not find 'iceboard_list.txt' or file empty."
         file.write("\nCould not find 'iceboard_list.txt' or file empty.")
-        file.write('\n\nFPGA Programming Test Overall Status: Fail')
+        file.write('\n\n**FPGA Programming Test Overall Status: Fail**')
         file.close()
-        fpgaProgFail(username,board_sn,board_vn,board_md,testStatus)
+        return fpgaProgFail(username,board_sn,board_vn,board_md,testStatus)
 
     serial = fpgaFun.discover_fpgas(host_ip)
     if len(serial) == 0:
         print "No FPGAs found on network. Check that you are properly connected via a Gigabit adapter and that your board is programmed."
         file.write("\nNo FPGAs found on network. Could not fetch FPGA serial.")
-        file.write('\n\nFPGA Programming Test Overall Status: Fail')
+        file.write('\n\n**FPGA Programming Test Overall Status: Fail**')
         file.close()
-        fpgaProgFail(username,board_sn,board_vn,board_md,testStatus)
+        return fpgaProgFail(username,board_sn,board_vn,board_md,testStatus)
     # Identify which serial is new
     elif len(serial) == 1:
         fpga_sn = '0x%x' % serial[0]
@@ -137,15 +116,15 @@ def programFPGA(username=str,board_sn=str,board_vn=str,board_md=str,testStatus =
         elif len(doesnt_exist) == 0:
             print "No new FPGAs (not in list) found on network. Check that you are properly connected via a Gigabit adapter and that your board is programmed."
             file.write("\nNo new FPGAs (not in list found on network. Could not fetch FPGA serial.")
-            file.write('\n\nFPGA Programming Test Overall Status: Fail')
+            file.write('\n\n**FPGA Programming Test Overall Status: Fail**')
             file.close()
-            fpgaProgFail(username,board_sn,board_vn,board_md,testStatus)
+            return fpgaProgFail(username,board_sn,board_vn,board_md,testStatus)
         elif len(doesnt_exist) > 1:
             print "More than one FPGA not currently in list found on network. Make sure you have your iceboard_list is up to date."
             file.write("\nCould not identify new FPGA on network. Could not fetch FPGA serial.")
-            file.write('\n\nFPGA Programming Test Overall Status: Fail')
+            file.write('\n\n**FPGA Programming Test Overall Status: Fail**')
             file.close()
-            fpgaProgFail(username,board_sn,board_vn,board_md,testStatus)
+            return fpgaProgFail(username,board_sn,board_vn,board_md,testStatus)
         else:
             fpga_sn = '0x%x' % serial[doesnt_exist[0]]
 
@@ -179,20 +158,15 @@ def programFPGA(username=str,board_sn=str,board_vn=str,board_md=str,testStatus =
     print "Has everything in this test gone smoothly?"
     check = raw_input("Enter ('Y' or 'N'):  ")
     if check == 'Y' or check == 'y':
-        file.write('\n\nFPGA Programming Test Overall Status: Pass')
+        file.write('\n\n**FPGA Programming Test Overall Status: Pass**')
         testStatus[8] = True
         file.close()
     else:
-        file.write('\n\nFPGA Programming Test Overall Status: Fail')
+        file.write('\n\n**FPGA Programming Test Overall Status: Fail**')
         print "Please describe why below."
         failure = raw_input("Enter your comments:       ")
         file.write('\nComments:         ' + failure)
         file.close()
-        fpgaProgFail(username,board_sn,board_vn,board_md,testStatus)
-    print "Do you wish to proceed to another test?"
-    proceed = raw_input("Enter 'Y' or 'N':  ")
-    if proceed == 'Y' or proceed == 'y':
-        iceboardtest.choosetest(username,board_sn,board_vn,board_md,testStatus)
-    else:
-        updateStatus.update(testStatus)
-        sys.exit("Thank you for this testing process! The data has been saved. The testing program will now exit.")
+        return fpgaProgFail(username,board_sn,board_vn,board_md,testStatus)
+
+    return testStatus
