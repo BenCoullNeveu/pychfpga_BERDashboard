@@ -26,7 +26,7 @@ _RAM_BASE_ADDR = 0x100000
 class BitField(object):
     """
     Holds the definition of a memory-mapped variable
-    It is implemented as a data descriptor shch that calls the read_field() and write_field() properties of the parent object when accessed.
+    It is implemented as a data descriptor that calls the read_field() and write_field() properties of the parent object when accessed.
     """
     # Page values
     CONTROL = 0  # Control bytes (read/write)
@@ -100,13 +100,9 @@ class Module_base(object):
             raise AttributeError("This instance of class '%s' is locked: cannot assign new attribute '%s'" % (self.__class__.__name__, name)) # 120623 JFC
 
     def __getitem__(self, index):
-        if index in self.BITS:
-            index = self.BITS[index].addr
         return self.read(index)
 
     def __setitem__(self, index, value):
-        if index in self.BITS:
-            index = self.BITS[index].addr
         self.write(index, value)
 
     def _unlock(self):
@@ -117,14 +113,14 @@ class Module_base(object):
 
     def read(self, addr, *args, **kwargs):
         """ Reads bytes from the FPGA memory-mapped registers."""
-        if isinstance(addr, int):
-            return self.fpga.read(self.base_address + addr, *args, **kwargs)
-        elif isinstance(addr, str):
-            return self.fpga.read(self.base_address + self.BITS[addr].addr, *args, **kwargs)
+        # if isinstance(addr, int):
+        return self.fpga.mmi.read(self.base_address + addr, *args, **kwargs)
+        # elif isinstance(addr, str):
+        #     return self.fpga.read(self.base_address + self.BITS[addr].addr, *args, **kwargs)
 
     def read_bit(self, addr, bit):
         """ Reads a bit from a FPGA memory-mapped register."""
-        return bool(self.fpga.Read(self.base_address + addr) & (1 << bit))
+        return bool(self.read(addr) & (1 << bit))
 
     def read_drp(self, addr):
         """
@@ -150,11 +146,6 @@ class Module_base(object):
         """ Reads the field identified by the name 'bit_name' which is looked
         up in the BITS table to find the bit definition (port, bit position
         etc). Returns a boolean."""
-#        if isinstance(bit_name, BitField):
-#            bit_def = bit_name
-#            bit_name = '(unspecified)'
-#        else:
-#            bit_def=self.BITS[bit_name]
 
         if bitfield.page == BitField.DRP:
             data = self.read_drp(bitfield._addr) # read 16-bit value
@@ -176,12 +167,6 @@ class Module_base(object):
 
     def write_field(self, bitfield, data):
         """ Writes the field identified by the name 'bit_name' which is looked up in the BITS table to find the bit definition (port, bit position etc). Returns a boolean."""
-#        if isinstance(bit_name,BitField):
-#            bit_def = bit_name
-#            bit_name = '(unspecified)'
-#        else:
-#            bit_def=self.BITS[bit_name]
-        #print 'Writing field',bit_name
 
         if (data >= 2**bitfield.width) or data < 0:
             raise Exception('Bad value %i for memory-mapped property %s' % (data, bitfield))
@@ -204,29 +189,11 @@ class Module_base(object):
                    data_string[-number_of_bytes:],
                    mask=mask_string[-number_of_bytes:])
 
-
-        # data_type = {1: np.dtype('>u1'),
-        #              2: np.dtype('>u2'),
-        #              4: np.dtype('>u4'),
-        #              8: np.dtype('>u8')}[number_of_bytes]
-
-        # old_data = int(self.read(msb_addr, type=data_type))
-        # mask = (2**bitfield.width-1)<<bitfield.bit
-        # new_data = old_data & ~mask
-        # new_data |= ((data << bitfield.bit) & mask)
-        # #print 'Read ,bit "%s" at port %i, bit=%i, data: %X' % (bit_name,  bit_def.port,bit_def.bit, data)
-        # #print 'old data, new_data=', hex(old_data), hex(new_data)
-        # #print 'type=',type(new_data)
-        # new_data = np.array([new_data], dtype=data_type)
-        # new_data.dtype = np.uint8
-        # #print new_data
-        # self.write(msb_addr, new_data)
-
     def write(self, addr, data, *args, **kwargs):
         """ Writes bytes to the FPGA memory-mapped registers.
         Returns the number of bytes written.
         """
-        return self.fpga.write(self.base_address + addr, data, *args, **kwargs)
+        return self.fpga.mmi.write(self.base_address + addr, data, *args, **kwargs)
 
     def write_ram(self, addr, data, *args, **kwargs):
         """
