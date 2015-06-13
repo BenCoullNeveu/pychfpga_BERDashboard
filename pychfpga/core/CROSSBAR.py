@@ -36,9 +36,9 @@ class CROSSBAR_base(Module_base):
     LANE_MAP_BYTE7     = BitField(CONTROL, 10, 0, width=8, doc='Lane map')
 
 
-    CB1_LANE_MONITOR   = BitField(STATUS, 0, 0, width=8, doc='')
-    CB1_BIN_CTR        = BitField(STATUS, 1, 0, width=8, doc='')
+    CB1_LANE_MONITOR   = BitField(STATUS, 1, 0, width=16, doc='')
     CB2_LANE_MONITOR   = BitField(STATUS, 1, 0, width=16, doc='')
+    CB1_BIN_CTR        = BitField(STATUS, 2, 0, width=8, doc='')
     INPUT_FRAME_CTR    = BitField(STATUS, 2, 0, width=8, doc='')
     ALIGN_FRAME_CTR    = BitField(STATUS, 3, 0, width=8, doc='')
     OUTPUT_FRAME_CTR   = BitField(STATUS, 4, 0, width=8, doc='')

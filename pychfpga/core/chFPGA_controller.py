@@ -232,8 +232,8 @@ class chFPGA_controller(chFPGAHandler):
         super(chFPGA_controller, self).open()
         self.logger.info('%r: Instantiating chFPGA firmware handlers objects' % (self))
 
-        self.read = self.mmi.read
-        self.write = self.mmi.write
+        # self.read = self.mmi.read
+        # self.write = self.mmi.write
 
         if init < 0: # If init<0, we do not perform any communication with the FPGA, so we don't read the firmware configuration
             self._logger.info('%r: Upon user request (init < 0), communication with the FPGA are inhibited. Initialization sequence stops here. Use this for debug only.' % self)
@@ -1637,4 +1637,140 @@ class chFPGA_controller(chFPGAHandler):
 
         return delaytable, stuckbits, bitposgood
 
+    def get_shuffle_status(self, cb1_bin_sel_overflow_reset=False):
+        def cb1_gen(self):
+            yield '-----------------------------------------------------'
+            cb1 = self.CROSSBAR
+            yield ' CROSSBAR 1 '
+            yield '   * CROSSBAR1 Configuration state *'
+            yield '   Chan  Corr  Align Align Align '
+            yield '   RST   RST    RST  Start Stop '
+            yield '   ----- ----- ----- ----- -----'
+            yield '   %5s %5s %5s %5i %5i' % (
+                bool(self.GPIO.ANT_RESET),
+                bool(self.GPIO.CORR_RESET),
+                bool(cb1.ALIGN_RESET),
+                cb1.SOF_WINDOW_START,
+                cb1.SOF_WINDOW_STOP)
+            yield ''
 
+            yield '   * CROSSBAR1 Status *'
+            old_bin_ctr = cb1.CB1_BIN_CTR
+            time.sleep(0.001)  # Wait 1 ms = approx 500 frames
+            new_bin_ctr = cb1.CB1_BIN_CTR
+
+            yield '    Bin'
+            yield '    Ctr'
+            yield '   -----'
+            yield '   %-5s' % (
+                (' OK ','Stuck')[old_bin_ctr==new_bin_ctr]
+                )
+            yield ''
+
+            yield '   * Bin Selectors Configuration state *'
+            yield '   Bin  Stream Inputs Words/ Frames/ Send   Data  Reset Reset'
+            yield '   Sel#   ID   Lanes  Frame  Packet  Flags  Width  Ctrl State'
+            yield '   ---- ------ ------ ------ ------- -----  ----- ----- -----'
+            for (i, bs) in enumerate(cb1):
+                messages = ''
+                if not bs.FOUR_BITS and not bs.EIGHT_BIT_SUPPORT:
+                    messages += '! Eight Bit mode is not supported by this firmware!'
+                yield '   %02i:  0x%03X  %2i/%2i %7i %6i %05s  %5i %5s %5s  Messages:%s' % (
+                    i,
+                    bs.STREAM_ID,
+                    bs.NUMBER_OF_LANES,
+                    self.NUMBER_OF_CROSSBAR_INPUTS,
+                    bs.NUMBER_OF_SELECTED_WORDS,
+                    bs.GROUP_FRAMES,
+                    bool(bs.SEND_FLAGS),
+                    (8,4)[bs.FOUR_BITS],
+                    bool(bs.RESET),
+                    bool(bs.IS_RESET),
+                    messages)
+
+            yield ''
+            yield '   * Bin Selectors Status *'
+            yield '   Bin    Align  Data Data  Frame Data  Global Timestamp  Rst'
+            yield '   Sel#   FIFO   FIFO Flags Flags FIFO  Frame     Ctr    State'
+            yield '          ovfl   ovfl FIFO  FIFO  Empty  Ctr'
+            yield '                      ovfl  ovfl'
+            yield '   -----  ----- ----- ----- ----- ----- ------ --------- -----'
+            for (i, bs) in enumerate(cb1):
+                cb1.LANE_MONITOR_SEL = 6  # Fifo Overflow sticky
+                cb1.LANE_MONITOR_RESET = 1
+                cb1.LANE_MONITOR_RESET = 0
+                lane_mon = cb1.CB1_LANE_MONITOR
+                align_fifo_overflow = bool(lane_mon & (1<<i))  # Sticky bit
+
+                old_global_frame_ctr = bs.IN_FRAME_CTR
+                old_timestamp_ctr = bs.TIMESTAMP_CTR
+                time.sleep(0.001)
+                new_global_frame_ctr = bs.IN_FRAME_CTR
+                new_timestamp_ctr = bs.TIMESTAMP_CTR
+
+                if cb1_bin_sel_overflow_reset:
+                    bs.OVERFLOW_RESET=1
+                    bs.OVERFLOW_RESET=0
+
+                yield '   %04i:  %05s %5s %5s %5s %5s %5s %9s %5s' % (
+                    i,
+                    (' ok ', 'OVFL!')[align_fifo_overflow],
+                    bool(bs.FIFO_OVERFLOW),
+                    bool(bs.DATA_FLAGS_OVERFLOW),
+                    bool(bs.FRAME_FIFO_OVERFLOW),
+                    bool(bs.FIFO_EMPTY),
+                    (' ok ','stuck')[new_global_frame_ctr == old_global_frame_ctr],
+                    (' ok ','stuck')[new_timestamp_ctr == old_timestamp_ctr],
+                    bool(bs.IS_RESET)
+                    )
+
+        def bp_gen(self):
+            yield '-----------------------------------------------------'
+            bp = self.BP_SHUFFLE
+            yield ' BP_SHUFFLE '
+            yield '   * BP_SHUFFLE Configuration state *'
+            yield '   Core  Bypass  TX   '
+            yield '   RST           Test '
+            yield '   ----- ------ ----- '
+            yield '   %5s %6s %5s' % (
+                bool(bp.CORE_RESET),
+                bool(bp.BYPASS),
+                bool(bp.TX_TEST_ENABLE))
+            yield ''
+
+            yield '   * BP_SHUFFLE Status *'
+            old_test_ctr = bp.TEST_CTR
+            time.sleep(0.001)  # Wait 1 ms = approx 500 frames
+            new_test_ctr = bp.TEST_CTR
+
+            yield '    BP   RST   QPLL  QPLL  Test'
+            yield '    RST  Done  RST   Lock  Ctr'
+            yield '   ----- ----- ----- ----- -----'
+            yield '   %5s %5s %5s %5s %5s' % (
+                bool(bp.RESET_MON),
+                bool(bp.RESET_DONE),
+                bool(bp.QPLL_RESET_MON),
+                ''.join('%i'%q.QPLL_LOCK for q in bp.qpll),
+                (' ok ','stuck')[new_test_ctr == old_test_ctr],
+                )
+            yield ''
+
+            yield '   * BP_SHUFFLE Lane Status *'
+            yield '   Lane GTX  Err    FIFO'
+            yield '    #    #   ctr    Ovfl'
+            yield '   ---- ---- ------ -----'
+            for i in range(bp.NUMBER_OF_LINKS+1):
+                gtx = bp.gtx[i-1] if i>0 else None
+                bp.LANE_SEL = i
+                yield '   %4i %04s:%5i %5s' % (
+                    i,
+                    i-1 if gtx else 'N/A',
+                    bp.RX_ERROR_CTR,
+                    bool(bp.FIFO_OVERFLOW)
+                    )
+
+
+        for x in cb1_gen(self):
+            print x
+        for x in bp_gen(self):
+            print x
