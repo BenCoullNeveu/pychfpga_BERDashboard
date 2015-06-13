@@ -228,7 +228,7 @@ class chFPGAHandler(IceBoardPlusHandler):
         # -------------------------------------------------------------------------
         # Open FPGA's GPIO module interface
         # -------------------------------------------------------------------------
-        self.core_gpio = gpio.GPIO_base(self.mmi, self._SYSTEM_GPIO_BASE_ADDR)
+        self.core_gpio = gpio.GPIO_base(self, self._SYSTEM_GPIO_BASE_ADDR)
 
         # -------------------------------------------------------------------------
         # Check if we can communicate with the FPGA over the direct Ethernet
@@ -255,7 +255,7 @@ class chFPGAHandler(IceBoardPlusHandler):
         # -------------------------------------------------------------------------
         # Open FPGA's I2C interfaces
         # -------------------------------------------------------------------------
-        self.core_i2c = i2c.I2C_base(self.mmi, self._SYSTEM_I2C_BASE_ADDR)
+        self.core_i2c = i2c.I2C_base(self, self._SYSTEM_I2C_BASE_ADDR)
         # Create standardized I2C interface
         self.i2c = I2CInterface(
             self.fpga_i2c_write_read,

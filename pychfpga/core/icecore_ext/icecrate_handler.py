@@ -234,7 +234,7 @@ class IceCrateExtHandler(IceCrateHandler):
         super(IceCrateExtHandler, self).__init__(**kwargs)
 
         self._logger = logging.getLogger(__name__)
-        self._logger.debug('%r: Initializing backplane hardware' % self)
+        self._logger.debug('%r: Instantiating backplane hardware' % self)
 
         self._i2c = self.dynamic_i2c(self)
 
