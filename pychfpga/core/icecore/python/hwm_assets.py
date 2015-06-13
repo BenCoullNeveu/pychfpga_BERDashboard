@@ -34,10 +34,13 @@ class IceCrate(hardware_map.HWMResource, handler.HandlerObject):
     __table_args__ = (
         UniqueConstraint('serial'),
     )
-    __mapper_args__ = {'polymorphic_identity': 'IceCrate'}
+    __mapper_args__ = {'polymorphic_identity': 'IceCrate',
+                       'polymorphic_on':'_polymorphic_key'}
     __ipmi_part_number__ = None  # Must match part number in IPMI data
 
     _pk = Column(Integer, primary_key=True)
+    _polymorphic_key = Column(String)  # Needed to allow multiple types of crates
+
     serial = Column(String,
                     doc="The serial number written on the board (e.g. '001')")
 

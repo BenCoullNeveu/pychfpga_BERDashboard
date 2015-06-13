@@ -13,15 +13,31 @@ from sqlalchemy import Column, String, Integer
 from sqlalchemy.orm import class_mapper
 
 from . import handler
-from . import session
+from . import session  # YAML loader
+from . import hardware_map
 from .async import async, async_return
 from .hwm_assets import IceBoard, IceBoardHandler, FMCMezzanine, IceCrate, IceCrateHandler
 
 
-def discover_iceboards(hwm, crate=None, timeout=5):
-    """ Automatically detect iceboards on the network and update hardware map accordingly.
+def discover_iceboards(hwm=None, crate=None, timeout=5, resolve_ip=True):
+    """ Automatically detect iceboards on the network using mDNS and update hardware map 'hwm' accordingly.
+
+    If no hardware map is provided, a new empty one is created. This can be
+    used to query and further filter the discovered objects before adding them
+    to a final hardware map.
+
+    If 'crate' is specified, only the IceBoards on the crate with the matching
+    serial number is added. 'crate' can be a string or a list of strings.
+
+    If 'resolve_ip' is True, the hostname published by mDNS (e.g.
+    iceboard0007.local) is resolved into its associated IP address. This
+    accelerates Tuber accesses since every Tuber call does not have to resolve
+    it (This is especially needed on Windows).
     """
     import pybonjour  # only needed here, and not always installed
+
+    if hwm is None:
+        hwm = hardware_map.HardwareMap()
 
     if isinstance(crate, str):
         crate = [crate]
@@ -36,15 +52,14 @@ def discover_iceboards(hwm, crate=None, timeout=5):
 
         # Parse TXT records. That's where the IceBoard publishes data.
         tr = pybonjour.TXTRecord.parse(txtRecord)
-        logger.debug('DNS-sd: resolving txtRecord=%s (tr=%r)' % (txtRecord, tr))
         if 'motherboard-serial' not in tr:
-            logger.warn("DNS-SD: IceBoard at %s was discovered but cannot be added to the hardware map because it does not publish a serial number" % (host))
+            logger.warning("DNS-SD: IceBoard at %s was discovered but cannot be added to the hardware map because it does not publish a serial number" % (host))
             return
         ib_serial = tr['motherboard-serial']
 
         existing_ib = hwm.query(IceBoardPlus).filter_by(serial=ib_serial)
         if existing_ib.count():
-            logger.debug("DNS-SD: IceBoard at %s with serial %s already exists in the hardware map. No action is taken." % (host, ib_serial))
+            logger.warning("DNS-SD: IceBoard at %s with serial %s already exists in the hardware map. No action is taken." % (host, ib_serial))
             return
 
         ib = IceBoardPlus(hostname=host, serial=ib_serial)
@@ -53,48 +68,65 @@ def discover_iceboards(hwm, crate=None, timeout=5):
         bp_part_number = tr['backplane-part'] if 'backplane-part' in tr else None
         bp_serial = tr['backplane-serial'] if 'backplane-serial' in tr else None
 
-        ib.slot = bp_slot
+        logger.debug("DNS-SD: Discovered IceBoard SN%s (%s) in IceCrate %s SN%s, Slot %s." % (ib_serial, host, bp_part_number, bp_serial, bp_slot))
 
-        if bp_serial is not None and (crate is None or bp_serial in crate):
-            # Find is there is IceCrate-derived superclass that handles this part number
-            if bp_part_number is not None:
-                icecrate_class = None
-                for mapper in class_mapper(IceCrate).self_and_descendants:
-                    if mapper.class_.__ipmi_part_number__ == bp_part_number:
-                        icecrate_class = mapper.class_
-                if icecrate_class:
-                    logger.info('discover_iceboards: Discovered IceCrate Model %s SN%s' % (bp_part_number, bp_serial))
-                    # Check is a crate with the same serial number already exists
-                    existing_crate = hwm.query(icecrate_class).filter_by(serial=bp_serial)
-                    if existing_crate.count():  # If so, assign it to this iceboard
-                        ib.crate = existing_crate.one()
-                    else:  # otherwise create a new one and assign it
-                        ib.crate = icecrate_class(serial=bp_serial)
-                        hwm.add(ib.crate)
-                        hwm.flush() # make sure the board will pop up in queries so we can know if the board already exist in the hwm
+        # If we specify no crate number, or if we have valid backplane
+        # information and the backplane match that number, Then add the
+        # Iceboard
+        if not crate or (bp_serial and bp_part_number and bp_serial in crate):
             hwm.add(ib)
             hwm.flush()
-            logger.info("discover_iceboards: Discovered IceBoard serial %s at %s (crate SN%s, slot %s)" % (ib_serial, host, bp_serial, bp_slot))
 
-            def query_record_callback(sdRef, flags, interfaceIndex, errorCode, fullname,
-                                      rrtype, rrclass, rdata, ttl, ib):
-                if errorCode == pybonjour.kDNSServiceErr_NoError:
-                    ib_ip_addr = socket.inet_ntoa(rdata)
-                    logger.info("discover_iceboards: IceBoard SN%s hostname %s was resolved and updated to %s" % (ib.serial, ib.hostname, ib_ip_addr))
-                    ib.hostname = ib_ip_addr
+            # Find is there is IceCrate-derived superclass that handles the
+            # reported crate part number
+            icecrate_class = None
+            for mapper in class_mapper(IceCrate).self_and_descendants:
+                supported_part_numbers = mapper.class_.__ipmi_part_number__
+                if not isinstance(supported_part_numbers, (list,tuple)):
+                    supported_part_numbers = [supported_part_numbers]
+                if bp_part_number in supported_part_numbers:
+                    icecrate_class = mapper.class_
+            # If so, create the IceCrate if needed, and fill in the IceBoard's crate and slot fields
+            if icecrate_class:  # Check if a crate with the same serial number already exists
+                existing_crate = hwm.query(icecrate_class).filter_by(serial=bp_serial)
+                if existing_crate.count():  # If so, assign it to this iceboard
+                    new_crate = existing_crate.one()
+                    logger.info('DNS-SD: IceCrate Model %s SN%s (class %s) is already in the hardware map. Associating IceBoard SN%s with it on slot %s.' % (bp_part_number, bp_serial, new_crate.__class__.__name__, ib_serial, bp_slot))
+                    ib.slot = bp_slot  # Add slot before adding crate
+                    ib.crate = new_crate
+                    hwm.flush()
+                else:  # Otherwise create a new one and assign it
+                    logger.info('DNS-SD: Creating IceCrate Model %s SN%s using class %s and associating IceBoard SN%s with it on slot %s.' % (bp_part_number, bp_serial, icecrate_class.__name__, ib_serial, bp_slot))
+                    ib.slot = bp_slot # Add slot before adding crate
+                    new_crate = icecrate_class(serial=bp_serial)
+                    ib.crate = new_crate
+                    hwm.add(new_crate)
+                    hwm.flush() # make sure the board will pop up in queries so we can know if the board already exist in the hwm
+            else:  # oops, we did not find any class to handle that IceCrate part number...
+                logger.warning('DNS-SD: Could not find an IceCrate-derived class to represent IceCrate Model %s. The IceBoard is added without an associated crate.' % (bp_part_number))
 
-            query_sdRef = \
-                pybonjour.DNSServiceQueryRecord(interfaceIndex=iface,
-                                                fullname=host,
-                                                rrtype=pybonjour.kDNSServiceType_A,
-                                                callBack=functools.partial(query_record_callback, ib=ib))
-            fds.append(query_sdRef)
-            io_loop.add_handler(
-                query_sdRef.fileno(),
-                lambda fd, events: pybonjour.DNSServiceProcessResult(query_sdRef),
-                io_loop.READ)
 
+            if resolve_ip:
+                # Now try to resolve the hostname into an IP address to accelerate Tuber accesses
+                def query_record_callback(sdRef, flags, interfaceIndex, errorCode, fullname,
+                                          rrtype, rrclass, rdata, ttl, ib):
+                    if errorCode == pybonjour.kDNSServiceErr_NoError:
+                        ib_ip_addr = socket.inet_ntoa(rdata)
+                        logger.info("DNS-SD: IceBoard SN%s hostname %s was resolved and updated to %s" % (ib.serial, ib.hostname, ib_ip_addr))
+                        ib.hostname = ib_ip_addr
 
+                query_sdRef = \
+                    pybonjour.DNSServiceQueryRecord(interfaceIndex=iface,
+                                                    fullname=host,
+                                                    rrtype=pybonjour.kDNSServiceType_A,
+                                                    callBack=functools.partial(query_record_callback, ib=ib))
+                fds.append(query_sdRef)
+                io_loop.add_handler(
+                    query_sdRef.fileno(),
+                    lambda fd, events: pybonjour.DNSServiceProcessResult(query_sdRef),
+                    io_loop.READ)
+        else:
+            logger.info("DNS-SD: IceBoard SN%s (crate %s SN%s slot %s) was detected but was not added because it did not match the crate selection criteria %r" % (ib_serial, bp_part_number, bp_serial, bp_slot, crate))
 
     def browse_callback(sdRef, flags, iface, err, service,
                         regtype, replyDomain, io_loop):
@@ -129,7 +161,9 @@ def discover_iceboards(hwm, crate=None, timeout=5):
         io_loop.READ)
 
     # Go!
+    logger.info("DNS-SD: Starting mDNS discovery")
     io_loop.start()
+    logger.info("DNS-SD: mDNS discovery has ended")
 
     # Clean up after Bonjour
     for fd in fds:
@@ -137,6 +171,7 @@ def discover_iceboards(hwm, crate=None, timeout=5):
 
     hwm.commit()
 
+    return hwm
 
 @session.register_yaml_object()
 class IceBoardPlus(IceBoard):
@@ -300,6 +335,9 @@ class IceBoardPlus(IceBoard):
         map accordingly if `update=True`. An IceCrate object is created if it
         does not already exist.
 
+        This method does not use mDNS. It relies solely in information
+        directly provided by the backplane.
+
         You do NOT need to use this method if the backplane is already
         explicitely specified for this IceBoard in the YAML hardware maps.
         """
@@ -313,21 +351,21 @@ class IceBoardPlus(IceBoard):
             serial = ipmi.product.serial_number
             slot_number = self.get_backplane_slot()
             self.logger.info(
-                '%.32r: detect_crate(): '
+                '%.32r: discover_crate(): '
                 'Detected Backplane Model: %s Serial %s'
                 % (self, part_number, serial)
                 )
 
             for mapper in class_mapper(IceCrate).self_and_descendants:
-                class_part_numbers = mapper.class_.__ipmi_part_number__
-                if not isinstance(class_part_numbers, (list,tuple)):
-                    class_part_numbers = [class_part_numbers]
-                if part_number in class_part_numbers:
+                supported_part_numbers = mapper.class_.__ipmi_part_number__
+                if not isinstance(supported_part_numbers, (list,tuple)):
+                    supported_part_numbers = [supported_part_numbers]
+                if part_number in supported_part_numbers:
                     icecrate_class = mapper.class_
 
         if not icecrate_class:
             self.logger.warning(
-                "%.32r: detect_crate(): "
+                "%.32r: discover_crate(): "
                 "There is no known backplane object with "
                 "polymorphic map name '%r'"
                 % (self, part_number))
@@ -335,7 +373,7 @@ class IceBoardPlus(IceBoard):
         if icecrate_class and update:
             if not self.hwm:
                 raise SystemError(
-                    '%.32r: detect_crate(): Attempt to update new backplane '
+                    '%.32r: discover_crate(): Attempt to update new backplane '
                     'object while the IceBoard is not yet added to the '
                     'hardware map. ' % self)
 
@@ -350,14 +388,17 @@ class IceBoardPlus(IceBoard):
                     del(self.crate)
 
             if not self.crate:
-                self.logger.info(
-                    '%.32r: detect_crate(): Creating IceCrate %s'
-                    % (self, serial))
                 # Chech is a crate with the same serial number already exists
                 existing_crate = self.hwm.query(icecrate_class).filter_by(serial=serial)
                 if existing_crate.count():  # If so, assign it to this iceboard
+                    self.logger.info(
+                        '%.32r: discover_crate(): Reusing IceCrate %s SN%s'
+                        % (self, part_number, serial))
                     self.crate = existing_crate.one()
                 else:  # otherwise create a new one and assign it
+                    self.logger.info(
+                        '%.32r: discover_crate(): Creating IceCrate %s SN%s'
+                        % (self, part_number, serial))
                     new_crate = icecrate_class(serial=serial)
                     self.crate = new_crate
                     self.hwm.add(new_crate)
