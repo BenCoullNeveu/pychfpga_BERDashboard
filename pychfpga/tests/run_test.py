@@ -18,10 +18,10 @@ from pychfpga.MGADC08 import MGADC08
 from pychfpga.core.chFPGA_controller import chFPGA_controller
 from pychfpga.core.chFPGA_receiver import chFPGA_receiver
 from pychfpga.core.icecore.session import load_session as load_yaml
-from pychfpga.core.icecore.tests import TestGroup
+# from pychfpga.core.icecore.tests import TestGroup
 
 # import all test modules
-import scaler_tests
+# import scaler_tests
 
 # test_classes = {
 #     'scaler': scaler_tests.ScalerTests
@@ -88,8 +88,9 @@ if __name__=='__main__':
         '../../../chfpga/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/CHFPGA_MGK7MB_REV2.bit')
 
     # Configure the various loggers to provide adequate levels of details
-    log_levels = {'info': logging.INFO, 'debug': logging.DEBUG}
+    log_levels = {'info': logging.INFO, 'debug': logging.DEBUG, 'warn': logging.WARNING, 'error': logging.ERROR}
 
+    print sys.argv
     # -------------------------------
     # Process command line arguments
     # -------------------------------
@@ -99,9 +100,10 @@ if __name__=='__main__':
 
     parser.add_argument('-t', '--log_target', action='store', type=str, default='syslog', help="Logging target ('stream', 'syslog' or a filename)")
     parser.add_argument('-l', '--log_level', action='store', type=str, choices=log_levels, default='debug', help='Logging level')
+    parser.add_argument('--sql_log_level', action='store', type=str, choices=log_levels, default='warn', help='SQLAlchemy Logging level')
     parser.add_argument('--if_ip', action='store', type=str, default=None, help='IP address of adapter through which the connection to the FPGA will be established. This is used solely for direct UDP communications with the FPGA. If not specified, the system will use the same interface that communicates with the ARM processor.')
 
-    parser.add_argument('-i', '--iceboards', action='store', nargs='+', type=str, help="Space-separated list of the iceboard hostnames (e.g. 10.10.10.7 or iceboard0007.local if the mDNS system is operational")
+    parser.add_argument('-i', '--iceboards', action='store', nargs='*', type=str, help="Space-separated list of the iceboard hostnames (e.g. 10.10.10.7 or iceboard0007.local if the mDNS system is operational")
     parser.add_argument('-d', '--discover', action='store_true', help="Discover all boards and crates on the network using mDNS and add them to the hardware map")
     parser.add_argument('-c', '--crate', action='store', type=str, help="Discover and select only boards in the specified crate serial number")
     parser.add_argument('-s', '--slot', action='store', type=str, help="Select only boards in the specified slot(s)")
@@ -129,7 +131,7 @@ if __name__=='__main__':
 
     # Make sure SQLAlchemy does not log too much
     sql_logger = logging.getLogger('sqlalchemy.engine.base.Engine')
-    sql_logger.setLevel(logging.INFO)
+    sql_logger.setLevel(log_levels[args.sql_log_level])
 
     # Set-up chFPGA loggers
     if args.log_target == 'stream':
@@ -156,7 +158,7 @@ if __name__=='__main__':
     # Create a hardware map
     # -------------------------------
     hwm = HardwareMap()  # Create empty hardware map
-
+    # print 'args are', args
     # First, Add iceboards that are explicitely listed. For now, we know only their hostname
     if args.iceboards:
         for hostname in args.iceboards:
@@ -173,7 +175,10 @@ if __name__=='__main__':
     if args.discover:
         discover_iceboards(hwm)
     elif args.crate:
-        discover_iceboards(hwm, crate=args.crate)
+        h=discover_iceboards(hwm, crate=args.crate, timeout=2)
+
+        c=hwm.query(IceCrate)[0]
+        logger.debug('DNS-SD: IceCrate is class %s' % (c.__class__.__name__))
 
     # Query all iceboards, and apply slot numbe rfilter if applicable
     if args.slot:
@@ -186,7 +191,7 @@ if __name__=='__main__':
 
     print 'The following IceBoards were selected:'
     for i in ib:
-        print 'Crate SN%s, slot %2i: Iceboard SN%s at %s (ping =%s)' % (i.crate.serial if i.crate else None, i.slot, i.serial, i.hostname, i.ping())
+        print 'Crate SN%s, slot %2s: Iceboard SN%s at %s (ping =%s)' % (i.crate.serial if i.crate else None, i.slot, i.serial, i.hostname, i.ping())
 
 
     # -------------------------------
@@ -201,9 +206,12 @@ if __name__=='__main__':
         if args.force > -1:
             ib.set_fpga_bitstream(force=args.force)
 
-        # Auto-discover mezzanines and add them to the hardware map (requires
-        # chFPGA_controller firmware and handler to read McGill MGADC08 EEPROMs)
-        ib.discover_mezzanines()
+        # Auto-discover mezzanines and add them to the hardware map McGill
+        # MGADC08 can only be discovered if the FPGA is programmed with the
+        # chFPGA_controller firmware
+        for i in ib:
+            if i.is_fpga_programmed():
+                i.discover_mezzanines()
 
         print 'The following boards were selected:'
         for i in ib:
@@ -232,8 +240,8 @@ if __name__=='__main__':
         reload(module)  # Make sure the module is up to date
         test_class = getattr(module, test_class_name)
 
-        if not issubclass(test_class, TestGroup):
-            raise TypeError('The test class must be derived from TestGroup')
+        # if not issubclass(test_class, TestGroup):
+        #     raise TypeError('The test class must be derived from TestGroup')
 
         # for i in ib:
         test_filename = 'results/%s' % (test_name)
