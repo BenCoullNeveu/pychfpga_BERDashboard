@@ -110,7 +110,7 @@ def shuffle_init(c, ni_board, sync_board, dsmap=range(16), frames_per_packet=1, 
             else:
                 gtx.USER_GTRXRESET = 1
                 # gtx.USER_RESET = 1
-
+        bb.CROSSBAR2.SOF_WINDOW_START = 60 
         bb.CROSSBAR2.SOF_WINDOW_STOP = 200
         bb.BP_SHUFFLE.reset_rx_equalizers()
         bb.REFCLK.sync() # needed
@@ -130,6 +130,14 @@ def shuffle_init(c, ni_board, sync_board, dsmap=range(16), frames_per_packet=1, 
         ni_board.set_user_output_source('pwm')
         ni_board.set_frame_pwm(ni_offset, ni_high_time, ni_period)
         
+    # Set sync delays on boards to test sync-after power cycle
+    # Assign to each of the first 8 slots a sync tap delay equal to the slot number
+    #sync_tap_delay = range(8)
+    #for cc in c:
+    #    if cc.slot in sync_tap_delay:
+    #        cc.REFCLK.set_sync_delay(cc.slot)
+    #        cc.REFCLK.sync()
+
     # sync boards
     #soft_sync(c, sync_board)
     #irigb_sync(c, delay=5)
