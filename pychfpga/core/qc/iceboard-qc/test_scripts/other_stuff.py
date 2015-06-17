@@ -21,15 +21,17 @@ def read_config():
         config['default_config'] = True
     return config
 
-def get_repo(repo_name='iceboard_qc'):
+def get_repo(repo_name='ch_acq'):
     ''' Just returns an instance of the specified git repository
     :return: Repo object for the specified repository (iceboard_qc or ch_acq or chFPGA, though not all implemented yet)
     '''
     import git
-    if repo_name == 'ch_acq':
-        return git.Repo('../../ch_acq')
+    if repo_name.lower() == 'chfpga':
+        return git.Repo('../../../../../../chFPGA')
+    elif repo_name.lower() == 'ch_acq':
+        return git.Repo('../../../../../')
     else:
-        return git.Repo('../') #TODO: change this when moving to ch_acq
+        raise Exception("Unknown git reporitory: " + repo_name)
 
 #Common date formatting for testing functions
 def date_format(date, short = False):

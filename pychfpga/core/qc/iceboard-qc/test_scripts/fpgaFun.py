@@ -1,14 +1,16 @@
 """
 Set of functions used in iceboard qc script to program and test the FPGA.
+Based off of 'top_test.py'
 """
 
-def programFpga(board_sn, ch_acq_path = '../../ch_acq/', host_ip = None,  bitfile_path = "fpga_bitfile.bit", force = False):
+def programFpga(board_sn, ch_acq_path = '../../../../../../ch_acq/',  bitfile_path = "../../../../../../chFPGA/xili"
+            "nx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit", force = False):
     '''
     This method programs the FPGA of the specified board. It will force it to reprogram if it was already.
-    :param ch_acq_path: will be added to PYTHONPATH. defaults to '../../ch_acq/'
-    :param host_ip: IP address of adapter used by computer to communicate with FPGA
     :param board_sn: e.g. '0021'
-    :param bitfile_path: defaults to "fpga_bitfile.bit" in BoardTests
+    :param ch_acq_path: will be added to PYTHONPATH. should almost always be left to its default
+    :param bitfile_path: defaults to a 'chFPGA' repo in the same directory as 'ch_acq'
+    :param force: force the FPGA to reprogram
     :return: 'c' instance of programmed chFPGA_controller
     '''
 
@@ -16,48 +18,52 @@ def programFpga(board_sn, ch_acq_path = '../../ch_acq/', host_ip = None,  bitfil
     import sys
     # Append ch_acq to PATH
     sys.path.append(ch_acq_path)
-
     # Import icecore dependencies
-    from pychfpga.icecore.icearray import IceArray, close_all_sockets
+    from pychfpga.core.icecore import IceBoardPlus, HardwareMap
     from pychfpga.core.chFPGA_controller import chFPGA_controller
+    from pychfpga.core.icecore_ext.fpga_bitstream import FpgaBitstream
 
-    # Bitfile path from chFPGA. Left here for reference, now that a bitfile is included in iceboard-qc.
-    # filename = "../../chFPGA/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit"
-    
-    # Set log
-    log_level = logging.INFO
-    logging.basicConfig(level=log_level, format='%(asctime)s %(name)-32s %(levelname)-10s : %(message)s')
-    logging.getLogger('sqlalchemy.engine.base.Engine').setLevel(logging.WARN)
-    logger = logging.getLogger(__name__)
-    logger.info('Using IP address %s' % host_ip)
-    
-    close_all_sockets() # close any previously opened sockets
-    try:
-        logger.info('Deleting previous chFPGA instances in current namespace')
-        r.close() # close sockets from previous objects to free them for the new one
-        del r
-    except NameError:
-        pass
-    
-    array = reload_list(host_ip=host_ip)
+    logger = logging.getLogger('')
+    logger.handlers = []  # Clear all existing handlers
+    log_handler = logging.StreamHandler()
 
-    # Load in memory the CHIME firmware to be used with the iceboards
-    fpga_bitstream = array.get_fpga_bitstream(bitfile_path, chFPGA_controller)
+    # Make sure SQLAlchemy does not log too much
+    sql_logger = logging.getLogger('sqlalchemy.engine.base.Engine')
+    sql_logger.setLevel(logging.INFO)
 
-    # Query the database for iceboard with given serial number
-    c = array.get_iceboards(serial_number=int(board_sn)).one()
+    # Set-up log for this test run
+    logger.setLevel(logging.INFO)
+    logger.addHandler(log_handler)
 
-    # Program the iceboard with the specified firmware and assiciate it with the corresponding Python handler class
-    # (if the FPGA  is already programmed, this will be instantaneous)
-    c.set_fpga_firmware(fpga_bitstream, configure_fpga=True, force=force)
-    return c
+    # Get fpga bitstream
+    fpga_bitstream = FpgaBitstream(bitfile_path)
+
+    # Create Iceboard instance
+    host_name = 'iceboard{:0>4d}.local'.format(int(board_sn))
+    hwm = HardwareMap()  # Create empty hardware map
+    hwm.add(IceBoardPlus(hostname=host_name))
+    hwm.flush()
+    ib = hwm.query(IceBoardPlus).one()
+
+    # Check present on network
+    while not ib.ping():
+        logger.warning("Could not ping iceboard " + board_sn)
+        try_again = raw_input("\nCould not find iceboard " + board_sn + " on network.\nTry again? (y/n)\t")
+        if not try_again.lower().strip() == 'y':
+            raise Exception("Iceboard " + board_sn + " not present on network.")
+
+    # Associate the fpga_bitstream with the target Handler and program
+    ib.set_handler(chFPGA_controller, fpga_bitstream)
+    ib.set_fpga_bitstream(force = force)
+
+    return ib
 
 def discover_fpgas(host_ip):
     from pychfpga.icecore.fpga_core import FpgaCoreFirmware
     FpgaCoreFirmware.interface_ip_addr = host_ip
     return FpgaCoreFirmware.discover_fpgas()
     
-def top_test(board_sn, ch_acq_path='../../ch_acq/', host_ip=None, force=False):
+def top_test(board_sn, ch_acq_path='../../../../../../ch_acq/', host_ip=None, force=False):
     '''
     Creates fpga_controller and fpga_receiver instances and returns them as [c,r].
     :param ch_acq_path: will be added to PYTHONPATH. defaults to '../../ch_acq/'
@@ -70,8 +76,7 @@ def top_test(board_sn, ch_acq_path='../../ch_acq/', host_ip=None, force=False):
     # Append ch_acq to PATH
     sys.path.append(ch_acq_path)
     from pychfpga.core import chFPGA_receiver
-    from pychfpga.icecore.icearray import close_all_sockets
-    
+
     ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 = (
     ([16]*8,     [3]*8), #CH0
     ([7]*8,                       [3]*8), #CH1 
@@ -91,33 +96,32 @@ def top_test(board_sn, ch_acq_path='../../ch_acq/', host_ip=None, force=False):
     ([18]*8,                       [3]*8), #CH14
     ([16]*8,                       [3]*8)  #CH15
     )
-        
-    try:
-        c.close() # close sockets from previous objects to free them for the new one
-        r.close() # close sockets from previous objects to free them for the new one
-        del c
-        del r
-    except NameError:
-        pass
     
-    # parameters: --init 1 -f 800 -l debug -w 4 -g 2 --enable_gpu_link 0  --host_ip
-    init = 1
-    sampling_frequency = 800
+    # Parameters for FPGA open
+    init = 1  # 'Initialization level: -1: Just create sockets, 0: connect and read only. 1: initialize hardware'
+    sampling_frequency = 800  # 'Sampling frequency of the ADC in MHz'
     log_level = logging.INFO
-    data_width = 8
-    group_frames = 1
+    data_width = 8  # 'Data width of each Re and Im component of the channelizer output'
+    group_frames = 1  # 'Number of frames to group before sending to the GPU or FPGA correlator.'
     enable_gpu_link = 0
     ADC_DELAY_TABLE = ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2
-    
-    logger = logging.getLogger(__name__)
-    logging.basicConfig(level=log_level, format='%(asctime)s %(name)-32s %(levelname)-10s : %(message)s')
+
+    logger = logging.getLogger('')
+    logger.handlers = []  # Clear all existing handlers
+    log_handler = logging.StreamHandler()
+    # Make sure SQLAlchemy does not log too much
+    sql_logger = logging.getLogger('sqlalchemy.engine.base.Engine')
+    sql_logger.setLevel(logging.INFO)
+    # Set-up log for this test run
+    logger.setLevel(logging.INFO)
+    logger.addHandler(log_handler)
+    # logging.basicConfig(level=log_level, format='%(asctime)s %(name)-32s %(levelname)-10s : %(message)s')
     logger.info('------------------------')
     logger.info('top_test for ICEboard QC')
     logger.info('------------------------')
 
-    close_all_sockets()
     # get FPGA_controller
-    c = programFpga(board_sn, ch_acq_path=ch_acq_path, host_ip=host_ip, force=force)
+    c = programFpga(board_sn, ch_acq_path=ch_acq_path, force=force)
     c.open(\
         adc_delay_table=ADC_DELAY_TABLE, \
         init=init, \
@@ -128,16 +132,18 @@ def top_test(board_sn, ch_acq_path='../../ch_acq/', host_ip=None, force=False):
         enable_gpu_link = enable_gpu_link)
     
     # Check if at least one FMC board present
-    adc_present = c.fpga.is_fmc_present(0) or c.fpga.is_fmc_present(1)
+    adc_present = c.is_mezzanine_present(1) or c.is_mezzanine_present(2)
     if not adc_present:
         logger.warning("No ADC boards are present, will not initialize a receiver.")
         r = None
         logger.warning("Returning receiver ('r') as None.")
     else:
         logger.info('Getting chFPGA configuration')
+        if host_ip is not None:  # Set host computer interface
+            c.interface_ip_addr = host_ip
         chFPGA_config = c.fpga.get_config()
         logger.info('Starting data/correlator receiver threads')
-        r = chFPGA_receiver.chFPGA_receiver(chFPGA_config, ip_address=c.fpga_ip_addr, port=c.fpga_port_number+1, host_ip = host_ip)
+        r = chFPGA_receiver.chFPGA_receiver(chFPGA_config)
 
     return [c,r]
 
@@ -188,7 +194,7 @@ def rampTest(board_sn, directory, ch_acq_path='../../ch_acq/', host_ip=None):
     # Set ADC delays
     c.fpga.set_adc_delays(ADC_DELAY_TABLE)
 
-    # Record serials of mezzanines
+    # TODO: Record serials of mezzanines
 
     # Begin Ramp test
     print "\nBegin ramp test:"
@@ -196,120 +202,4 @@ def rampTest(board_sn, directory, ch_acq_path='../../ch_acq/', host_ip=None):
     test.execute(directory)
     r.close()
     return [ADC_DELAY_TABLE, stuck_bits]
-
-def reload_list(fname="iceboard_list.txt", host_ip=None):
-    from pychfpga.icecore.icearray import IceArray, close_all_sockets
-    # Close all previous sessions with the layout/hardware map database
-    IceArray.close_all_sessions()
-
-    # Create the array object and update the hardware database from a file and from auto-discovery
-    array = IceArray(uri='sqlite:///test.db', interface_ip_addr=host_ip)
-    array.load_iceboards('iceboard_list.txt') # update iceboard definitions in database with the data in this CSV file so we can start with an empty database if needed
-    array.discover() # automatically update the hardware map database with discovered resources. This will probe the boards and will update the 'present' field.
-    return array
-
-def read_list(fname=None):
-    '''
-    Reads file iceboard_list.txt and returns a 2D list with contents of table.
-    :param fname: File name of board list. defaults to "iceboard_list.txt"
-    :return: 2D list of ARM and FPGA addresses. If file not found, returns empty list.
-    '''
-    import os
-    from other_stuff import read_config
-
-    # Find iceboard_list.txt if not supplied
-    if fname is None:
-        config = read_config()
-        fname = os.path.join(config['results_directory'], "iceboard_list.txt")
-
-    # Check file exists
-    if not os.path.isfile(fname):
-        print "\nFile " + fname + " doesn't exist."
-        return []
-    # Read file as list
-    f = open(fname, 'r')
-    content = f.readlines()
-    f.close()
-
-    # Convert content of file to 2D list and strip whitespace
-    content_grid = [i.split(',') for i in content]
-    content_grid = [[j.strip() for j in i] for i in content_grid]
-    return content_grid
-    
-def edit_list(board_sn, arm_ip=None, arm_mac=None, fpga_ip=None, fpga_sn=None, locked=None, subarray=None):
-    '''
-    Edit the line from iceboard_list.txt corresponding to some board.
-    :param board_sn: e.g. '0012'
-    :param arm_ip: e.g. '10.10.10.12'
-    :param arm_mac: e.g. '84:7E:40:6F:CC:A0'
-    :param fpga_ip: e.g. '10.10.3.12'
-    :param fpga_sn: e.g. '0x14e1c452263014'
-    :param locked: e.g. '0'
-    :param subarray: e.g. '1'
-    '''
-    import os
-    from other_stuff import read_config
-
-    # Get iceboard_list.txt path from config
-    config = read_config()
-    fname = os.path.join(config['results_directory'], "iceboard_list.txt")
-
-    # Read file and create if doesn't exist
-    content = read_list(fname)
-    if len(content) == 0 and (not os.path.isfile(fname)):
-        header = "# sn,                      ARM/tuber_uri,      ARM MAC address,      fpga_ip_addr, fpga_serial_number, locked, subarray"
-        file = open(fname, 'w')
-        file.write(header)
-        file.close()
-        print "Created new file " + fname + " ."
-        content[0] = header.split(',')
-        content[0] = [i.strip() for i in content[0]]
-
-    # Check that list is not empty
-    if len(content) < 2:
-        empty = True
-    else:
-        empty = False
-
-    # Find line for this board
-    line_index = None
-    line = None
-    if not empty:
-        for i, val in enumerate(content[1:len(content)]):
-            if int(val[0]) == int(board_sn):
-                line_index = i + 1
-                line = val
-                break
-    if line_index is None:
-            line_index = len(content)
-            line = [str(int(board_sn))]
-            line[1:7] = ["0"] * 6
-
-    # Edit line and add to content
-    for index, val in enumerate([arm_ip, arm_mac, fpga_ip, fpga_sn, locked, subarray]):
-        if val is not None:
-            line[index+1] = val
-    if line_index < len(content):
-        content[line_index] = line
-    else:
-        content.append(line)
-
-    # Format table with fixed column width
-    COLUMN_WIDTHS = (4, 35, 21, 18, 18, 6, 9)
-    for i, lin in enumerate(content):
-        for j, val in enumerate(lin):
-            if COLUMN_WIDTHS[j] - len(val) < 0:
-                print "Supplied argument '" + val + "' in row " + str(i) + ", column " + str(j) + "  is longer than the allowed column width of the table."
-                print "Formatting will be off. Please check your values and try again."
-            while COLUMN_WIDTHS[j] - len(content[i][j]) > 0: # Have to use content[i][j] to actually modify value, val is not in scope
-                content[i][j] = " " + content[i][j]
-    # Add '\n' to every line except last
-    for i, lin in enumerate(content[0:len(content)-1]):
-        content[i][-1] = lin[-1] + '\n'
-    content = [','.join(l) for l in content]
-
-    # Write formatted table to file
-    file = open(fname, 'w')
-    file.writelines(content)
-    file.close()
 
