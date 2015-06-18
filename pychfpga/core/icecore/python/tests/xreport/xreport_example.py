@@ -3,25 +3,22 @@
 This is a standard nose test file, so you could run it normally with
 ``nosetests`` **if** the xreport plugin has been installed and registered::
 
-   nosetests xreport_example --xargs --iceboards 10.10.10.7   # Won't work unless you registered the plugin
+   nosetests xreport_example --xfile test --xargs --iceboards 10.10.10.7   # Won't work unless you registered the plugin
 
 An easier alternative is to run xreport module as a script, which will invoke nosetest but will automatically add the plugin::
 
-   python xreport.py xreport_example.py --xargs --iceboards 10.10.10.7   # Should work
+   python xreport.py xreport_example --xfile test --xargs --iceboards 10.10.10.7   # Should work
 
 This will save the test report as `test.xml`, which can be opened viewed directly by your web browser.
 This will also save a reStructuredText report in 'test.rst', with 'test_image0.png' as an image referred by the document.
 
 """
 
-
 import unittest
-import sys
-import logging
 import argparse
-from matplotlib import pyplot as plt
 import numpy as np
-import xreport as xr  # provides access to the Xreport extended features
+from matplotlib import pyplot as plt
+from xreport import XReport as xr  # provides access to the Xreport extended features
 
 
 def test_if_odd(i=0):

@@ -68,5 +68,7 @@ from session import (
     register_yaml_object
 )
 
-
+from tests.xreport.xreport import (
+    XReport
+    )
 # vim: sts=4 ts=4 sw=4 tw=78 smarttab expandtab
