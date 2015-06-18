@@ -29,19 +29,14 @@ History:
 
 import logging
 import numpy as np
-# import socket #needed for inet_aton
-# import struct
-
-#import pdb
 import time
 
-from .icecore_ext.chfpga_handler import chFPGAHandler
+from .icecore_ext.iceboard_ext import IceBoardExtHandler
 
 from pychfpga.common import util
 
 # import Shared_variables # Note: do not reload this module or we will lose acces to the data in it
 import Module
-# import SocketIO
 
 # FPGA subsystems handlers
 import SPI
@@ -54,70 +49,12 @@ import MGT
 
 # FPGA Antenna processor handlers
 import ANT
-import ADCDAQ # Included only so it can be reloaded
-import SRCSEL # Included only so it can be reloaded
-import INJECT # Included only so it can be reloaded
-import FUNCGEN # Included only so it can be reloaded
-import FFT # Included only so it can be reloaded
-import SCALER # Included only so it can be reloaded
-import PROBER # Included only so it can be reloaded
 
 # FPGA Correlator handlers
 import CORR_BLOCK
-
 import CROSSBAR
-# import CH_DIST    # Included only so it can be reloaded
 import shuffle
-
-import ACC # Included only so it can be reloaded
-
 import GPU
-
-# ML605 FPGA board specific device handlers
-
-# from pychfpga.motherboards import ML605_LCD
-# from pychfpga.motherboards import ML605_PMBus
-# from pychfpga.motherboards import mgk7mb # McGill ICEBoard hardware ressources wrapper
-
-# MGADC08 FMC ADC board device handlers
-#from pychfpga.MGADC08 import MGADC08
-
-# -- Module reloader --
-# Reload modules if we are debugging in case the source code has changed
-
-# MODULE_LIST = (
-#         util,
-#         # SocketIO,
-#         Module,
-#         SPI,
-#         I2C,
-#         GPIO,
-#         SYSMON,
-#         REFCLK,
-# #        MGADC08,
-#         # ML605_LCD,
-#         FreqCtr,
-#         # ML605_PMBus,
-#         ANT,
-#         ADCDAQ,
-#         SRCSEL,
-#         INJECT,
-#         FUNCGEN,
-#         FFT,
-#         SCALER,
-#         PROBER,
-#         CORR_BLOCK,
-#         CROSSBAR,
-#         GPU,
-#         shuffle,
-#         ACC,
-#         MGT,
-#         # mgk7mb,
-# #        MGADC08,
-#         # iceboard
-#         )
-
-# util.reload_modules(MODULE_LIST)
 
 
 # -- chFPGA --
@@ -134,7 +71,7 @@ class chFPGAException(Exception):
         self._logger.exception(message)
 
 
-class chFPGA_controller(chFPGAHandler):
+class chFPGA_controller(IceBoardExtHandler):
     """
     Creates an object that connects to the specified chFPGA board and provides
     the methods to configure it and control its operations.

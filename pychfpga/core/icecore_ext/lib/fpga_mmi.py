@@ -1,18 +1,16 @@
-#!/usr/bin/python
-# Disable pylint TAB warnings (W0312) and Line too long (=C0301)
-# pylint: disable=W0312,C0301
-
 """
 fpga_mmi.py module
-Provides access to the memory-mapped interface of the FPGA through a socket.
+
+Provides access to the memory-mapped interface of the FPGA through UDP
+commands sent directly to the FPGA Ethernet port.
 
  History:
         2014-03-04 JFC: Created
 """
 import logging
 import numpy as np
-import lib.udp as udp
-from chfpga_handler import chFPGAHandler as chFPGAHandler
+import udp as udp
+from ..iceboard_ext import IceBoardExtHandler
 
 
 class FpgaMmiException(Exception):
@@ -41,15 +39,15 @@ class FpgaMmi:
     PROTO_TCP = 'TCP'
     TimeoutException = TimeoutException
 
-    _BROADCAST_BASE_PORT = chFPGAHandler._BROADCAST_BASE_PORT
-    _FPGA_IP_SETUP_BASE_ADDR = chFPGAHandler._FPGA_IP_SETUP_BASE_ADDR
-    _FPGA_SERIAL_NUMBER_ADDR = chFPGAHandler._FPGA_SERIAL_NUMBER_ADDR
-    _FPGA_TIMESTAMP_ADDR = chFPGAHandler._FPGA_TIMESTAMP_ADDR
+    _BROADCAST_BASE_PORT = IceBoardExtHandler._BROADCAST_BASE_PORT
+    _FPGA_IP_SETUP_BASE_ADDR = IceBoardExtHandler._FPGA_IP_SETUP_BASE_ADDR
+    _FPGA_SERIAL_NUMBER_ADDR = IceBoardExtHandler._FPGA_SERIAL_NUMBER_ADDR
+    _FPGA_TIMESTAMP_ADDR = IceBoardExtHandler._FPGA_TIMESTAMP_ADDR
 
     # Match those with what is used by Module
-    _CONTROL_BASE_ADDR = chFPGAHandler._CONTROL_BASE_ADDR
-    _STATUS_BASE_ADDR  = chFPGAHandler._STATUS_BASE_ADDR
-    _RAM_BASE_ADDR     = chFPGAHandler._RAM_BASE_ADDR
+    _CONTROL_BASE_ADDR = IceBoardExtHandler._CONTROL_BASE_ADDR
+    _STATUS_BASE_ADDR  = IceBoardExtHandler._STATUS_BASE_ADDR
+    _RAM_BASE_ADDR     = IceBoardExtHandler._RAM_BASE_ADDR
 
     OPCODE_WRITE_CONTROL      = 0b100
     OPCODE_WRITE_CONTROL_MASK = 0b101

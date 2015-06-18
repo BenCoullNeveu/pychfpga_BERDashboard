@@ -25,9 +25,9 @@ class REFCLK_base(Module_base):
 
     sync_delay=9 # default value.
 
-    CONTROL=BitField.CONTROL
-    STATUS=BitField.STATUS
-    DRP=BitField.DRP
+    CONTROL = BitField.CONTROL
+    STATUS = BitField.STATUS
+    DRP = BitField.DRP
 
     # CONTROL bytes
     ADC_SYNC               = BitField(CONTROL, 0, 7, doc='Force a SYNC to the ADC, synchronized on the FMC Reference clock, but bypasses the SYNC state machine that resets the IOSERDES and BUFR')
@@ -38,9 +38,10 @@ class REFCLK_base(Module_base):
     REFCLK_SEL             = BitField(CONTROL, 0x01, 7, doc='Selects the source of the REFCLK needed for SYNC generation. 0=FMC, 1=internal REFCLK generator.')
     # ENABLE_SYNC_GENERATION = BitField(CONTROL, 0x01, 6, doc='Allows the internal state machine to generate the SYNC sequence (generate the ADC SYNC and resets the ADCDAQ SERDES and BUFG)')
     # ENABLE_SYNC_DETECTION  = BitField(CONTROL, 0x01, 5, doc='When 1, enable SYNC detection based on the Refecence clock pulse length. Disable if the FMC board is not present to prevent spurious resets of the data path.')
+    REFCLK1_DELAY           = BitField(CONTROL, 0x01, 0, width=5, doc='Delay applied to the FMC1 Reference clock. Must pulse REFCLK_DELAY_RST to load.')
 
-    REFCLK_DELAY_RST       = BitField(CONTROL, 0x02, 7, doc='Resets the REFCLK line IODELAY and loads the delay value specified in REFCLK_DELAY.')
-    REFCLK_DELAY           = BitField(CONTROL, 0x02, 0, width=5, doc='Delay applied to the FMC Reference clock within the FPGA (0-31). Must pulse REFCLK_DELAY_RST to load.')
+    REFCLK_DELAY_RST       = BitField(CONTROL, 0x02, 7, doc='Resets the REFCLK line IODELAY and loads the delay value specified in REFCLK0_DELAY.')
+    REFCLK0_DELAY           = BitField(CONTROL, 0x02, 0, width=5, doc='Delay applied to the FMC0 Reference clock. Must pulse REFCLK_DELAY_RST to load.')
 
     # STATUS bytes
     SYNC_CTR               = BitField(STATUS, 0x00, 4, width=4, doc='Counts the SYNC events')
@@ -128,15 +129,23 @@ class REFCLK_base(Module_base):
 
     def get_refclk_delay(self):
         """
-        Get the current delay on the Mezzanine Reference clock.
+        Get the current delays on the Mezzanine Reference clock for both mezzanines.
         """
-        return self.REFCLK_DELAY
+        return (self.REFCLK0_DELAY, self.REFCLK1_DELAY)
 
     def set_refclk_delay(self, delay):
         """
-        Sets the delay in the Reference clock received into the FPGA. Valid range is 0-31.
+        Sets the delay applied on the Mezzanine Reference clock of the two
+        mezzanines as they enter the FPGA. Valid range is 0-31. These delays
+        are used to scan the ADC clock waveform and to set the ADC SYNC
+        timing.
         """
-        self.REFCLK_DELAY = delay
+        try:
+            d0, d1 = delay
+        except TypeError:
+            d0 = d1 = delay
+        self.REFCLK0_DELAY = d0
+        self.REFCLK1_DELAY = d1
         self.pulse_bit('REFCLK_DELAY_RST')
 
     def acquire_adc_clock_waveform(self, channels=range(16),  sleep=0.005):
@@ -151,8 +160,8 @@ class REFCLK_base(Module_base):
         """
         # tap_delay = 1/200e6/32/2
         old_refclk_delay = self.get_refclk_delay()
-        number_of_adcs = max(channels) + 1
-        samples = np.zeros((number_of_adcs, 32), np.int8) # prepare an empty array that wil lcontain the clock sample values for all ADCs and all delay values.
+        number_of_channels = max(channels) + 1
+        samples = np.zeros((number_of_channels, 32), np.int8) # prepare an empty array that wil lcontain the clock sample values for all ADCs and all delay values.
         for delay in range(32):
             self.set_refclk_delay(delay)
             time.sleep(sleep)
@@ -204,7 +213,7 @@ class REFCLK_base(Module_base):
         not occur.
         """
 
-        s = s*1.0  # Convert array to float array
+        s = s * 1.0  # Convert array to float array
         if edge_type == 'both':
             ds = (np.abs(np.diff(s)) > min_step)
         elif edge_type == 'pos':
@@ -225,10 +234,10 @@ class REFCLK_base(Module_base):
 
         """
         pos_edges = self.find_edges(s, min_step=0.5, stable_time=stable_time, edge_type='pos')
-        if pos_edges:
+        if len(pos_edges):
             return pos_edges[0] % period
         neg_edges = self.find_edges(s, min_step=0.5, stable_time=stable_time, edge_type='neg')
-        if neg_edges:
+        if len(neg_edges):
             return (neg_edges[0]+int(period/2.0)) % period
         raise RuntimeError('Could not find any edge')
 
@@ -259,14 +268,13 @@ class REFCLK_base(Module_base):
         clock and the setup or hold requirements are not met).
 
         The algorithm then look for those discontinuities, and computes the
-        delay that will place the SYNC between the frist two of them. This
-        is done for all ADC simultaneously. The average SYNC timing for all
-        ADCs is used as the optimal value.
+        delay that will place the SYNC between the first two of them.
+        The average SYNC timing for all specified ADCs is used as the optimal value.
 
         NOTE: This will work only of the ADC board is configured to SYNC the
         ADC directly from the SYNC signal coming from the FPGA.
 
-        On REV2 boards, this means:
+        On the MGADC08 REV2 boards, this means:
             1) The FPGA SYNC is used as a source by setting the appropriate
                control bit on the SYNC mux.
             2) The SYNC Flip Flop is bypassed by hardware, and the ADC SYNC
@@ -275,64 +283,105 @@ class REFCLK_base(Module_base):
         """
         tap_delay = 1/200e6/32/2
         adc_clock_period_in_taps = (1/adc_clock_freq)/tap_delay
-        number_of_adcs = max(channels) + 1
+        number_of_channels = max(channels) + 1
         samples = []
+
+        if isinstance(delays, int):
+            delays = [delays]
+        number_of_sync_delays = len(delays)
+
 
         if plot_adc is not None:
             import matplotlib.pyplot as plt
             plt.figure(1)
             plt.clf()
             plt.hold(1)
-            plt.axis([0, 128, min(delays)-1, max(delays)+1])
-            plt.xlabel('Time (tap delays, repeated 4 times)');
+            plt.axis([0, 3*32, min(delays)-1, max(delays)+1])
+            plt.xlabel('Time (tap delays, repeated 3 times)');
             plt.ylabel('Sync delay (tap delays)');
             plt.title('ADC%i clock waveform as a function of ADC_SYNC timing delay' % plot_adc)
 
-        if isinstance(delays, int):
-            delays = [delays]
-        phase = np.ones((number_of_adcs, len(delays)))*np.inf  # One phase for each ADC channel number
+        rising_edge = np.ones((number_of_channels, number_of_sync_delays))*np.nan  # One rising_edge for each ADC channel number
 
         for sync_delay in delays:
             print 'Sync delay %2i:' % (sync_delay),
             self.local_sync(sync_delay)
-            samples = self.acquire_adc_clock_waveform(sleep=sleep) # Measure the ADC clock waveform for all ADCs
+            samples = self.acquire_adc_clock_waveform(channels=channels, sleep=sleep) # Measure the ADC clock waveform for all ADCs
             for ADC_number in channels:
-                phase[ADC_number][sync_delay] = self.find_rising_edge(samples[ADC_number], period=adc_clock_period_in_taps)
-                mark = phase[ADC_number][sync_delay]
+                rising_edge[ADC_number][sync_delay] = self.find_rising_edge(samples[ADC_number], period=adc_clock_period_in_taps)
+                mark = rising_edge[ADC_number][sync_delay]
                 bitstring = self.bit_vector_to_string(samples[ADC_number], mark)
-                print 'ADC%2i: %s' % (ADC_number,bitstring),
+                print 'ADC%2i: %s' % (ADC_number, bitstring),
             print
             if plot_adc is not None:
-                extended_samples = np.hstack((samples[0], samples[0], samples[0], samples[0]))
-                plt.plot((extended_samples-.5)*.5 + sync_delay, 'r-')
-                plt.plot([phase[plot_adc][sync_delay]],[sync_delay], 'go')
+                extended_samples = np.hstack((samples[plot_adc], samples[plot_adc], samples[plot_adc]))
+                plt.plot((extended_samples-.5)*.5 + sync_delay, 'k-')
+                plt.plot([rising_edge[plot_adc][sync_delay]+adc_clock_period_in_taps], [sync_delay], 'go')
                 plt.draw()
-        print 'Recommended SYNC delays'
-        recommended_sync_delay = np.zeros(number_of_adcs)
-        for ADC_number in channels:
-            print 'ADC%2i:' % (ADC_number),
-            phase[ADC_number] = self.unwrap(phase[ADC_number], step=adc_clock_period_in_taps, threshold=adc_clock_period_in_taps*3/4)  # removes jumps greater than 16
-            # phase[ADC_number] -= min(phase[ADC_number])
-            edges = self.find_edges(phase[ADC_number], min_step=3, stable_time=4)
-            print 'Edges found at delays (%s)' % str(edges),
-            if len(edges) < 2:
+
+        print
+        print 'Channel-wise Computed SYNC delays'
+        sync_delays = np.ones(number_of_channels)*np.nan
+        for ch in channels:
+            print 'ADC%2i:' % (ch),
+            rising_edge[ch] = self.unwrap(rising_edge[ch], step=adc_clock_period_in_taps, threshold=adc_clock_period_in_taps*3/4) + adc_clock_period_in_taps  # removes jumps greater than 16
+            # rising_edge[ch] -= min(rising_edge[ch])
+            phase_jumps = self.find_edges(rising_edge[ch], min_step=3, stable_time=4)
+            print 'Phase jumps found at delays (%s)' % phase_jumps,
+            if len(phase_jumps) < 2:
                 print 'Insufficient number of ADC_CLK phase jumps edges to determine optimal SYNC timing'
             else:
-                recommended_sync_delay[ADC_number] = edges[0]+np.average(np.diff(edges*1.0))*0.40 # place sync at a fraction of the average distance between phase jumps
-                print ' Recommended sync_delay: %i' % int(round(recommended_sync_delay[ADC_number]))
-        average_recommended_sync_delay = int(round(np.average(recommended_sync_delay))) # must be an integer
-        print 'Recommended average sync delay: %i' % average_recommended_sync_delay
+                sync_delays[ch] = phase_jumps[0] + np.average(np.diff(phase_jumps*1.0))*0.40 # place sync at a fraction of the average distance between phase jumps
+                print ' Recommended sync_delay: %i' % int(round(sync_delays[ch]))
+
+        print
+        print 'ADC-chip--wise Computed SYNC delays'
+        adc_sync_delays = np.ones(4)*np.nan
+        for adc_chip in range(4):
+            adc_sync_delays[adc_chip] = int(round(np.average([sync_delays[ch] for ch in channels if 4*adc_chip <= ch <= 4*adc_chip+3])))
+            print 'ADC Chip #%i: sync delay: %i' % (adc_chip, adc_sync_delays[adc_chip])
+
+        print
+        print 'Mezzanine-wise SYNC delays'
+        mezz_sync_delays = np.ones(2)*np.nan
+        for mezz in range(2):
+            mezz_sync_delays[mezz] = int(round(np.average([sync_delays[ch] for ch in channels if 8*mezz <= ch <= 8*mezz+7])))
+            print 'Mezzanine #%i sync delay: %i' % (mezz, mezz_sync_delays[mezz])
+
+        print
+        print "ADC Clock phase shifts ('|' marks computed optimal sync delay)"
+        for ch in channels:
+            s = list(''.join([('#-' if edge else '##') for edge in np.abs(np.diff(rising_edge[ch])) > 3]))
+            s[2 * int(mezz_sync_delays[ch//8])] = '|'
+            print 'CH%02i: %s' % (ch, ''.join(s))
+
         if plot_adc is not None:
-            plt.plot(phase[plot_adc], range(len(phase[plot_adc])), 'bo-')
-            # plt.plot(phase[np.mod(edges, 64)], edges, 'ro')
+            plt.plot(rising_edge[plot_adc], range(number_of_sync_delays), 'bo-')
+            for mezz in range(2):
+                plt.plot([0, 3*32], [mezz_sync_delays[mezz]]*2, 'ro-')
+            plt.figure(2)
+            plt.clf()
+            plt.hold(1)
+            plt.axis([0, 32, min(channels)-1, max(channels)+1])
+            plt.gca().invert_yaxis()
+            ymin, ymax = plt.gca().get_ylim()
+            plt.gca().yaxis.set_ticks(np.arange(ymin, ymax, -1))
+            plt.xlabel('Sync delay');
+            plt.ylabel('Channel number');
+            plt.title('Location of ADC data clock phase jumps as a function of ADC_SYNC timing delay')
             for ch in channels:
-                plt.plot([0, 128], [recommended_sync_delay[ch]]*2, 'ko-')
+                w = np.cumprod(np.append([1], (np.abs(np.diff(rising_edge[ch])) <= 3)*2-1))
+                x = np.arange(number_of_sync_delays)
+                plt.fill_between(x, w*0.4 + ch, -w*0.4 + ch, interpolate=True)
+            for mezz in range(2):
+                ch = [c for c in channels if mezz*8 <= c <= mezz*8+7]
+                plt.plot([mezz_sync_delays[mezz]]*2, [min(ch), max(ch)], 'ro-')
             plt.draw()
 
         if set_sync_delays:
-            self.set_sync_delay(average_recommended_sync_delay)
+            self.set_sync_delay(mezz_sync_delays)
 
-        return recommended_sync_delay
+        return mezz_sync_delays
 
     def status(self):
         """
