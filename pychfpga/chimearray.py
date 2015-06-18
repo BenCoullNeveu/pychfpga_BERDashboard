@@ -128,6 +128,7 @@ if __name__ == '__main__':
     if args.open_boards:
         # Discover mezzanines
         c.discover_mezzanines()
+        c.discover_crate()
         # Establish communication with the board and initialize the firmware and software
         c.open(adc_delay_table=ADC_DELAY_TABLE,
                init=args.init,

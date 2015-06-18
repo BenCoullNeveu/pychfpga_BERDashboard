@@ -35,6 +35,7 @@ class test_adc_analog_histogram:
         self.fpga_ctrl.set_ADC_mode(mode='data')
         self.fpga_ctrl.set_gain((1,27))
         self.fpga_ctrl.set_offset_binary_encoding(0)
+        self.fpga_ctrl.set_local_data_port_number(int(self.port))
         time.sleep(1)
         self.fpga_ctrl.start_data_capture(burst_period_in_seconds=0.005, channels=range(16))
         self.fpga_ctrl.sync()
@@ -86,17 +87,30 @@ class test_adc_analog_histogram:
             #if confirm == 'y' or confirm == 'Y':
             #    self.fpga_ctrl.ANT.print_ramp_errors()
         except:
-            self.fpga_recv.close()
+            #self.fpga_recv.close()
             raise
+
+class FpgaBitstream(object):
+    """ Helper object used to load and store a FPGA bitstream. You don't have
+    to use it, but it makes the code look nicer"""
+    bitstream = None
+
+    def __init__(self, filename):
+        with open(filename, 'rb') as file_:
+            self.bitstream = file_.read()
+
+    def __str__(self):
+        """ Return the bitstream as a string. """
+        return self.bitstream
 
 if __name__ == '__main__':
 
     import argparse
     import logging
     from pychfpga import save_raw_frames
-    from pychfpga.icecore.icearray import IceArray, close_all_sockets
-    from pychfpga.icecore.iceboard import IceBoard
+    from pychfpga.core.icecore import IceBoardPlus
     from pychfpga.core.chFPGA_controller import chFPGA_controller as ChimeFpgaFirmware
+    from pychfpga.core.icecore.session import load_session as load_yaml
     #from pychfpga.core import chFPGA_receiver
     ADC_DELAY_TABLE= (
     ([16]*8,     [3]*8), #CH0
@@ -131,6 +145,7 @@ if __name__ == '__main__':
     parser.add_argument("-s", "--spec_file", action = "store", \
                       default = "ch_master.spec", \
                       help = "Configuration file specifications.")
+    parser.add_argument("--slot", action = 'store', type = int, default=1, help = "which slot to run on.")
     args = parser.parse_args()
     
     log_level = {'info': logging.INFO, 'debug': logging.DEBUG}[args.log_level]
@@ -150,7 +165,7 @@ if __name__ == '__main__':
     conf = ConfigObj(args.conf_file, configspec = args.spec_file)
     ret = conf.validate(val_conf, preserve_errors = True)
     # Build up the adc_delay_table.
-    n = int(conf["n_antenna"])
+    n = 16
     adc_delay = []
     for i in range(n):
       name = "ch%02d" % i
@@ -169,14 +184,17 @@ if __name__ == '__main__':
                    (name))
         exit()
       adc_delay.append((tmp_delay[:8],tmp_delay[8:]))
-    ca = IceArray(uri=conf["fpga"]["db_file"], interface_ip_addr=conf["fpga"]["host_ip"])
+    ca = load_yaml(open('pychfpga/yaml_iceboard_list.txt'))
     # Might want to move the list somewhere else/into conf file?
-    ca.load_iceboards('/home/chime/ch_acq/pychfpga/iceboard_list.txt')
-    ca.discover()
+    #ca.load_iceboards('/home/chime/ch_acq/pychfpga/iceboard_list.txt')
     bitfile_filename = args.bitfile #conf["fpga"]["bitfile_name"]
-    fpga_bitstream = ca.get_fpga_bitstream(bitfile_filename, ChimeFpgaFirmware)
-    c = ca.get_iceboards(subarray=[conf["fpga"]["subarray"]]).index_by(IceBoard.serial_number)
-    c.set_fpga_firmware(fpga_bitstream, force=args.force)
+    fpga_bitstream = FpgaBitstream(bitfile_filename)
+    ChimeFpgaFirmware.register_fpga_bitstream(fpga_bitstream)
+    c_rack = ca.query(IceBoardPlus).filter_by(subarray=conf["fpga"]["subarray"])
+    c = c_rack(slot=args.slot)
+    c.discover_mezzanines()
+    c.discover_crate()
+    c.set_fpga_bitstream(force=args.force)
     c.open( \
         adc_delay_table=adc_delay, \
         init=1, \
@@ -187,32 +205,32 @@ if __name__ == '__main__':
         enable_gpu_link = 0)
     #for cc in c:
     #  cc.fpga.GPU.LINK_ENABLE=1
-    c.fpga.set_corr_reset(1)
+    c.set_corr_reset(1)
     time.sleep(0.1)
-    c.fpga.set_corr_reset(0)
+    c.set_corr_reset(0)
 
     try:
           delays = pickle.load(open('/home/kbandura/git/ch_acq/pychfpga/delays_mar14_2015_no_errors.pkl'))
-          for ice in c:                                             
+          #for ice in c:                                             
               #oo = ice.fpga.compute_adc_delay_offsets()
-              ice.fpga.set_adc_delays_with_check( delays[ice.serial_number] )  #oo[0])
-              logger.info( "set delays on SN {0}, SLOT {1}".format(ice.serial_number, ice.slot_number + 1))
+          c.set_adc_delays_with_check( delays[ice.serial] )  #oo[0])
+          logger.info( "set delays on SN {0}, SLOT {1}".format(c.serial, c.slot))
     except:
           logger.info("Error loading/setting delay tables.  Using default config for remainder of boards")
 
-    for cc in c:
-      print cc.serial_number
-      print cc.slot_number
-      #print 'ADC 00', cc.fpga._adc_board[0].ADC[0].get_temperature()
-      #print 'ADC 01', cc.fpga._adc_board[0].ADC[1].get_temperature()
-      #print 'ADC 10', cc.fpga._adc_board[1].ADC[0].get_temperature()
-      #print 'ADC 11', cc.fpga._adc_board[1].ADC[1].get_temperature()
-      #rs = [chFPGA_receiver.chFPGA_receiver(c_element.fpga.get_config(), ip_address=c_element.fpga_ip_addr, port=c_element.fpga_port_number+1, host_ip = '10.10.10.83') for c_element in c]
-      #r = chFPGA_receiver.chFPGA_receiver(cc.fpga.get_config(), ip_address=cc.fpga_ip_addr, port=cc.fpga_port_number+1, host_ip = conf["fpga"]["host_ip"])
-      test = test_adc_analog_histogram(cc.fpga, str(cc.fpga_port_number+1))
-      test.execute(args.output_name)
-      print cc.fpga.get_temperatures()
-      #r.close()
-      #[r.close() for r in rs]
-      #cc.fpga.close()
-    close_all_sockets()
+    #for cc in c:
+    print c.serial
+    print c.slot
+    #print 'ADC 00', cc.fpga._adc_board[0].ADC[0].get_temperature()
+    #print 'ADC 01', cc.fpga._adc_board[0].ADC[1].get_temperature()
+    #print 'ADC 10', cc.fpga._adc_board[1].ADC[0].get_temperature()
+    #print 'ADC 11', cc.fpga._adc_board[1].ADC[1].get_temperature()
+    #rs = [chFPGA_receiver.chFPGA_receiver(c_element.fpga.get_config(), ip_address=c_element.fpga_ip_addr, port=c_element.fpga_port_number+1, host_ip = '10.10.10.83') for c_element in c]
+    #r = chFPGA_receiver.chFPGA_receiver(cc.fpga.get_config(), ip_address=cc.fpga_ip_addr, port=cc.fpga_port_number+1, host_ip = conf["fpga"]["host_ip"])
+    test = test_adc_analog_histogram(c, str(c.fpga_port_number+1))
+    test.execute(args.output_name)
+    print c.get_temperatures()
+    #r.close()
+    #[r.close() for r in rs]
+    #cc.fpga.close()
+    #close_all_sockets()

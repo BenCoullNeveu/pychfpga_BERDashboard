@@ -47,8 +47,9 @@ def get_gpu_data(node_number, dna_number):
 
     return result
 
-
-def shuffle_init(c, sync_board, frames_per_packet=1, cb1_lanes=4, cb1_bins=16, cb2_lanes=2, cb2_bins=1, cb2_bypass=0, bp_bypass=0, remap=True):
+#def shuffle_init(c, sync_board, frames_per_packet=1, cb1_lanes=4, cb1_bins=16, cb2_lanes=2, cb2_bins=1, cb2_bypass=0, bp_bypass=0, remap=True):
+def shuffle_init(c, ni_board, sync_board, dsmap=range(16), frames_per_packet=1, cb1_lanes=4, cb1_bins=16, cb2_lanes=2, cb2_bins=1, cb2_bypass=0, bp_bypass=0, remap=True,
+                 ni_enable = False, ni_offset = 0, ni_high_time = 8388608, ni_period = 16777216):
     """ Setup the crossbars and data shuffling in every board of the array.
     """
     tx_list = []
@@ -61,29 +62,32 @@ def shuffle_init(c, sync_board, frames_per_packet=1, cb1_lanes=4, cb1_bins=16, c
 
     logger.info('%.32r: Configuring crate-wide data shuffling with frames_per_packet=%i, cb1_lanes=%i, cb1_bins=64, cb2_lanes=%i, cb2_bins=%i, cb2_bypass=%s, bp_bypass=%s' % (crate, cb1_lanes, cb1_bins, cb2_lanes, cb2_bins, bool(cb2_bypass), bool(bp_bypass)))
 
-    # Set SMA output of sync board to be sync signal
-    sync_board.set_user_output_source('sync')
+    # Set SMA output of sync board to be irigb trigger sync signal (was 'sync')
+    sync_board.set_user_output_source('irigb_trig')
     # set-up transmitters
     for i,bb in enumerate(c):
         logger.info('%.32r: **** Initializing transmitters for Slot %02i (IceBoard SN%s) ****' % (crate, bb.slot, bb.serial))
         bb.set_corr_reset(0)
         # bb.set_data_source('funcgen')
         # bb.set_funcgen_function('a', a=0)
-        bb.set_data_source('adc')
+        #bb.set_data_source('adc')
         # set all analog inputs to send the (slot_number, analog input) complex number on every bin
-        for j in range(len(bb.ANT)):
-            bb.set_funcgen_function('ab', a=(bb.slot-1)<<4, b=j<<4, channels=[j])
+        #for j in range(len(bb.ANT)):
+        #    bb.set_funcgen_function('ab', a=(bb.slot-1)<<4, b=j<<4, channels=[j])
             # bb.set_funcgen_function('4bit_split_ramp')
-            pass
+        #    pass
         # set the stream ID of every transmitter to (slot_number, analog input) complex number on every bin
         for j,cb in enumerate(bb.CROSSBAR):
-            cb.STREAM_ID = bb.slot-1
+            cb.STREAM_ID = dsmap[bb.slot-1]
 
         for j,cb in enumerate(bb.CROSSBAR2):
-            cb.STREAM_ID = bb.slot-1
+            cb.STREAM_ID = dsmap[bb.slot-1]
 
-        # Make the board respond to SYNC triggers from the backplane
+        # Set the source of the IRIG-B signal
+        bb.set_irigb_source('bp_time')
+        # Set the source of the SYNC signal to irigb
         bb.REFCLK.set_sync_source('bp')#bb.REFCLK.SLAVE=1
+        #bb.REFCLK.set_sync_source('irigb')
 
         tx_list.append((bb.slot, 0))  # Register Bypass lane (lane 0) as a transmitter in this slot
         for j,gtx in enumerate(bb.BP_SHUFFLE.gtx):
@@ -93,7 +97,7 @@ def shuffle_init(c, sync_board, frames_per_packet=1, cb1_lanes=4, cb1_bins=16, c
             bb.CROSSBAR2.set_lane_map(compute_lane_map(bb))
 
         # Initialize the crossbars to select and send data in a specific format
-        bb.init_crossbars(frames_per_packet=frames_per_packet, cb1_lanes=cb1_lanes, cb1_bins=cb1_bins, cb2_lanes=cb2_lanes, cb2_bins=cb2_bins, cb2_bypass=cb2_bypass, remap=remap, bp_bypass=bp_bypass)
+        bb.init_crossbars(dsmap, frames_per_packet=frames_per_packet, cb1_lanes=cb1_lanes, cb1_bins=cb1_bins, cb2_lanes=cb2_lanes, cb2_bins=cb2_bins, cb2_bypass=cb2_bypass, remap=remap, bp_bypass=bp_bypass)
 
     # set-up receivers
     for i, bb in enumerate(c):
@@ -107,7 +111,7 @@ def shuffle_init(c, sync_board, frames_per_packet=1, cb1_lanes=4, cb1_bins=16, c
                 gtx.USER_GTRXRESET = 1
                 # gtx.USER_RESET = 1
 
-        bb.CROSSBAR2.SOF_WINDOW_STOP = 100
+        bb.CROSSBAR2.SOF_WINDOW_STOP = 200
         bb.BP_SHUFFLE.reset_rx_equalizers()
         bb.REFCLK.sync() # needed
 
@@ -121,7 +125,16 @@ def shuffle_init(c, sync_board, frames_per_packet=1, cb1_lanes=4, cb1_bins=16, c
             else:
                 logger.info('%.32r: %s has no corresponding transmitter' % (bb.crate, rx,))
 
-    soft_sync(c, sync_board)
+    # Configure noise injection gating signal
+    if ni_enable:
+        ni_board.set_user_output_source('pwm')
+        ni_board.set_frame_pwm(ni_offset, ni_high_time, ni_period)
+        
+    # sync boards
+    #soft_sync(c, sync_board)
+    #irigb_sync(c, delay=5)
+    time_soft_sync(c, sync_board, delay=5)
+
 
 # r.CROSSBAR2[0].print_frame_info()
 def compute_lane_map(c):
@@ -214,10 +227,10 @@ def init_gains(c):
     import pickle
     for cc in c:
         try:
-            g_array = pickle.load(open('/home/chime/ch_acq/gains_'+str(cc.fpga_serial_number)+'.pkl', 'rb'))
+            g_array = pickle.load(open('/home/chime/ch_acq/gains_'+str(cc.GPIO.FPGA_SERIAL_NUMBER)+'.pkl', 'rb'))
         except:
-            g_array = pickle.load(open('gains.pkl', 'rb'))
-            print 'Could not find gain settings for %r. Using default gain settings.' %cc
+            g_array = pickle.load(open('/home/chime/ch_acq/gains.pkl', 'rb'))
+            print 'Could not find gain settings for %r, sn %i. Using default gain settings.' % (cc, cc.get_fpga_serial_number())
         print 'Setting gains on IceBoard SN%s' % cc.serial
         cc.set_gain(g_array)
 
@@ -236,6 +249,35 @@ def soft_sync(boards, sync_board):
     for ib in boards:
         for ant in ib.ANT:
             ant.ADCDAQ.BYTE_MASK = 255
+
+def time_soft_sync(boards, sync_board, delay):
+    """ Synchronize all boards"""
+    boards = list(boards)
+    print 'Masking ADC data before sync'
+    for ib in boards:
+        for ant in ib.ANT:
+            ant.ADCDAQ.BYTE_MASK = 0
+    
+    # Get current time
+    current_time = sync_board.get_irigb_time()
+    print 'Setting IRIG-B sync after %d seconds' %delay
+    # Send sync pulse delay seconds in the future
+    sync_board.set_irigb_trigger_time(current_time, delay)
+
+    print 'Unmasking ADC data'
+    for ib in boards:
+        for ant in ib.ANT:
+            ant.ADCDAQ.BYTE_MASK = 255
+
+def irigb_sync(boards, delay):
+    """ Synchronize all boards"""
+
+    # Get current time
+    current_time = boards[0].get_irigb_time()
+    print 'Setting IRIG-B sync after %d seconds' %delay
+    for cc in boards:
+        cc.set_irigb_trigger_time(current_time, delay)
+
 
 def print_temperatures(boards):
     t = [(b.slot, b.serial, b.SYSMON.temperature()) for b in boards]

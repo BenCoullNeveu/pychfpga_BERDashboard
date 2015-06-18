@@ -1,0 +1,11 @@
+# Config file. Save the parameters specific to your system here to avoid having to enter them manually.
+
+# Parameters specific to this system
+host_ip: '10.10.10.228'# IP address of the network adapter communicating with FPGA (must be gigabit) (e.g. '10.10.10.10')
+ch_acq_path: '../../ch_acq/'# Path of ch_acq git repository (e.g. '../../ch_acq/' note the '/' at the end). Must be set to latest commit of master branch.
+user: 'anon_user' # Name of person running the QC.
+
+# Other info
+bitfile_commit: '3887daa' # Please record the git commit (from chFPGA) from which the current the fpga_bitfile.bit was taken
+board_md: 'MGK7MB'
+results_directory: '../board_files'

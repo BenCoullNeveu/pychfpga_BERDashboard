@@ -80,7 +80,7 @@ class GTX_CHANNEL_base(Module_base):
     def init(self):
         """ Initializes the GTX CHANNEL block"""
         self.logger.info('Initializing GTX_CHANNEL  #%i' % self.instance_number)
-
+        self.TXDIFFCTRL = 8
 
     def status(self):
         """ Displays the status of the GTX_CHANNEL"""
@@ -106,8 +106,8 @@ class GPU_base(Module_base):
     # 10GE Link control and status registers
     RESET               = BitField(CONTROL, 4+0, 0, doc='Resets the MAC and the GTX core.')
     TEST_ENABLE         = BitField(CONTROL, 4+0, 1, doc='When 1, enables trsnamission of test packets over the link.')
-    TEST_PACKET_LENGTH  = BitField(CONTROL, 4+2, 0, width=16, doc='')
-    TEST_PACKET_PERIOD  = BitField(CONTROL, 4+4, 0, width=16, doc='')
+    TEST_PACKET_LENGTH  = BitField(CONTROL, 4+2, 0, width=16, doc='test packet length in units of 32bit words')
+    TEST_PACKET_PERIOD  = BitField(CONTROL, 4+4, 0, width=16, doc='period in 244.14MHz clocks')
     WORD_CTR            = BitField(STATUS, 2+0, 0, width=8, doc='Last 8 bits of the counter used to produce the test test pattern.')
     FRAME_CTR           = BitField(STATUS, 2+1, 0, width=8, doc='Counts the number of frames coming in on lane 0.')
     DATA_FIFO_OVERFLOW  = BitField(STATUS, 2+2, 0, width=8, doc='Indicates if the data FIFO has overflows on the last 8 GPU links. Bit 0 is for lane 0.')

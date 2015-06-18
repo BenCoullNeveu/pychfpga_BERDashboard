@@ -5,6 +5,7 @@ Master control program for CHIME.
 #
 History:
 2013-05-13 ADH: First version.
+2015-05-30 JM: Modified to work with new icecore and handle noise injection gating
 """
 
 import chrx
@@ -27,6 +28,7 @@ from pychfpga import calculate_gains
 from pychfpga.MGADC08 import MGADC08
 from pychfpga.init_links import *
 #import MySQLdb
+from pychfpga.core.icecore.hardware_map import asynchronously, async_return, async
 
 # Should put somewhere else. Flatten arbitrarily deep nested lists
 # from stack overflow
@@ -84,9 +86,11 @@ def convert_types(val):
               pass
       return val
 
+@async
 def get_fpga_hk(fpga):
-    ret = {}
-    ret["core_temp"] = fpga.get_motherboard_temperature(fpga.TEMPERATURE_SENSOR.MB_FPGA_DIE)
+    """this should parallelize to make one call for all sensors"""
+    with fpga.tuber_context() as ctx:
+        t = yield ctx.get_motherboard_temperature(fpga.TEMPERATURE_SENSOR.MB_FPGA_DIE)
     # ret["VCC1V0"] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VCC1V0)
     # ret["VCC1V0_GTX"] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VCC1V0_GTX)
     # ret["VCC12V0"] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VCC12V0)
@@ -97,7 +101,14 @@ def get_fpga_hk(fpga):
     # ret["VCC3V3"] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VCC3V3)
     # ret["VCC1V8"] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VCC1V8)
     # ret["VADJ"] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VADJ)
-    return ret
+    async_return(t)
+
+#should be more elegant way...but list fields here to stay compatible
+hk_fields_list = ["core_temp"]
+
+@async
+def get_all_fpga_slots_hk(c):
+    async_return( (yield [get_fpga_hk.async(cc) for cc in c])  )
 
 # FPGA housekeeping.
 fpga_hk_field = {      "core_temp" : "deg C",
@@ -199,6 +210,22 @@ if __name__ == "__main__":
   parser.add_argument("-f", "--configure_fpga", action = "store", \
                        default = 1, \
                        help = "1 configure and control fpga.  0 to ignore fpga and just get data from gpu")
+  # Parameters for noise injection
+  parser.add_argument("-i", "--ni_enable", action = "store", \
+                       default = 0, \
+                       help = "Enable the pwm signal for noise injection gating")
+  parser.add_argument("-b", "--ni_board", action = "store", \
+                       type=str, default = '0026', \
+                       help = "Enable the pwm signal for noise injection gating")
+  parser.add_argument("-o", "--ni_offset", action = "store", \
+                       type=int, default=0, \
+                       help = "Offset, in frames, of the pwm signal for noise injection gating")
+  parser.add_argument("-u", "--ni_high_time", action = "store", \
+                       type=int, default=16777216, \
+                       help = "High time, in frames, of the pwm signal for noise injection gating. Default 16777216 frames (~43 secs)")
+  parser.add_argument("-p", "--ni_period", action = "store", \
+                       type=int, default=33554432, \
+                       help = "Period, in frames, of the pwm signal for noise injection gating. Default 33554432 frames (~86 secs)")
   args = parser.parse_args()
 
   # Be paranoid: if the executable is being run from /usr/sbin we can be
@@ -301,9 +328,9 @@ if __name__ == "__main__":
           log.info("set delays on SN {0}, SLOT {1}".format(ice.serial, ice.slot))
       #except:
       #    log.info("Error loading/setting delay tables.  Using default from config file for all boards")
-      for cc in c:
-        cc.GPU.LINK_ENABLE=1
-        log.info("GPU link enabled on SN {0}, SLOT {1}".format(cc.serial, cc.slot))
+      #for cc in c:
+      #  cc.GPU.LINK_ENABLE=1
+      #  log.info("GPU link enabled on SN {0}, SLOT {1}".format(cc.serial, cc.slot))
       c.set_corr_reset(1)
       time.sleep(0.1)
       c.set_corr_reset(0)
@@ -327,8 +354,22 @@ if __name__ == "__main__":
       # Gains will need to be able to handle multiple boards, currently file
       # Will be overwritten when used for more than one board.
       # Make compute gains smarter -> write to db? need boards to actually be different
+      ni_board = None
+      if args.ni_enable:
+        for ib in c:
+          if ib.serial == args.ni_board:
+            ni_board = ib
+            break  
+      # Get noise injectionn gating board. Currently board SN0005 (slot 1)
+      if args.ni_enable:
+        assert ni_board != None, 'Noise injection gating board SN%s not found in subarray %d' %(args.ni_board, conf["fpga"]["subarray"])
+      
       if (int(args.compute_gain) > 0):
           #Shouldn't need for loop here, but initial testing failed in parallel.
+          if args.ni_enable:
+              ni_board.set_user_output_source('pwm')
+              ni_board.set_frame_pwm(0, 3, 4)
+              ni_board.sync()
           for i, c_element in enumerate(c):
             fpga_config = c_element.get_config()
             #fpga_rec = chFPGA_receiver.chFPGA_receiver(fpga_config, \
@@ -352,15 +393,21 @@ if __name__ == "__main__":
       c.set_offset_binary_encoding()
       c.sync()
       # Get sync_board. Currently board SN0008 (slot 16)
-      sync_board = None
-      for ib in c:
-        if ib.serial == '0008':
-          sync_board = ib
-          break
-      if sync_board == None:
-        sync_board = c[0]
+      #sync_board = None
+      #for ib in c:
+      #  if ib.serial == '0008':
+      #    sync_board = ib
+      #    break
+      #if sync_board == None:
+      #  sync_board = c[0]
+      sync_board = c(serial='0008')
+
       # This is another hack. Have to fix it for DRAO. REALLY: HAVE TO CHANGE IT
-      shuffle_init(list(c),sync_board,frames_per_packet=4, cb1_lanes=16, cb1_bins=64, cb2_lanes=16, cb2_bins=8, cb2_bypass=0, remap=True )
+      # shuffle_init(list(c),sync_board,frames_per_packet=4, cb1_lanes=16, cb1_bins=64, cb2_lanes=16, cb2_bins=8, cb2_bypass=0, remap=True )
+      d_slots = conf['fpga']['destination_slots'] #[int(ii) for ii in conf["fpga"]["destination_slots"]]
+      shuffle_init(list(c),ni_board, sync_board, dsmap = d_slots, frames_per_packet=4, cb1_lanes=16, cb1_bins=64, cb2_lanes=16, cb2_bins=8, cb2_bypass=0, remap=True,
+                   ni_enable = args.ni_enable, ni_offset = args.ni_offset, 
+                   ni_high_time = args.ni_high_time-1, ni_period = args.ni_period-1)
 
       #Make sure FPGA throttling is fast enough to send all the data
       #FPGA doesn't seem to change this without a reset...
@@ -508,14 +555,18 @@ if __name__ == "__main__":
       # Pass the acquisition object the board temperatures. This is a temporary
       # way of doing this!
       if (int(args.configure_fpga) > 0):
-        i = 0
-        for c_element in c:
-          acq.pass_fpga_amb_temp(i, get_fpga_hk(c_element))
-          i += 1
-          #log.debug("Slot number: %d "  % c_element.slot )
-          #log.debug("Crossbar1 fifo overflow %d "  % c_element.CROSSBAR.CB1_LANE_MONITOR )
-          #log.debug("Crossbar2 fifo overflow %d "  % c_element.CROSSBAR2.CB2_LANE_MONITOR )
-        log.info("Read FPGA housekeeping.")
+        try:
+            hk_return = get_all_fpga_slots_hk(c)
+            i = 0
+            for hk in hk_return:
+              acq.pass_fpga_amb_temp(i, {hk_fields_list[0] : hk})
+              i += 1
+              #log.debug("Slot number: %d "  % c_element.slot )
+              #log.debug("Crossbar1 fifo overflow %d "  % c_element.CROSSBAR.CB1_LANE_MONITOR )
+              #log.debug("Crossbar2 fifo overflow %d "  % c_element.CROSSBAR2.CB2_LANE_MONITOR )
+            log.info("Read FPGA housekeeping.")
+        except:
+            log.critical("Did not get FPGA housekeeping, still aquiring data...")
       else:
         log.info("acquiring data...")
       time.sleep(conf["acq"]["fpga_hk"]["rate"])
