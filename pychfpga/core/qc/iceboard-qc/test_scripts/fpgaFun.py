@@ -3,6 +3,29 @@ Set of functions used in iceboard qc script to program and test the FPGA.
 Based off of 'top_test.py'
 """
 
+def get_boards(boards=None, ch_acq_path = '../../../../../../ch_acq/'):
+    ''' Finds specified boards on the network and returns them as IceBoardPlusHandler
+    :param boards: Array of serials of the boards to be returned. If not provided, will look for 'iceboard.local'
+    :param ch_acq_path: will be added to PYTHONPATH. should almost always be left to its default
+    :return: Array of IceBoardPlusHandler.
+    '''
+    import sys
+    # Append ch_acq to PATH
+    sys.path.append(ch_acq_path)
+    from pychfpga.core.icecore import HardwareMap
+    from pychfpga.core.icecore import IceBoardPlus
+
+    # Add specified boards to hardware map
+    hwm = HardwareMap()
+    if boards is None:
+        hwm.add(IceBoardPlus('iceboard.local'))
+    else:
+        for sn in boards:
+            hwm.add(IceBoardPlus('iceboard{:0>4d}.local'.format(int(sn))))
+    hwm.flush()
+
+    return [ib for ib in hwm.query(IceBoardPlus)]
+
 def programFpga(board_sn, ch_acq_path = '../../../../../../ch_acq/',  bitfile_path = "../../../../../../chFPGA/xili"
             "nx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit", force = False):
     '''
@@ -132,6 +155,7 @@ def top_test(board_sn, ch_acq_path='../../../../../../ch_acq/', host_ip=None, fo
         enable_gpu_link = enable_gpu_link)
     
     # Check if at least one FMC board present
+    c.discover_mezzanines()
     adc_present = c.is_mezzanine_present(1) or c.is_mezzanine_present(2)
     if not adc_present:
         logger.warning("No ADC boards are present, will not initialize a receiver.")
@@ -192,14 +216,52 @@ def rampTest(board_sn, directory, ch_acq_path='../../ch_acq/', host_ip=None):
     #)
     
     # Set ADC delays
-    c.fpga.set_adc_delays(ADC_DELAY_TABLE)
+    c.set_adc_delays(ADC_DELAY_TABLE)
 
-    # TODO: Record serials of mezzanines
+    # Record serials (and other info) of mezzanines
+    ipmi = [c._get_mezzanine_mcgill_ipmi(1), c._get_mezzanine_mcgill_ipmi(2)]
 
     # Begin Ramp test
     print "\nBegin ramp test:"
     test = test_adc_ramp_histogram(c.fpga, r)
     test.execute(directory)
     r.close()
-    return [ADC_DELAY_TABLE, stuck_bits]
+    return [ADC_DELAY_TABLE, stuck_bits, ipmi]
+
+def write_ipmi(ib, pn, sn, vn):
+    ''' Write IPMI to supplied board instance in standard format.
+    :param ib: IceBoardPlusHandler to write IPMI on.
+    :param pn: Part number to write to the IPMI.
+    :param sn: Serial number to write to the IPMI.
+    :param vn: Version number to write to the IPMI.
+    :return:
+    '''
+    from pychfpga.core.icecore.hw import ipmi_fru
+    import datetime
+    import base64
+
+    # Build IPMI object
+    fru = ipmi_fru.FRU(
+        board=ipmi_fru.Board(
+            mfg_date=datetime.datetime.now(),
+            manufacturer="Winterland",
+            product_name="IceBoard",
+            part_number=pn,
+            serial_number=sn,
+            fru_file="",
+        ),
+        product=ipmi_fru.Product(
+            manufacturer="Winterland",
+            product_name="IceBoard",
+            part_number=pn,
+            product_version=vn,
+            serial_number=sn,
+            asset_tag="",
+            fru_file="",
+        ),
+    )
+    b64_string = base64.b64encode(fru.encode())
+    # Flash to board
+    ib._motherboard_spi_flash_write_base64(b64_string)
+    ib._motherboard_eeprom_write_base64(b64_string)
 

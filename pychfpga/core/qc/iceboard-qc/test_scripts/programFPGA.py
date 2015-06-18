@@ -36,23 +36,17 @@ def programFPGA(username=str,board_sn=str,board_vn=str,board_md=str,testStatus =
     # Import parameters from config
     if username == None:
         username = config['user']
-    host_ip = config['host_ip']
-    ch_acq_path = config['ch_acq_path']
 
     print "Please have everything set up as for the Programming the ARM Test."
     print "You need to have already installed a heatsink on the FPGA, and running a fan over it is recommended."
     print "Make sure you can ping the motherboard, in the same method as that of Programming ARM Test. You may need to turn the board on/off"
     print "a few times to make sure it works."
     print "Please make sure the Ethernet cable has a good connection with the SFP adapter to ensure no communication problems."
-
-    # Get host_ip
-    if host_ip is None:
-        host_ip = raw_input("\nEnter the IP of the network adapter you will use to communicate with FPGA (must be gigabit)\n")
     
     print "\nWe will now program the FPGA of board " + board_sn + "."
     print "You need to have successfully run the 'Program ARM' in its entirety, or be sure that the ARM addresses were entered in database."
     raw_input("Press Enter to proceed with programming (this may take some time):\t")
-    fpgaFun.programFpga(board_sn,ch_acq_path=ch_acq_path,host_ip=host_ip,force=True)
+    fpgaFun.programFpga(board_sn, force=True)
 
     # Command to program FPGA using arm.py in old ch_acq, for reference
     #print 'Type in python pychfpga\\arm.py --ip 10.10.10.NUM -f "..\\chFPGA\\xilinx_projects\\CHFPGA_MGK7MB_REV2\\CHFPGA_MGK7MB_REV2.runs\\impl_Rev2\\chFPGA_MGK7MB_Rev2.bit" under this new directory'
@@ -62,7 +56,7 @@ def programFPGA(username=str,board_sn=str,board_vn=str,board_md=str,testStatus =
     print "\nCheck the last line of the block of text. Does it say 'Done configuring FPGA'?"
     program = raw_input("Enter 'Y' or 'N':  ")
     if program == 'Y' or program == 'y':
-        file.write('Output stating programming successful: Pass')
+        file.write('\nOutput stating programming successful: Pass')
     else:
         file.write('Output stating programming successful: Fail')
         file.write('\n\n**FPGA Programming Test Overall Status: Fail**')
@@ -71,89 +65,17 @@ def programFPGA(username=str,board_sn=str,board_vn=str,board_md=str,testStatus =
     print "\nCheck to see there are blinking red lights at the bottom edge of the FPGA. Are they there?"
     lights = raw_input("Enter 'Y' or 'N':   ")
     if lights == 'Y' or lights == 'y':
-        file.write('\nBlinking red lights seen on board: Pass')
+        file.write('\n\nBlinking red lights seen on board: Pass')
     else:
-        file.write('\nBlinking red lights seen on board: Fail')
+        file.write('\n\nBlinking red lights seen on board: Fail')
         file.write('\n\n**FPGA Programming Test Overall Status: Fail**')
         file.close()
         return fpgaProgFail(username,board_sn,board_vn,board_md,testStatus)
     print "\nYou should also be able to see the current draw has gone up. This is normal!"
 
-    # Get FPGA serial and append to iceboard_list.txt
-    iceboard_list = fpgaFun.read_list()
-    if len(iceboard_list) == 0:
-        print "\nCould not find 'iceboard_list.txt' or file empty."
-        file.write("\nCould not find 'iceboard_list.txt' or file empty.")
-        file.write('\n\n**FPGA Programming Test Overall Status: Fail**')
-        file.close()
-        return fpgaProgFail(username,board_sn,board_vn,board_md,testStatus)
-
-    serial = fpgaFun.discover_fpgas(host_ip)
-    if len(serial) == 0:
-        print "No FPGAs found on network. Check that you are properly connected via a Gigabit adapter and that your board is programmed."
-        file.write("\nNo FPGAs found on network. Could not fetch FPGA serial.")
-        file.write('\n\n**FPGA Programming Test Overall Status: Fail**')
-        file.close()
-        return fpgaProgFail(username,board_sn,board_vn,board_md,testStatus)
-    # Identify which serial is new
-    elif len(serial) == 1:
-        fpga_sn = '0x%x' % serial[0]
-    else:
-        doesnt_exist = range(0,len(serial))
-        already_in_list = False
-        iceboard_list = fpgaFun.read_list()
-        for line in iceboard_list[1:len(iceboard_list)]:
-            for i in doesnt_exist:
-                if int(line[4],16) == int(serial[i]):
-                    if int(line[0]) == int(board_sn):
-                        already_in_list = True
-                        break
-                    doesnt_exist.remove(i)
-            if already_in_list:
-                break
-        if already_in_list:
-            fpga_sn = None # This will just leave the previous value in the list
-        elif len(doesnt_exist) == 0:
-            print "No new FPGAs (not in list) found on network. Check that you are properly connected via a Gigabit adapter and that your board is programmed."
-            file.write("\nNo new FPGAs (not in list found on network. Could not fetch FPGA serial.")
-            file.write('\n\n**FPGA Programming Test Overall Status: Fail**')
-            file.close()
-            return fpgaProgFail(username,board_sn,board_vn,board_md,testStatus)
-        elif len(doesnt_exist) > 1:
-            print "More than one FPGA not currently in list found on network. Make sure you have your iceboard_list is up to date."
-            file.write("\nCould not identify new FPGA on network. Could not fetch FPGA serial.")
-            file.write('\n\n**FPGA Programming Test Overall Status: Fail**')
-            file.close()
-            return fpgaProgFail(username,board_sn,board_vn,board_md,testStatus)
-        else:
-            fpga_sn = '0x%x' % serial[doesnt_exist[0]]
-
-    # Assign IP to FPGA
-    current_ip = None
-    # First, check if already assigned
-    for line in iceboard_list[1:len(iceboard_list)]:
-        if int(line[0]) == int(board_sn):
-            current_ip = line[3]
-            break
-    if current_ip is None or len(current_ip.strip("'")) < 7:
-        fpga_ip = "'10.10.3." + str(int(board_sn)) + "'"
-        print "\nAssigning IP address " + fpga_ip + " to FPGA."
-    else:
-        print "\nFPGA already has assigned IP " + current_ip + "  in iceboard_list file. Will leave it as is."
-        fpga_ip = None
-    if fpga_sn is not None:
-        print "Adding serial number " + fpga_sn + " to database."
-    else:
-        print "FPGA already had serial number "
-    fpgaFun.edit_list(board_sn,fpga_sn=fpga_sn,fpga_ip=fpga_ip,locked='0')
-
-    # Reload modified list
-    print "\nReloading iceboard_list..."
-    fpgaFun.reload_list(host_ip=host_ip)
-
     print "\nIf there are any special concerns regarding the board for this test, please describe them below. If none, enter 'None'. "
     comments = raw_input("Enter your comments:  ")
-    file.write('\nComments: ' + comments)
+    file.write('\n\nComments: ' + comments)
 
     print "Has everything in this test gone smoothly?"
     check = raw_input("Enter ('Y' or 'N'):  ")
@@ -165,7 +87,7 @@ def programFPGA(username=str,board_sn=str,board_vn=str,board_md=str,testStatus =
         file.write('\n\n**FPGA Programming Test Overall Status: Fail**')
         print "Please describe why below."
         failure = raw_input("Enter your comments:       ")
-        file.write('\nComments:         ' + failure)
+        file.write('\n\nReason for failure:         ' + failure)
         file.close()
         return fpgaProgFail(username,board_sn,board_vn,board_md,testStatus)
 

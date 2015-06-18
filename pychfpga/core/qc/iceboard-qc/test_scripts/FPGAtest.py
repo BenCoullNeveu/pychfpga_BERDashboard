@@ -27,7 +27,7 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     file = open(fname, 'a')
     file.write('\n\nFPGA Test\n')
     file.write('------------\n')
-    date_str=iceboardtest.date_format(tm.localtime())
+    date_str=date_format(tm.localtime())
     file.write('| Date : ' + date_str + '\n')
     file.write('| Tester: ' + username + '\n')
     repo = get_repo()
@@ -39,7 +39,6 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     if username == None:
         username = config['user']
     host_ip = config['host_ip']
-    ch_acq_path = config['ch_acq_path']
 
     # Import expected values for i2c
     import yaml
@@ -49,12 +48,7 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     print "\nFor this test, you need two Ethernet cables and an SFP/Ethernet adapter for the board."
     print "You must have already installed a heatsink on the FPGA, and you should run a fan over it for this test."
     # print "Please consult http://kingspeak.physics.mcgill.ca/twiki/bin/edit/Chime/IceBoardQCManual for details regarding the connector. Or ask Kevin."
-    print "Let's get started. Have you ran the 'Program FPGA' test, or are the FPGA addresses already in database?"
-    program = raw_input("Enter 'Y' or 'N': 	")
-    if program != 'Y' and program != 'y':
-        print "\nWe must first run 'Program the FPGA'.\n"
-        testStatus = programFPGA.programFPGA(username,board_sn,board_vn,board_md,testStatus)
-    
+
     print "\nFirst, connect the board's ethernet port to the network and also connect the FPGA to the network using the " \
           "SFP to ethernet adapter."
 
@@ -64,7 +58,7 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     success = False
     [c,r] = [None,None]
     try:
-        [c,r] = fpgaFun.top_test(board_sn, ch_acq_path=ch_acq_path, host_ip=host_ip)
+        [c,r] = fpgaFun.top_test(board_sn, host_ip=host_ip)
         success = True
     except Exception as e:
         traceback.print_exc(e)

@@ -5,7 +5,7 @@ import iceboardtest
 from other_stuff import date_format, read_config, get_repo
 from statusReport import EMPTY_TEST_STATUS
 from testFail import mtestFail, armFail
-from fpgaFun import read_list, edit_list
+from fpgaFun import get_boards, write_ipmi
 
 def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None,testStatus = EMPTY_TEST_STATUS()):
     testStatus[0] = username
@@ -33,14 +33,11 @@ def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None,testS
                " of " + os.path.split(os.path.dirname(repo.git_dir))[-1] + ".\n\n")
     file.flush()
 
-    print "For this test, you'll need an Ethernet cable, D-link router and an SD card."
-    print "Please obtain a properly programmed SD card. These should be available in the CHIME lab."
+    # TODO: This test should no longer add to DHCP server. Instead, write IPMI and SPI.
+
+    print "For this test, you'll need an Ethernet cable and an SD card loaded with the latest ICEboard software."
     print "Insert the SD card in the slot on the top right corner of board. The card should slide"
     print "comfortably in with the golden plates facing down."
-
-    print "\nPlease set up the D-link router."
-    print "Be sure an Ethernet cable links the lab network to one of the slots in the router."
-    print "Be sure an Ethernet cable links this computer to the router."
 
     print "\nLook on the righthand side of the board. You should see a set of"
     print "switches labelled BTMode Switches. We'll need to configure them."
@@ -48,16 +45,17 @@ def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None,testS
 
     raw_input("Press Enter to continue: 	")
 
-    print "For SW1, turn switches 2,3,5 on (up). For SW2, turn switches 2,4 on (up)."
+    print "\nFor SW1, turn switches 2,3,5 on (up). For SW2, turn switches 2,4 on (up)."
     print "The switch configuration should look like below:"
     print "DUUDUDDD DUDUDDDD"
     print "You will also need to flip the switches for the FPGA Config Mode. The set of 4 switches are located above the heat sink."
     print "Flip the configuration to be UDDD."
     print "Please note the orientation of the switch is upsidedown, so technically, switches 1,2,3 are actually up and 4 is down."
-    print "When you have done so, you may proceed." #  You may consult https:// for details."
+    raw_input("Press Enter to proceed...\t") #  You may consult https:// for details."
 
     print "\nLook at the bottom right corner of the board. There should be two Ethernet ports."
-    print "Connect an Ethernet cable going from the LEFT-MOST INNER port to the router."
+    print "Connect an Ethernet cable going from the LEFT-MOST INNER port to the local network (so that this computer " \
+          "is on the same network)."
     print "Power on the board."
 
     print "\nWait a few minutes, you should be able to see some LEDs flashing on the right side of the board."
@@ -67,82 +65,35 @@ def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None,testS
         file.write('LED lights flashed after initiating board. Hints at proper connection and properly programmed SD card.\n\n')
     else:
         file.write('N.B. LED lights *DID NOT flash* after initiating board.\n\n')
-    print "\nLogin to the router's control panel at 10.10.10.1 using a browser."
-    print "Open the 'Clients' page (large computer icon on the main page)."
+
+    print "\nMake sure this ICEboard is the only new (i.e. which hasn't undergone QC) one on the network."
+    print "All boards initially appear under the same host name, so it won't be possible to tell them apart if there are many."
     raw_input("Press Enter to continue: 	")
 
-    print "Look at the list of clients and find which one of the MAC addresses (left column) correponds to this board. A quick "
-    print "way of doing this is to simply unplug the Ethernet cable from the board and note which MAC/IP in the list vanishes."
-    print "Do this a few times to confirm that the MAC address is right."
+    # Find the 'blank' iceboard on the network
+    ib = get_boards()
+    while True:
+        if len(ib) == 0:
+            print "\nCouldn't find the board on the network. Make sure it is connected and has booted."
+        elif len(ib) > 1:
+            print "\nFound more than one board without a serial on the network. Make sure only " + board_sn + " is connected."
+        else:
+            print "\nFound one board without a serial on the network."
+            ib = ib[0]
+            break
+        if not (raw_input("Try again? (y/n)\t").lower().strip() == 'y'):
+            raise Exception("ARMtest: Didn't find just a single board with no serial on the network, found " + len(ib))
 
-    print "Please enter the MAC address of the board below: "
-    MACright = raw_input("Enter MAC address: ")
+    # Get MAC and IP
+    MACright = ib._get_arm_mac()
+    print "\nRead MAC address: " + MACright
     file.write('MAC address of left Ethernet connector: ' + MACright)
-
-    print "\nNow we must change the IP address from this Ethernet port to match the serial number of board."
-    print "On left hand side of the page, under Advanced Settings, click on LAN. On top of page, you should"
-    print "see some tabs. Click on the DHCP Server tab."
-
-    print "What we want to do now is manually assign the IP address for this board. Scroll down to the Manually Assigned IP section."
-    print "From the drop-down box in the MAC address column, pick the one which corresponds to the board. Its corresponding IP address"
-    print "should appear in the column beside it. Change the IP address to 10.10.10.NUM where NUM is the serial number of the board."
-    print "(i.e. if the board has serial number 0009, its IP address should be 10.10.10.9  "
-
-    print "Now, click on the + icon in the last column to add this IP address. DOUBLE CHECK to make sure it's the right IP address!"
-    print "Write down the IP address of the board."
-    IPright = raw_input("Enter IP address: 	")
+    IPright = ib._get_arm_ip()
+    print "Read IP address: " + IPright
     file.write('\n\nIP address of left Ethernet connector:  ' + IPright)
 
-    # Add MAC and IP to iceboard_list.txt file
-    content = read_list()
-    current_ip = None
-    current_mac = None
-    for line in content[1:len(content)]:
-        if int(line[0]) == int(board_sn):
-            current_ip = line[1]
-            current_mac = line[2]
-            break
-        else:
-            pass
-    if current_ip is None or len(current_ip) < 20:
-        print "\nNo previous valid assigned IP. Adding " + IPright + " to list."
-        new_ip = "'http://" + IPright + ":80/tuber'"
-    else:
-        print "\nFound IP already in list. " + current_ip + " It will not be modified."
-        new_ip = None
-    if current_mac is None or len(current_mac) < 18:
-        print "No previous valid assigned MAC. Adding " + MACright + " to list."
-        new_mac = "'" + MACright + "'"
-    else:
-        print "Found MAC already in list. " + current_mac + " It will not be modified."
-        new_mac = None
-    edit_list(board_sn, arm_ip = new_ip, arm_mac = new_mac)
-    
-    print "\nAfter programming the IP address, let's check to see if this works! Open up a Terminal window, such as git bash."
-    print "On the command line, type in 'ping IP' where IP is the IP address you've just assigned to it."
-    print "You should be able to send and receive packets without any issues. The terminal window should say more or less something like so:\n"
-    print "$ping 10.10.10.9"
-    print "Pinging 10.10.10.9 with 32 bytes of data:"
-    print "Reply from 10.10.10.9: bytes=32 time<1ms TTL=64"
-    print "Reply from 10.10.10.9: bytes=32 time<1ms TTL=64"
-    print "Reply from 10.10.10.9: bytes=32 time<1ms TTL=64"
-    print "Reply from 10.10.10.9: bytes=32 time<1ms TTL=64"
-
-    print "Ping statistics for 10.10.10.9:"
-    print "Packets: Sent = 4, Received = 4, Lost = 0 (0% loss),"
-    print "Approximate round trip times in milli-seconds:"
-    print "Minimum = 0ms, Maximum = 0ms, Average = 0ms"
-
-    print "\nAre you able to ping the board and have a result like above?"
-    ping = raw_input("Enter 'Y' or 'N': 	")
-    if ping == 'Y' or ping == 'y':
-        file.write('\n\nPinging the board: Pass')
-    else:
-        file.write('\n\nPinging the board: Fail')
-        file.write('\n\n**ARM Programming Test Overall Status: Fail**\n')
-        file.close()
-        return armFail(username,board_sn,board_vn,board_md,testStatus)
-    print "Let's try to log in via ssh onto the board! In your terminal window, type in 'ssh root@IP' where IP is the IP address of board."
+    print "\nLet's try logging in via ssh on the board! In a terminal equipped with ssh, type in 'ssh root@IP' where " \
+          "\nIP is the IP address of board. (you can also use, e.g., 'iceboard0048.local' if your computer supports it)"
     print "The password is blank. At the command line, you should see you logged in as root@iceboard."
     print "Were you successful in logging in via ssh "
     ssh = raw_input("Enter 'Y' or 'N': 	")
@@ -153,7 +104,58 @@ def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None,testS
         file.write('\n\n**ARM Programming Test Overall Status: Fail**\n')
         file.close()
         return armFail(username,board_sn,board_vn,board_md,testStatus)
-    
+
+    print "\nWe will now write the IPMI information to the board's EEPROM and SPI registers."
+    print "\nThe following was provided:  Model '%s', Serial '%s', Version '%s'" % (board_md, board_sn, board_vn)
+    print   "Compare to an example board: Model '%s', Serial '%s', Version '%s'" % ('MGK7MB', '0048', 'Rev4')
+    ipmi_pn = 'MGK7MB'
+    ipmi_sn = '{:04d}'.format(int(board_sn))
+    ipmi_vn = board_vn[3:]
+    correct = False
+    while not correct:
+        print "\n Template (for e.g. 0048)                    This board (" + board_sn + ")"
+        print   "-----------------------------------------------------------------------------"
+        print   "  part_number='MGK7MB',                       part_number='%s'" % (ipmi_pn)
+        print   "  serial_number='0048',                       serial_number='%s'" % (ipmi_sn)
+        print   "  product_version='4'                         product_version='%s'" % (ipmi_vn)
+        print "\nThe fields above (right column) will be written to the board."
+        print "Please verify it is correct and formatted according to the template (left column)."
+        if not (raw_input("Is this the case? (y/n)\t").lower().strip() == 'y'):
+            print "Please enter the correct values in the format shown above when prompted,"
+            print "and we will check again."
+            ipmi_pn = raw_input("part_number:\t").strip().upper()
+            ipmi_sn = raw_input("serial_number:\t").strip()
+            ipmi_vn = raw_input("product_version:\t").strip()
+        else:
+            correct = True
+
+    # Write IPMI
+    print "\nWriting IPMI..."
+    write_ipmi(ib, ipmi_pn, ipmi_sn, ipmi_vn)
+    print "Done."
+
+    # Read back and check
+    print "\nReading back IPMI:"
+    ipmi = ib._get_motherboard_ipmi()
+    ipmi_str = "\n   ipmi.board"
+    for key in ipmi.board.__dict__:
+        ipmi_str += "\n       " + "%-16s    %12s" % (key, str(ipmi.board.__dict__[key]))
+    ipmi_str += "\n   ipmi.product"
+    for key in ipmi.product.__dict__:
+        ipmi_str += "\n       " + "%-16s    %12s" % (key, str(ipmi.product.__dict__[key]))
+    print ipmi_str
+
+    file.write("\n\nRead following from IPMI:\n\n::\n" + ipmi_str + '\n')
+
+    if not (raw_input("\nDoes the above match the correct format laid out previously? (y/n)\t").lower().strip() == 'y'):
+        file.write('\n\n| IPMI could not be written corectly.\n| **Board does not have a valid IPMI at this point.**')
+        file.write('\n\n**ARM Programming Test Overall Status: Fail**\n')
+        file.close()
+        return armFail(username,board_sn,board_vn,board_md,testStatus)
+    else:
+        file.write('\n\nIPMI was written and read back successfully.')
+
+
     # Memory test
     #print("\nThe next step is to perform a memory test")
     #print("You will need a different SD card, labeled 'MTEST'. It should be in the drawer under the monitor.")
