@@ -3,7 +3,7 @@ Script for launching ICEboard quality control testing suite.
 To use just run as 'python iceboardtest.py' or 'run iceboardtest.py' in ipython.
 This script MUST be run in its own directory.
 '''
-from numpy import *
+import numpy as np
 import os
 import inspectiontest
 import resistancetest
@@ -20,6 +20,7 @@ from statusReport import EMPTY_TEST_STATUS
 from edit_boardfile import new_file_header
 from edit_boardfile import updateStatus
 from other_stuff import read_config
+
 
 def starttest():
     '''Starts a testing session: Prompts for information about the board to be tested, creates a file to store results in

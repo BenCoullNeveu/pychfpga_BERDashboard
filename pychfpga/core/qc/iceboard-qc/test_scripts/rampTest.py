@@ -4,10 +4,9 @@
 ramp test script for ICEboard QC (uses test class from ch_acq/pychfpga/common/tests/ramp_test)
 '''
 
-from numpy import *
+import numpy as np
 import time as tm
 import os
-import iceboardtest
 from other_stuff import read_config, get_repo, date_format
 from statusReport import EMPTY_TEST_STATUS
 from testFail import rampFail
@@ -24,8 +23,8 @@ def rampTest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     fname = os.path.join(config['results_directory'], 'board' + board_sn + '.txt')
     if not os.path.isfile(fname):
         print "There is no existing file for this board."
-        print "Redirecting to 'iceboardtest.py' to create a new board file.\n"
-        iceboardtest.starttest()
+        print "Please run the 'starttest()' function from 'iceboardtest.py' to create one."
+        print "Aborting test.\n"
         return testStatus
 
     # Open file and start test
@@ -48,8 +47,7 @@ def rampTest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     if username == None:
         username = config['user']
     host_ip = config['host_ip']
-    ch_acq_path = config['ch_acq_path']
-    
+
     # Intro
     print "\nFor this test, you will need to have both CHIME ADC mezzanines mounted on the board."
     print "As for the FPGA test, you need an ethernet cable going from the ARM port to the network"
@@ -65,7 +63,7 @@ def rampTest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     
     # Begin Ramp test
     raw_input("\nPress Enter to begin ramp test:\t")
-    [ delay_table, stuck_bits ] = fpgaFun.rampTest(board_sn, directory + '/ramp_testing_trial_sn' + board_sn, ch_acq_path=ch_acq_path, host_ip=host_ip)
+    delay_table, stuck_bits = fpgaFun.rampTest(board_sn, directory + '/ramp_testing_trial_sn' + board_sn, host_ip=host_ip)
     
     # Record results to file
     test_pass = False
@@ -73,8 +71,7 @@ def rampTest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     if confirm == 'Y' or confirm == 'y':
         file.write("Ramp test was run successfully. (See BoardTests/ramp_tests/ for details.\n")
         print("\nPlease take a look at the output of the test: error ratios and histograms (found printed to console and in BoardTests/ramp_tests respectively)")
-        confirm = raw_input("Are there any non-zero error ratios, or non-flat histograms? (y/n)\t")
-        if confirm == 'Y' or confirm == 'y':
+        if raw_input("Are there any non-zero error ratios, or non-flat histograms? (y/n)\t").lower().strip() == 'y':
             bit_errors = raw_input("\nIf there are any non-zero bit error ratios, enter the affected channels and bits (e.g. ch 10 bit 4, ch 1 bit 7, ...):\n")
             file.write("Bit errors found on: " + bit_errors + "\n")
             hist_errors = raw_input("If any of the histograms are not perfectly flat, enter the affected channels:\n")

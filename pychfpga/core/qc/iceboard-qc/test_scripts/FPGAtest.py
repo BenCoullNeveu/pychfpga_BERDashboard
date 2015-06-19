@@ -1,7 +1,7 @@
-from numpy import *
+
+import numpy as np
 import time as tm
 import os
-import iceboardtest
 import traceback
 import programFPGA
 from other_stuff import date_format, read_config, get_repo
@@ -10,13 +10,15 @@ from testFail import fpgaTestFail
 import fpgaFun
 # Use JF's Xreport
 import sys
-sys.path.append('../../../../../../icecore/python/tests/xreport')
+sys.path.append('../../../../../../icecore/python/tests/xreport') # TODO: Put this somewhere else
 from xreport import XReport as xr
+#import xreport as xr
 import unittest
 import argparse
 
+
 def launch_unittest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPTY_TEST_STATUS()):
-    ''' DOESNT WORK RIGHT NOW
+    ''' DOESNT WORK RIGHT NOW, need to run file as script
         Launch the xreport test as if it was a traditional test, with the usual arguments
     :param username:
     :param board_sn:
@@ -25,10 +27,15 @@ def launch_unittest(username=str,board_sn=str,board_vn=str,board_md=str,testStat
     :param testStatus:
     :return:
     '''
-    args = ['xreport.py', '--xargs', '--username', username, '--board_sn', board_sn, '--board_vn', board_vn,
+
+    args = [__file__, '--xargs', '--username', username, '--board_sn', board_sn, '--board_vn', board_vn,
             '--board_md', board_md]
-    xr.run_from_module(args)
-    '''import logging.handlers
+    x = xr.run_from_module(args)
+    x.write_rst('fpgatest_test')
+
+    """
+    import logging.handlers
+    import nose
     log_handler = logging.handlers.SysLogHandler()
     logger = logging.getLogger('')
     logger.handlers = []  # Clear all existing handlers
@@ -37,13 +44,12 @@ def launch_unittest(username=str,board_sn=str,board_vn=str,board_md=str,testStat
 
     xr.XReport.instance_exists = False  # (debug) Bypass check to allow creation of a new instance of the plugin
     x = xr.XReport()  # Plugin is enabled by default. No need to use the option --with-xreport
-    args = ['/Users/tristan/Documents/Cosmology_Lab/QC/icecore/python/tests/xreport/xreport.py', '/Users/tristan/Documents/Cosmology_Lab/QC/ch_acq/pychfpga/core/qc/iceboard-qc/test_scripts/FPGAtest.py', '--xargs', '--username', username, '--board_sn', board_sn, '--board_vn', board_vn,
+    args = ['/Users/tristan/Documents/Cosmology_Lab/QC/icecore/python/tests/xreport/xreport', '/Users/tristan/Documents/Cosmology_Lab/QC/ch_acq/pychfpga/core/qc/iceboard-qc/test_scripts/FPGAtest.py', '--xargs', '--username', username, '--board_sn', board_sn, '--board_vn', board_vn,
             '--board_md', board_md]
     nose.run(addplugins=[x], argv=args)
     filename = 'fpgaTest_test'
-    x.write_xml(filename + '.xml')
     x.write_rst(filename)
-    return x'''
+    """
 
 def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPTY_TEST_STATUS()):
     testStatus[0] = username
@@ -56,8 +62,8 @@ def FPGAtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     fname = os.path.join(config['results_directory'], 'board' + board_sn + '.txt')
     if not os.path.isfile(fname):
         print "There is no existing file for this board."
-        print "Redirecting to 'iceboardtest.py' to create a new board file.\n"
-        iceboardtest.starttest()
+        print "Please run the 'starttest()' function from 'iceboardtest.py' to create one."
+        print "Aborting test.\n"
         return testStatus
 
     # f = open(fname, 'a')
@@ -154,4 +160,8 @@ class TestFpga(unittest.TestCase):
                " of " + os.path.split(os.path.dirname(repo.git_dir))[-1] + ".\n")
 
     def test_fpga(self):
+        print 'Success!'
         FPGAtest(self.args.username, self.args.board_sn, self.args.board_vn, self.args.board_md)
+
+if __name__ == '__main__':
+    launch_unittest('Tristan', '0048', 'Rev4', 'MGK7MB')

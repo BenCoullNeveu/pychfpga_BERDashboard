@@ -1,7 +1,6 @@
 from numpy import *
 import time as tm
 import os
-import iceboardtest
 from other_stuff import date_format, get_repo
 from statusReport import EMPTY_TEST_STATUS
 from testFail import resistanceFail
@@ -18,8 +17,8 @@ def resistancetest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
     fname = os.path.join(config['results_directory'], 'board' + board_sn + '.txt')
     if not os.path.isfile(fname):
         print "There is no existing file for this board."
-        print "Redirecting to 'iceboardtest.py' to create a new board file.\n"
-        iceboardtest.starttest()
+        print "Please run the 'starttest()' function from 'iceboardtest.py' to create one."
+        print "Aborting test.\n"
         return testStatus
 
     file = open(fname, 'a')

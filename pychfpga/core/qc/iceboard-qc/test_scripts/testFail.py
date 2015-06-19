@@ -1,4 +1,3 @@
-import iceboardtest
 import sys
 from statusReport import EMPTY_TEST_STATUS
 from edit_boardfile import updateStatus
