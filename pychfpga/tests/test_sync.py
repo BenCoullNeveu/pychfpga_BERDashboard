@@ -7,7 +7,8 @@ Run the desired testcase with::
    python xreport.py test_sync:TestSyncDelay --xfile results/test_sync --xargs --iceboards 10.10.10.7
 
 """
-
+import matplotlib
+matplotlib.use('Agg')
 import unittest
 # from matplotlib import pyplot as plt
 from pychfpga.core.icecore import XReport as xr  # provides access to the Xreport extended features
@@ -30,8 +31,11 @@ class TestSyncDelay(unittest.TestCase):
         """ This will measure and report the optimal sync delay for every mezzanine of every IceBoard  in the hardware map """
 
         for ib in self.args.ib:
-            ib.REFCLK.compute_sync_delay(plot_adc=0)
-            xr.insert_plot('ADC SYNC delays for %r' % ib)
+            try:
+                ib.REFCLK.compute_sync_delay(plot_adc=0, channels=range(16))
+                xr.insert_plot('ADC SYNC delays for %r' % ib)
+            except:
+                print "Failed sync test on iceboard %r" %ib
 
 if __name__ == '__main__':
     xr.run_from_module()  # Run nosetests on this module with the Xreport plugin

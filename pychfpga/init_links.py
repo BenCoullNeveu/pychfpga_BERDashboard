@@ -104,7 +104,7 @@ def shuffle_init(c, ni_board, sync_board, dsmap=range(16), frames_per_packet=1, 
         # Disable all receivers for which there are no transmitters
         for i, gtx in enumerate(bb.BP_SHUFFLE.gtx):
             rx = (bb.slot, i+1)
-            tx = bb.bp.get_matching_tx(rx)
+            tx = bb.crate.get_matching_tx(rx)
             if tx in tx_list:
                 gtx.USER_GTRXRESET = 0
             else:
@@ -119,7 +119,7 @@ def shuffle_init(c, ni_board, sync_board, dsmap=range(16), frames_per_packet=1, 
     for bb in c:
         for i in range(bb.NUMBER_OF_CROSSBAR_OUTPUTS):
             rx = (bb.slot, i)
-            tx = bb.bp.get_matching_tx(rx)
+            tx = bb.crate.get_matching_tx(rx)
             if tx in tx_list:
                 logger.info('%.32r: %s is receiving from %s' % (bb.crate, rx, tx))
             else:
@@ -129,6 +129,15 @@ def shuffle_init(c, ni_board, sync_board, dsmap=range(16), frames_per_packet=1, 
     if ni_enable:
         ni_board.set_user_output_source('pwm')
         ni_board.set_frame_pwm(ni_offset, ni_high_time, ni_period)
+
+    # Set sync delays on boards (in slot order). Numbers obtained from sync test. Should go to conf file
+    sync_delays = [np.array([ 8.,  7.]), np.array([ 8.,  8.]), np.array([ 9.,  6.]), np.array([ 11.,   7.]),
+                   np.array([ 12.,  11.]), np.array([  8.,  13.]), np.array([ 11.,  10.]), np.array([ 7.,  6.]),
+                   np.array([ 11.,   5.]), np.array([ 8.,  6.]), np.array([ 9.,  7.]), np.array([ 11.,  10.]),
+                   np.array([  8.,  11.]), np.array([ 8.,  7.]), np.array([ 11.,   9.]), np.array([ 6.,  8.])] 
+    for cc in c:
+        cc.REFCLK.set_sync_delay(sync_delays[cc.slot-1])
+        cc.REFCLK.sync()
         
     # sync boards
     #soft_sync(c, sync_board)
@@ -141,7 +150,7 @@ def compute_lane_map(c):
     lane_map = np.zeros(16, dtype=np.int8)
     for i in range(16):
         rx = (c.slot, i)
-        tx = c.bp.get_matching_tx(rx)
+        tx = c.crate.get_matching_tx(rx)
         print '%s is receiving from %s' % (rx, tx)
         lane_map[tx[0]-1] = i
     return lane_map

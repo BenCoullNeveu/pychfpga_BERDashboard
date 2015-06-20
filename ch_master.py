@@ -28,7 +28,7 @@ from pychfpga import calculate_gains
 from pychfpga.MGADC08 import MGADC08
 from pychfpga.init_links import *
 #import MySQLdb
-from pychfpga.core.icecore.hardware_map import asynchronously, async_return, async
+from pychfpga.core.icecore import asynchronously, async_return, async
 
 # Should put somewhere else. Flatten arbitrarily deep nested lists
 # from stack overflow
