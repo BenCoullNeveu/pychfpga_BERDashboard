@@ -22,7 +22,7 @@ def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None,testS
         return testStatus
 
     file = open(fname, 'a')
-    file.write('\n\nProgramming the ARM Test\n')
+    file.write('\n\n\n\nProgramming the ARM Test\n')
     file.write('-------------------------\n')
     date_str=date_format(tm.localtime())
     file.write('| Date : ' + date_str + '\n')

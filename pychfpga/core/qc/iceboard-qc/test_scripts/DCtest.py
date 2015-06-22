@@ -22,7 +22,7 @@ def DCtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPT
         return testStatus
 
     file = open(fname, 'a')
-    file.write('\n\nDC Test\n')
+    file.write('\n\n\n\nDC Test\n')
     file.write('--------\n')
     date_str=date_format(tm.localtime())
     file.write('| Date : ' + date_str + '\n')
@@ -61,9 +61,7 @@ def DCtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPT
     raw_input("Press Enter to continue:  ")
 
     file.write('================  ======== ======== ========\n')
-    file.write('\n')
     file.write('Voltage Supply    Measured Expected Status\n')
-    file.write('\n')
     file.write('================  ======== ======== ========\n')
     
     print "Please read the voltage measurement on power supply. Enter the voltage below (up to 3 sig. figs. , i.e. '1.00')."
@@ -92,9 +90,7 @@ def DCtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPT
     file.write('================  ======== ======== ========\n\n')
 
     file.write('================  ======== ======== ========\n')
-    file.write('\n')
     file.write('Regulator         Measured Expected Status\n')
-    file.write('\n')
     file.write('================  ======== ======== ========\n')
 
     print "Please probe the 12V regulator pin. Enter the voltage below (up to 3 sig. figs. , i.e. '1.00')."
