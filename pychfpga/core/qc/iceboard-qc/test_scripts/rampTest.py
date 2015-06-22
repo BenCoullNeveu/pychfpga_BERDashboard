@@ -4,7 +4,6 @@
 ramp test script for ICEboard QC (uses test class from ch_acq/pychfpga/common/tests/ramp_test)
 '''
 
-import numpy as np
 import time as tm
 import os
 from other_stuff import read_config, get_repo, date_format
@@ -29,7 +28,7 @@ def rampTest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
 
     # Open file and start test
     file = open(fname, 'a')
-    file.write('\n\nRamp test\n')
+    file.write('\n\n\n\nRamp test\n')
     file.write('-----------\n')
     date_str=date_format(tm.localtime())
     file.write('| Date : ' + date_str + '\n')

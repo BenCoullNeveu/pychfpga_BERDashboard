@@ -22,7 +22,7 @@ def programFPGA(username=str,board_sn=str,board_vn=str,board_md=str,testStatus =
         return testStatus
 
     file = open(fname, 'a')
-    file.write('\n\nProgramming the FPGA Test\n')
+    file.write('\n\n\n\nProgramming the FPGA Test\n')
     file.write('-----------------------------\n')
     date_str = date_format(tm.localtime())
     file.write('| Date : ' + date_str + '\n')

@@ -2,4 +2,5 @@
 .DS_STORE
 test_scripts/config.yaml
 test_scripts/import_iceboard.py
+test_scripts/launch.py
 *.pyc

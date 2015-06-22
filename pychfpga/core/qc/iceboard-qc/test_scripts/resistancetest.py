@@ -22,7 +22,7 @@ def resistancetest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
         return testStatus
 
     file = open(fname, 'a')
-    file.write('\nResistance Test\n')
+    file.write('\n\n\n\nResistance Test\n')
     file.write('-----------------\n')
     date_str=date_format(tm.localtime())
     file.write('| Date : ' + date_str + '\n')
@@ -48,9 +48,7 @@ def resistancetest(username=str,board_sn=str,board_vn=str,board_md=str,testStatu
     raw_input("Press Enter to continue:  ")
     
     file.write('================  ================ ========\n')
-    file.write('\n')
     file.write('Regulator         Measured         Status\n')
-    file.write('\n')
     file.write('================  ================ ========\n')
     
     print "Please probe the 12V regulator pin. Enter the resistance below (up to 2 decimal points, i.e. '1.00')."
