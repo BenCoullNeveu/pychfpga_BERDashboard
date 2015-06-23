@@ -9,13 +9,13 @@ class GpuData(object):
     def __repr__(self):
         return '\n'.join(['%10s = %r' % (name, value) for (name, value) in vars(self).items() if not name.startswith('_') and not name=='data'])
 
-def get_gpu_data(node_number, dna_number):
+def get_gpu_data(dna_number):
     from subprocess import Popen, PIPE
-    p = Popen(['sudo','chi-exec','%i' % node_number, '/root/inspect_pkt_dna_select', 'dna%i' % dna_number], stdout=PIPE)
+    p = Popen(['sudo','/drives/0/git/ch_acq/pychfpga/inspect_pkt_dna_select', 'dna%i' % dna_number], stdout=PIPE)
     (data, stderr) = p.communicate()
     split_data = data.split('\n')
     d=[]
-    for line in split_data[2:]:
+    for line in split_data[1:]:
         if line.startswith('Packet'):
             break
         split_line = line.lstrip().split(' ')
@@ -34,7 +34,8 @@ def get_gpu_data(node_number, dna_number):
     result.udp_dst_port = d[36]*256 + d[37]
     result.udp_length = d[38]*256 + d[39] # includes 8 bytes of the UDP header
     result.udp_payload_length = result.udp_length-8
-
+    #result.raw_data = data
+    #result.raw_d = d
     d = d[42:42+result.udp_payload_length]
 
     header = ''.join(chr(x) for x in d[0:16])
