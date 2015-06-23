@@ -5,11 +5,24 @@ ramp test script for ICEboard QC (uses test class from ch_acq/pychfpga/common/te
 '''
 
 import time as tm
+import sys
 import os
 from other_stuff import read_config, get_repo, date_format
 from statusReport import EMPTY_TEST_STATUS
 from testFail import rampFail
 import fpgaFun
+
+def test():
+    # Get config
+    config = read_config()
+    # Update index of histograms for SPHINX build
+    sys.path.append(os.path.join(config['results_directory'], 'ramp_tests'))
+    from index_graphs import index_graphs
+    # Need to change directory
+    cur_dir = os.path.abspath(os.path.curdir)
+    os.chdir(config['results_directory'])
+    index_graphs()
+    os.chdir(cur_dir)
 
 def rampTest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPTY_TEST_STATUS()):
     testStatus[0] = username
@@ -92,6 +105,14 @@ def rampTest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     file.write('\n::\n')
     for line in stuck_bits:
         file.write('\n   ' +  repr(line) + ',\\')
+
+    # Update index of histograms for SPHINX build
+    sys.path.append(os.path.join(config['results_directory'], 'ramp_tests'))
+    from index_graphs import index_graphs
+    cur_dir = os.path.abspath(os.path.curdir)
+    os.chdir(config['results_directory'])  # Need to change directory temporarily
+    index_graphs()
+    os.chdir(cur_dir)
     
     # End test
     print "\nIf there are any special concerns regarding the board for this test, please describe them below. If none, enter 'None'. "
