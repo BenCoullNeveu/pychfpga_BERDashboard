@@ -1465,7 +1465,7 @@ class chFPGA_controller(IceBoardExtHandler):
         if cb2_lanes % 2:
             raise ValueError('Crossbar 2 number of input lanes must be a multiple of 2')
 
-        self._logger.info('%r: Configuring crossbars 1 & 2 with frames_per_packet=%i, cb1_lanes=%i, cb1_bins=64, cb2_lanes=%i, cb2_bins=%i, cb2_bypass=%s, bp_bypass=%s' % (self, cb1_lanes, cb1_bins, cb2_lanes, cb2_bins, bool(cb2_bypass), bool(bp_bypass)))
+        self._logger.info('%r: Configuring crossbars 1 & 2 with frames_per_packet=%i, cb1_lanes=%i, cb1_bins=%i, cb2_lanes=%i, cb2_bins=%i, cb2_bypass=%s, bp_bypass=%s' % (self, frames_per_packet, cb1_lanes, cb1_bins, cb2_lanes, cb2_bins, bool(cb2_bypass), bool(bp_bypass)))
 
         words_per_bin = cb1_lanes / 4
         cb1_minimum_bin_spacing = 16
@@ -1485,7 +1485,7 @@ class chFPGA_controller(IceBoardExtHandler):
                 destination_slot = self.crate.get_matching_rx(tx)[0]
                 bs.select_bins(np.arange(cb1_bins) * cb1_minimum_bin_spacing + (dsmap[destination_slot-1]))
             else:
-                bs.select_bins(np.arange(cb1_bins) * cb1_minimum_bin_spacing)
+                bs.select_bins(np.arange(cb1_bins) * cb1_minimum_bin_spacing + dsmap[i] )
             # bs.select_bins(np.arange(800))
         #cb1.configure(cb1_bins)
 
