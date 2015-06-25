@@ -99,6 +99,7 @@ def top_test(board_sn, ch_acq_path='../../../../../../ch_acq/', host_ip=None, fo
     # Append ch_acq to PATH
     sys.path.append(ch_acq_path)
     from pychfpga.core import chFPGA_receiver
+    from pychfpga.MGADC08 import MGADC08  # Necessary for c.open() to initialize mezzanines
 
     ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 = (
     ([16]*8,     [3]*8), #CH0
@@ -145,17 +146,17 @@ def top_test(board_sn, ch_acq_path='../../../../../../ch_acq/', host_ip=None, fo
 
     # get FPGA_controller
     c = programFpga(board_sn, ch_acq_path=ch_acq_path, force=force)
-    c.open(\
-        adc_delay_table=ADC_DELAY_TABLE, \
-        init=init, \
-        sampling_frequency=sampling_frequency * 1e6, \
-        reference_frequency=10e6,\
-        data_width=data_width, \
-        group_frames=group_frames, \
-        enable_gpu_link = enable_gpu_link)
+    c.discover_mezzanines()
+    c.open(
+        adc_delay_table=ADC_DELAY_TABLE,
+        init=init,
+        sampling_frequency=sampling_frequency * 1e6,
+        reference_frequency=10e6,
+        data_width=data_width,
+        group_frames=group_frames,
+        enable_gpu_link=enable_gpu_link)
     
     # Check if at least one FMC board present
-    c.discover_mezzanines()
     adc_present = c.is_mezzanine_present(1) or c.is_mezzanine_present(2)
     if not adc_present:
         logger.warning("No ADC boards are present, will not initialize a receiver.")
@@ -165,13 +166,13 @@ def top_test(board_sn, ch_acq_path='../../../../../../ch_acq/', host_ip=None, fo
         logger.info('Getting chFPGA configuration')
         if host_ip is not None:  # Set host computer interface
             c.interface_ip_addr = host_ip
-        chFPGA_config = c.fpga.get_config()
+        chFPGA_config = c.get_config()
         logger.info('Starting data/correlator receiver threads')
         r = chFPGA_receiver.chFPGA_receiver(chFPGA_config)
 
     return [c,r]
 
-def rampTest(board_sn, directory, ch_acq_path='../../ch_acq/', host_ip=None):
+def rampTest(board_sn, directory, ch_acq_path='../../../../../../ch_acq/', host_ip=None):
     '''
     Run the ramp test on a single board.
     :param ch_acq_path: will be added to PYTHONPATH. defaults to '../../ch_acq/'
@@ -190,7 +191,7 @@ def rampTest(board_sn, directory, ch_acq_path='../../ch_acq/', host_ip=None):
     [c,r] = top_test(board_sn, ch_acq_path=ch_acq_path, host_ip=host_ip)
     
     # Timing for ADCs. Calculate proper offsets for this board.
-    ADC_DELAY_TABLE, stuck_bits, bitposgood = c.fpga.compute_adc_delay_offsets(channels=[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15])
+    ADC_DELAY_TABLE, stuck_bits, bitposgood = c.compute_adc_delay_offsets(channels=[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15])
     print "Computed delay table:"
     print repr(ADC_DELAY_TABLE)
     print "Stuck bit flags (0 indicates a stuck bit):"
@@ -223,7 +224,7 @@ def rampTest(board_sn, directory, ch_acq_path='../../ch_acq/', host_ip=None):
 
     # Begin Ramp test
     print "\nBegin ramp test:"
-    test = test_adc_ramp_histogram(c.fpga, r)
+    test = test_adc_ramp_histogram(c, r)
     test.execute(directory)
     r.close()
     return [ADC_DELAY_TABLE, stuck_bits, ipmi]

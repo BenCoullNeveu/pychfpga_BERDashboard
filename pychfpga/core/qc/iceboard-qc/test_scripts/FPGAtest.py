@@ -10,9 +10,10 @@ from testFail import fpgaTestFail
 from fpgaFun import top_test
 
 # Use JF's Xreport
-import sys
-sys.path.append('../../../../../../icecore/python/tests/xreport') # TODO: Put this somewhere else
-from xreport import XReport as xr
+#import sys
+#sys.path.append('../../../../../../icecore/python/tests/xreport')
+#from xreport import XReport as xr
+#from pychfpga.core.icecore.xreport import XReport as xr  # TODO: Add xreport to ch_acq
 #import xreport as xr
 import nose
 import unittest
