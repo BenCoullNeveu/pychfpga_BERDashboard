@@ -7,7 +7,7 @@ use_chfpga_commit_from_config: 'False'   # If it is inconvenient to pull the ent
 #                                          bitfile and update the commit below.
 
 # Other info
-bitfile_commit: 'c0ba7d2'                # See 'use_chfpga_commit_from_config' above
+bitfile_commit: '561b79f'                # See 'use_chfpga_commit_from_config' above
 board_md: 'MGK7MB'
 results_directory: '../../../../../../board_files'
 ch_acq_root: '../../../../../'           # Relative to 'iceboard-qc/test_scripts'
