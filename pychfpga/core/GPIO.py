@@ -67,6 +67,7 @@ class GPIO_base(Module_base):
     PWM_PERIOD                          = BitField(CONTROL, 45, 0, width=32, doc='Number of events (frames) between PWM High (i.e PWM period)')
     PWM_RESET                           = BitField(CONTROL, 46, 7, width=1, doc='Resets the PWM generator')
     USER_MUX_SOURCE                     = BitField(CONTROL, 46, 0, width=3, doc='Selects which signal is sent to the SMA-A output. 0=PWM, 1=PPS, 2=SYNC, 3=IRIGB Trigger, 4=BP Buck Sync')
+    BP_GPIO_INT_EN                      = BitField(CONTROL, 46, 3, doc="When '1', the Backplane GPIO_INT is driven by this board. WARNING: Only one board should be enabled at a time.")
 
     TIMESTAMP_VALID                     = BitField(STATUS, 0, 7, doc='Timestamp data valid (i.e. can be read)')
     ADC_SYNC_READBACK                   = BitField(STATUS, 1, 0, doc='Reads back the SYNC bit for debugging')

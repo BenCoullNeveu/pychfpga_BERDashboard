@@ -249,18 +249,20 @@ class ChimeArgs(object):
     def flush(self):
         sys.stdout.flush()
 
-
     def dns_resolve(self, hostnames='iceboard0077.local', timeout=1):
         if isinstance(hostnames, str):
             hostnames = [hostnames]
-
-        futures = [Resolver().resolve(h, 80) for h in hostnames]
         io_loop = IOLoop()
+        resolver = Resolver()
+        futures = [resolver.resolve(h, 9000) for h in hostnames]
 
         def stop_when_all_resolved(one_future):
-            if all(f.done() for f in futures):
-                io_loop.stop()
-
+            print [ff.done() for ff in futures]
+            self.flush()
+            return
+            # if all(f.done() for f in futures):
+            #     io_loop.stop()
+            # print one_future.exception() or one_future.result()
         for f in futures:
             io_loop.add_future(f, stop_when_all_resolved)
         io_loop.add_timeout(io_loop.time() + timeout, lambda: io_loop.stop())
@@ -268,7 +270,8 @@ class ChimeArgs(object):
         ip_addr = [None if not f.done() or f.exception() else dict(f.result())[socket.AF_INET][0] for f in futures]
         for f in futures:
             f.cancel()
-        return (futures, ip_addr)
+        resolver.close()
+        return (resolver, futures, ip_addr)
 
 if __name__ == '__main__':
 

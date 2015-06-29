@@ -569,7 +569,9 @@ class IceBoardExtHandler(IceBoardPlusHandler):
 
     _IRIGB_SOURCE_TABLE = {
         'bp_trig': 0,
-        'bp_time': 1
+        'bp_time': 1,
+        'irigb_gen': 2,
+        'bp_gpio_int': 3
         }
 
     def set_irigb_source(self, source):
@@ -589,6 +591,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         raise ValueError('The IRIG-B module has an unknown source')
 
     _IRIGB_TIME_FORMAT = {
+        'raw': lambda ts: ts,
         'datetime': lambda ts: ts.datetime,
         'nano' : lambda ts: ts.nano,
         'datetime+': lambda ts: (ts.datetime, ts.nano % 1000000000)
