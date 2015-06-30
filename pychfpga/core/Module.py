@@ -120,7 +120,7 @@ class Module_base(object):
         if isinstance(addr, int):
             return self.fpga.read(self.base_address + addr, *args, **kwargs)
         elif isinstance(addr, str):
-            return self.fpga.read(self.base_address + self.BITS[addr].addr, *args, **kwargs)
+            return self.fpga.read(self.base_address + self.get_addr(addr), *args, **kwargs)
 
     def read_bit(self, addr, bit):
         """ Reads a bit from a FPGA memory-mapped register."""

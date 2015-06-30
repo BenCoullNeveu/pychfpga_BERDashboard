@@ -188,7 +188,7 @@ class ADCDAQ_base(Module_base):
             #dly=0
             self.CAPTURE2_WORD_NUMBER = i
             time.sleep(1 / 200e6 * period * 2) # make sure the data has time to be captured
-            pattern[4*i : 4*(i+1)] = self.read('CAPTURE2_PATTERN0', type=np.uint8, length=4)
+            pattern[4*i : 4*(i+1)] = self.read(self.get_addr('CAPTURE2_PATTERN0'), type=np.uint8, length=4)
         return pattern
 
     def init(self, fmc_present):

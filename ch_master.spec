@@ -21,6 +21,12 @@ n_freq    = integer(min = 1)
   bitfile_name = string
   force = integer(min=0)
   destination_slots = int_list
+  sync_board = string
+  ni_enable = integer(min = 0 )
+  ni_board = string
+  ni_offset = integer(min = 0 )
+  ni_high_time = integer(min = 1 )
+  ni_period = integer(min = 1 )
   [[adc_delay]]
 
 [gpu]

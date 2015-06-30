@@ -110,7 +110,7 @@ def shuffle_init(c, ni_board, sync_board, dsmap=range(16), frames_per_packet=1, 
             else:
                 gtx.USER_GTRXRESET = 1
                 # gtx.USER_RESET = 1
-        bb.CROSSBAR2.SOF_WINDOW_START = 2 
+        bb.CROSSBAR2.SOF_WINDOW_START = 2
         bb.CROSSBAR2.SOF_WINDOW_STOP = 200
         bb.BP_SHUFFLE.reset_rx_equalizers()
         bb.REFCLK.sync() # needed
