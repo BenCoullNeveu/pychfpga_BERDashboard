@@ -27,6 +27,11 @@ n_freq    = integer(min = 1)
   ni_offset = integer(min = 0 )
   ni_high_time = integer(min = 1 )
   ni_period = integer(min = 1 )
+  ni_enable_26m = integer(min = 0 )
+  ni_board_26m = string
+  ni_offset_26m = integer(min = 0 )
+  ni_high_time_26m = integer(min = 1 )
+  ni_period_26m = integer(min = 1 )
   [[adc_delay]]
 
 [gpu]

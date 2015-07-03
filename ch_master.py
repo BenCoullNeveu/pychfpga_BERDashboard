@@ -346,6 +346,11 @@ if __name__ == "__main__":
       ni_offset = conf["fpga"]["ni_offset"]*gpu_intergration_period
       ni_high_time = conf["fpga"]["ni_high_time"]*gpu_intergration_period - 1 # the -1 is due to the convention in function set_frame_pwm()
       ni_period = conf["fpga"]["ni_period"]*gpu_intergration_period - 1
+      ni_board_26m = c(serial=conf["fpga"]["ni_board_26m"])
+      ni_enable_26m = conf["fpga"]["ni_enable_26m"]
+      ni_offset_26m = conf["fpga"]["ni_offset_26m"]*gpu_intergration_period
+      ni_high_time_26m = conf["fpga"]["ni_high_time_26m"]*gpu_intergration_period - 1 # the -1 is due to the convention in function set_frame_pwm()
+      ni_period_26m = conf["fpga"]["ni_period_26m"]*gpu_intergration_period - 1      
 
       if (int(args.compute_gain) > 0):
           #Shouldn't need for loop here, but initial testing failed in parallel.
@@ -381,9 +386,11 @@ if __name__ == "__main__":
       # This is another hack. Have to fix it for DRAO. REALLY: HAVE TO CHANGE IT
       # shuffle_init(list(c),sync_board,frames_per_packet=4, cb1_lanes=16, cb1_bins=64, cb2_lanes=16, cb2_bins=8, cb2_bypass=0, remap=True )
       d_slots = conf['fpga']['destination_slots'] #[int(ii) for ii in conf["fpga"]["destination_slots"]]
-      shuffle_init(list(c), ni_board, sync_board, dsmap = d_slots, frames_per_packet=4, cb1_lanes=16, cb1_bins=64, cb2_lanes=16, cb2_bins=8, cb2_bypass=0, remap=True,
+      shuffle_init(list(c), ni_board, ni_board_26m, sync_board, dsmap = d_slots, frames_per_packet=4, cb1_lanes=16, cb1_bins=64, cb2_lanes=16, cb2_bins=8, cb2_bypass=0, remap=True,
                    ni_enable = ni_enable, ni_offset = ni_offset, 
-                   ni_high_time = ni_high_time, ni_period = ni_period)
+                   ni_high_time = ni_high_time, ni_period = ni_period,
+                   ni_enable_26m = ni_enable_26m, ni_offset_26m = ni_offset_26m, 
+                   ni_high_time_26m = ni_high_time_26m, ni_period_26m = ni_period_26m)
 
       #Make sure FPGA throttling is fast enough to send all the data
       #FPGA doesn't seem to change this without a reset...

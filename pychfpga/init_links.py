@@ -48,8 +48,9 @@ def get_gpu_data(node_number, dna_number):
     return result
 
 #def shuffle_init(c, sync_board, frames_per_packet=1, cb1_lanes=4, cb1_bins=16, cb2_lanes=2, cb2_bins=1, cb2_bypass=0, bp_bypass=0, remap=True):
-def shuffle_init(c, ni_board, sync_board, dsmap=range(16), frames_per_packet=1, cb1_lanes=4, cb1_bins=16, cb2_lanes=2, cb2_bins=1, cb2_bypass=0, bp_bypass=0, remap=True,
-                 ni_enable = False, ni_offset = 0, ni_high_time = 8388608, ni_period = 16777216):
+def shuffle_init(c, ni_board, ni_board_26m, sync_board, window_stop=200, dsmap=range(16), frames_per_packet=1, cb1_lanes=4, cb1_bins=16, cb2_lanes=2, cb2_bins=1, cb2_bypass=0, bp_bypass=0, remap=True,
+                 ni_enable = False, ni_offset = 0, ni_high_time = 8388608, ni_period = 16777216,
+                 ni_enable_26m = False, ni_offset_26m = 0, ni_high_time_26m = 8388608, ni_period_26m = 16777216):
     """ Setup the crossbars and data shuffling in every board of the array.
     """
     tx_list = []
@@ -111,7 +112,7 @@ def shuffle_init(c, ni_board, sync_board, dsmap=range(16), frames_per_packet=1, 
                 gtx.USER_GTRXRESET = 1
                 # gtx.USER_RESET = 1
         bb.CROSSBAR2.SOF_WINDOW_START = 2
-        bb.CROSSBAR2.SOF_WINDOW_STOP = 200
+        bb.CROSSBAR2.SOF_WINDOW_STOP = window_stop
         bb.BP_SHUFFLE.reset_rx_equalizers()
         bb.REFCLK.sync() # needed
 
@@ -129,6 +130,10 @@ def shuffle_init(c, ni_board, sync_board, dsmap=range(16), frames_per_packet=1, 
     if ni_enable:
         ni_board.set_user_output_source('pwm')
         ni_board.set_frame_pwm(ni_offset, ni_high_time, ni_period)
+
+    if ni_enable_26m:
+        ni_board_26m.set_user_output_source('pwm')
+        ni_board_26m.set_frame_pwm(ni_offset_26m, ni_high_time_26m, ni_period_26m)
         
     # Set sync delays on boards to test sync-after power cycle
     # Assign to each of the first 8 slots a sync tap delay equal to the slot number
@@ -271,7 +276,7 @@ def time_soft_sync(boards, sync_board, delay):
     print 'Setting IRIG-B sync after %d seconds' %delay
     # Send sync pulse delay seconds in the future
     sync_board.set_irigb_trigger_time(current_time, delay)
-
+    time.sleep(delay+0.2)
     print 'Unmasking ADC data'
     for ib in boards:
         for ant in ib.ANT:
