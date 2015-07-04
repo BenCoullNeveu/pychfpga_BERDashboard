@@ -306,7 +306,7 @@ if __name__ == "__main__":
             enable_gpu_link = conf["fpga"]["enable_gpu_link"])
       #Temp solution to load adc_delay from table...
       #try:
-      delays = pickle.load(open('pychfpga/delays_jun_2015_no_error.pkl'))
+      delays = pickle.load(open('/home/kbandura/git/ch_acq/pychfpga/delays_jun_2015_no_error.pkl'))
       for ice in c:
           ice.set_adc_delays_with_check(delays[int(ice.serial)])
           log.info("set delays on SN {0}, SLOT {1}".format(ice.serial, ice.slot))
@@ -358,6 +358,10 @@ if __name__ == "__main__":
               ni_board.set_user_output_source('pwm')
               ni_board.set_frame_pwm(0, 3, 4)
               ni_board.sync()
+          if ni_enable_26m:
+              ni_board_26m.set_user_output_source('pwm')
+              ni_board_26m.set_frame_pwm(0, 3, 4)
+              ni_board_26m.sync()
           for i, c_element in enumerate(c):
             fpga_config = c_element.get_config()
             #fpga_rec = chFPGA_receiver.chFPGA_receiver(fpga_config, \
