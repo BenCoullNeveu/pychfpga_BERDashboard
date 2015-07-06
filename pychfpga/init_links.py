@@ -272,6 +272,12 @@ def time_soft_sync(boards, sync_board, delay):
             ant.ADCDAQ.BYTE_MASK = 0
     
     # Get current time
+    # sometimes first try crashes.
+    try:
+        sync_board.get_irigb_time()
+    except:
+        #just wait a bit for time to register
+        time.sleep(0.1)
     current_time = sync_board.get_irigb_time()
     print 'Setting IRIG-B sync after %d seconds' %delay
     # Send sync pulse delay seconds in the future
