@@ -48,7 +48,7 @@ def get_gpu_data(node_number, dna_number):
     return result
 
 #def shuffle_init(c, sync_board, frames_per_packet=1, cb1_lanes=4, cb1_bins=16, cb2_lanes=2, cb2_bins=1, cb2_bypass=0, bp_bypass=0, remap=True):
-def shuffle_init(c, ni_board, ni_board_26m, sync_board, window_stop=200, dsmap=range(16), frames_per_packet=1, cb1_lanes=4, cb1_bins=16, cb2_lanes=2, cb2_bins=1, cb2_bypass=0, bp_bypass=0, remap=True,
+def shuffle_init(c, ni_board, ni_board_26m, sync_board, window_start=2, window_stop=255, dsmap=range(16), frames_per_packet=1, cb1_lanes=4, cb1_bins=16, cb2_lanes=2, cb2_bins=1, cb2_bypass=0, bp_bypass=0, remap=True,
                  ni_enable = False, ni_offset = 0, ni_high_time = 8388608, ni_period = 16777216,
                  ni_enable_26m = False, ni_offset_26m = 0, ni_high_time_26m = 8388608, ni_period_26m = 16777216):
     """ Setup the crossbars and data shuffling in every board of the array.
@@ -111,7 +111,7 @@ def shuffle_init(c, ni_board, ni_board_26m, sync_board, window_stop=200, dsmap=r
             else:
                 gtx.USER_GTRXRESET = 1
                 # gtx.USER_RESET = 1
-        bb.CROSSBAR2.SOF_WINDOW_START = 2
+        bb.CROSSBAR2.SOF_WINDOW_START = window_start
         bb.CROSSBAR2.SOF_WINDOW_STOP = window_stop
         bb.BP_SHUFFLE.reset_rx_equalizers()
         bb.REFCLK.sync() # needed
