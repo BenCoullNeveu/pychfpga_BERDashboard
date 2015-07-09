@@ -224,7 +224,7 @@ class GTX(Module_base):
         # self.RXPOLARITY=0
         self.TXPRBSSEL=0
         self.RXPRBSSEL=0
-        self.TXDIFFCTRL = 10
+        self.TXDIFFCTRL = 6
         self.TXPRECURSOR = 0b00000 #DFE cannot compensate pre-cursor
         self.TXPOSTCURSOR = 0b00000
         self.RXMONITORSEL = 1 # 1=AGC, 2=UL, 3=VP loop
