@@ -64,8 +64,8 @@ def shuffle_init(c, ni_board, ni_board_26m, sync_board, window_start=2, window_s
     logger.info('%.32r: Configuring crate-wide data shuffling with frames_per_packet=%i, cb1_lanes=%i, cb1_bins=64, cb2_lanes=%i, cb2_bins=%i, cb2_bypass=%s, bp_bypass=%s' % (crate, cb1_lanes, cb1_bins, cb2_lanes, cb2_bins, bool(cb2_bypass), bool(bp_bypass)))
 
     # Set SMA output of sync board to be irigb trigger sync signal (was 'sync')
-    #sync_board.set_user_output_source('irigb_trig')
-    sync_board.set_user_output_source('sync')
+    sync_board.set_user_output_source('irigb_trig')
+    #sync_board.set_user_output_source('sync')
     # set-up transmitters
     for i,bb in enumerate(c):
         logger.info('%.32r: **** Initializing transmitters for Slot %02i (IceBoard SN%s) ****' % (crate, bb.slot, bb.serial))
@@ -145,9 +145,9 @@ def shuffle_init(c, ni_board, ni_board_26m, sync_board, window_start=2, window_s
     #        cc.REFCLK.sync()
 
     # sync boards
-    soft_sync(c, sync_board)
+    #soft_sync(c, sync_board)
     #irigb_sync(c, delay=5)
-    #time_soft_sync(c, sync_board, delay=5)
+    time_soft_sync(c, sync_board, delay=5)
 
 
 # r.CROSSBAR2[0].print_frame_info()
