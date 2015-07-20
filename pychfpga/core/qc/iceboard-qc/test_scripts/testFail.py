@@ -1,6 +1,7 @@
 import sys
 from statusReport import EMPTY_TEST_STATUS
 from edit_boardfile import updateStatus
+from other_stuff import commit_results
 '''
 Add functions here to deal with failures in specific tests.
 '''
@@ -15,6 +16,7 @@ def genericFail(username=str,board_sn=str,board_vn=str,board_md=str,testStatus =
     confirm = raw_input("Enter y/n:\t")
     if not (confirm == 'Y' or confirm == 'y'):
         updateStatus(testStatus)
+        commit_results()
         sys.exit("\nThank you for this testing process! The data has been saved. The testing program will now exit.")
     
 def inspectionFail(username,board_sn,board_vn,board_md,testStatus = EMPTY_TEST_STATUS()):

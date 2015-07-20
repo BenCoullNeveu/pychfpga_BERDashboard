@@ -19,7 +19,7 @@ import traceback
 from statusReport import EMPTY_TEST_STATUS
 from edit_boardfile import new_file_header
 from edit_boardfile import updateStatus
-from other_stuff import read_config
+from other_stuff import read_config, commit_results
 
 
 def starttest():
@@ -81,9 +81,11 @@ def starttest():
             else:
                 updateStatus(testStatus)
                 carry_on = False
+                commit_results()
                 print "\nThank you for this testing process! The data has been saved. The testing program will now exit."
         except SystemExit:
             carry_on = False
+            commit_results()
         except:
             print("\nAn exception occurred. Trace below:\n")
             traceback.print_exc()
