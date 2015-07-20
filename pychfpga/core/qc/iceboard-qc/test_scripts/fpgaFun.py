@@ -169,6 +169,7 @@ def top_test(board_sn, ch_acq_path='../../../../../../ch_acq/', host_ip=None, fo
         chFPGA_config = c.get_config()
         logger.info('Starting data/correlator receiver threads')
         r = chFPGA_receiver.chFPGA_receiver(chFPGA_config)
+        c.set_local_data_port_number(r.port_number)
 
     return [c,r]
 

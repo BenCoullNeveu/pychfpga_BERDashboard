@@ -7,6 +7,7 @@ ramp test script for ICEboard QC (uses test class from ch_acq/pychfpga/common/te
 import time as tm
 import sys
 import os
+from datetime import datetime
 from other_stuff import read_config, get_repo, date_format
 from statusReport import EMPTY_TEST_STATUS
 from testFail import rampFail
@@ -66,7 +67,8 @@ def rampTest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     print "\nYou should connect a fan to the FPGA heatsink, and ensure there is airflow over the mezzanine ADCs."
 
     # Make directory
-    directory = os.path.join(config['results_directory'], 'ramp_tests/QC/sn' + board_sn)
+    directory = os.path.join(config['results_directory'], 'ramp_tests/QC/sn' + board_sn + '_' +
+                             datetime.now().strftime('%Y_%m_%d_%H%M'))
     if not os.path.exists(directory):
         os.makedirs(directory)
     
