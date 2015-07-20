@@ -1,7 +1,3 @@
-#!/usr/bin/python
-# Disable pylint Line too long (=C0301)
-# pylint: disable=C0301
-
 """
 FUNCGEN.py module
  Implements interface to the internal function generator
@@ -11,36 +7,39 @@ History:
     2012-10-17 JFC: Sets ramp as default function
 """
 
-import logging
-
 from Module import Module_base, BitField
 
+
 class FUNCGEN_base(Module_base):
-    """ Implements interface to the function generator within a procecessor pipeline"""
+    """ Implements interface to the function generator within a procecessor
+    pipeline"""
     # Create local variables for page numbers tomake the table more readable
     CONTROL = BitField.CONTROL
     STATUS = BitField.STATUS
 
     FUNCTION_NAMES = {
-        '4bit_split_ramp' : 0, # Generates 0x0000, 0x0010, 0x0020, .. 0x00F0, 0x1000, 0x1010 ...
-        'a' : 1, # All bytes are Byte A
-        'b' : 2, # All bytes are Byte B
-        'ab' : 3, # Bytes alternate between A and B.
-        'ramp' : 4, # Successive bytes generate a repeating ramp from 0 to 255.
-        'real_ramp' : 5, # Generates the ramp: 0,0,0,1,0,2,0,3,0... If the data is read as (8+8)-bit complex value pairs, we obtain (0,0j), (1+0j)... (255+0j)
-        '4bit_ramp' : 6, # Generates the ramp 0x00, 0x10, 0x20, ... 0xF0.
-        '4bit_real_ramp' : 7, # Generates the ramp: 0x00, 0x00, 0x10, 0x00, 0x20, 0x00 ... 0xF0, 0x00
+        '4bit_split_ramp': 0,  # Generates 0x0000, 0x0010, 0x0020, .. 0x00F0, 0x1000, 0x1010 ...
+        'a': 1,  # All bytes are Byte A
+        'b': 2,  # All bytes are Byte B
+        'ab': 3,  # Bytes alternate between A and B.
+        'ramp': 4,  # Successive bytes generate a repeating ramp from 0 to 255.
+        'real_ramp': 5,  # Generates the ramp: 0,0,0,1,0,2,0,3,0... If the data is read as (8+8)-bit complex value pairs, we obtain (0,0j), (1+0j)... (255+0j)
+        '4bit_ramp': 6,  # Generates the ramp 0x00, 0x10, 0x20, ... 0xF0.
+        '4bit_real_ramp': 7,  # Generates the ramp: 0x00, 0x00, 0x10, 0x00, 0x20, 0x00 ... 0xF0, 0x00
         }
 
     # Memory-mapped register definition
-    RESET    = BitField(CONTROL, 0x00, 7, doc='Resets this module')
-    USE_OVERFLOW = BitField(CONTROL, 0x00, 6, doc="when '1', overflow flags are generated when the outputs is 0x7F or 0x80")
-    FUNCTION = BitField(CONTROL, 0x00, 0, width=3, doc="Selects the waveform to be generated")
-    BYTE_A   = BitField(CONTROL, 0x01, 0, width=8, doc="Byte A to be used by the function generator")
-    BYTE_B   = BitField(CONTROL, 0x02, 0, width=8, doc="Byte B to be used by the function generator")
+    RESET            = BitField(CONTROL, 0x00, 7, doc='Resets this module')
+    USE_OVERFLOW     = BitField(CONTROL, 0x00, 6, doc="when '1', overflow flags are generated when the outputs is 0x7F or 0x80")
+    ENABLE           = BitField(CONTROL, 0x00, 5, doc="doc")
+    FUNCTION         = BitField(CONTROL, 0x00, 0, width=3, doc="Selects the waveform to be generated")
+    BYTE_A           = BitField(CONTROL, 0x01, 0, width=8, doc="Byte A to be used by the function generator")
+    BYTE_B           = BitField(CONTROL, 0x02, 0, width=8, doc="Byte B to be used by the function generator")
+    NUMBER_OF_FRAMES = BitField(CONTROL, 0x03, 0, width=8, doc="Number of frames to send. If 0, send continuously.")
 
-    RAMP_CTR = BitField(STATUS, 0x01, 0, width=8, doc="Last 8 bits of the ramp counter (for debuging)")
-
+    RAMP_CTR   = BitField(STATUS, 0x00, 0, width=8, doc="Last 8 bits of the ramp counter (for debuging)")
+    FRAME_CTR  = BitField(STATUS, 0x01, 0, width=8, doc="Frame counter")
+    SEND_FRAME = BitField(STATUS, 0x02, 0, doc="debug")
 
     def __init__(self, fpga_instance, base_address, instance_number):
         # self.ant = ant_ch_instance
@@ -56,7 +55,9 @@ class FUNCGEN_base(Module_base):
     def set_function(self, function_name, a=None, b=None):
         """
         Sets the function to be generated  by the the function generator.
-        The bytes 'a' and 'b' can optionnally be specified, otherwise their current value is used.
+
+        The bytes 'a' and 'b' can optionnally be specified, otherwise their
+        current value is used.
         """
         if function_name not in self.FUNCTION_NAMES:
             raise Exception('Invalid function name')

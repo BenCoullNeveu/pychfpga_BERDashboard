@@ -1,0 +1,10 @@
+chimearray_params:
+   # icecrates: 3
+   # hwm_name: hwm2
+   iceboards: [70, 71]
+
+hwm1: !HardwareMap
+   - !IceBoardPlus { hostname: "10.10.10.70", handler_name: "chFPGA_controller", subarray: 77 }  # McGill crate slot 1
+
+hwm2: !HardwareMap
+   - !IceBoardPlus { hostname: "10.10.10.71", handler_name: "chFPGA_controller", subarray: 77 }  # McGill crate slot 1

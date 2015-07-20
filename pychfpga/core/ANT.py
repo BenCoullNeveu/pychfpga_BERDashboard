@@ -125,6 +125,9 @@ class ANT_base(object):
         """
         return value in self.keys()
 
+    def __iter__(self):
+        return iter(self.ANT)
+
     def keys(self):
         """
         """

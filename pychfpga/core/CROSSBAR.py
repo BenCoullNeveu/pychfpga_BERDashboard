@@ -36,8 +36,7 @@ class CROSSBAR_base(Module_base):
     LANE_MAP_BYTE7     = BitField(CONTROL, 10, 0, width=8, doc='Lane map')
 
 
-    CB1_LANE_MONITOR   = BitField(STATUS, 1, 0, width=16, doc='')
-    CB2_LANE_MONITOR   = BitField(STATUS, 1, 0, width=16, doc='')
+    LANE_MONITOR       = BitField(STATUS, 1, 0, width=16, doc='')
     CB1_BIN_CTR        = BitField(STATUS, 2, 0, width=8, doc='')
     INPUT_FRAME_CTR    = BitField(STATUS, 2, 0, width=8, doc='')
     ALIGN_FRAME_CTR    = BitField(STATUS, 3, 0, width=8, doc='')
@@ -50,7 +49,7 @@ class CROSSBAR_base(Module_base):
         self.verbose = verbose
         self.logger = logging.getLogger(__name__)
         self.crossbar_level = crossbar_level
-        super(self.__class__, self).__init__(fpga_instance, base_address)
+        super(CROSSBAR_base, self).__init__(fpga_instance, base_address)
         self.BIN_SEL = []
         if crossbar_level==1:
             self.NUMBER_OF_CROSSBAR_INPUTS = self.fpga.NUMBER_OF_CROSSBAR_INPUTS
@@ -64,7 +63,7 @@ class CROSSBAR_base(Module_base):
                 self.BIN_SEL.append(SHUFFLE_BIN_SEL.SHUFFLE_BIN_SEL_base(fpga_instance, base_address+ (i+1) * address_increment, i))
 
     def __getitem__(self, key):
-        """    Returns the correlator instance specified by the index"""
+        """    Returns the bin selector instance specified by the key"""
         return self.BIN_SEL[key]
 
     def init(self):
@@ -128,9 +127,16 @@ class CROSSBAR_base(Module_base):
         return self.BIN_SEL[0].GROUP_FRAMES
 
     def set_lane_map(self, lane_map):
-    	"""
-    	NOTE: Lanes are numbered from 0 to 15.
-    	"""
+        """ Sets the lane remapping.
+
+        Lanes are numbered from 0 to 15. lane_map[x] indicates which lane the
+        bin selectors will see in their input lane x. In other words, the
+        position in the lane map is the bin_selector input lane, and the value
+        in the lane map is the backplane shuffle output lane number. A value
+        of 0 refers to the direct internal (non-backplane shuffled) lane.
+
+        This repamming affects all bin selectors.
+        """
         if len(lane_map)!=self.NUMBER_OF_CROSSBAR_INPUTS:
             raise TypeError('Lane map must be a list of %i values' % self.NUMBER_OF_CROSSBAR_INPUTS)
 
@@ -141,6 +147,33 @@ class CROSSBAR_base(Module_base):
             lane_map_bytes[byte] |= (lane & 0x0F) << bit
 
         self.write(self.get_addr('LANE_MAP_BYTE0'), lane_map_bytes)
+
+    def get_lane_map(self):
+        """ Get the lane remapping vector that indicates from which shuffle
+        output lanes each bin selected or taing its data, i.e.
+        shuffle_output_lane = lane_map[bin_sel_input_lane]
+        """
+        map_bytes = self.read(self.get_addr('LANE_MAP_BYTE0'), length=self.NUMBER_OF_CROSSBAR_INPUTS/2)
+
+        lane_map = []
+        for i, byte in enumerate(map_bytes):
+            lane_map.append(byte & 0x0F)
+            lane_map.append((byte >> 4) & 0x0F)
+
+
+        return lane_map
+
+    def get_reverse_lane_map(self):
+        """ Gets the reverse of the lane remapping vector, where bin_sel_input_lane = lane_map[shuffle_output_lane].
+
+        This method will fail if the mappings are not unique and do not cover all available lanes.
+        """
+
+        lane_map = self.get_lane_map()
+        if set(lane_map) != set(range(self.NUMBER_OF_CROSSBAR_INPUTS)):
+            raise ValueError('Invalid lane map. Values are not unique')
+
+        return [lane_map.index(lane) for lane in range(len(lane_map))]
 
     def configure(self, number_of_bins_per_crossbar_output= 8):
         """
@@ -197,32 +230,102 @@ class CROSSBAR_base(Module_base):
         for bs in self.BIN_SEL:
             bs.status()
 
+    CB1_LANE_MONITOR_TABLE = {
+        'RESET': 0,
+        'ALIGN_FIFO_OVERFLOW' : 6,
+        }
+
+    CB2_LANE_MONITOR_TABLE = {
+        'INPUT_DETECT': 0,
+        'ALIGN_DETECT': 2,
+        'OUTPUT_DETECT': 3,
+        'REMAP_DETECT': 4,
+        'MISSING_FRAME': 5,
+        'ALIGN_FIFO_OVERFLOW': 6,
+        }
+
+    def get_lane_monitor(self, name):
+        """
+        Return a list describing the status of the specified flag for each
+        lane.
+        """
+        if self.crossbar_level == 1:
+            table = self.CB1_LANE_MONITOR_TABLE
+        else:
+            table = self.CB2_LANE_MONITOR_TABLE
+
+        if name not in table:
+            raise ValueError('Invalid lane monitor name. valid names are %s' % ','.join(table.keys()))
+        ix = table[name]
+        self.LANE_MONITOR_SEL = ix
+        self.LANE_MONITOR_RESET = 1
+        self.LANE_MONITOR_RESET = 0
+        value = self.LANE_MONITOR
+        return [bool(value & (1 << bit)) for bit in range(16)]
+
     def print_lane_monitor(self):
         if self.crossbar_level == 1:
-            lane_monitor_info = {
-                0: 'reset',
-                5: 'align fifo overflow (real time)',
-                6: 'align fifo overflow (sticky)',
-                }
+            lane_monitor_info = [
+                (0, 'reset'),
+                (5, 'align fifo overflow (real time)'),
+                (6, 'align fifo overflow (sticky)'),
+                ]
         else:
-            lane_monitor_info = {
-                0: 'input frame detect',
-                1: 'fifo frame detect',
-                2: 'align frame detect',
-                3: 'output frame detect',
-                4: 'remap frame detect',
-                5: 'align fifo overflow (real time)',
-                6: 'align fifo overflow (sticky)',
-                7: 'align fifo tvalid (real time)'
-                }
+            lane_monitor_info = [
+                (0, 'input frame detect'),
+                (2, 'align frame detect'),
+                (4, 'remap frame detect'),
+                (3, 'output frame detect'),
+                (5, 'align fifo overflow (real time)'),
+                (6, 'align fifo overflow (sticky)'),
+                (7, 'align fifo tvalid (real time)')
+                ]
 
-        self.LANE_MONITOR_RESET=1
-        self.LANE_MONITOR_RESET=0
-        for (ix,name) in lane_monitor_info.items():
-            self.LANE_MONITOR_SEL = ix
-            if self.crossbar_level == 1:
-                value = self.CB1_LANE_MONITOR
-                print '%32s = %s' % (name, '{:08b}'.format(value))
-            else:
-                value = self.CB2_LANE_MONITOR
-                print '%32s = %s' % (name, '{:016b}'.format(value))
+    def print_crossbar2_monitor(self, reset=True):
+
+        lane_monitor_info = [
+            'INPUT_DETECT',
+            'ALIGN_DETECT',
+            'REMAP_DETECT',
+            'MISSING_FRAME',
+            'ALIGN_FIFO_OVERFLOW',
+            ]
+        if reset:
+            self.LANE_MONITOR_RESET = 1
+            self.LANE_MONITOR_RESET = 0
+
+        lane_range = range(self.NUMBER_OF_CROSSBAR_INPUTS)
+        lane_map = self.get_lane_map()
+        gtx_ids = [(self.fpga.slot, lane_map[lane]) for lane in lane_range]
+        active_slots = set(self.fpga.crate.slot.keys())
+        matching_gtx_ids = [self.fpga.crate.get_matching_tx(gtx_id) for gtx_id in gtx_ids]
+        rx_errors = self.fpga.BP_SHUFFLE.get_rx_lane_monitor('ERROR_CTR')
+        rx_max_frame = self.fpga.BP_SHUFFLE.get_rx_lane_monitor('MAX_FRAME_LENGTH')
+
+        print '%20s: %s' % ('Monitor point', ' '.join('  L%2i ' % v for v in lane_range))
+        print '%20s: %s' % ('--------------------', ' '+' '.join('------' for v in lane_range))
+        print '%20s: %s' % ('Pre-map lane', ' '.join(('%6i' % lane_map[lane] for lane in lane_range)))
+        print '%20s: %s' % ('GTX ID', ''.join('%7s' % ('(%i,%i)' % id_) for id_ in gtx_ids))
+        print '%20s: %s' % ('Matching GTX ID', ''.join('%7s' % ('(%i,%i)' % matching_id) for matching_id in matching_gtx_ids))
+        print '%20s: %s' % ('Matching GTX present', ' '.join(('%6s' % ('-N/A-', 'ok ')[matching_id[0] in active_slots]) for matching_id in matching_gtx_ids))
+        print '%20s: %s' % ('RX Errors', ' '.join('%6i' % rx_errors[lane_map[lane]] for lane in lane_range))
+        print '%20s: %s' % ('RX max frame len', ' '.join('%6i' % rx_max_frame[lane_map[lane]] for lane in lane_range))
+        for name in [ 'INPUT_DETECT', 'ALIGN_DETECT']:
+            value = self.get_lane_monitor(name)
+            print '%20s: %s' % (name, ' '.join('%6i' % value[lane] for lane in lane_map))
+        for name in [ 'REMAP_DETECT']:
+            value = self.get_lane_monitor(name)
+            print '%20s: %s' % (name, ' '.join('%6i' % v for v in value))
+        for name in [ 'MISSING_FRAME', 'ALIGN_FIFO_OVERFLOW']:
+            value = self.get_lane_monitor(name)
+            print '%20s: %s' % (name, ' '.join('%6s' % ('-', 'ERR!')[bool(value[lane])] for lane in lane_map))
+
+        bs = self.BIN_SEL[0]
+        stream_id = bs.capture_stream_id()
+        frame_number = bs.capture_frame_number()
+        direct_lane = lane_map.index(0)
+        frame_ref = frame_number[direct_lane]
+        print '%20s: %s' % ('BS0 Stream ID', ''.join('%7s' % ('(%i,%i)' % (((id_>>4)&15)+1, id_&15)) for id_ in stream_id))
+        print '%20s: %s' % ('BS0 Frame #', ' '.join('%6i' % (f - frame_ref) for f in frame_number))
+
+

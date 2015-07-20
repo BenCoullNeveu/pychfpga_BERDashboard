@@ -108,26 +108,48 @@ class SHUFFLE_BIN_SEL_base(Module_base):
         # self.logger.debug('   FIFO OVERFLOW: %i' % self.FIFO_OVERFLOW)
 
 
-
-    def print_frame_info(self):
-        bs = self
-        ts=[]
-        sid=[]
+    def capture_stream_id(self):
+        sid = []
 
         # get 8 bits of stream ID
-        self.HEADER_CAPTURE_DATA_SEL=0
-        self.HEADER_CAPTURE_EN=1
-        self.HEADER_CAPTURE_EN=0
+        self.HEADER_CAPTURE_DATA_SEL = 0  # Select STREAM ID capture
+        self.HEADER_CAPTURE_EN = 1
+        self.HEADER_CAPTURE_EN = 0
         for i in range(16):
-            self.HEADER_CAPTURE_LANE_SEL=i
+            self.HEADER_CAPTURE_LANE_SEL = i
+            sid.append(self.HEADER_CAPTURE_DATA)
+        return sid
+
+    def capture_frame_number(self):
+        frame = []
+
+        # get 8 bits of stream ID
+        self.HEADER_CAPTURE_DATA_SEL = 1  # Select Frame number capture
+        self.HEADER_CAPTURE_EN = 1
+        self.HEADER_CAPTURE_EN = 0
+        for i in range(16):
+            self.HEADER_CAPTURE_LANE_SEL = i
+            frame.append(self.HEADER_CAPTURE_DATA)
+        return frame
+
+    def print_frame_info(self):
+        ts = []
+        sid = []
+
+        # get 8 bits of stream ID
+        self.HEADER_CAPTURE_DATA_SEL = 0
+        self.HEADER_CAPTURE_EN = 1
+        self.HEADER_CAPTURE_EN = 0
+        for i in range(16):
+            self.HEADER_CAPTURE_LANE_SEL = i
             sid.append(self.HEADER_CAPTURE_DATA)
 
         # get lsb of timestamp
-        self.HEADER_CAPTURE_DATA_SEL=1
-        self.HEADER_CAPTURE_EN=1
-        self.HEADER_CAPTURE_EN=0
+        self.HEADER_CAPTURE_DATA_SEL = 1
+        self.HEADER_CAPTURE_EN = 1
+        self.HEADER_CAPTURE_EN = 0
         for i in range(16):
-            self.HEADER_CAPTURE_LANE_SEL=i
+            self.HEADER_CAPTURE_LANE_SEL = i
             ts.append(self.HEADER_CAPTURE_DATA)
 
         for i in range(len(ts)):
