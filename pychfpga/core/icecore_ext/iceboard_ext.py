@@ -86,6 +86,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
     _BP_BUCK_SYNC_ADDR2             = 4 * 18
     _SFP_STATUS_ADDR                = 4 * 19
     _REMOTE_IP_PORT_ADDR            = 4 * 20
+    _IRIGB_REFCLK_SAMPLE            = 4 * 21
 
     _XILINX_OUI = 0x000A35
 
@@ -555,11 +556,6 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         else:
             return None
 
-    def read_backplane_eeprom_ipmi(self):
-        """ Return the IPMI data found on the backplane EEPROM.
-        """
-        return FRU.decode(self.crate.read_backplane_eeprom)
-
     # ---------------------------------------------------------
     # IRIG-B time support methods
     # ---------------------------------------------------------
@@ -639,13 +635,21 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         ts.ss = (w2 >> 0) & ((1 << 28) - 1)
         ts.source = (w1 >> 30) & ((1 << 2) - 1)
         ts.recent = (w1 >> 29) & 1
+
+        if not noerror and not ts.recent:
+            raise RuntimeError('Invalid or no IRIG-B signal. Check your cable and source.')
+
+        if ts.d < 1 or ts.d > 366:
+            raise RuntimeError('Invalid IRIG-B day value %i. Day-of-year must be between 1 and 366' % ts.d)
+
+        if ts.h > 23 or ts.m > 59 or ts.s > 59:
+            raise RuntimeError('Invalid IRIG-B time value %ih %im %is.' % (ts.h, ts.m, ts.s))
+
         ts.datetime = datetime(ts.y + 2000, 1, 1) + timedelta(ts.d-1, ts.s, ts.ss//100, 0, ts.m, ts.h)
         # ts.before_target = (t1 >> 31) & 1
         # ts.done = (t1 >> 30) & 1
-        ts.nano = int(timegm((ts.y+2000, 1, 1, 0, 0, 0))*1e9) + (ts.d*24*3600 + ts.h*3600 + ts.m*60 + ts.s)*1000000000 + ts.ss*10
+        ts.nano = int(timegm((ts.y + 2000, 1, 1, 0, 0, 0)) * 1e9) + ((ts.d - 1) *24*3600 + ts.h * 3600 + ts.m * 60 + ts.s)*1000000000 + ts.ss*10
         # ts.event_ctr = e0
-        if not noerror and not ts.recent:
-            raise RuntimeError('Invalid IRIG-B signal')
 
         return self._IRIGB_TIME_FORMAT[format](ts)
 
@@ -686,6 +690,8 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         m = dt.minute
         s = dt.second
         ss = dt.microsecond * 100 + int(nano_delay/10)
+
+        self.logger.info('%.32r: Setting IRIGB target time with y=%i, d=%i, h=%i, m=%i, s=%i, ss=%i' % (self, y, d, h, m, s, ss))
 
         t0 = (y << 0)
         t1 = (d << 20) | (h << 14) | (m << 7) | (s << 0)
@@ -738,18 +744,22 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         """ Measures the time at which the next 10MHz reference clock rising
         edge occurs.
 
-        The returned time is an integer representing the number of nanoseconds
-        since Jan 1st 2000.
+        The method returns the reference clock edge number (from a 32-bit
+        counter that wraps around) and the time in the specified format (see
+        get_irigb_time() for available formats).
 
-        This can be used to measure the drift of the 10 MHz clock relative to
+        This method can be used to measure the drift of the 10 MHz reference clock relative to
         the IRIG-B time.
         """
-        return self._get_irigb_time(trig=trig, format=format)  #
+        t = self._get_irigb_time(trig=trig, format=format)
+        c = self.fpga_mmi_read(self._IRIGB_REFCLK_SAMPLE)
+        return (c, t)  # Return
 
     def get_irigb_time(self, trig=True, format='datetime'):
         """ Return the current time as decoded on the IRIG-B input. The time
         is returned in a format specified by 'format':
 
+        'raw': A object containing all the data fields read directly from the IRIG-B decoder and preprocessed datetime and nano values
         'datetime': Python 'datetime' object (with a microsecond resolution)
         'datetime+': A (dt,nano) tuple where dt is a datetime object, and nano is the number of nanoseconds within the second.
         'nano': An integer representing the number of nanoseconds since Jan 1st 2000.
@@ -764,7 +774,7 @@ class I2CInterface(object):
     FPGA or through the ARM.
     """
 
-    I2CException = SystemError # Exception object to expect from I2C communication errors
+    I2CException = SystemError  # Exception object to expect from I2C communication errors
 
     def __init__(self, write_read_fn, port_select_fn, bus_table, _switch_addr, verbose=None):
         self.write_read_fn = write_read_fn

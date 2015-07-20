@@ -19,6 +19,8 @@ import tornado.gen
 
 import async
 
+tornado.httpclient.AsyncHTTPClient.configure(None, max_clients=50)  # So we can probe many boards at once (Default is 10)
+
 # Prefer simplejson (it's compatible, but faster)
 try:
     import simplejson as json
@@ -316,18 +318,21 @@ class TuberObject(object):
     To use it, you should subclass this TuberObject.
     '''
 
+    @async.async
     def ping(self, timeout=0.1):
         """
         Returns a boolean inticating whether a tuber object is available at
         the specified ARM hostname.
         """
-        import socket
-        try:
-            fh = urllib2.urlopen(self.tuber_uri, '{}', timeout=timeout)
-            fh.close()
-        except (urllib2.URLError, socket.timeout):  # Macs return timeout
-            return False
-        return True
+        client = tornado.httpclient.AsyncHTTPClient()
+        request = tornado.httpclient.HTTPRequest(
+            url=self.tuber_uri,
+            method='POST',
+            body='{}',
+            connect_timeout=timeout,
+            request_timeout=timeout)
+        response = yield client.fetch(request, raise_error=False)
+        async.async_return(response.error is None)
 
     def tuber_context(self):
         return Context(self)

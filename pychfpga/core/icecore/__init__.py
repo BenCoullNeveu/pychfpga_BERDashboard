@@ -31,6 +31,10 @@ from async import (
     asynchronously
     )
 
+from ccoll import (
+    Ccoll
+    )
+
 from tuber import (
     TuberError,
     TuberRemoteError,
@@ -55,7 +59,7 @@ from hwm_assets import (
 from hwm_extra_assets import (
     IceBoardPlus,
     IceBoardPlusHandler,
-    discover_iceboards
+    mdns_discover
 )
 
 from session import (
