@@ -24,7 +24,7 @@ class SHUFFLE_BIN_SEL_base(Module_base):
     # Control bitfields
     RESET                       = BitField(CONTROL, 0, 7, doc="Reset the CH_DIST. Clears FIFO.")
     BYPASS                      = BitField(CONTROL, 0, 6, doc="When high, routes input lane 'x' directly to the output, where x in the index of this bin selector.")
-    HEADER_CAPTURE_DATA_SEL     = BitField(CONTROL, 0, 5, doc=" Select whether we capture Stream ID or timestamps.")
+    # HEADER_CAPTURE_DATA_SEL     = BitField(CONTROL, 0, 5, doc=" Select whether we capture Stream ID or timestamps.")
     HEADER_CAPTURE_LANE_SEL     = BitField(CONTROL, 0, 1, width=4, doc=" Select from which lane the captured data is accessed.")
     HEADER_CAPTURE_EN           = BitField(CONTROL, 0, 0, doc="Enables capture of header info on all lanes simultaneously.")
 
@@ -40,9 +40,10 @@ class SHUFFLE_BIN_SEL_base(Module_base):
     IS_RESET                 = BitField(STATUS, 0, 5, doc="High when the module reset line is active")
     COMBINE_DATA_FLAGS       = BitField(STATUS, 0, 4, doc="Active high if this crossbar is configured to pack the data flags two by two. This is used for the 2nd crossbar, where the incoming data flags occupy only 16 bits of the words.")
     FLAGS_FIFO_OVERFLOW      = BitField(STATUS, 0, 3, doc="Active high if the flags FIFO has overflowed since the last time the flag was cleared with FIFO_OVERFLOW_RESET")
-    HEADER_CAPTURE_DATA      = BitField(STATUS, 1, 0, width=8, doc="")
 
-    FIFO_OVERFLOW            = BitField(STATUS, 3, 0, width=16, doc="Active high if any fo the data FIFO has overflowed since the last time the flag was cleared with FIFO_OVERFLOW_RESET")
+    FIFO_OVERFLOW            = BitField(STATUS, 2, 0, width=16, doc="Active high if any fo the data FIFO has overflowed since the last time the flag was cleared with FIFO_OVERFLOW_RESET")
+    FRAME_NUMBER_CAPTURE_DATA      = BitField(STATUS, 3, 0, width=8, doc="Only on Bin Sel 0")
+    STREAM_ID_CAPTURE_DATA      = BitField(STATUS, 3, 0, width=8, doc="Only on Bin Sel 0")
     # TIMESTAMP_CAPTURE        = BitField(STATUS, 4, 0, width=16, doc="")
     # IN_FRAME_CTR             = BitField(STATUS, 0x02, 0, width=8, doc="Number of frames received on lane 0 before the alignment FIFOs. Rolls over.")
     # LANE_CTR                = BitField(STATUS, 0x04, 0, width=4, doc="Debug")
@@ -112,45 +113,43 @@ class SHUFFLE_BIN_SEL_base(Module_base):
         sid = []
 
         # get 8 bits of stream ID
-        self.HEADER_CAPTURE_DATA_SEL = 0  # Select STREAM ID capture
-        self.HEADER_CAPTURE_EN = 1
         self.HEADER_CAPTURE_EN = 0
         for i in range(16):
             self.HEADER_CAPTURE_LANE_SEL = i
-            sid.append(self.HEADER_CAPTURE_DATA)
+            sid.append(self.STREAM_ID_CAPTURE_DATA)
+        self.HEADER_CAPTURE_EN = 1
         return sid
 
     def capture_frame_number(self):
         frame = []
 
         # get 8 bits of stream ID
-        self.HEADER_CAPTURE_DATA_SEL = 1  # Select Frame number capture
-        self.HEADER_CAPTURE_EN = 1
         self.HEADER_CAPTURE_EN = 0
         for i in range(16):
             self.HEADER_CAPTURE_LANE_SEL = i
-            frame.append(self.HEADER_CAPTURE_DATA)
+            frame.append(self.FRAME_NUMBER_CAPTURE_DATA)
+        self.HEADER_CAPTURE_EN = 1
         return frame
 
-    def print_frame_info(self):
-        ts = []
-        sid = []
+    # def print_frame_info(self):
+    #     ts = []
+    #     sid = []
 
-        # get 8 bits of stream ID
-        self.HEADER_CAPTURE_DATA_SEL = 0
-        self.HEADER_CAPTURE_EN = 1
-        self.HEADER_CAPTURE_EN = 0
-        for i in range(16):
-            self.HEADER_CAPTURE_LANE_SEL = i
-            sid.append(self.HEADER_CAPTURE_DATA)
+    #     # get 8 bits of stream ID
+    #     self.HEADER_CAPTURE_DATA_SEL = 0
+    #     self.HEADER_CAPTURE_EN = 1
+    #     self.HEADER_CAPTURE_EN = 0
+    #     for i in range(16):
+    #         self.HEADER_CAPTURE_LANE_SEL = i
+    #         sid.append(self.HEADER_CAPTURE_DATA)
 
-        # get lsb of timestamp
-        self.HEADER_CAPTURE_DATA_SEL = 1
-        self.HEADER_CAPTURE_EN = 1
-        self.HEADER_CAPTURE_EN = 0
-        for i in range(16):
-            self.HEADER_CAPTURE_LANE_SEL = i
-            ts.append(self.HEADER_CAPTURE_DATA)
+    #     # get lsb of timestamp
+    #     self.HEADER_CAPTURE_DATA_SEL = 1
+    #     self.HEADER_CAPTURE_EN = 1
+    #     self.HEADER_CAPTURE_EN = 0
+    #     for i in range(16):
+    #         self.HEADER_CAPTURE_LANE_SEL = i
+    #         ts.append(self.HEADER_CAPTURE_DATA)
 
-        for i in range(len(ts)):
-            print 'Lane %02i: Stream ID=0x%02x, Frame = 0x%02x (delta = %i)' % (i, sid[i], ts[i], ts[i]-ts[0])
+    #     for i in range(len(ts)):
+    #         print 'Lane %02i: Stream ID=0x%02x, Frame = 0x%02x (delta = %i)' % (i, sid[i], ts[i], ts[i]-ts[0])

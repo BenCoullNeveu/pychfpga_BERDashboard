@@ -18,7 +18,8 @@ from Module import Module_base, BitField
 import CH_DIST
 import SHUFFLE_BIN_SEL
 
-class CROSSBAR_base(Module_base):
+
+class ShuffleCrossbar(Module_base):
     """ Instantiates a container for all correlators blocks"""
 
     CONTROL = BitField.CONTROL
@@ -37,7 +38,6 @@ class CROSSBAR_base(Module_base):
 
 
     LANE_MONITOR       = BitField(STATUS, 1, 0, width=16, doc='')
-    CB1_BIN_CTR        = BitField(STATUS, 2, 0, width=8, doc='')
     INPUT_FRAME_CTR    = BitField(STATUS, 2, 0, width=8, doc='')
     ALIGN_FRAME_CTR    = BitField(STATUS, 3, 0, width=8, doc='')
     OUTPUT_FRAME_CTR   = BitField(STATUS, 4, 0, width=8, doc='')
@@ -49,7 +49,7 @@ class CROSSBAR_base(Module_base):
         self.verbose = verbose
         self.logger = logging.getLogger(__name__)
         self.crossbar_level = crossbar_level
-        super(CROSSBAR_base, self).__init__(fpga_instance, base_address)
+        super(ShuffleCrossbar, self).__init__(fpga_instance, base_address)
         self.BIN_SEL = []
         if crossbar_level==1:
             self.NUMBER_OF_CROSSBAR_INPUTS = self.fpga.NUMBER_OF_CROSSBAR_INPUTS
@@ -230,11 +230,6 @@ class CROSSBAR_base(Module_base):
         for bs in self.BIN_SEL:
             bs.status()
 
-    CB1_LANE_MONITOR_TABLE = {
-        'RESET': 0,
-        'ALIGN_FIFO_OVERFLOW' : 6,
-        }
-
     CB2_LANE_MONITOR_TABLE = {
         'INPUT_DETECT': 0,
         'ALIGN_DETECT': 2,
@@ -249,47 +244,18 @@ class CROSSBAR_base(Module_base):
         Return a list describing the status of the specified flag for each
         lane.
         """
-        if self.crossbar_level == 1:
-            table = self.CB1_LANE_MONITOR_TABLE
-        else:
-            table = self.CB2_LANE_MONITOR_TABLE
+        table = self.CB2_LANE_MONITOR_TABLE
 
         if name not in table:
             raise ValueError('Invalid lane monitor name. valid names are %s' % ','.join(table.keys()))
         ix = table[name]
         self.LANE_MONITOR_SEL = ix
-        self.LANE_MONITOR_RESET = 1
-        self.LANE_MONITOR_RESET = 0
         value = self.LANE_MONITOR
         return [bool(value & (1 << bit)) for bit in range(16)]
 
-    def print_lane_monitor(self):
-        if self.crossbar_level == 1:
-            lane_monitor_info = [
-                (0, 'reset'),
-                (5, 'align fifo overflow (real time)'),
-                (6, 'align fifo overflow (sticky)'),
-                ]
-        else:
-            lane_monitor_info = [
-                (0, 'input frame detect'),
-                (2, 'align frame detect'),
-                (4, 'remap frame detect'),
-                (3, 'output frame detect'),
-                (5, 'align fifo overflow (real time)'),
-                (6, 'align fifo overflow (sticky)'),
-                (7, 'align fifo tvalid (real time)')
-                ]
 
     def print_crossbar2_monitor(self, reset=True):
 
-        lane_monitor_info = [
-            'INPUT_DETECT',
-            'ALIGN_DETECT',
-            'REMAP_DETECT',
-            'MISSING_FRAME',
-            'ALIGN_FIFO_OVERFLOW',
-            ]
         if reset:
             self.LANE_MONITOR_RESET = 1
             self.LANE_MONITOR_RESET = 0

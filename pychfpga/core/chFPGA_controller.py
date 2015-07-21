@@ -53,7 +53,7 @@ import ANT
 # FPGA Correlator handlers
 import CORR_BLOCK
 import chan_crossbar  # Channelizer Crossbar
-import CROSSBAR  # Shuffle Crossbar
+import shuffle_crossbar  # Shuffle Crossbar
 import shuffle
 import GPU
 
@@ -275,7 +275,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
             if self.NUMBER_OF_BP_SHUFFLE_LANES and self.NUMBER_OF_GPU_LINKS:
                 self._logger.debug('%r: === Instantiating 2nd CROSSBAR' % self)
-                self.CROSSBAR2 = CROSSBAR.CROSSBAR_base(self, self._CROSSBAR2_BASE_ADDR, self._CROSSBAR_ADDR_INCREMENT, crossbar_level=2) # CROSSBAR block
+                self.CROSSBAR2 = shuffle_crossbar.ShuffleCrossbar(self, self._CROSSBAR2_BASE_ADDR, self._CROSSBAR_ADDR_INCREMENT, crossbar_level=2) # CROSSBAR block
 
             self._logger.debug('%r: === Instantiating CORR' % self)
             self.CORR = CORR_BLOCK.CORR_BLOCK_base(self, self._CORR_BASE_ADDR, self._CORR_ADDR_INCREMENT) # Correlator (XMUL, ACC) for each correlator
@@ -1502,7 +1502,7 @@ class chFPGA_controller(IceBoardExtHandler):
                 bs.select_bins(np.arange(cb1_bins) * cb1_minimum_bin_spacing + (dsmap[destination_slot-1]))
             else:
                 bs.select_bins(np.arange(cb1_bins) * cb1_minimum_bin_spacing + dsmap[i] )
-           
+
         #-------------------------
         # Configure Backplane shuffle
         #-------------------------
