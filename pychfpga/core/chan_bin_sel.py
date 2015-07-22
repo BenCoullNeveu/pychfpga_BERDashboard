@@ -17,7 +17,7 @@ from Module import Module_base, BitField
 import logging
 
 
-class CH_DIST_base(Module_base):
+class ChanBinSel(Module_base):
     """ Implements interface to the FR_DIST within a procecessor pipeline"""
     # Create local variables for page numbers to make the bitfield table more readable
     CONTROL = BitField.CONTROL
@@ -57,7 +57,7 @@ class CH_DIST_base(Module_base):
     def __init__(self, fpga_instance, base_address, instance_number):
         # self.parent = parent
         # self.fpga = fpga_instance
-        super(self.__class__, self).__init__(fpga_instance, base_address, instance_number)
+        super(ChanBinSel, self).__init__(fpga_instance, base_address, instance_number)
         self.logger = logging.getLogger(__name__)
 
         self._lock()

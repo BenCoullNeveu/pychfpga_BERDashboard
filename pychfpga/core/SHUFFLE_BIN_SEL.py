@@ -41,9 +41,9 @@ class SHUFFLE_BIN_SEL_base(Module_base):
     COMBINE_DATA_FLAGS       = BitField(STATUS, 0, 4, doc="Active high if this crossbar is configured to pack the data flags two by two. This is used for the 2nd crossbar, where the incoming data flags occupy only 16 bits of the words.")
     FLAGS_FIFO_OVERFLOW      = BitField(STATUS, 0, 3, doc="Active high if the flags FIFO has overflowed since the last time the flag was cleared with FIFO_OVERFLOW_RESET")
 
-    FIFO_OVERFLOW            = BitField(STATUS, 2, 0, width=16, doc="Active high if any fo the data FIFO has overflowed since the last time the flag was cleared with FIFO_OVERFLOW_RESET")
-    FRAME_NUMBER_CAPTURE_DATA      = BitField(STATUS, 3, 0, width=8, doc="Only on Bin Sel 0")
-    STREAM_ID_CAPTURE_DATA      = BitField(STATUS, 3, 0, width=8, doc="Only on Bin Sel 0")
+    FIFO_OVERFLOW             = BitField(STATUS, 2, 0, width=16, doc="Active high if any fo the data FIFO has overflowed since the last time the flag was cleared with FIFO_OVERFLOW_RESET")
+    FRAME_NUMBER_CAPTURE_DATA = BitField(STATUS, 3, 0, width=8, doc="Only on Bin Sel 0")
+    STREAM_ID_CAPTURE_DATA    = BitField(STATUS, 4, 0, width=8, doc="Only on Bin Sel 0")
     # TIMESTAMP_CAPTURE        = BitField(STATUS, 4, 0, width=16, doc="")
     # IN_FRAME_CTR             = BitField(STATUS, 0x02, 0, width=8, doc="Number of frames received on lane 0 before the alignment FIFOs. Rolls over.")
     # LANE_CTR                = BitField(STATUS, 0x04, 0, width=4, doc="Debug")
