@@ -15,7 +15,6 @@ import logging
 import numpy as np
 
 from Module import Module_base, BitField
-import CH_DIST
 import SHUFFLE_BIN_SEL
 
 
@@ -25,7 +24,8 @@ class ShuffleCrossbar(Module_base):
     CONTROL = BitField.CONTROL
     STATUS = BitField.STATUS
 
-    FRAME_CLK_SEL      = BitField(CONTROL, 0, 7, doc='')
+    HEADER_CAPTURE_EN  = BitField(CONTROL, 0, 7, doc="Enables capture of header info on all lanes simultaneously.")
+    # FRAME_CLK_SEL      = BitField(CONTROL, 0, 7, doc='')
     ALIGN_RESET        = BitField(CONTROL, 0, 6, doc='')
     REMAP_RESET        = BitField(CONTROL, 0, 5, doc='')
     LANE_MONITOR_RESET = BitField(CONTROL, 0, 4, doc='')
@@ -48,6 +48,10 @@ class ShuffleCrossbar(Module_base):
 
     CAPTURE_TDATA    = BitField(STATUS, 10, 0, width=32, doc='')
 
+    FRAME_NUMBER_CAPTURE_DATA = BitField(STATUS, 11, 0, width=8, doc="")
+    STREAM_ID_CAPTURE_DATA    = BitField(STATUS, 12, 0, width=8, doc="")
+    DELAY_CAPTURE    = BitField(STATUS, 14, 0, width=16, doc="")
+
     def __init__(self, fpga_instance, base_address, address_increment, crossbar_level=1, verbose=0):
         self.fpga = fpga_instance
         self.verbose = verbose
@@ -66,10 +70,11 @@ class ShuffleCrossbar(Module_base):
 
     def init(self):
         """ Initializes all correlators"""
+        self.SOF_WINDOW_STOP = 50
         for bs in self.BIN_SEL:
             bs.init()
 
-        self.configure() # apply default configuration for now.
+        # self.configure() # apply default configuration for now.
     # def select_words(self, words):
     #     """ Initializes all correlators"""
     #     for CROSSBAR in self.CROSSBAR:
@@ -226,6 +231,30 @@ class ShuffleCrossbar(Module_base):
         for bs in self.BIN_SEL:
             bs.status()
 
+
+    def capture_stream_id(self):
+        sid = []
+
+        # get 8 bits of stream ID
+        self.HEADER_CAPTURE_EN = 0
+        for i in range(16):
+            self.LANE_MONITOR_SEL = i
+            sid.append(self.STREAM_ID_CAPTURE_DATA)
+        self.HEADER_CAPTURE_EN = 1
+        return sid
+
+    def capture_frame_number(self):
+        frame = []
+
+        # get 8 bits of stream ID
+        self.HEADER_CAPTURE_EN = 0
+        for i in range(16):
+            self.LANE_MONITOR_SEL = i
+            frame.append(self.FRAME_NUMBER_CAPTURE_DATA)
+        self.HEADER_CAPTURE_EN = 1
+        return frame
+
+
     CB2_LANE_MONITOR_TABLE = {
         'INPUT_DETECT': 0,
         'ALIGN_DETECT': 2,
@@ -263,47 +292,50 @@ class ShuffleCrossbar(Module_base):
         matching_gtx_ids = [self.fpga.crate.get_matching_tx(gtx_id) for gtx_id in gtx_ids]
         rx_errors = self.fpga.BP_SHUFFLE.get_rx_lane_monitor('ERROR_CTR')
         rx_max_frame = self.fpga.BP_SHUFFLE.get_rx_lane_monitor('MAX_FRAME_LENGTH')
+        rx_min_frame = self.fpga.BP_SHUFFLE.get_rx_lane_monitor('MIN_FRAME_LENGTH')
 
-        print '%20s: %s' % ('Monitor point', ' '.join('  L%2i ' % v for v in lane_range))
-        print '%20s: %s' % ('--------------------', ' '+' '.join('------' for v in lane_range))
-        print '%20s: %s' % ('Pre-map lane', ' '.join(('%6i' % lane_map[lane] for lane in lane_range)))
-        print '%20s: %s' % ('GTX ID', ''.join('%7s' % ('(%i,%i)' % id_) for id_ in gtx_ids))
-        print '%20s: %s' % ('Matching GTX ID', ''.join('%7s' % ('(%i,%i)' % matching_id) for matching_id in matching_gtx_ids))
-        print '%20s: %s' % ('Matching GTX present', ' '.join(('%6s' % ('-N/A-', 'ok ')[matching_id[0] in active_slots]) for matching_id in matching_gtx_ids))
-        print '%20s: %s' % ('RX Errors', ' '.join('%6i' % rx_errors[lane_map[lane]] for lane in lane_range))
-        print '%20s: %s' % ('RX max frame len', ' '.join('%6i' % rx_max_frame[lane_map[lane]] for lane in lane_range))
+        stream_id = self.capture_stream_id()
+        stream_id = [stream_id[lane] for lane in lane_map]
+        frame_number = self.capture_frame_number()
+        frame_ref = frame_number[0]
+        frame_number = [frame_number[lane] for lane in lane_map]
+
+        print '%25s: %s' % ('Monitor point', ' '.join('  L%2i ' % v for v in lane_range))
+        print '%25s: %s' % ('--------------------', ' '+' '.join('------' for v in lane_range))
+        print '%25s: %s' % ('Pre-map lane #', ' '.join(('%6i' % lane_map[lane] for lane in lane_range)))
+        print '%25s: %s' % ('Rx Node ID', ''.join('%7s' % ('(%i,%i)' % id_) for id_ in gtx_ids))
+        print '%25s: %s' % ('Matching GTX present', ' '.join(('%6s' % ('-N/A-', 'ok ')[matching_id[0] in active_slots]) for matching_id in matching_gtx_ids))
+        print '%25s: %s' % ('Matching TX Node ID', ''.join('%7s' % ('(%i,%i)' % matching_id) for matching_id in matching_gtx_ids))
+        print '%25s: %s' % ('Detected Stream ID', ''.join('%7s' % ('(%i,%i)' % (((id_ >> 4) & 15)+1, id_& 15)) for id_ in stream_id))
+        print '%25s: %s' % ('RX Errors', ' '.join('%6i' % rx_errors[lane_map[lane]] for lane in lane_range))
+        print '%25s: %s' % ('RX max frame len (words)', ' '.join('%6i' % (rx_max_frame[lane_map[lane]] + 1) for lane in lane_range))
+        print '%25s: %s' % ('RX min frame len (words)', ' '.join('%6i' % (rx_min_frame[lane_map[lane]] + 1) for lane in lane_range))
         input_detect = self.get_lane_monitor('INPUT_DETECT')
         input_detect = [input_detect[lane] for lane in lane_map]
         align_detect = self.get_lane_monitor('ALIGN_DETECT')
         align_detect = [align_detect[lane] for lane in lane_map]
         remap_detect = self.get_lane_monitor('REMAP_DETECT')
-        print '%20s: %s' % ('IN/ALGN/REMAP DETECT', ' '.join(' %i/%i/%i' % (input_detect[lane], align_detect[lane], remap_detect[lane]) for lane in lane_range))
+        print '%25s: %s' % ('IN/ALGN/REMAP DETECT', ' '.join(' %i/%i/%i' % (input_detect[lane], align_detect[lane], remap_detect[lane]) for lane in lane_range))
         for name in [ 'MISSING_FRAME', 'ALIGN_FIFO_OVERFLOW']:
             value = self.get_lane_monitor(name)
-            print '%20s: %s' % (name, ' '.join('%6s' % ('-', 'ERR!')[bool(value[lane])] for lane in lane_map))
+            print '%25s: %s' % (name, ' '.join('%6s' % ('-', 'ERR!')[bool(value[lane])] for lane in lane_map))
         input_frame_ctr = []
         align_frame_ctr = []
         for lane in lane_range:
             self.LANE_MONITOR_SEL = lane
             input_frame_ctr.append(self.INPUT_FRAME_CTR)
             align_frame_ctr.append(self.ALIGN_FRAME_CTR)
-        print '%20s: %s' % ('INPUT_FRAME_CTR', ' '.join('%6i' % input_frame_ctr[lane] for lane in lane_map))
-        print '%20s: %s' % ('ALIGN_FRAME_CTR', ' '.join('%6i' % align_frame_ctr[lane] for lane in lane_map))
+        print '%25s: %s' % ('INPUT_FRAME_CTR', ' '.join('%6i' % input_frame_ctr[lane] for lane in lane_map))
+        print '%25s: %s' % ('ALIGN_FRAME_CTR', ' '.join('%6i' % align_frame_ctr[lane] for lane in lane_map))
         output_frame_ctr = []
         # for lane in range(self.NUMBER_OF_CROSSBAR_OUTPUTS):
         #     self.LANE_MONITOR_SEL = lane
         #     output_frame_ctr.append(self.OUTPUT_FRAME_CTR)
         output_frame_ctr = [self.OUTPUT_FRAME_CTR]
-        print '%20s: %s' % ('OUTPUT_FRAME_CTR', ' '.join('%6i' % v for v in output_frame_ctr))
+        print '%25s: %s' % ('OUTPUT_FRAME_CTR', ' '.join('%6i' % v for v in output_frame_ctr))
 
-        bs = self.BIN_SEL[0]
-        stream_id = bs.capture_stream_id()
-        frame_number = bs.capture_frame_number()
-        direct_lane = lane_map.index(0)
-        frame_ref = frame_number[direct_lane]
-        print '%20s: %s' % ('BS0 Stream ID', ''.join('%7s' % ('(%i,%i)' % (((id_>>4)&15)+1, id_&15)) for id_ in stream_id))
-        print '%20s: %s' % ('BS0 Frame #', ' '.join('%6i' % f for f in frame_number))
-        print '%20s: %s' % ('BS0 Delta Frame #', ' '.join('%6i' % (f - frame_ref) for f in frame_number))
+        print '%25s: %s' % ('Frame #', ' '.join('%6i' % f for f in frame_number))
+        print '%25s: %s' % ('Delta Frame #', ' '.join('%6i' % (f - frame_ref) for f in frame_number))
 
 
     def print_capture_word(self):

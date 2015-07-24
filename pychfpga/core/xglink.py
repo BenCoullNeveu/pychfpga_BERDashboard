@@ -457,6 +457,7 @@ class XGLinkArray(XGLink):
     RX_CTR          = BitField(STATUS, 2+5, 0, width=8, doc='Free runing counter on the local RX clock. Is cleared when RESET_STATS=1.')
     RX_FRAME_CTR    = BitField(STATUS, 2+6, 0, width=8, doc='Number of frames received since reset. Is cleared when RESET_STATS=1.')
     RX_MIN_FRAME_LENGTH = BitField(STATUS, 2+8, 0, width=16, doc='Current value of the minimum frame length detector. Is cleared when RESET_STATS=1.')
+    DELAY_CAPTURE    = BitField(STATUS, 2+10, 0, width=16, doc="")
 
 
 
