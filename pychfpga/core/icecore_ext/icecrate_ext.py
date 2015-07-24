@@ -20,7 +20,7 @@ class IceCrateExt(IceCrate):
     __ipmi_part_number__ = ['MGK7BP', 'MGK7BP16']  # Must match part number in IPMI data
 
 class IceCrateExtHandler(IceCrateHandler):
-    """ IceCrate handler that provides access to the backplane through the IceBoard's 'bp' object:
+    """ IceCrate handler that provides access to the backplane through an IceBoard.
     """
 
     #------------------------------------
@@ -993,6 +993,251 @@ class IceCrateExtHandler(IceCrateHandler):
 
 
 
+
+@session.register_yaml_object()
+class IceCrate_MGK7BP1(IceCrate):
+    handler_name = 'IceCrate_MGK7BP1_Handler'
+    __mapper_args__ = {'polymorphic_identity': 'IceCrate_MGK7BP1'}
+    __ipmi_part_number__ = ['MGK7BP1']  # Must match part number in IPMI data
+
+class IceCrate_MGK7BP1_Handler(IceCrateHandler):
+    """
+    Provides access to the 1-slot test backplane.
+    """
+
+    #------------------------------------
+    # Define hardware-specific constants
+    #------------------------------------
+    NUMBER_OF_SLOTS = 1 #
+    BACKPLANE_EEPROM_DATA_ADDRESS = 0x54 # covers 0x54 - 0x57 ( 4 pages of 256 bytes, 1024 Bytes total)
+    BACKPLANE_EEPROM_SERIAL_ADDRESS = 0x5C # 16 byte serial number starting at memory address 0x80
+    BACKPLANE_EEPROM_ADDRESS_WIDTH = 10 # 2 bits are in the device address, the remaining are in the address byte following the command byte
+
+
+    _GPIO_CTRL_ADDR = 0b0101111
+
+    # The following dictionnary describes the connectivity of the 10 Gbps mesh.
+    # It indicates which transmitter (slot and lane number) is feeding a specified receiver.
+    # The dictionnary is indexed by receiver number.
+    _BP_RX_TO_TX_MAP = { (i,0):(i,0) for i in range(16)}
+    _BP_TX_TO_RX_MAP = {tx:rx for (rx,tx) in _BP_RX_TO_TX_MAP.items()}
+
+
+    @classmethod
+    def get_backplane_info(cls, iceboard):
+        logger = logging.getLogger(__name__)
+        logger.debug("Attempting to read backplane eeprom to determine board presence")
+        eeprom = FMC_EEPROM(iceboard.i2c, 'BP', address=cls.BACKPLANE_EEPROM_DATA_ADDRESS, address_width=cls.BACKPLANE_EEPROM_ADDRESS_WIDTH)
+        data = eeprom.read(0, length=1, noerror=True, verbose=1)
+        logger.debug("Backplane EEPROM returned the value: %i", data[0])
+        return (data[0], None)
+
+    @classmethod
+    def get_matching_tx(cls, rx_slot_lane_tuple):
+        return cls._BP_RX_TO_TX_MAP[rx_slot_lane_tuple]
+
+    @classmethod
+    def get_matching_rx(cls, tx_slot_lane_tuple):
+        return cls._BP_TX_TO_RX_MAP[tx_slot_lane_tuple]
+
+    def __init__(self, iceboard):
+        """
+        Creates all the I2C objects needed to interface the hardware.
+        For now, we can only do this when the FPGA is configured
+        because access is done through the FPGA.
+
+        For FPGA-based I2C:
+            - fpga_core is not Null
+            - fpga_core provides the following methods
+                - i2c_set_port(...) # Port number 0 (connected to the FPGA I2C switch) is used for all accesses
+                - i2c_write_read(...) # FPGA I2C engine
+        """
+
+        #import iceboard  as ib
+        #if not isinstance(iceboard, ib.IceBoard):
+        #    raise IceBoxException('Please provide a single iceboard object')
+
+        try:
+            iter(iceboard)
+        except TypeError:
+            pass
+        else:
+            raise IceBoxException('Please provide a single iceboard object')
+#
+#        if type(iceboard)!=ib.IceBoard:
+#            raise IceBoxException('Please provide a single iceboard object')
+#
+
+
+        self._I2C_BACKPLANE_BUS_NAME = 'BP'
+        self._logger = logging.getLogger(__name__)
+        self._logger.debug('Initializing Iceboard hardware')
+        self._i2c = iceboard.i2c
+        self._iceboard_hw = iceboard.hw
+        self._iceboard = iceboard
+
+        self._logger.info(' Instantiating Backplane I2C resource managers')
+        self._eeprom = FMC_EEPROM(iceboard.i2c, 'BP', address=self.BACKPLANE_EEPROM_DATA_ADDRESS, address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH)
+        self._serial = FMC_EEPROM(iceboard.i2c, 'BP', address=self.BACKPLANE_EEPROM_SERIAL_ADDRESS, address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH)
+
+        self._logger.info(' Instantiating Backplane I2C I/O expanders')
+        self._gpio_ctrl = pca9575.pca9575(self._i2c, self._GPIO_CTRL_ADDR, 'BP')
+
+
+        self._GPIO_CTRL_MAP = {
+             # Slot num : (expander object, Register, bit number)
+             'SLOTADDR0': (self._gpio_ctrl, 0,0),
+             'SLOTADDR1': (self._gpio_ctrl, 0,1),
+             'SLOTADDR2': (self._gpio_ctrl, 0,2),
+             'SLOTADDR3': (self._gpio_ctrl, 0,3),
+
+             'SYNC':  (self._gpio_ctrl, 0,6),
+             'TIME':  (self._gpio_ctrl, 1,3),
+             'TRIG':  (self._gpio_ctrl, 1,4),
+
+             'PLLSYNC': (self._gpio_ctrl, 0,7),
+
+             'BPIO3': (self._gpio_ctrl, 1,0),
+             'BPIO4': (self._gpio_ctrl, 1,1),
+             'BPIO5': (self._gpio_ctrl, 1,2)
+        }
+
+        self.LED_MAP = {
+             # LEDName : (expander object, Register, bit number)
+             'LED1': (self._gpio_ctrl, 1, 5),
+             'LED2': (self._gpio_ctrl, 1, 6),
+             'LED3': (self._gpio_ctrl, 1, 7)
+        }
+
+        self._RESETS_MAP = {
+             # ResetType : (expander object, Register, bit)
+             'ARM':       (self._gpio_ctrl, 0, 4),
+             'FPGA':      (self._gpio_ctrl, 0, 5)
+        }
+
+    def open(self):
+        """
+        """
+        pass
+
+    def close(self):
+        self._logger.info('Closing Icebox hardware')
+
+    def init(self):
+        """Initializes the backplane to a known state"""
+        self._init_gpio_ctrl() # The power I2c bus needs to be bridged to the monitor I2C bus for this to work
+        self._init_eeprom()
+
+
+
+    def _init_gpio_ctrl(self):
+        """
+        initializes reset control
+        History:
+        141075 AJG: created
+        """
+        gpio_ctrl=self._gpio_ctrl
+
+        gpio_ctrl.init(cfg0_def=0xFF, cfg1_def=0xFF)
+        #By default setting all pins to inputs, with default output level logic 0
+
+    def _init_eeprom(self):
+        """initializes EEPROM"""
+        pass
+
+    def get_number_of_slots(self):
+        return self.NUMBER_OF_SLOTS
+
+    def read_eeprom(self, addr, length=1):
+        return self._eeprom.read(addr, length = length)
+
+    def get_eeprom_serial_number(self):
+        """ return the 128-bit hardware-coded EEPROM serial number as a hex string. """
+        return ''.join(['%02X' % v for v in self._serial.read(0x80, length=16)])
+
+    def set_led(self, led_name, state):
+        """
+        Set the LED(s) specified in 'led_name' to the the 'state'.
+        'led_name' can be a list of LED names found in
+        LED_MAP.  'state' can be a single boolean value, or
+        an array with the same length as 'led_name'
+        """
+        if isinstance(led_name, (str, int)):
+            led_name = [led_name]
+
+        for pos, name in enumerate(led_name):
+            if isinstance(name, int):
+                name='LED%i' % name
+            led_name[pos]=name
+
+        if isinstance(state, (bool, int)):
+            state = [state] * len(led_name)
+
+        for (led, led_state) in zip(led_name,state):
+            if led not in self.LED_MAP:
+                raise IceBoxException('Invalid LED name')
+            else:
+                (led_control_object, led_control_register, led_control_bitnumber) = self.LED_MAP[led]
+                mask = 1<<led_control_bitnumber
+                led_control_object.write('CFG%i' % led_control_register, 0, mask=mask) #Setting LED pin to output
+                led_control_object.write('OUT%i' % led_control_register, mask * bool(not(led_state)), mask=mask) #Turning LED on and off
+
+    def get_led(self, led_name):
+        """
+        Returns the status of specified LED(s) in a dictionary
+        led_status where each key is a led_name and the respective value
+        is the led status.
+        """
+        led_status = {}
+        if isinstance(led_name, (str,int)):
+            led_name = [led_name]
+
+        for pos, name in enumerate(led_name):
+            if isinstance(name, int):
+                name='LED%i' % name
+            led_name[pos]=name
+
+        for led in led_name:
+            if led not in self.LED_MAP:
+                raise IceBoxException('Invalid LED name')
+            else:
+                (led_control_object, led_control_register, led_control_bitnumber) = self.LED_MAP[led]
+                led_control_register='IN%i' % led_control_register #Converting the resister in the map into the correct string format
+                #Note that we are cheating here, we are flipping the bits on the IO Expander from input mode to output mode, inputs are default floating
+                #Turning on the LED requires a output of 0 which is the default state in output mode
+                regout=led_control_object.read(led_control_register)
+                led_status[led]= not bool( (regout & (1<<led_control_bitnumber))>>led_control_bitnumber)
+        return led_status
+
+    def set_slot_addr(self, slotnum):
+            """
+            Sets the backplane slot number to the number specified slot number from 1 to 16
+            """
+
+            if slotnum not in range(1,16 + 1):
+                    raise IceBoxException('Invalid slot number')
+            slotnum-=1  #Slot 1 is binary 0000, slot 16 is binary 1111
+
+            for addr in range(0,4):
+                (ctrlobj, reg, bitnum) = self._GPIO_CTRL_MAP['SLOTADDR%i' % addr]
+                mask = 1<<bitnum
+                ctrlobj.write('CFG%i' % reg, 0, mask=mask) #Setting addr pin to output
+
+                bitlevel= (slotnum >> addr) & 1
+                ctrlobj.write('OUT%i' % reg, mask * bitlevel, mask=mask) #Turning pin off
+
+    def get_serial_number(self):
+        """
+        Returns the board's serial number.
+        """
+        return self.get_eeprom_serial_number(); # tentative code
+
+    def get_info(self):
+        """Loads the info data on the motherboard"""
+        pass
+
+    def status(self):
+        """Displays the status of the motherboard"""
 
 
 
