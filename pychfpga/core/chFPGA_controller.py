@@ -1472,7 +1472,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
         if frames_per_packet < 1 or frames_per_packet > 4:
             raise ValueError('Number of frames per packet must be between 1 and 4')
-        if cb1_lanes not in [4,8,12,16]:
+        if cb1_lanes not in (4, 8, 12, 16):
             raise ValueError('Crossbar 1 number of input lanes must be 4,8,12 or 16')
         if cb2_lanes % 2:
             raise ValueError('Crossbar 2 number of input lanes must be a multiple of 2')
@@ -1552,6 +1552,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
         self.set_corr_reset(0)
         self.set_ant_reset(0)
+
 
     def compute_adc_delay_offsets(self, channels=range(16)):
         """
