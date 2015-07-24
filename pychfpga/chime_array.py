@@ -702,6 +702,10 @@ class ChimeArray(object):
             dt = self.sync_master.get_irigb_time()
             print 'Triggering SYNC at ', dt.isoformat()
             self.sync_master.set_irigb_trigger_time(dt, delay=delay)
+            t0 = time.time()
+            while self.sync_master.is_irigb_before_trigger_time():
+                if time.time() - t0 > delay+1:
+                    raise RuntimeError('Timout while waiting for the IRIG-B-based SYNC to complete')
         elif self.sync_method == 'distributed_time':
             dt = self.ib[0].get_irigb_time()
             print 'Triggering SYNC in %i seconds at %s' % (delay,  dt.isoformat())
