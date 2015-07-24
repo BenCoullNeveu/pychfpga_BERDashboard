@@ -742,16 +742,14 @@ class ChimeArray(object):
 
         tx_list = []
 
-        crate_set = set([ib.crate for ib in self.ib])
+        crate_set = set(ib.crate for ib in self.ib)
         if len(crate_set) != 1:
             raise RuntimeError('All boards must be in the same crate. The provided set of Iceboards have the following crates: %r' % crate_set)
         crate = crate_set.pop()
 
         self.logger.info('%.32r: Configuring crate-wide data shuffling with frames_per_packet=%i, cb1_lanes=%i, cb1_bins=64, cb2_lanes=%i, cb2_bins=%i, cb2_bypass=%s, bp_bypass=%s' % (crate, cb1_lanes, cb1_bins, cb2_lanes, cb2_bins, bool(cb2_bypass), bool(bp_bypass)))
 
-        # Set SMA output of sync board to be irigb trigger sync signal (was 'sync')
-        # sync_board.set_user_output_source('irigb_trig')
-        # set-up transmitters
+        # Set-up transmitters
         for i, ib in enumerate(self.ib):
             self.logger.info('%.32r: **** Initializing transmitters for Slot %02i (IceBoard SN%s) ****' % (crate, ib.slot, ib.serial))
             ib.set_corr_reset(0)
@@ -781,7 +779,7 @@ class ChimeArray(object):
                     gtx.USER_GTRXRESET = 1
                     # gtx.USER_RESET = 1
 
-            ib.CROSSBAR2.SOF_WINDOW_STOP = 25
+            # ib.CROSSBAR2.SOF_WINDOW_STOP = 25
             ib.BP_SHUFFLE.reset_rx_equalizers()
             ib.REFCLK.sync() # needed
 
@@ -961,13 +959,13 @@ class ChimeArray(object):
                 g.TXPRECURSOR = 0b00000 #DFE cannot compensate pre-cursor
                 g.TXPOSTCURSOR = 0b00000
                 g.RXLPMEN = 0 #Go to DFE mode instead of LPM
-                g.RXMONITORSEL = 1 # 1=AGC, 2=UL, 3=VP loop
-                g.RX_DEBUG_CFG = 0b1011 << 2
+                # g.RXMONITORSEL = 1 # 1=AGC, 2=UL, 3=VP loop
+                # g.RX_DEBUG_CFG = 0b1011 << 2
                 #g.DMONITOR_CFG1 = 0
                 #g.DMONITOR_CFG0 = (0b1<<15) | (0x0080 <<1) | 1
                 # Configure DMONITOR to read the AGC gain
-                g.DMONITOR_SELECT = 1
-                g.PCS_RSVD_ATTR_BIT6 = 1
+                # g.DMONITOR_SELECT = 1
+                # g.PCS_RSVD_ATTR_BIT6 = 1
                 #old=g.read_drp(0x6f)
                 #g.write_drp(0x6f,old | 1<<6)
                 #g.RXDFEOVRD=1
@@ -1105,11 +1103,11 @@ class ChimeArray(object):
     def get_ber_vs_power(self, max_power, period=0.1):
 
         array = self.ib
-        links = scan_links(array, tx_power = max_power)
+        links = self.scan_links(array, tx_power = max_power)
         power = range(0,max_power+1)
         data = {}
         for tx_power in power:
-            e = get_ber(array, links, period=period, tx_power = tx_power)
+            e = self.get_ber(array, links, period=period, tx_power = tx_power)
             for (link, ber) in e.items():
                 if link in data:
                     data[link][0].append(tx_power)
