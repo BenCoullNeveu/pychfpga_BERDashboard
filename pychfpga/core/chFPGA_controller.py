@@ -433,8 +433,6 @@ class chFPGA_controller(IceBoardExtHandler):
         else:
             self._logger.warning("%r: There is no 1st CROSSBAR module in this firmware build (so there can't be data streamed to the correlators or GPU links!)" % self);
 
-
-
         if self.NUMBER_OF_BP_SHUFFLE_LANES:
             self._logger.debug('%r: === Initializing Backplane Shuffle' % self)
             self.BP_SHUFFLE.init()
@@ -1456,7 +1454,7 @@ class chFPGA_controller(IceBoardExtHandler):
                     res['FMC%i ADC%i'%(fmc_number, adc_number)] = adc.get_temperature()
         return res
 
-    def init_crossbars(self, dsmap=range(16), frames_per_packet=3, cb1_lanes=16, cb1_bins=64, cb2_lanes=8, cb2_bins=1, cb2_bypass=False, bp_bypass=1, remap=True):
+    def init_crossbars(self, dsmap=range(16), frames_per_packet=3, cb1_lanes=16, cb1_bins=64, cb1_bypass=False, cb2_lanes=8, cb2_bins=1, cb2_bypass=False, bp_bypass=1, remap=True):
         """ Initializes the 1st and 2nd crossbar to reorder and package the
         channelizer data send to the GPU correlators in the desired format.
 
@@ -1493,15 +1491,16 @@ class chFPGA_controller(IceBoardExtHandler):
         #-------------------------
         # Select the bins so slot 0 receives bins 0-63, slot 1 has 64-127 ... slot 15 has 960-1023
         for (cb1_output_lane, bs) in enumerate(cb1):
+            bs.BYPASS = cb1_bypass
             bs.GROUP_FRAMES = frames_per_packet
             bs.NUMBER_OF_LANES = cb1_lanes
             bs.STREAM_ID = self.slot - 1  # The stream ID at the output of CB1 will be 0xSL (S=slot-1, L=lane)
-            if remap and not bp_bypass:
+            if remap and not cb1_bypass and not bp_bypass:
                 tx = (self.slot, cb1_output_lane)  # unique transmitter id (slot, lane)
                 destination_slot = self.crate.get_matching_rx(tx)[0]
                 bs.select_bins(np.arange(cb1_bins) * cb1_minimum_bin_spacing + (dsmap[destination_slot-1]))
             else:
-                bs.select_bins(np.arange(cb1_bins) * cb1_minimum_bin_spacing + dsmap[i] )
+                bs.select_bins(np.arange(cb1_bins) * cb1_minimum_bin_spacing + dsmap[cb1_output_lane])
 
         #-------------------------
         # Configure Backplane shuffle
