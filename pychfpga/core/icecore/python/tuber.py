@@ -386,17 +386,24 @@ class TuberObject(object):
         up properties and values (with tab-completion and docstrings)
         on-the-fly as they're needed.
         '''
-
-        if not self.tuber_uri:
-            meta = _tuber_json_object_hook({"properties": [], "methods": []})
-            return (meta, [], [])
-
         if hasattr(self, '_tuber_meta'):
             return (
                 self._tuber_meta,
                 self._tuber_meta_properties,
                 self._tuber_meta_methods
             )
+
+        self._tuber_meta_properties = {}
+        self._tuber_meta_methods = {}
+        self._tuber_meta = _tuber_json_object_hook({"properties": [], "methods": []})
+
+        l = logging.getLogger(__name__)
+
+        if not self.tuber_uri:
+            l.warning("%r: Invalid tuber URI." % (self))
+            return (self._tuber_meta,
+                    self._tuber_meta_properties,
+                    self._tuber_meta_methods)
 
         json_in = json.dumps({'object': self.tuber_objname})
         t1 = time.time()
@@ -406,8 +413,13 @@ class TuberObject(object):
         t2 = time.time()
 
         # Say something about the retrieval
-        l = logging.getLogger(__name__)
         l.debug('%r: Retrieved Tuber metadata (%f sec)' % (self, t2-t1))
+
+        if not json_out.result:
+            l.warning("%r: Tuber returned an empty metadata list for object '%s'." % (self, self.tuber_objname))
+            return (self._tuber_meta,
+                    self._tuber_meta_properties,
+                    self._tuber_meta_methods)
 
         meta = json_out.result
         props = {}
