@@ -52,7 +52,8 @@ import ANT
 
 # FPGA Correlator handlers
 import CORR_BLOCK
-import CROSSBAR
+import chan_crossbar  # Channelizer Crossbar
+import shuffle_crossbar  # Shuffle Crossbar
 import shuffle
 import GPU
 
@@ -266,7 +267,7 @@ class chFPGA_controller(IceBoardExtHandler):
             self.ANT_FMC_NUMBER = [i//8 for i in range(self.NUMBER_OF_ANTENNAS)]
 
             self._logger.debug('%r: === Instantiating 1st CROSSBAR' % self)
-            self.CROSSBAR = CROSSBAR.CROSSBAR_base(self, self._CROSSBAR1_BASE_ADDR, self._CROSSBAR_ADDR_INCREMENT, crossbar_level=1) # CROSSBAR block
+            self.CROSSBAR = chan_crossbar.ChanCrossbar(self, self._CROSSBAR1_BASE_ADDR, self._CROSSBAR_ADDR_INCREMENT) # CROSSBAR block
 
             if self.NUMBER_OF_BP_SHUFFLE_LANES:
                 self._logger.debug('%r: === Instantiating Backplane shuffle subsystem' % self)
@@ -274,7 +275,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
             if self.NUMBER_OF_BP_SHUFFLE_LANES and self.NUMBER_OF_GPU_LINKS:
                 self._logger.debug('%r: === Instantiating 2nd CROSSBAR' % self)
-                self.CROSSBAR2 = CROSSBAR.CROSSBAR_base(self, self._CROSSBAR2_BASE_ADDR, self._CROSSBAR_ADDR_INCREMENT, crossbar_level=2) # CROSSBAR block
+                self.CROSSBAR2 = shuffle_crossbar.ShuffleCrossbar(self, self._CROSSBAR2_BASE_ADDR, self._CROSSBAR_ADDR_INCREMENT, crossbar_level=2) # CROSSBAR block
 
             self._logger.debug('%r: === Instantiating CORR' % self)
             self.CORR = CORR_BLOCK.CORR_BLOCK_base(self, self._CORR_BASE_ADDR, self._CORR_ADDR_INCREMENT) # Correlator (XMUL, ACC) for each correlator
@@ -464,7 +465,6 @@ class chFPGA_controller(IceBoardExtHandler):
         if self.GPIO.NUMBER_OF_GPU_LINKS:
             self.GPU.set_enable(enable_gpu_link)
 
-        self.CROSSBAR.configure()
         self._logger.info('%r: GPU link is currently %s' % (self, ['Disabled','Enabled'][bool(enable_gpu_link)]))
 
         # MGT is disabled
@@ -1374,6 +1374,17 @@ class chFPGA_controller(IceBoardExtHandler):
         """ Return the name of the source currently routed to SMA-A"""
         return self.GPIO.get_user_output_source()
 
+    def set_sync_source(self, source):
+        """ Sets the source of the signal that will trigger SYNC events.
+        """
+        if source not in self.REFCLK.SYNC_SOURCE_TABLE:
+            raise ValueError('Invalid SYNC source name. Valid names are %s' % ', '.join(self.REFCLK.SYNC_SOURCE_TABLE))
+        self.REFCLK.set_sync_source(source)
+
+    def get_sync_source(self):
+        """ Return the current source used to trigger SYNC events """
+        return self.REFCLK.get_sync_source()
+
     def set_frame_pwm(self, offset, high_time, period, reset=False):
         """ Sets the frame-based PWM generator. All times are stated as the numbe rof frames. A SYNC is needed after changes."""
         self.GPIO.set_pwm(offset, high_time, period, reset=False)
@@ -1446,7 +1457,8 @@ class chFPGA_controller(IceBoardExtHandler):
         return res
 
     def init_crossbars(self, dsmap=range(16), frames_per_packet=3, cb1_lanes=16, cb1_bins=64, cb2_lanes=8, cb2_bins=1, cb2_bypass=False, bp_bypass=1, remap=True):
-        """ Initializes the 1st and 2nd crossbar to reorder and package the channelizer data send to the GPU correlators in the desired format.
+        """ Initializes the 1st and 2nd crossbar to reorder and package the
+        channelizer data send to the GPU correlators in the desired format.
 
         `ib` is the IceBoard to be configured.
         """
@@ -1460,12 +1472,12 @@ class chFPGA_controller(IceBoardExtHandler):
 
         if frames_per_packet < 1 or frames_per_packet > 4:
             raise ValueError('Number of frames per packet must be between 1 and 4')
-        if cb1_lanes not in [4,8,12,16]:
+        if cb1_lanes not in (4, 8, 12, 16):
             raise ValueError('Crossbar 1 number of input lanes must be 4,8,12 or 16')
         if cb2_lanes % 2:
             raise ValueError('Crossbar 2 number of input lanes must be a multiple of 2')
 
-        self._logger.info('%r: Configuring crossbars 1 & 2 with frames_per_packet=%i, cb1_lanes=%i, cb1_bins=64, cb2_lanes=%i, cb2_bins=%i, cb2_bypass=%s, bp_bypass=%s' % (self, cb1_lanes, cb1_bins, cb2_lanes, cb2_bins, bool(cb2_bypass), bool(bp_bypass)))
+        self._logger.info('%r: Configuring crossbars 1 & 2 with frames_per_packet=%i, cb1_lanes=%i, cb1_bins=%i, cb2_lanes=%i, cb2_bins=%i, cb2_bypass=%s, bp_bypass=%s' % (self, frames_per_packet, cb1_lanes, cb1_bins, cb2_lanes, cb2_bins, bool(cb2_bypass), bool(bp_bypass)))
 
         words_per_bin = cb1_lanes / 4
         cb1_minimum_bin_spacing = 16
@@ -1476,27 +1488,37 @@ class chFPGA_controller(IceBoardExtHandler):
         # for gtx in gpu_links.CHANNEL:
         #     gtx.LOOPBACK = bp_bypass
 
-        # Select the bins so slot 0 receives bins 0-63, slot 1 has 64-127 ... slot 15 hs 960-1023
-        for (i, bs) in enumerate(cb1):
+        #-------------------------
+        # Configure CROSSBAR 1
+        #-------------------------
+        # Select the bins so slot 0 receives bins 0-63, slot 1 has 64-127 ... slot 15 has 960-1023
+        for (cb1_output_lane, bs) in enumerate(cb1):
             bs.GROUP_FRAMES = frames_per_packet
             bs.NUMBER_OF_LANES = cb1_lanes
+            bs.STREAM_ID = self.slot - 1  # The stream ID at the output of CB1 will be 0xSL (S=slot-1, L=lane)
             if remap and not bp_bypass:
-                tx = (self.slot, i)  # unique transmitter id (slot, lane)
+                tx = (self.slot, cb1_output_lane)  # unique transmitter id (slot, lane)
                 destination_slot = self.crate.get_matching_rx(tx)[0]
                 bs.select_bins(np.arange(cb1_bins) * cb1_minimum_bin_spacing + (dsmap[destination_slot-1]))
             else:
-                bs.select_bins(np.arange(cb1_bins) * cb1_minimum_bin_spacing)
-            # bs.select_bins(np.arange(800))
-        #cb1.configure(cb1_bins)
+                bs.select_bins(np.arange(cb1_bins) * cb1_minimum_bin_spacing + dsmap[i] )
 
-        for (i, bs) in enumerate(cb2):
+        #-------------------------
+        # Configure Backplane shuffle
+        #-------------------------
+        self.BP_SHUFFLE.BYPASS = bp_bypass
+
+        #-------------------------
+        # Configure CROSSBAR 2
+        #-------------------------
+        for (cb2_output_lane, bs) in enumerate(cb2):
             bs.BYPASS = bool(cb2_bypass)
+            bs.STREAM_ID = self.slot - 1  # The stream ID at the output of CB2 will be 0xSL (S=slot-1, L=lane)
             bs.NUMBER_OF_FRAMES_PER_PACKET = frames_per_packet
             bs.NUMBER_OF_LANES = cb2_lanes
             bs.NUMBER_OF_BINS_PER_FRAME = cb1_bins
             bs.NUMBER_OF_WORDS_PER_BIN = cb1_lanes/4
-            bs.select_bins(np.arange(cb2_bins) * cb2_minimum_bin_spacing + i)
-        #cb2.configure(cb2_bins)
+            bs.select_bins(np.arange(cb2_bins) * cb2_minimum_bin_spacing + cb2_output_lane)
 
         header_size = 16
         packet_flags_size = 4
@@ -1530,6 +1552,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
         self.set_corr_reset(0)
         self.set_ant_reset(0)
+
 
     def compute_adc_delay_offsets(self, channels=range(16)):
         """

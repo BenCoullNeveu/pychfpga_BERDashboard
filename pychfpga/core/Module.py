@@ -47,7 +47,10 @@ class BitField(object):
         obj.write_field(self, value)
 
     def __get__(self, obj, obj_type):
-        return obj.read_field(self)
+        if obj is not None:  # if accesed from an instance
+            return obj.read_field(self)
+        else:
+            return self
 
     def get_addr(self):
         """
@@ -227,26 +230,24 @@ class Module_base(object):
         old_value = self.read(addr)
         self.write(addr, (old_value & ~mask) | (data & mask))
 
-    def bitfield(self, bitfield_name):
+    def get_bitfield(self, bitfield_name):
         """
         Returns the bitfield object with name 'bitfield_name'.
         This is used to access the attributes and methods of the bitfield objects, since this is a python data descriptor and direct access calls its fget() method instead of returning the object.
         """
-        class_attributes = vars(type(self))
-        if bitfield_name not in class_attributes:  # is the variable an attribute of this class
-            raise Exception("The BitField '%s' is not defined" % bitfield_name)
-        else:
-            bitfield = class_attributes[bitfield_name]
+        try:
+            bitfield = getattr(type(self), bitfield_name)
             if not isinstance(bitfield, BitField):
-                raise Exception("'%s' is not a Bitfield" % bitfield_name)
-            else:
-                return bitfield
+                raise TypeError("'%s' is not a Bitfield" % bitfield_name)
+            return bitfield
+        except AttributeError:
+            raise AttributeError("The BitField '%s' is not defined" % bitfield_name)
 
     def get_addr(self, bitfield_name):
         """
         Returns the address of the register containing the specified bitfield.
         """
-        return self.bitfield(bitfield_name).get_addr()
+        return self.get_bitfield(bitfield_name).get_addr()
 
     def pulse_bit(self, addr, bit=0):
         """
@@ -256,7 +257,7 @@ class Module_base(object):
         """
 
         if isinstance(addr, str):
-            bitfield = self.bitfield(addr)
+            bitfield = self.get_bitfield(addr)
             if bitfield.width != 1:
                 raise Exception('The bit field must be a single bit (width=1)')
             else:
@@ -274,7 +275,7 @@ class Module_base(object):
         If 'addr' is a string containing the name of a bit field, then this bit is pulsed.
         """
         if isinstance(addr, str):
-            bitfield = self.bitfield(addr)
+            bitfield = self.get_bitfield(addr)
             if bitfield.width != 1:
                 raise Exception('The bit field must be a single bit (width=1)')
             else:
@@ -285,7 +286,7 @@ class Module_base(object):
         while 1:
             if self.read(addr) & mask:
                 return
-            if (time.time()-t0)>timeout:
+            if (time.time() - t0) > timeout:
                 raise(Warning('Timeout exceeded while waiting for status bit'))
 
     def read_all_fields(self, format='%(name)-30s = %(page_name)7s(0x%(addr)-02X)[%(bit_range)-5s]:  %(value)5i, 0x%(hex_value)-4s, 0b%(bin_value)s', sort = ['page','name']):

@@ -123,11 +123,14 @@ class QSFP(object):
 
     def enable_i2c(self, enable):
         """
-        Enables QSFP I2C  when enable = True
+        Enable QSFP I2C  when enable = True
         """
         self.set_control_bit('ModSelL', not enable)
 
     def is_present(self):
+        """ Indicate if the QSFP module is present by probing the ModPrsL
+        line, which is grounded when the module is inserted.
+        """
         return not self.get_control_bit('ModPrsL')
 
     def set_power_mode(self, state):
@@ -210,6 +213,7 @@ class QSFP(object):
         History:
         141015 AJG & JF: created
         """
+        self.enable_i2c(True)  # Needed for self._qsfp_eeprom.is_present() below
         print 'Hardware lines'
         print '--------------'
         print 'Module is Present: %s' % bool(self.is_present())

@@ -132,10 +132,10 @@ def shuffle_init(c, ni_board, sync_board, dsmap=range(16), frames_per_packet=1, 
         ni_board.set_frame_pwm(ni_offset, ni_high_time, ni_period)
 
     # Set sync delays on boards (in slot order). Numbers obtained from sync test. Should go to conf file
-    sync_delays = [np.array([ 8.,  7.]), np.array([ 8.,  8.]), np.array([ 9.,  6.]), np.array([ 11.,   7.]),
-                   np.array([ 12.,  11.]), np.array([  8.,  13.]), np.array([ 11.,  10.]), np.array([ 7.,  6.]),
-                   np.array([ 11.,   5.]), np.array([ 8.,  6.]), np.array([ 9.,  7.]), np.array([ 11.,  10.]),
-                   np.array([  8.,  11.]), np.array([ 8.,  7.]), np.array([ 11.,   9.]), np.array([ 6.,  8.])] 
+    sync_delays = [np.array([ 8,  7]), np.array([ 8,  8]), np.array([ 9,  6]), np.array([ 11,   7]),
+                   np.array([ 12,  11]), np.array([  8,  13]), np.array([ 11,  10]), np.array([ 7,  6]),
+                   np.array([ 11,   5]), np.array([ 8,  6]), np.array([ 9,  7]), np.array([ 11,  10]),
+                   np.array([  8,  11]), np.array([ 8,  7]), np.array([ 11,   9]), np.array([ 6,  8])] 
     for cc in c:
         cc.REFCLK.set_sync_delay(sync_delays[cc.slot-1])
         cc.REFCLK.sync()

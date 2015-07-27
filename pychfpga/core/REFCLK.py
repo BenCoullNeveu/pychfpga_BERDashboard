@@ -79,9 +79,9 @@ class REFCLK_base(Module_base):
     SYNC_SOURCE_TABLE = {
         'local': 0,
         'refclk': 1,
-        'backplane': 2,
-        'bp': 2,
-        'irigb': 3}
+        'bp_trig': 2,
+        'irigb': 3,
+        'bp_time': 4}
 
     def set_sync_source(self, source):
         """ Set the source of the SYNC signal."""

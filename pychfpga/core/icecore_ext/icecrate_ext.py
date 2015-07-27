@@ -20,7 +20,7 @@ class IceCrateExt(IceCrate):
     __ipmi_part_number__ = ['MGK7BP', 'MGK7BP16']  # Must match part number in IPMI data
 
 class IceCrateExtHandler(IceCrateHandler):
-    """ IceCrate handler that provides access to the backplane through the IceBoard's 'bp' object:
+    """ IceCrate handler that provides access to the backplane through an IceBoard.
     """
 
     #------------------------------------
@@ -188,6 +188,86 @@ class IceCrateExtHandler(IceCrateHandler):
 
     _BP_TX_TO_RX_MAP = {tx:rx for (rx, tx) in _BP_RX_TO_TX_MAP.items()}
 
+    _BP_RX_NET_LENGTH = {
+        (1, 0): 0,
+        (1, 1): 13131.376, (1, 2): 11758.891, (1, 3): 10895.916, (1, 4): 10765.111, (1, 5): 8343.244,
+        (1, 6): 5610.788, (1, 7): 10499.916, (1, 8): 2251.116, (1, 9): 14138.428, (1, 10): 15522.835,
+        (1, 11): 12234.071, (1, 12): 13136.188, (1, 13): 13206.662, (1, 14): 7691.596, (1, 15): 7987.345,
+
+        (2, 0): 0,
+        (2, 1): 11124.978, (2, 2): 15584.631, (2, 3): 14869.477, (2, 4): 9722.815, (2, 5): 7578.678,
+        (2, 6): 14074.08, (2, 7): 9082.473, (2, 8): 2090.903, (2, 9): 12981.864, (2, 10): 11834.697,
+        (2, 11): 10400.101, (2, 12): 9642.671, (2, 13): 2437.647, (2, 14): 6931.064, (2, 15): 6688.326,
+
+        (3, 0): 0,
+        (3, 1): 8394.233, (3, 2): 15200.568, (3, 3): 14434.448, (3, 4): 10605.683, (3, 5): 6948.454,
+        (3, 6): 2040.877, (3, 7): 7407.712, (3, 8): 2090.903, (3, 9): 8421.202, (3, 10): 5549.809,
+        (3, 11): 13843.897, (3, 12): 14180.565, (3, 13): 9448.714, (3, 14): 11780.901, (3, 15): 5891.432,
+
+        (4, 0): 0,
+        (4, 1): 12438.695, (4, 2): 13217.23, (4, 3): 9463.142, (4, 4): 6703.4, (4, 5): 15219.163,
+        (4, 6): 2102.121, (4, 7): 6893.787, (4, 8): 2151.083, (4, 9): 5353.125, (4, 10): 5981.645,
+        (4, 11): 12486.929, (4, 12): 7058.997, (4, 13): 8534.292, (4, 14): 12718.623, (4, 15): 4774.782,
+
+        (5, 0): 0,
+        (5, 1): 5899.434, (5, 2): 15246.84, (5, 3): 11682.228, (5, 4): 14157.666, (5, 5): 12484.28,
+        (5, 6): 6033.559, (5, 7): 6620.503, (5, 8): 2152.62, (5, 9): 5548.213, (5, 10): 6522.7,
+        (5, 11): 7989.084, (5, 12): 8766.109, (5, 13): 2460.308, (5, 14): 10647.818, (5, 15): 3161.519,
+
+        (6, 0): 0,
+        (6, 1): 15384.024, (6, 2): 14202.352, (6, 3): 5213.583, (6, 4): 12843.446, (6, 5): 11451.217,
+        (6, 6): 6185.288, (6, 7): 5911.775, (6, 8): 2212.097, (6, 9): 6298.076, (6, 10): 7098.358,
+        (6, 11): 6868.901, (6, 12): 9788.995, (6, 13): 2528.858, (6, 14): 5852.603, (6, 15): 8774.817,
+
+        (7, 0): 0,
+        (7, 1): 13934.62, (7, 2): 12807.943, (7, 3): 10900.704, (7, 4): 11674.562, (7, 5): 4955.973,
+        (7, 6): 6740.449, (7, 7): 1930.764, (7, 8): 2219.849, (7, 9): 6978.013, (7, 10): 7885.079,
+        (7, 11): 4162.8, (7, 12): 9958.301, (7, 13): 7370.388, (7, 14): 6281.698, (7, 15): 8488.357,
+
+        (8, 0): 0,
+        (8, 1): 4950.405, (8, 2): 9537.772, (8, 3): 7623.096, (8, 4): 8478.028, (8, 5): 5825.926,
+        (8, 6): 7359.715, (8, 7): 2110.033, (8, 8): 2159.28, (8, 9): 7876.757, (8, 10): 8692.76,
+        (8, 11): 4116.646, (8, 12): 6790.19, (8, 13): 5734.886, (8, 14): 6872.901, (8, 15): 4613.62,
+
+        (9, 0): 0,
+        (9, 1): 6175.016, (9, 2): 7927.647, (9, 3): 9333.019, (9, 4): 10368.077, (9, 5): 6591.689,
+        (9, 6): 8280.523, (9, 7): 1556.778, (9, 8): 2200.965, (9, 9): 8620.932, (9, 10): 9482.499,
+        (9, 11): 5736.888, (9, 12): 6621.687, (9, 13): 4715.076, (9, 14): 7449.623, (9, 15): 3705.239,
+
+        (10, 0): 0,
+        (10, 1): 5967.156, (10, 2): 8770.085, (10, 3): 4457.519, (10, 4): 2949.672, (10, 5): 7437.995,
+        (10, 6): 8950.525, (10, 7): 2170.895, (10, 8): 2208.202, (10, 9): 9889.087, (10, 10): 10295.806,
+        (10, 11): 6936.655, (10, 12): 6183.788, (10, 13): 4833.609, (10, 14): 3428.478, (10, 15): 2494.009,
+
+        (11, 0): 0,
+        (11, 1): 8206.255, (11, 2): 5005.379, (11, 3): 4421.502, (11, 4): 4081.863, (11, 5): 6051.148,
+        (11, 6): 9739.858, (11, 7): 2107.874, (11, 8): 2016.311, (11, 9): 10441.592, (11, 10): 11385.772,
+        (11, 11): 9264.139, (11, 12): 5031.549, (11, 13): 4275.474, (11, 14): 3590.566, (11, 15): 2736.974,
+
+        (12, 0): 0,
+        (12, 1): 6629.96, (12, 2): 5711.805, (12, 3): 4946.236, (12, 4): 4191.797, (12, 5): 8846.665,
+        (12, 6): 10472.176, (12, 7): 1691.623, (12, 8): 2229.949, (12, 9): 11276.357, (12, 10): 12104.001,
+        (12, 11): 3314.999, (12, 12): 4784.985, (12, 13): 2519.396, (12, 14): 9448.016, (12, 15): 7957.923,
+
+        (13, 0): 0,
+        (13, 1): 8441.844, (13, 2): 7191.1, (13, 3): 6169.519, (13, 4): 5414.659, (13, 5): 4658.298,
+        (13, 6): 10635.975, (13, 7): 1515.203, (13, 8): 2183.776, (13, 9): 12529.891, (13, 10): 12858.422,
+        (13, 11): 3413.873, (13, 12): 10182.247, (13, 13): 2989.034, (13, 14): 9964.449, (13, 15): 9927.224,
+
+        (14, 0): 0,
+        (14, 1): 8920.113, (14, 2): 7774.449, (14, 3): 6828.819, (14, 4): 5970.981, (14, 5): 5407.159,
+        (14, 6): 4108.82, (14, 7): 1613.146, (14, 8): 2305.122, (14, 9): 12327.087, (14, 10): 13690.052,
+        (14, 11): 11200.154, (14, 12): 10414.064, (14, 13): 12065.649, (14, 14): 11920.867, (14, 15): 2755.219,
+
+        (15, 0): 0,
+        (15, 1): 8600.002, (15, 2): 7846.819, (15, 3): 7121.911, (15, 4): 6467.004, (15, 5): 5449.227,
+        (15, 6): 4857.292, (15, 7): 1696.647, (15, 8): 2223.447, (15, 9): 13609, (15, 10): 14610.615,
+        (15, 11): 11278.824, (15, 12): 9966.145, (15, 13): 12496.163, (15, 14): 13626.36, (15, 15): 14162.375,
+
+        (16, 0): 0,
+        (16, 1): 9580.145, (16, 2): 8719.981, (16, 3): 7798.304, (16, 4): 6780.144, (16, 5): 6010.335,
+        (16, 6): 5144.09, (16, 7): 1636.564, (16, 8): 4373.744, (16, 9): 11123.971, (16, 10): 15700.299,
+        (16, 11): 12557.924, (16, 12): 11689.21, (16, 13): 13797.941, (16, 14): 14954.197, (16, 15): 16081.059 }
 
     @classmethod
     def get_matching_tx(cls, rx_slot_lane_tuple):
@@ -196,6 +276,10 @@ class IceCrateExtHandler(IceCrateHandler):
     @classmethod
     def get_matching_rx(cls, tx_slot_lane_tuple):
         return cls._BP_TX_TO_RX_MAP[tx_slot_lane_tuple]
+
+    @classmethod
+    def get_rx_net_length(cls, rx_slot_lane_tuple):
+        return cls._BP_RX_NET_LENGTH[rx_slot_lane_tuple]
 
     class dynamic_i2c(object):
         def __init__(self, icecrate):
@@ -909,6 +993,251 @@ class IceCrateExtHandler(IceCrateHandler):
 
 
 
+
+@session.register_yaml_object()
+class IceCrate_MGK7BP1(IceCrate):
+    handler_name = 'IceCrate_MGK7BP1_Handler'
+    __mapper_args__ = {'polymorphic_identity': 'IceCrate_MGK7BP1'}
+    __ipmi_part_number__ = ['MGK7BP1']  # Must match part number in IPMI data
+
+class IceCrate_MGK7BP1_Handler(IceCrateHandler):
+    """
+    Provides access to the 1-slot test backplane.
+    """
+
+    #------------------------------------
+    # Define hardware-specific constants
+    #------------------------------------
+    NUMBER_OF_SLOTS = 1 #
+    BACKPLANE_EEPROM_DATA_ADDRESS = 0x54 # covers 0x54 - 0x57 ( 4 pages of 256 bytes, 1024 Bytes total)
+    BACKPLANE_EEPROM_SERIAL_ADDRESS = 0x5C # 16 byte serial number starting at memory address 0x80
+    BACKPLANE_EEPROM_ADDRESS_WIDTH = 10 # 2 bits are in the device address, the remaining are in the address byte following the command byte
+
+
+    _GPIO_CTRL_ADDR = 0b0101111
+
+    # The following dictionnary describes the connectivity of the 10 Gbps mesh.
+    # It indicates which transmitter (slot and lane number) is feeding a specified receiver.
+    # The dictionnary is indexed by receiver number.
+    _BP_RX_TO_TX_MAP = { (i,0):(i,0) for i in range(16)}
+    _BP_TX_TO_RX_MAP = {tx:rx for (rx,tx) in _BP_RX_TO_TX_MAP.items()}
+
+
+    @classmethod
+    def get_backplane_info(cls, iceboard):
+        logger = logging.getLogger(__name__)
+        logger.debug("Attempting to read backplane eeprom to determine board presence")
+        eeprom = FMC_EEPROM(iceboard.i2c, 'BP', address=cls.BACKPLANE_EEPROM_DATA_ADDRESS, address_width=cls.BACKPLANE_EEPROM_ADDRESS_WIDTH)
+        data = eeprom.read(0, length=1, noerror=True, verbose=1)
+        logger.debug("Backplane EEPROM returned the value: %i", data[0])
+        return (data[0], None)
+
+    @classmethod
+    def get_matching_tx(cls, rx_slot_lane_tuple):
+        return cls._BP_RX_TO_TX_MAP[rx_slot_lane_tuple]
+
+    @classmethod
+    def get_matching_rx(cls, tx_slot_lane_tuple):
+        return cls._BP_TX_TO_RX_MAP[tx_slot_lane_tuple]
+
+    def __init__(self, iceboard):
+        """
+        Creates all the I2C objects needed to interface the hardware.
+        For now, we can only do this when the FPGA is configured
+        because access is done through the FPGA.
+
+        For FPGA-based I2C:
+            - fpga_core is not Null
+            - fpga_core provides the following methods
+                - i2c_set_port(...) # Port number 0 (connected to the FPGA I2C switch) is used for all accesses
+                - i2c_write_read(...) # FPGA I2C engine
+        """
+
+        #import iceboard  as ib
+        #if not isinstance(iceboard, ib.IceBoard):
+        #    raise IceBoxException('Please provide a single iceboard object')
+
+        try:
+            iter(iceboard)
+        except TypeError:
+            pass
+        else:
+            raise IceBoxException('Please provide a single iceboard object')
+#
+#        if type(iceboard)!=ib.IceBoard:
+#            raise IceBoxException('Please provide a single iceboard object')
+#
+
+
+        self._I2C_BACKPLANE_BUS_NAME = 'BP'
+        self._logger = logging.getLogger(__name__)
+        self._logger.debug('Initializing Iceboard hardware')
+        self._i2c = iceboard.i2c
+        self._iceboard_hw = iceboard.hw
+        self._iceboard = iceboard
+
+        self._logger.info(' Instantiating Backplane I2C resource managers')
+        self._eeprom = FMC_EEPROM(iceboard.i2c, 'BP', address=self.BACKPLANE_EEPROM_DATA_ADDRESS, address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH)
+        self._serial = FMC_EEPROM(iceboard.i2c, 'BP', address=self.BACKPLANE_EEPROM_SERIAL_ADDRESS, address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH)
+
+        self._logger.info(' Instantiating Backplane I2C I/O expanders')
+        self._gpio_ctrl = pca9575.pca9575(self._i2c, self._GPIO_CTRL_ADDR, 'BP')
+
+
+        self._GPIO_CTRL_MAP = {
+             # Slot num : (expander object, Register, bit number)
+             'SLOTADDR0': (self._gpio_ctrl, 0,0),
+             'SLOTADDR1': (self._gpio_ctrl, 0,1),
+             'SLOTADDR2': (self._gpio_ctrl, 0,2),
+             'SLOTADDR3': (self._gpio_ctrl, 0,3),
+
+             'SYNC':  (self._gpio_ctrl, 0,6),
+             'TIME':  (self._gpio_ctrl, 1,3),
+             'TRIG':  (self._gpio_ctrl, 1,4),
+
+             'PLLSYNC': (self._gpio_ctrl, 0,7),
+
+             'BPIO3': (self._gpio_ctrl, 1,0),
+             'BPIO4': (self._gpio_ctrl, 1,1),
+             'BPIO5': (self._gpio_ctrl, 1,2)
+        }
+
+        self.LED_MAP = {
+             # LEDName : (expander object, Register, bit number)
+             'LED1': (self._gpio_ctrl, 1, 5),
+             'LED2': (self._gpio_ctrl, 1, 6),
+             'LED3': (self._gpio_ctrl, 1, 7)
+        }
+
+        self._RESETS_MAP = {
+             # ResetType : (expander object, Register, bit)
+             'ARM':       (self._gpio_ctrl, 0, 4),
+             'FPGA':      (self._gpio_ctrl, 0, 5)
+        }
+
+    def open(self):
+        """
+        """
+        pass
+
+    def close(self):
+        self._logger.info('Closing Icebox hardware')
+
+    def init(self):
+        """Initializes the backplane to a known state"""
+        self._init_gpio_ctrl() # The power I2c bus needs to be bridged to the monitor I2C bus for this to work
+        self._init_eeprom()
+
+
+
+    def _init_gpio_ctrl(self):
+        """
+        initializes reset control
+        History:
+        141075 AJG: created
+        """
+        gpio_ctrl=self._gpio_ctrl
+
+        gpio_ctrl.init(cfg0_def=0xFF, cfg1_def=0xFF)
+        #By default setting all pins to inputs, with default output level logic 0
+
+    def _init_eeprom(self):
+        """initializes EEPROM"""
+        pass
+
+    def get_number_of_slots(self):
+        return self.NUMBER_OF_SLOTS
+
+    def read_eeprom(self, addr, length=1):
+        return self._eeprom.read(addr, length = length)
+
+    def get_eeprom_serial_number(self):
+        """ return the 128-bit hardware-coded EEPROM serial number as a hex string. """
+        return ''.join(['%02X' % v for v in self._serial.read(0x80, length=16)])
+
+    def set_led(self, led_name, state):
+        """
+        Set the LED(s) specified in 'led_name' to the the 'state'.
+        'led_name' can be a list of LED names found in
+        LED_MAP.  'state' can be a single boolean value, or
+        an array with the same length as 'led_name'
+        """
+        if isinstance(led_name, (str, int)):
+            led_name = [led_name]
+
+        for pos, name in enumerate(led_name):
+            if isinstance(name, int):
+                name='LED%i' % name
+            led_name[pos]=name
+
+        if isinstance(state, (bool, int)):
+            state = [state] * len(led_name)
+
+        for (led, led_state) in zip(led_name,state):
+            if led not in self.LED_MAP:
+                raise IceBoxException('Invalid LED name')
+            else:
+                (led_control_object, led_control_register, led_control_bitnumber) = self.LED_MAP[led]
+                mask = 1<<led_control_bitnumber
+                led_control_object.write('CFG%i' % led_control_register, 0, mask=mask) #Setting LED pin to output
+                led_control_object.write('OUT%i' % led_control_register, mask * bool(not(led_state)), mask=mask) #Turning LED on and off
+
+    def get_led(self, led_name):
+        """
+        Returns the status of specified LED(s) in a dictionary
+        led_status where each key is a led_name and the respective value
+        is the led status.
+        """
+        led_status = {}
+        if isinstance(led_name, (str,int)):
+            led_name = [led_name]
+
+        for pos, name in enumerate(led_name):
+            if isinstance(name, int):
+                name='LED%i' % name
+            led_name[pos]=name
+
+        for led in led_name:
+            if led not in self.LED_MAP:
+                raise IceBoxException('Invalid LED name')
+            else:
+                (led_control_object, led_control_register, led_control_bitnumber) = self.LED_MAP[led]
+                led_control_register='IN%i' % led_control_register #Converting the resister in the map into the correct string format
+                #Note that we are cheating here, we are flipping the bits on the IO Expander from input mode to output mode, inputs are default floating
+                #Turning on the LED requires a output of 0 which is the default state in output mode
+                regout=led_control_object.read(led_control_register)
+                led_status[led]= not bool( (regout & (1<<led_control_bitnumber))>>led_control_bitnumber)
+        return led_status
+
+    def set_slot_addr(self, slotnum):
+            """
+            Sets the backplane slot number to the number specified slot number from 1 to 16
+            """
+
+            if slotnum not in range(1,16 + 1):
+                    raise IceBoxException('Invalid slot number')
+            slotnum-=1  #Slot 1 is binary 0000, slot 16 is binary 1111
+
+            for addr in range(0,4):
+                (ctrlobj, reg, bitnum) = self._GPIO_CTRL_MAP['SLOTADDR%i' % addr]
+                mask = 1<<bitnum
+                ctrlobj.write('CFG%i' % reg, 0, mask=mask) #Setting addr pin to output
+
+                bitlevel= (slotnum >> addr) & 1
+                ctrlobj.write('OUT%i' % reg, mask * bitlevel, mask=mask) #Turning pin off
+
+    def get_serial_number(self):
+        """
+        Returns the board's serial number.
+        """
+        return self.get_eeprom_serial_number(); # tentative code
+
+    def get_info(self):
+        """Loads the info data on the motherboard"""
+        pass
+
+    def status(self):
+        """Displays the status of the motherboard"""
 
 
 

@@ -184,8 +184,8 @@ class XReport(Plugin):
         self.original_stdout = sys.stdout
         self.logger = logging.getLogger('')
 
-        if self.instance:
-            raise RuntimeError('An instance of %s plugin already exists' % type(self).__name__)
+        # if self.instance:
+        #     raise RuntimeError('An instance of %s plugin already exists' % type(self).__name__)
         type(self).instance = self
 
     def options(self, parser, env):
