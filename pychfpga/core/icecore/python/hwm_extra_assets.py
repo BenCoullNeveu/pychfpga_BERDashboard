@@ -362,8 +362,9 @@ class IceBoardPlus(IceBoard):
         map accordingly if `update=True`. An IceCrate object is created if it
         does not already exist.
 
-        This method does not use mDNS. It relies solely in information
-        directly provided by the backplane.
+        This method does *not* use mDNS. It relies of the IPMI data stored in
+        the backplane's EEPROM, which is obtaines through the Iceboard's ARM
+        processor.
 
         You do NOT need to use this method if the backplane is already
         explicitely specified for this IceBoard in the YAML hardware maps.
@@ -385,7 +386,7 @@ class IceBoardPlus(IceBoard):
 
             for mapper in class_mapper(IceCrate).self_and_descendants:
                 supported_part_numbers = mapper.class_.__ipmi_part_number__
-                if not isinstance(supported_part_numbers, (list,tuple)):
+                if not isinstance(supported_part_numbers, (list, tuple)):
                     supported_part_numbers = [supported_part_numbers]
                 if part_number in supported_part_numbers:
                     icecrate_class = mapper.class_
@@ -737,14 +738,40 @@ class IceBoardPlusHandler(IceBoardHandler):
             year + 2000, month, day, hour, minutes, seconds)
         return timestamp_string
 
+    def check_tuber_version(self):
+        """ Check if the ARM processor provides the methods required to run this code. """
+
+        required_tuber_methods = [
+            'is_fpga_programmed']
+
+        (meta, props, tuber_methods) = self._tuber_get_meta()  # get the meta info
+        if not tuber_methods:
+            raise RuntimeError("%r: The ARM does not publish any methods under the object name '%s'. Was the right Tuber object name used for this ARM firmware?" % (self, self.tuber_objname))
+
+        for method in required_tuber_methods:
+            if method not in tuber_methods:
+                raise RuntimeError("%r: The current version of the ARM firmware does not provide the method '%s' that is needed for this application" % (self, method))
+
+        return True
 
     def print_tuber_methods(self):
-        ''' Print all the methods provided by tuber, with a shoirt
-        description
-        '''
-        for method_name, method_properties in \
-                sorted(self._tuber_meta_methods.items()):
+        """ Print all the methods and properties provided by the Iceboard's
+        ARM processor through the Tuber protocol.
+        """
+        (meta, props, methods) = self._tuber_get_meta()  # get the meta info
+        print "Methods for tuber object '%s':" % self.tuber_objname
+        print '-----------------------------------------'
+        for method_name, method_properties in sorted(methods.items()):
             print '%-30s: %s' % (method_name, method_properties.summary)
+        print
+        print "Properties for tuber object '%s':" % self.tuber_objname
+        print '-----------------------------------------'
+        for prop_name, prop_properties in sorted(props.items()):
+            try:
+                values = ', '.join('.%s' % p for p in prop_properties)
+            except TypeError:
+                values = '= %s' % prop_properties
+            print '%-30s: %s' % (prop_name, values)
 
 # @session.register_yaml_object
 # @tuber.TuberCategory("Mezzanine", lambda m: m.iceboard,
