@@ -1031,8 +1031,8 @@ class IceCrate_MGK7BP1_Handler(IceCrateHandler):
     # The following dictionnary describes the connectivity of the 10 Gbps mesh.
     # It indicates which transmitter (slot and lane number) is feeding a specified receiver.
     # The dictionnary is indexed by receiver number.
-    _BP_RX_TO_TX_MAP = { (i,0):(i,0) for i in range(16)}
-    _BP_TX_TO_RX_MAP = {tx:rx for (rx,tx) in _BP_RX_TO_TX_MAP.items()}
+    _BP_RX_TO_TX_MAP = {(slot, lane): (slot, lane) for slot in range(17) for lane in range(16)}
+    _BP_TX_TO_RX_MAP = {tx: rx for (rx,tx) in _BP_RX_TO_TX_MAP.items()}
 
 
 
