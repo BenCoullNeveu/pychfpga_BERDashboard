@@ -24,7 +24,11 @@ def get_boards(boards=None, ch_acq_path = '../../../../../../ch_acq/'):
             hwm.add(IceBoardPlus('iceboard{:0>4d}.local'.format(int(sn))))
     hwm.flush()
 
-    return [ib for ib in hwm.query(IceBoardPlus)]
+    found_boards = []
+    for ib in hwm.query(IceBoardPlus):
+        if ib.ping():
+            found_boards.append(ib)
+    return found_boards
 
 def programFpga(board_sn, ch_acq_path = '../../../../../../ch_acq/',  bitfile_path = "../../../../../../chFPGA/xili"
             "nx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit", force = False):
@@ -85,7 +89,7 @@ def discover_fpgas(host_ip):
     from pychfpga.icecore.fpga_core import FpgaCoreFirmware
     FpgaCoreFirmware.interface_ip_addr = host_ip
     return FpgaCoreFirmware.discover_fpgas()
-    
+
 def top_test(board_sn, ch_acq_path='../../../../../../ch_acq/', host_ip=None, force=False):
     '''
     Creates fpga_controller and fpga_receiver instances and returns them as [c,r].
@@ -103,12 +107,12 @@ def top_test(board_sn, ch_acq_path='../../../../../../ch_acq/', host_ip=None, fo
 
     ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 = (
     ([16]*8,     [3]*8), #CH0
-    ([7]*8,                       [3]*8), #CH1 
-    ([22]*8,    [3]*8), #CH2 
+    ([7]*8,                       [3]*8), #CH1
+    ([22]*8,    [3]*8), #CH2
     ([19]*8,                       [3]*8), #CH3
     ([15]*8,                        [3]*8), #CH4
-    ([14, 13, 14, 14, 13, 14, 15, 14],    [3]*8), #CH5 
-    ([18]*8,     [3]*8), #CH6 
+    ([14, 13, 14, 14, 13, 14, 15, 14],    [3]*8), #CH5
+    ([18]*8,     [3]*8), #CH6
     ([17]*8,                       [4]*8), #CH7
 
     ([15, 17, 15, 18, 17, 14, 17, 15],   [3]*8), #CH8
@@ -120,7 +124,7 @@ def top_test(board_sn, ch_acq_path='../../../../../../ch_acq/', host_ip=None, fo
     ([18]*8,                       [3]*8), #CH14
     ([16]*8,                       [3]*8)  #CH15
     )
-    
+
     # Parameters for FPGA open
     init = 1  # 'Initialization level: -1: Just create sockets, 0: connect and read only. 1: initialize hardware'
     sampling_frequency = 800  # 'Sampling frequency of the ADC in MHz'
@@ -155,7 +159,7 @@ def top_test(board_sn, ch_acq_path='../../../../../../ch_acq/', host_ip=None, fo
         data_width=data_width,
         group_frames=group_frames,
         enable_gpu_link=enable_gpu_link)
-    
+
     # Check if at least one FMC board present
     adc_present = c.is_mezzanine_present(1) or c.is_mezzanine_present(2)
     if not adc_present:
@@ -187,10 +191,10 @@ def rampTest(board_sn, directory, ch_acq_path='../../../../../../ch_acq/', host_
     import sys
     sys.path.append(ch_acq_path)
     from pychfpga.common.tests.ramp_test import test_adc_ramp_histogram
-    
+
     print "\nRunning top_test:"
     [c,r] = top_test(board_sn, ch_acq_path=ch_acq_path, host_ip=host_ip)
-    
+
     # Timing for ADCs. Calculate proper offsets for this board.
     ADC_DELAY_TABLE, stuck_bits, bitposgood = c.compute_adc_delay_offsets(channels=[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15])
     print "Computed delay table:"
@@ -216,7 +220,7 @@ def rampTest(board_sn, directory, ch_acq_path='../../../../../../ch_acq/', host_
     #([18]*8,                       [3]*8), #CH14
     #([16]*8,                       [3]*8)  #CH15
     #)
-    
+
     # Set ADC delays
     c.set_adc_delays(ADC_DELAY_TABLE)
 
@@ -266,4 +270,3 @@ def write_ipmi(ib, pn, sn, vn):
     # Flash to board
     ib._motherboard_spi_flash_write_base64(b64_string)
     ib._motherboard_eeprom_write_base64(b64_string)
-
