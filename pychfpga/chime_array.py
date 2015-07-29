@@ -416,8 +416,8 @@ class ChimeArray(object):
             ib_without_serial.discover_serial()
 
         ib_without_crate = self.hwm.query(IceBoardPlus).filter(or_(IceBoardPlus.crate==None, IceBoardPlus.slot==None))
-        # if ib_without_crate.count():
-        #     ib_without_crate.discover_crate()
+        if ib_without_crate.count():
+            ib_without_crate.discover_crate()
 
         # If requested, discover additional boards and crates on the network using mDNS and add those to the hardware map
         iceboards_to_discover = [ib for ib in args.iceboards if '.' not in str(ib)]
@@ -429,7 +429,7 @@ class ChimeArray(object):
 
         if icecrates_to_discover or iceboards_to_discover:
             print 'Discovering IceBoards %s and IceCrates %s...' % (iceboards_to_discover, icecrates_to_discover)
-            self.flush()
+            self.print_flush()
             mdns_discover(self.hwm,
                           icecrates=icecrates_to_discover,
                           iceboards=iceboards_to_discover,
@@ -484,7 +484,7 @@ class ChimeArray(object):
         for i in self.ib:
             mezz = ['%s SN%s' % (m.__ipmi_part_number__, m.serial) if m else 'None' for m in [i.mezzanine.get(1,None), i.mezzanine.get(2,None)]]
             print '   Crate SN%s, slot %2s: Iceboard SN%s at %s (ping =%s), Mezz1=%s, Mezz2=%s' % (i.crate.serial if i.crate else None, i.slot, i.serial, i.hostname, i.ping(), mezz[0], mezz[1])
-        self.flush()
+        self.print_flush()
 
         print
         if self.ib.count() and args.open > -1:
@@ -497,7 +497,7 @@ class ChimeArray(object):
                          group_frames=args.frames_per_packet,
                          enable_gpu_link=args.enable_gpu_link)
             self.set_sync_method(method='distributed_time', source='bp_trig')
-        self.flush()
+        self.print_flush()
 
 
         # import all command line argument values into this object
@@ -513,7 +513,7 @@ class ChimeArray(object):
         except ValueError:
             return x
 
-    def flush(self):
+    def print_flush(self):
         sys.stdout.flush()
 
 
@@ -531,7 +531,7 @@ class ChimeArray(object):
 
         def stop_when_all_resolved(one_future):
             print [ff.done() for ff in futures]
-            self.flush()
+            self.print_flush()
             return
             # if all(f.done() for f in futures):
             #     io_loop.stop()
@@ -721,7 +721,7 @@ class ChimeArray(object):
         elif self.sync_method == 'distributed_time':
             dt = self.ib[0].get_irigb_time()
             print 'Triggering SYNC in %i seconds at %s' % (delay,  dt.isoformat())
-            self.flush()
+            self.print_flush()
             self.ib.set_irigb_trigger_time(dt, delay=delay)
             t0 = time.time()
             while any(self.ib.is_irigb_before_trigger_time()):
@@ -937,7 +937,7 @@ class ChimeArray(object):
                     print 'None                 ',
             print
 
-    def detect_backplane_links(self, tx_power=7):
+    def detect_backplane_links(self, tx_power=7, print_=True):
         """ Setup all boards on the array to send test pattern over the
         backplane link and detect  from which slot/lane every board is
         receiving data.
@@ -1034,24 +1034,27 @@ class ChimeArray(object):
                         link_matrix[dest_slot][dest_lane] += '/(S%sL%s)' % expected_source
 
                 link_list.append((source, dest))
+        if print_:
+            # Print a slot map
+            print 'Slot-> ' + ' '.join(['%-15i' % (slot+1) for slot in range(16)])
+            print 'S/N -> ' + ' '.join(['%-15s' % (sn) for sn in serial_number])
+            print 'Lane   ' + ' '.join(['%-15s' % '----------' for x in range(16)])
 
-        # Print a slot map
-        print 'Slot-> ' + ' '.join(['%-15i' % (slot+1) for slot in range(16)])
-        print 'S/N -> ' + ' '.join(['%-15s' % (sn) for sn in serial_number])
-        print 'Lane   ' + ' '.join(['%-15s' % '----------' for x in range(16)])
-
-        for dest_lane in range(1,16):
-            print '%6i ' % (dest_lane),
-            for dest_slot in range(1,17):
-                print '%-15s' % link_matrix[dest_slot][dest_lane],
-            print
+            for dest_lane in range(1,16):
+                print '%6i ' % (dest_lane),
+                for dest_slot in range(1,17):
+                    print '%-15s' % link_matrix[dest_slot][dest_lane],
+                print
 
         return link_list
 
-    def get_ber(self, link_list, period=0.1, tx_power = None):
-        array = self.ib
+    def get_ber(self, link_list=None, period=0.1, tx_power = None, print_=True):
+
+        if link_list is None:
+            link_list = self.detect_backplane_links(tx_power=tx_power or 7, print_=False)
         link_list.sort(key=lambda ((ss,sl),(ds,dl)): ss*16+ds)
-        ib_map = {ib.slot:ib for ib in array}
+
+        ib_map = {ib.slot:ib for ib in self.ib}
         ber_table={}
         for ((ss,sl),(ds,dl)) in link_list:
             if ss not in ib_map or ds not in ib_map:
@@ -1064,11 +1067,11 @@ class ChimeArray(object):
             dest_gtx = dest_ib.BP_SHUFFLE.gtx[dl-1]
 
             if tx_power is not None:
-                source_gtx.TXDIFFCTRL=tx_power
+                source_gtx.TXDIFFCTRL = tx_power
 
-            source_gtx.TXPRBSSEL=4
-
-            print 'Measuring BER for Slots %2i->%2i (SN%s, GTX[%2i])=> (SN%s, GTX[%2i])' % (ss, ds, source_ib.serial, sl-1,  dest_ib.serial, dl-1),
+            source_gtx.TXPRBSSEL = 4
+            if print_:
+                print 'Measuring BER for Slots %2i->%2i (SN%s, GTX[%2i])=> (SN%s, GTX[%2i])' % (ss, ds, source_ib.serial, sl-1,  dest_ib.serial, dl-1),
 
             # First, make sure we can get errors by setting the wrong RX PRBS Sequence
             dest_gtx.RXPRBSCNTRESET=1
@@ -1095,24 +1098,25 @@ class ChimeArray(object):
             #    #    print 'locked',
             #    #    break
             #dest_gtx.RXPRBSCNTRESET=1
-            dest_gtx.RXDFELPMRESET=1
+            dest_gtx.RXDFELPMRESET = 1
             time.sleep(0.001)
-            dest_gtx.RXDFELPMRESET=0
+            dest_gtx.RXDFELPMRESET = 0
             time.sleep(0.001)
-            dest_gtx.RXPRBSCNTRESET=1
-            dest_gtx.RXPRBSSEL=4
-            dest_gtx.RXDFELPMRESET=1
+            dest_gtx.RXPRBSCNTRESET = 1
+            dest_gtx.RXPRBSSEL = 4
+            dest_gtx.RXDFELPMRESET = 1
             time.sleep(0.001)
-            dest_gtx.RXDFELPMRESET=0
+            dest_gtx.RXDFELPMRESET = 0
             time.sleep(0.001)
-            dest_gtx.RXPRBSCNTRESET=0
+            dest_gtx.RXPRBSCNTRESET = 0
             time.sleep(period)
-            cnt=dest_gtx.ERR_CTR
-            err=(float(cnt)*16)/(period*10e9)
-            err_max=(float(cnt)*16+1)/(period*10e9)
+            cnt = dest_gtx.ERR_CTR
+            err = (float(cnt) * 16) / (period * 10e9)
+            err_max = (float(cnt) * 16 + 1) / (period * 10e9)
 
             print 'BER = %1.1e (%i errors, BER<%1.1e)' % (err, cnt, err_max)
-            ber_table[(ss,ds)]=err
+            self.print_flush()
+            ber_table[(ss,ds)] = err
         return ber_table
 
 
@@ -1153,6 +1157,7 @@ class ChimeArray(object):
             eye_matrix[link] = e
         return eye_matrix
 
+    @staticmethod
     def plot_eye_matrix(eye_matrix):
         plt.figure(1)
         plt.clf()
