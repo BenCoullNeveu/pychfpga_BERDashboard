@@ -21,6 +21,7 @@ n_freq    = integer(min = 1)
   bitfile_name = string
   force = integer(min=0)
   destination_slots = int_list
+  calculate_gain_slots = int_list
   sync_board = string
   ni_enable = integer(min = 0 )
   ni_board = string
