@@ -257,6 +257,7 @@ class ShuffleCrossbar(Module_base):
 
     CB2_LANE_MONITOR_TABLE = {
         'INPUT_DETECT': 0,
+        'FIFO_TFIRST': 1,
         'ALIGN_DETECT': 2,
         'OUTPUT_DETECT': 3,
         'REMAP_DETECT': 4,
@@ -321,12 +322,18 @@ class ShuffleCrossbar(Module_base):
             print '%25s: %s' % (name, ' '.join('%6s' % ('-', 'ERR!')[bool(value[lane])] for lane in lane_map))
         input_frame_ctr = []
         align_frame_ctr = []
+        delay = []
+        fifo_tfirst = self.get_lane_monitor('FIFO_TFIRST')
+
         for lane in lane_range:
             self.LANE_MONITOR_SEL = lane
             input_frame_ctr.append(self.INPUT_FRAME_CTR)
             align_frame_ctr.append(self.ALIGN_FRAME_CTR)
+            delay.append(self.DELAY_CAPTURE if lane < 8 else '-')
+        print '%25s: %s' % ('INPUT DELAY', ' '.join('%6s' % delay[lane] for lane in lane_map))
         print '%25s: %s' % ('INPUT_FRAME_CTR', ' '.join('%6i' % input_frame_ctr[lane] for lane in lane_map))
         print '%25s: %s' % ('ALIGN_FRAME_CTR', ' '.join('%6i' % align_frame_ctr[lane] for lane in lane_map))
+        print '%25s: %s' % ('FIFO_TFIRST', ' '.join('%6i' % fifo_tfirst[lane] for lane in lane_map))
         output_frame_ctr = []
         # for lane in range(self.NUMBER_OF_CROSSBAR_OUTPUTS):
         #     self.LANE_MONITOR_SEL = lane

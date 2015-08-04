@@ -12,6 +12,15 @@ from lib import ina230  # I2C Voltage and current monitor
 from lib import tmp421  # I2C temperature sensor
 from lib import pca9698  # I2C 40-bit IO Expander
 from lib import amc6821  # I2C fan Controller
+from lib import pca9575 # 1-slot backplane I2C IO Expander
+
+class MasterIceboardObject(object):
+    def __init__(self, crate_object, iceboard_object_name):
+        self._crate = crate_object
+        self._iceboard_object_name = iceboard_object_name
+    def __getattr__(self, name):
+        obj = getattr(self._crate.master_iceboard, self._iceboard_object_name)
+        return getattr(obj, name)
 
 @session.register_yaml_object()
 class IceCrateExt(IceCrate):
@@ -281,11 +290,11 @@ class IceCrateExtHandler(IceCrateHandler):
     def get_rx_net_length(cls, rx_slot_lane_tuple):
         return cls._BP_RX_NET_LENGTH[rx_slot_lane_tuple]
 
-    class dynamic_i2c(object):
-        def __init__(self, icecrate):
-            self._icecrate = icecrate
-        def __getattr__(self, name):
-            return getattr(self._icecrate.master_iceboard.i2c, name)
+    # @property
+    # def _i2c(self):
+    #     """ provide access to the backplane I2C device through whichever is the current master iceboard """
+    #     return self.master_iceboard.i2c
+
 
     # def __getattr__(self, name):
     #     """ Fetches attributes from the master iceboard's backplane handling object 'bp'
@@ -314,13 +323,16 @@ class IceCrateExtHandler(IceCrateHandler):
             - iceoard.slot_number: the backplane slot numbe ron which this
               iceboard is, so we don't reset ourself
 
+        NOTE: attempting to access an unknown attribute might cause an
+        infinite recursion loop as Tuber tries to access the master_iceboard
+        object that may not already exist.
         """
         super(IceCrateExtHandler, self).__init__(**kwargs)
 
         self._logger = logging.getLogger(__name__)
         self._logger.debug('%r: Instantiating backplane hardware' % self)
 
-        self._i2c = self.dynamic_i2c(self)
+        self._i2c = MasterIceboardObject(self, 'i2c')  # Indirect reference to the master Iceboard's I2C object
 
         self._logger.info(' Instantiating Backplane I2C resource managers')
         self._eeprom_data = EEPROM(self._i2c, bus_name='BP', address=self.BACKPLANE_EEPROM_DATA_ADDRESS, address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH, write_page_size = self.BACKPLANE_EEPROM_PAGE_SIZE)
@@ -955,7 +967,7 @@ class IceCrateExtHandler(IceCrateHandler):
                     reset_type = ([str(reset_type)] * len(slots))
 
             for (slot, isenabled, resettype) in zip(slots, state, reset_type):
-                if slot == self._iceboard.slot_number:
+                if slot == self.master_iceboard.slot_number:
                     print 'Warning, will not perform reset on the controlling slot %i' % slot
 
                 # if isenabled and slot != self._iceboard.slot_number  :
@@ -1009,28 +1021,29 @@ class IceCrate_MGK7BP1_Handler(IceCrateHandler):
     # Define hardware-specific constants
     #------------------------------------
     NUMBER_OF_SLOTS = 1 #
-    BACKPLANE_EEPROM_DATA_ADDRESS = 0x54 # covers 0x54 - 0x57 ( 4 pages of 256 bytes, 1024 Bytes total)
-    BACKPLANE_EEPROM_SERIAL_ADDRESS = 0x5C # 16 byte serial number starting at memory address 0x80
-    BACKPLANE_EEPROM_ADDRESS_WIDTH = 10 # 2 bits are in the device address, the remaining are in the address byte following the command byte
-
+    BACKPLANE_EEPROM_DATA_ADDRESS = 0x54  # covers 0x54 - 0x57 ( 4 pages of 256 bytes, 1024 Bytes total)
+    BACKPLANE_EEPROM_SERIAL_ADDRESS = 0x5C  # 16 byte serial number starting at memory address 0x80
+    BACKPLANE_EEPROM_ADDRESS_WIDTH = 10  # 2 bits are in the device address, the remaining are in the address byte following the command byte
+    BACKPLANE_EEPROM_PAGE_SIZE = 16 #
 
     _GPIO_CTRL_ADDR = 0b0101111
 
     # The following dictionnary describes the connectivity of the 10 Gbps mesh.
     # It indicates which transmitter (slot and lane number) is feeding a specified receiver.
     # The dictionnary is indexed by receiver number.
-    _BP_RX_TO_TX_MAP = { (i,0):(i,0) for i in range(16)}
-    _BP_TX_TO_RX_MAP = {tx:rx for (rx,tx) in _BP_RX_TO_TX_MAP.items()}
+    _BP_RX_TO_TX_MAP = {(slot, lane): (slot, lane) for slot in range(17) for lane in range(16)}
+    _BP_TX_TO_RX_MAP = {tx: rx for (rx,tx) in _BP_RX_TO_TX_MAP.items()}
 
 
-    @classmethod
-    def get_backplane_info(cls, iceboard):
-        logger = logging.getLogger(__name__)
-        logger.debug("Attempting to read backplane eeprom to determine board presence")
-        eeprom = FMC_EEPROM(iceboard.i2c, 'BP', address=cls.BACKPLANE_EEPROM_DATA_ADDRESS, address_width=cls.BACKPLANE_EEPROM_ADDRESS_WIDTH)
-        data = eeprom.read(0, length=1, noerror=True, verbose=1)
-        logger.debug("Backplane EEPROM returned the value: %i", data[0])
-        return (data[0], None)
+
+    # @classmethod
+    # def get_backplane_info(cls, iceboard):
+    #     logger = logging.getLogger(__name__)
+    #     logger.debug("Attempting to read backplane eeprom to determine board presence")
+    #     eeprom = FMC_EEPROM(iceboard.i2c, 'BP', address=cls.BACKPLANE_EEPROM_DATA_ADDRESS, address_width=cls.BACKPLANE_EEPROM_ADDRESS_WIDTH)
+    #     data = eeprom.read(0, length=1, noerror=True, verbose=1)
+    #     logger.debug("Backplane EEPROM returned the value: %i", data[0])
+    #     return (data[0], None)
 
     @classmethod
     def get_matching_tx(cls, rx_slot_lane_tuple):
@@ -1040,7 +1053,12 @@ class IceCrate_MGK7BP1_Handler(IceCrateHandler):
     def get_matching_rx(cls, tx_slot_lane_tuple):
         return cls._BP_TX_TO_RX_MAP[tx_slot_lane_tuple]
 
-    def __init__(self, iceboard):
+    # @property
+    # def _i2c(self):
+    #     """ provide access to the backplane I2C device through whichever is the current master iceboard """
+    #     return self.master_iceboard.i2c
+
+    def __init__(self, **kwargs):
         """
         Creates all the I2C objects needed to interface the hardware.
         For now, we can only do this when the FPGA is configured
@@ -1052,33 +1070,35 @@ class IceCrate_MGK7BP1_Handler(IceCrateHandler):
                 - i2c_set_port(...) # Port number 0 (connected to the FPGA I2C switch) is used for all accesses
                 - i2c_write_read(...) # FPGA I2C engine
         """
+        super(IceCrate_MGK7BP1_Handler, self).__init__(**kwargs)
 
         #import iceboard  as ib
         #if not isinstance(iceboard, ib.IceBoard):
         #    raise IceBoxException('Please provide a single iceboard object')
 
-        try:
-            iter(iceboard)
-        except TypeError:
-            pass
-        else:
-            raise IceBoxException('Please provide a single iceboard object')
-#
-#        if type(iceboard)!=ib.IceBoard:
-#            raise IceBoxException('Please provide a single iceboard object')
-#
+#         try:
+#             iter(iceboard)
+#         except TypeError:
+#             pass
+#         else:
+#             raise IceBoxException('Please provide a single iceboard object')
+# #
+# #        if type(iceboard)!=ib.IceBoard:
+# #            raise IceBoxException('Please provide a single iceboard object')
+# #
 
 
         self._I2C_BACKPLANE_BUS_NAME = 'BP'
         self._logger = logging.getLogger(__name__)
         self._logger.debug('Initializing Iceboard hardware')
-        self._i2c = iceboard.i2c
-        self._iceboard_hw = iceboard.hw
-        self._iceboard = iceboard
+        self._i2c = MasterIceboardObject(self, 'i2c')
+        # self._i2c = iceboard.i2c
+        # self._iceboard_hw = iceboard.hw
+        # self._iceboard = iceboard
 
         self._logger.info(' Instantiating Backplane I2C resource managers')
-        self._eeprom = FMC_EEPROM(iceboard.i2c, 'BP', address=self.BACKPLANE_EEPROM_DATA_ADDRESS, address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH)
-        self._serial = FMC_EEPROM(iceboard.i2c, 'BP', address=self.BACKPLANE_EEPROM_SERIAL_ADDRESS, address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH)
+        self._eeprom_data = EEPROM(self._i2c, bus_name='BP', address=self.BACKPLANE_EEPROM_DATA_ADDRESS, address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH, write_page_size = self.BACKPLANE_EEPROM_PAGE_SIZE)
+        self._eeprom_serial = EEPROM(self._i2c, bus_name='BP', address=self.BACKPLANE_EEPROM_SERIAL_ADDRESS, address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH, write_page_size = self.BACKPLANE_EEPROM_PAGE_SIZE)
 
         self._logger.info(' Instantiating Backplane I2C I/O expanders')
         self._gpio_ctrl = pca9575.pca9575(self._i2c, self._GPIO_CTRL_ADDR, 'BP')
@@ -1149,11 +1169,11 @@ class IceCrate_MGK7BP1_Handler(IceCrateHandler):
         return self.NUMBER_OF_SLOTS
 
     def read_eeprom(self, addr, length=1):
-        return self._eeprom.read(addr, length = length)
+        return self._eeprom_data.read(addr, length = length)
 
     def get_eeprom_serial_number(self):
         """ return the 128-bit hardware-coded EEPROM serial number as a hex string. """
-        return ''.join(['%02X' % v for v in self._serial.read(0x80, length=16)])
+        return ''.join(['%02X' % v for v in self._eeprom_serial.read(0x80, length=16)])
 
     def set_led(self, led_name, state):
         """

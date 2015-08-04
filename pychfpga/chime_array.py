@@ -149,35 +149,35 @@ class ChimeArray(object):
             hardward map.
 
             If an IceBoard is specified by IP address (e.g. '10.10.10.7'),
-            then the board can be added directly in the hardware map witout
-            relying on mDNS.
+            then the board can be added directly in the hardware map. This
+            does *not* rely on the system mDNS client or the Python
+            ``pybonjour`` package.
 
             If an IceBoard is specified by its mDNS name (e.g.
             'iceboard0007.local'), the operating system will automatically
             resolve the IP address using mDNS, assuming that a mDNS client
             (Bonjour on Windows or Mac, avahi on Linux) is running on this
-            computer.
+            computer. The ``pybonjour`` package is not needed.
 
-            If an IceBoard is specified by its serial number (e.g. '0007'),
-            the board will be accessed using the mDNS name constructed from
-            the serial number. (e.g. 'iceboard0007.local'). As a convenience,
-            purely numeric serial numbers will be converted to the
-            conventional 'nnnn' format with leading zeroes.
+            In both cases, the crate, slot and serial number information will
+            be automatically obtained directly through the IceBoard's ARM
+            processor if that information not already present in the hardware
+            map.
 
-            In all cases, the crate, slot and serial number information will be
-            automatically obtained from the hardware.
+            If an IceBoard is specified by its serial number (e.g. '0007', or
+            just a numeric 7 as a convenient shortcut), the board will use the
+            ``pybonjour`` package to actively query mDNS and find boards that
+            match the serial number.
+
+
 
         icecrates : Adds all the iceboards from the crates that have the
             serial numbers specified in the provided list of strings.
 
-            This option is different from ``iceboards`` in that it uses mDNS
-            to automatically probe the network and discover the specified
-            Iceboards that advertised themseles along with their associated
-            crate number. This option requires the ``pybonjour`` package to be
-            installed on the running Python instance.
-
-            A single crate can be specified as a single string, and an empty
-            list will discover boards from all discoverable crates.
+            This option *always* the ``pybonjour`` package and the system mDNS
+            client to automatically probe the network and discover the
+            specified Iceboards that advertised themseles along with their
+            associated crate number.
 
             Examples:
                 ``icecrates='003'`` or ``icecrates=['003']`` will discover and select all boards from crate SN003
@@ -190,15 +190,10 @@ class ChimeArray(object):
 
         Default Iceboard set
 
-        subarrays : List of integers describing the subarrays to include in the
-            default IceBoard set. If not specified or an empty list, all
-            Iceboards in the hardware map wil be selected. Does not affect
-            which boards are loaded in the hardware map.
-
-        slots : List of integers describing the slots to include in the
-            default IceBoard set. If not specified or an empty list, all
-            Iceboards in the hardware map wil be selected. Does not affect
-            which boards are loaded in the hardware map.
+        subarrays : List of integers describing the subarrays to include in
+            the default IceBoard set. If not specified or an empty list, all
+            Iceboards in the hardware map wil be selected. Affects only the
+            boards loaded from the hardware map.
 
 
         force : (integer). If ``force=0``, the FPGAs in the default Iceboard set will be
@@ -255,8 +250,8 @@ class ChimeArray(object):
         parser.add_argument('--hwm_name', action = 'store', type=str, default=None,  help='Name of the hardware map to load from the YAML file (the YAML file must be structured as a dictionary)')
         parser.add_argument('-i', '--iceboards', action='store', nargs='*', type=str, default=[], help="Space-separated list of iceboards, which can be specified byip address (e.g. 10.10.10.7), hostname (e.g. iceboard0007.local) if a mDNS client is running locally, or by serial number (e.g. 0007 or simply 7) in which case active mDNS discovery will be done")
         parser.add_argument('-c', '--icecrates', action='store', nargs='*', type=str, default=[], help="Space-separated list of icecrate serial numbers.  Discover and adds all boards in the specified serial number")
-        parser.add_argument('--subarrays', action = 'store', type=int, nargs='*', help='Subarrays to include in the default iceboard set')
-        parser.add_argument('--slots', action='store', type=str, nargs='*', help="Select only boards in the specified slot(s)")
+        parser.add_argument('--subarrays', action = 'store', type=int, nargs='*', help='Keep in the hardware map only the boards that are in the specified subarrays. This applies only to iceboards that are specified in a YAML file.')
+        # parser.add_argument('--slots', action='store', type=str, nargs='*', help="Select only boards in the specified slot(s)")
         parser.add_argument('--prog', action='store', type=int, nargs='?', const=0, default=-1, help='Programs the FPGA if not already programmed. --prog 1 forces the FPGA programming even if the firmware is already programmed')
         parser.add_argument('-b', '--bitfile', action='store', type=str, default=default_bitfile,  help='Filename of the bitfile used to to program the FPGAs')
         parser.add_argument('--ping', action='store', type=int, default=1, help="1: Check if Tuber is responding. 0: Check but ignore. ")
@@ -386,11 +381,19 @@ class ChimeArray(object):
                     if not ping_successful:
                         print ("%r could not be found at '%s'. It is removed from YAML hardware map."
                                            % (ib, ib.tuber_uri))
-                        self.logger.debug('%.32r: Deleting %r from YAML hardware map' % (self, ib))
+                        self.logger.debug('%.32r: Deleting %r from the YAML hardware map' % (self, ib))
                         self.hwm.delete(ib)
                 self.hwm.flush()
 
-        # Add iceboards that are explicitely listed. For now, we know only their hostname
+        # Remove boards that are not in the specified subarray
+        if args.subarrays:
+            ib_not_in_subarray = self.hwm.query(IceBoardPlus).filter(~IceBoardPlus.subarray.in_(args.subarrays))
+            for ib in list(ib_not_in_subarray):  # make sure the list does not change during the loop
+                print ("%r (subarray '%s') is not in the target subarray list %s. It is removed from the YAML hardware map."
+                                   % (ib, ib.subarray, args.subarrays))
+                self.hwm.delete(ib)
+
+        # Add iceboards that are explicitely listed as hostnames
         if args.iceboards:
             for hostname in [ib for ib in args.iceboards if '.' in str(ib)]:
                 # ip_addr = socket.gethostbyname(hostname)  # convert hostname to IP address for faster Tuber access
@@ -404,12 +407,15 @@ class ChimeArray(object):
                                        % (ib, ib.tuber_uri))
 
 
-        # Complete serial, crate and slot information on any YAML or manually entered IceBoard that miss that information
-        ib_without_serial = self.hwm.query(IceBoardPlus).filter(IceBoardPlus.serial == None)
+        # Complete serial, crate and slot information on IceBoard that miss
+        # that information. All boards in the hardware map at this point have
+        # a valid hostname, so this information is obtained through the ARM
+        # (i.e without using mDNS and pybonjour).
+        ib_without_serial = self.hwm.query(IceBoardPlus).filter(IceBoardPlus.serial==None)
         if ib_without_serial.count():
             ib_without_serial.discover_serial()
 
-        ib_without_crate = self.hwm.query(IceBoardPlus).filter(or_(IceBoardPlus.crate == None, IceBoardPlus.slot == None))
+        ib_without_crate = self.hwm.query(IceBoardPlus).filter(or_(IceBoardPlus.crate==None, IceBoardPlus.slot==None))
         if ib_without_crate.count():
             ib_without_crate.discover_crate()
 
@@ -423,7 +429,7 @@ class ChimeArray(object):
 
         if icecrates_to_discover or iceboards_to_discover:
             print 'Discovering IceBoards %s and IceCrates %s...' % (iceboards_to_discover, icecrates_to_discover)
-            self.flush()
+            self.print_flush()
             mdns_discover(self.hwm,
                           icecrates=icecrates_to_discover,
                           iceboards=iceboards_to_discover,
@@ -431,19 +437,11 @@ class ChimeArray(object):
 
         # Hardware map is complete
 
-        # Select default iceboard set
-
-        # Query all iceboards, and apply slot and subarray number filters if applicable
+        # Query all iceboards
         ib = self.hwm.query(IceBoardPlus).order_by(IceBoardPlus.slot)
+        ic = self.hwm.query(IceCrate).order_by(IceCrate.serial)
 
-        if args.slots:
-            ib = ib.filter(IceBoardPlus.slot.in_([args.slots]))
-        if args.subarrays:
-            ib = ib.filter(IceBoardPlus.subarray.in_(args.subarrays))
-
-        ic = self.hwm.query(IceCrate)
-
-        print 'The following IceBoards were selected:'
+        print 'The following IceBoards are in the hardware map:'
         for i in ib:
             crate_name = '%s SN%s' % (i.crate.__class__.__name__, i.crate.serial) if i.crate else 'No crate'
             print 'Crate %s, slot %2s: Iceboard SN%s at %s (ping =%s)' % (crate_name, i.slot, i.serial, i.hostname, i.ping())
@@ -455,8 +453,9 @@ class ChimeArray(object):
         # chFPGA_controller.register_fpga_bitstream(fpga_bitstream)
 
         if self.ib.count():
+            ib.check_tuber_version()  # Check if the board is running a compatible ARM firmware
             ib.set_handler(chFPGA_controller)
-            ib.set_cache() # we have a new handler, so update its cache
+            ib.set_cache() # we have a new handler, so update its cached ORM object values
             # ib.set_handler(IceBoardPlusHandler, fpga_bitstream)
 
             # Configure the FPGA with the bitstream associated with the handler
@@ -481,11 +480,11 @@ class ChimeArray(object):
                 ib.set_cache()
 
         print
-        print 'The following boards were selected:'
+        print 'Updated hardware map, with mezzanine info:'
         for i in self.ib:
             mezz = ['%s SN%s' % (m.__ipmi_part_number__, m.serial) if m else 'None' for m in [i.mezzanine.get(1,None), i.mezzanine.get(2,None)]]
             print '   Crate SN%s, slot %2s: Iceboard SN%s at %s (ping =%s), Mezz1=%s, Mezz2=%s' % (i.crate.serial if i.crate else None, i.slot, i.serial, i.hostname, i.ping(), mezz[0], mezz[1])
-        self.flush()
+        self.print_flush()
 
         print
         if self.ib.count() and args.open > -1:
@@ -498,7 +497,7 @@ class ChimeArray(object):
                          group_frames=args.frames_per_packet,
                          enable_gpu_link=args.enable_gpu_link)
             self.set_sync_method(method='distributed_time', source='bp_trig')
-        self.flush()
+        self.print_flush()
 
 
         # import all command line argument values into this object
@@ -514,7 +513,7 @@ class ChimeArray(object):
         except ValueError:
             return x
 
-    def flush(self):
+    def print_flush(self):
         sys.stdout.flush()
 
 
@@ -532,7 +531,7 @@ class ChimeArray(object):
 
         def stop_when_all_resolved(one_future):
             print [ff.done() for ff in futures]
-            self.flush()
+            self.print_flush()
             return
             # if all(f.done() for f in futures):
             #     io_loop.stop()
@@ -567,6 +566,19 @@ class ChimeArray(object):
             mezz = ['%s SN%s' % (m.__ipmi_part_number__, m.serial) if m else 'None' for m in [i.mezzanine.get(1,None), i.mezzanine.get(2,None)]]
             string +='   Crate SN%s, slot %2i: Iceboard SN%s at %s (ping =%s), Mezz1=%s, Mezz2=%s\n' % (i.crate.serial if i.crate else None, i.slot, i.serial, i.hostname, i.ping(), mezz[0], mezz[1])
         return string
+
+    def set_operational_mode(self, mode):
+        """
+        Set the operational mode of the array.
+
+        'raw_time': Each boards stream raw 8-bit time samples from channels
+                    0-7 to the corresponding GPU ports.
+        """
+
+        if mode == 'raw_time':
+            self.ib.set_fft_bypass(True)
+            self.ib.set_scaler_bypass(True)
+            self.init_shuffle(cb1_bypass=True, bp_bypass = True, cb2_bypass = True)
 
 
     def set_sync_method(self, method='distributed_time', source='bp_time', master=None, master_time_source=None):
@@ -709,7 +721,7 @@ class ChimeArray(object):
         elif self.sync_method == 'distributed_time':
             dt = self.ib[0].get_irigb_time()
             print 'Triggering SYNC in %i seconds at %s' % (delay,  dt.isoformat())
-            self.flush()
+            self.print_flush()
             self.ib.set_irigb_trigger_time(dt, delay=delay)
             t0 = time.time()
             while any(self.ib.is_irigb_before_trigger_time()):
@@ -733,9 +745,9 @@ class ChimeArray(object):
     def init_shuffle(self,
                      dsmap=range(16),
                      frames_per_packet=1,
-                     cb1_lanes=4, cb1_bins=16,
-                     cb2_lanes=2, cb2_bins=1, cb2_bypass=0,
-                     bp_bypass=0,
+                     cb1_lanes=4, cb1_bins=16, cb1_bypass=False,
+                     bp_bypass=False,
+                     cb2_lanes=2, cb2_bins=1, cb2_bypass=False,
                      remap=True,
                      ):
         """ Setup the crossbars and data shuffling in every board of the array.
@@ -767,7 +779,7 @@ class ChimeArray(object):
                 ib.CROSSBAR2.set_lane_map(self.compute_lane_map(ib))
 
             # Initialize the crossbars to select and send data in a specific format
-            ib.init_crossbars(dsmap, frames_per_packet=frames_per_packet, cb1_lanes=cb1_lanes, cb1_bins=cb1_bins, cb2_lanes=cb2_lanes, cb2_bins=cb2_bins, cb2_bypass=cb2_bypass, remap=remap, bp_bypass=bp_bypass)
+            ib.init_crossbars(dsmap, frames_per_packet=frames_per_packet, cb1_lanes=cb1_lanes, cb1_bins=cb1_bins, cb1_bypass=cb1_bypass, cb2_lanes=cb2_lanes, cb2_bins=cb2_bins, cb2_bypass=cb2_bypass, remap=remap, bp_bypass=bp_bypass)
 
         # set-up receivers
         for i, ib in enumerate(self.ib):
@@ -925,7 +937,7 @@ class ChimeArray(object):
                     print 'None                 ',
             print
 
-    def detect_backplane_links(self, tx_power=7):
+    def detect_backplane_links(self, tx_power=7, print_=True):
         """ Setup all boards on the array to send test pattern over the
         backplane link and detect  from which slot/lane every board is
         receiving data.
@@ -1022,24 +1034,27 @@ class ChimeArray(object):
                         link_matrix[dest_slot][dest_lane] += '/(S%sL%s)' % expected_source
 
                 link_list.append((source, dest))
+        if print_:
+            # Print a slot map
+            print 'Slot-> ' + ' '.join(['%-15i' % (slot+1) for slot in range(16)])
+            print 'S/N -> ' + ' '.join(['%-15s' % (sn) for sn in serial_number])
+            print 'Lane   ' + ' '.join(['%-15s' % '----------' for x in range(16)])
 
-        # Print a slot map
-        print 'Slot-> ' + ' '.join(['%-15i' % (slot+1) for slot in range(16)])
-        print 'S/N -> ' + ' '.join(['%-15s' % (sn) for sn in serial_number])
-        print 'Lane   ' + ' '.join(['%-15s' % '----------' for x in range(16)])
-
-        for dest_lane in range(1,16):
-            print '%6i ' % (dest_lane),
-            for dest_slot in range(1,17):
-                print '%-15s' % link_matrix[dest_slot][dest_lane],
-            print
+            for dest_lane in range(1,16):
+                print '%6i ' % (dest_lane),
+                for dest_slot in range(1,17):
+                    print '%-15s' % link_matrix[dest_slot][dest_lane],
+                print
 
         return link_list
 
-    def get_ber(self, link_list, period=0.1, tx_power = None):
-        array = self.ib
+    def get_ber(self, link_list=None, period=0.1, tx_power = None, print_=True):
+
+        if link_list is None:
+            link_list = self.detect_backplane_links(tx_power=tx_power or 7, print_=False)
         link_list.sort(key=lambda ((ss,sl),(ds,dl)): ss*16+ds)
-        ib_map = {ib.slot:ib for ib in array}
+
+        ib_map = {ib.slot:ib for ib in self.ib}
         ber_table={}
         for ((ss,sl),(ds,dl)) in link_list:
             if ss not in ib_map or ds not in ib_map:
@@ -1052,11 +1067,11 @@ class ChimeArray(object):
             dest_gtx = dest_ib.BP_SHUFFLE.gtx[dl-1]
 
             if tx_power is not None:
-                source_gtx.TXDIFFCTRL=tx_power
+                source_gtx.TXDIFFCTRL = tx_power
 
-            source_gtx.TXPRBSSEL=4
-
-            print 'Measuring BER for Slots %2i->%2i (SN%s, GTX[%2i])=> (SN%s, GTX[%2i])' % (ss, ds, source_ib.serial, sl-1,  dest_ib.serial, dl-1),
+            source_gtx.TXPRBSSEL = 4
+            if print_:
+                print 'Measuring BER for Slots %2i->%2i (SN%s, GTX[%2i])=> (SN%s, GTX[%2i])' % (ss, ds, source_ib.serial, sl-1,  dest_ib.serial, dl-1),
 
             # First, make sure we can get errors by setting the wrong RX PRBS Sequence
             dest_gtx.RXPRBSCNTRESET=1
@@ -1083,24 +1098,25 @@ class ChimeArray(object):
             #    #    print 'locked',
             #    #    break
             #dest_gtx.RXPRBSCNTRESET=1
-            dest_gtx.RXDFELPMRESET=1
+            dest_gtx.RXDFELPMRESET = 1
             time.sleep(0.001)
-            dest_gtx.RXDFELPMRESET=0
+            dest_gtx.RXDFELPMRESET = 0
             time.sleep(0.001)
-            dest_gtx.RXPRBSCNTRESET=1
-            dest_gtx.RXPRBSSEL=4
-            dest_gtx.RXDFELPMRESET=1
+            dest_gtx.RXPRBSCNTRESET = 1
+            dest_gtx.RXPRBSSEL = 4
+            dest_gtx.RXDFELPMRESET = 1
             time.sleep(0.001)
-            dest_gtx.RXDFELPMRESET=0
+            dest_gtx.RXDFELPMRESET = 0
             time.sleep(0.001)
-            dest_gtx.RXPRBSCNTRESET=0
+            dest_gtx.RXPRBSCNTRESET = 0
             time.sleep(period)
-            cnt=dest_gtx.ERR_CTR
-            err=(float(cnt)*16)/(period*10e9)
-            err_max=(float(cnt)*16+1)/(period*10e9)
+            cnt = dest_gtx.ERR_CTR
+            err = (float(cnt) * 16) / (period * 10e9)
+            err_max = (float(cnt) * 16 + 1) / (period * 10e9)
 
             print 'BER = %1.1e (%i errors, BER<%1.1e)' % (err, cnt, err_max)
-            ber_table[(ss,ds)]=err
+            self.print_flush()
+            ber_table[(ss,ds)] = err
         return ber_table
 
 
@@ -1121,7 +1137,7 @@ class ChimeArray(object):
         return data
 
     def plot_ber_vs_power(self, data):
-        for (ss,ds),(tx_power, ber) in data.items(): print '%10s'% ((ss,ds),), ','.join(['%6.1g' % b for b in ber])
+        for (ss, ds), (tx_power, ber) in data.items(): print '%10s' % ((ss,ds),), ','.join(['%6.1g' % b for b in ber])
         plt.figure(1)
         plt.clf()
 
@@ -1141,6 +1157,7 @@ class ChimeArray(object):
             eye_matrix[link] = e
         return eye_matrix
 
+    @staticmethod
     def plot_eye_matrix(eye_matrix):
         plt.figure(1)
         plt.clf()

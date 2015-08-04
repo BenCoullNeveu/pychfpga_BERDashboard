@@ -205,6 +205,12 @@ class XReport(Plugin):
             # default=env.get('NOSE_XREPORT_FILE', './test'),
             default=None,
             help='Report output path and base filename, without extension. The output files will be appended by .xml, .rst and _attachment_id.png')
+        parser.add_option(
+            "--xformat",
+            action="store", dest='xformat',
+            # default=env.get('NOSE_XREPORT_FILE', './test'),
+            default='pdf',
+            help='Output format in addition to the xml file: pdf or html')
         parser.add_option(  # This must be the last option since it gobbles everything else...
             "--xargs",
             action="callback",
@@ -489,6 +495,7 @@ class XReport(Plugin):
         if self.filename:
             self.write_xml()
             self.write_rst()
+            self.write_pdf()
 
     @staticmethod
     def _get_doc(thing):
@@ -590,6 +597,18 @@ class XReport(Plugin):
         filename = filename or self.filename
         rst = self.get_rst(filename)
         rst.write()
+
+    def write_pdf(self, filename=None):
+        """ Write the report as a PDF file.
+
+        Latex is not needed. The rst2pdf package (pip install rst2pdf) is required.
+        """
+        filename = filename or self.filename
+
+        import rst2pdf.createpdf as createpdf
+
+        r = createpdf.RstToPdf()
+        r.createPdf(text=str(self.get_rst()), output=filename)
 
     def publish(self, filename, writer_name='html'):
         """ Write the report in any of the formats supported by the ``docutils`` library.

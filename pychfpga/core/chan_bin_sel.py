@@ -33,6 +33,7 @@ class ChanBinSel(Module_base):
 
     STREAM_ID                = BitField(CONTROL, 0x02, 4, width=12, doc="Stream ID to be used for tagging the output frames")
     NUMBER_OF_SELECTED_WORDS = BitField(CONTROL, 0x03, 0, width=11, doc="Number of words(frequency pairs) selected by this correlator.  Must match length of selected words")
+    BYPASS                   = BitField(CONTROL, 0x04, 5, doc="If '1', sends the raw data from the channel with the same number, with header but no flags.")
     NUMBER_OF_LANES          = BitField(CONTROL, 0x04, 0, width=5, doc="Number of lanes to include in output")
     # LAST_INPUT               = BitField(CONTROL, 0x05, 4, width=0, doc="Index of the last channelizer to get data from ")
 
