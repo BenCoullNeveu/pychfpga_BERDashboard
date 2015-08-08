@@ -228,14 +228,14 @@ class GTX(Module_base):
 
     def configure(self):
         """ Execute only when there is a clock """
-        self.SOURCE_SEL=0 # 0:Send user packets, 1: send TXDATA word
+        self.SOURCE_SEL = 0  # 0:Send user packets, 1: send TXDATA word
         self.LOOPBACK = 0
         # self.TXPOLARITY=0
         # self.RXPOLARITY=0
-        self.TXPRBSSEL=0
-        self.RXPRBSSEL=0
+        self.TXPRBSSEL = 0
+        self.RXPRBSSEL = 0
         self.TXDIFFCTRL = 10
-        self.TXPRECURSOR = 0b00000 #DFE cannot compensate pre-cursor
+        self.TXPRECURSOR = 0b00000  #DFE cannot compensate pre-cursor
         self.TXPOSTCURSOR = 0b00000
         self.RXMONITORSEL = 1 # 1=AGC, 2=UL, 3=VP loop
         self.RX_DEBUG_CFG = 0x14  # 0x14= Vpeak, 0x2C=AGC

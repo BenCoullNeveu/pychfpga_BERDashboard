@@ -26,7 +26,8 @@ class MasterIceboardObject(object):
 class IceCrateExt(IceCrate):
     handler_name = 'IceCrateExtHandler'
     __mapper_args__ = {'polymorphic_identity': 'IceCrateExt'}
-    __ipmi_part_number__ = ['MGK7BP', 'MGK7BP16']  # Must match part number in IPMI data
+    __ipmi_part_number__ = ['MGK7BP16', 'MGK7BP']  # Must match part number in IPMI data
+    part_number = 'MGK7BP16'
 
 class IceCrateExtHandler(IceCrateHandler):
     """ IceCrate handler that provides access to the backplane through an IceBoard.

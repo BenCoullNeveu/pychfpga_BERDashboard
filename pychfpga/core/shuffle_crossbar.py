@@ -31,10 +31,12 @@ class ShuffleCrossbar(Module_base):
     LANE_MONITOR_RESET = BitField(CONTROL, 0, 4, doc='')
     LANE_MONITOR_SEL   = BitField(CONTROL, 0, 0, width=4, doc='')
 
-    CAPTURE_WORD_NUMBER   = BitField(CONTROL, 1, 0, width=8, doc='')
+    AUTO_UNBAN         = BitField(CONTROL, 1, 7, doc='')
+    CAPTURE_WORD_NUMBER = BitField(CONTROL, 1, 0, width=7, doc='')
     SOF_WINDOW_STOP    = BitField(CONTROL, 2, 0, width=8, doc='')
     LANE_MAP_BYTE0     = BitField(CONTROL, 3, 0, width=8, doc='Lane map')
     LANE_MAP_BYTE7     = BitField(CONTROL, 10, 0, width=8, doc='Lane map')
+    IGNORE_LANE        = BitField(CONTROL, 12, 0, width=16, doc='')
 
 
     LANE_MONITOR       = BitField(STATUS, 1, 0, width=16, doc='')
@@ -45,12 +47,14 @@ class ShuffleCrossbar(Module_base):
     CAPTURE_DONE      = BitField(STATUS, 6, 0, doc='')
     CAPTURE_TVALID    = BitField(STATUS, 6, 1, doc='')
     CAPTURE_TLAST    = BitField(STATUS, 6, 2, doc='')
+    HAD_TIMEOUT    = BitField(STATUS, 6, 5, doc='')
 
-    CAPTURE_TDATA    = BitField(STATUS, 10, 0, width=32, doc='')
+    # CAPTURE_TDATA    = BitField(STATUS, 10, 0, width=32, doc='')
 
     FRAME_NUMBER_CAPTURE_DATA = BitField(STATUS, 11, 0, width=8, doc="")
     STREAM_ID_CAPTURE_DATA    = BitField(STATUS, 12, 0, width=8, doc="")
     DELAY_CAPTURE    = BitField(STATUS, 14, 0, width=16, doc="")
+    FIFO_COUNT    = BitField(STATUS, 16, 0, width=16, doc="")
 
     def __init__(self, fpga_instance, base_address, address_increment, crossbar_level=1, verbose=0):
         self.fpga = fpga_instance
@@ -258,11 +262,12 @@ class ShuffleCrossbar(Module_base):
     CB2_LANE_MONITOR_TABLE = {
         'INPUT_DETECT': 0,
         'FIFO_TFIRST': 1,
-        'ALIGN_DETECT': 2,
-        'OUTPUT_DETECT': 3,
+        'BAD_TLAST': 2,
+        'BAD_TVALID': 3,
         'REMAP_DETECT': 4,
         'MISSING_FRAME': 5,
         'ALIGN_FIFO_OVERFLOW': 6,
+        'DATA_TIMEOUT': 7,
         }
 
     def get_lane_monitor(self, name):
@@ -285,6 +290,7 @@ class ShuffleCrossbar(Module_base):
         if reset:
             self.LANE_MONITOR_RESET = 1
             self.LANE_MONITOR_RESET = 0
+            self.fpga.BP_SHUFFLE.reset_stats()
 
         lane_range = range(self.NUMBER_OF_CROSSBAR_INPUTS)
         lane_map = self.get_lane_map()
@@ -311,40 +317,42 @@ class ShuffleCrossbar(Module_base):
         print '%25s: %s' % ('RX Errors', ' '.join('%6i' % rx_errors[lane_map[lane]] for lane in lane_range))
         print '%25s: %s' % ('RX max frame len (words)', ' '.join('%6i' % (rx_max_frame[lane_map[lane]] + 1) for lane in lane_range))
         print '%25s: %s' % ('RX min frame len (words)', ' '.join('%6i' % (rx_min_frame[lane_map[lane]] + 1) for lane in lane_range))
-        input_detect = self.get_lane_monitor('INPUT_DETECT')
-        input_detect = [input_detect[lane] for lane in lane_map]
-        align_detect = self.get_lane_monitor('ALIGN_DETECT')
-        align_detect = [align_detect[lane] for lane in lane_map]
-        remap_detect = self.get_lane_monitor('REMAP_DETECT')
-        print '%25s: %s' % ('IN/ALGN/REMAP DETECT', ' '.join(' %i/%i/%i' % (input_detect[lane], align_detect[lane], remap_detect[lane]) for lane in lane_range))
-        for name in [ 'MISSING_FRAME', 'ALIGN_FIFO_OVERFLOW']:
+        # input_detect = self.get_lane_monitor('INPUT_DETECT')
+        # input_detect = [input_detect[lane] for lane in lane_map]
+        # align_detect = self.get_lane_monitor('ALIGN_DETECT')
+        # align_detect = [align_detect[lane] for lane in lane_map]
+        # remap_detect = self.get_lane_monitor('REMAP_DETECT')
+        # print '%25s: %s' % ('IN/ALGN/REMAP DETECT', ' '.join(' %i/%i/%i' % (input_detect[lane], align_detect[lane], remap_detect[lane]) for lane in lane_range))
+        for name in [ 'MISSING_FRAME', 'ALIGN_FIFO_OVERFLOW', 'DATA_TIMEOUT', 'BAD_TVALID', 'BAD_TLAST']:
             value = self.get_lane_monitor(name)
             print '%25s: %s' % (name, ' '.join('%6s' % ('-', 'ERR!')[bool(value[lane])] for lane in lane_map))
         input_frame_ctr = []
         align_frame_ctr = []
         delay = []
         fifo_tfirst = self.get_lane_monitor('FIFO_TFIRST')
-
+        fifo_count = []
         for lane in lane_range:
             self.LANE_MONITOR_SEL = lane
             input_frame_ctr.append(self.INPUT_FRAME_CTR)
             align_frame_ctr.append(self.ALIGN_FRAME_CTR)
             delay.append(self.DELAY_CAPTURE if lane < 8 else '-')
+            fifo_count.append(self.FIFO_COUNT)
+
         print '%25s: %s' % ('INPUT DELAY', ' '.join('%6s' % delay[lane] for lane in lane_map))
         print '%25s: %s' % ('INPUT_FRAME_CTR', ' '.join('%6i' % input_frame_ctr[lane] for lane in lane_map))
         print '%25s: %s' % ('ALIGN_FRAME_CTR', ' '.join('%6i' % align_frame_ctr[lane] for lane in lane_map))
         print '%25s: %s' % ('FIFO_TFIRST', ' '.join('%6i' % fifo_tfirst[lane] for lane in lane_map))
+        print '%25s: %s' % ('FIFO_COUNT', ' '.join('%6i' % fifo_count[lane] for lane in lane_map))
         output_frame_ctr = []
-        # for lane in range(self.NUMBER_OF_CROSSBAR_OUTPUTS):
-        #     self.LANE_MONITOR_SEL = lane
-        #     output_frame_ctr.append(self.OUTPUT_FRAME_CTR)
-        output_frame_ctr = [self.OUTPUT_FRAME_CTR]
+        for lane in range(self.NUMBER_OF_CROSSBAR_OUTPUTS):
+            self.LANE_MONITOR_SEL = lane
+            output_frame_ctr.append(self.OUTPUT_FRAME_CTR)
         print '%25s: %s' % ('OUTPUT_FRAME_CTR', ' '.join('%6i' % v for v in output_frame_ctr))
 
         print '%25s: %s' % ('Frame #', ' '.join('%6i' % f for f in frame_number))
         print '%25s: %s' % ('Delta Frame #', ' '.join('%6i' % (f - frame_ref) for f in frame_number))
 
 
-    def print_capture_word(self):
+    # def print_capture_word(self):
 
-        print 'Lane %02i, Word %i: Done=%i, tvalid=%i, tlast=%i, tdata=0x%08X' % (self.LANE_MONITOR_SEL, self.CAPTURE_WORD_NUMBER, self.CAPTURE_DONE, self.CAPTURE_TVALID, self.CAPTURE_TLAST, self.CAPTURE_TDATA)
+    #     print 'Lane %02i, Word %i: Done=%i, tvalid=%i, tlast=%i, tdata=0x%08X' % (self.LANE_MONITOR_SEL, self.CAPTURE_WORD_NUMBER, self.CAPTURE_DONE, self.CAPTURE_TVALID, self.CAPTURE_TLAST, self.CAPTURE_TDATA)

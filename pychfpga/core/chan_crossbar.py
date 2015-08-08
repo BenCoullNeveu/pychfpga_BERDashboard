@@ -35,7 +35,7 @@ class ChanCrossbar(Module_base):
     INPUT_FRAME_CTR    = BitField(STATUS, 3, 0, width=8, doc='')
     ALIGN_FRAME_CTR    = BitField(STATUS, 4, 0, width=8, doc='')
     ALIGN_GLOBAL_FRAME_CTR    = BitField(STATUS, 5, 0, width=8, doc='')
-    DELAY_CAPTURE    = BitField(STATUS, 7, 0, width=16, doc="")
+    # DELAY_CAPTURE    = BitField(STATUS, 7, 0, width=16, doc="")
 
     def __init__(self, fpga_instance, base_address, address_increment, verbose=0):
         self.fpga = fpga_instance
