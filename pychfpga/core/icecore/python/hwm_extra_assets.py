@@ -82,7 +82,7 @@ def mdns_discover(hwm=None, icecrates=None, iceboards=None, timeout=5, resolve_i
 
         try:
             int_bp_serial = int(bp_serial)
-        except ValueError:
+        except (TypeError, ValueError):
             int_bp_serial = None
 
         try:
