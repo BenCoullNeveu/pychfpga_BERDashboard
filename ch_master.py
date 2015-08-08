@@ -362,14 +362,16 @@ if __name__ == "__main__":
               ni_board_26m.set_user_output_source('pwm')
               ni_board_26m.set_frame_pwm(0, 3, 4)
               ni_board_26m.sync()
+          calculate_gain_slots = conf["fpga"]['calculate_gain_slots'] 
           for i, c_element in enumerate(c):
-            fpga_config = c_element.get_config()
-            #fpga_rec = chFPGA_receiver.chFPGA_receiver(fpga_config, \
-            #              ip_address=c_element.fpga_ip_addr, \
-            #              port=c_element.fpga_port_number+1, \
-            #              host_ip = conf["fpga"]["host_ip"])
-            calculate_gains.calculate_gains(c_element,str(c_element.fpga_port_number+1))
-            #fpga_rec.close()
+            if c_element.slot in calculate_gain_slots:
+              fpga_config = c_element.get_config()
+              #fpga_rec = chFPGA_receiver.chFPGA_receiver(fpga_config, \
+              #              ip_address=c_element.fpga_ip_addr, \
+              #              port=c_element.fpga_port_number+1, \
+              #              host_ip = conf["fpga"]["host_ip"])
+              calculate_gains.calculate_gains(c_element,str(c_element.fpga_port_number+1))
+              #fpga_rec.close()
       all_chan = range(16)#range(conf["n_antenna"])
       c.set_data_source("adc") # This should come first.
       c.set_FFT_bypass(False, channels = all_chan)
@@ -394,7 +396,15 @@ if __name__ == "__main__":
                    ni_enable = ni_enable, ni_offset = ni_offset, 
                    ni_high_time = ni_high_time, ni_period = ni_period,
                    ni_enable_26m = ni_enable_26m, ni_offset_26m = ni_offset_26m, 
-                   ni_high_time_26m = ni_high_time_26m, ni_period_26m = ni_period_26m)
+                   ni_high_time_26m = ni_high_time_26m, ni_period_26m = ni_period_26m,
+                   window_start=0, window_stop=50)
+      time.sleep(2)
+      #shuffle_init(list(c), ni_board, ni_board_26m, sync_board, dsmap = d_slots, frames_per_packet=4, cb1_lanes=16, cb1_bins=64, cb2_lanes=16, cb2_bins=8, cb2_bypass=0, remap=True,
+      #             ni_enable = ni_enable, ni_offset = ni_offset, 
+      #             ni_high_time = ni_high_time, ni_period = ni_period,
+      #             ni_enable_26m = ni_enable_26m, ni_offset_26m = ni_offset_26m, 
+      #             ni_high_time_26m = ni_high_time_26m, ni_period_26m = ni_period_26m,
+      #             window_start=200, window_stop=200)
 
       #Make sure FPGA throttling is fast enough to send all the data
       #FPGA doesn't seem to change this without a reset...

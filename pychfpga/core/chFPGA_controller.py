@@ -1072,7 +1072,8 @@ class chFPGA_controller(IceBoardExtHandler):
         old_adc_mode = self.get_adc_mode()
         self.set_adc_delays([[ [0]*8, [0]*8]] * 16); # Set all sampling delays and offsets to zero
         self.set_adc_mode('pulse') # generate pulse pattern
-
+        for i in range(1000):
+            self.sync()
         data={}
         for ch in channels:
             d = np.zeros((32, noffsets), dtype=np.uint8)
