@@ -2,312 +2,180 @@ import numpy as np
 import struct
 import time
 import logging
+from subprocess import Popen, PIPE
+import shlex
+import os
+import socket
+import json
 #import core.icecore.icebox
 
 
 class GpuData(object):
     def __repr__(self):
-        return '\n'.join(['%10s = %r' % (name, value) for (name, value) in vars(self).items() if not name.startswith('_') and not name=='data'])
+        return 'GpuData(timestamp=%08x, packet_length = %i)' % (self.timestamp, self.ethernet_packet_size)
 
-def get_gpu_data(node_number, dna_number):
-    from subprocess import Popen, PIPE
-    p = Popen(['sudo','chi-exec','%i' % node_number, '/root/inspect_pkt_dna_select', 'dna%i' % dna_number], stdout=PIPE)
-    (data, stderr) = p.communicate()
-    split_data = data.split('\n')
-    d=[]
-    for line in split_data[2:]:
-        if line.startswith('Packet'):
-            break
-        split_line = line.lstrip().split(' ')
-        # print split_line
-        d += [int(c,16) for c in split_line[2:2+min(len(split_line)-2, 16)] if c]
-    result=GpuData()
-    result.ethernet_packet_size = len(d)
-    result.mac_dst = ':'.join(['%02X' % c for c in d[0:6]])
-    result.mac_src = ':'.join(['%02X' % c for c in d[6:12]])
-    result.ethertype = '%04X' % (d[12]*256 + d[13])
-    result.ip_length = d[16]*256 + d[17]
-    result.ip_protocol = d[23]
-    result.ip_src = d[26:30]
-    result.ip_dst = d[30:34]
-    result.udp_src_port = d[34]*256 + d[35]
-    result.udp_dst_port = d[36]*256 + d[37]
-    result.udp_length = d[38]*256 + d[39] # includes 8 bytes of the UDP header
-    result.udp_payload_length = result.udp_length-8
-
-    d = d[42:42+result.udp_payload_length]
-
-    header = ''.join(chr(x) for x in d[0:16])
-    (result.cookie, __, result.stream_id, __, __, result.timestamp) = struct.unpack('<BBHLLL',header)
-    result.source_lane_number = result.stream_id & 0x00F
-
-    result.data = d[16:]
-
-    print 'UDP Payload = %i bytes, Ethernet packet=%i bytes' % (result.udp_payload_length, result.ethernet_packet_size)
-
-    return result
-
-#def shuffle_init(c, sync_board, frames_per_packet=1, cb1_lanes=4, cb1_bins=16, cb2_lanes=2, cb2_bins=1, cb2_bypass=0, bp_bypass=0, remap=True):
-def shuffle_init(c, ni_board, sync_board, dsmap=range(16), frames_per_packet=1, cb1_lanes=4, cb1_bins=16, cb2_lanes=2, cb2_bins=1, cb2_bypass=0, bp_bypass=0, remap=True,
-                 ni_enable = False, ni_offset = 0, ni_high_time = 8388608, ni_period = 16777216):
-    """ Setup the crossbars and data shuffling in every board of the array.
-    """
-    tx_list = []
-    logger = logging.getLogger(__name__)
-
-    crate_set = set([cc.crate for cc in c])
-    if len(crate_set) != 1:
-        raise RuntimeError('All boards must be in the same crate. The provided set of Iceboards have the following crates: %r' % crate_set)
-    crate = crate_set.pop()
-
-    logger.info('%.32r: Configuring crate-wide data shuffling with frames_per_packet=%i, cb1_lanes=%i, cb1_bins=64, cb2_lanes=%i, cb2_bins=%i, cb2_bypass=%s, bp_bypass=%s' % (crate, cb1_lanes, cb1_bins, cb2_lanes, cb2_bins, bool(cb2_bypass), bool(bp_bypass)))
-
-    # Set SMA output of sync board to be irigb trigger sync signal (was 'sync')
-    sync_board.set_user_output_source('irigb_trig')
-    # set-up transmitters
-    for i,bb in enumerate(c):
-        logger.info('%.32r: **** Initializing transmitters for Slot %02i (IceBoard SN%s) ****' % (crate, bb.slot, bb.serial))
-        bb.set_corr_reset(0)
-        # bb.set_data_source('funcgen')
-        # bb.set_funcgen_function('a', a=0)
-        #bb.set_data_source('adc')
-        # set all analog inputs to send the (slot_number, analog input) complex number on every bin
-        #for j in range(len(bb.ANT)):
-        #    bb.set_funcgen_function('ab', a=(bb.slot-1)<<4, b=j<<4, channels=[j])
-            # bb.set_funcgen_function('4bit_split_ramp')
-        #    pass
-        # set the stream ID of every transmitter to (slot_number, analog input) complex number on every bin
-        for j,cb in enumerate(bb.CROSSBAR):
-            cb.STREAM_ID = dsmap[bb.slot-1]
-
-        for j,cb in enumerate(bb.CROSSBAR2):
-            cb.STREAM_ID = dsmap[bb.slot-1]
-
-        # Set the source of the IRIG-B signal
-        bb.set_irigb_source('bp_time')
-        # Set the source of the SYNC signal to irigb
-        bb.REFCLK.set_sync_source('bp')#bb.REFCLK.SLAVE=1
-        #bb.REFCLK.set_sync_source('irigb')
-
-        tx_list.append((bb.slot, 0))  # Register Bypass lane (lane 0) as a transmitter in this slot
-        for j,gtx in enumerate(bb.BP_SHUFFLE.gtx):
-            tx_list.append((bb.slot, j+1))
-
-        if remap:
-            bb.CROSSBAR2.set_lane_map(compute_lane_map(bb))
-
-        # Initialize the crossbars to select and send data in a specific format
-        bb.init_crossbars(dsmap, frames_per_packet=frames_per_packet, cb1_lanes=cb1_lanes, cb1_bins=cb1_bins, cb2_lanes=cb2_lanes, cb2_bins=cb2_bins, cb2_bypass=cb2_bypass, remap=remap, bp_bypass=bp_bypass)
-
-    # set-up receivers
-    for i, bb in enumerate(c):
-        # Disable all receivers for which there are no transmitters
-        for i, gtx in enumerate(bb.BP_SHUFFLE.gtx):
-            rx = (bb.slot, i+1)
-            tx = bb.crate.get_matching_tx(rx)
-            if tx in tx_list:
-                gtx.USER_GTRXRESET = 0
+    def __str__(self):
+        name_width = max(len(name) for name in vars(self).keys())
+        name_fmt = '%%%is' % name_width
+        s = []
+        for (name, value) in  sorted(vars(self).items()):
+            if name.startswith('_') or name=='data':
+                continue
+            if isinstance(value, int):
+                hex_value = '(0x%X)' % value
+            elif np.isscalar(value) and hasattr(value, 'nbytes'):  # this is a numpy number
+                hex_value = ('(0x%%0%iX)' % (value.nbytes * 2)) % value
             else:
-                gtx.USER_GTRXRESET = 1
-                # gtx.USER_RESET = 1
+                hex_value = ''
+            s.append((name_fmt + ': %r %s') % (name, value, hex_value))
+        return '\n'.join(s)
 
-        bb.CROSSBAR2.SOF_WINDOW_STOP = 200
-        bb.BP_SHUFFLE.reset_rx_equalizers()
-        bb.REFCLK.sync() # needed
+    def get_timestream_data(self):
+        return self.data.astype('>u4').view(np.int8)  # Make the words be stored MSB first in memory, and convert to int8
 
- # set-up receivers
-    for bb in c:
-        for i in range(bb.NUMBER_OF_CROSSBAR_OUTPUTS):
-            rx = (bb.slot, i)
-            tx = bb.crate.get_matching_tx(rx)
-            if tx in tx_list:
-                logger.info('%.32r: %s is receiving from %s' % (bb.crate, rx, tx))
-            else:
-                logger.info('%.32r: %s has no corresponding transmitter' % (bb.crate, rx,))
-
-    # Configure noise injection gating signal
-    if ni_enable:
-        ni_board.set_user_output_source('pwm')
-        ni_board.set_frame_pwm(ni_offset, ni_high_time, ni_period)
-
-    # Set sync delays on boards (in slot order). Numbers obtained from sync test. Should go to conf file
-    sync_delays = [np.array([ 8,  7]), np.array([ 8,  8]), np.array([ 9,  6]), np.array([ 11,   7]),
-                   np.array([ 12,  11]), np.array([  8,  13]), np.array([ 11,  10]), np.array([ 7,  6]),
-                   np.array([ 11,   5]), np.array([ 8,  6]), np.array([ 9,  7]), np.array([ 11,  10]),
-                   np.array([  8,  11]), np.array([ 8,  7]), np.array([ 11,   9]), np.array([ 6,  8])]
-    for cc in c:
-        cc.REFCLK.set_sync_delay(sync_delays[cc.slot-1])
-        cc.REFCLK.sync()
-
-    # sync boards
-    #soft_sync(c, sync_board)
-    #irigb_sync(c, delay=5)
-    time_soft_sync(c, sync_board, delay=5)
+class GpuNode(object):
 
 
-# r.CROSSBAR2[0].print_frame_info()
-def compute_lane_map(c):
-    lane_map = np.zeros(16, dtype=np.int8)
-    for i in range(16):
-        rx = (c.slot, i)
-        tx = c.crate.get_matching_tx(rx)
-        print '%s is receiving from %s' % (rx, tx)
-        lane_map[tx[0]-1] = i
-    return lane_map
+    def __init__(self, hostname, node_type='packet_server'):
+        if node_type not in self.NODE_TYPES:
+            raise ValueError("Node type can only be one of the following: %s" % ', '.join(self.NODE_TYPES.keys()))
+        self.node_type = node_type
+        (self.number_of_ports, self.inspect_method) = self.NODE_TYPES[node_type]
+        self.hostname = hostname
 
-def test_sync(c, sync_board):
-    sync_ctr = np.zeros(len(list(c)), dtype=int)
-    for i,bb in enumerate(c):
-        bb.REFCLK.set_sync_source('bp')#bb.REFCLK.SLAVE=1
-        sync_ctr[i] = bb.REFCLK.SYNC_CTR
+    def _inspect_gamma_win(self, port=0,  number_of_packets=5):
+        """
+        Calls inspect_packet on gamma from a Windows host.
 
-    fail=0
-    for test_number in range(10):
-        print 'Trial # %i: Sending SYNC pulse from Slot %02i (Iceboard SN%s)' % (test_number+1, sync_board.slot, sync_board.serial)
-        sync_board.REFCLK.sync()
-        for i,bb in enumerate(c):
-            new_sync_ctr = bb.REFCLK.SYNC_CTR
-            diff = (new_sync_ctr - sync_ctr[i]) & 0xF
-            sync_ctr[i] = bb.REFCLK.SYNC_CTR
-            fail += bool(diff!=1)
-            print '    Slot %02i (Iceboard SN%s): Sync counter = %2i, diff = %2i => %s' % (bb.slot, bb.serial, new_sync_ctr, diff, ('FAILED!', 'PASS')[bool(diff==1)])
-        time.sleep(0.2)
-    if fail:
-        print 'SYNC Test has FAILED!'
-    else:
-        print 'SYNC Test has PASSED!'
+        We use the ssh -tt option to spawn a teletype, because the sudoers list is configured to require a TTY to allow sudo.
+        """
+        if number_of_packets != 5:
+            raise ValueError('with inspect_pkt_dna_select, number of packets must be 5')
+        command = 'ssh -i %%HOMEPATH%%/.ssh/gamma-user gamma-user@%s -tt "sudo ~/inspect_pkt_dna_select dna0"' % (self.hostname)
+        (data, stderr) = Popen(shlex.split(command), stdout=PIPE, shell=True).communicate()
+        return self.parse_hexdump(data)
 
-def check_gpu_data(nodes):
-    if isinstance(nodes,int):
-        nodes=[nodes]
-    for node in nodes:
-        for port in range(8):
-            errors=np.sum( np.array(get_gpu_data(node,port).data[:256])!=np.arange(256))
-            print 'GPU Node %2i port %2i has %i error(s)' % (node, port, errors)
-# crx=b[0]
-# cb1=crx.CROSSBAR
-# cb2=crx.CROSSBAR2
-# bp=crx.BP_SHUFFLE
-# rx1=bp.gtx[0]
-# rx2=bp.gtx[1]
-# rx3=bp.gtx[2]
-# gpu=crx.GPU
-# bs2=cb2[0]
-def print_frame_info(self):
-        bs = self
-        ts=[]
-        sid=[]
+    def _inspect_chi(self, port=0, number_of_packets=5):
+        if number_of_packets != 5:
+            raise ValueError('with inspect_pkt_dna_select, number of packets must be 5')
+        command = 'sudo ssh -i /root/.ssh/id_rsa root@%s "/root/inspect_pkt_dna_select dna%i"'  % (self.hostname, port)
+        (data, stderr) = Popen(shlex.split(command), stdout=PIPE).communicate()
+        return self.parse_hexdump(data)
 
-        # get 8 bits of stream ID
-        self.HEADER_CAPTURE_DATA_SEL=0
-        self.HEADER_CAPTURE_EN=1
-        self.HEADER_CAPTURE_EN=0
-        for i in range(16):
-            self.HEADER_CAPTURE_LANE_SEL=i
-            sid.append(self.HEADER_CAPTURE_DATA)
+    def _inspect_server(self, port=0, number_of_packets=1):
+        """
+        Obtain data from an inspect server running on the node.
 
-        # get lsb of timestamp
-        self.HEADER_CAPTURE_DATA_SEL=1
-        self.HEADER_CAPTURE_EN=1
-        self.HEADER_CAPTURE_EN=0
-        for i in range(16):
-            self.HEADER_CAPTURE_LANE_SEL=i
-            ts.append(self.HEADER_CAPTURE_DATA)
+        The server listens to TCP port 5001 and responds with JSON headers followed by binary data.
+        """
+        command = 'dna%i, n=%i\n' % (port, number_of_packets)
 
-        for i in range(len(ts)):
-            print 'Lane %02i: Stream ID=0x%02x, Frame = 0x%02x (delta = %i)' % (i, sid[i], ts[i], ts[i]-ts[0])
-
-def reopen(boards, bitstream):
-    for ib in boards:
-        if ib.is_open():
-            print 'IceBoard SN%i (Slot #%s) is already opened' % (ib.serial, ib.slot)
-        else:
-            while not ib.is_open():
-                print 'Reprogramming FPGA on IceBoard SN%s ' % (ib.serial)
-                try:
-                    ib.set_fpga_firmware(bitstream, force=1)
-                    ib.open()
-                    print 'IceBoard SN%s (Slot #%i) is now opened' % (ib.serial, ib.slot)
-                    break
-                except:
-                    print 'Failed to open IceBoard SN%s. Retrying' % (ib.serial)
-
-def init_gains(c):
-    import pickle
-    for cc in c:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.settimeout(2)
+        sock.connect((self.hostname, 5001))
+        sock.send(command)
+        fh = sock.makefile()
+        packets = []
         try:
-            g_array = pickle.load(open('/home/chime/ch_acq/gains_'+str(cc.GPIO.FPGA_SERIAL_NUMBER)+'.pkl', 'rb'))
+            for i in range(number_of_packets):
+                header = fh.readline()
+                # print header,
+                h = json.loads(header)
+                # print h
+                err = h['error']
+                if err:
+                    raise RuntimeError('inspect_pkt_server returned the folloring error: %s' % err)
+                n = h['packet_length']
+                packets.append(np.fromstring(fh.read(n), np.uint8))
         except:
-            g_array = pickle.load(open('/home/chime/ch_acq/gains.pkl', 'rb'))
-            print 'Could not find gain settings for %r, sn %i. Using default gain settings.' % (cc, cc.get_fpga_serial_number())
-        print 'Setting gains on IceBoard SN%s' % cc.serial
-        cc.set_gain(g_array)
+            raise
+        finally:
+            # print 'closing connection'
+            sock.shutdown(socket.SHUT_RDWR)
+            sock.close()
+        return packets
 
-def soft_sync(boards, sync_board):
-    """ Synchronize all boards"""
-    boards = list(boards)
-    print 'Masking ADC data before sync'
-    for ib in boards:
-        for ant in ib.ANT:
-            ant.ADCDAQ.BYTE_MASK = 0
+    NODE_TYPES = {
+        'packet_server':  (16, _inspect_server),  # ssh, Logs in as gamma-user, requires a private key in ~/.ssh. Works on windows if ssh (or git) is installed
+        'gamma-win':  (8, _inspect_gamma_win),  # ssh, Logs in as gamma-user, requires a private key in ~/.ssh. Works on windows if ssh (or git) is installed
+        'chi': (16, _inspect_chi)  #
+        }
 
-    print 'Initiating global sync'
-    sync_board.REFCLK.sync()
-
-    print 'Unmasking ADC data'
-    for ib in boards:
-        for ant in ib.ANT:
-            ant.ADCDAQ.BYTE_MASK = 255
-
-def time_soft_sync(boards, sync_board, delay):
-    """ Synchronize all boards"""
-    boards = list(boards)
-    print 'Masking ADC data before sync'
-    for ib in boards:
-        for ant in ib.ANT:
-            ant.ADCDAQ.BYTE_MASK = 0
-
-    # Get current time
-    current_time = sync_board.get_irigb_time()
-    print 'Setting IRIG-B sync after %d seconds' %delay
-    # Send sync pulse delay seconds in the future
-    sync_board.set_irigb_trigger_time(current_time, delay)
-
-    print 'Unmasking ADC data'
-    for ib in boards:
-        for ant in ib.ANT:
-            ant.ADCDAQ.BYTE_MASK = 255
-
-def irigb_sync(boards, delay):
-    """ Synchronize all boards"""
-
-    # Get current time
-    current_time = boards[0].get_irigb_time()
-    print 'Setting IRIG-B sync after %d seconds' %delay
-    for cc in boards:
-        cc.set_irigb_trigger_time(current_time, delay)
-
-
-def print_temperatures(boards):
-    t = [(b.slot, b.serial, b.SYSMON.temperature()) for b in boards]
-    t.sort()
-    for (slot, serial_number, fpga_temp) in t:
-        print 'Slot %2i (SN%s): FPGA %2.1f C' % (slot, serial_number, fpga_temp)
-
-def set_adc_mask(boards, value):
-
-    boards = list(boards)
-    for ib in boards:
-        for ant in ib.ANT:
-            ant.ADCDAQ.BYTE_MASK = value
-
-def print_fmc_power(boards):
-    sensor_list = ['FMCA_12V0', 'FMCA_3V3','FMCA_VADJ','FMCB_12V0','FMCB_3V3','FMCB_VADJ']
-    for b in boards:
-        for sensor in sensor_list:
-            (voltage, current, power) = b.hw.get_power(sensor)[sensor]
-            if voltage is not None:
-                print '%0.1fV@%0.2fA=%0.1fW ' % (voltage, current, power),
+    def parse_hexdump(self, hexdump):
+        """
+        Parses a string as a series of hexdumps. Each packet i sseperated by a single line containing 'Packet'.
+        Returns an list containing a uint8 array for each packet.
+        """
+        packets = []
+        for line in hexdump.splitlines():
+            if line.startswith('Packet'):
+                packets.append([])
             else:
-                print 'None                 ',
-        print
+                split_line = line.split(None, 17) # Split at most 17 items, remove empty splits
+                packets[-1] += [int(c, 16) for c in split_line[1:17] if c]
+        return [np.array(p, np.uint8) for p in packets]
+
+    def capture_raw_packets(self, port, number_of_packets=5):
+        """ Parses the inspect_packet output and return the captured packets as a list of strings.
+        """
+        if port >= self.number_of_ports:
+            raise ValueError('Invalid dna port number')
+        return self.inspect_method(self, port, number_of_packets)
+
+    def capture_packets(self, port=0, number_of_packets=5, print_packet_info=True):
+        """ Obtain packets from the node and decode them.
+        """
+        # Get raw packets
+        raw_packets = self.capture_raw_packets(port, number_of_packets)
+
+        # Process the packets
+        result = []
+        for pkt in raw_packets:
+            d = GpuData()
+            d.hostname = self.hostname
+            d.interface_name = 'dna%i' % port
+            d.port_number = port
+            d.ethernet_packet_size = len(pkt)
+            d.mac_dst = ':'.join(['%02X' % c for c in pkt[0:6]])
+            d.mac_src = ':'.join(['%02X' % c for c in pkt[6:12]])
+            d.ethertype = '%04X' % (pkt[12]*256 + pkt[13])
+            d.ip_length = pkt[16]*256 + pkt[17]
+            d.ip_protocol = pkt[23]
+            d.ip_src = pkt[26:30]
+            d.ip_dst = pkt[30:34]
+            d.udp_src_port = pkt[34]*256 + pkt[35]
+            d.udp_dst_port = pkt[36]*256 + pkt[37]
+            d.udp_length = pkt[38]*256 + pkt[39] # includes 8 bytes of the UDP header
+            d.udp_payload_length = d.udp_length - 8
+
+            udp_payload = pkt[42:42 + d.udp_payload_length].view('<u4')  #  word array
+            d.header_words = udp_payload[0:4]
+            # Header word 0
+            d.cookie = np.uint8(d.header_words[0] & 0xFF)
+            d.header_length_in_words = int((d.header_words[0] >> 8) & 0xF)
+            d.protocol = int((d.header_words[0] >> 12) & 0xF)
+            d.stream_id = np.uint16((d.header_words[0] >> 16) & 0xFFFF)
+            d.source_lane_number = int(d.stream_id & 0xF)
+            d.source_slot_number = int((d.stream_id >> 4) & 0xF) + 1
+            # Header word 1
+            d.encoding_flags = int((d.header_words[1] >> 28) & 0xF)
+            d.four_bit_encoding = bool(d.encoding_flags & 0b0001)
+            d.offset_binary_encoding = bool(d.encoding_flags & 0b0010)
+            d.crossbar2_bypass = bool(d.encoding_flags & 0b0100)
+            d.number_of_frames_per_packet = int((d.header_words[1] >> 24) & 0xF)
+            d.number_of_bins_per_frame = np.uint16((d.header_words[1] >> 12) & 0xFFF)
+            d.number_of_adc_channels_per_bin = np.uint16((d.header_words[1] >> 0) & 0xFFF)
+            # Header word 2
+            d.ancillary_data = d.header_words[2]
+            # Header word 3
+            d.timestamp = d.header_words[3]
+            d.data = udp_payload[4:]
+            d.data_length = len(d.data)
+            result.append(d)
+            if print_packet_info:
+                print 'Timestamp %08X, Ethernet packet= %i bytes' % (d.timestamp, d.ethernet_packet_size)
+        return result
+
+if __name__ == '__main__':
+    if os.name == 'nt':
+        n = GpuNode('10.10.10.200')
