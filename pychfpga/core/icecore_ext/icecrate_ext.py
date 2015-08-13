@@ -488,17 +488,24 @@ class IceCrateExtHandler(IceCrateHandler):
         }
 
     def open(self):
+        """ Establish communication swith the backplane.
         """
-        """
-        pass
+        self.model = self._get_backplane_type()
+        self.id = '%s SN%s' % (self.model, self.serial)
 
 
     def close(self):
-        self._logger.info('Closing Icebox hardware')
+        pass
+
 
     def init(self):
-        """Initializes the backplane hardware to a known state"""
+        """Initializes the backplane hardware to a known state.
 
+        This requires I2C communication with the backplane.
+        """
+
+        self.model = self._get_backplane_type()
+        self.id = '%s SN%s' % (self.model, self.serial)
 
         # Check if the fan controller is connected
         self._fan_ctrl_present = self._fan_ctrl.is_present()
