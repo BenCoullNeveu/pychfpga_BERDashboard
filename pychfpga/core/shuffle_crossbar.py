@@ -264,7 +264,7 @@ class ShuffleCrossbar(Module_base):
         'FIFO_TFIRST': 1,
         'BAD_TLAST': 2,
         'BAD_TVALID': 3,
-        'REMAP_DETECT': 4,
+        'DISCARDED_DATA': 4,
         'MISSING_FRAME': 5,
         'ALIGN_FIFO_OVERFLOW': 6,
         'DATA_TIMEOUT': 7,
@@ -323,7 +323,7 @@ class ShuffleCrossbar(Module_base):
         # align_detect = [align_detect[lane] for lane in lane_map]
         # remap_detect = self.get_lane_monitor('REMAP_DETECT')
         # print '%25s: %s' % ('IN/ALGN/REMAP DETECT', ' '.join(' %i/%i/%i' % (input_detect[lane], align_detect[lane], remap_detect[lane]) for lane in lane_range))
-        for name in [ 'MISSING_FRAME', 'ALIGN_FIFO_OVERFLOW', 'DATA_TIMEOUT', 'BAD_TVALID', 'BAD_TLAST']:
+        for name in [ 'MISSING_FRAME', 'DISCARDED_DATA', 'ALIGN_FIFO_OVERFLOW', 'DATA_TIMEOUT', 'BAD_TVALID', 'BAD_TLAST']:
             value = self.get_lane_monitor(name)
             print '%25s: %s' % (name, ' '.join('%6s' % ('-', 'ERR!')[bool(value[lane])] for lane in lane_map))
         input_frame_ctr = []
