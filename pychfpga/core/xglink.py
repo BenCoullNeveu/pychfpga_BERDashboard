@@ -215,11 +215,6 @@ class GTX(Module_base):
         """ Displays the status of the GTX_CHANNEL"""
         self.logger.info('--- GPU GTX CHANNEL %i ' % self.instance_number)
 
-    def get_matching_tx_node_id(self):
-        return self.fpga.crate.get_matching_tx(self.node_id)
-
-    def get_rx_net_length(self):
-        return self.fpga.crate.get_rx_net_length(self.node_id)
 
     def get_rxdata(self):
         self.CAPTURE_ENABLE=1
