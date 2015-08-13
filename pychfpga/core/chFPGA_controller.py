@@ -263,7 +263,7 @@ class chFPGA_controller(IceBoardExtHandler):
             self.REFCLK = REFCLK.REFCLK_base(self, self._SYSTEM_REFCLK_BASE_ADDR)
 
             self._logger.debug('%r: === Instantiating CHAN' % self)
-            self.ANT = ANT.ANT_base(self, self._CHAN_BASE_ADDR, self._CHAN_ADDR_INCREMENT, self._CHAN_SUBMODULE_ADDR_INCREMENT) # Antenna processors (ADCDAQ, SRCSEL, FFT, SCALER) for each input
+            self.ANT = ANT.ANT_base(self, self._CHAN_BASE_ADDR, self._CHAN_ADDR_INCREMENT, self._CHAN_SUBMODULE_ADDR_INCREMENT) # Antenna processors (ADCDAQ, FUNCGEN,  FFT, SCALER) for each input
             self.ANT_FMC_NUMBER = [i//8 for i in range(self.NUMBER_OF_ANTENNAS)]
 
             self._logger.debug('%r: === Instantiating 1st CROSSBAR' % self)
@@ -615,9 +615,7 @@ class chFPGA_controller(IceBoardExtHandler):
     def set_channelizer_config(self, data_source=None, function=None, a=1, b=0, adc_mode='data', adcdaq_mode='data', fft_bypass=None, fft_shift=None, scaler_bypass=None, gain=None, postscaler=None, channels=None):
         """
             Single command used to set multiple channelizer settings. The data processing chain is:
-            ADC --> ADCDAQ --> |        |
-                   FUNCGEN --> | SRCSEL | --> FFT --> SCALER
-                    INJECT --> |        |
+                  ADC --> ADCDAQ --> FUNCGEN --> --> FFT --> SCALER
         """
         if data_source is not None:
             self.set_data_source(data_source, channels=channels)
@@ -646,8 +644,8 @@ class chFPGA_controller(IceBoardExtHandler):
         '''
             Sets the data source on specified channels (or default channels if the channels are not specified).
         '''
-        if (source is None) or (source.lower() not in self.ANT[0].SRCSEL.DATA_SOURCE_NAMES):
-            raise ValueError("Invalid data source name '%s'. Valid data sources are %s:" % (source, ', '.join(self.ANT[0].SRCSEL.DATA_SOURCE_NAMES.keys())))
+        if (source is None) or (source.lower() not in self.ANT[0].FUNCGEN.DATA_SOURCE_NAMES):
+            raise ValueError("Invalid data source name '%s'. Valid data sources are %s:" % (source, ', '.join(self.ANT[0].FUNCGEN.DATA_SOURCE_NAMES.keys())))
 
         if channels is None:
             channels = self.default_channels
@@ -656,7 +654,7 @@ class chFPGA_controller(IceBoardExtHandler):
         self.set_ant_reset(1) # Reset is needed to resyncronize the system with the new data
         for ch in channels:
             ant = self.ANT[ch]
-            ant.SRCSEL.set_data_source(source.lower())
+            ant.FUNCGEN.set_data_source(source.lower())
         self.set_ant_reset(0) # Reset is needed to resyncronize the system with the new data
         #self.sync() # SYNCs the ADC, and resets (again) the antenna processor to align the data with the ADC
 
@@ -665,7 +663,7 @@ class chFPGA_controller(IceBoardExtHandler):
         '''
             Returns a list of data source for all channels.
         '''
-        return [ant.SRCSEL.get_data_source() for ant in self.ANT.values()]
+        return [ant.FUNCGEN.get_data_source() for ant in self.ANT.values()]
 
 
     def set_funcgen_function(self, function=None, a=1, b=0, channels=None):
@@ -945,17 +943,17 @@ class chFPGA_controller(IceBoardExtHandler):
         """
         self.GPIO.set_global_trig(trigger_state)
 
-    def inject_frame(self,  data=None, length=None, channels=None):
-        """ Inject a frame of data in the specified antenna processing pipeline"""
-        if channels is None:
-            channels = self.default_channels
-        if isinstance(channels, int):
-            channels = [channels]
-        for ch in channels:
-            if isinstance(data, dict):
-                self.ANT[ch].INJECT.inject_frame(data[ch])
-            else:
-                self.ANT[ch].INJECT.inject_frame(data)
+    # def inject_frame(self,  data=None, length=None, channels=None):
+    #     """ Inject a frame of data in the specified antenna processing pipeline"""
+    #     if channels is None:
+    #         channels = self.default_channels
+    #     if isinstance(channels, int):
+    #         channels = [channels]
+    #     for ch in channels:
+    #         if isinstance(data, dict):
+    #             self.ANT[ch].INJECT.inject_frame(data[ch])
+    #         else:
+    #             self.ANT[ch].INJECT.inject_frame(data)
 
     def start_corr_capture(self,  integration_period=1.0, capture_period=None, corr_to_use=None, verbose=1):
         """
