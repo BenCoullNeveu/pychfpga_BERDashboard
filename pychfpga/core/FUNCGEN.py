@@ -23,17 +23,18 @@ class FUNCGEN_base(Module_base):
         # 'inject' : 2, # Data is injected by the user
         }
 
-    FUNCTION_NAMES = {
-        '4bit_split_ramp': 0,  # Generates 0x0000, 0x0010, 0x0020, .. 0x00F0, 0x1000, 0x1010 ...
-        'a': 1,  # All bytes are Byte A
-        'b': 2,  # All bytes are Byte B
-        'ab': 3,  # Bytes alternate between A and B.
-        'ramp': 4,  # Successive bytes generate a repeating ramp from 0 to 255.
-        'real_ramp': 5,  # Generates the ramp: 0,0,0,1,0,2,0,3,0... If the data is read as (8+8)-bit complex value pairs, we obtain (0,0j), (1+0j)... (255+0j)
-        '4bit_ramp': 6,  # Generates the ramp 0x00, 0x10, 0x20, ... 0xF0.
-        '4bit_real_ramp': 7,  # Generates the ramp: 0x00, 0x00, 0x10, 0x00, 0x20, 0x00 ... 0xF0, 0x00
-        'buffer': 8,  # (9,10 and 11 reserved for page selection) Sends the frame stored in the buffer
-        'noise': 12,  # Noise generator
+    FUNCTION_NAMES = {  # key : (source number, function number)
+        '4bit_split_ramp': (1, 0),  # Generates 0x0000, 0x0010, 0x0020, .. 0x00F0, 0x1000, 0x1010 ...
+        'a': (1, 1),  # All bytes are Byte A
+        'b': (1, 2),  # All bytes are Byte B
+        'ab': (1, 3),  # Bytes alternate between A and B.
+        'ramp': (1, 4),  # Successive bytes generate a repeating ramp from 0 to 255.
+        'real_ramp': (1, 5),  # Generates the ramp: 0,0,0,1,0,2,0,3,0... If the data is read as (8+8)-bit complex value pairs, we obtain (0,0j), (1+0j)... (255+0j)
+        '4bit_ramp': (1, 6),  # Generates the ramp 0x00, 0x10, 0x20, ... 0xF0.
+        '4bit_real_ramp': (1, 7),  # Generates the ramp: 0x00, 0x00, 0x10, 0x00, 0x20, 0x00 ... 0xF0, 0x00
+        'buffer': (1, 8),  # (9,10 and 11 reserved for page selection) Sends the frame stored in the buffer
+        'noise': (1, 12),  # Noise generator
+        'adc': (0, 0),  # Select the ADC as a source
         }
 
     # Memory-mapped register definition
@@ -81,7 +82,6 @@ class FUNCGEN_base(Module_base):
         data_source_number = self.SOURCE  # make sure we read this only once
         return [key for (key,value) in self.DATA_SOURCE_NAMES.items() if value == data_source_number][0]
 
-
     def set_function(self, function_name, a=None, b=None, buffer_data=None, seed=None):
         """
         Sets the function to be generated  by the the function generator.
@@ -92,10 +92,13 @@ class FUNCGEN_base(Module_base):
         """
         if function_name not in self.FUNCTION_NAMES:
             raise Exception('Invalid function name')
+
         if a is not None:
             self.BYTE_A = a
+
         if b is not None:
             self.BYTE_B = b
+
         if seed is not None:
             self.BYTE_A = seed & 0xff
             self.BYTE_B = (seed >> 8) & 0xff
@@ -103,9 +106,10 @@ class FUNCGEN_base(Module_base):
         if buffer_data is not None:
             data = np.array(buffer_data, np.uint8)
             for page in range(4):
-                self.FUNCTION = self.FUNCTION_NAMES['buffer'] + page
+                self.FUNCTION = self.FUNCTION_NAMES['buffer'][1] + page
                 self.write_ram(0, data[page * 512: (page + 1) * 512])
-        self.FUNCTION = self.FUNCTION_NAMES[function_name]
+
+        (self.SOURCE, self.FUNCTION) = self.FUNCTION_NAMES[function_name]
 
     def init(self):
         """ Initializes the function generator """
