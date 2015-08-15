@@ -308,10 +308,11 @@ if __name__ == "__main__":
       #try:
       delays = pickle.load(open('pychfpga/delays_jun_2015_no_error.pkl'))
       for ice in c:
-          ice.set_adc_delays_with_check(delays[int(ice.serial)])
-          log.info("set delays on SN {0}, SLOT {1}".format(ice.serial, ice.slot))
-      #except:
-      #    log.info("Error loading/setting delay tables.  Using default from config file for all boards")
+          #try:
+              ice.set_adc_delays_with_check(delays[int(ice.serial)])
+              log.info("set delays on SN {0}, SLOT {1}".format(ice.serial, ice.slot))
+          #except:
+          #    log.info("Error loading/setting delay tables.  Using default delays from config file for all boards")
       #for cc in c:
       #  cc.GPU.LINK_ENABLE=1
       #  log.info("GPU link enabled on SN {0}, SLOT {1}".format(cc.serial, cc.slot))

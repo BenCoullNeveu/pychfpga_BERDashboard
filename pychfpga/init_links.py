@@ -112,8 +112,8 @@ def shuffle_init(c, ni_board, ni_board_26m, sync_board, window_start=200, window
             else:
                 gtx.USER_GTRXRESET = 1
                 # gtx.USER_RESET = 1
-            if (rx == (9,6)) or (rx == (10,11)):
-                gtx.USER_GTRXRESET = 1
+            #if (rx == (9,6)) or (rx == (10,11)):
+            #    gtx.USER_GTRXRESET = 1
         #bb.CROSSBAR2.SOF_WINDOW_START = window_start
         #bb.CROSSBAR2.SOF_WINDOW_STOP = window_stop
         bb.BP_SHUFFLE.reset_rx_equalizers()
