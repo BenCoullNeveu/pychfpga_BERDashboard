@@ -99,7 +99,7 @@ if __name__ == '__main__':
     parser.add_argument('-b', '--bitfile', action = 'store', type=str, default= '../../chfpga/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit',  help='Filename of the bitfile used to to program the FPGAs')
     parser.add_argument('-s', '--subarray', action = 'store', type=int, help='Subarrays to include')
     parser.add_argument('-y', '--yamlfile', action = 'store', type=str, default= 'yaml_iceboard_list.txt',  help='Yaml file with list of boards and their respective IP addresses and handlers.')
-    parser.add_argument('-d', '--delayfile', action = 'store', type=str, default= 'delays_feb17_2015.pkl',  help='Pickle file with ADC delays.')
+    parser.add_argument('-d', '--delayfile', action = 'store', type=str, default= 'delays_aug_2015.pkl',  help='Pickle file with ADC delays.')
     args = parser.parse_args()
     log_levels = {'info': logging.INFO, 'debug': logging.DEBUG}
 
