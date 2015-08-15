@@ -525,6 +525,7 @@ class chFPGA_controller(chFPGAHandler):
         self._logger.info('%r: The 1st crossbar will pack %i frames per packet' % (self, group_frames))
 
         if self.GPIO.NUMBER_OF_GPU_LINKS:
+            self.GPU.init()
             self.GPU.set_enable(enable_gpu_link)
 
         self.CROSSBAR.configure()
