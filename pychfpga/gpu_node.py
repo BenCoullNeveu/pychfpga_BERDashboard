@@ -9,6 +9,8 @@ import socket
 import json
 #import core.icecore.icebox
 
+from pychfpga.core.icecore import Ccoll
+
 
 class GpuData(object):
     def __repr__(self):
@@ -174,7 +176,7 @@ class GpuNode(object):
             result.append(d)
             if print_packet_info:
                 print 'Timestamp %08X, Ethernet packet= %i bytes' % (d.timestamp, d.ethernet_packet_size)
-        return result
+        return Ccoll(result)  # Ccoll allows attributes of the list elements to be accessed directly in parallel
 
 if __name__ == '__main__':
     if os.name == 'nt':
