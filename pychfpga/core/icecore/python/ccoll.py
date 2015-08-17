@@ -110,7 +110,7 @@ class Ccoll(object):
         else:
             return '%s containing: [\n%s]' % (
                 type(self).__name__,
-                ',\n'.join(['%r' % value for value in self])
+                ',\n'.join(['%r' % (value, ) for value in self])
                 )
 
     def __dir__(self):
