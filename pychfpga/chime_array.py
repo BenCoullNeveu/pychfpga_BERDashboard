@@ -9,6 +9,7 @@ import time
 import __main__
 import sys
 import socket  # for gethostbyname()
+import itertools
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -157,7 +158,7 @@ class ChimeArray(object):
             'iceboard0007.local'), the operating system will automatically
             resolve the IP address using mDNS, assuming that a mDNS client
             (Bonjour on Windows or Mac, avahi on Linux) is running on this
-            computer. The ``pybonjour`` package is not needed.
+            computer. The ``pybonjour`` Python package is not needed.
 
             In both cases, the crate, slot and serial number information will
             be automatically obtained directly through the IceBoard's ARM
@@ -169,7 +170,7 @@ class ChimeArray(object):
             ``pybonjour`` package to actively query mDNS and find boards that
             match the serial number.
 
-
+        exclude_iceboards : Excludes the iceboards specified by serial number only.
 
         icecrates : Adds all the iceboards from the crates that have the
             serial numbers specified in the provided list of strings.
@@ -246,11 +247,12 @@ class ChimeArray(object):
         parser.add_argument('--sql_log_level', action='store', type=str, choices=log_levels, default='warn', help='SQLAlchemy Logging level')
         parser.add_argument('--if_ip', action='store', type=str, default=None, help='IP address of adapter through which the connection to the FPGA will be established. This is used solely for direct UDP communications with the FPGA. If not specified, the system will use the same interface that communicates with the ARM processor.')
 
-        parser.add_argument('-y', '--yamlfile', action = 'store', type=str, default=None,  help='Yaml file with list of boards and their respective IP addresses and handlers.')
+        parser.add_argument('-y', '--yamlfile','--yaml_file', action = 'store', type=str, default=None,  help='Yaml file with list of boards and their respective IP addresses and handlers.')
         parser.add_argument('--hwm_name', action = 'store', type=str, default=None,  help='Name of the hardware map to load from the YAML file (the YAML file must be structured as a dictionary)')
         parser.add_argument('-i', '--iceboards', action='store', nargs='*', type=str, default=[], help="Space-separated list of iceboards, which can be specified byip address (e.g. 10.10.10.7), hostname (e.g. iceboard0007.local) if a mDNS client is running locally, or by serial number (e.g. 0007 or simply 7) in which case active mDNS discovery will be done")
         parser.add_argument('-c', '--icecrates', action='store', nargs='*', type=str, default=[], help="Space-separated list of icecrate serial numbers.  Discover and adds all boards in the specified serial number")
         parser.add_argument('--subarrays', action = 'store', type=int, nargs='*', help='Keep in the hardware map only the boards that are in the specified subarrays. This applies only to iceboards that are specified in a YAML file.')
+        parser.add_argument('-x', '--exclude_iceboards', action='store', nargs='*', type=str, default=[], help="Space-separated list of iceboards serials to exclude ")
         # parser.add_argument('--slots', action='store', type=str, nargs='*', help="Select only boards in the specified slot(s)")
         parser.add_argument('--prog', action='store', type=int, nargs='?', const=0, default=-1, help='Programs the FPGA if not already programmed. --prog 1 forces the FPGA programming even if the firmware is already programmed')
         parser.add_argument('-b', '--bitfile', action='store', type=str, default=default_bitfile,  help='Filename of the bitfile used to to program the FPGAs')
@@ -392,6 +394,7 @@ class ChimeArray(object):
                 print ("%r (subarray '%s') is not in the target subarray list %s. It is removed from the YAML hardware map."
                                    % (ib, ib.subarray, args.subarrays))
                 self.hwm.delete(ib)
+            self.hwm.flush()
 
         # Add iceboards that are explicitely listed as hostnames
         if args.iceboards:
@@ -435,24 +438,41 @@ class ChimeArray(object):
                           iceboards=iceboards_to_discover,
                           timeout=args.mdns_timeout)
 
+        # Remove iceboards to be excluded (by serial number)
+        if args.exclude_iceboards:
+            for ib in self.hwm.query(IceBoardPlus):
+                try:
+                    serial = str(int(ib.serial))
+                except (TypeError, ValueError):
+                    serial = ib.serial
+                if serial in args.exclude_iceboards or ib.serial in args.exclude_iceboards:
+                    self.hwm.delete(ib)
+            self.hwm.flush()
+
         # Hardware map is complete
 
         # Query all iceboards
         ib = self.hwm.query(IceBoardPlus).order_by(IceBoardPlus.slot)
         ic = self.hwm.query(IceCrate).order_by(IceCrate.serial)
 
+        if not ib.count():
+            raise RuntimeError('No Iceboards matching the selection criteria were found')
+
+        if ic.count():
+            ic.open()
+
         print 'The following IceBoards are in the hardware map:'
         for i in ib:
-            crate_name = '%s SN%s' % (i.crate.__class__.__name__, i.crate.serial) if i.crate else 'No crate'
+            crate_name = '%s SN%s' % (i.crate.model, i.crate.serial) if i.crate else 'No crate'
             print 'Crate %s, slot %2s: Iceboard SN%s at %s (ping =%s)' % (crate_name, i.slot, i.serial, i.hostname, i.ping())
 
         # Augment the arg Namespace with conveniently proprocessed elements
-        self.ib = ib
-        self.ic = ic
+        self.ib = Ccoll(ib)
+        self.ic = Ccoll(set(c for c in ib.crate if c))
 
         # chFPGA_controller.register_fpga_bitstream(fpga_bitstream)
 
-        if self.ib.count():
+        if self.ib:
             ib.check_tuber_version()  # Check if the board is running a compatible ARM firmware
             ib.set_handler(chFPGA_controller)
             ib.set_cache() # we have a new handler, so update its cached ORM object values
@@ -482,12 +502,12 @@ class ChimeArray(object):
         print
         print 'Updated hardware map, with mezzanine info:'
         for i in self.ib:
-            mezz = ['%s SN%s' % (m.__ipmi_part_number__, m.serial) if m else 'None' for m in [i.mezzanine.get(1,None), i.mezzanine.get(2,None)]]
-            print '   Crate SN%s, slot %2s: Iceboard SN%s at %s (ping =%s), Mezz1=%s, Mezz2=%s' % (i.crate.serial if i.crate else None, i.slot, i.serial, i.hostname, i.ping(), mezz[0], mezz[1])
+            mezz = ['%s SN%s' % (m.__ipmi_part_number__, m.serial) if m else 'None' for m in [i.mezzanine.get(1, None), i.mezzanine.get(2, None)]]
+            print 'Crate %s SN%s, slot %2s: Iceboard SN%s at %s (ping =%s), Mezz1=%s, Mezz2=%s' % (i.crate.model, i.crate.serial if i.crate else None, i.slot, i.serial, i.hostname, i.ping(), mezz[0], mezz[1])
         self.print_flush()
 
         print
-        if self.ib.count() and args.open > -1:
+        if self.ib and args.open > -1:
             print 'Initializing firmware (calling ib.open())'
             self.ib.open(adc_delay_table=ADC_DELAY_TABLE,
                          init=args.open,
@@ -937,6 +957,18 @@ class ChimeArray(object):
                     print 'None                 ',
             print
 
+    def get_backplane_links(self, print_=True):
+        """ Return all backplane links that **should** be available given the currnet collection of crates.
+        """
+
+        # get all crates associated with the current set of iceboards
+        crates = set(ib.crate for ib in self.ib if ib.crate)
+
+        links = {}
+        for cr in crates:
+            links[cr.id] = list(itertools.chain(*(ib.BP_SHUFFLE.get_links() for ib in cr.slot.values())))
+        return links
+
     def detect_backplane_links(self, tx_power=7, print_=True):
         """ Setup all boards on the array to send test pattern over the
         backplane link and detect  from which slot/lane every board is
@@ -1048,17 +1080,21 @@ class ChimeArray(object):
 
         return link_list
 
-    def get_ber(self, link_list=None, period=0.1, tx_power = None, print_=True):
+    def get_ber(self, link_list=None, period=0.1, tx_power=None, print_=True):
 
         if link_list is None:
             link_list = self.detect_backplane_links(tx_power=tx_power or 7, print_=False)
         link_list.sort(key=lambda ((ss,sl),(ds,dl)): ss*16+ds)
 
-        ib_map = {ib.slot:ib for ib in self.ib}
+        ib_map = {ib.slot: ib for ib in self.ib}
         ber_table={}
-        for ((ss,sl),(ds,dl)) in link_list:
+        for ((ss, sl), (ds, dl)) in link_list:
             if ss not in ib_map or ds not in ib_map:
                 continue
+            if sl == 0 or dl == 0:
+                ber_table[((ss, sl), (ds, dl))] = 0
+                continue
+
             source_ib = ib_map[ss]
             dest_ib = ib_map[ds]
             if not source_ib.is_open() or not dest_ib.is_open():
@@ -1071,25 +1107,25 @@ class ChimeArray(object):
 
             source_gtx.TXPRBSSEL = 4
             if print_:
-                print 'Measuring BER for Slots %2i->%2i (SN%s, GTX[%2i])=> (SN%s, GTX[%2i])' % (ss, ds, source_ib.serial, sl-1,  dest_ib.serial, dl-1),
+                print 'Measuring BER for Slots (%2i, %2i)->(%2i,%2i) (SN%s, GTX[%2i])=> (SN%s, GTX[%2i])' % (ss, sl, ds, dl, source_ib.serial, sl-1,  dest_ib.serial, dl-1),
 
             # First, make sure we can get errors by setting the wrong RX PRBS Sequence
-            dest_gtx.RXPRBSCNTRESET=1
+            dest_gtx.RXPRBSCNTRESET = 1
             dest_gtx.RXPRBSSEL=3
-            dest_gtx.RXPRBSCNTRESET=0
-            t0=time.time()
+            dest_gtx.RXPRBSCNTRESET = 0
+            t0 = time.time()
             while True:
                 if dest_gtx.ERR_CTR:
                     break
                 if time.time()-t0 < 1:
                     raise SystemError('Cannot detect errors even with the wrong sequence!')
 
-            #dest_gtx.RXPRBSCNTRESET=1
-            #dest_gtx.RXPRBSCNTRESET=0
-            #dest_gtx.RXPRBSCNTRESET=1
-            #dest_gtx.RXPRBSCNTRESET=0
-            #t0=time.time()
-            #while time.time()-t0 < 13:
+            # dest_gtx.RXPRBSCNTRESET=1
+            # dest_gtx.RXPRBSCNTRESET=0
+            # dest_gtx.RXPRBSCNTRESET=1
+            # dest_gtx.RXPRBSCNTRESET=0
+            # t0=time.time()
+            # while time.time()-t0 < 13:
             #    print  dest_gtx.ERR_CTR, 'from', dest_gtx
             #    #dest_gtx.RXPRBSCNTRESET=1
             #    #dest_gtx.RXPRBSCNTRESET=0
@@ -1116,7 +1152,7 @@ class ChimeArray(object):
 
             print 'BER = %1.1e (%i errors, BER<%1.1e)' % (err, cnt, err_max)
             self.print_flush()
-            ber_table[(ss,ds)] = err
+            ber_table[((ss, sl), (ds, dl))] = err
         return ber_table
 
 
@@ -1124,7 +1160,7 @@ class ChimeArray(object):
 
         array = self.ib
         links = self.scan_links(array, tx_power = max_power)
-        power = range(0,max_power+1)
+        power = range(0, max_power+1)
         data = {}
         for tx_power in power:
             e = self.get_ber(array, links, period=period, tx_power = tx_power)
@@ -1137,12 +1173,13 @@ class ChimeArray(object):
         return data
 
     def plot_ber_vs_power(self, data):
-        for (ss, ds), (tx_power, ber) in data.items(): print '%10s' % ((ss,ds),), ','.join(['%6.1g' % b for b in ber])
+        for ((ss, sl), (ds, dl)), (tx_power, ber) in data.items():
+            print '%10s' % (((ss, sl), (ds, dl)), ), ','.join(['%6.1g' % b for b in ber])
         plt.figure(1)
         plt.clf()
 
-        for (ss,ds),(tx_power, ber) in data.items():
-            plt.plot(tx_power, np.log10(np.array(ber)+1e-12), label='Slot %i=>%i' % (ss,ds))
+        for ((ss, sl), (ds, dl)), (tx_power, ber) in data.items():
+            plt.plot(tx_power, np.log10(np.array(ber)+1e-12), label='Slot (%i,%i)=>(%i,%i)' % (ss, sl, ds, dl))
         plt.legend()
 
     def get_eye_matrix(self, h_step=10, v_step=40):
@@ -1152,7 +1189,7 @@ class ChimeArray(object):
         for link in link_map:
             ((from_slot, from_lane), (to_slot, to_lane)) = link
             print  "###### running from slot %i lane %i to slot %i lane %i #######" % ( from_slot, from_lane, to_slot, to_lane)
-            gtx = self.ib(slot=to_slot).BP_SHUFFLE.gtx[to_lane-1]
+            gtx = self.ib.get(slot=to_slot).BP_SHUFFLE.gtx[to_lane-1]
             e = gtx.get_eye_diagram(range(-32, 32, h_step), range(-127, 128, v_step))
             eye_matrix[link] = e
         return eye_matrix

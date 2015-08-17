@@ -14,24 +14,24 @@ History:
 import logging
 
 import ADCDAQ
-import SRCSEL
+# import SRCSEL
 import FFT
 import SCALER
 import PROBER
 import FUNCGEN
-import INJECT
+# import INJECT
 
 class ANT_channel(object):
     """ Implements the interface to one of the channelizer"""
 
     # Antenna processor module addresses
     ADCDAQ_OFFSET_ADDR  = 0
-    SRCSEL_OFFSET_ADDR  = 1
+    # SRCSEL_OFFSET_ADDR  = 1
     FFT_OFFSET_ADDR     = 2
     SCALER_OFFSET_ADDR  = 3
     PROBER_OFFSET_ADDR  = 4
     FUNCGEN_OFFSET_ADDR = 5
-    INJECT_OFFSET_ADDR  = 6
+    # INJECT_OFFSET_ADDR  = 6
 
     def __init__(self, fpga_instance, base_address, submodule_address_increment, instance_number):
         #super(ADC_chip,self).__init__(fpga)
@@ -43,12 +43,12 @@ class ANT_channel(object):
         # port = self.fpga.ANT_PORT[self.ant_number]
 
         self.ADCDAQ  = ADCDAQ.ADCDAQ_base( fpga_instance,   base_address + self.ADCDAQ_OFFSET_ADDR*submodule_address_increment,  instance_number)
-        self.SRCSEL  = SRCSEL.SRCSEL_base( fpga_instance,   base_address + self.SRCSEL_OFFSET_ADDR*submodule_address_increment,  instance_number)
+        # self.SRCSEL  = SRCSEL.SRCSEL_base( fpga_instance,   base_address + self.SRCSEL_OFFSET_ADDR*submodule_address_increment,  instance_number)
         self.FFT     = FFT.FFT_base( fpga_instance,         base_address + self.FFT_OFFSET_ADDR*submodule_address_increment,     instance_number)
         self.SCALER  = SCALER.SCALER_base( fpga_instance,   base_address + self.SCALER_OFFSET_ADDR*submodule_address_increment,  instance_number)
         self.PROBER  = PROBER.PROBER_base( fpga_instance,   base_address + self.PROBER_OFFSET_ADDR*submodule_address_increment,  instance_number)
         self.FUNCGEN = FUNCGEN.FUNCGEN_base( fpga_instance, base_address + self.FUNCGEN_OFFSET_ADDR*submodule_address_increment, instance_number)
-        self.INJECT  = INJECT.INJECT_base( fpga_instance,   base_address + self.INJECT_OFFSET_ADDR*submodule_address_increment,  instance_number)
+        # self.INJECT  = INJECT.INJECT_base( fpga_instance,   base_address + self.INJECT_OFFSET_ADDR*submodule_address_increment,  instance_number)
         self.frame_length = self.fpga.FRAME_LENGTH
 
 
@@ -70,8 +70,8 @@ class ANT_channel(object):
         self.logger.debug('Initializing modules for antenna #%i' % self.ant_number)
         self.logger.debug('  - ADCDAQ')
         self.ADCDAQ.init(fmc_present)
-        self.logger.debug('  - SRCSEL')
-        self.SRCSEL.init()
+        # self.logger.debug('  - SRCSEL')
+        # self.SRCSEL.init()
         self.logger.debug('  - FFT')
         self.FFT.init()
         self.logger.debug('  - SCALER')
@@ -80,8 +80,8 @@ class ANT_channel(object):
         self.PROBER.init()
         self.logger.debug('  - FUNCGEN')
         self.FUNCGEN.init()
-        self.logger.debug('  - INJECT')
-        self.INJECT.init()
+        # self.logger.debug('  - INJECT')
+        # self.INJECT.init()
 
 
     def status(self):
@@ -94,6 +94,13 @@ class ANT_channel(object):
         # self.PROBER.status()
         # self.FUNCGEN.status()
         # self.INJECT.status()
+
+    def get_sim_output(self, analog_input):
+        adcdaq_out = self.ADCDAQ.get_sim_output(analog_input)
+        funcgen_out = self.FUNCGEN.get_sim_output(adcdaq_out)
+        fft_out = self.FFT.get_sim_output(funcgen_out)
+        scaler_out = self.SCALER.get_sim_output(fft_out)
+        return scaler_out
 
 class ANT_base(object):
     """

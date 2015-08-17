@@ -82,6 +82,11 @@ class Ccoll(object):
         """ Concatenates any number of iterables into a sincle Ccoll collection. """
         return cls(itertools.chain(*iterables))
 
+    @classmethod
+    def unique(cls, iterable):
+        """ Create a Ccoll with only unique elements. """
+        return cls(set(iterable))
+
     def __init__(self, objects, keys=None):
         # Do not define a docstring here: for some reason ipython will use it
         # instead of the dynamic __doc__ defined below.
@@ -90,22 +95,22 @@ class Ccoll(object):
         object_list = list(objects)  # in case object is a generator etc.
         # Get the object that this class will mimic if callble
         self._proto = object_list[0] if object_list else None
-        keys = keys or range(len(object_list))
+        keys = keys if keys is not None else range(len(object_list))
         if len(set(keys)) != len(object_list):
             raise ValueError('Keys are not unique')
         self._dict = collections.OrderedDict(sorted(zip(keys, object_list)))
 
     def __repr__(self):
         if self._has_keys:
-            return '%s containing:\n{%s}' % (
+            return '%s containing: {\n%s}' % (
                 type(self).__name__,
-                ',\n'.join('%s:%r' % (key, value) for
+                ',\n'.join('%s: %r' % (key, value) for
                            (key, value) in self.items())
                 )
         else:
-            return '%s containing:\n[%s]' % (
+            return '%s containing: [\n%s]' % (
                 type(self).__name__,
-                ',\n'.join(['%r' % value for value in self])
+                ',\n'.join(['%r' % (value, ) for value in self])
                 )
 
     def __dir__(self):
@@ -163,10 +168,43 @@ class Ccoll(object):
         # see the target object doc
         # """
         results = async.async_call(self.values(), None, *args, **kwargs)
-        return Ccoll(results, self._has_keys and self._dict.keys())
+        return Ccoll(results, self._dict.keys() if self._has_keys else None)
 
     def getitem(self, index):
         return self.__getattr__('__getitem__')(index)
+
+    def get(self, *args, **kwargs):
+        """
+        ``get(key)`` returns the value with key and raises KeyError if not found.
+        ``get(key, default) returns the value with the key and returns ``default`` if not found.
+        ``get(attr1=value1, attr2=value2 ...)`` returns the first element where all the specified attributes match the specified values.
+        """
+        if (args and kwargs) or not (args or kwargs):
+            raise AttributeError('Specify either a key or a key=value arguments')
+
+        if len(args) == 0:
+            value = (v for (k,v) in self._dict.items() if all(hasattr(v, kn) and getattr(v, kn) == kv for (kn, kv) in kwargs.items()))
+            try:
+                return value.next()
+            except StopIteration:
+                raise KeyError('No object match the specified key=value pair(s)')
+        elif len(args) == 1:
+            return self._dict[args[0]]
+        elif len(args) == 2:
+            return self._dict.get(*args)
+        else:
+            raise AttributeError
+
+    def index_by(self, keys):
+        """ Return a Ccoll object containing the same data but indexed with
+        the specified key. Key can be the name of an attribute to be used as
+        key, or a iterable to be used directly."""
+
+        if isinstance(keys, str):
+            self._check_collection_attributes(keys)
+            return type(self)(self._dict.values(), keys=[getattr(obj, keys) for obj in self])
+        else:
+            return type(self)(self._dict.values(), keys=keys)
 
     def __getattr__(self, name):
         """Return a collection of attribute 'name' from each of the current
@@ -177,7 +215,7 @@ class Ccoll(object):
         self._check_collection_attributes(name)
         return Ccoll(
             [getattr(obj, name) for obj in self],
-            self._has_keys and self._dict.keys())
+            self._dict.keys() if self._has_keys else None)
 
     def __setattr__(self, name, value):
         """ Sets a value on a collection of objects.

@@ -60,7 +60,9 @@ class ChanBinSel(Module_base):
         # self.fpga = fpga_instance
         super(ChanBinSel, self).__init__(fpga_instance, base_address, instance_number)
         self.logger = logging.getLogger(__name__)
-
+        self.NUMBER_OF_CROSSBAR_INPUTS = self.fpga.NUMBER_OF_CROSSBAR_INPUTS
+        self.NUMBER_OF_CROSSBAR_OUTPUTS = self.fpga.NUMBER_OF_CROSSBAR_OUTPUTS
+        self.cached_bin_select_table = None
         self._lock()
     def reset(self):
         """Performs the soft reset of the CH_DIST module."""
@@ -116,23 +118,42 @@ class ChanBinSel(Module_base):
 
         If the FFT is bypassed, each word contains 4 8-bit ADC samples instead of a pair of frequency channels.
         """
-        # Initialize filter mask (8 flags per word)
-        mask = np.zeros(self.fpga.FRAME_LENGTH/2/8, np.uint8) # frequency_bins_per_frame (FRAME_LENGTH/2) *  mask_byte_per_word (1/8)
 
         if isinstance(bins_to_enable, int):
             bins_to_enable = range(bins_to_enable)
 
+        # try this:
+        # bin_map = zeros(1024, np.uint8)
+        # bin_map[bins_to_enable] = 1
+        # mask = np.packbits(bin_map[::-1])[::-1]
+
+        # Initialize filter mask (8 flags per word)
+        mask = np.zeros(self.fpga.FRAME_LENGTH/2/8, np.uint8) # frequency_bins_per_frame (FRAME_LENGTH/2) *  mask_byte_per_word (1/8)
         # Set the bits in mask
         for j in bins_to_enable:
             #print 'setting bit %i of byte %i' % ((j % 8), j//8)
-            mask[j//8] |= (1<<(j % 8))
+            mask[j // 8] |= (1 << (j % 8))
         # verbose = False
         # if verbose: print (bins_to_enable)
         self.logger.info('%.32r: BIN_SEL: Configuring lane %i of the crossbar to capture %i frequency bins: %s' % (self.fpga, self.instance_number, len(bins_to_enable), repr(bins_to_enable)))
         # self.logger.debug('Mask pattern is: %s' % ( ' '.join('%02X'% byte for byte in mask)))
         self.NUMBER_OF_SELECTED_WORDS = len(bins_to_enable)
 
+        self.cached_bin_select_table = mask
         self.write_ram(0x00, mask) # Enable transmission of selected bytes
+
+    def set_selected_bins(self, bins_to_enable):
+        self.select_bits(bins_to_enable)
+
+    def get_selected_bins(self, use_cache=True):
+
+        if use_cache and self.cached_bin_select_table is not None:
+            mask = self.cached_bin_select_table
+        else:
+            mask = self.read_ram(0x00, length =self.fpga.FRAME_LENGTH/2/8)
+
+        bin_map = np.unpackbits(mask[::-1])[::-1]
+        return np.where(bin_map)
 
     def init(self):
         """ Initializes CH_DIST."""
@@ -149,4 +170,39 @@ class ChanBinSel(Module_base):
         self.logger.debug('   FIFO EMPTY: %i' % self.FIFO_EMPTY)
         self.logger.debug('   FIFO OVERFLOW: %i' % self.FIFO_OVERFLOW)
 
+    def get_sim_output(self, input_lanes):
+        """ Compute the channelizer bin selector output packets.
 
+        ``chan_outputs`` is an array of frame arrays (one frame array per input lane). A frame array must have at least ``frames_per_packet`` frames.
+        """
+
+        number_of_lanes = len(input_lanes)
+        if number_of_lanes != self.NUMBER_OF_CROSSBAR_INPUTS:
+            raise ValueError('The numbe r of input lanes doe snot match the crossbar configuration')
+
+        input_lane_shapes = set(fa.shape for fa in input_lanes)
+        if len(input_lane_shapes) == 1:
+            (number_of_frames, words_per_frame) = input_lane_shapes.pop()
+        else:
+            raise ValueError('All input lanes must have the same number of frames and the same frame size')
+
+        frames_per_packet = self.GROUP_FRAMES
+        if number_of_frames % frames_per_packet:
+            raise ValueError('The input lanes must have a multiple of frames_per_packet')
+
+        bypass = self.BYPASS
+        lane_number = self.instance_number
+        # Build the header words
+        for frame_number in range(number_of_frames/4):
+            header_words = np.zeros(4, int)
+            header_words[0] = 0x000014CF | (self.STREAM_ID << 20) | (lane_number << 16)
+            header_words[1] = (self.FOUR_BITS << 31) | (self.USE_OFFSET_BINARY << 30) | (self.SEND_FLAGS << 29) | (self.SYPASS << 28) | (frames_per_packet << 24) | (self.NUMBER_OF_SELECTED_WORDS << 12) | (self.NUMBER_OF_LANES <<0 )
+            header_words[2] = 0
+            header_words[3] = frame_number
+
+            if bypass:
+                data = np.concat(input_lanes[lane_number][frame_number: frame_number+4])
+                return np.concat((header_words, data))
+
+            selected_bins = self.get_selected_bins()
+            RuntimeError('Channelizer Bin selector non-bypass mode is not supported yet')

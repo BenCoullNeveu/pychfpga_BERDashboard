@@ -130,15 +130,21 @@ class GTX(Module_base):
     TXRESETDONE   = BitField(STATUS, 0, 3, doc='Debug')
     RXRESETDONE   = BitField(STATUS, 0, 2, doc='Debug')  # From the RX_FSM
     BLOCK_LOCK    = BitField(STATUS, 0, 1, doc='Debug')
+    RX_PRESENT    = BitField(STATUS, 0, 0, doc='Indicates if the RX logic is implemented')
 
-    RXHEADER      = BitField(STATUS, 1, 6, width=2, doc='Debug')
-    RXBUFSTATUS   = BitField(STATUS, 1, 0, width=3)
-
-    RXMONITOR     = BitField(STATUS, 2, 0, width=7, doc='Debug')
-
-    RXDATA        = BitField(STATUS, 6, 0, width=32)
+    # New order to allow GPU links BER tests
+    # ERR_CTR       = BitField(STATUS, 4, 0, width=32)
+    # RXHEADER      = BitField(STATUS, 5, 6, width=2, doc='Debug')
+    # RXBUFSTATUS   = BitField(STATUS, 5, 0, width=3)
+    # RXMONITOR     = BitField(STATUS, 6, 0, width=7, doc='Debug')
+    # RXDATA        = BitField(STATUS, 10, 0, width=32)
 
     ERR_CTR       = BitField(STATUS, 10, 0, width=32)
+    RXHEADER      = BitField(STATUS, 1, 6, width=2, doc='Debug')
+    RXBUFSTATUS   = BitField(STATUS, 1, 0, width=3)
+    RXMONITOR     = BitField(STATUS, 2, 0, width=7, doc='Debug')
+    RXDATA        = BitField(STATUS, 6, 0, width=32)
+
 
     DMONITOROUT   = BitField(STATUS, 11, 0, width=8, doc='Debug')
 
@@ -209,17 +215,13 @@ class GTX(Module_base):
         """ Initializes the GTX CHANNEL block"""
         self.logger.info('Initializing GTX_CHANNEL  #%i' % self.instance_number)
         self.configure()
-        self.reset_rx_equalizer()
+        if self.RX_PRESENT: # Call only if there is a RX link, otherwise it will kill the GPU links
+            self.reset_rx_equalizer()
 
     def status(self):
         """ Displays the status of the GTX_CHANNEL"""
         self.logger.info('--- GPU GTX CHANNEL %i ' % self.instance_number)
 
-    def get_matching_tx_node_id(self):
-        return self.fpga.crate.get_matching_tx(self.node_id)
-
-    def get_rx_net_length(self):
-        return self.fpga.crate.get_rx_net_length(self.node_id)
 
     def get_rxdata(self):
         self.CAPTURE_ENABLE=1
@@ -228,14 +230,14 @@ class GTX(Module_base):
 
     def configure(self):
         """ Execute only when there is a clock """
-        self.SOURCE_SEL=0 # 0:Send user packets, 1: send TXDATA word
+        self.SOURCE_SEL = 0  # 0:Send user packets, 1: send TXDATA word
         self.LOOPBACK = 0
         # self.TXPOLARITY=0
         # self.RXPOLARITY=0
-        self.TXPRBSSEL=0
-        self.RXPRBSSEL=0
+        self.TXPRBSSEL = 0
+        self.RXPRBSSEL = 0
         self.TXDIFFCTRL = 10
-        self.TXPRECURSOR = 0b00000 #DFE cannot compensate pre-cursor
+        self.TXPRECURSOR = 0b00000  #DFE cannot compensate pre-cursor
         self.TXPOSTCURSOR = 0b00000
         self.RXMONITORSEL = 1 # 1=AGC, 2=UL, 3=VP loop
         self.RX_DEBUG_CFG = 0x14  # 0x14= Vpeak, 0x2C=AGC
