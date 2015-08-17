@@ -96,7 +96,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
 
     fpga_ip_addr = None
     interface_ip_addr = None  # Is automatically detected by opening a TCP connection to the ARM
-
+    zero_target_irigb_year_and_day = False # If True, target IRIGB yead and day will always be written as zero binary values to me compatible with the IRIG-B generator
 
     class AutoOpen(object):
         """ Automatcally call the specified 'open' method that creates an
@@ -627,8 +627,12 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         ts = self._IrigTimestamp()
         ts.pps = (w0 >> 26) & ((1 << 6) - 1)
         ts.sbs = (w0 >> 8) & ((1 << 18) - 1)
-        ts.y = (w0 >> 0) & ((1 << 8) - 1)
-        ts.d = (w1 >> 20) & ((1 << 9) - 1)
+        if self.zero_target_irigb_year_and_day:
+            ts.y = 0
+            ts.d = 1
+        else:
+            ts.y = (w0 >> 0) & ((1 << 8) - 1)
+            ts.d = (w1 >> 20) & ((1 << 9) - 1)
         ts.h = (w1 >> 14) & ((1 << 6) - 1)
         ts.m = (w1 >> 7) & ((1 << 7) - 1)
         ts.s = (w1 >> 0) & ((1 << 7) - 1)
@@ -639,10 +643,10 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         if not noerror and not ts.recent:
             raise RuntimeError('Invalid or no IRIG-B signal. Check your cable and source.')
 
-        if ts.d < 1 or ts.d > 366:
+        if not noerror and (ts.d < 1 or ts.d > 366):
             raise RuntimeError('Invalid IRIG-B day value %i. Day-of-year must be between 1 and 366' % ts.d)
 
-        if ts.h > 23 or ts.m > 59 or ts.s > 59:
+        if not noerror and (ts.h > 23 or ts.m > 59 or ts.s > 59):
             raise RuntimeError('Invalid IRIG-B time value %ih %im %is.' % (ts.h, ts.m, ts.s))
 
         ts.datetime = datetime(ts.y + 2000, 1, 1) + timedelta(ts.d-1, ts.s, ts.ss//100, 0, ts.m, ts.h)
@@ -683,9 +687,12 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         delay = int(delay * 1e6)/1e6  # Round delay to the microsecond
         dt += timedelta(0, delay)
         self.logger.info('%.32r: Setting IRIGB target time to %s + %3i ns' % (self, dt.isoformat(), nano_delay))
-
-        y = dt.year % 100
-        d = (dt - datetime(dt.year, 1, 1)).days + 1
+        if self.zero_target_irigb_year_and_day:
+            y = 0
+            d = 0
+        else:
+            y = dt.year % 100
+            d = (dt - datetime(dt.year, 1, 1)).days + 1
         h = dt.hour
         m = dt.minute
         s = dt.second
