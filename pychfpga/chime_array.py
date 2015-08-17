@@ -455,7 +455,11 @@ class ChimeArray(object):
         ib = self.hwm.query(IceBoardPlus).order_by(IceBoardPlus.slot)
         ic = self.hwm.query(IceCrate).order_by(IceCrate.serial)
 
-        ic.open()
+        if not ib.count():
+            raise RuntimeError('No Iceboards matching the selection criteria were found')
+
+        if ic.count():
+            ic.open()
 
         print 'The following IceBoards are in the hardware map:'
         for i in ib:
@@ -1185,7 +1189,7 @@ class ChimeArray(object):
         for link in link_map:
             ((from_slot, from_lane), (to_slot, to_lane)) = link
             print  "###### running from slot %i lane %i to slot %i lane %i #######" % ( from_slot, from_lane, to_slot, to_lane)
-            gtx = self.ib(slot=to_slot).BP_SHUFFLE.gtx[to_lane-1]
+            gtx = self.ib.get(slot=to_slot).BP_SHUFFLE.gtx[to_lane-1]
             e = gtx.get_eye_diagram(range(-32, 32, h_step), range(-127, 128, v_step))
             eye_matrix[link] = e
         return eye_matrix

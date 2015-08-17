@@ -94,7 +94,7 @@ class ADCDAQ_base(Module_base):
 
 
     def __init__(self, fpga_instance, base_address, instance_number):
-        super(self.__class__, self).__init__(fpga_instance, base_address, instance_number)
+        super(ADCDAQ_base, self).__init__(fpga_instance, base_address, instance_number)
         self._lock() # Prevent accidental addition of attributes (if, for example, a value is assigned to a wrongly-spelled property)
 
     def set_ADCDAQ_mode(self, mode):
@@ -234,3 +234,20 @@ class ADCDAQ_base(Module_base):
         # print '  Computed DIVCLK frequency: %.0f MHz' % (fin*1.0/input_div*fb_div/divclk_div)
 
         print
+
+    def get_sim_output(self, analog_input=None, number_of_frames=None):
+        frame_length = self.fpga.FRAME_LENGTH
+
+        if self.ENABLE_RAMP:
+            if number_of_frames is None:
+                number_of_frames = 4
+            data_bytes = np.repeat([np.arange(frame_length, dtype=np.int8)], number_of_frames, axis=0)
+        else:
+            if number_of_frames is None:
+                number_of_frames = -1  # Means whatever number of frames fits in the reshaped vector
+            data_bytes = np.reshape(np.array(analog_input, dtype=np.int8), (number_of_frames, frame_length))
+
+        flags = (data_bytes == -128) or (data_bytes == 127)
+        word_flags = np.sum(np.reshape(flags,(-1,4)) * [1, 2, 4, 8], axis=1, dtype=np.uint8)
+        data_words = flags.view('>u4')
+        return (word_flags, data_words)

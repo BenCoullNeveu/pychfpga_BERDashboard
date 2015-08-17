@@ -95,6 +95,13 @@ class ANT_channel(object):
         # self.FUNCGEN.status()
         # self.INJECT.status()
 
+    def get_sim_output(self, analog_input):
+        adcdaq_out = self.ADCDAQ.get_sim_output(analog_input)
+        funcgen_out = self.FUNCGEN.get_sim_output(adcdaq_out)
+        fft_out = self.FFT.get_sim_output(funcgen_out)
+        scaler_out = self.SCALER.get_sim_output(fft_out)
+        return scaler_out
+
 class ANT_base(object):
     """
     Instantiates a container for all channelizers available on the FPGA.
