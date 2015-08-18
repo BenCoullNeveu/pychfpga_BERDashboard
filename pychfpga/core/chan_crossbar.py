@@ -212,3 +212,8 @@ class ChanCrossbar(Module_base):
         print '%20s: %s' % ('INPUT FRAME CTR', ' '.join('%6i' % v for v in input_frame_ctr))
         print '%20s: %s' % ('ALIGN FRAME CTR', ' '.join('%6i' % v for v in align_frame_ctr))
         print '%20s: %s' % ('ALIGN GLOBAL FRAME CTR', '(common to all lanes) %6i' % self.ALIGN_GLOBAL_FRAME_CTR)
+
+    def get_sim_output(chan_outputs):
+        """ Compute the channelizer crossbar output packets.
+        """
+        return [bs.get_sim_output(chan_outputs) for bs in self.BIN_SEL]

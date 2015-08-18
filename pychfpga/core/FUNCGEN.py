@@ -162,12 +162,20 @@ class FUNCGEN_base(Module_base):
         info = data_str[:data_str.index(chr(0))]
         return (fn_number, info, None) # Fn number, info string, CRC32
 
-    def get_sim_output(self, adc_input=None):
+    def get_sim_output(self, adc_input=None, source=None, number_of_frames=4):
         """
         Return the simulated output of this module.
 
         Parameters:
-            ``adc_input`` is a numpy array of 512 Big endian 64-bit words (dtype='>u4'). Bits 31-24 if for sample 0, bits 23-15 bit sample 1 etc. Bits 32-34 are the overflow flags for sample 0 to 3.
+            ``adc_input`` is a (adc_flags, adc_dat) tuple containing:
+
+            adc_flags: Numpy array of (Nframes x 512) integers values
+                indicating overflow condition for each sample of each word in bits
+                3:0. Bit 3 is for earliest sample of the word.
+
+            adc_data: Numpy array of (Nframes x 512) Big endian 64-bit words
+                (dtype='>u4') contained the adc samples packed in words. Bits
+                31-24 if for sample 0, bits 23-15 bit sample 1 etc.
 
         Returns:
             A tuple of two 512 elements vector (flags, data)
@@ -179,21 +187,23 @@ class FUNCGEN_base(Module_base):
         if self.RESET:
             raise RuntimeError('Module is in reset')
 
-        source = self.FUNCTION
-        if source == self.FN_ADC:
+        if source is None:
+            source = self.get_data_source()
+
+        if source == 'adc':
             if adc_input is None:
                 raise RuntimeError('Need to supply ADC input vector')
             (adc_flags, adc_data) = adc_input
-            cumulative_adc_flags = np.cumsum(adc_flags.astype(bool)).astype(bool)
+            cumulative_adc_flags = np.cumsum(adc_flags.astype(bool), axis=-1).astype(bool)
             flags = (cumulative_adc_flags << 0).astype(np.int8)
-            return (flags, adc_input)
-        elif source == self.FN_NOISE:
-            flags = np.zeros(self.FRAME_SIZE, np.int8)
-            data = np.random.random_integers(-128, 127, size=self.FRAME_SIZE).astype(np.uint8).view('>u4').astype('>u8')
+            return (flags, adc_data)
+        elif source == 'noise':
+            flags = np.zeros((number_of_frames, self.FRAME_SIZE), np.int8)
+            data = np.tile(np.random.random_integers(-128, 127, size=self.FRAME_SIZE).astype(np.uint8).view('>u4'), (number_of_frames, 1))
             return (flags, data)
-        elif source == self.FN_BUFFER:
-            flags = np.zeros(self.FRAME_SIZE, np.int8)
-            data = self.get_buffer(use_cache=True).view('>u4').astype('>u8')
+        elif source == 'buffer':
+            flags = np.zeros((number_of_frames, self.FRAME_SIZE), np.int8)
+            data = np.tile(self.get_buffer(use_cache=True).view('>u4'), (number_of_frames, 1))
             return (flags, data)
         else:
             raise RuntimeError('Unknown or unsupported data source')
@@ -201,9 +211,11 @@ class FUNCGEN_base(Module_base):
 
     def init(self):
         """ Initializes the function generator """
-        self.set_function('ramp')
-        # self.USE_OVERFLOW = 1
-        pass
+        if not self.fpga.is_fmc_present_for_channel(self.instance_number):
+            self.set_data_source('buffer') # use the dunction generator if the ADC is not present
+            self.set_function('ramp')
+        else:
+            self.set_data_source('adc') # use the ADC data
 
     def status(self):
         """ Displays the status of the function generator module """

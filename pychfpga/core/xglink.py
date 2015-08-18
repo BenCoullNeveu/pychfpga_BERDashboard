@@ -133,17 +133,17 @@ class GTX(Module_base):
     RX_PRESENT    = BitField(STATUS, 0, 0, doc='Indicates if the RX logic is implemented')
 
     # New order to allow GPU links BER tests
-    # ERR_CTR       = BitField(STATUS, 4, 0, width=32)
-    # RXHEADER      = BitField(STATUS, 5, 6, width=2, doc='Debug')
-    # RXBUFSTATUS   = BitField(STATUS, 5, 0, width=3)
-    # RXMONITOR     = BitField(STATUS, 6, 0, width=7, doc='Debug')
-    # RXDATA        = BitField(STATUS, 10, 0, width=32)
+    ERR_CTR       = BitField(STATUS, 4, 0, width=32)
+    RXHEADER      = BitField(STATUS, 5, 6, width=2, doc='Debug')
+    RXBUFSTATUS   = BitField(STATUS, 5, 0, width=3)
+    RXMONITOR     = BitField(STATUS, 6, 0, width=7, doc='Debug')
+    RXDATA        = BitField(STATUS, 10, 0, width=32)
 
-    ERR_CTR       = BitField(STATUS, 10, 0, width=32)
-    RXHEADER      = BitField(STATUS, 1, 6, width=2, doc='Debug')
-    RXBUFSTATUS   = BitField(STATUS, 1, 0, width=3)
-    RXMONITOR     = BitField(STATUS, 2, 0, width=7, doc='Debug')
-    RXDATA        = BitField(STATUS, 6, 0, width=32)
+    # ERR_CTR       = BitField(STATUS, 10, 0, width=32)
+    # RXHEADER      = BitField(STATUS, 1, 6, width=2, doc='Debug')
+    # RXBUFSTATUS   = BitField(STATUS, 1, 0, width=3)
+    # RXMONITOR     = BitField(STATUS, 2, 0, width=7, doc='Debug')
+    # RXDATA        = BitField(STATUS, 6, 0, width=32)
 
 
     DMONITOROUT   = BitField(STATUS, 11, 0, width=8, doc='Debug')

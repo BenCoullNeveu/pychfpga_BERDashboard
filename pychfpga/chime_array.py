@@ -302,8 +302,12 @@ class ChimeArray(object):
         self.logger.handlers = []  # Clear all existing handlers
 
        # Set-up log for this test run
-        self.logger.setLevel(log_levels[args.log_level])
+        log_handler.setLevel(log_levels[args.log_level])
         self.logger.addHandler(log_handler)
+
+        stream_handler = logging.StreamHandler()
+        stream_handler.setLevel(log_levels['warn'])
+        self.logger.addHandler(stream_handler)
 
         self.logger.info('%r: ------------------------' % self)
         self.logger.info('%r: C H I M E A R R A Y' % self)
@@ -370,7 +374,17 @@ class ChimeArray(object):
         if not self.hwm:
             self.hwm = HardwareMap()  # Create empty hardware map
 
-        # Check if the boards listed the YAML file actually exist on the
+
+        # Remove boards that are not in the specified subarray
+        if args.subarrays:
+            ib_not_in_subarray = self.hwm.query(IceBoardPlus).filter(~IceBoardPlus.subarray.in_(args.subarrays))
+            for ib in list(ib_not_in_subarray):  # make sure the list does not change during the loop
+                print ("%r (subarray '%s') is not in the target subarray list %s. It is removed from the YAML hardware map."  # That comment should be if verbose=1
+                                   % (ib, ib.subarray, args.subarrays))
+                self.hwm.delete(ib)
+            self.hwm.flush()
+
+        # Check if the boards is the selected subarray actually exist on the
         # network. If not, delete them from the hardware map.
         if args.ping:
             self.logger.info('%.32r: Pinging IceBoards specified in YAML file' % (self))
@@ -387,14 +401,6 @@ class ChimeArray(object):
                         self.hwm.delete(ib)
                 self.hwm.flush()
 
-        # Remove boards that are not in the specified subarray
-        if args.subarrays:
-            ib_not_in_subarray = self.hwm.query(IceBoardPlus).filter(~IceBoardPlus.subarray.in_(args.subarrays))
-            for ib in list(ib_not_in_subarray):  # make sure the list does not change during the loop
-                print ("%r (subarray '%s') is not in the target subarray list %s. It is removed from the YAML hardware map."
-                                   % (ib, ib.subarray, args.subarrays))
-                self.hwm.delete(ib)
-            self.hwm.flush()
 
         # Add iceboards that are explicitely listed as hostnames
         if args.iceboards:

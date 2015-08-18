@@ -58,7 +58,7 @@ class FFT_base(Module_base):
         print ' CASPER block pipeling delay: Measured=%i, set point=%i:  clocks' % (self.MEASURED_PIPELINE_DELAY, self.PIPELINE_DELAY)
         print ' Number of FFT overflows: %i' % (self.OVERFLOW_COUNT)
 
-    def get_sim_output(self, fft_input):
+    def get_sim_output(self, fft_input, bypass = None):
         """ Return the simulated output of the FFT module.
 
         ``input`` is typically the data coming from the function generator. It is in the format (flags, data). Data is 32-bit, preferably stored in big endian format. sample 0 is on the Most significant byte.
@@ -72,21 +72,33 @@ class FFT_base(Module_base):
         """
         (flags, data) = fft_input
         data_bytes = data.astype('>u4', copy=False).view(np.int8)  # signed. astype won't do anything if input is already '>u4'
-        if self.BYPASS or not self.fpga.NUMBER_OF_ANTENNAS_WITH_FFT:
+        (number_of_frames, frame_length) = data_bytes.shape
+
+        if bypass is None:
+            bypass = self.BYPASS or not self.fpga.NUMBER_OF_ANTENNAS_WITH_FFT
+
+        if bypass:
             return (flags,
-                    data_bytes[0::4].astype('>i4'),
-                    data_bytes[1::4].astype('>i4'),
-                    data_bytes[2::4].astype('>i4'),
-                    data_bytes[3::4].astype('>i4'))
-        else:
-            fft_shift = self.FFT_SHIFT
-            number_of_shifts = sum(bool(fft_shift & (1 << bit) for bit in range(11)))
-            shift_factor = 2. ** number_of_shifts
-            fft = np.fft.rfft(data_bytes) / shift_factor
-            even = fft[0::2]
-            odd = fft[1::2]
-            return (flags,
-                    even.real().astype('>i4'),
-                    even.imag().astype('>i4'),
-                    odd.real().astype('>i4'),
-                    odd.imag().astype('>i4'))
+                    data_bytes[:, 0::4].astype('>i4'),
+                    data_bytes[:, 1::4].astype('>i4'),
+                    data_bytes[:, 2::4].astype('>i4'),
+                    data_bytes[:, 3::4].astype('>i4'))
+
+        fft_shift = self.FFT_SHIFT  # Read only once from the FPGA
+        number_of_shifts = sum(bool(fft_shift & (1 << bit) for bit in range(11)))
+        shift_factor = 2. ** number_of_shifts
+        N = 4  # PFB window size in frames
+        # Compute window function
+        sinc_window = np.sinc((np.arange(-frame_length * N/2, frame_length * N/2) + 0.5) / frame_length)
+        hamming_window = np.hamming(frame_length * N)
+        window = np.reshape((sinc_window * hamming_window * 512), (4, -1))
+
+        windowed_data = [np.sum(data[n:n+4, :] * window, axis=0) for n in range(0, number_of_frames-4+1)]
+        fft = np.fft.rfft(windowed_data) / shift_factor
+        even = fft[0::2]
+        odd = fft[1::2]
+        return (flags,
+                even.real().astype('>i4'),
+                even.imag().astype('>i4'),
+                odd.real().astype('>i4'),
+                odd.imag().astype('>i4'))
