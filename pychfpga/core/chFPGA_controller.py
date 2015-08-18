@@ -32,6 +32,7 @@ import numpy as np
 import time
 
 from .icecore_ext.iceboard_ext import IceBoardExtHandler
+from chFPGA_receiver import chFPGA_receiver
 
 from pychfpga.common import util
 
@@ -45,7 +46,7 @@ import GPIO
 import SYSMON
 import FreqCtr
 import REFCLK
-import MGT
+# import MGT
 
 # FPGA Antenna processor handlers
 import ANT
@@ -164,6 +165,7 @@ class chFPGA_controller(IceBoardExtHandler):
         self._FMC_present = []  # indicates if the FMC board is present. If not, the modules will act accordingly.
         self._adc_board = []
         self._last_init_time = None
+        self.recv = None
 
     def open(self, init=1, verbose=0, *args, **kwargs):
 
@@ -350,6 +352,7 @@ class chFPGA_controller(IceBoardExtHandler):
              data_width=4,
              group_frames=4,
              enable_gpu_link=1,
+             create_receiver= False,
              verbose=0,
              **kwargs):
         """ Resets the chFPGA firmware to a known state with the specified parameters.
@@ -490,6 +493,10 @@ class chFPGA_controller(IceBoardExtHandler):
 
         self._last_init_time = time.time()
 
+        # Create a data receiver
+        if create_receiver:
+            self.get_data_receiver()
+
     # def get_fpga_cookie(self):
     #     """
     #     Reads the FPGA and returns the cookie that identifies the firmware.
@@ -497,7 +504,7 @@ class chFPGA_controller(IceBoardExtHandler):
     #     """
     #     return self.read(self.mmi._STATUS_BASE_ADDR + self._SYSTEM_GPIO_BASE_ADDR + self._GPIO_COOKIE_REG) & 0x7F
 
-    def get_config(self):
+    def get_config(self, basic = False):
         config = chFPGA_config() # Create empty config container
         # Add configuration parameters
 
@@ -525,32 +532,36 @@ class chFPGA_controller(IceBoardExtHandler):
         config.system_sampling_frequency = self._sampling_frequency
         config.system_reference_frequency = self._reference_frequency
         config.system_frame_period = self._FRAME_PERIOD
-
-        config.adc_board_is_present = bool(self._adc_board[0])
-        if self._adc_board[0]:
-            config.adc_board_temperature = self._adc_board[0].AmbTemp.temperature
-            config.adc_board_adc_chip_temperature = [adc.get_temperature() for adc in self._adc_board[0].ADC]
-            config.adc_serial = [fmc.serial for fmc in self._adc_board] #self._adc_board[0]._board_info['Serial #']
-        config.antenna_data_source = self.get_data_source()
-        config.antenna_fft_bypass = self.get_FFT_bypass()
-        config.antenna_fft_shift_schedule = self.get_FFT_shift()
-        config.antenna_scaler_gain = self.get_gain()
-        config.antenna_adc_data_acquisition_delay_tables  = self.ANT.get_delays()
-        config.FPGA_board_frequency = self.FreqCtr.read_frequency('CLK200', gate_time=0.05)
-        config.CTRL_clock_frequency = self.FreqCtr.read_frequency('CTRL_CLK', gate_time=0.05)
-        config.ant_clock = self.FreqCtr.read_frequency('ANT_CLK', gate_time=0.05)
-        if self._IMPLEMENT_CORR:
-            config.correlator_clock = self.FreqCtr.read_frequency('CORR_CLK', gate_time=0.05)
-            config.correlator_capture_period_in_frames = [corr.ACC.CAPTURE_PERIOD for corr in self.CORR]
-            config.correlator_integration_period_in_frames = [corr.ACC.INTEGRATION_PERIOD for corr in self.CORR]
-        config.fmc_ref_clock = self.FreqCtr.read_frequency('FMC_REFCLK', gate_time=0.05)
-        config.mgt_ref_clock = self.FreqCtr.read_frequency('MGT_REFCLK', gate_time=0.05)
-        config.mgt_word_clock = self.FreqCtr.read_frequency('MGT_USRCLK2', gate_time=0.05)
-        config.adc_clocks = [self.FreqCtr.read_frequency(('ADC_CLK'+str(i)), gate_time=0.05) for i in range(8)]
-        # config.adc_serial = 'Not available'
         config.motherboard_serial = self.GPIO.FPGA_SERIAL_NUMBER
-        # Add FFT shift, scaler gain, corr integration/capture period etc.
-        # config.freq_flags = self.freq_flags  # JFC: what is that?
+
+
+        if not basic:
+            config.adc_board_is_present = bool(self._adc_board[0])
+
+            if self._adc_board[0]:
+                config.adc_board_temperature = self._adc_board[0].AmbTemp.temperature
+                config.adc_board_adc_chip_temperature = [adc.get_temperature() for adc in self._adc_board[0].ADC]
+                config.adc_serial = [fmc.serial for fmc in self._adc_board] #self._adc_board[0]._board_info['Serial #']
+
+            config.antenna_data_source = self.get_data_source()
+            config.antenna_fft_bypass = self.get_FFT_bypass()
+            config.antenna_fft_shift_schedule = self.get_FFT_shift()
+            config.antenna_scaler_gain = self.get_gain()
+            config.antenna_adc_data_acquisition_delay_tables  = self.ANT.get_delays()
+            config.FPGA_board_frequency = self.FreqCtr.read_frequency('CLK200', gate_time=0.05)
+            config.CTRL_clock_frequency = self.FreqCtr.read_frequency('CTRL_CLK', gate_time=0.05)
+            config.ant_clock = self.FreqCtr.read_frequency('ANT_CLK', gate_time=0.05)
+            if self._IMPLEMENT_CORR:
+                config.correlator_clock = self.FreqCtr.read_frequency('CORR_CLK', gate_time=0.05)
+                config.correlator_capture_period_in_frames = [corr.ACC.CAPTURE_PERIOD for corr in self.CORR]
+                config.correlator_integration_period_in_frames = [corr.ACC.INTEGRATION_PERIOD for corr in self.CORR]
+            config.fmc_ref_clock = self.FreqCtr.read_frequency('FMC_REFCLK', gate_time=0.05)
+            config.mgt_ref_clock = self.FreqCtr.read_frequency('MGT_REFCLK', gate_time=0.05)
+            config.mgt_word_clock = self.FreqCtr.read_frequency('MGT_USRCLK2', gate_time=0.05)
+            config.adc_clocks = [self.FreqCtr.read_frequency(('ADC_CLK'+str(i)), gate_time=0.05) for i in range(8)]
+            # config.adc_serial = 'Not available'
+            # Add FFT shift, scaler gain, corr integration/capture period etc.
+            # config.freq_flags = self.freq_flags  # JFC: what is that?
         return config
 
 
@@ -801,6 +812,16 @@ class chFPGA_controller(IceBoardExtHandler):
         self.GPIO.GLOBAL_TRIG = 0 # disable data transmission if continuous mode is currentlly selected
         for ant in self.ANT.values():
             ant.PROBER.RESET = 1
+
+    def get_data_receiver(self):
+        if self.recv:
+            return self.recv
+        chFPGA_config = self.get_config(basic=True)  # get only the info needed to start the receiver
+        self.recv = chFPGA_receiver(chFPGA_config)
+        self.logger.info('Started data receiver threads on %s:%i' % (self.recv.host_ip, self.recv.port_number))
+        self.set_local_data_port_number(self.recv.port_number)
+        return self.recv
+
 
     def start_data_capture(self, period=None, frames_per_burst=1,  number_of_bursts=0,  channels=None, source='scaler', sync=1, verbose=1, burst_period_in_seconds=None, burst_period_in_frames=None):
         """

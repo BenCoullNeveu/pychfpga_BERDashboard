@@ -247,7 +247,7 @@ class ADCDAQ_base(Module_base):
                 number_of_frames = -1  # Means whatever number of frames fits in the reshaped vector
             data_bytes = np.reshape(np.array(analog_input, dtype=np.int8), (number_of_frames, frame_length))
 
-        flags = (data_bytes == -128) or (data_bytes == 127)
-        word_flags = np.sum(np.reshape(flags,(-1,4)) * [1, 2, 4, 8], axis=1, dtype=np.uint8)
-        data_words = flags.view('>u4')
+        flags = (data_bytes == -128) | (data_bytes == 127)
+        word_flags = np.sum(np.reshape(flags, (-1, frame_length / 4, 4)) * [1, 2, 4, 8], axis=-1, dtype=np.uint8)
+        data_words = data_bytes.view('>u4')
         return (word_flags, data_words)

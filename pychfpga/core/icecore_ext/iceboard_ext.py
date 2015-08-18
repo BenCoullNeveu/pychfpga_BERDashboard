@@ -627,12 +627,8 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         ts = self._IrigTimestamp()
         ts.pps = (w0 >> 26) & ((1 << 6) - 1)
         ts.sbs = (w0 >> 8) & ((1 << 18) - 1)
-        if self.zero_target_irigb_year_and_day:
-            ts.y = 0
-            ts.d = 1
-        else:
-            ts.y = (w0 >> 0) & ((1 << 8) - 1)
-            ts.d = (w1 >> 20) & ((1 << 9) - 1)
+        ts.y = (w0 >> 0) & ((1 << 8) - 1)
+        ts.d = (w1 >> 20) & ((1 << 9) - 1)
         ts.h = (w1 >> 14) & ((1 << 6) - 1)
         ts.m = (w1 >> 7) & ((1 << 7) - 1)
         ts.s = (w1 >> 0) & ((1 << 7) - 1)
@@ -643,16 +639,23 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         if not noerror and not ts.recent:
             raise RuntimeError('Invalid or no IRIG-B signal. Check your cable and source.')
 
-        if not noerror and (ts.d < 1 or ts.d > 366):
+        if not noerror and not self.zero_target_irigb_year_and_day and (ts.d < 1 or ts.d > 366):
             raise RuntimeError('Invalid IRIG-B day value %i. Day-of-year must be between 1 and 366' % ts.d)
+
+        if self.zero_target_irigb_year_and_day:
+            y = 0
+            d = 1
+        else:
+            y = ts.y
+            d = ts.d
 
         if not noerror and (ts.h > 23 or ts.m > 59 or ts.s > 59):
             raise RuntimeError('Invalid IRIG-B time value %ih %im %is.' % (ts.h, ts.m, ts.s))
 
-        ts.datetime = datetime(ts.y + 2000, 1, 1) + timedelta(ts.d-1, ts.s, ts.ss//100, 0, ts.m, ts.h)
+        ts.datetime = datetime(y + 2000, 1, 1) + timedelta(d-1, ts.s, ts.ss//100, 0, ts.m, ts.h)
         # ts.before_target = (t1 >> 31) & 1
         # ts.done = (t1 >> 30) & 1
-        ts.nano = int(timegm((ts.y + 2000, 1, 1, 0, 0, 0)) * 1e9) + ((ts.d - 1) *24*3600 + ts.h * 3600 + ts.m * 60 + ts.s)*1000000000 + ts.ss*10
+        ts.nano = int(timegm((y + 2000, 1, 1, 0, 0, 0)) * 1e9) + ((d-1) *24*3600 + ts.h * 3600 + ts.m * 60 + ts.s)*1000000000 + ts.ss*10
         # ts.event_ctr = e0
 
         return self._IRIGB_TIME_FORMAT[format](ts)
