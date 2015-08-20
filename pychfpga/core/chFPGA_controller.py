@@ -305,7 +305,7 @@ class chFPGA_controller(IceBoardExtHandler):
                 if self._FMC_present[fmc_number]:
                     self._logger.info('%r:   An MGADC08 ADC Board is present on FMC slot %i' % (self, fmc_number))
                 else:
-                    self._logger.warning('%r:   An MGADC08 ADC Board is *not* present of FMC slot %i' % (self, fmc_number))
+                    self._logger.info('%r:   An MGADC08 ADC Board is *not* present of FMC slot %i' % (self, fmc_number))
 
             # Determine if the FMC board corresponding to each channelizer is present
             # self.ANT_FMC_IS_PRESENT = [self._adc_board[self.ANT_FMC_NUMBER[i]].is_present() for i in range(self.NUMBER_OF_ANTENNAS)]
@@ -1755,3 +1755,6 @@ class chFPGA_controller(IceBoardExtHandler):
             print x
         for x in bp_gen(self):
             print x
+
+    def get_crate_id(self):
+        return self.crate.get_id()

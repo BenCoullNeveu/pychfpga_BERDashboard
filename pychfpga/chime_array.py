@@ -245,6 +245,7 @@ class ChimeArray(object):
         parser.add_argument('-t', '--log_target', action='store', type=str, default='syslog', help="Logging target ('stream', 'syslog' or a filename)")
         parser.add_argument('-l', '--log_level', action='store', type=str, choices=log_levels, default='debug', help='Logging level')
         parser.add_argument('--sql_log_level', action='store', type=str, choices=log_levels, default='warn', help='SQLAlchemy Logging level')
+        parser.add_argument('--stderr_log_level', action='store', type=str, choices=log_levels, default='warn', help='stderr (console) Logging level')
         parser.add_argument('--if_ip', action='store', type=str, default=None, help='IP address of adapter through which the connection to the FPGA will be established. This is used solely for direct UDP communications with the FPGA. If not specified, the system will use the same interface that communicates with the ARM processor.')
 
         parser.add_argument('-y', '--yamlfile','--yaml_file', action = 'store', type=str, default=None,  help='Yaml file with list of boards and their respective IP addresses and handlers.')
@@ -300,13 +301,13 @@ class ChimeArray(object):
 
         self.logger = logging.getLogger('')
         self.logger.handlers = []  # Clear all existing handlers
-
+        self.logger.setLevel(logging.DEBUG)  # pass all messages to the handlers which will filter what they want
        # Set-up log for this test run
         log_handler.setLevel(log_levels[args.log_level])
         self.logger.addHandler(log_handler)
 
         stream_handler = logging.StreamHandler()
-        stream_handler.setLevel(log_levels['warn'])
+        stream_handler.setLevel(log_levels[args.stderr_log_level])
         self.logger.addHandler(stream_handler)
 
         self.logger.info('%r: ------------------------' % self)
@@ -464,12 +465,12 @@ class ChimeArray(object):
         if not ib.count():
             raise RuntimeError('No Iceboards matching the selection criteria were found')
 
-        if ic.count():
-            ic.open()
+        if not ic.count():
+            print 'There are no IceCrates in the hardware map!'
 
         print 'The following IceBoards are in the hardware map:'
         for i in ib:
-            crate_name = '%s SN%s' % (i.crate.model, i.crate.serial) if i.crate else 'No crate'
+            crate_name = '%s SN%s' % (i.crate.part_number, i.crate.serial) if i.crate else 'No crate'
             print 'Crate %s, slot %2s: Iceboard SN%s at %s (ping =%s)' % (crate_name, i.slot, i.serial, i.hostname, i.ping())
 
         # Augment the arg Namespace with conveniently proprocessed elements
@@ -508,8 +509,9 @@ class ChimeArray(object):
         print
         print 'Updated hardware map, with mezzanine info:'
         for i in self.ib:
-            mezz = ['%s SN%s' % (m.__ipmi_part_number__, m.serial) if m else 'None' for m in [i.mezzanine.get(1, None), i.mezzanine.get(2, None)]]
-            print 'Crate %s SN%s, slot %2s: Iceboard SN%s at %s (ping =%s), Mezz1=%s, Mezz2=%s' % (i.crate.model, i.crate.serial if i.crate else None, i.slot, i.serial, i.hostname, i.ping(), mezz[0], mezz[1])
+            mezz_name = ['%s SN%s' % (m.__ipmi_part_number__, m.serial) if m else 'None' for m in [i.mezzanine.get(1, None), i.mezzanine.get(2, None)]]
+            crate_name = '%s SN%s' % (i.crate.part_number, i.crate.serial) if i.crate else 'No crate'
+            print 'Crate %s, slot %2s: Iceboard SN%s at %s (ping =%s), Mezz1=%s, Mezz2=%s' % (crate_name, i.slot, i.serial, i.hostname, i.ping(), mezz_name[0], mezz_name[1])
         self.print_flush()
 
         print
@@ -523,10 +525,15 @@ class ChimeArray(object):
                          group_frames=args.frames_per_packet,
                          enable_gpu_link=args.enable_gpu_link)
             self.set_sync_method(method='distributed_time', source='bp_trig')
+
+            if self.ic:
+                self.ic.init()
+
         self.print_flush()
 
 
         # import all command line argument values into this object
+        self.args = args
         for k, v in args._get_kwargs():
             setattr(self, k, v)
 
@@ -963,17 +970,6 @@ class ChimeArray(object):
                     print 'None                 ',
             print
 
-    def get_backplane_links(self, print_=True):
-        """ Return all backplane links that **should** be available given the currnet collection of crates.
-        """
-
-        # get all crates associated with the current set of iceboards
-        crates = set(ib.crate for ib in self.ib if ib.crate)
-
-        links = {}
-        for cr in crates:
-            links[cr.id] = list(itertools.chain(*(ib.BP_SHUFFLE.get_links() for ib in cr.slot.values())))
-        return links
 
     def detect_backplane_links(self, tx_power=7, print_=True):
         """ Setup all boards on the array to send test pattern over the
@@ -1086,45 +1082,75 @@ class ChimeArray(object):
 
         return link_list
 
+    def get_backplane_links(self, print_=True):
+        """ Return all backplane links that **should** be available given the currnet collection of crates.
+        """
+
+        # get all crates associated with the current set of iceboards
+        crates = set(ib.crate for ib in self.ib if ib.crate)
+
+        links = {}
+        for cr in crates:
+            links[cr.id] = list(itertools.chain(*(ib.BP_SHUFFLE.get_links() for ib in cr.slot.values())))
+        return links
+
+
+
+    def get_link_map(self):
+        link_map = {}
+
+        for ib in self.ib:
+
+            # Get backplane links
+            link_map.update(ib.BP_SHUFFLE.get_link_map())
+
+            # Add GPU links
+            crate_id = ib.get_crate_id()
+            slot = ib.slot
+            for tx_lane, gtx in enumerate(ib.GPU.gtx):
+                rx_lane = (tx_lane + 4) % 8
+                link = ('GPU', (crate_id, slot, tx_lane), (crate_id, slot, rx_lane))
+                tx = ib.GPU.gtx[tx_lane]
+                rx = ib.GPU.gtx[rx_lane]
+                link_map[link] = (tx, rx)
+        return link_map
+
     def get_ber(self, link_list=None, period=0.1, tx_power=None, print_=True):
 
-        if link_list is None:
-            link_list = self.detect_backplane_links(tx_power=tx_power or 7, print_=False)
-        link_list.sort(key=lambda ((ss,sl),(ds,dl)): ss*16+ds)
+        link_map = self.get_link_map()
 
-        ib_map = {ib.slot: ib for ib in self.ib}
-        ber_table={}
-        for ((ss, sl), (ds, dl)) in link_list:
-            if ss not in ib_map or ds not in ib_map:
-                continue
-            if sl == 0 or dl == 0:
-                ber_table[((ss, sl), (ds, dl))] = 0
-                continue
+        if isinstance(link_list, str):
+            link_list = [link for link in link_map.keys() if link[0] == link_list]
 
-            source_ib = ib_map[ss]
-            dest_ib = ib_map[ds]
-            if not source_ib.is_open() or not dest_ib.is_open():
+        link_list.sort(key=lambda (lt, (sc, ss, sl), (dc, ds, dl)): ss * 16 + ds)
+
+        #  ib_map = {ib.slot: ib for ib in self.ib}
+        ber_table = {}
+        for link in link_list:
+            (link_type, (sc, ss, sl), (dc, ds, dl)) = link
+            if link not in link_map:
                 continue
-            source_gtx = source_ib.BP_SHUFFLE.gtx[sl-1]
-            dest_gtx = dest_ib.BP_SHUFFLE.gtx[dl-1]
+            (source_gtx, dest_gtx) = link_map[link]
+            if source_gtx is None or dest_gtx is None:
+                continue
 
             if tx_power is not None:
                 source_gtx.TXDIFFCTRL = tx_power
 
             source_gtx.TXPRBSSEL = 4
             if print_:
-                print 'Measuring BER for Slots (%2i, %2i)->(%2i,%2i) (SN%s, GTX[%2i])=> (SN%s, GTX[%2i])' % (ss, sl, ds, dl, source_ib.serial, sl-1,  dest_ib.serial, dl-1),
+                print 'Measuring BER for link %s' % (link,),
 
             # First, make sure we can get errors by setting the wrong RX PRBS Sequence
             dest_gtx.RXPRBSCNTRESET = 1
-            dest_gtx.RXPRBSSEL=3
+            dest_gtx.RXPRBSSEL = 3
             dest_gtx.RXPRBSCNTRESET = 0
             t0 = time.time()
             while True:
                 if dest_gtx.ERR_CTR:
                     break
-                if time.time()-t0 < 1:
-                    raise SystemError('Cannot detect errors even with the wrong sequence!')
+                if time.time() - t0 > 1:
+                    raise SystemError('Cannot detect errors even with the wrong sequence! Are the links connected as expected?')
 
             # dest_gtx.RXPRBSCNTRESET=1
             # dest_gtx.RXPRBSCNTRESET=0
@@ -1158,7 +1184,7 @@ class ChimeArray(object):
 
             print 'BER = %1.1e (%i errors, BER<%1.1e)' % (err, cnt, err_max)
             self.print_flush()
-            ber_table[((ss, sl), (ds, dl))] = err
+            ber_table[link] = err
         return ber_table
 
 

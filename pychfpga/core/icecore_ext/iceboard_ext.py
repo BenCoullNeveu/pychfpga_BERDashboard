@@ -11,6 +11,7 @@ import struct
 
 from ..icecore import IceBoardPlusHandler
 from ..icecore import tuber  # Used to get TuberRemoteError
+from ..icecore import Ccoll
 from ..icecore.hw.ipmi_fru import FRU, Board, Product, MultiDict
 
 
@@ -784,7 +785,7 @@ class I2CInterface(object):
     FPGA or through the ARM.
     """
 
-    I2CException = SystemError  # Exception object to expect from I2C communication errors
+    I2CException = IOError  # Exception object to expect from I2C communication errors
 
     def __init__(self, write_read_fn, port_select_fn, bus_table, _switch_addr, verbose=None):
         self.write_read_fn = write_read_fn
@@ -839,8 +840,8 @@ class I2CInterface(object):
         if bus_name:
             self.select_bus(bus_name, retry=3)
         try:
-            self.write_read(addr, data=[], read_length=0, retry=0 ) #dummy I2C acces
-        except self.I2CException:
+            self.write_read(addr, data=[], read_length=0, retry=0) #dummy I2C acces
+        except IOError:
             return False
         return True
 
@@ -977,15 +978,14 @@ class IceBoardHardware(object):
         """
 
         self._logger = logging.getLogger(__name__)
-        self._logger.debug('Initializing Iceboard hardware')
+        self._logger.debug('%.32r: Initializing Iceboard hardware' % iceboard)
         self._iceboard = iceboard
         self._i2c = self._iceboard.i2c
-
-        self._logger.info(' Instantiating Motherboard EEPROM managers')
+        self._logger.info('%.32r: Instantiating Motherboard EEPROM managers' % self._iceboard)
         self._motherboard_eeprom_data = eeprom.eeprom(self._i2c, self._MOTHERBOARD_EEPROM_DATA_ADDR, 'GPIO', self._MOTHERBOARD_EEPROM_ADDR_WIDTH, self._MOTHERBOARD_EEPROM_PAGE_SIZE)
         self._motherboard_eeprom_serial = eeprom.eeprom(self._i2c, self._MOTHERBOARD_EEPROM_SERIAL_ADDR, 'GPIO', self._MOTHERBOARD_EEPROM_ADDR_WIDTH, self._MOTHERBOARD_EEPROM_PAGE_SIZE)
 
-        self._logger.info(' Instantiating FMC EEPROM managers')
+        self._logger.info('%.32r:  Instantiating FMC EEPROM managers' % self._iceboard)
 
         # We check if the EEPROM has multiple pages, and if so, we *assume* that
         # the EEPROM is a large (non-FMC compliant) EEPROM with 2-byte addresses.
@@ -998,13 +998,13 @@ class IceBoardHardware(object):
         # if there has another I2C device at the address following the EEPROM
         # address.
         if self._i2c.is_present(self._FMC_EEPROM_ADDR+1, bus_name='FMCA'):
-            self._logger.info('Detected multipage EEPROM on FMCA. Assuming >16-bit addressing.')
+            self._logger.info('%.32r: Detected multipage EEPROM on FMCA. Assuming >16-bit addressing.' % self._iceboard)
             self._fmca_eeprom = eeprom.eeprom(self._i2c, self._FMC_EEPROM_ADDR, 'FMCA', self._MCGILL_FMC_EEPROM_ADDR_WIDTH, self._MCGILL_FMC_EEPROM_PAGE_SIZE)
         else:
             self._fmca_eeprom = eeprom.eeprom(self._i2c, self._FMC_EEPROM_ADDR, 'FMCA', self._FMC_EEPROM_ADDR_WIDTH, self._FMC_EEPROM_PAGE_SIZE)
 
         if self._i2c.is_present(self._FMC_EEPROM_ADDR+1, bus_name='FMCB'):
-            self._logger.info('Detected multipage EEPROM on FMCB. Assuming >16-bit addressing.')
+            self._logger.info('%.32r: Detected multipage EEPROM on FMCB. Assuming >16-bit addressing.' % self._iceboard)
             self._fmcb_eeprom = eeprom.eeprom(self._i2c, self._FMC_EEPROM_ADDR, 'FMCB', self._MCGILL_FMC_EEPROM_ADDR_WIDTH, self._MCGILL_FMC_EEPROM_PAGE_SIZE)
         else:
             self._fmcb_eeprom = eeprom.eeprom(self._i2c, self._FMC_EEPROM_ADDR, 'FMCB', self._FMC_EEPROM_ADDR_WIDTH, self._FMC_EEPROM_PAGE_SIZE)
@@ -1015,7 +1015,7 @@ class IceBoardHardware(object):
             }
 
 
-        self._logger.info(' Instantiating I2C GPIO manager')
+        self._logger.info('%.32r: Instantiating I2C GPIO manager' % self._iceboard)
         self._gpio_power = pca9575.pca9575(self._i2c, self._GPIO_POWER_I2C_ADDR, 'GPIO')
         self._gpio_sw_leds = pca9575.pca9575(self._i2c, self._GPIO_SW_LEDS_ADDR, 'GPIO')
         self._gpio_arm_phy_leds = pca9575.pca9575(self._i2c, self._GPIO_ARM_PHY_LEDS_ADDR, 'GPIO')
@@ -1078,6 +1078,7 @@ class IceBoardHardware(object):
         self._qsfpa = qsfp.QSFP(self._i2c, 'QSFPA', self._gpio)
         self._qsfpb = qsfp.QSFP(self._i2c, 'QSFPB', self._gpio)
 
+        self.qsfp = Ccoll((self._qsfpa, self._qsfpb))
         # self._logger.info(' Instantiating I2C temperature sensors')
         # self._tmp_power = tmp100.tmp100(self._i2c, self._TMP_POWER_I2C_ADDR, 'GPIO')
         # self._tmp_phy = tmp100.tmp100(self._i2c, self._TMP_PHY_I2C_ADDR, 'GPIO')

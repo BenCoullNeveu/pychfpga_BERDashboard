@@ -26,12 +26,90 @@ class MasterIceboardObject(object):
 class IceCrateExt(IceCrate):
     handler_name = 'IceCrateExtHandler'
     __mapper_args__ = {'polymorphic_identity': 'IceCrateExt'}
-    __ipmi_part_number__ = ['MGK7BP16', 'MGK7BP']  # Must match part number in IPMI data
-    part_number = 'MGK7BP16'
+    __ipmi_part_number__ = []  # Must match part number in IPMI data
+
 
 class IceCrateExtHandler(IceCrateHandler):
+    """ IceCrate handler that provides access to the backplane through an
+    IceBoard.
+
+    This defines the attributes and methods that are available to all
+    IceCrates (including those inherited from IceCrateHandler).
+
+    Any attributes added by the user must be accessed after it has been
+    ensured that the correct IceCrate has been instantiated.
+    """
+    part_number = None
+
+    #------------------------------------
+    # Define hardware-specific constants
+    #------------------------------------
+    NUMBER_OF_SLOTS = None  #
+    _BP_RX_TO_TX_MAP = {}
+    _BP_TX_TO_RX_MAP = {tx:rx for (rx, tx) in _BP_RX_TO_TX_MAP.items()}
+    _BP_RX_NET_LENGTH = {}
+
+    @classmethod
+    def get_matching_tx(cls, rx_slot_lane_tuple):
+        return cls._BP_RX_TO_TX_MAP[rx_slot_lane_tuple]
+
+    @classmethod
+    def get_matching_rx(cls, tx_slot_lane_tuple):
+        return cls._BP_TX_TO_RX_MAP[tx_slot_lane_tuple]
+
+    @classmethod
+    def get_rx_net_length(cls, rx_slot_lane_tuple):
+        return cls._BP_RX_NET_LENGTH[rx_slot_lane_tuple]
+
+    def __init__(self, **kwargs):
+        """ Create all the objects needed to interface the backplane hardware.
+
+        __init__ should only passively create objects. It must not attempt to
+        access methods provided by the ARM as the Crate may be created before
+        IceBoards are associated to it.
+
+        NOTE: attempting to access an unknown attribute might cause an
+        infinite recursion loop as Tuber tries to access the master_iceboard
+        object that may not already exist.
+        """
+        super(IceCrateExtHandler, self).__init__(**kwargs)
+
+        self._logger = logging.getLogger(__name__)
+        self._logger.debug('%r: Instantiating backplane hardware' % self)
+
+    def init(self):
+        """ Communicates with the hardware and sets it in a known state.
+        """
+        pass
+
+    def get_id(self):
+        """ Return a system-unique ID. This can be used to identify links"""
+        return '%s_SN%s' % (self.part_number, str(self.serial))
+
+    def get_number_of_slots(self):
+        return self.NUMBER_OF_SLOTS
+
+####################################################
+#  __  __  _____ _  ________ ____  _____  __   __
+# |  \/  |/ ____| |/ /____  |  _ \|  __ \/_ | / /
+# | \  / | |  __| ' /    / /| |_) | |__) || |/ /_
+# | |\/| | | |_ |  <    / / |  _ <|  ___/ | | '_ \
+# | |  | | |__| | . \  / /  | |_) | |     | | (_) |
+# |_|  |_|\_____|_|\_\/_/   |____/|_|     |_|\___/
+#
+####################################################
+
+@session.register_yaml_object()
+class IceCrate_MGK7BP16(IceCrateExt):
+    handler_name = 'IceCrate_MGK7BP16_Handler'
+    __mapper_args__ = {'polymorphic_identity': 'IceCrate_MGK7BP16'}
+    __ipmi_part_number__ = ['MGK7BP16', 'MGK7BP']  # Must match part number in IPMI data
+
+
+class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
     """ IceCrate handler that provides access to the backplane through an IceBoard.
     """
+    part_number = 'MGK7BP16'
 
     #------------------------------------
     # Define hardware-specific constants
@@ -280,14 +358,6 @@ class IceCrateExtHandler(IceCrateHandler):
         (16, 11): 12557.924, (16, 12): 11689.21, (16, 13): 13797.941, (16, 14): 14954.197, (16, 15): 16081.059 }
 
     @classmethod
-    def get_matching_tx(cls, rx_slot_lane_tuple):
-        return cls._BP_RX_TO_TX_MAP[rx_slot_lane_tuple]
-
-    @classmethod
-    def get_matching_rx(cls, tx_slot_lane_tuple):
-        return cls._BP_TX_TO_RX_MAP[tx_slot_lane_tuple]
-
-    @classmethod
     def get_rx_net_length(cls, rx_slot_lane_tuple):
         return cls._BP_RX_NET_LENGTH[rx_slot_lane_tuple]
 
@@ -335,19 +405,19 @@ class IceCrateExtHandler(IceCrateHandler):
 
         self._i2c = MasterIceboardObject(self, 'i2c')  # Indirect reference to the master Iceboard's I2C object
 
-        self._logger.info(' Instantiating Backplane I2C resource managers')
+        self._logger.info('%.32r: Instantiating Backplane I2C resource managers' % self)
         self._eeprom_data = EEPROM(self._i2c, bus_name='BP', address=self.BACKPLANE_EEPROM_DATA_ADDRESS, address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH, write_page_size = self.BACKPLANE_EEPROM_PAGE_SIZE)
         self._eeprom_serial = EEPROM(self._i2c, bus_name='BP', address=self.BACKPLANE_EEPROM_SERIAL_ADDRESS, address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH, write_page_size = self.BACKPLANE_EEPROM_PAGE_SIZE)
         self._qsfp_eeprom = EEPROM(self._i2c, bus_name='BP', address=self.BACKPLANE_QSFP_ADDRESS, address_width=self.BACKPLANE_QSFP_ADDRESS_WIDTH)
 
-        self._logger.info(' Instantiating Backplane I2C temperature sensors')
+        self._logger.info('%.32r: Instantiating Backplane I2C temperature sensors' % self)
         self._tmp_slot1 = tmp421.tmp421(self._i2c, self._TMP_SLOT1_ADDR, 'BP')
         self._tmp_slot16 = tmp421.tmp421(self._i2c, self._TMP_SLOT16_ADDR, 'BP')
 
-        self._logger.info(' Instantiating Backplane I2C current/power monitor')
+        self._logger.info('%.32r: Instantiating Backplane I2C current/power monitor' % self)
         self._power_3v3 = ina230.ina230(self._i2c, self._POWER_3V3_ADDR, 'BP')
 
-        self._logger.info(' Instantiating Backplane I2C I/O expanders')
+        self._logger.info('%.32r: Instantiating Backplane I2C I/O expanders' % self)
         self._qsfp_ctrla = pca9698.pca9698(self._i2c, self._QSFP_CTRL_SETA_ADDR, 'BP')
         self._qsfp_ctrlb = pca9698.pca9698(self._i2c, self._QSFP_CTRL_SETB_ADDR, 'BP')
         self._reset_ctrl = pca9698.pca9698(self._i2c, self._RESETS_CTRL_ADDR, 'BP')
@@ -423,9 +493,7 @@ class IceCrateExtHandler(IceCrateHandler):
              'ARM':       (self._reset_ctrl, 0, 0b01000011, 0b00000001, 0b01000010),
              'POWER':     (self._reset_ctrl, 0, 0b01001100, 0b00000100, 0b01001000),
              'FPGA':      (self._reset_ctrl, 0, 0b01110000, 0b00010000, 0b01100000)
-
         }
-
 
         self.TEMPERATURE_SENSOR_TABLE = {
              # sensor name: tmp object
@@ -488,7 +556,7 @@ class IceCrateExtHandler(IceCrateHandler):
         }
 
     def open(self):
-        """ Establish communication swith the backplane.
+        """ Establish communications with the backplane.
         """
         self.model = self._get_backplane_type()
         self.id = '%s SN%s' % (self.model, self.serial)
@@ -504,9 +572,6 @@ class IceCrateExtHandler(IceCrateHandler):
         This requires I2C communication with the backplane.
         """
 
-        self.model = self._get_backplane_type()
-        self.id = '%s SN%s' % (self.model, self.serial)
-
         # Check if the fan controller is connected
         self._fan_ctrl_present = self._fan_ctrl.is_present()
 
@@ -516,7 +581,6 @@ class IceCrateExtHandler(IceCrateHandler):
         self._init_qsfp_ctrl()
         if self._reset_ctrl_present:
             self._init_reset_ctrl()  # The power I2c bus needs to be bridged to the monitor I2C bus for this to work
-        self._init_eeprom()
         self._init_temperature_sensors()
         self._init_power_sensors()
         if self._fan_ctrl_present:
@@ -552,7 +616,6 @@ class IceCrateExtHandler(IceCrateHandler):
         History:
         140320 JM: created
         """
-
 
         if power_sensor_name == None:
             power_sensor_name = self.POWER_SENSOR_TABLE.keys()
@@ -594,13 +657,6 @@ class IceCrateExtHandler(IceCrateHandler):
             out3_def=0xFF, out4_def=0xFF)
         #By default setting all pins to inputs, with default output level logic 1 (no reset possible) for all banks except 0
         #On bank 0, default levels are such that LED default is 0, Reset clear is active, and reset pins are functionality is maximily off
-
-    def _init_eeprom(self):
-        """initializes EEPROM"""
-        pass
-
-    def get_number_of_slots(self):
-        return self.NUMBER_OF_SLOTS
 
     def read_backplane_eeprom(self, addr, length=1, **kwargs):
         return self._eeprom_data.read(addr, length, **kwargs)
@@ -1014,16 +1070,32 @@ class IceCrateExtHandler(IceCrateHandler):
 
 
 
+
+
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+#  /$$      /$$  /$$$$$$  /$$   /$$ /$$$$$$$$ /$$$$$$$  /$$$$$$$    /$$
+# | $$$    /$$$ /$$__  $$| $$  /$$/|_____ $$/| $$__  $$| $$__  $$ /$$$$
+# | $$$$  /$$$$| $$  \__/| $$ /$$/      /$$/ | $$  \ $$| $$  \ $$|_  $$
+# | $$ $$/$$ $$| $$ /$$$$| $$$$$/      /$$/  | $$$$$$$ | $$$$$$$/  | $$
+# | $$  $$$| $$| $$|_  $$| $$  $$     /$$/   | $$__  $$| $$____/   | $$
+# | $$\  $ | $$| $$  \ $$| $$\  $$   /$$/    | $$  \ $$| $$        | $$
+# | $$ \/  | $$|  $$$$$$/| $$ \  $$ /$$/     | $$$$$$$/| $$       /$$$$$$
+# |__/     |__/ \______/ |__/  \__/|__/      |_______/ |__/      |______/
+#     Single-slot Test backplane
+# # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+
+
 @session.register_yaml_object()
-class IceCrate_MGK7BP1(IceCrate):
+class IceCrate_MGK7BP1(IceCrateExt):
     handler_name = 'IceCrate_MGK7BP1_Handler'
     __mapper_args__ = {'polymorphic_identity': 'IceCrate_MGK7BP1'}
     __ipmi_part_number__ = ['MGK7BP1']  # Must match part number in IPMI data
 
-class IceCrate_MGK7BP1_Handler(IceCrateHandler):
+class IceCrate_MGK7BP1_Handler(IceCrateExtHandler):
     """
     Provides access to the 1-slot test backplane.
     """
+    part_number = 'MGK7BP1'
 
     #------------------------------------
     # Define hardware-specific constants
@@ -1042,35 +1114,9 @@ class IceCrate_MGK7BP1_Handler(IceCrateHandler):
     _BP_RX_TO_TX_MAP = {(slot, lane): (slot, lane) for slot in range(17) for lane in range(16)}
     _BP_TX_TO_RX_MAP = {tx: rx for (rx,tx) in _BP_RX_TO_TX_MAP.items()}
 
-
-
-    # @classmethod
-    # def get_backplane_info(cls, iceboard):
-    #     logger = logging.getLogger(__name__)
-    #     logger.debug("Attempting to read backplane eeprom to determine board presence")
-    #     eeprom = FMC_EEPROM(iceboard.i2c, 'BP', address=cls.BACKPLANE_EEPROM_DATA_ADDRESS, address_width=cls.BACKPLANE_EEPROM_ADDRESS_WIDTH)
-    #     data = eeprom.read(0, length=1, noerror=True, verbose=1)
-    #     logger.debug("Backplane EEPROM returned the value: %i", data[0])
-    #     return (data[0], None)
-
-    @classmethod
-    def get_matching_tx(cls, rx_slot_lane_tuple):
-        return cls._BP_RX_TO_TX_MAP[rx_slot_lane_tuple]
-
-    @classmethod
-    def get_matching_rx(cls, tx_slot_lane_tuple):
-        return cls._BP_TX_TO_RX_MAP[tx_slot_lane_tuple]
-
-    # @property
-    # def _i2c(self):
-    #     """ provide access to the backplane I2C device through whichever is the current master iceboard """
-    #     return self.master_iceboard.i2c
-
     def __init__(self, **kwargs):
         """
         Creates all the I2C objects needed to interface the hardware.
-        For now, we can only do this when the FPGA is configured
-        because access is done through the FPGA.
 
         For FPGA-based I2C:
             - fpga_core is not Null
@@ -1079,22 +1125,6 @@ class IceCrate_MGK7BP1_Handler(IceCrateHandler):
                 - i2c_write_read(...) # FPGA I2C engine
         """
         super(IceCrate_MGK7BP1_Handler, self).__init__(**kwargs)
-
-        #import iceboard  as ib
-        #if not isinstance(iceboard, ib.IceBoard):
-        #    raise IceBoxException('Please provide a single iceboard object')
-
-#         try:
-#             iter(iceboard)
-#         except TypeError:
-#             pass
-#         else:
-#             raise IceBoxException('Please provide a single iceboard object')
-# #
-# #        if type(iceboard)!=ib.IceBoard:
-# #            raise IceBoxException('Please provide a single iceboard object')
-# #
-
 
         self._I2C_BACKPLANE_BUS_NAME = 'BP'
         self._logger = logging.getLogger(__name__)
@@ -1111,23 +1141,22 @@ class IceCrate_MGK7BP1_Handler(IceCrateHandler):
         self._logger.info(' Instantiating Backplane I2C I/O expanders')
         self._gpio_ctrl = pca9575.pca9575(self._i2c, self._GPIO_CTRL_ADDR, 'BP')
 
-
         self._GPIO_CTRL_MAP = {
              # Slot num : (expander object, Register, bit number)
-             'SLOTADDR0': (self._gpio_ctrl, 0,0),
-             'SLOTADDR1': (self._gpio_ctrl, 0,1),
-             'SLOTADDR2': (self._gpio_ctrl, 0,2),
-             'SLOTADDR3': (self._gpio_ctrl, 0,3),
+             'SLOTADDR0': (self._gpio_ctrl, 0, 0),
+             'SLOTADDR1': (self._gpio_ctrl, 0, 1),
+             'SLOTADDR2': (self._gpio_ctrl, 0, 2),
+             'SLOTADDR3': (self._gpio_ctrl, 0, 3),
 
-             'SYNC':  (self._gpio_ctrl, 0,6),
-             'TIME':  (self._gpio_ctrl, 1,3),
-             'TRIG':  (self._gpio_ctrl, 1,4),
+             'SYNC':  (self._gpio_ctrl, 0, 6),
+             'TIME':  (self._gpio_ctrl, 1, 3),
+             'TRIG':  (self._gpio_ctrl, 1, 4),
 
-             'PLLSYNC': (self._gpio_ctrl, 0,7),
+             'PLLSYNC': (self._gpio_ctrl, 0, 7),
 
-             'BPIO3': (self._gpio_ctrl, 1,0),
-             'BPIO4': (self._gpio_ctrl, 1,1),
-             'BPIO5': (self._gpio_ctrl, 1,2)
+             'BPIO3': (self._gpio_ctrl, 1, 0),
+             'BPIO4': (self._gpio_ctrl, 1, 1),
+             'BPIO5': (self._gpio_ctrl, 1, 2)
         }
 
         self.LED_MAP = {
@@ -1143,20 +1172,9 @@ class IceCrate_MGK7BP1_Handler(IceCrateHandler):
              'FPGA':      (self._gpio_ctrl, 0, 5)
         }
 
-    def open(self):
-        """
-        """
-        pass
-
-    def close(self):
-        self._logger.info('Closing Icebox hardware')
-
     def init(self):
         """Initializes the backplane to a known state"""
-        self._init_gpio_ctrl() # The power I2c bus needs to be bridged to the monitor I2C bus for this to work
-        self._init_eeprom()
-
-
+        self._init_gpio_ctrl()  # The power I2c bus needs to be bridged to the monitor I2C bus for this to work
 
     def _init_gpio_ctrl(self):
         """
@@ -1164,20 +1182,13 @@ class IceCrate_MGK7BP1_Handler(IceCrateHandler):
         History:
         141075 AJG: created
         """
-        gpio_ctrl=self._gpio_ctrl
+        gpio_ctrl = self._gpio_ctrl
 
         gpio_ctrl.init(cfg0_def=0xFF, cfg1_def=0xFF)
         #By default setting all pins to inputs, with default output level logic 0
 
-    def _init_eeprom(self):
-        """initializes EEPROM"""
-        pass
-
-    def get_number_of_slots(self):
-        return self.NUMBER_OF_SLOTS
-
     def read_eeprom(self, addr, length=1):
-        return self._eeprom_data.read(addr, length = length)
+        return self._eeprom_data.read(addr, length=length)
 
     def get_eeprom_serial_number(self):
         """ return the 128-bit hardware-coded EEPROM serial number as a hex string. """
@@ -1195,18 +1206,18 @@ class IceCrate_MGK7BP1_Handler(IceCrateHandler):
 
         for pos, name in enumerate(led_name):
             if isinstance(name, int):
-                name='LED%i' % name
-            led_name[pos]=name
+                name = 'LED%i' % name
+            led_name[pos] = name
 
         if isinstance(state, (bool, int)):
             state = [state] * len(led_name)
 
         for (led, led_state) in zip(led_name,state):
             if led not in self.LED_MAP:
-                raise IceBoxException('Invalid LED name')
+                raise ValueError('Invalid LED name')
             else:
                 (led_control_object, led_control_register, led_control_bitnumber) = self.LED_MAP[led]
-                mask = 1<<led_control_bitnumber
+                mask = 1 << led_control_bitnumber
                 led_control_object.write('CFG%i' % led_control_register, 0, mask=mask) #Setting LED pin to output
                 led_control_object.write('OUT%i' % led_control_register, mask * bool(not(led_state)), mask=mask) #Turning LED on and off
 
@@ -1222,12 +1233,12 @@ class IceCrate_MGK7BP1_Handler(IceCrateHandler):
 
         for pos, name in enumerate(led_name):
             if isinstance(name, int):
-                name='LED%i' % name
+                name = 'LED%i' % name
             led_name[pos]=name
 
         for led in led_name:
             if led not in self.LED_MAP:
-                raise IceBoxException('Invalid LED name')
+                raise ValueError('Invalid LED name')
             else:
                 (led_control_object, led_control_register, led_control_bitnumber) = self.LED_MAP[led]
                 led_control_register='IN%i' % led_control_register #Converting the resister in the map into the correct string format
@@ -1242,23 +1253,23 @@ class IceCrate_MGK7BP1_Handler(IceCrateHandler):
             Sets the backplane slot number to the number specified slot number from 1 to 16
             """
 
-            if slotnum not in range(1,16 + 1):
-                    raise IceBoxException('Invalid slot number')
-            slotnum-=1  #Slot 1 is binary 0000, slot 16 is binary 1111
+            if slotnum not in range(1, 16 + 1):
+                    raise ValueError('Invalid slot number')
+            slotnum -= 1  # Slot 1 is binary 0000, slot 16 is binary 1111
 
-            for addr in range(0,4):
+            for addr in range(0, 4):
                 (ctrlobj, reg, bitnum) = self._GPIO_CTRL_MAP['SLOTADDR%i' % addr]
-                mask = 1<<bitnum
-                ctrlobj.write('CFG%i' % reg, 0, mask=mask) #Setting addr pin to output
+                mask = 1 << bitnum
+                ctrlobj.write('CFG%i' % reg, 0, mask=mask)  # Setting addr pin to output
 
-                bitlevel= (slotnum >> addr) & 1
-                ctrlobj.write('OUT%i' % reg, mask * bitlevel, mask=mask) #Turning pin off
+                bitlevel = (slotnum >> addr) & 1
+                ctrlobj.write('OUT%i' % reg, mask * bitlevel, mask=mask)  # Turning pin off
 
     def get_serial_number(self):
         """
         Returns the board's serial number.
         """
-        return self.get_eeprom_serial_number(); # tentative code
+        return self.get_eeprom_serial_number()  # tentative code
 
     def get_info(self):
         """Loads the info data on the motherboard"""
