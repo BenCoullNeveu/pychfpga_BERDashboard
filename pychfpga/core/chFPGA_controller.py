@@ -813,9 +813,6 @@ class chFPGA_controller(IceBoardExtHandler):
         for ant in self.ANT.values():
             ant.PROBER.RESET = 1
 
-<<<<<<< HEAD
-    def start_data_capture(self, period=None, frames_per_burst=1,  number_of_bursts=0,  channels=None, source='scaler', sync=1, verbose=1, burst_period_in_seconds=None, burst_period_in_frames=None, offset=0):
-=======
     def get_data_receiver(self):
         if self.recv:
             return self.recv
@@ -826,8 +823,7 @@ class chFPGA_controller(IceBoardExtHandler):
         return self.recv
 
 
-    def start_data_capture(self, period=None, frames_per_burst=1,  number_of_bursts=0,  channels=None, source='scaler', sync=1, verbose=1, burst_period_in_seconds=None, burst_period_in_frames=None):
->>>>>>> 86cc250d25563632750a111b3c6321233d8004bb
+    def start_data_capture(self, period=None, frames_per_burst=1,  number_of_bursts=0,  channels=None, source='scaler', sync=1, verbose=1, burst_period_in_seconds=None, burst_period_in_frames=None, offset=0):
         """
         Triggers the capture and transmission of ADC (pre-FFT) or SCALER (post
         FFT) data frames the Ethernet port. This function does not receive the
