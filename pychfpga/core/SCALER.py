@@ -168,6 +168,7 @@ class SCALER_base(Module_base):
         word = [None]*4
         (flags, word[0], word[1], word[2], word[3]) = scaler_input
 
+        (number_of_frames, words_per_frame) = word.shape
         if bypass:
             word = np.array(word, dtype=int) & 0xff # 8 bit values
             data = (word[0] << 24) | (word[1] << 16) | (word[2] << 8) | (word[3] << 0)
@@ -175,25 +176,35 @@ class SCALER_base(Module_base):
         else:
             if any(word < -1<<17) or any( word >= 1<<17):
                 raise ValueError('input values overflows a signed 18-bit word')
-            data = reshape([word(0) + 1j*word(1), word(2) + 1j*word(3)], (number_of_frames, 2*words_per_frame), order='F')
+            data_real = np.reshape([word(0), word(2)], (number_of_frames, 2*words_per_frame), order='F')
+            data_imag = np.reshape([word(1), word(3)], (number_of_frames, 2*words_per_frame), order='F')
             gains = self.get_gain_table() # 16 bits
             shift_left = self.SHIFT_LEFT
             rounding_mode = self.ROUNDING_MODE
-            result = self.scale(data, gains=gains, shift_left=shift_left, rounding_mode=rounding_mode)
+            zero_on_sat = self.ZERO_ON_SATURATION
+            offset_binary = self.USE_OFFSET_BINARY
+            (r_ovf, r_real, r_imag) = self.scale((data_real, data_imag), gains=gains, shift_left=shift_left, rounding_mode=rounding_mode, zero_on_sat=zero_on_sat, offset_binary=offset_binary)
 
-    def scale(self, data, gains=None, shift_left=31, rounding_mode=ROUNDING_MODE_CONVERGENT_ROUND):
+            r_data = (r_real[0::2] << 24) | (r_imag[0::2] << 16) | (r_real[1::2] << 8) | (r_imag[1::2] << 0)
+            r_flags = (r_ovf[0::2] << 3) | (r_ovf[1::2] << 2) | flags
+
+            return (r_flags, r_data)
+
+    def scale(self, data, gains=None, shift_left=31, rounding_mode=ROUNDING_MODE_CONVERGENT_ROUND, zero_on_sat=False, offset_binary = False):
             """ Compute the thoretical output of the scaler.
-            ``data`` is N-dimentional array of (18+18) bits complex values.
+            ``data`` a (real, imag) tuple of N-dimentional array of (18+18) bits complex values.
             """
             # Complex product = (a+bj)(c+dj) = (ac-bd) + j(bc+ad)
             # Width: assume b,c,a,d are 8 bits and are -128. (bc+ad) = 2*-128*-128 = +32768, need (8+8+1) bit to hold worst-case signed product
             # So, in our case, we need (18+16+1)=35 bits unsigned value.
-            stage0_word = data * gains # (18+18) bits * (16+16) bits = (35+35) bits
+            (data_real, data_imag) = data
+            (gains_real, gains_imag) = (gains.real.astype(int), gains.imag.astype(int))
+            stage0_real = data_real * gains_real - data_imag * gains_imag # (18+18) bits * (16+16) bits = (35+35) bits
+            stage0_imag = data_real * gains_imag + data_imag * gains_real
             # word_var = np.array([even.real, even.imag, odd.real, odd.imag], dtype=np.int64)
             # stage1_sign = word_var & (1 << 34).astype(bool)  # Sign on bit 34
-            stage1_word = stage0_word << shift_left
+            stage1_word = np.array([stage0_real, stage0_imag], int) << shift_left  # store real and imag part in an array so we can process them together.
             # stage1_overflow = (-1<<34) > stage1_word >= (1<<34)
-
 
             if rounding_mode == self.ROUNDING_MODE_ROUND:
                 stage2_word = stage1_word + (1 << 30)
@@ -205,13 +216,13 @@ class SCALER_base(Module_base):
 
             stage3_word = stage2_word >> 31
             max_value = 7
-            min_value =  -8 if self.SATURATE_ON_MINUS_7 else -7
-            stage3_overflow = min_value > stage2_word > max_value
+            min_value = -8 if self.SATURATE_ON_MINUS_7 else -7
+            stage3_overflow = (stage2_word < min_value) | (stage2_word > max_value)
             stage3_word = np.clip(stage3_word, min_value, max_value)
-            if self.ZERO_ON_SATURATION:
-                stage3_wor
-            word3 = (((word2 >> 31) % 0xff) << 4)
-            data = (word3[0] << 24) | (word3[1] << 16) | (word3[2] << 8) | (word3[3] << 0)
+            data_overflow = (stage3_overflow[0] | stage3_overflow[1]).astype(bool)
+            if zero_on_sat:
+                stage3_word *= (data_overflow ^ 1)
             if self.USE_OFFSET_BINARY:
-                data ^= 0x80808080
-            return data
+                stage3_word ^= 0x80
+            stage3_word <<= 4
+            return (data_overflow, stage3_word[0], stage3_word[1])

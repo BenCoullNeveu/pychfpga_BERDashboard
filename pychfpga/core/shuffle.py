@@ -28,14 +28,31 @@ class Shuffle(xglink.XGLinkArray):
     def get_rx_net_length(self, rx_node_id):
         return self.fpga.crate.get_rx_net_length(rx_node_id)
 
+    def get_link_map(self):
+        links = {}
+        ds = self.fpga.slot
+        sc = self.fpga.get_crate_id()
+
+        for dl in range(self.NUMBER_OF_LINKS+1):
+            if self.BYPASS:
+                (ss, sl) = (ds, dl)
+                rx = None
+                tx = None
+            else:
+                (ss, sl) = self.fpga.crate.get_matching_tx((ds, dl))
+                rx = self.gtx[dl-1] if dl else None
+                source_ib = self.fpga.crate.slot.get(ss, None)
+                tx = source_ib.BP_SHUFFLE.gtx[sl-1] if source_ib else None
+            link = ('BP', (sc, ss, sl), (sc, ds, dl))
+            links[link] = (tx, rx)
+        return links
+
     def get_links(self):
         """
-        Return a list of all the backplane links in the format ((source_slot, source_lane), (dest_slot, dest_lane)).
+        Return a list of all the backplane links in the format
+        (link_type, (source_crate, source_slot, source_lane), (dest_crate, dest_slot, dest_lane)).
 
         Takes into account the BYPASS mode.
         """
-        ds = self.fpga.slot
-        if self.BYPASS:
-            return [((ds, dl), (ds, dl)) for dl in range(self.NUMBER_OF_LINKS+1)]
-        else:
-            return [(self.fpga.crate.get_matching_tx((ds, dl)), (ds, dl)) for dl in range(self.NUMBER_OF_LINKS+1)]
+        return self.get_link_map().keys()
+
