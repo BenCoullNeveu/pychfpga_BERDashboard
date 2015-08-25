@@ -35,12 +35,20 @@ def get_repo(repo_name='ch_acq'):
     elif repo_name.lower() == 'iceboard-qc':
         directory = os.path.dirname(read_config()['results_directory'].rstrip('/'))
         return git.Repo(directory)
+    elif repo_name.lower() == 'hardware_tracking':
+        directory = os.path.dirname(read_config()['hw_track_directory'].rstrip('/'))
+        return git.Repo(directory)
     else:
         raise Exception("Unknown git reporitory: " + repo_name)
 
 def commit_results( ):
     import traceback
     from git import GitCommandError
+
+    # Check for no_commit file
+    if os.path.exists(os.path.join(read_config()['results_directory'], 'no_commit')):
+        print "Skipping git commit of results due to presence of 'no_commit' file in results directory."
+        return None
 
     res_repo = get_repo('iceboard-qc')
     try:
@@ -61,6 +69,37 @@ def commit_results( ):
 
     except GitCommandError:
         "Failed to add files to 'iceboard-qc' git repository. (trace below)"
+        traceback.print_exc()
+        "\nPlease run and exit the test suite again, or commit and push the changes manually."
+
+def commit_hw_files( ):
+    import traceback
+    from git import GitCommandError
+
+    # Check for no_commit file
+    if os.path.exists(os.path.join(read_config()['hw_track_directory'], 'no_commit')):
+        print "Skipping git commit of results due to presence of 'no_commit' file in hardware_tracking directory."
+        return None
+
+    hw_repo = get_repo('hardware_tracking')
+    try:
+        if hw_repo.is_dirty() or len(hw_repo.untracked_files) > 0:
+            to_stage = [diff.a_blob.path for diff in hw_repo.index.diff(None)] + hw_repo.untracked_files
+            hw_repo.index.add(to_stage)
+            print "Added modified files to hardware tracking git index:"
+            for file in to_stage:
+                print "    " + file
+            hw_repo.index.commit("Update to Iceboard tracking committed from testing script.")
+            print "Changes committed.\n"
+            hw_repo.git.pull('--rebase')
+            print "Pulled from origin..."
+            hw_repo.remotes.origin.push()
+            print "New commit pushed to origin!"
+        else:
+            "Repository is clean. Nothing to commit!"
+
+    except GitCommandError:
+        "Failed to add files to 'hardware_tracking' git repository. (trace below)"
         traceback.print_exc()
         "\nPlease run and exit the test suite again, or commit and push the changes manually."
 

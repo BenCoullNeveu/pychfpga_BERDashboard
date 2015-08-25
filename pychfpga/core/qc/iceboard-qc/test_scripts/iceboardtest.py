@@ -17,7 +17,7 @@ import rampTest
 import testFail
 import traceback
 from statusReport import EMPTY_TEST_STATUS
-from edit_boardfile import new_file_header
+from edit_boardfile import new_file_header, update_tracking_file, update_tracking_from_status
 from edit_boardfile import updateStatus
 from other_stuff import read_config, commit_results
 
@@ -36,8 +36,10 @@ def starttest():
     if config['default_config']:
         print "Did not find config.yaml file. Will use default values from config_example.yaml.\n"
     username = config['user']
+    location = config['location']
     board_md = config['board_md']
     res_dir = config['results_directory']
+    hw_dir = config['hw_track_directory']
 
     #Pass/Fail status of tests. This list will be passed from method to method.
     testStatus = EMPTY_TEST_STATUS()
@@ -48,14 +50,17 @@ def starttest():
     uname_input = raw_input("Enter:	")
     if not uname_input.strip() == '':
         username = uname_input
+    print "What is the location of the board? (if left blank, will use config.yaml entry)"
+    loc_input = raw_input("Enter:	")
+    if not loc_input.strip() == '':
+        location = loc_input
     print "What is the serial number of the board? (e.g. 0009) Please be CONSISTENT in your file naming!!"
     board_sn = raw_input("Enter:	")
     print "What is the revision of this board? (e.g. Rev1)"
     board_vn = raw_input("Enter:	")
-    fname = os.path.join(res_dir, 'board' + board_sn + '.txt')
-    if not os.path.isfile(fname): # Only necessary if file doesn't already exist
-        #print "What is the model of this board?" Moved this to 'config.yaml'
-        #board_md = raw_input("Enter:	")
+    fname = os.path.join(res_dir, 'board{:0>4d}.txt'.format(int(board_sn)))
+    hw_fname = os.path.join(hw_dir, 'iceboard{:0>4d}.yaml'.format(int(board_sn)))
+    if not (os.path.isfile(fname) and os.path.isfile(hw_fname)): # Only necessary if file doesn't already exist
         print "What is the PCB serial number of this board? It is printed on the top-left edge of the board, above " \
               "the 'FMC B' label and components. (e.g. 04-14-017)"
         # TODO: Is this still the case on the new boards (PCB serial location)?
@@ -66,6 +71,11 @@ def starttest():
     
     if not os.path.isfile(fname):
         new_file_header(fname, board_sn, board_md, board_vn, pcb_sn) # Create new file with header
+    if not os.path.isfile(hw_fname):
+        update_tracking_file(hw_fname, overwrite=True, model=board_md, location=location, serial=board_sn,
+                             pcb_serial=pcb_sn, version=board_vn, notes=['Created by {} at {}'.format(username, location)])
+    else:
+        update_tracking_file(hw_fname, overwrite=True, location=location)
 
     raw_input("Press enter when ready to begin testing...    ")
 
@@ -80,10 +90,14 @@ def starttest():
                 continue
             else:
                 updateStatus(testStatus)
+                update_tracking_from_status(testStatus)
                 carry_on = False
                 commit_results()
                 print "\nThank you for this testing process! The data has been saved. The testing program will now exit."
         except SystemExit:
+            carry_on = False
+            commit_results()
+        except KeyboardInterrupt:
             carry_on = False
             commit_results()
         except:

@@ -1,6 +1,6 @@
 import sys
 from statusReport import EMPTY_TEST_STATUS
-from edit_boardfile import updateStatus
+from edit_boardfile import updateStatus, update_tracking_from_status
 from other_stuff import commit_results
 '''
 Add functions here to deal with failures in specific tests.
@@ -10,12 +10,14 @@ def genericFail(username=str,board_sn=str,board_vn=str,board_md=str,testStatus =
     '''
     Generic fail process to be called at the end of specific fail functions.
     '''
-    print("\nIMPORTANT: If you have any reason whatsoever to suspect it is unsafe to proceed with further testing,\nplease check with someone and fix the problem appropriately before continuing with the tests.")
+    print("\nIMPORTANT: If you have any reason whatsoever to suspect it is unsafe to proceed with further testing,"
+          "\nplease check with someone and fix the problem appropriately before continuing with the tests.")
     raw_input("Press Enter once you've read the warning:\t")
     print("\nIf you are confident it is safe to do so, would you like to carry on testing?")
     confirm = raw_input("Enter y/n:\t")
-    if not (confirm == 'Y' or confirm == 'y'):
+    if not (confirm.lower().strip() == 'y'):
         updateStatus(testStatus)
+        update_tracking_from_status(testStatus)
         commit_results()
         sys.exit("\nThank you for this testing process! The data has been saved. The testing program will now exit.")
     
