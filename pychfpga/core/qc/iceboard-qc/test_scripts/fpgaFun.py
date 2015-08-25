@@ -234,6 +234,40 @@ def rampTest(board_sn, directory, ch_acq_path='../../../../../../ch_acq/', host_
     r.close()
     return [ADC_DELAY_TABLE, stuck_bits, ipmi]
 
+def gtx_ber(board_sn, ch_acq_path='../../../../../../ch_acq/', links=None, period=1, power=None,
+            bitfile_path = "../../../../../../chFPGA/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/"+\
+                           "impl_Rev2/chFPGA_MGK7MB_Rev2.bit"):
+    """ Measure the bit error rate on GTX links for a board.
+    :param board_sn: e.g. '0021'
+    :param ch_acq_path: will be added to PYTHONPATH. defaults to '../../ch_acq/'
+    :param links: GTX links to test, can be either "gpu" or "bp".
+    :param period: Period of time to count errors for. Default 1s.
+    :param power: Set power of the GTX transmitters. Up to 15, default 10.
+    :bitfile_path: Path of bitfile to use for programming the FPGA.
+    :return: Dictionary of error counts, keys give lanes.
+    """
+
+    from pychfpga.chime_array import ChimeArray
+
+    # Get ChimeArray object and program the FPGA
+    # Enable GPU link so we can perform bit error test
+    ca = ChimeArray(iceboards=[int(board_sn)], bitfile=bitfile_path, init=1, enable_gpu_link=1, open=1, prog=1)
+
+    # Choose links and run bit error rate test
+    all_links = ca.get_link_map().keys()
+    if links is None:
+        print "Testing all links."
+        links = all_links
+    elif links == 'gpu':
+        print "Testing only GPU links."
+        links = [key for key in all_links if key[0] == 'GPU']
+    elif links == 'bp':
+        print "Testing only BackPlane links."
+        links = [key for key in all_links if key[0] == 'BP']
+    else:
+        raise Exception("Unrecognized argument for 'links': '{}'.    Must be either 'bp' or 'gpu'.".format(str(links)))
+    return ca.get_ber(link_list=links, tx_power=power, period=period)
+
 def write_ipmi(ib, pn, sn, vn):
     ''' Write IPMI to supplied board instance in standard format.
     :param ib: IceBoardPlusHandler to write IPMI on.

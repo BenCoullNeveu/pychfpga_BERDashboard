@@ -42,6 +42,11 @@ def commit_results( ):
     import traceback
     from git import GitCommandError
 
+    # Check for no_commit file
+    if os.path.exists(os.path.join(read_config()['results_directory'], 'no_commit')):
+        print "Skipping git commit of results due to presence of 'no_commit' file in results directory."
+        return None
+
     res_repo = get_repo('iceboard-qc')
     try:
         if res_repo.is_dirty() or len(res_repo.untracked_files) > 0:
