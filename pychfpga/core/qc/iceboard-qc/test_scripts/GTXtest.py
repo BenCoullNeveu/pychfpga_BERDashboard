@@ -6,7 +6,7 @@ from testFail import gtxFail
 from fpgaFun import gtx_ber
 
 # Tolerance for bit error rate pass
-BER_TOL = 1e-10
+BER_TOL = 1e-13
 
 def GTXtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMPTY_TEST_STATUS()):
     testStatus[0] = username
@@ -52,22 +52,36 @@ def GTXtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMP
     # Run bit error test with these parameters
     links = None  # For all links. Could also be 'gpu' or 'bp'
     power = 10  # This is the default value in chime_array.py
-    period = 900  # In seconds
-    ber = gtx_ber(board_sn, ch_acq_path=ch_acq_path, links=links, period=period, power=power)
+    period = (60, 300, 540)  # In seconds
+    print "\nRunning bit error test for {:d} s\n".format(period[0])
+    ber0 = gtx_ber(board_sn, ch_acq_path=ch_acq_path, links=links, period=period[0], power=power)
+    print "\nRunning bit error test for {:d} s\n".format(period[1])
+    tm.sleep(1)
+    ber1 = gtx_ber(board_sn, ch_acq_path=ch_acq_path, links=links, period=period[1], power=power, force=False)
+    print "\nRunning bit error test for {:d} s\n".format(period[2])
+    tm.sleep(1)
+    ber2 = gtx_ber(board_sn, ch_acq_path=ch_acq_path, links=links, period=period[2], power=power, force=False)
+    ber = {}
+    for key in ber0:
+        ber[key] = (ber0[key], ber1[key], ber2[key])
 
     # Write results to file
     test_results = {}
-    file.write("| Used one-slot backplane:  {}\n".format(ber.keys()[0][1][0]))
-    file.write("| Bit error rate test period (s):  {:.2f}\n\n".format(period))
-    file.write("=" * 24 + " " + "=" * 18 + " " + "=" * 6 + "\n")
-    file.write("{0: <24} {1: <18} {2: <6}\n".format("  Link", "  Error rate", " "))
-    file.write("=" * 24 + " " + "=" * 18 + " " + "=" * 6 + "\n")
+    #file.write("| Bit error rate test period (s):  {:.2f}\n\n".format(period))
+    file.write("| Bit error rate test period (s):  {}\n".format(str(period)))
+    file.write("| NOTE: ran test for three periods of time (above) so results are in a tuple with same ordering.\n\n")
+    file.write("=" * 24 + " " + "=" * 30 + " " + "=" * 6 + "\n")
+    file.write("{0: <24} {1: <30} {2: <6}\n".format("  Link", "  Error rate", " "))
+    file.write("=" * 24 + " " + "=" * 30 + " " + "=" * 6 + "\n")
     for link in sorted(ber.keys()):
         link_name = "{0} {1} {2}".format(link[0], link[1][1:], link[2][1:])
-        result = ber[link] < BER_TOL
+        #result = ber[link] < BER_TOL
+        result = (1./float(sum(period))) * (ber[link][0]*period[0] + ber[link][1]*period[1] + ber[link][2]*period[2]) < BER_TOL
         test_results.update({link: result})
-        file.write("{0: <24} {1: >18.2e} {2: >6}\n".format(link_name, ber[link],"PASS" if result else "FAIL"))
-    file.write("=" * 24 + " " + "=" * 18 + " " + "=" * 6 + "\n\n")
+        ber_str = "{:.2e}, {:.2e}, {:.2e}".format(*ber[link])
+        file.write("{0: <24} {1: >30} {2: >6}\n".format(link_name, ber_str, "PASS" if result else "FAIL"))
+        #file.write("{0: <24} {1: >30.2e} {2: >6}\n".format(link_name, ber[link],"PASS" if result else "FAIL"))
+    file.write("=" * 24 + " " + "=" * 30 + " " + "=" * 6 + "\n\n")
     file.flush()
 
     # Check for failure
@@ -76,7 +90,8 @@ def GTXtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMP
         if not test_results[key]:
             gtx_pass = False
             print "\nFailure (error rate > {0:.2e}) on link {1}".format(BER_TOL, key)
-            print "    With error rate: {:.2e}".format(ber[key])
+            print "    With error rate: {}".format(str(ber[key]))
+            #print "    With error rate: {:.2e}".format(ber[key])
 
     # Write final verdict and close
     print "\nIf there are any special concerns regarding the board for this test, please describe them below. " +\

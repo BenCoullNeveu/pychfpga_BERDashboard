@@ -236,7 +236,7 @@ def rampTest(board_sn, directory, ch_acq_path='../../../../../../ch_acq/', host_
 
 def gtx_ber(board_sn, ch_acq_path='../../../../../../ch_acq/', links=None, period=1, power=None,
             bitfile_path = "../../../../../../chFPGA/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/"+\
-                           "impl_Rev2/chFPGA_MGK7MB_Rev2.bit"):
+                           "impl_Rev2/chFPGA_MGK7MB_Rev2.bit", force=True):
     """ Measure the bit error rate on GTX links for a board.
     :param board_sn: e.g. '0021'
     :param ch_acq_path: will be added to PYTHONPATH. defaults to '../../ch_acq/'
@@ -253,7 +253,8 @@ def gtx_ber(board_sn, ch_acq_path='../../../../../../ch_acq/', links=None, perio
 
     # Get ChimeArray object and program the FPGA
     # Enable GPU link so we can perform bit error test
-    ca = ChimeArray(iceboards=[int(board_sn)], bitfile=bitfile_path, init=1, enable_gpu_link=1, open=1, prog=1)
+    ca = ChimeArray(iceboards=[int(board_sn)], bitfile=bitfile_path, init=1, enable_gpu_link=1, open=1,
+                    prog=1 if force else 0)
 
     # Choose links and run bit error rate test
     all_links = ca.get_link_map().keys()
