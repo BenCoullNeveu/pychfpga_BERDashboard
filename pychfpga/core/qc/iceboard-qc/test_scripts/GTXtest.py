@@ -52,7 +52,7 @@ def GTXtest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EMP
     # Run bit error test with these parameters
     links = None  # For all links. Could also be 'gpu' or 'bp'
     power = 10  # This is the default value in chime_array.py
-    period = 1  # In seconds
+    period = 900  # In seconds
     ber = gtx_ber(board_sn, ch_acq_path=ch_acq_path, links=links, period=period, power=power)
 
     # Write results to file

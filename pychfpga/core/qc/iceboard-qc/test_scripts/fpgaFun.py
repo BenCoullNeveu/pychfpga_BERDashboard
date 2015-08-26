@@ -247,6 +247,8 @@ def gtx_ber(board_sn, ch_acq_path='../../../../../../ch_acq/', links=None, perio
     :return: Dictionary of error counts, keys give lanes.
     """
 
+    import sys
+    sys.path.append(ch_acq_path)
     from pychfpga.chime_array import ChimeArray
 
     # Get ChimeArray object and program the FPGA

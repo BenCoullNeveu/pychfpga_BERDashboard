@@ -1117,6 +1117,8 @@ class ChimeArray(object):
 
     def get_ber(self, link_list=None, period=0.1, tx_power=None, print_=True):
 
+        from threading import Thread
+
         link_map = self.get_link_map()
 
         if isinstance(link_list, str):
@@ -1124,22 +1126,20 @@ class ChimeArray(object):
 
         link_list.sort(key=lambda (lt, (sc, ss, sl), (dc, ds, dl)): ss * 16 + ds)
 
-        #  ib_map = {ib.slot: ib for ib in self.ib}
-        ber_table = {}
-        for link in link_list:
-            (link_type, (sc, ss, sl), (dc, ds, dl)) = link
-            if link not in link_map:
-                continue
-            (source_gtx, dest_gtx) = link_map[link]
+        def one_link_ber(l_map, l, output):
+            (link_type, (sc, ss, sl), (dc, ds, dl)) = l
+            if l not in l_map:
+                return
+            (source_gtx, dest_gtx) = l_map[l]
             if source_gtx is None or dest_gtx is None:
-                continue
+                return
 
             if tx_power is not None:
                 source_gtx.TXDIFFCTRL = tx_power
 
             source_gtx.TXPRBSSEL = 4
             if print_:
-                print 'Measuring BER for link %s' % (link,),
+                print 'Measuring BER for link %s' % (l,),
 
             # First, make sure we can get errors by setting the wrong RX PRBS Sequence
             dest_gtx.RXPRBSCNTRESET = 1
@@ -1167,15 +1167,15 @@ class ChimeArray(object):
             #    #    break
             #dest_gtx.RXPRBSCNTRESET=1
             dest_gtx.RXDFELPMRESET = 1
-            time.sleep(0.001)
+            time.sleep(0.005)
             dest_gtx.RXDFELPMRESET = 0
-            time.sleep(0.001)
+            time.sleep(0.005)
             dest_gtx.RXPRBSCNTRESET = 1
             dest_gtx.RXPRBSSEL = 4
             dest_gtx.RXDFELPMRESET = 1
-            time.sleep(0.001)
+            time.sleep(0.005)
             dest_gtx.RXDFELPMRESET = 0
-            time.sleep(0.001)
+            time.sleep(0.005)
             dest_gtx.RXPRBSCNTRESET = 0
             time.sleep(period)
             cnt = dest_gtx.ERR_CTR
@@ -1184,7 +1184,17 @@ class ChimeArray(object):
 
             print 'BER = %1.1e (%i errors, BER<%1.1e)' % (err, cnt, err_max)
             self.print_flush()
-            ber_table[link] = err
+            output[l] = err
+
+        #  ib_map = {ib.slot: ib for ib in self.ib}
+        ber_table = {}
+        ts = []
+        for link in link_list:
+            t = Thread(target=one_link_ber, args=(link_map, link, ber_table))
+            ts.append(t)
+            t.start()
+        for t in ts:
+            t.join()
         return ber_table
 
 
