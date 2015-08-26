@@ -1,8 +1,11 @@
 # Expected values for reading the power sensors on the board over i2c
 # These are the expected values. Results not within the range given by the TOLERANCE key will result in test failure.
 
+ref_board: '0048'
+date_of_ref: '22 June 2015'
+
 TOLERANCE_V: 0.05 # Range for voltage
-TOLERANCE_ELSE: 0.2 # Range for other measurements
+TOLERANCE_C: 0.2 # Range for current
 
 ICE_1V0: [1.0, 0.00063500000000000004, -0.78227654698242932, 0.3662343384749201]
 ICE_3V3: [3.3, 0.0126175, 5.3464562423465596, 17.807482347017018]
@@ -19,3 +22,14 @@ FMCA_VADJ: [0.00125, -1e-05, -0.0020142161026420495, 0.0]
 FMCB_3V3: [0.00125, -1.25e-05, -0.0025182204337133914, 0.0]
 FMCA_3V3: [0.00125, -1.25e-05, -0.0025182204337133914, 0.0]
 FMCB_12V0: [0.01, -1e-05, -0.0020143061516452072, 0.0]
+
+MB_VADJ:       [2.46,  0.043]
+MB_VCC12V0:    [12.041,-0.015]
+MB_VCC1V0:     [1.011, 20.57]
+MB_VCC1V0_GTX: [1.054, 7.389]
+MB_VCC1V2:     [1.183, 3.094]
+MB_VCC1V5:     [1.479, 1.628]
+MB_VCC1V8:     [1.801, 0.882]
+MB_VCC3V3:     [3.319, 2.188]
+MB_VCC5V5:     [5.563, 6.165]
+
