@@ -36,10 +36,42 @@ def get_repo(repo_name='ch_acq'):
         directory = os.path.dirname(read_config()['results_directory'].rstrip('/'))
         return git.Repo(directory)
     elif repo_name.lower() == 'hardware_tracking':
-        directory = os.path.dirname(read_config()['hw_track_directory'].rstrip('/'))
+        directory = read_config()['hw_track_directory'].rstrip('/')
         return git.Repo(directory)
     else:
         raise Exception("Unknown git reporitory: " + repo_name)
+
+
+def pull_all( ):
+    import traceback
+    from git import GitCommandError
+    # For results repo
+    # Check for no_commit file
+    if os.path.exists(os.path.join(read_config()['results_directory'], 'no_commit')):
+        print "Skipping git pull of results due to presence of 'no_commit' file in results directory."
+    else:
+        try:
+            res_repo = get_repo('iceboard-qc')
+            res_repo.git.pull('--rebase')
+            print "Pulled latest version of results git repository."
+        except GitCommandError:
+            "Failed to pull latest version of results git repository. (trace below)"
+            traceback.print_exc()
+            "\nPlease run and exit the test suite again, or commit and push the changes manually."
+    # For tracking repo
+    # Check for no_commit file
+    if os.path.exists(os.path.join(read_config()['hw_track_directory'], 'no_commit')):
+        print "Skipping git commit of hardware tracking due to presence of 'no_commit' file in results directory."
+    else:
+        try:
+            hw_repo = get_repo('hardware_tracking')
+            hw_repo.git.pull('--rebase')
+            print "Pulled latest version of hardware tracking git repository."
+        except GitCommandError:
+            "Failed to pull latest version of hardware tracking git repository. (trace below)"
+            traceback.print_exc()
+            "\nPlease run and exit the test suite again, or commit and push the changes manually."
+
 
 def commit_results( ):
     import traceback
