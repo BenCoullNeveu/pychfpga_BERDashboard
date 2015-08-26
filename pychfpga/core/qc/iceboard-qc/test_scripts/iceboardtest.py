@@ -19,8 +19,9 @@ import traceback
 from statusReport import EMPTY_TEST_STATUS
 from edit_boardfile import new_file_header, update_tracking_file, update_tracking_from_status
 from edit_boardfile import updateStatus
-from other_stuff import read_config, commit_results
+from other_stuff import read_config, commit_results, pull_all
 
+# TODO: Pull from origin before starting QC
 
 def starttest():
     '''Starts a testing session: Prompts for information about the board to be tested, creates a file to store results in
@@ -43,6 +44,9 @@ def starttest():
 
     #Pass/Fail status of tests. This list will be passed from method to method.
     testStatus = EMPTY_TEST_STATUS()
+
+    # Pull latest version of hardware tracking and results repositories
+    pull_all()
 
     print "Welcome fellow CHIME member to the Iceboard testing script!"
     print "We'll need some information from you... Please enter everything as prompted below:"
