@@ -65,12 +65,11 @@ def programFpga(board_sn, ch_acq_path = '../../../../../../ch_acq/',  bitfile_pa
     # Get fpga bitstream
     fpga_bitstream = FpgaBitstream(bitfile_path)
 
-    # Create Iceboard instance
-    host_name = 'iceboard{:0>4d}.local'.format(int(board_sn))
-    hwm = HardwareMap()  # Create empty hardware map
-    hwm.add(IceBoardPlus(hostname=host_name))
-    hwm.flush()
-    ib = hwm.query(IceBoardPlus).one()
+    # Find iceboard
+    ib = get_boards(boards=[board_sn], ch_acq_path=ch_acq_path)
+    if len(ib) == 0:
+        raise Exception("Did not find any board on the network with serial number {}".format(board_sn))
+    ib = ib[0]
 
     # Check present on network
     while not ib.ping():
