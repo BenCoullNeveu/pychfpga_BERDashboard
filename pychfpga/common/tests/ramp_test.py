@@ -5,6 +5,7 @@ for testing ADC-FPGA communication by sending ADC ramps.
 '''
 
 import numpy as np
+import os
 import matplotlib
 matplotlib.use('Agg')
 import time, pylab, csv
@@ -104,7 +105,12 @@ class test_adc_ramp_histogram(test_BaseClass):
                 writer.writerow([i, j, bad_bit])
                 print 'chan {0}, bit {1}, error rate {2:.3f}'.format(i, j, bad_bit)
 
-
+    def compress_file(self, fname):
+        # Save data as compressed archive and delete uncompressed file
+        filename = fname + '.npy'
+        data = np.load(filename)
+        np.savez_compressed(fname, data=data)
+        os.remove(filename)
 
     def execute(self, fname ):
         try:
@@ -115,6 +121,7 @@ class test_adc_ramp_histogram(test_BaseClass):
             self.fpga_ctrl.stop_data_capture()
             self.plot_histogram(fname)
             self.compute_bit_errors(fname)
+            self.compress_file(fname)
             #confirm = raw_input('Start print_ramp_errors? This will print error counts until a KeyboardInterrupt. (y/n)\n')
             #if confirm == 'y' or confirm == 'Y':
             #    self.fpga_ctrl.ANT.print_ramp_errors()
