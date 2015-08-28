@@ -15,6 +15,7 @@ import matplotlib.pyplot as plt
 
 from tornado.netutil import Resolver
 from tornado.ioloop import IOLoop
+from tornado import gen
 from tornado.gen import with_timeout, TimeoutError
 
 from sqlalchemy import orm
@@ -1094,8 +1095,6 @@ class ChimeArray(object):
             links[cr.id] = list(itertools.chain(*(ib.BP_SHUFFLE.get_links() for ib in cr.slot.values())))
         return links
 
-
-
     def get_link_map(self):
         link_map = {}
 
@@ -1116,23 +1115,35 @@ class ChimeArray(object):
         return link_map
 
     def get_ber(self, link_list=None, period=0.1, tx_power=None, print_=True):
+        self.ber_link_list = link_list
+        self.ber_period = period
+        self.ber_tx_power = tx_power
+        self.ber_print_ = print_
+        self.ber = None
+        io_loop = IOLoop.current()
+        io_loop.run_sync(self._get_ber)
+        return self.ber_table
 
-        from threading import Thread
+    @gen.coroutine
+    def _get_ber(self):
 
         link_map = self.get_link_map()
+        link_list = [ l for l in self.ber_link_list if (l in link_map and not None in link_map[l]) ]
+        period = self.ber_period
+        tx_power = self.ber_tx_power
+        print_ = self.ber_print_
 
         if isinstance(link_list, str):
             link_list = [link for link in link_map.keys() if link[0] == link_list]
 
         link_list.sort(key=lambda (lt, (sc, ss, sl), (dc, ds, dl)): ss * 16 + ds)
 
-        def one_link_ber(l_map, l, output):
+        # Perform BER test on a single list, to be run in parallel below
+        @gen.coroutine
+        def one_link_ber(l_map, l):
             (link_type, (sc, ss, sl), (dc, ds, dl)) = l
-            if l not in l_map:
-                return
+
             (source_gtx, dest_gtx) = l_map[l]
-            if source_gtx is None or dest_gtx is None:
-                return
 
             if tx_power is not None:
                 source_gtx.TXDIFFCTRL = tx_power
@@ -1167,36 +1178,29 @@ class ChimeArray(object):
             #    #    break
             #dest_gtx.RXPRBSCNTRESET=1
             dest_gtx.RXDFELPMRESET = 1
-            time.sleep(0.005)
+            time.sleep(0.001)
             dest_gtx.RXDFELPMRESET = 0
-            time.sleep(0.005)
+            time.sleep(0.001)
             dest_gtx.RXPRBSCNTRESET = 1
             dest_gtx.RXPRBSSEL = 4
             dest_gtx.RXDFELPMRESET = 1
-            time.sleep(0.005)
+            time.sleep(0.001)
             dest_gtx.RXDFELPMRESET = 0
-            time.sleep(0.005)
+            time.sleep(0.001)
             dest_gtx.RXPRBSCNTRESET = 0
-            time.sleep(period)
+            yield gen.sleep(period)
             cnt = dest_gtx.ERR_CTR
             err = (float(cnt) * 16) / (period * 10e9)
             err_max = (float(cnt) * 16 + 1) / (period * 10e9)
 
-            print 'BER = %1.1e (%i errors, BER<%1.1e)' % (err, cnt, err_max)
+            print '%r BER = %1.1e (%i errors, BER<%1.1e)' % (l, err, cnt, err_max)
             self.print_flush()
-            output[l] = err
+            raise gen.Return(err)
 
-        #  ib_map = {ib.slot: ib for ib in self.ib}
-        ber_table = {}
-        ts = []
-        for link in link_list:
-            t = Thread(target=one_link_ber, args=(link_map, link, ber_table))
-            ts.append(t)
-            t.start()
-        for t in ts:
-            t.join()
-        return ber_table
+        # Run BER test on each link in parallel
+        ber_table = yield {l: one_link_ber(link_map, l) for l in link_list}
 
+        self.ber_table = ber_table
 
     def get_ber_vs_power(self, max_power, period=0.1):
 

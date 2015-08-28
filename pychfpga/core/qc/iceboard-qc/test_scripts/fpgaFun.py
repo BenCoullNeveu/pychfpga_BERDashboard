@@ -258,8 +258,8 @@ def gtx_ber(board_sn, ch_acq_path='../../../../../../ch_acq/', links=None, perio
     # Choose links and run bit error rate test
     all_links = ca.get_link_map().keys()
     if links is None:
-        print "Testing all links."
-        links = all_links
+        print "Testing all BP and GPU links."
+        links = [key for key in all_links if (key[0] == 'GPU' or key[0] == 'BP')]
     elif links == 'gpu':
         print "Testing only GPU links."
         links = [key for key in all_links if key[0] == 'GPU']
@@ -268,7 +268,9 @@ def gtx_ber(board_sn, ch_acq_path='../../../../../../ch_acq/', links=None, perio
         links = [key for key in all_links if key[0] == 'BP']
     else:
         raise Exception("Unrecognized argument for 'links': '{}'.    Must be either 'bp' or 'gpu'.".format(str(links)))
-    return ca.get_ber(link_list=links, tx_power=power, period=period)
+    ber = ca.get_ber(link_list=links, tx_power=power, period=period)
+    ca.ib.close()
+    return ber
 
 def write_ipmi(ib, pn, sn, vn):
     ''' Write IPMI to supplied board instance in standard format.
