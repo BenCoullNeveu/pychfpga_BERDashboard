@@ -266,6 +266,8 @@ def gtx_ber(board_sn, ch_acq_path='../../../../../../ch_acq/', links=None, perio
     elif links == 'bp':
         print "Testing only BackPlane links."
         links = [key for key in all_links if key[0] == 'BP']
+    elif type(links) is tuple:
+        links = [links]
     else:
         raise Exception("Unrecognized argument for 'links': '{}'.    Must be either 'bp' or 'gpu'.".format(str(links)))
     ber = ca.get_ber(link_list=links, tx_power=power, period=period)

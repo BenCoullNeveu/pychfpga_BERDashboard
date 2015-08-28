@@ -1139,6 +1139,27 @@ class ChimeArray(object):
         link_list.sort(key=lambda (lt, (sc, ss, sl), (dc, ds, dl)): ss * 16 + ds)
 
         # Perform BER test on a single list, to be run in parallel below
+        for l in link_list:
+            # First, make sure we can get errors by setting the wrong RX PRBS Sequence
+            (source_gtx, dest_gtx) = link_map[l]
+            if tx_power is not None:
+                source_gtx.TXDIFFCTRL = tx_power
+
+            source_gtx.TXPRBSSEL = 4
+            dest_gtx.RXPRBSCNTRESET = 1
+            dest_gtx.RXPRBSSEL = 3
+            dest_gtx.RXPRBSCNTRESET = 0
+            t0 = time.time()
+            while True:
+                if dest_gtx.ERR_CTR:
+                    break
+                if time.time() - t0 > 1:
+                    raise SystemError('Cannot detect errors even with the wrong sequence! Are the links connected as expected?')
+            dest_gtx.RXPRBSSEL = 4
+            dest_gtx.RXDFELPMRESET = 1
+            time.sleep(0.00005)
+            dest_gtx.RXDFELPMRESET = 0
+
         @gen.coroutine
         def one_link_ber(l_map, l):
             (link_type, (sc, ss, sl), (dc, ds, dl)) = l
@@ -1151,17 +1172,6 @@ class ChimeArray(object):
             source_gtx.TXPRBSSEL = 4
             if print_:
                 print 'Measuring BER for link %s' % (l,),
-
-            # First, make sure we can get errors by setting the wrong RX PRBS Sequence
-            dest_gtx.RXPRBSCNTRESET = 1
-            dest_gtx.RXPRBSSEL = 3
-            dest_gtx.RXPRBSCNTRESET = 0
-            t0 = time.time()
-            while True:
-                if dest_gtx.ERR_CTR:
-                    break
-                if time.time() - t0 > 1:
-                    raise SystemError('Cannot detect errors even with the wrong sequence! Are the links connected as expected?')
 
             # dest_gtx.RXPRBSCNTRESET=1
             # dest_gtx.RXPRBSCNTRESET=0
@@ -1178,15 +1188,14 @@ class ChimeArray(object):
             #    #    break
             #dest_gtx.RXPRBSCNTRESET=1
             dest_gtx.RXDFELPMRESET = 1
-            time.sleep(0.001)
+            time.sleep(0.00005)
             dest_gtx.RXDFELPMRESET = 0
-            time.sleep(0.001)
+            time.sleep(0.00005)
             dest_gtx.RXPRBSCNTRESET = 1
-            dest_gtx.RXPRBSSEL = 4
             dest_gtx.RXDFELPMRESET = 1
-            time.sleep(0.001)
+            time.sleep(0.00005)
             dest_gtx.RXDFELPMRESET = 0
-            time.sleep(0.001)
+            time.sleep(0.00005)
             dest_gtx.RXPRBSCNTRESET = 0
             yield gen.sleep(period)
             cnt = dest_gtx.ERR_CTR
