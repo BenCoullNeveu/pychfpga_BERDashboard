@@ -95,6 +95,14 @@ class ADCDAQ_base(Module_base):
 
     def __init__(self, fpga_instance, base_address, instance_number):
         super(self.__class__, self).__init__(fpga_instance, base_address, instance_number)
+
+        # Implement BITS table from superclass
+        self.BITS = {}
+        class_attributes = vars(type(self))
+        for field in class_attributes:
+            if isinstance(class_attributes[field], BitField):
+                self.BITS.update( {field: class_attributes[field]} )
+
         self._lock() # Prevent accidental addition of attributes (if, for example, a value is assigned to a wrongly-spelled property)
 
     def set_ADCDAQ_mode(self, mode):
