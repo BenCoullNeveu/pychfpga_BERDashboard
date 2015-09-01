@@ -149,6 +149,26 @@
         <!-- <xsl:copy-of select="details/*" /> -->
     </xsl:template>
 
+    <!-- Generic table -->
+    <xsl:template match="table">
+        <table class="table table-striped table-bordered">
+            <thead>
+                <xsl:for-each select="thead">
+                    <tr>
+                        <td><xsl:value-of select="tcell" /></td>
+                    </tr>
+                </xsl:for-each>
+            </thead>
+            <tbody>
+                <xsl:for-each select="tbody">
+                    <tr>
+                        <td><xsl:value-of select="tcell" /></td>
+                    </tr>
+                </xsl:for-each>
+            </tbody>
+        </table>
+    </xsl:template>
+
     <!-- Suppress default rule -->
     <xsl:template match="*" />
 </xsl:stylesheet>

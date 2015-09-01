@@ -124,7 +124,6 @@ class TestClass(unittest.TestCase):
         print 'The user entered the following interactive message:', x
         xr.output('Thank you. This information will be saved in the report for the posterity')
 
-# if __name__ == '__main__':
-#     """ Run the test in this file."""
-#     sys.argv.insert(1, __file__)  # add this file as 1st argument
-#     xr.run('test')
+if __name__ == '__main__':
+    """ Run the test in this file."""
+    xr.run_from_module()

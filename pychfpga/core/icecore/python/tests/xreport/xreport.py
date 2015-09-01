@@ -182,6 +182,7 @@ class XReport(Plugin):
         self.node_name = []
         self.enabled = True
         self.original_stdout = sys.stdout
+        self.stream = sys.stdout
         self.logger = logging.getLogger('')
 
         # if self.instance:
@@ -231,6 +232,7 @@ class XReport(Plugin):
 
     def setOutputStream(self, stream):
         """Intercept output stream configuration and forward to a dummy device."""
+        self.stream = stream
         # return dummy stream
         class DummyIO:
             def write(self, *arg):
@@ -310,6 +312,7 @@ class XReport(Plugin):
         captured_output = self.flush_stdout_capture()
         if captured_output:
             self.add_node(DETAILS(PRE(captured_output)))  # Add any stdout capture
+            self.stream.write(captured_output)
 
     def pprint(self, text, dedent=True):
         """ Add a block of text verbatim to be interpreted a reStructuredText"""
@@ -317,6 +320,7 @@ class XReport(Plugin):
         if dedent:
             text = textwrap.dedent(text)
         self.add_node(DETAILS(P(text)))
+        self.stream.write(text)
 
     def begin(self):
         """Initialize the test run.
@@ -351,6 +355,8 @@ class XReport(Plugin):
         self.add_node(TESTARGS())
         self.add_node(TESTDATE(test_date))
 
+        self.stream.write('Test Run (%s)\n\n' % test_date)
+
     def startContext(self, ctx):
         self.last_context = ctx  # for debug
         self.logger.info('StartContext %s' % ctx)
@@ -369,13 +375,18 @@ class XReport(Plugin):
         context_type = ('MODULE' if inspect.ismodule(ctx) else
                         'GENERATOR' if inspect.isgeneratorfunction(ctx) else
                         'CLASS' if inspect.isclass(ctx) else '')
+        full_title = context_type + ' ' + self.get_node_path()
+        test_datetime = datetime.datetime.now().isoformat()
         self.enter_node(GROUP(), group_name)
         self.add_node(TESTNAME(self.get_node_path()))
-        self.add_node(TITLE(context_type + ' ' + self.get_node_path()))
+        self.add_node(TITLE(full_title))
         self.add_node(TESTPATH(self.get_node_path()))
-        self.add_node(TESTDATE(datetime.datetime.now().isoformat()))
+        self.add_node(TESTDATE(test_datetime))
         self.add_node(TESTARGS())
         self.add_node(DESCRIPTION(B(title), DETAILS(description)))
+
+        self.stream.write('%s (%s)\n\n' % (full_title, test_datetime))
+
         self.logger.info('StartContext %s completed' % ctx)
 
     def all_nodes_passed(self):
@@ -415,13 +426,16 @@ class XReport(Plugin):
 
         title = '%s %s%s' % (test_type, self.get_node_path(), test_args)
         self.logger.info('startTest %s' % test_name)
-
+        test_date = datetime.datetime.now().isoformat()
         self.add_node(TITLE(title))
         self.add_node(TESTNAME(test_name))
         self.add_node(TESTPATH(self.get_node_path()))
-        self.add_node(TESTDATE(datetime.datetime.now().isoformat()))
+        self.add_node(TESTDATE(test_date))
         self.add_node(TESTARGS(test_args))
         self.add_node(DESCRIPTION(B(summary), DETAILS(description)))
+
+        self.stream.write('%s (%s)\n\n' % (title, test_date))
+
 
     def stopTest(self, test):
         self.logger.info('stopTest %s ' % test)
@@ -446,6 +460,7 @@ class XReport(Plugin):
         self.flush()
         self.add_node(DETAILS(PRE(err)))  #
         self.add_node(PASSED(False))
+        self.stream.write('\n%s\n' % (err))
 
     def addFailure(self, test, err):
         summary = err[1][:err[1].find('\n--------')].replace('\n',' ')
@@ -455,6 +470,7 @@ class XReport(Plugin):
         self.flush()
         self.add_node(DETAILS(PRE(err)))  #
         self.add_node(PASSED(False))
+        self.stream.write('\n%s\n' % (err))
 
     def formatFailure(self, test, err):
         """Add captured output to failure report.
@@ -483,12 +499,16 @@ class XReport(Plugin):
 
         number_of_tests = result.testsRun
 
+        self.stream.write('-----------------------------------------\n')
+
         if not result.wasSuccessful():
             self.add_node(DETAILS(PRE('Ran %d tests: FAILED (failures=%d, errors=%d)' % (number_of_tests, len(result.failures),len(result.errors)))))
         else:
             self.add_node(DETAILS(PRE('Ran %d tests: SUCCESS' % number_of_tests)))
 
-        self.add_node(DETAILS(PRE('\n'.join(self.get_synopsis_as_strings()))))
+        synopsis = '\n'.join(self.get_synopsis_as_strings())
+        self.add_node(DETAILS(PRE(synopsis)))
+        self.stream.write('%s\n' % synopsis)
 
         sys.stdout = self.original_stdout
 
