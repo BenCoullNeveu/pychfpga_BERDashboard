@@ -1138,7 +1138,6 @@ class ChimeArray(object):
 
         link_list.sort(key=lambda (lt, (sc, ss, sl), (dc, ds, dl)): ss * 16 + ds)
 
-        # Perform BER test on a single list, to be run in parallel below
         for l in link_list:
             # First, make sure we can get errors by setting the wrong RX PRBS Sequence
             (source_gtx, dest_gtx) = link_map[l]
@@ -1160,6 +1159,7 @@ class ChimeArray(object):
             time.sleep(0.00005)
             dest_gtx.RXDFELPMRESET = 0
 
+        # Perform BER test on a single list, to be run in parallel below
         @gen.coroutine
         def one_link_ber(l_map, l):
             (link_type, (sc, ss, sl), (dc, ds, dl)) = l
