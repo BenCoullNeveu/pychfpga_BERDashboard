@@ -9,13 +9,13 @@ class GpuData(object):
     def __repr__(self):
         return '\n'.join(['%10s = %r' % (name, value) for (name, value) in vars(self).items() if not name.startswith('_') and not name=='data'])
 
-def get_gpu_data(dna_number):
+def get_gpu_data(node_number, dna_number):
     from subprocess import Popen, PIPE
-    p = Popen(['sudo','/drives/0/git/ch_acq/pychfpga/inspect_pkt_dna_select', 'dna%i' % dna_number], stdout=PIPE)
+    p = Popen(['sudo','chi-exec','%i' % node_number, '/root/inspect_pkt_dna_select', 'dna%i' % dna_number], stdout=PIPE)
     (data, stderr) = p.communicate()
     split_data = data.split('\n')
     d=[]
-    for line in split_data[1:]:
+    for line in split_data[2:]:
         if line.startswith('Packet'):
             break
         split_line = line.lstrip().split(' ')
@@ -34,8 +34,7 @@ def get_gpu_data(dna_number):
     result.udp_dst_port = d[36]*256 + d[37]
     result.udp_length = d[38]*256 + d[39] # includes 8 bytes of the UDP header
     result.udp_payload_length = result.udp_length-8
-    #result.raw_data = data
-    #result.raw_d = d
+
     d = d[42:42+result.udp_payload_length]
 
     header = ''.join(chr(x) for x in d[0:16])
@@ -49,8 +48,9 @@ def get_gpu_data(dna_number):
     return result
 
 #def shuffle_init(c, sync_board, frames_per_packet=1, cb1_lanes=4, cb1_bins=16, cb2_lanes=2, cb2_bins=1, cb2_bypass=0, bp_bypass=0, remap=True):
-def shuffle_init(c, ni_board, sync_board, dsmap=range(16), frames_per_packet=1, cb1_lanes=4, cb1_bins=16, cb2_lanes=2, cb2_bins=1, cb2_bypass=0, bp_bypass=0, remap=True,
-                 ni_enable = False, ni_offset = 0, ni_high_time = 8388608, ni_period = 16777216):
+def shuffle_init(c, ni_board, ni_board_26m, sync_board, window_start=200, window_stop=50, dsmap=range(16), frames_per_packet=1, cb1_lanes=4, cb1_bins=16, cb2_lanes=2, cb2_bins=1, cb2_bypass=0, bp_bypass=0, remap=True,
+                 ni_enable = False, ni_offset = 0, ni_high_time = 8388608, ni_period = 16777216,
+                 ni_enable_26m = False, ni_offset_26m = 0, ni_high_time_26m = 8388608, ni_period_26m = 16777216):
     """ Setup the crossbars and data shuffling in every board of the array.
     """
     tx_list = []
@@ -65,6 +65,7 @@ def shuffle_init(c, ni_board, sync_board, dsmap=range(16), frames_per_packet=1, 
 
     # Set SMA output of sync board to be irigb trigger sync signal (was 'sync')
     sync_board.set_user_output_source('irigb_trig')
+    #sync_board.set_user_output_source('sync')
     # set-up transmitters
     for i,bb in enumerate(c):
         logger.info('%.32r: **** Initializing transmitters for Slot %02i (IceBoard SN%s) ****' % (crate, bb.slot, bb.serial))
@@ -105,14 +106,16 @@ def shuffle_init(c, ni_board, sync_board, dsmap=range(16), frames_per_packet=1, 
         # Disable all receivers for which there are no transmitters
         for i, gtx in enumerate(bb.BP_SHUFFLE.gtx):
             rx = (bb.slot, i+1)
-            tx = bb.crate.get_matching_tx(rx)
+            tx = bb.bp.get_matching_tx(rx)
             if tx in tx_list:
                 gtx.USER_GTRXRESET = 0
             else:
                 gtx.USER_GTRXRESET = 1
                 # gtx.USER_RESET = 1
-
-        bb.CROSSBAR2.SOF_WINDOW_STOP = 200
+            #if (rx == (9,6)) or (rx == (10,11)):
+            #    gtx.USER_GTRXRESET = 1
+        #bb.CROSSBAR2.SOF_WINDOW_START = window_start
+        #bb.CROSSBAR2.SOF_WINDOW_STOP = window_stop
         bb.BP_SHUFFLE.reset_rx_equalizers()
         bb.REFCLK.sync() # needed
 
@@ -120,7 +123,7 @@ def shuffle_init(c, ni_board, sync_board, dsmap=range(16), frames_per_packet=1, 
     for bb in c:
         for i in range(bb.NUMBER_OF_CROSSBAR_OUTPUTS):
             rx = (bb.slot, i)
-            tx = bb.crate.get_matching_tx(rx)
+            tx = bb.bp.get_matching_tx(rx)
             if tx in tx_list:
                 logger.info('%.32r: %s is receiving from %s' % (bb.crate, rx, tx))
             else:
@@ -131,15 +134,18 @@ def shuffle_init(c, ni_board, sync_board, dsmap=range(16), frames_per_packet=1, 
         ni_board.set_user_output_source('pwm')
         ni_board.set_frame_pwm(ni_offset, ni_high_time, ni_period)
 
-    # Set sync delays on boards (in slot order). Numbers obtained from sync test. Should go to conf file
-    sync_delays = [np.array([ 8,  7]), np.array([ 8,  8]), np.array([ 9,  6]), np.array([ 11,   7]),
-                   np.array([ 12,  11]), np.array([  8,  13]), np.array([ 11,  10]), np.array([ 7,  6]),
-                   np.array([ 11,   5]), np.array([ 8,  6]), np.array([ 9,  7]), np.array([ 11,  10]),
-                   np.array([  8,  11]), np.array([ 8,  7]), np.array([ 11,   9]), np.array([ 6,  8])] 
-    for cc in c:
-        cc.REFCLK.set_sync_delay(sync_delays[cc.slot-1])
-        cc.REFCLK.sync()
+    if ni_enable_26m:
+        ni_board_26m.set_user_output_source('pwm')
+        ni_board_26m.set_frame_pwm(ni_offset_26m, ni_high_time_26m, ni_period_26m)
         
+    # Set sync delays on boards to test sync-after power cycle
+    # Assign to each of the first 8 slots a sync tap delay equal to the slot number
+    #sync_tap_delay = range(8)
+    #for cc in c:
+    #    if cc.slot in sync_tap_delay:
+    #        cc.REFCLK.set_sync_delay(cc.slot)
+    #        cc.REFCLK.sync()
+
     # sync boards
     #soft_sync(c, sync_board)
     #irigb_sync(c, delay=5)
@@ -151,7 +157,7 @@ def compute_lane_map(c):
     lane_map = np.zeros(16, dtype=np.int8)
     for i in range(16):
         rx = (c.slot, i)
-        tx = c.crate.get_matching_tx(rx)
+        tx = c.bp.get_matching_tx(rx)
         print '%s is receiving from %s' % (rx, tx)
         lane_map[tx[0]-1] = i
     return lane_map
@@ -269,11 +275,17 @@ def time_soft_sync(boards, sync_board, delay):
             ant.ADCDAQ.BYTE_MASK = 0
     
     # Get current time
+    # sometimes first try crashes.
+    try:
+        sync_board.get_irigb_time()
+    except:
+        #just wait a bit for time to register
+        time.sleep(1.1)
     current_time = sync_board.get_irigb_time()
     print 'Setting IRIG-B sync after %d seconds' %delay
     # Send sync pulse delay seconds in the future
     sync_board.set_irigb_trigger_time(current_time, delay)
-
+    time.sleep(delay+0.2)
     print 'Unmasking ADC data'
     for ib in boards:
         for ant in ib.ANT:
