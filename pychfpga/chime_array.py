@@ -26,6 +26,7 @@ from pychfpga.core.icecore import Ccoll
 from pychfpga.core.icecore import IceBoardPlus, IceCrate
 from pychfpga.core.icecore import HardwareMap, Session
 from pychfpga.core.icecore import mdns_discover
+from pychfpga.core.icecore import async, async_return
 
 from pychfpga.MGADC08 import MGADC08  # Import ti make sure this Mezzanine is registered  so it can be discovered
 from pychfpga.core.chFPGA_controller import chFPGA_controller
@@ -1120,11 +1121,10 @@ class ChimeArray(object):
         self.ber_tx_power = tx_power
         self.ber_print_ = print_
         self.ber = None
-        io_loop = IOLoop.current()
-        io_loop.run_sync(self._get_ber)
+        self.ber_table = self._get_ber()
         return self.ber_table
 
-    @gen.coroutine
+    @async
     def _get_ber(self):
 
         link_map = self.get_link_map()
@@ -1160,7 +1160,7 @@ class ChimeArray(object):
             time.sleep(0.00005)
             dest_gtx.RXDFELPMRESET = 0
 
-        @gen.coroutine
+        @async
         def one_link_ber(l_map, l):
             (link_type, (sc, ss, sl), (dc, ds, dl)) = l
 
@@ -1204,10 +1204,10 @@ class ChimeArray(object):
 
             print '%r BER = %1.1e (%i errors, BER<%1.1e)' % (l, err, cnt, err_max)
             self.print_flush()
-            raise gen.Return(err)
+            async_return(err)
 
         # Run BER test on each link in parallel
-        ber_table = yield {l: one_link_ber(link_map, l) for l in link_list}
+        ber_table = yield {l: one_link_ber.async(link_map, l) for l in link_list}
 
         self.ber_table = ber_table
 
