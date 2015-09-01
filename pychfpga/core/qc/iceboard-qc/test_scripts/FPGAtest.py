@@ -279,7 +279,7 @@ def trad_test(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = E
     for key in rails:
         exp_summary += key + ': ' + repr(exp_power[key]) + '; '
     f.write('| Using measurements from board ' + exp_power['ref_board'] + ' made on ' + exp_power['date_of_ref'] +
-            ' (below).\n')
+            ' as reference (shown below).\n')
     f.write('| Tolerance is ' + str(exp_power['TOLERANCE_V'] * 100) + '% for voltage, and ' +
             str(exp_power['TOLERANCE_C'] * 100) + '% for current.\n')
     f.write('| Expect [V, A]: ' + exp_summary + '\n\n')
