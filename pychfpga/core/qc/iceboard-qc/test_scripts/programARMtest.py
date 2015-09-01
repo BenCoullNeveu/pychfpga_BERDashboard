@@ -81,7 +81,7 @@ def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None,testS
             ib = ib[0]
             break
         if not (raw_input("Try again? (y/n)\t").lower().strip() == 'y'):
-            raise Exception("ARMtest: Didn't find just a single board with no serial on the network, found " + len(ib))
+            raise Exception("ARMtest: Didn't find just a single board with no serial on the network, found " + str(len(ib)))
 
     # Get MAC and IP
     MACright = ib._get_arm_mac()
