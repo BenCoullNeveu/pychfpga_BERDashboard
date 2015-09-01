@@ -6,6 +6,7 @@ concurrently on all its items.
 import collections
 import logging
 import itertools
+import numpy as np
 
 import async
 
@@ -228,6 +229,11 @@ class Ccoll(object):
                 self._check_collection_attributes(name)
                 for obj in self:
                     setattr(obj, name, value)
+
+    def __array__(self, dtype=None):
+        if dtype is None:
+            dtype = type(self._dict.itervalues().next())
+        return np.array(self._dict.values(), dtype=dtype)
 
     def _check_collection_attributes(self, name):
         """ Checks if all members of the collection has the specified

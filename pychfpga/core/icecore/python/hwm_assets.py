@@ -32,10 +32,10 @@ class IceCrate(hardware_map.HWMResource, handler.HandlerObject):
     handler_name = 'IceCrateHandler'
     __tablename__ = 'icecrates'
     __table_args__ = (
-        UniqueConstraint('serial'),
+        UniqueConstraint('_polymorphic_key', 'serial'),  # Crates with different models can have the same serial number
     )
     __mapper_args__ = {'polymorphic_identity': 'IceCrate',
-                       'polymorphic_on':'_polymorphic_key'}
+                       'polymorphic_on': '_polymorphic_key'}
     __ipmi_part_number__ = None  # Must match part number in IPMI data
 
     _pk = Column(Integer, primary_key=True)

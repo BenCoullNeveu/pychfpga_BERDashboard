@@ -627,8 +627,8 @@ class XReport(Plugin):
 
         import rst2pdf.createpdf as createpdf
 
-        r = createpdf.RstToPdf()
-        r.createPdf(text=str(self.get_rst()), output=filename)
+        r = createpdf.RstToPdf(stylesheets=['eightpoint', 'letter'], fit_mode='shrink', breaklevel=0)
+        r.createPdf(text=str(self.get_rst()), output=filename + '.pdf')
 
     def publish(self, filename, writer_name='html'):
         """ Write the report in any of the formats supported by the ``docutils`` library.

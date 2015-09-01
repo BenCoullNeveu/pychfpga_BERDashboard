@@ -294,7 +294,6 @@ class QSFP(object):
         print '   Device Technology: %s' % tech_table[self.read_byte('DeviceTech') >> 4]
         print '   Connector type: %s, %s' % (identifier_table.get(self.read_byte('Identifier2', 'Unknown')),
                                              connector_types.get(self.read_byte('Connector', 'Unknown')))
-        print '   Connector type: %s' % connector_types.get(self.read_byte('Connector', 'Unknown'))
 
         data = {}
         for (key, (datatype, addr, length, page)) in self.QSFP_EEPROM_MAP.items():
