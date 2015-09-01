@@ -1115,23 +1115,11 @@ class ChimeArray(object):
                 link_map[link] = (tx, rx)
         return link_map
 
-    def get_ber(self, link_list=None, period=0.1, tx_power=None, print_=True):
-        self.ber_link_list = link_list
-        self.ber_period = period
-        self.ber_tx_power = tx_power
-        self.ber_print_ = print_
-        self.ber = None
-        self.ber_table = self._get_ber()
-        return self.ber_table
-
     @async
-    def _get_ber(self):
+    def get_ber(self, link_list=None, period=0.1, tx_power=None, print_=True):
 
         link_map = self.get_link_map()
-        link_list = [ l for l in self.ber_link_list if (l in link_map and not None in link_map[l]) ]
-        period = self.ber_period
-        tx_power = self.ber_tx_power
-        print_ = self.ber_print_
+        link_list = [ l for l in link_list if (l in link_map and not None in link_map[l]) ]
 
         if isinstance(link_list, str):
             link_list = [link for link in link_map.keys() if link[0] == link_list]
@@ -1159,6 +1147,7 @@ class ChimeArray(object):
             time.sleep(0.00005)
             dest_gtx.RXDFELPMRESET = 0
 
+        # Perform BER test on a single list, to be run in parallel below
         @async
         def one_link_ber(l_map, l):
             (link_type, (sc, ss, sl), (dc, ds, dl)) = l
@@ -1207,8 +1196,7 @@ class ChimeArray(object):
 
         # Run BER test on each link in parallel
         ber_table = yield {l: one_link_ber.async(link_map, l) for l in link_list}
-
-        self.ber_table = ber_table
+        async_return(ber_table)
 
     def get_ber_vs_power(self, max_power, period=0.1):
 
