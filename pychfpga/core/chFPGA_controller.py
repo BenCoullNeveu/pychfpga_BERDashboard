@@ -868,7 +868,7 @@ class chFPGA_controller(chFPGAHandler):
         for ant in self.ANT.values():
             ant.PROBER.RESET = 1
 
-    def start_data_capture(self, period=None, frames_per_burst=1,  number_of_bursts=0,  channels=None, source='scaler', sync=1, verbose=1, burst_period_in_seconds=None, burst_period_in_frames=None):
+    def start_data_capture(self, period=None, frames_per_burst=1,  number_of_bursts=0,  channels=None, source='scaler', sync=1, verbose=1, burst_period_in_seconds=None, burst_period_in_frames=None, offset=0):
         """
         Triggers the capture and transmission of ADC (pre-FFT) or SCALER (post
         FFT) data frames the Ethernet port. This function does not receive the
@@ -925,7 +925,7 @@ class chFPGA_controller(chFPGAHandler):
             ant.PROBER.set_data_source(source)
             ant.PROBER.RESET = 1
             ant.PROBER.PROBE_ID = 0xA0 + ant.ant_number
-            ant.PROBER.config_capture(frames_per_burst=frames_per_burst, burst_period=burst_period_in_frames, number_of_bursts=number_of_bursts)
+            ant.PROBER.config_capture(frames_per_burst=frames_per_burst, burst_period=burst_period_in_frames, number_of_bursts=number_of_bursts, offset=offset)
             if ant.ant_number in channels:
                 self._logger.info('%r: Enabling Capture for Antenna %i' % (self, ant.ant_number))
                 ant.PROBER.RESET = 0
