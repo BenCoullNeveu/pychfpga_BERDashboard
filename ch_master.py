@@ -29,6 +29,7 @@ from pychfpga.MGADC08 import MGADC08
 from pychfpga.init_links import *
 #import MySQLdb
 from pychfpga.core.icecore.hardware_map import asynchronously, async_return, async
+import signal
 
 # Should put somewhere else. Flatten arbitrarily deep nested lists
 # from stack overflow
@@ -389,7 +390,10 @@ if __name__ == "__main__":
       c.sync()
       # Get sync_board. Currently board SN0008 (slot 16)
       sync_board = c(serial=conf["fpga"]["sync_board"])
-
+      ## enable slow stream
+      for cc in c:
+          cc.set_local_data_port_number(cc.slot+41100)
+          cc.start_data_capture(period=30, source='adc', offset=cc.slot-1)
       # This is another hack. Have to fix it for DRAO. REALLY: HAVE TO CHANGE IT
       # shuffle_init(list(c),sync_board,frames_per_packet=4, cb1_lanes=16, cb1_bins=64, cb2_lanes=16, cb2_bins=8, cb2_bypass=0, remap=True )
       d_slots = conf['fpga']['destination_slots'] #[int(ii) for ii in conf["fpga"]["destination_slots"]]
@@ -548,6 +552,7 @@ if __name__ == "__main__":
     c.CROSSBAR.LANE_MONITOR_SEL = 6
     c.CROSSBAR2.LANE_MONITOR_SEL = 6
 
+
   try:
     while True:
       # Pass the acquisition object the board temperatures. This is a temporary
@@ -571,6 +576,8 @@ if __name__ == "__main__":
     acq.stop()
   except(KeyboardInterrupt, SystemExit):
     acq.stop()
+
+signal.signal(signal.SIGTERM, acq.stop)
 
 # Remove log file lock and exit.
 os.remove(log_file_lock)
