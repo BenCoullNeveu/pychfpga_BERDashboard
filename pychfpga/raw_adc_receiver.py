@@ -29,12 +29,19 @@ class TimestreamUdpHandler(SocketServer.BaseRequestHandler):
     #     SocketServer.BaseRequestHandler.__init__(self, request,
     #                                                client_address, server)
     def handle(self):
-        self.data = self.request[0].strip()
+        self.data = self.request[0] # .strip()
         self.socket = self.request[1]
         (probe_id, stream_id, word_length,
             self.timestamp) = struct.unpack_from('>BHHL', self.data)
         self.ant_channel = probe_id & 0x0F
         self.adc_data = np.fromstring(self.data[9:9+2048], dtype=np.int8)
+        #if (self.adc_data.shape[0] != 2048):
+        #    print "bad data?"
+        #    print self.adc_data
+        #    print '#######################'
+        #    print len(self.data)
+        #    print '#######################'
+        #    print len(self.request[0])
         self.server.data_queue.put((self.timestamp,
                                     self.ant_channel, self.adc_data))
 
@@ -184,4 +191,4 @@ if __name__ == "__main__":
     #
     # Sleep loop.  need if set to Daemon.
     # while True:
-    time.sleep(30)
+    time.sleep(180)
