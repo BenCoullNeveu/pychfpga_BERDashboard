@@ -100,9 +100,13 @@ class SCALER_base(Module_base):
     #     """
     #     return np.int16(self.FIXED_GAIN_REAL) + 1j*np.int16(self.FIXED_GAIN_IMAG)
 
-    def set_gain_table(self, gain_list, bank=0):
+    def set_gain_table(self, gain_list, bank=None, timestamp=None):
         """
         Sets the scaler's complex gain table for the specified bank.
+
+        If bank is None, the table is set is the currently unused bank and the active bank is then switched to that one.
+
+        If ``timestamp`` is specified, the bank switch will occur only when a frame with the specified timestamp is encountered.
         """
         total_bins = self.fpga.NUMBER_OF_FREQUENCY_BINS
         if isinstance(gain_list, (int, float, complex)):
@@ -120,6 +124,16 @@ class SCALER_base(Module_base):
         self.cached_gain_table[bank] = gains
         gain_string = np.reshape(np.vstack((gains.real, gains.imag)).T, 2 * total_bins).astype('<i2').tostring()
 
+        if timestamp is None:
+            self.SYNCHRONIZE_GAIN_BANK = 0
+        else:
+            self.SYNCHRONIZE_GAIN_BANK = 1
+            self.GAIN_BANK_SWITCH_FRAME_NUMBER = timestamp
+
+        if bank is None:
+            bank = self.CURRENT_GAIN_BANK ^ 1
+
+
         # page_table = np.zeros(512, np.int8)
         for page in range(8): # there are 8 pages of coefficients per bank
             self.WRITE_COEFF_BANK = 8 * bank + page
@@ -132,6 +146,7 @@ class SCALER_base(Module_base):
             #print page_table
             # self.write_ram(0, np.uint8(page_table))
 
+        self.READ_COEFF_BANK = bank
 
 
     def get_gain_table(self, bank=0, use_cache=False):
