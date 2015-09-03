@@ -193,29 +193,44 @@ class XReport(Plugin):
         """Register commandline options and grab all options after --xargs to
         pass on to the test suites.
         """
-        def callback(option, opt_str, value, parser):
+        def gobble_all_remaining_args(option, opt_str, value, parser):
             self.logger.debug('Capturing xargs arguments:%r' % (parser.rargs))
             xargs = []
             while parser.rargs:  # Steal all following args
                 xargs.append(parser.rargs.pop(0))
             type(self).xargs = xargs
 
+        def split_args(option, opt_str, value, parser):
+            self.logger.debug('Splitting arguments:%s' % (value))
+            args = value.replace(',', ' ').split()
+            while parser.rargs and not parser.rargs[0].startswith('-'):  # Steal all following args until '-'
+                args.append(parser.rargs.pop(0))
+            setattr(parser.values, option.dest, args)
+
         parser.add_option(
             "--xreport-file", "--xfile",
-            action="store", dest='xreport_file',
+            action="store",
+            dest='xreport_file',
             # default=env.get('NOSE_XREPORT_FILE', './test'),
             default=None,
             help='Report output path and base filename, without extension. The output files will be appended by .xml, .rst and _attachment_id.png')
         parser.add_option(
             "--xformat",
-            action="store", dest='xformat',
-            # default=env.get('NOSE_XREPORT_FILE', './test'),
-            default='pdf',
-            help='Output format in addition to the xml file: pdf or html')
-        parser.add_option(  # This must be the last option since it gobbles everything else...
+            action="callback",
+            callback=split_args,
+            type='string',
+            dest='xformat',
+            default=['pdf'],
+            help='Output format in addition to the xml file: pdf or rst')
+        # parser.add_option(
+        #     '--xquiet',
+        #     action="store_true",
+        #     dest="xquiet",
+        #     default=False)
+        parser.add_option( # This must be the last option since it gobbles everything else...
             "--xargs",
             action="callback",
-            callback=callback,
+            callback=gobble_all_remaining_args,
             help='Any arguments that follow will be grabbed and made accessible to the tests as the `xargs` attribute of the xreport module.')
 
     def configure(self, options, conf):
@@ -223,16 +238,27 @@ class XReport(Plugin):
         """
         super(XReport, self).configure(options, conf)
         self.conf = conf  # debug
+        self.options = options
         self.enabled = True  # Plugin is enabled by default
         self.logger.debug('Config is %s' % conf)
         self.filename = options.xreport_file
+        self.formats = set(options.xformat)
+        self.verbose = options.verbosity
+        self.filename, filename_ext = os.path.splitext(self.filename)
+        # if not self.formats:
+        #     self.formats = []
+        if filename_ext[1:]:
+            self.formats.add(filename_ext[1:])
+        for f in self.formats:
+            if f not in ('pdf', 'rst', 'xml'):
+                raise ValueError("Invalid file format type '%s'" % f)
+
         # self.conf = conf
         # if not options.capture:
         #     self.enabled = False
 
     def setOutputStream(self, stream):
         """Intercept output stream configuration and forward to a dummy device."""
-        self.stream = stream
         # return dummy stream
         class DummyIO:
             def write(self, *arg):
@@ -241,6 +267,13 @@ class XReport(Plugin):
                 pass
             def flush(self):
                 pass
+        # If we are verbose, send all text to screen, else send to dummy device
+        if self.verbose:
+            self.stream = stream
+        else:
+            self.stream = DummyIO()
+
+
         return DummyIO()
 
     def start_stdout_capture(self):
@@ -625,9 +658,20 @@ class XReport(Plugin):
         """
         filename = filename or self.filename
 
-        import rst2pdf.createpdf as createpdf
+        from reportlab.platypus import flowables
+        from rst2pdf import createpdf
 
-        r = createpdf.RstToPdf(stylesheets=['eightpoint', 'letter'], fit_mode='shrink', breaklevel=0)
+        # Set listWrapOnFakeWidth to False to make sure the wrap() command
+        # report the actual width of (literal) boxes, not the available width.
+        # This way the boxes can scale correctly to fit the width of the page.
+
+        # Note that reportlab's flowables module loads listWrapOnFakeWidth
+        # from the rl_config module with an import statement at module load
+        # time. Changing the rl_config value after that has no effect. For
+        # this reason, we change it firectly in the flowables module.
+        flowables.listWrapOnFakeWidth = 0
+
+        r = createpdf.RstToPdf(stylesheets=['eightpoint', 'letter', 'sphinx'], fit_mode='shrink', breaklevel=0)
         r.createPdf(text=str(self.get_rst()), output=filename + '.pdf')
 
     def publish(self, filename, writer_name='html'):
