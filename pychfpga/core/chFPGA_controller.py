@@ -99,7 +99,7 @@ class chFPGA_controller(IceBoardExtHandler):
     _CHAN_BASE_ADDR       = 0x10000  # Channelizer top address
     _CROSSBAR1_BASE_ADDR  = 0x20000  # CROSSBAR top address
     _GPU_LINK_BASE_ADDR   = 0x30000  # GPU Link top address
-    _CORR_BASE_ADDR       = 0x40000  # Correlator ports are determined dynamically based on the info from the firmware
+    _CROSSBAR3_BASE_ADDR  = 0x40000  # Correlator ports are determined dynamically based on the info from the firmware
     _BP_SHUFFLE_BASE_ADDR = 0x50000
     _CROSSBAR2_BASE_ADDR  = 0x60000  # CROSSBAR top address
 
@@ -277,10 +277,13 @@ class chFPGA_controller(IceBoardExtHandler):
 
             if self.NUMBER_OF_BP_SHUFFLE_LANES and self.NUMBER_OF_GPU_LINKS:
                 self._logger.debug('%r: === Instantiating 2nd CROSSBAR' % self)
-                self.CROSSBAR2 = shuffle_crossbar.ShuffleCrossbar(self, self._CROSSBAR2_BASE_ADDR, self._CROSSBAR_ADDR_INCREMENT, crossbar_level=2) # CROSSBAR block
+                self.CROSSBAR2 = shuffle_crossbar.ShuffleCrossbar(self, self._CROSSBAR2_BASE_ADDR, self._CROSSBAR_ADDR_INCREMENT, crossbar_level=2, number_of_bin_sel=2) # CROSSBAR block
 
-            self._logger.debug('%r: === Instantiating CORR' % self)
-            self.CORR = CORR_BLOCK.CORR_BLOCK_base(self, self._CORR_BASE_ADDR, self._CORR_ADDR_INCREMENT) # Correlator (XMUL, ACC) for each correlator
+                self._logger.debug('%r: === Instantiating 3rd CROSSBAR' % self)
+                self.CROSSBAR3 = shuffle_crossbar.ShuffleCrossbar(self, self._CROSSBAR3_BASE_ADDR, self._CROSSBAR_ADDR_INCREMENT, crossbar_level=3, number_of_bin_sel=8) # CROSSBAR block
+
+            # self._logger.debug('%r: === Instantiating CORR' % self)
+            # self.CORR = CORR_BLOCK.CORR_BLOCK_base(self, self._CORR_BASE_ADDR, self._CORR_ADDR_INCREMENT) # Correlator (XMUL, ACC) for each correlator
 
             if self.NUMBER_OF_GPU_LINKS:
                 self._logger.debug('%r: === Instantiating GPU LINKS' % self)
@@ -443,11 +446,18 @@ class chFPGA_controller(IceBoardExtHandler):
 
         self._logger.debug('%r: === Initializing 2nd Crossbar' % self)
         if self.NUMBER_OF_BP_SHUFFLE_LANES and self.NUMBER_OF_GPU_LINKS:
-            self._logger.debug('%r:   - 2nd CROSSBAR' % self)
             self.CROSSBAR2.init()
             self.CROSSBAR2.status()
         else:
             self._logger.warning("%r: There is no 2nd CROSSBAR module in this firmware build" % self);
+
+        self._logger.debug('%r: === Initializing 3rd Crossbar' % self)
+        if self.NUMBER_OF_BP_SHUFFLE_LANES and self.NUMBER_OF_GPU_LINKS:  # *** Fixme
+            self.CROSSBAR3.init()
+            self.CROSSBAR3.status()
+        else:
+            self._logger.warning("%r: There is no 3rd CROSSBAR module in this firmware build" % self);
+
 
         self._logger.debug('%r: === Initializing FPGA correlators' % self)
         if self.NUMBER_OF_CORRELATORS > 0:
@@ -1232,7 +1242,7 @@ class chFPGA_controller(IceBoardExtHandler):
             if sync:
                 self.sync()
 
-    def set_gain(self, gain=None, postscaler=None, channels=None, use_fixed_gain=False):
+    def set_gain(self, gain=None, postscaler=None, channels=None, use_fixed_gain=False, bank=None, timestamp=None):
         """
         Sets the gain between the (18+18) bits input of the scaler module (from the FFT) to its 4- or 8- bit scaler output.
         The gain can be set individually for every frequency bins and every ADC channel.
@@ -1266,6 +1276,12 @@ class chFPGA_controller(IceBoardExtHandler):
         If 'postscaler' is specified, it will be used as default value when Glog = None.
 
         'use_fixed_gain': if True, enables the use of fixed gain mode of the scaler module. In this case, 'gain' can only be a scalar. Is False by default. This is normally used
+
+        ``bank`` is the coefficient bank number (0 or 1) to which the
+        coefficient should be written. Once written, the bank is made active. If ``bank`` is None, the currently inactive bank is used.
+
+        If ``timestamp`` is specified, the coefficient bank change occurs only when the
+        frame with the specified timestamp is encountered.
 
         Notes:
             1) The PFB/FFT has an intrisic gain of 512 (a constant FFT input of '1' will yield the value 512 in bin 0 at the input of the scaler.
@@ -1343,7 +1359,7 @@ class chFPGA_controller(IceBoardExtHandler):
                     self.ANT[ch].SCALER.set_fixed_gain(Glin)
                 else:
                     self.ANT[ch].SCALER.USE_GAIN_TABLE = 1
-                    self.ANT[ch].SCALER.set_gain_table(Glin)
+                    self.ANT[ch].SCALER.set_gain_table(Glin, bank=bank, timestamp=timestamp)
                 configured_channels.add(ch)
         self._logger.info('%r: Setting scaler gains for Antenna %s' % (self, ', '.join([str(i) for i in configured_channels])))
 
@@ -1476,9 +1492,8 @@ class chFPGA_controller(IceBoardExtHandler):
                     res['FMC%i ADC%i'%(fmc_number, adc_number)] = adc.get_temperature()
         return res
 
-    def init_crossbars(self, dsmap=range(16), frames_per_packet=3, cb1_lanes=16, cb1_bins=64, cb1_bypass=False, cb2_lanes=8, cb2_bins=1, cb2_bypass=False, bp_bypass=1, remap=True):
-        """ Initializes the 1st and 2nd crossbar to reorder and package the
-        channelizer data send to the GPU correlators in the desired format.
+    def init_crossbars(self, mode='raw', dsmap=range(16), frames_per_packet=3, cb1_lanes=16, cb1_bins=64, cb1_bypass=False, cb2_lanes=None, cb2_bins=1, cb2_bypass=False, bp_shuffle_bypass=1, crate_shuffle_bypass=1, remap=True):
+        """ Initializes the 1st, 2nd and 3rd crossbars.
 
         `ib` is the IceBoard to be configured.
         """
@@ -1489,87 +1504,322 @@ class chFPGA_controller(IceBoardExtHandler):
         self.set_corr_reset(1)
         cb1 = self.CROSSBAR
         cb2 = self.CROSSBAR2
+        cb3 = self.CROSSBAR3
+
+        def get_dest_slot_for_src_lane(src_lane):
+            tx = (self.slot, src_lane)  # unique transmitter id (slot, lane)
+            dest_slot = self.crate.get_matching_rx(tx)[0]
+            return dest_slot
+
+        def get_src_slot_for_dest_lane(dest_lane):
+            rx = (self.slot, dest_lane)
+            src_slot = self.crate.get_matching_tx(rx)[0]
+            return src_slot
 
         if frames_per_packet < 1 or frames_per_packet > 4:
             raise ValueError('Number of frames per packet must be between 1 and 4')
         if cb1_lanes not in (4, 8, 12, 16):
             raise ValueError('Crossbar 1 number of input lanes must be 4,8,12 or 16')
-        if cb2_lanes % 2:
-            raise ValueError('Crossbar 2 number of input lanes must be a multiple of 2')
 
-        self._logger.info('%r: Configuring crossbars 1 & 2 with frames_per_packet=%i, cb1_lanes=%i, cb1_bins=%i, cb2_lanes=%i, cb2_bins=%i, cb2_bypass=%s, bp_bypass=%s' % (self, frames_per_packet, cb1_lanes, cb1_bins, cb2_lanes, cb2_bins, bool(cb2_bypass), bool(bp_bypass)))
+        if cb2_lanes is None:
+            cb2_lanes = ((0, 15), (0, 15))  # Both bin selectors
 
-        words_per_bin = cb1_lanes / 4
-        cb1_minimum_bin_spacing = 16
-        cb2_minimum_bin_spacing = 8
+        # if cb2_lanes % 2:
+        #     raise ValueError('Crossbar 2 number of input lanes must be a multiple of 2')
 
-        self.BP_SHUFFLE.BYPASS = bp_bypass
+        number_of_cb1_bin_sel = 16
+        number_of_cb2_bin_sel = 2
+        number_of_cb3_bin_sel = 8
 
-        # for gtx in gpu_links.CHANNEL:
-        #     gtx.LOOPBACK = bp_bypass
+        if mode == 'chan':  # get raw data from the channelizer (all 32-bit sent as is). Only 8 lanes are available to the GPU.
+            cb1_bypass = True
+            cb1_four_bit = False
+            bp_shuffle_bypass = True
+            cb2_lane_map = range(16) # Here we could select which 8 inputs we want to stream to the GPU
+            cb2_bypass = True
+            crate_shuffle_bypass = True
+            cb3_lane_map = range(8)
+            cb3_bypass = True
+
+        elif mode == 'chan4': # get the high nibble of every byts from two lanes in a single word. Allows Get (4+4) bit data from all channelizers
+            cb1_bypass = True
+            cb1_four_bit = True
+            bp_shuffle_bypass = True
+            cb2_lane_map = range(16) # All information
+            cb2_bypass = True
+            crate_shuffle_bypass = True
+            cb3_lane_map = range(8)
+            cb3_bypass = True
+
+
+        elif mode == '16-chan':
+            cb1_bypass = False
+            cb1_four_bit = True
+            cb1_lanes = 16
+            cb1_bins = 128
+            cb1_bin_spacing = 1024/cb1_bins
+            cb1_bin_select_map = [np.arange(cb1_bins)*cb1_bin_spacing+i for i in range(number_of_cb1_bin_sel/2)] * 2
+
+            bp_shuffle_bypass = True
+
+            cb2_lane_map = range(16)
+            cb2_bypass = True
+
+            crate_shuffle_bypass = True
+            cb3_lane_map = range(8)
+            cb3_bypass = True
+
+        elif mode == '256-chan':
+            cb1_bypass = False
+            cb1_four_bit = True
+            cb1_lanes = 16
+            cb1_bins = 64
+            cb1_bin_spacing = 1024/cb1_bins
+            cb1_bin_select_map = [np.arange(cb1_bins)*cb1_bin_spacing+i for i in range(number_of_cb1_bin_sel)]
+            cb1_bin_select_map = [cb1_bin_select_map[dsmap[get_dest_slot_for_src_lane(i)-1]] for i in range(16)]  # reorder cb1_bin_select_map so slot 0 gets cb1_bin_select_map[0], slot 1 gets cb1_bin_select_map[1] etc.
+            cb1_output_words_per_bin = cb1_lanes/4
+            cb1_output_bins = cb1_bins
+
+            bp_shuffle_bypass = False
+
+            # CB2 has 2 BIN_SEL
+            # Each BS captures data from 16 input lanes and has 4 outputs.
+            # Each output covers gathers data from 4 input lanes (sublanes 0-3).
+            #   Output 0: Sublanes 0-3 = Input Lanes 0-3
+            #   Output 1: Sublanes 0-3 = Input Lanes 4-7
+            #   Output 2: Sublanes 0-3 = Input Lanes 8-11
+            #   Output 3: Sublanes 0-3 = Input Lanes 12-15
+            # In this config, we will bypass the crate_shuffle. We therefore want all outputs to output the same bins. So BS0 gets data from half of its sublanes, and BS1 gets data from the other half.
+            # CB2 Output Lane 0: BS0.0: all 64 bins from sublanes 0-1 (Input lanes 0-1   = CH0-31)
+            # CB2 Output Lane 1: BS0.1: all 64 bins from sublanes 0-1 (Input lanes 4-5   = CH64-95)
+            # CB2 Output Lane 2: BS0.2: all 64 bins from sublanes 0-1 (Input lanes 8-9   = CH128-159)
+            # CB2 Output Lane 3: BS0.3: all 64 bins from sublanes 0-1 (Input lanes 12-13 = CH192-223)
+            # CB2 Output Lane 4: BS1.0: all 64 bins from sublanes 2-3 (Input lanes 2-3   = CH32-63)
+            # CB2 Output Lane 5: BS1.1: all 64 bins from sublanes 2-3 (Input lanes 6-7   = CH96-127)
+            # CB2 Output Lane 6: BS1.2: all 64 bins from sublanes 2-3 (Input lanes 10-11 = CH160-191)
+            # CB2 Output Lane 7: BS1.3: all 64 bins from sublanes 2-3 (Input lanes 14-15 = CH224-255)
+            # Crate shuffle is bypassed.
+            # CB3 inputs are therefore identical to CB2 output
+            # CB3 lane map selects data in the order: [BS0.0, BS1.0, BS0.1, BS1.1 ...]
+            # CB3 remapped BIN_SEL inputs are
+            #    CB3 Input Lane 0: 64 bins CH0-31
+            #    CB3 Input Lane 1: 64 bins CH32-63
+            #    CB3 Input Lane 2: 64 bins CH64-95
+            #    CB3 Input Lane 3: 64 bins CH96-127
+            #    CB3 Input Lane 4: 64 bins CH128-159
+            #    CB3 Input Lane 5: 64 bins CH160-191
+            #    CB3 Input Lane 6: 64 bins CH192-223
+            #    CB3 Input Lane 7: 64 bins CH224-255
+            # CB3 outputs are:
+            #    CB3 Output Lane 0: BS0.0: 8 bins (0,8...)  from sublanes 0-7 (Input lanes 0-7 =CH0-511)
+            #    CB3 Output Lane 1: BS0.1: 8 bins (1,9...)  from sublanes 0-7 (Input lanes 0-7 =CH0-511)
+            #    CB3 Output Lane 2: BS0.2: 8 bins (2,10...) from sublanes 0-7 (Input lanes 0-7 =CH0-511)
+            #    CB3 Output Lane 3: BS0.3: 8 bins (3,11...) from sublanes 0-7 (Input lanes 0-7 =CH0-511)
+            #    CB3 Output Lane 4: BS1.0: 8 bins (4,12...) from sublanes 0-7 (Input lanes 0-7 =CH0-511)
+            #    CB3 Output Lane 5: BS1.1: 8 bins (5,13...) from sublanes 0-7 (Input lanes 0-7 =CH0-511)
+            #    CB3 Output Lane 6: BS1.2: 8 bins (6,14...) from sublanes 0-7 (Input lanes 0-7 =CH0-511)
+            #    CB3 Output Lane 7: BS1.3: 8 bins (7,15...) from sublanes 0-7 (Input lanes 0-7 =CH0-511)
+            cb2_lane_map = self.CROSSBAR2.compute_bp_shuffle_lane_map()
+            cb2_bypass = False
+            cb2_input_words_per_bin = cb1_output_words_per_bin
+            cb2_input_bins = cb1_output_bins
+            cb2_lanes = ((0, 1), (2, 3))  #BS0 selects sublanes 0-1, BS1 selects sublanes 2-3
+            cb2_bins = 64
+            cb2_bin_spacing = 1
+            cb2_bin_select_map = [np.arange(cb2_bins)*cb2_bin_spacing for i in range(number_of_cb2_bin_sel)]
+            cb2_output_words_per_bin = 2 * cb2_input_words_per_bin
+            cb2_output_bins = cb2_bins
+            crate_shuffle_bypass = True
+
+            cb3_lane_map = [0, 4, 1, 5, 2, 6, 3, 7]  # Reorder to get data from lanes 0-1, 2-3, 4-5 ...
+            cb3_bypass = False
+            cb3_input_words_per_bin = cb2_output_words_per_bin
+            cb3_input_bins = cb2_output_bins
+            cb3_lanes = [(0, 7)] * number_of_cb3_bin_sel
+            cb3_bins = 8  # We merge data from 8 full bandwidth input lanes, so we select 1/8th of the bins on each output lane
+            cb3_bin_spacing = 8  # use maximum possible number so we minimize FIFO usage
+            cb3_bin_select_map = [np.arange(cb3_bins)*cb3_bin_spacing+i for i in range(number_of_cb3_bin_sel)]
+            cb3_output_words_per_bin = cb3_input_words_per_bin * 8
+            cb3_output_bins = cb3_bins
+
+        elif mode == '512-chan':
+            cb1_bypass = False
+            cb1_four_bit = True
+            cb1_lanes = 16
+            cb1_bins = 64
+            cb1_bin_spacing = 1024/cb1_bins
+            cb1_bin_select_map = [np.arange(cb1_bins)*cb1_bin_spacing+i for i in range(number_of_cb1_bin_sel)]
+            cb1_bin_select_map = [cb1_bin_select_map[dsmap[get_dest_slot_for_src_lane(i)-1]] for i in range(16)]  # reorder cb1_bin_select_map so slot 0 gets cb1_bin_select_map[0], slot 1 gets cb1_bin_select_map[1] etc.
+            cb1_output_words_per_bin = cb1_lanes/4
+            cb1_output_bins = cb1_bins
+
+            bp_shuffle_bypass = False
+
+            # In this config, we do not bypass the crate_shuffle. Half the bins are sent out, and we receive bins that are the same as those of the direct lanes.
+            # We therefore want BS0 to get half the bins from all input lanes, and BS1 gets the other half of the bins also from all input lanes.
+            # CB2 Output lanes are:
+            #    CB2 Output Lane 0: BS0.0: 32 even bins from sublanes 0-3 (Input lanes 0-3   = CH0-63)
+            #    CB2 Output Lane 1: BS0.1: 32 even bins from sublanes 0-3 (Input lanes 4-7   = CH64-127)
+            #    CB2 Output Lane 2: BS0.2: 32 even bins from sublanes 0-3 (Input lanes 8-11  = CH128-191)
+            #    CB2 Output Lane 3: BS0.3: 32 even bins from sublanes 0-3 (Input lanes 12-15 = CH192-255)
+            #    CB2 Output Lane 4: BS1.0: 32 odd  bins from sublanes 0-3 (Input lanes 0-3   = CH0-63)
+            #    CB2 Output Lane 5: BS1.1: 32 odd  bins from sublanes 0-3 (Input lanes 4-7   = CH64-127)
+            #    CB2 Output Lane 6: BS1.2: 32 odd  bins from sublanes 0-3 (Input lanes 8-11  = CH128-191)
+            #    CB2 Output Lane 7: BS1.3: 32 odd  bins from sublanes 0-3 (Input lanes 12-15 = CH192-255)
+            # Crate shuffle is *not* bypassed
+            # CB3 inputs are therefore:
+            #    CB3 Input Lane 0: 32 even bins CH0-63
+            #    CB3 Input Lane 1: 32 even bins CH64-127
+            #    CB3 Input Lane 2: 32 even bins CH128-191
+            #    CB3 Input Lane 3: 32 even bins CH192-255
+            #    CB3 Input Lane 4: 32 even bins CH256-319
+            #    CB3 Input Lane 5: 32 even bins CH320-383
+            #    CB3 Input Lane 6: 32 even bins CH384-447
+            #    CB3 Input Lane 7: 32 even bins CH448-511
+            # CB3 lane map selects data in the input lane order: [0, 1, 2, 3 ... 7]
+            # CB3 BIN sel inputs are therefore identical to CB3 inputs
+            # CB3 outputs are:
+            #    CB3 Output Lane 0: BS0.0: 4 bins (0,8...)  from sublanes 0-7 (Input lanes 0-7 =CH0-511)
+            #    CB3 Output Lane 1: BS0.1: 4 bins (1,9...)  from sublanes 0-7 (Input lanes 0-7 =CH0-511)
+            #    CB3 Output Lane 2: BS0.2: 4 bins (2,10...) from sublanes 0-7 (Input lanes 0-7 =CH0-511)
+            #    CB3 Output Lane 3: BS0.3: 4 bins (3,11...) from sublanes 0-7 (Input lanes 0-7 =CH0-511)
+            #    CB3 Output Lane 4: BS1.0: 4 bins (4,12...) from sublanes 0-7 (Input lanes 0-7 =CH0-511)
+            #    CB3 Output Lane 5: BS1.1: 4 bins (5,13...) from sublanes 0-7 (Input lanes 0-7 =CH0-511)
+            #    CB3 Output Lane 6: BS1.2: 4 bins (6,14...) from sublanes 0-7 (Input lanes 0-7 =CH0-511)
+            #    CB3 Output Lane 7: BS1.3: 4 bins (7,15...) from sublanes 0-7 (Input lanes 0-7 =CH0-511)
+
+            cb2_lane_map = self.CROSSBAR2.compute_bp_shuffle_lane_map()
+            cb2_bypass = False
+            cb2_lanes = [(0,15)] * number_of_cb2_bin_sel
+            cb2_input_words_per_bin = cb1_output_words_per_bin
+            cb2_input_bins = cb1_output_bins
+            cb2_bins = 32
+            cb2_bin_spacing = 1
+            cb2_bin_select_map = [np.arange(cb3_bins)*cb2_bin_spacing for i in range(number_of_cb2_bin_sel)]
+            cb2_output_words_per_bin = cb2_input_words_per_bin * 4
+            cb2_output_bins = cb3_bins
+
+            crate_shuffle_bypass = False
+
+            cb3_lane_map = range(8)
+            cb3_bypass = False
+            cb3_input_words_per_bin = cb2_output_words_per_bin
+            cb3_input_bins = cb2_output_bins
+            cb3_lanes = [(0,7)] * number_of_cb3_bin_sel
+            cb3_bins = 4
+            cb3_bin_spacing = 8
+            cb3_bin_select_map = [np.arange(cb3_bins)*cb3_bin_spacing+i for i in range(number_of_cb3_bin_sel)]
+            cb3_output_words_per_bin = cb3_input_words_per_bin * 8
+            cb3_output_bins = cb3_bins
+
+        elif mode is None:  # Manual config
+
+            if bp_shuffle_bypass:
+                cb2_lane_map = self.CROSSBAR2.compute_bp_shuffle_lane_map()
+            else:
+                cb2_lane_map = range(16)
+
+        else:
+            raise ValueError('Unknown mode')
+
+
+        self._logger.info('%r: Configuring crossbars 1 & 2 with frames_per_packet=%i, cb1_lanes=%i, cb1_bins=%i, cb2_lanes=%s, cb2_bins=%i, cb2_bypass=%s, bp_shuffle_bypass=%s' % (self, frames_per_packet, cb1_lanes, cb1_bins, cb2_lanes, cb2_bins, bool(cb2_bypass), bool(bp_shuffle_bypass)))
+
 
         #-------------------------
         # Configure CROSSBAR 1
         #-------------------------
+
         # Select the bins so slot 0 receives bins 0-63, slot 1 has 64-127 ... slot 15 has 960-1023
         for (cb1_output_lane, bs) in enumerate(cb1):
             bs.BYPASS = cb1_bypass
             bs.GROUP_FRAMES = frames_per_packet
-            bs.NUMBER_OF_LANES = cb1_lanes
             bs.STREAM_ID = self.slot - 1  # The stream ID at the output of CB1 will be 0xSL (S=slot-1, L=lane)
-            if remap and not cb1_bypass and not bp_bypass:
-                tx = (self.slot, cb1_output_lane)  # unique transmitter id (slot, lane)
-                destination_slot = self.crate.get_matching_rx(tx)[0]
-                bs.select_bins(np.arange(cb1_bins) * cb1_minimum_bin_spacing + (dsmap[destination_slot-1]))
-            else:
-                bs.select_bins(np.arange(cb1_bins) * cb1_minimum_bin_spacing + dsmap[cb1_output_lane])
+            bs.FOUR_BITS = cb1_four_bit
+            if not bp_shuffle_bypass:
+                bs.NUMBER_OF_LANES = cb1_lanes
+                bs.select_bins(cb1_bin_select_map[cb1_output_lane])
 
         #-------------------------
-        # Configure Backplane shuffle
+        # Configure BP_SHUFFLE
         #-------------------------
-        self.BP_SHUFFLE.BYPASS = bp_bypass
+        self.BP_SHUFFLE.BYPASS_PCB_SHUFFLE = bp_shuffle_bypass
 
         #-------------------------
         # Configure CROSSBAR 2
         #-------------------------
-        for (cb2_output_lane, bs) in enumerate(cb2):
+        self.CROSSBAR2.set_lane_map(cb2_lane_map)
+        for (cb2_bin_sel, bs) in enumerate(cb2):
             bs.BYPASS = bool(cb2_bypass)
-            bs.STREAM_ID = self.slot - 1  # The stream ID at the output of CB2 will be 0xSL (S=slot-1, L=lane)
-            bs.NUMBER_OF_FRAMES_PER_PACKET = frames_per_packet
-            bs.NUMBER_OF_LANES = cb2_lanes
-            bs.NUMBER_OF_BINS_PER_FRAME = cb1_bins
-            bs.NUMBER_OF_WORDS_PER_BIN = cb1_lanes/4
-            bs.select_bins(np.arange(cb2_bins) * cb2_minimum_bin_spacing + cb2_output_lane)
-
-        header_size = 16
-        packet_flags_size = 4
-        eth_overhead = 42
-        bp_overhead = 8
-        eth_data_rate = 156.25e6 * 66 * 32/33
-        bp_data_rate = 156.25e6* 50 * 32/33
-        packet_rate = 800e6/2048/frames_per_packet
-        cb1_payload_size = header_size + packet_flags_size + frames_per_packet * (words_per_bin * cb1_bins + cb1_bins + 1) * 4
-        cb1_eth_packet_size = (cb1_payload_size+eth_overhead+7)//8*8
-        cb1_eth_data_rate = cb1_eth_packet_size * packet_rate * 8
+            if not cb2_bypass:
+                bs.STREAM_ID = self.slot - 1  # The stream ID at the output of CB2 will be 0xSL (S=slot-1, L=lane)
+                bs.NUMBER_OF_FRAMES_PER_PACKET = frames_per_packet
+                bs.FIRST_LANE = cb2_lanes[cb2_bin_sel][0]
+                bs.LAST_LANE = cb2_lanes[cb2_bin_sel][1]
+                bs.NUMBER_OF_BINS_PER_FRAME = cb2_input_bins
+                bs.NUMBER_OF_WORDS_PER_BIN = cb2_input_words_per_bin
+                bs.select_bins(cb2_bin_select_map[cb2_bin_sel])
 
 
-        cb1_bp_packet_size = (cb1_payload_size+bp_overhead+7)//8*8
-        cb1_bp_data_rate = cb1_bp_packet_size * packet_rate * 8
+        #-------------------------
+        # Configure CRATE_SHUFFLE
+        #-------------------------
+        self.BP_SHUFFLE.BYPASS_QSFP_SHUFFLE = crate_shuffle_bypass
 
-        self._logger.info('%.32r: CROSSBAR1 output: payload = %i bytes' % (self, cb1_payload_size))
-        self._logger.info('%.32r: Backplane links: Packet size = %i bytes, data rate = %0.2f Gbps / %0.2f Gbps (%0.2f%%)' % (self, cb1_bp_packet_size, cb1_bp_data_rate/1e9, bp_data_rate / 1e9, cb1_bp_data_rate/bp_data_rate*100))
+        #-------------------------
+        # Configure CROSSBAR 3
+        #-------------------------
+        self.CROSSBAR3.set_lane_map(cb3_lane_map)
+        for (cb3_bin_sel, bs) in enumerate(cb3):
+            bs.BYPASS = bool(cb3_bypass)
+            if not cb3_bypass:
+                bs.STREAM_ID = self.slot - 1  # The stream ID at the output of CB2 will be 0xSL (S=slot-1, L=lane)
+                bs.NUMBER_OF_FRAMES_PER_PACKET = frames_per_packet
+                bs.FIRST_LANE = cb3_lanes[cb3_bin_sel][0]
+                bs.LAST_LANE = cb3_lanes[cb3_bin_sel][1]
+                bs.NUMBER_OF_BINS_PER_FRAME = cb3_input_bins
+                bs.NUMBER_OF_WORDS_PER_BIN = cb3_input_words_per_bin
+                bs.select_bins(cb3_bin_select_map[cb3_bin_sel])
 
-        cb2_payload_size = header_size + packet_flags_size + frames_per_packet * (words_per_bin * cb2_bins* cb2_lanes + 1*cb2_bins*cb2_lanes/2 + cb2_lanes) * 4
-        cb2_eth_packet_size = (cb2_payload_size + eth_overhead + 7) // 8 * 8
-        cb2_eth_data_rate = cb2_eth_packet_size * packet_rate * 8
-        cb2_fifo_load = cb2_bins * words_per_bin * frames_per_packet - ( cb2_bins * words_per_bin* cb2_minimum_bin_spacing* frames_per_packet / 16)
-        self._logger.info('%.32r: CROSSBAR2 output: payload = %i bytes' % (self, cb2_payload_size))
-        self._logger.info('%.32r: CROSSBAR2 peak FIFO load per frame: %i (Max. 16), Words per frame: %i (max %i)' % (self, cb2_fifo_load,cb2_payload_size/frames_per_packet, 512*bp_data_rate/32/200e6))
 
-        if cb2_bypass:
-            self._logger.info('%.32r: GPU link (CROSSBAR1 data): UDP Payload = %i bytes, Ethernet packets = %i bytes, data rate = %0.2f Gbps (%0.2f%%)' % (self, cb1_payload_size, cb1_eth_packet_size, cb1_eth_data_rate/1e9, cb1_eth_data_rate/eth_data_rate*100))
-        else:
-            self._logger.info('%.32r: GPU Link (CROSSBAR2 data): UDP Payload = %i bytes, Ethernet packets = %i bytes, data rate = %0.2f Gbps (%0.2f%%)' % (self, cb2_payload_size, cb2_eth_packet_size, cb2_eth_data_rate/1e9, cb2_eth_data_rate/eth_data_rate*100))
+
+        # words_per_bin = cb1_lanes / 4
+        # # cb1_minimum_bin_spacing = 16
+        # # cb2_minimum_bin_spacing = 8
+
+
+        # # for gtx in gpu_links.CHANNEL:
+        # #     gtx.LOOPBACK = bp_shuffle_bypass
+
+        # header_size = 16
+        # packet_flags_size = 4
+        # eth_overhead = 42
+        # bp_overhead = 8
+        # eth_data_rate = 156.25e6 * 66 * 32/33
+        # bp_data_rate = 156.25e6* 50 * 32/33
+        # packet_rate = 800e6/2048/frames_per_packet
+        # cb1_payload_size = header_size + packet_flags_size + frames_per_packet * (words_per_bin * cb1_bins + cb1_bins + 1) * 4
+        # cb1_eth_packet_size = (cb1_payload_size+eth_overhead+7)//8*8
+        # cb1_eth_data_rate = cb1_eth_packet_size * packet_rate * 8
+
+
+        # cb1_bp_packet_size = (cb1_payload_size+bp_overhead+7)//8*8
+        # cb1_bp_data_rate = cb1_bp_packet_size * packet_rate * 8
+
+        # self._logger.info('%.32r: CROSSBAR1 output: payload = %i bytes' % (self, cb1_payload_size))
+        # self._logger.info('%.32r: Backplane links: Packet size = %i bytes, data rate = %0.2f Gbps / %0.2f Gbps (%0.2f%%)' % (self, cb1_bp_packet_size, cb1_bp_data_rate/1e9, bp_data_rate / 1e9, cb1_bp_data_rate/bp_data_rate*100))
+
+        # cb2_payload_size = header_size + packet_flags_size + frames_per_packet * (words_per_bin * cb2_bins* cb2_lanes + 1*cb2_bins*cb2_lanes/2 + cb2_lanes) * 4
+        # cb2_eth_packet_size = (cb2_payload_size + eth_overhead + 7) // 8 * 8
+        # cb2_eth_data_rate = cb2_eth_packet_size * packet_rate * 8
+        # cb2_fifo_load = cb2_bins * words_per_bin * frames_per_packet - ( cb2_bins * words_per_bin* cb2_minimum_bin_spacing* frames_per_packet / 16)
+        # self._logger.info('%.32r: CROSSBAR2 output: payload = %i bytes' % (self, cb2_payload_size))
+        # self._logger.info('%.32r: CROSSBAR2 peak FIFO load per frame: %i (Max. 16), Words per frame: %i (max %i)' % (self, cb2_fifo_load,cb2_payload_size/frames_per_packet, 512*bp_data_rate/32/200e6))
+
+        # if cb2_bypass:
+        #     self._logger.info('%.32r: GPU link (CROSSBAR1 data): UDP Payload = %i bytes, Ethernet packets = %i bytes, data rate = %0.2f Gbps (%0.2f%%)' % (self, cb1_payload_size, cb1_eth_packet_size, cb1_eth_data_rate/1e9, cb1_eth_data_rate/eth_data_rate*100))
+        # else:
+        #     self._logger.info('%.32r: GPU Link (CROSSBAR2 data): UDP Payload = %i bytes, Ethernet packets = %i bytes, data rate = %0.2f Gbps (%0.2f%%)' % (self, cb2_payload_size, cb2_eth_packet_size, cb2_eth_data_rate/1e9, cb2_eth_data_rate/eth_data_rate*100))
 
         self.set_corr_reset(0)
         self.set_ant_reset(0)

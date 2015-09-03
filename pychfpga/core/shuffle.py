@@ -34,7 +34,7 @@ class Shuffle(xglink.XGLinkArray):
         sc = self.fpga.get_crate_id()
 
         for dl in range(self.NUMBER_OF_LINKS+1):
-            if self.BYPASS:
+            if self.BYPASS_PCB_SHUFFLE:
                 (ss, sl) = (ds, dl)
                 rx = None
                 tx = None

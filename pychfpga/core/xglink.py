@@ -442,36 +442,46 @@ class XGLinkArray(XGLink):
     """ Instantiates an object that represents the xglink_array"""
 
     # backplane link-specific registers
-    BYPASS          = BitField(CONTROL, 4+0, 0, doc='Completely bypasses the backplane shuffle and connects CROSSBAR1 output directly to CROSSBAR2 input.')
     TX_TEST_ENABLE  = BitField(CONTROL, 4+0, 1, doc='')
-    ERR_CTR_WRAP_ENABLE  = BitField(CONTROL, 4+0, 2, doc='')
-    RESET_STATS     = BitField(CONTROL, 4+0, 3, doc='')
-    LANE_SEL        = BitField(CONTROL, 4+0, 4, width=4, doc='')
+    RESET_STATS     = BitField(CONTROL, 4+0, 2, doc='')
+    LANE_SEL        = BitField(CONTROL, 4+0, 3, width=5, doc='')
 
-    FIFO_RESET      = BitField(CONTROL, 4+1, 0, doc='Resets the RX FIFO')
+    BYPASS_PCB_SHUFFLE = BitField(CONTROL, 4+1, 0, doc='')
+    BYPASS_QSFP_SHUFFLE = BitField(CONTROL, 4+1, 1, doc='')
 
-    FIFO_OVERFLOW   = BitField(STATUS, 2+0, 0, doc='Sticky fifo overflow bit for the selected lane. Is cleared when RESET_STATS=1.')
-    RESET_MON       = BitField(STATUS, 2+0, 1, doc='State of the reset line')
-    RX_FRAME_DETECT = BitField(STATUS, 2+0, 2, doc='Sticky bit indicating that a data frame was detected. Is cleared when RESET_STATS=1.')
-    TEST_CTR        = BitField(STATUS, 2+0, 3, width=5, doc='State of the test pattern counter')
-    RX_ERROR_CTR    = BitField(STATUS, 2+2, 0, width=16, doc='Current value of the error counter for the selected lane. Saturates at 0xFFFF. Is cleared when RESET_STATS=1.')
+    # FIFO_RESET      = BitField(CONTROL, 4+1, 0, doc='Resets the RX FIFO')
+
+    RX_FIFO_OVERFLOW = BitField(STATUS, 2+0, 0, doc='Sticky fifo overflow bit for the selected lane. Is cleared when RESET_STATS=1.')
+    RESET_MON        = BitField(STATUS, 2+0, 1, doc='State of the reset line')
+    RX_FRAME_DETECT  = BitField(STATUS, 2+0, 2, doc='Sticky bit indicating that a data frame was detected. Is cleared when RESET_STATS=1.')
+    TX_FIFO_OVERFLOW = BitField(STATUS, 2+0, 3, doc='Sticky fifo overflow bit for the selected lane. Is cleared when RESET_STATS=1.')
+    TEST_CTR         = BitField(STATUS, 2+0, 4, width=3, doc='State of the test pattern counter')
+
+    RX_ERROR_CTR        = BitField(STATUS, 2+2, 0, width=16, doc='Current value of the error counter for the selected lane. Saturates at 0xFFFF. Is cleared when RESET_STATS=1.')
     RX_MAX_FRAME_LENGTH = BitField(STATUS, 2+4, 0, width=16, doc='Current value of the maximum frame length detector. Is cleared when RESET_STATS=1.')
-    RX_CTR          = BitField(STATUS, 2+5, 0, width=8, doc='Free runing counter on the local RX clock. Is cleared when RESET_STATS=1.')
-    RX_FRAME_CTR    = BitField(STATUS, 2+6, 0, width=8, doc='Number of frames received since reset. Is cleared when RESET_STATS=1.')
-    RX_MIN_FRAME_LENGTH = BitField(STATUS, 2+8, 0, width=16, doc='Current value of the minimum frame length detector. Is cleared when RESET_STATS=1.')
-    DELAY_CAPTURE    = BitField(STATUS, 2+10, 0, width=16, doc="")
+    RX_MIN_FRAME_LENGTH = BitField(STATUS, 2+6, 0, width=16, doc='Current value of the minimum frame length detector. Is cleared when RESET_STATS=1.')
+    # RX_CTR              = BitField(STATUS, 2+5, 0, width=8, doc='Free runing counter on the local RX clock. Is cleared when RESET_STATS=1.')
+    RX_FRAME_CTR        = BitField(STATUS, 2+7, 0, width=8, doc='Number of frames received since reset. Is cleared when RESET_STATS=1.')
+    # DELAY_CAPTURE       = BitField(STATUS, 2+10, 0, width=16, doc="")
 
 
 
     RX_LANE_MONITOR_TABLE = {
-        'FIFO_OVERFLOW': 'FIFO_OVERFLOW',
+        'RX_FIFO_OVERFLOW': 'RX_FIFO_OVERFLOW',
+        'TX_FIFO_OVERFLOW': 'TX_FIFO_OVERFLOW',
         'ERROR_CTR': 'RX_ERROR_CTR',
         'MAX_FRAME_LENGTH': 'RX_MAX_FRAME_LENGTH',
         'MIN_FRAME_LENGTH': 'RX_MIN_FRAME_LENGTH',
         'FRAME_DETECT': 'RX_FRAME_DETECT',
-        'RX_CTR': 'RX_CTR',
+        # 'RX_CTR': 'RX_CTR',
         'RX_FRAME_CTR': 'RX_FRAME_CTR',
         }
+
+    def init(self):
+        super(XGLinkArray, self).init()
+        self.NUMBER_OF_LANES = self.NUMBER_OF_LINKS + 5  # 1 bypass link for BP PCB shuffle, 4 for Bp QSFP shuffle
+        self.NUMBER_OF_PCB_LANES = 16
+        self.NUMBER_OF_QSFP_LANES = 8
 
     def get_rx_lane_monitor(self, name):
         if name not in self.RX_LANE_MONITOR_TABLE:
@@ -479,7 +489,7 @@ class XGLinkArray(XGLink):
         bitfield = self.get_bitfield(self.RX_LANE_MONITOR_TABLE[name])
 
         mon = []
-        for lane in range(self.NUMBER_OF_LINKS+1):
+        for lane in range(self.NUMBER_OF_LANES):
             self.LANE_SEL = lane
             mon.append(self.read_field(bitfield))
         return mon
@@ -494,12 +504,12 @@ class XGLinkArray(XGLink):
         if reset:
             self.reset_stats()
 
-        gtx_ids = [(self.fpga.slot, lane) for lane in range(self.NUMBER_OF_LINKS+1)]
+        gtx_ids = [(self.fpga.slot, lane) for lane in range(self.NUMBER_OF_PCB_LANES)]
         active_slots = set(self.fpga.crate.slot.keys())
         matching_gtx_ids = [self.fpga.crate.get_matching_tx(gtx_id) for gtx_id in gtx_ids]
 
-        print '%20s: %s' % ('Monitor point', ' '.join('  L%2i ' % v for v in range(self.NUMBER_OF_LINKS+1)))
-        print '%20s: %s' % ('--------------------', ' '+' '.join('------' for v in range(self.NUMBER_OF_LINKS+1)))
+        print '%20s: %s' % ('XGLINK_Array Lane #', ' '.join('  L%2i ' % v for v in range(self.NUMBER_OF_LANES)))
+        print '%20s: %s' % ('--------------------', ' '+' '.join('------' for v in range(self.NUMBER_OF_LANES)))
         print '%20s: %s' % ('GTX ID', ''.join('%7s' % ('(%i,%i)' % id_) for id_ in gtx_ids))
         print '%20s: %s' % ('Matching GTX ID', ''.join('%7s' % ('(%i,%i)' % matching_id) for matching_id in matching_gtx_ids))
         print '%20s: %s' % ('Matching GTX present', ' '.join(('%6s' % ('-N/A-', 'ok ')[matching_id[0] in active_slots]) for matching_id in matching_gtx_ids))

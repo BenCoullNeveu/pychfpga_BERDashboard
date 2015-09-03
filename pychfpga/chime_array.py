@@ -7,6 +7,7 @@ import argparse
 import logging
 import time
 import __main__
+import os
 import sys
 import socket  # for gethostbyname()
 import itertools
@@ -21,7 +22,6 @@ from tornado.gen import with_timeout, TimeoutError
 from sqlalchemy import orm
 from sqlalchemy import or_
 
-# from pychfpga.core.icecore import async, async_return
 from pychfpga.core.icecore import Ccoll
 from pychfpga.core.icecore import IceBoardPlus, IceCrate
 from pychfpga.core.icecore import HardwareMap, Session
@@ -232,7 +232,9 @@ class ChimeArray(object):
         # This is the bitfile that is generated if implementing the Vivado
         # project located in
         # icecore/rtl/projects/iceboard_top_example/iceboard_top_example.xpr
-        default_bitfile = (
+        chimearray_path = os.path.dirname(__file__)
+        chimearray_path = chimearray_path + '/' if chimearray_path else ''
+        default_bitfile = ( chimearray_path +
             '../../chfpga/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/CHFPGA_MGK7MB_REV2.bit')
 
         # Configure the various loggers to provide adequate levels of details
@@ -810,8 +812,8 @@ class ChimeArray(object):
                 gtx.TXINHIBIT = 0
                 tx_list.append((ib.slot, j+1))
 
-            if remap:
-                ib.CROSSBAR2.set_lane_map(self.compute_lane_map(ib))
+            # if remap:
+            #     ib.CROSSBAR2.set_lane_map(self.compute_lane_map(ib))
 
             # Initialize the crossbars to select and send data in a specific format
             ib.init_crossbars(dsmap, frames_per_packet=frames_per_packet, cb1_lanes=cb1_lanes, cb1_bins=cb1_bins, cb1_bypass=cb1_bypass, cb2_lanes=cb2_lanes, cb2_bins=cb2_bins, cb2_bypass=cb2_bypass, remap=remap, bp_bypass=bp_bypass)
@@ -850,22 +852,6 @@ class ChimeArray(object):
         self.sync(delay=2)
 
 
-    @staticmethod
-    def compute_lane_map(ib):
-        """ Computes a lane mapping vector that will compensate for the
-        backplane connectivity on the specified IceBoard to obtain data
-        from slot 1 in lane 0, slot 2 in lane 1 etc.
-
-        The IceBoard must be connected to an identified backplane in order to
-        obtain the slot number and backplane connectivity information.
-        """
-        lane_map = np.zeros(16, dtype=np.int8)
-        for i in range(16):
-            rx = (ib.slot, i)
-            tx = ib.crate.get_matching_tx(rx)
-            # print '%s is receiving from %s' % (rx, tx)
-            lane_map[tx[0]-1] = i
-        return lane_map
 
     def test_sync(self):
         c = list(self.ib)

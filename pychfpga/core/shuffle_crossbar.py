@@ -36,36 +36,47 @@ class ShuffleCrossbar(Module_base):
     SOF_WINDOW_STOP    = BitField(CONTROL, 2, 0, width=8, doc='')
     LANE_MAP_BYTE0     = BitField(CONTROL, 3, 0, width=8, doc='Lane map')
     LANE_MAP_BYTE7     = BitField(CONTROL, 10, 0, width=8, doc='Lane map')
-    IGNORE_LANE        = BitField(CONTROL, 12, 0, width=16, doc='')
+    # IGNORE_LANE        = BitField(CONTROL, 12, 0, width=16, doc='')
 
 
-    LANE_MONITOR       = BitField(STATUS, 1, 0, width=16, doc='')
+    FIFO_TFIRST_MON         = BitField(STATUS, 0, 1, doc='')
+    BAD_EOF_MON             = BitField(STATUS, 0, 2, doc='')
+    BAD_LANE_MON            = BitField(STATUS, 0, 3, doc='')
+    DISCARDED_DATA_MON      = BitField(STATUS, 0, 4, doc='')
+    MISSING_FRAME_MON       = BitField(STATUS, 0, 5, doc='')
+    ALIGN_FIFO_OVERFLOW_MON = BitField(STATUS, 0, 6, doc='')
+    DATA_TIMEOUT_MON        = BitField(STATUS, 0, 7, doc='')
+
+    NUMBER_OF_OUTPUT_LANES    = BitField(STATUS, 1, 0, width=4, doc='')
+    NUMBER_OF_BIN_SEL         = BitField(STATUS, 1, 4, width=4, doc='')
+
+
     INPUT_FRAME_CTR    = BitField(STATUS, 2, 0, width=8, doc='')
     ALIGN_FRAME_CTR    = BitField(STATUS, 3, 0, width=8, doc='')
     OUTPUT_FRAME_CTR   = BitField(STATUS, 4, 0, width=8, doc='')
     CLK_CTR            = BitField(STATUS, 5, 0, width=8, doc='')
-    CAPTURE_DONE      = BitField(STATUS, 6, 0, doc='')
-    CAPTURE_TVALID    = BitField(STATUS, 6, 1, doc='')
-    CAPTURE_TLAST    = BitField(STATUS, 6, 2, doc='')
-    HAD_TIMEOUT    = BitField(STATUS, 6, 5, doc='')
+
+    HAD_TIMEOUT    = BitField(STATUS, 6, 7, doc='')
+    CAPTURE_DONE      = BitField(STATUS, 6, 5, doc='')
+    NUMBER_OF_INPUT_LANES    = BitField(STATUS, 6, 0, width=5, doc='')
+    # CAPTURE_TVALID    = BitField(STATUS, 6, 1, doc='')
+    # CAPTURE_TLAST    = BitField(STATUS, 6, 2, doc='')
 
     # CAPTURE_TDATA    = BitField(STATUS, 10, 0, width=32, doc='')
 
-    FRAME_NUMBER_CAPTURE_DATA = BitField(STATUS, 11, 0, width=8, doc="")
-    STREAM_ID_CAPTURE_DATA    = BitField(STATUS, 12, 0, width=8, doc="")
-    DELAY_CAPTURE    = BitField(STATUS, 14, 0, width=16, doc="")
-    FIFO_COUNT    = BitField(STATUS, 16, 0, width=16, doc="")
+    FRAME_NUMBER_CAPTURE_DATA = BitField(STATUS, 7, 0, width=8, doc="")
+    STREAM_ID_CAPTURE_DATA    = BitField(STATUS, 8, 0, width=8, doc="")
+    DELAY_CAPTURE    = BitField(STATUS, 10, 0, width=16, doc="")
+    FIFO_COUNT    = BitField(STATUS, 12, 0, width=16, doc="")
 
-    def __init__(self, fpga_instance, base_address, address_increment, crossbar_level=1, verbose=0):
+    def __init__(self, fpga_instance, base_address, address_increment, crossbar_level=1, verbose=0, number_of_bin_sel=2):
         self.fpga = fpga_instance
         self.verbose = verbose
         self.logger = logging.getLogger(__name__)
         self.crossbar_level = crossbar_level
         super(ShuffleCrossbar, self).__init__(fpga_instance, base_address)
         self.BIN_SEL = []
-        self.NUMBER_OF_CROSSBAR_INPUTS = self.fpga.NUMBER_OF_CROSSBAR_OUTPUTS
-        self.NUMBER_OF_CROSSBAR_OUTPUTS = self.fpga.NUMBER_OF_GPU_LINKS
-        for i in range(self.NUMBER_OF_CROSSBAR_OUTPUTS):
+        for i in range(number_of_bin_sel):
             self.BIN_SEL.append(SHUFFLE_BIN_SEL.SHUFFLE_BIN_SEL_base(fpga_instance, base_address+ (i+1) * address_increment, i))
 
     def __getitem__(self, key):
@@ -74,6 +85,8 @@ class ShuffleCrossbar(Module_base):
 
     def init(self):
         """ Initializes all correlators"""
+        self.NUMBER_OF_CROSSBAR_INPUTS = self.NUMBER_OF_INPUT_LANES
+        self.NUMBER_OF_CROSSBAR_OUTPUTS = self.NUMBER_OF_OUTPUT_LANES
         self.SOF_WINDOW_STOP = 50
         for bs in self.BIN_SEL:
             bs.init()
@@ -144,7 +157,8 @@ class ShuffleCrossbar(Module_base):
 
         This repamming affects all bin selectors.
         """
-        if len(lane_map)!=self.NUMBER_OF_CROSSBAR_INPUTS:
+
+        if len(lane_map) != self.NUMBER_OF_CROSSBAR_INPUTS:
             raise TypeError('Lane map must be a list of %i values' % self.NUMBER_OF_CROSSBAR_INPUTS)
 
         lane_map_bytes = np.zeros(self.NUMBER_OF_CROSSBAR_INPUTS/2, dtype=np.uint8)
@@ -176,9 +190,26 @@ class ShuffleCrossbar(Module_base):
 
         lane_map = self.get_lane_map()
         if set(lane_map) != set(range(self.NUMBER_OF_CROSSBAR_INPUTS)):
-            raise ValueError('Invalid lane map. Values are not unique')
+            raise ValueError('Invalid lane map: values are not unique.')
 
         return [lane_map.index(lane) for lane in range(len(lane_map))]
+
+    def compute_bp_shuffle_lane_map(self):
+        """ Computes a lane mapping vector that will compensate for the
+        backplane connectivity on the specified IceBoard to obtain data
+        from slot 1 in lane 0, slot 2 in lane 1 etc.
+
+        The IceBoard must be connected to an identified backplane in order to
+        obtain the slot number and backplane connectivity information.
+        """
+        ib = self.fpga
+        lane_map = np.zeros(self.NUMBER_OF_CROSSBAR_INPUTS, dtype=np.int8)
+        for i in range(self.NUMBER_OF_CROSSBAR_INPUTS):
+            rx = (ib.slot, i)
+            tx = ib.crate.get_matching_tx(rx)
+            # print '%s is receiving from %s' % (rx, tx)
+            lane_map[tx[0]-1] = i
+        return lane_map
 
     def configure(self, number_of_bins_per_crossbar_output= 8):
         """
@@ -259,15 +290,14 @@ class ShuffleCrossbar(Module_base):
         return frame
 
 
-    CB2_LANE_MONITOR_TABLE = {
-        'INPUT_DETECT': 0,
-        'FIFO_TFIRST': 1,
-        'BAD_TLAST': 2,
-        'BAD_TVALID': 3,
-        'DISCARDED_DATA': 4,
-        'MISSING_FRAME': 5,
-        'ALIGN_FIFO_OVERFLOW': 6,
-        'DATA_TIMEOUT': 7,
+    LANE_MONITOR_TABLE = {
+        'FIFO_TFIRST': 'FIFO_TFIRST_MON',
+        'BAD_TLAST': 'BAD_EOF_MON',
+        'BAD_TVALID': 'BAD_LANE_MON',
+        'DISCARDED_DATA': 'DISCARDED_DATA_MON',
+        'MISSING_FRAME': 'MISSING_FRAME_MON',
+        'ALIGN_FIFO_OVERFLOW': 'ALIGN_FIFO_OVERFLOW_MON',
+        'DATA_TIMEOUT': 'DATA_TIMEOUT_MON',
         }
 
     def get_lane_monitor(self, name):
@@ -275,15 +305,15 @@ class ShuffleCrossbar(Module_base):
         Return a list describing the status of the specified flag for each
         lane.
         """
-        table = self.CB2_LANE_MONITOR_TABLE
+        if name not in self.LANE_MONITOR_TABLE:
+            raise ValueError('Invalid lane monitor name. valid names are %s' % ','.join(self.LANE_MONITOR_TABLE.keys()))
+        bitfield = self.get_bitfield(self.LANE_MONITOR_TABLE[name])
 
-        if name not in table:
-            raise ValueError('Invalid lane monitor name. valid names are %s' % ','.join(table.keys()))
-        ix = table[name]
-        self.LANE_MONITOR_SEL = ix
-        value = self.LANE_MONITOR
-        return [bool(value & (1 << bit)) for bit in range(16)]
-
+        mon = []
+        for lane in range(self.NUMBER_OF_CROSSBAR_INPUTS):
+            self.LANE_MONITOR_SEL = lane
+            mon.append(bool(self.read_field(bitfield)))
+        return mon
 
     def print_crossbar2_monitor(self, reset=True):
 
