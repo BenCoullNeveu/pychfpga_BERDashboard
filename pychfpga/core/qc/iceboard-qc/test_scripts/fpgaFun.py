@@ -26,7 +26,8 @@ def get_boards(boards=None, ch_acq_path = '../../../../../../ch_acq/'):
 
     found_boards = []
     for ib in hwm.query(IceBoardPlus):
-        if ib.ping():
+        pings = ib.ping()
+        if pings:
             found_boards.append(ib)
     return found_boards
 
@@ -66,19 +67,19 @@ def programFpga(board_sn, ch_acq_path = '../../../../../../ch_acq/',  bitfile_pa
     fpga_bitstream = FpgaBitstream(bitfile_path)
 
     # Find iceboard
-    ib = get_boards(boards=[board_sn], ch_acq_path=ch_acq_path)
-    if len(ib) == 0:
-        raise Exception("Did not find any board on the network with serial number {}".format(board_sn))
+    while True:
+        ib = get_boards(boards=[board_sn], ch_acq_path=ch_acq_path)
+        if len(ib) == 0:
+            if raw_input("\nDid not find board on network with serial {}."
+                         "\nTry again (y/n)?    ".format(board_sn)).lower().strip() == 'y':
+                continue
+            else:
+                raise Exception("Did not find any board on the network with serial number {}".format(board_sn))
+        else:
+            break
     ib = ib[0]
 
-    # Check present on network
-    while not ib.ping():
-        logger.warning("Could not ping iceboard " + board_sn)
-        try_again = raw_input("\nCould not find iceboard " + board_sn + " on network.\nTry again? (y/n)\t")
-        if not try_again.lower().strip() == 'y':
-            raise Exception("Iceboard " + board_sn + " not present on network.")
-
-    # Associate the fpga_bitstream with the target Handler and program
+    # Associate the fpga bitstream with the target Handler and program
     ib.set_handler(chFPGA_controller, fpga_bitstream)
     ib.set_fpga_bitstream(force = force)
 
