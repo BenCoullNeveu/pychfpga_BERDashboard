@@ -1531,7 +1531,7 @@ class chFPGA_controller(IceBoardExtHandler):
         number_of_cb2_bin_sel = 2
         number_of_cb3_bin_sel = 8
 
-        if mode == 'chan':  # get raw data from the channelizer (all 32-bit sent as is). Only 8 lanes are available to the GPU.
+        if mode == 'chan8':  # get raw data from the channelizer (all 32-bit sent as is). Only 8 lanes are available to the GPU.
             cb1_bypass = True
             cb1_four_bit = False
             bp_shuffle_bypass = True
@@ -1552,7 +1552,7 @@ class chFPGA_controller(IceBoardExtHandler):
             cb3_bypass = True
 
 
-        elif mode == '16-chan':
+        elif mode == 'shuffle16':
             cb1_bypass = False
             cb1_four_bit = True
             cb1_lanes = 16
@@ -1569,7 +1569,7 @@ class chFPGA_controller(IceBoardExtHandler):
             cb3_lane_map = range(8)
             cb3_bypass = True
 
-        elif mode == '256-chan':
+        elif mode == 'shuffle256':
             cb1_bypass = False
             cb1_four_bit = True
             cb1_lanes = 16
@@ -1642,7 +1642,7 @@ class chFPGA_controller(IceBoardExtHandler):
             cb3_output_words_per_bin = cb3_input_words_per_bin * 8
             cb3_output_bins = cb3_bins
 
-        elif mode == '512-chan':
+        elif mode == 'shuffle512':
             cb1_bypass = False
             cb1_four_bit = True
             cb1_lanes = 16
@@ -1695,9 +1695,9 @@ class chFPGA_controller(IceBoardExtHandler):
             cb2_input_bins = cb1_output_bins
             cb2_bins = 32
             cb2_bin_spacing = 1
-            cb2_bin_select_map = [np.arange(cb3_bins)*cb2_bin_spacing for i in range(number_of_cb2_bin_sel)]
+            cb2_bin_select_map = [np.arange(cb2_bins)*cb2_bin_spacing for i in range(number_of_cb2_bin_sel)]
             cb2_output_words_per_bin = cb2_input_words_per_bin * 4
-            cb2_output_bins = cb3_bins
+            cb2_output_bins = cb2_bins
 
             crate_shuffle_bypass = False
 

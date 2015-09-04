@@ -480,8 +480,13 @@ class XGLinkArray(XGLink):
     def init(self):
         super(XGLinkArray, self).init()
         self.NUMBER_OF_LANES = self.NUMBER_OF_LINKS + 5  # 1 bypass link for BP PCB shuffle, 4 for Bp QSFP shuffle
+        self.NUMBER_OF_PCB_DIRECT_LANES = 1
+        self.NUMBER_OF_QSFP_DIRECT_LANES = 4
         self.NUMBER_OF_PCB_LANES = 16
         self.NUMBER_OF_QSFP_LANES = 8
+        self.NUMBER_OF_PCB_LINKS = 15
+        self.NUMBER_OF_QSFP_LINKS = 4
+
 
     def get_rx_lane_monitor(self, name):
         if name not in self.RX_LANE_MONITOR_TABLE:

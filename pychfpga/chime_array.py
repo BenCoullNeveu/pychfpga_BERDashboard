@@ -1070,27 +1070,48 @@ class ChimeArray(object):
 
         return link_list
 
-    def get_backplane_links(self, print_=True):
-        """ Return all backplane links that **should** be available given the currnet collection of crates.
-        """
+    # def get_backplane_links(self, print_=True):
+    #     """ Return all backplane links that **should** be available given the currnet collection of crates.
+    #     """
 
-        # get all crates associated with the current set of iceboards
-        crates = set(ib.crate for ib in self.ib if ib.crate)
+    #     # get all crates associated with the current set of iceboards
+    #     crates = set(ib.crate for ib in self.ib if ib.crate)
 
-        links = {}
-        for cr in crates:
-            links[cr.id] = list(itertools.chain(*(ib.BP_SHUFFLE.get_links() for ib in cr.slot.values())))
-        return links
+    #     links = {}
+    #     for cr in crates:
+    #         links[cr.id] = list(itertools.chain(*(ib.BP_SHUFFLE.get_links() for ib in cr.slot.values())))
+    #     return links
 
-    def get_link_map(self):
+    def get_backplane_pcb_link_map(self):
         link_map = {}
-
         for ib in self.ib:
-
-            # Get backplane links
             link_map.update(ib.BP_SHUFFLE.get_link_map())
+        return link_map
 
-            # Add GPU links
+    def get_backplane_qsfp_link_map(self):
+        link_map = {}
+        if len(ic) == 2:  # hack
+            for slot in set(ic[0].slot.keys()) & set(ic[1].slot.keys()):
+                bp0 = ic[0].slot[slot].BP_SHUFFLE
+                bp1 = ic[1].slot[slot].BP_SHUFFLE
+                crate_id0 = ic[0].get_id()
+                crate_id1 = ic[1].get_id()
+                for lane in range(bp0.NUMBER_OF_QSFP_LANES):
+                    link0 = ('BP_QSFP', (crate_id0, slot, lane), (crate_id1, slot, lane))
+                    link1 = ('BP_QSFP', (crate_id1, slot, lane), (crate_id0, slot, lane))
+                    if lane < bp0.NUMBER_OF_QSFP_DIRECT_LANES:
+                        gtx0 = None
+                        gtx1 = None
+                    else:
+                        gtx0 = bp0.gtx[bp0.NUMBER_OF_PCB_LINKS + lane - bp0.NUMBER_OF_QSFP_DIRECT_LANES]
+                        gtx1 = bp1.gtx[bp1.NUMBER_OF_PCB_LINKS + lane - bp1.NUMBER_OF_QSFP_DIRECT_LANES]
+                    link_map[link0] = (gtx0, gtx1)
+                    link_map[link1] = (gtx1, gtx0)
+        return link_map
+
+    def get_gpu_link_map(self):
+        link_map = {}
+        for ib in self.ib:
             crate_id = ib.get_crate_id()
             slot = ib.slot
             for tx_lane, gtx in enumerate(ib.GPU.gtx):
@@ -1101,20 +1122,34 @@ class ChimeArray(object):
                 link_map[link] = (tx, rx)
         return link_map
 
+    def get_link_map(self, links=None, gtx_only=False):
+        link_map = {}
+        link_map.update(self.get_backplane_pcb_link_map())
+        link_map.update(self.get_backplane_qsfp_link_map())
+        link_map.update(self.get_gpu_link_map())
+
+        if isinstance(links, str):
+            link_map = {link: gtxes for link, gtxes in link_map.items() if link[0] == links}
+        elif links is not None:
+            link_map = {link: gtxes for link, gtxes in link_map.items() if link in links}
+
+        # Remove links that do not exist or have no GTX (direct lanes)
+        if gtx_only:
+            link_map = {link: gtxes for link, gtxes in link_map.items() if None not in gtxes}
+
+        # link_list.sort(key=lambda (lt, (sc, ss, sl), (dc, ds, dl)): ss * 16 + ds)
+        return link_map
+
+
     @async
     def get_ber(self, link_list=None, period=0.1, tx_power=None, print_=True):
 
-        link_map = self.get_link_map()
-        link_list = [ l for l in link_list if (l in link_map and not None in link_map[l]) ]
+        links = self.get_link_map(link_list, gtx_only=True)
 
-        if isinstance(link_list, str):
-            link_list = [link for link in link_map.keys() if link[0] == link_list]
-
-        link_list.sort(key=lambda (lt, (sc, ss, sl), (dc, ds, dl)): ss * 16 + ds)
-
-        for l in link_list:
+        for link, (source_gtx, dest_gtx) in links.items():
             # First, make sure we can get errors by setting the wrong RX PRBS Sequence
-            (source_gtx, dest_gtx) = link_map[l]
+            if source_gtx is None or dest_gtx is None:
+                continue
             if tx_power is not None:
                 source_gtx.TXDIFFCTRL = tx_power
 
@@ -1135,17 +1170,15 @@ class ChimeArray(object):
 
         # Perform BER test on a single list, to be run in parallel below
         @async
-        def one_link_ber(l_map, l):
-            (link_type, (sc, ss, sl), (dc, ds, dl)) = l
-
-            (source_gtx, dest_gtx) = l_map[l]
+        def one_link_ber(link):
+            (link_type, (sc, ss, sl), (dc, ds, dl)), (source_gtx, dest_gtx) = link
 
             if tx_power is not None:
                 source_gtx.TXDIFFCTRL = tx_power
 
             source_gtx.TXPRBSSEL = 4
             if print_:
-                print 'Measuring BER for link %s' % (l,),
+                print 'Measuring BER for link %s' % (link[0],),
 
             # dest_gtx.RXPRBSCNTRESET=1
             # dest_gtx.RXPRBSCNTRESET=0
@@ -1176,22 +1209,23 @@ class ChimeArray(object):
             err = (float(cnt) * 16) / (period * 10e9)
             err_max = (float(cnt) * 16 + 1) / (period * 10e9)
 
-            print '%r BER = %1.1e (%i errors, BER<%1.1e)' % (l, err, cnt, err_max)
+            print '%r BER = %1.1e (%i errors, BER<%1.1e)' % (link[0], err, cnt, err_max)
             self.print_flush()
             async_return(err)
 
         # Run BER test on each link in parallel
-        ber_table = yield {l: one_link_ber.async(link_map, l) for l in link_list}
+        ber_table = yield {link: one_link_ber.async((link, gtxes)) for link, gtxes in links.items()}
         async_return(ber_table)
 
-    def get_ber_vs_power(self, max_power, period=0.1):
+    def get_ber_vs_power(self, links, max_power, period=0.1):
 
-        array = self.ib
-        links = self.scan_links(array, tx_power = max_power)
+        # links = self.get_link_map(links, gtx_only=True)
+        # links = self.scan_links(array, tx_power = max_power)
+
         power = range(0, max_power+1)
         data = {}
         for tx_power in power:
-            e = self.get_ber(array, links, period=period, tx_power = tx_power)
+            e = self.get_ber(links, period=period, tx_power=tx_power)
             for (link, ber) in e.items():
                 if link in data:
                     data[link][0].append(tx_power)
@@ -1200,15 +1234,24 @@ class ChimeArray(object):
                     data[link] = [[tx_power], [ber]]
         return data
 
-    def plot_ber_vs_power(self, data):
-        for ((ss, sl), (ds, dl)), (tx_power, ber) in data.items():
-            print '%10s' % (((ss, sl), (ds, dl)), ), ','.join(['%6.1g' % b for b in ber])
+    def plot_ber_vs_power(self, data=None, period=0.1, **kwargs):
+
+        if isinstance(data, str):
+            data = self.get_ber_vs_power(links=data, period=period, **kwargs)
+
+        for link, (tx_power, ber) in data.items():
+            print '%20s %s' % (link, ','.join(['%6.1g' % b for b in ber]))
         plt.figure(1)
         plt.clf()
 
-        for ((ss, sl), (ds, dl)), (tx_power, ber) in data.items():
-            plt.plot(tx_power, np.log10(np.array(ber)+1e-12), label='Slot (%i,%i)=>(%i,%i)' % (ss, sl, ds, dl))
-        plt.legend()
+        for link, (tx_power, ber) in sorted(data.items(), key=str):
+            plt.semilogy(tx_power, (np.array(ber)+1e-12), label='Link %s' % (link,))
+        plt.title('BER of links as a function of TX power (period=%0.1f s)' % period)
+        plt.xlabel('TX power (0-15)')
+        plt.ylabel('BER')
+        leg = plt.legend(loc='best', fontsize='small', markerscale=3, framealpha=0.6, shadow=True)
+        plt.setp(leg.get_lines(), linewidth=2)  # make legend lines thicker so we can see the color better
+        plt.grid(1)
 
     def get_eye_matrix(self, h_step=10, v_step=40):
         link_map = self.detect_backplane_links()
@@ -1216,7 +1259,7 @@ class ChimeArray(object):
 
         for link in link_map:
             ((from_slot, from_lane), (to_slot, to_lane)) = link
-            print  "###### running from slot %i lane %i to slot %i lane %i #######" % ( from_slot, from_lane, to_slot, to_lane)
+            print  "###### running from slot %i lane %i to slot %i lane %i #######" % (from_slot, from_lane, to_slot, to_lane)
             gtx = self.ib.get(slot=to_slot).BP_SHUFFLE.gtx[to_lane-1]
             e = gtx.get_eye_diagram(range(-32, 32, h_step), range(-127, 128, v_step))
             eye_matrix[link] = e

@@ -33,16 +33,16 @@ class Shuffle(xglink.XGLinkArray):
         ds = self.fpga.slot
         sc = self.fpga.get_crate_id()
 
-        for dl in range(self.NUMBER_OF_LINKS+1):
+        for dl in range(self.NUMBER_OF_PCB_LANES):
             if self.BYPASS_PCB_SHUFFLE:
                 (ss, sl) = (ds, dl)
                 rx = None
                 tx = None
             else:
                 (ss, sl) = self.fpga.crate.get_matching_tx((ds, dl))
-                rx = self.gtx[dl-1] if dl else None
+                rx = self.gtx[dl-self.NUMBER_OF_PCB_DIRECT_LANES] if dl >= self.NUMBER_OF_PCB_DIRECT_LANES else None
                 source_ib = self.fpga.crate.slot.get(ss, None)
-                tx = source_ib.BP_SHUFFLE.gtx[sl-1] if source_ib else None
+                tx = source_ib.BP_SHUFFLE.gtx[sl-self.NUMBER_OF_PCB_DIRECT_LANES] if source_ib else None
             link = ('BP', (sc, ss, sl), (sc, ds, dl))
             links[link] = (tx, rx)
         return links
