@@ -173,8 +173,12 @@ def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None,testS
     #    mtestFail(username, board_sn, board_vn, board_md, testStatus)
     #else:
     #    file.write("\nMemory Test produces no errors: Pass\n")
+
+    print "\nYou should now reboot the board so that it will broadcast a hostname using the serial number that was " \
+          "just written to the EEPROM."
     
-    print "If there are any special concerns regarding the board for this test, please describe them below. If none, enter 'None'. "
+    print "\nIf there are any special concerns regarding the board for this test, please describe them below. " \
+          "If none, enter 'None'. "
     comments = raw_input("Enter your comments: 	")
     file.write('\n\nComments: ' + comments)
 
