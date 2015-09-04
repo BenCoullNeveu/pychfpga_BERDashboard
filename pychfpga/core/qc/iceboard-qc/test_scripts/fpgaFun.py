@@ -90,7 +90,7 @@ def discover_fpgas(host_ip):
     FpgaCoreFirmware.interface_ip_addr = host_ip
     return FpgaCoreFirmware.discover_fpgas()
 
-def top_test(board_sn, ch_acq_path='../../../../../../ch_acq/', host_ip=None, force=False):
+def top_test(board_sn, ch_acq_path='../../../../../../ch_acq/', init_FMC=True, host_ip=None, force=False):
     '''
     Creates fpga_controller and fpga_receiver instances and returns them as [c,r].
     :param ch_acq_path: will be added to PYTHONPATH. defaults to '../../ch_acq/'
@@ -126,7 +126,7 @@ def top_test(board_sn, ch_acq_path='../../../../../../ch_acq/', host_ip=None, fo
     )
 
     # Parameters for FPGA open
-    init = 1  # 'Initialization level: -1: Just create sockets, 0: connect and read only. 1: initialize hardware'
+    init = 1 if init_FMC else 0  # 'Initialization level: -1: Just create sockets, 0: connect and read only. 1: initialize hardware'
     sampling_frequency = 800  # 'Sampling frequency of the ADC in MHz'
     log_level = logging.INFO
     data_width = 8  # 'Data width of each Re and Im component of the channelizer output'

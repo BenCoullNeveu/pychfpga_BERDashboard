@@ -119,7 +119,7 @@ def trad_test(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = E
     # Run top_test
     try:
         logger.info('\nRunning top_test...')
-        [c, r] = top_test(board_sn, host_ip=host_ip, force=True)
+        [c, r] = top_test(board_sn, init_FMC=False, host_ip=host_ip, force=True)
         logger.info('Done.')
     except:
         trace_str = traceback.format_exc()
@@ -273,6 +273,12 @@ def trad_test(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = E
         return fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
 
     # Check results against expected values
+    # First check if FMCs are present and select appropriate value
+    if c.is_mezzanine_present(1) or c.is_mezzanine_present(2):
+        old_exp = exp_power['MB_VADJ']
+        exp_power['MB_VADJ'] = exp_power['MB_VADJ_FMC']
+        f.write("|FMC boards are present, will use an expected current of {:.2f} A for 'MB_VADJ' instead of "
+                   "{:.2f} A\n".format(exp_power['MB_VADJ'][1], old_exp[1]))
     fail = False
     fail_list = []
     exp_summary = ''  # Make a line listing the expected values used for power checks
