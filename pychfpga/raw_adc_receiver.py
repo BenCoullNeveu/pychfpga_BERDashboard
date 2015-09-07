@@ -190,5 +190,9 @@ if __name__ == "__main__":
     data_writer_thread.start()
     #
     # Sleep loop.  need if set to Daemon.
-    # while True:
-    time.sleep(180)
+    while True:
+        try:
+            time.sleep(180)
+        except KeyboardInterrupt:
+            break
+    print "done writing for now"
