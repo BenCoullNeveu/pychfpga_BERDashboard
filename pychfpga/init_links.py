@@ -242,12 +242,8 @@ def reopen(boards, bitstream):
 def init_gains(c):
     import pickle
     for cc in c:
-        try:
-            g_array = pickle.load(open('/home/chime/ch_acq/gains_'+str(cc.GPIO.FPGA_SERIAL_NUMBER)+'.pkl', 'rb'))
-        except:
-            g_array = pickle.load(open('/home/chime/ch_acq/gains.pkl', 'rb'))
-            print 'Could not find gain settings for %r, sn %i. Using default gain settings.' % (cc, cc.get_fpga_serial_number())
-        print 'Setting gains on IceBoard SN%s' % cc.serial
+        g_array = pickle.load(open('/home/chime/ch_acq/gains_slot'+str(cc.slot)+'.pkl', 'rb'))
+        print 'Setting gains on IceBoard SN%s, slot %i' % (cc.serial, cc.slot)
         cc.set_gain(g_array)
 
 def soft_sync(boards, sync_board):
