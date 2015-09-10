@@ -110,7 +110,7 @@ class SCALER_base(Module_base):
         if len(gains) != total_bins:
             raise ValueError('Either a scalar gain or a 1024 element gain vector must be provided')
 
-        gain_string = np.reshape(np.vstack((gains.real, gains.imag)).T, 2 * total_bins).astype('<i2').tostring()
+        gain_string = np.reshape(np.vstack((gains.imag, gains.real)).T, 2 * total_bins).astype('<i2').tostring()
 
         # page_table = np.zeros(512, np.int8)
         for page in range(8): # there are 8 pages of coefficients per bank
