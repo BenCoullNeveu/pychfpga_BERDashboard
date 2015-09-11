@@ -295,7 +295,7 @@ def trad_test(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = E
     logger.info("\n%-15s %8s %8s %8s" % ('Rail', 'V', 'A', 'Result'))
     for key in rails:  # Check voltages (first item in exp_power list)
         if abs( (volt[key] - exp_power[key][0]) / exp_power[key][0]) > exp_power['TOLERANCE_V'] or \
-                abs( (curr[key] - exp_power[key][1]) / exp_power[key][1] > exp_power['TOLERANCE_C']):
+                abs( (curr[key] - exp_power[key][1]) / exp_power[key][1]) > exp_power['TOLERANCE_C']:
             fail = True
             fail_list.append(key)
             formatted_power = "%-15s %8.2f %8.2f %8s" % (key, volt[key], curr[key], 'FAIL')
