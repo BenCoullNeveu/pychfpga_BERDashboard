@@ -253,7 +253,7 @@ def gtx_ber(board_sn, ch_acq_path='../../../../../../ch_acq/', links=None, perio
 
     # Get ChimeArray object and program the FPGA
     # Enable GPU link so we can perform bit error test
-    ca = ChimeArray(iceboards=[int(board_sn)], bitfile=bitfile_path, init=0, enable_gpu_link=1, open=1,
+    ca = ChimeArray(iceboards=[int(board_sn)], bitfile=bitfile_path, init=0, enable_gpu_link=1, open=0,
                     prog=1 if force else 0)
 
     # Choose links and run bit error rate test
