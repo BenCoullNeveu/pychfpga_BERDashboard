@@ -32,10 +32,10 @@ class ShuffleCrossbar(Module_base):
     LANE_MONITOR_SEL   = BitField(CONTROL, 0, 0, width=4, doc='')
 
     AUTO_UNBAN         = BitField(CONTROL, 1, 7, doc='')
-    CAPTURE_WORD_NUMBER = BitField(CONTROL, 1, 0, width=7, doc='')
+    TIMEOUT_PERIOD     = BitField(CONTROL, 1, 0, width=7, doc='')
     SOF_WINDOW_STOP    = BitField(CONTROL, 2, 0, width=8, doc='')
     LANE_MAP_BYTE0     = BitField(CONTROL, 3, 0, width=8, doc='Lane map')
-    LANE_MAP_BYTE7     = BitField(CONTROL, 10, 0, width=8, doc='Lane map')
+    # LANE_MAP_BYTE7     = BitField(CONTROL, 10, 0, width=8, doc='Lane map')
     # IGNORE_LANE        = BitField(CONTROL, 12, 0, width=16, doc='')
 
 
