@@ -28,8 +28,10 @@ from pychfpga.core.icecore import HardwareMap, Session
 from pychfpga.core.icecore import mdns_discover
 from pychfpga.core.icecore import async, async_return
 
-from pychfpga.MGADC08 import MGADC08  # Import ti make sure this Mezzanine is registered  so it can be discovered
+from pychfpga.MGADC08 import MGADC08  # Import to make sure this Mezzanine is registered  so it can be discovered
 from pychfpga.core.chFPGA_controller import chFPGA_controller
+from pychfpga.Agilent_N5764A import AgilentN5764A
+from gpu_node import GpuNode
 
 # import logging.handlers
 
@@ -275,6 +277,10 @@ class ChimeArray(object):
         parser.add_argument('-e', '--enable_gpu_link', action='store', type=int, default=0, help='Enables the GPU link transmission')
         # parser.add_argument('--sn', action='store', type=int, default=7, help='Serial number of the Iceboard')
 
+        parser.add_argument('-n', '--gpu_nodes', action='store', type=str, nargs='+', default=[], help='Create GPU node objects')
+        parser.add_argument('-p', '--power_supplies', action='store', type=str, nargs='+', default=[], help='Create Agilent_N5764A power supply objects')
+
+
         args = parser.parse_args(argv)  # We always parse even if argv is not specified so we have default values
 
         # Bring all keywoards argument into the args namespace
@@ -440,6 +446,8 @@ class ChimeArray(object):
         icecrates_to_discover = args.icecrates
         if '*' in str(icecrates_to_discover):
             icecrates_to_discover = '*'
+        else:
+            icecrates_to_discover = [(('MGK7BP16', 'MGK7BP'), icecrates_to_discover)]
 
         if icecrates_to_discover or iceboards_to_discover:
             print 'Discovering IceBoards %s and IceCrates %s...' % (iceboards_to_discover, icecrates_to_discover)
@@ -466,8 +474,8 @@ class ChimeArray(object):
         ib = self.hwm.query(IceBoardPlus).order_by(IceBoardPlus.slot)
         ic = self.hwm.query(IceCrate).order_by(IceCrate.serial)
 
-        if not ib.count():
-            raise RuntimeError('No Iceboards matching the selection criteria were found')
+        # if not ib.count():
+        #     raise RuntimeError('No Iceboards matching the selection criteria were found')
 
         if not ic.count():
             print 'There are no IceCrates in the hardware map!'
@@ -479,7 +487,7 @@ class ChimeArray(object):
 
         # Augment the arg Namespace with conveniently proprocessed elements
         self.ib = Ccoll(ib)
-        self.ic = Ccoll(set(c for c in ib.crate if c))
+        self.ic = Ccoll(set(c for c in ib.crate if c) if self.ib else [])
 
         # chFPGA_controller.register_fpga_bitstream(fpga_bitstream)
 
@@ -535,6 +543,24 @@ class ChimeArray(object):
 
         self.print_flush()
 
+        if args.gpu_nodes:
+            for hostname in args.gpu_nodes:
+                print 'Creating GPU node object at %s' % hostname
+                self.hwm.add(GpuNode(hostname=hostname))
+            self.hwm.flush()
+
+        self.node = Ccoll(self.hwm.query(GpuNode))  #.order_by(IceBoardPlus.slot)
+        # self.node.open()
+
+        if args.power_supplies:
+            for hostname in args.power_supplies:
+                print 'Creating Power Supply object at %s' % hostname
+                self.hwm.add(AgilentN5764A(hostname=hostname))
+            self.hwm.flush()
+            self.ps = Ccoll(self.hwm.query(AgilentN5764A).handler)  #.order_by(IceBoardPlus.slot)
+            self.ps.open()
+        else:
+            self.ps = Ccoll([])
 
         # import all command line argument values into this object
         self.args = args
@@ -615,7 +641,7 @@ class ChimeArray(object):
         if mode == 'raw_time':
             self.ib.set_fft_bypass(True)
             self.ib.set_scaler_bypass(True)
-            self.init_shuffle(cb1_bypass=True, bp_bypass = True, cb2_bypass = True)
+            self.init_shuffle(mode='chan8')
 
 
     def set_sync_method(self, method='distributed_time', source='bp_time', master=None, master_time_source=None):
@@ -780,6 +806,7 @@ class ChimeArray(object):
             ni_board.set_frame_pwm(ni_offset, ni_high_time, ni_period)
 
     def init_shuffle(self,
+                     mode,
                      dsmap=range(16),
                      frames_per_packet=1,
                      cb1_lanes=4, cb1_bins=16, cb1_bypass=False,
@@ -795,16 +822,16 @@ class ChimeArray(object):
 
         tx_list = []
 
-        crate_set = set(ib.crate for ib in self.ib)
-        if len(crate_set) != 1:
-            raise RuntimeError('All boards must be in the same crate. The provided set of Iceboards have the following crates: %r' % crate_set)
-        crate = crate_set.pop()
+        # crate_set = set(ib.crate for ib in self.ib)
+        # if len(crate_set) != 1:
+        #     raise RuntimeError('All boards must be in the same crate. The provided set of Iceboards have the following crates: %r' % crate_set)
+        # crate = crate_set.pop()
 
-        self.logger.info('%.32r: Configuring crate-wide data shuffling with frames_per_packet=%i, cb1_lanes=%i, cb1_bins=64, cb2_lanes=%i, cb2_bins=%i, cb2_bypass=%s, bp_bypass=%s' % (crate, cb1_lanes, cb1_bins, cb2_lanes, cb2_bins, bool(cb2_bypass), bool(bp_bypass)))
+        self.logger.info('Configuring crate-wide data shuffling with frames_per_packet=%i, cb1_lanes=%i, cb1_bins=64, cb2_lanes=%i, cb2_bins=%i, cb2_bypass=%s, bp_bypass=%s' % (cb1_lanes, cb1_bins, cb2_lanes, cb2_bins, bool(cb2_bypass), bool(bp_bypass)))
 
         # Set-up transmitters
         for i, ib in enumerate(self.ib):
-            self.logger.info('%.32r: **** Initializing transmitters for Slot %02i (IceBoard SN%s) ****' % (crate, ib.slot, ib.serial))
+            self.logger.info('%.32r: **** Initializing transmitters for Slot %02i (IceBoard SN%s) ****' % (ib.crate, ib.slot, ib.serial))
             ib.set_corr_reset(0)
 
             tx_list.append((ib.slot, 0))  # Register Bypass lane (lane 0) as a transmitter in this slot
@@ -816,12 +843,13 @@ class ChimeArray(object):
             #     ib.CROSSBAR2.set_lane_map(self.compute_lane_map(ib))
 
             # Initialize the crossbars to select and send data in a specific format
-            ib.init_crossbars(dsmap, frames_per_packet=frames_per_packet, cb1_lanes=cb1_lanes, cb1_bins=cb1_bins, cb1_bypass=cb1_bypass, cb2_lanes=cb2_lanes, cb2_bins=cb2_bins, cb2_bypass=cb2_bypass, remap=remap, bp_bypass=bp_bypass)
+            # ib.init_crossbars(dsmap, frames_per_packet=frames_per_packet, cb1_lanes=cb1_lanes, cb1_bins=cb1_bins, cb1_bypass=cb1_bypass, cb2_lanes=cb2_lanes, cb2_bins=cb2_bins, cb2_bypass=cb2_bypass, remap=remap, bp_bypass=bp_bypass)
+            ib.init_crossbars(mode, dsmap=dsmap, frames_per_packet=frames_per_packet)
 
         # set-up receivers
         for i, ib in enumerate(self.ib):
             # Disable all receivers for which there are no transmitters
-            for j, gtx in enumerate(ib.BP_SHUFFLE.gtx):
+            for j, gtx in enumerate(ib.BP_SHUFFLE.gtx[0:ib.BP_SHUFFLE.NUMBER_OF_PCB_LINKS]):
                 rx = (ib.slot, j+1)
                 tx = ib.crate.get_matching_tx(rx)
 
@@ -1088,26 +1116,75 @@ class ChimeArray(object):
             link_map.update(ib.BP_SHUFFLE.get_link_map())
         return link_map
 
+    def get_backplane_qsfp_links(self):
+
+        # tx_nodes = {}
+        # rx_nodes = {}
+        raw_links = []
+
+        # Combine TX and RX link dicts from all crates
+        for ic in self.ic:
+            raw_links += ic.get_qsfp_links()
+
+        # Visit each link and find the attached nodes
+        links = []
+        for (link_type, node_id1, node_id2, link_id) in raw_links:
+            # If the second node is not already known, search all the links for a corresponding half-link with the same link_id
+            if node_id2 is None:
+                matching_nodes = [nid1 for (lt, nid1, nid2, lid) in raw_links if lt==link_type and nid1 != node_id1 and nid2 is None and lid==link_id]
+                if len(matching_nodes) == 1:
+                    node_id2 = matching_nodes[0]
+            if node_id1 is not None and node_id2 is not None:
+                (source_crate, source_slot, source_lane) = node_id1
+                (dest_crate, dest_slot, dest_lane) = node_id2
+                links.append((link_type, (source_crate, source_slot, source_lane + 4), (dest_crate, dest_slot, dest_lane+4)))
+                # links.append((link_type, node_id2, node_id1))
+
+        return links
+
+
     def get_backplane_qsfp_link_map(self):
         link_map = {}
-        if len(ic) == 2:  # hack
-            for slot in set(ic[0].slot.keys()) & set(ic[1].slot.keys()):
-                bp0 = ic[0].slot[slot].BP_SHUFFLE
-                bp1 = ic[1].slot[slot].BP_SHUFFLE
-                crate_id0 = ic[0].get_id()
-                crate_id1 = ic[1].get_id()
-                for lane in range(bp0.NUMBER_OF_QSFP_LANES):
-                    link0 = ('BP_QSFP', (crate_id0, slot, lane), (crate_id1, slot, lane))
-                    link1 = ('BP_QSFP', (crate_id1, slot, lane), (crate_id0, slot, lane))
-                    if lane < bp0.NUMBER_OF_QSFP_DIRECT_LANES:
-                        gtx0 = None
-                        gtx1 = None
-                    else:
-                        gtx0 = bp0.gtx[bp0.NUMBER_OF_PCB_LINKS + lane - bp0.NUMBER_OF_QSFP_DIRECT_LANES]
-                        gtx1 = bp1.gtx[bp1.NUMBER_OF_PCB_LINKS + lane - bp1.NUMBER_OF_QSFP_DIRECT_LANES]
-                    link_map[link0] = (gtx0, gtx1)
-                    link_map[link1] = (gtx1, gtx0)
+        crates = self.ic.index_by(self.ic.get_id())  # crates, indexed by crate_id
+
+        links = self.get_backplane_qsfp_links()
+        for link in links:
+            (link_type, (source_crate, source_slot, source_lane), (dest_crate, dest_slot, dest_lane)) = link
+            ic0 = crates[source_crate]
+            ic1 = crates[dest_crate]
+            if (source_slot not in ic0.slot) or (dest_slot not in ic1.slot):
+                continue
+            bp0 = ic0.slot[source_slot].BP_SHUFFLE
+            bp1 = ic1.slot[dest_slot].BP_SHUFFLE
+            if source_lane < bp0.NUMBER_OF_QSFP_DIRECT_LANES:
+                source_gtx = None
+            else:
+                source_gtx = bp0.gtx[bp0.NUMBER_OF_PCB_LINKS + source_lane - bp0.NUMBER_OF_QSFP_DIRECT_LANES]
+            if dest_lane < bp0.NUMBER_OF_QSFP_DIRECT_LANES:
+                dest_gtx = None
+            else:
+                dest_gtx = bp1.gtx[bp1.NUMBER_OF_PCB_LINKS + dest_lane - bp1.NUMBER_OF_QSFP_DIRECT_LANES]
+            link_map[link] = (source_gtx, dest_gtx)
         return link_map
+
+        # if len(ic) == 2:  # hack
+        #     for slot in set(ic[0].slot.keys()) & set(ic[1].slot.keys()):
+        #         bp0 = ic[0].slot[slot].BP_SHUFFLE
+        #         bp1 = ic[1].slot[slot].BP_SHUFFLE
+        #         crate_id0 = ic[0].get_id()
+        #         crate_id1 = ic[1].get_id()
+        #         for lane in range(bp0.NUMBER_OF_QSFP_LANES):
+        #             link0 = ('BP_QSFP', (crate_id0, slot, lane), (crate_id1, slot, lane))
+        #             link1 = ('BP_QSFP', (crate_id1, slot, lane), (crate_id0, slot, lane))
+        #             if lane < bp0.NUMBER_OF_QSFP_DIRECT_LANES:
+        #                 gtx0 = None
+        #                 gtx1 = None
+        #             else:
+        #                 gtx0 = bp0.gtx[bp0.NUMBER_OF_PCB_LINKS + lane - bp0.NUMBER_OF_QSFP_DIRECT_LANES]
+        #                 gtx1 = bp1.gtx[bp1.NUMBER_OF_PCB_LINKS + lane - bp1.NUMBER_OF_QSFP_DIRECT_LANES]
+        #             link_map[link0] = (gtx0, gtx1)
+        #             link_map[link1] = (gtx1, gtx0)
+        # return link_map
 
     def get_gpu_link_map(self):
         link_map = {}
@@ -1544,5 +1621,6 @@ if __name__ == '__main__':
     ib = ca.ib
     c = ca.ib
     ic = ca.ic
-
+    node = ca.node
+    ps = ca.ps
     # Open boards
