@@ -219,6 +219,8 @@ class ANT_base(object):
 
         # Set the channelizer data width
         for ch in self.ANT:
+            if not is_four_bits and not ch.SCALER.EIGHT_BIT_SUPPORT:
+                raise ValueError('8-bit mode not supported in thie build of the SCALER firmware')
             ch.SCALER.FOUR_BITS = is_four_bits
 
     def get_data_width(self):
