@@ -9,6 +9,14 @@ import socket
 import json
 #import core.icecore.icebox
 
+from sqlalchemy import Column, Integer, String, ForeignKey
+from sqlalchemy import UniqueConstraint, CheckConstraint
+from sqlalchemy.orm import relationship, backref
+from sqlalchemy.orm.collections import attribute_mapped_collection
+
+from pychfpga.core.icecore import hardware_map
+from pychfpga.core.icecore import handler
+from pychfpga.core.icecore import session
 from pychfpga.core.icecore import Ccoll
 
 
@@ -35,15 +43,48 @@ class GpuData(object):
     def get_timestream_data(self):
         return self.data.astype('>u4').view(np.int8)  # Make the words be stored MSB first in memory, and convert to int8
 
-class GpuNode(object):
 
 
-    def __init__(self, hostname, node_type='packet_server'):
+@session.register_yaml_object()
+class GpuNode(hardware_map.HWMResource, handler.HandlerObject):
+    handler_name = 'GpuNodeHandler'
+    __tablename__ = 'GpuNode'
+    # __table_args__ = (
+    #     UniqueConstraint('serial'),
+    # )
+    __mapper_args__ = {'polymorphic_identity': 'GpuNode',
+                       'polymorphic_on':'_polymorphic_key'}
+    __ipmi_part_number__ = None  # Must match part number in IPMI data
+
+    _pk = Column(Integer, primary_key=True)
+    _polymorphic_key = Column(String)  # Needed to allow multiple types of power supplies
+
+    hostname = Column(String,
+                    doc="The hostname (ip address or name of the GPU node")
+
+    # serial = Column(String,
+    #                 doc="The serial number written on the board (e.g. '001')")
+
+    def __repr__(self):
+        return "%s(%s)" % (self.__class__.__name__, self.hostname)
+
+
+class GpuNodeHandler(handler.Handler):
+    __handler_for__ = GpuNode
+
+    hostname = handler.HandlerParentAttribute(lambda ib: ib.hostname)
+
+    def __init__(self, hostname=None, node_type='packet_server', **kwargs):
+        super(GpuNodeHandler, self).__init__(**kwargs)
         if node_type not in self.NODE_TYPES:
             raise ValueError("Node type can only be one of the following: %s" % ', '.join(self.NODE_TYPES.keys()))
         self.node_type = node_type
         (self.number_of_ports, self.inspect_method) = self.NODE_TYPES[node_type]
-        self.hostname = hostname
+        if hostname is not None:
+            self.hostname = hostname
+
+    def open(self):
+        pass
 
     def _inspect_gamma_win(self, port=0,  number_of_packets=5):
         """
@@ -177,6 +218,13 @@ class GpuNode(object):
             if print_packet_info:
                 print 'Timestamp %08X, Ethernet packet= %i bytes' % (d.timestamp, d.ethernet_packet_size)
         return Ccoll(result)  # Ccoll allows attributes of the list elements to be accessed directly in parallel
+
+    def get_raw_data(self, port=0, number_pf_packets=5):
+        """ Capture and return the raw data bytes from specified ``port``. Data is concatenated into a single vector. """
+        if isinstance(port, (list, tuple)):
+            return np.array([np.concatenate(self.capture_packets(p, number_pf_packets).get_timestream_data()) for p in port])
+        else:
+            return np.concatenate(self.capture_packets(port, number_pf_packets).get_timestream_data())
 
 if __name__ == '__main__':
     if os.name == 'nt':

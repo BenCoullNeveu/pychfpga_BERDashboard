@@ -23,7 +23,7 @@ from agilent_N5700 import agilent_N5700
 # import datetime
 # import base64
 
-@session.register_yaml_object()  # Todo: Add transforms={'move_index': ('slots', 'slot')}
+@session.register_yaml_object()
 class AgilentN5764A(hardware_map.HWMResource, handler.HandlerObject):
     handler_name = 'AgilentN5764AHandler'
     __tablename__ = 'AgilentN5764A'
@@ -47,7 +47,7 @@ class AgilentN5764A(hardware_map.HWMResource, handler.HandlerObject):
         return "%s(%s)" % (self.__class__.__name__, self.hostname)
 
 
-class AgilentN5764AHandler(handler.Handler, agilent_N5700):
+class AgilentN5764AHandler(handler.Handler):  #, agilent_N5700
     """
     Provide the basic methods to operate an Agilent N5700-series power supply.
     """
@@ -55,12 +55,15 @@ class AgilentN5764AHandler(handler.Handler, agilent_N5700):
 
     hostname = handler.HandlerParentAttribute(lambda ib: ib.hostname)
 
-
     def __init__(self, **kwargs):
-        super(AgilentN5764AHandler, self).__init__(self, **kwargs)
-
-        self.ps = agilent_N5700(interface='lan', ip_addr=self.hostname, ip_port=5025, timeout=0.5)
+        super(AgilentN5764AHandler, self).__init__(**kwargs)
         self.locked = True
+        self.ps = None
+
+    def open(self):
+        if self.ps:
+            raise RuntimeError('Power supply is already opened()')
+        self.ps = agilent_N5700(interface='lan', ip_addr=self.hostname, ip_port=5025, timeout=0.5, verbose=0)
 
     def __repr__(self):
         return '%s %s @%s' % (self.ps.instrument_name, self.ps.instrument_model, self.hostname)
@@ -75,7 +78,15 @@ class AgilentN5764AHandler(handler.Handler, agilent_N5700):
         if self.locked:
             raise RuntimeError('Instrument is locked: cannot change its state. Call unlock() to allow changes to the instrument state')
 
-    def enable_output(self, state):
+    def power_on(self):
+        self._check_lock()
+        self.ps.output(state=True, readonly=False)
+
+    def power_off(self):
+        self._check_lock()
+        self.ps.output(state=False, readonly=False)
+
+    def power_enable(self, state):
         self._check_lock()
         self.ps.output(state=state, readonly=False)
 
@@ -84,5 +95,8 @@ class AgilentN5764AHandler(handler.Handler, agilent_N5700):
         self.ps.output(state=False, readonly=False)
         time.sleep(delay)
         self.ps.output(state=True, readonly=False)
+
+    def status(self):
+        return self.ps.status()
 
 # vim: sts=4 ts=4 sw=4 tw=78 smarttab expandtab

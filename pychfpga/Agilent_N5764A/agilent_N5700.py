@@ -17,7 +17,7 @@ AGILENTN5764A = 'N5764A'
 
 # The following dictionnary lists the supported DVMs and provides a tuple containing (instrument name, ID string)
 SUPPORTED_PS = {
-    AGILENTN5764A: ('Agilent Power Supply ', 'Agilent Technologies,N5764A')
+    AGILENTN5764A: ('Agilent Power Supply', 'Agilent Technologies,N5764A')
 }
 
 class agilent_N5700(GPIB.GPIB):
@@ -25,20 +25,23 @@ class agilent_N5700(GPIB.GPIB):
     A class to communicate with an Agilent N5700 power supply
     """
 
-    def __init__(self, interface = 'lan', gpib_addr=14, ip_addr='10.10.10.220', ip_port = 5025, timeout=0.5):
+    def __init__(self, interface='lan', gpib_addr=14, ip_addr='10.10.10.220', ip_port=5025, timeout=0.5, verbose=1):
 
-        super(agilent_N5700, self).__init__(interface= interface, gpib_addr=gpib_addr, ip_addr=ip_addr, ip_port = ip_port, timeout = timeout)
+        super(agilent_N5700, self).__init__(interface=interface, gpib_addr=gpib_addr, ip_addr=ip_addr, ip_port=ip_port, timeout=timeout)
 
-        print 'Initializing instrument'
+        if verbose:
+            print 'Initializing instrument'
         self.device_clear()
 
-        id_string=self.query('*IDN?', verbose=0, timeout=1)
-        print 'Instrument Identification string:', id_string
+        id_string = self.query('*IDN?', verbose=0, timeout=1)
+        if verbose:
+            print 'Instrument Identification string:', id_string
         for (instrument_code, (instrument_name, instrument_id_string)) in SUPPORTED_PS.items():
             if instrument_id_string in id_string:
 
-                print 'Connected to: %s' % instrument_name
-                self.command('STATus:OPERation:ENABle %i' % 0x0500)  #We wish to know is in constant current or constant voltage mode
+                if verbose:
+                    print 'Connected to: %s' % instrument_name
+                self.command('STATus:OPERation:ENABle %i' % 0x0500)  # We wish to know is in constant current or constant voltage mode
                 self.instrument_model = instrument_code
                 self.instrument_name = instrument_name
                 break
@@ -46,11 +49,9 @@ class agilent_N5700(GPIB.GPIB):
         if instrument_code is None:
             raise GPIB.GPIBException('The identification command did not return the expected instrument ID string')
 
-
     def waituntilready(self):
         while not(self.query_float('*OPC?')):
             time.sleep(0.01)
-
 
     def status(self):
 
@@ -59,26 +60,25 @@ class agilent_N5700(GPIB.GPIB):
         """
         self.flush_interface(timeout=0.01)
 
-        meas={'current':0, 'voltage':0}
+        meas = {'current': 0, 'voltage': 0}
         current = self.query_float('MEAS:CURR?', timeout=2)
         voltage = self.query_float('MEAS:VOLT?', timeout=2)
         power = round(current * voltage, 3)
-        meas['current']=current
-        meas['voltage']=voltage
-        meas['power']=power
+        meas['current'] = current
+        meas['voltage'] = voltage
+        meas['power'] = power
 
-
-        failmode=int(self.query_float('STAT:QUES:COND?'))
+        failmode = int(self.query_float('STAT:QUES:COND?'))
         if failmode != 0:
-            meas['status']='FAULT'
+            meas['status'] = 'FAULT'
         else:
-            OpState=int(self.query_float('STATus:OPERation:CONDition?'))
-            if bool( ( OpState & ( 1 << 8 ) ) >> 8 ) : #Voltage regulating
-                meas['status']='OK'
-            elif bool( ( OpState & ( 1 <<10 ) ) >> 10 ) : #Current limiting
-                meas['status']='ILIMIT'
+            OpState = int(self.query_float('STATus:OPERation:CONDition?'))
+            if bool((OpState & (1 << 8)) >> 8):  # Voltage regulating
+                meas['status'] = 'OK'
+            elif bool((OpState & (1 << 10)) >> 10):  # Current limiting
+                meas['status'] = 'ILIMIT'
             else:
-                meas['status']='OFF'
+                meas['status'] = 'OFF'
 
         return meas
 
@@ -89,107 +89,110 @@ class agilent_N5700(GPIB.GPIB):
     def output(self, state=None, readonly=True):
 
         """
-        Turns on and off the output and measures current output state
-        input state can be varius spellings of 'on'/ 'off', None, 0, or 1   (default is None)
+        Turns on and off the output and measures current output state input
+        state can be varius spellings of 'on'/ 'off', None, 0, or 1   (default
+        is None)
+
         Returns status dictionary
         """
         self.flush_interface(timeout=0.01)
-        outstate=[]
-        if state == None:
+        outstate = []
+        if state is None:
             pass
-        elif readonly == False:
-            if state in ['on', 'On','ON', 1, True]:
+        elif not readonly:
+            if state in ['on', 'On', 'ON', 1, True]:
                 state = 1
             elif state in ['off', 'Off', 'OFF', 0, False]:
                 state = 0
             else:
                 raise GPIB.GPIBException('Unknown desired output power state')
 
-
             self.command('OUTP:STAT %s' % state)
             self.waituntilready()
-            #self.command('*WAI')
+            # self.command('*WAI')
 
-        outstate=self.query_float('OUTP:STAT?')
-        return {'PowerEnabled':bool(outstate)}
+        outstate = self.query_float('OUTP:STAT?')
+        return {'PowerEnabled': bool(outstate)}
 
     def control_voltage(self, voltage=None, readonly=True):
-         """
-         Sets or gets output voltage - Valid range is 0 to 21V - default is 0, readonly must be set to False
-         Returns the power supply setpoint voltage
-         """
+        """
+        Sets or gets output voltage - Valid range is 0 to 21V - default is 0,
+        readonly must be set to False
 
-         self.flush_interface(timeout=0.01)
+        Returns the power supply setpoint voltage
+        """
 
+        self.flush_interface(timeout=0.01)
 
-         if voltage!=None:
-            if voltage > 21 or voltage <0:
-                raise GPIB.GPIBException('Invalid voltage - must be in range [0..21] - no action performed')
-            elif readonly==True:
-                raise GPIB.GPIBException('readonly = True - cannot change output voltage')
+        if voltage is not None:
+            if voltage > 21 or voltage < 0:
+                raise ValueError('Invalid voltage - must be in range [0..21] - no action performed')
+            elif readonly:
+                raise RuntimeError('readonly = True - cannot change output voltage')
             else:
                 self.command('VOLT %s' % voltage)
-                #self.command('*WAI')
+                # self.command('*WAI')
                 self.waituntilready()
 
-         setpoint=self.query_float('VOLT?')
-         return setpoint
+        setpoint = self.query_float('VOLT?')
+        return setpoint
 
-    def control_current( self, current=None, readonly=True):
-         """
-         Sets/gets the current limit - Valid range is 0 to 76A - default is 0, readonly must be set to False
-         Returns the power supply setpoint current limit
-         """
+    def control_current(self, current=None, readonly=True):
+        """
+        Sets/gets the current limit - Valid range is 0 to 76A - default is 0,
+        readonly must be set to False
 
-         self.flush_interface(timeout=0.01)
+        Returns the power supply setpoint current limit
+        """
 
+        self.flush_interface(timeout=0.01)
 
-         if current!=None:
-            if current > 76 or current <0:
-                raise GPIB.GPIBException('Invalid current limit - must be in range [0..76] - no action performed')
-            elif readonly==True:
-                raise GPIB.GPIBException('readonly = True - cannot change current limit')
+        if current is not None:
+            if current > 76 or current < 0:
+                raise ValueError('Invalid current limit - must be in range [0..76] - no action performed')
+            elif readonly:
+                raise RuntimeError('readonly = True - cannot change current limit')
             else:
                 self.command('CURR %s' % current)
-                #self.command('*WAI')
+                # self.command('*WAI')
                 self.waituntilready()
 
-         setpoint=self.query_float('CURR?')
-         return setpoint
+        setpoint = self.query_float('CURR?')
+        return setpoint
 
     def set_voltage(self, voltage=None):
-         """
-         Sets the output voltage - Valid range is 0 to 21V - default is None
-         Returns the power supply setpoint voltage
-         """
-         return self.control_voltage(voltage=voltage, readonly=False)
+        """
+        Sets the output voltage - Valid range is 0 to 21V - default is None
+        Returns the power supply setpoint voltage
+        """
+        return self.control_voltage(voltage=voltage, readonly=False)
 
     def set_current_limit(self, current=None, ocp=None):
-         """
-         Sets the current limit and can enable disable ocp  - Valid range is 0 to 76A - by default current is None
-         and ocp is None
+        """
+        Sets the current limit and can enable disable ocp  - Valid range is 0
+        to 76A - by default current is None and ocp is None
 
-         Returns the power supply current limit
-         """
+        Returns the power supply current limit
+        """
 
-         if ocp!=None:
-             self.protection(ocp=ocp, readonly=False)
-         return self.control_current(current=current, readonly=False)
+        if ocp is not None:
+            self.protection(ocp=ocp, readonly=False)
+        return self.control_current(current=current, readonly=False)
 
     def clear(self):
-         """
-         If any of the protection has triggered will need to clear it. Will return a False if everything is good
-         """
-         self.protection(clear=True, readonly=False)[0]
-         problem=self.protection()[0]
-         return problem
-
+        """
+        If any of the protection has triggered will need to clear it. Will
+        return a False if everything is good
+        """
+        self.protection(clear=True, readonly=False)[0]
+        problem = self.protection()[0]
+        return problem
 
     def get_voltage_setting(self):
-         """
-         Returns the power supply setpoint voltage
-         """
-         return self.control_voltage(voltage=None, readonly=True)
+        """
+        Returns the power supply setpoint voltage
+        """
+        return self.control_voltage(voltage=None, readonly=True)
 
     def get_current_limit(self):
          """
