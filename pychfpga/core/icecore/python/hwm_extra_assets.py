@@ -32,9 +32,13 @@ def mdns_discover(hwm=None, icecrates=None, iceboards=None, timeout=5, resolve_i
     board is added. If ``iceboards='*'``, all discovered Iceboards are added.
 
     If ``icecrates`` is specified,  all the IceBoards that are on crates
-    having the serial number listed in ``icecrates`` are selected.  If None or
-    an empty list, no crate is added. If ``icecrates='*'``, all discovered
-    Iceboards from all crates are added.
+    having the model number and serial number listed in ``icecrates`` are
+    selected. ''icecrates'' is in the format [(model1, [serial1, serial2 ...],
+    (model2, [serial3, serial4, ...]), ...]
+
+    If ``icecrates`` is None or an empty list, no crate is added.
+
+    If ``icecrates='*'``, all discovered Iceboards from all crates are added.
 
     If 'resolve_ip' is True, the hostname published by mDNS (e.g.
     iceboard0007.local) is resolved into its associated IP address. This
@@ -93,8 +97,8 @@ def mdns_discover(hwm=None, icecrates=None, iceboards=None, timeout=5, resolve_i
         # If we specify no crate number, or if we have valid backplane
         # information and the backplane match that number, Then add the
         # Iceboard
-        icecrate_match = icecrates and (icecrates=='*' or bp_serial in icecrates or int_bp_serial in icecrates)
-        iceboard_match = iceboards and (iceboards=='*' or ib_serial in iceboards or int_ib_serial in iceboards)
+        icecrate_match = icecrates and (icecrates == '*' or all((bp_part_number in model if isinstance(model, (tuple, list)) else bp_part_number == model) and (bp_serial in serials or int_bp_serial in serials) for (model, serials) in icecrates))
+        iceboard_match = iceboards and (iceboards == '*' or ib_serial in iceboards or int_ib_serial in iceboards)
 
         if icecrate_match or iceboard_match:
             hwm.add(ib)
