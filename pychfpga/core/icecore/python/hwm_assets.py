@@ -221,6 +221,7 @@ class IceCrateHandler(handler.Handler):
     Provide the basic methods to operate the IceCrate.
     """
     __handler_for__ = IceCrate
+    part_number = None
 
     # Locally give access to the hardware_map attributes
     slot = property(lambda self: {slot:iceboard.handler for (slot, iceboard) in self.parent.slot.items()})
