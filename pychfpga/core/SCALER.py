@@ -100,7 +100,7 @@ class SCALER_base(Module_base):
     #     """
     #     return np.int16(self.FIXED_GAIN_REAL) + 1j*np.int16(self.FIXED_GAIN_IMAG)
 
-    def set_gain_table(self, gain_list, bank=None, timestamp=None):
+    def set_gain_table(self, gain_list, bank=0, timestamp=None):
         """
         Sets the scaler's complex gain table for the specified bank.
 
@@ -122,7 +122,7 @@ class SCALER_base(Module_base):
             raise ValueError('Either a scalar gain or a 1024 element gain vector must be provided')
 
         self.cached_gain_table[bank] = gains
-        gain_string = np.reshape(np.vstack((gains.real, gains.imag)).T, 2 * total_bins).astype('<i2').tostring()
+        gain_string = np.reshape(np.vstack((gains.imag, gains.real)).T, 2 * total_bins).astype('<i2').tostring()
 
         if timestamp is None:
             self.SYNCHRONIZE_GAIN_BANK = 0
@@ -130,7 +130,7 @@ class SCALER_base(Module_base):
             self.SYNCHRONIZE_GAIN_BANK = 1
             self.GAIN_BANK_SWITCH_FRAME_NUMBER = timestamp
 
-        if bank is None:
+        if bank < 0:
             bank = self.CURRENT_GAIN_BANK ^ 1
 
 

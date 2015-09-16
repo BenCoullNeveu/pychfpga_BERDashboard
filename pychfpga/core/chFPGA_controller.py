@@ -918,8 +918,8 @@ class chFPGA_controller(IceBoardExtHandler):
         for ch in channels:
             if ch not in self.ANT:
                 self._logger.warning('%r: FFT bypass mode on antena channel %i are not set because that channel is not available' % (self, ch))
-            elif ch not in self.LIST_OF_ANTENNAS_WITH_FFT:
-                self._logger.warning('%r: FFT bypass mode on antena channel %i are not set because that channel does not have an FFT module' % (self, ch))
+            elif ch not in self.LIST_OF_ANTENNAS_WITH_FFT and not bypass_mode:
+                self._logger.warning('%r: FFT bypass mode was disabled on channel %i which has no FFT module. The command will have no effect.' % (self, ch))
             else:
                 self.ANT[ch].FFT.BYPASS = bypass_mode
                 configured_channels.add(ch)
@@ -1242,7 +1242,7 @@ class chFPGA_controller(IceBoardExtHandler):
             if sync:
                 self.sync()
 
-    def set_gain(self, gain=None, postscaler=None, channels=None, use_fixed_gain=False, bank=None, timestamp=None):
+    def set_gain(self, gain=None, postscaler=None, channels=None, use_fixed_gain=False, bank=0, timestamp=None):
         """
         Sets the gain between the (18+18) bits input of the scaler module (from the FFT) to its 4- or 8- bit scaler output.
         The gain can be set individually for every frequency bins and every ADC channel.
