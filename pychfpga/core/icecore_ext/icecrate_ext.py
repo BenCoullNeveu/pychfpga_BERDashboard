@@ -4,7 +4,7 @@
 import logging
 import time
 
-from ..icecore import IceCrate, IceCrateHandler
+from ..icecore import IceCrate, IceCrateHandler, Ccoll
 from ..icecore import session
 
 from lib.eeprom import eeprom as EEPROM
@@ -13,6 +13,8 @@ from lib import tmp421  # I2C temperature sensor
 from lib import pca9698  # I2C 40-bit IO Expander
 from lib import amc6821  # I2C fan Controller
 from lib import pca9575 # 1-slot backplane I2C IO Expander
+from lib import gpio
+from lib import qsfp
 
 class MasterIceboardObject(object):
     def __init__(self, crate_object, iceboard_object_name):
@@ -424,48 +426,109 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
 
         self._fan_ctrl = amc6821.AMC6821(self._i2c, self._FAN_CTRL_ADDR, 'BP')
 
-        self.QSFP_CTRL_MAP = {
-             # Slot num : (expander object, Register, bit number ModPrs, bit number Reset, bit number IntL, bit number ModSel)
-             1: (self._qsfp_ctrla, 2,    0, 1, 2, 3 ),
-             2: (self._qsfp_ctrla, 2,    4, 5, 6, 7 ),
-             3: (self._qsfp_ctrla, 1,    0, 1, 2, 3 ),
-             4: (self._qsfp_ctrla, 1,    4, 5, 6, 7 ),
-             5: (self._qsfp_ctrla, 0,    0, 1, 2, 3 ),
-             6: (self._qsfp_ctrla, 0,    4, 5, 6, 7 ),
-             7: (self._qsfp_ctrla, 3,    0, 1, 2, 3 ),
-             8: (self._qsfp_ctrla, 3,    4, 5, 6, 7 ),
+        self._gpio = gpio.GPIO(gpio_table={
+            # name : (expander object, byte, lsb bit number,  width)
+             'QSFP1_ModPrsL':  (self._qsfp_ctrla, 2, 0, 1),
+             'QSFP1_ResetL':   (self._qsfp_ctrla, 2, 1, 1),
+             'QSFP1_IntL':     (self._qsfp_ctrla, 2, 2, 1),
+             'QSFP1_ModSelL':  (self._qsfp_ctrla, 2, 3, 1),
 
-             9:  (self._qsfp_ctrlb, 2,   0, 1, 2, 3 ),
-             10: (self._qsfp_ctrlb, 2,   4, 5, 6, 7 ),
-             11: (self._qsfp_ctrlb, 1,   0, 1, 2, 3 ),
-             12: (self._qsfp_ctrlb, 1,   4, 5, 6, 7 ),
-             13: (self._qsfp_ctrlb, 0,   0, 1, 2, 3 ),
-             14: (self._qsfp_ctrlb, 0,   4, 5, 6, 7 ),
-             15: (self._qsfp_ctrlb, 3,   0, 1, 2, 3 ),
-             16: (self._qsfp_ctrlb, 3,   4, 5, 6, 7 )
-        }
+             'QSFP2_ModPrsL':  (self._qsfp_ctrla, 2, 4, 1),
+             'QSFP2_ResetL':   (self._qsfp_ctrla, 2, 5, 1),
+             'QSFP2_IntL':     (self._qsfp_ctrla, 2, 6, 1),
+             'QSFP2_ModSelL':  (self._qsfp_ctrla, 2, 7, 1),
 
-        self.LED_MAP = {
-             # LEDName : (expander object, Register, bit number)
-             'QSFP1': (self._qsfp_ctrla, 4, 0),
-             'QSFP2': (self._qsfp_ctrla, 4, 1),
-             'QSFP3': (self._qsfp_ctrla, 4, 2),
-             'QSFP4': (self._qsfp_ctrla, 4, 3),
-             'QSFP5': (self._qsfp_ctrla, 4, 4),
-             'QSFP6': (self._qsfp_ctrla, 4, 5),
-             'QSFP7': (self._qsfp_ctrla, 4, 6),
-             'QSFP8': (self._qsfp_ctrla, 4, 7),
+             'QSFP3_ModPrsL':  (self._qsfp_ctrla, 1, 0, 1),
+             'QSFP3_ResetL':   (self._qsfp_ctrla, 1, 1, 1),
+             'QSFP3_IntL':     (self._qsfp_ctrla, 1, 2, 1),
+             'QSFP3_ModSelL':  (self._qsfp_ctrla, 1, 3, 1),
 
-             'QSFP9': (self._qsfp_ctrlb, 4, 0),
-             'QSFP10': (self._qsfp_ctrlb, 4, 1),
-             'QSFP11': (self._qsfp_ctrlb, 4, 2),
-             'QSFP12': (self._qsfp_ctrlb, 4, 3),
-             'QSFP13': (self._qsfp_ctrlb, 4, 4),
-             'QSFP14': (self._qsfp_ctrlb, 4, 5),
-             'QSFP15': (self._qsfp_ctrlb, 4, 6),
-             'QSFP16': (self._qsfp_ctrlb, 4, 7),
-             'LED1': (self._reset_ctrl, 0, 7)
-        }
+             'QSFP4_ModPrsL':  (self._qsfp_ctrla, 1, 4, 1),
+             'QSFP4_ResetL':   (self._qsfp_ctrla, 1, 5, 1),
+             'QSFP4_IntL':     (self._qsfp_ctrla, 1, 6, 1),
+             'QSFP4_ModSelL':  (self._qsfp_ctrla, 1, 7, 1),
+
+             'QSFP5_ModPrsL':  (self._qsfp_ctrla, 0, 0, 1),
+             'QSFP5_ResetL':   (self._qsfp_ctrla, 0, 1, 1),
+             'QSFP5_IntL':     (self._qsfp_ctrla, 0, 2, 1),
+             'QSFP5_ModSelL':  (self._qsfp_ctrla, 0, 3, 1),
+
+             'QSFP6_ModPrsL':  (self._qsfp_ctrla, 0, 4, 1),
+             'QSFP6_ResetL':   (self._qsfp_ctrla, 0, 5, 1),
+             'QSFP6_IntL':     (self._qsfp_ctrla, 0, 6, 1),
+             'QSFP6_ModSelL':  (self._qsfp_ctrla, 0, 7, 1),
+
+             'QSFP7_ModPrsL':  (self._qsfp_ctrla, 3, 0, 1),
+             'QSFP7_ResetL':   (self._qsfp_ctrla, 3, 1, 1),
+             'QSFP7_IntL':     (self._qsfp_ctrla, 3, 2, 1),
+             'QSFP7_ModSelL':  (self._qsfp_ctrla, 3, 3, 1),
+
+             'QSFP8_ModPrsL':  (self._qsfp_ctrla, 3, 4, 1),
+             'QSFP8_ResetL':   (self._qsfp_ctrla, 3, 5, 1),
+             'QSFP8_IntL':     (self._qsfp_ctrla, 3, 6, 1),
+             'QSFP8_ModSelL':  (self._qsfp_ctrla, 3, 7, 1),
+
+             'QSFP9_ModPrsL':  (self._qsfp_ctrlb, 2, 0, 1),
+             'QSFP9_ResetL':   (self._qsfp_ctrlb, 2, 1, 1),
+             'QSFP9_IntL':     (self._qsfp_ctrlb, 2, 2, 1),
+             'QSFP9_ModSelL':  (self._qsfp_ctrlb, 2, 3, 1),
+
+             'QSFP10_ModPrsL': (self._qsfp_ctrlb, 2, 4, 1),
+             'QSFP10_ResetL':  (self._qsfp_ctrlb, 2, 5, 1),
+             'QSFP10_IntL':    (self._qsfp_ctrlb, 2, 6, 1),
+             'QSFP10_ModSelL': (self._qsfp_ctrlb, 2, 7, 1),
+
+             'QSFP11_ModPrsL': (self._qsfp_ctrlb, 1, 0, 1),
+             'QSFP11_ResetL':  (self._qsfp_ctrlb, 1, 1, 1),
+             'QSFP11_IntL':    (self._qsfp_ctrlb, 1, 2, 1),
+             'QSFP11_ModSelL': (self._qsfp_ctrlb, 1, 3, 1),
+
+             'QSFP12_ModPrsL': (self._qsfp_ctrlb, 1, 4, 1),
+             'QSFP12_ResetL':  (self._qsfp_ctrlb, 1, 5, 1),
+             'QSFP12_IntL':    (self._qsfp_ctrlb, 1, 6, 1),
+             'QSFP12_ModSelL': (self._qsfp_ctrlb, 1, 7, 1),
+
+             'QSFP13_ModPrsL': (self._qsfp_ctrlb, 0, 0, 1),
+             'QSFP13_ResetL':  (self._qsfp_ctrlb, 0, 1, 1),
+             'QSFP13_IntL':    (self._qsfp_ctrlb, 0, 2, 1),
+             'QSFP13_ModSelL': (self._qsfp_ctrlb, 0, 3, 1),
+
+             'QSFP14_ModPrsL': (self._qsfp_ctrlb, 0, 4, 1),
+             'QSFP14_ResetL':  (self._qsfp_ctrlb, 0, 5, 1),
+             'QSFP14_IntL':    (self._qsfp_ctrlb, 0, 6, 1),
+             'QSFP14_ModSelL': (self._qsfp_ctrlb, 0, 7, 1),
+
+             'QSFP15_ModPrsL': (self._qsfp_ctrlb, 3, 0, 1),
+             'QSFP15_ResetL':  (self._qsfp_ctrlb, 3, 1, 1),
+             'QSFP15_IntL':    (self._qsfp_ctrlb, 3, 2, 1),
+             'QSFP15_ModSelL': (self._qsfp_ctrlb, 3, 3, 1),
+
+             'QSFP16_ModPrsL': (self._qsfp_ctrlb, 3, 4, 1),
+             'QSFP16_ResetL':  (self._qsfp_ctrlb, 3, 5, 1),
+             'QSFP16_IntL':    (self._qsfp_ctrlb, 3, 6, 1),
+             'QSFP16_ModSelL': (self._qsfp_ctrlb, 3, 7, 1),
+
+             'QSFP1_Led' : (self._qsfp_ctrla, 4, 0, 1),
+             'QSFP2_Led' : (self._qsfp_ctrla, 4, 1, 1),
+             'QSFP3_Led' : (self._qsfp_ctrla, 4, 2, 1),
+             'QSFP4_Led' : (self._qsfp_ctrla, 4, 3, 1),
+             'QSFP5_Led' : (self._qsfp_ctrla, 4, 4, 1),
+             'QSFP6_Led' : (self._qsfp_ctrla, 4, 5, 1),
+             'QSFP7_Led' : (self._qsfp_ctrla, 4, 6, 1),
+             'QSFP8_Led' : (self._qsfp_ctrla, 4, 7, 1),
+             'QSFP9_Led' : (self._qsfp_ctrlb, 4, 0, 1),
+             'QSFP10_Led': (self._qsfp_ctrlb, 4, 1, 1),
+             'QSFP11_Led': (self._qsfp_ctrlb, 4, 2, 1),
+             'QSFP12_Led': (self._qsfp_ctrlb, 4, 3, 1),
+             'QSFP13_Led': (self._qsfp_ctrlb, 4, 4, 1),
+             'QSFP14_Led': (self._qsfp_ctrlb, 4, 5, 1),
+             'QSFP15_Led': (self._qsfp_ctrlb, 4, 6, 1),
+             'QSFP16_Led': (self._qsfp_ctrlb, 4, 7, 1),
+             'LED1': (self._reset_ctrl, 0, 7, 1)
+        })
+
+        self.qsfp = Ccoll(qsfp.QSFP(self._i2c, 'BP', gpio_prefix='QSFP%i_' % (i + 1), gpio=self._gpio) for i in range(self.NUMBER_OF_SLOTS))
+
 
 
         self.SLOT_RESETS_MAP = {
@@ -506,54 +569,6 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
              'BP_3V3': (self._power_3v3, 3.3, 2.6, 2., 0.5),
         }
 
-        self.QSFP_EEPROM_MAP = {
-             # Register Name : (datatype, memory location, bytes, page)
-             'Identifier': ('bin', 0, 1, 0),
-             'Status': ('bin', 1, 2, 0),
-             'ChanStatusIntFlags': ('bin', 3, 2, 0),
-             'ModMonIntFlags': ('bin', 6, 2, 0),
-             'ChanMonIntFlags' : ('bin', 9, 4, 0),
-             'MeasuredTemp' : ('bin', 22, 2, 0),
-             'MeasuredSupV' : ('bin', 26, 2, 0),
-             'ChanRxInPow': ('bin', 34, 8, 0),
-             'ChanTxBias':('bin', 42, 8, 0),
-             'LaserDisable':('bin', 86, 1, 0),
-             'RateSelect':('bin', 87, 2, 0),
-             'RxAppSelect':('bin', 89, 4, 0),
-             'PowerSet':('bin', 93, 1, 0),
-             'TxAppSelect':('bin', 94, 4, 0),
-             'IntLMask_LOS':('bin', 100, 1, 0),
-             'IntLMask_TXFault':('bin', 101, 1, 0),
-             'IntLMask_Temp':('bin', 103, 1, 0),
-             'IntLMask_Vcc':('bin', 104, 1, 0),
-             'PageSelect':('bin', 127, 1, 0),
-
-             'Identifier':('bin', 128, 1, 0),
-             'ExtIdentifier':('bin', 129, 1, 0),
-             'Connector':('bin', 130, 1, 0),
-             'CompCodes':('bin', 131, 8, 0),
-             'Encoding':('bin', 139, 1, 0),
-             'BitRate':('bin', 140, 1, 0),
-             'ExtRateSelectComp':('bin', 141, 1, 0),
-             'SupportedLengths':('bin', 142, 5, 0),
-             'DeviceTech':('bin', 147, 1, 0),
-             'VendName':('str', 148, 16, 0),
-             'ExtTranCode':('bin', 164, 1, 0),
-             'VenOUI':('bin', 165, 3, 0),
-             'VenPN':('str', 168, 16, 0),
-             'VenRev':('bin', 184, 2, 0),
-             'WaveLength':('bin', 186, 2, 0),
-             'MaxCaseTemp':('bin', 190, 1, 0),
-             'CCBase':('bin', 191, 1, 0),
-             'ExtOptions':('bin', 192, 4, 0),
-             'VenSN': ('str', 196, 16, 0),
-             'DateCode':('str', 212, 8, 0),
-             'DiagMon':('bin', 220, 1, 0),
-             'EnhOpt':('bin', 221, 1, 0),
-             'CCExt':('bin', 223, 1, 0),
-             'VenSpecEEPROM':('str', 224, 32, 0)      #no idea if a string or binary info
-             ##The other pages don't seem useful to us at all.
-        }
 
     def open(self):
         """ Establish communications with the backplane.
@@ -678,60 +693,20 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
 
     def set_led(self, led_name, state):
         """
-        Set the LED(s) specified in 'led_name' to the the 'state'.
-        'led_name' can be a list of LED names found in
-        LED_MAP.  'state' can be a single boolean value, or
-        an array with the same length as 'led_name'
+        Set the LED(s) specified in 'led_name' to the the 'state'. 'led_name'
+        can be a list of LED names found in LED_MAP.  'state' can be a single
+        boolean value, or an array with the same length as 'led_name'
         """
-        if isinstance(led_name, (str, int)):
-            led_name = [led_name]
+        self._gpio.write(led_name, state)
 
-        for pos, name in enumerate(led_name):
-            if isinstance(name, int):
-                name='QSFP%i' % name
-            led_name[pos]=name
-
-        if isinstance(state, (bool, int)):
-            state = [state] * len(led_name)
-
-        for (led, led_state) in zip(led_name,state):
-            if led not in self.LED_MAP:
-                raise ValueError('Invalid LED name')
-            else:
-                (led_control_object, led_control_register, led_control_bitnumber) = self.LED_MAP[led]
-                led_control_register='CFG%i' % led_control_register #Converting the resister in the map into the correct string format
-                #Note that we are cheating here, we are flipping the bits on the IO Expander from input mode to output mode, inputs are default floating
-                #Turning on the LED requires a output of 0 which is the default state in output mode
-                mask = 1<<led_control_bitnumber
-                led_control_object.write(led_control_register, (not led_state) * mask, mask=mask)
 
     def get_led(self, led_name):
         """
-        Returns the status of specified LED(s) in a dictionary
-        led_status where each key is a led_name and the respective value
-        is the led status.
+        Returns the status of specified LED(s) in a dictionary led_status
+        where each key is a led_name and the respective value is the led
+        status.
         """
-        led_status = {}
-        if isinstance(led_name, str):
-            led_name = [led_name]
-
-        for pos, name in enumerate(led_name):
-            if isinstance(name, int):
-                name='QSFP%i' % name
-            led_name[pos]=name
-
-        for led in led_name:
-            if led not in self.LED_MAP:
-                raise ValueError('Invalid LED name')
-            else:
-                (led_control_object, led_control_register, led_control_bitnumber) = self.LED_MAP[led]
-                led_control_register='IN%i' % led_control_register #Converting the resister in the map into the correct string format
-                #Note that we are cheating here, we are flipping the bits on the IO Expander from input mode to output mode, inputs are default floating
-                #Turning on the LED requires a output of 0 which is the default state in output mode
-                regout=led_control_object.read(led_control_register)
-                led_status[led]= not bool( (regout & (1<<led_control_bitnumber))>>led_control_bitnumber)
-
-        return led_status
+        return self._gpio.read(led_name)
 
     def get_temperature(self, temperature_sensor_name=None):
         """
@@ -806,190 +781,6 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
         """
         return self.get_backplane_eeprom_serial_number(); # tentative code
 
-    def get_info(self):
-        """Loads the info data on the motherboard"""
-        pass
-
-    def status(self):
-        """Displays the status of the motherboard"""
-
-    def set_qsfp_led(self, slots, state):
-        """
-        Set the QSFP LED state for a given slot
-        History:
-        141015 AJG & JF: created
-        """
-        if isinstance(slots, (int,str)):
-            slots = [slots]
-
-        for slotnum in slots:
-            if slotnum not in range(1,self.NUMBER_OF_SLOTS + 1) :
-                raise ValueError('Invalid Slot number %i' % slots)
-
-        self.set_led(slots, state)
-
-
-    def qsfp_reset(self, slots, state=None):
-        """
-        reset the specified QSFPs , reset performed by pulling corresponding ResetL pins low
-        History:
-        141015 AJG & JF: created
-        """
-
-        if isinstance(slots, int):
-            slots = [slots]
-
-        for slotnum in slots:
-
-            if slotnum not in range(1,self.NUMBER_OF_SLOTS + 1) :
-                raise ValueError('Invalid Slot number %i' % slotnum)
-            else:
-                (qsfp_control_object, control_register, ModPrs_bitnum, ResetL_bitnum, IntL_bitnum, ModSelL_bitnum) = self.QSFP_CTRL_MAP[slotnum]
-                mask = 1<< ResetL_bitnum
-
-                qsfp_control_register = 'OUT%i' % control_register
-                if state is None:
-                    qsfp_control_object.write(qsfp_control_register, 0 * mask, mask=mask)
-                    qsfp_control_object.write(qsfp_control_register, 1 * mask, mask=mask)
-                else:
-                    qsfp_control_object.write(qsfp_control_register, bool(state) * mask, mask=mask)
-
-    def qsfp_status(self, slots=range(1, NUMBER_OF_SLOTS + 1)):
-        """
-        checks slots to see if QSFP present
-        History:
-        141015 AJG & JF: created
-        """
-
-        if isinstance(slots, int):
-            slots = [slots]
-
-        output={}
-
-        present=[]
-        reset=[]
-        intl=[]
-        modsel=[]
-
-
-        for slotnum in slots:
-
-            if slotnum not in range(1,self.NUMBER_OF_SLOTS + 1) :
-                raise ValueError('Invalid Slot number %i' % slotnum)
-            else:
-                (qsfp_control_object, control_register, ModPrs_bitnum, ResetL_bitnum, IntL_bitnum, ModSelL_bitnum) = self.QSFP_CTRL_MAP[slotnum]
-
-                qsfp_control_register='IN%i' % control_register
-                outputreg=qsfp_control_object.read(qsfp_control_register)
-
-                present.append(not((outputreg & (1 << ModPrs_bitnum)) >> ModPrs_bitnum))   #copying the info at this bit number into the status reg
-                reset.append(not((outputreg & (1 << ResetL_bitnum)) >> ResetL_bitnum))     #copying the info at this bit number into the status reg
-                intl.append(not((outputreg & (1 << IntL_bitnum)) >> IntL_bitnum))          #copying the info at this bit number into the status reg
-                modsel.append(not((outputreg & (1 << ModSelL_bitnum)) >> ModSelL_bitnum))  #copying the info at this bit number into the status reg
-
-        output['present']=present
-        output['reset']=reset
-        output['intl']=intl
-        output['modsel']=modsel
-        output['slots']=slots
-
-        return output
-
-    def qsfp_enable_i2c(self, slot, state):
-        """
-        Enables QSFP I2C - Pulls ModselL low
-        History:
-        141015 AJG & JF: created
-        """
-
-        if not isinstance(slot, int):
-            raise ValueError('Must perform action on one slot at a time. Slot must be an integer.')
-        if slot not in range(1,self.NUMBER_OF_SLOTS + 1) :
-            raise ValueError('Invalid Slot number %i' % slot)
-        qstatus=self.qsfp_status(slot)
-
-        if not qstatus['present'][0]:  #Checking to see if QSPF present
-            raise RuntimeError('No QSFP device loaded on slot number %i' % slot)
-
-        (qsfp_control_object, control_register, ModPrs_bitnum, ResetL_bitnum, IntL_bitnum, ModSelL_bitnum) = self.QSFP_CTRL_MAP[slot]
-
-        mask = 1 << ModSelL_bitnum
-        qsfp_control_register = 'OUT%i' % control_register
-        qsfp_control_object.write(qsfp_control_register, (not state)*mask, mask=mask)
-
-    def write_qsfp(self, slot, addr, data, page=0):
-
-        self.qsfp_enable_i2c(slot, True)
-
-        if (page !=0):
-            self._qsfp_eeprom.write(addr=127, data=page, length =1) #Writing to page select register
-
-        self._qsfp_eeprom.write(addr, data) #Writing at specified address
-
-        if (page !=0):
-            self._qsfp_eeprom.write(addr=127, data=0, length =1)  #Putting page back to 0
-
-        self.qsfp_enable_i2c(slot, False)
-
-
-    def read_qsfp(self, slot, addr, length=1, page=0):
-        """
-        Reads QSFP eeprom on given slot slot. Enables I2C, reads, Disables I2C
-        History:
-        141015 AJG & JF: created
-        """
-
-        self.qsfp_enable_i2c(slot, True)
-
-        if (page !=0):
-            self._qsfp_eeprom.write(addr=127, data=page, length =1) #Writing to page select register
-
-        data = self._qsfp_eeprom.read(addr=addr, length = length) #Reading at specified address
-
-        if (page !=0):
-            self._qsfp_eeprom.write(addr=127, data=0, length =1)  #Putting page back to 0
-
-        self.qsfp_enable_i2c(slot, False)
-
-        return data
-
-    def qsfp_i2c_read_str(self, slot, addr=148, length=16, page=0):
-        return ''.join([chr(x) for x in self.read_qsfp(slot, addr, length, page)])
-
-    def get_qsfp_info(self, slots=range(1, NUMBER_OF_SLOTS + 1)):
-        """
-        Gets all qsfp info marked up in the qsfp eeprom map for each slot
-        Data is returned as a list of dictionaries
-        History:
-        141015 AJG & JF: created
-        """
-
-        if isinstance(slots, int):
-            slots = [slots]
-        qstatus=self.qsfp_status(slots)
-
-        qsfpdata=[]
-        for slotnum in slots:
-
-            if slotnum not in range(1,self.NUMBER_OF_SLOTS + 1) :
-                raise ValueError('Invalid Slot number %i' % slotnum)
-            else:
-
-                data={}
-                data['QSFPNumber']=slotnum
-                data['QSFPPresent']=False
-
-                if qstatus['present'][slotnum-1]:
-                    data['QSFPPresent']=True
-                    for (key, (datatype, addr, length, page)) in self.QSFP_EEPROM_MAP.items():
-
-                        if datatype == 'str': #String detected, converting to readable characters
-                            data[key]=self.qsfp_i2c_read_str(slot=slotnum, addr=addr, length=length, page=page)
-                        else: #assuming binary
-                            data[key]=self.read_qsfp(slot=slotnum, addr=addr, length=length, page=page)
-
-                qsfpdata.append(data)
-        return qsfpdata
 
     def reset_slot(self, slots, state, reset_type='ARM'):
         """
@@ -1068,9 +859,44 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
         self._fan_ctrl.set_duty_cycle(speed)
 
 
+    def get_qsfp_links(self):
+        """
+        Return a list describing all known GTX nodes connection provided by the QSFP cables on this backplane.
 
+        Each link node is in the format (link_type='BP_QSFP, node_id1, node_id2, link_id).
 
+        Each node id in in the format (crate_id, slot, lane). If we do not
+        know what node is connected to the far end of the cable, node_id2=Node
+        and the the connectivity will be put together by the caller using the
+        link_id field..
 
+        Link_id a unique identifier that is unique for each bi- directional
+        links. In this case, it is a string based on the cable manufacturer,
+        model, serial number and lane number.
+        """
+        # tx_nodes = {}
+        # rx_nodes = {}
+        links = []
+        for qsfp_slot, qsfp in enumerate(self.qsfp):
+            if qsfp.is_present():
+                cable_link_id = qsfp.read_str('VendName') + "_" + qsfp.read_str('VenPN')+ "_" + qsfp.read_str('VenSN')
+                for qsfp_lane in range(4):
+                    lane = qsfp_slot % 4
+                    slot = (qsfp_slot//4)*4 + qsfp_lane  + 1
+                    link_id = cable_link_id+'_%i' % qsfp_lane
+                    links.append(('BP_QSFP', (self.get_id(), slot, lane), None, link_id))
+        return links
+
+    def get_qsfp_ids(self):
+        ids = {}
+        for qsfp_slot, qsfp in enumerate(self.qsfp):
+            if qsfp.is_present():
+                cable_link_id = {
+                    'Manufacturer': qsfp.read_str('VendName'),
+                    'PN': qsfp.read_str('VenPN'),
+                    'SN': qsfp.read_str('VenSN')}
+                ids[qsfp_slot] = cable_link_id
+        return ids
 
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
 #  /$$      /$$  /$$$$$$  /$$   /$$ /$$$$$$$$ /$$$$$$$  /$$$$$$$    /$$
@@ -1083,6 +909,8 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
 # |__/     |__/ \______/ |__/  \__/|__/      |_______/ |__/      |______/
 #     Single-slot Test backplane
 # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # # #
+# Generated with http://patorjk.com/software/taag/#p=display&f=Big Money-ne&t=MGK7BP1
+
 
 
 @session.register_yaml_object()

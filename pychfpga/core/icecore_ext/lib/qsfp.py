@@ -64,7 +64,7 @@ class QSFP(object):
     }
 
 
-    def __init__(self, i2c, bus_name, gpio, address=0x50):
+    def __init__(self, i2c, bus_name, gpio_prefix, gpio, address=0x50):
         """ Create a QSFP object.
 
         `control_bits` is a dictionary defining:  {control_bit_name: (io_expander_object, register_number, bit_number, default), ... }
@@ -75,6 +75,7 @@ class QSFP(object):
 
         self._i2c = i2c
         self._bus_name = bus_name
+        self._gpio_prefix = gpio_prefix
         self._address = address
         self._gpio = gpio
 
@@ -93,10 +94,10 @@ class QSFP(object):
         self.set_power_mode(0)  # Low power
 
     def set_control_bit(self, name, value, select=True):
-        self._gpio.write(self._bus_name + '_' + name, value, select=select)
+        self._gpio.write(self._gpio_prefix + name, value, select=select)
 
     def get_control_bit(self, name, select=True):
-        return self._gpio.read(self._bus_name + '_' + name, select=select)
+        return self._gpio.read(self._gpio_prefix + name, select=select)
 
     def set_led(self, state):
         self.set_control_bit('Led', state)
@@ -138,8 +139,18 @@ class QSFP(object):
         """ 0 = low power, 1 = High power """
         self.set_control_bit('LPMode', not state)
 
+    def __getattr__(self, name):
+        if name in self.QSFP_EEPROM_MAP:
+            (type, __, __, __) = self.QSFP_EEPROM_MAP[name]
+            if isinstance(type, str):
+                return self.read_str(name)
+            else:
+                return self.read(name)
+        else:
+            return self.get_control_bit(name)
+
     def get_power_mode(self):
-        return not self.get_control_bit('LPMode')
+        return getattr(self, 'LPMode', None)
 
     def write(self, addr, data, page=0, enable=True):
 
@@ -220,6 +231,9 @@ class QSFP(object):
         History:
         141015 AJG & JF: created
         """
+        if not self.is_present():
+            return None
+
         self.enable_i2c(True)  # Needed for self._qsfp_eeprom.is_present() below
 
         tech_table = {
@@ -281,7 +295,7 @@ class QSFP(object):
         print '--------------'
         print 'Module is Present: %s' % bool(self.is_present())
         print 'Module I2C is Responding: %s' % bool(self._qsfp_eeprom.is_present())
-        print 'Module type: %s' % ['Low power', 'High power'][self.get_power_mode()]
+        print 'Module type: %s' % ['Low power', 'High power'][self.get_power_mode() or 0]
         print 'I2C info'
         print '--------------'
         print '   Module temperature: %0.1f C' % self.get_temperature()

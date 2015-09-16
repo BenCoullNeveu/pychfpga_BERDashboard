@@ -16,7 +16,7 @@ from ..icecore.hw.ipmi_fru import FRU, Board, Product, MultiDict
 
 
 from .. import I2C as i2c
-from .. import GPIO as gpio
+from .. import GPIO as fpga_gpio
 
 from . import icecrate_ext  # this module is not referenced here, but loading it registers the handler with IceCrate.
 
@@ -27,7 +27,7 @@ from lib import tca9548a  # I2C switch
 # from lib import ina230  # I2C Voltage and current monitor
 from lib import eeprom
 from lib import qsfp
-
+from lib import gpio
 
 # import icebox # don't use from .. import ... because of circular import problems
 
@@ -230,7 +230,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         # -------------------------------------------------------------------------
         # Open FPGA's GPIO module interface
         # -------------------------------------------------------------------------
-        self.core_gpio = gpio.GPIO_base(self, self._SYSTEM_GPIO_BASE_ADDR)
+        self.core_gpio = fpga_gpio.GPIO_base(self, self._SYSTEM_GPIO_BASE_ADDR)
 
         # -------------------------------------------------------------------------
         # Check if we can communicate with the FPGA over the direct Ethernet
@@ -845,29 +845,6 @@ class I2CInterface(object):
             return False
         return True
 
-class IceBoardGPIO(object):
-    """Provides a single-point, abstracted access to all GPIO bits found on the IceBoard"""
-
-    def __init__(self, gpio_table):
-        self._gpio_table = gpio_table
-
-    def read(self, name, select=True):
-        if name not in self._gpio_table:
-            raise RuntimeError("'%s'  is not a valid GPIO signal name" % name)
-        (io_expander, byte, bit, width) = self._gpio_table[name]
-        value = io_expander.read(byte, select=select)
-        value = (value >> bit) & ((1 << width)-1)
-        return value
-
-    def write(self, name, value, select=True):
-        if name not in self._gpio_table:
-            raise ValueError("'%s'  is not a valid GPIO name" % name)
-        (io_expander, byte, bit, width) = self._gpio_table[name]
-        if width == 1:
-            value = bool(value)
-        elif value < 0 or value >= (1 << width):
-            raise ValueError("%i is an invalid value for GPIO field '%s'" % (value, name))
-        io_expander.write(byte, value << bit, mask= ((1 << width)-1) << bit, select=select)
 
 
 class IceBoardHardware(object):
@@ -1024,7 +1001,7 @@ class IceBoardHardware(object):
 
 
 
-        self._gpio = IceBoardGPIO(gpio_table={
+        self._gpio = gpio.GPIO(gpio_table={
             # name : (expander object, byte, lsb bit number,  width)
             'GP_SW1': (self._gpio_sw_leds, 0, 0, 1),
             'GP_SW2': (self._gpio_sw_leds, 0, 1, 1),
@@ -1075,8 +1052,8 @@ class IceBoardHardware(object):
             'SFP_ModSelL': (self._gpio_power, 1, 7, 1)
         })
 
-        self._qsfpa = qsfp.QSFP(self._i2c, 'QSFPA', self._gpio)
-        self._qsfpb = qsfp.QSFP(self._i2c, 'QSFPB', self._gpio)
+        self._qsfpa = qsfp.QSFP(self._i2c, 'QSFPA', gpio_prefix='QSFPA_', gpio=self._gpio)
+        self._qsfpb = qsfp.QSFP(self._i2c, 'QSFPB', gpio_prefix='QSFPA_', gpio=self._gpio)
 
         self.qsfp = Ccoll((self._qsfpa, self._qsfpb))
         # self._logger.info(' Instantiating I2C temperature sensors')
