@@ -254,6 +254,7 @@ class Handler(object):
         keyword paramaters are used to set the Handler attributes with the
         same name.
         """
+        super(Handler, self).__init__(**kwargs)
         self.logger = logging.getLogger(__name__)
         self.logger.debug("%s: Creating handler with parameters %s" %
                           (self.__class__.__name__, kwargs))
