@@ -295,13 +295,15 @@ class TuberCategory(object):
             '''
 
             o = decorator.getobject(self)
-            d = dir(super(self.__class__, self))
+            # d = dir(super(self.__class__, self)) # This is wrong
+            d = set(self.__dict__.keys())
+            d |= set.union(*[set(dir(cls)) for cls in type(self).mro()])
             (meta, metap, metam) = o._tuber_get_meta()
             for m in meta.methods:
                 if hasattr(metam[m], 'categories') and \
                         decorator.category in metam[m].categories:
-                    d.append(m)
-            return d
+                    d.add(m)
+            return list(d)
 
         cls.__dir__ = __dir__
 
