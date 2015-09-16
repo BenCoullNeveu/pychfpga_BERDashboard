@@ -420,6 +420,9 @@ class XGLink(Module_base):
         for g in self.gtx:
             g.reset_rx_equalizer()
 
+    def set_tx_power(self, power):
+        for g in self.gtx:
+            g.TXDIFFCTRL = power
 
     def status(self):
         """ Displays the status of the QPLLs and GTXes"""
