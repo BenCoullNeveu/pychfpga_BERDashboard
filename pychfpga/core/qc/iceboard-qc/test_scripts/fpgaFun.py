@@ -260,10 +260,10 @@ def rampTest(board_sn, directory, ch_acq_path='../../../../../../ch_acq/', host_
             ber_string = ' - '.join([("Channel %d, Bit %d: %0.2e" % (bad_channels[i], bad_bits[i], bad_ber[i])) for i in range(nbad)])
         
         if not heq_pass:
-            heq_string = ", ".join(["%d" % cc for cc in numpy.arange(nchannels)[np.logical_not(test.test_hist_equal)])
+            heq_string = ", ".join(["%d" % cc for cc in numpy.arange(nchannels)[np.logical_not(test.test_hist_equal)]])
         
         if not hex_pass:
-            hex_string = ", ".join(["%d" % cc for cc in numpy.arange(nchannels)[np.logical_not(test.test_hist_expected)])
+            hex_string = ", ".join(["%d" % cc for cc in numpy.arange(nchannels)[np.logical_not(test.test_hist_expected)]])
             
         
     test_results = {'status':test_pass, 'bit_error':ber_string, 'hist_equal':heq_string, 'hist_expected':hex_string}
