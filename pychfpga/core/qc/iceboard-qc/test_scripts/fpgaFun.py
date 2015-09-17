@@ -234,9 +234,9 @@ def rampTest(board_sn, directory, ch_acq_path='../../../../../../ch_acq/', host_
     r.close()
     
     # Determine if test is pass or fail.  If fail, determine bad bits.
-    ber_pass = test.test_bit_error_rate.all()
-    heq_pass = test.test_hist_equal.all()
-    hex_pass = test.test_hist_expected.all()
+    ber_pass = bool(test.test_bit_error_rate.all())
+    heq_pass = bool(test.test_hist_equal.all())
+    hex_pass = bool(test.test_hist_expected.all())
     test_pass = ber_pass and heq_pass and hex_pass
 
     ber_string = None

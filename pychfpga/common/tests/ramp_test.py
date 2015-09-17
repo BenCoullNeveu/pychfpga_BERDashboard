@@ -98,8 +98,8 @@ class test_adc_ramp_histogram(test_BaseClass):
             pylab.savefig(filename + '_chan' +str(i)+'.pdf')
             pylab.clf()
             chist = Counter(hist)
-            self.hist_equal[i] = (len(chist) == 1)
-            self.hist_expected[i] = (chist.most_common(n=1)[0][0] == expected_value)
+            self.test_hist_equal[i] = (len(chist) == 1)
+            self.test_hist_expected[i] = (chist.most_common(n=1)[0][0] == expected_value)
             
 
     def compute_bit_errors(self, fname):
