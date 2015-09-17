@@ -243,7 +243,7 @@ def rampTest(board_sn, directory, ch_acq_path='../../../../../../ch_acq/', host_
     heq_string = None
     hex_string = None
     
-    if not test_pass
+    if not test_pass:
     
         nchannels = test.bit_error_rate.shape[0]
         nbits = test.bit_error_rate.shape[1]
