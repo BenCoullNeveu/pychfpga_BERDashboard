@@ -189,6 +189,7 @@ def rampTest(board_sn, directory, ch_acq_path='../../../../../../ch_acq/', host_
 
     # Import necessary pychfpga modules
     import sys
+    import numpy as np
     sys.path.append(ch_acq_path)
     from pychfpga.common.tests.ramp_test import test_adc_ramp_histogram
 
@@ -260,10 +261,10 @@ def rampTest(board_sn, directory, ch_acq_path='../../../../../../ch_acq/', host_
             ber_string = ' - '.join([("Channel %d, Bit %d: %0.2e" % (bad_channels[i], bad_bits[i], bad_ber[i])) for i in range(nbad)])
         
         if not heq_pass:
-            heq_string = ", ".join(["%d" % cc for cc in numpy.arange(nchannels)[np.logical_not(test.test_hist_equal)]])
+            heq_string = ", ".join(["%d" % cc for cc in range(nchannels)[np.logical_not(test.test_hist_equal)]])
         
         if not hex_pass:
-            hex_string = ", ".join(["%d" % cc for cc in numpy.arange(nchannels)[np.logical_not(test.test_hist_expected)]])
+            hex_string = ", ".join(["%d" % cc for cc in range(nchannels)[np.logical_not(test.test_hist_expected)]])
             
         
     test_results = {'status':test_pass, 'bit_error':ber_string, 'hist_equal':heq_string, 'hist_expected':hex_string}
@@ -271,6 +272,7 @@ def rampTest(board_sn, directory, ch_acq_path='../../../../../../ch_acq/', host_
     
     # Return results
     return [test_results, ADC_DELAY_TABLE, stuck_bits, ipmi]
+    
 
 def gtx_ber(board_sn, ch_acq_path='../../../../../../ch_acq/', links=None, period=1, power=None,
             bitfile_path = "../../../../../../chFPGA/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/"+\
