@@ -232,7 +232,45 @@ def rampTest(board_sn, directory, ch_acq_path='../../../../../../ch_acq/', host_
     test = test_adc_ramp_histogram(c, r)
     test.execute(directory)
     r.close()
-    return [ADC_DELAY_TABLE, stuck_bits, ipmi]
+    
+    # Determine if test is pass or fail.  If fail, determine bad bits.
+    ber_pass = test.test_bit_error_rate.all()
+    heq_pass = test.test_hist_equal.all()
+    hex_pass = test.test_hist_expected.all()
+    test_pass = ber_pass and heq_pass and hex_pass
+
+    ber_string = None
+    heq_string = None
+    hex_string = None
+    
+    if not test_pass
+    
+        nchannels = test.bit_error_rate.shape[0]
+        nbits = test.bit_error_rate.shape[1]
+
+        if not ber_pass:
+            channel_matrix = np.arange(nchannels*nbits).reshape(nchannels,nbits) / nbits
+            bits_matrix = np.arange(nchannels*nbits).reshape(nchannels,nbits) % nbits
+        
+            flag_bad = np.logical_not(test.test_bit_error_rate)
+            bad_channels = channel_matrix[flag_bad]
+            bad_bits = bits_matrix[flag_bad]
+            bad_ber = test.bit_error_rate[flag_bad]
+            nbad = len(bad_channels)
+            ber_string = ' - '.join([("Channel %d, Bit %d: %0.2e" % (bad_channels[i], bad_bits[i], bad_ber[i])) for i in range(nbad)])
+        
+        if not heq_pass:
+            heq_string = ", ".join(["%d" % cc for cc in numpy.arange(nchannels)[np.logical_not(test.test_hist_equal)])
+        
+        if not hex_pass:
+            hex_string = ", ".join(["%d" % cc for cc in numpy.arange(nchannels)[np.logical_not(test.test_hist_expected)])
+            
+        
+    test_results = {'status':test_pass, 'bit_error':ber_string, 'hist_equal':heq_string, 'hist_expected':hex_string}
+        
+    
+    # Return results
+    return [test_results, ADC_DELAY_TABLE, stuck_bits, ipmi]
 
 def gtx_ber(board_sn, ch_acq_path='../../../../../../ch_acq/', links=None, period=1, power=None,
             bitfile_path = "../../../../../../chFPGA/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/"+\

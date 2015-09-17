@@ -11,6 +11,7 @@ matplotlib.use('Agg')
 import time, pylab, csv
 from pychfpga.common.tests.test_BaseClass import test_BaseClass
 from pychfpga.core import chFPGA_receiver
+from collections import Counter
 # from pychfpga import save_raw_frames
 
 def save_timestream_frames(chFPGA_receiver, channels=[0], frames=256, filename='data.npy'):    
@@ -83,27 +84,41 @@ class test_adc_ramp_histogram(test_BaseClass):
         
     def plot_histogram(self, filename):
         datas = np.load(filename + '.npy')
+        self.test_hist_equal = np.zeros(16, dtype=np.bool_)
+        self.test_hist_expected = np.zeros(16, dtype=np.bool_)
+        expected_value = datas.shape[2]
         pylab.clf()
-        
         for i in xrange(16):
-            pylab.hist(datas[:,i,:].flatten(), bins=256, range = (-128,127))
+            hist, bins = np.histogram(datas[:,i,:].flatten(), bins=256, range=(-128.5, 127.5))
+            center = (bins[:-1] + bins[1:]) / 2
+            pylab.bar(center, hist, align='center', width=1.0)
+            #pylab.hist(datas[:,i,:].flatten(), bins=256, range = (-128,127))
             pylab.title(filename + ' Channel '+str(i))
             pylab.xlim(-128,127)
             pylab.savefig(filename + '_chan' +str(i)+'.pdf')
             pylab.clf()
+            chist = Counter(hist)
+            self.hist_equal[i] = (len(chist) == 1)
+            self.hist_expected[i] = (chist.most_common(n=1)[0][0] == expected_value)
+            
 
     def compute_bit_errors(self, fname):
         perfect_ramp = (np.arange(2048) % 256) - 128
         bits = [1,2,4,8,16,32,64,128]
         datas = np.load(fname + '.npy')
         infocsv = open(fname+'.txt', 'w')
+        self.bit_error_rate = np.zeros((16, len(bits)), dtype=np.float64)
+        self.test_bit_error_rate = np.zeros((16, len(bits)), dtype=np.bool_)
         writer = csv.writer(infocsv)
         for i in xrange(16):
             xored = np.bitwise_xor(datas[:,i,:], perfect_ramp)
             for j,bit in enumerate(bits):
                 bad_bit = (np.bitwise_and(xored, bit)>>j).sum()*1.0/len(xored.flatten())
                 writer.writerow([i, j, bad_bit])
+                self.bit_error_rate[i,j] = bad_bit
+                self.test_bit_error_rate[i,j] = (bad_bit == 0.0)
                 print 'chan {0}, bit {1}, error rate {2:.3f}'.format(i, j, bad_bit)
+
 
     def compress_file(self, fname):
         # Save data as compressed archive and delete uncompressed file
@@ -111,6 +126,7 @@ class test_adc_ramp_histogram(test_BaseClass):
         data = np.load(filename)
         np.savez_compressed(fname, data=data)
         os.remove(filename)
+
 
     def execute(self, fname ):
         try:
