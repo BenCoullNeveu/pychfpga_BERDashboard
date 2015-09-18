@@ -293,9 +293,27 @@ def trad_test(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = E
     f.write('\n' + "%15s %8s %8s %8s" % ('Rail', 'V', 'A', 'Result'))
     f.write('\n' + '=' * 15 + ' ' + '=' * 8 + ' ' + '=' * 8 + ' ' + '=' * 8)
     logger.info("\n%-15s %8s %8s %8s" % ('Rail', 'V', 'A', 'Result'))
-    for key in rails:  # Check voltages (first item in exp_power list)
-        if abs( (volt[key] - exp_power[key][0]) / exp_power[key][0]) > exp_power['TOLERANCE_V'] or \
-                abs( (curr[key] - exp_power[key][1]) / exp_power[key][1]) > exp_power['TOLERANCE_C']:
+    # Loop over the rails
+    for key in rails:
+    
+        # Require special criteria for MB_VCC12V0, since the measured current
+        # will depend on whether or not there is a fan plugged in.
+        if key == "MB_VCC12V0":
+            
+            test_failed = ((abs(volt[key] - exp_power[key][0]) / exp_power[key][0]) > exp_power['TOLERANCE_V']) or \
+                          (abs(curr[key]) > exp_power[key][1])
+
+            if abs(curr[key]) < 0.02:
+                print "\n\n PLEASE ATTACH A FAN TO THE FPGA!\n\n"
+                          
+        else:
+            
+            test_failed = ((abs(volt[key] - exp_power[key][0]) / exp_power[key][0]) > exp_power['TOLERANCE_V']) or \
+                          ((abs(curr[key] - exp_power[key][1]) / exp_power[key][1]) > exp_power['TOLERANCE_C'])
+    
+    
+        # Print pass or fail
+        if test_failed:
             fail = True
             fail_list.append(key)
             formatted_power = "%-15s %8.2f %8.2f %8s" % (key, volt[key], curr[key], 'FAIL')
@@ -305,7 +323,10 @@ def trad_test(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = E
             formatted_power = "%-15s %8.2f %8.2f %8s" % (key, volt[key], curr[key], 'PASS')
             f.write('\n' + formatted_power)
             logger.info(formatted_power)
+            
     f.write('\n' + '=' * 15 + ' ' + '=' * 8 + ' ' + '=' * 8 + ' ' + '=' * 8 + '\n')
+    
+    # Print final results if fail
     if fail:
         f.write('\nSome power readings ' + repr(fail_list) + '  were outside reasonable range: Fail')
         f.write('\n\n**FPGA Test Overall Status: Fail**')
@@ -316,6 +337,7 @@ def trad_test(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = E
                         'A. \nPlease POWER DOWN the board and investigate the issue before continuing.')
         return fpgaTestFail(username,board_sn,board_vn,board_md,testStatus)
 
+    # Print final results if pass
     logger.info('\n\n----- FPGA test overall status: PASS -----  \n\n ')
 
     f.write('\n**FPGA Test Overall Status: Pass**')
@@ -323,7 +345,7 @@ def trad_test(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = E
     testStatus[9] = True
 
     return testStatus
-
+    
 
 class fake_file():
     ''' This class is meant to allow the FPGAtest to be run in the traditional way, or as
