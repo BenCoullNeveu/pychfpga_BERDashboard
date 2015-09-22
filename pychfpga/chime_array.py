@@ -471,7 +471,7 @@ class ChimeArray(object):
         # Hardware map is complete
 
         # Query all iceboards
-        ib = self.hwm.query(IceBoardPlus).order_by(IceBoardPlus.slot)
+        ib = self.hwm.query(IceBoardPlus).join(IceCrate).order_by(IceCrate.serial, IceBoardPlus.slot)
         ic = self.hwm.query(IceCrate).order_by(IceCrate.serial)
 
         # if not ib.count():
@@ -1615,7 +1615,26 @@ class ChimeArray(object):
         for i in range(len(ts)):
             print 'Lane %02i: Stream ID=0x%02x, Frame = 0x%02x (delta = %i)' % (i, sid[i], ts[i], ts[i]-ts[0])
 
+    def plot_rack_temperatures(self, figure_number=1):
 
+        sensor = self.ib[0].TEMPERATURE_SENSOR.MB_FPGA_DIE
+
+        plt.figure(figure_number)
+        plt.clf()
+        plt.hold(1)
+        for ic in self.ic:
+            ib = Ccoll(ic.slot.values())
+            t = ib.get_motherboard_temperature(sensor)
+            s = ib.slot
+            avg_temp = np.average(t)
+            h = plt.plot(s, t, label=ic.get_id())
+            plt.plot([min(s), max(s)], [avg_temp]*2, ':', color=h[0].get_color(), lw=2)
+            print '%s: %fdegC' % (ic.get_id(), avg_temp)
+        plt.legend(loc='best')
+        plt.xlabel('Slot number')
+        plt.ylabel('FPGA Die temperature [degC]')
+        plt.grid(1)
+        plt.title('FPGA die temperatrures for multiple crates')
 if __name__ == '__main__':
 
     ca = ChimeArray(argv=sys.argv[1:])
