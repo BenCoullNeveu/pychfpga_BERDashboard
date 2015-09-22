@@ -133,8 +133,8 @@ class Context(async.Parallelizable):
             # until it's complete.
 
             client = tornado.httpclient.AsyncHTTPClient()
-            client.configure(None, max_clients=16) ## So we can send to 16 boards at once
-                                                   ## Default is 10
+            # client.configure(None, max_clients=50) ## So we can send to 50 boards at once
+            #                                        ## Default is 10
             request = tornado.httpclient.HTTPRequest(
                 url=self.obj.tuber_uri,
                 method='POST',
