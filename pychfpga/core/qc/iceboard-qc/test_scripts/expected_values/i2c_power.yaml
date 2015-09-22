@@ -1,21 +1,31 @@
 # Expected values for reading the power sensors on the board over i2c
 # These are the expected values. Results not within the range given by the TOLERANCE key will result in test failure.
 
-ref_board: '0005'
-date_of_ref: '26 August 2015'
+#ref_board: '0005'
+#date_of_ref: '26 August 2015'
+#MB_VCC1V2:        [1.19, 3.95]
+#MB_VCC1V0:        [1.00, 6.00]
+#MB_VCC1V8:        [1.81, 0.85]
+#MB_VCC3V3:        [3.31, 2.56]
+#MB_VCC1V5:        [1.48, 1.74]
+#MB_VCC1V0_GTX:    [1.06, 8.36]
+
+ref_board: '0081'
+date_of_ref: '18 September 2015'
 
 TOLERANCE_V: 0.05 # Range for voltage
 TOLERANCE_C: 0.2 # Range for current
 
-MB_VADJ:       [2.48, 0.06]
-MB_VCC12V0:    [12.00, 0.07]
-MB_VCC1V0:     [1.00, 6.00]
-MB_VCC1V0_GTX: [1.06, 8.36]
-MB_VCC1V2:     [1.19, 3.95]
-MB_VCC1V5:     [1.48, 1.74]
-MB_VCC1V8:     [1.81, 0.85]
-MB_VCC3V3:     [3.31, 2.56]
-MB_VCC5V5:     [5.53, 4.16]
+MB_VADJ:        [2.48, 0.06]
+MB_VADJ_FMC:    [2.48, 0.08]
+MB_VCC12V0:     [12.0, 0.10]        # Current is upper limit for MB_VCC12V0
+MB_VCC1V0:      [1.00, 4.65]
+MB_VCC1V0_GTX:  [1.06, 7.75]
+MB_VCC1V2:      [1.19, 3.10]
+MB_VCC1V5:      [1.48, 1.62]
+MB_VCC1V8:      [1.81, 0.92]
+MB_VCC3V3:      [3.31, 2.42]
+MB_VCC5V5:      [5.53, 3.70]
 
 
 # These are not used, and not updated
