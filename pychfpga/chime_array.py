@@ -743,8 +743,10 @@ class ChimeArray(object):
                     raise ValueError('With the bp_io_int source, the master board and its time source must be specified')
                 if master_time_source not in ['irigb_gen']:
                     raise  NotImplementedError("The 'bp_gpio_int' source currently only supports the master_time_source=irigb_gen'")
-                self.ib.set_bp_gpio_int_output_source(None)  # Make sure no other board is driving the backplane line
-                master.set_bp_gpio_int_output_source(master_time_source)
+                self.ib.GPIO.BP_GPIO_INT_EN = 0
+                master.GPIO.BP_GPIO_INT_EN = 1
+                #self.ib.set_bp_gpio_int_output_source(None)  # Make sure no other board is driving the backplane line
+                #master.set_bp_gpio_int_output_source(master_time_source)
         elif method == 'centralized_time_trigger':
             if not master or not master_time_source:
                 raise ValueError('In the centralized time trigger mode, the master board and its time source must be specified')
