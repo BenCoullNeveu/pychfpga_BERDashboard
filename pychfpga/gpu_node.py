@@ -41,7 +41,7 @@ class GpuData(object):
         return '\n'.join(s)
 
     def get_timestream_data(self):
-        return self.data.astype('>u4').view(np.int8)  # Make the words be stored MSB first in memory, and convert to int8
+        return self.data.astype('<u4').view(np.int8)  # Make the words be stored LSB first in memory, and convert to int8
 
 
 
@@ -212,19 +212,21 @@ class GpuNodeHandler(handler.Handler):
             d.ancillary_data = d.header_words[2]
             # Header word 3
             d.timestamp = d.header_words[3]
-            d.data = udp_payload[4:]
-            d.data_length = len(d.data)
+            d.data_words = udp_payload[4:]
+            d.raw_data_bytes = udp_payload[4:].astype('>u4').view(np.uint8)
+            d.shuffle_data_bytes = udp_payload[4:].view(np.uint8)
+            d.data_length = len(d.raw_data_bytes)
             result.append(d)
             if print_packet_info:
                 print 'Timestamp %08X, Ethernet packet= %i bytes' % (d.timestamp, d.ethernet_packet_size)
         return Ccoll(result)  # Ccoll allows attributes of the list elements to be accessed directly in parallel
 
-    def get_raw_data(self, port=0, number_pf_packets=5):
+    def get_raw_data(self, port=0, number_of_packets=5):
         """ Capture and return the raw data bytes from specified ``port``. Data is concatenated into a single vector. """
         if isinstance(port, (list, tuple)):
-            return np.array([np.concatenate(self.capture_packets(p, number_pf_packets).get_timestream_data()) for p in port])
+            return np.array([np.concatenate(self.capture_packets(p, number_of_packets).raw_data_bytes) for p in port])
         else:
-            return np.concatenate(self.capture_packets(port, number_pf_packets).get_timestream_data())
+            return np.concatenate(self.capture_packets(port, number_of_packets).raw_data_bytes)
 
 if __name__ == '__main__':
     if os.name == 'nt':
