@@ -224,6 +224,16 @@ class QSFP(object):
         """ Return the optical power (in Watts) received by each of the 4 channels"""
         return [self.read_word('RxPow%i' % chan) * 0.1e-6 for chan in [1 , 2, 3, 4]]
 
+    def get_uid(self):
+        if not self.is_present():
+            return None
+        return '%s_%s_SN%s' % (self.read_str('VendName'), self.read_str('VenPN'), self.read_str('VenSN'))
+
+    def get_serial_number(self):
+        if not self.is_present():
+            return None
+        return self.read_str('VenSN')
+
     def get_info(self):
         """
         Gets all qsfp info marked up in the qsfp eeprom map for each slot
