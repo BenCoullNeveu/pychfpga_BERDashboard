@@ -171,6 +171,9 @@ class Ccoll(object):
         results = async.async_call(self.values(), None, *args, **kwargs)
         return Ccoll(results, self._dict.keys() if self._has_keys else None)
 
+    def map(self, func, *args, **kwargs):
+        return Ccoll((func(i, *args, **kwargs) for i in self.values()), self._dict.keys() if self._has_keys else None)
+
     def getitem(self, index):
         return self.__getattr__('__getitem__')(index)
 
@@ -203,9 +206,11 @@ class Ccoll(object):
 
         if isinstance(keys, str):
             self._check_collection_attributes(keys)
-            return type(self)(self._dict.values(), keys=[getattr(obj, keys) for obj in self])
+            return Ccoll(self._dict.values(), keys=[getattr(obj, keys) for obj in self])
+        elif callable(keys):
+            return Ccoll(self._dict.values(), keys=[keys(obj) for obj in self])
         else:
-            return type(self)(self._dict.values(), keys=keys)
+            return Ccoll(self._dict.values(), keys=keys)
 
     def __getattr__(self, name):
         """Return a collection of attribute 'name' from each of the current
