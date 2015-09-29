@@ -429,13 +429,13 @@ class chFPGA_controller(IceBoardExtHandler):
 #        self._FMC_present = self._adc_board[0].is_present()
         self._logger.debug('%r: === Initializing Channelizers' % self )
         self.ANT.init(delay_table=adc_delay_table, fmc_present=self.ANT_FMC_IS_PRESENT)
-        self.ANT.status()
+        # self.ANT.status()
 
         self._logger.debug('%r: === Initializing 1st Crossbar' % self )
         if self.NUMBER_OF_CROSSBAR_OUTPUTS > 0:
             self._logger.debug('%r:  - 1st CROSSBAR' % self)
             self.CROSSBAR.init()
-            self.CROSSBAR.status()
+            # self.CROSSBAR.status()
         else:
             self._logger.warning("%r: There is no 1st CROSSBAR module in this firmware build (so there can't be data streamed to the correlators or GPU links!)" % self);
 
@@ -447,14 +447,14 @@ class chFPGA_controller(IceBoardExtHandler):
         self._logger.debug('%r: === Initializing 2nd Crossbar' % self)
         if self.NUMBER_OF_BP_SHUFFLE_LANES and self.NUMBER_OF_GPU_LINKS:
             self.CROSSBAR2.init()
-            self.CROSSBAR2.status()
+            # self.CROSSBAR2.status()
         else:
             self._logger.warning("%r: There is no 2nd CROSSBAR module in this firmware build" % self);
 
         self._logger.debug('%r: === Initializing 3rd Crossbar' % self)
         if self.NUMBER_OF_BP_SHUFFLE_LANES and self.NUMBER_OF_GPU_LINKS:  # *** Fixme
             self.CROSSBAR3.init()
-            self.CROSSBAR3.status()
+            # self.CROSSBAR3.status()
         else:
             self._logger.warning("%r: There is no 3rd CROSSBAR module in this firmware build" % self);
 
@@ -1492,16 +1492,16 @@ class chFPGA_controller(IceBoardExtHandler):
                     res['FMC%i ADC%i'%(fmc_number, adc_number)] = adc.get_temperature()
         return res
 
-    def init_crossbars(self, mode='raw', dsmap=range(16), frames_per_packet=3, cb1_lanes=16, cb1_bins=64, cb1_bypass=False, cb2_lanes=None, cb2_bins=1, cb2_bypass=False, bp_shuffle_bypass=1, crate_shuffle_bypass=1, remap=True):
-        """ Initializes the 1st, 2nd and 3rd crossbars.
+    def get_total_power(self):
+        return sum(self.get_motherboard_voltage(rail) * self.get_motherboard_current(rail) for rail in (self.RAIL.MB_VCC3V3, self.RAIL.MB_VCC5V5, self.RAIL.MB_VCC12V0))
 
-        `ib` is the IceBoard to be configured.
+
+    def init_crossbars(self, mode=None, dsmap=range(16), frames_per_packet=3, cb1_lanes=16, cb1_bins=64, cb1_bypass=False, cb2_lanes=None, cb2_bins=1, cb2_bypass=False, bp_shuffle_bypass=1, crate_shuffle_bypass=1, remap=True):
+        """ Initializes the 1st, 2nd and 3rd crossbars.
         """
         if not self.slot:
             raise RuntimeError('The slot number is unknown. Cannot route the appropriate bins to the target boards')
 
-        self.set_ant_reset(1)
-        self.set_corr_reset(1)
         cb1 = self.CROSSBAR
         cb2 = self.CROSSBAR2
         cb3 = self.CROSSBAR3
@@ -1690,12 +1690,13 @@ class chFPGA_controller(IceBoardExtHandler):
 
             cb2_lane_map = self.CROSSBAR2.compute_bp_shuffle_lane_map()
             cb2_bypass = False
-            cb2_lanes = [(0,15)] * number_of_cb2_bin_sel
+            cb2_lanes = [(0, 3), (0, 3)] # Every output of both bin sels get data from all the 4 sublanes they get.
             cb2_input_words_per_bin = cb1_output_words_per_bin
             cb2_input_bins = cb1_output_bins
             cb2_bins = 32
-            cb2_bin_spacing = 1
-            cb2_bin_select_map = [np.arange(cb2_bins)*cb2_bin_spacing for i in range(number_of_cb2_bin_sel)]
+            cb2_bin_spacing = 2
+            crate_number = self.crate.crate_number
+            cb2_bin_select_map = [np.arange(cb2_bins)*cb2_bin_spacing + (i^crate_number) for i in range(number_of_cb2_bin_sel)]
             cb2_output_words_per_bin = cb2_input_words_per_bin * 4
             cb2_output_bins = cb2_bins
 
@@ -1705,7 +1706,7 @@ class chFPGA_controller(IceBoardExtHandler):
             cb3_bypass = False
             cb3_input_words_per_bin = cb2_output_words_per_bin
             cb3_input_bins = cb2_output_bins
-            cb3_lanes = [(0,7)] * number_of_cb3_bin_sel
+            cb3_lanes = [(0, 7)] * number_of_cb3_bin_sel
             cb3_bins = 4
             cb3_bin_spacing = 8
             cb3_bin_select_map = [np.arange(cb3_bins)*cb3_bin_spacing+i for i in range(number_of_cb3_bin_sel)]
@@ -1723,13 +1724,25 @@ class chFPGA_controller(IceBoardExtHandler):
             raise ValueError('Unknown mode')
 
 
+        cb1_words_per_bin = cb1_lanes / 4
+        header_size = 16
+        packet_flags_size = 4
+        cb1_payload_size = header_size  + frames_per_packet * (cb1_words_per_bin * cb1_bins + cb1_bins + 1) * 4 + packet_flags_size
+        self._logger.info('%.32r: CROSSBAR1 output payload = %i bytes (%i words)' % (self, cb1_payload_size, (cb1_payload_size+3)//4))
+
+        # cb2_payload_size = header_size + packet_flags_size + frames_per_packet * (cb2_input_words_per_bin * cb2_bins* cb2_lanes + 1*cb2_bins*cb2_lanes/2 + cb2_lanes) * 4
+
+
+
         self._logger.info('%r: Configuring crossbars 1 & 2 with frames_per_packet=%i, cb1_lanes=%i, cb1_bins=%i, cb2_lanes=%s, cb2_bins=%i, cb2_bypass=%s, bp_shuffle_bypass=%s' % (self, frames_per_packet, cb1_lanes, cb1_bins, cb2_lanes, cb2_bins, bool(cb2_bypass), bool(bp_shuffle_bypass)))
 
+        # Put everything in reset
+        self.set_ant_reset(1)
+        self.set_corr_reset(1)
 
         #-------------------------
         # Configure CROSSBAR 1
         #-------------------------
-
         # Select the bins so slot 0 receives bins 0-63, slot 1 has 64-127 ... slot 15 has 960-1023
         for (cb1_output_lane, bs) in enumerate(cb1):
             bs.BYPASS = cb1_bypass
