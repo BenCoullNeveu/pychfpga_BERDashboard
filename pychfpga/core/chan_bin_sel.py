@@ -178,7 +178,7 @@ class ChanBinSel(Module_base):
 
         number_of_lanes = len(input_lanes)
         if number_of_lanes != self.NUMBER_OF_CROSSBAR_INPUTS:
-            raise ValueError('The numbe r of input lanes doe snot match the crossbar configuration')
+            raise ValueError('The number of input lanes doe snot match the crossbar configuration')
 
         input_lane_shapes = set(fa.shape for fa in input_lanes)
         if len(input_lane_shapes) == 1:
