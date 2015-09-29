@@ -67,18 +67,18 @@ class ANT_channel(object):
         self.fmc_present = fmc_present
 
         """ Initializes the antenna modules"""
-        self.logger.debug('Initializing modules for antenna #%i' % self.ant_number)
-        self.logger.debug('  - ADCDAQ')
+        # self.logger.debug('Initializing modules for antenna #%i' % self.ant_number)
+        # self.logger.debug('  - ADCDAQ')
         self.ADCDAQ.init(fmc_present)
         # self.logger.debug('  - SRCSEL')
         # self.SRCSEL.init()
-        self.logger.debug('  - FFT')
+        # self.logger.debug('  - FFT')
         self.FFT.init()
-        self.logger.debug('  - SCALER')
+        # self.logger.debug('  - SCALER')
         self.SCALER.init()
-        self.logger.debug('  - PROBER')
+        # self.logger.debug('  - PROBER')
         self.PROBER.init()
-        self.logger.debug('  - FUNCGEN')
+        # self.logger.debug('  - FUNCGEN')
         self.FUNCGEN.init()
         # self.logger.debug('  - INJECT')
         # self.INJECT.init()
@@ -168,14 +168,14 @@ class ANT_base(object):
 
         # Selects which clock is used to clock the channelizes based on whether the ADC card that normally provides the clock is present or not.
         if fmc_present[self.fpga.CHANNELIZERS_CLOCK_SOURCE]:
-            self.logger.info('Using the ADC to generate the channelizer clock')
+            self.logger.info('%.32r: Using the ADC to generate the channelizer clock' % self.fpga)
             self.fpga.GPIO.CHAN_CLK_SRC = 0 # uses the ADC clock to clock the channelizers
         else:
-            self.logger.info('Using the internal clock to generate the channelizer clock since the ADC is not available')
+            self.logger.info('%.32r: Using the internal clock to generate the channelizer clock since the ADC is not available' % self.fpga)
             self.fpga.GPIO.CHAN_CLK_SRC = 1 # uses the internal 200 MHz clock to clock the channelizer
 
         for (i, ant) in enumerate(self.ANT):
-            self.logger.debug('Initializing Antenna #%i %s' % (ant.ant_number, '' if fmc_present[i] else '(No ADC board)'))
+            self.logger.debug('%.32r: Initializing channelizer #%i %s' % (self.fpga, ant.ant_number, '' if fmc_present[i] else '(No ADC board)'))
             ant.init(fmc_present[i])
 
         if delay_table is not None:

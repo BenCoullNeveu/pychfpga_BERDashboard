@@ -61,7 +61,7 @@ class QPLL(Module_base):
 
     def init(self):
         """ Initializes the antenna modules"""
-        self.logger.info('Initializing BP Shuffle QPLL #%i' % self.instance_number)
+        # self.logger.info('Initializing BP Shuffle QPLL #%i' % self.instance_number)
 
 
     def status(self):
@@ -213,7 +213,7 @@ class GTX(Module_base):
 
     def init(self):
         """ Initializes the GTX CHANNEL block"""
-        self.logger.info('Initializing GTX_CHANNEL  #%i' % self.instance_number)
+        # self.logger.info('Initializing GTX_CHANNEL  #%i' % self.instance_number)
         self.configure()
         if self.RX_PRESENT: # Call only if there is a RX link, otherwise it will kill the GPU links
             self.reset_rx_equalizer()
@@ -408,12 +408,11 @@ class XGLink(Module_base):
     def init(self):
         """ Initializes the links"""
 
+        self.logger.debug('%.32r: Initializing GTX links (%i QUADs & %i GTXes' % (self.fpga, len(self.qpll), len(self.gtx)))
         for (i, qpll) in enumerate(self.qpll):
-            self.logger.debug('Initializing QUAD #%i' % i)
             qpll.init()
 
         for (i, gtx) in enumerate(self.gtx):
-            self.logger.debug('Initializing GTX #%i' % i)
             gtx.init()
 
     def reset_rx_equalizers(self):
@@ -491,20 +490,66 @@ class XGLinkArray(XGLink):
         self.NUMBER_OF_QSFP_LINKS = 4
 
 
-    def get_rx_lane_monitor(self, name):
-        if name not in self.RX_LANE_MONITOR_TABLE:
-            raise ValueError('Invalid lane monitor name. valid names are %s' % ','.join(self.RX_LANE_MONITOR_TABLE.keys()))
-        bitfield = self.get_bitfield(self.RX_LANE_MONITOR_TABLE[name])
+    def get_rx_lane_monitor(self, names, link_group=None):
 
-        mon = []
-        for lane in range(self.NUMBER_OF_LANES):
+        if isinstance(names, str):
+            names = [names]
+            is_list = False
+        else:
+            is_list = True
+
+        if link_group == 0:
+            lanes = range(0, self.NUMBER_OF_PCB_LANES)
+        elif link_group == 1:
+            lanes = range(self.NUMBER_OF_PCB_LANES, self.NUMBER_OF_PCB_LANES + self.NUMBER_OF_QSFP_LANES)
+        elif link_group is None:
+            lanes = range(self.NUMBER_OF_LANES)
+        else:
+            raise ValueError('Invalid link group')
+
+        bitfields = []
+        for name in names:
+            if name not in self.RX_LANE_MONITOR_TABLE:
+                raise ValueError('Invalid lane monitor name. valid names are %s' % ','.join(self.RX_LANE_MONITOR_TABLE.keys()))
+            bitfields.append(self.get_bitfield(self.RX_LANE_MONITOR_TABLE[name]))
+
+
+        mon = [list() for _ in names]
+        for lane in lanes:
             self.LANE_SEL = lane
-            mon.append(self.read_field(bitfield))
-        return mon
+            for i, bf in enumerate(bitfields):
+                mon[i].append(self.read_field(bf))
+
+        return mon if is_list else mon[0]
 
     def reset_stats(self):
         self.RESET_STATS = 1
         self.RESET_STATS = 0
+
+
+    def get_rx_error_count(self, link_group=None):
+        return self.get_rx_lane_monitor('ERROR_CTR', link_group)
+
+    def get_bp_rx_status(self, link_group=None):
+        """ Checks the status of the rx links. Returns a list of dict, each
+        dict containing a number of {error_type:error_info} for the
+        corresponding lane.
+        """
+        status = []
+        err, min_len, max_len, frame_det, rx_fifo, tx_fifo = self.get_rx_lane_monitor(['ERROR_CTR', 'MIN_FRAME_LENGTH', 'MAX_FRAME_LENGTH', 'FRAME_DETECT', 'RX_FIFO_OVERFLOW', 'TX_FIFO_OVERFLOW'],  link_group)
+        for lane in range(len(err)):
+            lane_status = {}
+            if err[lane]:
+                lane_status['ERR'] = err[lane]
+            if max_len[lane] != min_len[lane]:
+                lane_status['LEN'] = (min_len[lane], max_len[lane])
+            if not frame_det[lane]:
+                lane_status['FDET'] = 0
+            if rx_fifo[lane] or tx_fifo[lane]:
+                lane_status['FIFO'] = ','.join((['RX'] if rx_fifo[lane] else []) + (['TX'] if tx_fifo[lane] else []))
+            status.append(lane_status)
+        return status
+
 
     def print_rx_lane_monitor(self, reset=False):
         """
