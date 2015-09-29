@@ -272,7 +272,7 @@ class ShuffleCrossbar(Module_base):
 
         # get 8 bits of stream ID
         self.HEADER_CAPTURE_EN = 0
-        for i in range(16):
+        for i in range(self.NUMBER_OF_CROSSBAR_INPUTS):
             self.LANE_MONITOR_SEL = i
             sid.append(self.STREAM_ID_CAPTURE_DATA)
         self.HEADER_CAPTURE_EN = 1
@@ -283,7 +283,7 @@ class ShuffleCrossbar(Module_base):
 
         # get 8 bits of stream ID
         self.HEADER_CAPTURE_EN = 0
-        for i in range(16):
+        for i in range(self.NUMBER_OF_CROSSBAR_INPUTS):
             self.LANE_MONITOR_SEL = i
             frame.append(self.FRAME_NUMBER_CAPTURE_DATA)
         self.HEADER_CAPTURE_EN = 1
@@ -300,26 +300,68 @@ class ShuffleCrossbar(Module_base):
         'DATA_TIMEOUT': 'DATA_TIMEOUT_MON',
         }
 
-    def get_lane_monitor(self, name):
+    def get_lane_monitor(self, names):
         """
         Return a list describing the status of the specified flag for each
         lane.
         """
-        if name not in self.LANE_MONITOR_TABLE:
-            raise ValueError('Invalid lane monitor name. valid names are %s' % ','.join(self.LANE_MONITOR_TABLE.keys()))
-        bitfield = self.get_bitfield(self.LANE_MONITOR_TABLE[name])
+        if isinstance(names, str):
+            names = [names]
+            is_list = False
+        else:
+            is_list = True
 
-        mon = []
+        bitfields = []
+        for name in names:
+            if name not in self.LANE_MONITOR_TABLE:
+                raise ValueError('Invalid lane monitor name. valid names are %s' % ','.join(self.LANE_MONITOR_TABLE.keys()))
+            bitfields.append(self.get_bitfield(self.LANE_MONITOR_TABLE[name]))
+
+        mon = [[] for _ in bitfields]
         for lane in range(self.NUMBER_OF_CROSSBAR_INPUTS):
             self.LANE_MONITOR_SEL = lane
-            mon.append(bool(self.read_field(bitfield)))
-        return mon
+            for i, bf in enumerate(bitfields):
+                mon[i].append(self.read_field(bf))
 
-    def print_crossbar2_monitor(self, reset=True):
+        return mon if is_list else mon[0]
+
+    def get_align_status(self):
+        status = []
+        err_names = ['TLAST', 'TVALID', 'DISCARD', 'MISSING','FIFO','TIMEOUT']
+        errors = self.get_lane_monitor(['BAD_TLAST', 'BAD_TVALID', 'DISCARDED_DATA', 'MISSING_FRAME', 'ALIGN_FIFO_OVERFLOW', 'DATA_TIMEOUT'])
+        for lane in range(len(errors[0])):
+            status.append({err_names[errno]:err[lane] for (errno, err) in enumerate(errors) if err[lane]})
+        return status
+
+    def get_frame_alignment_status(self):
+        frame_numbers = self.capture_frame_number()
+        # is_aligned = len(set(frame_numbers)) == 1
+        status = [{'DELTA':f-frame_numbers[0]} if f-frame_numbers[0] else {} for (lane, f) in enumerate(frame_numbers)]
+        return status
+
+    def get_bin_sel_status(self):
+        status = []
+        for bs in self.BIN_SEL:
+            err = {}
+            if bs.FIFO_OVERFLOW:
+                err['DFIFO'] = 1
+            if bs.FLAGS_FIFO_OVERFLOW:
+                err['FFIFO'] = 1
+            status.append(err)
+        return status
+
+    def reset_stats(self):
+        self.LANE_MONITOR_RESET = 1
+        self.LANE_MONITOR_RESET = 0
+        for bs in self.BIN_SEL:
+            bs.FIFO_OVERFLOW_RESET = 1
+            bs.FIFO_OVERFLOW_RESET = 0
+
+
+    def print_crossbar_monitor(self, reset=True):
 
         if reset:
-            self.LANE_MONITOR_RESET = 1
-            self.LANE_MONITOR_RESET = 0
+            self.reset_stats()
             self.fpga.BP_SHUFFLE.reset_stats()
 
         lane_range = range(self.NUMBER_OF_CROSSBAR_INPUTS)
