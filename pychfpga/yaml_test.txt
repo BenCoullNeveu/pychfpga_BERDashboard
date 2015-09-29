@@ -10,3 +10,17 @@ hwm1: !HardwareMap
 
 hwm2: !HardwareMap
    - !IceBoardPlus { hostname: "10.10.10.71", handler_name: "chFPGA_controller", subarray: 77 }  # McGill crate slot 1
+
+mcgill:
+   quad:
+       no_mezz: True
+       icecrates: [3, 7]
+   nodes:
+       gpu_nodes: [ '10.10.10.200' ]
+   ps:
+       power_supplies: ['10.10.10.220', '10.10.10.222']
+   test1:
+      test2: 10
+   test3:
+      test4: 20
+      test5: 30

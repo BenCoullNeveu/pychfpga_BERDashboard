@@ -138,15 +138,15 @@ class ChimeArray(object):
             specified, the system will assume that the FPGA is reached trough
             the same interface that reaches the ARM processor.
 
-        yamlfile : String containg the name of a YAML file to load in order to
-            provide file-based configuration data accessible to the
-            applicaton.
+        yaml or yaml_file or yamlfile: List of strings describing the name of a YAML files to load. Name of objects can be optionnally specified by preceding them with a semicolon.
+            Multiple files can be specified by specifying multiple --yaml argument.
 
-            If the YAML file contains a single hardware map or contains the
-            hardware map specified by the ``hwm_name`` parameter, then the
-            hardware map will be initialized with it. The crate, slot and
-            serial number information will be automatically obtained from the
-            hardware if not specified in the YAML file.
+
+       yaml_objects : Name (string) of the objects to parse in the yaml file
+            in the format object1.object2... . Default is the root object '.'.
+
+       hwm_name : Name (string) of the hardware map to load from the YAML file (the
+            YAML file must be structured as a dictionary)
 
 
         iceboards : List of strings corresponding to the serial number, the IP
@@ -190,8 +190,6 @@ class ChimeArray(object):
                 ``icecrates=[]`` will select all boards on the network
 
 
-        hwm_name : Name (string) of the hardware map to load from the YAML file (the
-            YAML file must be structured as a dictionary)
 
         Default Iceboard set
 
@@ -229,6 +227,20 @@ class ChimeArray(object):
         enable_gpu_link : Enables the GPU link transmission
 
 
+        YAML file parsing
+        -----------------
+
+        If the YAML object is a hardware map or contains the
+        hardware map specified by the ``hwm_name`` parameter, then the
+        hardware map will be initialized with it. The crate, slot and
+        serial number information will be automatically obtained from the
+        hardware if not specified in the YAML file.
+
+        Examples:
+            chime_array --yaml_file file1.yaml:mcgill.power_supplies mcgill.crate7 mcgill.nodes
+
+            ca = ChimeArray(yaml_file='file1.yaml:mcgill.power_supplies mcgill.crate7 mcgill.nodes')
+
         """
 
         # This is the bitfile that is generated if implementing the Vivado
@@ -254,7 +266,7 @@ class ChimeArray(object):
         parser.add_argument('--stderr_log_level', action='store', type=str, choices=log_levels, default='warn', help='stderr (console) Logging level')
         parser.add_argument('--if_ip', action='store', type=str, default=None, help='IP address of adapter through which the connection to the FPGA will be established. This is used solely for direct UDP communications with the FPGA. If not specified, the system will use the same interface that communicates with the ARM processor.')
 
-        parser.add_argument('-y', '--yamlfile','--yaml_file', action = 'store', type=str, default=None,  help='Yaml file with list of boards and their respective IP addresses and handlers.')
+        parser.add_argument('-y', '--yamlfile','--yaml_file', '--yaml', action = 'store', type=str, nargs='+', default=None,  help='Yaml file with list of boards and their respective IP addresses and handlers.')
         parser.add_argument('--hwm_name', action = 'store', type=str, default=None,  help='Name of the hardware map to load from the YAML file (the YAML file must be structured as a dictionary)')
         parser.add_argument('-i', '--iceboards', action='store', nargs='*', type=str, default=[], help="Space-separated list of iceboards, which can be specified byip address (e.g. 10.10.10.7), hostname (e.g. iceboard0007.local) if a mDNS client is running locally, or by serial number (e.g. 0007 or simply 7) in which case active mDNS discovery will be done")
         parser.add_argument('-c', '--icecrates', action='store', nargs='*', type=str, default=[], help="Space-separated list of icecrate serial numbers.  Discover and adds all boards in the specified serial number")
@@ -333,20 +345,69 @@ class ChimeArray(object):
         # accessible by the user, which includes hardware maps that will be
         # extracted below
         if args.yamlfile:
-            self.logger.info('%.32r: Loading YAML file %s' % (self, args.yamlfile))
-            print 'Loading YAML file %s' % args.yamlfile
-            with open(args.yamlfile, 'rb') as yamlfile:
+            yaml_args = ' '.join(args.yamlfile).split(':')
+            yaml_filename = yaml_args[0]
+            print yaml_filename
+            if len(yaml_args) == 1:
+                yaml_object_paths = ['']
+            elif len(yaml_args) == 2:
+                yaml_object_paths = yaml_args[1].split()
+            else:
+                raise ValueError('Only one filename can be specified per --yaml option')
+
+            self.logger.info('%.32r: Loading YAML file %s' % (self, yaml_filename))
+            print 'Loading YAML file %s' % yaml_filename
+            with open(yaml_filename, 'rb') as yamlfile:
                 self.yaml = load_yaml(yamlfile)
         else:
                 self.yaml = None
+                yaml_object_paths = []
 
-        # If the YAML file contains contrictor arguments, add them to the argument list
-        chimearray_params_dict_name = 'chimearray_params'
-        if isinstance(self.yaml, dict) and chimearray_params_dict_name in self.yaml:
-            for (k, v) in self.yaml[chimearray_params_dict_name].items():
-                if not hasattr(args, k):
-                    raise KeyError("YAML parameter '%s' does not exist" % k)
-                setattr(args, k, v)
+        self.hwm = None
+        top_node = self.yaml
+        for yaml_object_path in yaml_object_paths:
+            # if not yaml_object_path:
+            #     continue
+            node = top_node
+            for item_name in yaml_object_path.split('.'):
+                if not item_name:
+                    node = top_node
+                else:
+                    top_node = node
+                    if item_name in node:
+                        node = node.get(item_name)
+                    else:
+                        raise RuntimeError("Unknown object '%s'" % yaml_object_path)
+            self.logger.info('%.32r: Loading YAML elements from object %s' % (self, yaml_object_path))
+            print 'Loading YAML elements from object %s' % yaml_object_path
+
+            if isinstance(node, Session):
+                self.hwm = self.yaml
+            elif isinstance(node, dict):
+                for (k, v) in node.items():
+                    if k in args:
+                        arg = getattr(args, k)
+                        if isinstance(arg, list) and isinstance(v, list):
+                            arg.extend(v)
+                            print 'Extended %s=%s' % (k, arg)
+                        elif isinstance(arg, list):
+                            arg.append(v)
+                            print 'Appended %s=%s' % (k, arg)
+                        else:
+                            print 'Overwriting argument %s=%s to %s=%s' % (k, arg, k, v)
+                            setattr(args, k, v)
+                    else:
+                        print 'Creating %s=%s' % (k, v)
+                        setattr(args, k, v)
+            else:
+                raise RuntimeError("Target element '%s' must be either a hardware map or a dictionary" % yaml_object)
+        # # If the YAML file contains contrictor arguments, add them to the argument list
+        # chimearray_params_dict_name = 'chimearray_params'
+        # if isinstance(self.yaml, dict) and chimearray_params_dict_name in self.yaml:
+        #     for (k, v) in self.yaml[chimearray_params_dict_name].items():
+        #         if not hasattr(args, k):
+        #             raise KeyError("YAML parameter '%s' does not exist" % k)
+        #         setattr(args, k, v)
 
         # Fix up a few parameters for convenience
         if isinstance(args.iceboards, (str, int)):
@@ -362,24 +423,24 @@ class ChimeArray(object):
         # -------------------------------
         # If a hardware map exists in the yaml file, use it, otherwise create a new blank one
         # If the yaml file is a single hardware map, get it
-        self.hwm = None
-        if isinstance(self.yaml, Session):
-            self.hwm = self.yaml
-            self.yaml = None
-        elif isinstance(self.yaml, list):
-            hwm = [obj for obj in self.yaml if isinstance(obj, Session)]
-            if len(hwm) == 1:
-                self.hwm = hwm[0]
-                self.yaml.remove(self.hwm)
-            elif len(hwm) > 1:
-                raise RuntimeError("YAML file is a list containing multiple hardware map and I don't know which one to use")
-        elif isinstance(self.yaml, dict) and args.hwm_name:
-            if args.hwm_name in self.yaml:
-                hwm = self.yaml.pop(args.hwm_name)
-                if not isinstance(self.yaml, Session):
-                    raise RuntimeError("YAML entry %s is not a hardware map" % args.hwm_name)
-            else:
-                raise RuntimeError("YAML does not contain a hardware map named %s" % args.hwm_name)
+        # self.hwm = None
+        # if isinstance(self.yaml, Session):
+        #     self.hwm = self.yaml
+        #     self.yaml = None
+        # elif isinstance(self.yaml, list):
+        #     hwm = [obj for obj in self.yaml if isinstance(obj, Session)]
+        #     if len(hwm) == 1:
+        #         self.hwm = hwm[0]
+        #         self.yaml.remove(self.hwm)
+        #     elif len(hwm) > 1:
+        #         raise RuntimeError("YAML file is a list containing multiple hardware map and I don't know which one to use")
+        # elif isinstance(self.yaml, dict) and args.hwm_name:
+        #     if args.hwm_name in self.yaml:
+        #         hwm = self.yaml.pop(args.hwm_name)
+        #         if not isinstance(self.yaml, Session):
+        #             raise RuntimeError("YAML entry %s is not a hardware map" % args.hwm_name)
+        #     else:
+        #         raise RuntimeError("YAML does not contain a hardware map named %s" % args.hwm_name)
 
         # If no hardware map was found in the YAML file, create an empty one
         if not self.hwm:
@@ -520,11 +581,16 @@ class ChimeArray(object):
 
         print
         print 'Updated hardware map, with mezzanine info:'
+
+
         for i in self.ib:
             mezz_name = ['%s SN%s' % (m.__ipmi_part_number__, m.serial) if m else 'None' for m in [i.mezzanine.get(1, None), i.mezzanine.get(2, None)]]
             crate_name = '%s SN%s' % (i.crate.part_number, i.crate.serial) if i.crate else 'No crate'
             print 'Crate %s, slot %2s: Iceboard SN%s at %s (ping =%s), Mezz1=%s, Mezz2=%s' % (crate_name, i.slot, i.serial, i.hostname, i.ping(), mezz_name[0], mezz_name[1])
         self.print_flush()
+
+        self.print_iceboard_table(lambda ib:ib.serial, grid=False)
+
 
         print
         if self.ib and args.open > -1:
@@ -630,19 +696,41 @@ class ChimeArray(object):
             string +='   Crate SN%s, slot %2i: Iceboard SN%s at %s (ping =%s), Mezz1=%s, Mezz2=%s\n' % (i.crate.serial if i.crate else None, i.slot, i.serial, i.hostname, i.ping(), mezz[0], mezz[1])
         return string
 
-    def set_operational_mode(self, mode):
+    def set_operational_mode(self, mode, frames_per_packet=1):
         """
         Set the operational mode of the array.
 
         'raw_time': Each boards stream raw 8-bit time samples from channels
                     0-7 to the corresponding GPU ports.
         """
+        clock_sources = ib.index_by(repr).get_clock_source()
+        target_clock_source = 'CLOCK_SOURCE_BP'
+        if set(clock_sources.values()) != set([target_clock_source]):
+            raise RuntimeError('The following IceBoards are not configured to use the backplane clock: %s' % (', '.join(repr(ib) for (ib, cs) in clock_sources.items() if cs != target_clock_source)))
 
         if mode == 'raw_time':
             self.ib.set_fft_bypass(True)
             self.ib.set_scaler_bypass(True)
-            self.init_shuffle(mode='chan8')
+            self.init_shuffle(mode='chan8', frames_per_packet=frames_per_packet)
 
+        elif mode in ['shuffle256', 'shuffle512']:
+            self.ib.BP_SHUFFLE.set_tx_power(13)
+            self.ib.CROSSBAR3.SOF_WINDOW_STOP = 100
+            self.ib.CROSSBAR3.TIMEOUT_PERIOD = 0
+            self.ib.BP_SHUFFLE.reset_rx_equalizers()
+            self.init_shuffle(mode=mode, frames_per_packet=frames_per_packet)
+            self.ib.BP_SHUFFLE.reset_stats()
+            self.ib.CROSSBAR2.reset_stats()
+            self.ib.CROSSBAR3.reset_stats()
+        else:
+            raise ValueError('Unknown operational mode')
+
+    def set_test_pattern(self):
+        for ic in self.ic:
+            for (slot, ib) in ic.slot.items():
+                for ch in range(16):
+                    ib.set_funcgen_function('ab', a=(slot-1)<<4, b=ch<<4, channels=[ch])
+                ib.set_data_source('funcgen')
 
     def set_sync_method(self, method='distributed_time', source='bp_time', master=None, master_time_source=None):
         """ Sets the global syncing method, and setup the boards accordingly.
@@ -1464,52 +1552,66 @@ class ChimeArray(object):
                          row_labels=row_labels, col_labels=col_labels, corner_label=corner_label,
                          line_sep=grid, max_width=width)
 
-    def print_bp_shuffle_info(self, reset_stats=False, grid=True):
-        slots = Ccoll(self.ib, self.ib.slot) # Get iceboards indexed by slot number
+    def print_shuffle_status(self, reset_stats=False, verbose=1, grid=False):
 
-        crate = set(slots.crate)
-        if len(crate) == 1:
-            crate = crate.pop()
-        else:
-            raise RuntimeError('Sorry, this method currently can work on one and only one crate. The currently active boards either have no crates or span multiple crates %s' % list(set(slots.crate)))
+        for crate in self.ic:
+            slots = crate.slot # Get iceboards indexed by slot number
 
-        slot_range = range(1,17)
-        lane_range = range(16)
+            slot_range = range(1, crate.NUMBER_OF_SLOTS+1)
 
-        info = {}
-        for dest_slot in slot_range:
-            if dest_slot in slots.keys():
-                bp = slots[dest_slot].BP_SHUFFLE
-                if reset_stats:
-                    bp.reset_stats()
-                computed_source = {dest_lane: crate.get_matching_tx((dest_slot, dest_lane)) for dest_lane in lane_range}
-                rx_errors = {dest_lane: v for dest_lane, v in enumerate(bp.get_rx_lane_monitor('ERROR_CTR'))}
-                rx_fifo_overflow = {dest_lane: v for dest_lane, v in enumerate(bp.get_rx_lane_monitor('FIFO_OVERFLOW'))}
-                rx_max_frame_length = {dest_lane: v for dest_lane, v in enumerate(bp.get_rx_lane_monitor('MAX_FRAME_LENGTH'))}
-                info[dest_slot] = {}
-                for dest_lane in lane_range:
-                    data_expected = computed_source[dest_lane][0] in slots.keys()
-                    cell = ('S%02iL%02i\n' if data_expected else '(S%02iL%02i)\n') % computed_source[dest_lane]# if not cap_src or data_not_expected or not valid_src else ''
-                    cell += '%s\n' % bool(rx_fifo_overflow[dest_lane])
-                    cell += '%05i\n' % rx_errors[dest_lane]
-                    cell += '%i' % rx_max_frame_length[dest_lane]
-                    info[dest_slot][dest_lane] = cell
-            else:
-                info[dest_slot] = {dest_lane: '---' for dest_lane in lane_range}
+            info = {}
+            for (slot, ib) in crate.slot.items():
+                col_data = []
+                errs = []
+                # Gather status from the backplane PCB and QSFP links
+                for link_group in range(2):
+                    errs.append(ib.BP_SHUFFLE.get_bp_rx_status(link_group))
 
-        print 'Backplane shuffle RX status'
+                # Gather status from the crossbars
+                for cb in [ib.CROSSBAR2, ib.CROSSBAR3]:
+                    errs.append(cb.get_align_status())
+                    errs.append(cb.get_frame_alignment_status())
+                    errs.append(cb.get_bin_sel_status())
 
-        corner_label = 'Slot->\nS/N ->\n\\|/Lane'
-        slot_labels = ['SN%s'% slots[s].serial if s in slots.keys() else 'N/A' for s in slot_range]
-        col_labels = ['%i\n%s' % (slot_range[i], slot_labels[i]) for i in range(len(slot_range))]
-        row_labels = ['L%02i From\n    FIVO_OVF\n    ERR_CTR\n    FRAME_MAX\n' % lane for lane in lane_range]
-        self.print_table(info, row_labels=row_labels, col_labels=col_labels, corner_label=corner_label, line_sep=grid)
+                for err in errs:
+                    if err is None:
+                        col_data.append('?')
+                    elif not verbose:
+                        col_data.append(('-','ERR')[bool(any(err))])
+                    elif verbose == 1:
+                        col_data.extend(('-', 'ERR')[bool(e)] for e in err)
+                    else:
+                        col_data.extend(('\n'.join(['%s=%s' % (k,v) for (k,v) in e.items()]) or '-') for e in err)
+                info[slot] = col_data
+            print 'Crate %s Crossbar and Shuffle status' % crate.get_id()
+
+            # Fill in columns for any missing board in the crate
+            number_of_rows = len(info.itervalues().next())
+            for slot in slot_range:
+                if slot not in info.keys():
+                    info[slot] = [''] * number_of_rows
+
+            # Print the table
+            corner_label = 'Slot->\nS/N ->\n\\|/Lane'
+            slot_labels = ['SN%s'% slots[s].serial if s in slots.keys() else 'N/A' for s in slot_range]
+            col_labels = ['%i\n%s' % (slot_range[i], slot_labels[i]) for i in range(len(slot_range))]
+            # row_labels = ['BP PCB Rx\nBP QSFP Rx\nCB2 FIFO\nCB2 ALIGN\nCB2 FRAMEnCB3 FIFO\nCB3 ALIGN\nCB3 FRAME\n']
+            row_labels = []
+            for label, lanes in [('BP PCB Rx', 16), ('BP QSFP Rx', 8), ('CB2 ALIGN', 16), ('CB2 FRAME #', 16), ('CB2 BIN_SELs', 2), ('CB3 ALIGN', 8), ('CB3 FRAME #',8), ('CB3 BIN SELs', 8)]:
+                if verbose and lanes:
+                    row_labels += ['%s L%02i' % (label, lane) for lane in range(lanes)]
+                else:
+                    row_labels += [label]
+            # return info
+            self.print_table(info, row_labels=row_labels, col_labels=col_labels, corner_label=corner_label, line_sep=grid)
 
     def print_table(self, data=None,
                     row_labels=None, col_labels=None, corner_label=None,
                     row_keys=None, col_keys=None,
                     max_width=180, line_sep=False):
-
+        """
+        Prints a nicely formatted table of data, where data is a list of column contents.
+        """
 
         # If we provide no row/col keys, and labels are dict, use the label keys as the row/col keys
         if col_keys is None:
@@ -1531,7 +1633,7 @@ class ChimeArray(object):
                     if row_keys is None:
                         row_keys = keys
                     elif keys != row_keys:
-                        raise ValueError('Row keys are not identical for every row')
+                        raise ValueError('Row keys are not identical for every column')
 
         data = [[col_data[row_key] for row_key in row_keys] for col_data in data]
 
@@ -1592,6 +1694,37 @@ class ChimeArray(object):
             if not line_sep: # Make sure we have a bottom line if we didn't already printed one
                     print line_sep_str
 
+    def print_iceboard_table(self, func, row_labels=None, grid=False):
+        if not len(self.ic):
+            print '[ There are no crates in the hardware map ]'
+            return
+        corner_label = 'Crate \\ Slot\n'
+        slot_range = range(1, max(self.ic.NUMBER_OF_SLOTS)+1)
+        col_labels = ['%i' % s for s in slot_range]
+        if row_labels is None:
+            row_labels = list(self.ic.get_id())
+        data = []
+        for slot in slot_range:
+            col_data = []
+            for crate in self.ic:
+                if slot in crate.slot.keys():
+                    cell = func(crate.slot[slot])
+                else:
+                    cell = '-'
+                col_data.append(cell)
+            data.append(col_data)
+        self.print_table(data, row_labels=row_labels, col_labels=col_labels, corner_label=corner_label, line_sep=grid)
+
+    def print_iceboard_temperatures(self):
+        self.print_iceboard_table(lambda ib: '%3.1f' % ib.get_temperatures()['FPGA_core'])
+
+    def print_iceboard_power(self):
+        self.print_iceboard_table(lambda ib: '%0.1f' % ib.get_total_power())
+
+    def print_iceboard_qsfp(self):
+        self.print_iceboard_table(lambda ib: '\n'.join(ib.hw.qsfp.get_serial_number().map(str)), grid=1)
+
+
     def print_frame_info(self):
         ts = []
         sid = []
@@ -1615,7 +1748,7 @@ class ChimeArray(object):
         for i in range(len(ts)):
             print 'Lane %02i: Stream ID=0x%02x, Frame = 0x%02x (delta = %i)' % (i, sid[i], ts[i], ts[i]-ts[0])
 
-    def plot_rack_temperatures(self, figure_number=1):
+    def plot_crate_temperatures(self, figure_number=1):
 
         sensor = self.ib[0].TEMPERATURE_SENSOR.MB_FPGA_DIE
 
