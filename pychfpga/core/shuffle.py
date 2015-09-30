@@ -224,7 +224,7 @@ class GTX(Module_base):
         # self.RXPOLARITY=0
         self.TXPRBSSEL=0
         self.RXPRBSSEL=0
-        self.TXDIFFCTRL = 10
+        self.TXDIFFCTRL = 6
         self.TXPRECURSOR = 0b00000 #DFE cannot compensate pre-cursor
         self.TXPOSTCURSOR = 0b00000
         self.RXMONITORSEL = 1 # 1=AGC, 2=UL, 3=VP loop
@@ -252,24 +252,27 @@ class Shuffle(Module_base):
     # RESET                 = BitField(CONTROL, 0, 2, doc='The cores are reset when this signal goes from 1 to 0')
 
     # XGLINK common control and status registers
-    CORE_RESET         = BitField(CONTROL, 0, 7, doc='The GTX cores are reset when this signal goes from 1 to 0')
-    TX_DATA_MSB        = BitField(CONTROL, 3, 0, width=16, doc='24 most significant bits of the data word that can be sent manually. This is common to all lanes.')
+    CORE_RESET      = BitField(CONTROL, 0, 7, doc='The GTX cores are reset when this signal goes from 1 to 0')
+    TX_DATA_MSB     = BitField(CONTROL, 3, 0, width=16, doc='24 most significant bits of the data word that can be sent manually. This is common to all lanes.')
 
-    NUMBER_OF_QUADS    = BitField(STATUS, 0, 5, width=3, doc='Number of QUADS (QPLLs)')
-    NUMBER_OF_LINKS    = BitField(STATUS, 0, 0, width=5, doc='Number of links')
-    RESET_PULSE        = BitField(STATUS, 1, 5, doc='debug')
-    RESET_DONE         = BitField(STATUS, 1, 4, doc='debug')
-    QPLL_RESET_MON     = BitField(STATUS, 1, 4, doc='debug')
+    NUMBER_OF_QUADS = BitField(STATUS, 0, 5, width=3, doc='Number of QUADS (QPLLs)')
+    NUMBER_OF_LINKS = BitField(STATUS, 0, 0, width=5, doc='Number of links')
+    RESET_PULSE     = BitField(STATUS, 1, 5, doc='debug')
+    RESET_DONE      = BitField(STATUS, 1, 4, doc='debug')
+    QPLL_RESET_MON  = BitField(STATUS, 1, 3, doc='debug')
 
     # backplane link-specific registers
-    TX_TEST_ENABLE        = BitField(CONTROL, 4+0, 1, doc='')
-    RESET_STATS           = BitField(CONTROL, 4+0, 3, doc='')
-    LANE_SEL              = BitField(CONTROL, 4+0, 4, width=4, doc='')
+    BYPASS          = BitField(CONTROL, 4+0, 0, doc='Completely bypasses the backplane shuffle and connects CROSSBAR1 output directly to CROSSBAR2 input.')
+    TX_TEST_ENABLE  = BitField(CONTROL, 4+0, 1, doc='')
+    RESET_STATS     = BitField(CONTROL, 4+0, 3, doc='')
+    LANE_SEL        = BitField(CONTROL, 4+0, 4, width=4, doc='')
 
-    FIFO_OVERFLOW         = BitField(STATUS, 2+0, 0, doc='Sticky fifo overflow bit for the selected lane. Is cleared when RESET_STATS=1.')
-    RX_ERROR_CTR          = BitField(STATUS, 2+1, 0, width=8, doc='Current value of the error counter for the selected lane. Saturates at 255. Is cleared when RESET_STATS=1.')
+    FIFO_OVERFLOW   = BitField(STATUS, 2+0, 0, doc='Sticky fifo overflow bit for the selected lane. Is cleared when RESET_STATS=1.')
+    RESET_MON       = BitField(STATUS, 2+0, 1, doc='State of the reset line')
+    TEST_CTR        = BitField(STATUS, 2+0, 2, width=6, doc='State of the test pattern counter')
+    RX_ERROR_CTR    = BitField(STATUS, 2+2, 0, width=16, doc='Current value of the error counter for the selected lane. Saturates at 255. Is cleared when RESET_STATS=1.')
 
-    def __init__(self, fpga_instance, base_address, address_increment, verbose = 1):
+    def __init__(self, fpga_instance, base_address, address_increment, verbose=1):
         # self.fpga = fpga
         self.logger = logging.getLogger(__name__)
         self.verbose = verbose

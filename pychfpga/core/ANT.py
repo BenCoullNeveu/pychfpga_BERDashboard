@@ -205,7 +205,7 @@ class ANT_base(object):
         elif width == 8:
             is_four_bits = 0
         else:
-            raise self.fpga.chFPGAException('Number of bits %i is invalid for the channelizers. Only 4 or 8 is allowed' % width)
+            raise ValueError('Number of bits %i is invalid for the channelizers. Only 4 or 8 is allowed' % width)
 
         # Set the channelizer data width
         for ch in self.ANT:
@@ -227,7 +227,7 @@ class ANT_base(object):
         elif four_bits == set([1]):
             return 4
         else:
-            raise self.fpga.chFPGAException("The channelizers are not set to the same data width.")
+            raise RuntimeError("The channelizers are not set to the same data width.")
 
 
     def print_ramp_errors(self):

@@ -16,8 +16,7 @@ init_in     = "ch_master_daemon.conf"
 
 ext_chrx = Extension("chrx", 
                    ["chrx/acq.c", "chrx/chrx.c", "chrx/disc.c", \
-                    "chrx/fpga_acq.c", "chrx/frame.c", \
-                    "chrx/gpu_acq.c", "chrx/util.c"],
+                    "chrx/frame.c", "chrx/gpu_acq.c", "chrx/util.c"],
                    include_dirs = ['/opt/anaconda/include'],
                    libraries = ["hdf5", "hdf5_hl", "m", "pthread"],
                    library_dirs = ['/opt/anaconda/lib'])
@@ -27,9 +26,10 @@ ext_chrx = Extension("chrx",
 setup(name = "ch_acq",
       version = "1.0",
       packages = ["pychfpga", "pychfpga.core", "pychfpga.common", \
-                  "pychfpga.icecore", "pychfpga.MGADC08", \
+                  "pychfpga.MGADC08", \
+                  "post_acq"
                   ],
-      ext_modules = [ext_chrx, ],
+      ext_modules = [ext_chrx],
       cmdclass = {'build_ext': build_ext},
      )
 

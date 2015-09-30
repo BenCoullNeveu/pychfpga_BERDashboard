@@ -1,0 +1,85 @@
+<!doctype html>
+<html ng-app="iceboardApp" lang="en">
+	<head>
+		<meta charset="utf-8">
+		<meta http-equiv="X-UA-Compatible" content="IE=edge">
+		<meta name="viewport" content="width=device-width, initial-scale=1">
+
+		<title>Winterland IceBoard</title>
+
+		<script src="js/jquery-2.1.1.min.js"></script>
+		<script src="js/angular.js"></script>
+		<script src="js/angular-route.js"></script>
+		<script src="js/angular-animate.js"></script>
+		<script src="js/bootstrap.min.js"></script>
+		<script src="js/tuber.js"></script>
+
+		<script src="js/app.js"></script>
+
+		<script src="js/app-index.js"></script>
+		<script src="js/app-navbar.js"></script>
+
+		<script src="js/app-log.js"></script>
+		<script src="js/app-housekeeping.js"></script>
+		<script src="js/app-ipmi.js"></script>
+		<script src="js/app-fpga.js"></script>
+		<script src="js/app-mezzanines.js"></script>
+
+		<link href="css/bootstrap.min.css" rel="stylesheet">
+
+	</head>
+
+	<body role="document">
+
+		<!-- Navbar -->
+		<div class="navbar navbar-default" role="navigation" ng-controller="navbarController">
+			<div class="container-fluid">
+				<div class="navbar-header">
+					<button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target=".navbar-collapse">
+						<span class="sr-only">Toggle navigation</span>
+						<span class="icon-bar"></span>
+						<span class="icon-bar"></span>
+						<span class="icon-bar"></span>
+					</button>
+					<a class="navbar-brand" href="/">IceBoard</a>
+					<a class="navbar-brand" href="{{ personality }}/">{{ personality }}</a>
+				</div>
+				<div class="navbar-collapse collapse">
+					<ul class="nav navbar-nav">
+
+						<!-- Status -->
+						<li class="dropdown">
+							<a class="dropdown-toggle" data-toggle="dropdown">Status<b class="caret"></b></a>
+							<ul class="dropdown-menu">
+								<li><a href="#status/log">System Logs</a></li>
+								<li><a href="#status/housekeeping">Housekeeping</a></li>
+								<li><a href="#status/ipmi">IPMI Data</a></li>
+								<li><a href="#status/fpga">FPGA</a></li>
+								<li><a href="#status/mezzanines">Mezzanines</a></li>
+							</ul>
+						</li>
+
+						<!-- Documentation -->
+						<li class="dropdown">
+							<a class="dropdown-toggle" data-toggle="dropdown">Documentation<b class="caret"></b></a>
+							<ul class="dropdown-menu">
+								<li><a href="#documentation/design">Design References</a></li>
+								<li><a href="#documentation/links">Links</a></li>
+								<li><a href="#documentation/contacts">Contacts</a></li>
+							</ul>
+						</li>
+
+					</ul>
+				</div><!--/.nav-collapse -->
+			</div>
+		</div>
+
+		<!-- Content -->
+		<div class="container" id="main">
+			<div ng-view></div>
+		</div>
+
+	</body>
+</html>
+
+<!-- vim: set ts=2 sw=2: -->

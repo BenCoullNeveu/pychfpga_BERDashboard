@@ -11,7 +11,7 @@ REFCLK.py module
     2011-09-25 JFC: Modified to support new method on incrementing phase (pulse PS_EN unstead of PS_CLK)
     2011-11-15 JFC: Lots of modifications done to debug SYNC clock alignment.
     2012-05-xx JFC: Added disabling SYNC detect when the board is not there, because a floating input create spurious clocks and cause intermittent resets
-    2012-09-05 JFC: Updated registers to match firmware. Includes a few status registers to debug SYNC generation mechanism. Added ENABLE_SYNC_GENERATION flag handling to fix spurious generation of SERDES_RST when FMC boar dis not present (the software FORCE_SYNC and REFCLK noise got the SYNC state machine started and left it in SERDES_RST=1 state)
+    2012-09-05 JFC: Updated registers to match firmware. Includes a few status registers to debug SYNC generation mechanism. Added ENABLE_SYNC_GENERATION flag handling to fix spurious generation of SERDES_RST when FMC boar dis not present (the software LOCAL_SYNC and REFCLK noise got the SYNC state machine started and left it in SERDES_RST=1 state)
     2012-09-23 JFC: Removed MMCM status registers. Converted bitfield list to independent variables. Commented out set_refclk200_phase.
 """
 
@@ -31,15 +31,14 @@ class REFCLK_base(Module_base):
     DRP=BitField.DRP
 
     # CONTROL bytes
-    ADC_SYNC               = BitField(CONTROL, 0x00, 7, doc='Force a SYNC to the ADC, synchronized on the FMC Reference clock, but bypasses the SYNC state machine that resets the IOSERDES and BUFR')
-    DCI_RESET              = BitField(CONTROL, 0x00, 6, doc='Resets the DCI')
-    FORCE_SYNC             = BitField(CONTROL, 0x00, 5, doc='Force the generation of a local SYNC sequence on the local board only. Has the same effect as a SYNC signed received on the 10 MHz clock.  The SYNC is synchronized to the 10 MHz output (transitions on its falling edge)')
-    ENCODE_SYNC            = BitField(CONTROL, 0x00, 4, doc='Generate a SYNC signal encoded on the 10 MHz clock output. Will SYNC the local FMC board only if the 10 MHz output is connected to the 10 MHz input of the local FMC board')
-    SLAVE                  = BitField(CONTROL, 0x00, 3, doc='1 allows the sync_in pin to trigger a SYNC sequence.')
+    ADC_SYNC               = BitField(CONTROL, 0, 7, doc='Force a SYNC to the ADC, synchronized on the FMC Reference clock, but bypasses the SYNC state machine that resets the IOSERDES and BUFR')
+    LOCAL_SYNC             = BitField(CONTROL, 0, 5, doc='Force the generation of a local SYNC sequence on the local board only. Has the same effect as a SYNC signed received on the 10 MHz clock.  The SYNC is synchronized to the 10 MHz output (transitions on its falling edge)')
+    REMOTE_SYNC            = BitField(CONTROL, 0, 4, doc='Generate a SYNC signal encoded on the 10 MHz clock output. Will SYNC the local FMC board only if the 10 MHz output is connected to the 10 MHz input of the local FMC board')
+    SYNC_SOURCE            = BitField(CONTROL, 0, 0, width=2, doc="Selects the source of the SYNC signal: 0: local sync only, 1: local sync or sync recovered from the clock, 2: local sync or backplane sync, 3: local sync or IRIG-B-based sync")
 
     REFCLK_SEL             = BitField(CONTROL, 0x01, 7, doc='Selects the source of the REFCLK needed for SYNC generation. 0=FMC, 1=internal REFCLK generator.')
-    ENABLE_SYNC_GENERATION = BitField(CONTROL, 0x01, 6, doc='Allows the internal state machine to generate the SYNC sequence (generate the ADC SYNC and resets the ADCDAQ SERDES and BUFG)')
-    ENABLE_SYNC_DETECTION  = BitField(CONTROL, 0x01, 5, doc='When 1, enable SYNC detection based on the Refecence clock pulse length. Disable if the FMC board is not present to prevent spurious resets of the data path.')
+    # ENABLE_SYNC_GENERATION = BitField(CONTROL, 0x01, 6, doc='Allows the internal state machine to generate the SYNC sequence (generate the ADC SYNC and resets the ADCDAQ SERDES and BUFG)')
+    # ENABLE_SYNC_DETECTION  = BitField(CONTROL, 0x01, 5, doc='When 1, enable SYNC detection based on the Refecence clock pulse length. Disable if the FMC board is not present to prevent spurious resets of the data path.')
 
     REFCLK_DELAY_RST       = BitField(CONTROL, 0x02, 7, doc='Resets the REFCLK line IODELAY and loads the delay value specified in REFCLK_DELAY.')
     REFCLK_DELAY           = BitField(CONTROL, 0x02, 0, width=5, doc='Delay applied to the FMC Reference clock within the FPGA (0-31). Must pulse REFCLK_DELAY_RST to load.')
@@ -57,7 +56,6 @@ class REFCLK_base(Module_base):
     SYNC_IN                = BitField(STATUS, 0x02, 0, doc='reflects the level on the sync_in port')
     # SYNC_DELAY_READBACK  = BitField(STATUS, 0x02, 0, width=5,doc='Reads back the delay set onthe SYNC IODELAY')
 
-
     def __init__(self, fpga, base_address):
         self.fpga = fpga
         self.logger = logging.getLogger(__name__)
@@ -69,28 +67,42 @@ class REFCLK_base(Module_base):
         self.set_sync_delay(1)
         self.logger = logging.getLogger(__name__)
         # If the board is not present, disable SYNC detection on REFCLK to prevent noise on the floating REFCLK lien to generate spurioys resets.
+        # self.ENABLE_SYNC_DETECTION = 1
+        # self.ENABLE_SYNC_GENERATION = 1
         if self.fpga.is_fmc_present(0):
             self.logger.info('   REFCLK is using the 10 MHz reference clock from the ADC board')
-            self.ENABLE_SYNC_DETECTION = 1
-            self.ENABLE_SYNC_GENERATION = 1
-            self.REFCLK_SEL = 0 # Use REFCLK coming from the FMC
+            self.REFCLK_SEL = 0  # Use REFCLK coming from the FMC
         else:
             self.logger.info('   REFCLK is using the 10 MHz reference clock from FPGA since the ADC board is not prresent in FMC slot 0')
-            self.ENABLE_SYNC_DETECTION = 0
-            self.ENABLE_SYNC_GENERATION = 0
-            self.REFCLK_SEL = 1 # Use internally generated REFCLK
+            self.REFCLK_SEL = 1  # Use internally generated REFCLK
 
-        # self.REFCLK_SEL = 1 # Use internally generated REFCLK ** debug***
+    SYNC_SOURCE_TABLE = {
+        'local': 0,
+        'refclk': 1,
+        'backplane': 2,
+        'bp': 2,
+        'irigb': 3}
 
+    def set_sync_source(self, source):
+        """ Set the source of the SYNC signal."""
+        if source not in self.SYNC_SOURCE_TABLE:
+            raise ValueError('Invalid SYNC source name. Valid names are %s' % ', '.join(self.SYNC_SOURCE_TABLE))
+        self.SYNC_SOURCE = self.SYNC_SOURCE_TABLE[source]
+
+    def get_sync_source(self):
+        """ Get the name of the current source of the SYNC signal."""
+        source = self.SYNC_SOURCE
+        for (source_name, source_number) in self.SYNC_SOURCE_TABLE.items():
+            if source == source_number:
+                return source_name
+        raise ValueError('The REFCLK module has an unknown SYNC source')
 
     def sync(self, delay=None):
         if delay is not None:
             self.set_sync_delay(delay)
         self.set_refclk_delay(self.sync_delay)
-        self.pulse_bit('ENCODE_SYNC')
-        #time.sleep(0.1) # see if that help packet loss
+        self.pulse_bit('REMOTE_SYNC')
         self.wait_for_bit('SYNC_DONE')
-        #time.sleep(10e-3) # make sure the SYNC sequence is completed and that the ADC clock is running
 
     def local_sync(self, delay=None):
         """
@@ -105,21 +117,15 @@ class REFCLK_base(Module_base):
         else:
             self.set_sync_delay(delay)
             self.set_refclk_delay(delay)
-
-        #print 'Setting delay to',    self.sync_delay
-        self.pulse_bit('FORCE_SYNC') # Force the REFCLK state machine to initiate a SYNC event
+        self.pulse_bit('LOCAL_SYNC') # Force the REFCLK state machine to initiate a SYNC event
         self.wait_for_bit('SYNC_DONE') # Wait until the SYNC process is completed
-        #time.sleep(10e-3) # make sure the SYNC sequence is completed and that the ADC clock is running
 
     def set_sync_delay(self, delay):
         """
         Sets the delay of the SYNC pulse relative to the Reference Clock. Valid range is 0-31.
         """
-        #self.SYNC_DELAY=delay
-        #self.pulse_bit('SYNC_DELAY_RST')
-        self.sync_delay = delay # Save the current delay value
+        self.sync_delay = delay  # Save the current delay value
         self.set_refclk_delay(delay)
-
 
     def set_refclk_delay(self, delay):
         """
@@ -137,7 +143,7 @@ class REFCLK_base(Module_base):
         'ADC_list' specifies from which ADCs we want to measure the waveform.
         'sleep' indicates how much time to wait between samples are taken.
 
-        The method returns a numpy array ox 8x32 integers. First dimension is the ADC number, second dimension is the delay.
+        The method returns a numpy array of 8x32 integers. First dimension is the ADC number, second dimension is the delay.
         """
         tap_delay = 1/200e6/32/2
         samples = np.zeros((8,32), np.int8) # prepare an empty array that wil lcontain the clock sample values for all ADCs and all delay values.
@@ -207,17 +213,22 @@ class REFCLK_base(Module_base):
         return vv
 
 
-    def compute_sync_delay(self, ADC_list = [0,7], sleep=0.001, repeat=1, delays=range(32), plot=False):
+    def compute_sync_delay(self, ADC_list=[0, 7], sleep=0.001, repeat=1, delays=range(32), plot=False):
         """
-        Computes and sets the recommended SYNC pulse timing to ensure that it will meet the ADC timing requirments.
+        Computes and sets the recommended SYNC pulse timing to ensure that it
+        will meet the ADC timing requirments.
 
-        This is done by sweeping the timing of the SYNC pulse over a range of 2.5 ns in 32 steps (78.125 ps steps) and for
-        each delay synchronize the ADC and measure the waveform of the 400 MHz ADC output clock.
-        Phase discontinuities will be seen where the timing requirments is not met
-        (i.e. the SYNC falling edge is too close to the 1600 MHz ADC input clock and the setup or hold requirements are not met).
+        This is done by sweeping the timing of the SYNC pulse over a range of
+        2.5 ns in 32 steps (78.125 ps steps) and for each delay synchronize
+        the ADC and measure the waveform of the 400 MHz ADC output clock.
+        Phase discontinuities will be seen where the timing requirments is not
+        met (i.e. the SYNC falling edge is too close to the 1600 MHz ADC input
+        clock and the setup or hold requirements are not met).
 
-        The algorithm then look for those discontinuities, and compute the delay that will place the SYNC between the first two first ones.
-        This is done for all ADC simultaneously. The average SYNC timing for all ADCs is used as the optimal value.
+        The algorithm then look for those discontinuities, and computes the
+        delay that will place the SYNC between the two first ones. This
+        is done for all ADC simultaneously. The average SYNC timing for all
+        ADCs is used as the optimal value.
 
         NOTE: This will work only of the ADC board is configured to SYNC the ADC directly from the SYNC signal coming from the FPGA.
         On REV2 boards, this means:
