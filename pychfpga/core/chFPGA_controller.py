@@ -31,6 +31,12 @@ import logging
 import numpy as np
 import time
 
+import subprocess
+import shlex
+import tornado.gen
+import bz2
+
+from .icecore import async, async_return
 from .icecore_ext.iceboard_ext import IceBoardExtHandler
 from chFPGA_receiver import chFPGA_receiver
 
@@ -2021,3 +2027,70 @@ class chFPGA_controller(IceBoardExtHandler):
 
     def get_crate_id(self):
         return self.crate.get_id()
+
+    @async
+    def _call_subprocess(self, cmd):
+        """
+        Executes a subprocess in a non-blocking way.
+        """
+        PIPE = subprocess.PIPE
+
+        # ssh_cmd = "ssh root@%s '%s'" % (self.hostname, cmd)
+        split_cmd = shlex.split(cmd)
+        p = subprocess.Popen(split_cmd, stdout=PIPE, stderr=PIPE)
+        while p.poll() is None:
+            yield tornado.gen.moment
+        if p.returncode:
+            raise RuntimeError("The command '%s' returned with the error code %i. stderr is displayed below:\n %s" % (cmd, p.returncode, ''.join(p.stderr.readlines())))
+        async_return(p.stdout.readlines())
+
+
+    @async
+    def arm_exec(self, cmd):
+        """
+        Executes a command on the ARM over SSH.
+        """
+        self.logger.info("%.32r: Executing command '%s' on the ARM" % (self, cmd))
+        ssh_cmd = 'ssh -o "StrictHostKeyChecking no" root@%s "%s"' % (self.hostname, cmd)
+        result = yield self._call_subprocess.async(ssh_cmd)
+        async_return(result)
+
+    @async
+    def arm_scp(self, source_filename, destination_filename='/tmp'):
+        """
+        Sends a file to the arm using scp.
+        """
+        self.logger.info('%.32r: Sending image file %s to the ARM in %s' % (self, source_filename, destination_filename))
+        scp_cmd = 'scp -o "StrictHostKeyChecking no" %s root@%s:%s' % (source_filename, self.hostname, destination_filename)
+        result = yield self._call_subprocess.async(scp_cmd)
+        async_return(result)
+
+    @async
+    def _update_arm_firmware(self, image_filename, delay=120):
+        """
+        Overwrites the ARM firmware on the SD card with the specified image compressed with bzip2.
+
+        !!! WARNING: This is a very ugly hack that can make the SD card
+        inoperable. You must do this only if you are in a position to manually
+        replace a SD card if this fails!!!
+
+        !!! The image must be in BZIP2 format. If not, the ARM won't boot
+        again unless you replace the SD card !!!
+
+        You must power-cycle the board after this command. The normal reboot()
+        method won't work because this corrupts the ARMs filesystem (did we
+        say this was a bad hack?).
+        """
+        image_header = '\xfa\xb8\x00\x10\x8e\xd0\xbc\x00'
+        with bz2.BZ2File(image_filename) as fh:
+            data = fh.read(100)  # read a few bytes to make sure this is really a bz2 file
+            if not data.startswith(image_header):
+                raise RuntimeError('The image does not seem to contain a compressed SDcard image')
+        print '%r: Sending file...' % self
+        yield self.arm_scp.async(image_filename, '/tmp/image.bz2')
+        print '%r: Writing SD card' % self
+        yield self.arm_exec.async('bzcat /tmp/image.bz2 >/dev/mmcblk0')
+        self.logger.info('%.32r: Command completed. Waiting %i seconds to ensure cache is flushed' % (self, delay))
+        print '%r: Waiting %i seconds' % (self, delay)
+        yield tornado.gen.sleep(delay)
+        async_return(True)

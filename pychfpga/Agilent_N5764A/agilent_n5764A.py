@@ -90,7 +90,7 @@ class AgilentN5764AHandler(handler.Handler):  #, agilent_N5700
         self._check_lock()
         self.ps.output(state=state, readonly=False)
 
-    def power_cycle(self, delay=2):
+    def power_cycle(self, delay=4):
         self._check_lock()
         self.ps.output(state=False, readonly=False)
         time.sleep(delay)
