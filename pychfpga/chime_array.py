@@ -458,15 +458,18 @@ class ChimeArray(object):
 
         # Check if the boards is the selected subarray actually exist on the
         # network. If not, delete them from the hardware map.
+        ping_timeout = 1
         if args.ping:
             self.logger.info('%.32r: Pinging IceBoards specified in YAML file' % (self))
             ib_to_ping = self.hwm.query(IceBoardPlus).as_dict()  # use as_dict so ib_to_ping does not change as we delete boards from the hwm
             if ib_to_ping:
-                ping_results = ib_to_ping.ping()  # asynchronous parallel call to all boards
+                ping_results = ib_to_ping.ping(timeout=ping_timeout)  # asynchronous parallel call to all boards
                 self.logger.debug('%.32r: Ping results are %s' % (self, ping_results))
                 for i, ping_successful in enumerate(ping_results):
                     ib = ib_to_ping[i]
-                    if not ping_successful:
+                    if ping_successful:
+                        ib.hostname = socket.gethostbyname(ib.hostname)
+                    else:
                         print ("%r could not be found at '%s'. It is removed from YAML hardware map."
                                            % (ib, ib.tuber_uri))
                         self.logger.debug('%.32r: Deleting %r from the YAML hardware map' % (self, ib))
@@ -483,9 +486,12 @@ class ChimeArray(object):
                 self.hwm.add(ib)
                 self.hwm.flush()
                 # Explicitely listed boards must exist on the network
-                if args.ping and not ib.ping():
-                    raise RuntimeError("%r could not be found at '%s'"
-                                       % (ib, ib.tuber_uri))
+                if args.ping:
+                    if ib.ping(timeout=ping_timeout):
+                        ib.hostname = socket.gethostbyname(ib.hostname)
+                    else:
+                        raise RuntimeError("%r could not be found at '%s'"
+                                           % (ib, ib.tuber_uri))
 
 
         # Complete serial, crate and slot information on IceBoard that miss
@@ -494,10 +500,12 @@ class ChimeArray(object):
         # (i.e without using mDNS and pybonjour).
         ib_without_serial = self.hwm.query(IceBoardPlus).filter(IceBoardPlus.serial==None)
         if ib_without_serial.count():
+            self.logger.info('%.32r: Auto-Discovering serial number for IceBoards %s' % (self, ib.hostname))
             ib_without_serial.discover_serial()
 
         ib_without_crate = self.hwm.query(IceBoardPlus).filter(or_(IceBoardPlus.crate==None, IceBoardPlus.slot==None))
         if ib_without_crate.count():
+            self.logger.info('%.32r: Auto-Discovering crate information for IceBoards %s' % (self, ib.hostname))
             ib_without_crate.discover_crate()
 
         # If requested, discover additional boards and crates on the network using mDNS and add those to the hardware map
@@ -507,7 +515,7 @@ class ChimeArray(object):
         icecrates_to_discover = args.icecrates
         if '*' in str(icecrates_to_discover):
             icecrates_to_discover = '*'
-        else:
+        elif icecrates_to_discover:
             icecrates_to_discover = [(('MGK7BP16', 'MGK7BP'), icecrates_to_discover)]
 
         if icecrates_to_discover or iceboards_to_discover:
@@ -589,7 +597,8 @@ class ChimeArray(object):
             print 'Crate %s, slot %2s: Iceboard SN%s at %s (ping =%s), Mezz1=%s, Mezz2=%s' % (crate_name, i.slot, i.serial, i.hostname, i.ping(), mezz_name[0], mezz_name[1])
         self.print_flush()
 
-        self.print_iceboard_table(lambda ib:ib.serial, grid=False)
+        if self.ic:
+            self.print_iceboard_table(lambda ib:ib.serial, grid=False)
 
 
         print
@@ -1713,7 +1722,8 @@ class ChimeArray(object):
                     cell = '-'
                 col_data.append(cell)
             data.append(col_data)
-        self.print_table(data, row_labels=row_labels, col_labels=col_labels, corner_label=corner_label, line_sep=grid)
+        if data:
+            self.print_table(data, row_labels=row_labels, col_labels=col_labels, corner_label=corner_label, line_sep=grid)
 
     def print_iceboard_temperatures(self):
         self.print_iceboard_table(lambda ib: '%3.1f' % ib.get_temperatures()['FPGA_core'])
@@ -1768,6 +1778,19 @@ class ChimeArray(object):
         plt.ylabel('FPGA Die temperature [degC]')
         plt.grid(1)
         plt.title('FPGA die temperatrures for multiple crates')
+
+
+    def _update_arm_firmware(self, image_filename, power_cycle=True):
+        """
+        Update the ARM SD card firmware and power cycle all the power supplies. The image must be compressed with bzip2.
+        """
+        self.ib._update_arm_firmware(image_filename, delay=120)
+        if self.ps and power_cycle:
+            ps.unlock()
+            ps.power_cycle(delay=4)
+
+
+
 if __name__ == '__main__':
 
     ca = ChimeArray(argv=sys.argv[1:])
