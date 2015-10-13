@@ -222,6 +222,7 @@ class IceCrateHandler(handler.Handler):
     """
     __handler_for__ = IceCrate
     part_number = None
+    NUMBER_OF_SLOTS = 0
 
     # Locally give access to the hardware_map attributes
     slot = property(lambda self: {slot:iceboard.handler for (slot, iceboard) in self.parent.slot.items()})
@@ -234,7 +235,8 @@ class IceCrateHandler(handler.Handler):
 
     def __repr__(self):
         return '%s(SN%s)' % (self.__class__.__name__, self.serial)
-
+    def get_id(self):
+        return 'No backplane'
 
 @session.register_yaml_object()  # Todo: add transforms={'move_index': ('mezzanines', 'mezzanine')}
 class IceBoard(hardware_map.HWMResource, handler.HandlerObject):
