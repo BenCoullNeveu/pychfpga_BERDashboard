@@ -712,7 +712,7 @@ class ChimeArray(object):
         'raw_time': Each boards stream raw 8-bit time samples from channels
                     0-7 to the corresponding GPU ports.
         """
-        clock_sources = ib.index_by(repr).get_clock_source()
+        clock_sources = self.ib.index_by(repr).get_clock_source()
         target_clock_source = 'CLOCK_SOURCE_BP'
         if set(clock_sources.values()) != set([target_clock_source]):
             raise RuntimeError('The following IceBoards are not configured to use the backplane clock: %s' % (', '.join(repr(ib) for (ib, cs) in clock_sources.items() if cs != target_clock_source)))
@@ -788,6 +788,8 @@ class ChimeArray(object):
               connectors. The master board is configured to generate this
               trigger signal on its SMA connector.
 
+            - 'centralized_soft_trigger':
+
 
         source: (string): source of the time or trigger signal for the slave boards.
             - 'bp_gpio_int': the signal comes from the internal backplane
@@ -857,6 +859,12 @@ class ChimeArray(object):
                 raise ValueError('In the centralized soft trigger mode, no master_time_source must be specified')
             self.ib.set_sync_source(source)
             master.set_user_output_source('sync')
+        elif method == 'local_soft_trigger':
+            if master:
+                raise ValueError('In the centralized soft trigger mode, a master board should NOT specified')
+            if master_time_source:
+                raise ValueError('In the centralized soft trigger mode, a master_time_source should NOT be specified')
+            self.ib.sync()
         else:
             raise ValueError("Unknown syncing method '%s'" % method)
 
