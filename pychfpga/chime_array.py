@@ -292,6 +292,8 @@ class ChimeArray(object):
         parser.add_argument('-n', '--gpu_nodes', action='store', type=str, nargs='+', default=[], help='Create GPU node objects')
         parser.add_argument('-p', '--power_supplies', action='store', type=str, nargs='+', default=[], help='Create Agilent_N5764A power supply objects')
 
+        parser.add_argument('--sync_method', action='store', type=str, default='distributed_time', help="Sets the global syncing method ('distributed_time', 'centralized_time_trigger', 'centralized_soft_trigger', 'local_soft_trigger')")
+        parser.add_argument('--sync_source', action='store', type=str, default='bp_trig', help="Sets the global syncing source ('bp_gpio_int', 'bp_time', 'bp_trig')")
 
         args = parser.parse_args(argv)  # We always parse even if argv is not specified so we have default values
 
@@ -611,7 +613,7 @@ class ChimeArray(object):
                          data_width=args.data_width,
                          group_frames=args.frames_per_packet,
                          enable_gpu_link=args.enable_gpu_link)
-            self.set_sync_method(method='distributed_time', source='bp_trig')
+            self.set_sync_method(method=args.sync_method, source=args.sync_source)
 
             if self.ic:
                 self.ic.init()
@@ -788,7 +790,8 @@ class ChimeArray(object):
               connectors. The master board is configured to generate this
               trigger signal on its SMA connector.
 
-            - 'centralized_soft_trigger':
+            - 'local_soft_trigger': Each board generates its won SYNC trigger
+              when it receives a software command to do so.
 
 
         source: (string): source of the time or trigger signal for the slave boards.
@@ -861,9 +864,9 @@ class ChimeArray(object):
             master.set_user_output_source('sync')
         elif method == 'local_soft_trigger':
             if master:
-                raise ValueError('In the centralized soft trigger mode, a master board should NOT specified')
+                raise ValueError('In the local soft trigger mode, a master board should NOT specified')
             if master_time_source:
-                raise ValueError('In the centralized soft trigger mode, a master_time_source should NOT be specified')
+                raise ValueError('In the local soft trigger mode, a master_time_source should NOT be specified')
             self.ib.sync()
         else:
             raise ValueError("Unknown syncing method '%s'" % method)
@@ -1796,6 +1799,25 @@ class ChimeArray(object):
         if self.ps and power_cycle:
             ps.unlock()
             ps.power_cycle(delay=4)
+
+
+    def set_adc_delays(self, delay_filename):
+        """
+        Set ADC delays. delay_filename is the name of the file containing ADC delays for all boards in the array.
+        If the file does not exist the default delay table is applied for all boards. If the delay table for a 
+        a particular board is not in the delay file, the default delay table is applied for all boards.
+        """
+
+        if os.path.isfile(delay_filename):
+          delays = pickle.load(open(delay_filename, "r"))
+          for iceboard in self.ib:
+            try:
+              iceboard.set_adc_delays_with_check(delays[int(iceboard.serial)])
+              self.logger.info("Set delays on Iceboard SN {0}, SLOT {1}, CRATE {2}".format(iceboard.serial, iceboard.slot, iceboard.crate))
+            except:
+              self.logger.warning("Error reading delays on Iceboard SN {0}, SLOT {1}, CRATE {2}. Using default ADC delays.".format(iceboard.serial, iceboard.slot, iceboard.crate))
+        else:
+          self.logger.warning("file {0} not found. Using default ADC delays for all the iceboards.".format(delay_filename))
 
 
 

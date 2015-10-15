@@ -35,7 +35,9 @@
    - !IceBoardPlus { serial: "0065", hostname: "10.10.10.65", handler_name: "chFPGA_controller", subarray: 66, slot: 11 }  # McGill crate slot 11
    - !IceBoardPlus { serial: "0068", hostname: "10.10.10.68", handler_name: "chFPGA_controller", subarray: 2, slot: 1 }  # Penticton slot 1
    - !IceBoardPlus { serial: "0061", hostname: "10.10.10.61", handler_name: "chFPGA_controller", subarray: 77, slot: 13 }  # McGill crate slot 13
+   - !IceBoardPlus { serial: "0085", hostname: "10.10.10.209", handler_name: "chFPGA_controller", subarray: 85}  # McGill crate slot 13
 
-mcgill:
-   !HardwareMap
-      - !AgilentN5764A { hostname: "10.10.10.220" }
+
+#mcgill:
+#   !HardwareMap
+#      - !AgilentN5764A { hostname: "10.10.10.220" }
