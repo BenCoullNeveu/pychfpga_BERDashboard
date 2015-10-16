@@ -714,10 +714,11 @@ class ChimeArray(object):
         'raw_time': Each boards stream raw 8-bit time samples from channels
                     0-7 to the corresponding GPU ports.
         """
-        clock_sources = self.ib.index_by(repr).get_clock_source()
-        target_clock_source = 'CLOCK_SOURCE_BP'
-        if set(clock_sources.values()) != set([target_clock_source]):
-            raise RuntimeError('The following IceBoards are not configured to use the backplane clock: %s' % (', '.join(repr(ib) for (ib, cs) in clock_sources.items() if cs != target_clock_source)))
+        if ic.NUMBER_OF_SLOTS:
+            clock_sources = self.ib.index_by(repr).get_clock_source()
+            target_clock_source = 'CLOCK_SOURCE_BP'
+            if set(clock_sources.values()) != set([target_clock_source]):
+                raise RuntimeError('The following IceBoards are not configured to use the backplane clock: %s' % (', '.join(repr(ib) for (ib, cs) in clock_sources.items() if cs != target_clock_source)))
 
         if mode == 'raw_time':
             self.ib.set_fft_bypass(True)
@@ -1804,7 +1805,7 @@ class ChimeArray(object):
     def set_adc_delays(self, delay_filename):
         """
         Set ADC delays. delay_filename is the name of the file containing ADC delays for all boards in the array.
-        If the file does not exist the default delay table is applied for all boards. If the delay table for a 
+        If the file does not exist the default delay table is applied for all boards. If the delay table for a
         a particular board is not in the delay file, the default delay table is applied for all boards.
         """
 
