@@ -235,8 +235,13 @@ class IceCrateHandler(handler.Handler):
 
     def __repr__(self):
         return '%s(SN%s)' % (self.__class__.__name__, self.serial)
+
     def get_id(self):
         return 'No backplane'
+
+    def init(self):
+        pass
+
 
 @session.register_yaml_object()  # Todo: add transforms={'move_index': ('mezzanines', 'mezzanine')}
 class IceBoard(hardware_map.HWMResource, handler.HandlerObject):
