@@ -13,7 +13,7 @@ import udp as udp
 from ..iceboard_ext import IceBoardExtHandler
 
 
-class FpgaMmiException(Exception):
+class FpgaMmiException(IOError):
     pass
 
 
@@ -86,6 +86,9 @@ class FpgaMmi:
     def __exit__(self, etype, einst, etraceback):
             self.close()
 
+    def __repr__(self):
+        return '%s(%s)' % (self.__class__.__name__, self.ip_addr)
+
     def open(self):
         """
         Open control communication socket to FPGA
@@ -143,9 +146,9 @@ class FpgaMmi:
 
         logger = logging.getLogger(__name__)
         logger.debug(
-            'Broadcasting on port %i to configure FPGA S/N %016X '
+            '%.32r: Broadcasting on port %i to configure FPGA S/N %016X '
             'with address %s:%i' %
-            (self._BROADCAST_BASE_PORT, serial_number, ip_addr, port_number))
+            (self, self._BROADCAST_BASE_PORT, serial_number, ip_addr, port_number))
 
         # Build the array of bytes to fill the network configuration register
         # block
@@ -221,8 +224,53 @@ class FpgaMmi:
         """
         return self.udp.get_timeout()
 
+    def _send_command(self, cmd, expected_reply_length, retry=1, resync=False):
+        """ Send a command to the FPGA and check the reply for the correct
+        sequence number and packet length. If unsuccessful, the command will
+        be resent ``retry`` times.
+
+        If ``resync`` is True, the sequenc enumber will be resynchronized to
+        the incoming reply and will not raise an exception.
+
+        This is used by the read() and write() methods.
+        """
+        old_timeout = self.get_timeout()
+        retries = 0
+        while True:
+            try:
+                error = ''
+                self.udp.send(cmd)
+                self.send_counter += 1
+                data = self.udp.recv()
+                self.recv_counter += 1
+                # self.logger.warning('read command: Got 0x%02x, expected 0x%02x' % (ord(data[0]), self.send_counter & 0xff))
+                if ord(data[0]) != self.send_counter & 0xff:
+                    if not resync:
+                        error = '%.32r: Invalid sequence number from a read command. Got 0x%02x, expected 0x%02x.' % (self, ord(data[0]), self.send_counter & 0xff)
+                    self.send_counter = ord(data[0])
+                elif len(data) != expected_reply_length + 1:
+                        error = "%.32r: FPGA Read command to returned %i bytes (0x%s). %i were expected." % (
+                            self, len(data),
+                            ' '.join('%02X' % ord(b) for b in data),
+                            expected_reply_length + 1)
+
+            except self.udp.TimeoutException:
+                self.set_timeout(self.get_timeout() * 2)
+                error = '%.32r: Timeout during FPGA read command' % (self)
+
+            if not error:
+                break
+
+            self.logger.warning(error)
+            if retries > retry:
+                raise IOError(error)
+            retries += 1
+        # We now have our data for this chunk
+        self.set_timeout(old_timeout)
+        return data[1:]
+
     def read(self, addr, type=np.dtype('>u1'), length=1,
-             timeout=None, retry=1):
+             timeout=None, retry=1, resync=False):
         """
         Reads memory-mapped byte(s) from the FPGA through the Ethernet
         interface.
@@ -230,7 +278,12 @@ class FpgaMmi:
         'length' values of type 'type' are read. The Reads will be done in the
         minimum number of requests in order to read all bytes.
 
-        Returns a numpy array where the bytes are intrepreted as a series of
+        ``resync``: If True, the receiver will ignore command sequence number
+        mismatches and will resynchronize the local counter with the value
+        that was received. This is normally done only once when the system is
+        initialized.
+
+        Returns a numpy array of uint8 where the bytes are intrepreted as a series of
         'length' elements of type 'type'.
 
         2014-02-06 JFC: Now reads multiple bytes at a time to improve
@@ -248,7 +301,6 @@ class FpgaMmi:
         offset = 0
         # Loop to read all required bytes (the FPGA does not support multi-byte reads (yet))
 
-        old_timeout = self.get_timeout()
 
         if timeout:
             self.set_timeout(timeout)
@@ -263,52 +315,13 @@ class FpgaMmi:
         while offset < byte_length:
             log2_length = min((byte_length - offset).bit_length() - 1, 3)  # compute the log2 of the number of bytes to read, limited to 3 (i.e. 8 bytes)
             read_length = 1 << log2_length  # number of bytes to read in this iteration
-            # print 'offset=', offset
-            # print 'log2_length=', log2_length
-            # print 'byte_length=', byte_length
-
             s = (chr((opcode << 5) | (log2_length << 3) +
                      ((addr >> 16) & 0x07)) +
                  chr((addr >> 8) & 0xFF) +
                  chr(addr & 0xFF))
-            retries = 0
-           #  could be infinite loop here, but be safe.
-            while True:
-                try:
-                    self.udp.send(s)
-                    self.send_counter += 1
-                    data = self.udp.recv()
-                    self.recv_counter += 1
-                    break
-                except self.udp.TimeoutException:
-                    if retries < retry:
-                        retries += 1
-                        self.set_timeout(self.get_timeout() * 2)
-                        self.logger.debug(
-                            'FPGA read failure increasing timeout to %s' %
-                            (self.get_timeout()))
-                    else:
-                        raise self.TimeoutException
-                except Exception as e:
-                    raise FpgaMmiException(
-                        'FPGA read command failed because of the following '
-                        'exception: %r' % e)
-                finally:
-                    self.set_timeout(old_timeout)
 
-            if len(data) != read_length + 1:
-                raise FpgaMmiException(
-                    "FPGA Read command to %s:%i returned %i bytes (0x%s). "
-                    "%i were expected." % (
-                        self.ip_addr,
-                        self.port_number,
-                        len(data),
-                        ' '.join('%02X' % ord(b) for b in data),
-                        read_length + 1)
-                    )
-
-            dout[offset:offset+read_length] = np.fromstring(data[1:], dtype=np.uint8)  # store received byte
-
+            data = self._send_command(s, read_length, retry, resync)
+            dout[offset:offset+read_length] = np.fromstring(data, dtype=np.uint8)  # store received byte
             addr += read_length
             offset += read_length
 
@@ -364,8 +377,8 @@ class FpgaMmi:
 
             if len(data) != read_length + 1:
                 raise FpgaMmiException(
-                    "FPGA Read command returned %i bytes. %i were expected." %
-                    (len(data), read_length + 1))
+                    "%.32r: FPGA Read command returned %i bytes. %i were expected." %
+                    (self, len(data), read_length + 1))
 
             dout.append(np.fromstring(data[1:], dtype=type)[0])  # store received byte
         return dout
@@ -386,7 +399,7 @@ class FpgaMmi:
         else:
             return chr(data)
 
-    def write(self, addr, data, mask=None):
+    def write(self, addr, data, mask=None, retry=1, resync=False):
         """
         Writes byte(s) to memory-mapped registers in the FPGA through the
         Ethernet interface.
@@ -423,9 +436,7 @@ class FpgaMmi:
             mask_string = self._to_string(mask)
             data_string = ''.join(
                 [d+m for (d, m) in zip(data_string, mask_string)])
-
-        self.udp.send(command_string + data_string)
-        self.send_counter += 1
+        self._send_command(command_string + data_string, 0, retry, resync)
         return length
 
 
