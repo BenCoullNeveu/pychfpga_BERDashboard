@@ -13,6 +13,7 @@ import socket  # for gethostbyname()
 import itertools
 import numpy as np
 import matplotlib.pyplot as plt
+import pickle
 
 from tornado.netutil import Resolver
 from tornado.ioloop import IOLoop
@@ -249,7 +250,7 @@ class ChimeArray(object):
         chimearray_path = os.path.dirname(__file__)
         chimearray_path = chimearray_path + '/' if chimearray_path else ''
         default_bitfile = ( chimearray_path +
-            '../../chfpga/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/CHFPGA_MGK7MB_REV2.bit')
+            '../../chfpga/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit')
 
         # Configure the various loggers to provide adequate levels of details
         log_levels = {'info': logging.INFO, 'debug': logging.DEBUG, 'warn': logging.WARNING, 'error': logging.ERROR}
@@ -714,7 +715,7 @@ class ChimeArray(object):
         'raw_time': Each boards stream raw 8-bit time samples from channels
                     0-7 to the corresponding GPU ports.
         """
-        if ic.NUMBER_OF_SLOTS:
+        if self.ic.NUMBER_OF_SLOTS:
             clock_sources = self.ib.index_by(repr).get_clock_source()
             target_clock_source = 'CLOCK_SOURCE_BP'
             if set(clock_sources.values()) != set([target_clock_source]):
