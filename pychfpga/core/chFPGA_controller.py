@@ -1277,7 +1277,7 @@ class chFPGA_controller(chFPGAHandler):
             if sync:
                 self.sync()
 
-    def set_gain(self, gain=None, postscaler=None, channels=None, use_fixed_gain=False):
+    def set_gain(self, gain=None, postscaler=None, channels=None,bank=0):
         """
         Sets the gain between the (18+18) bits input of the scaler module (from the FFT) to its 4- or 8- bit scaler output.
         The gain can be set individually for every frequency bins and every ADC channel.
@@ -1381,28 +1381,44 @@ class chFPGA_controller(chFPGAHandler):
                 if Glog is not None:
                     self.ANT[ch].SCALER.SHIFT_LEFT = Glog
 
-                if use_fixed_gain:
-                    if not np.isscalar(Glin):
-                        raise TypeError('%r: Only scalar gains are allowed when using set_fixed_gain=True.' % self)
-                    self.ANT[ch].SCALER.USE_GAIN_TABLE = 0
-                    self.ANT[ch].SCALER.set_fixed_gain(Glin)
-                else:
-                    self.ANT[ch].SCALER.USE_GAIN_TABLE = 1
-                    self.ANT[ch].SCALER.set_gain_table(Glin)
+
+                
+                self.ANT[ch].SCALER.USE_GAIN_TABLE = 1
+                self.ANT[ch].SCALER.set_gain_table(Glin, bank=bank)
                 configured_channels.add(ch)
         self._logger.info('%r: Setting scaler gains for Antenna %s' % (self, ', '.join([str(i) for i in configured_channels])))
 
-    def get_gain(self):
+    def get_gain(self, bank=0):
         """
         Returns the log2 SCALER gain each antenna, and the linear gain table used for each antenna or the fixed gain.
         """
         gain_list = []
         for ant in self.ANT.values():
             glog = ant.SCALER.SHIFT_LEFT
-            glin = ant.SCALER.get_gain_table()
+            glin = ant.SCALER.get_gain_table(bank=bank)
             gain_list.append([ant.ant_number, [glin,glog]])
         return gain_list
 
+    def syncronized_gain_switching(self, enable=1):
+        for ant in self.ANT.value():
+            ant.SCALAR.SYNCRONIZE_GAIN_BANK=enable
+        self._logger.debug("%r: Enabled syncronized gains for active antennas", self)
+
+    def set_gain_switch_frame_number(self, frame = 2147483647):
+        for ant in self.ANT.value():
+            ant.SCALAR.GAIN_BANK_SWITCH_FRAME_NUMBER = frame
+        self._logger.debug("%r: set gain switch number for active antennas to %d", (self, frame))
+
+    def set_next_gain_bank(self, bank=0):
+        '''
+        Sets which gain bank (0,1) scaler will use.  if syncronized gain switching enabled, won't take effect
+        until the bank switch frame number.  Otherwise is immediate
+        '''
+        for ant in self.ANT.value():
+            ant.SCALAR.READ_COEFF_BANK = bank
+        self._logger.debug("%r: set gain bank for active antennas to %d", (self, bank))
+
+         
 
     def set_fft_shift(self, fft_shift=0b11111111111, channels=None):
         """

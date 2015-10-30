@@ -379,7 +379,14 @@ if __name__ == "__main__":
       c.set_FFT_bypass(False, channels = all_chan)
       c.set_FFT_shift(conf["fpga"]["fft_shift"], channels = all_chan)
       # init gains function kind of a hack.  Should fix.
-      init_gains(c)
+      load_gains(c, bank=0)
+      # set to use bank 0 next, change in loop below
+      set_next_gain_bank(c, bank=0)
+      # set to only change when at configured frame number
+      set_syncronized_gain_switching(c, enable=1)
+      # set frame number to switch gains at.
+      set_gain_switch_frame_number(c, frame=2147483647)
+      
       # for i, c_element in enumerate(c):
       #   gain_pkl_file = open('/home/chime/ch_acq/gains_'+str(c_element.fpga.GPIO.FPGA_SERIAL_NUMBER)+'.pkl', "rb")
       #   gains = pickle.load(gain_pkl_file)

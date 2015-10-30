@@ -3,7 +3,7 @@ import struct
 import time
 import logging
 #import core.icecore.icebox
-
+import pickle
 
 class GpuData(object):
     def __repr__(self):
@@ -239,12 +239,24 @@ def reopen(boards, bitstream):
                 except:
                     print 'Failed to open IceBoard SN%s. Retrying' % (ib.serial)
 
-def init_gains(c):
-    import pickle
+def load_gains(c, bank=0):
     for cc in c:
         g_array = pickle.load(open('/home/chime/ch_acq/gains_slot'+str(cc.slot)+'.pkl', 'rb'))
         print 'Setting gains on IceBoard SN%s, slot %i' % (cc.serial, cc.slot)
-        cc.set_gain(g_array)
+        cc.set_gain(g_array, bank=bank)
+
+def set_next_gain_bank(c, bank=0):
+    for cc in c:
+        cc.set_next_gain_bank(bank=bank)
+
+def set_gain_switch_frame_number(c, frame = 2147483647 ):
+    for cc in c:
+        cc.set_gain_switch_frame_number(frame=frame)
+
+def set_syncronized_gain_switching(c, enable=1)
+    for cc in c:
+        cc.syncronized_gain_switching(enable=enable)
+
 
 def soft_sync(boards, sync_board):
     """ Synchronize all boards"""
