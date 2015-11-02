@@ -253,7 +253,7 @@ def set_gain_switch_frame_number(c, frame = 2147483647 ):
     for cc in c:
         cc.set_gain_switch_frame_number(frame=frame)
 
-def set_syncronized_gain_switching(c, enable=1)
+def set_syncronized_gain_switching(c, enable=1):
     for cc in c:
         cc.syncronized_gain_switching(enable=enable)
 
