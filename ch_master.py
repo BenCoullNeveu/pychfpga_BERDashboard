@@ -379,13 +379,18 @@ if __name__ == "__main__":
       c.set_FFT_bypass(False, channels = all_chan)
       c.set_FFT_shift(conf["fpga"]["fft_shift"], channels = all_chan)
       # init gains function kind of a hack.  Should fix.
-      load_gains(c, bank=0)
-      # set to use bank 0 next, change in loop below
-      set_next_gain_bank(c, bank=0)
+      current_bank = 0
+      next_bank = 1
+      load_gains(c, bank=current_bank)
+
       # set to only change when at configured frame number
       set_syncronized_gain_switching(c, enable=1)
       # set frame number to switch gains at.
       set_gain_switch_frame_number(c, frame=2147483647)
+      # set to use bank 1 next, change in loop below. have to do this after config to wait for
+      # frame number
+      set_next_gain_bank(c, bank=next_bank)
+
       
       # for i, c_element in enumerate(c):
       #   gain_pkl_file = open('/home/chime/ch_acq/gains_'+str(c_element.fpga.GPIO.FPGA_SERIAL_NUMBER)+'.pkl', "rb")
@@ -559,27 +564,69 @@ if __name__ == "__main__":
     c.CROSSBAR.LANE_MONITOR_SEL = 6
     c.CROSSBAR2.LANE_MONITOR_SEL = 6
 
-
+  gains_reloaded = False
+  hdf5_gains_switched = False
+  bank_switched = False
+  hk_rate_in_frames = int(conf["acq"]["fpga_hk"]["rate"] / 2.56e-6)
+  poll_rate = conf['acq']['acq_loop_poll_rate'] #in seconds
+  poll_rate_in_frames = poll_rate/2.56e-6  #should use fpga config frequency?
+  reload_gains_frame = conf['fpga']['reload_gains_frame']
+  gain_switch_frame = conf['fpga']['gain_switch_frame']
+  bank_switch_frame = conf['fpga']['bank_switch_frame']
   try:
     while True:
       # Pass the acquisition object the board temperatures. This is a temporary
-      # way of doing this!
+      # way of doing this!  Check on frame number.  If less than 10sec from 'reload_gains_time'
+      # then start reloading the gains. and switch banks. 
+      # If less than 10s from gains_switch_time, Change to new gains into hdf5 file.  
+      #
       if (int(args.configure_fpga) > 0):
         try:
-            hk_return = get_all_fpga_slots_hk(c)
-            i = 0
-            for hk in hk_return:
-              acq.pass_fpga_amb_temp(i, {hk_fields_list[0] : hk})
-              i += 1
-              #log.debug("Slot number: %d "  % c_element.slot )
-              #log.debug("Crossbar1 fifo overflow %d "  % c_element.CROSSBAR.CB1_LANE_MONITOR )
-              #log.debug("Crossbar2 fifo overflow %d "  % c_element.CROSSBAR2.CB2_LANE_MONITOR )
-            log.info("Read FPGA housekeeping.")
+            fpga_frame_count = c[0].get_frame_number()
+            if ((fpga_frame_count % hk_rate_in_frames) < poll_rate_in_frames):
+                hk_return = get_all_fpga_slots_hk(c)
+                i = 0
+                for hk in hk_return:
+                  acq.pass_fpga_amb_temp(i, {hk_fields_list[0] : hk})
+                  i += 1
+                  #log.debug("Slot number: %d "  % c_element.slot )
+                  #log.debug("Crossbar1 fifo overflow %d "  % c_element.CROSSBAR.CB1_LANE_MONITOR )
+                  #log.debug("Crossbar2 fifo overflow %d "  % c_element.CROSSBAR2.CB2_LANE_MONITOR )
+                log.info("Read FPGA housekeeping.")
         except:
             log.critical("Did not get FPGA housekeeping, still aquiring data...")
+            #Right now can miss gain setting stuff if hk takes more than 10s.  Really need to disentangle the two.  
+        try:
+            fpga_frame_count = c[0].get_frame_number()
+            # Well before switch time.  Set gains in next bank, read back what we set.  
+            if (abs(fpga_frame_count - reload_gains_frame) < 4194304) and not gains_reloaded:
+                load_gains(c, bank=next_bank)
+                fpga_gains = {}
+                for i, c_element in enumerate(c):
+                    fpga_gains[c_element.slot] = c_element.get_gain(bank=next_bank)
+                gains_reloaded = True
+                bank_switched = False
+            # Right before switch time
+            elif (abs(fpga_frame_count - gain_switch_frame) < 4194304) and not hdf5_gains_switched:
+                for fpga_slot, slot_gain in fpga_gains.items():
+                    for val in slot_gain:
+                        v = convert_types(val)
+                        inp = remap_slot[fpga_slot-1] * 16 + remap_adc_sma[int(val[0])]
+                        acq.pass_fpga_gain(inp, v)
+                hdf5_gains_switched = True
+            #shortly after after switch
+            elif (abs(fpga_frame_count - bank_switch_frame) < 4194304) and not bank_switched:
+                set_next_gain_bank(c, bank = current_bank)
+                current_bank = (current_bank + 1) % 2  
+                next_bank = (next_bank + 1) % 2
+                gains_reloaded = False
+                hdf5_gains_switched = False
+                bank_switched = True
+        except:
+            log.critical("something went wrong with gain switching, still aquiring data...")
       else:
         log.info("acquiring data...")
-      time.sleep(conf["acq"]["fpga_hk"]["rate"])
+      time.sleep(poll_rate)
     acq.stop()
   except(KeyboardInterrupt, SystemExit):
     acq.stop()
