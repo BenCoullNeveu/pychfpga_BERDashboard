@@ -378,26 +378,12 @@ if __name__ == "__main__":
       c.set_data_source("adc") # This should come first.
       c.set_FFT_bypass(False, channels = all_chan)
       c.set_FFT_shift(conf["fpga"]["fft_shift"], channels = all_chan)
-      # init gains function kind of a hack.  Should fix.
-      current_bank = 0
-      next_bank = 1
-
-
-      # set to only change when at configured frame number
-      set_syncronized_gain_switching(c, enable=1)
-      # set frame number to switch gains at.
-      gain_switch_frame = conf['fpga']['gain_switch_frame']
-      set_gain_switch_frame_number(c, frame=gain_switch_frame)
-      # set to use bank 1 next, change in loop below. have to do this after config to wait for
-      # frame number
-      set_next_gain_bank(c, bank=next_bank)
 
       all_banks = get_current_gain_bank(c)     
-      load_gains(c, bank=current_bank)
+      load_gains(c, bank=0)
       for bankset in all_banks:
           log.info('Using gain banks %s' % ( ', '.join([str(i) for i in bankset])))
-      print current_bank
-      print all_banks
+
       # for i, c_element in enumerate(c):
       #   gain_pkl_file = open('/home/chime/ch_acq/gains_'+str(c_element.fpga.GPIO.FPGA_SERIAL_NUMBER)+'.pkl', "rb")
       #   gains = pickle.load(gain_pkl_file)
@@ -579,6 +565,23 @@ if __name__ == "__main__":
   reload_gains_frame = conf['fpga']['reload_gains_frame']
 
   bank_switch_frame = conf['fpga']['bank_switch_frame']
+  if ( int(args.configure_fpga) > 0):
+      # init gains function kind of a hack.  Should fix.
+      current_bank = 0
+      next_bank = 1
+
+
+      # set to only change when at configured frame number
+      set_syncronized_gain_switching(c, enable=1)
+      # set frame number to switch gains at.
+      gain_switch_frame = conf['fpga']['gain_switch_frame']
+      set_gain_switch_frame_number(c, frame=gain_switch_frame)
+      # set to use bank 1 next, change in loop below. have to do this after config to wait for
+      # frame number
+      all_banks = get_current_gain_bank(c)
+      for bankset in all_banks:
+          log.info('Using gain banks %s' % ( ', '.join([str(i) for i in bankset])))
+
   try:
     while True:
       # Pass the acquisition object the board temperatures. This is a temporary
