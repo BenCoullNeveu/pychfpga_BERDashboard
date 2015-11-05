@@ -257,6 +257,11 @@ def set_syncronized_gain_switching(c, enable=1):
     for cc in c:
         cc.syncronized_gain_switching(enable=enable)
 
+def get_current_gain_bank(c):
+    banks = []
+    for cc in c:
+        banks.append( cc.get_current_gain_switching() )
+    return banks
 
 def soft_sync(boards, sync_board):
     """ Synchronize all boards"""

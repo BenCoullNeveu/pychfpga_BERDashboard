@@ -1402,12 +1402,12 @@ class chFPGA_controller(chFPGAHandler):
     def syncronized_gain_switching(self, enable=1):
         for ant in self.ANT.values():
             ant.SCALER.SYNCRONIZE_GAIN_BANK=enable
-        self._logger.debug("%r: Enabled syncronized gains for active antennas", self)
+        self._logger.debug("%r: Enabled syncronized gains for active antennas" % self)
 
     def set_gain_switch_frame_number(self, frame = 2147483647):
         for ant in self.ANT.values():
             ant.SCALER.GAIN_BANK_SWITCH_FRAME_NUMBER = frame
-        self._logger.debug("%r: set gain switch number for active antennas to %d", (self, frame))
+        self._logger.debug("%r: set gain switch number for active antennas to %d" % (self, frame))
 
     def set_next_gain_bank(self, bank=0):
         '''
@@ -1416,8 +1416,13 @@ class chFPGA_controller(chFPGAHandler):
         '''
         for ant in self.ANT.values():
             ant.SCALER.READ_COEFF_BANK = bank
-        self._logger.debug("%r: set gain bank for active antennas to %d", (self, bank))
+        self._logger.debug("%r: set gain bank for active antennas to %d" % (self, bank))
 
+    def get_current_gain_bank(self):
+        gain_banks = []
+        for ant in self.ANT.values():
+            gain_banks.append(ant.SCALER.CURRENT_GAIN_BANK)
+        return gain_banks
          
 
     def set_fft_shift(self, fft_shift=0b11111111111, channels=None):

@@ -381,17 +381,23 @@ if __name__ == "__main__":
       # init gains function kind of a hack.  Should fix.
       current_bank = 0
       next_bank = 1
-      load_gains(c, bank=current_bank)
+
 
       # set to only change when at configured frame number
       set_syncronized_gain_switching(c, enable=1)
       # set frame number to switch gains at.
-      set_gain_switch_frame_number(c, frame=2147483647)
+      gain_switch_frame = conf['fpga']['gain_switch_frame']
+      set_gain_switch_frame_number(c, frame=gain_switch_frame)
       # set to use bank 1 next, change in loop below. have to do this after config to wait for
       # frame number
       set_next_gain_bank(c, bank=next_bank)
 
-      
+      all_banks = get_current_gain_bank(c)     
+      load_gains(c, bank=current_bank)
+      for bankset in all_banks:
+          log.info('Using gain banks %s' % ( ', '.join([str(i) for i in bankset])))
+      print current_bank
+      print all_banks
       # for i, c_element in enumerate(c):
       #   gain_pkl_file = open('/home/chime/ch_acq/gains_'+str(c_element.fpga.GPIO.FPGA_SERIAL_NUMBER)+'.pkl', "rb")
       #   gains = pickle.load(gain_pkl_file)
@@ -571,7 +577,7 @@ if __name__ == "__main__":
   poll_rate = conf['acq']['acq_loop_poll_rate'] #in seconds
   poll_rate_in_frames = poll_rate/2.56e-6  #should use fpga config frequency?
   reload_gains_frame = conf['fpga']['reload_gains_frame']
-  gain_switch_frame = conf['fpga']['gain_switch_frame']
+
   bank_switch_frame = conf['fpga']['bank_switch_frame']
   try:
     while True:
@@ -606,6 +612,10 @@ if __name__ == "__main__":
                     fpga_gains[c_element.slot] = c_element.get_gain(bank=next_bank)
                 gains_reloaded = True
                 bank_switched = False
+                log.info("Loaded gains into bank %d" % next_bank)
+                all_banks = get_current_gain_bank(c)     
+                for bankset in all_banks:
+                    log.info('Using gain banks %s' % ( ', '.join([str(i) for i in bankset])))
             # Right before switch time
             elif (abs(fpga_frame_count - gain_switch_frame) < 4194304) and not hdf5_gains_switched:
                 for fpga_slot, slot_gain in fpga_gains.items():
@@ -614,6 +624,7 @@ if __name__ == "__main__":
                         inp = remap_slot[fpga_slot-1] * 16 + remap_adc_sma[int(val[0])]
                         acq.pass_fpga_gain(inp, v)
                 hdf5_gains_switched = True
+                log.info('Changed gains in hdf5 file')
             #shortly after after switch
             elif (abs(fpga_frame_count - bank_switch_frame) < 4194304) and not bank_switched:
                 set_next_gain_bank(c, bank = current_bank)
@@ -622,6 +633,7 @@ if __name__ == "__main__":
                 gains_reloaded = False
                 hdf5_gains_switched = False
                 bank_switched = True
+                log.debug("changed which gain bank will be written to over to %d" % next_bank)
         except:
             log.critical("something went wrong with gain switching, still aquiring data...")
       else:
