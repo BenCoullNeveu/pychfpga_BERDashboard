@@ -268,15 +268,15 @@ def get_gain_switch_frame_number(c):
         frames.append(cc.get_gain_switch_frame_number())
     return frames
 
-def get_syncronized_gain_switching(c):
+def get_synchronized_gain_switching(c):
     enabled = []
     for cc in c:
-        enabled.append(cc.get_syncronized_gain_switching())
+        enabled.append(cc.get_synchronized_gain_switching())
     return enabled
 
-def set_syncronized_gain_switching(c, enable=1):
+def set_synchronized_gain_switching(c, enable=1):
     for cc in c:
-        cc.syncronized_gain_switching(enable=enable)
+        cc.synchronized_gain_switching(enable=enable)
 
 def get_current_gain_bank(c):
     banks = []

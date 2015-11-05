@@ -385,7 +385,7 @@ if __name__ == "__main__":
           log.info('Using gain banks %s' % ( ', '.join([str(i) for i in bankset])))
 
       # set to only change when at configured frame number
-      set_syncronized_gain_switching(c, enable=1)
+      set_synchronized_gain_switching(c, enable=1)
       # set frame number to switch gains at.
       gain_switch_frame = conf['fpga']['gain_switch_frame']
       set_gain_switch_frame_number(c, frame=gain_switch_frame)
@@ -394,7 +394,7 @@ if __name__ == "__main__":
       all_banks = get_current_gain_bank(c)
       for bankset in all_banks:
           log.info('Using gain banks %s' % ( ', '.join([str(i) for i in bankset])))
-      all_enabled_sync = get_syncronized_gain_switching(c)
+      all_enabled_sync = get_synchronized_gain_switching(c)
       for enabled_sync in all_enabled_sync:
           log.info('gain sync status is %s' % ( ', '.join([str(i) for i in enabled_sync])))
       

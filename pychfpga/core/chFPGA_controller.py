@@ -1399,16 +1399,16 @@ class chFPGA_controller(chFPGAHandler):
             gain_list.append([ant.ant_number, [glin,glog]])
         return gain_list
 
-    def syncronized_gain_switching(self, enable=1):
+    def synchronized_gain_switching(self, enable=1):
         for ant in self.ANT.values():
-            ant.SCALER.SYNCRONIZE_GAIN_BANK=enable
+            ant.SCALER.SYNCHRONIZE_GAIN_BANK=enable
         self._logger.debug("%r: Syncronized gains for active antennas set to %d" % (self, enable))
 
 
-    def get_syncronized_gain_switching(self):
+    def get_synchronized_gain_switching(self):
         enabled = []
         for ant in self.ANT.values():
-            enabled.append(ant.SCALER.SYNCRONIZE_GAIN_BANK)
+            enabled.append(ant.SCALER.SYNCHRONIZE_GAIN_BANK)
         self._logger.debug("%r: syncronization for gain set to %s" % (self, ', '.join([str(i) for i in enabled])))
         return enabled
 
