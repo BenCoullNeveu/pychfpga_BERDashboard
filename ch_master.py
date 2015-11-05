@@ -384,6 +384,23 @@ if __name__ == "__main__":
       for bankset in all_banks:
           log.info('Using gain banks %s' % ( ', '.join([str(i) for i in bankset])))
 
+      # set to only change when at configured frame number
+      set_syncronized_gain_switching(c, enable=1)
+      # set frame number to switch gains at.
+      gain_switch_frame = conf['fpga']['gain_switch_frame']
+      set_gain_switch_frame_number(c, frame=gain_switch_frame)
+      # set to use bank 1 next, change in loop below. have to do this after config to wait for
+      # frame number
+      all_banks = get_current_gain_bank(c)
+      for bankset in all_banks:
+          log.info('Using gain banks %s' % ( ', '.join([str(i) for i in bankset])))
+      all_enabled_sync = get_syncronized_gain_switching(c)
+      for enabled_sync in all_enabled_sync:
+          log.info('gain sync status is %s' % ( ', '.join([str(i) for i in enabled_sync])))
+      
+      all_frame_number_set = get_gain_switch_frame_number(c)
+      for frames_set in all_frame_number_set:
+          log.info('gain sync frame is %s' % ( ', '.join([str(i) for i in frames_set])))
       # for i, c_element in enumerate(c):
       #   gain_pkl_file = open('/home/chime/ch_acq/gains_'+str(c_element.fpga.GPIO.FPGA_SERIAL_NUMBER)+'.pkl', "rb")
       #   gains = pickle.load(gain_pkl_file)
@@ -569,18 +586,14 @@ if __name__ == "__main__":
       # init gains function kind of a hack.  Should fix.
       current_bank = 0
       next_bank = 1
-
-
-      # set to only change when at configured frame number
-      set_syncronized_gain_switching(c, enable=1)
-      # set frame number to switch gains at.
-      gain_switch_frame = conf['fpga']['gain_switch_frame']
-      set_gain_switch_frame_number(c, frame=gain_switch_frame)
-      # set to use bank 1 next, change in loop below. have to do this after config to wait for
-      # frame number
+      set_next_gain_bank(c, bank=next_bank)
+      all_next_bank = get_next_gain_bank(c)
+      for bankset in all_next_bank:
+          log.info('Set next gain bank to %s' % ( ', '.join([str(i) for i in bankset])))
       all_banks = get_current_gain_bank(c)
       for bankset in all_banks:
-          log.info('Using gain banks %s' % ( ', '.join([str(i) for i in bankset])))
+          log.info('currently using gain banks %s' % ( ', '.join([str(i) for i in bankset])))
+
 
   try:
     while True:
@@ -637,6 +650,9 @@ if __name__ == "__main__":
                 hdf5_gains_switched = False
                 bank_switched = True
                 log.debug("changed which gain bank will be written to over to %d" % next_bank)
+                all_banks = get_current_gain_bank(c)     
+                for bankset in all_banks:
+                    log.info('Using gain banks %s' % ( ', '.join([str(i) for i in bankset])))
         except:
             log.critical("something went wrong with gain switching, still aquiring data...")
       else:

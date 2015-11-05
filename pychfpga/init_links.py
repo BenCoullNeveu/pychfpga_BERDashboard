@@ -249,9 +249,30 @@ def set_next_gain_bank(c, bank=0):
     for cc in c:
         cc.set_next_gain_bank(bank=bank)
 
+
+def get_next_gain_bank(c):
+    banks = []
+    for cc in c:
+        banks.append(cc.get_next_gain_bank())
+    return banks
+
+
 def set_gain_switch_frame_number(c, frame = 2147483647 ):
     for cc in c:
         cc.set_gain_switch_frame_number(frame=frame)
+
+
+def get_gain_switch_frame_number(c):
+    frames = []
+    for cc in c:
+        frames.append(cc.get_gain_switch_frame_number())
+    return frames
+
+def get_syncronized_gain_switching(c):
+    enabled = []
+    for cc in c:
+        enabled.append(cc.get_syncronized_gain_switching())
+    return enabled
 
 def set_syncronized_gain_switching(c, enable=1):
     for cc in c:
