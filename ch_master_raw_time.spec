@@ -17,3 +17,4 @@ log_level = string
   delay_file = string
   sync_method = string
   sync_source = string
+  adc_channels = int_list

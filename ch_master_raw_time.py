@@ -100,7 +100,8 @@ class ch_master(object):
     self.ca.set_adc_delays(self.conf["fpga"]["delay_file"])
 
     self.log.info("Seting operational mode to raw_time")
-    self.ca.set_operational_mode('raw_time')
+    self.ca.set_operational_mode('raw_time', chan8_channel_map=self.conf["fpga"]["adc_channels"])
+    self.log.info("Selected ADC channels: %s" %(', '.join('%i' %(k) for k in self.conf["fpga"]["adc_channels"])))
 
     self.log.info("Finished initialization of the CHIME hardware")
 

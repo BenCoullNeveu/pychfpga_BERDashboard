@@ -708,7 +708,7 @@ class ChimeArray(object):
             string +='   Crate SN%s, slot %2i: Iceboard SN%s at %s (ping =%s), Mezz1=%s, Mezz2=%s\n' % (i.crate.serial if i.crate else None, i.slot, i.serial, i.hostname, i.ping(), mezz[0], mezz[1])
         return string
 
-    def set_operational_mode(self, mode, frames_per_packet=1):
+    def set_operational_mode(self, mode, frames_per_packet=1, chan8_channel_map=range(8)):
         """
         Set the operational mode of the array.
 
@@ -724,7 +724,7 @@ class ChimeArray(object):
         if mode == 'raw_time':
             self.ib.set_fft_bypass(True)
             self.ib.set_scaler_bypass(True)
-            self.init_shuffle(mode='chan8', frames_per_packet=frames_per_packet)
+            self.init_shuffle(mode='chan8', frames_per_packet=frames_per_packet, chan8_channel_map=np.hstack((chan8_channel_map, [16]*8)))
 
         elif mode in ['shuffle256', 'shuffle512']:
             self.ib.BP_SHUFFLE.set_tx_power(13)
@@ -925,7 +925,7 @@ class ChimeArray(object):
                      bp_bypass=False,
                      cb2_lanes=2, cb2_bins=1, cb2_bypass=False,
                      remap=True,
-                     ):
+                     chan8_channel_map=range(16)):
         """ Setup the crossbars and data shuffling in every board of the array.
 
         The GTX receivers that have no corresponding transmitter is put in
@@ -956,7 +956,7 @@ class ChimeArray(object):
 
             # Initialize the crossbars to select and send data in a specific format
             # ib.init_crossbars(dsmap, frames_per_packet=frames_per_packet, cb1_lanes=cb1_lanes, cb1_bins=cb1_bins, cb1_bypass=cb1_bypass, cb2_lanes=cb2_lanes, cb2_bins=cb2_bins, cb2_bypass=cb2_bypass, remap=remap, bp_bypass=bp_bypass)
-            ib.init_crossbars(mode, dsmap=dsmap, frames_per_packet=frames_per_packet)
+            ib.init_crossbars(mode, dsmap=dsmap, frames_per_packet=frames_per_packet, chan8_channel_map=chan8_channel_map)
 
         # set-up receivers
         for i, ib in enumerate(self.ib):

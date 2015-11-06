@@ -1502,7 +1502,7 @@ class chFPGA_controller(IceBoardExtHandler):
         return sum(self.get_motherboard_voltage(rail) * self.get_motherboard_current(rail) for rail in (self.RAIL.MB_VCC3V3, self.RAIL.MB_VCC5V5, self.RAIL.MB_VCC12V0))
 
 
-    def init_crossbars(self, mode=None, dsmap=range(16), frames_per_packet=3, cb1_lanes=16, cb1_bins=64, cb1_bypass=False, cb2_lanes=None, cb2_bins=1, cb2_bypass=False, bp_shuffle_bypass=1, crate_shuffle_bypass=1, remap=True):
+    def init_crossbars(self, mode=None, dsmap=range(16), frames_per_packet=3, cb1_lanes=16, cb1_bins=64, cb1_bypass=False, cb2_lanes=None, cb2_bins=1, cb2_bypass=False, bp_shuffle_bypass=1, crate_shuffle_bypass=1, remap=True, chan8_channel_map=range(16)):
         """ Initializes the 1st, 2nd and 3rd crossbars.
         """
         if not self.slot:
@@ -1541,7 +1541,7 @@ class chFPGA_controller(IceBoardExtHandler):
             cb1_bypass = True
             cb1_four_bit = False
             bp_shuffle_bypass = True
-            cb2_lane_map = range(16) # Here we could select which 8 inputs we want to stream to the GPU
+            cb2_lane_map = chan8_channel_map # Here we could select which 8 inputs we want to stream to the GPU
             cb2_bypass = True
             crate_shuffle_bypass = True
             cb3_lane_map = range(8)
