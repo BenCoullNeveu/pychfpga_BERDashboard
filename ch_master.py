@@ -580,6 +580,7 @@ if __name__ == "__main__":
   poll_rate = conf['acq']['acq_loop_poll_rate'] #in seconds
   poll_rate_in_frames = poll_rate/2.56e-6  #should use fpga config frequency?
   reload_gains_frame = conf['fpga']['reload_gains_frame']
+  frame_range = 2*poll_rate_in_frames
 
   bank_switch_frame = conf['fpga']['bank_switch_frame']
   if ( int(args.configure_fpga) > 0):
@@ -619,9 +620,10 @@ if __name__ == "__main__":
             log.critical("Did not get FPGA housekeeping, still aquiring data...")
             #Right now can miss gain setting stuff if hk takes more than 10s.  Really need to disentangle the two.  
         try:
-            fpga_frame_count = c[0].get_frame_number()
+          fpga_frame_count = c[0].get_frame_number()
+          try:
             # Well before switch time.  Set gains in next bank, read back what we set.  
-            if (abs(fpga_frame_count - reload_gains_frame) < 4194304) and not gains_reloaded:
+            if (abs(fpga_frame_count - reload_gains_frame) < frame_range) and not gains_reloaded:
                 load_gains(c, bank=next_bank)
                 fpga_gains = {}
                 for i, c_element in enumerate(c):
@@ -633,7 +635,7 @@ if __name__ == "__main__":
                 for bankset in all_banks:
                     log.info('Using gain banks %s' % ( ', '.join([str(i) for i in bankset])))
             # Right before switch time
-            elif (abs(fpga_frame_count - gain_switch_frame) < 4194304) and not hdf5_gains_switched:
+            elif (abs(fpga_frame_count - (gain_switch_frame+gpu_integration_period)) < frame_range) and not hdf5_gains_switched:
                 for fpga_slot, slot_gain in fpga_gains.items():
                     for val in slot_gain:
                         v = convert_types(val)
@@ -642,7 +644,7 @@ if __name__ == "__main__":
                 hdf5_gains_switched = True
                 log.info('Changed gains in hdf5 file')
             #shortly after after switch
-            elif (abs(fpga_frame_count - bank_switch_frame) < 4194304) and not bank_switched:
+            elif (abs(fpga_frame_count - bank_switch_frame) < frame_range) and not bank_switched:
                 set_next_gain_bank(c, bank = current_bank)
                 current_bank = (current_bank + 1) % 2  
                 next_bank = (next_bank + 1) % 2
@@ -653,8 +655,10 @@ if __name__ == "__main__":
                 all_banks = get_current_gain_bank(c)     
                 for bankset in all_banks:
                     log.info('Using gain banks %s' % ( ', '.join([str(i) for i in bankset])))
-        except:
+          except:
             log.critical("something went wrong with gain switching, still aquiring data...")
+        except:
+          log.info("couldn't read fpga frame number... will try again."
       else:
         log.info("acquiring data...")
       time.sleep(poll_rate)
