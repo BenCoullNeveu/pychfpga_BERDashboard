@@ -580,7 +580,7 @@ if __name__ == "__main__":
   poll_rate = conf['acq']['acq_loop_poll_rate'] #in seconds
   poll_rate_in_frames = poll_rate/2.56e-6  #should use fpga config frequency?
   reload_gains_frame = conf['fpga']['reload_gains_frame']
-  frame_range = 2*poll_rate_in_frames
+  frame_range = 2*poll_rate_in_frames  
 
   bank_switch_frame = conf['fpga']['bank_switch_frame']
   if ( int(args.configure_fpga) > 0):
@@ -634,8 +634,9 @@ if __name__ == "__main__":
                 all_banks = get_current_gain_bank(c)     
                 for bankset in all_banks:
                     log.info('Using gain banks %s' % ( ', '.join([str(i) for i in bankset])))
+            #log.debug("checked for reload gain time")
             # Right before switch time
-            elif (abs(fpga_frame_count - (gain_switch_frame+gpu_integration_period)) < frame_range) and not hdf5_gains_switched:
+            if (abs(fpga_frame_count - (gain_switch_frame+gpu_intergration_period)) < frame_range) and not hdf5_gains_switched:
                 for fpga_slot, slot_gain in fpga_gains.items():
                     for val in slot_gain:
                         v = convert_types(val)
@@ -643,8 +644,9 @@ if __name__ == "__main__":
                         acq.pass_fpga_gain(inp, v)
                 hdf5_gains_switched = True
                 log.info('Changed gains in hdf5 file')
+            #log.debug("checked for switch gains in hdf5 file time")
             #shortly after after switch
-            elif (abs(fpga_frame_count - bank_switch_frame) < frame_range) and not bank_switched:
+            if (abs(fpga_frame_count - bank_switch_frame) < frame_range) and not bank_switched:
                 set_next_gain_bank(c, bank = current_bank)
                 current_bank = (current_bank + 1) % 2  
                 next_bank = (next_bank + 1) % 2
@@ -655,10 +657,11 @@ if __name__ == "__main__":
                 all_banks = get_current_gain_bank(c)     
                 for bankset in all_banks:
                     log.info('Using gain banks %s' % ( ', '.join([str(i) for i in bankset])))
+            #log.debug("checked for gain back switch prep time")
           except:
             log.critical("something went wrong with gain switching, still aquiring data...")
         except:
-          log.info("couldn't read fpga frame number... will try again."
+          log.info("couldn't read fpga frame number... will try again.")
       else:
         log.info("acquiring data...")
       time.sleep(poll_rate)
