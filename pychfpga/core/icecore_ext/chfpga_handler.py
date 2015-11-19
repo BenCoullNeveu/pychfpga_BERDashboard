@@ -742,6 +742,21 @@ class chFPGAHandler(IceBoardPlusHandler):
         captured_time = self._get_irigb_time(trig=0, format=format)  # The event trigger will automatically trig IRIGB
         return (event_number, captured_time)
 
+    def get_frame_number(self):
+        """
+        Return the current frame number passing through the system.   
+        """
+        w2 = self.fpga_mmi_read(self._IRIGB_SAMPLE2_ADDR)
+        self.fpga_mmi_write(self._IRIGB_SAMPLE2_ADDR, w2 & ~(1 << 28))
+        self.fpga_mmi_write(self._IRIGB_SAMPLE2_ADDR, w2 | (1 << 28))
+        t0 = time.time()
+        while not self.fpga_mmi_read(self._IRIGB_TARGET1_ADDR) & (1 << 30):
+            if time.time() - t0 > 1:
+                raise RuntimeError('Timeout while waiting for a Frame. Is data flowing out of the ADC data acquisition module?')
+        event_number = self.fpga_mmi_read(self._IRIGB_EVENT_CTR_ADDR)
+        return event_number
+
+
     def capture_refclk_time(self, trig=True, format='nano'):
         """ Measures the time at which the next 10MHz reference clock rising
         edge occurs.
