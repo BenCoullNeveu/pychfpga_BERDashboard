@@ -272,6 +272,7 @@ class IceBoardPlus(IceBoard):
         try:
             actual_serial = str((yield self.get_motherboard_serial.async()))
         except:  #  Deal with uninitialized boards
+            self.logger.warn('%r: Error while attempring to read the board serial number' % (self))
             actual_serial = None
 
         if update:
