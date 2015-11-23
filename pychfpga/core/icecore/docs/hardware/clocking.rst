@@ -147,7 +147,7 @@ registers to achieve the desired frequencies.
 The .INI configuration files for both PLLs are available.
 
 .. _TableDefaultPLLINIFiles:
-.. table::  PLL Default INI Files
+.. table::  PLL Default INI Files (Warning: These seem different from what is used by the QC porcess)
 
     +---------------------+-----------------------+
     |         PLL1        | PLL2                  |
