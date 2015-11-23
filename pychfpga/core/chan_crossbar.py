@@ -30,11 +30,13 @@ class ChanCrossbar(Module_base):
     SOF_WINDOW_START   = BitField(CONTROL, 1, 0, width=8, doc='')
     SOF_WINDOW_STOP    = BitField(CONTROL, 2, 0, width=8, doc='')
 
-    LANE_MONITOR       = BitField(STATUS, 1, 0, width=16, doc='')
-    BIN_CTR            = BitField(STATUS, 2, 0, width=8, doc='')
-    INPUT_FRAME_CTR    = BitField(STATUS, 3, 0, width=8, doc='')
-    ALIGN_FRAME_CTR    = BitField(STATUS, 4, 0, width=8, doc='')
-    ALIGN_GLOBAL_FRAME_CTR    = BitField(STATUS, 5, 0, width=8, doc='')
+    RESET_MON           = BitField(STATUS, 0, 0, doc='')
+    ALIGN_FIFO_OVERFLOW = BitField(STATUS, 0, 1, doc='')
+
+    # BIN_CTR            = BitField(STATUS, 2, 0, width=8, doc='')
+    INPUT_FRAME_CTR    = BitField(STATUS, 1, 0, width=8, doc='')
+    ALIGN_FRAME_CTR    = BitField(STATUS, 2, 0, width=8, doc='')
+    # ALIGN_GLOBAL_FRAME_CTR    = BitField(STATUS, 5, 0, width=8, doc='')
     # DELAY_CAPTURE    = BitField(STATUS, 7, 0, width=16, doc="")
 
     def __init__(self, fpga_instance, base_address, address_increment, verbose=0):
@@ -200,18 +202,22 @@ class ChanCrossbar(Module_base):
 
         print '%20s: %s' % ('Monitor point', ' '.join('  L%2i ' % v for v in lane_range))
         print '%20s: %s' % ('--------------------', ' '+' '.join('------' for v in lane_range))
-        for name in [ 'RESET', 'MISSING_FRAME', 'ALIGN_FIFO_OVERFLOW']:
-            value = self.get_lane_monitor(name)
-            print '%20s: %s' % (name, ' '.join('%6s' % ('-', 'ERR!')[bool(value[lane])] for lane in lane_range))
         input_frame_ctr = []
         align_frame_ctr = []
+        reset_mon = []
+        align_fifo_overflow = []
         for lane in lane_range:
             self.LANE_MONITOR_SEL = lane
+            reset_mon.append(self.RESET_MON)
+            align_fifo_overflow.append(self.ALIGN_FIFO_OVERFLOW)
             input_frame_ctr.append(self.INPUT_FRAME_CTR)
             align_frame_ctr.append(self.ALIGN_FRAME_CTR)
+
+        print '%20s: %s' % ('RESET', ' '.join('%6s' % ('-', 'ERR!')[bool(v)] for v in reset_mon))
+        print '%20s: %s' % ('ALIGN_FIFO_OVERFLOW', ' '.join('%6s' % ('-', 'ERR!')[bool(v)] for v in align_fifo_overflow))
         print '%20s: %s' % ('INPUT FRAME CTR', ' '.join('%6i' % v for v in input_frame_ctr))
         print '%20s: %s' % ('ALIGN FRAME CTR', ' '.join('%6i' % v for v in align_frame_ctr))
-        print '%20s: %s' % ('ALIGN GLOBAL FRAME CTR', '(common to all lanes) %6i' % self.ALIGN_GLOBAL_FRAME_CTR)
+        # print '%20s: %s' % ('ALIGN GLOBAL FRAME CTR', '(common to all lanes) %6i' % self.ALIGN_GLOBAL_FRAME_CTR)
 
     def get_sim_output(chan_outputs):
         """ Compute the channelizer crossbar output packets.
