@@ -326,15 +326,32 @@ class TuberObject(object):
         Returns a boolean inticating whether a tuber object is available at
         the specified ARM hostname.
         """
+        logger = logging.getLogger(__name__)
         client = tornado.httpclient.AsyncHTTPClient()
         request = tornado.httpclient.HTTPRequest(
             url=self.tuber_uri,
             method='POST',
-            body='{}',
+            body='{"object": "%s",'
+                 ' "method": "_sleep",'
+                 ' "args": [0],'
+                 ' "kwargs": {}}' % self.tuber_objname,
             connect_timeout=timeout,
             request_timeout=timeout)
         response = yield client.fetch(request, raise_error=False)
-        async.async_return(response.error is None)
+        if response.error:
+            logger.debug('%.32r: ping returned an HTTP error. Board is considered to be absent.' % self)
+            async.async_return(False)
+        try:
+            body = json.loads(response.body)
+        except ValueError:
+            logger.debug('%.32r: ping returned a valid HTTP reply but bad JSON data "%s". Board is considered to be absent.' % (self, response.body))
+            async.async_return(False)
+
+        try:
+            async.async_return(not body['error'])
+        except KeyError:
+            logger.debug('%.32r: ping returned valid JSON reply ("%r") but does not have the required fields . Board is considered to be absent.' % (self, body))
+            async.async_return(False)
 
     def tuber_context(self):
         return Context(self)
