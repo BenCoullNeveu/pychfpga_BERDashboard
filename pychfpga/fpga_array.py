@@ -10,7 +10,7 @@ import __main__
 import os
 import sys
 import socket  # for gethostbyname()
-import itertools
+import collections
 import numpy as np
 import matplotlib.pyplot as plt
 import pickle
@@ -20,19 +20,19 @@ from tornado.ioloop import IOLoop
 from tornado import gen
 from tornado.gen import with_timeout, TimeoutError
 
-from sqlalchemy import orm
+# from sqlalchemy import orm
 from sqlalchemy import or_
 
 from pychfpga.core.icecore import Ccoll
 from pychfpga.core.icecore import IceBoardPlus, IceCrate
-from pychfpga.core.icecore import HardwareMap, Session
+from pychfpga.core.icecore import HardwareMap
 from pychfpga.core.icecore import mdns_discover
 from pychfpga.core.icecore import async, async_return
 
 from pychfpga.MGADC08 import MGADC08  # Import to make sure this Mezzanine is registered  so it can be discovered
 from pychfpga.core.chFPGA_controller import chFPGA_controller
-from pychfpga.Agilent_N5764A import AgilentN5764A
-from gpu_node import GpuNode
+from pychfpga.Agilent_N5764A import AgilentN5764AHandler
+from gpu_node import GpuNodeHandler
 
 # import logging.handlers
 
@@ -45,7 +45,13 @@ Resolver.configure('tornado.netutil.ThreadedResolver', num_threads=20)
 
 #####################################
 
-class FpgaBitstream(object):
+class NameSpace(object):
+    pass
+
+
+
+
+class FPGABitstream(object):
     """ Helper object used to load and store a FPGA bitstream. You don't have
     to use it, but it makes the code look nicer"""
     bitstream = None
@@ -94,61 +100,65 @@ ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 = (
 
 ADC_DELAY_TABLE = ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 #ADC_DELAYS_REV2_SN0001 ## select the table corresponding to the FMC serial number
 
-class ChimeArray(object):
-    def __init__(self, argv=[], **kwargs):
+# def get_argparse_action(default=None):
+#     class Store(argparse.Action):
+#         def __init__(self, option_strings, dest, nargs=None, **kwargs):
+#             # if nargs is not None:
+#             #     raise ValueError("nargs not allowed")
+#             print 'Create Action:', option_strings, dest, nargs, kwargs
+#             super(Store, self).__init__(option_strings, dest, **kwargs)
+#         def __call__(self, parser, namespace, values, option_string=None):
+#             print('Call Action: %r %r %r' % (namespace, values, option_string))
+#             print vars(self)
+#             if not hasattr(namespace,'fpga_array'):
+#                 setattr(namespace, 'fpga_array', {})
+#             n = getattr(namespace, 'fpga_array')
+#             n[self.dest] = values
+#     return Store
+
+
+class FPGAArray(object):
+
+    def __init__(self,
+
+
+                 hwm=None,
+                 iceboards=[], icecrates=[], exclude_iceboards=[],
+                 subarrays=[], ping=True,
+                 mdns_timeout=2,
+                 no_mezz=False,
+
+                 bitfile=None,
+                 prog=None,
+                 open=None,
+                 if_ip=None,
+
+                 sampling_frequency=800e6,
+                 reference_frequency=10e6,
+                 data_width=4,
+
+                 sync_method='distributed_time',
+                 sync_source='bp_trig',
+                 **kwargs
+                ):
+
         """ Create a hardware map describing CHIME hardware and optionally
         initialize the hardware.
 
-        The hardware map to use and initialization options are specified either by parsing a list of command line
-        arguments specified in ``argv`` or by directly using keyword arguments.
-
-        Example::
-            ChimeArray(argv=['--iceboard', '10.10.10.7', '10.10.10.8', '--subarray', '3'])  is equivalent to:
-            ChimeArray(iceboard=['10.10.10.7', '10.10.10.8'], subarray=3)
-
-        The hardware map can be loaded from a YAML file, is created by
-        ezlicitely listing IceBoard hostnames, or by mDNS network auto-
-        discovery.
 
 
         Parameters
         ----------
 
-        argv : List of strings representing command line arguments to be
-            parsed by the python ``argparse`` parser as an alternative to the
-            keyword arguments below. The argument list excludes the program
-            name. For example, use ``argv=sys.argv[1:]`` to process all
-            command line arguments. Use keywords arguments below instead if
-            the class is to be created programmatically. Keywords arguments
-            will override comand line arguments. Default is an empty list (no
-            command line arguments)
 
-        log_target : String indicating the logging target (default = 'syslog'). May be
-            - 'stream' : logs on stdout (not recommended in interactive sessions)
-            - 'syslog': logs on Syslog on localhost
-            - any other string: logs to a file specified by the string
+        Hardware map creation
+        ----------------------
 
-        log_level : String indicating the logging level. May be 'info',
-            'error', 'warn' , 'debug'. default is 'debug'.
-
-        sql_log_level : String indicating SQLAlchemy logging level. Same
-            values as ``log_level``. Defaults to 'warn'.
-
-        if_ip : string corresponding to the IP address of adapter through
-            which the connection to the FPGA will be established. If not
-            specified, the system will assume that the FPGA is reached trough
-            the same interface that reaches the ARM processor.
-
-        yaml or yaml_file or yamlfile: List of strings describing the name of a YAML files to load. Name of objects can be optionnally specified by preceding them with a semicolon.
-            Multiple files can be specified by specifying multiple --yaml argument.
-
-
-       yaml_objects : Name (string) of the objects to parse in the yaml file
-            in the format object1.object2... . Default is the root object '.'.
-
-       hwm_name : Name (string) of the hardware map to load from the YAML file (the
-            YAML file must be structured as a dictionary)
-
+        hwm: HardwareMap database object that contains IceBoards, IceCrates
+           and Mezzanines. The hardware map elements that fail the ``ping``
+           and ``subarray`` criteria are removed from the provided hardware
+           map, and objects specified by the ``iceboards`` and ``icecrates``
+           parameters below are added to it.
 
         iceboards : List of strings corresponding to the serial number, the IP
             address or the mDNS name of the iceboards to be added to the
@@ -190,279 +200,110 @@ class ChimeArray(object):
                 ``icecrates=['003', '004']`` will select boards from crates SN003 and SN004.
                 ``icecrates=[]`` will select all boards on the network
 
-
-
-        Default Iceboard set
+        Hardware map filtering
+        ----------------------
 
         subarrays : List of integers describing the subarrays to include in
             the default IceBoard set. If not specified or an empty list, all
-            Iceboards in the hardware map wil be selected. Affects only the
-            boards loaded from the hardware map.
+            Iceboards in the hardware map will be selected. Affects only the
+            boards specified in the hardware map specified with the ``hwm`` parameter.
 
+        ping : If ``ping=1``, The connection to Iceboards is checked
+            by sending a dummy Tuber request to their ARM processor. If a
+            YAML-specified iceboards fails, it is simply removed from the
+            ``hwm`` hardware map, but an exception is raised if a board listed
+            explicitely fails. If ``ping`` is false, the presence of boards is not
+            checked.
 
-        force : (integer). If ``force=0``, the FPGAs in the default Iceboard set will be
-            configured only if they are not already configured with the same
-            firmware. If ``force=1``, they will always be reconfigured. If
-            ``force=-1`` or is not specified, the boards are never configured.
+        Configuration & initialization
+        ------------------------------
 
         bitfile : String. Filename of the bitfile used to to program the FPGAs
 
-        ping : Integer. If ``ping=1``, The connection to Iceboards is checked
-            by sending a dummy Tuber request to their ARM processor. If a
-            YAML-specified iceboards fails, it is simply removed from the
-            hardware map, but an exception is raised if a board listed
-            explicitely fails. If ``ping=0``, the presence of boards is not
-            checked.
+        prog : If ``prog=0``, the FPGAs in the default Iceboard set will be
+            configured only if they are not already configured with the same
+            firmware. If ``prog=1``, they will always be reconfigured. If
+            ``force`` or is not specified or is None, the boards are never configured.
 
+        open : If ``open=1``, establish communication with the boards and
+           initialize the firmware and software. If ``open`` is None or not
+           specified, the software and firmwar eis not initialized.
 
-        init : Initialization level: -1: Just create sockets, 0: connect and read only. 1: initialize hardware
-
-        open_boards : Establish communication with the boards and initialize the firmware and software
-
-        sampling_frequency : Sampling frequency of the ADC in MHz
-
-        data_width : Data width of each Re and Im component of the channelizer output
-
-        frames_per_packet : Number of frames to group before sending to the GPU or FPGA correlator. The total size of the frame, including the header and ethernet obverhead, cannot exceed 8 kibytes.
-
-        enable_gpu_link : Enables the GPU link transmission
-
-
-        YAML file parsing
-        -----------------
-
-        If the YAML object is a hardware map or contains the
-        hardware map specified by the ``hwm_name`` parameter, then the
-        hardware map will be initialized with it. The crate, slot and
-        serial number information will be automatically obtained from the
-        hardware if not specified in the YAML file.
-
-        Examples:
-            chime_array --yaml_file file1.yaml:mcgill.power_supplies mcgill.crate7 mcgill.nodes
-
-            ca = ChimeArray(yaml_file='file1.yaml:mcgill.power_supplies mcgill.crate7 mcgill.nodes')
+        if_ip : string corresponding to the IP address of adapter through
+            which the connection to the FPGA will be established. If not
+            specified, the system will assume that the FPGA is reached trough
+            the same interface that reaches the ARM processor.
 
         """
 
-        # This is the bitfile that is generated if implementing the Vivado
-        # project located in
-        # icecore/rtl/projects/iceboard_top_example/iceboard_top_example.xpr
-        chimearray_path = os.path.dirname(__file__)
-        chimearray_path = chimearray_path + '/' if chimearray_path else ''
-        default_bitfile = ( chimearray_path +
-            '../../chfpga/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit')
-
-        # Configure the various loggers to provide adequate levels of details
-        log_levels = {'info': logging.INFO, 'debug': logging.DEBUG, 'warn': logging.WARNING, 'error': logging.ERROR}
-
-        # -------------------------------
-        # Process command line arguments
-        # -------------------------------
-
-        parser = argparse.ArgumentParser(description=__doc__.split('\n')[0]) # description is the first line of the docstring
-
-        parser.add_argument('-t', '--log_target', action='store', type=str, default='syslog', help="Logging target ('stream', 'syslog' or a filename)")
-        parser.add_argument('-l', '--log_level', action='store', type=str, choices=log_levels, default='debug', help='Logging level')
-        parser.add_argument('--sql_log_level', action='store', type=str, choices=log_levels, default='warn', help='SQLAlchemy Logging level')
-        parser.add_argument('--stderr_log_level', action='store', type=str, choices=log_levels, default='warn', help='stderr (console) Logging level')
-        parser.add_argument('--if_ip', action='store', type=str, default=None, help='IP address of adapter through which the connection to the FPGA will be established. This is used solely for direct UDP communications with the FPGA. If not specified, the system will use the same interface that communicates with the ARM processor.')
-
-        parser.add_argument('-y', '--yamlfile','--yaml_file', '--yaml', action = 'store', type=str, nargs='+', default=None,  help='Yaml file with list of boards and their respective IP addresses and handlers.')
-        parser.add_argument('--hwm_name', action = 'store', type=str, default=None,  help='Name of the hardware map to load from the YAML file (the YAML file must be structured as a dictionary)')
-        parser.add_argument('-i', '--iceboards', action='store', nargs='*', type=str, default=[], help="Space-separated list of iceboards, which can be specified byip address (e.g. 10.10.10.7), hostname (e.g. iceboard0007.local) if a mDNS client is running locally, or by serial number (e.g. 0007 or simply 7) in which case active mDNS discovery will be done")
-        parser.add_argument('-c', '--icecrates', action='store', nargs='*', type=str, default=[], help="Space-separated list of icecrate serial numbers.  Discover and adds all boards in the specified serial number")
-        parser.add_argument('--subarrays', action = 'store', type=int, nargs='*', help='Keep in the hardware map only the boards that are in the specified subarrays. This applies only to iceboards that are specified in a YAML file.')
-        parser.add_argument('-x', '--exclude_iceboards', action='store', nargs='*', type=str, default=[], help="Space-separated list of iceboards serials to exclude ")
-        # parser.add_argument('--slots', action='store', type=str, nargs='*', help="Select only boards in the specified slot(s)")
-        parser.add_argument('--prog', action='store', type=int, nargs='?', const=0, default=-1, help='Programs the FPGA if not already programmed. --prog 1 forces the FPGA programming even if the firmware is already programmed')
-        parser.add_argument('-b', '--bitfile', action='store', type=str, default=default_bitfile,  help='Filename of the bitfile used to to program the FPGAs')
-        parser.add_argument('--ping', action='store', type=int, default=1, help="1: Check if Tuber is responding. 0: Check but ignore. ")
-        parser.add_argument('--mdns_timeout', action='store', type=float, default=2, help="Time to wait for mDNS discovery replies")
-
-
-        # parser.add_argument('-s', '--subarray', action='store', nargs='+', type=int, help='Space-separated list of subarrays to include')
-        parser.add_argument('--no_mezz', action='store_true', help='Do not attempt to auto-detect the mezzanines')
-        # parser.add_argument('-n', '--init', action='store', type=int, default=-1, help='Initialization level: -1: Just create sockets, 0: connect and read only. 1: initialize hardware')
-        parser.add_argument('-o', '--open', action='store', type=int, nargs='?', const=1, default=-1, help='Opens communication with the FPGAs, create the Python objects reprenting the firmware, and initialize the firmware. --open 0 skips the firmware initialization phase')
-        parser.add_argument('-f', '--sampling_frequency', action='store', type=float, default=800, help='Sampling frequency of the ADC in MHz')
-        parser.add_argument('-w', '--data_width', action='store', type=int, choices=[4,8], default=4, help='Data width of each Re and Im component of the channelizer output')
-        parser.add_argument('-g', '--frames_per_packet','--group_frames',  action='store', type=int, default=4, help='Number of frames to group before sending to the GPU or FPGA correlator. The total size of the frame, including the header and ethernet obverhead, cannot exceed 8 kibytes.')
-        parser.add_argument('-e', '--enable_gpu_link', action='store', type=int, default=0, help='Enables the GPU link transmission')
-        # parser.add_argument('--sn', action='store', type=int, default=7, help='Serial number of the Iceboard')
-
-        parser.add_argument('-n', '--gpu_nodes', action='store', type=str, nargs='+', default=[], help='Create GPU node objects')
-        parser.add_argument('-p', '--power_supplies', action='store', type=str, nargs='+', default=[], help='Create Agilent_N5764A power supply objects')
-
-        parser.add_argument('--sync_method', action='store', type=str, default='distributed_time', help="Sets the global syncing method ('distributed_time', 'centralized_time_trigger', 'centralized_soft_trigger', 'local_soft_trigger')")
-        parser.add_argument('--sync_source', action='store', type=str, default='bp_trig', help="Sets the global syncing source ('bp_gpio_int', 'bp_time', 'bp_trig')")
-
-        args = parser.parse_args(argv)  # We always parse even if argv is not specified so we have default values
-
-        # Bring all keywoards argument into the args namespace
-        for k, v in kwargs.items():
-            setattr(args, k, v)
-
-
-
-        __main__._host_interface_ip_addr = args.if_ip
-
-
-        # -------------------------------
-        # Set-up logging
-        # -------------------------------
-
-
-        # Make sure SQLAlchemy does not log too much
-        sql_logger = logging.getLogger('sqlalchemy.engine.base.Engine')
-        sql_logger.setLevel(log_levels[args.sql_log_level])
-
-        # Set-up chFPGA loggers
-        if args.log_target == 'stream':
-            log_handler = logging.StreamHandler()
-        elif args.log_target == 'syslog':
-            log_handler = logging.handlers.SysLogHandler()
-        else:
-            log_handler = logging.FileHandler(args.log_target)
-
         self.logger = logging.getLogger('')
-        self.logger.handlers = []  # Clear all existing handlers
-        self.logger.setLevel(logging.DEBUG)  # pass all messages to the handlers which will filter what they want
-       # Set-up log for this test run
-        log_handler.setLevel(log_levels[args.log_level])
-        self.logger.addHandler(log_handler)
 
-        stream_handler = logging.StreamHandler()
-        stream_handler.setLevel(log_levels[args.stderr_log_level])
-        self.logger.addHandler(stream_handler)
+
+        if bitfile is None:
+            chimearray_path = os.path.dirname(__file__)
+            chimearray_path += '/' if chimearray_path else ''
+            bitfile = ( chimearray_path +
+                '../../chfpga/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/CHFPGA_MGK7MB_REV2.bit')
+
 
         self.logger.info('%r: ------------------------' % self)
-        self.logger.info('%r: C H I M E A R R A Y' % self)
+        self.logger.info('%r: C H I M E   A R R A Y' % self)
         self.logger.info('%r: ------------------------' % self)
-        self.logger.info('%r: Called with: %s' % (self, ', '.join('%s=%s' % (key, repr(value)) for (key,value) in args.__dict__.items())))
+        self.logger.info('%r: Called with: %s' % (self, ', '.join((
+            'if_ip = %s' % if_ip,
+            'iceboards = %s' % iceboards,
+            'icecrates = %s' % icecrates,
+            'subarrays = %s' % subarrays,
+            'ping = %s' % ping,
+            'mdns_timeout = %s' % mdns_timeout,
+            'exclude_iceboards = %s' % exclude_iceboards,
+            'bitfile = %s' % bitfile,
+            'prog = %s' % prog,
+            'open = %s' % open,
+            'no_mezz = %s' % no_mezz,
+            'sampling_frequency = %s' % sampling_frequency,
+            'reference_frequency = %s' % reference_frequency,
+            'sync_method = %s' % sync_method,
+            'sync_source = %s' % sync_source))))
 
-
-        # -------------------------------
-        # Load YAML file
-        # -------------------------------
-        # The YAML file may contain any configuration data that will be
-        # accessible by the user, which includes hardware maps that will be
-        # extracted below
-        if args.yamlfile:
-            yaml_args = ' '.join(args.yamlfile).split(':')
-            yaml_filename = yaml_args[0]
-            print yaml_filename
-            if len(yaml_args) == 1:
-                yaml_object_paths = ['']
-            elif len(yaml_args) == 2:
-                yaml_object_paths = yaml_args[1].split()
-            else:
-                raise ValueError('Only one filename can be specified per --yaml option')
-
-            self.logger.info('%.32r: Loading YAML file %s' % (self, yaml_filename))
-            print 'Loading YAML file %s' % yaml_filename
-            with open(yaml_filename, 'rb') as yamlfile:
-                self.yaml = load_yaml(yamlfile)
-        else:
-                self.yaml = None
-                yaml_object_paths = []
-
-        self.hwm = None
-        top_node = self.yaml
-        for yaml_object_path in yaml_object_paths:
-            # if not yaml_object_path:
-            #     continue
-            node = top_node
-            for item_name in yaml_object_path.split('.'):
-                if not item_name:
-                    node = top_node
-                else:
-                    top_node = node
-                    if item_name in node:
-                        node = node.get(item_name)
-                    else:
-                        raise RuntimeError("Unknown object '%s'" % yaml_object_path)
-            self.logger.info('%.32r: Loading YAML elements from object %s' % (self, yaml_object_path))
-            print 'Loading YAML elements from object %s' % yaml_object_path
-
-            if isinstance(node, Session):
-                self.hwm = self.yaml
-            elif isinstance(node, dict):
-                for (k, v) in node.items():
-                    if k in args:
-                        arg = getattr(args, k)
-                        if isinstance(arg, list) and isinstance(v, list):
-                            arg.extend(v)
-                            print 'Extended %s=%s' % (k, arg)
-                        elif isinstance(arg, list):
-                            arg.append(v)
-                            print 'Appended %s=%s' % (k, arg)
-                        else:
-                            print 'Overwriting argument %s=%s to %s=%s' % (k, arg, k, v)
-                            setattr(args, k, v)
-                    else:
-                        print 'Creating %s=%s' % (k, v)
-                        setattr(args, k, v)
-            else:
-                raise RuntimeError("Target element '%s' must be either a hardware map or a dictionary" % yaml_object)
-        # # If the YAML file contains contrictor arguments, add them to the argument list
-        # chimearray_params_dict_name = 'chimearray_params'
-        # if isinstance(self.yaml, dict) and chimearray_params_dict_name in self.yaml:
-        #     for (k, v) in self.yaml[chimearray_params_dict_name].items():
-        #         if not hasattr(args, k):
-        #             raise KeyError("YAML parameter '%s' does not exist" % k)
-        #         setattr(args, k, v)
+        __main__._host_interface_ip_addr = if_ip
 
         # Fix up a few parameters for convenience
-        if isinstance(args.iceboards, (str, int)):
-            args.iceboards = [args.iceboards]
-        args.iceboards = [self._to_integer(x) for x in args.iceboards]
+        if isinstance(iceboards, (str, int)):
+            iceboards = [iceboards]
+        iceboards = [self._to_integer(x) for x in iceboards]
 
-        if isinstance(args.icecrates, (str, int)):
-            args.icecrates = [args.icecrates]
-        args.icecrates = [self._to_integer(x) for x in args.icecrates]
+        icecrate_map = []
 
-        # -------------------------------
-        # Create a hardware map
-        # -------------------------------
-        # If a hardware map exists in the yaml file, use it, otherwise create a new blank one
-        # If the yaml file is a single hardware map, get it
-        # self.hwm = None
-        # if isinstance(self.yaml, Session):
-        #     self.hwm = self.yaml
-        #     self.yaml = None
-        # elif isinstance(self.yaml, list):
-        #     hwm = [obj for obj in self.yaml if isinstance(obj, Session)]
-        #     if len(hwm) == 1:
-        #         self.hwm = hwm[0]
-        #         self.yaml.remove(self.hwm)
-        #     elif len(hwm) > 1:
-        #         raise RuntimeError("YAML file is a list containing multiple hardware map and I don't know which one to use")
-        # elif isinstance(self.yaml, dict) and args.hwm_name:
-        #     if args.hwm_name in self.yaml:
-        #         hwm = self.yaml.pop(args.hwm_name)
-        #         if not isinstance(self.yaml, Session):
-        #             raise RuntimeError("YAML entry %s is not a hardware map" % args.hwm_name)
-        #     else:
-        #         raise RuntimeError("YAML does not contain a hardware map named %s" % args.hwm_name)
+        if isinstance(icecrates, (str, int)):
+            icecrates = [icecrates]
 
-        # If no hardware map was found in the YAML file, create an empty one
-        if not self.hwm:
+        if isinstance(icecrates, list):
+            icecrates = [self._to_integer(x) for x in icecrates]
+            icecrate_map = range(len(icecrates))
+
+        elif isinstance(icecrates, dict):
+            icecrates = [self._to_integer(x) for x in icecrates.values()]
+            icecrate_map = {
+        print 'icecrates=', icecrates
+        # If no hardware map is provided, create an empty one
+        if not hwm:
             self.hwm = HardwareMap()  # Create empty hardware map
-
+        else:
+            self.hwm = hwm
 
         # Remove boards that are not in the specified subarray
-        if args.subarrays:
-            ib_not_in_subarray = self.hwm.query(IceBoardPlus).filter(~IceBoardPlus.subarray.in_(args.subarrays))
+        if subarrays:
+            ib_not_in_subarray = self.hwm.query(IceBoardPlus).filter(~IceBoardPlus.subarray.in_(subarrays))
             for ib in list(ib_not_in_subarray):  # make sure the list does not change during the loop
                 print ("%r (subarray '%s') is not in the target subarray list %s. It is removed from the YAML hardware map."  # That comment should be if verbose=1
-                                   % (ib, ib.subarray, args.subarrays))
+                                   % (ib, ib.subarray, subarrays))
                 self.hwm.delete(ib)
             self.hwm.flush()
 
-        # Check if the boards is the selected subarray actually exist on the
-        # network. If not, delete them from the hardware map.
+        # Remove boards that do not respond to tuber pings
         ping_timeout = 1
-        if args.ping:
+        if ping:
             self.logger.info('%.32r: Pinging IceBoards specified in YAML file' % (self))
             ib_to_ping = self.hwm.query(IceBoardPlus).as_dict()  # use as_dict so ib_to_ping does not change as we delete boards from the hwm
             if ib_to_ping:
@@ -480,16 +321,16 @@ class ChimeArray(object):
                 self.hwm.flush()
 
 
-        # Add iceboards that are explicitely listed as hostnames
-        if args.iceboards:
-            for hostname in [ib for ib in args.iceboards if '.' in str(ib)]:
+        # Add iceboards that are explicitely listed with IP addresses or hostname (we'll discover the boards by serial number later)
+        if iceboards:
+            for hostname in [ib for ib in iceboards if '.' in str(ib)]:
                 # ip_addr = socket.gethostbyname(hostname)  # convert hostname to IP address for faster Tuber access
                 ip_addr = hostname
                 ib = IceBoardPlus(hostname=ip_addr)
                 self.hwm.add(ib)
                 self.hwm.flush()
                 # Explicitely listed boards must exist on the network
-                if args.ping:
+                if ping:
                     if ib.ping(timeout=ping_timeout):
                         ib.hostname = socket.gethostbyname(ib.hostname)
                     else:
@@ -505,6 +346,7 @@ class ChimeArray(object):
         if ib_without_serial.count():
             self.logger.info('%.32r: Auto-Discovering serial number for IceBoards %s' % (self, ib.hostname))
             ib_without_serial.discover_serial()
+            self.logger.debug('%.32r: Done Auto-Discovering serial number for IceBoards %s' % (self, ib.hostname))
 
         ib_without_crate = self.hwm.query(IceBoardPlus).filter(or_(IceBoardPlus.crate==None, IceBoardPlus.slot==None))
         if ib_without_crate.count():
@@ -512,10 +354,10 @@ class ChimeArray(object):
             ib_without_crate.discover_crate()
 
         # If requested, discover additional boards and crates on the network using mDNS and add those to the hardware map
-        iceboards_to_discover = [ib for ib in args.iceboards if '.' not in str(ib)]
+        iceboards_to_discover = [ib for ib in iceboards if '.' not in str(ib)]
         if '*' in str(iceboards_to_discover):
             iceboards_to_discover = '*'
-        icecrates_to_discover = args.icecrates
+        icecrates_to_discover = icecrates
         if '*' in str(icecrates_to_discover):
             icecrates_to_discover = '*'
         elif icecrates_to_discover:
@@ -527,29 +369,28 @@ class ChimeArray(object):
             mdns_discover(self.hwm,
                           icecrates=icecrates_to_discover,
                           iceboards=iceboards_to_discover,
-                          timeout=args.mdns_timeout)
+                          timeout=mdns_timeout)
 
         # Remove iceboards to be excluded (by serial number)
-        if args.exclude_iceboards:
+        if exclude_iceboards:
             for ib in self.hwm.query(IceBoardPlus):
                 try:
                     serial = str(int(ib.serial))
                 except (TypeError, ValueError):
                     serial = ib.serial
-                if serial in args.exclude_iceboards or ib.serial in args.exclude_iceboards:
+                if serial in exclude_iceboards or ib.serial in exclude_iceboards:
                     self.hwm.delete(ib)
             self.hwm.flush()
 
         # Hardware map is complete
 
-        # Query all iceboards
+        # Query all iceboards and icecrates
         ib = self.hwm.query(IceBoardPlus).join(IceCrate).order_by(IceCrate.serial, IceBoardPlus.slot)
         ic = self.hwm.query(IceCrate).order_by(IceCrate.serial)
 
-        # if not ib.count():
-        #     raise RuntimeError('No Iceboards matching the selection criteria were found')
 
         if not ic.count():
+            self.logger.warn('No Iceboards matching the selection criteria were found')
             print 'There are no IceCrates in the hardware map!'
 
         print 'The following IceBoards are in the hardware map:'
@@ -570,19 +411,19 @@ class ChimeArray(object):
             # ib.set_handler(IceBoardPlusHandler, fpga_bitstream)
 
             # Configure the FPGA with the bitstream associated with the handler
-            if args.prog > -1:
+            if prog is not None and prog >= 0:
                 print 'Configuring FPGAs...'
                 # Associate the bitstream with the target Handler
-                self.fpga_bitstream = FpgaBitstream(args.bitfile)
+                self.fpga_bitstream = FPGABitstream(bitfile)
                 ib.register_fpga_bitstream(self.fpga_bitstream)
-                ib.set_fpga_bitstream(force=args.prog)
+                ib.set_fpga_bitstream(force=prog)
                 print 'Done configuring FPGAs'
 
             # Auto-discover mezzanines and add them to the hardware map McGill
             # MGADC08 can only be discovered if the FPGA is programmed with the
             # chFPGA_controller firmware
 
-            if not args.no_mezz:
+            if not no_mezz:
                 for ib in self.ib:
                     if ib.is_fpga_programmed():
                         print 'Discovering Mezzanines...'
@@ -605,56 +446,35 @@ class ChimeArray(object):
 
 
         print
-        if self.ib and args.open > -1:
+        if self.ib and open is not None and open >= 0:
             print 'Initializing firmware (calling ib.open())'
             self.ib.open(adc_delay_table=ADC_DELAY_TABLE,
-                         init=args.open,
-                         sampling_frequency=args.sampling_frequency * 1e6,
-                         reference_frequency=10e6,
-                         data_width=args.data_width,
-                         group_frames=args.frames_per_packet,
-                         enable_gpu_link=args.enable_gpu_link)
-            self.set_sync_method(method=args.sync_method, source=args.sync_source)
+                         init=open,
+                         sampling_frequency=sampling_frequency,
+                         reference_frequency=reference_frequency
+                         )
+            self.set_sync_method(method=sync_method, source=sync_source)
 
             if self.ic:
                 self.ic.init()
 
         self.print_flush()
 
-        if args.gpu_nodes:
-            for hostname in args.gpu_nodes:
-                print 'Creating GPU node object at %s' % hostname
-                self.hwm.add(GpuNode(hostname=hostname))
-            self.hwm.flush()
-
-        self.node = Ccoll(self.hwm.query(GpuNode))  #.order_by(IceBoardPlus.slot)
-        # self.node.open()
-
-        if args.power_supplies:
-            for hostname in args.power_supplies:
-                print 'Creating Power Supply object at %s' % hostname
-                self.hwm.add(AgilentN5764A(hostname=hostname))
-            self.hwm.flush()
-            self.ps = Ccoll(self.hwm.query(AgilentN5764A).handler)  #.order_by(IceBoardPlus.slot)
-            self.ps.open()
-        else:
-            self.ps = Ccoll([])
-
-        # import all command line argument values into this object
-        self.args = args
-        for k, v in args._get_kwargs():
-            setattr(self, k, v)
-
-        print 'Done processing arguments'
+        print 'Done creating %r' % self
 
     @staticmethod
     def _to_integer(x):
+        """ If the specified argument has an integer representation then
+        return that integer otherwise return the original argument.
+        """
         try:
             return int(x)
         except ValueError:
             return x
 
     def print_flush(self):
+        """ Make sure that the test sent previously to stdout shows immediately on the console.
+        """
         sys.stdout.flush()
 
 
@@ -687,15 +507,15 @@ class ChimeArray(object):
         resolver.close()
         return (resolver, futures, ip_addr)
 
-    def __getattr__(self, name):
-        """
-        Redirects all attributes access to the hardware map (Session) object.
-        """
-        return getattr(self.hwm, name)
+    # def __getattr__(self, name):
+    #     """
+    #     Redirects all attributes access to the hardware map (Session) object.
+    #     """
+    #     return getattr(self.hwm, name)
 
-    def __dir__(self):
-        # return type(self).__dict__ + self.__dict__ + dir(self._hwmap)
-        return dir(self.hwm) + self.__dict__.keys()
+    # def __dir__(self):
+    #     # return type(self).__dict__ + self.__dict__ + dir(self._hwmap)
+    #     return dir(self.hwm) + self.__dict__.keys()
 
     def __repr__(self):
         """ Short string representing this object and suitable to use as a tag in a syslog entry"""
@@ -714,6 +534,11 @@ class ChimeArray(object):
 
         'raw_time': Each boards stream raw 8-bit time samples from channels
                     0-7 to the corresponding GPU ports.
+
+
+        # data_width : Data width of each Re and Im component of the channelizer output
+        # enable_gpu_link : Enables the GPU link transmission
+
         """
         if self.ic.NUMBER_OF_SLOTS:
             clock_sources = self.ib.index_by(repr).get_clock_source()
@@ -1822,14 +1647,400 @@ class ChimeArray(object):
           self.logger.warning("file {0} not found. Using default ADC delays for all the iceboards.".format(delay_filename))
 
 
+def parse_args_as_dict(parser, *args, **kwargs):
+    """ Parses arguments like argparse.parse_args(...), with the following differences:
+           - The results are returned as a dictionary instead of a namespace.
+           - Arguments that have the value ``None`` are not included (they are presumed not to have been specified in the command line)
+           - If an argument is part of a group that has the ``sub_dict`` attribute, all the argument values of this group are stored in a subdictionary named by that attribute.
+    """
+
+    # Create a dictionary that maps command line arguments to their group name.
+    group_map = {action.dest: getattr(group, 'sub_dict', '')
+              for group in parser._action_groups
+                 for action in group._group_actions}
+
+    args = parser.parse_args(*args, **kwargs)
+
+    args_dict={}
+    for k, v in vars(args).items():
+        if v is not None:
+            sub_dict = group_map[k]
+            if sub_dict:  # if a sub dict was specified
+                if sub_dict not in args_dict:  # a sub dict if it does not exist
+                    args_dict[sub_dict] = {}
+                args_dict[sub_dict][k] = v
+            else:
+                args_dict[k] = v
+    return args_dict
+
+
+def merge_dict(src, dest):
+    """ Merge a hierarchy of dictionnaries.
+    - Only a dict can be merged with a dict
+    - Dicts are merged as follow:
+        - If the destination item does not exist is it created from the source
+        - If both the source and destination item is a dict then those are merged
+        - If only one of the source or destination is a dict there is an error
+
+    """
+    def is_list(x):
+        return isinstance(dest, collections.Sequence)
+    def is_dict(x):
+        return isinstance(dest, collections.Mapping)
+
+    logger = logging.getLogger('')
+
+    if is_dict(src) or is_dict(dest):
+        # print ' --- merge ', src, 'to', dest
+        src = src or {}
+        dest = dest or {}
+        if is_dict(src) and is_dict(dest):
+            for k, v in src.iteritems():
+                if k in dest:
+                    dest[k] = merge_dict(v, dest[k])
+                else:
+                    dest[k] = v
+        else:
+            raise TypeError('Only a mapping can be merged with another mapping')
+    elif is_list(src) or is_list(dest):
+        if not is_list(src):
+            src = [src]
+        if not is_list(dest):
+            dest = [dest]
+        dest.extend(src)
+    else:
+        logger.warning('%.32s: Overriding  %s with %s' % ('merge_dict', dest, src))
+        dest = src
+    return dest
+
+def load_yaml_config(object_names):
+    """
+    object_names: String or list of strings describing the name of a YAML files and objects to
+       load. Name of objects are specified by preceding them with a semicolon.
+       Object hierarchy is separated by '.'. An object starting with '.'
+       starts at the same root note as the previous object.
+
+    Returns a dictionary
+
+    Example:
+        load_yaml_config('file1.yaml')
+
+        load_yaml_config('file1.yaml:object1 object2')
+
+        load_yaml_config('file1.yaml:object1.subitem1 .subitem2)
+
+    """
+        # -------------------------------
+    # Load YAML file
+    # -------------------------------
+    # The YAML file may contain any configuration data that will be
+    # accessible by the user, which includes hardware maps that will be
+    # extracted below
+
+
+    if not object_names:
+        return {}
+
+    # If the objects are passed as a list of strings, combine those in a single string
+    if not isinstance(object_names, str):
+        object_names = ' '.join(object_names)  # Combine all strings into a single string
+
+    config = {}
+    logger = logging.getLogger('')
+    if object_names:
+        yaml_args = object_names.split(':')
+        yaml_filename = yaml_args[0]
+        print yaml_filename
+        if len(yaml_args) == 1:
+            yaml_objects = ['']
+        elif len(yaml_args) == 2:
+            yaml_objects = yaml_args[1].split()
+        else:
+            raise ValueError('Only one filename can be specified')
+
+        logger.info('Loading YAML file %s' % (yaml_filename))
+        print 'Loading YAML file %s' % yaml_filename
+        with open(yaml_filename, 'rb') as yamlfile:
+            yaml = load_yaml(yamlfile)
+    else:
+            yaml = None
+            yaml_objects = []
+
+    # self.hwm = None
+    current_root_node = yaml
+
+    for yaml_object_path in yaml_objects:
+        yaml_path_items = yaml_object_path.split('.')
+        if yaml_path_items[0]:  # If the path does not start with '.', restart from top
+            current_root_node = yaml
+        current_node = current_root_node
+        for path_item in yaml_path_items:
+            if path_item:
+                if path_item in current_node:
+                    current_root_node = current_node
+                    current_node = current_node.get(path_item)
+                else:
+                    raise RuntimeError("Unknown object '%s'" % yaml_object_path)
+        logger.info('Loading YAML elements from object %s' % (yaml_object_path))
+        print 'Loading YAML elements from object %s' % yaml_object_path
+
+        # if isinstance(node, Session):
+        #     self.hwm = self.yaml
+        if not isinstance(current_node, dict):
+            raise RuntimeError("Target element '%s' must be a dictionary" % yaml_object_path)
+        # print 'merging', current_node, 'with', config
+        config = merge_dict(current_node, config)
+        # # Copy each item of the dictionary into the final dictionary. If an item is a dict and already, merge the fields. Similarly, extend lists.
+        # for (k, v) in current_node.items():
+        #     if k in config:
+        #         arg = config[k]
+        #         if isinstance(arg, list) and isinstance(v, list):
+        #             arg.extend(v)
+        #             # print 'Extended %s=%s' % (k, arg)
+        #         elif isinstance(arg, list):
+        #             arg.append(v)
+        #             # print 'Appended %s=%s' % (k, arg)
+        #         else:
+        #             # print 'Overwriting argument %s=%s to %s=%s' % (k, arg, k, v)
+        #             setattr(config, k, v)
+        #     else:
+        #         # print 'Creating %s=%s' % (k, v)
+        #         config[k] = v
+    return config
+
+log_levels = {'info': logging.INFO, 'debug': logging.DEBUG, 'warn': logging.WARNING, 'error': logging.ERROR}
+
+def add_logging_arguments(parser):
+    parser.add_argument('-t', '--log_target', action='store', type=str, default='syslog', help="Logging target ('stream', 'syslog' or a filename)")
+    parser.add_argument('-l', '--log_level', action='store', type=str, choices=log_levels, default='debug', help='Logging level')
+    parser.add_argument('--sql_log_level', action='store', type=str, choices=log_levels, default='warn', help='SQLAlchemy Logging level')
+    parser.add_argument('--stderr_log_level', action='store', type=str, choices=log_levels, default='warn', help='stderr (console) Logging level')
+
+def add_fpga_array_arguments(parser):
+    parser.add_argument('--if_ip',           type=str, help='IP address of adapter through which the connection to the FPGA will be established. This is used solely for direct UDP communications with the FPGA. If not specified, the system will use the same interface that communicates with the ARM processor.')
+    parser.add_argument('-i', '--iceboards', type=str, nargs='*', help="Space-separated list of iceboards, which can be specified byip address (e.g. 10.10.10.7), hostname (e.g. iceboard0007.local) if a mDNS client is running locally, or by serial number (e.g. 0007 or simply 7) in which case active mDNS discovery will be done")
+    parser.add_argument('-c', '--icecrates', type=str, nargs='*', help="Space-separated list of icecrate serial numbers.  Discover and adds all boards in the specified serial number")
+    parser.add_argument('--subarrays',       type=int, nargs='*', help='Keep in the hardware map only the boards that are in the specified subarrays. This applies only to iceboards that are specified in a YAML file.')
+    parser.add_argument('-x', '--exclude_iceboards', type=str, nargs='*', help="Space-separated list of iceboards serials to exclude ")
+    parser.add_argument('--ping',            type=int, help="1: Check if Tuber is responding. 0: Check but ignore. ")
+    parser.add_argument('--mdns_timeout',    type=float, help="Time to wait for mDNS discovery replies")
+    parser.add_argument('--no_mezz',         action='store_true', help='Do not attempt to auto-detect the mezzanines')
+    parser.add_argument('--prog',            type=int, nargs='?', const=0, help='Programs the FPGA if not already programmed. --prog 1 forces the FPGA programming even if the firmware is already programmed')
+    parser.add_argument('-b', '--bitfile',   type=str, help='Filename of the bitfile used to to program the FPGAs')
+    parser.add_argument('-o', '--open',      type=int, nargs='?', const=1, help='Opens communication with the FPGAs, create the Python objects representing the firmware, and initialize the firmware. --open 0 skips the firmware initialization phase')
+    parser.add_argument('--sync_method',     type=str, default='distributed_time', help="Sets the global syncing method ('distributed_time', 'centralized_time_trigger', 'centralized_soft_trigger', 'local_soft_trigger')")
+    parser.add_argument('--sync_source',     type=str, default='bp_trig', help="Sets the global syncing source ('bp_gpio_int', 'bp_time', 'bp_trig')")
+
+def setup_logging(log_target, log_level, sql_log_level, stderr_log_level):
+    # Make sure SQLAlchemy does not log too much
+    sql_logger = logging.getLogger('sqlalchemy.engine.base.Engine')
+    sql_logger.setLevel(log_levels[sql_log_level])
+
+    # Set-up main loggers
+    if log_target == 'stream':
+        log_handler = logging.StreamHandler()
+    elif log_target == 'syslog':
+        log_handler = logging.handlers.SysLogHandler()
+    else:
+        log_handler = logging.FileHandler(log_target)
+
+    logger = logging.getLogger('')
+    logger.handlers = []  # Clear all existing handlers
+    logger.setLevel(logging.DEBUG)  # pass all messages to the handlers which will filter what they want
+
+    log_handler.setLevel(log_levels[log_level])
+    logger.addHandler(log_handler)
+
+    stream_handler = logging.StreamHandler()
+    stream_handler.setLevel(log_levels[stderr_log_level])
+    logger.addHandler(stream_handler)
+    return logger
+
+def GPUArray(gpu_nodes=[]):
+        # Create GPU node array
+        if gpu_nodes:
+            print gpu_nodes
+            return Ccoll(GpuNodeHandler(hostname=hostname) for hostname in gpu_nodes)
+        else:
+            return Ccoll([])
+
+    # Create Power Supply array
+def PSArray(power_supplies=[]):
+        if power_supplies:
+            ps = Ccoll(AgilentN5764AHandler(hostname=hostname) for hostname in power_supplies)
+            ps.open()
+            return ps
+        else:
+            return Ccoll([])
+
+def create_fpga_array(args=None):
+    """
+    Creates FPGAArray object interactively from the command line and/or a YAML
+    configuration file, mainly for debugging and testing. All command-line
+    options can also be specified directly in the YAML file.
+
+    The function can also create simple GPU nodes and power supply objects to
+    assist testing of the FPGA array.
+
+    The hardware map describing all the components of the FPGA array
+    (motherboards, backplanes, mezzanines) can be specified by explicitrly
+    instantiating the corresponding objects in the YAML file (e.g.
+    IceBoardPlus!{...}).
+
+    Alternatively, the hardware can  be specified  using the command line
+    arguments or their equivalent entries in the configuration file, which
+    allow those objects to be created from the motherboard IP address,
+    hostname or serial number, or just the crate serial number. When serial
+    numbers are specified, boards and crates and are looked up on the locan
+    network using mDNS.
+
+    Examples:
+        create_fpga_array --iceboards 10.10.10.5 10.10.10.6   # Creates  an array of 2 boards at specified IP addresses
+        create_fpga_array --iceboards iceboard0005.local iceboard0006.local   # Creates  an array of 2 boards at specified hostname (assuming the host computer runs a mDNS client)
+        create_fpga_array --iceboards 0005 0006   # Creates  an array of 2 boards with specified serial numbers (resolved using a mDNS request on the network)
+        create_fpga_array --iceboards 5 6   # Same as above. Works only with purely numeric serial numbers.
+        create_fpga_array --icecrates MGK7BP16_003 MGK7BP16_007  # Load all boards in crate serial number 003 and 007
+        create_fpga_array --icecrates 3 7  # Same as above. MGK7BP16-type backplane is assumed by default
+
+    In the configuration file, some parameters are grouped in the following sub-dictionaries:
+
+    root object:
+        logging:     # Contains all the parameters related to logging
+        fpga_array:  # Contains all the parameters related to the creation and
+                     # initialization of the FPGA motherboards, crates and mezzanines
+        gpu_array:   # Contains all the parameters related to the creation and
+                     # initialization of the GPU nodes
+        power_supply_array:  # Contains all the parameters related to the creation
+                             # and initialization of the power supplies
+
+    Example:
+        my_config:
+            fpga_array:
+                iceboards: ["10.10.10.5", "10.10.10.6"]  # or any other syntax accepted by the comamnd line
+                icecrates: [3, 7]
+                ...
+            logging:
+                log_target: "syslog"
+            ...
+
+    Generic parameters (root dict)
+    ------------------
+
+    yaml: Name of a YAML configuration file to load. One or more root object
+       can be specified, in which case the filename and the list of root
+       objects must be separated by a single ':'. If multiple root objects are
+       specified, they are all combined and lists or dictionaries with similar
+       names are all combined.
+
+       Objects can be specified hierarchically using the '.' hierarchy
+       separator. An object starting with '.' starts at the same node level as
+       the previous object.
+
+    Example:
+        --yaml file1.yaml # Load config from the top node of the file
+        --yaml file1.yaml:site1 # Load  config from the site1 element
+        --yaml file1.yaml:site1 site2# Load config by combining the elements of site1 and site2 objects
+        --yaml file1.yaml:site1.boards .gpus .ps  # combine site1.boards, site1.gpus and site1.ps
+
+
+    FPGA array parameters (``fpga_array`` sub-dict)
+    ---------------------
+    Here is a summary of the FPGA array creation parameters. Detailed
+    description of each parameter is profided in the ``FPGAArray`` object.
+
+        hwm: Contains a hardware map object (config file only, created with HardwareMap! object)
+        iceboards: List of IceBoards (IP, hostnames or serial numbers) to add to the hardware map. Their connected IceCrate and Mezzanine is also automatically added.
+        icecrates: List of IceCrates (serial numbers) to add to the hardware map. Adds all IceBoards in them.
+        exclude_iceboards: Remove the specified IceBoards (serial numbers) from the hardware map.
+        mdns_timeout: Time to wait for IceBoard to responds to mDNS queries
+        no_mezz: Do not discover nor initialize the mezzanine on the IceBoard
+        subarrays: Keep only iceboards that are in the specified subarrays (applicable only to objects created explicitely in the configuration file)
+        ping: Keep only boards that respond to requests
+
+        bitfile: pathname of the file containing the CHIME FPGA bitstream
+        prog: Configures all the FPGAs in the array. If ``prog 1`` is given, forces programming even if the firmware is already loaded.
+        open: Establish communication with the FPGA and Initializes the FPGA firmware and the corresponding Python modules.
+        if_ip: address of the interface used to communicate with the FPGA. If not specified, the same interface as the one used for communicate with the ARM processor is used.
+
+        sampling_frequency: Specifies the sampling frequency of the CHIME ADC mezzanine, in Hz (typically 800 MHz)
+        reference_frequency: Specifies the frequency of the system's reference clock in Hz (typically 10 MHz)
+        data_width: Bit width used after the channelizer's scaler (4 or 8)
+        sync_method: string describing the method used to synchronize all the boards in the array
+        sync_source: string describing the source of the synchronization signal.
+
+    GPU Array parameters (``gpu_array`` sub_dict)
+    --------------------
+        gpu_nodes: list of GPU nodes (IP addresses or hostnames) for which GPU node objects are to be created.
+
+
+    Power Supply Array parameters (``ps_array`` sub_dict)
+    -----------------------------
+        power_supplies: list of GPU nodes (IP addresses or hostnames) for which power supply objects are to be created.
+
+    Logging parameters: (``logging`` sub-dict)
+    -------------------
+        log_target : String indicating the logging target (default = 'syslog'). May be
+            - 'stream' : logs on stdout (not recommended in interactive sessions)
+            - 'syslog': logs on Syslog on localhost
+            - any other string: logs to a file specified by the string
+
+        log_level : String indicating the logging level. May be 'info',
+            'error', 'warn' , 'debug'. default is 'debug'.
+
+        sql_log_level : String indicating SQLAlchemy logging level. Same
+            values as ``log_level``. Defaults to 'warn'.
+
+        stderr_log_level : String indicating what messages to log on stderr
+           (usually the console) in addition to the main log target. Is usually
+           used to make sure that important messages (warnings and errors) are
+           seen immediately by the interactive operator. Values are the same as
+           ``log_level``. Defaults to 'warn'.
+
+    """
+    # -------------------------------
+    # Parse command line arguments
+    # -------------------------------
+    parser = argparse.ArgumentParser(description=__doc__.split('\n')[0]) # description is the first line of the docstring of this module
+
+    # Add logging-related command-line parameters
+    logging_group = parser.add_argument_group('logging parameters', 'Specify how and where the logging is done')
+    logging_group.sub_dict = 'logging'  # group all arguments in this group in a sub dictionary with this name
+    add_logging_arguments(logging_group)
+
+
+    # Add FPGA Array-related command-line parameters
+    fpga_group = parser.add_argument_group('FPGA Array parameters', 'Allows interactive creation of a hardware map and initialization of all its components')
+    fpga_group.sub_dict = 'fpga_array'  # group all arguments in this group in a sub dictionary with this name
+    add_fpga_array_arguments(fpga_group)
+
+    # Add generic command-line parameters
+    parser.add_argument('-y', '--yaml',  type=str, nargs='+',   help='YAML configuration file name, optionally followed by object names in that file.')
+    parser.add_argument('-n', '--gpu_nodes', type=str, nargs='+',  help='List of GPU node objects to be created with specified hostnames or IP addresses.')
+    parser.add_argument('-p', '--power_supplies', type=str, nargs='+', help='List of power supply objects (Agilent_N5764A) to be created with specified hostnames or IP addresses.')
+    args = parse_args_as_dict(parser)  # Parse command-line arguments as a dict, with arguments groups stored in separate sub dictionaries
+
+    # -------------------------------
+    # Load configuration file
+    # -------------------------------
+    config = load_yaml_config(args.pop('yaml', None))  # Load YAML config
+    config = merge_dict(args, config)     # Add command line arguments to config
+
+    logger = setup_logging(**config.get('logging', {}))
+    fpga_array = FPGAArray(**config.get('fpga_array', {}))     # Create FPGA array
+    gpu_array = GPUArray(**config.get('gpu_array', {}))     # Create FPGA array
+    ps_array = PSArray(**config.get('power_supply_array', {}))     # Create FPGA array
+
+    return config, fpga_array, gpu_array, ps_array
+
+
 
 if __name__ == '__main__':
+    (config, ca, nodes, ps) = create_fpga_array()
 
-    ca = ChimeArray(argv=sys.argv[1:])
+    # -------------------------------
+    # Bring some key objects into the current namespace to facilitate interactive use
+    # -------------------------------
     hwm = ca.hwm
     ib = ca.ib
     c = ca.ib
     ic = ca.ic
-    node = ca.node
-    ps = ca.ps
-    # Open boards
