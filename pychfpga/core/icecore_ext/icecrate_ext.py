@@ -29,7 +29,7 @@ class IceCrateExt(IceCrate):
     handler_name = 'IceCrateExtHandler'
     __mapper_args__ = {'polymorphic_identity': 'IceCrateExt'}
     __ipmi_part_number__ = []  # Must match part number in IPMI data
-
+    crate_number = None  # used to assign a experiment-specific unique numerical number to a crate
 
 class IceCrateExtHandler(IceCrateHandler):
     """ IceCrate handler that provides access to the backplane through an
@@ -1105,41 +1105,4 @@ class IceCrate_MGK7BP1_Handler(IceCrateExtHandler):
 
     def status(self):
         """Displays the status of the motherboard"""
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
