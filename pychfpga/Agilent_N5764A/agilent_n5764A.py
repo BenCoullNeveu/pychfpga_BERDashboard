@@ -66,7 +66,10 @@ class AgilentN5764AHandler(handler.Handler):  #, agilent_N5700
         self.ps = agilent_N5700(interface='lan', ip_addr=self.hostname, ip_port=5025, timeout=0.5, verbose=0)
 
     def __repr__(self):
-        return '%s %s @%s' % (self.ps.instrument_name, self.ps.instrument_model, self.hostname)
+        if self.ps:
+            return '%s %s @%s' % (self.ps.instrument_name, self.ps.instrument_model, self.hostname)
+        else:
+            return 'Unknown power supply'
 
     def lock(self):
         self.locked = True
