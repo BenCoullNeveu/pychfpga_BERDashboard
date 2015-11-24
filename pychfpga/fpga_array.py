@@ -284,7 +284,7 @@ class FPGAArray(object):
 
         elif isinstance(icecrates, dict):
             icecrates = [self._to_integer(x) for x in icecrates.values()]
-            icecrate_map = {
+            # icecrate_map = {
         print 'icecrates=', icecrates
         # If no hardware map is provided, create an empty one
         if not hwm:
