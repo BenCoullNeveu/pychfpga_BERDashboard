@@ -71,7 +71,7 @@ class SCALER_base(Module_base):
         self.USE_OFFSET_BINARY = 1
         # self.set_fixed_gain(1)
         self.set_gain_table(1)
-        SATURATE_ON_MINUS_7 = 1
+        self.SATURATE_ON_MINUS_7 = 1
 
 
     # def set_fixed_gain(self, complex_gain):
