@@ -141,6 +141,7 @@ class dataWriter(object):
         self.N_TIME_PER_FILE = 64
         self.time_name = datetime.datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
         self.base_dir = '/data/archive/'+ self.time_name + '_pathfinder_rawadc/'
+        self.live_base_dir = '/mnt/agogo/livedata/'
         try:
             os.mkdir(self.base_dir)
         except:
@@ -148,6 +149,8 @@ class dataWriter(object):
             self.base_dir = './'
         self.h5name = self.base_dir + "{0:06d}.h5".format(self.n_file)
         self.h5file = hdf5TimestreamData(self.h5name)
+        self.live_name = self.live_base_dir + "live_adc_data.h5"
+        self.live_h5file = hdf5TimestreamData(self.live_name)
 
     def write(self):
         while True:
@@ -155,10 +158,13 @@ class dataWriter(object):
                 for out_q in self.out_queue:
                     self.all_ts, self.port, self.all_data = out_q.get()
                     self.h5file.write_singletime(self.all_ts, self.port, self.all_data)
+                    self.live_h5file.write_singletime(self.all_ts, self.port, self.all_data)
             self.h5file.close()
+            self.live_h5file.close()
             self.n_file += 1
             self.h5name = self.base_dir + "{0:06d}.h5".format(self.n_file)
             self.h5file = hdf5TimestreamData(self.h5name)
+            self.live_h5file = hdf5TimestreamData(self.live_name)
 
 if __name__ == "__main__":
     HOST = "10.10.10.2"
