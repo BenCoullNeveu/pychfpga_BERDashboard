@@ -86,6 +86,43 @@ class hdf5TimestreamData(object):
     def close(self):
         self.f.close()
 
+class hdf5LiveTimestreamData(object):
+    def __init__(self, filestring):
+        self.N_SAMP = 2048
+        self.N_ANT = 16
+        self.f = h5py.File(filestring, 'a')
+        self.timestampDataset = self.f.require_dataset('timestamp',
+                  (16, self.N_ANT), dtype=np.int32, maxshape=(None, self.N_ANT))
+        self.portDataset = self.f.require_dataset('slot', (16, 1),
+                                            dtype=np.int32, maxshape=(None, 1))
+        self.timestreamDataset = self.f.require_dataset('timestream',
+                        (16, self.N_ANT, self.N_SAMP), dtype=np.int8,
+                        maxshape=(None, self.N_ANT, self.N_SAMP))
+
+
+    def init(self, n_times, n):
+        self.n_times = n_times
+        self.n = n
+    
+
+    def write_singletime(self, timestamp, port, timestream):
+        if self.n == self.n_times:
+            self.n_times = self.n+1
+            #self.timestampDataset.resize((self.n_times, self.N_ANT))
+            #self.portDataset.resize((self.n_times, 1))
+            #self.timestreamDataset.resize((self.n_times, self.N_ANT, self.N_SAMP))
+        elif self.n < self.n_times:
+            pass
+        else:
+            print "ut oh..."
+        print self.n_times
+        self.timestampDataset[self.n] = timestamp
+        self.portDataset[self.n] = port % 100  # assume port gives slot
+        self.timestreamDataset[self.n] = timestream
+        self.n += 1 
+
+    def close(self):
+        self.f.close()
 
 class dataProcessor(object):
     def __init__(self, data_queue, out_queue, port):
@@ -150,21 +187,27 @@ class dataWriter(object):
         self.h5name = self.base_dir + "{0:06d}.h5".format(self.n_file)
         self.h5file = hdf5TimestreamData(self.h5name)
         self.live_name = self.live_base_dir + "live_adc_data.h5"
-        self.live_h5file = hdf5TimestreamData(self.live_name)
+        self.live_h5file = hdf5LiveTimestreamData(self.live_name)
+        #self.live_h5file.init()
+        self.live_h5file.close()
 
     def write(self):
         while True:
             for i in xrange(self.N_TIME_PER_FILE):
-                for out_q in self.out_queue:
+                for j, out_q in enumerate(self.out_queue):
                     self.all_ts, self.port, self.all_data = out_q.get()
                     self.h5file.write_singletime(self.all_ts, self.port, self.all_data)
+                    self.live_h5file = hdf5LiveTimestreamData(self.live_name)
+                    self.live_h5file.init(n_times=j+1, n=j)
                     self.live_h5file.write_singletime(self.all_ts, self.port, self.all_data)
+                    self.live_h5file.close()
             self.h5file.close()
-            self.live_h5file.close()
+            #self.live_h5file.close()
             self.n_file += 1
             self.h5name = self.base_dir + "{0:06d}.h5".format(self.n_file)
             self.h5file = hdf5TimestreamData(self.h5name)
-            self.live_h5file = hdf5TimestreamData(self.live_name)
+            #self.live_h5file.init(n_times=1, n=0)
+            #self.live_h5file.close()
 
 if __name__ == "__main__":
     HOST = "10.10.10.2"
