@@ -207,7 +207,7 @@ def calculate_gains(c, port):
     c.sync()
     channels = range(16)
     #for 4 bit number *sqrt2 since real and imag, check this
-    idealRMS = 2.83 * np.sqrt(2)
+    idealRMS = 1.5 * np.sqrt(2) #2.83 is 1.5bits  1.5 is 0.6bits
     #glog = 13 # not sure why this isn't 9, but seemed to be the case.
     print "configured for sending data to port {0}".format(port)
     rmss = []
