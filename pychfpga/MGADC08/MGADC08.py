@@ -146,3 +146,152 @@ class MGADC08_Handler(FMCMezzanineHandler):
             self.IOExpander.status()
             self.ADC_PLL.status()
             self.ADC.status()
+
+    # Old method used to QC the original boards
+    def load_board_info(self):
+        """ loads the info data block from the ADC board EEPROM into memory for future access. """
+        i = 0
+        string = ''
+        keep_reading = True
+        number_of_tries = 0
+        while(keep_reading):
+             try:
+                  ascii = self.eeprom.read(i)
+                  keep_reading = False
+             except:
+                  number_of_tries += 1
+                  if number_of_tries > 100:
+                      print "something wrong with eeprom reading"
+                      raise
+                  print 'e',
+                  time.sleep(0.01)
+        #125 is the ASCII character for the } which is used in the dictionary. The 1000 characters is used to make sure this doesn't go indefinitely
+        #Converts each address in EEPROM to a character and put it together in a string
+        dictionary_is_present = False
+        for i in range(500):
+            if (ascii != 125) and (ascii != 255):
+                keep_trying = True
+                number_of_tries = 0
+                while(keep_trying):
+                    try:
+                        ascii = self.eeprom.read(i)
+                        keep_trying = False
+                        print '.',
+                    except:
+                        number_of_tries +=1
+                        if number_of_tries > 100:
+                            print "something is wrong with eeprom read"
+                            raise
+                        time.sleep(0.01)
+                        print 'e',
+                char = chr(ascii)
+                string = string + char
+            elif ascii == 125:
+                dictionary_is_present = True
+                break
+        dictbyte = ''
+        if dictionary_is_present == True:
+            print "Now reading checksum"
+            for i in range(4): #reads 4 bytes after dictionary
+                keep_trying = True
+                number_of_tries = 0
+                while(keep_trying):
+                    try:
+                        asciibyte = self.eeprom.read(len(string)+1+i)
+                        keep_trying = False
+                        print '.',
+                    except:
+                        number_of_tries +=1
+                        if number_of_tries > 100:
+                            print 'Something is wrong with eeprom read'
+                            raise
+                        time.sleep(0.01)
+                        print 'e',
+                byte_char = chr(asciibyte)
+                dictbyte = dictbyte + byte_char
+            crccheck = struct.unpack('i',dictbyte)
+            # Doesn't actually do the crc check yet.....
+            #print 'The dictionary stored on EEPROM is:      ' + str(string)
+            #print 'The CRC library check is:     ' + str(crccheck)
+            exec_string = "dict_out = " + string[1:]
+            exec exec_string
+        elif dictionary_is_present == False:
+            print 'No dictionary found on EEPROM. Did the board pass the quality control test?'
+        self._board_info = dict_out
+
+
+    # Old method used to QC the original boards
+    def write_board_info(self, dict = None ):
+            """
+            Makes a dictionary or accepts dictionnary as input. Writes a dictionary to the EEPROM and also a CRCheck.
+            """
+            # Get dicitonary from user if none supplied
+            if dict == None:
+                ser_num = raw_input("Enter the serial number of the board (e.g. 0001):      ")
+                rev_num = raw_input("Enter the revision number of the board (e.g. 0): ")
+                fab_run = raw_input("Enter the fabrication run of the board (e.g. 1): ")
+                head_ver = raw_input("Enter the header version (e.g. 1): ")
+                delay_tab = raw_input("Enter the delay table of the board: ")
+                model = raw_input("Enter the model of the ADC (e.g. MGADC08):      ")
+                stat = raw_input("Enter the status of the board (0 = Working, 1 = In QC , 2 = Has problems but works, 3 = Failed): ")
+                board_date = raw_input("Enter the date the last test was done (DD/MM/YYYY): ")
+                site = raw_input("Enter the URL to find all the tests associated with this board: ")
+                comments = raw_input("Enter any additional comments you may have about the board. If none, please put 'None': ")
+                dict = {'Serial #': ser_num, \
+                        'Rev #': rev_num, \
+                        'Fabrication Run': fab_run, \
+                        'Header Version': head_ver, \
+                        'Model': model, \
+                        'Delay Table': delay_tab, \
+                        'Status': stat, \
+                        'Date of last test': board_date, \
+                        'Website': site, \
+                        'Comments': comments}
+
+            # Parse dictionnary into ASCII char list
+            nstring = str(dict)
+            chars = list(nstring)
+            # Write dictionnary to EEPROM, checking each byte after write
+            for i in range(len(chars)):
+                correct = False
+                while not correct:
+                    try:
+                        check = self.eeprom.read(i+1)
+                        if (check == ord(chars[i])):
+                            correct = True
+                        else:
+                            try:
+                                self.eeprom.write(i+1, ord(chars[i]))
+                            except Exception as e:
+                                print self.logger.info('error writing to EEPROM, will retry: ' + e.message)
+                                pass
+                    except Exception as e:
+                        print self.logger.info('error reading from EEPROM, will retry: ' + e.message)
+                        pass
+            # Write 13 at the end of EEPROM
+            thirteen = False
+            while (thirteen == False):
+                try:
+                    self.eeprom.write(0,13)
+                    thirteen = True
+                except Exception as e:
+                    print self.logger.info('error writing 13 to EEPROM, will retry: ' + e.message)
+                    pass
+            # Figure out the CRC and write to EEPROM
+            crcheck = zlib.crc32(nstring)
+            dictbyte = struct.pack('l', crcheck)
+            asciibyte = struct.unpack('BBBB', dictbyte)
+            print 'the crcheck is:' + str(crcheck)
+            #for i in range(len(asciibyte)):
+            i=0
+            while (i < len(asciibyte)):
+                try:
+                    self.eeprom.write(len(chars)+1+i, asciibyte[i])
+                    i+=1
+                except Exception as e:
+                    self.logger.info("error writing CRC, will retry: " + e.message)
+                    pass
+
+            # Read full EEPROM dictionary and print to log
+            self.load_board_info()
+            self.logger.info("Done. Read back EEPROM: \n" + str(self._board_info))
