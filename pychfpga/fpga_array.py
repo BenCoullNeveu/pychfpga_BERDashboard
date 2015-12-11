@@ -442,7 +442,7 @@ class FPGAArray(object):
         self.print_flush()
 
         if self.ic:
-            self.print_iceboard_table(lambda ib:ib.serial, grid=False)
+            self.print_iceboard_table(grid=False, add_serial=True)
 
 
         print
@@ -1541,30 +1541,50 @@ class FPGAArray(object):
             if not line_sep: # Make sure we have a bottom line if we didn't already printed one
                     print line_sep_str
 
-    def print_iceboard_table(self, func, row_labels=None, grid=False):
-        if not len(self.ic):
-            print '[ There are no crates in the hardware map ]'
+    def print_iceboard_table(self, func=None, row_labels=None, grid=False, add_serial=True):
+        if not len(self.ib):
+            print '[ There are no IceBoards hardware map ]'
             return
-        corner_label = 'Crate \\ Slot\n'
-        slot_range = range(1, max(self.ic.NUMBER_OF_SLOTS)+1)
-        col_labels = ['%i' % s for s in slot_range]
+
         if row_labels is None:
-            row_labels = list(self.ic.get_id())
+            row_labels = ''
+
+        orphan_iceboards = [ib for ib in self.ib if not ib.crate or not ib.crate.serial]
+        corner_label = 'Standalone\nIceboards'
+        col_labels = ['-'] * len(orphan_iceboards)
+        local_row_labels = ['-' + '\n' + row_labels]
         data = []
-        for slot in slot_range:
-            col_data = []
-            for crate in self.ic:
-                if slot in crate.slot.keys():
-                    cell = func(crate.slot[slot])
-                else:
-                    cell = '-'
-                col_data.append(cell)
-            data.append(col_data)
+        for ib in orphan_iceboards:
+            cell = 'SN' + ib.serial + '\n' if add_serial else ''
+            cell += func(ib) if func else ''
+            data.append([cell])
         if data:
-            self.print_table(data, row_labels=row_labels, col_labels=col_labels, corner_label=corner_label, line_sep=grid)
+            self.print_table(data, row_labels=local_row_labels, col_labels=col_labels, corner_label=corner_label, line_sep=grid)
+
+
+        if len(self.ic):
+            corner_label = 'Crate \\ Slot\n'
+            slot_range = range(1, max(self.ic.NUMBER_OF_SLOTS)+1)
+            col_labels = ['%i' % s for s in slot_range]
+            data = []
+            valid_crates = [ic for ic in self.ic if ic.serial]
+            local_row_labels = [crate.get_id() + '\n' + row_labels for crate in valid_crates]
+            for slot in slot_range:
+                col_data = []
+                for crate in valid_crates:
+                    if slot in crate.slot.keys():
+                        cell = 'SN' + crate.slot[slot].serial + '\n' if add_serial else ''
+                        cell += func(crate.slot[slot]) if func else ''
+                    else:
+                        cell = '-'
+                    col_data.append(cell)
+                data.append(col_data)
+            if data:
+                self.print_table(data, row_labels=local_row_labels, col_labels=col_labels, corner_label=corner_label, line_sep=grid)
 
     def print_iceboard_temperatures(self):
-        self.print_iceboard_table(lambda ib: '%3.1f' % ib.get_temperatures()['FPGA_core'])
+        sensor = self.ib[0].TEMPERATURE_SENSOR.MB_FPGA_DIE
+        self.print_iceboard_table(lambda ib: '%3.1f' % ib.get_motherboard_temperature(sensor), row_labels='FPGA Die Temp')
 
     def print_iceboard_power(self):
         self.print_iceboard_table(lambda ib: '%0.1f' % ib.get_total_power())
