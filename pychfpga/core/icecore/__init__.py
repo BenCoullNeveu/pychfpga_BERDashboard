@@ -72,6 +72,8 @@ from session import (
     register_yaml_object
 )
 
+from session import load_session as load_yaml
+
 from tests.xreport.xreport import (
     XReport
     )
