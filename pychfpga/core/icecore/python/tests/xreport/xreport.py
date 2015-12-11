@@ -19,6 +19,7 @@ TODO:
 import traceback
 import sys
 import os
+import glob
 import logging
 import nose
 from StringIO import StringIO
@@ -35,7 +36,9 @@ import matplotlib.pyplot as plt
 import base64
 import urllib
 import datetime
+import readline
 
+from rst import rST
 
 #------------------------------------------------
 # XML nodes
@@ -62,6 +65,7 @@ TESTPATH = lxml.objectify.E.testpath  # Hierarchical test name
 TESTDATE = lxml.objectify.E.testdate  # Current test date & time
 TESTARGS = lxml.objectify.E.testargs  # Current test arguments
 SYNOPSIS_DATA = lxml.objectify.E.synopsis_data
+HEADER = lxml.objectify.E.header  # Additional headers to separate test result sections
 
 #  HTML elements that can be useful for styling "description", "details", and
 #  "summary"
@@ -139,6 +143,9 @@ class XReport(Plugin):
 
     xargs = []
 
+
+
+
     @classmethod
     def _no_plugin(cls, feature):
         raise Warning('The Xreport plugin is not active. %s will be ignored' % feature)
@@ -158,13 +165,33 @@ class XReport(Plugin):
             print message
 
     @classmethod
-    def input(cls, message):
-        return raw_input(message)
+    def header(cls, text):
+        if cls.instance:
+            cls.instance._add_header(text)
+        else:
+            print text
+            print '-' * len(text)
 
     @classmethod
-    def flush(cls):
+    def input(cls, message):
+        answer = raw_input(message)
+        # Send a copy of the message and answer to the capture buffer because
+        # raw_input bypasses stdout for some reason.
+        if cls.instance:
+            cls.instance._buf._write(str(message)+answer+'\n')
+        return answer
+
+
+    @classmethod
+    def pass_fail(cls, test):
+        return ['FAIL','PASS'][bool(test)]
+
+    @classmethod
+    def new_block(cls):
         if cls.instance:
             cls.instance._flush()
+        else:
+            print '-------------------------------------------------------------'
 
     @classmethod
     def rst(cls, message):
@@ -244,11 +271,10 @@ class XReport(Plugin):
         self.filename = options.xreport_file
         self.formats = set(options.xformat)
         self.verbose = options.verbosity
-        self.filename, filename_ext = os.path.splitext(self.filename)
-        # if not self.formats:
-        #     self.formats = []
-        if filename_ext[1:]:
-            self.formats.add(filename_ext[1:])
+        if self.filename:
+            self.filename, filename_ext = os.path.splitext(self.filename)
+            if filename_ext[1:]:
+                self.formats.add(filename_ext[1:])
         for f in self.formats:
             if f not in ('pdf', 'rst', 'xml'):
                 raise ValueError("Invalid file format type '%s'" % f)
@@ -267,7 +293,10 @@ class XReport(Plugin):
                 pass
             def flush(self):
                 pass
+
+        stream.flush()
         # If we are verbose, send all text to screen, else send to dummy device
+
         if self.verbose:
             self.stream = stream
         else:
@@ -278,8 +307,30 @@ class XReport(Plugin):
 
     def start_stdout_capture(self):
         """ Redirect Stdout in a StringIO"""
+        class StringStdIO(StringIO):
+            """ StringIO object augmented to send a copy to ``stdout``"""
+            def __init__(self, stdout, *args):
+                self._stdout = stdout
+                StringIO.__init__(self, *args)
+            def write(self, *arg):
+                self._stdout.write(*arg)
+                self._stdout.flush()
+                StringIO.write(self, *arg)
+            def _write(self, *arg):
+                StringIO.write(self, *arg)
+            # def writeln(self, *arg):
+            #     self._stdout.writeln(*arg)
+            #     self._stdout.flush()
+            #     StringIO.writeln(self, *arg)
+            # def _writeln(self, *arg):
+            #     StringIO.writeln(self, *arg)
+            def flush(self):
+                self._stdout.flush()
+                StringIO.flush(self)
+
+        sys.stdout.flush()
         self.stdout.append(sys.stdout)
-        self._buf = StringIO()
+        self._buf = StringStdIO(self.stream)
         sys.stdout = self._buf
 
     def stop_stdout_capture(self):
@@ -291,6 +342,7 @@ class XReport(Plugin):
 
     def flush_stdout_capture(self):
         """Get currently captured output and flush buffer"""
+        self._buf.flush()
         buf = self._buf.getvalue()
         self._buf.truncate(0)
         return buf
@@ -301,6 +353,9 @@ class XReport(Plugin):
 
     def add_node(self, *data):
         """ Add one or more children XML elements to the current node"""
+        if not self.node_tail:
+            print 'add_node: There is no tail node!'
+            return
         self.get_current_node().extend(data)
 
     def enter_node(self, node=GROUP(), node_name='.'):
@@ -312,7 +367,8 @@ class XReport(Plugin):
     def exit_node(self):
         """ Terminate a node and make parent node current"""
         self.node_tail.pop()
-        self.node_name.pop()  # flush the current node name
+        if self.node_name:
+            self.node_name.pop()  # flush the current node name
 
     def get_node_path(self):
         """ Return the full hierarchical name of the current node"""
@@ -345,15 +401,21 @@ class XReport(Plugin):
         captured_output = self.flush_stdout_capture()
         if captured_output:
             self.add_node(DETAILS(PRE(captured_output)))  # Add any stdout capture
-            self.stream.write(captured_output)
+            # self.stream.write(captured_output)
 
     def pprint(self, text, dedent=True):
         """ Add a block of text verbatim to be interpreted a reStructuredText"""
-        self.flush()
+        self._flush()
         if dedent:
             text = textwrap.dedent(text)
         self.add_node(DETAILS(P(text)))
         self.stream.write(text)
+
+    def _add_header(self, text):
+        self._flush()
+        self.add_node(HEADER(text))
+        self.stream.write('\n' + text + '\n')
+        self.stream.write('-' * len(text) + '\n')
 
     def begin(self):
         """Initialize the test run.
@@ -408,9 +470,10 @@ class XReport(Plugin):
         context_type = ('MODULE' if inspect.ismodule(ctx) else
                         'GENERATOR' if inspect.isgeneratorfunction(ctx) else
                         'CLASS' if inspect.isclass(ctx) else '')
-        full_title = context_type + ' ' + self.get_node_path()
-        test_datetime = datetime.datetime.now().isoformat()
         self.enter_node(GROUP(), group_name)
+        full_title = context_type + ' ' + self.get_node_path()
+        self.logger.info('full_title= %s' % full_title)
+        test_datetime = datetime.datetime.now().isoformat()
         self.add_node(TESTNAME(self.get_node_path()))
         self.add_node(TITLE(full_title))
         self.add_node(TESTPATH(self.get_node_path()))
@@ -424,6 +487,9 @@ class XReport(Plugin):
 
     def all_nodes_passed(self):
         """ gather the pass/fail node of every underlying test case or group"""
+        if not self.node_tail:
+            print 'all_nodes_passed: There is no tail node!'
+            return
         return all([n.passed.text == 'true' for n in self.get_current_node().iterchildren(['case', 'group'])])
 
     def stopContext(self, ctx):
@@ -447,8 +513,12 @@ class XReport(Plugin):
             summary, description = self._get_doc(test.test.test)
         elif hasattr(test.test, '_testMethodName'):
             test_type = 'METHOD'
-            test_name = test.test._testMethodName
-            summary, description = self._get_doc(test.test._testMethodDoc)
+            if hasattr(test.test,'test'):
+                test_name = test.test.test.func_name
+                summary, description = self._get_doc(test.test.test)
+            else:
+                test_name = test.test._testMethodName
+                summary, description = self._get_doc(test.test._testMethodDoc)
         else:
             test_type = str(type(test.test))
             test_name = type(test.test).__name__
@@ -477,33 +547,45 @@ class XReport(Plugin):
         """Clear capture buffer.
         """
         self.logger.info('afterTest %s' % test)
-        self.flush()
+        self._flush()
         self.stop_stdout_capture()
         self.exit_node()
 
     def addSuccess(self, test):
         self.logger.info('addSuccess %s' % test)
+        print
+        print ' ---> TEST PASSED:\n'
         self.add_node(PASSED(True))
+        self.passed = True
 
     def addError(self, test, err):
         summary = err[1][:err[1].find('\n--------')].replace('\n',' ')  # Strip captured stdout or logs from summary text
+
+        print
+        print ' ---> ERROR: %s\n' % (summary)
+        self._flush()
         self.add_node(SUMMARY(summary))
         err = self.formatErr(err)
-        self.logger.info('addError %s' % (err[-1000:]))
-        self.flush()
+        self.logger.info('addError %s\n%s' % (summary, err[-1000:]))
+        self._add_header('Error report')
         self.add_node(DETAILS(PRE(err)))  #
         self.add_node(PASSED(False))
         self.stream.write('\n%s\n' % (err))
+        self.passed = False
 
     def addFailure(self, test, err):
         summary = err[1][:err[1].find('\n--------')].replace('\n',' ')
+        print
+        print ' ---> FAILURE: %s\n' % (summary)
+        self._flush()
         self.add_node(SUMMARY(summary))
         err = self.formatErr(err)
-        self.logger.info('addFailure %s' % (err[-1000:]))
-        self.flush()
+        self.logger.info('addFailure %s\n%s' % (summary, err[-1000:]))
+        self._add_header('Failure report')
         self.add_node(DETAILS(PRE(err)))  #
         self.add_node(PASSED(False))
         self.stream.write('\n%s\n' % (err))
+        self.passed = False
 
     def formatFailure(self, test, err):
         """Add captured output to failure report.
@@ -575,7 +657,13 @@ class XReport(Plugin):
     def print_etree(self, node=None, level=0):
         if node is None:
             node = self.etree
+        self._print_etree(self)
 
+    @classmethod
+    def _print_etree(cls, node, level=0):
+        """ Print the XML tree in a compact manner.
+        The top element is not displayed.
+        """
         for e in node:
             if e.text:
                 text = str(e.text).replace('\n',' ')
@@ -584,7 +672,7 @@ class XReport(Plugin):
             else:
                 text = ''
             print '%s%s = %s' % ('   '*level, e.tag.upper(), text)
-            self.print_etree(e.getchildren(), level+1)
+            cls._print_etree(e.getchildren(), level+1)
 
     def get_synopsis(self):
         etree = self.etree
@@ -651,7 +739,7 @@ class XReport(Plugin):
         rst = self.get_rst(filename)
         rst.write()
 
-    def write_pdf(self, filename=None):
+    def write_pdf(self, filename=None, log_level=logging.WARNING):
         """ Write the report as a PDF file.
 
         Latex is not needed. The rst2pdf package (pip install rst2pdf) is required.
@@ -670,6 +758,9 @@ class XReport(Plugin):
         # time. Changing the rl_config value after that has no effect. For
         # this reason, we change it firectly in the flowables module.
         flowables.listWrapOnFakeWidth = 0
+
+        logger = logging.getLogger('rst2pdf')
+        logger.setLevel(log_level)
 
         r = createpdf.RstToPdf(stylesheets=['eightpoint', 'letter', 'sphinx'], fit_mode='shrink', breaklevel=0)
         r.createPdf(text=str(self.get_rst()), output=filename + '.pdf')
@@ -692,14 +783,18 @@ class XReport(Plugin):
 
         # Now process the test outputs: details and figures, in the order they
         # are stored in the test data structure
-        for n in node.iterchildren('details', 'figure'):
+        for n in node.iterchildren('details', 'figure', 'header'):
+            if n.tag == 'header':
+                # self.logger.debug('Got a header on node %s' % (n.tag))
+                rst.add_section(str(n), level+1)
+
             if n.tag == 'figure':
                 image = self._get_binary_from_img_node(n.img)
                 caption = n.figcaption.text
                 rst.add_binary_image(image, caption=caption)
             if n.tag == 'details':
                 for nn in n.iterdescendants():
-                    self.logger.debug('Processing node %s.%s' % (n.tag, nn.tag))
+                    # self.logger.debug('Processing node %s.%s' % (n.tag, nn.tag))
                     if nn.tag == 'pre':
                         rst.add_literal_block('\n'.join(nn.itertext()))
                     else:
@@ -719,6 +814,13 @@ class XReport(Plugin):
     def run_from_module(cls):
         """ Run the nose tests with the XReport plugin loaded and activated on the currently executed module.
         """
+        argv = sys.argv
+        module_name, __ = os.path.splitext(argv[0])  # remove .py extension from module name
+        # if not argv[1].startswith(
+        return cls.run([module_name] + argv[1:])
+
+    @classmethod
+    def run(cls, test, xfile=None):
         import logging.handlers
         log_handler = logging.handlers.SysLogHandler()
         logger = logging.getLogger('')
@@ -726,188 +828,126 @@ class XReport(Plugin):
         logger.setLevel(logging.DEBUG)
         logger.addHandler(log_handler)
 
-        x = cls()  # Plugin is enabled by default. No need to use the option --with-xreport
-        argv = sys.argv
-        module_name, __ = os.path.splitext(argv[0])  # remove .py extension from module name
-        # if not argv[1].startswith(
-        nose.run(argv=[argv[0], module_name] + argv[1:], addplugins=[x])
-        return x
+        xreport = cls()  # Plugin is enabled by default. No need to use the option --with-xreport
+        sys.stdout.flush()
+        nose.run( argv=[sys.argv[0], test] + ['--xfile', xfile] if xfile else [], addplugins=[xreport])
+        return xreport
+
+    @classmethod
+    def generate_test_summary(cls, folder, test_list, output_file):
+        filenames = glob.glob(folder + '/*.xml')
 
 
-class rST():
-    """
-    Allows the creation of very simple ReStructuredText
-    documents.
+        # Load data from all files
+        file_data = {}
+        for filename in filenames:
+            with open(filename) as file_:
+                etree = lxml.objectify.parse(file_)  # use objectify (instead of etree) to allow attribute-wise access to elements
+            print filename
+            print '-' * len(filename)
+            file_data[filename] = etree.find('group')
 
-    Based on reStructuredText.py developed by Kevin MacDermid, August 2014
-    """
-    def __init__(self, base_filename=None):
-        """
-        Creates a new reStructuredText document.
-        """
-        if base_filename is None:
-            self.base_filename = datetime.datetime.now().strftime('%Y-%m-%d_%Hh%Mm%Ss')
-        else:
-            self.base_filename = base_filename
-        self.rst = StringIO()
-        self.attachments = {}  # {tag:data, ...}
+        # Create a new report
 
-    def __str__(self):
-        return self.rst.getvalue()
 
-    def __iadd__(self, string):
-        self.add(string)
-        return self
 
-    def write(self, writer_name=None):
-        if writer_name is not None:
-            doc = docutils.core.publish_string(self.rst.getvalue(), writer_name=writer_name)
-        else:
-            doc = self.rst.getvalue()
+        # build a dictionary of all test cases
 
-        with open(self.base_filename + '.rst', 'w') as f:
-            f.write(doc)
-        for (tag, data) in self.attachments.items():
-            attachment_filename = self.base_filename + '_' + tag
-            with open(attachment_filename, 'wb') as f:
-                f.write(data)
+        test_cases = {}
+        for fn, group in file_data.items():
+            for case in group.iter('case'):  # fild all test case objects, wherever they are in the hierarchy
+                path = case.testpath
+                date = case.testdate
+                if path not in test_cases:
+                    test_cases[path] = []
+                test_cases[path].append((fn, date, case))
 
-    def add(self, string):
-        self.rst.write(string)
+        # sort the cases by date
+        for case_name, case in test_cases.items():
+            case.sort(key=lambda c: c[1], reverse=True)  # sort by reverse date
 
-    def add_all(self, string_list):
-        for string in string_list:
-            self.rst.write(string)
+        unused_paths = test_cases.keys()
 
-    def add_attachment(self, filename, data):
-        self.attachments[filename] = data
+        def get_case_summary(case_info):
+            filename, date, case = case_info
+            return (str(getattr(case, 'testdate', '?')),
+                     str(getattr(case, 'testpath', '?')),
+                     str(getattr(case, 'passed', '?')),
+                     str(getattr(case, 'summary', '')))
 
-    def add_toc(self, depth=2, toc_title='**Local Table of Contents**', local=False):
-        self.add('\n')
-        self.add('.. class:: center\n')
-        self.add('\n')
-        self.add('%s\n' % toc_title)
-        self.add('\n')
-        self.add('.. contents::\n')
-        if local:
-            self.add('    :local:\n')
-        self.add('    :depth: %i\n' % depth)
+        def format_summary(syn):
+            if not syn:
+                return []
+            col_width = [0] * len(syn[0])
+            for item in syn:
+                for (i, field) in enumerate(item):
+                        col_width[i] = max(col_width[i], len(str(field)))
+            format_ = '| ' + ' | '.join('%%-%is' % width for width in col_width) + ' |'
+            return [format_ % item for item in syn]
 
-    def add_section(self, text, level):
-        adornment = ('==', '--', '=', '-', '~', '^', '.' )[level]
-        self.add('\n\n')
-        if len(adornment) > 1:
-            self.add('%s\n' % (adornment[0] * len(text)))
-        self.add('%s\n' % (text))
-        self.add('%s\n' % (adornment[0] * len(text)))
+        def print_summary(summary):
+            print '\n'.join(format_summary(summary))
 
-    def add_binary_image(self, image, format='png', tag=None, caption=None):
-        if tag is None:
-            tag = 'image%i' % len(self.attachments)
-        tag = tag + '.' + format
-        self.add_attachment(tag, image)
-        image_uri = self.base_filename + '_' + tag
-        self.add_image(image_uri, caption=caption)
+        self = cls()
 
-    def add_image(self, image_path, height=None, width=None, align='center', caption=None):
-        '''
-        Adds an immage to the reStruturedText document specified at instantiation
+        test_date = datetime.datetime.now().isoformat()
+        self.add_node(CONTEXT_TABLE({
+            'Report date/time': test_date,
+            'Target file name': output_file,
+            }))
+        self.add_node(TESTNAME('Test Summary report'))
+        self.add_node(TITLE('Test Summary report'))
+        self.add_node(TESTNAME('(Test Summary report)'))
+        self.add_node(TESTPATH('(summary)'))
+        self.add_node(TESTARGS())
+        self.add_node(TESTDATE(test_date))
 
-        Args:
-            image_path: The absolute path to the image
-            height: (optional) The height of the image. String including units. e.g. '100 px'
-            width: (optional) The width of the image. String including units. e.g. '100 px'
-            align: (optional) The alignment of the image. e.g. 'left', 'right', 'center' (default)
-        '''
-        self.add('\n')
-        self.add(".. figure:: %s \n" % (image_path))
-        if height is not None:
-            self.add("   :height: %s\n" % (height))
-        if width is not None:
-            self.add("   :width: %s\n" % (width))
-        self.add("   :align: %s\n" % (align))
-        self.add('\n')
-        if caption:
-            for line in caption.split('\n'):
-                self.add('   ' + line + '\n')
-            self.add('\n')
-
-    def add_literal_block(self, text):
-        self.add('\n')
-        self.add('::\n')
-        self.add('\n')
-        for line in text.split('\n'):
-            self.add('    ' + line + '\n')
-        self.add('\n')
-
-    def add_table(self, grid, header=False):
-        '''
-        Writes a table from elements in grid.
-        Shamelessly stolen from:
-            http://stackoverflow.com/questions/11347505/what-are-some-approaches-to-outputting-a-python-data-structure-to-restructuredte
-        Args:
-            grid: A list of tuples containing the table elements.
-                Must be square and first line is the table header.
-            header: A flag to make the first row a header row
-        Output:
-            Writes the table to the the given restructured text file.
-        '''
-
-        nonzero_grid = []
-        single_elements = []
-        for row in grid:
-            if len(row) > 1:
-                nonzero_grid.append(row)
+        summary = []
+        for path in test_list:
+            if path in unused_paths:
+                case_info = test_cases[path][0]
+                summary.append(get_case_summary(case_info))
+                unused_paths.remove(path)
+                self.add_node(case_info[2])
             else:
-                single_elements.append(str(row[0]))
-        num_cols   = len(nonzero_grid[-1])
-        body_cell_width = 2 + max(reduce(lambda x,y: x+y, [[len(str(item)) for item in row] for row in nonzero_grid], []))
-        if single_elements:
-            biggest_single_width = len(max(single_elements))
-            if num_cols * body_cell_width > biggest_single_width:
-                cell_width = body_cell_width
-            else:
-                cell_width = biggest_single_width
-        else:
-            cell_width = body_cell_width
-        rst = self._table_div(num_cols, cell_width, 0)
-        total_cell_width = num_cols*cell_width
+                summary.append(('?', path, 'False', 'Test not run'))
 
-        #A table with one row is malformed if it has a header
-        if len(grid) > 1:
-            header_flag = header
-        else:
-            header_flag = False
-        for i, row in enumerate(grid):
-            if isinstance(header, int):
-                if i==header-1:
-                    header_flag = True
-                else:
-                    header_flag = False
-            if len(row) > 1:
-                use_cw = (total_cell_width/len(row)) - 1
-            else:
-                use_cw = (total_cell_width/len(row)) + num_cols-2  ## Since the "|"s also produce an offset
-            rst += '| ' + '| '.join([self._normalize_cell(str(x), use_cw) for x in row]) + '|\n'
-            rst += self._table_div(num_cols, cell_width, header_flag)
-            header_flag = False
-        rst += '\n'
-        self.add(rst)
+        self.add_node(DETAILS('Required tests\n%s' % '\n'))
+        print_summary(summary)
 
-    def _table_div(self, num_cols, col_width, header_flag):
-        '''
-        A table writing helper function, see write_table.
-        '''
-        if header_flag:
-            return num_cols*('+' + (col_width)*'=') + '+\n'
-        else:
-            return num_cols*('+' + (col_width)*'-') + '+\n'
+        summary = []
+        for path in unused_paths:
+            summary.append(get_case_summary(test_cases[path][0]))
 
-    def _normalize_cell(self, string, length):
-        '''
-        A table writing helper function, see write_table.
-        '''
-        return string + ((length - len(string)) * ' ')
+        print 'Additional tests'
+        print_summary(summary)
+
+
+
+        return test_cases
+
+
+
+# def load_html(filename):
+#     with open(filename) as file_:
+#         f = file_.read()
+#     return lxml.objectify.fromstring(f)
+
+
+    @staticmethod
+    def load_xml(filename):
+        with open(filename) as file_:
+            t = lxml.objectify.parse(file_)
+        return t
+
+
+# def get_synopsis_from_xml(filename):
+#     e = load_html(filename)
+#     return get_synopsis(e)
+
+# def get_synopsis(etree):
+#     return [(str(x.testdate), str(x.testpath), str(x.passed), str(x.summary) if hasattr(x, 'summary') else '') for x in etree.iter(['case', 'group'])]
+
 
 
 def main():
