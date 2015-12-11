@@ -69,8 +69,11 @@ mcgill003:  # Crate 0
       # icecrates: {0: "003"} # explicit crate number,  inferred model MGBP16
       # icecrates: {0: 3} # explicit crate number,  inferred model MGBP16, integer value match
 
-      power_supplies: {0: "10.10.10.220"}
       test: 1
+
+   power_supply_array:
+      power_supplies: ["10.10.10.220"]
+
    gpu_array:
       gpu_nodes: ['10.10.10.200']
 
