@@ -2,19 +2,19 @@
 """ Performs bench tests of the MGADC08 CHIME ADC Mezzanine board.
 """
 import unittest
-import sys
+import time
 import numpy as np
 import util
 from util import NameSpace
+
 util.add_paths('../..')  # needed to find icecore
-
-
 from icecore import XReport as xr
+util.add_paths('../../..')  # needed to find fpga_array
+from fpga_array import FPGAArray
 
 
 TEST_CONFIG_FILE = './mgadc08_test_config.yaml'
-TEST_RESULTS_FOLDER = './test_results'
-MGADC08_MODEL_NUMBER = ['MGADC08']
+
 
 class MGADC08BenchTests(unittest.TestCase): #
     """
@@ -45,9 +45,6 @@ class MGADC08BenchTests(unittest.TestCase): #
             ps.set_voltage(rail.output, rail.voltage)
             ps.set_current(rail.output, rail.current_limit)
             self.rails[rail_name] = NameSpace(ps=ps, output=rail.output)
-
-        self.test_results = NameSpace()
-
 
     def input(self, message):
         key = xr.input(message).lower()
@@ -89,6 +86,8 @@ class MGADC08BenchTests(unittest.TestCase): #
         pss = [self.instr.ps12v, self.instr.ps3v3_2v5]  # Both power supplies
         test_results = NameSpace()
 
+
+
         for ps in pss:  # Turn off both power supplies, just to be sure
             ps.output_enable(0)
 
@@ -104,6 +103,9 @@ class MGADC08BenchTests(unittest.TestCase): #
                 while True:
                     dmm.local()
                     self.input("Apply probe to test point '%s' and press ENTER to measure (Q=Exit):" % tp_name)
+                    if limits.delay:
+                        dmm.get_resistance()  # make a dummy measurement
+                        time.sleep(limits.delay)
                     result = dmm.get_resistance()
                     if result <= cfg.max_impedance: break
                     print 'Impedance is too high. Is the probe really connected?'
@@ -114,14 +116,14 @@ class MGADC08BenchTests(unittest.TestCase): #
                     failed_test_points.append(tp_name)
                     dmm.beep()
                     dmm.beep()
-                print '   %s : %6.0g ohms (must be > %6.0f) ==> %s' % (tp_name, result, limits.zmin, xr.pass_fail(passed))
+                print '   %s : %.0f ohms (must be more than %.0f ohms) ==> %s' % (tp_name, result, limits.zmin, xr.pass_fail(passed))
             assert not len(failed_test_points), 'Low impedance on %s' % ','.join(failed_test_points)
             passed = True
         finally:
             test_results.passed = passed
-            self.test_results.impedance_tests = test_results
             dmm.display(xr.pass_fail(passed),'Impedance tests')
             dmm.local()
+            xr.save_data(test_results)
 
 
     def smoke_test(self):
@@ -143,7 +145,8 @@ class MGADC08BenchTests(unittest.TestCase): #
         dmm = self.instr.dmm  # Multimeter
         pss = [self.instr.ps12v, self.instr.ps3v3_2v5]  # Both power supplies
 
-        test_results = NameSpace()  # container for the test results
+
+        test_results = NameSpace()  # container for the test results to be saved in the test report
         xr.header('Test results')
 
         for ps in pss:  # Turn off both power supplies, just to be sure
@@ -203,97 +206,29 @@ class MGADC08BenchTests(unittest.TestCase): #
             for ps in pss:  # Turn off both power supplies
                 ps.output_enable(0)
             test_results.passed = passed
-            self.test_results.power_tests = test_results
-            dmm.display(xr.pass_fail(passed),'Power-up tests')
+            dmm.display(xr.pass_fail(passed), 'Power-up tests')
             dmm.local()
-            # xr.save(test_results)
-
+            xr.save_data(test_results)
 
 class MGADC08CarrierTests(): #
 
     def setUp(self):
         # xr.summary.pass
-        board_info = xr.board_info
-        self.serial = board.info.serial
-        self.model = board.info.model
-        self.summary = board.info.summary
-        assert summary.bench_tests.passed, 'Cannot proceed with carrier tests until bench tests have passed'
         xr.header('Setting-up')
-        self.cfg = util.load_config(TEST_CONFIG_FILE)
+        self.cfg = util.load_config(xr.params.config_file)
+        self.model = xr.params.model
+        self.serial = xr.params.serial
         cfg = self.cfg.carrier_tests.setup  # config options pertaining to setup
         self.instr = util.open_instruments(self.cfg.instruments, cfg.instruments)  # open only instruments listed in cfg.instruments
-        self.instr.dmm.display('Ready for','MGADC08 tests')
+        self.instr.dmm.display('carrier tests', '%s SN%s' % (self.model, self.serial))
 
-    def eeprom_write(self):
-        self.instr.dmm.display(self.model, self.serial)
-
-
-
+    def eeprom_test(self):
+        # self.instr.dmm.display(self.model, self.serial)
+        print 'SuperTest!'
 
 
 
 if __name__ == '__main__':
     """ Run the test in this file."""
-    if len(sys.argv) > 1:
-        xr.run_from_module()
-    else:
-        cfg = util.load_config(TEST_CONFIG_FILE)
-
-        instr = util.open_instruments(cfg.instruments, ['dmm'])
-        instr.dmm.display('Hello', 'SCAN serial number')
-        current_serial = None
-        current_model = None
-        default_choice = 'Q'
-        test_list = NameSpace(cfg.test_list)  # convert list of (key,values) into an OrderedDict
-
-        # Update menu with information from the test list
-        test_menu = cfg.bench_tests.menu
-        for item in test_menu:
-            if item['type'] == 'test':
-                test = test_list[item['test_tag']]
-                if not item.get('description', None):  # Take description from the tets list if there is none
-                    item['description'] = test.description
-                item['regex'] = '(%s|%s)' % (test.path, item['test_tag']) # have the menu recognize the test path or key as an other way to select the test
-
-        while True:
-            print
-            print
-            print '---------------------------------------------'
-            if current_model and current_serial:
-                print 'Currently testing  %s SN%s' % (current_model, current_serial)
-            else:
-                print ' !!! NO SERIAL NUMBER CURRENTLY SELECTED !!!'
-            print '---------------------------------------------'
-            print
-
-            selection = util.select_menu_item(test_menu, default=default_choice)
-            # print selection
-            if selection.type == 'exit':
-                instr.dmm.display('Bye!', '')
-                break
-            elif selection.type == 'board_info':
-                if selection.model not in MGADC08_MODEL_NUMBER:
-                    print
-                    print '!!!! This is not a valid serial number for this test. Try again.'
-                else:
-                    current_model = selection.model
-                    current_serial = selection.serial
-                    default_choice = selection.next_key
-                    instr.dmm.display(current_model, current_serial)
-            elif selection.type == 'test':
-                if not current_serial or not current_model:
-                    print 'Please enter or scan a serial number before beginning a test'
-                    continue
-                # summary_data = xr.generate_summary(summary_filename, data_folder)
-                test = test_list[selection.test_tag]
-                nose_test_path = test.path
-                test_file_name = '%s/%s_SN%s_%s.pdf' %  (TEST_RESULTS_FOLDER, current_model, current_serial, nose_test_path.replace(':','.'))
-                print
-                print 'Running test %s' % nose_test_path
-                print 'Test data will be stored in %s' % test_file_name
-                print
-                r = xr.run(nose_test_path, xfile=test_file_name)
-                if r.passed:
-                    default_choice = selection.next_key
-                else:
-                    default_choice = 'Q'
+    v = util.run_tests(TEST_CONFIG_FILE)
+    locals().update(v) # bring local variables from the test runner into the current namespace for easier debugging

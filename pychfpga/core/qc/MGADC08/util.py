@@ -1,7 +1,6 @@
-import collections
+
 import sys
 import os
-import yaml
 import re
 #  ... more imports below
 
@@ -21,44 +20,118 @@ add_paths('../..')  # needed to find icecore
 
 import labpy  # McGill's GPIB & LAN instrument library
 import icecore
+from icecore import NameSpace, XReport
+
+def run_tests(config_file):
+    cfg = load_config(config_file)
+
+    test_results_folder = cfg.test_results_folder
+    mgadc08_model_number = cfg.mgadc08_model_number
+
+    instr = open_instruments(cfg.instruments, ['dmm'])
+    instr.dmm.display('Hello', 'SCAN serial number')
+    current_serial = None
+    current_model = None
+    test_list = NameSpace(cfg.test_list)  # convert list of (key,values) into an OrderedDict
 
 
-class NameSpace(collections.OrderedDict):
+    # load test menu and convert each dict element to NameSpace to simplify code
+    test_menu = [NameSpace(menu_item) for menu_item in cfg.menu]
 
-    # def __init__(self, *args, **kwargs):
 
-    def __getattr__(self, name):
-        try:
-            return self.__getitem__(name)
-        except KeyError:  # Re-raise, but preserve traceback info
-            raise AttributeError, sys.exc_info()[1], sys.exc_info()[2]
-    def __setattr__(self, name, value):
-        if name.startswith('_' + collections.OrderedDict.__name__ + '__'):  # don't put special names in the dict. Needed for Ordereddict to initialize properly.
-            super(NameSpace, self).__setattr__(name, value)
+    # Update menu with information from the test list
+    for menu_item in test_menu:
+        if menu_item.type == 'test':
+            test = test_list[menu_item.test_tag]
+            if not menu_item.get('description', None):  # Take description from the tets list if there is none
+                menu_item.description = test.description
+            menu_item.regex = '(%s|%s)' % (test.path, menu_item.test_tag) # have the menu recognize the test path or key as an other way to select the test
+
+    while True:
+        print
+        print
+        print '---------------------------------------------'
+        if current_model and current_serial:
+            print 'Currently testing  %s SN%s' % (current_model, current_serial)
         else:
-            self.__setitem__(name, value)
-    def __setitem__(self, key, value):
-        _setitem = super(NameSpace, self).__setitem__
-        if isinstance(value, collections.Mapping) and not isinstance(value, NameSpace):
-            _setitem(key, NameSpace(value))
-        else:
-            _setitem(key, value)
-    def __dir__(self):
-        return list(
-            set(self.__dict__.keys()) |
-            set.union(*[set(dir(cls)) for cls in type(self).mro()]) |
-            set(self.keys()))
-    def as_dict(self):
-            def todict(v):
-                if isinstance(v, collections.Mapping):
-                    return {k: todict(i) for k, i in v.items()}
-                elif isinstance(v, collections.Sequence):
-                    return [todict(i) for i in v]
+            print ' !!! NO SERIAL NUMBER CURRENTLY SELECTED !!!'
+        print '---------------------------------------------'
+        print
+        # Get a summary of all tests run so far
+        test_folder = '%s/%s_SN%s/' % (test_results_folder, current_model, current_serial)
+        summary = XReport.generate_test_summary(input_folder=test_folder, required_tests=cfg.test_list)
+
+        # Update the menu to indicate which tests have passed.
+        # Also use that information to determine the next test to run by default.
+        default_choice = None
+        for menu_item in test_menu:
+            if menu_item.type == 'test':
+                test_tag = menu_item.test_tag
+                passed_list = summary.get_passed(test_list[test_tag].path)
+                dependents_ok = check_test_dependencies(test_tag, test_list, summary)
+                if not passed_list:
+                    menu_item.status = ' ?  '
+                    if not default_choice and dependents_ok:
+                        default_choice = menu_item.key
+                elif all(passed_list):
+                    menu_item.status = 'PASS'
                 else:
-                    return v
-            return todict(self)
-    def as_yaml(self):
-        return yaml.dump(self.as_dict(), default_flow_style=False)
+                    menu_item.status = 'FAIL'
+                    if not default_choice and dependents_ok:
+                        default_choice = menu_item.key
+                menu_item.status += ', Ready' if dependents_ok and current_model and current_serial else ''
+        if not default_choice or not current_model or not current_serial:
+            default_choice = 'Q'
+
+        selection = select_menu_item(test_menu, default=default_choice)
+
+        if selection.type == 'exit':
+            instr.dmm.display('Bye!', '')
+            break
+        elif selection.type == 'board_info':
+            if selection.model not in mgadc08_model_number:
+                print
+                print '!!!! This is not a valid serial number for this test. Try again.'
+            else:
+                current_model = selection.model
+                current_serial = selection.serial
+                default_choice = selection.next_key
+                instr.dmm.display(current_model, current_serial)
+        elif selection.type == 'test':
+            if not current_serial or not current_model:
+                print 'Please enter or scan a serial number before beginning a test'
+                continue
+            # summary_data = xr.generate_summary(summary_filename, data_folder)
+            test = test_list[selection.test_tag]
+            nose_test_path = test.path
+            test_file_name = '%s.pdf' %  (nose_test_path.replace(':','.'))
+            summary_file_name = '%s/%s_SN%s.pdf' %  (test_results_folder, current_model, current_serial)
+
+            if not os.path.exists(test_folder):
+                os.makedirs(test_folder)
+            print
+            print 'Running test %s' % nose_test_path
+            print 'Test data will be stored in %s' % test_folder + test_file_name
+            print
+            r = XReport.run(nose_test_path, xfile=test_folder + test_file_name, config_file=config_file, model=current_model, serial=current_serial)
+            # if r.passed:
+            #     default_choice = selection.next_key
+            # else:
+            #     default_choice = 'Q'
+            t = XReport.generate_test_summary(input_folder=test_folder, required_tests=cfg.test_list, output_filename=summary_file_name, title='%s_SN%s Summary Test Report' % (current_model, current_serial))
+    return locals()
+
+
+def check_test_dependencies(test_tag, test_list, test_summary):
+    test = test_list[test_tag]
+    dependencies = test.get('dependencies', []) or []   # return an empty list if the dependency is not there or is None
+    if not isinstance(dependencies, list):
+        dependencies = [dependencies]
+    passed = True
+    for dep_tag in dependencies:
+        passed_list = test_summary.get_passed(test_list[dep_tag].path)
+        passed = passed and bool(passed_list) and all(passed_list) and check_test_dependencies(dep_tag, test_list, test_summary)
+    return passed
 
 
 def select_menu_item(menu, default=''):
@@ -76,22 +149,29 @@ def select_menu_item(menu, default=''):
     Returns the list corresponding to the selected item.
     """
     print 'Select the operation to execute.\n'
+
+    key_width = 0
+    status_width = 0
+    for menu_item in menu:
+        key_width = max(key_width, len(menu_item.get('key', '')))
+        status_width = max(status_width, len(menu_item.get('status', '')))
+    fmt = ('%%-%is  ' % status_width)  + ('%%-%is. ' % key_width) + '%s'
     for item in menu:
         if 'description' in item:
-            if 'key' in item:
-                print "%02s. %s" % (item['key'], item['description'])
-            else:
-                print "    %s" % item['description']
+            # if 'key' in item:
+                print fmt % (item.get('status',''), item.get('key',''), item.get('description',''))
+            # else:
+            #     print "    %s" % item['description']
 
     while True:
         choice = raw_input("Enter choice%s: " % (' [%s]' % default if default else '')).strip()
-        pattern_match = parse_pattern(choice or default, menu)
+        pattern_match = find_menu_item(choice or default, menu)
         if pattern_match:
             return pattern_match
-        print "Choice is not valid. Valid choices are %s. Please try again." % (', '.join(item['key'] for item in menu if item.get('key',None)))
+        print "Choice is not valid. Valid choices are %s. Please try again." % (', '.join(item['key'] for item in menu if item.get('key', None)))
 
-def parse_pattern(text, pattern_list):
-    """ Parse a string and return a dictionary containing the parsed contents.
+def find_menu_item(text, pattern_list):
+    """ Finds the menu item whose 'key' or 'regex' pattern matches the specified text.
     Returns None if no pattern matched.
     """
 
