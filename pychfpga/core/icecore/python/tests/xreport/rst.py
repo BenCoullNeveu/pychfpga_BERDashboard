@@ -28,6 +28,12 @@ class rST():
         return self
 
     def write(self, writer_name=None):
+        """ Write the RestructuredText text and attachments (images) to disk.
+        If ``writer_name`` is specified, the RestructuredText is converted
+        with docutil libraty using the format supported by the specified
+        writer.
+
+        """
         if writer_name is not None:
             doc = docutils.core.publish_string(self.rst.getvalue(), writer_name=writer_name)
         else:
