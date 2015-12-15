@@ -30,8 +30,8 @@ def run_tests(config_file):
 
     instr = open_instruments(cfg.instruments, ['dmm'])
     instr.dmm.display('Hello', 'SCAN serial number')
-    current_serial = None
-    current_model = None
+    current_serial = cfg.default_serial
+    current_model = cfg.default_model
     test_list = NameSpace(cfg.test_list)  # convert list of (key,values) into an OrderedDict
 
 
@@ -113,7 +113,7 @@ def run_tests(config_file):
             print 'Running test %s' % nose_test_path
             print 'Test data will be stored in %s' % test_folder + test_file_name
             print
-            r = XReport.run(nose_test_path, xfile=test_folder + test_file_name, config_file=config_file, model=current_model, serial=current_serial)
+            r = XReport.run(nose_test_path, xfile=test_folder + test_file_name, xformat=cfg.xformat, config_file=config_file, model=current_model, serial=current_serial)
             # if r.passed:
             #     default_choice = selection.next_key
             # else:

@@ -10,6 +10,10 @@ comment: |
 
 test_results_folder: './test_results'
 mgadc08_model_number: ['MGADC08']
+xformat: ['pdf','rst']  # Output formats for the test reports. xml is always saved.
+# Set default model and serial -- ONLY FOR DEBUGGING
+default_model: 'MGADC08'
+default_serial: '0007'
 
 instruments:
     dmm:       {labpy_object: 'agilent_dmm', interface: 'prologix_eth', ip_addr: '10.10.10.137', gpib_addr: 22} # Agilent 34410A multimeter (we don't use the LAN connection so we can go back in local mode remotely)
@@ -87,8 +91,13 @@ carrier_tests:
     setup:
         instruments: [dmm, na] # Subset of instruments we use in these tests
         fpga_array:
-            iceboard: 5
+            iceboards: 5
             no_mezz: True
+            mdns_delay: 1
+            prog: 0  # program only if necessary
+            open: 1
+        fmc_slot: 1 # This is the FMC slot where we expect the Mezzanine to be
+
     eeprom_test:
         revision_table:
             2: {sn_min: 0, sn_max: 42}

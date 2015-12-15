@@ -4,6 +4,7 @@
 import unittest
 import time
 import numpy as np
+import base64
 import util
 from util import NameSpace
 
@@ -219,16 +220,72 @@ class MGADC08CarrierTests(): #
         self.model = xr.params.model
         self.serial = xr.params.serial
         cfg = self.cfg.carrier_tests.setup  # config options pertaining to setup
+        self.slot = cfg.fmc_slot
         self.instr = util.open_instruments(self.cfg.instruments, cfg.instruments)  # open only instruments listed in cfg.instruments
         self.instr.dmm.display('carrier tests', '%s SN%s' % (self.model, self.serial))
 
     def eeprom_test(self):
-        # self.instr.dmm.display(self.model, self.serial)
-        print 'SuperTest!'
+        """
+        Start EEPROM test on the computer.
 
+        - The software connects to the IceBoard
+        - The test will automatically check:
+            - Detects the mezzanine presence (PRSNT Line)
+            - Detect the Mezzanine EEPROM, and configures it with the serial number.
+        No user intervention is needed
+        Total time: 3 s
+        """
+        xr.header('Testing...')
+
+        tr = NameSpace()
+        cfg = self.cfg.carrier_tests
+        passed = False
+        try:
+
+            a = FPGAArray(**cfg.setup.fpga_array)
+            ib = a.ib[0]
+            print 'Testing with %r' % ib
+            # Check if PRSNT line is help low
+            tr.is_mezzanine_present = ib.is_mezzanine_present(self.slot)
+            print 'Mezzanine is present: %s' % bool(tr.is_mezzanine_present)
+            assert tr.is_mezzanine_present, 'Mezzanine was not detected on FMC slot %i' % self.slot
+
+            # Attempt to access the EEPROM
+            eeprom = [ib.hw._fmca_eeprom, ib.hw._fmcb_eeprom][self.slot-1]
+            tr.is_eeprom_i2c_responding = eeprom.is_present()
+            print 'EEPROM is responding: %s' % bool(tr.is_eeprom_i2c_responding)
+            assert tr.is_eeprom_i2c_responding, 'The Mezzanine EEPROM did not respond to I2C addressing.'
+
+            # Attempt to read 32 characters of the EEPROM contents
+            try:
+                tr.eeprom_contents_from_fpga = ib.hw.read_mezzanine_eeprom(self.slot, 0, 32).decode('utf-8', 'ignore')
+                print 'EEPROM content read by FPGA is: %s' % tr.eeprom_contents_from_fpga
+            except:
+                assert False, 'Error while attempting to read the EEPROM contents using the FPGA'
+
+            try:
+                tr.eeprom_contents_from_arm = base64.decodestring(ib._mezzanine_eeprom_read_base64(self.slot)).decode('utf-8', 'ignore')
+                print 'EEPROM content read by ARM is: %s' % tr.eeprom_contents_from_arm
+            except:
+                assert False, 'Error while attempting to read the EEPROM contents using the ARM'
+
+            print 'Discovering Mezzanine'
+            ib.discover_mezzanines()
+            mezz = ib.mezzanine[self.slot]
+            print 'Mezzanine is %r:' % mezz
+            assert mezz, 'Mezzanine was not discovered'
+
+            passed = True
+        finally:
+            tr.passed = passed
+            xr.save_data(tr)
+            self.instr.dmm.display(xr.pass_fail(passed), 'EEPROM tests')
+            self.instr.dmm.local()
 
 
 if __name__ == '__main__':
     """ Run the test in this file."""
+    import mgadc08_bench_tests
+    reload(mgadc08_bench_tests)
     v = util.run_tests(TEST_CONFIG_FILE)
     locals().update(v) # bring local variables from the test runner into the current namespace for easier debugging
