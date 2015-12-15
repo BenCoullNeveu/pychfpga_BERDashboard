@@ -247,7 +247,7 @@ class XReport(Plugin):
         self.verbose = options.verbosity
 
         filename = self.params.pop('xfile', None) or options.xreport_file
-        formats = set(self.params.pop('xformats', [])) | set(options.xformat)
+        formats = set(self.params.pop('xformat', [])) | set(options.xformat)
 
         self.rep = test_report.TestReport(filename=filename, formats=formats)
         test_date = datetime.datetime.now().isoformat()
