@@ -247,7 +247,7 @@ class FPGAArray(object):
 
 
         self.logger.info('%r: ------------------------' % self)
-        self.logger.info('%r: C H I M E   A R R A Y' % self)
+        self.logger.info('%r: F P G A   A R R A Y' % self)
         self.logger.info('%r: ------------------------' % self)
         self.logger.info('%r: Called with: %s' % (self, ', '.join((
             'if_ip = %s' % if_ip,
@@ -385,7 +385,7 @@ class FPGAArray(object):
         # Hardware map is complete
 
         # Query all iceboards and icecrates
-        ib = self.hwm.query(IceBoardPlus).join(IceCrate).order_by(IceCrate.serial, IceBoardPlus.slot)
+        ib = self.hwm.query(IceBoardPlus).outerjoin(IceCrate).order_by(IceCrate.serial, IceBoardPlus.slot)  # use outerjoin in case there is no crate
         ic = self.hwm.query(IceCrate).order_by(IceCrate.serial)
 
 
