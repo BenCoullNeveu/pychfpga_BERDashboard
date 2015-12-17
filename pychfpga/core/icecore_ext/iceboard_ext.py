@@ -1049,7 +1049,9 @@ class IceBoardHardware(object):
             'SFP_TxDisable': (self._gpio_sfp_qsfp, 1, 1, 1),
             'SFP_RS0': (self._gpio_sfp_qsfp, 1, 2, 1),
             'SFP_RS1': (self._gpio_sfp_qsfp, 1, 3, 1),
-            'SFP_ModSelL': (self._gpio_power, 1, 7, 1)
+            'SFP_ModSelL': (self._gpio_power, 1, 7, 1),
+            'FMCA_PG_M2C': (self._gpio_power, 0, 3, 1),
+            'FMCB_PG_M2C': (self._gpio_power, 1, 3, 1)
         })
 
         self._qsfpa = qsfp.QSFP(self._i2c, 'QSFPA', gpio_prefix='QSFPA_', gpio=self._gpio)
@@ -1143,8 +1145,15 @@ class IceBoardHardware(object):
         140304 JM: created. todo: make more flexible for I/O pin configuration
         of each expander. Need to confirm I/O pin config with JF
         """
-        self._gpio_power.init(cfg0_def=0b10101000, cfg1_def=0b10101000,
-                              out0_default=0, out1_default=0)
+        self._gpio_power.init(cfg0_def=0b10101000,
+                              cfg1_def=0b10101000,
+                              out0_default=0,
+                              out1_default=0,
+                              bken0=0b00,  # We need to disable 100K internal pull-ups/down so the PG_M2C can work properly (there is another external 100K pull up to VCC3V3 which pulls to GND when there is no power. Pulling up doesn't work when board is off , pull down doesn't work when board is ON)
+                              bken1=0b00,
+                              pupd0=0b00001000,  # don't care, pullups not enabled
+                              pupd1=0b00001000
+                              )
         self._gpio_sw_leds.init(cfg1_def=0b00000000)
         self._gpio_arm_phy_leds.init(cfg0_def=0b11110000)
         self._gpio_sfp_qsfp.init(cfg0_def=0b01100011, cfg1_def=0b11001111)
