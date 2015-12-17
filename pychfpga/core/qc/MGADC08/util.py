@@ -2,6 +2,7 @@
 import sys
 import os
 import re
+import datetime
 #  ... more imports below
 
 def add_paths(*paths):
@@ -104,7 +105,8 @@ def run_tests(config_file):
             # summary_data = xr.generate_summary(summary_filename, data_folder)
             test = test_list[selection.test_tag]
             nose_test_path = test.path
-            test_file_name = '%s.pdf' %  (nose_test_path.replace(':','.'))
+            test_date = datetime.datetime.now().isoformat().replace(':','_')
+            test_file_name = '%s_%s.pdf' %  (test_date, nose_test_path.replace(':', '.'))
             summary_file_name = '%s/%s_SN%s.pdf' %  (test_results_folder, current_model, current_serial)
 
             if not os.path.exists(test_folder):

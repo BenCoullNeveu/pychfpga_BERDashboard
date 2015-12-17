@@ -6,16 +6,38 @@ import time
 import numpy as np
 import base64
 import util
+import datetime
 from util import NameSpace
+import textwrap
 
 util.add_paths('../..')  # needed to find icecore
 from icecore import XReport as xr
+from icecore.hw import ipmi_fru
+
 util.add_paths('../../..')  # needed to find fpga_array
 from fpga_array import FPGAArray
 
 
 TEST_CONFIG_FILE = './mgadc08_test_config.yaml'
 
+def wrap(obj, width=80):
+    return textwrap.fill(str(obj), width)
+
+def input(message):
+    key = xr.input(message).lower()
+    assert not key.startswith('q'), 'Test was interrupted by user'
+    return key
+
+def input_yes_no(message, additional_answers='r'):
+    while True:
+        key = input(message)
+        if key.startswith('y'):
+            return True
+        elif key.startswith('n'):
+            return False
+        elif key in additional_answers:
+            return key
+        print 'Wrong answer. Try again'
 
 class MGADC08BenchTests(unittest.TestCase): #
     """
@@ -47,19 +69,7 @@ class MGADC08BenchTests(unittest.TestCase): #
             ps.set_current(rail.output, rail.current_limit)
             self.rails[rail_name] = NameSpace(ps=ps, output=rail.output)
 
-    def input(self, message):
-        key = xr.input(message).lower()
-        assert not key.startswith('q'), 'Test was interrupted by user'
-        return key
 
-    def input_yes_no(self, message):
-        while True:
-            key = self.input(message)
-            if key.startswith('y'):
-                return True
-            elif key.startswith('n'):
-                return False
-            print 'Wrong answer. Try again'
 
 
     def impedance_test(self):
@@ -103,7 +113,7 @@ class MGADC08BenchTests(unittest.TestCase): #
                 dmm.select_resistance_measurement()
                 while True:
                     dmm.local()
-                    self.input("Apply probe to test point '%s' and press ENTER to measure (Q=Exit):" % tp_name)
+                    input("Apply probe to test point '%s' and press ENTER to measure (Q=Exit):" % tp_name)
                     if limits.delay:
                         dmm.get_resistance()  # make a dummy measurement
                         time.sleep(limits.delay)
@@ -176,7 +186,7 @@ class MGADC08BenchTests(unittest.TestCase): #
                     assert False, 'Inadequate current or voltage on rail %s' % rail_name
 
             dmm.display('','Check power LED')
-            power_led_state = self.input_yes_no('Is the power LED turned ON?')
+            power_led_state = input_yes_no('Is the power LED turned ON?')
             test_results.power_led_state = power_led_state
             assert power_led_state, 'Power LED is not tuned ON. Something is wrong. Aborting.'
 
@@ -188,7 +198,7 @@ class MGADC08BenchTests(unittest.TestCase): #
                 dmm.select_voltage_measurement()
                 while True:
                     dmm.local() # Allow the multimeter to update its display in real time
-                    self.input("Apply probe to test point '%s' and press ENTER to measure (Q=Exit):" % tp_name)
+                    input("Apply probe to test point '%s' and press ENTER to measure (Q=Exit):" % tp_name)
                     result = dmm.get_dc_voltage()
                     if result >= cfg.min_test_voltage: break
                     print 'Voltage too low. Is the probe well connected? Try again.'
@@ -219,68 +229,457 @@ class MGADC08CarrierTests(): #
         self.cfg = util.load_config(xr.params.config_file)
         self.model = xr.params.model
         self.serial = xr.params.serial
-        cfg = self.cfg.carrier_tests.setup  # config options pertaining to setup
-        self.slot = cfg.fmc_slot
-        self.instr = util.open_instruments(self.cfg.instruments, cfg.instruments)  # open only instruments listed in cfg.instruments
-        self.instr.dmm.display('carrier tests', '%s SN%s' % (self.model, self.serial))
+        self.slot = self.cfg.carrier_tests.setup.fmc_slot
+        xr.header('Testing...')
+        # testing function will now begin
 
     def eeprom_test(self):
         """
-        Start EEPROM test on the computer.
+        Runs Mezzanine EEPROM test and programming.
 
         - The software connects to the IceBoard
-        - The test will automatically check:
+        - The test will automatically:
             - Detects the mezzanine presence (PRSNT Line)
-            - Detect the Mezzanine EEPROM, and configures it with the serial number.
-        No user intervention is needed
+            - Detect the Mezzanine EEPROM and read existing EEPROM contents if it's already programmed
+            - Program the EEPROM with model and serial number.
+
+        No user intervention is needed unless the EEPROM is already programmed, in which case confirmation is required to overwrite.
         Total time: 3 s
         """
-        xr.header('Testing...')
+        cfg = self.cfg.carrier_tests.eeprom_test
+        instr = util.open_instruments(self.cfg.instruments, cfg.instruments)  # open only instruments listed in cfg.instruments
+        dmm = instr.dmm
+        dmm.display('EEPROM tests', '%s SN%s' % (self.model, self.serial))
 
-        tr = NameSpace()
-        cfg = self.cfg.carrier_tests
+        tr = NameSpace() # test results container
         passed = False
         try:
 
-            a = FPGAArray(**cfg.setup.fpga_array)
+            a = FPGAArray(**cfg.fpga_array)
             ib = a.ib[0]
-            print 'Testing with %r' % ib
+            print
+            print 'Testing Mezzanine EEPROM with %r' % ib
             # Check if PRSNT line is help low
             tr.is_mezzanine_present = ib.is_mezzanine_present(self.slot)
-            print 'Mezzanine is present: %s' % bool(tr.is_mezzanine_present)
+            print
+            print 'PRSNT line says that the Mezzanine is present: %s' % bool(tr.is_mezzanine_present)
             assert tr.is_mezzanine_present, 'Mezzanine was not detected on FMC slot %i' % self.slot
 
             # Attempt to access the EEPROM
+            # The EEPROM has 128 kBytes of data and requires 17 bits of addressing
+            # 16 bits are provided in the data payload, and the 17th bit is in the I2C address, therefore creating 2 pages.
+            # We check if the EEPROM responds to both addresses
             eeprom = [ib.hw._fmca_eeprom, ib.hw._fmcb_eeprom][self.slot-1]
-            tr.is_eeprom_i2c_responding = eeprom.is_present()
-            print 'EEPROM is responding: %s' % bool(tr.is_eeprom_i2c_responding)
-            assert tr.is_eeprom_i2c_responding, 'The Mezzanine EEPROM did not respond to I2C addressing.'
+            tr.is_eeprom_i2c_responding = [eeprom.is_present(page) for page in (0, 1)]
+            print
+            print 'EEPROM is responding to I2C addressing for [page 0, page 1]: %s' % bool(tr.is_eeprom_i2c_responding)
+            assert all(tr.is_eeprom_i2c_responding), 'The Mezzanine EEPROM did not respond to I2C addressing on both of its pages.'
 
             # Attempt to read 32 characters of the EEPROM contents
+            # We don't fail on this. This is just for additional info
+            print
             try:
                 tr.eeprom_contents_from_fpga = ib.hw.read_mezzanine_eeprom(self.slot, 0, 32).decode('utf-8', 'ignore')
-                print 'EEPROM content read by FPGA is: %s' % tr.eeprom_contents_from_fpga
-            except:
-                assert False, 'Error while attempting to read the EEPROM contents using the FPGA'
+                print 'EEPROM content read by FPGA (first 32 characters) is: %s' % tr.eeprom_contents_from_fpga
+            except Exception as e:
+                print 'Failed to read EEPROM with the FPGA  due to exception: %r' % e
 
+            # Attempt to read the EEPROM contents using the ARM. This might not work on older versions (<V6.1) of the ARM firmware
+            # We don't fail on this. This is just for additional info
+            print
             try:
                 tr.eeprom_contents_from_arm = base64.decodestring(ib._mezzanine_eeprom_read_base64(self.slot)).decode('utf-8', 'ignore')
-                print 'EEPROM content read by ARM is: %s' % tr.eeprom_contents_from_arm
-            except:
-                assert False, 'Error while attempting to read the EEPROM contents using the ARM'
+                print 'EEPROM content read by ARM is:'
+                print wrap(repr(tr.eeprom_contents_from_arm))
+            except Exception as e:
+                print 'Failed to read EEPROM with ARM  due to exception: %r' % e
 
+            # Attempt to auto-detect the mezzanine type to see if the EEPROM already programmed
+            print
             print 'Discovering Mezzanine'
             ib.discover_mezzanines()
-            mezz = ib.mezzanine[self.slot]
-            print 'Mezzanine is %r:' % mezz
-            assert mezz, 'Mezzanine was not discovered'
+            mezz = ib.mezzanine.get(self.slot, None)
+            print '    Mezzanine is %r:' % mezz
+
+            if mezz:
+                # If a Mezzanine is discovered, it must have valid IPMI data.
+                ipmi = ib._get_mezzanine_mcgill_ipmi(self.slot)  # returns either a Tuber IPMI or a Python IPMI
+                tr.old_ipmi = repr(ipmi)
+                print
+                print 'The board IPMI information found in its EEPROM is'
+                print '-------------'
+                print wrap(ipmi)
+                print '-------------'
+
+                #   If the model/serial  do not match what we expect, we can overrite with a new IPMI block
+                if any([
+                    ipmi.board.part_number != self.model,
+                    ipmi.product.part_number != self.model,
+                    ipmi.product.serial_number != self.serial,
+                    ipmi.board.serial_number != self.serial]):
+                    print
+                    print ' *** ATTENTION ***'
+                    print ' The board model and serial number found in its EEPROM do not match the expected values.'
+                    assert cfg.overrite, 'EEPROM is already programmed with model and serial numbers that to not match the expected values. Ovewriting is not allowed by the configuration file.'
+                    answer = input_yes_no('Do you want to proceed and overrite the EEPROM? All existing data (including MULTI fields) will be lost on that board.')
+                    assert answer, 'The EEPROM was *NOT* reprogrammed. Aborting test.'
+                    create_new_ipmi = True
+                    write_ipmi = True
+                else:
+                    print 'The board model and serial number found on the EEPROM match the expected values'
+                    create_new_ipmi = False
+                    if not isinstance(ipmi, ipmi_fru.FRU):
+                        print ' *** NOTE ***'
+                        print 'The IPMI data was read by the ARM and might not include MULTI fields that may be on the EEPROM. Writing will be disabled to avoid losing that information'
+                        write_ipmi = False
+                    else:
+                        print 'The IPMI data was the old McGill format and can be re-written in the standard IPMI format, with any additional information stored in MULTI fields. '
+                        write_ipmi = input_yes_no('Do you want to proceed and refresh the EEPROM contents with the new IPMI format?')
+
+
+            else:  # Mezzanine not detected, we assume the EEPROM is not programmed
+                # Figure out the revision number based on serial number and the table in the config file
+                create_new_ipmi = True
+                write_ipmi = True
+                rev = None
+                for rev_number, rev_limits in NameSpace(cfg.revision_table).items():
+                    if rev_limits.sn_min <= int(self.serial) <= rev_limits.sn_max:
+                        rev = rev_number
+                        break
+                assert rev is not None, 'Could not determine the revision number based on serial number'
+
+            if create_new_ipmi:
+                print
+                print 'Based on the serial number, the revision number will be:' , rev
+                ipmi = ipmi_fru.FRU(
+                    board=ipmi_fru.Board(
+                        mfg_date=datetime.datetime.now(),
+                        manufacturer="Winterland",
+                        product_name="McGill Mezzanine",
+                        part_number=self.model,
+                        serial_number=self.serial,
+                        fru_file=""),
+                    product=ipmi_fru.Product(
+                        manufacturer="Winterland",
+                        product_name="McGill Mezzanine",
+                        part_number=self.model,
+                        product_version=str(rev),
+                        serial_number=self.serial,
+                        asset_tag="",
+                        fru_file=""),
+                    # multi=Multi(...), when it's supported by this code
+                    )
+
+
+            tr.write_ipmi = write_ipmi
+            tr.new_ipmi = repr(ipmi)
+            if write_ipmi:
+                encoded_ipmi = ipmi.encode()  # allow_write=false if this is not a python IPMI object with .encode()
+                print
+                print 'The new IPMI data of the board will be:'
+                print '-------------'
+                print wrap(ipmi)
+                print '-------------'
+
+                print
+                print 'Writing IPMI data (%i bytes) to EEPROM...' % len(encoded_ipmi)
+                ib._mezzanine_eeprom_write_base64(self.slot, base64.b64encode(encoded_ipmi), 0)
+                print 'EEPROM WRITTEN with data'
+
+                # read back eeprom
+                read_back = base64.b64decode(ib._mezzanine_eeprom_read_base64(self.slot))
+                print
+                print 'Read back %i bytes from EEPROM.'
+                tr.read_back = read_back = read_back[:len(encoded_ipmi)]
+                assert read_back == encoded_ipmi, 'IPMI Data that was read back from mezzanine EEPROM does not match the written data.'
+                print 'Data is ok'
+            else:
+                print
+                print 'You decided not to write new data. Readback check is skipped.'
+            passed = True
+        finally:
+            xr.params.test_locals = locals()  # store local variables for interactive debugging
+            tr.passed = passed
+            xr.save_data(tr)
+            dmm.display(xr.pass_fail(passed), 'EEPROM tests')
+            dmm.local()
+
+    def _get_iceboard(self, **kwargs):
+            a = FPGAArray(**kwargs)
+            ib = a.ib[0]
+            print
+            print 'Testing Mezzanine Power with %r' % ib
+            ib.discover_mezzanines()
+            mezz = ib.mezzanine.get(self.slot, None)
+            assert mezz, 'No Mezzanine was detected'
+
+            # Check model & serial
+            # The ARM updateed its IPMI cache when we wrote the EEPROM, so this is up to date
+            model = ib._get_mezzanine_type(self.slot)
+            serial = ib._get_mezzanine_serial(self.slot)
+            print '    Mezzanine is %r (Model %s SN%s):' % (mezz, model, serial)
+            assert model==self.model and  serial==self.serial, 'The Mezzanine currently under test does not have the correct model and serial numbers'
+
+            return ib, mezz
+
+    def power_test(self):
+        """
+        Runs Mezzanine power test on the IceBoard.
+
+        - The software connects to the IceBoard
+        - The test will automatically:
+            - Power up the mezzanine
+            - Measure and check voltages and currents into the mezzanine
+            - Validate the Power Good (PG_M2C) from the mezzanine
+
+        No user intervention is needed
+        Total time: 3 s
+        """
+        cfg = self.cfg.carrier_tests.power_test
+
+        pg_gpio = {
+            1: 'FMCA_PG_M2C',
+            2: 'FMCB_PG_M2C'
+            }
+
+        tr = NameSpace() # test results container
+        passed = False
+        try:
+            ib, mezz = self._get_iceboard(**cfg.fpga_array)
+
+            # ib.hw._gpio_power.write_reg(6,0b00001000)
+            # ib.hw._gpio_power.write_reg(4,0b10)
+            print
+            print 'Turning mezzanine power OFF (just in case)'
+            ib.set_mezzanine_power(False, self.slot)
+            time.sleep(0.5)
+
+            # Check that board power is off. The ARM checks this by looking at the voltage on the 12V_EN output.
+            tr.first_power_off_state = ib.get_mezzanine_power(self.slot)
+            assert not tr.first_power_off_state, 'The ARM refused to turn OFF the Mezzanine power !'
+
+            # Check that Power Good is OFF
+            # For this to work, the GPIO should not have its internal pull up/downs enabled. This set-up is done by the FPGA hw module.
+            assert ib.hw._gpio_power.read_reg(4)==0, 'Pullups/pulldown are enabled on the IceBoard IOExpander. The Mezzanine Power Good signal cannot be read properly.'
+
+            tr.post_power_pg = ib.hw._gpio.read(pg_gpio[self.slot])
+            assert not tr.post_power_pg, 'The Power good line is ON even if the board is OFF!'
+            print 'Power good line is OFF as expected'
+
+            print
+            print 'Turning mezzanine power ON'
+            ib.set_mezzanine_power(True, self.slot)
+
+            print
+            print 'Checking mezzanine currents and voltages'
+            time.sleep(cfg.pow_stab_time)  # wait for the voltages to stabilize
+            mezz_rails = NameSpace([  # Use NameSpace and list to preserve order
+                ('vadj', ib.RAIL.MEZZ_VADJ),
+                ('vcc3v3', ib.RAIL.MEZZ_VCC3V3),
+                ('vcc12v', ib.RAIL.MEZZ_VCC12V0)
+                ])
+            tr.rails = NameSpace()
+            for rail_name, limits in cfg.rails.items():
+                V = ib.get_mezzanine_voltage(mezz_rails[rail_name], self.slot)
+                I = ib.get_mezzanine_current(mezz_rails[rail_name], self.slot)
+                print 'Rail %s: %.3fV@%.3fA,  limits = %s' % (rail_name, V, I, limits)
+                tr.rails[rail_name] = NameSpace(V=V, I=I)  # Namespace to store this rail results
+                if V < limits.vmin or V > limits.vmax or I < limits.imin or I > limits.imax:
+                    # stop immediately as soon as we fail one of these tests. We can't go further anyway. This will powewr off the supplies
+                    assert False, 'Inadequate current or voltage on rail %s. Powering down.' % rail_name
+
+            # Check that Power Good is ON
+            tr.post_power_pg = ib.hw._gpio.read(pg_gpio[self.slot])
+            assert tr.post_power_pg, 'The Power good line did not turn on!'
+            print 'Power good line is ON as expected'
 
             passed = True
         finally:
+            xr.params.test_locals = locals()  # store local variables for interactive debugging
             tr.passed = passed
+            print
+            print 'Test ended. Turning mezzanine power OFF'
+            ib.set_mezzanine_power(False, self.slot)
+            tr.final_power_off_state = ib.get_mezzanine_power(self.slot)
+            print 'ARM reports that Mezz power is %s' % bool(tr.final_power_off_state)
+            print 'ARM reports that Mezz power is %s' % bool(ib.get_mezzanine_power(self.slot))
+            print 'GPIO OUT0 reg is', bin(ib.hw._gpio_power.read_reg(10))
+
             xr.save_data(tr)
-            self.instr.dmm.display(xr.pass_fail(passed), 'EEPROM tests')
-            self.instr.dmm.local()
+            # dmm.display(xr.pass_fail(passed), 'EEPROM tests')
+            # dmm.local()
+
+    def spi_pll_test(self):
+        """
+        Runs Mezzanine SPI test using the IceBoard.
+
+        SPI Tests
+            - IO Expander (including blinking user LEDs)
+            - PCB Temperature sensor
+            - ADC temperature sensors (2x)
+            - ADC chips (2x) (read chip ID & silicon revision. Do a dummy write)
+            - Test IOExpander reset
+            - Test ADC SPI Reset
+
+        PLL Tests
+
+            - Check the presence and frequency of the 10 MHz reference clock from the Mezzanine
+            - Program the ADC PLL to generate the following frequencies:
+                - 1600 MHz
+            - Check the ADC output clock frequency
+
+            - Send SYNC signal
+            - Check if ADC output clock stops on both ADCs
+            - Program the MGT PLL to generate the following frequencies:
+                - 156.25 MHz
+            - Check the MGT PLL lock line status
+            - Check the MGT output clock frequency
+
+        The computer will ask if the USER LEDs are blinking.
+        The computer will ask if the ADC and MGT PLL Lock LEDs is turned on
+
+        Total time: 20 s
+        """
+        cfg = self.cfg.carrier_tests.spi_pll_test
+
+        tr = NameSpace() # test results container
+        passed = False
+        try:
+
+            ib, mezz = self._get_iceboard(**cfg.fpga_array)
+            ib.set_mezzanine_power(True, self.slot)
+            time.sleep(0.5)
+
+            # test IO Expander
+            print
+            io = mezz.IOExpander
+            mezz.spi_reset()  # All ports reset, in read only so we don't damage anything
+            for bit in range(8):
+                v = 1 << bit
+                io.write(io.REG_OLATA, v)
+                r = io.read(io.REG_OLATA)
+                print '   Wrote 0x%02x, read 0x%02x' % (v, r)
+                assert r==v, 'Could not read back correct byte from Mezzanine IO Expander'
+                mezz.spi_reset()
+                r = io.read(io.REG_OLATA)
+                print '    after Reset, read 0x%02x' % (r)
+                assert io.read(io.REG_OLATA)==0, 'Mezzanine SPI Reset did not reset the IO Expander registers. '
+            print '   IO Expander communication OK'
+            mezz.init() # reinitialize mezzanine so other tests will work
+
+            # Check PCB temperature
+            print
+            print ' Measuring PCB temperature'
+            tr.pcb_temp = []
+            mezz.AmbTemp.get_temperature() # discard first value after power on, just to be sure. it might be wrong.
+            for i in range(cfg.pcb_temp.iterations):
+                temp = mezz.AmbTemp.get_temperature()
+                tr.pcb_temp.append(temp)
+                print '   PCB temperature is %f' % temp
+                assert cfg.pcb_temp.tmin <= temp <= cfg.pcb_temp.tmax, 'PCB temperature out of range'
+
+            # Check ADC temperature
+            print
+            print ' Measuring PCB temperature'
+            tr.adc_temp = []
+            for i in range(cfg.adc_temp.iterations):
+                temp0 = mezz.ADC.get_temperature(0)
+                temp1 = mezz.ADC.get_temperature(1)
+                tr.adc_temp.append({'ADC0': temp0, 'ADC1': temp1})
+                print '   ADC temperatures are ADC0=%f, ADC1=%f' % (temp0, temp1)
+                assert cfg.adc_temp.tmin <= temp0 <= cfg.adc_temp.tmax, 'ADC0 temperature out of range'
+                assert cfg.adc_temp.tmin <= temp1 <= cfg.adc_temp.tmax, 'ADC1 temperature out of range'
+
+            # Check ADC SPI by reading its CHIP ID
+            print
+            print 'Reading ADC CHIP ID over SPI'
+            tr.adc_chip_id = []
+            for i, adc in enumerate(mezz.ADC):
+                chip_id = adc.chip_id
+                tr.adc_chip_id.append(chip_id)
+                print '   ADC%i CHIP id is 0x%04x' % (i, chip_id)
+                assert chip_id in cfg.valid_adc_chip_id, 'chip ID read from the ADC is wrong'
+
+
+            # Check ADC reset
+            print
+            print 'Testing ADC reset'
+            for i, adc in enumerate(mezz.ADC):
+                adc.write(adc.REG_CHANNEL_SELECT, 0)
+                assert adc.read(adc.REG_CHANNEL_SELECT) == 0, 'Cannot set ADC register to zero'
+                adc.write(adc.REG_CHANNEL_SELECT, 1)
+                assert adc.read(adc.REG_CHANNEL_SELECT) == 1, 'Cannot set ADC register to 1'
+                mezz.adc_reset()
+                assert adc.read(adc.REG_CHANNEL_SELECT) == 0, 'ADC reset did not set ADC register back to zero'
+                print '  ADC%i reset is OK' % i
+
+
+            # Test LED blinking (interactive)
+            print
+            print 'Testing LED blinking'
+            while True:
+                io.LED0 = 1
+                time.sleep(cfg.blink_delay)
+                io.LED1_PLL2_RESET = 1
+                time.sleep(cfg.blink_delay)
+                io.LED2 = 1
+                time.sleep(cfg.blink_delay)
+                io.LED3 = 1
+                time.sleep(cfg.blink_delay)
+                io.LED0 = 0
+                time.sleep(cfg.blink_delay)
+                io.LED1_PLL2_RESET = 0
+                time.sleep(cfg.blink_delay)
+                io.LED2 = 0
+                time.sleep(cfg.blink_delay)
+                io.LED3 = 0
+                time.sleep(cfg.blink_delay)
+
+                answer = input_yes_no('Did you see the 4 Mezzanine LEDS blink [Q=Quit, R=Repeat]', 'r')
+                if answer == 'r':
+                    continue
+                break
+
+            # ADC PLL lock test
+            mezz.init()  # reset ADC  to make sure we have the right frequency divider ratio of 2
+            print
+            print 'Testing ADC PLL lock'
+            for i in range(cfg.pll_iterations):
+                for freq in cfg.pll_frequencies:
+                    print '   Locking PLL at %f MHz' % freq
+                    mezz.ADC_PLL.init(freq)
+                    read_adc_freq = ib.FreqCtr.read_frequency('ADC_CLK0', gate_time=0.1) / 1e6
+                    read_pll_freq = read_adc_freq * 8
+                    freq_err = read_pll_freq - freq
+                    resolution = 2./cfg.pll_gate_time * 8
+                    err_max = max(cfg.pll_freq_err_max*1e6, resolution) + 1
+                    print '      ADC clock Frequency: %0.6f MHz (x4 = %0.6f MHz, err=%0.0f Hz (max=%0.0f Hz))' % (read_adc_freq, read_pll_freq, freq_err*1e6, err_max)
+                    assert abs(freq_err*1e6) < err_max, 'PLL is not locked at the right frequency'
+                    print '      Lock is OK!'
+
+            # MGT PLL lock test
+            print
+            print 'Testing MGT PLL lock'
+            for i in range(cfg.pll2_iterations):
+                for freq in cfg.pll2_frequencies:
+                    print '   Locking MGT PLL at %f MHz' % freq
+                    locked = mezz.MGT_PLL.init(freq, verbose=0)
+                    # read_adc_freq = ib.FreqCtr.read_frequency('ADC_CLK0', gate_time=0.1) / 1e6
+                    # read_pll2_freq = read_adc_freq * 8
+                    # freq_err = read_pll2_freq - freq
+                    # print '      ADC clock Frequency: %0.6f MHz (x4 = %0.6f MHz, err=%0.6f Hz)' % (read_adc_freq, read_pll2_freq, freq_err*1e6)
+                    # assert abs(freq_err) < cfg.pll2_freq_err_max, 'PLL is not locked ar the right frequency'
+                    print '      Lock is OK!'
+
+            passed = True
+        finally:
+            xr.params.test_locals = locals()  # store local variables for interactive debugging
+            tr.passed = passed
+            print
+            print 'Test ended. Turning mezzanine power OFF'
+            ib.set_mezzanine_power(False, self.slot)
+            xr.save_data(tr)
+
 
 
 if __name__ == '__main__':

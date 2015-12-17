@@ -21,6 +21,9 @@ instruments:
     ps3v3_2v5: {labpy_object: 'AgilentPS',   interface: 'prologix_eth', ip_addr: '10.10.10.137', gpib_addr: 6}  # Agilent E3648A dual output power supply. 3.3V on output1, 2.5V on output 2
     na:        {labpy_object: 'hp8753e',     interface: 'prologix_eth', ip_addr: '10.10.10.137', gpib_addr: 14} # HP8753E Network Analyzer
 
+?: &default_fpga_array
+    iceboards: 85
+    mdns_delay: 1
 
 
 test_list:
@@ -29,7 +32,9 @@ test_list:
     # This path is also the path used by XReport to identify tests results, with the exception that the semicolon ':' is replaced by a dot '.'
     - [ 'imp', {description: 'Impedance test',               path: 'mgadc08_bench_tests:MGADC08BenchTests.impedance_test', required: yes, dependencies: null}]
     - [ 'smk', {description: 'Power up test',                path: 'mgadc08_bench_tests:MGADC08BenchTests.smoke_test',     required: yes, dependencies: imp}]
-    - [ 'eep', {description: 'EEPROM Programming and test',  path: 'mgadc08_bench_tests:MGADC08CarrierTests.eeprom_test',  required: yes, dependencies: [smk]}]
+    - [ 'eep', {description: 'EEPROM Programming and test',  path: 'mgadc08_bench_tests:MGADC08CarrierTests.eeprom_test',  required: yes, dependencies: smk}]
+    - [ 'pow', {description: 'Carrier power test',           path: 'mgadc08_bench_tests:MGADC08CarrierTests.power_test',   required: yes, dependencies: smk}]
+    - [ 'spi', {description: 'SPI & PLL test',               path: 'mgadc08_bench_tests:MGADC08CarrierTests.spi_pll_test', required: yes, dependencies: smk}]
 
 
 menu:
@@ -41,9 +46,11 @@ menu:
     #  text: do nothing. The description is shown in the menu if there is one.
     #  board_info: Sets the current board model and serial number. The serial number can be extracted from string parsed by the regex
     #
-    - { key: '1', description: 'Impedance test',                                      type: test, test_tag: imp, next_key: '2'}
-    - { key: '2', description: 'Power up test',                                       type: test, test_tag: smk, next_key: '3'}
-    - { key: '3',                                                                     type: test, test_tag: eep, next_key: 'Q'}
+    - { key: '1', type: test, test_tag: imp}
+    - { key: '2', type: test, test_tag: smk}
+    - { key: '3', type: test, test_tag: eep}
+    - { key: '4', type: test, test_tag: pow}
+    - { key: '5', type: test, test_tag: spi}
 
     - { key: 'Q', description: 'Exit',                                                type: exit}
     - {           description: "or Enter or scan board's serial number or menu item", type: text}
@@ -89,17 +96,41 @@ bench_tests:
 
 carrier_tests:
     setup:
-        instruments: [dmm, na] # Subset of instruments we use in these tests
-        fpga_array:
-            iceboards: 5
-            no_mezz: True
-            mdns_delay: 1
-            prog: 0  # program only if necessary
-            open: 1
         fmc_slot: 1 # This is the FMC slot where we expect the Mezzanine to be
 
     eeprom_test:
+        instruments: [dmm] # Subset of instruments we use in these tests
+        fpga_array: {<<: *default_fpga_array, no_mezz: True, prog: 0,  open: 1}
         revision_table:
             2: {sn_min: 0, sn_max: 42}
             3: {sn_min: 43, sn_max: 1000}
-        overwrite: false
+        overwrite: false  # true, false, ask
+
+    power_test:
+        # instruments: [dmm] # Subset of instruments we use in these tests
+        fpga_array: {<<: *default_fpga_array, no_mezz: 1, prog: 0,  open: 1}
+
+        pow_stab_time: 0.5  # Tibe to wait after board power on and voltage measurmeents
+        rails:
+            vcc12v: {vmin: 11.9, vmax: 12.2, imin: 0.010, imax: 0.120} #
+            vcc3v3: {vmin: 3.2,  vmax: 3.4,  imin: 2.400, imax: 2.800} #
+            vadj:   {vmin: 2.4,  vmax: 2.6,  imin: 0.090, imax: 0.120} #
+
+    spi_pll_test:
+        # instruments: [dmm] # Subset of instruments we use in these tests
+        fpga_array: {<<: *default_fpga_array, no_mezz: 1, prog: 0,  open: 1}
+
+        pcb_temp: {tmin: 10, tmax: 60, iterations: 10}
+        adc_temp: {tmin: 10, tmax: 85, iterations: 10}
+        valid_adc_chip_id: [0x0119]
+        blink_delay: 0.2  # Time between LED blinks
+
+        pll_iterations: 2
+        pll_gate_time: 0.1
+        pll_frequencies: [800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000]  # Frequencies in MHz, range is
+        pll_freq_err_max: 0.000001 # in MHz. We have a gate time of 0.01s, err =
+
+        pll2_iterations: 2
+        pll2_gate_time: 0.1
+        pll2_frequencies: [5, 10, 20, 50, 100, 125, 156.25, 200, 250, 312.5, 400, 600, 800, 1000]  # Frequencies in MHz, range is 5 to 1000 MHz
+        pll2_freq_err_max: 0.000001 # in MHz. We have a gate time of 0.01s, resolution = 160 Hz
