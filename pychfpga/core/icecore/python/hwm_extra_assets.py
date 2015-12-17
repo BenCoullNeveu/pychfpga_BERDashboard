@@ -320,16 +320,17 @@ class IceBoardPlus(IceBoard):
             # of mezzanine it is. Try to instantiate a mezz-specific
             # class.
             if (yield self.is_mezzanine_present.async(m)):
-                ipmi = self._get_mezzanine_mcgill_ipmi(m)
-                part_number = ipmi.product.part_number
-                serial = ipmi.product.serial_number
-                self.logger.info(
-                    '%r: detect_mezzanines(): Detected Mezzanine '
-                    'Model: %s Serial %s in Mezzanine %i'
-                    % (self, part_number, serial, m))
-                for mapper in class_mapper(FMCMezzanine).self_and_descendants:
-                    if mapper.class_.__ipmi_part_number__ == part_number:
-                        mezz_class[m] = mapper.class_
+                ipmi = self._get_mezzanine_mcgill_ipmi(m)  # might be null
+                if ipmi:  # handle the case where the mezzanine has an uninitialized EEPROM
+                    part_number = ipmi.product.part_number
+                    serial = ipmi.product.serial_number
+                    self.logger.info(
+                        '%r: detect_mezzanines(): Detected Mezzanine '
+                        'Model: %s Serial %s in Mezzanine %i'
+                        % (self, part_number, serial, m))
+                    for mapper in class_mapper(FMCMezzanine).self_and_descendants:
+                        if mapper.class_.__ipmi_part_number__ == part_number:
+                            mezz_class[m] = mapper.class_
 
             if update:
                 if not self.hwm:
