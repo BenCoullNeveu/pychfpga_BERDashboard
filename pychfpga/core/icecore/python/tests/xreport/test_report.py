@@ -12,7 +12,7 @@ import glob
 import logging
 from StringIO import StringIO
 import pickle
-import json
+import bz2
 import re
 
 
@@ -151,6 +151,7 @@ class TestReport(object):
             if f not in ('pdf', 'rst', 'xml'):
                 raise ValueError("Invalid file format type '%s'" % f)
 
+        self.transtable = unicode(''.join(chr(i) if (32 <= i <= 127) or i == 10 or i == 13 else '.' for i in range(256)))
 
     ##################################################
     # Node management
@@ -200,7 +201,8 @@ class TestReport(object):
             CONTEXT(*[ITEM(NAME(k), VALUE(v)) for (k, v) in table]))
 
     def add_literal_text_block(self, text):
-        self.add_node(DETAILS(PRE(text)))
+        self.add_node(DETAILS(PRE(text.translate(self.transtable))))
+
 
     def add_text_block(self, text):
         """ Add a block of RestructuredText
@@ -255,7 +257,7 @@ class TestReport(object):
             self.add_node(DESCRIPTION(*description))
 
     def add_data(self, data):
-        self.add_node(DATA(json.dumps(data)))
+        self.add_node(DATA(self._encode_data(data)))
 
 
     ##################################################
@@ -291,27 +293,55 @@ class TestReport(object):
         else:
             return [func(getattr(node, field)) for node in nodes]
 
+    DATA_ENCODING_FORMATS = [
+        # format, encode fn, decode fn
+
+        # Unfortunately, piclke protocol 0 can return non-ascii characters if it encounters unicode strings, which lxml doesn't like
+        # The community consensus is to use base64 around it. So we might as well use the highest pickle protocol (proto number -1) and compress the data
+        ('pickle+bz2+base64', lambda obj: base64.encodestring(bz2.compress(pickle.dumps(obj, -1))), lambda obj: pickle.loads(bz2.decompress(base64.decodestring(obj))) )
+        ]
+
+    def _encode_data(self, obj):
+        # By default encode with the first protocol on the list
+        fmt, _encode_fn, _ = self.DATA_ENCODING_FORMATS[0]
+        return fmt + ':' + _encode_fn(obj)
+
+    def _decode_data(self, obj):
+        s = str(obj)
+        for fmt, _, _decode_fn in self.DATA_ENCODING_FORMATS:
+            if s.startswith(fmt + ':'):
+                return _decode_fn(s[len(fmt) + 1:])
+        return repr(obj) # fallback: return string representation of the object
+
     def get_data(self, path='*', single=False):
-        json_loads = lambda text: json.loads(str(text), object_pairs_hook=NameSpace)
-        return self.get_field('data', path=path, single=single, func=json_loads)
+        return self.get_field('data', path=path, single=single, func=self._decode_data)
 
     def get_passed(self, path='*', single=False):
         return self.get_field('passed', path=path, single=single)
 
 
-    # def get_all_data(self):
-    #     data_list = [(str(n.testpath), self._json_loads(n.data)) for n in self.etree.iter('group', 'case') if hasattr(n, 'data')]
-    #     print data_list
-    #     data = NameSpace()
-    #     for path, value in data_list:
-    #         obj = data
-    #         names = path.split('.')
-    #         for name in names[:-1]:
-    #             if not hasattr(obj, name):
-    #                 setattr(obj, name, NameSpace())
-    #             obj = getattr(obj, name)
-    #         setattr(obj, names[-1], value)
-    #     return data
+    def get_data_tree(self):
+        """ Return all data in the report as a hierarchy of attributes based on the test name elements.
+
+        Example to get data from test a_module:a_class.a_method
+            tree = my_report.get_data_tree()
+            my_data = tree.a_module.a_class.a_method
+
+        See also get_data() which can get data from one or multiple tests based on a search pattern.
+        """
+        nodes = self.get_nodes(required_field='data')
+        data_list = [(str(n.testpath), self._decode_data(n.data)) for n in nodes]
+        # print data_list
+        data = NameSpace()
+        for path, value in data_list:
+            obj = data
+            names = path.split('.')
+            for name in names[:-1]:
+                if not hasattr(obj, name):
+                    setattr(obj, name, NameSpace())
+                obj = getattr(obj, name)
+            setattr(obj, names[-1], value)
+        return data
 
 
 

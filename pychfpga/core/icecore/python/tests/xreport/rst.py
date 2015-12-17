@@ -110,7 +110,7 @@ class rST():
         self.add('\n')
         self.add('::\n')
         self.add('\n')
-        for line in text.split('\n'):
+        for line in text.replace('\r', '\n').split('\n'):
             self.add('    ' + line + '\n')
         self.add('\n')
 
