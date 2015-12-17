@@ -82,8 +82,8 @@ class MGADC08_Handler(FMCMezzanineHandler):
             self.ADC_PLL = ADC_PLL.ADC_PLL_base(adc_board=self)
             self.logger.debug('  - AmbTemp')
             self.AmbTemp = AmbTemp.AmbTemp_base(adc_board=self)
-            # self.logger.debug('  - MGT_PLL')
-            # self.MGT_PLL = MGT_PLL.MGT_PLL_base(self.motherboard)
+            self.logger.debug('  - MGT_PLL')
+            self.MGT_PLL = MGT_PLL.MGT_PLL_base(mezz=self)
 
     ############################################
     # Methods available to the board hardware
@@ -96,6 +96,16 @@ class MGADC08_Handler(FMCMezzanineHandler):
         if verbose is None:
             verbose = self.verbose
         return self.iceboard.SPI.read_write(device=device, data=data, type=type, port=self.mezzanine-1, verbose=verbose)
+
+    def set_spi_reset(self, state):
+        """ Resets the SPI device on *BOTH* mezzanines.
+        """
+        self.iceboard.SPI.RESET = state
+
+    def spi_reset(self):
+        """ Resets the SPI device on *BOTH* mezzanines.
+        """
+        self.iceboard.SPI.pulse_bit('RESET')
 
     def adc_reset(self):
         self.iceboard.GPIO.pulse_bit(('ADC0_RESET', 'ADC1_RESET')[self.mezzanine-1])
