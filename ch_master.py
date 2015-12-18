@@ -606,16 +606,16 @@ if __name__ == "__main__":
       if (int(args.configure_fpga) > 0):
         try:
              fpga_frame_count = c[0].get_frame_number()
-             if ((fpga_frame_count % hk_rate_in_frames) < poll_rate_in_frames):
-                 hk_return = get_all_fpga_slots_hk(c)
-                 i = 0
-                 for hk in hk_return:
-                   acq.pass_fpga_amb_temp(i, {hk_fields_list[0] : hk})
-                   i += 1
+             #if ((fpga_frame_count % hk_rate_in_frames) < poll_rate_in_frames):
+             #    hk_return = get_all_fpga_slots_hk(c)
+             #    i = 0
+             #    for hk in hk_return:
+             #      acq.pass_fpga_amb_temp(i, {hk_fields_list[0] : hk})
+             #      i += 1
                    #log.debug("Slot number: %d "  % c_element.slot )
                    #log.debug("Crossbar1 fifo overflow %d "  % c_element.CROSSBAR.CB1_LANE_MONITOR )
                    #log.debug("Crossbar2 fifo overflow %d "  % c_element.CROSSBAR2.CB2_LANE_MONITOR )
-                 log.info("Read FPGA housekeeping.")
+             #    log.info("Read FPGA housekeeping.")
         except:
              log.critical("Did not get FPGA housekeeping, still aquiring data...")
              #Right now can miss gain setting stuff if hk takes more than 10s.  Really need to disentangle the two.  
