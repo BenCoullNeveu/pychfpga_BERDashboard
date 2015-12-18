@@ -44,14 +44,23 @@ def plotNetworkData( frequency, out, fname ):
    pylab.savefig(fname+'.pdf')
    pylab.clf()
 
-def plotGammaDataRL(frequency, data, filename=None, title=None, clear=1, plot_phase=1):
+def plotGammaDataRL(frequency, data, filename=None, title=None, clear=1, plot_phase=1, xscale='lin'):
     '''
        Plot Network data from hp8753d data
     '''
     #l1 = pylab.plot(out[:,1],out[:,2],'r-', label=columns[2])
     if clear:
         pyplot.clf()
-    l1, = pyplot.semilogx(frequency, mag_in_dB(data), 'b-', label='Magnitude (dB)')
+
+
+    if xscale == 'log':
+        plot_fn = 'semilogx'
+    elif xscale == 'lin':
+        plot_fn = 'plot'
+    else:
+        raise ValueError("xscale must be either 'lin' or 'log'")
+
+    l1, = getattr(pyplot, plot_fn)(frequency, mag_in_dB(data), 'b-', label='Magnitude (dB)')
     ax1 = pyplot.gca()
     title_string = ''
     if title is not None:
@@ -66,11 +75,11 @@ def plotGammaDataRL(frequency, data, filename=None, title=None, clear=1, plot_ph
     pyplot.ylabel('Response (dB)')
     pyplot.grid(1, which='both')  # Shows the grid on major and minor ticks
     #ax2 = pyplot.twinx()
-   # if plot_phase:
-    ax2 = pylab.twinx()
-    l2, = ax2.semilogx(frequency, phase_in_deg(data), 'b:', label='Phase (deg)')
-    ax2.yaxis.tick_right()
-    pyplot.ylabel('Response for phase (degrees)')
+    if plot_phase:
+        ax2 = pylab.twinx()
+        l2, = getattr(ax2, plot_fn)(frequency, phase_in_deg(data), 'b:', label='Phase (deg)')
+        ax2.yaxis.tick_right()
+        pyplot.ylabel('Response for phase (degrees)')
     #pylab.legend()
     pyplot.grid(0)
     pyplot.rcParams['legend.loc'] ='best'  # Tell matplotlib to place the legend at the best location, out of the plot's way

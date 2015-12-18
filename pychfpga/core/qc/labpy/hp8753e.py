@@ -175,7 +175,7 @@ class hp8753e(GPIB.GPIB):
             print 'Status register value: 0x%02X' % self.read_serial_poll()
 
             print '   Reading data'
-            resstr = self.query( 'OUTPFORM', timeout=0.5, verbose = 0)  # Fixme: used to have  wait_for_timeout=True
+            resstr = self.query( 'OUTPFORM', terminator='timeout', timeout=0.5, verbose = 0)  # Fixme: used to have  wait_for_timeout=True
             print '   Received %i bytes' % len(resstr)
             print '   Parsing data'
             dat = self.parse_data(resstr)
@@ -183,7 +183,7 @@ class hp8753e(GPIB.GPIB):
             complex_array = dat[:,0] + 1.0j*dat[:,1]
             dat_all.append(complex_array)
         print 'Reading frequency list'
-        limits = self.query( 'OUTPLIML',  timeout=0.5) # Get list containing frequency points  (Fixme: used to have wait_for_timeout=True)
+        limits = self.query( 'OUTPLIML', terminator='timeout', timeout=0.5) # Get list containing frequency points  (Fixme: used to have wait_for_timeout=True)
         limits_array = self.parse_data(limits)
         print '   received %i points' % len(limits_array)
         frequency = limits_array[:,0]
@@ -193,7 +193,7 @@ class hp8753e(GPIB.GPIB):
 
     meas_s_params = get_s_params  # for backwards compatibility
 
-    def plot_s_params(self, frequency, data, filename=None, title=None, clear=1, plot_phase=1):
+    def plot_s_params(self, frequency, data, filename=None, title=None, clear=1, plot_phase=1, xscale='lin'):
         """ Make a S parameter plot from previously measured data and optionally save it in the specified filename as a PDF file. """
         utils.plotGammaDataRL(frequency=frequency, data=data, filename=filename, title=title, clear=clear, plot_phase=plot_phase)
 
