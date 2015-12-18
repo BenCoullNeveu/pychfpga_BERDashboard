@@ -1,6 +1,8 @@
 from StringIO import StringIO
 import datetime
 import docutils
+import textwrap
+import os.path
 
 class rST():
     """
@@ -9,10 +11,11 @@ class rST():
 
     Based on reStructuredText.py developed by Kevin MacDermid, August 2014
     """
-    def __init__(self, base_filename=None):
+    def __init__(self, base_filename=None, width=160):
         """
         Creates a new reStructuredText document.
         """
+        self.width = width
         if base_filename is None:
             self.base_filename = datetime.datetime.now().strftime('%Y-%m-%d_%Hh%Mm%Ss')
         else:
@@ -41,8 +44,15 @@ class rST():
 
         with open(self.base_filename + '.rst', 'w') as f:
             f.write(doc)
+
+        base_path = os.path.split(self.base_filename)[0]
+        self.write_attachments(base_path)
+
+    def write_attachments(self, folder):
+        base_filename = os.path.split(self.base_filename)[1]
+
         for (tag, data) in self.attachments.items():
-            attachment_filename = self.base_filename + '_' + tag
+            attachment_filename = os.path.join(folder, base_filename + '_' + tag)
             with open(attachment_filename, 'wb') as f:
                 f.write(data)
 
@@ -85,7 +95,7 @@ class rST():
 
     def add_image(self, image_path, height=None, width=None, align='center', caption=None):
         '''
-        Adds an immage to the reStruturedText document specified at instantiation
+        Adds an image to the reStruturedText document specified at instantiation
 
         Args:
             image_path: The absolute path to the image
@@ -94,7 +104,8 @@ class rST():
             align: (optional) The alignment of the image. e.g. 'left', 'right', 'center' (default)
         '''
         self.add('\n')
-        self.add(".. figure:: %s \n" % (image_path))
+        local_path = os.path.split(image_path)[1]
+        self.add(".. figure:: %s \n" % (local_path))
         if height is not None:
             self.add("   :height: %s\n" % (height))
         if width is not None:
@@ -111,7 +122,8 @@ class rST():
         self.add('::\n')
         self.add('\n')
         for line in text.replace('\r', '\n').split('\n'):
-            self.add('    ' + line + '\n')
+            for splitline in textwrap.wrap(line, self.width):
+                self.add('    ' + splitline + '\n')
         self.add('\n')
 
     def add_table(self, grid, header=False):

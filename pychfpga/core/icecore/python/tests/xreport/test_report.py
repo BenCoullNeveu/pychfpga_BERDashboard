@@ -14,6 +14,8 @@ from StringIO import StringIO
 import pickle
 import bz2
 import re
+import tempfile
+import shutil
 
 
 from rst import rST
@@ -139,17 +141,18 @@ class TestReport(object):
         self.node_tail = [self.etree]
         self.node_name = []
 
-        self.filename = filename
-        self.formats = formats
 
         if filename:
-            filename, filename_ext = os.path.splitext(self.filename)
+            filename, filename_ext = os.path.splitext(filename)
             if filename_ext[1:]:
-                self.formats.add(filename_ext[1:])
+                formats.add(filename_ext[1:])
 
         for f in formats:
             if f not in ('pdf', 'rst', 'xml'):
                 raise ValueError("Invalid file format type '%s'" % f)
+
+        self.filename = filename
+        self.formats = formats
 
         self.transtable = unicode(''.join(chr(i) if (32 <= i <= 127) or i == 10 or i == 13 else '.' for i in range(256)))
 
@@ -419,6 +422,7 @@ class TestReport(object):
     def get_rst(self, filename=None):
         """ Return the object representating the test report in reStructuredTest with attachments."""
         filename = filename or self.filename
+        filename, filename_ext = os.path.splitext(filename)
 
         rst = rST(filename)
         rst.add_toc(depth=5)
@@ -468,7 +472,7 @@ class TestReport(object):
         rst = self.get_rst(filename)
         rst.write()
 
-    def write_pdf(self, filename=None, log_level=logging.WARNING):
+    def write_pdf(self, filename=None, log_level=logging.WARNING, image_path=None):
         """ Write the report as a PDF file.
 
         Latex is not needed. The rst2pdf package (pip install rst2pdf) is required.
@@ -489,11 +493,23 @@ class TestReport(object):
         # this reason, we change it firectly in the flowables module.
         flowables.listWrapOnFakeWidth = 0
 
+        # Make sure image files are closed after they are imported so we can delete the temporary folder
+        # see https://groups.google.com/forum/#!topic/rst2pdf-discuss/zK5dSiaS7Fo
+        import reportlab.rl_config
+        reportlab.rl_config.imageReaderFlags = 2
+
         logger = logging.getLogger('rst2pdf')
         logger.setLevel(log_level)
 
-        r = createpdf.RstToPdf(stylesheets=['eightpoint', 'letter', 'sphinx'], fit_mode='shrink', breaklevel=0)
-        r.createPdf(text=str(self.get_rst()), output=filename)
+        attachment_folder = tempfile.mkdtemp()
+        rst = self.get_rst(filename)
+        rst.write_attachments(attachment_folder)
+
+        # if image_path is None:
+        #     image_path = os.path.split(filename)[0]
+        r = createpdf.RstToPdf(stylesheets=['eightpoint', 'letter', 'sphinx'], fit_mode='shrink', breaklevel=0, basedir=attachment_folder)
+        r.createPdf(text=str(rst), output=filename)
+        shutil.rmtree(attachment_folder)
 
     def publish(self, filename, writer_name='html'):
         """ Write the report in any of the formats supported by the ``docutils`` library.
