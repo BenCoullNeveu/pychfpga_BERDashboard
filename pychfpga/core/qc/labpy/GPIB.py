@@ -109,7 +109,7 @@ class GPIB(object):
                         #print 'Flushing the buffers...'
                         #self.flush(timeout=0.5)
                 except:
-                        self.close()
+                        # self.close()
                         raise
 
         def __enter__(self):
@@ -315,7 +315,7 @@ class GPIB(object):
                 # Flush the socket buffer first
                 self.flush_interface()
                 # Now read the instrument until no more data comes
-                while self.read(wait_for_timeout=True, timeout=self.adapter_timeout+0.1, verbose=0):
+                while self.read(terminator='timeout', timeout=self.adapter_timeout+0.1, verbose=0):
                         pass
 
         def query(self, command, **kwargs):
