@@ -68,8 +68,7 @@ class MGADC08BenchTests(unittest.TestCase): #
             ps.set_voltage(rail.output, rail.voltage)
             ps.set_current(rail.output, rail.current_limit)
             self.rails[rail_name] = NameSpace(ps=ps, output=rail.output)
-
-
+        xr.header('Test results')
 
 
     def impedance_test(self):
@@ -97,12 +96,8 @@ class MGADC08BenchTests(unittest.TestCase): #
         pss = [self.instr.ps12v, self.instr.ps3v3_2v5]  # Both power supplies
         test_results = NameSpace()
 
-
-
         for ps in pss:  # Turn off both power supplies, just to be sure
             ps.output_enable(0)
-
-        xr.header('Test results')
 
         failed_test_points = []
         passed = False
@@ -158,7 +153,6 @@ class MGADC08BenchTests(unittest.TestCase): #
 
 
         test_results = NameSpace()  # container for the test results to be saved in the test report
-        xr.header('Test results')
 
         for ps in pss:  # Turn off both power supplies, just to be sure
             ps.output_enable(0)
@@ -406,6 +400,8 @@ class MGADC08CarrierTests(): #
 
     def _get_iceboard(self, **kwargs):
             a = FPGAArray(**kwargs)
+            assert len(a.ib), 'No Iceboard was found with parameters %s' % kwargs
+            assert len(a.ib) == 1, 'One than one Iceboard was found with parameters %s' % kwargs
             ib = a.ib[0]
             print
             print 'Testing Mezzanine Power with %r' % ib
@@ -443,12 +439,12 @@ class MGADC08CarrierTests(): #
             }
 
         tr = NameSpace() # test results container
+        ib, mezz = (None, None)  # in case we fail finding boards
         passed = False
         try:
             ib, mezz = self._get_iceboard(**cfg.fpga_array)
 
-            # ib.hw._gpio_power.write_reg(6,0b00001000)
-            # ib.hw._gpio_power.write_reg(4,0b10)
+            # Power down mezzanine to get a baseline
             print
             print 'Turning mezzanine power OFF (just in case)'
             ib.set_mezzanine_power(False, self.slot)
@@ -458,18 +454,20 @@ class MGADC08CarrierTests(): #
             tr.first_power_off_state = ib.get_mezzanine_power(self.slot)
             assert not tr.first_power_off_state, 'The ARM refused to turn OFF the Mezzanine power !'
 
-            # Check that Power Good is OFF
+            # Check that Power Good goes down when board is powered off to make sure we are not stuck to 0
             # For this to work, the GPIO should not have its internal pull up/downs enabled. This set-up is done by the FPGA hw module.
-            assert ib.hw._gpio_power.read_reg(4)==0, 'Pullups/pulldown are enabled on the IceBoard IOExpander. The Mezzanine Power Good signal cannot be read properly.'
-
+            assert ib.hw._gpio_power.read_reg(4) == 0, 'Pullups/pulldown are enabled on the IceBoard IOExpander. The Mezzanine Power Good signal cannot be read properly.'
             tr.post_power_pg = ib.hw._gpio.read(pg_gpio[self.slot])
             assert not tr.post_power_pg, 'The Power good line is ON even if the board is OFF!'
             print 'Power good line is OFF as expected'
 
+
+            # Turn Mezzanine ON
             print
             print 'Turning mezzanine power ON'
             ib.set_mezzanine_power(True, self.slot)
 
+            # Check mezzanine voltages and currents
             print
             print 'Checking mezzanine currents and voltages'
             time.sleep(cfg.pow_stab_time)  # wait for the voltages to stabilize
@@ -499,7 +497,8 @@ class MGADC08CarrierTests(): #
             tr.passed = passed
             print
             print 'Test ended. Turning mezzanine power OFF'
-            ib.set_mezzanine_power(False, self.slot)
+            if ib:
+                ib.set_mezzanine_power(False, self.slot)
             tr.final_power_off_state = ib.get_mezzanine_power(self.slot)
             print 'ARM reports that Mezz power is %s' % bool(tr.final_power_off_state)
             print 'ARM reports that Mezz power is %s' % bool(ib.get_mezzanine_power(self.slot))
@@ -543,6 +542,7 @@ class MGADC08CarrierTests(): #
         cfg = self.cfg.carrier_tests.spi_pll_test
 
         tr = NameSpace() # test results container
+        ib, mezz = (None, None)  # in case we fail finding boards
         passed = False
         try:
 
@@ -677,10 +677,65 @@ class MGADC08CarrierTests(): #
             tr.passed = passed
             print
             print 'Test ended. Turning mezzanine power OFF'
-            ib.set_mezzanine_power(False, self.slot)
+            if ib:
+                ib.set_mezzanine_power(False, self.slot)
             xr.save_data(tr)
 
+    def s11_test(self):
+        """
+        Runs Mezzanine SPI test using the IceBoard.
 
+        SPI Tests
+            - IO Expander (including blinking user LEDs)
+            - PCB Temperature sensor
+            - ADC temperature sensors (2x)
+            - ADC chips (2x) (read chip ID & silicon revision. Do a dummy write)
+            - Test IOExpander reset
+            - Test ADC SPI Reset
+
+        PLL Tests
+
+            - Check the presence and frequency of the 10 MHz reference clock from the Mezzanine
+            - Program the ADC PLL to generate the following frequencies:
+                - 1600 MHz
+            - Check the ADC output clock frequency
+
+            - Send SYNC signal
+            - Check if ADC output clock stops on both ADCs
+            - Program the MGT PLL to generate the following frequencies:
+                - 156.25 MHz
+            - Check the MGT PLL lock line status
+            - Check the MGT output clock frequency
+
+        The computer will ask if the USER LEDs are blinking.
+        The computer will ask if the ADC and MGT PLL Lock LEDs is turned on
+
+        Total time: 20 s
+        """
+        cfg = self.cfg.carrier_tests.s11_test
+        instr = util.open_instruments(self.cfg.instruments, cfg.instruments)  # open only instruments listed in cfg.instruments
+        na = instr.na
+        tr = NameSpace() # test results container
+        ib, mezz = (None, None)  # in case we fail finding boards
+        passed = False
+        try:
+
+            # ib, mezz = self._get_iceboard(**cfg.fpga_array)
+            # ib.set_mezzanine_power(True, self.slot)
+            # time.sleep(0.5)
+            freqs, (s11_data, ) = na.get_s_params(['S11'])
+            na.plot_s_params(freqs, s11_data, title='%s SN%s S11' % (self.model, self.serial))
+            xr.insert_plot()
+            passed = True
+        finally:
+            xr.params.test_locals = locals()  # store local variables for interactive debugging
+            tr.passed = passed
+            print
+            print 'Test ended. Turning mezzanine power OFF'
+            if ib:
+                ib.set_mezzanine_power(False, self.slot)
+            xr.save_data(tr)
+            na.close()
 
 if __name__ == '__main__':
     """ Run the test in this file."""

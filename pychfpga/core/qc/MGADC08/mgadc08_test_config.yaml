@@ -11,9 +11,13 @@ comment: |
 test_results_folder: './test_results'
 mgadc08_model_number: ['MGADC08']
 xformat: ['pdf','rst']  # Output formats for the test reports. xml is always saved.
-# Set default model and serial -- ONLY FOR DEBUGGING
-default_model: 'MGADC08'
-default_serial: '0007'
+
+# DEBUGGING options
+debug:
+    default_model: 'MGADC08'
+    default_serial: '0007'
+    no_date: True
+
 
 instruments:
     dmm:       {labpy_object: 'agilent_dmm', interface: 'prologix_eth', ip_addr: '10.10.10.137', gpib_addr: 22} # Agilent 34410A multimeter (we don't use the LAN connection so we can go back in local mode remotely)
@@ -35,6 +39,8 @@ test_list:
     - [ 'eep', {description: 'EEPROM Programming and test',  path: 'mgadc08_bench_tests:MGADC08CarrierTests.eeprom_test',  required: yes, dependencies: smk}]
     - [ 'pow', {description: 'Carrier power test',           path: 'mgadc08_bench_tests:MGADC08CarrierTests.power_test',   required: yes, dependencies: smk}]
     - [ 'spi', {description: 'SPI & PLL test',               path: 'mgadc08_bench_tests:MGADC08CarrierTests.spi_pll_test', required: yes, dependencies: smk}]
+    - [ 'rmp', {description: 'Ramp test',                    path: 'mgadc08_bench_tests:MGADC08CarrierTests.ramp_test',    required: yes, dependencies: smk}]
+    - [ 's11', {description: 'S11 test',                     path: 'mgadc08_bench_tests:MGADC08CarrierTests.s11_test',     required: yes, dependencies: smk}]
 
 
 menu:
@@ -51,6 +57,8 @@ menu:
     - { key: '3', type: test, test_tag: eep}
     - { key: '4', type: test, test_tag: pow}
     - { key: '5', type: test, test_tag: spi}
+    - { key: '6', type: test, test_tag: rmp}
+    - { key: '7', type: test, test_tag: s11}
 
     - { key: 'Q', description: 'Exit',                                                type: exit}
     - {           description: "or Enter or scan board's serial number or menu item", type: text}
@@ -135,3 +143,5 @@ carrier_tests:
         pll2_gate_time: 0.1
         pll2_frequencies: [5, 10, 20, 50, 100, 125, 156.25, 200, 250, 312.5, 400, 600, 800, 1000]  # Frequencies in MHz, range is 5 to 1000 MHz
         pll2_freq_err_max: 0.000001 # in MHz. We have a gate time of 0.01s, resolution = 160 Hz
+    s11_test:
+        instruments: [na] # Subset of instruments we use in these tests
