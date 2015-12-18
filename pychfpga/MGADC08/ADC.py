@@ -99,6 +99,11 @@ class ADC_chip(object):
         """ Returns the temparature of this ADC chip in degC, as measured on the internal diode through the SPI ADC temperature sensor. """
         return self.adc.get_temperature(self.adc_number, **kwargs)
 
+    def set_trim(self, value):
+        for ch in range(4):
+            self.write(self.REG_CHANNEL_SELECT, ch)
+            self.write(self.REG_TRIM, value)
+
     def status(self):
         """ Display the status of this ADC chip """
         w = self.read(self.REG_CHIP_ID)
