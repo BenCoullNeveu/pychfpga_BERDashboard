@@ -101,7 +101,7 @@ class ADC_chip(object):
 
     def set_trim(self, value):
         for ch in range(4):
-            self.write(self.REG_CHANNEL_SELECT, ch)
+            self.write(self.REG_CHANNEL_SELECT, ch + 1)
             self.write(self.REG_TRIM, value)
 
     def status(self):

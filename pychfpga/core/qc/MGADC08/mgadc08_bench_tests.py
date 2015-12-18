@@ -717,8 +717,8 @@ class MGADC08CarrierTests(): #
 
             for channel in range(8):
                 print
-                print 'Testing CHANNEL %i' % channel
-                input('Connect cable to ***CHANNEL %i*** SMA and press [ENTER] or [Q] to abort.' % channel)
+                print 'Testing CHANNEL %i' % channel + 1
+                input('Connect cable to ***CHANNEL %i*** SMA and press [ENTER] or [Q] to abort.' % channel + 1)
 
 
 

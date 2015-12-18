@@ -760,8 +760,8 @@ class chFPGA_controller(IceBoardExtHandler):
         # Set the mode on all affected ADC boards
         adc_boards = self.get_adc_board(channels)
         for adc_board in adc_boards:
-            if not adc_board.is_present():
-                self._logger.warning('%r: ADC Board of FMC slot #%i (%s) is not present. Ignoring set_ADC_mode() command for this board' % (self, adc_board.fmc_number, adc_board.fmc_name))
+            if not adc_board or not adc_board.is_present():
+                self._logger.warning('%r: ADC Board is not present. Ignoring set_ADC_mode() command for this board' % (self))
             else:
                 adc_board.ADC.set_test_mode(test_mode=mode_value)
 
