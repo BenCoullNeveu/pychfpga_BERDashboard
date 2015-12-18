@@ -29,10 +29,10 @@ def run_tests(config_file):
     test_results_folder = cfg.test_results_folder
     mgadc08_model_number = cfg.mgadc08_model_number
 
-    instr = open_instruments(cfg.instruments, ['dmm'])
-    instr.dmm.display('Hello', 'SCAN serial number')
-    current_serial = cfg.default_serial
-    current_model = cfg.default_model
+    # instr = open_instruments(cfg.instruments, ['dmm'])
+    # instr.dmm.display('Hello', 'SCAN serial number')
+    current_serial = cfg.debug.default_serial
+    current_model = cfg.debug.default_model
     test_list = NameSpace(cfg.test_list)  # convert list of (key,values) into an OrderedDict
 
 
@@ -59,7 +59,7 @@ def run_tests(config_file):
         print '---------------------------------------------'
         print
         # Get a summary of all tests run so far
-        test_folder = '%s/%s_SN%s/' % (test_results_folder, current_model, current_serial)
+        test_folder = os.path.join(test_results_folder, '%s_SN%s' % (current_model, current_serial))
         summary = XReport.generate_test_summary(input_folder=test_folder, required_tests=cfg.test_list)
 
         # Update the menu to indicate which tests have passed.
@@ -87,7 +87,7 @@ def run_tests(config_file):
         selection = select_menu_item(test_menu, default=default_choice)
 
         if selection.type == 'exit':
-            instr.dmm.display('Bye!', '')
+            # instr.dmm.display('Bye!', '')
             break
         elif selection.type == 'board_info':
             if selection.model not in mgadc08_model_number:
@@ -97,7 +97,7 @@ def run_tests(config_file):
                 current_model = selection.model
                 current_serial = selection.serial
                 default_choice = selection.next_key
-                instr.dmm.display(current_model, current_serial)
+                # instr.dmm.display(current_model, current_serial)
         elif selection.type == 'test':
             if not current_serial or not current_model:
                 print 'Please enter or scan a serial number before beginning a test'
@@ -105,17 +105,19 @@ def run_tests(config_file):
             # summary_data = xr.generate_summary(summary_filename, data_folder)
             test = test_list[selection.test_tag]
             nose_test_path = test.path
-            test_date = datetime.datetime.now().isoformat().replace(':','_')
-            test_file_name = '%s_%s.pdf' %  (test_date, nose_test_path.replace(':', '.'))
+            test_date = datetime.datetime.now().isoformat().replace(':','_')+'_' if not cfg.debug.no_date else ''
+            test_file_name = '%s%s.pdf' %  (test_date, nose_test_path.replace(':', '.'))
             summary_file_name = '%s/%s_SN%s.pdf' %  (test_results_folder, current_model, current_serial)
 
             if not os.path.exists(test_folder):
                 os.makedirs(test_folder)
+
+            full_test_filename = os.path.join(test_folder, test_file_name)
             print
             print 'Running test %s' % nose_test_path
-            print 'Test data will be stored in %s' % test_folder + test_file_name
+            print 'Test data will be stored in %s' % full_test_filename
             print
-            r = XReport.run(nose_test_path, xfile=test_folder + test_file_name, xformat=cfg.xformat, config_file=config_file, model=current_model, serial=current_serial)
+            r = XReport.run(nose_test_path, xfile=full_test_filename, xformat=cfg.xformat, config_file=config_file, model=current_model, serial=current_serial)
             # if r.passed:
             #     default_choice = selection.next_key
             # else:
