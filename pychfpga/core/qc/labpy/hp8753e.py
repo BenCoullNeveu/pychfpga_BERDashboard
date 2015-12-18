@@ -1,15 +1,11 @@
 #!/Library/Frameworks/EPD64.framework/Versions/Current/bin/python
 import matplotlib.pyplot as pyplot
 #matplotlib.use('Agg')
-import pylab
 import numpy as np
 import os.path
-import re
 
 import GPIB
 import utils
-
-reload(GPIB)
 
 class hp8753e(GPIB.GPIB):
     """A class to communicate with instruments over GPIB using a Prologix
@@ -123,7 +119,7 @@ class hp8753e(GPIB.GPIB):
             else:
                 break
 
-    def meas_s_params(self, spar_list = ['S11', 'S21', 'S12', 'S22'], start=None, stop=None, numpts=None, timeout=1):
+    def get_s_params(self, spar_list = ['S11', 'S21', 'S12', 'S22'], start=None, stop=None, numpts=None, timeout=1):
         """
         Performs one or more S parameter measurmeents on the HP8753E vector network analyzer.
         Start frequency, stop frequency, number of points will be changed if specified, otherwise they will keep theur current values.
@@ -132,15 +128,15 @@ class hp8753e(GPIB.GPIB):
             spar_list = [spar_list]
 
         self.command('HOLD') # stop sweeping so we can have quicker responses from the instrument
-        #print 'Flusing error queue:'
-        #self.clear_error(print_errors=1)
+        # print 'Flusing error queue:'
+        # self.clear_error(print_errors=1)
 
         if numpts is not None:
-           self.command('POIN'+str(numpts))  # set number of points in sweep
+            self.command('POIN'+str(numpts))  # set number of points in sweep
         if start is not None:
-           self.command('STAR'+str(start))   # set start frequency
+            self.command('STAR'+str(start))   # set start frequency
         if stop is not None:
-           self.command('STOP'+str(stop))    # set stop frequency
+            self.command('STOP'+str(stop))    # set stop frequency
 
         self.command('LOGFREQ') # Set log frequency range
         #self.command('PWRRPMAN')              # manual power range
@@ -195,9 +191,13 @@ class hp8753e(GPIB.GPIB):
         self.local() # go back to local control to be polite to the user
         return frequency, dat_all
 
+    meas_s_params = get_s_params  # for backwards compatibility
 
+    def plot_s_params(self, frequency, data, filename=None, title=None, clear=1, plot_phase=1):
+        """ Make a S parameter plot from previously measured data and optionally save it in the specified filename as a PDF file. """
+        utils.plotGammaDataRL(frequency=frequency, data=data, filename=filename, title=title, clear=clear, plot_phase=plot_phase)
 
-def doSparam(s_params = ['S11', 'S21', 'S12', 'S22'], filename=None):
+def doSparam(s_params=['S11', 'S21', 'S12', 'S22'], filename=None):
    """
    Reads the specified S parameters from the HP8753e and plot the data. If a filename is specified, the data and the plot will be saved on disk.
    """
