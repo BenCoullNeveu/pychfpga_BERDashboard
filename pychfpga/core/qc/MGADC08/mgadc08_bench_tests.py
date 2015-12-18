@@ -4,6 +4,7 @@
 import unittest
 import time
 import numpy as np
+import matplotlib.pyplot as plt
 import base64
 import util
 import datetime
@@ -76,16 +77,19 @@ class MGADC08BenchTests(unittest.TestCase): #
         QC001: Power supply Impedance: checks for power supply shorts
 
         Procedure:
+
           - Start the impedance test on the computer
           - Type in serial number of tested board.
           - Clip ground probe of multimeter on specified grounding point
           - Touch each test points indicated by the software and press ENTER
           - Test points:
+
                - J7-2 (12V)
                - J7-3 (2.5V)
                - J7-4 (3.3V)
                - 1V8 test point
                - 3V3 test point
+
           - Total time: 20 s
 
         We pass/fail the test only after all measurements are done so we can gather more debugging info.
@@ -142,8 +146,10 @@ class MGADC08BenchTests(unittest.TestCase): #
             - The computer will ask if the 3.3V LED (DS7) is ON. Answer.
             - Touch multimeter probe on the test points indicated by the software and press ENTER
             - Test points:
+
                 - 1V8 test point
                 - 3V3 test point
+
             - Total time: 15 s
         """
         # Useful shortcuts
@@ -233,6 +239,7 @@ class MGADC08CarrierTests(): #
 
         - The software connects to the IceBoard
         - The test will automatically:
+
             - Detects the mezzanine presence (PRSNT Line)
             - Detect the Mezzanine EEPROM and read existing EEPROM contents if it's already programmed
             - Program the EEPROM with model and serial number.
@@ -424,6 +431,7 @@ class MGADC08CarrierTests(): #
 
         - The software connects to the IceBoard
         - The test will automatically:
+
             - Power up the mezzanine
             - Measure and check voltages and currents into the mezzanine
             - Validate the Power Good (PG_M2C) from the mezzanine
@@ -513,6 +521,7 @@ class MGADC08CarrierTests(): #
         Runs Mezzanine SPI test using the IceBoard.
 
         SPI Tests
+
             - IO Expander (including blinking user LEDs)
             - PCB Temperature sensor
             - ADC temperature sensors (2x)
@@ -524,13 +533,16 @@ class MGADC08CarrierTests(): #
 
             - Check the presence and frequency of the 10 MHz reference clock from the Mezzanine
             - Program the ADC PLL to generate the following frequencies:
-                - 1600 MHz
-            - Check the ADC output clock frequency
 
+                - 1600 MHz
+
+            - Check the ADC output clock frequency
             - Send SYNC signal
             - Check if ADC output clock stops on both ADCs
             - Program the MGT PLL to generate the following frequencies:
+
                 - 156.25 MHz
+
             - Check the MGT PLL lock line status
             - Check the MGT output clock frequency
 
@@ -683,32 +695,8 @@ class MGADC08CarrierTests(): #
 
     def s11_test(self):
         """
-        Runs Mezzanine SPI test using the IceBoard.
+        Runs S11 tests.
 
-        SPI Tests
-            - IO Expander (including blinking user LEDs)
-            - PCB Temperature sensor
-            - ADC temperature sensors (2x)
-            - ADC chips (2x) (read chip ID & silicon revision. Do a dummy write)
-            - Test IOExpander reset
-            - Test ADC SPI Reset
-
-        PLL Tests
-
-            - Check the presence and frequency of the 10 MHz reference clock from the Mezzanine
-            - Program the ADC PLL to generate the following frequencies:
-                - 1600 MHz
-            - Check the ADC output clock frequency
-
-            - Send SYNC signal
-            - Check if ADC output clock stops on both ADCs
-            - Program the MGT PLL to generate the following frequencies:
-                - 156.25 MHz
-            - Check the MGT PLL lock line status
-            - Check the MGT output clock frequency
-
-        The computer will ask if the USER LEDs are blinking.
-        The computer will ask if the ADC and MGT PLL Lock LEDs is turned on
 
         Total time: 20 s
         """
@@ -718,14 +706,43 @@ class MGADC08CarrierTests(): #
         tr = NameSpace() # test results container
         ib, mezz = (None, None)  # in case we fail finding boards
         passed = False
+        tr.s11_data = {}
         try:
 
-            # ib, mezz = self._get_iceboard(**cfg.fpga_array)
-            # ib.set_mezzanine_power(True, self.slot)
-            # time.sleep(0.5)
-            freqs, (s11_data, ) = na.get_s_params(['S11'])
-            na.plot_s_params(freqs, s11_data, title='%s SN%s S11' % (self.model, self.serial))
-            xr.insert_plot()
+            ib, mezz = self._get_iceboard(**cfg.fpga_array)
+            ib.set_mezzanine_power(True, self.slot)
+            time.sleep(0.5)
+            for adc in mezz.ADC:
+                adc.set_trim(cfg.adc_trim_value)
+
+            for channel in range(8):
+                print
+                print 'Testing CHANNEL %i' % channel
+                input('Connect cable to ***CHANNEL %i*** SMA and press [ENTER] or [Q] to abort.' % channel)
+
+
+
+                passed_s11 = True
+                while True:
+                    freqs, (s11_data, ) = na.get_s_params(['S11'])
+                    tr.s11_data[channel] = (freqs, s11_data)
+                    plt.figure(1)
+                    plt.clf()
+                    na.plot_s_params(freqs, s11_data, title='%s SN%s S11' % (self.model, self.serial), xscale='lin', plot_phase=False)
+                    ix = np.where(np.logical_and(freqs>=400e6, freqs<=800e6))
+                    ff = freqs[ix]
+                    dd = 20 * np.log10(np.abs(s11_data[ix]))
+                    plt.plot([400e6, 800e6], [cfg.s11_max]*2, 'r-')  # plot the limit
+                    xr.insert_plot()
+                    print '   Worst case return loss is %0.1f dB. Limit is %0.1d dB' % (max(dd), cfg.s11_max)
+                    if any(dd > cfg.s11_max):
+                        answer = input_yes_no('S11 is not good. Do you want to try again [Y/N] or quit [Q]?' )
+                        if answer:
+                            continue
+                        passed_s11 = False
+                    break
+            assert passed_s11, 'Some of the input have too much return loss'
+
             passed = True
         finally:
             xr.params.test_locals = locals()  # store local variables for interactive debugging
@@ -735,7 +752,7 @@ class MGADC08CarrierTests(): #
             if ib:
                 ib.set_mezzanine_power(False, self.slot)
             xr.save_data(tr)
-            na.close()
+            # na.close()
 
 if __name__ == '__main__':
     """ Run the test in this file."""

@@ -145,3 +145,6 @@ carrier_tests:
         pll2_freq_err_max: 0.000001 # in MHz. We have a gate time of 0.01s, resolution = 160 Hz
     s11_test:
         instruments: [na] # Subset of instruments we use in these tests
+        fpga_array: {<<: *default_fpga_array, no_mezz: 1, prog: 0,  open: 1}
+        s11_max : -15 # in dB
+        adc_trim_value: 15  # 0-15, default is 8. Applies to all channels.
