@@ -604,7 +604,7 @@ if __name__ == "__main__":
       # If less than 10s from gains_switch_time, Change to new gains into hdf5 file.  
       #
       if (int(args.configure_fpga) > 0):
-        try:
+        #try:
              #fpga_frame_count = c[0].get_frame_number()
              #if ((fpga_frame_count % hk_rate_in_frames) < poll_rate_in_frames):
              #    hk_return = get_all_fpga_slots_hk(c)
@@ -616,8 +616,8 @@ if __name__ == "__main__":
                    #log.debug("Crossbar1 fifo overflow %d "  % c_element.CROSSBAR.CB1_LANE_MONITOR )
                    #log.debug("Crossbar2 fifo overflow %d "  % c_element.CROSSBAR2.CB2_LANE_MONITOR )
              #    log.info("Read FPGA housekeeping.")
-        except:
-             log.critical("Did not get FPGA housekeeping, still aquiring data...")
+        #except:
+        #     log.critical("Did not get FPGA housekeeping, still aquiring data...")
              #Right now can miss gain setting stuff if hk takes more than 10s.  Really need to disentangle the two.  
         try:
           time.sleep(0.1)
