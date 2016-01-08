@@ -35,7 +35,12 @@ class MGT_PLL_base(object):
 
 # ---------------------------------------------------------------------------------------------
 
-    def init(self, fout=312.5, fref=10, sel=0, band=None, verbose=2, **args):
+    def init(self, fout=312.5, fref=10, sel=0, band=None, verbose=2, wait_for_lock=True,
+             OUT2_SOURCE=0,
+             CP_CURRENT=0x80,
+             FORCE_VCO_TO_MIDPOINT=0,
+             VCO_SUPPLY_BOOST=0,
+            ):
         """
         Initializes the MGT PLL to provide an adequate clock to the
         Multigigabit transceivers.
@@ -45,6 +50,7 @@ class MGT_PLL_base(object):
             - fref: PLL reference frequency in MHZ (typically 10 or 25 MHz,
               depending on the board reference)
 
+            - OUT2_SOURCE: 0 = Same as OUT1, 1 = REF clock
         NOTES:
             - Using frequencies that require fractional frequency
               multiplication factors will generate more noise. The PLL
@@ -77,8 +83,8 @@ class MGT_PLL_base(object):
         N_min = 64
         N_max = 255
         # List all possible values of P0 and P1
-        P0_list = range(4,11+1)
-        P1_list = range(1,63+1)
+        P0_list = range(4, 11+1)
+        P1_list = range(1, 63+1)
         # set reference frequency doubler to true if can't get freq in range
         if (fref*N_max < fvco_min ):
             REFERENCE_FREQUENCY_DOUBLER = 1
@@ -131,9 +137,9 @@ class MGT_PLL_base(object):
 
         if verbose > 1:
             print ' Choosing P0=%i, P1=%i, ODF=%i' % (P0, P1, P0*P1)
-            print ' fvco=%.3f MHz (must be between %.0f and %.0f MHz)' % (fvco,fvco_min, fvco_max)
+            print ' fvco=%.3f MHz (must be between %.0f and %.0f MHz)' % (fvco, fvco_min, fvco_max)
             print ' Integer multiplier N=%i (integer vco_freq=N*fref=%.0f MHz, integer fout=%.3f MHz, integer fout error=%.6f MHz)' % (N_int, N_int*fref, N_int*fref/(P0*P1), N_int*fref/(P0*P1)-fout)
-            print ' Fractional multiplier FRAC=%i, MODULUS=%i (vco_freq=N*fref=%.0f MHz, fout=%.3f MHz)' % (FRAC,MODULUS,N_real*fref,fout_real)
+            print ' Fractional multiplier FRAC=%i, MODULUS=%i (vco_freq=N*fref=%.0f MHz, fout=%.3f MHz)' % (FRAC, MODULUS, N_real*fref, fout_real)
             print
 
         # --- Define PLL parameters ---
@@ -143,8 +149,7 @@ class MGT_PLL_base(object):
         CAL_VCO = 0
         ENABLE_ALC = 1
         ALC_THRESHOLD = 6  # 0-7, default = 6
-        ENABLE_SPI_VCO_CAL = 1
-        VCO_SUPPLY_BOOST = 0
+        ENABLE_SPI_VCO_CAL = 1  # Must be 1 so we can initiate VCO calibrations over SPI
         ENABLE_SPI_VCO_BAND = 0
 
         VCO_LEVEL = 0x20  # 0 - 0x3F
@@ -152,6 +157,13 @@ class MGT_PLL_base(object):
 
         if band:
             VCO_BAND = band
+
+        # Charge punp control
+        ENABLE_SPI_CP_CURRENT = 1
+        # CP_CURRENT = 0x80
+        CP_MODE = 3
+        ENABLE_CP_MODE = 0
+        # FORCE_VCO_TO_MIDPOINT = 0
 
         # register 0x14 flags
         ENABLE_SPI_FREQ_CTRL = 1
@@ -172,7 +184,7 @@ class MGT_PLL_base(object):
 
         # OUT2 Driver Control
         #   Register 0x33
-        OUT2_SOURCE = 0  # 0 = Same as OUT1, 1 = REF clock
+        # OUT2_SOURCE = 0  # 0 = Same as OUT1, 1 = REF clock
         #   Register 0x34
         OUT2_DRIVE_STRENGTH = 1
         OUT2_POWER_DOWN = 0
@@ -180,12 +192,19 @@ class MGT_PLL_base(object):
         OUT2_CMOS_POL = 0  # 0 = (+,-), 1 = (+,+), 2 = (-,-), 3 = (-,+)
         ENABLE_SPI_OUT2_CTRL = 1
 
+
+
+
         # --- Reset PLL to a known state ---
         self.write(0x00, 0x3c)  # Soft reset
         self.write(0x05, 0x01)  # Update
         time.sleep(0.003)  # wait 3 ms for the VCO cal to complete (needed?)
 
         # --- Program the registers ---
+        # Charge pump control
+        self.write(0x0A, CP_CURRENT)
+        self.write(0x0B, (ENABLE_SPI_CP_CURRENT << 7) | (CP_MODE << 4) | (ENABLE_CP_MODE << 3) | (FORCE_VCO_TO_MIDPOINT << 0))
+
         # VCO Control
         self.write(0x0E, (0 << 7) | (ENABLE_ALC << 6) | (ALC_THRESHOLD << 3) | (ENABLE_SPI_VCO_CAL << 2) | (VCO_SUPPLY_BOOST << 1) | (ENABLE_SPI_VCO_BAND << 0))
         self.write(0x0F, (VCO_LEVEL << 2))
@@ -221,18 +240,22 @@ class MGT_PLL_base(object):
         if self.verbose > 0:
             fpga = self.mezz.motherboard
             gate_time = 0.1
-            fout_meas = fpga.FreqCtr.read_frequency('MGT_REFCLK', gate_time=gate_time)/1e6
+            fout_meas0 = fpga.FreqCtr.read_frequency('FMC%s_MGT_PLL_REFCLK0' % ('A', 'B')[self.mezz.mezzanine-1], gate_time=gate_time)/1e6
+            fout_meas1 = fpga.FreqCtr.read_frequency('FMC%s_MGT_PLL_REFCLK1' % ('A', 'B')[self.mezz.mezzanine-1], gate_time=gate_time)/1e6
             fout_meas_resolution = 2.0 / gate_time / 1e6
             print 'MGT refclk frequency:'
             print 'Requested:  %10.6f MHz' % (fout)
             print 'Configured: %10.6f MHz' % (fout_real)
-            print 'Measured:   %10.6f MHz (Resolution = %.6f MHz)' % (fout_meas,fout_meas_resolution)
-            print 'Difference: %10.6f MHz (%.0f PPM)'  % (fout_meas-fout_real, abs(fout_real-fout_meas)/fout_real*1e6)
+            print 'Measured:  0: %10.6f MHz,  1: %10.6f MHz, Resolution = %.6f MHz' % (fout_meas0, fout_meas1, fout_meas_resolution)
+            print 'Difference: %10.6f MHz (%.0f PPM)'  % (fout_meas0-fout_real, abs(fout_real-fout_meas0)/fout_real*1e6)
             print 'Locked:     ', self.mezz.IOExpander.PLL2_LOCK
             print 'MGT line frequency (fout*16): %.3f Mb/s (not measured)' % (fout_real*16)
             print 'MGT data clock (fout*16/40): %.3f MHz (not measured)' % (fout_real*16/40)
 
-        self.mezz.IOExpander.wait_for_bit('PLL2_LOCK', timeout=1)
+        if wait_for_lock:
+            self.mezz.IOExpander.wait_for_bit('PLL2_LOCK', timeout=1)
 
+        return self.is_locked()
+
+    def is_locked(self):
         return self.mezz.IOExpander.PLL2_LOCK
-
