@@ -5,9 +5,12 @@ import logging
 from datetime import datetime, timedelta
 from calendar import timegm
 import time
+import struct
+import zlib
+import ast  # used for safe McGill-format mezzanine EEPROM parsing
+import base64
 
 import socket
-import struct
 
 from ..icecore import IceBoardPlusHandler
 from ..icecore import tuber  # Used to get TuberRemoteError
@@ -442,103 +445,110 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         """
         return self.hw.read_mezzanine_eeprom(mezzanine, addr, length, **kwargs)
 
-    def _get_mezzanine_mcgill_ipmi(self, mezzanine, retry=3):
+    def _get_mezzanine_mcgill_ipmi(self, mezzanine, retry=3, use_cache=False):
         """ Returns the IMPI data for the mezzanine located on slot
         'mezzanine' (1 or 2). Returns None if no mezzanine is present.
 
         This method overrides the ARM method of the same name so we can
         correctly read MGADC08 mezzanines which have a non-standard EEPROM
         data structure.
+
+        if ``use_cache = False``, the method also does not use the IPMI data cached by the ARM but
+        rather re-reads the EEPROM. This is useful in case the mezzanine has
+        been changed without power cycling the IceBoard (which is typically
+        done during Quality Control runs).
+
+        Todo:
+            - Should be made asynchronous
         """
         if not self.is_mezzanine_present(mezzanine):  # Check mezzanine presence using the FMC PRSNT line.
             return None
 
-        try:
-            # *** JFC: broken now. fixme
-            return tuber.TuberObject.__getattr__(self,'_get_mezzanine_ipmi')(mezzanine)  # Try to get the ipmi data from tuber
-        except tuber.TuberRemoteError:
-            pass
-        import struct
-        import zlib
-        import ast  # used for safe McGill-format mezzanine EEPROM parsing
-
-        if self._mezzanine_ipmi_cache[mezzanine]:
-            return self._mezzanine_ipmi_cache[mezzanine]
+        if use_cache:
+            try:
+                # *** JFC: broken now. fixme
+                return tuber.TuberObject.__getattr__(self,'_get_mezzanine_ipmi')(mezzanine)  # Try to get the ipmi data from tuber
+            except tuber.TuberRemoteError:
+                pass
+            # Tuber has nothing, so see if we have a Python-cached version of the IPMI data
+            if self._mezzanine_ipmi_cache[mezzanine]:
+                return self._mezzanine_ipmi_cache[mezzanine]
 
         self._mezzanine_ipmi_cache[mezzanine] = None
 
-        id_byte = ord(
-            self._mezzanine_eeprom_read(
-                mezzanine, addr=0, length=1, noerror=True)[0]
+        # We can't use the cache, or the ARM cannot understand the EEPROM format, so read and decode the IPMI data ourselves
+        eeprom_data = base64.decodestring(self._mezzanine_eeprom_read_base64(mezzanine))
+
+        if ord(eeprom_data[0]) == 0x0d:  # if this is McGill format
+
+            # # Read the eeprom block by block until we detect the end of the
+            # # dictionary
+            # block_size = 32
+            # string = ''
+            # for i in range(512 / block_size):  # read 32 blocks of 16 bytes
+            #     data_block = self._mezzanine_eeprom_read(
+            #         mezzanine, addr=i*block_size, length=block_size, retry=retry)
+            #     string += data_block
+            #     if ('}' in data_block) or (chr(255) in data_block):
+            #         break
+
+            last_char = eeprom_data.find('}')
+            if last_char < 0:
+                self.logger.error(
+                    '%.32r: The Mezzanine EEPROM indicated McGill-style data but no valid dictionary found on EEPROM. Did the board pass '
+                    'the quality control tests?' % self)
+                return None
+
+            data_string = eeprom_data[1:last_char+1]  # keep only the dict definition data_string: remove first char (board ID) and stop at last '}'.
+
+            # Read checksum
+            crc_string = eeprom_data[last_char+1: last_char+1+4]
+            crc = struct.unpack('i', crc_string)[0]
+            computed_crc = zlib.crc32(data_string)
+            if computed_crc != crc:
+                raise RuntimeError(
+                    'FMC EEPROM CRC is invalid. Read crc = %08X, '
+                    'computed crc = %08X' % (crc, computed_crc))
+            dict_out = ast.literal_eval(data_string)  # safer than using eval
+
+            # Extract standard FRU information from McGill data structure
+            part_number = dict_out.pop('Model', 'MGADC08')
+            serial_number = dict_out.pop('Serial #', 'Unknown')
+            product_version = dict_out.pop('Rev #', 'Unknown')
+            mfg_date_str = dict_out.get('Date of last test', None)
+            try:
+                mfg_date = datetime.strptime(mfg_date_str, '%d/%m/%Y')
+            except ValueError:
+                mfg_date = None
+
+            fru = FRU(
+                board=Board(
+                    mfg_date=mfg_date,
+                    manufacturer="Winterland",
+                    product_name="McGill Mezzanine",
+                    part_number=part_number,
+                    serial_number=serial_number,
+                    fru_file="",
+                ),
+                product=Product(
+                    manufacturer="Winterland",
+                    product_name="McGill Mezzanine",
+                    part_number=part_number,
+                    product_version=product_version,
+                    serial_number=serial_number,
+                    asset_tag="",
+                    fru_file="",
+                ),
+                multi=MultiDict(dict_out)
             )
-
-        if id_byte != 0x0d:
-            self.logger.error(
-                'The EEPROM on mezzanine %i dies not have a valid ID'
-                % mezzanine)
-            return None
-
-        # Read the eeprom block by block until we detect the end of the
-        # dictionary
-        block_size = 32
-        string = ''
-        for i in range(512 / block_size):  # read 32 blocks of 16 bytes
-            data_block = self._mezzanine_eeprom_read(
-                mezzanine, addr=i*block_size, length=block_size, retry=retry)
-            string += data_block
-            if ('}' in data_block) or (chr(255) in data_block):
-                break
-
-        last_char = string.find('}')
-        if last_char < 0:
-            self.logger.error(
-                'No dictionary found on EEPROM. Did the board pass '
-                'the quality control tests?')
-            return None
-
-        string = string[1:last_char+1]  # keep only the dict definition string: remove first char (board ID) and stop at last '}'.
-
-        # Read checksum
-        crc_string = self._mezzanine_eeprom_read(
-            mezzanine, last_char+1, length=4, retry=retry)
-        crc = struct.unpack('i', crc_string)[0]
-        computed_crc = zlib.crc32(string)
-        if computed_crc != crc:
-            raise RuntimeError(
-                'FMC EEPROM CRC is invalid. Read crc = %08X, '
-                'computed crc = %08X' % (crc, computed_crc))
-        dict_out = ast.literal_eval(string)  # safer than using eval
-
-        # Extract standard FRU information from McGill data structure
-        part_number = dict_out.pop('Model', 'MGADC08')
-        serial_number = dict_out.pop('Serial #', 'Unknown')
-        product_version = dict_out.pop('Rev #', 'Unknown')
-        mfg_date_str = dict_out.get('Date of last test', None)
-        try:
-            mfg_date = datetime.strptime(mfg_date_str, '%d/%m/%Y')
-        except ValueError:
-            mfg_date = None
-
-        fru = FRU(
-            board=Board(
-                mfg_date=mfg_date,
-                manufacturer="Winterland",
-                product_name="McGill Mezzanine",
-                part_number=part_number,
-                serial_number=serial_number,
-                fru_file="",
-            ),
-            product=Product(
-                manufacturer="Winterland",
-                product_name="McGill Mezzanine",
-                part_number=part_number,
-                product_version=product_version,
-                serial_number=serial_number,
-                asset_tag="",
-                fru_file="",
-            ),
-            multi=MultiDict(dict_out)
-        )
+        else:
+            try:
+                fru = FRU.decode(eeprom_data)
+            except ValueError:
+                self.logger.error(
+                    '%.32r: The EEPROM on mezzanine %i does not have valid IPMI data'
+                    % (self, mezzanine))
+                return None
 
         self._mezzanine_ipmi_cache[mezzanine] = fru
         return fru
@@ -1201,14 +1211,14 @@ class IceBoardHardware(object):
         if isinstance(state, (bool, int)):
             state = [state] * len(fmc_number)
 
-        for (fmc,fmc_state) in zip(fmc_number,state):
+        for (fmc, fmc_state) in zip(fmc_number, state):
             if fmc not in range(self.NUMBER_OF_FMC_SLOTS):
                 raise ValueError('FMC number %i is not a valid value' % fmc)
             else:
                 # out_reg = 'OUT%i' % fmc # sets the register name to access based on the FMC number
-                #cfg_reg = 'CFG%i' % fmc
+                # cfg_reg = 'CFG%i' % fmc
                 # self._gpio_power.write(out_reg, 0b00000000) # Turn off all power signals before we enable the GPIO outputs
-                #self._gpio_power.write(cfg_reg, 0b10101000)
+                # self._gpio_power.write(cfg_reg, 0b10101000)
                 self._gpio_power.write(fmc, 0b00000111*bool(fmc_state))  # Turn on power to board
                 self._gpio_power.write(fmc, 0b01010111*bool(fmc_state))  # Set Power Good and CLKDIR to 1
 
