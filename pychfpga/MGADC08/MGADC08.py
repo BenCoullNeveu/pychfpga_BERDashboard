@@ -46,14 +46,14 @@ class MGADC08_Handler(FMCMezzanineHandler):
 
     # SPI port numbers specific to this board
     SPI_ADC0_ADDR      = 0    # ADC. R/W device. 8 bit address+RW, 16 bit data.
-    SPI_ADC1_ADDR      = 1 # ADC. R/W device. 8 bit address+RW, 16 bit data.
-    SPI_ADC0_TEMP_ADDR = 2 # ADC temperature sensor chip. Read only
-    SPI_ADC1_TEMP_ADDR = 3 # ADC temperature sensor chip. Read only
-    SPI_AMB_TEMP_ADDR  = 4 # Board temperature sensor chip. Read/Write device
-    SPI_PLL1_ADDR      = (5, 1) # ADC PLL. The second element of the tuple indicates that we use the alternate timing
+    SPI_ADC1_ADDR      = 1  # ADC. R/W device. 8 bit address+RW, 16 bit data.
+    SPI_ADC0_TEMP_ADDR = 2  # ADC temperature sensor chip. Read only
+    SPI_ADC1_TEMP_ADDR = 3  # ADC temperature sensor chip. Read only
+    SPI_AMB_TEMP_ADDR  = 4  # Board temperature sensor chip. Read/Write device
+    SPI_PLL1_ADDR      = (5, 1)  # ADC PLL. The second element of the tuple indicates that we use the alternate timing
     #SPI_ADC_BIAS_ADDR =5 # Bias measurement ADC.  Read/Write device # Not present on Rev2 board
-    SPI_IO_EXP_ADDR    = 6 # IO Expander. Read/Write device
-    SPI_PLL2_ADDR      = 7 # MGT PLL. Write only.
+    SPI_IO_EXP_ADDR    = 6  # IO Expander. Read/Write device
+    SPI_PLL2_ADDR      = 7  # MGT PLL. Write only.
 
     _board_is_present = False # Will be checked later
 
@@ -109,6 +109,31 @@ class MGADC08_Handler(FMCMezzanineHandler):
 
     def adc_reset(self):
         self.iceboard.GPIO.pulse_bit(('ADC0_RESET', 'ADC1_RESET')[self.mezzanine-1])
+
+    REFCLK_SOURCES = {
+        'fmc': 0,
+        'sma': 1
+        }
+
+
+    def set_refclk_source(self, source):
+        if source not in self.REFCLK_SOURCES:
+            raise ValueError("Invalid Reference clock source name '%s'. Valid sources are: %s" % (source, ', '.join(self.REFCLK_SOURCES.keys())))
+        self.IOExpander.REFCLK_INPUT_SEL = self.REFCLK_SOURCES[source]
+
+    def get_refclk_source(self):
+        source = self.IOExpander.REFCLK_INPUT_SEL
+        return [k for k,v in self.REFCLK_SOURCES.items() if v == source][0]
+
+    def is_adc_pll_locked(self):
+        """ Check is the Mezzanine's ADC PLL is locked *By looking at the PLL_LOCK line on the FMC connector*.
+        """
+        gpio = self.iceboard.GPIO
+        if self.mezzanine == 1:
+            return gpio.ADC_PLL_LOCK0
+        elif self.mezzanine == 2:
+            return gpio.ADC_PLL_LOCK0
+        raise RuntimeError('Invalid mezzanine number')
 
     def adc_sync(self):
         self.iceboard.REFCLK.local_sync()
