@@ -33,6 +33,7 @@ def run_tests(config_file):
     # instr.dmm.display('Hello', 'SCAN serial number')
     current_serial = cfg.debug.default_serial
     current_model = cfg.debug.default_model
+    is_serial_scanned = False
     test_list = NameSpace(cfg.test_list)  # convert list of (key,values) into an OrderedDict
 
 
@@ -53,7 +54,7 @@ def run_tests(config_file):
         print
         print '---------------------------------------------'
         if current_model and current_serial:
-            print 'Currently testing  %s SN%s' % (current_model, current_serial)
+            print 'Currently testing  %s SN%s (Scanned=%s)' % (current_model, current_serial, is_serial_scanned)
         else:
             print ' !!! NO SERIAL NUMBER CURRENTLY SELECTED !!!'
         print '---------------------------------------------'
@@ -96,34 +97,49 @@ def run_tests(config_file):
             else:
                 current_model = selection.model
                 current_serial = selection.serial
+                is_serial_scanned = True
                 default_choice = selection.next_key
                 # instr.dmm.display(current_model, current_serial)
         elif selection.type == 'test':
-            if not current_serial or not current_model:
+            test = test_list[selection.test_tag]
+
+            if test.require_serial_number and (not is_serial_scanned or not current_serial or not current_model):
                 print 'Please enter or scan a serial number before beginning a test'
                 continue
             # summary_data = xr.generate_summary(summary_filename, data_folder)
-            test = test_list[selection.test_tag]
             nose_test_path = test.path
             test_date = datetime.datetime.now().isoformat().replace(':','_')+'_' if not cfg.debug.no_date else ''
-            test_file_name = '%s%s.pdf' %  (test_date, nose_test_path.replace(':', '.'))
-            summary_file_name = '%s/%s_SN%s.pdf' %  (test_results_folder, current_model, current_serial)
 
             if not os.path.exists(test_folder):
                 os.makedirs(test_folder)
 
-            full_test_filename = os.path.join(test_folder, test_file_name)
             print
             print 'Running test %s' % nose_test_path
-            print 'Test data will be stored in %s' % full_test_filename
             print
-            r = XReport.run(nose_test_path, xfile=full_test_filename, xformat=cfg.xformat, config_file=config_file, model=current_model, serial=current_serial)
+            serial = current_serial if test.require_serial_number else None
+
+            params = NameSpace(config_file=config_file, model=current_model, serial=serial)
+            r = XReport.run(nose_test_path, xparams=params)
+
+            if params.serial != current_serial:
+                print '**********************************************'
+                print ' **** Serial number changed from %s to %s' % (current_serial, params.serial)
+                print '**********************************************'
+                current_serial = params.serial
+                is_serial_scanned = False
+
+            test_folder = os.path.join(test_results_folder, '%s_SN%s' % (current_model, current_serial))
+            test_file_name = '%s%s.pdf' %  (test_date, nose_test_path.replace(':', '.'))
+            full_test_filename = os.path.join(test_folder, test_file_name)
+            print 'Test data will be stored in %s' % full_test_filename
+            r.write(filename=full_test_filename, formats=cfg.xformat)  # Write the test reports and data
             # if r.passed:
             #     default_choice = selection.next_key
             # else:
             #     default_choice = 'Q'
+            summary_file_name = '%s/%s_SN%s.pdf' %  (test_results_folder, current_model, current_serial)
             t = XReport.generate_test_summary(input_folder=test_folder, required_tests=cfg.test_list, output_filename=summary_file_name, title='%s_SN%s Summary Test Report' % (current_model, current_serial))
-    return locals()
+    return locals()  # return a dict of all local variables to help interactive debugging
 
 
 def check_test_dependencies(test_tag, test_list, test_summary):
