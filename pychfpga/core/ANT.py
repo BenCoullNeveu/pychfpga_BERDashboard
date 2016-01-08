@@ -191,10 +191,19 @@ class ANT_base(object):
     def set_delays(self, adc_delay_table):
         """
         Sets the delays for all ADC data lines using the provided array.
-        'adc_delay-table'  consists of a list of 8 arrays comprising 8 delay values each.
+
+        ``adc_delay_table``  consists of a dictionary channel:(bit_delays,
+        bit_offsets), where bit_delays is a list of the tap value for each of
+        the ADC bits, and bit_offsets is the number of samples each bit shout
+        be delayed.
+
+        If ``adc_delay_table`` is a list of (bit_delays,bit_offsets), the delays are applied in order to channels 0,1,2 etc...
         """
-        for i, ant in enumerate(self.ANT):
-            ant.ADCDAQ.set_delay(adc_delay_table[i])
+        if not isinstance(adc_delay_table, dict):
+            adc_delay_table = dict(enumerate(adc_delay_table))
+
+        for ch, delay_table in adc_delay_table.items():
+            self.ANT[ch].ADCDAQ.set_delay(delay_table)
 
     def get_delays(self):
         """

@@ -112,7 +112,8 @@ class ADCDAQ_base(Module_base):
         WARNING:  The sample delays will be valid only after the next SYNC event.
         """
 
-        tap_delays = dly[0]
+        tap_delays, sample_delays = dly
+
         if tap_delays is not None:
             if isinstance(tap_delays, int):
                 tap_delays = [tap_delays] * 8
@@ -120,7 +121,7 @@ class ADCDAQ_base(Module_base):
                 raise Exception('Tap Delay vector too long')
             self.write(self.get_addr('DELAY0'), tap_delays) # Set delay in registers
             self.pulse_bit('IODELAY_RESET')
-        sample_delays = dly[1]
+
         if sample_delays is not None:
             if isinstance(sample_delays, int):
                 sample_delays = [sample_delays] * 8
