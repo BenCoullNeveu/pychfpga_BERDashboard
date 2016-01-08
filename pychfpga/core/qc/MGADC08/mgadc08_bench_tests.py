@@ -18,7 +18,6 @@ from icecore.hw import ipmi_fru
 util.add_paths('../../..')  # needed to find fpga_array
 from fpga_array import FPGAArray
 
-
 TEST_CONFIG_FILE = './mgadc08_test_config.yaml'
 
 def wrap(obj, width=80):
@@ -40,7 +39,7 @@ def input_yes_no(message, additional_answers='r'):
             return key
         print 'Wrong answer. Try again'
 
-class MGADC08BenchTests(unittest.TestCase): #
+class MGADC08BenchTests(unittest.TestCase):  #
     """
     Perform impedance & power tests on the MGADC08 Mezzanine.
     """
@@ -165,8 +164,7 @@ class MGADC08BenchTests(unittest.TestCase): #
 
         passed = False
         try:
-            key = xr.input("Connect power cable to MGADC08 and press ENTER to measure current (Q=Exit):")
-            assert not key.lower().startswith('q'), 'Test was interrupted by user'
+            xr.input("Connect power cable to MGADC08 and press ENTER to measure current (Q=Exit):")
 
             for ps in pss: # Turn on both power supplies
                 ps.output_enable(1)
@@ -221,7 +219,7 @@ class MGADC08BenchTests(unittest.TestCase): #
             dmm.local()
             xr.save_data(test_results)
 
-class MGADC08CarrierTests(): #
+class MGADC08CarrierTests():  #
 
     def setUp(self):
         # xr.summary.pass
@@ -418,10 +416,18 @@ class MGADC08CarrierTests(): #
 
             # Check model & serial
             # The ARM updateed its IPMI cache when we wrote the EEPROM, so this is up to date
-            model = ib._get_mezzanine_type(self.slot)
-            serial = ib._get_mezzanine_serial(self.slot)
-            print '    Mezzanine is %r (Model %s SN%s):' % (mezz, model, serial)
-            assert model==self.model and  serial==self.serial, 'The Mezzanine currently under test does not have the correct model and serial numbers'
+            model = mezz.__ipmi_part_number__
+            serial = mezz.serial
+            print '    Expected Mezzanine is Model %s SN%s:' % (self.model, self.serial)
+            print '    Installed Mezzanine is Model %s SN%s:' % (model, serial)
+            xr.params.model = model
+            assert model.lower() == self.model.lower() , 'The Mezzanine currently under test does not have the correct model number (expected %s, got %s)' % (self.model, model)
+
+            if self.serial is None:
+                xr.params.serial = serial  # pass the new serial to the menu system so we can update it
+                self.serial = serial
+
+            assert serial.lower() == self.serial.lower(), 'The Mezzanine currently under test does not have the correct model and serial numbers (expected %s SN%s, got %s SN%s)' % (self.model, self.serial, model, serial)
 
             return ib, mezz
 
@@ -654,20 +660,34 @@ class MGADC08CarrierTests(): #
 
             # ADC PLL lock test
             mezz.init()  # reset ADC  to make sure we have the right frequency divider ratio of 2
+            resolution = 2./cfg.pll_gate_time * 8
+            err_max = max(cfg.pll_freq_err_max*1e6, resolution) + 1
             print
             print 'Testing ADC PLL lock'
             for i in range(cfg.pll_iterations):
                 for freq in cfg.pll_frequencies:
                     print '   Locking PLL at %f MHz' % freq
-                    mezz.ADC_PLL.init(freq)
+                    mezz.ADC_PLL.init(freq, gate_time=cfg.pll_gate_time)
                     read_adc_freq = ib.FreqCtr.read_frequency('ADC_CLK0', gate_time=0.1) / 1e6
                     read_pll_freq = read_adc_freq * 8
                     freq_err = read_pll_freq - freq
-                    resolution = 2./cfg.pll_gate_time * 8
-                    err_max = max(cfg.pll_freq_err_max*1e6, resolution) + 1
                     print '      ADC clock Frequency: %0.6f MHz (x4 = %0.6f MHz, err=%0.0f Hz (max=%0.0f Hz))' % (read_adc_freq, read_pll_freq, freq_err*1e6, err_max)
                     assert abs(freq_err*1e6) < err_max, 'PLL is not locked at the right frequency'
                     print '      Lock is OK!'
+
+            print
+            print 'Testing if all ADC clocks can be read'
+            freq = 1600
+            mezz.ADC_PLL.init(freq)
+            for i in range(8):
+                read_adc_freq = ib.FreqCtr.read_frequency('ADC_CLK%i' % i, gate_time=cfg.pll_gate_time) / 1e6
+                read_pll_freq = read_adc_freq * 8
+                freq_err = read_pll_freq - freq
+                resolution = 2./cfg.pll_gate_time * 8
+                print '      ADC%i clock Frequency: %0.6f MHz (x4 = %0.6f MHz, err=%0.0f Hz (max=%0.0f Hz))' % (i, read_adc_freq, read_pll_freq, freq_err*1e6, err_max)
+                assert abs(freq_err*1e6) < err_max, 'Invalid clock signal in ADC%i' % i
+            print '      All ADC clocks are OK!'
+
 
             # MGT PLL lock test
             print
@@ -676,11 +696,11 @@ class MGADC08CarrierTests(): #
                 for freq in cfg.pll2_frequencies:
                     print '   Locking MGT PLL at %f MHz' % freq
                     locked = mezz.MGT_PLL.init(freq, verbose=0)
-                    # read_adc_freq = ib.FreqCtr.read_frequency('ADC_CLK0', gate_time=0.1) / 1e6
-                    # read_pll2_freq = read_adc_freq * 8
-                    # freq_err = read_pll2_freq - freq
-                    # print '      ADC clock Frequency: %0.6f MHz (x4 = %0.6f MHz, err=%0.6f Hz)' % (read_adc_freq, read_pll2_freq, freq_err*1e6)
-                    # assert abs(freq_err) < cfg.pll2_freq_err_max, 'PLL is not locked ar the right frequency'
+                    for j in range(2):
+                        read_freq = ib.FreqCtr.read_frequency('FMCA_MGT_PLL_REFCLK%i' %i, gate_time=0.1) / 1e6
+                        freq_err = read_freq - freq
+                        print '      MGT PLL output %i clock Frequency: %0.6f MHz (err=%0.6f Hz)' % (i, read_freq, freq_err*1e6)
+                        assert abs(freq_err*1e6) < err_max, 'MGT PLL is not locked ar the right frequency'
                     print '      Lock is OK!'
 
             passed = True
@@ -692,6 +712,94 @@ class MGADC08CarrierTests(): #
             if ib:
                 ib.set_mezzanine_power(False, self.slot)
             xr.save_data(tr)
+
+    def set_adc_delays(self, ib):
+        # Timing for ADCs. Calculate proper offsets for this board.
+        trial = 0
+        while True:
+            delay_table, stuck_bits, bitposgood = ib.compute_adc_delay_offsets(channels=range(8))
+            print "Computed delay table:"
+            for ch, dt in delay_table.items():
+                print '   Channel %02i: %s' % (ch, dt)
+
+            print "Stuck bit flags"
+            for ch, dt in stuck_bits.items():
+                print '   Channel %02i: Stuck bits %s' % (ch, dt)
+
+            print 'Bit positions validity'
+            for ch, dt in bitposgood.items():
+                print '   Channel %02i: Bit position good %s' % (ch, dt)
+
+            stuck_ok = not any(stuck_bits.values())
+            bitpos_ok = all(all(v) for v in bitposgood.values())
+            if stuck_ok and bitpos_ok:
+                break
+            trial += 1
+            assert trial < 2, 'Could not compute ADC delays'
+            print 'Could not compute ADC delays. Retrying...'
+        # Set ADC delays
+        ib.set_adc_delays(delay_table)
+        return delay_table
+
+    def ramp_test(self):
+        cfg = self.cfg.carrier_tests.ramp_test
+
+        tr = NameSpace()  # test results container
+        ib, mezz = (None, None)  # in case we fail finding boards
+        passed = False
+        r = None
+        try:
+
+            ib, mezz = self._get_iceboard(**cfg.fpga_array)
+            ib.set_mezzanine_power(True, self.slot)
+            time.sleep(0.5)
+            mezz.init()
+
+            r = ib.get_data_receiver()
+
+            delay_table = self.set_adc_delays(ib)
+
+            # Begin Ramp test
+            ib.set_adcdaq_mode('data')
+            ib.set_data_source('adc')
+            ib.set_adc_mode('ramp')
+            ib.start_data_capture(period=1, source='adc')
+            ib.sync()
+            r.read_frames(flush=1, frames=3)  # flush
+            data = r.read_frames()
+
+            tr.data = data
+            plt.figure(1)
+
+            ideal_ramp = (np.arange(2048) - 128).astype(np.int8)
+
+            ramp_ok = []
+            for ch in range(8):
+                plt.clf()
+                plt.plot(data[ch])
+                xr.insert_plot('Ramp capture for %s SN%s CHANNEL %02i' % (self.model, self.serial, ch))
+                ok = np.all(data[ch] == ideal_ramp)
+                ramp_ok.append(ok)
+                if ok:
+                    print 'Channel %02i: OK' % ch
+                else:
+                    print 'Channel %02i: ERROR!' % ch
+
+
+            assert all(ramp_ok), 'One or more channels have ramp errors'
+
+        finally:
+            xr.params.test_locals = locals()  # store local variables for interactive debugging
+            tr.passed = passed
+            print
+            print 'Test ended. Turning mezzanine power OFF'
+            if r:
+                r.close()
+            if ib:
+                ib.set_mezzanine_power(False, self.slot)
+            xr.save_data(tr)
+
+
 
     def s11_test(self):
         """
@@ -706,42 +814,130 @@ class MGADC08CarrierTests(): #
         tr = NameSpace() # test results container
         ib, mezz = (None, None)  # in case we fail finding boards
         passed = False
-        tr.s11_data = {}
+        tr.s11_data = NameSpace()
+        tr.freq_resp = NameSpace()
+        r = None
         try:
 
             ib, mezz = self._get_iceboard(**cfg.fpga_array)
             ib.set_mezzanine_power(True, self.slot)
             time.sleep(0.5)
+            mezz.init()
+
+            r = ib.get_data_receiver()
+
             for adc in mezz.ADC:
                 adc.set_trim(cfg.adc_trim_value)
 
+            passed_s11 = []
+            passed_fr = []
+
+            frame_transmission_period = 0.1
+            tr.delay_table = self.set_adc_delays(ib)
+            ib.set_adcdaq_mode('data')
+            ib.set_data_source('adc')
+            ib.set_adc_mode('data')
+            ib.start_data_capture(period=frame_transmission_period, source='adc')
+            ib.sync()
+
+            fr_freqs = cfg.freqs
+            power_level = cfg.power_level
+            fr_f = [x[0] for x in cfg.expected_frequency_response]
+            fr_a = [x[1] for x in cfg.expected_frequency_response]
+            full_scale_response = ((np.sin(np.arange(2048) / 2048. * 10 * 2 * np.pi) + 1) / 2 * 255 - 128).astype(np.int8)
+
             for channel in range(8):
+                # --------------------------------
+                #   S11 Test
+                # --------------------------------
                 print
-                print 'Testing CHANNEL %i' % channel + 1
-                input('Connect cable to ***CHANNEL %i*** SMA and press [ENTER] or [Q] to abort.' % channel + 1)
+                print 'Testing CHANNEL %i' % (channel + 1)
+                input('Connect cable to ***CHANNEL %i*** SMA and press [ENTER] or [Q] to abort.' % (channel + 1))
 
-
-
-                passed_s11 = True
                 while True:
                     freqs, (s11_data, ) = na.get_s_params(['S11'])
                     tr.s11_data[channel] = (freqs, s11_data)
                     plt.figure(1)
                     plt.clf()
-                    na.plot_s_params(freqs, s11_data, title='%s SN%s S11' % (self.model, self.serial), xscale='lin', plot_phase=False)
+                    na.plot_s_params(freqs, s11_data, title='%s SN%s Channel %02i S11' % (self.model, self.serial, channel), xscale='lin', plot_phase=False)
                     ix = np.where(np.logical_and(freqs>=400e6, freqs<=800e6))
                     ff = freqs[ix]
                     dd = 20 * np.log10(np.abs(s11_data[ix]))
                     plt.plot([400e6, 800e6], [cfg.s11_max]*2, 'r-')  # plot the limit
                     xr.insert_plot()
                     print '   Worst case return loss is %0.1f dB. Limit is %0.1d dB' % (max(dd), cfg.s11_max)
-                    if any(dd > cfg.s11_max):
-                        answer = input_yes_no('S11 is not good. Do you want to try again [Y/N] or quit [Q]?' )
-                        if answer:
-                            continue
-                        passed_s11 = False
-                    break
-            assert passed_s11, 'Some of the input have too much return loss'
+                    if all(dd <= cfg.s11_max):
+                        passed_s11.append(True)
+                        break
+                    answer = input_yes_no('S11 is not good. Do you want to try again [Y/N] or quit [Q]?' )
+                    if answer:
+                        continue
+                    passed_s11.append(False)
+
+                # --------------------------------
+                #   Frequency response Test
+                # --------------------------------
+                print
+                print 'Measuring analog frequency reponse of channel'
+
+                na.command('CWFREQ 10 MHz') # kick the network analyser in CW mode early
+                na.command('POWE %f DB' % power_level)  # should we wait for the power to stabilize?
+                r.read_frames(flush=1, frames=3)  # flush
+
+                ampl = []
+                fr_ok = []
+                resp = NameSpace(freq=[], data=[], dbfs=[])
+                for f in fr_freqs:
+                    print ('   CHANNEL %02i, Sinawave %7.3f MHz @ %f dBm' % (channel, f, power_level)),
+                    na.command('CWFREQ %f MHz' % f)
+                    print '.',
+                    # time.sleep(frame_transmission_period)
+                    r.read_frames(flush=True, frames=3)  # let the new data propagate
+                    print '.',
+                    while True:
+                        data = r.read_frames()
+                        if channel not in data:
+                            answer = input_yes_no('Did not receive data from the board. Want to try again [Y] or quit [Q]?' )
+                            assert answer, 'Interrupting test upon user request because of missing data'
+                        else:
+                            data = data[channel].astype(float)
+                            break
+                    resp.freq.append(f)
+                    resp.data.append(data)
+                    a = 10 * np.log10(data.var() / full_scale_response.var())  # in dBFS
+                    resp.dbfs.append(a)
+                    if  min(fr_f) <= f <=max(fr_f):
+                        expected_a = np.interp(f, fr_f, fr_a)
+                        ok = a > expected_a
+                    else:
+                        ok = True
+                        expected_a = None
+                    fr_ok.append(ok)
+                    print 'Response = %0.3f dBFS%s' % (a, ', expected %0.3f dBFS (%s)' % (expected_a, ['ERROR!','OK'][ok]) if expected_a is not None else '')
+                    plt.figure(2)
+                    plt.clf()
+                    plt.plot(data)
+                    plt.ylim(-128, 128)
+                    plt.title('CHANNEL %02i, Sinawave %f MHz @ %f dBm' % (channel, f, power_level))
+                    xr.insert_plot()
+                    ampl.append(a)  # 8044 = approximare
+
+                passed_fr.append(all(fr_ok))
+                tr.freq_resp[channel] = resp
+                print
+                print 'Frequency response'
+                plt.figure(2)
+                plt.clf()
+                plt.plot(fr_freqs, ampl, 'b.-', fr_f, fr_a, 'r-')
+                plt.ylabel('Response [dB Full Scale]')
+                plt.xlabel('Frequency [MHz]')
+                plt.grid(1)
+                plt.title('CHANNEL %02i Frequency respsonse, Input power =  %f dBm' % (channel, power_level))
+                xr.insert_plot()
+                assert fr_ok, 'Did not pass the frequency response'
+
+            assert all(passed_s11), 'Some of the input have too much return loss'
+            assert all(passed_fr), 'Some of the frequency responses are wrong'
 
             passed = True
         finally:
@@ -749,6 +945,8 @@ class MGADC08CarrierTests(): #
             tr.passed = passed
             print
             print 'Test ended. Turning mezzanine power OFF'
+            if r:
+                r.close()
             if ib:
                 ib.set_mezzanine_power(False, self.slot)
             xr.save_data(tr)

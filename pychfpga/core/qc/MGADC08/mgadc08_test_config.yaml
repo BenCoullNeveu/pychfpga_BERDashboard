@@ -26,7 +26,7 @@ instruments:
     na:        {labpy_object: 'hp8753e',     interface: 'prologix_eth', ip_addr: '10.10.10.137', gpib_addr: 14} # HP8753E Network Analyzer
 
 ?: &default_fpga_array
-    iceboards: 85
+    iceboards: 49
     mdns_delay: 1
 
 
@@ -34,13 +34,13 @@ test_list:
     # This list all the tests that will be done my the test software, in the proper order
     # path is the argument given to nose to find the test fucntion, in the form of module_path:function or module_path:class.method
     # This path is also the path used by XReport to identify tests results, with the exception that the semicolon ':' is replaced by a dot '.'
-    - [ 'imp', {description: 'Impedance test',               path: 'mgadc08_bench_tests:MGADC08BenchTests.impedance_test', required: yes, dependencies: null}]
-    - [ 'smk', {description: 'Power up test',                path: 'mgadc08_bench_tests:MGADC08BenchTests.smoke_test',     required: yes, dependencies: imp}]
-    - [ 'eep', {description: 'EEPROM Programming and test',  path: 'mgadc08_bench_tests:MGADC08CarrierTests.eeprom_test',  required: yes, dependencies: smk}]
-    - [ 'pow', {description: 'Carrier power test',           path: 'mgadc08_bench_tests:MGADC08CarrierTests.power_test',   required: yes, dependencies: smk}]
-    - [ 'spi', {description: 'SPI & PLL test',               path: 'mgadc08_bench_tests:MGADC08CarrierTests.spi_pll_test', required: yes, dependencies: smk}]
-    - [ 'rmp', {description: 'Ramp test',                    path: 'mgadc08_bench_tests:MGADC08CarrierTests.ramp_test',    required: yes, dependencies: smk}]
-    - [ 's11', {description: 'S11 test',                     path: 'mgadc08_bench_tests:MGADC08CarrierTests.s11_test',     required: yes, dependencies: smk}]
+    - [ 'imp', {description: 'Impedance test',               path: 'mgadc08_bench_tests:MGADC08BenchTests.impedance_test', required: yes, require_serial_number: yes, dependencies: null}]
+    - [ 'smk', {description: 'Power up test',                path: 'mgadc08_bench_tests:MGADC08BenchTests.smoke_test',     required: yes, require_serial_number: yes, dependencies: imp}]
+    - [ 'eep', {description: 'EEPROM Programming and test',  path: 'mgadc08_bench_tests:MGADC08CarrierTests.eeprom_test',  required: yes, require_serial_number: yes, dependencies: smk}]
+    - [ 'pow', {description: 'Carrier power test',           path: 'mgadc08_bench_tests:MGADC08CarrierTests.power_test',   required: yes, require_serial_number: no, dependencies: smk}]
+    - [ 'spi', {description: 'SPI & PLL test',               path: 'mgadc08_bench_tests:MGADC08CarrierTests.spi_pll_test', required: yes, require_serial_number: no, dependencies: smk}]
+    - [ 'rmp', {description: 'Ramp test',                    path: 'mgadc08_bench_tests:MGADC08CarrierTests.ramp_test',    required: yes, require_serial_number: no, dependencies: smk}]
+    - [ 's11', {description: 'S11 test',                     path: 'mgadc08_bench_tests:MGADC08CarrierTests.s11_test',     required: yes, require_serial_number: no, dependencies: smk}]
 
 
 menu:
@@ -143,8 +143,16 @@ carrier_tests:
         pll2_gate_time: 0.1
         pll2_frequencies: [5, 10, 20, 50, 100, 125, 156.25, 200, 250, 312.5, 400, 600, 800, 1000]  # Frequencies in MHz, range is 5 to 1000 MHz
         pll2_freq_err_max: 0.000001 # in MHz. We have a gate time of 0.01s, resolution = 160 Hz
+
+    ramp_test:
+        # instruments: [dmm] # Subset of instruments we use in these tests
+        fpga_array: {<<: *default_fpga_array, no_mezz: 1, prog: 0,  open: 1}
+
     s11_test:
         instruments: [na] # Subset of instruments we use in these tests
         fpga_array: {<<: *default_fpga_array, no_mezz: 1, prog: 0,  open: 1}
         s11_max : -15 # in dB
         adc_trim_value: 15  # 0-15, default is 8. Applies to all channels.
+        freqs: [17, 27, 37, 47, 57, 67, 81, 93, 107, 153, 207, 253, 307, 353, 407, 507, 553, 17, 607, 653, 707, 753, 807, 853, 907, 953, 1007, 1023, 1047, 1065, 1107, 1123, 1147, 1165, 1207]  # MHz
+        power_level: -6 # dBm
+        expected_frequency_response: [[200, -3], [900, -6]]
