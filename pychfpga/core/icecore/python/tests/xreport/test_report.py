@@ -553,7 +553,7 @@ class TestReport(object):
 # #     return [(str(x.testdate), str(x.testpath), str(x.passed), str(x.summary) if hasattr(x, 'summary') else '') for x in etree.iter(['case', 'group'])]
 
 
-def generate_test_summary(input_folder='.', required_tests=[], output_filename=None, title='Test Summary Report'):
+def generate_test_summary(input_folder='.', required_tests=[], output_filename=None, output_formats=['pdf','rst'], title='Test Summary Report'):
     """ Load all XML test reports in the specified folder and generate a summary report that retains the latest result for every test.
 
     ``required_test`` is a list of paths describing which tests are expected,
@@ -662,6 +662,6 @@ def generate_test_summary(input_folder='.', required_tests=[], output_filename=N
     report.add_literal_text_block('\n'.join(format_summary(summary)))
 
     if output_filename:
-        report.write_pdf(output_filename)
+        report.write(output_filename, output_formats)
 
     return report

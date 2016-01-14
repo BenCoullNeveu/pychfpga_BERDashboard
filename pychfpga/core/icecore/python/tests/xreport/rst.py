@@ -119,11 +119,12 @@ class rST():
 
     def add_literal_block(self, text):
         self.add('\n')
-        self.add('::\n')
-        self.add('\n')
-        for line in text.replace('\r', '\n').split('\n'):
-            for splitline in textwrap.wrap(line, self.width):
-                self.add('    ' + splitline + '\n')
+        if text:  # don't make an empty literal block: this is invalid ResturcturedText
+            self.add('::\n')
+            self.add('\n')
+            for line in text.replace('\r', '\n').split('\n'):
+                for splitline in textwrap.wrap(line, self.width):
+                    self.add('    ' + splitline + '\n')
         self.add('\n')
 
     def add_table(self, grid, header=False):
