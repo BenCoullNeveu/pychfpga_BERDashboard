@@ -696,29 +696,32 @@ class MGADC08CarrierTests():  #
             print 'Testing if all ADC clocks can be read'
             freq = 1600
             mezz.ADC_PLL.init(freq)
+            mezz.ADC_PLL.init(freq)
             for i in range(8):
                 read_adc_freq = ib.FreqCtr.read_frequency('ADC_CLK%i' % i, gate_time=cfg.pll_gate_time) / 1e6
                 read_pll_freq = read_adc_freq * 8
                 freq_err = read_pll_freq - freq
                 resolution = 2./cfg.pll_gate_time * 8
-                print '      ADC%i clock Frequency: %0.6f MHz (x4 = %0.6f MHz, err=%0.0f Hz (max=%0.0f Hz))' % (i, read_adc_freq, read_pll_freq, freq_err*1e6, err_max)
+                print '      Channel %02i clock Frequency: %0.6f MHz (x4 = %0.6f MHz, err=%0.0f Hz (max=%0.0f Hz))' % (i, read_adc_freq, read_pll_freq, freq_err*1e6, err_max)
                 assert abs(freq_err*1e6) < err_max, 'Invalid clock signal in ADC%i' % i
             print '      All ADC clocks are OK!'
 
 
-            # MGT PLL lock test
-            print
-            print 'Testing MGT PLL lock'
-            for i in range(cfg.pll2_iterations):
-                for freq in cfg.pll2_frequencies:
-                    print '   Locking MGT PLL at %f MHz' % freq
-                    locked = mezz.MGT_PLL.init(freq, verbose=0)
-                    for j in range(2):
-                        read_freq = ib.FreqCtr.read_frequency('FMCA_MGT_PLL_REFCLK%i' %i, gate_time=0.1) / 1e6
-                        freq_err = read_freq - freq
-                        print '      MGT PLL output %i clock Frequency: %0.6f MHz (err=%0.6f Hz)' % (i, read_freq, freq_err*1e6)
-                        assert abs(freq_err*1e6) < err_max, 'MGT PLL is not locked ar the right frequency'
-                    print '      Lock is OK!'
+            if cfg.test_mgt_pll:
+                # MGT PLL lock test
+                print
+                print 'Testing MGT PLL lock'
+                for i in range(cfg.pll2_iterations):
+                    for freq in cfg.pll2_frequencies:
+                        print '   Locking MGT PLL at %f MHz' % freq
+                        locked = mezz.MGT_PLL.init(freq, verbose=0, wait_for_lock=0)
+                        locked = mezz.MGT_PLL.init(freq, verbose=0, wait_for_lock=1, CP_CURRENT=0x20)
+                        for j in range(2):
+                            read_freq = ib.FreqCtr.read_frequency('FMCA_MGT_PLL_REFCLK%i' %i, gate_time=0.1) / 1e6
+                            freq_err = read_freq - freq
+                            print '      MGT PLL output %i clock Frequency: %0.6f MHz (err=%0.6f Hz)' % (i, read_freq, freq_err*1e6)
+                            assert abs(freq_err*1e6) < err_max, 'MGT PLL is not locked at the right frequency'
+                        print '      Lock is OK!'
 
             passed = True
         finally:

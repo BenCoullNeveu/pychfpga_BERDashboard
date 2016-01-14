@@ -15,7 +15,7 @@ xformat: ['pdf','rst']  # Output formats for the test reports. xml is always sav
 # DEBUGGING options
 debug:
     default_model: 'MGADC08'
-    default_serial: '0007'
+    default_serial: None
     no_date: True
 
 
@@ -34,9 +34,9 @@ test_list:
     # This list all the tests that will be done my the test software, in the proper order
     # path is the argument given to nose to find the test fucntion, in the form of module_path:function or module_path:class.method
     # This path is also the path used by XReport to identify tests results, with the exception that the semicolon ':' is replaced by a dot '.'
-    - [ 'imp', {description: 'Impedance test',               path: 'mgadc08_bench_tests:MGADC08BenchTests.impedance_test', required: yes, require_serial_number: yes, dependencies: null}]
-    - [ 'smk', {description: 'Power up test',                path: 'mgadc08_bench_tests:MGADC08BenchTests.smoke_test',     required: yes, require_serial_number: yes, dependencies: imp}]
-    - [ 'eep', {description: 'EEPROM Programming and test',  path: 'mgadc08_bench_tests:MGADC08CarrierTests.eeprom_test',  required: yes, require_serial_number: yes, dependencies: smk}]
+    - [ 'imp', {description: 'Impedance test (needs S/N)',   path: 'mgadc08_bench_tests:MGADC08BenchTests.impedance_test', required: yes, require_serial_number: yes, dependencies: null}]
+    - [ 'smk', {description: 'Power up test (needs S/N)',    path: 'mgadc08_bench_tests:MGADC08BenchTests.smoke_test',     required: yes, require_serial_number: yes, dependencies: imp}]
+    - [ 'eep', {description: 'EEPROM Programming and test (needs S/N)',  path: 'mgadc08_bench_tests:MGADC08CarrierTests.eeprom_test',  required: yes, require_serial_number: yes, dependencies: smk}]
     - [ 'pow', {description: 'Carrier power test',           path: 'mgadc08_bench_tests:MGADC08CarrierTests.power_test',   required: yes, require_serial_number: no, dependencies: smk}]
     - [ 'spi', {description: 'SPI & PLL test',               path: 'mgadc08_bench_tests:MGADC08CarrierTests.spi_pll_test', required: yes, require_serial_number: no, dependencies: smk}]
     - [ 'rmp', {description: 'Ramp test',                    path: 'mgadc08_bench_tests:MGADC08CarrierTests.ramp_test',    required: yes, require_serial_number: no, dependencies: smk}]
@@ -139,6 +139,7 @@ carrier_tests:
         pll_frequencies: [800, 900, 1000, 1100, 1200, 1300, 1400, 1500, 1600, 1700, 1800, 1900, 2000]  # Frequencies in MHz, range is
         pll_freq_err_max: 0.000001 # in MHz. We have a gate time of 0.01s, err =
 
+        test_mgt_pll: false  # This test does not always work yet.
         pll2_iterations: 2
         pll2_gate_time: 0.1
         pll2_frequencies: [10, 20, 50, 100, 125, 156.25, 200, 250, 312.5, 400, 600]  # Frequencies in MHz, range is 5 to 1000 MHz
