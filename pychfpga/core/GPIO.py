@@ -153,7 +153,8 @@ class GPIO_base(Module_base):
         'irigb_trig': 3,
         'bp_trig': 4,
         'bp_time': 5,
-        'bp_buck_sync': 6,
+        # 'bp_buck_sync': 6,
+        'refclk': 6,  # 10 MHz reference clock
         'irigb_gen': 7
         }  # Backplane TRIG signal
 
