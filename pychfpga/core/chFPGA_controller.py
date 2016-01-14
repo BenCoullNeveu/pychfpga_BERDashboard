@@ -1505,24 +1505,26 @@ class chFPGA_controller(IceBoardExtHandler):
     def get_temperatures(self):
         res = {}
         res['FPGA_core'] = self.SYSMON.temperature()
-        for mezz in self.mezzanine:
+        for mezz_number, mezz in self.mezzanine.items():
             for (adc_number, adc) in enumerate(mezz.ADC):
-                res['FMC%i ADC%i'%(mezz.mezzanine-1, adc_number)] = adc.get_temperature()
+                res['FMC%i ADC%i'%(mezz_number-1, adc_number)] = adc.get_temperature()
         return res
 
     def get_total_power(self):
         return sum(self.get_motherboard_voltage(rail) * self.get_motherboard_current(rail) for rail in (self.RAIL.MB_VCC3V3, self.RAIL.MB_VCC5V5, self.RAIL.MB_VCC12V0))
 
 
-    def init_crossbars(self, mode=None, dsmap=range(16), frames_per_packet=3, cb1_lanes=16, cb1_bins=64, cb1_bypass=False, cb2_lanes=None, cb2_bins=1, cb2_bypass=False, bp_shuffle_bypass=1, crate_shuffle_bypass=1, remap=True, chan8_channel_map=range(16)):
+    def init_crossbars(self, mode=None, dsmap=range(16), frames_per_packet=3, cb1_lanes=16, cb1_bins=64, cb1_bypass=False, cb1_combine_data_flags=0, cb2_lanes=None, cb2_bins=1, cb2_bypass=False, bp_shuffle_bypass=1, crate_shuffle_bypass=1, remap=True, chan8_channel_map=range(16)):
         """ Initializes the 1st, 2nd and 3rd crossbars.
         """
-        if not self.slot:
-            raise RuntimeError('The slot number is unknown. Cannot route the appropriate bins to the target boards')
 
         cb1 = self.CROSSBAR
         cb2 = self.CROSSBAR2
         cb3 = self.CROSSBAR3
+
+        number_of_cb1_bin_sel = 16
+        number_of_cb2_bin_sel = 2
+        number_of_cb3_bin_sel = 8
 
         def get_dest_slot_for_src_lane(src_lane):
             tx = (self.slot, src_lane)  # unique transmitter id (slot, lane)
@@ -1536,7 +1538,9 @@ class chFPGA_controller(IceBoardExtHandler):
 
         if frames_per_packet < 1 or frames_per_packet > 4:
             raise ValueError('Number of frames per packet must be between 1 and 4')
-        if cb1_lanes not in (4, 8, 12, 16):
+        if cb1_lanes in (4, 8, 12, 16):
+            cb1_lanes = [(0, cb1_lanes/4-1)] * number_of_cb1_bin_sel
+        else:
             raise ValueError('Crossbar 1 number of input lanes must be 4,8,12 or 16')
 
         if cb2_lanes is None:
@@ -1545,13 +1549,11 @@ class chFPGA_controller(IceBoardExtHandler):
         # if cb2_lanes % 2:
         #     raise ValueError('Crossbar 2 number of input lanes must be a multiple of 2')
 
-        number_of_cb1_bin_sel = 16
-        number_of_cb2_bin_sel = 2
-        number_of_cb3_bin_sel = 8
 
         if mode == 'chan8':  # get raw data from the channelizer (all 32-bit sent as is). Only 8 lanes are available to the GPU.
             cb1_bypass = True
             cb1_four_bit = False
+            cb1_combine_data_flags = 0
             bp_shuffle_bypass = True
             cb2_lane_map = chan8_channel_map # Here we could select which 8 inputs we want to stream to the GPU
             cb2_bypass = True
@@ -1559,9 +1561,10 @@ class chFPGA_controller(IceBoardExtHandler):
             cb3_lane_map = range(8)
             cb3_bypass = True
 
-        elif mode == 'chan4': # get the high nibble of every byts from two lanes in a single word. Allows Get (4+4) bit data from all channelizers
+        elif mode == 'chan4': # get the high nibble of every bytes from two lanes in a single word. Allows Get (4+4) bit data from all channelizers
             cb1_bypass = True
             cb1_four_bit = True
+            cb1_combine_data_flags = 0
             bp_shuffle_bypass = True
             cb2_lane_map = range(16) # All information
             cb2_bypass = True
@@ -1573,23 +1576,44 @@ class chFPGA_controller(IceBoardExtHandler):
         elif mode == 'shuffle16':
             cb1_bypass = False
             cb1_four_bit = True
-            cb1_lanes = 16
+            # BS0 grabs data from FIFO 0-1 (lanes 0-7), BS1 from FIFO 2-3
+            # (lanes 8-15), repeat... We capture 2 words per bin in 2 clocks,
+            # bins are separated by 2 clocks, so we have time to empty the
+            # FIFO
+            cb1_lanes = [(0, 3)] * number_of_cb1_bin_sel
             cb1_bins = 128
-            cb1_bin_spacing = 1024/cb1_bins
-            cb1_bin_select_map = [np.arange(cb1_bins)*cb1_bin_spacing+i for i in range(number_of_cb1_bin_sel/2)] * 2
+            cb1_bin_spacing = 1024/cb1_bins  # = 8
+            cb1_combine_data_flags = 1
+            cb1_bin_select_map = [np.arange(cb1_bins)*cb1_bin_spacing+(i//2) for i in range(number_of_cb1_bin_sel)]
+            cb1_output_words_per_bin = 2
+            cb1_output_bins = cb1_bins
 
             bp_shuffle_bypass = True
 
             cb2_lane_map = range(16)
             cb2_bypass = True
+            cb2_input_words_per_bin = cb1_output_words_per_bin
+            cb2_input_bins = cb1_bins
+            # cb2_lanes = ((0, 1), (2, 3))  #BS0 selects sublanes 0-1, BS1 selects sublanes 2-3
+            # cb2_bins = cb1_bins
+            # cb2_bin_spacing = 1
+            # cb2_bin_select_map = [np.arange(cb2_bins)*cb2_bin_spacing for i in range(number_of_cb2_bin_sel)]
+            cb2_output_words_per_bin = 2 * cb2_input_words_per_bin
+            cb2_output_bins = cb2_bins
 
             crate_shuffle_bypass = True
             cb3_lane_map = range(8)
             cb3_bypass = True
+            cb3_output_words_per_bin = cb2_input_words_per_bin
+            cb3_output_bins = cb2_input_bins
 
         elif mode == 'shuffle256':
+            if not self.slot:
+                raise RuntimeError('The slot number is unknown. Cannot route the appropriate bins to the target boards in the same crate')
+
             cb1_bypass = False
             cb1_four_bit = True
+            cb1_combine_data_flags = 0
             cb1_lanes = 16
             cb1_bins = 64
             cb1_bin_spacing = 1024/cb1_bins
@@ -1661,8 +1685,12 @@ class chFPGA_controller(IceBoardExtHandler):
             cb3_output_bins = cb3_bins
 
         elif mode == 'shuffle512':
+            if not self.slot:
+                raise RuntimeError('The slot number is unknown. Cannot route the appropriate bins to the target boards in the same crate')
+
             cb1_bypass = False
             cb1_four_bit = True
+            cb1_combine_data_flags = 0
             cb1_lanes = 16
             cb1_bins = 64
             cb1_bin_spacing = 1024/cb1_bins
@@ -1732,27 +1760,40 @@ class chFPGA_controller(IceBoardExtHandler):
             cb3_output_bins = cb3_bins
 
         elif mode is None:  # Manual config
+            cb1_four_bit = True
 
-            if bp_shuffle_bypass:
+            # cb1_bypass = False
+            cb1_bin_spacing = 1024/cb1_bins
+            cb1_bin_select_map = [(np.arange(cb1_bins)*cb1_bin_spacing+i) % 1024 for i in range(number_of_cb1_bin_sel)]
+
+            crate_shuffle_bypass=1
+
+
+            if bp_shuffle_bypass and self.slot is not None:
                 cb2_lane_map = self.CROSSBAR2.compute_bp_shuffle_lane_map()
             else:
                 cb2_lane_map = range(16)
+
+            cb3_bypass = True
+            cb3_lane_map = range(8)
+
+            cb1_output_words_per_bin = cb1_lanes[0][1]-cb1_lanes[0][0]+1
+            cb1_output_bins = cb1_bins
 
         else:
             raise ValueError('Unknown mode')
 
 
-        cb1_words_per_bin = cb1_lanes / 4
         header_size = 16
         packet_flags_size = 4
-        cb1_payload_size = header_size  + frames_per_packet * (cb1_words_per_bin * cb1_bins + cb1_bins + 1) * 4 + packet_flags_size
+        cb1_payload_size = header_size  + frames_per_packet * (cb1_output_words_per_bin * cb1_bins + cb1_bins/(bool(cb1_combine_data_flags)+1) + 1) * 4 + packet_flags_size
         self._logger.info('%.32r: CROSSBAR1 output payload = %i bytes (%i words)' % (self, cb1_payload_size, (cb1_payload_size+3)//4))
 
         # cb2_payload_size = header_size + packet_flags_size + frames_per_packet * (cb2_input_words_per_bin * cb2_bins* cb2_lanes + 1*cb2_bins*cb2_lanes/2 + cb2_lanes) * 4
 
 
 
-        self._logger.info('%r: Configuring crossbars 1 & 2 with frames_per_packet=%i, cb1_lanes=%i, cb1_bins=%i, cb2_lanes=%s, cb2_bins=%i, cb2_bypass=%s, bp_shuffle_bypass=%s' % (self, frames_per_packet, cb1_lanes, cb1_bins, cb2_lanes, cb2_bins, bool(cb2_bypass), bool(bp_shuffle_bypass)))
+        self._logger.info('%r: Configuring crossbars 1 & 2 with frames_per_packet=%i, cb1_lanes=%s, cb1_bins=%i, cb2_lanes=%s, cb2_bins=%i, cb2_bypass=%s, bp_shuffle_bypass=%s' % (self, frames_per_packet, cb1_lanes, cb1_bins, cb2_lanes, cb2_bins, bool(cb2_bypass), bool(bp_shuffle_bypass)))
 
         # Put everything in reset
         self.set_ant_reset(1)
@@ -1764,12 +1805,15 @@ class chFPGA_controller(IceBoardExtHandler):
         # Select the bins so slot 0 receives bins 0-63, slot 1 has 64-127 ... slot 15 has 960-1023
         for (cb1_output_lane, bs) in enumerate(cb1):
             bs.BYPASS = cb1_bypass
+            bs.COMBINE_DATA_FLAGS = cb1_combine_data_flags
+
             bs.GROUP_FRAMES = frames_per_packet
-            bs.STREAM_ID = self.slot - 1  # The stream ID at the output of CB1 will be 0xSL (S=slot-1, L=lane)
+            bs.STREAM_ID = self.slot - 1 if self.slot is not None else 0 # The stream ID at the output of CB1 will be 0xSL (S=slot-1, L=lane)
             bs.FOUR_BITS = cb1_four_bit
-            if not bp_shuffle_bypass:
-                bs.NUMBER_OF_LANES = cb1_lanes
-                bs.select_bins(cb1_bin_select_map[cb1_output_lane])
+            bs.FIRST_FIFO_NUMBER = cb1_lanes[cb1_output_lane][0]
+            bs.LAST_FIFO_NUMBER = cb1_lanes[cb1_output_lane][1]
+            # bs.NUMBER_OF_LANES = cb1_lanes
+            bs.select_bins(cb1_bin_select_map[cb1_output_lane])
 
         #-------------------------
         # Configure BP_SHUFFLE
@@ -1783,7 +1827,7 @@ class chFPGA_controller(IceBoardExtHandler):
         for (cb2_bin_sel, bs) in enumerate(cb2):
             bs.BYPASS = bool(cb2_bypass)
             if not cb2_bypass:
-                bs.STREAM_ID = self.slot - 1  # The stream ID at the output of CB2 will be 0xSL (S=slot-1, L=lane)
+                bs.STREAM_ID = self.slot - 1 if self.slot is not None else 0 # The stream ID at the output of CB2 will be 0xSL (S=slot-1, L=lane)
                 bs.NUMBER_OF_FRAMES_PER_PACKET = frames_per_packet
                 bs.FIRST_LANE = cb2_lanes[cb2_bin_sel][0]
                 bs.LAST_LANE = cb2_lanes[cb2_bin_sel][1]
