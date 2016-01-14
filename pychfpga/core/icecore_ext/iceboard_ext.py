@@ -242,7 +242,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         # -------------------------------------------------------------------------
         self.logger.info("%.32r: Attempting to communicate with the FPGA over direct Ethernet link" % self)
         try:
-            cookie = self.get_fpga_firmware_cookie()  # Read the firmware version cookie from the GPIO subsystem (this is provided by the FPGA core firmware which is always present on all versions of the FPGA)
+            cookie = self.get_fpga_firmware_cookie(resync=True)  # Read the firmware version cookie from the GPIO subsystem (this is provided by the FPGA core firmware which is always present on all versions of the FPGA)
         except IOError as e:
             error_message = "%.32r: Unable to communicate with the FPGA at address %s:%i due to the following exception: %s" % (self, self.fpga_ip_addr, self.fpga_port_number, repr(e))
             self.close()
@@ -395,12 +395,17 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         return self.fpga_mmi_read(self._REMOTE_IP_PORT_ADDR) >> 16
 
 
-    def get_fpga_firmware_cookie(self):
+    def get_fpga_firmware_cookie(self, resync=False):
         """
-        Reads the FPGA and returns the cookie that identifies the firmware.
-        This method can be called before any FPGA modules are instatiated.
+        Reads the FPGA over the UDP link and returns the cookie that
+        identifies the firmware. This method can be called before any FPGA
+        modules are instatiated.
+
+        If ``resync`` is True, the read command will reset the command
+        sequence number to the value known by the FPGA. This should be is used
+        by the first command sent to the FPGA to reset the communication link.
         """
-        return self.mmi_read(self._GPIO_COOKIE_REG) & 0x7F
+        return self.mmi_read(self._GPIO_COOKIE_REG, resync=resync) & 0x7F
 
     def get_fpga_firmware_version(self):
         """
