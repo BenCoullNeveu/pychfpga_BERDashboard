@@ -366,9 +366,7 @@ class ShuffleCrossbar(Module_base):
 
         lane_range = range(self.NUMBER_OF_CROSSBAR_INPUTS)
         lane_map = self.get_lane_map()
-        gtx_ids = [(self.fpga.slot, lane_map[lane]) for lane in lane_range]
         active_slots = set(self.fpga.crate.slot.keys())
-        matching_gtx_ids = [self.fpga.crate.get_matching_tx(gtx_id) for gtx_id in gtx_ids]
         rx_errors = self.fpga.BP_SHUFFLE.get_rx_lane_monitor('ERROR_CTR')
         rx_max_frame = self.fpga.BP_SHUFFLE.get_rx_lane_monitor('MAX_FRAME_LENGTH')
         rx_min_frame = self.fpga.BP_SHUFFLE.get_rx_lane_monitor('MIN_FRAME_LENGTH')
@@ -382,9 +380,12 @@ class ShuffleCrossbar(Module_base):
         print '%25s: %s' % ('Monitor point', ' '.join('  L%2i ' % v for v in lane_range))
         print '%25s: %s' % ('--------------------', ' '+' '.join('------' for v in lane_range))
         print '%25s: %s' % ('Pre-map lane #', ' '.join(('%6i' % lane_map[lane] for lane in lane_range)))
-        print '%25s: %s' % ('Rx Node ID', ''.join('%7s' % ('(%i,%i)' % id_) for id_ in gtx_ids))
-        print '%25s: %s' % ('Matching GTX present', ' '.join(('%6s' % ('-N/A-', 'ok ')[matching_id[0] in active_slots]) for matching_id in matching_gtx_ids))
-        print '%25s: %s' % ('Matching TX Node ID', ''.join('%7s' % ('(%i,%i)' % matching_id) for matching_id in matching_gtx_ids))
+        if self.fpga.slot is not None:
+            gtx_ids = [(self.fpga.slot, lane_map[lane]) for lane in lane_range]
+            print '%25s: %s' % ('Rx Node ID', ''.join('%7s' % ('(%i,%i)' % id_) for id_ in gtx_ids))
+            matching_gtx_ids = [self.fpga.crate.get_matching_tx(gtx_id) for gtx_id in gtx_ids]
+            print '%25s: %s' % ('Matching GTX present', ' '.join(('%6s' % ('-N/A-', 'ok ')[matching_id[0] in active_slots]) for matching_id in matching_gtx_ids))
+            print '%25s: %s' % ('Matching TX Node ID', ''.join('%7s' % ('(%i,%i)' % matching_id) for matching_id in matching_gtx_ids))
         print '%25s: %s' % ('Detected Stream ID', ''.join('%7s' % ('(%i,%i)' % (((id_ >> 4) & 15)+1, id_& 15)) for id_ in stream_id))
         print '%25s: %s' % ('RX Errors', ' '.join('%6i' % rx_errors[lane_map[lane]] for lane in lane_range))
         print '%25s: %s' % ('RX max frame len (words)', ' '.join('%6i' % (rx_max_frame[lane_map[lane]] + 1) for lane in lane_range))
