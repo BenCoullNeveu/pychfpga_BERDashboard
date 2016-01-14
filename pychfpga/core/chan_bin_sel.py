@@ -34,7 +34,10 @@ class ChanBinSel(Module_base):
     STREAM_ID                = BitField(CONTROL, 0x02, 4, width=12, doc="Stream ID to be used for tagging the output frames")
     NUMBER_OF_SELECTED_WORDS = BitField(CONTROL, 0x03, 0, width=11, doc="Number of words(frequency pairs) selected by this correlator.  Must match length of selected words")
     BYPASS                   = BitField(CONTROL, 0x04, 5, doc="If '1', sends the raw data from the channel with the same number, with header but no flags.")
-    NUMBER_OF_LANES          = BitField(CONTROL, 0x04, 0, width=5, doc="Number of lanes to include in output")
+    COMBINE_DATA_FLAGS       = BitField(CONTROL, 0x04, 4, doc="If '1', The data flags from two adjacent bins are combined into a single word.")
+    FIRST_FIFO_NUMBER        = BitField(CONTROL, 0x04, 2, width=2, doc="First FIFO (i.e. group of 4 inputs) to transmit data from. Ranges from 0 to 3.")
+    LAST_FIFO_NUMBER         = BitField(CONTROL, 0x04, 0, width=2, doc="Last FIFO (i.e. group of 4 inputs) to transmit data from. Ranges from 0 to 3.")
+    # NUMBER_OF_LANES          = BitField(CONTROL, 0x04, 0, width=5, doc="Number of lanes to include in output")
     # LAST_INPUT               = BitField(CONTROL, 0x05, 4, width=0, doc="Index of the last channelizer to get data from ")
 
     # Status bitfields
@@ -161,7 +164,7 @@ class ChanBinSel(Module_base):
         #array doesn't seem to work here....
 #        frequency_bins_per_correlator = 124 # 202-5chan correlator # must be even, max 1010 / number of correlated antennas 124-8 channel.  Should get this from config
         #self.select_words(range(words_per_correlator)) # enable tranmission 8 words, 16 freq channels by default
-
+        self.COMBINE_DATA_FLAGS = 0
 
     def status(self):
         """Displays the status of CH_DIST."""
@@ -178,7 +181,7 @@ class ChanBinSel(Module_base):
 
         number_of_lanes = len(input_lanes)
         if number_of_lanes != self.NUMBER_OF_CROSSBAR_INPUTS:
-            raise ValueError('The number of input lanes doe snot match the crossbar configuration')
+            raise ValueError('The number of input lanes does not match the crossbar configuration')
 
         input_lane_shapes = set(fa.shape for fa in input_lanes)
         if len(input_lane_shapes) == 1:
