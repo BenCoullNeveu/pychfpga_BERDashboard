@@ -99,6 +99,13 @@ class MGADC08BenchTests(unittest.TestCase):  #
         pss = [self.instr.ps12v, self.instr.ps3v3_2v5]  # Both power supplies
         test_results = NameSpace()
 
+        print '-------------------------------'
+        print ' Make Sure that '
+        print '   - the board under test is NOT connected on the motherboard'
+        print '   - the power cable is NOT connected on the board under test'
+        print
+        print ' Connect the Quick SMA to CH1 SMA input to provide a ground for the impedance measurements'
+
         for ps in pss:  # Turn off both power supplies, just to be sure
             ps.output_enable(0)
 
@@ -218,6 +225,9 @@ class MGADC08BenchTests(unittest.TestCase):  #
             dmm.display(xr.pass_fail(passed), 'Power-up tests')
             dmm.local()
             xr.save_data(test_results)
+            print
+            print '------------------------------------------------'
+            input('Disconnect power cable from the mezzanine and press ENTER')
 
 class MGADC08CarrierTests():  #
 
@@ -249,6 +259,13 @@ class MGADC08CarrierTests():  #
         instr = util.open_instruments(self.cfg.instruments, cfg.instruments)  # open only instruments listed in cfg.instruments
         dmm = instr.dmm
         dmm.display('EEPROM tests', '%s SN%s' % (self.model, self.serial))
+
+        print '-------------------------------'
+        print ' Make Sure that '
+        print '   -!!! the power cable is NOT connected on the board under test. This will probably damage the motherboard.'
+        print
+        print ' 1- Connect the mezzanine to the motherboard extension cable'
+        print " 2- Power the motherboard if it's not already powered. Wait for the initialization sequence to finish"
 
         tr = NameSpace() # test results container
         passed = False
@@ -653,7 +670,7 @@ class MGADC08CarrierTests():  #
                 io.LED3 = 0
                 time.sleep(cfg.blink_delay)
 
-                answer = input_yes_no('Did you see the 4 Mezzanine LEDS blink [Q=Quit, R=Repeat]', 'r')
+                answer = input_yes_no('Did you see the 4 Mezzanine LEDS blink [Q=Quit, Y=Yes, N=No, R=Repeat]:', 'r')
                 if answer == 'r':
                     continue
                 break
@@ -735,7 +752,7 @@ class MGADC08CarrierTests():  #
             if stuck_ok and bitpos_ok:
                 break
             trial += 1
-            assert trial < 2, 'Could not compute ADC delays'
+            assert trial < 4, 'Could not compute ADC delays'
             print 'Could not compute ADC delays. Retrying...'
         # Set ADC delays
         ib.set_adc_delays(delay_table)
