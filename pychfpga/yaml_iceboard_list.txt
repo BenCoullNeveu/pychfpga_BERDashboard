@@ -68,12 +68,8 @@ mcgill003:  # Crate 0
       # icecrates: [MGBP16_003] # crate number inferred, start from 0, 1 ...
       # icecrates: {0: "003"} # explicit crate number,  inferred model MGBP16
       # icecrates: {0: 3} # explicit crate number,  inferred model MGBP16, integer value match
-
-      test: 1
-
    power_supply_array:
       power_supplies: ["10.10.10.220"]
-
    gpu_array:
       gpu_nodes: ['10.10.10.200']
 
@@ -89,3 +85,13 @@ mcgill007:  # Crate 1
          '0085_0_0': [16 16 16 ]
       test: 2
    gpu_array:
+
+mcgill_16ch_corr:  # Crate 1
+   fpga_array:
+      iceboards: [10.10.10.49]  # Can aoso just use serial number if the system has mDNS
+      prog: 1
+      open: 1
+   power_supply_array:
+      power_supplies: [10.10.10.220]
+   gpu_array:
+      gpu_nodes: [10.10.10.200]  # gamma
