@@ -220,10 +220,10 @@ class FPGAArray(object):
 
         bitfile : String. Filename of the bitfile used to to program the FPGAs
 
-        prog : If ``prog=0``, the FPGAs in the default Iceboard set will be
+        prog : If ``prog=1``, the FPGAs in the selected Iceboards will be
             configured only if they are not already configured with the same
-            firmware. If ``prog=1``, they will always be reconfigured. If
-            ``force`` or is not specified or is None, the boards are never configured.
+            firmware. If ``prog=2``, they will always be reconfigured. If
+            ``prog`` is 0, None or is not specified, the FPGAs are never configured.
 
         open : If ``open=1``, establish communication with the boards and
            initialize the firmware and software. If ``open`` is None or not
@@ -411,12 +411,12 @@ class FPGAArray(object):
             # ib.set_handler(IceBoardPlusHandler, fpga_bitstream)
 
             # Configure the FPGA with the bitstream associated with the handler
-            if prog is not None and prog >= 0:
+            if prog:
                 print 'Configuring FPGAs...'
                 # Associate the bitstream with the target Handler
                 self.fpga_bitstream = FPGABitstream(bitfile)
                 ib.register_fpga_bitstream(self.fpga_bitstream)
-                ib.set_fpga_bitstream(force=prog)
+                ib.set_fpga_bitstream(force= (prog > 1))
                 print 'Done configuring FPGAs'
 
             # Auto-discover mezzanines and add them to the hardware map McGill
@@ -532,15 +532,32 @@ class FPGAArray(object):
         """
         Set the operational mode of the array.
 
-        'raw_time': Each boards stream raw 8-bit time samples from channels
+        - 'raw_time': Each boards stream raw 8-bit time samples from channels
                     0-7 to the corresponding GPU ports.
+        - 'shuffle16': Acquire, channelize and shuffle data within each
+          Iceboard individually and send the data through the IceBoard QSFP+
+          ports. There is no data shuffling between boards. This is good for
+          single board operation (or an array of boards operating
+          independently)
+        - 'shuffle256': Acquire, channelize and shuffle data within a crate to
+          create a 16-board (256-channel) correlator. The shuffled data is
+          sent through the IceBoard QSFP+ ports. There is no shuffling between
+          crates.
+        - 'shuffle512': Acquire, channelize and shuffle data between pair of
+          crates to create a 32-board (512-channel) correlator. The shuffled
+          data is sent through the IceBoard QSFP+ ports. The pairing of crates
+          is based on the crate number: Crate N and N+1 form a pair, whereas N
+          is a even number.
 
 
         # data_width : Data width of each Re and Im component of the channelizer output
         # enable_gpu_link : Enables the GPU link transmission
 
         """
-        if self.ic.NUMBER_OF_SLOTS:
+        # To make sure that the data acquisition and transmission will be done at the same rate, refuse to operate if there
+        # are more than one IceBoard in the array and the boards are not all
+        # set to operate on the backplane clock.
+        if len(self.ib) > 1:  #self.ic.NUMBER_OF_SLOTS
             clock_sources = self.ib.index_by(repr).get_clock_source()
             target_clock_source = 'CLOCK_SOURCE_BP'
             if set(clock_sources.values()) != set([target_clock_source]):
@@ -551,7 +568,7 @@ class FPGAArray(object):
             self.ib.set_scaler_bypass(True)
             self.init_shuffle(mode='chan8', frames_per_packet=frames_per_packet, chan8_channel_map=np.hstack((chan8_channel_map, [16]*8)))
 
-        elif mode in ['shuffle256', 'shuffle512']:
+        elif mode in ['shuffle256', 'shuffle512', 'shuffle16']:
             self.ib.BP_SHUFFLE.set_tx_power(13)
             self.ib.CROSSBAR3.SOF_WINDOW_STOP = 100
             self.ib.CROSSBAR3.TIMEOUT_PERIOD = 0
@@ -727,6 +744,8 @@ class FPGAArray(object):
             while any(self.ib.is_irigb_before_trigger_time()):
                 if time.time() - t0 > delay+1:
                     raise RuntimeError('Timout while waiting for the IRIG-B-based SYNC to complete')
+        elif self.sync_method == 'local_soft_trigger':
+            self.ib.sync()
         else:
             raise ValueError("Unknown syncing method '%s'" % self.sync_method)
 
@@ -768,7 +787,7 @@ class FPGAArray(object):
 
         # Set-up transmitters
         for i, ib in enumerate(self.ib):
-            self.logger.info('%.32r: **** Initializing transmitters for Slot %02i (IceBoard SN%s) ****' % (ib.crate, ib.slot, ib.serial))
+            self.logger.info('%.32r: **** Initializing transmitters for IceBoard %r (SN%s) ****' % (ib.crate, ib, ib.serial))
             ib.set_corr_reset(0)
 
             tx_list.append((ib.slot, 0))  # Register Bypass lane (lane 0) as a transmitter in this slot
@@ -787,6 +806,8 @@ class FPGAArray(object):
         for i, ib in enumerate(self.ib):
             # Disable all receivers for which there are no transmitters
             for j, gtx in enumerate(ib.BP_SHUFFLE.gtx[0:ib.BP_SHUFFLE.NUMBER_OF_PCB_LINKS]):
+                if ib.slot is None:
+                    continue
                 rx = (ib.slot, j+1)
                 tx = ib.crate.get_matching_tx(rx)
 
@@ -804,6 +825,8 @@ class FPGAArray(object):
         # Print links
         for ib in self.ib:
             for i in range(ib.NUMBER_OF_CROSSBAR_OUTPUTS):
+                if ib.slot is None:
+                    continue
                 rx = (ib.slot, i)
                 tx = ib.crate.get_matching_tx(rx)
                 if tx in tx_list:
@@ -1404,7 +1427,7 @@ class FPGAArray(object):
         for crate in self.ic:
             slots = crate.slot # Get iceboards indexed by slot number
 
-            slot_range = range(1, crate.NUMBER_OF_SLOTS+1)
+            slot_range = range(1, crate.NUMBER_OF_SLOTS + 1) or [None]
 
             info = {}
             for (slot, ib) in crate.slot.items():
@@ -1441,7 +1464,7 @@ class FPGAArray(object):
             # Print the table
             corner_label = 'Slot->\nS/N ->\n\\|/Lane'
             slot_labels = ['SN%s'% slots[s].serial if s in slots.keys() else 'N/A' for s in slot_range]
-            col_labels = ['%i\n%s' % (slot_range[i], slot_labels[i]) for i in range(len(slot_range))]
+            col_labels = ['%s\n%s' % (slot_range[i], slot_labels[i]) for i in range(len(slot_range))]
             # row_labels = ['BP PCB Rx\nBP QSFP Rx\nCB2 FIFO\nCB2 ALIGN\nCB2 FRAMEnCB3 FIFO\nCB3 ALIGN\nCB3 FRAME\n']
             row_labels = []
             for label, lanes in [('BP PCB Rx', 16), ('BP QSFP Rx', 8), ('CB2 ALIGN', 16), ('CB2 FRAME #', 16), ('CB2 BIN_SELs', 2), ('CB3 ALIGN', 8), ('CB3 FRAME #',8), ('CB3 BIN SELs', 8)]:
@@ -1450,6 +1473,9 @@ class FPGAArray(object):
                 else:
                     row_labels += [label]
             # return info
+            print 'row_labels=', row_labels
+            print 'col_labels=', col_labels
+            print 'data=', info
             self.print_table(info, row_labels=row_labels, col_labels=col_labels, corner_label=corner_label, line_sep=grid)
 
     def print_table(self, data=None,
@@ -1845,7 +1871,7 @@ def add_fpga_array_arguments(parser):
     parser.add_argument('--ping',            type=int, help="1: Check if Tuber is responding. 0: Check but ignore. ")
     parser.add_argument('--mdns_timeout',    type=float, help="Time to wait for mDNS discovery replies")
     parser.add_argument('--no_mezz',         action='store_true', help='Do not attempt to auto-detect the mezzanines')
-    parser.add_argument('--prog',            type=int, nargs='?', const=0, help='Programs the FPGA if not already programmed. --prog 1 forces the FPGA programming even if the firmware is already programmed')
+    parser.add_argument('--prog',            type=int, nargs='?', const=1, help='Programs the FPGA if not already programmed. --prog or --prog 1 programs the FPGA if the firmware is not already programmed.  --prog 2 forces the FPGA programming even if the firmware is already programmed')
     parser.add_argument('-b', '--bitfile',   type=str, help='Filename of the bitfile used to to program the FPGAs')
     parser.add_argument('-o', '--open',      type=int, nargs='?', const=1, help='Opens communication with the FPGAs, create the Python objects representing the firmware, and initialize the firmware. --open 0 skips the firmware initialization phase')
     parser.add_argument('--sync_method',     type=str, default='distributed_time', help="Sets the global syncing method ('distributed_time', 'centralized_time_trigger', 'centralized_soft_trigger', 'local_soft_trigger')")
@@ -2033,10 +2059,16 @@ def create_fpga_array(args=None):
     fpga_group.sub_dict = 'fpga_array'  # group all arguments in this group in a sub dictionary with this name
     add_fpga_array_arguments(fpga_group)
 
+    gpu_group = parser.add_argument_group('GPU Array parameters', 'Allows interactive creation of GPU nodes')
+    gpu_group.sub_dict = 'gpu_array'  # group all arguments in this group in a sub dictionary with this name
+    gpu_group.add_argument('-n', '--gpu_nodes', type=str, nargs='+',  help='List of IP address or hostnames of the GPU node objects to be created.')
+
+    ps_group = parser.add_argument_group('Power Supply Array parameters', 'Allows interactive creation of Power Supply objects')
+    ps_group.sub_dict = 'power_supply_array'  # group all arguments in this group in a sub dictionary with this name
+    ps_group.add_argument('-p', '--power_supplies', type=str, nargs='+', help='List of IP address or hostnames of the power supply objects (Agilent_N5764A) to be created.')
+
     # Add generic command-line parameters
     parser.add_argument('-y', '--yaml',  type=str, nargs='+',   help='YAML configuration file name, optionally followed by object names in that file.')
-    parser.add_argument('-n', '--gpu_nodes', type=str, nargs='+',  help='List of GPU node objects to be created with specified hostnames or IP addresses.')
-    parser.add_argument('-p', '--power_supplies', type=str, nargs='+', help='List of power supply objects (Agilent_N5764A) to be created with specified hostnames or IP addresses.')
     args = parse_args_as_dict(parser)  # Parse command-line arguments as a dict, with arguments groups stored in separate sub dictionaries
 
     # -------------------------------
