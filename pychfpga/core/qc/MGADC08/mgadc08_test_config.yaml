@@ -109,7 +109,7 @@ carrier_tests:
 
     eeprom_test:
         instruments: [dmm] # Subset of instruments we use in these tests
-        fpga_array: {<<: *default_fpga_array, no_mezz: True, prog: 0,  open: 1}
+        fpga_array: {<<: *default_fpga_array, no_mezz: True, prog: 1,  open: 1}
         revision_table:
             2: {sn_min: 0, sn_max: 42}
             3: {sn_min: 43, sn_max: 1000}
@@ -117,7 +117,7 @@ carrier_tests:
 
     power_test:
         # instruments: [dmm] # Subset of instruments we use in these tests
-        fpga_array: {<<: *default_fpga_array, no_mezz: 1, prog: 0,  open: 1}
+        fpga_array: {<<: *default_fpga_array, no_mezz: 1, prog: 1,  open: 1}
 
         pow_stab_time: 0.5  # Tibe to wait after board power on and voltage measurmeents
         rails:
@@ -127,7 +127,7 @@ carrier_tests:
 
     spi_pll_test:
         # instruments: [dmm] # Subset of instruments we use in these tests
-        fpga_array: {<<: *default_fpga_array, no_mezz: 1, prog: 0,  open: 1}
+        fpga_array: {<<: *default_fpga_array, no_mezz: 1, prog: 1,  open: 1}
 
         pcb_temp: {tmin: 10, tmax: 60, iterations: 10}
         adc_temp: {tmin: 10, tmax: 85, iterations: 10}
@@ -141,18 +141,18 @@ carrier_tests:
 
         pll2_iterations: 2
         pll2_gate_time: 0.1
-        pll2_frequencies: [5, 10, 20, 50, 100, 125, 156.25, 200, 250, 312.5, 400, 600, 800, 1000]  # Frequencies in MHz, range is 5 to 1000 MHz
+        pll2_frequencies: [10, 20, 50, 100, 125, 156.25, 200, 250, 312.5, 400, 600]  # Frequencies in MHz, range is 5 to 1000 MHz
         pll2_freq_err_max: 0.000001 # in MHz. We have a gate time of 0.01s, resolution = 160 Hz
 
     ramp_test:
         # instruments: [dmm] # Subset of instruments we use in these tests
-        fpga_array: {<<: *default_fpga_array, no_mezz: 1, prog: 0,  open: 1}
+        fpga_array: {<<: *default_fpga_array, no_mezz: 1, prog: 1,  open: 1}
 
     s11_test:
         instruments: [na] # Subset of instruments we use in these tests
-        fpga_array: {<<: *default_fpga_array, no_mezz: 1, prog: 0,  open: 1}
+        fpga_array: {<<: *default_fpga_array, no_mezz: 1, prog: 1,  open: 1}
         s11_max : -15 # in dB
         adc_trim_value: 15  # 0-15, default is 8. Applies to all channels.
-        freqs: [17, 27, 37, 47, 57, 67, 81, 93, 107, 153, 207, 253, 307, 353, 407, 507, 553, 17, 607, 653, 707, 753, 807, 853, 907, 953, 1007, 1023, 1047, 1065, 1107, 1123, 1147, 1165, 1207]  # MHz
+        freqs: [17, 27, 37, 47, 57, 67, 81, 93, 107, 153, 207, 253, 307, 353, 407, 507, 553, 607, 653, 707, 753, 807, 853, 907, 953, 1007, 1023, 1047, 1065, 1107, 1123, 1147, 1165, 1207]  # MHz
         power_level: -6 # dBm
         expected_frequency_response: [[200, -3], [900, -6]]
