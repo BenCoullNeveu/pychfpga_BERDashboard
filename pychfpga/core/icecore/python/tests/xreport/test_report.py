@@ -416,10 +416,10 @@ class TestReport(object):
 
     def write_xml(self, filename=None):
         filename = filename or self.filename
-        print 'writing XML file in', filename + '.xml'
+        # print 'writing XML file in', filename + '.xml'
         with open(filename + '.xml', 'w') as f:
             f.write(self.get_xml())
-        print 'wrote XML file in', filename + '.xml'
+        # print 'wrote XML file in', filename + '.xml'
 
     def get_rst(self, filename=None):
         """ Return the object representating the test report in reStructuredTest with attachments."""

@@ -567,7 +567,7 @@ class XReport(Plugin):
 
         synopsis = '\n'.join(self.rep.get_synopsis_as_strings())
         self.rep.add_literal_text_block(synopsis)
-        self.stream.write('%s\n' % synopsis)
+        # self.stream.write('%s\n' % synopsis)
 
         sys.stdout = self.original_stdout
 
