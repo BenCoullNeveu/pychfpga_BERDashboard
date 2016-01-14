@@ -783,7 +783,7 @@ class MGADC08CarrierTests():  #
             ib.start_data_capture(period=1, source='adc')
             ib.sync()
             r.read_frames(flush=1, frames=3)  # flush
-            data = r.read_frames()
+            data = r.read_frames(1)
 
             tr.data = data
             plt.figure(1)
@@ -912,7 +912,7 @@ class MGADC08CarrierTests():  #
                     r.read_frames(flush=True, frames=3)  # let the new data propagate
                     print '.',
                     while True:
-                        data = r.read_frames()
+                        data = r.read_frames(5)
                         if channel not in data:
                             answer = input_yes_no('Did not receive data from the board. Want to try again [Y] or quit [Q]?' )
                             assert answer, 'Interrupting test upon user request because of missing data'
