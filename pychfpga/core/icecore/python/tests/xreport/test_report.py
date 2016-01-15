@@ -524,6 +524,15 @@ class TestReport(object):
         filename = filename or self.filename
         formats = formats or self.formats
 
+        if filename:
+            filename, filename_ext = os.path.splitext(filename)
+            if filename_ext[1:]:
+                formats.append(filename_ext[1:])
+
+        for f in formats:
+            if f not in ('pdf', 'rst', 'xml'):
+                raise ValueError("Invalid file format type '%s'" % f)
+
         self.write_xml(filename=filename)
         if 'pdf' in formats:
             self.write_pdf(filename=filename)
@@ -553,7 +562,7 @@ class TestReport(object):
 # #     return [(str(x.testdate), str(x.testpath), str(x.passed), str(x.summary) if hasattr(x, 'summary') else '') for x in etree.iter(['case', 'group'])]
 
 
-def generate_test_summary(input_folder='.', required_tests=[], output_filename=None, output_formats=['pdf','rst'], title='Test Summary Report'):
+def generate_test_summary(input_folder='.', required_tests=[], output_filename=None, output_formats=['pdf'], title='Test Summary Report'):
     """ Load all XML test reports in the specified folder and generate a summary report that retains the latest result for every test.
 
     ``required_test`` is a list of paths describing which tests are expected,
