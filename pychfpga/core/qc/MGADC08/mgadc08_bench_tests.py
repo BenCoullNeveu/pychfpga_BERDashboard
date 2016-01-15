@@ -28,7 +28,7 @@ def input(message):
     assert not key.startswith('q'), 'Test was interrupted by user'
     return key
 
-def input_yes_no(message, additional_answers='r'):
+def input_yes_no(message, additional_answers=[]):
     while True:
         key = input(message)
         if key.startswith('y'):
@@ -191,7 +191,7 @@ class MGADC08BenchTests(unittest.TestCase):  #
                     assert False, 'Inadequate current or voltage on rail %s' % rail_name
 
             dmm.display('','Check power LED')
-            power_led_state = input_yes_no('Is the power LED turned ON?')
+            power_led_state = input_yes_no('Is the power LED turned ON [Y/N]?')
             test_results.power_led_state = power_led_state
             assert power_led_state, 'Power LED is not tuned ON. Something is wrong. Aborting.'
 
@@ -670,7 +670,7 @@ class MGADC08CarrierTests():  #
                 io.LED3 = 0
                 time.sleep(cfg.blink_delay)
 
-                answer = input_yes_no('Did you see the 4 Mezzanine LEDS blink [Q=Quit, Y=Yes, N=No, R=Repeat]:', 'r')
+                answer = input_yes_no('Did you see the 4 Mezzanine LEDS blink [Q=Quit, Y=Yes, N=No, R=Repeat]:', ['r'])
                 if answer == 'r':
                     continue
                 break
@@ -888,6 +888,7 @@ class MGADC08CarrierTests():  #
                     print '   Worst case return loss is %0.1f dB. Limit is %0.1d dB' % (max(dd), cfg.s11_max)
                     if all(dd <= cfg.s11_max):
                         passed_s11.append(True)
+                        print ' PASSED'
                         break
                     answer = input_yes_no('S11 is not good. Do you want to try again [Y/N] or quit [Q]?' )
                     if answer:
@@ -914,14 +915,19 @@ class MGADC08CarrierTests():  #
                     # time.sleep(frame_transmission_period)
                     r.read_frames(flush=True, frames=3)  # let the new data propagate
                     print '.',
+                    trial = 0 
                     while True:
                         data = r.read_frames(cfg.number_of_frames)
-                        if channel not in data:
-                            answer = input_yes_no('Did not receive data from the board. Want to try again [Y] or quit [Q]?' )
-                            assert answer, 'Interrupting test upon user request because of missing data'
-                        else:
-                            data = data[channel].astype(float)
+                        if channel in data:
                             break
+                        assert trial < 3, 'Did not receive data from the board.'
+                        trial += 1
+
+                            # answer = input_yes_no('Did not receive data from the board. Want to try again [Y] or quit [Q]?' )
+                            # assert answer, 'Interrupting test upon user request because of missing data'
+                        # else:
+                    data = data[channel].astype(float)
+                            # break
                     resp.freq.append(f)
                     resp.data.append(data)
                     a = 10 * np.log10(data.var() / full_scale_response.var())  # in dBFS
@@ -939,8 +945,13 @@ class MGADC08CarrierTests():  #
                     plt.plot(data)
                     plt.ylim(-128, 128)
                     plt.title('CHANNEL %02i, Sinawave %f MHz @ %f dBm' % (channel, f, power_level))
-                    xr.insert_plot()
+                    # xr.insert_plot()
                     ampl.append(a)  # 8044 = approximare
+
+                if all(fr_ok):
+                    print 'PASSED'
+                else:
+                    print 'FAILED'
 
                 passed_fr.append(all(fr_ok))
                 tr.freq_resp[channel] = resp
@@ -965,6 +976,7 @@ class MGADC08CarrierTests():  #
             tr.passed = passed
             print
             print 'Test ended. Turning mezzanine power OFF'
+            print 'Disconnect the mezzanine if you are finished with it'
             if r:
                 r.close()
             if ib:

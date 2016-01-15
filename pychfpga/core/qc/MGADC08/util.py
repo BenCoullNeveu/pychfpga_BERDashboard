@@ -150,6 +150,7 @@ def run_tests(config_file):
             #     default_choice = selection.next_key
             # else:
             #     default_choice = 'Q'
+            print 'Generating summary report...'
             summary_file_name = os.path.join(test_folder, '%s_SN%s_summary.pdf' %  (current_model, current_serial))
             t = XReport.generate_test_summary(input_folder=test_data_folder, required_tests=cfg.test_list, output_filename=summary_file_name, title='%s_SN%s Summary Test Report' % (current_model, current_serial))
     return locals()  # return a dict of all local variables to help interactive debugging

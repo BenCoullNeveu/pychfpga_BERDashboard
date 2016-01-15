@@ -21,10 +21,10 @@ debug:
 
 
 instruments:
-    dmm:       {labpy_object: 'agilent_dmm', interface: 'prologix_eth', ip_addr: '10.10.10.137', gpib_addr: 22} # Agilent 34410A multimeter (we don't use the LAN connection so we can go back in local mode remotely)
-    ps12v:     {labpy_object: 'AgilentPS',   interface: 'prologix_eth', ip_addr: '10.10.10.137', gpib_addr: 5}  # Agilent E3648A dual output power supply  12V on output 1, output 2 not used
-    ps3v3_2v5: {labpy_object: 'AgilentPS',   interface: 'prologix_eth', ip_addr: '10.10.10.137', gpib_addr: 6}  # Agilent E3648A dual output power supply. 3.3V on output1, 2.5V on output 2
-    na:        {labpy_object: 'hp8753e',     interface: 'prologix_eth', ip_addr: '10.10.10.137', gpib_addr: 14} # HP8753E Network Analyzer
+    dmm:       {labpy_object: 'agilent_dmm', interface: 'prologix_eth', ip_addr: '10.11.1.132', gpib_addr: 22} # Agilent 34410A multimeter (we don't use the LAN connection so we can go back in local mode remotely)
+    ps12v:     {labpy_object: 'AgilentPS',   interface: 'prologix_eth', ip_addr: '10.11.1.132', gpib_addr: 5}  # Agilent E3648A dual output power supply  12V on output 1, output 2 not used
+    ps3v3_2v5: {labpy_object: 'AgilentPS',   interface: 'prologix_eth', ip_addr: '10.11.1.132', gpib_addr: 6}  # Agilent E3648A dual output power supply. 3.3V on output1, 2.5V on output 2
+    na:        {labpy_object: 'hp8753e',     interface: 'prologix_eth', ip_addr: '10.11.1.132', gpib_addr: 14} # HP8753E Network Analyzer
 
 ?: &default_fpga_array
     iceboards: 49
@@ -95,7 +95,7 @@ bench_tests:
 
     smoke_test:
         rails:
-            vcc12v: {vmin: 11.9, vmax: 12.1, imin: 0.010, imax: 0.100} # ps12v, Output 1
+            vcc12v: {vmin: 11.9, vmax: 12.1, imin: 0.010, imax: 0.120} # ps12v, Output 1
             vcc3v3: {vmin: 3.2,  vmax: 3.4,  imin: 2.400, imax: 2.800} # ps3v3_2v5, Output 1
             vcc2v5: {vmin: 2.4,  vmax: 2.6,  imin: 0.090, imax: 0.120} # ps3v3_2v5, Output 2
 
@@ -123,7 +123,7 @@ carrier_tests:
 
         pow_stab_time: 0.5  # Tibe to wait after board power on and voltage measurmeents
         rails:
-            vcc12v: {vmin: 11.9, vmax: 12.2, imin: 0.010, imax: 0.120} #
+            vcc12v: {vmin: 11.9, vmax: 12.2, imin: 0.010, imax: 0.140} #
             vcc3v3: {vmin: 3.2,  vmax: 3.4,  imin: 2.400, imax: 2.800} #
             vadj:   {vmin: 2.4,  vmax: 2.6,  imin: 0.090, imax: 0.120} #
 
@@ -159,6 +159,6 @@ carrier_tests:
 
         # frequency response measurement parameters
         number_of_frames: 1
-        freqs: [17, 27, 37, 47, 57, 67, 81, 93, 107, 153, 207, 253, 307, 353, 407, 507, 553, 607, 653, 707, 753, 807, 853, 907, 953, 1007, 1023, 1047, 1065, 1107, 1123, 1147, 1165, 1207]  # MHz
+        freqs: [17, 47, 93,  153, 207, 307, 353, 407, 507, 553, 653, 707, 753, 807, 853, 907, 953, 1007, 1047, 1065, 1107, 1147, 1165, 1207]  # MHz
         power_level: -6 # dBm
         expected_frequency_response: [[200, -3], [900, -6]]
