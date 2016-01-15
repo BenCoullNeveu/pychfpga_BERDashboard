@@ -344,7 +344,12 @@ def commit_repo(repo_path):
             repo.remotes.origin.push()
             print "New commit pushed to server!"
         else:
-            print "Repository is clean. Nothing to commit!"
+            print "Local Repository is clean. Nothing to commit!"
+            print "Pulling latest results from server..."
+            repo.git.pull('--rebase')
+            print "Pulled from sever"
+            # repo.remotes.origin.push()
+            # print "New commit pushed to server!"
 
     except git.GitCommandError:
         print "Failed to add files to 'iceboard-qc' git repository. (trace below)"
