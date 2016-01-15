@@ -3,6 +3,8 @@ import sys
 import os
 import re
 import datetime
+import git  # pip install gitpython
+
 #  ... more imports below
 
 def add_paths(*paths):
@@ -86,6 +88,7 @@ def run_tests(config_file):
             default_choice = 'Q'
 
         selection = select_menu_item(test_menu, default=default_choice)
+        print
 
         if selection.type == 'exit':
             # instr.dmm.display('Bye!', '')
@@ -100,6 +103,8 @@ def run_tests(config_file):
                 is_serial_scanned = True
                 default_choice = selection.next_key
                 # instr.dmm.display(current_model, current_serial)
+        elif selection.type == 'push':
+            commit_repo(test_results_folder)
         elif selection.type == 'test':
             test = test_list[selection.test_tag]
 
@@ -112,8 +117,6 @@ def run_tests(config_file):
             nose_test_path = test.path
             test_date = datetime.datetime.now().isoformat().replace(':','_')+'_' if not cfg.debug.no_date else ''
 
-            if not os.path.exists(test_folder):
-                os.makedirs(test_folder)
 
             print
             print 'Running test %s' % nose_test_path
@@ -122,6 +125,8 @@ def run_tests(config_file):
 
             params = NameSpace(config_file=config_file, model=current_model, serial=serial)
             r = XReport.run(nose_test_path, xparams=params)
+            print
+            print
 
             if params.serial != current_serial:
                 print '**********************************************'
@@ -131,16 +136,22 @@ def run_tests(config_file):
                 is_serial_scanned = False
 
             test_folder = os.path.join(test_results_folder, '%s_SN%s' % (current_model, current_serial))
+            test_data_folder = os.path.join(test_folder, 'data')
             test_file_name = '%s%s.pdf' %  (test_date, nose_test_path.replace(':', '.'))
-            full_test_filename = os.path.join(test_folder, test_file_name)
-            print 'Test data will be stored in %s' % full_test_filename
+            full_test_filename = os.path.join(test_data_folder, test_file_name)
+
+            if not os.path.exists(test_folder):
+                print 'Creating folder %s' % test_data_folder
+                os.makedirs(test_data_folder)
+
+            # print 'Test data will be stored in %s' % full_test_filename
             r.write(filename=full_test_filename, formats=cfg.xformat)  # Write the test reports and data
             # if r.passed:
             #     default_choice = selection.next_key
             # else:
             #     default_choice = 'Q'
-            summary_file_name = '%s/%s_SN%s.pdf' %  (test_results_folder, current_model, current_serial)
-            t = XReport.generate_test_summary(input_folder=test_folder, required_tests=cfg.test_list, output_filename=summary_file_name, title='%s_SN%s Summary Test Report' % (current_model, current_serial))
+            summary_file_name = os.path.join(test_folder, '%s_SN%s_summary.pdf' %  (current_model, current_serial))
+            t = XReport.generate_test_summary(input_folder=test_data_folder, required_tests=cfg.test_list, output_filename=summary_file_name, title='%s_SN%s Summary Test Report' % (current_model, current_serial))
     return locals()  # return a dict of all local variables to help interactive debugging
 
 
@@ -314,36 +325,30 @@ def pull_all( ):
             "\nPlease run and exit the test suite again, or commit and push the changes manually."
 
 
-def commit_results( ):
+def commit_repo(repo_path):
     import traceback
-    from git import GitCommandError
 
-    # Check for no_commit file
-    if os.path.exists(os.path.join(read_config()['results_directory'], 'no_commit')):
-        print "Skipping git commit of results due to presence of 'no_commit' file in results directory."
-        return None
+    repo = git.Repo(repo_path)
 
-    res_repo = get_repo('iceboard-qc')
     try:
-        if res_repo.is_dirty() or len(res_repo.untracked_files) > 0:
-            to_stage = [diff.a_blob.path for diff in res_repo.index.diff(None)] + res_repo.untracked_files
-            res_repo.index.add(to_stage)
+        if repo.is_dirty() or len(repo.untracked_files) > 0:
+            to_stage = [diff.a_blob.path for diff in repo.index.diff(None)] + repo.untracked_files
+            repo.index.add(to_stage)
             print "Added modified files to results git index:"
             for file in to_stage:
                 print "    " + file
-            res_repo.index.commit("Changes to QC results committed from testing script.")
-            print "Changes committed.\n"
-            res_repo.git.pull('--rebase')
-            print "Pulled from origin..."
-            res_repo.remotes.origin.push()
-            print "New commit pushed to origin!"
+            repo.index.commit("Changes to QC results committed from testing script.")
+            print "Changes committed. Pulling & merging latest results from server..."
+            repo.git.pull('--rebase')
+            print "Pulled from origin. Pushing data to server"
+            repo.remotes.origin.push()
+            print "New commit pushed to server!"
         else:
-            "Repository is clean. Nothing to commit!"
+            print "Repository is clean. Nothing to commit!"
 
-    except GitCommandError:
-        "Failed to add files to 'iceboard-qc' git repository. (trace below)"
+    except git.GitCommandError:
+        print "Failed to add files to 'iceboard-qc' git repository. (trace below)"
         traceback.print_exc()
-        "\nPlease run and exit the test suite again, or commit and push the changes manually."
 
 def commit_hw_files( ):
     import traceback

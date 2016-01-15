@@ -801,9 +801,9 @@ class MGADC08CarrierTests():  #
                 ok = np.all(data[ch] == ideal_ramp)
                 ramp_ok.append(ok)
                 if ok:
-                    print 'Channel %02i: OK' % ch
+                    print 'Channel %02i: OK' % (ch+1)
                 else:
-                    print 'Channel %02i: ERROR!' % ch
+                    print 'Channel %02i: ERROR!' % (ch+1)
 
 
             assert all(ramp_ok), 'One or more channels have ramp errors'
@@ -908,14 +908,14 @@ class MGADC08CarrierTests():  #
                 fr_ok = []
                 resp = NameSpace(freq=[], data=[], dbfs=[])
                 for f in fr_freqs:
-                    print ('   CHANNEL %02i, Sinawave %7.3f MHz @ %f dBm' % (channel, f, power_level)),
+                    print ('   CHANNEL %02i, Sinawave %7.3f MHz @ %f dBm' % (channel+1, f, power_level)),
                     na.command('CWFREQ %f MHz' % f)
                     print '.',
                     # time.sleep(frame_transmission_period)
                     r.read_frames(flush=True, frames=3)  # let the new data propagate
                     print '.',
                     while True:
-                        data = r.read_frames(5)
+                        data = r.read_frames(cfg.number_of_frames)
                         if channel not in data:
                             answer = input_yes_no('Did not receive data from the board. Want to try again [Y] or quit [Q]?' )
                             assert answer, 'Interrupting test upon user request because of missing data'

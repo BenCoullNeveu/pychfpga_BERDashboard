@@ -8,15 +8,16 @@ comment: |
     That extends many lines
         this is indented more
 
-test_results_folder: './test_results'
+# test_results_folder: './test_results'
+test_results_folder: '../../../../../adc_mezz_qc'
 mgadc08_model_number: ['MGADC08']
-xformat: ['pdf','rst']  # Output formats for the test reports. xml is always saved.
+xformat: ['pdf']  # Output formats for the test reports. xml is always saved.
 
 # DEBUGGING options
 debug:
     default_model: 'MGADC08'
     default_serial: None
-    no_date: True
+    no_date: false
 
 
 instruments:
@@ -60,6 +61,7 @@ menu:
     - { key: '6', type: test, test_tag: rmp}
     - { key: '7', type: test, test_tag: s11}
 
+    - { key: 'S', description: 'Send all new test results data to McGill',                         type: push}
     - { key: 'Q', description: 'Exit',                                                type: exit}
     - {           description: "or Enter or scan board's serial number or menu item", type: text}
     - { regex: '29821-0000-(\d{4})',                                                  type: board_info, model: 'MGADC08', serial: '{0}', next_key: '1'}  # 29821-000-nnnn are MGADC08 Serial nnnn
@@ -154,6 +156,9 @@ carrier_tests:
         fpga_array: {<<: *default_fpga_array, no_mezz: 1, prog: 1,  open: 1}
         s11_max : -15 # in dB
         adc_trim_value: 15  # 0-15, default is 8. Applies to all channels.
+
+        # frequency response measurement parameters
+        number_of_frames: 1
         freqs: [17, 27, 37, 47, 57, 67, 81, 93, 107, 153, 207, 253, 307, 353, 407, 507, 553, 607, 653, 707, 753, 807, 853, 907, 953, 1007, 1023, 1047, 1065, 1107, 1123, 1147, 1165, 1207]  # MHz
         power_level: -6 # dBm
         expected_frequency_response: [[200, -3], [900, -6]]
