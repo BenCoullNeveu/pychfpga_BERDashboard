@@ -1584,8 +1584,8 @@ class chFPGA_controller(IceBoardExtHandler):
             cb1_bins = 128
             cb1_bin_spacing = 1024/cb1_bins  # = 8
             cb1_combine_data_flags = 1
-            cb1_bin_select_map = [np.arange(cb1_bins)*cb1_bin_spacing+(i//2) for i in range(number_of_cb1_bin_sel)]
-            cb1_output_words_per_bin = 2
+            cb1_bin_select_map = [np.arange(cb1_bins)*cb1_bin_spacing+(i % cb1_bin_spacing) for i in range(number_of_cb1_bin_sel)]
+            cb1_output_words_per_bin = 4
             cb1_output_bins = cb1_bins
 
             bp_shuffle_bypass = True
@@ -1598,7 +1598,7 @@ class chFPGA_controller(IceBoardExtHandler):
             # cb2_bins = cb1_bins
             # cb2_bin_spacing = 1
             # cb2_bin_select_map = [np.arange(cb2_bins)*cb2_bin_spacing for i in range(number_of_cb2_bin_sel)]
-            cb2_output_words_per_bin = 2 * cb2_input_words_per_bin
+            cb2_output_words_per_bin = cb2_input_words_per_bin
             cb2_output_bins = cb2_bins
 
             crate_shuffle_bypass = True
@@ -1786,8 +1786,9 @@ class chFPGA_controller(IceBoardExtHandler):
 
         header_size = 16
         packet_flags_size = 4
-        cb1_payload_size = header_size  + frames_per_packet * (cb1_output_words_per_bin * cb1_bins + cb1_bins/(bool(cb1_combine_data_flags)+1) + 1) * 4 + packet_flags_size
-        self._logger.info('%.32r: CROSSBAR1 output payload = %i bytes (%i words)' % (self, cb1_payload_size, (cb1_payload_size+3)//4))
+        cb1_payload_size = header_size  + frames_per_packet * (cb1_output_words_per_bin * cb1_bins + (cb1_bins if not cb1_combine_data_flags else (cb1_bins+1)//2) + 1) * 4 + packet_flags_size
+        self._logger.info('%r: CROSSBAR1 config: frames_per_packet=%i, cb1_lanes=%s, cb1_bypass=%s, cb1_combine=%s, cb1_bins=%i, cb1_words_per_bin=%i' % (self, frames_per_packet, cb1_lanes, bool(cb1_bypass), bool(cb1_combine_data_flags), cb1_bins, cb1_output_words_per_bin ))
+        self._logger.info('%.32r: CROSSBAR1 output packets payload = %i bytes (%i words)' % (self, cb1_payload_size, (cb1_payload_size+3)//4))
 
         # cb2_payload_size = header_size + packet_flags_size + frames_per_packet * (cb2_input_words_per_bin * cb2_bins* cb2_lanes + 1*cb2_bins*cb2_lanes/2 + cb2_lanes) * 4
 
