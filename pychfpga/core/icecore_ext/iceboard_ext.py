@@ -6,8 +6,6 @@ from datetime import datetime, timedelta
 from calendar import timegm
 import time
 import struct
-import zlib
-import ast  # used for safe McGill-format mezzanine EEPROM parsing
 import base64
 
 import socket
@@ -15,7 +13,6 @@ import socket
 from ..icecore import IceBoardPlusHandler
 from ..icecore import tuber  # Used to get TuberRemoteError
 from ..icecore import Ccoll
-from ..icecore.hw.ipmi_fru import FRU, Board, Product, MultiDict
 
 
 from .. import I2C as i2c
@@ -438,125 +435,87 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         """
         return self.core_i2c.set_port(*args, **kwargs)
 
-    def _mezzanine_eeprom_read(self, mezzanine, addr, length, **kwargs):
-        """ Reads the EEPROM on the specified mezzanine.
+    def _mezzanine_eeprom_read(self, mezzanine):
+        """ Reads the EEPROM on the specified mezzanine using the FPGA if the ARM firmware does not provide the functionnality.
 
-        If length == -1, the data is read from the specified address until the end of the EEPROM.
+        This method is a 'temporary' patch that overrides the same method in
+        IceBoardPlus to allow proper operations of systems with old ARM
+        firmware connected to MGADC08 mezzanines that use a non-IPMI-compliant
+        standard.
 
-        NOTE: It would be nice if the ARM could provide this function.
+        If the ARM provides its own raw EEPROM read method, the full EEPROM
+        contents is returned using that method.
 
-        NOTE: Why not maintain the action_scope naming:
-        _read_mezzanine_eeprom() to be consistent with the rest of the API
-        """
-        return self.hw.read_mezzanine_eeprom(mezzanine, addr, length, **kwargs)
+        Otherwise, the data is read (slowly) through the FPGA I2C interface.
+        This will work only if the FPGA is programmed and initialized.
 
-    def _get_mezzanine_mcgill_ipmi(self, mezzanine, retry=3, use_cache=False):
-        """ Returns the IMPI data for the mezzanine located on slot
-        'mezzanine' (1 or 2). Returns None if no mezzanine is present.
+        To mitigate the slow access speed of the FPGA, this method will only
+        read EEPROMs formatted in the McGill format and will stop reading when
+        the the '}' or 0xFF are found. Otherwise, this method will return
+        None, which will signal to the upper software that it can attempt to
+        reading the IPMI standard data decoded by the ARM.
+                """
+        try:
+            return base64.decodestring(self._mezzanine_eeprom_read_base64(mezzanine))
+        except tuber.TuberRemoteError:
+            self.logger.debug("%.32r: Cannot read the Mezzanine %i EEPROM through the ARM's _mezzanine_eeprom_read_base64() method. Attempting to read the Mezzanine EEPROM through the FPGA." % (self, mezzanine))
 
-        This method overrides the ARM method of the same name so we can
-        correctly read MGADC08 mezzanines which have a non-standard EEPROM
-        data structure.
-
-        if ``use_cache = False``, the method also does not use the IPMI data cached by the ARM but
-        rather re-reads the EEPROM. This is useful in case the mezzanine has
-        been changed without power cycling the IceBoard (which is typically
-        done during Quality Control runs).
-
-        Todo:
-            - Should be made asynchronous
-        """
-        if not self.is_mezzanine_present(mezzanine):  # Check mezzanine presence using the FMC PRSNT line.
+        eeprom_data = self.hw.read_mezzanine_eeprom(mezzanine, 0, 1)
+        if ord(eeprom_data[0]) == 0x0d:  # if this is McGill format
+            self.logger.debug("%.32r: EEPROM in Mezzanine %i is McGill format. The FPGA will be reading only bytes until the terminator character. " % (self, mezzanine))
+            # Read the eeprom block by block until we detect the end of the
+            # dictionary
+            block_size = 32
+            string = ''
+            for i in range(512 / block_size):  # read 32 blocks of 16 bytes
+                data_block = self.hw.read_mezzanine_eeprom(
+                    mezzanine, addr=i*block_size, length=block_size, retry=3)
+                string += data_block
+                if ('}' in data_block) or (chr(255) in data_block):
+                    break
+            return string
+        else:  # If not McGill format,
+            self.logger.debug("%.32r: EEPROM in Mezzanine %i is not McGill format. The FPGA will *NOT* read the EEPROM contetnt " % (self, mezzanine))
             return None
 
-        if use_cache:
-            try:
-                # *** JFC: broken now. fixme
-                return tuber.TuberObject.__getattr__(self,'_get_mezzanine_ipmi')(mezzanine)  # Try to get the ipmi data from tuber
-            except tuber.TuberRemoteError:
-                pass
-            # Tuber has nothing, so see if we have a Python-cached version of the IPMI data
-            if self._mezzanine_ipmi_cache[mezzanine]:
-                return self._mezzanine_ipmi_cache[mezzanine]
+    # def _get_mezzanine_mcgill_ipmi(self, mezzanine, retry=3, use_cache=False):
+    #     """ Returns the IMPI data for the mezzanine located on slot
+    #     'mezzanine' (1 or 2). Returns None if no mezzanine is present.
 
-        self._mezzanine_ipmi_cache[mezzanine] = None
+    #     This method overrides the ARM method of the same name so we can
+    #     correctly read MGADC08 mezzanines which have a non-standard EEPROM
+    #     data structure.
 
-        # We can't use the cache, or the ARM cannot understand the EEPROM format, so read and decode the IPMI data ourselves
-        eeprom_data = base64.decodestring(self._mezzanine_eeprom_read_base64(mezzanine))
+    #     if ``use_cache = False``, the method also does not use the IPMI data cached by the ARM but
+    #     rather re-reads the EEPROM. This is useful in case the mezzanine has
+    #     been changed without power cycling the IceBoard (which is typically
+    #     done during Quality Control runs).
 
-        if ord(eeprom_data[0]) == 0x0d:  # if this is McGill format
+    #     Todo:
+    #         - Should be made asynchronous
+    #     """
+    #     if not self.is_mezzanine_present(mezzanine):  # Check mezzanine presence using the FMC PRSNT line.
+    #         return None
 
-            # # Read the eeprom block by block until we detect the end of the
-            # # dictionary
-            # block_size = 32
-            # string = ''
-            # for i in range(512 / block_size):  # read 32 blocks of 16 bytes
-            #     data_block = self._mezzanine_eeprom_read(
-            #         mezzanine, addr=i*block_size, length=block_size, retry=retry)
-            #     string += data_block
-            #     if ('}' in data_block) or (chr(255) in data_block):
-            #         break
+    #     if use_cache:
+    #         try:
+    #             # *** JFC: broken now. fixme
+    #             return tuber.TuberObject.__getattr__(self,'_get_mezzanine_ipmi')(mezzanine)  # Try to get the ipmi data from tuber
+    #         except tuber.TuberRemoteError:
+    #             pass
+    #         # Tuber has nothing, so see if we have a Python-cached version of the IPMI data
+    #         if self._mezzanine_ipmi_cache[mezzanine]:
+    #             return self._mezzanine_ipmi_cache[mezzanine]
 
-            last_char = eeprom_data.find('}')
-            if last_char < 0:
-                self.logger.error(
-                    '%.32r: The Mezzanine EEPROM indicated McGill-style data but no valid dictionary found on EEPROM. Did the board pass '
-                    'the quality control tests?' % self)
-                return None
+    #     self._mezzanine_ipmi_cache[mezzanine] = None
 
-            data_string = eeprom_data[1:last_char+1]  # keep only the dict definition data_string: remove first char (board ID) and stop at last '}'.
+    #     # We can't use the cache, or the ARM cannot understand the EEPROM format, so read and decode the IPMI data ourselves
+    #     eeprom_data = base64.decodestring(self._mezzanine_eeprom_read_base64(mezzanine))
 
-            # Read checksum
-            crc_string = eeprom_data[last_char+1: last_char+1+4]
-            crc = struct.unpack('i', crc_string)[0]
-            computed_crc = zlib.crc32(data_string)
-            if computed_crc != crc:
-                raise RuntimeError(
-                    'FMC EEPROM CRC is invalid. Read crc = %08X, '
-                    'computed crc = %08X' % (crc, computed_crc))
-            dict_out = ast.literal_eval(data_string)  # safer than using eval
 
-            # Extract standard FRU information from McGill data structure
-            part_number = dict_out.pop('Model', 'MGADC08')
-            serial_number = dict_out.pop('Serial #', 'Unknown')
-            product_version = dict_out.pop('Rev #', 'Unknown')
-            mfg_date_str = dict_out.get('Date of last test', None)
-            try:
-                mfg_date = datetime.strptime(mfg_date_str, '%d/%m/%Y')
-            except ValueError:
-                mfg_date = None
 
-            fru = FRU(
-                board=Board(
-                    mfg_date=mfg_date,
-                    manufacturer="Winterland",
-                    product_name="McGill Mezzanine",
-                    part_number=part_number,
-                    serial_number=serial_number,
-                    fru_file="",
-                ),
-                product=Product(
-                    manufacturer="Winterland",
-                    product_name="McGill Mezzanine",
-                    part_number=part_number,
-                    product_version=product_version,
-                    serial_number=serial_number,
-                    asset_tag="",
-                    fru_file="",
-                ),
-                multi=MultiDict(dict_out)
-            )
-        else:
-            try:
-                fru = FRU.decode(eeprom_data)
-            except ValueError:
-                self.logger.error(
-                    '%.32r: The EEPROM on mezzanine %i does not have valid IPMI data'
-                    % (self, mezzanine))
-                return None
-
-        self._mezzanine_ipmi_cache[mezzanine] = fru
-        return fru
+    #     self._mezzanine_ipmi_cache[mezzanine] = fru
+    #     return fru
 
     def _get_mezzanine_type(self, mezzanine):
         """ Returns the type of mezzanine located on slot 'mezzanine' (1 or 2).

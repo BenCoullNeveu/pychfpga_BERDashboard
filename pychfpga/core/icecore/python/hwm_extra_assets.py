@@ -15,6 +15,7 @@ from sqlalchemy.orm import class_mapper
 from . import handler
 from . import session  # YAML loader
 from . import hardware_map
+from . import tuber
 from .async import async, async_return
 from .hwm_assets import IceBoard, IceBoardHandler, FMCMezzanine, IceCrate, IceCrateHandler
 
@@ -316,21 +317,47 @@ class IceBoardPlus(IceBoard):
             part_number = None
             serial = None
             mezz_class[m] = None
-            # If a mezzanine is present, ask it (from EEPROM) what kind
-            # of mezzanine it is. Try to instantiate a mezz-specific
-            # class.
-            if (yield self.is_mezzanine_present.async(m)):
-                ipmi = self._get_mezzanine_mcgill_ipmi(m)  # might be null
-                if ipmi:  # handle the case where the mezzanine has an uninitialized EEPROM
-                    part_number = ipmi.product.part_number
-                    serial = ipmi.product.serial_number
-                    self.logger.info(
-                        '%r: detect_mezzanines(): Detected Mezzanine '
-                        'Model: %s Serial %s in Mezzanine %i'
-                        % (self, part_number, serial, m))
-                    for mapper in class_mapper(FMCMezzanine).self_and_descendants:
-                        if mapper.class_.__ipmi_part_number__ == part_number:
-                            mezz_class[m] = mapper.class_
+            # if there is no mezzanine in this slot, proceed to the next one
+            if not (yield self.is_mezzanine_present.async(m)):
+                continue
+
+            # If a mezzanine is present, get its EEPROM data and search for the first mezzanine class that can decode it.
+            try:
+                eeprom_data = self._mezzanine_eeprom_read(m)
+            except tuber.TuberRemoteError:  # If the method does not exist
+                eeprom_data = None
+
+            ipmi = None
+            if eeprom_data is not None:
+               for mapper in class_mapper(FMCMezzanine).self_and_descendants:
+                    if hasattr(mapper.class_, 'decode_eeprom'):
+                        ipmi = mapper.class_.decode_eeprom(eeprom_data)
+                        if ipmi:
+                            break
+            if not ipmi:
+                try:
+                    ipmi = self._get_mezzanine_ipmi(m)  # Read IPMI from the ARM's cache
+                    self.logger.info('%r: detect_mezzanines(): read Mezzanine %i EEPROM using the ARM' % (self, m))
+                except tuber.TuberRemoteError:
+                    pass
+            if not ipmi: # If we still did not get an IPMI block, give up and proceed to the next mezzanine
+                self.logger.info('%r: detect_mezzanines(): Could not decode the EEPROM in Mezzanine %i' % (self, m))
+                continue
+
+            # Extract the useful unformation from IPMI
+            part_number = ipmi.product.part_number
+            serial = ipmi.product.serial_number
+
+            self.logger.info(
+                '%r: detect_mezzanines(): Detected Mezzanine '
+                'Model: %s Serial %s in Mezzanine %i'
+                % (self, part_number, serial, m))
+
+            # Look through the Mezzanine classes to see if one matches the model number found in the EEPROM
+            for mapper in class_mapper(FMCMezzanine).self_and_descendants:
+                    if mapper.class_.__ipmi_part_number__ == part_number:
+                        mezz_class[m] = mapper.class_
+                        break
 
             if update:
                 if not self.hwm:
@@ -647,6 +674,10 @@ class IceBoardPlusHandler(IceBoardHandler):
     # Mezzanine management
 
     # Backplane management
+    def _mezzanine_eeprom_read(self, mezzanine):
+        """ Returns the contents of the specified mezzanine's EEPROM.
+        """
+        return base64.decodestring(self._mezzanine_eeprom_read_base64(mezzanine))
 
     # *** JFC: method rename
     def _write_motherboard_spi_eeprom_base64(self, *args, **kwargs):

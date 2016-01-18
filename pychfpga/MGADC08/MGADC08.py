@@ -14,14 +14,16 @@ import logging
 import numpy as np
 import time
 import struct
-# import zlib
-# import ast
+import zlib
+import ast
+from datetime import datetime
 
 from sqlalchemy import Column, Integer, String, ForeignKey, UniqueConstraint
 from sqlalchemy.orm import relationship, backref
 
 from pychfpga.core.icecore import FMCMezzanine
 from pychfpga.core.icecore import FMCMezzanineHandler
+from pychfpga.core.icecore.hw.ipmi_fru import FRU, Board, Product, MultiDict
 
 # Import mezzanine-specific modules
 import ADC
@@ -31,6 +33,7 @@ import AmbTemp
 import MGT_PLL
 
 class MGADC08_base(FMCMezzanine):
+    """ Implements the object that exposes the MGADC08 FMC ADC board hardware ressources"""
     handler_name = 'MGADC08_Handler'
     __ipmi_part_number__ = 'MGADC08'  # Must match part number in IPMI data. Used for auto-discovery.
 
@@ -38,7 +41,76 @@ class MGADC08_base(FMCMezzanine):
     __mapper_args__ = {'polymorphic_identity': 'MGADC08'}
     _pk = Column(Integer, ForeignKey('fmc_mezzanines._pk'), primary_key=True)
 
-    """ Implements object that exposes the MGADC08 FMC ADC board hardware ressources"""
+    @classmethod
+    def decode_eeprom(cls, eeprom_data):
+        """ Parses the mezzanine EEPROM data into a IPMI structure. Returns None if the EEPROM is not formatted is a recognized format"""
+        logger = logging.getLogger()
+        if ord(eeprom_data[0]) == 0x0d:  # if this is McGill format
+            # # Read the eeprom block by block until we detect the end of the
+            # # dictionary
+            # block_size = 32
+            # string = ''
+            # for i in range(512 / block_size):  # read 32 blocks of 16 bytes
+            #     data_block = self._mezzanine_eeprom_read(
+            #         mezzanine, addr=i*block_size, length=block_size, retry=retry)
+            #     string += data_block
+            #     if ('}' in data_block) or (chr(255) in data_block):
+            #         break
+
+            last_char = eeprom_data.find('}')
+            if last_char < 0:
+                logger.error(
+                    '%.32r: The Mezzanine EEPROM indicated McGill-style data but no valid dictionary found on EEPROM. Did the board pass '
+                    'the quality control tests?' % cls)
+                return None
+
+            data_string = eeprom_data[1:last_char+1]  # keep only the dict definition data_string: remove first char (board ID) and stop at last '}'.
+
+            # Read checksum
+            crc_string = eeprom_data[last_char+1: last_char+1+4]
+            crc = struct.unpack('i', crc_string)[0]
+            computed_crc = zlib.crc32(data_string)
+            if computed_crc != crc:
+                raise RuntimeError(
+                    'FMC EEPROM CRC is invalid. Read crc = %08X, '
+                    'computed crc = %08X' % (crc, computed_crc))
+            dict_out = ast.literal_eval(data_string)  # safer than using eval
+
+            # Extract standard FRU information from McGill data structure
+            part_number = dict_out.pop('Model', 'MGADC08')
+            serial_number = dict_out.pop('Serial #', 'Unknown')
+            product_version = dict_out.pop('Rev #', 'Unknown')
+            mfg_date_str = dict_out.get('Date of last test', None)
+            try:
+                mfg_date = datetime.strptime(mfg_date_str, '%d/%m/%Y')
+            except ValueError:
+                mfg_date = None
+
+            return FRU(
+                board=Board(
+                    mfg_date=mfg_date,
+                    manufacturer="Winterland",
+                    product_name="McGill Mezzanine",
+                    part_number=part_number,
+                    serial_number=serial_number,
+                    fru_file="",
+                ),
+                product=Product(
+                    manufacturer="Winterland",
+                    product_name="McGill Mezzanine",
+                    part_number=part_number,
+                    product_version=product_version,
+                    serial_number=serial_number,
+                    asset_tag="",
+                    fru_file="",
+                ),
+                multi=MultiDict(dict_out)
+            )
+        # if this not the McGill Format, we assume try the standard IPMI
+        try:
+            return FRU.decode(eeprom_data)
+        except ValueError:
+            return None
 
 class MGADC08_Handler(FMCMezzanineHandler):
 
