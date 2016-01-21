@@ -224,7 +224,7 @@ class FpgaMmi:
         """
         return self.udp.get_timeout()
 
-    def _send_command(self, cmd, expected_reply_length, retry=1, resync=False):
+    def _send_command(self, cmd, expected_reply_length, retry=10, resync=False):
         """ Send a command to the FPGA and check the reply for the correct
         sequence number and packet length. If unsuccessful, the command will
         be resent ``retry`` times.
@@ -270,7 +270,7 @@ class FpgaMmi:
         return data[1:]
 
     def read(self, addr, type=np.dtype('>u1'), length=1,
-             timeout=None, retry=1, resync=False):
+             timeout=None, retry=10, resync=False):
         """
         Reads memory-mapped byte(s) from the FPGA through the Ethernet
         interface.
@@ -399,7 +399,7 @@ class FpgaMmi:
         else:
             return chr(data)
 
-    def write(self, addr, data, mask=None, retry=1, resync=False):
+    def write(self, addr, data, mask=None, retry=10, resync=False):
         """
         Writes byte(s) to memory-mapped registers in the FPGA through the
         Ethernet interface.
