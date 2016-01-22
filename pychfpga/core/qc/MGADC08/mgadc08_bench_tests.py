@@ -13,6 +13,7 @@ import textwrap
 
 util.add_paths('../..')  # needed to find icecore
 from icecore import XReport as xr
+from icecore.tests.xreport import test_report
 from icecore.hw import ipmi_fru
 
 util.add_paths('../../..')  # needed to find fpga_array
@@ -829,8 +830,23 @@ class MGADC08CarrierTests():  #
         Total time: 20 s
         """
         cfg = self.cfg.carrier_tests.s11_test
-        instr = util.open_instruments(self.cfg.instruments, cfg.instruments)  # open only instruments listed in cfg.instruments
-        na = instr.na
+        dummy_instr = cfg.dummy_instruments
+
+        if not dummy_instr:
+            instr = util.open_instruments(self.cfg.instruments, cfg.instruments)  # open only instruments listed in cfg.instruments
+            na = instr.na
+        else:
+            class DummyNA(object):
+                def command(*args, **kwargs): return
+                def get_s_params(self, *args, **kwargs):
+                    freqs = np.linspace(100e6, 1000e6, 400)
+                    s11_data = freqs*0 -0.0001
+                    return freqs, (s11_data, )
+                def plot_s_params(self, freqs, s11_data, title='', **kwargs):
+                    plt.plot(freqs, s11_data)
+                    plt.title(title)
+            na = DummyNA()
+
         tr = NameSpace() # test results container
         ib, mezz = (None, None)  # in case we fail finding boards
         passed = False
@@ -915,7 +931,7 @@ class MGADC08CarrierTests():  #
                     # time.sleep(frame_transmission_period)
                     r.read_frames(flush=True, frames=3)  # let the new data propagate
                     print '.',
-                    trial = 0 
+                    trial = 0
                     while True:
                         data = r.read_frames(cfg.number_of_frames)
                         if channel in data:
