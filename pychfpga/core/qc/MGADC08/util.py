@@ -105,6 +105,10 @@ def run_tests(config_file):
                 # instr.dmm.display(current_model, current_serial)
         elif selection.type == 'push':
             commit_repo(test_results_folder)
+        elif selection.type == 'summary':
+            test_folders = os.path.join(test_results_folder, '%s_SN*/' % (current_model))
+            f = raw_input('Enter destination filename (optional):')
+            XReport.generate_combined_summary(test_folders, cfg.test_list, output_filename=f)
         elif selection.type == 'test':
             test = test_list[selection.test_tag]
 
