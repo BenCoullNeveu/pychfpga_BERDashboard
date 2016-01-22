@@ -723,25 +723,33 @@ def generate_combined_summary(input_folder='.', required_tests=[], output_filena
     dirs = glob.glob(input_folder+'\\')
 
     results = []
-    for d in dirs:
+    print 'Loading test reports...'
+    for i,d in enumerate(dirs):
         serial = os.path.split(os.path.split(d)[0])[1]
+        print '%i/%i: %s' % (i+1, len(dirs), serial)
         test_cases = load_test_cases(d)
         status = get_test_status(test_cases, test_list)
-        passed = ('FAILED', 'PASSED')[all(t.passed for t in status)]
+        passed = ('FAILED', 'Passed')[all(t.passed for t in status)]
+        first_fail = ['%s Failed: %s' % (t.name, t.message) for t in status if t.date and not t.passed]
+        first_fail = '"'+first_fail[0]+'"' if first_fail else 'N/A'
         first_date = min(t.date for t in status)
         last_date = max(t.date for t in status)
         details =['"%s=%s (%s)"' % (t.name, ('FAILED', 'PASSED')[bool(t.passed)], t.message) for t in status]
-        results.append(NameSpace(serial=serial, passed=passed, date=last_date, first_date=first_date, details=details))
-
+        results.append(NameSpace(serial=serial, passed=passed, date=last_date, first_date=first_date, first_fail=first_fail, details=details))
     results.sort(key=lambda t: t.serial)
+    print
 
     strings = []
     for r in results:
-        s ='%10s, %s, %s' % (r.serial, r.passed, r.date)
+        s ='%10s, %s, %s, %s' % (r.serial, r.passed, r.date, r.first_fail)
         print s
-        strings.append(s + ',' + ','.join(r.details))
+        # strings.append(s + ',' + ','.join(r.details))
+        strings.append(s)
 
     if output_filename:
         with open(output_filename, 'w') as f:
             f.write('\n'.join(strings))
+        print
+        print 'Summary report is saved in %s' % os.path.realpath(output_filename)
+        print
     return strings
