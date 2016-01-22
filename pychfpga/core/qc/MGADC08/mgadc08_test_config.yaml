@@ -154,7 +154,7 @@ carrier_tests:
 
     s11_test:
         instruments: [na] # Subset of instruments we use in these tests
-        dummy_instruments: yes
+        dummy_instruments: no
         fpga_array: {<<: *default_fpga_array, no_mezz: 1, prog: 1,  open: 1}
         s11_max : -15 # in dB
         adc_trim_value: 15  # 0-15, default is 8. Applies to all channels.
