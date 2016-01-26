@@ -320,7 +320,8 @@ class MGADC08CarrierTests():  #
 
             if mezz:
                 # If a Mezzanine is discovered, it must have valid IPMI data.
-                ipmi = ib._get_mezzanine_mcgill_ipmi(self.slot)  # returns either a Tuber IPMI or a Python IPMI
+                eeprom_data = self._mezzanine_eeprom_read(self.slot)
+                ipmi = mezz.decode_eeprom(eeprom_data)  # returns either a Tuber IPMI or a Python IPMI
                 tr.old_ipmi = repr(ipmi)
                 print
                 print 'The board IPMI information found in its EEPROM is'
