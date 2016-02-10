@@ -1028,8 +1028,8 @@ class IceBoardHardware(object):
             'FMCB_PG_M2C': (self._gpio_power, 1, 3, 1)
         })
 
-        self._qsfpa = qsfp.QSFP(self._i2c, 'QSFPA', gpio_prefix='QSFPA_', gpio=self._gpio)
-        self._qsfpb = qsfp.QSFP(self._i2c, 'QSFPB', gpio_prefix='QSFPA_', gpio=self._gpio)
+        self._qsfpa = qsfp.QSFP(self._i2c, bus_name='QSFPA', gpio_prefix='QSFPA_', gpio=self._gpio)
+        self._qsfpb = qsfp.QSFP(self._i2c, bus_name='QSFPB', gpio_prefix='QSFPB_', gpio=self._gpio)
 
         self.qsfp = Ccoll((self._qsfpa, self._qsfpb))
         # self._logger.info(' Instantiating I2C temperature sensors')

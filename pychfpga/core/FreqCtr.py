@@ -55,6 +55,7 @@ class FreqCtr_base(Module_base):
     'FMCA_MGT_PLL_REFCLK1': 29,  #
     'FMCB_MGT_PLL_REFCLK0': 30,  #
     'FMCB_MGT_PLL_REFCLK1': 31,  #
+    'RAW_CLK': 32,  #
     }
 
     # Create local variables for page numbers tomake the table more readable
