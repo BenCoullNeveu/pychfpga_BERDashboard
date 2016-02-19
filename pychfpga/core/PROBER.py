@@ -64,7 +64,7 @@ class PROBER_base(Module_base):
             if source in self.DATA_SOURCE_TABLE:
                 source = self.DATA_SOURCE_TABLE[source]
             else:
-                ValueError("Unknown data capture source '%s'. Valid sources are %s." % (source, ','.join(self.DATA_SOURCE_TABKE.keys())))
+                ValueError("Unknown data capture source '%s'. Valid sources are %s." % (source, ','.join(self.DATA_SOURCE_TABLE.keys())))
         self.SOURCE_SEL = source
 
 
