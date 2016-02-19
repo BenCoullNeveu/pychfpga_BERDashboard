@@ -1877,7 +1877,7 @@ def add_fpga_array_arguments(parser):
     parser.add_argument('--sync_method',     type=str, default='distributed_time', help="Sets the global syncing method ('distributed_time', 'centralized_time_trigger', 'centralized_soft_trigger', 'local_soft_trigger')")
     parser.add_argument('--sync_source',     type=str, default='bp_trig', help="Sets the global syncing source ('bp_gpio_int', 'bp_time', 'bp_trig')")
 
-def setup_logging(log_target, log_level, sql_log_level, stderr_log_level):
+def setup_logging(log_target='syslog', log_level='debug', sql_log_level='warn', stderr_log_level='warn'):
     # Make sure SQLAlchemy does not log too much
     sql_logger = logging.getLogger('sqlalchemy.engine.base.Engine')
     sql_logger.setLevel(log_levels[sql_log_level])
