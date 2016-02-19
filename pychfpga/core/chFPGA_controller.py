@@ -418,6 +418,12 @@ class chFPGA_controller(IceBoardExtHandler):
 
         self._logger.info('%r: --- Initializing FMC slots' % self)
 
+        # Reduce the power load before we turn on the mezzanines
+        self.set_ant_reset(1)
+        for mezz in self.mezzanine.values():
+            mezz.set_power(False)
+        time.sleep(0.2)  # *** make async
+
         for mezz_number in (1, 2):
             if mezz_number in self.mezzanine:
                 mezz = self.mezzanine[mezz_number]
@@ -431,6 +437,10 @@ class chFPGA_controller(IceBoardExtHandler):
             else:
                 self._logger.debug('%r:    Skipping FMC%i initialization since no board is present in that slot' % (self, mezz_number - 1))
 
+        self._logger.debug('%r:   Taking channelizers out of reset after FMC enabling' % (self))
+        self.set_ant_reset(1)
+
+        self._logger.debug('%r:   Sending sync()' % (self))
         self.sync() # might be needed  to make sure that the clock is running to set delays
 
 
