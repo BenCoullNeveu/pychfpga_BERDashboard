@@ -1,0 +1,10 @@
+*.swp
+*.pyo
+*.pyc
+*~
+*.bak
+*.orig
+/Archives
+*.7z
+_build/
+sourceDocumentation/generate/
