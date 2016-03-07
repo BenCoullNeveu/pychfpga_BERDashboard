@@ -24,7 +24,7 @@ from . import icecrate_ext  # this module is not referenced here, but loading it
 # from lib import tmp100  # I2C Temperature sensor
 from lib import pca9575  # I2C 16-bit IO Expander
 from lib import tca9548a  # I2C switch
-# from lib import ina230  # I2C Voltage and current monitor
+from lib import ina230  # I2C Voltage and current monitor
 from lib import eeprom
 from lib import qsfp
 from lib import gpio
@@ -895,7 +895,7 @@ class IceBoardHardware(object):
 
     # # Power monitors, on SMPS bus
     # _POWER_ICEVADJ_I2C_ADDR   = 0b1000011 #0x43
-    # _POWER_ICE12V0_I2C_ADDR   = 0b1000111 #0x47
+    _POWER_ICE12V0_I2C_ADDR   = 0b1000111 #0x47
     # _POWER_ICE5V0_I2C_ADDR    = 0b1001000 #0x48
     # _POWER_ICE3V3_I2C_ADDR    = 0b1001001 #0x49
     # _POWER_ICE1V5_I2C_ADDR    = 0b1001100 #0x4C
@@ -1040,7 +1040,7 @@ class IceBoardHardware(object):
 
         # self._logger.info(' Instantiating I2C current/power monitors')
         # self._power_ice_3v3 = ina230.ina230(self._i2c, self._POWER_ICE3V3_I2C_ADDR, 'SMPS')
-        # self._power_ice_12v0 = ina230.ina230(self._i2c, self._POWER_ICE12V0_I2C_ADDR, 'SMPS')
+        self._power_ice_12v0 = ina230.ina230(self._i2c, self._POWER_ICE12V0_I2C_ADDR, 'SMPS')
         # self._power_ice_5v0 = ina230.ina230(self._i2c, self._POWER_ICE5V0_I2C_ADDR, 'SMPS')
         # self._power_ice_1v0_gtx = ina230.ina230(self._i2c, self._POWER_ICE1V0GTX_I2C_ADDR, 'SMPS')
         # self._power_ice_vadj = ina230.ina230(self._i2c, self._POWER_ICEVADJ_I2C_ADDR, 'SMPS')
