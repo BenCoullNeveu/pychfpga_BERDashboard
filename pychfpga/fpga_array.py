@@ -1577,12 +1577,13 @@ class FPGAArray(object):
 
         orphan_iceboards = [ib for ib in self.ib if not ib.crate or not ib.crate.serial]
         corner_label = 'Standalone\nIceboards'
-        col_labels = ['-'] * len(orphan_iceboards)
-        local_row_labels = ['-' + '\n' + row_labels]
+        # col_labels = ['-'] * len(orphan_iceboards)
+        col_labels = ['\nSN%s' % ib.serial for ib in orphan_iceboards]
+        local_row_labels = [row_labels]
         data = []
         for ib in orphan_iceboards:
-            cell = 'SN' + ib.serial + '\n' if add_serial else ''
-            cell += func(ib) if func else ''
+            # cell = 'SN' + ib.serial + '\n' if add_serial else ''
+            cell = func(ib) if func else ''
             data.append([cell])
         if data:
             self.print_table(data, row_labels=local_row_labels, col_labels=col_labels, corner_label=corner_label, line_sep=grid)
@@ -1591,7 +1592,7 @@ class FPGAArray(object):
         if len(self.ic):
             corner_label = 'Crate \\ Slot\n'
             slot_range = range(1, max(self.ic.NUMBER_OF_SLOTS)+1)
-            col_labels = ['%i' % s for s in slot_range]
+            col_labels = ['%i' % (s) for s in slot_range]
             data = []
             valid_crates = [ic for ic in self.ic if ic.serial]
             local_row_labels = [crate.get_id() + '\n' + row_labels for crate in valid_crates]
@@ -1614,6 +1615,36 @@ class FPGAArray(object):
 
     def print_iceboard_power(self):
         self.print_iceboard_table(lambda ib: '%0.1f' % ib.get_total_power())
+
+    def print_iceboard_info(self):
+        info = collections.OrderedDict([
+            ('MB FPGA Die Temp', lambda ib: '%0.1fC' % (ib.get_motherboard_temperature(ib.TEMPERATURE_SENSOR.MB_FPGA_DIE))),
+            ('MB FPGA Temp', lambda ib: '%0.1fC' % (ib.get_motherboard_temperature(ib.TEMPERATURE_SENSOR.MB_FPGA))),
+            ('MB ARM Temp', lambda ib: '%0.1fC' % (ib.get_motherboard_temperature(ib.TEMPERATURE_SENSOR.MB_ARM))),
+            ('MB PHY Temp', lambda ib: '%0.1fC' % (ib.get_motherboard_temperature(ib.TEMPERATURE_SENSOR.MB_PHY))),
+            ('MB POW Temp', lambda ib: '%0.1fC' % (ib.get_motherboard_temperature(ib.TEMPERATURE_SENSOR.MB_POWER))),
+            ('MB VCC12V', lambda ib: '%0.1fV@%0.3fA' % (ib.get_motherboard_voltage(ib.RAIL.MB_VCC12V0), ib.get_motherboard_current(ib.RAIL.MB_VCC12V0))),
+            ('MB VCC3V3', lambda ib: '%0.1fV@%0.3fA' % (ib.get_motherboard_voltage(ib.RAIL.MB_VCC3V3), ib.get_motherboard_current(ib.RAIL.MB_VCC3V3))),
+            ('MB VADJ', lambda ib: '%0.1fV@%0.3fA' % (ib.get_motherboard_voltage(ib.RAIL.MB_VADJ), ib.get_motherboard_current(ib.RAIL.MB_VADJ))),
+            ('MB VCC5V5', lambda ib: '%0.1fV@%0.3fA' % (ib.get_motherboard_voltage(ib.RAIL.MB_VCC5V5), ib.get_motherboard_current(ib.RAIL.MB_VCC5V5))),
+            ('MB VCC1V0', lambda ib: '%0.1fV@%0.3fA' % (ib.get_motherboard_voltage(ib.RAIL.MB_VCC1V0), ib.get_motherboard_current(ib.RAIL.MB_VCC1V0))),
+            ('MB VCC1V0 GTX', lambda ib: '%0.1fV@%0.3fA' % (ib.get_motherboard_voltage(ib.RAIL.MB_VCC1V0_GTX), ib.get_motherboard_current(ib.RAIL.MB_VCC1V0_GTX))),
+            ('MB VCC1V2', lambda ib: '%0.1fV@%0.3fA' % (ib.get_motherboard_voltage(ib.RAIL.MB_VCC1V2), ib.get_motherboard_current(ib.RAIL.MB_VCC1V2))),
+            ('MB VCC1V5', lambda ib: '%0.1fV@%0.3fA' % (ib.get_motherboard_voltage(ib.RAIL.MB_VCC1V5), ib.get_motherboard_current(ib.RAIL.MB_VCC1V5))),
+            ('MB VCC1V8', lambda ib: '%0.1fV@%0.3fA' % (ib.get_motherboard_voltage(ib.RAIL.MB_VCC1V8), ib.get_motherboard_current(ib.RAIL.MB_VCC1V8))),
+            ('Mezz 1 VCC12V', lambda ib: ('%0.1fV@%0.3fA' % (ib.get_mezzanine_voltage(ib.RAIL.MEZZ_VCC12V0, 1), ib.get_mezzanine_current(ib.RAIL.MEZZ_VCC12V0, 1)))),
+            ('Mezz 1 VCC3V3', lambda ib: ('%0.1fV@%0.3fA' % (ib.get_mezzanine_voltage(ib.RAIL.MEZZ_VCC3V3, 1), ib.get_mezzanine_current(ib.RAIL.MEZZ_VCC3V3, 1)))),
+            ('Mezz 1 VADJ', lambda ib: ('%0.1fV@%0.3fA' % (ib.get_mezzanine_voltage(ib.RAIL.MEZZ_VADJ, 1), ib.get_mezzanine_current(ib.RAIL.MEZZ_VADJ, 1)))),
+            ('Mezz 2 VCC12V', lambda ib: ('%0.1fV@%0.3fA' % (ib.get_mezzanine_voltage(ib.RAIL.MEZZ_VCC12V0, 2), ib.get_mezzanine_current(ib.RAIL.MEZZ_VCC12V0, 2)))),
+            ('Mezz 2 VCC3V3', lambda ib: ('%0.1fV@%0.3fA' % (ib.get_mezzanine_voltage(ib.RAIL.MEZZ_VCC3V3, 2), ib.get_mezzanine_current(ib.RAIL.MEZZ_VCC3V3, 2)))),
+            ('Mezz 2 VADJ', lambda ib: ('%0.1fV@%0.3fA' % (ib.get_mezzanine_voltage(ib.RAIL.MEZZ_VADJ, 2), ib.get_mezzanine_current(ib.RAIL.MEZZ_VADJ, 2)))),
+            ('MB Total power', lambda ib: '%0.1fW' % ib.get_total_power()),
+            ])
+
+        def get_info(ib):
+            return '\n'.join(fn(ib) for fn in info.values())
+
+        self.print_iceboard_table(get_info, row_labels='\n'.join(info.keys()))
 
     def print_iceboard_qsfp(self):
         self.print_iceboard_table(lambda ib: '\n'.join(ib.hw.qsfp.get_serial_number().map(str)), grid=1)
