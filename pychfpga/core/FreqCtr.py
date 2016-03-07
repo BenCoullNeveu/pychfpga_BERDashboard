@@ -56,6 +56,11 @@ class FreqCtr_base(Module_base):
     'FMCB_MGT_PLL_REFCLK0': 30,  #
     'FMCB_MGT_PLL_REFCLK1': 31,  #
     'RAW_CLK': 32,  #
+    'MGT_CLK100': 33,  #
+    'MGT_CLK200': 34,  #
+    'SFP_REFCLK': 35,  #
+    'CLK10': 36,  #
+    'MGT_CLK125': 37,  #
     }
 
     # Create local variables for page numbers tomake the table more readable
@@ -138,7 +143,15 @@ class FreqCtr_base(Module_base):
 
         print 'System Frequencies:'
         print '   IceBoard Reference clock source: %s' % (fpga.get_clock_source())
-        print '   System clock:             %7.3f MHz' % (self.read_frequency('CLK200', gate_time=gate_time) / 1e6)
+        print ' External clock sources'
+        print '   RAW CLK (no PLL, SE):     %7.3f MHz' % (self.read_frequency('RAW_CLK', gate_time=gate_time) / 1e6)
+        print '   Reference clock (via PLL):%7.3f MHz' % (self.read_frequency('CLK10', gate_time=gate_time) / 1e6)
+        print '   MGT CLK100 (via PLL, not used):%7.3f MHz' % (self.read_frequency('MGT_CLK100', gate_time=gate_time) / 1e6)
+        print '   MGT CLK125 (via PLL, not used):%7.3f MHz' % (self.read_frequency('MGT_CLK125', gate_time=gate_time) / 1e6)
+        print '   MGT CLK200 (via PLL, not used):%7.3f MHz' % (self.read_frequency('MGT_CLK200', gate_time=gate_time) / 1e6)
+        print '   SFP REFCLK (via PLL):          %7.3f MHz' % (self.read_frequency('SFP_REFCLK', gate_time=gate_time) / 1e6)
+        print ' Internally generated system clocks (from SFP_REFCLK)'
+        print '   CLK200:                   %7.3f MHz' % (self.read_frequency('CLK200', gate_time=gate_time) / 1e6)
         print '   CTRL_CLK:                 %7.3f MHz' % (self.read_frequency('CTRL_CLK', gate_time=gate_time) / 1e6)
         print '   SYSMON_CLK:               %7.3f MHz' % (self.read_frequency('SYSMON_CLK', gate_time=gate_time) / 1e6)
         print '   Channelizers clock:       %7.3f MHz (Source= %i (%s))' % (self.read_frequency('ANT_CLK', gate_time=gate_time) / 1e6, PLL_CLK_SRC, ant_clock_source_string)
