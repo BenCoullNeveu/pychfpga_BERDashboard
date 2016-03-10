@@ -419,15 +419,16 @@ class chFPGA_controller(IceBoardExtHandler):
         self._logger.info('%r: --- Initializing FMC slots' % self)
 
         # Reduce the power load before we turn on the mezzanines
-        self.set_ant_reset(1)
-        for mezz in self.mezzanine.values():
-            mezz.set_power(False)
-        time.sleep(0.2)  # *** make async
+        # self.set_ant_reset(1)
+        # for mezz in self.mezzanine.values():
+        #     mezz.set_power(False)
+        # time.sleep(0.2)  # *** make async
 
         for mezz_number in (1, 2):
             if mezz_number in self.mezzanine:
                 mezz = self.mezzanine[mezz_number]
                 self._logger.debug('%r:   Powering up FMC%i' % (self, mezz_number - 1))
+                mezz.set_power(False)  # For some reason, prevents the board from rebooting (!)
                 mezz.set_power(True)
                 time.sleep(0.2) # Give it some time for the power to stabilize
                 # We need to initialize the ADC board befor we initialize ANT (and its data acquisition) because the delay blocks need a clock
@@ -795,16 +796,21 @@ class chFPGA_controller(IceBoardExtHandler):
 
     set_ADC_mode = set_adc_mode  # For legacy code compatibility
 
-    def get_adc_mode(self):
+    def get_adc_mode(self, channels=None):
         """
         Gets the current operating mode of all the ADCs as a string.
 
         If all ADCs operate in the same mode, a single mode string is returned. Otherwise a list of mode strings is returned.
         """
 
+        if channels is None:
+            channels = self.default_channels
+
         mode_names = []
+
         # get the ADC mode number for every ADC board
-        for mezz_number, mezz in self.mezzanine.items():
+        adc_boards = self.get_adc_board(channels)
+        for mezz in adc_boards:
             mode_value = mezz.ADC.get_test_mode()
             mode_name = [name for (name, value) in self.ADC_MODE_NAMES.items() if value[0] == mode_value][0]
             mode_names.append(mode_name)
@@ -1129,7 +1135,7 @@ class chFPGA_controller(IceBoardExtHandler):
         By default takes data at 3 offset locations (0,1,2), but can measure more
         """
         old_delays = self.get_adc_delays()
-        old_adc_mode = self.get_adc_mode()
+        old_adc_mode = self.get_adc_mode(channels=channels) # make sure we don't access boards not on the channel list: they may be powered off
         self.set_adc_delays([[ [0]*8, [0]*8]] * 16); # Set all sampling delays and offsets to zero
         self.set_adc_mode('pulse') # generate pulse pattern
         for i in range(10):
