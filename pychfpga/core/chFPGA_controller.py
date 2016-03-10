@@ -590,6 +590,7 @@ class chFPGA_controller(IceBoardExtHandler):
             config.mgt_word_clock = self.FreqCtr.read_frequency('MGT_USRCLK2', gate_time=0.05)
             config.adc_clocks = [self.FreqCtr.read_frequency(('ADC_CLK'+str(i)), gate_time=0.05) for i in range(8)]
             # config.adc_serial = 'Not available'
+        	# config.motherboard_serial = self.GPIO.FPGA_SERIAL_NUMBER
             # Add FFT shift, scaler gain, corr integration/capture period etc.
             # config.freq_flags = self.freq_flags  # JFC: what is that?
         return config
@@ -1409,6 +1410,60 @@ class chFPGA_controller(IceBoardExtHandler):
             gain_list.append([ant.ant_number, [glin,glog]])
         return gain_list
 
+    def synchronized_gain_switching(self, enable=1):
+        for ant in self.ANT.values():
+            ant.SCALER.SYNCHRONIZE_GAIN_BANK=enable
+        self._logger.debug("%r: Syncronized gains for active antennas set to %d" % (self, enable))
+
+
+    def get_synchronized_gain_switching(self):
+        enabled = []
+        for ant in self.ANT.values():
+            enabled.append(ant.SCALER.SYNCHRONIZE_GAIN_BANK)
+        self._logger.debug("%r: syncronization for gain set to %s" % (self, ', '.join([str(i) for i in enabled])))
+        return enabled
+
+    def set_gain_switch_frame_number(self, frame = 2147483647):
+        for ant in self.ANT.values():
+            ant.SCALER.GAIN_BANK_SWITCH_FRAME_NUMBER = frame
+        self._logger.debug("%r: set gain switch number for active antennas to %d" % (self, frame))
+
+
+    def get_gain_switch_frame_number(self):
+        frames = []
+        for ant in self.ANT.values():
+            frames.append(ant.SCALER.GAIN_BANK_SWITCH_FRAME_NUMBER)
+        self._logger.debug("%r: gain switch numbers are %s" % (self, ', '.join([str(i) for i in frames])))
+        return frames
+
+    def set_next_gain_bank(self, bank=0):
+        '''
+        Sets which gain bank (0,1) scaler will use.  if syncronized gain switching enabled, won't take effect
+        until the bank switch frame number.  Otherwise is immediate
+        '''
+        for ant in self.ANT.values():
+            ant.SCALER.READ_COEFF_BANK = bank
+        self._logger.debug("%r: set gain bank for active antennas to %d" % (self, bank))
+    
+
+    def get_next_gain_bank(self):
+        '''
+        Gets which gain bank (0,1) scaler will use.  if syncronized gain switching enabled, won't take effect
+        until the bank switch frame number.  Otherwise is immediate
+        '''
+        banks = []
+        for ant in self.ANT.values():
+            banks.append(ant.SCALER.READ_COEFF_BANK)
+        self._logger.debug("%r: Got gain bank for active antennas to %s" % (self, ', '.join([str(i) for i in banks])))
+        return banks
+
+
+    def get_current_gain_bank(self):
+        gain_banks = []
+        for ant in self.ANT.values():
+            gain_banks.append(ant.SCALER.CURRENT_GAIN_BANK)
+        return gain_banks
+         
 
     def set_fft_shift(self, fft_shift=0b11111111111, channels=None):
         """
