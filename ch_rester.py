@@ -3,20 +3,72 @@
 from __future__ import division, print_function
 
 import argparse
+import getpass
 import logging
 import os
 import signal
+import socket
 import struct
+import subprocess
 import sys
 import pickle
+import time
 import traceback
 
 import tornado
 import tornado.tcpclient
 import tornado.web
 
+import chrx
 import kotekan
 from pychfpga import fpga_array
+
+
+# Current archive format version. Prefixed by "NT_" to signify that
+# these data do not have the time-transpose completed.
+ARCHIVE_VERSION = "NT_2.2.0"
+
+# Backplane serial number---eventually this should be queried directly
+# from the hardware!
+CRATE_SN = "K7BP16-0004"
+
+# FPGA housekeeping.
+FPGA_HK_FIELDS = { "core_temp": "deg C" }
+
+# Git version.
+VERSION = subprocess.check_output(['git', 'describe', '--tags'],
+    cwd=os.path.dirname(os.path.realpath(__file__))).strip()
+
+
+def start_acq(config, log):
+
+    corr_name = "pathfinder"
+    time_str = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+    acq_name = "%s_%s_corr" % (time_str, corr_name)
+    acq_base_dir = os.path.join(config['acq']['base_path'], acq_name)
+
+    acq = chrx.acq(config, log, 16, FPGA_HK_FIELDS)
+
+    # Add some acquisition information to the header, for kicks.
+    acq_headers = {
+        'acquisition_name': acq_name,
+        'acquisition_type': 'corr',
+        'archive_version': ARCHIVE_VERSION,
+        'collection_server': socket.gethostname(),
+        'instrument_name': corr_name,
+        'git_version_tag': VERSION,
+        'system_user': getpass.getuser(),
+    }
+
+    for k in ['notes']:
+        if k in config:
+            acq_headers[k] = config[k]
+
+    for k,v in acq_headers.items():
+        acq.add_header_item(k, v)
+
+    acq.start(acq_base_dir, CRATE_SN, int(config['fpga']['subarray']))
+    return acq
 
 
 class ChimeMaster(object):
@@ -30,6 +82,8 @@ class ChimeMaster(object):
     def start(self, **kvs):
         self.config = kvs
 
+        ## FPGAs ##
+
         self.log.info("initializing FPGAs...")
         self.fpgas = fpga_array.FPGAArray(**kvs['fpga_array'])
         self.log.info("finished initializing FPGAs")
@@ -41,12 +95,18 @@ class ChimeMaster(object):
 
         self.fpgas.set_operational_mode('shuffle16', frames_per_packet=2)
 
+        ## CHRX ##
+
+        self.log.info("initializing CHRX...")
+        self.acq = start_acq(self.config, self.log)
+
         return {}
 
     def status(self):
         return self.config
 
     def stop(self):
+        self.acq.stop()
         return {}
 
 
@@ -235,6 +295,7 @@ def main(args):
     # start logging
     log = setup_log(args.log, args.loglevel)
     log.info("booting ch_master...")
+    log.info("version %s" % VERSION)
 
     if args.debug:
         cm = DummyChimeMaster(log)
