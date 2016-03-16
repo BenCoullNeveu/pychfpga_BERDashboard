@@ -171,7 +171,18 @@ class StartHandler(JsonRequestHandler):
         self.cm = cm
 
     def post(self):
-        self.write(self.cm.start(**self.request.arguments))
+        def encode_utf8(x):
+            "convert unicode to utf-8 strings"
+            if type(x) is unicode:
+                return x.encode('utf8')
+            elif type(x) is dict:
+                return {encode_utf8(k):encode_utf8(v) for k,v in x.items()}
+            elif type(x) is list:
+                return map(encode_utf8, x)
+            else:
+                return x
+        config = encode_utf8(self.request.arguments)
+        self.write(self.cm.start(**config))
 
 
 class StatusHandler(JsonRequestHandler):
