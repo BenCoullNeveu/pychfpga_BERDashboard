@@ -419,21 +419,26 @@ class chFPGA_controller(IceBoardExtHandler):
         self._logger.info('%r: --- Initializing FMC slots' % self)
 
         # Reduce the power load before we turn on the mezzanines
-        # self.set_ant_reset(1)
-        # for mezz in self.mezzanine.values():
-        #     mezz.set_power(False)
-        # time.sleep(0.2)  # *** make async
+        self.set_ant_reset(1)
+        self.set_corr_reset(1)
+        for mezz in self.mezzanine.values():
+            mezz.set_power(False)
+        time.sleep(0.2)  # *** make async
 
         for mezz_number in (1, 2):
             if mezz_number in self.mezzanine:
                 mezz = self.mezzanine[mezz_number]
-                self._logger.debug('%r:   Powering up FMC%i' % (self, mezz_number - 1))
+                self._logger.debug('%r:   Powering down FMC%i' % (self, mezz_number - 1))
+                # self.hw.set_mezzanine_power(mezz_number-1, False)
                 mezz.set_power(False)  # For some reason, prevents the board from rebooting (!)
+                time.sleep(0.2)  # *** make async
+                # self._logger.debug('%r:   Powering up FMC%i' % (self, mezz_number - 1))
+                self.hw.set_mezzanine_power(mezz_number-1, True)
                 mezz.set_power(True)
                 time.sleep(0.2) # Give it some time for the power to stabilize
                 # We need to initialize the ADC board befor we initialize ANT (and its data acquisition) because the delay blocks need a clock
                 self._logger.debug('%r:   Initializing FMC%i' % (self, mezz_number - 1))
-                mezz.init(sampling_frequency = sampling_frequency, reference_frequency=reference_frequency)
+                mezz.init(sampling_frequency=sampling_frequency, reference_frequency=reference_frequency)
                 mezz.status()
             else:
                 self._logger.debug('%r:    Skipping FMC%i initialization since no board is present in that slot' % (self, mezz_number - 1))
@@ -571,7 +576,7 @@ class chFPGA_controller(IceBoardExtHandler):
             if mezz1:
                 config.adc_board_temperature = mezz1.AmbTemp.temperature
                 config.adc_board_adc_chip_temperature = [adc.get_temperature() for adc in mezz1.ADC]
-                config.adc_serial = [self.mezzanine[mezz_number].serial if mezz_number in self.mezzanine else None for mezz_number in (1, 2)] #mezz1._board_info['Serial #']
+            config.adc_serial = [self.mezzanine[mezz_number].serial if mezz_number in self.mezzanine else None for mezz_number in (1, 2)] #mezz1._board_info['Serial #']
 
             config.antenna_data_source = self.get_data_source()
             config.antenna_fft_bypass = self.get_FFT_bypass()
@@ -585,11 +590,10 @@ class chFPGA_controller(IceBoardExtHandler):
                 config.correlator_clock = self.FreqCtr.read_frequency('CORR_CLK', gate_time=0.05)
                 config.correlator_capture_period_in_frames = [corr.ACC.CAPTURE_PERIOD for corr in self.CORR]
                 config.correlator_integration_period_in_frames = [corr.ACC.INTEGRATION_PERIOD for corr in self.CORR]
-            config.fmc_ref_clock = self.FreqCtr.read_frequency('FMC_REFCLK', gate_time=0.05)
-            config.mgt_ref_clock = self.FreqCtr.read_frequency('MGT_REFCLK', gate_time=0.05)
-            config.mgt_word_clock = self.FreqCtr.read_frequency('MGT_USRCLK2', gate_time=0.05)
-            config.adc_clocks = [self.FreqCtr.read_frequency(('ADC_CLK'+str(i)), gate_time=0.05) for i in range(8)]
-            # config.adc_serial = 'Not available'
+            config.fmc_ref_clock = self.FreqCtr.read_frequency('FMCA_REFCLK', gate_time=0.05)
+            config.mgt_ref_clock = self.FreqCtr.read_frequency('GPU_REFCLK', gate_time=0.05)
+            config.mgt_word_clock = self.FreqCtr.read_frequency('GPU_TXCLK', gate_time=0.05)
+            config.adc_clocks = [self.FreqCtr.read_frequency(('ADC_CLK'+str(i)), gate_time=0.05) for i in range(8)]  # todo: fix ADC range
         	# config.motherboard_serial = self.GPIO.FPGA_SERIAL_NUMBER
             # Add FFT shift, scaler gain, corr integration/capture period etc.
             # config.freq_flags = self.freq_flags  # JFC: what is that?
@@ -1220,7 +1224,7 @@ class chFPGA_controller(IceBoardExtHandler):
         width=8: data is 8 bits Real + 8 bits Imaginary
         """
 
-        if width not in (4,8):
+        if width not in (4, 8):
             raise ValueError('Number of bits %i is invalid. Only 4 or 8 is allowed' % width)
 
         # Set the channelizer data width
@@ -1250,7 +1254,7 @@ class chFPGA_controller(IceBoardExtHandler):
         Set the output to be encoded in offset binary instead of 2's compliment
         if sync is true, perform a sync afterward.  Necessary for data to continue flowing
         """
-        if channels == None:
+        if channels is None:
             channels = self.default_channels
 
         if not isinstance(channels, list):
@@ -1266,7 +1270,7 @@ class chFPGA_controller(IceBoardExtHandler):
         """
         Configures the gpu output to send flags in the packets.
         """
-        if crossbar_outputs == None:
+        if crossbar_outputs is None:
             crossbar_outputs = range(self.NUMBER_OF_CROSSBAR_OUTPUTS)
 
         if not isinstance(crossbar_outputs, list):
@@ -1278,7 +1282,7 @@ class chFPGA_controller(IceBoardExtHandler):
             if sync:
                 self.sync()
 
-    def set_gain(self, gain=None, postscaler=None, channels=None, use_fixed_gain=False, bank=0, timestamp=None):
+    def set_gain(self, gain=None, postscaler=None, channels=None, use_fixed_gain=False, bank=0):
         """
         Sets the gain between the (18+18) bits input of the scaler module (from the FFT) to its 4- or 8- bit scaler output.
         The gain can be set individually for every frequency bins and every ADC channel.
@@ -1311,13 +1315,11 @@ class chFPGA_controller(IceBoardExtHandler):
 
         If 'postscaler' is specified, it will be used as default value when Glog = None.
 
-        'use_fixed_gain': if True, enables the use of fixed gain mode of the scaler module. In this case, 'gain' can only be a scalar. Is False by default. This is normally used
+        'use_fixed_gain': if True, enables the use of fixed gain mode of the scaler module. In this case, 'gain' can only be a scalar. Is False by default.
 
         ``bank`` is the coefficient bank number (0 or 1) to which the
         coefficient should be written. Once written, the bank is made active. If ``bank`` is None, the currently inactive bank is used.
 
-        If ``timestamp`` is specified, the coefficient bank change occurs only when the
-        frame with the specified timestamp is encountered.
 
         Notes:
             1) The PFB/FFT has an intrisic gain of 512 (a constant FFT input of '1' will yield the value 512 in bin 0 at the input of the scaler.
@@ -1395,7 +1397,7 @@ class chFPGA_controller(IceBoardExtHandler):
                     self.ANT[ch].SCALER.set_fixed_gain(Glin)
                 else:
                     self.ANT[ch].SCALER.USE_GAIN_TABLE = 1
-                    self.ANT[ch].SCALER.set_gain_table(Glin, bank=bank, timestamp=timestamp)
+                    self.ANT[ch].SCALER.set_gain_table(Glin, bank=bank)
                 configured_channels.add(ch)
         self._logger.info('%r: Setting scaler gains for Antenna %s' % (self, ', '.join([str(i) for i in configured_channels])))
 
@@ -1410,7 +1412,7 @@ class chFPGA_controller(IceBoardExtHandler):
             gain_list.append([ant.ant_number, [glin,glog]])
         return gain_list
 
-    def synchronized_gain_switching(self, enable=1):
+    def set_synchronized_gain_switching(self, enable=1):
         for ant in self.ANT.values():
             ant.SCALER.SYNCHRONIZE_GAIN_BANK=enable
         self._logger.debug("%r: Syncronized gains for active antennas set to %d" % (self, enable))
@@ -1444,7 +1446,7 @@ class chFPGA_controller(IceBoardExtHandler):
         for ant in self.ANT.values():
             ant.SCALER.READ_COEFF_BANK = bank
         self._logger.debug("%r: set gain bank for active antennas to %d" % (self, bank))
-    
+
 
     def get_next_gain_bank(self):
         '''
@@ -1463,7 +1465,7 @@ class chFPGA_controller(IceBoardExtHandler):
         for ant in self.ANT.values():
             gain_banks.append(ant.SCALER.CURRENT_GAIN_BANK)
         return gain_banks
-         
+
 
     def set_fft_shift(self, fft_shift=0b11111111111, channels=None):
         """
