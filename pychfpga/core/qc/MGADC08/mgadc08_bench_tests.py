@@ -771,22 +771,28 @@ class MGADC08CarrierTests():  #
         passed = False
         r = None
         try:
-
+            print 'Opening link to IceBoard'
             ib, mezz = self._get_iceboard(**cfg.fpga_array)
             ib.set_mezzanine_power(True, self.slot)
             time.sleep(0.5)
+            print 'initializing mezzanine...'
             mezz.init()
 
-            r = ib.get_data_receiver()
-
+            print 'Computing ADC delays...'
             delay_table = self.set_adc_delays(ib)
 
+            print 'Opening data receiver socket'
+            r = ib.get_data_receiver()
+
+            print 'Setting up ramp transmission...'
             # Begin Ramp test
             ib.set_adcdaq_mode('data')
             ib.set_data_source('adc')
             ib.set_adc_mode('ramp')
             ib.start_data_capture(period=1, source='adc')
+            print 'Syncing...'
             ib.sync()
+            print 'Getting data frames...'
             r.read_frames(flush=1, frames=3)  # flush
             data = r.read_frames(1)
 

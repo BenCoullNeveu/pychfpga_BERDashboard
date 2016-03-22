@@ -27,7 +27,7 @@ instruments:
     na:        {labpy_object: 'hp8753e',     interface: 'prologix_eth', ip_addr: '10.11.1.132', gpib_addr: 14} # HP8753E Network Analyzer
 
 ?: &default_fpga_array
-    iceboards: 101
+    iceboards: 183
     mdns_delay: 1
 
 
