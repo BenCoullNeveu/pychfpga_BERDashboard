@@ -1687,7 +1687,7 @@ class chFPGA_controller(IceBoardExtHandler):
             cb1_bypass = False
             cb1_four_bit = True
             cb1_combine_data_flags = 0
-            cb1_lanes = 16
+            cb1_lanes = [(0, 3)] * number_of_cb1_bin_sel
             cb1_bins = 64
             cb1_bin_spacing = 1024/cb1_bins
             cb1_bin_select_map = [np.arange(cb1_bins)*cb1_bin_spacing+i for i in range(number_of_cb1_bin_sel)]
@@ -1764,7 +1764,7 @@ class chFPGA_controller(IceBoardExtHandler):
             cb1_bypass = False
             cb1_four_bit = True
             cb1_combine_data_flags = 0
-            cb1_lanes = 16
+            cb1_lanes = [(0, 3)] * number_of_cb1_bin_sel
             cb1_bins = 64
             cb1_bin_spacing = 1024/cb1_bins
             cb1_bin_select_map = [np.arange(cb1_bins)*cb1_bin_spacing+i for i in range(number_of_cb1_bin_sel)]
