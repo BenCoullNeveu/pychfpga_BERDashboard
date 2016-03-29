@@ -419,6 +419,7 @@ class chFPGA_controller(IceBoardExtHandler):
         self._logger.info('%r: --- Initializing FMC slots' % self)
 
         # Reduce the power load before we turn on the mezzanines
+        self.set_adc_mask(0) # null the ADC data before it gets to the channelizers to reduce power consumption
         self.set_ant_reset(1)
         self.set_corr_reset(1)
         for mezz in self.mezzanine.values():
@@ -1518,6 +1519,15 @@ class chFPGA_controller(IceBoardExtHandler):
         self.GPIO.set_pwm(offset, high_time, period, reset=False)
         if reset:
             self.sync()
+
+    def set_adc_mask(self, mask=0xFF, channels=None):
+        """ Set the mask that is applied on the ADC data on the specified channel. ``mask`` is an 8 bit value which is ANDed with the incoming ADC bytes. mask=0xFF therefore disables the masking effect. Can be useful to reduce power consumption of the channelizer without affecting synchronization of the data processing pipeline.
+        """
+        if channels is None:
+            channels = self.default_channels
+
+        for ch in channels:
+            self.ANT[ch].ADCDAQ.BYTE_MASK = mask
 
     def check_adc_data_acquisition(self, test_duration=1):
         """

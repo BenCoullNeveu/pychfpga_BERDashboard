@@ -306,6 +306,7 @@ if __name__ == "__main__":
             ca = fpga_array.FPGAArray(**fpga_array_params)     # Create FPGA array
             sync_board = ca.ib.get(serial=conf.fpga.sync_board) if conf.fpga.sync_board else None
             ca.set_sync_method(conf.fpga.sync_method, source='bp_trig', master=sync_board, master_time_source='bp_time' if sync_board else None)
+            ca.ib.set_adc_mask(0) # null the ADC data before it gets to the channelizers to reduce power consumption
 
             # c = ca.ib
 
@@ -465,6 +466,8 @@ if __name__ == "__main__":
             # Initialize data shufling and transmission to the GPU
             ca.set_operational_mode(conf.fpga.operational_mode, frames_per_packet=fpga_array_params.group_frames)
             ca.sync()  # synchronize all the boards in the array
+
+            ca.ib.set_adc_mask(0xFF) # restore normal ADC data
 
             time.sleep(2)
             #shuffle_init(list(c), ni_board, ni_board_26m, sync_board, dsmap = d_slots, frames_per_packet=4, cb1_lanes=16, cb1_bins=64, cb2_lanes=16, cb2_bins=8, cb2_bypass=0, remap=True,
