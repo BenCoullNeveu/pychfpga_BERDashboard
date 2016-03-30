@@ -465,7 +465,7 @@ if __name__ == "__main__":
                 ca.set_noise_injection(ni_board_26m, ni_enable_26m, ni_offset_26m, ni_high_time_26m, ni_period_26m)
             # Initialize data shufling and transmission to the GPU
             ca.set_operational_mode(conf.fpga.operational_mode, frames_per_packet=fpga_array_params.group_frames)
-            ca.sync()  # synchronize all the boards in the array
+            #ca.sync()  # synchronize all the boards in the array. THIS SYNCING IS ALREADY DONE AT SETTING OPERATIONAL MODE ABOVE
 
             ca.ib.set_adc_mask(0xFF) # restore normal ADC data
 

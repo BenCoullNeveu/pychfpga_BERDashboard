@@ -1702,7 +1702,7 @@ class chFPGA_controller(IceBoardExtHandler):
             cb1_bin_spacing = 1024/cb1_bins
             cb1_bin_select_map = [np.arange(cb1_bins)*cb1_bin_spacing+i for i in range(number_of_cb1_bin_sel)]
             cb1_bin_select_map = [cb1_bin_select_map[dsmap[get_dest_slot_for_src_lane(i)-1]] for i in range(16)]  # reorder cb1_bin_select_map so slot 0 gets cb1_bin_select_map[0], slot 1 gets cb1_bin_select_map[1] etc.
-            cb1_output_words_per_bin = cb1_lanes/4
+            cb1_output_words_per_bin = 16/4
             cb1_output_bins = cb1_bins
 
             bp_shuffle_bypass = False
