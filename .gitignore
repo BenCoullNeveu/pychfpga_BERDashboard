@@ -6,3 +6,4 @@
 /Archives
 *.7z
 out_*/
+/nbproject/
