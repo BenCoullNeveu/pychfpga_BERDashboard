@@ -342,10 +342,14 @@ class ShuffleCrossbar(Module_base):
     def get_bin_sel_status(self):
         status = []
         for bs in self.BIN_SEL:
+            number_of_sublanes_per_output = self.NUMBER_OF_INPUT_LANES/bs.NUMBER_OF_OUTPUTS
+            sublane_mask = (1 << (bs.LAST_LANE + 1)) - (1 << bs.FIRST_LANE)
+            mask = sum(sublane_mask << (number_of_sublanes_per_output * i) for i in range(bs.NUMBER_OF_OUTPUTS))
+
             err = {}
-            if bs.FIFO_OVERFLOW:
+            if bs.FIFO_OVERFLOW & mask:
                 err['DFIFO'] = 1
-            if bs.FLAGS_FIFO_OVERFLOW:
+            if bs.FLAGS_FIFO_OVERFLOW & mask:
                 err['FFIFO'] = 1
             status.append(err)
         return status
