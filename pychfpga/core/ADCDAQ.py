@@ -45,7 +45,7 @@ class ADCDAQ_base(Module_base):
     IODELAY_RESET =        BitField(CONTROL, 9, 0, doc='Resets the IODELAY element. This loads the delay values into the delay lines')
     RAMP_ERR_CLEAR =       BitField(CONTROL, 10, 5, doc='Resets ramp error counter')
     CLEAR_FIFO_FLAGS =     BitField(CONTROL, 10, 4, doc='Resets sticky FIFO flags (Overflow, underflow etc)')
-    SAMPLE_DELAY =         BitField(CONTROL, 11, 0, width=4, doc='Number of samples to skip before starting data acquisition after a SYNC event')
+    SAMPLE_DELAY =         BitField(CONTROL, 11, 0, width=12, doc='Number of samples to skip before starting data acquisition after a SYNC event')
     CAPTURE2_PERIOD =      BitField(CONTROL, 12, 0, width=8, doc='Word capture period, from 0-255. 0 means 256 words')
     CAPTURE2_WORD_NUMBER = BitField(CONTROL, 13, 0, width=8, doc='Word number to be capured in CAPTURE_PATTERN. Must be <=CAPTURE2_PERIOD-1 for data to be captured')
     BYTE_MASK =            BitField(CONTROL, 14, 0, width=8, doc='"AND"s the ADC values')
