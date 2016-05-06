@@ -163,7 +163,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
     #     specified byte address through the ARM<->FPGA SPI link."""
     #     self._fpga_spi_poke(addr, value)
 
-    def open_core(self):
+    def open_core(self, udp_retries=10):
         """
         Establishes the connection with the hardware and firmware on the
         IceBoard and create all appropriate handling classes.
@@ -223,7 +223,8 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         self.mmi = fpga_mmi.FpgaMmi(
             ip_addr=self.fpga_ip_addr,
             port_number=self.fpga_port_number,
-            interface_ip_addr=self.interface_ip_addr)
+            interface_ip_addr=self.interface_ip_addr,
+            udp_retries=udp_retries)
         self.mmi.open()
         self.local_port_number = self.mmi.local_port_number
 
@@ -293,10 +294,10 @@ class IceBoardExtHandler(IceBoardPlusHandler):
             del self.hw
             self._is_hw_open = False
 
-    def open(self):
+    def open(self, udp_retries=10):
 
         self.logger.info('%.32r: open() is called' % (self))
-        self.open_core()
+        self.open_core(udp_retries=udp_retries)
 
         self.hw.init()
         self.hw.set_led('GP_LED2', 1)  # Hardware link is on

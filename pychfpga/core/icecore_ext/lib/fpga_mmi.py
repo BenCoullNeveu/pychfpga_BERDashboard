@@ -63,6 +63,7 @@ class FpgaMmi:
                  interface_ip_addr=None,
                  fpga_serial_number=None,
                  set_fpga_networking_parameters=False,
+                 udp_retries=10,
                  timeout=0.5):
         """
          'fpga_serial_number' is needed only if we set the FPGA networking using UDP broadcasts (set_fpga_networking_parameters is True)
@@ -74,6 +75,7 @@ class FpgaMmi:
         self.fpga_serial_number = fpga_serial_number  # used to select specific FPGAs during broadcasts
         self.set_fpga_networking_parameters = set_fpga_networking_parameters
         self.timeout = timeout
+        self.udp_retries = udp_retries
         self.udp = None
         self.interface_ip_addr = interface_ip_addr
         self.send_counter = 0
@@ -224,7 +226,7 @@ class FpgaMmi:
         """
         return self.udp.get_timeout()
 
-    def _send_command(self, cmd, expected_reply_length, retry=10, resync=False):
+    def _send_command(self, cmd, expected_reply_length, retry=None, resync=False):
         """ Send a command to the FPGA and check the reply for the correct
         sequence number and packet length. If unsuccessful, the command will
         be resent ``retry`` times.
@@ -235,6 +237,8 @@ class FpgaMmi:
         This is used by the read() and write() methods.
         """
         old_timeout = self.get_timeout()
+        if retry is None:
+            retry = self.udp_retries
         retries = 0
         while True:
             try:
@@ -270,7 +274,7 @@ class FpgaMmi:
         return data[1:]
 
     def read(self, addr, type=np.dtype('>u1'), length=1,
-             timeout=None, retry=10, resync=False):
+             timeout=None, retry=None, resync=False):
         """
         Reads memory-mapped byte(s) from the FPGA through the Ethernet
         interface.
@@ -399,7 +403,7 @@ class FpgaMmi:
         else:
             return chr(data)
 
-    def write(self, addr, data, mask=None, retry=10, resync=False):
+    def write(self, addr, data, mask=None, retry=None, resync=False):
         """
         Writes byte(s) to memory-mapped registers in the FPGA through the
         Ethernet interface.
@@ -412,6 +416,7 @@ class FpgaMmi:
             - 2 bytes in a numpy uint16. MSB is transmitted first
             - 1 byte in a numpy uint8.
         """
+
 
         if addr & self._RAM_BASE_ADDR:
             opcode = self.OPCODE_WRITE_RAM
