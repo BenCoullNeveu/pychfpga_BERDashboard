@@ -82,8 +82,8 @@ class SHUFFLE_BIN_SEL_base(Module_base):
             mask[j//8] |= (1<<(j % 8))
         # verbose = False
         # if verbose: print (bins_to_enable)
-        self.logger.debug('Configuring lane %i of the crossbar to capture %i frequency bins: %s' % ( self.instance_number, len(bins_to_enable), repr(bins_to_enable)))
-        self.logger.debug('Mask pattern is: %s' % ( ' '.join('%02X'% byte for byte in mask)))
+        self.logger.debug('%.32r: Configuring lane %i of the crossbar to capture %i frequency bins: %s' % (self.fpga, self.instance_number, len(bins_to_enable), repr(bins_to_enable)))
+        self.logger.debug('%.32r: Mask pattern is: %s' % (self.fpga, ' '.join('%02X'% byte for byte in mask)))
 
         self.write_ram(0x00, mask) # Write the bin selection mask array
 
@@ -102,9 +102,9 @@ class SHUFFLE_BIN_SEL_base(Module_base):
 
     def status(self):
         """Displays the status of SHUFFLE_BIN_SEL."""
-        self.logger.debug('--- SHUFFLE_BIN_SEL[%i] STATUS' % (self.instance_number))
-        self.logger.debug('   RESET: %i' % self.RESET)
-        self.logger.debug('   FIFO EMPTY: %i' % self.FIFO_EMPTY)
+        self.logger.debug('%.32r: --- SHUFFLE_BIN_SEL[%i] STATUS' % (self.fpga, self.instance_number))
+        self.logger.debug('%.32r:    RESET: %i' % (self.fpga, self.RESET))
+        self.logger.debug('%.32r:    FIFO EMPTY: %i' % (self.fpga, self.FIFO_EMPTY))
         # self.logger.debug('   FIFO OVERFLOW: %i' % self.FIFO_OVERFLOW)
 
 

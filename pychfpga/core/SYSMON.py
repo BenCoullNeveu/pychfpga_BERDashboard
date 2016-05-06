@@ -106,17 +106,17 @@ class SYSMON_base(Module_base):
         if self.supported_by_platform:
             Vin = self.voltage(self.VAUX_VOLT_ADDR, vref=1.0) * 24
             Iin = self.voltage(self.VAUX_CURR_ADDR, vref=1.0) / (0.002 * 50)
-            self.logger.info('--- System Monitor statistics')
-            self.logger.info('   Core Temperature:   %5.1f C (%.2f C min, %.1f C max)' % (self.temperature(self.TEMP_ADDR), self.temperature(self.TEMP_MIN_ADDR), self.temperature(self.TEMP_MAX_ADDR)))
-            self.logger.info('   VccINT Voltage:     %5.2f V (%.2f V min, %.2f V max)' % (self.voltage(self.VCCINT_ADDR), self.voltage(self.VCCINT_MIN_ADDR), self.voltage(self.VCCINT_MAX_ADDR)))
-            self.logger.info('   VccAUX Voltage:     %5.2f V (%.2f V min, %.2f V max)' % (self.voltage(self.VCCAUX_ADDR), self.voltage(self.VCCAUX_MIN_ADDR), self.voltage(self.VCCAUX_MAX_ADDR)))
+            self.logger.info('%.32r: --- System Monitor statistics' % self.fpga)
+            self.logger.info('%.32r:   Core Temperature:   %5.1f C (%.2f C min, %.1f C max)' % (self.fpga, self.temperature(self.TEMP_ADDR), self.temperature(self.TEMP_MIN_ADDR), self.temperature(self.TEMP_MAX_ADDR)))
+            self.logger.info('%.32r:   VccINT Voltage:     %5.2f V (%.2f V min, %.2f V max)' % (self.fpga, self.voltage(self.VCCINT_ADDR), self.voltage(self.VCCINT_MIN_ADDR), self.voltage(self.VCCINT_MAX_ADDR)))
+            self.logger.info('%.32r:   VccAUX Voltage:     %5.2f V (%.2f V min, %.2f V max)' % (self.fpga, self.voltage(self.VCCAUX_ADDR), self.voltage(self.VCCAUX_MIN_ADDR), self.voltage(self.VCCAUX_MAX_ADDR)))
             if self.fpga.PLATFORM_ID == self.fpga._PLATFORM_ID_ML605:
-                self.logger.info('   VccINT Current:     %5.2f A, (ADC input= %.2f mV' % (self.voltage(self.VAUX_VPVN_ADDR, vref=1.0)/0.005, self.voltage(self.VAUX_VPVN_ADDR, vref=1.0) * 1000))
-                self.logger.info('   12V Supply Voltage: %5.2f V (ADC input=%.2f V )' % (Vin, self.voltage(self.VAUX_VOLT_ADDR, vref=1.0)))
-                self.logger.info('   12V Supply Current: %5.2f A (ADC input=%.2f V )' % (Iin, self.voltage(self.VAUX_CURR_ADDR, vref=1.0)))
-                self.logger.info('   12V Power         : %5.2f W ' % (Vin * Iin))
-            self.logger.info('   VREFP Voltage:      %5.2f V' % (self.voltage(self.VAUX_VREFP_ADDR)))
-            self.logger.info('   VREFN Voltage:      %5.2f V' % (self.voltage(self.VAUX_VREFN_ADDR)))
+                self.logger.info('%.32r:   VccINT Current:     %5.2f A, (ADC input= %.2f mV' % (self.fpga, self.voltage(self.VAUX_VPVN_ADDR, vref=1.0)/0.005, self.voltage(self.VAUX_VPVN_ADDR, vref=1.0) * 1000))
+                self.logger.info('%.32r:   12V Supply Voltage: %5.2f V (ADC input=%.2f V )' % (self.fpga, Vin, self.voltage(self.VAUX_VOLT_ADDR, vref=1.0)))
+                self.logger.info('%.32r:   12V Supply Current: %5.2f A (ADC input=%.2f V )' % (self.fpga, Iin, self.voltage(self.VAUX_CURR_ADDR, vref=1.0)))
+                self.logger.info('%.32r:   12V Power         : %5.2f W ' % (self.fpga, Vin * Iin))
+            self.logger.info('%.32r:   VREFP Voltage:      %5.2f V' % (self.fpga, self.voltage(self.VAUX_VREFP_ADDR)))
+            self.logger.info('%.32r:   VREFN Voltage:      %5.2f V' % (self.fpga, self.voltage(self.VAUX_VREFN_ADDR)))
 
         else:
-            self.logger.debug('SYSMON is not supported on this platform');
+            self.logger.debug('%.32r: SYSMON is not supported on this platform' % self.fpga);
