@@ -128,6 +128,11 @@ class MGADC08_Handler(FMCMezzanineHandler):
 
     _board_is_present = False # Will be checked later
 
+    def __repr__(self):
+        return "%r.Mezz%r" % (
+            self.iceboard,
+            self.mezzanine)
+
     def __init__(self, **kwargs):
         super(MGADC08_Handler, self).__init__(**kwargs)
         # self.type = 'mgadc08'
@@ -145,15 +150,15 @@ class MGADC08_Handler(FMCMezzanineHandler):
 
         if self.is_present():
             # self._board_info = self.load_board_info()
-            self.logger.debug('  - ADC')
+            self.logger.debug('%.32r:   - ADC'% self)
             self.ADC = ADC.ADC_base(adc_board=self)
-            self.logger.debug('  - IOExpander')
+            self.logger.debug('%.32r:   - IOExpander' % self)
             self.IOExpander = IOExpander.IOExpander_base(adc_board=self)
-            self.logger.debug('  - ADC_PLL')
+            self.logger.debug('%.32r:   - ADC_PLL' % self)
             self.ADC_PLL = ADC_PLL.ADC_PLL_base(adc_board=self)
-            self.logger.debug('  - AmbTemp')
+            self.logger.debug('%.32r:   - AmbTemp' % self)
             self.AmbTemp = AmbTemp.AmbTemp_base(adc_board=self)
-            self.logger.debug('  - MGT_PLL')
+            self.logger.debug('%.32r:   - MGT_PLL' % self)
             self.MGT_PLL = MGT_PLL.MGT_PLL_base(mezz=self)
 
     ############################################
@@ -230,23 +235,23 @@ class MGADC08_Handler(FMCMezzanineHandler):
         if self.is_present():
             self.sampling_frequency = sampling_frequency
             self.reference_frequency = reference_frequency
-            self.logger.info('Initializing MGADC08 on Mezzanine %i' % self.mezzanine)
-            self.logger.debug('  - AmbTemp')
+            self.logger.info('%.32r: Initializing MGADC08 on Mezzanine %i' % (self, self.mezzanine))
+            self.logger.debug('%.32r:   - AmbTemp' % self)
             self.AmbTemp.init()
 
-            self.logger.debug('  - IOExpander')
+            self.logger.debug('%.32r:   - IOExpander' % self)
             self.IOExpander.init()
 
-            self.logger.debug('  - ADC_PLL')
+            self.logger.debug('%.32r:   - ADC_PLL' % self)
             self.ADC_PLL.init(fout=2*self.sampling_frequency/1e6, fref=self.reference_frequency/1e6, verbose=verbose)
 
-            self.logger.debug('  - ADC')
+            self.logger.debug('%.32r:   - ADC' % self)
             self.ADC.init()
 
     def status(self):
         """ Displays the status of the ADC board"""
-        self.logger.info('Status of MGADC08 ADC board on Mezzanine %i' % self.mezzanine)
-        self.logger.info('  ADC board is %s' % (('not present', 'present')[bool(self.is_present())]))
+        self.logger.info('%.32r: Status of MGADC08 ADC board on Mezzanine %i' % (self, self.mezzanine))
+        self.logger.info('%.32r:   ADC board is %s' % (self, ('not present', 'present')[bool(self.is_present())]))
         if self.is_present():
             self.AmbTemp.status()
             self.IOExpander.status()
@@ -261,16 +266,16 @@ class MGADC08_Handler(FMCMezzanineHandler):
         keep_reading = True
         number_of_tries = 0
         while(keep_reading):
-             try:
-                  ascii = self.eeprom.read(i)
-                  keep_reading = False
-             except:
-                  number_of_tries += 1
-                  if number_of_tries > 100:
-                      print "something wrong with eeprom reading"
-                      raise
-                  print 'e',
-                  time.sleep(0.01)
+            try:
+                ascii = self.eeprom.read(i)
+                keep_reading = False
+            except:
+                number_of_tries += 1
+                if number_of_tries > 100:
+                    print "something wrong with eeprom reading"
+                    raise
+                print 'e',
+                time.sleep(0.01)
         #125 is the ASCII character for the } which is used in the dictionary. The 1000 characters is used to make sure this doesn't go indefinitely
         #Converts each address in EEPROM to a character and put it together in a string
         dictionary_is_present = False
@@ -369,10 +374,10 @@ class MGADC08_Handler(FMCMezzanineHandler):
                             try:
                                 self.eeprom.write(i+1, ord(chars[i]))
                             except Exception as e:
-                                print self.logger.info('error writing to EEPROM, will retry: ' + e.message)
+                                print self.logger.info('%.32r: error writing to EEPROM, will retry: %s' % (self, e.message))
                                 pass
                     except Exception as e:
-                        print self.logger.info('error reading from EEPROM, will retry: ' + e.message)
+                        print self.logger.info('%.32r: error reading from EEPROM, will retry: %s' % (self, e.message))
                         pass
             # Write 13 at the end of EEPROM
             thirteen = False
@@ -381,7 +386,7 @@ class MGADC08_Handler(FMCMezzanineHandler):
                     self.eeprom.write(0,13)
                     thirteen = True
                 except Exception as e:
-                    print self.logger.info('error writing 13 to EEPROM, will retry: ' + e.message)
+                    print self.logger.info('%.32r: error writing 13 to EEPROM, will retry: %s' (self, e.message))
                     pass
             # Figure out the CRC and write to EEPROM
             crcheck = zlib.crc32(nstring)
@@ -395,9 +400,9 @@ class MGADC08_Handler(FMCMezzanineHandler):
                     self.eeprom.write(len(chars)+1+i, asciibyte[i])
                     i+=1
                 except Exception as e:
-                    self.logger.info("error writing CRC, will retry: " + e.message)
+                    self.logger.info("%.32r: error writing CRC, will retry: %s" % (self, e.message))
                     pass
 
             # Read full EEPROM dictionary and print to log
             self.load_board_info()
-            self.logger.info("Done. Read back EEPROM: \n" + str(self._board_info))
+            self.logger.info("%.32r: Done. Read back EEPROM: \n %s" % (self, str(self._board_info)))

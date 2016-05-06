@@ -1,20 +1,19 @@
 #!/usr/bin/python
 # Disable pylint Line too long (=C0301)
-# pylint: disable=C0301 
+# pylint: disable=C0301
 
 """
-IOExpander.py module 
+IOExpander.py module
  Implements IOExpander interface of chFPGFA
 
  History:
  2011-07-08 JFC : Created from test code in chFPGA.py
- 2011-07-17 JFC: Fixed the getter and setter : needed to use a closure to fix the bit name at function creation. 
+ 2011-07-17 JFC: Fixed the getter and setter : needed to use a closure to fix the bit name at function creation.
             Created bit definition class to access elements by name instead of index. Updated code appropriately.
  2011-07-18 JFC: Added comments
- 2011-09-08 JFC: Removed printed message when defining the properties   
+ 2011-09-08 JFC: Removed printed message when defining the properties
 """
 import time
-import warnings
 import numpy as np
 import logging
 
@@ -22,7 +21,7 @@ class IOExpander_base(object):
 
     _locked = False # when 1, prevents the object from being modified
 
-    """ Class Providing interfaces to the IOExpander on the ADC FMC board.""" 
+    """ Class Providing interfaces to the IOExpander on the ADC FMC board."""
     # Register addresses (assumes BANK=0, which is the default after power-up)
     REG_IODIRA   = 0x00 # GPIO pin is 1=input, 0 = output
     REG_IODIRB   = 0x01
@@ -43,7 +42,7 @@ class IOExpander_base(object):
     REG_INTCAPB  = 0x11
     REG_GPIOA    = 0x12 # Port register: Reading returns the pin value, Writing changes the output latch value
     REG_GPIOB    = 0x13
-    REG_OLATA    = 0x14 # Output latch: Reading returns the output latch value, Writing changes the output latch value 
+    REG_OLATA    = 0x14 # Output latch: Reading returns the output latch value, Writing changes the output latch value
     REG_OLATB    = 0x15
 
     # --- Define GPIO bits for the IO Expander
@@ -56,10 +55,10 @@ class IOExpander_base(object):
     # Bit definition class
     class BitDef:
         """ Holds the definition of a GPIO bit on the IO expander. Contains Port number (0=A, 1=B), Bit number (0..7), Direction (0=WR, 1=RD) and default value (0 or 1)"""
-        def __init__(self, port, bit, dir, default): 
-            self.port = port 
+        def __init__(self, port, bit, dir, default):
+            self.port = port
             self.bit = bit
-            self.dir = dir 
+            self.dir = dir
             self.default = default
     # Bit configuration table:   name: (port, bit, dir (0=wr,1=rd), default_value)
     BITS = {
@@ -87,7 +86,7 @@ class IOExpander_base(object):
         for bit_name in self.BITS.keys():
             #print '  Defining property "%s" with port=, bit=' % (bit_name)
             # Use function closures to create the callback function with arguments that won't be rebinded
-            fget = lambda s, _bit_name = bit_name : s.read_gpio_bit(_bit_name) # Pass bit_name as a default argument to 'close' that variable (i.e. bind it now). Otherwise the function will use the value at call time (which is the last value assigned to that variable) 
+            fget = lambda s, _bit_name = bit_name : s.read_gpio_bit(_bit_name) # Pass bit_name as a default argument to 'close' that variable (i.e. bind it now). Otherwise the function will use the value at call time (which is the last value assigned to that variable)
             fset = lambda s, value, _bit_name = bit_name : s.write_gpio_bit(_bit_name, value)
             if self.BITS[bit_name].dir == self.RD:
                 setattr(self.__class__, bit_name, property(fget))
@@ -106,12 +105,12 @@ class IOExpander_base(object):
 
     def _unlock(self):
         self.__dict__['_locked'] = False
-        
+
     def _lock(self):
         self.__dict__['_locked'] = True
 
     def read(self, addr):
-        """ Reads a IOExpander 8-bit register""" 
+        """ Reads a IOExpander 8-bit register"""
         brd = self.adc_board
         data = brd.spi_read_write(brd.SPI_IO_EXP_ADDR, [0x41, addr, 0x00], type=np.uint8)
         return data
@@ -122,7 +121,7 @@ class IOExpander_base(object):
         data = brd.spi_read_write(brd.SPI_IO_EXP_ADDR, [0x40, addr, data])
 
     def read_gpio_bit(self, bit_name):
-        """ Reads the IOExpander GPIO bit identified by the name 'bit_name' which is looked up in the BITS table to find the bit definition (port, bit position etc). Returns a boolean."""  
+        """ Reads the IOExpander GPIO bit identified by the name 'bit_name' which is looked up in the BITS table to find the bit definition (port, bit position etc). Returns a boolean."""
         bit_def = self.BITS[bit_name]
         data = self.read(self.REG_GPIOA + bit_def.port)
         #print 'Read ,bit "%s" at port %i, bit=%i, data: %X' % (bit_name,  bit_def.port,bit_def.bit, data)
@@ -130,7 +129,7 @@ class IOExpander_base(object):
 
 
     def write_gpio_bit(self, bit_name, data):
-        """ Writes the IOExpander GPIO bit identified by the name 'bit_name' which is looked up in the BITS table to find the bit definition (port, bit position etc). The input data in converted in Boolean before being written."""  
+        """ Writes the IOExpander GPIO bit identified by the name 'bit_name' which is looked up in the BITS table to find the bit definition (port, bit position etc). The input data in converted in Boolean before being written."""
         bit_def = self.BITS[bit_name]
         old_data = self.read(self.REG_OLATA + bit_def.port)
         mask = 1 << bit_def.bit
@@ -138,23 +137,23 @@ class IOExpander_base(object):
         new_data = (old_data & ~mask) | (bool(data) * mask)
         data = self.write(self.REG_GPIOA + bit_def.port, new_data)
 
-    def wait_for_bit(self, bit_name, timeout=1): 
+    def wait_for_bit(self, bit_name, timeout=1):
         """
-        Wait for specified bit to become '1'. 
+        Wait for specified bit to become '1'.
         """
         if bit_name not in self.BITS:
             raise Exception('The bit name does not exist')
 
         t0 = time.time()
         while True:
-            if self.read_gpio_bit(bit_name): 
+            if self.read_gpio_bit(bit_name):
                 return
             if (time.time() - t0) > timeout:
                 raise RuntimeError('Timeout exceeded while waiting for bit %s' % bit_name)
 
 
     def init(self, verbose=0):
-        """ 
+        """
         Initializes the register of the IOExpander. Sets the GPIO bits direction and default values based on the 'BITS' table
         Call only after the SPI subsystem is initialized.
         """
@@ -175,15 +174,15 @@ class IOExpander_base(object):
                 val[port] &= ~(1 << bit) # clear bit
                 val[port] |= (bit_def.default << bit) # set with new value
         if verbose or self.verbose:
-            self.logger.debug('IOExpander config: IODIRA=%02X , IODIRB=%02X, GPIOA=%02X, GPIOB=%02X' % (direction[0], direction[1], val[0], val[1]))
-        self.write(self.REG_IODIRA, direction[self.PORT_A]) # 
-        self.write(self.REG_IODIRB, direction[self.PORT_B]) # 
-        self.write(self.REG_GPIOA, val[self.PORT_A]) # 
-        self.write(self.REG_GPIOB, val[self.PORT_B]) # 
+            self.logger.debug('%.32r: IOExpander config: IODIRA=%02X , IODIRB=%02X, GPIOA=%02X, GPIOB=%02X' % (self.adc_board, direction[0], direction[1], val[0], val[1]))
+        self.write(self.REG_IODIRA, direction[self.PORT_A]) #
+        self.write(self.REG_IODIRB, direction[self.PORT_B]) #
+        self.write(self.REG_GPIOA, val[self.PORT_A]) #
+        self.write(self.REG_GPIOB, val[self.PORT_B]) #
 
     def status(self):
         """ Displays the status of the IOExpander. """
-        self.logger.info('--- FMC %i IO Expander' % self.adc_board.fmc_number)
+        self.logger.info('%.32r: --- FMC %i IO Expander' % (self.adc_board, self.adc_board.fmc_number))
         if not self.adc_board.is_present():
-            self.logger.info('FMC board not present')
-        self.logger.info('No status info')
+            self.logger.info('%.32r: FMC board not present' % self.adc_board)
+        self.logger.info('%.32r: No status info' % self.adc_board)

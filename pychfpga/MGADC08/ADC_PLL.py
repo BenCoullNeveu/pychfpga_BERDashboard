@@ -62,9 +62,9 @@ class ADC_PLL_base(object):
             raise Exception('Output frequency is too low')
 
         if verbose:
-            self.logger.info('--------------------- ADC PLL ------------------------------------')
-            self.logger.info(' PLL Reference frequency         %7.3f MHz' % fref)
-            self.logger.info(' Target ADC reference frequency: %7.3f MHz' % fout)
+            self.logger.info('%.32r: --------------------- ADC PLL ------------------------------------' % self.adc_board)
+            self.logger.info('%.32r:  PLL Reference frequency         %7.3f MHz' % (self.adc_board, fref))
+            self.logger.info('%.32r:  Target ADC reference frequency: %7.3f MHz' % (self.adc_board, fout))
 
         # REGISTER 5
         LD_pin_mode = 1  # 0=LOW, 1=Lock Detect, 2=Low, 3= High
@@ -122,24 +122,24 @@ class ADC_PLL_base(object):
             raise Exception('Integer division factor is out of range (it_div=%i, range is 23-65535)' % int_div)
 
         if verbose:
-            self.logger.info(' Reference divide-by-2 enabled: %s' % bool(rdiv2))
-            self.logger.info(' PFB frequency: %.0f MHz' % (fref/(1+rdiv2)))
-            self.logger.info(' Integer multiplication factor: %i' % int_div)
-            self.logger.info(' Fractional multiplication factor/modulus: %i/%i' % (frac_div,modulus))
-            self.logger.info(' Total multiplication factor: %i' % (int_div+float(frac_div)/modulus))
-            self.logger.info(' Feedback includes output dividor: %s' %  (not FB_select))
-            self.logger.info(' VCO Frequency: %.3f MHz (%.0f MHz min, %.0f MHz max)' % (fvco, fmin, fmax))
-            self.logger.info(' Output division factor: %i' % fdiv)
-            self.logger.info(' Programmed output frequency: %.3f' % (float(fvco)/fdiv))
+            self.logger.info('%.32r:  Reference divide-by-2 enabled: %s' % (self.adc_board, bool(rdiv2)))
+            self.logger.info('%.32r:  PFB frequency: %.0f MHz' % (self.adc_board, fref/(1+rdiv2)))
+            self.logger.info('%.32r:  Integer multiplication factor: %i' % (self.adc_board, int_div))
+            self.logger.info('%.32r:  Fractional multiplication factor/modulus: %i/%i' % (self.adc_board, frac_div, modulus))
+            self.logger.info('%.32r:  Total multiplication factor: %i' % (self.adc_board, int_div + float(frac_div) / modulus))
+            self.logger.info('%.32r:  Feedback includes output dividor: %s' %  (self.adc_board, not FB_select))
+            self.logger.info('%.32r:  VCO Frequency: %.3f MHz (%.0f MHz min, %.0f MHz max)' % (self.adc_board, fvco, fmin, fmax))
+            self.logger.info('%.32r:  Output division factor: %i' % (self.adc_board, fdiv))
+            self.logger.info('%.32r:  Programmed output frequency: %.3f' % (self.adc_board, float(fvco) / fdiv))
 
         # Override variable names if any is specified in the function call
         for (varname, value) in args.items():
             if varname in locals():
                 if verbose:
-                    self.logger.info(' Setting %s = %i' % (varname, value))
+                    self.logger.info('%.32r: Setting %s = %i' % (self.adc_board, varname, value))
                 exec('%s=%i' % (varname, value))
             else:
-                self.logger.info('"%s" is not a PLL variable' % varname)
+                self.logger.info('%.32r: "%s" is not a PLL variable' % (self.adc_board, varname))
 
         PLL_reg5 = np.uint32((LD_pin_mode << 22) + (0x3 << 19) + 5)
         PLL_reg4 = np.uint32((FB_select << 23) + (RF_div << 20) + (band_sel_div << 12) + (vco_power_down << 11) + (mute_until_lock_detect << 10) + (AUX_sel << 9) + (AUX_enable << 8) + (AUX_power << 6) + (RF_enable << 5) + (RF_power << 3)+4)
@@ -159,14 +159,14 @@ class ADC_PLL_base(object):
 
         self.adc_board.IOExpander.wait_for_bit('PLL1_LOCK', timeout=1)
         if verbose:
-            self.logger.info(' PLL is locked: %s' % bool(self.fpga.ADC_BOARD.IOExpander.PLL1_LOCK))
-            self.logger.info('----------------------------------------------------------------------')
+            self.logger.info('%.32r:  PLL is locked: %s' % (self.adc_board, bool(self.fpga.ADC_BOARD.IOExpander.PLL1_LOCK)))
+            self.logger.info('%.32r: ----------------------------------------------------------------------' % self.adc_board)
 
         return (PLL_reg0, PLL_reg1, PLL_reg2, PLL_reg3, PLL_reg4, PLL_reg5)
 
     def status(self):
-        self.logger.info('--- ADC PLL')
+        self.logger.info('%.32r: --- ADC PLL' % self.adc_board)
         if not self.adc_board.is_present():
-            self.logger.info('FMC board not present')
-        self.logger.info(' No status info')
+            self.logger.info('%.32r: FMC board not present' % self.adc_board)
+        self.logger.info('%.32r:  No status info' % self.adc_board)
 
