@@ -195,7 +195,7 @@ def load_gains(ib, bank=0):
             cc.set_gain(g_array, bank=bank)  # *** should this be bank=all_bank
         except IOError:
             log = logging.getLogger()
-            log.warn('Could not load gain file %s. Gains are not set.' % filename)
+            log.warn('%.32r: Could not load gain file %s. Gains are not set.' % ('ch_master.load_gains', filename))
 
 if __name__ == "__main__":
     # Set up logger.
@@ -241,6 +241,8 @@ if __name__ == "__main__":
 
     args = parser.parse_args()
 
+    self = 'ch_master'  # use until ch_master is an object
+
     # Be paranoid: if the executable is being run from /usr/sbin we can be
     # reasonably assured that the git tag recorded in /etc/CHIME is correct. If it
     # is not being run from there, force the user manually insert the git tag as
@@ -281,8 +283,8 @@ if __name__ == "__main__":
             name = "ch%02d" % i
             tmp_delay = []
             if not name in conf.fpga.adc_delay:
-                log.critical("Could not find fpga.adc_delay.%s entry in " \
-                                         "configuration file." % (name))
+                log.critical("%.32r: Could not find fpga.adc_delay.%s entry in " \
+                                         "configuration file." % (self, name))
                 exit()
             else:
                 this_chan = conf.fpga.adc_delay[name]
@@ -290,8 +292,8 @@ if __name__ == "__main__":
                 k = int(this_chan[j])
                 tmp_delay.append(k)
             if len(tmp_delay) != 16:
-                log.critical("Entry fpga.adc_delay.%s needs 16 integer entries." % \
-                                         (name))
+                log.critical("%.32r: Entry fpga.adc_delay.%s needs 16 integer entries." % \
+                                         (self, name))
                 exit()
             adc_delay.append((tmp_delay[:8], tmp_delay[8:]))
 
@@ -304,8 +306,8 @@ if __name__ == "__main__":
             # Will now create an array of controller objects indexed by serial number
             # And program board firmware if needed/requested currently will always reprogram
             ca = fpga_array.FPGAArray(**fpga_array_params)     # Create FPGA array
-            sync_board = ca.ib.get(serial=conf.fpga.sync_board) if conf.fpga.sync_board else None
-            ca.set_sync_method(conf.fpga.sync_method, source='bp_trig', master=sync_board, master_time_source='bp_time' if sync_board else None)
+            sync_board = ca.ib.get(serial=conf.fpga.master_sync_board) if conf.fpga.master_sync_board else None
+            ca.set_sync_method(conf.fpga.sync_method, source=conf.fpga.sync_source, master=sync_board, master_time_source=conf.fpga.master_sync_source if sync_board else None)
             ca.ib.set_adc_mask(0) # null the ADC data before it gets to the channelizers to reduce power consumption
 
             # c = ca.ib
@@ -347,14 +349,14 @@ if __name__ == "__main__":
                 delays = pickle.load(open('pychfpga/delays_aug_2015.pkl'))
                 for ib in ca.ib:
                     ib.set_adc_delays_with_check(delays[int(ib.serial)])
-                    log.info("set delays on SN {0}, SLOT {1}".format(ib.serial, ib.slot))
+                    log.info("%.32r: set delays on SN%s, SLOT%s" % (self, ib.serial, ib.slot))
             except IOError:
-                log.warn("Error loading/setting delay tables.  Using default delays from config file for all boards")
+                log.warn("%.32r: Error loading/setting delay tables.  Using default delays from config file for all boards" % self)
             #for cc in c:
             #  cc.GPU.LINK_ENABLE=1
             #  log.info("GPU link enabled on SN {0}, SLOT {1}".format(cc.serial, cc.slot))
             if not ca.ib:
-                raise RuntimeError('No IceBoard could be found. Are the boards powered up? Is the networking functional?')
+                raise RuntimeError('%.32r: No IceBoard could be found. Are the boards powered up? Is the networking functional?' % self)
 
             ca.ib.set_corr_reset(1)
             time.sleep(0.1)
@@ -412,10 +414,11 @@ if __name__ == "__main__":
             ca.ib.set_FFT_shift(conf.fpga.fft_shift, channels=all_chan)
 
             # Load and set the gains
+            log.info("%.32r: Loading initial gains" % self)
             load_gains(ca.ib, bank=0)
 
             for bankset in ca.ib.get_current_gain_bank():
-                    log.info('Using gain banks %s' % ( ', '.join([str(i) for i in bankset])))
+                    log.info('%.32r: Using gain banks %s' % (self, ', '.join([str(i) for i in bankset])))
 
             # set to only change when at configured frame number
             ca.ib.set_synchronized_gain_switching(enable=1)
@@ -426,18 +429,19 @@ if __name__ == "__main__":
             # set to use bank 1 next, change in loop below. have to do this after config to wait for
             # frame number
             for bankset in ca.ib.get_current_gain_bank():
-                    log.info('Using gain banks %s' % ( ', '.join([str(i) for i in bankset])))
+                    log.info('%.32r: Using gain banks %s' % (self, ', '.join([str(i) for i in bankset])))
 
             for enabled_sync in ca.ib.get_synchronized_gain_switching():
-                    log.info('gain sync status is %s' % ( ', '.join([str(i) for i in enabled_sync])))
+                    log.info('%.32r: Gain sync status is %s' % (self, ', '.join([str(i) for i in enabled_sync])))
 
             for frames_set in ca.ib.get_gain_switch_frame_number():
-                    log.info('gain sync frame is %s' % ( ', '.join([str(i) for i in frames_set])))
+                    log.info('%.32r: Gain sync frame is %s' % (self, ', '.join([str(i) for i in frames_set])))
 
             # for i, c_element in enumerate(c):
             #   gain_pkl_file = open('/home/chime/ch_acq/gains_'+str(c_element.fpga.GPIO.FPGA_SERIAL_NUMBER)+'.pkl', "rb")
             #   gains = pickle.load(gain_pkl_file)
             #   c_element.fpga.set_gain(gains, channels = all_chan)
+            log.info("%.32r: Sending local sync to each board" % self)
             ca.ib.sync()
             #ca.ib.set_send_flags()
             ca.ib.set_offset_binary_encoding(True)
@@ -464,11 +468,16 @@ if __name__ == "__main__":
             if ni_board_26m:
                 ca.set_noise_injection(ni_board_26m, ni_enable_26m, ni_offset_26m, ni_high_time_26m, ni_period_26m)
             # Initialize data shufling and transmission to the GPU
+            log.info("%.32r: Setting FPGA operational mode" % self)
             ca.set_operational_mode(conf.fpga.operational_mode, frames_per_packet=fpga_array_params.group_frames)
-            #ca.sync()  # synchronize all the boards in the array. THIS SYNCING IS ALREADY DONE AT SETTING OPERATIONAL MODE ABOVE
+            log.info("%.32r: Synchronizing the array..." % self)
 
+            ca.sync()  # synchronize all the boards in the array
+
+            log.info("%.32r: Unmasking the ADC data" % self)
             ca.ib.set_adc_mask(0xFF) # restore normal ADC data
 
+            log.info("%.32r: Waiting for 2 seconds" % self)
             time.sleep(2)
             #shuffle_init(list(c), ni_board, ni_board_26m, sync_board, dsmap = d_slots, frames_per_packet=4, cb1_lanes=16, cb1_bins=64, cb2_lanes=16, cb2_bins=8, cb2_bypass=0, remap=True,
             #             ni_enable = ni_enable, ni_offset = ni_offset,
@@ -492,6 +501,7 @@ if __name__ == "__main__":
 
 
             #Read the FPGA setting back from the FPGA
+            log.info("%.32r: Getting configuration data from all FPGAs" % self)
             fpga_conf = {ib.slot:ib.get_config() for ib in ca.ib}
 
             # Create the output directory.
@@ -521,10 +531,10 @@ if __name__ == "__main__":
                 corr_name = 'pathfinder'
             if not corr_name:
                 try:
-                    log.critical("Could not find hash for ADC serial numbers %s." %
-                                             fpga_conf.adc_serial)
+                    log.critical("%.32r: Could not find hash for ADC serial numbers %s." %
+                                             (self, fpga_conf.adc_serial))
                 except KeyError:
-                    log.critical("Could not find key \"adc_serial\" in FPGA configuration.")
+                    log.critical("%.32r: Could not find key \"adc_serial\" in FPGA configuration." % self)
                 exit()
     else:
             time_str = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
@@ -534,7 +544,7 @@ if __name__ == "__main__":
                                                                      corr_name)
     os.makedirs(acq_base_dir)
     if not os.path.exists(acq_base_dir):
-        log.critical("Could not create directory \"%s\"." % (acq_base_dir))
+        log.critical("%.32r: Could not create directory \"%s\"." % (self, acq_base_dir))
         exit()
 
     # Create a symbolic link to the output directory.
@@ -547,7 +557,7 @@ if __name__ == "__main__":
     log_file_lock = "%s/.ch_master.log.lock" % acq_base_dir
     fp = open(log_file_lock, "w")
     if not fp:
-        log.error("Could not create lockfile \"%s\"." % log_file_lock)
+        log.error("%.32r: Could not create lockfile \"%s\"." % (self, log_file_lock))
     else:
         fp.close()
 
@@ -557,10 +567,10 @@ if __name__ == "__main__":
     log_file.setLevel(logging.DEBUG)
     log_file.setFormatter(log_fmt)
     log.addHandler(log_file)
-    log.info("Now logging to \"%s\"." % (acq_log_path))
+    log.info("%.32r: Now logging to \"%s\"." % (self, acq_log_path))
 
-    log.info("Sampling frequency is %0.3f MHz." %
-             float(fpga_array_params.samp_freq))
+    log.info("%.32r: Sampling frequency is %0.3f MHz." %
+             (self, float(fpga_array_params.samp_freq)))
 
     if acq:
         if (int(args.configure_fpga) > 0):
@@ -596,12 +606,12 @@ if __name__ == "__main__":
     if not len(args.git_tag):
         fp = open("/etc/CHIME/version", "r")
         if not fp:
-            log.critical("Could not find git tag in \"/etc/CHIME/version\".")
+            log.critical("%.32r: Could not find git tag in \"/etc/CHIME/version\"." % self)
             exit()
         tag = fp.read().replace("\n", "")
     else:
         tag = args.git_tag
-    log.info("Git version is %s." % (tag))
+    log.info("%.32r: Git version is %s." % (self, tag))
 
     if acq:
         acq.add_header_item("git_version_tag", tag)
@@ -637,14 +647,22 @@ if __name__ == "__main__":
             ca.ib.set_next_gain_bank(bank=next_bank)
             all_next_bank = ca.ib.get_next_gain_bank()
             for bankset in all_next_bank:
-                    log.info('Set next gain bank to %s' % ( ', '.join([str(i) for i in bankset])))
+                    log.info('%.32r: Set next gain bank to %s' % (self, ', '.join([str(i) for i in bankset])))
             all_banks = ca.ib.get_current_gain_bank()
             for bankset in all_banks:
-                    log.info('currently using gain banks %s' % ( ', '.join([str(i) for i in bankset])))
+                    log.info('%.32r: Currently using gain banks %s' % (self, ', '.join([str(i) for i in bankset])))
 
+    t0 = time.time()
 
     try:
         while True:
+
+            # print board info at regular interval
+            t1 = time.time()
+            if t1-t0 > 30:
+                t0 = t1
+                ca.print_iceboard_info()
+
             # Pass the acquisition object the board temperatures. This is a temporary
             # way of doing this!  Check on frame number.  If less than 10sec from 'reload_gains_time'
             # then start reloading the gains. and switch banks.
@@ -676,10 +694,10 @@ if __name__ == "__main__":
                                 fpga_gains = {ib.slot: ib.get_gain(bank=next_bank) for ib in ca.ib}
                                 gains_reloaded = True
                                 bank_switched = False
-                                log.info("Loaded gains into bank %d" % next_bank)
+                                log.info("%.32r: Loaded gains into bank %d" % (self, next_bank))
                                 all_banks = ca.ib.get_current_gain_bank()
                                 for bankset in all_banks:
-                                        log.info('Using gain banks %s' % ( ', '.join([str(i) for i in bankset])))
+                                        log.info('%.32r: Using gain banks %s' % (self, ', '.join([str(i) for i in bankset])))
                         #log.debug("checked for reload gain time")
                         # Right before switch time
                         if (abs(fpga_frame_count - (gain_switch_frame + gpu_intergration_period)) < frame_range) and not hdf5_gains_switched:
@@ -690,7 +708,7 @@ if __name__ == "__main__":
                                                 if acq:
                                                     acq.pass_fpga_gain(inp, v)
                                 hdf5_gains_switched = True
-                                log.info('Changed gains in hdf5 file')
+                                log.info('%.32r: Changed gains in hdf5 file' % self)
                         #log.debug("checked for switch gains in hdf5 file time")
                         #shortly after after switch
                         if (abs(fpga_frame_count - bank_switch_frame) < frame_range) and not bank_switched:
@@ -700,17 +718,17 @@ if __name__ == "__main__":
                                 gains_reloaded = False
                                 hdf5_gains_switched = False
                                 bank_switched = True
-                                log.debug("changed which gain bank will be written to over to %d" % next_bank)
+                                log.debug("%.32r: changed which gain bank will be written to over to %d" % (self, next_bank))
                                 all_banks = ca.ib.get_current_gain_bank()
                                 for bankset in all_banks:
-                                        log.info('Using gain banks %s' % ( ', '.join([str(i) for i in bankset])))
+                                        log.info('%.32r: Using gain banks %s' % (self, ', '.join([str(i) for i in bankset])))
                         #log.debug("checked for gain back switch prep time")
                     except:
-                        log.critical("something went wrong with gain switching, still aquiring data...")
+                        log.critical("%.32r: something went wrong with gain switching, still aquiring data..." % self)
                 except:
-                    log.info("couldn't read fpga frame number... will try again.")
+                    log.info("%.32r: couldn't read fpga frame number... will try again." % self)
             else:
-                log.info("acquiring data...")
+                log.info("%.32r: acquiring data..." % self)
             time.sleep(poll_rate)
     except(KeyboardInterrupt, SystemExit):
         pass
@@ -723,4 +741,4 @@ if acq:
 
 # Remove log file lock and exit.
 os.remove(log_file_lock)
-log.info("Exiting ch_master now.")
+log.info("%.32r:Exiting ch_master now." % self)
