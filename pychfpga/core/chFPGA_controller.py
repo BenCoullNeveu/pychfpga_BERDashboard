@@ -173,9 +173,9 @@ class chFPGA_controller(IceBoardExtHandler):
         self._last_init_time = None
         self.recv = None
 
-    def open(self, init=1, verbose=0, *args, **kwargs):
+    def open(self, init=1, verbose=0, udp_retries=10, *args, **kwargs):
 
-        super(chFPGA_controller, self).open()
+        super(chFPGA_controller, self).open(udp_retries=udp_retries)
         self.logger.info('%r: Instantiating chFPGA firmware handlers objects' % (self))
 
         # self.read = self.mmi.read
@@ -430,12 +430,12 @@ class chFPGA_controller(IceBoardExtHandler):
             if mezz_number in self.mezzanine:
                 mezz = self.mezzanine[mezz_number]
                 self._logger.debug('%r:   Powering down FMC%i' % (self, mezz_number - 1))
-                # self.hw.set_mezzanine_power(mezz_number-1, False)
-                mezz.set_power(False)  # For some reason, prevents the board from rebooting (!)
+                self.hw.set_mezzanine_power(mezz_number-1, False)
+                # mezz.set_power(False)  # For some reason, prevents the board from rebooting (!)
                 time.sleep(0.2)  # *** make async
-                # self._logger.debug('%r:   Powering up FMC%i' % (self, mezz_number - 1))
+                self._logger.debug('%r:   Powering up FMC%i' % (self, mezz_number - 1))
                 self.hw.set_mezzanine_power(mezz_number-1, True)
-                mezz.set_power(True)
+                # mezz.set_power(True)
                 time.sleep(0.2) # Give it some time for the power to stabilize
                 # We need to initialize the ADC board befor we initialize ANT (and its data acquisition) because the delay blocks need a clock
                 self._logger.debug('%r:   Initializing FMC%i' % (self, mezz_number - 1))
@@ -625,10 +625,12 @@ class chFPGA_controller(IceBoardExtHandler):
     def sync(self, local=1, verbose=0):
         if verbose:
             self._logger.info("Sync...")
+        self.set_adc_mask(0) # null the ADC data before it gets to the channelizers to reduce power consumption
         if local:
             self.REFCLK.local_sync()
         else:
             self.REFCLK.sync()
+        self.set_adc_mask(0xff) # restore full ADC data
 
     def pulse_ant_reset(self):
         """ Resets the stats of all antenna processor modules and clear the processing pipeline.
@@ -1754,6 +1756,7 @@ class chFPGA_controller(IceBoardExtHandler):
             cb2_bin_select_map = [np.arange(cb2_bins)*cb2_bin_spacing for i in range(number_of_cb2_bin_sel)]
             cb2_output_words_per_bin = 2 * cb2_input_words_per_bin
             cb2_output_bins = cb2_bins
+
             crate_shuffle_bypass = True
 
             cb3_lane_map = [0, 4, 1, 5, 2, 6, 3, 7]  # Reorder to get data from lanes 0-1, 2-3, 4-5 ...
@@ -1779,7 +1782,7 @@ class chFPGA_controller(IceBoardExtHandler):
             cb1_bin_spacing = 1024/cb1_bins
             cb1_bin_select_map = [np.arange(cb1_bins)*cb1_bin_spacing+i for i in range(number_of_cb1_bin_sel)]
             cb1_bin_select_map = [cb1_bin_select_map[dsmap[get_dest_slot_for_src_lane(i)-1]] for i in range(16)]  # reorder cb1_bin_select_map so slot 0 gets cb1_bin_select_map[0], slot 1 gets cb1_bin_select_map[1] etc.
-            cb1_output_words_per_bin = cb1_lanes/4
+            cb1_output_words_per_bin = 16/4
             cb1_output_bins = cb1_bins
 
             bp_shuffle_bypass = False

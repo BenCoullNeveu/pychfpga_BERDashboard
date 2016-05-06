@@ -169,7 +169,12 @@ class ANT_base(object):
         # Selects which clock is used to clock the channelizes based on whether the ADC card that normally provides the clock is present or not.
         if fmc_present[self.fpga.CHANNELIZERS_CLOCK_SOURCE]:
             self.logger.info('%.32r: Using the ADC to generate the channelizer clock' % self.fpga)
-            self.fpga.GPIO.CHAN_CLK_SRC = 0 # uses the ADC clock to clock the channelizers
+            if self.fpga._sampling_frequency == 800.0e6:
+                self.fpga.GPIO.CHAN_CLK_SRC = 1 # *** JFC: uses the internal clock always. Works only for sampling at 800.000 MSPS
+                self.logger.info("%.32r: Since the sampling frequency is exactly 800.000000 MHz, we'll use the internal 200 MHz clock to clock the channelizers instead of the ADC clock so that syncing the board won't cause large current changes that may upset the core switcher", self.fpga)
+            else:
+                self.fpga.GPIO.CHAN_CLK_SRC = 0 # uses the ADC clock to clock the channelizers
+                self.logger.error("%.32r: The channelizers is clocked by the ADC because we do not sample at exactly 800 MHz. The channelizer clock will be interrupted during syncing, which will cause cause large current changes that may upset the core switcher", self.fpga)
         else:
             self.logger.info('%.32r: Using the internal clock to generate the channelizer clock since the ADC is not available' % self.fpga)
             self.fpga.GPIO.CHAN_CLK_SRC = 1 # uses the internal 200 MHz clock to clock the channelizer
