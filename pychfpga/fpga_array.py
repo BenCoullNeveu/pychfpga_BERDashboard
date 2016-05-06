@@ -252,6 +252,10 @@ class FPGAArray(object):
         stderr_log_level: sets up a handler that prints on stderr
         """
 
+
+        self.ib = []  # make sure repr() has always something
+        self.ic = []
+
         # Make sure the SQL
         sql_log_level = logging.WARNING
         sql_logger = logging.getLogger('sqlalchemy.engine.base.Engine')
@@ -480,6 +484,7 @@ class FPGAArray(object):
 
 
         print
+        # print 'open=',open
         if self.ib and open is not None and open >= 0:
             print 'Initializing firmware (calling ib.open())'
             self.ib.open(adc_delay_table=ADC_DELAY_TABLE,
@@ -554,7 +559,7 @@ class FPGAArray(object):
 
     def __repr__(self):
         """ Short string representing this object and suitable to use as a tag in a syslog entry"""
-        return self.__class__.__name__
+        return '%s(%i_boards,%i_crates)' % (self.__class__.__name__, len(self.ib), len(self.ic))
 
     def get_hwm_info(self):
         string = '%s object with the following hardware map:\n' % self.__class__.__name__
@@ -822,7 +827,7 @@ class FPGAArray(object):
         #     raise RuntimeError('All boards must be in the same crate. The provided set of Iceboards have the following crates: %r' % crate_set)
         # crate = crate_set.pop()
 
-        self.logger.info('Configuring crate-wide data shuffling with frames_per_packet=%i' % (frames_per_packet))
+        self.logger.info('%.32r: Configuring crate-wide data shuffling with frames_per_packet=%i' % (self, frames_per_packet))
 
         # Set-up transmitters
         for i, ib in enumerate(self.ib):
@@ -869,13 +874,14 @@ class FPGAArray(object):
                 rx = (ib.slot, i)
                 tx = ib.crate.get_matching_tx(rx)
                 if tx in tx_list:
-                    self.logger.info('%.32r: %s is receiving from %s' % (ib.crate, rx, tx))
+                    self.logger.info('%.32r: In %r,  %s is receiving from %s' % (self, ib.crate, rx, tx))
                 else:
-                    self.logger.info('%.32r: %s has no corresponding transmitter' % (ib.crate, rx,))
+                    self.logger.info('%.32r: In %r, %s has no corresponding transmitter' % (self, ib.crate, rx))
 
 
         # sync boards
         #soft_sync(c, sync_board)
+        self.logger.info('%.32r: Shuffling initialization completed. Syncing boards' % self)
         self.sync(delay=2)
 
 
@@ -1144,7 +1150,7 @@ class FPGAArray(object):
 
     def get_backplane_qsfp_link_map(self):
         link_map = {}
-        crates = self.ic.index_by(self.ic.get_id())  # crates, indexed by crate_id
+        crates = self.ic.index_by(list(self.ic.get_id()))  # crates, indexed by crate_id
 
         links = self.get_backplane_qsfp_links()
         for link in links:
@@ -1756,11 +1762,11 @@ class FPGAArray(object):
           for iceboard in self.ib:
             try:
               iceboard.set_adc_delays_with_check(delays[int(iceboard.serial)])
-              self.logger.info("Set delays on Iceboard SN {0}, SLOT {1}, CRATE {2}".format(iceboard.serial, iceboard.slot, iceboard.crate))
+              self.logger.info("%.32r: Set delays on Iceboard SN%s, SLOT %i, CRATE %r" % (self, iceboard.serial, iceboard.slot, iceboard.crate))
             except:
-              self.logger.warning("Error reading delays on Iceboard SN {0}, SLOT {1}, CRATE {2}. Using default ADC delays.".format(iceboard.serial, iceboard.slot, iceboard.crate))
+              self.logger.warning("%.32r: Error reading delays on Iceboard SN%s, SLOT %i, CRATE %r. Using default ADC delays." % (iceboard.serial, iceboard.slot, iceboard.crate))
         else:
-          self.logger.warning("file {0} not found. Using default ADC delays for all the iceboards.".format(delay_filename))
+          self.logger.warning("%.32r: File %s not found. Using default ADC delays for all the iceboards." % (delay_filename))
 
 
 def parse_args_as_dict(parser, *args, **kwargs):
