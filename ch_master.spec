@@ -36,6 +36,7 @@ n_freq    = integer(min = 1)
   reload_gains_frame = integer(min = 1)
   gain_switch_frame = integer(min = 1)
   bank_switch_frame = integer(min = 1)
+  gain_reload_period = integer(min = 1)
   [[adc_delay]]
 
 [gpu]
