@@ -156,7 +156,8 @@ correlator_hash = {"stone"        : ["0001"],
 
 # Current archive format version. Prefixed by "NT_" to signify that these data
 # do not have the time-transpose completed.
-archive_version = "NT_2.2.0"
+# archive_version = "NT_2.2.0"
+# Moved into chrx
 
 class FpgaBitstream(object):
     """ Helper object used to load and store a FPGA bitstream. You don't have
@@ -543,7 +544,7 @@ if __name__ == "__main__":
   acq.add_header_item("system_user", getpass.getuser())
   acq.add_header_item("collection_server", socket.gethostname())
   acq.add_header_item("instrument_name", corr_name)
-  acq.add_header_item("archive_version", archive_version)
+  #acq.add_header_item("archive_version", archive_version)
   acq.add_header_item("acquisition_name", "%s_%s_corr" % (time_str, corr_name))
   acq.add_header_item("acquisition_type", "corr")
 
