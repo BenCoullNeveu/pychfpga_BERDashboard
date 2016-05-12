@@ -563,7 +563,7 @@ class FPGAArray(object):
 
     def get_hwm_info(self):
         string = '%s object with the following hardware map:\n' % self.__class__.__name__
-        for i in ib:
+        for i in self.ib:
             mezz = ['%s SN%s' % (m.__ipmi_part_number__, m.serial) if m else 'None' for m in [i.mezzanine.get(1,None), i.mezzanine.get(2,None)]]
             string +='   Crate SN%s, slot %2i: Iceboard SN%s at %s (ping =%s), Mezz1=%s, Mezz2=%s\n' % (i.crate.serial if i.crate else None, i.slot, i.serial, i.hostname, i.ping(), mezz[0], mezz[1])
         return string
