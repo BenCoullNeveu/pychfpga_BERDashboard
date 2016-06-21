@@ -1,0 +1,67 @@
+# Notes:
+#     - Semicolumns must be followed by a space
+#     - Floats must have a decimal point *AND* an exponent sign if an exponent is used (i.e. 10.0 and 10.e+3 is valid, 10e3, 10.e3, 10e+3 are all invalid)
+aliases:
+comment: |
+    This is a long note
+
+    That extends many lines
+        this is indented more
+
+# test_results_folder: './test_results'
+test_results_folder: '../../../../../crate_qc'
+mgk7bp16_model_number: ['MGK7BP16']
+xformat: ['pdf']  # Output formats for the test reports. xml is always saved.
+
+# DEBUGGING options
+debug:
+    default_model: 'MGK7BP16'
+    default_serial: None
+    no_date: false
+
+
+instruments:
+    dmm:       {labpy_object: 'agilent_dmm', interface: 'prologix_eth', ip_addr: '10.11.1.132', gpib_addr: 22} # Agilent 34410A multimeter (we don't use the LAN connection so we can go back in local mode remotely)
+    ps12v:     {labpy_object: 'AgilentPS',   interface: 'prologix_eth', ip_addr: '10.11.1.132', gpib_addr: 5}  # Agilent E3648A dual output power supply  12V on output 1, output 2 not used
+    ps3v3_2v5: {labpy_object: 'AgilentPS',   interface: 'prologix_eth', ip_addr: '10.11.1.132', gpib_addr: 6}  # Agilent E3648A dual output power supply. 3.3V on output1, 2.5V on output 2
+    na:        {labpy_object: 'hp8753e',     interface: 'prologix_eth', ip_addr: '10.11.1.132', gpib_addr: 14} # HP8753E Network Analyzer
+
+?: &default_fpga_array
+    iceboards: 183
+    mdns_delay: 1
+
+
+test_list:
+    # This list all the tests that will be done my the test software, in the proper order
+    # path is the argument given to nose to find the test fucntion, in the form of module_path:function or module_path:class.method
+    # This path is also the path used by XReport to identify tests results, with the exception that the semicolon ':' is replaced by a dot '.'
+    - [ 'dum', {description: 'Dummy Crate test',   path: 'mgk7bp16_crate_tests:MGK7BP16BenchTests.dummy_test', required: yes, require_serial_number: no, dependencies: null}]
+
+
+menu:
+    # The menu item will match the user input to either the 'key' field or to the regular expression 'regex'. The matching dictionary is returned.
+    # If a regular expression is given, string parameters are replaced by string_param.format(regex_matched_group_list), i.e. '{0}' is replaced by the first matched group etc. The 'key' and 'regex' fields are excluded from this conversion.
+    # Entry types are:
+    #  test: a test to run. test_tag refers to the test to run in test_list (defined above). A regex entry will be added to match the tets tag and tets path. The description will be taken from the test description if none is provided here.
+    #  exit: exit the menu
+    #  text: do nothing. The description is shown in the menu if there is one.
+    #  board_info: Sets the current board model and serial number. The serial number can be extracted from string parsed by the regex
+    #
+    - { key: '1', type: test, test_tag: dum}
+
+    - { key: 'S', description: 'Send all new test results data to McGill',            type: push}
+    - { key: 'R', description: 'Generate summary of all tests',                       type: summary}
+    - { key: 'Q', description: 'Exit',                                                type: exit}
+    - {           description: "or Enter or scan board's serial number or menu item", type: text}
+
+    - { regex: '(0\d{3})',                                                            type: board_info, model: 'MGK7BP16', serial: '{0}', next_key: '1'}  # 0nnn are MGADC08 Serial nnnn
+
+
+##################################
+# Test-specific parameters
+##################################
+
+bench_tests:
+    setup:
+        instruments: [dmm, ps12v, ps3v3_2v5] # Subset of instruments we use in the bench tests
+
