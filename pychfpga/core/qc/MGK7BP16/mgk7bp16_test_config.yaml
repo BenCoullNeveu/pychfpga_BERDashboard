@@ -21,10 +21,10 @@ debug:
 
 
 instruments:
-    dmm:       {labpy_object: 'agilent_dmm', interface: 'prologix_eth', ip_addr: '10.11.1.132', gpib_addr: 22} # Agilent 34410A multimeter (we don't use the LAN connection so we can go back in local mode remotely)
-    ps12v:     {labpy_object: 'AgilentPS',   interface: 'prologix_eth', ip_addr: '10.11.1.132', gpib_addr: 5}  # Agilent E3648A dual output power supply  12V on output 1, output 2 not used
-    ps3v3_2v5: {labpy_object: 'AgilentPS',   interface: 'prologix_eth', ip_addr: '10.11.1.132', gpib_addr: 6}  # Agilent E3648A dual output power supply. 3.3V on output1, 2.5V on output 2
-    na:        {labpy_object: 'hp8753e',     interface: 'prologix_eth', ip_addr: '10.11.1.132', gpib_addr: 14} # HP8753E Network Analyzer
+    #dmm:       {labpy_object: 'agilent_dmm', interface: 'prologix_eth', ip_addr: '10.11.1.132', gpib_addr: 22} # Agilent 34410A multimeter (we don't use the LAN connection so we can go back in local mode remotely)
+    #ps12v:     {labpy_object: 'AgilentPS',   interface: 'prologix_eth', ip_addr: '10.11.1.132', gpib_addr: 5}  # Agilent E3648A dual output power supply  12V on output 1, output 2 not used
+    #ps3v3_2v5: {labpy_object: 'AgilentPS',   interface: 'prologix_eth', ip_addr: '10.11.1.132', gpib_addr: 6}  # Agilent E3648A dual output power supply. 3.3V on output1, 2.5V on output 2
+    #na:        {labpy_object: 'hp8753e',     interface: 'prologix_eth', ip_addr: '10.11.1.132', gpib_addr: 14} # HP8753E Network Analyzer
 
 ?: &default_fpga_array
     iceboards: 183
@@ -35,7 +35,7 @@ test_list:
     # This list all the tests that will be done my the test software, in the proper order
     # path is the argument given to nose to find the test fucntion, in the form of module_path:function or module_path:class.method
     # This path is also the path used by XReport to identify tests results, with the exception that the semicolon ':' is replaced by a dot '.'
-    - [ 'dum', {description: 'Dummy Crate test',   path: 'mgk7bp16_crate_tests:MGK7BP16BenchTests.dummy_test', required: yes, require_serial_number: no, dependencies: null}]
+    - [ 'ber', {description: 'Bit Error Rate test',   path: 'mgk7bp16_crate_tests:MGK7BP16BenchTests.bitErrorRate_test', required: yes, require_serial_number: no, dependencies: null}]
 
 
 menu:
@@ -47,7 +47,7 @@ menu:
     #  text: do nothing. The description is shown in the menu if there is one.
     #  board_info: Sets the current board model and serial number. The serial number can be extracted from string parsed by the regex
     #
-    - { key: '1', type: test, test_tag: dum}
+    - { key: '1', type: test, test_tag: ber}
 
     - { key: 'S', description: 'Send all new test results data to McGill',            type: push}
     - { key: 'R', description: 'Generate summary of all tests',                       type: summary}
@@ -61,7 +61,8 @@ menu:
 # Test-specific parameters
 ##################################
 
-bench_tests:
+crate_tests:
     setup:
-        instruments: [dmm, ps12v, ps3v3_2v5] # Subset of instruments we use in the bench tests
+    
+    bitErrorRate_test:
 

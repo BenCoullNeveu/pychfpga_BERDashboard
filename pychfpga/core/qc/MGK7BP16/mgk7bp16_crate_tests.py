@@ -51,12 +51,33 @@ class MGK7BP16CrateTests(unittest.TestCase):  #
         """
         xr.header('Setting-up')
         self.cfg = util.load_config(TEST_CONFIG_FILE)
-        cfg = self.cfg.bench_tests.setup  # config options pertaining to setup
+        cfg = self.cfg.crate_tests.setup  # config options pertaining to setup
         self.instr = util.open_instruments(self.cfg.instruments, cfg.instruments)  # open only instruments listed in cfg.instruments
 
-        self.instr.dmm.set_beeper(True)
-        self.instr.dmm.display('Ready for','MGK7BP16 tests')
-   
+
+    def bitErrorRate_test(self):
+        
+        # Useful shortcuts
+        cfg = self.cfg.crate_tests.bitErrorRate_test
+        test_results = NameSpace()
+
+        print '--------------------------------'
+        print '--Starting Bit Error Rate Test--'
+
+        try:
+            ca = FPGAArray(icecrates = 11, prog = 1, open = 1)
+            test_results.table = ca.get_ber()
+            passed = True
+            for key in test_results.table.keys():
+                if key[0] == 'BP':
+                    if test_results.table[key] >= 0.0:
+                        passed = False
+
+        finally:
+            test_results.passed = passed
+            xr.save_data(test_results)
+
+
 
 if __name__ == '__main__':
     """ Run the test in this file."""
