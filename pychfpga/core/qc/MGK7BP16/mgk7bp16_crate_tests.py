@@ -59,23 +59,21 @@ class MGK7BP16CrateTests(unittest.TestCase):  #
         
         # Useful shortcuts
         cfg = self.cfg.crate_tests.bitErrorRate_test
-        test_results = NameSpace()
 
         print '--------------------------------'
         print '--Starting Bit Error Rate Test--'
+        print '--------------------------------'
 
         try:
             ca = FPGAArray(icecrates = 11, prog = 1, open = 1)
-            test_results.ber = ca.get_ber()
+            result = ca.get_ber(print_ = False)
 
-            print test_results.ber
-
-            for key in test_results.ber.keys():
-                if (key[0] == 'BP') and test_results.ber[key] <= 0.001:
-                    print key[1] + ' to ' + key[2] + ': Pass'
+            for key in result.keys():
+                if key[0] == 'BP':
+                    print result[key]
 
         finally:
-            xr.save_data(test_results)
+            xr.save_data(result)
 
 
 
