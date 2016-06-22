@@ -17,6 +17,7 @@ from icecore.tests.xreport import test_report
 from icecore.hw import ipmi_fru
 
 util.add_paths('../../..')  # needed to find fpga_array
+util.add_paths('../../../..') # needed to find pychfpga
 from fpga_array import FPGAArray
 
 TEST_CONFIG_FILE = './mgk7bp16_test_config.yaml'
@@ -52,7 +53,6 @@ class MGK7BP16CrateTests(unittest.TestCase):  #
         xr.header('Setting-up')
         self.cfg = util.load_config(TEST_CONFIG_FILE)
         cfg = self.cfg.crate_tests.setup  # config options pertaining to setup
-        self.instr = util.open_instruments(self.cfg.instruments, cfg.instruments)  # open only instruments listed in cfg.instruments
 
 
     def bitErrorRate_test(self):
@@ -66,15 +66,15 @@ class MGK7BP16CrateTests(unittest.TestCase):  #
 
         try:
             ca = FPGAArray(icecrates = 11, prog = 1, open = 1)
-            test_results.table = ca.get_ber()
-            passed = True
-            for key in test_results.table.keys():
-                if key[0] == 'BP':
-                    if test_results.table[key] >= 0.0:
-                        passed = False
+            test_results.ber = ca.get_ber()
+
+            print test_results.ber
+
+            for key in test_results.ber.keys():
+                if (key[0] == 'BP') and test_results.ber[key] <= 0.001:
+                    print key[1] + ' to ' + key[2] + ': Pass'
 
         finally:
-            test_results.passed = passed
             xr.save_data(test_results)
 
 
