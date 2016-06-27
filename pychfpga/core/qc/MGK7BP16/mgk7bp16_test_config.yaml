@@ -30,6 +30,9 @@ test_list:
     # path is the argument given to nose to find the test fucntion, in the form of module_path:function or module_path:class.method
     # This path is also the path used by XReport to identify tests results, with the exception that the semicolon ':' is replaced by a dot '.'
     - [ 'ber', {description: 'Bit Error Rate test',   path: 'mgk7bp16_crate_tests:MGK7BP16CrateTests.bitErrorRate_test', required: yes, require_serial_number: no, dependencies: null}]
+    - [ 'res', {description: 'Board Reset test',      path: 'mgk7bp16_crate_tests:MGK7BP16CrateTests.reset_test',        required: yes, require_serial_number: no, dependencies: null}]
+    - [ 'qsf', {description: 'QSFP Connector test',   path: 'mgk7bp16_crate_tests:MGK7BP16CrateTests.qsfp_test',         required: yes, require_serial_number: no, dependencies: null}]
+    - [ 'sen', {description: 'Voltage/Current test',  path: 'mgk7bp16_crate_tests:MGK7BP16CrateTests.sensor_test',       required: yes, require_serial_number: no, dependencies: null}]
 
 
 menu:
@@ -42,10 +45,14 @@ menu:
     #  board_info: Sets the current board model and serial number. The serial number can be extracted from string parsed by the regex
     #
     - { key: '1', type: test, test_tag: ber}
+    - { key: '2', type: test, test_tag: res}
+    - { key: '3', type: test, test_tag: qsf}
+    - { key: '4', type: test, test_tag: sen}
 
     - { key: 'S', description: 'Send all new test results data to McGill',            type: push}
     - { key: 'R', description: 'Generate summary of all tests',                       type: summary}
     - { key: 'Q', description: 'Exit',                                                type: exit}
+    - { key: 'X', description: 'Reload Tests',                                        type: reload}
     - {           description: "or Enter or scan board's serial number or menu item", type: text}
 
     - { regex: '(0\d{3})',                                                            type: board_info, model: 'MGK7BP16', serial: '{0}', next_key: '1'}  # 0nnn are MGADC08 Serial nnnn
@@ -59,4 +66,15 @@ crate_tests:
     setup:
     
     bitErrorRate_test:
+        bp_limit: 0.001
+        gpu_limit: 10
 
+    reset_test:
+        sleep_time: 60
+
+    qsfp_test:
+
+    sensor_test:
+        voltage_limits: [3, 3.5]
+        current_limits: [15, 20]
+        temp_limit: 90
