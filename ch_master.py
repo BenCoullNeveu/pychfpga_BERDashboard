@@ -502,7 +502,7 @@ if __name__ == "__main__":
 
             #Read the FPGA setting back from the FPGA
             log.info("%.32r: Getting configuration data from all FPGAs" % self)
-            fpga_conf = {ib.slot:ib.get_config() for ib in ca.ib}
+            fpga_conf = {ib.slot:vars(ib.get_config()) for ib in ca.ib}
 
             # Create the output directory.
             time_str = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
