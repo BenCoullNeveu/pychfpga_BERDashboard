@@ -640,6 +640,7 @@ if __name__ == "__main__":
     frame_range = 2*poll_rate_in_frames
 
     bank_switch_frame = conf.fpga.bank_switch_frame
+    gain_reload_period = conf.fpga.gain_reload_period  #in frames
     if ( int(args.configure_fpga) > 0):
             # init gains function kind of a hack.  Should fix.
             current_bank = 0
@@ -686,7 +687,7 @@ if __name__ == "__main__":
                          #Right now can miss gain setting stuff if hk takes more than 10s.  Really need to disentangle the two.
                 try:
                     time.sleep(0.1)
-                    fpga_frame_count = ca.ib[0].get_frame_number()
+                    fpga_frame_count = ca.ib[0].get_frame_number() % gain_reload_period
                     try:
                         # Well before switch time.  Set gains in next bank, read back what we set.
                         if (abs(fpga_frame_count - reload_gains_frame) < frame_range) and not gains_reloaded:
