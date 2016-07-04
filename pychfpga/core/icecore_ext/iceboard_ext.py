@@ -458,7 +458,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
                 """
         try:
             return base64.decodestring(self._mezzanine_eeprom_read_base64(mezzanine))
-        except tuber.TuberRemoteError:
+        except (tuber.TuberRemoteError, AttributeError):
             self.logger.debug("%.32r: Cannot read the Mezzanine %i EEPROM through the ARM's _mezzanine_eeprom_read_base64() method. Attempting to read the Mezzanine EEPROM through the FPGA." % (self, mezzanine))
 
         eeprom_data = self.hw.read_mezzanine_eeprom(mezzanine, 0, 1)
