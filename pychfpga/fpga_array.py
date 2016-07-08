@@ -1232,6 +1232,8 @@ class FPGAArray(object):
             # First, make sure we can get errors by setting the wrong RX PRBS Sequence
             if source_gtx is None or dest_gtx is None:
                 continue
+            if link[0] == 'BP_QSFP':
+                source_gtx.TXDIFFCTRL = 12
             if tx_power is not None:
                 source_gtx.TXDIFFCTRL = tx_power
 
@@ -1467,6 +1469,30 @@ class FPGAArray(object):
                          row_labels=row_labels, col_labels=col_labels, corner_label=corner_label,
                          line_sep=grid, max_width=width)
 
+    def get_shuffle_status(self):
+        
+        status = {}
+        for crate in self.ic:
+            status[crate] = {}
+            
+            for (slot, ib) in crate.slot.items():
+                status[crate][ib] = {}
+                
+                status[crate][ib]['bp'] = ib.BP_SHUFFLE.get_bp_rx_status(0)
+                status[crate][ib]['qsfp'] = ib.BP_SHUFFLE.get_bp_rx_status(1)
+                
+                status[crate][ib]['cb2'] = {}
+                status[crate][ib]['cb2']['align'] = ib.CROSSBAR2.get_align_status()
+                status[crate][ib]['cb2']['frame'] = ib.CROSSBAR2.get_frame_alignment_status()
+                status[crate][ib]['cb2']['bin'] = ib.CROSSBAR2.get_bin_sel_status()
+
+                status[crate][ib]['cb3'] = {}
+                status[crate][ib]['cb2']['align'] = ib.CROSSBAR3.get_align_status()
+                status[crate][ib]['cb2']['frame'] = ib.CROSSBAR3.get_frame_alignment_status()
+                status[crate][ib]['cb2']['bin'] = ib.CROSSBAR3.get_bin_sel_status()
+
+        return status
+
     def print_shuffle_status(self, reset_stats=False, verbose=1, grid=False):
 
         for crate in self.ic:
@@ -1518,9 +1544,9 @@ class FPGAArray(object):
                 else:
                     row_labels += [label]
             # return info
-            print 'row_labels=', row_labels
-            print 'col_labels=', col_labels
-            print 'data=', info
+            # print 'row_labels=', row_labels
+            # print 'col_labels=', col_labels
+            # print 'data=', info
             self.print_table(info, row_labels=row_labels, col_labels=col_labels, corner_label=corner_label, line_sep=grid)
 
     def print_table(self, data=None,
