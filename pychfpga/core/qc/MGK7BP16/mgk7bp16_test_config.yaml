@@ -76,14 +76,15 @@ crate_tests:
         gpu_limit: 50
 
     reset_test:
-        sleep_time: 60
+        arm_sleep_time: 30 # ~20 secs
+        pow_sleep_time: 60 # ~40 secs , board 9 crate 18 ~50 secs
 
     qsfp_test:
 
     sensor_test:
         voltage_limits: [3, 3.5]
         current_limits: [15, 20]
-        temp_limit: 85
+        temp_limit: 90
 
     clock_test:
         max_time_diff: 50000000

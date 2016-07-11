@@ -49,165 +49,50 @@ class MGK7BP16CrateTests(unittest.TestCase):
         cfg = self.cfg.crate_tests.setup  # config options pertaining to setup
 
 
-    def bitErrorRate_test(self):
-        
-        # Useful shortcuts
-        cfg = self.cfg.crate_tests.bitErrorRate_test
+    def clock_test(self):
+        cfg = self.cfg.crate_tests.clock_test
 
-        ca = FPGAArray(icecrates = xr.params.serial, prog = 2, open = 1, stderr_log_level = 'info')
-
-        xr.header('Beginn Testing')
-        try:
-            result = ca.get_ber(period = cfg.period, print_ = False)
-            bp_rate = True
-            qsfp_rate = True
-            #gpu_rate = True
-            bad_lanes = []
-
-            for key in result.keys():
-                if key[0] == 'BP':
-                    if result[key] >= cfg.bp_limit:
-                        bp_rate = False
-                        bad_lanes.append((key, result[key]))
-                elif key[0] == 'BP_QSFP':
-                    if result[key] >= cfg.qsfp_limit:
-                        qsfp_rate = False
-                        bad_lanes.append((key, result[key]))
-                elif key[0] == 'GPU':
-                    #if result[key] >= cfg.gpu_limit:
-                    #    gpu_rate = False
-                    #    bad_lanes.append((key, result[key]))
-                    del result[key]
-            
-            xr.header('Test-Results')
-            keys = result.keys()
-            keys.sort()
-            for key in keys:
-                print key, result[key]
-
-            assert bp_rate, 'Bit Error Rate for Backplane lanes too high!'
-            assert qsfp_rate, 'Bit Error Rate for QSFP lanes too high!'
-            #assert gpu_rate, 'Bit Error Rate for GPU lanes too high!'
-
-        finally:
-            xr.save_data(result)
-            xr.params.test_locals = locals()
-
-
-    def reset_test(self):
-        cfg = self.cfg.crate_tests.reset_test
-        
-        ca = FPGAArray(icecrates = xr.params.serial, prog = 2, open = 1)
-
-        result = NameSpace()
-        result.res = {}
-        result.onoff = {}
-        result.res.off = [False]*16
-        result.res.on = [False]*16
-        result.onoff.off = [False]*16
-        result.onoff.on = [False]*16
-
-        xr.header('Beginn Reset Test')
-        try:
-            for i in range(0, 16, 2):
-                print "Resetting arm on board %d." % (i+2)
-                ca.ib[i].reset_arm_on_slot(i+2)
-                result.res.off[i+1] = not ca.ib[i+1].ping()
-            
-            print "Waiting ..." 
-            time.sleep(cfg.sleep_time/1.5)
-            
-            for i in range(0, 16, 2):
-                result.res.on[i+1] = ca.ib[i+1].ping()
-            
-            for i in range(1, 16, 2):
-                print "Resetting arm on board %d." % i
-                ca.ib[i].reset_arm_on_slot(i)
-                result.res.off[i-1] = not ca.ib[i-1].ping()
-            
-            print "Waiting ..."
-            time.sleep(cfg.sleep_time/1.5)
-            
-            for i in range(1, 16, 2):
-                result.res.on[i-1] = ca.ib[i-1].ping()
-
-            xr.header('Test-Results')
-            for i in range(0, len(result.res.off)):
-                print result.res.off[i] , result.res.on[i]
-            
-            for i in range(0, len(result.res.off)):
-                assert result.res.off[i], "Iceboard(s) did not turn off properly!"
-                assert result.res.on[i], "Iceboard(s) did not turn on properly!"
-
-        finally:
-            xr.save_data(result.res)
-            xr.params.test_locals = locals()
-
-        xr.header('Beginn ON/OFF Test')
-        try:
-            for i in range(0, 16, 2):
-                print "Turning board %d off." % (i+2)
-                ca.ib[i].set_power_on_slot(i+2, False)
-                result.onoff.off[i+1] = not ca.ib[i+1].ping()
-                print "Turning board %d on." % (i+2)
-                ca.ib[i].set_power_on_slot(i+2, True)
-            
-            print "Waiting ..." 
-            time.sleep(cfg.sleep_time)
-            
-            for i in range(0, 16, 2):
-                result.onoff.on[i+1] = ca.ib[i+1].ping()
-            
-            for i in range(1, 16, 2):
-                print "Turning board %d off." % i
-                ca.ib[i].set_power_on_slot(i, False)
-                result.onoff.off[i-1] = not ca.ib[i-1].ping()
-                print "Turning board %d on." % i
-                ca.ib[i].set_power_on_slot(i, True)
-            
-            print "Waiting ..."
-            time.sleep(cfg.sleep_time)
-            
-            for i in range(1, 16, 2):
-                result.onoff.on[i-1] = ca.ib[i-1].ping()
-
-            xr.header('Test-Results')
-            for i in range(0, len(result.onoff.off)):
-                print result.onoff.off[i] , result.onoff.on[i]
-            
-            for i in range(0, len(result.onoff.off)):
-                assert result.onoff.off[i], "Iceboard(s) did not turn off properly!"
-                assert result.onoff.on[i], "Iceboard(s) did not turn on properly!"
-
-        finally:
-            xr.save_data(result.onoff)
-            xr.params.test_locals = locals()
-
-
-    def qsfp_test(self):
-        cfg = self.cfg.crate_tests.qsfp_test
-        
         ca = FPGAArray(icecrates = xr.params.serial, prog = 1, open = 1)
-        
+
         xr.header('Test-Results')
-
+        
         try:
-            qsfpslots = [0]*16
-            for i in range(1, 17):
-                if ca.ib[0].is_bp_qsfp_present(i): 
-                    print "Backplane QSFP module present on slot " + repr(i)
-                    qsfpslots[i-1] = 1
-                else:
-                    print "Backplane QSFP module NOT present on slot " + repr(i)
+            print 'Slot Numbers:'
+            slots = set([])
+            for slot in ca.ib.slot:
+                print slot
+                slots.add(slot)
 
-                if qsfpslots[i-1]:
-                    print "QSFP module manufactured by: "+ base64.b64decode(ca.ib[0]._bp_qsfp_eeprom_read_base64(i, 148, 16)).strip() + ". Serial number: " + base64.b64decode(ca.ib[0]._bp_qsfp_eeprom_read_base64(i, 196, 16)).strip() + "."
+            print '\nClock Frequencies:'
+            clock = []
+            for ib in ca.ib:
+                print ib.FreqCtr.read_frequency('RAW_CLK')
+                clock.append(ib.FreqCtr.read_frequency('RAW_CLK'))
 
-            for i in range(0, 16):
-                assert qsfpslots[i], "Not all connectors were detected!"
+            print '\nTime Readout:'
+            time = []
+            for ib in ca.ib:
+                ib.set_irigb_source('bp_time')
+                ib.get_irigb_source()
+                print ib.get_irigb_time()
+            for ib in ca.ib:
+                time.append(ib.get_irigb_time(format = 'nano'))
+            '''
+            print '\nTrig Readout:'
+            trig = []
+            for ib in ca.ib:
+                ib.set_irigb_source('bp_trig')
+                ib.get_irigb_source()
+                print ib.get_irigb_time()
+            for ib in ca.ib:
+                trig.append(ib.get_irigb_time(format = 'nano'))
+            '''
 
-            assert input_yes_no('Were the manufactor and serial number correctly read? Answer Y/N\n'), "User detected error in QSFP readout!"
-
+            assert len(slots) == 16, 'Problem with slot association.'
+            assert min(clock) > cfg.limits[0] and max(clock) < cfg.limits[1], 'Clock out of bounds!' 
+            assert max(np.diff(time).tolist()) < cfg.max_time_diff, 'Difference in time signal too great between boards!'
+            #assert max(np.diff(trig).tolist()) < cfg.max_time_diff, 'Difference in trig signal too great between boards!'
+       
         finally:
             xr.params.test_locals = locals()
 
@@ -250,50 +135,166 @@ class MGK7BP16CrateTests(unittest.TestCase):
             xr.params.test_locals = locals()
 
 
-    def clock_test(self):
-        cfg = self.cfg.crate_tests.clock_test
+    def qsfp_test(self):
+        cfg = self.cfg.crate_tests.qsfp_test
+        
+        ca = FPGAArray(icecrates = xr.params.serial, prog = 1, open = 1)
+        
+        xr.header('Test-Results')
+
+        try:
+            qsfpslots = [0]*16
+            for i in range(1, 17):
+                if ca.ib[0].is_bp_qsfp_present(i): 
+                    print "Backplane QSFP module present on slot " + repr(i)
+                    qsfpslots[i-1] = 1
+                else:
+                    print "Backplane QSFP module NOT present on slot " + repr(i)
+
+                if qsfpslots[i-1]:
+                    print "QSFP module manufactured by: "+ base64.b64decode(ca.ib[0]._bp_qsfp_eeprom_read_base64(i, 148, 16)).strip() + ". Serial number: " + base64.b64decode(ca.ib[0]._bp_qsfp_eeprom_read_base64(i, 196, 16)).strip() + "."
+
+            for i in range(0, 16):
+                assert qsfpslots[i], "Not all connectors were detected!"
+
+            assert input_yes_no('Were the manufactor and serial number correctly read? Answer Y/N\n'), "User detected error in QSFP readout!"
+
+        finally:
+            xr.params.test_locals = locals()
+
+
+    def reset_test(self):
+        cfg = self.cfg.crate_tests.reset_test
+        
+        ca = FPGAArray(icecrates = xr.params.serial, prog = 1, open = 1)
+
+        result = NameSpace()
+        result.res = {}
+        result.onoff = {}
+        result.res.off = [False]*16
+        result.res.on = [False]*16
+        result.onoff.off = [False]*16
+        result.onoff.on = [False]*16
+
+        xr.header('Beginn Reset Test')
+        try:
+            for i in range(0, 16, 2):
+                print "Resetting arm on board %d." % (i+2)
+                ca.ib[i].reset_arm_on_slot(i+2)
+                result.res.off[i+1] = not ca.ib[i+1].ping()
+            
+            print "Waiting ..." 
+            time.sleep(cfg.arm_sleep_time/2)
+            
+            for i in range(0, 16, 2):
+                result.res.on[i+1] = ca.ib[i+1].ping()
+            
+            for i in range(1, 16, 2):
+                print "Resetting arm on board %d." % i
+                ca.ib[i].reset_arm_on_slot(i)
+                result.res.off[i-1] = not ca.ib[i-1].ping()
+            
+            print "Waiting ..."
+            time.sleep(cfg.arm_sleep_time)
+            
+            for i in range(1, 16, 2):
+                result.res.on[i-1] = ca.ib[i-1].ping()
+
+            xr.header('Test-Results')
+            for i in range(0, len(result.res.off)):
+                print result.res.off[i] , result.res.on[i]
+            
+            for i in range(0, len(result.res.off)):
+                assert result.res.off[i], "Iceboard(s) did not turn off properly!"
+                assert result.res.on[i], "Iceboard(s) did not turn on properly!"
+
+        finally:
+            xr.save_data(result.res)
+            xr.params.test_locals = locals()
+        
+        xr.header('Beginn ON/OFF Test')
+        try:
+            for i in range(0, 16, 2):
+                print "Turning board %d off." % (i+2)
+                ca.ib[i].set_power_on_slot(i+2, False)
+                result.onoff.off[i+1] = not ca.ib[i+1].ping()
+                print "Turning board %d on." % (i+2)
+                ca.ib[i].set_power_on_slot(i+2, True)
+            
+            print "Waiting ..." 
+            time.sleep(cfg.pow_sleep_time)
+            
+            for i in range(0, 16, 2):
+                result.onoff.on[i+1] = ca.ib[i+1].ping()
+            
+            for i in range(1, 16, 2):
+                print "Turning board %d off." % i
+                ca.ib[i].set_power_on_slot(i, False)
+                result.onoff.off[i-1] = not ca.ib[i-1].ping()
+                print "Turning board %d on." % i
+                ca.ib[i].set_power_on_slot(i, True)
+            
+            print "Waiting ..."
+            time.sleep(cfg.pow_sleep_time)
+            
+            for i in range(1, 16, 2):
+                result.onoff.on[i-1] = ca.ib[i-1].ping()
+
+            xr.header('Test-Results')
+            for i in range(0, len(result.onoff.off)):
+                print result.onoff.off[i] , result.onoff.on[i]
+            
+            for i in range(0, len(result.onoff.off)):
+                assert result.onoff.off[i], "Iceboard(s) did not turn off properly!"
+                assert result.onoff.on[i], "Iceboard(s) did not turn on properly!"
+
+        finally:
+            xr.save_data(result.onoff)
+            xr.params.test_locals = locals()
+
+
+    def bitErrorRate_test(self):
+        
+        # Useful shortcuts
+        cfg = self.cfg.crate_tests.bitErrorRate_test
 
         ca = FPGAArray(icecrates = xr.params.serial, prog = 1, open = 1)
 
-        xr.header('Test-Results')
-        
+        xr.header('Beginn Testing')
         try:
-            print 'Slot Numbers:'
-            slots = set([])
-            for slot in ca.ib.slot:
-                print slot
-                slots.add(slot)
+            result = ca.get_ber(period = cfg.period, print_ = False)
+            bp_rate = True
+            qsfp_rate = True
+            #gpu_rate = True
+            bad_lanes = []
 
-            print '\nClock Frequencies:'
-            clock = []
-            for ib in ca.ib:
-                print ib.FreqCtr.read_frequency('RAW_CLK')
-                clock.append(ib.FreqCtr.read_frequency('RAW_CLK'))
+            for key in result.keys():
+                if key[0] == 'BP':
+                    if result[key] >= cfg.bp_limit:
+                        bp_rate = False
+                        bad_lanes.append((key, result[key]))
+                elif key[0] == 'BP_QSFP':
+                    if result[key] >= cfg.qsfp_limit:
+                        qsfp_rate = False
+                        bad_lanes.append((key, result[key]))
+                elif key[0] == 'GPU':
+                    #if result[key] >= cfg.gpu_limit:
+                    #    gpu_rate = False
+                    #    bad_lanes.append((key, result[key]))
+                    del result[key]
+            
+            xr.header('Test-Results')
+            keys = result.keys()
+            keys.sort()
+            for key in keys:
+                print key, result[key]
 
-            print '\nTime Readout:'
-            time = []
-            for ib in ca.ib:
-                ib.set_irigb_source('bp_time')
-                ib.get_irigb_source()
-                print ib.get_irigb_time()
-            for ib in ca.ib:
-                time.append(ib.get_irigb_time(format = 'nano'))
-
-            print '\nTrig Readout:'
-            trig = []
-            for ib in ca.ib:
-                ib.set_irigb_source('bp_trig')
-                ib.get_irigb_source()
-                print ib.get_irigb_time()
-            for ib in ca.ib:
-                trig.append(ib.get_irigb_time(format = 'nano'))
-
-
-            assert len(slots) == 16, 'Problem with slot association.'
-            assert min(clock) > cfg.limits[0] and max(clock) < cfg.limits[1], 'Clock out of bounds!' 
-            assert max(diff(irigb).tolist()) < cfg.max_time_diff, 'Difference in time signal too great between boards!'
+            assert bp_rate, 'Bit Error Rate for Backplane lanes too high!'
+            assert qsfp_rate, 'Bit Error Rate for QSFP lanes too high!'
+            #assert gpu_rate, 'Bit Error Rate for GPU lanes too high!'
 
         finally:
+            xr.save_data(result)
             xr.params.test_locals = locals()
 
 
@@ -317,12 +318,12 @@ class MGK7BP16CrateTests(unittest.TestCase):
                 print 'Wrong input!'
 
         ca = FPGAArray(icecrates = serials, prog = 1, open = 1)
+        
+        xr.header('Start-Testing')
         ca.set_sync_method(method = 'distributed_time', source = cfg.time_source)
         time.sleep(2)
         for i,c in enumerate(ca.ic): c.handler.crate_number = i
         ca.set_operational_mode(shuffle, frames_per_packet=2)
-
-        xr.header('Test-Results')
 
         def searchErrDict(dic):
             if dic == {}:
@@ -337,10 +338,11 @@ class MGK7BP16CrateTests(unittest.TestCase):
                             yield value
                 else:
                     yield 1
-
+        
+        xr.header('Test-Results')
         try:
             for i in range(cfg.repeat_test):
-                print_shuffle_status(verbose = 1)
+                ca.print_shuffle_status(verbose = 1)
                 status = ca.get_shuffle_status()
                 errors = sum(searchErrDict(status))   
                 assert not errors, 'Found %d errors in data shuffle!' % errors
@@ -348,6 +350,35 @@ class MGK7BP16CrateTests(unittest.TestCase):
         finally:
             xr.save_data(status)
             xr.params.test_locals = locals()
+
+
+    def set_adc_delays(self, ib):
+        # Timing for ADCs. Calculate proper offsets for this board.
+        trial = 0
+        while True:
+            delay_table, stuck_bits, bitposgood = ib.compute_adc_delay_offsets(channels=range(8))
+            print "Computed delay table:"
+            for ch, dt in delay_table.items():
+                print '   Channel %02i: %s' % (ch, dt)
+
+            print "Stuck bit flags"
+            for ch, dt in stuck_bits.items():
+                print '   Channel %02i: Stuck bits %s' % (ch, dt)
+
+            print 'Bit positions validity'
+            for ch, dt in bitposgood.items():
+                print '   Channel %02i: Bit position good %s' % (ch, dt)
+
+            stuck_ok = not any(stuck_bits.values())
+            bitpos_ok = all(all(v) for v in bitposgood.values())
+            if stuck_ok and bitpos_ok:
+                break
+            trial += 1
+            assert trial < 6, 'Could not compute ADC delays'
+            print 'Could not compute ADC delays. Retrying...'
+        # Set ADC delays
+        ib.set_adc_delays(delay_table)
+        return delay_table
 
 
     def mezzRamp_test(self):
@@ -358,12 +389,12 @@ class MGK7BP16CrateTests(unittest.TestCase):
         results = NameSpace()  # test results container
         board = 0
         try:
-            for ib in ca.ic:
+            for ib in ca.ib:
                 results[board] = NameSpace()
                 results[board].data = []
-                result[board].ramp_ok = []
+                results[board].ramp_ok = []
 
-                for mezz in ib.mezzanine:                
+                for mezz in ib.mezzanine.values():                
                     print 'initializing mezzanine...'
                     mezz.init()
                 
@@ -403,7 +434,7 @@ class MGK7BP16CrateTests(unittest.TestCase):
                         else:
                             print 'Channel %02i: ERROR!' % (ch+1)
 
-                    result[board].ramp_ok.append(ramp_ok)
+                    results[board].ramp_ok.append(ramp_ok)
                 
                 board += 1
 
@@ -412,8 +443,8 @@ class MGK7BP16CrateTests(unittest.TestCase):
 
         finally:
             xr.params.test_locals = locals()  # store local variables for interactive debugging
-            receiver.close()
-            xr.save_data(results)
+            #receiver.close()
+            #xr.save_data(results)
 
 
 if __name__ == '__main__':
