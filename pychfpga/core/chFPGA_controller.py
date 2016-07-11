@@ -1634,7 +1634,8 @@ class chFPGA_controller(IceBoardExtHandler):
         # if cb2_lanes % 2:
         #     raise ValueError('Crossbar 2 number of input lanes must be a multiple of 2')
 
-
+        cb2_timeout_period = None
+        cb2_sof_window_stop = None
         if mode == 'chan8':  # get raw data from the channelizer (all 32-bit sent as is). Only 8 lanes are available to the GPU.
             cb1_bypass = True
             cb1_four_bit = False
@@ -1831,7 +1832,8 @@ class chFPGA_controller(IceBoardExtHandler):
             cb2_bin_select_map = [np.arange(cb2_bins)*cb2_bin_spacing + (i^crate_number) for i in range(number_of_cb2_bin_sel)]
             cb2_output_words_per_bin = cb2_input_words_per_bin * 4
             cb2_output_bins = cb2_bins
-
+            cb2_timeout_period = 0
+            cb2_sof_window_stop = 70
             crate_shuffle_bypass = False
 
             cb3_lane_map = range(8)
@@ -1911,6 +1913,10 @@ class chFPGA_controller(IceBoardExtHandler):
         # Configure CROSSBAR 2
         #-------------------------
         self.CROSSBAR2.set_lane_map(cb2_lane_map)
+        if cb2_timeout_period is not None:
+            self.CROSSBAR2.TIMEOUT_PERIOD = cb2_timeout_period
+        if cb2_sof_window_stop is not None:
+            self.CROSSBAR2.SOF_WINDOW_STOP = cb2_sof_window_stop
         for (cb2_bin_sel, bs) in enumerate(cb2):
             bs.BYPASS = bool(cb2_bypass)
             if not cb2_bypass:

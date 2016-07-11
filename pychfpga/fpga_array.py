@@ -1480,10 +1480,14 @@ class FPGAArray(object):
                 errs = []
                 # Gather status from the backplane PCB and QSFP links
                 for link_group in range(2):
+                    if reset_stats:
+                        ib.BP_SHUFFLE.reset_stats()
                     errs.append(ib.BP_SHUFFLE.get_bp_rx_status(link_group))
 
                 # Gather status from the crossbars
                 for cb in [ib.CROSSBAR2, ib.CROSSBAR3]:
+                    if reset_stats:
+                        cb.reset_stats()
                     errs.append(cb.get_align_status())
                     errs.append(cb.get_frame_alignment_status())
                     errs.append(cb.get_bin_sel_status())
@@ -1517,11 +1521,11 @@ class FPGAArray(object):
                     row_labels += ['%s L%02i' % (label, lane) for lane in range(lanes)]
                 else:
                     row_labels += [label]
-            # return info
-            print 'row_labels=', row_labels
-            print 'col_labels=', col_labels
-            print 'data=', info
+            # print 'row_labels=', row_labels
+            # print 'col_labels=', col_labels
+            # print 'data=', info
             self.print_table(info, row_labels=row_labels, col_labels=col_labels, corner_label=corner_label, line_sep=grid)
+        # return info
 
     def print_table(self, data=None,
                     row_labels=None, col_labels=None, corner_label=None,
