@@ -30,7 +30,7 @@ def run_tests(config_file):
     test_results_folder = cfg.test_results_folder
     """ Need to make this line independant
     """
-    model_number = cfg.mgk7bp16_model_number
+    model_number = cfg.model_number
 
     # instr = open_instruments(cfg.instruments, ['dmm'])
     # instr.dmm.display('Hello', 'SCAN serial number')

@@ -10,7 +10,7 @@ comment: |
 
 # test_results_folder: './test_results'
 test_results_folder: '../../../../../crate_qc'
-mgk7bp16_model_number: ['MGK7BP16']
+model_number: ['MGK7BP16']
 xformat: ['pdf']  # Output formats for the test reports. xml is always saved.
 
 # DEBUGGING options
@@ -29,11 +29,13 @@ test_list:
     # This list all the tests that will be done my the test software, in the proper order
     # path is the argument given to nose to find the test fucntion, in the form of module_path:function or module_path:class.method
     # This path is also the path used by XReport to identify tests results, with the exception that the semicolon ':' is replaced by a dot '.'
-    - [ 'ber', {description: 'Bit Error Rate test',   path: 'mgk7bp16_crate_tests:MGK7BP16CrateTests.bitErrorRate_test', required: yes, require_serial_number: no, dependencies: null}]
-    - [ 'res', {description: 'Board Reset test',      path: 'mgk7bp16_crate_tests:MGK7BP16CrateTests.reset_test',        required: yes, require_serial_number: no, dependencies: null}]
-    - [ 'qsf', {description: 'QSFP Connector test',   path: 'mgk7bp16_crate_tests:MGK7BP16CrateTests.qsfp_test',         required: yes, require_serial_number: no, dependencies: null}]
-    - [ 'sen', {description: 'BP Sensor test',        path: 'mgk7bp16_crate_tests:MGK7BP16CrateTests.sensor_test',       required: yes, require_serial_number: no, dependencies: null}]
-
+    - [ 'clk', {description: 'Clock etc. Readout test',     path: 'mgk7bp16_crate_tests:MGK7BP16CrateTests.clock_test',        required: yes, require_serial_number: yes, dependencies: null}]
+    - [ 'sen', {description: 'BP Sensor test',              path: 'mgk7bp16_crate_tests:MGK7BP16CrateTests.sensor_test',       required: no,  require_serial_number: yes, dependencies: null}]
+    - [ 'qsf', {description: 'QSFP Connector test',         path: 'mgk7bp16_crate_tests:MGK7BP16CrateTests.qsfp_test',         required: yes, require_serial_number: yes, dependencies: null}]
+    - [ 'res', {description: 'Board Reset test',            path: 'mgk7bp16_crate_tests:MGK7BP16CrateTests.reset_test',        required: yes, require_serial_number: yes, dependencies: null}]
+    - [ 'ber', {description: 'Bit Error Rate test',         path: 'mgk7bp16_crate_tests:MGK7BP16CrateTests.bitErrorRate_test', required: yes, require_serial_number: yes, dependencies: null}]
+    - [ 'shu', {description: '256/512 Shuffle test',        path: 'mgk7bp16_crate_tests:MGK7BP16CrateTests.shuffle_test',      required: yes, require_serial_number: yes, dependencies: null}]
+    - [ 'mez', {description: 'Mezzanine Ramp test',         path: 'mgk7bp16_crate_tests:MGK7BP16CrateTests.mezzRamp_test',     required: yes, require_serial_number: yes, dependencies: null}]
 
 menu:
     # The menu item will match the user input to either the 'key' field or to the regular expression 'regex'. The matching dictionary is returned.
@@ -44,10 +46,13 @@ menu:
     #  text: do nothing. The description is shown in the menu if there is one.
     #  board_info: Sets the current board model and serial number. The serial number can be extracted from string parsed by the regex
     #
-    - { key: '1', type: test, test_tag: ber}
-    - { key: '2', type: test, test_tag: res}
+    - { key: '1', type: test, test_tag: clk}
+    - { key: '2', type: test, test_tag: sen}
     - { key: '3', type: test, test_tag: qsf}
-    - { key: '4', type: test, test_tag: sen}
+    - { key: '4', type: test, test_tag: res}
+    - { key: '5', type: test, test_tag: ber}
+    - { key: '6', type: test, test_tag: shu}
+    - { key: '7', type: test, test_tag: mez}
 
     - { key: 'S', description: 'Send all new test results data to McGill',                          type: push}
     - { key: 'R', description: 'Generate summary of all tests',                                     type: summary}
@@ -66,8 +71,8 @@ crate_tests:
     
     bitErrorRate_test:
         period: 60
-        bp_limit: 0.001
-        qsfp_limit: 0.001
+        bp_limit: 1e-10
+        qsfp_limit: 1e-10
         gpu_limit: 50
 
     reset_test:
@@ -79,3 +84,13 @@ crate_tests:
         voltage_limits: [3, 3.5]
         current_limits: [15, 20]
         temp_limit: 85
+
+    clock_test:
+        max_time_diff: 50000000
+        limits: [9999998, 10000002]
+
+    shuffle_test:
+        time_source: 'bp_trig'
+        repeat_test: 5
+
+    mezzRamp_test:
