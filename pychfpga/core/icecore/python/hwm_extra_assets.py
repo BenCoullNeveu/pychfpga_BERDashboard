@@ -603,7 +603,7 @@ class IceBoardPlusHandler(IceBoardHandler):
 
         is_fpga_programmed = yield self.is_fpga_programmed.async()
         fpga_bitstream_crc = yield self.get_fpga_bitstream_crc.async()
-        self.logger.debug('%.32r: fpga_programmed=%s, force=%s, fpga_crc=%08X, bitstream_crc=%08X' % (self, is_fpga_programmed, force, fpga_bitstream_crc, crc32))
+        self.logger.debug('%.32r: fpga_programmed=%s, force=%s, fpga_crc=%08X, bitstream_crc=%08X' % (self, is_fpga_programmed, force, fpga_bitstream_crc or 0, crc32 or 0))
         if not is_fpga_programmed or force \
            or (force is not None and (fpga_bitstream_crc != crc32)):
             self.logger.info('%.32r: Configuring FPGA' % self)

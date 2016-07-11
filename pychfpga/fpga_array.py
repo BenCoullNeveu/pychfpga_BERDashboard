@@ -1506,10 +1506,14 @@ class FPGAArray(object):
                 errs = []
                 # Gather status from the backplane PCB and QSFP links
                 for link_group in range(2):
+                    if reset_stats:
+                        ib.BP_SHUFFLE.reset_stats()
                     errs.append(ib.BP_SHUFFLE.get_bp_rx_status(link_group))
 
                 # Gather status from the crossbars
                 for cb in [ib.CROSSBAR2, ib.CROSSBAR3]:
+                    if reset_stats:
+                        cb.reset_stats()
                     errs.append(cb.get_align_status())
                     errs.append(cb.get_frame_alignment_status())
                     errs.append(cb.get_bin_sel_status())
