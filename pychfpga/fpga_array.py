@@ -1263,7 +1263,7 @@ class FPGAArray(object):
             source_gtx.TXPRBSSEL = 4
             if print_:
                 print 'Measuring BER for link %s' % (link[0],),
-
+                print source_gtx.TXDIFFCTRL
             # dest_gtx.RXPRBSCNTRESET=1
             # dest_gtx.RXPRBSCNTRESET=0
             # dest_gtx.RXPRBSCNTRESET=1

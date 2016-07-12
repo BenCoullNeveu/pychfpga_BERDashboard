@@ -52,7 +52,7 @@ class MGK7BP16CrateTests(unittest.TestCase):
     def clock_test(self):
         cfg = self.cfg.crate_tests.clock_test
 
-        ca = FPGAArray(icecrates = xr.params.serial, prog = 1, open = 1)
+        ca = FPGAArray(icecrates = xr.params.serial, prog = 2, open = 1)
 
         xr.header('Test-Results')
         
@@ -68,30 +68,26 @@ class MGK7BP16CrateTests(unittest.TestCase):
             for ib in ca.ib:
                 print ib.FreqCtr.read_frequency('RAW_CLK')
                 clock.append(ib.FreqCtr.read_frequency('RAW_CLK'))
-
+            
             print '\nTime Readout:'
             time = []
-            for ib in ca.ib:
-                ib.set_irigb_source('bp_time')
-                ib.get_irigb_source()
-                print ib.get_irigb_time()
+            ca.ib.set_irigb_source('bp_time')
+            print ca.ib.get_irigb_time()
             for ib in ca.ib:
                 time.append(ib.get_irigb_time(format = 'nano'))
-            '''
+            
             print '\nTrig Readout:'
             trig = []
-            for ib in ca.ib:
-                ib.set_irigb_source('bp_trig')
-                ib.get_irigb_source()
-                print ib.get_irigb_time()
+            ca.ib.set_irigb_source('bp_trig')
+            print ca.ib.get_irigb_time()
             for ib in ca.ib:
                 trig.append(ib.get_irigb_time(format = 'nano'))
-            '''
+            
 
             assert len(slots) == 16, 'Problem with slot association.'
             assert min(clock) > cfg.limits[0] and max(clock) < cfg.limits[1], 'Clock out of bounds!' 
             assert max(np.diff(time).tolist()) < cfg.max_time_diff, 'Difference in time signal too great between boards!'
-            #assert max(np.diff(trig).tolist()) < cfg.max_time_diff, 'Difference in trig signal too great between boards!'
+            assert max(np.diff(trig).tolist()) < cfg.max_time_diff, 'Difference in trig signal too great between boards!'
        
         finally:
             xr.params.test_locals = locals()
@@ -100,7 +96,7 @@ class MGK7BP16CrateTests(unittest.TestCase):
     def sensor_test(self):
         cfg = self.cfg.crate_tests.sensor_test
 
-        ca = FPGAArray(icecrates = xr.params.serial, prog = 1, open = 1)
+        ca = FPGAArray(icecrates = xr.params.serial, prog = 2, open = 1)
         ca.set_sync_method('local_soft_trigger')
         ca.set_operational_mode('shuffle256', frames_per_packet=2)
 
@@ -138,7 +134,7 @@ class MGK7BP16CrateTests(unittest.TestCase):
     def qsfp_test(self):
         cfg = self.cfg.crate_tests.qsfp_test
         
-        ca = FPGAArray(icecrates = xr.params.serial, prog = 1, open = 1)
+        ca = FPGAArray(icecrates = xr.params.serial, prog = 2, open = 1)
         
         xr.header('Test-Results')
 
@@ -166,7 +162,7 @@ class MGK7BP16CrateTests(unittest.TestCase):
     def reset_test(self):
         cfg = self.cfg.crate_tests.reset_test
         
-        ca = FPGAArray(icecrates = xr.params.serial, prog = 1, open = 1)
+        ca = FPGAArray(icecrates = xr.params.serial, prog = 2, open = 1)
 
         result = NameSpace()
         result.res = {}
@@ -184,7 +180,7 @@ class MGK7BP16CrateTests(unittest.TestCase):
                 result.res.off[i+1] = not ca.ib[i+1].ping()
             
             print "Waiting ..." 
-            time.sleep(cfg.arm_sleep_time/2)
+            time.sleep(cfg.arm_sleep_time)
             
             for i in range(0, 16, 2):
                 result.res.on[i+1] = ca.ib[i+1].ping()
@@ -258,11 +254,25 @@ class MGK7BP16CrateTests(unittest.TestCase):
         # Useful shortcuts
         cfg = self.cfg.crate_tests.bitErrorRate_test
 
-        ca = FPGAArray(icecrates = xr.params.serial, prog = 1, open = 1)
+        while True:
+            numberOfCrates = raw_input('Do you want to test on 1 or 2 crates (required for qsfp links, or connect in loop)?\nEnter "1" or "2" for respective choices. ')
+            if numberOfCrates == '1':
+                serials = xr.params.serial
+                break
+        
+            elif numberOfCrates == '2':
+                crate2 = raw_input('What is the serial number of the second crate you want to use for this test? ')
+                serials = [xr.params.serial, crate2]
+                break
+
+            else:
+                print 'Wrong input!'
+
+        ca = FPGAArray(icecrates = serials, prog = 2, open = 1)
 
         xr.header('Beginn Testing')
         try:
-            result = ca.get_ber(period = cfg.period, print_ = False)
+            result = ca.get_ber(period = cfg.period, print_ = False, tx_power = 13)
             bp_rate = True
             qsfp_rate = True
             #gpu_rate = True
@@ -289,11 +299,16 @@ class MGK7BP16CrateTests(unittest.TestCase):
             for key in keys:
                 print key, result[key]
 
+            bad_lanes.sort()
+
             assert bp_rate, 'Bit Error Rate for Backplane lanes too high!'
             assert qsfp_rate, 'Bit Error Rate for QSFP lanes too high!'
             #assert gpu_rate, 'Bit Error Rate for GPU lanes too high!'
 
         finally:
+            print 'Bad Links:'
+            for item in bad_lanes:
+                print item
             xr.save_data(result)
             xr.params.test_locals = locals()
 
@@ -317,12 +332,15 @@ class MGK7BP16CrateTests(unittest.TestCase):
             else:
                 print 'Wrong input!'
 
-        ca = FPGAArray(icecrates = serials, prog = 1, open = 1)
+        ca = FPGAArray(icecrates = serials, prog = 2, open = 1)
         
         xr.header('Start-Testing')
         ca.set_sync_method(method = 'distributed_time', source = cfg.time_source)
         time.sleep(2)
         for i,c in enumerate(ca.ic): c.handler.crate_number = i
+        if shuffleType == '2':
+            #ca.ib.CROSSBAR2.SOF_WINDOW_STOP = 70
+            ca.ib.CROSSBAR2.TIMEOUT_PERIOD = 0
         ca.set_operational_mode(shuffle, frames_per_packet=2)
 
         def searchErrDict(dic):
@@ -384,10 +402,12 @@ class MGK7BP16CrateTests(unittest.TestCase):
     def mezzRamp_test(self):
         cfg = self.cfg.crate_tests.mezzRamp_test
 
-        ca = FPGAArray(icecrates = xr.params.serial, prog = 1, open = 1)
+        ca = FPGAArray(icecrates = xr.params.serial, prog = 2, open = 1)
 
         results = NameSpace()  # test results container
         board = 0
+        
+        xr.header('Beginn-Testing')
         try:
             for ib in ca.ib:
                 results[board] = NameSpace()
@@ -426,7 +446,7 @@ class MGK7BP16CrateTests(unittest.TestCase):
                     for ch in range(8):
                         plt.clf()
                         plt.plot(data[ch])
-                        xr.insert_plot('Ramp capture for %s SN%s CHANNEL %02i' % (self.model, self.serial, ch))
+                        xr.insert_plot('Ramp capture for %s SN%s CHANNEL %02i' % (xr.params.model, xr.params.serial, ch))
                         ok = np.all(data[ch] == ideal_ramp)
                         ramp_ok.append(ok)
                         if ok:
@@ -443,8 +463,8 @@ class MGK7BP16CrateTests(unittest.TestCase):
 
         finally:
             xr.params.test_locals = locals()  # store local variables for interactive debugging
-            #receiver.close()
-            #xr.save_data(results)
+            receiver.close()
+            xr.save_data(results)
 
 
 if __name__ == '__main__':

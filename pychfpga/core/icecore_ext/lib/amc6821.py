@@ -41,7 +41,7 @@ class AMC6821(object):
         # self.write('START', 1)
 
         self.write(0x00, 0x9C)  # Set software duty cycle mode, invert PWM polarity (high=ON), start temperature & PWM monitoring
-        # self.set_duty_cycle(100)
+        self.set_duty_cycle(100)
 
     def select(self):
         """
