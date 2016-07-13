@@ -158,5 +158,9 @@ def async_call(func_list, variable_arg_list, *args, **kwargs):
         return [f(*args, **kwargs) for f in func_list]
 
 
+# commonly used Tornado asyncronous calls
+
+async_sleep = tornado.gen.sleep  # eturn a Future that resolves after the given number of seconds. Usage: yield async_sleep(0.5)
+async_moment = tornado.gen.moment # allow the IOLoop to run for one iteration. Usage: yield async_moment
 
 # vim: sts=4 ts=4 sw=4 tw=78 smarttab expandtab
