@@ -39,8 +39,13 @@ class AMC6821(object):
     def init(self):
         """Initializes the backplane hardware to a known state"""
         # self.write('START', 1)
-
-        self.write(0x00, 0x9C)  # Set software duty cycle mode, invert PWM polarity (high=ON), start temperature & PWM monitoring
+        # bit 7 : THERMOVIE : Thermistor Overtemp Interrupt Enable
+        # bit 6:5 : FDRC : Fan driver control mode: 11: Max speed calculated control, 10: auto remote temp control, 00: software duty cycle, 01: software RPM control
+        # bit 4: FAN-Fault-EN: When 1, enables FAN fault pin.
+        # bit 3: PWMINV: PWM invert bit. When 0, PWM is low at 100%. When 1, PWM is high at 100%.
+        # bit 2 : FANIE : FAN RPM Interrupt Enable
+        # bit 0:
+        self.write(0x00, 0b10011101)  # Set software duty cycle mode (FDRC=00), invert PWM polarity (high=ON), start temperature & PWM monitoring
         # self.set_duty_cycle(100)
 
     def select(self):
