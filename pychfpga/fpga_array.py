@@ -140,8 +140,11 @@ class FPGAArray(object):
                  sync_method='distributed_time',
                  sync_source='bp_trig',
 
+                 mode=None,
+                 frames_per_packet=2,
                  stderr_log_level=None,
                  syslog_log_level=None,
+                 udp_retries=3,
 
                  **kwargs
                 ):
@@ -462,12 +465,10 @@ class FPGAArray(object):
             # chFPGA_controller firmware
 
             if not no_mezz:
-                for ib in self.ib:
-                    if ib.is_fpga_programmed():
-                        print 'Discovering Mezzanines...'
-                        ib.discover_mezzanines()
+                print 'Discovering Mezzanines...'
+                self.ib.discover_mezzanines()
                 self.hwm.flush()
-                ib.set_cache()
+                self.ib.set_cache()
 
         print
         print 'Updated hardware map, with mezzanine info:'
@@ -488,12 +489,15 @@ class FPGAArray(object):
         if self.ib and open is not None and open >= 0:
             print 'Initializing firmware (calling ib.open())'
             self.ib.open(adc_delay_table=ADC_DELAY_TABLE,
+                         udp_retries=udp_retries,
                          init=open,
                          **kwargs
                          # sampling_frequency=sampling_frequency,
                          # reference_frequency=reference_frequency,
                          )
             self.set_sync_method(method=sync_method, source=sync_source)
+            if mode:
+                self.set_operational_mode(mode=mode, frames_per_packet=frames_per_packet)
 
             if self.ic:
                 self.ic.init()
@@ -1470,17 +1474,17 @@ class FPGAArray(object):
                          line_sep=grid, max_width=width)
 
     def get_shuffle_status(self):
-        
+
         status = {}
         for crate in self.ic:
             status[crate] = {}
-            
+
             for (slot, ib) in crate.slot.items():
                 status[crate][ib] = {}
-                
+
                 status[crate][ib]['bp'] = ib.BP_SHUFFLE.get_bp_rx_status(0)
                 status[crate][ib]['qsfp'] = ib.BP_SHUFFLE.get_bp_rx_status(1)
-                
+
                 status[crate][ib]['cb2'] = {}
                 status[crate][ib]['cb2']['align'] = ib.CROSSBAR2.get_align_status()
                 status[crate][ib]['cb2']['frame'] = ib.CROSSBAR2.get_frame_alignment_status()
@@ -2013,6 +2017,9 @@ def add_fpga_array_arguments(parser):
     parser.add_argument('-o', '--open',      type=int, nargs='?', const=1, help='Opens communication with the FPGAs, create the Python objects representing the firmware, and initialize the firmware. --open 0 skips the firmware initialization phase')
     parser.add_argument('--sync_method',     type=str, default='distributed_time', help="Sets the global syncing method ('distributed_time', 'centralized_time_trigger', 'centralized_soft_trigger', 'local_soft_trigger')")
     parser.add_argument('--sync_source',     type=str, default='bp_trig', help="Sets the global syncing source ('bp_gpio_int', 'bp_time', 'bp_trig')")
+    parser.add_argument('-m', '--mode',     type=str, default=None, help="Operational mode ('shuffle16', 'shuffle256', 'shuffle512'). If not specified, set_operational_mode() is not called.")
+    parser.add_argument('-f', '--frames_per_packet', '--fpp',     type=int, default=2, help="Number of frames per packeet. Default=2.")
+    parser.add_argument('-u', '--udp_retries',     type=int, default=3, help="Number of times UDP packet transmission to the FPGA will be retried.")
 
 def setup_logging(log_target='syslog', log_level='debug', sql_log_level='warn', stderr_log_level='warn'):
     # Make sure SQLAlchemy does not log too much

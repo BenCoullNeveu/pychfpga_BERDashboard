@@ -213,9 +213,9 @@ class GpuNodeHandler(handler.Handler):
             # Header word 3
             d.timestamp = d.header_words[3]
             d.data_words = udp_payload[4:]
-            d.raw_data_bytes = udp_payload[4:].astype('>u4').view(np.uint8)
+            d.raw_data_bytes = udp_payload[4:].astype('>u4').view(np.uint8) # UDP payload, without header (but includes data, scaler flags, frame flags, packet flags
             d.shuffle_data_bytes = udp_payload[4:].view(np.uint8)
-            d.data_length = len(d.raw_data_bytes)
+            d.data_length = len(d.raw_data_bytes) # length of all the packet without the header
             result.append(d)
             if print_packet_info:
                 print 'Timestamp %08X, Ethernet packet= %i bytes' % (d.timestamp, d.ethernet_packet_size)

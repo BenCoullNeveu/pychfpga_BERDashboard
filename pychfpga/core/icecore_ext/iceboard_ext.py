@@ -13,6 +13,7 @@ import socket
 from ..icecore import IceBoardPlusHandler
 from ..icecore import tuber  # Used to get TuberRemoteError
 from ..icecore import Ccoll
+from ..icecore import async, async_sleep, async_return
 
 
 from .. import I2C as i2c
@@ -436,6 +437,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         """
         return self.core_i2c.set_port(*args, **kwargs)
 
+    @async
     def _mezzanine_eeprom_read(self, mezzanine):
         """ Reads the EEPROM on the specified mezzanine using the FPGA if the ARM firmware does not provide the functionnality.
 
@@ -457,9 +459,15 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         reading the IPMI standard data decoded by the ARM.
                 """
         try:
-            return base64.decodestring(self._mezzanine_eeprom_read_base64(mezzanine))
+            data = yield self._mezzanine_eeprom_read_base64.async(mezzanine)
+            async_return(base64.decodestring(data))
         except (tuber.TuberRemoteError, AttributeError):
             self.logger.debug("%.32r: Cannot read the Mezzanine %i EEPROM through the ARM's _mezzanine_eeprom_read_base64() method. Attempting to read the Mezzanine EEPROM through the FPGA." % (self, mezzanine))
+
+        fpga_programmed = yield self.is_fpga_programmed.async()
+        if not fpga_programmed:
+            self.logger.debug("%.32r: FPGA is not programmed, so cannot read the Mezzanine %i EEPROM through the FPGA." % (self, mezzanine))
+            async_return(None)
 
         eeprom_data = self.hw.read_mezzanine_eeprom(mezzanine, 0, 1)
         if ord(eeprom_data[0]) == 0x0d:  # if this is McGill format
@@ -474,10 +482,10 @@ class IceBoardExtHandler(IceBoardPlusHandler):
                 string += data_block
                 if ('}' in data_block) or (chr(255) in data_block):
                     break
-            return string
+            async_return(string)
         else:  # If not McGill format,
             self.logger.debug("%.32r: EEPROM in Mezzanine %i is not McGill format. The FPGA will *NOT* read the EEPROM contetnt " % (self, mezzanine))
-            return None
+            async_return(None)
 
     # def _get_mezzanine_mcgill_ipmi(self, mezzanine, retry=3, use_cache=False):
     #     """ Returns the IMPI data for the mezzanine located on slot
@@ -1173,6 +1181,7 @@ class IceBoardHardware(object):
         eeprom_object = self._FMC_EEPROM_TABLE[mezzanine]
         return eeprom_object.write(addr, data, **kwargs)
 
+    @async
     def set_mezzanine_power(self, fmc_number=range(NUMBER_OF_FMC_SLOTS), state=[True]*NUMBER_OF_FMC_SLOTS):
         """
         Enables or disables power of the specified FMC slot.
@@ -1211,22 +1220,22 @@ class IceBoardHardware(object):
                 if fmc_state:
                     self._gpio_power.write(fmc, 0b00000010, mask=0b00000010)  # Turn on 12V, 3.3V and VADJ power to board
                     # self._gpio_power.write(fmc, 0b00000110, mask=0b00000110)  # Turn on 12V, 3.3V and VADJ power to board
-                    time.sleep(0.010)
+                    yield async_sleep(0.010)
                     self._gpio_power.write(fmc, 0b00000100, mask=0b00000100)  # Turn on 12V, 3.3V and VADJ power to board
-                    time.sleep(0.100)
+                    yield async_sleep(0.100)
                     self._gpio_power.write(fmc, 0b00000001, mask=0b00000001)  # Turn on 12V, 3.3V and VADJ power to board
-                    time.sleep(0.050)
+                    yield async_sleep(0.050)
                     self._gpio_power.write(fmc, 0b01010000, mask=0b01010000)  # Set Power Good (start switcher) and CLKDIR to 1
-                    time.sleep(0.050)
+                    yield async_sleep(0.050)
                 else:
                     self._gpio_power.write(fmc, 0b00000000, mask=0b01010000)  # Stop mezzanine switcher (PG=0)
-                    time.sleep(0.030)
+                    yield async_sleep(0.030)
                     self._gpio_power.write(fmc, 0b00000000, mask=0b00000001)  # Turn off 12V
-                    time.sleep(0.030)
+                    yield async_sleep(0.030)
                     self._gpio_power.write(fmc, 0b00000000, mask=0b00000010)  # Turn off rail
-                    time.sleep(0.030)
+                    yield async_sleep(0.030)
                     self._gpio_power.write(fmc, 0b00000000, mask=0b00000100)  # Turn off rail
-                    time.sleep(0.100)
+                    yield async_sleep(0.100)
 
 
     def set_led(self, led_name, state):
