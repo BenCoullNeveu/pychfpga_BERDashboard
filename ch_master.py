@@ -650,7 +650,7 @@ if __name__ == "__main__":
                 log.info('Changed gains in hdf5 file')
             #log.debug("checked for switch gains in hdf5 file time")
             #shortly after after switch
-            if (abs(fpga_frame_count - (bank_switch_frame+gpu_integration_period)) < frame_range) and not bank_switched and hdf5_gain_switched:
+            if (abs(fpga_frame_count - (bank_switch_frame+gpu_intergration_period)) < frame_range) and not bank_switched and hdf5_gains_switched:
                 set_next_gain_bank(c, bank = current_bank)
                 current_bank = (current_bank + 1) % 2  
                 next_bank = (next_bank + 1) % 2
@@ -666,10 +666,10 @@ if __name__ == "__main__":
             #log.debug("checked for gain back switch prep time")
           except:
             log.critical("something went wrong with gain switching, still aquiring data...")
-            raise
+            #raise
          except:
           log.info("couldn't read fpga frame number... will try again.")
-          raise
+          #raise
         else:
           pass
       else:
@@ -677,8 +677,10 @@ if __name__ == "__main__":
       time.sleep(poll_rate)
     acq.stop()
   except(KeyboardInterrupt, SystemExit):
+    acq.stop()
     raise
-    #acq.stop()
+
+
 
 signal.signal(signal.SIGTERM, acq.stop)
 
