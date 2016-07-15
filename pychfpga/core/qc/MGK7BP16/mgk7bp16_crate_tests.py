@@ -297,7 +297,7 @@ class MGK7BP16CrateTests(unittest.TestCase):
             keys = result.keys()
             keys.sort()
             for key in keys:
-                print key, result[key]
+                print key, round(result[key], 3)
 
             bad_lanes.sort()
 
@@ -315,6 +315,20 @@ class MGK7BP16CrateTests(unittest.TestCase):
 
     def shuffle_test(self):
         cfg = self.cfg.crate_tests.shuffle_test
+
+        def searchErrDict(dic):
+            if dic == {}:
+                yield 0
+            for key in dic.keys():
+                if type(dic[key]) == type({}):
+                    for value in searchErrDict(dic[key]):
+                        yield value
+                elif type(dic[key]) == type([]):
+                    for item in dic[key]:
+                        for value in searchErrDict(item):
+                            yield value
+                else:
+                    yield 1
 
         while True:
             shuffleType = raw_input('Do you want to perform the 256 shuffle test (1 crate), or the 512 shuffle test (2 crates)?\nEnter "1" or "2" for respective choices. ')
@@ -334,39 +348,26 @@ class MGK7BP16CrateTests(unittest.TestCase):
 
         ca = FPGAArray(icecrates = serials, prog = 2, open = 1)
         
-        xr.header('Start-Testing')
+        xr.header('Beginn Testing')
         ca.set_sync_method(method = 'distributed_time', source = cfg.time_source)
         time.sleep(2)
         for i,c in enumerate(ca.ic): c.handler.crate_number = i
         if shuffleType == '2':
-            #ca.ib.CROSSBAR2.SOF_WINDOW_STOP = 70
+            ca.ib.CROSSBAR2.SOF_WINDOW_STOP = 70
             ca.ib.CROSSBAR2.TIMEOUT_PERIOD = 0
         ca.set_operational_mode(shuffle, frames_per_packet=2)
-
-        def searchErrDict(dic):
-            if dic == {}:
-                yield 0
-            for key in dic.keys():
-                if type(dic[key]) == type({}):
-                    for value in searchErrDict(dic[key]):
-                        yield value
-                elif type(dic[key]) == type([]):
-                    for item in dic[key]:
-                        for value in searchErrDict(item):
-                            yield value
-                else:
-                    yield 1
         
         xr.header('Test-Results')
         try:
-            for i in range(cfg.repeat_test):
-                ca.print_shuffle_status(verbose = 1)
+            for i in range(cfg.repeat):
+                ca.print_shuffle_status(reset_stats = True, verbose = 1)
                 status = ca.get_shuffle_status()
                 errors = sum(searchErrDict(status))   
                 assert not errors, 'Found %d errors in data shuffle!' % errors
+                ca.sync()
 
         finally:
-            xr.save_data(status)
+            #xr.save_data(status)
             xr.params.test_locals = locals()
 
 
@@ -407,7 +408,7 @@ class MGK7BP16CrateTests(unittest.TestCase):
         results = NameSpace()  # test results container
         board = 0
         
-        xr.header('Beginn-Testing')
+        xr.header('Test-Results')
         try:
             for ib in ca.ib:
                 results[board] = NameSpace()
@@ -463,7 +464,7 @@ class MGK7BP16CrateTests(unittest.TestCase):
 
         finally:
             xr.params.test_locals = locals()  # store local variables for interactive debugging
-            receiver.close()
+            #receiver.close()
             xr.save_data(results)
 
 

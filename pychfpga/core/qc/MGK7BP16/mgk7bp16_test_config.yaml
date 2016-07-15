@@ -74,6 +74,7 @@ crate_tests:
         bp_limit: 1.e-10
         qsfp_limit: 1.e-10
         gpu_limit: 50
+        repeat: 3
 
     reset_test:
         arm_sleep_time: 30 # ~20 secs
@@ -92,6 +93,6 @@ crate_tests:
 
     shuffle_test:
         time_source: 'bp_trig'
-        repeat_test: 5
+        repeat: 3
 
     mezzRamp_test:

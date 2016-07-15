@@ -16,6 +16,8 @@ class AMC6821(object):
          'FDRC': (0x00, 5 ,2),
          'LocalTempLSB': (0x06, 5, 3),
          'LocalTempMSB': (0x0A, 0, 8),
+         'RemoteTempLSB': (0x06, 0, 3),
+         'RemoteTempMSB': (0x0B, 0, 8),
          'DutyCycle': (0x22, 0, 8),
     }
 
@@ -40,7 +42,8 @@ class AMC6821(object):
         """Initializes the backplane hardware to a known state"""
         # self.write('START', 1)
 
-        self.write(0x00, 0x9C)  # Set software duty cycle mode, invert PWM polarity (high=ON), start temperature & PWM monitoring
+        self.write(0x00, 0b00001001)  # Set software duty cycle mode, invert PWM polarity (high=ON), start temperature & PWM monitoring
+        self.write(0x01, 0b00111111)  # Set TACH mode to 1, for dc powered 4-wire fan
         self.set_duty_cycle(100)
 
     def select(self):
@@ -98,9 +101,13 @@ class AMC6821(object):
         self.write('DutyCycle', int(duty/100.*255.))
 
     def get_local_temperature(self):
-        return np.int16((self.read('LocalTempLSB') << 5) + (self.read('LocalTempMSB') << 8))/256.  # LSB must be read first
+        return round(np.int16((self.read('LocalTempLSB') << 5) + (self.read('LocalTempMSB') << 8))/256., 3)  # LSB must be read first
 
+    def get_remote_temperature(self):
+        return round(np.int16(self.read('RemoteTempLSB') + (self.read('RemoteTempMSB') << 8))/256., 3)  # LSB must be read first
 
+    def get_fan_speed(self):
+        return 100000*60/(self.read(0x08)+self.read(0x09)*256)  # returns fan speed in rpm
 
 
 
