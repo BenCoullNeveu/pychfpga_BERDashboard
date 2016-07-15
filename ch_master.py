@@ -576,13 +576,13 @@ if __name__ == "__main__":
 
   gains_reloaded = False
   hdf5_gains_switched = False
-  bank_switched = False
+  bank_switched = True
   hk_rate_in_frames = int(conf["acq"]["fpga_hk"]["rate"] / 2.56e-6)
   poll_rate = conf['acq']['acq_loop_poll_rate'] #in seconds
   poll_rate_in_frames = poll_rate/2.56e-6  #should use fpga config frequency?
   reload_gains_frame = conf['fpga']['reload_gains_frame']
   frame_range = 2*poll_rate_in_frames  
-
+  enable_gain_switching = conf['acq']['enable_gain_switching']
   bank_switch_frame = conf['fpga']['bank_switch_frame']
   gain_reload_period = conf['fpga']['gain_reload_period']  #in frames
   if ( int(args.configure_fpga) > 0):
@@ -596,7 +596,6 @@ if __name__ == "__main__":
       all_banks = get_current_gain_bank(c)
       for bankset in all_banks:
           log.info('currently using gain banks %s' % ( ', '.join([str(i) for i in bankset])))
-
 
   try:
     while True:
@@ -621,9 +620,11 @@ if __name__ == "__main__":
         #except:
         #     log.critical("Did not get FPGA housekeeping, still aquiring data...")
              #Right now can miss gain setting stuff if hk takes more than 10s.  Really need to disentangle the two.  
-        try:
+        if ( enable_gain_switching > 0):
+         try:
           time.sleep(0.1)
-          fpga_frame_count = c[0].get_frame_number() % gain_reload_period  #now need a reset since 48bit counter
+          true_fpga_frame_count = c[0].get_frame_number()
+          fpga_frame_count = true_fpga_frame_count % gain_reload_period  #now need a reset since 48bit counter
           try:
             # Well before switch time.  Set gains in next bank, read back what we set.  
             if (abs(fpga_frame_count - reload_gains_frame) < frame_range) and not gains_reloaded:
@@ -636,10 +637,10 @@ if __name__ == "__main__":
                 log.info("Loaded gains into bank %d" % next_bank)
                 all_banks = get_current_gain_bank(c)     
                 for bankset in all_banks:
-                    log.info('Using gain banks %s' % ( ', '.join([str(i) for i in bankset])))
+                    log.info('Currently using gain banks %s' % ( ', '.join([str(i) for i in bankset])))
             #log.debug("checked for reload gain time")
             # Right before switch time
-            if (abs(fpga_frame_count - (gain_switch_frame+gpu_intergration_period)) < frame_range) and not hdf5_gains_switched:
+            if (abs(fpga_frame_count - (gain_switch_frame+gpu_intergration_period)) < frame_range) and not hdf5_gains_switched and gains_reloaded:
                 for fpga_slot, slot_gain in fpga_gains.items():
                     for val in slot_gain:
                         v = convert_types(val)
@@ -649,28 +650,35 @@ if __name__ == "__main__":
                 log.info('Changed gains in hdf5 file')
             #log.debug("checked for switch gains in hdf5 file time")
             #shortly after after switch
-            if (abs(fpga_frame_count - bank_switch_frame) < frame_range) and not bank_switched:
+            if (abs(fpga_frame_count - (bank_switch_frame+gpu_integration_period)) < frame_range) and not bank_switched and hdf5_gain_switched:
                 set_next_gain_bank(c, bank = current_bank)
                 current_bank = (current_bank + 1) % 2  
                 next_bank = (next_bank + 1) % 2
+                new_gain_switch_frame = (1+(true_fpga_frame_count / gain_reload_period))*gain_reload_period + gain_switch_frame
+                set_gain_switch_frame_number(c, frame = new_gain_switch_frame)
                 gains_reloaded = False
                 hdf5_gains_switched = False
                 bank_switched = True
                 log.debug("changed which gain bank will be written to over to %d" % next_bank)
                 all_banks = get_current_gain_bank(c)     
                 for bankset in all_banks:
-                    log.info('Using gain banks %s' % ( ', '.join([str(i) for i in bankset])))
+                    log.info('Using other gain banks %s' % ( ', '.join([str(i) for i in bankset])))
             #log.debug("checked for gain back switch prep time")
           except:
             log.critical("something went wrong with gain switching, still aquiring data...")
-        except:
+            raise
+         except:
           log.info("couldn't read fpga frame number... will try again.")
+          raise
+        else:
+          pass
       else:
         log.info("acquiring data...")
       time.sleep(poll_rate)
     acq.stop()
   except(KeyboardInterrupt, SystemExit):
-    acq.stop()
+    raise
+    #acq.stop()
 
 signal.signal(signal.SIGTERM, acq.stop)
 
