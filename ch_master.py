@@ -623,7 +623,8 @@ if __name__ == "__main__":
              #Right now can miss gain setting stuff if hk takes more than 10s.  Really need to disentangle the two.  
         try:
           time.sleep(0.1)
-          fpga_frame_count = c[0].get_frame_number() % gain_reload_period  #now need a reset since 48bit counter
+          true_fpga_frame_count = c[0].get_frame_number()
+          fpga_frame_count = true_fpga_frame_count % gain_reload_period  #now need a reset since 48bit counter
           try:
             # Well before switch time.  Set gains in next bank, read back what we set.  
             if (abs(fpga_frame_count - reload_gains_frame) < frame_range) and not gains_reloaded:
@@ -636,7 +637,7 @@ if __name__ == "__main__":
                 log.info("Loaded gains into bank %d" % next_bank)
                 all_banks = get_current_gain_bank(c)     
                 for bankset in all_banks:
-                    log.info('Using gain banks %s' % ( ', '.join([str(i) for i in bankset])))
+                    log.info('Currently using gain banks %s' % ( ', '.join([str(i) for i in bankset])))
             #log.debug("checked for reload gain time")
             # Right before switch time
             if (abs(fpga_frame_count - (gain_switch_frame+gpu_intergration_period)) < frame_range) and not hdf5_gains_switched:
@@ -653,24 +654,29 @@ if __name__ == "__main__":
                 set_next_gain_bank(c, bank = current_bank)
                 current_bank = (current_bank + 1) % 2  
                 next_bank = (next_bank + 1) % 2
+                new_gain_switch_frame = (1+(true_fpga_frame_count / gain_reload_period))*gain_reload_period + gain_switch_frame
+                set_gain_switch_frame_number(c, frame = new_gain_switch_frame)
                 gains_reloaded = False
                 hdf5_gains_switched = False
                 bank_switched = True
                 log.debug("changed which gain bank will be written to over to %d" % next_bank)
                 all_banks = get_current_gain_bank(c)     
                 for bankset in all_banks:
-                    log.info('Using gain banks %s' % ( ', '.join([str(i) for i in bankset])))
+                    log.info('Using other gain banks %s' % ( ', '.join([str(i) for i in bankset])))
             #log.debug("checked for gain back switch prep time")
           except:
             log.critical("something went wrong with gain switching, still aquiring data...")
+            raise
         except:
           log.info("couldn't read fpga frame number... will try again.")
+          raise
       else:
         log.info("acquiring data...")
       time.sleep(poll_rate)
     acq.stop()
   except(KeyboardInterrupt, SystemExit):
-    acq.stop()
+    raise
+    #acq.stop()
 
 signal.signal(signal.SIGTERM, acq.stop)
 
