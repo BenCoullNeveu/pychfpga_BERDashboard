@@ -36,7 +36,7 @@ import shlex
 import tornado.gen
 import bz2
 
-from .icecore import async, async_return
+from .icecore import async, async_return, async_sleep
 from .icecore_ext.iceboard_ext import IceBoardExtHandler
 from chFPGA_receiver import chFPGA_receiver
 
@@ -173,6 +173,7 @@ class chFPGA_controller(IceBoardExtHandler):
         self._last_init_time = None
         self.recv = None
 
+    @async
     def open(self, init=1, verbose=0, udp_retries=10, *args, **kwargs):
 
         super(chFPGA_controller, self).open(udp_retries=udp_retries)
@@ -333,7 +334,7 @@ class chFPGA_controller(IceBoardExtHandler):
             # Initialize subsystems. This has to be done only once all subsystems are created because some subsystems depend on each other.
         if init > 0:
             try:
-                self.init(**kwargs)
+                yield self.init.async(**kwargs)
             except Exception:
                 self.close()
                 raise
@@ -355,6 +356,7 @@ class chFPGA_controller(IceBoardExtHandler):
         super(chFPGA_controller, self).close()  # Make sure we close underlying sytems (sockets, etc)
 
 
+    @async
     def init(self,
              sampling_frequency=800e6,
              reference_frequency=10e6,
@@ -424,19 +426,19 @@ class chFPGA_controller(IceBoardExtHandler):
         self.set_corr_reset(1)
         for mezz in self.mezzanine.values():
             mezz.set_power(False)
-        time.sleep(0.2)  # *** make async
+        yield async_sleep(0.2)  # *** make async
 
         for mezz_number in (1, 2):
             if mezz_number in self.mezzanine:
                 mezz = self.mezzanine[mezz_number]
                 self._logger.debug('%r:   Powering down FMC%i' % (self, mezz_number - 1))
-                self.hw.set_mezzanine_power(mezz_number-1, False)
+                yield self.hw.set_mezzanine_power.async(mezz_number-1, False)
                 # mezz.set_power(False)  # For some reason, prevents the board from rebooting (!)
-                time.sleep(0.2)  # *** make async
+                yield async_sleep(0.2)  # *** make async
                 self._logger.debug('%r:   Powering up FMC%i' % (self, mezz_number - 1))
-                self.hw.set_mezzanine_power(mezz_number-1, True)
+                yield self.hw.set_mezzanine_power.async(mezz_number-1, True)
                 # mezz.set_power(True)
-                time.sleep(0.2) # Give it some time for the power to stabilize
+                yield async_sleep(0.2) # Give it some time for the power to stabilize
                 # We need to initialize the ADC board befor we initialize ANT (and its data acquisition) because the delay blocks need a clock
                 self._logger.debug('%r:   Initializing FMC%i' % (self, mezz_number - 1))
                 mezz.init(sampling_frequency=sampling_frequency, reference_frequency=reference_frequency)
@@ -1599,7 +1601,7 @@ class chFPGA_controller(IceBoardExtHandler):
         return sum(self.get_motherboard_voltage(rail) * self.get_motherboard_current(rail) for rail in (self.RAIL.MB_VCC3V3, self.RAIL.MB_VCC5V5, self.RAIL.MB_VCC12V0))
 
 
-    def init_crossbars(self, mode=None, dsmap=range(16), frames_per_packet=3, cb1_lanes=16, cb1_bins=64, cb1_bypass=False, cb1_combine_data_flags=0, cb2_lanes=None, cb2_bins=1, cb2_bypass=False, bp_shuffle_bypass=1, crate_shuffle_bypass=1, remap=True, chan8_channel_map=range(16)):
+    def init_crossbars(self, mode=None, dsmap=range(16), frames_per_packet=2, cb1_lanes=16, cb1_bins=64, cb1_bypass=False, cb1_combine_data_flags=0, cb2_lanes=None, cb2_bins=1, cb2_bypass=False, bp_shuffle_bypass=1, crate_shuffle_bypass=1, remap=True, chan8_channel_map=range(16)):
         """ Initializes the 1st, 2nd and 3rd crossbars.
         """
 
@@ -1857,10 +1859,12 @@ class chFPGA_controller(IceBoardExtHandler):
             crate_shuffle_bypass=1
 
 
+            cb2_input_bins = cb1_bins
             if bp_shuffle_bypass and self.slot is not None:
                 cb2_lane_map = self.CROSSBAR2.compute_bp_shuffle_lane_map()
             else:
                 cb2_lane_map = range(16)
+
 
             cb3_bypass = True
             cb3_lane_map = range(8)
@@ -1922,6 +1926,7 @@ class chFPGA_controller(IceBoardExtHandler):
             if not cb2_bypass:
                 bs.STREAM_ID = self.slot - 1 if self.slot is not None else 0 # The stream ID at the output of CB2 will be 0xSL (S=slot-1, L=lane)
                 bs.NUMBER_OF_FRAMES_PER_PACKET = frames_per_packet
+                bs.NUMBER_OF_FRAME_FLAGS_WORDS_PER_FRAME=1
                 bs.FIRST_LANE = cb2_lanes[cb2_bin_sel][0]
                 bs.LAST_LANE = cb2_lanes[cb2_bin_sel][1]
                 bs.NUMBER_OF_BINS_PER_FRAME = cb2_input_bins
@@ -1943,13 +1948,12 @@ class chFPGA_controller(IceBoardExtHandler):
             if not cb3_bypass:
                 bs.STREAM_ID = self.slot - 1  # The stream ID at the output of CB2 will be 0xSL (S=slot-1, L=lane)
                 bs.NUMBER_OF_FRAMES_PER_PACKET = frames_per_packet
+                bs.NUMBER_OF_FRAME_FLAGS_WORDS_PER_FRAME=2
                 bs.FIRST_LANE = cb3_lanes[cb3_bin_sel][0]
                 bs.LAST_LANE = cb3_lanes[cb3_bin_sel][1]
                 bs.NUMBER_OF_BINS_PER_FRAME = cb3_input_bins
                 bs.NUMBER_OF_WORDS_PER_BIN = cb3_input_words_per_bin
                 bs.select_bins(cb3_bin_select_map[cb3_bin_sel])
-
-
 
         # words_per_bin = cb1_lanes / 4
         # # cb1_minimum_bin_spacing = 16

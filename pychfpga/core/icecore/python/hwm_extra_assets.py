@@ -323,7 +323,7 @@ class IceBoardPlus(IceBoard):
 
             # If a mezzanine is present, get its EEPROM data and search for the first mezzanine class that can decode it.
             try:
-                eeprom_data = self._mezzanine_eeprom_read(m)  # this does not read all eeprom for some mezxzanines...
+                eeprom_data = yield self._mezzanine_eeprom_read.async(m)  # this does not read all eeprom for some mezxzanines...
                 # eeprom_data = self.hw.read_mezzanine_eeprom(m,0,512)
             except tuber.TuberRemoteError:  # If the method does not exist
                 eeprom_data = None
@@ -682,10 +682,12 @@ class IceBoardPlusHandler(IceBoardHandler):
     # Mezzanine management
 
     # Backplane management
+    @async
     def _mezzanine_eeprom_read(self, mezzanine):
         """ Returns the contents of the specified mezzanine's EEPROM.
         """
-        return base64.decodestring(self._mezzanine_eeprom_read_base64(mezzanine))
+        data = yield self._mezzanine_eeprom_read_base64.async(mezzanine)
+        async_return(base64.decodestring(data))
 
     # *** JFC: method rename
     def _write_motherboard_spi_eeprom_base64(self, *args, **kwargs):
