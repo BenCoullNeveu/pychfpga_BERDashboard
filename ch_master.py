@@ -343,17 +343,16 @@ if __name__ == "__main__":
       # Make compute gains smarter -> write to db? need boards to actually be different
       
       # Get noise injection parameters
-      gpu_intergration_period = conf["gpu"]["gpu_intergration_period"]
       ni_board = c(serial=conf["fpga"]["ni_board"])
       ni_enable = conf["fpga"]["ni_enable"]
-      ni_offset = conf["fpga"]["ni_offset"]*gpu_intergration_period
-      ni_high_time = conf["fpga"]["ni_high_time"]*gpu_intergration_period - 1 # the -1 is due to the convention in function set_frame_pwm()
-      ni_period = conf["fpga"]["ni_period"]*gpu_intergration_period - 1
+      ni_offset = conf["fpga"]["ni_offset"]
+      ni_high_time = conf["fpga"]["ni_high_time"] - 1 # the -1 is due to the convention in function set_frame_pwm()
+      ni_period = conf["fpga"]["ni_period"] - 1
       ni_board_26m = c(serial=conf["fpga"]["ni_board_26m"])
       ni_enable_26m = conf["fpga"]["ni_enable_26m"]
-      ni_offset_26m = conf["fpga"]["ni_offset_26m"]*gpu_intergration_period
-      ni_high_time_26m = conf["fpga"]["ni_high_time_26m"]*gpu_intergration_period - 1 # the -1 is due to the convention in function set_frame_pwm()
-      ni_period_26m = conf["fpga"]["ni_period_26m"]*gpu_intergration_period - 1      
+      ni_offset_26m = conf["fpga"]["ni_offset_26m"]
+      ni_high_time_26m = conf["fpga"]["ni_high_time_26m"] - 1 # the -1 is due to the convention in function set_frame_pwm()
+      ni_period_26m = conf["fpga"]["ni_period_26m"] - 1      
 
       if (int(args.compute_gain) > 0):
           #Shouldn't need for loop here, but initial testing failed in parallel.
