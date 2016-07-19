@@ -384,7 +384,7 @@ if __name__ == "__main__":
       load_gains(c, bank=0)
       for bankset in all_banks:
           log.info('Using gain banks %s' % ( ', '.join([str(i) for i in bankset])))
-      
+      gpu_intergration_period = conf["gpu"]["gpu_intergration_period"]      
       enable_gain_switching = conf['acq']['enable_gain_switching']
       gain_switch_frame = conf['fpga']['gain_switch_frame']
       if enable_gain_switching > 0:
@@ -625,7 +625,7 @@ if __name__ == "__main__":
         #     log.critical("Did not get FPGA housekeeping, still aquiring data...")
              #Right now can miss gain setting stuff if hk takes more than 10s.  Really need to disentangle the two.  
         if ( int(enable_gain_switching) > 0):
-         log.info("Gain switching enabled")
+         #log.info("Gain switching enabled")
          try:
           time.sleep(0.1)
           true_fpga_frame_count = c[0].get_frame_number()
