@@ -378,7 +378,8 @@ if __name__ == "__main__":
       c.set_data_source("adc") # This should come first.
       c.set_FFT_bypass(False, channels = all_chan)
       c.set_FFT_shift(conf["fpga"]["fft_shift"], channels = all_chan)
-
+      set_synchronized_gain_switching(c, enable=0)
+      set_next_gain_bank(c, bank=0)
       all_banks = get_current_gain_bank(c)     
       load_gains(c, bank=0)
       for bankset in all_banks:
@@ -387,10 +388,10 @@ if __name__ == "__main__":
       enable_gain_switching = conf['acq']['enable_gain_switching']
       gain_switch_frame = conf['fpga']['gain_switch_frame']
       if enable_gain_switching > 0:
-          # set to only change when at configured frame number
-          set_synchronized_gain_switching(c, enable=1)
           # set frame number to switch gains at.
           set_gain_switch_frame_number(c, frame=gain_switch_frame)
+          # set to only change when at configured frame number
+          set_synchronized_gain_switching(c, enable=1)
           # set to use bank 1 next, change in loop below. have to do this after config to wait for
           # frame number
       else:
@@ -591,7 +592,8 @@ if __name__ == "__main__":
       # init gains function kind of a hack.  Should fix.
       current_bank = 0
       next_bank = 1
-      set_next_gain_bank(c, bank=next_bank)
+      if (enable_gain_switching > 0):
+          set_next_gain_bank(c, bank=next_bank)
       all_next_bank = get_next_gain_bank(c)
       for bankset in all_next_bank:
           log.info('Set next gain bank to %s' % ( ', '.join([str(i) for i in bankset])))
