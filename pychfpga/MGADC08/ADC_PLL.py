@@ -20,6 +20,7 @@ History:
 
 import numpy as np
 import logging
+import time
 
 class ADC_PLL_base(object):
 
@@ -42,9 +43,6 @@ class ADC_PLL_base(object):
         NOTES:
             - The reference clock x2 doubler or /2 divider are never enabled
         """
-        # Do nothing if the FMC is not present
-        if not self.adc_board.is_present():
-            return
 
         if verbose is None:
             verbose = self.verbose
@@ -149,24 +147,35 @@ class ADC_PLL_base(object):
         PLL_reg1 = np.uint32((prescaler << 27) + (phase << 15) + (modulus << 3)+1)
         PLL_reg0 = np.uint32((int_div << 15) + (frac_div << 3)+0)
 
-        self.write(np.uint32(PLL_reg5))  # write Reg 5:
-        self.write(np.uint32(PLL_reg4))  # write Reg 4:
-        self.write(np.uint32(PLL_reg3))  # write Reg 3:
-        self.write(np.uint32(PLL_reg2))  # write Reg 2:
-        self.write(np.uint32(PLL_reg1))  # write Reg 1:
-        self.write(np.uint32(PLL_reg0))  # write Reg 0:
-        #self.write(np.uint32(PLL_reg0)); # write Reg 0: # To make sure DBR values are clocked in.
+        trial = 0
+        while True:
+            self.write(np.uint32(PLL_reg5))  # write Reg 5:
+            self.write(np.uint32(PLL_reg4))  # write Reg 4:
+            self.write(np.uint32(PLL_reg3))  # write Reg 3:
+            self.write(np.uint32(PLL_reg2))  # write Reg 2:
+            self.write(np.uint32(PLL_reg1))  # write Reg 1:
+            self.write(np.uint32(PLL_reg0))  # write Reg 0:
+            self.write(np.uint32(PLL_reg0)); # write Reg 0: # To make sure DBR values are clocked in.
 
-        self.adc_board.IOExpander.wait_for_bit('PLL1_LOCK', timeout=1)
-        if verbose:
-            self.logger.info('%.32r:  PLL is locked: %s' % (self.adc_board, bool(self.fpga.ADC_BOARD.IOExpander.PLL1_LOCK)))
-            self.logger.info('%.32r: ----------------------------------------------------------------------' % self.adc_board)
+            time.sleep(0.250)
+            if self.is_locked():
+                self.logger.info('%.32r: ADC PLL is locked in trial #%i' % (self.adc_board, trial + 1))
+                break
+            elif trial > 5:
+                raise RuntimeError('ADC PLL cannot be locked')
+            self.logger.warning('%.32s: ADC PLL did not lock, retrying...' % self.adc_board)
+            trial += 1
+            # self.adc_board.IOExpander.wait_for_bit('PLL1_LOCK', timeout=1)
+        # if verbose:
 
         return (PLL_reg0, PLL_reg1, PLL_reg2, PLL_reg3, PLL_reg4, PLL_reg5)
 
+    def is_locked(self):
+        return self.adc_board.IOExpander.PLL1_LOCK
+
     def status(self):
         self.logger.info('%.32r: --- ADC PLL' % self.adc_board)
-        if not self.adc_board.is_present():
+        if not self.adc_board.is_mezzanine_present():
             self.logger.info('%.32r: FMC board not present' % self.adc_board)
         self.logger.info('%.32r:  No status info' % self.adc_board)
 

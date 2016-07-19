@@ -14,6 +14,7 @@ MGT_PLL.py module
 """
 import numpy as np
 import time
+import logging
 
 class Struct(object):
     def __init__(self, **args):
@@ -24,6 +25,7 @@ class MGT_PLL_base(object):
     def __init__(self, mezz, verbose=2):
         self.mezz = mezz
         self.verbose = verbose
+        self.logger = logging.getLogger(__name__)
 
     def write(self, addr, data):
         """ Writes an 8-bit value to a PLL register at specified address."""
@@ -194,63 +196,72 @@ class MGT_PLL_base(object):
 
 
 
+        trial = 0
+        while True:
+            # --- Reset PLL to a known state ---
+            self.write(0x00, 0x3c)  # Soft reset
+            self.write(0x05, 0x01)  # Update
+            time.sleep(0.003)  # wait 3 ms for the VCO cal to complete (needed?)
 
-        # --- Reset PLL to a known state ---
-        self.write(0x00, 0x3c)  # Soft reset
-        self.write(0x05, 0x01)  # Update
-        time.sleep(0.003)  # wait 3 ms for the VCO cal to complete (needed?)
+            # --- Program the registers ---
+            # Charge pump control
+            self.write(0x0A, CP_CURRENT)
+            self.write(0x0B, (ENABLE_SPI_CP_CURRENT << 7) | (CP_MODE << 4) | (ENABLE_CP_MODE << 3) | (FORCE_VCO_TO_MIDPOINT << 0))
 
-        # --- Program the registers ---
-        # Charge pump control
-        self.write(0x0A, CP_CURRENT)
-        self.write(0x0B, (ENABLE_SPI_CP_CURRENT << 7) | (CP_MODE << 4) | (ENABLE_CP_MODE << 3) | (FORCE_VCO_TO_MIDPOINT << 0))
+            # VCO Control
+            self.write(0x0E, (0 << 7) | (ENABLE_ALC << 6) | (ALC_THRESHOLD << 3) | (ENABLE_SPI_VCO_CAL << 2) | (VCO_SUPPLY_BOOST << 1) | (ENABLE_SPI_VCO_BAND << 0))
+            self.write(0x0F, (VCO_LEVEL << 2))
+            self.write(0x10, (VCO_BAND << 1))
 
-        # VCO Control
-        self.write(0x0E, (0 << 7) | (ENABLE_ALC << 6) | (ALC_THRESHOLD << 3) | (ENABLE_SPI_VCO_CAL << 2) | (VCO_SUPPLY_BOOST << 1) | (ENABLE_SPI_VCO_BAND << 0))
-        self.write(0x0F, (VCO_LEVEL << 2))
-        self.write(0x10, (VCO_BAND << 1))
+            # PLL loop Control
+            self.write(0x11, N_int)  # MOD
+            self.write(0x12, (MODULUS >> 12) & 0xFF)  # MOD
+            self.write(0x13, (MODULUS >> 4) & 0xFF)  # MOD
+            self.write(0x14, ((MODULUS & 0x0F) << 4) | (ENABLE_SPI_FREQ_CTRL << 3) | (BYPASS_SDM << 2) | (DISABLE_SDM << 1) | (RESET_PLL << 0))  # MOD
+            self.write(0x15, (FRAC >> 12) & 0xFF)  # MOD
+            self.write(0x16, (FRAC >> 4) & 0xFF)  # MOD
+            self.write(0x17, ((FRAC & 0x0F) << 4 | ((P1 >> 5) & 0x01)))
+            self.write(0x18, ((P1 & 0x1F) << 3) | (P0 - 4))  # P1
+            self.write(0x19, (ENABLE_SPI_OUT_DIV << 7))  #
+            self.write(0x1d, (REFERENCE_FREQUENCY_DOUBLER << 2))
 
-        # PLL loop Control
-        self.write(0x11, N_int)  # MOD
-        self.write(0x12, (MODULUS >> 12) & 0xFF)  # MOD
-        self.write(0x13, (MODULUS >> 4) & 0xFF)  # MOD
-        self.write(0x14, ((MODULUS & 0x0F) << 4) | (ENABLE_SPI_FREQ_CTRL << 3) | (BYPASS_SDM << 2) | (DISABLE_SDM << 1) | (RESET_PLL << 0))  # MOD
-        self.write(0x15, (FRAC >> 12) & 0xFF)  # MOD
-        self.write(0x16, (FRAC >> 4) & 0xFF)  # MOD
-        self.write(0x17, ((FRAC & 0x0F) << 4 | ((P1 >> 5) & 0x01)))
-        self.write(0x18, ((P1 & 0x1F) << 3) | (P0 - 4))  # P1
-        self.write(0x19, (ENABLE_SPI_OUT_DIV << 7))  #
-        self.write(0x1d, (REFERENCE_FREQUENCY_DOUBLER << 2))
+            # OUT1 Control
+            self.write(0x32, (OUT1_DRIVE_STRENGTH << 7) | (OUT1_POWER_DOWN << 6) | (OUT1_MODE << 3) | (OUT1_CMOS_POL << 1) | (ENABLE_SPI_OUT1_CTRL << 0))
 
-        # OUT1 Control
-        self.write(0x32, (OUT1_DRIVE_STRENGTH << 7) | (OUT1_POWER_DOWN << 6) | (OUT1_MODE << 3) | (OUT1_CMOS_POL << 1) | (ENABLE_SPI_OUT1_CTRL << 0))
+            # OUT2 Control
+            self.write(0x33, (OUT2_SOURCE << 3))  #
+            self.write(0x34, (OUT2_DRIVE_STRENGTH << 7) | (OUT2_POWER_DOWN << 6) | (OUT2_MODE << 3) | (OUT2_CMOS_POL << 1) | (ENABLE_SPI_OUT2_CTRL << 0))
 
-        # OUT2 Control
-        self.write(0x33, (OUT2_SOURCE << 3))  #
-        self.write(0x34, (OUT2_DRIVE_STRENGTH << 7) | (OUT2_POWER_DOWN << 6) | (OUT2_MODE << 3) | (OUT2_CMOS_POL << 1) | (ENABLE_SPI_OUT2_CTRL << 0))
+            # Load register values
+            self.write(0x05, 0x01)  # Tell the PLL to register the values sent so far
 
-        # Load register values
-        self.write(0x05, 0x01)  # Tell the PLL to register the values sent so far
+            # Initiate VCO calibration to allow locking with new parameters
+            self.write(0x0E, (1 << 7) | (ENABLE_ALC << 6) | (ALC_THRESHOLD << 3) | (ENABLE_SPI_VCO_CAL << 2) | (VCO_SUPPLY_BOOST << 1) | (ENABLE_SPI_VCO_BAND << 0))
+            self.write(0x05, 0x01)  # Force the PLL to register the values sent so far
+            time.sleep(0.003)  # wait 3 ms for the VCO cal to complete
 
-        # Initiate VCO calibration to allow locking with new parameters
-        self.write(0x0E, (1 << 7) | (ENABLE_ALC << 6) | (ALC_THRESHOLD << 3) | (ENABLE_SPI_VCO_CAL << 2) | (VCO_SUPPLY_BOOST << 1) | (ENABLE_SPI_VCO_BAND << 0))
-        self.write(0x05, 0x01)  # Force the PLL to register the values sent so far
-        time.sleep(0.003)  # wait 3 ms for the VCO cal to complete
+            if self.verbose > 0:
+                fpga = self.mezz.motherboard
+                gate_time = 0.1
+                fout_meas0 = fpga.FreqCtr.read_frequency('FMC%s_MGT_PLL_REFCLK0' % ('A', 'B')[self.mezz.mezzanine-1], gate_time=gate_time)/1e6
+                fout_meas1 = fpga.FreqCtr.read_frequency('FMC%s_MGT_PLL_REFCLK1' % ('A', 'B')[self.mezz.mezzanine-1], gate_time=gate_time)/1e6
+                fout_meas_resolution = 2.0 / gate_time / 1e6
+                print 'MGT refclk frequency:'
+                print 'Requested:  %10.6f MHz' % (fout)
+                print 'Configured: %10.6f MHz' % (fout_real)
+                print 'Measured:  0: %10.6f MHz,  1: %10.6f MHz, Resolution = %.6f MHz' % (fout_meas0, fout_meas1, fout_meas_resolution)
+                print 'Difference: %10.6f MHz (%.0f PPM)'  % (fout_meas0-fout_real, abs(fout_real-fout_meas0)/fout_real*1e6)
+                print 'Locked:     ', self.mezz.IOExpander.PLL2_LOCK
+                print 'MGT line frequency (fout*16): %.3f Mb/s (not measured)' % (fout_real*16)
+                print 'MGT data clock (fout*16/40): %.3f MHz (not measured)' % (fout_real*16/40)
 
-        if self.verbose > 0:
-            fpga = self.mezz.motherboard
-            gate_time = 0.1
-            fout_meas0 = fpga.FreqCtr.read_frequency('FMC%s_MGT_PLL_REFCLK0' % ('A', 'B')[self.mezz.mezzanine-1], gate_time=gate_time)/1e6
-            fout_meas1 = fpga.FreqCtr.read_frequency('FMC%s_MGT_PLL_REFCLK1' % ('A', 'B')[self.mezz.mezzanine-1], gate_time=gate_time)/1e6
-            fout_meas_resolution = 2.0 / gate_time / 1e6
-            print 'MGT refclk frequency:'
-            print 'Requested:  %10.6f MHz' % (fout)
-            print 'Configured: %10.6f MHz' % (fout_real)
-            print 'Measured:  0: %10.6f MHz,  1: %10.6f MHz, Resolution = %.6f MHz' % (fout_meas0, fout_meas1, fout_meas_resolution)
-            print 'Difference: %10.6f MHz (%.0f PPM)'  % (fout_meas0-fout_real, abs(fout_real-fout_meas0)/fout_real*1e6)
-            print 'Locked:     ', self.mezz.IOExpander.PLL2_LOCK
-            print 'MGT line frequency (fout*16): %.3f Mb/s (not measured)' % (fout_real*16)
-            print 'MGT data clock (fout*16/40): %.3f MHz (not measured)' % (fout_real*16/40)
+            time.sleep(0.050)  #
+            if self.is_locked():
+                break
+            elif trial > 3:
+                raise RuntimeError('MGT PLL cannot be locked')
+            self.logger.warning('%.32s: MGT PLL did not lock, retrying...' % self.adc_board)
+            trial += 1
 
         if wait_for_lock:
             self.mezz.IOExpander.wait_for_bit('PLL2_LOCK', timeout=1)

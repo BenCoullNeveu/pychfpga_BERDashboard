@@ -152,14 +152,14 @@ class IOExpander_base(object):
                 raise RuntimeError('Timeout exceeded while waiting for bit %s' % bit_name)
 
 
-    def init(self, verbose=0):
+    def init(self, verbose=1):
         """
         Initializes the register of the IOExpander. Sets the GPIO bits direction and default values based on the 'BITS' table
         Call only after the SPI subsystem is initialized.
         """
-        # Do nothing if the FMC is not present
-        if not self.adc_board.is_present():
-            return
+        # # Do nothing if the FMC is not present
+        # if not self.adc_board.is_present():
+        #     return
 
         bypass = 0
 
@@ -183,6 +183,6 @@ class IOExpander_base(object):
     def status(self):
         """ Displays the status of the IOExpander. """
         self.logger.info('%.32r: --- FMC %i IO Expander' % (self.adc_board, self.adc_board.fmc_number))
-        if not self.adc_board.is_present():
+        if not self.adc_board.is_mezzanine_present():
             self.logger.info('%.32r: FMC board not present' % self.adc_board)
         self.logger.info('%.32r: No status info' % self.adc_board)
