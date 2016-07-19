@@ -183,8 +183,8 @@ class FpgaBitstream(object):
             """ Return the bitstream as a string. """
             return self.bitstream
 
-remap_adc_sma =  [12,13,14,15,8,9,10,11,4,5,6,7,0,1,2,3]
-remap_slot = [5,1,4,0,13,9,12,8,15,11,14,10,7,3,6,2]
+remap_adc_sma =  [12, 13, 14, 15, 8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 3]
+remap_slot = [5, 1, 4, 0, 13, 9, 12, 8, 15, 11, 14, 10, 7, 3, 6, 2]
 
 def load_gains(ib, bank=0):
     for cc in ib:
@@ -200,7 +200,7 @@ def load_gains(ib, bank=0):
 if __name__ == "__main__":
     # Set up logger.
     log = logging.getLogger("")
-    log.handlers = []  # Clear all existing handlers
+    log.handlers = []  # Clear all existing log handlers
     log.setLevel(logging.DEBUG)
     log_stdout = logging.StreamHandler(sys.stdout)
     log_stdout.setLevel(logging.DEBUG)
