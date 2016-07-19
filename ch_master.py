@@ -383,14 +383,18 @@ if __name__ == "__main__":
       load_gains(c, bank=0)
       for bankset in all_banks:
           log.info('Using gain banks %s' % ( ', '.join([str(i) for i in bankset])))
-
-      # set to only change when at configured frame number
-      set_synchronized_gain_switching(c, enable=1)
-      # set frame number to switch gains at.
+      
+      enable_gain_switching = conf['acq']['enable_gain_switching']
       gain_switch_frame = conf['fpga']['gain_switch_frame']
-      set_gain_switch_frame_number(c, frame=gain_switch_frame)
-      # set to use bank 1 next, change in loop below. have to do this after config to wait for
-      # frame number
+      if enable_gain_switching > 0:
+          # set to only change when at configured frame number
+          set_synchronized_gain_switching(c, enable=1)
+          # set frame number to switch gains at.
+          set_gain_switch_frame_number(c, frame=gain_switch_frame)
+          # set to use bank 1 next, change in loop below. have to do this after config to wait for
+          # frame number
+      else:
+          set_synchronized_gain_switching(c, enable=0)
       all_banks = get_current_gain_bank(c)
       for bankset in all_banks:
           log.info('Using gain banks %s' % ( ', '.join([str(i) for i in bankset])))
@@ -581,7 +585,6 @@ if __name__ == "__main__":
   poll_rate_in_frames = poll_rate/2.56e-6  #should use fpga config frequency?
   reload_gains_frame = conf['fpga']['reload_gains_frame']
   frame_range = 2*poll_rate_in_frames  
-  enable_gain_switching = conf['acq']['enable_gain_switching']
   bank_switch_frame = conf['fpga']['bank_switch_frame']
   gain_reload_period = conf['fpga']['gain_reload_period']  #in frames
   if ( int(args.configure_fpga) > 0):
@@ -619,7 +622,8 @@ if __name__ == "__main__":
         #except:
         #     log.critical("Did not get FPGA housekeeping, still aquiring data...")
              #Right now can miss gain setting stuff if hk takes more than 10s.  Really need to disentangle the two.  
-        if ( enable_gain_switching > 0):
+        if ( int(enable_gain_switching) > 0):
+         log.info("Gain switching enabled")
          try:
           time.sleep(0.1)
           true_fpga_frame_count = c[0].get_frame_number()
