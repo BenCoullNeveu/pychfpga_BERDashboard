@@ -56,6 +56,13 @@ class MGK7BP16CrateTests(unittest.TestCase):
 
         xr.header('Test-Results')
         
+        while True:
+            irigb_source = raw_input('Indicate the source for the IRIG-B signal, 1 for bp_time, 2 for bp_trig, or 3 for both. ')
+            if irigb_source != '1' and irigb_source != '2' and time_source != '3':
+                print 'Wrong input, try again!'
+            else:
+                break
+
         try:
             print 'Slot Numbers:'
             slots = set([])
@@ -69,25 +76,28 @@ class MGK7BP16CrateTests(unittest.TestCase):
                 print ib.FreqCtr.read_frequency('RAW_CLK')
                 clock.append(ib.FreqCtr.read_frequency('RAW_CLK'))
             
-            print '\nTime Readout:'
-            time = []
-            ca.ib.set_irigb_source('bp_time')
-            print ca.ib.get_irigb_time()
-            for ib in ca.ib:
-                time.append(ib.get_irigb_time(format = 'nano'))
-            
-            print '\nTrig Readout:'
-            trig = []
-            ca.ib.set_irigb_source('bp_trig')
-            print ca.ib.get_irigb_time()
-            for ib in ca.ib:
-                trig.append(ib.get_irigb_time(format = 'nano'))
-            
+            if irigb_source == '1' or irigb_source == '3':
+                print '\nTime Readout:'
+                time = []
+                ca.ib.set_irigb_source('bp_time')
+                print ca.ib.get_irigb_time()
+                for ib in ca.ib:
+                    time.append(ib.get_irigb_time(format = 'nano'))
+                    
+            if irigb_source == '2' or irigb_source == '3':
+                print '\nTrig Readout:'
+                trig = []
+                ca.ib.set_irigb_source('bp_trig')
+                print ca.ib.get_irigb_time()
+                for ib in ca.ib:
+                    trig.append(ib.get_irigb_time(format = 'nano'))
 
             assert len(slots) == 16, 'Problem with slot association.'
             assert min(clock) > cfg.limits[0] and max(clock) < cfg.limits[1], 'Clock out of bounds!' 
-            assert max(np.diff(time).tolist()) < cfg.max_time_diff, 'Difference in time signal too great between boards!'
-            assert max(np.diff(trig).tolist()) < cfg.max_time_diff, 'Difference in trig signal too great between boards!'
+            if irigb_source == '1' or irigb_source == '3':
+                assert max(np.diff(time).tolist()) < cfg.max_time_diff, 'Difference in time signal too great between boards!'
+            if irigb_source == '2' or irigb_source == '3':
+                assert max(np.diff(trig).tolist()) < cfg.max_time_diff, 'Difference in trig signal too great between boards!'
        
         finally:
             xr.params.test_locals = locals()

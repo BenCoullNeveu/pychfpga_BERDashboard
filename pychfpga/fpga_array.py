@@ -574,6 +574,7 @@ class FPGAArray(object):
 
     def set_operational_mode(self, mode, frames_per_packet=1, chan8_channel_map=range(8)):
         """
+        NOTE: Having called get_ber() before initializing the shuffle will lead to errors!
         Set the operational mode of the array.
 
         - 'raw_time': Each boards stream raw 8-bit time samples from channels
