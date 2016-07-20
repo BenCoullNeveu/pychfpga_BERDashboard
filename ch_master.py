@@ -567,6 +567,13 @@ if __name__ == "__main__":
   # Add the user notes.
   acq.add_header_item("notes", args.notes)
 
+  # Stop the acq on SIGTERM
+  def stop_acq(*args):
+    os.remove(log_file_lock)
+    acq.stop()
+
+  signal.signal(signal.SIGTERM, stop_acq)
+
   # Start the acquisition.
   acq.start(acq_base_dir, crate_sn, int(conf["fpga"]["subarray"]))
 
@@ -680,15 +687,9 @@ if __name__ == "__main__":
       else:
         log.info("acquiring data...")
       time.sleep(poll_rate)
-    acq.stop()
+    stop_acq()
   except(KeyboardInterrupt, SystemExit):
-    acq.stop()
-    raise
+    stop_acq()
+    #raise
 
-
-
-signal.signal(signal.SIGTERM, acq.stop)
-
-# Remove log file lock and exit.
-os.remove(log_file_lock)
 log.info("Exiting ch_master now.")
