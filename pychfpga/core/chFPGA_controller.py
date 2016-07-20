@@ -308,24 +308,21 @@ class chFPGA_controller(IceBoardExtHandler):
             #     self.mezzanine.get(2, None)]
 
             self._FMC_present = [False] * self._NUMBER_OF_FMC_SLOTS
-            self.ANT_FMC_IS_PRESENT = [False] * self.NUMBER_OF_ANTENNAS
-            for fmc_number in range(2):
-                fmc = self.mezzanine.get(fmc_number + 1, None)
-                if fmc:
-                    self._FMC_present[fmc_number] = fmc.is_present()
-                if self._FMC_present[fmc_number]:
+            for fmc_number in range(self._NUMBER_OF_FMC_SLOTS):
+                if fmc_number+1 in self.mezzanine.keys():
+                    self._FMC_present[fmc_number] = True
                     self._logger.info('%r:   An MGADC08 ADC Board is present on FMC slot %i' % (self, fmc_number))
                 else:
-                    self._logger.info('%r:   An MGADC08 ADC Board is *not* present of FMC slot %i' % (self, fmc_number))
+                    self._logger.warning('%r:   An MGADC08 ADC Board is *not* present of FMC slot %i' % (self, fmc_number))
 
             # Determine if the FMC board corresponding to each channelizer is present
             # self.ANT_FMC_IS_PRESENT = [self._adc_board[self.ANT_FMC_NUMBER[i]].is_present() for i in range(self.NUMBER_OF_ANTENNAS)]
+            self.ANT_FMC_IS_PRESENT = [False] * self.NUMBER_OF_ANTENNAS
             for (ant_number, fmc_number) in enumerate(self.ANT_FMC_NUMBER):
-                mezz = self.mezzanine.get(fmc_number + 1, None)
-                if mezz:
-                    self.ANT_FMC_IS_PRESENT[ant_number] = mezz.is_present()
+                if fmc_number + 1 in self.mezzanine.keys():
+                    self.ANT_FMC_IS_PRESENT[ant_number] = True
 
-            self.hw.set_led('GP_LED1',1) # Indicate that the Iceboard is ready
+            self.hw.set_led('GP_LED1', 1) # Indicate that the Iceboard is ready
 
         except Exception:
             self.close()
@@ -445,6 +442,7 @@ class chFPGA_controller(IceBoardExtHandler):
                 mezz.status()
             else:
                 self._logger.debug('%r:    Skipping FMC%i initialization since no board is present in that slot' % (self, mezz_number - 1))
+
 
         self._logger.debug('%r:   Taking channelizers out of reset after FMC enabling' % (self))
         self.set_ant_reset(1)

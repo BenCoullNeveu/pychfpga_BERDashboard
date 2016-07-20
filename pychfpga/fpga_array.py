@@ -486,7 +486,7 @@ class FPGAArray(object):
 
         print
         # print 'open=',open
-        if self.ib and open is not None and open >= 0:
+        if self.ib and open is not None and open > 0:
             print 'Initializing firmware (calling ib.open())'
             self.ib.open(adc_delay_table=ADC_DELAY_TABLE,
                          udp_retries=udp_retries,

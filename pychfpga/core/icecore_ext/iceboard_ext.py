@@ -526,19 +526,19 @@ class IceBoardExtHandler(IceBoardPlusHandler):
     #     self._mezzanine_ipmi_cache[mezzanine] = fru
     #     return fru
 
-    def _get_mezzanine_type(self, mezzanine):
-        """ Returns the type of mezzanine located on slot 'mezzanine' (1 or 2).
-        Returns None if no mezzanine is present.
+    # def _get_mezzanine_type(self, mezzanine):
+    #     """ Returns the type of mezzanine located on slot 'mezzanine' (1 or 2).
+    #     Returns None if no mezzanine is present.
 
-        This method overrides the ARM method of the same name so we can call
-        our own _get_mezzanine_ipmi() which can correctly read non-standard
-        MGADC08 EEPROM data structure.
-        """
-        ipmi = self._get_mezzanine_mcgill_ipmi(mezzanine)
-        if ipmi and hasattr(ipmi,'product') and hasattr(ipmi.product, 'part_number'):
-            return ipmi.product.part_number
-        else:
-            return None
+    #     This method overrides the ARM method of the same name so we can call
+    #     our own _get_mezzanine_ipmi() which can correctly read non-standard
+    #     MGADC08 EEPROM data structure.
+    #     """
+    #     ipmi = self._get_mezzanine_mcgill_ipmi(mezzanine)
+    #     if ipmi and hasattr(ipmi,'product') and hasattr(ipmi.product, 'part_number'):
+    #         return ipmi.product.part_number
+    #     else:
+    #         return None
 
     # ---------------------------------------------------------
     # IRIG-B time support methods

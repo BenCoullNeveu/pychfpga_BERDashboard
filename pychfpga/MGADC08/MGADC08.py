@@ -148,18 +148,16 @@ class MGADC08_Handler(FMCMezzanineHandler):
         self.motherboard = self.iceboard
         self.fmc_number = self.mezzanine-1
 
-        if self.is_present():
-            # self._board_info = self.load_board_info()
-            self.logger.debug('%.32r:   - ADC'% self)
-            self.ADC = ADC.ADC_base(adc_board=self)
-            self.logger.debug('%.32r:   - IOExpander' % self)
-            self.IOExpander = IOExpander.IOExpander_base(adc_board=self)
-            self.logger.debug('%.32r:   - ADC_PLL' % self)
-            self.ADC_PLL = ADC_PLL.ADC_PLL_base(adc_board=self)
-            self.logger.debug('%.32r:   - AmbTemp' % self)
-            self.AmbTemp = AmbTemp.AmbTemp_base(adc_board=self)
-            self.logger.debug('%.32r:   - MGT_PLL' % self)
-            self.MGT_PLL = MGT_PLL.MGT_PLL_base(mezz=self)
+        self.logger.debug('%.32r:   - ADC'% self)
+        self.ADC = ADC.ADC_base(adc_board=self)
+        self.logger.debug('%.32r:   - IOExpander' % self)
+        self.IOExpander = IOExpander.IOExpander_base(adc_board=self)
+        self.logger.debug('%.32r:   - ADC_PLL' % self)
+        self.ADC_PLL = ADC_PLL.ADC_PLL_base(adc_board=self)
+        self.logger.debug('%.32r:   - AmbTemp' % self)
+        self.AmbTemp = AmbTemp.AmbTemp_base(adc_board=self)
+        self.logger.debug('%.32r:   - MGT_PLL' % self)
+        self.MGT_PLL = MGT_PLL.MGT_PLL_base(mezz=self)
 
     ############################################
     # Methods available to the board hardware
@@ -217,42 +215,54 @@ class MGADC08_Handler(FMCMezzanineHandler):
     def set_power(self, state):
         self.iceboard.set_mezzanine_power(bool(state), self.mezzanine)
 
-    def check_FMC_presence(self, verbose=0):
-        """ Checks if the FMC is present"""
-        # self.logger.debug("Attempting to read FMC eeprom to determine board presence")
-        # data = self.eeprom.read(0, length=1, noerror=True, verbose=verbose)
-        # self.logger.debug("FMC eeprom returned the value: %i", data[0])
-        self._board_is_present = self.iceboard._get_mezzanine_type(self.mezzanine) == self.polymorphic_identity
-        #self.logger.info("is the ADC board present: %i" % self._board_is_present)
+    # def check_FMC_presence(self, verbose=0):
+    #     """ Checks if the FMC is present"""
+    #     # self.logger.debug("Attempting to read FMC eeprom to determine board presence")
+    #     # data = self.eeprom.read(0, length=1, noerror=True, verbose=verbose)
+    #     # self.logger.debug("FMC eeprom returned the value: %i", data[0])
+    #     self._board_is_present = self.iceboard._get_mezzanine_type(self.mezzanine) == self.polymorphic_identity
+    #     #self.logger.info("is the ADC board present: %i" % self._board_is_present)
 
-    def is_present(self):
-        """ returns a boolean indicating whether the ADC board is present"""
-        return self._board_is_present
+    # def is_present(self):
+    #     """ returns a boolean indicating whether the ADC board is present"""
+    #     return self._board_is_present
 
     def init(self, sampling_frequency=800e6, reference_frequency=10e6, verbose=0):
         """ Initializes the FMC board modules"""
 
-        if self.is_present():
-            self.sampling_frequency = sampling_frequency
-            self.reference_frequency = reference_frequency
-            self.logger.info('%.32r: Initializing MGADC08 on Mezzanine %i' % (self, self.mezzanine))
-            self.logger.debug('%.32r:   - AmbTemp' % self)
-            self.AmbTemp.init()
+        # Do nothing if the FMC is not present
+        if not self.is_mezzanine_present():
+            self.logger.error('%.32r: Attempting to initialize a mezzanine that is not physically present. Aborting.' % self)
+            raise RuntimeError('Cannot initialize an mezzanine that is not present')
 
-            self.logger.debug('%.32r:   - IOExpander' % self)
-            self.IOExpander.init()
+        # if self.iceboard._get_mezzanine_type(self.mezzanine) != self.__ipmi_part_number__:
+        #     self.logger.error('%.32r: Attempting to initialize a mezzanine that is of the wrong type. Aborting.' % self)
+        #     raise RuntimeError('Cannot initialize an mezzanine of the wrong type')
 
-            self.logger.debug('%.32r:   - ADC_PLL' % self)
-            self.ADC_PLL.init(fout=2*self.sampling_frequency/1e6, fref=self.reference_frequency/1e6, verbose=verbose)
+        if not self.get_mezzanine_power():
+            self.logger.error('%.32r: Attempting to initialize a mezzanine that is not powered up. Aborting.' % self)
+            raise RuntimeError('Cannot initialize an mezzanine that has no power')
 
-            self.logger.debug('%.32r:   - ADC' % self)
-            self.ADC.init()
+        self.sampling_frequency = sampling_frequency
+        self.reference_frequency = reference_frequency
+        self.logger.info('%.32r: Initializing MGADC08 on Mezzanine %i' % (self, self.mezzanine))
+        self.logger.debug('%.32r:   - AmbTemp' % self)
+        self.AmbTemp.init()
+
+        self.logger.debug('%.32r:   - IOExpander' % self)
+        self.IOExpander.init()
+
+        self.logger.debug('%.32r:   - ADC_PLL' % self)
+        self.ADC_PLL.init(fout=2*self.sampling_frequency/1e6, fref=self.reference_frequency/1e6, verbose=verbose)
+
+        self.logger.debug('%.32r:   - ADC' % self)
+        self.ADC.init()
 
     def status(self):
         """ Displays the status of the ADC board"""
         self.logger.info('%.32r: Status of MGADC08 ADC board on Mezzanine %i' % (self, self.mezzanine))
-        self.logger.info('%.32r:   ADC board is %s' % (self, ('not present', 'present')[bool(self.is_present())]))
-        if self.is_present():
+        self.logger.info('%.32r:   ADC board is %s' % (self, ('not present', 'present')[bool(self.is_mezzanine_present())]))
+        if self.is_mezzanine_present():
             self.AmbTemp.status()
             self.IOExpander.status()
             self.ADC_PLL.status()
