@@ -109,7 +109,7 @@ class AMC6821(object):
         return round(np.int16((self.read('LocalTempLSB') << 5) + (self.read('LocalTempMSB') << 8))/256., 3)  # LSB must be read first
 
     def get_remote_temperature(self):
-        return round(np.int16(self.read('RemoteTempLSB') + (self.read('RemoteTempMSB') << 8))/256., 3)  # LSB must be read first
+        return round(np.int16((self.read('RemoteTempLSB') << 5) + (self.read('RemoteTempMSB') << 8))/256., 3)  # LSB must be read first
 
     def get_fan_speed(self):
         return 100000*60/(self.read(0x08)+self.read(0x09)*256)  # returns fan speed in rpm
