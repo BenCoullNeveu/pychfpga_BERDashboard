@@ -38,7 +38,7 @@ def input_yes_no(message, additional_answers=[]):
         print 'Wrong answer. Try again'
 
 class MGK7BP16CrateTests(unittest.TestCase):
-   
+
     def setUp(self):
         """ Prepare the test for execution.
 
@@ -66,16 +66,19 @@ class MGK7BP16CrateTests(unittest.TestCase):
         try:
             result = NameSpace()
 
-            print 'Slot Numbers:'
-            slots = set([])
-            for slot in ca.ib.slot:
-                print slot
-                slots.add(slot)
+            # Create a set of unique slot numbers
+            slots = set(ca.ib.slot)
 
-            print '\nClock Frequencies:'
+            # Print the list of boards
+            print 'Populated Slots:'
+            for (slot, ib) in ca.ic[0].slot.items():
+                print 'Slot %02i: IceBoard SN%s' % (slot, ib.serial)
+
+            print '\nReference clock Frequencies:'
             clock = []
             for ib in ca.ib:
-                print ib.FreqCtr.read_frequency('RAW_CLK')
+                raw_clk_freq = ib.FreqCtr.read_frequency('RAW_CLK')
+                print 'Slot %02i: %.6f MHz' % (ib.slot, raw_clk_freq)
                 clock.append(ib.FreqCtr.read_frequency('RAW_CLK'))
             
             if irigb_source == '1' or irigb_source == '3':
@@ -148,15 +151,15 @@ class MGK7BP16CrateTests(unittest.TestCase):
 
     def qsfp_test(self):
         cfg = self.cfg.crate_tests.qsfp_test
-        
+
         ca = FPGAArray(icecrates = xr.params.serial, prog = self.cfg.debug.force_fpga_prog, open = 1)
-        
+
         xr.header('Test-Results')
 
         try:
             qsfpslots = [0]*16
             for i in range(1, 17):
-                if ca.ib[0].is_bp_qsfp_present(i): 
+                if ca.ib[0].is_bp_qsfp_present(i):
                     print "Backplane QSFP module present on slot " + repr(i)
                     qsfpslots[i-1] = 1
                 else:
@@ -193,28 +196,28 @@ class MGK7BP16CrateTests(unittest.TestCase):
                 print "Resetting arm on board %d." % (i+2)
                 ca.ib[i].reset_arm_on_slot(i+2)
                 result.res.off[i+1] = not ca.ib[i+1].ping()
-            
-            print "Waiting ..." 
+
+            print "Waiting ..."
             time.sleep(cfg.arm_sleep_time)
-            
+
             for i in range(0, 16, 2):
                 result.res.on[i+1] = ca.ib[i+1].ping()
-            
+
             for i in range(1, 16, 2):
                 print "Resetting arm on board %d." % i
                 ca.ib[i].reset_arm_on_slot(i)
                 result.res.off[i-1] = not ca.ib[i-1].ping()
-            
+
             print "Waiting ..."
             time.sleep(cfg.arm_sleep_time)
-            
+
             for i in range(1, 16, 2):
                 result.res.on[i-1] = ca.ib[i-1].ping()
 
             xr.header('Test-Results')
             for i in range(0, len(result.res.off)):
                 print result.res.off[i] , result.res.on[i]
-            
+
             for i in range(0, len(result.res.off)):
                 assert result.res.off[i], "Iceboard(s) did not turn off properly!"
                 assert result.res.on[i], "Iceboard(s) did not turn on properly!"
@@ -224,6 +227,7 @@ class MGK7BP16CrateTests(unittest.TestCase):
             xr.params.test_locals = locals()
         
         xr.header('Begin ON/OFF Test')
+
         try:
             for i in range(0, 16, 2):
                 print "Turning board %d off." % (i+2)
@@ -231,30 +235,30 @@ class MGK7BP16CrateTests(unittest.TestCase):
                 result.onoff.off[i+1] = not ca.ib[i+1].ping()
                 print "Turning board %d on." % (i+2)
                 ca.ib[i].set_power_on_slot(i+2, True)
-            
-            print "Waiting ..." 
+
+            print "Waiting ..."
             time.sleep(cfg.pow_sleep_time)
-            
+
             for i in range(0, 16, 2):
                 result.onoff.on[i+1] = ca.ib[i+1].ping()
-            
+
             for i in range(1, 16, 2):
                 print "Turning board %d off." % i
                 ca.ib[i].set_power_on_slot(i, False)
                 result.onoff.off[i-1] = not ca.ib[i-1].ping()
                 print "Turning board %d on." % i
                 ca.ib[i].set_power_on_slot(i, True)
-            
+
             print "Waiting ..."
             time.sleep(cfg.pow_sleep_time)
-            
+
             for i in range(1, 16, 2):
                 result.onoff.on[i-1] = ca.ib[i-1].ping()
 
             xr.header('Test-Results')
             for i in range(0, len(result.onoff.off)):
                 print result.onoff.off[i] , result.onoff.on[i]
-            
+
             for i in range(0, len(result.onoff.off)):
                 assert result.onoff.off[i], "Iceboard(s) did not turn off properly!"
                 assert result.onoff.on[i], "Iceboard(s) did not turn on properly!"
@@ -265,7 +269,7 @@ class MGK7BP16CrateTests(unittest.TestCase):
 
 
     def bitErrorRate_test(self):
-        
+
         # Useful shortcuts
         cfg = self.cfg.crate_tests.bitErrorRate_test
 
@@ -274,7 +278,7 @@ class MGK7BP16CrateTests(unittest.TestCase):
             if numberOfCrates == '1':
                 serials = xr.params.serial
                 break
-        
+
             elif numberOfCrates == '2':
                 crate2 = raw_input('What is the serial number of the second crate you want to use for this test? ')
                 serials = [xr.params.serial, crate2]
@@ -307,7 +311,7 @@ class MGK7BP16CrateTests(unittest.TestCase):
                     #    gpu_rate = False
                     #    bad_lanes.append((key, result[key]))
                     del result[key]
-            
+
             xr.header('Test-Results')
             keys = result.keys()
             keys.sort()
@@ -351,7 +355,7 @@ class MGK7BP16CrateTests(unittest.TestCase):
                 serials = xr.params.serial
                 shuffle = 'shuffle256'
                 break
-        
+
             elif shuffleType == '2':
                 crate2 = raw_input('What is the serial number of the second crate you want to use for this test? ')
                 serials = [xr.params.serial, crate2]
@@ -370,14 +374,14 @@ class MGK7BP16CrateTests(unittest.TestCase):
         if shuffleType == '2':
             ca.ib.CROSSBAR2.SOF_WINDOW_STOP = 70
             ca.ib.CROSSBAR2.TIMEOUT_PERIOD = 0
-        
+
         xr.header('Test-Results')
         try:
             for i in range(cfg.repeat):
                 ca.set_operational_mode(shuffle, frames_per_packet=2)
                 ca.print_shuffle_status(reset_stats = True, verbose = 1)
                 status = ca.get_shuffle_status()
-                errors = sum(searchErrDict(status))   
+                errors = sum(searchErrDict(status))
                 assert not errors, 'Found %d errors in data shuffle!' % errors
 
         finally:
@@ -421,7 +425,7 @@ class MGK7BP16CrateTests(unittest.TestCase):
 
         result = NameSpace()  # test result container
         board = 0
-        
+
         xr.header('Test-Results')
         try:
             for ib in ca.ib:
@@ -429,13 +433,13 @@ class MGK7BP16CrateTests(unittest.TestCase):
                 result[board].data = []
                 result[board].ramp_ok = []
 
-                for mezz in ib.mezzanine.values():                
+                for mezz in ib.mezzanine.values():
                     print 'initializing mezzanine...'
                     mezz.init()
-                
+
                     print 'Computing ADC delays...'
                     delay_table = self.set_adc_delays(ib)
-                
+
                     print 'Opening data receiver socket'
                     receiver = ib.get_data_receiver()
 
@@ -444,10 +448,10 @@ class MGK7BP16CrateTests(unittest.TestCase):
                     ib.set_data_source('adc')
                     ib.set_adc_mode('ramp')
                     ib.start_data_capture(period=1, source='adc')
-                
+
                     print 'Syncing...'
                     ib.sync()
-                
+
                     print 'Getting data frames...'
                     receiver.read_frames(flush=1, frames=3)  # flush
                     data = receiver.read_frames(1)

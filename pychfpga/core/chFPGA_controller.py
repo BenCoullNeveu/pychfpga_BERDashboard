@@ -743,11 +743,14 @@ class chFPGA_controller(IceBoardExtHandler):
             mezz_number = (channel // 8) + 1
             return self.mezzanine.get(mezz_number, None)
         else:
-            board_list=[]
+            board_list=set()
             for ch in channel:
                 mezz_number = (ch // 8) + 1
-                board_list.append(self.mezzanine.get(mezz_number, None))
-            return list(set(board_list))
+                if mezz_number in self.mezzanine.keys():
+                    board_list.add(self.mezzanine[mezz_number])
+                else:
+                    self._logger.warning('%r: ADC Mezzanine board for channel %i is not present. Ignoring this board' % (self, ch))
+            return list(board_list)
 
     ADC_MODE_NAMES = {
         # name, mode number, period (in 4-bytes words)
@@ -789,9 +792,6 @@ class chFPGA_controller(IceBoardExtHandler):
         # Set the mode on all affected ADC boards
         adc_boards = self.get_adc_board(channels)
         for adc_board in adc_boards:
-            if not adc_board or not adc_board.is_present():
-                self._logger.warning('%r: ADC Board is not present. Ignoring set_ADC_mode() command for this board' % (self))
-            else:
                 adc_board.ADC.set_test_mode(test_mode=mode_value)
 
         # Set the capture period for all specified channels
