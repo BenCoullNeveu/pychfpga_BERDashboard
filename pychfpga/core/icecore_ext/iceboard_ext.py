@@ -13,7 +13,7 @@ import socket
 from ..icecore import IceBoardPlusHandler
 from ..icecore import tuber  # Used to get TuberRemoteError
 from ..icecore import Ccoll
-from ..icecore import async, async_sleep, async_return
+from ..icecore import async, async_sleep, async_return, async_moment
 
 
 from .. import I2C as i2c
@@ -554,6 +554,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         'bp_gpio_int': 3
         }
 
+    @async
     def set_irigb_source(self, source):
         """ Set the source of the IRIG-B signal."""
         if source not in self._IRIGB_SOURCE_TABLE:
@@ -578,6 +579,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         }
 
 
+    @async
     def _get_irigb_time(self, trig=True, format='datetime', noerror=False):
         """ Reads the IRIG-B time from the time decoder and returns an object
         that contains all the time information gathered from it.
@@ -592,12 +594,27 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         # Capture current time
         if trig:
             w2 = self.fpga_mmi_read(self._IRIGB_SAMPLE2_ADDR)
-            self.fpga_mmi_write(self._IRIGB_SAMPLE2_ADDR, w2 & ~(1 << 29))
-            self.fpga_mmi_write(self._IRIGB_SAMPLE2_ADDR, w2 | (1 << 29))  # Create a rising edge
             t0 = time.time()
-            while not self.fpga_mmi_read(self._IRIGB_TARGET1_ADDR) & (1 << 29):
-                if time.time() - t0 > 1:
-                    raise RuntimeError('Timeout while waiting for a Reference clock edge')
+            while True:
+                # trigger time capture
+                self.fpga_mmi_write(self._IRIGB_SAMPLE2_ADDR, w2 & ~(1 << 29))
+                self.fpga_mmi_write(self._IRIGB_SAMPLE2_ADDR, w2 | (1 << 29))  # Create a rising edge
+                yield async_moment
+
+                # Wait for the time capture . Time is captured on the next 10 MHz reference clock edge, so that shoudl be quick.
+                t1 = time.time()
+                while not self.fpga_mmi_read(self._IRIGB_TARGET1_ADDR) & (1 << 29):
+                    print 'Waiting for time capture' # -- debug. should not happen
+                    if time.time() - t1 > 0.1:
+                        raise RuntimeError('Timeout while waiting for a Reference clock edge')
+
+                w1 = self.fpga_mmi_read(self._IRIGB_SAMPLE1_ADDR)
+                recent = (w1 >> 29) & 1
+                if recent: # if we get a updated time
+                    break
+                if time.time() - t0 > 2.5: # Wait a little bit more than one second in case the IRIG-B signal just became valie (e.g. we just set the source)
+                    if not noerror:
+                        raise RuntimeError('%.32r: Could not get a recently updated IRIG-B time. Check your cabling.' % self)
 
         w0 = self.fpga_mmi_read(self._IRIGB_SAMPLE0_ADDR)
         w1 = self.fpga_mmi_read(self._IRIGB_SAMPLE1_ADDR)
@@ -642,7 +659,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         ts.nano = int(timegm((y + 2000, 1, 1, 0, 0, 0)) * 1e9) + ((d-1) *24*3600 + ts.h * 3600 + ts.m * 60 + ts.s)*1000000000 + ts.ss*10
         # ts.event_ctr = e0
 
-        return self._IRIGB_TIME_FORMAT[format](ts)
+        async_return(self._IRIGB_TIME_FORMAT[format](ts))
 
     def set_irigb_trigger_time(self, datetime_=None, delay=None):
         """ Sets the time at which the IRIG-B module will generate a trigger
@@ -763,7 +780,8 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         c = self.fpga_mmi_read(self._IRIGB_REFCLK_SAMPLE)
         return (c, t)  # Return
 
-    def get_irigb_time(self, trig=True, format='datetime'):
+    @async
+    def get_irigb_time(self, trig=True, format='datetime', noerror=False):
         """ Return the current time as decoded on the IRIG-B input. The time
         is returned in a format specified by 'format':
 
@@ -772,7 +790,8 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         'datetime+': A (dt,nano) tuple where dt is a datetime object, and nano is the number of nanoseconds within the second.
         'nano': An integer representing the number of nanoseconds since Jan 1st 2000.
         """
-        return self._get_irigb_time(trig=trig, format=format)
+        t = yield self._get_irigb_time.async(trig=trig, format=format, noerror=noerror)
+        async_return(t)
 
 
 class I2CInterface(object):
