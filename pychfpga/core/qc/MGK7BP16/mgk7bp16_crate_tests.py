@@ -85,7 +85,6 @@ class MGK7BP16CrateTests(unittest.TestCase):
                 print '\nTime Readout:'
                 result.time = []
                 ca.ib.set_irigb_source('bp_time')
-                time.sleep(3)
                 print ca.ib.get_irigb_time()
                 for ib in ca.ib:
                     result.time.append(ib.get_irigb_time(format = 'nano'))
