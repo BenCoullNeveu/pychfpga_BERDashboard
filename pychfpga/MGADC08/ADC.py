@@ -89,10 +89,15 @@ class ADC_chip(object):
            1 = ramp
            2 = pulse
         """
-        control_reg = self.read(self.REG_CONTROL)
-        test_reg = self.read(self.REG_TEST)
+        while True:
+            control_reg = self.read(self.REG_CONTROL)
+            test_reg = self.read(self.REG_TEST)
+            v = bool(control_reg & 1<<12) * 2 + test_reg
+            if 0 <= v <= 3:
+                break
+            self.logger.warn('%.32r: Bad ADC readout: control reg=0x%04X, test reg=0x%04X. retrying' % (self.adc.adc_board, control_reg, test_reg))
 
-        return (0, 0, 1, 2)[bool(control_reg & 1<<12) * 2 + test_reg]
+        return (0, 0, 1, 2)[v]
 
 
     def get_temperature(self, **kwargs):
@@ -166,10 +171,6 @@ class ADC_base(object):
 
     def init(self, **kwargs):
         """ Resets and initialize all ADCs ion the FMC board"""
-        # Do nothing if the FMC is not present
-        if not self.adc_board.is_present():
-            return
-
         self.reset() # Send reset pulse on both ADCs
         for adc in self.ADC:
             adc.init(**kwargs)
@@ -199,7 +200,7 @@ class ADC_base(object):
     def status(self):
         """ Prints the status of all ADCs on the board"""
         self.logger.info('%.32r: --- ADCs' % self.adc_board)
-        if not self.adc_board.is_present():
+        if not self.adc_board.is_mezzanine_present():
             self.logger.info('%.32r: FMC board %i not present' % (self.adc_board, self.adc_board.fmc_number))
             return
         for adc in self.ADC:

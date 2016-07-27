@@ -13,6 +13,7 @@ import socket
 from ..icecore import IceBoardPlusHandler
 from ..icecore import tuber  # Used to get TuberRemoteError
 from ..icecore import Ccoll
+from ..icecore import async, async_sleep, async_return, async_moment
 
 
 from .. import I2C as i2c
@@ -436,6 +437,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         """
         return self.core_i2c.set_port(*args, **kwargs)
 
+    @async
     def _mezzanine_eeprom_read(self, mezzanine):
         """ Reads the EEPROM on the specified mezzanine using the FPGA if the ARM firmware does not provide the functionnality.
 
@@ -457,9 +459,15 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         reading the IPMI standard data decoded by the ARM.
                 """
         try:
-            return base64.decodestring(self._mezzanine_eeprom_read_base64(mezzanine))
+            data = yield self._mezzanine_eeprom_read_base64.async(mezzanine)
+            async_return(base64.decodestring(data))
         except (tuber.TuberRemoteError, AttributeError):
             self.logger.debug("%.32r: Cannot read the Mezzanine %i EEPROM through the ARM's _mezzanine_eeprom_read_base64() method. Attempting to read the Mezzanine EEPROM through the FPGA." % (self, mezzanine))
+
+        fpga_programmed = yield self.is_fpga_programmed.async()
+        if not fpga_programmed:
+            self.logger.debug("%.32r: FPGA is not programmed, so cannot read the Mezzanine %i EEPROM through the FPGA." % (self, mezzanine))
+            async_return(None)
 
         eeprom_data = self.hw.read_mezzanine_eeprom(mezzanine, 0, 1)
         if ord(eeprom_data[0]) == 0x0d:  # if this is McGill format
@@ -474,10 +482,10 @@ class IceBoardExtHandler(IceBoardPlusHandler):
                 string += data_block
                 if ('}' in data_block) or (chr(255) in data_block):
                     break
-            return string
+            async_return(string)
         else:  # If not McGill format,
             self.logger.debug("%.32r: EEPROM in Mezzanine %i is not McGill format. The FPGA will *NOT* read the EEPROM contetnt " % (self, mezzanine))
-            return None
+            async_return(None)
 
     # def _get_mezzanine_mcgill_ipmi(self, mezzanine, retry=3, use_cache=False):
     #     """ Returns the IMPI data for the mezzanine located on slot
@@ -518,19 +526,19 @@ class IceBoardExtHandler(IceBoardPlusHandler):
     #     self._mezzanine_ipmi_cache[mezzanine] = fru
     #     return fru
 
-    def _get_mezzanine_type(self, mezzanine):
-        """ Returns the type of mezzanine located on slot 'mezzanine' (1 or 2).
-        Returns None if no mezzanine is present.
+    # def _get_mezzanine_type(self, mezzanine):
+    #     """ Returns the type of mezzanine located on slot 'mezzanine' (1 or 2).
+    #     Returns None if no mezzanine is present.
 
-        This method overrides the ARM method of the same name so we can call
-        our own _get_mezzanine_ipmi() which can correctly read non-standard
-        MGADC08 EEPROM data structure.
-        """
-        ipmi = self._get_mezzanine_mcgill_ipmi(mezzanine)
-        if ipmi and hasattr(ipmi,'product') and hasattr(ipmi.product, 'part_number'):
-            return ipmi.product.part_number
-        else:
-            return None
+    #     This method overrides the ARM method of the same name so we can call
+    #     our own _get_mezzanine_ipmi() which can correctly read non-standard
+    #     MGADC08 EEPROM data structure.
+    #     """
+    #     ipmi = self._get_mezzanine_mcgill_ipmi(mezzanine)
+    #     if ipmi and hasattr(ipmi,'product') and hasattr(ipmi.product, 'part_number'):
+    #         return ipmi.product.part_number
+    #     else:
+    #         return None
 
     # ---------------------------------------------------------
     # IRIG-B time support methods
@@ -546,6 +554,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         'bp_gpio_int': 3
         }
 
+    @async
     def set_irigb_source(self, source):
         """ Set the source of the IRIG-B signal."""
         if source not in self._IRIGB_SOURCE_TABLE:
@@ -570,6 +579,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         }
 
 
+    @async
     def _get_irigb_time(self, trig=True, format='datetime', noerror=False):
         """ Reads the IRIG-B time from the time decoder and returns an object
         that contains all the time information gathered from it.
@@ -584,12 +594,27 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         # Capture current time
         if trig:
             w2 = self.fpga_mmi_read(self._IRIGB_SAMPLE2_ADDR)
-            self.fpga_mmi_write(self._IRIGB_SAMPLE2_ADDR, w2 & ~(1 << 29))
-            self.fpga_mmi_write(self._IRIGB_SAMPLE2_ADDR, w2 | (1 << 29))  # Create a rising edge
             t0 = time.time()
-            while not self.fpga_mmi_read(self._IRIGB_TARGET1_ADDR) & (1 << 29):
-                if time.time() - t0 > 1:
-                    raise RuntimeError('Timeout while waiting for a Reference clock edge')
+            while True:
+                # trigger time capture
+                self.fpga_mmi_write(self._IRIGB_SAMPLE2_ADDR, w2 & ~(1 << 29))
+                self.fpga_mmi_write(self._IRIGB_SAMPLE2_ADDR, w2 | (1 << 29))  # Create a rising edge
+                yield async_moment
+
+                # Wait for the time capture . Time is captured on the next 10 MHz reference clock edge, so that shoudl be quick.
+                t1 = time.time()
+                while not self.fpga_mmi_read(self._IRIGB_TARGET1_ADDR) & (1 << 29):
+                    print 'Waiting for time capture' # -- debug. should not happen
+                    if time.time() - t1 > 0.1:
+                        raise RuntimeError('Timeout while waiting for a Reference clock edge')
+
+                w1 = self.fpga_mmi_read(self._IRIGB_SAMPLE1_ADDR)
+                recent = (w1 >> 29) & 1
+                if recent: # if we get a updated time
+                    break
+                if time.time() - t0 > 2.5: # Wait a little bit more than one second in case the IRIG-B signal just became valie (e.g. we just set the source)
+                    if not noerror:
+                        raise RuntimeError('%.32r: Could not get a recently updated IRIG-B time. Check your cabling.' % self)
 
         w0 = self.fpga_mmi_read(self._IRIGB_SAMPLE0_ADDR)
         w1 = self.fpga_mmi_read(self._IRIGB_SAMPLE1_ADDR)
@@ -634,7 +659,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         ts.nano = int(timegm((y + 2000, 1, 1, 0, 0, 0)) * 1e9) + ((d-1) *24*3600 + ts.h * 3600 + ts.m * 60 + ts.s)*1000000000 + ts.ss*10
         # ts.event_ctr = e0
 
-        return self._IRIGB_TIME_FORMAT[format](ts)
+        async_return(self._IRIGB_TIME_FORMAT[format](ts))
 
     def set_irigb_trigger_time(self, datetime_=None, delay=None):
         """ Sets the time at which the IRIG-B module will generate a trigger
@@ -755,7 +780,8 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         c = self.fpga_mmi_read(self._IRIGB_REFCLK_SAMPLE)
         return (c, t)  # Return
 
-    def get_irigb_time(self, trig=True, format='datetime'):
+    @async
+    def get_irigb_time(self, trig=True, format='datetime', noerror=False):
         """ Return the current time as decoded on the IRIG-B input. The time
         is returned in a format specified by 'format':
 
@@ -764,7 +790,8 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         'datetime+': A (dt,nano) tuple where dt is a datetime object, and nano is the number of nanoseconds within the second.
         'nano': An integer representing the number of nanoseconds since Jan 1st 2000.
         """
-        return self._get_irigb_time(trig=trig, format=format)
+        t = yield self._get_irigb_time.async(trig=trig, format=format, noerror=noerror)
+        async_return(t)
 
 
 class I2CInterface(object):
@@ -1173,6 +1200,7 @@ class IceBoardHardware(object):
         eeprom_object = self._FMC_EEPROM_TABLE[mezzanine]
         return eeprom_object.write(addr, data, **kwargs)
 
+    @async
     def set_mezzanine_power(self, fmc_number=range(NUMBER_OF_FMC_SLOTS), state=[True]*NUMBER_OF_FMC_SLOTS):
         """
         Enables or disables power of the specified FMC slot.
@@ -1211,22 +1239,22 @@ class IceBoardHardware(object):
                 if fmc_state:
                     self._gpio_power.write(fmc, 0b00000010, mask=0b00000010)  # Turn on 12V, 3.3V and VADJ power to board
                     # self._gpio_power.write(fmc, 0b00000110, mask=0b00000110)  # Turn on 12V, 3.3V and VADJ power to board
-                    time.sleep(0.010)
+                    yield async_sleep(0.010)
                     self._gpio_power.write(fmc, 0b00000100, mask=0b00000100)  # Turn on 12V, 3.3V and VADJ power to board
-                    time.sleep(0.100)
+                    yield async_sleep(0.100)
                     self._gpio_power.write(fmc, 0b00000001, mask=0b00000001)  # Turn on 12V, 3.3V and VADJ power to board
-                    time.sleep(0.050)
+                    yield async_sleep(0.050)
                     self._gpio_power.write(fmc, 0b01010000, mask=0b01010000)  # Set Power Good (start switcher) and CLKDIR to 1
-                    time.sleep(0.050)
+                    yield async_sleep(0.050)
                 else:
                     self._gpio_power.write(fmc, 0b00000000, mask=0b01010000)  # Stop mezzanine switcher (PG=0)
-                    time.sleep(0.030)
+                    yield async_sleep(0.030)
                     self._gpio_power.write(fmc, 0b00000000, mask=0b00000001)  # Turn off 12V
-                    time.sleep(0.030)
+                    yield async_sleep(0.030)
                     self._gpio_power.write(fmc, 0b00000000, mask=0b00000010)  # Turn off rail
-                    time.sleep(0.030)
+                    yield async_sleep(0.030)
                     self._gpio_power.write(fmc, 0b00000000, mask=0b00000100)  # Turn off rail
-                    time.sleep(0.100)
+                    yield async_sleep(0.100)
 
 
     def set_led(self, led_name, state):
