@@ -50,7 +50,7 @@ n_freq    = integer(min = 1)
   livefile = string
   frames_per_file = integer(min = 1)
   frames_per_livefile = integer(min = 1)
-  n_frame_buf = integer(min = 10, default = 12)
+  n_frame_buf = integer(min = 6, default = 10)
   producer_max_range = integer(min = 2, default = 3)
   acq_loop_poll_rate = float(default = 2)
   enable_gain_switching = integer(default = 0) 
