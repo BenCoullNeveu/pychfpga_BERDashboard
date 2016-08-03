@@ -1062,7 +1062,7 @@ class FPGAArray(object):
             #print 'Slot %i' % (ib.slot)
             dest_slot = ib.slot
             serial_number[dest_slot-1] = ib.serial
-            for gtx_number, g in enumerate(ib.BP_SHUFFLE.gtx):
+            for gtx_number, g in enumerate(ib.BP_SHUFFLE.gtx[0:ib.BP_SHUFFLE.NUMBER_OF_PCB_LINKS]): # JM: Fixed this bc was getting an error. JF please check
                 dest_lane = gtx_number + 1
                 dest = (dest_slot, dest_lane)
                 expected_source = ib.crate.get_matching_tx(dest)
