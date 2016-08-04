@@ -2021,8 +2021,12 @@ class chFPGA_controller(IceBoardExtHandler):
             for bit in range(8):
                 mask = 1 << bit #looking at one adc bit at a time
                 sample = (t[chan][:,offset]) & mask
-                chosendelay = int((sample * np.arange(32)).sum() / sample.sum())  # performing a center of mass claculation to pick eye location
-                changood.append( (((t[chan][:, offset])[chosendelay]) & mask) >> bit)  # Checking what the bit level at the eye center is
+                if any(sample): # If sample has nonzero values
+                    chosendelay = int((sample * np.arange(32)).sum() / sample.sum())  # performing a center of mass claculation to pick eye location
+                    changood.append( (((t[chan][:, offset])[chosendelay]) & mask) >> bit)  # Checking what the bit level at the eye center is
+                else: # Sample is all zeros
+                    chosendelay = np.NaN
+                    changood.append(np.NaN)
                 bitdelay.append(chosendelay)
                 #self._logger.info( 'Warning: Center of eye diagram on bit %i of channel %i has glitch ' % (bit, chan))
 
