@@ -808,6 +808,7 @@ class FPGAArray(object):
         if ni_enable:
             ni_board.set_user_output_source('pwm')
             ni_board.set_frame_pwm(ni_offset, ni_high_time, ni_period)
+            ni_board.sync()
         else:
             pass  # maybe we should disable the sma output
 
