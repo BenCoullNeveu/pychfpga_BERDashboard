@@ -32,7 +32,7 @@ from pychfpga.core.icecore import async, async_return
 from pychfpga.MGADC08 import MGADC08  # Import to make sure this Mezzanine is registered  so it can be discovered
 from pychfpga.core.chFPGA_controller import chFPGA_controller
 from pychfpga.Agilent_N5764A import AgilentN5764AHandler
-from gpu_node import GpuNodeHandler
+from pychfpga.gpu_node import GpuNodeHandler
 
 # import logging.handlers
 
