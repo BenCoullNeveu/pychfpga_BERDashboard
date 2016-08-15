@@ -434,6 +434,10 @@ class FPGAArray(object):
             self.logger.warn('No Iceboards matching the selection criteria were found')
             print 'There are no IceCrates in the hardware map!'
 
+        # Set the interface over which the FPGA UDP communication will be done
+        if if_ip:
+            ib.interface_ip_addr = if_ip
+
         print 'The following IceBoards are in the hardware map:'
         for i in ib:
             crate_name = '%s SN%s' % (i.crate.part_number, i.crate.serial) if i.crate else 'No crate'

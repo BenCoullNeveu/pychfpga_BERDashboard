@@ -190,13 +190,14 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         # board over UDP by opening a TCP socket to the ARM and inspeting the
         # interface that was used. This assumes that both the ARM and FPGAs
         # are accessed through the same interface.
-        if self.hostname:
-            s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            s.connect((self.hostname, 80))
-            (self.interface_ip_addr, _) = s.getsockname()
-            s.close()
-        else:
-            self.interface_ip_addr = None
+        if not self.interface_ip_addr:  # set the interface only of we haven't manually defined one
+            if self.hostname:
+                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.connect((self.hostname, 80))
+                (self.interface_ip_addr, _) = s.getsockname()
+                s.close()
+            else:
+                self.interface_ip_addr = None
 
         # Compute the IP address to use for the FPGA UDP interface For now, we
         # replace a.b.c.d by a.b.3.d. We need to find a more generic mechanism
