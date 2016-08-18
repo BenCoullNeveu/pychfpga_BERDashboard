@@ -434,6 +434,10 @@ class FPGAArray(object):
             self.logger.warn('No Iceboards matching the selection criteria were found')
             print 'There are no IceCrates in the hardware map!'
 
+        # Set the interface over which the FPGA UDP communication will be done
+        if if_ip:
+            ib.interface_ip_addr = if_ip
+
         print 'The following IceBoards are in the hardware map:'
         for i in ib:
             crate_name = '%s SN%s' % (i.crate.part_number, i.crate.serial) if i.crate else 'No crate'
@@ -808,6 +812,7 @@ class FPGAArray(object):
         if ni_enable:
             ni_board.set_user_output_source('pwm')
             ni_board.set_frame_pwm(ni_offset, ni_high_time, ni_period)
+            ni_board.sync()
         else:
             pass  # maybe we should disable the sma output
 
@@ -1062,7 +1067,7 @@ class FPGAArray(object):
             #print 'Slot %i' % (ib.slot)
             dest_slot = ib.slot
             serial_number[dest_slot-1] = ib.serial
-            for gtx_number, g in enumerate(ib.BP_SHUFFLE.gtx):
+            for gtx_number, g in enumerate(ib.BP_SHUFFLE.gtx[0:ib.BP_SHUFFLE.NUMBER_OF_PCB_LINKS]): # JM: Fixed this bc was getting an error. JF please check
                 dest_lane = gtx_number + 1
                 dest = (dest_slot, dest_lane)
                 expected_source = ib.crate.get_matching_tx(dest)

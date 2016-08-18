@@ -73,6 +73,7 @@ class AMC6821(object):
 
         value = self._i2c.write_read(self._address, data=[register], read_length=1)[0]
         value = (value >> bit) & ((1 << width)-1)
+        self._i2c.select_bus('GPIO')    # close bus to fan controller i2c to avoid problems with the arm accessing it
         return value
 
     def write(self, name, value, select=True):
@@ -98,6 +99,7 @@ class AMC6821(object):
             old_value = self._i2c.write_read(self._address, data=[register], read_length=1)  #self.i2c.write_read(self.address, read_length=1)
             new_value = (old_value & (~ mask)) | (value & mask)
             self._i2c.write_read(self._address, data=[register, new_value])
+        self._i2c.select_bus('GPIO')    # close bus to fan controller i2c to avoid problems with the arm accessing it
 
     def set_control_mode(self, mode):
         self.write('FDRC', mode)
@@ -109,7 +111,7 @@ class AMC6821(object):
         return round(np.int16((self.read('LocalTempLSB') << 5) + (self.read('LocalTempMSB') << 8))/256., 3)  # LSB must be read first
 
     def get_remote_temperature(self):
-        return round(np.int16(self.read('RemoteTempLSB') + (self.read('RemoteTempMSB') << 8))/256., 3)  # LSB must be read first
+        return round(np.int16((self.read('RemoteTempLSB') << 5) + (self.read('RemoteTempMSB') << 8))/256., 3)  # LSB must be read first
 
     def get_fan_speed(self):
         return 100000*60/(self.read(0x08)+self.read(0x09)*256)  # returns fan speed in rpm

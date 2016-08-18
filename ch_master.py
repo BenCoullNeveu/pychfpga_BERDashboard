@@ -383,17 +383,17 @@ if __name__ == "__main__":
             # Make compute gains smarter -> write to db? need boards to actually be different
 
             # Get noise injection parameters
-            gpu_intergration_period = conf.gpu.gpu_intergration_period
+            #gpu_intergration_period = conf.gpu.gpu_intergration_period
             ni_board = conf.fpga.ni_board
             ni_enable = conf.fpga.ni_enable
-            ni_offset = conf.fpga.ni_offset * gpu_intergration_period
-            ni_high_time = conf.fpga.ni_high_time * gpu_intergration_period - 1 # the -1 is due to the convention in function set_frame_pwm()
-            ni_period = conf.fpga.ni_period * gpu_intergration_period - 1
+            ni_offset = conf.fpga.ni_offset
+            ni_high_time = conf.fpga.ni_high_time - 1 # the -1 is due to the convention in function set_frame_pwm()
+            ni_period = conf.fpga.ni_period - 1
             ni_board_26m = conf.fpga.ni_board_26m
             ni_enable_26m = conf.fpga.ni_enable_26m
-            ni_offset_26m = conf.fpga.ni_offset_26m * gpu_intergration_period
-            ni_high_time_26m = conf.fpga.ni_high_time_26m * gpu_intergration_period - 1 # the -1 is due to the convention in function set_frame_pwm()
-            ni_period_26m = conf.fpga.ni_period_26m * gpu_intergration_period - 1
+            ni_offset_26m = conf.fpga.ni_offset_26m
+            ni_high_time_26m = conf.fpga.ni_high_time_26m - 1 # the -1 is due to the convention in function set_frame_pwm()
+            ni_period_26m = conf.fpga.ni_period_26m - 1
 
             if (int(args.compute_gain) > 0):
                     #Shouldn't need for loop here, but initial testing failed in parallel.
@@ -412,6 +412,10 @@ if __name__ == "__main__":
             ca.ib.set_data_source("adc")  # This should come first.
             ca.ib.set_FFT_bypass(False, channels=all_chan)
             ca.ib.set_FFT_shift(conf.fpga.fft_shift, channels=all_chan)
+            
+            ca.ib.set_synchronized_gain_switching(enable=0)
+            ca.ib.set_next_gain_bank(bank=0)
+            all_banks = ca.ib.get_current_gain_bank()            
 
             # Load and set the gains
             log.info("%.32r: Loading initial gains" % self)
@@ -420,14 +424,17 @@ if __name__ == "__main__":
             for bankset in ca.ib.get_current_gain_bank():
                     log.info('%.32r: Using gain banks %s' % (self, ', '.join([str(i) for i in bankset])))
 
-            # set to only change when at configured frame number
-            ca.ib.set_synchronized_gain_switching(enable=1)
-            # set frame number to switch gains at.
+            gpu_intergration_period = conf.gpu.gpu_intergration_period
+            enable_gain_switching = conf.acq.enable_gain_switching
             gain_switch_frame = conf.fpga.gain_switch_frame
-            ca.ib.set_gain_switch_frame_number(frame=gain_switch_frame)
+            if enable_gain_switching > 0:
+                # set frame number to switch gains at.
+                ca.ib.set_gain_switch_frame_number(frame=gain_switch_frame)
+                # set to only change when at configured frame number
+                ca.ib.set_synchronized_gain_switching(enable=1)
+                # set to use bank 1 next, change in loop below. have to do this after config to wait for
+                # frame number
 
-            # set to use bank 1 next, change in loop below. have to do this after config to wait for
-            # frame number
             for bankset in ca.ib.get_current_gain_bank():
                     log.info('%.32r: Using gain banks %s' % (self, ', '.join([str(i) for i in bankset])))
 
@@ -613,12 +620,20 @@ if __name__ == "__main__":
         tag = args.git_tag
     log.info("%.32r: Git version is %s." % (self, tag))
 
+    # Stop the acq
+    def stop_acq(*args):
+      os.remove(log_file_lock)
+      acq.stop()
+
     if acq:
         acq.add_header_item("git_version_tag", tag)
 
         # Add the user notes.
         acq.add_header_item("notes", args.notes)
 
+        # Stop the acq on SIGTERM
+        signal.signal(signal.SIGTERM, stop_acq)
+        
         # Start the acquisition.
         acq.start(acq_base_dir, crate_sn, int(conf.fpga.subarray))
 
@@ -632,9 +647,9 @@ if __name__ == "__main__":
 
     gains_reloaded = False
     hdf5_gains_switched = False
-    bank_switched = False
+    bank_switched = True
     hk_rate_in_frames = int(conf.acq.fpga_hk.rate / 2.56e-6)
-    poll_rate = conf['acq']['acq_loop_poll_rate'] #in seconds
+    poll_rate = conf.acq.acq_loop_poll_rate #in seconds
     poll_rate_in_frames = poll_rate/2.56e-6  #should use fpga config frequency?
     reload_gains_frame = conf.fpga.reload_gains_frame
     frame_range = 2*poll_rate_in_frames
@@ -645,7 +660,8 @@ if __name__ == "__main__":
             # init gains function kind of a hack.  Should fix.
             current_bank = 0
             next_bank = 1
-            ca.ib.set_next_gain_bank(bank=next_bank)
+            if (enable_gain_switching > 0):
+                ca.ib.set_next_gain_bank(bank=next_bank)
             all_next_bank = ca.ib.get_next_gain_bank()
             for bankset in all_next_bank:
                     log.info('%.32r: Set next gain bank to %s' % (self, ', '.join([str(i) for i in bankset])))
@@ -660,7 +676,7 @@ if __name__ == "__main__":
 
             # print board info at regular interval
             t1 = time.time()
-            if t1-t0 > 30:
+            if t1-t0 > 60:
                 t0 = t1
                 ca.print_iceboard_info()
 
@@ -685,9 +701,11 @@ if __name__ == "__main__":
                 #except:
                 #     log.critical("Did not get FPGA housekeeping, still aquiring data...")
                          #Right now can miss gain setting stuff if hk takes more than 10s.  Really need to disentangle the two.
+              if ( int(enable_gain_switching) > 0):
                 try:
                     time.sleep(0.1)
-                    fpga_frame_count = ca.ib[0].get_frame_number() % gain_reload_period
+                    true_fpga_frame_count = ca.ib[0].get_frame_number()
+                    fpga_frame_count = true_fpga_frame_count % gain_reload_period  #now need a reset since 48bit counter
                     try:
                         # Well before switch time.  Set gains in next bank, read back what we set.
                         if (abs(fpga_frame_count - reload_gains_frame) < frame_range) and not gains_reloaded:
@@ -701,7 +719,7 @@ if __name__ == "__main__":
                                         log.info('%.32r: Using gain banks %s' % (self, ', '.join([str(i) for i in bankset])))
                         #log.debug("checked for reload gain time")
                         # Right before switch time
-                        if (abs(fpga_frame_count - (gain_switch_frame + gpu_intergration_period)) < frame_range) and not hdf5_gains_switched:
+                        if (abs(fpga_frame_count - (gain_switch_frame + gpu_intergration_period)) < frame_range) and not hdf5_gains_switched and gains_reloaded:
                                 for fpga_slot, slot_gain in fpga_gains.items():
                                         for val in slot_gain:
                                                 v = convert_types(val)
@@ -712,10 +730,12 @@ if __name__ == "__main__":
                                 log.info('%.32r: Changed gains in hdf5 file' % self)
                         #log.debug("checked for switch gains in hdf5 file time")
                         #shortly after after switch
-                        if (abs(fpga_frame_count - bank_switch_frame) < frame_range) and not bank_switched:
+                        if (abs(fpga_frame_count - (bank_switch_frame+gpu_intergration_period)) < frame_range) and not bank_switched and hdf5_gains_switched:
                                 ca.ib.set_next_gain_bank(bank = current_bank)
                                 current_bank = (current_bank + 1) % 2
                                 next_bank = (next_bank + 1) % 2
+                                new_gain_switch_frame = (1+(true_fpga_frame_count / gain_reload_period))*gain_reload_period + gain_switch_frame
+                                ca.ib.set_gain_switch_frame_number(frame=new_gain_switch_frame)
                                 gains_reloaded = False
                                 hdf5_gains_switched = False
                                 bank_switched = True
@@ -728,14 +748,17 @@ if __name__ == "__main__":
                         log.critical("%.32r: something went wrong with gain switching, still aquiring data..." % self)
                 except:
                     log.info("%.32r: couldn't read fpga frame number... will try again." % self)
+              else:
+                pass
             else:
                 log.info("%.32r: acquiring data..." % self)
             time.sleep(poll_rate)
+        stop_acq()
     except(KeyboardInterrupt, SystemExit):
         pass
     finally:
         if acq:
-            acq.stop()
+            stop_acq()
 
 if acq:
     signal.signal(signal.SIGTERM, acq.stop)

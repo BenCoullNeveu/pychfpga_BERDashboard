@@ -18,7 +18,7 @@ debug:
     default_model: 'MGK7BP16'
     default_serial: None
     no_date: false
-
+    force_fpga_prog: 1  # 1 - False , 2 - True
 
 ?: &default_fpga_array
     iceboards: 183
@@ -92,7 +92,7 @@ crate_tests:
         limits: [9999998, 10000002]
 
     shuffle_test:
-        time_source: 'bp_trig'
+        time_source: 'bp_time'
         repeat: 3
 
     mezzRamp_test:
