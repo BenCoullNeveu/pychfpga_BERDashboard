@@ -53,8 +53,6 @@ class MGK7BP16CrateTests(unittest.TestCase):
         cfg = self.cfg.crate_tests.clock_test
 
         ca = FPGAArray(icecrates = xr.params.serial, prog = self.cfg.debug.force_fpga_prog, open = 1)
-
-        xr.header('Test-Results')
         
         while True:
             irigb_source = raw_input('Indicate the source for the IRIG-B signal, 1 for bp_time, 2 for bp_trig, or 3 for both. ')
@@ -63,6 +61,7 @@ class MGK7BP16CrateTests(unittest.TestCase):
             else:
                 break
 
+        xr.header('Test-Results')
         try:
             result = NameSpace()
 
@@ -98,7 +97,7 @@ class MGK7BP16CrateTests(unittest.TestCase):
                 for ib in ca.ib:
                     result.trig.append(ib.get_irigb_time(format = 'nano'))
 
-            assert len(slots) == 16, 'Problem with slot association.'
+            assert len(slots) == 16, 'Problem with slot detection.'
             assert min(clock) > cfg.limits[0] and max(clock) < cfg.limits[1], 'Clock out of bounds!' 
             if irigb_source == '1' or irigb_source == '3':
                 assert max(np.diff(result.time).tolist()) < cfg.max_time_diff, 'Difference in time signal too great between boards!'
