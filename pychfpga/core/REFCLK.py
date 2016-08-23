@@ -283,6 +283,7 @@ class REFCLK_base(Module_base):
                selection mux control bit must also be set to use the bypassed
                input.
         """
+        current_sync_delays = self.sync_delay # Save the current delay value
         tap_delay = 1/200e6/32/2
         adc_clock_period_in_taps = (1/adc_clock_freq)/tap_delay
         number_of_channels = max(channels) + 1
@@ -345,7 +346,7 @@ class REFCLK_base(Module_base):
 
         print
         print 'Mezzanine-wise SYNC delays'
-        mezz_sync_delays = np.ones(2)*np.nan
+        mezz_sync_delays = -np.ones(2, dtype=int)
         for mezz in range(2):
             mezz_sync_delays[mezz] = int(round(np.average([sync_delays[ch] for ch in channels if 8*mezz <= ch <= 8*mezz+7])))
             print 'Mezzanine #%i sync delay: %i' % (mezz, mezz_sync_delays[mezz])
@@ -382,6 +383,8 @@ class REFCLK_base(Module_base):
 
         if set_sync_delays:
             self.set_sync_delay(mezz_sync_delays)
+        else:
+            self.set_sync_delay(current_sync_delays) # If not set sync delays, leave current value
 
         return mezz_sync_delays
 
