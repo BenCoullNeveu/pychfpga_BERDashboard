@@ -346,12 +346,16 @@ if __name__ == "__main__":
             #             enable_gpu_link = conf.fpga.enable_gpu_link)
             # #Temp solution to load adc_delay from table...
             try:
-                delays = pickle.load(open('pychfpga/delays_aug_2015.pkl'))
+                delays = pickle.load(open(conf.fpga.adc_delay_table))
+                sync_delays = pickle.load(open(conf.fpga.sync_delay_table))
                 for ib in ca.ib:
+                    ib.REFCLK.set_sync_delay(sync_delays[int(ib.serial)])
+                    time.sleep(0.2)
                     ib.set_adc_delays_with_check(delays[int(ib.serial)])
                     log.info("%.32r: set delays on SN%s, SLOT%s" % (self, ib.serial, ib.slot))
             except IOError:
-                log.warn("%.32r: Error loading/setting delay tables.  Using default delays from config file for all boards" % self)
+                #log.warn("%.32r: Error loading/setting delay tables.  Using default delays from config file for all boards" % self
+                raise RuntimeError('%.32r: Error loading/setting delay tables' % self)
             #for cc in c:
             #  cc.GPU.LINK_ENABLE=1
             #  log.info("GPU link enabled on SN {0}, SLOT {1}".format(cc.serial, cc.slot))
