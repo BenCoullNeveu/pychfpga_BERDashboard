@@ -289,9 +289,10 @@ class ChimeMaster(object):
     """
 
     def __init__(self):
-        self.config = {}
+        self.state = 'off'
 
     def start(self, **kvs):
+        self.state = 'starting'
         self.config = kvs
         conf = pychfpga.core.icecore.NameSpace(kvs)
 
@@ -369,16 +370,23 @@ class ChimeMaster(object):
             self.fpgas.print_iceboard_info, 60e3)
         self.iceboard_cb.start()
 
+        self.state = 'on'
         return {}
 
     def status(self):
-        return self.config
+        status = dict(state=self.state)
+        if self.state == 'on':
+            status['config'] = self.config
+        return status
 
     def stop(self):
-        log.info("stopping acquisition")
-        self.iceboard_cb.stop()
-        self.acq.stop()
-        log.removeHandler(self.logfile)
+        if self.state == 'on':
+            self.state = 'stopping'
+            log.info("stopping acquisition")
+            self.iceboard_cb.stop()
+            self.acq.stop()
+            log.removeHandler(self.logfile)
+            self.state = 'off'
         return {}
 
 
@@ -547,9 +555,6 @@ def main(args):
 
     # create event loop
     loop = tornado.ioloop.IOLoop.instance()
-    handler = lambda sig,frame: \
-        loop.add_callback_from_signal(lambda: loop.stop())
-    signal.signal(signal.SIGINT, handler)
 
     if args.debug:
         cm = DummyChimeMaster()
@@ -571,6 +576,13 @@ def main(args):
         url(r'/stop', StopHandler, dict(cm=cm)),
     ])
     app.listen(args.port)
+
+    def shutdown():
+        cm.stop()
+        loop.stop()
+    handler = lambda sig,frame: loop.add_callback_from_signal(shutdown)
+    signal.signal(signal.SIGINT, handler)
+    signal.signal(signal.SIGTERM, handler)
 
     # start event loop
     log.info("ready")
