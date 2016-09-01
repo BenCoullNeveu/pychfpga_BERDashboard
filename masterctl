@@ -34,7 +34,9 @@ def post(endpoint, **kvs):
     return requests.post(url(endpoint), json=kvs, timeout=TIMEOUT).json()
 
 def print_result(d):
-    if 'error' in d:
+    if d == {}:
+        click.echo('ok')
+    elif 'error' in d:
         error(d['error'].rstrip())
     else:
         click.echo(json.dumps(d, sort_keys=True, indent=2))
