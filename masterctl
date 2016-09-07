@@ -92,6 +92,14 @@ def stop():
     r = get('stop')
     print_result(r)
 
+@cli.command()
+def switch_gains():
+    """
+    Change gains.
+    """
+    r = post('switchgains')
+    print_result(r)
+
 if __name__ == '__main__':
     cli()
 

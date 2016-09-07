@@ -83,6 +83,7 @@ def convert_types(val):
                     pass
     return val
 
+
 ## Setup logging ##
 
 LOG_FORMATTER = logging.Formatter(
@@ -117,17 +118,23 @@ GIT_VERSION = subprocess.check_output(
     'git describe --all --dirty --long'.split(),
     cwd=os.path.dirname(PROGRAM)).strip()
 
+SECONDS_PER_FRAME = 2.56e-6
+
 
 def load_gains(ib, bank=0):
+    gains = {}
     for cc in ib:
-        filename = '/home/chime/ch_acq/gains_slot'+str(cc.slot)+'.pkl'
+        slot = cc.slot
+        filename = '/home/chime/ch_acq/gains_slot'+str(slot)+'.pkl'
         try:
             g_array = pickle.load(open(filename, 'rb'))
-            log.info('Setting gains on IceBoard SN%s, slot %i' % (cc.serial, cc.slot))
+            log.info('Setting gains on IceBoard SN%s, slot %i' % (cc.serial, slot))
             cc.set_gain(g_array, bank=bank)  # *** should this be bank=all_bank
+            gains[slot] = cc.get_gain(bank=bank)
         except IOError:
             log = logging.getLogger()
             log.warn('Could not load gain file %s. Gains are not set.' % filename)
+    return gains
 
 
 def configure_fpgas(conf):
@@ -216,7 +223,7 @@ def configure_fpgas(conf):
     gain_switch_frame = conf.fpga.gain_switch_frame
     if enable_gain_switching > 0:
         # set frame number to switch gains at.
-        ca.ib.set_gain_switch_frame_number(frame=gain_switch_frame)
+        ca.ib.set_gain_switch_frame_number(frame=0) # XXX:???
         # set to only change when at configured frame number
         ca.ib.set_synchronized_gain_switching(enable=1)
         # set to use bank 1 next, change in loop below.
@@ -274,7 +281,7 @@ def configure_fpgas_post_acq(conf, ca):
         log.info('Currently using gain banks %s' % ', '.join([str(i) for i in bankset]))
 
 
-def pass_gains_to_chrx(acq, gains):
+def pass_gains_to_chrx(acq, fpga_gains):
     remap_adc_sma = [12, 13, 14, 15,  8, 9, 10, 11,  4,  5,  6,  7, 0, 1, 2, 3]
     remap_slot    = [ 5,  1,  4,  0, 13, 9, 12,  8, 15, 11, 14, 10, 7, 3, 6, 2]
     for fpga_slot, slot_gain in fpga_gains.items():
@@ -364,6 +371,7 @@ class ChimeMaster(object):
         log.info("finished starting CHRX")
 
         configure_fpgas_post_acq(conf, self.fpgas)
+        self.current_bank = 0
 
         # print board info every 60s
         self.iceboard_cb = tornado.ioloop.PeriodicCallback(
@@ -388,6 +396,48 @@ class ChimeMaster(object):
             log.removeHandler(self.logfile)
             self.state = 'off'
         return {}
+
+    def load_gains(self):
+        current_bank = self.current_bank
+        next_bank = (current_bank + 1) % 2
+        iceboards = self.fpgas.ib
+
+        # log current gains
+        for bankset in iceboards.get_current_gain_bank():
+            log.info('Using gain banks ' + ', '.join(map(str,bankset)))
+
+        # load gains into next bank
+        fpga_gains = load_gains(iceboards, bank=next_bank)
+        log.info("Loaded gains into bank %d" % next_bank)
+
+        return fpga_gains
+
+    def set_gain_switch_frame(self):
+        iceboards = self.fpgas.ib
+        gain_switch_delay = self.config['fpga']['gain_switch_delay']
+        gpu_integration_period = self.config['gpu']['gpu_integration_period']
+
+        # set gain switch time
+        frame_number = iceboards[0].get_frame_number()
+        new_gain_switch_frame = (1 + (frame_number + gain_switch_delay)//gpu_integration_period)*gpu_integration_period
+        iceboards.set_gain_switch_frame_number(frame=new_gain_switch_frame)
+
+        sleep = (new_gain_switch_frame - frame_number)*SECONDS_PER_FRAME
+        return sleep
+
+    def switch_gain_banks(self):
+        current_bank = self.current_bank
+        next_bank = (current_bank + 1) % 2
+        iceboards = self.fpgas.ib
+
+        iceboards.set_next_gain_bank(bank=current_bank)
+        self.current_bank = next_bank
+        log.debug("changed which gain bank will be written to over to %d"
+            % current_bank)
+
+        # log current gains
+        for bankset in iceboards.get_current_gain_bank():
+            log.info('Using gain banks ' + ', '.join(map(str,bankset)))
 
 
 class DummyChimeMaster(ChimeMaster):
@@ -487,6 +537,33 @@ class StopHandler(JsonRequestHandler):
         self.write(self.cm.stop())
 
 
+class SwitchGainsHandler(JsonRequestHandler):
+    """
+    /switchgains REST endpoint handler.
+    """
+    def initialize(self, cm):
+        self.cm = cm
+
+    @tornado.gen.coroutine
+    def post(self):
+        if self.cm.state != 'on':
+            self.write(dict(error='not started'))
+            return
+
+        fpga_gains = self.cm.load_gains()
+        sleep = self.cm.set_gain_switch_frame()
+
+        # wait for switch
+        yield tornado.gen.sleep(sleep)
+        pass_gains_to_chrx(self.cm.acq, fpga_gains)
+
+        # wait for 10 secs, then switch banks
+        yield tornado.gen.sleep(10)
+        self.cm.switch_gain_banks()
+
+        self.write({})
+
+
 class KotekanHandler(JsonRequestHandler):
     """
     /kotekan REST endpoint handler. Just passes messages through.
@@ -574,6 +651,7 @@ def main(args):
         url(r'/start', StartHandler, dict(cm=cm)),
         url(r'/status', StatusHandler, dict(cm=cm)),
         url(r'/stop', StopHandler, dict(cm=cm)),
+        url(r'/switchgains', SwitchGainsHandler, dict(cm=cm)),
     ])
     app.listen(args.port)
 
