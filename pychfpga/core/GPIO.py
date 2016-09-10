@@ -68,7 +68,32 @@ class GPIO_base(Module_base):
     PWM_PERIOD                          = BitField(CONTROL, 45, 0, width=32, doc='Number of events (frames) between PWM High (i.e PWM period)')
     PWM_RESET                           = BitField(CONTROL, 46, 7, width=1, doc='Resets the PWM generator')
     BP_GPIO_INT_EN                      = BitField(CONTROL, 46, 4, doc="When '1', the Backplane GPIO_INT is driven by this board. WARNING: Only one board should be enabled at a time.")
-    USER_MUX_SOURCE                     = BitField(CONTROL, 46, 0, width=4, doc='Selects which signal is sent to the SMA-A output.')
+    USER_MUX_SOURCE0                    = BitField(CONTROL, 46, 0, width=4, doc='Selects which signal is sent to the Motherboard SMA-A output.')
+
+    UART_TX_OE                          = BitField(CONTROL, 47, 7, doc="FPGA I/O line")
+    UART_TX_OUT                         = BitField(CONTROL, 47, 6, doc="FPGA I/O line")
+    UART_RX_OE                          = BitField(CONTROL, 47, 5, doc="FPGA I/O line")
+    UART_RX_OUT                         = BitField(CONTROL, 47, 4, doc="FPGA I/O line")
+    GPIO_RST_OE                         = BitField(CONTROL, 47, 3, doc="FPGA I/O line")
+    GPIO_RST_OUT                        = BitField(CONTROL, 47, 2, doc="FPGA I/O line")
+    ARM_IRQ_OE                          = BitField(CONTROL, 47, 1, doc="FPGA I/O line")
+    ARM_IRQ_OUT                         = BitField(CONTROL, 47, 0, doc="FPGA I/O line")
+
+    USER_MUX_SOURCE3                    = BitField(CONTROL, 48, 4, width=4, doc='Selects which signal is sent to the BP_GPIO_INT line.')
+    GPIO_IRQ_OE                         = BitField(CONTROL, 48, 3, doc="FPGA I/O line")
+    GPIO_IRQ_OUT                        = BitField(CONTROL, 48, 2, doc="FPGA I/O line")
+    FLASH_CS_OE                         = BitField(CONTROL, 48, 1, doc="FPGA I/O line")
+    FLASH_CS_OUT                        = BitField(CONTROL, 48, 0, doc="FPGA I/O line")
+
+    USER_MUX_SOURCE1                    = BitField(CONTROL, 49, 0, width=4, doc='Selects which signal is sent to the Motherboard FPGA LED1 and Backplane SMA output.')
+    USER_MUX_SOURCE2                    = BitField(CONTROL, 49, 4, width=4, doc='Selects which signal is sent to the Motherboard SMA-B and FPGA LED2 output.')
+
+    USER_BIT0                           = BitField(CONTROL, 50, 7, doc='Control the USER_BIT0 signal that can be routed to any user outputs')
+    USER_BIT1                           = BitField(CONTROL, 50, 6, doc='Control the USER_BIT1 signal that can be routed to any user outputs')
+    USER_BITS                           = BitField(CONTROL, 50, 6, width=2, doc='Control the USER_BIT signals that can be routed to any user outputs')
+    IRIG_DELAY_RESET                    = BitField(CONTROL, 50, 5, doc='Loads the IRIG signal delay value into the delay block')
+    IRIG_DELAY_RESET                    = BitField(CONTROL, 50, 5, doc='Loads the IRIG signal delay value into the delay block')
+    IRIGB_DELAY                         = BitField(CONTROL, 50, 0, width=5, doc='IRIG-B signal delay')
 
     TIMESTAMP_VALID                     = BitField(STATUS, 0, 7, doc='Timestamp data valid (i.e. can be read)')
     ADC_SYNC_READBACK                   = BitField(STATUS, 1, 0, doc='Reads back the SYNC bit for debugging')
@@ -154,18 +179,40 @@ class GPIO_base(Module_base):
         'irigb_trig': 3,
         'bp_trig': 4,
         'bp_time': 5,
-        # 'bp_buck_sync': 6,
         'refclk': 6,  # 10 MHz reference clock
         'irigb_gen': 7,
-        'raw_clk': 8,
+        'heartbeat1': 8,
+        'heartbeat2': 9,
+        'debug1': 10,
+        'debug2': 11,
+        'user_bit0': 12,
+        'user_bit1': 13,
+        'debug3': 14,
         }  # Backplane TRIG signal
 
-    def set_user_output_source(self, source):
+    USER_OUTPUTS = {
+        0: 'USER_MUX_SOURCE0',
+        'sma_a': 'USER_MUX_SOURCE0',
+        1: 'USER_MUX_SOURCE1',
+        'bp_sma_fpga_led1': 'USER_MUX_SOURCE1',
+        'bp_sma': 'USER_MUX_SOURCE1',
+        2: 'USER_MUX_SOURCE2',
+        'sma_b_fpga_led2': 'USER_MUX_SOURCE2',
+        3: 'USER_MUX_SOURCE3',
+        'bp_gpio_int': 'USER_MUX_SOURCE3'
+        }
+
+
+    def set_user_output_source(self, source, output=0):
         """ Set the user output source. 'source' is a string."""
         if source not in self.USER_OUTPUT_SOURCE_TABLE:
             raise AttributeError("Invalid source '%s'. Valid sources are %s." % (
                 source, ','.join(self.USER_OUTPUT_SOURCE_TABLE.keys())))
-        self.USER_MUX_SOURCE = self.USER_OUTPUT_SOURCE_TABLE[source]
+        if output not in self.USER_OUTPUTS:
+            raise AttributeError("Invalid output '%s'. Valid outputs are %s." % (
+                output, ','.join(str(k) for k in self.USER_OUTPUTS.keys())))
+
+        self.write_bitfield(self.USER_OUTPUTS[output], self.USER_OUTPUT_SOURCE_TABLE[source])
 
     def get_user_output_source(self):
         """ Return the current user output source as a string """

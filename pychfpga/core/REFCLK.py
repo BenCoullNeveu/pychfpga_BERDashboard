@@ -33,7 +33,7 @@ class REFCLK_base(Module_base):
     ADC_SYNC               = BitField(CONTROL, 0, 7, doc='Force a SYNC to the ADC, synchronized on the FMC Reference clock, but bypasses the SYNC state machine that resets the IOSERDES and BUFR')
     LOCAL_SYNC             = BitField(CONTROL, 0, 5, doc='Force the generation of a local SYNC sequence on the local board only. Has the same effect as a SYNC signed received on the 10 MHz clock.  The SYNC is synchronized to the 10 MHz output (transitions on its falling edge)')
     REMOTE_SYNC            = BitField(CONTROL, 0, 4, doc='Generate a SYNC signal encoded on the 10 MHz clock output. Will SYNC the local FMC board only if the 10 MHz output is connected to the 10 MHz input of the local FMC board')
-    SYNC_SOURCE            = BitField(CONTROL, 0, 0, width=2, doc="Selects the source of the SYNC signal: 0: local sync only, 1: local sync or sync recovered from the clock, 2: local sync or backplane sync, 3: local sync or IRIG-B-based sync")
+    SYNC_SOURCE            = BitField(CONTROL, 0, 0, width=3, doc="Selects the source of the SYNC signal: 0: local sync only, 1: local sync or sync recovered from the clock, 2: local sync or backplane sync, 3: local sync or IRIG-B-based sync")
 
     REFCLK_SEL             = BitField(CONTROL, 0x01, 7, doc='Selects the source of the REFCLK needed for SYNC generation. 0=FMC, 1=internal REFCLK generator.')
     # ENABLE_SYNC_GENERATION = BitField(CONTROL, 0x01, 6, doc='Allows the internal state machine to generate the SYNC sequence (generate the ADC SYNC and resets the ADCDAQ SERDES and BUFG)')
@@ -81,7 +81,8 @@ class REFCLK_base(Module_base):
         'refclk': 1,
         'bp_trig': 2,
         'irigb': 3,
-        'bp_time': 4}
+        'bp_time': 4,
+        'bp_gpio_int': 5}
 
     def set_sync_source(self, source):
         """ Set the source of the SYNC signal."""

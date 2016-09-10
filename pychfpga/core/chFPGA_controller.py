@@ -1497,9 +1497,16 @@ class chFPGA_controller(IceBoardExtHandler):
 
     get_FFT_shift = get_fft_shift # for legacy compatibility
 
-    def set_user_output_source(self, source):
-        """ Selects the signal to be sent to the SMA-A connector of this IceBoard. 'source' is the source name (as a string). """
-        self.GPIO.set_user_output_source(source)
+    def set_user_output_source(self, source, output=0):
+        """
+        Selects the signal to be sent to the user outputs (SMAs & LEDs).
+
+        ``source`` is the source name (as a string).
+        ``output`` is the number or name of output to configure
+        (0=SMA-A on the motherboard, 1= SMA on
+        the backplane and FPGA LED1, 2= SMA-B and FPGA LED2 on the motherboard, LED on the backplane).
+        """
+        self.GPIO.set_user_output_source(source, output=output)
 
     def get_user_output_source(self):
         """ Return the name of the source currently routed to SMA-A"""
@@ -1749,9 +1756,9 @@ class chFPGA_controller(IceBoardExtHandler):
             #    CB3 Output Lane 6: BS1.2: 8 bins (6,14...) from sublanes 0-7 (Input lanes 0-7 =CH0-511)
             #    CB3 Output Lane 7: BS1.3: 8 bins (7,15...) from sublanes 0-7 (Input lanes 0-7 =CH0-511)
 
-            # CB2 ALIGN (JM changed cb2_sof_window_stop from 70 to 50 which the default value of CROSSBAR.SOF_WINDOW_STOP in shuffle_crossbar module. When 70, get errors when establishing connection with gpu nodes, reporting wrong packet size)
+            # CB2 ALIGN (JM changed cb2_sof_window_stop from 70 to 50 which the default value of CROSSBAR.SOF_WINDOW_STOP in shuffle_crossbar module. When 70, get errors when establishing connection with gpu nodes, reporting wrong packet size). JFC: CHanged to 55 during backplane shuffle debugging
             cb2_timeout_period = 0
-            cb2_sof_window_stop = 50
+            cb2_sof_window_stop = 55
             # CB2 REMAP
             cb2_lane_map = self.CROSSBAR2.compute_bp_shuffle_lane_map()
             cb2_bypass = False
@@ -1831,8 +1838,8 @@ class chFPGA_controller(IceBoardExtHandler):
 
 
             # CB2 ALIGN
-            cb2_timeout_period = 0
-            cb2_sof_window_stop = 70
+            # cb2_timeout_period = 0
+            # cb2_sof_window_stop = 70
             # CB2 REMAP
             cb2_lane_map = self.CROSSBAR2.compute_bp_shuffle_lane_map()
             cb2_bypass = False
@@ -1849,6 +1856,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
             # QSFP SHUFFLE
             crate_shuffle_bypass = False
+            # crate_shuffle_bypass = True #***debug
 
 
 
@@ -1926,6 +1934,10 @@ class chFPGA_controller(IceBoardExtHandler):
         # Configure BP_SHUFFLE
         #-------------------------
         self.BP_SHUFFLE.BYPASS_PCB_SHUFFLE = bp_shuffle_bypass
+        #-------------------------
+        # Configure CRATE_SHUFFLE
+        #-------------------------
+        self.BP_SHUFFLE.BYPASS_QSFP_SHUFFLE = crate_shuffle_bypass
 
         #-------------------------
         # Configure CROSSBAR 2
@@ -1948,10 +1960,6 @@ class chFPGA_controller(IceBoardExtHandler):
                 bs.select_bins(cb2_bin_select_map[cb2_bin_sel])
 
 
-        #-------------------------
-        # Configure CRATE_SHUFFLE
-        #-------------------------
-        self.BP_SHUFFLE.BYPASS_QSFP_SHUFFLE = crate_shuffle_bypass
 
         #-------------------------
         # Configure CROSSBAR 3

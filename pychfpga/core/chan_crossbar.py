@@ -27,8 +27,9 @@ class ChanCrossbar(Module_base):
     LANE_MONITOR_RESET = BitField(CONTROL, 0, 4, doc='')
     LANE_MONITOR_SEL   = BitField(CONTROL, 0, 0, width=4, doc='')
 
-    SOF_WINDOW_START   = BitField(CONTROL, 1, 0, width=8, doc='')
-    SOF_WINDOW_STOP    = BitField(CONTROL, 2, 0, width=8, doc='')
+    LANE_MONITOR_SOURCE   = BitField(CONTROL, 1, 0, width=4, doc='')
+    # SOF_WINDOW_START   = BitField(CONTROL, 1, 0, width=8, doc='')
+    # SOF_WINDOW_STOP    = BitField(CONTROL, 2, 0, width=8, doc='')
 
     RESET_MON           = BitField(STATUS, 0, 0, doc='')
     ALIGN_FIFO_OVERFLOW = BitField(STATUS, 0, 1, doc='')
@@ -37,7 +38,7 @@ class ChanCrossbar(Module_base):
     INPUT_FRAME_CTR    = BitField(STATUS, 1, 0, width=8, doc='')
     ALIGN_FRAME_CTR    = BitField(STATUS, 2, 0, width=8, doc='')
     # ALIGN_GLOBAL_FRAME_CTR    = BitField(STATUS, 5, 0, width=8, doc='')
-    # DELAY_CAPTURE    = BitField(STATUS, 7, 0, width=16, doc="")
+    DELAY_CAPTURE    = BitField(STATUS, 4, 0, width=16, doc="")
 
     def __init__(self, fpga_instance, base_address, address_increment, verbose=0):
         self.fpga = fpga_instance
