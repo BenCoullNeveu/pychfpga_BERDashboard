@@ -291,6 +291,15 @@ def pass_gains_to_chrx(acq, fpga_gains):
             acq.pass_fpga_gain(inp, v)
 
 
+def reap_cached_sockets():
+    import __main__
+    if hasattr(__main__, '__opened_sockets__'):
+        for port,socket in __main__.__opened_sockets__.items():
+            log.debug("closing cached socket on port %d" % port)
+            socket.close()
+        del __main__.__opened_sockets__
+
+
 class ChimeMaster(object):
     """
     """
@@ -394,6 +403,7 @@ class ChimeMaster(object):
             self.iceboard_cb.stop()
             self.acq.stop()
             log.removeHandler(self.logfile)
+            reap_cached_sockets()
             self.state = 'off'
         return {}
 
