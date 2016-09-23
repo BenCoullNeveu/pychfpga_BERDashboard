@@ -308,6 +308,9 @@ class ChimeMaster(object):
         self.state = 'off'
 
     def start(self, **kvs):
+        if self.state != 'off':
+            return dict(error='already started')
+
         self.state = 'starting'
         self.config = kvs
         conf = pychfpga.core.icecore.NameSpace(kvs)
