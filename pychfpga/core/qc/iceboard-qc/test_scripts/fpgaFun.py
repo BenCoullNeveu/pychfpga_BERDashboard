@@ -197,7 +197,7 @@ def rampTest(board_sn, directory, ch_acq_path='../../../../../../ch_acq/', host_
     [c,r] = top_test(board_sn, ch_acq_path=ch_acq_path, host_ip=host_ip)
 
     # Timing for ADCs. Calculate proper offsets for this board.
-    ADC_DELAY_TABLE, stuck_bits, bitposgood = c.compute_adc_delay_offsets(channels=[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15])
+    ADC_DELAY_TABLE, stuck_bits, bitposgood, problem = c.compute_adc_delay_offsets(channels=[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15])
     print "Computed delay table:"
     print repr(ADC_DELAY_TABLE)
     print "Stuck bit flags (0 indicates a stuck bit):"
