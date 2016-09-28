@@ -86,7 +86,7 @@ class Ccoll(object):
     @classmethod
     def unique(cls, iterable):
         """ Create a Ccoll with only unique elements. """
-        return cls(set(iterable))
+        return cls(collections.OrderedDict((key, None) for key in iterable).keys())  # Use OrderedDist to create an 'OrderedSet'
 
     def __init__(self, objects, keys=None):
         # Do not define a docstring here: for some reason ipython will use it
