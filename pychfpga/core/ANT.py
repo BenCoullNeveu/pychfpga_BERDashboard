@@ -19,6 +19,7 @@ import FFT
 import SCALER
 import PROBER
 import FUNCGEN
+from numpy import NaN as npNaN
 # import INJECT
 
 class ANT_channel(object):
@@ -208,7 +209,10 @@ class ANT_base(object):
             adc_delay_table = dict(enumerate(adc_delay_table))
 
         for ch, delay_table in adc_delay_table.items():
-            self.ANT[ch].ADCDAQ.set_delay(delay_table)
+            if not (npNaN in list(delay_table[1]) or npNaN in list(delay_table[0])):
+                self.ANT[ch].ADCDAQ.set_delay(delay_table)
+            else:
+                self.logger.info("Skipping channel set_delay on channel %i since NaN detected in delay table entry", ch)
 
     def get_delays(self):
         """

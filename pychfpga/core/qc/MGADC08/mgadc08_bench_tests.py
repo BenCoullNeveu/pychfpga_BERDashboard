@@ -739,7 +739,7 @@ class MGADC08CarrierTests():  #
         # Timing for ADCs. Calculate proper offsets for this board.
         trial = 0
         while True:
-            delay_table, stuck_bits, bitposgood = ib.compute_adc_delay_offsets(channels=range(8))
+            delay_table, stuck_bits, bitposgood, problem = ib.compute_adc_delay_offsets(channels=range(8))
             print "Computed delay table:"
             for ch, dt in delay_table.items():
                 print '   Channel %02i: %s' % (ch, dt)

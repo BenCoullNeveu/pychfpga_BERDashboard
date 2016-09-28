@@ -313,7 +313,7 @@ class chFPGA_controller(IceBoardExtHandler):
                     self._FMC_present[fmc_number] = True
                     self._logger.info('%r:   An MGADC08 ADC Board is present on FMC slot %i' % (self, fmc_number))
                 else:
-                    self._logger.warning('%r:   An MGADC08 ADC Board is *not* present of FMC slot %i' % (self, fmc_number))
+                    self._logger.warning('%r:   An MGADC08 ADC Board is *not* present on FMC slot %i' % (self, fmc_number))
 
             # Determine if the FMC board corresponding to each channelizer is present
             # self.ANT_FMC_IS_PRESENT = [self._adc_board[self.ANT_FMC_NUMBER[i]].is_present() for i in range(self.NUMBER_OF_ANTENNAS)]
@@ -1145,7 +1145,7 @@ class chFPGA_controller(IceBoardExtHandler):
         old_delays = self.get_adc_delays()
         old_adc_mode = self.get_adc_mode(channels=channels) # make sure we don't access boards not on the channel list: they may be powered off
         self.set_adc_delays([[ [0]*8, [0]*8]] * 16); # Set all sampling delays and offsets to zero
-        self.set_adc_mode('pulse') # generate pulse pattern
+        self.set_adc_mode('pulse', channels=channels) # generate pulse pattern
         for i in range(10):
             self.sync()
         data={}
@@ -1159,7 +1159,7 @@ class chFPGA_controller(IceBoardExtHandler):
                 d[dly, :] = self.ANT[ch].ADCDAQ.get_pattern(period=11)[offset[ch]:offset[ch] + noffsets];
             data[ch] = d
         self.set_adc_delays(old_delays) # restore original delays before the function was called
-        self.set_adc_mode(old_adc_mode)
+        self.set_adc_mode(old_adc_mode, channels=channels)
         return data
 
     def compute_adc_delays(self, channels=[0], offset=[2, 3, 3, 3, 3, 3, 3, 3, 4, 3, 3, 3, 3, 3, 3, 3], print_results=True):
@@ -2032,11 +2032,15 @@ class chFPGA_controller(IceBoardExtHandler):
         delaytable = {}
         stuckbits = {}
         bitposgood = {}
+        problem = 0
 
         for chan in channels:
             t = self.read_eye_diagram(channels=[chan], offset=[0]*16, noffsets=11)  # Creating an offset / delay table 11 columns 32 rows
+
             # Finding both 0 and 255 in the table Means we have no stuck bits
             stuckbits[chan] = not (np.any(t[chan] == 0) and np.any(t[chan] == 255))
+            if(stuckbits[chan] == True):
+                problem = 1 #Stuck bit detected
 
             offset = t[chan].sum(axis=0).argmax()  # Choosing the offset by looking at the offset/delay table and picking the column with the highest sum (i.e most 255s)
 
@@ -2051,6 +2055,7 @@ class chFPGA_controller(IceBoardExtHandler):
                 else: # Sample is all zeros
                     chosendelay = np.NaN
                     changood.append(np.NaN)
+                    problem = 1 #Can't find a good spot so indicate a problem is present
                 bitdelay.append(chosendelay)
                 #self._logger.info( 'Warning: Center of eye diagram on bit %i of channel %i has glitch ' % (bit, chan))
 
@@ -2061,7 +2066,96 @@ class chFPGA_controller(IceBoardExtHandler):
             delaytable[chan]= (bitdelay, [offset]*8)  # Building the delay table
             bitposgood[chan] = changood  # Building the eye diagram good table
 
-        return delaytable, stuckbits, bitposgood
+            if(0 in changood):
+                problem = 1 #Inverted bit detected
+
+        return delaytable, stuckbits, bitposgood, problem
+
+    def tune_adc_delays(self, loadfromdict = None, channels=range(16), retries=20):
+
+        try:
+            mezz1_serial = self.mezzanine[1].serial
+        except:
+            mezz1_serial = None
+
+        try:
+            mezz2_serial = self.mezzanine[2].serial
+        except:
+            mezz2_serial = None
+
+        if (loadfromdict == None):
+
+            for ch in channels:
+                if not self.ANT_FMC_IS_PRESENT[ch]:
+                    raise ValueError('Some of the requested channels are not present')
+
+            opt_sync_delay = self.REFCLK.compute_sync_delay(channels=channels)
+
+            #I have seen compute_sync_delay pick a solution in the middle of one of its groups
+            #that results in bad eye diagrams so this bit of code tries to address that
+            trycounter = 0
+            goodsolution = 0
+            ofset_sync_delay = opt_sync_delay
+            while (trycounter < retries and not goodsolution):
+
+                self.REFCLK.set_sync_delay(ofset_sync_delay)
+                check = self.read_eye_diagram(channels=channels, offset=[0]*16, noffsets=11)
+
+                goodsolution = 1
+                for ch in channels:
+                    if 255 not in check[ch]:
+                        goodsolution = 0
+                        break
+                if goodsolution == 0:
+                    increment = ([0,1][ch <8], [0,1][ch>7])
+                    if ofset_sync_delay[0] != -1:
+                        ofset_sync_delay[0] = (ofset_sync_delay[0] + increment[0]) % 32
+                    if ofset_sync_delay[1] != -1:
+                        ofset_sync_delay[1] = (ofset_sync_delay[1] + increment[1]) % 32
+                    print 'Initial offset calculation resulted in bad eye diagrams - adjusting offset too {0}'.format(self.REFCLK.get_refclk_delay())
+                trycounter += 1
+
+
+            d1,d2,d3,problem = self.compute_adc_delay_offsets(channels=channels)
+            #d1 contains the delay table with offsets
+            #d2 indicates if bits are stuck
+            #d3 is the value measured at the center of the adc pulse waveform for each bit - should be 1
+
+            if (problem == 1): #NaN present in delay table, or stuck bit, or inverted bit
+                raise ValueError('Delay table has problems - check for NaN, stuck bits or inverted bits')
+
+            self.set_adc_delays(d1) #The delay table found was all good, so setting it
+
+            tunedloc=dict()
+            tunedloc['delaytable'] = d1
+            tunedloc['syncdelay'] = opt_sync_delay
+            tunedloc['boards'] = {'Mezz': [mezz1_serial,mezz2_serial], "MB" : self.serial }
+
+            return tunedloc
+        else: #We have chosen to load the delay table from a dictionary
+
+            try:
+                d1 = loadfromdict['delaytable']
+                opt_sync_delay = loadfromdict['syncdelay']
+                dict_mb_serial = loadfromdict['boards']['MB']
+                dict_mezz1_serial = loadfromdict['boards']['Mezz'][0]
+                dict_mezz2_serial = loadfromdict['boards']['Mezz'][1]
+            except:
+                raise ValueError('Missing objects in adc delay dictionary')
+
+            if (self.serial != dict_mb_serial) \
+                or (mezz1_serial!=None and mezz1_serial!=dict_mezz1_serial) \
+                or (mezz2_serial!=None and mezz2_serial!=dict_mezz2_serial):
+                raise ValueError('Cannot use this adc table - hardware is not the same')
+
+            self.REFCLK.set_sync_delay(opt_sync_delay)
+            self.set_adc_delays(d1)
+
+            measuredloc=dict()
+            measuredloc['delaytable'] = self.get_adc_delays()
+            measuredloc['syncdelay'] = self.REFCLK.get_refclk_delay()
+            measuredloc['boards'] = {'Mezz': [mezz1_serial,mezz2_serial], "MB" : self.serial }
+            return measuredloc
 
     def get_shuffle_status(self, cb1_bin_sel_overflow_reset=False):
         def cb1_gen(self):

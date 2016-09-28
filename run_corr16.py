@@ -11,7 +11,7 @@ ca = FPGAArray(iceboards=72, prog=1, open=1)
 ib= ca.ib[0]
 #print 'Computing & setting ADC delays...'
 #for trial in range(5):
-#    delay_table, delays_valid,b=ib.compute_adc_delay_offsets()
+#    delay_table, delays_valid,b, problem=ib.compute_adc_delay_offsets()
 #    if all(delays_valid.values()):
 #        break
 #    ib.set_adc_delays(delay_table)
