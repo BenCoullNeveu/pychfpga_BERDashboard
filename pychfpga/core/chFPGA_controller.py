@@ -1839,7 +1839,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
             # CB2 ALIGN
             # cb2_timeout_period = 0
-            # cb2_sof_window_stop = 70
+            cb2_sof_window_stop = 50
             # CB2 REMAP
             cb2_lane_map = self.CROSSBAR2.compute_bp_shuffle_lane_map()
             cb2_bypass = False
