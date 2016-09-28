@@ -7,7 +7,7 @@ from calendar import timegm
 import time
 import struct
 import base64
-
+from collections import OrderedDict
 import socket
 
 from ..icecore import IceBoardPlusHandler
@@ -548,12 +548,12 @@ class IceBoardExtHandler(IceBoardPlusHandler):
     class _IrigTimestamp(object):
         pass
 
-    _IRIGB_SOURCE_TABLE = {
-        'bp_trig': 0,
-        'bp_time': 1,
-        'irigb_gen': 2,
-        'bp_gpio_int': 3
-        }
+    _IRIGB_SOURCE_TABLE = OrderedDict([
+        ('bp_trig', 0),
+        ('bp_time',  1),
+        ('irigb_gen',  2),
+        ('bp_gpio_int',  3)
+        ])
 
     @async
     def set_irigb_source(self, source):
@@ -563,14 +563,30 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         w2 = self.fpga_mmi_read(self._IRIGB_SAMPLE2_ADDR)
         self.fpga_mmi_write(self._IRIGB_SAMPLE2_ADDR, (w2 & 0x3FFFFFFF) | (self._IRIGB_SOURCE_TABLE[source] << 30))
 
+    @async
     def get_irigb_source(self):
         """ Get the name of the current source of the IRIG-B signal."""
-        source = self.fpga_mmi_read(self._IRIGB_SAMPLE2_ADDR) >> 30
+        source = (yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE2_ADDR)) >> 30
 
         for (source_name, source_number) in self._IRIGB_SOURCE_TABLE.items():
             if source == source_number:
-                return source_name
+                async_return(source_name)
         raise ValueError('The IRIG-B module has an unknown source')
+
+    @async
+    def detect_irigb_source(self, set_source=False):
+        """ Returns the name of the first input on which valid IRIG-B time is detected. """
+        old_source = yield self.get_irigb_source.async()
+        valid_source = None
+        for source in self._IRIGB_SOURCE_TABLE.keys():
+            yield self.set_irigb_source.async(source)
+            if (yield self.get_irigb_time.async(noerror=True)):
+                valid_source = source
+                break
+        yield self.set_irigb_source.async(valid_source if set_source else old_source)
+        async_return(valid_source)
+
+
 
     _IRIGB_TIME_FORMAT = {
         'raw': lambda ts: ts,
@@ -614,7 +630,9 @@ class IceBoardExtHandler(IceBoardPlusHandler):
                 if recent: # if we get a updated time
                     break
                 if time.time() - t0 > 2.5: # Wait a little bit more than one second in case the IRIG-B signal just became valie (e.g. we just set the source)
-                    if not noerror:
+                    if noerror:
+                        async_return(None)
+                    else:
                         raise RuntimeError('%.32r: Could not get a recently updated IRIG-B time. Check your cabling.' % self)
 
         w0 = self.fpga_mmi_read(self._IRIGB_SAMPLE0_ADDR)
@@ -638,8 +656,11 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         ts.source = (w1 >> 30) & ((1 << 2) - 1)
         ts.recent = (w1 >> 29) & 1
 
-        if not noerror and not ts.recent:
-            raise RuntimeError('Invalid or no IRIG-B signal. Check your cable and source.')
+        if not ts.recent:
+            if noerror:
+                async_return(None)
+            else:
+                raise RuntimeError('Invalid or no IRIG-B signal. Check your cable and source.')
 
         if not noerror and not self.zero_target_irigb_year_and_day and (ts.d < 1 or ts.d > 366):
             raise RuntimeError('Invalid IRIG-B day value %i. Day-of-year must be between 1 and 366' % ts.d)
@@ -662,6 +683,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
 
         async_return(self._IRIGB_TIME_FORMAT[format](ts))
 
+    @async
     def set_irigb_trigger_time(self, datetime_=None, delay=None):
         """ Sets the time at which the IRIG-B module will generate a trigger
         that can be used to synchronize boards.
@@ -709,15 +731,16 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         t1 = (d << 20) | (h << 14) | (m << 7) | (s << 0)
         t2 = (1 << 31) | (ss << 0)
 
-        self.fpga_mmi_write(self._IRIGB_TARGET0_ADDR, t0)
-        self.fpga_mmi_write(self._IRIGB_TARGET1_ADDR, t1)
-        self.fpga_mmi_write(self._IRIGB_TARGET2_ADDR, t2)
+        yield self.fpga_mmi_write.async(self._IRIGB_TARGET0_ADDR, t0)
+        yield self.fpga_mmi_write.async(self._IRIGB_TARGET1_ADDR, t1)
+        yield self.fpga_mmi_write.async(self._IRIGB_TARGET2_ADDR, t2)
 
+    @async
     def is_irigb_before_trigger_time(self):
         """ Is true if the current IRIGB is before the target trigger time that was previously set-up.
         """
-        t1 = self.fpga_mmi_read(self._IRIGB_TARGET1_ADDR)
-        return bool((t1 >> 31) & 1)
+        t1 = yield self.fpga_mmi_read.async(self._IRIGB_TARGET1_ADDR)
+        async_return(bool((t1 >> 31) & 1))
 
     def capture_frame_time(self, trig=True, format='nano'):
         """ Captures the IRIG-B of the first sample of the next frame coming
