@@ -46,6 +46,7 @@ class SCALER_base(Module_base):
     STATS_SCALER_OVERFLOWS = BitField(STATUS, 0x02, 0, width=16, doc="Stats result: number of scaler overflows")
     STATS_ADC_OVERFLOWS    = BitField(STATUS, 0x04, 0, width=16, doc="Stats result: number of ADC overflows")
     FRAME_CTR              = BitField(STATUS, 0x05, 0, width=8, doc="Free running frame counter (last 8 bits)")
+    DELAY_CTR = BitField(STATUS, 0x07, 0, width=16, doc="Debug: Delay counter")
 
 
     ROUNDING_MODE_TRUNCATE         = 0b00
