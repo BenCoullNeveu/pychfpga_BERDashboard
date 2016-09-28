@@ -188,6 +188,7 @@ class GPIO_base(Module_base):
         'user_bit0': 12,
         'user_bit1': 13,
         'debug3': 14,
+        'fmc_refclk': 15  # Mezz selected by user_bits
         }  # Backplane TRIG signal
 
     USER_OUTPUTS = {
