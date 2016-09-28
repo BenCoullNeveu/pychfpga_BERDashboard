@@ -4,8 +4,11 @@
 import logging
 import time
 
+from sqlalchemy import Column, Integer
+
 from ..icecore import IceCrate, IceCrateHandler, Ccoll
 from ..icecore import session
+from ..icecore.handler import HandlerParentAttribute
 
 from lib.eeprom import eeprom as EEPROM
 from lib import ina230  # I2C Voltage and current monitor
@@ -29,7 +32,7 @@ class IceCrateExt(IceCrate):
     handler_name = 'IceCrateExtHandler'
     __mapper_args__ = {'polymorphic_identity': 'IceCrateExt'}
     __ipmi_part_number__ = []  # Must match part number in IPMI data
-    crate_number = None  # used to assign a experiment-specific unique numerical number to a crate
+    crate_number = Column(Integer, doc='Integer used to assign a experiment-specific unique numerical number to a crate. Used in tuples to identify links')
 
 class IceCrateExtHandler(IceCrateHandler):
     """ IceCrate handler that provides access to the backplane through an
@@ -42,6 +45,7 @@ class IceCrateExtHandler(IceCrateHandler):
     ensured that the correct IceCrate has been instantiated.
     """
     part_number = None
+    crate_number = HandlerParentAttribute(lambda ib: ib.crate_number)
 
     #------------------------------------
     # Define hardware-specific constants

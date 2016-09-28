@@ -24,11 +24,12 @@ from tornado.gen import with_timeout, TimeoutError
 from sqlalchemy import or_
 
 from pychfpga.core.icecore import Ccoll
-from pychfpga.core.icecore import IceBoardPlus, IceCrate
 from pychfpga.core.icecore import HardwareMap
 from pychfpga.core.icecore import mdns_discover
 from pychfpga.core.icecore import async, async_return
 
+from pychfpga.core.icecore import IceBoardPlus
+from pychfpga.core.icecore_ext import IceCrateExt
 from pychfpga.MGADC08 import MGADC08  # Import to make sure this Mezzanine is registered  so it can be discovered
 from pychfpga.core.chFPGA_controller import chFPGA_controller
 from pychfpga.Agilent_N5764A import AgilentN5764AHandler
@@ -314,26 +315,44 @@ class FPGAArray(object):
             iceboards = [iceboards]
         iceboards = [self._to_integer(x) for x in iceboards]
 
-        icecrate_map = []
 
-        if isinstance(icecrates, (str, int)):
-            icecrates = [icecrates]
+        # make sure icecrates is a list
+        self.icecrate_map = collections.OrderedDict()
+        if icecrates and '*' not in icecrates:
+            if isinstance(icecrates, (str, int)):
+                icecrates = [icecrates]
 
-        if isinstance(icecrates, list):
-            icecrates = [self._to_integer(x) for x in icecrates]
-            icecrate_map = range(len(icecrates))
+            default_crate_model = 'MGK7BP16'
+            for ic_id in icecrates:
+                (model, sn, cn) = self._parse_crate_id(ic_id)
+                if model is None:
+                    model = default_crate_model
+                else:
+                    default_crate_model = model
+                self.icecrate_map[(model, sn)] = cn
 
-        elif isinstance(icecrates, dict):
-            icecrates = [self._to_integer(x) for x in icecrates.values()]
-            # icecrate_map = {
-        print 'icecrates=', icecrates
+            # If no crate number is specified at all, just create crate numbers based on the order in which the crates were specified
+            if all(cn is None in self.icecrate_map.values()):
+                for i, (model, sn) in enumerate(self.icecrate_map.keys()):
+                    self.icecrate_map[(model, sn)] = i
+
+        # icecrates = icecrate_map.keys()
+
+        # if isinstance(icecrates, list):
+        #     icecrates = [self._to_integer(x) for x in icecrates]
+        #     icecrate_map = range(len(icecrates))
+
+        # elif isinstance(icecrates, dict):
+        #     icecrates = [self._to_integer(x) for x in icecrates.values()]
+        #     # icecrate_map = {
+        print 'icecrate map=', self.icecrate_map
         # If no hardware map is provided, create an empty one
         if not hwm:
             self.hwm = HardwareMap()  # Create empty hardware map
         else:
             self.hwm = hwm
 
-        # Remove boards that are not in the specified subarray
+        # If subarrays are specified, remove boards that are not in those subarrays
         if subarrays:
             ib_not_in_subarray = self.hwm.query(IceBoardPlus).filter(~IceBoardPlus.subarray.in_(subarrays))
             for ib in list(ib_not_in_subarray):  # make sure the list does not change during the loop
@@ -398,11 +417,15 @@ class FPGAArray(object):
         iceboards_to_discover = [ib for ib in iceboards if '.' not in str(ib)]
         if '*' in str(iceboards_to_discover):
             iceboards_to_discover = '*'
-        icecrates_to_discover = icecrates
-        if '*' in str(icecrates_to_discover):
+
+
+        if '*' in str(icecrates):
             icecrates_to_discover = '*'
-        elif icecrates_to_discover:
-            icecrates_to_discover = [(('MGK7BP16', 'MGK7BP'), icecrates_to_discover)]
+        elif self.icecrate_map:
+            # convert to the format [ (model1, [serial, serial ...]), (model1, [serial, serial ...]), ...]
+            icecrates_to_discover = [(model, [serial]) for model, serial in self.icecrate_map.keys()]
+        else:
+            icecrates_to_discover = None
 
         if icecrates_to_discover or iceboards_to_discover:
             print 'Discovering IceBoards %s and IceCrates %s...' % (iceboards_to_discover, icecrates_to_discover)
@@ -426,8 +449,8 @@ class FPGAArray(object):
         # Hardware map is complete
 
         # Query all iceboards and icecrates
-        ib = self.hwm.query(IceBoardPlus).outerjoin(IceCrate).order_by(IceCrate.serial, IceBoardPlus.slot)  # use outerjoin in case there is no crate
-        ic = self.hwm.query(IceCrate).order_by(IceCrate.serial)
+        ib = self.hwm.query(IceBoardPlus).outerjoin(IceCrateExt).order_by(IceCrateExt.serial, IceBoardPlus.slot)  # use outerjoin in case there is no crate
+        ic = self.hwm.query(IceCrateExt).order_by(IceCrateExt.crate_number)
 
 
         if not ic.count():
@@ -438,19 +461,52 @@ class FPGAArray(object):
         if if_ip:
             ib.interface_ip_addr = if_ip
 
-        print 'The following IceBoards are in the hardware map:'
-        for i in ib:
-            crate_name = '%s SN%s' % (i.crate.part_number, i.crate.serial) if i.crate else 'No crate'
-            print 'Crate %s, slot %2s: Iceboard SN%s at %s (ping =%s)' % (crate_name, i.slot, i.serial, i.hostname, i.ping())
+        # print 'The following IceBoards are in the hardware map:'
+        # for i in ib:
+        #     crate_name = '%s SN%s' % (i.crate.part_number, i.crate.serial) if i.crate else 'No crate'
+        #     print 'Crate %s, slot %2s: Iceboard SN%s at %s (ping =%s)' % (crate_name, i.slot, i.serial, i.hostname, i.ping())
 
         # Augment the arg Namespace with conveniently proprocessed elements
         self.ib = Ccoll(ib)
-        self.ic = Ccoll(set(c for c in ib.crate if c) if self.ib else [])
+        self.ic = Ccoll.unique((c for c in ib.crate if c) if self.ib else [])
+
+        # Assing crate numbers
+        for ic in self.ic:
+            model = ic.part_number
+            try:
+                sn = int(ic.serial)
+            except ValueError:
+                sn = ic.serial
+            if (model, sn) in self.icecrate_map:
+                ic.crate_number = self.icecrate_map[(model, sn)]
+                self.hwm.flush()
+                print('Assigining crate number %i to crate %s (%s,%s)' % (ic.crate_number, ic.get_id(), model, sn))
+            else:
+                print('Cannot find a crate number for crate %s' % ic.get_id())
 
         # chFPGA_controller.register_fpga_bitstream(fpga_bitstream)
 
         if self.ib:
             ib.check_tuber_version()  # Check if the board is running a compatible ARM firmware
+
+            # Auto-discover mezzanines and add them to the hardware map.
+            if not no_mezz:
+                print 'Discovering Mezzanines...'
+                self.print_flush()  # make sure we see the previous prints right away so we have a better feeling of what is happening
+                self.ib.discover_mezzanines()
+                self.hwm.flush()
+                self.ib.set_cache()
+
+        def get_mezz_name(ib, mezz_number):
+            m = ib.mezzanine.get(mezz_number, None)
+            # return '%s_SN%s' % (m.__ipmi_part_number__, m.serial) if m else '-'
+            return 'SN%s' % (m.serial) if m else '-'
+
+        self.print_iceboard_table(lambda ib: '%s\n%s' % (get_mezz_name(ib,1), get_mezz_name(ib,2)), row_labels=['Mezz1\nMezz2'], add_serial=True)
+        self.print_flush()
+
+        # Tell the IceBoard to run chFPGA firmware, program the FPGA, and establish communication with it
+        if self.ib:
             ib.set_handler(chFPGA_controller)
             ib.set_cache() # we have a new handler, so update its cached ORM object values
             # ib.set_handler(IceBoardPlusHandler, fpga_bitstream)
@@ -464,28 +520,19 @@ class FPGAArray(object):
                 ib.set_fpga_bitstream(force= (prog > 1))
                 print 'Done configuring FPGAs'
 
-            # Auto-discover mezzanines and add them to the hardware map McGill
-            # MGADC08 can only be discovered if the FPGA is programmed with the
-            # chFPGA_controller firmware
 
-            if not no_mezz:
-                print 'Discovering Mezzanines...'
-                self.ib.discover_mezzanines()
-                self.hwm.flush()
-                self.ib.set_cache()
-
-        print
-        print 'Updated hardware map, with mezzanine info:'
+        # print
+        # print 'Updated hardware map, with mezzanine info:'
 
 
-        for i in self.ib:
-            mezz_name = ['%s SN%s' % (m.__ipmi_part_number__, m.serial) if m else 'None' for m in [i.mezzanine.get(1, None), i.mezzanine.get(2, None)]]
-            crate_name = '%s SN%s' % (i.crate.part_number, i.crate.serial) if i.crate else 'No crate'
-            print 'Crate %s, slot %2s: Iceboard SN%s at %s (ping =%s), Mezz1=%s, Mezz2=%s' % (crate_name, i.slot, i.serial, i.hostname, i.ping(), mezz_name[0], mezz_name[1])
+        # for i in self.ib:
+        #     mezz_name = ['%s SN%s' % (m.__ipmi_part_number__, m.serial) if m else 'None' for m in [i.mezzanine.get(1, None), i.mezzanine.get(2, None)]]
+        #     crate_name = '%s SN%s' % (i.crate.part_number, i.crate.serial) if i.crate else 'No crate'
+        #     print 'Crate %s, slot %2s: Iceboard SN%s at %s (ping =%s), Mezz1=%s, Mezz2=%s' % (crate_name, i.slot, i.serial, i.hostname, i.ping(), mezz_name[0], mezz_name[1])
         self.print_flush()
 
-        if self.ic:
-            self.print_iceboard_table(grid=False, add_serial=True)
+        # if self.ic:
+        #     self.print_iceboard_table(grid=False, add_serial=True)
 
 
         print
@@ -519,6 +566,57 @@ class FPGAArray(object):
             return int(x)
         except ValueError:
             return x
+
+    @staticmethod
+    def _parse_crate_id(string):
+        """ Splits a string describing a crate into a (model, serial, crate_number) tuple.
+        The serial is converted to an interger if possible; otherwise, it is a string. The crate number must be numerical.
+        Missing parameters are returned as None. Every field is converted to uppercase.
+
+        Examples:
+            'MGK7BP16_SN018:3' => ('MGK7BP16', 18, 3)
+            'MGK7BP16_018:3' => ('MGK7BP16', 18, 3)
+            '18:3' => (None, 18, 3)
+            '18' => (None, 18, None)
+        """
+        # Extract the crate number
+        s = str(string).upper().split(':')
+        if len(s) == 1:
+            sn = s[0]
+            cn = None
+        elif len(s) == 2:
+            try:
+                sn = s[0]
+                cn = int(s[1])
+            except ValueError:
+                raise ValueError('crate number is not an integer in entry %s' % string)
+        else:
+                raise RuntimeError('Multiple crate numbers were specified in entry:' % string)
+        # Check if a model number is specified
+        s = sn.split('_')
+        if len(s) == 1:
+            model = None
+            sn = s[0]
+        elif len(s) == 2:
+            model = s[0]
+            sn = s[1]
+            if sn.startswith('SN'):
+                sn = sn[2:]
+        else:
+            raise RuntimeError('Crates model and serial number must be separated by a single underscore (e.g. MGK7BP16_023).')
+
+        try:
+            sn = int(sn)
+        except ValueError:
+            pass
+
+        return (model, sn, cn)
+
+    @staticmethod
+    def _build_crate_id(model, serial):
+        if isinstance(serial, int):
+            serial = '%03i' % serial
+        return '%s_SN%s' % (model, serial)
 
     def print_flush(self):
         """ Make sure that the test sent previously to stdout shows immediately on the console.
@@ -788,7 +886,9 @@ class FPGAArray(object):
             dt = self.ib[0].get_irigb_time()
             print 'Triggering SYNC in %i seconds at %s' % (delay,  dt.isoformat())
             self.print_flush()
+            t0 = time.time()
             self.ib.set_irigb_trigger_time(dt, delay=delay)
+            self.logger.info('It took %f seconds to set the trigger time' % (time.time() - t0))
             t0 = time.time()
             while any(self.ib.is_irigb_before_trigger_time()):
                 if time.time() - t0 > delay+1:
@@ -1659,6 +1759,8 @@ class FPGAArray(object):
 
         if row_labels is None:
             row_labels = ''
+        # if isinstance(row_labels, str):
+        #     row_labels = [row_labels]
 
         orphan_iceboards = [ib for ib in self.ib if not ib.crate or not ib.crate.serial]
         corner_label = 'Standalone\nIceboards'
@@ -1674,25 +1776,28 @@ class FPGAArray(object):
             self.print_table(data, row_labels=local_row_labels, col_labels=col_labels, corner_label=corner_label, line_sep=grid)
 
 
-        if len(self.ic):
-            corner_label = 'Crate \\ Slot\n'
+        valid_crates = [ic for ic in self.ic if ic.serial]
+
+        for crate in valid_crates:
+            corner_label = '%s\nCrate #: %s' % (crate.get_id(), crate.crate_number)
             slot_range = range(1, max(self.ic.NUMBER_OF_SLOTS)+1)
             col_labels = ['%i' % (s) for s in slot_range]
+            if add_serial:
+                for i, slot in enumerate(slot_range):
+                   col_labels[i] += '\nSN' + crate.slot[slot].serial
+
             data = []
-            valid_crates = [ic for ic in self.ic if ic.serial]
-            local_row_labels = [crate.get_id() + '\n' + row_labels for crate in valid_crates]
+            # local_row_labels = [row_labels for crate in valid_crates]
             for slot in slot_range:
-                col_data = []
-                for crate in valid_crates:
-                    if slot in crate.slot.keys():
-                        cell = 'SN' + crate.slot[slot].serial + '\n' if add_serial else ''
-                        cell += func(crate.slot[slot]) if func else ''
-                    else:
-                        cell = '-'
-                    col_data.append(cell)
-                data.append(col_data)
+                # col_data = []
+                if slot in crate.slot.keys():
+                    cell = func(crate.slot[slot]) if func else ''
+                else:
+                    cell = '-'
+                # col_data.append(cell)
+                data.append([cell])
             if data:
-                self.print_table(data, row_labels=local_row_labels, col_labels=col_labels, corner_label=corner_label, line_sep=grid)
+                self.print_table(data, row_labels=row_labels, col_labels=col_labels, corner_label=corner_label, line_sep=grid)
 
     def print_iceboard_temperatures(self):
         sensor = self.ib[0].TEMPERATURE_SENSOR.MB_FPGA_DIE
