@@ -98,7 +98,7 @@ def mdns_discover(hwm=None, icecrates=None, iceboards=None, timeout=5, resolve_i
         # If we specify no crate number, or if we have valid backplane
         # information and the backplane match that number, Then add the
         # Iceboard
-        icecrate_match = icecrates and (icecrates == '*' or all((bp_part_number in model if isinstance(model, (tuple, list)) else bp_part_number == model) and (bp_serial in serials or int_bp_serial in serials) for (model, serials) in icecrates))
+        icecrate_match = icecrates and (icecrates == '*' or any((bp_part_number in model if isinstance(model, (tuple, list)) else bp_part_number == model) and (bp_serial in serials or int_bp_serial in serials) for (model, serials) in icecrates))
         iceboard_match = iceboards and (iceboards == '*' or ib_serial in iceboards or int_ib_serial in iceboards)
 
         if icecrate_match or iceboard_match:
@@ -643,30 +643,31 @@ class IceBoardPlusHandler(IceBoardHandler):
         address. This uses the fastest interface available (currently the ARM-
         FPGA SPI link)
         """
-        word = yield self.fpga_tuber_spi_mmi_read.async(addr)
+        word = yield self._fpga_spi_peek.async(addr)
         async_return(word)
 
+    @async
     def fpga_mmi_write(self, addr, value):
         """ Write a single 32-bit word to the FPGA at specified byte address.
         This uses the fastest interface available (currently the ARM-FPGA SPI
         link)
         """
-        self.fpga_tuber_spi_mmi_write(addr, value)
+        yield self._fpga_spi_poke.async(addr, value)
 
-    # *** JFC: Proposed new names for the Tuber MMI access
-    @async
-    def fpga_tuber_spi_mmi_read(self, addr):
-        """ Read a single 32-bit word at specified byte address through the
-        SPI interface.
-        """
-        word = yield self._fpga_spi_peek.async(addr)
-        async_return(word & 0xFFFFFFFF)
+    # # *** JFC: Proposed new names for the Tuber MMI access
+    # @async
+    # def fpga_tuber_spi_mmi_read(self, addr):
+    #     """ Read a single 32-bit word at specified byte address through the
+    #     SPI interface.
+    #     """
+    #     word = yield self._fpga_spi_peek.async(addr)
+    #     async_return(word & 0xFFFFFFFF)
 
-    def fpga_tuber_spi_mmi_write(self, addr, value):
-        """ Write a single 32-bit word at specified byte address through the
-        SPI interface.
-        """
-        self._fpga_spi_poke(addr, value)
+    # def fpga_tuber_spi_mmi_write(self, addr, value):
+    #     """ Write a single 32-bit word at specified byte address through the
+    #     SPI interface.
+    #     """
+    #     self._fpga_spi_poke(addr, value)
 
     # --------------------------------------------------------------------------
     # ARM Core methods (Should be implemented by the ARM and removed from here)
@@ -792,7 +793,7 @@ class IceBoardPlusHandler(IceBoardHandler):
         """ Check if the ARM processor provides the methods required to run this code. """
 
         required_tuber_methods = [
-            'is_fpga_programmed']
+            'is_fpga_programmed', '_mezzanine_eeprom_read_base64']
 
         (meta, props, tuber_methods) = self._tuber_get_meta()  # get the meta info
         if not tuber_methods:
