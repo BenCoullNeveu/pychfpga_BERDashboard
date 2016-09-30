@@ -1759,8 +1759,8 @@ class FPGAArray(object):
 
         if row_labels is None:
             row_labels = ''
-        # if isinstance(row_labels, str):
-        #     row_labels = [row_labels]
+        if isinstance(row_labels, str):
+            row_labels = [row_labels]
 
         orphan_iceboards = [ib for ib in self.ib if not ib.crate or not ib.crate.serial]
         corner_label = 'Standalone\nIceboards'
