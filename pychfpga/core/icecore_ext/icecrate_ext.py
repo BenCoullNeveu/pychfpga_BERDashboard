@@ -624,7 +624,10 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
                 raise ValueError('Invalid temperature sensor name')
             else:
                 tmp_object = self.TEMPERATURE_SENSOR_TABLE[temp_sensor]
-                tmp_object.init()
+                try:
+                    tmp_object.init()
+                except IOError:
+                    self.logger.error('%.32r: Error initializing the Backplane temperature sensors' % self)
 
     def _init_power_sensors(self, power_sensor_name='BP_3V3'):
         """
@@ -647,7 +650,10 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
             else:
                 power_sensor_list = self.POWER_SENSOR_TABLE[power_sensor]
                 power_sensor_object = power_sensor_list[0]
-                power_sensor_object.init(v_out=power_sensor_list[1], r_shunt=power_sensor_list[2], i_typ=power_sensor_list[3], tol_i=power_sensor_list[4])
+                try:
+                    power_sensor_object.init(v_out=power_sensor_list[1], r_shunt=power_sensor_list[2], i_typ=power_sensor_list[3], tol_i=power_sensor_list[4])
+                except IOError:
+                    self.logger.error('%.32r: Error initializing the Backplane Power sensors.' % self)
 
 
     def _init_qsfp_ctrl(self):
@@ -659,9 +665,12 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
             qsfpa_ctrl=self._qsfp_ctrla
             qsfpb_ctrl=self._qsfp_ctrlb
 
-            qsfpa_ctrl.init(cfg0_def=0x55, cfg1_def=0x55,cfg2_def=0x55,cfg3_def=0x55,cfg4_def=0xff,out0_def=0xaa, out1_def=0xaa,out2_def=0xaa,out3_def=0xaa,out4_def=0)
-            qsfpb_ctrl.init(cfg0_def=0x55, cfg1_def=0x55,cfg2_def=0x55,cfg3_def=0x55,cfg4_def=0xff,out0_def=0xaa, out1_def=0xaa,out2_def=0xaa,out3_def=0xaa,out4_def=0)
-            #By default LEDs are off (dir=inputs , outputs=0), ModPrsL and IntL (dir=input, output = 0), ResetL and ModselL (dir=output, output=1)
+            try:
+                qsfpa_ctrl.init(cfg0_def=0x55, cfg1_def=0x55,cfg2_def=0x55,cfg3_def=0x55,cfg4_def=0xff,out0_def=0xaa, out1_def=0xaa,out2_def=0xaa,out3_def=0xaa,out4_def=0)
+                qsfpb_ctrl.init(cfg0_def=0x55, cfg1_def=0x55,cfg2_def=0x55,cfg3_def=0x55,cfg4_def=0xff,out0_def=0xaa, out1_def=0xaa,out2_def=0xaa,out3_def=0xaa,out4_def=0)
+                #By default LEDs are off (dir=inputs , outputs=0), ModPrsL and IntL (dir=input, output = 0), ResetL and ModselL (dir=output, output=1)
+            except IOError:
+                self.logger.error('%.32r: Error initializing the Backplane QSFP GPIO control lines' % self)
 
     def _init_reset_ctrl(self):
         """
