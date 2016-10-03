@@ -1113,25 +1113,24 @@ class chFPGA_controller(IceBoardExtHandler):
                 self._logger.info("After setting delays still had ramp errors after 15 tries.")
             return delay_return
 
-    def check_ramp_errors(self):
+    def check_ramp_errors(self, delay=0.1):
         """
-        Uses internal ramp error checker, returns 0 if no errors,
-        otherwise returns total number of word errors.
+        Puts all ADCs in ramp mode and checks if the acquired data from each
+        channel is the expected ramp using the ADCDAQ's firmwae ramp checker.
+        The ADC is then put in its original mode.
+
+        Returns a dictionary listing the total number of mismatched words for each channel.
+
         """
         old_adc_mode = self.get_adc_mode()
         self.set_adc_mode('ramp')
-        self.sync()
-        # Clear the word and bit error counters
-        for ant in self.ANT.values():
-            ant.ADCDAQ.RAMP_ERR_CLEAR = 0
-            ant.ADCDAQ.RAMP_ERR_CLEAR = 1
-        t0 = time.time()
-        word_error = np.zeros(len(self.ANT))
-        while time.time() - t0 <= 0.1:
-                for (i, ant) in self.ANT.items():
-                    word_error[i] += ant.ADCDAQ.RAMP_ERR_CTR
-                    ant.ADCDAQ.RAMP_ERR_CLEAR = 0
-                    ant.ADCDAQ.RAMP_ERR_CLEAR = 1
+        self.sync()  # This automatically clears the error counter
+        time.sleep(delay)
+        word_error=[]
+        for (i, ant) in self.ANT.items():
+            word_error.append(ant.ADCDAQ.RAMP_ERR_CTR)
+            # ant.ADCDAQ.RAMP_ERR_CLEAR = 0
+            # ant.ADCDAQ.RAMP_ERR_CLEAR = 1
         word_errors = sum(word_error)
         self.set_adc_mode(old_adc_mode)
         self.sync()
@@ -1146,12 +1145,12 @@ class chFPGA_controller(IceBoardExtHandler):
         old_adc_mode = self.get_adc_mode(channels=channels) # make sure we don't access boards not on the channel list: they may be powered off
         self.set_adc_delays([[ [0]*8, [0]*8]] * 16); # Set all sampling delays and offsets to zero
         self.set_adc_mode('pulse', channels=channels) # generate pulse pattern
-        for i in range(10):
+        for i in range(1):
             self.sync()
         data={}
         for ch in channels:
             d = np.zeros((32, noffsets), dtype=np.uint8)
-            self._logger.info('Reading channel %i.' % (ch))
+            self._logger.info('%.32s: Reading channel %i.' % (self, ch))
             adcdaq = self.ANT[ch].ADCDAQ
 
             for dly in range(32):
@@ -1208,6 +1207,151 @@ class chFPGA_controller(IceBoardExtHandler):
         return delays
 
     compute_delays = compute_adc_delays # For legacy software compatibility
+
+
+
+    def compute_adc_delay_offsets(self, channels=range(16)):
+        """
+        Measures the eye diagram of the ADC digital data lines and computes
+        the permisable offset to ensure reliable data acquisition.
+
+        Returns a delay/offset table (delaytable), flags any stuck bits
+        (stuckbits), provides the logic level at the chosen eye sampling point
+        (bitposgood)  and in that order. Note that stuck bits should all be
+        false, bitposgood should be all 1s
+        """
+        delaytable = {}
+        stuckbits = {}
+        bitposgood = {}
+        problem = 0
+
+        for chan in channels:
+            t = self.read_eye_diagram(channels=[chan], offset=[0]*16, noffsets=11)  # Creating an offset / delay table 11 columns 32 rows
+
+            # Finding both 0 and 255 in the table Means we have no stuck bits
+            stuckbits[chan] = not (np.any(t[chan] == 0) and np.any(t[chan] == 255))
+            if(stuckbits[chan] == True):
+                problem = 1 #Stuck bit detected
+
+            offset = t[chan].sum(axis=0).argmax()  # Choosing the offset by looking at the offset/delay table and picking the column with the highest sum (i.e most 255s)
+
+            bitdelay = []
+            changood = []
+            for bit in range(8):
+                mask = 1 << bit #looking at one adc bit at a time
+                sample = (t[chan][:,offset]) & mask
+                if any(sample): # If sample has nonzero values
+                    chosendelay = int((sample * np.arange(32)).sum() / sample.sum())  # performing a center of mass claculation to pick eye location
+                    changood.append( (((t[chan][:, offset])[chosendelay]) & mask) >> bit)  # Checking what the bit level at the eye center is
+                else: # Sample is all zeros
+                    chosendelay = np.NaN
+                    changood.append(np.NaN)
+                    problem = 1 #Can't find a good spot so indicate a problem is present
+                bitdelay.append(chosendelay)
+                #self._logger.info( 'Warning: Center of eye diagram on bit %i of channel %i has glitch ' % (bit, chan))
+
+            offset = (offset + 3) % 11  # The difference in offset between a pulse waveform 'high' sample and and the first sample of a  ramp
+            # offset = offset - 3  #The difference in offset between a pulse waveform and a ramp
+            # if offset < 0:  # An untested wrap around conddition (Adam 12/12/2014)
+            #     offset = offset + 11
+
+            if offset>4:
+                print 'offset=', offset
+                print t
+            delaytable[chan]= (bitdelay, [offset]*8)  # Building the delay table
+            bitposgood[chan] = changood  # Building the eye diagram good table
+
+            if(0 in changood):
+                problem = 1 #Inverted bit detected
+
+        return delaytable, stuckbits, bitposgood, problem
+
+    def tune_adc_delays(self, loadfromdict = None, channels=range(16), retries=20):
+
+        try:
+            mezz1_serial = self.mezzanine[1].serial
+        except:
+            mezz1_serial = None
+
+        try:
+            mezz2_serial = self.mezzanine[2].serial
+        except:
+            mezz2_serial = None
+
+        if (loadfromdict == None):
+
+            for ch in channels:
+                if not self.ANT_FMC_IS_PRESENT[ch]:
+                    raise ValueError('Some of the requested channels are not present')
+
+            opt_sync_delay = self.REFCLK.compute_sync_delay(channels=channels)
+
+            #I have seen compute_sync_delay pick a solution in the middle of one of its groups
+            #that results in bad eye diagrams so this bit of code tries to address that
+            trycounter = 0
+            goodsolution = 0
+            ofset_sync_delay = opt_sync_delay
+            while (trycounter < retries and not goodsolution):
+
+                self.REFCLK.set_sync_delay(ofset_sync_delay)
+                check = self.read_eye_diagram(channels=channels, offset=[0]*16, noffsets=11)
+
+                goodsolution = 1
+                for ch in channels:
+                    if 255 not in check[ch]:
+                        goodsolution = 0
+                        break
+                if goodsolution == 0:
+                    increment = ([0,1][ch <8], [0,1][ch>7])
+                    if ofset_sync_delay[0] != -1:
+                        ofset_sync_delay[0] = (ofset_sync_delay[0] + increment[0]) % 32
+                    if ofset_sync_delay[1] != -1:
+                        ofset_sync_delay[1] = (ofset_sync_delay[1] + increment[1]) % 32
+                    print 'Initial offset calculation resulted in bad eye diagrams - adjusting offset too {0}'.format(self.REFCLK.get_refclk_delay())
+                trycounter += 1
+
+
+            d1,d2,d3,problem = self.compute_adc_delay_offsets(channels=channels)
+            #d1 contains the delay table with offsets
+            #d2 indicates if bits are stuck
+            #d3 is the value measured at the center of the adc pulse waveform for each bit - should be 1
+
+            if (problem == 1): #NaN present in delay table, or stuck bit, or inverted bit
+                raise ValueError('Delay table has problems - check for NaN, stuck bits or inverted bits')
+
+            self.set_adc_delays(d1) #The delay table found was all good, so setting it
+
+            tunedloc=dict()
+            tunedloc['delaytable'] = d1
+            tunedloc['syncdelay'] = opt_sync_delay
+            tunedloc['boards'] = {'Mezz': [mezz1_serial,mezz2_serial], "MB" : self.serial }
+
+            return tunedloc
+        else: #We have chosen to load the delay table from a dictionary
+
+            try:
+                d1 = loadfromdict['delaytable']
+                opt_sync_delay = loadfromdict['syncdelay']
+                dict_mb_serial = loadfromdict['boards']['MB']
+                dict_mezz1_serial = loadfromdict['boards']['Mezz'][0]
+                dict_mezz2_serial = loadfromdict['boards']['Mezz'][1]
+            except:
+                raise ValueError('Missing objects in adc delay dictionary')
+
+            if (self.serial != dict_mb_serial) \
+                or (mezz1_serial!=None and mezz1_serial!=dict_mezz1_serial) \
+                or (mezz2_serial!=None and mezz2_serial!=dict_mezz2_serial):
+                raise ValueError('Cannot use this adc table - hardware is not the same')
+
+            self.REFCLK.set_sync_delay(opt_sync_delay)
+            self.set_adc_delays(d1)
+
+            measuredloc=dict()
+            measuredloc['delaytable'] = self.get_adc_delays()
+            measuredloc['syncdelay'] = self.REFCLK.get_refclk_delay()
+            measuredloc['boards'] = {'Mezz': [mezz1_serial,mezz2_serial], "MB" : self.serial }
+            return measuredloc
+
 
     def status(self):
         self._logger.info('%r: ----------- chFPGA status ---------------' % self)
@@ -2019,143 +2163,7 @@ class chFPGA_controller(IceBoardExtHandler):
         self.set_ant_reset(0)
 
 
-    def compute_adc_delay_offsets(self, channels=range(16)):
-        """
-        Measures the eye diagram of the ADC digital data lines and computes
-        the permisable offset to ensure reliable data acquisition.
 
-        Returns a delay/offset table (delaytable), flags any stuck bits
-        (stuckbits), provides the logic level at the chosen eye sampling point
-        (bitposgood)  and in that order. Note that stuck bits should all be
-        false, bitposgood should be all 1s
-        """
-        delaytable = {}
-        stuckbits = {}
-        bitposgood = {}
-        problem = 0
-
-        for chan in channels:
-            t = self.read_eye_diagram(channels=[chan], offset=[0]*16, noffsets=11)  # Creating an offset / delay table 11 columns 32 rows
-
-            # Finding both 0 and 255 in the table Means we have no stuck bits
-            stuckbits[chan] = not (np.any(t[chan] == 0) and np.any(t[chan] == 255))
-            if(stuckbits[chan] == True):
-                problem = 1 #Stuck bit detected
-
-            offset = t[chan].sum(axis=0).argmax()  # Choosing the offset by looking at the offset/delay table and picking the column with the highest sum (i.e most 255s)
-
-            bitdelay = []
-            changood = []
-            for bit in range(8):
-                mask = 1 << bit #looking at one adc bit at a time
-                sample = (t[chan][:,offset]) & mask
-                if any(sample): # If sample has nonzero values
-                    chosendelay = int((sample * np.arange(32)).sum() / sample.sum())  # performing a center of mass claculation to pick eye location
-                    changood.append( (((t[chan][:, offset])[chosendelay]) & mask) >> bit)  # Checking what the bit level at the eye center is
-                else: # Sample is all zeros
-                    chosendelay = np.NaN
-                    changood.append(np.NaN)
-                    problem = 1 #Can't find a good spot so indicate a problem is present
-                bitdelay.append(chosendelay)
-                #self._logger.info( 'Warning: Center of eye diagram on bit %i of channel %i has glitch ' % (bit, chan))
-
-            offset = offset - 3  #The difference in offset between a pulse waveform and a ramp
-            if offset < 0:  # An untested wrap around conddition (Adam 12/12/2014)
-                offset = offset + 11
-
-            delaytable[chan]= (bitdelay, [offset]*8)  # Building the delay table
-            bitposgood[chan] = changood  # Building the eye diagram good table
-
-            if(0 in changood):
-                problem = 1 #Inverted bit detected
-
-        return delaytable, stuckbits, bitposgood, problem
-
-    def tune_adc_delays(self, loadfromdict = None, channels=range(16), retries=20):
-
-        try:
-            mezz1_serial = self.mezzanine[1].serial
-        except:
-            mezz1_serial = None
-
-        try:
-            mezz2_serial = self.mezzanine[2].serial
-        except:
-            mezz2_serial = None
-
-        if (loadfromdict == None):
-
-            for ch in channels:
-                if not self.ANT_FMC_IS_PRESENT[ch]:
-                    raise ValueError('Some of the requested channels are not present')
-
-            opt_sync_delay = self.REFCLK.compute_sync_delay(channels=channels)
-
-            #I have seen compute_sync_delay pick a solution in the middle of one of its groups
-            #that results in bad eye diagrams so this bit of code tries to address that
-            trycounter = 0
-            goodsolution = 0
-            ofset_sync_delay = opt_sync_delay
-            while (trycounter < retries and not goodsolution):
-
-                self.REFCLK.set_sync_delay(ofset_sync_delay)
-                check = self.read_eye_diagram(channels=channels, offset=[0]*16, noffsets=11)
-
-                goodsolution = 1
-                for ch in channels:
-                    if 255 not in check[ch]:
-                        goodsolution = 0
-                        break
-                if goodsolution == 0:
-                    increment = ([0,1][ch <8], [0,1][ch>7])
-                    if ofset_sync_delay[0] != -1:
-                        ofset_sync_delay[0] = (ofset_sync_delay[0] + increment[0]) % 32
-                    if ofset_sync_delay[1] != -1:
-                        ofset_sync_delay[1] = (ofset_sync_delay[1] + increment[1]) % 32
-                    print 'Initial offset calculation resulted in bad eye diagrams - adjusting offset too {0}'.format(self.REFCLK.get_refclk_delay())
-                trycounter += 1
-
-
-            d1,d2,d3,problem = self.compute_adc_delay_offsets(channels=channels)
-            #d1 contains the delay table with offsets
-            #d2 indicates if bits are stuck
-            #d3 is the value measured at the center of the adc pulse waveform for each bit - should be 1
-
-            if (problem == 1): #NaN present in delay table, or stuck bit, or inverted bit
-                raise ValueError('Delay table has problems - check for NaN, stuck bits or inverted bits')
-
-            self.set_adc_delays(d1) #The delay table found was all good, so setting it
-
-            tunedloc=dict()
-            tunedloc['delaytable'] = d1
-            tunedloc['syncdelay'] = opt_sync_delay
-            tunedloc['boards'] = {'Mezz': [mezz1_serial,mezz2_serial], "MB" : self.serial }
-
-            return tunedloc
-        else: #We have chosen to load the delay table from a dictionary
-
-            try:
-                d1 = loadfromdict['delaytable']
-                opt_sync_delay = loadfromdict['syncdelay']
-                dict_mb_serial = loadfromdict['boards']['MB']
-                dict_mezz1_serial = loadfromdict['boards']['Mezz'][0]
-                dict_mezz2_serial = loadfromdict['boards']['Mezz'][1]
-            except:
-                raise ValueError('Missing objects in adc delay dictionary')
-
-            if (self.serial != dict_mb_serial) \
-                or (mezz1_serial!=None and mezz1_serial!=dict_mezz1_serial) \
-                or (mezz2_serial!=None and mezz2_serial!=dict_mezz2_serial):
-                raise ValueError('Cannot use this adc table - hardware is not the same')
-
-            self.REFCLK.set_sync_delay(opt_sync_delay)
-            self.set_adc_delays(d1)
-
-            measuredloc=dict()
-            measuredloc['delaytable'] = self.get_adc_delays()
-            measuredloc['syncdelay'] = self.REFCLK.get_refclk_delay()
-            measuredloc['boards'] = {'Mezz': [mezz1_serial,mezz2_serial], "MB" : self.serial }
-            return measuredloc
 
     def get_shuffle_status(self, cb1_bin_sel_overflow_reset=False):
         def cb1_gen(self):
