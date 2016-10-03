@@ -550,6 +550,7 @@ class FPGAArray(object):
             if mode:
                 self.set_operational_mode(mode=mode, frames_per_packet=frames_per_packet)
 
+            print 'Initializing Backplane firmware'
             if self.ic:
                 self.ic.init()
 
@@ -1779,12 +1780,15 @@ class FPGAArray(object):
         valid_crates = [ic for ic in self.ic if ic.serial]
 
         for crate in valid_crates:
-            corner_label = '%s\nCrate #: %s' % (crate.get_id(), crate.crate_number)
+            corner_label = '%s\nCrate #%s' % (crate.get_id(), crate.crate_number)
             slot_range = range(1, max(self.ic.NUMBER_OF_SLOTS)+1)
             col_labels = ['%i' % (s) for s in slot_range]
             if add_serial:
                 for i, slot in enumerate(slot_range):
-                   col_labels[i] += '\nSN' + crate.slot[slot].serial
+                   col_labels[i] += ('\nSN' + crate.slot[slot].serial) if slot in crate.slot else '\n-'
+            if add_serial:
+                for i, slot in enumerate(slot_range):
+                   col_labels[i] += ('\n%s' % crate.slot[slot].hostname) if slot in crate.slot else '\n-'
 
             data = []
             # local_row_labels = [row_labels for crate in valid_crates]
