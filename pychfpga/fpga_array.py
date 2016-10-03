@@ -332,7 +332,7 @@ class FPGAArray(object):
                 self.icecrate_map[(model, sn)] = cn
 
             # If no crate number is specified at all, just create crate numbers based on the order in which the crates were specified
-            if all(cn is None in self.icecrate_map.values()):
+            if all([cn is None for cn in self.icecrate_map.values()]):
                 for i, (model, sn) in enumerate(self.icecrate_map.keys()):
                     self.icecrate_map[(model, sn)] = i
 
