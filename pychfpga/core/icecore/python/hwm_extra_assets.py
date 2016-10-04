@@ -325,7 +325,7 @@ class IceBoardPlus(IceBoard):
             try:
                 eeprom_data = yield self._mezzanine_eeprom_read.async(m)  # this does not read all eeprom for some mezxzanines...
                 # eeprom_data = self.hw.read_mezzanine_eeprom(m,0,512)
-            except tuber.TuberRemoteError:  # If the method does not exist
+            except (tuber.TuberRemoteError, AttributeError):  # If the method does not exist
                 eeprom_data = None
 
             ipmi = None
@@ -793,7 +793,7 @@ class IceBoardPlusHandler(IceBoardHandler):
         """ Check if the ARM processor provides the methods required to run this code. """
 
         required_tuber_methods = [
-            'is_fpga_programmed', '_mezzanine_eeprom_read_base64']
+            'is_fpga_programmed']#, '_mezzanine_eeprom_read_base64']
 
         (meta, props, tuber_methods) = self._tuber_get_meta()  # get the meta info
         if not tuber_methods:
