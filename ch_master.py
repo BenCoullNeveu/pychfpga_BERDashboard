@@ -260,6 +260,14 @@ if __name__ == "__main__":
 
     conf = NameSpace(fpga_array.load_yaml_config(args.conf_file))
     fpga_array_params = conf.fpga.pop('fpga_array_params')
+    # I separate fpga_array_params from conf since the writer to the hdf5 file cannot
+    # handle the hardware map object. fpga_array_params is used to program the boards.
+    # However, the writer still needs some parameters from fpga_array_params so
+    # have to add the manually.
+    for key in fpga_array_params.keys():
+        if key != 'hwm': 
+            conf.fpga[key] = fpga_array_params[key]
+
     # if ret != True:
     #     for entry in flatten_errors(conf, ret):
     #         sec_list, key, error = entry
