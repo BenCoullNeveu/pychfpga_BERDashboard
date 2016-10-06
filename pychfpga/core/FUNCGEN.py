@@ -30,6 +30,7 @@ class FUNCGEN_base(Module_base):
     RAMP_CTR   = BitField(STATUS, 0x00, 0, width=8, doc="Last 8 bits of the ramp counter (for debuging)")
     FRAME_CTR  = BitField(STATUS, 0x01, 0, width=8, doc="Frame counter")
     SEND_FRAME = BitField(STATUS, 0x02, 0, doc="debug")
+    DELAY_CTR = BitField(STATUS, 0x04, 0, width=16, doc="Debug: Delay counter")
 
 
     FN_ADC = 0

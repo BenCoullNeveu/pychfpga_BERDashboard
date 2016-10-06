@@ -107,6 +107,9 @@ class XReport(Plugin):
     def generate_test_summary(cls, *args, **kwargs):
         return test_report.generate_test_summary(*args, **kwargs)
 
+    @classmethod
+    def generate_combined_summary(cls, *args, **kwargs):
+        return test_report.generate_combined_summary(*args, **kwargs)
 
     @classmethod
     def _no_plugin(cls, feature):

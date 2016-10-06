@@ -33,6 +33,10 @@ n_freq    = integer(min = 1)
   ni_offset_26m = integer(min = 0 )
   ni_high_time_26m = integer(min = 1 )
   ni_period_26m = integer(min = 1 )
+  reload_gains_frame = integer(min = 1)
+  gain_switch_frame = integer(min = 1)
+  bank_switch_frame = integer(min = 1)
+  gain_reload_period = integer(min = 1)
   [[adc_delay]]
 
 [gpu]
@@ -48,7 +52,7 @@ n_freq    = integer(min = 1)
   frames_per_livefile = integer(min = 1)
   n_frame_buf = integer(min = 10, default = 12)
   producer_max_range = integer(min = 2, default = 3)
-  fpga_count_max = integer(default = 4294967295)
-
+  acq_loop_poll_rate = float(default = 2)
+  enable_gain_switching = integer(default = 0) 
   [[fpga_hk]]
     rate = integer(min = 1, default = 10)

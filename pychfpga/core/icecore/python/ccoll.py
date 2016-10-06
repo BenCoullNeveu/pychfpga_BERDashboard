@@ -86,12 +86,17 @@ class Ccoll(object):
     @classmethod
     def unique(cls, iterable):
         """ Create a Ccoll with only unique elements. """
-        return cls(set(iterable))
+        return cls(collections.OrderedDict((key, None) for key in iterable).keys())  # Use OrderedDist to create an 'OrderedSet'
 
     def __init__(self, objects, keys=None):
         # Do not define a docstring here: for some reason ipython will use it
         # instead of the dynamic __doc__ defined below.
         self.logger = logging.getLogger(__name__)
+        if isinstance(objects, collections.Mapping):
+            if keys is not None:
+                raise TypeError('Cannot use the keys parameter when a mapping is provided')
+            keys = objects.keys()
+            objects = objects.values()
         self._has_keys = bool(keys)
         object_list = list(objects)  # in case object is a generator etc.
         # Get the object that this class will mimic if callble

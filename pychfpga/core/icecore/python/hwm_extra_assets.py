@@ -98,7 +98,7 @@ def mdns_discover(hwm=None, icecrates=None, iceboards=None, timeout=5, resolve_i
         # If we specify no crate number, or if we have valid backplane
         # information and the backplane match that number, Then add the
         # Iceboard
-        icecrate_match = icecrates and (icecrates == '*' or all((bp_part_number in model if isinstance(model, (tuple, list)) else bp_part_number == model) and (bp_serial in serials or int_bp_serial in serials) for (model, serials) in icecrates))
+        icecrate_match = icecrates and (icecrates == '*' or any((bp_part_number in model if isinstance(model, (tuple, list)) else bp_part_number == model) and (bp_serial in serials or int_bp_serial in serials) for (model, serials) in icecrates))
         iceboard_match = iceboards and (iceboards == '*' or ib_serial in iceboards or int_ib_serial in iceboards)
 
         if icecrate_match or iceboard_match:
@@ -323,7 +323,8 @@ class IceBoardPlus(IceBoard):
 
             # If a mezzanine is present, get its EEPROM data and search for the first mezzanine class that can decode it.
             try:
-                eeprom_data = self._mezzanine_eeprom_read(m)
+                eeprom_data = yield self._mezzanine_eeprom_read.async(m)  # this does not read all eeprom for some mezxzanines...
+                # eeprom_data = self.hw.read_mezzanine_eeprom(m,0,512)
             except tuber.TuberRemoteError:  # If the method does not exist
                 eeprom_data = None
 
@@ -600,9 +601,12 @@ class IceBoardPlusHandler(IceBoardHandler):
 
         crc32 = zlib.crc32(buf) & 0xFFFFFFFF  # compute CRC32 of the data
 
-        if not self.is_fpga_programmed() or force \
-           or (force is not None and (self.get_fpga_bitstream_crc() != crc32)):
-            self.logger.info('%r: Configuring FPGA' % self)
+        is_fpga_programmed = yield self.is_fpga_programmed.async()
+        fpga_bitstream_crc = yield self.get_fpga_bitstream_crc.async()
+        self.logger.debug('%.32r: fpga_programmed=%s, force=%s, fpga_crc=%08X, bitstream_crc=%08X' % (self, is_fpga_programmed, force, fpga_bitstream_crc or 0, crc32 or 0))
+        if not is_fpga_programmed or force \
+           or (force is not None and (fpga_bitstream_crc != crc32)):
+            self.logger.info('%.32r: Configuring FPGA' % self)
             b64_string = base64.b64encode(str(buf))
             # self._set_fpga_bitstream_base64(b64_string)
             yield self._set_fpga_bitstream_base64.async(b64_string)
@@ -633,32 +637,37 @@ class IceBoardPlusHandler(IceBoardHandler):
     #     Tuber) links to the FPGA (on separate socket, forwarded to the FPGA
     #     through SPI or PCIe). Otherwise we fallback to the slower tuber MMI
     #     interface.
+    @async
     def fpga_mmi_read(self, addr):
         """ Read a single 32-bit word from the FPGA at the specified byte
         address. This uses the fastest interface available (currently the ARM-
         FPGA SPI link)
         """
-        return self.fpga_tuber_spi_mmi_read(addr)
+        word = yield self._fpga_spi_peek.async(addr)
+        async_return(word)
 
+    @async
     def fpga_mmi_write(self, addr, value):
         """ Write a single 32-bit word to the FPGA at specified byte address.
         This uses the fastest interface available (currently the ARM-FPGA SPI
         link)
         """
-        self.fpga_tuber_spi_mmi_write(addr, value)
+        yield self._fpga_spi_poke.async(addr, value)
 
-    # *** JFC: Proposed new names for the Tuber MMI access
-    def fpga_tuber_spi_mmi_read(self, addr):
-        """ Read a single 32-bit word at specified byte address through the
-        SPI interface.
-        """
-        return self._fpga_spi_peek(addr) & 0xFFFFFFFF
+    # # *** JFC: Proposed new names for the Tuber MMI access
+    # @async
+    # def fpga_tuber_spi_mmi_read(self, addr):
+    #     """ Read a single 32-bit word at specified byte address through the
+    #     SPI interface.
+    #     """
+    #     word = yield self._fpga_spi_peek.async(addr)
+    #     async_return(word & 0xFFFFFFFF)
 
-    def fpga_tuber_spi_mmi_write(self, addr, value):
-        """ Write a single 32-bit word at specified byte address through the
-        SPI interface.
-        """
-        self._fpga_spi_poke(addr, value)
+    # def fpga_tuber_spi_mmi_write(self, addr, value):
+    #     """ Write a single 32-bit word at specified byte address through the
+    #     SPI interface.
+    #     """
+    #     self._fpga_spi_poke(addr, value)
 
     # --------------------------------------------------------------------------
     # ARM Core methods (Should be implemented by the ARM and removed from here)
@@ -674,10 +683,12 @@ class IceBoardPlusHandler(IceBoardHandler):
     # Mezzanine management
 
     # Backplane management
+    @async
     def _mezzanine_eeprom_read(self, mezzanine):
         """ Returns the contents of the specified mezzanine's EEPROM.
         """
-        return base64.decodestring(self._mezzanine_eeprom_read_base64(mezzanine))
+        data = yield self._mezzanine_eeprom_read_base64.async(mezzanine)
+        async_return(base64.decodestring(data))
 
     # *** JFC: method rename
     def _write_motherboard_spi_eeprom_base64(self, *args, **kwargs):
@@ -703,15 +714,18 @@ class IceBoardPlusHandler(IceBoardHandler):
 
     # Bitstream management
 
+    @async
     def get_fpga_bitstream_crc(self):
         """ Return the signature of the firmware currently configured in the
         FPGA.
 
         Returns None if the FPGA is not configured.
         """
-        if not self.is_fpga_programmed():
-            return None
-        return self.fpga_mmi_read(self.FPGA_FIRMWARE_CRC32_ADDR)
+        is_fpga_programmed = yield self.is_fpga_programmed.async()
+        if not is_fpga_programmed:
+            async_return(None)
+        crc = yield self.fpga_mmi_read.async(self.FPGA_FIRMWARE_CRC32_ADDR)
+        async_return(crc)
         # return self._bitstream_crc
 
     def set_fpga_bitstream_crc(self, crc32):
@@ -779,7 +793,7 @@ class IceBoardPlusHandler(IceBoardHandler):
         """ Check if the ARM processor provides the methods required to run this code. """
 
         required_tuber_methods = [
-            'is_fpga_programmed']
+            'is_fpga_programmed', '_mezzanine_eeprom_read_base64']
 
         (meta, props, tuber_methods) = self._tuber_get_meta()  # get the meta info
         if not tuber_methods:

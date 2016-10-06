@@ -44,7 +44,7 @@ class BitField(object):
         self.doc = doc
 
     def __set__(self, obj, value):
-        obj.write_field(self, value)
+        obj.write_bitfield(self, value)
 
     def __get__(self, obj, obj_type):
         if obj is not None:  # if accesed from an instance
@@ -168,8 +168,14 @@ class Module_base(object):
         #print 'Read bit at port %i, bit=%i, data: %X' % (bit_name,  bit_def.addr,bit_def.bit, data)
         return (data >> bitfield.bit) & ((1 << bitfield.width) - 1)
 
-    def write_field(self, bitfield, data):
-        """ Writes the field identified by the name 'bit_name' which is looked up in the BITS table to find the bit definition (port, bit position etc). Returns a boolean."""
+    def write_bitfield(self, bitfield, data):
+        """ Writes 'data' to the bitfield.
+        ``bitfield`` can be either a bitfield object or a string containing the
+        name of the bitfield.
+        """
+
+        if isinstance(bitfield, str):
+            bitfield = self.get_bitfield(bitfield)
 
         if (data >= 2**bitfield.width) or data < 0:
             raise Exception('Bad value %i for memory-mapped property %s' % (data, bitfield))
@@ -191,6 +197,8 @@ class Module_base(object):
         self.write(bitfield.addr - number_of_bytes + 1,
                    data_string[-number_of_bytes:],
                    mask=mask_string[-number_of_bytes:])
+
+    write_field = write_bitfield # for backwards compatibility
 
     def write(self, addr, data, *args, **kwargs):
         """ Writes bytes to the FPGA memory-mapped registers.

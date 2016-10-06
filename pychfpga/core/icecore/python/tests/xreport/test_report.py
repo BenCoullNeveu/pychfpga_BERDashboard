@@ -561,23 +561,13 @@ class TestReport(object):
 # # def get_synopsis(etree):
 # #     return [(str(x.testdate), str(x.testpath), str(x.passed), str(x.summary) if hasattr(x, 'summary') else '') for x in etree.iter(['case', 'group'])]
 
+def load_test_cases(input_folder='.'):
+    """ Return a dictionary of test cases found in all the the files in the folder specified by ``input_folder``.
 
-def generate_test_summary(input_folder='.', required_tests=[], output_filename=None, output_formats=['pdf'], title='Test Summary Report'):
-    """ Load all XML test reports in the specified folder and generate a summary report that retains the latest result for every test.
-
-    ``required_test`` is a list of paths describing which tests are expected,
-    and in which order. A missing test is considered to be failed. paths are
-    typically in the format 'module_name:class_name.method_name'.
-
-    if ``output_filename`` is specified, the summary report is in the format
-    determined by the extension. The native report is also always saved with
-    the same name but with the .xml extension.
-
+    Each entry is {test_name : [(filename, date, case_object), ...]}. The list elements are sorted by most recent test first.
     """
     logger = logging.getLogger('')
-    logger.info('start generate test summary')
     filenames = glob.glob(input_folder + '/*.xml')
-
 
     # Load data from all files
     file_data = {}
@@ -603,6 +593,55 @@ def generate_test_summary(input_folder='.', required_tests=[], output_filename=N
     for case_name, case in test_cases.items():
         case.sort(key=lambda c: c[1], reverse=True)  # sort by reverse date
 
+    return test_cases
+
+def get_test_status(test_cases, required_tests):
+    """ Return a list indicating whether the specified tests have passed, failed, or were not run yet.
+
+    ``required_tests`` is a list of test_names. Semicolons separators are replaced by '.'.
+
+    The returned value is a list of dictionaries containing the following elements: test_path, test_name, test_date, passed, message.
+    """
+    required_tests = [t.replace(':', '.') for t in required_tests]
+
+    test_info = []
+    for path in required_tests:
+        if path in test_cases.keys():
+            filename, date, case = test_cases[path][0]  # get the most recent test
+            name = getattr(case, 'testname', '')
+            passed = getattr(case, 'passed', False)
+            message = getattr(case, 'summary', '')
+        else:
+            filename = None
+            name = path.split('.')[-1]
+            date = None
+            passed = False
+            message = 'Test not run'
+        test_info.append(NameSpace(
+            filename=filename,
+            path=path,
+            name=name,
+            date=date,
+            passed=passed,
+            message=message))
+    return test_info
+
+def generate_test_summary(input_folder='.', required_tests=[], output_filename=None, output_formats=['pdf'], title='Test Summary Report'):
+    """ Load all XML test reports in the specified folder and generate a summary report that retains the latest result for every test.
+
+    ``required_test`` is a list of paths describing which tests are expected,
+    and in which order. A missing test is considered to be failed. paths are
+    typically in the format 'module_name:class_name.method_name'.
+
+    if ``output_filename`` is specified, the summary report is in the format
+    determined by the extension. The native report is also always saved with
+    the same name but with the .xml extension.
+
+    """
+    logger = logging.getLogger('')
+    logger.info('start generate test summary')
+
+    test_cases = load_test_cases(input_folder=input_folder)
 
     def get_case_summary(case_info):
         filename, date, case = case_info
@@ -674,3 +713,43 @@ def generate_test_summary(input_folder='.', required_tests=[], output_filename=N
         report.write(output_filename, output_formats)
 
     return report
+
+def generate_combined_summary(input_folder='.', required_tests=[], output_filename=None):
+    """
+    input folder is a pattern that selects all the folders to be included in the summary (i.e. "./MGADC08_SN????/").
+    """
+    test_list = [t[1]['path'] for t in required_tests]
+
+    dirs = glob.glob(input_folder+'\\')
+
+    results = []
+    print 'Loading test reports...'
+    for i,d in enumerate(dirs):
+        serial = os.path.split(os.path.split(d)[0])[1]
+        print '%i/%i: %s' % (i+1, len(dirs), serial)
+        test_cases = load_test_cases(d)
+        status = get_test_status(test_cases, test_list)
+        passed = ('FAILED', 'Passed')[all(t.passed for t in status)]
+        first_fail = ['%s Failed: %s' % (t.name, t.message) for t in status if t.date and not t.passed]
+        first_fail = '"'+first_fail[0]+'"' if first_fail else 'N/A'
+        first_date = min(t.date for t in status)
+        last_date = max(t.date for t in status)
+        details =['"%s=%s (%s)"' % (t.name, ('FAILED', 'PASSED')[bool(t.passed)], t.message) for t in status]
+        results.append(NameSpace(serial=serial, passed=passed, date=last_date, first_date=first_date, first_fail=first_fail, details=details))
+    results.sort(key=lambda t: t.serial)
+    print
+
+    strings = []
+    for r in results:
+        s ='%10s, %s, %s, %s' % (r.serial, r.passed, r.date, r.first_fail)
+        print s
+        # strings.append(s + ',' + ','.join(r.details))
+        strings.append(s)
+
+    if output_filename:
+        with open(output_filename, 'w') as f:
+            f.write('\n'.join(strings))
+        print
+        print 'Summary report is saved in %s' % os.path.realpath(output_filename)
+        print
+    return strings

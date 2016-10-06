@@ -58,6 +58,21 @@ class FFT_base(Module_base):
         print ' CASPER block pipeling delay: Measured=%i, set point=%i:  clocks' % (self.MEASURED_PIPELINE_DELAY, self.PIPELINE_DELAY)
         print ' Number of FFT overflows: %i' % (self.OVERFLOW_COUNT)
 
+    def pfb_fft(self, data, N=4):
+        """
+        N = window size
+        """
+        # Compute window function
+        frame_length = len(data[0])
+        number_of_frames = len(data)
+        sinc_window = np.sinc((np.arange(-frame_length * N/2, frame_length * N/2) + 0.5) / frame_length)
+        hamming_window = np.hamming(frame_length * N)
+        window = np.reshape((sinc_window * hamming_window * 512), (4, -1))
+
+        windowed_data = [np.sum(data[n:n+4, :] * window, axis=0) for n in range(0, number_of_frames-4+1)]
+        fft = np.fft.rfft(windowed_data)
+        return fft
+
     def get_sim_output(self, fft_input, bypass = None):
         """ Return the simulated output of the FFT module.
 
@@ -87,14 +102,7 @@ class FFT_base(Module_base):
         fft_shift = self.FFT_SHIFT  # Read only once from the FPGA
         number_of_shifts = sum(bool(fft_shift & (1 << bit) for bit in range(11)))
         shift_factor = 2. ** number_of_shifts
-        N = 4  # PFB window size in frames
-        # Compute window function
-        sinc_window = np.sinc((np.arange(-frame_length * N/2, frame_length * N/2) + 0.5) / frame_length)
-        hamming_window = np.hamming(frame_length * N)
-        window = np.reshape((sinc_window * hamming_window * 512), (4, -1))
-
-        windowed_data = [np.sum(data[n:n+4, :] * window, axis=0) for n in range(0, number_of_frames-4+1)]
-        fft = np.fft.rfft(windowed_data) / shift_factor
+        fft = self.pfb_fft(data, N=4) / shift_factor
         even = fft[0::2]
         odd = fft[1::2]
         return (flags,

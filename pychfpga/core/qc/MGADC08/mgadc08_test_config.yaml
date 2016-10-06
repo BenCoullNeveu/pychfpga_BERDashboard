@@ -27,7 +27,7 @@ instruments:
     na:        {labpy_object: 'hp8753e',     interface: 'prologix_eth', ip_addr: '10.11.1.132', gpib_addr: 14} # HP8753E Network Analyzer
 
 ?: &default_fpga_array
-    iceboards: 49
+    iceboards: 183
     mdns_delay: 1
 
 
@@ -62,6 +62,7 @@ menu:
     - { key: '7', type: test, test_tag: s11}
 
     - { key: 'S', description: 'Send all new test results data to McGill',                         type: push}
+    - { key: 'R', description: 'Generate summary of all tests',                       type: summary}
     - { key: 'Q', description: 'Exit',                                                type: exit}
     - {           description: "or Enter or scan board's serial number or menu item", type: text}
     - { regex: '29821-0000-(\d{4})',                                                  type: board_info, model: 'MGADC08', serial: '{0}', next_key: '1'}  # 29821-000-nnnn are MGADC08 Serial nnnn
@@ -124,7 +125,7 @@ carrier_tests:
         pow_stab_time: 0.5  # Tibe to wait after board power on and voltage measurmeents
         rails:
             vcc12v: {vmin: 11.9, vmax: 12.2, imin: 0.010, imax: 0.140} #
-            vcc3v3: {vmin: 3.2,  vmax: 3.4,  imin: 2.400, imax: 2.800} #
+            vcc3v3: {vmin: 3.2,  vmax: 3.4,  imin: 2.400, imax: 2.900} #
             vadj:   {vmin: 2.4,  vmax: 2.6,  imin: 0.090, imax: 0.120} #
 
     spi_pll_test:
@@ -153,6 +154,7 @@ carrier_tests:
 
     s11_test:
         instruments: [na] # Subset of instruments we use in these tests
+        dummy_instruments: no
         fpga_array: {<<: *default_fpga_array, no_mezz: 1, prog: 1,  open: 1}
         s11_max : -15 # in dB
         adc_trim_value: 15  # 0-15, default is 8. Applies to all channels.

@@ -13,6 +13,7 @@ import textwrap
 
 util.add_paths('../..')  # needed to find icecore
 from icecore import XReport as xr
+from icecore.tests.xreport import test_report
 from icecore.hw import ipmi_fru
 
 util.add_paths('../../..')  # needed to find fpga_array
@@ -319,7 +320,8 @@ class MGADC08CarrierTests():  #
 
             if mezz:
                 # If a Mezzanine is discovered, it must have valid IPMI data.
-                ipmi = ib._get_mezzanine_mcgill_ipmi(self.slot)  # returns either a Tuber IPMI or a Python IPMI
+                eeprom_data = self._mezzanine_eeprom_read(self.slot)
+                ipmi = mezz.decode_eeprom(eeprom_data)  # returns either a Tuber IPMI or a Python IPMI
                 tr.old_ipmi = repr(ipmi)
                 print
                 print 'The board IPMI information found in its EEPROM is'
@@ -737,7 +739,7 @@ class MGADC08CarrierTests():  #
         # Timing for ADCs. Calculate proper offsets for this board.
         trial = 0
         while True:
-            delay_table, stuck_bits, bitposgood = ib.compute_adc_delay_offsets(channels=range(8))
+            delay_table, stuck_bits, bitposgood, problem = ib.compute_adc_delay_offsets(channels=range(8))
             print "Computed delay table:"
             for ch, dt in delay_table.items():
                 print '   Channel %02i: %s' % (ch, dt)
@@ -755,7 +757,7 @@ class MGADC08CarrierTests():  #
             if stuck_ok and bitpos_ok:
                 break
             trial += 1
-            assert trial < 4, 'Could not compute ADC delays'
+            assert trial < 6, 'Could not compute ADC delays'
             print 'Could not compute ADC delays. Retrying...'
         # Set ADC delays
         ib.set_adc_delays(delay_table)
@@ -769,22 +771,28 @@ class MGADC08CarrierTests():  #
         passed = False
         r = None
         try:
-
+            print 'Opening link to IceBoard'
             ib, mezz = self._get_iceboard(**cfg.fpga_array)
             ib.set_mezzanine_power(True, self.slot)
             time.sleep(0.5)
+            print 'initializing mezzanine...'
             mezz.init()
 
-            r = ib.get_data_receiver()
-
+            print 'Computing ADC delays...'
             delay_table = self.set_adc_delays(ib)
 
+            print 'Opening data receiver socket'
+            r = ib.get_data_receiver()
+
+            print 'Setting up ramp transmission...'
             # Begin Ramp test
             ib.set_adcdaq_mode('data')
             ib.set_data_source('adc')
             ib.set_adc_mode('ramp')
             ib.start_data_capture(period=1, source='adc')
+            print 'Syncing...'
             ib.sync()
+            print 'Getting data frames...'
             r.read_frames(flush=1, frames=3)  # flush
             data = r.read_frames(1)
 
@@ -829,8 +837,23 @@ class MGADC08CarrierTests():  #
         Total time: 20 s
         """
         cfg = self.cfg.carrier_tests.s11_test
-        instr = util.open_instruments(self.cfg.instruments, cfg.instruments)  # open only instruments listed in cfg.instruments
-        na = instr.na
+        dummy_instr = cfg.dummy_instruments
+
+        if not dummy_instr:
+            instr = util.open_instruments(self.cfg.instruments, cfg.instruments)  # open only instruments listed in cfg.instruments
+            na = instr.na
+        else:
+            class DummyNA(object):
+                def command(*args, **kwargs): return
+                def get_s_params(self, *args, **kwargs):
+                    freqs = np.linspace(100e6, 1000e6, 400)
+                    s11_data = freqs*0 -0.0001
+                    return freqs, (s11_data, )
+                def plot_s_params(self, freqs, s11_data, title='', **kwargs):
+                    plt.plot(freqs, s11_data)
+                    plt.title(title)
+            na = DummyNA()
+
         tr = NameSpace() # test results container
         ib, mezz = (None, None)  # in case we fail finding boards
         passed = False
@@ -915,7 +938,7 @@ class MGADC08CarrierTests():  #
                     # time.sleep(frame_transmission_period)
                     r.read_frames(flush=True, frames=3)  # let the new data propagate
                     print '.',
-                    trial = 0 
+                    trial = 0
                     while True:
                         data = r.read_frames(cfg.number_of_frames)
                         if channel in data:

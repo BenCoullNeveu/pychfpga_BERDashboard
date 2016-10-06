@@ -105,6 +105,11 @@ def run_tests(config_file):
                 # instr.dmm.display(current_model, current_serial)
         elif selection.type == 'push':
             commit_repo(test_results_folder)
+        elif selection.type == 'summary':
+            test_folders = os.path.join(test_results_folder, '%s_SN*/' % (current_model))
+            f = raw_input('Enter destination filename (optional, no extension):')
+            summary_filename = os.path.join(test_results_folder, f+'.csv')
+            XReport.generate_combined_summary(test_folders, cfg.test_list, output_filename=summary_filename)
         elif selection.type == 'test':
             test = test_list[selection.test_tag]
 
@@ -121,7 +126,12 @@ def run_tests(config_file):
             print
             print 'Running test %s' % nose_test_path
             print
-            serial = current_serial if test.require_serial_number else None
+
+            if test.require_serial_number:
+                serial = current_serial
+            else:
+                serial = None
+                is_serial_scanned = False
 
             params = NameSpace(config_file=config_file, model=current_model, serial=serial)
             r = XReport.run(nose_test_path, xparams=params)
@@ -130,7 +140,7 @@ def run_tests(config_file):
 
             if params.serial != current_serial:
                 print '**********************************************'
-                print ' **** Serial number changed from %s to %s' % (current_serial, params.serial)
+                print ' **** Serial number is now %s' % (params.serial)
                 print '**********************************************'
                 current_serial = params.serial
                 is_serial_scanned = False

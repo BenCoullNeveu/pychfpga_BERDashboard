@@ -33,7 +33,7 @@ class REFCLK_base(Module_base):
     ADC_SYNC               = BitField(CONTROL, 0, 7, doc='Force a SYNC to the ADC, synchronized on the FMC Reference clock, but bypasses the SYNC state machine that resets the IOSERDES and BUFR')
     LOCAL_SYNC             = BitField(CONTROL, 0, 5, doc='Force the generation of a local SYNC sequence on the local board only. Has the same effect as a SYNC signed received on the 10 MHz clock.  The SYNC is synchronized to the 10 MHz output (transitions on its falling edge)')
     REMOTE_SYNC            = BitField(CONTROL, 0, 4, doc='Generate a SYNC signal encoded on the 10 MHz clock output. Will SYNC the local FMC board only if the 10 MHz output is connected to the 10 MHz input of the local FMC board')
-    SYNC_SOURCE            = BitField(CONTROL, 0, 0, width=2, doc="Selects the source of the SYNC signal: 0: local sync only, 1: local sync or sync recovered from the clock, 2: local sync or backplane sync, 3: local sync or IRIG-B-based sync")
+    SYNC_SOURCE            = BitField(CONTROL, 0, 0, width=3, doc="Selects the source of the SYNC signal: 0: local sync only, 1: local sync or sync recovered from the clock, 2: local sync or backplane sync, 3: local sync or IRIG-B-based sync")
 
     REFCLK_SEL             = BitField(CONTROL, 0x01, 7, doc='Selects the source of the REFCLK needed for SYNC generation. 0=FMC, 1=internal REFCLK generator.')
     # ENABLE_SYNC_GENERATION = BitField(CONTROL, 0x01, 6, doc='Allows the internal state machine to generate the SYNC sequence (generate the ADC SYNC and resets the ADCDAQ SERDES and BUFG)')
@@ -70,10 +70,10 @@ class REFCLK_base(Module_base):
         # self.ENABLE_SYNC_DETECTION = 1
         # self.ENABLE_SYNC_GENERATION = 1
         if self.fpga.is_fmc_present(0):
-            self.logger.info('   REFCLK is using the 10 MHz reference clock from the ADC board')
+            self.logger.info('%.32r:   REFCLK is using the 10 MHz reference clock from the ADC board' % self.fpga)
             self.REFCLK_SEL = 0  # Use REFCLK coming from the FMC
         else:
-            self.logger.info('   REFCLK is using the 10 MHz reference clock from FPGA since the ADC board is not prresent in FMC slot 0')
+            self.logger.info('%.32r:   REFCLK is using the 10 MHz reference clock from FPGA since the ADC board is not prresent in FMC slot 0' % self.fpga)
             self.REFCLK_SEL = 1  # Use internally generated REFCLK
 
     SYNC_SOURCE_TABLE = {
@@ -81,7 +81,8 @@ class REFCLK_base(Module_base):
         'refclk': 1,
         'bp_trig': 2,
         'irigb': 3,
-        'bp_time': 4}
+        'bp_time': 4,
+        'bp_gpio_int': 5}
 
     def set_sync_source(self, source):
         """ Set the source of the SYNC signal."""
@@ -117,15 +118,20 @@ class REFCLK_base(Module_base):
         else:
             self.set_sync_delay(delay)
             self.set_refclk_delay(delay)
-        self.pulse_bit('LOCAL_SYNC') # Force the REFCLK state machine to initiate a SYNC event
+        # self.pulse_bit('LOCAL_SYNC') # Force the REFCLK state machine to initiate a SYNC event
+        self.LOCAL_SYNC = 1
+        self.LOCAL_SYNC = 0
         self.wait_for_bit('SYNC_DONE') # Wait until the SYNC process is completed
 
     def set_sync_delay(self, delay):
         """
         Sets the delay of the SYNC pulse relative to the Reference Clock. Valid range is 0-31.
         """
-        self.sync_delay = delay  # Save the current delay value
         self.set_refclk_delay(delay)
+        self.sync_delay = self.get_refclk_delay()  # Save the current delay value
+
+        #if set_sync_delay was called with -1 we didn't actually set anything so the saved value
+        #shouldnt be -1 it should be what ever is actually used
 
     def get_refclk_delay(self):
         """
@@ -144,8 +150,10 @@ class REFCLK_base(Module_base):
             d0, d1 = delay
         except TypeError:
             d0 = d1 = delay
-        self.REFCLK0_DELAY = d0
-        self.REFCLK1_DELAY = d1
+        if d0 != -1:
+            self.REFCLK0_DELAY = d0
+        if d1 != -1:
+            self.REFCLK1_DELAY = d1
         self.pulse_bit('REFCLK_DELAY_RST')
 
     def acquire_adc_clock_waveform(self, channels=range(16),  sleep=0.005):
@@ -281,15 +289,25 @@ class REFCLK_base(Module_base):
                selection mux control bit must also be set to use the bypassed
                input.
         """
+        current_sync_delays = self.sync_delay # Save the current delay value
         tap_delay = 1/200e6/32/2
         adc_clock_period_in_taps = (1/adc_clock_freq)/tap_delay
         number_of_channels = max(channels) + 1
+        taps_per_adc_input_clock = (1/1600e6) / tap_delay
         samples = []
 
         if isinstance(delays, int):
             delays = [delays]
         number_of_sync_delays = len(delays)
 
+
+        #Here we figure out which ADC chips 0 -> 3 belong to which channels
+        #There might be a python one liner than can genrate this same result
+        whichadc = [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3]
+        checkadc = [False, False, False, False]
+        for adc in range(4):
+            if adc in [whichadc[i] for i in channels]:
+                checkadc[adc]=True
 
         if plot_adc is not None:
             import matplotlib.pyplot as plt
@@ -311,7 +329,7 @@ class REFCLK_base(Module_base):
                 rising_edge[ADC_number][sync_delay] = self.find_rising_edge(samples[ADC_number], period=adc_clock_period_in_taps)
                 mark = rising_edge[ADC_number][sync_delay]
                 bitstring = self.bit_vector_to_string(samples[ADC_number], mark)
-                print 'ADC%2i: %s' % (ADC_number, bitstring),
+                print 'ADC%2i: %s ' % (ADC_number, bitstring),
             print
             if plot_adc is not None:
                 extended_samples = np.hstack((samples[plot_adc], samples[plot_adc], samples[plot_adc]))
@@ -328,25 +346,27 @@ class REFCLK_base(Module_base):
             # rising_edge[ch] -= min(rising_edge[ch])
             phase_jumps = self.find_edges(rising_edge[ch], min_step=3, stable_time=4)
             print 'Phase jumps found at delays (%s)' % phase_jumps,
-            if len(phase_jumps) < 2:
-                print 'Insufficient number of ADC_CLK phase jumps edges to determine optimal SYNC timing'
+            if len(phase_jumps) < 1:
+                print 'Insufficient number of ADC_CLK phase jumps edges to determine SYNC timing'
             else:
-                sync_delays[ch] = phase_jumps[0] + np.average(np.diff(phase_jumps*1.0))*0.40 # place sync at a fraction of the average distance between phase jumps
+                sync_delays[ch] = phase_jumps[0] + round(taps_per_adc_input_clock/2) - 1# place sync at what we estimate half way the first measured phase jump and the estimated second phase jump
                 print ' Recommended sync_delay: %i' % int(round(sync_delays[ch]))
 
         print
         print 'ADC-chip--wise Computed SYNC delays'
         adc_sync_delays = np.ones(4)*np.nan
         for adc_chip in range(4):
-            adc_sync_delays[adc_chip] = int(round(np.average([sync_delays[ch] for ch in channels if 4*adc_chip <= ch <= 4*adc_chip+3])))
-            print 'ADC Chip #%i: sync delay: %i' % (adc_chip, adc_sync_delays[adc_chip])
+            if checkadc[adc_chip]:
+                adc_sync_delays[adc_chip] = round(np.average([sync_delays[ch] for ch in channels if 4*adc_chip <= ch <= 4*adc_chip+3]))
+                print 'ADC Chip #%i: sync delay: %i' % (adc_chip, adc_sync_delays[adc_chip])
 
         print
         print 'Mezzanine-wise SYNC delays'
-        mezz_sync_delays = np.ones(2)*np.nan
+        mezz_sync_delays = -np.ones(2, dtype=int)
         for mezz in range(2):
-            mezz_sync_delays[mezz] = int(round(np.average([sync_delays[ch] for ch in channels if 8*mezz <= ch <= 8*mezz+7])))
-            print 'Mezzanine #%i sync delay: %i' % (mezz, mezz_sync_delays[mezz])
+            if checkadc[mezz*2] or checkadc[mezz*2+1]:
+                mezz_sync_delays[mezz] = round(np.average([sync_delays[ch] for ch in channels if 8*mezz <= ch <= 8*mezz+7]))
+                print 'Mezzanine #%i sync delay: %i' % (mezz, mezz_sync_delays[mezz])
 
         print
         print "ADC Clock phase shifts ('|' marks computed optimal sync delay)"
@@ -358,7 +378,8 @@ class REFCLK_base(Module_base):
         if plot_adc is not None:
             plt.plot(rising_edge[plot_adc], range(number_of_sync_delays), 'bo-')
             for mezz in range(2):
-                plt.plot([0, 3*32], [mezz_sync_delays[mezz]]*2, 'ro-')
+                if checkadc[mezz*2] or checkadc[mezz*2+1]:
+                    plt.plot([0, 3*32], [mezz_sync_delays[mezz]]*2, 'ro-')
             plt.figure(2)
             plt.clf()
             plt.hold(1)
@@ -374,12 +395,15 @@ class REFCLK_base(Module_base):
                 x = np.arange(number_of_sync_delays)
                 plt.fill_between(x, w*0.4 + ch, -w*0.4 + ch, interpolate=True)
             for mezz in range(2):
-                ch = [c for c in channels if mezz*8 <= c <= mezz*8+7]
-                plt.plot([mezz_sync_delays[mezz]]*2, [min(ch), max(ch)], 'ro-')
+                if checkadc[mezz*2] or checkadc[mezz*2+1]:
+                    ch = [c for c in channels if mezz*8 <= c <= mezz*8+7]
+                    plt.plot([mezz_sync_delays[mezz]]*2, [min(ch), max(ch)], 'ro-')
             plt.draw()
 
         if set_sync_delays:
             self.set_sync_delay(mezz_sync_delays)
+        else:
+            self.set_sync_delay(current_sync_delays) # If not set sync delays, leave current value
 
         return mezz_sync_delays
 

@@ -1,7 +1,7 @@
 """Handler management classes.
 
 A Handler is a user-defined, persistent Python object that is dynamically
-linked to a volatile object in order to into extend its attributes and
+linked to a volatile object in order to extend its attributes and
 methods. They are typically used to provide stateful methods linked to
 SQLAlchemy ORM objects
 
@@ -118,7 +118,7 @@ class HandlerObject(object):
 
             # If the key exists in the handler registry, retreive it
             if handler_key in self._handler_instance_registry:
-                logger.info("%r: Reusing handler for handler key (%s, %s)" %
+                logger.info("%.32r: Reusing handler for handler key (%s, %s)" %
                             (self, handler_id, handler_name))
                 self._handler = self._handler_instance_registry[handler_key]
                 return self._handler
@@ -126,7 +126,7 @@ class HandlerObject(object):
             # If not, let's create and register a new handler
             if handler_name in self._handler_class_registry:
                 handler_class = self._handler_class_registry[handler_name]
-                logger.info("%r: Handler key %s does not exist. Creating %s" %
+                logger.info("%.32r: Handler key %s does not exist. Creating %s" %
                             (self, handler_id, handler_name))
                 self._handler = handler_class(parent_getter=self.self_getter())
                 type(self)._handler_instance_registry[handler_key] = self._handler

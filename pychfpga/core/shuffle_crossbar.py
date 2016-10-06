@@ -31,8 +31,10 @@ class ShuffleCrossbar(Module_base):
     LANE_MONITOR_RESET = BitField(CONTROL, 0, 4, doc='')
     LANE_MONITOR_SEL   = BitField(CONTROL, 0, 0, width=4, doc='')
 
-    AUTO_UNBAN         = BitField(CONTROL, 1, 7, doc='')
-    TIMEOUT_PERIOD     = BitField(CONTROL, 1, 0, width=7, doc='')
+    USE_TIMEOUT         = BitField(CONTROL, 1, 7, doc='')
+    LANE_MONITOR_SOURCE = BitField(CONTROL, 1, 3, width=4, doc='')
+    TIMEOUT_PERIOD      = BitField(CONTROL, 1, 0, width=3, doc='')
+
     SOF_WINDOW_STOP    = BitField(CONTROL, 2, 0, width=8, doc='')
     LANE_MAP_BYTE0     = BitField(CONTROL, 3, 0, width=8, doc='Lane map')
     # LANE_MAP_BYTE7     = BitField(CONTROL, 10, 0, width=8, doc='Lane map')
@@ -42,7 +44,7 @@ class ShuffleCrossbar(Module_base):
     FIFO_TFIRST_MON         = BitField(STATUS, 0, 1, doc='')
     BAD_EOF_MON             = BitField(STATUS, 0, 2, doc='')
     BAD_LANE_MON            = BitField(STATUS, 0, 3, doc='')
-    DISCARDED_DATA_MON      = BitField(STATUS, 0, 4, doc='')
+    BAD_FRAME_LENGTH        = BitField(STATUS, 0, 4, doc='')
     MISSING_FRAME_MON       = BitField(STATUS, 0, 5, doc='')
     ALIGN_FIFO_OVERFLOW_MON = BitField(STATUS, 0, 6, doc='')
     DATA_TIMEOUT_MON        = BitField(STATUS, 0, 7, doc='')
@@ -294,7 +296,7 @@ class ShuffleCrossbar(Module_base):
         'FIFO_TFIRST': 'FIFO_TFIRST_MON',
         'BAD_TLAST': 'BAD_EOF_MON',
         'BAD_TVALID': 'BAD_LANE_MON',
-        'DISCARDED_DATA': 'DISCARDED_DATA_MON',
+        'BAD_FRAME_LENGTH': 'BAD_FRAME_LENGTH',
         'MISSING_FRAME': 'MISSING_FRAME_MON',
         'ALIGN_FIFO_OVERFLOW': 'ALIGN_FIFO_OVERFLOW_MON',
         'DATA_TIMEOUT': 'DATA_TIMEOUT_MON',
@@ -328,7 +330,7 @@ class ShuffleCrossbar(Module_base):
     def get_align_status(self):
         status = []
         err_names = ['TLAST', 'TVALID', 'DISCARD', 'MISSING','FIFO','TIMEOUT']
-        errors = self.get_lane_monitor(['BAD_TLAST', 'BAD_TVALID', 'DISCARDED_DATA', 'MISSING_FRAME', 'ALIGN_FIFO_OVERFLOW', 'DATA_TIMEOUT'])
+        errors = self.get_lane_monitor(['BAD_TLAST', 'BAD_TVALID', 'BAD_FRAME_LENGTH', 'MISSING_FRAME', 'ALIGN_FIFO_OVERFLOW', 'DATA_TIMEOUT'])
         for lane in range(len(errors[0])):
             status.append({err_names[errno]:err[lane] for (errno, err) in enumerate(errors) if err[lane]})
         return status
@@ -342,10 +344,14 @@ class ShuffleCrossbar(Module_base):
     def get_bin_sel_status(self):
         status = []
         for bs in self.BIN_SEL:
+            number_of_sublanes_per_output = self.NUMBER_OF_INPUT_LANES/bs.NUMBER_OF_OUTPUTS
+            sublane_mask = (1 << (bs.LAST_LANE + 1)) - (1 << bs.FIRST_LANE)
+            mask = sum(sublane_mask << (number_of_sublanes_per_output * i) for i in range(bs.NUMBER_OF_OUTPUTS))
+
             err = {}
-            if bs.FIFO_OVERFLOW:
+            if bs.FIFO_OVERFLOW & mask:
                 err['DFIFO'] = 1
-            if bs.FLAGS_FIFO_OVERFLOW:
+            if bs.FLAGS_FIFO_OVERFLOW & mask:
                 err['FFIFO'] = 1
             status.append(err)
         return status
@@ -396,7 +402,7 @@ class ShuffleCrossbar(Module_base):
         # align_detect = [align_detect[lane] for lane in lane_map]
         # remap_detect = self.get_lane_monitor('REMAP_DETECT')
         # print '%25s: %s' % ('IN/ALGN/REMAP DETECT', ' '.join(' %i/%i/%i' % (input_detect[lane], align_detect[lane], remap_detect[lane]) for lane in lane_range))
-        for name in [ 'MISSING_FRAME', 'DISCARDED_DATA', 'ALIGN_FIFO_OVERFLOW', 'DATA_TIMEOUT', 'BAD_TVALID', 'BAD_TLAST']:
+        for name in [ 'MISSING_FRAME', 'BAD_FRAME_LENGTH', 'ALIGN_FIFO_OVERFLOW', 'DATA_TIMEOUT', 'BAD_TVALID', 'BAD_TLAST']:
             value = self.get_lane_monitor(name)
             print '%25s: %s' % (name, ' '.join('%6s' % ('-', 'ERR!')[bool(value[lane])] for lane in lane_map))
         input_frame_ctr = []

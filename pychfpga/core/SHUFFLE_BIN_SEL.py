@@ -24,15 +24,24 @@ class SHUFFLE_BIN_SEL_base(Module_base):
     # Control bitfields
     RESET                       = BitField(CONTROL, 0, 7, doc="Reset the CH_DIST. Clears FIFO.")
     BYPASS                      = BitField(CONTROL, 0, 6, doc="When high, routes input lane 'x' directly to the output, where x in the index of this bin selector.")
+    NUMBER_OF_FRAME_FLAGS_WORDS_PER_FRAME = BitField(CONTROL, 0, 4, width=2, doc="Number of frame flags words in each incoming frame")
     FIRST_LANE                  = BitField(CONTROL, 0, 0, width=4, doc="Index of the first lane to be sent out")
     # HEADER_CAPTURE_DATA_SEL     = BitField(CONTROL, 0, 5, doc=" Select whether we capture Stream ID or timestamps.")
 
     STREAM_ID                   = BitField(CONTROL, 2, 4, width=12, doc="Stream ID to be used for tagging the output frames")
     NUMBER_OF_BINS_PER_FRAME    = BitField(CONTROL, 3, 0, width=11, doc="Number of bins extected in each incoming frame")
     FIFO_OVERFLOW_RESET         = BitField(CONTROL, 4, 7, doc="When high, resets the FIFO OVERFLOW flag.")
-    NUMBER_OF_WORDS_PER_BIN     = BitField(CONTROL, 4, 0, width=6, doc="Number of words expected in each bin. In 4-bit mode, 1 Word = 4 analog inputs")
+    NUMBER_OF_WORDS_PER_BIN     = BitField(CONTROL, 4, 0, width=7, doc="Number of words expected in each bin of the incoming frames. In 4-bit mode, 1 Word = 4 analog channels")
     NUMBER_OF_FRAMES_PER_PACKET = BitField(CONTROL, 5, 5, width=3, doc="Number of expected frames per packet. ")
     LAST_LANE                   = BitField(CONTROL, 5, 0, width=4, doc="Index of the last lane to be transmitted")
+
+    NUMBER_OF_OUTPUT_WORDS_PER_BIN = BitField(CONTROL, 6, 0, width=8, doc="Number of words generated for each bin of the transmitted frames. Is used only to populate the outgoing packet header and does not affect the actual data.")
+
+    FOUR_BITS                   = BitField(CONTROL, 7, 7, doc="1=four bit mode, 0= 8 bit mode. Is used only to populate the outgoing packet header and does not affect the actual data. ")
+    USE_OFFSET_BINARY           = BitField(CONTROL, 7, 6, doc="Is used only to populate the outgoing packet header and does not affect the actual data. ")
+    SEND_FLAGS                  = BitField(CONTROL, 7, 5, doc="Is used only to populate the outgoing packet header and does not affect the actual data. ")
+    NUMBER_OF_OUTPUT_BINS_PER_FRAME = BitField(CONTROL, 7, 0, width=5, doc="Number of bins in each outgoing frame. Is used only to populate the outgoing packet header and does not affect the actual data.")
+
 
     # Status bitfields
     FIFO_EMPTY               = BitField(STATUS, 0, 7, doc="Active high when the data FIFO is empty")
@@ -82,8 +91,8 @@ class SHUFFLE_BIN_SEL_base(Module_base):
             mask[j//8] |= (1<<(j % 8))
         # verbose = False
         # if verbose: print (bins_to_enable)
-        self.logger.debug('Configuring lane %i of the crossbar to capture %i frequency bins: %s' % ( self.instance_number, len(bins_to_enable), repr(bins_to_enable)))
-        self.logger.debug('Mask pattern is: %s' % ( ' '.join('%02X'% byte for byte in mask)))
+        self.logger.debug('%.32r: Configuring lane %i of the crossbar to capture %i frequency bins: %s' % (self.fpga, self.instance_number, len(bins_to_enable), repr(bins_to_enable)))
+        self.logger.debug('%.32r: Mask pattern is: %s' % (self.fpga, ' '.join('%02X'% byte for byte in mask)))
 
         self.write_ram(0x00, mask) # Write the bin selection mask array
 
@@ -102,9 +111,9 @@ class SHUFFLE_BIN_SEL_base(Module_base):
 
     def status(self):
         """Displays the status of SHUFFLE_BIN_SEL."""
-        self.logger.debug('--- SHUFFLE_BIN_SEL[%i] STATUS' % (self.instance_number))
-        self.logger.debug('   RESET: %i' % self.RESET)
-        self.logger.debug('   FIFO EMPTY: %i' % self.FIFO_EMPTY)
+        self.logger.debug('%.32r: --- SHUFFLE_BIN_SEL[%i] STATUS' % (self.fpga, self.instance_number))
+        self.logger.debug('%.32r:    RESET: %i' % (self.fpga, self.RESET))
+        self.logger.debug('%.32r:    FIFO EMPTY: %i' % (self.fpga, self.FIFO_EMPTY))
         # self.logger.debug('   FIFO OVERFLOW: %i' % self.FIFO_OVERFLOW)
 
 
