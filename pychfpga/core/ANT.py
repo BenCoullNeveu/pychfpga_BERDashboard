@@ -181,11 +181,11 @@ class ANT_base(object):
             self.fpga.GPIO.CHAN_CLK_SRC = 1 # uses the internal 200 MHz clock to clock the channelizer
 
         for (i, ant) in enumerate(self.ANT):
-            self.logger.debug('%.32r: Initializing channelizer #%i %s' % (self.fpga, ant.ant_number, '' if fmc_present[i] else '(No ADC board)'))
+            # self.logger.debug('%.32r: Initializing channelizer #%i %s' % (self.fpga, ant.ant_number, '' if fmc_present[i] else '(No ADC board)'))
             ant.init(fmc_present[i])
 
         if delay_table is not None:
-            self.set_delays(delay_table)
+            self.set_adc_delays(delay_table)
 
     def status(self):
         """ Displays the status of all antennas"""
@@ -194,31 +194,38 @@ class ANT_base(object):
 
         #self.ANT[1].ADCDAQ.set_divclk_phase(1) # Adjust phase of the DIVCLK signal to allow proper sampling of the deserialized words
 
-    def set_delays(self, adc_delay_table):
+    def set_adc_delays(self, adc_delay_table):
         """
-        Sets the delays for all ADC data lines using the provided array.
+        Sets the delays for all ADC data lines using the provided delay table.
 
-        ``adc_delay_table``  consists of a dictionary channel:(bit_delays,
-        bit_offsets), where bit_delays is a list of the tap value for each of
-        the ADC bits, and bit_offsets is the number of samples each bit shout
-        be delayed.
+        ``adc_delay_table`` is a dictionary where the key is a channel number and the corresponding values are the (tap_delays,
+        sample_delay), where tap_delays is a list of 8 tap delay values for each of
+        the ADC bits, and sample_offset is the number of samples acquisition is delayed after sync.
 
-        If ``adc_delay_table`` is a list of (bit_delays,bit_offsets), the delays are applied in order to channels 0,1,2 etc...
+        If ``adc_delay_table`` is a list of (tap_delays, sample_delay), the delays are applied in order to channels 0,1,2 etc...
         """
         if not isinstance(adc_delay_table, dict):
             adc_delay_table = dict(enumerate(adc_delay_table))
 
-        for ch, delay_table in adc_delay_table.items():
-            if not (npNaN in list(delay_table[1]) or npNaN in list(delay_table[0])):
-                self.ANT[ch].ADCDAQ.set_delay(delay_table)
-            else:
-                self.logger.info("Skipping channel set_delay on channel %i since NaN detected in delay table entry", ch)
+        for ch, ant in enumerate(self.ANT):
+            if ch in adc_delay_table:
+                tap_delays = adc_delay_table[ch]['tap_delays']
+                sample_delay = adc_delay_table[ch]['sample_delay']
+                clock_delay = adc_delay_table[ch]['clock_delay']
+                if (tap_delays is not None and  any(bd is None or bd < 0 for bd in tap_delays)) or (sample_delay is not None and sample_delay < 0):
+                    self.logger.warning("Skipping channel set_delay on channel %i since Invalid bit or sample delay detected in delay table entry" % ch)
+                else:
+                    ant.ADCDAQ.set_delays((tap_delays, sample_delay, clock_delay))
 
-    def get_delays(self):
+    def get_adc_delays(self):
         """
         Return the delays currently in use for all ADC data lines.
         """
-        return [ant.ADCDAQ.get_delay() for ant in self.ANT]
+        delay_table = {}
+        for ch, ant in enumerate(self.ANT):
+            (tap_delays, sample_delay, clock_delay) = ant.ADCDAQ.get_delays()
+            delay_table[ch] = {'tap_delays': tap_delays, 'sample_delay': sample_delay, 'clock_delay':clock_delay}
+        return delay_table
 
     def set_data_width(self, width):
         """

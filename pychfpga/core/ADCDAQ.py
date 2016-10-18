@@ -73,6 +73,7 @@ class ADCDAQ_base(Module_base):
     CAPTURE2_PATTERN1     = BitField(STATUS, 20, 0, width=8, doc='Captured byte')
     CAPTURE2_PATTERN2     = BitField(STATUS, 21, 0, width=8, doc='Captured byte')
     CAPTURE2_PATTERN3     = BitField(STATUS, 22, 0, width=8, doc='Captured byte')
+    CAPTURE2_PATTERN      = BitField(STATUS, 22, 0, width=32, doc='Captured word ( 4 bytes). First sample is in the MSB.')
     BIT_ERR_CTR           = BitField(STATUS, 26, 0, width=32, doc='Word containing 8 4-bit counters that track ramp bit errors.')
 
     # DRP Ports
@@ -105,31 +106,41 @@ class ADCDAQ_base(Module_base):
         else:
             raise Exception('Invalid ADCDAQ mode')
 
-    def set_delay(self, dly=([0, 0, 0, 0, 0, 0, 0, 0, 0], None)):
+    def set_delays(self, dly=([0]*8, None, None)):
         """
         Sets the data acquisition delays
         WARNING: will work only if DIVCLK is clocking (i.e. ADC not in SYNC, and BUFR/PLL not in RESET)
         WARNING:  The sample delays will be valid only after the next SYNC event.
         """
 
-        tap_delays, sample_delays = dly
+        tap_delays, sample_delay, clock_delay = dly
 
         if tap_delays is not None:
             if isinstance(tap_delays, int):
                 tap_delays = [tap_delays] * 8
-            elif len(tap_delays) > 9:
+            if len(tap_delays) > 9:
                 raise Exception('Tap Delay vector too long')
             self.write(self.get_addr('DELAY0'), tap_delays) # Set delay in registers
             self.pulse_bit('IODELAY_RESET')
 
-        if sample_delays is not None:
-            if isinstance(sample_delays, int):
-                sample_delays = [sample_delays] * 8
-            elif len(sample_delays) > 8:
-                raise Exception('Sample Delay vector too long')
-            self.SAMPLE_DELAY = sample_delays[0]
+        if sample_delay is not None:
+            if 31 < sample_delay < 0:
+                raise ValueError('Invalid sample delay')
+            self.SAMPLE_DELAY = sample_delay
+
+        if clock_delay is not None:
+            if 31 < sample_delay < 0:
+                raise ValueError('Invalid clock delay')
+            self.set_clk_delay(clock_delay)
 
 
+    def get_delays(self):
+        """ Return the curent 8 tap delays, sample delay and clock delay"""
+        tap_delays =  list(self.read(self.get_addr('DELAY0'), length=8)) # Reads the delay in registers
+        sample_delay =  self.SAMPLE_DELAY # Reads the sample delays
+        clock_delay =  self.CLK_DELAY # Reads the sample delays
+
+        return [tap_delays, sample_delay, clock_delay]
 
 
     def set_clk_delay(self, dly):
@@ -142,13 +153,6 @@ class ADCDAQ_base(Module_base):
         self.write(self.get_addr('CLK_DELAY'), dly) # Set delay in registers
         self.pulse_bit('CLK_IODELAY_RESET')
 
-
-    def get_delay(self):
-        """ Reads the 8 delay tap values and return them as an array"""
-        tap_delays =  list(self.read(self.get_addr('DELAY0'), length=8)) # Reads the delay in registers
-        sample_delays =  [self.SAMPLE_DELAY] * 8 # Reads the sample delays
-
-        return [tap_delays, sample_delays]
 
 
     def get_actual_delay(self):
@@ -175,22 +179,31 @@ class ADCDAQ_base(Module_base):
         self.MMCM_ADCCLK_DELAY = phase >> 3
         self.MMCM_RST = 0
 
-    delay = property(set_delay, get_delay)
+    delay = property(set_delays, get_delays)
 
 
-    def get_pattern(self, period=11):
+    def capture_pattern(self, period=11, number_of_samples=None):
         """
-        Captures N words samples with a periodicity of 'period'
+        Capture ``number_of_samples`` bytes from the ADC with a periodicity of ``period``.
+        If ``number_of_samples`` is None, ``period`` samples are captured.
+
+        For this method to work, the following must be done prior to the call:
+            - ADC data bit delays must  have been set
+            - SAMPLE_DELAY and CAPTURE2_PERIOD must have been set and a ``sync`` must have been issued to make sure the waveform will follow these parameters.
         """
-        self.CAPTURE2_PERIOD = period & 0xf
-        pattern = np.zeros(4 * period, np.uint8)
-        for i in range(period):
+        if number_of_samples is None:
+            number_of_samples = period
+        if period != self.CAPTURE2_PERIOD:
+            raise RuntimeError('capture_pattern: the waveform period set in ADCDAQ does not match the expected period')
+        number_of_words = (number_of_samples + 3) // 4 # round up
+        pattern = np.zeros(number_of_words, np.dtype('>u4')) # Important: The MSB bust be stores first in memory for when we convert to a byte array.
+        for i in range(number_of_words):
             #print '  Acquiring pattern for delay %i' % (dly)
             #dly=0
             self.CAPTURE2_WORD_NUMBER = i
             time.sleep(1 / 200e6 * period * 2) # make sure the data has time to be captured
-            pattern[4*i : 4*(i+1)] = self.read(self.get_addr('CAPTURE2_PATTERN0'), type=np.uint8, length=4)
-        return pattern
+            pattern[i] = self.CAPTURE2_PATTERN
+        return pattern.view(np.uint8)[:number_of_samples] # trim extra bytes in case we didn't specify a multiple of 4.
 
     def init(self, fmc_present):
         """

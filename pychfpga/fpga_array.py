@@ -77,27 +77,29 @@ class FPGABitstream(object):
         with open(self.filename, 'rb') as file_:
             self.bitstream = file_.read()
 
-# Default data and clock line delays for the two FMC boards/ML605 combination.
+# Default data
 # First 8 values are the delays for bits 0 to 7, 8th value is the delay for the clock line.
 
-ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 = (
-    ([16]*8,     [3]*8),  #CH0
-    ([7]*8,      [3]*8),  #CH1
-    ([22]*8,     [3]*8),  #CH2
-    ([19]*8,     [3]*8),  #CH3
-    ([15]*8,     [3]*8),  #CH4
-    ([14, 13, 14, 14, 13, 14, 15, 14],    [3]*8),  #CH5
-    ([18]*8,     [3]*8),  #CH6
-    ([17]*8,     [4]*8),  #CH7
-    ([15, 17, 15, 18, 17, 14, 17, 15],   [3]*8),  #CH8
-    ([16]*8,     [4]*8),  #CH9
-    ([20]*8,     [3]*8),  #CH10
-    ([18]*8,     [3]*8),  #CH11
-    ([15]*8,     [3]*8),  #CH12
-    ([18]*8,     [3]*8),  #CH13
-    ([18]*8,     [3]*8),  #CH14
-    ([16]*8,     [3]*8)  #CH15
-    )
+ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 = {
+    'valid': True,
+    'sync_delays': (4, 5),
+    0:  {'tap_delays': [16]*8,     'sample_delay': 3, 'clock_delay': 0},  #CH0
+    1:  {'tap_delays': [7]*8,      'sample_delay': 3, 'clock_delay': 0},  #CH1
+    2:  {'tap_delays': [22]*8,     'sample_delay': 3, 'clock_delay': 0},  #CH2
+    3:  {'tap_delays': [19]*8,     'sample_delay': 3, 'clock_delay': 0},  #CH3
+    4:  {'tap_delays': [15]*8,     'sample_delay': 3, 'clock_delay': 0},  #CH4
+    5:  {'tap_delays': [14, 13, 14, 14, 13, 14, 15, 14],    'sample_delay': 3, 'clock_delay': 0},  #CH5
+    6:  {'tap_delays': [18]*8,     'sample_delay': 3, 'clock_delay': 0},  #CH6
+    7:  {'tap_delays': [17]*8,     'sample_delay': 4, 'clock_delay': 0},  #CH7
+    8:  {'tap_delays': [15, 17, 15, 18, 17, 14, 17, 15],   'sample_delay': 3, 'clock_delay': 0},  #CH8
+    9:  {'tap_delays': [16]*8,     'sample_delay': 4, 'clock_delay': 0},  #CH9
+    10: {'tap_delays': [20]*8,     'sample_delay': 3, 'clock_delay': 0},  #CH10
+    11: {'tap_delays': [18]*8,     'sample_delay': 3, 'clock_delay': 0},  #CH11
+    12: {'tap_delays': [15]*8,     'sample_delay': 3, 'clock_delay': 0},  #CH12
+    13: {'tap_delays': [18]*8,     'sample_delay': 3, 'clock_delay': 0},  #CH13
+    14: {'tap_delays': [18]*8,     'sample_delay': 3, 'clock_delay': 0},  #CH14
+    15: {'tap_delays': [16]*8,     'sample_delay': 3, 'clock_delay': 0}  #CH15
+    }
 
 ADC_DELAY_TABLE = ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 #ADC_DELAYS_REV2_SN0001 ## select the table corresponding to the FMC serial number
 
@@ -975,7 +977,7 @@ class FPGAArray(object):
 
             # ib.CROSSBAR2.SOF_WINDOW_STOP = 25
             ib.BP_SHUFFLE.reset_rx_equalizers()
-            ib.REFCLK.sync() # needed
+            ib.REFCLK.local_sync() # needed
 
         # Print links
         for ib in self.ib:
@@ -1009,7 +1011,7 @@ class FPGAArray(object):
         fail=0
         for test_number in range(10):
             print 'Trial # %i: Sending SYNC pulse from Slot %02i (Iceboard SN%s)' % (test_number+1, sync_board.slot, sync_board.serial)
-            sync_board.REFCLK.sync()
+            sync_board.REFCLK.local_sync()
             for i,bb in enumerate(c):
                 new_sync_ctr = bb.REFCLK.SYNC_CTR
                 diff = (new_sync_ctr - sync_ctr[i]) & 0xF
@@ -1042,7 +1044,7 @@ class FPGAArray(object):
                 ant.ADCDAQ.BYTE_MASK = 0
 
         print 'Initiating global sync'
-        sync_board.REFCLK.sync()
+        sync_board.REFCLK.local_sync()
 
         print 'Unmasking ADC data'
         for ib in boards:

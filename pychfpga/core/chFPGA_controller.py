@@ -30,13 +30,19 @@ History:
 import logging
 import numpy as np
 import time
+import os
+import yaml
+from datetime import datetime
 
 import subprocess
 import shlex
 import tornado.gen
 import bz2
 
+
 from .icecore import async, async_return, async_sleep
+from .icecore.session import load_session as load_yaml
+
 from .icecore_ext.iceboard_ext import IceBoardExtHandler
 from chFPGA_receiver import chFPGA_receiver
 
@@ -512,10 +518,6 @@ class chFPGA_controller(IceBoardExtHandler):
 
         self._logger.info("%r: Done with initializations." % self)
 
-        #self._logger.info("Setting ADCDAQ delays.")
-
-        #if adc_delay_table:
-        #    self.ANT.set_delays(adc_delay_table)
 
         self.set_ant_reset(0) # disable antenna reset
 
@@ -583,7 +585,7 @@ class chFPGA_controller(IceBoardExtHandler):
             config.antenna_fft_bypass = self.get_FFT_bypass()
             config.antenna_fft_shift_schedule = self.get_FFT_shift()
             config.antenna_scaler_gain = self.get_gain()
-            config.antenna_adc_data_acquisition_delay_tables  = self.ANT.get_delays()
+            config.antenna_adc_data_acquisition_delay_tables  = self.ANT.get_adc_delays()
             config.FPGA_board_frequency = self.FreqCtr.read_frequency('CLK200', gate_time=0.05)
             config.CTRL_clock_frequency = self.FreqCtr.read_frequency('CTRL_CLK', gate_time=0.05)
             config.ant_clock = self.FreqCtr.read_frequency('ANT_CLK', gate_time=0.05)
@@ -624,12 +626,12 @@ class chFPGA_controller(IceBoardExtHandler):
 
     def sync(self, local=1, verbose=0):
         if verbose:
-            self._logger.info("Sync...")
+            self._logger.info("%.32r: Syncing board" % self)
         self.set_adc_mask(0) # null the ADC data before it gets to the channelizers to reduce power consumption
         if local:
             self.REFCLK.local_sync()
         else:
-            self.REFCLK.sync()
+            self.REFCLK.remote_sync()
         self.set_adc_mask(0xff) # restore full ADC data
 
     def pulse_ant_reset(self):
@@ -761,7 +763,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
     # ADC_MODE_NAMES_REVERSED = util.reverse_dict(ADC_MODE_NAMES)
 
-    def set_adc_mode(self, mode='data', channels=None):
+    def set_adc_mode(self, mode='data', channels=None, sync=True):
         """
         Sets the operating mode of the all the ADCs, sets the proper CAPTURE
         period, and sends a SYNC to actuate the change.
@@ -800,9 +802,10 @@ class chFPGA_controller(IceBoardExtHandler):
             ant.ADCDAQ.CAPTURE2_PERIOD = capture_period # set the period so we are ready to capture data correctly after the SYNC resets the CAPTURE logic
 
         # self.current_ADC_mode = mode_value
-        self.sync()  # make sure the ADC mode is set and that capture  restarts properly with the right period
+        if sync:
+            self.sync()  # make sure the ADC mode is set and that capture  restarts properly with the right period
 
-    set_ADC_mode = set_adc_mode  # For legacy code compatibility
+    # set_ADC_mode = set_adc_mode  # For legacy code compatibility
 
     def get_adc_mode(self, channels=None):
         """
@@ -1089,31 +1092,162 @@ class chFPGA_controller(IceBoardExtHandler):
         return self.GPIO.get_bitstream_date()
 
     def get_adc_delays(self):
-            return self.ANT.get_delays();
+        delay_table = self.ANT.get_adc_delays()
+        delay_table['sync_delays'] = self.REFCLK.get_sync_delays()
+        return delay_table;
 
-    def set_adc_delays(self, delay_table):
-            return self.ANT.set_delays(delay_table);
+    def set_adc_delays(self, source='default', compute_delays=1, save_delays=True, check_sync_delays=False, check_adc_delays=20, verbose=1, retry=5):
+        """
+        Set all the hardare delays (sync delays, ADC tap delays, sample_delay,
+        clock_delay) required to acheive proper data acquisition from the
+        ADCs.
 
-    def set_adc_delays_with_check(self, delay_table):
-            """
-            Sets adc delay table, check if get ramp errors,
-            and retrys to set delays till no errors or tried 10 times.
-            On 10 tries will continue but just report error.
-            """
-            ntries = 0
-            while ntries < 15:
-                delay_return = self.ANT.set_delays(delay_table)
-                err = self.check_ramp_errors()
-                if err == 0:
+        ``source``:
+            None: no source is specified. compute_delays must be > 0.
+            string: fetch the latest delays from the delay file with the tag specified in the string.
+            dict: use provided delay tables
+        ``compute_delays``:
+            0: Never compute delays. ``source`` must be a valid delay table or a tag.
+            1: Recompute delay if source is not specified or is invalid, or if errors are detected during checks
+            2: Always recompute delays, ignoring any source.
+
+        Use cases:
+            Compute, test succeed
+            Compute, test failed, retry
+            Compute, test succeed, save
+            load, test succeed
+            load, test fail, compute, test succeed, save
+            load, test fail, compute, test fail, retry compute
+        If ``delay_table`` is None, and ``tag`` is None, delays will be recomputed and will not be be saved.
+        If ``delay_table`` is None, and ``tag`` is a string, delays will be recomputed and will not be be saved.
+        If ``dalay_table`` is a dict, the delays will be set from the values from this dict.
+        If ``dalay_table`` is a string, the delays tagged by the string will be loaded from the delay files. If the string is empty, the latest valid delays will be loaded.
+
+        If ``check`` is True, the delays will be checked. If the test fails, new delays will be recomputed.
+
+        The delays are saved in the folder 'adc_delay_files/MGK7MB_SNxxx.yaml', where xxx is the serial number of the motherboard.
+
+        [ (tag, date, mezz_ids, delay_dict) ...] where
+            tag: arbitrary string identifying the set of delays. Multiple delays can be saved on the same tag.
+            date: date where the delays were saved. used to find the most recent set of delays.
+            mezz_id: string representing the model and serials of both mezzanines. Only delay table with matching mezzanine IDs are considered.
+            delay_dict: dict containingthe delay information to be applied for the mezzanines.
+        """
+        delay_table = None
+        delay_table_updated = False
+        if compute_delays < 2: # do not bother getting the source if we are going to recompute the delay table anyways
+            if isinstance(source, str):
+                delay_table = self._load_adc_delays(source)
+            elif isinstance(source, dict):
+                delay_table = source
+            else:
+                raise TypeError('Source must be either a tag from the delay file or a dict')
+            if delay_table:
+                self._set_adc_delays(delay_table)
+            if delay_table and check_sync_delays and self.REFCLK.check_sync_delays(trials=check_sync_delays, verbose=verbose):
+                delay_table = None  # invalidate the delay table if we asked to check it and found errors
+            if delay_table and check_adc_delays and self.check_ramp_errors(trials=check_adc_delays, verbose=verbose):
+                delay_table = None  # invalidate the delay table if we asked to check it and found errors
+            if delay_table is None:
+                self.logger.warning('%.32r: Provided delay table failed checks' % self)
+        if compute_delays >= 2 or (compute_delays >= 1 and not delay_table):
+            for trial in xrange(retry):
+                delay_table = self.compute_adc_delays(channels=range(16), verbose=verbose, adc_sampling_freq=800e6, compute_sync_delays=True, check_sync_delays=check_sync_delays, check_adc_delays=check_adc_delays, set_delays=False)
+                delay_table_updated = True
+                if delay_table and delay_table.get('valid', True):
                     break
-                else:
-                    self._logger.info( "{0} errors after setring delays, retrying...".format(err) )
-                ntries += 1
-            if ntries == 15:
-                self._logger.info("After setting delays still had ramp errors after 15 tries.")
-            return delay_return
+                self.logger.warning('%.32r: Computed delay table failed checks. Retrying...' % self)
 
-    def check_ramp_errors(self, delay=0.1):
+        if delay_table and delay_table.get('valid', True):
+            self._set_adc_delays(delay_table)
+            if delay_table_updated and save_delays:
+                self._save_adc_delays(delay_table, source)
+        else:
+            raise RuntimeError('Did not obtain a valid delay table.')
+
+
+    def _load_adc_delays(self, tag='default'):
+        filename = '%s.yaml' % self.get_id()
+        fullpath = os.path.join(os.path.dirname(__file__), '..', 'adc_delay_tables', filename)
+
+        print 'Loading YAML file %s' % filename
+        try:
+            with open(fullpath, 'rb') as yamlfile:
+                file_data = load_yaml(yamlfile)
+        except IOError:
+                print '%s not found' % fullpath
+                return None
+        if file_data is None:
+            return None
+        if not isinstance(file_data, list):
+            raise RuntimeError('Delay table file should be a list')
+
+        latest_delay_table = None
+        latest_date = None
+        for entry in file_data:
+            if any(key not in entry for key in ('__tag__' , '__mezzanines__', '__date__', 'delay_table')):
+                continue
+            mezzanines = {i: m.get_id() for i,m in self.mezzanine.items()}
+            if entry['__tag__'] == tag and entry['__mezzanines__'] == mezzanines:
+                date = datetime.strptime(entry['__date__'], "%Y-%m-%dT%H:%M:%S.%f")
+                if latest_date is None or date >= latest_date:
+                    latest_date = date
+                    latest_delay_table = entry['delay_table']
+        return latest_delay_table
+
+    def _save_adc_delays(self, delay_table, tag='default'):
+        if not delay_table:
+            raise ValueError('Please specify a valid delay table')
+        filename = '%s.yaml' % self.get_id()
+        fullpath = os.path.join(os.path.dirname(__file__), '..', 'adc_delay_tables', filename)
+        print 'Loading YAML file %s' % filename
+        try:
+            with open(fullpath, 'rb') as yamlfile:
+                file_data = load_yaml(yamlfile)
+        except IOError:
+                print '%s not found' % fullpath
+                file_data = []
+
+        if file_data is None:
+            file_data = []
+
+        if not isinstance(file_data, list):
+            raise RuntimeError('Delay table file should be a list')
+        mezzanines = {i: m.get_id() for i,m in self.mezzanine.items()}
+        date = datetime.utcnow().isoformat()
+
+        new_entry = dict(__date__=date, __tag__=tag, __mezzanines__=mezzanines, delay_table=delay_table)
+        print 'new entry: ', new_entry
+        file_data.append(new_entry)
+        s = yaml.safe_dump(file_data, default_flow_style=None) # make sure we raise en exception here before we start writing the file, otherwise we will lose the whole file.
+        with open(fullpath, 'wb') as yamlfile:
+            yamlfile.write(s)
+
+    def _set_adc_delays(self, delay_table):
+            sync_delays = delay_table.get('sync_delays', None)
+            self.REFCLK.set_sync_delays(sync_delays)
+            self.ANT.set_adc_delays(delay_table);
+
+    # def set_adc_delays_with_check(self, delay_table):
+    #         """
+    #         Sets adc delay table, check if get ramp errors,
+    #         and retrys to set delays till no errors or tried 10 times.
+    #         On 10 tries will continue but just report error.
+    #         """
+    #         ntries = 0
+    #         while ntries < 15:
+    #             delay_return = self.ANT.set_adc_delays(delay_table)
+    #             err = self.check_ramp_errors()
+    #             if err == 0:
+    #                 break
+    #             else:
+    #                 self._logger.info( "{0} errors after setring delays, retrying...".format(err) )
+    #             ntries += 1
+    #         if ntries == 15:
+    #             self._logger.info("After setting delays still had ramp errors after 15 tries.")
+    #         return delay_return
+
+    def check_ramp_errors(self, delay=0.1, trials=10, verbose=1):
         """
         Puts all ADCs in ramp mode and checks if the acquired data from each
         channel is the expected ramp using the ADCDAQ's firmwae ramp checker.
@@ -1124,90 +1258,135 @@ class chFPGA_controller(IceBoardExtHandler):
         """
         old_adc_mode = self.get_adc_mode()
         self.set_adc_mode('ramp')
-        self.sync()  # This automatically clears the error counter
-        time.sleep(delay)
-        word_error=[]
-        for (i, ant) in self.ANT.items():
-            word_error.append(ant.ADCDAQ.RAMP_ERR_CTR)
-            # ant.ADCDAQ.RAMP_ERR_CLEAR = 0
-            # ant.ADCDAQ.RAMP_ERR_CLEAR = 1
-        word_errors = sum(word_error)
+        word_errors=[]
+        if verbose:
+            print 'ADC Delay checks for %r' % (self)
+        for trial in xrange(trials):
+            if verbose:
+                print 'Trial #%2i' % (trial + 1),
+            self.sync()  # This automatically clears the error counter
+            time.sleep(delay)
+            for (i, ant) in self.ANT.items():
+                e = ant.ADCDAQ.RAMP_ERR_CTR
+                if e == 1: e = 0  # we still sometimes get one (and only one) spurious error count just after sync. There is probably still a firmware problem. We'll ignore it by software.
+                be = ant.ADCDAQ.BIT_ERR_CTR  # bit error counters
+                word_errors.append(e)
+                # ant.ADCDAQ.RAMP_ERR_CLEAR = 0
+                # ant.ADCDAQ.RAMP_ERR_CLEAR = 1
+                if verbose:
+                    print '%2i (%08X) ' % (e, be),
+            print
         self.set_adc_mode(old_adc_mode)
-        self.sync()
-        return word_errors
+        return sum(word_errors)
 
-    def read_eye_diagram(self, channels=[0], offset=5, noffsets=3):
+    def capture_adc_eye_diagram(self, channels=range(16)):
         """
         Measures the eye diagram of the ADC digital data lines using the ADCDAQ capture feature.
-        By default takes data at 3 offset locations (0,1,2), but can measure more
+        Return a N_channels x 32 x 11 byte array
         """
         old_delays = self.get_adc_delays()
         old_adc_mode = self.get_adc_mode(channels=channels) # make sure we don't access boards not on the channel list: they may be powered off
-        self.set_adc_delays([[ [0]*8, [0]*8]] * 16); # Set all sampling delays and offsets to zero
-        self.set_adc_mode('pulse', channels=channels) # generate pulse pattern
+        for ch in channels:
+                self.ANT[ch].ADCDAQ.set_delays((None, 0, 0))  # set all sample delays to zero before sync
+        self.set_adc_mode('pulse', channels=channels, sync=True) # generate pulse pattern and sync
+        period = 11  # The pulse waveform repeats every 11 samples
         for i in range(1):
             self.sync()
-        data={}
-        for ch in channels:
-            d = np.zeros((32, noffsets), dtype=np.uint8)
-            self._logger.info('%.32s: Reading channel %i.' % (self, ch))
-            adcdaq = self.ANT[ch].ADCDAQ
+        data = np.zeros((len(channels), 32, period), np.uint8)
 
+        for i, ch in enumerate(channels):
+            # d = np.zeros((32, 11), dtype=np.uint8) # 32 delays x 11 offsets
+            # self._logger.info('%.32s: Reading channel %i.' % (self, ch))
+            adcdaq = self.ANT[ch].ADCDAQ
             for dly in range(32):
-                adcdaq.set_delay((dly, None))
-                d[dly, :] = self.ANT[ch].ADCDAQ.get_pattern(period=11)[offset[ch]:offset[ch] + noffsets];
-            data[ch] = d
-        self.set_adc_delays(old_delays) # restore original delays before the function was called
+                adcdaq.set_delays(([dly]*8, None, None))  # Set delay, don't change sample delay. No need to sync because sample delay not changed.
+                data[i, dly, :] = adcdaq.capture_pattern(period=11);
+        self._set_adc_delays(old_delays) # restore original delays before the function was called
         self.set_adc_mode(old_adc_mode, channels=channels)
         return data
 
-    def compute_adc_delays(self, channels=[0], offset=[2, 3, 3, 3, 3, 3, 3, 3, 4, 3, 3, 3, 3, 3, 3, 3], print_results=True):
+    def compute_adc_delays(self, channels=range(16), verbose=True, adc_sampling_freq=800e6, compute_sync_delays=True, check_sync_delays=True, check_adc_delays=True, set_delays=True):
         """
         Measures the eye diagram of the ADC digital data lines and computes the optimum delays to ensure reliable data acquisition.
+
+        This will work only if the sync delays are set properly.
         """
 
-        current_delay = self.get_adc_delays()
-        data = self.read_eye_diagram(channels, offset=offset)
-        n = np.zeros((16, 3), dtype=np.uint8)
-        delays={}
+        old_delays = self.get_adc_delays()
+        # n = np.zeros((16, 11), dtype=np.uint8)
+        new_delays = {}
 
-        for ch in channels:
+        tap_delay = 1 / 200e6 / 32 / 2
+        pulse_period = int((1 / adc_sampling_freq) / tap_delay) # 800 MHz period in tap delays (16 taps)
+
+        if compute_sync_delays:
+            sync_delays = self.REFCLK.compute_sync_delays(adc_clock_freq=adc_sampling_freq/2, set_sync_delays=True, verbose=verbose)
+        else:
+            sync_delays = self.REFCLK.get_sync_delays()
+        new_delays['sync_delays'] = sync_delays
+
+        if check_sync_delays:
+            sync_invalid = self.REFCLK.check_sync_delays(trials=10, adc_clock_freq=adc_sampling_freq/2,  verbose=verbose)
+        else:
+            sync_invalid = None
+
+        data = self.capture_adc_eye_diagram(channels) #  N_chan x 32 x 11 array
+
+        for i, ch in enumerate(channels):
+
+            # first, find the offset for which the smallest number of '1' bits for every bit is as high as possible
+            q = np.array([ ((data[i] & (1 << bit)) !=0).sum(axis=0) for bit in range(8)]).min(axis = 0)  # smallest number of '1' for each possuble bit, for each offset
+            offset = q.argmax() # offset that has the largest number of '1's
+            print 'CH%02i: offset=%2i : %s' % (ch, offset, q)
+
+            n = data[i, :, offset]  # extract the samples for the current channel and selected offset, byt keep all 32 delays
+
+            # Now find the optimal delay for each bit
+            computed_delay = np.zeros(8, dtype=np.uint8)
             for bit in range(8):
                 mask = 1 << bit
-                n[bit, :] = np.sum((data[ch] & mask) / mask, axis=0)
-            #self._logger.info('n is ', n)
+                d = (n & mask) >> bit
+                s = (d.astype(np.int8) + ord('0')).tostring() # Convert to a string of "1" and "0"s so we can use the 'find' method. before doing that, make sure this is an int8 array otherwise we'll get more than one char per value...
+                re = s.find('0111')
+                fe = s.find('1110')
+                # print s,re,fe
+                if re >= 0 and fe >= 0 and fe > re: # if we have both a rising edge
+                    delay = (fe + 2 + re + 1) / 2
+                elif re >= 0: # if we have a rising edge only
+                    delay = min(re + 1 + pulse_period / 2 - 1, 31)  # 4 samples after the rising edge, but stop at max delay. -1 to be closer to the known good edge.
+                elif fe >= 0:
+                    delay = max(fe + 3 - pulse_period / 2 - 1, 0)
+                else:
+                    delay = -1  # invalid delay
+                # computed_delay[bit] = np.sum(d*range(32)) / np.sum(d)
+                computed_delay[bit] = delay
 
-            n_min = np.min(n, axis=0) # minimum number of delay values that allowed the pulse in each slot
-            N = np.argmax(n_min) # slot with the maximum number of possible delays for all bits
-            N = 1
-            self._logger.info('%r: Aligning bits on sample #%i' % (self, N))
 
-            self._logger.info('%r: CHANNEL %i' % (self, ch))
-            if print_results:
-                    print('CHANNEL %i (delay = %i)' % (ch, offset[ch]))
-            computed_delay = np.zeros(8, dtype=np.uint8)
-            for bit_number in range(8):
-                mask = 1 << bit_number
-                d = (data[ch][:, 0] & mask) / mask
-                computed_delay[bit_number] = np.sum(d*range(32)) / np.sum(d)
                 bit_string = ''
                 for delay in range(len(d)):
-                    if delay == current_delay[bit_number]:
-                        bit_string += 'X'
-                    elif delay == computed_delay[bit_number]:
+                    if delay == computed_delay[bit]:
                         bit_string += '!O'[d[delay]]
                     else:
                         bit_string += '.#'[d[delay]]
-                s = 'Bit %i: %s Delay = %2i' % (bit_number, bit_string, computed_delay[bit_number])
-                if print_results:
+                s = 'Bit %i: %s Delay = %2i   (rise @ %2i, fall @ %2i)' % (bit, bit_string, computed_delay[bit], re+1, fe+2)
+                if verbose:
                         print s
-                self._logger.info(s)
+                # self._logger.info(s)
 
-            delays[ch]=computed_delay
-        return delays
+            new_delays[ch] = {'tap_delays': computed_delay.tolist(), 'sample_delay': int((offset + 3) % 11), 'clock_delay': 0}
 
-    compute_delays = compute_adc_delays # For legacy software compatibility
+        self._set_adc_delays(new_delays)
 
+        if check_adc_delays:
+            data_invalid = self.check_ramp_errors(trials=check_adc_delays, verbose=verbose)
+        else:
+            data_invalid = None
+        new_delays['valid'] = not (sync_invalid or data_invalid)
+
+        if not set_delays:
+            self._set_adc_delays(old_delays)
+
+        return new_delays
 
 
     def compute_adc_delay_offsets(self, channels=range(16)):
@@ -1255,9 +1434,6 @@ class chFPGA_controller(IceBoardExtHandler):
             # if offset < 0:  # An untested wrap around conddition (Adam 12/12/2014)
             #     offset = offset + 11
 
-            if offset>4:
-                print 'offset=', offset
-                print t
             delaytable[chan]= (bitdelay, [offset]*8)  # Building the delay table
             bitposgood[chan] = changood  # Building the eye diagram good table
 
@@ -1293,7 +1469,7 @@ class chFPGA_controller(IceBoardExtHandler):
             ofset_sync_delay = opt_sync_delay
             while (trycounter < retries and not goodsolution):
 
-                self.REFCLK.set_sync_delay(ofset_sync_delay)
+                self.REFCLK.set_sync_delays(ofset_sync_delay)
                 check = self.read_eye_diagram(channels=channels, offset=[0]*16, noffsets=11)
 
                 goodsolution = 1
@@ -1343,7 +1519,7 @@ class chFPGA_controller(IceBoardExtHandler):
                 or (mezz2_serial!=None and mezz2_serial!=dict_mezz2_serial):
                 raise ValueError('Cannot use this adc table - hardware is not the same')
 
-            self.REFCLK.set_sync_delay(opt_sync_delay)
+            self.REFCLK.set_sync_delays(opt_sync_delay)
             self.set_adc_delays(d1)
 
             measuredloc=dict()

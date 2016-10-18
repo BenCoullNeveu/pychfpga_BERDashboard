@@ -63,8 +63,8 @@ class REFCLK_base(Module_base):
 
     def init(self):
         # Sets the REFCLK delay to zero by default.
-        self.set_refclk_delay(0)
-        self.set_sync_delay(1)
+        # self.set_refclk_delay(0)
+        self.set_sync_delays(1)
         self.logger = logging.getLogger(__name__)
         # If the board is not present, disable SYNC detection on REFCLK to prevent noise on the floating REFCLK lien to generate spurioys resets.
         # self.ENABLE_SYNC_DETECTION = 1
@@ -98,10 +98,10 @@ class REFCLK_base(Module_base):
                 return source_name
         raise ValueError('The REFCLK module has an unknown SYNC source')
 
-    def sync(self, delay=None):
-        if delay is not None:
-            self.set_sync_delay(delay)
-        self.set_refclk_delay(self.sync_delay)
+    def remote_sync(self, delay=None):
+        """
+        """
+        self.set_sync_delays(delay)
         self.pulse_bit('REMOTE_SYNC')
         self.wait_for_bit('SYNC_DONE')
 
@@ -113,25 +113,31 @@ class REFCLK_base(Module_base):
             If delay=None or is omited, the previous SYNC timing will be used.
             If delay is an integer between 0 and 31, the timing delay is set to that value.
         """
-        if delay is None:
-            self.set_refclk_delay(self.sync_delay)
-        else:
-            self.set_sync_delay(delay)
-            self.set_refclk_delay(delay)
+        self.set_sync_delays(delay)
         # self.pulse_bit('LOCAL_SYNC') # Force the REFCLK state machine to initiate a SYNC event
         self.LOCAL_SYNC = 1
         self.LOCAL_SYNC = 0
         self.wait_for_bit('SYNC_DONE') # Wait until the SYNC process is completed
 
-    def set_sync_delay(self, delay):
+    def set_sync_delays(self, delay):
         """
         Sets the delay of the SYNC pulse relative to the Reference Clock. Valid range is 0-31.
+        The delay is stored in an internal variable and is used to set the REFCLK delay prior to generate SYNC events.
+
+        If delay is None, the REFCLK delay is set to the stored sync_delay.
         """
-        self.set_refclk_delay(delay)
-        self.sync_delay = self.get_refclk_delay()  # Save the current delay value
+        if delay is None:
+            self.set_refclk_delay(self.sync_delay)
+
+        else:
+            self.set_refclk_delay(delay)
+            self.sync_delay = self.get_refclk_delay()  # Save the current delay value
 
         #if set_sync_delay was called with -1 we didn't actually set anything so the saved value
         #shouldnt be -1 it should be what ever is actually used
+
+    def get_sync_delays(self):
+        return self.sync_delay
 
     def get_refclk_delay(self):
         """
@@ -156,119 +162,88 @@ class REFCLK_base(Module_base):
             self.REFCLK1_DELAY = d1
         self.pulse_bit('REFCLK_DELAY_RST')
 
-    def acquire_adc_clock_waveform(self, channels=range(16),  sleep=0.005):
+    def acquire_adc_clock_waveforms(self, channels=range(16)):
         """
-        Measures the waveform of the 400 MHz ADC input clock forthe specifid ADC channels.
-        This is done by sweeping the delay on the 10 MHz reference clock and sampling the ADC clock signal in that delayed clock for every delay value.
+        Measures the waveform of the 400 MHz ADC input clock for the specifid ADC channels.
+        This is done by sweeping the delay on the 10 MHz reference clock and sampling the ADC clock signal on the rising edge of that delayed clock.
         32 samples are taken over total delay of 2.5 ns (78.125 ps/sample). The acquisition therefore spans the full period of a 400 MHz signal, and it is graranteed that a transition will be observed.
 
-        'sleep' indicates how much time to wait between samples are taken.
-
-        The method returns a numpy array of Nx32 integers. First dimension is the ADC number, second dimension is the delay.
+        The method returns a N x 32 numpy array (first dimension (row) is the channel, second dimension is the sample for each of the 32 tap delays).
         """
-        # tap_delay = 1/200e6/32/2
         old_refclk_delay = self.get_refclk_delay()
-        number_of_channels = max(channels) + 1
-        samples = np.zeros((number_of_channels, 32), np.int8) # prepare an empty array that wil lcontain the clock sample values for all ADCs and all delay values.
+        waveforms = np.zeros((len(channels), 32)) # prepare an empty array that will contain the ADC clock waveform for each channel
+        # self.fpga.ANT[channels[0]].ADCDAQ.wait_for_bit('FIFO_EMPTY', target_value=0) # Make sure the ADCDAQ SYNC process is completed
         for delay in range(32):
             self.set_refclk_delay(delay)
-            time.sleep(sleep)
-            for ch in channels:
-                samples[ch][delay] = self.fpga.ANT[ch].ADCDAQ.ADC_CLK_SAMPLE
-
+            time.sleep(0.002)
+            for i, ch in enumerate(channels):
+                waveforms[i][delay] = self.fpga.ANT[ch].ADCDAQ.ADC_CLK_SAMPLE
         self.set_refclk_delay(old_refclk_delay)  # Return the reference clock delay to a known state
-        return samples
+        return waveforms
 
-    def print_bit_vector(self, samples, mark):
-        print self.bit_vector_to_string(samples, mark)
+    def find_rising_edges(self, waveforms, period=32, stable_time=None):
+        """
+        Find the location of the rising edge of each waveform in ``waveforms``
+        by searching for a stable rising edge, or if not is found, a stable
+        falling edge to which an offset is added to point towards the expected
+        location of the rising edge.
 
-    def bit_vector_to_string(self, samples, mark):
+        ``waveform`` must be a (Nx S) numpy array, where N is the
+        number of channels, and S is the number of samples in the waveform.
+        Each element of the waveform is an integers (1 or 0s).
 
-        bitstring = ''
-        for i in range(len(samples)):
-            if i == mark:
-                bitstring += '!'
+        The position of the rising edge is an integer modulo 'period'. It is
+        therefore necessarily between 0 and ``period-1``, but might be larger than
+        the number of samples in the waveform if the period is longer than the
+        waveform.
+
+        Returns a numpy single-dimension vector of floats of the rising edge position for
+        waveform. If no valid rising or falling edge is found for a waveform,
+        NaN is returned for that channel (hence the use of a float array).
+        """
+        if stable_time is None:
+            stable_time = period / 8
+        stable_time = int(stable_time)
+
+        rising_edges = np.zeros(waveforms.shape[0]) # make sure the returned value is always an Int
+        for i, waveform in enumerate(waveforms): # for each row
+            s = (waveform.astype(np.int8) + ord('0')).tostring() # Convert to a string of "1" and "0"s so we can use the 'find' method. before doing that, make sure this is an int8 array otherwise we'll get more than one char per value...
+            re = s.find('0' + '1' * stable_time)
+            fe = s.find('1' * stable_time + '0')
+            if re >= 0:
+                rising_edges[i] = (re + 1) % period
+            elif fe >= 0:
+                rising_edges[i] = (fe + stable_time + period/2.0) % period
             else:
-                bitstring += ('.','#')[bool(samples[i])]
-        return bitstring
-
-    # def compute_phase(self, s, freq=400e6, dt=1/200e6/32/2):
-    #     r""" Compute the phase of a periodic signal by providing a vector of
-    #     samples of that clock.
-
-    #     The vector 's' is a Boolean array.
-
-    #     The returned value is the sample number corresponding if the estimated
-    #     rising edge of the signal (assuming a 50% duty cycle)
-    #     """
-    #     rad_per_sample = dt/(1/freq)*2*np.pi;
-    #     phi = np.arange(len(s))*rad_per_sample  # phase corresponding to each sample
-    #     #s=2*s-1 # convert array into -1 or +1
-    #     s *= 1.0
-    #     v = np.average(s*np.cos(s*phi)+1j*np.sin(s*phi))
-    #     if abs(v) < 2/np.pi/4:
-    #         self.logger.warning('Warning: bad signal to noise in determining phase of ADC_CLK')
-    #     delay = np.mod((np.angle(v)/(2*np.pi))*32, 32) # substract a quarter of cycle to get the rising edge position assuming a 50% duty cycle
-
-    #     return delay
+                rising_edges[i] = np.NaN
+        return rising_edges
 
 
-
-    def find_edges(self, s, min_step=.5, stable_time=4, edge_type='both'):
+    def find_centers(self, edge_map, threshold=4):
+        """ For each column of ``edge_map``, find the centers of runs of 0s longer than ``threshold`` that are bounded by '1's.
         """
-        Finds the position of all positive or negative edges of amplitude
-        'min_step' followed by 'stable_time' samples where such a transition does
-        not occur.
-        """
+        centers = []
+        for edges in edge_map.T:
+            pos_ones = np.nonzero(edges)[0]
+            if len(pos_ones) < 2: # we don't have 2 edges, can't compute
+                pos = []
+            else:
+                run_length = np.diff(pos_ones)
+                # i = np.argmax(run_length)  # index_of_longest_run
+                i = np.where(run_length >= threshold)[0]  # indices of where  run_length > threshold
+                pos = [(pos_ones[ii] + pos_ones[ii + 1] + 1) // 2 for ii in i] # compute the centers. We add 1 so we are a bit firther from the end of the run than the beginning.
+            centers.append(pos)
+        return centers
 
-        s = s * 1.0  # Convert array to float array
-        if edge_type == 'both':
-            ds = (np.abs(np.diff(s)) > min_step)
-        elif edge_type == 'pos':
-            ds = (np.diff(s) > min_step)
-        elif edge_type == 'neg':
-            ds = (np.diff(s) < - min_step)
-        else:
-            raise ValueError('Wrong type of edge wa specified')
-        ds = ds * 2 - 1  # Convert Boolean to +1 or -1 values for correlation
-        w = np.hstack(([1], [-1] * stable_time))  # Compute a window
-        p = np.correlate(ds, w, mode='valid')
-        return np.where(p == len(w))[0] + 1
-
-    def find_rising_edge(self, s, period=32,  stable_time=2):
-        """ Find the position of the first stable rising edge of the signal.
-        If only falling edges are detected,  compute the position of next
-        rising edge based on the first fallign edge and the signal period.
-
-        """
-        pos_edges = self.find_edges(s, min_step=0.5, stable_time=stable_time, edge_type='pos')
-        if len(pos_edges):
-            return pos_edges[0] % period
-        neg_edges = self.find_edges(s, min_step=0.5, stable_time=stable_time, edge_type='neg')
-        if len(neg_edges):
-            return (neg_edges[0]+int(period/2.0)) % period
-        raise RuntimeError('Could not find any edge')
-
-    def unwrap(self, v, step, threshold=None):
-        """
-        Removes jumps of +/-step. If not specified, 'threshold' is 'step/2'.
-        """
-        if threshold is None:
-            threshold = step/2.0
-        ds = np.hstack(([0], np.diff(v*1.0)))
-        vv = v - np.cumsum((np.abs(ds) >= threshold)*np.sign(ds)*step)
-        return vv
-
-
-    def compute_sync_delay(self, channels=[0, 4, 8, 12], sleep=0.001, repeat=1, delays=range(32), plot_adc=None, adc_clock_freq=400e6, set_sync_delays=False):
+    def compute_sync_delays(self, channels=[0, 4, 8, 12], adc_clock_freq=400e6, set_sync_delays=False, verbose=1, sync_sleep=0.010):
         """
         Compute and optionnally set the recommended ADC SYNC pulse timing to
         ensure that it will meet the ADC timing requirments and produce
-        reproducible data acquisition timing relative to the 10MHz systrem
+        reproducible data acquisition timing relative to the 10MHz system
         reference clock.
 
         This is done by sweeping the timing of the SYNC pulse over a range of
-        2.5 ns in 32 steps (78.125 ps steps) and by measuring the 400 MHz ADC
+        2.5 ns in 32 steps (78.125 ps per step) and by measuring the 400 MHz ADC
         data clock waveform for each sync delay value.
 
         Phase discontinuities will be seen where the timing requirments is not
@@ -289,123 +264,107 @@ class REFCLK_base(Module_base):
                selection mux control bit must also be set to use the bypassed
                input.
         """
-        current_sync_delays = self.sync_delay # Save the current delay value
-        tap_delay = 1/200e6/32/2
-        adc_clock_period_in_taps = (1/adc_clock_freq)/tap_delay
-        number_of_channels = max(channels) + 1
-        taps_per_adc_input_clock = (1/1600e6) / tap_delay
-        samples = []
+        old_sync_delays = self.get_sync_delays() # Save the current delay value
+        tap_delay = 1 / 200e6 / 32 / 2
+        adc_data_clock_period = int((1 / adc_clock_freq) / tap_delay) # 400 MHz period in tap delays
+        adc_input_clock_period = int((1 / 1600e6) / tap_delay) # 1600 MHz period in tap delays
 
-        if isinstance(delays, int):
-            delays = [delays]
-        number_of_sync_delays = len(delays)
-
-
-        #Here we figure out which ADC chips 0 -> 3 belong to which channels
-        #There might be a python one liner than can genrate this same result
-        whichadc = [0, 0, 0, 0, 1, 1, 1, 1, 2, 2, 2, 2, 3, 3, 3, 3]
-        checkadc = [False, False, False, False]
-        for adc in range(4):
-            if adc in [whichadc[i] for i in channels]:
-                checkadc[adc]=True
-
-        if plot_adc is not None:
-            import matplotlib.pyplot as plt
-            plt.figure(1)
-            plt.clf()
-            plt.hold(1)
-            plt.axis([0, 3*32, min(delays)-1, max(delays)+1])
-            plt.xlabel('Time (tap delays, repeated 3 times)');
-            plt.ylabel('Sync delay (tap delays)');
-            plt.title('ADC%i clock waveform as a function of ADC_SYNC timing delay' % plot_adc)
-
-        rising_edge = np.ones((number_of_channels, number_of_sync_delays))*np.nan  # One rising_edge for each ADC channel number
-
-        for sync_delay in delays:
-            print 'Sync delay %2i:' % (sync_delay),
+        #  Measure the ADC clock waveform for each of the 32 possible sync delays
+        waveforms = np.zeros((32, len(channels), 32))  # 32 sync delays x N channels x  32-sample waveform/channel
+        rising_edges = np.zeros((32, len(channels)))  # 32 rows for sync delays, N columns for channels
+        for sync_delay in range(32):
             self.local_sync(sync_delay)
-            samples = self.acquire_adc_clock_waveform(channels=channels, sleep=sleep) # Measure the ADC clock waveform for all ADCs
-            for ADC_number in channels:
-                rising_edge[ADC_number][sync_delay] = self.find_rising_edge(samples[ADC_number], period=adc_clock_period_in_taps)
-                mark = rising_edge[ADC_number][sync_delay]
-                bitstring = self.bit_vector_to_string(samples[ADC_number], mark)
-                print 'ADC%2i: %s ' % (ADC_number, bitstring),
-            print
-            if plot_adc is not None:
-                extended_samples = np.hstack((samples[plot_adc], samples[plot_adc], samples[plot_adc]))
-                plt.plot((extended_samples-.5)*.5 + sync_delay, 'k-')
-                plt.plot([rising_edge[plot_adc][sync_delay]+adc_clock_period_in_taps], [sync_delay], 'go')
-                plt.draw()
+            time.sleep(sync_sleep)
+            waveforms[sync_delay] = self.acquire_adc_clock_waveforms(channels=channels) # Measure the ADC clock waveform for all ADCs
+            rising_edges[sync_delay] = self.find_rising_edges(waveforms[sync_delay], period=adc_data_clock_period) # Find the position of the rising edge for the ADC clock waveform for each channel
 
-        print
-        print 'Channel-wise Computed SYNC delays'
-        sync_delays = np.ones(number_of_channels)*np.nan
-        for ch in channels:
-            print 'ADC%2i:' % (ch),
-            rising_edge[ch] = self.unwrap(rising_edge[ch], step=adc_clock_period_in_taps, threshold=adc_clock_period_in_taps*3/4) + adc_clock_period_in_taps  # removes jumps greater than 16
-            # rising_edge[ch] -= min(rising_edge[ch])
-            phase_jumps = self.find_edges(rising_edge[ch], min_step=3, stable_time=4)
-            print 'Phase jumps found at delays (%s)' % phase_jumps,
-            if len(phase_jumps) < 1:
-                print 'Insufficient number of ADC_CLK phase jumps edges to determine SYNC timing'
+        # Now find where phase jump occur on the waveform for each channel
+        phases = 2 * np.pi * rising_edges / adc_data_clock_period
+        delta_phases = np.diff(phases, axis=0)
+        delta_phases = np.arctan2(np.sin(delta_phases), np.cos(delta_phases))  # compute the smallest angle between the 2 angles while correctly dealing with wraparounds (e.g. 0 and 31 are separated by 1, not 31)
+        # we then create a vector that has '1' where large phase transision occur
+        jumps = (np.abs(delta_phases) > 2 * np.pi / adc_data_clock_period * adc_input_clock_period / 2) * 1
+        centers = self.find_centers(jumps, threshold=adc_input_clock_period/2)
+
+        # Gather the sync delays for each ADC board
+        adc_board_sync_delays = [[], []]
+        for i, ch in enumerate(channels):
+            adc_board_sync_delays[ch // 8].extend(centers[i])
+
+        # Average the delays
+        adc_board_average_sync_delays = [[], []]
+        for i, adc_board_sync_delay in enumerate(adc_board_sync_delays):
+            if adc_board_sync_delay:
+                a = np.array(adc_board_sync_delay) * 2 * np.pi / adc_input_clock_period
+                adc_board_average_sync_delays[i] = int(np.round(np.arctan2(np.sum(np.sin(a)), np.sum(np.cos(a))) / 2 / np.pi * adc_input_clock_period)) % adc_input_clock_period
             else:
-                sync_delays[ch] = phase_jumps[0] + round(taps_per_adc_input_clock/2) - 1# place sync at what we estimate half way the first measured phase jump and the estimated second phase jump
-                print ' Recommended sync_delay: %i' % int(round(sync_delays[ch]))
+                adc_board_average_sync_delays[i] = None
 
-        print
-        print 'ADC-chip--wise Computed SYNC delays'
-        adc_sync_delays = np.ones(4)*np.nan
-        for adc_chip in range(4):
-            if checkadc[adc_chip]:
-                adc_sync_delays[adc_chip] = round(np.average([sync_delays[ch] for ch in channels if 4*adc_chip <= ch <= 4*adc_chip+3]))
-                print 'ADC Chip #%i: sync delay: %i' % (adc_chip, adc_sync_delays[adc_chip])
-
-        print
-        print 'Mezzanine-wise SYNC delays'
-        mezz_sync_delays = -np.ones(2, dtype=int)
-        for mezz in range(2):
-            if checkadc[mezz*2] or checkadc[mezz*2+1]:
-                mezz_sync_delays[mezz] = round(np.average([sync_delays[ch] for ch in channels if 8*mezz <= ch <= 8*mezz+7]))
-                print 'Mezzanine #%i sync delay: %i' % (mezz, mezz_sync_delays[mezz])
-
-        print
-        print "ADC Clock phase shifts ('|' marks computed optimal sync delay)"
-        for ch in channels:
-            s = list(''.join([('#-' if edge else '##') for edge in np.abs(np.diff(rising_edge[ch])) > 3]))
-            s[2 * int(mezz_sync_delays[ch//8])] = '|'
-            print 'CH%02i: %s' % (ch, ''.join(s))
-
-        if plot_adc is not None:
-            plt.plot(rising_edge[plot_adc], range(number_of_sync_delays), 'bo-')
-            for mezz in range(2):
-                if checkadc[mezz*2] or checkadc[mezz*2+1]:
-                    plt.plot([0, 3*32], [mezz_sync_delays[mezz]]*2, 'ro-')
-            plt.figure(2)
-            plt.clf()
-            plt.hold(1)
-            plt.axis([0, 32, min(channels)-1, max(channels)+1])
-            plt.gca().invert_yaxis()
-            ymin, ymax = plt.gca().get_ylim()
-            plt.gca().yaxis.set_ticks(np.arange(ymin, ymax, -1))
-            plt.xlabel('Sync delay');
-            plt.ylabel('Channel number');
-            plt.title('Location of ADC data clock phase jumps as a function of ADC_SYNC timing delay')
-            for ch in channels:
-                w = np.cumprod(np.append([1], (np.abs(np.diff(rising_edge[ch])) <= 3)*2-1))
-                x = np.arange(number_of_sync_delays)
-                plt.fill_between(x, w*0.4 + ch, -w*0.4 + ch, interpolate=True)
-            for mezz in range(2):
-                if checkadc[mezz*2] or checkadc[mezz*2+1]:
-                    ch = [c for c in channels if mezz*8 <= c <= mezz*8+7]
-                    plt.plot([mezz_sync_delays[mezz]]*2, [min(ch), max(ch)], 'ro-')
-            plt.draw()
+        if verbose:
+            print 'ADC Clock waveform for %r' % self.fpga
+            for sync_delay in range(32):
+                print 'Sync delay %2i:' % (sync_delay),
+                for i, ch in enumerate(channels):
+                    bitstring = bytearray((waveforms[sync_delay][i].astype(np.int8) + ord('0')).tostring() + (' '*(adc_data_clock_period-32)))  # pad in case there the clock period is longer than 32
+                    if rising_edges[sync_delay, i] is not np.NaN:
+                        edge_pos = int(rising_edges[sync_delay, i])
+                        if bitstring[edge_pos] == ord('1'):
+                            bitstring[edge_pos] = '!' #  we converted the string to bytearray so we could do assignments like this
+                        else:
+                            bitstring[edge_pos] = '?'
+                        jump_flag = '>' if sync_delay in centers[i] else '-' if sync_delay<31 and jumps[sync_delay,i] else ' ';
+                    print 'CH%02i %3.0f %s: %s ' % (ch, rising_edges[sync_delay, i], jump_flag, bitstring),
+                print
+            print '   ADC boards average sync delays:', adc_board_average_sync_delays
 
         if set_sync_delays:
-            self.set_sync_delay(mezz_sync_delays)
+            self.set_sync_delays(adc_board_average_sync_delays)
         else:
-            self.set_sync_delay(current_sync_delays) # If not set sync delays, leave current value
+            self.set_sync_delays(old_sync_delays)
+        # return (rising_edges, phases, delta_phases, jumps, centers, adc_board_sync_delays, adc_board_average_sync_delays)
+        return adc_board_average_sync_delays
 
-        return mezz_sync_delays
+    def check_sync_delays(self, sync_delay=None, channels=[0, 4, 8, 12], trials=10, adc_clock_freq=400e6, sync_sleep=0.010, verbose=True):
+        """
+        Verify that the ADC clock waveforms are stable when measured after
+        syncing the ADCs ``trials`` times.
+
+        Returns the number of detected phase jumps for all specified ADCs
+        combined. A value of zero means that the SYNC alignment is adequate.
+        """
+        old_sync_delays = self.get_sync_delays() # Save the current delay value
+        tap_delay = 1 / 200e6 / 32 / 2
+        adc_data_clock_period = int((1 / adc_clock_freq) / tap_delay) # 400 MHz period in tap delays
+        adc_input_clock_period = int((1 / 1600e6) / tap_delay) # 1600 MHz period in tap delays
+
+        errors = 0
+        self.set_sync_delays(sync_delay)
+        last_rising_edges = None
+        if verbose:
+            print 'Sync delay checks for %r' % (self.fpga)
+            print 'ADC Clock waveform, Sync delay = %s' % (self.get_sync_delays(),)
+        for trial in range(trials):
+            self.local_sync()
+            time.sleep(sync_sleep)
+            waveforms = self.acquire_adc_clock_waveforms(channels=channels) # Measure the ADC clock waveform for all ADCs
+            rising_edges = self.find_rising_edges(waveforms, period=adc_data_clock_period) # Find the position of the rising edge for the ADC clock waveform for each channel
+            if last_rising_edges is not None:
+                delta_phases = (last_rising_edges - rising_edges) * 2 * np.pi  / adc_data_clock_period
+                delta_phases = np.arctan2(np.sin(delta_phases), np.cos(delta_phases))  # compute the smallest angle between the 2 angles while correctly dealing with wraparounds (e.g. 0 and 31 are separated by 1, not 31)
+                jumps = (np.abs(delta_phases) > 2 * np.pi / adc_data_clock_period * adc_input_clock_period / 2) * 1
+                if any(jumps):
+                    errors += 1
+            else:
+                jumps = [0] * len(channels)
+            last_rising_edges = rising_edges
+            if verbose:
+                print 'Trial #%3i:' % (trial + 1),
+                for i, ch in enumerate(channels):
+                    bitstring = bytearray((waveforms[i].astype(np.int8) + ord('0')).tostring() )  # pad in case there the clock period is longer than 32
+                    print 'CH%02i %s: %s ' % (ch, '!' if jumps[i] else ' ', bitstring),
+                print
+        self.set_sync_delays(old_sync_delays)
+        return errors
 
     def status(self):
         """
