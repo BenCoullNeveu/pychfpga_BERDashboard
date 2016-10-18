@@ -263,6 +263,8 @@ class IceBoard(hardware_map.HWMResource, handler.HandlerObject):
     }
 
     handler_name = 'IceBoardHandler'  # Fixed, default handler
+    __ipmi_part_number__ = 'MGK7MB'
+
 
     _pk = Column(Integer, primary_key=True)
     _cls = Column(String, nullable=False)
@@ -319,6 +321,7 @@ class IceBoardHandler(handler.Handler, tuber.TuberObject):
     # Provide access to hardware_map attributes as if they were local
     hostname = HandlerParentAttribute(lambda ib: ib.hostname)
     serial = HandlerParentAttribute(lambda ib: ib.serial)
+    part_number = HandlerParentAttribute(lambda ib: ib.__ipmi_part_number__)
     crate = HandlerParentAttribute(lambda ib: ib.crate.handler if ib.crate else None)
     slot = HandlerParentAttribute(lambda ib: ib.slot)
     mezzanine = HandlerParentAttribute(lambda ib: {slot: mezz.handler if mezz else None for (slot, mezz) in ib.mezzanine.items()}, {})
@@ -340,6 +343,11 @@ class IceBoardHandler(handler.Handler, tuber.TuberObject):
         if self.hostname:
             return "%s(%s)" % (self.__class__.__name__,  self.hostname)
         return "%s(?)" % (self.__class__.__name__)
+
+    def get_id(self):
+        """ Return a string that identifies uniquely the motherboard board. Comprises the model number and the serial number.
+        """
+        return '%s_SN%s' % (self.part_number, self.serial)
 
     def set_fpga_bitstream(self, buf):
         '''
@@ -532,6 +540,7 @@ class FMCMezzanineHandler(handler.Handler):
 
     iceboard = HandlerParentAttribute(lambda ib: ib.iceboard)
     serial = HandlerParentAttribute(lambda ib: ib.serial)
+    part_number = HandlerParentAttribute(lambda ib: ib.__ipmi_part_number__)
     mezzanine = HandlerParentAttribute(lambda ib: ib.mezzanine)
 
     def __repr__(self):
@@ -541,6 +550,12 @@ class FMCMezzanineHandler(handler.Handler):
             self.__class__.__name__,
             self.mezzanine,
             self.serial)
+
+    def get_id(self):
+        """ Return a string that identifies uniquely the mezzanine board. Comprises the model number and the serial number.
+        """
+        return '%s_SN%s' % (self.part_number, self.serial)
+
     def eeprom_write(self, buf):
         '''Writes a collection of bytes to the internal EEPROM.
 
