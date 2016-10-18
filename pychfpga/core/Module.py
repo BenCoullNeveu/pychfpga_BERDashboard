@@ -26,7 +26,7 @@ _RAM_BASE_ADDR = 0x100000
 class BitField(object):
     """
     Holds the definition of a memory-mapped variable
-    It is implemented as a data descriptor that calls the read_field() and write_field() properties of the parent object when accessed.
+    It is implemented as a data descriptor that calls the read_bitfield() and write_field() properties of the parent object when accessed.
     """
     # Page values
     CONTROL = 0  # Control bytes (read/write)
@@ -48,7 +48,7 @@ class BitField(object):
 
     def __get__(self, obj, obj_type):
         if obj is not None:  # if accesed from an instance
-            return obj.read_field(self)
+            return obj.read_bitfield(self)
         else:
             return self
 
@@ -145,7 +145,7 @@ class Module_base(object):
         """
         return self.read(_STATUS_BASE_ADDR + addr, *args, **kwargs)
 
-    def read_field(self, bitfield, verbose=0):
+    def read_bitfield(self, bitfield, verbose=0):
         """ Reads the field identified by the name 'bit_name' which is looked
         up in the BITS table to find the bit definition (port, bit position
         etc). Returns a boolean."""
@@ -198,10 +198,16 @@ class Module_base(object):
                    data_string[-number_of_bytes:],
                    mask=mask_string[-number_of_bytes:])
 
-    write_field = write_bitfield # for backwards compatibility
+    # write_field = write_bitfield # for backwards compatibility
 
     def write(self, addr, data, *args, **kwargs):
-        """ Writes bytes to the FPGA memory-mapped registers.
+        """
+        Writes bytes to the FPGA memory-mapped address space. Address ``addr`` is
+        relative to the base address of the current MMI module.
+
+        The MSBs of ``addr`` determines the page in which data is written
+        (control, status, RAM etc.). use ``write_control(...)``, ``write_ram(...)`` etc. to write to specific pages.
+
         Returns the number of bytes written.
         """
         return self.fpga.mmi.write(self.base_address + addr, data, *args, **kwargs)
@@ -257,45 +263,47 @@ class Module_base(object):
         """
         return self.get_bitfield(bitfield_name).get_addr()
 
-    def pulse_bit(self, addr, bit=0):
+    def pulse_bit(self, bitfield_name, bit=0):
         """
-        Pulses the specified bit to '1' then back to '0'.
-        if 'addr' is numeric, the bit 'bit' at address 'addr' is pulsed.
-        If 'addr' is a string containing the name of a bit field, then this bit is pulsed.
+        Pulses the bitfield specified by the string ``bitfield_name`` to '1' then back to '0'.
         """
 
-        if isinstance(addr, str):
-            bitfield = self.get_bitfield(addr)
-            if bitfield.width != 1:
-                raise Exception('The bit field must be a single bit (width=1)')
-            else:
-                (addr, bit) = (bitfield.addr, bitfield.bit)
+        if not isinstance(bitfield_name, str):
+            raise TypeError('The bitfield name must be a string')
 
-        mask = (1<<bit)
-        old_value = self.read(addr)
-        self.write(addr, old_value | mask) # Set bit to '1'
-        self.write(addr, old_value & ~mask) # Set bit to '0'
+        bitfield = self.get_bitfield(bitfield_name)
 
-    def wait_for_bit(self, addr, bit=0, timeout=1):
+        if bitfield.width != 1:
+            raise TypeError('The bitfield must be a single bit (width=1)')
+
+        self.write_bitfield(bitfield,1)
+        self.write_bitfield(bitfield,0)
+
+        # mask = (1<<bit)
+        # old_value = self.read(addr)
+        # self.write(addr, old_value | mask) # Set bit to '1'
+        # self.write(addr, old_value & ~mask) # Set bit to '0'
+
+    def wait_for_bit(self, bitfield_name, timeout=1, target_value=1, no_error=False):
         """
-        Wait for specified bit to become '1'.
-        if 'addr' is numeric, the bit 'bit' at address 'addr' is pulsed.
-        If 'addr' is a string containing the name of a bit field, then this bit is pulsed.
+        Wait for the bitfield specified by the string ``bitfield_name`` to return the value ``target_value``.
+        ``True`` is returned when the value is found before ``timeout`` seconds, otherwise a RuntimeError exception is raised if ``no_error`` is False, or ``False`` is returned if ``no_error`` is True.
         """
-        if isinstance(addr, str):
-            bitfield = self.get_bitfield(addr)
-            if bitfield.width != 1:
-                raise Exception('The bit field must be a single bit (width=1)')
-            else:
-                (addr, bit) = (bitfield.addr, bitfield.bit)
+        if not isinstance(bitfield_name, str):
+            raise TypeError('The bitfield name must be a string')
 
-        mask = (1 << bit)
+        bitfield = self.get_bitfield(bitfield_name)
+
+        # mask = (1 << bit)
         t0 = time.time()
-        while 1:
-            if self.read(addr) & mask:
-                return
+        while True:
+            if self.read_bitfield(bitfield) == target_value:
+                return True
             if (time.time() - t0) > timeout:
-                raise(Warning('Timeout exceeded while waiting for status bit'))
+                if no_error:
+                    return False
+                else:
+                    raise RuntimeError("Timeout exceeded while waiting for bitfield %s==%i" % (bitfield_name, target_value))
 
     def read_all_fields(self, format='%(name)-30s = %(page_name)7s(0x%(addr)-02X)[%(bit_range)-5s]:  %(value)5i, 0x%(hex_value)-4s, 0b%(bin_value)s', sort = ['page','name']):
         """ Returns a list of all bitfields and their values.

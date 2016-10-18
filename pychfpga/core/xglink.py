@@ -518,7 +518,7 @@ class XGLinkArray(XGLink):
         for lane in lanes:
             self.LANE_SEL = lane
             for i, bf in enumerate(bitfields):
-                mon[i].append(self.read_field(bf))
+                mon[i].append(self.read_bitfield(bf))
 
         return mon if is_list else mon[0]
 

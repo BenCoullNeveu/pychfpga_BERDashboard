@@ -323,7 +323,7 @@ class ShuffleCrossbar(Module_base):
         for lane in range(self.NUMBER_OF_CROSSBAR_INPUTS):
             self.LANE_MONITOR_SEL = lane
             for i, bf in enumerate(bitfields):
-                mon[i].append(self.read_field(bf))
+                mon[i].append(self.read_bitfield(bf))
 
         return mon if is_list else mon[0]
 
