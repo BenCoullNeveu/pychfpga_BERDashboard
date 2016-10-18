@@ -89,15 +89,21 @@ class ADC_chip(object):
            1 = ramp
            2 = pulse
         """
+        trials = 10
+        trial = 0
         while True:
             control_reg = self.read(self.REG_CONTROL)
             test_reg = self.read(self.REG_TEST)
-            v = bool(control_reg & 1<<12) * 2 + test_reg
-            if 0 <= v <= 3:
+            reg_value = bool(control_reg & 1<<12) * 2 + test_reg
+            if 0 <= reg_value <= 3:
                 break
-            self.logger.warn('%.32r: Bad ADC readout: control reg=0x%04X, test reg=0x%04X. retrying' % (self.adc.adc_board, control_reg, test_reg))
+            trial += 1
+            if trial >= trials:
+                self.logger.error('%.32r: Bad ADC test mode readout after %i trials. Aborting' % (self.adc.adc_board, trial))
+                raise IOError('%.32r: Bad ADC test mode readout after %i trials. Aborting' % (self.adc.adc_board, trial))
+            self.logger.warn('%.32r: Bad ADC test mode readout on trial %i: control reg=0x%04X, test reg=0x%04X. Retrying' % (self.adc.adc_board, trial, control_reg, test_reg))
 
-        return (0, 0, 1, 2)[v]
+        return (0, 0, 1, 2)[reg_value]
 
 
     def get_temperature(self, **kwargs):
