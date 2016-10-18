@@ -64,9 +64,10 @@ class ChanCrossbar(Module_base):
         # Default bin selector configuration. To be overriden by system-level configuration method.
         # By default we send 64 bins for each of the 16 output lanes. Bins are interleaved.
         number_of_bins_per_crossbar_output = 64
-        for (i, bs) in enumerate(self.BIN_SEL):
-            bin_list = np.arange(number_of_bins_per_crossbar_output) * 16 + i
-            bs.select_bins(bin_list)
+        # Do not initialize the bin selection map now to same time. This will be done anyway when we initialize the shuffling system.
+        # for (i, bs) in enumerate(self.BIN_SEL):
+        #     bin_list = np.arange(number_of_bins_per_crossbar_output) * 16 + i
+        #     bs.select_bins(bin_list)
 
     def set_data_width(self, width):
         """
