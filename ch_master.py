@@ -260,6 +260,7 @@ if __name__ == "__main__":
 
     conf = NameSpace(fpga_array.load_yaml_config(args.conf_file))
     fpga_array_params = conf.fpga.pop('fpga_array_params')
+    adc_delay_params = conf.fpga.pop('adc_delay_params')    
     # I separate fpga_array_params from conf since the writer to the hdf5 file cannot
     # handle the hardware map object. fpga_array_params is used to program the boards.
     # However, the writer still needs some parameters from fpga_array_params so
@@ -353,18 +354,9 @@ if __name__ == "__main__":
             #             group_frames=conf.fpga.group_frames, \
             #             enable_gpu_link = conf.fpga.enable_gpu_link)
             # #Temp solution to load adc_delay from table...
-            try:
-                delays = pickle.load(open(conf.fpga.adc_delay_table))
-                sync_delays = pickle.load(open(conf.fpga.sync_delay_table))
-                for ib in ca.ib:
-                    ib.REFCLK.set_sync_delay(sync_delays[int(ib.serial)])
-                    time.sleep(0.2)
-                    ib.set_adc_delays_with_check(delays[int(ib.serial)])
-                    log.info("%.32r: set delays on SN%s, SLOT%s" % (self, ib.serial, ib.slot))
-            except IOError:
-                #log.warn("%.32r: Error loading/setting delay tables.  Using default delays from config file for all boards" % self
-                raise RuntimeError('%.32r: Error loading/setting delay tables' % self)
-            #for cc in c:
+            log.info("%.32r: Loading initial gains" % self)
+            ca.ib.set_adc_delays(**adc_delay_params)
+                        #for cc in c:
             #  cc.GPU.LINK_ENABLE=1
             #  log.info("GPU link enabled on SN {0}, SLOT {1}".format(cc.serial, cc.slot))
             if not ca.ib:
@@ -607,8 +599,9 @@ if __name__ == "__main__":
                         else:
                             val = slot_conf[name]
                             val = convert_types(val)
-                            name = 'Slot_'+ str(fpga_slot) + '_' + name
-                            acq.add_header_item(name, val)
+                            if name != 'antenna_adc_data_acquisition_delay_tables': # THE FORMAT OF THE DELAY TABLES HAS CHANGED. FOR NOW JUST NOT WRITE, BIT HAVE TO FIX THIS
+                                name = 'Slot_'+ str(fpga_slot) + '_' + name
+                                acq.add_header_item(name, val)
         else:
             acq.add_header_item("fpga_info",
                                                     "no communication with fpga for this dataset")
