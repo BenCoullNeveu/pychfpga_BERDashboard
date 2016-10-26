@@ -80,8 +80,8 @@ Spice simulations:
 
 	Rev2 Trig/time
 	Vmax = 2.5V
-	2.1V 50 ohms (1.05V in 50 ohms)=> DC: 0.91V, AC: 0.79V
-	2.95V 50 ohms (1.48V in 50 ohms)=> DC: 1.28V, AC: 1.10V
+	2.1V 50 ohms (1.05V in 50 ohms)=> DC: 0.91V, AC: 0.79V (Vlow_max, limited by DC)
+	2.95V 50 ohms (1.48V in 50 ohms)=> DC: 1.28V, AC: 1.10V (Vhi_min, limited by AC) (2.3V + 50 ohms (1.75V in 50 ohms) : DC: 1.00V)
 	5.7V 50 ohms (2.85V in 50 ohms) => DC: 2.48V, AC: 2.12V
 	1.1V 0 ohms (1.1V in 50 ohms)=> DC: 0.85V, AC: 0.82V
 	1.5V 0 ohms (1.5V in 50 ohms) => DC: 1.16, AC: 1.12V
@@ -91,6 +91,6 @@ Rev2 clock/sync Examples:
 	5V source with 50 ohms output impedance = 2.5V in 50 ohms = ok
 	5V source with 50 ohms output impedance and dB attenuator or 1:2 splitter = 1.76V in 50 ohms = ok
 	5V source with low output impedance = 5V in 50 ohms = might damage input!
-	5V source with low output impedance and 3 dB attenuator = The attenuator might not attenuate 3dB! might damage input!
+	5V source with low output impedance and 3 dB attenuator = The source is not 50 ohms, so the attenuator might not attenuate 3dB! might damage input!
 	3.3V/2.5V source, 50 ohms impedance = 1.65V/1.25V in 50 ohms = ok
 	3.3V/2.5V source, low impedance= 3.3V/2.5V in 50 ohms
