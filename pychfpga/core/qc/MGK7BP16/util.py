@@ -261,6 +261,58 @@ def load_config(filename):
             cfg = NameSpace(icecore.load_yaml(yamlfile))
         return cfg
 
+def parse_dut_id(string, dut_id_patterns):
+    """ Splits a string describing a crate into a (model, serial, crate_number) tuple.
+    The serial is converted to an interger if possible; otherwise, it is a string. The crate number must be an integer.
+    Missing parameters are returned as None. Every field is converted to uppercase.
+
+    Return a dict:
+    { icecrates: [ (model, serial, crate_number) ...],
+      iceboards: [ (model, serial) ...]
+      mezzanines: [ (model, serial) ...] }
+
+    Examples:
+        'MGK7BP16_SN018:3' => ('MGK7BP16', 18, 3)
+        'MGK7BP16_018:3' => ('MGK7BP16', 18, 3)
+        '18:3' => (None, 18, 3)
+        '18' => (None, 18, None)
+    """
+    # Extract the crate number
+    results = {'icecrates': [], 'iceboards': [], 'mezzanines': []}
+    current_type = None
+    s= string.replace('_', ' ')
+    s = str(string).upper().split(':')
+    if len(s) == 1:
+        sn = s[0]
+        cn = None
+    elif len(s) == 2:
+        try:
+            sn = s[0]
+            cn = int(s[1])
+        except ValueError:
+            raise ValueError('crate number is not an integer in entry %s' % string)
+    else:
+            raise RuntimeError('Multiple crate numbers were specified in entry:' % string)
+    # Check if a model number is specified
+    s = sn.split('_')
+    if len(s) == 1:
+        model = None
+        sn = s[0]
+    elif len(s) == 2:
+        model = s[0]
+        sn = s[1]
+        if sn.startswith('SN'):
+            sn = sn[2:]
+    else:
+        raise RuntimeError("Crates model and serial number must be separated by one (and only one) underscore (e.g. MGK7BP16_023). Got '%s'" % sn)
+
+    try:
+        sn = int(sn)
+    except (ValueError, TypeError):
+        pass
+
+    return (model, sn, cn)
+
 def open_instruments(instruments, filter_list=None):
     """ Create and open objects representing instruments.
 

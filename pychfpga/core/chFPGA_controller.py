@@ -33,6 +33,7 @@ import time
 import os
 import yaml
 from datetime import datetime
+from collections import OrderedDict
 
 import subprocess
 import shlex
@@ -1922,9 +1923,10 @@ class chFPGA_controller(IceBoardExtHandler):
                 res['FMC%i ADC%i'%(mezz_number-1, adc_number)] = adc.get_temperature()
         return res
 
+    @async
     def get_total_power(self):
-        return sum(self.get_motherboard_voltage(rail) * self.get_motherboard_current(rail) for rail in (self.RAIL.MB_VCC3V3, self.RAIL.MB_VCC5V5, self.RAIL.MB_VCC12V0))
-
+        power = sum([(yield self.get_motherboard_voltage.async(rail)) * (yield self.get_motherboard_current.async(rail)) for rail in (self.RAIL.MB_VCC3V3, self.RAIL.MB_VCC5V5, self.RAIL.MB_VCC12V0)])  # have to use a list comprehension, not generator (a yield inside a generator is not consistent in Python 2.7)
+        async_return(power)
 
     def init_crossbars(self, mode=None, dsmap=range(16), frames_per_packet=2, cb1_lanes=16, cb1_bins=64, cb1_bypass=False, cb1_combine_data_flags=0, cb2_lanes=None, cb2_bins=1, cb2_bypass=False, bp_shuffle_bypass=1, crate_shuffle_bypass=1, remap=True, chan8_channel_map=range(16)):
         """ Initializes the 1st, 2nd and 3rd crossbars.
@@ -2478,6 +2480,35 @@ class chFPGA_controller(IceBoardExtHandler):
             print x
         for x in bp_gen(self):
             print x
+
+    @async
+    def get_status(self):
+        info = OrderedDict()
+
+        info['MB FPGA Die Temp'] = '%0.1fC' % (yield self.get_motherboard_temperature.async(self.TEMPERATURE_SENSOR.MB_FPGA_DIE))
+        self.logger.info('%.32r: got die temp' % self)
+        info['MB FPGA Temp'] = '%0.1fC' % (yield self.get_motherboard_temperature.async(self.TEMPERATURE_SENSOR.MB_FPGA))
+        info['MB ARM Temp'] = '%0.1fC' % (yield self.get_motherboard_temperature.async(self.TEMPERATURE_SENSOR.MB_ARM))
+        info['MB PHY Temp'] = '%0.1fC' % (yield self.get_motherboard_temperature.async(self.TEMPERATURE_SENSOR.MB_PHY))
+        info['MB POW Temp'] = '%0.1fC' % (yield self.get_motherboard_temperature.async(self.TEMPERATURE_SENSOR.MB_POWER))
+        self.logger.info('%.32r: got pow' % self)
+        info['MB VCC12V'] = '%0.1fV@%0.3fA' % ((yield self.get_motherboard_voltage.async(self.RAIL.MB_VCC12V0)), (yield self.get_motherboard_current.async(self.RAIL.MB_VCC12V0)))
+        info['MB VCC3V3'] = '%0.1fV@%0.3fA' % ((yield self.get_motherboard_voltage.async(self.RAIL.MB_VCC3V3)), (yield self.get_motherboard_current.async(self.RAIL.MB_VCC3V3)))
+        info['MB VADJ'] = '%0.1fV@%0.3fA' % ((yield self.get_motherboard_voltage.async(self.RAIL.MB_VADJ)), (yield self.get_motherboard_current.async(self.RAIL.MB_VADJ)))
+        info['MB VCC5V5'] = '%0.1fV@%0.3fA' % ((yield self.get_motherboard_voltage.async(self.RAIL.MB_VCC5V5)), (yield self.get_motherboard_current.async(self.RAIL.MB_VCC5V5)))
+        info['MB VCC1V0'] = '%0.1fV@%0.3fA' % ((yield self.get_motherboard_voltage.async(self.RAIL.MB_VCC1V0)), (yield self.get_motherboard_current.async(self.RAIL.MB_VCC1V0)))
+        info['MB VCC1V0 GTX'] = '%0.1fV@%0.3fA' % ((yield self.get_motherboard_voltage.async(self.RAIL.MB_VCC1V0_GTX)), (yield self.get_motherboard_current.async(self.RAIL.MB_VCC1V0_GTX)))
+        info['MB VCC1V2'] = '%0.1fV@%0.3fA' % ((yield self.get_motherboard_voltage.async(self.RAIL.MB_VCC1V2)), (yield self.get_motherboard_current.async(self.RAIL.MB_VCC1V2)))
+        info['MB VCC1V5'] = '%0.1fV@%0.3fA' % ((yield self.get_motherboard_voltage.async(self.RAIL.MB_VCC1V5)), (yield self.get_motherboard_current.async(self.RAIL.MB_VCC1V5)))
+        info['MB VCC1V8'] = '%0.1fV@%0.3fA' % ((yield self.get_motherboard_voltage.async(self.RAIL.MB_VCC1V8)), (yield self.get_motherboard_current.async(self.RAIL.MB_VCC1V8)))
+        info['Mezz 1 VCC12V'] = ('%0.1fV@%0.3fA' % ((yield self.get_mezzanine_voltage.async(self.RAIL.MEZZ_VCC12V0, 1)), (yield self.get_mezzanine_current.async(self.RAIL.MEZZ_VCC12V0, 1))))
+        info['Mezz 1 VCC3V3'] = ('%0.1fV@%0.3fA' % ((yield self.get_mezzanine_voltage.async(self.RAIL.MEZZ_VCC3V3, 1)), (yield self.get_mezzanine_current.async(self.RAIL.MEZZ_VCC3V3, 1))))
+        info['Mezz 1 VADJ'] = ('%0.1fV@%0.3fA' % ((yield self.get_mezzanine_voltage.async(self.RAIL.MEZZ_VADJ, 1)), (yield self.get_mezzanine_current.async(self.RAIL.MEZZ_VADJ, 1))))
+        info['Mezz 2 VCC12V'] = ('%0.1fV@%0.3fA' % ((yield self.get_mezzanine_voltage.async(self.RAIL.MEZZ_VCC12V0, 2)), (yield self.get_mezzanine_current.async(self.RAIL.MEZZ_VCC12V0, 2))))
+        info['Mezz 2 VCC3V3'] = ('%0.1fV@%0.3fA' % ((yield self.get_mezzanine_voltage.async(self.RAIL.MEZZ_VCC3V3, 2)), (yield self.get_mezzanine_current.async(self.RAIL.MEZZ_VCC3V3, 2))))
+        info['Mezz 2 VADJ'] = ('%0.1fV@%0.3fA' % ((yield self.get_mezzanine_voltage.async(self.RAIL.MEZZ_VADJ, 2)), (yield self.get_mezzanine_current.async(self.RAIL.MEZZ_VADJ, 2))))
+        info['MB Total power'] = '%0.1fW' % (yield self.get_total_power.async())
+        async_return(info)
 
     def get_crate_id(self):
         return self.crate.get_id()

@@ -53,7 +53,7 @@ class MGK7BP16CrateTests(unittest.TestCase):
         cfg = self.cfg.crate_tests.clock_test
 
         ca = FPGAArray(icecrates = xr.params.serial, prog = self.cfg.debug.force_fpga_prog, open = 1)
-        
+
         while True:
             irigb_source = raw_input('Indicate the source for the IRIG-B signal, 1 for bp_time, 2 for bp_trig, or 3 for both. ')
             if irigb_source != '1' and irigb_source != '2' and time_source != '3':
@@ -79,7 +79,7 @@ class MGK7BP16CrateTests(unittest.TestCase):
                 raw_clk_freq = ib.FreqCtr.read_frequency('RAW_CLK')
                 print 'Slot %02i: %.6f MHz' % (ib.slot, raw_clk_freq)
                 clock.append(ib.FreqCtr.read_frequency('RAW_CLK'))
-            
+
             if irigb_source == '1' or irigb_source == '3':
                 print '\nTime Readout:'
                 result.time = []
@@ -87,7 +87,7 @@ class MGK7BP16CrateTests(unittest.TestCase):
                 print ca.ib.get_irigb_time()
                 for ib in ca.ib:
                     result.time.append(ib.get_irigb_time(format = 'nano'))
-                    
+
             if irigb_source == '2' or irigb_source == '3':
                 print '\nTrig Readout:'
                 result.trig = []
@@ -98,12 +98,12 @@ class MGK7BP16CrateTests(unittest.TestCase):
                     result.trig.append(ib.get_irigb_time(format = 'nano'))
 
             assert len(slots) == 16, 'Problem with slot detection.'
-            assert min(clock) > cfg.limits[0] and max(clock) < cfg.limits[1], 'Clock out of bounds!' 
+            assert min(clock) > cfg.limits[0] and max(clock) < cfg.limits[1], 'Clock out of bounds!'
             if irigb_source == '1' or irigb_source == '3':
                 assert max(np.diff(result.time).tolist()) < cfg.max_time_diff, 'Difference in time signal too great between boards!'
             if irigb_source == '2' or irigb_source == '3':
                 assert max(np.diff(result.trig).tolist()) < cfg.max_time_diff, 'Difference in trig signal too great between boards!'
-       
+
         finally:
             xr.save_data(result)
             xr.params.test_locals = locals()
@@ -177,7 +177,7 @@ class MGK7BP16CrateTests(unittest.TestCase):
 
     def reset_test(self):
         cfg = self.cfg.crate_tests.reset_test
-        
+
         ca = FPGAArray(icecrates = xr.params.serial, prog = self.cfg.debug.force_fpga_prog, open = 1)
 
         result = NameSpace()
@@ -223,7 +223,7 @@ class MGK7BP16CrateTests(unittest.TestCase):
         finally:
             xr.save_data(result.res)
             xr.params.test_locals = locals()
-        
+
         xr.header('Begin ON/OFF Test')
 
         try:
@@ -364,7 +364,7 @@ class MGK7BP16CrateTests(unittest.TestCase):
                 print 'Wrong input!'
 
         ca = FPGAArray(icecrates = serials, prog = 2, open = 1)
-        
+
         xr.header('Begin Testing')
         ca.set_sync_method(method = 'distributed_time', source = cfg.time_source)
         time.sleep(2)
@@ -472,7 +472,7 @@ class MGK7BP16CrateTests(unittest.TestCase):
                             print 'Channel %02i: ERROR!' % (ch+1)
 
                     result[board].ramp_ok.append(ramp_ok)
-                
+
                 board += 1
 
             for board in range(16):
@@ -482,6 +482,26 @@ class MGK7BP16CrateTests(unittest.TestCase):
             xr.params.test_locals = locals()  # store local variables for interactive debugging
             #receiver.close()
             xr.save_data(result)
+
+
+
+# Iceboard missing tests:
+# QC017.1 Full load FPGA temperature  Check FPGA operation temp on full load (detects power supplies and heatsink issues)
+# QC017.2 Heat sink visual check  *** Add: Visual check: heat sink installed, proper model, orientation, with posts. No obvious contact with surrounding components. Record compliance.
+# QC017.3 Stiffener and board flatness visual check   *** Add: Visual check: Stiffner installed, board is reasonably flat.
+# QC017.4 ARM Shield check    *** Add
+# QC010.2.1   Power LEDs  *** Add: Check that all power LEDs are turned ON
+# QC011.2     *** Add: Check that Bot PLL lock (LEDs) when using crystal source
+# QC011.3     *** Add: Check that Both PLL lock (check LED) when using SMA.
+# QC016.2.1       *** Add: check that SYNC stops clock and that RESET restores ADC registers and IO Expanders registers
+# QC016.2.2       *** Add: Test SPI communication with ADC to confirm SPI bus connectivity to Mezz
+# QC016.2.3       *** Add: Check PLL_LOCK line to see if PLL is locked (requires firmware change)
+# QC016.1.1       *** Add: Backplane I2C Comms through FPGA & ARM to test I2C matrix circuitry and connectivity to backplane EEPROM
+# QC016.1.2       *** Add: Access Motherboard I2C devices via FPGA on SMPS bus (Temperature or power), GPIO bus (Write & readback reg)
+# QC016.1.3       *** Add: Confirm Mezz can be powered on and off (IO Extender & power switch test), test Power Good and PRSNT Line
+# QC016.1.4       *** Add: Validate that SFP Present and FAULT line can be read (tests SFP & IO_Extender connectivity)
+# QC016.1.5       *** Add: Check M2C reference clock frequencies (both).
+# QC016.1.6       *** Add: I2C communications to mezzanines EEPROM
 
 
 if __name__ == '__main__':

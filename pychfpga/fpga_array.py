@@ -10,10 +10,11 @@ import __main__
 import os
 import sys
 import socket  # for gethostbyname()
-import collections
+from collections import OrderedDict, Sequence, Mapping
 import numpy as np
 import matplotlib.pyplot as plt
 import pickle
+import re
 
 from tornado.netutil import Resolver
 from tornado.ioloop import IOLoop
@@ -77,28 +78,26 @@ class FPGABitstream(object):
         with open(self.filename, 'rb') as file_:
             self.bitstream = file_.read()
 
-# Default data
-# First 8 values are the delays for bits 0 to 7, 8th value is the delay for the clock line.
-
+# Default ADC delays
 ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 = {
     'valid': True,
     'sync_delays': (4, 5),
-    0:  {'tap_delays': [16]*8,     'sample_delay': 3, 'clock_delay': 0},  #CH0
-    1:  {'tap_delays': [7]*8,      'sample_delay': 3, 'clock_delay': 0},  #CH1
-    2:  {'tap_delays': [22]*8,     'sample_delay': 3, 'clock_delay': 0},  #CH2
-    3:  {'tap_delays': [19]*8,     'sample_delay': 3, 'clock_delay': 0},  #CH3
-    4:  {'tap_delays': [15]*8,     'sample_delay': 3, 'clock_delay': 0},  #CH4
-    5:  {'tap_delays': [14, 13, 14, 14, 13, 14, 15, 14],    'sample_delay': 3, 'clock_delay': 0},  #CH5
-    6:  {'tap_delays': [18]*8,     'sample_delay': 3, 'clock_delay': 0},  #CH6
-    7:  {'tap_delays': [17]*8,     'sample_delay': 4, 'clock_delay': 0},  #CH7
-    8:  {'tap_delays': [15, 17, 15, 18, 17, 14, 17, 15],   'sample_delay': 3, 'clock_delay': 0},  #CH8
-    9:  {'tap_delays': [16]*8,     'sample_delay': 4, 'clock_delay': 0},  #CH9
-    10: {'tap_delays': [20]*8,     'sample_delay': 3, 'clock_delay': 0},  #CH10
-    11: {'tap_delays': [18]*8,     'sample_delay': 3, 'clock_delay': 0},  #CH11
-    12: {'tap_delays': [15]*8,     'sample_delay': 3, 'clock_delay': 0},  #CH12
-    13: {'tap_delays': [18]*8,     'sample_delay': 3, 'clock_delay': 0},  #CH13
-    14: {'tap_delays': [18]*8,     'sample_delay': 3, 'clock_delay': 0},  #CH14
-    15: {'tap_delays': [16]*8,     'sample_delay': 3, 'clock_delay': 0}  #CH15
+    0:  {'tap_delays': [16]*8,                           'sample_delay': 3, 'clock_delay': 0},  # CH0
+    1:  {'tap_delays': [7]*8,                            'sample_delay': 3, 'clock_delay': 0},  # CH1
+    2:  {'tap_delays': [22]*8,                           'sample_delay': 3, 'clock_delay': 0},  # CH2
+    3:  {'tap_delays': [19]*8,                           'sample_delay': 3, 'clock_delay': 0},  # CH3
+    4:  {'tap_delays': [15]*8,                           'sample_delay': 3, 'clock_delay': 0},  # CH4
+    5:  {'tap_delays': [14, 13, 14, 14, 13, 14, 15, 14], 'sample_delay': 3, 'clock_delay': 0},  # CH5
+    6:  {'tap_delays': [18]*8,                           'sample_delay': 3, 'clock_delay': 0},  # CH6
+    7:  {'tap_delays': [17]*8,                           'sample_delay': 4, 'clock_delay': 0},  # CH7
+    8:  {'tap_delays': [15, 17, 15, 18, 17, 14, 17, 15], 'sample_delay': 3, 'clock_delay': 0},  # CH8
+    9:  {'tap_delays': [16]*8,                           'sample_delay': 4, 'clock_delay': 0},  # CH9
+    10: {'tap_delays': [20]*8,                           'sample_delay': 3, 'clock_delay': 0},  # CH10
+    11: {'tap_delays': [18]*8,                           'sample_delay': 3, 'clock_delay': 0},  # CH11
+    12: {'tap_delays': [15]*8,                           'sample_delay': 3, 'clock_delay': 0},  # CH12
+    13: {'tap_delays': [18]*8,                           'sample_delay': 3, 'clock_delay': 0},  # CH13
+    14: {'tap_delays': [18]*8,                           'sample_delay': 3, 'clock_delay': 0},  # CH14
+    15: {'tap_delays': [16]*8,                           'sample_delay': 3, 'clock_delay': 0}   # CH15
     }
 
 ADC_DELAY_TABLE = ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 #ADC_DELAYS_REV2_SN0001 ## select the table corresponding to the FMC serial number
@@ -124,9 +123,8 @@ class FPGAArray(object):
 
     def __init__(self,
 
-
                  hwm=None,
-                 iceboards=[], icecrates=[], exclude_iceboards=[],
+                 iceboards=[], icecrates=[], mezzanines=[], hw_description_string=[], exclude_iceboards=[],
                  subarrays=[], ping=True,
                  mdns_timeout=2,
                  no_mezz=False,
@@ -317,26 +315,40 @@ class FPGAArray(object):
             iceboards = [iceboards]
         iceboards = [self._to_integer(x) for x in iceboards]
 
+        # # make sure icecrates is a list
+        # self.icecrate_map = OrderedDict()
+        # if icecrates and '*' not in icecrates:
+        #     if isinstance(icecrates, (str, int)):
+        #         icecrates = [icecrates]
 
-        # make sure icecrates is a list
-        self.icecrate_map = collections.OrderedDict()
-        if icecrates and '*' not in icecrates:
-            if isinstance(icecrates, (str, int)):
-                icecrates = [icecrates]
+        #     default_crate_model = 'MGK7BP16'
+        #     print icecrates
+        #     for ic_id in icecrates:
+        #         (model, sn, cn) = self._parse_crate_id(ic_id)
+        #         if model is None:
+        #             model = default_crate_model
+        #         else:
+        #             default_crate_model = model
+        #         self.icecrate_map[(model, sn)] = cn
 
-            default_crate_model = 'MGK7BP16'
-            for ic_id in icecrates:
-                (model, sn, cn) = self._parse_crate_id(ic_id)
-                if model is None:
-                    model = default_crate_model
-                else:
-                    default_crate_model = model
-                self.icecrate_map[(model, sn)] = cn
 
-            # If no crate number is specified at all, just create crate numbers based on the order in which the crates were specified
-            if all([cn is None for cn in self.icecrate_map.values()]):
-                for i, (model, sn) in enumerate(self.icecrate_map.keys()):
-                    self.icecrate_map[(model, sn)] = i
+        hw_description_table = parse_hw_description_string(iceboards, hardware_type='iceboards', default_model='MGK7MB')
+        parse_hw_description_string(icecrates, hw_description_table, hardware_type='icecrates', default_model='MGK7BP16')
+        parse_hw_description_string(mezzanines, hw_description_table, hardware_type='mezzanines', default_model='MGADC08')
+        parse_hw_description_string(hw_description_string, hw_description_table)
+
+        print 'hw description table = ', hw_description_table
+
+        iceboards = [e if isinstance(e,str) else e[1] for e in hw_description_table.get('iceboards',[])]
+        icecrates = ['%s_SN%s%s' % (model, sn, (':%i' % cn) if cn is not None else '') for (model, sn, cn) in hw_description_table.get('icecrates',[])]
+        self.icecrate_map = OrderedDict(((model, sn), cn) for (model, sn, cn) in hw_description_table.get('icecrates',[]))
+        # If no crate number is specified at all, just create crate numbers based on the order in which the crates were specified
+        if all([cn is None for cn in self.icecrate_map.values()]):
+            for i, (model, sn) in enumerate(self.icecrate_map.keys()):
+                self.icecrate_map[(model, sn)] = i
+        print 'iceboards = ', iceboards
+        print 'icecrates = ', icecrates
+
 
         # icecrates = icecrate_map.keys()
 
@@ -477,7 +489,7 @@ class FPGAArray(object):
             model = ic.part_number
             try:
                 sn = int(ic.serial)
-            except ValueError:
+            except (ValueError, TypeError):
                 sn = ic.serial
             if (model, sn) in self.icecrate_map:
                 ic.crate_number = self.icecrate_map[(model, sn)]
@@ -573,7 +585,7 @@ class FPGAArray(object):
     @staticmethod
     def _parse_crate_id(string):
         """ Splits a string describing a crate into a (model, serial, crate_number) tuple.
-        The serial is converted to an interger if possible; otherwise, it is a string. The crate number must be numerical.
+        The serial is converted to an interger if possible; otherwise, it is a string. The crate number must be an integer.
         Missing parameters are returned as None. Every field is converted to uppercase.
 
         Examples:
@@ -606,11 +618,11 @@ class FPGAArray(object):
             if sn.startswith('SN'):
                 sn = sn[2:]
         else:
-            raise RuntimeError('Crates model and serial number must be separated by a single underscore (e.g. MGK7BP16_023).')
+            raise RuntimeError("Crates model and serial number must be separated by one (and only one) underscore (e.g. MGK7BP16_023). Got '%s'" % sn)
 
         try:
             sn = int(sn)
-        except ValueError:
+        except (ValueError, TypeError):
             pass
 
         return (model, sn, cn)
@@ -1756,34 +1768,54 @@ class FPGAArray(object):
                     print line_sep_str
 
     def print_iceboard_table(self, func=None, row_labels=None, grid=False, add_serial=True):
+        """
+        func=function
+        func=async function : wll be called concurrently
+        func=data, dict, key is iceboard object
+        """
+
+
         if not len(self.ib):
-            print '[ There are no IceBoards hardware map ]'
+            print '[ There are no IceBoards in the hardware map ]'
             return
+
+        # Process func and end up with a dict of {iceboard:cell_text}
+        if func:
+            if isinstance(func, dict):
+                data = func
+            elif hasattr(func, 'async_map'):
+                data = OrderedDict(zip(self.ib, func.async_map(self.ib)))
+            else:
+                data = OrderedDict((ib, func(ib)) for ib in self.ib)
+
+        iceboards = data.keys()
 
         if row_labels is None:
             row_labels = ''
         if isinstance(row_labels, str):
             row_labels = [row_labels]
 
-        orphan_iceboards = [ib for ib in self.ib if not ib.crate or not ib.crate.serial]
-        corner_label = 'Standalone\nIceboards'
+        # Print a table of crate-less (stand-alone) iceboard
+        orphan_iceboards = [ib for ib in iceboards if not ib.crate or not ib.crate.serial]
+        corner_label = 'Standalone\nICEBoards'
         # col_labels = ['-'] * len(orphan_iceboards)
         col_labels = ['\nSN%s' % ib.serial for ib in orphan_iceboards]
-        local_row_labels = [row_labels]
-        data = []
+        for i, ib in enumerate(orphan_iceboards):
+           col_labels[i] += '\n%s' % ib.hostname
+        table = []
         for ib in orphan_iceboards:
             # cell = 'SN' + ib.serial + '\n' if add_serial else ''
-            cell = func(ib) if func else ''
-            data.append([cell])
-        if data:
-            self.print_table(data, row_labels=local_row_labels, col_labels=col_labels, corner_label=corner_label, line_sep=grid)
+            cell = data[ib] if data else ''
+            table.append([cell])  # append single-row column
+        if table:
+            self.print_table(table, row_labels=row_labels, col_labels=col_labels, corner_label=corner_label, line_sep=grid)
 
 
-        valid_crates = [ic for ic in self.ic if ic.serial]
+        valid_crates = OrderedDict((ib.crate, None) for ib in iceboards if ib.crate and ib.crate.serial).keys()  # trick to impelment an OrderedSet
 
         for crate in valid_crates:
             corner_label = '%s\nCrate #%s' % (crate.get_id(), crate.crate_number)
-            slot_range = range(1, max(self.ic.NUMBER_OF_SLOTS)+1)
+            slot_range = range(1, crate.NUMBER_OF_SLOTS + 1)
             col_labels = ['%i' % (s) for s in slot_range]
             if add_serial:
                 for i, slot in enumerate(slot_range):
@@ -1792,18 +1824,18 @@ class FPGAArray(object):
                 for i, slot in enumerate(slot_range):
                    col_labels[i] += ('\n%s' % crate.slot[slot].hostname) if slot in crate.slot else '\n-'
 
-            data = []
+            table = []
             # local_row_labels = [row_labels for crate in valid_crates]
             for slot in slot_range:
                 # col_data = []
                 if slot in crate.slot.keys():
-                    cell = func(crate.slot[slot]) if func else ''
+                    cell = data[crate.slot[slot]] if data else ''
                 else:
                     cell = '-'
                 # col_data.append(cell)
-                data.append([cell])
-            if data:
-                self.print_table(data, row_labels=row_labels, col_labels=col_labels, corner_label=corner_label, line_sep=grid)
+                table.append([cell])
+            if table:
+                self.print_table(table, row_labels=row_labels, col_labels=col_labels, corner_label=corner_label, line_sep=grid)
 
     def print_iceboard_temperatures(self):
         sensor = self.ib[0].TEMPERATURE_SENSOR.MB_FPGA_DIE
@@ -1812,35 +1844,14 @@ class FPGAArray(object):
     def print_iceboard_power(self):
         self.print_iceboard_table(lambda ib: '%0.1f' % ib.get_total_power())
 
+
     def print_iceboard_info(self):
-        info = collections.OrderedDict([
-            ('MB FPGA Die Temp', lambda ib: '%0.1fC' % (ib.get_motherboard_temperature(ib.TEMPERATURE_SENSOR.MB_FPGA_DIE))),
-            ('MB FPGA Temp', lambda ib: '%0.1fC' % (ib.get_motherboard_temperature(ib.TEMPERATURE_SENSOR.MB_FPGA))),
-            ('MB ARM Temp', lambda ib: '%0.1fC' % (ib.get_motherboard_temperature(ib.TEMPERATURE_SENSOR.MB_ARM))),
-            ('MB PHY Temp', lambda ib: '%0.1fC' % (ib.get_motherboard_temperature(ib.TEMPERATURE_SENSOR.MB_PHY))),
-            ('MB POW Temp', lambda ib: '%0.1fC' % (ib.get_motherboard_temperature(ib.TEMPERATURE_SENSOR.MB_POWER))),
-            ('MB VCC12V', lambda ib: '%0.1fV@%0.3fA' % (ib.get_motherboard_voltage(ib.RAIL.MB_VCC12V0), ib.get_motherboard_current(ib.RAIL.MB_VCC12V0))),
-            ('MB VCC3V3', lambda ib: '%0.1fV@%0.3fA' % (ib.get_motherboard_voltage(ib.RAIL.MB_VCC3V3), ib.get_motherboard_current(ib.RAIL.MB_VCC3V3))),
-            ('MB VADJ', lambda ib: '%0.1fV@%0.3fA' % (ib.get_motherboard_voltage(ib.RAIL.MB_VADJ), ib.get_motherboard_current(ib.RAIL.MB_VADJ))),
-            ('MB VCC5V5', lambda ib: '%0.1fV@%0.3fA' % (ib.get_motherboard_voltage(ib.RAIL.MB_VCC5V5), ib.get_motherboard_current(ib.RAIL.MB_VCC5V5))),
-            ('MB VCC1V0', lambda ib: '%0.1fV@%0.3fA' % (ib.get_motherboard_voltage(ib.RAIL.MB_VCC1V0), ib.get_motherboard_current(ib.RAIL.MB_VCC1V0))),
-            ('MB VCC1V0 GTX', lambda ib: '%0.1fV@%0.3fA' % (ib.get_motherboard_voltage(ib.RAIL.MB_VCC1V0_GTX), ib.get_motherboard_current(ib.RAIL.MB_VCC1V0_GTX))),
-            ('MB VCC1V2', lambda ib: '%0.1fV@%0.3fA' % (ib.get_motherboard_voltage(ib.RAIL.MB_VCC1V2), ib.get_motherboard_current(ib.RAIL.MB_VCC1V2))),
-            ('MB VCC1V5', lambda ib: '%0.1fV@%0.3fA' % (ib.get_motherboard_voltage(ib.RAIL.MB_VCC1V5), ib.get_motherboard_current(ib.RAIL.MB_VCC1V5))),
-            ('MB VCC1V8', lambda ib: '%0.1fV@%0.3fA' % (ib.get_motherboard_voltage(ib.RAIL.MB_VCC1V8), ib.get_motherboard_current(ib.RAIL.MB_VCC1V8))),
-            ('Mezz 1 VCC12V', lambda ib: ('%0.1fV@%0.3fA' % (ib.get_mezzanine_voltage(ib.RAIL.MEZZ_VCC12V0, 1), ib.get_mezzanine_current(ib.RAIL.MEZZ_VCC12V0, 1)))),
-            ('Mezz 1 VCC3V3', lambda ib: ('%0.1fV@%0.3fA' % (ib.get_mezzanine_voltage(ib.RAIL.MEZZ_VCC3V3, 1), ib.get_mezzanine_current(ib.RAIL.MEZZ_VCC3V3, 1)))),
-            ('Mezz 1 VADJ', lambda ib: ('%0.1fV@%0.3fA' % (ib.get_mezzanine_voltage(ib.RAIL.MEZZ_VADJ, 1), ib.get_mezzanine_current(ib.RAIL.MEZZ_VADJ, 1)))),
-            ('Mezz 2 VCC12V', lambda ib: ('%0.1fV@%0.3fA' % (ib.get_mezzanine_voltage(ib.RAIL.MEZZ_VCC12V0, 2), ib.get_mezzanine_current(ib.RAIL.MEZZ_VCC12V0, 2)))),
-            ('Mezz 2 VCC3V3', lambda ib: ('%0.1fV@%0.3fA' % (ib.get_mezzanine_voltage(ib.RAIL.MEZZ_VCC3V3, 2), ib.get_mezzanine_current(ib.RAIL.MEZZ_VCC3V3, 2)))),
-            ('Mezz 2 VADJ', lambda ib: ('%0.1fV@%0.3fA' % (ib.get_mezzanine_voltage(ib.RAIL.MEZZ_VADJ, 2), ib.get_mezzanine_current(ib.RAIL.MEZZ_VADJ, 2)))),
-            ('MB Total power', lambda ib: '%0.1fW' % ib.get_total_power()),
-            ])
 
-        def get_info(ib):
-            return '\n'.join(fn(ib) for fn in info.values())
+        info = self.ib.get_status()
+        keys = '\n'.join(info[0].keys())
+        data = {ib:('\n'.join(info[i].values())) for i, ib in enumerate(self.ib)}
+        self.print_iceboard_table(data, row_labels=keys)
 
-        self.print_iceboard_table(get_info, row_labels='\n'.join(info.keys()))
 
     def print_iceboard_qsfp(self):
         self.print_iceboard_table(lambda ib: '\n'.join(ib.hw.qsfp.get_serial_number().map(str)), grid=1)
@@ -1920,6 +1931,134 @@ class FPGAArray(object):
           self.logger.warning("%.32r: File %s not found. Using default ADC delays for all the iceboards." % (delay_filename))
 
 
+
+# MGADC08 = 'MGADC08'
+# MGK7BP1 = 'MGK7BP1'
+# MGK7BP16 = 'MGK7BP16'
+# MGK7MB = 'MGK7MB'
+
+ICE_PATTERNS = [
+        { 'regex': '(MGK7)?BP1',                  'type': 'icecrates',  'model': 'MGK7BP1' },  # Sets the curent model and type to the One-slot backplane; matches MGK7BP1, BP1
+        { 'regex': '(MGK7)?BP16',                 'type': 'icecrates',  'model': 'MGK7BP16' },  # Sets the curent model and type to the 16-slot backplane; matches MGK7BP16, BP16
+        { 'regex': '(MGK7)?MB',                   'type': 'iceboards',  'model': 'MGK7MB'  },  # Sets the curent model and type to the ICEBoard (motherboard); matches MGK7MB, MB
+        { 'regex': '(MG)?ADC08',                  'type': 'mezzanines', 'model': 'MGADC08' },  # Sets the curent model and type to the CHIME Mezzanine;  matches MGADC08, ADC08
+        { 'regex': '29821-0000-(\d{4})',          'type': 'mezzanines', 'model': 'MGADC08', 'serial': 0 },  # Stores a MGADC08 mezzanine item based on serial number extracted from the Digico barcodes (29821-000-ssss, where ssss=serial number)
+        { 'regex': '35896-0000-(\d{4})',          'type': 'mezzanines', 'model': 'MGADC08', 'serial': 0 },  # Stores a MGADC08 mezzanine item based on serial number extracted from the Digico barcodes
+        { 'regex': '(?:|SN)?(\d+)(?:\s*:(\d*))?', 'type': None,         'model': None,      'serial': 0, 'number': 1 },  # Stores an item with the current model and specified serial number and optional item number (crate number).  Matches 232, 0232, SN232, SN0232, 232:1. Serial number can be prefixed by SN.
+        { 'regex': '(\d+.\d+.\d+.\d+)',           'type': 'iceboards',  'addr': 0},  # Stores a motherboard item based on its IP address only
+        { 'regex': '(\w+.local)',                 'type': 'iceboards',  'addr': 0},  # Stores a motherboard item based on its local hostname only
+        { 'regex': '\*',                          'type': None,         'serial': '*'},  # Stores a an item that selects all units of the current model
+        ]
+
+def parse_hw_description_string(hw_description_string, hw_description_table={}, dut_id_patterns=ICE_PATTERNS, hardware_type=None, default_model=None):
+    """ Parses a string describing ICE hardware elements (motherboards, crates and mezzanines) and returns a dictionary describing each component.
+    Each item is described by a model followed by one or, more serial numbers. A crate number can optionally be specified for crates by following the serial number by ':nnnn'.
+    Serial numbers are converted to integers if possible; otherwise, they are stored as a string.
+
+    Underscore characters are converted to blanks before parsing.
+
+    if ``hardware_type`` is specified, only that type of hardware will be accpeted.
+    dut_id_patterns describe the regular expression used to identify each elements of the hardware description string.
+    'regex' describes the regular expression.
+    'type', 'model', 'serial', 'number' and 'addr' describe various fields. If any of these field is an integer index, it it replaced with the regex capture group with this index.
+
+    Return a dict with the following structure:
+        {
+        icecrates: [ (model, serial, crate_number) ...],
+        iceboards: [ (model, serial) | ip_address | hostname ...]
+        mezzanines: [ (model, serial) ...]
+        }
+
+    Examples:
+        'MGK7BP16_SN018:3' => ('MGK7BP16', 18, 3)
+        'MGK7BP16_018:3' => ('MGK7BP16', 18, 3)
+        '18:3' => (None, 18, 3)
+        '18' => (None, 18, None)
+    """
+    # Extract the crate number
+
+    # If hw_description_string is a list of string, combine them in one single string
+    # print 'parsing:', hw_description_string
+    if isinstance(hw_description_string, (list, tuple)):
+        hw_description_string = ' '.join(str(s) for s in hw_description_string)
+
+    # print 'parsing:', hw_description_string
+
+    current_type = hardware_type
+    current_model = default_model
+
+    elements = str(hw_description_string).replace('_', ' ').split(' ')
+    pos = 0
+    err = None
+    model_has_serial = False
+    for el in elements:
+        pos += len(el) + 1
+        if not el:  # if whitespace
+            continue
+        # print 'checking', el
+        matches = 0
+        for p in dut_id_patterns:
+            m = re.match('^' + p['regex'] + '$', el, re.I)
+            # print p['regex'], m
+            if m:   # if there is a match
+                matches += 1
+                groups = m.groups()
+                type_, addr, model, serial, number = [(groups[p[tag]] if isinstance(p[tag], int) else p[tag]) if tag in p else None for tag in ('type', 'addr', 'model','serial','number')]
+                if addr is not None:  # overrides entry
+                    if current_model and not model_has_serial:
+                        err = 'Previous model is missing a serial number'
+                        break
+                    if type_ not in hw_description_table:
+                        hw_description_table[type_] = []
+                    hw_description_table[type_].append(addr)
+                    current_model = default_model
+                    current_type = hardware_type
+                    continue
+                if model is not None:
+                    if hardware_type and type_ != hardware_type:
+                        err = 'Invalid hardware type'
+                        break
+                    current_model = model
+                    current_type = type_
+                    print 'new tmodel:type is', model, type_
+                    model_has_serial = False
+                if serial is not None:
+                    model_has_serial = True
+                    if current_model is None or current_type is None:
+                        err = 'A model must be specified before a serial number is specified'
+                        break
+                    serial = int(serial) if serial.isdigit() else serial
+                    number = int(number) if number is not None else None
+                    # print 'match : type="%r", %s'% (current_type, type_ == 'icecrates')
+                    if current_type == 'icecrates':
+                        dut_id = (current_model, serial, number)
+                        print 'adding icecrate', dut_id
+                    else:
+                        if number is not None:
+                            err = 'A :n hardware instance number can only be applied to crates'
+                            break
+                        dut_id = (current_model, serial)
+                    if current_type not in hw_description_table:
+                        hw_description_table[current_type] = []
+                    hw_description_table[current_type].append(dut_id)
+        if err:
+            break
+        if not matches:
+             err = 'Element did not find a match'
+             break
+        if matches > 1:
+             err = 'element found multiple matches'
+             break
+    if err:
+        print 'Error:', err
+        print hw_description_string
+        print ' '*(pos-2)+'^'
+        raise ValueError(err)
+    print 'hw_description_table:', hw_description_table
+    return hw_description_table
+
+
+
 def parse_args_as_dict(parser, *args, **kwargs):
     """ Parses arguments like argparse.parse_args(...), with the following differences:
            - The results are returned as a dictionary instead of a namespace.
@@ -1957,9 +2096,9 @@ def merge_dict(src, dest):
 
     """
     def is_list(x):
-        return isinstance(dest, collections.Sequence)
+        return isinstance(dest, Sequence)
     def is_dict(x):
-        return isinstance(dest, collections.Mapping)
+        return isinstance(dest, Mapping)
 
     logger = logging.getLogger('')
 
@@ -2137,6 +2276,7 @@ def add_fpga_array_arguments(parser):
     parser.add_argument('-m', '--mode',     type=str, default=None, help="Operational mode ('shuffle16', 'shuffle256', 'shuffle512'). If not specified, set_operational_mode() is not called.")
     parser.add_argument('-f', '--frames_per_packet', '--fpp',     type=int, default=2, help="Number of frames per packeet. Default=2.")
     parser.add_argument('-u', '--udp_retries',     type=int, default=3, help="Number of times UDP packet transmission to the FPGA will be retried.")
+    parser.add_argument('hw_description_string', type=str, nargs='*', help="target hardware")  # allows free-style hardware description string
 
 def setup_logging(log_target='syslog', log_level='debug', sql_log_level='warn', stderr_log_level='warn'):
     # Make sure SQLAlchemy does not log too much
@@ -2330,13 +2470,17 @@ def create_fpga_array(args=None):
 
     # Add generic command-line parameters
     parser.add_argument('-y', '--yaml',  type=str, nargs='+',   help='YAML configuration file name, optionally followed by object names in that file.')
+
+
     args = parse_args_as_dict(parser)  # Parse command-line arguments as a dict, with arguments groups stored in separate sub dictionaries
+    # args.test = parse_dut_id(args.target)
 
     # -------------------------------
     # Load configuration file
     # -------------------------------
     config = load_yaml_config(args.pop('yaml', None))  # Load YAML config
     config = merge_dict(args, config)     # Add command line arguments to config
+    # config['test'] = parse_dut_id(' '.join(config['target']))
 
     logger = setup_logging(**config.get('logging', {}))
     fpga_array = FPGAArray(**config.get('fpga_array', {}))     # Create FPGA array
