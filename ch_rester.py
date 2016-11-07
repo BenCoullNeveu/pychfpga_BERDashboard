@@ -22,7 +22,6 @@ import tornado.tcpclient
 import tornado.web
 
 import chrx
-import kotekan
 import pychfpga
 import pychfpga.fpga_array
 import pychfpga.core.icecore
@@ -577,69 +576,58 @@ class SwitchGainsHandler(JsonRequestHandler):
         self.write({})
 
 
-class KotekanHandler(JsonRequestHandler):
+class KotekanStartHandler(JsonRequestHandler):
     """
     /kotekan REST endpoint handler. Just passes messages through.
     """
-    def initialize(self, kotekan):
-        self.kotekan = kotekan
+    def initialize(self, kotekans):
+        self.kotekans = kotekans
 
     @tornado.gen.coroutine
     def post(self):
-        args = self.request.arguments.copy()
-        type = args.pop('msg_type')
-        msg = kotekan.KotekanMessage(type, **args)
-        yield self.kotekan.send(msg)
+        args = self.request.arguments
+        resps = yield [k.send('start', **args) for k in self.kotekans]
+        self.write(repr(resps))
 
 
 class KotekanConnection(object):
 
-    def __init__(self, host, port, callback):
+    def __init__(self, host):
+        self.client = tornado.httpclient.AsyncHTTPClient()
         self.host = host
-        self.port = port
-        self.on_msg = callback
-        self.msg_uid = 0
+        self.ping_cb = tornado.ioloop.PeriodicCallback(self.ping, 60e3)
+        self.ping_cb.start()
+
+    def url(self, path):
+        return 'http://%s/%s' % (self.host, path)
 
     @tornado.gen.coroutine
-    def start(self):
-        client = tornado.tcpclient.TCPClient()
-        while True:
-            try:
-                self.stream = yield client.connect(self.host, self.port)
-                log.info("connected to kotekan")
-                while True:
-                    msg = yield self.receive()
-                    self.on_msg(msg) # yield?
-            except tornado.iostream.StreamClosedError:
-                #log.debug("can't connect to kotekan")
-                yield tornado.gen.sleep(10)
+    def send(self, path, **kws):
+        url = self.url(path)
+        body = tornado.escape.json_encode(kws)
+        resp = yield self.client.fetch(url, method='POST', body=body)
+        raise tornado.gen.Return(tornado.escape.json_decode(resp.body))
 
     @tornado.gen.coroutine
-    def send(self, msg):
-        self.msg_uid += 1
-        s = msg.serialize(self.msg_uid)
-        b = struct.pack('!I', len(s))
-        yield self.stream.write(b + s)
-
-    @tornado.gen.coroutine
-    def receive(self):
-        b = yield self.stream.read_bytes(4)
-        n,= struct.unpack('!I', b)
-        s = yield self.stream.read_bytes(n)
-        msg = kotekan.KotekanMessage.deserialize(s)
-        raise tornado.gen.Return(msg)
+    def ping(self):
+        try:
+            resp = yield self.send('status')
+            log.info("pinged kotekan %s" % self.host)
+        except Exception as e:
+            log.debug(repr(e))
+            log.debug("can't ping kotekan %s" % self.host)
 
 
 def parse_cmdline_args(argv):
     parser = argparse.ArgumentParser(description="Chime Master")
-    parser.add_argument('--debug', action='store_true',
+    parser.add_argument('-d', '--debug', action='store_true',
                         help="debug mode")
+    parser.add_argument('-k', '--kotekan-hosts', nargs='*', default=[])
     parser.add_argument('-p', '--port', default=54321, type=int)
     return parser.parse_args(argv)
 
 
 def main(args):
-
     log.info("program %s" % PROGRAM)
     log.info("version %s" % GIT_VERSION)
 
@@ -652,15 +640,13 @@ def main(args):
         cm = ChimeMaster()
 
     # kotekan
-    k = KotekanConnection('localhost', kotekan.PORT,
-            lambda msg: print('received', msg))
-    loop.add_callback(k.start)
+    kotekans = [KotekanConnection(host) for host in args.kotekan_hosts]
 
     # setup REST endpoints
     url = tornado.web.url
     app = tornado.web.Application([
         url(r'/echo', EchoHandler),
-        url(r'/kotekan', KotekanHandler, dict(kotekan=k)),
+        url(r'/kotekan-start', KotekanStartHandler, dict(kotekans=kotekans)),
         url(r'/start', StartHandler, dict(cm=cm)),
         url(r'/status', StatusHandler, dict(cm=cm)),
         url(r'/stop', StopHandler, dict(cm=cm)),
