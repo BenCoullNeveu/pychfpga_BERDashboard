@@ -173,14 +173,32 @@ class Ccoll(object):
         # NOTE: Leave this docstring commented to allow ipython to
         # see the target object doc
         # """
-        results = async.async_call(self.values(), None, *args, **kwargs)
+        results = async.async_call(self._dict.values(), None, *args, **kwargs)
         return Ccoll(results, self._dict.keys() if self._has_keys else None)
 
     def map(self, func, *args, **kwargs):
         return Ccoll((func(i, *args, **kwargs) for i in self.values()), self._dict.keys() if self._has_keys else None)
 
-    def getitem(self, index):
-        return self.__getattr__('__getitem__')(index)
+    #  Expose element methods that were hidden by the Ccoll object methods.
+    #
+    #  For example, if c in a Ccoll containing  a list of dicts, c.values() returns the elements of
+    #  the Ccoll, no the values() of each dict element. c.item_values() does however call values() on each dict element.
+
+    def getitem(self, slice_): # deprecated
+        print 'getitem: use item_getitem instead'
+        return self.__getattr__('__getitem__')(slice_)
+
+    def item_getitem(self, slice_):
+        return self.__getattr__('__getitem__')(slice_)
+
+    def item_values(self):
+        return self.__getattr__('values')()
+
+    def item_items(self):
+        return self.__getattr__('items')()
+
+    def item_keys(self):
+        return self.__getattr__('keys')()
 
     def get(self, *args, **kwargs):
         """

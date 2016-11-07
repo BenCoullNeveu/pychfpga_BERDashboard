@@ -16,6 +16,7 @@ class AmbTemp_base(object):
         self.adc_board = adc_board
         self.verbose = verbose
         self.logger = logging.getLogger(__name__)
+
     def init(self):
         pass
 

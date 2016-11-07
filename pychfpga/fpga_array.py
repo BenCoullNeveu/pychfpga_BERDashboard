@@ -15,6 +15,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import pickle
 import re
+import datetime
 
 from tornado.netutil import Resolver
 from tornado.ioloop import IOLoop
@@ -23,6 +24,18 @@ from tornado.gen import with_timeout, TimeoutError
 
 # from sqlalchemy import orm
 from sqlalchemy import or_
+
+# Automatically update the search path for absolute imports of pychfpga and its subpackages. We use
+# absolute imports because 1) if both relative and absolute imports are made, then  modules ar
+# eloade dmultiple times and SQLAlchemy complains. 2) wa cannot access pychfpga subpackages if we
+# run this module as a script because Python refuses to consider the script folder asa package.
+try:
+    import pychfpga
+except ImportError:
+    ch_acq_path = os.path.realpath(os.path.join(os.path.dirname(__file__), '..'))
+    if ch_acq_path not in sys.path:
+        sys.path.insert(0, ch_acq_path)
+
 
 from pychfpga.core.icecore import Ccoll
 from pychfpga.core.icecore import HardwareMap
@@ -49,8 +62,6 @@ Resolver.configure('tornado.netutil.ThreadedResolver', num_threads=20)
 
 class NameSpace(object):
     pass
-
-
 
 
 class FPGABitstream(object):
@@ -1852,6 +1863,98 @@ class FPGAArray(object):
         data = {ib:('\n'.join(info[i].values())) for i, ib in enumerate(self.ib)}
         self.print_iceboard_table(data, row_labels=keys)
 
+    def set_tx_power(self, pmin=6, pmax=13, pre=3):
+        """ Set the transmit power of each transceiver based on the link length to minimize crosstalk.
+        The shortest link pas the power ``pmin``, and the longest link has ``pmax''.
+        The precursor value can also be set to ``pre`` if it is not ``None``.
+        """
+        for ib in self.ib:
+            for gg in ib.BP_SHUFFLE.gtx:
+                if pre is not None:
+                    gg.TXPRECURSOR = pre
+                rx_id = (ib.slot, gg.instance_number + 1)
+                if gg.instance_number <= 14:
+                    net_length = gg.fpga.crate.get_rx_net_length(rx_id)
+                    p = pmin + int((pmax-pmin)*(net_length-1515.)/(16081-1515))
+                    print '%s, len=%f, power=%i' % (rx_id, net_length, p)
+                    gg.TXDIFFCTRL = p
+                else:
+                    gg.TXDIFFCTRL = pmax
+
+    def print_rx_err_map(self, icecrates=None, reset_stats=0, delay=-5, tx_power=None,
+                         tx_precursor=None, tx_postcursor=None, lpm = None, dfe_reset=False, stop_on_errors=2, verbose=1):
+
+        if icecrates is None:
+            icecrates = self.ic
+
+        ibs = Ccoll.chain(*icecrates.slot.item_values())
+        gtx = Ccoll.chain(*ibs.BP_SHUFFLE.gtx)
+
+        time_without_error = [None] * len(icecrates)
+        has_errors = [False] * len(icecrates)
+
+        if lpm is not None:
+            gtx.RXLPMEN = lpm
+
+        if tx_power is not None:
+            ibs.BP_SHUFFLE.set_tx_power(tx_power)
+
+        if tx_precursor is not None:
+            gtx.TXPRECURSOR = tx_precursor
+
+        if tx_postcursor is not None:
+            gtx.TXPOSTCURSOR = tx_postcursor
+
+        if dfe_reset:
+            gtx.reset_rx_equalizer()
+            time.sleep(0.1)
+
+        if reset_stats:
+            self.ib.BP_SHUFFLE.reset_stats()
+
+        t0 = time.time()
+
+        finished = False
+        try:
+            while not finished:
+                time.sleep(abs(delay))
+                dt = time.time() - t0
+                print 'At', time.asctime(), '(%s seconds since the method call)' % (datetime.timedelta(seconds=dt))
+                for i, ic in enumerate(icecrates):
+                    err_map = [[None] * ic.NUMBER_OF_SLOTS for _ in range(ic.NUMBER_OF_SLOTS)]
+                    #print  ic.slot.values()
+                    worst_err = 0
+                    worst_det = 1
+                    for slot, ib in ic.slot.items():
+                        errs, det = ib.BP_SHUFFLE.get_rx_lane_monitor(['ERROR_CTR', 'FRAME_DETECT'], link_group=0)
+                        worst_err = max(worst_err, max(errs))
+                        worst_det = min(worst_det, min(det))
+
+                        if not has_errors[i]:
+                            time_without_error[i] = dt
+
+                        if (any(errs) or not all(det)):
+                            has_errors[i] = True
+
+                        for lane in range(16):
+                            rx_lane_id = (slot, lane)
+                            tx_lane = ib.BP_SHUFFLE.get_matching_tx_node_id(rx_lane_id)
+                            err_map[rx_lane_id[0]-1][tx_lane[0]-1] = errs[lane] if errs[lane] else '!DET' if not det[lane] else '-'
+                            #print '%s -> %s = %i' % (tx_lane, rx_lane_id, errs[lane])
+                    row_labels = ['Tx S%02i SN%s' % (ib.slot, ib.serial) for ib in ic.slot.values()]
+                    col_labels = ['Rx S%02i\nSN%s' % (ib.slot, ib.serial) for ib in ic.slot.values()]
+                    corner_label = '%s\nCrate #%s' % (ic.get_id(), ic.crate_number)
+                    print '    %s: %-10s %s %s' % (
+                        ic.get_id(),
+                        'No Frames!' if not worst_det else ('%i errors' % worst_err),
+                        '%s without errors' % datetime.timedelta(seconds=int(time_without_error[i])),
+                        'so far' if not has_errors[i] else '')
+                    if verbose:
+                        self.print_table(err_map, row_labels=row_labels, col_labels=col_labels, corner_label=corner_label)
+                if (stop_on_errors == 1 and any(has_errors)) or (stop_on_errors > 1 and all(has_errors)):
+                    break
+        except KeyboardInterrupt:
+            pass
 
     def print_iceboard_qsfp(self):
         self.print_iceboard_table(lambda ib: '\n'.join(ib.hw.qsfp.get_serial_number().map(str)), grid=1)

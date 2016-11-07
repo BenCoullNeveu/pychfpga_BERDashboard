@@ -7,6 +7,8 @@ import shlex
 import os
 import socket
 import json
+import requests
+
 #import core.icecore.icebox
 
 from sqlalchemy import Column, Integer, String, ForeignKey
@@ -74,7 +76,7 @@ class GpuNodeHandler(handler.Handler):
 
     hostname = handler.HandlerParentAttribute(lambda ib: ib.hostname)
 
-    def __init__(self, hostname=None, node_type='packet_server', **kwargs):
+    def __init__(self, hostname=None, node_type='kotekan', **kwargs):
         super(GpuNodeHandler, self).__init__(**kwargs)
         if node_type not in self.NODE_TYPES:
             raise ValueError("Node type can only be one of the following: %s" % ', '.join(self.NODE_TYPES.keys()))
@@ -138,11 +140,26 @@ class GpuNodeHandler(handler.Handler):
             sock.close()
         return packets
 
+    def _inspect_kotekan(self, port=0, number_of_packets=1):
+        """
+        Obtain data from an inspect server running on the node.
+
+        The server listens to TCP port 5001 and responds with JSON headers followed by binary data.
+        """
+        command = {"port": port, "num_packets": number_of_packets}
+        resp = requests.post('http://%s:%i/packet_grab' % (self.hostname, 12048), data=json.dumps(command))
+        if resp.reason != 'OK' or resp.status_code != 200:
+            raise RuntimeError('The server returned the folloring error: %i:%s' % (resp.status_code, resp.reason))
+        return np.fromstring(resp.content, np.uint8).reshape((number_of_packets, -1))
+
+
     NODE_TYPES = {
         'packet_server':  (16, _inspect_server),  # ssh, Logs in as gamma-user, requires a private key in ~/.ssh. Works on windows if ssh (or git) is installed
         'gamma-win':  (8, _inspect_gamma_win),  # ssh, Logs in as gamma-user, requires a private key in ~/.ssh. Works on windows if ssh (or git) is installed
-        'chi': (16, _inspect_chi)  #
+        'chi': (16, _inspect_chi),  #
+        'kotekan': (4, _inspect_kotekan),
         }
+
 
     def parse_hexdump(self, hexdump):
         """

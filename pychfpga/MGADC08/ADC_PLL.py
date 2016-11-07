@@ -155,9 +155,9 @@ class ADC_PLL_base(object):
             self.write(np.uint32(PLL_reg2))  # write Reg 2:
             self.write(np.uint32(PLL_reg1))  # write Reg 1:
             self.write(np.uint32(PLL_reg0))  # write Reg 0:
-            self.write(np.uint32(PLL_reg0)); # write Reg 0: # To make sure DBR values are clocked in.
+            self.write(np.uint32(PLL_reg0))  # write Reg 0: # To make sure DBR values are clocked in.
 
-            time.sleep(0.250)
+            time.sleep(0.050)
             if self.is_locked():
                 self.logger.info('%.32r: ADC PLL is locked in trial #%i' % (self.adc_board, trial + 1))
                 break

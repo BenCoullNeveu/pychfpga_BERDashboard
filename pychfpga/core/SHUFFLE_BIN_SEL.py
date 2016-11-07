@@ -55,9 +55,10 @@ class SHUFFLE_BIN_SEL_base(Module_base):
     # IN_FRAME_CTR             = BitField(STATUS, 0x02, 0, width=8, doc="Number of frames received on lane 0 before the alignment FIFOs. Rolls over.")
     # LANE_CTR                = BitField(STATUS, 0x04, 0, width=4, doc="Debug")
 
-    def __init__(self, fpga_instance, base_address, instance_number):
+    def __init__(self, fpga_instance, base_address, instance_number, crossbar_level):
         # self.parent = parent
         # self.fpga = fpga_instance
+        self.crossbar_level = crossbar_level
         super(self.__class__, self).__init__(fpga_instance, base_address, instance_number)
         self.logger = logging.getLogger(__name__)
         self._lock()
@@ -91,8 +92,8 @@ class SHUFFLE_BIN_SEL_base(Module_base):
             mask[j//8] |= (1<<(j % 8))
         # verbose = False
         # if verbose: print (bins_to_enable)
-        self.logger.debug('%.32r: Configuring lane %i of the crossbar to capture %i frequency bins: %s' % (self.fpga, self.instance_number, len(bins_to_enable), repr(bins_to_enable)))
-        self.logger.debug('%.32r: Mask pattern is: %s' % (self.fpga, ' '.join('%02X'% byte for byte in mask)))
+        self.logger.debug('%.32r: CROSSBAR%i.BIN_SEL[%i] configured to capture %i frequency bins: %s...' % (self.fpga, self.crossbar_level, self.instance_number, len(bins_to_enable), repr(bins_to_enable[:10])))
+        # self.logger.debug('%.32r: Mask pattern is: %s' % (self.fpga, ' '.join('%02X'% byte for byte in mask)))
 
         self.write_ram(0x00, mask) # Write the bin selection mask array
 

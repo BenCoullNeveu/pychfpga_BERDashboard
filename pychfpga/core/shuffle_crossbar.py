@@ -79,7 +79,7 @@ class ShuffleCrossbar(Module_base):
         super(ShuffleCrossbar, self).__init__(fpga_instance, base_address)
         self.BIN_SEL = []
         for i in range(number_of_bin_sel):
-            self.BIN_SEL.append(SHUFFLE_BIN_SEL.SHUFFLE_BIN_SEL_base(fpga_instance, base_address+ (i+1) * address_increment, i))
+            self.BIN_SEL.append(SHUFFLE_BIN_SEL.SHUFFLE_BIN_SEL_base(fpga_instance, base_address+ (i+1) * address_increment, i, crossbar_level=crossbar_level))
 
     def __getitem__(self, key):
         """    Returns the bin selector instance specified by the key"""

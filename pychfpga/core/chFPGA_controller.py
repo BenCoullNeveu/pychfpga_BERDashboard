@@ -411,16 +411,16 @@ class chFPGA_controller(IceBoardExtHandler):
 
         self._logger.debug('%r: --- Initializing REFCLK' % self)
         self.REFCLK.init()
-        self.REFCLK.status()
+        # self.REFCLK.status()
 
         #Only do for ML605, not KC705 board
         self._logger.debug('%r: --- Initializing SYSMON' % self)
         self.SYSMON.init()
-        self.SYSMON.status()
+        # self.SYSMON.status()
 
         self._logger.debug('%r: --- Initializing SPI' % self)
         self.SPI.init()
-        self.SPI.status()
+        # self.SPI.status()
 
         self._logger.info('%r: --- Initializing FMC slots' % self)
 
@@ -446,7 +446,7 @@ class chFPGA_controller(IceBoardExtHandler):
                 # We need to initialize the ADC board befor we initialize ANT (and its data acquisition) because the delay blocks need a clock
                 self._logger.debug('%r:   Initializing FMC%i' % (self, mezz_number - 1))
                 mezz.init(sampling_frequency=sampling_frequency, reference_frequency=reference_frequency)
-                mezz.status()
+                # mezz.status()
             else:
                 self._logger.debug('%r:    Skipping FMC%i initialization since no board is present in that slot' % (self, mezz_number - 1))
 
@@ -495,7 +495,7 @@ class chFPGA_controller(IceBoardExtHandler):
         if self.NUMBER_OF_CORRELATORS > 0:
             self._logger.debug('%r:  - CORR' % self)
             self.CORR.init()
-            self.CORR.status()
+            # self.CORR.status()
         else:
             self._logger.info('%r: There are no FPGA correlators in this firmware build' % self);
 
@@ -2115,7 +2115,7 @@ class chFPGA_controller(IceBoardExtHandler):
             cb1_bypass = False
             cb1_four_bit = True
             cb1_combine_data_flags = 0
-            cb1_lanes = [(0, 3)] * number_of_cb1_bin_sel
+            cb1_lanes = [(0, 3)] * number_of_cb1_bin_sel  # get data from channel group 0 - 3. Each channel group combines data from 4 chanelizers (in 4 bit mode)
             cb1_bins = 64
             cb1_bin_spacing = 1024/cb1_bins
             cb1_bin_select_map = [np.arange(cb1_bins)*cb1_bin_spacing+i for i in range(number_of_cb1_bin_sel)]

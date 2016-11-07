@@ -246,16 +246,16 @@ class MGADC08_Handler(FMCMezzanineHandler):
         self.sampling_frequency = sampling_frequency
         self.reference_frequency = reference_frequency
         self.logger.info('%.32r: Initializing MGADC08 on Mezzanine %i' % (self, self.mezzanine))
-        self.logger.debug('%.32r:   - AmbTemp' % self)
+        # self.logger.debug('%.32r:   - AmbTemp' % self)
         self.AmbTemp.init()
 
-        self.logger.debug('%.32r:   - IOExpander' % self)
+        # self.logger.debug('%.32r:   - IOExpander' % self)
         self.IOExpander.init()
 
-        self.logger.debug('%.32r:   - ADC_PLL' % self)
+        # self.logger.debug('%.32r:   - ADC_PLL' % self)
         self.ADC_PLL.init(fout=2*self.sampling_frequency/1e6, fref=self.reference_frequency/1e6, verbose=verbose)
 
-        self.logger.debug('%.32r:   - ADC' % self)
+        # self.logger.debug('%.32r:   - ADC' % self)
         self.ADC.init()
 
     def status(self):
