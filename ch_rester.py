@@ -16,6 +16,7 @@ import sys
 import pickle
 import time
 import traceback
+import yaml
 
 import tornado
 import tornado.tcpclient
@@ -585,16 +586,18 @@ class KotekanStartHandler(JsonRequestHandler):
 
     @tornado.gen.coroutine
     def post(self):
-        args = self.request.arguments
-        resps = yield [k.send('start', **args) for k in self.kotekans]
-        self.write(repr(resps))
+        config = self.request.arguments
+        results = yield [k.start(config) for k in self.kotekans]
+        self.write(dict(results=results))
 
 
 class KotekanConnection(object):
 
-    def __init__(self, host):
-        self.client = tornado.httpclient.AsyncHTTPClient()
+    def __init__(self, name, host=None, **kvs):
+        self.name = name
         self.host = host
+        self.per_gpu_config = kvs
+        self.client = tornado.httpclient.AsyncHTTPClient()
         self.ping_cb = tornado.ioloop.PeriodicCallback(self.ping, 60e3)
         self.ping_cb.start()
 
@@ -617,12 +620,23 @@ class KotekanConnection(object):
             log.debug(repr(e))
             log.debug("can't ping kotekan %s" % self.host)
 
+    @tornado.gen.coroutine
+    def start(self, config):
+        # XXX:HACK for pathfinder
+        newconfig = config.copy()
+        newconfig.update(self.per_gpu_config)
+        try:
+            result = yield self.send('start', **newconfig)
+        except Exception as e:
+            result = dict(error=repr(e))
+        raise tornado.gen.Return(result)
+
 
 def parse_cmdline_args(argv):
     parser = argparse.ArgumentParser(description="Chime Master")
     parser.add_argument('-d', '--debug', action='store_true',
                         help="debug mode")
-    parser.add_argument('-k', '--kotekan-hosts', nargs='*', default=[])
+    parser.add_argument('-g', '--gpus', default=None, type=str)
     parser.add_argument('-p', '--port', default=54321, type=int)
     return parser.parse_args(argv)
 
@@ -640,7 +654,8 @@ def main(args):
         cm = ChimeMaster()
 
     # kotekan
-    kotekans = [KotekanConnection(host) for host in args.kotekan_hosts]
+    gpus = yaml.load(open(args.gpus))
+    kotekans = [KotekanConnection(k,**v) for k,v in gpus.items()]
 
     # setup REST endpoints
     url = tornado.web.url
