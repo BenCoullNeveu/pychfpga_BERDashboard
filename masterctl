@@ -100,6 +100,17 @@ def switch_gains():
     r = post('switchgains')
     print_result(r)
 
+@cli.command('kotekan-start')
+@click.option('--yaml', '-y')
+def kotekan_start(yaml):
+    """
+    Start kotekan.
+    """
+    from pychfpga.fpga_array import load_yaml_config
+    config = load_yaml_config(yaml.encode('ascii'))
+    r = post('kotekan-start', **config)
+    print_result(r)
+
 if __name__ == '__main__':
     cli()
 
