@@ -6,3 +6,6 @@
 *.orig
 /Archives
 *.7z
+/_build/
+/_templates/
+*.sublime-workspace
