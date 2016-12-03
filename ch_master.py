@@ -674,16 +674,17 @@ if __name__ == "__main__":
             for bankset in all_banks:
                     log.info('%.32r: Currently using gain banks %s' % (self, ', '.join([str(i) for i in bankset])))
 
-    t0 = time.time()
+    #t0 = time.time()
 
     try:
         while True:
 
             # print board info at regular interval
-            t1 = time.time()
-            if t1-t0 > 60:
-                t0 = t1
-                ca.print_iceboard_info()
+            #t1 = time.time()
+            #if t1-t0 > 60:
+                #t0 = t1
+                #try: ca.print_iceboard_info()
+                #except: pass
 
             # Pass the acquisition object the board temperatures. This is a temporary
             # way of doing this!  Check on frame number.  If less than 10sec from 'reload_gains_time'
