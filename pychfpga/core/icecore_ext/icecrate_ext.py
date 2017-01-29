@@ -64,6 +64,14 @@ class IceCrateExtHandler(IceCrateHandler):
         return cls._BP_TX_TO_RX_MAP[tx_slot_lane_tuple]
 
     @classmethod
+    def get_pcb_link_map(cls):
+        """
+        Return a dictionnary that maps all receiver id to transmitter id. It is in the format:
+            {(rx_slot,rx_lane): (tx_slot:tx_lane),...}
+        """
+        return cls._BP_RX_TO_TX_MAP
+
+    @classmethod
     def get_rx_net_length(cls, rx_slot_lane_tuple):
         return cls._BP_RX_NET_LENGTH[rx_slot_lane_tuple]
 

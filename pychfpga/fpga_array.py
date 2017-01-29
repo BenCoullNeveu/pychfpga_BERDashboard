@@ -25,6 +25,13 @@ from tornado.gen import with_timeout, TimeoutError
 # from sqlalchemy import orm
 from sqlalchemy import or_
 
+# For development: delete all fpga modules so fresh ones will be reloaded
+if getattr(__main__, '__reload__', False):
+    print 'Clearing all pychfpga modules...'
+    for n,m in sys.modules.items():
+        if n.startswith('pychfpga'):
+            del sys.modules[n]
+
 # Automatically update the search path for absolute imports of pychfpga and its subpackages. We use
 # absolute imports because 1) if both relative and absolute imports are made, then  modules ar
 # eloade dmultiple times and SQLAlchemy complains. 2) wa cannot access pychfpga subpackages if we
@@ -1021,6 +1028,102 @@ class FPGAArray(object):
         self.sync(delay=2)
 
 
+    def get_chan_map(self):
+
+        # Compute channelizer outputs. Each channelizer is assigned with 1024 tuples (crate_number, slot, channel, bin_number) describing the channel content
+        # crate_numbers = set(ic.crate_number for ic in self.ic) | set(ic.crate_number ^ 1for ic in self.ic)
+        ch_out = OrderedDict()
+        for ic in self.ic:
+            for slot, ib in ic.slot.items():
+                for ch, ant in enumerate(ib.ANT):
+                        ch_out[(ic.crate_number, slot, ch)] = [(ic.crate_number, slot, ch, bin_number) for bin_number in range(1024)]
+        return ch_out
+
+    def get_chan_output(self):
+        ch_out = OrderedDict()
+        for ic in self.ic:
+            for slot, ib in ic.slot.items():
+                for ch, ant in enumerate(ib.ANT):
+                    buf = ant.FUNCGEN.get_buffer()
+                    buf >>= 4
+                    buf = (buf[0::2] << 4) + buf[1::2]
+                    ch_out[(ic.crate_number, slot, ch)] = buf.tolist()
+        return ch_out
+
+    def get_shuffle_output(self):
+        return self.apply_shuffle_map(self.get_chan_output())
+
+    def apply_shuffle_map(self, shuffle_map, data):
+        pass
+
+
+    def get_shuffle_map(self, chan_data):
+        """
+        Takes chan_data, propagate its data through the
+        shuffle stages as they are currently configured in the FPGA, and return the resulting data.
+
+        ``chan_data`` is a dictionary of the format {(crate_number, slot, channel_number): [1024 elements],...}
+
+        The elements describing the channel contents can by of any type (complex number, channel & bin tuple, etc.)
+
+        """
+
+
+        chan_map = self.get_chan_map()
+
+        # Get first crossbar map
+        # Channels are converted to (crate_number, slot, input_number)
+        # Output lane id is converted to (crate_number, slot, lane)
+
+        cb0_out = OrderedDict()
+        for ic in self.ic:
+            for slot, ib in ic.slot.items():
+                ch_in = {ch: chan_map[(ic.crate_number, slot, ch)] for ch, ant in enumerate(ib.ANT)} # extract channels for this inceboard only
+                for lane, data in ib.CROSSBAR.map(ch_in).items():
+                    cb0_out[(ic.crate_number, slot, lane)] = data
+
+        # Apply pcb shuffling
+        bp_out = OrderedDict()
+        for ic in self.ic:
+            pcb_link_map = ic.get_pcb_link_map()
+            for (rx_slot, rx_lane), (tx_slot, tx_lane) in pcb_link_map.items():
+                bp_out[(ic.crate_number, rx_slot, rx_lane)] = cb0_out[(ic.crate_number, tx_slot, tx_lane)]
+
+        # Apply CROSSBAR2
+        cb2_out = OrderedDict()
+        for ic in self.ic:
+            for slot, ib in ic.slot.items():
+                cb_in = {lane: bp_out[(ic.crate_number, slot, lane)] for lane in range(ib.BP_SHUFFLE.NUMBER_OF_PCB_LANES)} # extract channels for this inceboard only
+                for lane, data in ib.CROSSBAR2.map(cb_in).items():
+                    cb2_out[(ic.crate_number, slot, lane)] = data
+
+        # Apply QSFP shuffling
+        qsfp_out = OrderedDict()
+        for ic in self.ic:
+            for slot, ib in ic.slot.items():
+                for rx_lane in range(ib.BP_SHUFFLE.NUMBER_OF_QSFP_LANES):
+                    crate_offset = rx_lane * 2 // ib.BP_SHUFFLE.NUMBER_OF_QSFP_LANES
+                    qsfp_out[(ic.crate_number, slot, rx_lane)] = cb2_out[(ic.crate_number ^ crate_offset, slot, rx_lane)]
+
+        # Apply CROSSBAR3
+        cb3_out = OrderedDict()
+        for ic in self.ic:
+            for slot, ib in ic.slot.items():
+                cb_in = {lane: qsfp_out[(ic.crate_number, slot, lane)] for lane in range(ib.BP_SHUFFLE.NUMBER_OF_QSFP_LANES)} # extract channels for this inceboard only
+                for lane, data in ib.CROSSBAR3.map(cb_in).items():
+                    cb3_out[(ic.crate_number, slot, lane)] = data
+
+        return cb3_out
+
+    # def get_map(self):
+    #     cb1_map = self.CROSSBAR.get_map()
+    #     shuffle_map
+
+    #     cb2_map = self.CROSSBAR2.get_map()
+
+    #     return cb1_map
+
+
 
     def test_sync(self):
         c = list(self.ib)
@@ -1955,6 +2058,19 @@ class FPGAArray(object):
                     break
         except KeyboardInterrupt:
             pass
+
+    def print_net_length_map(self):
+        for ic in self.ic:
+            err_map = [[None] * ic.NUMBER_OF_SLOTS for _ in range(ic.NUMBER_OF_SLOTS)]
+            for slot, ib in ic.slot.items():
+                for lane in range(16):
+                    rx_lane = (slot, lane)
+                    tx_lane = ic.get_matching_tx(rx_lane)
+                    err_map[rx_lane[0]-1][tx_lane[0]-1] = '%0.1f' % (ic.get_rx_net_length(rx_lane)/1000)
+            row_labels = ['Tx S%02i SN%s' % (ib.slot,ib.serial) for ib in ic.slot.values()]
+            col_labels = ['Rx S%02i\nSN%s' % (ib.slot,ib.serial) for ib in ic.slot.values()]
+            corner_label = '%s\nCrate #%s' % (ic.get_id(), ic.crate_number)
+            self.print_table(err_map, row_labels=row_labels, col_labels=col_labels, corner_label=corner_label)
 
     def print_iceboard_qsfp(self):
         self.print_iceboard_table(lambda ib: '\n'.join(ib.hw.qsfp.get_serial_number().map(str)), grid=1)

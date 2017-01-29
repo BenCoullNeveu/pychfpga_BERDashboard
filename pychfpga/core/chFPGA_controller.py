@@ -1975,6 +1975,8 @@ class chFPGA_controller(IceBoardExtHandler):
             crate_shuffle_bypass = True
             cb3_lane_map = range(8)
             cb3_bypass = True
+            crate_number = self.crate.crate_number if self.crate else 0
+            stream_type = 0
 
         elif mode == 'chan4': # get the high nibble of every bytes from two lanes in a single word. Allows Get (4+4) bit data from all channelizers
             cb1_bypass = True
@@ -1986,6 +1988,8 @@ class chFPGA_controller(IceBoardExtHandler):
             crate_shuffle_bypass = True
             cb3_lane_map = range(8)
             cb3_bypass = True
+            crate_number = self.crate.crate_number if self.crate else 0
+            stream_type = 0
 
 
         elif mode == 'shuffle16':
@@ -2015,6 +2019,9 @@ class chFPGA_controller(IceBoardExtHandler):
             # cb2_bin_select_map = [np.arange(cb2_bins)*cb2_bin_spacing for i in range(number_of_cb2_bin_sel)]
             cb2_output_words_per_bin = cb2_input_words_per_bin
             cb2_output_bins = cb2_bins
+
+            crate_number = self.crate.crate_number if self.crate else 0
+            stream_type = 1
 
             crate_shuffle_bypass = True
             cb3_lane_map = range(8)
@@ -2093,7 +2100,8 @@ class chFPGA_controller(IceBoardExtHandler):
             cb2_bin_select_map = [np.arange(cb2_bins)*cb2_bin_spacing for i in range(number_of_cb2_bin_sel)]
             cb2_output_words_per_bin = 2 * cb2_input_words_per_bin
             cb2_output_bins = cb2_bins
-
+            crate_number = self.crate.crate_number
+            stream_type = 2
             # QSFP SHUFFLE
             crate_shuffle_bypass = True
 
@@ -2172,6 +2180,7 @@ class chFPGA_controller(IceBoardExtHandler):
             cb2_bins = 32
             cb2_bin_spacing = 2
             crate_number = self.crate.crate_number
+            stream_type = 3
             cb2_bin_select_map = [np.arange(cb2_bins)*cb2_bin_spacing + (i^crate_number) for i in range(number_of_cb2_bin_sel)]
             cb2_output_words_per_bin = cb2_input_words_per_bin * 4
             cb2_output_bins = cb2_bins
@@ -2202,6 +2211,8 @@ class chFPGA_controller(IceBoardExtHandler):
 
             crate_shuffle_bypass=1
 
+            crate_number = self.crate.crate_number if self.crate else 0
+            stream_type = 4
 
             cb2_input_bins = cb1_bins
             if bp_shuffle_bypass and self.slot is not None:
@@ -2236,6 +2247,7 @@ class chFPGA_controller(IceBoardExtHandler):
         self.set_ant_reset(1)
         self.set_corr_reset(1)
 
+        slot_number = self.slot - 1 if self.slot is not None else 0
         #-------------------------
         # Configure CROSSBAR 1
         #-------------------------
@@ -2245,7 +2257,7 @@ class chFPGA_controller(IceBoardExtHandler):
             bs.COMBINE_DATA_FLAGS = cb1_combine_data_flags
 
             bs.GROUP_FRAMES = frames_per_packet
-            bs.STREAM_ID = self.slot - 1 if self.slot is not None else 0 # The stream ID at the output of CB1 will be 0xSL (S=slot-1, L=lane)
+            bs.STREAM_ID = (stream_type << 8) | (crate_number << 4) | slot_number
             bs.FOUR_BITS = cb1_four_bit
             bs.FIRST_FIFO_NUMBER = cb1_lanes[cb1_output_lane][0]
             bs.LAST_FIFO_NUMBER = cb1_lanes[cb1_output_lane][1]
@@ -2272,7 +2284,7 @@ class chFPGA_controller(IceBoardExtHandler):
         for (cb2_bin_sel, bs) in enumerate(cb2):
             bs.BYPASS = bool(cb2_bypass)
             if not cb2_bypass:
-                bs.STREAM_ID = self.slot - 1 if self.slot is not None else 0 # The stream ID at the output of CB2 will be 0xSL (S=slot-1, L=lane)
+                bs.STREAM_ID = (stream_type << 8) | (crate_number << 4) | slot_number
                 bs.NUMBER_OF_FRAMES_PER_PACKET = frames_per_packet
                 bs.NUMBER_OF_FRAME_FLAGS_WORDS_PER_FRAME=1
                 bs.FIRST_LANE = cb2_lanes[cb2_bin_sel][0]
@@ -2290,7 +2302,7 @@ class chFPGA_controller(IceBoardExtHandler):
         for (cb3_bin_sel, bs) in enumerate(cb3):
             bs.BYPASS = bool(cb3_bypass)
             if not cb3_bypass:
-                bs.STREAM_ID = self.slot - 1  # The stream ID at the output of CB2 will be 0xSL (S=slot-1, L=lane)
+                bs.STREAM_ID = (stream_type << 8) | (crate_number << 4) | slot_number  # The stream ID at the output of CB2 will be 0xSL (S=slot-1, L=lane)
                 bs.NUMBER_OF_FRAMES_PER_PACKET = frames_per_packet
                 bs.NUMBER_OF_FRAME_FLAGS_WORDS_PER_FRAME=2
                 bs.FIRST_LANE = cb3_lanes[cb3_bin_sel][0]
@@ -2480,6 +2492,7 @@ class chFPGA_controller(IceBoardExtHandler):
             print x
         for x in bp_gen(self):
             print x
+
 
     @async
     def get_status(self):
