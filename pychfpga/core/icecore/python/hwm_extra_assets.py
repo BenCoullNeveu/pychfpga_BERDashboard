@@ -642,9 +642,11 @@ class IceBoardPlusHandler(IceBoardHandler):
         """ Read a single 32-bit word from the FPGA at the specified byte
         address. This uses the fastest interface available (currently the ARM-
         FPGA SPI link)
+
+        Value is returned as an unsigned integer.
         """
         word = yield self._fpga_spi_peek.async(addr)
-        async_return(word)
+        async_return(word & 0xFFFFFFFF)
 
     @async
     def fpga_mmi_write(self, addr, value):

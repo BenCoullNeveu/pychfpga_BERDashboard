@@ -39,6 +39,7 @@ class PROBER_base(Module_base):
     _IN_DAT_FIRST = BitField(STATUS, 0x00, 5, doc="State of the CAPTURE_FRAME signal (for debugging)")
     _DATA_FIFO_EMPTY = BitField(STATUS, 0x00, 4, doc="State of the DATA_FIFO_EMPTY signal (for debugging)")
     _DATA_FIFO_OVERFLOW = BitField(STATUS, 0x00, 3, doc="State of the DATA_FIFO_OVERFLOW signal (for debugging)")
+    _DATA_FIFO_OVERFLOW_STICKY = BitField(STATUS, 0x00, 2, doc="State of the DATA_FIFO_OVERFLOW signal, stick to '1' when there us en aeeror until RESET=1 (for debugging)")
     CAPTURE_ACTIVE = BitField(STATUS, 0x00, 0, doc="Active high if data capture is in progress (cleared when BURST_NUMBER bursts have been sent)")
 
     def __init__(self, fpga_instance, base_address, instance_number):

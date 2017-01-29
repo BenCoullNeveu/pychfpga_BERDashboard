@@ -2224,9 +2224,6 @@ def parse_hw_description_string(hw_description_string, hw_description_table={}, 
                 groups = m.groups()
                 type_, addr, model, serial, number = [(groups[p[tag]] if isinstance(p[tag], int) else p[tag]) if tag in p else None for tag in ('type', 'addr', 'model','serial','number')]
                 if addr is not None:  # overrides entry
-                    if current_model and not model_has_serial:
-                        err = 'Previous model is missing a serial number'
-                        break
                     if type_ not in hw_description_table:
                         hw_description_table[type_] = []
                     hw_description_table[type_].append(addr)
