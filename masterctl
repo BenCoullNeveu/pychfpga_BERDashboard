@@ -1,0 +1,116 @@
+#!/usr/bin/env python
+#
+# masterctl: control and query ch_master via the REST interface.
+#
+
+import click
+import json
+import requests
+import sys
+
+TIMEOUT = 60 # seconds
+
+def error(msg):
+    click.secho(msg, bold=True, fg='red')
+    sys.exit(-1)
+
+def url(endpoint):
+    return 'http://%s:%d/%s' % (HOST, PORT, endpoint)
+
+def nicer_connection_error(func):
+    def func_wrapper(*args, **kvs):
+        try:
+            return func(*args, **kvs)
+        except requests.exceptions.ConnectionError:
+            error("can't connect to ch_master at %s:%d" % (HOST, PORT))
+    return func_wrapper
+
+@nicer_connection_error
+def get(endpoint):
+    return requests.get(url(endpoint), timeout=TIMEOUT).json()
+
+@nicer_connection_error
+def post(endpoint, **kvs):
+    return requests.post(url(endpoint), json=kvs, timeout=TIMEOUT).json()
+
+def print_result(d):
+    if d == {}:
+        click.echo('ok')
+    elif 'error' in d:
+        error(d['error'].rstrip())
+    else:
+        click.echo(json.dumps(d, sort_keys=True, indent=2))
+
+@click.group(context_settings=dict(help_option_names=['-h','--help']))
+@click.option('--host', default='localhost', help="ch_master host.")
+@click.option('--port', default=54321, help="ch_master port.", type=int)
+def cli(host, port):
+    """
+    ch_master command line interface.
+    """
+    global HOST, PORT
+    HOST = host
+    PORT = port
+
+@cli.command()
+def ping():
+    """
+    Test connection to ch_master.
+    """
+    import random
+    nonce = random.getrandbits(32)
+    r = post('echo', nonce=nonce)
+    if nonce == int(r['nonce']):
+        click.echo("ok")
+    else:
+        click.echo("internal error!")
+
+@cli.command()
+@click.option('--yaml', '-y')
+def start(yaml):
+    """
+    Start ch_master.
+    """
+    from pychfpga.fpga_array import load_yaml_config
+    config = load_yaml_config(yaml.encode('ascii'))
+    r = post('start', **config)
+    print_result(r)
+
+@cli.command()
+def status():
+    """
+    Print ch_master status.
+    """
+    r = get('status')
+    print_result(r)
+
+@cli.command()
+def stop():
+    """
+    Stop ch_master.
+    """
+    r = get('stop')
+    print_result(r)
+
+@cli.command()
+def switch_gains():
+    """
+    Change gains.
+    """
+    r = post('switchgains')
+    print_result(r)
+
+@cli.command('kotekan-start')
+@click.option('--yaml', '-y')
+def kotekan_start(yaml):
+    """
+    Start kotekan.
+    """
+    from pychfpga.fpga_array import load_yaml_config
+    config = load_yaml_config(yaml.encode('ascii'))
+    r = post('kotekan-start', **config)
+    print_result(r)
+
+if __name__ == '__main__':
+    cli()
+
