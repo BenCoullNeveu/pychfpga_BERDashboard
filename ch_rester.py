@@ -22,7 +22,12 @@ import tornado
 import tornado.tcpclient
 import tornado.web
 
-import chrx
+try:
+    import chrx
+except ImportError:
+    chrx = None
+    print('chrx could not be found. Ignoring.')
+
 import pychfpga
 import pychfpga.fpga_array
 import pychfpga.core.icecore
@@ -114,150 +119,142 @@ FPGA_HK_FIELDS = { "core_temp": "deg C" }
 PROGRAM = os.path.realpath(__file__)
 
 # Git version.
-GIT_VERSION = subprocess.check_output(
-    'git describe --all --dirty --long'.split(),
-    cwd=os.path.dirname(PROGRAM)).strip()
+# GIT_VERSION = subprocess.check_output(
+#     'git describe --all --dirty --long'.split(),
+#     cwd=os.path.dirname(PROGRAM)).strip()
+GIT_VERSION = 'unknown' # JFC: Override to allow tests in windows
 
 SECONDS_PER_FRAME = 2.56e-6
 
-
-def load_gains(ib, bank=0):
-    gains = {}
-    for cc in ib:
-        slot = cc.slot
-        filename = '/home/chime/ch_acq/gains_slot'+str(slot)+'.pkl'
-        try:
-            g_array = pickle.load(open(filename, 'rb'))
-            log.info('Setting gains on IceBoard SN%s, slot %i' % (cc.serial, slot))
-            cc.set_gain(g_array, bank=bank)  # *** should this be bank=all_bank
-            gains[slot] = cc.get_gain(bank=bank)
-        except IOError:
-            log = logging.getLogger()
-            log.warn('Could not load gain file %s. Gains are not set.' % filename)
-    return gains
+# JFC: moved load_gains as an FPGAArray method
+# def load_gains(ib, bank=0):
+#     gains = {}
+#     for cc in ib:
+#         slot = cc.slot
+#         filename = '/home/chime/ch_acq/gains_slot'+str(slot)+'.pkl'
+#         try:
+#             g_array = pickle.load(open(filename, 'rb'))
+#             log.info('Setting gains on IceBoard SN%s, slot %i' % (cc.serial, slot))
+#             cc.set_gain(g_array, bank=bank)  # *** should this be bank=all_bank
+#             gains[slot] = cc.get_gain(bank=bank)
+#         except IOError:
+#             log = logging.getLogger()
+#             log.warn('Could not load gain file %s. Gains are not set.' % filename)
+#     return gains
 
 
 def configure_fpgas(conf):
 
+    # Remove the fpga_array parameters from the config file because they may contain objects that acq cannot digest.
+    # This is a hack. We should rather sanitize the the config file before sending it to ack.
     fpga_array_params = conf.fpga.pop('fpga_array_params')
 
     log.info("Sampling frequency is %0.3f MHz." %
         float(fpga_array_params.samp_freq))
 
-    # Create the FPGA controller object.
-    # Will now create an array of controller objects indexed by serial number
-    # And program board firmware if needed/requested currently will always reprogram
-    ca = pychfpga.fpga_array.FPGAArray(**fpga_array_params)
-    sync_board = ca.ib.get(serial=conf.fpga.master_sync_board) if conf.fpga.master_sync_board else None
-    ca.set_sync_method(conf.fpga.sync_method, source=conf.fpga.sync_source, master=sync_board, master_time_source=conf.fpga.master_sync_source if sync_board else None)
-    ca.ib.set_adc_mask(0) # null the ADC data before it gets to the channelizers to reduce power consumption
+    # Create the FPGAArray object. This object will create a database of all FPGA boards, crates and
+    # mezzanines as described by the ``fpga_array_params`` parameters.fpga_array_params If specified
+    # in the parameters, the FPGAs will be loaded with their bitstream, communication with the FPGAs
+    # will be established and all the Python objects needed to operate the FPGA firmware will be
+    # created and initialized.and
 
-    try:
-        delays = pickle.load(open(conf.fpga.adc_delay_table))
-        #sync_delays = pickle.load(open(conf.fpga.sync_delay_table))
-        for ib in ca.ib:
-            #ib.REFCLK.set_sync_delay(sync_delays[int(ib.serial)])
-            ib.REFCLK.compute_sync_delay() # XXX: is this ok?
-            time.sleep(0.2)
-            ib.set_adc_delays_with_check(delays[int(ib.serial)])
-            log.info("set delays on SN%s, SLOT%s" % (ib.serial, ib.slot))
-    except IOError:
-        #log.warn("Error loading/setting delay tables. Using default delays from config file for all boards")
-        raise RuntimeError('Error loading/setting delay tables')
+    ca = pychfpga.fpga_array.FPGAArray(**fpga_array_params)
     if not ca.ib:
         raise RuntimeError('No IceBoard could be found. Are the boards powered up? Is the networking functional?')
 
+    # if this needed?
+    ca.ib.set_adc_mask(0) # null the ADC data before it gets to the channelizers to reduce power consumption
+
+    # Set ADC delays from delay files. Recompute and save new delays if the files do not exist or if
+    # the delays loaded from them do not work.
+    ca.set_adc_delays(**conf.fpga.adc_delay_params)
+
+
+    # Reset the correlator. Not sure if this is necesssary?
     ca.ib.set_corr_reset(1)
     time.sleep(0.1)
     ca.ib.set_corr_reset(0)
 
-    # Set FPGA controller parameters.
-    # Calculate new gains if necessary
-    # Get config here to be able to create receiver object
-    # Gains will need to be able to handle multiple boards, currently file
-    # Will be overwritten when used for more than one board.
-    # Make compute gains smarter -> write to db? need boards to actually be different
-
     # Get noise injection parameters
-    ni_board = conf.fpga.ni_board
-    ni_enable = conf.fpga.ni_enable
-    ni_offset = conf.fpga.ni_offset
-    ni_high_time = conf.fpga.ni_high_time - 1 # the -1 is due to the convention in function set_frame_pwm()
-    ni_period = conf.fpga.ni_period - 1
-    ni_board_26m = conf.fpga.ni_board_26m
-    ni_enable_26m = conf.fpga.ni_enable_26m
-    ni_offset_26m = conf.fpga.ni_offset_26m
-    ni_high_time_26m = conf.fpga.ni_high_time_26m - 1 # the -1 is due to the convention in function set_frame_pwm()
-    ni_period_26m = conf.fpga.ni_period_26m - 1
+    ni = conf.fpga.ni
+    ni_26m = conf.fpga.ni_26m
 
-    if (int(conf.compute_gain) > 0):
-        # Shouldn't need for loop here, but initial testing failed in parallel.
-        if ni_enable:
-            ca.set_noise_injection(ni_board, ni_enable, 0, 3, 4)
-            ni_board.sync()
-        if ni_enable_26m:
-            ca.set_noise_injection(ni_board_26m, ni_enable_26m, 0, 3, 4)
-            ni_board_26m.sync()
-        calculate_gain_slots = conf.fpga.calculate_gain_slots
-        for ib in ca,ib:
-            if ib.slot in calculate_gain_slots:
-                fpga_config = ib.get_config()
+    # Compute gains if requested
+    if conf.compute_gain:
+        if ni.board:
+            ca.set_noise_injection(board=ni.board, enable=ni.enable, offset=0, high_time=3, period=4, local_sync=True)
+        if ni_26m.board:
+            ca.set_noise_injection(board=ni_26m.board, enable=ni_26m.enable, offset=0, high_time=3, period=4, local_sync=True)
+        for ib in ca.ib:
+            if ib.slot in conf.fpga.calculate_gain_slots:
+                # fpga_config = ib.get_config()
                 pychfpga.calculate_gains.calculate_gains(ib, str(ib.fpga_port_number + 1))
-    all_chan = range(16)  # range(conf["n_antenna"])
-    ca.ib.set_data_source("adc")  # This should come first.
-    ca.ib.set_FFT_bypass(False, channels=all_chan)
-    ca.ib.set_FFT_shift(conf.fpga.fft_shift, channels=all_chan)
 
-    ca.ib.set_synchronized_gain_switching(enable=0)
-    ca.ib.set_next_gain_bank(bank=0)
-    all_banks = ca.ib.get_current_gain_bank()
+    # Set-up channelizers to process data normally
+    log.info("Setting-up channelizers")
+    ca.set_channelizers(adc_mode='data', adcdaq_mode='data',
+                        data_source='adc',
+                        fft_bypass=False, fft_shift=conf.fpga.fft_shift,
+                        scaler_bypass=False, offset_binary_encoding=True)
 
-    # Load and set the gains
-    log.info("Loading initial gains")
-    load_gains(ca.ib, bank=0)
+    # Set-up initial gains in gain bank #0
+    log.info("Loading initial scaler gains in bank #0")
+    ca.set_synchronized_gain_switching_mode(enable=0)  # Disable synchronized gain switching
+    ca.set_next_gain_bank(bank=0)  # select immediately bank zero to load initial gains
+    ca.load_gains(bank=0) # load gains from gain files
 
-    for bankset in ca.ib.get_current_gain_bank():
-        log.info('Using gain banks %s' % (', '.join([str(i) for i in bankset])))
+    # for bankset in ca.ib.get_current_gain_bank():
+    #     log.info('Using gain banks %s' % (', '.join([str(i) for i in bankset])))
 
-    enable_gain_switching = conf.acq.enable_gain_switching
-    gain_switch_frame = conf.fpga.gain_switch_frame
-    if enable_gain_switching > 0:
+    if conf.acq.enable_gain_switching:
         # set frame number to switch gains at.
-        ca.ib.set_gain_switch_frame_number(frame=0) # XXX:???
+        ca.set_gain_switch_frame_number(frame=0) # XXX:???
         # set to only change when at configured frame number
-        ca.ib.set_synchronized_gain_switching(enable=1)
+        ca.set_synchronized_gain_switching_mode(enable=1)
         # set to use bank 1 next, change in loop below.
         # have to do this after config to wait for frame number
 
-    for bankset in ca.ib.get_current_gain_bank():
-        log.info('Using gain banks %s' % (', '.join([str(i) for i in bankset])))
 
-    for enabled_sync in ca.ib.get_synchronized_gain_switching():
-        log.info('Gain sync status is %s' % (', '.join([str(i) for i in enabled_sync])))
+    # Is the logging below useful? We just set them...
 
-    for frames_set in ca.ib.get_gain_switch_frame_number():
-        log.info('Gain sync frame is %s' % (', '.join([str(i) for i in frames_set])))
+    # for bankset in ca.ib.get_current_gain_bank():
+    #     log.info('Using gain banks %s' % (', '.join([str(i) for i in bankset])))
 
-    log.info("Sending local sync to each board")
-    ca.ib.sync()
-    ca.ib.set_offset_binary_encoding(True)
-    for ib in ca.ib:
-        ib.set_local_data_port_number((ib.slot or 1) + 41100)
-        ib.start_data_capture(period=30, source='adc', offset=(ib.slot or 1) - 1)
-    # Setup noise injection enable PWM signals
-    if ni_board:
-        ca.set_noise_injection(ni_board, ni_enable, ni_offset, ni_high_time, ni_period)
-    if ni_board_26m:
-        ca.set_noise_injection(ni_board_26m, ni_enable_26m, ni_offset_26m, ni_high_time_26m, ni_period_26m)
+    # for enabled_sync in ca.ib.get_synchronized_gain_switching():
+    #     log.info('Gain sync status is %s' % (', '.join([str(i) for i in enabled_sync])))
+
+    # for frames_set in ca.ib.get_gain_switch_frame_number():
+    #     log.info('Gain sync frame is %s' % (', '.join([str(i) for i in frames_set])))
+
+    # log.info("Sending local sync to each board")
+    # ca.ib.sync()
+    # ca.ib.set_offset_binary_encoding(True)
+
+
+    # Raw Data capture should be coordinated with the corresponding raw data receiver.
+    # Destination IP and port number should be set-up appropriately
+    # So for now we'll disable data capture below
+    #
+    # for ib in ca.ib:
+    #     ib.set_local_data_port_number((ib.slot or 1) + 41100)
+    #     ib.start_data_capture(period=30, source='adc', offset=(ib.slot or 1) - 1)
+
+    # Setup noise injection (enable PWM signals)
+    if ni.board:
+        ca.set_noise_injection(board=ni.board, enable=ni.enable, offset=ni.offset, high_time=ni.high_time, period=ni.period)
+    if ni_26m.board:
+        ca.set_noise_injection(board=ni_26m.board, enable=ni_26m.enable, offset=ni_26m.offset, high_time=ni_26m.high_time, period=ni_26m.period)
+
+
     # Initialize data shufling and transmission to the GPU
-    log.info("Setting FPGA operational mode")
-    ca.set_operational_mode(conf.fpga.operational_mode, frames_per_packet=fpga_array_params.group_frames)
-    log.info("Synchronizing the array...")
+    # log.info("Setting FPGA operational mode")
+    # ca.set_operational_mode(conf.fpga.operational_mode, frames_per_packet=fpga_array_params.group_frames)
 
+    log.info("Synchronizing the array...")
     ca.sync()  # synchronize all the boards in the array
 
     log.info("Unmasking the ADC data")
-    ca.ib.set_adc_mask(0xFF) # restore normal ADC data
+    ca.ib.set_adc_mask(0xFF) # restore normal ADC data, necessary anymore?
 
     log.info("Waiting for 2 seconds")
     time.sleep(2)
@@ -273,7 +270,7 @@ def configure_fpgas_post_acq(conf, ca):
     ca.ib.CROSSBAR.LANE_MONITOR_SEL = 6
     ca.ib.CROSSBAR2.LANE_MONITOR_SEL = 6
 
-    if (conf.acq.enable_gain_switching > 0):
+    if conf.acq.enable_gain_switching:
         ca.ib.set_next_gain_bank(bank=1)
     for bankset in ca.ib.get_next_gain_bank():
         log.info('Set next gain bank to %s' % ', '.join([str(i) for i in bankset]))
@@ -420,7 +417,7 @@ class ChimeMaster(object):
             log.info('Using gain banks ' + ', '.join(map(str,bankset)))
 
         # load gains into next bank
-        fpga_gains = load_gains(iceboards, bank=next_bank)
+        fpga_gains = self.fpga.load_gains(bank=next_bank)
         log.info("Loaded gains into bank %d" % next_bank)
 
         return fpga_gains

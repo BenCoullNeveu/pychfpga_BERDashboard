@@ -147,25 +147,35 @@ class GPIO_base(Module_base):
         """ Pulses the global trigger line. """
         self.pulse_bit('GLOBAL_TRIG')
 
-    def set_pwm(self, offset=0, high_time=195312, period=390625, reset=False):
-        """ Set-ups the frame-based PWM generatot, typically used to generate
-        the noise injecting gating signal.
+    def set_pwm(self, enable=True, offset=0, high_time=195312, period=390625, pwm_reset=False):
+        """ Set-ups the frame-based PWM generator, typically used to generate
+        the noise injection gating signal.
 
-        All values are 32-bit. A channelizer reset (or a SYNC signal, which
-        generates one) must be issued after the values are changed to obtain
-        the proper waveform.
+        ``offset``, ``high-time`` and ``period`` are 32-bit values that describe the waveform.
 
-        If 'reset' is True, a channelizer reset signal is issued. This is
-        mainly useful for testing. A system-wide SYNC (which will cause the
-        channelizer reset) is actually needed to make this signal synchronized
-        with other boards.
+        ``offset``: number of frames to ait after reset before the first HIGH
+        ``high_time``: Number of frames to stay high
+        ``period``: number of frames between the begginings of the high time
+
+        A channelizer reset (or a SYNC signal, which generates one) must be issued after the values
+        are changed to obtain the proper waveform.
+
+        If ``enable`` is false, the PWM generator will be disabled
+
+        If 'pwm_reset' is True, the PWM generator will be reset before being enabled. This is mainly
+        useful for testing, as the offset will be taken from the current frame, not frame zero, and
+        every board will operate on a random offsets. The PWM generator is always reset by SYNC events.
+        A system-wide SYNC will therefore make the PWM signal synchronized across all boards.
         """
         self.PWM_OFFSET = offset
-        self.PWM_HIGH_TIME = high_time
-        self.PWM_PERIOD = period
-        if reset:
-            self.PWM_RESET = 1
-            self.PWM_RESET = 0
+        self.PWM_HIGH_TIME = high_time - 1 # The actual high time is PWM_HIGH_TIME + 1
+        self.PWM_PERIOD = period - 1  # The actual period is PWM_PERIOD + 1
+        if enable:
+            if pwm_reset:
+                self.PWM_RESET = 1  # stops the PWM generator
+            self.PWM_RESET = 0  # starts the PWM generator
+        else:
+            self.PWM_RESET = 1  # stops the PWM generator
 
     def get_pwm(self):
         """ Return the current values of the frame-based PWM generator as a
