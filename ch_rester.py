@@ -119,10 +119,13 @@ FPGA_HK_FIELDS = { "core_temp": "deg C" }
 PROGRAM = os.path.realpath(__file__)
 
 # Git version.
-# GIT_VERSION = subprocess.check_output(
-#     'git describe --all --dirty --long'.split(),
-#     cwd=os.path.dirname(PROGRAM)).strip()
-GIT_VERSION = 'unknown' # JFC: Override to allow tests in windows
+try:
+    GIT_VERSION = subprocess.check_output(
+        'git describe --all --dirty --long'.split(),
+        cwd=os.path.dirname(PROGRAM)).strip()
+except WindowsError:
+    print('GIT was not found')
+    GIT_VERSION = 'unknown' # JFC: To allow tests in windows
 
 SECONDS_PER_FRAME = 2.56e-6
 
@@ -271,7 +274,7 @@ def configure_fpgas_post_acq(conf, ca):
     ca.ib.CROSSBAR2.LANE_MONITOR_SEL = 6
 
     if conf.acq.enable_gain_switching:
-        ca.ib.set_next_gain_bank(bank=1)
+        ca.set_next_gain_bank(bank=1)
     for bankset in ca.ib.get_next_gain_bank():
         log.info('Set next gain bank to %s' % ', '.join([str(i) for i in bankset]))
     for bankset in ca.ib.get_current_gain_bank():
@@ -298,13 +301,15 @@ def reap_cached_sockets():
 
 
 class ChimeMaster(object):
-    """
+    """ Object that provide methods to initialize, control, monitor and shutdown a CHIME telescope
+    array (or subarray)
     """
 
     def __init__(self):
         self.state = 'off'
 
     def start(self, **kvs):
+        """ Start the FPGA F-Engine and correlator output acquisition process """
         if self.state != 'off':
             return dict(error='already started')
 
@@ -391,12 +396,14 @@ class ChimeMaster(object):
         return {}
 
     def status(self):
+        """ Get the operational status of the telescope """
         status = dict(state=self.state)
         if self.state == 'on':
             status['config'] = self.config
         return status
 
     def stop(self):
+        """ Stop the F-engine and the correlator data acquisition processes"""
         if self.state == 'on':
             self.state = 'stopping'
             log.info("stopping acquisition")
@@ -408,6 +415,8 @@ class ChimeMaster(object):
         return {}
 
     def load_gains(self):
+        """ Reload a new set of FPGA F-Engine complex gains from the gain files in the currently unused gain bank"""
+
         current_bank = self.current_bank
         next_bank = (current_bank + 1) % 2
         iceboards = self.fpgas.ib
@@ -440,7 +449,7 @@ class ChimeMaster(object):
         next_bank = (current_bank + 1) % 2
         iceboards = self.fpgas.ib
 
-        iceboards.set_next_gain_bank(bank=current_bank)
+        self.fpgas.set_next_gain_bank(bank=current_bank)
         self.current_bank = next_bank
         log.debug("changed which gain bank will be written to over to %d"
             % current_bank)
@@ -651,8 +660,8 @@ def main(args):
         cm = ChimeMaster()
 
     # kotekan
-    gpus = yaml.load(open(args.gpus))
-    kotekans = [KotekanConnection(k,**v) for k,v in gpus.items()]
+    gpus = yaml.load(open(args.gpus)) if args.gpus else {}
+    kotekans = [KotekanConnection(k, **v) for k,v in gpus.items()]
 
     # setup REST endpoints
     url = tornado.web.url
