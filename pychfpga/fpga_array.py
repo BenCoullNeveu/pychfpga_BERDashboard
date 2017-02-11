@@ -45,7 +45,7 @@ except ImportError:
 
 
 from pychfpga.core.icecore import Ccoll
-from pychfpga.core.icecore import HardwareMap
+from pychfpga.core.icecore import HardwareMap, HWMResource
 from pychfpga.core.icecore import mdns_discover
 from pychfpga.core.icecore import async, async_return
 
@@ -182,11 +182,20 @@ class FPGAArray(object):
         Hardware map creation
         ----------------------
 
-        hwm: HardwareMap database object that contains IceBoards, IceCrates
-           and Mezzanines. The hardware map elements that fail the ``ping``
+        hwm: Fully formed hardware map, either as a HardwareMap database object or as a list of dicts that describe how to create each object.
+           The database contains IceBoards, IceCrates
+           and Mezzanines.
+
+           The hardware map elements that fail the ``ping``
            and ``subarray`` criteria are removed from the provided hardware
            map, and objects specified by the ``iceboards`` and ``icecrates``
            parameters below are added to it.
+
+        hw_description_string: A string that describes the hardware to be added to the hardware map,
+           as an shorter alternative to the explicit map provided with the ``hwm`` parameter.
+           Autodiscovery is used as needed to complete the hrdware map. The list is in the format [model
+           [serial_or_hostname]]
+
 
         iceboards : List of strings corresponding to the serial number, the IP
             address or the mDNS name of the iceboards to be added to the
@@ -380,9 +389,23 @@ class FPGAArray(object):
         #     icecrates = [self._to_integer(x) for x in icecrates.values()]
         #     # icecrate_map = {
         print 'icecrate map=', self.icecrate_map
+        print 'hardware map=', hwm
         # If no hardware map is provided, create an empty one
         if not hwm:
             self.hwm = HardwareMap()  # Create empty hardware map
+
+        # If the hwm parameter is a list of  dicts, create the hardware map by instantiating the
+        # object of the type contained in the ``class`` element and passing it the remaining
+        # elements as keyword arguments
+        elif isinstance(hwm, list):
+            print 'Creating Hardware Map from list'
+            self.hwm = HardwareMap()  # Create empty hardware map
+            for obj in hwm:
+                class_name = obj.pop('class') # remove the class name from the dict. The rest wil be used as instantiation parameters
+                class_ = HWMResource._decl_class_registry[class_name] # look up all the classes from the class registry created with the Base object
+                self.hwm.add(class_(**obj))
+            self.hwm.flush()
+        # Otherwise use the hardware map as is, hoping it is a HardwareMap object
         else:
             self.hwm = hwm
 
@@ -2766,7 +2789,7 @@ def create_fpga_array(args=None):
     # config['test'] = parse_dut_id(' '.join(config['target']))
 
     logger = setup_logging(**config.get('logging', {}))
-    fpga_array = FPGAArray(**config.get('fpga_array', {}))     # Create FPGA array
+    fpga_array = FPGAArray(**config.get('fpga', {}).get('fpga_array_params', {}))  # Create FPGA array
     gpu_array = GPUArray(**config.get('gpu_array', {}))     # Create FPGA array
     ps_array = PSArray(**config.get('power_supply_array', {}))     # Create FPGA array
 
