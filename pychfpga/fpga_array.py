@@ -1011,7 +1011,7 @@ class FPGAArray(object):
         """ Enable or disable synchronized gain switching for all boards of the array. """
         self.ib.set_synchronized_gain_switching(enable=enable)
 
-    def set_next_gain_bank(bank):
+    def set_next_gain_bank(self, bank):
         """ Sets the next gain bank to use on all channelizers of the array.
 
         The switch will be done imeediately or not, depending on the gain switching mode (see
@@ -1246,10 +1246,14 @@ class FPGAArray(object):
     def load_gains(self, bank=0, gain_folder='/home/chime/ch_acq/gains'):
         gains = {}
         for ib in self.ib:
-            slot = ib.slot
-            crate = ib.crate.crate_number
-            filename = os.path.join(gain_folder, 'gains_C%sS%02i.pkl' % (crate, slot))
             try:
+                slot = ib.slot
+                crate = ib.crate.crate_number
+            except AttributeError:
+                slot = 0
+                crate = 0
+            try:
+                filename = os.path.join(gain_folder, 'gains_C%sS%02i.pkl' % (crate, slot))
                 g_array = pickle.load(open(filename, 'rb'))
                 self.logger.info('Setting gains on IceBoard SN%s, crate %s, slot %i' % (cc.serial, crate, slot))
                 ib.set_gain(g_array, bank=bank)  # *** should this be bank=all_bank
@@ -1260,7 +1264,7 @@ class FPGAArray(object):
                     self.logger.warn('Gain file not found for IceBoard SN%s, crate %s, slot %i. Using default gains' % (cc.serial, crate, slot))
                     ib.set_gain(g_array, bank=bank)  # *** should this be bank=all_bank
                 except IOError:
-                    self.logger.warn('Neither board-specific gain file not default gain file was found for IceBoard SN%s, crate %s, slot %i. Gains are *NOT* set' % (cc.serial, crate, slot))
+                    self.logger.warn('Neither board-specific gain file not default gain file was found for IceBoard SN%s, crate %s, slot %i. Gains are *NOT* set' % (ib.serial, crate, slot))
             gains[(crate, slot)] = ib.get_gain(bank=bank)
         return gains
 

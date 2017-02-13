@@ -198,12 +198,12 @@ def configure_fpgas(conf):
     ca.set_channelizers(adc_mode='data', adcdaq_mode='data',
                         data_source='adc',
                         fft_bypass=False, fft_shift=conf.fpga.fft_shift,
-                        scaler_bypass=False, offset_binary_encoding=True)
+                        scaler_bypass=False)
 
     # Set-up initial gains in gain bank #0
     log.info("Loading initial scaler gains in bank #0")
     ca.set_synchronized_gain_switching_mode(enable=0)  # Disable synchronized gain switching
-    ca.set_next_gain_bank(bank=0)  # select immediately bank zero to load initial gains
+    ca.set_next_gain_bank(0)  # select immediately bank zero to load initial gains
     ca.load_gains(bank=0) # load gains from gain files
 
     # for bankset in ca.ib.get_current_gain_bank():
@@ -243,10 +243,10 @@ def configure_fpgas(conf):
     #     ib.start_data_capture(period=30, source='adc', offset=(ib.slot or 1) - 1)
 
     # Setup noise injection (enable PWM signals)
-    if ni.board:
-        ca.set_noise_injection(board=ni.board, enable=ni.enable, offset=ni.offset, high_time=ni.high_time, period=ni.period)
-    if ni_26m.board:
-        ca.set_noise_injection(board=ni_26m.board, enable=ni_26m.enable, offset=ni_26m.offset, high_time=ni_26m.high_time, period=ni_26m.period)
+    #if ni.board:
+    #    ca.set_noise_injection(board=ni.board, enable=ni.enable, offset=ni.offset, high_time=ni.high_time, period=ni.period)
+    #if ni_26m.board:
+    #    ca.set_noise_injection(board=ni_26m.board, enable=ni_26m.enable, offset=ni_26m.offset, high_time=ni_26m.high_time, period=ni_26m.period)
 
 
     # Initialize data shufling and transmission to the GPU
@@ -378,8 +378,8 @@ class ChimeMaster(object):
 
         self.acq = chrx.acq(conf, log, 16, FPGA_HK_FIELDS)
 
-        for k,v in headers.items():
-            self.acq.add_header_item(k, v)
+        #for k,v in headers.items():
+        #    self.acq.add_header_item(k, v)
 
         self.acq.start(acq_base_dir, CRATE_SN, int(conf.fpga.subarray))
         log.info("finished starting CHRX")
