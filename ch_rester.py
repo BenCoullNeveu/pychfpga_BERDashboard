@@ -79,7 +79,11 @@ def convert_types(val):
             val = int(val)
         elif isinstance(val, unicode):
             val = str(val)
-        if not isinstance(val, str):
+        elif isinstance(val, int):
+            pass
+        elif isinstance(val, float):
+            pass
+        elif not isinstance(val, str):
             try:
                 if val.dtype.kind in ('i', 'u', 'f', 'b'):
                     val = numpy.asscalar(val)
@@ -184,9 +188,9 @@ def configure_fpgas(conf):
 
     # Compute gains if requested
     if conf.compute_gain:
-        if ni.board:
+        if ni.enable:
             ca.set_noise_injection(board=ni.board, enable=ni.enable, offset=0, high_time=3, period=4, local_sync=True)
-        if ni_26m.board:
+        if ni_26m.enable:
             ca.set_noise_injection(board=ni_26m.board, enable=ni_26m.enable, offset=0, high_time=3, period=4, local_sync=True)
         for ib in ca.ib:
             if ib.slot in conf.fpga.calculate_gain_slots:
@@ -238,15 +242,15 @@ def configure_fpgas(conf):
     # Destination IP and port number should be set-up appropriately
     # So for now we'll disable data capture below
     #
-    # for ib in ca.ib:
-    #     ib.set_local_data_port_number((ib.slot or 1) + 41100)
-    #     ib.start_data_capture(period=30, source='adc', offset=(ib.slot or 1) - 1)
+    for ib in ca.ib:
+         ib.set_local_data_port_number((ib.slot or 1) + 41100)
+         ib.start_data_capture(period=30, source='adc', offset=(ib.slot or 1) - 1)
 
     # Setup noise injection (enable PWM signals)
-    #if ni.board:
-    #    ca.set_noise_injection(board=ni.board, enable=ni.enable, offset=ni.offset, high_time=ni.high_time, period=ni.period)
-    #if ni_26m.board:
-    #    ca.set_noise_injection(board=ni_26m.board, enable=ni_26m.enable, offset=ni_26m.offset, high_time=ni_26m.high_time, period=ni_26m.period)
+    if ni.enable:
+        ca.set_noise_injection(board=ni.board, enable=ni.enable, offset=ni.offset, high_time=ni.high_time, period=ni.period)
+    if ni_26m.enable:
+        ca.set_noise_injection(board=ni_26m.board, enable=ni_26m.enable, offset=ni_26m.offset, high_time=ni_26m.high_time, period=ni_26m.period)
 
 
     # Initialize data shufling and transmission to the GPU
@@ -368,7 +372,9 @@ class ChimeMaster(object):
         # Pass FPGA configuration variables to header.
         for fpga_slot, slot_conf in fpga_conf.items():
             for name in slot_conf:
-                if name != 'antenna_scaler_gain':
+                # Need to fix delay tables processing
+                # Convert types function needs to handle dictionaries as well
+                if name != 'antenna_scaler_gain' and name != 'antenna_adc_data_acquisition_delay_tables':
                     val = convert_types(slot_conf[name])
                     name = 'Slot_'+ str(fpga_slot) + '_' + name
                     headers[name] = val
@@ -378,8 +384,11 @@ class ChimeMaster(object):
 
         self.acq = chrx.acq(conf, log, 16, FPGA_HK_FIELDS)
 
-        #for k,v in headers.items():
-        #    self.acq.add_header_item(k, v)
+        for k,v in headers.items():
+            print(k)
+            print('break\n')
+            print(v)
+            self.acq.add_header_item(k, v)
 
         self.acq.start(acq_base_dir, CRATE_SN, int(conf.fpga.subarray))
         log.info("finished starting CHRX")
