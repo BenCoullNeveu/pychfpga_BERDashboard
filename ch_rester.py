@@ -183,7 +183,7 @@ def configure_fpgas(conf):
     ni_26m = conf.fpga.ni_26m
 
     # Compute gains if requested
-    if conf.compute_gain:
+    if conf.fpga.compute_gains:
         if ni.board:
             ca.set_noise_injection(board=ni.board, enable=ni.enable, offset=0, high_time=3, period=4, local_sync=True)
         if ni_26m.board:
@@ -195,10 +195,7 @@ def configure_fpgas(conf):
 
     # Set-up channelizers to process data normally
     log.info("Setting-up channelizers")
-    ca.set_channelizers(adc_mode='data', adcdaq_mode='data',
-                        data_source='adc',
-                        fft_bypass=False, fft_shift=conf.fpga.fft_shift,
-                        scaler_bypass=False, offset_binary_encoding=True)
+    ca.set_channelizers(**conf.fpga.channelizer_params)
 
     # Set-up initial gains in gain bank #0
     log.info("Loading initial scaler gains in bank #0")
