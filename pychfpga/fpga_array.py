@@ -324,6 +324,7 @@ class FPGAArray(object):
             'if_ip = %s' % if_ip,
             'iceboards = %s' % iceboards,
             'icecrates = %s' % icecrates,
+            'hw_description_string = %s' % hw_description_string,
             'subarrays = %s' % subarrays,
             'ping = %s' % ping,
             'mdns_timeout = %s' % mdns_timeout,
@@ -973,7 +974,7 @@ class FPGAArray(object):
     def set_channelizers(self, adc_mode=None, adcdaq_mode=None,
                         data_source=None, function=None, a=1, b=0,
                         fft_bypass=None, fft_shift=None,
-                        scaler_bypass=None, gain=None, postscaler=None,
+                        scaler_bypass=None, gain=None, postscaler=None, offset_binary_encoding=None,
                         sync=True,
                         channels=None):
         """
@@ -985,7 +986,7 @@ class FPGAArray(object):
         self.ib.set_channelizer(adc_mode=adc_mode, adcdaq_mode=adcdaq_mode,
                         data_source=data_source, function=function, a=a, b=b,
                         fft_bypass=fft_bypass, fft_shift=fft_shift,
-                        scaler_bypass=scaler_bypass, gain=gain, postscaler=postscaler)
+                        scaler_bypass=scaler_bypass, gain=gain, postscaler=postscaler, offset_binary_encoding=offset_binary_encoding)
         if sync:
             self.sync()
 
@@ -2289,7 +2290,7 @@ def parse_hw_description_string(hw_description_string, hw_description_table={}, 
     if isinstance(hw_description_string, (list, tuple)):
         hw_description_string = ' '.join(str(s) for s in hw_description_string)
 
-    # print 'parsing:', hw_description_string
+    print 'parsing:', hw_description_string
 
     current_type = hardware_type
     current_model = default_model
@@ -2763,7 +2764,7 @@ def create_fpga_array(args=None):
 
     # Add FPGA Array-related command-line parameters
     fpga_group = parser.add_argument_group('FPGA Array parameters', 'Allows interactive creation of a hardware map and initialization of all its components')
-    fpga_group.sub_dict = 'fpga_array'  # group all arguments in this group in a sub dictionary with this name
+    fpga_group.sub_dict = 'fpga_array_params'  # group all arguments in this group in a sub dictionary with this name
     add_fpga_array_arguments(fpga_group)
 
     gpu_group = parser.add_argument_group('GPU Array parameters', 'Allows interactive creation of GPU nodes')
@@ -2789,7 +2790,8 @@ def create_fpga_array(args=None):
     # config['test'] = parse_dut_id(' '.join(config['target']))
 
     logger = setup_logging(**config.get('logging', {}))
-    fpga_array = FPGAArray(**config.get('fpga', {}).get('fpga_array_params', {}))  # Create FPGA array
+    fpga_array_params = config.get('fpga', {}).get('fpga_array_params', {}) or config.get('fpga_array_params', {})
+    fpga_array = FPGAArray(**fpga_array_params)  # Create FPGA array
     gpu_array = GPUArray(**config.get('gpu_array', {}))     # Create FPGA array
     ps_array = PSArray(**config.get('power_supply_array', {}))     # Create FPGA array
 
