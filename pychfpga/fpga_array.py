@@ -2258,7 +2258,7 @@ ICE_PATTERNS = [
         { 'regex': '\*',                          'type': None,         'serial': '*'},  # Stores a an item that selects all units of the current model
         ]
 
-def parse_hw_description_string(hw_description_string, hw_description_table={}, dut_id_patterns=ICE_PATTERNS, hardware_type=None, default_model=None):
+def parse_hw_description_string(hw_description_string, hw_description_table=None, dut_id_patterns=ICE_PATTERNS, hardware_type=None, default_model=None):
     """ Parses a string describing ICE hardware elements (motherboards, crates and mezzanines) and returns a dictionary describing each component.
     Each item is described by a model followed by one or, more serial numbers. A crate number can optionally be specified for crates by following the serial number by ':nnnn'.
     Serial numbers are converted to integers if possible; otherwise, they are stored as a string.
@@ -2289,6 +2289,10 @@ def parse_hw_description_string(hw_description_string, hw_description_table={}, 
     # print 'parsing:', hw_description_string
     if isinstance(hw_description_string, (list, tuple)):
         hw_description_string = ' '.join(str(s) for s in hw_description_string)
+
+    # If no target hw_descirption table is provided, create a new one
+    if hw_description_table is None:
+        hw_description_table = dict()
 
     print 'parsing:', hw_description_string
 
