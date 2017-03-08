@@ -14,7 +14,7 @@
    - !IceBoardPlus { serial: "0023", hostname: "10.10.10.23", handler_name: "chFPGA_controller", subarray: 15  , slot: 15 }  # Former Penticton Slot 15
    - !IceBoardPlus { serial: "0024", hostname: "10.10.10.24", handler_name: "chFPGA_controller", subarray: 2  , slot:  8 }  # Penticton Slot 8
    - !IceBoardPlus { serial: "0025", hostname: "10.10.10.25", handler_name: "chFPGA_controller", subarray: 2  , slot: 11 }  # Penticton Slot 11 # Sometimes used by Kevin and Adam for development
-   - !IceBoardPlus { serial: "0026", hostname: "10.10.10.26", handler_name: "chFPGA_controller", subarray: 2  , slot:  2 }  # Penticton Slot 2
+   - !IceBoardPlus { serial: "0026", hostname: "10.10.10.26", handler_name: "chFPGA_controller", subarray: 66  , slot:  2 }  # Former Penticton Slot 2
    - !IceBoardPlus { serial: "0027", hostname: "10.10.10.27", handler_name: "chFPGA_controller", subarray: 2  , slot: 13 }  # Penticton Slot 13
    - !IceBoardPlus { serial: "0030", hostname: "10.10.10.30", handler_name: "chFPGA_controller", subarray: 2  , slot:  4 }  # Penticton Slot 4
    - !IceBoardPlus { serial: "0031", hostname: "10.10.10.31", handler_name: "chFPGA_controller", subarray: 2  , slot:  5 }  # Penticton Slot 5
@@ -35,3 +35,4 @@
    - !IceBoardPlus { serial: "0065", hostname: "10.10.10.65", handler_name: "chFPGA_controller", subarray: 66, slot: 11 }  # McGill crate slot 11
    - !IceBoardPlus { serial: "0068", hostname: "10.10.10.68", handler_name: "chFPGA_controller", subarray: 2, slot: 1 }  # Penticton slot 1
    - !IceBoardPlus { serial: "0061", hostname: "10.10.10.61", handler_name: "chFPGA_controller", subarray: 77, slot: 13 }  # McGill crate slot 13
+   - !IceBoardPlus { serial: "0275", hostname: "10.10.10.75", handler_name: "chFPGA_controller", subarray: 2, slot: 2 }  # Penticton slot 2
