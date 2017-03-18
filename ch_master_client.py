@@ -112,6 +112,13 @@ class ChMasterClient(RESTClient):
         r = self.post('kotekan-start', **config)
         self.print_result(r)
 
+    def get_frequency_map(self):
+        """
+        Print ch_master status.
+        """
+        m = self.get('get_frequency_map')
+        self.print_result(m)
+
 
 if __name__ == '__main__':
     m = ChMasterClient()  # create a CHMasterClient object instance for use in interctive python sessions

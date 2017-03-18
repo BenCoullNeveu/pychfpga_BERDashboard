@@ -972,11 +972,11 @@ class FPGAArray(object):
                 raise RuntimeError('The following IceBoards did not SYNC properly: %s' % (','.join(repr(ib) for ib in bad_ib)))
 
     def set_channelizers(self, adc_mode=None, adcdaq_mode=None,
-                        data_source=None, function=None, a=1, b=0,
-                        fft_bypass=None, fft_shift=None,
-                        scaler_bypass=None, gain=None, postscaler=None, offset_binary_encoding=None,
-                        sync=True,
-                        channels=None):
+                         data_source=None, function=None, a=1, b=0,
+                         fft_bypass=None, fft_shift=None,
+                         scaler_bypass=None, gain=None, postscaler=None, offset_binary_encoding=None,
+                         sync=True,
+                         channels=None):
         """
             Configures the operations of all channelizers for all boards in the array.
 
@@ -1012,7 +1012,7 @@ class FPGAArray(object):
         """ Enable or disable synchronized gain switching for all boards of the array. """
         self.ib.set_synchronized_gain_switching(enable=enable)
 
-    def set_next_gain_bank(bank):
+    def set_next_gain_bank(self, bank):
         """ Sets the next gain bank to use on all channelizers of the array.
 
         The switch will be done imeediately or not, depending on the gain switching mode (see
@@ -1109,10 +1109,18 @@ class FPGAArray(object):
         self.sync(delay=2)
 
 
-    def get_chan_map(self):
 
-        # Compute channelizer outputs. Each channelizer is assigned with 1024 tuples (crate_number, slot, channel, bin_number) describing the channel content
-        # crate_numbers = set(ic.crate_number for ic in self.ic) | set(ic.crate_number ^ 1for ic in self.ic)
+    def get_chan_identity_map(self):
+        """ Return an identity map that describes the origin of each of the 1024 samples contained in the channelizer output packets.
+        The map is a dict:
+            {channelizer_id: [sample_id0, ... sample_id1023]}
+        where channelizer_id is represented by the tuple (crate_number, slot_number, channel_number) and
+        each sample_id is the tuple (crate_number, slot, channel, bin_number)
+
+        This map can be propagated through the shuffle map (see
+        `apply_shuffle_map` method) to obtain the contents of the output of
+        the corner-turn engine.
+        """
         ch_out = OrderedDict()
         for ic in self.ic:
             for slot, ib in ic.slot.items():
@@ -1131,16 +1139,17 @@ class FPGAArray(object):
                     ch_out[(ic.crate_number, slot, ch)] = buf.tolist()
         return ch_out
 
-    def get_shuffle_output(self):
-        return self.apply_shuffle_map(self.get_chan_output())
+    def get_frequency_map(self):
+        """ Returns a map describing the content (crate, slot, channel, bin) of every packet at the output of the corner turn engine.
 
-    def apply_shuffle_map(self, shuffle_map, data):
-        pass
-
-
-    def get_shuffle_map(self, chan_data):
+        This map is obtained by passing the channelizer identity map through the shuffle map.
         """
-        Takes chan_data, propagate its data through the
+
+        return self.get_shuffle_output(self.get_chan_identity_map())
+
+    def get_shuffle_output(self, chan_map):
+        """
+        Takes the channelizer data map `chan_data` and propagates it through the
         shuffle stages as they are currently configured in the FPGA, and return the resulting data.
 
         ``chan_data`` is a dictionary of the format {(crate_number, slot, channel_number): [1024 elements],...}
@@ -1148,9 +1157,6 @@ class FPGAArray(object):
         The elements describing the channel contents can by of any type (complex number, channel & bin tuple, etc.)
 
         """
-
-
-        chan_map = self.get_chan_map()
 
         # Get first crossbar map
         # Channels are converted to (crate_number, slot, input_number)

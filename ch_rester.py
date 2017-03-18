@@ -200,7 +200,7 @@ def configure_fpgas(conf):
     # Set-up initial gains in gain bank #0
     log.info("Loading initial scaler gains in bank #0")
     ca.set_synchronized_gain_switching_mode(enable=0)  # Disable synchronized gain switching
-    ca.set_next_gain_bank(bank=0)  # select immediately bank zero to load initial gains
+    ca.set_next_gain_bank(bank=0)  # immediately select bank zero to load initial gains
     ca.load_gains(bank=0) # load gains from gain files
 
     # for bankset in ca.ib.get_current_gain_bank():
@@ -470,6 +470,8 @@ class DummyChimeMaster(ChimeMaster):
 
     def stop(self):
         return {}
+
+class ChimeMasterServer():
 
 
 class JsonRequestHandler(tornado.web.RequestHandler):
