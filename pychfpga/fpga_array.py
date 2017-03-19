@@ -1108,8 +1108,6 @@ class FPGAArray(object):
         self.logger.info('%.32r: Shuffling initialization completed. Syncing boards' % self)
         self.sync(delay=2)
 
-
-
     def get_chan_identity_map(self):
         """ Return an identity map that describes the origin of each of the 1024 samples contained in the channelizer output packets.
         The map is a dict:

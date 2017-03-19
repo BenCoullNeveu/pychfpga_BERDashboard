@@ -68,15 +68,17 @@ class ChMasterClient(RESTClient):
         import random
         nonce = random.getrandbits(32)
         r = self.post('echo', nonce=nonce)
-        if nonce == int(r['nonce']):
+        if 'nonce' in r and nonce == int(r['nonce']):
             self.print("ok")
-        else:
-            self.print("internal error!")
+            return
+        self.print("internal error!. Server reply was: \n%s" % '\n'.join('%s:%s' % (k,v) for (k,v) in r.items()))
 
     def start(self, yaml):
         """
         Start ch_master with specified config file.
         """
+        if not yaml:
+            raise ValueError('A YAML configuration filename must be specified')
         from pychfpga.fpga_array import load_yaml_config
         config = load_yaml_config(yaml.encode('ascii'))
         r = self.post('start', **config)
@@ -107,6 +109,8 @@ class ChMasterClient(RESTClient):
         """
         Start kotekan with specified config file.
         """
+        if not yaml:
+            raise ValueError('A YAML configuration filename must be specified')
         from pychfpga.fpga_array import load_yaml_config
         config = load_yaml_config(yaml.encode('ascii'))
         r = self.post('kotekan-start', **config)
