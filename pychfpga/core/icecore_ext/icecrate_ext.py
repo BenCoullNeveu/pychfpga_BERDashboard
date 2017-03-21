@@ -96,9 +96,19 @@ class IceCrateExtHandler(IceCrateHandler):
         """
         pass
 
-    def get_id(self):
-        """ Return a system-unique ID. This can be used to identify links"""
+    def get_string_id(self):
+        """ Return a string composed of the backplane model and serial number that can be used to uniquely identofy a crate in a system"""
         return '%s_SN%s' % (self.part_number, str(self.serial))
+
+    def get_id(self, lane=None):
+        if self.crate_number is not None:
+            id = [self.crate_number]
+        else:
+            id = [self.get_string_id()]
+        if lane:
+            id.append(lane)
+        return tuple(id)
+
 
     def get_number_of_slots(self):
         return self.NUMBER_OF_SLOTS

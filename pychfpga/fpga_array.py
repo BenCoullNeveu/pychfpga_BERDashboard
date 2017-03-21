@@ -538,9 +538,9 @@ class FPGAArray(object):
             if (model, sn) in self.icecrate_map:
                 ic.crate_number = self.icecrate_map[(model, sn)]
                 self.hwm.flush()
-                print('Assigining crate number %i to crate %s (%s,%s)' % (ic.crate_number, ic.get_id(), model, sn))
+                print('Assigining crate number %i to crate %s (%s,%s)' % (ic.crate_number, ic.get_string_id(), model, sn))
             else:
-                print('Cannot find a crate number for crate %s' % ic.get_id())
+                print('Cannot find a crate number for crate %s' % ic.get_string_id())
 
         # chFPGA_controller.register_fpga_bitstream(fpga_bitstream)
 
@@ -1256,16 +1256,16 @@ class FPGAArray(object):
             filename = os.path.join(gain_folder, 'gains_C%sS%02i.pkl' % (crate, slot))
             try:
                 g_array = pickle.load(open(filename, 'rb'))
-                self.logger.info('Setting gains on IceBoard SN%s, crate %s, slot %i' % (cc.serial, crate, slot))
+                self.logger.info('Setting gains on IceBoard SN%s, crate %s, slot %i' % (ib.serial, crate, slot))
                 ib.set_gain(g_array, bank=bank)  # *** should this be bank=all_bank
             except IOError:
                 filename = os.path.join(gain_folder, 'gains.pkl')  # filename of the default gains
                 try:
                     g_array = pickle.load(open(filename, 'rb'))
-                    self.logger.warn('Gain file not found for IceBoard SN%s, crate %s, slot %i. Using default gains' % (cc.serial, crate, slot))
+                    self.logger.warn('Gain file not found for IceBoard SN%s, crate %s, slot %i. Using default gains' % (ib.serial, crate, slot))
                     ib.set_gain(g_array, bank=bank)  # *** should this be bank=all_bank
                 except IOError:
-                    self.logger.warn('Neither board-specific gain file not default gain file was found for IceBoard SN%s, crate %s, slot %i. Gains are *NOT* set' % (cc.serial, crate, slot))
+                    self.logger.warn('Neither board-specific gain file not default gain file was found for IceBoard SN%s, crate %s, slot %i. Gains are *NOT* set' % (ib.serial, crate, slot))
             gains[(crate, slot)] = ib.get_gain(bank=bank)
         return gains
 
@@ -1875,7 +1875,7 @@ class FPGAArray(object):
                     else:
                         col_data.extend(('\n'.join(['%s=%s' % (k,v) for (k,v) in e.items()]) or '-') for e in err)
                 info[slot] = col_data
-            print 'Crate %s Crossbar and Shuffle status' % crate.get_id()
+            print 'Crate %s Crossbar and Shuffle status' % crate.get_string_id()
 
             # Fill in columns for any missing board in the crate
             number_of_rows = len(info.itervalues().next())
@@ -2036,7 +2036,7 @@ class FPGAArray(object):
         valid_crates = OrderedDict((ib.crate, None) for ib in iceboards if ib.crate and ib.crate.serial).keys()  # trick to impelment an OrderedSet
 
         for crate in valid_crates:
-            corner_label = '%s\nCrate #%s' % (crate.get_id(), crate.crate_number)
+            corner_label = '%s\nCrate #%s' % (crate.get_string_id(), crate.crate_number)
             slot_range = range(1, crate.NUMBER_OF_SLOTS + 1)
             col_labels = ['%i' % (s) for s in slot_range]
             if add_serial:
@@ -2066,6 +2066,8 @@ class FPGAArray(object):
     def print_iceboard_power(self):
         self.print_iceboard_table(lambda ib: '%0.1f' % ib.get_total_power())
 
+    def get_monitoring_info(self):
+        return self.ib.index_by(lambda ib:ib.get_id()).get_status()
 
     def print_iceboard_info(self):
 
@@ -2154,9 +2156,9 @@ class FPGAArray(object):
                             #print '%s -> %s = %i' % (tx_lane, rx_lane_id, errs[lane])
                     row_labels = ['Tx S%02i SN%s' % (ib.slot, ib.serial) for ib in ic.slot.values()]
                     col_labels = ['Rx S%02i\nSN%s' % (ib.slot, ib.serial) for ib in ic.slot.values()]
-                    corner_label = '%s\nCrate #%s' % (ic.get_id(), ic.crate_number)
+                    corner_label = '%s\nCrate #%s' % (ic.get_string_id(), ic.crate_number)
                     print '    %s: %-10s %s %s' % (
-                        ic.get_id(),
+                        ic.get_string_id(),
                         'No Frames!' if not worst_det else ('%i errors' % worst_err),
                         '%s without errors' % datetime.timedelta(seconds=int(time_without_error[i])),
                         'so far' if not has_errors[i] else '')
@@ -2177,7 +2179,7 @@ class FPGAArray(object):
                     err_map[rx_lane[0]-1][tx_lane[0]-1] = '%0.1f' % (ic.get_rx_net_length(rx_lane)/1000)
             row_labels = ['Tx S%02i SN%s' % (ib.slot,ib.serial) for ib in ic.slot.values()]
             col_labels = ['Rx S%02i\nSN%s' % (ib.slot,ib.serial) for ib in ic.slot.values()]
-            corner_label = '%s\nCrate #%s' % (ic.get_id(), ic.crate_number)
+            corner_label = '%s\nCrate #%s' % (ic.get_string_id(), ic.crate_number)
             self.print_table(err_map, row_labels=row_labels, col_labels=col_labels, corner_label=corner_label)
 
     def print_iceboard_qsfp(self):
@@ -2219,9 +2221,9 @@ class FPGAArray(object):
             t = ib.get_motherboard_temperature(sensor)
             s = ib.slot
             avg_temp = np.average(t)
-            h = plt.plot(s, t, label=ic.get_id())
+            h = plt.plot(s, t, label=ic.get_string_id())
             plt.plot([min(s), max(s)], [avg_temp]*2, ':', color=h[0].get_color(), lw=2)
-            print '%s: %fdegC' % (ic.get_id(), avg_temp)
+            print '%s: %fdegC' % (ic.get_string_id(), avg_temp)
         plt.legend(loc='best')
         plt.xlabel('Slot number')
         plt.ylabel('FPGA Die temperature [degC]')

@@ -1188,7 +1188,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
 
     def _load_adc_delays(self, tag='default'):
-        filename = '%s.yaml' % self.get_id()
+        filename = '%s.yaml' % self.get_string_id()
         fullpath = os.path.join(os.path.dirname(__file__), '..', 'adc_delay_tables', filename)
 
         print 'Loading YAML file %s' % filename
@@ -1219,7 +1219,7 @@ class chFPGA_controller(IceBoardExtHandler):
     def _save_adc_delays(self, delay_table, tag='default'):
         if not delay_table:
             raise ValueError('Please specify a valid delay table')
-        filename = '%s.yaml' % self.get_id()
+        filename = '%s.yaml' % self.get_string_id()
         fullpath = os.path.join(os.path.dirname(__file__), '..', 'adc_delay_tables', filename)
         print 'Loading YAML file %s' % filename
         try:
@@ -1745,14 +1745,14 @@ class chFPGA_controller(IceBoardExtHandler):
                 configured_channels.add(ch)
         self._logger.info('%r: Setting scaler gains for Antenna %s' % (self, ', '.join([str(i) for i in configured_channels])))
 
-    def get_gain(self):
+    def get_gain(self,bank=0):
         """
         Returns the log2 SCALER gain each antenna, and the linear gain table used for each antenna or the fixed gain.
         """
         gain_list = []
         for ant in self.ANT.values():
             glog = ant.SCALER.SHIFT_LEFT
-            glin = ant.SCALER.get_gain_table()
+            glin = ant.SCALER.get_gain_table(bank=bank)
             gain_list.append([ant.ant_number, [glin,glog]])
         return gain_list
 
@@ -2546,6 +2546,28 @@ class chFPGA_controller(IceBoardExtHandler):
         info['Mezz 2 VADJ'] = ('%0.1fV@%0.3fA' % ((yield self.get_mezzanine_voltage.async(self.RAIL.MEZZ_VADJ, 2)), (yield self.get_mezzanine_current.async(self.RAIL.MEZZ_VADJ, 2))))
         info['MB Total power'] = '%0.1fW' % (yield self.get_total_power.async())
         async_return(info)
+
+    def get_string_id(self):
+        """ Return a string composed of the model and serial number which uniquely identifies the board."""
+        return '%s_SN%s' % (self.part_number, self.serial)
+
+    def get_id(self, lane=None):
+        """
+        Return a unique Iceboard ID of the board in the following format:
+            (crate_number, slot_number) : if the board is in a crate for which a crate number was assigned
+            (crate_id, slot_number): Identify the crate with model and serial number if there is a crate  but no crate number is specified
+            (iceboard_id): If the board is not in a crate or the slot number is unknown, use the the iceboard model and serial number
+
+        Append a lane number if specified.
+        """
+        if not self.crate or self.slot is None:
+            id = [self.get_string_id()]
+        else:
+            id = list(self.crate.get_id()) + [self.slot]
+        if lane:
+            id.append(lane)
+        return tuple(id)
+
 
     def get_crate_id(self):
         return self.crate.get_id()

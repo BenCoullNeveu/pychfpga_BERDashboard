@@ -61,6 +61,10 @@ class ChMasterClient(RESTClient):
     def nop(self):
         self.print('Doing nothing')
 
+    def get_methods(self):
+        return self.get('methods')
+
+
     def ping(self):
         """
         Test connection to ch_master.
@@ -72,6 +76,10 @@ class ChMasterClient(RESTClient):
             self.print("ok")
             return
         self.print("internal error!. Server reply was: \n%s" % '\n'.join('%s:%s' % (k,v) for (k,v) in r.items()))
+
+    def set_state(self, state):
+        r = self.post('set-state', state=state)
+        self.print_result(r)
 
     def start(self, yaml):
         """

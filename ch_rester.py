@@ -17,6 +17,7 @@ import pickle
 import time
 import traceback
 import yaml
+import inspect
 
 import tornado
 import tornado.tcpclient
@@ -176,8 +177,8 @@ class ChimeMaster(object):
 
     def configure_fpgas(self):
 
+        # shortcuts
         conf = NameSpace(self.config)
-
         fpga_array_params = conf.fpga.fpga_array_params
 
         log.info("Sampling frequency is %0.3f MHz." %
@@ -188,14 +189,13 @@ class ChimeMaster(object):
         # in the parameters, the FPGAs will be loaded with their bitstream, communication with the FPGAs
         # will be established and all the Python objects needed to operate the FPGA firmware will be
         # created and initialized.and
-
         self.fpgas = ca = FPGAArray(**fpga_array_params)
 
         if not ca.ib:
             raise RuntimeError('No IceBoard could be found. Are the boards powered up? Is the networking functional?')
 
-        # if this needed?
-        ca.ib.set_adc_mask(0) # null the ADC data before it gets to the channelizers to reduce power consumption
+        # # if this needed?
+        # ca.ib.set_adc_mask(0) # null the ADC data before it gets to the channelizers to reduce power consumption
 
         # Set ADC delays from delay files. Recompute and save new delays if the files do not exist or if
         # the delays loaded from them do not work.
@@ -207,30 +207,22 @@ class ChimeMaster(object):
         time.sleep(0.1)
         ca.ib.set_corr_reset(0)
 
-        # Get noise injection parameters
-        ni = conf.fpga.ni
-        ni_26m = conf.fpga.ni_26m
 
         # Compute gains if requested
-        if conf.fpga.compute_gains:
-            if ni.board:
-                ca.set_noise_injection(board=ni.board, enable=ni.enable, offset=0, high_time=3, period=4, local_sync=True)
-            if ni_26m.board:
-                ca.set_noise_injection(board=ni_26m.board, enable=ni_26m.enable, offset=0, high_time=3, period=4, local_sync=True)
-            for ib in ca.ib:
-                if ib.slot in conf.fpga.calculate_gain_slots:
-                    # fpga_config = ib.get_config()
-                    pychfpga.calculate_gains.calculate_gains(ib, str(ib.fpga_port_number + 1))
+        if conf.fpga.compute_gains.enable:
+            self.compute_gains()
+
 
         # Set-up channelizers to process data normally
         log.info("Setting-up channelizers")
         ca.set_channelizers(**conf.fpga.channelizer_params)
 
         # Set-up initial gains in gain bank #0
-        log.info("Loading initial scaler gains in bank #0")
-        ca.set_synchronized_gain_switching_mode(enable=0)  # Disable synchronized gain switching
-        ca.set_next_gain_bank(bank=0)  # immediately select bank zero to load initial gains
-        ca.load_gains(bank=0) # load gains from gain files
+        if conf.fpga.load_initial_gains:
+            log.info("Loading initial scaler gains in bank #0")
+            ca.set_synchronized_gain_switching_mode(enable=0)  # Disable synchronized gain switching
+            ca.set_next_gain_bank(bank=0)  # immediately select bank zero to load initial gains
+            ca.load_gains(bank=0) # load gains from gain files
 
         # for bankset in ca.ib.get_current_gain_bank():
         #     log.info('Using gain banks %s' % (', '.join([str(i) for i in bankset])))
@@ -257,22 +249,12 @@ class ChimeMaster(object):
 
         # log.info("Sending local sync to each board")
         # ca.ib.sync()
-        # ca.ib.set_offset_binary_encoding(True)
 
+        # Setup raw data capture transmission
+        self.set_raw_data_capture()
 
-        # Raw Data capture should be coordinated with the corresponding raw data receiver.
-        # Destination IP and port number should be set-up appropriately
-        # So for now we'll disable data capture below
-        #
-        # for ib in ca.ib:
-        #     ib.set_local_data_port_number((ib.slot or 1) + 41100)
-        #     ib.start_data_capture(period=30, source='adc', offset=(ib.slot or 1) - 1)
-
-        # Setup noise injection (enable PWM signals)
-        if ni.board:
-            ca.set_noise_injection(board=ni.board, enable=ni.enable, offset=ni.offset, high_time=ni.high_time, period=ni.period)
-        if ni_26m.board:
-            ca.set_noise_injection(board=ni_26m.board, enable=ni_26m.enable, offset=ni_26m.offset, high_time=ni_26m.high_time, period=ni_26m.period)
+        # Setup noise injection for normal operation
+        self.set_noise_injection(conf.fpga.noise_injection)
 
 
         # Initialize data shufling and transmission to the GPU
@@ -282,13 +264,14 @@ class ChimeMaster(object):
         log.info("Synchronizing the array...")
         ca.sync()  # synchronize all the boards in the array
 
-        log.info("Unmasking the ADC data")
-        ca.ib.set_adc_mask(0xFF) # restore normal ADC data, necessary anymore?
+        # log.info("Unmasking the ADC data")
+        # ca.ib.set_adc_mask(0xFF) # restore normal ADC data, necessary anymore?
 
         log.info("Waiting for 2 seconds")
         time.sleep(2)
 
     def configure_fpgas_post_acq(self):
+        # shortcuts
         ca = self.fpgas
         conf = NameSpace(self.config)
 
@@ -305,6 +288,61 @@ class ChimeMaster(object):
             log.info('Set next gain bank to %s' % ', '.join([str(i) for i in bankset]))
         for bankset in ca.ib.get_current_gain_bank():
             log.info('Currently using gain banks %s' % ', '.join([str(i) for i in bankset]))
+
+
+    def set_noise_injection(self, ni_params):
+        """
+        Setup the noise gating PWM signals for all the boards specified in `ni_params`.
+
+        `ni_params` is a dictionary containing the parameters passed to the fpga_array's set_noise_injection() method.
+
+        If no board is specified for an entry (.board evaluates to False), the parameters are ignored.
+        """
+        for source_name, source_params in ni_params.items():
+            log.info("Setting noise injection for source '%s' with parameters %s" % (source_name, source_params))
+            if source_params.board:
+                ca.set_noise_injection(local_sync=True, **source_params)
+
+    def set_raw_data_capture(self):
+        # Raw Data capture should be coordinated with the corresponding raw data receiver.
+        # Destination IP and port number should be set-up appropriately
+        # So for now we'll disable data capture below
+        #
+        # for ib in ca.ib:
+        #     ib.set_local_data_port_number((ib.slot or 1) + 41100)
+        #     ib.start_data_capture(period=30, source='adc', offset=(ib.slot or 1) - 1)
+
+        return # bypass code below
+        conf = NameSpace(self.config)
+        rdc = conf.raw_data_receivers
+        for receiver_name, params in rdc:
+            (crate, slot) = params.source
+            if slot=='*':
+                ibs=self.ic.get(crate_number=crate).slot.values()
+            else:
+                ibs=self.ic.get(crate_number=crate).slot[slot]
+            for ib in ibs:
+                # should we get the port from the receiver?
+                ib.set_data_capture_target(target_ip=params.ip, target_port = params.port) # and MAC address?
+                ib.start_data_capture(period=params.period, source=params.source, offset=params.offset)  # offset was (ib.slot or 1) - 1
+
+    def compute_gains(self):
+        """
+        Compute the gains of the SCALER module so that the conversion of the FFT output to (4+4) bit complex values syays within range for the current signal conditions.
+
+        This method will have to be rewritten to use data obtained over REST-based raw data receivers.
+        """
+
+        # shortcuts
+        conf = NameSpace(self.config)
+        cg = conf.fpga.compute_gains
+        if not cg.enable:
+            return
+        # setup noise injection using noise injection parameters that are specific to the gain calculation operation.
+        self.set_noise_injection(cg.noise_injection)
+        for ib in self.fpgas.ib:
+            if ib.slot in cg.slots:
+                pychfpga.calculate_gains.calculate_gains(ib, str(ib.fpga_port_number + 1)) # use of fixed port numbers is obsolete
 
     def make_chrx_headers(self):
         # Add some acquisition information to the header, for kicks.
@@ -332,6 +370,10 @@ class ChimeMaster(object):
                     headers[name] = val
         return headers
 
+    def set_state(self, new_state):
+        """ Sets the state to a specified value. Used for debugging. """
+        self.state = new_state
+
     def start(self, **kvs):
         """ Start the FPGA F-Engine and correlator output acquisition process """
         if self.state != 'off':
@@ -345,7 +387,7 @@ class ChimeMaster(object):
         # Create output directories
         time_str = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
         self.acq_name = "%s_%s_corr" % (time_str, conf.corr_name)
-        self.acq_base_dir = os.path.join(conf.acq.base_path, acq_name)
+        self.acq_base_dir = os.path.join(conf.acq.base_path, self.acq_name)
 
         try:
             os.makedirs(self.acq_base_dir)
@@ -389,6 +431,8 @@ class ChimeMaster(object):
 
             self.acq.start(self.acq_base_dir, CRATE_SN, int(conf.fpga.subarray))
             log.info("finished starting CHRX")
+        else:
+            self.acq = None
 
         self.configure_fpgas_post_acq()
         self.current_bank = 0
@@ -414,7 +458,8 @@ class ChimeMaster(object):
             self.state = 'stopping'
             log.info("stopping acquisition")
             self.iceboard_cb.stop()
-            self.acq.stop()
+            if self.acq:
+                self.acq.stop()
             log.removeHandler(self.logfile)
             reap_cached_sockets()
             self.state = 'off'
@@ -514,11 +559,76 @@ class JsonRequestHandler(tornado.web.RequestHandler):
         self.write(kvs)
 
 
-class ChimeMasterApp():
+class RESTServer(object):
+    _endpoint_info = [] # ths list is filled by the @endpoint decorator
+
+    def __init__(self, port):
+
+        # Create the endpoints registered with the @endpoint decorator and start the Application
+        endpoints = []
+        print(self._endpoint_info)
+        for method_name, endpoint_name, method_args in self._endpoint_info:
+            print('%s: Creating a REST endpoint %s for method %s(%s)' % (self.__class__.__name__, endpoint_name, method_name, ', '.join(method_args)))
+            has_args = len(method_args)>2  # any other arguments beyound the mandatory 'self' and 'handler'?
+            endpoints.append(self.create_endpoint(method_name, endpoint_name, has_args))
+        self.app = tornado.web.Application(endpoints)
+        self.app.listen(self.port)
+
+    def create_endpoint(self, method_name, endpoint_name, has_args):
+            method = getattr(self, method_name)
+            if has_args:
+                print('method %s is POST' % method_name)
+                class Handler(JsonRequestHandler):
+                    @tornado.gen.coroutine
+                    def post(self):
+                       yield method(self, self.request.arguments)
+            else:
+                print('method %s is GET' % method_name)
+                class Handler(JsonRequestHandler):
+                    @tornado.gen.coroutine
+                    def get(self):
+                       yield method(self)
+            return tornado.web.url(r'/%s' % endpoint_name, Handler)
+
+    def shutdown(self):
+        pass
+
+
+    @classmethod
+    def endpoint(cls, fn, endpoint_name=None):
+        """ Decorator that create a REST endpoint for the decorated method.
+
+        Methods with arguments other than 'self' will answer to POST requests and will be passed the decoded arguments.where
+        otherwise it will be implemented as a GET endpoint.
+
+        Endpoints with arguments oof type 'POST' have target methods with the signature my_method(self, handler,
+        args) and receive the decoded arguments `args` which were sent along with the HTTP 'POST'
+        request.
+
+        'GET' handlers do not receive arguments and have a signature of my_method(self,
+        handler).
+
+        The target method has access to the ChimeMaster instance and other context information
+        directly through ChimeMasterApp instance ('self').
+
+        The target method receive the handler as an argument. It is usually used to send back
+        replies through the handler.write(...) method.
+
+        Target methods must Tornado co-routines, and should therefore `yield` when doing lengthy
+        operations and shall not return values directly with the 'return' statement.
+
+        This handler is meant to be passed to the Tornado Application when it is created.
+        """
+        method_name = fn.__name__
+        if endpoint_name is None:
+            endpoint_name = method_name.replace('_','-')
+        method_args = inspect.getargspec(fn).args
+        cls._endpoint_info.append((method_name, endpoint_name, method_args))
+        return fn # return the original function as is, we just wanted to grab its info
+
+class ChimeMasterApp(RESTServer):
     """ Wraps the ChimeMaster into a REST server which receives HTTP GET or POST requests and calls
     the correspnding ChimeMaster methods.
-
-
     """
 
     def __init__(self, port, dummy=False, gpu_config_file=None):
@@ -535,75 +645,29 @@ class ChimeMasterApp():
         ChimeMasterClass = DummyChimeMaster if self.dummy else ChimeMaster
 
         self.chime_master = ChimeMasterClass()
-
-        # setup REST endpoints
-        endpoints = [
-            self.create_endpoint('POST', 'echo'),
-            self.create_endpoint('POST', 'kotekan-start', 'kotekan_start'), # use alternate method name
-            self.create_endpoint('POST', 'start'),
-            self.create_endpoint('GET', 'status'),
-            self.create_endpoint('GET', 'stop'),
-            self.create_endpoint('GET', 'switchgains', 'switch_gains'),
-            self.create_endpoint('GET', 'get-frequency-map', 'get_frequency_map'),
-            ]
-        self.app = tornado.web.Application(endpoints)
-        self.app.listen(self.port)
+        super(ChimeMasterApp, self).__init__(port=port)
 
     def shutdown(self):
         self.chime_master.stop()
-
-
-    def create_endpoint(self, type, endpoint_name, method_name=None):
-        """ Create a handler for the specified endpoint (e.g. /ping) that will call the
-        corresponding target method in this ChimeMasterApp object.
-
-
-        Endpoints of type 'POST' have target methods with the signature my_method(self, handler,
-        args) and receive the decoded arguments `args` which were sent along with the HTTP 'POST'
-        request.
-
-        'GET' handlers do not receive arguments and have a signature of my_method(self,
-        handler).
-
-        The target method has access to the ChimeMaster instance and other context information
-        directly through ChimeMasterApp instance ('self').
-
-        The target method receive the handler as an argument. It is usually used to send back
-        replies through the handler.write(...) method.
-
-        All target methods are Tornado co-routines, and should therefore `yield` when doing lengthy
-        operations and shall not return values directly with the 'return' statement.
-
-        This handler is meant to be passed to the Tornado Application when it is created.
-        """
-        if method_name is None:
-            method_name = endpoint_name
-        method = getattr(self, method_name)
-
-        if type=='POST':
-            class Handler(JsonRequestHandler):
-                @tornado.gen.coroutine
-                def post(self):
-                   yield method(self, self.request.arguments)
-        elif type=='GET':
-            class Handler(JsonRequestHandler):
-                @tornado.gen.coroutine
-                def get(self):
-                   yield method(self)
-        else:
-            raise ValueError("Endpoint type can only be 'GET' or 'POST'")
-
-        return tornado.web.url(r'/%s' % endpoint_name, Handler)
 
     ###################
     # Target methods
     ###################
 
+
     @tornado.gen.coroutine
+    @RESTServer.endpoint # must be applied before tornado.gen.coroutine because we lose the method signature
     def echo(self, handler, args):
         handler.write(args)
 
     @tornado.gen.coroutine
+    @RESTServer.endpoint
+    def set_state(self, handler, args):
+        self.chime_master.set_state(args['state'])
+        handler.write(args)
+
+    @tornado.gen.coroutine
+    @RESTServer.endpoint
     def start(self, handler, args):
         def encode_utf8(x):
             """Convert unicode strings to utf-8 strings for the target object and any objects in lists or dictionaries"""
@@ -619,14 +683,22 @@ class ChimeMasterApp():
         handler.write(self.chime_master.start(**config))
 
     @tornado.gen.coroutine
+    @RESTServer.endpoint
+    def methods(self, handler):
+        handler.write(dict(results=self._endpoint_info))
+
+    @tornado.gen.coroutine
+    @RESTServer.endpoint
     def status(self, handler):
         handler.write(self.chime_master.status())
 
     @tornado.gen.coroutine
+    @RESTServer.endpoint
     def stop(self, handler):
         handler.write(self.chime_master.stop())
 
     @tornado.gen.coroutine
+    @RESTServer.endpoint
     def switch_gains(self, handler):
         if self.chime_master.state != 'on':
             handler.write(dict(error='not started'))
@@ -642,18 +714,41 @@ class ChimeMasterApp():
         # wait for 10 secs, then switch banks
         yield tornado.gen.sleep(10)
         self.chime_master.switch_gain_banks()
-
         self.write({})
 
     @tornado.gen.coroutine
+    @RESTServer.endpoint
     def kotekan_start(self, handler, args):
         results = yield [k.start(args) for k in self.kotekan_clients]
         handler.write(dict(results=results))
 
     @tornado.gen.coroutine
+    @RESTServer.endpoint
     def get_frequency_map(self, handler):
         handler.write(dict(results=self.chime_master.get_frequency_map()))
 
+    @tornado.gen.coroutine
+    @RESTServer.endpoint
+    def abort(self, handler):
+        """ Savagely stop the server for debugging purposes."""
+        handler.write(dict(results='ABORTING NOW!'))
+        tornado.ioloop.IOLoop.instance().stop()
+        # sys.exit(-1)
+
+    @tornado.gen.coroutine
+    @RESTServer.endpoint
+    def call_fpga_array_method(self, handler, args):
+        """  Debug. """
+        r=getattr(self.chime_master.fpgas, args['method_name'])(**args['kwargs'])
+        handler.write(dict(results=self.to_dict(r)))
+
+    def to_dict(self,v):
+        if isinstance(v, collections.Mapping):
+            return {k: self.to_dict(i) for k, i in v.items()}
+        elif isinstance(v, list):
+            return [self.to_dict(i) for i in v]
+        else:
+            return v
 
 
 class KotekanClient(object):
@@ -725,6 +820,7 @@ def main(args):
     app = ChimeMasterApp(port=args.port, dummy=args.debug, gpu_config_file=args.gpus)
 
     def shutdown():
+        print("Received SHUTDOWN signal")
         app.shutdown()
         loop.stop()
         sys.exit(-1)
@@ -733,6 +829,10 @@ def main(args):
     signal.signal(signal.SIGINT, handler)
     signal.signal(signal.SIGTERM, handler)
 
+    # Start heartbeat. Shows then the IO loop is running and allows keyboard events (Ctrl-C) to be captured (for some reason).
+    def heartbeat():
+        print('.', end='')
+    tornado.ioloop.PeriodicCallback(heartbeat, 1000).start()
     # start event loop
     log.info("ready")
     loop.start()

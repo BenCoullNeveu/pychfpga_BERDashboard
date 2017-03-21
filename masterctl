@@ -66,6 +66,7 @@ def add_command(cli, method_name, command_name=None, args=[], help=None):
 
 add_command(cli, 'ping')
 add_command(cli, 'start', args=[('--yaml', '-y')])
+add_command(cli, 'set_state', args=['state'])
 add_command(cli, 'stop')
 add_command(cli, 'switch_gains')
 add_command(cli, 'kotekan_start', args=[('--yaml', '-y')])
