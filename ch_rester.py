@@ -108,12 +108,6 @@ log.addHandler(h)
 # these data do not have the time-transpose completed.
 ARCHIVE_VERSION = "NT_2.2.0"
 
-# Backplane serial number---eventually this should be queried directly
-# from the hardware!
-CRATE_SN = "K7BP16-0004"
-
-# FPGA housekeeping.
-FPGA_HK_FIELDS = { "core_temp": "deg C" }
 
 # Full path to this file.
 PROGRAM = os.path.realpath(__file__)
@@ -130,20 +124,6 @@ except WindowsError:
 SECONDS_PER_FRAME = 2.56e-6
 
 # JFC: moved load_gains as an FPGAArray method
-# def load_gains(ib, bank=0):
-#     gains = {}
-#     for cc in ib:
-#         slot = cc.slot
-#         filename = '/home/chime/ch_acq/gains_slot'+str(slot)+'.pkl'
-#         try:
-#             g_array = pickle.load(open(filename, 'rb'))
-#             log.info('Setting gains on IceBoard SN%s, slot %i' % (cc.serial, slot))
-#             cc.set_gain(g_array, bank=bank)  # *** should this be bank=all_bank
-#             gains[slot] = cc.get_gain(bank=bank)
-#         except IOError:
-#             log = logging.getLogger()
-#             log.warn('Could not load gain file %s. Gains are not set.' % filename)
-#     return gains
 
 
 
@@ -174,6 +154,30 @@ class ChimeMaster(object):
     """
     def __init__(self):
         self.state = 'off'
+        self.config = None
+        self.chrx = None  # CHRX REST clients
+        self.raw_acq = None # Raw FPGA data acquisitoin REST clients
+        self.kotekan = None # Kotekan REST clients
+        self.fpgas = None # fpga_array object
+
+    def set_config(self, config):
+        self.config = config
+
+    def create_chrx_clients(self):
+        # Create CHRX REST clients: These receive the data processed from the GPUs
+        conf = NameSpace(self.config)
+        self.chrx = []
+        for node_name, node_params in conf.chrx_nodes.items():
+            self.chrx.append(ChRxClient(**node_params))
+
+    def create_kotekan_clients(self):
+        # Create Kotekan REST clients
+        conf = NameSpace(self.config)
+        self.kotekan = []
+        for node_name, node_params in conf.kotekan_nodes.items():
+            params =
+            self.chrx.append(KotekanClient(**node_params))
+
 
     def configure_fpgas(self):
 
@@ -251,10 +255,10 @@ class ChimeMaster(object):
         # ca.ib.sync()
 
         # Setup raw data capture transmission
-        self.set_raw_data_capture()
+        self.setup_raw_data_capture()
 
         # Setup noise injection for normal operation
-        self.set_noise_injection(conf.fpga.noise_injection)
+        self.setup_noise_injection(conf.fpga.noise_injection)
 
 
         # Initialize data shufling and transmission to the GPU
@@ -290,20 +294,20 @@ class ChimeMaster(object):
             log.info('Currently using gain banks %s' % ', '.join([str(i) for i in bankset]))
 
 
-    def set_noise_injection(self, ni_params):
+    def setup_noise_injection(self, ni_params):
         """
         Setup the noise gating PWM signals for all the boards specified in `ni_params`.
 
-        `ni_params` is a dictionary containing the parameters passed to the fpga_array's set_noise_injection() method.
+        `ni_params` is a dictionary containing the parameters passed to the fpga_array's setup_noise_injection() method.
 
         If no board is specified for an entry (.board evaluates to False), the parameters are ignored.
         """
         for source_name, source_params in ni_params.items():
             log.info("Setting noise injection for source '%s' with parameters %s" % (source_name, source_params))
             if source_params.board:
-                ca.set_noise_injection(local_sync=True, **source_params)
+                ca.setup_noise_injection(local_sync=True, **source_params)
 
-    def set_raw_data_capture(self):
+    def setup_raw_data_capture(self):
         # Raw Data capture should be coordinated with the corresponding raw data receiver.
         # Destination IP and port number should be set-up appropriately
         # So for now we'll disable data capture below
@@ -339,7 +343,7 @@ class ChimeMaster(object):
         if not cg.enable:
             return
         # setup noise injection using noise injection parameters that are specific to the gain calculation operation.
-        self.set_noise_injection(cg.noise_injection)
+        self.setup_noise_injection(cg.noise_injection)
         for ib in self.fpgas.ib:
             if ib.slot in cg.slots:
                 pychfpga.calculate_gains.calculate_gains(ib, str(ib.fpga_port_number + 1)) # use of fixed port numbers is obsolete
@@ -409,7 +413,14 @@ class ChimeMaster(object):
         log.addHandler(self.logfile)
         log.info("now logging to \"%s\"." % acq_log_path)
 
-        # FPGAs
+        # Now that the housekeeping is done, let's start the real work
+
+        # Create objects to communicates to the remote processes needed to run the array
+        self.create_chrx_clients() # CHRX nodes receive data processed by the GPU nodes
+        self.create_kotekan_clients() # Kotekan processes run on the GPU nodes; they receive the data from the FPGAs over dedicated point-to-point FPGA-GPU 10G Ethernet links, perform the correlation on the data, and forward the processed data to the CHRX nodes
+        self.create_raw_acq_clients() # Raw acq clients receive raw ADC data sent by the FPGA over the control network
+
+        # Initialize FPGAs
         log.info("initializing FPGAs...")
         self.configure_fpgas()
         log.info("finished initializing FPGAs")
@@ -423,6 +434,9 @@ class ChimeMaster(object):
         # In Full CHIME, there will be multiple CHRX instances running on
         # multiple nodes and will be started and configured through a REST interface
         if chrx:
+            CRATE_SN = self.fpga.ic[0].get_string_id() # Hack. Works with pathfinder only. Have to rewrite for full CHIME.
+            # FPGA housekeeping.
+            FPGA_HK_FIELDS = { "core_temp": "deg C" } # To be rewritten with new chrx
             log.info("starting CHRX...")
             self.acq = chrx.acq(conf, log, 16, FPGA_HK_FIELDS)
             headers = self.make_chrx_headers()
@@ -436,11 +450,6 @@ class ChimeMaster(object):
 
         self.configure_fpgas_post_acq()
         self.current_bank = 0
-
-        # print board info every 60s
-        self.iceboard_cb = tornado.ioloop.PeriodicCallback(
-            self.fpgas.print_iceboard_info, 60e3)
-        self.iceboard_cb.start()
 
         self.state = 'on'
         return {}
@@ -483,6 +492,7 @@ class ChimeMaster(object):
         return fpga_gains
 
     def set_gain_switch_frame(self):
+
         iceboards = self.fpgas.ib
         gain_switch_delay = self.config['fpga']['gain_switch_delay']
         gpu_integration_period = self.config['gpu']['gpu_integration_period']
@@ -511,9 +521,6 @@ class ChimeMaster(object):
 
     def get_frequency_map(self):
         return self.fpgas.get_frequency_map()
-
-    def fpga_array_call(self, method_name, args):
-        return getattr(self.fpgas, method_name)(**args)
 
 
 class DummyChimeMaster(ChimeMaster):
@@ -568,8 +575,8 @@ class RESTServer(object):
         endpoints = []
         print(self._endpoint_info)
         for method_name, endpoint_name, method_args in self._endpoint_info:
-            print('%s: Creating a REST endpoint %s for method %s(%s)' % (self.__class__.__name__, endpoint_name, method_name, ', '.join(method_args)))
             has_args = len(method_args)>2  # any other arguments beyound the mandatory 'self' and 'handler'?
+            print('%s: Creating a REST %s endpoint %s for method %s(%s)' % (self.__class__.__name__, ('GET','POST')[has_args], endpoint_name, method_name, ', '.join(method_args)))
             endpoints.append(self.create_endpoint(method_name, endpoint_name, has_args))
         self.app = tornado.web.Application(endpoints)
         self.app.listen(self.port)
@@ -577,13 +584,11 @@ class RESTServer(object):
     def create_endpoint(self, method_name, endpoint_name, has_args):
             method = getattr(self, method_name)
             if has_args:
-                print('method %s is POST' % method_name)
                 class Handler(JsonRequestHandler):
                     @tornado.gen.coroutine
                     def post(self):
                        yield method(self, self.request.arguments)
             else:
-                print('method %s is GET' % method_name)
                 class Handler(JsonRequestHandler):
                     @tornado.gen.coroutine
                     def get(self):
@@ -649,6 +654,15 @@ class ChimeMasterApp(RESTServer):
 
     def shutdown(self):
         self.chime_master.stop()
+
+    def add_periodic_callbacks(self, period=60):
+        # print board info every 60s
+        def print_iceboard_info():
+            if hasattr(self.chime_master, 'fpgas'):
+                self.chime_master.fpgas.print_iceboard_info()
+        self.iceboard_cb = tornado.ioloop.PeriodicCallback(print_iceboard_info, period*1000)
+        self.iceboard_cb.start()
+        return [self.iceboard_cb]
 
     ###################
     # Target methods
@@ -738,17 +752,33 @@ class ChimeMasterApp(RESTServer):
     @tornado.gen.coroutine
     @RESTServer.endpoint
     def call_fpga_array_method(self, handler, args):
-        """  Debug. """
+        """  For debuging: calls any fpga_array method. """
+        if not hasattr(self.chime_master, 'fpgas') or not self.chime_master.fpgas:
+            handler.write(dict(error='FPGA array is not created yet'))
+            return
         r=getattr(self.chime_master.fpgas, args['method_name'])(**args['kwargs'])
-        handler.write(dict(results=self.to_dict(r)))
+        handler.write(dict(results=self.sanitize_for_json(r)))
 
-    def to_dict(self,v):
-        if isinstance(v, collections.Mapping):
-            return {k: self.to_dict(i) for k, i in v.items()}
-        elif isinstance(v, list):
-            return [self.to_dict(i) for i in v]
+    def sanitize_for_json(self, obj):
+        """
+        Modify an object to make it JSON-compatible. Contents of dicts and
+        lists contained in the object are recursively converted.
+
+            - dict-like object with string keys are converted to Python dict
+            - dict-like objects witn non-string keys are converted into a Python list of (key,value) tuple.
+            - list objects are converted into Python list
+            - other objects stay the same.
+
+        """
+        if isinstance(obj, collections.Mapping) or hasattr(obj, 'items'):
+            if not all(isinstance(k,str) for k in obj.keys()):
+                return [(k, self.sanitize_for_json(v)) for k, v in obj.items()]
+            else:
+                return {str(k): self.sanitize_for_json(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [self.sanitize_for_json(v) for v in obj]
         else:
-            return v
+            return obj
 
 
 class KotekanClient(object):
@@ -819,6 +849,14 @@ def main(args):
     # Create a web server that will provide REST endpoints that connect to the ChimeMaster methods
     app = ChimeMasterApp(port=args.port, dummy=args.debug, gpu_config_file=args.gpus)
 
+    app.add_periodic_callbacks()
+
+    # Start heartbeat. Shows then the IO loop is running and allows keyboard events (Ctrl-C) to be captured (for some reason).
+    def heartbeat():
+        print('.', end='')
+    tornado.ioloop.PeriodicCallback(heartbeat, 1000).start()
+
+
     def shutdown():
         print("Received SHUTDOWN signal")
         app.shutdown()
@@ -829,10 +867,8 @@ def main(args):
     signal.signal(signal.SIGINT, handler)
     signal.signal(signal.SIGTERM, handler)
 
-    # Start heartbeat. Shows then the IO loop is running and allows keyboard events (Ctrl-C) to be captured (for some reason).
-    def heartbeat():
-        print('.', end='')
-    tornado.ioloop.PeriodicCallback(heartbeat, 1000).start()
+
+
     # start event loop
     log.info("ready")
     loop.start()
