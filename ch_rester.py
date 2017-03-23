@@ -33,6 +33,9 @@ import pychfpga  # used to access .calculate_gain.
 from pychfpga.fpga_array import FPGAArray
 from pychfpga.core.icecore import NameSpace
 
+from rest import RESTServer
+from kotekan import KotekanRESTClient
+
 # Should put somewhere else. Flatten arbitrarily deep nested lists
 # from stack overflow
 def flatten(x):
@@ -167,18 +170,103 @@ class ChimeMaster(object):
         # Create CHRX REST clients: These receive the data processed from the GPUs
         conf = NameSpace(self.config)
         self.chrx = []
-        for node_name, node_params in conf.chrx_nodes.items():
-            self.chrx.append(ChRxClient(**node_params))
+        for node_name, node_params in conf.acq.nodes.items():
+            self.chrx.append(ChrxRESTClient(**node_params))
 
     def create_kotekan_clients(self):
         # Create Kotekan REST clients
         conf = NameSpace(self.config)
         self.kotekan = []
-        for node_name, node_params in conf.kotekan_nodes.items():
-            params =
-            self.chrx.append(KotekanClient(**node_params))
+        for node_name, node_params in conf.gpu.nodes.items():
+            self.kotekan.append(KotekanRESTClient(name = node_name, **node_params))
+
+    def create_raw_acq_clients(self):
+        # Create CHRX REST clients: These receive the data processed from the GPUs
+        conf = NameSpace(self.config)
+        self.raw_acq = []
+        for node_name, node_params in conf.raw_acq.nodes.items():
+            self.raw_acq.append(RawAcqRESTClient(**node_params))
 
 
+    def set_state(self, new_state):
+        """ Sets the state to a specified value. Used for debugging. """
+        self.state = new_state
+
+    def start(self, **kvs):
+        """ Start the FPGA F-Engine and correlator output acquisition process """
+        if self.state != 'off':
+            return dict(error='already started')
+
+        self.state = 'starting'
+        self.config = kvs
+        conf = NameSpace(self.config) # Make the code below cleaner by accessing dict entries as attributes
+
+
+        # Create output directories
+        time_str = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+        self.acq_name = "%s_%s_corr" % (time_str, conf.corr_name)
+        self.acq_base_dir = os.path.join(conf.acq.base_path, self.acq_name)
+
+        try:
+            os.makedirs(self.acq_base_dir)
+        except:
+            errmsg = "Could not create directory '%s'!" % self.acq_base_dir
+            log.critical(errmsg)
+            return {'error':errmsg}
+
+        # Create a symbolic link to the output directory.
+        if conf.acq.curfile:
+            if os.path.islink(conf.acq.curfile):
+                os.unlink(conf.acq.curfile)
+            os.symlink(self.acq_base_dir, conf.acq.curfile)
+
+        # Start writing to a log file in this directory.
+        acq_log_path = "%s/ch_master.log" % self.acq_base_dir
+        self.logfile = logging.FileHandler(acq_log_path)
+        self.logfile.setFormatter(LOG_FORMATTER)
+        log.addHandler(self.logfile)
+        log.info("now logging to \"%s\"." % acq_log_path)
+
+        # Now that the housekeeping is done, let's start the real work
+
+        # Create objects to communicates to the remote processes needed to run the array
+        self.create_chrx_clients() # CHRX nodes receive data processed by the GPU nodes
+        self.create_kotekan_clients() # Kotekan processes run on the GPU nodes; they receive the data from the FPGAs over dedicated point-to-point FPGA-GPU 10G Ethernet links, perform the correlation on the data, and forward the processed data to the CHRX nodes
+        self.create_raw_acq_clients() # Raw acq clients receive raw ADC data sent by the FPGA over the control network
+
+        # Initialize FPGAs
+        log.info("initializing FPGAs...")
+        self.configure_fpgas()
+        log.info("finished initializing FPGAs")
+
+        # Read the FPGA setting back from the FPGA
+        log.info("getting configuration data from all FPGAs")
+        self.fpga_conf = {ib.slot:vars(ib.get_config()) for ib in self.fpgas.ib}
+
+
+        # Create local CHRX instance
+        # In Full CHIME, there will be multiple CHRX instances running on
+        # multiple nodes and will be started and configured through a REST interface
+        if chrx:
+            CRATE_SN = self.fpga.ic[0].get_string_id() # Hack. Works with pathfinder only. Have to rewrite for full CHIME.
+            # FPGA housekeeping.
+            FPGA_HK_FIELDS = { "core_temp": "deg C" } # To be rewritten with new chrx
+            log.info("starting CHRX...")
+            self.acq = chrx.acq(conf, log, 16, FPGA_HK_FIELDS)
+            headers = self.make_chrx_headers()
+            for k,v in headers.items():
+                self.acq.add_header_item(k, v)
+
+            self.acq.start(self.acq_base_dir, CRATE_SN, int(conf.fpga.subarray))
+            log.info("finished starting CHRX")
+        else:
+            self.acq = None
+
+        self.configure_fpgas_post_acq()
+        self.current_bank = 0
+
+        self.state = 'on'
+        return {}
     def configure_fpgas(self):
 
         # shortcuts
@@ -374,86 +462,6 @@ class ChimeMaster(object):
                     headers[name] = val
         return headers
 
-    def set_state(self, new_state):
-        """ Sets the state to a specified value. Used for debugging. """
-        self.state = new_state
-
-    def start(self, **kvs):
-        """ Start the FPGA F-Engine and correlator output acquisition process """
-        if self.state != 'off':
-            return dict(error='already started')
-
-        self.state = 'starting'
-        self.config = kvs
-        conf = NameSpace(self.config) # Make the code below cleaner by accessing dict entries as attributes
-
-
-        # Create output directories
-        time_str = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-        self.acq_name = "%s_%s_corr" % (time_str, conf.corr_name)
-        self.acq_base_dir = os.path.join(conf.acq.base_path, self.acq_name)
-
-        try:
-            os.makedirs(self.acq_base_dir)
-        except:
-            errmsg = "Could not create directory '%s'!" % self.acq_base_dir
-            log.critical(errmsg)
-            return {'error':errmsg}
-
-        # Create a symbolic link to the output directory.
-        if conf.acq.curfile:
-            if os.path.islink(conf.acq.curfile):
-                os.unlink(conf.acq.curfile)
-            os.symlink(self.acq_base_dir, conf.acq.curfile)
-
-        # Start writing to a log file in this directory.
-        acq_log_path = "%s/ch_master.log" % self.acq_base_dir
-        self.logfile = logging.FileHandler(acq_log_path)
-        self.logfile.setFormatter(LOG_FORMATTER)
-        log.addHandler(self.logfile)
-        log.info("now logging to \"%s\"." % acq_log_path)
-
-        # Now that the housekeeping is done, let's start the real work
-
-        # Create objects to communicates to the remote processes needed to run the array
-        self.create_chrx_clients() # CHRX nodes receive data processed by the GPU nodes
-        self.create_kotekan_clients() # Kotekan processes run on the GPU nodes; they receive the data from the FPGAs over dedicated point-to-point FPGA-GPU 10G Ethernet links, perform the correlation on the data, and forward the processed data to the CHRX nodes
-        self.create_raw_acq_clients() # Raw acq clients receive raw ADC data sent by the FPGA over the control network
-
-        # Initialize FPGAs
-        log.info("initializing FPGAs...")
-        self.configure_fpgas()
-        log.info("finished initializing FPGAs")
-
-        # Read the FPGA setting back from the FPGA
-        log.info("getting configuration data from all FPGAs")
-        self.fpga_conf = {ib.slot:vars(ib.get_config()) for ib in self.fpgas.ib}
-
-
-        # Create local CHRX instance
-        # In Full CHIME, there will be multiple CHRX instances running on
-        # multiple nodes and will be started and configured through a REST interface
-        if chrx:
-            CRATE_SN = self.fpga.ic[0].get_string_id() # Hack. Works with pathfinder only. Have to rewrite for full CHIME.
-            # FPGA housekeeping.
-            FPGA_HK_FIELDS = { "core_temp": "deg C" } # To be rewritten with new chrx
-            log.info("starting CHRX...")
-            self.acq = chrx.acq(conf, log, 16, FPGA_HK_FIELDS)
-            headers = self.make_chrx_headers()
-            for k,v in headers.items():
-                self.acq.add_header_item(k, v)
-
-            self.acq.start(self.acq_base_dir, CRATE_SN, int(conf.fpga.subarray))
-            log.info("finished starting CHRX")
-        else:
-            self.acq = None
-
-        self.configure_fpgas_post_acq()
-        self.current_bank = 0
-
-        self.state = 'on'
-        return {}
-
     def status(self):
         """ Get the operational status of the telescope as a dictionary"""
         status = dict(state=self.state)
@@ -538,98 +546,6 @@ class DummyChimeMaster(ChimeMaster):
     def stop(self):
         return {}
 
-class JsonRequestHandler(tornado.web.RequestHandler):
-    """
-    Accept and return JSON instead of HTML.
-    """
-
-    def prepare(self):
-        if not self.request.body: return
-        content_type = self.request.headers['Content-Type']
-        if content_type == 'application/json':
-            try:
-                args = tornado.escape.json_decode(self.request.body)
-                self.request.arguments.update(args)
-            except ValueError:
-                self.send_error(400, error="can't parse JSON")
-        elif content_type == 'application/x-www-form-urlencoded':
-            args = { k:v[-1] for k,v in self.request.arguments.items() }
-            self.request.arguments.update(args)
-
-    def set_default_headers(self):
-        self.set_header('Content-Type', 'application/json')
-
-    def write_error(self, status_code, **kvs):
-        if 'exc_info' in kvs:
-            exc_info = kvs.pop('exc_info')
-            kvs['error'] = ''.join(traceback.format_exception(*exc_info))
-        self.write(kvs)
-
-
-class RESTServer(object):
-    _endpoint_info = [] # ths list is filled by the @endpoint decorator
-
-    def __init__(self, port):
-
-        # Create the endpoints registered with the @endpoint decorator and start the Application
-        endpoints = []
-        print(self._endpoint_info)
-        for method_name, endpoint_name, method_args in self._endpoint_info:
-            has_args = len(method_args)>2  # any other arguments beyound the mandatory 'self' and 'handler'?
-            print('%s: Creating a REST %s endpoint %s for method %s(%s)' % (self.__class__.__name__, ('GET','POST')[has_args], endpoint_name, method_name, ', '.join(method_args)))
-            endpoints.append(self.create_endpoint(method_name, endpoint_name, has_args))
-        self.app = tornado.web.Application(endpoints)
-        self.app.listen(self.port)
-
-    def create_endpoint(self, method_name, endpoint_name, has_args):
-            method = getattr(self, method_name)
-            if has_args:
-                class Handler(JsonRequestHandler):
-                    @tornado.gen.coroutine
-                    def post(self):
-                       yield method(self, self.request.arguments)
-            else:
-                class Handler(JsonRequestHandler):
-                    @tornado.gen.coroutine
-                    def get(self):
-                       yield method(self)
-            return tornado.web.url(r'/%s' % endpoint_name, Handler)
-
-    def shutdown(self):
-        pass
-
-
-    @classmethod
-    def endpoint(cls, fn, endpoint_name=None):
-        """ Decorator that create a REST endpoint for the decorated method.
-
-        Methods with arguments other than 'self' will answer to POST requests and will be passed the decoded arguments.where
-        otherwise it will be implemented as a GET endpoint.
-
-        Endpoints with arguments oof type 'POST' have target methods with the signature my_method(self, handler,
-        args) and receive the decoded arguments `args` which were sent along with the HTTP 'POST'
-        request.
-
-        'GET' handlers do not receive arguments and have a signature of my_method(self,
-        handler).
-
-        The target method has access to the ChimeMaster instance and other context information
-        directly through ChimeMasterApp instance ('self').
-
-        The target method receive the handler as an argument. It is usually used to send back
-        replies through the handler.write(...) method.
-
-        Target methods must Tornado co-routines, and should therefore `yield` when doing lengthy
-        operations and shall not return values directly with the 'return' statement.
-
-        This handler is meant to be passed to the Tornado Application when it is created.
-        """
-        method_name = fn.__name__
-        if endpoint_name is None:
-            endpoint_name = method_name.replace('_','-')
-        method_args = inspect.getargspec(fn).args
-        cls._endpoint_info.append((method_name, endpoint_name, method_args))
-        return fn # return the original function as is, we just wanted to grab its info
 
 class ChimeMasterApp(RESTServer):
     """ Wraps the ChimeMaster into a REST server which receives HTTP GET or POST requests and calls
@@ -664,9 +580,9 @@ class ChimeMasterApp(RESTServer):
         self.iceboard_cb.start()
         return [self.iceboard_cb]
 
-    ###################
-    # Target methods
-    ###################
+    ##########################
+    # Target endpoint methods
+    ##########################
 
 
     @tornado.gen.coroutine
@@ -781,48 +697,6 @@ class ChimeMasterApp(RESTServer):
             return obj
 
 
-class KotekanClient(object):
-    """Implements a kotekan REST client using a Tornado AsyncHTTPClient .
-
-    All methods are Tornado coroutines so that operations can be performed concurrently on multiple nodes.
-    """
-    def __init__(self, name, host=None, **kvs):
-        self.name = name
-        self.host = host
-        self.node_specific_config = kvs
-        self.client = tornado.httpclient.AsyncHTTPClient()
-        self.ping_cb = tornado.ioloop.PeriodicCallback(self.ping, 60e3)
-        self.ping_cb.start()
-
-    def url(self, path):
-        return 'http://%s/%s' % (self.host, path)
-
-    @tornado.gen.coroutine
-    def send(self, path, **kws):
-        url = self.url(path)
-        body = tornado.escape.json_encode(kws)
-        resp = yield self.client.fetch(url, method='POST', body=body)
-        raise tornado.gen.Return(tornado.escape.json_decode(resp.body))
-
-    @tornado.gen.coroutine
-    def ping(self):
-        try:
-            resp = yield self.send('status')
-            log.info("pinged kotekan %s" % self.host)
-        except Exception as e:
-            log.debug(repr(e))
-            log.debug("can't ping kotekan %s" % self.host)
-
-    @tornado.gen.coroutine
-    def start(self, config):
-        # XXX:HACK for pathfinder
-        newconfig = config.copy()
-        newconfig.update(self.node_specific_config)
-        try:
-            result = yield self.send('start', **newconfig)
-        except Exception as e:
-            result = dict(error=repr(e))
-        raise tornado.gen.Return(result)
 
 
 def parse_cmdline_args(argv):
