@@ -2,8 +2,10 @@
 """
 from __future__ import print_function
 
-import json
+import traceback
+import inspect
 import requests
+import tornado
 
 class RESTClient(object):
     """ This is a Requests-based client (non asynchronous)
@@ -43,6 +45,7 @@ class RESTClient(object):
             return requests.post(self.url(endpoint), json=kvs, timeout=self.TIMEOUT).json()
         except requests.exceptions.ConnectionError:
             self.error("Can't connect to REST server at %s:%d for PORT request" % (self.host, self.port))
+
 
 class AsyncRESTClient(object):
     """Implements a kotekan REST client using a Tornado AsyncHTTPClient .
