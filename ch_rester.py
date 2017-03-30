@@ -10,14 +10,10 @@ import numpy
 import os
 import signal
 import socket
-import struct
 import subprocess
 import sys
-import pickle
 import time
-import traceback
 import yaml
-import inspect
 
 import tornado
 import tornado.tcpclient
@@ -33,7 +29,7 @@ import pychfpga  # used to access .calculate_gain.
 from pychfpga.fpga_array import FPGAArray
 from pychfpga.core.icecore import NameSpace
 
-from rest import RESTServer
+import rest  # generic REST servers and clients
 from kotekan import KotekanRESTClient
 
 # Should put somewhere else. Flatten arbitrarily deep nested lists
@@ -574,7 +570,7 @@ class ChimeMasterApp(RESTServer):
     def add_periodic_callbacks(self, period=60):
         # print board info every 60s
         def print_iceboard_info():
-            if hasattr(self.chime_master, 'fpgas'):
+            if self.chime_master.fpgas:
                 self.chime_master.fpgas.print_iceboard_info()
         self.iceboard_cb = tornado.ioloop.PeriodicCallback(print_iceboard_info, period*1000)
         self.iceboard_cb.start()
@@ -700,15 +696,17 @@ class ChimeMasterApp(RESTServer):
 
 
 def parse_cmdline_args(argv):
-    parser = argparse.ArgumentParser(description="Chime Master")
+    parser = argparse.ArgumentParser(description="CHIME Master", epilog="""
+        """)
+    parser.add_argument('mode', type=str,  help='"server", "client" or a YAML filename:subconfig. "server" Starts the CHIME Master REST server. Control is returned only after server is stopped')
     parser.add_argument('-d', '--debug', action='store_true',
                         help="debug mode")
     parser.add_argument('-g', '--gpus', default=None, type=str)
-    parser.add_argument('-p', '--port', default=54321, type=int)
+    parser.add_argument('-p', '--port', default=54321, type=int, help="port used by the server")
     return parser.parse_args(argv)
 
 
-def main(args):
+def run_ch_master_server(args):
     """
     Create the Tornado IOLoop and run the ChimeMasterApp web server that will answer the HTTP
     commands and operate the ChimeMaster instance.
@@ -747,8 +745,112 @@ def main(args):
     log.info("ready")
     loop.start()
 
+class ChMasterRESTClient(rest.RESTClient):
+
+    def print_result(self, d):
+        if d == {}:
+            self.print('ok')
+        elif 'error' in d:
+            self.print_error(d['error'].rstrip())
+        else:
+            self.print(json.dumps(d, sort_keys=True, indent=2))
+
+    def nop(self):
+        self.print('Doing nothing')
+
+    def get_methods(self):
+        return self.get('methods')
+
+
+    def ping(self):
+        """
+        Test connection to ch_master.
+        """
+        import random
+        nonce = random.getrandbits(32)
+        r = self.post('echo', nonce=nonce)
+        if 'nonce' in r and nonce == int(r['nonce']):
+            self.print("ok")
+            return
+        self.print("internal error!. Server reply was: \n%s" % '\n'.join('%s:%s' % (k,v) for (k,v) in r.items()))
+
+    def set_state(self, state):
+        r = self.post('set-state', state=state)
+        self.print_result(r)
+
+    def start(self, yaml):
+        """
+        Start ch_master with specified config file.
+        """
+        if not yaml:
+            raise ValueError('A YAML configuration filename must be specified')
+        from pychfpga.fpga_array import load_yaml_config
+        config = load_yaml_config(yaml.encode('ascii'))
+        r = self.post('start', **config)
+        self.print_result(r)
+
+    def status(self):
+        """
+        Print ch_master status.
+        """
+        r = self.get('status')
+        self.print_result(r)
+
+    def stop(self):
+        """
+        Stop ch_master.
+        """
+        r = self.get('stop')
+        self.print_result(r)
+
+    def switch_gains(self):
+        """
+        Change gains.
+        """
+        r = self.post('switchgains')
+        self.print_result(r)
+
+    def kotekan_start(self, yaml):
+        """
+        Start kotekan with specified config file.
+        """
+        if not yaml:
+            raise ValueError('A YAML configuration filename must be specified')
+        from pychfpga.fpga_array import load_yaml_config
+        config = load_yaml_config(yaml.encode('ascii'))
+        r = self.post('kotekan-start', **config)
+        self.print_result(r)
+
+    def get_frequency_map(self):
+        """
+        Print ch_master status.
+        """
+        m = self.get('get_frequency_map')
+        self.print_result(m)
+
 
 if __name__ == '__main__':
     args = parse_cmdline_args(sys.argv[1:])
-    main(args)
+    mode = args.mode.lower()
+    if mode == 'server':
+        print('Starting CHIME Master REST server on localhost:%s' % args.port)
+        run_ch_master_server(args)
+    elif mode == 'client':
+        print('Starting CHIME Master REST client connected to localhost:%s' % args.port)
+        m = ChMasterRESTClient(port=args.port)  # create a CHMasterClient object instance for use in interctive python sessions
+    elif mode in ChMasterRESTClient:
+        print('Sending command %s to CHIME Master server localhost:%s' % (mode, args.port))
+        m = ChMasterRESTClient(port=args.port)  # create a CHMasterClient object instance for use in interctive python sessions
+        getattr(m, mode)(**args)
+    else:
+        cm = ChimeMaster()
+        if mode:
+            yaml_filename = args.mode
+            print('Starting ChimeMaster object with configuration %s' % yaml_filename)
+            from pychfpga.fpga_array import load_yaml_config
+            config = load_yaml_config(yaml_filename)
+            cm.start(**config)
+        else:
+            print('No yaml_filename:subconfig_name was specified. Starting an uninitialized ChimeMaster object')
+        print("ChimeMaster object is accessible under variable 'cm' in interactive pythin sessions (ipython -i)")
 
