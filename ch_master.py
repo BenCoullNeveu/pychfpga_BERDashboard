@@ -14,23 +14,26 @@ import subprocess
 import sys
 import time
 import yaml
+import json
 
 import tornado
 import tornado.tcpclient
 import tornado.web
 
-try:
-    import chrx
-except ImportError:
-    chrx = None
-    print('chrx could not be found. Ignoring.')
+# try:
+#     import chrx
+# except ImportError:
+#     chrx = None
+#     print('chrx could not be found. Ignoring.')
 
 import pychfpga  # used to access .calculate_gain.
-from pychfpga.fpga_array import FPGAArray
+from pychfpga.fpga_array import FPGAArray, load_yaml_config
 from pychfpga.core.icecore import NameSpace
 
-import rest  # generic REST servers and clients
+from rest import RESTClient, RESTServer  # generic REST servers and clients
 from kotekan import KotekanRESTClient
+from chrx import ChrxRESTClient
+from raw_acq import RawAcqRESTClient
 
 # Should put somewhere else. Flatten arbitrarily deep nested lists
 # from stack overflow
@@ -108,17 +111,19 @@ log.addHandler(h)
 ARCHIVE_VERSION = "NT_2.2.0"
 
 
-# Full path to this file.
-PROGRAM = os.path.realpath(__file__)
+# # Full path to this file.
+# PROGRAM = os.path.realpath(__file__)
 
-# Git version.
-try:
-    GIT_VERSION = subprocess.check_output(
-        'git describe --all --dirty --long'.split(),
-        cwd=os.path.dirname(PROGRAM)).strip()
-except WindowsError:
-    print('GIT was not found')
-    GIT_VERSION = 'unknown' # JFC: To allow tests in windows
+def get_git_version():
+    # Git version.
+    PROGRAM = os.path.realpath(__file__)
+    try:
+        return subprocess.check_output(
+            'git describe --all --dirty --long'.split(),
+            cwd=os.path.dirname(PROGRAM)).strip()
+    except WindowsError:
+        print('GIT was not found')
+        return 'unknown' # JFC: To allow tests in windows
 
 SECONDS_PER_FRAME = 2.56e-6
 
@@ -159,6 +164,12 @@ class ChimeMaster(object):
         self.kotekan = None # Kotekan REST clients
         self.fpgas = None # fpga_array object
 
+        self.PROGRAM = os.path.realpath(__file__) # absolute path name to this module
+        self.GIT_VERSION = get_git_version()
+
+        log.info("program %s" % self.PROGRAM)
+        log.info("version %s" % self.GIT_VERSION)
+
     def set_config(self, config):
         self.config = config
 
@@ -174,10 +185,10 @@ class ChimeMaster(object):
         conf = NameSpace(self.config)
         self.kotekan = []
         for node_name, node_params in conf.gpu.nodes.items():
-            self.kotekan.append(KotekanRESTClient(name = node_name, **node_params))
+            self.kotekan.append(KotekanRESTClient(name=node_name, **node_params))
 
     def create_raw_acq_clients(self):
-        # Create CHRX REST clients: These receive the data processed from the GPUs
+        # Create RawAcq REST clients: These receive the data processed from the GPUs
         conf = NameSpace(self.config)
         self.raw_acq = []
         for node_name, node_params in conf.raw_acq.nodes.items():
@@ -389,7 +400,7 @@ class ChimeMaster(object):
         for source_name, source_params in ni_params.items():
             log.info("Setting noise injection for source '%s' with parameters %s" % (source_name, source_params))
             if source_params.board:
-                ca.setup_noise_injection(local_sync=True, **source_params)
+                self.fpgas.setup_noise_injection(local_sync=True, **source_params)
 
     def setup_raw_data_capture(self):
         # Raw Data capture should be coordinated with the corresponding raw data receiver.
@@ -441,7 +452,7 @@ class ChimeMaster(object):
             'archive_version': ARCHIVE_VERSION,
             'collection_server': socket.gethostname(),
             'instrument_name': conf.corr_name,
-            'git_version_tag': GIT_VERSION,
+            'git_version_tag': get_git_version(),
             'system_user': getpass.getuser(),
         }
 
@@ -695,15 +706,6 @@ class ChimeMasterApp(RESTServer):
 
 
 
-def parse_cmdline_args(argv):
-    parser = argparse.ArgumentParser(description="CHIME Master", epilog="""
-        """)
-    parser.add_argument('mode', type=str,  help='"server", "client" or a YAML filename:subconfig. "server" Starts the CHIME Master REST server. Control is returned only after server is stopped')
-    parser.add_argument('-d', '--debug', action='store_true',
-                        help="debug mode")
-    parser.add_argument('-g', '--gpus', default=None, type=str)
-    parser.add_argument('-p', '--port', default=54321, type=int, help="port used by the server")
-    return parser.parse_args(argv)
 
 
 def run_ch_master_server(args):
@@ -712,8 +714,6 @@ def run_ch_master_server(args):
     commands and operate the ChimeMaster instance.
     """
 
-    log.info("program %s" % PROGRAM)
-    log.info("version %s" % GIT_VERSION)
 
     # create event loop
     loop = tornado.ioloop.IOLoop.instance()
@@ -745,7 +745,7 @@ def run_ch_master_server(args):
     log.info("ready")
     loop.start()
 
-class ChMasterRESTClient(rest.RESTClient):
+class ChMasterRESTClient(RESTClient):
 
     def print_result(self, d):
         if d == {}:
@@ -778,13 +778,12 @@ class ChMasterRESTClient(rest.RESTClient):
         r = self.post('set-state', state=state)
         self.print_result(r)
 
-    def start(self, yaml):
+    def start(self, yaml=None):
         """
         Start ch_master with specified config file.
         """
         if not yaml:
-            raise ValueError('A YAML configuration filename must be specified')
-        from pychfpga.fpga_array import load_yaml_config
+            raise ValueError('A YAML configuration filename:object must be specified')
         config = load_yaml_config(yaml.encode('ascii'))
         r = self.post('start', **config)
         self.print_result(r)
@@ -816,7 +815,6 @@ class ChMasterRESTClient(rest.RESTClient):
         """
         if not yaml:
             raise ValueError('A YAML configuration filename must be specified')
-        from pychfpga.fpga_array import load_yaml_config
         config = load_yaml_config(yaml.encode('ascii'))
         r = self.post('kotekan-start', **config)
         self.print_result(r)
@@ -829,28 +827,38 @@ class ChMasterRESTClient(rest.RESTClient):
         self.print_result(m)
 
 
+def parse_cmdline_args(argv):
+    parser = argparse.ArgumentParser(description="CHIME Master", epilog="""
+        """)
+    parser.add_argument('args', type=str, nargs='*', default='',  help='"server", "client" or a YAML filename:subconfig. "server" Starts the CHIME Master REST server. Control is returned only after server is stopped')
+    parser.add_argument('-d', '--debug', action='store_true',
+                        help="debug mode")
+    parser.add_argument('-g', '--gpus', default=None, type=str)
+    parser.add_argument('-p', '--port', default=54321, type=int, help="port used by the server")
+    return parser.parse_args(argv)
+
 if __name__ == '__main__':
     args = parse_cmdline_args(sys.argv[1:])
-    mode = args.mode.lower()
-    if mode == 'server':
+    first_arg = args.args[0].lower() if args.args else None
+    if first_arg == 'server':
         print('Starting CHIME Master REST server on localhost:%s' % args.port)
         run_ch_master_server(args)
-    elif mode == 'client':
+    elif first_arg == 'client':
         print('Starting CHIME Master REST client connected to localhost:%s' % args.port)
         m = ChMasterRESTClient(port=args.port)  # create a CHMasterClient object instance for use in interctive python sessions
-    elif mode in ChMasterRESTClient:
-        print('Sending command %s to CHIME Master server localhost:%s' % (mode, args.port))
-        m = ChMasterRESTClient(port=args.port)  # create a CHMasterClient object instance for use in interctive python sessions
-        getattr(m, mode)(**args)
+        cmd = args.args[1] if len(args.args)>1 else None
+        if cmd and hasattr(m, cmd):
+            print('Sending command %s to CHIME Master server localhost:%s' % (cmd, args.port))
+            getattr(m,cmd)(*args.args[2:])
+        else:
+            print("ChimeMaster REST client object is accessible under variable 'm' in interactive python sessions (ipython -i)")
     else:
         cm = ChimeMaster()
-        if mode:
-            yaml_filename = args.mode
-            print('Starting ChimeMaster object with configuration %s' % yaml_filename)
-            from pychfpga.fpga_array import load_yaml_config
-            config = load_yaml_config(yaml_filename)
+        if first_arg:
+            print('Starting ChimeMaster object with configuration %s' % first_arg)
+            config = load_yaml_config(first_arg)
             cm.start(**config)
         else:
             print('No yaml_filename:subconfig_name was specified. Starting an uninitialized ChimeMaster object')
-        print("ChimeMaster object is accessible under variable 'cm' in interactive pythin sessions (ipython -i)")
+        print("ChimeMaster object is accessible under variable 'cm' in interactive python sessions (ipython -i)")
 
