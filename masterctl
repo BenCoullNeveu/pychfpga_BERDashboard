@@ -3,114 +3,83 @@
 # masterctl: control and query ch_master via the REST interface.
 #
 
+from __future__ import print_function
+
 import click
-import json
-import requests
 import sys
+from ch_master_client import ChMasterClient
 
-TIMEOUT = 60 # seconds
 
-def error(msg):
-    click.secho(msg, bold=True, fg='red')
-    sys.exit(-1)
-
-def url(endpoint):
-    return 'http://%s:%d/%s' % (HOST, PORT, endpoint)
-
-def nicer_connection_error(func):
-    def func_wrapper(*args, **kvs):
-        try:
-            return func(*args, **kvs)
-        except requests.exceptions.ConnectionError:
-            error("can't connect to ch_master at %s:%d" % (HOST, PORT))
-    return func_wrapper
-
-@nicer_connection_error
-def get(endpoint):
-    return requests.get(url(endpoint), timeout=TIMEOUT).json()
-
-@nicer_connection_error
-def post(endpoint, **kvs):
-    return requests.post(url(endpoint), json=kvs, timeout=TIMEOUT).json()
-
-def print_result(d):
-    if d == {}:
-        click.echo('ok')
-    elif 'error' in d:
-        error(d['error'].rstrip())
-    else:
-        click.echo(json.dumps(d, sort_keys=True, indent=2))
+# Command line interface
 
 @click.group(context_settings=dict(help_option_names=['-h','--help']))
 @click.option('--host', default='localhost', help="ch_master host.")
 @click.option('--port', default=54321, help="ch_master port.", type=int)
-def cli(host, port):
+@click.pass_context
+def cli(ctx, host, port):
     """
     ch_master command line interface.
+
+    This is called whenever the program is launched, and creates a CHMasterClient onject instance
+    which is stored in the context object for future use by commands.
     """
-    global HOST, PORT
-    HOST = host
-    PORT = port
+
+    # Hook print functions to provide nicer command line output
+    class ClickChMasterClient(ChMasterClient):
+        def print(self, msg):
+            click.echo(msg)
+        def print_error(self, msg):
+            click.secho(msg, bold=True, fg='red')
+        def error(self, msg):
+            self.print_error(msg)
+            sys.exit(-1)
+
+    # store CHMaster client object in context object so it can be used by CLI commands
+    ctx.obj = ClickChMasterClient(host, port)
+
+
+def add_command(cli, method_name, command_name=None, args=[], help=None):
+    """ Add a command that will call the corresponding method in the ChMasterClient instance.ChMasterClient
+
+    The command description to be shown on the command line can be specified
+    with help. If not specified, the first line of the method docstring is
+    used.
+
+    The command name is identical to the method name, unless an alternate command name is provided.
+    """
+
+    # Get command line description from method docstring if not specified
+    if help is None:
+        help = getattr(ChMasterClient, method_name).__doc__.strip().splitlines()[0]
+    if command_name is None:
+        command_name = method_name
+
+    @cli.command(command_name, short_help=help)
+    @click.pass_context
+    def cmd(ctx, *args, **kwargs):
+        print('Calling ChMasterClient.%s(args=%s, kwargs=%s)' % (method_name, args, kwargs))
+        getattr(ctx.obj, method_name)(*args, **kwargs)   # call method 'name' of CHMasterClient instance
+
+    # Add arguments, if any
+    for a in args:
+        click.option(*a)(cmd)
+
+add_command(cli, 'ping')
+add_command(cli, 'start', args=[('--yaml', '-y')])
+add_command(cli, 'set_state', args=['state'])
+add_command(cli, 'stop')
+add_command(cli, 'switch_gains')
+add_command(cli, 'kotekan_start', args=[('--yaml', '-y')])
+add_command(cli, 'status', 'state') # for some obscure reason ipython fails only with the command 'status', but not anything else.
+add_command(cli, 'get_frequency_map')
+
 
 @cli.command()
-def ping():
-    """
-    Test connection to ch_master.
-    """
-    import random
-    nonce = random.getrandbits(32)
-    r = post('echo', nonce=nonce)
-    if nonce == int(r['nonce']):
-        click.echo("ok")
-    else:
-        click.echo("internal error!")
+@click.pass_obj
+def nop(obj):
+    """ Do nothing """
+    print('Doing nothing with ', obj)
 
-@cli.command()
-@click.option('--yaml', '-y')
-def start(yaml):
-    """
-    Start ch_master.
-    """
-    from pychfpga.fpga_array import load_yaml_config
-    config = load_yaml_config(yaml.encode('ascii'))
-    r = post('start', **config)
-    print_result(r)
-
-@cli.command()
-def status():
-    """
-    Print ch_master status.
-    """
-    r = get('status')
-    print_result(r)
-
-@cli.command()
-def stop():
-    """
-    Stop ch_master.
-    """
-    r = get('stop')
-    print_result(r)
-
-@cli.command()
-def switch_gains():
-    """
-    Change gains.
-    """
-    r = post('switchgains')
-    print_result(r)
-
-@cli.command('kotekan-start')
-@click.option('--yaml', '-y')
-def kotekan_start(yaml):
-    """
-    Start kotekan.
-    """
-    from pychfpga.fpga_array import load_yaml_config
-    config = load_yaml_config(yaml.encode('ascii'))
-    r = post('kotekan-start', **config)
-    print_result(r)
 
 if __name__ == '__main__':
-    cli()
-
+    cli() # parse the command line argument, and execute the commands

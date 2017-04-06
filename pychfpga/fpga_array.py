@@ -324,6 +324,7 @@ class FPGAArray(object):
             'if_ip = %s' % if_ip,
             'iceboards = %s' % iceboards,
             'icecrates = %s' % icecrates,
+            'hw_description_string = %s' % hw_description_string,
             'subarrays = %s' % subarrays,
             'ping = %s' % ping,
             'mdns_timeout = %s' % mdns_timeout,
@@ -537,9 +538,9 @@ class FPGAArray(object):
             if (model, sn) in self.icecrate_map:
                 ic.crate_number = self.icecrate_map[(model, sn)]
                 self.hwm.flush()
-                print('Assigining crate number %i to crate %s (%s,%s)' % (ic.crate_number, ic.get_id(), model, sn))
+                print('Assigining crate number %i to crate %s (%s,%s)' % (ic.crate_number, ic.get_string_id(), model, sn))
             else:
-                print('Cannot find a crate number for crate %s' % ic.get_id())
+                print('Cannot find a crate number for crate %s' % ic.get_string_id())
 
         # chFPGA_controller.register_fpga_bitstream(fpga_bitstream)
 
@@ -971,11 +972,11 @@ class FPGAArray(object):
                 raise RuntimeError('The following IceBoards did not SYNC properly: %s' % (','.join(repr(ib) for ib in bad_ib)))
 
     def set_channelizers(self, adc_mode=None, adcdaq_mode=None,
-                        data_source=None, function=None, a=1, b=0,
-                        fft_bypass=None, fft_shift=None,
-                        scaler_bypass=None, gain=None, postscaler=None,
-                        sync=True,
-                        channels=None):
+                         data_source=None, function=None, a=1, b=0,
+                         fft_bypass=None, fft_shift=None,
+                         scaler_bypass=None, gain=None, postscaler=None, offset_binary_encoding=None,
+                         sync=True,
+                         channels=None):
         """
             Configures the operations of all channelizers for all boards in the array.
 
@@ -985,7 +986,7 @@ class FPGAArray(object):
         self.ib.set_channelizer(adc_mode=adc_mode, adcdaq_mode=adcdaq_mode,
                         data_source=data_source, function=function, a=a, b=b,
                         fft_bypass=fft_bypass, fft_shift=fft_shift,
-                        scaler_bypass=scaler_bypass, gain=gain, postscaler=postscaler)
+                        scaler_bypass=scaler_bypass, gain=gain, postscaler=postscaler, offset_binary_encoding=offset_binary_encoding)
         if sync:
             self.sync()
 
@@ -1107,11 +1108,17 @@ class FPGAArray(object):
         self.logger.info('%.32r: Shuffling initialization completed. Syncing boards' % self)
         self.sync(delay=2)
 
+    def get_chan_identity_map(self):
+        """ Return an identity map that describes the origin of each of the 1024 samples contained in the channelizer output packets.
+        The map is a dict:
+            {channelizer_id: [sample_id0, ... sample_id1023]}
+        where channelizer_id is represented by the tuple (crate_number, slot_number, channel_number) and
+        each sample_id is the tuple (crate_number, slot, channel, bin_number)
 
-    def get_chan_map(self):
-
-        # Compute channelizer outputs. Each channelizer is assigned with 1024 tuples (crate_number, slot, channel, bin_number) describing the channel content
-        # crate_numbers = set(ic.crate_number for ic in self.ic) | set(ic.crate_number ^ 1for ic in self.ic)
+        This map can be propagated through the shuffle map (see
+        `apply_shuffle_map` method) to obtain the contents of the output of
+        the corner-turn engine.
+        """
         ch_out = OrderedDict()
         for ic in self.ic:
             for slot, ib in ic.slot.items():
@@ -1130,16 +1137,17 @@ class FPGAArray(object):
                     ch_out[(ic.crate_number, slot, ch)] = buf.tolist()
         return ch_out
 
-    def get_shuffle_output(self):
-        return self.apply_shuffle_map(self.get_chan_output())
+    def get_frequency_map(self):
+        """ Returns a map describing the content (crate, slot, channel, bin) of every packet at the output of the corner turn engine.
 
-    def apply_shuffle_map(self, shuffle_map, data):
-        pass
-
-
-    def get_shuffle_map(self, chan_data):
+        This map is obtained by passing the channelizer identity map through the shuffle map.
         """
-        Takes chan_data, propagate its data through the
+
+        return self.get_shuffle_output(self.get_chan_identity_map())
+
+    def get_shuffle_output(self, chan_map):
+        """
+        Takes the channelizer data map `chan_data` and propagates it through the
         shuffle stages as they are currently configured in the FPGA, and return the resulting data.
 
         ``chan_data`` is a dictionary of the format {(crate_number, slot, channel_number): [1024 elements],...}
@@ -1147,9 +1155,6 @@ class FPGAArray(object):
         The elements describing the channel contents can by of any type (complex number, channel & bin tuple, etc.)
 
         """
-
-
-        chan_map = self.get_chan_map()
 
         # Get first crossbar map
         # Channels are converted to (crate_number, slot, input_number)
@@ -1255,13 +1260,13 @@ class FPGAArray(object):
             try:
                 filename = os.path.join(gain_folder, 'gains_C%sS%02i.pkl' % (crate, slot))
                 g_array = pickle.load(open(filename, 'rb'))
-                self.logger.info('Setting gains on IceBoard SN%s, crate %s, slot %i' % (cc.serial, crate, slot))
+                self.logger.info('Setting gains on IceBoard SN%s, crate %s, slot %i' % (ib.serial, crate, slot))
                 ib.set_gain(g_array, bank=bank)  # *** should this be bank=all_bank
             except IOError:
                 filename = os.path.join(gain_folder, 'gains.pkl')  # filename of the default gains
                 try:
                     g_array = pickle.load(open(filename, 'rb'))
-                    self.logger.warn('Gain file not found for IceBoard SN%s, crate %s, slot %i. Using default gains' % (cc.serial, crate, slot))
+                    self.logger.warn('Gain file not found for IceBoard SN%s, crate %s, slot %i. Using default gains' % (ib.serial, crate, slot))
                     ib.set_gain(g_array, bank=bank)  # *** should this be bank=all_bank
                 except IOError:
                     self.logger.warn('Neither board-specific gain file not default gain file was found for IceBoard SN%s, crate %s, slot %i. Gains are *NOT* set' % (ib.serial, crate, slot))
@@ -1874,7 +1879,7 @@ class FPGAArray(object):
                     else:
                         col_data.extend(('\n'.join(['%s=%s' % (k,v) for (k,v) in e.items()]) or '-') for e in err)
                 info[slot] = col_data
-            print 'Crate %s Crossbar and Shuffle status' % crate.get_id()
+            print 'Crate %s Crossbar and Shuffle status' % crate.get_string_id()
 
             # Fill in columns for any missing board in the crate
             number_of_rows = len(info.itervalues().next())
@@ -2035,7 +2040,7 @@ class FPGAArray(object):
         valid_crates = OrderedDict((ib.crate, None) for ib in iceboards if ib.crate and ib.crate.serial).keys()  # trick to impelment an OrderedSet
 
         for crate in valid_crates:
-            corner_label = '%s\nCrate #%s' % (crate.get_id(), crate.crate_number)
+            corner_label = '%s\nCrate #%s' % (crate.get_string_id(), crate.crate_number)
             slot_range = range(1, crate.NUMBER_OF_SLOTS + 1)
             col_labels = ['%i' % (s) for s in slot_range]
             if add_serial:
@@ -2065,6 +2070,8 @@ class FPGAArray(object):
     def print_iceboard_power(self):
         self.print_iceboard_table(lambda ib: '%0.1f' % ib.get_total_power())
 
+    def get_monitoring_info(self):
+        return self.ib.index_by(lambda ib:ib.get_id()).get_status()
 
     def print_iceboard_info(self):
 
@@ -2153,9 +2160,9 @@ class FPGAArray(object):
                             #print '%s -> %s = %i' % (tx_lane, rx_lane_id, errs[lane])
                     row_labels = ['Tx S%02i SN%s' % (ib.slot, ib.serial) for ib in ic.slot.values()]
                     col_labels = ['Rx S%02i\nSN%s' % (ib.slot, ib.serial) for ib in ic.slot.values()]
-                    corner_label = '%s\nCrate #%s' % (ic.get_id(), ic.crate_number)
+                    corner_label = '%s\nCrate #%s' % (ic.get_string_id(), ic.crate_number)
                     print '    %s: %-10s %s %s' % (
-                        ic.get_id(),
+                        ic.get_string_id(),
                         'No Frames!' if not worst_det else ('%i errors' % worst_err),
                         '%s without errors' % datetime.timedelta(seconds=int(time_without_error[i])),
                         'so far' if not has_errors[i] else '')
@@ -2176,7 +2183,7 @@ class FPGAArray(object):
                     err_map[rx_lane[0]-1][tx_lane[0]-1] = '%0.1f' % (ic.get_rx_net_length(rx_lane)/1000)
             row_labels = ['Tx S%02i SN%s' % (ib.slot,ib.serial) for ib in ic.slot.values()]
             col_labels = ['Rx S%02i\nSN%s' % (ib.slot,ib.serial) for ib in ic.slot.values()]
-            corner_label = '%s\nCrate #%s' % (ic.get_id(), ic.crate_number)
+            corner_label = '%s\nCrate #%s' % (ic.get_string_id(), ic.crate_number)
             self.print_table(err_map, row_labels=row_labels, col_labels=col_labels, corner_label=corner_label)
 
     def print_iceboard_qsfp(self):
@@ -2218,9 +2225,9 @@ class FPGAArray(object):
             t = ib.get_motherboard_temperature(sensor)
             s = ib.slot
             avg_temp = np.average(t)
-            h = plt.plot(s, t, label=ic.get_id())
+            h = plt.plot(s, t, label=ic.get_string_id())
             plt.plot([min(s), max(s)], [avg_temp]*2, ':', color=h[0].get_color(), lw=2)
-            print '%s: %fdegC' % (ic.get_id(), avg_temp)
+            print '%s: %fdegC' % (ic.get_string_id(), avg_temp)
         plt.legend(loc='best')
         plt.xlabel('Slot number')
         plt.ylabel('FPGA Die temperature [degC]')
@@ -2261,7 +2268,7 @@ ICE_PATTERNS = [
         { 'regex': '\*',                          'type': None,         'serial': '*'},  # Stores a an item that selects all units of the current model
         ]
 
-def parse_hw_description_string(hw_description_string, hw_description_table={}, dut_id_patterns=ICE_PATTERNS, hardware_type=None, default_model=None):
+def parse_hw_description_string(hw_description_string, hw_description_table=None, dut_id_patterns=ICE_PATTERNS, hardware_type=None, default_model=None):
     """ Parses a string describing ICE hardware elements (motherboards, crates and mezzanines) and returns a dictionary describing each component.
     Each item is described by a model followed by one or, more serial numbers. A crate number can optionally be specified for crates by following the serial number by ':nnnn'.
     Serial numbers are converted to integers if possible; otherwise, they are stored as a string.
@@ -2293,7 +2300,11 @@ def parse_hw_description_string(hw_description_string, hw_description_table={}, 
     if isinstance(hw_description_string, (list, tuple)):
         hw_description_string = ' '.join(str(s) for s in hw_description_string)
 
-    # print 'parsing:', hw_description_string
+    # If no target hw_descirption table is provided, create a new one
+    if hw_description_table is None:
+        hw_description_table = dict()
+
+    print 'parsing:', hw_description_string
 
     current_type = hardware_type
     current_model = default_model
@@ -2767,7 +2778,7 @@ def create_fpga_array(args=None):
 
     # Add FPGA Array-related command-line parameters
     fpga_group = parser.add_argument_group('FPGA Array parameters', 'Allows interactive creation of a hardware map and initialization of all its components')
-    fpga_group.sub_dict = 'fpga_array'  # group all arguments in this group in a sub dictionary with this name
+    fpga_group.sub_dict = 'fpga_array_params'  # group all arguments in this group in a sub dictionary with this name
     add_fpga_array_arguments(fpga_group)
 
     gpu_group = parser.add_argument_group('GPU Array parameters', 'Allows interactive creation of GPU nodes')
@@ -2793,7 +2804,8 @@ def create_fpga_array(args=None):
     # config['test'] = parse_dut_id(' '.join(config['target']))
 
     logger = setup_logging(**config.get('logging', {}))
-    fpga_array = FPGAArray(**config.get('fpga', {}).get('fpga_array_params', {}))  # Create FPGA array
+    fpga_array_params = config.get('fpga', {}).get('fpga_array_params', {}) or config.get('fpga_array_params', {})
+    fpga_array = FPGAArray(**fpga_array_params)  # Create FPGA array
     gpu_array = GPUArray(**config.get('gpu_array', {}))     # Create FPGA array
     ps_array = PSArray(**config.get('power_supply_array', {}))     # Create FPGA array
 
