@@ -1778,8 +1778,8 @@ class chFPGA_controller(IceBoardExtHandler):
         if when is not None:
             self.switch_gains(bank=bank, when=when)
 
-    def get_next_gain_bank(self):
-        return ant.SCALER.READ_COEFF_BANK ^ 1
+    def get_next_gain_bank(self, channel=0):
+        return [ant.SCALER.READ_COEFF_BANK ^ 1 for ant in self.ANT.values()]
 
     def get_gains(self, bank=0, cache=True):
         """
@@ -1805,7 +1805,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
         for ant in self.ANT.values():
             if bank is None or bank < 0:
-                next_bank = self.get_next_gain_bank()
+                next_bank = ant.SCALER.READ_COEFF_BANK ^ 1
             else:
                 next_bank = bank
 

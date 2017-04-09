@@ -1087,12 +1087,13 @@ class FPGAArray(object):
         """
         Return the next gain bank number to be used (i.e. the currently unused bank number).
 
-        The bank number is the currently inactive bank of the first board of the array.
+        The bank number is the currently inactive bank of the first channel of the first board of
+        the array.
 
         It is the responsability of the user to make sure that no gain switch will occur once this
         method is called.
         """
-        self.ib[0].get_next_gain_bank()
+        self.ib[0].get_next_gain_bank()[0]
 
     def switch_gains(self, bank=-1, when='now'):
         self.ib.switch_gains(bank=bank, when=when)
