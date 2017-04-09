@@ -47,7 +47,7 @@ except ImportError:
 from pychfpga.core.icecore import Ccoll
 from pychfpga.core.icecore import HardwareMap, HWMResource
 from pychfpga.core.icecore import mdns_discover
-from pychfpga.core.icecore import async, async_return
+from pychfpga.core.icecore import async, async_return, async_sleep
 
 from pychfpga.core.icecore import IceBoardPlus
 from pychfpga.core.icecore_ext import IceCrateExt
@@ -1008,28 +1008,118 @@ class FPGAArray(object):
     # def get_current_gain_bank(self):
     #     return [ib.get_current_gain_bank() for ib in self.ib]
 
-    def set_synchronized_gain_switching_mode(self, enable):
-        """ Enable or disable synchronized gain switching for all boards of the array. """
-        self.ib.set_synchronized_gain_switching(enable=enable)
-
-    def set_next_gain_bank(self, bank):
-        """ Sets the next gain bank to use on all channelizers of the array.
-
-        The switch will be done imeediately or not, depending on the gain switching mode (see
-        set_synchronized_gain_switching_mode())
+    def get_iceboard_from_id(self, id):
+        """ return the iceboard corresponding to the specified id.
         """
-        self.ib.set_next_gain_bank(bank=bank)
+        crate, slot = id[:2]
+        return self.ic.get(crate_number=crate).slot[slot]
 
-
-    def set_gain_switch_frame_number(self, frame):
+    def init_gains(self):
+        """ Should be deprecated. Use load_gains() instead.
         """
-        Sets the frame number at which the new gain bank (set by set_next_gain_bank()) will be used.
+        for ib in self.ib:
+            try:
+                g_array = pickle.load(open('/home/chime/ch_acq/gains_'+str(ib.GPIO.FPGA_SERIAL_NUMBER)+'.pkl', 'rb'))
+            except:
+                g_array = pickle.load(open('/home/chime/ch_acq/gains.pkl', 'rb'))
+                print 'Could not find gain settings for %r, sn %i. Using default gain settings.' % (ib, ib.get_fpga_serial_number())
+            print 'Setting gains on IceBoard SN%s' % ib.serial
+            ib.set_gain(g_array)
 
-        Is used only if synchronized gain switching mode is enabled(see
-        set_synchronized_gain_switching_mode())
+    def load_gains(self, bank=0, gain_folder='/home/chime/ch_acq/gains'):
+        """ Loads the gains from the gain files associated with every board of the array and return
+        the gain map in the format {channel_id:gain}
+        """
+
+        # get the default gains, just in case we need them
+
+        try:
+            default_gains_filename = os.path.join(gain_folder, 'default_gains.pkl')  # filename of the default gains
+            default_gains = pickle.load(open(default_gains_filename, 'rb'))
+        except IOError:
+            default_gains = None
+
+        array_gains = {}
+        for ib in self.ib:
+            board_gains = ib.load_gains(folder=gain_folder) or default_gains
+
+            if not board_gains:
+                self.logger.warn('Neither board-specific gain file not default gain file was found for IceBoard SN%s, crate %s, slot %i, channel %i.' % (ib.serial, crate, slot, ch))
+
+            for ch in range(ib.NUMBER_OF_CHANNELIZERS):
+                ch_id = ib.get_id(lane=ch)
+                if board_gains is None or ch not in board_gains:
+                    array_gains[ch_id] = None
+                else:
+                    array_gains[ch_id] = board_gains[ch]
+        return array_gains
+
+    def set_gains(self, gains, bank=-1,  when='now'):
+        """ Set the gains on the boards in the array.
+
+        Arguments:
+            'gains': dictionary of gains specified as {channel_id: gain_spec, ...}.
+                     `channel_id` uniquely identifies an ADC channel and is a tubple either in the format (crate, slot, channel_number) or (board_id, channel_number).
+                     `gain_spec` is passed to the set_gain() method and is in the format (linear_gain, log_gain). `linear_gain` is a complex scalar or a 1024-element complex vector. log_gain is the post_scaler factor, and is a integer.
+
+            `bank`: gain bank in which the gains are written. If `bank`=-1 or is None, gains are
+                    written in the inactive bank (which can be activated later using set_gain_bank()).
+
+            `when`: if `when` is 'now' or a negative integer, the target gains
+                    are made active immediately.
+
+                    If `when` is None, the gains are not activated.
+
+                    If `when` is an integer, the gains will be activated starting on
+                    the target timestamp specified by `when`.
+
 
         """
-        self.ib.set_gain_switch_frame_number(frame=frame)
+        for ch_id, gain in gains.items():
+            ib = self.get_iceboard_from_id(ch_id)
+            ch = ch_id[-1]
+            ib.set_gain(gain=gain, channels=[ch], bank=bank)
+
+        if when is not None:
+            self.switch_gains(bank=bank, when=when)
+
+    def get_next_gain_bank(self):
+        """
+        Return the next gain bank number to be used (i.e. the currently unused bank number).
+
+        The bank number is the currently inactive bank of the first board of the array.
+
+        It is the responsability of the user to make sure that no gain switch will occur once this
+        method is called.
+        """
+        self.ib[0].get_next_gain_bank()
+
+    def switch_gains(self, bank=-1, when='now'):
+        self.ib.switch_gains(bank=bank, when=when)
+
+
+    # def set_synchronized_gain_switching_mode(self, enable):
+    #     """ Enable or disable synchronized gain switching for all boards of the array. """
+    #     self.ib.set_synchronized_gain_switching(enable=enable)
+
+    # def set_next_gain_bank(self, bank):
+    #     """ Sets the next gain bank to use on all channelizers of the array.
+
+    #     The switch will be done imeediately or not, depending on the gain switching mode (see
+    #     set_synchronized_gain_switching_mode())
+    #     """
+    #     self.ib.set_next_gain_bank(bank=bank)
+
+
+    # def set_gain_switch_frame_number(self, frame):
+    #     """
+    #     Sets the frame number at which the new gain bank (set by set_next_gain_bank()) will be used.
+
+    #     Is used only if synchronized gain switching mode is enabled(see
+    #     set_synchronized_gain_switching_mode())
+
+    #     """
+    #     self.ib.set_gain_switch_frame_number(frame=frame)
 
 
 
@@ -1137,6 +1227,21 @@ class FPGAArray(object):
                     ch_out[(ic.crate_number, slot, ch)] = buf.tolist()
         return ch_out
 
+    @async
+    def reset_corr(self, delay=0.1):
+        self.ib.set_corr_reset(1)
+        yield async_sleep(0.1)
+        self.ib.set_corr_reset(0)
+
+
+    @async
+    def get_fpga_config(self):
+        """ Concurrently gets the configuration info for each FPGA """
+        configs = yield {ib.get_id():ib.get_config.async() for ib in self.ib}
+        async_return(configs)
+
+
+
     def get_frequency_map(self):
         """ Returns a map describing the content (crate, slot, channel, bin) of every packet at the output of the corner turn engine.
 
@@ -1235,39 +1340,6 @@ class FPGAArray(object):
         else:
             print 'SYNC Test has PASSED!'
 
-    def init_gains(self):
-        """ Should be deprecated. Use load_gains() instead.
-        """
-        import pickle
-        for cc in self.ib:
-            try:
-                g_array = pickle.load(open('/home/chime/ch_acq/gains_'+str(cc.GPIO.FPGA_SERIAL_NUMBER)+'.pkl', 'rb'))
-            except:
-                g_array = pickle.load(open('/home/chime/ch_acq/gains.pkl', 'rb'))
-                print 'Could not find gain settings for %r, sn %i. Using default gain settings.' % (cc, cc.get_fpga_serial_number())
-            print 'Setting gains on IceBoard SN%s' % cc.serial
-            cc.set_gain(g_array)
-
-    def load_gains(self, bank=0, gain_folder='/home/chime/ch_acq/gains'):
-        gains = {}
-        for ib in self.ib:
-            slot = ib.slot
-            crate = ib.crate.crate_number
-            filename = os.path.join(gain_folder, 'gains_C%sS%02i.pkl' % (crate, slot))
-            try:
-                g_array = pickle.load(open(filename, 'rb'))
-                self.logger.info('Setting gains on IceBoard SN%s, crate %s, slot %i' % (ib.serial, crate, slot))
-                ib.set_gain(g_array, bank=bank)  # *** should this be bank=all_bank
-            except IOError:
-                filename = os.path.join(gain_folder, 'gains.pkl')  # filename of the default gains
-                try:
-                    g_array = pickle.load(open(filename, 'rb'))
-                    self.logger.warn('Gain file not found for IceBoard SN%s, crate %s, slot %i. Using default gains' % (ib.serial, crate, slot))
-                    ib.set_gain(g_array, bank=bank)  # *** should this be bank=all_bank
-                except IOError:
-                    self.logger.warn('Neither board-specific gain file not default gain file was found for IceBoard SN%s, crate %s, slot %i. Gains are *NOT* set' % (ib.serial, crate, slot))
-            gains[(crate, slot)] = ib.get_gain(bank=bank)
-        return gains
 
     def soft_sync(self, sync_board):
         """ Synchronize all boards"""

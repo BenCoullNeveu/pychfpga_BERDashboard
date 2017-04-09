@@ -542,7 +542,14 @@ class chFPGA_controller(IceBoardExtHandler):
     #     """
     #     return self.read(self.mmi._STATUS_BASE_ADDR + self._SYSTEM_GPIO_BASE_ADDR + self._GPIO_COOKIE_REG) & 0x7F
 
+    @async
     def get_config(self, basic = False):
+        """
+        Return configuration for this FPGA.
+
+        TODO:
+            - use yield on slow statements to make this really parallel
+        """
         config = chFPGA_config() # Create empty config container
         # Add configuration parameters
 
@@ -585,7 +592,7 @@ class chFPGA_controller(IceBoardExtHandler):
             config.antenna_data_source = self.get_data_source()
             config.antenna_fft_bypass = self.get_FFT_bypass()
             config.antenna_fft_shift_schedule = self.get_FFT_shift()
-            config.antenna_scaler_gain = self.get_gain()
+            config.antenna_scaler_gain = self.get_gains()
             config.antenna_adc_data_acquisition_delay_tables  = self.ANT.get_adc_delays()
             config.FPGA_board_frequency = self.FreqCtr.read_frequency('CLK200', gate_time=0.05)
             config.CTRL_clock_frequency = self.FreqCtr.read_frequency('CTRL_CLK', gate_time=0.05)
@@ -601,7 +608,7 @@ class chFPGA_controller(IceBoardExtHandler):
         	# config.motherboard_serial = self.GPIO.FPGA_SERIAL_NUMBER
             # Add FFT shift, scaler gain, corr integration/capture period etc.
             # config.freq_flags = self.freq_flags  # JFC: what is that?
-        return config
+        async_return(config)
 
 
     def update_config(self):
@@ -1626,14 +1633,37 @@ class chFPGA_controller(IceBoardExtHandler):
             if sync:
                 self.sync()
 
-    def set_gain(self, gain=None, postscaler=None, channels=None, use_fixed_gain=False, bank=0):
+    def load_gains(self, folder='.'):
+        """ Loads the gain file associated with this board and return the gains.
+
+        The gain file is a pickled dictionary in the format {channel_number:gains,..}.
+
+        """
+        slot = self.slot
+        crate = self.crate.crate_number
+        try:
+            gain_filename = os.path.join(folder, 'gains_C%sS%02i.pkl' % (crate, slot))
+            gains = pickle.load(open(gain_filename, 'rb'))
+            # self.logger.info('Setting gains on IceBoard SN%s, crate %s, slot %i' % (ib.serial, crate, slot))
+            # ib.set_gain(g_array, bank=bank)  # *** should this be bank=all_bank
+        except IOError:
+            self.logger.warn('Gain file not found for IceBoard SN%s, crate %s, slot %i. Using default gains' % (ib.serial, crate, slot))
+            gains = None
+        # # Fill any missing channel info with None
+        # for ch in range(self.NUMBER_OF_CHANNELIZERS):
+        #     if ch not in gains:
+        #         gains[ch] = None
+        return gains
+
+    def set_gains(self, gain=None, postscaler=None, channels=None, use_fixed_gain=False, bank=0, when=None):
         """
         Sets the gain between the (18+18) bits input of the scaler module (from the FFT) to its 4- or 8- bit scaler output.
         The gain can be set individually for every frequency bins and every ADC channel.
 
         A gain consist of a tuple G=(Glin, Glog):
-            1) Glin is a linear complex gain which can be unique to each bin.
-               It can be a scalar applied to every bin, or a 1024-point vector to specify a gain for evey bin.
+            1) Glin is a complex gain scalar or vector.
+               If Glin is a scalar, the same complex gain is applied to every bin.
+               If Glin is a 1024-eleemnt complex vector, each bin has the individual gain specified in the vector.
                The real and imaginary part of the linear gain are integer values ranging from -32768 to 32767.
 
             2) Glog is a binary scaling factor, which is an integer between 0 and 31 representing a power of two that multiplies the linear gain.
@@ -1745,7 +1775,13 @@ class chFPGA_controller(IceBoardExtHandler):
                 configured_channels.add(ch)
         self._logger.info('%r: Setting scaler gains for Antenna %s' % (self, ', '.join([str(i) for i in configured_channels])))
 
-    def get_gain(self,bank=0):
+        if when is not None:
+            self.switch_gains(bank=bank, when=when)
+
+    def get_next_gain_bank(self):
+        return ant.SCALER.READ_COEFF_BANK ^ 1
+
+    def get_gains(self, bank=0, cache=True):
         """
         Returns the log2 SCALER gain each antenna, and the linear gain table used for each antenna or the fixed gain.
         """
@@ -1756,59 +1792,88 @@ class chFPGA_controller(IceBoardExtHandler):
             gain_list.append([ant.ant_number, [glin,glog]])
         return gain_list
 
-    def set_synchronized_gain_switching(self, enable=1):
+    def switch_gains(self, bank=None, when='now'):
+        """
+        Switch the gains to the specified `bank`. If `bank` is -1 or None, the unused bank is switched in.
+        if `when` is 'now' (default), the switch is done immediately.
+        If `when` is None, no switch is done.
+        if 'when' is an integer, the switch will be done at the frame numbers specified by `when`.
+        """
+
+        if when is None:
+            return
+
         for ant in self.ANT.values():
-            ant.SCALER.SYNCHRONIZE_GAIN_BANK = enable
-        self._logger.debug("%r: Synchronized gains for active antennas set to %d" % (self, enable))
+            if bank is None or bank < 0:
+                next_bank = self.get_next_gain_bank()
+            else:
+                next_bank = bank
+
+            if when == 'now':
+                ant.SCALER.SYNCHRONIZE_GAIN_BANK = False
+                ant.SCALER.READ_COEFF_BANK = next_bank
+            else:
+                ant.SCALER.SYNCHRONIZE_GAIN_BANK = True
+                ant.SCALER.READ_COEFF_BANK = next_bank
+                ant.SCALER.GAIN_BANK_SWITCH_FRAME_NUMBER = when
 
 
-    def get_synchronized_gain_switching(self):
-        enabled = []
-        for ant in self.ANT.values():
-            enabled.append(ant.SCALER.SYNCHRONIZE_GAIN_BANK)
-        self._logger.debug("%r: syncronization for gain set to %s" % (self, ', '.join([str(i) for i in enabled])))
-        return enabled
-
-    def set_gain_switch_frame_number(self, frame=2147483647):
-        for ant in self.ANT.values():
-            ant.SCALER.GAIN_BANK_SWITCH_FRAME_NUMBER = frame
-        self._logger.debug("%r: set gain switch number for active antennas to %d" % (self, frame))
+    # def set_synchronized_gain_switching(self, enable=1):
+    #     for ant in self.ANT.values():
+    #         ant.SCALER.SYNCHRONIZE_GAIN_BANK = enable
+    #     self._logger.debug("%r: Synchronized gains for active antennas set to %d" % (self, enable))
 
 
-    def get_gain_switch_frame_number(self):
-        frames = []
-        for ant in self.ANT.values():
-            frames.append(ant.SCALER.GAIN_BANK_SWITCH_FRAME_NUMBER)
-        self._logger.debug("%r: gain switch numbers are %s" % (self, ', '.join([str(i) for i in frames])))
-        return frames
+    # def get_synchronized_gain_switching(self):
+    #     enabled = []
+    #     for ant in self.ANT.values():
+    #         enabled.append(ant.SCALER.SYNCHRONIZE_GAIN_BANK)
+    #     self._logger.debug("%r: syncronization for gain set to %s" % (self, ', '.join([str(i) for i in enabled])))
+    #     return enabled
 
-    def set_next_gain_bank(self, bank=0):
-        '''
-        Sets which gain bank (0,1) scaler will use.  if syncronized gain switching enabled, won't take effect
-        until the bank switch frame number.  Otherwise is immediate
-        '''
-        for ant in self.ANT.values():
-            ant.SCALER.READ_COEFF_BANK = bank
-        self._logger.debug("%r: set gain bank for active antennas to %d" % (self, bank))
+    # def set_gain_switch_frame_number(self, frame=2147483647):
+    #     for ant in self.ANT.values():
+    #         ant.SCALER.GAIN_BANK_SWITCH_FRAME_NUMBER = frame
+    #     self._logger.debug("%r: set gain switch number for active antennas to %d" % (self, frame))
 
 
-    def get_next_gain_bank(self):
-        '''
-        Gets which gain bank (0,1) scaler will use.  if syncronized gain switching enabled, won't take effect
-        until the bank switch frame number.  Otherwise is immediate
-        '''
-        banks = []
-        for ant in self.ANT.values():
-            banks.append(ant.SCALER.READ_COEFF_BANK)
-        self._logger.debug("%r: Got gain bank for active antennas to %s" % (self, ', '.join([str(i) for i in banks])))
-        return banks
+    # def get_gain_switch_frame_number(self):
+    #     frames = []
+    #     for ant in self.ANT.values():
+    #         frames.append(ant.SCALER.GAIN_BANK_SWITCH_FRAME_NUMBER)
+    #     self._logger.debug("%r: gain switch numbers are %s" % (self, ', '.join([str(i) for i in frames])))
+    #     return frames
+
+    # def set_next_gain_bank(self, bank=0):
+    #     '''
+    #     Sets which gain bank (0 or 1) the SCALER will use.  if synchronized gain switching enabled, won't take effect
+    #     until the bank switch frame number.  Otherwise the switch is immediate.
+    #     '''
+    #     for ant in self.ANT.values():
+    #         if bank is None or bank < 0:
+    #             ant.SCALER.READ_COEFF_BANK ^= 1
+    #         else:
+    #             ant.SCALER.READ_COEFF_BANK = bank
+    #     # self._logger.debug("%r: set gain bank for active antennas to %d" % (self, bank))
 
 
-    def get_current_gain_bank(self):
-        gain_banks = []
-        for ant in self.ANT.values():
-            gain_banks.append(ant.SCALER.CURRENT_GAIN_BANK)
-        return gain_banks
+    # def get_next_gain_bank(self):
+    #     '''
+    #     Gets which gain bank (0,1) scaler will use.  if syncronized gain switching enabled, won't take effect
+    #     until the bank switch frame number.  Otherwise is immediate
+    #     '''
+    #     banks = []
+    #     for ant in self.ANT.values():
+    #         banks.append(ant.SCALER.READ_COEFF_BANK)
+    #     self._logger.debug("%r: Got gain bank for active antennas to %s" % (self, ', '.join([str(i) for i in banks])))
+    #     return banks
+
+
+    # def get_current_gain_bank(self):
+    #     gain_banks = []
+    #     for ant in self.ANT.values():
+    #         gain_banks.append(ant.SCALER.CURRENT_GAIN_BANK)
+    #     return gain_banks
 
 
     def set_fft_shift(self, fft_shift=0b11111111111, channels=None):
@@ -2205,7 +2270,7 @@ class chFPGA_controller(IceBoardExtHandler):
             cb2_bin_spacing = 2
             crate_number = self.crate.crate_number
             stream_type = 3
-            cb2_bin_select_map = [np.arange(cb2_bins)*cb2_bin_spacing + (i^crate_number) for i in range(number_of_cb2_bin_sel)]
+            cb2_bin_select_map = [np.arange(cb2_bins)*cb2_bin_spacing + (i ^ crate_number) for i in range(number_of_cb2_bin_sel)]
             cb2_output_words_per_bin = cb2_input_words_per_bin * 4
             cb2_output_bins = cb2_bins
 
