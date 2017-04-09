@@ -27,6 +27,8 @@ class QPLL(Module_base):
 
     QPLL_LOCK          = BitField(STATUS, 0, 0, doc='Indicates if the QPLL is locked')
 
+    QPLL_PD                  = BitField(CONTROL, 0,0, doc="power down qpll.  needs 500ns after reset.")
+
     QPLL_INIT_CFG            = BitField(DRP, 0x0030, 0, width=16, doc="0-65535")
     QPLL_LPF                 = BitField(DRP, 0x0031, 11, width=4, doc="0-15")
     QPLL_INIT_CFG            = BitField(DRP, 0x0031, 0, width=8,   doc="0-255")

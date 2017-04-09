@@ -1778,10 +1778,10 @@ class chFPGA_controller(IceBoardExtHandler):
         if when is not None:
             self.switch_gains(bank=bank, when=when)
 
-    def get_next_gain_bank(self, channel=0):
+    def get_next_gain_bank(self):
         return [ant.SCALER.READ_COEFF_BANK ^ 1 for ant in self.ANT.values()]
 
-    def get_gains(self, bank=0, cache=True):
+    def get_gains(self, bank=0):
         """
         Returns the log2 SCALER gain each antenna, and the linear gain table used for each antenna or the fixed gain.
         """

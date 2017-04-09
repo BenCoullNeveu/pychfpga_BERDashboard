@@ -1014,17 +1014,17 @@ class FPGAArray(object):
         crate, slot = id[:2]
         return self.ic.get(crate_number=crate).slot[slot]
 
-    def init_gains(self):
-        """ Should be deprecated. Use load_gains() instead.
-        """
-        for ib in self.ib:
-            try:
-                g_array = pickle.load(open('/home/chime/ch_acq/gains_'+str(ib.GPIO.FPGA_SERIAL_NUMBER)+'.pkl', 'rb'))
-            except:
-                g_array = pickle.load(open('/home/chime/ch_acq/gains.pkl', 'rb'))
-                print 'Could not find gain settings for %r, sn %i. Using default gain settings.' % (ib, ib.get_fpga_serial_number())
-            print 'Setting gains on IceBoard SN%s' % ib.serial
-            ib.set_gain(g_array)
+#    def init_gains(self):
+#        """ Should be deprecated. Use load_gains() instead.
+#        """
+#        for ib in self.ib:
+#            try:
+#                g_array = pickle.load(open('/home/chime/ch_acq/gains_'+str(ib.GPIO.FPGA_SERIAL_NUMBER)+'.pkl', 'rb'))
+#            except:
+#                g_array = pickle.load(open('/home/chime/ch_acq/gains.pkl', 'rb'))
+#                print 'Could not find gain settings for %r, sn %i. Using default gain settings.' % (ib, ib.get_fpga_serial_number())
+#            print 'Setting gains on IceBoard SN%s' % ib.serial
+#            ib.set_gain(g_array)
 
     def load_gains(self, bank=0, gain_folder='/home/chime/ch_acq/gains'):
         """ Loads the gains from the gain files associated with every board of the array and return
