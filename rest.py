@@ -2,10 +2,17 @@
 """
 from __future__ import print_function
 
+import logging
+import signal
 import traceback
 import inspect
 import requests
-import tornado
+import tornado.ioloop
+import tornado.web
+from tornado.gen import coroutine, sleep
+
+def coroutine_return(arg):
+    raise tornado.gen.Return(arg)
 
 class RESTClient(object):
     """ This is a Requests-based client (non asynchronous)
@@ -58,23 +65,31 @@ class AsyncRESTClient(object):
     def __init__(self, host=DEFAULT_HOST, port=DEFAULT_PORT):
         self.host = host
         self.port = port
+        self.log = logging.getLogger()
         self.client = tornado.httpclient.AsyncHTTPClient()
+
+    def start(self):
+        """
+        Start the Tornado IOLoop and wait for it to complete.
+        """
+        ioloop = tornado.ioloop.IOLoop.instance()
+        ioloop.start()
 
     def url(self, endpoint):
         return 'http://%s:%d/%s' % (self.host, self.port, endpoint)
 
-    @tornado.gen.coroutine
-    def send(self, endpoint, **kws):
+    @coroutine
+    def post(self, endpoint, **kws):
         url = self.url(endpoint)
         body = tornado.escape.json_encode(kws)
         resp = yield self.client.fetch(url, method='POST', body=body)
-        raise tornado.gen.Return(tornado.escape.json_decode(resp.body))
+        coroutine_return(tornado.escape.json_decode(resp.body))
 
-    @tornado.gen.coroutine
+    @coroutine
     def get(self, endpoint):
         url = self.url(endpoint)
         resp = yield self.client.fetch(url, method='GET')
-        raise tornado.gen.Return(tornado.escape.json_decode(resp.body))
+        coroutine_return(tornado.escape.json_decode(resp.body))
 
 
 class JsonRequestHandler(tornado.web.RequestHandler):
@@ -105,38 +120,43 @@ class JsonRequestHandler(tornado.web.RequestHandler):
         self.write(kvs)
 
 
-class RESTServer(object):
+class AsyncRESTServer(object):
     """
     Creates a Tornado Web application that will call the endpoint handlers registered with the RESTserver.endpoint decorator.
     """
     _endpoint_info = [] # ths list is filled by the @endpoint decorator
 
-    def __init__(self, port):
+    def __init__(self, port=80):
 
+        self.port = port
+        self.log = logging.getLogger()
         # Create the endpoints registered with the @endpoint decorator and start the Application
         endpoints = []
-        print(self._endpoint_info)
         for method_name, endpoint_name, method_args in self._endpoint_info:
             has_args = len(method_args)>2  # any other arguments beyound the mandatory 'self' and 'handler'?
             print('%s: Creating a REST %s endpoint %s for method %s(%s)' % (self.__class__.__name__, ('GET','POST')[has_args], endpoint_name, method_name, ', '.join(method_args)))
             endpoints.append(self.create_endpoint(method_name, endpoint_name, has_args))
         self.app = tornado.web.Application(endpoints)
         self.app.listen(self.port)
+        self.ioloop = tornado.ioloop.IOLoop.instance()
+        self.add_heartbeat()
+        self.add_shutdown_handler()
 
     def create_endpoint(self, method_name, endpoint_name, has_args):
             method = getattr(self, method_name)
             if has_args:
                 class Handler(JsonRequestHandler):
-                    @tornado.gen.coroutine
+                    @coroutine
                     def post(self):
                        yield method(self, self.request.arguments)
             else:
                 class Handler(JsonRequestHandler):
-                    @tornado.gen.coroutine
+                    @coroutine
                     def get(self):
                        yield method(self)
             return tornado.web.url(r'/%s' % endpoint_name, Handler)
 
+    @coroutine
     def shutdown(self):
         pass
 
@@ -172,3 +192,35 @@ class RESTServer(object):
         method_args = inspect.getargspec(fn).args
         cls._endpoint_info.append((method_name, endpoint_name, method_args))
         return fn # return the original function as is, we just wanted to grab its info
+
+    def add_periodic_callback(self, callback, period):
+        return tornado.ioloop.PeriodicCallback(callback, period).start()
+
+    def add_heartbeat(self, period=1000):
+        def heartbeat_callback():
+            print('.', end='')
+        self.add_periodic_callback(heartbeat_callback, period)
+
+    def add_shutdown_handler(self):
+        @coroutine
+        def shutdown():
+            print("Received SHUTDOWN signal")
+            yield self.shutdown()
+            self.ioloop.stop()
+            # sys.exit(-1)
+
+        def handler(sig, frame):
+            self.ioloop.add_callback_from_signal(shutdown)
+        signal.signal(signal.SIGINT, handler)
+        signal.signal(signal.SIGTERM, handler)
+
+    def start_ioloop(self):
+        """
+        Start the Tornado IOLoop, which will allow the the web server to answer requests.
+        The method returns when the loop is terminated.
+
+        """
+        self.log.info("IOloop starting")
+        self.ioloop.start()
+
+endpoint = AsyncRESTServer.endpoint # shortcut
