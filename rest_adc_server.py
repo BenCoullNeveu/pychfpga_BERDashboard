@@ -5,9 +5,9 @@ import tornado.web
 '''
 Raw timestream receiver and hdf5 writer.
 Define array of 'ports' assumed to have last 2 digits be the slot number,
-third digit the crate, 
+third digit the crate,
 and the current host ip to listen to.  Will then listen for and write from all
-boards into hdf5 file.  
+boards into hdf5 file.
 '''
 
 from Queue import Queue
@@ -53,10 +53,10 @@ class TimestreamUdpHandler(SocketServer.BaseRequestHandler):
                                     self.ant_channel, self.adc_data))
 
 
-class ThreadedUdpServer(SocketServer.ThreadingMixIn, SocketServer.UDPServer):
+class ThreadedUdpServer(SocketServer.ThreadingUDPServer):
     def __init__(self, server_address, handler_class, data_queue):
         self.data_queue = data_queue
-        SocketServer.UDPServer.__init__(self, server_address, handler_class)
+        super(ThreadedUdpServer, self).__init__(self, server_address, handler_class)
 
 
 class hdf5TimestreamData(object):
@@ -118,7 +118,7 @@ class hdf5LiveTimestreamData(object):
     def init(self, n_times, n):
         self.n_times = n_times
         self.n = n
-    
+
 
     def write_singletime(self, timestamp, port, timestream):
         if self.n == self.n_times:
@@ -134,7 +134,7 @@ class hdf5LiveTimestreamData(object):
         self.timestampDataset[self.n] = timestamp
         self.portDataset[self.n] = port % 100  # assume port gives slot
         self.timestreamDataset[self.n] = timestream
-        self.n += 1 
+        self.n += 1
 
     def close(self):
         self.f.close()
@@ -168,7 +168,7 @@ class dataWriter(object):
     def write(self):
         while self.run:
             n_elements = 0
-            while n_elements < self.N_ELEMENT_PER_FILE: 
+            while n_elements < self.N_ELEMENT_PER_FILE:
                 for j, out_q in enumerate(self.data_queue):
                     if not out_q.empty():
                         self.all_ts, self.port, self.ant, self.all_data = out_q.get()
@@ -189,7 +189,7 @@ class dataWriter(object):
 class Receiver(object):
     '''
     Interactive receiver object.  To create port threads, and get data out
-    from those ports.  
+    from those ports.
     Should probably fix the 'serve forever bits'
     '''
     def __init__(self, ports=[41101], host='10.10.10.25'):
@@ -218,7 +218,7 @@ class Receiver(object):
             self.all_ts.append(np.zeros(16, dtype=np.int32))
         self.all_data = np.array(self.all_data)
         self.all_ts = np.array(self.all_ts)
-    
+
     def startHdf5Disk(self):
         self.dataWriter = dataWriter(self.data_queues)
         self.data_writer_thread = threading.Thread(target=self.dataWriter.write)

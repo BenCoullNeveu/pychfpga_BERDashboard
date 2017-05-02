@@ -26,8 +26,7 @@ import tornado.web
 #     print('chrx could not be found. Ignoring.')
 
 import pychfpga  # used to access .calculate_gain.
-from pychfpga.fpga_array import FPGAArray, load_yaml_config
-from pychfpga.core.icecore import NameSpace
+from pychfpga import FPGAArray, NameSpace, load_yaml_config
 
 from rest import RESTClient, AsyncRESTServer, endpoint, coroutine, coroutine_return, sleep  # generic REST servers and clients
 from kotekan import KotekanAsyncRESTClient
@@ -81,7 +80,11 @@ def convert_types(val):
             val = int(val)
         elif isinstance(val, unicode):
             val = str(val)
-        if not isinstance(val, str):
+        elif isinstance(val, int):
+            pass
+        elif isinstance(val, float):
+            pass
+        elif not isinstance(val, str):
             try:
                 if val.dtype.kind in ('i', 'u', 'f', 'b'):
                     val = numpy.asscalar(val)
@@ -132,7 +135,7 @@ def get_git_version():
 def reap_cached_sockets():
     import __main__
     if hasattr(__main__, '__opened_sockets__'):
-        for port,socket in __main__.__opened_sockets__.items():
+        for port, socket in __main__.__opened_sockets__.items():
             log.debug("closing cached socket on port %d" % port)
             socket.close()
         del __main__.__opened_sockets__
@@ -176,7 +179,7 @@ class ChimeMaster(object):
         for node_params in chrx_conf.node_specific_config:
             conf = node_params.copy()
             conf.update(chrx_conf.common_config)
-            self.chrx.append(ChrxAsyncRESTClient(**conf))  # will use only the parameters it needs for now (hostname, port etc)
+            self.chrx.append(ChrxAsyncRESTClient(**conf))  # will use only the parameters it needs for now (host, port etc)
 
     # def make_chrx_headers(self):
     #     # Add some acquisition information to the header, for kicks.
@@ -214,10 +217,10 @@ class ChimeMaster(object):
                 'acquisition_type': 'corr',
                 'archive_version': ARCHIVE_VERSION,
                 'collection_server': socket.gethostname(),
-                'instrument_name': conf.corr_name,
+                'instrument_name': self.config.corr_name,
                 'git_version_tag': get_git_version(),
                 'system_user': getpass.getuser(),
-                'notes': conf.get('notes','(no notes)'),
+                'notes': self.config.get('notes','(no notes)'),
             }
             # headers = self.make_chrx_headers()
             self.log.info("starting CHRX %s..." % chrx.name)
@@ -691,13 +694,13 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
     @coroutine
     @endpoint # must be applied before coroutine because we lose the method signature
     def echo(self, handler, args):
-        handler.write(args)
+        coroutine_return(args)
 
     @coroutine
     @endpoint
     def set_state(self, handler, args):
         self.chime_master.set_state(args['state'])
-        handler.write(args)
+        coroutine_return(args)
 
     @coroutine
     @endpoint
@@ -714,47 +717,47 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
                 return x
         config = encode_utf8(args)  # convert all strings in the config dict into utf8
         result = yield self.chime_master.start(**config)
-        handler.write(result)
+        coroutine_return(result)
 
     @coroutine
     @endpoint
     def methods(self, handler):
-        handler.write(dict(results=self._endpoint_info))
+        coroutine_return(results=self.get_endpoint_info())
 
     @coroutine
     @endpoint
     def status(self, handler):
-        handler.write(self.chime_master.status())
+        coroutine_return(self.chime_master.status())
 
     @coroutine
     @endpoint
     def stop(self, handler):
-        result = yield self.chime_master.stop()
-        handler.write(result)
+        results = yield self.chime_master.stop()
+        coroutine_return(results)
 
     @coroutine
     @endpoint
     def switch_gains(self, handler, gain_map):
         results = yield self.chime_master.switch_gains(gain_map)
-        self.write(results)
+        coroutine_return(results)
 
     @coroutine
     @endpoint
     def kotekan_start(self, handler, args):
         results = yield [k.start(args) for k in self.kotekan_clients]
-        handler.write(dict(results=results))
+        coroutine_return(results=results)
 
     @coroutine
     @endpoint
     def get_frequency_map(self, handler):
-        handler.write(dict(results=self.chime_master.get_frequency_map()))
+        coroutine_return(results=self.chime_master.get_frequency_map())
 
     @coroutine
     @endpoint
     def abort(self, handler):
         """ Savagely stop the server for debugging purposes."""
-        handler.write(dict(results='ABORTING NOW!'))
         tornado.ioloop.IOLoop.instance().stop()
+        coroutine_return(results='ABORTING NOW!')
         # sys.exit(-1)
 
     @coroutine
@@ -765,7 +768,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
             handler.write(dict(error='FPGA array is not created yet'))
             return
         r = getattr(self.chime_master.fpgas, args['method_name'])(**args['kwargs'])
-        handler.write(dict(results=self.sanitize_for_json(r)))
+        coroutine_return(results=self.sanitize_for_json(r))
 
     def sanitize_for_json(self, obj):
         """
@@ -879,6 +882,7 @@ def parse_cmdline_args(argv):
                         help="debug mode")
     parser.add_argument('-g', '--gpus', default=None, type=str)
     parser.add_argument('-p', '--port', default=54321, type=int, help="port used by the server")
+    parser.add_argument('-n', '--host', default='localhost', type=str, help="server hostname")
     return parser.parse_args(argv)
 
 if __name__ == '__main__':
@@ -894,7 +898,7 @@ if __name__ == '__main__':
         #################
         # Create and run a CHIME Master REST server
         #################
-        print('Starting CHIME Master REST server on localhost:%s' % args.port)
+        print('Starting CHIME Master REST server on %s:%i' % (args.host, args.port))
         cms = ChimeMasterAsyncRESTServer(port=args.port, dummy=args.debug, gpu_config_file=args.gpus) # server will be added to the current ioloop
         ioloop.start()
         cm = cms.chime_master
@@ -903,12 +907,12 @@ if __name__ == '__main__':
         #################
         # Create CHIME Master REST client, and optionally invoke a command
         #################
-        print('Starting CHIME Master REST client connected to localhost:%s' % args.port)
+        print('Starting CHIME Master REST client connected to %s:%s' % (args.host, args.port))
         # create a CHMasterClient object. The client is asynchronous, so no need to run the ioloop.
         m = ChimeMasterRESTClient(port=args.port)
         cmd = args.args[1] if len(args.args) > 1 else None
         if cmd and hasattr(m, cmd):
-            print('Sending command %s to CHIME Master server localhost:%s' % (cmd, args.port))
+            print('Sending command %s to CHIME Master server %s:%s' % (cmd, args.host, args.port))
             getattr(m, cmd)(*args.args[2:])
         else:
             print("ChimeMaster REST client object is accessible under variable 'm' in interactive python sessions (ipython -i)")
@@ -924,4 +928,3 @@ if __name__ == '__main__':
         else:
             print('No yaml_filename:subconfig_name was specified. Starting an uninitialized ChimeMaster object')
         print("ChimeMaster object is accessible under variable 'cm' in interactive python sessions (ipython -i)")
-
