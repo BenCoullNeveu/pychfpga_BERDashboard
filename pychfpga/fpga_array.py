@@ -573,7 +573,9 @@ class FPGAArray(object):
             if prog:
                 print 'Configuring FPGAs...'
                 # Associate the bitstream with the target Handler
-                self.fpga_bitstream = FPGABitstream(bitfile)
+                self.fpga_bitstream = FPGABitstream(bitfile, auto_reload=False)
+                print 'Loaded bitfile:', bitfile
+                str(self.fpga_bitstream)
                 ib.register_fpga_bitstream(self.fpga_bitstream)
                 ib.set_fpga_bitstream(force= (prog > 1))
                 print 'Done configuring FPGAs'
@@ -777,6 +779,8 @@ class FPGAArray(object):
             self.init_shuffle(mode='chan8', frames_per_packet=frames_per_packet, chan8_channel_map=np.hstack((chan8_channel_map, [16]*8)))
 
         elif mode in ['shuffle256', 'shuffle512', 'shuffle16']:
+            if not all(self.ib.CROSSBAR2) or not all(self.ib.CROSSBAR3):
+                raise RuntimeError('All IceBoards must have their CROSSBAR2 and CROSSBAR 3 implemented')
             self.ib.BP_SHUFFLE.set_tx_power(13)
             self.ib.CROSSBAR3.SOF_WINDOW_STOP = 100
             self.ib.CROSSBAR3.TIMEOUT_PERIOD = 0
@@ -785,6 +789,11 @@ class FPGAArray(object):
             self.ib.BP_SHUFFLE.reset_stats()
             self.ib.CROSSBAR2.reset_stats()
             self.ib.CROSSBAR3.reset_stats()
+        elif mode =='corr16':
+            if not all(self.ib.CORR):
+                raise RuntimeError('All IceBoards must have a firmware correlator engine')
+            self.ib.init_crossbars(mode, frames_per_packet=1)
+
         else:
             raise ValueError('Unknown operational mode')
 

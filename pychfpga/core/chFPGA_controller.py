@@ -61,11 +61,11 @@ import FreqCtr
 import REFCLK
 # import MGT
 
-# FPGA Antenna processor handlers
+# FPGA Channelizer
 import ANT
 
-# FPGA Correlator handlers
-import CORR_BLOCK
+# FPGA Correlator, corner-turn and GPU link objects
+import CORR # 16-channel correlator (if implemented)
 import chan_crossbar  # Channelizer Crossbar
 import shuffle_crossbar  # Shuffle Crossbar
 import shuffle
@@ -113,6 +113,7 @@ class chFPGA_controller(IceBoardExtHandler):
     _CROSSBAR1_BASE_ADDR  = 0x20000  # CROSSBAR top address
     _GPU_LINK_BASE_ADDR   = 0x30000  # GPU Link top address
     _CROSSBAR3_BASE_ADDR  = 0x40000  # Correlator ports are determined dynamically based on the info from the firmware
+    _CORR_BASE_ADDR       = 0x40000  #
     _BP_SHUFFLE_BASE_ADDR = 0x50000
     _CROSSBAR2_BASE_ADDR  = 0x60000  # CROSSBAR top address
 
@@ -288,6 +289,8 @@ class chFPGA_controller(IceBoardExtHandler):
             if self.NUMBER_OF_BP_SHUFFLE_LANES:
                 self._logger.debug('%r: === Instantiating Backplane shuffle subsystem' % self)
                 self.BP_SHUFFLE = shuffle.Shuffle(self, self._BP_SHUFFLE_BASE_ADDR, self._BP_SHUFFLE_ADDR_INCREMENT)
+            else:
+                self.BP_SHUFFLE = None
 
             if self.NUMBER_OF_BP_SHUFFLE_LANES and self.NUMBER_OF_GPU_LINKS:
                 self._logger.debug('%r: === Instantiating 2nd CROSSBAR' % self)
@@ -295,13 +298,21 @@ class chFPGA_controller(IceBoardExtHandler):
 
                 self._logger.debug('%r: === Instantiating 3rd CROSSBAR' % self)
                 self.CROSSBAR3 = shuffle_crossbar.ShuffleCrossbar(self, self._CROSSBAR3_BASE_ADDR, self._CROSSBAR_ADDR_INCREMENT, crossbar_level=3, number_of_bin_sel=8) # CROSSBAR block
+            else:
+                self.CROSSBAR2= None
+                self.CROSSBAR3 = None
 
-            # self._logger.debug('%r: === Instantiating CORR' % self)
-            # self.CORR = CORR_BLOCK.CORR_BLOCK_base(self, self._CORR_BASE_ADDR, self._CORR_ADDR_INCREMENT) # Correlator (XMUL, ACC) for each correlator
+            if self.NUMBER_OF_CORRELATORS:
+                self._logger.debug('%r: === Instantiating CORR' % self)
+                self.CORR = CORR.CORR(self, self._CORR_BASE_ADDR, self._CORR_ADDR_INCREMENT) # Correlator (XMUL, ACC) for each correlator
+            else:
+                self.CORR = None
 
             if self.NUMBER_OF_GPU_LINKS:
                 self._logger.debug('%r: === Instantiating GPU LINKS' % self)
                 self.GPU = GPU.GPU_base(self, self._GPU_LINK_BASE_ADDR, self._GPU_LINK_ADDR_INCREMENT)
+            else:
+                self.GPU = None
 
             self._logger.info('%r: This motherboard has %i FMC slots' % (self, self.NUMBER_OF_FMC_SLOTS))
 
@@ -471,31 +482,27 @@ class chFPGA_controller(IceBoardExtHandler):
         else:
             self._logger.warning("%r: There is no 1st CROSSBAR module in this firmware build (so there can't be data streamed to the correlators or GPU links!)" % self);
 
-        if self.NUMBER_OF_BP_SHUFFLE_LANES:
+        if self.BP_SHUFFLE:
             self._logger.debug('%r: === Initializing Backplane Shuffle' % self)
             self.BP_SHUFFLE.init()
-            # self.BP_SHUFFLE.status()
 
         self._logger.debug('%r: === Initializing 2nd Crossbar' % self)
-        if self.NUMBER_OF_BP_SHUFFLE_LANES and self.NUMBER_OF_GPU_LINKS:
+        if self.CROSSBAR2:
             self.CROSSBAR2.init()
-            # self.CROSSBAR2.status()
         else:
             self._logger.warning("%r: There is no 2nd CROSSBAR module in this firmware build" % self);
 
         self._logger.debug('%r: === Initializing 3rd Crossbar' % self)
-        if self.NUMBER_OF_BP_SHUFFLE_LANES and self.NUMBER_OF_GPU_LINKS:  # *** Fixme
+        if self.CROSSBAR3:  # *** Fixme
             self.CROSSBAR3.init()
-            # self.CROSSBAR3.status()
         else:
             self._logger.warning("%r: There is no 3rd CROSSBAR module in this firmware build" % self);
 
 
         self._logger.debug('%r: === Initializing FPGA correlators' % self)
-        if self.NUMBER_OF_CORRELATORS > 0:
+        if self.CORR:
             self._logger.debug('%r:  - CORR' % self)
             self.CORR.init()
-            # self.CORR.status()
         else:
             self._logger.info('%r: There are no FPGA correlators in this firmware build' % self);
 
@@ -505,11 +512,10 @@ class chFPGA_controller(IceBoardExtHandler):
         self.CROSSBAR.set_frames_per_packet(group_frames)
         self._logger.info('%r: The 1st crossbar will pack %i frames per packet' % (self, group_frames))
 
-        if self.GPIO.NUMBER_OF_GPU_LINKS:
+        if self.GPU:
             self.GPU.init()
             self.GPU.set_enable(enable_gpu_link)
-
-        self._logger.info('%r: GPU link is currently %s' % (self, ['Disabled','Enabled'][bool(enable_gpu_link)]))
+            self._logger.info('%r: GPU link is currently %s' % (self, ['Disabled','Enabled'][bool(enable_gpu_link)]))
 
         # MGT is disabled
         #self._logger.debug('  - MGT_PLL')
@@ -2109,7 +2115,7 @@ class chFPGA_controller(IceBoardExtHandler):
             cb2_output_words_per_bin = cb2_input_words_per_bin
             cb2_output_bins = cb2_bins
 
-            crate_number = self.crate.crate_number if self.crate else 0
+            crate_number = self.crate.crate_number or 0 if self.crate else 0
             stream_type = 1
 
             crate_shuffle_bypass = True
@@ -2291,6 +2297,27 @@ class chFPGA_controller(IceBoardExtHandler):
             cb3_output_words_per_bin = cb3_input_words_per_bin * 8
             cb3_output_bins = cb3_bins
 
+        elif mode == 'corr16':
+            number_of_cb1_bin_sel = 8
+            cb1_bypass = False
+            cb1_four_bit = True
+            # BS0 grabs data from FIFO 0-1 (lanes 0-7), BS1 from FIFO 2-3
+            # (lanes 8-15), repeat... We capture 2 words per bin in 2 clocks,
+            # bins are separated by 2 clocks, so we have time to empty the
+            # FIFO
+            cb1_lanes = [(0, 3)] * number_of_cb1_bin_sel
+            cb1_bins = 128
+            cb1_bin_spacing = 1024/cb1_bins  # = 8
+            cb1_combine_data_flags = 1
+            cb1_bin_select_map = [np.arange(cb1_bins)*cb1_bin_spacing+(i % cb1_bin_spacing) for i in range(number_of_cb1_bin_sel)]
+            cb1_output_words_per_bin = 4
+            cb1_output_bins = cb1_bins
+            cb2_bypass = True
+            cb3_bypass = True
+            stream_type = 0  # not used, as the shuffled packets are correlated never get out of the FPGA
+            crate_number =  0  # idem
+
+
         elif mode is None:  # Manual config
             cb1_four_bit = True
 
@@ -2356,49 +2383,56 @@ class chFPGA_controller(IceBoardExtHandler):
         #-------------------------
         # Configure BP_SHUFFLE
         #-------------------------
-        self.BP_SHUFFLE.BYPASS_PCB_SHUFFLE = bp_shuffle_bypass
-        #-------------------------
-        # Configure CRATE_SHUFFLE
-        #-------------------------
-        self.BP_SHUFFLE.BYPASS_QSFP_SHUFFLE = crate_shuffle_bypass
-
+        if self.BP_SHUFFLE:
+            self.BP_SHUFFLE.BYPASS_PCB_SHUFFLE = bp_shuffle_bypass
+            #-------------------------
+            # Configure CRATE_SHUFFLE
+            #-------------------------
+            self.BP_SHUFFLE.BYPASS_QSFP_SHUFFLE = crate_shuffle_bypass
+        elif not bp_shuffle_bypass:
+            raise RuntimeError("The FPGA firmware must have a BP_SHUFFLE in the '%s' operational mode", mode)
         #-------------------------
         # Configure CROSSBAR 2
         #-------------------------
-        self.CROSSBAR2.set_lane_map(cb2_lane_map)
-        if cb2_timeout_period is not None:
-            self.CROSSBAR2.TIMEOUT_PERIOD = cb2_timeout_period
-        if cb2_sof_window_stop is not None:
-            self.CROSSBAR2.SOF_WINDOW_STOP = cb2_sof_window_stop
-        for (cb2_bin_sel, bs) in enumerate(cb2):
-            bs.BYPASS = bool(cb2_bypass)
-            if not cb2_bypass:
-                bs.STREAM_ID = (stream_type << 8) | (crate_number << 4) | slot_number
-                bs.NUMBER_OF_FRAMES_PER_PACKET = frames_per_packet
-                bs.NUMBER_OF_FRAME_FLAGS_WORDS_PER_FRAME=1
-                bs.FIRST_LANE = cb2_lanes[cb2_bin_sel][0]
-                bs.LAST_LANE = cb2_lanes[cb2_bin_sel][1]
-                bs.NUMBER_OF_BINS_PER_FRAME = cb2_input_bins
-                bs.NUMBER_OF_WORDS_PER_BIN = cb2_input_words_per_bin
-                bs.select_bins(cb2_bin_select_map[cb2_bin_sel])
-
+        if self.CROSSBAR2:
+            self.CROSSBAR2.set_lane_map(cb2_lane_map)
+            if cb2_timeout_period is not None:
+                self.CROSSBAR2.TIMEOUT_PERIOD = cb2_timeout_period
+            if cb2_sof_window_stop is not None:
+                self.CROSSBAR2.SOF_WINDOW_STOP = cb2_sof_window_stop
+            for (cb2_bin_sel, bs) in enumerate(cb2):
+                bs.BYPASS = bool(cb2_bypass)
+                if not cb2_bypass:
+                    bs.STREAM_ID = (stream_type << 8) | (crate_number << 4) | slot_number
+                    bs.NUMBER_OF_FRAMES_PER_PACKET = frames_per_packet
+                    bs.NUMBER_OF_FRAME_FLAGS_WORDS_PER_FRAME=1
+                    bs.FIRST_LANE = cb2_lanes[cb2_bin_sel][0]
+                    bs.LAST_LANE = cb2_lanes[cb2_bin_sel][1]
+                    bs.NUMBER_OF_BINS_PER_FRAME = cb2_input_bins
+                    bs.NUMBER_OF_WORDS_PER_BIN = cb2_input_words_per_bin
+                    bs.select_bins(cb2_bin_select_map[cb2_bin_sel])
+        elif not cb2_bypass:
+            raise RuntimeError("The FPGA firmware must have a CROSSBAR2 in the '%s' operational mode", mode)
 
 
         #-------------------------
         # Configure CROSSBAR 3
         #-------------------------
-        self.CROSSBAR3.set_lane_map(cb3_lane_map)
-        for (cb3_bin_sel, bs) in enumerate(cb3):
-            bs.BYPASS = bool(cb3_bypass)
-            if not cb3_bypass:
-                bs.STREAM_ID = (stream_type << 8) | (crate_number << 4) | slot_number  # The stream ID at the output of CB2 will be 0xSL (S=slot-1, L=lane)
-                bs.NUMBER_OF_FRAMES_PER_PACKET = frames_per_packet
-                bs.NUMBER_OF_FRAME_FLAGS_WORDS_PER_FRAME=2
-                bs.FIRST_LANE = cb3_lanes[cb3_bin_sel][0]
-                bs.LAST_LANE = cb3_lanes[cb3_bin_sel][1]
-                bs.NUMBER_OF_BINS_PER_FRAME = cb3_input_bins
-                bs.NUMBER_OF_WORDS_PER_BIN = cb3_input_words_per_bin
-                bs.select_bins(cb3_bin_select_map[cb3_bin_sel])
+        if self.CROSSBAR3:
+            self.CROSSBAR3.set_lane_map(cb3_lane_map)
+            for (cb3_bin_sel, bs) in enumerate(cb3):
+                bs.BYPASS = bool(cb3_bypass)
+                if not cb3_bypass:
+                    bs.STREAM_ID = (stream_type << 8) | (crate_number << 4) | slot_number  # The stream ID at the output of CB2 will be 0xSL (S=slot-1, L=lane)
+                    bs.NUMBER_OF_FRAMES_PER_PACKET = frames_per_packet
+                    bs.NUMBER_OF_FRAME_FLAGS_WORDS_PER_FRAME=2
+                    bs.FIRST_LANE = cb3_lanes[cb3_bin_sel][0]
+                    bs.LAST_LANE = cb3_lanes[cb3_bin_sel][1]
+                    bs.NUMBER_OF_BINS_PER_FRAME = cb3_input_bins
+                    bs.NUMBER_OF_WORDS_PER_BIN = cb3_input_words_per_bin
+                    bs.select_bins(cb3_bin_select_map[cb3_bin_sel])
+        elif not cb3_bypass:
+            raise RuntimeError("The FPGA firmware must have a CROSSBAR3 in the '%s' operational mode", mode)
 
         # words_per_bin = cb1_lanes / 4
         # # cb1_minimum_bin_spacing = 16
