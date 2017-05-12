@@ -65,7 +65,7 @@ class GainCalc(object):
         outrms = data[:,:,:].std(axis=0)
         outrms[outrms < 0.8] = 0.8
         #rmss.append(outrms.mean())
-        print outrms.mean(axis=1)
+        print(outrms.mean(axis=1))
         if self.g is not None:
             #not sure about format of previous gain yet...
             #needs to be a post of current gain setting I think...
@@ -80,7 +80,7 @@ class GainCalc(object):
             #Assumes was set to something simple (glin=1), glog is something.
             self.g = self.idealRMS*2**(self.default_log2_gain)/outrms#idealRMS*2**(default_log2_gain-4)/outrms
         self.glin, self.glog = self.convert_gain_format()
-        print self.glog
+        print(self.glog)
         bad_gains = self.glin > 2**14
         self.glin[bad_gains] = 2**14
         self.glin = self.glin.astype(np.int).astype(np.float)
@@ -170,7 +170,7 @@ class GainEstimator(object):
             frames together, and get estimate of new gain settings.'''
         # gain_estimates = []
         frame_number = 0
-        spectrum = np.zeros(self.number_of_ports, self.number_of_frames, 16, 1024), dtype=np.complex)  # port (board), timestanp, channel, bin
+        spectrum = np.zeros((self.number_of_ports, self.number_of_frames, 16, 1024), dtype=np.complex)  # port (board), timestanp, channel, bin
         while frame_number < self.number_of_frames:
             timestamps, ports, all_data = self.read_data_func()
             data_unpacked = (np.array(all_data).astype(np.int8) ^ np.int8(128)) >> 4
@@ -362,7 +362,7 @@ class RawAcqReceiver(object):
     from those ports.
     Should probably fix the 'serve forever bits'
     '''
-    def __init__(self, ports=[41101], host='127.0.0.1'):
+    def __init__(self, ports=[41101], host='0.0.0.0'):
         self.HOST = host
         self.PORTS = ports
         self.dataWriter = None
@@ -392,7 +392,7 @@ class RawAcqReceiver(object):
             self.server_threads.append(threading.Thread(target=server.serve_forever))
             self.server_threads[-1].setDaemon(True)
             self.server_threads[-1].start()
-            print('server thread started')
+            print('UDP Receiver thread started on %s:%i' % (self.HOST, port))
             self.all_data.append(np.zeros((16, 2048), dtype=np.int8))  # pre-allocate data (channels x bins) for this port,  for a single timestamp
             self.all_ts.append(np.zeros(16, dtype=np.int32)) # pre-allocate timestamps storage for the current data on this port (should all be the same)
         self.all_data = np.array(self.all_data)
@@ -493,7 +493,7 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
 
     @coroutine
     def estimate_gains(self):
-        coroutine_return(yield self.post('estimate_gains'))   # estimate-gains?
+        coroutine_return((yield self.post('estimate_gains')))   # estimate-gains?
 
 class RawAcqAsyncRESTServer(AsyncRESTServer):
 
