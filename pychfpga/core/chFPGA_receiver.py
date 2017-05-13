@@ -270,6 +270,9 @@ class chFPGA_receiver(object):
         self.K = X * self.NUMBER_OF_ANTENNAS_TO_CORRELATE - X*(X+1)/2 + Y
         self.define_sort_array()
 
+        self.raw_corr_map = self.raw_corr_map()
+        self.rm = self.reverse_map(self.raw_corr_map)
+
 
     def __del__(self):
 
@@ -387,7 +390,7 @@ class chFPGA_receiver(object):
                     data[channel]=np.hstack((data[channel],raw_data));
         return data
 
-    def read_corr_frames(self, flush=0, timeout=3, verbose=2):
+    def read_corr_frames(self, flush=0, timeout=3, verbose=2, raw=False):
         """
         Get correlator frames that were captured by the capture thread, combine them, and return a processed complex correlation array.
 
@@ -413,7 +416,7 @@ class chFPGA_receiver(object):
         ### Replace linear map with a Matrix
 
         corr_data=np.zeros((Nproducts_max, self.FREQ_CHANNELS_MAX), dtype=complex)*np.nan  # Dimensions are: (Number_of_products, number_of_frequency_channels)
-        unordered_corr_data=np.zeros((8, 34, 512), dtype=complex)*np.nan  # Dimensions are: (Number_of_products, number_of_frequency_channels)
+        raw_corr_data=np.zeros((8, 34, 512), dtype=complex)*np.nan  # Dimensions are: (Number_of_products, number_of_frequency_channels)
 
         # Acquire the data
         #data={}
@@ -465,58 +468,72 @@ class chFPGA_receiver(object):
             im = np.int32(w & 0x3FFFF)
             im[(im & (1<<17)) != 0] -= 1<<18
             v = re + 1.0j*im
-            unordered_corr_data[corr_id, cmac_id,0:len(v)] = v
-            # for word in in_frame[12:].reshape(num_products, 5):
-            #     (flags, r1, r2, i1, i2) = struct.unpack_from('>BhLhL',word)
-            #     w =
-            #     product = ((r1 << 32) | r2 ) + 1.0j * ((i1 << 32) | i2)
-            #     corr_data[self.corr2sorted[corr_id,cmac_id,product_number,0], self.corr2sorted[corr_id,cmac_id,product_number,1]] = product
-            #     product_number += 1
-            #raw_data = np.array(raw_data)
+            raw_corr_data[corr_id, cmac_id,0:len(v)] = v
 
+        if raw:
+            return raw_corr_data
+        else:
+            rm = self.rm
+            return raw_corr_data[rm[...,0], rm[...,1], rm[...,2]]
 
-
-
-
-            # Process the frame data Need to use Mult_ID to sort out what is what.
-            # include in data flags etc?
-
-            #Format data from frame
-
-            # Make sure there is an empty vector on the first storage so we can concatenate to it the new data
-
-            #if mult_id in data:
-            #    print 'Warning: correlator data is received multiple times from the same multiplier'
-
-            #data[mult_id]=raw_data
-
-            #if mult_id not in data:
-            #    data[mult_id]=raw_data
-            #else:
-            #    data[mult_id]=np.hstack((data[mult_id],raw_data));
-        #if raw:
-        #    return data
-        #else:
-        return unordered_corr_data
-
-    def remap_corr_products(self, raw_data):
+    def raw_corr_map(self):
+        """
+        map(corr, cmac, prod) = (bin, i, j)
+        """
         N = self.NUMBER_OF_ANTENNAS_TO_CORRELATE
-        Ncmac = 2*(N+1)
-        Ncorr = 8
-        Nbins = 128
-        Nprod = N/4*Nbins # total number of products in a frame
-        raw_index = zeros((Nbins, N, N))*np.nan
-        data = np.zeros((Nbins, N,N))*np.nan
-        for bin_number in range(Nbins):
-            for i in range(N):
-                for j in range(i+1):
+        Ncmac = (N+1) # Numbe rof CMACs (before interleaving)
+        Ncorr = self.NUMBER_OF_CORRELATORS
+        Nbins = self.FREQ_CHANNELS_MAX / Ncorr # Number of bins processed by each correlator
+        Nprods = N/2*Nbins # total number of products in a cmac (before interleaving)
+        raw_map = np.zeros((Ncorr, Ncmac, Nprods, 3), int) -1
+        interleaved_raw_map = np.empty((Ncorr, Ncmac*2, Nprods/2, 3), int)
 
-                    if i == j:
-                        corr =
-                    else
 
-                    raw_index[bin_number, i, j] = (corr, cmac, -prod)
-                    data[bin_number, j, i] = raw_data[corr, cmac, prod]
+        # Compute the corelator output map as if we computed all the products for eacb bin in N/2 clocks.
+        cmac = np.arange(Ncmac)
+
+        for corr in range(Ncorr):
+            for bin_number in range(Nbins):
+                for clock in range(N/2):
+                    prod = N/2*bin_number + clock
+
+                    b = cmac*0 + (corr + bin_number * Ncorr)
+
+                    x = (cmac + N - clock) % N
+                    x[:clock] = np.arange(clock)
+                    x[N-1] = N/2 - 1 - clock # 1st autocorrelator
+                    x[N] = N - 1 - clock  # 2nd autocorrelator
+
+                    y = cmac + 1
+                    y[:clock] = N-clock+np.arange(clock)
+                    y[N-1] = N/2 - 1 - clock # 1st autocorrelator
+                    y[N] = N - 1 - clock  # 2nd autocorrelator
+
+                    raw_map[corr, :, prod] = np.array([b,x,y]).T #(b, x , y)
+
+        # Since we need to compute the products in N/4 clocks (there are 4 clocks per bin), we use two CMAC in parallel.
+        # The CMACs are interleaved. We update the map to repreent this.
+        interleaved_raw_map[:,0::2] = raw_map[:,:,0::2]
+        interleaved_raw_map[:,1::2] = raw_map[:,:,1::2]
+        return interleaved_raw_map
+
+    @staticmethod
+    def imap(shape):
+        """ Return an array of shape `shape` where each element is a 3-element tible containingthe index on that element.
+        """
+        N1, N2, N3 = shape[:-1]
+        im = np.zeros((N1,N2,N3, 3), int) + 65535
+        [b,i,j] = np.meshgrid(range(N1), range(N2), range(N3), indexing='ij')
+        im[...,0], im[...,1], im[...,2] = b,i,j
+        return im
+
+    @staticmethod
+    def reverse_map(m):
+        (N1, N2, N3) = m.reshape(-1,3).max(axis=0)+1 # Find the maximum indices if each dimension
+        rm = np.empty((N1, N2 ,N3, 3), int)
+        rm[m[...,0], m[...,1], m[...,2]] = imap(m.shape[:-1])
+        return rm
+
 
 
     def define_sort_array(self):
