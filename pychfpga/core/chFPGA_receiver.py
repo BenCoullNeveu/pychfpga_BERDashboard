@@ -415,7 +415,7 @@ class chFPGA_receiver(object):
         ##linear_map = lambda i, j : (Nant * (Nant + 1) - (Nant - i) * (Nant - i + 1)) / 2 + (j - i) # Maps (i,j) (for j>=i) matrix coordinates into a linear array indexed from 0 to Nant*(Nant-1)/2-1: x0x0, x0x1, x0x2, x0x3, x1x1, x1x2, x1x3, x2x2, x2x3, x3x3
         ### Replace linear map with a Matrix
 
-        corr_data=np.zeros((Nproducts_max, self.FREQ_CHANNELS_MAX), dtype=complex)*np.nan  # Dimensions are: (Number_of_products, number_of_frequency_channels)
+        # corr_data=np.zeros((Nproducts_max, self.FREQ_CHANNELS_MAX), dtype=complex)*np.nan  # Dimensions are: (Number_of_products, number_of_frequency_channels)
         raw_corr_data=np.zeros((8, 34, 512), dtype=complex)*np.nan  # Dimensions are: (Number_of_products, number_of_frequency_channels)
 
         # Acquire the data
@@ -455,26 +455,34 @@ class chFPGA_receiver(object):
 
             num_products = len(in_frame[12:])/5 # Total number of products in the frame (for all channels)
             if num_products % Nant:
-                print 'Error: number of products (%i)  not a multiple of the number of antennas (%i)' % (num_products, Nant)
+                print 'Error: number of products (%i)  not a multiple of the number of channelizers (%i)' % (num_products, Nant)
             # num_channels_per_correlator = num_products//Nant*2
             if verbose >=2:
                 print 'Frame header information:  corr#=%i, cmac#=%i, timestamp=0x%X ' % (corr_id, cmac_id, timestamp)
                 #pass
             # chop the data in 5-byte chunks and compute ``num_products`` 40-bit words
-            print in_frame[12:].reshape(num_products, 5)
-            w = (in_frame[12:].reshape(num_products, 5).view(np.uint8) * [1, 1<<8, 1<<16, 1<<24, 1<<32]).sum(-1)
-            re = np.int32(w >> 18)
+            # print in_frame[12:].reshape(num_products, 5)
+            w = np.flipud((in_frame[12:].reshape(num_products, 5).view(np.uint8) * [1, 1<<8, 1<<16, 1<<24, 1<<32]).sum(-1))
+            re = np.int32((w >> 18) & 0x3FFFF)
             re[(re & (1<<17)) != 0] -= 1<<18
             im = np.int32(w & 0x3FFFF)
             im[(im & (1<<17)) != 0] -= 1<<18
             v = re + 1.0j*im
             raw_corr_data[corr_id, cmac_id,0:len(v)] = v
 
+
         if raw:
-            return raw_corr_data
+            data = raw_corr_data
         else:
             rm = self.rm
-            return raw_corr_data[rm[...,0], rm[...,1], rm[...,2]]
+            data = raw_corr_data[rm[..., 0], rm[..., 1], rm[..., 2]]
+
+        return data
+
+    def pp(self, data):
+        for i in data.shape[0]:
+            for j in data.shape[1]:
+                pass
 
     def raw_corr_map(self):
         """
@@ -502,36 +510,36 @@ class chFPGA_receiver(object):
                     x = (cmac + N - clock) % N
                     x[:clock] = np.arange(clock)
                     x[N-1] = N/2 - 1 - clock # 1st autocorrelator
-                    x[N] = N - 1 - clock  # 2nd autocorrelator
+                    x[N] = N - 1 - clock #+ (1 if clock % 2 else -1) # 2nd autocorrelator
 
                     y = cmac + 1
                     y[:clock] = N-clock+np.arange(clock)
                     y[N-1] = N/2 - 1 - clock # 1st autocorrelator
-                    y[N] = N - 1 - clock  # 2nd autocorrelator
+                    y[N] = N - 1 - clock  #+ (1 if clock % 2 else -1)# 2nd autocorrelator
 
-                    raw_map[corr, :, prod] = np.array([b,x,y]).T #(b, x , y)
+                    raw_map[corr, :, prod] = np.array([b, x, y]).T  #(b, x , y)
 
         # Since we need to compute the products in N/4 clocks (there are 4 clocks per bin), we use two CMAC in parallel.
         # The CMACs are interleaved. We update the map to repreent this.
-        interleaved_raw_map[:,0::2] = raw_map[:,:,0::2]
-        interleaved_raw_map[:,1::2] = raw_map[:,:,1::2]
+        interleaved_raw_map[:, 0::2] = raw_map[:, :, 0::2]
+        interleaved_raw_map[:, 1::2] = raw_map[:, :, 1::2]
         return interleaved_raw_map
 
-    @staticmethod
-    def imap(shape):
-        """ Return an array of shape `shape` where each element is a 3-element tible containingthe index on that element.
+    def imap(self, shape):
+        """ Return an array of shape `shape` where each element is a 3-element tuple containing the index on that element.
         """
-        N1, N2, N3 = shape[:-1]
+        N1, N2, N3 = shape
         im = np.zeros((N1,N2,N3, 3), int) + 65535
         [b,i,j] = np.meshgrid(range(N1), range(N2), range(N3), indexing='ij')
-        im[...,0], im[...,1], im[...,2] = b,i,j
+        im[...,0], im[...,1], im[...,2] = b, i, j
         return im
 
-    @staticmethod
-    def reverse_map(m):
+    def reverse_map(self, m):
         (N1, N2, N3) = m.reshape(-1,3).max(axis=0)+1 # Find the maximum indices if each dimension
         rm = np.empty((N1, N2 ,N3, 3), int)
-        rm[m[...,0], m[...,1], m[...,2]] = imap(m.shape[:-1])
+        im = self.imap(m.shape[:-1])
+        rm[m[...,0], m[...,1], m[...,2]] = im
+        rm[m[...,0], m[...,2], m[...,1]] = im  # also populate j,i with same values
         return rm
 
 

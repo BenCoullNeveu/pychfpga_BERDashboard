@@ -724,6 +724,22 @@ class chFPGA_controller(IceBoardExtHandler):
         if local_sync:
             self.sync()
 
+    def set_channelizer_outputs(self, data):
+        """
+        Set the data outputted by the channelizers. FFT and SCALER and bypassed.
+        data(chan, bin) = complex value (4+4) bits
+        """
+
+        d = np.zeros((16,2048), np.int8)
+        d[:, 0::2] = data.real
+        d[:, 1::2] = data.imag
+        d <<= 4
+
+        self.set_channelizer(data_source='funcgen', function='AB', a=0, b=0, fft_bypass=1, scaler_bypass=1, offset_binary_encoding=0)
+        for ch in range(16):
+            self.set_funcgen_function('arb', channels=[ch], data=d[ch])
+        return d
+
     # set_data_path = set_channelizer # for legacy compatibility
 
     def set_data_source(self, source=None,  channels=None):
@@ -2670,6 +2686,27 @@ class chFPGA_controller(IceBoardExtHandler):
 
     def get_crate_id(self):
         return self.crate.get_id()
+
+    def start_correlator(self, integration_period=16384):
+        if not self.CORR:
+            raise RuntimeError('The FPGA firmware does not contain a correlator core')
+
+        self.CORR.start_correlator(integration_period=integration_period)
+
+    def stop_correlator(self):
+        if not self.CORR:
+            raise RuntimeError('The FPGA firmware does not contain a correlator core')
+
+        self.CORR.stop_correlator()
+
+    def compute_corr_output(self, data, integration_period=16384):
+        """
+        Compute the expected correlator output  given the channelizer output `data`.
+        Returns array(bins, i, j) = complex
+        """
+        corr=data.T[:,None,:]* data.T[:,:,None].conj()*integration_period
+        return corr
+
 
     @async
     def _call_subprocess(self, cmd):

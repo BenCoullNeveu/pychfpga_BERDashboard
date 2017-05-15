@@ -42,8 +42,8 @@ class CORR_core(Module_base):
         """ Inisializes all modules of a correlator block."""
         # self.CH_DIST.init()
         # self.ACC.init()
-        self.SOFT_RESET = self.instance_number!=0
-        self.INTEGRATION_PERIOD = 64-1
+        # self.SOFT_RESET = self.instance_number!=0
+        self.INTEGRATION_PERIOD = 16384-1
 
     def status(self):
         """Displays the status of al the correlator blocks"""
@@ -79,3 +79,12 @@ class CORR(object):
         """ Displays the status of all correlators"""
         for corr in self.corr:
             corr.status()
+
+    def start_correlator(self, integration_period=16384):
+        for corr in self.corr:
+            corr.INTEGRATION_PERIOD = integration_period - 1
+            corr.SOFT_RESET = 0
+
+    def stop_correlator(self):
+        for corr in self.corr:
+            corr.SOFT_RESET = 1
