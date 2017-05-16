@@ -22,7 +22,7 @@ class CORR_core(Module_base):
 
     # Control registers
     SOFT_RESET         = BitField(CONTROL, 0x00, 7, doc="Resets this correlator core.")
-    FORCE_TDATA         = BitField(CONTROL, 0x00, 6, doc="Force the correlator input to be 0x10101010")
+    AUTOCORR_ONLY         = BitField(CONTROL, 0x00, 6, doc="Force the correlator input to be 0x10101010")
     NO_ACCUM         = BitField(CONTROL, 0x00, 5, doc="Disables accumulation - only the last result is saved")
     USER_ID            = BitField(CONTROL, 0x00, 0, width=4, doc="USER ID used in the correlator packet header")
     INTEGRATION_PERIOD = BitField(CONTROL, 0x04, 0, width=32, doc="Duration of te integration period -1")
@@ -52,6 +52,7 @@ class CORR_core(Module_base):
 
 
 
+
 class CORR(object):
     """ Instantiates a container for all correlators blocks"""
 
@@ -71,6 +72,10 @@ class CORR(object):
 
     def init(self):
         """ Initializes all correlators"""
+        self.NUMBER_OF_CORRELATED_CHANNELS = 16
+        self.NUMBER_OF_CMACS_PER_CORRELATOR = 2*(self.NUMBER_OF_CORRELATED_CHANNELS + 1) # per correlator
+        self.PRODUCTS_PER_BIN = self.NUMBER_OF_CORRELATED_CHANNELS / 4  # per CMAC
+
         for corr in self.corr:
             corr.init()
 
@@ -80,11 +85,40 @@ class CORR(object):
         for corr in self.corr:
             corr.status()
 
-    def start_correlator(self, integration_period=16384):
-        for corr in self.corr:
+    def start_correlator(self, integration_period=16384, autocorr_only=False, correlators=None, bandwidth_limit=0.5e9):
+        """ Start the correlator with specified parameters.
+
+        """
+
+        if correlators is None:
+            correlators = range(self.fpga.NUMBER_OF_CORRELATORS)
+
+        Ncorr = len(set(correlators)) # Number of active correlators
+        Ncmac = 4 if autocorr_only else self.NUMBER_OF_CMACS_PER_CORRELATOR
+        Nprod = self.PRODUCTS_PER_BIN * self.fpga.FRAME_LENGTH / 2 / self.fpga.NUMBER_OF_CORRELATORS  # assumes the CROSSBAR is setup this way...
+        frame_rate = self.fpga.FRAME_RATE
+        integ_rate = frame_rate / integration_period
+        cmac_frame_size = (42 + 12 + 5*Nprod) # for all specified correlators, in bytes
+        all_corr_frame_size = Ncorr * Ncmac * cmac_frame_size # for all specified correlators, in bytes
+
+        bit_rate = integ_rate * all_corr_frame_size * 8
+        min_integ_period = frame_rate / (bandwidth_limit/8/all_corr_frame_size)
+        autocorr_only_bit_rate = integ_rate * Ncorr * 4 * cmac_frame_size
+        print 'Integration rate: %.1f integ/s (%.3fs/integ)' % (integ_rate, 1/integ_rate)
+        print 'Bit rate =%.3f Gbps' % ( bit_rate/ 1e9)
+        if bit_rate > bandwidth_limit:
+            raise ValueError('The correlator setting would make it produce %.3f Gbps of data, which exceeds the specified bandwith '
+                             'limit of %.3f Gbps. Try using a longer integration period (%i frames min).'
+                             'Note that sending only the autocorrlation products with autocorr_only=True will produce %.3f Gbps)' %
+                             (bit_rate/1e9, bandwidth_limit/1e9, min_integ_period, autocorr_only_bit_rate/1e9))
+
+        for i, corr in enumerate(self.corr):
+            corr.SOFT_RESET = 1 # make sure we stop sending readouts in progres
             corr.INTEGRATION_PERIOD = integration_period - 1
-            corr.SOFT_RESET = 0
+            corr.SOFT_RESET = not i in correlators
 
     def stop_correlator(self):
+        """ Stop all correlator cored from sending data.
+        """
         for corr in self.corr:
             corr.SOFT_RESET = 1

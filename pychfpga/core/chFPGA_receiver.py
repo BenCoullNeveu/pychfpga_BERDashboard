@@ -146,6 +146,8 @@ class ReceiverThread(threading.Thread):
                 else:
                     if ((timestamp != last_corr_timestamp) or (corr_time - last_corr_time > 2.9) ) and (nc>0): #if this is the beginning of a new correlator data block
                         # If the queue is full, make room by poping the oldest element
+                        # if nc != self.NUMBER_OF_MULTIPLIERS * self.NUMBER_OF_CORRELATORS:
+                        #     print 'Got only %i packets before a new timestanmp came in' % nc
                         if self.store_corr_data:  # False if this is the first block to be stored. In this case, do not store the data in case we got partial block after a flush()
                             if self.queue_corr.full():
                                 self.queue_corr.get()
@@ -499,23 +501,24 @@ class chFPGA_receiver(object):
 
         # Compute the corelator output map as if we computed all the products for eacb bin in N/2 clocks.
         cmac = np.arange(Ncmac)
+        x = np.zeros(Ncmac)
+        y = np.zeros(Ncmac)
+        b = np.zeros(Ncmac)
 
         for corr in range(Ncorr):
             for bin_number in range(Nbins):
                 for clock in range(N/2):
                     prod = N/2*bin_number + clock
 
-                    b = cmac*0 + (corr + bin_number * Ncorr)
+                    b[:] = corr + bin_number * Ncorr
 
-                    x = (cmac + N - clock) % N
-                    x[:clock] = np.arange(clock)
-                    x[N-1] = N/2 - 1 - clock # 1st autocorrelator
-                    x[N] = N - 1 - clock #+ (1 if clock % 2 else -1) # 2nd autocorrelator
+                    x[0] = y[0] = N/2 - 1 - clock # 1st autocorrelator, 7x7, 6x6  ... 0x0
+                    x[1] = y[1] = N - 1 - clock #+ (1 if clock % 2 else -1) # 2nd autocorrelator 15x15 .. 8x8
 
-                    y = cmac + 1
-                    y[:clock] = N-clock+np.arange(clock)
-                    y[N-1] = N/2 - 1 - clock # 1st autocorrelator
-                    y[N] = N - 1 - clock  #+ (1 if clock % 2 else -1)# 2nd autocorrelator
+                    x[2:] = (cmac[0:N-1] + N - clock) % N
+                    x[2:clock+2] = np.arange(clock)
+                    y[2:] = cmac[0:N-1] + 1
+                    y[2:2+clock] = N-clock+np.arange(clock)
 
                     raw_map[corr, :, prod] = np.array([b, x, y]).T  #(b, x , y)
 
