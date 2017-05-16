@@ -34,6 +34,8 @@ import os
 import yaml
 from datetime import datetime
 from collections import OrderedDict
+from functools import wraps
+
 
 import subprocess
 import shlex
@@ -85,6 +87,10 @@ class chFPGAException(Exception):
         super(self.__class__, self).__init__(message)
         self._logger.exception(message)
 
+def copy_docstring(fn, source_fn):
+    """ Function decorator to use the doctrings from an other funciton """
+    fn.__doc__ = source_fn.__doc__
+    return fn
 
 class chFPGA_controller(IceBoardExtHandler):
     """
@@ -175,7 +181,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
         self._sampling_frequency = None
         self._reference_frequency = None
-        self._FRAME_PERIOD = None
+        self.FRAME_PERIOD = None
         self._FMC_present = []  # indicates if the FMC board is present. If not, the modules will act accordingly.
         # self._adc_board = []
         self._last_init_time = None
@@ -391,7 +397,8 @@ class chFPGA_controller(IceBoardExtHandler):
 
         self._sampling_frequency = sampling_frequency
         self._reference_frequency = reference_frequency
-        self._FRAME_PERIOD = float(self.FRAME_LENGTH)/self._sampling_frequency
+        self.FRAME_PERIOD = float(self.FRAME_LENGTH)/self._sampling_frequency
+        self.FRAME_RATE = 1 / self.FRAME_PERIOD
 
         self._logger.info('%r: --- Initializing FPGA ressources' % self)
 
@@ -582,7 +589,7 @@ class chFPGA_controller(IceBoardExtHandler):
         config.system_frame_length = self.FRAME_LENGTH
         config.system_sampling_frequency = self._sampling_frequency
         config.system_reference_frequency = self._reference_frequency
-        config.system_frame_period = self._FRAME_PERIOD
+        config.system_frame_period = self.FRAME_PERIOD
         config.motherboard_serial = self.GPIO.FPGA_SERIAL_NUMBER
 
 
@@ -956,14 +963,14 @@ class chFPGA_controller(IceBoardExtHandler):
             raise ValueError("You must specify either 'period' or 'burst_period_in_frames' ")
 
         if period is not None:
-            burst_period_in_frames = max(float(period)/self._FRAME_PERIOD, 1)
+            burst_period_in_frames = max(float(period)/self.FRAME_PERIOD, 1)
 
 
         burst_period_in_frames = int(burst_period_in_frames)
         # print "%s" % channels.__repr__()
         # print "%i" frames_per_burst
         # print burst_period_in_frames
-        # print burst_period_in_frames*self._FRAME_PERIOD*1000
+        # print burst_period_in_frames*self.FRAME_PERIOD*1000
         # print ('continuously when TRIG=1' if not number_of_bursts else ('for a total of %i bursts' % number_of_bursts) )
         if verbose:
             self._logger.info("%r: Configuring antennas %s to transmit %i-frame burst every %i frames (i.e .every %.3f ms) %s." % (
@@ -971,9 +978,9 @@ class chFPGA_controller(IceBoardExtHandler):
                channels.__repr__(),
                frames_per_burst,
                burst_period_in_frames,
-               burst_period_in_frames*self._FRAME_PERIOD*1000,
+               burst_period_in_frames*self.FRAME_PERIOD*1000,
                ('continuously when TRIG=1' if not number_of_bursts else ('for a total of %i bursts' % number_of_bursts))))
-            frames_per_second = len(channels)*frames_per_burst*1.0/self._FRAME_PERIOD/burst_period_in_frames
+            frames_per_second = len(channels)*frames_per_burst*1.0/self.FRAME_PERIOD/burst_period_in_frames
             bits_per_second = frames_per_second * 8 * self.FRAME_LENGTH
             self._logger.info('%r: Data rates are: %f kFrames/s, %f Mbits/s' % (self, frames_per_second/1e3, bits_per_second/1e6))
 
@@ -1102,8 +1109,8 @@ class chFPGA_controller(IceBoardExtHandler):
         if capture_period is None:
             capture_period = integration_period
 
-        capture_period_in_frames = int(capture_period*1.0/self._FRAME_PERIOD)
-        integration_period_in_frames = int(integration_period*1.0/self._FRAME_PERIOD)
+        capture_period_in_frames = int(capture_period*1.0/self.FRAME_PERIOD)
+        integration_period_in_frames = int(integration_period*1.0/self.FRAME_PERIOD)
 
         self.set_ant_reset(1)
         self.set_corr_reset(1)
@@ -2687,11 +2694,49 @@ class chFPGA_controller(IceBoardExtHandler):
     def get_crate_id(self):
         return self.crate.get_id()
 
-    def start_correlator(self, integration_period=16384):
+    # @wraps(CORR.CORR.start_correlator)
+    def start_correlator(self, integration_period=16384, autocorr_only=False, correlators=None, bandwidth_limit=0.5e9):
+        """
+        Args:
+
+            integration_period (32-bit int): Number of frames to integrate
+               before sending the correlated products. Lower integration
+               period increase the frequency at which correlated frames are
+               sent and increase the require bandwidth. Longer integration
+               periods will procuce larger accumulated products that will
+               saturate if they exceed the accumulator limits (from -131072 to
+               131071 for each if the real and imaginary component).
+
+            autocorr_only (bool): When 'True', the correlator will only send
+               the autocorrelation products, which will reduce bandwidth
+               requirement (12% of the full bandwidth) and will allow shorter
+               integration periods. Note that the imaginary parts are always
+               zero but are sent anyways to keep the frame format identical
+               despite the waste of bandwidth.
+
+            correlators (list of int): List of correlator cores to enable. All
+               other cores will be disabled. Default is None, which means all
+               correlators will be enabled. Each correlator core process the
+               frequency bins selected with its corresponding bin selector.
+               Using a smaller number of cores will process less frequency
+               bins but will proportionnally usee less data bandwidth.
+
+            bandwidth_limit (float): Maximum acceptable data bandwidth that
+               the correlator can produce, in bits/s. Default is 0.5 Gbps. If the correlator
+               parameters are to make the data exceed this bandwidth, an
+               exception will be raised, with a message that describe
+               alternate settings. In this case, no changes are made to the
+               correlator operation.
+
+        Returns: None
+        """
         if not self.CORR:
             raise RuntimeError('The FPGA firmware does not contain a correlator core')
 
-        self.CORR.start_correlator(integration_period=integration_period)
+        self.CORR.start_correlator(integration_period=integration_period,
+                                   autocorr_only=autocorr_only,
+                                   correlators=correlators,
+                                   bandwidth_limit=bandwidth_limit)
 
     def stop_correlator(self):
         if not self.CORR:
