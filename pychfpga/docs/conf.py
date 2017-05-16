@@ -45,6 +45,7 @@ autosummary_generate = True
 extensions = ['sphinx.ext.todo',
               'sphinx.ext.autosummary',
               'sphinx.ext.autodoc',
+              'sphinx.ext.napoleon',
               'sphinx.ext.intersphinx']  # JFC: added to link to other sphinx docs
 
 # Add any paths that contain templates here, relative to this directory.
