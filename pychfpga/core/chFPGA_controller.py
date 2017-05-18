@@ -2750,6 +2750,7 @@ class chFPGA_controller(IceBoardExtHandler):
         Returns array(bins, i, j) = complex
         """
         corr=data.T[:,None,:]* data.T[:,:,None].conj()*integration_period
+        np.clip(corr, -131072, 131071, corr)
         return corr
 
 
