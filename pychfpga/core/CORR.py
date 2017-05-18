@@ -115,6 +115,7 @@ class CORR(object):
         for i, corr in enumerate(self.corr):
             corr.SOFT_RESET = 1 # make sure we stop sending readouts in progres
             corr.INTEGRATION_PERIOD = integration_period - 1
+            corr.AUTOCORR_ONLY = autocorr_only
             corr.SOFT_RESET = not i in correlators
 
     def stop_correlator(self):
