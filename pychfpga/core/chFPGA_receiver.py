@@ -97,7 +97,8 @@ class ReceiverThread(threading.Thread):
         #    data2 = bytearray(buf_size)
         self.sock.settimeout(0.1)
         # self.sock.setblocking(0)
-        print 'Frame acquisition thread is running'
+        if self.verbose:
+            print 'Frame acquisition thread is running'
         while not self._stop.is_set():
             # data = self.sock.read_data(timeout_delay=timeout)
             # Read data from the UDP listening port
@@ -140,9 +141,11 @@ class ReceiverThread(threading.Thread):
                 # Correlator unpack first try very simple.
                 # corr_number &= 0x0F  # mask the FRAME ID bits
                 if nbytes <=12 or nbytes > self.MAX_CORR_FRAME_LENGTH:
-                    print "Corr Receiver: Bad frame length of %i bytes" % nbytes
+                    if self.verbose:
+                        print "Corr Receiver: Bad frame length of %i bytes" % nbytes
                 elif (cmac_number >= self.NUMBER_OF_MULTIPLIERS ) :
-                    print "Corr Receiver: Bad multiplier number"
+                    if self.verbose:
+                        print "Corr Receiver: Bad multiplier number"
                 else:
                     if ((timestamp != last_corr_timestamp) or (corr_time - last_corr_time > 2.9) ) and (nc>0): #if this is the beginning of a new correlator data block
                         # If the queue is full, make room by poping the oldest element
@@ -164,7 +167,8 @@ class ReceiverThread(threading.Thread):
                         last_corr_timestamp = timestamp
                         last_corr_time = corr_time
                     if nc >= self.NUMBER_OF_MULTIPLIERS * self.NUMBER_OF_CORRELATORS:
-                        print 'Corr Receiver: Received extra correlator frames for Corr#%i Mult#%i' % (corr_number, cmac_number)
+                        if self.verbose:
+                            print 'Corr Receiver: Received extra correlator frames for Corr#%i Mult#%i' % (corr_number, cmac_number)
                     else:
                         #print 'Corr#%i Mult#%i ts=%i, time=%0.3f, dt=%0.3fs' % (corr_number, cmac_number, timestamp, corr_time, corr_time-last_corr_time)
                         self.corr_data_block[nc,:nbytes] = self.data[:nbytes]
@@ -201,26 +205,31 @@ class ReceiverThread(threading.Thread):
                                     #print '.',
                             except Queue.Full:
                                 self.queue_overflow += 1
-                                print 'Timestream Receiver Queue overflow... Should not happen...'
+                                if self.verbose:
+                                    print 'Timestream Receiver Queue overflow... Should not happen...'
                         else:
                             self.store_data = 1  # next time store the block
                         last_timestamp = timestamp
                         n = 0
                     # Copy the new vector into the block memory buffer
                     if n < 0 or n >= 16:
-                        print 'Timestream Receiver: received %i Timestrem/Spectrum frames with the same timestamp.' % n
+                        if self.verbose:
+                            print 'Timestream Receiver: received %i Timestrem/Spectrum frames with the same timestamp.' % n
                     elif nbytes != 2048 + 9:
-                        print 'Timestream Receiver: Timestrem/Spectrum frame has %i bytes instead of 2048+9=2057 bytes. First bytes are: 0x%s' % (nbytes, ' '.join('%02X' % c for c in self.data[:32]))
+                        if self.verbose:
+                            print 'Timestream Receiver: Timestrem/Spectrum frame has %i bytes instead of 2048+9=2057 bytes. First bytes are: 0x%s' % (nbytes, ' '.join('%02X' % c for c in self.data[:32]))
                     else:
                         self.data_block[n, :] = self.data[: 2048 + 9]
                         n += 1
             ###### UNKNOWN FRAME TYPE###########
             else:  # unknown frame format
-                print 'Receiver: Frame of %i bytes with unknown identifier 0x%2X has been received. It was discarded. First bytes are 0x%s' % (nbytes, frame_id, ' '.join('%02X' % c for c in self.data[:32]))
+                if self.verbose:
+                    print 'Receiver: Frame of %i bytes with unknown identifier 0x%2X has been received. It was discarded. First bytes are 0x%s' % (nbytes, frame_id, ' '.join('%02X' % c for c in self.data[:32]))
 
         # self.queue.task_done() # JFC: Must be used by queue consumer, not the producer (this thread)
         # self.queue_corr.task_done()
-        print 'Frame acquisition thread is stopped'
+        if self.verbose:
+            print 'Frame acquisition thread is stopped'
 
     def status(self, print_delay=1):
         last_display_time = 0
@@ -248,7 +257,7 @@ class chFPGA_receiver(object):
     #NUMBER_OF_CORRELATORS = NUMBER_OF_ANTENNAS_TO_CORRELATE
     FREQ_CHANNELS_MAX = 1024
 
-    def __init__(self, chFPGA_config):
+    def __init__(self, chFPGA_config, verbose=1):
 
         print '*** Opening receiver sockets ***'
         # Create socket handled and open socket communications to the chFPGA board
@@ -266,7 +275,7 @@ class chFPGA_receiver(object):
         self.frame_queue = Queue.Queue(maxsize=self.FRAME_BUFFER_LENGTH)
         self.frame_queue_corr = Queue.Queue(maxsize=self.FRAME_BUFFER_LENGTH)
         #self.frame_queue = multiprocessing.Queue(maxsize=1000)
-        self.frame_receiver = ReceiverThread(self.sock.sock, self.frame_queue, self.frame_queue_corr, self.NUMBER_OF_ANTENNAS_TO_CORRELATE, self.NUMBER_OF_CORRELATORS, verbose=0)
+        self.frame_receiver = ReceiverThread(self.sock.sock, self.frame_queue, self.frame_queue_corr, self.NUMBER_OF_ANTENNAS_TO_CORRELATE, self.NUMBER_OF_CORRELATORS, verbose=verbose)
         self.frame_receiver.start()
         X, Y = np.mgrid[0:self.NUMBER_OF_ANTENNAS_TO_CORRELATE,0:self.NUMBER_OF_ANTENNAS_TO_CORRELATE]
         self.K = X * self.NUMBER_OF_ANTENNAS_TO_CORRELATE - X*(X+1)/2 + Y
@@ -301,7 +310,8 @@ class chFPGA_receiver(object):
         #self.sock.flush_data_socket() # This cause conflict with the background socket operations
         self.frame_receiver.flush(1)
         while (not self.frame_queue.empty()) or (not self.frame_queue_corr.empty()):
-            pass
+            print 'data_queue_empty=%s, corr_queue_empty=%s' % (self.frame_queue.empty(),self.frame_queue_corr.empty())
+            time.sleep(0.1)
         self.frame_receiver.flush(0)
         #with self.frame_queue.mutex:
         #    self.frame_queue.queue.clear()
@@ -478,6 +488,8 @@ class chFPGA_receiver(object):
         else:
             rm = self.rm
             data = raw_corr_data[rm[..., 0], rm[..., 1], rm[..., 2]]
+            i,j = np.tril_indices_from(data[0], -1)
+            data[:, j, i] = data[:, i, j].conj()
 
         return data
 
@@ -534,15 +546,15 @@ class chFPGA_receiver(object):
         N1, N2, N3 = shape
         im = np.zeros((N1,N2,N3, 3), int) + 65535
         [b,i,j] = np.meshgrid(range(N1), range(N2), range(N3), indexing='ij')
-        im[...,0], im[...,1], im[...,2] = b, i, j
+        im[...,0], im[..., 1], im[..., 2] = b, i, j
         return im
 
     def reverse_map(self, m):
-        (N1, N2, N3) = m.reshape(-1,3).max(axis=0)+1 # Find the maximum indices if each dimension
-        rm = np.empty((N1, N2 ,N3, 3), int)
+        (N1, N2, N3) = m.reshape(-1, 3).max(axis=0) + 1  # Find the maximum indices if each dimension
+        rm = np.empty((N1, N2, N3, 3), int)
         im = self.imap(m.shape[:-1])
-        rm[m[...,0], m[...,1], m[...,2]] = im
-        rm[m[...,0], m[...,2], m[...,1]] = im  # also populate j,i with same values
+        rm[m[..., 0], m[..., 1], m[..., 2]] = im
+        rm[m[..., 0], m[..., 2], m[..., 1]] = im  # also populate j,i with same values
         return rm
 
 

@@ -85,7 +85,7 @@ class CORR(object):
         for corr in self.corr:
             corr.status()
 
-    def start_correlator(self, integration_period=16384, autocorr_only=False, correlators=None, bandwidth_limit=0.5e9):
+    def start_correlator(self, integration_period=16384, autocorr_only=False, correlators=None, bandwidth_limit=0.5e9, verbose=1):
         """ Start the correlator with specified parameters.
 
         """
@@ -104,19 +104,22 @@ class CORR(object):
         bit_rate = integ_rate * all_corr_frame_size * 8
         min_integ_period = frame_rate / (bandwidth_limit/8/all_corr_frame_size)
         autocorr_only_bit_rate = integ_rate * Ncorr * 4 * cmac_frame_size
-        print 'Integration rate: %.1f integ/s (%.3fs/integ)' % (integ_rate, 1/integ_rate)
-        print 'Bit rate =%.3f Gbps' % ( bit_rate/ 1e9)
+        if verbose:
+            print 'Integration rate: %.1f integ/s (%.3fs/integ)' % (integ_rate, 1/integ_rate)
+            print 'Bit rate =%.3f Gbps' % ( bit_rate/ 1e9)
         if bit_rate > bandwidth_limit:
             raise ValueError('The correlator setting would make it produce %.3f Gbps of data, which exceeds the specified bandwith '
                              'limit of %.3f Gbps. Try using a longer integration period (%i frames min).'
                              'Note that sending only the autocorrlation products with autocorr_only=True will produce %.3f Gbps)' %
                              (bit_rate/1e9, bandwidth_limit/1e9, min_integ_period, autocorr_only_bit_rate/1e9))
 
+        self.fpga.set_corr_reset(1)
         for i, corr in enumerate(self.corr):
             corr.SOFT_RESET = 1 # make sure we stop sending readouts in progres
             corr.INTEGRATION_PERIOD = integration_period - 1
             corr.AUTOCORR_ONLY = autocorr_only
-            corr.SOFT_RESET = not i in correlators
+            corr.SOFT_RESET = i not in correlators
+        self.fpga.set_corr_reset(0)
 
     def stop_correlator(self):
         """ Stop all correlator cored from sending data.

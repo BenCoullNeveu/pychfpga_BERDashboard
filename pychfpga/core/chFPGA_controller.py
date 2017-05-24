@@ -926,11 +926,11 @@ class chFPGA_controller(IceBoardExtHandler):
         for ant in self.ANT.values():
             ant.PROBER.RESET = 1
 
-    def get_data_receiver(self):
+    def get_data_receiver(self, verbose=1):
         if self.recv:
             return self.recv
         chFPGA_config = self.get_config(basic=True)  # get only the info needed to start the receiver
-        self.recv = chFPGA_receiver(chFPGA_config)
+        self.recv = chFPGA_receiver(chFPGA_config, verbose=verbose)
         self.logger.info('Started data receiver threads on %s:%i' % (self.recv.host_ip, self.recv.port_number))
         self.set_local_data_port_number(self.recv.port_number)
         return self.recv
@@ -2695,7 +2695,7 @@ class chFPGA_controller(IceBoardExtHandler):
         return self.crate.get_id()
 
     # @wraps(CORR.CORR.start_correlator)
-    def start_correlator(self, integration_period=16384, autocorr_only=False, correlators=None, bandwidth_limit=0.5e9):
+    def start_correlator(self, integration_period=16384, autocorr_only=False, correlators=None, bandwidth_limit=0.5e9, verbose=1):
         """
         Args:
 
@@ -2736,7 +2736,8 @@ class chFPGA_controller(IceBoardExtHandler):
         self.CORR.start_correlator(integration_period=integration_period,
                                    autocorr_only=autocorr_only,
                                    correlators=correlators,
-                                   bandwidth_limit=bandwidth_limit)
+                                   bandwidth_limit=bandwidth_limit,
+                                   verbose=verbose)
 
     def stop_correlator(self):
         if not self.CORR:
@@ -2749,8 +2750,10 @@ class chFPGA_controller(IceBoardExtHandler):
         Compute the expected correlator output  given the channelizer output `data`.
         Returns array(bins, i, j) = complex
         """
-        corr=data.T[:,None,:]* data.T[:,:,None].conj()*integration_period
-        np.clip(corr, -131072, 131071, corr)
+        corr = data.T[:,None,:]* data.T[:,:,None].conj()*integration_period
+        corr = np.clip(corr.real, -131072, 131071) + 1j*np.clip(corr.imag, -131072, 131071)
+        i, j = np.tril_indices_from(corr[0],-1) # indices of the lower triangle excluding the diagonal
+        corr[:, j, i] = corr[:, i, j].conj() # reapply upper triangle from lower, because saturation is not the same for negative and positive imaginary values
         return corr
 
 
