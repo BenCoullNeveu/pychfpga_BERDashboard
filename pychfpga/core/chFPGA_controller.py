@@ -2757,6 +2757,17 @@ class chFPGA_controller(IceBoardExtHandler):
         return corr
 
     def test_correlator_output(self, data, integration_period=32768, verbose=0):
+        """ Set the channelizer outputs and check the correlator output.
+
+        Arguments:
+
+            data (ndarray): Data that should appear at the channelizer
+                output, indexed as data[channel, bin] = complex_value. channel
+                ranges from 0 to 15, bin from 0 to 1023. The complex value has the
+                ranged of a signed (4+4) bit, meaning that the real and imaginary
+                part can range from -8 to 7.
+
+        """
         r = self.get_data_receiver(verbose=0)
         self.set_channelizer_outputs(data)
         self.start_correlator(integration_period=integration_period, verbose=verbose)
