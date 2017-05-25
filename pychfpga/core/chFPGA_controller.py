@@ -2756,6 +2756,37 @@ class chFPGA_controller(IceBoardExtHandler):
         corr[:, j, i] = corr[:, i, j].conj() # reapply upper triangle from lower, because saturation is not the same for negative and positive imaginary values
         return corr
 
+    def test_correlator_output(self, data, integration_period=32768, verbose=0):
+        r = self.get_data_receiver(verbose=0)
+        self.set_channelizer_outputs(data)
+        self.start_correlator(integration_period=integration_period, verbose=verbose)
+        self.sync()
+        p = self.compute_corr_output(data, integration_period=integration_period)
+        f = r.read_corr_frames(flush=False, complete_set=True, max_trials=100, verbose = verbose)
+        return np.all(p==f), p, f
+
+    def test_correlator(self, test_name='rand_complex', integration_period=8192, trials=100):
+        if test_name=='rand_complex':
+            for data_set_number in xrange(trials):
+                print 'Trial #%i' % data_set_number
+                data=np.floor(np.random.rand(16,1024)*4-2) + 1j*np.floor(np.random.rand(16,1024)*4-2)
+                trial = 0
+                while True:
+                    match, p, f = self.test_correlator_output(data=data, integration_period=integration_period)
+                    if match:
+                        break
+                    trial += 1
+                    if trial < 10:
+                        print 'Frames did not match! Retrying after rewriting the test data again...'
+                    else:
+                        print 'Cannot make frames match!'
+                        return match, data, p, f
+        else:
+            raise ValueError('Unknown test name %s' % test_name)
+
+        print '*** TEST PASSED! ***'
+        return True, None, None, None
+
 
     @async
     def _call_subprocess(self, cmd):
