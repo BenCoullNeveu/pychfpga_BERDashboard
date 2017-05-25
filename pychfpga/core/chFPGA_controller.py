@@ -4,27 +4,11 @@
 # pylint: disable=C0321
 
 """
-chFPGA.py module
- Implements interface to the CHIME chFPGA Proof of Concept board
+Python front-end foe the IceBoard running the CHIME chFPGA firmware.
 
 
-History:
-    2011-01-10 : JFC : First version
-    2011-04-30 JFC : Modified UDP.py into chFPGA.py to implement higher level communication system
-    2011-04 - 2011-08 JFC : Major modifications & cleanup
-    2011-08-29 JFC: Moved hex to util to solve circular import reference.
-    2012-03-27 JFC: Modified the read and write commands to support the new format following AXI4-Streaming implementation of the command bus
-    2012-05-29 JFC: Cleanup init. Support FMC board detection. Extracted test functions.
-    2012-07-xx JFC: Implemented Thread-based frame buffering. Updated frame reading and plotting functions accordingly.
-    2012-07-16 KMB: Started moving plotting/saving functions out to plot_utils.py, and removing redundant programs
-    2012-07-25 JFC: Splitted the init() from __init() to make sure the controller object creation does not change the state of the FPGA.
-        Added LCD initialization and firmware version display on the LCD
-        Implemented default channel managements
-    2012-08-27 JFC : Fixed reference to common.util as pychfpga.common.util
-    2012-09-18 JFC: Added set_global_trig()
-    2012-10-17 JFC: Added an exception if wring function name is used in set_funcgen_function()
-    2012-11-28 JM: Added function set_gain()
-    2014-04-24 JM: Added functions set_adc_delays_with_check and check_ramp_errors copied from iceboard_dev branch
+Note:
+    Created 2011-01-10. See GIT for commit history.
 """
 
 import logging
@@ -50,9 +34,6 @@ from .icecore_ext.iceboard_ext import IceBoardExtHandler
 from chFPGA_receiver import chFPGA_receiver
 
 from pychfpga.common import util
-
-# import Shared_variables # Note: do not reload this module or we will lose acces to the data in it
-import Module
 
 # FPGA subsystems handlers
 import SPI
