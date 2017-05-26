@@ -14,7 +14,6 @@ List of Modules
 .. autosummary::
    :nosignatures:
    :toctree: generate
-   :template: module.rst
 
    fpga_array
    core
@@ -22,6 +21,7 @@ List of Modules
    core.icecore_ext
    core.chFPGA_receiver
    core.chFPGA_controller
+   core.chFPGA_controller.chFPGA_controller
    core.icecore.IceBoard
 
 
