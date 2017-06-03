@@ -6,7 +6,7 @@
 Welcome to pychfpga's documentation!
 ====================================
 
-The `pychfpga` package is the Python framework that is used to operate the FPGA-based F-engine hardware and application-specific FPGA firmware that is used for the Canadian Hydrogen Intensity Experiment (CHIME) and that can be used for similar interferemeters.
+The ``pychfpga`` package is the Python framework that is used to operate the FPGA-based F-engine hardware, corner-turn and X-engines that is used for the Canadian Hydrogen Intensity Experiment (CHIME) and other big and small interferemeters.
 
 .. toctree::
    :maxdepth: 1
@@ -15,7 +15,13 @@ The `pychfpga` package is the Python framework that is used to operate the FPGA-
    howto/takeData
    sourceDocumentation/pychfpga
    sourceDocumentation/script_documentation
+   sourceDocumentation/sphinx_paramlinks
 
+Indices and tables
+------------------
+
+* :ref:`genindex`
+* :ref:`search`
 
 
 
