@@ -4,11 +4,11 @@
 # pylint: disable=C0321
 
 """
-Python front-end foe the IceBoard running the CHIME chFPGA firmware.
+This module defines the `chFPGA_controller` class, which provides a Python interface to operate an
+IceBoard and its chFPGA firmware.
 
-
-Note:
-    Created 2011-01-10. See GIT for commit history.
+.. Notes:
+..     Created 2011-01-10. See GIT for commit history.
 """
 
 import logging
@@ -57,82 +57,96 @@ import GPU
 
 # -- chFPGA --
 class chFPGA_config(object):
+    """
+    Simple namespace that holds chFPGA configuration information stored within its attributes. Is returned
+    by `chFPGA_controller.get_config()`.
+    """
     def __str__(self):
         return '\n'.join(['%s = %s' % (key, repr(value)) for (key,value) in sorted(vars(self).items())])
 
 
-class chFPGAException(Exception):
-    _logger = logging.getLogger('chFPGAException')
+# class chFPGAException(Exception):
+#     _logger = logging.getLogger('chFPGAException')
 
-    def __init__(self, message):
-        super(self.__class__, self).__init__(message)
-        self._logger.exception(message)
+#     def __init__(self, message):
+#         super(self.__class__, self).__init__(message)
+#         self._logger.exception(message)
 
-def copy_docstring(fn, source_fn):
-    """ Function decorator to use the doctrings from an other funciton """
-    fn.__doc__ = source_fn.__doc__
-    return fn
+# def copy_docstring(fn, source_fn):
+#     """ Function decorator to use the doctrings from an other funciton """
+#     fn.__doc__ = source_fn.__doc__
+#     return fn
 
 class chFPGA_controller(IceBoardExtHandler):
     """
-    Creates an object that connects to the specified chFPGA board and provides
+    Creates an object that connects to an IceBoard motherboard and its chFPGA firmware and provides
     the methods to configure it and control its operations.
 
-    Arguments:
-        ip_address : string indicating the IP address of the chFPGA board, e.g. "10.10.10.11"
-        port: control port number
-        sampling_frequency: sampling frequency of the ADC in Hz, from 150 to 2500 MHz
-        reference_frequency: frequency in Hz of the reference signal provided to the chFPGA. Typically 10 MHz.
+    .. .. inheritance-diagram:: chFPGA_controller
+    ..    :parts: 2
+
+    `chFPGA_controller` inherits from the following classes:
+
+    .. image:: ../../images/chFPGA_controller_class_inheritance_diagram.svg
+       :width: 80%
+
+    - `IceBoardExtHandler`  provides the basic Ethernet/UDP-based Memory-mapped Interface (MMI) to
+      the FPGA firmware, and provides objects to access the IceBoard and IceCrate hardware (sensors,
+      EEPROM etc) directly through the FPGA.
+    - `IceBoardPlusHandler` provides SPI-based Memory-mapped Interface to the FPGA using the ARM-FPGA SPI link, which is used
+      to configure a basic set of control registers and access some generic non-chFPGA-specfic peripherals such as IRIG-B.
+    - `IceBoardHandler` provides acces and allow to execute ARM method wuning on the IceBoard's ARM
+      processor as if they were local mathods. This is done over the `Tuber` interface which provide
+      access to the ARM processor and the API provided by it to control and monitor the board's
+      hardware. `IceBoardHandler` also inherits from `Handler`, which allows an `chFPGA_controller` instance to attach
+      itself to a (volatile) hardware map object and draw some of its parameters from it.
+
     """
 
-    # Basic system constants
-    _IMPLEMENT_CORR = False
-    _ADC_CLK_SELECT = 1  # Antenna number from which the antenna processing will be clocked. This is hardwired in the firmware (need to use an ADCDAQ with a PLL)
-    #SAMPLING_FREQUENCY = 800e6 # in Hz
-    #REFERENCE_FREQUENCY = 10e6 # in Hz
-    _SYSTEM_CLOCK_FREQUENCY = 200e6  # in Hz
-    _FRAME_HEADER_LENGTH = 9
-    #FRAME_PERIOD = float(FRAME_LENGTH)/SAMPLING_FREQUENCY
+    ################################################################################################
+    # Memory map for the Ethernet-accessed registers
+    ################################################################################################
 
-    # Set the basic paramaters used to compute the address of each module
-    _SYSTEM_BASE_ADDR     = 0x00000  # This is always at zero so we can gather info from the FPGA before we know the number of antennas etc.
-    _CHAN_BASE_ADDR       = 0x10000  # Channelizer top address
-    _CROSSBAR1_BASE_ADDR  = 0x20000  # CROSSBAR top address
-    _GPU_LINK_BASE_ADDR   = 0x30000  # GPU Link top address
-    _CROSSBAR3_BASE_ADDR  = 0x40000  # Correlator ports are determined dynamically based on the info from the firmware
-    _CORR_BASE_ADDR       = 0x40000  #
-    _BP_SHUFFLE_BASE_ADDR = 0x50000
-    _CROSSBAR2_BASE_ADDR  = 0x60000  # CROSSBAR top address
+    #: Note: SPI-accessed registers are separate and use a different address space defined in `IceBoardExtHandler`
+    _SYSTEM_BASE_ADDR     = 0x00000  #: This is always at zero so we can gather info from the FPGA before we know the number of antennas etc.
+    _CHAN_BASE_ADDR       = 0x10000  #: Channelizer top address. The ADCDAQ subsystem is located in the CHAN address space.
+    _CROSSBAR1_BASE_ADDR  = 0x20000  #: CROSSBAR top address
+    _GPU_LINK_BASE_ADDR   = 0x30000  #: GPU Link top address
+    _CROSSBAR3_BASE_ADDR  = 0x40000  #: 3rd crossbar (shard with correlator)
+    _CORR_BASE_ADDR       = 0x40000  #: Correlator (shared with 3rd crossbar)
+    _BP_SHUFFLE_BASE_ADDR = 0x50000  #: Backplane PCB and Backplane QSFP 10Gbps packet transmitter/receivers
+    _CROSSBAR2_BASE_ADDR  = 0x60000  #: 2nd CROSSBAR top address
 
-    _CHAN_ADDR_INCREMENT           = 0x01000  # Address increment between each channelizer address spaces
+    _CHAN_ADDR_INCREMENT           = 0x01000  #: Address increment between each channelizer address spaces
     _CROSSBAR_ADDR_INCREMENT       = 0x00800
-    _GPU_LINK_ADDR_INCREMENT       = 0x00800  # Address increment between each subsystem of the GPU links
-    _CORR_ADDR_INCREMENT           = 0x01000  # Address increment between each correlator
-    _BP_SHUFFLE_ADDR_INCREMENT     = 0x00800  # Address increment between each shuffle submodule
+    _GPU_LINK_ADDR_INCREMENT       = 0x00800  #: Address increment between each subsystem of the GPU links
+    _CORR_ADDR_INCREMENT           = 0x01000  #: Address increment between each correlator
+    _BP_SHUFFLE_ADDR_INCREMENT     = 0x00800  #: Address increment between each shuffle submodule
 
-    _CHAN_SUBMODULE_ADDR_INCREMENT = 0x00200  # Address increment between each submodule within a channelizer (ADCDAQ, FUNCGEN, FFT, SCALER etc.)
-
-    # Build the memory map for every module of the system ( work in progress)
-    # MEMORY_MAP = {}
-    # MEMORY_MAP.update( ('SYSTEM/%s' % (module_name)                , 0x00000 + i * 0x02000                           ) for (i, module_name) in enumerate(['GPIO', 'SYSMON', 'FREQ_CTR', 'SPI', 'REFCLK', 'I2C']))
-    # MEMORY_MAP.update( ('CHAN%i/%s' % (channel_number, module_name), 0x20000 + channel_number * 0x02000 + module_number * 0x00400) for (module_number, module_name) in enumerate(['ADCDAQ','SRCSEL','FFT', 'SCALER', 'PROBER', 'FUNCGEN', 'INJECT']) for channel_number in range(16))
+    _CHAN_SUBMODULE_ADDR_INCREMENT = 0x00200  #: Address increment between each submodule within a channelizer (ADCDAQ, FUNCGEN, FFT, SCALER etc.)
 
 
     # SYSTEM Modules addresses
-    _SYSTEM_GPIO_BASE_ADDR     = _SYSTEM_BASE_ADDR + 0x00000
-    _SYSTEM_SYSMON_BASE_ADDR   = _SYSTEM_BASE_ADDR + 0x01000
-    _SYSTEM_FREQ_CTR_BASE_ADDR = _SYSTEM_BASE_ADDR + 0x02000
-    _SYSTEM_SPI_BASE_ADDR      = _SYSTEM_BASE_ADDR + 0x03000
-    _SYSTEM_REFCLK_BASE_ADDR   = _SYSTEM_BASE_ADDR + 0x04000
+    _SYSTEM_GPIO_BASE_ADDR     = _SYSTEM_BASE_ADDR + 0x00000  #: Address of the SYSTEM.GPIO submodule
+    _SYSTEM_SYSMON_BASE_ADDR   = _SYSTEM_BASE_ADDR + 0x01000  #: Address of the SYSTEM.SYSMON submodule
+    _SYSTEM_FREQ_CTR_BASE_ADDR = _SYSTEM_BASE_ADDR + 0x02000  #: Address of the SYSTEM.FREQ_CTR submodule
+    _SYSTEM_SPI_BASE_ADDR      = _SYSTEM_BASE_ADDR + 0x03000  #: Address of the SYSTEM.SPI submodule
+    _SYSTEM_REFCLK_BASE_ADDR   = _SYSTEM_BASE_ADDR + 0x04000  #: Address of the SYSTEM.REFCLK submodule
     # SYSTEM_I2C_BASE_ADDR      = _SYSTEM_BASE_ADDR + 0x05000
 
     # _GPIO_COOKIE_REG = 0x00 # Register address of the firmware cookie
+
+
+    ################################################################################################
+    # Supported platform information
+    ################################################################################################
 
     _PLATFORM_ID_ML605 = 0
     _PLATFORM_ID_KC705 = 1
     _PLATFORM_ID_MGK7MB_REV0 = 2
     _PLATFORM_ID_MGK7MB_REV2 = 3
 
+    #: Map of all supported platform indexed by the `PLATFORM_ID` returned by the FPGA
     _PLATFORM_ID_LIST = {
         # ID: ( Board name, class to instantiate)
         _PLATFORM_ID_ML605: ('Virtex 6 (XC6V240T-1 FFG1156) on Xilinx ML605 Evaluation board', None),
@@ -141,21 +155,36 @@ class chFPGA_controller(IceBoardExtHandler):
         _PLATFORM_ID_MGK7MB_REV2: ('Kintex 7 (XC7K420T-2 FFG901) on McGill MGK7MB / ICEBoard Rev2', None),
     }
 
-    def __init__(self, **kwargs):
+    def __init__(self, parent_getter=None, hostname=None, serial=None, part_number=None, crate=None, slot=None, mezzanine={}, tuber_objname='IceBoard'):
         """
-        Creates the object providing the methods and attributes needed to
-        operate the chFPGA firmware. This does not affect the state and
-        operations of chFPGA.
+        Creates an empty IceBoard/chFPGA handler object, but do not interact with the board yet.
 
-        'motherboard' is a reference to the motherboard hardware, which must offer the following attributes/methods
-            .NUMBER_OF_FMC_SLOTS
-            .i2c.select_bus(bus_name)  where bus_name is 'FMCA' or 'FMCB'
-            .i2c.write_read(...)
+        Parameters:
+            parent_getter (func): Function that returns the dynamically return the parent object from which the following parameters will be fetched. Is ``None`` if there is no parent.
+            hostname (str): hostname or IP address of the ICEBoard ARM processor (mandatory)
+            serial (str): Serial number of the board. Can be provided by the ARM.
+            part_number (str): Part number of the IceBoard. Can be obtained from the ARM.
+            crate (IceCrateHandler): = object that handle the backplane on which the board is connected. ``None`` if the board is not connected to a backplane.
+            slot (int): Slot number in which the board is installed ona backplane. None if there is no backplane.
+            mezzanine (dict): Map {mezzanine_number: Mezzanine Handler, ...} describing the installed mezzanines. Can be obtained from the ARM.
+            tuber_objname (str): name of the set of software functions that will be provided by the ARM processor through the Tuber interface.
+
+        `chFPGA_controller` can be created as a standard Python object initialized with a number of
+        parameters which set corresponding attributes (see below). If a `parent_getter` function is
+        provided, the value of these attributes will instead be fetched dynamically from the parent
+        object such as a hardware map database entry (see :class:`Handler`). Note that any explicitely
+        specified parameter overrides a parent parameter.
+
+
+        Note: `__init__` *only* create an empty `chFPGA_controller` object and hold basic
+            configuration information but does not attempt to interact with the FPGA. Interaction
+            with the FPGA starts with `open`. This means that `chFPGA_controller` objects can be
+            created for board that do not exist are are not powered up yet. This is useful when
+            arrays of boards are loaded from an unfiltered hardware map.
         """
-        super(chFPGA_controller, self).__init__(**kwargs)
-        # Initialize instance attributes
-        # For now, we do not know their values unless the system is initialized.
-        # We may want to fix that by reading the FPGA states and determining those values.
+        super(chFPGA_controller, self).__init__(parent_getter=parent_getter, hostname=hostname, serial=serial, part_number=part_number, crate=crate, slot=slot, mezzanine=mezzanine, tuber_objname=tuber_objname)
+
+        # Initialize basic instance attributes, but don;t do anything that involve talking to the IceBoard.
 
         self._logger = logging.getLogger(__name__)
         self._logger.info("%.32r: Creating chFPGA_controller object" % (self))
@@ -169,9 +198,24 @@ class chFPGA_controller(IceBoardExtHandler):
         self.recv = None
 
     @async
-    def open(self, init=1, verbose=0, udp_retries=10, *args, **kwargs):
+    def open(self, init=1, verbose=0, udp_retries=10, **kwargs):
+        """
+        Opens communication with the FPGA, retreives the firmware configuration information and
+        create the Python objects needed to operate the firmware. If `init` =1, the :meth:`init`
+        method will be called to initialize the FPGA. Otherwise, this is a read-only operation, i.e.
+        the state of the FPGA is unchanged.
 
-        super(chFPGA_controller, self).open(udp_retries=udp_retries)
+        Parameters:
+
+            init (int): initialization level: 1: read config and initialize the FPGA with the `init()` method; 0: only read
+                        the FPGA config; -1: Don<t read the FPGA and do not create the Python
+                        objects.
+            verbose (int): verbosity level, which is passed to the `init()` method.
+            udp_retries: Number of retries that are made while sendinc commands to the FPGA before raising an exception.
+            kwargs: All remaining parameters are passed to `init()` method if the `init` parameter is 1.
+        """
+
+        super(chFPGA_controller, self).open(udp_retries=udp_retries)  # Open UDP communication link
         self.logger.info('%r: Instantiating chFPGA firmware handlers objects' % (self))
 
         # self.read = self.mmi.read
@@ -192,7 +236,7 @@ class chFPGA_controller(IceBoardExtHandler):
             # -- Create basic FPGA ressource handlers objects
             # ---------------------------------------------------------------------
 
-            if verbose >= 2: self._logger.debug('%r: === Instantiating GPIO' % self)
+            self._logger.debug('%r: === Instantiating GPIO' % self)
             self.GPIO = GPIO.GPIO_base(self, self._SYSTEM_GPIO_BASE_ADDR)
             # get system constants from the FPGA
 
@@ -217,20 +261,20 @@ class chFPGA_controller(IceBoardExtHandler):
             # if self.NUMBER_OF_ANTENNAS == 0:
             #     self.NUMBER_OF_ANTENNAS = 16
 
-            # Get crossbar configuration
+            # Get corner-turn engine configuration info
             self.NUMBER_OF_CROSSBAR_INPUTS = self.GPIO.NUMBER_OF_CROSSBAR_INPUTS
             self.NUMBER_OF_CROSSBAR_OUTPUTS = self.GPIO.NUMBER_OF_CROSSBAR_OUTPUTS
+            self.NUMBER_OF_BP_SHUFFLE_LANES = self.GPIO.NUMBER_OF_BP_SHUFFLE_LANES
 
-            # Get GPU link configuration
+            # Get GPU link configuration info
             self.NUMBER_OF_GPU_LINKS = self.GPIO.NUMBER_OF_GPU_LINKS
 
-            self.NUMBER_OF_BP_SHUFFLE_LANES = self.GPIO.NUMBER_OF_BP_SHUFFLE_LANES
-            # Get correlator info and their properties
+
+
+            # Get (optional) embedded firmware correlator configuration info and their properties
             self.NUMBER_OF_CORRELATORS_MAX = self.GPIO.NUMBER_OF_CORRELATORS
             self.NUMBER_OF_CORRELATORS = self.GPIO.NUMBER_OF_CORRELATORS
-            #self.LIST_OF_IMPLEMENTED_CORRELATORS = [i for i in range(8) if bool(self.GPIO._IMPLEMENT_CORR & 2**i) and i<self.NUMBER_OF_CORRELATORS_MAX]
             self.LIST_OF_IMPLEMENTED_CORRELATORS = range(self.NUMBER_OF_CORRELATORS)
-#            self.NUMBER_OF_CORRELATORS = len(self.LIST_OF_IMPLEMENTED_CORRELATORS)
             self.NUMBER_OF_ANTENNAS_TO_CORRELATE = self.GPIO.NUMBER_OF_CHANNELIZERS_TO_CORRELATE
 
             # ANT_BASE_PORT = 1
@@ -369,12 +413,27 @@ class chFPGA_controller(IceBoardExtHandler):
              create_receiver= False,
              verbose=0,
              **kwargs):
-        """ Resets the chFPGA firmware to a known state with the specified parameters.
         """
+        Initialize the FPGA firmware AND the Python objects to a known state.
 
+        Arguments:
+             sampling_frequency (float): Sampling frequency in Hz to set on the ADC Mezzanine boards (default 800 MHz)
+             reference_frequency (float): Frequency in Hz of the Iceboard's reference clock (default is 10 MHz)
+             adc_delay_table (dict): initial setting of the ADC delays. see `set_adc_delays`
+             data_width (int): 4 or 8. Indicate of the channelizer output is in (4+4)bit or (8+8 bit) mode
+             group_frames (int): Number of frames per packets used by the corner-turn engine
+             enable_gpu_link (bool): 1
+             create_receiver (bool): False, obsolete
+             verbose (int): verbose level
 
-        for (key,value) in kwargs.items():
-            self._logger.warning('%r: Unknown arguments %s=%s. Ignoring.' % (self, key, repr(value)))
+        Returns:
+            None
+
+        Note:
+
+            not all FPGA registers are rewritten durint `init()`, so it might be required to
+            reprogramthe fpga to come back to a known state if manual changes weremade.
+        """
 
         self._sampling_frequency = sampling_frequency
         self._reference_frequency = reference_frequency
@@ -591,10 +650,10 @@ class chFPGA_controller(IceBoardExtHandler):
             config.FPGA_board_frequency = self.FreqCtr.read_frequency('CLK200', gate_time=0.05)
             config.CTRL_clock_frequency = self.FreqCtr.read_frequency('CTRL_CLK', gate_time=0.05)
             config.ant_clock = self.FreqCtr.read_frequency('ANT_CLK', gate_time=0.05)
-            if self._IMPLEMENT_CORR:
+            if self.CORR:
                 config.correlator_clock = self.FreqCtr.read_frequency('CORR_CLK', gate_time=0.05)
-                config.correlator_capture_period_in_frames = [corr.ACC.CAPTURE_PERIOD for corr in self.CORR]
-                config.correlator_integration_period_in_frames = [corr.ACC.INTEGRATION_PERIOD for corr in self.CORR]
+                # config.correlator_capture_period_in_frames = [corr.ACC.CAPTURE_PERIOD for corr in self.CORR]
+                # config.correlator_integration_period_in_frames = [corr.ACC.INTEGRATION_PERIOD for corr in self.CORR]
             config.fmc_ref_clock = self.FreqCtr.read_frequency('FMCA_REFCLK', gate_time=0.05)
             config.mgt_ref_clock = self.FreqCtr.read_frequency('GPU_REFCLK', gate_time=0.05)
             config.mgt_word_clock = self.FreqCtr.read_frequency('GPU_TXCLK', gate_time=0.05)
@@ -1079,6 +1138,7 @@ class chFPGA_controller(IceBoardExtHandler):
         This function does not receive the frames from the ethernet port. This has to be done separately.
 
         corr_to_use -> if not None, is a list specifying which to correlators to use
+
         History:
             2012-10-02 JFC: Created
             2013-03-25 KMB
@@ -1156,6 +1216,7 @@ class chFPGA_controller(IceBoardExtHandler):
             load, test succeed
             load, test fail, compute, test succeed, save
             load, test fail, compute, test fail, retry compute
+
         If ``delay_table`` is None, and ``tag`` is None, delays will be recomputed and will not be be saved.
         If ``delay_table`` is None, and ``tag`` is a string, delays will be recomputed and will not be be saved.
         If ``dalay_table`` is a dict, the delays will be set from the values from this dict.
@@ -1320,7 +1381,32 @@ class chFPGA_controller(IceBoardExtHandler):
     def capture_adc_eye_diagram(self, channels=range(16)):
         """
         Measures the eye diagram of the ADC digital data lines using the ADCDAQ capture feature.
-        Return a N_channels x 32 x 11 byte array
+
+        Arguments:
+            channels (list of int): List of channels to which the command is applied
+
+        Returns:
+            ``N_channels`` x 32 x 11 byte array, where ``N_channels`` is the numbe of channels specified in :paramref:`channels`.
+
+        Note:
+            Parameter `channels` works
+
+            Parameter :paramref:`channels` does not works
+
+            Parameter :paramref:`CHANNELS <capture_adc_eye_diagram.channels>` work
+
+            Parameter :paramref:`capture_adc_eye_diagram.channels` work
+
+            Parameter :paramref:`~capture_adc_eye_diagram.channels` work
+
+            Parameter `CHANNELS <capture_adc_eye_diagram.channels>` work
+
+            Parameter `capture_adc_eye_diagram.channels` work
+
+            Parameter `~capture_adc_eye_diagram.channels` does not work
+
+            Parameter  `chFPGA_controller.init` does not work
+
         """
         old_delays = self.get_adc_delays()
         old_adc_mode = self.get_adc_mode(channels=channels) # make sure we don't access boards not on the channel list: they may be powered off
@@ -1614,6 +1700,10 @@ class chFPGA_controller(IceBoardExtHandler):
         """
         Set the output to be encoded in offset binary instead of 2's compliment
         if sync is true, perform a sync afterward.  Necessary for data to continue flowing
+
+        Arguments:
+            channels (list of int): List of channels to which the command is applied
+
         """
         if channels is None:
             channels = self.default_channels
@@ -1670,24 +1760,44 @@ class chFPGA_controller(IceBoardExtHandler):
         Sets the gain between the (18+18) bits input of the scaler module (from the FFT) to its 4- or 8- bit scaler output.
         The gain can be set individually for every frequency bins and every ADC channel.
 
-        A gain consist of a tuple G=(Glin, Glog):
-            1) Glin is a complex gain scalar or vector.
-               If Glin is a scalar, the same complex gain is applied to every bin.
-               If Glin is a 1024-eleemnt complex vector, each bin has the individual gain specified in the vector.
-               The real and imaginary part of the linear gain are integer values ranging from -32768 to 32767.
+        Arguments:
 
-            2) Glog is a binary scaling factor, which is an integer between 0 and 31 representing a power of two that multiplies the linear gain.
-               This is a scalar common to every bin.
+            gain (complex or tuple): Linear gain and optional poscaler gain to apply to the specified channels. The real and imaginary part of the linear gain are integer
+                  values ranging from -32768 to 32767.
+
+                    - If `gain` is a scalar, its value is applied to all bins, and the postscaler value in `postscaler` is used.
+                    - If `gain` is a (*Glin*, *Glog*) tuple, the linear gain *Glin* is provided along with the postscaler factor.
+
+                        - If *Glin* is a complex scalar, the same complex gain is applied to every bin.
+                        - If *Glin* is a 1024-eleemnt complex vector, each bin has the individual gain specified in the vector.
+                        - Glog (posctscaler value) is a binary scaling factor, which is an integer between 0 and 31 representing a power of two that multiplies the linear gain.
+                             This is a scalar common to every bin.
+
+            postscaler (int): Postscaler factor to apply if not specified as the parameter *Glog* in `gain`.
+
+            channels (list of int): channels to which the gain is applied
+
+            use_fixed_gain (bool): put the scaler in fixed gain mode where the gain bank RAM is
+                completeley bypassed and a single complex gain is applied to every bin. Is functionnally
+                equivaleent to set the gain ov every bin to the same value. Mostly useful during the
+                debuggging phase.
+
+            bank (int): The memory bank to which the gains should be applied (0 or 1)
+
+            when (int): Specifies when the specified gains shall become active. If `when` is 'now', the
+                gains are written immediately on the target bank and the bank is made active on the
+                next frame. If `when` is an  *int*, the gains are written immediately to the bank  bank,
+                but than bank will become active only on frame numer (timestamp) specified by when.
 
         The actual gain between the scaler input and output for bin 'b' is:
-           4-bit mode: out/in = Glin(b) * 2**(Glog-31)
-           8-bit output: out/in = Glin(b) * 2**(Glog-27)
+           4-bit mode: out/in = :math:`Glin(b) * 2**(Glog-31)`
+           8-bit output: out/in = :math:`Glin(b) * 2**(Glog-27)`
 
         G can be specified in the following manner:
-           G = Glin              : Sets only the linear gain. Same as (Glin, None)
-           G = (Glin, None)      : Same as above
+           G = *Glin*              : Sets only the linear gain. Same as (*Glin*, None)
+           G = (*Glin*, None)      : Same as above
            G = (None, Glog)      : Sets only the postscaler
-           G = (Glin, Glog)      : Sets both the linear gain and the postscaler
+           G = (*Glin*, Glog)      : Sets both the linear gain and the postscaler
 
         The 'gain' parameters can be specified as:
             gain = G: the specified gain is applied only to the ADC channels specified in the list 'channels'.
@@ -1706,13 +1816,13 @@ class chFPGA_controller(IceBoardExtHandler):
 
 
         Notes:
-            1) The PFB/FFT has an intrisic gain of 512 (a constant FFT input of '1' will yield the value 512 in bin 0 at the input of the scaler.
-            2) If the FFT is bypassed, the 8-bit values from the ADC or the function generator are applied directly to the scaler input.
-            3) In 4-bit mode, the output value is taken from bits 31 to 34 of the postscaled-value. In 8-bit mode, bits 27 to 31 are used.
-            4) A smaller postscaler value allows a larger gain to be used to acheive the same overall gain while providing more gain resolution.
-            A gain of (1, 31) allows the function generator values to appear on the scaler output with an overall gain of 1 in 4-bit mode. This is equivalent to (2, 30), (4,29) ... (16384, 8), except that the latter offers more gain resolution.
-            A gain of (1, 27) dies the same in 8-bit mode.
-(16384, 8), except that the latter offers more gain resolution.
+            #) The PFB/FFT has an intrisic gain of 512 (a constant FFT input of '1' will yield the value 512 in bin 0 at the input of the scaler.
+            #) If the FFT is bypassed, the 8-bit values from the ADC or the function generator are applied directly to the scaler input.
+            #) In 4-bit mode, the output value is taken from bits 31 to 34 of the postscaled-value. In 8-bit mode, bits 27 to 31 are used.
+            #) A smaller postscaler value allows a larger gain to be used to acheive the same overall gain while providing more gain resolution.
+            #) A gain of (1, 31) allows the function generator values to appear on the scaler output with an overall gain of 1 in 4-bit mode. This is equivalent to (2, 30), (4,29) ... (16384, 8), except that the latter offers more gain resolution.
+            #) A gain of (1, 27) dies the same in 8-bit mode.
+            #) (16384, 8), except that the latter offers more gain resolution.
 
         Examples:
             set_gain(1) # Sets all gains to 1, leaves the poscslaler unchanged fro all antennas.
@@ -1722,6 +1832,7 @@ class chFPGA_controller(IceBoardExtHandler):
             set_gain(16384,8) # In 4-bit, FFT enabled mode, outputs a value of '1' on bin 0 when the input of the FFT is a constant '1'.
             set_gain(np.arange(1024), channels=[1,2,3])
             set_gain({1: 16384, 4: 1300+15000*j, 5: np.arange(1024)}) # sets ADC channels 1-3 to a real gain of 16384, channel 4 to complex gain of (1300+15000j), and channels 5-7 with a gain ramp from 0 to 1023.
+
         History:
             2012-11-28 JM: Added this function
             2014-02-08 JFC: Rewrote and documented this function for the new scaler supporting complex gain tables.
@@ -2623,6 +2734,17 @@ class chFPGA_controller(IceBoardExtHandler):
 
     @async
     def get_status(self):
+        """
+        (`async` method) Return status information on the board, and mezzanines, including voltages current, power consumption, temperatures etc.
+
+        Arguments:
+            None
+
+
+        Returns:
+            dict: An OrderedDict containing the status information in the format ``{metric:value, ...}`` where both ``metric`` and ``value`` are strings.
+        """
+
         info = OrderedDict()
 
         info['MB FPGA Die Temp'] = '%0.1fC' % (yield self.get_motherboard_temperature.async(self.TEMPERATURE_SENSOR.MB_FPGA_DIE))
@@ -2651,17 +2773,28 @@ class chFPGA_controller(IceBoardExtHandler):
         async_return(info)
 
     def get_string_id(self):
-        """ Return a string composed of the model and serial number which uniquely identifies the board."""
+        """
+        Return a string composed of the model and serial number which uniquely identifies the board.
+
+        Arguments:
+            None
+
+        Returns:
+            string
+
+        """
         return '%s_SN%s' % (self.part_number, self.serial)
 
     def get_id(self, lane=None):
-        """
-        Return a unique Iceboard ID of the board in the following format:
-            (crate_number, slot_number) : if the board is in a crate for which a crate number was assigned
-            (crate_id, slot_number): Identify the crate with model and serial number if there is a crate  but no crate number is specified
-            (iceboard_id): If the board is not in a crate or the slot number is unknown, use the the iceboard model and serial number
+        """ Returns a tuple representing a unique IceBoard ID, using numeric values whenever possible.
 
-        Append a lane number if specified.
+        Arguments:
+            lane (int): caller-provided lane number to be appended to the returned tuple.
+        Returns:
+             -  (int, int): (crate_number, slot_number)if the board is in a crate for which a crate number was assigned
+             - (str, int): (crate_id, slot_number) Identify the crate with model and serial number if there is a crate  but no crate number is specified
+             - (str): (iceboard_id) If the board is not in a crate or the slot number is unknown, use the the iceboard model and serial number
+
         """
         if not self.crate or self.slot is None:
             id = [self.get_string_id()]
@@ -2675,10 +2808,11 @@ class chFPGA_controller(IceBoardExtHandler):
     def get_crate_id(self):
         return self.crate.get_id()
 
-    # @wraps(CORR.CORR.start_correlator)
     def start_correlator(self, integration_period=16384, autocorr_only=False, correlators=None, bandwidth_limit=0.5e9, verbose=1):
         """
-        Args:
+        (Re)starts the correlator with the specified integration time.
+
+        Parameters:
 
             integration_period (32-bit int): Number of frames to integrate
                before sending the correlated products. Lower integration
@@ -2709,7 +2843,8 @@ class chFPGA_controller(IceBoardExtHandler):
                alternate settings. In this case, no changes are made to the
                correlator operation.
 
-        Returns: None
+        Returns:
+            None
         """
         if not self.CORR:
             raise RuntimeError('The FPGA firmware does not contain a correlator core')
@@ -2728,8 +2863,13 @@ class chFPGA_controller(IceBoardExtHandler):
 
     def compute_corr_output(self, data, integration_period=16384):
         """
-        Compute the expected correlator output  given the channelizer output `data`.
-        Returns array(bins, i, j) = complex
+        Compute the expected correlator output given the channelizer output :paramref:`databb`.
+
+        Arguments:
+            databb (float): some value
+            data (ndarray): data[channel, bin] = complex
+        Returns:
+            array(bins, i, j) = complex
         """
         corr = data.T[:,None,:]* data.T[:,:,None].conj()*integration_period
         corr = np.clip(corr.real, -131072, 131071) + 1j*np.clip(corr.imag, -131072, 131071)
@@ -2738,11 +2878,13 @@ class chFPGA_controller(IceBoardExtHandler):
         return corr
 
     def test_correlator_output(self, data, integration_period=32768, verbose=0):
-        """ Set the channelizer outputs and check the correlator output.
+        """ Set the channelizer outputs to :paramref:`data` and check the correlator output.
+
+        :param int data: super!
 
         Arguments:
-
-            data (ndarray): Data that should appear at the channelizer
+            dataaa (float): some value
+            datax (ndarray): Data that should appear at the channelizer
                 output, indexed as data[channel, bin] = complex_value. channel
                 ranges from 0 to 15, bin from 0 to 1023. The complex value has the
                 ranged of a signed (4+4) bit, meaning that the real and imaginary
