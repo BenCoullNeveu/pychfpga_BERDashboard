@@ -47,7 +47,7 @@ class AgilentN5764A(hardware_map.HWMResource, handler.HandlerObject):
         return "%s(%s)" % (self.__class__.__name__, self.hostname)
 
 
-class AgilentN5764AHandler(handler.Handler):  #, agilent_N5700
+class AgilentN5764AHandler(handler.Handler):
     """
     Provide the basic methods to operate an Agilent N5700-series power supply.
     """
@@ -55,10 +55,17 @@ class AgilentN5764AHandler(handler.Handler):  #, agilent_N5700
 
     hostname = handler.HandlerParentAttribute(lambda ib: ib.hostname)
 
-    def __init__(self, **kwargs):
+    def __init__(self, hostname=None, **kwargs):
+        """
+        Create an empty AgilentN5764 object. Communication with the power supply is not established yet (see `open()`)
+
+        Arguments:
+            hostname (str): the hostname or IP address of the power supply
+        """
         super(AgilentN5764AHandler, self).__init__(**kwargs)
+        self.hostname = hostname
         self.locked = True
-        self.ps = None
+        self.ps = None  # The actual power supply object is created oply during open() to defer actual communications with the unit.
 
     def open(self):
         if self.ps:
