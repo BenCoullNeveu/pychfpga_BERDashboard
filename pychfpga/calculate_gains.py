@@ -23,7 +23,7 @@ import pickle
 
 from pychfpga.core import chFPGA_controller
 #from pychfpga.core import chFPGA_receiver
-from timestream_receiver import read_frame
+from iceboard_receiver import read_frame
 
 
 

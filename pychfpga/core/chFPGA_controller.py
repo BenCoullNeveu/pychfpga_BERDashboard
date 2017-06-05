@@ -20,6 +20,7 @@ from datetime import datetime
 from collections import OrderedDict
 from functools import wraps
 
+import iceboard_receiver as ir
 
 import subprocess
 import shlex
@@ -2904,7 +2905,7 @@ class chFPGA_controller(IceBoardExtHandler):
         f = r.read_corr_frames(flush=False, complete_set=True, max_trials=100, verbose = verbose)
         return np.all(p==f), p, f
 
-    def test_correlator(self, test_name='rand_complex', integration_period=8192, trials=100):
+    def test_correlator(self, test_name='rand_complex', integration_period=8192, trials=100, verbose=0):
         if test_name=='rand_complex':
             for data_set_number in xrange(trials):
                 print 'Trial #%i' % data_set_number
@@ -2933,7 +2934,7 @@ class chFPGA_controller(IceBoardExtHandler):
                     self.start_correlator(integration_period=integration_period, verbose=verbose)
                     self.sync()
                     p = self.compute_corr_output(data, integration_period=integration_period)
-                    timestamp,f = tr.read_correlator_frame(verbose=verbose)
+                    timestamp,f = ir.read_correlator_frame(verbose=verbose)
                     print "\t{0:d}".format(timestamp)
                     match = np.all(p==f)
                     if match:
