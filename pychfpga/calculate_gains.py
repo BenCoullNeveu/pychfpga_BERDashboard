@@ -14,6 +14,7 @@ History:
     2011-09-09 JFC: Added global FREF
     2011-10-11 JFC: Updated delay tables
     2014-02-21 KMB: Created from top test
+    2016-11-17 SCG: Modified to use fpga_array.
 """
 import logging
 import argparse
@@ -22,9 +23,15 @@ import pickle
 
 from pychfpga.core import chFPGA_controller
 #from pychfpga.core import chFPGA_receiver
-from timestream_receiver import get_frame
+from timestream_receiver import read_frame
+
+
 
 import numpy as np
+
+from datetime import datetime
+import os
+
 
 ADC_DELAYS_MGK7MB_REV0_MGAC08_REV2 = (
     ([6,25,25,25,25,25,25,25],     [4]*8), #CH0
@@ -155,8 +162,8 @@ def get_frames(port):
     data_list = np.zeros((frames, 16, 2048))
     while number_of_frames < frames:
         try:
-            a = get_frame(port)
-            data_list[number_of_frames, :, :] = a.values()[0]
+            a = read_frame(port, 16, 0)
+            data_list[number_of_frames, :, :] = a.values()[0] #this is just the data array from the dictionary
             #for chanNum in chanIndex:
             #    data_list[number_of_frames,chanNum, :] = a[channels[chanNum]]
             number_of_frames += 1
@@ -170,6 +177,7 @@ def get_frames(port):
     #data_list = (np.bitwise_xor(data_list.astype(np.int8), 128*np.ones(data_list.shape, dtype=np.int8)).astype(np.int8))/2**4 #data_list/2**4
     data = data_list[:,:,::2] + 1.0j*data_list[:,:,1::2]
     return data
+
 
 
 def calc_gains(g):
@@ -212,6 +220,7 @@ def calculate_gains(c, port):
     print "configured for sending data to port {0}".format(port)
     rmss = []
     for i in range(18):
+
         data = get_frames(port)
         # only do for channel 0 for now   
         outrms = data[:,:,:].std(axis=0)
@@ -246,62 +255,21 @@ def calculate_gains(c, port):
         flags.append(Calc.mask)
     c.set_gain(gain)
     c.freq_flags = flags
-    output = open('/home/chime/ch_acq/gains_slot'+str(c.slot)+'.pkl','wb')
+
+    #print "Gain:", gain
+    write_path = "/home/sean/work/cosmology/suit/DAQ/digital_gains/d{0:s}/SN{1:s}_{2:s}.pkl".format(datetime.now().strftime("%Y%m%d"), 
+                                                                                                str(c.get_motherboard_serial()), 
+                                                                                                datetime.now().strftime("%H%M%S"))
+    if not os.path.exists(os.path.dirname(write_path)):
+        os.makedirs(os.path.dirname(write_path))
+    #output = open('/home/sean/work/cosmology/suit/DAQ/digital_gains/SN'+str(c.get_motherboard_serial())+'.pkl','wb')
+    output = open(write_path, 'wb')
     pickle.dump(gain, output)
     output.close()
     print "Scaler Gain set and saved"
+    print "Output file: {0:s}".format(write_path)
     c.stop_data_capture()
 
-
-if __name__ == '__main__':        
-
-    try:
-        logger.info('Deleting previous chFPGA instances in current namespace')
-        c.close() # close sockets from previous objects to free them for the new one
-        #r.close() # close sockets from previous objects to free them for the new one
-        del c
-        #del r
-    except NameError:
-        pass
-
-    parser = argparse.ArgumentParser(description=__doc__.split('\n')[0]) # description is the first line of the docstring
-    parser.add_argument('--init', action = 'store', type=int, default=1, help='Initialization level: -1: Just create sockets, 0: connect and read only. 1: initialize hardware')
-    parser.add_argument('-f', '--sampling_frequency', action = 'store', type=float, default=800, help='Sampling frequency of the ADC in MHz')
-    parser.add_argument('-l', '--log_level', action = 'store', type=str, choices=['info','debug'], default='info', help='Logging level')
-    parser.add_argument('-w', '--data_width', action = 'store', type=int, choices=[4,8], default=8, help='Data width of each Re and Im component of the channelizer output')
-    parser.add_argument('-g', '--group_frames', action = 'store', type=int, default=4, help='Number of frames to group before sending to the GPU or FPGA correlator. The total size of the frame, including the header and ethernet obverhead, cannot exceed 8 kibytes.')
-    parser.add_argument('--enable_gpu_link', action = 'store', type=int, default=0, help='Enables the GPU link transmission')
-    parser.add_argument('--ip', action = 'store', type=str, default='10.10.10.11', help='IP address of the board')
-    parser.add_argument('--host_ip', action = 'store', type=str, default=None, help='IP address of adapter through which the connection to the FPGA will be established. If not specified, the controller will attempt to identify the proper host based on the FPGA IP address.')
-    args = parser.parse_args()
-
-    log_level = {'info': logging.INFO, 'debug': logging.DEBUG}[args.log_level]
-    logging.basicConfig(level=log_level, format='%(asctime)s %(name)-32s %(levelname)-10s : %(message)s')
-
-    logger = logging.getLogger(__name__)
-    logger.info('------------------------')
-    logger.info('calculate_gains.py: Calulates gains for ideal 4-bit noise contribution')
-    logger.info('Kevin Bandura')
-    logger.info('------------------------')
-    logger.info('This module is called with the follwing parameters:' )
-    for (key,value) in args.__dict__.items():
-        logger.info('   %s = %s' % (key, repr(value)))
-    # logger.info('Using Sampling frequency of %0.3f MHz' % args.sampling_frequency)
-    # Delete previous instances of 'c' to make sure the sockets are closed. If not, the new object will not be able to open the socket.
-    # pylint: disable=E0601    
+    return gain, write_path
 
 
-    ADC_DELAY_TABLE = ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 #ADC_DELAYS_REV2_SN0001 ## select the table corresponding to the FMC serial number
-    #FREF = 10 # FMC Reference clock frequency 
-
-    # Create the new chFPGA object.
-    c = chFPGA_controller.chFPGA_controller(ip_address=args.ip, port_number=41000, adc_delay_table=ADC_DELAY_TABLE, init=args.init, sampling_frequency=args.sampling_frequency * 1e6, reference_frequency=10e6, data_width=args.data_width, group_frames=args.group_frames, enable_gpu_link = args.enable_gpu_link, host_ip = args.host_ip) # pylint: disable=C0103
-
-    time.sleep(0.5)
-    logger.info('Getting chFPGA configuration')
-    chFPGA_config = c.get_config()
-    logger.info('Starting data/correlator receiver threads')
-    #r = chFPGA_receiver.chFPGA_receiver(chFPGA_config, ip_address=args.ip, port=41001, host_ip = args.host_ip)
-    calculate_gains(c,'41001')
-
-    #np.save('gain.npy',np.array(gain))
