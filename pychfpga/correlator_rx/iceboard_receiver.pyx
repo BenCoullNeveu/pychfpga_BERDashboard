@@ -1,6 +1,5 @@
 # attempt to cythonize timestream c code.
 import numpy as np
-import h5py
 cimport numpy as np
 from libc.stdlib cimport malloc, free
 

@@ -6,7 +6,7 @@ import numpy as np
 ext_modules=[
     Extension("iceboard_receiver",
               ["iceboard_receiver.pyx", "ciceboard_receiver.c" ],
-              libraries=["hdf5", "hdf5_hl", 'm', 'pthread'],
+              libraries=['m', 'pthread'],
               library_dirs = ['/home/sean/work/anaconda3/lib/'],
               include_dirs = [np.get_include(),'/home/sean/work/anaconda3/include/'],
               extra_compile_args = ['-std=c99']) # Unix-like specific

@@ -14,8 +14,6 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <signal.h>
-#include "hdf5.h"
-#include "hdf5_hl.h"
 
 #define BUFSIZE 5*512 + 12
 #define NCMAC 34
