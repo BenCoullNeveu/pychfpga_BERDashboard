@@ -209,7 +209,7 @@ def calculate_gains(c, port):
     #c.set_send_flags()
     c.set_offset_binary_encoding()
     default_log2_gain = 22
-    c.set_gain((1,default_log2_gain))
+    c.set_gains((1,default_log2_gain))
     c.set_local_data_port_number(int(port))
     c.start_data_capture(burst_period_in_seconds=0.001)
     c.sync()
@@ -241,7 +241,7 @@ def calculate_gains(c, port):
         gain = []
         for channel in channels:
             gain.append([channel,[glin[channel].tolist(), glog[channel]]])
-        c.set_gain(gain)
+        c.set_gains(gain)
         time.sleep(1)
     out1 = open('gains_noisy_slot{0}.pkl'.format(c.slot), 'wb')
     pickle.dump(gain, out1)
@@ -253,7 +253,7 @@ def calculate_gains(c, port):
         glin_final = Calc.run()
         gain[channel][1][0] = glin_final.tolist()
         flags.append(Calc.mask)
-    c.set_gain(gain)
+    c.set_gains(gain)
     c.freq_flags = flags
 
     #print "Gain:", gain
