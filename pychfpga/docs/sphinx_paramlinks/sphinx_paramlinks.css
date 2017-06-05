@@ -1,0 +1,26 @@
+/* Hide the <P> character that provide a link to the parameter /*
+a.paramlink {
+	visibility: hidden;
+}
+
+/* Make the <P> symbol re-appear when we hover over the parameter line.
+Depending on the length of the table, the parameter is in a li or td element. */
+li:hover > a.paramlink, td:hover > a.paramlink {
+   visibility: visible;
+}
+
+dl.method > dt {
+	/*background:	darksalmon;*/
+    background-color: #b4b3e7;
+    /*border: 1px solid #ccc;*/
+}
+
+code.xref.paramlink {
+	font-size: initial;
+	font-weight: unset;
+	/* color: initial; */
+	/* font-size: 100%; */
+	font-family: unset;
+	font-style: italic;
+	background: transparent; /* .notes code sets a background*/
+}

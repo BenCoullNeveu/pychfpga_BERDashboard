@@ -84,11 +84,11 @@ class GainCalc(object):
         #The first bin is always bad for some reason
         mask[0] = True
         self.masked = np.ma.array(np.log(signal), mask=mask)
-    
+
     def fourier_filter(self, signal, num_components):
         '''
-        Filters signal with top-hat in fourier space.  Padded with itself on either     side to improve edge behavior. 
-        Should extend to other windows.  
+        Filters signal with top-hat in fourier space.  Padded with itself on either     side to improve edge behavior.
+        Should extend to other windows.
         not assured to maintain signal size
         '''
         signal = np.array(signal)
@@ -222,7 +222,7 @@ def calculate_gains(c, port):
     for i in range(18):
 
         data = get_frames(port)
-        # only do for channel 0 for now   
+        # only do for channel 0 for now
         outrms = data[:,:,:].std(axis=0)
         outrms[outrms < 0.8] = 0.8
         rmss.append(outrms.mean())
@@ -231,8 +231,8 @@ def calculate_gains(c, port):
             g = idealRMS*2**(default_log2_gain)/outrms#idealRMS*2**(default_log2_gain-4)/outrms
         else:
             for j, glog1 in enumerate(glog):
-                g[j] = idealRMS*glin[j]*(2**(glog[j]))/outrms[j] #idealRMS*glin*(2**(glog-4))/outrms
-                g[j] = (20.0*g[j] + 80.0*glin[j]*(2**(glog[j])))/100.0
+                g[j] = idealRMS * glin[j] * (2**(glog[j]))/outrms[j] #idealRMS*glin*(2**(glog-4))/outrms
+                g[j] = (20.0 * g[j] + 80.0 * glin[j] * (2**(glog[j])))/100.0
         glin, glog = calc_gains(g)
         print glog
         bad_gains = glin > 2**14
@@ -244,7 +244,7 @@ def calculate_gains(c, port):
         c.set_gain(gain)
         time.sleep(1)
     out1 = open('gains_noisy_slot{0}.pkl'.format(c.slot), 'wb')
-    pickle.dump(gain,out1)
+    pickle.dump(gain, out1)
     out1.close()
     Calc = GainCalc()
     flags = []
@@ -273,3 +273,58 @@ def calculate_gains(c, port):
     return gain, write_path
 
 
+<<<<<<< HEAD
+=======
+if __name__ == '__main__':
+
+    try:
+        logger.info('Deleting previous chFPGA instances in current namespace')
+        c.close() # close sockets from previous objects to free them for the new one
+        #r.close() # close sockets from previous objects to free them for the new one
+        del c
+        #del r
+    except NameError:
+        pass
+
+    parser = argparse.ArgumentParser(description=__doc__.split('\n')[0]) # description is the first line of the docstring
+    parser.add_argument('--init', action = 'store', type=int, default=1, help='Initialization level: -1: Just create sockets, 0: connect and read only. 1: initialize hardware')
+    parser.add_argument('-f', '--sampling_frequency', action = 'store', type=float, default=800, help='Sampling frequency of the ADC in MHz')
+    parser.add_argument('-l', '--log_level', action = 'store', type=str, choices=['info','debug'], default='info', help='Logging level')
+    parser.add_argument('-w', '--data_width', action = 'store', type=int, choices=[4,8], default=8, help='Data width of each Re and Im component of the channelizer output')
+    parser.add_argument('-g', '--group_frames', action = 'store', type=int, default=4, help='Number of frames to group before sending to the GPU or FPGA correlator. The total size of the frame, including the header and ethernet obverhead, cannot exceed 8 kibytes.')
+    parser.add_argument('--enable_gpu_link', action = 'store', type=int, default=0, help='Enables the GPU link transmission')
+    parser.add_argument('--ip', action = 'store', type=str, default='10.10.10.11', help='IP address of the board')
+    parser.add_argument('--host_ip', action = 'store', type=str, default=None, help='IP address of adapter through which the connection to the FPGA will be established. If not specified, the controller will attempt to identify the proper host based on the FPGA IP address.')
+    args = parser.parse_args()
+
+    log_level = {'info': logging.INFO, 'debug': logging.DEBUG}[args.log_level]
+    logging.basicConfig(level=log_level, format='%(asctime)s %(name)-32s %(levelname)-10s : %(message)s')
+
+    logger = logging.getLogger(__name__)
+    logger.info('------------------------')
+    logger.info('calculate_gains.py: Calulates gains for ideal 4-bit noise contribution')
+    logger.info('Kevin Bandura')
+    logger.info('------------------------')
+    logger.info('This module is called with the follwing parameters:' )
+    for (key,value) in args.__dict__.items():
+        logger.info('   %s = %s' % (key, repr(value)))
+    # logger.info('Using Sampling frequency of %0.3f MHz' % args.sampling_frequency)
+    # Delete previous instances of 'c' to make sure the sockets are closed. If not, the new object will not be able to open the socket.
+    # pylint: disable=E0601
+
+
+    ADC_DELAY_TABLE = ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 #ADC_DELAYS_REV2_SN0001 ## select the table corresponding to the FMC serial number
+    #FREF = 10 # FMC Reference clock frequency
+
+    # Create the new chFPGA object.
+    c = chFPGA_controller.chFPGA_controller(ip_address=args.ip, port_number=41000, adc_delay_table=ADC_DELAY_TABLE, init=args.init, sampling_frequency=args.sampling_frequency * 1e6, reference_frequency=10e6, data_width=args.data_width, group_frames=args.group_frames, enable_gpu_link = args.enable_gpu_link, host_ip = args.host_ip) # pylint: disable=C0103
+
+    time.sleep(0.5)
+    logger.info('Getting chFPGA configuration')
+    chFPGA_config = c.get_config()
+    logger.info('Starting data/correlator receiver threads')
+    #r = chFPGA_receiver.chFPGA_receiver(chFPGA_config, ip_address=args.ip, port=41001, host_ip = args.host_ip)
+    calculate_gains(c,'41001')
+
+    #np.save('gain.npy',np.array(gain))
+>>>>>>> origin/jfc_dev

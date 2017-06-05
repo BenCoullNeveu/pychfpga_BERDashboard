@@ -5,7 +5,6 @@ This is a holder page for the pychfpga module.
 
 .. :ref:`FPGA link <fpga: clocking>`
 
-:ref:`link <fpga:tableclockselection>`
 
 List of Modules
 ---------------
@@ -15,7 +14,6 @@ List of Modules
 .. autosummary::
    :nosignatures:
    :toctree: generate
-   :template: module.rst
 
    fpga_array
    core

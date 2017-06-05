@@ -35,32 +35,16 @@ class ANT_channel(object):
     # INJECT_OFFSET_ADDR  = 6
 
     def __init__(self, fpga_instance, base_address, submodule_address_increment, instance_number):
-        #super(ADC_chip,self).__init__(fpga)
-        # self.ant = ant_instance # store current ADC number for this instance
-        self.ant_number = instance_number # store current ADC number for this instance
+        self.ant_number = instance_number  # store current channelizer number for this instance
         self.fpga = fpga_instance
         self.logger = logging.getLogger(__name__)
 
-        # port = self.fpga.ANT_PORT[self.ant_number]
-
-        self.ADCDAQ  = ADCDAQ.ADCDAQ_base( fpga_instance,   base_address + self.ADCDAQ_OFFSET_ADDR*submodule_address_increment,  instance_number)
-        # self.SRCSEL  = SRCSEL.SRCSEL_base( fpga_instance,   base_address + self.SRCSEL_OFFSET_ADDR*submodule_address_increment,  instance_number)
-        self.FFT     = FFT.FFT_base( fpga_instance,         base_address + self.FFT_OFFSET_ADDR*submodule_address_increment,     instance_number)
-        self.SCALER  = SCALER.SCALER_base( fpga_instance,   base_address + self.SCALER_OFFSET_ADDR*submodule_address_increment,  instance_number)
-        self.PROBER  = PROBER.PROBER_base( fpga_instance,   base_address + self.PROBER_OFFSET_ADDR*submodule_address_increment,  instance_number)
-        self.FUNCGEN = FUNCGEN.FUNCGEN_base( fpga_instance, base_address + self.FUNCGEN_OFFSET_ADDR*submodule_address_increment, instance_number)
-        # self.INJECT  = INJECT.INJECT_base( fpga_instance,   base_address + self.INJECT_OFFSET_ADDR*submodule_address_increment,  instance_number)
+        self.ADCDAQ  = ADCDAQ.ADCDAQ_base(fpga_instance,   base_address + self.ADCDAQ_OFFSET_ADDR*submodule_address_increment,  instance_number)
+        self.FFT     = FFT.FFT_base(fpga_instance,         base_address + self.FFT_OFFSET_ADDR*submodule_address_increment,     instance_number)
+        self.SCALER  = SCALER.SCALER_base(fpga_instance,   base_address + self.SCALER_OFFSET_ADDR*submodule_address_increment,  instance_number)
+        self.PROBER  = PROBER.PROBER_base(fpga_instance,   base_address + self.PROBER_OFFSET_ADDR*submodule_address_increment,  instance_number)
+        self.FUNCGEN = FUNCGEN.FUNCGEN_base(fpga_instance, base_address + self.FUNCGEN_OFFSET_ADDR*submodule_address_increment, instance_number)
         self.frame_length = self.fpga.FRAME_LENGTH
-
-
-    # def read(self, module, addr, *args, **kwargs):
-    #     """ Reads data from the specified module at the specified address"""
-    #     return self.fpga.read(self.ant_number, module, addr, *args, **kwargs)
-
-    # def write(self, module, addr, data, *args, **kwargs):
-    #     """ Writes data to the specified module at the specified address"""
-    #     return self.ant.write(self.ant_number, module, addr, data, *args, **kwargs)
-
 
 
     def init(self, fmc_present):

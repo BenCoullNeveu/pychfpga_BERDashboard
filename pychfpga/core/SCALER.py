@@ -106,7 +106,8 @@ class SCALER_base(Module_base):
         """
         Sets the scaler's complex gain table for the specified bank.
 
-        If ``bank`` is None, the currently inactive bank is used.
+        If ``bank`` is None or is -1, the currently inactive bank is used.
+        The method does not set the active bank.
         """
         total_bins = self.fpga.NUMBER_OF_FREQUENCY_BINS
         if isinstance(gain_list, (int, float, complex)):

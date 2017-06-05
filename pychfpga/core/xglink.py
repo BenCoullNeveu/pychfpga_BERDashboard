@@ -27,6 +27,8 @@ class QPLL(Module_base):
 
     QPLL_LOCK          = BitField(STATUS, 0, 0, doc='Indicates if the QPLL is locked')
 
+    QPLL_PD                  = BitField(CONTROL, 0,0, doc="power down qpll.  needs 500ns after reset.")
+
     QPLL_INIT_CFG            = BitField(DRP, 0x0030, 0, width=16, doc="0-65535")
     QPLL_LPF                 = BitField(DRP, 0x0031, 11, width=4, doc="0-15")
     QPLL_INIT_CFG            = BitField(DRP, 0x0031, 0, width=8,   doc="0-255")
@@ -236,8 +238,9 @@ class GTX(Module_base):
         # self.RXPOLARITY=0
         self.TXPRBSSEL = 0
         self.RXPRBSSEL = 0
-        self.TXDIFFCTRL = 10
-        self.TXPRECURSOR = 0b00000  #DFE cannot compensate pre-cursor
+        self.RXLPMEN = 0  # Use low power mode, not the DFE
+        self.TXDIFFCTRL = 13
+        self.TXPRECURSOR = 4  #DFE cannot compensate pre-cursor (but that seems to give the best result anyway!)
         self.TXPOSTCURSOR = 0b00000
         self.RXMONITORSEL = 1 # 1=AGC, 2=UL, 3=VP loop
         self.RX_DEBUG_CFG = 0x14  # 0x14= Vpeak, 0x2C=AGC

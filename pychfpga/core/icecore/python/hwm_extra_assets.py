@@ -479,33 +479,49 @@ class IceBoardPlusHandler(IceBoardHandler):
     """ Basic Python handler for the IceBoard.
 
     It provides:
-       - access to the methods and attributes provided by the ARM-based
+       - Access to the methods and attributes provided by the ARM-based
              software through Tuber
-       - offers a standardized memory-mapped interface to the FPGA firmware
-         through the fpga_mmi_read() and fpga_mmi_write() methods.
+       - Access to the memory-mapped registers in the FPGA's firmware using the ARM-FPGA SPI link
+             through the `fpga_mmi_read()` and `fpga_mmi_write()` methods.
 
-    Firmware-specific application handlers should subclass this class.
+    `IceBoardPlusHandler` can be created as a standard Python object initialized with a number of
+    parameters which set corresponding attributes (see below). If a `parent_getter` function is
+    provided, the value of these attributes will instead be fetched
+    dynamically from the parent object. Note that any explicitely specified parameter overrides a
+    parent parameter.
 
-    Any object provided by this this handler can be accessed at any
-    hierarchical level. However, objects that are probided by Tuber have these
-    restrictions:
+    Parameters:
+        parent_getter (func): Function that returns the dynamically return the parent object from which the following parameters will be fetched. Is `None` if there is no parent.
+        hostname (str): hostname or IP address of the ICEBoard ARM processor (mandatory)
+        serial (str): Serial number of the board. Can be provided by the ARM.
+        part_number (str): Part number of the IceBoard. Can be obtained from the ARM.
+        crate (IceCrateHandler): = object that handle the backplane on which the board is connected. `None` if the board is not connected to a backplane.
+        slot (int): Slot number in which the board is installed ona backplane. None if there is no backplane.
+        mezzanine (dict): Map {mezzanine_number: Mezzanine Handler, ...} describing the installed mezzanines. Can be obtained from the ARM.
+        tuber_objname (str): name of the set of software functions that will be provided by the ARM processor through the Tuber interface.
 
-       - attributes and methods whise name begin with '_' are not accessible
-       - modification to the object attributes must be done by a setter
-         function provided by the object.
-       - methods or attribute access can only return string or numeric values,
-         or lists or dictionnary thereof
 
-    NOTE 1: For now, the MMI interface is provided through Tuber using its
-    peek/poke methods, but the interface may transparenly offer faster access
-    methods by redefining the fpga_mmi_read/write methods. For example, the
-    MMI commands might one day bypass Tuber's HTTP/JSON overhead and go
-    through a separate ARM port that forwards the packets directly to the FPGA
-    through SPI or PCIe for maximum speed.
 
-    NOTE 2: This handler does not define a MMI interface that uses the FPGA's
-    ethernet port (e.g. CHIME) . Such functionnality is to be provided by a
-    subclass of this handler if the firmware supports it.
+    .. Any object provided by this this handler can be accessed at any
+    .. hierarchical level. However, objects that are probided by Tuber have these
+    .. restrictions:
+    ..
+    ..    - attributes and methods whise name begin with '_' are not accessible
+    ..    - modification to the object attributes must be done by a setter
+    ..      function provided by the object.
+    ..    - methods or attribute access can only return string or numeric values,
+    ..      or lists or dictionnary thereof
+
+
+    Notes:
+        - The SPI MMI interface is currently provided by peek/poke methods accessed through Tuber.
+          However, if one day the ARM supports it, a faster access could potentially be provided by
+          overriding the fpga_mmi_read/write methods to send the commands to a dedicated ARM port
+          and thus bypass Tuber's HTTP/JSON overhead. Since the SPI link is relatively slow anyway, this might not be useful until a faster ARM-FPGA link is in place (such as the unused PCIe link).
+
+        - This handler does *not* define a MMI interface that uses the FPGA's
+          ethernet port directly through the SFP+ connector. Such functionnality is to be provided by a
+          subclass of this class if the firmware supports it.
     """
 
     __handler_for__ = IceBoardPlus # register this class (and any subclass)

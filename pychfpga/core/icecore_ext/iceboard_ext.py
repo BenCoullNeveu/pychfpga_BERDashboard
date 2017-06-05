@@ -30,25 +30,40 @@ from lib import eeprom
 from lib import qsfp
 from lib import gpio
 
-# import icebox # don't use from .. import ... because of circular import problems
 
 class IceBoardExtHandler(IceBoardPlusHandler):
-    """ Provides basic access to CHIME-specific basic IceBoard firmware and
-    hardware resources.
+    """ Provides basic access to the basic CHIME-specific FPGA firmware features and to the IceBoard
+    hardware resources through the FPGA.
 
-    Differences with the standard Iceboard handler:
+    This class provides:
 
-    - A direct FPGA Ethernet-based 8-bit Memory Map Interface is provided
-    - Access to the IceBoard hardware is provided through the FPGA I2C
-      interface. Most of the equivalent methods are provided by the ARM, but
-      missing methods are offered through this FPGA interface.
-    - Acces to the backplane hardware. This is used by the IceCrate handler to
-      provide backplane services.
-    - The standard ARM mezzanine identification methods are intecepted to
-      allow support for non-IPMI McGill ADC mezzanine boards.
+    - UDP/IP/Ethernet-based direct Memory Map Interface (MMI) to the FPGA using its Ethernet port. Note
+      that this accesses an address space that is separate from the one accessed throughthe ARM SPI interface.
+      Methods to initialize the Ethernt networking parameters through the ARM SPI interface are provided.
+    - Alternate access to the IceBoard and Backplane hardware through the FPGA I2C interface through
+      the `hw` object. Access to the hardware is normally done through the high-level ARM-provided
+      methods, but these methods are useful for development and debugging. The exception is the the
+      IceCrate handler which uses the FPGA to access backplane resources.
+    - Overriden mezzanine identification methods that support non-IPMI McGill ADC mezzanine boards.
+    - IRIG-B subsystem operation (through the ARM SPI interface)
 
-     Python-based application-specific FPGA firmware and hardware handler are
-     meant to be derived from this class.
+    `IceBoardExtHandler` can be created as a standard Python object initialized with a number of
+    parameters which set corresponding attributes (see below). If a `parent_getter` function is
+    provided, the value of these attributes will instead be fetched dynamically from the parent
+    object. Note that any explicitely specified parameter overrides a parent parameter.
+
+    Parameters:
+        parent_getter (func): Function that returns the dynamically return the parent object from which the following parameters will be fetched. Is `None` if there is no parent.
+        hostname (str): hostname or IP address of the ICEBoard ARM processor (mandatory)
+        serial (str): Serial number of the board. Can be provided by the ARM.
+        part_number (str): Part number of the IceBoard. Can be obtained from the ARM.
+        crate (IceCrateHandler): = object that handle the backplane on which the board is connected. `None` if the board is not connected to a backplane.
+        slot (int): Slot number in which the board is installed ona backplane. None if there is no backplane.
+        mezzanine (dict): Map {mezzanine_number: Mezzanine Handler, ...} describing the installed mezzanines. Can be obtained from the ARM.
+        tuber_objname (str): name of the set of software functions that will be provided by the ARM processor through the Tuber interface.
+
+    Python-based application-specific FPGA firmware and hardware handler are
+    meant to be derived from this class.
     """
 
     _FPGA_CONTROL_BASE_PORT = 41000
@@ -120,7 +135,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
     hw        = AutoOpen('open_hw', 'hw')
     # bp        = AutoOpen('open_bp', 'bp')
 
-    def __init__(self, **kwargs):
+    def __init__(self, parent_getter=None, hostname=None, serial=None, part_number=None, crate=None, slot=None, mezzanine={}, tuber_objname='IceBoard'):
         """
         Creates an Iceboard that is accessed through the networking parameters
         specified in the database.
@@ -128,7 +143,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         The created object does not have any fpga or hardware handlers yet.
         Those will be created when the Iceboard is opened.
         """
-        super(IceBoardExtHandler, self).__init__(**kwargs)
+        super(IceBoardExtHandler, self).__init__(parent_getter=parent_getter, hostname=hostname, serial=serial, part_number=part_number, crate=crate, slot=slot, mezzanine=mezzanine, tuber_objname=tuber_objname)
         self.logger = logging.getLogger(__name__)
         self._mezzanine_ipmi_cache = {1: None, 2: None}
         self._is_core_open = None
