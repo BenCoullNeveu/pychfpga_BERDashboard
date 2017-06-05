@@ -108,31 +108,36 @@ class chFPGA_controller(IceBoardExtHandler):
     ################################################################################################
 
     #: Note: SPI-accessed registers are separate and use a different address space defined in `IceBoardExtHandler`
-    _SYSTEM_BASE_ADDR     = 0x00000  #: This is always at zero so we can gather info from the FPGA before we know the number of antennas etc.
-    _CHAN_BASE_ADDR       = 0x10000  #: Channelizer top address. The ADCDAQ subsystem is located in the CHAN address space.
-    _CROSSBAR1_BASE_ADDR  = 0x20000  #: CROSSBAR top address
-    _GPU_LINK_BASE_ADDR   = 0x30000  #: GPU Link top address
-    _CROSSBAR3_BASE_ADDR  = 0x40000  #: 3rd crossbar (shard with correlator)
-    _CORR_BASE_ADDR       = 0x40000  #: Correlator (shared with 3rd crossbar)
-    _BP_SHUFFLE_BASE_ADDR = 0x50000  #: Backplane PCB and Backplane QSFP 10Gbps packet transmitter/receivers
-    _CROSSBAR2_BASE_ADDR  = 0x60000  #: 2nd CROSSBAR top address
+    _TOP_BASE_ADDR      = 0x00000  #: Base address of the whome memory map, which is always zero.
+    _TOP_SUBSYSTEM_INCREMENT = 0x10000  #: Address increments between top-level systems (address bits 18:16)
 
-    _CHAN_ADDR_INCREMENT           = 0x01000  #: Address increment between each channelizer address spaces
-    _CROSSBAR_ADDR_INCREMENT       = 0x00800
-    _GPU_LINK_ADDR_INCREMENT       = 0x00800  #: Address increment between each subsystem of the GPU links
+    # Top systems
+    _SYSTEM_BASE_ADDR      = _TOP_BASE_ADDR + _TOP_SUBSYSTEM_INCREMENT * 0  #: 0x00000: System peripherals base address.
+    _CHAN_BASE_ADDR        = _TOP_BASE_ADDR + _TOP_SUBSYSTEM_INCREMENT * 1  #: 0x10000: Channelizer base address. The ADCDAQ subsystem is located in the CHAN address space.
+    _CROSSBAR1_BASE_ADDR   = _TOP_BASE_ADDR + _TOP_SUBSYSTEM_INCREMENT * 2  #: 0x20000: 1st CROSSBAR (channelizer crossbar) base address
+    _GPU_LINK_BASE_ADDR    = _TOP_BASE_ADDR + _TOP_SUBSYSTEM_INCREMENT * 3  #: 0x30000: GPU Link base address
+    _CROSSBAR3_BASE_ADDR   = _TOP_BASE_ADDR + _TOP_SUBSYSTEM_INCREMENT * 4  #: 0x40000: 3rd crossbar (shard with correlator)
+    _CORR_BASE_ADDR        = _TOP_BASE_ADDR + _TOP_SUBSYSTEM_INCREMENT * 4  #: 0x40000: Correlator (shared with 3rd crossbar)
+    _BP_SHUFFLE_BASE_ADDR  = _TOP_BASE_ADDR + _TOP_SUBSYSTEM_INCREMENT * 5  #: 0x50000: Backplane PCB and Backplane QSFP 10Gbps packet transmitter/receivers
+    _CROSSBAR2_BASE_ADDR   = _TOP_BASE_ADDR + _TOP_SUBSYSTEM_INCREMENT * 6  #: 0x60000: 2nd CROSSBAR base address
+
+    _SYSTEM_ADDR_INCREMENT         = 0x01000  #: Address increment between each system peripheral (addressed by bits 15:12 -> 16 possible submodules)
+    _CHAN_ADDR_INCREMENT           = 0x01000  #: Address increment between each channelizer (addressed by bits 15:12 -> 16 possible submodules)
+    _CROSSBAR_ADDR_INCREMENT       = 0x00800  #: Address increment between subsystems in 1st, 2nd and 3rd crossbars (addressed by bits 15:11 -> 32 possible submodules)
+    _GPU_LINK_ADDR_INCREMENT       = 0x00800  #: Address increment between each subsystem of the GPU links (addressed by bits 15:11 -> 32 possible submodules)
     _CORR_ADDR_INCREMENT           = 0x01000  #: Address increment between each correlator
-    _BP_SHUFFLE_ADDR_INCREMENT     = 0x00800  #: Address increment between each shuffle submodule
+    _BP_SHUFFLE_ADDR_INCREMENT     = 0x00800  #: Address increment between each shuffle submodule (addressed by bits 15:11 -> 32 possible submodules)
 
     _CHAN_SUBMODULE_ADDR_INCREMENT = 0x00200  #: Address increment between each submodule within a channelizer (ADCDAQ, FUNCGEN, FFT, SCALER etc.)
 
 
-    # SYSTEM Modules addresses
-    _SYSTEM_GPIO_BASE_ADDR     = _SYSTEM_BASE_ADDR + 0x00000  #: Address of the SYSTEM.GPIO submodule
-    _SYSTEM_SYSMON_BASE_ADDR   = _SYSTEM_BASE_ADDR + 0x01000  #: Address of the SYSTEM.SYSMON submodule
-    _SYSTEM_FREQ_CTR_BASE_ADDR = _SYSTEM_BASE_ADDR + 0x02000  #: Address of the SYSTEM.FREQ_CTR submodule
-    _SYSTEM_SPI_BASE_ADDR      = _SYSTEM_BASE_ADDR + 0x03000  #: Address of the SYSTEM.SPI submodule
-    _SYSTEM_REFCLK_BASE_ADDR   = _SYSTEM_BASE_ADDR + 0x04000  #: Address of the SYSTEM.REFCLK submodule
-    # SYSTEM_I2C_BASE_ADDR      = _SYSTEM_BASE_ADDR + 0x05000
+    # SYSTEM Peripherals Submodules addresses
+    _SYSTEM_GPIO_BASE_ADDR     = _TOP_BASE_ADDR + _SYSTEM_ADDR_INCREMENT * 0  #: 0x00000: Address of the SYSTEM.GPIO submodule
+    _SYSTEM_SYSMON_BASE_ADDR   = _TOP_BASE_ADDR + _SYSTEM_ADDR_INCREMENT * 1  #: 0x01000: Address of the SYSTEM.SYSMON submodule
+    _SYSTEM_FREQ_CTR_BASE_ADDR = _TOP_BASE_ADDR + _SYSTEM_ADDR_INCREMENT * 2  #: 0x02000: Address of the SYSTEM.FREQ_CTR submodule
+    _SYSTEM_SPI_BASE_ADDR      = _TOP_BASE_ADDR + _SYSTEM_ADDR_INCREMENT * 3  #: 0x03000: Address of the SYSTEM.SPI submodule
+    _SYSTEM_REFCLK_BASE_ADDR   = _TOP_BASE_ADDR + _SYSTEM_ADDR_INCREMENT * 4  #: 0x04000: Address of the SYSTEM.REFCLK submodule
+    # SYSTEM_I2C_BASE_ADDR      = _TOP_BASE_ADDR + _SYSTEM_ADDR_INCREMENT * 5 #: 0x05000: Address of the SYSTEM.I2C submodule
 
     # _GPIO_COOKIE_REG = 0x00 # Register address of the firmware cookie
 
