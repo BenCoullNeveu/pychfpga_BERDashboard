@@ -146,10 +146,10 @@ class chFPGA_controller(IceBoardExtHandler):
     # Supported platform information
     ################################################################################################
 
-    _PLATFORM_ID_ML605 = 0
-    _PLATFORM_ID_KC705 = 1
-    _PLATFORM_ID_MGK7MB_REV0 = 2
-    _PLATFORM_ID_MGK7MB_REV2 = 3
+    _PLATFORM_ID_ML605 = 0  #: ID number for the Virtex-6-based Xilinx ML606 Evaluation board
+    _PLATFORM_ID_KC705 = 1  #: ID number for the Kintex-7-based Xilinx KC705 Evaluation board
+    _PLATFORM_ID_MGK7MB_REV0 = 2  #: ID number for the McGill MGK7MB Rev 0 motherboard (a.k.a Iceboard Rev 0, pre-production prototype)
+    _PLATFORM_ID_MGK7MB_REV2 = 3  #: ID number for the McGill MGK7MB Rev 2 motherboard (a.k.a Iceboard Rev 2). Works for All subsequent revs.
 
     #: Map of all supported platform indexed by the `PLATFORM_ID` returned by the FPGA
     _PLATFORM_ID_LIST = {
@@ -160,7 +160,15 @@ class chFPGA_controller(IceBoardExtHandler):
         _PLATFORM_ID_MGK7MB_REV2: ('Kintex 7 (XC7K420T-2 FFG901) on McGill MGK7MB / ICEBoard Rev2', None),
     }
 
-    def __init__(self, parent_getter=None, hostname=None, serial=None, part_number=None, crate=None, slot=None, mezzanine={}, tuber_objname='IceBoard'):
+    def __init__(self,
+        parent_getter=None,
+        hostname=None,
+        serial=None,
+        part_number=None,
+        crate=None,
+        slot=None,
+        mezzanine={},
+        tuber_objname='IceBoard'):
         """
         Creates an empty IceBoard/chFPGA handler object, but do not interact with the board yet.
 
@@ -174,11 +182,14 @@ class chFPGA_controller(IceBoardExtHandler):
             mezzanine (dict): Map {mezzanine_number: Mezzanine Handler, ...} describing the installed mezzanines. Can be obtained from the ARM.
             tuber_objname (str): name of the set of software functions that will be provided by the ARM processor through the Tuber interface.
 
-        `chFPGA_controller` can be created as a standard Python object initialized with a number of
-        parameters which set corresponding attributes (see below). If a `parent_getter` function is
-        provided, the value of these attributes will instead be fetched dynamically from the parent
-        object such as a hardware map database entry (see :class:`Handler`). Note that any explicitely
-        specified parameter overrides a parent parameter.
+        The `__init__` function stores the parameters as instance attributes
+        of the same name. However, if a `parent_getter` function is provided
+        and returns a parent object, the value of these attributes will
+        instead be fetched dynamically from the parent object instead of using
+        local values (see :class:`Handler`). This allows chfpga_controller to
+        keep a dynamic connection with a volatile database object (in this
+        case, a database-based hardware map entry)  derive its properties from
+        it.
 
 
         Note: `__init__` *only* create an empty `chFPGA_controller` object and hold basic
@@ -187,15 +198,23 @@ class chFPGA_controller(IceBoardExtHandler):
             created for board that do not exist are are not powered up yet. This is useful when
             arrays of boards are loaded from an unfiltered hardware map.
         """
-        super(chFPGA_controller, self).__init__(parent_getter=parent_getter, hostname=hostname, serial=serial, part_number=part_number, crate=crate, slot=slot, mezzanine=mezzanine, tuber_objname=tuber_objname)
+        super(chFPGA_controller, self).__init__(
+            parent_getter=parent_getter,
+            hostname=hostname,
+            serial=serial,
+            part_number=part_number,
+            crate=crate,
+            slot=slot,
+            mezzanine=mezzanine,
+            tuber_objname=tuber_objname)
 
         # Initialize basic instance attributes, but don;t do anything that involve talking to the IceBoard.
 
         self._logger = logging.getLogger(__name__)
         self._logger.info("%.32r: Creating chFPGA_controller object" % (self))
 
-        self._sampling_frequency = None
-        self._reference_frequency = None
+        self._sampling_frequency = None  # Set in init()
+        self._reference_frequency = None # set in init()
         self.FRAME_PERIOD = None
         self._FMC_present = []  # indicates if the FMC board is present. If not, the modules will act accordingly.
         # self._adc_board = []
