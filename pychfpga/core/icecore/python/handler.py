@@ -250,10 +250,9 @@ class HandlerParentAttribute(object):
     """
     def __init__(self, getter):
         self._getter = getter
-        self._values = {}
+        self._values = {}  # dict storing the set values for every target instance
 
     def __get__(self, obj, objtype=None):
-        #print 'get call', obj,objtype
         if not obj:  #  Do not generate errors if we access this as a class attribute so we can test its presence with getattr.
             return self
         parent = obj.parent
@@ -269,7 +268,6 @@ class HandlerParentAttribute(object):
                 raise AttributeError("`%s` object has no such attribute" % (obj.__class__.__name__))
 
     def __set__(self, obj, value):
-        print 'get call', obj
         if not obj:
             raise AttributeError('Cannot set attribute on a class')
         self._values[obj] = value
