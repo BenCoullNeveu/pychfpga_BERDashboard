@@ -458,7 +458,7 @@ class FPGAArray(object):
         # need from these boards (serial, crate, slot  etc) right away without requiring us to do
         # mDNS query, which is the last resort (because not all systems might have mDNS support).
         for (model, hostname) in list(hw_table.iceboards): # make a copy: we modify in-place
-            if model is None or '.' in hostname: # if it is actually a hostname
+            if model is None or '.' in str(hostname): # if it is actually a hostname. Might be an int serial
                 hw_table.iceboards.remove((model, hostname))
                 # ip_addr = socket.gethostbyname(hostname)  # convert hostname to IP address for faster Tuber access
                 new_ib = IceBoardPlus(hostname=hostname)
@@ -2570,7 +2570,7 @@ def merge_dict(src, dest):
         dest = src
     return dest
 
-def load_yaml_config(object_names):
+def load_yaml_config(object_names, default_filename='config.yaml'):
     """
     Loads a YAML file,
     object_names: String or list of strings describing the name of a YAML files and objects to
@@ -2580,11 +2580,9 @@ def load_yaml_config(object_names):
 
     Returns a dictionary
 
-    Example:
+    Examples::
         load_yaml_config('file1.yaml')
-
         load_yaml_config('file1.yaml:object1 object2')
-
         load_yaml_config('file1.yaml:object1.subitem1 .subitem2)
 
     """
@@ -2605,24 +2603,29 @@ def load_yaml_config(object_names):
 
     config = {}
     logger = logging.getLogger('')
-    if object_names:
-        yaml_args = object_names.split(':')
-        yaml_filename = yaml_args[0]
-        print yaml_filename
-        if len(yaml_args) == 1:
-            yaml_objects = ['']
-        elif len(yaml_args) == 2:
-            yaml_objects = yaml_args[1].split()
-        else:
-            raise ValueError('Only one filename can be specified')
+    if not object_names:
+        return config
 
-        logger.info('Loading YAML file %s' % (yaml_filename))
-        print 'Loading YAML file %s' % yaml_filename
-        with open(yaml_filename, 'rb') as yamlfile:
-            yaml = load_yaml(yamlfile)
+
+    yaml_args = object_names.split(':')
+    if len(yaml_args) > 2:
+        raise ValueError('Only one filename can be specified')
+
+    yaml_filename = yaml_args[0] or default_filename
+    if not os.exist(yaml_filename):
+
+    print yaml_filename
+    if len(yaml_args) == 1:
+        yaml_objects = ['']
+    elif len(yaml_args) == 2:
+        yaml_objects = yaml_args[1].split()
     else:
-            yaml = None
-            yaml_objects = []
+        raise ValueError('Only one filename can be specified')
+
+    logger.info('Loading YAML file %s' % (yaml_filename))
+    print 'Loading YAML file %s' % yaml_filename
+    with open(yaml_filename, 'rb') as yamlfile:
+        yaml = load_yaml(yamlfile)
 
     # self.hwm = None
     current_root_node = yaml
