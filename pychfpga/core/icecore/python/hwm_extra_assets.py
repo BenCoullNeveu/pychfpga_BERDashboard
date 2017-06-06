@@ -72,9 +72,6 @@ def mdns_discover(hwm=None, icecrates=None, iceboards=None, timeout=5, resolve_i
     icecrates = [entry if isinstance(entry, (list, tuple)) else ('*', [entry]) for entry in icecrates]
     icecrates = [(model, serials if isinstance(serials, (list, tuple)) else [serials]) for model, serials in icecrates]
 
-
-
-
     def resolve_callback(sdRef, flags, iface, err, fullname,
                          host, port, txtRecord, io_loop):
         if err != pybonjour.kDNSServiceErr_NoError:
@@ -117,14 +114,15 @@ def mdns_discover(hwm=None, icecrates=None, iceboards=None, timeout=5, resolve_i
         # icecrate_match = icecrates and (icecrates == '*' or any((bp_part_number in model if isinstance(model, (tuple, list)) else bp_part_number == model) and (bp_serial in serials or int_bp_serial in serials) for (model, serials) in icecrates))
         # iceboard_match = iceboards and (iceboards == '*' or ib_serial in iceboards or int_ib_serial in iceboards)
 
+
         iceboard_match = any(
             (target_model == '*' or ib_part_number == target_model) and
-            (target_serials =='*' or ib_serial in target_serials or int_ib_serial in target_serials)
+            ('*' in target_serials or ib_serial in target_serials or int_ib_serial in target_serials)
             for target_model, target_serials in iceboards)
 
         icecrate_match = any(
             (target_model == '*' or bp_part_number == target_model) and
-            (target_serials =='*' or bp_serial in target_serials or int_bp_serial in target_serials)
+            ('*' in target_serials or bp_serial in target_serials or int_bp_serial in target_serials)
             for target_model, target_serials in icecrates)
 
         if icecrate_match or iceboard_match:
