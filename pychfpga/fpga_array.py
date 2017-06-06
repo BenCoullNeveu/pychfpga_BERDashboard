@@ -2445,6 +2445,8 @@ def parse_hw_string(hw_string, dut_id_patterns=ICE_PATTERNS):
                 hw_table[type_].append(wild_entry)
         return hw_table
 
+    def to_int(s):
+        return (int(s) if s.isdigit() else s)
 
     pos = 0
     err = None
@@ -2474,9 +2476,10 @@ def parse_hw_string(hw_string, dut_id_patterns=ICE_PATTERNS):
                     break
 
                 # Update the current entry with the entries that are not None
+                # Always convert to integer if possible
                 for i in range(1, min(len(entry), len(current_entry))):
                     if entry[i] is not None:
-                        current_entry[i] = groups[entry[i]] if isinstance(entry[i], int) else entry[i]  # index the match group if an integer, otherwise replace verbatim
+                        current_entry[i] = to_int(groups[entry[i]] if isinstance(entry[i], int) else entry[i])  # index the match group if an integer, otherwise replace verbatim
 
                 # Store if instructed
                 if store:
