@@ -149,148 +149,141 @@ class FPGAArray(object):
 
                  **kwargs
                 ):
-
         """ Create a hardware map describing CHIME hardware and optionally
         initialize the hardware.
 
         Parameters:
 
+            None: Hardware map creation
+            hwm (str, list or HardwareMap): Describe the contents of the hardware
+                map database, which lists the IceBoards, IceCrates and Mezzanines.
+                that are present in the system and their relationship. The hardware
+                map creation depending on the type of the `hwm` parameter:
 
-        Hardware map creation
-        ----------------------
+                *str* or *list of str*: A string or list of strings that describes the hardware to be
+                    added to the hardware map in the format::
 
-        hwm (str, list or HardwareMap): Describe the contents of the hardware
-            map database, which lists the IceBoards, IceCrates and Mezzanines.
-            that are present in the system and their relationship. The hardware
-            map creation depending on the type of the `hwm` parameter:
+                        " [{Iceboard_descriptors} {Icecrate_descriptors} {mezzanine_descriptors}] "
 
-            *str* or *list of str*: A string or list of strings that describes the hardware to be
-                added to the hardware map in the format::
+                    where:
+                       Iceboard descriptors: "[MGK7]MB serial serial ..." or "hostname" or "ip_address"
+                       icecrate descriptors: "[MGK7]BP16 serial[:crate_number] serial[:crate_number]...",
 
-                    " [{Iceboard_descriptors} {Icecrate_descriptors} {mezzanine_descriptors}] "
+                    Autodiscovery is used as needed to complete the hardware map
+                    (see notes below). See `parse_hw_string` for a description of
+                    the syntax
 
-                where:
-                   Iceboard descriptors: "[MGK7]MB serial serial ..." or "hostname" or "ip_address"
-                   icecrate descriptors: "[MGK7]BP16 serial[:crate_number] serial[:crate_number]...",
+                    Example:
 
-                Autodiscovery is used as needed to complete the hardware map
-                (see notes below). See `parse_hw_string` for a description of
-                the syntax
+                    "MGK7BP16 025 026" or abbreviated form "BP16 25 26" Selects
+                        all iceboards on crates SN025 and SN026 with default crate
+                        numbers 0 and 1 respectively.
 
-                Example:
+                    "MGK7MB 0125 0330" or "MB 0125 0330", "MB 125 330", "MB
+                        10.10.10.225 10.10.10.111" or "MB iceboard0125.local
+                        iceboard0330.local" all select the Iceboards specified by
+                        serial/hostname/IP address.
 
-                "MGK7BP16 025 026" or abbreviated form "BP16 25 26" Selects
-                    all iceboards on crates SN025 and SN026 with default crate
-                    numbers 0 and 1 respectively.
+                    .. note:
+                        If an IceBoard is specified by IP address (e.g. '10.10.10.7'),
+                        then the board can be added directly in the hardware map. This
+                        does *not* rely on the system mDNS client or the Python
+                        ``pybonjour`` package.
 
-                "MGK7MB 0125 0330" or "MB 0125 0330", "MB 125 330", "MB
-                    10.10.10.225 10.10.10.111" or "MB iceboard0125.local
-                    iceboard0330.local" all select the Iceboards specified by
-                    serial/hostname/IP address.
+                        If an IceBoard is specified by its mDNS hostname (e.g.
+                        'iceboard0007.local'), the operating system will automatically
+                        resolve the IP address using mDNS, assuming that a mDNS client
+                        (Bonjour on Windows or Mac, avahi on Linux) is running on this
+                        computer. The ``pybonjour`` Python package is *not* needed.
 
-                .. note:
-                    If an IceBoard is specified by IP address (e.g. '10.10.10.7'),
-                    then the board can be added directly in the hardware map. This
-                    does *not* rely on the system mDNS client or the Python
-                    ``pybonjour`` package.
+                        In both cases, the crate, slot and serial number information will
+                        be automatically obtained directly through the IceBoard's ARM
+                        processor if that information not already present in the hardware
+                        map.
 
-                    If an IceBoard is specified by its mDNS hostname (e.g.
-                    'iceboard0007.local'), the operating system will automatically
-                    resolve the IP address using mDNS, assuming that a mDNS client
-                    (Bonjour on Windows or Mac, avahi on Linux) is running on this
-                    computer. The ``pybonjour`` Python package is *not* needed.
-
-                    In both cases, the crate, slot and serial number information will
-                    be automatically obtained directly through the IceBoard's ARM
-                    processor if that information not already present in the hardware
-                    map.
-
-                    If an IceBoard is specified by its serial number (e.g. '0007', or
-                    just a numeric 7 as a convenient shortcut), the board will use the
-                    ``pybonjour`` package to actively query mDNS and find boards that
-                    match the serial number.
+                        If an IceBoard is specified by its serial number (e.g. '0007', or
+                        just a numeric 7 as a convenient shortcut), the board will use the
+                        ``pybonjour`` package to actively query mDNS and find boards that
+                        match the serial number.
 
 
-                .. note:
-                    Selecting boards by IceCrate serial number *always*
-                    require the ``pybonjour`` package and the system mDNS
-                    client to automatically probe the network and discover the
-                    specified Iceboards that advertised themseles along with
-                    their associated crate number.
+                    .. note:
+                        Selecting boards by IceCrate serial number *always*
+                        require the ``pybonjour`` package and the system mDNS
+                        client to automatically probe the network and discover the
+                        specified Iceboards that advertised themseles along with
+                        their associated crate number.
 
 
-            *list of dict*: list of dicts that describe the hardware map elements to create.
+                *list of dict*: list of dicts that describe the hardware map elements to create.
 
-            *HardwareMap*: Fully formed hardware map, provided directly as a
-                HardwareMap database object. If a fully-formed hardware map is
-                provided, it will additionally be vetted by removing the
-                Iceboards that fail the `ping` test and do not meet the
-                ``subarray`` criteria.
+                *HardwareMap*: Fully formed hardware map, provided directly as a
+                    HardwareMap database object. If a fully-formed hardware map is
+                    provided, it will additionally be vetted by removing the
+                    Iceboards that fail the `ping` test and do not meet the
+                    ``subarray`` criteria.
 
 
 
-        iceboards (list of str) : Iceboard to add to the hardware map,
-            specified by IP address, hostname, or serial number. Equivalent to
-            adding `hwm` string "MGK7MB iceboard[0] iceboard[1] ...".iceboard
+            iceboards (list of str) : Iceboard to add to the hardware map,
+                specified by IP address, hostname, or serial number. Equivalent to
+                adding `hwm` string "MGK7MB iceboard[0] iceboard[1] ...".iceboard
 
-        exclude_iceboards (list of str) : Serial numbers of Iceboards to be
-            excluded in case of autodiscovered boards. Can be useful to specify a
-            crate but exclude a few boards.
+            exclude_iceboards (list of str) : Serial numbers of Iceboards to be
+                excluded in case of autodiscovered boards. Can be useful to specify a
+                crate but exclude a few boards.
 
-        icecrates (list of str): Adds all the iceboards from the crates that have the
-            serial numbers specified in the provided list of strings.
+            icecrates (list of str): Adds all the iceboards from the crates that have the
+                serial numbers specified in the provided list of strings.
 
-            Examples:
-                ``icecrates='003'`` or ``icecrates=['003']`` will discover and select all boards from crate SN003
-                ``icecrates=['003', '004']`` will select boards from crates SN003 and SN004.
-                ``icecrates=[]`` will select all boards on the network
+                Examples:
+                    ``icecrates='003'`` or ``icecrates=['003']`` will discover and select all boards from crate SN003
+                    ``icecrates=['003', '004']`` will select boards from crates SN003 and SN004.
+                    ``icecrates=[]`` will select all boards on the network
 
-        Hardware map filtering
-        ----------------------
+            None: Hardware map filtering
 
-        subarrays : List of integers describing the subarrays to include in
-            the default IceBoard set. If not specified or an empty list, all
-            Iceboards in the hardware map will be selected. Affects only the
-            boards specified in the hardware map specified with the ``hwm`` parameter.
+            subarrays : List of integers describing the subarrays to include in
+                the default IceBoard set. If not specified or an empty list, all
+                Iceboards in the hardware map will be selected. Affects only the
+                boards specified in the hardware map specified with the ``hwm`` parameter.
 
-        ping : If ``ping=1``, The connection to Iceboards is checked
-            by sending a dummy Tuber (http) request to their ARM processors. If a
-            YAML-specified iceboards fails, it is simply removed from the
-            ``hwm`` hardware map, but an exception is raised if a board listed
-            explicitely fails. If ``ping`` is false, the presence of boards is not
-            checked.
+            ping : If ``ping=1``, The connection to Iceboards is checked
+                by sending a dummy Tuber (http) request to their ARM processors. If a
+                YAML-specified iceboards fails, it is simply removed from the
+                ``hwm`` hardware map, but an exception is raised if a board listed
+                explicitely fails. If ``ping`` is false, the presence of boards is not
+                checked.
 
-        Configuration & initialization
-        ------------------------------
+            None: Configuration & initialization
 
-        bitfile : String. Filename of the bitfile used to to program the FPGAs
+            bitfile : String. Filename of the bitfile used to to program the FPGAs
 
-        prog : If ``prog=1``, the FPGAs in the selected Iceboards will be
-            configured only if they are not already configured with the same
-            firmware. If ``prog=2``, they will always be reconfigured. If
-            ``prog`` is 0, None or is not specified, the FPGAs are never configured.
+            prog : If ``prog=1``, the FPGAs in the selected Iceboards will be
+                configured only if they are not already configured with the same
+                firmware. If ``prog=2``, they will always be reconfigured. If
+                ``prog`` is 0, None or is not specified, the FPGAs are never configured.
 
-        open : If ``open=1``, establish communication with the boards and
-           initialize the firmware and software. If ``open`` is None or not
-           specified, the software and firmwar eis not initialized.
+            open : If ``open=1``, establish communication with the boards and
+               initialize the firmware and software. If ``open`` is None or not
+               specified, the software and firmwar eis not initialized.
 
-        if_ip : string corresponding to the IP address of adapter through
-            which the connection to the FPGA will be established. If not
-            specified, the system will assume that the FPGA is reached trough
-            the same interface that reaches the ARM processor.
+            if_ip : string corresponding to the IP address of adapter through
+                which the connection to the FPGA will be established. If not
+                specified, the system will assume that the FPGA is reached trough
+                the same interface that reaches the ARM processor.
 
-        Logging
-        -------
+            None: Logging
 
-        If logging is not set up by the top level application, you can
-        optionally specify the folowing arguments to create syslog and stderr
-        handlers to help interactive operations. If a handler already exists,
-        its log level is simply updated to prevent duplication of handlers.
-        Log levels can be strings or numerical log levels.
+            If logging is not set up by the top level application, you can
+            optionally specify the folowing arguments to create syslog and stderr
+            handlers to help interactive operations. If a handler already exists,
+            its log level is simply updated to prevent duplication of handlers.
+            Log levels can be strings or numerical log levels.
 
-        syslog_log_level: sets up a SYSLOG handler
+            syslog_log_level: sets up a SYSLOG handler
 
-        stderr_log_level: sets up a handler that prints on stderr
+            stderr_log_level: sets up a handler that prints on stderr
         """
 
 

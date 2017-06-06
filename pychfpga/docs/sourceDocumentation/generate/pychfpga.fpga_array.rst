@@ -3,15 +3,24 @@ pychfpga.fpga_array
 
 .. automodule:: pychfpga.fpga_array
 
-   
-   
-   .. rubric:: Functions
+.. currentmodule:: pychfpga.fpga_array
 
-   .. autosummary::
-   
+Summary
+-------
+
+.. rubric:: Classes
+
+.. autosummary::
+
+      FPGAArray
+      FPGABitstream
       GPUArray
-      HardwareMap
       PSArray
+
+.. rubric:: Support functions
+
+.. autosummary::
+
       add_fpga_array_arguments
       add_logging_arguments
       async
@@ -19,46 +28,18 @@ pychfpga.fpga_array
       create_fpga_array
       load_yaml
       load_yaml_config
-      mdns_discover
       merge_dict
-      or_
+
       parse_args_as_dict
-      parse_hw_description_string
+      parse_hw_string
       setup_logging
       validate_config
-      with_timeout
-   
-   
 
-   
-   
-   .. rubric:: Classes
 
-   .. autosummary::
-   
-      AgilentN5764AHandler
-      Ccoll
-      FPGAArray
-      FPGABitstream
-      GpuNodeHandler
-      IOLoop
-      IceBoardPlus
-      IceCrateExt
-      Mapping
-      NameSpace
-      OrderedDict
-      Resolver
-      Sequence
-      chFPGA_controller
-   
-   
+Classes
+-------
 
-   
-   
-   .. rubric:: Exceptions
+.. autoclass:: FPGAArray
 
-   .. autosummary::
-   
-      TimeoutError
-   
-   
+   .. automethod:: __init__
+
