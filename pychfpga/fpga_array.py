@@ -44,7 +44,7 @@ except ImportError:
         sys.path.insert(0, ch_acq_path)
 
 
-from pychfpga.core.icecore import Ccoll
+from pychfpga.core.icecore import Ccoll, NameSpace
 from pychfpga.core.icecore import HardwareMap, HWMResource
 from pychfpga.core.icecore import mdns_discover
 from pychfpga.core.icecore import async, async_return, async_sleep
@@ -66,9 +66,6 @@ from pychfpga.core.icecore.session import load_session as load_yaml
 Resolver.configure('tornado.netutil.ThreadedResolver', num_threads=20)
 
 #####################################
-
-class NameSpace(object):
-    pass
 
 
 class FPGABitstream(object):
@@ -120,23 +117,6 @@ ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 = {
 
 ADC_DELAY_TABLE = ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 #ADC_DELAYS_REV2_SN0001 ## select the table corresponding to the FMC serial number
 
-# def get_argparse_action(default=None):
-#     class Store(argparse.Action):
-#         def __init__(self, option_strings, dest, nargs=None, **kwargs):
-#             # if nargs is not None:
-#             #     raise ValueError("nargs not allowed")
-#             print 'Create Action:', option_strings, dest, nargs, kwargs
-#             super(Store, self).__init__(option_strings, dest, **kwargs)
-#         def __call__(self, parser, namespace, values, option_string=None):
-#             print('Call Action: %r %r %r' % (namespace, values, option_string))
-#             print vars(self)
-#             if not hasattr(namespace,'fpga_array'):
-#                 setattr(namespace, 'fpga_array', {})
-#             n = getattr(namespace, 'fpga_array')
-#             n[self.dest] = values
-#     return Store
-
-
 class FPGAArray(object):
 
     def __init__(self,
@@ -184,7 +164,9 @@ class FPGAArray(object):
             that are present in the system and their relationship. The hardware
             map creation depending on the type of the `hwm` parameter:
 
-            *str*: A string that describes the hardware to be added to the hardware map in the format::
+            *str* or *list of str*: A string or list of strings that describes the hardware to be
+                added to the hardware map in the format::
+
                     " [{Iceboard_descriptors} {Icecrate_descriptors} {mezzanine_descriptors}] "
 
                 where:
@@ -237,7 +219,7 @@ class FPGAArray(object):
                     their associated crate number.
 
 
-            *list*: list of dicts that describe the hardware map elements to create.
+            *list of dict*: list of dicts that describe the hardware map elements to create.
 
             *HardwareMap*: Fully formed hardware map, provided directly as a
                 HardwareMap database object. If a fully-formed hardware map is
@@ -370,13 +352,20 @@ class FPGAArray(object):
         #     iceboards = [iceboards]
         # iceboards = [self._to_integer(x) for x in iceboards]
 
+        ###########################################
+        # hw_string procesing
+        ###########################################
+
 
         # Build the hwm description string from various sources
         hw_string = ''   # start with an empty string
 
-        # Add `hwm`, if it is a string
+        # Add `hwm`, if it is a string or a list of strings
         if isinstance(hwm, str):
             hw_string  += hwm + ' '
+            hwm = None
+        elif isinstance(hwm, list) and all(isinstance(elem, str) for elem in hwm):
+            hw_string  += ' '.join(hwm) + ' '
             hwm = None
 
         # Add `iceboards'
@@ -385,32 +374,31 @@ class FPGAArray(object):
 
         # Add `icecrates`
         if icecrates:
-            hw_string += 'MGK7BP17 '+ ' '.join(icecrates) + ' '
+            hw_string += 'MGK7BP16 '+ ' '.join(icecrates) + ' '
 
         # Parse the hwm string into a hardware table. The hardware table is
         # not the hardware map, but represents the entries that we want to add
         # to the hardware map later.
         hw_table = parse_hw_string(hw_string)
-        print 'hw description table = ', hw_table
+        print 'hw table = ', hw_table
 
-        # Create a dict that maps the crate id to the crate numbers
-        self.icecrate_map = OrderedDict(((m[0], m[1]), m[2]) for m in hw_table['icecrates'] if not isinstance(m, str))
-        # If no crate number is specified at all, just create crate numbers based on the order in which the crates were specified
-        if all([cn is None for cn in self.icecrate_map.values()]):
-            for i, (model, sn) in enumerate(self.icecrate_map.keys()):
-                self.icecrate_map[(model, sn)] = i
-        print 'icecrate map=', self.icecrate_map
+        # Create a default crate number map that relates the crate id to the crate numbers
+        # Users can override this later with set_crate_numbers()
+        # If some crate numbers are specified or there is crate worlcards, just use whatever the user specified
+        if any (crate_number is not None or serial is '*' for (model, serial, crate_number) in hw_table.icecrates):
+            crate_number_map = {(model, serial) : crate_number
+                for (model, serial, crate_number) in hw_table.icecrates if crate_number is not None and serial != '*'}
+        else:
+            crate_number_map = {(model, serial) : i
+                for i, (model, serial, crate_number) in enumerate(hw_table.icecrates)}
+        print 'icecrate map=', crate_number_map
+
+        # We've got our crate numbers. Remove them from the icecrate list so we pass only the (model,
+        # serial) to the mdns discovery function.
+        hw_table.icecrates = [(model, serial) for (model, serial, crate_number) in hw_table.icecrates]
 
 
-        # hw_table = parse_hw_string(     iceboards,          hardware_type='iceboards',          default_model='MGK7MB')
-        # parse_hw_string(icecrates, hw_table, hardware_type='icecrates', default_model='MGK7BP16')
-        # parse_hw_string(mezzanines, hw_table, hardware_type='mezzanines', default_model='MGADC08')
 
-        # Recreate the list of iceboards and icecrates to add to the hardware map
-        # Create the iceboard list
-
-
-        print 'hardware map=', hwm
 
         ######################################
         # Hardware map processing
@@ -419,6 +407,8 @@ class FPGAArray(object):
         # hardwareMap object or a list of strings, filter the map for non-
         # responding boards or boards that do not belong to the target
         # subarray.
+
+        print 'hardware map=', hwm
 
         # If no hardware map is provided, create an empty one
         if not hwm:
@@ -466,69 +456,57 @@ class FPGAArray(object):
                         self.hwm.delete(ib)
                 self.hwm.flush()
 
-        # Add the boards that were specified in the hw string
 
-        # iceboards = [e if isinstance(e, str) else e[1] for e in hw_table.get('iceboards',[])]
-        # icecrates = ['%s_SN%s%s' % (model, sn, (':%i' % cn) if cn is not None else '') for (model, sn, cn) in hw_table.get('icecrates',[])]
-        # print 'iceboards = ', iceboards
-        # print 'icecrates = ', icecrates
-
-
-        # Add iceboards that are explicitely listed with IP addresses or
-        # hostname (we'll discover the boards specified by serial number later)
-        for ib_entry in self.hw_table['iceboards']:
-            if isinstance(ib_entry, str) and '.' in ib_entry:
+        #######################################################
+        # Adding iceboards with explicit hostnames/IP addresses
+        #######################################################
+        # Extract iceboards that are explicitely listed with IP addresses or hostname instead of
+        # serial numbers. We can talk to these boards, which means we can figure out everything we
+        # need from these boards (serial, crate, slot  etc) right away without requiring us to do
+        # mDNS query, which is the last resort (because not all systems might have mDNS support).
+        for (model, hostname) in list(hw_table.iceboards): # make a copy: we modify in-place
+            if model is None or '.' in hostname: # if it is actually a hostname
+                hw_table.iceboards.remove((model, hostname))
                 # ip_addr = socket.gethostbyname(hostname)  # convert hostname to IP address for faster Tuber access
-                new_ib = IceBoardPlus(hostname=ib_entry)
+                new_ib = IceBoardPlus(hostname=hostname)
                 self.hwm.add(new_ib)
                 self.hwm.flush()
                 # Explicitely listed boards must exist on the network
                 if ping:
                     if new_ib.ping(timeout=ping_timeout):
                         new_ib.hostname = socket.gethostbyname(new_ib.hostname)
+                        self.hwm.flush()
                     else:
                         raise RuntimeError("%r could not be found at '%s'"
                                            % (new_ib, new_ib.tuber_uri))
 
-
+        ########################################################
+        # Resolve missing serial/crate/slot info through the ARM
+        ########################################################
+        # All the boards in the hardware map should have a hostname now.
         # Complete serial, crate and slot information on IceBoard that miss
-        # that information. All boards in the hardware map at this point have
-        # a valid hostname, so this information is obtained through the ARM
+        # that information by talking directly to the ARM
         # (i.e without using mDNS and pybonjour).
-        ib_without_serial = self.hwm.query(IceBoardPlus).filter(IceBoardPlus.serial==None)
+        ib_without_serial = self.hwm.query(IceBoardPlus).filter(IceBoardPlus.serial == None)
         if ib_without_serial.count():
-            self.logger.info('%.32r: Auto-Discovering serial number for IceBoards %s' % (self, ib.hostname))
+            self.logger.info('%.32r: Auto-Discovering serial number for IceBoards %s' % (self, ', '.join(ib_without_serial.hostname)))
             ib_without_serial.discover_serial()
-            self.logger.debug('%.32r: Done Auto-Discovering serial number for IceBoards %s' % (self, ib.hostname))
 
         ib_without_crate = self.hwm.query(IceBoardPlus).filter(or_(IceBoardPlus.crate==None, IceBoardPlus.slot==None))
         if ib_without_crate.count():
-            self.logger.info('%.32r: Auto-Discovering crate information for IceBoards %s' % (self, ib.hostname))
+            self.logger.info('%.32r: Auto-Discovering crate information for IceBoards %s' % (self, ', '.join(ib_without_crate.hostname)))
             ib_without_crate.discover_crate()
 
-        # If requested, discover additional boards and crates on the network using mDNS and add those to the hardware map
-        if '*' in self.hw_table['iceboards']
-        iceboards_to_discover = [e[1] for e in self.hw_table['iceboards'] if not isinstance(e, str)]
-        if '*' in str(iceboards_to_discover):
-            iceboards_to_discover = '*'
+        ###########################################################################
+        # mDNS discovery of boards and crates specified by model/serial number only
+        ###########################################################################
 
-        icecrates = ['%s_SN%s%s' % (model, sn, (':%i' % cn) if cn is not None else '') for (model, sn, cn) in hw_table.get('icecrates',[])]
-
-
-        if '*' in str(icecrates):
-            icecrates_to_discover = '*'
-        elif self.icecrate_map:
-            # convert to the format [ (model1, [serial, serial ...]), (model1, [serial, serial ...]), ...]
-            icecrates_to_discover = [(model, [serial]) for model, serial in self.icecrate_map.keys()]
-        else:
-            icecrates_to_discover = None
-
-        if icecrates_to_discover or iceboards_to_discover:
-            print 'Discovering IceBoards %s and IceCrates %s...' % (iceboards_to_discover, icecrates_to_discover)
+        if hw_table.iceboards or hw_table.icecrates :
+            print 'Discovering IceBoards %s and IceCrates %s...' % (hw_table.iceboards, hw_table.icecrates)
             self.print_flush()
             mdns_discover(self.hwm,
-                          icecrates=icecrates_to_discover,
-                          iceboards=iceboards_to_discover,
+                          icecrates=hw_table.icecrates,
+                          iceboards=hw_table.iceboards,
                           timeout=mdns_timeout)
 
         # Remove iceboards to be excluded (by serial number)
@@ -544,43 +522,34 @@ class FPGAArray(object):
 
         # Hardware map is complete
 
-        # Query all iceboards and icecrates
+        #################################
+        # Create self.ib and self.ic
+        #################################
+
+        # Query the hardware map for all iceboards and icecrates
         ib = self.hwm.query(IceBoardPlus).outerjoin(IceCrateExt).order_by(IceCrateExt.serial, IceBoardPlus.slot)  # use outerjoin in case there is no crate
         ic = self.hwm.query(IceCrateExt).order_by(IceCrateExt.crate_number)
 
-
+        # Courtesy warning
         if not ic.count():
-            self.logger.warn('No Iceboards matching the selection criteria were found')
-            print 'There are no IceCrates in the hardware map!'
+            self.logger.warn('There are no IceCrates in the hardware map!')
 
-        # Set the interface over which the FPGA UDP communication will be done
-        if if_ip:
-            ib.interface_ip_addr = if_ip
-
-        # print 'The following IceBoards are in the hardware map:'
-        # for i in ib:
-        #     crate_name = '%s SN%s' % (i.crate.part_number, i.crate.serial) if i.crate else 'No crate'
-        #     print 'Crate %s, slot %2s: Iceboard SN%s at %s (ping =%s)' % (crate_name, i.slot, i.serial, i.hostname, i.ping())
-
-        # Augment the arg Namespace with conveniently proprocessed elements
+        # Store as Ccoll collections to allow easy parallel operations
         self.ib = Ccoll(ib)
         self.ic = Ccoll.unique((c for c in ib.crate if c) if self.ib else [])
 
-        # Assing crate numbers
-        for ic in self.ic:
-            model = ic.part_number
-            try:
-                sn = int(ic.serial)
-            except (ValueError, TypeError):
-                sn = ic.serial
-            if (model, sn) in self.icecrate_map:
-                ic.crate_number = self.icecrate_map[(model, sn)]
-                self.hwm.flush()
-                print('Assigining crate number %i to crate %s (%s,%s)' % (ic.crate_number, ic.get_string_id(), model, sn))
-            else:
-                print('Cannot find a crate number for crate %s' % ic.get_string_id())
+        #################################
+        # Set the crate numbers
+        #################################
+        # ... using whatever map we could determine from the parameters
 
-        # chFPGA_controller.register_fpga_bitstream(fpga_bitstream)
+        self.set_crate_numbers(crate_number_map, strict=False)
+
+
+
+        #################################
+        # Discover Mezzanines
+        #################################
 
         if self.ib:
             ib.check_tuber_version()  # Check if the board is running a compatible ARM firmware
@@ -601,6 +570,11 @@ class FPGAArray(object):
         self.print_iceboard_table(lambda ib: '%s\n%s' % (get_mezz_name(ib,1), get_mezz_name(ib,2)), row_labels=['Mezz1\nMezz2'], add_serial=True)
         self.print_flush()
 
+        #################################
+        # Program the FPGAs
+        #################################
+
+
         # Tell the IceBoard to run chFPGA firmware, program the FPGA, and establish communication with it
         if self.ib:
             ib.set_handler(chFPGA_controller)
@@ -618,24 +592,19 @@ class FPGAArray(object):
                 ib.set_fpga_bitstream(force= (prog > 1))
                 print 'Done configuring FPGAs'
 
-
-        # print
-        # print 'Updated hardware map, with mezzanine info:'
-
-
-        # for i in self.ib:
-        #     mezz_name = ['%s SN%s' % (m.__ipmi_part_number__, m.serial) if m else 'None' for m in [i.mezzanine.get(1, None), i.mezzanine.get(2, None)]]
-        #     crate_name = '%s SN%s' % (i.crate.part_number, i.crate.serial) if i.crate else 'No crate'
-        #     print 'Crate %s, slot %2s: Iceboard SN%s at %s (ping =%s), Mezz1=%s, Mezz2=%s' % (crate_name, i.slot, i.serial, i.hostname, i.ping(), mezz_name[0], mezz_name[1])
         self.print_flush()
 
-        # if self.ic:
-        #     self.print_iceboard_table(grid=False, add_serial=True)
+        #################################
+        # Initialize
+        #################################
 
 
-        print
-        # print 'open=',open
         if self.ib and open is not None and open > 0:
+            # Set the interface over which the FPGA UDP communication will be done
+            # Not needed in normal uses: we now get the interface automatically by examining info from the socket connected to the ARM
+            if if_ip:
+                ib.interface_ip_addr = if_ip
+
             print 'Initializing firmware (calling ib.open())'
             self.ib.open(adc_delay_table=ADC_DELAY_TABLE,
                          udp_retries=udp_retries,
@@ -655,6 +624,10 @@ class FPGAArray(object):
                 self.ic.init()
 
         self.print_flush()
+
+        #################################
+        # Completed
+        #################################
 
         print 'Done creating %r' % self
 
@@ -774,6 +747,42 @@ class FPGAArray(object):
             mezz = ['%s SN%s' % (m.__ipmi_part_number__, m.serial) if m else 'None' for m in [i.mezzanine.get(1,None), i.mezzanine.get(2,None)]]
             string +='   Crate SN%s, slot %2i: Iceboard SN%s at %s (ping =%s), Mezz1=%s, Mezz2=%s\n' % (i.crate.serial if i.crate else None, i.slot, i.serial, i.hostname, i.ping(), mezz[0], mezz[1])
         return string
+
+
+    def set_crate_numbers(self, crate_number_map, strict=True):
+        """ Set the crate number of each crate based on the provided crate number map.
+
+        Silently overrides any existing crate numbers.
+
+        Arguments:
+            crate_number_map (dict): A { (model, serial): number} dict that maps a crate ID tuple to a crate number.
+            strict (bool): if True, will raise an exception if not all crates can be assigned a crate number
+
+        Notes:
+            Crate numbers are needed to identify hardware element by simple tuples (e.g. (crate_number,
+            slot_numer, lane_number)) and are also used to infer which is a master and slave crate when
+            crates are interconnected in pairs.
+        """
+        for ic in self.ic:
+            model = ic.part_number
+            sn = ic.serial
+            try:
+                int_sn = int(ic.serial)
+            except (ValueError, TypeError):
+                int_sn = None
+
+            new_crate_number = (crate_number_map.get((model, sn), None) or
+                               crate_number_map.get((model, int_sn), None))
+
+            if new_crate_number is not None:
+                ic.crate_number = new_crate_number
+                self.hwm.flush()
+                self.logger.info('Assigining crate number %i to crate %s' % (new_crate_number, ic.get_string_id()))
+            elif strict:
+                raise RuntimeError('Cannot find a crate number for crate %s' % ic.get_string_id())
+            else:
+                self.logger.warning('set_crate_number: Cannot find a crate number for crate %s' % ic.get_string_id())
+
 
     def set_operational_mode(self, mode, frames_per_packet=1, chan8_channel_map=range(8)):
         """
@@ -2372,36 +2381,46 @@ class FPGAArray(object):
 
 
 ICE_PATTERNS = [
-        { 'regex': '(MGK7)?BP1',                  'type': 'icecrates',  'entry': ('MGK7BP1', None, None),  'model': 'MGK7BP1' },  # Sets the curent model and type to the One-slot backplane; matches MGK7BP1, BP1
-        { 'regex': '(MGK7)?BP16',                 'type': 'icecrates',  'entry': ('MGK7BP16', None, None),  'model': 'MGK7BP16' },  # Sets the curent model and type to the 16-slot backplane; matches MGK7BP16, BP16
-        { 'regex': '(MGK7)?MB',                   'type': 'iceboards',  'entry': ('MGK7MB', None, None),  'model': 'MGK7MB'  },  # Sets the curent model and type to the ICEBoard (motherboard); matches MGK7MB, MB
-        { 'regex': '(MG)?ADC08',                  'type': 'mezzanines', 'entry': ('MGADC08', None),  'model': 'MGADC08' },  # Sets the curent model and type to the CHIME Mezzanine;  matches MGADC08, ADC08
-        { 'regex': '29821-0000-(\d{4})',          'type': 'mezzanines', 'entry': ('MGADC08', None),  'model': 'MGADC08', 'serial': 0 },  # Stores a MGADC08 mezzanine item based on serial number extracted from the Digico barcodes (29821-000-ssss, where ssss=serial number)
-        { 'regex': '35896-0000-(\d{4})',          'type': 'mezzanines', 'entry': ('MGADC08', None),  'model': 'MGADC08', 'serial': 0 },  # Stores a MGADC08 mezzanine item based on serial number extracted from the Digico barcodes
-        { 'regex': '(?:|SN)?(\d+)(?:\s*:(\d*))?', 'type': None,         'entry': (None, 0, 1), 'model': None,      'serial': 0, 'number': 1 },  # Stores an item with the current model and specified serial number and optional item number (crate number).  Matches 232, 0232, SN232, SN0232, 232:1. Serial number can be prefixed by SN.
-        { 'regex': '(\d+.\d+.\d+.\d+)',           'type': 'iceboards',  'entry': (None, 0), 'addr': 0},  # Stores a motherboard item based on its IP address only
-        { 'regex': '(\w+.local)',                 'type': 'iceboards',  'entry': (None, 0), 'addr': 0},  # Stores a motherboard item based on its local hostname only
-        { 'regex': '\*',                          'type': None,         'entry': (None, '*'), 'serial': '*'},  # Stores a an item that selects all units of the current model
+        { 'regex': '(MGK7)?BP1',          'type': 'icecrates',  'entry': ('MGK7BP1', None, None),  'store': False},  # Sets the curent model and type to the One-slot backplane; matches MGK7BP1, BP1
+        { 'regex': '(MGK7)?BP16',         'type': 'icecrates',  'entry': ('MGK7BP16', None, None), 'store': False},  # Sets the curent model and type to the 16-slot backplane; matches MGK7BP16, BP16
+        { 'regex': '(MGK7)?MB',           'type': 'iceboards',  'entry': ('MGK7MB', None),         'store': False},  # Sets the curent model and type to the ICEBoard (motherboard); matches MGK7MB, MB
+        { 'regex': '(MG)?ADC08',          'type': 'mezzanines', 'entry': ('MGADC08', None),        'store': False},  # Sets the curent model and type to the CHIME Mezzanine;  matches MGADC08, ADC08
+        { 'regex': '29821-0000-(\d{4})',  'type': 'mezzanines', 'entry': ('MGADC08', 0),           'store': True},  # Stores a MGADC08 mezzanine item based on serial number extracted from the Digico barcodes (29821-000-ssss, where ssss=serial number)
+        { 'regex': '35896-0000-(\d{4})',  'type': 'mezzanines', 'entry': ('MGADC08', 0),           'store': True},  # Stores a MGADC08 mezzanine item based on serial number extracted from the Digico barcodes
+        { 'regex': '(?:|SN)?(\d+):(\d*)', 'type': None,         'entry': (None, 0, 1),             'store': True},  # Stores an item with the current model and specified serial number and optional item number (crate number).  Matches 232, 0232, SN232, SN0232, 232:1. Serial number can be prefixed by SN.
+        { 'regex': '(?:|SN)?(\d+)',       'type': None,         'entry': (None, 0),                'store': True},  # Stores an item with the current model and specified serial number and optional item number (crate number).  Matches 232, 0232, SN232, SN0232, 232:1. Serial number can be prefixed by SN.
+        { 'regex': '(\d+.\d+.\d+.\d+)',   'type': 'iceboards',  'entry': (None, 0),                'store': True},  # Stores a motherboard item based on its IP address only
+        { 'regex': '(\w+.local)',         'type': 'iceboards',  'entry': (None, 0),                'store': True},  # Stores a motherboard item based on its local hostname only
+        { 'regex': '\*',                  'type': None,         'entry': (None, '*'),              'store': True},  # Stores a an item that selects all units of the current model
         ]
 
-def parse_hw_string(hw_string, hw_table=None, dut_id_patterns=ICE_PATTERNS, hardware_type=None, default_model=None):
-    """ Parses a string describing ICE hardware elements (motherboards, crates and mezzanines) and returns a dictionary describing each component.
-    Each item is described by a model followed by one or, more serial numbers. A crate number can optionally be specified for crates by following the serial number by ':nnnn'.
-    Serial numbers are converted to integers if possible; otherwise, they are stored as a string.
+def parse_hw_string(hw_string, dut_id_patterns=ICE_PATTERNS):
+    """ Parses a string describing ICE hardware elements (motherboards, crates and mezzanines)
+
+    Arguments:
+        hw_string (str): string describing the model, serial number/hostname and optionally the sequence number of the desired
+           hardware elements
+
+        dut_id_patterns (list of dict): Describe patterns to match, the type of hardware they match, and the data they provide.
+            regex: the regular expression to match, with optional capture groups.
+            type: the type of hardware in which the entry will be made
+            entry: Entry to make, as a (model, serial) or (model, serial, number) tuple.  For each of the values in the tuple:
+                None: means the value is unchanged
+                *int*: get the capture group specified by the *int*
+                *str*: Set the field to *str*
+
+                If model is not None, new entry is started and all other elements of the tuple are reset to the specified values.
+
+    Returns:
+        A NameSpace object describing a the specified hardware elements for each hardware type listed in `dut_id_patterns`::
+
+        .icecrates =  [ (model, serial, crate_number) ...],
+        .iceboards =  [ (model, serial) | (None, ip_address) | (None, hostname)]
+        .mezzanines: [ (model, serial) ...]
+
+        Serial numbers are converted to integers if possible; otherwise, they are stored as a string.
 
     Underscore characters are converted to blanks before parsing.
-
-    if ``hardware_type`` is specified, only that type of hardware will be accpeted.
-    dut_id_patterns describe the regular expression used to identify each elements of the hardware description string.
-    'regex' describes the regular expression.
-    'type', 'model', 'serial', 'number' and 'addr' describe various fields. If any of these field is an integer index, it it replaced with the regex capture group with this index.
-
-    Return a dict with the following structure:
-        {
-        icecrates: [ (model, serial, crate_number) ...],
-        iceboards: [ (model, serial) | "ip_address" | "hostname" ...]
-        mezzanines: [ (model, serial) ...]
-        }
 
     Examples:
         'MGK7BP16_SN018:3' => ('MGK7BP16', 18, 3)
@@ -2409,31 +2428,34 @@ def parse_hw_string(hw_string, hw_table=None, dut_id_patterns=ICE_PATTERNS, hard
         '18:3' => (None, 18, 3)
         '18' => (None, 18, None)
     """
-    # Extract the crate number
-
     # If hw_string is a list of string, combine them in one single string
-    # print 'parsing:', hw_string
     if isinstance(hw_string, (list, tuple)):
         hw_string = ' '.join(str(s) for s in hw_string)
 
-    # If no target hw_descirption table is provided, create a new one
-    if hw_table is None:
-        hw_table = dict()
 
-    # Create all possible hardware categories
-    for t in {d['type'] for d in dut_id_patterns}:
-        hw_table.setdefault(t, []) # crate type with empty list if the type does not exist
+    # Create a new hw table with all possible hardware categories
+    hw_table = NameSpace()
+    for t in {d['type'] for d in dut_id_patterns if d['type'] is not None}:
+        hw_table[t]= [] # crate type with empty list if the type does not exist
 
-    # print 'parsing:', hw_string
 
-    current_type = hardware_type
-    current_model = default_model
-    current_entry = None
+    # Split the string in ' '- or '_'-separated elements
+    elements = str(hw_string).replace('_', ' ').strip().split(' ')
 
-    elements = str(hw_string).replace('_', ' ').split(' ')
+    # Special case: if the hw_string is just '*', we register all units of every known model with
+    # '*' as the serial number (second) field
+    if len(elements) == 1 and elements[0] == '*':
+        for p in dut_id_patterns:
+            type_, entry = p['type'], p['entry']
+            wild_entry = entry[0:1] + ('*',) + entry[2:]
+            if wild_entry not in hw_table[type_]:
+                hw_table[type_].append(wild_entry)
+        return hw_table
+
+
     pos = 0
     err = None
-    model_has_serial = False
+    current_type = None
     for el in elements:
         pos += len(el) + 1
         if not el:  # if whitespace
@@ -2446,48 +2468,32 @@ def parse_hw_string(hw_string, hw_table=None, dut_id_patterns=ICE_PATTERNS, hard
             if m:   # if there is a match
                 matches += 1
                 groups = m.groups()  # capture groups, in a list
-                type_ = p['type']
-                entry = p['entry']
+                type_, entry, store = p['type'], p['entry'], p['store']
 
-                type_, addr, model, serial, number = [(groups[p[tag]] if isinstance(p[tag], int) else p[tag]) if tag in p else None for tag in ('type', 'addr', 'model','serial','number')]
-                if addr is not None:  # overrides entry
-                    hw_table[type_].append(addr)
-                    current_model = default_model
-                    current_type = hardware_type
-                    continue
-                if model is not None:
-                    if hardware_type and type_ != hardware_type:
-                        err = 'Invalid hardware type'
-                        break
-                    current_model = model
+                # If this is a new model, change model type
+                if type_ is not None: # new entry
+                    model_entry = entry
+                    current_entry = list(entry)
                     current_type = type_
-                    print 'new tmodel:type is', model, type_
-                    model_has_serial = False
-                if serial is not None:
-                    model_has_serial = True
-                    if current_model is None or current_type is None:
-                        if serial = '*': # if we specify a serial without a model, all types get a '*'
-                            for t in hw_table:
-                                hw_table[t].append('*')
-                        else:
-                            err = 'A model must be specified before a serial number is specified'
-                            break
-                    serial = int(serial) if serial.isdigit() else serial
-                    number = int(number) if number is not None else None
-                    # print 'match : type="%r", %s'% (current_type, type_ == 'icecrates')
-                    if current_type == 'icecrates':
-                        dut_id = (current_model, serial, number)
-                        print 'adding icecrate', dut_id
-                    else:
-                        if number is not None:
-                            err = 'A :n hardware instance number can only be applied to crates'
-                            break
-                        dut_id = (current_model, serial)
-                    hw_table[current_type].append(dut_id)
+
+                elif not current_type: # if not a new model, one should have been set before
+                    err = 'A model must be specified before a serial number is specified'
+                    break
+
+                # Update the current entry with the entries that are not None
+                for i in range(1, min(len(entry), len(current_entry))):
+                    if entry[i] is not None:
+                        current_entry[i] = groups[entry[i]] if isinstance(entry[i], int) else entry[i]  # index the match group if an integer, otherwise replace verbatim
+
+                # Store if instructed
+                if store:
+                    hw_table[current_type].append(tuple(current_entry))
+                    current_entry = list(model_entry)
+
         if err:
             break
         if not matches:
-            err = 'Element did not find a match'
+            err = "Could not find a match for element '%s' of the hardware description string" % el
             break
         if matches > 1:
             err = 'element found multiple matches'
