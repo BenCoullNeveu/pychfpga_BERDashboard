@@ -2613,6 +2613,8 @@ def load_yaml_config(object_names, default_filename='config.yaml'):
 
     yaml_filename = yaml_args[0] or default_filename
     if not os.exist(yaml_filename):
+        yaml_filename = default_filename
+        yaml_args = [] + yaml_args
 
     print yaml_filename
     if len(yaml_args) == 1:
