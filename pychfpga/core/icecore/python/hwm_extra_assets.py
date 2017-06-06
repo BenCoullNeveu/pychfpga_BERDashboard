@@ -48,6 +48,7 @@ def mdns_discover(hwm=None, icecrates=None, iceboards=None, timeout=5, resolve_i
     """
     import pybonjour  # only needed here, and not always installed
 
+
     if hwm is None:
         hwm = hardware_map.HardwareMap()
 
@@ -60,6 +61,20 @@ def mdns_discover(hwm=None, icecrates=None, iceboards=None, timeout=5, resolve_i
     logger = logging.getLogger(__name__)
     fds = []
 
+    # Normalize iceboard and icecrate target lists to the [ (model,[serial1, serial2]), ...] format
+    if isinstance(iceboards, str): # include '*'
+        iceboards = [('*', [iceboards])]
+    iceboards = [entry if isinstance(entry, (list, tuple)) else ('*', [entry]) for entry in iceboards]
+    iceboards = [(model, serials if isinstance(serials, (list, tuple)) else [serials]) for model, serials in iceboards]
+
+    if isinstance(icecrates, str): # include '*'
+        icecrates = [('*', [icecrates])]
+    icecrates = [entry if isinstance(entry, (list, tuple)) else ('*', [entry]) for entry in icecrates]
+    icecrates = [(model, serials if isinstance(serials, (list, tuple)) else [serials]) for model, serials in icecrates]
+
+
+
+
     def resolve_callback(sdRef, flags, iface, err, fullname,
                          host, port, txtRecord, io_loop):
         if err != pybonjour.kDNSServiceErr_NoError:
@@ -67,10 +82,11 @@ def mdns_discover(hwm=None, icecrates=None, iceboards=None, timeout=5, resolve_i
 
         # Parse TXT records. That's where the IceBoard publishes data.
         tr = pybonjour.TXTRecord.parse(txtRecord)
-        if 'motherboard-serial' not in tr:
+        if 'motherboard-serial' not in tr or 'motherboard-part' not in tr:
             logger.warning("DNS-SD: IceBoard at %s was discovered but cannot be added to the hardware map because it does not publish a serial number" % (host))
             return
         ib_serial = tr['motherboard-serial']
+        ib_part_number = tr['motherboard-part']
 
         existing_ib = hwm.query(IceBoardPlus).filter_by(serial=ib_serial)
         if existing_ib.count():
@@ -98,8 +114,18 @@ def mdns_discover(hwm=None, icecrates=None, iceboards=None, timeout=5, resolve_i
         # If we specify no crate number, or if we have valid backplane
         # information and the backplane match that number, Then add the
         # Iceboard
-        icecrate_match = icecrates and (icecrates == '*' or any((bp_part_number in model if isinstance(model, (tuple, list)) else bp_part_number == model) and (bp_serial in serials or int_bp_serial in serials) for (model, serials) in icecrates))
-        iceboard_match = iceboards and (iceboards == '*' or ib_serial in iceboards or int_ib_serial in iceboards)
+        # icecrate_match = icecrates and (icecrates == '*' or any((bp_part_number in model if isinstance(model, (tuple, list)) else bp_part_number == model) and (bp_serial in serials or int_bp_serial in serials) for (model, serials) in icecrates))
+        # iceboard_match = iceboards and (iceboards == '*' or ib_serial in iceboards or int_ib_serial in iceboards)
+
+        iceboard_match = any(
+            (target_model == '*' or ib_part_number == target_model) and
+            (target_serials =='*' or ib_serial in target_serials or int_ib_serial in target_serials)
+            for target_model, target_serials in iceboards)
+
+        icecrate_match = any(
+            (target_model == '*' or bp_part_number == target_model) and
+            (target_serials =='*' or bp_serial in target_serials or int_bp_serial in target_serials)
+            for target_model, target_serials in icecrates)
 
         if icecrate_match or iceboard_match:
             hwm.add(ib)
