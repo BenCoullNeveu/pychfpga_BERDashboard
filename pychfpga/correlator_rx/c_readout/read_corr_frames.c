@@ -50,18 +50,18 @@ typedef struct cAccumulation
 
  } accFrame;
 */
-/*
+
 int main(int argc, char **argv){
 
     //other();
 
     accFrame *frame = malloc(sizeof(accFrame));
-    printf("Received: %d/%d\n", cget_corr_frame(frame, "38000", 2), NCMAC * NCOR);
+    printf("Received: %d/%d\n", cget_corr_frame(frame, "38000", 3), NCMAC * NCOR);
 
 
-}*/
+}
 
-int main(int argc, char **argv) {
+int oth(int argc, char **argv) {
 
     int sockfd; /* socket */
     int clientlen; /* byte size of client's address */

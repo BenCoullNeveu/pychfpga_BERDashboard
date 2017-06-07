@@ -64,13 +64,15 @@ int cget_corr_frame(accFrame *frame, char *port, int verbose){
     uint8_t corr_number, cmac_number;
     int new_acquisition = 0;
     int n_received_frames = 0;
+
+    unsigned int frame_timestamps[NCMAC][NCOR] = {0};
     //int received[NCMAC][NCOR] = {0};
 
     /*
      * socket: create the parent socket
      */
-    if(verbose)
-        printf("Opening socket...\n");
+//    if(verbose)
+        //printf("Opening socket...\n");
     sockfd = socket(AF_INET, SOCK_DGRAM, 0);
     if (sockfd < 0)
         error("ERROR opening socket");
@@ -96,8 +98,8 @@ int cget_corr_frame(accFrame *frame, char *port, int verbose){
     /*
      * bind: associate the parent socket with a port
      */
-    if(verbose)
-        printf("Binding socket...\n");
+//    if(verbose)
+//        printf("Binding socket...\n");
     if (bind(sockfd, (struct sockaddr *) &serveraddr,
              sizeof(serveraddr)) < 0)
         error("ERROR on binding");
@@ -109,8 +111,8 @@ int cget_corr_frame(accFrame *frame, char *port, int verbose){
    
 
 
-    if(verbose)
-      printf("Entering main read loop.\n");
+    //if(verbose)
+    //  printf("Entering main read loop.\n");
 
     while (1) {
 
@@ -120,12 +122,12 @@ int cget_corr_frame(accFrame *frame, char *port, int verbose){
 
         memset(buf, 0, BUFSIZE);
           
-        if(verbose==3)
-          printf("Waiting for some information... ");
+        //if(verbose==3)
+        //  printf("Waiting for some information... ");
         n = recvfrom(sockfd, buf, BUFSIZE, 0,
                        (struct sockaddr *) &clientaddr, &clientlen);
-        if(verbose==3)
-          printf("Received some information.\n");
+        //if(verbose==3)
+        //  printf("Received some information.\n");
 
         if (n < 0)
             error("ERROR in recvfrom");
@@ -138,55 +140,59 @@ int cget_corr_frame(accFrame *frame, char *port, int verbose){
             cmac_number = buf[3]; //% 0xFF;
             current_timestamp = (buf[11] << 24) + (buf[10] << 16) + (buf[9] << 8) +  buf[8];
 
-            if(verbose==3)
+            if(verbose==2)
                 printf("Received a correlator frame for CMAC 0x%X and CORR 0x%X.\n", cmac_number, corr_number);
 
             
-            if(corr_number == 0 && cmac_number == 0){
-                if(verbose)
-                    printf("Frames for new acquisition have arrived.\n");
+            if(current_timestamp != frame->timestamp){
+              if(verbose==1 || verbose == 3 || verbose == 4)
+                if(n_received_frames == 0)
+                  printf("****Received first frame in a new acquisition.\n");
+                else{
+                  printf("****Received a frame that has a different timestamp than the last acquisition... Restarting.\n");
+                  printf("\t\t\t  %X vs %X\n",current_timestamp, frame->timestamp);
+                }
 
-                new_acquisition = 1;
-                frame->timestamp = current_timestamp;
+              for(int i = 0 ; i < NCMAC ; i++)
+                  for(int j = 0 ; j < NCOR; j++)
+                      frame->received_list[i][j] = 0;              
+
+              frame->timestamp = current_timestamp;
+              n_received_frames = 0;
+
             }
+            n_received_frames++;
+            memcpy(frame->data[cmac_number][corr_number], buf, BUFSIZE * sizeof(uint8_t));
+            frame->received_list[cmac_number][corr_number] = 1;
+            frame_timestamps[cmac_number][corr_number] = current_timestamp;
 
-            if(new_acquisition){
-                n_received_frames++;
-                if(current_timestamp != frame->timestamp){
-                    if(verbose)
-                        printf("****Received a frame that has a different timestamp than the last acquisition... Restarting.\n");
-                    new_acquisition = 0;
-                    for(int i = 0 ; i < NCMAC ; i++)
-                        for(int j = 0 ; j < NCOR; j++)
-                            frame->received_list[i][j] = 0;
-                    
-                }else{
+            if(verbose==3 || verbose==4)
+                printf("%5hX %5d %5d %5d\n", frame->timestamp, cmac_number, corr_number, n_received_frames);
 
-                    memcpy(frame->data[cmac_number][corr_number], buf, BUFSIZE * sizeof(uint8_t));
-                    frame->received_list[cmac_number][corr_number] = 1;
+            if(n_received_frames == 8*34){                      
+                if(verbose==1 || verbose == 3){
+                    for(int i = 0 ; i < NCMAC ; i++){
+                        for(int j = 0 ; j < NCOR; j++){
+                            printf("%d ",frame->received_list[i][j]);
+                        }//for j < NCOR
+                        printf("\n");
+                    }//for i < NCMAC
 
-                    if(verbose==2)
-                        printf("%5hX %5d %5d\n", frame->timestamp, cmac_number, corr_number);
+                    for(int i = 0 ; i < NCMAC ; i++){
+                        for(int j = 0 ; j < NCOR; j++){
+                            printf("%d ",frame_timestamps[i][j]);
+                        }//for j < NCOR
+                        printf("\n");
+                    }//for i < NCMAC
+                
+                }//if verbose
 
-                    if(corr_number == 7 && cmac_number == 33){
-                        if(verbose){
-                            for(int i = 0 ; i < NCMAC ; i++){
-                                for(int j = 0 ; j < NCOR; j++){
-                                    printf("%d ",frame->received_list[i][j]);
-                                }//for j < NCOR
-                                printf("\n");
-                            }//for i < NCMAC
-                        
-                        }//if verbose
-
-                        //if we get to this CMAC and CORR, then exit the while loop.
-                        break;
-                    }//if we are at the last corr and cmac
-                }//if timestamps match
-            }//if new_acquisition
+                //if we have received everything, then exit the main loop.
+                break;
+            }//if we are at the last corr and cmac
         }//if we have a correlator frame
     }//while(1)
-  
+    close(sockfd);
     return n_received_frames;
 }
 

@@ -106,7 +106,7 @@ rm = reverse_map(raw_corr_map())
 
 def capture_correlator_burst(N = 100):
     timestamps = np.empty(N, dtype=np.uint)
-    data = np.empty((N, 8, 34, 512), dtype=complex)
+    data = np.empty((N, 16, 16, 1024), dtype=complex)
 
     for i in xrange(N):
         timestamps[i], data[i] = read_correlator_frame()
@@ -117,6 +117,7 @@ def capture_correlator_burst(N = 100):
 def read_correlator_frame(raw = False, portno = 38000, verbose=0, Ncmac = 34, Ncorr = 8, num_products = 512):
 
     '''
+    read_correlator_frame(raw = False, portno = 38000, verbose=0, Ncmac = 34, Ncorr = 8, num_products = 512)
     Read a correlator frame from an iceboard and return the correlation triangle or raw data. 
     This method will call read_raw_correlator_frame() until all CMACs and correlator frames have been received. 
     '''
@@ -149,7 +150,7 @@ def read_correlator_frame(raw = False, portno = 38000, verbose=0, Ncmac = 34, Nc
         i, j = np.tril_indices_from(data[0], -1)
         data[:, j, i] = data[:, i, j].conj()  # fill the upper triangle with the conjugate of the lower
 
-    return timestamp, data
+    return timestamp, np.swapaxes(data, 0, 2)
 
 def read_raw_correlator_frame(udp_port, verbose):
     '''
