@@ -474,7 +474,7 @@ class IceBoardPlus(IceBoard):
                     del(self.crate)
 
             if not self.crate:
-                # Chech is a crate with the same serial number already exists
+                # Check is a crate with the same serial number already exists
                 existing_crate = self.hwm.query(icecrate_class).filter_by(serial=serial)
                 if existing_crate.count():  # If so, assign it to this iceboard
                     self.logger.info(
