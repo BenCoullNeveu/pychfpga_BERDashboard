@@ -14,24 +14,30 @@ import sys
 import time
 import yaml
 import json
+import functools
 
 import tornado
 import tornado.tcpclient
 import tornado.web
 
-# try:
-#     import chrx
-# except ImportError:
-#     chrx = None
-#     print('chrx could not be found. Ignoring.')
-
 import pychfpga  # used to access .calculate_gain.
-from pychfpga import FPGAArray, NameSpace, load_yaml_config
-
+from pychfpga import FPGAArray, NameSpace, load_yaml_config, AgilentN5764AHandler
 from rest import RESTClient, AsyncRESTServer, endpoint, coroutine, coroutine_return, sleep  # generic REST servers and clients
 from kotekan import KotekanAsyncRESTClient
 from chrx import ChrxAsyncRESTClient
 from raw_acq import RawAcqAsyncRESTClient
+
+class Metric(object):
+    def __init__(self, metric_name, value, typ='UNDEFINED' , documentation=' No docs', **labels):
+        self.type = typ.upper()
+        self.doc = documentation
+        self.labels = labels
+        self.value = value
+        self.time = time.time() * 1000
+    def  __str__(self):
+        return ('# HELP %s %s\n' % (self.name, self.doc) +
+               '# TYPE %s %s\n' % (self.name, self.type) +
+               '%s{%s} %s %i' % (self.name, ','.join('%s=%s' % (k,v) for k,v in self.labels), self.value, self.time))
 
 
 def convert_types(val):
@@ -152,6 +158,8 @@ class ChimeMaster(object):
         self.raw_acq = None # Raw FPGA data acquisitoin REST clients
         self.kotekan = None # Kotekan REST clients
         self.fpgas = None # fpga_array object
+        self.power_supplies = None
+        self.log = log
 
         self.PROGRAM = os.path.realpath(__file__) # absolute path name to this module
         self.GIT_VERSION = get_git_version()
@@ -161,6 +169,49 @@ class ChimeMaster(object):
 
     def set_config(self, config):
         self.config = NameSpace(config)
+
+    POWER_SUPPLY_CLASSES = {
+        'AgilentN5764': AgilentN5764AHandler
+        }
+
+    @coroutine
+    def create_power_supplies(self):
+        power_supplies = self.config.power_supplies or {}
+        self.power_supplies = {}
+        for ps in power_supplies:
+            type_ = ps.pop('type')
+            name = ps.pop('name')
+            cls = self.POWER_SUPPLY_CLASSES[type_]
+            self.power_supplies[name] = cls(**ps)
+            self.power_supplies[name].open()
+
+
+    @coroutine
+    def power_on(self):
+        for ps_name, ps in self.power_supplies.items():
+            self.log.info("%.32r: Turning ON power supply '%s'" % (self, ps_name))
+            ps.unlock()
+            ps.power_on()
+            ps.lock()
+
+    @coroutine
+    def power_off(self):
+        for ps_name, ps in self.power_supplies.items():
+            self.log.info("%.32r: Turning OFF power supply '%s'" % (self, ps_name))
+            ps.unlock()
+            ps.power_off()
+            ps.lock()
+
+    @coroutine
+    def monitor_power_supply(self):
+        metrics = []
+        for ps_name, ps in self.power_supplies.items():
+            status = NameSpace(ps.get_status())
+            metrics.append(Metric('fpga_power_supply_voltage', name=ps_name, value=status.voltage, type='gauge'))
+            metrics.append(Metric('fpga_power_supply_current', name=ps_name, value=status.current, type='gauge'))
+            metrics.append(Metric('fpga_power_supply_power', name=ps_name, value=status.power, type='gauge'))
+            metrics.append(Metric('fpga_power_supply_status', name=ps_name, value=status.status, type='gauge'))
+        coroutine_return(metrics)
 
     #####################################
     # CHRX management methods
@@ -265,7 +316,8 @@ class ChimeMaster(object):
 
     @coroutine
     def create_raw_acq_clients(self):
-        # Create RawAcq REST clients: These receive the data processed from the GPUs
+        """ Create RawAcq REST clients.
+        """
         self.raw_acq = []
         for node_params in self.config.raw_acq.node_specific_config:
             self.raw_acq.append(RawAcqAsyncRESTClient(**node_params))
@@ -301,6 +353,7 @@ class ChimeMaster(object):
     @coroutine
     def start(self, **config):
         """ Make the telescope operational by starting and initializing the FPGA F-Engine and the GPU X Engine (Kotekan), CHRX, and raw_acq remote processes. """
+        print('%r: start' % (self))
         if self.state != 'off':
             coroutine_return(dict(error='already started'))
 
@@ -336,15 +389,21 @@ class ChimeMaster(object):
         # Now that the housekeeping is done, let's start the real work
 
         # Create objects to communicates to the remote processes needed to run the array
+        yield self.create_power_supplies()
         yield self.create_chrx_clients() # CHRX nodes receive data processed by the GPU nodes
         yield self.create_kotekan_clients() # Kotekan processes run on the GPU nodes; they receive the data from the FPGAs over dedicated point-to-point FPGA-GPU 10G Ethernet links, perform the correlation on the data, and forward the processed data to the CHRX nodes
         yield self.create_raw_acq_clients() # Raw acq clients receive raw ADC data sent by the FPGA over the control network
 
+
+        # power on the array
+        yield self.power_on()
+
+
         # Create FPGA Array object and and initialize FPGAs
-        yield self.configure_fpgas()
+        yield self.create_fpga_array()
 
         # Read the FPGA setting back from the FPGA
-        log.info("getting configuration data from all FPGAs")
+        log.info("Getting configuration data from all FPGAs")
         self.fpga_conf = yield self.fpgas.get_fpga_config.async()
 
 
@@ -357,7 +416,7 @@ class ChimeMaster(object):
         coroutine_return({})
 
     @coroutine
-    def configure_fpgas(self):
+    def create_fpga_array(self):
         log.info("initializing FPGAs...")
 
         # shortcuts
@@ -633,6 +692,17 @@ class ChimeMaster(object):
     def get_frequency_map(self):
         return self.fpgas.get_frequency_map()
 
+    def run_sync(self, method_name, *args, **kwargs):
+        """ Runs `method_name` in a ioloop and returns when completed"""
+
+        def heartbeat_callback():
+            print('M', end='')
+        heartbeat = tornado.ioloop.PeriodicCallback(heartbeat_callback, 1000).start()
+        return IOLoop.current().run_sync(functools.partial(getattr(self, method_name), *args, **kwargs))
+
+    def run(self):
+        """ Run the IOLoop until interrupted """
+        IOLoop.current().start()
 
 class DummyChimeMaster(ChimeMaster):
     """
@@ -752,6 +822,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
     def get_frequency_map(self, handler):
         coroutine_return(results=self.chime_master.get_frequency_map())
 
+
     @coroutine
     @endpoint
     def abort(self, handler):
@@ -791,6 +862,12 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         else:
             return obj
 
+    @coroutine
+    @endpoint
+    def get_monitoring_data(self, handler):
+        metrics = []
+        metrics.append((yield self.chime_master.monitor_power_supply()))
+        coroutine_return('\n'.join(str(metric) for metric in metrics))
 
 class ChimeMasterRESTClient(RESTClient):
 
@@ -923,8 +1000,7 @@ if __name__ == '__main__':
         cm = ChimeMaster()
         if first_arg:
             print('Starting ChimeMaster object with configuration %s' % first_arg)
-            cm.set_config(load_yaml_config(first_arg))
-            ioloop.run_sync(cm.start)
+            cm.run_sync('start', **load_yaml_config(first_arg))
         else:
             print('No yaml_filename:subconfig_name was specified. Starting an uninitialized ChimeMaster object')
         print("ChimeMaster object is accessible under variable 'cm' in interactive python sessions (ipython -i)")
