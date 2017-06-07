@@ -282,8 +282,9 @@ class chFPGA_receiver(object):
         self.K = X * self.Nch - X*(X+1)/2 + Y
         self.define_sort_array()
 
-        self.raw_corr_map = self.raw_corr_map()
-        self.rm = self.reverse_map(self.raw_corr_map)
+        if self.Ncorr:
+            self.raw_corr_map = self.raw_corr_map()
+            self.rm = self.reverse_map(self.raw_corr_map)
 
 
     def __del__(self):
