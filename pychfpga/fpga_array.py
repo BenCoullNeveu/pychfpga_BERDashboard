@@ -2572,18 +2572,50 @@ def merge_dict(src, dest):
 
 def load_yaml_config(object_names, default_filename='config.yaml'):
     """
-    Loads a YAML file,
-    object_names: String or list of strings describing the name of a YAML files and objects to
-       load. Name of objects are specified by preceding them with a semicolon.
-       Object hierarchy is separated by '.'. An object starting with '.'
-       starts at the same root note as the previous object.
+    Loads one or more elements from a YAML configuration file.
 
-    Returns a dictionary
+    Parameters:
+
+        object_names (str or list of str): String or list of strings describing the name of a YAML
+           files and objects to load.
+
+            [filename :]object_name{.object_name} {[.]object_name{.object_name}}
+
+           Name of objects are specified by preceding them with a semicolon.
+           Object hierarchy is separated by '.'. An object starting with '.'
+           starts at the same root note as the previous object.
+
+        default_filename (str): Filename to use if no file is specified (no semicolon)
+
+    Returns:
+         A Python dictionary
 
     Examples::
-        load_yaml_config('file1.yaml')
-        load_yaml_config('file1.yaml:object1 object2')
-        load_yaml_config('file1.yaml:object1.subitem1 .subitem2)
+        Yaml file *conf.yaml*::
+            obj1:
+                field11: 11
+                obj11:
+                    field111: 111
+                    field112: 112
+                obj12:
+                    field121: 121
+                    field122: 122
+            obj2:
+                field21: 21
+                obj21:
+                    field211: 211
+                    field212: 212
+
+
+        # Loading objects from default conig file
+        load_yaml_config('obj1')  -> {field11: ..., obj11: ..., obj12: ...}
+        load_yaml_config('obj1 obj2')  -> {field11: ..., obj11: ..., obj12: ..., field21: ..., obj21: ...}
+        load_yaml_config('obj1.obj11 obj2')  -> {field111: ..., field112: ..., field21: ..., obj21: ...}
+        load_yaml_config('obj1.obj11 .obj12')  -> {field111: ..., field112: ...,  field121: ..., field122:...}
+
+        # With a specific filename
+        load_yaml_config('conf.yaml:obj1 obj2')
+
 
     """
         # -------------------------------
@@ -2612,17 +2644,14 @@ def load_yaml_config(object_names, default_filename='config.yaml'):
         raise ValueError('Only one filename can be specified')
 
     yaml_filename = yaml_args[0] or default_filename
-    if not os.exist(yaml_filename):
-        yaml_filename = default_filename
-        yaml_args = [] + yaml_args
 
     print yaml_filename
-    if len(yaml_args) == 1:
-        yaml_objects = ['']
+    if len(yaml_args) == 1: # if there is no semiciin, it's either a filename or a object
+        yaml_filename = default_filename
+        yaml_objects = yaml_args[0].split()
     elif len(yaml_args) == 2:
+        yaml_filename = yaml_args[0]
         yaml_objects = yaml_args[1].split()
-    else:
-        raise ValueError('Only one filename can be specified')
 
     logger.info('Loading YAML file %s' % (yaml_filename))
     print 'Loading YAML file %s' % yaml_filename
