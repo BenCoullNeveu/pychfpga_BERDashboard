@@ -4,6 +4,7 @@ from __future__ import absolute_import, division, print_function
 import os
 import sys
 import argparse
+import logging
 
 from Queue import Queue
 import SocketServer
@@ -461,8 +462,16 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
     All methods are Tornado coroutines so that operations can be performed concurrently on multiple nodes.
     The client will operate only if the IOloop is running.
     """
-    def __init__(self, name='RawAcq', host='localhost', port=80, **kwargs):
+    def __init__(self, name='RawAcq', host='localhost', port=80, create_server=False, **kwargs):
+        self.log = logging.getLogger()
 
+        if create_server:
+            host = 'localhost'
+            self.log.info('%32r: Creating RawAcq local server at %s:%i' % (self, host, port))
+            self.server = RawAcqAsyncRESTServer(port)
+            self.server.add_heartbeat(period=1000, heartbeat_string='R')
+
+        self.log.info('%32r: Creating RawAcq Client at %s:%i' % (self, host, port))
         super(RawAcqAsyncRESTClient, self).__init__(host=host, port=port)
         self.name = name
         self.config = kwargs
