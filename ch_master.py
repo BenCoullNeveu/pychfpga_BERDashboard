@@ -977,6 +977,8 @@ if __name__ == '__main__':
         #################
         print('Starting CHIME Master REST server on %s:%i' % (args.host, args.port))
         cms = ChimeMasterAsyncRESTServer(port=args.port, dummy=args.debug, gpu_config_file=args.gpus) # server will be added to the current ioloop
+        if len(args.args) > 1:
+            cms.run_sync('start', None, load_yaml_config(args.args[1:]))
         ioloop.start()
         cm = cms.chime_master
         print("CHIME Master REST server has stopped and is accessible under variable 'cms' in interactive python sessions (ipython -i).")
