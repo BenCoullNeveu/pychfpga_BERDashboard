@@ -32,15 +32,16 @@ from raw_acq import RawAcqAsyncRESTClient
 
 class Metric(object):
     def __init__(self, metric_name, value, typ='UNDEFINED' , documentation=' No docs', **labels):
+        self.metric_name = metric_name
         self.type = typ.upper()
         self.doc = documentation
         self.labels = labels
         self.value = value
         self.time = time.time() * 1000
     def  __str__(self):
-        return ('# HELP %s %s\n' % (self.name, self.doc) +
-               '# TYPE %s %s\n' % (self.name, self.type) +
-               '%s{%s} %s %i' % (self.name, ','.join('%s=%s' % (k,v) for k,v in self.labels), self.value, self.time))
+        return ('# HELP %s %s\n' % (self.metric_name, self.doc) +
+               '# TYPE %s %s\n' % (self.metric_name, self.type) +
+               '%s{%s} %s %i' % (self.metric_name, ','.join('%s=%s' % (k,v) for k,v in self.labels.items()), self.value, self.time))
 
 
 def convert_types(val):
