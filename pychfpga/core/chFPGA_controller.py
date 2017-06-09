@@ -2925,24 +2925,33 @@ class chFPGA_controller(IceBoardExtHandler):
 
         elif test_name=='rand_complex_C':
             for data_set_number in xrange(trials):
-                print 'Trial #%i' % data_set_number
-                data=(np.floor(np.random.rand(16,1024)*4-2) + 1j*np.floor(np.random.rand(16,1024)*4-2))
+
+                data=(np.floor(np.random.rand(16,1024)*4-2) + 1j*np.floor(np.random.rand(16,1024)*4-2)) 
 
                 trial = 0
                 while True:
                     self.set_channelizer_outputs(data)
-                    self.start_correlator(integration_period=integration_period, verbose=verbose)
+                    
+                    self.start_correlator(integration_period=integration_period, verbose=(0 if trial == 0 else 0))
+                    
                     self.sync()
                     p = self.compute_corr_output(data, integration_period=integration_period)
                     timestamp,f = ir.read_correlator_frame(verbose=verbose)
-                    print "\t{0:d}".format(timestamp)
+                    f = np.swapaxes(f, 0, 2)
+                    
+
                     match = np.all(p==f)
                     if match:
+                        if data_set_number % 10 == 0 and data_set_number > 0:
+                            print '[{3:s}]: Test #{0:d}/{1:d}; trial {2:d}'.format(data_set_number, trials, trial, datetime.now().strftime("%H:%M:%S.%f"))
+                            print "\t{0:d}".format(timestamp)
                         break
                     trial += 1
                     if trial < 10:
-                        print 'Frames did not match! Retrying after rewriting the test data again...'
-                        print p - f
+                        print 'Trial {0:d} frames did not match! Retrying after rewriting the test data again...'.format(trial)
+                        if(verbose):
+                            print "Difference: "
+                            print p - f
                     else:
                         print 'Cannot make frames match!'
                         return match, data, p, f

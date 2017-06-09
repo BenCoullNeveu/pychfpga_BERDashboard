@@ -200,7 +200,7 @@ def calc_gains(g):
     return glin, glog.data
 
 
-def calculate_gains(c, port):
+def calculate_gains(c, port, gains_path="./digital_gains"):
     c.set_data_source('adc')
     c.set_adc_mode('data')
     c.set_fft_bypass(0)
@@ -257,7 +257,7 @@ def calculate_gains(c, port):
     c.freq_flags = flags
 
     #print "Gain:", gain
-    write_path = "/home/sean/work/cosmology/suit/DAQ/digital_gains/d{0:s}/SN{1:s}_{2:s}.pkl".format(datetime.now().strftime("%Y%m%d"), 
+    write_path = gains_path + "/d{0:s}/SN{1:s}_{2:s}.pkl".format(datetime.now().strftime("%Y%m%d"), 
                                                                                                 str(c.get_motherboard_serial()), 
                                                                                                 datetime.now().strftime("%H%M%S"))
     if not os.path.exists(os.path.dirname(write_path)):
