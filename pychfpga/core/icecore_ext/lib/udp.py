@@ -63,7 +63,13 @@ class Udp(object):
             # sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
             #self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) # don't use REUSEADDR: many sockets get open and we then fail to receive replies
 
-            # Bind the UDP port to the specified interface.
+            # Bind the UDP port to the specified interface .
+            #
+            # By binding the socket, we set the source port and source address (intrface address) of
+            # outgoing packets, and we allow the socket to receive packets with in the same
+            # interfaceand port number. the desired values. The FPGA will send replies back to
+            # this/port
+            #
             # We need to specify the interface explicitely because the packet might be sent over the wrong (default) interface (which happened when the 10GbE was connected to the FPGA).
             self.sock.bind((self.if_ip_addr, self.local_port_number))
             (addr, port) = self.sock.getsockname()
