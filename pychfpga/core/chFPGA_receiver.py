@@ -4,9 +4,9 @@
 
 """
 chFPGA_reader.py module
- Implements the classes that read the data streams coming from chFPGA.
+Implements the classes that read the data streams coming from chFPGA.
 
- History:
+History:
     2012-07-19 JFC: Created
     2012-10-17 JFC: Modified behavior of receiver for:
         a) If send_every_frame=False, discard the first block of frames after flush() avoid sending partial frame blocks

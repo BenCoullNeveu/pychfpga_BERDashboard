@@ -32,6 +32,8 @@ sys.path.insert(1, os.path.abspath("../../"));
 # sys.path.insert(5, os.path.abspath("../tests"));
 
 print 'sys.path=', sys.path
+#import pychfpga.core
+#print pychfpga.core
 
 autosummary_generate = True
 
@@ -284,6 +286,18 @@ texinfo_documents = [
 # If true, do not generate a @detailmenu in the "Top" node's menu.
 #texinfo_no_detailmenu = False
 
+#autodoc_mock_imports = ['test-report', 'tuber', 'pyplot','tests','tests.xreport', 'xreport', 'tkinter', 'Tkinter', '_tkinter','tornado', 'tornado.gen', 'pybonjour', 'pygtk', 'gtk', 'gobject', 'argparse', 'numpy', 'pandas',  'sqlalchemy']
+#autodoc_mock_imports = ['icecore', 'xreport',  'matplotlib.pyplot', '_tkinter']
+#print '**** Mock Modules:', autodoc_mock_imports
+#autodoc_mock_imports = ['test-report',
+import mock
+ 
+MOCK_MODULES = ['scipy', 'scipy.stats', 'scipy.special', 'scipy.optimize', 'scipy.interpolate', 'scipy.integrate', \
+                'pymc', 'matplotlib', \
+                'matplotlib.pylab', 'matplotlib.pyplot', '_tkinter', 'Tkinter', 'matplotlib.backends', 'matplotlib.backends.backend_tkagg', \
+                'matplotlib.figure', 'astropy', 'astropy.table']
+for mod_name in MOCK_MODULES:
+   sys.modules[mod_name] = mock.Mock()
 
 napoleon_use_rtype = False
 
