@@ -171,9 +171,10 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         FPGA."""
         self.mmi.write(*args, **kwargs)
 
-    # def spi_mmi_read(self, addr): """ Read a single 32-bit word at specified
-    #     byte address through the ARM<->FPGA SPI link.""" return
-    #     self._fpga_spi_peek(addr)
+    # def spi_mmi_read(self, addr):
+        # """ Read a single 32-bit word at specified
+        #     byte address through the ARM<->FPGA SPI link."""
+        # return self._fpga_spi_peek(addr)
 
     # def spi_mmi_write(self, addr, value): """ Write a single 32-bit word at
     #     specified byte address through the ARM<->FPGA SPI link."""
@@ -340,9 +341,18 @@ class IceBoardExtHandler(IceBoardPlusHandler):
             return False
 
     def check_command_count(self, reset=False):
-        """ Returns a boolen that checks if the number of command and replies sent to/from the FPGA
+        """ Check UDP communication command/reply synchronization and optionally reset counts.
+
+        Checks if the number of command and replies sent to/from the FPGA
         by the Python memory mapped interface matches the counts tallied by the FPGA
         firmware.
+
+        Parameters:
+            reset (bool): If true, reset the counts so the counts will be synchronized for the next command
+
+        Returns:
+            True if the communication (before the optional reset) is in sync.
+
 
         Since both ends drop packets that have invalid CRCs, this should
         detect any transmission error in addition to UDP packets dropped by
@@ -360,21 +370,75 @@ class IceBoardExtHandler(IceBoardPlusHandler):
             self.mmi.recv_counter = rply
         return valid
 
-    def set_fpga_control_networking_parameters(self, fpga_mac_addr=None, fpga_ip_addr=None, fpga_port_number=_FPGA_CONTROL_BASE_PORT, local_port=0):
-        """ Set the FPGA UDP networking parameters using the ARM SPI MMI link.
-        'fpga_ip_addr' is a mandatory string in the format of 'a.b.c.d', where a,b,c and d are decimal numbers.
+    def set_fpga_control_networking_parameters(
+            self,
+            fpga_mac_addr=None,
+            fpga_ip_addr=None,
+            fpga_port_number=_FPGA_CONTROL_BASE_PORT):
+        """
+        Set the FPGA listening UDP networking parameters for the FPGA's *incoming* control packets
+        using the ARM SPI MMI link.
 
-        'fpga_port_number' is the port to which command packets are sent to on the FPGA. This port is 41000 by default.
+        This method sets the FPGA's listening addresses while assuming that the FPGA's is in
+        addressing mode "00" (the default addressing mode),  which means that the channel 0
+        IP/PORT/MAC will be set through the ARM-FPGA SPI registers [#f1]_.
 
-        'fpga_mac_addr' is a string representing the MAC address of the FPGA in the format 'xx:xx:xx:xx:xx:xx, where
-        'xx' is a hex number'. If fpga_mac_addr is None, an arbitrary MAC address is
-        created using the IP address to ensure its uniqueness.
+        Parameters:
 
-        'local port' is the port number to which command replies are sent
-        back. If 'local_port' is 0 (default), the command reply packets will
-        be sent back to source port number of the last command packet received
-        by the FPGA (which presumably is the command that sollicited the
-        reply) .
+            fpga_ip_addr (str):  Address at which the FPGA listens for commands. The address is  in
+                the format of 'a.b.c.d', where a,b,c and d are decimal numbers.
+
+            fpga_port_number (int): Port on which the FPGA listens for commands. This port is 41000
+                by default. It is independent from the port from which the host computer sends and
+                receives packets, which can be any port.
+
+            fpga_mac_addr (str): MAC address of the FPGA in the format
+                'xx:xx:xx:xx:xx:xx, where 'xx' is a hex number'. If fpga_mac_addr is None, an
+                arbitrary MAC address is created using the IP address to ensure its uniqueness.
+
+        While this method sets up the FPGA's *incoming* traffic network parameters (in other forts,
+        the FPGA listring address), the network parameters for the *outgoing* data is set
+        differently. The outgoing data is sent through either UDP transmit channels 0 or 1.
+
+        The channel on which the *commands* are returned is set by the FPGA GPIO field
+        CTRL_RPLY_IP_PORT_OFFSET. This is set to channel '0' by default, and should not be changed.
+
+        UDP channel 0 sends packets with the following destination:
+
+            * target ip address: Is hardwired to use the source IP of the last valid IP packet
+              received
+            * target mac address: Is hardwired to use the source MAC address of the last valid
+              packet received
+            * target port number: Is set in the in the lower 16-bits of the SPI register
+              _REMOTE_IP_PORT_ADDR. The default is a value of 0, meaning that the target port will
+              be the source port number of the last valid received packet. This default should
+              normally not be changed. There is no direct method provided in this class to override
+              the default. This method does not affect this parameter.
+
+        With the default configuration, the user can bind a UDP socket to any port (or let the
+        system choose by specifying port 0 to the bind() method).  The outgoing command packets will
+        have the source IP and source port set to that value, and reply packets will automatically
+        come back to this port without having to set up the return port manually. Letting the socket
+        choose ports allows the system to easily connect to multiple boards without having to ensure
+        the availability of specific ports. Note that is might be necessary to bind the socket to a
+        specific interface address in case there are multiple interfaces in the system.
+
+
+        UDP Channel 1 is generally used to send back data to the host computer. See
+        `set_data_target_address` for a decription of that channel.
+
+        ----------
+
+
+        _[#f1] '00' is the default FPGA addressing mode. Other modes are designed to allow setting
+        the FPGA networking address without the help of the ARM processor and are not used. The
+        addressing mode is changed by causing a rising edge on the GPIO registers TARGET_LOAD while
+        TARGET_FPGA_SERIAL_NUMBER matches the serial number of the FPGA. This is a feature meant to
+        allow ARM-less configuring of the FPGA through broadcasting, but we don't use it here since
+        it's much , easier to go through the ARM, which can get its networking parameters
+        automatically through DHCP.
+
+
         """
 
         ip_packed = socket.inet_aton(fpga_ip_addr)  #
@@ -397,9 +461,15 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         self.fpga_mmi_write(self._FPGA_IP_ADDR_ADDR, struct.unpack('>I', ip_packed)[0])
 
     def set_local_data_port_number(self, port):
-        """ Sets the port number to which the FPGA is sending its captured data stream on the control network.
+        """
+        Sets the port number to which the FPGA is sending the data for UDP channel 1. Use
+        `set_data_target_address' instead.
 
-        If port==0, the data is sent to the control port number + 1.
+        Parameters:
+
+            port (int); target port number. If port==0, the data is sent to the source port number of the last received valid packet  + 1.
+
+        Does not change the target MAC or IP address.
         """
         word = self.fpga_mmi_read(self._REMOTE_IP_PORT_ADDR)
         self.fpga_mmi_write(self._REMOTE_IP_PORT_ADDR, (word & 0xFFFF) | (port << 16))
@@ -410,8 +480,80 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         return self.fpga_mmi_read(self._REMOTE_IP_PORT_ADDR) >> 16
 
 
+    def set_data_target_address(self, ip_addr=None, port=None, mac_addr=None):
+        """
+        Sets the IP address, port number and MAC address to which data is sent back to the host comptuter.
+
+        This method sets the target address for data sent back to the host computer through the UDP
+        channel 1.
+
+        UDP Channel 1 (a.k.a the data channel) is generally used to send data back to the host
+        computer through the control Ethernet interface but on a different port. This channel is
+        usually used to send low-bandwidth data, and is not to be confussed with dedicated data
+        channels such as the 10G Ethernet links to GPU nodes.
+
+        The GPIO fields `DATA_IP_PORT_OFFSET` and `CORR_IP_PORT_OFFSET` set on which UDP channels is
+        sent the data generated by the raw data capture (PROBER) or correlator (CORR44) subsystems,
+        respectively. Both are set to UDP Channel 1 by default.
+
+        UDP Channe1 1 target address is set and behaves differnetly than UDP channel 0, and is
+        networking parameters are set by the method parameters `ip_addr`, `port` and `eth_addr`.
+
+        Parameters:
+
+            ip_addr (str):  Destination IP Address to which the FPGA send the UDP Channel 1 packets. The address is
+                in the format of 'a.b.c.d', where a,b,c and d are decimal numbers. If `ip_addr` is
+                '0.0.0.0' or None, then data will be sent back to the source address of the last
+                valid received control packet.
+
+            port (int): Destination port to which the FPGA sends UDP Channel 1 packets. If `port` is
+                0, the packets will be sent to the the source port of the last valid received
+                control packet **plus one**.
+
+            mac_addr (str): Destination MAC address to which the FPGA will sends UDP Channel 1
+                packets. It is in the format 'xx:xx:xx:xx:xx:xx, where 'xx' is a hex number'. If
+                fpga_mac_addr is None or '00:00:00:00:00:00', the packets will be sent to the the
+                source MAC address of the last valid received control packet.
+
+        After initializarion, all three parameters are set to zero, meaning that if the FPGA
+        receives control packets from port x, data will be sent back to the same host on port x+1.
+        This implies that the host was able to allocate two consecutive UDP port addresses for
+        control and data sockets. It is usually easier to let the operating system assign a random
+        port and set that pot number explicitely with a non-zero value.
+
+
+        The Channel 1 addressing described above is valid for addressing mode '00' (the only mode
+        available to this module, see [#F1]) In this mode, the IP address and MAC address are set by
+        the GPIO registers TARGET_MAC_ADDR and TARGET_IP_ADDR. The port number is set by the lower
+        16 bits of the SPI register _REMOTE_IP_PORT_ADDR  (GPIO's TARGET_IP_PORT is *not* used). The
+        Channel 1 destination addresses are set differently in other addressing modes.
+
+        """
+        if not ip_addr:
+            ip_addr_int = 0
+        else:
+            ip_addr_int = struct.unpack('>L',socket.inet_aton(ip_addr)) # Ip address, as an integer
+
+        if not mac_addr:
+            mac_addr_int = 0
+        else:
+            mac_addr_int = sum(int(s, 16) << (8 * i) for i, s in enumerate(reversed(mac_addr.split(':'))))
+
+        # Set the UDP transmit channel 1 IP and MAC addresses
+        self.core_gpio.TARGET_MAC_ADDR = mac_addr_int
+        self.core_gpio.TARGET_IP_ADDR = ip_addr_int
+
+        # Set the UDP  Channel 1 outgoing packet destination port number, on the ARM-FPGA SPI registers
+        word = self.fpga_mmi_read(self._REMOTE_IP_PORT_ADDR)
+        self.fpga_mmi_write(self._REMOTE_IP_PORT_ADDR, (word & 0xFFFF) | (port << 16))
+
+
+
+
     def get_fpga_firmware_cookie(self, resync=False):
         """
+        Get the FPGA firmware cookie.
+
         Reads the FPGA over the UDP link and returns the cookie that
         identifies the firmware. This method can be called before any FPGA
         modules are instatiated.
@@ -502,59 +644,6 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         else:  # If not McGill format,
             self.logger.debug("%.32r: EEPROM in Mezzanine %i is not McGill format. The FPGA will *NOT* read the EEPROM contetnt " % (self, mezzanine))
             async_return(None)
-
-    # def _get_mezzanine_mcgill_ipmi(self, mezzanine, retry=3, use_cache=False):
-    #     """ Returns the IMPI data for the mezzanine located on slot
-    #     'mezzanine' (1 or 2). Returns None if no mezzanine is present.
-
-    #     This method overrides the ARM method of the same name so we can
-    #     correctly read MGADC08 mezzanines which have a non-standard EEPROM
-    #     data structure.
-
-    #     if ``use_cache = False``, the method also does not use the IPMI data cached by the ARM but
-    #     rather re-reads the EEPROM. This is useful in case the mezzanine has
-    #     been changed without power cycling the IceBoard (which is typically
-    #     done during Quality Control runs).
-
-    #     Todo:
-    #         - Should be made asynchronous
-    #     """
-    #     if not self.is_mezzanine_present(mezzanine):  # Check mezzanine presence using the FMC PRSNT line.
-    #         return None
-
-    #     if use_cache:
-    #         try:
-    #             # *** JFC: broken now. fixme
-    #             return tuber.TuberObject.__getattr__(self,'_get_mezzanine_ipmi')(mezzanine)  # Try to get the ipmi data from tuber
-    #         except tuber.TuberRemoteError:
-    #             pass
-    #         # Tuber has nothing, so see if we have a Python-cached version of the IPMI data
-    #         if self._mezzanine_ipmi_cache[mezzanine]:
-    #             return self._mezzanine_ipmi_cache[mezzanine]
-
-    #     self._mezzanine_ipmi_cache[mezzanine] = None
-
-    #     # We can't use the cache, or the ARM cannot understand the EEPROM format, so read and decode the IPMI data ourselves
-    #     eeprom_data = base64.decodestring(self._mezzanine_eeprom_read_base64(mezzanine))
-
-
-
-    #     self._mezzanine_ipmi_cache[mezzanine] = fru
-    #     return fru
-
-    # def _get_mezzanine_type(self, mezzanine):
-    #     """ Returns the type of mezzanine located on slot 'mezzanine' (1 or 2).
-    #     Returns None if no mezzanine is present.
-
-    #     This method overrides the ARM method of the same name so we can call
-    #     our own _get_mezzanine_ipmi() which can correctly read non-standard
-    #     MGADC08 EEPROM data structure.
-    #     """
-    #     ipmi = self._get_mezzanine_mcgill_ipmi(mezzanine)
-    #     if ipmi and hasattr(ipmi,'product') and hasattr(ipmi.product, 'part_number'):
-    #         return ipmi.product.part_number
-    #     else:
-    #         return None
 
     # ---------------------------------------------------------
     # IRIG-B time support methods
