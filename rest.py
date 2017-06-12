@@ -31,13 +31,13 @@ class RESTClient(object):
     DEFAULT_HOST = 'localhost'
     DEFAULT_PORT = 54321
 
-    def __init__(self, host=DEFAULT_HOST, port=DEFAULT_PORT):
-        self.host = host
+    def __init__(self, hostname=DEFAULT_HOST, port=DEFAULT_PORT):
+        self.hostname = hostname
         self.port = port
         self.log = logging.getLogger()
 
     def __repr__(self):
-        return '%s(%s:%s)' % (self.__class__.__name__, self.host, self.port)
+        return '%s(%s:%s)' % (self.__class__.__name__, self.hostname, self.port)
 
     def print(self, msg):
         print(msg)
@@ -50,19 +50,19 @@ class RESTClient(object):
         raise
 
     def url(self, endpoint):
-        return 'http://%s:%d/%s' % (self.host, self.port, endpoint)
+        return 'http://%s:%d/%s' % (self.hostname, self.port, endpoint)
 
     def get(self, endpoint):
         try:
             return requests.get(self.url(endpoint), timeout=self.TIMEOUT).json()
         except requests.exceptions.ConnectionError:
-            self.error("Can't connect to REST server at %s:%d for GET request" % (self.host, self.port))
+            self.error("Can't connect to REST server at %s:%d for GET request" % (self.hostname, self.port))
 
     def post(self, endpoint, **kvs):
         try:
             return requests.post(self.url(endpoint), json=kvs, timeout=self.TIMEOUT).json()
         except requests.exceptions.ConnectionError:
-            self.error("Can't connect to REST server at %s:%d for PORT request" % (self.host, self.port))
+            self.error("Can't connect to REST server at %s:%d for PORT request" % (self.hostname, self.port))
 
 class AsyncMixin(object):
     """ Adds heartbeat, keyboard interrupt and shutdown handling methods"""
@@ -124,8 +124,8 @@ class AsyncRESTClient(AsyncMixin):
     DEFAULT_HOST = 'localhost'
     DEFAULT_PORT = 80
 
-    def __init__(self, host=DEFAULT_HOST, port=DEFAULT_PORT):
-        self.host = host
+    def __init__(self, hostname=DEFAULT_HOST, port=DEFAULT_PORT):
+        self.hostnamename = hostname
         self.port = port
         self.log = logging.getLogger()
         self.client = tornado.httpclient.AsyncHTTPClient()
@@ -133,7 +133,7 @@ class AsyncRESTClient(AsyncMixin):
         self.add_shutdown_handler()
 
     def url(self, endpoint):
-        return 'http://%s:%d/%s' % (self.host, self.port, endpoint)
+        return 'http://%s:%d/%s' % (self.hostname, self.port, endpoint)
 
     @coroutine
     def post(self, endpoint, **kws):
@@ -206,12 +206,14 @@ class AsyncRESTServer(AsyncMixin):
     """
     Creates a Tornado Web application that will call the endpoint handlers registered with the RESTserver.endpoint decorator.
 
-    GET and POST endpoint methods are coroutines and are tagged with the @endpoint decorator.
+    GET endpoint methods are coroutines and are tagged with the @endpoint decorator:
+
         @coroutine
         @endpoint
         def my_GET_endpoint_method(self, handler):
             ...
 
+    POST endpoints are similarly defines::
 
         @coroutine
         @endpoint
@@ -238,14 +240,27 @@ class AsyncRESTServer(AsyncMixin):
 
     User can signal an error condition by raising an exception or by returning a dictionary with the 'error' key.
     """
-    def __init__(self, port=80):
 
+
+    def __init__(self, hostname='', port=80):
+        """ Create a Web server responding to the endpoints defined in the class.
+
+        Parameters:
+
+            hostanme (str): if specified, selects on which interface the server will respond to
+                requests. If left empty, the server will respond to all interfaces. If a hostname is
+                given (as opposed to a IP address), all IP addresses associated with thtis hostname will
+                be used.
+
+            port (int): Port number to which the server will listen to requests. Defaults to port 80.
+
+        """
         self.port = port
         self.log = logging.getLogger()
         # Create the endpoints registered with the @endpoint decorator
         endpoints = [self._create_endpoint(*info) for info in self.get_endpoint_info()]
         self.app = tornado.web.Application(endpoints) # Create the Web application serving those endpoints
-        self.http_server = self.app.listen(self.port) # Create the web server on the target port in the current ioloop.
+        self.http_server = self.app.listen(self.port, hostname=hostname) # Create the web server on the target port in the current ioloop.
         self.add_heartbeat()
         self.add_shutdown_handler()
         # The server will run when the ioloop is started.
@@ -261,6 +276,24 @@ class AsyncRESTServer(AsyncMixin):
         return info
 
     def _create_endpoint(self, method_name, endpoint_name, method_args):
+        """ Create an handler tuple (endpoint, handler) for the method `method_name`.
+
+        Parameters:
+
+            method_name (str): Name of the method in this class that handles the endpoint.
+                The method must have been decorated @endpoint so it will have been registered.
+
+            endpoint_name (str): Name to be used for the end point on the HTTP requests. Utually the
+                same as the method name, with undrscores replaced by dashes.
+
+            method_args (dict): dictionary listing the method parameters. If there are more than two
+                (i.e. self and handler), this will be a POST endpoint, otherwise it will be a GET.
+
+        Returns: A endpoint handler tuple (endpoint_name, handler) that will be passed to the
+            :meth:`tornado.web.Application()` to answer to that secific handler by calling the
+            target method with the passed argument (if a POST request).
+
+        """
             method = getattr(self, method_name)
             has_args = len(method_args) > 2  # any other arguments beyound the mandatory 'self' and 'handler'?
             print('%s: Creating a REST %s endpoint %s for method %s(%s)' % (self.__class__.__name__, ('GET','POST')[has_args], endpoint_name, method_name, ', '.join(method_args)))
