@@ -206,7 +206,7 @@ class ChimeMaster(object):
     def monitor_power_supply(self):
         metrics = []
         for ps_name, ps in self.power_supplies.items():
-            status = NameSpace(ps.get_status())
+            status = NameSpace(ps.status())
             metrics.append(Metric('fpga_power_supply_voltage', name=ps_name, value=status.voltage, type='gauge'))
             metrics.append(Metric('fpga_power_supply_current', name=ps_name, value=status.current, type='gauge'))
             metrics.append(Metric('fpga_power_supply_power', name=ps_name, value=status.power, type='gauge'))
@@ -318,33 +318,57 @@ class ChimeMaster(object):
     def create_raw_acq_clients(self):
         """ Create RawAcq REST clients.
         """
-        self.raw_acq = []
-        for node_params in self.config.raw_acq.node_specific_config:
-            self.raw_acq.append(RawAcqAsyncRESTClient(**node_params))
+        self.raw_acq = {}
+        for node_name, node_params in self.config.raw_acq.nodes.items():
+            self.raw_acq[node_name] = RawAcqAsyncRESTClient(name=node_name, **node_params)
 
+    def get_iceboards(ib):
+        if isinstance(ib, (tuple, list)):
+            crate_number = ib[0] if len(ib)>1 else None
+            slot_number = ib[1] if len(ib)>2 else None
+        else:
+            raise ValueError('Unknown iceboard ID %s', ib)
+        iceboards = []
+        for ib in self.fpgas.ib:
+            ib_id = ib.get_id()
+            if (crate_number is None or crate_number == ib_id[0]) and (slot_number is None or slot_number== ib_id[1]):
+                iceboards.append[ib]
+        return iceboards
 
-    def setup_raw_data_capture(self):
-        # Raw Data capture should be coordinated with the corresponding raw data receiver.
-        # Destination IP and port number should be set-up appropriately
-        # So for now we'll disable data capture below
-        #
-        # for ib in ca.ib:
-        #     ib.set_local_data_port_number((ib.slot or 1) + 41100)
-        #     ib.start_data_capture(period=30, source='adc', offset=(ib.slot or 1) - 1)
+    @coroutine
+    def start_raw_acq(self):
+        """ Start raw data acquisition by setting up the FPGAs and RawAcq servers
+        """
+        conf = self.config.raw_acq
 
-        return # bypass code below
-        rdc = self.config.raw_data_receivers
-        for receiver_name, params in rdc:
-            (crate, slot) = params.source
-            if slot=='*':
-                ibs=self.ic.get(crate_number=crate).slot.values()
-            else:
-                ibs=self.ic.get(crate_number=crate).slot[slot]
+        # Gather all iceboards for each RawAcq node
+        node_ibs = {}
+        for node_name, node_conf in conf.nodes.items():
+            node_ibs[node_name] = {}
+            for ib in node_conf.iceboards:
+                node_ibs[node_name].update(self.get_iceboards(ib))
+
+        # Check that an iceboard is assigned to only one server
+        for node_name, ibs in node_ibs.items():
+            if not all(ibs.isdisjoint(other_ibs) for  other_name, other_ibs in node_ibs.items() if other_name != node_name):
+                raise RuntimeError('Some FPGA board(s) is/are assigned to send raw data to multiple RawAcq nodes. Check your config')
+
+        # Start each RawAcq server with a port for each assigned iceboard. For each port, we provide
+        # the address of the (only) source FPGA board. The server will ping this address back to
+        # set-up the switches routing tables and figure out on which interface the data will be
+        # arriving. It will then return the addresses (ip_addr, port, mac_addr) to which the data
+        # should be sent.
+        for node_name, ibs in node_ibs.items():
+            node = self.raw_acq[node_name]
+            recv_name = '%sRecv' % node_name
+            recv_ports = [dict(port='%sPort%i' % (recv_name, i), sources=[(ib.hostname, 80)])
+                          for i, ib in enumerate(ibs)]
+            start_result = node.start(name=recv_name, ports=recv_ports)
+            targets = start_result['target_addr']
             for ib in ibs:
-                # should we get the port from the receiver?
-                ib.set_data_capture_target(target_ip=params.ip, target_port = params.port) # and MAC address?
-                ib.start_data_capture(period=params.period, source=params.source, offset=params.offset)  # offset was (ib.slot or 1) - 1
-
+                ip_addr, port, eth_addr = targets[(ib.hostname, 80)]
+                ib.set_data_target_address(ip_addr, port, eth_addr)
+        self.log.info('%.32r: RawAcq server setup successfully' % self)
 
     def set_state(self, new_state):
         """ Sets the state to a specified value. Used for debugging. """
@@ -501,7 +525,7 @@ class ChimeMaster(object):
         # ca.ib.sync()
 
         # Setup raw data capture transmission
-        self.setup_raw_data_capture()
+        self.start_raw_acq()
 
         # Setup noise injection for normal operation
         self.setup_noise_injection(conf.fpga.noise_injection)
@@ -866,7 +890,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
     @endpoint
     def get_monitoring_data(self, handler):
         metrics = []
-        metrics.append((yield self.chime_master.monitor_power_supply()))
+        metrics.extend((yield self.chime_master.monitor_power_supply()))
         coroutine_return('\n'.join(str(metric) for metric in metrics))
 
 class ChimeMasterRESTClient(RESTClient):
