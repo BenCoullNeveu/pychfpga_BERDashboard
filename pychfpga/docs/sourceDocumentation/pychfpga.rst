@@ -1,9 +1,18 @@
-pychfpga Source Code Documentation
-==================================
+:mod:`pychfpga` Package
+=======================
 
-This is a holder page for the pychfpga module.
+The `pychfpga` package defines the modules and classes needed to operate an array of ICE hardware (ICE motherboards, ICE backplanes, CHIME ADC Mezzanines) and the CHIME-specific chFPGA firmware functions provided by the motherboard's FPGA.
 
-.. :ref:`FPGA link <fpga: clocking>`
+
+.. toctree::
+   :hidden:
+
+   fpga_array
+   chFPGA_controller
+   chFPGA_receiver
+   icecore
+   icecore_ext
+   IceBoard
 
 
 List of Modules
@@ -13,16 +22,22 @@ List of Modules
 
 .. autosummary::
    :nosignatures:
-   :toctree: generate
 
    fpga_array
+   fpga_array.FPGAArray
+   core.chFPGA_controller
+   core.chFPGA_controller.chFPGA_controller
+   core.chFPGA_receiver
    core
    core.icecore
    core.icecore_ext
-   core.chFPGA_receiver
-   core.chFPGA_controller
    core.icecore.IceBoard
-
+   core.icecore.IceBoardHandler
+   core.icecore.IceBoardHandler
+   core.icecore.IceBoardPlusHandler
+   core.icecore.async
+   core.icecore.Ccoll
+   core.icecore.NameSpace
 
 
 

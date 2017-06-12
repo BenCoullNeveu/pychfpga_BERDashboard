@@ -15,7 +15,7 @@ The ``pychfpga`` package is the Python framework that is used to operate the FPG
    howto/takeData
    sourceDocumentation/pychfpga
    sourceDocumentation/script_documentation
-   sourceDocumentation/sphinx_paramlinks
+   sphinx_paramlinks/sphinx_paramlinks
 
 Indices and tables
 ------------------

@@ -35,7 +35,7 @@ print 'sys.path=', sys.path
 #import pychfpga.core
 #print pychfpga.core
 
-autosummary_generate = True
+# autosummary_generate = True
 
 # -- General configuration ------------------------------------------------
 

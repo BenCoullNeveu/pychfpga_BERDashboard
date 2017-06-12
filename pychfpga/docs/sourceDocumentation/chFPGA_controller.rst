@@ -1,5 +1,5 @@
-chFPGA\_controller\.chFPGA\_controller
-======================================
+:class:`~chFPGA_controller.chFPGA_controller`
+=============================================
 
 .. currentmodule:: pychfpga.core.chFPGA_controller
 
