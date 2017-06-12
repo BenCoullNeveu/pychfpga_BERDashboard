@@ -267,7 +267,7 @@ def calculate_gains(c, port, gains_path="./digital_gains"):
     pickle.dump(gain, output)
     output.close()
     print "Scaler Gain set and saved"
-    print "Output file: {0:s}".format(write_path)
+    print "Output file: {0:s}".format(os.path.abspath(write_path))
     c.stop_data_capture()
 
     return gain, write_path
