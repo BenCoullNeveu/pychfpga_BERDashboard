@@ -165,7 +165,7 @@ html_static_path = ['_static']
 
 # If not '', a 'Last updated on:' timestamp is inserted at every page bottom,
 # using the given strftime format.
-html_last_updated_fmt = '%b %d, %Y'
+html_last_updated_fmt = '%Y-%m-%d %H:%M:%S'
 
 # If true, SmartyPants will be used to convert quotes and dashes to
 # typographically correct entities.
@@ -290,14 +290,16 @@ texinfo_documents = [
 #autodoc_mock_imports = ['icecore', 'xreport',  'matplotlib.pyplot', '_tkinter']
 #print '**** Mock Modules:', autodoc_mock_imports
 #autodoc_mock_imports = ['test-report',
+
 import mock
- 
+
 MOCK_MODULES = ['scipy', 'scipy.stats', 'scipy.special', 'scipy.optimize', 'scipy.interpolate', 'scipy.integrate', \
                 'pymc', 'matplotlib', \
                 'matplotlib.pylab', 'matplotlib.pyplot', '_tkinter', 'Tkinter', 'matplotlib.backends', 'matplotlib.backends.backend_tkagg', \
                 'matplotlib.figure', 'astropy', 'astropy.table']
+
 for mod_name in MOCK_MODULES:
-   sys.modules[mod_name] = mock.Mock()
+    sys.modules[mod_name] = mock.Mock()
 
 napoleon_use_rtype = False
 
