@@ -25,12 +25,13 @@ import os
 #sys.path.insert(4, os.path.abspath('../core/icecore/python/'))
 
 sys.path.insert(0, os.path.abspath("."));
-sys.path.insert(1, os.path.abspath("../"));
-sys.path.insert(2, os.path.abspath("../core/"));
-sys.path.insert(3, os.path.abspath("../icecore/"));
-sys.path.insert(4, os.path.abspath("../icecore/python/"));
-sys.path.insert(5, os.path.abspath("../tests"));
+sys.path.insert(1, os.path.abspath("../../"));
+# sys.path.insert(2, os.path.abspath("../core/"));
+# sys.path.insert(3, os.path.abspath("../icecore/"));
+# sys.path.insert(4, os.path.abspath("../icecore/python/"));
+# sys.path.insert(5, os.path.abspath("../tests"));
 
+print 'sys.path=', sys.path
 
 autosummary_generate = True
 
