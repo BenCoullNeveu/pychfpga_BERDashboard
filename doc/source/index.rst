@@ -3,14 +3,20 @@
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-Welcome to ch_acq's documentation!
-==================================
+:mod:`ch_acq`: Python library to operate the CHIME telescope.
+=============================================================
+
+.. image:: images/chime_logo.png
+
+
 
 .. toctree::
-   :maxdepth: 2
+   :maxdepth: 3
    :caption: Contents:
 
    ch_master
+   raw_acq
+   rest
 
 Indices and tables
 ==================

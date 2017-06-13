@@ -1,0 +1,2 @@
+*.{pdf,ipynb,svg,jpg,JPG,vsd,odg} filter=lfs diff=lfs merge=lfs -text
+*.{png} filter=lfs diff=lfs merge=lfs -text
