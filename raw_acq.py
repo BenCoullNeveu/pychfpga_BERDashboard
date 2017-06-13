@@ -1,4 +1,6 @@
 #!/usr/bin/env python
+""" Raw data acquisition REST Server and Client with Python UDP packet receiver
+"""
 from __future__ import absolute_import, division, print_function
 
 import os

@@ -1,4 +1,5 @@
-""" REST Clients and Servers for CHIME
+"""
+Base REST Clients and Servers classes for building REST-based applications.
 """
 from __future__ import print_function
 
@@ -16,8 +17,21 @@ from tornado.ioloop import IOLoop
 
 
 def coroutine_return(*args, **kwargs):
-    """ Normally just takes a single positional argument like the return statement. However, for
-    convenience, of only keyword arguments are passed, return these arguments as a dict.
+    """ return a value from a coroutine.
+
+    Is used to return values from a co-routine because a
+    coroutine is a generator (a function that *yields* values) and you cannot use return in a
+    generator in python 2.7.
+
+    Just like the return statement, `coroutine_return` normally accept a single positional argument.
+    However, for convenience, if we pass it only keyword arguments, these arguments will be returned
+    as a dict object. This is useful because REST methods return dicts.
+
+    Parameters: args, kwargs: All the positional and keywords arguments to return. Either one
+        positional argument or only keyword arguments are accepted.
+
+    Returns:
+        Nothing
     """
     if kwargs and not args:  # if we only have keyword arguments
         raise tornado.gen.Return(kwargs)  # return keyword arguments as a dict
@@ -117,9 +131,10 @@ class AsyncMixin(object):
             IOLoop.current().stop() # make sure the loop is stopped in case the code was interrupted
 
 class AsyncRESTClient(AsyncMixin):
-    """Implements a kotekan REST client using a Tornado AsyncHTTPClient .
+    """Implements asynchronous methods (coroutines) to operate a remote REST server.
 
-    All methods are Tornado coroutines so that operations can be performed concurrently on multiple nodes.
+    Is implemented using a Tornado AsyncHTTPClient . All methods are Tornado coroutines so that
+    operations can be performed concurrently on multiple nodes.
     """
     DEFAULT_HOST = 'localhost'
     DEFAULT_PORT = 80
@@ -173,7 +188,10 @@ class AsyncRESTClient(AsyncMixin):
 
 
 class JsonRequestHandler(tornado.web.RequestHandler):
-    """ RequestHandler than can accept both JSON-encoded and standard HTML POST arguments. Also overrides the `write_error` method to set the 'error' result with the traceback when exceptions occured.
+    """RequestHandler than can accept both JSON-encoded and standard HTML POST arguments.
+
+    Also overrides the `write_error` method to set the 'error' result with the traceback when
+    exceptions occured.
 
     The user must add the get() or post() method.
     """
@@ -337,4 +355,4 @@ class AsyncRESTServer(AsyncMixin):
         fn.endpoint_info = (method_name, endpoint_name, method_args)  # add the endpoint info in the function
         return fn # return the original function
 
-endpoint = AsyncRESTServer.endpoint # shortcut
+endpoint = AsyncRESTServer.endpoint #: Shortcut to :meth:`AsyncRESTServer.endpoint`
