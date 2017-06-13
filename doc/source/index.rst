@@ -10,7 +10,7 @@ Welcome to ch_acq's documentation!
    :maxdepth: 2
    :caption: Contents:
 
-
+   ch_master
 
 Indices and tables
 ==================

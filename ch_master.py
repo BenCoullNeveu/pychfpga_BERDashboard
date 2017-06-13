@@ -1,5 +1,8 @@
 #!/usr/bin/env python
+"""
+Module that provide the classes used to run the top-level ChimeMaster object used to initialize and operate the CHIME telescope.
 
+"""
 from __future__ import absolute_import, division, print_function
 
 import argparse

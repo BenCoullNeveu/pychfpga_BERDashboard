@@ -7,6 +7,8 @@ import argparse
 import logging
 import socket
 
+import netifaces  # non-standard Python library (pip install netifaces)
+
 from Queue import Queue
 import SocketServer
 import threading
@@ -561,7 +563,7 @@ class RawAcqReceiver(object):
             afs = netifaces.ifaddresses(interface)
             if netifaces.AF_INET not in afs or netifaces.AF_LINK not in afs:
                 continue
-            print 'checking if', interface, 'with af', afs
+            print('checking if', interface, 'with af', afs)
             ips = [af for af in afs[netifaces.AF_INET] if af['addr'] == if_addr]
             if ips:
                 for eth_if in afs[netifaces.AF_LINK]:

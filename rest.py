@@ -294,24 +294,24 @@ class AsyncRESTServer(AsyncMixin):
             target method with the passed argument (if a POST request).
 
         """
-            method = getattr(self, method_name)
-            has_args = len(method_args) > 2  # any other arguments beyound the mandatory 'self' and 'handler'?
-            print('%s: Creating a REST %s endpoint %s for method %s(%s)' % (self.__class__.__name__, ('GET','POST')[has_args], endpoint_name, method_name, ', '.join(method_args)))
-            if has_args:
-                class Handler(JsonRequestHandler):
-                    @coroutine
-                    def post(self):
-                        result = yield method(self, **self.request.arguments)
-                        # print('Sending POST reply:', result)
-                        self.write(tornado.escape.json_encode(result)) # arg must be a string or a dict that will be json-encoded
+        method = getattr(self, method_name)
+        has_args = len(method_args) > 2  # any other arguments beyound the mandatory 'self' and 'handler'?
+        print('%s: Creating a REST %s endpoint %s for method %s(%s)' % (self.__class__.__name__, ('GET','POST')[has_args], endpoint_name, method_name, ', '.join(method_args)))
+        if has_args:
+            class Handler(JsonRequestHandler):
+                @coroutine
+                def post(self):
+                    result = yield method(self, **self.request.arguments)
+                    # print('Sending POST reply:', result)
+                    self.write(tornado.escape.json_encode(result)) # arg must be a string or a dict that will be json-encoded
 
-            else:
-                class Handler(JsonRequestHandler):
-                    @coroutine
-                    def get(self):
-                        result = yield method(self)
-                        self.write(tornado.escape.json_encode(result))
-            return tornado.web.url(r'/%s' % endpoint_name, Handler)
+        else:
+            class Handler(JsonRequestHandler):
+                @coroutine
+                def get(self):
+                    result = yield method(self)
+                    self.write(tornado.escape.json_encode(result))
+        return tornado.web.url(r'/%s' % endpoint_name, Handler)
 
 
     @classmethod
