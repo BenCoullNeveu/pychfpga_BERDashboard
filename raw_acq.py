@@ -658,10 +658,11 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
     @coroutine
     @endpoint
     def start(self, handler, **config):
-        print('Received start command with', config)
+        self.log.info('%.32r: Received start command with %r' % config)
         if self.receiver.is_running():
             raise RuntimeError('Server is already started')
         result = self.receiver.start(**config)
+        self.log.info('%.32r: UDP receiver started. returned %r' % (self, result))
         coroutine_return(result)
 
     @coroutine
@@ -747,7 +748,7 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
     @coroutine
     def start(self, **config):
         """ Start the RaqAcq remote server with the keyword argument as configuration data"""
-        print('%s: Starting remote RawAcq server at %s:%i with config: %r' % (self, self.host, self.port, config))
+        self.log.info('%s: Starting remote RawAcq server at %s:%i with config: %r' % (self, self.host, self.port, config))
         result = yield self.post('start', **config)
         coroutine_return(result)
 
