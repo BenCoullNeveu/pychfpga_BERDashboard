@@ -517,12 +517,12 @@ class RawAcqReceiver(object):
 
         result = dict(
             status='started',
-            target_addr=dest_ifs
+            target_addr=dest_ifs.items() # return as a list of tuples, json does not support tuple-indexed dicts
             )
         return result
 
 
-    def _ping(addr, timeout=0.3):
+    def _ping(self, addr, timeout=0.3):
         """
         Establish a TCP connection with `addr`  at and return the interface and loal port used for the connection.
 
@@ -538,7 +538,7 @@ class RawAcqReceiver(object):
         """
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
-            s.connect((addr, port))
+            s.connect(addr)
             s.settimeout(timeout)
             if_addr =  s.getsockname()
             s.close()

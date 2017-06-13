@@ -246,26 +246,26 @@ class AsyncRESTServer(AsyncMixin):
     """
 
 
-    def __init__(self, hostname='', port=80):
+    def __init__(self, address='', port=80):
         """ Create a Web server responding to the endpoints defined in the class.
 
         Parameters:
 
-            hostanme (str): if specified, selects on which interface the server will respond to
+            address (str): address of the  interface on which the server will respond to
                 requests. If left empty, the server will respond to all interfaces. If a hostname is
-                given (as opposed to a IP address), all IP addresses associated with thtis hostname will
+                given (as opposed to a IP address), all IP addresses associated with this address will
                 be used.
 
             port (int): Port number to which the server will listen to requests. Defaults to port 80.
 
         """
-        self.address = hostname
+        self.address = address
         self.port = port
         self.log = logging.getLogger()
         # Create the endpoints registered with the @endpoint decorator
         endpoints = [self._create_endpoint(*info) for info in self.get_endpoint_info()]
         self.app = tornado.web.Application(endpoints) # Create the Web application serving those endpoints
-        self.http_server = self.app.listen(self.port, address=hostname or '') # Create the web server on the target port in the current ioloop.
+        self.http_server = self.app.listen(self.port, address=address or '') # Create the web server on the target port in the current ioloop.
         self.add_heartbeat()
         self.add_shutdown_handler()
         # The server will run when the ioloop is started.
