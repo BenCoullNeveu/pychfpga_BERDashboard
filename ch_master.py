@@ -326,7 +326,7 @@ class ChimeMaster(object):
         for node_name, node_params in self.config.raw_acq.nodes.items():
             self.raw_acq[node_name] = RawAcqAsyncRESTClient(name=node_name, **node_params)
 
-    def get_iceboards(ib):
+    def get_iceboards(self, ib):
         if isinstance(ib, (tuple, list)):
             crate_number = ib[0] if len(ib)>1 else None
             slot_number = ib[1] if len(ib)>2 else None
@@ -345,7 +345,7 @@ class ChimeMaster(object):
         """
         conf = self.config.raw_acq
 
-        # Gather all iceboards for each RawAcq node
+        # Make a list of all all iceboards for each of the RawAcq node
         node_ibs = {}
         for node_name, node_conf in conf.nodes.items():
             node_ibs[node_name] = {}
@@ -362,14 +362,22 @@ class ChimeMaster(object):
         # set-up the switches routing tables and figure out on which interface the data will be
         # arriving. It will then return the addresses (ip_addr, port, mac_addr) to which the data
         # should be sent.
+        #
+        # First, prepare the receiver parameters for each node
+        recv_ports={}
+        recv_names={}
         for node_name, ibs in node_ibs.items():
-            node = self.raw_acq[node_name]
             recv_name = '%sRecv' % node_name
-            recv_ports = [dict(port='%sPort%i' % (recv_name, i), sources=[(ib.hostname, 80)])
+            recv_names[node_name] = '%sRecv' % node_name
+            # We have one port per Iceboard, although we could have multiple iceboards per port if the receiver supported it.
+            recv_ports[node_name] = [dict(port='%sPort%i' % (recv_name, i), sources=[(ib.hostname, 80)])
                           for i, ib in enumerate(ibs)]
-            start_result = node.start(name=recv_name, ports=recv_ports)
+        # Start the receivers concurrently
+        start_results = yield {node_name:self.raw_acq[node_name].start(name=recv_names[node_name], ports=recv_ports[node_name]) for node_name in node_ibs.keys()}
+        # Configure the FPGA transnmit addresses based on what the t receiver returned
+        for node_name, start_result in start_results.items():
             targets = start_result['target_addr']
-            for ib in ibs:
+            for ib in node_ibs[node_name]:
                 ip_addr, port, eth_addr = targets[(ib.hostname, 80)]
                 ib.set_data_target_address(ip_addr, port, eth_addr)
         self.log.info('%.32r: RawAcq server setup successfully' % self)
@@ -529,7 +537,7 @@ class ChimeMaster(object):
         # ca.ib.sync()
 
         # Setup raw data capture transmission
-        self.start_raw_acq()
+        yield self.start_raw_acq()
 
         # Setup noise injection for normal operation
         self.setup_noise_injection(conf.fpga.noise_injection)
