@@ -125,12 +125,15 @@ class AsyncRESTClient(AsyncMixin):
     DEFAULT_PORT = 80
 
     def __init__(self, hostname=DEFAULT_HOST, port=DEFAULT_PORT):
-        self.hostnamename = hostname
+        self.hostname = hostname
         self.port = port
         self.log = logging.getLogger()
         self.client = tornado.httpclient.AsyncHTTPClient()
         self.add_heartbeat()
         self.add_shutdown_handler()
+
+    def __repr__(self):
+        return '%s(%s:%s)' % ( self.__class__.__name__, self.hostname, self.port)
 
     def url(self, endpoint):
         return 'http://%s:%d/%s' % (self.hostname, self.port, endpoint)
@@ -152,14 +155,15 @@ class AsyncRESTClient(AsyncMixin):
         else:
             body = None
         resp = yield self.client.fetch(url, method=method, headers={"Content-Type": "application/json"}, body=body, raise_error=False)
+        print('_fetch response:', resp)
         try:
             decoded_reply = tornado.escape.json_decode(resp.body)
             if isinstance(decoded_reply, dict):
                 error = decoded_reply.get('error','')
             else:
                 error = ''
-        except ValueError:
-            error = 'Invalid JSON reply string %r' % resp.body
+        except (TypeError, ValueError):
+            error = '%.32r: Invalid JSON reply string %r' %(self, resp.body)
         if resp.error:
             error = str(resp.error) + '\n' + error
         if error:
@@ -255,15 +259,19 @@ class AsyncRESTServer(AsyncMixin):
             port (int): Port number to which the server will listen to requests. Defaults to port 80.
 
         """
+        self.address = hostname
         self.port = port
         self.log = logging.getLogger()
         # Create the endpoints registered with the @endpoint decorator
         endpoints = [self._create_endpoint(*info) for info in self.get_endpoint_info()]
         self.app = tornado.web.Application(endpoints) # Create the Web application serving those endpoints
-        self.http_server = self.app.listen(self.port, hostname=hostname) # Create the web server on the target port in the current ioloop.
+        self.http_server = self.app.listen(self.port, address=hostname or '') # Create the web server on the target port in the current ioloop.
         self.add_heartbeat()
         self.add_shutdown_handler()
         # The server will run when the ioloop is started.
+
+    def __repr__(self):
+        return '%s(%s:%s)' % ( self.__class__.__name__, self.address, self.port)
 
     def get_endpoint_info(self):
         """ Return a list of tuples (method_name, endpoint_name, method_args) describing all the
