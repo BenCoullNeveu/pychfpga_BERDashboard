@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+""" REST Client to configure and operate  kotekan nodes and dummy kotekan REST Server"""
 
 from __future__ import absolute_import, division, print_function
 
@@ -11,13 +12,13 @@ from rest import AsyncRESTClient, coroutine, coroutine_return
 
 
 class KotekanAsyncRESTClient(AsyncRESTClient):
-    """Implements a kotekan REST client using a Tornado AsyncHTTPClient .
+    """Provides access to the remote GPU node kotekan processes through its REST interface.
 
-    All methods are Tornado coroutines so that operations can be performed concurrently on multiple nodes.
+    Uses Tornado AsyncHTTPClient. All methods are Tornado coroutines so that operations can be performed concurrently on multiple nodes.
     """
-    def __init__(self, name, host=None, port=80, **kvs):
+    def __init__(self, name, hostname=None, port=80, **kvs):
 
-        super(KotekanAsyncRESTClient, self).__init__(host=host, port=port)
+        super(KotekanAsyncRESTClient, self).__init__(hostname=hostname, port=port)
         self.name = name
         self.node_specific_config = kvs
         self.ping_cb = tornado.ioloop.PeriodicCallback(self.ping, 60e3)
