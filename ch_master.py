@@ -328,33 +328,37 @@ class ChimeMaster(object):
 
     def get_iceboards(self, ib):
         if isinstance(ib, (tuple, list)):
-            crate_number = ib[0] if len(ib)>1 else None
-            slot_number = ib[1] if len(ib)>2 else None
+            crate_number = ib[0] if len(ib) > 1 else None
+            slot_number = ib[1] if len(ib) > 2 else None
         else:
             raise ValueError('Unknown iceboard ID %s', ib)
         iceboards = []
+        print('get_iceboard: looking for ', crate_number, slot_number)
         for ib in self.fpgas.ib:
             ib_id = ib.get_id()
+            print('   checking', ib_id)
             if (crate_number is None or crate_number == ib_id[0]) and (slot_number is None or slot_number== ib_id[1]):
-                iceboards.append[ib]
+                iceboards.append(ib)
         return iceboards
 
     @coroutine
     def start_raw_acq(self):
         """ Start raw data acquisition by setting up the FPGAs and RawAcq servers
         """
+        self.log.info('%.32r: starting raw_acq servers' % self)
         conf = self.config.raw_acq
 
         # Make a list of all all iceboards for each of the RawAcq node
         node_ibs = {}
         for node_name, node_conf in conf.nodes.items():
-            node_ibs[node_name] = {}
+            node_ibs[node_name] = set()
             for ib in node_conf.iceboards:
                 node_ibs[node_name].update(self.get_iceboards(ib))
 
+        print('Node_ibs=', node_ibs)
         # Check that an iceboard is assigned to only one server
         for node_name, ibs in node_ibs.items():
-            if not all(ibs.isdisjoint(other_ibs) for  other_name, other_ibs in node_ibs.items() if other_name != node_name):
+            if not all(ibs.isdisjoint(other_ibs) for other_name, other_ibs in node_ibs.items() if other_name != node_name):
                 raise RuntimeError('Some FPGA board(s) is/are assigned to send raw data to multiple RawAcq nodes. Check your config')
 
         # Start each RawAcq server with a port for each assigned iceboard. For each port, we provide
@@ -364,8 +368,8 @@ class ChimeMaster(object):
         # should be sent.
         #
         # First, prepare the receiver parameters for each node
-        recv_ports={}
-        recv_names={}
+        recv_ports = {}
+        recv_names = {}
         for node_name, ibs in node_ibs.items():
             recv_name = '%sRecv' % node_name
             recv_names[node_name] = '%sRecv' % node_name
@@ -373,13 +377,14 @@ class ChimeMaster(object):
             recv_ports[node_name] = [dict(port='%sPort%i' % (recv_name, i), sources=[(ib.hostname, 80)])
                           for i, ib in enumerate(ibs)]
         # Start the receivers concurrently
-        start_results = yield {node_name:self.raw_acq[node_name].start(name=recv_names[node_name], ports=recv_ports[node_name]) for node_name in node_ibs.keys()}
+        start_results = yield {node_name: self.raw_acq[node_name].start(name=recv_names[node_name], ports=recv_ports[node_name]) for node_name in node_ibs.keys()}
         # Configure the FPGA transnmit addresses based on what the t receiver returned
         for node_name, start_result in start_results.items():
-            targets = start_result['target_addr']
+            targets = {tuple(k):v for k,v in start_result['target_addr']} # was sent as a [ ((src_ip, src_port),(if_ip, port, mac)) ...] list. Convert back to dict for easy lookup
             for ib in node_ibs[node_name]:
                 ip_addr, port, eth_addr = targets[(ib.hostname, 80)]
                 ib.set_data_target_address(ip_addr, port, eth_addr)
+                ib.start_data_capture(period=1, source='adc')
         self.log.info('%.32r: RawAcq server setup successfully' % self)
 
     def set_state(self, new_state):

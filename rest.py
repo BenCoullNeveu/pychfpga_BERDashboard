@@ -155,7 +155,7 @@ class AsyncRESTClient(AsyncMixin):
         else:
             body = None
         resp = yield self.client.fetch(url, method=method, headers={"Content-Type": "application/json"}, body=body, raise_error=False)
-        print('_fetch response:', resp)
+        # print('_fetch response:', resp)
         try:
             decoded_reply = tornado.escape.json_decode(resp.body)
             if isinstance(decoded_reply, dict):
@@ -180,17 +180,17 @@ class JsonRequestHandler(tornado.web.RequestHandler):
 
     def prepare(self):
         if not self.request.body: return
-        print('Headers=', str(list(self.request.headers)))
+        # print('Headers=', str(list(self.request.headers)))
         content_type = self.request.headers['Content-Type']
         if content_type == 'application/json':
-            print('post body=', self.request.body)
+            # print('post body=', self.request.body)
             try:
                 args = tornado.escape.json_decode(self.request.body)
                 self.request.arguments.update(args)
             except ValueError:
                 self.send_error(400, error="can't parse JSON")
         elif content_type == 'application/x-www-form-urlencoded':
-            print('post body=', self.request.body, 'pre args=', self.request.arguments )
+            # print('post body=', self.request.body, 'pre args=', self.request.arguments )
             args = { k:v[-1] for k,v in self.request.arguments.items() }
             self.request.arguments.update(args)
 
@@ -202,7 +202,7 @@ class JsonRequestHandler(tornado.web.RequestHandler):
             exc_info = kvs.pop('exc_info')
             kvs['error'] = ''.join(traceback.format_exception(*exc_info))
         # self.set_status(200, reason='There were errors, though') # Prevent the client from raising an HTTP error. The client will recognize errors by looking at the error field.
-        print('writing', kvs['error'])
+        # print('writing', kvs['error'])
         self.write(kvs)  # kvs is a dict, so it will be json-encoded
 
 

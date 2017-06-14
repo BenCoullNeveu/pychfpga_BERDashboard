@@ -212,10 +212,10 @@ class RawAcqUDPReceiver(SocketServer.ThreadingUDPServer):
             data, socket = self.request
             port = self.server.server_address[1]
             (probe_id, stream_id, word_length,
-                timestamp) = struct.unpack_from('>BHHL', data)
+                timestamp) = struct.unpack_from('>BHHL', data[:9])
             chan = probe_id & 0x0F
             adc_data = np.fromstring(data[9:2057], dtype=np.int8)
-            print( "{0} {1} {2}".format(port, chan, adc_data.std()) )
+            # print( "Data received on port {0}, channel#{1}, std(data)={2}".format(port, chan, adc_data.std()) )
             self.server.data_queue.put((timestamp, port, chan, adc_data))
 
     def __init__(self, server_address, data_queue):
@@ -378,11 +378,14 @@ class RawAcqReceiver(object):
     def __init__(self):
         self.log = logging.getLogger()
         self.ports = None
+        self.name = None
         self.dataWriter = None
         self.receivers = []
         self.data_queues = []
         self.gain_estimator = None
 
+    def __repr__(self):
+        return '%s(%s)' % (self.__class__.__name__, self.name)
 
     def start(self, name='RawAcq', ports=[41101], ping_addr=[]):
         """ Start a raw data receiver for each specified port.
@@ -452,7 +455,7 @@ class RawAcqReceiver(object):
 
 
         # Determine the interface from which data will be coming from each source by pinging them
-        src_if_addrs = {src:self._ping(src) for port_info in self.ports for src in port_info['sources']} # can be parallelized
+        src_if_addrs = {tuple(src):self._ping(tuple(src)) for port_info in self.ports for src in port_info['sources']} # can be parallelized
         for (src_ip, src_port), src_if_addr in src_if_addrs.items():
             if not src_if_addr:
                 raise RuntimeError('Cannot ping %s:%s, so cannot determine interface this data source is connected.' % (src_ip, src_port))
@@ -470,11 +473,11 @@ class RawAcqReceiver(object):
         receiver_port = {}
         for port_info in self.ports:
             port = port_info['port']
-            receiver_port[port] = 0 if isinstance(port, str) else port
+            receiver_port[port] = 0 if isinstance(port, (str, unicode)) else port
             if self.listen_to_all_ports:
                 receiver_ip[port] = '0.0.0.0'
             else:
-                if_ips = {src_if_addrs[src][0] for src in port_info['sources']}
+                if_ips = {src_if_addrs[tuple(src)][0] for src in port_info['sources']}
                 if len(if_ips) != 1:
                     raise RuntimeError('Data sources for port %s are accessed via different interfaces.' % port)
                 receiver_ip[port] = if_ips.pop()
@@ -482,14 +485,14 @@ class RawAcqReceiver(object):
         # Create the data receivers
         actual_receiver_ip = {}
         actual_receiver_port = {}
-        for port_info in self.ports:
-            port = port_info['port']
+        for port in receiver_port.keys():
+            addr = (receiver_ip[port], receiver_port[port])
             self.data_queues.append(Queue())
-
-            receiver = RawAcqUDPReceiver((receiver_ip[port], receiver_port[port]), self.data_queues[-1])
+            self.log.info('%.32r: Creating RawAcqUDPreceiver receiver for port %s on (%s:%s)' % (self, port, addr[0], addr[1]))
+            receiver = RawAcqUDPReceiver(addr, self.data_queues[-1])
             actual_receiver_ip[port], actual_receiver_port[port] = receiver.socket.getsockname()
             if actual_receiver_ip[port] != receiver_ip[port]: # just checking, should not happen
-                raise RuntimeError('The receiver for port %s was not created on the correct interface (%s instead of %s)' % (port, actual_ip, receiver_ip[port]))
+                raise RuntimeError('The receiver for port %s was not created on the correct interface (%s instead of %s)' % (port, actual_receiver_ip[port], receiver_ip[port]))
             thread = threading.Thread(target=receiver.serve_forever)
             thread.setDaemon(True)
             thread.start()
@@ -506,14 +509,14 @@ class RawAcqReceiver(object):
         # Build a mac address loopup table for all source interfaces
         if_ips = {if_addr[0] for if_addr in src_if_addrs.values()} # set of unique interface IPs used by all sources
         mac = {if_ip:self._get_mac_address(if_ip) for if_ip in if_ips} # map between ip and mac addresses
-
+        self.log.info('%.32r: Available Interfaces are %s' % (self, mac))
         # Create the dict that provides the target ip address, port address and mac address for each source
         dest_ifs = {}
         for port_info in self.ports:
             port = port_info['port']
             for src in port_info['sources']:
-                src_if_ip, src_if_port = src_if_addrs[src]
-                dest_ifs[src] = (src_if_ip, actual_receiver_port, mac[src_if_ip])
+                src_if_ip, src_if_port = src_if_addrs[tuple(src)]
+                dest_ifs[tuple(src)] = (src_if_ip, actual_receiver_port[port], mac[src_if_ip])
 
         result = dict(
             status='started',
@@ -547,7 +550,7 @@ class RawAcqReceiver(object):
             if_addr = None
         return(if_addr)
 
-    def _get_mac_address(if_addr):
+    def _get_mac_address(self, if_addr):
         """ Return the MAC address of the interface with address `if_addr`.
 
         Parameters:
@@ -646,7 +649,7 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
 
     DEFAULT_PORT = 33221
 
-    def __init__(self, address='', port=DEFAULT_PORT, logging={}):
+    def __init__(self, address='', port=DEFAULT_PORT, logging_params={}):
         self.receiver = RawAcqReceiver()
         super(RawAcqAsyncRESTServer, self).__init__(address=address, port=port)
         self.log = logging.getLogger()
@@ -658,11 +661,11 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
     @coroutine
     @endpoint
     def start(self, handler, **config):
-        self.log.info('%.32r: Received start command with %r' % config)
+        self.log.info('%.32r: Received start command with %r' % (self, config))
         if self.receiver.is_running():
             raise RuntimeError('Server is already started')
         result = self.receiver.start(**config)
-        self.log.info('%.32r: UDP receiver started. returned %r' % (self, result))
+        self.log.info('%.32r: UDP receiver started. Returned %r' % (self, result))
         coroutine_return(result)
 
     @coroutine
@@ -680,6 +683,7 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
     @coroutine
     @endpoint
     def get_packets(self, handler):
+        self.log.info('%.32r: received get_packets command' % self)
         ts, ports, data = self.receiver.read_data()
         print(ts)
         print(ports)
@@ -725,10 +729,15 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
     def __init__(self, name='RawAcq', hostname='localhost', port=RawAcqAsyncRESTServer.DEFAULT_PORT, **kwargs):
         self.log = logging.getLogger()
 
-        if hostname is None:
+        # save hostname and port so __repr__ will work right away. Will be rewritten by super()
+        self.hostname = hostname
+        self.port = port
+
+        if not hostname:
             hostname = 'localhost'
-            self.log.info('%32r: Creating RawAcq local server at %s:%i' % (self, hostname, port))
-            self.server = RawAcqAsyncRESTServer(port)
+            address='' # server listens to all interfaces by default
+            self.log.info('%32r: Creating local RawAcq server at %s:%i' % (self, address, port))
+            self.server = RawAcqAsyncRESTServer(address=address, port=port)
             self.server.add_heartbeat(period=1000, heartbeat_string='R')
 
         self.log.info('%32r: Creating RawAcq Client at %s:%i' % (self, hostname, port))

@@ -532,13 +532,14 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         if not ip_addr:
             ip_addr_int = 0
         else:
-            ip_addr_int = struct.unpack('>L',socket.inet_aton(ip_addr)) # Ip address, as an integer
+            ip_addr_int = struct.unpack('>L',socket.inet_aton(ip_addr))[0] # Ip address, as an integer
 
         if not mac_addr:
             mac_addr_int = 0
         else:
             mac_addr_int = sum(int(s, 16) << (8 * i) for i, s in enumerate(reversed(mac_addr.split(':'))))
 
+        self.logger.info('%.32r: setting data target address to ip=%r(%r), port=%r(%r), mac=%r(%r)' % (self, ip_addr, ip_addr_int, port, port, mac_addr, mac_addr_int))
         # Set the UDP transmit channel 1 IP and MAC addresses
         self.core_gpio.TARGET_MAC_ADDR = mac_addr_int
         self.core_gpio.TARGET_IP_ADDR = ip_addr_int
