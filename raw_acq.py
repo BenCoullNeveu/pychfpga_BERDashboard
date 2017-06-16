@@ -654,7 +654,6 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
     def __init__(self, address='', port=DEFAULT_PORT, logging_params={}):
         self.receiver = RawAcqReceiver()
         super(RawAcqAsyncRESTServer, self).__init__(address=address, port=port)
-        self.log = logging.getLogger()
 
     @coroutine
     def shutdown(self):
@@ -733,6 +732,7 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
         # save hostname and port so __repr__ will work right away. Will be rewritten by super()
         self.hostname = hostname
         self.port = port
+        self.log = logging.getLogger(__name__).getChild(self.__class__.__name__) # we need the logger right away
 
         if not hostname:
             hostname = 'localhost'
