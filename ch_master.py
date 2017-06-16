@@ -594,7 +594,7 @@ class ChimeMaster(object):
         for source_name, source_params in ni_params.items():
             log.info("Setting noise injection for source '%s' with parameters %s" % (source_name, source_params))
             if source_params.board:
-                self.fpgas.setup_noise_injection(local_sync=True, **source_params)
+                self.fpgas.set_noise_injection(local_sync=True, **source_params)
 
     ###################################
     # Gains management
