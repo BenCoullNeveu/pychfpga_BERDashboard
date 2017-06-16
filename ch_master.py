@@ -104,19 +104,7 @@ def convert_types(val):
     return val
 
 
-## Setup logging ##
-
-LOG_FORMATTER = logging.Formatter(
-    "%(asctime)s %(levelname)s %(filename)s:%(lineno)d >> %(message)s",
-    "%b %d %H:%M:%S")
-log = logging.getLogger()
-log.handlers = []  # clear all existing handlers
-log.setLevel(logging.DEBUG) # pass all messages to the handlers
-h = logging.StreamHandler(sys.stdout)
-h.setFormatter(LOG_FORMATTER)
-log.addHandler(h)
-
-
+#
 ## Constants ##
 
 # Current archive format version. Prefixed by "NT_" to signify that
@@ -144,6 +132,7 @@ def get_git_version():
 
 def reap_cached_sockets():
     import __main__
+    log = logging.getLogger(__name__+'.reap_cached_sockets()')
     if hasattr(__main__, '__opened_sockets__'):
         for port, socket in __main__.__opened_sockets__.items():
             log.debug("closing cached socket on port %d" % port)
@@ -155,7 +144,16 @@ class ChimeMaster(object):
     """ Object that provide methods to initialize, control, monitor and shutdown a CHIME telescope
     array (or subarray)
     """
+
+    LOG_FORMAT =  "%(asctime)s %(levelname)s %(name)s.%(funcName)s() %(filename)s:%(lineno)d>> %(message)s"
+    LOG_DATE_FORMAT = "%b %d %H:%M:%S"
+
+
     def __init__(self):
+
+        self.setup_parent_logger(stderr_log_level='WARNING')
+        self.log = logging.getLogger(__name__).getChild(self.__class__.__name__) # i.e. ch_master.ChimeMaster
+
         self.state = 'off'
         self.config = None
         self.chrx = None  # CHRX REST clients
@@ -163,13 +161,12 @@ class ChimeMaster(object):
         self.kotekan = None # Kotekan REST clients
         self.fpgas = None # fpga_array object
         self.power_supplies = None
-        self.log = log
 
         self.PROGRAM = os.path.realpath(__file__) # absolute path name to this module
         self.GIT_VERSION = get_git_version()
 
-        log.info("program %s" % self.PROGRAM)
-        log.info("version %s" % self.GIT_VERSION)
+        self.log.info("program %s" % self.PROGRAM)
+        self.log.info("version %s" % self.GIT_VERSION)
 
     def set_config(self, config):
         self.config = NameSpace(config)
@@ -285,7 +282,7 @@ class ChimeMaster(object):
                 crate_sn=crate_sn,
                 fpga_hk_fields=fpga_hk_fields,
                 headers=headers)
-            log.info("finished starting CHRX %s" % chrx.name)
+            self.log.info("finished starting CHRX %s" % chrx.name)
 
         yield (start_chrx_client(chrx) for chrx in self.chrx)
 
@@ -391,6 +388,73 @@ class ChimeMaster(object):
         """ Sets the state to a specified value. Used for debugging. """
         self.state = new_state
 
+
+    def get_parent_logger(self):
+        """
+        Return the parent logger of this module.
+
+        If the module is not imported as part of a package (i.e. this module is named 'ch_master'
+        instead if 'ch_acq.ch_master'), then return the rool logger.
+        """
+
+        return logging.getLogger(__name__.rsplit('.', 1)[0] if '.' in __name__ else '')
+
+    def setup_parent_logger(self,
+                            stdout_log_level=None,
+                            stderr_log_level=None,
+                            syslog_log_level=None,
+                            file_log_level=None,
+                            log_filename=None):
+        """
+        Configure the logging parameters for the parent logger of this module.
+
+        All logging messages from ch_master classes, pychfpga package modules, raw_acq etc... are named
+        hierarchically with their module name and trickle down to the ``ch_acq`` logger. We configure
+        this `ch_acq` logger to have the desired formatting.
+
+        """
+
+
+        logger = self.get_parent_logger()
+        logger.setLevel(logging.DEBUG) # pass all messages to the handlers
+        logger.handlers = []  # clear all existing handlers
+        formatter = logging.Formatter(self.LOG_FORMAT, self.LOG_DATE_FORMAT)
+
+        def add_handler(h, log_level):
+            h.setFormatter(formatter)
+            level = log_level if isinstance(log_level, int) else log_level.upper()
+            h.setLevel(level)
+            logger.addHandler(h)
+
+        # Stderr logger
+        if stdout_log_level is not None:
+            add_handler(logging.StreamHandler(sys.stdout), stdout_log_level)
+        if stderr_log_level is not None:
+            add_handler(logging.StreamHandler(sys.stderr), stderr_log_level)
+        if syslog_log_level is not None:
+            add_handler(logging.handlers.SysLogHandler(), syslog_log_level)
+        if file_log_level is not None:
+            add_handler(logging.FileHandler(log_filename), file_log_level)
+            self.log.info("Now logging to \"%s\"." % log_filename)
+
+
+    def stop_parent_logger(self):
+        self.log.info("Removing all loggers")
+        logger = self.get_parent_logger()
+        logger.handlers = []  # just wipe all handlers
+
+
+    # def add_parent_file_logger(self,log_filename):
+
+    #     # Start writing to a log file in this directory.
+    #     logger = self.get_parent_logger()
+    #     formatter = logging.Formatter(self.LOG_FORMAT, self.LOG_DATE_FORMAT)
+    #     handler = logging.FileHandler(log_filename)
+    #     handler.setFormatter(formatter)
+    #     logger.addHandler(handler)
+
+
+
     @coroutine
     def start(self, **config):
         """ Make the telescope operational by starting and initializing the FPGA F-Engine and the GPU X Engine (Kotekan), CHRX, and raw_acq remote processes. """
@@ -416,16 +480,17 @@ class ChimeMaster(object):
             os.makedirs(self.acq_base_dir)
         except:
             errmsg = "Could not create directory '%s'!" % self.acq_base_dir
-            log.critical(errmsg)
+            self.log.critical(errmsg)
             coroutine_return({'error':errmsg})
 
 
-        # Start writing to a log file in this directory.
-        acq_log_path = "%s/ch_master.log" % self.acq_base_dir
-        self.logfile = logging.FileHandler(acq_log_path)
-        self.logfile.setFormatter(LOG_FORMATTER)
-        log.addHandler(self.logfile)
-        log.info("now logging to \"%s\"." % acq_log_path)
+        log_filename = "%s/ch_master.log" % self.acq_base_dir
+        self.setup_parent_logger(
+            stderr_log_level=conf.logging.stderr_log_level,
+            syslog_log_level=conf.logging.syslog_log_level,
+            file_log_level=conf.logging.file_log_level,
+            log_filename=log_filename)
+
 
         # Now that the housekeeping is done, let's start the real work
 
@@ -444,7 +509,7 @@ class ChimeMaster(object):
         yield self.create_fpga_array()
 
         # Read the FPGA setting back from the FPGA
-        log.info("Getting configuration data from all FPGAs")
+        self.log.info("Getting configuration data from all FPGAs")
         self.fpga_conf = yield self.fpgas.get_fpga_config.async()
 
 
@@ -458,7 +523,7 @@ class ChimeMaster(object):
 
     @coroutine
     def create_fpga_array(self):
-        log.info("initializing FPGAs...")
+        self.log.info("initializing FPGAs...")
 
         # shortcuts
         conf = self.config  # shortcut to shorten the code below
@@ -469,7 +534,7 @@ class ChimeMaster(object):
         self.SAMPLES_PER_FRAME = 2048
         self.SECONDS_PER_FRAME = self.SAMPLES_PER_FRAME / self.SAMPLING_FREQUENCY
 
-        log.info("Sampling frequency is %0.3f MHz." % (self.SAMPLING_FREQUENCY/1e6))
+        self.log.info("Sampling frequency is %0.3f MHz." % (self.SAMPLING_FREQUENCY/1e6))
 
         # Create the FPGAArray object. This object will create a database of all FPGA boards, crates and
         # mezzanines as described by the ``fpga_array_params`` parameters.fpga_array_params If specified
@@ -505,12 +570,12 @@ class ChimeMaster(object):
 
 
         # Set-up channelizers to process data normally
-        log.info("Setting-up channelizers")
+        self.log.info("Setting-up channelizers")
         ca.set_channelizers(**conf.fpga.channelizer_params)
 
         # Set-up initial gains in gain bank #0
         if conf.fpga.load_initial_gains:
-            log.info("Loading initial SCALER gains in bank #0")
+            self.log.info("Loading initial SCALER gains in bank #0")
             # ca.set_synchronized_gain_switching_mode(enable=0)  # Disable synchronized gain switching
             # ca.set_next_gain_bank(bank=0)  # immediately select bank zero to load initial gains
             gains = ca.load_gains() # load gains from gain files
@@ -552,16 +617,16 @@ class ChimeMaster(object):
         # log.info("Setting FPGA operational mode")
         # ca.set_operational_mode(conf.fpga.operational_mode, frames_per_packet=fpga_array_params.group_frames)
 
-        log.info("Synchronizing the array...")
+        self.log.info("Synchronizing the array...")
         ca.sync()  # synchronize all the boards in the array
 
         # log.info("Unmasking the ADC data")
         # ca.ib.set_adc_mask(0xFF) # restore normal ADC data, necessary anymore?
 
-        log.info("Waiting for 2 seconds")
+        self.log.info("Waiting for 2 seconds")
         time.sleep(2)
 
-        log.info("finished initializing FPGAs")
+        self.log.info("finished initializing FPGAs")
 
     def configure_fpgas_post_acq(self):
         # shortcuts
@@ -592,7 +657,7 @@ class ChimeMaster(object):
         If no board is specified for an entry (.board evaluates to False), the parameters are ignored.
         """
         for source_name, source_params in ni_params.items():
-            log.info("Setting noise injection for source '%s' with parameters %s" % (source_name, source_params))
+            self.log.info("Setting noise injection for source '%s' with parameters %s" % (source_name, source_params))
             if source_params.board:
                 self.fpgas.set_noise_injection(local_sync=True, **source_params)
 
@@ -720,11 +785,11 @@ class ChimeMaster(object):
         """ Stop the F-engine and the correlator data acquisition processes"""
         if self.state == 'on':
             self.state = 'stopping'
-            log.info("stopping acquisition")
+            self.log.info("stopping acquisition")
             self.iceboard_cb.stop()
             if self.chrx:
                 yield self.stop_chrx_clients()
-            log.removeHandler(self.logfile)
+            self.stop_parent_logger()
             reap_cached_sockets()
             self.state = 'off'
         coroutine_return({})

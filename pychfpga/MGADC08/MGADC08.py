@@ -43,7 +43,7 @@ class MGADC08_base(FMCMezzanine):
     @classmethod
     def decode_eeprom(cls, eeprom_data):
         """ Parses the mezzanine EEPROM data into a IPMI structure. Returns None if the EEPROM is not formatted in a recognized format"""
-        logger = logging.getLogger()
+        logger = logging.getLogger(__name__)
         if ord(eeprom_data[0]) == 0x0d:  # if this is McGill format
             # # Read the eeprom block by block until we detect the end of the
             # # dictionary

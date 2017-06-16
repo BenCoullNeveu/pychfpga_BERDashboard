@@ -290,24 +290,41 @@ class FPGAArray(object):
         self.ib = []  # make sure repr() has always something
         self.ic = []
 
-        # Make sure the SQL
+
+        ###########################################
+        # setup pychfpga.fpga_array logging
+        ###########################################
+        self.logger = logging.getLogger(__name__)
+
+
+
+        ###########################################
+        # setup sqlalchemy logging
+        ###########################################
+        # Make sure the SQL engine logs only warnings
         sql_log_level = logging.WARNING
         sql_logger = logging.getLogger('sqlalchemy.engine.base.Engine')
         sql_logger.setLevel(sql_log_level)
 
-        self.logger = logging.getLogger()
-
+        ###########################################
+        # setup pychfpga package logging
+        ###########################################
+        # This sets the logging that comes out from *all* the modules within *pychfpga* package
+        # (e.g. pychfpga.core.chfpga_controller.chFPGA_controller(), pychfpga.fpga_array.FPGAArray(), etc.)
+        # We are careful not to set the root logger, which might have its own
+        parent_logger_name = __name__.rsplit('.', 1)[0] if '.' in __name__ else ''
+        parent_logger = logging.getLogger(parent_logger_name)
         # Setup logging. If a handler already exists, its log level is simply updated
         for (handler_type, log_level) in ((logging.StreamHandler, stderr_log_level), (logging.handlers.SysLogHandler, syslog_log_level)):
             if log_level:
-                log_handlers = [h for h in self.logger.handlers if isinstance(h, handler_type)]
-                if log_handlers:
+                log_handlers = [h for h in parent_logger.handlers if isinstance(h, handler_type)]
+                if log_handlers: # if a handler of that type already exist, just use it
                     log_handler = log_handlers[0]
-                else:
+                else:  # otherwise create a new one
                     log_handler = handler_type()
-                    self.logger.addHandler(log_handler)
+                    parent_logger.addHandler(log_handler)
                 log_handler.setLevel(log_level.upper() if isinstance(log_level, str) else log_level)
-                self.logger.setLevel(min(self.logger.level, log_handler.level))  # make sure all messages from this handler are passed by the root handler
+                parent_logger.setLevel(min(parent_logger.level, log_handler.level))  # make sure all messages from this handler are passed to the parent handler
 
 
 
@@ -2193,6 +2210,8 @@ class FPGAArray(object):
 
     def print_iceboard_info(self):
 
+        if not ib:
+            print('There are no IceBoards in the array')
         info = self.ib.get_status()
         keys = '\n'.join(info[0].keys())
         data = {ib:('\n'.join(info[i].values())) for i, ib in enumerate(self.ib)}
@@ -2634,7 +2653,7 @@ def load_yaml_config(object_names, default_filename='config.yaml'):
         object_names = ' '.join(object_names)  # Combine all strings into a single string
 
     config = {}
-    logger = logging.getLogger('')
+    logger = logging.getLogger(__name__)
     if not object_names:
         return config
 
@@ -2645,7 +2664,7 @@ def load_yaml_config(object_names, default_filename='config.yaml'):
 
     yaml_filename = yaml_args[0] or default_filename
 
-    print yaml_filename
+    # print yaml_filename
     if len(yaml_args) == 1: # if there is no semiciin, it's either a filename or a object
         yaml_filename = default_filename
         yaml_objects = yaml_args[0].split()
@@ -2654,7 +2673,7 @@ def load_yaml_config(object_names, default_filename='config.yaml'):
         yaml_objects = yaml_args[1].split()
 
     logger.info('Loading YAML file %s' % (yaml_filename))
-    print 'Loading YAML file %s' % yaml_filename
+    # print 'Loading YAML file %s' % yaml_filename
     with open(yaml_filename, 'rb') as yamlfile:
         yaml = load_yaml(yamlfile)
 
@@ -2674,7 +2693,7 @@ def load_yaml_config(object_names, default_filename='config.yaml'):
                 else:
                     raise RuntimeError("Unknown object '%s'" % yaml_object_path)
         logger.info('Loading YAML elements from object %s' % (yaml_object_path))
-        print 'Loading YAML elements from object %s' % yaml_object_path
+        # print 'Loading YAML elements from object %s' % yaml_object_path
 
         # if isinstance(node, Session):
         #     self.hwm = self.yaml

@@ -3,6 +3,7 @@ Base REST Clients and Servers classes for building REST-based applications.
 """
 from __future__ import print_function
 
+import sys
 import logging
 import signal
 import traceback
@@ -48,7 +49,7 @@ class RESTClient(object):
     def __init__(self, hostname=DEFAULT_HOST, port=DEFAULT_PORT):
         self.hostname = hostname
         self.port = port
-        self.log = logging.getLogger()
+        self.log = logging.getLogger(__name__).getChild(self.__class__.__name__)
 
     def __repr__(self):
         return '%s(%s:%s)' % (self.__class__.__name__, self.hostname, self.port)
@@ -79,13 +80,23 @@ class RESTClient(object):
             self.error("Can't connect to REST server at %s:%d for PORT request" % (self.hostname, self.port))
 
 class AsyncMixin(object):
+    heartbeat_string = '.'  #: heartbeat string used at initialization
+
     """ Adds heartbeat, keyboard interrupt and shutdown handling methods"""
     def add_periodic_callback(self, callback, period):
         return tornado.ioloop.PeriodicCallback(callback, period).start()
 
-    def add_heartbeat(self, period=1000, heartbeat_string='.'):
+    def add_heartbeat(self, heartbeat_string='.', period=1000):
+        """ Add a periodic callback that prints the specified string at specified inetrvals.
+
+        Parameters:
+            heartbeat_string (str): string to print
+            period (float): interval between prints in milliseconds. Default is 1000 ms.
+        """
         def heartbeat_callback():
             print(heartbeat_string, end='')
+            sys.stdout.flush()
+
         self.add_periodic_callback(heartbeat_callback, period)
 
     def add_shutdown_handler(self):
@@ -139,12 +150,14 @@ class AsyncRESTClient(AsyncMixin):
     DEFAULT_HOST = 'localhost'
     DEFAULT_PORT = 80
 
+    heartbeat_string = 'C'
+
     def __init__(self, hostname=DEFAULT_HOST, port=DEFAULT_PORT):
         self.hostname = hostname
         self.port = port
-        self.log = logging.getLogger()
+        self.log = logging.getLogger(__name__).getChild(self.__class__.__name__)
         self.client = tornado.httpclient.AsyncHTTPClient()
-        self.add_heartbeat()
+        self.add_heartbeat(self.heartbeat_string)
         self.add_shutdown_handler()
 
     def __repr__(self):
@@ -263,6 +276,7 @@ class AsyncRESTServer(AsyncMixin):
     User can signal an error condition by raising an exception or by returning a dictionary with the 'error' key.
     """
 
+    heartbeat_string = 'S'
 
     def __init__(self, address='', port=80):
         """ Create a Web server responding to the endpoints defined in the class.
@@ -279,12 +293,12 @@ class AsyncRESTServer(AsyncMixin):
         """
         self.address = address
         self.port = port
-        self.log = logging.getLogger()
+        self.log = logging.getLogger(__name__).getChild(self.__class__.__name__)
         # Create the endpoints registered with the @endpoint decorator
         endpoints = [self._create_endpoint(*info) for info in self.get_endpoint_info()]
         self.app = tornado.web.Application(endpoints) # Create the Web application serving those endpoints
         self.http_server = self.app.listen(self.port, address=address or '') # Create the web server on the target port in the current ioloop.
-        self.add_heartbeat()
+        self.add_heartbeat(self.heartbeat_string)
         self.add_shutdown_handler()
         # The server will run when the ioloop is started.
 
@@ -322,7 +336,7 @@ class AsyncRESTServer(AsyncMixin):
         """
         method = getattr(self, method_name)
         has_args = len(method_args) > 2  # any other arguments beyound the mandatory 'self' and 'handler'?
-        print('%s: Creating a REST %s endpoint %s for method %s(%s)' % (self.__class__.__name__, ('GET','POST')[has_args], endpoint_name, method_name, ', '.join(method_args)))
+        self.log.info('%s: Creating a REST %s endpoint %s for method %s(%s)' % (self.__class__.__name__, ('GET','POST')[has_args], endpoint_name, method_name, ', '.join(method_args)))
         if has_args:
             class Handler(JsonRequestHandler):
                 @coroutine

@@ -378,7 +378,7 @@ class RawAcqReceiver(object):
         Should probably fix the 'serve forever bits'
     '''
     def __init__(self):
-        self.log = logging.getLogger()
+        self.log = logging.getLogger(__name__).getChild(self.__class__.__name__)
         self.ports = None
         self.name = None
         self.dataWriter = None
@@ -729,7 +729,6 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
     """
 
     def __init__(self, name='RawAcq', hostname='localhost', port=RawAcqAsyncRESTServer.DEFAULT_PORT, **kwargs):
-        self.log = logging.getLogger()
 
         # save hostname and port so __repr__ will work right away. Will be rewritten by super()
         self.hostname = hostname
