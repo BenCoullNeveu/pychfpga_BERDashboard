@@ -350,7 +350,8 @@ class AsyncRESTServer(AsyncMixin):
                 @coroutine
                 def get(self):
                     result = yield method(self)
-                    self.write(tornado.escape.json_encode(result))
+                    if result is not None:
+		       self.write(tornado.escape.json_encode(result))
         return tornado.web.url(r'/%s' % endpoint_name, Handler)
 
 

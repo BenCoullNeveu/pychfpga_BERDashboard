@@ -2210,7 +2210,7 @@ class FPGAArray(object):
 
     def print_iceboard_info(self):
 
-        if not ib:
+        if not self.ib:
             print('There are no IceBoards in the array')
         info = self.ib.get_status()
         keys = '\n'.join(info[0].keys())

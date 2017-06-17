@@ -217,7 +217,7 @@ class RawAcqUDPReceiver(SocketServer.ThreadingUDPServer):
                 timestamp) = struct.unpack_from('>BHHL', data[:9])
             chan = probe_id & 0x0F
             adc_data = np.fromstring(data[9:2057], dtype=np.int8)
-            # print( "Data received on port {0}, channel#{1}, std(data)={2}".format(port, chan, adc_data.std()) )
+            print( "Data received on port {0}, channel#{1}, std(data)={2}".format(port, chan, adc_data.std()) )
             self.server.data_queue.put((timestamp, port, chan, adc_data))
 
     def __init__(self, server_address, data_queue):

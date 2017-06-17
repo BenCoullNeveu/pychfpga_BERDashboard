@@ -31,9 +31,9 @@ from chrx import ChrxAsyncRESTClient
 from raw_acq import RawAcqAsyncRESTClient
 
 class Metric(object):
-    def __init__(self, metric_name, value, typ='UNDEFINED' , documentation=' No docs', **labels):
+    def __init__(self, metric_name, value, type='UNDEFINED' , documentation=' No docs', **labels):
         self.metric_name = metric_name
-        self.type = typ.upper()
+        self.type = type.upper()
         self.doc = documentation
         self.labels = labels
         self.value = value
@@ -211,7 +211,7 @@ class ChimeMaster(object):
             metrics.append(Metric('fpga_power_supply_voltage', name=ps_name, value=status.voltage, type='gauge'))
             metrics.append(Metric('fpga_power_supply_current', name=ps_name, value=status.current, type='gauge'))
             metrics.append(Metric('fpga_power_supply_power', name=ps_name, value=status.power, type='gauge'))
-            metrics.append(Metric('fpga_power_supply_status', name=ps_name, value=status.status, type='gauge'))
+	    metrics.append(Metric('fpga_power_supply_status', name=ps_name, value=int(status.status=='OK'), type='gauge'))
         coroutine_return(metrics)
 
     #####################################
@@ -973,7 +973,9 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
     def get_monitoring_data(self, handler):
         metrics = []
         metrics.extend((yield self.chime_master.monitor_power_supply()))
-        coroutine_return('\n'.join(str(metric) for metric in metrics))
+	handler.set_header('Content-Type', 'text/plain')
+        handler.write('\n'.join(str(metric) for metric in metrics))
+        coroutine_return(None)
 
 class ChimeMasterRESTClient(RESTClient):
 
