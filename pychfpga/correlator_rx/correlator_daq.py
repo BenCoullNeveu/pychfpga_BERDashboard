@@ -4,6 +4,10 @@ import getopt
 import logging
 import time
 import pickle
+import gc
+from memory_profiler import profile
+
+
 
 from datetime import datetime
 import numpy as np
@@ -46,20 +50,50 @@ def build_corr_prod_lut(N):
 
 CORRELATION_LUT = build_corr_prod_lut(16)    
 
-def get_product_from_flattened_array(i, j):
+def unfold_triangle(data_line):
 
     '''
+    Unfold a (N*(N+1)/2, n_freq) array into a (N,N,n_freq) correlation triangle.
+
+    '''
+
+    roots = np.roots([1, 1, -2 * data_line.shape[0]]) #Solve for N given the input size.
+    n_ch = int(np.rint(roots.max())) #The positive root is the number of channels.
+
+    data_array = np.zeros((n_ch, n_ch, data_line.shape[1]), dtype=complex) * np.nan
+    indices = np.triu_indices(n_ch)
+    
+    data_array[indices] = data_line
+    
+    return data_array
+
+def get_product(i, j):
+
+    '''
+    get_product_from_flattened_array(i, j)
+
     Returns the correlation products for i x conj(j).
+
     Data are stored on disk as the flattened upper triangle of the correlation matrix
     so this function is required to convert i,j to an index in the flattened array.
-    This function assumes 16 channels but the correlation product LUT can be modified
-    for other numbers of channels.
+    This function assumes 16 channels.
 
     '''
-    #print CORRELATION_LUT
-    return CORRELATION_LUT[i, j]
+    try:
+        products = CORRELATION_LUT[i, j]
+    except IndexError:
+        print "Product index is out of bounds: i:{0:d} j:{1:d}".format(i, j)
+        raise
+
+    return products
+
 
 def build_logger(log_level="INFO"):
+
+    '''
+    Set up the logger. Returns a logger handle.
+    '''
+
     reload(logging)
     # create logger
     logger = logging.getLogger(__name__) # pylint: disable=locally-disabled, invalid-name
@@ -79,22 +113,6 @@ def build_logger(log_level="INFO"):
 
     return logger
 
-def unfold_triangle(data_line):
-
-    '''
-    Unfold a (N*(N+1)/2, n_freq) array into a (N,N,n_freq) correlation triangle.
-
-    '''
-
-    roots = np.roots([1, 1, -2 * data_line.shape[0]]) #Solve for N given the input size.
-    n_ch = int(np.rint(roots.max())) #The positive root is the number of channels.
-
-    data_array = np.zeros((n_ch, n_ch, data_line.shape[1]), dtype=complex) * np.nan
-    indices = np.triu_indices(n_ch)
-    
-    data_array[indices] = data_line
-    
-    return data_array
 
 
 
@@ -114,13 +132,13 @@ def write_to_disk(handler, index, data):
     '''
     handler[index] = data
 
-
-def acquire_data(output_filename, number_frames, gains_file, logger, verbose=0):
+#@profile
+def acquire_data(output_filename, number_frames, integration_period, gains_file, logger, verbose=0):
 
     '''
+    acquire_data(output_filename, number_frames, integration_period, gains_file, logger, verbose=0)
 
     Acquire correlator data and write it to disk in an h5 file. 
-
     '''
 
 
@@ -130,6 +148,7 @@ def acquire_data(output_filename, number_frames, gains_file, logger, verbose=0):
     output_file.attrs['process_date_start'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")
     output_file.attrs['number_frames'] = number_frames
     output_file.attrs['digital_gains_present'] = False
+    output_file.attrs['integration_period'] = integration_period
 
     comp_type = np.dtype([('computer_timestamp', '|S30'), 
                           ('products', 'complex64', (n_corr, 1024)), 
@@ -149,20 +168,25 @@ def acquire_data(output_filename, number_frames, gains_file, logger, verbose=0):
 
     last_time = time.time()
     for i in xrange(number_frames):       
+
+        
         timestamp, data = read_correlator_frame(verbose)
+        
         write_to_disk(output_handler, i, ("{0:30s}".format(datetime.now().strftime("%H:%M:%S.%f")),
                                           data[indices],
                                           timestamp
                                          )
                      )
+        
+        #del timestamp, data
         now_time = time.time()
-        #if i%100 == 0 and i > 0:
         if now_time - last_time >= 5.0:
             last_time = now_time
             logger.info("At measurement {0:d}/{1:d}".format(i, number_frames))
             logger.debug("Most recent timestamp: {0:d}".format(timestamp))
         
-       
+
+
     output_file.attrs['process_date_stop'] = datetime.now().strftime("%Y-%m-%d %H:%M:%S.%f")       
     
     if gains_file is not None:
@@ -172,8 +196,12 @@ def acquire_data(output_filename, number_frames, gains_file, logger, verbose=0):
 
     logger.info("Done.")
     output_file.close()
+    garbage = gc.collect()
+
+    logger.debug("Amount of garbage collected: {0:d}".format(garbage))
 
     return output_filename
+
 
 def load_digital_gains(gains_file):
     '''
@@ -227,21 +255,28 @@ def test_daq_receive_deltas(N = 100, verbose = 0):
 
     return timestamps, deltas, timestamps2, deltas2
 
-def run_daq(filename_prefix, number_accumulations, number_files, logger=None, gains_file=None, verbose=0, log_level="INFO"):
+
+def run_daq(data_dir, filename_prefix, number_accumulations, number_files, integration_period, logger=None, gains_file=None, verbose=0, log_level="INFO"):
 
     '''
     Start the main DAQ loop. This function can be called from main() or on its own.
     '''
 
     if logger is None:
-        logger = build_logger(log_level)
-
-    datadir = "/data/firmware_correlator/data/"
+        logger = build_logger(log_level)    
     
+    data_file_length_s = number_accumulations * integration_period * 2.56e-6
+    logger.info("Expected execution time: {0:.1f} s / file ({2:.1f} min.) ; {1:.1f} s ({3:.1f} min.) total."\
+        .format(data_file_length_s,
+                number_files * data_file_length_s,            
+                data_file_length_s/60.,
+                number_files * data_file_length_s / 60.))
+
+
     for i in xrange(number_files):
         logger.info("Beginning acuisition {0:d}/{1:d}".format(i+1, number_files))
         file_number = ".{0:04d}".format(i)
-        output_filename = (datadir + time.strftime("d%Y%m%d") + "/" + 
+        output_filename = (data_dir + time.strftime("d%Y%m%d") + "/" + 
                            filename_prefix + file_number + ".h5")
         logger.info("Output filename: {0:s}".format(output_filename))
 
@@ -250,7 +285,7 @@ def run_daq(filename_prefix, number_accumulations, number_files, logger=None, ga
             
         if os.path.isfile(output_filename):
             logger.error("Target file '{0:s}' exists".format(output_filename))
-            if filename_prefix == 'test':
+            if filename_prefix[0:4] == 'test':
                 logger.info("Overwriting...")
                 os.remove(output_filename)
                 logger.info("Deleted '{0:s}'".format(output_filename))    
@@ -258,9 +293,13 @@ def run_daq(filename_prefix, number_accumulations, number_files, logger=None, ga
                 logger.error("Remove file or choose a new input filename to continue.")
                 sys.exit(2)
         
-        acquire_data(output_filename, number_accumulations, gains_file, 
+        acquire_data(output_filename, number_accumulations, integration_period, gains_file, 
                      verbose=verbose, logger=logger)
+        #acquire_data_alternate(output_filename, number_accumulations, integration_period, gains_file, 
+        #             verbose=verbose, logger=logger)
         logger.info("----")
+
+
 
 def main(argv):
 
@@ -271,6 +310,8 @@ def main(argv):
     verbose = 0
     filename_prefix = None
     gains_file = None
+    integration_period = None
+    data_dir = "/data/firmware_correlator/data/"
 
 
     if logger is None:
@@ -279,14 +320,14 @@ def main(argv):
 
     try:
         opts, _ = getopt.getopt(argv, 
-                                "h:o:g:N:L:v", 
-                                ["ofile=", "digital_gains="])
+                                "h:o:g:N:L:P:v:D", 
+                                ["ofile=", "digital_gains=", "datadir="])
     except getopt.GetoptError:
-        print 'correlator_daq.py -o <outputfile> -N <number integrations> -v <verbosity>'
+        print 'correlator_daq.py -o <outputfilename> -N <number files> -L <number integrations> -v <verbosity> -g <digital gains file>'
         sys.exit(2)
     for opt, arg in opts:
         if opt == '-h':
-            print 'correlator_daq.py -o <outputfile> -N <number files> -L <number integrations> -v <verbosity> -g <digital gains file>'
+            print 'correlator_daq.py -o <outputfilename> -N <number files> -L <number integrations> -v <verbosity> -g <digital gains file>'
             sys.exit()
         elif opt in ("-o", "--ofile"):
             filename_prefix = arg
@@ -296,15 +337,25 @@ def main(argv):
             number_accumulations = int(arg)
         elif opt == '-N':
             number_files = int(arg)            
+        elif opt == '-P':
+            integration_period = int(arg)                        
         elif opt == '-v':
             verbose = int(arg)
+        elif opt in ("-D", "--datadir"):
+            data_dir = arg        
 
 
     if filename_prefix is None:
         logger.error("No specified filename prefix! Exiting...")
         sys.exit(2)
+    elif integration_period is None:
+        logger.error("No specified integration period! Exiting...")
+        sys.exit(2)
     else:
-        run_daq(filename_prefix, number_accumulations, number_files, logger=logger, gains_file=gains_file, verbose=verbose, log_level=log_level)
+        #run_daq(filename_prefix, number_accumulations, number_files, integration_period, data_dir, logger=None, gains_file=None, verbose=0, log_level="INFO"):
+        run_daq(data_dir, filename_prefix, number_accumulations, number_files,
+                integration_period=integration_period, logger=logger, 
+                gains_file=gains_file, verbose=verbose, log_level=log_level)
 
 if __name__ == '__main__':
     

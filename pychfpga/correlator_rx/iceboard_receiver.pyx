@@ -1,7 +1,12 @@
 # attempt to cythonize timestream c code.
 import numpy as np
+
+
 cimport numpy as np
+
+
 from libc.stdlib cimport malloc, free
+
 
 
 cdef extern from "ciceboard_receiver.h":
@@ -113,7 +118,6 @@ def capture_correlator_burst(N = 100):
 
     return timestamps, data
 
-
 def read_correlator_frame(raw = False, portno = 38000, verbose=0, Ncmac = 34, Ncorr = 8, num_products = 512):
 
     '''
@@ -180,6 +184,8 @@ def read_raw_correlator_frame(udp_port, verbose):
             for k in range(2572):
                 timestream_data[i,j,k] = <np.int8_t>singleTime_pass.data[i][j][k]
             received_list[i,j] = <np.int8_t>singleTime_pass.received_list[i][j]
+
+    free(singleTime_pass)
     return timestamp, timestream_data, received_list
 
 
