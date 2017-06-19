@@ -87,7 +87,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
     `chFPGA_controller` inherits from the following classes:
 
-    .. image:: ../images/chFPGA_controller_class_inheritance_diagram.svg
+    .. image:: ../images/chfpga_controller_class_inheritance_diagram.svg
        :width: 80%
 
     - `IceBoardExtHandler`  provides the basic Ethernet/UDP-based Memory-mapped Interface (MMI) to
