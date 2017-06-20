@@ -164,6 +164,18 @@ texinfo_documents = [
 ]
 
 
+import mock
+
+MOCK_MODULES = ['scipy', 'scipy.stats', 'scipy.special', 'scipy.optimize', 'scipy.interpolate', 'scipy.integrate', \
+                'pymc', 'matplotlib', \
+                'matplotlib.pylab', 'matplotlib.pyplot', '_tkinter', 'Tkinter', 'matplotlib.backends', 'matplotlib.backends.backend_tkagg', \
+                'matplotlib.figure', 'astropy', 'astropy.table']
+
+for mod_name in MOCK_MODULES:
+    sys.modules[mod_name] = mock.Mock()
+
+napoleon_use_rtype = False
+
 
 
 # Example configuration for intersphinx: refer to the Python standard library.
