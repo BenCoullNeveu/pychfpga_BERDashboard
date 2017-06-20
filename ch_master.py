@@ -41,7 +41,7 @@ class Metric(object):
     def  __str__(self):
         return ('# HELP %s %s\n' % (self.metric_name, self.doc) +
                '# TYPE %s %s\n' % (self.metric_name, self.type) +
-               '%s{%s} %s %i' % (self.metric_name, ','.join('%s=%s' % (k,v) for k,v in self.labels.items()), self.value, self.time))
+               '%s{%s} %s %i' % (self.metric_name, ','.join('%s="%s"' % (k,v) for k,v in self.labels.items()), self.value, self.time))
 
 
 def convert_types(val):
@@ -974,7 +974,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         metrics = []
         metrics.extend((yield self.chime_master.monitor_power_supply()))
 	handler.set_header('Content-Type', 'text/plain')
-        handler.write('\n'.join(str(metric) for metric in metrics))
+        handler.write('\n'.join(str(metric) for metric in metrics)+'\n')
         coroutine_return(None)
 
 class ChimeMasterRESTClient(RESTClient):
