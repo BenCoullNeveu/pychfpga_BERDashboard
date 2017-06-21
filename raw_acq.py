@@ -642,25 +642,25 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
 
     @coroutine
     @endpoint
-    def start_hdf5(self, handler, base_dir, base_filename):
-        self.receiver.startHdf5Disk(base_dir, base_filename)
-        coroutine_return("started hdf5 writing to disk.")
+    def start_hdf5(self, handler, base_dir='./', base_filename='RawAcq'):
+	    self.receiver.startHdf5Disk(base_dir, base_filename)
+	    coroutine_return("started hdf5 writing to disk.")
 
     @coroutine
     @endpoint
     def stop(self, handler):
-        self.receiver.stop()
-        coroutine_return("stopped receiver")
+	    self.receiver.stop()
+	    coroutine_return("stopped receiver")
 
     @coroutine
     @endpoint
     def get_packets(self, handler):
-        self.log.info('%.32r: received get_packets command' % self)
-        ts, ports, data = self.receiver.read_data()
-        print(ts)
-        print(ports)
-        print(data)
-        coroutine_return(ts=ts.tolist(), ports=ports, data=data.tolist())
+	self.log.info('%.32r: received get_packets command' % self)
+	ts, ports, data = self.receiver.read_data()
+	print(ts)
+	print(ports)
+	print(data)
+	coroutine_return(ts=ts.tolist(), ports=ports, data=data.tolist())
 
     @coroutine
     @endpoint
@@ -668,92 +668,90 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
         if self.gain_estimator:
             gains = self.gain_estimator.estimateGains()
             coroutine_return(gains=gains)
-        else:
-            raise RuntimeError('Gain estimator is not created (most probably because the server is not started)')
+	else:
+	    raise RuntimeError('Gain estimator is not created (most probably because the server is not started)')
 
 ################################################
 # RawAcq REST Client
 ################################################
 
-class RawAcqAsyncRESTClient(AsyncRESTClient):
-    """Implements an asynchronous client that exposes the functions of the specified remote RawAcq server.
+    class RawAcqAsyncRESTClient(AsyncRESTClient):
+         """Implements an asynchronous client that exposes the functions of the specified remote RawAcq server.
 
-    This client is used by ch_master to start, configue and operate all the RawAcq servers in the array.
+				 This client is used by ch_master to start, configue and operate all the RawAcq servers in the array.
 
-    The client is implemented using a Tornado AsyncHTTPClient. It exposes the RawAcq server methods
-    (i.e REST endpoints) as local methods. The local methods are Tornado coroutines so requests to
-    multiple clients can be made in parallel. This is especially beneficial since the data requests
-    from the server are slow IO operations which benefit the mist from co-execution.
+				 The client is implemented using a Tornado AsyncHTTPClient. It exposes the RawAcq server methods
+				 (i.e REST endpoints) as local methods. The local methods are Tornado coroutines so requests to
+				 multiple clients can be made in parallel. This is especially beneficial since the data requests
+				 from the server are slow IO operations which benefit the mist from co-execution.
 
-    The client will operate only if the IOloop in which is was created is running.
+				 The client will operate only if the IOloop in which is was created is running.
 
-    Parameters:
-        name (str): Name of the client, to be used in logging etc.
+				 Parameters:
+				 name (str): Name of the client, to be used in logging etc.
 
-        host (str): The hostname of the RawAcq REST server. If `host` is None, an (experimental,
-            Python-based) RawAcq REST server will be created locally.
+					     host (str): The hostname of the RawAcq REST server. If `host` is None, an (experimental,
+							     Python-based) RawAcq REST server will be created locally.
 
-        port (int): The port number to which the RawAcq REST server is listening. Default is port 80.
+								       port (int): The port number to which the RawAcq REST server is listening. Default is port 80.
 
-        kwargs: All remaining aruments will be stored as configuration data.
-    """
+										   kwargs: All remaining aruments will be stored as configuration data.
+										   """
 
-    def __init__(self, name='RawAcq', hostname='localhost', port=RawAcqAsyncRESTServer.DEFAULT_PORT, base_dir = '/data', base_filename= None, **kwargs):
+										   def __init__(self, name='RawAcq', hostname='localhost', port=RawAcqAsyncRESTServer.DEFAULT_PORT, base_dir = '/data', base_filename= None, **kwargs):
 
-        # save hostname and port so __repr__ will work right away. Will be rewritten by super()
-        self.hostname = hostname
-        self.port = port
-        self.log = logging.getLogger(__name__).getChild(self.__class__.__name__) # we need the logger right away
+											   # save hostname and port so __repr__ will work right away. Will be rewritten by super()
+											   self.hostname = hostname
+											   self.port = port
+											   self.log = logging.getLogger(__name__).getChild(self.__class__.__name__) # we need the logger right away
 
-        if not hostname:
-            hostname = 'localhost'
-            address='' # server listens to all interfaces by default
-            self.log.info('%32r: Creating local RawAcq server at %s:%i' % (self, address, port))
-            self.server = RawAcqAsyncRESTServer(address=address, port=port)
-            self.server.add_heartbeat(period=1000, heartbeat_string='R')
+											   if not hostname:
+											   hostname = 'localhost'
+											   address='' # server listens to all interfaces by default
+	self.log.info('%32r: Creating local RawAcq server at %s:%i' % (self, address, port))
+self.server = RawAcqAsyncRESTServer(address=address, port=port)
+	self.server.add_heartbeat(period=1000, heartbeat_string='R')
 
-        self.log.info('%32r: Creating RawAcq Client at %s:%i' % (self, hostname, port))
-        super(RawAcqAsyncRESTClient, self).__init__(hostname=hostname, port=port)
-        self.name = name
-        self.base_dir = base_dir
-        self.base_filename = base_filename or name
-        self.config = kwargs
+	self.log.info('%32r: Creating RawAcq Client at %s:%i' % (self, hostname, port))
+super(RawAcqAsyncRESTClient, self).__init__(hostname=hostname, port=port)
+	self.name = name
+	self.base_dir = base_dir
+	self.base_filename = base_filename or name
+	self.config = kwargs
 
-    @coroutine
-    def ping(self):
-        try:
-            yield self.get('status')
-            self.log.info("Successfully pinged raw_acq server at %s:%i" % (self.host, self.port))
-        except Exception as e:
-            self.log.debug(repr(e))
-            self.log.error("Can't ping raw_acq server at %s:%i" % (self.host, self.port))
+	@coroutine
+	def ping(self):
+		try:
+		yield self.get('status')
+		self.log.info("Successfully pinged raw_acq server at %s:%i" % (self.host, self.port))
+		except Exception as e:
+			self.log.debug(repr(e))
+			self.log.error("Can't ping raw_acq server at %s:%i" % (self.host, self.port))
 
-    @coroutine
-    def start(self, **config):
-        """ Start the RaqAcq remote server with the keyword argument as configuration data"""
-        self.log.info('%s: Starting remote RawAcq server at %s:%i with config: %r' % (self, self.host, self.port, config))
-        result = yield self.post('start', **config)
-        coroutine_return(result)
+			@coroutine
+			def start(self, **config):
+				""" Start the RaqAcq remote server with the keyword argument as configuration data"""
+					self.log.info('%s: Starting remote RawAcq server at %s:%i with config: %r' % (self, self.host, self.port, config))
+	result = yield self.post('start', **config)
+	    coroutine_return(result)
 
-    @coroutine
-    def stop(self):
-        try:
-            result = yield self.get('stop')
-        except Exception as e:
-            result = dict(error=repr(e))
-        print('result=', result)
-        coroutine_return(result)
+	    @coroutine
+	    def stop(self):
+		    try:
+		    result = yield self.get('stop')
+		    except Exception as e:
+			    result = dict(error=repr(e))
+	print('result=', result)
+	      coroutine_return(result)
 
-    @coroutine
-    @endpoint
-    def get_packets(self, handler):
+	      @coroutine
+	      def get_packets(self):
         data = yield self.get('get-packets')
         coroutine_return(data)
 
     @coroutine
-    @endpoint
-    def start_hdf5(self, handler, base_dir=None, base_filename=None):
-        data = yield self.get('start-hdf5', base_dir=base_dir or self.base_dir, base_filename=base_filename or self.base_filename)
+    def start_hdf5(self, base_dir=None, base_filename=None):
+        data = yield self.post('start-hdf5', base_dir=base_dir or self.base_dir, base_filename=base_filename or self.base_filename)
         coroutine_return(data)
 
     @coroutine
