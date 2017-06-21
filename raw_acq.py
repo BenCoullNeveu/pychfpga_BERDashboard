@@ -277,71 +277,41 @@ class hdf5TimestreamData(object):
     def close(self):
         self.f.close()
 
-# class hdf5LiveTimestreamData(object):
-#     def __init__(self, filestring):
-#         self.N_SAMP = 2048
-#         self.N_ANT = 16
-#         self.f = h5py.File(filestring, 'a')
-#         self.timestampDataset = self.f.require_dataset('timestamp',
-#                   (16, self.N_ANT), dtype=np.int32, maxshape=(None, self.N_ANT))
-#         self.portDataset = self.f.require_dataset('slot', (16, 1),
-#                                             dtype=np.int32, maxshape=(None, 1))
-#         self.timestreamDataset = self.f.require_dataset('timestream',
-#                         (16, self.N_ANT, self.N_SAMP), dtype=np.int8,
-#                         maxshape=(None, self.N_ANT, self.N_SAMP))
-
-
-#     def init(self, n_times, n):
-#         self.n_times = n_times
-#         self.n = n
-
-
-#     def write_singletime(self, timestamp, port, timestream):
-#         if self.n == self.n_times:
-#             self.n_times = self.n+1
-#             #self.timestampDataset.resize((self.n_times, self.N_ANT))
-#             #self.portDataset.resize((self.n_times, 1))
-#             #self.timestreamDataset.resize((self.n_times, self.N_ANT, self.N_SAMP))
-#         elif self.n < self.n_times:
-#             pass
-#         else:
-#             print "ut oh..."
-#         print self.n_times
-#         self.timestampDataset[self.n] = timestamp
-#         self.portDataset[self.n] = port % 100  # assume port gives slot
-#         self.timestreamDataset[self.n] = timestream
-#         self.n += 1
-
-#     def close(self):
-#         self.f.close()
-
-
 
 class dataWriter(object):
-    def __init__(self, data_queue):
+    """
+    """
+    def __init__(self, data_queue, base_dir, base_filename):
         if not isinstance(data_queue, (list, tuple)):
             self.data_queue = [data_queue]
         else:
             self.data_queue = data_queue
-        self.n_file = 0
         self.N_ELEMENT_PER_FILE = 2048*64
-        self.time_name = datetime.datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
-        self.base_dir = './'+ self.time_name + '_CHIME_pfFirmwareC0_rawadc/'
+        time_name = datetime.datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
+        self.base_dir = os.path.join(base_dir,'%s_%s/' % (time_name, base_filename))
         #self.live_base_dir = '/mnt/agogo/livedata/'
         try:
             os.mkdir(self.base_dir)
         except:
             print("couldn't make directory... using current one.")
             self.base_dir = './'
-        self.h5name = self.base_dir + "{0:06d}.h5".format(self.n_file)
-        self.h5file = hdf5TimestreamData(self.h5name)
+
+        self.n_file = 0
+        self.h5file = hdf5TimestreamData(self.get_h5_filename())  # start a new empty file
         self.run = True
         #self.live_name = self.live_base_dir + "live_adc_data.h5"
         #self.live_h5file = hdf5LiveTimestreamData(self.live_name)
         #self.live_h5file.init()
         #self.live_h5file.close()
 
+    def get_h5_filename(self):
+        """ Return a HDF5 file name based on current file number """
+        filename = "{0:06d}.h5".format(self.n_file)
+        return  os.path.join(self.base_dir, filename)
+
     def write(self):
+        """ Aggregate a number of data sets and write them into the current HDF5 file, then start a new file
+        """
         while self.run:
             n_elements = 0
             while n_elements < self.N_ELEMENT_PER_FILE:
@@ -357,8 +327,7 @@ class dataWriter(object):
             self.h5file.close()
             #self.live_h5file.close()
             self.n_file += 1
-            self.h5name = self.base_dir + "{0:06d}.h5".format(self.n_file)
-            self.h5file = hdf5TimestreamData(self.h5name)
+            self.h5file = hdf5TimestreamData(self.get_h5_filename())
             #self.live_h5file.init(n_times=1, n=0)
             #self.live_h5file.close()
 
@@ -599,8 +568,10 @@ class RawAcqReceiver(object):
         print("done shutting down")
 
 
-    def startHdf5Disk(self):
-        self.dataWriter = dataWriter(self.data_queues)
+    def startHdf5Disk(self, base_dir, base_filename):
+        if self.dataWriter:
+            raise RuntimeError('HDF5 dataWriter is already running')
+        self.dataWriter = dataWriter(self.data_queues, base_dir, base_filename)
         self.data_writer_thread = threading.Thread(target=self.dataWriter.write)
         self.data_writer_thread.setDaemon(True)
         self.data_writer_thread.start()
@@ -671,8 +642,8 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
 
     @coroutine
     @endpoint
-    def start_hdf5(self, handler):
-        self.receiver.startHdf5Disk()
+    def start_hdf5(self, handler, base_dir, base_filename):
+        self.receiver.startHdf5Disk(base_dir, base_filename)
         coroutine_return("started hdf5 writing to disk.")
 
     @coroutine
@@ -727,7 +698,7 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
         kwargs: All remaining aruments will be stored as configuration data.
     """
 
-    def __init__(self, name='RawAcq', hostname='localhost', port=RawAcqAsyncRESTServer.DEFAULT_PORT, **kwargs):
+    def __init__(self, name='RawAcq', hostname='localhost', port=RawAcqAsyncRESTServer.DEFAULT_PORT, base_dir = '/data', base_filename= None, **kwargs):
 
         # save hostname and port so __repr__ will work right away. Will be rewritten by super()
         self.hostname = hostname
@@ -744,6 +715,8 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
         self.log.info('%32r: Creating RawAcq Client at %s:%i' % (self, hostname, port))
         super(RawAcqAsyncRESTClient, self).__init__(hostname=hostname, port=port)
         self.name = name
+        self.base_dir = base_dir
+        self.base_filename = base_filename or name
         self.config = kwargs
 
     @coroutine
@@ -770,6 +743,18 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
             result = dict(error=repr(e))
         print('result=', result)
         coroutine_return(result)
+
+    @coroutine
+    @endpoint
+    def get_packets(self, handler):
+        data = yield self.get('get-packets')
+        coroutine_return(data)
+
+    @coroutine
+    @endpoint
+    def start_hdf5(self, handler, base_dir=None, base_filename=None):
+        data = yield self.get('start-hdf5', base_dir=base_dir or self.base_dir, base_filename=base_filename or self.base_filename)
+        coroutine_return(data)
 
     @coroutine
     def estimate_gains(self):
