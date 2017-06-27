@@ -258,11 +258,11 @@ class hdf5TimestreamData(object):
         self.timestreamDataset.attrs['axis'] = ['snapshot', 'timestream']
         self.index_map = self.f.create_group("index_map")
         self.snapshot_index_map = self.index_map.create_dataset('snapshot',
-                                            (1310720), dtype=np.uint32)
+                                            (1310720,), dtype=np.uint32)
         self.start_index = int(filestring[-9:-6]) + 1
         self.snapshot_index_map = np.arange(1310720) + self.start_index
         self.timestream_index_map = self.index_map.create_dataset("timestream",
-                                            (2048), dtype=np.uint16)
+                                            (2048,), dtype=np.uint16)
         self.timestream_index_map = np.arange(2048)
         self.n_times = 1
         self.n = 0
@@ -327,8 +327,8 @@ class dataWriter(object):
 
     def start_new_file(self):
         filename = self.get_h5_filename()
-        self.log.info('%r: started logging in file %s' % filename)
-        self.h5file = hdf5TimestreamData()  # start a new empty file
+        self.log.info('%r: started logging in file %s' % (self, filename))
+        self.h5file = hdf5TimestreamData(filename)  # start a new empty file
 
 
     def write(self):
