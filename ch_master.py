@@ -473,8 +473,8 @@ class ChimeMaster(object):
 
         # Create output directories
         time_str = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-        self.acq_name = "%s_%s_corr" % (time_str, conf.corr_name)
-        self.acq_base_dir = os.path.join(conf.base_path, self.acq_name)
+        self.acq_name = "%s_%s" % (time_str, conf.corr_name)
+        self.acq_base_dir = os.path.join(os.path.expanduser(conf.base_path), self.acq_name)
 
         try:
             os.makedirs(self.acq_base_dir)
@@ -484,7 +484,8 @@ class ChimeMaster(object):
             coroutine_return({'error':errmsg})
 
 
-        log_filename = "%s/ch_master.log" % self.acq_base_dir
+        log_filename = os.path.join(self.acq_base_dir, "ch_master.log")
+
         self.setup_parent_logger(
             stderr_log_level=conf.logging.stderr_log_level,
             syslog_log_level=conf.logging.syslog_log_level,
