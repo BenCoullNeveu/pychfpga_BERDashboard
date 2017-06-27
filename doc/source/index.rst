@@ -1,22 +1,35 @@
-.. ch_acq documentation master file, created by
-   sphinx-quickstart on Tue Jun 13 08:47:33 2017.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
+===============================================
+:mod:`ch_acq`:  CHIME telescope control package
+===============================================
 
-:mod:`ch_acq`: Python library to operate the CHIME telescope.
-=============================================================
+The `ch_acq` package provides a number of Python modules that are used to initialize and operate the CHIME telescope hardware. The main module, :mod:`ch_master`, provides the classes to connect with the various remote processes and hardware that operate the array, configure them into the desired configuration, and runs in the background to provide monitoring information and receiver further commands.
 
-.. image:: images/chime_logo.png
-
-
+The :mod:`ch_acq` package provides the following main modules, each corresponding to a CHIME subsystem:
 
 .. toctree::
-   :maxdepth: 3
-   :caption: Contents:
+   :maxdepth: 1
+   :caption: Main modules
 
    ch_master
+   fpga_array
+   kotekan
    raw_acq
+   chrx
+
+Additional support modules are also provided:
+
+.. toctree::
+
    rest
+
+The CHIME telescope subsystems
+==============================
+
+The following figure illustrates the main subsystems of the CHIME telescope Front-End.
+
+.. image:: images/chime_processes_interactions.svg
+	:width: 100 %
+
 
 Indices and tables
 ==================

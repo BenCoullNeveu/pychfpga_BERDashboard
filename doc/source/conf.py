@@ -18,10 +18,11 @@
 #
 import os
 import sys
+import sphinx_rtd_theme
 # sys.path.insert(0, os.path.abspath('.'))
 
-sys.path.insert(0, os.path.abspath("../.."));
-sys.path.insert(1, os.path.abspath("../../pychfpga/docs")); # to access the  sphinx_paramlinks sphinx extension
+sys.path.insert(0, os.path.abspath("../.."))
+sys.path.insert(1, os.path.abspath("../../pychfpga/docs"))  # to access the  sphinx_paramlinks sphinx extension
 
 # -- General configuration ------------------------------------------------
 
@@ -87,7 +88,6 @@ pygments_style = 'sphinx'
 # If true, `todo` and `todoList` produce output, else they produce nothing.
 todo_include_todos = True
 
-
 # -- Options for HTML output ----------------------------------------------
 
 # The theme to use for HTML and HTML Help pages.  See the documentation for
@@ -99,13 +99,20 @@ html_theme = 'sphinx_rtd_theme'
 # further.  For a list of options available for each theme, see the
 # documentation.
 #
-# html_theme_options = {}
+html_theme_options = {'logo_only': True}
 
 # Add any paths that contain custom static files (such as style sheets) here,
 # relative to this directory. They are copied after the builtin static files,
 # so a file named "default.css" will overwrite the builtin "default.css".
 html_static_path = ['_static']
 
+# HTML additional options
+
+html_logo = "images/chime_logo_bw.svg"
+html_favicon = "images/chime_favicon.png"
+html_theme_path = [sphinx_rtd_theme.get_html_theme_path()]
+
+html_short_title = "ch_acq"
 
 # -- Options for HTMLHelp output ------------------------------------------
 
