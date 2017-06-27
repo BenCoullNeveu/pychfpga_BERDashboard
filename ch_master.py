@@ -926,7 +926,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
     @coroutine
     @endpoint
     def get_frequency_map(self, handler):
-        coroutine_return(results=self.chime_master.get_frequency_map())
+        coroutine_return(results=self.sanitize_for_json(self.chime_master.get_frequency_map()))
 
 
     @coroutine
