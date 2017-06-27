@@ -13,9 +13,24 @@ import functools
 
 import tornado.ioloop
 import tornado.web
-from tornado.gen import coroutine, sleep
+from tornado.gen import sleep
 from tornado.ioloop import IOLoop
 
+def coroutine(func, replace_callback=True):
+    """ Standard Tornado coroutine decorator, with the coroutine flag added in case we use tornado < 4.5"""
+    wrapped = tornado.gen.coroutine(func, replace_callback=replace_callback)
+    if not hasattr(wrapped, '__tornado_coroutine__'):
+        wrapped.__tornado_coroutine__ = True
+    return wrapped
+
+
+def is_coroutine_function(func):
+    """Return whether *func* is a coroutine function, i.e. a function
+    wrapped with `~.gen.coroutine`.
+
+    .. versionadded:: 4.5
+    """
+    return getattr(func, '__tornado_coroutine__', False)
 
 def coroutine_return(*args, **kwargs):
     """ return a value from a coroutine.
@@ -336,7 +351,7 @@ class AsyncRESTServer(AsyncMixin):
         """
         method = getattr(self, method_name)
         has_args = len(method_args) > 2  # any other arguments beyound the mandatory 'self' and 'handler'?
-        self.log.info('%s: Creating a REST %s endpoint %s for method %s(%s)' % (self.__class__.__name__, ('GET','POST')[has_args], endpoint_name, method_name, ', '.join(method_args)))
+        self.log.info('%r: Creating a REST %s endpoint %s for method %s(%s)' % (self, ('GET','POST')[has_args], endpoint_name, method_name, ', '.join(method_args)))
         if has_args:
             class Handler(JsonRequestHandler):
                 @coroutine
@@ -366,7 +381,7 @@ class AsyncRESTServer(AsyncMixin):
         if endpoint_name is None:
             endpoint_name = method_name.replace('_','-')
         argspecs = inspect.getargspec(fn)
-        method_args  = argspecs.args + ['**' + argspecs.keywords] if argspecs.keywords else []
+        method_args  = argspecs.args + (['**' + argspecs.keywords] if argspecs.keywords else [])
         fn.endpoint_info = (method_name, endpoint_name, method_args)  # add the endpoint info in the function
         return fn # return the original function
 

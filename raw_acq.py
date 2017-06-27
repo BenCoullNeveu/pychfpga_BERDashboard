@@ -690,14 +690,14 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
 
     Parameters:
 
-    name (str): Name of the client, to be used in logging etc.
+        name (str): Name of the client, to be used in logging etc.
 
-    hostname (str): The hostname of the RawAcq REST server. If `host` is None, an (experimental,
+        hostname (str): The hostname of the RawAcq REST server. If `host` is None, an (experimental,
              Python-based) RawAcq REST server will be created locally.
 
-    port (int): The port number to which the RawAcq REST server is listening. Default is port 80.
+        port (int): The port number to which the RawAcq REST server is listening. Default is port 80.
 
-    kwargs: All remaining aruments will be stored as configuration data.
+        kwargs: All remaining aruments will be stored as configuration data.
     """
 
     def __init__(self, name='RawAcq', hostname='localhost', port=RawAcqAsyncRESTServer.DEFAULT_PORT, base_dir = '/data', base_filename= None, **kwargs):
@@ -706,10 +706,11 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
         self.hostname = hostname
         self.port = port
         self.log = logging.getLogger(__name__).getChild(self.__class__.__name__) # we need the logger right away
-
+        print ('client, host=', hostname)
         if not hostname:
             hostname = 'localhost'
-            address='' # server listens to all interfaces by default
+            address = '' # server listens to all interfaces by default
+            print('allo')
             self.log.info('%32r: Creating local RawAcq server at %s:%i' % (self, address, port))
             self.server = RawAcqAsyncRESTServer(address=address, port=port)
             self.server.add_heartbeat(period=1000, heartbeat_string='R')
@@ -778,10 +779,26 @@ if __name__ == '__main__':
 
     Default port is 33221 if not specified.
     """
+    logger = logging.getLogger()
+    logger.setLevel(logging.DEBUG) # pass all messages to the handlers
+    logger.handlers = []  # clear all existing handlers
+    # formatter = logging.Formatter(self.LOG_FORMAT, self.LOG_DATE_FORMAT)
+
+    def add_handler(h, log_level):
+        # h.setFormatter(formatter)
+        level = log_level if isinstance(log_level, int) else log_level.upper()
+        h.setLevel(level)
+        logger.addHandler(h)
+
+    add_handler(logging.StreamHandler(sys.stderr), 'warning')
+    add_handler(logging.handlers.SysLogHandler(), 'debug')
+
+
     ioloop = IOLoop()
     ioloop.make_current()
     args = parse_cmdline_args(sys.argv[1:])
-    print(args)
+
+    # print(args)
     first_arg = args.args.lower()
     if first_arg == 'server':
         rs = RawAcqAsyncRESTServer(port=args.port)
@@ -789,5 +806,5 @@ if __name__ == '__main__':
         ioloop.start()
         print("\nI'm done. Bye!")
     elif first_arg == 'client':
-        rc = RawAcqAsyncRESTClient(name='UserRawAcqClient0', host=args.host, port=args.port)
+        rc = RawAcqAsyncRESTClient(name='UserRawAcqClient0', hostname=args.host, port=args.port)
         print('Use rc.run_sync(method_name, args...) to call and run asynchronous (coroutine) client methods in a ioloop. Alternativeny, one can use rc.sync_method_name(args, ...).')
