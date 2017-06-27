@@ -1,5 +1,5 @@
-pychfpga.fpga_array
-===================
+:mod:`fpga_array` module: FPGA hardware controller
+==================================================
 
 .. automodule:: pychfpga.fpga_array
 
