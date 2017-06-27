@@ -257,10 +257,10 @@ class hdf5TimestreamData(object):
                         maxshape=(None, self.N_SAMP))
         self.timestreamDataset.attrs['axis'] = ['snapshot', 'timestream']
         self.index_map = self.f.create_group("index_map")
-        self.snapshot_index_map = self.index_map.create_dataset('snapshot', 
+        self.snapshot_index_map = self.index_map.create_dataset('snapshot',
                                             (1310720), dtype=np.uint32)
         self.start_index = int(filestring[-9:-6]) + 1
-        self.snapshot_index_map = np.arange(1310720) + start_index
+        self.snapshot_index_map = np.arange(1310720) + self.start_index
         self.timestream_index_map = self.index_map.create_dataset("timestream",
                                             (2048), dtype=np.uint16)
         self.timestream_index_map = np.arange(2048)
@@ -296,11 +296,13 @@ class dataWriter(object):
     """
     """
     def __init__(self, data_queue, base_dir, base_filename):
+        self.log = logging.getLogger(__name__).getChild(self.__class__.__name__)
         if not isinstance(data_queue, (list, tuple)):
             self.data_queue = [data_queue]
         else:
             self.data_queue = data_queue
-        self.N_ELEMENT_PER_FILE = 2048*64
+        # self.N_ELEMENT_PER_FILE = 2048*64
+        self.N_ELEMENT_PER_FILE = 64
         time_name = datetime.datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
         self.base_dir = os.path.join(base_dir,'%s_%s/' % (time_name, base_filename))
         #self.live_base_dir = '/mnt/agogo/livedata/'
@@ -311,7 +313,7 @@ class dataWriter(object):
             self.base_dir = './'
 
         self.n_file = 0
-        self.h5file = hdf5TimestreamData(self.get_h5_filename())  # start a new empty file
+        self.start_new_file()
         self.run = True
         #self.live_name = self.live_base_dir + "live_adc_data.h5"
         #self.live_h5file = hdf5LiveTimestreamData(self.live_name)
@@ -322,6 +324,12 @@ class dataWriter(object):
         """ Return a HDF5 file name based on current file number """
         filename = "{0:06d}.h5".format(self.n_file)
         return  os.path.join(self.base_dir, filename)
+
+    def start_new_file(self):
+        filename = self.get_h5_filename()
+        self.log.info('%r: started logging in file %s' % filename)
+        self.h5file = hdf5TimestreamData()  # start a new empty file
+
 
     def write(self):
         """ Aggregate a number of data sets and write them into the current HDF5 file, then start a new file
@@ -341,9 +349,7 @@ class dataWriter(object):
             self.h5file.close()
             #self.live_h5file.close()
             self.n_file += 1
-            self.h5file = hdf5TimestreamData(self.get_h5_filename())
-            #self.live_h5file.init(n_times=1, n=0)
-            #self.live_h5file.close()
+            self.start_new_file()
 
 class RawAcqReceiver(object):
     ''' Implement an array of multi-threaded UDP Raw data receiver.
