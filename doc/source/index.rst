@@ -4,6 +4,12 @@
 
 The `ch_acq` package provides a number of Python modules that are used to initialize and operate the CHIME telescope hardware. The main module, :mod:`ch_master`, provides the classes to connect with the various remote processes and hardware that operate the array, configure them into the desired configuration, and runs in the background to provide monitoring information and receiver further commands.
 
+.. toctree::
+   :maxdepth: 1
+   :caption: Table of Contents
+
+   installation
+
 The :mod:`ch_acq` package provides the following main modules, each corresponding to a CHIME subsystem:
 
 .. toctree::
@@ -19,6 +25,7 @@ The :mod:`ch_acq` package provides the following main modules, each correspondin
 Additional support modules are also provided:
 
 .. toctree::
+   :caption: Support modules
 
    rest
 
