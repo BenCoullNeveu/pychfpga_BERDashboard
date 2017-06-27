@@ -229,27 +229,41 @@ class hdf5TimestreamData(object):
         self.N_SAMP = 2048
         #self.N_ANT = 1
         self.f = h5py.File(filestring, 'w')
+        self.f.attrs["git_version_tag"] = "0.1"
+        self.f.attrs["system_user"] = "root"
+        self.f.attrs["collection_server"] = "hostname"
+        self.f.attrs["instrument_name"] = "CHIME"
+        self.f.attrs["acquisition_name"] = "rawadc"
+        self.f.attrs["archive_version"] = "2.4.0"
         self.f.attrs["file_name"] = filestring
         self.f.attrs["data_type"] = "ADC snapshot data"
-        self.f.attrs["version"] = 0.1
+        self.f.attrs["rawadc_version"] = 0.1
         self.f.attrs["timestamping_warning"] = "Done on file write, may be significantly different from snapshot acquistion time"
         self.compound_dtype = np.dtype([('fpga_count', np.uint64), ('ctime', np.float64)])
         self.timestampDataset = self.f.create_dataset('timestamp',
                     (1, 1), dtype=self.compound_dtype, maxshape=(None, 1))
-        self.timestampDataset.attrs['axis'] = ['snapshot', 'time']
+        self.timestampDataset.attrs['axis'] = ['snapshot']
         self.slotDataset = self.f.create_dataset('slot', (1, 1),
                                             dtype=np.uint8, maxshape=(None, 1))
-        self.slotDataset.attrs['axis'] = ['snapshot', 'slot_number']
+        self.slotDataset.attrs['axis'] = ['snapshot']
         self.crateDataset = self.f.create_dataset('crate', (1, 1),
                                             dtype=np.uint32, maxshape=(None, 1))
-        self.crateDataset.attrs['axis'] = [ 'snapshot', 'crate_number']
+        self.crateDataset.attrs['axis'] = ['snapshot']
         self.antDataset = self.f.create_dataset('adc_input', (1, 1),
                                             dtype=np.uint8, maxshape=(None, 1))
-        self.antDataset.attrs['axis'] = ['snapshot', 'adc_input_number']
+        self.antDataset.attrs['axis'] = ['snapshot']
         self.timestreamDataset = self.f.create_dataset('timestream',
                         (1, self.N_SAMP), dtype=np.int8,
                         maxshape=(None, self.N_SAMP))
-        self.timestreamDataset.attrs['axis'] = ['snapshot', 'timestream_data']
+        self.timestreamDataset.attrs['axis'] = ['snapshot', 'timestream']
+        self.index_map = self.f.create_group("index_map")
+        self.snapshot_index_map = self.index_map.create_dataset('snapshot', 
+                                            (1310720), dtype=np.uint32)
+        self.start_index = int(filestring[-9:-6]) + 1
+        self.snapshot_index_map = np.arange(1310720) + start_index
+        self.timestream_index_map = self.index_map.create_dataset("timestream",
+                                            (2048), dtype=np.uint16)
+        self.timestream_index_map = np.arange(2048)
         self.n_times = 1
         self.n = 0
 
