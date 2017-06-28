@@ -24,24 +24,11 @@ import tornado.tcpclient
 import tornado.web
 
 import pychfpga  # used to access .calculate_gain.
-from pychfpga import FPGAArray, NameSpace, load_yaml_config, AgilentN5764AHandler
+from pychfpga import FPGAArray, NameSpace, load_yaml_config, AgilentN5764AHandler, Metric
 from rest import RESTClient, AsyncRESTServer, endpoint, coroutine, coroutine_return, sleep  # generic REST servers and clients
 from kotekan import KotekanAsyncRESTClient
 from chrx import ChrxAsyncRESTClient
 from raw_acq import RawAcqAsyncRESTClient
-
-class Metric(object):
-    def __init__(self, metric_name, value, type='UNDEFINED' , documentation=' No docs', **labels):
-        self.metric_name = metric_name
-        self.type = type.upper()
-        self.doc = documentation
-        self.labels = labels
-        self.value = value
-        self.time = time.time() * 1000
-    def  __str__(self):
-        return ('# HELP %s %s\n' % (self.metric_name, self.doc) +
-               '# TYPE %s %s\n' % (self.metric_name, self.type) +
-               '%s{%s} %s %i' % (self.metric_name, ','.join('%s="%s"' % (k,v) for k,v in self.labels.items()), self.value, self.time))
 
 
 def convert_types(val):

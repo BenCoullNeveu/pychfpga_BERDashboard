@@ -32,6 +32,7 @@ from .icecore.session import load_session as load_yaml
 
 from .icecore_ext.iceboard_ext import IceBoardExtHandler
 from chFPGA_receiver import chFPGA_receiver
+from metric import Metric
 
 from pychfpga.common import util
 
@@ -1220,41 +1221,86 @@ class chFPGA_controller(IceBoardExtHandler):
 
     def set_adc_delays(self, source='default', compute_delays=1, save_delays=True, check_sync_delays=False, check_adc_delays=20, verbose=1, retry=5):
         """
-        Set all the hardare delays (sync delays, ADC tap delays, sample_delay,
-        clock_delay) required to acheive proper data acquisition from the
-        ADCs.
+        Set all the hardare delays (sync delays, ADC tap delays, sample_delay, clock_delay) required to acheive proper
+        data acquisition from the ADCs.
 
-        ``source``:
-            None: no source is specified. compute_delays must be > 0.
-            string: fetch the latest delays from the delay file with the tag specified in the string.
-            dict: use provided delay tables
-        ``compute_delays``:
-            0: Never compute delays. ``source`` must be a valid delay table or a tag.
-            1: Recompute delay if source is not specified or is invalid, or if errors are detected during checks
-            2: Always recompute delays, ignoring any source.
 
-        Use cases:
-            Compute, test succeed
-            Compute, test failed, retry
-            Compute, test succeed, save
-            load, test succeed
-            load, test fail, compute, test succeed, save
-            load, test fail, compute, test fail, retry compute
+        If `source` is None, does not contain or does not point to an existing delay table entry (including a missing delay file or missing tag),
+        new delays will be computed if `compute_delays > 0`. If recomputing is not allowed, an exception will be raised.
 
-        If ``delay_table`` is None, and ``tag`` is None, delays will be recomputed and will not be be saved.
-        If ``delay_table`` is None, and ``tag`` is a string, delays will be recomputed and will not be be saved.
-        If ``dalay_table`` is a dict, the delays will be set from the values from this dict.
-        If ``dalay_table`` is a string, the delays tagged by the string will be loaded from the delay files. If the string is empty, the latest valid delays will be loaded.
+        If valid delays exist but `compute_delays==2`, new delays will be computed anyways.
 
-        If ``check`` is True, the delays will be checked. If the test fails, new delays will be recomputed.
+        The delays obtained at this point will be checked according to the `check_sync_delays` or `check_adc_delays`
+        parameters. If the check fails, new delays delays will be computed if allowed, otherwise an exception will be
+        raised. Computation and test of delays will tried up to `retry` times.
 
-        The delays are saved in the folder 'adc_delay_files/MGK7MB_SNxxx.yaml', where xxx is the serial number of the motherboard.
+        If new delays were computed successfully and `save_delays` is True, the new delays will be saved in the delay
+        table under the tag specified in `source`, or under the 'default' tag if `source` is None or empty.
 
-        [ (tag, date, mezz_ids, delay_dict) ...] where
-            tag: arbitrary string identifying the set of delays. Multiple delays can be saved on the same tag.
-            date: date where the delays were saved. used to find the most recent set of delays.
-            mezz_id: string representing the model and serials of both mezzanines. Only delay table with matching mezzanine IDs are considered.
-            delay_dict: dict containingthe delay information to be applied for the mezzanines.
+
+        Scenarios:
+
+            - No delay table provided: compute delay, test succeed, save delays, return
+            - No delay table provided: compute delays, test failed, retry compute delays, test succeed, save delays, return
+            - No delay table provided: compute delays, test failed, retry compute delays, test fail, exception
+            - load delays, test succeed, return
+            - load delays, test fail, compute, test succeed, save, return
+            - load delays, test fail, compute, test fail, retry compute, test succeed, save, return
+            - load delays, test fail, compute, test fail, retry compute, test fail, exception
+
+        Parameters:
+
+            source: Depending on the type of `source`:
+
+               - *None*: no source is specified. `compute_delays` must be > 0 so new delays will be computed.
+               - *str*: fetch the latest delays from the delay file with the tag specified by `source`. Defaults to
+                 the tag named 'default'
+               - *dict*: use the delay tables provided by `dict`
+
+            compute_delays (int): Determines when the delays are checked and when new ones should be computed
+
+                - 0: Never compute delays. In this case, `source` must contain or point to valid delay tables.
+                - 1: Recompute delays if `source` is not specified or is invalid, or if errors are detected during checks
+                - 2: Always recompute delays, ignoring `source`.
+
+            save_delays (bool): If True, newly computed delay will be saved in the delay table file
+
+            check_sync_delays (bool): If True, loaded sync delays will be checked by pulsing the ADC ``sync`` line and
+                verifying that the phase of the ADC clock stays constant relative to the system clock. If the test fails and if
+                `compute_delays` allows it, a new delay for the sync pulse will be computed.
+
+            check_adc_delays (int): Number of times the ADC is sync'ed and ramp data is read to check the integrity of the data acquisition. If the test fails and if
+                `compute_delays` allows it, new data line delays will be computed.
+
+
+            verbose (bool): If True, print the progress and results of the delay calculation and tests
+
+        Returns:
+            None
+
+        The delays are saved in the folder 'adc_delay_files/MGK7MB_SNxxx.yaml', where xxx is the serial number of the
+        motherboard. New delays are appended to the file. Each delay table is associated with a timestamp and a tag. The
+        latest timestamp for a given tag is used.
+
+        The delay file is a list in the format:
+
+            ``[ {__tag__: , __date__:, __mezzanines__:, delay_table:}, ...]`` where:
+
+                - __tag__ (str): arbitrary string identifying the set of delays. Multiple delays can be saved on the same tag.
+                - __date__ (str): date in ISO format where the delays were saved. used to find the most recent set of delays.
+                - __mezzanines__ ((str, str) tuple): tuple representing the model and serials of both mezzanines. A delay table entry will be ignored unless both mezzanine IDs match the current ones.
+                - delay_table: dict containing the delay information to be applied for the mezzanines.
+
+        A delay table is a dict in the following format::
+
+            valid: bool
+            0:
+               tap_delays: [bit0_tap_delay, but1_tap_delay,...]
+               sample_delay: int
+               clock_delay: int
+            1: ...
+            ...
+            15: ...
         """
         delay_table = None
         delay_table_updated = False
@@ -1284,7 +1330,7 @@ class chFPGA_controller(IceBoardExtHandler):
         if delay_table and delay_table.get('valid', True):
             self._set_adc_delays(delay_table)
             if delay_table_updated and save_delays:
-                self._save_adc_delays(delay_table, source)
+                self._save_adc_delays(delay_table, tag=source or 'default')
         else:
             raise RuntimeError('Did not obtain a valid delay table.')
 
@@ -1372,11 +1418,21 @@ class chFPGA_controller(IceBoardExtHandler):
 
     def check_ramp_errors(self, delay=0.1, trials=10, verbose=1):
         """
-        Puts all ADCs in ramp mode and checks if the acquired data from each
-        channel is the expected ramp using the ADCDAQ's firmwae ramp checker.
-        The ADC is then put in its original mode.
+        Puts all ADCs in ramp mode and use the firmware ramp checker to check if the data acquired from them is valid.
 
-        Returns a dictionary listing the total number of mismatched words for each channel.
+        When the test is done, the ADC is then put in its original mode.
+
+        Parameters:
+
+            delay (float): Period of time during which the ADC data is checked.
+
+            trials (int): Number of times the  ADC is sync'ed and the data is checked.
+
+            verbose (bool): If True, prints the check progress and results.
+
+        Returns:
+            A dictionary listing the total number of mismatched words words were detected for all channels and all
+            trials combined.
 
         """
         old_adc_mode = self.get_adc_mode()
@@ -2770,31 +2826,117 @@ class chFPGA_controller(IceBoardExtHandler):
         """
 
         info = OrderedDict()
+        metrics = []
 
-        info['MB FPGA Die Temp'] = '%0.1fC' % (yield self.get_motherboard_temperature.async(self.TEMPERATURE_SENSOR.MB_FPGA_DIE))
-        self.logger.info('%.32r: got die temp' % self)
-        info['MB FPGA Temp'] = '%0.1fC' % (yield self.get_motherboard_temperature.async(self.TEMPERATURE_SENSOR.MB_FPGA))
-        info['MB ARM Temp'] = '%0.1fC' % (yield self.get_motherboard_temperature.async(self.TEMPERATURE_SENSOR.MB_ARM))
-        info['MB PHY Temp'] = '%0.1fC' % (yield self.get_motherboard_temperature.async(self.TEMPERATURE_SENSOR.MB_PHY))
-        info['MB POW Temp'] = '%0.1fC' % (yield self.get_motherboard_temperature.async(self.TEMPERATURE_SENSOR.MB_POWER))
-        self.logger.info('%.32r: got pow' % self)
-        info['MB VCC12V'] = '%0.1fV@%0.3fA' % ((yield self.get_motherboard_voltage.async(self.RAIL.MB_VCC12V0)), (yield self.get_motherboard_current.async(self.RAIL.MB_VCC12V0)))
-        info['MB VCC3V3'] = '%0.1fV@%0.3fA' % ((yield self.get_motherboard_voltage.async(self.RAIL.MB_VCC3V3)), (yield self.get_motherboard_current.async(self.RAIL.MB_VCC3V3)))
-        info['MB VADJ'] = '%0.1fV@%0.3fA' % ((yield self.get_motherboard_voltage.async(self.RAIL.MB_VADJ)), (yield self.get_motherboard_current.async(self.RAIL.MB_VADJ)))
-        info['MB VCC5V5'] = '%0.1fV@%0.3fA' % ((yield self.get_motherboard_voltage.async(self.RAIL.MB_VCC5V5)), (yield self.get_motherboard_current.async(self.RAIL.MB_VCC5V5)))
-        info['MB VCC1V0'] = '%0.1fV@%0.3fA' % ((yield self.get_motherboard_voltage.async(self.RAIL.MB_VCC1V0)), (yield self.get_motherboard_current.async(self.RAIL.MB_VCC1V0)))
-        info['MB VCC1V0 GTX'] = '%0.1fV@%0.3fA' % ((yield self.get_motherboard_voltage.async(self.RAIL.MB_VCC1V0_GTX)), (yield self.get_motherboard_current.async(self.RAIL.MB_VCC1V0_GTX)))
-        info['MB VCC1V2'] = '%0.1fV@%0.3fA' % ((yield self.get_motherboard_voltage.async(self.RAIL.MB_VCC1V2)), (yield self.get_motherboard_current.async(self.RAIL.MB_VCC1V2)))
-        info['MB VCC1V5'] = '%0.1fV@%0.3fA' % ((yield self.get_motherboard_voltage.async(self.RAIL.MB_VCC1V5)), (yield self.get_motherboard_current.async(self.RAIL.MB_VCC1V5)))
-        info['MB VCC1V8'] = '%0.1fV@%0.3fA' % ((yield self.get_motherboard_voltage.async(self.RAIL.MB_VCC1V8)), (yield self.get_motherboard_current.async(self.RAIL.MB_VCC1V8)))
-        info['Mezz 1 VCC12V'] = ('%0.1fV@%0.3fA' % ((yield self.get_mezzanine_voltage.async(self.RAIL.MEZZ_VCC12V0, 1)), (yield self.get_mezzanine_current.async(self.RAIL.MEZZ_VCC12V0, 1))))
-        info['Mezz 1 VCC3V3'] = ('%0.1fV@%0.3fA' % ((yield self.get_mezzanine_voltage.async(self.RAIL.MEZZ_VCC3V3, 1)), (yield self.get_mezzanine_current.async(self.RAIL.MEZZ_VCC3V3, 1))))
-        info['Mezz 1 VADJ'] = ('%0.1fV@%0.3fA' % ((yield self.get_mezzanine_voltage.async(self.RAIL.MEZZ_VADJ, 1)), (yield self.get_mezzanine_current.async(self.RAIL.MEZZ_VADJ, 1))))
-        info['Mezz 2 VCC12V'] = ('%0.1fV@%0.3fA' % ((yield self.get_mezzanine_voltage.async(self.RAIL.MEZZ_VCC12V0, 2)), (yield self.get_mezzanine_current.async(self.RAIL.MEZZ_VCC12V0, 2))))
-        info['Mezz 2 VCC3V3'] = ('%0.1fV@%0.3fA' % ((yield self.get_mezzanine_voltage.async(self.RAIL.MEZZ_VCC3V3, 2)), (yield self.get_mezzanine_current.async(self.RAIL.MEZZ_VCC3V3, 2))))
-        info['Mezz 2 VADJ'] = ('%0.1fV@%0.3fA' % ((yield self.get_mezzanine_voltage.async(self.RAIL.MEZZ_VADJ, 2)), (yield self.get_mezzanine_current.async(self.RAIL.MEZZ_VADJ, 2))))
-        info['MB Total power'] = '%0.1fW' % (yield self.get_total_power.async())
-        async_return(info)
+        ####################################
+        # Motherboard temperatures
+        ####################################
+
+        mb_temp_sensors = [
+            ('MB FPGA Die Temp', 'FPGA DIE', self.TEMPERATURE_SENSOR.MB_FPGA_DIE),
+            ('MB FPGA Temp'    , 'FPGA',     self.TEMPERATURE_SENSOR.MB_FPGA    ),
+            ('MB ARM Temp'     , 'ARM',      self.TEMPERATURE_SENSOR.MB_ARM     ),
+            ('MB PHY Temp'     , 'PHY',      self.TEMPERATURE_SENSOR.MB_PHY     ),
+            ('MB POW Temp'     , 'Switcher', self.TEMPERATURE_SENSOR.MB_POWER   )]
+
+        for display_name, sensor, sensor_name in mb_temp_sensors:
+            value = yield self.get_motherboard_temperature.async(sensor_name)
+            info[display_name] = '%0.1fC' % value
+            metrics.append(Metric('fpga_motherboard_temp', value, type='GAUGE', sensor=sensor))
+
+        ####################################
+        # Motherboard voltages and currents
+        ####################################
+
+        mb_power_sensors = [
+            ('MB VCC12V'    , 'VCC12V'    , self.RAIL.MB_VCC12V0   , True),
+            ('MB VCC3V3'    , 'VCC3V3'    , self.RAIL.MB_VCC3V3    , True),
+            ('MB VADJ'      , 'VADJ'      , self.RAIL.MB_VADJ      , True),
+            ('MB VCC5V5'    , 'VCC5V5'    , self.RAIL.MB_VCC5V5    , False),
+            ('MB VCC1V0'    , 'VCC1V0'    , self.RAIL.MB_VCC1V0    , False),
+            ('MB VCC1V0 GTX', 'VCC1V0 GTX', self.RAIL.MB_VCC1V0_GTX, False),
+            ('MB VCC1V2'    , 'VCC1V2'    , self.RAIL.MB_VCC1V2    , False),
+            ('MB VCC1V5'    , 'VCC1V5'    , self.RAIL.MB_VCC1V5    , False),
+            ('MB VCC1V8'    , 'VCC1V8'    , self.RAIL.MB_VCC1V8    , False)]
+
+        total_power = 0
+        for display_name, sensor, sensor_name, add_to_total_power in mb_power_sensors:
+            voltage = yield self.get_motherboard_voltage.async(sensor_name)
+            current = yield self.get_motherboard_current.async(sensor_name)
+            info[display_name] = '%0.1fV@%0.3fA' % (voltage, current)
+            metrics.append(Metric('fpga_motherboard_voltage', value=voltage, type='GAUGE', sensor=sensor))
+            metrics.append(Metric('fpga_motherboard_current', value=current, type='GAUGE', sensor=sensor))
+            if add_to_total_power:
+                total_power += voltage * current
+
+
+        ####################################
+        # Mezzanines voltages and currents
+        ####################################
+
+        mezz_power_sensors = [
+            ('Mezz %i VCC12V'    , 'VCC12V'    , self.RAIL.MEZZ_VCC12V0),
+            ('Mezz %i VCC3V3'    , 'VCC3V3'    , self.RAIL.MEZZ_VCC3V3),
+            ('Mezz %i VADJ'      , 'VADJ'      , self.RAIL.MEZZ_VADJ)]
+
+        for mezz in [1, 2]:
+            for display_name, sensor, sensor_name in mezz_power_sensors:
+                voltage = yield self.get_mezzanine_voltage.async(sensor_name, mezz)
+                current = yield self.get_mezzanine_current.async(sensor_name, mezz)
+                info[display_name % mezz] = '%0.1fV@%0.3fA' % (voltage, current)
+                metrics.append(Metric('fpga_mezzanine_voltage', value=voltage, type='GAUGE', sensor=sensor, mezzanine=mezz))
+                metrics.append(Metric('fpga_mezzanine_current', value=current, type='GAUGE', sensor=sensor, mezzanine=mezz))
+
+        info['MB Total power'] = '%0.1fW' % total_power
+        metrics.append(Metric('fpga_motherboard_power', value=total_power, type='GAUGE'))
+
+
+        # is_voltage_nominal
+        # sysmon?
+        # QSFP voltage, temp, signal
+
+        async_return(info, metrics)
+
+    def get_backplane_metrics(self):
+
+        info = OrderedDict()
+        metrics = []
+
+        if (yield self.is_backplane_present.async()):
+            ####################################
+            # Backplane temperatures
+            ####################################
+
+            bp_temp_sensors = [
+                ('BP Slot1 Temp', 'Slot1', self.TEMPERATURE_SENSOR.BACKPLANE_TEMPERATURE_SLOT1),
+                ('BP Slot16 Temp', 'Slot16', self.TEMPERATURE_SENSOR.BACKPLANE_TEMPERATURE_SLOT16)]
+
+
+            for display_name, sensor, sensor_name in bp_temp_sensors:
+                value = yield self.get_backplane_temperature.async(sensor_name)
+                info[display_name] = '%0.1fC' % value
+                metrics.append(Metric('fpga_backplane_temp', value, type='GAUGE', sensor=sensor))
+
+            ####################################
+            # Backplane voltages and currents
+            ####################################
+
+            voltage = yield self.get_backplane_voltage.async(self.RAIL.BP_RAIL_VCC3V3)
+            current = yield self.get_backplane_current.async(self.RAIL.BP_RAIL_VCC3V3)
+            power = yield self.get_backplane_power.async(self.RAIL.BP_RAIL_VCC3V3)
+            info['BP VCC3V3'] = '%0.1fV@%0.3fA' % (voltage, current)
+            info['BP power'] = '%0.1fW' % power
+            metrics.append(Metric('fpga_backplane_voltage', value=voltage, type='GAUGE'))
+            metrics.append(Metric('fpga_backplane_current', value=current, type='GAUGE'))
+            metrics.append(Metric('fpga_backplane_power', value=power, type='GAUGE'))
+
+
+
+
+        # backplane QSFP voltage, temp, signal-level
+
+        async_return(info, metrics)
+
 
     def get_string_id(self):
         """

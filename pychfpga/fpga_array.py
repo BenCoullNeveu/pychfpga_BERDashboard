@@ -2208,11 +2208,42 @@ class FPGAArray(object):
     def get_monitoring_info(self):
         return self.ib.index_by(lambda ib:ib.get_id()).get_status()
 
+    def get_metrics(self):
+        metrics = []
+
+        def add_metrics(met, **kwargs):
+            if isinstance(met, tuple):
+                met = met[1]
+            for m in met:
+                m.labels.update(kwargs)
+                metrics.append(m)
+
+        for ic in self.ic:
+            # backplane metrics
+            slot, ib = ic.items()[0]
+            add_metrics(ib.get_backplane_metrics(), crate_number=ic.crate_number, crate_id=ic.string_id())
+            # IceBoard metrics
+            for slot, ib in ic.slot.items():
+                extra_labels = dict(slot=slot, crate_number=ic.crate_number, crate_id=ic.string_id(), id=ib.string_id())
+                add_metrics(ib.get_metrics(), **extra_labels)
+                add_metrics(ib.BP_SHUFFLE.get_metrics(), **extra_labels)
+
+        # Backplane GTX
+        # Errors, signal level
+
+        # Command errors
+
+        # Shuffle status
+
+        return metrics
+
+
+
     def print_iceboard_info(self):
 
         if not self.ib:
             print('There are no IceBoards in the array')
-        info = self.ib.get_status()
+        info, metrics = self.ib.get_status()
         keys = '\n'.join(info[0].keys())
         data = {ib:('\n'.join(info[i].values())) for i, ib in enumerate(self.ib)}
         self.print_iceboard_table(data, row_labels=keys)
