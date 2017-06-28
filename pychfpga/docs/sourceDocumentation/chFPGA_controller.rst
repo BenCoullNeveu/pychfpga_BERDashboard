@@ -61,7 +61,7 @@ Method Summary (in alphabetical order)
       ~chFPGA_controller.test_speed
       ~chFPGA_controller.ping_fpga
 
-.. rubric:: Tuber (ARM-provided) methods
+.. rubric:: Tuber: local support methods
 
 .. autosummary::
 
@@ -70,6 +70,104 @@ Method Summary (in alphabetical order)
       ~chFPGA_controller.arm_exec
       ~chFPGA_controller.arm_scp
       ~chFPGA_controller.tuber_context
+
+
+.. currentmodule:: sourceDocumentation
+
+.. rubric:: Tuber: system methods
+
+.. autosummary::
+
+      ~TuberMethods._cache_bp_frui
+      ~TuberMethods._fpga_spi_peek
+      ~TuberMethods._fpga_spi_poke
+      ~TuberMethods._get_arm_ip
+      ~TuberMethods._get_arm_mac
+      ~TuberMethods._get_personality
+      ~TuberMethods._get_syslog_buffer
+      ~TuberMethods._get_syslog_mask
+      ~TuberMethods._set_personality
+      ~TuberMethods._set_syslog_mask
+      ~TuberMethods._sleep
+      ~TuberMethods._syslog_test
+      ~TuberMethods.reboot
+
+
+.. rubric:: Tuber: Backplane monitor and control
+
+.. autosummary::
+
+      ~TuberMethods.is_backplane_present
+      ~TuberMethods.is_bp_qsfp_present
+      ~TuberMethods.set_bp_qsfp_gpio
+      ~TuberMethods.set_bp_qsfp_led
+      ~TuberMethods._backplane_eeprom_write_base64
+      ~TuberMethods._bp_qsfp_eeprom_read_base64
+      ~TuberMethods._bp_qsfp_eeprom_write_base64
+      ~TuberMethods._get_backplane_ipmi
+      ~TuberMethods._get_backplane_serial
+      ~TuberMethods._get_backplane_type
+      ~TuberMethods._get_backplane_version
+      ~TuberMethods._initialize_backplane
+      ~TuberMethods._reset_all_fpgas
+      ~TuberMethods._reset_all_power
+      ~TuberMethods.get_power_on_slot
+      ~TuberMethods.set_power_on_slot
+      ~TuberMethods.reset_arm_on_slot
+
+.. rubric:: Tuber: Mezzanine monitor and control
+
+.. autosummary::
+
+      ~TuberMethods.is_mezzanine_present
+      ~TuberMethods.set_mezzanine_power
+      ~TuberMethods.get_mezzanine_current
+      ~TuberMethods.get_mezzanine_power
+      ~TuberMethods.get_mezzanine_voltage
+      ~TuberMethods._get_mezzanine_ipmi
+      ~TuberMethods._get_mezzanine_serial
+      ~TuberMethods._get_mezzanine_type
+      ~TuberMethods._get_mezzanine_version
+      ~TuberMethods._mezzanine_eeprom_read_base64
+      ~TuberMethods._mezzanine_eeprom_write_base64
+
+.. rubric:: Tuber: Motherboard monitor and control
+
+.. autosummary::
+
+
+      ~TuberMethods._get_motherboard_ipmi
+      ~TuberMethods._motherboard_eeprom_write_base64
+      ~TuberMethods._motherboard_spi_flash_write_base64
+      ~TuberMethods._qsfp_eeprom_read_base64
+      ~TuberMethods._qsfp_eeprom_write_base64
+      ~TuberMethods._set_fpga_bitstream_base64
+      ~TuberMethods.clear_fpga_bitstream
+      ~TuberMethods.get_backplane_current
+      ~TuberMethods.get_backplane_power
+      ~TuberMethods.get_backplane_slot
+      ~TuberMethods.get_backplane_temperature
+      ~TuberMethods.get_backplane_voltage
+      ~TuberMethods.get_bp_qsfp_gpio
+      ~TuberMethods.get_bp_qsfp_led
+      ~TuberMethods.get_build_info
+      ~TuberMethods.get_clock_source
+      ~TuberMethods.get_led
+      ~TuberMethods.get_motherboard_current
+      ~TuberMethods.get_motherboard_power
+      ~TuberMethods.get_motherboard_serial
+      ~TuberMethods.get_motherboard_temperature
+      ~TuberMethods.get_motherboard_voltage
+      ~TuberMethods.get_qsfp_gpio
+      ~TuberMethods.is_fpga_programmed
+      ~TuberMethods.is_qsfp_present
+      ~TuberMethods.is_voltage_nominal
+      ~TuberMethods.set_led
+      ~TuberMethods.set_pci_switch_direction
+      ~TuberMethods.set_qsfp_gpio
+
+.. currentmodule:: pychfpga.core.chFPGA_controller
+
 
 .. rubric:: System info
 
@@ -365,5 +463,9 @@ ADC management
 **************
 
 .. automethod:: chFPGA_controller.set_adc_delays
+
+
+Tuber methods
+*************
 
 
