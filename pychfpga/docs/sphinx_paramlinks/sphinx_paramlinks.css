@@ -45,8 +45,9 @@ code.xref.paramlink {
 	font-size: initial;
 	font-weight: unset;
 	/* color: initial; */
-	/* font-size: 100%; */
+	font-size: 90%;
 	font-family: unset;
 	font-style: italic;
+	padding: 0px;
 	background: transparent; /* .notes code sets a background*/
 }
