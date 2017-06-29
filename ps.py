@@ -11,27 +11,15 @@ import sys
 import argparse
 import requests
 import time
+import json
 
 import tornado
 import tornado.tcpclient
 import tornado.web
 
-from pychfpga.Agilent_N5764A.agilent_N5700 import agilent_N5700
 from pychfpga.Agilent_N5764A import AgilentN5764AHandler
+from pychfpga import Metric, NameSpace
 from rest import AsyncRESTClient, AsyncRESTServer, endpoint, coroutine, coroutine_return, sleep, IOLoop  # generic REST servers and clients
-
-class Metric(object):
-    def __init__(self, metric_name, value, type='UNDEFINED' , documentation=' No docs', **labels):
-        self.metric_name = metric_name
-        self.type = type.upper()
-        self.doc = documentation
-        self.labels = labels
-        self.value = value
-        self.time = time.time() * 1000
-    def  __str__(self):
-        return ('# HELP %s %s\n' % (self.metric_name, self.doc) +
-               '# TYPE %s %s\n' % (self.metric_name, self.type) +
-               '%s{%s} %s %i' % (self.metric_name, ','.join('%s="%s"' % (k,v) for k,v in self.labels.items()), self.value, self.time))
 
 
 class PowerSupplyRESTServer(AsyncRESTServer):
@@ -42,162 +30,133 @@ class PowerSupplyRESTServer(AsyncRESTServer):
     # TODO: Look into appropriate default port / address
     DEFAULT_PORT = 33221
 
-    # TODO: Control multiple PS?
-    def __init__(self, name="PowerSupply", address='', port=DEFAULT_PORT, ps_address='', ps_port=5025, logging_params={}):
-        self.ps = agilent_N5700(ip_addr=ps_address, ip_port=ps_port)
-        self.name = name
-        print self.name
+    POWER_SUPPLY_CLASSES = {
+        'AgilentN5764': AgilentN5764AHandler,
+        'AgilentN8731': AgilentN5764AHandler
+        }
+
+    @coroutine
+    def __init__(self, power_supplies, address='', port=DEFAULT_PORT, ps_address='', ps_port=5025, logging_params={}):
+        """ power_supplies dict with entries 'type', 'name', and 'hostname'
+        """
+        self.power_supplies = {}
+        for ps in power_supplies:
+            type_ = ps.pop('type')
+            name = ps.pop('name')
+            cls = self.POWER_SUPPLY_CLASSES[type_]
+            self.power_supplies[name] = cls(**ps)
+            self.power_supplies[name].open()
+
         super(PowerSupplyRESTServer, self).__init__(address=address, port=port)
 
     @coroutine
-    @endpoint
-    def powerOn(self, handler):
-        self.log.info('%.32r: Received power on command' % self)
-        if self.ps.output()['PowerEnabled']:
-            raise RuntimeError("Power ouput already enabled.")
+    def _parse_names(self, ps_names):
+        if ps_names is None:
+            ps_names = self.power_supplies.keys()
         else:
-            self.ps.output(state='on', readonly=False)
+            ps_names = [ pn.strip() for pn in ps_names.split(',') ]
+        return ps_names
 
     @coroutine
     @endpoint
-    def powerOff(self, handler):
-        self.log.info('%.32r: Received power off command' % self)
-        if not self.ps.output()['PowerEnabled']:
-            raise RuntimeError("Power ouput already disabled.")
-        else:
-            self.ps.output(state='off', readonly=False)
+    def listNames(self, handler):
+        self.log.info('%.32r: Received list names request' % self)
+        coroutine_return(self.power_supplies.keys())
 
     @coroutine
     @endpoint
-    def powerEnabled(self, handler):
-        self.log.info('%.32r: Received power output status request' % self)
-        coroutine_return(self.ps.output()['PowerEnabled'])
+    def powerOn(self, handler, ps_names=None):
+        ps_names = self._parse_names(ps_names)
+        self.log.info('%.32r: Received power on command for %r' % (self, ps_names))
+        for pn in ps_names:
+            if not pn in self.power_supplies.keys():
+                raise RuntimeError("Unknown power supply {}".format(pn))
+        for pn in ps_names:
+            ps = self.power_supplies[pn]
+            if ps.ps.output()['PowerEnabled']:
+                self.log.warning("Power ouput already enabled for {}".format(pn))
+            else:
+                ps.unlock()
+                ps.power_on()
+                ps.lock()
 
     @coroutine
     @endpoint
-    def status(self, handler):
-        self.log.info('%.32r: Received status request' % self)
-        meas = self.ps.status()
-        for key in meas:
-            self.log.info('%.32r:     Status[%r] %r' % (self, key, meas[key]))
-        coroutine_return(meas)
+    def powerOff(self, handler, ps_names=None):
+        ps_names = self._parse_names(ps_names)
+        self.log.info('%.32r: Received power off command for %r' % (self, ps_names))
+        for pn in ps_names:
+            if not pn in self.power_supplies.keys():
+                raise RuntimeError("Unknown power supply {}".format(pn))
+        for pn in ps_names:
+            ps = self.power_supplies[pn]
+            if not ps.ps.output()['PowerEnabled']:
+                self.log.warning("Power ouput already disabled for {}".format(pn))
+            else:
+                ps.unlock()
+                ps.power_off()
+                ps.lock()
 
     @coroutine
     @endpoint
-    def psName(self, handler):
-        self.log.info('%.32r: Received name request' % self)
-        coroutine_return(self.name)
+    def status(self, handler, ps_names=None):
+        ps_names = self._parse_names(ps_names)
+        self.log.info('%.32r: Received status request for %r' % (self, ps_names))
+        stati = { }
+        for pn in ps_names:
+            stati[pn] = self.power_supplies[pn].status()['status']
+            self.log.info('%.32r:     Status of %s %s' % (self, key, stati[pn]))
+        coroutine_return(stati)
 
     @coroutine
     @endpoint
     def monitoringMetrics(self, handler):
         self.log.info('%.32r: Received monitoring metrics request' % self)
-        metrics = []
-        status = self.ps.status()
-        metrics.append(Metric('power_supply_voltage', name=self.name, value=status['voltage'], type='gauge'))
-        metrics.append(Metric('power_supply_current', name=self.name, value=status['current'], type='gauge'))
-        metrics.append(Metric('power_supply_power', name=self.name, value=status['power'], type='gauge'))
-        metrics.append(Metric('power_supply_status', name=self.name, value=int(status['status']=='OK'), type='gauge'))
+        metrics = [ ]
+        for ps_name, ps in self.power_supplies.items():
+            status = ps.status()
+            metrics.append(Metric('power_supply_voltage', name=ps_name, value=status['voltage'], type='gauge'))
+            metrics.append(Metric('power_supply_current', name=ps_name, value=status['current'], type='gauge'))
+            metrics.append(Metric('power_supply_power', name=ps_name, value=status['power'], type='gauge'))
+            metrics.append(Metric('power_supply_status', name=ps_name, value=int(status['status']=='OK'), type='gauge'))
         coroutine_return([ str(m) for m in metrics ])
 
-class PowerSupplyRESTClient(AsyncRESTClient):
-    """
-    ...
-    """
-
-    def __init__(self, name='PowerSupply', hostname='localhost', port=PowerSupplyRESTServer.DEFAULT_PORT):
-
-        # save hostname and port so __repr__ will work right away. Will be rewritten by super()
-        self.hostname = hostname
-        self.port = port
-        self.log = logging.getLogger(__name__).getChild(self.__class__.__name__) # we need the logger right away
-        print ('client, host=', hostname)
-        #if not hostname:
-        #    hostname = 'localhost'
-        #    address = '' # server listens to all interfaces by default
-        #    print('allo')
-        #    self.log.info('%32r: Creating local PowerSupply server at %s:%i' % (self, address, port))
-        #    self.server = PowerSupplyRESTServer(address=address, port=port)
-        #    self.server.add_heartbeat(period=1000, heartbeat_string='R')
-
-        self.log.info('%32r: Creating PowerSupply Client at %s:%i' % (self, hostname, port))
-        super(PowerSupplyRESTClient, self).__init__(hostname=hostname, port=port)
-        self.name = name
-
-    @coroutine
-    def powerOn(self):
-        try:
-            yield self.get('powerOn')
-            self.log.info("Successfully sent power on command to %s server at %s:%i" % (self.name, self.host, self.port))
-        except Exception as e:
-            self.log.debug(repr(e))
-            self.log.error("Can't power on %s server at %s:%i" % (self.name, self.host, self.port))
-
-    @coroutine
-    def powerOff(self):
-        try:
-            yield self.get('powerOff')
-            self.log.info("Successfully sent power off command to %s server at %s:%i" % (self.name, self.host, self.port))
-        except Exception as e:
-            self.log.debug(repr(e))
-            self.log.error("Can't power off %s server at %s:%i" % (self.name, self.host, self.port))
-
-    @coroutine
-    def status(self):
-        try:
-            meas = yield self.get('status')
-            self.log.info("Successfully sent status request to %s server at %s:%i" % (self.name, self.host, self.port))
-        except Exception as e:
-            self.log.debug(repr(e))
-            self.log.error("Can't get status from %s server at %s:%i" % (self.name, self.host, self.port))
-        coroutine_return(meas)
 
 class PowerSupplyEasyRESTClient(object):
     def __init__(self, hostname='localhost', port=PowerSupplyRESTServer.DEFAULT_PORT):
         self.port = port
         self.host = hostname
         self.url = "http://{}:{:d}/".format(self.host, self.port)
-        response = requests.get(self.url + "psName")
-        self.check_code(response.status_code)
-        self.name = response.text
-        print "Connected to server {}".format(self.name)
+        print "Connected to server at {}".format(self.url)
 
     def check_code(self, code):
         if not code == 200:
             raise RuntimeError("Got code {:d} from server at {}:{:d}".format(code, self.host, self.port))
 
-    def powerOn(self):
+    def powerOn(self, ps_names=None):
         print "Sending power on command..."
-        response = requests.get(self.url + "powerOn")
+        response = requests.post(self.url + "powerOn", json=json.dumps({'ps_names': ps_names}))
         self.check_code(response.status_code)
         print "Successfully sent power on!"
 
-    def powerOff(self):
+    def powerOff(self, ps_names=None):
         print "Sending power off command..."
-        response = requests.get(self.url + "powerOff")
+        response = requests.post(self.url + "powerOff", json=json.dumps({'ps_names': ps_names}))
         self.check_code(response.status_code)
         print "Successfully sent power off!"
 
-    def powerEnabled(self):
-        print "Requesting power_enabled status..."
-        response = requests.get(self.url + "powerEnabled")
-        self.check_code(response.status_code)
-        power_state = bool(response.json())
-        print "Power state: {}".format("Enabled" if power_state else "Disabled")
-        return power_state
-
     def status(self):
         print "Requesting status..."
-        response = requests.get(self.url + "status")
+        response = requests.post(self.url + "status", json=json.dumps({'ps_names': ps_names}))
         self.check_code(response.status_code)
         print "Status: {}".format(response.json())
-        return response.json()
+        return json.loads(response.json())
 
     def monitoringMetrics(self):
         print "Requesting monitoring metrics..."
         response = requests.get(self.url + "monitoringMetrics")
         self.check_code(response.status_code)
-        return response.json()
+        return json.loads(response.json())
 
 
 def parse_cmdline_args(argv):
@@ -213,9 +172,9 @@ if __name__ == '__main__':
     """
     Stolen from raw_acq!
 
-    Command-line interface to the raw_acq engine.
-        raw_acq server --port 33221 # starts the server on localhost.
-        raw_acq client --port 33221 --host localhost # starts a client in variable 'rc' to operate the server at localhost:33221
+    Command-line interface to start power supply REST server
+        ps.py server --port 33221 # starts the server on localhost.
+        ps.py client --port 33221 --host localhost # starts a client in variable 'rc' to operate the server at localhost:33221
 
     Default port is 33221 if not specified.
     """
@@ -238,11 +197,10 @@ if __name__ == '__main__':
     ioloop.make_current()
     args = parse_cmdline_args(sys.argv[1:])
 
-    print(args)
     first_arg = args.args.lower()
     if first_arg == 'server':
-        rs = PowerSupplyRESTServer(port=args.port, ps_address=args.power_supply)
-        print("Raw Acq REST Server started. Waiting for REST commands.")
+        rs = PowerSupplyRESTServer(power_supplies={'type': 'AgilentN8731', 'name': 'FLA_E_power', hostname='A-N8731A-1553P'}, port=args.port, ps_address=args.power_supply)
+        print("Power supply REST Server started. Waiting for REST commands.")
         ioloop.start()
         print("\nI'm done. Bye!")
     elif first_arg == 'client':
