@@ -2895,8 +2895,9 @@ class chFPGA_controller(IceBoardExtHandler):
         # sysmon?
         # QSFP voltage, temp, signal
 
-        async_return(info, metrics)
+        async_return((info, metrics))
 
+    @async
     def get_backplane_metrics(self):
 
         info = OrderedDict()
@@ -2908,8 +2909,8 @@ class chFPGA_controller(IceBoardExtHandler):
             ####################################
 
             bp_temp_sensors = [
-                ('BP Slot1 Temp', 'Slot1', self.TEMPERATURE_SENSOR.BACKPLANE_TEMPERATURE_SLOT1),
-                ('BP Slot16 Temp', 'Slot16', self.TEMPERATURE_SENSOR.BACKPLANE_TEMPERATURE_SLOT16)]
+                ('BP Slot1 Temp', 'Slot1', self.TEMPERATURE_SENSOR.BP_SLOT1),
+                ('BP Slot16 Temp', 'Slot16', self.TEMPERATURE_SENSOR.BP_SLOT16)]
 
 
             for display_name, sensor, sensor_name in bp_temp_sensors:
@@ -2921,9 +2922,9 @@ class chFPGA_controller(IceBoardExtHandler):
             # Backplane voltages and currents
             ####################################
 
-            voltage = yield self.get_backplane_voltage.async(self.RAIL.BP_RAIL_VCC3V3)
-            current = yield self.get_backplane_current.async(self.RAIL.BP_RAIL_VCC3V3)
-            power = yield self.get_backplane_power.async(self.RAIL.BP_RAIL_VCC3V3)
+            voltage = yield self.get_backplane_voltage.async()
+            current = yield self.get_backplane_current.async()
+            power = yield self.get_backplane_power.async()
             info['BP VCC3V3'] = '%0.1fV@%0.3fA' % (voltage, current)
             info['BP power'] = '%0.1fW' % power
             metrics.append(Metric('fpga_backplane_voltage', value=voltage, type='GAUGE'))
@@ -2935,7 +2936,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
         # backplane QSFP voltage, temp, signal-level
 
-        async_return(info, metrics)
+        async_return((info, metrics))
 
 
     def get_string_id(self):

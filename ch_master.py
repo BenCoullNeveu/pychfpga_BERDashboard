@@ -961,8 +961,19 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
     def get_monitoring_data(self, handler):
         metrics = []
         metrics.extend((yield self.chime_master.monitor_power_supply()))
+        if self.chime_master.fpgas:
+	   metrics.extend((yield self.chime_master.fpgas.get_metrics.async()))
 	handler.set_header('Content-Type', 'text/plain')
-        handler.write('\n'.join(str(metric) for metric in metrics)+'\n')
+	s = ''
+        pm = set()
+        for m in metrics:
+           ss = str(m)
+           if m.metric_name in pm:
+	      ss = ss.split('\n')[-1]
+           else:
+	      pm.add(m.metric_name) 
+           s += ss + '\n'
+        handler.write(s)
         coroutine_return(None)
 
 class ChimeMasterRESTClient(RESTClient):

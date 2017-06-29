@@ -2208,6 +2208,7 @@ class FPGAArray(object):
     def get_monitoring_info(self):
         return self.ib.index_by(lambda ib:ib.get_id()).get_status()
 
+    @async
     def get_metrics(self):
         metrics = []
 
@@ -2220,13 +2221,14 @@ class FPGAArray(object):
 
         for ic in self.ic:
             # backplane metrics
-            slot, ib = ic.items()[0]
-            add_metrics(ib.get_backplane_metrics(), crate_number=ic.crate_number, crate_id=ic.string_id())
+            slot, ib = ic.slot.items()[0]
+            add_metrics((yield ib.get_backplane_metrics.async()), crate_number=ic.crate_number, crate_id=ic.get_string_id())
             # IceBoard metrics
             for slot, ib in ic.slot.items():
-                extra_labels = dict(slot=slot, crate_number=ic.crate_number, crate_id=ic.string_id(), id=ib.string_id())
-                add_metrics(ib.get_metrics(), **extra_labels)
-                add_metrics(ib.BP_SHUFFLE.get_metrics(), **extra_labels)
+                extra_labels = dict(slot=slot, crate_number=ic.crate_number, crate_id=ic.get_string_id(), id=ib.get_string_id())
+                add_metrics((yield ib.get_status.async()), **extra_labels)
+                if ib.is_open():
+                   add_metrics(ib.BP_SHUFFLE.get_metrics(), **extra_labels)
 
         # Backplane GTX
         # Errors, signal level
@@ -2235,7 +2237,7 @@ class FPGAArray(object):
 
         # Shuffle status
 
-        return metrics
+        async_return(metrics)
 
 
 
