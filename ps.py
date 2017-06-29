@@ -154,13 +154,13 @@ class PowerSupplyEasyRESTClient(object):
         response = requests.post(self.url + "status", data={'ps_names': ps_names})
         self.check_code(response.status_code)
         print "Status: {}".format(response.json())
-        return response.json()
+        return json.loads(response.json())
 
     def monitoringMetrics(self):
         print "Requesting monitoring metrics..."
         response = requests.get(self.url + "monitoringMetrics")
         self.check_code(response.status_code)
-        return response.json()
+        return json.loads(response.json())
 
 
 def parse_cmdline_args(argv):
