@@ -2901,7 +2901,7 @@ class chFPGA_controller(IceBoardExtHandler):
     def get_backplane_metrics(self):
 
         info = OrderedDict()
-        metrics = []
+        metrics = Metrics()
 
         if (yield self.is_backplane_present.async()):
             ####################################
