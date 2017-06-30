@@ -2897,8 +2897,28 @@ class chFPGA_controller(IceBoardExtHandler):
 
         async_return((info, metrics))
 
+
+    @async
+    def get_metrics(self):
+        """ Get the Iceboard hardware monitoring information.
+
+        Returns:
+            a :cls:`Metrics` object.
+        """
+        _, metrics = yield self.get_backplane_metrics.async()
+        async_return(metrics)
+
+
     @async
     def get_backplane_metrics(self):
+        """ Get the backplane hardware monitoring information, as accessed from this Iceboard.
+
+        Returns:
+            A :cls:`Metrics` object.
+
+        Note: an 'info' dict is also created but is not returned as the metrics is sufficient for now.
+
+        """
 
         info = OrderedDict()
         metrics = Metrics()
@@ -2931,12 +2951,9 @@ class chFPGA_controller(IceBoardExtHandler):
             metrics.add('fpga_backplane_current', value=current, type='GAUGE')
             metrics.add('fpga_backplane_power', value=power, type='GAUGE')
 
-
-
-
         # backplane QSFP voltage, temp, signal-level
 
-        async_return((info, metrics))
+        async_return(metrics)
 
 
     def get_string_id(self):

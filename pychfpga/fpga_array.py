@@ -2217,17 +2217,27 @@ class FPGAArray(object):
 
     @async
     def get_metrics(self):
+        """ Get the monitoring information on the backplanes, boards and firmware status across the array.
+
+        Includes:
+            - Backplane metrics, as measured from one board in each crate
+            - Iceboard hardware metrics (voltages, temperatures), which also includes mezzanines voltage/current.
+            - Backplane receiver/transmitter status with packet statistics for both the PCB and QSFP links.
+
+        Returns:
+            A :cls:`Metrics` object.
+        """
         metrics = Metrics()
 
         for ic in self.ic:
             # backplane metrics
             slot, ib = ic.slot.items()[0]
-            bp_metrics = (yield ib.get_backplane_metrics.async())[1]
+            bp_metrics = yield ib.get_backplane_metrics.async()
             metrics.add(bp_metrics, crate_number=ic.crate_number, crate_id=ic.get_string_id())
             # IceBoard metrics
             for slot, ib in ic.slot.items():
                 extra_labels = dict(slot=slot, crate_number=ic.crate_number, crate_id=ic.get_string_id(), id=ib.get_string_id())
-                ib_metrics = (yield ib.get_status.async())[1]
+                ib_metrics = yield ib.get_metrics.async()
                 metrics.add(ib_metrics, **extra_labels)
                 if ib.is_open():
                    metrics.add(ib.BP_SHUFFLE.get_metrics(), **extra_labels)
@@ -2598,7 +2608,7 @@ def parse_args_as_dict(parser, *args, **kwargs):
 
     args = parser.parse_args(*args, **kwargs)
 
-    args_dict={}
+    args_dict = {}
     for k, v in vars(args).items():
         if v is not None:
             sub_dict = group_map[k]
