@@ -52,6 +52,7 @@ from pychfpga.core.icecore import async, async_return, async_sleep
 from pychfpga.core.icecore import IceBoardPlus
 from pychfpga.core.icecore_ext import IceCrateExt
 from pychfpga.MGADC08 import MGADC08  # Import to make sure this Mezzanine is registered  so it can be discovered
+from pychfpga.core.metrics import Metrics
 from pychfpga.core.chFPGA_controller import chFPGA_controller
 from pychfpga.Agilent_N5764A import AgilentN5764AHandler
 from pychfpga.gpu_node import GpuNodeHandler
@@ -123,6 +124,8 @@ class FPGAArray(object):
 
                  hwm=None,
                  iceboards=[], icecrates=[], mezzanines=[], exclude_iceboards=[],
+                 crate_map = {},
+
                  subarrays=[], ping=True,
                  mdns_timeout=2,
                  no_mezz=False,
@@ -224,6 +227,7 @@ class FPGAArray(object):
                     ``subarray`` criteria.
 
 
+            crate_map (dict): Maps crate numbers to (model, serial)
 
             iceboards (list of str) : Iceboard to add to the hardware map,
                 specified by IP address, hostname, or serial number. Equivalent to
@@ -367,7 +371,7 @@ class FPGAArray(object):
         ###########################################
 
 
-        # Build the hwm description string from various sources
+        # Build the hardware description string from various sources
         hw_string = ''   # start with an empty string
 
         # Add `hwm`, if it is a string or a list of strings
@@ -389,7 +393,10 @@ class FPGAArray(object):
         # Parse the hwm string into a hardware table. The hardware table is
         # not the hardware map, but represents the entries that we want to add
         # to the hardware map later.
-        hw_table = parse_hw_string(hw_string)
+        remap_table = {'crates' :
+            {(crate_number,):('icecrates', (model, serial, crate_number))
+             for crate_number, (model, serial) in crate_map.items()}}
+        hw_table = parse_hw_string(hw_string, remap_table)
         print 'hw table = ', hw_table
 
         # Create a default crate number map that relates the crate id to the crate numbers
@@ -2210,25 +2217,20 @@ class FPGAArray(object):
 
     @async
     def get_metrics(self):
-        metrics = []
-
-        def add_metrics(met, **kwargs):
-            if isinstance(met, tuple):
-                met = met[1]
-            for m in met:
-                m.labels.update(kwargs)
-                metrics.append(m)
+        metrics = Metrics()
 
         for ic in self.ic:
             # backplane metrics
             slot, ib = ic.slot.items()[0]
-            add_metrics((yield ib.get_backplane_metrics.async()), crate_number=ic.crate_number, crate_id=ic.get_string_id())
+            bp_metrics = (yield ib.get_backplane_metrics.async())[1]
+            metrics.add(bp_metrics, crate_number=ic.crate_number, crate_id=ic.get_string_id())
             # IceBoard metrics
             for slot, ib in ic.slot.items():
                 extra_labels = dict(slot=slot, crate_number=ic.crate_number, crate_id=ic.get_string_id(), id=ib.get_string_id())
-                add_metrics((yield ib.get_status.async()), **extra_labels)
+                ib_metrics = (yield ib.get_status.async())[1]
+                metrics.add(ib_metrics, **extra_labels)
                 if ib.is_open():
-                   add_metrics(ib.BP_SHUFFLE.get_metrics(), **extra_labels)
+                   metrics.add(ib.BP_SHUFFLE.get_metrics(), **extra_labels)
 
         # Backplane GTX
         # Errors, signal level
@@ -2426,35 +2428,56 @@ class FPGAArray(object):
 
 
 ICE_PATTERNS = [
-        { 'regex': '(MGK7)?BP1',          'type': 'icecrates',  'entry': ('MGK7BP1', None, None),  'store': False},  # Sets the curent model and type to the One-slot backplane; matches MGK7BP1, BP1
-        { 'regex': '(MGK7)?BP16',         'type': 'icecrates',  'entry': ('MGK7BP16', None, None), 'store': False},  # Sets the curent model and type to the 16-slot backplane; matches MGK7BP16, BP16
-        { 'regex': '(MGK7)?MB',           'type': 'iceboards',  'entry': ('MGK7MB', None),         'store': False},  # Sets the curent model and type to the ICEBoard (motherboard); matches MGK7MB, MB
-        { 'regex': '(MG)?ADC08',          'type': 'mezzanines', 'entry': ('MGADC08', None),        'store': False},  # Sets the curent model and type to the CHIME Mezzanine;  matches MGADC08, ADC08
-        { 'regex': '29821-0000-(\d{4})',  'type': 'mezzanines', 'entry': ('MGADC08', 0),           'store': True},  # Stores a MGADC08 mezzanine item based on serial number extracted from the Digico barcodes (29821-000-ssss, where ssss=serial number)
-        { 'regex': '35896-0000-(\d{4})',  'type': 'mezzanines', 'entry': ('MGADC08', 0),           'store': True},  # Stores a MGADC08 mezzanine item based on serial number extracted from the Digico barcodes
-        { 'regex': '(?:|SN)?(\d+):(\d*)', 'type': None,         'entry': (None, 0, 1),             'store': True},  # Stores an item with the current model and specified serial number and optional item number (crate number).  Matches 232, 0232, SN232, SN0232, 232:1. Serial number can be prefixed by SN.
-        { 'regex': '(?:|SN)?(\d+)',       'type': None,         'entry': (None, 0),                'store': True},  # Stores an item with the current model and specified serial number and optional item number (crate number).  Matches 232, 0232, SN232, SN0232, 232:1. Serial number can be prefixed by SN.
-        { 'regex': '(\d+.\d+.\d+.\d+)',   'type': 'iceboards',  'entry': (None, 0),                'store': True},  # Stores a motherboard item based on its IP address only
-        { 'regex': '(\w+.local)',         'type': 'iceboards',  'entry': (None, 0),                'store': True},  # Stores a motherboard item based on its local hostname only
-        { 'regex': '\*',                  'type': None,         'entry': (None, '*'),              'store': True},  # Stores a an item that selects all units of the current model
+        { 'regex': '(MGK7)?BP1',           'cur_state': None,  'next_state': 'ic',  'entry': ('MGK7BP1', None, None),  'store_in': None        },  # Sets the curent model and type to the One-slot backplane; matches MGK7BP1, BP1
+        { 'regex': '(MGK7)?BP16',          'cur_state': None,  'next_state': 'ic',  'entry': ('MGK7BP16', None, None), 'store_in': None        },  # Sets the curent model and type to the 16-slot backplane; matches MGK7BP16, BP16
+        { 'regex': '(?:|SN)?(\d+)',        'cur_state': 'ic',  'next_state': 'ic',  'entry': (None, 0, None),          'store_in': 'icecrates' },  # Stores an item with the current model and specified serial number and optional item number (crate number).  Matches 232, 0232, SN232, SN0232, 232:1. Serial number can be prefixed by SN.
+        { 'regex': '(?:|SN)?(\d+):(\d*)',  'cur_state': 'ic',  'next_state': 'ic',  'entry': (None, 0, 1),             'store_in': 'icecrates' },  # Stores an item with the current model and specified serial number and optional item number (crate number).  Matches 232, 0232, SN232, SN0232, 232:1. Serial number can be prefixed by SN.
+        { 'regex': '\*',                   'cur_state': 'ic',  'next_state': None,  'entry': (None, '*', None),        'store_in': 'icecrates' },  # Stores a an item that selects all units of the current model
+
+        { 'regex': '(\d+\.\d+\.\d+\.\d+)', 'cur_state': None,  'next_state': None,  'entry': (None, 0),                'store_in': 'iceboards' },  # Stores a motherboard item based on its IP address only
+        { 'regex': '(\w+\.local)',         'cur_state': None,  'next_state': None,  'entry': (None, 0),                'store_in': 'iceboards' },  # Stores a motherboard item based on its local hostname only
+        { 'regex': '(MGK7)?MB',            'cur_state': None,  'next_state': 'ib',  'entry': ('MGK7MB', None),         'store_in': None        },  # Sets the curent model and type to the ICEBoard (motherboard); matches MGK7MB, MB
+        { 'regex': '(?:|SN)?(\d+)',        'cur_state': 'ib',  'next_state': 'ib',  'entry': (None, 0),                'store_in': 'iceboards' },  # Stores an item with the current model and specified serial number and optional item number (crate number).  Matches 232, 0232, SN232, SN0232, 232:1. Serial number can be prefixed by SN.
+        { 'regex': '\*',                   'cur_state': 'ib',  'next_state': None,  'entry': (None, '*'),              'store_in': 'iceboards' },  # Stores a an item that selects all units of the current model
+
+        { 'regex': '(MG)?ADC08',           'cur_state': None,  'next_state': 'adc', 'entry': ('MGADC08', None),        'store_in': None        },  # Sets the curent model and type to the CHIME Mezzanine;  matches MGADC08, ADC08
+        { 'regex': '29821-0000-(\d{4})',   'cur_state': None,  'next_state': None,  'entry': ('MGADC08', 0),           'store_in': 'mezzanines'},  # Stores a MGADC08 mezzanine item based on serial number extracted from the Digico barcodes (29821-000-ssss, where ssss=serial number)
+        { 'regex': '35896-0000-(\d{4})',   'cur_state': None,  'next_state': None,  'entry': ('MGADC08', 0),           'store_in': 'mezzanines'},  # Stores a MGADC08 mezzanine item based on serial number extracted from the Digico barcodes
+        { 'regex': '(?:|SN)?(\d+)',        'cur_state': 'adc', 'next_state': 'adc', 'entry': (None, 0),                'store_in': 'mezzanines'},  # Stores an item with the current model and specified serial number and optional item number (crate number).  Matches 232, 0232, SN232, SN0232, 232:1. Serial number can be prefixed by SN.
+
+        { 'regex': 'crate',                'cur_state': None,  'next_state': 'cr', 'entry': (None,),                    'store_in': None        },  #
+        { 'regex': '(\d+)',                'cur_state': 'cr',  'next_state': 'cr', 'entry': (0,),                        'store_in': 'crates' },
         ]
 
-def parse_hw_string(hw_string, dut_id_patterns=ICE_PATTERNS):
+def parse_hw_string(hw_string, remap_table={}, dut_id_patterns=ICE_PATTERNS):
     """ Parses a string describing ICE hardware elements (motherboards, crates and mezzanines)
 
     Arguments:
         hw_string (str): string describing the model, serial number/hostname and optionally the sequence number of the desired
            hardware elements
 
-        dut_id_patterns (list of dict): Describe patterns to match, the type of hardware they match, and the data they provide.
-            regex: the regular expression to match, with optional capture groups.
-            type: the type of hardware in which the entry will be made
-            entry: Entry to make, as a (model, serial) or (model, serial, number) tuple.  For each of the values in the tuple:
-                None: means the value is unchanged
-                *int*: get the capture group specified by the *int*
-                *str*: Set the field to *str*
+        remap_table (dict): used to remap entries into other entries. Used to implement aliases, and
+            map crate numbers into actual model/serial/crate number entries, in the format::
 
-                If model is not None, new entry is started and all other elements of the tuple are reset to the specified values.
+                { type : { entry:(target_type, target_entry), ...} ...}
+
+        dut_id_patterns (list of dict): Describe patterns to match, the type of hardware they match, and the data they provide.
+
+            regex: the regular expression to match, with optional capture groups.
+
+            cur_state (str): The state to which the match apply. ``None`` means it applies to any state.
+
+            next_state (str): The state to move into if there is a match
+
+            entry (tuple): Entry to make or update, as a (model, serial) or (model, serial, number) tuple.  For each
+                of the values in the tuple:
+
+                - None: means the value is unchanged
+                - *int*: get the regex capture group specified by the *int*
+                - *str*: Set the field to *str*
+
+            store_in: the type of hardware in which to store the entry if there is a match
+
 
     Returns:
         A NameSpace object describing a the specified hardware elements for each hardware type listed in `dut_id_patterns`::
@@ -2480,8 +2503,8 @@ def parse_hw_string(hw_string, dut_id_patterns=ICE_PATTERNS):
 
     # Create a new hw table with all possible hardware categories
     hw_table = NameSpace()
-    for t in {d['type'] for d in dut_id_patterns if d['type'] is not None}:
-        hw_table[t]= [] # crate type with empty list if the type does not exist
+    for t in {d['store_in'] for d in dut_id_patterns if d['store_in'] is not None}:
+        hw_table[t] = [] # crate type with empty list if the type does not exist
 
 
     # Split the string in ' '- or '_'-separated elements
@@ -2491,18 +2514,19 @@ def parse_hw_string(hw_string, dut_id_patterns=ICE_PATTERNS):
     # '*' as the serial number (second) field
     if len(elements) == 1 and elements[0] == '*':
         for p in dut_id_patterns:
-            type_, entry = p['type'], p['entry']
+            type_, entry = p['store_in'], p['entry']
             wild_entry = entry[0:1] + ('*',) + entry[2:]
             if wild_entry not in hw_table[type_]:
                 hw_table[type_].append(wild_entry)
         return hw_table
 
     def to_int(s):
-        return (int(s) if s.isdigit() else s)
+        return (int(s) if isinstance(s, str) and s.isdigit() else s)
 
     pos = 0
     err = None
-    current_type = None
+    current_entry = {} # stores the value for each state
+    state = None
     for el in elements:
         pos += len(el) + 1
         if not el:  # if whitespace
@@ -2510,33 +2534,28 @@ def parse_hw_string(hw_string, dut_id_patterns=ICE_PATTERNS):
         # print 'checking', el
         matches = 0
         for p in dut_id_patterns:
-            m = re.match('^' + p['regex'] + '$', el, re.I)
-            # print p['regex'], m
-            if m:   # if there is a match
-                matches += 1
-                groups = m.groups()  # capture groups, in a list
-                type_, entry, store = p['type'], p['entry'], p['store']
+            regex, cur_state, next_state, entry, store_in = p['regex'], p['cur_state'], p['next_state'], p['entry'], p['store_in']
+            if not (cur_state is None or state == cur_state):
+                continue
+            m = re.match('^' + regex + '$', el, re.I)
+            if not m:   # if there is no match
+                continue
+            matches += 1
+            print 'match %i: ' % matches, regex, el
+            groups = m.groups()  # capture groups, in a list
 
-                # If this is a new model, change model type
-                if type_ is not None: # new entry
-                    model_entry = entry
-                    current_entry = list(entry)
-                    current_type = type_
+            # Update the current entry with the entries that are not None
+            # Always convert to integer if possible
+            new_entry = [(to_int(groups[e] if isinstance(e, int) else e))
+                         if cur_state is None or e is not None or i>=len(current_entry[state])
+                         else current_entry[state][i] for i,e in enumerate(entry)]
 
-                elif not current_type: # if not a new model, one should have been set before
-                    err = 'A model must be specified before a serial number is specified'
-                    break
-
-                # Update the current entry with the entries that are not None
-                # Always convert to integer if possible
-                for i in range(1, min(len(entry), len(current_entry))):
-                    if entry[i] is not None:
-                        current_entry[i] = to_int(groups[entry[i]] if isinstance(entry[i], int) else entry[i])  # index the match group if an integer, otherwise replace verbatim
-
-                # Store if instructed
-                if store:
-                    hw_table[current_type].append(tuple(current_entry))
-                    current_entry = list(model_entry)
+            # Store if instructed
+            if store_in:
+                hw_table[store_in].append(tuple(new_entry))
+            elif next_state:
+                current_entry[next_state] = new_entry
+            state = next_state
 
         if err:
             break
@@ -2551,6 +2570,15 @@ def parse_hw_string(hw_string, dut_id_patterns=ICE_PATTERNS):
         print hw_string
         print ' '*(pos-2)+'^'
         raise ValueError(err)
+    # Remap
+    for type, entries in hw_table.items():
+        if type in remap_table:
+            for entry in entries:
+                if entry in remap_table[type]:
+                    target_type, target_entry = remap_table[type][entry]
+                    hw_table[target_type].append(target_entry)
+                    hw_table[type].remove(entry)
+
     print 'hw_table:', hw_table
     return hw_table
 

@@ -24,7 +24,7 @@ import tornado.tcpclient
 import tornado.web
 
 import pychfpga  # used to access .calculate_gain.
-from pychfpga import FPGAArray, NameSpace, load_yaml_config, AgilentN5764AHandler, Metric
+from pychfpga import FPGAArray, NameSpace, load_yaml_config, AgilentN5764AHandler, Metrics
 from rest import RESTClient, AsyncRESTServer, endpoint, coroutine, coroutine_return, sleep  # generic REST servers and clients
 from kotekan import KotekanAsyncRESTClient
 from chrx import ChrxAsyncRESTClient
@@ -192,13 +192,13 @@ class ChimeMaster(object):
 
     @coroutine
     def monitor_power_supply(self):
-        metrics = []
+        metrics = Metrics()
         for ps_name, ps in self.power_supplies.items():
             status = NameSpace(ps.status())
-            metrics.append(Metric('fpga_power_supply_voltage', name=ps_name, value=status.voltage, type='gauge'))
-            metrics.append(Metric('fpga_power_supply_current', name=ps_name, value=status.current, type='gauge'))
-            metrics.append(Metric('fpga_power_supply_power', name=ps_name, value=status.power, type='gauge'))
-	    metrics.append(Metric('fpga_power_supply_status', name=ps_name, value=int(status.status=='OK'), type='gauge'))
+            metrics.add('fpga_power_supply_voltage', name=ps_name, value=status.voltage, type='gauge')
+            metrics.add('fpga_power_supply_current', name=ps_name, value=status.current, type='gauge')
+            metrics.add('fpga_power_supply_power', name=ps_name, value=status.power, type='gauge')
+	    metrics.add('fpga_power_supply_status', name=ps_name, value=int(status.status=='OK'), type='gauge')
         coroutine_return(metrics)
 
     #####################################
@@ -959,21 +959,12 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
     @coroutine
     @endpoint
     def get_monitoring_data(self, handler):
-        metrics = []
-        metrics.extend((yield self.chime_master.monitor_power_supply()))
+        metrics = Metrics()
+        metrics.add((yield self.chime_master.monitor_power_supply()))
         if self.chime_master.fpgas:
-	   metrics.extend((yield self.chime_master.fpgas.get_metrics.async()))
-	handler.set_header('Content-Type', 'text/plain')
-	s = ''
-        pm = set()
-        for m in metrics:
-           ss = str(m)
-           if m.metric_name in pm:
-	      ss = ss.split('\n')[-1]
-           else:
-	      pm.add(m.metric_name) 
-           s += ss + '\n'
-        handler.write(s)
+            metrics.add((yield self.chime_master.fpgas.get_metrics.async()))
+        handler.set_header('Content-Type', 'text/plain')
+        handler.write(str(metrics))
         coroutine_return(None)
 
 class ChimeMasterRESTClient(RESTClient):

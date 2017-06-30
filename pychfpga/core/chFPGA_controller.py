@@ -32,7 +32,7 @@ from .icecore.session import load_session as load_yaml
 
 from .icecore_ext.iceboard_ext import IceBoardExtHandler
 from chFPGA_receiver import chFPGA_receiver
-from metric import Metric
+from metrics import Metrics
 
 from pychfpga.common import util
 
@@ -2826,7 +2826,7 @@ class chFPGA_controller(IceBoardExtHandler):
         """
 
         info = OrderedDict()
-        metrics = []
+        metrics = Metrics()
 
         ####################################
         # Motherboard temperatures
@@ -2842,7 +2842,7 @@ class chFPGA_controller(IceBoardExtHandler):
         for display_name, sensor, sensor_name in mb_temp_sensors:
             value = yield self.get_motherboard_temperature.async(sensor_name)
             info[display_name] = '%0.1fC' % value
-            metrics.append(Metric('fpga_motherboard_temp', value, type='GAUGE', sensor=sensor))
+            metrics.add('fpga_motherboard_temp', value, type='GAUGE', sensor=sensor)
 
         ####################################
         # Motherboard voltages and currents
@@ -2864,8 +2864,8 @@ class chFPGA_controller(IceBoardExtHandler):
             voltage = yield self.get_motherboard_voltage.async(sensor_name)
             current = yield self.get_motherboard_current.async(sensor_name)
             info[display_name] = '%0.1fV@%0.3fA' % (voltage, current)
-            metrics.append(Metric('fpga_motherboard_voltage', value=voltage, type='GAUGE', sensor=sensor))
-            metrics.append(Metric('fpga_motherboard_current', value=current, type='GAUGE', sensor=sensor))
+            metrics.add('fpga_motherboard_voltage', value=voltage, type='GAUGE', sensor=sensor)
+            metrics.add('fpga_motherboard_current', value=current, type='GAUGE', sensor=sensor)
             if add_to_total_power:
                 total_power += voltage * current
 
@@ -2884,11 +2884,11 @@ class chFPGA_controller(IceBoardExtHandler):
                 voltage = yield self.get_mezzanine_voltage.async(sensor_name, mezz)
                 current = yield self.get_mezzanine_current.async(sensor_name, mezz)
                 info[display_name % mezz] = '%0.1fV@%0.3fA' % (voltage, current)
-                metrics.append(Metric('fpga_mezzanine_voltage', value=voltage, type='GAUGE', sensor=sensor, mezzanine=mezz))
-                metrics.append(Metric('fpga_mezzanine_current', value=current, type='GAUGE', sensor=sensor, mezzanine=mezz))
+                metrics.add('fpga_mezzanine_voltage', value=voltage, type='GAUGE', sensor=sensor, mezzanine=mezz)
+                metrics.add('fpga_mezzanine_current', value=current, type='GAUGE', sensor=sensor, mezzanine=mezz)
 
         info['MB Total power'] = '%0.1fW' % total_power
-        metrics.append(Metric('fpga_motherboard_power', value=total_power, type='GAUGE'))
+        metrics.add('fpga_motherboard_power', value=total_power, type='GAUGE')
 
 
         # is_voltage_nominal
@@ -2916,7 +2916,7 @@ class chFPGA_controller(IceBoardExtHandler):
             for display_name, sensor, sensor_name in bp_temp_sensors:
                 value = yield self.get_backplane_temperature.async(sensor_name)
                 info[display_name] = '%0.1fC' % value
-                metrics.append(Metric('fpga_backplane_temp', value, type='GAUGE', sensor=sensor))
+                metrics.add('fpga_backplane_temp', value, type='GAUGE', sensor=sensor)
 
             ####################################
             # Backplane voltages and currents
@@ -2927,9 +2927,9 @@ class chFPGA_controller(IceBoardExtHandler):
             power = yield self.get_backplane_power.async()
             info['BP VCC3V3'] = '%0.1fV@%0.3fA' % (voltage, current)
             info['BP power'] = '%0.1fW' % power
-            metrics.append(Metric('fpga_backplane_voltage', value=voltage, type='GAUGE'))
-            metrics.append(Metric('fpga_backplane_current', value=current, type='GAUGE'))
-            metrics.append(Metric('fpga_backplane_power', value=power, type='GAUGE'))
+            metrics.add('fpga_backplane_voltage', value=voltage, type='GAUGE')
+            metrics.add('fpga_backplane_current', value=current, type='GAUGE')
+            metrics.add('fpga_backplane_power', value=power, type='GAUGE')
 
 
 
