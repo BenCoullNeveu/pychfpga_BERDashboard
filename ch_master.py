@@ -158,37 +158,70 @@ class ChimeMaster(object):
     def set_config(self, config):
         self.config = NameSpace(config)
 
+
+
+    #####################################
+    # Power supply management methods
+    #####################################
+    # Here we create the power supply objects directly
+    # To be change so we connect to a power supply server node instead.
+
     POWER_SUPPLY_CLASSES = {
         'AgilentN5764': AgilentN5764AHandler
         }
 
     @coroutine
     def create_power_supplies(self):
-        power_supplies = self.config.power_supplies or {}
+        units = self.config.power_supplies.common_config.units or {}
         self.power_supplies = {}
-        for ps in power_supplies:
+        for name, ps in units.items():
             type_ = ps.pop('type')
-            name = ps.pop('name')
+            # crate_number = ps.pop('crate_number')
             cls = self.POWER_SUPPLY_CLASSES[type_]
-            self.power_supplies[name] = cls(**ps)
+            ps_instance = cls(**ps)
+            self.power_supplies[name] = ps_instance
             self.power_supplies[name].open()
 
 
     @coroutine
     def power_on(self):
-        for ps_name, ps in self.power_supplies.items():
+        """ Turn on the power supplies listed in the `power_on.supplies` config field.
+
+        If the power supply is already ON, no action is taken. If not, it is turned on, and we wait
+        for the power on delay specified in `power_on.delay`.
+        """
+
+        @coroutine
+        def turn_on(ps_name):
+            ps = self.power_supplies[ps_name]
+            status = ps.status()  # todo: make async
+            if status[ps_name]['status']=='OK':
+                self.log.info("%.32r: Power supply '%s' is already ON" % (self, ps_name))
+                return
             self.log.info("%.32r: Turning ON power supply '%s'" % (self, ps_name))
             ps.unlock()
-            ps.power_on()
+            ps.power_on() # todo: make async
             ps.lock()
+            yield sleep(self.config.power_on.delay) # make this asynchronous so all the delay happen in parallel
+
+        yield [turn_on(ps_name) for ps_name in self.config.power_supplies.power_on.units]
+
 
     @coroutine
     def power_off(self):
-        for ps_name, ps in self.power_supplies.items():
+        """ Turn off the power supplies listed in the `power_on.supplies` config field.
+        """
+
+        @coroutine
+        def turn_off(ps_name):
+            ps = self.power_supplies[ps_name]
             self.log.info("%.32r: Turning OFF power supply '%s'" % (self, ps_name))
             ps.unlock()
             ps.power_off()
             ps.lock()
+
+        yield [turn_off(ps_name) for ps_name in self.config.power_supplies.power_on.units]
+
 
     @coroutine
     def monitor_power_supply(self):
@@ -198,7 +231,7 @@ class ChimeMaster(object):
             metrics.add('fpga_power_supply_voltage', name=ps_name, value=status.voltage, type='gauge')
             metrics.add('fpga_power_supply_current', name=ps_name, value=status.current, type='gauge')
             metrics.add('fpga_power_supply_power', name=ps_name, value=status.power, type='gauge')
-	    metrics.add('fpga_power_supply_status', name=ps_name, value=int(status.status=='OK'), type='gauge')
+            metrics.add('fpga_power_supply_status', name=ps_name, value=int(status.status == 'OK'), type='gauge')
         coroutine_return(metrics)
 
     #####################################
@@ -213,12 +246,12 @@ class ChimeMaster(object):
         TODO:
             - Make parallel if needed
         """
-        chrx_conf = self.config.chrx
-        self.chrx = []
-        for node_params in chrx_conf.node_specific_config:
+        self.chrx = {}
+        nodes = self.config.chrx.nodes or {} # return {} if None (no YAML entries)
+        for node_name, node_params in nodes.items():
             conf = node_params.copy()
-            conf.update(chrx_conf.common_config)
-            self.chrx.append(ChrxAsyncRESTClient(**conf))  # will use only the parameters it needs for now (host, port etc)
+            conf.update(self.config.chrx.common_config)
+            self.chrx[node_name] = ChrxAsyncRESTClient(name=node_name, **conf)  # will use only the parameters it needs for now (host, port etc)
 
     # def make_chrx_headers(self):
     #     # Add some acquisition information to the header, for kicks.
@@ -271,11 +304,11 @@ class ChimeMaster(object):
                 headers=headers)
             self.log.info("finished starting CHRX %s" % chrx.name)
 
-        yield (start_chrx_client(chrx) for chrx in self.chrx)
+        yield (start_chrx_client(chrx) for chrx in self.chrx.values())
 
     @coroutine
     def stop_chrx_clients(self):
-        yield [chrx.stop() for chrx in self.chrx]
+        yield (chrx.stop() for chrx in self.chrx.values())
 
 
     @coroutine
@@ -293,21 +326,33 @@ class ChimeMaster(object):
                 input_number = remapped_slot * 16 + remapped_chan
                 yield chrx.send_config(input_number, converted_gains)  # pass_fpga_gain(inp, v)
         # update all gains in parallel
-        yield [update_gains(chrx) for chrx in self.chrx]
+        yield (update_gains(chrx) for chrx in self.chrx.values())
+
+    #####################################
+    # KOTEKAN management methods
+    #####################################
 
     @coroutine
     def create_kotekan_clients(self):
         # Create Kotekan REST clients
-        self.kotekan = []
-        for node_params in self.config.gpu.node_specific_config:
-            self.kotekan.append(KotekanAsyncRESTClient(**node_params))
+        self.kotekan = {}
+        nodes = self.config.kotekan.nodes or {}
+        for node_name, node_params in nodes.items():
+            config = node_params.copy()
+            config.update(self.config.kotekan.common_config)
+            self.kotekan[node_name] = KotekanAsyncRESTClient(name=node_name, **config)
+
+    #####################################
+    # RAW_ACQ management methods
+    #####################################
 
     @coroutine
     def create_raw_acq_clients(self):
         """ Create RawAcq REST clients.
         """
         self.raw_acq = {}
-        for node_name, node_params in self.config.raw_acq.nodes.items():
+        nodes = self.config.raw_acq.nodes or {}
+        for node_name, node_params in nodes.items():
             self.raw_acq[node_name] = RawAcqAsyncRESTClient(name=node_name, **node_params)
 
     def get_iceboards(self, ib):
@@ -819,15 +864,15 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
     the correspnding ChimeMaster methods.
     """
 
-    def __init__(self, port, dummy=False, gpu_config_file=None):
+    def __init__(self, port, dummy=False):
 
         self.port = port # port on which the web server will be run
         self.dummy = dummy
 
-        # Create a kotekan client for each node specified in the gpu_config_file
-        # We may want to make this part of ChimeMaster initialization
-        gpu_config = yaml.load(open(gpu_config_file)) if gpu_config_file else {}
-        self.kotekan_clients = [KotekanAsyncRESTClient(k, **v) for k,v in gpu_config.items()]
+        # # Create a kotekan client for each node specified in the gpu_config_file
+        # # We may want to make this part of ChimeMaster initialization
+        # gpu_config = yaml.load(open(gpu_config_file)) if gpu_config_file else {}
+        # self.kotekan_clients = [KotekanAsyncRESTClient(k, **v) for k,v in gpu_config.items()]
 
         # Use a dummy CHIME Master object if dummy is True
         ChimeMasterClass = DummyChimeMaster if self.dummy else ChimeMaster
@@ -1055,7 +1100,6 @@ def parse_cmdline_args(argv):
     parser.add_argument('args', type=str, nargs='*', default='',  help='"server", "client" or a YAML filename:subconfig. "server" Starts the CHIME Master REST server. Control is returned only after server is stopped')
     parser.add_argument('-d', '--debug', action='store_true',
                         help="debug mode")
-    parser.add_argument('-g', '--gpus', default=None, type=str)
     parser.add_argument('-p', '--port', default=54321, type=int, help="port used by the server")
     parser.add_argument('-n', '--host', default='localhost', type=str, help="server hostname")
     return parser.parse_args(argv)
@@ -1069,17 +1113,19 @@ if __name__ == '__main__':
 
     args = parse_cmdline_args(sys.argv[1:])
     first_arg = args.args[0].lower() if args.args else None
+
     if first_arg == 'server':
         #################
         # Create and run a CHIME Master REST server
         #################
         print('Starting CHIME Master REST server on %s:%i' % (args.host, args.port))
-        cms = ChimeMasterAsyncRESTServer(port=args.port, dummy=args.debug, gpu_config_file=args.gpus) # server will be added to the current ioloop
+        cms = ChimeMasterAsyncRESTServer(port=args.port, dummy=args.debug) # server will be added to the current ioloop
         if len(args.args) > 1:
             cms.run_sync('start', None, load_yaml_config(args.args[1:]))
         ioloop.start()
         cm = cms.chime_master
         print("CHIME Master REST server has stopped and is accessible under variable 'cms' in interactive python sessions (ipython -i).")
+
     elif first_arg == 'client':
         #################
         # Create CHIME Master REST client, and optionally invoke a command
@@ -1093,6 +1139,7 @@ if __name__ == '__main__':
             getattr(m, cmd)(*args.args[2:])
         else:
             print("ChimeMaster REST client object is accessible under variable 'm' in interactive python sessions (ipython -i)")
+
     else:
         #################
         # Create CHIME Master object directly, and optionally start it withe the specified config file

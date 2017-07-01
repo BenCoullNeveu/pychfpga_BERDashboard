@@ -394,7 +394,7 @@ class FPGAArray(object):
         # not the hardware map, but represents the entries that we want to add
         # to the hardware map later.
         remap_table = {'crates' :
-            {(crate_number,):('icecrates', (model, serial, crate_number))
+            {(crate_number,): ('icecrates', (model, serial, crate_number))
              for crate_number, (model, serial) in crate_map.items()}}
         hw_table = parse_hw_string(hw_string, remap_table)
         print 'hw table = ', hw_table
