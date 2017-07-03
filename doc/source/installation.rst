@@ -191,6 +191,13 @@ Tip: you can check incoming trafic with::
 
     ip -s  link show enp0s31f6
 
+to check if avahi works:
+    avahi-browse _tuber-jsonrpc._tcp --resolve
+
+If resolve timeouts after 10 seconds, there is a problem. Sould restart the avahi server:
+
+    sudo avahi-daemon -k; sudo avahi-daemon -D
+
 Testing
 *******
 
