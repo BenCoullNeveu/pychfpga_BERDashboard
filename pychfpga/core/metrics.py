@@ -69,9 +69,9 @@ class Metrics(object):
         s = []
         for metric_name, m in self.metrics.items():
             if m.doc:
-                s.append('# HELP %s %s\n' % (self.metric_name, self.doc))
+                s.append('# HELP %s %s\n' % (metric_name, m.doc))
             if m.type:
-                s.append('# TYPE %s %s\n' % (self.metric_name, self.type))
+                s.append('# TYPE %s %s\n' % (metric_name, m.type))
             for entry in m.entries:
                 labels = '{' + ','.join('%s="%s"' % (k, v) for k, v in entry.labels.items()) + '}' if entry.labels else ''
                 s.append('%s%s %f %i\n' % (metric_name, labels, entry.value, entry.time))

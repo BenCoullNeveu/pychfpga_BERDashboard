@@ -195,7 +195,7 @@ class ChimeMaster(object):
         def turn_on(ps_name):
             ps = self.power_supplies[ps_name]
             status = ps.status()  # todo: make async
-            if status[ps_name]['status']=='OK':
+            if status['status']=='OK':
                 self.log.info("%.32r: Power supply '%s' is already ON" % (self, ps_name))
                 return
             self.log.info("%.32r: Turning ON power supply '%s'" % (self, ps_name))

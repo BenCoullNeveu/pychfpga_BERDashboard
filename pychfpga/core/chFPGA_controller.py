@@ -2905,7 +2905,7 @@ class chFPGA_controller(IceBoardExtHandler):
         Returns:
             a :cls:`Metrics` object.
         """
-        _, metrics = yield self.get_backplane_metrics.async()
+        _, metrics = yield self.get_status.async()
         async_return(metrics)
 
 
