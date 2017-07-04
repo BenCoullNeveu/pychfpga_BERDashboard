@@ -8,6 +8,7 @@ import sys
 import argparse
 import logging
 import socket
+import time
 
 import netifaces  # non-standard Python library (pip install netifaces)
 
@@ -281,9 +282,9 @@ class hdf5TimestreamData(object):
             pass
         else:
             print("ut oh...")
-        print(self.n_times)
+        # print(self.n_times)
         current_time = time.time()
-        self.timestampDataset[self.n] = timestamp
+        ##### self.timestampDataset[self.n] = timestamp
         self.antDataset[self.n] = ant
         self.slotDataset[self.n] = port % 100  # assume port gives slot
         self.crateDataset[self.n] = ((port/100) % 10) - 1
@@ -342,6 +343,7 @@ class dataWriter(object):
                     return
                 for j, out_q in enumerate(self.data_queue):
                     if not out_q.empty():
+                        # print('writing data')
                         self.all_ts, self.port, self.ant, self.all_data = out_q.get()
                         self.h5file.write(self.all_ts, self.port, self.ant, self.all_data)
                         n_elements += 1
@@ -603,7 +605,7 @@ class RawAcqReceiver(object):
         self.data_writer_thread.start()
         if capture_duration:
             self.log.info('%.32r: HDF5 data writer will be stopped in %f seconds' % (self, capture_duration))
-            IOLoop.current().call_later(capture_duration, self.stopHdfDisk)
+            IOLoop.current().call_later(capture_duration, self.stopHdf5Disk)
 
     def stopHdf5Disk(self):
         if not self.datawriter:
@@ -689,8 +691,8 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
 
     @coroutine
     @endpoint('start-hdf5')
-    def start_hdf5(self, handler, base_dir='./', base_filename='RawAcq', capture_duration=0):
-        self.receiver.startHdf5Disk(base_dir, base_filename, capture_duration=capture_duration)
+    def start_hdf5(self, handler, base_dir='./', base_filename='RawAcq', capture_duration=0, elements_per_file=2048*64):
+        self.receiver.startHdf5Disk(base_dir, base_filename, capture_duration=capture_duration, elements_per_file=elements_per_file)
         coroutine_return("started hdf5 writing to disk.")
 
     @coroutine
@@ -764,17 +766,17 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
     def ping(self):
         try:
             yield self.get('status')
-            self.log.info("Successfully pinged raw_acq server at %s:%i" % (self.host, self.port))
+            self.log.info("Successfully pinged raw_acq server at %s:%i" % (self.hostname, self.port))
         except Exception as e:
             self.log.debug(repr(e))
-            self.log.error("Can't ping raw_acq server at %s:%i" % (self.host, self.port))
+            self.log.error("Can't ping raw_acq server at %s:%i" % (self.hostname, self.port))
             coroutine_return(False)
         coroutine_return(True) # coroutine_return raises an exception: we don't want it in the try block
 
     @coroutine
     def start(self, **config):
         """ Start the RaqAcq remote server with the keyword argument as configuration data"""
-        self.log.info('%s: Starting remote RawAcq server at %s:%i with config: %r' % (self, self.host, self.port, config))
+        self.log.info('%s: Starting remote RawAcq server at %s:%i with config: %r' % (self, self.hostname, self.port, config))
         result = yield self.post('start', **config)
         coroutine_return(result)
 
@@ -789,8 +791,8 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
         coroutine_return(data)
 
     @coroutine
-    def start_hdf5(self, base_dir=None, base_filename=None, capture_duration=0):
-        result = yield self.post('start-hdf5', base_dir=base_dir or self.base_dir, base_filename=base_filename or self.base_filename, capture_duration=capture_duration)
+    def start_hdf5(self, base_dir=None, base_filename=None, capture_duration=0, elements_per_file=2048*64):
+        result = yield self.post('start-hdf5', base_dir=base_dir or self.base_dir, base_filename=base_filename or self.base_filename, capture_duration=capture_duration, elements_per_file=elements_per_file)
         coroutine_return(result)
 
     @coroutine

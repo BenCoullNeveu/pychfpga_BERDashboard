@@ -2258,9 +2258,9 @@ class FPGAArray(object):
         if not self.ib:
             print('There are no IceBoards in the array')
             return
-        info, metrics = self.ib.get_status()
-        keys = '\n'.join(info[0].keys())
-        data = {ib:('\n'.join(info[i].values())) for i, ib in enumerate(self.ib)}
+        info_metrics = self.ib.get_status()
+        keys = '\n'.join(info_metrics[0][0].keys())
+        data = {ib:('\n'.join(info_metrics[i][0].values())) for i, ib in enumerate(self.ib)}
         self.print_iceboard_table(data, row_labels=keys)
 
     def set_tx_power(self, pmin=6, pmax=13, pre=3):
