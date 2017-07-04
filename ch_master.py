@@ -25,7 +25,7 @@ import tornado.web
 
 import pychfpga  # used to access .calculate_gain.
 from pychfpga import FPGAArray, NameSpace, load_yaml_config, AgilentN5764AHandler, Metrics
-from rest import RESTClient, AsyncRESTServer, endpoint, coroutine, coroutine_return, sleep  # generic REST servers and clients
+from rest import RESTClient, AsyncRESTServer, endpoint, coroutine, coroutine_return, sleep, RunSyncWrapper  # generic REST servers and clients
 from kotekan import KotekanAsyncRESTClient
 from chrx import ChrxAsyncRESTClient
 from raw_acq import RawAcqAsyncRESTClient
@@ -108,7 +108,7 @@ def get_git_version():
     try:
         return subprocess.check_output(
             'git describe --all --dirty --long'.split(),
-            cwd=os.path.dirname(PROGRAM)).strip()
+            cwd = os.path.dirname(PROGRAM)).strip()
     except WindowsError:
         print('GIT was not found')
         return 'unknown' # JFC: To allow tests in windows
@@ -185,17 +185,17 @@ class ChimeMaster(object):
 
     @coroutine
     def power_on(self):
-        """ Turn on the power supplies listed in the `power_on.supplies` config field.
+        """ Turn on the power supplies listed in the `power_supplies.power_on.units` config field.
 
         If the power supply is already ON, no action is taken. If not, it is turned on, and we wait
-        for the power on delay specified in `power_on.delay`.
+        for the power on delay specified in `power_supplies.power_on.delay`.
         """
 
         @coroutine
         def turn_on(ps_name):
             ps = self.power_supplies[ps_name]
             status = ps.status()  # todo: make async
-            if status['status']=='OK':
+            if status['status'] == 'OK':
                 self.log.info("%.32r: Power supply '%s' is already ON" % (self, ps_name))
                 return
             self.log.info("%.32r: Turning ON power supply '%s'" % (self, ps_name))
@@ -209,7 +209,7 @@ class ChimeMaster(object):
 
     @coroutine
     def power_off(self):
-        """ Turn off the power supplies listed in the `power_on.supplies` config field.
+        """ Turn off the power supplies listed in the `power_supplies.power_on.units` config field.
         """
 
         @coroutine
@@ -356,6 +356,16 @@ class ChimeMaster(object):
             self.raw_acq[node_name] = RawAcqAsyncRESTClient(name=node_name, **node_params)
 
     def get_iceboards(self, ib):
+        """ Return the iceboard object(s) corresponding to the  `ib` tuple.
+
+        Parameters:
+
+            ib (tuple): A (crate_number, slot_number) tuple describing an iceboard. A value of None
+                is equivalent to a '*' wildcard. Missing tuple entries are considered to be None.
+
+        Returns:
+            list of iceboard objects
+        """
         if isinstance(ib, (tuple, list)):
             crate_number = ib[0] if len(ib) > 1 else None
             slot_number = ib[1] if len(ib) > 2 else None
@@ -413,7 +423,18 @@ class ChimeMaster(object):
             for ib in node_ibs[node_name]:
                 ip_addr, port, eth_addr = targets[(ib.hostname, 80)]
                 ib.set_data_target_address(ip_addr, port, eth_addr)
-                ib.start_data_capture(period=1, source='adc')
+                capture_period = 1.0 / float(conf.common_config.capture_rate)
+                capture_source = conf.common_config.capture_source
+                self.log.info('%.32r: Starting data capture on %r with period=%f, source=%s' % (self, ib, capture_period, capture_source))
+                ib.start_data_capture(period=capture_period, source=capture_source)
+                if conf.common_config.capture_duration is not None:
+                    yield self.raw_acq[node_name].start_hdf5(
+                        base_dir=conf.common_config.capture_folder,
+                        base_filename=conf.common_config.capture_filename,
+                        capture_duration=conf.common_config.capture_duration,
+                        elements_per_file=conf.common_config.capture_elements_per_file
+                        )
+
         self.log.info('%.32r: RawAcq server setup successfully' % self)
 
     def set_state(self, new_state):
@@ -662,8 +683,10 @@ class ChimeMaster(object):
         self.log.info("finished initializing FPGAs")
 
     def configure_fpgas_post_acq(self):
+        """
+        """
         # shortcuts
-        ca = self.fpgas
+        # ca = self.fpgas
 
         # JFC: not sure why we had those:
         # ca.ib.CROSSBAR.LANE_MONITOR_RESET = 1
@@ -850,7 +873,7 @@ class DummyChimeMaster(ChimeMaster):
 
     def start(self, **config):
         self.config = NameSpace(config)
-        return kvs
+        return config
 
     def status(self):
         return self.config.as_dict()
@@ -1113,18 +1136,21 @@ if __name__ == '__main__':
 
     args = parse_cmdline_args(sys.argv[1:])
     first_arg = args.args[0].lower() if args.args else None
+    cm = None
+    cms = None
+    cmc = None
 
     if first_arg == 'server':
         #################
         # Create and run a CHIME Master REST server
         #################
         print('Starting CHIME Master REST server on %s:%i' % (args.host, args.port))
-        cms = ChimeMasterAsyncRESTServer(port=args.port, dummy=args.debug) # server will be added to the current ioloop
+        cms = RunSyncWrapper(ChimeMasterAsyncRESTServer(port=args.port, dummy=args.debug)) # server will be added to the current ioloop
         if len(args.args) > 1:
-            cms.run_sync('start', None, load_yaml_config(args.args[1:]))
-        ioloop.start()
-        cm = cms.chime_master
-        print("CHIME Master REST server has stopped and is accessible under variable 'cms' in interactive python sessions (ipython -i).")
+            cms.start(None, load_yaml_config(args.args[1:]))
+        cms.run()
+        cm = RunSyncWrapper(cms.chime_master)
+        print("CHIME Master REST server has stopped.")
 
     elif first_arg == 'client':
         #################
@@ -1137,17 +1163,24 @@ if __name__ == '__main__':
         if cmd and hasattr(m, cmd):
             print('Sending command %s to CHIME Master server %s:%s' % (cmd, args.host, args.port))
             getattr(m, cmd)(*args.args[2:])
-        else:
-            print("ChimeMaster REST client object is accessible under variable 'm' in interactive python sessions (ipython -i)")
 
     else:
         #################
         # Create CHIME Master object directly, and optionally start it withe the specified config file
         #################
-        cm = ChimeMaster()
+        cm = RunSyncWrapper(ChimeMaster())
         if first_arg:
             print('Starting ChimeMaster object with configuration %s' % first_arg)
-            cm.run_sync('start', **load_yaml_config(first_arg))
+            cm.start(**load_yaml_config(first_arg))
         else:
             print('No yaml_filename:subconfig_name was specified. Starting an uninitialized ChimeMaster object')
-        print("ChimeMaster object is accessible under variable 'cm' in interactive python sessions (ipython -i)")
+
+
+    print()
+    print("If this was run in an interactive session (ipython -i), the following variables are now accessible:")
+    if cms:
+        print("   cms: CHIME Master REST server")
+    if cmc:
+        print("   cmc: CHIME Master REST client")
+    if cm:
+        print("   cm: CHIME Master object")

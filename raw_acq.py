@@ -22,7 +22,7 @@ import h5py
 import datetime
 
 
-from rest import AsyncRESTServer, endpoint, AsyncRESTClient, coroutine, coroutine_return, IOLoop
+from rest import AsyncRESTServer, endpoint, AsyncRESTClient, coroutine, coroutine_return, IOLoop, RunSyncWrapper
 from pychfpga import NameSpace
 
 
@@ -225,9 +225,11 @@ class RawAcqUDPReceiver(SocketServer.ThreadingUDPServer):
         SocketServer.UDPServer.__init__(self, server_address, self.UDPHandler)  # cannot use super(...): this is an old-style class
 
 class hdf5TimestreamData(object):
+    """ Object representing a HDF5 file containing raw data
+    """
     def __init__(self, filestring):
         self.N_SAMP = 2048
-        #self.N_ANT = 1
+        #self.N_CHANNELS = 1
         self.f = h5py.File(filestring, 'w')
         self.f.attrs["git_version_tag"] = "0.1"
         self.f.attrs["system_user"] = "root"
@@ -267,7 +269,7 @@ class hdf5TimestreamData(object):
         self.n_times = 1
         self.n = 0
 
-    def write_singletime(self, timestamp, port, ant, timestream):
+    def write(self, timestamp, port, ant, timestream):
         if self.n == self.n_times:
             self.n_times = self.n + 1
             self.timestampDataset.resize((self.n_times, 1))
@@ -295,21 +297,20 @@ class hdf5TimestreamData(object):
 class dataWriter(object):
     """
     """
-    def __init__(self, data_queue, base_dir, base_filename):
+    def __init__(self, data_queue, base_dir, base_filename, elements_per_file=2048*64):
         self.log = logging.getLogger(__name__).getChild(self.__class__.__name__)
         if not isinstance(data_queue, (list, tuple)):
             self.data_queue = [data_queue]
         else:
             self.data_queue = data_queue
-        # self.N_ELEMENT_PER_FILE = 2048*64
-        self.N_ELEMENT_PER_FILE = 64
-        time_name = datetime.datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
-        self.base_dir = os.path.join(base_dir,'%s_%s/' % (time_name, base_filename))
+        self.elements_per_file = elements_per_file
+        time_str = datetime.datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
+        self.base_dir = os.path.join(os.path.expanduser(base_dir),'%s_%s/' % (time_str, base_filename))
         #self.live_base_dir = '/mnt/agogo/livedata/'
         try:
-            os.mkdir(self.base_dir)
+            os.makedirs(self.base_dir)
         except:
-            print("couldn't make directory... using current one.")
+            self.log.warning("%.32r: couldn't make directory '%s'. Using current directory." % (self, self.base_dir))
             self.base_dir = './'
 
         self.n_file = 0
@@ -334,22 +335,29 @@ class dataWriter(object):
     def write(self):
         """ Aggregate a number of data sets and write them into the current HDF5 file, then start a new file
         """
-        while self.run:
+        while True:
             n_elements = 0
-            while n_elements < self.N_ELEMENT_PER_FILE:
+            while n_elements < self.elements_per_file:
+                if not self.run:
+                    return
                 for j, out_q in enumerate(self.data_queue):
                     if not out_q.empty():
                         self.all_ts, self.port, self.ant, self.all_data = out_q.get()
-                        self.h5file.write_singletime(self.all_ts, self.port, self.ant, self.all_data)
+                        self.h5file.write(self.all_ts, self.port, self.ant, self.all_data)
                         n_elements += 1
-                        #self.live_h5file = hdf5LiveTimestreamData(self.live_name)
-                        #self.live_h5file.init(n_times=j+1, n=j)
-                        #self.live_h5file.write_singletime(self.all_ts, self.port, self.all_data)
-                        #self.live_h5file.close()
-            self.h5file.close()
-            #self.live_h5file.close()
+            self.close()
             self.n_file += 1
             self.start_new_file()
+
+    def stop(self):
+        """ Stop the `write` process."""
+        self.run = False
+
+    def close(self):
+        if self.h5file:
+            self.h5file.close()
+            self.h5file = None
+
 
 class RawAcqReceiver(object):
     ''' Implement an array of multi-threaded UDP Raw data receiver.
@@ -370,7 +378,7 @@ class RawAcqReceiver(object):
         self.log = logging.getLogger(__name__).getChild(self.__class__.__name__)
         self.ports = None
         self.name = None
-        self.dataWriter = None
+        self.datawriter = None
         self.receivers = []
         self.data_queues = []
         self.gain_estimator = None
@@ -438,7 +446,7 @@ class RawAcqReceiver(object):
         self.data_queues = []
         self.receivers = []
         self.server_threads = []
-        self.N_ANT = 16
+        self.N_CHANNELS = 16
         self.old_timestamp = 0
         self.n_ant_rec = 0
         self.all_data = []
@@ -494,7 +502,7 @@ class RawAcqReceiver(object):
         self.all_data = np.zeros((len(self.ports), 16, 2048), dtype=np.int8)  # pre-allocate data (channels x bins) for all ports,  for a single timestamp
         self.all_ts = np.zeros((len(self.ports), 16), dtype=np.int32) # pre-allocate timestamps storage for the current data for all ports (should all be the same)
 
-        self.gain_estimator = GainEstimator(self.read_data, len(self.ports))
+        self.gain_estimator = GainEstimator(self.get_data, len(self.ports))
 
 
         # Build a mac address loopup table for all source interfaces
@@ -534,7 +542,7 @@ class RawAcqReceiver(object):
         try:
             s.connect(addr)
             s.settimeout(timeout)
-            if_addr =  s.getsockname()
+            if_addr = s.getsockname()
             s.close()
         except socket.timeout:
             self.log.warn('Could not establish a TCP connection with %s:%s' % (addr, port))
@@ -571,6 +579,8 @@ class RawAcqReceiver(object):
 
 
     def stop(self):
+        if self.datawriter:
+            self.stopHdf5Disk()
         while self.receivers:
             receiver = self.receivers.pop()
             receiver.shutdown()
@@ -581,47 +591,56 @@ class RawAcqReceiver(object):
             data_queue = self.data_queues.pop()
             if not data_queue.empty():
                 data_queue.queue.clear()
-        if self.dataWriter:
-            self.dataWriter.run = False
-            self.dataWriter = None
         self.gain_estimator = None
-        print("done shutting down")
 
 
-    def startHdf5Disk(self, base_dir, base_filename):
-        if self.dataWriter:
+    def startHdf5Disk(self, base_dir, base_filename, capture_duration=60, elements_per_file=2048*64):
+        if self.datawriter:
             raise RuntimeError('HDF5 dataWriter is already running')
-        self.dataWriter = dataWriter(self.data_queues, base_dir, base_filename)
-        self.data_writer_thread = threading.Thread(target=self.dataWriter.write)
+        self.datawriter = dataWriter(self.data_queues, base_dir, base_filename, elements_per_file)
+        self.data_writer_thread = threading.Thread(target=self.datawriter.write)
         self.data_writer_thread.setDaemon(True)
         self.data_writer_thread.start()
+        if capture_duration:
+            self.log.info('%.32r: HDF5 data writer will be stopped in %f seconds' % (self, capture_duration))
+            IOLoop.current().call_later(capture_duration, self.stopHdfDisk)
+
+    def stopHdf5Disk(self):
+        if not self.datawriter:
+            raise RuntimeError('%.32r: HDF5 dataWriter is not running' % self)
+        self.log.info('%.32r: Stopping HDF5 data writer' % self)
+        self.datawriter.stop()
+        self.data_writer_thread.join()
+        self.datawriter.close()
+        self.datawriter = None
 
 
-    def read_data(self):
+    def get_data(self):
         """
+        Grab data from the queue until we have a frame for all channels for a single timestamp.
         """
         for j, out_q in enumerate(self.data_queues):
             trying_to_receive = True
             while trying_to_receive:
                 self.timestamp, self.port, self.ant, self.adc_data = out_q.get()
-                if (self.timestamp == self.old_timestamp) and (self.n_ant_rec < self.N_ANT - 1):
+                if (self.timestamp == self.old_timestamp) and (self.n_ant_rec < self.N_CHANNELS - 1):
                     self.all_ts[j][self.ant] = self.timestamp
                     self.all_data[j][self.ant, :] = self.adc_data
                     self.n_ant_rec += 1
-                elif (self.timestamp == self.old_timestamp) and (self.n_ant_rec == self.N_ANT - 1):
+                elif (self.timestamp == self.old_timestamp) and (self.n_ant_rec == self.N_CHANNELS - 1):
                     self.all_ts[j][self.ant] = self.timestamp
                     self.all_data[j][self.ant, :] = self.adc_data
                     self.n_ant_rec = 0
                     self.old_timestamp = 0
                     trying_to_receive = False
-                elif (self.timestamp != self.old_timestamp) and (self.n_ant_rec < self.N_ANT):
+                elif (self.timestamp != self.old_timestamp) and (self.n_ant_rec < self.N_CHANNELS):
                     # Start over, would be new set start as well.
                     #print "didn't get full set, only received {0} ant. restarting.".format(self.n_ant_rec)
                     self.old_timestamp = self.timestamp
                     self.all_ts[j][self.ant] = self.timestamp
                     self.all_data[j][self.ant, :] = self.adc_data
                     self.n_ant_rec = 1
-        #SHould use the returned port.  cheating here.
+        #Should use the returned port.  cheating here.
         return self.all_ts, self.ports, self.all_data
 
 
@@ -644,7 +663,7 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
 
     def __init__(self, address='', port=DEFAULT_PORT, logging_params={}):
         self.receiver = RawAcqReceiver()
-        super(RawAcqAsyncRESTServer, self).__init__(address=address, port=port)
+        super(RawAcqAsyncRESTServer, self).__init__(address=address, port=port,  heartbeat_string='Rs')
 
     @coroutine
     def shutdown(self):
@@ -662,21 +681,30 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
 
     @coroutine
     @endpoint
-    def start_hdf5(self, handler, base_dir='./', base_filename='RawAcq'):
-        self.receiver.startHdf5Disk(base_dir, base_filename)
+    def stop(self, handler):
+        if not self.receiver.is_running():
+            self.log.warning('%.32r: Server is not running' % self)
+        self.receiver.stop()
+        coroutine_return("stopped receiver")
+
+    @coroutine
+    @endpoint('start-hdf5')
+    def start_hdf5(self, handler, base_dir='./', base_filename='RawAcq', capture_duration=0):
+        self.receiver.startHdf5Disk(base_dir, base_filename, capture_duration=capture_duration)
         coroutine_return("started hdf5 writing to disk.")
 
     @coroutine
-    @endpoint
-    def stop(self, handler):
-        self.receiver.stop()
-        coroutine_return("stopped receiver")
+    @endpoint('stop-hdf5')
+    def stop_hdf5(self, handler):
+        self.receiver.stopHdf5Disk()
+        coroutine_return("stopped hdf5 writing to disk.")
+
 
     @coroutine
     @endpoint
     def get_packets(self, handler):
         self.log.info('%.32r: received get_packets command' % self)
-        ts, ports, data = self.receiver.read_data()
+        ts, ports, data = self.receiver.get_data()
         print(ts)
         print(ports)
         print(data)
@@ -720,27 +748,17 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
         kwargs: All remaining aruments will be stored as configuration data.
     """
 
-    def __init__(self, name='RawAcq', hostname='localhost', port=RawAcqAsyncRESTServer.DEFAULT_PORT, base_dir = '/data', base_filename= None, **kwargs):
+    def __init__(self, name='RawAcq', hostname='localhost', port=RawAcqAsyncRESTServer.DEFAULT_PORT, base_dir = '~/data', base_filename= None, **config):
 
-        # save hostname and port so __repr__ will work right away. Will be rewritten by super()
-        self.hostname = hostname
-        self.port = port
-        self.log = logging.getLogger(__name__).getChild(self.__class__.__name__) # we need the logger right away
-        print ('client, host=', hostname)
-        if not hostname:
-            hostname = 'localhost'
-            address = '' # server listens to all interfaces by default
-            print('allo')
-            self.log.info('%32r: Creating local RawAcq server at %s:%i' % (self, address, port))
-            self.server = RawAcqAsyncRESTServer(address=address, port=port)
-            self.server.add_heartbeat(period=1000, heartbeat_string='R')
+        def make_server(self, address, port):
+            """ Called to create a server if hostname is None or empty"""
+            return RawAcqAsyncRESTServer(address=address, port=port)
 
-        self.log.info('%32r: Creating RawAcq Client at %s:%i' % (self, hostname, port))
-        super(RawAcqAsyncRESTClient, self).__init__(hostname=hostname, port=port)
+        super(RawAcqAsyncRESTClient, self).__init__(hostname=hostname, port=port, make_server_func=make_server, heartbeat_string='Rc')
         self.name = name
         self.base_dir = base_dir
         self.base_filename = base_filename or name
-        self.config = kwargs
+        self.config = config
 
     @coroutine
     def ping(self):
@@ -750,6 +768,8 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
         except Exception as e:
             self.log.debug(repr(e))
             self.log.error("Can't ping raw_acq server at %s:%i" % (self.host, self.port))
+            coroutine_return(False)
+        coroutine_return(True) # coroutine_return raises an exception: we don't want it in the try block
 
     @coroutine
     def start(self, **config):
@@ -758,14 +778,10 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
         result = yield self.post('start', **config)
         coroutine_return(result)
 
-        @coroutine
-        def stop(self):
-            try:
-                result = yield self.get('stop')
-            except Exception as e:
-                result = dict(error=repr(e))
-            print('result=', result)
-            coroutine_return(result)
+    @coroutine
+    def stop(self):
+        result = yield self.get('stop')
+        coroutine_return(result)
 
     @coroutine
     def get_packets(self):
@@ -773,9 +789,14 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
         coroutine_return(data)
 
     @coroutine
-    def start_hdf5(self, base_dir=None, base_filename=None):
-        data = yield self.post('start-hdf5', base_dir=base_dir or self.base_dir, base_filename=base_filename or self.base_filename)
-        coroutine_return(data)
+    def start_hdf5(self, base_dir=None, base_filename=None, capture_duration=0):
+        result = yield self.post('start-hdf5', base_dir=base_dir or self.base_dir, base_filename=base_filename or self.base_filename, capture_duration=capture_duration)
+        coroutine_return(result)
+
+    @coroutine
+    def stop_hdf5(self, base_dir=None, base_filename=None):
+        result = yield self.get('stop-hdf5')
+        coroutine_return(result)
 
     @coroutine
     def estimate_gains(self):
@@ -826,5 +847,8 @@ if __name__ == '__main__':
         ioloop.start()
         print("\nI'm done. Bye!")
     elif first_arg == 'client':
-        rc = RawAcqAsyncRESTClient(name='UserRawAcqClient0', hostname=args.host, port=args.port)
+        rc = RunSyncWrapper(RawAcqAsyncRESTClient(
+            name='UserRawAcqClient0',
+            hostname=args.host,
+            port=args.port))
         print('Use rc.run_sync(method_name, args...) to call and run asynchronous (coroutine) client methods in a ioloop. Alternativeny, one can use rc.sync_method_name(args, ...).')

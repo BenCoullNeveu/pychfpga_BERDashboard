@@ -1,2 +1,0 @@
-Jun 27 11:44:39 INFO __main__.ChimeMaster.setup_parent_logger() ch_master.py:438>> Now logging to "~/data/20170627T154439Z_jfc.erh01_corr/ch_master.log".
-Jun 27 11:44:39 DEBUG pychfpga.core.icecore.handler.__init__() handler.py:305>> AgilentN5764AHandler: Creating handler with parameters {}

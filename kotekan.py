@@ -1,72 +1,112 @@
 #!/usr/bin/env python
-""" REST Client to configure and operate  kotekan nodes and dummy kotekan REST Server"""
+""" REST Client to configure and operate kotekan nodes and dummy kotekan REST Servers"""
 
 from __future__ import absolute_import, division, print_function
 
-import sys
-
 import tornado
 import tornado.web
+import tornado.httpclient
 
-from rest import AsyncRESTClient, coroutine, coroutine_return
+from rest import AsyncRESTClient, AsyncRESTServer, coroutine, coroutine_return, endpoint
+
+################################################
+# Dummy kotekan REST Server
+################################################
+
+class KotekanRESTServer(AsyncRESTServer):
+    """
+    Asynchronous dummy kotekan REST server.
+
+    """
+
+    DEFAULT_PORT = 54323
+
+    def __init__(self, address='', port=DEFAULT_PORT, logging_params={}):
+        super(KotekanRESTServer, self).__init__(address=address, port=port, heartbeat_string='Ks')
+
+    @coroutine
+    def shutdown(self):
+        pass
+
+    @coroutine
+    @endpoint('start')
+    def start(self, handler, **config):
+        self.log.info('%.32r: Received start command with %r' % (self, config))
+        coroutine_return('Started kotekan')
+
+    @coroutine
+    @endpoint('stop')
+    def stop(self, handler):
+        self.log.info('%.32r: Received stop command' % (self))
+        coroutine_return("Stopped kotekan")
+
+    @coroutine
+    @endpoint('update')
+    def update(self, handler, **config):
+        self.log.info('%.32r: Received update command with %r' % (self, config))
+        coroutine_return("Updated kotekan")
+
+    @coroutine
+    @endpoint('status')
+    def status(self, handler):
+        self.log.info('%.32r: Received status command' % (self))
+        coroutine_return("Status")
+
+
+################################################
+# kotekan REST Client
+################################################
 
 
 class KotekanAsyncRESTClient(AsyncRESTClient):
-    """Provides access to the remote GPU node kotekan processes through its REST interface.
-
-    Uses Tornado AsyncHTTPClient. All methods are Tornado coroutines so that operations can be performed concurrently on multiple nodes.
     """
-    def __init__(self, name, hostname=None, port=80, **kvs):
+    Provides access to the remote GPU node kotekan processes through its REST interface.
 
-        super(KotekanAsyncRESTClient, self).__init__(hostname=hostname, port=port)
+    Uses Tornado AsyncHTTPClient. All methods are Tornado coroutines so that operations can be
+    performed concurrently on multiple nodes.
+    """
+    DEFAULT_PORT = KotekanRESTServer.DEFAULT_PORT
+
+    def __init__(self, name, hostname=None, port=DEFAULT_PORT, **config):
+
+        def make_server(self, address, port):
+            """ Called to create a server if hostname is None or empty"""
+            return KotekanRESTServer(address=address, port=port)
+
+        super(KotekanAsyncRESTClient, self).__init__(hostname=hostname, port=port, make_server_func=make_server, heartbeat_string='Kc')
         self.name = name
-        self.node_specific_config = kvs
+        self.config = config
         self.ping_cb = tornado.ioloop.PeriodicCallback(self.ping, 60e3)
         self.ping_cb.start()
 
     @coroutine
     def ping(self):
         try:
-            resp = yield self.post('status')
-            self.log.info("pinged kotekan %s" % self.host)
+            yield self.get('status')
+            self.log.info("%.32r: Pinged kotekan at %s:%s" % (self, self.hostname, self.port))
         except Exception as e:
             self.log.debug(repr(e))
-            self.log.debug("can't ping kotekan %s" % self.host)
+            self.log.warning("%.32r: Cannot ping kotekan at %s:%s" % (self, self.hostname, self.port))
+            coroutine_return(False)
+        coroutine_return(True)  # we dont want this in the try block, as by design it raises an exception
 
     @coroutine
     def start(self, config):
-        # XXX:HACK for pathfinder
-        newconfig = config.copy()
-        newconfig.update(self.node_specific_config)
-        try:
-            result = yield self.post('start', **newconfig)
-        except Exception as e:
-            result = dict(error=repr(e))
+        newconfig = self.config.copy()
+        newconfig.update(self.config)
+        result = yield self.post('start', **newconfig)
+        coroutine_return(result)
+
+    @coroutine
+    def stop(self):
+        result = yield self.get('stop')
+        coroutine_return(result)
+
+    @coroutine
+    def update(self, config):
+        result = yield self.post('update', **config)
         coroutine_return(result)
 
 
-class Handler(tornado.web.RequestHandler):
-
-    def initialize(self, port):
-        self.port = port
-
-    def post(self, path):
-        body = self.request.body
-        print(self.port, path, body)
-        self.write(body)
-
-
-#
-# fake Kotekan server, for testing
-#
 if __name__ == '__main__':
-
-    port = int(sys.argv[1])
-    loop = tornado.ioloop.IOLoop.instance()
-    url = tornado.web.url
-    app = tornado.web.Application([
-        url(r'/(.*)', Handler, dict(port=port)),
-    ])
-    app.listen(port)
-    loop.start()
-
+    pass

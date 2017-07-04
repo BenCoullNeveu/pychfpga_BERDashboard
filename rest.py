@@ -136,21 +136,22 @@ class AsyncMixin(object):
     def shutdown(self):
         pass
 
-    def __getattr__(self, name):
-        if name.startswith('sync_'):
-            return functools.partial(self.run_sync, name[5:])
-    def __dir__(self):
-        attrs = dir(type(self)) + vars(self).keys()
-        for name, method in vars(type(self)).items():
-            if callable(method) and not name.startswith('_'):
-                attrs.append('sync_' + name)
-        return attrs
+    # def __getattr__(self, name):
+    #     if name.startswith('sync_'):
+    #         return functools.partial(self.run_sync, name[5:])
+    # def __dir__(self):
+    #     attrs = dir(type(self)) + vars(self).keys()
+    #     for name, method in vars(type(self)).items():
+    #         if callable(method) and not name.startswith('_'):
+    #             attrs.append('sync_' + name)
+    #     return attrs
 
     def run_sync(self, method_name, *args, **kwargs):
-        """ Runs `method_name` in a ioloop and returns when completed"""
+        """ Runs `method_name` in the currenta ioloop and returns when completed"""
         return IOLoop.current().run_sync(functools.partial(getattr(self, method_name), *args, **kwargs))
 
     def run(self):
+        """ Start the current ioloop and run it until something makes it stop """
         try:
             IOLoop.current().start()
         finally:
@@ -165,14 +166,21 @@ class AsyncRESTClient(AsyncMixin):
     DEFAULT_HOST = 'localhost'
     DEFAULT_PORT = 80
 
-    heartbeat_string = 'C'
-
-    def __init__(self, hostname=DEFAULT_HOST, port=DEFAULT_PORT):
+    def __init__(self, hostname=DEFAULT_HOST, port=DEFAULT_PORT, make_server_func=None, heartbeat_string=None, heartbeat_period=1000):
+        self.log = logging.getLogger(__name__).getChild(self.__class__.__name__)
         self.hostname = hostname
         self.port = port
-        self.log = logging.getLogger(__name__).getChild(self.__class__.__name__)
+
+        if not hostname and make_server_func:
+            self.log.info('%32r: Hostname is not specified. Creating local server' % (self))
+            self.hostname = 'localhost'
+            address = ''  # server listens to all interfaces by default
+            self.server = make_server_func(self, address, self.port)
+
+        self.log.info('%32r: Creating %s at %s:%i' % (self, self.__class__.__name__, self.hostname, port))
         self.client = tornado.httpclient.AsyncHTTPClient()
-        self.add_heartbeat(self.heartbeat_string)
+        if heartbeat_string:
+            self.add_heartbeat(heartbeat_string, heartbeat_period)
         self.add_shutdown_handler()
 
     def __repr__(self):
@@ -291,9 +299,8 @@ class AsyncRESTServer(AsyncMixin):
     User can signal an error condition by raising an exception or by returning a dictionary with the 'error' key.
     """
 
-    heartbeat_string = 'S'
 
-    def __init__(self, address='', port=80):
+    def __init__(self, address='', port=80, heartbeat_string=None, heartbeat_period=1000):
         """ Create a Web server responding to the endpoints defined in the class.
 
         Parameters:
@@ -305,15 +312,24 @@ class AsyncRESTServer(AsyncMixin):
 
             port (int): Port number to which the server will listen to requests. Defaults to port 80.
 
+            heartbeat_string (str): String to print periodically on stdout. If none, the periodic
+                hearbeat process is not run.
+
+            heartbeat_period (int): period between heartbeat prints in ms
+
         """
         self.address = address
         self.port = port
+
         self.log = logging.getLogger(__name__).getChild(self.__class__.__name__)
+        self.log.info('%32r: Creating %s server at %s:%i' % (self, self.__class__.__name__, address or '*', port))
+
         # Create the endpoints registered with the @endpoint decorator
         endpoints = [self._create_endpoint(*info) for info in self.get_endpoint_info()]
         self.app = tornado.web.Application(endpoints) # Create the Web application serving those endpoints
         self.http_server = self.app.listen(self.port, address=address or '') # Create the web server on the target port in the current ioloop.
-        self.add_heartbeat(self.heartbeat_string)
+        if heartbeat_string:
+            self.add_heartbeat(heartbeat_string, heartbeat_period)
         self.add_shutdown_handler()
         # The server will run when the ioloop is started.
 
@@ -371,18 +387,69 @@ class AsyncRESTServer(AsyncMixin):
 
 
     @classmethod
-    def endpoint(cls, fn, endpoint_name=None):
+    def endpoint(cls, arg=None):
         """ Decorator that tags the target method as a REST endpoint handler.
 
         It does that by adding an endpoint_info attribute to the method.
 
+        Can be used either as a argument-less or argumented decorator::
+
+            @endpoint  # uses endpoint name derived from method name
+            def my_func(...)
+
+            @endpoint() # uses endpoint name derived from method name
+            def my_func(...)
+
+            @endpoint('my_endpoint_name') # uses specified endpoint name
+            def my_func(...)
+
+            @endpoint(endpoint_name='my_endpoint_name') # uses specified endpoint name
+            def my_func(...)
+
         """
-        method_name = fn.__name__
-        if endpoint_name is None:
-            endpoint_name = method_name.replace('_','-')
-        argspecs = inspect.getargspec(fn)
-        method_args  = argspecs.args + (['**' + argspecs.keywords] if argspecs.keywords else [])
-        fn.endpoint_info = (method_name, endpoint_name, method_args)  # add the endpoint info in the function
-        return fn # return the original function
+
+        def decorator(fn, endpoint_name):
+            method_name = fn.__name__
+            if endpoint_name is None:
+                endpoint_name_ = method_name.replace('_', '-')
+            else:
+                endpoint_name_ = endpoint_name
+            argspecs = inspect.getargspec(fn)
+            method_args = argspecs.args + (['**' + argspecs.keywords] if argspecs.keywords else [])
+            if len(method_args) < 2:
+                raise RuntimeError("Method %s.%s first two parameters must be 'self' and 'handler'" % (cls.__name__, method_name))
+            fn.endpoint_info = (method_name, endpoint_name_, method_args)  # add the endpoint info in the function
+            return fn # return the original function
+
+        if isinstance(arg, str) or arg is None:  # if we use the ecorator without arguments, i.e. @endpoint
+            return functools.partial(decorator, endpoint_name=arg)
+        else:
+            return decorator(arg, endpoint_name=None)
+
+class RunSyncWrapper(object):
+    def __init__(self, async_instance):
+        self._async = async_instance
+
+    def __getattr__(self, name):
+        obj = getattr(self._async, name)
+        if hasattr(obj, '__tornado_coroutine__'):
+            return functools.partial(self.run_sync, obj)
+        else:
+            return obj
+
+    def __dir__(self):
+        attrs = dir(type(self)) + vars(self).keys() + dir(self._async)
+        return attrs
+
+    def run_sync(self, method, *args, **kwargs):
+        """ Runs `method` in a ioloop and returns when completed"""
+        return IOLoop.current().run_sync(functools.partial(method, *args, **kwargs))
+
+    def run(self):
+        try:
+            IOLoop.current().start()
+        finally:
+            IOLoop.current().stop() # make sure the loop is stopped in case the code was interrupted
+
 
 endpoint = AsyncRESTServer.endpoint #: Shortcut to :meth:`AsyncRESTServer.endpoint`
