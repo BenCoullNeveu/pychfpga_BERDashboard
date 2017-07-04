@@ -2254,9 +2254,10 @@ class FPGAArray(object):
 
 
     def print_iceboard_info(self):
-
+        """ Gather metrics from the iceboards and print them in a nicely formatted table """
         if not self.ib:
             print('There are no IceBoards in the array')
+            return
         info, metrics = self.ib.get_status()
         keys = '\n'.join(info[0].keys())
         data = {ib:('\n'.join(info[i].values())) for i, ib in enumerate(self.ib)}
