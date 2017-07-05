@@ -25,7 +25,8 @@ import tornado.web
 
 import pychfpga  # used to access .calculate_gain.
 from pychfpga import FPGAArray, NameSpace, load_yaml_config, AgilentN5764AHandler, Metrics
-from rest import RESTClient, AsyncRESTServer, endpoint, coroutine, coroutine_return, sleep, RunSyncWrapper  # generic REST servers and clients
+from ps import PowerSupplyAsyncRESTClient
+from rest import RESTClient, AsyncRESTServer, endpoint, coroutine, coroutine_return, sleep, RunSyncWrapper, IOLoop  # generic REST servers and clients
 from kotekan import KotekanAsyncRESTClient
 from chrx import ChrxAsyncRESTClient
 from raw_acq import RawAcqAsyncRESTClient
@@ -89,6 +90,28 @@ def convert_types(val):
                     # Hopefully already a int/float
                     pass
     return val
+
+def sanitize_for_json(obj):
+    """
+    Modify an object to make it JSON-compatible. Contents of dicts and
+    lists contained in the object are recursively converted.
+
+        - dict-like object with string keys are converted to Python dict
+        - dict-like objects with non-string keys are converted into a Python list of (key,value) tuples.
+        - list objects are converted into Python list
+        - other objects stay the same.
+
+    """
+    if isinstance(obj, collections.Mapping) or hasattr(obj, 'items'):
+        if not all(isinstance(k,str) for k in obj.keys()):
+            return [(k, sanitize_for_json(v)) for k, v in obj.items()]
+        else:
+            return {str(k): sanitize_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [sanitize_for_json(v) for v in obj]
+    else:
+        return obj
+
 
 
 #
@@ -161,27 +184,36 @@ class ChimeMaster(object):
 
 
     #####################################
-    # Power supply management methods
+    # Power supply management
     #####################################
-    # Here we create the power supply objects directly
-    # To be change so we connect to a power supply server node instead.
-
-    POWER_SUPPLY_CLASSES = {
-        'AgilentN5764': AgilentN5764AHandler
-        }
+    # Operates the power supplies via the power supply server(s)
 
     @coroutine
     def create_power_supplies(self):
-        units = self.config.power_supplies.common_config.units or {}
-        self.power_supplies = {}
-        for name, ps in units.items():
-            type_ = ps.pop('type')
-            # crate_number = ps.pop('crate_number')
-            cls = self.POWER_SUPPLY_CLASSES[type_]
-            ps_instance = cls(**ps)
-            self.power_supplies[name] = ps_instance
-            self.power_supplies[name].open()
+        """ create clients object that operate on the power supply server
+        """
+        ps_config = self.config.power_supplies
 
+        # First create the client to the servers, and start the server if it is not already started
+        self.power_supply_servers = {}
+        server_nodes = ps_config.nodes or {}
+        for server_name, server_params in server_nodes.items():
+            ps = PowerSupplyAsyncRESTClient(hostname=server_params.hostname, port=server_params.port) # we pass the whole server config to the client in case it needs th create and/or start the server
+            yield ps.start(server_params)
+            self.power_supply_servers[server_name] = ps
+
+        # figure out which servers controls the power supply units we want to use in this experiment
+        units = ps_config.power_on.units or {}  # units used by ch_master
+        ps_names = set(units.keys())
+        self.power_supply_units = {}
+        for server_name, server in self.power_supply_servers.items():
+            server_ps_names = set((yield server.list_names()))
+            common_ps_names = ps_names & server_ps_names # set intersection
+            if common_ps_names:
+               self.power_supply_units[server] = common_ps_names
+               ps_names -= common_ps_names
+        if ps_names:
+            raise RuntimeError('%.32r: Could not find a power supply server to handle the following supplies: %s' % (self, ps_names))
 
     @coroutine
     def power_on(self):
@@ -191,47 +223,36 @@ class ChimeMaster(object):
         for the power on delay specified in `power_supplies.power_on.delay`.
         """
 
-        @coroutine
-        def turn_on(ps_name):
-            ps = self.power_supplies[ps_name]
-            status = ps.status()  # todo: make async
-            if status['status'] == 'OK':
-                self.log.info("%.32r: Power supply '%s' is already ON" % (self, ps_name))
-                return
-            self.log.info("%.32r: Turning ON power supply '%s'" % (self, ps_name))
-            ps.unlock()
-            ps.power_on() # todo: make async
-            ps.lock()
-            yield sleep(self.config.power_on.delay) # make this asynchronous so all the delay happen in parallel
-
-        yield [turn_on(ps_name) for ps_name in self.config.power_supplies.power_on.units]
-
+        yield [ps.power_on(ps_names) for ps, ps_names in self.power_supply_units.items()]
 
     @coroutine
     def power_off(self):
         """ Turn off the power supplies listed in the `power_supplies.power_on.units` config field.
         """
-
-        @coroutine
-        def turn_off(ps_name):
-            ps = self.power_supplies[ps_name]
-            self.log.info("%.32r: Turning OFF power supply '%s'" % (self, ps_name))
-            ps.unlock()
-            ps.power_off()
-            ps.lock()
-
-        yield [turn_off(ps_name) for ps_name in self.config.power_supplies.power_on.units]
-
+        yield [ps.power_off(ps_names) for ps, ps_names in self.power_supply_units.items()]
 
     @coroutine
-    def monitor_power_supply(self):
-        metrics = Metrics()
-        for ps_name, ps in self.power_supplies.items():
-            status = NameSpace(ps.status())
-            metrics.add('fpga_power_supply_voltage', name=ps_name, value=status.voltage, type='gauge')
-            metrics.add('fpga_power_supply_current', name=ps_name, value=status.current, type='gauge')
-            metrics.add('fpga_power_supply_power', name=ps_name, value=status.power, type='gauge')
-            metrics.add('fpga_power_supply_status', name=ps_name, value=int(status.status == 'OK'), type='gauge')
+    def is_power_supply_ready(self):
+        """ Check is all power supplies listed in the `power_supplies.power_on.units` config field are ready.
+        """
+        # Get the is_ready dict for each power supply server as [ {ps_name: state,...}, {ps_name: state, ...}]
+        is_ready = yield [ps.is_ready() for ps, ps_names in self.power_supply_units.keys()]
+        # Check if the flag for each supply associated with each server is True
+        coroutine_return(all(is_ready[i][ps_name]
+                             for i, ps_names in enumerate(self.power_supply_units.values())
+                             for ps_name in ps_names))
+
+    @coroutine
+    def get_power_supply_metrics(self):
+        """ Return the metrics for every power supply server.
+
+        Data is gathered for **all** servers, not just the ones that serve a power supply we use in this run.
+
+        Returns:
+            A `Metrics` object with the supply monitiring data.
+        """
+
+        metrics = Metrics((yield [ps.get_metrics() for ps in self.power_supply_servers.values()]))
         coroutine_return(metrics)
 
     #####################################
@@ -304,11 +325,11 @@ class ChimeMaster(object):
                 headers=headers)
             self.log.info("finished starting CHRX %s" % chrx.name)
 
-        yield (start_chrx_client(chrx) for chrx in self.chrx.values())
+        yield [start_chrx_client(chrx) for chrx in self.chrx.values()]
 
     @coroutine
     def stop_chrx_clients(self):
-        yield (chrx.stop() for chrx in self.chrx.values())
+        yield [chrx.stop() for chrx in self.chrx.values()]
 
 
     @coroutine
@@ -326,7 +347,7 @@ class ChimeMaster(object):
                 input_number = remapped_slot * 16 + remapped_chan
                 yield chrx.send_config(input_number, converted_gains)  # pass_fpga_gain(inp, v)
         # update all gains in parallel
-        yield (update_gains(chrx) for chrx in self.chrx.values())
+        yield [update_gains(chrx) for chrx in self.chrx.values()]
 
     #####################################
     # KOTEKAN management methods
@@ -924,19 +945,19 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
 
 
     @coroutine
-    @endpoint # must be applied before coroutine because we lose the method signature
-    def echo(self, handler, args):
+    @endpoint('echo') # must be applied before coroutine because we lose the method signature
+    def echo(self, handler, **args):
         coroutine_return(args)
 
     @coroutine
-    @endpoint
-    def set_state(self, handler, args):
-        self.chime_master.set_state(args['state'])
+    @endpoint('set-state')
+    def set_state(self, handler, state=None):
+        self.chime_master.set_state(state)
         coroutine_return(args)
 
     @coroutine
-    @endpoint
-    def start(self, handler, args):
+    @endpoint('start')
+    def start(self, handler, **config):
         def encode_utf8(x):
             """Convert unicode strings to utf-8 strings for the target object and any objects in lists or dictionaries"""
             if type(x) is unicode:
@@ -947,46 +968,45 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
                 return map(encode_utf8, x)
             else:
                 return x
-        config = encode_utf8(args)  # convert all strings in the config dict into utf8
+        config = encode_utf8(config)  # convert all strings in the config dict into utf8
         result = yield self.chime_master.start(**config)
         coroutine_return(result)
 
     @coroutine
-    @endpoint
+    @endpoint('methods')
     def methods(self, handler):
         coroutine_return(results=self.get_endpoint_info())
 
     @coroutine
-    @endpoint
+    @endpoint('status')
     def status(self, handler):
         coroutine_return(self.chime_master.status())
 
     @coroutine
-    @endpoint
+    @endpoint('stop')
     def stop(self, handler):
         results = yield self.chime_master.stop()
         coroutine_return(results)
 
     @coroutine
-    @endpoint
+    @endpoint('switch_gains')
     def switch_gains(self, handler, gain_map):
         results = yield self.chime_master.switch_gains(gain_map)
         coroutine_return(results)
 
     @coroutine
-    @endpoint
-    def kotekan_start(self, handler, args):
-        results = yield [k.start(args) for k in self.kotekan_clients]
+    @endpoint('kotekan-start')
+    def kotekan_start(self, handler, **config):
+        results = yield [k.start(**config) for k in self.kotekan_clients]
         coroutine_return(results=results)
 
     @coroutine
-    @endpoint
+    @endpoint('get_frequency_map')
     def get_frequency_map(self, handler):
-        coroutine_return(results=self.sanitize_for_json(self.chime_master.get_frequency_map()))
-
+        coroutine_return(results=sanitize_for_json(self.chime_master.get_frequency_map()))
 
     @coroutine
-    @endpoint
+    @endpoint('abort')
     def abort(self, handler):
         """ Savagely stop the server for debugging purposes."""
         tornado.ioloop.IOLoop.instance().stop()
@@ -994,46 +1014,51 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         # sys.exit(-1)
 
     @coroutine
-    @endpoint
-    def call_fpga_array_method(self, handler, args):
+    @endpoint('power-on')
+    def power_on(self, handler):
+        """ Power up only the power supplies used in this run"""
+        result = yield self.ch_master.power_on()
+        coroutine_return(result)
+
+    @coroutine
+    @endpoint('power-off')
+    def power_off(self, handler):
+        """ Power down only the power supplies used in this run"""
+        result = yield self.ch_master.power_off()
+        coroutine_return(result)
+
+    @coroutine
+    @endpoint('abort')
+    def abort(self, handler):
+        """ Savagely stop the server for debugging purposes."""
+        tornado.ioloop.IOLoop.instance().stop()
+        coroutine_return(results='ABORTING NOW!')
+        # sys.exit(-1)
+
+    @coroutine
+    @endpoint('call-fpga-array-method')
+    def call_fpga_array_method(self, handler, **args):
         """  For debuging: calls any fpga_array method. """
         if not hasattr(self.chime_master, 'fpgas') or not self.chime_master.fpgas:
             handler.write(dict(error='FPGA array is not created yet'))
             return
-        r = getattr(self.chime_master.fpgas, args['method_name'])(**args['kwargs'])
-        coroutine_return(results=self.sanitize_for_json(r))
+        r = getattr(self.chime_master.fpgas, args['method_name'])(**args)
+        coroutine_return(results=sanitize_for_json(r))
 
-    def sanitize_for_json(self, obj):
-        """
-        Modify an object to make it JSON-compatible. Contents of dicts and
-        lists contained in the object are recursively converted.
-
-            - dict-like object with string keys are converted to Python dict
-            - dict-like objects with non-string keys are converted into a Python list of (key,value) tuples.
-            - list objects are converted into Python list
-            - other objects stay the same.
-
-        """
-        if isinstance(obj, collections.Mapping) or hasattr(obj, 'items'):
-            if not all(isinstance(k,str) for k in obj.keys()):
-                return [(k, self.sanitize_for_json(v)) for k, v in obj.items()]
-            else:
-                return {str(k): self.sanitize_for_json(v) for k, v in obj.items()}
-        elif isinstance(obj, list):
-            return [self.sanitize_for_json(v) for v in obj]
-        else:
-            return obj
 
     @coroutine
-    @endpoint
+    @endpoint('get-monitoring-data')
     def get_monitoring_data(self, handler):
         metrics = Metrics()
-        metrics.add((yield self.chime_master.monitor_power_supply()))
+        metrics.add((yield self.chime_master.get_power_supply_metrics()))
         if self.chime_master.fpgas:
             metrics.add((yield self.chime_master.fpgas.get_metrics.async()))
+        if self.power_supplies:
+            metrics.add((yield self.power_supplies.get_metrics()))
+
+        # Make the HTTP reply a plain text response for Prometheus, not JSON,
         handler.set_header('Content-Type', 'text/plain')
         handler.write(str(metrics))
-        coroutine_return(None)
 
 class ChimeMasterRESTClient(RESTClient):
 
@@ -1128,7 +1153,6 @@ def parse_cmdline_args(argv):
     return parser.parse_args(argv)
 
 if __name__ == '__main__':
-    from tornado.ioloop import IOLoop
 
     # Create our own IOLoop so we don't interfere with ipython's own ioloop.
     ioloop = IOLoop()
@@ -1141,21 +1165,21 @@ if __name__ == '__main__':
     cmc = None
 
     if first_arg == 'server':
-        #################
+        ################################################################################
         # Create and run a CHIME Master REST server
-        #################
+        ################################################################################
         print('Starting CHIME Master REST server on %s:%i' % (args.host, args.port))
         cms = RunSyncWrapper(ChimeMasterAsyncRESTServer(port=args.port, dummy=args.debug)) # server will be added to the current ioloop
         if len(args.args) > 1:
-            cms.start(None, load_yaml_config(args.args[1:]))
+            cms.start(None, **load_yaml_config(args.args[1:]))
         cms.run()
         cm = RunSyncWrapper(cms.chime_master)
         print("CHIME Master REST server has stopped.")
 
     elif first_arg == 'client':
-        #################
+        ################################################################################
         # Create CHIME Master REST client, and optionally invoke a command
-        #################
+        ################################################################################
         print('Starting CHIME Master REST client connected to %s:%s' % (args.host, args.port))
         # create a CHMasterClient object. The client is asynchronous, so no need to run the ioloop.
         m = ChimeMasterRESTClient(port=args.port)
@@ -1165,9 +1189,9 @@ if __name__ == '__main__':
             getattr(m, cmd)(*args.args[2:])
 
     else:
-        #################
-        # Create CHIME Master object directly, and optionally start it withe the specified config file
-        #################
+        ################################################################################
+        # Create CHIME Master object directly, and optionally start it with the specified config file
+        ################################################################################
         cm = RunSyncWrapper(ChimeMaster())
         if first_arg:
             print('Starting ChimeMaster object with configuration %s' % first_arg)
