@@ -55,7 +55,7 @@ class AgilentN5764AHandler(handler.Handler):
 
     hostname = handler.HandlerParentAttribute(lambda ib: ib.hostname)
 
-    def __init__(self, hostname=None, **kwargs):
+    def __init__(self, hostname=None, port=5025, timeout=0.5,  **kwargs):
         """
         Create an empty AgilentN5764 object. Communication with the power supply is not established yet (see `open()`)
 
@@ -64,13 +64,15 @@ class AgilentN5764AHandler(handler.Handler):
         """
         super(AgilentN5764AHandler, self).__init__(**kwargs)
         self.hostname = hostname
+        self.port = port
+        self.timeout = timeout
         self.locked = True
         self.ps = None  # The actual power supply object is created oply during open() to defer actual communications with the unit.
 
     def open(self):
         if self.ps:
             raise RuntimeError('Power supply is already opened()')
-        self.ps = agilent_N5700(interface='lan', ip_addr=self.hostname, ip_port=5025, timeout=0.5, verbose=0)
+        self.ps = agilent_N5700(interface='lan', ip_addr=self.hostname, ip_port=self.port, timeout=self.timeout, verbose=0)
 
     def __repr__(self):
         if self.ps:
@@ -108,5 +110,13 @@ class AgilentN5764AHandler(handler.Handler):
 
     def status(self):
         return self.ps.status()
+
+    def is_enabled(self):
+        return self.ps.get_output_state()
+
+    def is_ok(self):
+        """ Return the operational state of the power supply.
+        """
+        return self.ps.get_state() == "OK"
 
 # vim: sts=4 ts=4 sw=4 tw=78 smarttab expandtab
