@@ -541,9 +541,9 @@ class RawAcqReceiver(object):
             Make a real coroutine
         """
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(timeout)
         try:
             s.connect(addr)
-            s.settimeout(timeout)
             if_addr = s.getsockname()
             s.close()
         except socket.timeout:
