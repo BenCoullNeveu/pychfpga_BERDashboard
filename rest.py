@@ -10,6 +10,7 @@ import traceback
 import inspect
 import requests
 import functools
+import socket
 
 import tornado.ioloop
 import tornado.web
@@ -95,11 +96,24 @@ class RESTClient(object):
             self.error("Can't connect to REST server at %s:%d for PORT request" % (self.hostname, self.port))
 
 class AsyncMixin(object):
-    heartbeat_string = '.'  #: heartbeat string used at initialization
+    """ Mixin class that provides common methods useful to asynchrohous servers or clients
 
-    """ Adds heartbeat, keyboard interrupt and shutdown handling methods"""
+    Includes:
+        - register a periodic heartbeat
+        - handle keyboard interrupt
+        - handle shutdown
+        - initiate periodic or delayed calls
+        - start the ioloop
+        - run a coroutine synchronously
+
+    """
+
     def add_periodic_callback(self, callback, period):
         return tornado.ioloop.PeriodicCallback(callback, period).start()
+
+    def call_later(self, callback, delay):
+        """ Calls a callback function after a delay """
+        IOLoop.current().call_later(delay, callback)
 
     def add_heartbeat(self, heartbeat_string='.', period=1000):
         """ Add a periodic callback that prints the specified string at specified inetrvals.
@@ -150,6 +164,7 @@ class AsyncMixin(object):
         """ Runs `method_name` in the currenta ioloop and returns when completed"""
         return IOLoop.current().run_sync(functools.partial(getattr(self, method_name), *args, **kwargs))
 
+
     def run(self):
         """ Start the current ioloop and run it until something makes it stop """
         try:
@@ -171,8 +186,8 @@ class AsyncRESTClient(AsyncMixin):
         self.hostname = hostname
         self.port = port
 
-        if not hostname and make_server_func:
-            self.log.info('%32r: Hostname is not specified. Creating local server' % (self))
+        if make_server_func and (not hostname or not self._tcp_ping(hostname, port)):
+            self.log.info('%32r: Hostname is not specified or is not responding. Creating local server' % (self))
             self.hostname = 'localhost'
             address = ''  # server listens to all interfaces by default
             self.server = make_server_func(self, address, self.port)
@@ -221,6 +236,31 @@ class AsyncRESTClient(AsyncMixin):
             print('****ERROR****:', error)
             raise RuntimeError(error)
         coroutine_return(decoded_reply)
+
+    def _tcp_ping(self, hostname, port, timeout=0.3):
+        """
+        Establish a TCP connection with `addr` and return a boolean indicating whether the connection was successful.
+
+        Parameters:
+            hostname (str): hostname to which a TCP connection is made
+            port (int): port to which a TCP connection is made
+            timeout (float): Time to wait before giving up on the connection
+
+        Return:
+            True if the connection is successful, False otherwise.
+
+        Todo:
+            Make this a coroutine
+        """
+        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        s.settimeout(timeout)
+        try:
+            s.connect((hostname, port))
+            s.close()
+            return True
+        except socket.timeout:
+            self.log.warn('Could not establish a TCP connection with %s:%s' % (hostname, port))
+            return False
 
 
 class JsonRequestHandler(tornado.web.RequestHandler):
@@ -421,7 +461,7 @@ class AsyncRESTServer(AsyncMixin):
             fn.endpoint_info = (method_name, endpoint_name_, method_args)  # add the endpoint info in the function
             return fn # return the original function
 
-        if isinstance(arg, str) or arg is None:  # if we use the ecorator without arguments, i.e. @endpoint
+        if isinstance(arg, str) or arg is None:  # if we use the decorator without arguments, i.e. @endpoint
             return functools.partial(decorator, endpoint_name=arg)
         else:
             return decorator(arg, endpoint_name=None)
