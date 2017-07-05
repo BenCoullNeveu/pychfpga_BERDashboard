@@ -3,16 +3,26 @@ Provides a simplified object to handle Prometheus metrics.
 """
 
 import time as time_
-from .icecore import NameSpace
 
 class Metrics(object):
     """ Simplified container to hold Prometheus Metrics.
     """
-    def __init__(self):
-        self.metrics = {}
+    def __init__(self, arg=None):
+        if arg is None:
+            self.metrics = {}
+        elif isinstance(arg, Metrics):
+            self.metrics = arg.metrics.copy()
+        elif isinstance(arg, dict):
+            self.metrics = arg.copy()
+        elif isinstance(arg, list):
+            for item in arg:
+                self.add(item)
 
     def items(self):
         return self.metrics.items()
+
+    def as_dict(self):
+        return self.metrics
 
     def add(self, metric_name, value=None, type=None , doc=None, time=None, **labels):
         """ Add a metric, a metric entry, or add all the metrics from another Metrics object.
@@ -40,39 +50,39 @@ class Metrics(object):
         # If we pass a Metrics object, merge the metrics into this one.
         if isinstance(metric_name, Metrics):
             for met_name, met in metric_name.metrics.items():
-                self.add(met_name, doc=met.doc, type=met.type)
-                for entry in met.entries:
-                    new_labels = dict(entry.labels.items() + labels.items())
-                    self.add(met_name, value=entry.value, time=entry.time, **new_labels)
+                self.add(met_name, doc=met['doc'], type=met.type)
+                for entry in met['entries']:
+                    new_labels = dict(entry['labels'].items() + labels.items())
+                    self.add(met_name, value=entry['value'], time=entry['time'], **new_labels)
             return
 
         # get the metric from the dct, or create an empty one
-        metric = self.metrics.setdefault(metric_name, NameSpace(type=None, doc=None, entries=[]))
+        metric = self.metrics.setdefault(metric_name, dict(type=None, doc=None, entries=[]))
 
         # Assign documentation if some is provided. It must be unique to the metric.
-        if metric.doc and doc and metric.doc != doc:
+        if metric['doc'] and doc and metric['doc'] != doc:
             raise RuntimeError('Cannot assign different docs to metric %s' % metric_name)
         elif doc:
-            metric.doc = doc
+            metric['doc'] = doc
 
         # Assign metric type if some is provided. It must be unique to the metric.
-        if metric.type and type and metric.type != type.upper():
+        if metric['type'] and type and metric['type'] != type.upper():
             raise RuntimeError('Cannot assign different types to metric %s' % metric_name)
         elif type:
-            metric.type = type.upper()
+            metric['type'] = type.upper()
 
         # Add entric (value and labels) to the metric
         if value is not None:
-            metric.entries.append(NameSpace(value=value, labels=labels, time=time or time_.time() * 1000))
+            metric['entries'].append(dict(value=value, labels=labels, time=time or time_.time() * 1000))
 
     def  __str__(self):
         s = []
         for metric_name, m in self.metrics.items():
-            if m.doc:
-                s.append('# HELP %s %s\n' % (metric_name, m.doc))
-            if m.type:
-                s.append('# TYPE %s %s\n' % (metric_name, m.type))
-            for entry in m.entries:
-                labels = '{' + ','.join('%s="%s"' % (k, v) for k, v in entry.labels.items()) + '}' if entry.labels else ''
-                s.append('%s%s %f %i\n' % (metric_name, labels, entry.value, entry.time))
+            if m['doc']:
+                s.append('# HELP %s %s\n' % (metric_name, m['doc']))
+            if m['type']:
+                s.append('# TYPE %s %s\n' % (metric_name, m['type']))
+            for entry in m['entries']:
+                labels = '{' + ','.join('%s="%s"' % (k, v) for k, v in entry['labels'].items()) + '}' if entry['labels'] else ''
+                s.append('%s%s %f %i\n' % (metric_name, labels, entry['value'], entry['time']))
         return ''.join(s)
