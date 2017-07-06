@@ -414,7 +414,7 @@ class ChimeMaster(object):
         node_ibs = {}
         for node_name, node_conf in conf.nodes.items():
             node_ibs[node_name] = set()
-            for ib in node_conf.iceboards:
+            for ib in node_conf.iceboards:  # ib is a (crate, slot) tuple)
                 node_ibs[node_name].update(self.get_iceboards(ib))
 
         print('Node_ibs=', node_ibs)
@@ -435,9 +435,17 @@ class ChimeMaster(object):
         for node_name, ibs in node_ibs.items():
             recv_name = '%sRecv' % node_name
             recv_names[node_name] = '%sRecv' % node_name
-            # We have one port per Iceboard, although we could have multiple iceboards per port if the receiver supported it.
-            recv_ports[node_name] = [dict(port='%sPort%i' % (recv_name, i), sources=[(ib.hostname, 80)])
-                          for i, ib in enumerate(ibs)]
+
+            recv_ports[node_name] = []
+            for i, ib in enumerate(ibs):
+                # We have one port per Iceboard, although we could have multiple iceboards per port if the receiver supported it.
+                if conf.use_fixed_port_numbers:
+                    crate_number = 0 if not ib.crate else ib.crate.crate_number or 0
+                    slot_number = ib.slot or 0
+                    port_name = 41000 + 100*(crate_number + 1) + slot_number  # ***TODO: make resilient to no-crate and no slot info
+                else:
+                    port_name = '%sPort%i' % (recv_name, i)
+                recv_ports[node_name].append(dict(port=port_name, sources=[(ib.hostname, 80)]))
         # Start the receivers concurrently
         start_results = yield {node_name: self.raw_acq[node_name].start(name=recv_names[node_name], ports=recv_ports[node_name]) for node_name in node_ibs.keys()}
         # Configure the FPGA transnmit addresses based on what the t receiver returned
