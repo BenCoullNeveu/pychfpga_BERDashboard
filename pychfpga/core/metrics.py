@@ -15,6 +15,7 @@ class Metrics(object):
         elif isinstance(arg, dict):
             self.metrics = arg.copy()
         elif isinstance(arg, list):
+            self.metrics = {}
             for item in arg:
                 self.add(item)
 
@@ -50,7 +51,7 @@ class Metrics(object):
         # If we pass a Metrics object, merge the metrics into this one.
         if isinstance(metric_name, Metrics):
             for met_name, met in metric_name.metrics.items():
-                self.add(met_name, doc=met['doc'], type=met.type)
+                self.add(met_name, doc=met['doc'], type=met['type'])
                 for entry in met['entries']:
                     new_labels = dict(entry['labels'].items() + labels.items())
                     self.add(met_name, value=entry['value'], time=entry['time'], **new_labels)

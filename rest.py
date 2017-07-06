@@ -258,7 +258,7 @@ class AsyncRESTClient(AsyncMixin):
             s.connect((hostname, port))
             s.close()
             return True
-        except socket.timeout:
+        except (socket.timeout, socket.error): # Windows raises socket.timeout, linux raises socket.error
             self.log.warn('Could not establish a TCP connection with %s:%s' % (hostname, port))
             return False
 

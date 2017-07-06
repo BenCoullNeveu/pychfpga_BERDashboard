@@ -166,11 +166,13 @@ class ChimeMaster(object):
 
         self.state = 'off'
         self.config = None
+
+        # Remote service provider objects
         self.chrx = None  # CHRX REST clients
         self.raw_acq = None # Raw FPGA data acquisitoin REST clients
         self.kotekan = None # Kotekan REST clients
         self.fpgas = None # fpga_array object
-        self.power_supplies = None
+        self.power_supply_servers = None # power supply REST server
 
         self.PROGRAM = os.path.realpath(__file__) # absolute path name to this module
         self.GIT_VERSION = get_git_version()
@@ -203,14 +205,14 @@ class ChimeMaster(object):
             self.power_supply_servers[server_name] = ps
 
         # figure out which servers controls the power supply units we want to use in this experiment
-        units = ps_config.power_on.units or {}  # units used by ch_master
-        ps_names = set(units.keys())
+        units = ps_config.power_on.units or []  # units used by csh_master
+        ps_names = set(units)
         self.power_supply_units = {}
         for server_name, server in self.power_supply_servers.items():
             server_ps_names = set((yield server.list_names()))
             common_ps_names = ps_names & server_ps_names # set intersection
             if common_ps_names:
-               self.power_supply_units[server] = common_ps_names
+               self.power_supply_units[server] = list(common_ps_names)
                ps_names -= common_ps_names
         if ps_names:
             raise RuntimeError('%.32r: Could not find a power supply server to handle the following supplies: %s' % (self, ps_names))
@@ -1053,8 +1055,8 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         metrics.add((yield self.chime_master.get_power_supply_metrics()))
         if self.chime_master.fpgas:
             metrics.add((yield self.chime_master.fpgas.get_metrics.async()))
-        if self.power_supplies:
-            metrics.add((yield self.power_supplies.get_metrics()))
+        if self.chime_master.power_supply_servers:
+            metrics.add((yield self.chime_master.get_power_supply_metrics()))
 
         # Make the HTTP reply a plain text response for Prometheus, not JSON,
         handler.set_header('Content-Type', 'text/plain')
