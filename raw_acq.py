@@ -284,7 +284,7 @@ class hdf5TimestreamData(object):
             print("ut oh...")
         # print(self.n_times)
         current_time = time.time()
-        ##### self.timestampDataset[self.n] = timestamp
+        self.timestampDataset[self.n] = ( timestamp, current_time )
         self.antDataset[self.n] = ant
         self.slotDataset[self.n] = port % 100  # assume port gives slot
         self.crateDataset[self.n] = ((port/100) % 10) - 1
