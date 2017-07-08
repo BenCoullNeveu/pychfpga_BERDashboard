@@ -124,7 +124,7 @@ class FPGAArray(object):
 
                  hwm=None,
                  iceboards=[], icecrates=[], mezzanines=[], exclude_iceboards=[],
-                 crate_map = {},
+                 crate_map={},
 
                  subarrays=[], ping=True,
                  mdns_timeout=2,
@@ -399,22 +399,34 @@ class FPGAArray(object):
         hw_table = parse_hw_string(hw_string, remap_table)
         print 'hw table = ', hw_table
 
-        # Create a default crate number map that relates the crate id to the crate numbers
-        # Users can override this later with set_crate_numbers()
-        # If some crate numbers are specified or there is crate worlcards, just use whatever the user specified
-        if any (crate_number is not None or serial is '*' for (model, serial, crate_number) in hw_table.icecrates):
-            crate_number_map = {(model, serial) : crate_number
-                for (model, serial, crate_number) in hw_table.icecrates if crate_number is not None and serial != '*'}
-        else:
-            crate_number_map = {(model, serial) : i
-                for i, (model, serial, crate_number) in enumerate(hw_table.icecrates)}
+        # Check if there were 'crate' entries that were not remapped to icececrate entries
+        if hw_table.crates:
+            self.logger.warn('The following hardware map crate entries could not be resolved into backplane model/serial: %s' % hw_table.crates)
+
+        # Create a *reverse* crate map ({(model,serial):number} instead of {number:(model,serial)})
+        # that will be used later with set_crate_numbers() to assign crate numbers to crates if
+        # those were not already expressed explicitely in the hw_string (e.g. if the crate is
+        # specified by serial number or was auto-detected from a specified iceboard)
+        if crate_map:  # If we already explicitely provided a crate map, use it.
+            crate_number_map = {(model, serial): crate_number for crate_number, (model, serial) in crate_map.items()}
+        else: # if not, try to build one from the info that was provided in the hw description string
+            # If some crate numbers are specified or if there are crate wildcards, just use the
+            # crate numbers that user specified
+            if any (crate_number is not None or serial is '*' for (model, serial, crate_number) in hw_table.icecrates):
+                crate_number_map = {(model, serial) : crate_number
+                    for (model, serial, crate_number) in hw_table.icecrates
+                    if crate_number is not None and serial != '*'}
+            # If no crate number was specified at all and there are no wildcards, assign crate
+            # numbers in the order they were specified in the hw description string (first crate =
+            # crate 0, second crate is crate 1 etc)
+            else:
+                crate_number_map = {(model, serial) : i
+                    for i, (model, serial, crate_number) in enumerate(hw_table.icecrates)}
         print 'icecrate map=', crate_number_map
 
         # We've got our crate numbers. Remove them from the icecrate list so we pass only the (model,
         # serial) to the mdns discovery function.
         hw_table.icecrates = [(model, serial) for (model, serial, crate_number) in hw_table.icecrates]
-
-
 
 
         ######################################
