@@ -448,7 +448,8 @@ class ChimeMaster(object):
                 recv_ports[node_name].append(dict(port=port_name, sources=[(ib.hostname, 80)]))
         # Start the receivers concurrently
         start_results = yield {node_name: self.raw_acq[node_name].start(name=recv_names[node_name], ports=recv_ports[node_name]) for node_name in node_ibs.keys()}
-        # Configure the FPGA transnmit addresses based on what the t receiver returned
+
+        # Configure the FPGA transmit addresses based on what the t receiver returned
         for node_name, start_result in start_results.items():
             targets = {tuple(k):v for k,v in start_result['target_addr']} # was sent as a [ ((src_ip, src_port),(if_ip, port, mac)) ...] list. Convert back to dict for easy lookup
             for ib in node_ibs[node_name]:
@@ -456,11 +457,12 @@ class ChimeMaster(object):
                 ib.set_data_target_address(ip_addr, port, eth_addr)
                 capture_period = 1.0 / float(conf.common_config.capture_rate)
                 capture_source = conf.common_config.capture_source
-                self.log.info('%.32r: Starting data capture on %r with period=%f, source=%s' % (self, ib, capture_period, capture_source))
+                capture_folder = os.path.join(self.acq_base_dir, conf.common_config.capture_folder)
+                self.log.info('%.32r: Starting data capture on %r with period=%f, source=%s in folder %s' % (self, ib, capture_period, capture_source, capture_folder))
                 ib.start_data_capture(period=capture_period, source=capture_source)
                 if conf.common_config.capture_duration is not None:
                     yield self.raw_acq[node_name].start_hdf5(
-                        base_dir=conf.common_config.capture_folder,
+                        base_dir=capture_folder,
                         base_filename=conf.common_config.capture_filename,
                         capture_duration=conf.common_config.capture_duration,
                         elements_per_file=conf.common_config.capture_elements_per_file
