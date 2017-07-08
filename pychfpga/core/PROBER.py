@@ -30,7 +30,8 @@ class PROBER_base(Module_base):
     BURST_PERIOD0 = BitField(CONTROL, 0x04, 0, width=8, doc="8 bit LSB of number of frames between bursts")
     # BURST_PERIOD = BitField(CONTROL, 0x04, 0, width=32, doc="24 bit  number of frames between bursts. We read 32 bits but have to discard the MSbyte")
     BURST_NUMBER = BitField(CONTROL, 0x05, 0, width=8, doc="Sets the number of bursts to transmit. 0-255, 0= Continuous transmission.")
-    PROBE_ID = BitField(CONTROL, 0x06, 0, width=8, doc="Arbitrary 8-bit number that shows in the header of the transmitted frames to identify the source")
+    PROBE_ID = BitField(CONTROL, 0x06, 0, width=8, doc="8-bit number that is the first byte of the raw data packet. Can be used as a cookie or to encode information from the source")
+    STREAM_ID = BitField(CONTROL, 0x08, 0, width=12, doc="Arbitrary 12-bit number that that identifies the source of the data (typically crate/slot/channel numbers)")
 
     # Memory-mapped status registers
     _TRIG_CTR = BitField(STATUS, 0x01, 0, width=8, doc="Number of frames")
@@ -101,7 +102,11 @@ class PROBER_base(Module_base):
     def init(self, **kwargs):
         """ Initialize the data capture module"""
         # self.config_capture(1, 100) # Capture 1 frame every 100 frames
-        self.PROBE_ID = 0xA0 + self.instance_number
+        channel = self.instance_number
+        slot = (self.slot or 1) - 1   # 0-based, 0 if no slot
+        crate = self.crate.crate_number or 0 if self.crate else 0 # 0 if there is no backplane/crate, or the crate does not have an assigned crate number.
+        self.PROBE_ID = 0xA0 + self.instance_number  # For backwards compatibility
+        self.STREAM_ID = ((crate & 0xF) << 8) | ((slot & 0xF) << 4) | (channel & 0x0F)
         self.RESET = 1  # Make sure no data is being transmitted at reset
 
     def status(self):

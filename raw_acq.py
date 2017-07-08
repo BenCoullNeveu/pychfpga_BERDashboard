@@ -212,25 +212,35 @@ class RawAcqUDPReceiver(SocketServer.ThreadingUDPServer):
         to a hdf5 file.
         '''
         def handle(self):
+            self.packet_counter += 1
             data, socket = self.request
             port = self.server.server_address[1]
-            (probe_id, stream_id, word_length,
-                timestamp) = struct.unpack_from('>BHHL', data[:9])
+            (probe_id, stream_id, ts_high, ts_low) = self.unpack_header(data[:9])
             chan = probe_id & 0x0F
+            timestamp = (ts_high << 32) + ts_low
+            flags = stream_id >> 12
+            stream_id &= 0xFFF
             adc_data = np.fromstring(data[9:2057], dtype=np.int8)
             # print( "Data received on port {0}, channel#{1}, std(data)={2}".format(port, chan, adc_data.std()) )
-            self.server.data_queue.put((timestamp, port, chan, adc_data))
+            try:
+                self.server.data_queue.put((timestamp, port, chan, stream_id, flags, adc_data))
+            except Queue.Full:
+                queue_overflows += 1
 
     def __init__(self, server_address, data_queue):
         self.data_queue = data_queue
+        self.queue_overflows = 0
+        self.packet_counter = 0
+        self.unpack_header = struct.Struct('>BHHL').unpack_from  # Precompile unpack string for performance
         SocketServer.UDPServer.__init__(self, server_address, self.UDPHandler)  # cannot use super(...): this is an old-style class
 
 class hdf5TimestreamData(object):
     """ Object representing a HDF5 file containing raw data
     """
-    def __init__(self, filestring):
+    def __init__(self, filestring, crate_and_slot_from_port = False):
         self.N_SAMP = 2048
         #self.N_CHANNELS = 1
+        self.crate_and_slot_from_port = crate_and_slot_from_port
         self.f = h5py.File(filestring, 'w')
         self.f.attrs["git_version_tag"] = "0.1"
         self.f.attrs["system_user"] = "root"
@@ -270,7 +280,7 @@ class hdf5TimestreamData(object):
         self.n_times = 1
         self.n = 0
 
-    def write(self, timestamp, port, ant, timestream):
+    def write(self, timestamp, port, chan, stream_id, flags, timestream):
         if self.n == self.n_times:
             self.n_times = self.n + 1
             self.timestampDataset.resize((self.n_times, 1))
@@ -285,9 +295,16 @@ class hdf5TimestreamData(object):
         # print(self.n_times)
         current_time = time.time()
         self.timestampDataset[self.n] = ( timestamp, current_time )
-        self.antDataset[self.n] = ant
-        self.slotDataset[self.n] = port % 100  # assume port gives slot
-        self.crateDataset[self.n] = ((port/100) % 10) - 1
+        self.antDataset[self.n] = chan
+        if self.crate_and_slot_from_port:
+            slot_number = port % 100  # assume port gives slot
+            crate_number = ((port/100) % 10) - 1
+        else:
+            slot_number = (stream_id >> 4) & 0xF
+            crate_number = (stream_id >> 8) & 0xF
+
+        self.slotDataset[self.n] = slot_number
+        self.crateDataset[self.n] = crate_number
         self.timestreamDataset[self.n] = timestream
         self.n += 1
 
@@ -334,7 +351,9 @@ class dataWriter(object):
 
 
     def write(self):
-        """ Aggregate a number of data sets and write them into the current HDF5 file, then start a new file
+        """
+        Aggregate a number of data sets and write them into the current HDF5 file, then start a new
+        file. Runs forever until self.run is False.
         """
         while True:
             n_elements = 0
@@ -344,8 +363,8 @@ class dataWriter(object):
                 for j, out_q in enumerate(self.data_queue):
                     if not out_q.empty():
                         # print('writing data')
-                        self.all_ts, self.port, self.ant, self.all_data = out_q.get()
-                        self.h5file.write(self.all_ts, self.port, self.ant, self.all_data)
+                        (timestamp, port, chan, stream_id, flags, adc_data) = out_q.get()
+                        self.h5file.write(timestamp, port, chan, stream_id, flags, adc_data)
                         n_elements += 1
             self.close()
             self.n_file += 1
@@ -376,6 +395,9 @@ class RawAcqReceiver(object):
 
         Should probably fix the 'serve forever bits'
     '''
+
+    QUEUE_MAXSIZE = 1024 #: Maximum number of elements in a queue, just in case we can't read the queue as fast as we fill it. Otherwise we can use infinite memory.
+
     def __init__(self):
         self.log = logging.getLogger(__name__).getChild(self.__class__.__name__)
         self.ports = None
@@ -388,7 +410,7 @@ class RawAcqReceiver(object):
     def __repr__(self):
         return '%s(%s)' % (self.__class__.__name__, self.name)
 
-    def start(self, name='RawAcq', ports=[41101], ping_addr=[]):
+    def start(self, name='RawAcq', ports=[41101]):
         """ Start a raw data receiver for each specified port.
 
         For each re port we monitor, create a data queue and atart a multithreaded UDP receiver that
@@ -488,7 +510,7 @@ class RawAcqReceiver(object):
         actual_receiver_port = {}
         for port in receiver_port.keys():
             addr = (receiver_ip[port], receiver_port[port])
-            self.data_queues.append(Queue())
+            self.data_queues.append(Queue(self.QUEUE_MAXSIZE))
             self.log.info('%.32r: Creating RawAcqUDPreceiver receiver for port %s on (%s:%s)' % (self, port, addr[0], addr[1]))
             receiver = RawAcqUDPReceiver(addr, self.data_queues[-1])
             actual_receiver_ip[port], actual_receiver_port[port] = receiver.socket.getsockname()
@@ -624,23 +646,23 @@ class RawAcqReceiver(object):
         for j, out_q in enumerate(self.data_queues):
             trying_to_receive = True
             while trying_to_receive:
-                self.timestamp, self.port, self.ant, self.adc_data = out_q.get()
-                if (self.timestamp == self.old_timestamp) and (self.n_ant_rec < self.N_CHANNELS - 1):
-                    self.all_ts[j][self.ant] = self.timestamp
-                    self.all_data[j][self.ant, :] = self.adc_data
+                (timestamp, port, chan, stream_id, flags, adc_data) = out_q.get()
+                if (timestamp == self.old_timestamp) and (self.n_ant_rec < self.N_CHANNELS - 1):
+                    self.all_ts[j][chan] = timestamp
+                    self.all_data[j][chan, :] = adc_data
                     self.n_ant_rec += 1
-                elif (self.timestamp == self.old_timestamp) and (self.n_ant_rec == self.N_CHANNELS - 1):
-                    self.all_ts[j][self.ant] = self.timestamp
-                    self.all_data[j][self.ant, :] = self.adc_data
+                elif (timestamp == self.old_timestamp) and (self.n_ant_rec == self.N_CHANNELS - 1):
+                    self.all_ts[j][chan] = timestamp
+                    self.all_data[j][chan, :] = adc_data
                     self.n_ant_rec = 0
                     self.old_timestamp = 0
                     trying_to_receive = False
-                elif (self.timestamp != self.old_timestamp) and (self.n_ant_rec < self.N_CHANNELS):
+                elif (timestamp != self.old_timestamp) and (self.n_ant_rec < self.N_CHANNELS):
                     # Start over, would be new set start as well.
                     #print "didn't get full set, only received {0} ant. restarting.".format(self.n_ant_rec)
-                    self.old_timestamp = self.timestamp
-                    self.all_ts[j][self.ant] = self.timestamp
-                    self.all_data[j][self.ant, :] = self.adc_data
+                    self.old_timestamp = timestamp
+                    self.all_ts[j][chan] = timestamp
+                    self.all_data[j][chan, :] = adc_data
                     self.n_ant_rec = 1
         #Should use the returned port.  cheating here.
         return self.all_ts, self.ports, self.all_data
