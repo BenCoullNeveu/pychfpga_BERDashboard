@@ -312,72 +312,67 @@ class hdf5TimestreamData(object):
         self.f.close()
 
 
-class dataWriter(object):
-    """
-    """
-    def __init__(self, data_queue, base_dir, base_filename, elements_per_file=2048*64):
-        self.log = logging.getLogger(__name__).getChild(self.__class__.__name__)
-        if not isinstance(data_queue, (list, tuple)):
-            self.data_queue = [data_queue]
-        else:
-            self.data_queue = data_queue
-        self.elements_per_file = elements_per_file
-        time_str = datetime.datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
-        self.base_dir = os.path.join(os.path.expanduser(base_dir),'%s_%s/' % (time_str, base_filename))
-        #self.live_base_dir = '/mnt/agogo/livedata/'
-        try:
-            os.makedirs(self.base_dir)
-        except:
-            self.log.warning("%.32r: couldn't make directory '%s'. Using current directory." % (self, self.base_dir))
-            self.base_dir = './'
+# class dataWriter(object):
+#     """
+#     """
+#     def __init__(self, data_queue, base_dir, base_filename, elements_per_file=2048*64):
+#         self.log = logging.getLogger(__name__).getChild(self.__class__.__name__)
+#         if not isinstance(data_queue, (list, tuple)):
+#             self.data_queue = [data_queue]
+#         else:
+#             self.data_queue = data_queue
+#         self.elements_per_file = elements_per_file
+#         time_str = datetime.datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
+#         self.hdf5_base_dir = os.path.join(os.path.expanduser(base_dir),'%s_%s/' % (time_str, base_filename))
+#         #self.live_base_dir = '/mnt/agogo/livedata/'
+#         try:
+#             os.makedirs(self.hdf5_base_dir)
+#         except:
+#             self.log.warning("%.32r: couldn't make directory '%s'. Using current directory." % (self, self.hdf5_base_dir))
+#             self.hdf5_base_dir = './'
 
-        self.n_file = 0
-        self.start_new_file()
-        self.run = True
-        #self.live_name = self.live_base_dir + "live_adc_data.h5"
-        #self.live_h5file = hdf5LiveTimestreamData(self.live_name)
-        #self.live_h5file.init()
-        #self.live_h5file.close()
-
-    def get_h5_filename(self):
-        """ Return a HDF5 file name based on current file number """
-        filename = "{0:06d}.h5".format(self.n_file)
-        return  os.path.join(self.base_dir, filename)
-
-    def start_new_file(self):
-        filename = self.get_h5_filename()
-        self.log.info('%r: started logging in file %s' % (self, filename))
-        self.h5file = hdf5TimestreamData(filename)  # start a new empty file
+#         self.hdf5_file_number = 0
+#         self.start_new_hdf5_file()
+#         self.hdf5_run = True
 
 
-    def write(self):
-        """
-        Aggregate a number of data sets and write them into the current HDF5 file, then start a new
-        file. Runs forever until self.run is False.
-        """
-        while True:
-            n_elements = 0
-            while n_elements < self.elements_per_file:
-                if not self.run:
-                    return
-                for j, out_q in enumerate(self.data_queue):
-                    if not out_q.empty():
-                        # print('writing data')
-                        (timestamp, port, chan, stream_id, flags, adc_data) = out_q.get()
-                        self.h5file.write(timestamp, port, chan, stream_id, flags, adc_data)
-                        n_elements += 1
-            self.close()
-            self.n_file += 1
-            self.start_new_file()
+#     def start_new_hdf5_file(self):
+#         filename = "{0:06d}.h5".format(self.hdf5_file_number)
+#         filename =  os.path.join(self.hdf5_base_dir, filename)
+#         self.log.info('%r: started logging in file %s' % (self, filename))
+#         self.hdf5_file = hdf5TimestreamData(filename)  # start a new empty file
 
-    def stop(self):
-        """ Stop the `write` process."""
-        self.run = False
 
-    def close(self):
-        if self.h5file:
-            self.h5file.close()
-            self.h5file = None
+#     def hdf5_write(self, timestamp, port, chan, stream_id, flags, adc_data):
+#         """
+#         Aggregate a number of data sets and write them into the current HDF5 file, then start a new
+#         file. Runs forever until self.hdf5_run is False.
+#         """
+#         while True:
+#             n_elements = 0
+#             while n_elements < self.elements_per_file:
+#                 if not self.hdf5_run:
+#                     if self.hdf5_file:
+#                         self.hdf5_file.close()
+#                         self.hdf5_file = None
+#                         return
+#                 for j, out_q in enumerate(self.data_queues):
+#                     if not out_q.empty():
+#                         # print('writing data')
+#                         self.hdf5_file.write(timestamp, port, chan, stream_id, flags, adc_data)
+#                         n_elements += 1
+#             self.close()
+#             self.hdf5_file_number += 1
+#             self.start_new_hdf5_file()
+
+#     def stop(self):
+#         """ Stop the `write` process."""
+#         self.hdf5_run = False
+
+#     def close(self):
+#         if self.hdf5_file:
+#             self.hdf5_file.close()
+#             self.hdf5_file = None
 
 
 class RawAcqReceiver(object):
@@ -471,8 +466,6 @@ class RawAcqReceiver(object):
         self.receivers = []
         self.server_threads = []
         self.N_CHANNELS = 16
-        self.old_timestamp = 0
-        self.n_ant_rec = 0
         self.all_data = []
         self.all_ts = []
 
@@ -528,6 +521,11 @@ class RawAcqReceiver(object):
 
         self.gain_estimator = GainEstimator(self.get_data, len(self.ports))
 
+
+        self.data_processing_thread = threading.Thread(target=self.process_data)
+        self.data_processing_thread.setDaemon(True)
+        self.data_processing_thread.start()
+        self.run = True
 
         # Build a mac address loopup table for all source interfaces
         if_ips = {if_addr[0] for if_addr in src_if_addrs.values()} # set of unique interface IPs used by all sources
@@ -618,54 +616,139 @@ class RawAcqReceiver(object):
         self.gain_estimator = None
 
 
+    def process_data(self):
+        self.old_timestamp = None
+        self.n_ant_rec = 0
+
+        while self.run:
+            for j, out_q in enumerate(self.data_queues):
+                if not out_q.empty():
+                    (timestamp, port, chan, stream_id, flags, adc_data) = out_q.get()
+
+                    # Write data to HDF file
+                    if self.hdf5_run:
+                        self.hdf5_file.write(timestamp, port, chan, stream_id, flags, adc_data)
+                        self.n_elements += 1
+                        if n_elements >= self.elements_per_file:
+                            self.hdf5_file_number += 1
+                            self.hdf5_file = self.start_new_hdf5_file()
+                    elif self.hdf5_file: # if we are no lunget capturing to bile, but a file is open, then close it.
+                        self.hdf5_file.close()
+                        self.hdf5_file = None # This will tell us we are finished capturing
+
+
+                    # Capture a full timestamp set if self_capture = True
+                    if self.capture_start:
+                        self.all_ts[j][chan] = timestamp
+                        self.all_data[j][chan, :] = adc_data
+                        if (timestamp == self.old_timestamp):
+                            self.n_ant_rec += 1
+                        else:
+                            self.old_timestamp = timestamp
+                            self.n_ant_rec = 1
+                        if self.n_ant_rec >= self.N_CHANNELS - 1:
+                            self.n_ant_rec = 0
+                            self.old_timestamp = None
+                            self.capture_start = False
+
+
+
     def startHdf5Disk(self, base_dir, base_filename, capture_duration=60, elements_per_file=2048*64):
-        if self.datawriter:
+        if self.hdf5_file:
             raise RuntimeError('HDF5 dataWriter is already running')
-        self.datawriter = dataWriter(self.data_queues, base_dir, base_filename, elements_per_file)
-        self.data_writer_thread = threading.Thread(target=self.datawriter.write)
-        self.data_writer_thread.setDaemon(True)
-        self.data_writer_thread.start()
+        # self.datawriter = dataWriter(self.data_queues, base_dir, base_filename, elements_per_file)
+        # self.data_writer_thread = threading.Thread(target=self.datawriter.write)
+        # self.data_writer_thread.setDaemon(True)
+        # self.data_writer_thread.start()
         if capture_duration:
             self.log.info('%.32r: HDF5 data writer will be stopped in %f seconds' % (self, capture_duration))
             IOLoop.current().call_later(capture_duration, self.stopHdf5Disk)
 
+        self.elements_per_file = elements_per_file
+
+        # Create the target folder
+        time_str = datetime.datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
+        self.hdf5_base_dir = os.path.join(os.path.expanduser(base_dir),'%s_%s/' % (time_str, base_filename))
+        try:
+            os.makedirs(self.hdf5_base_dir)
+        except:
+            self.log.warning("%.32r: couldn't make directory '%s'. Using current directory." % (self, self.hdf5_base_dir))
+            self.hdf5_base_dir = './'
+
+        self.hdf5_file_number = 0
+        self.hdf5_file = self.start_new_hdf5_file()
+        self.hdf5_run = True
+
+
     def stopHdf5Disk(self):
-        if not self.datawriter:
+        if not self.hdf5_file:
             raise RuntimeError('%.32r: HDF5 dataWriter is not running' % self)
         self.log.info('%.32r: Stopping HDF5 data writer' % self)
-        self.datawriter.stop()
-        self.data_writer_thread.join()
-        self.datawriter.close()
-        self.datawriter = None
+        self.hdf5_run = False
+        # self.data_writer_thread.join()
+        # self.datawriter.close()
+        # self.datawriter = None
 
 
+    def start_new_hdf5_file(self):
+        if self.hdf5_file:
+            self.hdf5_file.close()
+        self.n_elements = 0
+        filename = "{0:06d}.h5".format(self.hdf5_file_number)
+        filename =  os.path.join(self.hdf5_base_dir, filename)
+        self.log.info('%r: started logging in file %s' % (self, filename))
+        h5file = hdf5TimestreamData(filename)  # start a new empty file
+        return h5file
+
+    # def hdf5_write(self, timestamp, port, chan, stream_id, flags, adc_data):
+    #     """
+    #     Aggregate a number of data sets and write them into the current HDF5 file, then start a new
+    #     file. Runs forever until self.hdf5_run is False.
+    #     """
+    #     if self.hdf5_run:
+    #         self.hdf5_file.write(timestamp, port, chan, stream_id, flags, adc_data)
+    #         self.n_elements += 1
+    #         if n_elements >= self.elements_per_file:
+    #             self.hdf5_file_number += 1
+    #             self.hdf5_file = self.start_new_hdf5_file()
+    #     elif self.hdf5_file:
+    #         self.hdf5_file.close()
+    #         self.hdf5_file = None
+
+    @coroutine
     def get_data(self):
         """
         Grab data from the queue until we have a frame for all channels for a single timestamp.
         """
-        for j, out_q in enumerate(self.data_queues):
-            trying_to_receive = True
-            while trying_to_receive:
-                (timestamp, port, chan, stream_id, flags, adc_data) = out_q.get()
-                if (timestamp == self.old_timestamp) and (self.n_ant_rec < self.N_CHANNELS - 1):
-                    self.all_ts[j][chan] = timestamp
-                    self.all_data[j][chan, :] = adc_data
-                    self.n_ant_rec += 1
-                elif (timestamp == self.old_timestamp) and (self.n_ant_rec == self.N_CHANNELS - 1):
-                    self.all_ts[j][chan] = timestamp
-                    self.all_data[j][chan, :] = adc_data
-                    self.n_ant_rec = 0
-                    self.old_timestamp = 0
-                    trying_to_receive = False
-                elif (timestamp != self.old_timestamp) and (self.n_ant_rec < self.N_CHANNELS):
-                    # Start over, would be new set start as well.
-                    #print "didn't get full set, only received {0} ant. restarting.".format(self.n_ant_rec)
-                    self.old_timestamp = timestamp
-                    self.all_ts[j][chan] = timestamp
-                    self.all_data[j][chan, :] = adc_data
-                    self.n_ant_rec = 1
+        # for j, out_q in enumerate(self.data_queues):
+        #     trying_to_receive = True
+        #     while trying_to_receive:
+        #         (timestamp, port, chan, stream_id, flags, adc_data) = out_q.get()
+        #         if (timestamp == self.old_timestamp) and (self.n_ant_rec < self.N_CHANNELS - 1):
+        #             self.all_ts[j][chan] = timestamp
+        #             self.all_data[j][chan, :] = adc_data
+        #             self.n_ant_rec += 1
+        #         elif (timestamp == self.old_timestamp) and (self.n_ant_rec == self.N_CHANNELS - 1):
+        #             self.all_ts[j][chan] = timestamp
+        #             self.all_data[j][chan, :] = adc_data
+        #             self.n_ant_rec = 0
+        #             self.old_timestamp = 0
+        #             trying_to_receive = False
+        #         elif (timestamp != self.old_timestamp) and (self.n_ant_rec < self.N_CHANNELS):
+        #             # Start over, would be new set start as well.
+        #             #print "didn't get full set, only received {0} ant. restarting.".format(self.n_ant_rec)
+        #             self.old_timestamp = timestamp
+        #             self.all_ts[j][chan] = timestamp
+        #             self.all_data[j][chan, :] = adc_data
+        #             self.n_ant_rec = 1
         #Should use the returned port.  cheating here.
-        return self.all_ts, self.ports, self.all_data
+        if self.start_capture:
+            raise RuntimeError('Data set capture is already in progress')
+        self.start_capture = True
+        while not self.start_capture:
+            yield None
+
+        coroutine_return(self.all_ts, self.ports, self.all_data)
 
 
     def is_running(self):
@@ -728,7 +811,7 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
     @endpoint
     def get_packets(self, handler):
         self.log.info('%.32r: received get_packets command' % self)
-        ts, ports, data = self.receiver.get_data()
+        ts, ports, data = yield self.receiver.get_data()
         print(ts)
         print(ports)
         print(data)
@@ -780,7 +863,7 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
 
         super(RawAcqAsyncRESTClient, self).__init__(hostname=hostname, port=port, make_server_func=make_server, heartbeat_string='Rc')
         self.name = name
-        self.base_dir = base_dir
+        self.hdf5_base_dir = base_dir
         self.base_filename = base_filename or name
         self.config = config
 
@@ -814,7 +897,7 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
 
     @coroutine
     def start_hdf5(self, base_dir=None, base_filename=None, capture_duration=0, elements_per_file=2048*64):
-        result = yield self.post('start-hdf5', base_dir=base_dir or self.base_dir, base_filename=base_filename or self.base_filename, capture_duration=capture_duration, elements_per_file=elements_per_file)
+        result = yield self.post('start-hdf5', base_dir=base_dir or self.hdf5_base_dir, base_filename=base_filename or self.base_filename, capture_duration=capture_duration, elements_per_file=elements_per_file)
         coroutine_return(result)
 
     @coroutine
