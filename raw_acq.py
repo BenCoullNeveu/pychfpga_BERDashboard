@@ -468,7 +468,7 @@ class RawAcqReceiver(object):
         self.N_CHANNELS = 16
         self.all_data = []
         self.all_ts = []
-
+        self.hdf5_file = None
 
         # Determine the interface from which data will be coming from each source by pinging them
         src_if_addrs = {tuple(src):self._ping(tuple(src)) for port_info in self.ports for src in port_info['sources']} # can be parallelized
