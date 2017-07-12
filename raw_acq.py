@@ -212,21 +212,23 @@ class RawAcqUDPReceiver(SocketServer.ThreadingUDPServer):
         to a hdf5 file.
         '''
         def handle(self):
-            self.packet_counter += 1
+
+            #self.server.packet_counter += 1
             data, socket = self.request
             port = self.server.server_address[1]
-            (probe_id, stream_id, ts_high, ts_low) = self.unpack_header(data[:9])
+            (probe_id, stream_id, ts_high, ts_low) = self.server.unpack_header(data[:9])
             chan = probe_id & 0x0F
             timestamp = (ts_high << 32) + ts_low
             flags = stream_id >> 12
             stream_id &= 0xFFF
             adc_data = np.fromstring(data[9:2057], dtype=np.int8)
-            # print( "Data received on port {0}, channel#{1}, std(data)={2}".format(port, chan, adc_data.std()) )
+            #print( "Data received on port {0}, channel#{1}, std(data)={2}".format(port, chan, adc_data.std()) )
+            print(".",end='')
             try:
                 self.server.data_queue.put((timestamp, port, chan, stream_id, flags, adc_data))
             except Queue.Full:
-                queue_overflows += 1
-
+                #self.server.queue_overflows += 1
+                pass
     def __init__(self, server_address, data_queue):
         self.data_queue = data_queue
         self.queue_overflows = 0
@@ -468,7 +470,8 @@ class RawAcqReceiver(object):
         self.N_CHANNELS = 16
         self.all_data = []
         self.all_ts = []
-
+        self.hdf5_file = None
+        self.capture_start = False
 
         # Determine the interface from which data will be coming from each source by pinging them
         src_if_addrs = {tuple(src):self._ping(tuple(src)) for port_info in self.ports for src in port_info['sources']} # can be parallelized
@@ -522,10 +525,10 @@ class RawAcqReceiver(object):
         self.gain_estimator = GainEstimator(self.get_data, len(self.ports))
 
 
+        self.run = True
         self.data_processing_thread = threading.Thread(target=self.process_data)
         self.data_processing_thread.setDaemon(True)
         self.data_processing_thread.start()
-        self.run = True
 
         # Build a mac address loopup table for all source interfaces
         if_ips = {if_addr[0] for if_addr in src_if_addrs.values()} # set of unique interface IPs used by all sources
@@ -629,7 +632,7 @@ class RawAcqReceiver(object):
                     if self.hdf5_run:
                         self.hdf5_file.write(timestamp, port, chan, stream_id, flags, adc_data)
                         self.n_elements += 1
-                        if n_elements >= self.elements_per_file:
+                        if self.n_elements >= self.elements_per_file:
                             self.hdf5_file_number += 1
                             self.hdf5_file = self.start_new_hdf5_file()
                     elif self.hdf5_file: # if we are no lunget capturing to bile, but a file is open, then close it.

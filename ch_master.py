@@ -457,16 +457,17 @@ class ChimeMaster(object):
                 ib.set_data_target_address(ip_addr, port, eth_addr)
                 capture_period = 1.0 / float(conf.common_config.capture_rate)
                 capture_source = conf.common_config.capture_source
-                capture_folder = os.path.join(self.acq_base_dir, conf.common_config.capture_folder)
-                self.log.info('%.32r: Starting data capture on %r with period=%f, source=%s in folder %s' % (self, ib, capture_period, capture_source, capture_folder))
+                self.log.info('%.32r: Starting FPGA raw data streaming of "%s" data from %r with period=%fs' % (self, capture_source, ib, capture_period))
                 ib.start_data_capture(period=capture_period, source=capture_source)
-                if conf.common_config.capture_duration is not None:
-                    yield self.raw_acq[node_name].start_hdf5(
-                        base_dir=capture_folder,
-                        base_filename=conf.common_config.capture_filename,
-                        capture_duration=conf.common_config.capture_duration,
-                        elements_per_file=conf.common_config.capture_elements_per_file
-                        )
+            if conf.common_config.capture_duration is not None:
+                capture_folder = os.path.join(self.acq_base_dir, conf.common_config.capture_folder)
+                self.log.info('%.32r: Starting HDF5 data capture on %s in folder %s' % (self, node_name,  capture_folder))
+                yield self.raw_acq[node_name].start_hdf5(
+                    base_dir=capture_folder,
+                    base_filename=conf.common_config.capture_filename,
+                    capture_duration=conf.common_config.capture_duration,
+                    elements_per_file=conf.common_config.capture_elements_per_file
+                    )
 
         self.log.info('%.32r: RawAcq server setup successfully' % self)
 
@@ -588,6 +589,7 @@ class ChimeMaster(object):
         yield self.create_raw_acq_clients() # Raw acq clients receive raw ADC data sent by the FPGA over the control network
 
 
+        print('base dir=%s' % self.acq_base_dir)
         # power on the array
         yield self.power_on()
 
@@ -630,6 +632,7 @@ class ChimeMaster(object):
         # created and initialized.
         self.fpgas = ca = FPGAArray(**fpga_array_params)  # Starts an independent ioloop while initializing. Web clients/server stop while
 
+        print('base dir=%s' % self.acq_base_dir)
 
         if not ca.ib: # if there ar eno boards in the array
             if conf.debug.get('allow_empty_fpga_array', False):
@@ -693,6 +696,7 @@ class ChimeMaster(object):
         # log.info("Sending local sync to each board")
         # ca.ib.sync()
 
+        print('base dir=%s' % self.acq_base_dir)
         # Setup raw data capture transmission
         yield self.start_raw_acq()
 
