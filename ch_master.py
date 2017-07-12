@@ -388,12 +388,29 @@ class ChimeMaster(object):
 
         Returns:
             list of iceboard objects
+
+        Examples:
+
+            - (0,), (0, None), (0, '*'), {crate:0} : All boards in Crate 0
         """
         if isinstance(ib, (tuple, list)):
             crate_number = ib[0] if len(ib) > 1 else None
             slot_number = ib[1] if len(ib) > 2 else None
+        elif isinstance(ib, dict):
+            crate_number = None
+            slot_number = None
+            for k,v in ib.items():
+                if k.lower()=='crate':
+                    crate_number = v
+                elif k.lower() == 'slot':
+                    slot_number = v
+                else:
+                    raise RuntimeError("Unknown element '%s' in iceboard selection item %s" % (k, ib))
         else:
-            raise ValueError('Unknown iceboard ID %s', ib)
+            raise ValueError('Unknown iceboard selection format %s', ib)
+
+        crate_number = None if crate_number='*' else crate_number
+        slot_number = None if slot_number='*' else slot_number
         iceboards = []
         print('get_iceboard: looking for ', crate_number, slot_number)
         for ib in self.fpgas.ib:
@@ -432,8 +449,8 @@ class ChimeMaster(object):
         # First, prepare the receiver parameters for each node
         recv_ports = {}
         recv_names = {}
-        for node_name, ibs in node_ibs.items():
-            recv_name = '%sRecv' % node_name
+        for node_name, ibs in node_ibs.items():  # for each raw_acq node
+            recv_name = '%sRecv' % node_name  # Name of the receiver object. Each node runs one receiver, which can hande multiple ports.
             recv_names[node_name] = '%sRecv' % node_name
 
             recv_ports[node_name] = []
@@ -446,28 +463,31 @@ class ChimeMaster(object):
                 else:
                     port_name = '%sPort%i' % (recv_name, i)
                 recv_ports[node_name].append(dict(port=port_name, sources=[(ib.hostname, 80)]))
+
         # Start the receivers concurrently
         start_results = yield {node_name: self.raw_acq[node_name].start(name=recv_names[node_name], ports=recv_ports[node_name]) for node_name in node_ibs.keys()}
 
-        # Configure the FPGA transmit addresses based on what the t receiver returned
-        for node_name, start_result in start_results.items():
-            targets = {tuple(k):v for k,v in start_result['target_addr']} # was sent as a [ ((src_ip, src_port),(if_ip, port, mac)) ...] list. Convert back to dict for easy lookup
+        # Configure the FPGA transmit addresses based on what the receiver returned
+        for node_name, start_result in start_results.items(): # for each RawAcq node
+            # The start command returned the target address to use for each data source as a list in the format
+            #    [ ((src_ip, src_port),(if_ip, port, mac)) ...].
+            # We convert this to a dict {(src_ip, src_port):(if_if, port, mac),...} for easy lookup
+            targets = {tuple(src_addr):target_addr for src_addr,target_addr in start_result['target_addr']}
             for ib in node_ibs[node_name]:
                 ip_addr, port, eth_addr = targets[(ib.hostname, 80)]
                 ib.set_data_target_address(ip_addr, port, eth_addr)
                 capture_period = 1.0 / float(conf.common_config.capture_rate)
                 capture_source = conf.common_config.capture_source
-                self.log.info('%.32r: Starting FPGA raw data streaming of "%s" data from %r with period=%fs' % (self, capture_source, ib, capture_period))
-                ib.start_data_capture(period=capture_period, source=capture_source)
-            if conf.common_config.capture_duration is not None:
                 capture_folder = os.path.join(self.acq_base_dir, conf.common_config.capture_folder)
-                self.log.info('%.32r: Starting HDF5 data capture on %s in folder %s' % (self, node_name,  capture_folder))
-                yield self.raw_acq[node_name].start_hdf5(
-                    base_dir=capture_folder,
-                    base_filename=conf.common_config.capture_filename,
-                    capture_duration=conf.common_config.capture_duration,
-                    elements_per_file=conf.common_config.capture_elements_per_file
-                    )
+                self.log.info('%.32r: Starting data capture on %r with period=%f, source=%s in folder %s' % (self, ib, capture_period, capture_source, capture_folder))
+                ib.start_data_capture(period=capture_period, source=capture_source)
+                if conf.common_config.capture_duration is not None:
+                    yield self.raw_acq[node_name].start_hdf5(
+                        base_dir=capture_folder,
+                        base_filename=conf.common_config.capture_filename,
+                        capture_duration=conf.common_config.capture_duration,
+                        elements_per_file=conf.common_config.capture_elements_per_file
+                        )
 
         self.log.info('%.32r: RawAcq server setup successfully' % self)
 
@@ -589,7 +609,6 @@ class ChimeMaster(object):
         yield self.create_raw_acq_clients() # Raw acq clients receive raw ADC data sent by the FPGA over the control network
 
 
-        print('base dir=%s' % self.acq_base_dir)
         # power on the array
         yield self.power_on()
 
@@ -632,7 +651,6 @@ class ChimeMaster(object):
         # created and initialized.
         self.fpgas = ca = FPGAArray(**fpga_array_params)  # Starts an independent ioloop while initializing. Web clients/server stop while
 
-        print('base dir=%s' % self.acq_base_dir)
 
         if not ca.ib: # if there ar eno boards in the array
             if conf.debug.get('allow_empty_fpga_array', False):
@@ -696,7 +714,6 @@ class ChimeMaster(object):
         # log.info("Sending local sync to each board")
         # ca.ib.sync()
 
-        print('base dir=%s' % self.acq_base_dir)
         # Setup raw data capture transmission
         yield self.start_raw_acq()
 
