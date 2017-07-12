@@ -2860,9 +2860,9 @@ class chFPGA_controller(IceBoardExtHandler):
             ('MB VCC1V8'    , 'VCC1V8'    , self.RAIL.MB_VCC1V8    , False)]
 
         total_power = 0
-        for display_name, sensor, sensor_name, add_to_total_power in mb_power_sensors:
-            voltage = yield self.get_motherboard_voltage.async(sensor_name)
-            current = yield self.get_motherboard_current.async(sensor_name)
+        for display_name, sensor, tuber_sensor_name, add_to_total_power in mb_power_sensors:
+            voltage = yield self.get_motherboard_voltage.async(tuber_sensor_name)
+            current = yield self.get_motherboard_current.async(tuber_sensor_name)
             info[display_name] = '%0.1fV@%0.3fA' % (voltage, current)
             metrics.add('fpga_motherboard_voltage', value=voltage, type='GAUGE', sensor=sensor)
             metrics.add('fpga_motherboard_current', value=current, type='GAUGE', sensor=sensor)
