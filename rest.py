@@ -111,7 +111,7 @@ class AsyncMixin(object):
     def add_periodic_callback(self, callback, period):
         return tornado.ioloop.PeriodicCallback(callback, period).start()
 
-    def call_later(self, callback, delay):
+    def call_later(self, delay, callback):
         """ Calls a callback function after a delay """
         IOLoop.current().call_later(delay, callback)
 
