@@ -183,13 +183,18 @@ Accept all UDP packets for the FPGA commands and raw data (which might also allo
 
     sudo iptables -I INPUT -p udp -j ACCEPT
 
+Opeen port to allow clients to connect to servers
+
+    sudo iptables -A INPUT 1 -p tcp  --dport 54321 -j ACCEPT
+
 Raw data packets are large and require the interface to accept JUMBO frames. Enable JUMBO frames with::
 
-    sufo ifconfig enp0s31f6 mtu 9000
+    sudo ifconfig enp0s31f6 mtu 9000
 
 Tip: you can check incoming trafic with::
 
     ip -s  link show enp0s31f6
+
 
 to check if avahi works:
     avahi-browse _tuber-jsonrpc._tcp --resolve
