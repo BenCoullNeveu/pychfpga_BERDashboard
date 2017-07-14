@@ -245,6 +245,12 @@ class ChimeMaster(object):
                              for ps_name in ps_names))
 
     @coroutine
+    def wait_for_power_supply(self):
+        while not (yield self.is_power_supply_ready()):
+            self.log.warn('Waiting for power supplies')
+            yield sleep(5)
+
+    @coroutine
     def get_power_supply_metrics(self):
         """ Return the metrics for every power supply server.
 
@@ -422,7 +428,9 @@ class ChimeMaster(object):
 
     @coroutine
     def start_raw_acq_servers(self):
-        """ Start raw data acquisition servers and set the FPGAs raw data transmit addresses
+        """ Start raw data acquisition servers and set the FPGAs raw data transmit addresses.
+
+        Requires the FPGAs to be initialized.
 
         Creates the self.raw_acq_ibs dictionary which lists the iceboards objects associated with each RawAcq server.
         """
@@ -478,15 +486,9 @@ class ChimeMaster(object):
             for ib in self.raw_acq_ibs[node_name]:
                 ip_addr, port, eth_addr = targets[(ib.hostname, 80)]
                 ib.set_data_target_address(ip_addr, port, eth_addr)
-
-        if conf.common_config.capture_duration is not None:
-            self.start_hdf5_capture(conf.common_config.capture_folder, conf.common_config.capture_filename, conf.common_config.hdf5_capture_rate, conf.common_config.capture_duration)
-        else:
-            self.start_fpga_raw_data_transmission(conf.common_config.idle_capture_rate, conf.common_config.capture_source)
-
-
         self.log.info('%.32r: RawAcq server setup successfully' % self)
 
+    @coroutine
     def start_fpga_raw_data_transmission(self, capture_rate=None, capture_source=None):
         """ Configure the FPGAs to transmit raw data.
 
@@ -502,8 +504,7 @@ class ChimeMaster(object):
                 self.log.info('%.32r: Starting data capture on %r with period=%f, source=%s' % (self, ib, capture_period, capture_source))
                 ib.start_data_capture(period=capture_period, source=capture_source, offset=offset)
 
-
-
+    @coroutine
     def start_hdf5_capture(self, capture_folder=None, capture_filename=None, capture_rate=None, capture_duration=None, capture_source=None, capture_elements_per_file=None):
 
         conf = self.config.raw_acq.common_config
@@ -515,7 +516,7 @@ class ChimeMaster(object):
         capture_duration = capture_duration or conf.capture_duration
         capture_elements_per_file = capture_elements_per_file or conf.capture_elements_per_file
 
-        self.start_fpga_raw_data_transmission(capture_rate, capture_source)
+        yield self.start_fpga_raw_data_transmission(capture_rate, capture_source)
 
         yield [node.start_hdf5(
             base_dir=capture_folder,
@@ -528,10 +529,11 @@ class ChimeMaster(object):
         self.log.info('%.32r: HDF5 data writer will be stopped in %f seconds' % (self, capture_duration))
         self.call_later(capture_duration, self.stop_hdf5_capture)
 
+    @coroutine
     def stop_hdf5_capture(self):
 
         yield [node.stop_hdf5() for node_name, nnode in self.raw_acq.items()]
-        self.start_fpga_raw_data_transmission()
+        yield self.start_fpga_raw_data_transmission()
 
 
     def set_state(self, new_state):
@@ -654,7 +656,7 @@ class ChimeMaster(object):
 
         # power on the array
         yield self.power_on()
-
+        yield self.wait_for_power_supply()
 
         # Create FPGA Array object and and initialize FPGAs
         yield self.create_fpga_array()
@@ -668,6 +670,13 @@ class ChimeMaster(object):
 
         self.configure_fpgas_post_acq()
         self.current_bank = 0
+
+        # Start raw_data capture
+        if conf.raw_acq.common_config.capture_duration is not None:
+            yield self.start_hdf5_capture()
+        else:
+            yield self.start_fpga_raw_data_transmission()
+
 
         self.state = 'on'
         coroutine_return({})
@@ -757,7 +766,7 @@ class ChimeMaster(object):
         # log.info("Sending local sync to each board")
         # ca.ib.sync()
 
-        # Setup raw data capture transmission
+        # Setup raw data capture
         yield self.start_raw_acq()
 
         # Setup noise injection for normal operation
@@ -1126,11 +1135,21 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
     @endpoint('get-monitoring-data')
     def get_monitoring_data(self, handler):
         metrics = Metrics()
-        metrics.add((yield self.chime_master.get_power_supply_metrics()))
-        if self.chime_master.fpgas:
-            metrics.add((yield self.chime_master.fpgas.get_metrics.async()))
-        if self.chime_master.power_supply_servers:
+        try:
             metrics.add((yield self.chime_master.get_power_supply_metrics()))
+        except:
+            pass
+
+        if self.chime_master.fpgas:
+            try:
+                metrics.add((yield self.chime_master.fpgas.get_metrics.async()))
+            except:
+                pass
+        if self.chime_master.power_supply_servers:
+            try:
+                metrics.add((yield self.chime_master.get_power_supply_metrics()))
+            except:
+                pass
 
         # Make the HTTP reply a plain text response for Prometheus, not JSON,
         handler.set_header('Content-Type', 'text/plain')
