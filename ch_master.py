@@ -409,8 +409,8 @@ class ChimeMaster(object):
         else:
             raise ValueError('Unknown iceboard selection format %s', ib)
 
-        crate_number = None if crate_number='*' else crate_number
-        slot_number = None if slot_number='*' else slot_number
+        crate_number = None if crate_number == '*' else crate_number
+        slot_number = None if slot_number == '*' else slot_number
         iceboards = []
         print('get_iceboard: looking for ', crate_number, slot_number)
         for ib in self.fpgas.ib:
@@ -480,14 +480,15 @@ class ChimeMaster(object):
                 capture_source = conf.common_config.capture_source
                 capture_folder = os.path.join(self.acq_base_dir, conf.common_config.capture_folder)
                 self.log.info('%.32r: Starting data capture on %r with period=%f, source=%s in folder %s' % (self, ib, capture_period, capture_source, capture_folder))
-                ib.start_data_capture(period=capture_period, source=capture_source)
-                if conf.common_config.capture_duration is not None:
-                    yield self.raw_acq[node_name].start_hdf5(
-                        base_dir=capture_folder,
-                        base_filename=conf.common_config.capture_filename,
-                        capture_duration=conf.common_config.capture_duration,
-                        elements_per_file=conf.common_config.capture_elements_per_file
-                        )
+                offset = (ib.slot or 1)-1
+                ib.start_data_capture(period=capture_period, source=capture_source, offset=offset)
+            if conf.common_config.capture_duration is not None:
+                yield self.raw_acq[node_name].start_hdf5(
+                    base_dir=capture_folder,
+                    base_filename=conf.common_config.capture_filename,
+                    capture_duration=conf.common_config.capture_duration,
+                    elements_per_file=conf.common_config.capture_elements_per_file
+                    )
 
         self.log.info('%.32r: RawAcq server setup successfully' % self)
 

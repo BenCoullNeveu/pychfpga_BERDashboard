@@ -213,21 +213,23 @@ class RawAcqUDPReceiver(SocketServer.ThreadingUDPServer):
         '''
         def handle(self):
 
-            #self.server.packet_counter += 1
+            self.server.packet_counter += 1
             data, socket = self.request
             port = self.server.server_address[1]
             (probe_id, stream_id, ts_high, ts_low) = self.server.unpack_header(data[:9])
             chan = probe_id & 0x0F
             timestamp = (ts_high << 32) + ts_low
-            flags = stream_id >> 12
-            stream_id &= 0xFFF
+            flags = stream_id & 0xF
+            stream_id = (stream_id >> 4) & 0xFFF
             adc_data = np.fromstring(data[9:2057], dtype=np.int8)
             #print( "Data received on port {0}, channel#{1}, std(data)={2}".format(port, chan, adc_data.std()) )
-            print(".",end='')
+            #print("0x%03x"% stream_id,end='')
             try:
                 self.server.data_queue.put((timestamp, port, chan, stream_id, flags, adc_data))
+                print(".",end='')
             except Queue.Full:
-                #self.server.queue_overflows += 1
+                print("o",end='')
+                self.server.queue_overflows += 1
                 pass
     def __init__(self, server_address, data_queue):
         self.data_queue = data_queue
@@ -590,7 +592,7 @@ class RawAcqReceiver(object):
             afs = netifaces.ifaddresses(interface)
             if netifaces.AF_INET not in afs or netifaces.AF_LINK not in afs:
                 continue
-            print('checking if', interface, 'with af', afs)
+            self.log.debug('checking interface %s with AF %s' % (interface, afs))
             ips = [af for af in afs[netifaces.AF_INET] if af['addr'] == if_addr]
             if ips:
                 for eth_if in afs[netifaces.AF_LINK]:
