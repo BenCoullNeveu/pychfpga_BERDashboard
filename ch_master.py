@@ -245,6 +245,12 @@ class ChimeMaster(object):
                              for ps_name in ps_names))
 
     @coroutine
+    def wait_for_power_supply(self):
+        while not (yield self.is_power_supply_ready()):
+            self.log.warn('Waiting for power supplies')
+            yield sleep(5)
+
+    @coroutine
     def get_power_supply_metrics(self):
         """ Return the metrics for every power supply server.
 
@@ -421,23 +427,27 @@ class ChimeMaster(object):
         return iceboards
 
     @coroutine
-    def start_raw_acq(self):
-        """ Start raw data acquisition by setting up the FPGAs and RawAcq servers
+    def start_raw_acq_servers(self):
+        """ Start raw data acquisition servers and set the FPGAs raw data transmit addresses.
+
+        Requires the FPGAs to be initialized.
+
+        Creates the self.raw_acq_ibs dictionary which lists the iceboards objects associated with each RawAcq server.
         """
         self.log.info('%.32r: starting raw_acq servers' % self)
         conf = self.config.raw_acq
 
         # Make a list of all all iceboards for each of the RawAcq node
-        node_ibs = {}
+        self.raw_acq_ibs = {}
         for node_name, node_conf in conf.nodes.items():
-            node_ibs[node_name] = set()
+            self.raw_acq_ibs[node_name] = set()
             for ib in node_conf.iceboards:  # ib is a (crate, slot) tuple)
-                node_ibs[node_name].update(self.get_iceboards(ib))
+                self.raw_acq_ibs[node_name].update(self.get_iceboards(ib))
 
-        print('Node_ibs=', node_ibs)
+        print('self.raw_acq_ibs=', self.raw_acq_ibs)
         # Check that an iceboard is assigned to only one server
-        for node_name, ibs in node_ibs.items():
-            if not all(ibs.isdisjoint(other_ibs) for other_name, other_ibs in node_ibs.items() if other_name != node_name):
+        for node_name, ibs in self.raw_acq_ibs.items():
+            if not all(ibs.isdisjoint(other_ibs) for other_name, other_ibs in self.raw_acq_ibs.items() if other_name != node_name):
                 raise RuntimeError('Some FPGA board(s) is/are assigned to send raw data to multiple RawAcq nodes. Check your config')
 
         # Start each RawAcq server with a port for each assigned iceboard. For each port, we provide
@@ -449,7 +459,7 @@ class ChimeMaster(object):
         # First, prepare the receiver parameters for each node
         recv_ports = {}
         recv_names = {}
-        for node_name, ibs in node_ibs.items():  # for each raw_acq node
+        for node_name, ibs in self.raw_acq_ibs.items():  # for each raw_acq node
             recv_name = '%sRecv' % node_name  # Name of the receiver object. Each node runs one receiver, which can hande multiple ports.
             recv_names[node_name] = '%sRecv' % node_name
 
@@ -465,7 +475,7 @@ class ChimeMaster(object):
                 recv_ports[node_name].append(dict(port=port_name, sources=[(ib.hostname, 80)]))
 
         # Start the receivers concurrently
-        start_results = yield {node_name: self.raw_acq[node_name].start(name=recv_names[node_name], ports=recv_ports[node_name]) for node_name in node_ibs.keys()}
+        start_results = yield {node_name: self.raw_acq[node_name].start(name=recv_names[node_name], ports=recv_ports[node_name]) for node_name in self.raw_acq_ibs.keys()}
 
         # Configure the FPGA transmit addresses based on what the receiver returned
         for node_name, start_result in start_results.items(): # for each RawAcq node
@@ -473,24 +483,58 @@ class ChimeMaster(object):
             #    [ ((src_ip, src_port),(if_ip, port, mac)) ...].
             # We convert this to a dict {(src_ip, src_port):(if_if, port, mac),...} for easy lookup
             targets = {tuple(src_addr):target_addr for src_addr,target_addr in start_result['target_addr']}
-            for ib in node_ibs[node_name]:
+            for ib in self.raw_acq_ibs[node_name]:
                 ip_addr, port, eth_addr = targets[(ib.hostname, 80)]
                 ib.set_data_target_address(ip_addr, port, eth_addr)
-                capture_period = 1.0 / float(conf.common_config.capture_rate)
-                capture_source = conf.common_config.capture_source
-                capture_folder = os.path.join(self.acq_base_dir, conf.common_config.capture_folder)
-                self.log.info('%.32r: Starting data capture on %r with period=%f, source=%s in folder %s' % (self, ib, capture_period, capture_source, capture_folder))
-                offset = (ib.slot or 1)-1
-                ib.start_data_capture(period=capture_period, source=capture_source, offset=offset)
-            if conf.common_config.capture_duration is not None:
-                yield self.raw_acq[node_name].start_hdf5(
-                    base_dir=capture_folder,
-                    base_filename=conf.common_config.capture_filename,
-                    capture_duration=conf.common_config.capture_duration,
-                    elements_per_file=conf.common_config.capture_elements_per_file
-                    )
-
         self.log.info('%.32r: RawAcq server setup successfully' % self)
+
+    @coroutine
+    def start_fpga_raw_data_transmission(self, capture_rate=None, capture_source=None):
+        """ Configure the FPGAs to transmit raw data.
+
+        If no arguments are provided, the FPGA will be set to transmit data at the idle rate and from source defined in the config file.
+        """
+        conf = self.config.raw_acq.common_config
+        capture_rate = capture_rate or conf.idle_capture_rate
+        capture_period = 1.0 / float(capture_rate)
+        capture_source = capture_source or conf.capture_source
+        for node_name, ibs in self.raw_acq_ibs.items():
+            for ib in ibs:
+                offset = (ib.slot or 1) - 1
+                self.log.info('%.32r: Starting data capture on %r with period=%f, source=%s' % (self, ib, capture_period, capture_source))
+                ib.start_data_capture(period=capture_period, source=capture_source, offset=offset)
+
+    @coroutine
+    def start_hdf5_capture(self, capture_folder=None, capture_filename=None, capture_rate=None, capture_duration=None, capture_source=None, capture_elements_per_file=None):
+
+        conf = self.config.raw_acq.common_config
+        capture_rate = capture_rate or conf.hdf5_capture_rate
+        capture_source = capture_source or conf.capture_source
+        capture_folder = capture_folder or conf.capture_folder
+        capture_folder = os.path.join(self.acq_base_dir, capture_folder)
+        capture_filename = capture_filename or conf.capture_filename
+        capture_duration = capture_duration or conf.capture_duration
+        capture_elements_per_file = capture_elements_per_file or conf.capture_elements_per_file
+
+        yield self.start_fpga_raw_data_transmission(capture_rate, capture_source)
+
+        yield [node.start_hdf5(
+            base_dir=capture_folder,
+            base_filename=capture_filename,
+            capture_duration=capture_duration + 60,  # stop HDF5 capture 1 min after the desired time in case ch_master does not do it.
+            elements_per_file=capture_elements_per_file
+            )         for node_name, node in self.raw_acq.items()]
+
+
+        self.log.info('%.32r: HDF5 data writer will be stopped in %f seconds' % (self, capture_duration))
+        self.call_later(capture_duration, self.stop_hdf5_capture)
+
+    @coroutine
+    def stop_hdf5_capture(self):
+
+        yield [node.stop_hdf5() for node_name, nnode in self.raw_acq.items()]
+        yield self.start_fpga_raw_data_transmission()
+
 
     def set_state(self, new_state):
         """ Sets the state to a specified value. Used for debugging. """
@@ -612,7 +656,7 @@ class ChimeMaster(object):
 
         # power on the array
         yield self.power_on()
-
+        yield self.wait_for_power_supply()
 
         # Create FPGA Array object and and initialize FPGAs
         yield self.create_fpga_array()
@@ -626,6 +670,13 @@ class ChimeMaster(object):
 
         self.configure_fpgas_post_acq()
         self.current_bank = 0
+
+        # Start raw_data capture
+        if conf.raw_acq.common_config.capture_duration is not None:
+            yield self.start_hdf5_capture()
+        else:
+            yield self.start_fpga_raw_data_transmission()
+
 
         self.state = 'on'
         coroutine_return({})
@@ -715,7 +766,7 @@ class ChimeMaster(object):
         # log.info("Sending local sync to each board")
         # ca.ib.sync()
 
-        # Setup raw data capture transmission
+        # Setup raw data capture
         yield self.start_raw_acq()
 
         # Setup noise injection for normal operation
@@ -1084,11 +1135,21 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
     @endpoint('get-monitoring-data')
     def get_monitoring_data(self, handler):
         metrics = Metrics()
-        metrics.add((yield self.chime_master.get_power_supply_metrics()))
-        if self.chime_master.fpgas:
-            metrics.add((yield self.chime_master.fpgas.get_metrics.async()))
-        if self.chime_master.power_supply_servers:
+        try:
             metrics.add((yield self.chime_master.get_power_supply_metrics()))
+        except:
+            pass
+
+        if self.chime_master.fpgas:
+            try:
+                metrics.add((yield self.chime_master.fpgas.get_metrics.async()))
+            except:
+                pass
+        if self.chime_master.power_supply_servers:
+            try:
+                metrics.add((yield self.chime_master.get_power_supply_metrics()))
+            except:
+                pass
 
         # Make the HTTP reply a plain text response for Prometheus, not JSON,
         handler.set_header('Content-Type', 'text/plain')

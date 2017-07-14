@@ -83,9 +83,14 @@ class PROBER_base(Module_base):
     def config_capture(self, frames_per_burst=1, burst_period=100, number_of_bursts=0, offset=0):
         """
         Configure the capture of data frames for transmisssion over the ethernet link.
-            frames_per_burst: number of continuous frames to send in a burst (default=1)
-            burst_period: delay between bursts in seconds
-            number_of_bursts: number of bursts to send. '0' means that bursts are sent continuously as long as frames are tagged for capture at the source . Default is '0'.
+
+        Parameters:
+
+            frames_per_burst (int): number of continuous frames to send in a burst (default=1)
+            burst_period (int): delay between bursts in seconds
+            number_of_bursts (int): number of bursts to send. '0' means that bursts are sent continuously as long as frames are tagged for capture at the source . Default is '0'.
+            offset (int): sets how many frames are skipped before the capture starts. The actual numbe of skipped frames is `offset` multiplied by a constant.
+
         """
 
         # frame_period=1.0/850e6*self.ant.frame_length
