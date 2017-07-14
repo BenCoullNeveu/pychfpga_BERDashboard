@@ -52,7 +52,12 @@ Finally, start ch_master with the proper config::
 
    ./ch_master.py server jfc.erh3
 
+
 Here, ``jfc.erh3`` is the config defined in ``config.yaml``, which in this case powers-up crate 3, initialize all boards, and start capturing raw data for 5 minutes. After that, it will stop storing data but will continue to operate the power supply and ch_acq servers (which could be queried and operated by the user with REST commands), and will serve metrics to Prometheus.
+
+.. note:: the power supply will turn on but ch_master does not wait yet for all the boards to be ready before proceeding.
+   You may have to rerun ch_master a second time once the boards are booted. This will be fixed soon.
+
 
 Note that if ch_master fails  to connect to raw_acq and power_supply servers (as defined in the config file), it will create temporary servers that will run as long as ch_master is running.
 
