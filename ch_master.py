@@ -679,11 +679,14 @@ class ChimeMaster(object):
         if conf.raw_acq.common_config.capture_duration is not None:
             yield self.start_hdf5_capture()
         else:
-            Yield self.start_fpga_raw_data_transmission()
+            yield self.start_fpga_raw_data_transmission()
 
 
         self.state = 'on'
         coroutine_return({})
+
+    def call_later(self, delay, callback):
+        return IOLoop.current().call_later(delay, callback)
 
     @coroutine
     def create_fpga_array(self):

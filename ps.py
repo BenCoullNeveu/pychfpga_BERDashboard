@@ -102,7 +102,8 @@ class PowerSupplyAsyncRESTServer(AsyncRESTServer):
         # schedule the `is_ready` flag to be true after the power-up delay
         for ps_name, ps in self.power_supplies.items():
             if ps.is_ok():
-                self._set_is_ready_later(ps_name)
+                self.is_ready[ps_name] = True
+                #self._set_is_ready_later(ps_name)
 
         coroutine_return('Power supply server started')
 
