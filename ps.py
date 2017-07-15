@@ -7,16 +7,14 @@ REST Server and clients for the CHIME receiver hut power supplies.
 import logging
 import sys
 import argparse
-import requests
 
 import tornado
 import tornado.tcpclient
-import tornado.web
 
 from pychfpga.Agilent_N5764A import AgilentN5764AHandler
 from pychfpga import Metrics, NameSpace, load_yaml_config
 from rest import AsyncRESTClient, AsyncRESTServer, endpoint, coroutine, coroutine_return, sleep, IOLoop, RunSyncWrapper  # generic REST servers and clients
-
+import log  # logging helper functions
 
 class PowerSupplyAsyncRESTServer(AsyncRESTServer):
     """
@@ -440,21 +438,7 @@ if __name__ == '__main__':
     ioloop.make_current()
 
     # Setup logging
-    logger = logging.getLogger()
-    logger.setLevel(logging.DEBUG) # pass all messages to the handlers
-    logger.handlers = []  # clear all existing handlers
-    # formatter = logging.Formatter(self.LOG_FORMAT, self.LOG_DATE_FORMAT)
-
-    def add_handler(h, log_level):
-        # h.setFormatter(formatter)
-        level = log_level if isinstance(log_level, int) else log_level.upper()
-        h.setLevel(level)
-        logger.addHandler(h)
-
-    add_handler(logging.StreamHandler(sys.stderr), 'warning')
-    add_handler(logging.handlers.SysLogHandler(), 'debug')
-
-
+    log.setup_logger(__name__, stderr_log_level='warning', syslog_level='debug')
 
     args = parse_cmdline_args(sys.argv[1:])
     port = args.port
