@@ -231,14 +231,14 @@ class ChimeMaster(object):
     def power_off(self):
         """ Turn off the power supplies listed in the `power_supplies.power_on.units` config field.
         """
-        yield [ps.power_off(ps_names) for ps, ps_names in self.power_supply_units.items()]
+        yield [ps.power_off(ps_names) for ps, ps_name in self.power_supply_units.items()]
 
     @coroutine
     def is_power_supply_ready(self):
         """ Check is all power supplies listed in the `power_supplies.power_on.units` config field are ready.
         """
         # Get the is_ready dict for each power supply server as [ {ps_name: state,...}, {ps_name: state, ...}]
-        is_ready = yield [ps.is_ready() for ps, ps_names in self.power_supply_units.keys()]
+        is_ready = yield [ps.is_ready() for ps, ps_names in self.power_supply_units.items()]
         # Check if the flag for each supply associated with each server is True
         coroutine_return(all(is_ready[i][ps_name]
                              for i, ps_names in enumerate(self.power_supply_units.values())
@@ -671,11 +671,15 @@ class ChimeMaster(object):
         self.configure_fpgas_post_acq()
         self.current_bank = 0
 
+
+
+        yield self.start_raw_acq_servers()
+
         # Start raw_data capture
         if conf.raw_acq.common_config.capture_duration is not None:
             yield self.start_hdf5_capture()
         else:
-            yield self.start_fpga_raw_data_transmission()
+            Yield self.start_fpga_raw_data_transmission()
 
 
         self.state = 'on'
@@ -767,7 +771,7 @@ class ChimeMaster(object):
         # ca.ib.sync()
 
         # Setup raw data capture
-        yield self.start_raw_acq()
+        #yield self.start_raw_acq_servers()
 
         # Setup noise injection for normal operation
         self.setup_noise_injection(conf.fpga.noise_injection)

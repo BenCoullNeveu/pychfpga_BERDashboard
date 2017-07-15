@@ -70,7 +70,7 @@ class PowerSupplyAsyncRESTServer(AsyncRESTServer):
         """ Sets the is_ready flag for power supply `name` to True after the power supply power-up delay has elapsed """
         def callback():
             self.is_ready[name] = True
-        self.call_later(callback, self.power_up_delay[name])
+        self.call_later( self.power_up_delay[name], callback)
 
     ##################
     # Server commands
