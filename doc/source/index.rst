@@ -30,9 +30,9 @@ In a nutshell, to create the Python environment::
 
 Also ``kotekan`` and ``carillon`` networking is not configured properly at power up. If the machine has been rebooted, you will need::
 
-    sudo iptables -I INPUT -p udp -j ACCEPT  # allow FPGA command packets and mdns packats in
+    sudo iptables -I INPUT -p udp -j ACCEPT  # allow FPGA command packet replies and mdns packets in
     sudo iptables -A INPUT 1 -p tcp  --dport 54321 -j ACCEPT # allow the external (housekeeping) computer to query metrics
-    sudo ifconfig interface_name mtu 9000 # allow jumbo frames (replace interface name with the proper name)
+    sudo ifconfig interface_name mtu 9000 # allow jumbo frames (replace interface name with the proper name: enp0s31f6 on klaxon)
 
 
 Quick start
@@ -54,9 +54,6 @@ Finally, start ch_master with the proper config::
 
 
 Here, ``jfc.erh3`` is the config defined in ``config.yaml``, which in this case powers-up crate 3, initialize all boards, and start capturing raw data for 5 minutes. After that, it will stop storing data but will continue to operate the power supply and ch_acq servers (which could be queried and operated by the user with REST commands), and will serve metrics to Prometheus.
-
-.. note:: the power supply will turn on but ch_master does not wait yet for all the boards to be ready before proceeding.
-   You may have to rerun ch_master a second time once the boards are booted. This will be fixed soon.
 
 
 Note that if ch_master fails  to connect to raw_acq and power_supply servers (as defined in the config file), it will create temporary servers that will run as long as ch_master is running.
