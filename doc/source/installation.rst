@@ -185,7 +185,7 @@ Accept all UDP packets for the FPGA commands and raw data (which might also allo
 
 Opeen port to allow clients to connect to servers
 
-    sudo iptables -A INPUT 1 -p tcp  --dport 54321 -j ACCEPT
+    sudo iptables -I INPUT 1 -p tcp  --dport 54321 -j ACCEPT
 
 Raw data packets are large and require the interface to accept JUMBO frames. Enable JUMBO frames with::
 
