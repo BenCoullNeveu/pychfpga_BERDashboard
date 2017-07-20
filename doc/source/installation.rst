@@ -115,22 +115,22 @@ ipython and matplotlib need python development libs::
     sudo yum install python-devel
     sudo yum install tkinter
 
+
+We will use pybonjour, which requires avahi system libraries::
+
+    sudo yum install avahi avahi-compat-libdns_sd avahi-compat-libdns_sd-devel
+    sudo yum install avahi-tools avahi-ui-tools # to get the command-line tools like avahi-browse, avahi-discover
+
 Now, install python packages::
 
     pip install ipython
     pip install numpy sqlalchemy pyyaml tornado lxml h5py
     pip install nose docutils futures requests netifaces
     pip install matplotlib
+    pip install -e git+https://github.com/Eichhoernchen/pybonjour.git#egg=pybonjour
 
-pybonjour python package
-************************
 
-Now we need pybonjour, which is not in pip. it requires avahi system libraries::
-
-    sudo yum install avahi avahi-compat-libdns_sd avahi-compat-libdns_sd-devel
-    sudo yum install avahi-tools avahi-ui-tools # to get the command-line tools like avahi-browse, avahi-discover
-
-Then we install manually in our virtualenv::
+.. note:: Pybonjour can also be installed manually with::
 
     wget https://storage.googleapis.com/google-code-archive-downloads/v2/code.google.com/pybonjour/pybonjour-1.1.1.tar.gz
     tar zxf pybonjour-1.1.1.tar.gz
@@ -175,17 +175,14 @@ To make the system work, we need to
     2) accept jumbo frames for raw data acquisition.
 
 
-To temorarily allow avahi to work, as root::
-
-    sudo iptables -A INPUT 1 -p udp  --dport 5353 -j ACCEPT
-
-Accept all UDP packets for the FPGA commands and raw data (which might also allow mDNS)
+To temorarily allow avahi to work and accept all UDP packets for the FPGA commands and raw data (which might also allow mDNS)
 
     sudo iptables -I INPUT -p udp -j ACCEPT
 
 Opeen port to allow clients to connect to servers
 
-    sudo iptables -I INPUT 1 -p tcp  --dport 54321 -j ACCEPT
+    sudo iptables -I INPUT 1 -p tcp  --dport 54321 -j ACCEPT  # ch_master server
+    sudo iptables -I INPUT 1 -p tcp  --dport 54324 -j ACCEPT  # power supply server
 
 Raw data packets are large and require the interface to accept JUMBO frames. Enable JUMBO frames with::
 

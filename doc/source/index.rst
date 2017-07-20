@@ -17,39 +17,18 @@ The main module, :mod:`ch_master`, is used to connect with the various remote pr
 Installation
 ============
 
-``kotekan`` and ``carillon``  can both run ch_master. All the system files required to run ch_master have been installed as root user and are available to all. Python, however, is run in a user-specific virtual environment that currently needs to be created and configured by each user. We might create a global install at some point, or use a common user to run ch_master, once ch_master gets out of development phase.
+``kotekan`` and ``carillon``  can both run ch_master. All the system files and python packages required to run ch_master have been installed as root user and are available to all users. However, if the machine has been rebooted, you will need to tdo the following::
 
-In a nutshell, to create the Python environment::
-
-    virtualenv ~/py275  # Create the virtual environemnt with the current version of Python (2.7.5)
-    source ~/py275/bin/activate # Activate the environment
-    pip install ipython numpy matplotlib sqlalchemy pyyaml tornado lxml h5py  # install requires packages
-    pip install nose docutils futures requests netifaces # more packages
-    pip install -e git+https://github.com/Eichhoernchen/pybonjour.git#egg=pybonjour  # pybonjour is not in pip, so we get the resource directly
-
-
-Also ``kotekan`` and ``carillon`` networking is not configured properly at power up. If the machine has been rebooted, you will need::
-
-    sudo iptables -I INPUT -p udp -j ACCEPT  # allow FPGA command packet replies and mdns packets in
-    sudo iptables -A INPUT 1 -p tcp  --dport 54321 -j ACCEPT # allow the external (housekeeping) computer to query metrics
+    sudo iptables -A INPUT -p udp -j ACCEPT  # allow FPGA command packet replies and mdns packets in
+    sudo iptables -A INPUT -p tcp  --dport 54320:54329 -j ACCEPT # allow the external (housekeeping) computer to query metrics
     sudo ifconfig interface_name mtu 9000 # allow jumbo frames (replace interface name with the proper name: enp0s31f6 on klaxon)
 
 
 Quick start
 ===========
-Here is how  you can start an experiment with `ch_master`:
-
-First, activate your Python virtual environment::
-
-    cd ~/git/ch_acq
-    source ~/py275/bin/activate
-
-Second, you will often need to restart avahi because it stops refreshing every few minutes on Centos 7::
+Here is how  you can start an experiment with `ch_master` in the configuration ``jfc.erh3``::
 
    sudo avahi-daemon -k  # kill the avahi daemon. Apparently it restarts by itself when needed...
-
-Finally, start ch_master with the proper config::
-
    ./ch_master.py server jfc.erh3
 
 
