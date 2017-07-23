@@ -54,6 +54,20 @@ class NameSpace(object):
         for x in self._obj:
             yield self._to_namespace(x)
 
+    def iteritems(self):
+	for (k,v) in self._obj.iteritems():
+            yield (k, self._to_namespace(v))
+            
+    def itervalues(self):
+        for v in self._obj.itervalues():
+            yield self._to_namespace(v)
+
+    def items(self):
+       return list(self.iteritems())
+
+    def values(self):
+        return list(self.itervalues())
+
     def __len__(self):
         return len(self._obj)
 
@@ -148,32 +162,45 @@ def get_parent_logger(module_name):
 #                         log_filename=log_filename)
 
 
-def setup_logging(logging_config, **kwargs):
+def setup_logging(dict_config={}, log_levels={}, **kwargs):
     """
     """
 
 
-    conf = NameSpace(logging_config)
+    dict_config = NameSpace(dict_config)
+    log_levels = NameSpace(log_levels or {})
+
+    if 'version' not in dict_config:
+        dict_config.version = 1
 
     # If there are log_level shortcuts, apply those log levels to the corresponding handler
-    for handler_name, value in conf.log_levels.items():
-        if handler_name in conf.dict_config.handlers:
-            conf.dict_config.handlers[handler_name]['level'] = value
+    for handler_name, log_level in log_levels.items():
+            if handler_name in dict_config.handlers:
+                dict_config.handlers[handler_name]['level'] = log_level
 
     # if there are filenames arguments in handlers, process the name with format to add pathname
-    for handler_name, handler_config in conf.dict_config.handlers:
+    for handler_name, handler_config in dict_config.handlers.items():
+        if 'level' in handler_config and isinstance(handler_config.level, basestring):
+            handler_config.level = handler_config.level.upper()
+
         filename = handler_config.get('filename', None)
         if isinstance(filename, str) and '%(' in filename:
-            handler_config['filename'] = filename.format(kwargs)
+            handler_config.filename = filename % kwargs
+    for logger_name, logger_config in dict_config.loggers.items():
+        if 'level' in logger_config and isinstance(logger_config.level, basestring):
+            logger_config.level = logger_config.level.upper()
 
-    logging.config.dictConfig(config)
 
-def stop_logging(logging_config):
+    #print dict_config
+    logging.config.dictConfig(dict_config)
+
+def stop_logging(dict_config):
     """
     Delete all handles for the loggers defined in the loging config.
     """
 
-    for logger_name in conf.dict_config.loggers:
+    dict_config = NameSpace(dict_config)
+    for logger_name in dict_config.loggers:
         logger = logging.getLogger(logger_name)
         logger.handlers = []  # clear all existing handlers for that logger
 

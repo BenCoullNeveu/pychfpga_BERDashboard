@@ -3,7 +3,16 @@
 Module that provide the classes used to run the top-level ChimeMaster object used to initialize and operate the CHIME telescope.
 
 """
+
 from __future__ import absolute_import, division, print_function
+
+__package__ = __package__ or ''
+if __name__ == '__main__':
+    __name__ = 'ch_master'
+    is_script = True
+else:
+    is_script = False
+
 
 import argparse
 import collections
@@ -121,6 +130,12 @@ def sanitize_for_json(obj):
 # these data do not have the time-transpose completed.
 ARCHIVE_VERSION = "NT_2.2.0"
 
+import pychfpga.fpga_array
+ 
+print(__package__)
+print(__name__)
+print(pychfpga.fpga_array.__package__)
+print(pychfpga.fpga_array.__name__)
 
 # # Full path to this file.
 # PROGRAM = os.path.realpath(__file__)
@@ -162,6 +177,7 @@ class ChimeMaster(object):
             },
         'loggers': {
             __package__: {'handlers': ['stderr']}
+
             }
         }
 
@@ -445,6 +461,7 @@ class ChimeMaster(object):
         """
         self.log.info('%.32r: starting raw_acq servers' % self)
         conf = self.config.raw_acq
+        print(conf)
 
         # Make a list of all all iceboards for each of the RawAcq node
         self.raw_acq_ibs = {}
@@ -584,7 +601,7 @@ class ChimeMaster(object):
 
         log_filename = os.path.join(self.acq_base_dir, "ch_master.log")
 
-        log.setup_logging(conf.logging, path=self.acq_base_dir) # path will be inserted in filename strings containing "%(path)"
+        log.setup_logging(conf.logging.dict_config, conf.logging.log_levels, path=self.acq_base_dir) # path will be inserted in filename strings containing "%(path)"
 
 
         # Now that the housekeeping is done, let's start the real work
@@ -1196,7 +1213,7 @@ def parse_cmdline_args(argv):
     parser.add_argument('-n', '--host', default='localhost', type=str, help="server hostname")
     return parser.parse_args(argv)
 
-if __name__ == '__main__':
+if is_script:
 
     # Create our own IOLoop so we don't interfere with ipython's own ioloop.
     ioloop = IOLoop()

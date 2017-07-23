@@ -438,7 +438,7 @@ if __name__ == '__main__':
     ioloop.make_current()
 
     # Setup logging
-    log.setup_logger(__name__, stderr_log_level='warning', syslog_level='debug')
+    #log.setup_logger(__name__, stderr_log_level='warning', syslog_level='debug')
 
     args = parse_cmdline_args(sys.argv[1:])
     port = args.port

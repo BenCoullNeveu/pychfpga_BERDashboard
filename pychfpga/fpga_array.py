@@ -397,7 +397,7 @@ class FPGAArray(object):
             {(crate_number,): ('icecrates', (model, serial, crate_number))
              for crate_number, (model, serial) in crate_map.items()}}
         hw_table = parse_hw_string(hw_string, remap_table)
-        print 'hw table = ', hw_table
+        self.logger.debug('hw table = %s' %  hw_table)
 
         # Check if there were 'crate' entries that were not remapped to icececrate entries
         if hw_table.crates:
@@ -422,7 +422,7 @@ class FPGAArray(object):
             else:
                 crate_number_map = {(model, serial) : i
                     for i, (model, serial, crate_number) in enumerate(hw_table.icecrates)}
-        print 'icecrate map=', crate_number_map
+        self.logger.debug('icecrate map=%s' % crate_number_map)
 
         # We've got our crate numbers. Remove them from the icecrate list so we pass only the (model,
         # serial) to the mdns discovery function.
@@ -437,7 +437,7 @@ class FPGAArray(object):
         # responding boards or boards that do not belong to the target
         # subarray.
 
-        print 'hardware map=', hwm
+        self.logger.debug('hardware map=%s' % hwm)
 
         # If no hardware map is provided, create an empty one
         if not hwm:
@@ -446,7 +446,7 @@ class FPGAArray(object):
         # object of the type contained in the ``class`` element and passing it the remaining
         # elements as keyword arguments
         elif isinstance(hwm, list):
-            print 'Creating Hardware Map from list'
+            self.logger.debug('Creating Hardware Map from list')
             self.hwm = HardwareMap()  # Create empty hardware map
             for obj in hwm:
                 class_name = obj.pop('class') # remove the class name from the dict. The rest wil be used as instantiation parameters
@@ -461,7 +461,7 @@ class FPGAArray(object):
         if subarrays:
             ib_not_in_subarray = self.hwm.query(IceBoardPlus).filter(~IceBoardPlus.subarray.in_(subarrays))
             for ib in list(ib_not_in_subarray):  # make sure the list does not change during the loop
-                print ("%r (subarray '%s') is not in the target subarray list %s. It is removed from the YAML hardware map."  # That comment should be if verbose=1
+                self.logger.warning("%r (subarray '%s') is not in the target subarray list %s. It is removed from the YAML hardware map."  # That comment should be if verbose=1
                                    % (ib, ib.subarray, subarrays))
                 self.hwm.delete(ib)
             self.hwm.flush()
@@ -479,7 +479,7 @@ class FPGAArray(object):
                     if ping_successful:
                         ib.hostname = socket.gethostbyname(ib.hostname)
                     else:
-                        print ("%r could not be found at '%s'. It is removed from YAML hardware map."
+                        self.logger.warning("%r could not be found at '%s'. It is removed from YAML hardware map."
                                            % (ib, ib.tuber_uri))
                         self.logger.debug('%.32r: Deleting %r from the YAML hardware map' % (self, ib))
                         self.hwm.delete(ib)
@@ -531,7 +531,7 @@ class FPGAArray(object):
         ###########################################################################
 
         if hw_table.iceboards or hw_table.icecrates :
-            print 'Discovering IceBoards %s and IceCrates %s...' % (hw_table.iceboards, hw_table.icecrates)
+            self.logger.info('Discovering IceBoards %s and IceCrates %s...' % (hw_table.iceboards, hw_table.icecrates))
             self.print_flush()
             mdns_discover(self.hwm,
                           icecrates=hw_table.icecrates,
@@ -585,7 +585,7 @@ class FPGAArray(object):
 
             # Auto-discover mezzanines and add them to the hardware map.
             if not no_mezz:
-                print 'Discovering Mezzanines...'
+                self.logger.info('Discovering Mezzanines...')
                 self.print_flush()  # make sure we see the previous prints right away so we have a better feeling of what is happening
                 self.ib.discover_mezzanines()
                 self.hwm.flush()
@@ -612,14 +612,14 @@ class FPGAArray(object):
 
             # Configure the FPGA with the bitstream associated with the handler
             if prog:
-                print 'Configuring FPGAs...'
+                self.logger.info('Configuring FPGAs...')
                 # Associate the bitstream with the target Handler
                 self.fpga_bitstream = FPGABitstream(bitfile, auto_reload=False)
-                print 'Loaded bitfile:', bitfile
+                self.logger.info('Loaded bitfile: %s' % bitfile)
                 str(self.fpga_bitstream)
                 ib.register_fpga_bitstream(self.fpga_bitstream)
                 ib.set_fpga_bitstream(force= (prog > 1))
-                print 'Done configuring FPGAs'
+                self.logger.info('Done configuring FPGAs')
 
         self.print_flush()
 
@@ -634,7 +634,7 @@ class FPGAArray(object):
             if if_ip:
                 ib.interface_ip_addr = if_ip
 
-            print 'Initializing firmware (calling ib.open())'
+            self.logger.info('Initializing firmware (calling ib.open())')
             self.ib.open(adc_delay_table=ADC_DELAY_TABLE,
                          udp_retries=udp_retries,
                          init=open,
@@ -648,7 +648,7 @@ class FPGAArray(object):
             if mode:
                 self.set_operational_mode(mode=mode, frames_per_packet=frames_per_packet)
 
-            print 'Initializing Backplane firmware'
+            self.logger.info('Initializing Backplane firmware')
             if self.ic:
                 self.ic.init()
 
@@ -658,7 +658,7 @@ class FPGAArray(object):
         # Completed
         #################################
 
-        print 'Done creating %r' % self
+        self.logger.info('Done creating %r' % self)
 
     @staticmethod
     def _to_integer(x):
@@ -1274,9 +1274,9 @@ class FPGAArray(object):
                 rx = (ib.slot, i)
                 tx = ib.crate.get_matching_tx(rx)
                 if tx in tx_list:
-                    self.logger.info('%.32r: In %r,  %s is receiving from %s' % (self, ib.crate, rx, tx))
+                    self.logger.debug('%.32r: In %r,  %s is receiving from %s' % (self, ib.crate, rx, tx))
                 else:
-                    self.logger.info('%.32r: In %r, %s has no corresponding transmitter' % (self, ib.crate, rx))
+                    self.logger.debug('%.32r: In %r, %s has no corresponding transmitter' % (self, ib.crate, rx))
 
 
         # sync boards
@@ -2519,6 +2519,7 @@ def parse_hw_string(hw_string, remap_table={}, dut_id_patterns=ICE_PATTERNS):
         '18:3' => (None, 18, 3)
         '18' => (None, 18, None)
     """
+    logger = logging.getLogger(__name__)
     # If hw_string is a list of string, combine them in one single string
     if isinstance(hw_string, (list, tuple)):
         hw_string = ' '.join(str(s) for s in hw_string)
@@ -2564,7 +2565,7 @@ def parse_hw_string(hw_string, remap_table={}, dut_id_patterns=ICE_PATTERNS):
             if not m:   # if there is no match
                 continue
             matches += 1
-            print 'match %i: ' % matches, regex, el
+            # print 'match %i: ' % matches, regex, el
             groups = m.groups()  # capture groups, in a list
 
             # Update the current entry with the entries that are not None
@@ -2594,15 +2595,18 @@ def parse_hw_string(hw_string, remap_table={}, dut_id_patterns=ICE_PATTERNS):
         print ' '*(pos-2)+'^'
         raise ValueError(err)
     # Remap
-    for type, entries in hw_table.items():
+    print 'remapping with ', remap_table
+    for type, entries in list(hw_table.items()):
+        print type, entries
         if type in remap_table:
-            for entry in entries:
+            for entry in list(entries):
+                print entry
                 if entry in remap_table[type]:
                     target_type, target_entry = remap_table[type][entry]
                     hw_table[target_type].append(target_entry)
                     hw_table[type].remove(entry)
 
-    print 'hw_table:', hw_table
+    logger.debug('hw_table: %s' % hw_table)
     return hw_table
 
 
