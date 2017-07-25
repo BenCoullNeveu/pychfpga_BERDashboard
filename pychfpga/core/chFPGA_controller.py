@@ -212,7 +212,7 @@ class chFPGA_controller(IceBoardExtHandler):
         # Initialize basic instance attributes, but don;t do anything that involve talking to the IceBoard.
 
         self._logger = logging.getLogger(__name__)
-        self._logger.info("%.32r: Creating chFPGA_controller object" % (self))
+        self._logger.debug("%.32r: Creating chFPGA_controller object" % (self))
 
         self._sampling_frequency = None  # Set in init()
         self._reference_frequency = None # set in init()
@@ -241,13 +241,13 @@ class chFPGA_controller(IceBoardExtHandler):
         """
 
         super(chFPGA_controller, self).open(udp_retries=udp_retries)  # Open UDP communication link
-        self.logger.info('%r: Instantiating chFPGA firmware handlers objects' % (self))
+        self.logger.debug('%r: Instantiating chFPGA firmware handlers objects' % (self))
 
         # self.read = self.mmi.read
         # self.write = self.mmi.write
 
         if init < 0: # If init<0, we do not perform any communication with the FPGA, so we don't read the firmware configuration
-            self._logger.info('%r: Upon user request (init < 0), communication with the FPGA are inhibited. Initialization sequence stops here. Use this for debug only.' % self)
+            self._logger.warn('%r: Upon user request (init < 0), communication with the FPGA are inhibited. Initialization sequence stops here. Use this for debug only.' % self)
             return
         self._logger.info('%r:    ---> Hello! This is chFPGA! <---' % self)
 
@@ -265,7 +265,7 @@ class chFPGA_controller(IceBoardExtHandler):
             self.GPIO = GPIO.GPIO_base(self, self._SYSTEM_GPIO_BASE_ADDR)
             # get system constants from the FPGA
 
-            self._logger.info('%r: === Getting board info information' % self)
+            self._logger.debug('%r: === Getting board info information' % self)
 
             self.PLATFORM_ID = self.GPIO.PLATFORM_ID
             if self.PLATFORM_ID not in self._PLATFORM_ID_LIST:
@@ -313,15 +313,15 @@ class chFPGA_controller(IceBoardExtHandler):
             #self.LIST_OF_ANTENNAS_WITH_FFT = [i for i in range(8) if bool(self.GPIO.IMPLEMENT_FFT & 2**i)]
 
 
-            self._logger.info('%r: Hardware platform: %s' % (self, self._PLATFORM_ID_LIST[self.PLATFORM_ID][0]))
-            self._logger.info('%r: Firmware timestamp: %s' % (self, self.get_version()))
-            self._logger.info('%r: Number of channelizers: %i' %  (self, self.NUMBER_OF_ANTENNAS))
-            self._logger.info('%r: Number of channelizers with FFT: %i (antennas %s)' % (self, len(self.LIST_OF_ANTENNAS_WITH_FFT), str(self.LIST_OF_ANTENNAS_WITH_FFT)))
-            self._logger.info('%r: Crossbar configuration: %i inputs x %i outputs' % (self, self.NUMBER_OF_CROSSBAR_INPUTS, self.NUMBER_OF_CROSSBAR_OUTPUTS))
-            self._logger.info('%r: Number of correlators: %i (correlators %s)' % (self, len(self.LIST_OF_IMPLEMENTED_CORRELATORS),str(self.LIST_OF_IMPLEMENTED_CORRELATORS)))
-            self._logger.info('%r: Number of channelizers supported by the correlators: %i ' % (self, self.NUMBER_OF_ANTENNAS_TO_CORRELATE))
+            self._logger.debug('%r: Hardware platform: %s' % (self, self._PLATFORM_ID_LIST[self.PLATFORM_ID][0]))
+            self._logger.debug('%r: Firmware timestamp: %s' % (self, self.get_version()))
+            self._logger.debug('%r: Number of channelizers: %i' %  (self, self.NUMBER_OF_ANTENNAS))
+            self._logger.debug('%r: Number of channelizers with FFT: %i (antennas %s)' % (self, len(self.LIST_OF_ANTENNAS_WITH_FFT), str(self.LIST_OF_ANTENNAS_WITH_FFT)))
+            self._logger.debug('%r: Crossbar configuration: %i inputs x %i outputs' % (self, self.NUMBER_OF_CROSSBAR_INPUTS, self.NUMBER_OF_CROSSBAR_OUTPUTS))
+            self._logger.debug('%r: Number of correlators: %i (correlators %s)' % (self, len(self.LIST_OF_IMPLEMENTED_CORRELATORS),str(self.LIST_OF_IMPLEMENTED_CORRELATORS)))
+            self._logger.debug('%r: Number of channelizers supported by the correlators: %i ' % (self, self.NUMBER_OF_ANTENNAS_TO_CORRELATE))
 
-            self._logger.info('%r: === Instantiating FPGA ressources' % self)
+            self._logger.debug('%r: === Instantiating FPGA ressources' % self)
 
             self._logger.debug('%r: === Instantiating SYSMON' % self)
             self.SYSMON = SYSMON.SYSMON_base(self, self._SYSTEM_SYSMON_BASE_ADDR)
@@ -370,13 +370,13 @@ class chFPGA_controller(IceBoardExtHandler):
             else:
                 self.GPU = None
 
-            self._logger.info('%r: This motherboard has %i FMC slots' % (self, self.NUMBER_OF_FMC_SLOTS))
+            self._logger.debug('%r: This motherboard has %i FMC slots' % (self, self.NUMBER_OF_FMC_SLOTS))
 
             # ---------------------------------------------------------------------
             # -- Create ADC board hardware ressource handlers objects
             # ---------------------------------------------------------------------
 
-            self._logger.info('%r: === Analyzing available FMC Mezzanines' % self)
+            self._logger.debug('%r: === Analyzing available FMC Mezzanines' % self)
             # self._adc_board = [
             #     self.mezzanine.get(1, None),
             #     self.mezzanine.get(2, None)]
@@ -385,7 +385,7 @@ class chFPGA_controller(IceBoardExtHandler):
             for fmc_number in range(self._NUMBER_OF_FMC_SLOTS):
                 if fmc_number+1 in self.mezzanine.keys():
                     self._FMC_present[fmc_number] = True
-                    self._logger.info('%r:   An MGADC08 ADC Board is present on FMC slot %i' % (self, fmc_number))
+                    self._logger.debug('%r:   An MGADC08 ADC Board is present on FMC slot %i' % (self, fmc_number))
                 else:
                     self._logger.warning('%r:   An MGADC08 ADC Board is *not* present on FMC slot %i' % (self, fmc_number))
 
@@ -465,7 +465,7 @@ class chFPGA_controller(IceBoardExtHandler):
         self.FRAME_PERIOD = float(self.FRAME_LENGTH)/self._sampling_frequency
         self.FRAME_RATE = 1 / self.FRAME_PERIOD
 
-        self._logger.info('%r: --- Initializing FPGA ressources' % self)
+        self._logger.debug('%r: --- Initializing FPGA ressources' % self)
 
         self._logger.debug('%r: --- Initializing GPIO' % self)
         self.GPIO.init()  # This stops the antenna procesors from sending data. Neeeded if the FPGA is flooding the buffers which prevent subsequent reads to come through
@@ -474,20 +474,6 @@ class chFPGA_controller(IceBoardExtHandler):
         self.mmi.flush()
         if verbose >= 2:
             self.GPIO.status()
-
-
-        # self._logger.debug('--- Initializing I2C')
-        # self.fpga_I2C.init()
-
-        # if verbose >= 2: self._logger.debug('--- Initializing ML605 LCD')
-        # self.LCD.init()
-        # self.LCD.write('CHIME FW Version', col=0, row=0)
-        # self.LCD.write('%s' % self.GPIO.get_bitstream_date(), col=0, row=1)
-
-        # if verbose >= 2: self._logger.debug('--- Initializing ML605 PMBus')
-        # self.ML605_PMBus.init()
-        # if verbose >= 2: self.ML605_PMBus.status()
-
 
 
          # Module depend on the FMC_present flag after this point
@@ -505,7 +491,7 @@ class chFPGA_controller(IceBoardExtHandler):
         self.SPI.init()
         # self.SPI.status()
 
-        self._logger.info('%r: --- Initializing FMC slots' % self)
+        self._logger.debug('%r: --- Initializing FMC slots' % self)
 
         # Reduce the power load before we turn on the mezzanines
         self.set_adc_mask(0) # null the ADC data before it gets to the channelizers to reduce power consumption
@@ -576,18 +562,18 @@ class chFPGA_controller(IceBoardExtHandler):
             self._logger.debug('%r:  - CORR' % self)
             self.CORR.init()
         else:
-            self._logger.info('%r: There are no FPGA correlators in this firmware build' % self);
+            self._logger.warning('%r: There are no FPGA correlators in this firmware build' % self);
 
         self.set_data_width(data_width)  #sets the data width of both the SCALER and CROSSBAR
-        self._logger.info('%r: Data width set to (Re+Im) = (%i+%i) bits' % (self, self.get_data_width(), self.get_data_width()))
+        self._logger.debug('%r: Data width set to (Re+Im) = (%i+%i) bits' % (self, self.get_data_width(), self.get_data_width()))
 
         self.CROSSBAR.set_frames_per_packet(group_frames)
-        self._logger.info('%r: The 1st crossbar will pack %i frames per packet' % (self, group_frames))
+        self._logger.debug('%r: The 1st crossbar will pack %i frames per packet' % (self, group_frames))
 
         if self.GPU:
             self.GPU.init()
             self.GPU.set_enable(enable_gpu_link)
-            self._logger.info('%r: GPU link is currently %s' % (self, ['Disabled','Enabled'][bool(enable_gpu_link)]))
+            self._logger.debug('%r: GPU link is currently %s' % (self, ['Disabled','Enabled'][bool(enable_gpu_link)]))
 
         # MGT is disabled
         #self._logger.debug('  - MGT_PLL')
@@ -595,17 +581,10 @@ class chFPGA_controller(IceBoardExtHandler):
         #self._logger.debug('  - MGT')
         #self.MGT.init() # MGT_PLL must be initialized first
 
-        self._logger.info("%r: Done with initializations." % self)
+        self._logger.debug("%r: Done with initializations." % self)
 
 
         self.set_ant_reset(0) # disable antenna reset
-
-        # self._logger.info("Setting default data source")
-        # self.set_funcgen_function('ramp')
-        # self.set_data_source('funcgen')
-        # self.set_ADC_mode('data') # This implies a self.sync(), which will reset the antenna processors again to ensure data alignment
-        # self.set_data_source('adc')
-
 
         self._last_init_time = time.time()
 
@@ -613,15 +592,8 @@ class chFPGA_controller(IceBoardExtHandler):
         if create_receiver:
             self.get_data_receiver()
 
-    # def get_fpga_cookie(self):
-    #     """
-    #     Reads the FPGA and returns the cookie that identifies the firmware.
-    #     This method can be called before any FPGA modules are instatiated.
-    #     """
-    #     return self.read(self.mmi._STATUS_BASE_ADDR + self._SYSTEM_GPIO_BASE_ADDR + self._GPIO_COOKIE_REG) & 0x7F
-
     @async
-    def get_config(self, basic = False):
+    def get_config(self, basic=False):
         """
         Return configuration for this FPGA.
 
@@ -712,7 +684,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
     def sync(self, local=1, verbose=0):
         if verbose:
-            self._logger.info("%.32r: Syncing board" % self)
+            self._logger.debug("%.32r: Syncing board" % self)
         self.set_adc_mask(0) # null the ADC data before it gets to the channelizers to reduce power consumption
         if local:
             self.REFCLK.local_sync()
@@ -996,7 +968,7 @@ class chFPGA_controller(IceBoardExtHandler):
             return self.recv
         chFPGA_config = self.get_config(basic=True)  # get only the info needed to start the receiver
         self.recv = chFPGA_receiver(chFPGA_config, verbose=verbose)
-        self.logger.info('Started data receiver threads on %s:%i' % (self.recv.host_ip, self.recv.port_number))
+        self.logger.debug('Started data receiver threads on %s:%i' % (self.recv.host_ip, self.recv.port_number))
         self.set_local_data_port_number(self.recv.port_number)
         return self.recv
 
@@ -1038,7 +1010,7 @@ class chFPGA_controller(IceBoardExtHandler):
         # print burst_period_in_frames*self.FRAME_PERIOD*1000
         # print ('continuously when TRIG=1' if not number_of_bursts else ('for a total of %i bursts' % number_of_bursts) )
         if verbose:
-            self._logger.info("%r: Configuring antennas %s to transmit %i-frame burst every %i frames (i.e .every %.3f ms) %s." % (
+            self._logger.info("%r: Configuring channelizer %s to transmit %i-frame burst every %i frames (i.e .every %.3f ms) %s." % (
                self,
                channels.__repr__(),
                frames_per_burst,
@@ -1047,7 +1019,7 @@ class chFPGA_controller(IceBoardExtHandler):
                ('continuously when TRIG=1' if not number_of_bursts else ('for a total of %i bursts' % number_of_bursts))))
             frames_per_second = len(channels)*frames_per_burst*1.0/self.FRAME_PERIOD/burst_period_in_frames
             bits_per_second = frames_per_second * 8 * self.FRAME_LENGTH
-            self._logger.info('%r: Data rates are: %f kFrames/s, %f Mbits/s' % (self, frames_per_second/1e3, bits_per_second/1e6))
+            self._logger.debug('%r: Data rates are: %f kFrames/s, %f Mbits/s' % (self, frames_per_second/1e3, bits_per_second/1e6))
 
         self.set_trig(0) # disable data transmission if continuous mode is currentlly selected
 #        self.set_ant_reset(1) # resets all
@@ -1060,7 +1032,7 @@ class chFPGA_controller(IceBoardExtHandler):
             ant.PROBER.PROBE_ID = 0xA0 + ant.ant_number
             ant.PROBER.config_capture(frames_per_burst=frames_per_burst, burst_period=burst_period_in_frames, number_of_bursts=number_of_bursts, offset=offset)
             if ant.ant_number in channels:
-                self._logger.info('%r: Enabling Capture for Antenna %i' % (self, ant.ant_number))
+                self._logger.debug('%r: Enabling Capture for Antenna %i' % (self, ant.ant_number))
                 ant.PROBER.RESET = 0
 
         self.set_trig(1)  # enables data transmission if continuous mode is selected
@@ -1091,7 +1063,7 @@ class chFPGA_controller(IceBoardExtHandler):
             else:
                 self.ANT[ch].FFT.BYPASS = bypass_mode
                 configured_channels.add(ch)
-        self._logger.info('%r: Setting FFT bypass mode to %s for Antenna %s' % (self, str(bool(bypass_mode)), ', '.join([str(i) for i in configured_channels])))
+        self._logger.debug('%r: Setting FFT bypass mode to %s for Antenna %s' % (self, str(bool(bypass_mode)), ', '.join([str(i) for i in configured_channels])))
         # self.reset()
         #self.sync()
 
@@ -1117,7 +1089,7 @@ class chFPGA_controller(IceBoardExtHandler):
         if channels is None:
             channels = self.default_channels
 
-        self._logger.info('%r: Setting SCALER bypass mode for Antenna %s' % (self, ', '.join([str(i) for i in channels])))
+        self._logger.debug('%r: Setting SCALER bypass mode for Antenna %s' % (self, ', '.join([str(i) for i in channels])))
         for ant in self.ANT.values():
             if ant.ant_number in channels:
                 ant.SCALER.BYPASS = bypass_mode
@@ -1188,7 +1160,7 @@ class chFPGA_controller(IceBoardExtHandler):
             corrs_not_used = list(set(self.LIST_OF_IMPLEMENTED_CORRELATORS).difference(corr_to_use))
         for corr_num in corrs:
             corr = self.CORR[corr_num]
-            self._logger.info(
+            self._logger.debug(
                 '%r: Configuring correlator %i to integrate '
                 'over %f seconds (%i frames) '
                 'and transmit data every %f seconds (%i frames)' % (
@@ -1201,7 +1173,7 @@ class chFPGA_controller(IceBoardExtHandler):
             corr.ACC.RESET = 0
             corr.ACC.config(integration_period=integration_period_in_frames, capture_period=capture_period_in_frames)
         for corr_num in corrs_not_used:
-            self._logger.info('%r: Disabling correlator %i' % (self, corr.instance_number))
+            self._logger.debug('%r: Disabling correlator %i' % (self, corr.instance_number))
             corr = self.CORR[corr_num]
             corr.ACC.RESET = 1
         self.set_corr_reset(0)
@@ -1397,24 +1369,6 @@ class chFPGA_controller(IceBoardExtHandler):
             self.REFCLK.set_sync_delays(sync_delays)
             self.ANT.set_adc_delays(delay_table);
 
-    # def set_adc_delays_with_check(self, delay_table):
-    #         """
-    #         Sets adc delay table, check if get ramp errors,
-    #         and retrys to set delays till no errors or tried 10 times.
-    #         On 10 tries will continue but just report error.
-    #         """
-    #         ntries = 0
-    #         while ntries < 15:
-    #             delay_return = self.ANT.set_adc_delays(delay_table)
-    #             err = self.check_ramp_errors()
-    #             if err == 0:
-    #                 break
-    #             else:
-    #                 self._logger.info( "{0} errors after setring delays, retrying...".format(err) )
-    #             ntries += 1
-    #         if ntries == 15:
-    #             self._logger.info("After setting delays still had ramp errors after 15 tries.")
-    #         return delay_return
 
     def check_ramp_errors(self, delay=0.1, trials=10, verbose=1):
         """
@@ -1974,7 +1928,7 @@ class chFPGA_controller(IceBoardExtHandler):
                     self.ANT[ch].SCALER.USE_GAIN_TABLE = 1
                     self.ANT[ch].SCALER.set_gain_table(Glin, bank=bank)
                 configured_channels.add(ch)
-        self._logger.info('%r: Setting scaler gains for Antenna %s' % (self, ', '.join([str(i) for i in configured_channels])))
+        self._logger.debug('%r: Setting scaler gains for Antenna %s' % (self, ', '.join([str(i) for i in configured_channels])))
 
         if when is not None:
             self.switch_gains(bank=bank, when=when)
@@ -2091,7 +2045,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
         for ant in self.ANT.values():
             if ant.ant_number in channels:
-                self._logger.info('%r: Setting FFT shift of antenna %i' % (self, ant.ant_number))
+                self._logger.debug('%r: Setting FFT shift of antenna %i' % (self, ant.ant_number))
                 ant.FFT.FFT_SHIFT = fft_shift
 
     set_FFT_shift = set_fft_shift  # For legacy code compatibility
@@ -2108,10 +2062,34 @@ class chFPGA_controller(IceBoardExtHandler):
         """
         Selects the signal to be sent to the user outputs (SMAs & LEDs).
 
-        ``source`` is the source name (as a string).
-        ``output`` is the number or name of output to configure
-        (0=SMA-A on the motherboard, 1= SMA on
-        the backplane and FPGA LED1, 2= SMA-B and FPGA LED2 on the motherboard, LED on the backplane).
+        Parameters:
+
+            source (str): is the source name
+
+                * 0: sync : User-generated SYNC signal (sunc_out)
+                * 1: pps : 1 PPS signal from the IRIG-B decoder (pps_out)
+                * 2: pwm : Output from the frame-based pwm generator (pwm_out)
+                * 3: irigb_trig :# not(irigb_before_target)
+                * 4: bp_trig : (bp_trig_reg)
+                * 5: bp_time : (bp_time_reg)
+                * 6: refclk : 10 MHz reference clock (clk10)
+                * 7: irigb_gen : (irigb_gen_out)
+                * 8: heartbeat1 : (gpio_led_int(4))
+                * 9: heartbeat2 : (gpio_led_int(7))
+                * 10: debug1 : (debug1, currently crossbar2.align_pulse)
+                * 11: debug2 : (debug2, currently crossbar0.lane_monitor)
+                * 12: user_bit0 : (user_bit(0))
+                * 13: user_bit1 : (user_bit(1))
+                * 14: debug3 : (chan_lane_monitor(2)(to_integer(unsigned(user_bit))))
+                * 15: fmc_refclk :# Refclk from Mezz selected by user_bits(0:1)  (fmc_refclk(to_integer(unsigned(user_bit)))
+
+
+            output (str or int) is the number or name of the output to configure.
+
+               * 0=SMA-A on the motherboard
+               * 1=SMA on the backplane and FPGA LED1,
+               * 2=SMA-B and FPGA LED2 on the motherboard LED on the backplane.
+
         """
         self.GPIO.set_user_output_source(source, output=output)
 
@@ -2149,42 +2127,42 @@ class chFPGA_controller(IceBoardExtHandler):
         for ch in channels:
             self.ANT[ch].ADCDAQ.BYTE_MASK = mask
 
-    def check_adc_data_acquisition(self, test_duration=1):
-        """
-        Sets the ADC in ramp mode and compare the incoming ramp in real time with an internally generated ramp to combute the total number of words in error (and an error count for each bit)
-        """
-        old_adc_mode = self.get_adc_mode()
-        self.set_adc_mode('ramp')
-        self.sync() # sync the board to make sure that data acquisition starts on the right ramp sample
+#     def check_adc_data_acquisition(self, test_duration=1):
+#         """
+#         Sets the ADC in ramp mode and compare the incoming ramp in real time with an internally generated ramp to combute the total number of words in error (and an error count for each bit)
+#         """
+#         old_adc_mode = self.get_adc_mode()
+#         self.set_adc_mode('ramp')
+#         self.sync() # sync the board to make sure that data acquisition starts on the right ramp sample
 
-        # Clear the word and bit error counters
-        for ant in self.ANT.values():
-            print 'Clearing antenna', ant.ant_number
-            ant.ADCDAQ.RAMP_ERR_CLEAR=0
-            ant.ADCDAQ.RAMP_ERR_CLEAR=1
-        self._logger.info('%r: Measuring the data acquisition error rate over %0.1f seconds...' % (self, test_duration))
-        t0 = time.time();
-        word_error = np.zeros(len(self.ANT))
-        bit_error = np.zeros((len(self.ANT), 8))
-        try:
-            while time.time() - t0 <= test_duration:
-                for (i, ant) in self.ANT.items():
-                    print  self.ANT[i].ADCDAQ.RAMP_ERR_CTR,
-                    word_error[i] += ant.ADCDAQ.RAMP_ERR_CTR
-                    for bit_number in range(8):
-                        bit_error[i, bit_number] += ((ant.ADCDAQ.BIT_ERR_CTR >> (bit_number*4)) & 0x0F)
-                    ant.ADCDAQ.RAMP_ERR_CLEAR = 0
-                    ant.ADCDAQ.RAMP_ERR_CLEAR = 1
-                    # self._logger.info('CH%i: %3i (%08X)' % (ant.ant_number, ant.ADCDAQ.RAMP_ERR_CTR, ant.ADCDAQ.BIT_ERR_CTR))
-        except KeyboardInterrupt:
-            pass
+#         # Clear the word and bit error counters
+#         for ant in self.ANT.values():
+#             print 'Clearing antenna', ant.ant_number
+#             ant.ADCDAQ.RAMP_ERR_CLEAR=0
+#             ant.ADCDAQ.RAMP_ERR_CLEAR=1
+#         self._logger.info('%r: Measuring the data acquisition error rate over %0.1f seconds...' % (self, test_duration))
+#         t0 = time.time();
+#         word_error = np.zeros(len(self.ANT))
+#         bit_error = np.zeros((len(self.ANT), 8))
+#         try:
+#             while time.time() - t0 <= test_duration:
+#                 for (i, ant) in self.ANT.items():
+#                     print  self.ANT[i].ADCDAQ.RAMP_ERR_CTR,
+#                     word_error[i] += ant.ADCDAQ.RAMP_ERR_CTR
+#                     for bit_number in range(8):
+#                         bit_error[i, bit_number] += ((ant.ADCDAQ.BIT_ERR_CTR >> (bit_number*4)) & 0x0F)
+#                     ant.ADCDAQ.RAMP_ERR_CLEAR = 0
+#                     ant.ADCDAQ.RAMP_ERR_CLEAR = 1
+#                     # self._logger.info('CH%i: %3i (%08X)' % (ant.ant_number, ant.ADCDAQ.RAMP_ERR_CTR, ant.ADCDAQ.BIT_ERR_CTR))
+#         except KeyboardInterrupt:
+#             pass
 
-        for (i, ant) in enumerate(self.ANT):
-            self._logger.info('%r: CH%i: %5i word errors, bit errors (7:0) = (%s)' % (self, ant.ant_number, word_error[i], ','.join('%3i' % e for e in bit_error[i,::-1])))
-        total_word_errors = np.sum(word_error)
-        self._logger.info('%r: There were %i word errors in total' % (self, total_word_errors))
-#        self.set_adc_mode(old_adc_mode)
-        return total_word_errors
+#         for (i, ant) in enumerate(self.ANT):
+#             self._logger.info('%r: CH%i: %5i word errors, bit errors (7:0) = (%s)' % (self, ant.ant_number, word_error[i], ','.join('%3i' % e for e in bit_error[i,::-1])))
+#         total_word_errors = np.sum(word_error)
+#         self._logger.info('%r: There were %i word errors in total' % (self, total_word_errors))
+# #        self.set_adc_mode(old_adc_mode)
+#         return total_word_errors
 
     def test_speed(self, n=1000, timeout=0.1):
         old_timeout = self.fpga.get_timeout()
@@ -2545,14 +2523,14 @@ class chFPGA_controller(IceBoardExtHandler):
         header_size = 16
         packet_flags_size = 4
         cb1_payload_size = header_size  + frames_per_packet * (cb1_output_words_per_bin * cb1_bins + (cb1_bins if not cb1_combine_data_flags else (cb1_bins+1)//2) + 1) * 4 + packet_flags_size
-        self._logger.info('%r: CROSSBAR1 config: frames_per_packet=%i, cb1_lanes=%s, cb1_bypass=%s, cb1_combine=%s, cb1_bins=%i, cb1_words_per_bin=%i' % (self, frames_per_packet, cb1_lanes, bool(cb1_bypass), bool(cb1_combine_data_flags), cb1_bins, cb1_output_words_per_bin ))
-        self._logger.info('%.32r: CROSSBAR1 output packets payload = %i bytes (%i words)' % (self, cb1_payload_size, (cb1_payload_size+3)//4))
+        self._logger.debug('%r: CROSSBAR1 config: frames_per_packet=%i, cb1_lanes=%s, cb1_bypass=%s, cb1_combine=%s, cb1_bins=%i, cb1_words_per_bin=%i' % (self, frames_per_packet, cb1_lanes, bool(cb1_bypass), bool(cb1_combine_data_flags), cb1_bins, cb1_output_words_per_bin ))
+        self._logger.debug('%.32r: CROSSBAR1 output packets payload = %i bytes (%i words)' % (self, cb1_payload_size, (cb1_payload_size+3)//4))
 
         # cb2_payload_size = header_size + packet_flags_size + frames_per_packet * (cb2_input_words_per_bin * cb2_bins* cb2_lanes + 1*cb2_bins*cb2_lanes/2 + cb2_lanes) * 4
 
 
 
-        self._logger.info('%r: Configuring crossbars 1 & 2 with frames_per_packet=%i, cb1_lanes=%s, cb1_bins=%i, cb2_lanes=%s, cb2_bins=%i, cb2_bypass=%s, bp_shuffle_bypass=%s' % (self, frames_per_packet, cb1_lanes, cb1_bins, cb2_lanes, cb2_bins, bool(cb2_bypass), bool(bp_shuffle_bypass)))
+        self._logger.debug('%r: Configuring crossbars 1 & 2 with frames_per_packet=%i, cb1_lanes=%s, cb1_bins=%i, cb2_lanes=%s, cb2_bins=%i, cb2_bypass=%s, bp_shuffle_bypass=%s' % (self, frames_per_packet, cb1_lanes, cb1_bins, cb2_lanes, cb2_bins, bool(cb2_bypass), bool(bp_shuffle_bypass)))
 
         # Put everything in reset
         self.set_ant_reset(1)

@@ -245,7 +245,7 @@ class MGADC08_Handler(FMCMezzanineHandler):
 
         self.sampling_frequency = sampling_frequency
         self.reference_frequency = reference_frequency
-        self.logger.info('%.32r: Initializing MGADC08 on Mezzanine %i' % (self, self.mezzanine))
+        self.logger.debug('%.32r: Initializing MGADC08 on Mezzanine %i' % (self, self.mezzanine))
         # self.logger.debug('%.32r:   - AmbTemp' % self)
         self.AmbTemp.init()
 

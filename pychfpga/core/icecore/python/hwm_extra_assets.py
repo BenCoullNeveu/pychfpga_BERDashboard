@@ -143,12 +143,12 @@ def mdns_discover(hwm=None, icecrates=None, iceboards=None, timeout=5, resolve_i
                 existing_crate = hwm.query(icecrate_class).filter_by(serial=bp_serial)
                 if existing_crate.count():  # If so, assign it to this iceboard
                     new_crate = existing_crate.one()
-                    logger.info('DNS-SD: IceCrate Model %s SN%s (class %s) is already in the hardware map. Associating IceBoard SN%s with it on slot %s.' % (bp_part_number, bp_serial, new_crate.__class__.__name__, ib_serial, bp_slot))
+                    logger.debug('DNS-SD: IceCrate Model %s SN%s (class %s) is already in the hardware map. Associating IceBoard SN%s with it on slot %s.' % (bp_part_number, bp_serial, new_crate.__class__.__name__, ib_serial, bp_slot))
                     ib.slot = bp_slot  # Add slot before adding crate
                     ib.crate = new_crate
                     hwm.flush()
                 else:  # Otherwise create a new one and assign it
-                    logger.info('DNS-SD: Creating IceCrate Model %s SN%s using class %s and associating IceBoard SN%s with it on slot %s.' % (bp_part_number, bp_serial, icecrate_class.__name__, ib_serial, bp_slot))
+                    logger.debug('DNS-SD: Creating IceCrate Model %s SN%s using class %s and associating IceBoard SN%s with it on slot %s.' % (bp_part_number, bp_serial, icecrate_class.__name__, ib_serial, bp_slot))
                     ib.slot = bp_slot # Add slot before adding crate
                     new_crate = icecrate_class(serial=bp_serial)
                     ib.crate = new_crate
@@ -164,7 +164,7 @@ def mdns_discover(hwm=None, icecrates=None, iceboards=None, timeout=5, resolve_i
                                           rrtype, rrclass, rdata, ttl, ib):
                     if errorCode == pybonjour.kDNSServiceErr_NoError:
                         ib_ip_addr = socket.inet_ntoa(rdata)
-                        logger.info("DNS-SD: IceBoard SN%s hostname %s was resolved and updated to %s" % (ib.serial, ib.hostname, ib_ip_addr))
+                        logger.debug("DNS-SD: IceBoard SN%s hostname %s was resolved and updated to %s" % (ib.serial, ib.hostname, ib_ip_addr))
                         ib.hostname = ib_ip_addr
 
                 query_sdRef = \
@@ -178,7 +178,7 @@ def mdns_discover(hwm=None, icecrates=None, iceboards=None, timeout=5, resolve_i
                     lambda fd, events: pybonjour.DNSServiceProcessResult(query_sdRef),
                     io_loop.READ)
         else:
-            logger.info("DNS-SD: IceBoard SN%s (crate %s SN%s slot %s) was detected but was not added because it did not match the IceBoard serial %s or crate serial %s" % (ib_serial, bp_part_number, bp_serial, bp_slot, iceboards, icecrates))
+            logger.debug("DNS-SD: IceBoard SN%s (crate %s SN%s slot %s) was detected but was not added because it did not match the IceBoard serial %s or crate serial %s" % (ib_serial, bp_part_number, bp_serial, bp_slot, iceboards, icecrates))
 
     def browse_callback(sdRef, flags, iface, err, service,
                         regtype, replyDomain, io_loop):
@@ -213,9 +213,9 @@ def mdns_discover(hwm=None, icecrates=None, iceboards=None, timeout=5, resolve_i
         io_loop.READ)
 
     # Go!
-    logger.info("DNS-SD: Starting mDNS discovery")
+    logger.debug("DNS-SD: Starting mDNS discovery")
     io_loop.start()
-    logger.info("DNS-SD: mDNS discovery has ended")
+    logger.debug("DNS-SD: mDNS discovery has ended")
 
     # Clean up after Bonjour
     for fd in fds:
@@ -269,7 +269,7 @@ class IceBoardPlus(IceBoard):
             hostname=hostname, handler_name=handler_name, **kwargs)
 
         self.logger = logging.getLogger(__name__)
-        self.logger.info('%r: Created instance with args %r' % (self, kwargs))
+        self.logger.debug('%r: Created instance with args %r' % (self, kwargs))
 
     def set_handler(self, handler=None, bitstream=None,
                     configure_fpga=False, force=False, tag=None):
@@ -362,18 +362,18 @@ class IceBoardPlus(IceBoard):
             if not ipmi:
                 try:
                     ipmi = self._get_mezzanine_ipmi(m)  # Read IPMI from the ARM's cache
-                    self.logger.info('%r: detect_mezzanines(): read Mezzanine %i EEPROM using the ARM' % (self, m))
+                    self.logger.debug('%r: detect_mezzanines(): read Mezzanine %i EEPROM using the ARM' % (self, m))
                 except tuber.TuberRemoteError:
                     pass
             if not ipmi: # If we still did not get an IPMI block, give up and proceed to the next mezzanine
-                self.logger.info('%r: detect_mezzanines(): Could not decode the EEPROM in Mezzanine %i' % (self, m))
+                self.logger.debug('%r: detect_mezzanines(): Could not decode the EEPROM in Mezzanine %i' % (self, m))
                 continue
 
             # Extract the useful unformation from IPMI
             part_number = ipmi.product.part_number
             serial = ipmi.product.serial_number
 
-            self.logger.info(
+            self.logger.debug(
                 '%r: detect_mezzanines(): Detected Mezzanine '
                 'Model: %s Serial %s in Mezzanine %i'
                 % (self, part_number, serial, m))
@@ -400,7 +400,7 @@ class IceBoardPlus(IceBoard):
                     "class for Mezzanine object of type '%r' "
                     "in mezzanine slot %r" % (self, part_number, m))
             elif update:
-                self.logger.info(
+                self.logger.debug(
                     '%r: detect_mezzanines(): Creating Mezzanine '
                     'Serial %s in Mezzanine %i' % (self, serial, m))
                 new_mezz = mezz_class[m](
@@ -436,7 +436,7 @@ class IceBoardPlus(IceBoard):
             part_number = ipmi.product.part_number
             serial = ipmi.product.serial_number
             slot_number = yield self.get_backplane_slot.async()
-            self.logger.info(
+            self.logger.debug(
                 '%.32r: discover_crate(): '
                 'Detected Backplane Model: %s Serial %s'
                 % (self, part_number, serial)
@@ -477,12 +477,12 @@ class IceBoardPlus(IceBoard):
                 # Check is a crate with the same serial number already exists
                 existing_crate = self.hwm.query(icecrate_class).filter_by(serial=serial)
                 if existing_crate.count():  # If so, assign it to this iceboard
-                    self.logger.info(
+                    self.logger.debug(
                         '%.32r: discover_crate(): Reusing IceCrate %s SN%s'
                         % (self, part_number, serial))
                     self.crate = existing_crate.one()
                 else:  # otherwise create a new one and assign it
-                    self.logger.info(
+                    self.logger.debug(
                         '%.32r: discover_crate(): Creating IceCrate %s SN%s'
                         % (self, part_number, serial))
                     new_crate = icecrate_class(serial=serial)
@@ -654,7 +654,7 @@ class IceBoardPlusHandler(IceBoardHandler):
             self.logger.info('%r: Done configuring FPGA' % self)
         else:
             self.logger.info(
-                '%r: FPGA is already configured. Skipping configuration' % self
+                '%.32r: FPGA is already configured. Skipping configuration' % self
                 )
 
     def get_fpga_bitstream(self, tag=None):

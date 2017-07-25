@@ -138,7 +138,7 @@ class IceCrate(hardware_map.HWMResource, handler.HandlerObject):
                 bp_serial = tr['backplane-serial']
                 slot = int(tr['backplane-slot'])
 
-                logger.info("IceBoard %s is slot %s in backplane %s" % (
+                logger.debug("IceBoard %s is slot %s in backplane %s" % (
                     mb_serial, slot, bp_serial))
 
                 # If this isn't our serial number, these aren't our boards.
@@ -159,7 +159,7 @@ class IceCrate(hardware_map.HWMResource, handler.HandlerObject):
                     # Otherwise, just don't continue.
                     return
 
-                logger.info("Discovered IceBoard serial %s in slot %s of "
+                logger.debug("Discovered IceBoard serial %s in slot %s of "
                             "backplane %s" % (mb_serial, slot, bp_serial))
 
                 ib = self.slot[slot]

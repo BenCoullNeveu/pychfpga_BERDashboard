@@ -128,7 +128,7 @@ class HandlerObject(object):
 
             # If the key exists in the handler registry, retreive it
             if handler_key in self._handler_instance_registry:
-                logger.info("%.32r: Reusing handler for handler key (%s, %s)" %
+                logger.debug("%.32r: Reusing handler for handler key (%s, %s)" %
                             (self, handler_id, handler_name))
                 self._handler = self._handler_instance_registry[handler_key]
                 return self._handler
@@ -136,7 +136,7 @@ class HandlerObject(object):
             # If not, let's create and register a new handler
             if handler_name in self._handler_class_registry:
                 handler_class = self._handler_class_registry[handler_name]
-                logger.info("%.32r: Handler key %s does not exist. Creating %s" %
+                logger.debug("%.32r: Handler key %s does not exist. Creating %s" %
                             (self, handler_id, handler_name))
                 self._handler = handler_class(parent_getter=self.self_getter())
                 type(self)._handler_instance_registry[handler_key] = self._handler
@@ -219,7 +219,7 @@ class HandlerMeta(type):
 
         # Register the handler class to the HWM object
         if base and name:
-            logger.info("%s: Registering to parent object '%s' as '%s'"
+            logger.debug("%s: Registering to parent object '%s' as '%s'"
                         % (cls.__name__, base.__name__, name))
             if '_handler_class_registry' not in base.__dict__:
                 base._handler_class_registry = {}  # Create a class-local class registry
@@ -227,7 +227,7 @@ class HandlerMeta(type):
                 base._handler_instance_registry = {}  # Create a class-local instance registry
             base._handler_class_registry[name] = cls  # Add the class
         else:
-            logger.info("%s: Was not registered" % (cls.__name__))
+            logger.debug("%s: Was not registered" % (cls.__name__))
 
 
 class HandlerParentAttribute(object):

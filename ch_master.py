@@ -6,12 +6,12 @@ Module that provide the classes used to run the top-level ChimeMaster object use
 
 from __future__ import absolute_import, division, print_function
 
-__package__ = __package__ or ''
-if __name__ == '__main__':
-    __name__ = 'ch_master'
-    is_script = True
-else:
-    is_script = False
+# __package__ = __package__ or ''
+# if __name__ == '__main__':
+#     __name__ = 'ch_master'
+#     is_script = True
+# else:
+#     is_script = False
 
 
 import argparse
@@ -131,7 +131,8 @@ def sanitize_for_json(obj):
 ARCHIVE_VERSION = "NT_2.2.0"
 
 import pychfpga.fpga_array
- 
+
+print(sys.argv)
 print(__package__)
 print(__name__)
 print(pychfpga.fpga_array.__package__)
@@ -1213,7 +1214,7 @@ def parse_cmdline_args(argv):
     parser.add_argument('-n', '--host', default='localhost', type=str, help="server hostname")
     return parser.parse_args(argv)
 
-if is_script:
+if __name__ == '__main__':
 
     # Create our own IOLoop so we don't interfere with ipython's own ioloop.
     ioloop = IOLoop()
