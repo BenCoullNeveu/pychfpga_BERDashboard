@@ -124,9 +124,8 @@ We will use pybonjour, which requires avahi system libraries::
 Now, install python packages::
 
     pip install ipython
-    pip install numpy sqlalchemy pyyaml tornado lxml h5py
+    pip install numpy matplotlib sqlalchemy pyyaml tornado lxml h5py
     pip install nose docutils futures requests netifaces
-    pip install matplotlib
     pip install -e git+https://github.com/Eichhoernchen/pybonjour.git#egg=pybonjour
 
 
