@@ -24,7 +24,7 @@ import datetime
 
 
 from rest import AsyncRESTServer, endpoint, AsyncRESTClient, coroutine, coroutine_return, IOLoop, RunSyncWrapper
-from pychfpga import NameSpace
+from pychfpga import NameSpace, Metrics
 
 
 #Should be in gain.py or something.
@@ -474,7 +474,7 @@ class RawAcqReceiver(object):
         self.all_ts = []
         self.hdf5_file = None
         self.capture_start = False
-
+        self.rms = {}
         # Determine the interface from which data will be coming from each source by pinging them
         src_if_addrs = {tuple(src):self._ping(tuple(src)) for port_info in self.ports for src in port_info['sources']} # can be parallelized
         for (src_ip, src_port), src_if_addr in src_if_addrs.items():
@@ -521,8 +521,8 @@ class RawAcqReceiver(object):
             self.server_threads.append(thread)
             self.log.info('UDP Receiver thread %s[port id=%s] started on %s:%i' % (self.name, port, actual_receiver_ip[port], actual_receiver_port[port]))
 
-        self.all_data = np.zeros((len(self.ports), 16, 2048), dtype=np.int8)  # pre-allocate data (channels x bins) for all ports,  for a single timestamp
-        self.all_ts = np.zeros((len(self.ports), 16), dtype=np.int32) # pre-allocate timestamps storage for the current data for all ports (should all be the same)
+        self.all_data = np.zeros((len(self.ports), self.N_CHANNELS, 2048), dtype=np.int8)  # pre-allocate data (channels x bins) for all ports,  for a single timestamp
+        self.all_ts = np.zeros((len(self.ports), self.N_CHANNELS), dtype=np.int32) # pre-allocate timestamps storage for the current data for all ports (should all be the same)
 
         self.gain_estimator = GainEstimator(self.get_data, len(self.ports))
 
@@ -627,36 +627,54 @@ class RawAcqReceiver(object):
 
         while self.run:
             for j, out_q in enumerate(self.data_queues):
-                if not out_q.empty():
-                    (timestamp, port, chan, stream_id, flags, adc_data) = out_q.get()
+                if out_q.empty():
+                    continue
 
-                    # Write data to HDF file
-                    if self.hdf5_run:
-                        self.hdf5_file.write(timestamp, port, chan, stream_id, flags, adc_data)
-                        self.n_elements += 1
-                        if self.n_elements >= self.elements_per_file:
-                            self.hdf5_file_number += 1
-                            self.hdf5_file = self.start_new_hdf5_file()
-                    elif self.hdf5_file: # if we are no lunget capturing to bile, but a file is open, then close it.
-                        self.hdf5_file.close()
-                        self.hdf5_file = None # This will tell us we are finished capturing
+                # get the packet from the queue
+                (timestamp, port, chan, stream_id, flags, adc_data) = out_q.get()
+                stream_id &= 0xFFF
+                chan_number = stream_id & 0xF
+                slot_number = (stream_id >> 4) & 0xF
+                crate_number = (stream_id >> 8) & 0xF
 
-
-                    # Capture a full timestamp set if self_capture = True
-                    if self.capture_start:
-                        self.all_ts[j][chan] = timestamp
-                        self.all_data[j][chan, :] = adc_data
-                        if (timestamp == self.old_timestamp):
-                            self.n_ant_rec += 1
-                        else:
-                            self.old_timestamp = timestamp
-                            self.n_ant_rec = 1
-                        if self.n_ant_rec >= self.N_CHANNELS - 1:
-                            self.n_ant_rec = 0
-                            self.old_timestamp = None
-                            self.capture_start = False
+                # Write data to HDF file
+                if self.hdf5_run:
+                    self.hdf5_file.write(timestamp, port, chan, stream_id, flags, adc_data)
+                    self.n_elements += 1
+                    if self.n_elements >= self.elements_per_file:
+                        self.hdf5_file_number += 1
+                        self.hdf5_file = self.start_new_hdf5_file()
+                elif self.hdf5_file: # if we are no lunget capturing to bile, but a file is open, then close it.
+                    self.hdf5_file.close()
+                    self.hdf5_file = None # This will tell us we are finished capturing
 
 
+                # if timestamp not in self.buffers:
+                #     self.buffers.pop()  # remove last element
+                #     self.buffers.insert(0, timestamp) # insert as first element
+                # buf = self.buffers.index(timestamp)
+
+                # self.current_ts[buf][j][chan] = timestamp
+                # self.current_data[buf][j][chan, :] = adc_data
+                # self.current_crate[j][chan] = crate_number
+                # self.current_slot[j][chan] = slot_number
+
+                # Capture a full timestamp set if self_capture = True
+                if self.capture_start:
+                    self.all_ts[j][chan] = timestamp
+                    self.all_data[j][chan, :] = adc_data
+                    if (timestamp == self.old_timestamp):
+                        self.n_ant_rec += 1
+                    else:
+                        self.old_timestamp = timestamp
+                        self.n_ant_rec = 1
+                    if self.n_ant_rec >= self.N_CHANNELS - 1:
+                        self.n_ant_rec = 0
+                        self.old_timestamp = None
+                        self.capture_start = False
+
+                # Store some stats
+                self.rms[(crate_number, slot_number, chan)] = np.std(adc_data)
 
     def startHdf5Disk(self, base_dir, base_filename, capture_duration=60, elements_per_file=2048*64):
         if self.hdf5_file:
@@ -759,6 +777,15 @@ class RawAcqReceiver(object):
     def is_running(self):
         return bool(self.receivers)
 
+    @coroutine
+    def get_metrics(self):
+        metrics = Metrics()
+        for (crate, slot, chan), rms in self.rms.items():
+            metrics.add('raw_acq_rms', value= rms, crate=crate, slot=slot, chan=chan, type='gauge')
+        return metrics
+
+
+
 ################################################
 # RawAcq REST Server
 ################################################
@@ -830,6 +857,15 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
             coroutine_return(gains=gains)
         else:
             raise RuntimeError('Gain estimator is not created (most probably because the server is not started)')
+
+    @coroutine
+    @endpoint('get-monitoring-data')
+    def get_monitoring_data(self, handler):
+        self.log.info('%.32r: Received monitoring metrics request' % self)
+        metrics = yield self.receiver.get_metrics()
+        handler.set_header('Content-Type', 'text/plain')
+        handler.write(str(metrics))
+
 
 ################################################
 # RawAcq REST Client
