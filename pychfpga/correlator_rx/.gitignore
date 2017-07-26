@@ -2,3 +2,7 @@ correlator_rx.sublime-project
 correlator_rx.sublime-workspace
 build/
 iceboard_receiver.c
+correlator_rx.sublime-project
+correlator_rx.sublime-workspace
+build/
+iceboard_receiver_win.c
