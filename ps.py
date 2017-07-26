@@ -57,11 +57,14 @@ class PowerSupplyAsyncRESTServer(AsyncRESTServer):
         self.log.info('%.32r: Received monitoring metrics request' % self)
         metrics = Metrics()
         for ps_name, ps in self.power_supplies.items():
-            status = NameSpace(ps.status())
-            metrics.add('fpga_power_supply_voltage', name=ps_name, value=status.voltage, type='gauge')
-            metrics.add('fpga_power_supply_current', name=ps_name, value=status.current, type='gauge')
-            metrics.add('fpga_power_supply_power', name=ps_name, value=status.power, type='gauge')
-            metrics.add('fpga_power_supply_status', name=ps_name, value=int(status.status == 'OK'), type='gauge')
+            try:
+                status = NameSpace(ps.status())
+                metrics.add('fpga_power_supply_voltage', name=ps_name, value=status.voltage, type='gauge')
+                metrics.add('fpga_power_supply_current', name=ps_name, value=status.current, type='gauge')
+                metrics.add('fpga_power_supply_power', name=ps_name, value=status.power, type='gauge')
+                metrics.add('fpga_power_supply_status', name=ps_name, value=int(status.status == 'OK'), type='gauge')
+            except:
+                pass
         coroutine_return(metrics)
 
     def _set_is_ready_later(self, name):
@@ -439,6 +442,7 @@ if __name__ == '__main__':
 
     # Setup logging
     #log.setup_logger(__name__, stderr_log_level='warning', syslog_level='debug')
+    logging.getLogger().setLevel('INFO')
 
     args = parse_cmdline_args(sys.argv[1:])
     port = args.port
