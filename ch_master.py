@@ -130,13 +130,13 @@ def sanitize_for_json(obj):
 # these data do not have the time-transpose completed.
 ARCHIVE_VERSION = "NT_2.2.0"
 
-import pychfpga.fpga_array
+# import pychfpga.fpga_array
 
-print(sys.argv)
-print(__package__)
-print(__name__)
-print(pychfpga.fpga_array.__package__)
-print(pychfpga.fpga_array.__name__)
+# print(sys.argv)
+# print(__package__)
+# print(__name__)
+# print(pychfpga.fpga_array.__package__)
+# print(pychfpga.fpga_array.__name__)
 
 # # Full path to this file.
 # PROGRAM = os.path.realpath(__file__)
@@ -177,7 +177,7 @@ class ChimeMaster(object):
             'stderr': {'class': 'logging.StreamHandler', 'level': 'INFO'}
             },
         'loggers': {
-            __package__: {'handlers': ['stderr']}
+            '': {'handlers': ['stderr']}  # root logger
 
             }
         }
@@ -602,7 +602,11 @@ class ChimeMaster(object):
 
         log_filename = os.path.join(self.acq_base_dir, "ch_master.log")
 
-        log.setup_logging(conf.logging.dict_config, conf.logging.log_levels, path=self.acq_base_dir) # path will be inserted in filename strings containing "%(path)"
+        self.logging_handlers = log.setup_logging(conf.logging.dict_config, conf.logging.log_levels,
+            base_package_name=conf.logging.base_package_name,
+            actual_package_name = __name__.rpartition('.')[0], # full package path up to ch_acq (note: __package__ exists but is not consistently defined)
+            script_name=conf.logging.script_name,
+            path=self.acq_base_dir) # path will be inserted in filename strings containing "%(path)"
 
 
         # Now that the housekeeping is done, let's start the real work
@@ -918,7 +922,7 @@ class ChimeMaster(object):
             self.iceboard_cb.stop()
             if self.chrx:
                 yield self.stop_chrx_clients()
-            log.stop_logging(self.config.logging)
+            log.stop_logging(self.logging_handlers) # remove the handlers that were created by setup_logging()
             reap_cached_sockets()
             self.state = 'off'
         coroutine_return({})
@@ -1102,10 +1106,10 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
     @endpoint('get-monitoring-data')
     def get_monitoring_data(self, handler):
         metrics = Metrics()
-        try:
-            metrics.add((yield self.chime_master.get_power_supply_metrics()))
-        except:
-            pass
+        # try:
+        #     metrics.add((yield self.chime_master.get_power_supply_metrics()))
+        # except:
+        #     pass
 
         if self.chime_master.fpgas:
             try:

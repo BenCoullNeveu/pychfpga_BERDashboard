@@ -1,5 +1,6 @@
 """ Logging support functions
 """
+import os
 import logging
 import collections
 
@@ -57,7 +58,7 @@ class NameSpace(object):
     def iteritems(self):
 	for (k,v) in self._obj.iteritems():
             yield (k, self._to_namespace(v))
-            
+
     def itervalues(self):
         for v in self._obj.itervalues():
             yield self._to_namespace(v)
@@ -162,14 +163,63 @@ def get_parent_logger(module_name):
 #                         log_filename=log_filename)
 
 
-def setup_logging(dict_config={}, log_levels={}, **kwargs):
-    """
+def setup_logging(dict_config={}, log_levels={}, base_package_name=None, script_name=None, actual_package_name=None, **kwargs):
     """
 
+    Parameters:
 
+        base_package_name (str): name of the package that contains all the loggers in the config file.
+
+        actual_package_name (str): Actual name of the packages that correspond to the base package name, as
+            returned by __package__. This will be used to adjust the full logger names to account for the
+            package name. This is typically __name__.rpartition('.')[0], as __package__ is not set consistently.
+
+        script_name (str): names of the module that is executed as a script, if any. If a logger with that name exists, a
+            copy of that logger will be added under the name "__main__" (because when modules are
+            executed as scripts, ``__name___ = "__main__"``).
+
+
+
+    Logger names:
+        ch_acq
+        ch_acq.ch_master
+        ch_acq.pychfpga.fpga_array
+
+    We want to logging to be set-up properly for this package whether the module is used as a script
+    or is imported as part of another parent package. It is assumed that loggers are created with
+    the name  provided by ``__name__``. However, ``__name__`` changes depending on how it is loaded.
+    Taking ch_master module as an example, ``__name__`` take the following values:
+
+       __main__ if ch_master is launched as a script
+       ch_master if loaded from ch_acq
+       ch_acq.ch_master if loaded with from ch_acq import ch_master
+       app_pkg.ch_acq.ch_master if nested more deeply
+
+    For this reason, logger names need to be modufied by doing the following modifications:
+    logger names modifications:
+        - strip the package prefix used in the config
+        - create __main__ logger as a copy of the base module, in case the base module is executed as a script
+        - prepend all the logger names with the actual package path
+
+    To do so, we need the following information:
+        - base package used in the config ('ch_acq' or extracted from __file__)
+        - name of module called as script
+        - actual package prefix (__package__= 'app_pkg.ch_acq', __name__ = 'app_pkg.ch_acq.ch_master')
+
+    This can be provided by two information:
+        - base_package_name = 'ch_acq' (constant). Base package. Could be taken from the config file.
+        - module_name = __package__ (__main__ if run as script, ch_master if from the package, ch_acq or my_pkg.ch_acq if imported from a parent
+        - script_name = 'ch_master' (constant). Could be taken from the config file.
+
+
+
+    """
+
+    print 'setting up logger with', base_package_name, actual_package_name, script_name
     dict_config = NameSpace(dict_config)
     log_levels = NameSpace(log_levels or {})
 
+    # Add the version number if non-existent
     if 'version' not in dict_config:
         dict_config.version = 1
 
@@ -186,23 +236,70 @@ def setup_logging(dict_config={}, log_levels={}, **kwargs):
         filename = handler_config.get('filename', None)
         if isinstance(filename, str) and '%(' in filename:
             handler_config.filename = filename % kwargs
+
+    # fix the case of the logging levels to uppercase
     for logger_name, logger_config in dict_config.loggers.items():
         if 'level' in logger_config and isinstance(logger_config.level, basestring):
             logger_config.level = logger_config.level.upper()
 
 
-    #print dict_config
+    # Add a logger named __main__ in case the module is run as as script
+    if script_name in dict_config.loggers:
+        prefix, sep, name = script_name.rpartition('.')
+        new_logger_name = prefix + sep + '__main__'
+        dict_config.loggers[new_logger_name] = dict_config.loggers[script_name]
+
+    # fix the logger names for the current package
+    new_loggers = {}
+    for logger_name, logger_config in dict_config.loggers.items():
+
+        new_logger_name = logger_name
+
+        # Remove the base package prefix
+        if base_package_name:
+            if logger_name == base_package_name:
+                new_logger_name = ''
+            elif logger_name.startswith(base_package_name + '.'):
+                new_logger_name = logger_name[(len(base_package_name) + 1): ]
+
+        # prepend actual package path
+        if actual_package_name:
+            new_logger_name = actual_package_name + (('.' + new_logger_name) if new_logger_name else '')
+
+        new_loggers[new_logger_name] = logger_config
+
+    dict_config.loggers = new_loggers
+
+    print 'new loggers=', new_loggers
+
+    # register the existing handlers for each logger
+    old_handlers = {}
+    for logger_name in dict_config.loggers:
+        old_handlers[logger_name] = logging.getLogger(logger_name).handlers
+
+
+
+
     logging.config.dictConfig(dict_config)
 
-def stop_logging(dict_config):
+    new_handlers = {}
+    for logger_name in dict_config.loggers:
+        new_handlers[logger_name] = [handler for handler in logging.getLogger(logger_name).handlers if handler not in old_handlers[logger_name]]
+
+    return new_handlers
+
+def stop_logging(new_handlers):
     """
-    Delete all handles for the loggers defined in the loging config.
+    Delete the specified handlers for the loggers defined in new_handlers.
+
+
     """
 
-    dict_config = NameSpace(dict_config)
-    for logger_name in dict_config.loggers:
+    for logger_name, handlers in new_handlers.items():
         logger = logging.getLogger(logger_name)
-        logger.handlers = []  # clear all existing handlers for that logger
+        for handler in handlers:
+            if handler in logger.handlers:
+                logger.handlers.delete(handler)  # remove the handlers that were added for that logger
 
 
 # def setup_logger(logger,

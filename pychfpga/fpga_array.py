@@ -658,7 +658,7 @@ class FPGAArray(object):
         # Completed
         #################################
 
-        self.logger.info('Done creating %r' % self)
+        self.logger.info('%.32r: Done creating %r' % (self, self))
 
     @staticmethod
     def _to_integer(x):
