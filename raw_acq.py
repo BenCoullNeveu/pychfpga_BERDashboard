@@ -627,11 +627,14 @@ class RawAcqReceiver(object):
 
         while self.run:
             for j, out_q in enumerate(self.data_queues):
-                if out_q.empty():
-                    continue
+                # if out_q.empty():
+                    # continue
 
                 # get the packet from the queue
-                (timestamp, port, chan, stream_id, flags, adc_data) = out_q.get()
+                try:
+                    (timestamp, port, chan, stream_id, flags, adc_data) = out_q.get(timeout=0.1)
+                except queue.Empty:
+                    continue
                 stream_id &= 0xFFF
                 chan_number = stream_id & 0xF
                 slot_number = (stream_id >> 4) & 0xF
