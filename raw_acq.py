@@ -226,9 +226,9 @@ class RawAcqUDPReceiver(SocketServer.ThreadingUDPServer):
             #print("0x%03x"% stream_id,end='')
             try:
                 self.server.data_queue.put((timestamp, port, chan, stream_id, flags, adc_data))
-                print(".",end='')
+                print(".", end='')
             except Queue.Full:
-                print("o",end='')
+                print("o", end='')
                 self.server.queue_overflows += 1
                 pass
     def __init__(self, server_address, data_queue):
@@ -403,13 +403,13 @@ class RawAcqReceiver(object):
         self.name = None
         self.datawriter = None
         self.receivers = []
-        self.data_queues = []
+        self.data_queue = None
         self.gain_estimator = None
 
     def __repr__(self):
         return '%s(%s)' % (self.__class__.__name__, self.name)
 
-    def start(self, name='RawAcq', ports=[41101]):
+    def start(self, name='RawAcq', ports=[]):
         """ Start a raw data receiver for each specified port.
 
         For each re port we monitor, create a data queue and atart a multithreaded UDP receiver that
@@ -466,15 +466,16 @@ class RawAcqReceiver(object):
         self.name = name
         self.listen_to_all_ports = True
         self.ports = ports
-        self.data_queues = []
+        self.data_queue = None
         self.receivers = []
         self.server_threads = []
         self.N_CHANNELS = 16
-        self.all_data = []
-        self.all_ts = []
+        self.all_data = {}
+        self.all_ts = {}
         self.hdf5_file = None
         self.capture_start = False
         self.rms = {}
+
         # Determine the interface from which data will be coming from each source by pinging them
         src_if_addrs = {tuple(src):self._ping(tuple(src)) for port_info in self.ports for src in port_info['sources']} # can be parallelized
         for (src_ip, src_port), src_if_addr in src_if_addrs.items():
@@ -506,11 +507,11 @@ class RawAcqReceiver(object):
         # Create the data receivers
         actual_receiver_ip = {}
         actual_receiver_port = {}
+        self.data_queue.Queue(self.QUEUE_MAXSIZE)
         for port in receiver_port.keys():
             addr = (receiver_ip[port], receiver_port[port])
-            self.data_queues.append(Queue(self.QUEUE_MAXSIZE))
             self.log.info('%.32r: Creating RawAcqUDPreceiver receiver for port %s on (%s:%s)' % (self, port, addr[0], addr[1]))
-            receiver = RawAcqUDPReceiver(addr, self.data_queues[-1])
+            receiver = RawAcqUDPReceiver(addr, self.data_queue)
             actual_receiver_ip[port], actual_receiver_port[port] = receiver.socket.getsockname()
             if actual_receiver_ip[port] != receiver_ip[port]: # just checking, should not happen
                 raise RuntimeError('The receiver for port %s was not created on the correct interface (%s instead of %s)' % (port, actual_receiver_ip[port], receiver_ip[port]))
@@ -521,8 +522,8 @@ class RawAcqReceiver(object):
             self.server_threads.append(thread)
             self.log.info('UDP Receiver thread %s[port id=%s] started on %s:%i' % (self.name, port, actual_receiver_ip[port], actual_receiver_port[port]))
 
-        self.all_data = np.zeros((len(self.ports), self.N_CHANNELS, 2048), dtype=np.int8)  # pre-allocate data (channels x bins) for all ports,  for a single timestamp
-        self.all_ts = np.zeros((len(self.ports), self.N_CHANNELS), dtype=np.int32) # pre-allocate timestamps storage for the current data for all ports (should all be the same)
+            self.all_data[receiver_port[port]] = np.zeros((self.N_CHANNELS, 2048), dtype=np.int8)  # pre-allocate data (channels x bins) for all ports,  for a single timestamp
+            self.all_ts[receiver_port[port]] = np.zeros((self.N_CHANNELS), dtype=np.int32) # pre-allocate timestamps storage for the current data for all ports (should all be the same)
 
         self.gain_estimator = GainEstimator(self.get_data, len(self.ports))
 
@@ -614,10 +615,7 @@ class RawAcqReceiver(object):
             receiver.server_close()
             receiver.socket.close()  # free the socket so we can restart the receiver later
             print("shutdown servers")
-        while self.data_queues:
-            data_queue = self.data_queues.pop()
-            if not data_queue.empty():
-                data_queue.queue.clear()
+            self.data_queue.clear()
         self.gain_estimator = None
 
 
@@ -626,14 +624,14 @@ class RawAcqReceiver(object):
         self.n_ant_rec = 0
 
         while self.run:
-            for j, out_q in enumerate(self.data_queues):
+            # for j, out_q in enumerate(self.data_queues):
                 # if out_q.empty():
                     # continue
 
                 # get the packet from the queue
                 try:
-                    (timestamp, port, chan, stream_id, flags, adc_data) = out_q.get(timeout=0.1)
-                except queue.Empty:
+                    (timestamp, port, chan, stream_id, flags, adc_data) = self.data_queue.get(timeout=0.1)
+                except Queue.Empty:
                     continue
                 stream_id &= 0xFFF
                 chan_number = stream_id & 0xF
@@ -664,8 +662,8 @@ class RawAcqReceiver(object):
 
                 # Capture a full timestamp set if self_capture = True
                 if self.capture_start:
-                    self.all_ts[j][chan] = timestamp
-                    self.all_data[j][chan, :] = adc_data
+                    self.all_ts[port][chan] = timestamp
+                    self.all_data[port][chan, :] = adc_data
                     if (timestamp == self.old_timestamp):
                         self.n_ant_rec += 1
                     else:
