@@ -42,6 +42,7 @@ class GainCalc(object):
         else:
            self.g = None
 
+
     def update(self, signal):
         self.signal = np.array(signal)
         mask = np.ma.make_mask_none((len(signal),))
