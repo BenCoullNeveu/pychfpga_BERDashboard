@@ -12,7 +12,7 @@ import time
 
 import netifaces  # non-standard Python library (pip install netifaces)
 
-from Queue import Queue
+import Queue
 import SocketServer
 import threading
 # import logging
@@ -226,12 +226,12 @@ class RawAcqUDPReceiver(SocketServer.ThreadingUDPServer):
             #print( "Data received on port {0}, channel#{1}, std(data)={2}".format(port, chan, adc_data.std()) )
             #print("0x%03x"% stream_id,end='')
             try:
-                self.server.data_queue.put((timestamp, port, chan, stream_id, flags, adc_data))
-                print(".", end='')
+                self.server.data_queue.put((timestamp, port, chan, stream_id, flags, adc_data),True, 0.01)
+                #print(".", end='')
             except Queue.Full:
-                print("o", end='')
+                #print("o", end='')
                 self.server.queue_overflows += 1
-                pass
+ 
     def __init__(self, server_address, data_queue):
         self.data_queue = data_queue
         self.queue_overflows = 0
@@ -508,7 +508,7 @@ class RawAcqReceiver(object):
         # Create the data receivers
         actual_receiver_ip = {}
         actual_receiver_port = {}
-        self.data_queue.Queue(self.QUEUE_MAXSIZE)
+        self.data_queue = Queue.Queue(self.QUEUE_MAXSIZE)
         for port in receiver_port.keys():
             addr = (receiver_ip[port], receiver_port[port])
             self.log.info('%.32r: Creating RawAcqUDPreceiver receiver for port %s on (%s:%s)' % (self, port, addr[0], addr[1]))
