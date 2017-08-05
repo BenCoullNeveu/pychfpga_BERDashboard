@@ -134,10 +134,10 @@ class ADC_PLL_base(object):
         for (varname, value) in args.items():
             if varname in locals():
                 if verbose:
-                    self.logger.info('%.32r: Setting %s = %i' % (self.adc_board, varname, value))
+                    self.logger.debug('%.32r: Setting %s = %i' % (self.adc_board, varname, value))
                 exec('%s=%i' % (varname, value))
             else:
-                self.logger.info('%.32r: "%s" is not a PLL variable' % (self.adc_board, varname))
+                self.logger.debug('%.32r: "%s" is not a PLL variable' % (self.adc_board, varname))
 
         PLL_reg5 = np.uint32((LD_pin_mode << 22) + (0x3 << 19) + 5)
         PLL_reg4 = np.uint32((FB_select << 23) + (RF_div << 20) + (band_sel_div << 12) + (vco_power_down << 11) + (mute_until_lock_detect << 10) + (AUX_sel << 9) + (AUX_enable << 8) + (AUX_power << 6) + (RF_enable << 5) + (RF_power << 3)+4)
@@ -159,7 +159,7 @@ class ADC_PLL_base(object):
 
             time.sleep(0.050)
             if self.is_locked():
-                self.logger.info('%.32r: ADC PLL is locked in trial #%i' % (self.adc_board, trial + 1))
+                self.logger.debug('%.32r: ADC PLL is locked in trial #%i' % (self.adc_board, trial + 1))
                 break
             elif trial > 5:
                 raise RuntimeError('ADC PLL cannot be locked')

@@ -980,7 +980,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         self.chime_master = ChimeMasterClass()
         super(ChimeMasterAsyncRESTServer, self).__init__(port=port)
 
-        self.add_periodic_callback(self.print_iceboard_info_callback, period=60000)
+        #self.add_periodic_callback(self.print_iceboard_info_callback, period=60000)
 
     @coroutine
     def shutdown(self):
