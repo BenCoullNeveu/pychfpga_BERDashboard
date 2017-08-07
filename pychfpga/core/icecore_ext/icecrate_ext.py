@@ -429,19 +429,19 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
 
         self._i2c = MasterIceboardObject(self, 'i2c')  # Indirect reference to the master Iceboard's I2C object
 
-        self._logger.info('%.32r: Instantiating Backplane I2C resource managers' % self)
+        self._logger.debug('%.32r: Instantiating Backplane I2C resource managers' % self)
         self._eeprom_data = EEPROM(self._i2c, bus_name='BP', address=self.BACKPLANE_EEPROM_DATA_ADDRESS, address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH, write_page_size = self.BACKPLANE_EEPROM_PAGE_SIZE)
         self._eeprom_serial = EEPROM(self._i2c, bus_name='BP', address=self.BACKPLANE_EEPROM_SERIAL_ADDRESS, address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH, write_page_size = self.BACKPLANE_EEPROM_PAGE_SIZE)
         self._qsfp_eeprom = EEPROM(self._i2c, bus_name='BP', address=self.BACKPLANE_QSFP_ADDRESS, address_width=self.BACKPLANE_QSFP_ADDRESS_WIDTH)
 
-        self._logger.info('%.32r: Instantiating Backplane I2C temperature sensors' % self)
+        self._logger.debug('%.32r: Instantiating Backplane I2C temperature sensors' % self)
         self._tmp_slot1 = tmp421.tmp421(self._i2c, self._TMP_SLOT1_ADDR, 'BP')
         self._tmp_slot16 = tmp421.tmp421(self._i2c, self._TMP_SLOT16_ADDR, 'BP')
 
-        self._logger.info('%.32r: Instantiating Backplane I2C current/power monitor' % self)
+        self._logger.debug('%.32r: Instantiating Backplane I2C current/power monitor' % self)
         self._power_3v3 = ina230.ina230(self._i2c, self._POWER_3V3_ADDR, 'BP')
 
-        self._logger.info('%.32r: Instantiating Backplane I2C I/O expanders' % self)
+        self._logger.debug('%.32r: Instantiating Backplane I2C I/O expanders' % self)
         self._qsfp_ctrla = pca9698.pca9698(self._i2c, self._QSFP_CTRL_SETA_ADDR, 'BP')
         self._qsfp_ctrlb = pca9698.pca9698(self._i2c, self._QSFP_CTRL_SETB_ADDR, 'BP')
         self._reset_ctrl = pca9698.pca9698(self._i2c, self._RESETS_CTRL_ADDR, 'BP')
@@ -993,11 +993,11 @@ class IceCrate_MGK7BP1_Handler(IceCrateExtHandler):
         # self._iceboard_hw = iceboard.hw
         # self._iceboard = iceboard
 
-        self._logger.info(' Instantiating Backplane I2C resource managers')
+        self._logger.debug(' Instantiating Backplane I2C resource managers')
         self._eeprom_data = EEPROM(self._i2c, bus_name='BP', address=self.BACKPLANE_EEPROM_DATA_ADDRESS, address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH, write_page_size = self.BACKPLANE_EEPROM_PAGE_SIZE)
         self._eeprom_serial = EEPROM(self._i2c, bus_name='BP', address=self.BACKPLANE_EEPROM_SERIAL_ADDRESS, address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH, write_page_size = self.BACKPLANE_EEPROM_PAGE_SIZE)
 
-        self._logger.info(' Instantiating Backplane I2C I/O expanders')
+        self._logger.debug(' Instantiating Backplane I2C I/O expanders')
         self._gpio_ctrl = pca9575.pca9575(self._i2c, self._GPIO_CTRL_ADDR, 'BP')
 
         self._GPIO_CTRL_MAP = {

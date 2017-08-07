@@ -256,7 +256,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         # link by reading the UDP MMI cookie (not the SPI one) and check if
         # the cookie correspond to the chFPGA firmware.
         # -------------------------------------------------------------------------
-        self.logger.info("%.32r: Attempting to communicate with the FPGA over direct Ethernet link" % self)
+        self.logger.debug("%.32r: Attempting to communicate with the FPGA over direct Ethernet link" % self)
         try:
             cookie = self.get_fpga_firmware_cookie(resync=True)  # Read the firmware version cookie from the GPIO subsystem (this is provided by the FPGA core firmware which is always present on all versions of the FPGA)
         except IOError as e:
@@ -271,7 +271,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
             self.close()
             raise RuntimeError(error_message)
 
-        self.logger.info("%.32r: Established a UDP/Ethernet connection with the FPGA" % self)
+        self.logger.debug("%.32r: Established a UDP/Ethernet connection with the FPGA" % self)
 
         # -------------------------------------------------------------------------
         # Open FPGA's I2C interfaces
@@ -314,7 +314,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
 
     def open(self, udp_retries=10):
 
-        self.logger.info('%.32r: open() is called' % (self))
+        self.logger.debug('%.32r: open() is called' % (self))
         self.open_core(udp_retries=udp_retries)
 
         self.hw.init()
@@ -539,7 +539,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         else:
             mac_addr_int = sum(int(s, 16) << (8 * i) for i, s in enumerate(reversed(mac_addr.split(':'))))
 
-        self.logger.info('%.32r: setting data target address to ip=%r(%r), port=%r(%r), mac=%r(%r)' % (self, ip_addr, ip_addr_int, port, port, mac_addr, mac_addr_int))
+        self.logger.debug('%.32r: setting data target address to ip=%r(%r), port=%r(%r), mac=%r(%r)' % (self, ip_addr, ip_addr_int, port, port, mac_addr, mac_addr_int))
         # Set the UDP transmit channel 1 IP and MAC addresses
         self.core_gpio.TARGET_MAC_ADDR = mac_addr_int
         self.core_gpio.TARGET_IP_ADDR = ip_addr_int
@@ -807,7 +807,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         """
         if datetime_ is None:
             dt = self._get_irigb_time(trig=True, format='datetime')
-            self.logger.info('%.32r: Current IRIGB time is %s' % (self, dt.isoformat()))
+            self.logger.debug('%.32r: Current IRIGB time is %s' % (self, dt.isoformat()))
             if delay is None:
                 delay = 3
         else:
@@ -818,7 +818,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         nano_delay = int(delay * 1e9) % 1000  # Get submicrosecond delay in nanosecond units
         delay = int(delay * 1e6)/1e6  # Round delay to the microsecond
         dt += timedelta(0, delay)
-        self.logger.info('%.32r: Setting IRIGB target time to %s + %3i ns' % (self, dt.isoformat(), nano_delay))
+        self.logger.debug('%.32r: Setting IRIGB target time to %s + %3i ns' % (self, dt.isoformat(), nano_delay))
         if self.zero_target_irigb_year_and_day:
             y = 0
             d = 0
@@ -830,7 +830,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         s = dt.second
         ss = dt.microsecond * 100 + int(nano_delay/10)
 
-        self.logger.info('%.32r: Setting IRIGB target time with y=%i, d=%i, h=%i, m=%i, s=%i, ss=%i' % (self, y, d, h, m, s, ss))
+        self.logger.debug('%.32r: Setting IRIGB target time with y=%i, d=%i, h=%i, m=%i, s=%i, ss=%i' % (self, y, d, h, m, s, ss))
 
         t0 = (y << 0)
         t1 = (d << 20) | (h << 14) | (m << 7) | (s << 0)
@@ -1103,11 +1103,11 @@ class IceBoardHardware(object):
         self._logger.debug('%.32r: Initializing Iceboard hardware' % iceboard)
         self._iceboard = iceboard
         self._i2c = self._iceboard.i2c
-        self._logger.info('%.32r: Instantiating Motherboard EEPROM managers' % self._iceboard)
+        self._logger.debug('%.32r: Instantiating Motherboard EEPROM managers' % self._iceboard)
         self._motherboard_eeprom_data = eeprom.eeprom(self._i2c, self._MOTHERBOARD_EEPROM_DATA_ADDR, 'GPIO', self._MOTHERBOARD_EEPROM_ADDR_WIDTH, self._MOTHERBOARD_EEPROM_PAGE_SIZE)
         self._motherboard_eeprom_serial = eeprom.eeprom(self._i2c, self._MOTHERBOARD_EEPROM_SERIAL_ADDR, 'GPIO', self._MOTHERBOARD_EEPROM_ADDR_WIDTH, self._MOTHERBOARD_EEPROM_PAGE_SIZE)
 
-        self._logger.info('%.32r:  Instantiating FMC EEPROM managers' % self._iceboard)
+        self._logger.debug('%.32r:  Instantiating FMC EEPROM managers' % self._iceboard)
 
         # We check if the EEPROM has multiple pages, and if so, we *assume* that
         # the EEPROM is a large (non-FMC compliant) EEPROM with 2-byte addresses.
@@ -1120,13 +1120,13 @@ class IceBoardHardware(object):
         # if there has another I2C device at the address following the EEPROM
         # address.
         if self._i2c.is_present(self._FMC_EEPROM_ADDR+1, bus_name='FMCA'):
-            self._logger.info('%.32r: Detected multipage EEPROM on FMCA. Assuming >16-bit addressing.' % self._iceboard)
+            self._logger.debug('%.32r: Detected multipage EEPROM on FMCA. Assuming >16-bit addressing.' % self._iceboard)
             self._fmca_eeprom = eeprom.eeprom(self._i2c, self._FMC_EEPROM_ADDR, 'FMCA', self._MCGILL_FMC_EEPROM_ADDR_WIDTH, self._MCGILL_FMC_EEPROM_PAGE_SIZE)
         else:
             self._fmca_eeprom = eeprom.eeprom(self._i2c, self._FMC_EEPROM_ADDR, 'FMCA', self._FMC_EEPROM_ADDR_WIDTH, self._FMC_EEPROM_PAGE_SIZE)
 
         if self._i2c.is_present(self._FMC_EEPROM_ADDR+1, bus_name='FMCB'):
-            self._logger.info('%.32r: Detected multipage EEPROM on FMCB. Assuming >16-bit addressing.' % self._iceboard)
+            self._logger.debug('%.32r: Detected multipage EEPROM on FMCB. Assuming >16-bit addressing.' % self._iceboard)
             self._fmcb_eeprom = eeprom.eeprom(self._i2c, self._FMC_EEPROM_ADDR, 'FMCB', self._MCGILL_FMC_EEPROM_ADDR_WIDTH, self._MCGILL_FMC_EEPROM_PAGE_SIZE)
         else:
             self._fmcb_eeprom = eeprom.eeprom(self._i2c, self._FMC_EEPROM_ADDR, 'FMCB', self._FMC_EEPROM_ADDR_WIDTH, self._FMC_EEPROM_PAGE_SIZE)
@@ -1137,7 +1137,7 @@ class IceBoardHardware(object):
             }
 
 
-        self._logger.info('%.32r: Instantiating I2C GPIO manager' % self._iceboard)
+        self._logger.debug('%.32r: Instantiating I2C GPIO manager' % self._iceboard)
         self._gpio_power = pca9575.pca9575(self._i2c, self._GPIO_POWER_I2C_ADDR, 'GPIO')
         self._gpio_sw_leds = pca9575.pca9575(self._i2c, self._GPIO_SW_LEDS_ADDR, 'GPIO')
         self._gpio_arm_phy_leds = pca9575.pca9575(self._i2c, self._GPIO_ARM_PHY_LEDS_ADDR, 'GPIO')
@@ -1263,7 +1263,7 @@ class IceBoardHardware(object):
 
 
     def close(self):
-        self._logger.info('Closing Iceboard hardware')
+        self._logger.debug('Closing Iceboard hardware')
         if self._i2c:
             self._i2c = None
 
