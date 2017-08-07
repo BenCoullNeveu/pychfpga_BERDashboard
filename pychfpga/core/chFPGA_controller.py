@@ -1311,7 +1311,7 @@ class chFPGA_controller(IceBoardExtHandler):
         filename = '%s.yaml' % self.get_string_id()
         fullpath = os.path.join(os.path.dirname(__file__), '..', 'adc_delay_tables', filename)
 
-        print 'Loading YAML file %s' % filename
+        # print 'Loading YAML file %s' % filename
         try:
             with open(fullpath, 'rb') as yamlfile:
                 file_data = load_yaml(yamlfile)
