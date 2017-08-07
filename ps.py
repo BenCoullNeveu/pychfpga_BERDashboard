@@ -8,8 +8,7 @@ import logging
 import sys
 import argparse
 
-import tornado
-import tornado.tcpclient
+# import tornado
 
 from pychfpga.Agilent_N5764A import AgilentN5764AHandler
 from pychfpga import Metrics, NameSpace, load_yaml_config
@@ -21,7 +20,7 @@ class PowerSupplyAsyncRESTServer(AsyncRESTServer):
     REST interface for receiver hut power supplies.
     """
 
-    DEFAULT_PORT = 33224
+    DEFAULT_PORT = 54324
 
     POWER_SUPPLY_CLASSES = {
         'AgilentN5764': AgilentN5764AHandler,
@@ -406,29 +405,31 @@ def parse_cmdline_args(argv):
     parser.add_argument('args', type=str, nargs='*', default='',  help='"server" or "client" ')
     parser.add_argument('-p', '--port', default=PowerSupplyAsyncRESTServer.DEFAULT_PORT, type=int, help="Server port")
     parser.add_argument('-n', '--host', default='localhost', type=str, help="Server hostname")
+    parser.add_argument('-s', '--server', action='store_true', help='Start a server')
     return parser.parse_args(argv)
 
 if __name__ == '__main__':
     """
+    Command-line interface to start power supply REST server or client
 
-    Command-line interface to start power supply REST server
-        ps.py server [config_file:]config_name server_name : create a power supply server on this machine on specified port. If a configuration is specified, the server is started (start command) with that config. The server is then run until terminated by the user.
+    To start a server (on the local machine):
+        ps.py [--port 54324] --server # creates and run an uninitialized local power supply server
+        ps.py [config_file:]config_name server_name --server  # create and starts a local power supply server the port and with the configuration specified in the config file.
 
-        ps.py [client] [--host localhost] [--port 33224] [command [arg1, arg2]] # starts a client that connect to the server located at the specified host and port. If the hostname is '' or does not respond, a temporary local server will be created. If a command and arguments are specified, that the command is sent to the server.
+    To start a client:
+        ps.py [--host localhost] [--port 54324] [command [arg1, arg2]] # starts a client that connect to the server located at the specified host and port. If the hostname is '' or does not respond, a temporary local server will be created. If a command and arguments are specified, that the command is sent to the server.
+        ps.py [config_file:]config_name server_name [command [arg1, arg2, ...]]  # The ultimate command. Create client and local server if necessary. If a known command  is provided, it is sent to the server, otherwise the argument is assumed to be a configuration that is loaded and used to re(start) the server
 
-        ps.py [client] [config_file:]config_name server_name | command [arg1, arg2, ...]  # The ultimate command. Create client and local server if necessary. If a known command  is provided, it is sent to the server, otherwise the argument is assumed to be a configuration that is loaded and used to re(start) the server
-
-    Port is 33224 used by defaut if not specified.
+    Port is 54324 used by defaut if not specified.
 
     Examples::
 
-        ./ps.py server jfc.drao  # creates a local server on port 33224 and starts the server with the config jfc.drao from the default config file config.yaml.
-        ./ps.py client power_off  # power off all power supplies (assuming the server is started)
+        ./ps.py  --server  # creates a local server on port 54324.
+        ./ps.py jfc.drao pss0 --server # create, start and run local power supply server based on pss0 entry of jfc.drao config
 
-        ps.py server jfc.drao pss0 # create, start and run local power supply server based on pss0 entry of jfc.drao config
-        ps.py jfc.drao pss0 power_off all # power off all supplies managed py the server pss0 defined in config jfc.drao
-        ps.py power_off all # power off all supplies managed on localhost server
-        ps.py power_off ps_crate0 --host 10.0.0.192 --port 1234 # instruct power supply server at 10.0.0.192:1234 to power off supply named ps_crate0
+        ./ps.py power_off all# power off all power supplies handled by the server on localhost (assuming the server is started)
+        ./ps.py jfc.drao pss0 power_off all # power off all supplies managed py the server pss0 defined in config jfc.drao
+        ./ps.py power_off ps_crate0 --host 10.0.0.192 --port 1234 # instruct power supply server at 10.0.0.192:1234 to power off supply named ps_crate0
 
     In interactive ipython sessions, server or client objects cna be used directly::
 
@@ -447,17 +448,13 @@ if __name__ == '__main__':
     args = parse_cmdline_args(sys.argv[1:])
     port = args.port
     host = args.host
+    is_server = args.server
     args = args.args
     first_arg = args[0].lower() if args else None
     pss_config = None
     pss = None  # PowerSupply server object
     psc = None  # PowerSupply client object
     # print(args.args[1:], first_arg)
-
-    server_mode = False
-    if first_arg == 'server':
-        args = args[1:]
-        server_mode = True
 
     if args and (':' in args[0] or '.' in args[0]):
         if len(args) >= 2:
@@ -469,7 +466,7 @@ if __name__ == '__main__':
         else:
             raise RuntimeError('Please specify both a config root name and power supply name')
 
-    if server_mode:
+    if is_server:
         pss_port = pss_config.port if pss_config else port
         pss = RunSyncWrapper(PowerSupplyAsyncRESTServer(port=pss_port))
         if pss_config:
