@@ -444,10 +444,10 @@ class ChimeMaster(object):
         crate_number = None if crate_number == '*' else crate_number
         slot_number = None if slot_number == '*' else slot_number
         iceboards = []
-        print('get_iceboard: looking for ', crate_number, slot_number)
+        #print('get_iceboard: looking for ', crate_number, slot_number)
         for ib in self.fpgas.ib:
             ib_id = ib.get_id()
-            print('   checking', ib_id)
+            #print('   checking', ib_id)
             if (crate_number is None or crate_number == ib_id[0]) and (slot_number is None or slot_number== ib_id[1]):
                 iceboards.append(ib)
         return iceboards

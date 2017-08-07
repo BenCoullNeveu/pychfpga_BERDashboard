@@ -215,7 +215,7 @@ def setup_logging(dict_config={}, log_levels={}, base_package_name=None, script_
 
     """
 
-    print 'setting up logger with', base_package_name, actual_package_name, script_name
+    # print 'setting up logger with', base_package_name, actual_package_name, script_name
     dict_config = NameSpace(dict_config)
     log_levels = NameSpace(log_levels or {})
 
@@ -270,7 +270,7 @@ def setup_logging(dict_config={}, log_levels={}, base_package_name=None, script_
 
     dict_config.loggers = new_loggers
 
-    print 'new loggers=', new_loggers
+    # print 'new loggers=', new_loggers
 
     # register the existing handlers for each logger
     old_handlers = {}

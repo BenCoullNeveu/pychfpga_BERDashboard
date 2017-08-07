@@ -2595,12 +2595,12 @@ def parse_hw_string(hw_string, remap_table={}, dut_id_patterns=ICE_PATTERNS):
         print ' '*(pos-2)+'^'
         raise ValueError(err)
     # Remap
-    print 'remapping with ', remap_table
+    #print 'remapping with ', remap_table
     for type, entries in list(hw_table.items()):
-        print type, entries
+        #print type, entries
         if type in remap_table:
             for entry in list(entries):
-                print entry
+                #print entry
                 if entry in remap_table[type]:
                     target_type, target_entry = remap_table[type][entry]
                     hw_table[target_type].append(target_entry)
