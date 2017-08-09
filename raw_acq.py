@@ -368,7 +368,7 @@ class RawAcqUDPReceiver(SocketServer.UDPServer):
             #print( "Data received on port {0}, channel#{1}, std(data)={2}".format(port, chan, adc_data.std()) )
             #print("0x%03x"% stream_id,end='')
             try:
-                self.server.data_queue.put((timestamp, port, chan, stream_id, flags, adc_data))
+                self.server.data_queue.put((timestamp, port, chan, stream_id, flags, adc_data), True, 0.1)
                 # print(".", end='')
             except Queue.Full:
                 # print("o", end='')
