@@ -2604,6 +2604,7 @@ class chFPGA_controller(IceBoardExtHandler):
                     bs.NUMBER_OF_BINS_PER_FRAME = cb3_input_bins
                     bs.NUMBER_OF_WORDS_PER_BIN = cb3_input_words_per_bin
                     bs.select_bins(cb3_bin_select_map[cb3_bin_sel])
+                    #bs.SEND_FLAGS = 0  # JFC debug. Does not affect data.
         elif not cb3_bypass:
             raise RuntimeError("The FPGA firmware must have a CROSSBAR3 in the '%s' operational mode", mode)
 

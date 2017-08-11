@@ -89,13 +89,13 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         super(KotekanAsyncRESTClient, self).__init__(hostname=hostname, port=port, make_server_func=make_server, heartbeat_string='Kc')
         # self.name = name
         self.config = config
-        self.ping_cb = tornado.ioloop.PeriodicCallback(self.ping, 60e3)
-        self.ping_cb.start()
+        #self.ping_cb = tornado.ioloop.PeriodicCallback(self.ping, 60e3)
+        #self.ping_cb.start()
 
     @coroutine
     def ping(self):
         try:
-            yield self.get('status')
+            yield self.post('status')
             self.log.info("%.32r: Pinged kotekan at %s:%s" % (self, self.hostname, self.port))
         except Exception as e:
             self.log.debug(repr(e))
@@ -105,7 +105,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
 
     @coroutine
     def status(self):
-        result = yield self.get('status')
+        result = yield self.post('status')
         coroutine_return(result)
 
     @coroutine
@@ -117,7 +117,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
 
     @coroutine
     def stop(self):
-        result = yield self.get('stop')
+        result = yield self.post('stop')
         coroutine_return(result)
 
     @coroutine
@@ -153,7 +153,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         port = int(port)
         number_of_packets = int(number_of_packets)
 
-        data = yield self.post('packet_grab/%i' % port, num_packets=number_of_packets)
+        data = yield self.post('packet_grab/%i' % port, raw=True, num_packets=number_of_packets)
         coroutine_return(np.fromstring(data, np.uint8).reshape((number_of_packets, -1)))
 
     @coroutine
@@ -198,7 +198,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         # Process the packets
         result = []
         for pkt in raw_packets:
-            d = GpuData()
+            d = NameSpace()
             d.hostname = self.hostname
             d.interface_name = 'dna%i' % port
             d.port_number = port

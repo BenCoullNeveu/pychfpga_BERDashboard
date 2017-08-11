@@ -205,16 +205,16 @@ class AsyncRESTClient(AsyncMixin):
         return 'http://%s:%d/%s' % (self.hostname, self.port, endpoint)
 
     @coroutine
-    def post(self, endpoint, **kws):
+    def post(self, endpoint, raw=False, **kws):
         """ Send POST request to the target endpoint, with all keywords arguments being JSON-encoded"""
-        coroutine_return((yield self._fetch(endpoint, 'POST', **kws)))
+        coroutine_return((yield self._fetch(endpoint, 'POST', raw, **kws)))
 
     @coroutine
-    def get(self, endpoint):
-        coroutine_return((yield self._fetch(endpoint, 'GET')))
+    def get(self, endpoint, raw=False):
+        coroutine_return((yield self._fetch(endpoint, 'GET', raw)))
 
     @coroutine
-    def _fetch(self, endpoint, method, **kws):
+    def _fetch(self, endpoint, method, raw=False, **kws):
         url = self.url(endpoint)
         if method == 'POST':
             body = tornado.escape.json_encode(kws)
@@ -222,14 +222,18 @@ class AsyncRESTClient(AsyncMixin):
             body = None
         resp = yield self.client.fetch(url, method=method, headers={"Content-Type": "application/json"}, body=body, raise_error=False)
         # print('_fetch response:', resp)
-        try:
-            decoded_reply = tornado.escape.json_decode(resp.body)
-            if isinstance(decoded_reply, dict):
-                error = decoded_reply.get('error','')
-            else:
-                error = ''
-        except (TypeError, ValueError):
-            error = '%.32r: Invalid JSON reply string %r' %(self, resp.body)
+        if raw:
+            decoded_reply = resp.body
+            error = ''
+        else:
+            try:
+                decoded_reply = tornado.escape.json_decode(resp.body)
+                if isinstance(decoded_reply, dict):
+                    error = decoded_reply.get('error','')
+                else:
+                    error = ''
+            except (TypeError, ValueError):
+                error = '%.32r: Invalid JSON reply string %r' %(self, resp.body)
         if resp.error:
             error = str(resp.error) + '\n' + error
         if error:
