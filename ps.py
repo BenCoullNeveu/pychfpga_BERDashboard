@@ -7,13 +7,383 @@ REST Server and clients for the CHIME receiver hut power supplies.
 import logging
 import sys
 import argparse
+import time
+import socket
 
 # import tornado
 
-from pychfpga.Agilent_N5764A import AgilentN5764AHandler
+# from pychfpga.Agilent_N5764A import AgilentN5764AHandler
 from pychfpga import Metrics, NameSpace, load_yaml_config
-from rest import AsyncRESTClient, AsyncRESTServer, endpoint, coroutine, coroutine_return, sleep, IOLoop, RunSyncWrapper  # generic REST servers and clients
+from rest import AsyncRESTClient, AsyncRESTServer, endpoint, coroutine, coroutine_return, sleep, IOLoop, RunSyncWrapper, SocketContext  # generic REST servers and clients
 import log  # logging helper functions
+
+class AgilentN5700(SocketContext):
+    """
+    A class to communicate with an Agilent N5700- or N8700-type power supply
+    """
+
+
+    SUPPORTED_PS = {
+        # model : (name, IDN substring, Vmax, Imax)
+        'N5764A': ('Agilent Power Supply', 'Agilent Technologies,N5764A', 21, 79.8 ),
+        'N8731' : ('Agilent Power Supply', 'Agilent Technologies,N5781', 8, 400)
+    }
+
+
+    def __init__(self,  hostname, port=5025, timeout=0.5, verbose=1):
+
+        super(AgilentN5700, self).__init__(hostname=hostname, port=port, timeout=timeout)
+        self.log = log.get_logger(self)
+        print "Initializing direct LAN Connection at %s:%i" % (hostname, port)
+        self.locked = True
+        self.verbose = verbose
+        self.instrument_name = None
+        self.instrument_model = None
+        self.log.debug('Initializing instrument')
+
+        # self.device_clear()
+
+
+    def __repr__(self):
+        if self.instrument_model:
+            return '%s %s @%s:%i' % (self.instrument_name, self.instrument_model, self.ip_addr, self.ip_port)
+        else:
+            return 'Unknown Instrument @%s:%i' % (self.ip_addr, self.ip_port)
+
+    ###################################
+    # Basic read/write commands
+    ###################################
+
+
+    def command(self, comstr, flush=False):
+        """
+        Sends a command to the instrument. The terminator is added automatically.
+        """
+        with self.socket(flush=True):
+            self._check_instrument_type()
+            self.send(comstr + "\n")
+
+    def query(self, command, flush=False, **kwargs):
+        """
+        Sends a command to the instrument and returns the reply string without the terminator or trailing spaces.
+        """
+        with self.socket(flush=flush):
+            self._check_instrument_type()
+            self.send(command + '\n')
+            # self.command('*WAI')
+            try:
+                reply_string = self.recv(16384)
+            except IOError:
+                raise IOError('%r: timout while waiting for reply for command %s' % (self, command))
+            return reply_string.rstrip() # remove trailing spaces or CR or LF
+
+    def _check_instrument_type(self):
+        """
+        Make sure the instrument type and model is known and supported.
+        """
+        if self.instrument_model and self.instrument_name:
+            return
+        with self.socket(flush=True):
+            self.send('*IDN?\n')
+            id_string = self.recv(timeout=min(1, self.timeout))
+            self.log.debug('Instrument Identification string: %s' % id_string)
+            for (instrument_code, (instrument_name, instrument_id_string, vmax, imax)) in self.SUPPORTED_PS.items():
+                if instrument_id_string in id_string:
+                    self.log.debug('Connected to: %s' % instrument_name)
+                    self.send('STATus:OPERation:ENABle %i\n' % 0x0500)  # We wish to know is in constant current or constant voltage mode
+                    self.instrument_model = instrument_code
+                    self.instrument_name = instrument_name
+                    self.instrument_vmax = vmax
+                    self.instrument_imax = imax
+                    break
+
+            if instrument_code is None:
+                raise RuntimeError('The identification command did not return the expected instrument ID string')
+
+    def open(self):
+        with self.socket():
+            self._check_instrument_type()
+
+    def query_float(self, *args,  **kwargs):
+        return float(self.query(*args, **kwargs))
+
+    def query_int(self, *args,  **kwargs):
+        return int(self.query_float(*args, **kwargs))
+
+    def waituntilready(self):
+        while not(self.query_float('*OPC?')):
+            time.sleep(0.01)
+
+    def lock(self):
+        self.locked = True
+
+    def unlock(self):
+        self.locked = False
+
+    def _check_lock(self):
+        if self.locked:
+            raise RuntimeError('Instrument is locked: cannot change its state. Call unlock() to allow changes to the instrument state')
+
+
+    def set_output(self, state=None):
+
+        """
+        Turns on and off the output and measures current output state input
+        state can be varius spellings of 'on'/ 'off', None, 0, or 1   (default
+        is None)
+
+        Returns status dictionary
+        """
+        self._check_lock()
+        outstate = []
+        if state is None:
+            pass
+        if state in ['on', 'On', 'ON', 1, True]:
+            state = 1
+        elif state in ['off', 'Off', 'OFF', 0, False]:
+            state = 0
+        else:
+            raise ValueError('Unknown desired output power state')
+        with self.socket(flush=True):
+            self.command('OUTP:STAT %s' % state, flush=True)
+            self.waituntilready()
+            # self.command('*WAI')
+
+        return {'PowerEnabled': self.get_output_state()}
+
+
+    def get_output_state(self):
+        return bool(self.query_float('OUTP:STAT?'))
+
+    def set_power_on_state(self, state):
+        if state.upper() not in ('RST','AUTO'):
+            raise ValueError('%r: Power on state is either RST or AUTO' % self)
+        self.command('OUTPut:PON:STATe %s' % state)
+
+    def get_power_on_state(self):
+        return self.query('OUTPut:PON:STATe?')
+
+    def is_enabled(self):
+        return self.get_output_state()
+
+    def power_on(self):
+        self.set_output(state=True)
+
+    def power_off(self):
+        self.set_output(state=False)
+
+    def power_enable(self, state):
+        self.set_output(state=state)
+
+    def power_cycle(self, delay=4):
+        with self.socket():
+            self.set_output(state=False)
+            time.sleep(delay)
+            self.set_output(state=True)
+
+
+    def get_state(self):
+        """ Return the power supply operational state of the power supply.
+
+        Returns:
+
+            'OK': power supply is turned on and operates normally
+            'OFF': power supply is turned off
+            'ILIMIT': power supply is in current limit mode
+            'FAULT': A fault has occured
+        """
+        with self.socket():
+            failmode = int(self.query_float('STAT:QUES:COND?'))
+            if failmode != 0:
+                state = 'FAULT'
+            else:
+                op_state = int(self.query_float('STATus:OPERation:CONDition?'))
+                if bool((op_state & (1 << 8)) >> 8):  # Voltage regulating
+                    state = 'OK'
+                elif bool((op_state & (1 << 10)) >> 10):  # Current limiting
+                    state = 'ILIMIT'
+                else:
+                    state = 'OFF'
+            return state
+
+
+    def is_ok(self):
+        """ Return the operational state of the power supply.
+        """
+        return self.get_state() == "OK"
+
+
+
+    def status(self):
+
+        """
+        Returns a dictionary containting the output voltage and current
+        """
+        with self.socket(flush=True):
+            meas = {'current': 0, 'voltage': 0}
+            current = self.query_float('MEAS:CURR?', timeout=2)
+            voltage = self.query_float('MEAS:VOLT?', timeout=2)
+            power = round(current * voltage, 3)
+            meas['current'] = current
+            meas['voltage'] = voltage
+            meas['power'] = power
+            meas['status'] = self.get_state()
+            return meas
+
+    def set_voltage(self, voltage):
+        """
+        Sets the output voltage - Valid range is 0 to 21V - default is None
+        Returns the power supply setpoint voltage
+        """
+        self._check_lock()
+        if voltage > self.instrument_vmax or voltage < 0:
+            raise ValueError('Invalid voltage - must be in range [0..21] - no action performed')
+        with self.socket():
+            self.command('VOLT %s' % voltage)
+            # self.command('*WAI')
+            self.waituntilready()
+
+    def get_voltage_setting(self):
+        """
+        Returns the power supply setpoint voltage
+        """
+        return self.query_float('VOLT?')
+
+    def set_current_limit(self, current=None, ocp=None):
+        """
+        Sets the current limit and can enable disable ocp  - Valid range is 0
+        to 76A - by default current is None and ocp is None
+
+        Returns the power supply current limit
+        """
+        self._check_lock()
+
+        if ocp is not None:
+            self.protection(ocp=ocp, readonly=False)
+        if current > self.instrument_imax or current < 0:
+            raise ValueError('Invalid current limit - must be in range [0..76] - no action performed')
+        with self.socket():
+            self.command('CURR %s' % current)
+            # self.command('*WAI')
+            self.waituntilready()
+
+    def get_current_limit(self):
+         """
+         Returns the power supply current limit
+         """
+         return self.query_float('CURR?')
+
+    def clear(self):
+        """
+        If any of the protection has triggered will need to clear it. Will
+        return a False if everything is good
+        """
+        self._check_lock()
+        with self.socket():
+            self.protection(clear=True, readonly=False)[0]
+            problem = self.protection()[0]
+            return problem
+
+
+    def set_protection(self, uvl=None, ovp=None, ocp=None,ilim=None, clear=None):
+        """
+        Adjusts power supply protection settings
+        Returns two dictionaries the first with the current protection settings, the second with the fail modes
+        Warning - when clearing - return status is 'dont trust anything' - run protection another time
+        """
+        self._check_lock()
+        with self.socket(flush=True):
+            if clear == 1:
+                self.command('OUTPut:PROT:CLEar')
+                #self.command('*WAI')
+                self.waituntilready()
+
+            if uvl != None:
+                self.command('VOLT:LIM:LOW %s' % uvl)
+            if ovp != None:
+                self.command('VOLT:PROT %s' % ovp)
+            if ocp != None:
+                self.command('CURR:PROT:STAT %s' % ocp)
+                #Note that OCP is not the current limit, only behaviour on current limit (can be 0 or 1)
+                #With OCP active current switches to triggered current (by default and not changed by this program so far 0A)
+            if ilim != None:
+                self.command('CURR %s' % ilim)
+
+    def get_protection(self, history=False):
+
+        with self.socket():
+            uvlmeas=self.query_float('VOLT:LIM:LOW?')
+            ovpmeas= self.query_float('VOLT:PROT?')
+            ocpmeas=self.query_float('CURR:PROT:STAT?')
+            ilimmeas=self.query_float('CURR?')
+
+            if not(history):  #By default just read the main status register not the register that clears itself after reading
+                failmode=int(self.query_float('STAT:QUES:COND?'))
+            else: #If you really want the register that clears itself set History=True
+                failmode=int(self.query_float('STAT:QUES?'))  #Will spot if previously things went wrong or if currently things are wrong
+                print "Not that reliable and it clears itself after!"
+
+            problem = False
+            if failmode != 0:
+                print 'A power supply problem is present'
+                problem = True
+
+            UNR = bool( ( failmode & ( 1 << 10 ) ) >> 10 )  #True if Unregulated output
+            if UNR == 1:
+                UNRMes = 'Unregulated output'
+            else:
+                UNRMes = 'Output is regulated'
+
+            INH = bool( ( failmode & ( 1 << 9 ) ) >> 9 )  #True if output turned off by J1 inhibit signal
+            if INH == 1:
+                INHMes = 'Inhibt signal on J1 turned off output'
+            else:
+                INHMes = 'No Inhibt signal on J1 has been detected'
+
+            OT = bool( ( failmode & ( 1 << 4 ) ) >> 4 ) #True if output turned off by power supply temperature monitor
+            if OT == 1:
+                OTMes = 'Power supply got too hot and turned off output'
+            else:
+                OTMes = 'Power supply temperature okay'
+
+            PF = bool( ( failmode & ( 1 << 2 ) ) >> 2 ) #True if output turned off because AC power failed
+            if PF == 1:
+                PFMes = 'Input Power faliure and output turned off '
+            else:
+                PFMes = 'Input power okay'
+
+            OC = bool( ( failmode & ( 1 << 1 ) ) >> 1 ) #True if output turned off because of Over current
+            if OC == 1:
+                OCMes = 'OCP triggered, output off '
+            else:
+                OCMes = 'OCP did not trigger'
+
+            OV = bool( ( failmode & ( 1 << 0 ) ) >> 0 ) #True if output turned off because of Over voltage
+            if OV == 1:
+                OVMes = 'Over voltage protection triggered, output turned off '
+            else:
+                OVMes = 'No over voltage detected'
+            failmode = {'UNR': [UNR,UNRMes], 'INH': [INH, INHMes], 'OT': [OT, OTMes], 'PF': [PF, PFMes], 'OC':[OC, OCMes], 'OV':[OV, OVMes]}
+
+
+            protectionstatus={'uvl':uvlmeas, 'ovp':ovpmeas, 'ocp':ocpmeas, 'ilim':ilimmeas}
+            if clear == 1 and problem == 0:
+                problem = 'dont trust anything'
+
+            return problem, protectionstatus, failmode
+
+    def configure_power_on_state(self, voltage, current):
+        """
+        Configure the power supply so it will automatically power up at the specified voltage and current limit.
+
+        The power supply is turned off before the new settings are applied.
+        """
+        with self.socket():
+            self.power_off()
+            self.set_voltage(voltage)
+            self.set_current_limit(current)
+            self.set_power_on_state('AUTO')
+
 
 class PowerSupplyAsyncRESTServer(AsyncRESTServer):
     """
@@ -23,8 +393,8 @@ class PowerSupplyAsyncRESTServer(AsyncRESTServer):
     DEFAULT_PORT = 54324
 
     POWER_SUPPLY_CLASSES = {
-        'AgilentN5764': AgilentN5764AHandler,
-        'AgilentN8731': AgilentN5764AHandler
+        'AgilentN5764': AgilentN5700,
+        'AgilentN8731': AgilentN5700
         }
 
     def __init__(self,  address='', port=DEFAULT_PORT, logging_params={}):
@@ -62,7 +432,7 @@ class PowerSupplyAsyncRESTServer(AsyncRESTServer):
                 metrics.add('fpga_power_supply_current', name=ps_name, value=status.current, type='gauge')
                 metrics.add('fpga_power_supply_power', name=ps_name, value=status.power, type='gauge')
                 metrics.add('fpga_power_supply_status', name=ps_name, value=int(status.status == 'OK'), type='gauge')
-            except:
+            except IOError:
                 pass
         coroutine_return(metrics)
 
@@ -95,7 +465,7 @@ class PowerSupplyAsyncRESTServer(AsyncRESTServer):
             cls = self.POWER_SUPPLY_CLASSES[type_]
             ps_instance = cls(**ps)
             self.power_supplies[name] = ps_instance
-            self.power_supplies[name].open()
+            # self.power_supplies[name].open()
             self.is_ready[name] = False
 
         # If a power supply is already up and running (for an unknown period of time),

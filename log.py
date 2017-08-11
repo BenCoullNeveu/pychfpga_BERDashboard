@@ -87,7 +87,7 @@ class NameSpace(object):
 
 
 def get_logger(*names):
-    """ get a logger whose hiearchical name elements are provided in `names`.
+    """ get a logger whose hierarchical name elements are provided in `names`.
 
     If no names are provided, the root logger is returned.
 
@@ -108,7 +108,8 @@ def get_logger(*names):
         if isinstance(x, str):
             return x
         else:
-            return x.__class__.__name__
+            cls = x.__class__
+            return cls.__module__ + '.' + cls.__name__
 
     if not names:
         return logging.getLogger()

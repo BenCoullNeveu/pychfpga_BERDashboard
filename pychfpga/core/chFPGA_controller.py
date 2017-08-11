@@ -562,7 +562,7 @@ class chFPGA_controller(IceBoardExtHandler):
             self._logger.debug('%r:  - CORR' % self)
             self.CORR.init()
         else:
-            self._logger.warning('%r: There are no FPGA correlators in this firmware build' % self);
+            self._logger.debug('%r: There are no FPGA correlators in this firmware build' % self);
 
         self.set_data_width(data_width)  #sets the data width of both the SCALER and CROSSBAR
         self._logger.debug('%r: Data width set to (Re+Im) = (%i+%i) bits' % (self, self.get_data_width(), self.get_data_width()))
