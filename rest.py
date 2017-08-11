@@ -12,6 +12,7 @@ import requests
 import functools
 import socket
 
+import log
 import tornado.ioloop
 import tornado.web
 from tornado.gen import sleep
@@ -493,3 +494,82 @@ class RunSyncWrapper(object):
 
 
 endpoint = AsyncRESTServer.endpoint #: Shortcut to :meth:`AsyncRESTServer.endpoint`
+
+class SocketContext(object):
+    """
+    Provides methods to create a re-entrant context object in which a unique socket is available
+    within the context and is closed when the outer context is exited.
+
+    The `socket_references` keeps track of the context depth such that the socket is closed only
+    when the counter is decremented back to zero.
+
+    """
+    def __init__(self,  hostname, port, timeout=0.5, **kwargs):
+        self.log = log.get_logger(self)
+        self.log.debug('Initializing direct LAN Connection at %s:%i' % (hostname, port))
+        self.ip_addr = hostname
+        self.ip_port = port
+        self.timeout = timeout
+        self.flush_timeout = 0.1
+        self.sock = None
+        self.socket_references = 0
+        super(SocketContext, self).__init__(**kwargs)
+
+    def __enter__(self, flush=False, flush_timeout=None):
+        if not self.sock:
+            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP)
+            self.sock.settimeout(self.timeout)
+            try:
+                self.sock.connect((self.ip_addr, self.ip_port))
+            except socket.timeout:
+                raise IOError('%r: timout while connecting to %s:%i' % (self, self.ip_addr, self.ip_port))
+        self.socket_references += 1
+
+        # flush the socket if requested
+        if flush:
+            old_timeout = self.sock.gettimeout()
+            self.sock.settimeout(flush_timeout or self.flush_timeout)
+            while True:
+                try:
+                    self.sock.recv(16384)
+                except socket.timeout:
+                    break
+            self.sock.settimeout(old_timeout)
+        return self.sock
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        if self.socket_references:
+            self.socket_references -= 1
+        if not self.socket_references and self.sock:
+            self.sock.close()
+            self.sock = None
+
+    def socket(self, flush=False):
+        """
+        Return a context object (`self`) in which a socket to the instrument (`self.sock`) is
+        connected and is closed when the context is exited.
+
+        Contexes can be nested at will with negligeable performance penalty. The socket will be
+        created and closed only on the outer context entry and exit.
+
+        The power supply handler object acts as a socket context handler, so ``self`` is returned.
+
+        """
+        return self
+
+    def send(self, string):
+        self.sock.send(string)
+
+    def recv(self, buffer_size=16384, timeout=None):
+        if timeout:
+            old_timeout = self.sock.gettimeout()
+            self.sock.settimeout(timeout)
+        try:
+            data = self.sock.recv(buffer_size)
+        except socket.timeout:
+            raise IOError('%r: timout while waiting for socket data' % (self))
+
+        if timeout:
+            self.sock.settimeout(old_timeout)
+
+        return data
