@@ -606,6 +606,12 @@ class SpectrumInstrumentsTM4D(SocketContext):
                 self.set_polling_mode(0)
             while True:
                 # process whatever replies are in the buffer until all is left are partial commands
+                # try to get new replies to complete partials command. If there are none,
+                try:
+                    reply = self.recv(timeout = 0.8) # must be <1 s because new data is coming every second and we'll never get out of here
+                    self.buffer += reply
+                except IOError: # there was no data, this must be the end
+                    pass
 
                 while True:
                     # Remove anything up to '#' in case we got a partial buffer
@@ -623,13 +629,6 @@ class SpectrumInstrumentsTM4D(SocketContext):
                     get_method = self.get_method_for(reply)
                     if get_method:
                         get_method(reply=reply, metrics=metrics)
-
-                # try to get new replies to complete partials command. If there are none,
-                try:
-                    reply = self.recv(timeout = 0.8) # must be <1 s because new data is coming every second and we'll never get out of here
-                    self.buffer = (self.buffer + reply).lstrip()
-                except IOError: # there was no data, this must be the end
-                    break
         return metrics
 
     def configure_gps(self,  lat=49.320683333333335, lon=-119.62329666666666, alt=562.0):
