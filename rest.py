@@ -519,36 +519,7 @@ class SocketContext(object):
         self.socket_references = 0
         super(SocketContext, self).__init__(**kwargs)
 
-    def __enter__(self, flush=False, flush_timeout=None):
-        if not self.sock:
-            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP)
-            self.sock.settimeout(self.timeout)
-            try:
-                self.sock.connect((self.ip_addr, self.ip_port))
-            except socket.timeout:
-                raise IOError('%r: timout while connecting to %s:%i' % (self, self.ip_addr, self.ip_port))
-        self.socket_references += 1
-
-        # flush the socket if requested
-        if flush:
-            old_timeout = self.sock.gettimeout()
-            self.sock.settimeout(flush_timeout or self.flush_timeout)
-            while True:
-                try:
-                    self.sock.recv(16384)
-                except socket.timeout:
-                    break
-            self.sock.settimeout(old_timeout)
-        return self.sock
-
-    def __exit__(self, exc_type, exc_value, traceback):
-        if self.socket_references:
-            self.socket_references -= 1
-        if not self.socket_references and self.sock:
-            self.sock.close()
-            self.sock = None
-
-    def socket(self, flush=False):
+    def socket(self, flush=False, flush_timeout=None):
         """
         Return a context object (`self`) in which a socket to the instrument (`self.sock`) is
         connected and is closed when the context is exited.
@@ -559,7 +530,42 @@ class SocketContext(object):
         The power supply handler object acts as a socket context handler, so ``self`` is returned.
 
         """
+        self.flush = flush
+        self.flush_timeout = flush_timeout
         return self
+
+    def __enter__(self):
+        if not self.sock:
+            self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP)
+            self.sock.settimeout(self.timeout)
+            try:
+                self.sock.connect((self.ip_addr, self.ip_port))
+            except socket.timeout:
+                raise IOError('%r: timout while connecting to %s:%i' % (self, self.ip_addr, self.ip_port))
+        self.socket_references += 1
+
+        # flush the socket if requested
+        if self.flush:
+            if self.flush_timeout:
+                old_timeout = self.sock.gettimeout()
+                self.sock.settimeout(self.flush_timeout)
+            while True:
+                try:
+                    self.sock.recv(16384)
+                except socket.timeout:
+                    break
+            if self.flush_timeout:
+                self.sock.settimeout(old_timeout)
+        return self.sock
+
+    def __exit__(self, exc_type, exc_value, traceback):
+        if self.socket_references:
+            self.socket_references -= 1
+        if not self.socket_references and self.sock:
+            self.sock.close()
+            self.sock = None
+
+
 
     def send(self, string):
         self.sock.send(string)
@@ -577,3 +583,7 @@ class SocketContext(object):
             self.sock.settimeout(old_timeout)
 
         return data
+
+    def flush(self, timeout=0.1):
+        with self.socket(flush=True, flush_timeout=timeout):
+            pass
