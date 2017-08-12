@@ -10,6 +10,8 @@ import sys
 import argparse
 import time
 import datetime
+import calendar
+import Queue
 
 # import tornado
 
@@ -22,13 +24,6 @@ class SpectrumInstrumentsTM4D(SocketContext):
     """
     A class to communicate with SpectrumInstruments TM4D GPS receiver
     """
-    SET_POLLING_MODE =  '17'
-    SET_MODULATED_SERIAL_TIME_CODE_FORMAT = '16'
-    SET_SERIAL_TIME_MESSAGE_FORMAT = '15'
-    SET_MULTIPLEXER_2_OUTPUT = '14'
-    SET_MULTIPLEXER_1_OUTPUT = '09'
-
-    GET_DATE_AND_TIME = '51'
 
     def __init__(self,  hostname, port=1001, timeout=0.5, verbose=1):
 
@@ -37,6 +32,42 @@ class SpectrumInstrumentsTM4D(SocketContext):
         print "Initializing direct LAN Connection at %s:%i" % (hostname, port)
         self.verbose = verbose
         self.log.debug('Initializing instrument')
+        self.polling_mode = None
+        self.last_time = None
+        self.buffer = '' # used in broadcast processing only
+        self.get_methods = {
+            '50': None, # Acknowledge
+            '51': self.get_date_time,
+            '52': self.get_position,
+            '53': self.get_altitude,
+            '55': self.get_mask_angle,
+            '56': self.get_user_time_bias,
+            '57': self.get_timing_mode,
+            '59': self.get_geometric_quality_and_almanac_status,
+            '60': self.get_mux1_output_source,
+            '61': self.get_timing_status,
+            '62': None, # Event Time Tag
+            '63': None, # POP/ETT Status
+            '64': self.get_oscillator_tuning_mode,
+            '65': self.get_alarm_status,
+            '66': None, # Reserved, #66,T28F2A.OBJ,NEWEPPSD10A.HEX   ,312102035321F,28F2,031816
+            '68': self.get_mux2_output_source,
+            '69': self.get_tracking_channel_status,
+            '70': None, # Serial time message format
+            '71': None, # Serial time code format
+            '72': None, # Reserved
+            '73': None, # ETT Parameters
+            '74': None, # POP Parameters
+            '75': self.get_speed_and_heading,
+            '76': self.get_nmea_info,
+            '74': None, # Phase lock status, old units (see #80)
+            '78': self.get_user_options,
+            '79': self.get_coast_timer,
+            '80': self.get_phase_lock_status,
+            '81': self.get_leap_seconds,
+            '82': None, # Undocumented, #82,0,1,8,8,F,F
+            '84': None, # Undocumented, #84,1,0,5,3,2,1,F
+            }
 
     # def __repr__(self):
     #     if self.instrument_model:
@@ -54,39 +85,36 @@ class SpectrumInstrumentsTM4D(SocketContext):
         Sends a command to the instrument. The terminator is added automatically.
         """
         flush = kwargs.get('flush', False)
-        with self.socket(flush=True):
+        with self.socket(flush=flush):
             self.send('#%s\r\n' % ','.join(str(s) for s in args))
 
-    def query(self, command, flush=False):
+    def query(self, command, reply=None, flush=False):
         """
         Sends a command to the instrument and returns the reply string without the terminator or trailing spaces.
         """
-        with self.socket(flush=flush):
-            self.send('#13,%s\r\n' % command)
-            try:
-                reply_string = ''
-                while True:
-                    s = self.recv(16384)
-                    print('received %r (%s)' % (s, '\r\n' in s))
-                    reply_string += s
-                    if '\r\n' in s:
-                        break
-            except IOError:
-                raise IOError('%r: timout while waiting for reply for command %s' % (self, command))
-            return reply_string.rstrip().split(',') # remove trailing spaces or CR or LF
+        if reply is None:
+            with self.socket(flush=flush):
+                self.send('#13,%s\r\n' % command)
+                try:
+                    reply = ''
+                    while True:
+                        s = self.recv(16384)
+                        print('received %r (%s)' % (s, '\r\n' in s))
+                        reply += s
+                        if '\r\n' in s:
+                            break
+                except IOError:
+                    raise IOError('%r: timout while waiting for reply for command %s' % (self, command))
+        args = reply.rstrip().split(',') # remove trailing spaces or CR or LF
+        assert args[0] == '#' + command, 'Reply is not for command %s' % command
+        return args[1:]
 
-    # def query_float(self, *args,  **kwargs):
-    #     return float(self.query(*args, **kwargs))
-
-    # def query_int(self, *args,  **kwargs):
-    #     return int(self.query_float(*args, **kwargs))
-
-
-    #        return problem, protectionstatus, failmode
 
     ###################################
     # GPS commands
     ###################################
+
+    # Set commands
 
     def set_mask_angle(self, angle_code):
         """ Sets mask angle of the GPS.
@@ -172,7 +200,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
 
         self.command('12', mode)
 
-    def set_polling_mode(self, mode):
+    def set_polling_mode(self, mode=1):
         """ Sets the polling mode.
 
         Parameters:
@@ -183,6 +211,10 @@ class SpectrumInstrumentsTM4D(SocketContext):
 
         self.command('17', mode)
 
+        self.polling_mode = mode
+        if mode: # if we are not in broadcase mode, flush any data in the buffers
+            with self.socket(flush=True, flush_timeout=1):
+                pass
 
     def set_position(self, lat, lon, alt):
         """ Sets the position to use in the static timing mode.
@@ -217,19 +249,36 @@ class SpectrumInstrumentsTM4D(SocketContext):
 
         self.command('24', source)
 
-    def get_date_time(self):
+    # Get commands
+
+    def get_method_for(self, reply):
+        """Return the method that can process the specified reply string.
+        """
+        cmd = reply.rstrip().split(',')[0] # remove trailing spaces or CR or LF
+        if not cmd.startswith('#'):
+            raise IOError('%r: Invalid reply format %s' % (self, reply))
+        cmd = cmd[1:]
+        if cmd not in self.get_methods:
+            raise IOError('%r: Unknown reply code %s' % (self, reply))
+        else:
+            return self.get_methods[cmd]
+
+    def get_date_time(self, reply=None, metrics=None):
         """Return the current date and time.
 
         Returns:
             datetime: date and time as a Python datetime object
         """
-        _, date, time = self.query('51')
+        date, time = self.query('51', reply)
 
-        return datetime.datetime(
+        t= datetime.datetime(
             int(date[4:]),  int(date[2:4]), int(date[:2]), # year, month, day
             int(time[:2]), int(time[2:4]), int(time[4:6])) # hours, minutes, seconds
 
-    def get_position(self):
+        self.last_time = calendar.timegm(t.timetuple())
+        return t
+
+    def get_position(self, reply=None, metrics=None):
         """Return the current position, GPS availability and numer of satellites used.
 
         Returns:
@@ -239,7 +288,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
                 avail (bool): GPS availability (0=unavailable, 1=available)
                 n_sat (int): number_of_satellites (0-12)
         """
-        _, lat, ns, lon, ew, avail, n_sat = self.query('52')
+        lat, ns, lon, ew, avail, n_sat = self.query('52', reply)
 
         return (
             (float(lat[:2]) + float(lat[2:]) / 60) * (-1 if ns == 'S' else 1),
@@ -247,36 +296,42 @@ class SpectrumInstrumentsTM4D(SocketContext):
             bool(int(avail)),
             int(n_sat, 16))
 
-    def get_altitude(self):
+    def get_altitude(self, reply=None, metrics=None):
         """Return the current altitude.
 
         Returns:
             float: signed altitude in meters
         """
-        _, alt, units = self.query('53')
+        alt, units = self.query('53', reply)
         assert units=='M', 'Units are not in meters'
         return float(alt)
 
-    def get_mask_angle(self):
+    def get_mask_angle(self, reply=None, metrics=None):
         """Return the current mask_angle.
 
         Returns:
             int: mask angle code: 0 (5 deg), 1 (15 deg) or 2 (20 deg)
         """
-        _, angle_code, datum = self.query('55')
+        angle_code, datum = self.query('55', reply)
         assert datum == '47', 'datum is not WGS84'
-        return int(angle_code)
+        mask_angle = int(angle_code)
+        if metrics is not None:
+            metrics.add('gps_mask_angle', value=mask_angle, type='gauge')
+        return mask_angle
 
-    def get_user_time_bias(self):
+    def get_user_time_bias(self, reply=None, metrics=None):
         """Return the current user time bias.
 
         Returns:
             int: time bias in ns
         """
-        _, bias = self.query('56')
-        return int(bias)
+        (bias, ) = self.query('56', reply)
+        time_bias = int(bias)
+        if metrics is not None:
+            metrics.add('gps_time_bias', value=time_bias, type='gauge')
+        return time_bias
 
-    def get_timing_mode(self):
+    def get_timing_mode(self, reply=None, metrics=None):
         """Return the current timing mode.
 
         Returns:
@@ -285,10 +340,13 @@ class SpectrumInstrumentsTM4D(SocketContext):
                 1: Static Timing Mode
                 3: Auto Survey Mode
         """
-        _, mode = self.query('57')
-        return int(mode)
+        (mode, ) = self.query('57', reply)
+        timing_mode = int(mode)
+        if metrics is not None:
+            metrics.add('gps_mask_angle', value=timing_mode, type='gauge')
+        return timing_mode
 
-    def get_geometric_quality_and_almanac_status(self):
+    def get_geometric_quality_and_almanac_status(self, reply=None, metrics=None):
         """Return the geometric quality (GQ) and almanac status.
 
         Returns:
@@ -296,10 +354,14 @@ class SpectrumInstrumentsTM4D(SocketContext):
                 gq (int): geometric quality (0-9)
                 almanac_status (int): 0: OK, 1: no almanac, 2: almanac is old
         """
-        _, gq, almanac_status = self.query('59')
-        return int(gq), int(almanac_status)
+        gq, almanac_status = self.query('59', reply)
+        gq, almanac_status = int(gq), int(almanac_status)
+        if metrics is not None:
+            metrics.add('gps_geometric_quality', value=gq, type='gauge')
+            metrics.add('gps_almanac_status', value=almanac_status, type='gauge')
+        return gq, almanac_status
 
-    def get_oscillator_tuning_mode(self):
+    def get_oscillator_tuning_mode(self, reply=None, metrics=None):
         """Return the oscillator tuning mode.
 
         Returns:
@@ -310,10 +372,13 @@ class SpectrumInstrumentsTM4D(SocketContext):
                 4: fine adjust
                 5: fine adjust hold)
         """
-        _, osc_tuning_mode = self.query('64')
-        return int(osc_tuning_mode)
+        (osc_tuning_mode, ) = self.query('64', reply)
+        osc_tuning_mode = int(osc_tuning_mode)
+        if metrics is not None:
+            metrics.add('gps_osc_tuning_mode', value=osc_tuning_mode, type='gauge')
+        return osc_tuning_mode
 
-    def get_alarm_status(self):
+    def get_alarm_status(self, reply=None, metrics=None):
         """Return the coast, antenna and 10 MHz alarm status.
 
         Returns:
@@ -322,22 +387,52 @@ class SpectrumInstrumentsTM4D(SocketContext):
                 antenna_alarm (bool): antenna alarm
                 clk_alarm (bool): 10 MHz output alarm
         """
-        _, coast_alarm, antenna_alarm, clk_alarm = self.query('65')
-        return bool(int(coast_alarm)), bool(int(antenna_alarm)), bool(int(clk_alarm))
+        coast_alarm, antenna_alarm, clk_alarm = self.query('65', reply)
+        coast_alarm, antenna_alarm, clk_alarm = bool(int(coast_alarm)), bool(int(antenna_alarm)), bool(int(clk_alarm))
+        if metrics is not None:
+            metrics.add('gps_coast_alarm', value=coast_alarm, type='gauge')
+            metrics.add('gps_antenna_alarm', value=antenna_alarm, type='gauge')
+            metrics.add('gps_10MHz_alarm', value=clk_alarm, type='gauge')
+        return coast_alarm, antenna_alarm, clk_alarm
 
-    def get_multiplexer_output_source(self):
-        """Return the geometric quality (GQ) and almanac status.
+    def get_mux1_output_source(self, reply=None, metrics=None):
+        """Return the mux output source.
 
         Returns:
-            (mux1, mux2) tuple where:
                 mux1 (int): Mux 1 source
+        """
+        time_port_baud_rate, mux1, unknown = self.query('60', reply) # undocumented 'unknown' parameter ('+00')
+        mux1 = int(mux1)
+        if metrics is not None:
+            metrics.add('gps_mux1_source', value=mux1, type='gauge')
+        return mux1
+
+    def get_timing_status(self, reply=None, metrics=None):
+        """Return the timing status.
+
+        Returns:
+                status (int): 0: time not valid; 1: time valid
+        """
+        (status, ) = self.query('61', reply)
+        status = int(status)
+        if metrics is not None:
+            metrics.add('gps_timing_status', value=status, type='gauge')
+        return status
+
+
+    def get_mux2_output_source(self, reply=None, metrics=None):
+        """Return the mux output source.
+
+        Returns:
                 mux2 (int): Mux 2 source
         """
-        _, time_port_baud_rate, mux1, unknown = self.query('60') # undocumented 'unknown' parameter ('+00')
-        _, mux2 = self.query('68')
-        return int(mux1), int(mux2)
+        (mux2, ) = self.query('68', reply)
+        mux2 = int(mux2)
+        if metrics is not None:
+            metrics.add('gps_mux2_source', value=mux2, type='gauge')
+        return mux2
 
-    def get_tracking_channel_status(self):
+    def get_tracking_channel_status(self, reply=None, metrics=None):
         """Return the status of each satellite.
 
         Returns:
@@ -355,9 +450,8 @@ class SpectrumInstrumentsTM4D(SocketContext):
                     5 = acquisition
                     6 = position
         """
-        s = self.query('69')
+        s = self.query('69', reply)
         satellite_status_map = NameSpace()
-        s = s[1:]
         while len(s) >= 4:
             prn, cs, ts, es = s[:4]
             satellite_status_map[int(prn)] = NameSpace(
@@ -367,9 +461,17 @@ class SpectrumInstrumentsTM4D(SocketContext):
                 ephemeris_status = int(es))
             s = s[4:]
         receiver_status = int(s[0])
+
+        if metrics is not None:
+            metrics.add('gps_receiver_status', value=receiver_status, type='gauge')
+            for sat_number, sat_info in satellite_status_map.items():
+                metrics.add('gps_constellation_status', satellite_number=sat_number, value=sat_info.constellation_status, type='gauge')
+                metrics.add('gps_signal_quality', satellite_number=sat_number, value=sat_info.signal_quality, type='gauge')
+                metrics.add('gps_ephemeris_status', satellite_number=sat_number, value=sat_info.ephemeris_status, type='gauge')
+
         return satellite_status_map, receiver_status
 
-    def get_speed_and_heading(self):
+    def get_speed_and_heading(self, reply=None, metrics=None):
         """Return the current speed and heading
 
         Returns:
@@ -377,11 +479,11 @@ class SpectrumInstrumentsTM4D(SocketContext):
                 speed (float): speed in m/s
                 heading (float): heading in decimal degrees
         """
-        _, speed, heading = self.query('75')
+        speed, heading = self.query('75', reply)
         return (float(speed), float(heading))
 
 
-    def get_nmea_info(self):
+    def get_nmea_info(self, reply=None, metrics=None):
         """Return higher precision position, speed and course.
 
         Returns:
@@ -395,9 +497,9 @@ class SpectrumInstrumentsTM4D(SocketContext):
                 speed (float): speed over ground in knots,
                 course (float): course in degrees
         """
-        _, lat, ns, lon, ew, alt, alt_units, fix, n_sat, h_dil, speed, course = self.query('76')
+        lat, ns, lon, ew, alt, alt_units, fix, n_sat, h_dil, speed, course = self.query('76', reply)
 
-        return NameSpace(
+        info = NameSpace(
             lat = (float(lat[:2]) + float(lat[2:]) / 60) * (-1 if ns == 'S' else 1),
             lon = (float(lon[:3]) + float(lon[3:]) / 60) * (-1 if ew == 'W' else 1),
             alt = float(alt),
@@ -407,7 +509,18 @@ class SpectrumInstrumentsTM4D(SocketContext):
             speed = float(speed),
             course = float(course))
 
-    def get_user_options(self):
+        if metrics is not None:
+            metrics.add('gps_latitude', value=info.lat, type='gauge')
+            metrics.add('gps_longitude', value=info.lon, type='gauge')
+            metrics.add('gps_altitude', value=info.alt, type='gauge')
+            metrics.add('gps_fix_valid', value=info.fix, type='gauge')
+            metrics.add('gps_number_of_satellites', value=info.n_sat, type='gauge')
+            metrics.add('gps_horiz_dilution', value=info.h_dilution, type='gauge')
+            metrics.add('gps_speed', value=info.speed, type='gauge')
+            metrics.add('gps_course', value=info.course, type='gauge')
+        return info
+
+    def get_user_options(self, reply=None, metrics=None):
         """Return the current antenna alarm elable status and the PPS source
 
         Returns:
@@ -415,11 +528,14 @@ class SpectrumInstrumentsTM4D(SocketContext):
                 antenna_alarm_enable (bool): antenna alarm is enabled
                 pps_source (int): PPS source
         """
-        _, aa_enabled, pps_source, _, _, _, _ = self.query('78')
-        return (bool(aa_enabled), int(pps_source))
+        aa_enabled, pps_source, _, _, _, _ = self.query('78', reply)
+        aa_enabled, pps_source = (bool(aa_enabled), int(pps_source))
+        if metrics is not None:
+            metrics.add('gps_antenna_alarm_detection_enabled', value=aa_enabled, type='gauge')
+            metrics.add('gps_pps_source', value=pps_source, type='gauge')
+        return aa_enabled, pps_source
 
-
-    def get_coast_timer(self):
+    def get_coast_timer(self, reply=None, metrics=None):
         """Return the  Amount of time that the unit has been in Coast (Mode 3 or Mode 5)
 
         Returns:
@@ -428,10 +544,15 @@ class SpectrumInstrumentsTM4D(SocketContext):
         # actual reply is ['#79', '00000000', '05335027', '02902627', '00000000', '4']
         # _, time = self.query('79')
         # return float(time[:4]) + float(time[4:6])/60 + float(time[6:])/3600
-        _, c1, c2, c3, c4, c5 = self.query('79')
-        return int(c1), int(c2), int(c3), int(c4), int(c5)
+        coast_timer_values = self.query('79', reply)
+        coast_timer_values = [int(c) for c in coast_timer_values]
+        if metrics is not None:
+            # metrics.add('gps_coast_time', value=coast_time, type='gauge')
+            for i, c in enumerate(coast_timer_values):
+                metrics.add('gps_coast_time', field=i, value=c, type='gauge')
+        return coast_timer_values
 
-    def get_phase_lock_status(self):
+    def get_phase_lock_status(self, reply=None, metrics=None):
         """Return the current phase lock status.
 
         Returns:
@@ -444,10 +565,13 @@ class SpectrumInstrumentsTM4D(SocketContext):
                 5: Entered Coast condition during Mode 4 tuning (OSC mode:5, Phase lock state: NO)
                 9: Phase Lock Achieved (OSC mode:4, Phase lock state: YES)
         """
-        _, status = self.query('80')
-        return int(status)
+        (status, ) = self.query('80', reply)
+        phase_lock_status = int(status)
+        if metrics is not None:
+            metrics.add('gps_phase_lock_status', value=phase_lock_status, type='gauge')
+        return phase_lock_status
 
-    def get_leap_seconds(self):
+    def get_leap_seconds(self, reply=None, metrics=None):
         """
         Return the number of Leap Seconds that have been introduced to UTC Time since the beginning
         of GPS Time
@@ -456,19 +580,71 @@ class SpectrumInstrumentsTM4D(SocketContext):
             valid (bool): leap seconds info is valid
             leap_seconds(int): number of leap seconds
         """
-        _, time_mode, valid, leaps  = self.query('81')
+        time_mode, valid, leaps  = self.query('81', reply)
+        valid, leap_seconds = bool(int(valid)), int(leaps)
+        if metrics is not None and valid:
+            metrics.add('gps_leap_seconds', value=leap_seconds, type='gauge')
+        return valid, leap_seconds
 
-        return bool(int(valid)), int(leaps)
+    def poll_metrics(self):
+        metrics = Metrics()
+        with self.socket(flush=True):
+            if self.polling_mode != 1:
+                self.set_polling_mode(1)
+            for command, get_method in self.get_methods.items():
+                if get_method:
+                    try:
+                        get_method(metrics=metrics)
+                    except IOError:
+                        self.log.warning('%r: Could not get reply for command %s' % (self, command))
+        return metrics
 
+    def get_broadcast_metrics(self):
+        metrics = Metrics()
+        with self.socket():# don't flush, data is presumably constantly coming in
+            if self.polling_mode != 0:
+                self.set_polling_mode(0)
+            while True:
+                # process whatever replies are in the buffer until all is left are partial commands
+
+                while True:
+                    # Remove anything up to '#' in case we got a partial buffer
+                    if not self.buffer.startswith('#'):
+                        pos = self.buffer.find('#')
+                        if pos >=0:
+                            self.buffer = self.buffer[pos:]
+                    # find a string up to \r\n
+                    pos = self.buffer.find('\r\n')
+                    if pos <=0: # if there is not complete string, give up for now
+                        break
+                    reply = self.buffer[:pos+1]
+                    self.buffer = self.buffer[pos+1:]
+                    print('Got broadcast string %r' % reply)
+                    get_method = self.get_method_for(reply)
+                    if get_method:
+                        get_method(reply=reply, metrics=metrics)
+
+                # try to get new replies to complete partials command. If there are none,
+                try:
+                    reply = self.recv(timeout = 0.8) # must be <1 s because new data is coming every second and we'll never get out of here
+                    self.buffer = (self.buffer + reply).lstrip()
+                except IOError: # there was no data, this must be the end
+                    break
+        return metrics
 
     def configure_gps(self,  lat=49.320683333333335, lon=-119.62329666666666, alt=562.0):
         """
         Configure the GPS for standard CHIME operations.
 
+        The GPS is put in 'static' mode, where it tries only to get time information and not the
+        position infromation. This requires less satellites and presumably provides for a more
+        stable time signal. In this mode a static position is given to the GPS so it will know what
+        satellites to search for. The default position is the center of the CHIME array at DRAO,
+        Penticton, BC, Canada.
+
         """
         with self.socket(flush=True):
-            self.set_polling_mode(1)
-        with self.socket(flush=True, flush_timeout=0.5):
+            self.set_polling_mode()
             self.set_mask_angle(0)
             self.set_timing_mode(1) # Static. Position is set below.
             self.set_position(lat, lon, alt)
@@ -490,89 +666,21 @@ class GPSAsyncRESTServer(AsyncRESTServer):
         """
         self.gps = {}
         super(GPSAsyncRESTServer, self).__init__(address=address, port=port, heartbeat_string='Gs')
+        self.metrics_queue = Queue.Queue(1000)
+        self.add_periodic_callback(self._get_metrics, 1000)
+
 
     @coroutine
     def _get_metrics(self):
-        """ Return a Metrics object containing power supply monitoring data
+        """ get the metrics from the GPS units and put them in the queue
         """
-        self.log.info('%.32r: Received monitoring metrics request' % self)
         metrics = Metrics()
         for gps_name, gps in self.gps.items():
-            with gps.socket(flush=True):
-                try:
-                    info = gps.get_nmea_info()
-                    metrics.add('gps_latitude', name=gps_name, value=info.lat, type='gauge')
-                    metrics.add('gps_longitude', name=gps_name, value=info.lon, type='gauge')
-                    metrics.add('gps_altitude', name=gps_name, value=info.alt, type='gauge')
-                    metrics.add('gps_fix_valid', name=gps_name, value=info.fix, type='gauge')
-                    metrics.add('gps_number_of_satellites', name=gps_name, value=info.n_sat, type='gauge')
-                    metrics.add('gps_horiz_dilution', name=gps_name, value=info.h_dilution, type='gauge')
-                    metrics.add('gps_speed', name=gps_name, value=info.speed, type='gauge')
-                    metrics.add('gps_course', name=gps_name, value=info.course, type='gauge')
-                except IOError: pass
-                try:
-                    mask_angle = gps.get_mask_angle()
-                    metrics.add('gps_mask_angle', name=gps_name, value=mask_angle, type='gauge')
-                except IOError: pass
-                try:
-                    time_bias = gps.get_user_time_bias()
-                    metrics.add('gps_time_bias', name=gps_name, value=time_bias, type='gauge')
-                except IOError: pass
-                try:
-                    timing_mode = gps.get_timing_mode()
-                    metrics.add('gps_mask_angle', name=gps_name, value=timing_mode, type='gauge')
-                except IOError: pass
-                try:
-                    gq, almanac_status = gps.get_geometric_quality_and_almanac_status()
-                    metrics.add('gps_geometric_quality', name=gps_name, value=gq, type='gauge')
-                    metrics.add('gps_almanac_status', name=gps_name, value=almanac_status, type='gauge')
-                except IOError: pass
-                try:
-                    mux1, mux2 = gps.get_multiplexer_output_source()
-                    metrics.add('gps_mux1_source', name=gps_name, value=mux1, type='gauge')
-                    metrics.add('gps_mux2_source', name=gps_name, value=mux2, type='gauge')
-                except IOError: pass
-                try:
-                    sat_map, recv_status = gps.get_tracking_channel_status()
-                    metrics.add('gps_receiver_status', name=gps_name, value=recv_status, type='gauge')
-                    for sat_number, info in sat_map.items():
-                        metrics.add('gps_constellation_status', name=gps_name, satellite_number=sat_number, value=info.constellation_status, type='gauge')
-                        metrics.add('gps_signal_quality', name=gps_name, satellite_number=sat_number, value=info.signal_quality, type='gauge')
-                        metrics.add('gps_ephemeris_status', name=gps_name, satellite_number=sat_number, value=info.ephemeris_status, type='gauge')
-                except IOError: pass
-                try:
-                    coast_time = gps.get_coast_timer()
-                    # metrics.add('gps_coast_time', name=gps_name, value=coast_time, type='gauge')
-                    for i, c in enumerate(coast_time):
-                        metrics.add('gps_coast_time', name=gps_name, field=i, value=c, type='gauge')
-
-                except IOError: pass
-                try:
-                    phase_lock_status = gps.get_phase_lock_status()
-                    metrics.add('gps_phase_lock_status', name=gps_name, value=phase_lock_status, type='gauge')
-                except IOError: pass
-                try:
-                    valid, leap_seconds = gps.get_leap_seconds()
-                    if valid:
-                        metrics.add('gps_leap_seconds', name=gps_name, value=leap_seconds, type='gauge')
-                except IOError: pass
-                try:
-                    aa_enabled, pps_source = gps.get_user_options()
-                    metrics.add('gps_antenna_alarm_detection_enabled', name=gps_name, value=aa_enabled, type='gauge')
-                    metrics.add('gps_pps_source', name=gps_name, value=pps_source, type='gauge')
-                except IOError: pass
-                try:
-                    osc_tuning_mode = gps.get_oscillator_tuning_mode()
-                    if valid:
-                        metrics.add('gps_osc_tuning_mode', name=gps_name, value=osc_tuning_mode, type='gauge')
-                except IOError: pass
-                try:
-                    coast_alarm, antenna_alarm, clk_alarm = gps.get_alarm_status()
-                    metrics.add('gps_coast_alarm', name=gps_name, value=coast_alarm, type='gauge')
-                    metrics.add('gps_antenna_alarm', name=gps_name, value=antenna_alarm, type='gauge')
-                    metrics.add('gps_10MHz_alarm', name=gps_name, value=clk_alarm, type='gauge')
-                except IOError: pass
-        coroutine_return(metrics)
+            print('%.32r: Getting metrics for GPS %s' % (self, gps_name))
+            metrics.add(gps.get_broadcast_metrics(), gps_name=gps_name)
+        if self.metrics_queue.full():
+            self.metrics_queue.get()
+        self.metrics_queue.put(metrics)
 
 
     ##################
@@ -622,25 +730,16 @@ class GPSAsyncRESTServer(AsyncRESTServer):
         coroutine_return(self.gps.keys())
 
 
-    # @coroutine
-    # @endpoint('is-ready')
-    # def is_ready(self, handler):
-    #     is_ready = {name: (ps.is_enabled() and ps.is_ok() ) #and self.is_ready[name]
-    #                 for name, ps in self.power_supplies.items()}
-    #     coroutine_return(self.is_ready)
-
-
-    @coroutine
-    @endpoint('get-metrics')
-    def get_metrics(self, handler):
-        metrics = yield self._get_metrics()
-        coroutine_return(metrics.as_dict())
 
     @coroutine
     @endpoint('get-monitoring-data')
     def monitoringMetrics(self, handler):
-        self.log.info('%.32r: Received monitoring metrics request' % self)
-        metrics = yield self._get_metrics()
+        print('%.32r: Received monitoring metrics request' % self)
+        metrics = Metrics()
+        for i in range(self.metrics_queue.qsize()):
+            m = self.metrics_queue.get()
+            print m
+            metrics.add(m)
         handler.set_header('Content-Type', 'text/plain')
         handler.write(str(metrics))
 
@@ -683,17 +782,6 @@ class GPSAsyncRESTClient(AsyncRESTClient):
             heartbeat_string='Gc')
 
 
-    # @coroutine
-    # def ping(self):
-    #     try:
-    #         yield self.get('status')
-    #         self.log.info("Successfully pinged power_supply server at %s:%i" % (self.hostname, self.port))
-    #     except Exception as e:
-    #         self.log.debug(repr(e))
-    #         self.log.error("Can't ping power_supply server at %s:%i" % (self.hostname, self.port))
-    #         coroutine_return(False)
-    #     coroutine_return(True) # coroutine_return raises an exception: we don't want it in the try block
-
     @coroutine
     def start(self, config):
         """ If the PowerSupply remote server is not started, start it with the specified configuration
@@ -708,26 +796,6 @@ class GPSAsyncRESTClient(AsyncRESTClient):
 
         if isinstance(config, str):
             config = load_yaml_config(config)
-
-        # server_info = NameSpace((yield self.status()))
-        # ps_names = config['units'].keys()
-
-
-        # if not server_info.is_started:
-        #     self.log.info('%.32r: Server not started. Starting it with the provided configuration' % self)
-        #     start_results = yield self.post('start', **config)  # start the server if not already started
-        # else:
-        #     self.log.info('%.32r: Server is already started' % self)
-        #     if set(server_info.ps_names) != set(ps_names):
-        #         self.log.warning('%.32r: The server does not support the same supplies as the current config (%s instead of %s)' % (self, server_info.ps_names, ps_names))
-        #     start_results = 'Already started'
-
-        # # result = yield self.post('start', **config)
-
-        # # if server_info.name != name:
-        # #     raise RuntimeError('%.32r: The remote server does not have the expected name (%s instead of %s)' % (self, server_info.name, name))
-
-
         coroutine_return('GPS server started')
 
     @coroutine
@@ -747,54 +815,11 @@ class GPSAsyncRESTClient(AsyncRESTClient):
         coroutine_return(result)
 
 
-    @coroutine
-    def get_metrics(self):
-        result = yield self.get('get-metrics')
-        coroutine_return(Metrics(result))
+    # @coroutine
+    # def get_metrics(self):
+    #     result = yield self.get('get-metrics')
+    #     coroutine_return(Metrics(result))
 
-
-
-# class PowerSupplyEasyRESTClient(object):
-#     def __init__(self, hostname='localhost', port=PowerSupplyAsyncRESTServer.DEFAULT_PORT):
-#         self.port = port
-#         self.host = hostname
-#         self.url = "http://{}:{:d}/".format(self.host, self.port)
-#         print "Connected to server at {}".format(self.url)
-
-#     def check_code(self, code):
-#         if not code == 200:
-#             raise RuntimeError("Got code {:d} from server at {}:{:d}".format(code, self.host, self.port))
-
-#     def listNames(self):
-#         print "Requesting list of power supply names..."
-#         response = requests.get(self.url + "listNames")
-#         self.check_code(response.status_code)
-#         return response.json()
-
-#     def powerOn(self, ps_names=None):
-#         print "Sending power on command..."
-#         response = requests.post(self.url + "powerOn", data={'ps_names': ps_names})
-#         self.check_code(response.status_code)
-#         print "Successfully sent power on!"
-
-#     def powerOff(self, ps_names=None):
-#         print "Sending power off command..."
-#         response = requests.post(self.url + "powerOff", data={'ps_names': ps_names})
-#         self.check_code(response.status_code)
-#         print "Successfully sent power off!"
-
-#     def status(self, ps_names=None):
-#         print "Requesting status..."
-#         response = requests.post(self.url + "status", data={'ps_names': ps_names})
-#         self.check_code(response.status_code)
-#         print "Status: {}".format(response.json())
-#         return response.json()
-
-#     def monitoringMetrics(self):
-#         print "Requesting monitoring metrics..."
-#         response = requests.get(self.url + "monitoringMetrics")
-#         self.check_code(response.status_code)
-#         return response.json()
 
 
 

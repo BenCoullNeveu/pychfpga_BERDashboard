@@ -551,7 +551,8 @@ class SocketContext(object):
                 self.sock.settimeout(self.flush_timeout)
             while True:
                 try:
-                    self.sock.recv(16384)
+                    s = self.sock.recv(16384)
+                    print('flushed %r' % s)
                 except socket.timeout:
                     break
             if self.flush_timeout:
