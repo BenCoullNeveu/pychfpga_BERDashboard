@@ -920,6 +920,7 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
         self.base_filename = base_filename or name
         self.config = config
 
+
     @coroutine
     def ping(self):
         try:
