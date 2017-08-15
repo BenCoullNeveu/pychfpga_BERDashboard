@@ -19,9 +19,12 @@
  * 51 Franklin St, Fifth Floor, Boston, MA  02110-1301  USA
  */
 
-#include <stdio.h>
 #include <stdlib.h>
+
+#include <fcntl.h>
+#include <stdio.h>
 #include <string.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -89,7 +92,7 @@ static char *make_command(int argc, const char **argv) {
     len += nextlen;
   }
 
-  /* Check for an empty command */\
+  /* Check for an empty command */
   if (buffer == NULL || buffer[0] == 0) {
     fputs("Empty command\n", stderr);
     free(buffer);
@@ -190,6 +193,9 @@ void Usage(const char *argv0, int retval)
 
 int main(int argc, const char **argv)
 {
+  /* A place to put a descriptor */
+  int fd;
+
   /* Child return status */
   int status;
 
@@ -217,11 +223,12 @@ int main(int argc, const char **argv)
   if ((cmd = make_command(argc - 2, argv + 2)) == NULL)
     return 1;
 
-  /* Make sure we can access the key file */
-  if (access(KEYFILE, R_OK)) {
+  /* Make sure we can access the key file as EUID */
+  if ((fd = open(KEYFILE, O_RDONLY)) < 0) {
     perror("Unable to access key file");
     exit(1);
   }
+  close(fd);
 
   /* Now loop over set nodes */
   for (n = 0; n < NN; ++n)
@@ -251,6 +258,12 @@ int main(int argc, const char **argv)
          */
         char *const args[] = { SSH, "-i", KEYFILE, "-l", REMOTE_USER,
           nodename, "--", cmd, NULL };
+
+        /* Set our real UID to root */
+        if (setuid(0)) {
+          perror("setuid");
+          return 1;
+        }
 
         /* Exec.  This should not return */
         execvp(SSH, args);
