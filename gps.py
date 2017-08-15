@@ -27,9 +27,9 @@ class SpectrumInstrumentsTM4D(SocketContext):
 
     def __init__(self,  hostname, port=1001, timeout=0.5, verbose=1):
 
-        super(SpectrumInstrumentsTM4D, self).__init__(hostname=hostname, port=port, timeout=timeout)
+        super(SpectrumInstrumentsTM4D, self).__init__(hostname=hostname, port=port, timeout=timeout, close_socket=False)  # keep socket open because reconnecting causes data loss
         self.log = log.get_logger(self)
-        print "Initializing direct LAN Connection at %s:%i" % (hostname, port)
+        self.log.info( "Initializing direct LAN Connection at %s:%i" % (hostname, port))
         self.verbose = verbose
         self.log.debug('Initializing instrument')
         self.polling_mode = None
@@ -269,13 +269,16 @@ class SpectrumInstrumentsTM4D(SocketContext):
         Returns:
             datetime: date and time as a Python datetime object
         """
-        date, time = self.query('51', reply)
+        date, time_ = self.query('51', reply)
 
         t= datetime.datetime(
-            int(date[4:]),  int(date[2:4]), int(date[:2]), # year, month, day
-            int(time[:2]), int(time[2:4]), int(time[4:6])) # hours, minutes, seconds
+            int(date[4:]),  int(date[:2]), int(date[2:4]), # year, month, day
+            int(time_[:2]), int(time_[2:4]), int(time_[4:6])) # hours, minutes, seconds
 
         self.last_time = calendar.timegm(t.timetuple())
+        if metrics is not None:
+            metrics.add('gps_time', value=self.last_time * 1000, type='gauge')
+            metrics.add('gps_time_diff', value=(time.time() - self.last_time) * 1000, type='gauge')
         return t
 
     def get_position(self, reply=None, metrics=None):
@@ -604,31 +607,38 @@ class SpectrumInstrumentsTM4D(SocketContext):
         with self.socket():# don't flush, data is presumably constantly coming in
             if self.polling_mode != 0:
                 self.set_polling_mode(0)
-            while True:
+            self.send('\r\n')  # provoke an error if the connection is broken
+            #print('Cumulative buffer before is: %r\n\n' % self.buffer)
+            for i in range(10):
                 # process whatever replies are in the buffer until all is left are partial commands
                 # try to get new replies to complete partials command. If there are none,
                 try:
-                    reply = self.recv(timeout = 0.8) # must be <1 s because new data is coming every second and we'll never get out of here
+                    reply = self.recv(timeout = 1.2) # must be <1 s because new data is coming every second and we'll never get out of here
                     self.buffer += reply
+                    #print('got %i bytes: %r\n' % (len(reply), reply))
+                    if len(reply) < 1000:
+                         break
                 except IOError: # there was no data, this must be the end
-                    pass
-
-                while True:
+                    break
+            #print('Cumulative buffer after is: %r\n' % self.buffer)
+            while True:
                     # Remove anything up to '#' in case we got a partial buffer
                     if not self.buffer.startswith('#'):
                         pos = self.buffer.find('#')
                         if pos >=0:
                             self.buffer = self.buffer[pos:]
+                            #print('chopped beginning of buffer to %r\n' % self.buffer[:10])
                     # find a string up to \r\n
                     pos = self.buffer.find('\r\n')
                     if pos <=0: # if there is not complete string, give up for now
                         break
-                    reply = self.buffer[:pos+1]
-                    self.buffer = self.buffer[pos+1:]
-                    print('Got broadcast string %r' % reply)
+                    reply = self.buffer[:pos+2]
+                    self.buffer = self.buffer[pos+2:]
+                    self.log.debug('Got broadcast string %r' % reply)
                     get_method = self.get_method_for(reply)
                     if get_method:
                         get_method(reply=reply, metrics=metrics)
+        #print('Parsed %i metrics' % len(metrics.metrics))
         return metrics
 
     def configure_gps(self,  lat=49.320683333333335, lon=-119.62329666666666, alt=562.0):
@@ -675,12 +685,23 @@ class GPSAsyncRESTServer(AsyncRESTServer):
         """
         metrics = Metrics()
         for gps_name, gps in self.gps.items():
-            print('%.32r: Getting metrics for GPS %s' % (self, gps_name))
-            metrics.add(gps.get_broadcast_metrics(), gps_name=gps_name)
-        if self.metrics_queue.full():
-            self.metrics_queue.get()
-        self.metrics_queue.put(metrics)
+            self.log.info('%.32r: Getting metrics for GPS %s' % (self, gps_name))
+            try:
+                m = gps.get_broadcast_metrics()
+                metrics = Metrics()
+                metrics.add(m, gps_name=gps_name)
+                self.log.info('Got %i metrics' % len(metrics.metrics))
+                if len(metrics.metrics):
+                    if self.metrics_queue.full():
+                        self.metrics_queue.get()
+                    self.metrics_queue.put(m)
+            except IOError as e:
+                self.log.warning('%r: Error while trying to access metric from %s\nThe error is:\n%r' % (self, gps_name, e))
+            except Exception as e:
+                self.log.error(e)
+                raise
 
+        self.log.info('Queue has %i metrics blocks' % self.metrics_queue.qsize())
 
     ##################
     # Server commands
@@ -733,12 +754,12 @@ class GPSAsyncRESTServer(AsyncRESTServer):
     @coroutine
     @endpoint('get-monitoring-data')
     def monitoringMetrics(self, handler):
-        print('%.32r: Received monitoring metrics request' % self)
+        self.log.info('%.32r: Received monitoring metrics request' % self)
         metrics = Metrics()
         for i in range(self.metrics_queue.qsize()):
             m = self.metrics_queue.get()
-            print m
             metrics.add(m)
+        self.log.info('%r: sending %i metrics' % (self, len(metrics.metrics)))
         handler.set_header('Content-Type', 'text/plain')
         handler.write(str(metrics))
 
@@ -865,8 +886,7 @@ if __name__ == '__main__':
     ioloop.make_current()
 
     # Setup logging
-    #log.setup_logger(__name__, stderr_log_level='warning', syslog_level='debug')
-    logging.getLogger().setLevel('DEBUG')
+    log.setup_basic_logging()
 
     args = parse_cmdline_args(sys.argv[1:])
     port = args.port

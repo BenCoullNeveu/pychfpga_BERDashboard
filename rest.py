@@ -508,12 +508,13 @@ class SocketContext(object):
     when the counter is decremented back to zero.
 
     """
-    def __init__(self,  hostname, port, timeout=0.5, **kwargs):
+    def __init__(self,  hostname, port, timeout=0.5,close_socket=True,  **kwargs):
         self.log = log.get_logger(self)
         self.log.debug('Initializing direct LAN Connection at %s:%i' % (hostname, port))
         self.ip_addr = hostname
         self.ip_port = port
         self.timeout = timeout
+        self.close_socket = close_socket
         self.flush_timeout = 0.1
         self.sock = None
         self.socket_references = 0
@@ -534,14 +535,29 @@ class SocketContext(object):
         self.flush_timeout = flush_timeout
         return self
 
-    def __enter__(self):
-        if not self.sock:
+    def _connect(self):
+            self._close()
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP)
             self.sock.settimeout(self.timeout)
             try:
                 self.sock.connect((self.ip_addr, self.ip_port))
-            except socket.timeout:
+            except (socket.timeout, socket.error):
+                self.log.warning('%r: Error connecting to %s:%i' % (self, self.ip_addr, self.ip_port))
                 raise IOError('%r: timout while connecting to %s:%i' % (self, self.ip_addr, self.ip_port))
+
+    def _close(self):
+        if self.sock:
+            try:
+                self.sock.shutdown(socket.SHUT_WR)
+                self.sock.close()
+            except (socket.error, socket.timeout):
+                pass
+            self.sock = None
+            #print('%r: connecttion to %s:%i closed' % (self, self.ip_addr, self.ip_port)) 
+
+    def __enter__(self):
+        if not self.sock:
+           self._connect()
         self.socket_references += 1
 
         # flush the socket if requested
@@ -552,7 +568,7 @@ class SocketContext(object):
             while True:
                 try:
                     s = self.sock.recv(16384)
-                    print('flushed %r' % s)
+                    #print('flushed %r' % s)
                 except socket.timeout:
                     break
             if self.flush_timeout:
@@ -562,28 +578,49 @@ class SocketContext(object):
     def __exit__(self, exc_type, exc_value, traceback):
         if self.socket_references:
             self.socket_references -= 1
-        if not self.socket_references and self.sock:
-            self.sock.close()
-            self.sock = None
-
+        if self.close_socket and not self.socket_references:
+            self._close()
 
 
     def send(self, string):
-        self.sock.send(string)
+        trial = 0
+        while True:
+           try:
+              self.sock.send(string)
+              return
+           except (socket.timeout, socket.error):
+              trial += 1
+              if trial>3:
+                  self.log.warning('%r: error sending to %s:%i after %i trials. Raising exception.' % (self, self.ip_addr, self.ip_port, trial))
+                  raise IOError('%r: error sending to %s:%i' % (self, self.ip_addr, self.ip_port))
+              self.log.warning('%r: error sending to  %s:%i on trial %i. trying to reconnect...' % (self, self.ip_addr, self.ip_port, trial))
+              self._connect()
+           
 
     def recv(self, buffer_size=16384, timeout=None):
-        if timeout:
-            old_timeout = self.sock.gettimeout()
-            self.sock.settimeout(timeout)
-        try:
-            data = self.sock.recv(buffer_size)
-        except socket.timeout:
-            raise IOError('%r: timout while waiting for socket data' % (self))
-
-        if timeout:
-            self.sock.settimeout(old_timeout)
-
-        return data
+        trial = 0
+        while True:
+            try:
+                if timeout:
+                     old_timeout = self.sock.gettimeout()
+                     self.sock.settimeout(timeout)
+                data = self.sock.recv(buffer_size)
+                if not data:
+                    raise socket.error #('recv returned an empty string')
+                return data
+            except socket.timeout:
+                self.log.warning('timeout')
+                raise IOError('%r: timout while waiting for socket data' % (self))
+            except socket.error:
+                trial += 1
+                if trial >3:
+                    self.log.warning('%r: unable to receiuve data from %s:%i after %i trials. Raising exception.' % (self, self.ip_addr, self.ip_port, trial))
+                    raise IOError('%r: error receiving from %s:%i' % (self, self.ip_addr, self.ip_port))
+                self.log.warning('%r: socket error sending to  %s:%i on trial %i. trying to reconnect...' % (self, self.ip_addr, self.ip_port,trial))
+                self._connect()
+            finally:
+                if timeout:
+                    self.sock.settimeout(old_timeout)
 
     def flush(self, timeout=0.1):
         with self.socket(flush=True, flush_timeout=timeout):

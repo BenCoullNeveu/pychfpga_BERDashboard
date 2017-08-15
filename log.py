@@ -302,6 +302,26 @@ def stop_logging(new_handlers):
             if handler in logger.handlers:
                 logger.handlers.delete(handler)  # remove the handlers that were added for that logger
 
+def setup_basic_logging(level='INFO'):
+
+    DEFAULT_LOGGING = {
+        'formatters': { 
+             'std': {
+                        'format': "%(asctime)s %(levelname)s %(name)s.%(funcName)s() %(filename)s:%(lineno)d>> %(message)s",
+                        'datefmt': "%b %d %H:%M:%S" },
+              },
+        'handlers': {
+            'stderr': {'class': 'logging.StreamHandler', 'formatter': 'std', 'level': level}
+            },
+        'loggers': {
+            '': {'handlers': ['stderr'], 'level': level}  # root logger
+
+            }
+        }
+    setup_logging(DEFAULT_LOGGING)
+
+
+
 
 # def setup_logger(logger,
 #                  stdout_log_level=None,
