@@ -307,8 +307,8 @@ def setup_basic_logging(level='INFO'):
     DEFAULT_LOGGING = {
         'formatters': { 
              'std': {
-                        'format': "%(asctime)s %(levelname)s %(name)s.%(funcName)s() %(filename)s:%(lineno)d>> %(message)s",
-                        'datefmt': "%b %d %H:%M:%S" },
+                        'format': "%(asctime)s %(levelname)s %(name)s.%(funcName)s() %(filename)s:%(lineno)d>> %(message)s", 
+                        'datefmt': "%H:%M:%S" },
               },
         'handlers': {
             'stderr': {'class': 'logging.StreamHandler', 'formatter': 'std', 'level': level}

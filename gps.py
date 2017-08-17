@@ -694,7 +694,7 @@ class GPSAsyncRESTServer(AsyncRESTServer):
                 if len(metrics.metrics):
                     if self.metrics_queue.full():
                         self.metrics_queue.get()
-                    self.metrics_queue.put(m)
+                    self.metrics_queue.put(metrics)
             except IOError as e:
                 self.log.warning('%r: Error while trying to access metric from %s\nThe error is:\n%r' % (self, gps_name, e))
             except Exception as e:
