@@ -574,8 +574,28 @@ class FPGAArray(object):
 
         self.set_crate_numbers(crate_number_map, strict=False)
 
-
-
+        #################################
+        # Check if all the hardware we wanted is present
+        #################################
+        # Check for missing crates
+        current_crates = [(c.part_number, self._to_integer(c.serial)) for c in ic]
+        print current_crates
+        missing_crates = [(model, serial) for (model, serial) in hw_table.icecrates if (model, self._to_integer(serial)) not in current_crates]
+        print missing_crates
+        if missing_crates:
+            raise RuntimeError('%.32r: The following crates are missing: %s' % (self, ', '.join('%s SN%s' % (model, serial) for (model, serial) in missing_crates)))
+        # Check for missing boards
+        ignore_missing_slots = True
+        missing_slots = { (ic.part_number, ic.serial): set(range(1, ic.NUMBER_OF_SLOTS + 1)) - set(ic.slot) for ic in self.ic}
+        if any(missing_slots.values()):
+            message = '%s: The following slots are missing:\n%s' % (
+                self, 
+                '\n'.join('    Crate %s SN %s: slots %s' % (model, serial, ', '.join(str(s) for s in slots)) 
+                for (model, serial), slots in missing_slots.items() if slots))
+            if not ignore_missing_slots:
+                raise RuntimeError(message)
+            else:
+                self.logger.warning(message)
         #################################
         # Discover Mezzanines
         #################################
