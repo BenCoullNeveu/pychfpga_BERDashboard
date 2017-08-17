@@ -26,13 +26,13 @@ class AgilentN5700(SocketContext):
     SUPPORTED_PS = {
         # model : (name, IDN substring, Vmax, Imax)
         'N5764A': ('Agilent Power Supply', 'Agilent Technologies,N5764A', 21, 79.8 ),
-        'N8731' : ('Agilent Power Supply', 'Agilent Technologies,N5781', 8, 400)
+        'N8731' : ('Agilent Power Supply', 'Agilent Technologies,N8731A', 8, 400)
     }
 
 
     def __init__(self,  hostname, port=5025, timeout=0.5, verbose=1):
 
-        super(AgilentN5700, self).__init__(hostname=hostname, port=port, timeout=timeout)
+        super(AgilentN5700, self).__init__(hostname=hostname, port=port, timeout=timeout, close_socket=True)
         self.log = log.get_logger(self)
         print "Initializing direct LAN Connection at %s:%i" % (hostname, port)
         self.locked = True
@@ -59,7 +59,7 @@ class AgilentN5700(SocketContext):
         """
         Sends a command to the instrument. The terminator is added automatically.
         """
-        with self.socket(flush=True):
+        with self.socket(flush=flush):
             self._check_instrument_type()
             self.send(comstr + "\n")
 
@@ -81,13 +81,15 @@ class AgilentN5700(SocketContext):
         """
         Make sure the instrument type and model is known and supported.
         """
-        if self.instrument_model and self.instrument_name:
+        if self.instrument_model:
             return
+        print(self.instrument_model, self.instrument_name)
         with self.socket(flush=True):
             self.send('*IDN?\n')
             id_string = self.recv(timeout=min(1, self.timeout))
             self.log.debug('Instrument Identification string: %s' % id_string)
             for (instrument_code, (instrument_name, instrument_id_string, vmax, imax)) in self.SUPPORTED_PS.items():
+                #print('checking if %s is in %s' % (instrument_id_string, id_string))
                 if instrument_id_string in id_string:
                     self.log.debug('Connected to: %s' % instrument_name)
                     self.send('STATus:OPERation:ENABle %i\n' % 0x0500)  # We wish to know is in constant current or constant voltage mode
@@ -95,9 +97,11 @@ class AgilentN5700(SocketContext):
                     self.instrument_name = instrument_name
                     self.instrument_vmax = vmax
                     self.instrument_imax = imax
+                    #print('after:', self.instrument_model, self.instrument_name)
                     break
 
-            if instrument_code is None:
+            if self.instrument_model is None:
+                self.log.warning('%r: Instrument %s is not supported' % (self, id_string))
                 raise RuntimeError('The identification command did not return the expected instrument ID string')
 
     def open(self):
@@ -219,7 +223,7 @@ class AgilentN5700(SocketContext):
         """
         Returns a dictionary containting the output voltage and current
         """
-        with self.socket(flush=True):
+        with self.socket():
             meas = {'current': 0, 'voltage': 0}
             current = self.query_float('MEAS:CURR?', timeout=2)
             voltage = self.query_float('MEAS:VOLT?', timeout=2)
@@ -812,8 +816,7 @@ if __name__ == '__main__':
     ioloop.make_current()
 
     # Setup logging
-    #log.setup_logger(__name__, stderr_log_level='warning', syslog_level='debug')
-    logging.getLogger().setLevel('INFO')
+    log.setup_basic_logging('DEBUG')
 
     args = parse_cmdline_args(sys.argv[1:])
     port = args.port

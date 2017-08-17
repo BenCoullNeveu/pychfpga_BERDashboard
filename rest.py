@@ -139,7 +139,7 @@ class AsyncMixin(object):
             # A bit of a hack: close all sockets opened by the HTTP server so we can restart a new
             # server in the same iPython session
             for sock in self.http_server._sockets.values():
-                print('Closing socket ', sock.getsockname())
+                #print('Closing socket ', sock.getsockname())
                 sock.close()
 
         def handler(sig, frame):
@@ -508,14 +508,15 @@ class SocketContext(object):
     when the counter is decremented back to zero.
 
     """
-    def __init__(self,  hostname, port, timeout=0.5,close_socket=True,  **kwargs):
+    def __init__(self,  hostname, port, timeout=0.5, flush_timeout=0.1, close_socket=True,  **kwargs):
         self.log = log.get_logger(self)
         self.log.debug('Initializing direct LAN Connection at %s:%i' % (hostname, port))
         self.ip_addr = hostname
         self.ip_port = port
         self.timeout = timeout
         self.close_socket = close_socket
-        self.flush_timeout = 0.1
+        self.flush_timeout = flush_timeout
+        self.temp_flush_timeout = flush_timeout
         self.sock = None
         self.socket_references = 0
         super(SocketContext, self).__init__(**kwargs)
@@ -532,7 +533,7 @@ class SocketContext(object):
 
         """
         self.flush = flush
-        self.flush_timeout = flush_timeout
+        self.temp_flush_timeout = flush_timeout
         return self
 
     def _connect(self):
@@ -562,17 +563,15 @@ class SocketContext(object):
 
         # flush the socket if requested
         if self.flush:
-            if self.flush_timeout:
-                old_timeout = self.sock.gettimeout()
-                self.sock.settimeout(self.flush_timeout)
+            old_timeout = self.sock.gettimeout()
+            self.sock.settimeout(self.temp_flush_timeout or self.flush_timeout)
             while True:
                 try:
                     s = self.sock.recv(16384)
                     #print('flushed %r' % s)
                 except socket.timeout:
                     break
-            if self.flush_timeout:
-                self.sock.settimeout(old_timeout)
+            self.sock.settimeout(old_timeout)
         return self.sock
 
     def __exit__(self, exc_type, exc_value, traceback):
