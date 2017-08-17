@@ -368,8 +368,8 @@ class RawAcqUDPReceiver(SocketServer.UDPServer):
             #print( "Data received on port {0}, channel#{1}, std(data)={2}".format(port, chan, adc_data.std()) )
             #print("0x%03x"% stream_id,end='')
             try:
-                self.server.data_queue.put((timestamp, port, chan, stream_id, flags, adc_data), True, 0.1)
-                # print(".", end='')
+                self.server.data_queue.put((timestamp, port, chan, stream_id, flags, adc_data), True, 0.8)
+                self.server.queued_packets += 1# print(".", end='')
             except Queue.Full:
                 # print("o", end='')
                 self.server.queue_overflows += 1
@@ -377,6 +377,7 @@ class RawAcqUDPReceiver(SocketServer.UDPServer):
     def __init__(self, server_address, data_queue):
         self.data_queue = data_queue
         self.queue_overflows = 0
+        self.queued_packets = 0
         self.packet_counter = 0
         self.unpack_header = struct.Struct('>BHHL').unpack_from  # Precompile unpack string for performance
         SocketServer.UDPServer.__init__(self, server_address, self.UDPHandler)  # cannot use super(...): this is an old-style class
@@ -397,7 +398,7 @@ class RawAcqReceiver(object):
         Should probably fix the 'serve forever bits'
     '''
 
-    QUEUE_MAXSIZE = 1024 #: Maximum number of elements in a queue, just in case we can't read the queue as fast as we fill it. Otherwise we can use infinite memory.
+    QUEUE_MAXSIZE = 10240 #: Maximum number of elements in a queue, just in case we can't read the queue as fast as we fill it. Otherwise we can use infinite memory.
 
     def __init__(self):
         self.log = logging.getLogger(__name__).getChild(self.__class__.__name__)
@@ -475,6 +476,7 @@ class RawAcqReceiver(object):
         self.all_data = {}
         self.all_ts = {}
         self.hdf5_file = None
+        self.hdf5_run = False
         self.capture_start = False
         self.rms = {}
 
@@ -632,10 +634,11 @@ class RawAcqReceiver(object):
 
                 # get the packet from the queue
                 try:
-                    (timestamp, port, chan, stream_id, flags, adc_data) = self.data_queue.get(timeout=0.5)
+                    (timestamp, port, chan, stream_id, flags, adc_data) = self.data_queue.get() # block for minimum cpu usage
                 except Queue.Empty:
-                    print('process_data: Queue Empty')
+                    #print('process_data: Queue Empty')
                     continue
+                #print('.')
                 stream_id &= 0xFFF
                 chan_number = stream_id & 0xF
                 slot_number = (stream_id >> 4) & 0xF
@@ -683,7 +686,7 @@ class RawAcqReceiver(object):
     def print_stats(self):
         print()
         for i,r in enumerate(self.receivers):
-            print('Recv %i, pkts=%i, queue_overflows=%i' % (i, r.packet_counter, r.queue_overflows))
+            print('Recv %i, pkts=%i, queued= %i, overflows=%i, qsize=%i' % (i, r.packet_counter, r.queued_packets, r.queue_overflows, self.data_queue.qsize()))
         print
 
     def startHdf5Disk(self, base_dir, base_filename, capture_duration=60, elements_per_file=2048*64):
@@ -792,6 +795,11 @@ class RawAcqReceiver(object):
         metrics = Metrics()
         for (crate, slot, chan), rms in self.rms.items():
             metrics.add('raw_acq_rms', value= rms, crate=crate, slot=slot, chan=chan, type='gauge')
+        for i,r in enumerate(self.receivers):
+            metrics.add('raw_acq_received_packets', value=r.packet_counter, receiver=i, type='gauge')
+            metrics.add('raw_acq_queued_packets', value=r.queued_packets, receiver=i, type='gauge')
+            metrics.add('raw_acq_overflow_packets', value=r.queue_overflows, receiver=i, type='gauge')
+        metrics.add('raw_acq_queue_size', value=self.data_queue.qsize(), type='gauge')
         return metrics
 
 
