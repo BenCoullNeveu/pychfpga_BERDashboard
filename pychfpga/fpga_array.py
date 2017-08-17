@@ -461,12 +461,12 @@ class FPGAArray(object):
         if subarrays:
             ib_not_in_subarray = self.hwm.query(IceBoardPlus).filter(~IceBoardPlus.subarray.in_(subarrays))
             for ib in list(ib_not_in_subarray):  # make sure the list does not change during the loop
-                self.logger.warning("%r (subarray '%s') is not in the target subarray list %s. It is removed from the YAML hardware map."  # That comment should be if verbose=1
+                self.logger.info("%r (subarray '%s') is not in the target subarray list %s. It is removed from the YAML hardware map."  # That comment should be if verbose=1
                                    % (ib, ib.subarray, subarrays))
                 self.hwm.delete(ib)
             self.hwm.flush()
 
-        # Remove boards that do not respond to tuber pings
+        # If ping=1, remove boards that do not respond to tuber pings
         ping_timeout = 1
         if ping:
             self.logger.info('%.32r: Pinging IceBoards specified in YAML file' % (self))
@@ -589,8 +589,8 @@ class FPGAArray(object):
         missing_slots = { (ic.part_number, ic.serial): set(range(1, ic.NUMBER_OF_SLOTS + 1)) - set(ic.slot) for ic in self.ic}
         if any(missing_slots.values()):
             message = '%s: The following slots are missing:\n%s' % (
-                self, 
-                '\n'.join('    Crate %s SN %s: slots %s' % (model, serial, ', '.join(str(s) for s in slots)) 
+                self,
+                '\n'.join('    Crate %s SN %s: slots %s' % (model, serial, ', '.join(str(s) for s in slots))
                 for (model, serial), slots in missing_slots.items() if slots))
             if not ignore_missing_slots:
                 raise RuntimeError(message)
