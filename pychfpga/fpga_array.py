@@ -2799,7 +2799,7 @@ def load_yaml_config(object_names, default_filename='config.yaml'):
                     current_root_node = current_node
                     current_node = current_node.get(path_item)
                 else:
-                    raise RuntimeError("Unknown object '%s'" % yaml_object_path)
+                    raise RuntimeError("YAML file loading error: Unknown object '%s'" % yaml_object_path)
         logger.info('Loading YAML elements from object %s' % (yaml_object_path))
         # print 'Loading YAML elements from object %s' % yaml_object_path
 
