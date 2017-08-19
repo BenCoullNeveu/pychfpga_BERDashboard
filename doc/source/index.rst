@@ -50,6 +50,7 @@ The :mod:`ch_acq` package provides the following main modules, each correspondin
    :caption: Main modules
 
    ch_master
+   ps
    fpga_array
    kotekan
    raw_acq

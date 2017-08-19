@@ -13,7 +13,22 @@
    rest.RESTClient
    rest.AsyncMixin
    rest.AsyncRESTClient
-   resr.JsonRequestHandler
+   rest.JsonRequestHandler
    rest.AsyncRESTServer
+   rest.SocketContext
+   rest.RunSyncWrapper
    rest.endpoint
 
+
+
+Synchronous operation of asynchronous code
+******************************************
+
+.. autoclass:: rest.RunSyncWrapper
+	:members:
+
+TCP socket handler
+******************
+
+.. autoclass:: rest.SocketContext
+	:members:
