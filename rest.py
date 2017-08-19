@@ -11,8 +11,12 @@ import inspect
 import requests
 import functools
 import socket
+import argparse
 
 import log
+from log import NameSpace
+from pychfpga import load_yaml_config
+
 import tornado.ioloop
 import tornado.web
 from tornado.gen import sleep
@@ -182,16 +186,16 @@ class AsyncRESTClient(AsyncMixin):
     DEFAULT_HOST = 'localhost'
     DEFAULT_PORT = 80
 
-    def __init__(self, hostname=DEFAULT_HOST, port=DEFAULT_PORT, make_server_func=None, heartbeat_string=None, heartbeat_period=1000):
-        self.log = logging.getLogger(__name__).getChild(self.__class__.__name__)
+    def __init__(self, hostname=DEFAULT_HOST, port=DEFAULT_PORT, server_class=None, heartbeat_string=None, heartbeat_period=1000):
+        self.log = log.get_logger(self)
         self.hostname = hostname
         self.port = port
 
-        if make_server_func and (not hostname or not self._tcp_ping(hostname, port)):
+        if server_class and (not hostname or not self._tcp_ping(hostname, port)):
             self.log.info('%32r: Hostname is not specified or is not responding. Creating local server' % (self))
             self.hostname = 'localhost'
             address = ''  # server listens to all interfaces by default
-            self.server = make_server_func(self, address, self.port)
+            self.server = server_class(address, self.port)
 
         self.log.info('%32r: Creating %s at %s:%i' % (self, self.__class__.__name__, self.hostname, port))
         self.client = tornado.httpclient.AsyncHTTPClient()
@@ -221,8 +225,9 @@ class AsyncRESTClient(AsyncMixin):
             body = tornado.escape.json_encode(kws)
         else:
             body = None
+        self.log.debug('fetch: Send %s request %s' % (method, endpoint))
         resp = yield self.client.fetch(url, method=method, headers={"Content-Type": "application/json"}, body=body, raise_error=False)
-        # print('_fetch response:', resp)
+        self.log.debug('_fetch response: %r' % resp)
         if raw:
             decoded_reply = resp.body
             error = ''
@@ -344,8 +349,9 @@ class AsyncRESTServer(AsyncMixin):
     User can signal an error condition by raising an exception or by returning a dictionary with the 'error' key.
     """
 
+    DEFAULT_PORT = 80
 
-    def __init__(self, address='', port=80, heartbeat_string=None, heartbeat_period=1000):
+    def __init__(self, address='', port=DEFAULT_PORT, heartbeat_string=None, heartbeat_period=1000):
         """ Create a Web server responding to the endpoints defined in the class.
 
         Parameters:
@@ -367,7 +373,7 @@ class AsyncRESTServer(AsyncMixin):
         self.port = port
 
         self.log = logging.getLogger(__name__).getChild(self.__class__.__name__)
-        self.log.info('%32r: Creating %s server at %s:%i' % (self, self.__class__.__name__, address or '*', port))
+        self.log.info('%32r: Creating %s server at %s:%s' % (self, self.__class__.__name__, address or '*', port))
 
         # Create the endpoints registered with the @endpoint decorator
         endpoints = [self._create_endpoint(*info) for info in self.get_endpoint_info()]
@@ -472,6 +478,14 @@ class AsyncRESTServer(AsyncMixin):
             return decorator(arg, endpoint_name=None)
 
 class RunSyncWrapper(object):
+    """
+    Wraps an instance of object providing asynchronous (coroutine) methods, and automatically run calls to such coroutines in an ioloop until they are completed.
+
+    This allows the asynchronous methods of a class to be as if they were synchronous.
+
+    Parameters:
+        async_instance (object): object that contains coroutine methods.
+    """
     def __init__(self, async_instance):
         self._async = async_instance
 
@@ -554,7 +568,7 @@ class SocketContext(object):
             except (socket.error, socket.timeout):
                 pass
             self.sock = None
-            #print('%r: connecttion to %s:%i closed' % (self, self.ip_addr, self.ip_port)) 
+            #print('%r: connecttion to %s:%i closed' % (self, self.ip_addr, self.ip_port))
 
     def __enter__(self):
         if not self.sock:
@@ -594,7 +608,7 @@ class SocketContext(object):
                   raise IOError('%r: error sending to %s:%i' % (self, self.ip_addr, self.ip_port))
               self.log.warning('%r: error sending to  %s:%i on trial %i. trying to reconnect...' % (self, self.ip_addr, self.ip_port, trial))
               self._connect()
-           
+
 
     def recv(self, buffer_size=16384, timeout=None):
         trial = 0
@@ -624,3 +638,113 @@ class SocketContext(object):
     def flush(self, timeout=0.1):
         with self.socket(flush=True, flush_timeout=timeout):
             pass
+
+
+##########################################################################################
+# Helper functions for implementing command-line interfaces to the REST client and servers
+##########################################################################################
+
+
+def run_client(args, server_class=None, client_class=None, object_name='', server_config_path=None, parser=None):
+
+    if parser is None:
+        parser = argparse.ArgumentParser(description=object_name, epilog='')
+
+
+    parser.add_argument('args', type=str, nargs='*', default='',  help='[[config] [server_name]] [command {args}]')
+    # parser.add_argument('-d', '--debug', action='store_true', help="debug mode")
+    parser.add_argument('-p', '--port', default=None, type=int, help="port used by the server")
+    parser.add_argument('-n', '--host', default=None, type=str, help="server hostname")
+    run = parser.add_mutually_exclusive_group(required=False)
+    run.add_argument('--run', action='store_true', help='runs de client/server untilinterrupted by Ctrl-C. Implicit if no command is given')
+    run.add_argument('--no-run', action='store_true', help='Do not run the client even if no command is given. Useful in interactive sessions')
+    parser.add_argument('--no-start', action='store_true', help='prevents the initializatoin the server with the provided config when it is not initialized')
+    args = parser.parse_args()
+
+
+    sargs = args.args # string arguments
+    config = None
+    server_name = None
+    server = None
+    client = None
+    command = None
+
+    # Create our own IOLoop so we don't interfere with ipython's own ioloop.
+    old_ioloop = IOLoop.current()
+    ioloop = IOLoop()
+    ioloop.make_current()
+
+    def is_client_method(string):
+        return ':' not in string and '.' not in string and hasattr(client_class, string)
+
+    # if first arg is not a client method, it must be a config name
+    if sargs and not is_client_method(sargs[0]):
+        config = load_yaml_config(sargs[0])
+        sargs = sargs[1:]
+
+    # if we need a server name, process it.
+    server_config = config
+    if server_config_path:
+        # If the next string is not a method name, it must be a server name. Grab it.
+        if sargs and  not is_client_method(sargs[0]):
+            server_name = sargs[0]
+            sargs = sargs[1:]
+        # Get the config object that contains the server configs
+        for name in server_config_path.split('.'):
+            server_config = server_config[name]
+        if not server_config:
+            raise RuntimeError('The config file contains no server configuration block under %s' % server_config_path)
+        #Check that a server has been provided unless there is only one choice in the config file
+        if not server_name:
+            if len(server_config) == 1:
+                server_name = server_config.keys()[0]
+            else:
+                raise RuntimeError('There are more than one server configuration in %s. You must specify a server name' % server_config_path)
+        # Get the server config with the specified name
+        if server_name not in server_config:
+            raise RuntimeError('The server name "%s" does not exist in the configuration under %s' % (server_name, server_config_path))
+        server_config = server_config[server_name]
+
+    if sargs:
+        if is_client_method(sargs[0]):
+            command = sargs[0]
+            sargs = sargs[1:]
+        else:
+            raise RuntimeError('Unknown command "%s".  Client commands are: \n%s' % (command, '\n'.join(dir(client_class))))
+
+    port = args.port or (server_config.get('port', None) if server_config else None) or server_class.DEFAULT_PORT
+    hostname = args.host or (server_config.get('hostname', None) if server_config else None) or 'localhost'
+
+    # Create the client. A local server will be created if it does not respond.
+    client = RunSyncWrapper(client_class(hostname=hostname, port=port))
+    server = RunSyncWrapper(getattr(client, 'server', None)) # get the local server if one was started
+
+    # Confirm that a server is running with the same config is running, or start the server if it is not running
+    if server_config and not args.no_start:
+        client.start(server_config)
+
+    if command:
+        print('Sending command %s(%s) to CHIME Master server %s:%s' % (command, ', '.join(sargs), hostname, port))
+        reply = getattr(client, command)(*sargs)
+        print(reply)
+
+
+    if args.run or (server and not command and not args.no_run):
+        if server:
+            print("REST Server is running. Waiting for REST commands")
+        else:
+            print("REST client is running.")
+        print("Press CTRL-C to exit")
+        client.run()
+        print("\nI'm done. Bye!")
+
+    print()
+    print("If this was run in an interactive ipython session (with run -i module_name args...), the following variables are now accessible:")
+    if server:
+        print("   server: REST server")
+    if client:
+        print("   client: REST client")
+
+    old_ioloop.make_current()
+    return client, server
+

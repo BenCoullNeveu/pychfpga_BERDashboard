@@ -117,6 +117,7 @@ def get_logger(*names):
         logger = logging.getLogger(getname(names[0]))
         for name in names[1:]:
             logger = logger.getChild(getname(name))
+        print('created logger %s' % logger.name)
         return logger
 
 # def get_class_logger(class_instance):
@@ -305,9 +306,9 @@ def stop_logging(new_handlers):
 def setup_basic_logging(level='INFO'):
 
     DEFAULT_LOGGING = {
-        'formatters': { 
+        'formatters': {
              'std': {
-                        'format': "%(asctime)s %(levelname)s %(name)s.%(funcName)s() %(filename)s:%(lineno)d>> %(message)s", 
+                        'format': "%(asctime)s %(levelname)s %(name)s.%(funcName)s() %(filename)s:%(lineno)d>> %(message)s",
                         'datefmt': "%H:%M:%S" },
               },
         'handlers': {

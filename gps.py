@@ -795,10 +795,9 @@ class GPSAsyncRESTClient(AsyncRESTClient):
     DEFAULT_PORT = GPSAsyncRESTServer.DEFAULT_PORT
 
     def __init__(self, hostname='localhost', port=DEFAULT_PORT):
-
         super(GPSAsyncRESTClient, self).__init__(
             hostname=hostname, port=port,
-            make_server_func= lambda address, port: GPSAsyncRESTServer(address=address, port=port),
+            server_class= GPSAsyncRESTServer,
             heartbeat_string='Gc')
 
 

@@ -14,7 +14,7 @@ import socket
 
 # from pychfpga.Agilent_N5764A import AgilentN5764AHandler
 from pychfpga import Metrics, NameSpace, load_yaml_config
-from rest import AsyncRESTClient, AsyncRESTServer, endpoint, coroutine, coroutine_return, sleep, IOLoop, RunSyncWrapper, SocketContext  # generic REST servers and clients
+from rest import AsyncRESTClient, AsyncRESTServer, endpoint, coroutine, coroutine_return, sleep, IOLoop, RunSyncWrapper, SocketContext, run_client  # generic REST servers and clients
 import log  # logging helper functions
 
 class AgilentN5700(SocketContext):
@@ -621,15 +621,10 @@ class PowerSupplyAsyncRESTClient(AsyncRESTClient):
     DEFAULT_PORT = PowerSupplyAsyncRESTServer.DEFAULT_PORT
 
     def __init__(self, hostname='localhost', port=DEFAULT_PORT):
-
-        def make_server(self, address, port):
-            """ Called to create a server if hostname is None or empty or the server does not respond"""
-            return PowerSupplyAsyncRESTServer(address=address, port=port)
-
-        super(PowerSupplyAsyncRESTClient, self).__init__(
+         super(PowerSupplyAsyncRESTClient, self).__init__(
             hostname=hostname,
             port=port,
-            make_server_func=make_server,
+            server_class=PowerSupplyAsyncRESTServer,
             heartbeat_string='Pc')
 
 
@@ -729,48 +724,6 @@ class PowerSupplyAsyncRESTClient(AsyncRESTClient):
 
 
 
-# class PowerSupplyEasyRESTClient(object):
-#     def __init__(self, hostname='localhost', port=PowerSupplyAsyncRESTServer.DEFAULT_PORT):
-#         self.port = port
-#         self.host = hostname
-#         self.url = "http://{}:{:d}/".format(self.host, self.port)
-#         print "Connected to server at {}".format(self.url)
-
-#     def check_code(self, code):
-#         if not code == 200:
-#             raise RuntimeError("Got code {:d} from server at {}:{:d}".format(code, self.host, self.port))
-
-#     def listNames(self):
-#         print "Requesting list of power supply names..."
-#         response = requests.get(self.url + "listNames")
-#         self.check_code(response.status_code)
-#         return response.json()
-
-#     def powerOn(self, ps_names=None):
-#         print "Sending power on command..."
-#         response = requests.post(self.url + "powerOn", data={'ps_names': ps_names})
-#         self.check_code(response.status_code)
-#         print "Successfully sent power on!"
-
-#     def powerOff(self, ps_names=None):
-#         print "Sending power off command..."
-#         response = requests.post(self.url + "powerOff", data={'ps_names': ps_names})
-#         self.check_code(response.status_code)
-#         print "Successfully sent power off!"
-
-#     def status(self, ps_names=None):
-#         print "Requesting status..."
-#         response = requests.post(self.url + "status", data={'ps_names': ps_names})
-#         self.check_code(response.status_code)
-#         print "Status: {}".format(response.json())
-#         return response.json()
-
-#     def monitoringMetrics(self):
-#         print "Requesting monitoring metrics..."
-#         response = requests.get(self.url + "monitoringMetrics")
-#         self.check_code(response.status_code)
-#         return response.json()
-
 
 
 def parse_cmdline_args(argv):
@@ -782,90 +735,85 @@ def parse_cmdline_args(argv):
     parser.add_argument('-s', '--server', action='store_true', help='Start a server')
     return parser.parse_args(argv)
 
-if __name__ == '__main__':
+def main():
+    """ Command-line interface to operate the Power Supply server.
+
+    ./ch_ps.py [config [server_name]] [command {args}] [--host hostname] [--port port_number] [--no-run | --run] [--no-start]
+
+    where:
+        *config* : configuration in the format [[*filename*]:][*path_to_config_object*]
+        *server_name* : power supply server config to use. Optional if there is only one.
+        *command* : the name of a ChimeMaster client method.
+        --host: hostname of the server. Overrides the hostname found in the config. Default is 'localhost'.
+        --port: port number of the server. Overrides the port number found in the config.  Default is 54321.
+        --run: run the client/server until Ctrl-C is pressed. Default when no command is provided.
+        --no-run: Do not run the client/server even if no comman dis provided.
+        --no_start: do not attempt to initialize the server even if a configuration is provided.
+
+    The `ch_master` command is invoked from the command line with::
+
+        ./ps.py arguments...  # linux only
+        python ps.py arguments
+
+    Or from an ipython interactive session::
+
+        run -i ps arguments
+
+    Operations done:
+
+        1. Create client:
+
+            - Always starts a client that connects to server at address specified in config or as
+              overriden by --host and --port.
+
+        2. Create server if none already esists:
+
+            - If there is no server, a server is created at localhost on the port specified in the
+              config or as overriden by --port, unless -no-server is specified
+
+        3. Initialize server with config file if requested:
+
+            - If no config is present, or if --no-start option is specified, the server is not started
+            - If there is a config file, the 'start' command is sent along with the specified
+              config. If the server is already started with a different config, an error will be
+              raised.
+
+        4. Execute command or run server:
+
+            - If a command and arguments are specified, the corresponding client methods commands
+              are invoked. Those generally pass on the command to the corresponding server endpoint.
+            - If no command is specified and a local server was started, the client (and locally
+              started server if any) are run continually until stopped by Ctrl-C. Bypassed if --no-
+              run is specified
+
+    Examples:
+
+    Create and initialize and run a new local server  or initialize an existing server::
+
+        ./ps.py jfc.erh
+
+    Create an non-initialized server
+
+        ./ps.py  # starts server on localhost:54321
+        ./ps.py config --no-start # starts server at address specified in config
+
+    Send a command to server:
+
+        ./ps stop # send stop command to server on localhost:54321
+        ./ps jfc.erh power_off # power off supplies used by server running at theaddress specified in the jfc.erh config
     """
-    Command-line interface to start power supply REST server or client
-
-    To start a server (on the local machine):
-        ps.py [--port 54324] --server # creates and run an uninitialized local power supply server
-        ps.py [config_file:]config_name server_name --server  # create and starts a local power supply server the port and with the configuration specified in the config file.
-
-    To start a client:
-        ps.py [--host localhost] [--port 54324] [command [arg1, arg2]] # starts a client that connect to the server located at the specified host and port. If the hostname is '' or does not respond, a temporary local server will be created. If a command and arguments are specified, that the command is sent to the server.
-        ps.py [config_file:]config_name server_name [command [arg1, arg2, ...]]  # The ultimate command. Create client and local server if necessary. If a known command  is provided, it is sent to the server, otherwise the argument is assumed to be a configuration that is loaded and used to re(start) the server
-
-    Port is 54324 used by defaut if not specified.
-
-    Examples::
-
-        ./ps.py  --server  # creates a local server on port 54324.
-        ./ps.py jfc.drao pss0 --server # create, start and run local power supply server based on pss0 entry of jfc.drao config
-
-        ./ps.py power_off all# power off all power supplies handled by the server on localhost (assuming the server is started)
-        ./ps.py jfc.drao pss0 power_off all # power off all supplies managed py the server pss0 defined in config jfc.drao
-        ./ps.py power_off ps_crate0 --host 10.0.0.192 --port 1234 # instruct power supply server at 10.0.0.192:1234 to power off supply named ps_crate0
-
-    In interactive ipython sessions, server or client objects cna be used directly::
-
-        [1] run -i ps server
-        [2]
-    """
-
-    # Create our own IOLoop so we don't interfere with ipython's own ioloop.
-    ioloop = IOLoop()
-    ioloop.make_current()
-
     # Setup logging
     log.setup_basic_logging('DEBUG')
 
-    args = parse_cmdline_args(sys.argv[1:])
-    port = args.port
-    host = args.host
-    is_server = args.server
-    args = args.args
-    first_arg = args[0].lower() if args else None
-    pss_config = None
-    pss = None  # PowerSupply server object
-    psc = None  # PowerSupply client object
-    # print(args.args[1:], first_arg)
+    client, server = run_client(sys.argv[1:], PowerSupplyAsyncRESTServer, PowerSupplyAsyncRESTClient, object_name ='PowerSupply', server_config_path='power_supplies.servers')
+    cm = None
+    if server and server.chime_master:
+        cm = RunSyncWrapper(server.chime_master)
+        print("   cm: ChimeMaster object")
 
-    if args and (':' in args[0] or '.' in args[0]):
-        if len(args) >= 2:
-            print('Loading %s from config %s ' % (args[1], args[0]))
-            config = NameSpace(load_yaml_config(args[0]))
-            pss_name = args[1]
-            pss_config = config.power_supplies.nodes[pss_name]
-            args = args[2:]
-        else:
-            raise RuntimeError('Please specify both a config root name and power supply name')
+    return client, server, cm
 
-    if is_server:
-        pss_port = pss_config.port if pss_config else port
-        pss = RunSyncWrapper(PowerSupplyAsyncRESTServer(port=pss_port))
-        if pss_config:
-            pss.start(None, name=pss_name, **pss_config)
-        print("Power supply REST Server started. Waiting for REST commands.")
-        pss.run()
-        print("\nI'm done. Bye!")
-
-    else:
-        psc_port = pss_config.port if pss_config else port
-        psc_host = pss_config.hostname if pss_config else host
-        psc = RunSyncWrapper(PowerSupplyAsyncRESTClient(hostname=psc_host, port=psc_port))
-        if pss_config:
-            psc.start(pss_config)
-        # If the client started a server, get it for the interactive session
-        if hasattr(psc,'server'):
-            pss = RunSyncWrapper(psc.server)
-        # If there are further arguments, assume they are commands
-        if args:
-            cmd = args[0]
-            if cmd and hasattr(psc, cmd):
-                print('Sending command %s(%s) to CHIME Master server %s:%s' % (cmd, ', '.join(args[1:]), psc_host, psc_port))
-                print getattr(psc, cmd)(*args[1:])
+if __name__ == '__main__':
+    client, server, cm = main()
 
 
-    print()
-    print("If this was run in an interactive session (ipython -i), the following variables are now accessible:")
-    if pss: print("   pss: PowerSupply REST server")
-    if psc: print("   psc: PowerSupply REST client")

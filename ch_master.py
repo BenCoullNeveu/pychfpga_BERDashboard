@@ -34,8 +34,13 @@ import tornado.web
 import pychfpga  # used to access .calculate_gain.
 from pychfpga import FPGAArray, NameSpace, load_yaml_config, AgilentN5764AHandler, Metrics
 import log
+
+from rest import RESTClient, AsyncRESTServer, AsyncRESTClient # generic REST servers and clients
+from rest import endpoint, coroutine, coroutine_return, sleep
+from rest import RunSyncWrapper, IOLoop, run_client
+
+# Remote servers handled by ChimeMaster
 from ps import PowerSupplyAsyncRESTClient
-from rest import RESTClient, AsyncRESTServer, endpoint, coroutine, coroutine_return, sleep, RunSyncWrapper, IOLoop  # generic REST servers and clients
 from kotekan import KotekanAsyncRESTClient
 from chrx import ChrxAsyncRESTClient
 from raw_acq import RawAcqAsyncRESTClient
@@ -189,7 +194,7 @@ class ChimeMaster(object):
         log.setup_logging(self.DEFAULT_LOGGING)
 
         self.log = log.get_logger(self) # i.e. ch_master.ChimeMaster
-
+        self.log.debug('%r: Creating ChimeMaster instance' % self)
         self.state = 'off'
         self.config = None
 
@@ -224,14 +229,14 @@ class ChimeMaster(object):
 
         # First create the client to the servers, and start the server if it is not already started
         self.power_supply_servers = {}
-        server_nodes = ps_config.nodes or {}
+        server_nodes = ps_config.servers or {}
         for server_name, server_params in server_nodes.items():
             ps = PowerSupplyAsyncRESTClient(hostname=server_params.hostname, port=server_params.port) # we pass the whole server config to the client in case it needs th create and/or start the server
             yield ps.start(server_params)
             self.power_supply_servers[server_name] = ps
 
         # figure out which servers controls the power supply units we want to use in this experiment
-        units = ps_config.power_on.units or []  # units used by csh_master
+        units = ps_config.power_on.units or []  # units used by ch_master
         ps_names = set(units)
         self.power_supply_units = {}
         for server_name, server in self.power_supply_servers.items():
@@ -257,7 +262,7 @@ class ChimeMaster(object):
     def power_off(self):
         """ Turn off the power supplies listed in the `power_supplies.power_on.units` config field.
         """
-        yield [ps.power_off(ps_names) for ps, ps_name in self.power_supply_units.items()]
+        yield [ps.power_off(ps_names) for ps, ps_names in self.power_supply_units.items()]
 
     @coroutine
     def is_power_supply_ready(self):
@@ -574,7 +579,8 @@ class ChimeMaster(object):
     @coroutine
     def start(self, **config):
         """ Make the telescope operational by starting and initializing the FPGA F-Engine and the GPU X Engine (Kotekan), CHRX, and raw_acq remote processes. """
-        print('%r: start' % (self))
+        self.log.debug('%r: starting ChimeMaster instance' % (self))
+
         if self.state != 'off':
             coroutine_return(dict(error='already started'))
 
@@ -963,10 +969,16 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
     """ Wraps the ChimeMaster into a REST server which receives HTTP GET or POST requests and calls
     the correspnding ChimeMaster methods.
     """
+    DEFAULT_PORT = 54321
 
-    def __init__(self, port, dummy=False):
+    def __init__(self, address='', port=DEFAULT_PORT, dummy=False):
 
-        self.port = port # port on which the web server will be run
+        super(ChimeMasterAsyncRESTServer, self).__init__(
+            address=address,
+            port=port,
+            heartbeat_string='Cs')
+
+        # self.port = port # port on which the web server will be run
         self.dummy = dummy
 
         # # Create a kotekan client for each node specified in the gpu_config_file
@@ -978,7 +990,6 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         ChimeMasterClass = DummyChimeMaster if self.dummy else ChimeMaster
 
         self.chime_master = ChimeMasterClass()
-        super(ChimeMasterAsyncRESTServer, self).__init__(port=port)
 
         #self.add_periodic_callback(self.print_iceboard_info_callback, period=60000)
 
@@ -1014,6 +1025,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
     @coroutine
     @endpoint('start')
     def start(self, handler, **config):
+        self.log.debug('%r: Received start command' % self)
         def encode_utf8(x):
             """Convert unicode strings to utf-8 strings for the target object and any objects in lists or dictionaries"""
             if type(x) is unicode:
@@ -1026,6 +1038,8 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
                 return x
         config = encode_utf8(config)  # convert all strings in the config dict into utf8
         result = yield self.chime_master.start(**config)
+        self.log.debug('%r: Start command result is: %r' % (self, result))
+
         coroutine_return(result)
 
     @coroutine
@@ -1045,7 +1059,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         coroutine_return(results)
 
     @coroutine
-    @endpoint('switch_gains')
+    @endpoint('switch-gains')
     def switch_gains(self, handler, gain_map):
         results = yield self.chime_master.switch_gains(gain_map)
         coroutine_return(results)
@@ -1057,7 +1071,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         coroutine_return(results=results)
 
     @coroutine
-    @endpoint('get_frequency_map')
+    @endpoint('get-frequency-map')
     def get_frequency_map(self, handler):
         coroutine_return(results=sanitize_for_json(self.chime_master.get_frequency_map()))
 
@@ -1126,70 +1140,91 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         handler.set_header('Content-Type', 'text/plain')
         handler.write(str(metrics))
 
-class ChimeMasterRESTClient(RESTClient):
+class ChimeMasterAsyncRESTClient(AsyncRESTClient):
+
+    DEFAULT_PORT = ChimeMasterAsyncRESTServer.DEFAULT_PORT
+
+    def __init__(self, hostname='localhost', port=DEFAULT_PORT):
+        super(ChimeMasterAsyncRESTClient, self).__init__(
+            hostname=hostname,
+            port=port,
+            server_class=ChimeMasterAsyncRESTServer,
+            heartbeat_string='Cc')
 
     def print_result(self, d):
         if d == {}:
-            self.print('ok')
+            print('ok')
         elif 'error' in d:
-            self.print_error(d['error'].rstrip())
+            print('Error:', d['error'].rstrip())
         else:
-            self.print(json.dumps(d, sort_keys=True, indent=2))
+            print(json.dumps(d, sort_keys=True, indent=2))
 
+    @coroutine
     def nop(self):
-        self.print('Doing nothing')
+        print('Doing nothing')
 
+    @coroutine
     def get_methods(self):
-        return self.get('methods')
+        coroutine_return(self.get('methods'))
 
 
+    @coroutine
     def ping(self):
         """
         Test connection to ch_master.
         """
         import random
         nonce = random.getrandbits(32)
-        r = self.post('echo', nonce=nonce)
+        r = yield self.post('echo', nonce=nonce)
         if 'nonce' in r and nonce == int(r['nonce']):
-            self.print("ok")
+            print("ok")
             return
         self.print("internal error!. Server reply was: \n%s" % '\n'.join('%s:%s' % (k,v) for (k,v) in r.items()))
 
+    @coroutine
     def set_state(self, state):
-        r = self.post('set-state', state=state)
+        r = yield self.post('set-state', state=state)
         self.print_result(r)
 
-    def start(self, yaml=None):
+    @coroutine
+    def start(self, config=None):
         """
         Start ch_master with specified config file.
         """
-        if not yaml:
+        if not config:
             raise ValueError('A YAML configuration filename:object must be specified')
-        config = load_yaml_config(yaml.encode('ascii'))
-        r = self.post('start', **config)
-        self.print_result(r)
+        if isinstance(config, str):
+            config = load_yaml_config(config.encode('ascii'))
+        self.log.debug('%r: Sending start command to server' % self)
+        reply = yield self.post('start', **config)
+        self.log.debug('%r: Reply to start command is: %r' % (self, reply))
+        self.print_result(reply)
 
+    @coroutine
     def status(self):
         """
         Print ch_master status.
         """
-        r = self.get('status')
+        r = yield self.get('status')
         self.print_result(r)
 
+    @coroutine
     def stop(self):
         """
         Stop ch_master.
         """
-        r = self.get('stop')
+        r = yield self.get('stop')
         self.print_result(r)
 
+    @coroutine
     def switch_gains(self):
         """
         Change gains.
         """
-        r = self.post('switchgains')
+        r = yield self.post('switchgains')
         self.print_result(r)
 
+    @coroutine
     def kotekan_start(self, yaml):
         """
         Start kotekan with specified config file.
@@ -1197,14 +1232,15 @@ class ChimeMasterRESTClient(RESTClient):
         if not yaml:
             raise ValueError('A YAML configuration filename must be specified')
         config = load_yaml_config(yaml.encode('ascii'))
-        r = self.post('kotekan-start', **config)
+        r = yield self.post('kotekan-start', **config)
         self.print_result(r)
 
+    @coroutine
     def get_frequency_map(self):
         """
         Print ch_master status.
         """
-        m = self.get('get_frequency_map')
+        m = yield self.get('get_frequency_map')
         self.print_result(m)
 
 
@@ -1218,59 +1254,82 @@ def parse_cmdline_args(argv):
     parser.add_argument('-n', '--host', default='localhost', type=str, help="server hostname")
     return parser.parse_args(argv)
 
-if __name__ == '__main__':
+def main():
+    """ Command-line interface to operate the ChimeMaster server.
 
-    # Create our own IOLoop so we don't interfere with ipython's own ioloop.
-    ioloop = IOLoop()
-    ioloop.make_current()
+    ./ch_master.py [config] [command {args}] [--host hostname] [--port port_number] [--no-run | --run] [--no-start]
 
-    args = parse_cmdline_args(sys.argv[1:])
-    first_arg = args.args[0].lower() if args.args else None
+    where:
+        *config* : configuration in the format [[*filename*]:][*path_to_config_object*]
+        *command* : the name of a ChimeMaster client method.
+        --host: hostname of the server. Overrides the hostname found in the config. Default is 'localhost'.
+        --port: port number of the server. Overrides the port number found in the config.  Default is 54321.
+        --run: run the client/server until Ctrl-C is pressed. Default when no command is provided.
+        --no-run: Do not run the client/server even if no comman dis provided.
+        --no_start: do not attempt to initialize the server even if a configuration is provided.
+
+    The `ch_master` command is invoked from the command line with::
+
+        ./ch_master.py arguments...  # linux only
+        python ch_master.py arguments
+
+    Or from an ipython interactive session::
+
+        run -i ch_master arguments
+
+    Operations done:
+
+        1. Create client:
+
+            - Always starts a client that connects to server at address specified in config or as
+              overriden by --host and --port.
+
+        2. Create server if none already esists:
+
+            - If there is no server, a server is created at localhost on the port specified in the
+              config or as overriden by --port, unless -no-server is specified
+
+        3. Initialize server with config file if requested:
+
+            - If no config is present, or if --no-start option is specified, the server is not started
+            - If there is a config file, the 'start' command is sent along with the specified
+              config. If the server is already started with a different config, an error will be
+              raised.
+
+        4. Execute command or run server:
+
+            - If a command and arguments are specified, the corresponding client methods commands
+              are invoked. Those generally pass on the command to the corresponding server endpoint.
+            - If no command is specified and a local server was started, the client (and locally
+              started server if any) are run continually until stopped by Ctrl-C. Bypassed if --no-
+              run is specified
+
+    Examples:
+
+    Create and initialize and run a new local server  or initialize an existing server::
+
+        ./ch_master.py jfc.erh
+
+    Create an non-initialized server
+
+        ./ch_master.py  # starts server on localhost:54321
+        ./ch_master.py config --no-start # starts server at address specified in config
+
+    Send a command to server:
+
+        ./ch_master stop # send stop command to server on localhost:54321
+        ./ch_master jfc.erh power_off # power off supplies used by server running at theaddress specified in the jfc.erh config
+    """
+    # Setup logging
+    log.setup_basic_logging('DEBUG')
+
+    client, server = run_client(sys.argv[1:], ChimeMasterAsyncRESTServer, ChimeMasterAsyncRESTClient, object_name ='ChimeMaster')
     cm = None
-    cms = None
-    cmc = None
+    if server and server.chime_master:
+        cm = RunSyncWrapper(server.chime_master)
+        print("   cm: ChimeMaster object")
 
-    if first_arg == 'server':
-        ################################################################################
-        # Create and run a CHIME Master REST server
-        ################################################################################
-        print('Starting CHIME Master REST server on %s:%i' % (args.host, args.port))
-        cms = RunSyncWrapper(ChimeMasterAsyncRESTServer(port=args.port, dummy=args.debug)) # server will be added to the current ioloop
-        if len(args.args) > 1:
-            cms.start(None, **load_yaml_config(args.args[1:]))
-        cms.run()
-        cm = RunSyncWrapper(cms.chime_master)
-        print("CHIME Master REST server has stopped.")
+    return client, server, cm
 
-    elif first_arg == 'client':
-        ################################################################################
-        # Create CHIME Master REST client, and optionally invoke a command
-        ################################################################################
-        print('Starting CHIME Master REST client connected to %s:%s' % (args.host, args.port))
-        # create a CHMasterClient object. The client is asynchronous, so no need to run the ioloop.
-        m = ChimeMasterRESTClient(port=args.port)
-        cmd = args.args[1] if len(args.args) > 1 else None
-        if cmd and hasattr(m, cmd):
-            print('Sending command %s to CHIME Master server %s:%s' % (cmd, args.host, args.port))
-            getattr(m, cmd)(*args.args[2:])
-
-    else:
-        ################################################################################
-        # Create CHIME Master object directly, and optionally start it with the specified config file
-        ################################################################################
-        cm = RunSyncWrapper(ChimeMaster())
-        if first_arg:
-            print('Starting ChimeMaster object with configuration %s' % first_arg)
-            cm.start(**load_yaml_config(first_arg))
-        else:
-            print('No yaml_filename:subconfig_name was specified. Starting an uninitialized ChimeMaster object')
-
-
-    print()
-    print("If this was run in an interactive session (ipython -i), the following variables are now accessible:")
-    if cms:
-        print("   cms: CHIME Master REST server")
-    if cmc:
-        print("   cmc: CHIME Master REST client")
-    if cm:
-        print("   cm: CHIME Master object")
+if __name__ == '__main__':
+    client, server, cm = main()

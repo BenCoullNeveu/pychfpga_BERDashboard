@@ -81,12 +81,11 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
     DEFAULT_PORT = KotekanAsyncRESTServer.DEFAULT_PORT
 
     def __init__(self, hostname=None, port=DEFAULT_PORT, **config):
-
-        def make_server(self, address, port):
-            """ Called to create a server if hostname is None or empty"""
-            return KotekanAsyncRESTServer(address=address, port=port)
-
-        super(KotekanAsyncRESTClient, self).__init__(hostname=hostname, port=port, make_server_func=make_server, heartbeat_string='Kc')
+        super(KotekanAsyncRESTClient, self).__init__(
+            hostname=hostname,
+            port=port,
+            server_class=KotekanAsyncRESTServer,
+            heartbeat_string='Kc')
         # self.name = name
         self.config = config
         #self.ping_cb = tornado.ioloop.PeriodicCallback(self.ping, 60e3)
