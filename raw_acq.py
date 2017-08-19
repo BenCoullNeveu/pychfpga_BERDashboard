@@ -917,12 +917,12 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
     """
 
     def __init__(self, name='RawAcq', hostname='localhost', port=RawAcqAsyncRESTServer.DEFAULT_PORT, base_dir = '~/data', base_filename= None, **config):
+        super(RawAcqAsyncRESTClient, self).__init__(
+            hostname=hostname,
+            port=port,
+            server_class=RawAcqAsyncRESTServer,
+            heartbeat_string='Rc')
 
-        def make_server(self, address, port):
-            """ Called to create a server if hostname is None or empty"""
-            return RawAcqAsyncRESTServer(address=address, port=port)
-
-        super(RawAcqAsyncRESTClient, self).__init__(hostname=hostname, port=port, make_server_func=make_server, heartbeat_string='Rc')
         self.name = name
         self.hdf5_base_dir = base_dir
         self.base_filename = base_filename or name
