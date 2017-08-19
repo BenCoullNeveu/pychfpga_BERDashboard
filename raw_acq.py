@@ -577,7 +577,7 @@ class RawAcqReceiver(object):
             if_addr = s.getsockname()
             s.close()
         except socket.timeout:
-            self.log.warn('Could not establish a TCP connection with %s:%s' % (addr, port))
+            self.log.warn('Could not establish a TCP connection with %s:%s' % (addr[0], addr[1]))
             if_addr = None
         return(if_addr)
 

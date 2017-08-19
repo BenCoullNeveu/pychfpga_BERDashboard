@@ -467,7 +467,7 @@ class FPGAArray(object):
             self.hwm.flush()
 
         # If ping=1, remove boards that do not respond to tuber pings
-        ping_timeout = 1
+        ping_timeout = 3
         if ping:
             self.logger.info('%.32r: Pinging IceBoards specified in YAML file' % (self))
             ib_to_ping = self.hwm.query(IceBoardPlus).as_dict()  # use as_dict so ib_to_ping does not change as we delete boards from the hwm
@@ -585,13 +585,13 @@ class FPGAArray(object):
         if missing_crates:
             raise RuntimeError('%.32r: The following crates are missing: %s' % (self, ', '.join('%s SN%s' % (model, serial) for (model, serial) in missing_crates)))
         # Check for missing boards
-        ignore_missing_slots = True
-        missing_slots = { (ic.part_number, ic.serial): set(range(1, ic.NUMBER_OF_SLOTS + 1)) - set(ic.slot) for ic in self.ic}
+        ignore_missing_slots = False
+        missing_slots = { (ic.part_number, ic.serial, ic.crate_number): set(range(1, ic.NUMBER_OF_SLOTS + 1)) - set(ic.slot) for ic in self.ic}
         if any(missing_slots.values()):
             message = '%s: The following slots are missing:\n%s' % (
                 self,
-                '\n'.join('    Crate %s SN %s: slots %s' % (model, serial, ', '.join(str(s) for s in slots))
-                for (model, serial), slots in missing_slots.items() if slots))
+                '\n'.join('    Crate #%s (%s SN%s): slots %s' % (number, model, serial, ', '.join(str(s) for s in slots))
+                for (model, serial, number), slots in missing_slots.items() if slots))
             if not ignore_missing_slots:
                 raise RuntimeError(message)
             else:
@@ -1034,7 +1034,7 @@ class FPGAArray(object):
         else:
             raise ValueError("Unknown syncing method '%s'" % method)
 
-    def sync(self, delay=2, check=True):
+    def sync(self, delay=20, check=True):
         """ Generate a SYNC event across the whole array based on the syncing method set by ``set_sync_method()``.
 
         If ``check`` is True, the method will read the SYNC counters on every
