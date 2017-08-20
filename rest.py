@@ -12,6 +12,8 @@ import requests
 import functools
 import socket
 import argparse
+import yaml
+
 
 import log
 from log import NameSpace
@@ -684,12 +686,13 @@ def run_client(args, server_class=None, client_class=None, object_name='', serve
 
     # if we need a server name, process it.
     server_config = config
-    if server_config_path:
+    if server_config_path and server_config:
         # If the next string is not a method name, it must be a server name. Grab it.
         if sargs and  not is_client_method(sargs[0]):
             server_name = sargs[0]
             sargs = sargs[1:]
         # Get the config object that contains the server configs
+
         for name in server_config_path.split('.'):
             server_config = server_config[name]
         if not server_config:
@@ -726,7 +729,8 @@ def run_client(args, server_class=None, client_class=None, object_name='', serve
     if command:
         print('Sending command %s(%s) to CHIME Master server %s:%s' % (command, ', '.join(sargs), hostname, port))
         reply = getattr(client, command)(*sargs)
-        print(reply)
+        print()
+        print(yaml.safe_dump(reply))
 
 
     if args.run or (server and not command and not args.no_run):

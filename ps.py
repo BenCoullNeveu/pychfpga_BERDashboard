@@ -804,16 +804,10 @@ def main():
     """
     # Setup logging
     log.setup_basic_logging('DEBUG')
-
     client, server = run_client(sys.argv[1:], PowerSupplyAsyncRESTServer, PowerSupplyAsyncRESTClient, object_name ='PowerSupply', server_config_path='power_supplies.servers')
-    cm = None
-    if server and server.chime_master:
-        cm = RunSyncWrapper(server.chime_master)
-        print("   cm: ChimeMaster object")
-
-    return client, server, cm
+    return client, server
 
 if __name__ == '__main__':
-    client, server, cm = main()
+    client, server = main()
 
 
