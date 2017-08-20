@@ -415,6 +415,11 @@ class PowerSupplyAsyncRESTServer(AsyncRESTServer):
         if isinstance(ps_names, (str, unicode)):
             ps_names = ps_names.replace(' ', ',').split(',')
         ps_names = [name.strip() for name in ps_names]
+        # Expand aliases
+        for ps_name in list(ps_names):  # make a copy, we modify the list
+            if ps_name in self.config.aliases:
+                ps_names.remove(ps_name)
+                ps_names.extend(self.config.aliases[ps_name])
         if 'all' in ps_names or '*' in ps_names:
             ps_names = self.power_supplies.keys()
         unknown_supplies = [name for name in ps_names if name not in self.power_supplies]
@@ -708,12 +713,12 @@ class PowerSupplyAsyncRESTClient(AsyncRESTClient):
         coroutine_return(result)
 
     @coroutine
-    def power_on(self, ps_names=None):
+    def power_on(self, *ps_names):
         result = yield self.post('power-on', ps_names=ps_names)
         coroutine_return(result)
 
     @coroutine
-    def power_off(self, ps_names=None):
+    def power_off(self, *ps_names):
         result = yield self.post('power-off', ps_names=ps_names)
         coroutine_return(result)
 
