@@ -410,12 +410,15 @@ class PowerSupplyAsyncRESTServer(AsyncRESTServer):
         super(PowerSupplyAsyncRESTServer, self).__init__(address=address, port=port, heartbeat_string='Ps')
 
     def _parse_names(self, ps_names):
+        print('*********************_parse_names',ps_names)
         if not ps_names:
             return []
         if isinstance(ps_names, (str, unicode)):
             ps_names = ps_names.replace(' ', ',').split(',')
         ps_names = [name.strip() for name in ps_names]
         # Expand aliases
+        
+        self.log.warning('%r, %r' %(ps_names, self.config.aliases))
         for ps_name in list(ps_names):  # make a copy, we modify the list
             if ps_name in self.config.aliases:
                 ps_names.remove(ps_name)
@@ -654,7 +657,7 @@ class PowerSupplyAsyncRESTClient(AsyncRESTClient):
                 configuration file and name. if a dict, it is passed directly to the server.
 
         """
-        self.log.info('%s: Starting remote PowerSupply server at %s:%i with config: %r' % (self, self.hostname, self.port, config))
+        self.log.info('%s: Starting remote PowerSupply server at %s:%i' % (self, self.hostname, self.port))
 
         if isinstance(config, str):
             config = load_yaml_config(config)
