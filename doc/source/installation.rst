@@ -212,21 +212,30 @@ in ipython, create a fpga_array with no boards in it, just to see if there are n
 
     run -i pychfpga/fpga_array.py
 
-Tips:
+Tips
+****
+
 
 Checking crates visible to mDNS:
 
 sudo avahi-daemon -k
 avahi-browse  _tuber-jsonrpc._tcp --resolve -t | grep -o 'backplane-serial=[0-9]*' | sort -u
 
-Static DHCP entries:
+Dynamic DHCP entries on carillon::
+
+    cat /var/lib/dhcpd/dhcpd.leases
 
 
-Dynamic DHCP entries on carillon
+Static DHCP entries::
+    sudo cat /etc/dhcp/dhcpd.conf
 
-Searchf for OUI:
 
-cat /var/lib/dhcpd/dhcpd.leases | grep -B 7 '00:18'
-sudo cat /etc/dhcp/dhcpd.conf | grep '00:18'
+
+Search for OUI in static or dynamic addresses::
+
+    cat /var/lib/dhcpd/dhcpd.leases | grep -B 7 '00:18'
+    sudo cat /etc/dhcp/dhcpd.conf | grep '00:18'
+
+Restart the DHCP server::
 
 
