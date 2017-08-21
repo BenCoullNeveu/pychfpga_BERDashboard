@@ -118,6 +118,7 @@ def get_logger(*names):
         for name in names[1:]:
             logger = logger.getChild(getname(name))
         print('created logger %s' % logger.name)
+        logger.disabled = False
         return logger
 
 # def get_class_logger(class_instance):
@@ -250,7 +251,7 @@ def setup_logging(dict_config={}, log_levels={}, base_package_name=None, script_
         prefix, sep, name = script_name.rpartition('.')
         new_logger_name = prefix + sep + '__main__'
         dict_config.loggers[new_logger_name] = dict_config.loggers[script_name]
-
+        print('Added logger %s to process logs from %s' % (new_logger_name, script_name))
     # fix the logger names for the current package
     new_loggers = {}
     for logger_name, logger_config in dict_config.loggers.items():
@@ -267,7 +268,7 @@ def setup_logging(dict_config={}, log_levels={}, base_package_name=None, script_
         # prepend actual package path
         if actual_package_name:
             new_logger_name = actual_package_name + (('.' + new_logger_name) if new_logger_name else '')
-
+        print('Converted logger name from %s to %s' % (logger_name, new_logger_name))
         new_loggers[new_logger_name] = logger_config
 
     dict_config.loggers = new_loggers
@@ -280,13 +281,15 @@ def setup_logging(dict_config={}, log_levels={}, base_package_name=None, script_
         old_handlers[logger_name] = logging.getLogger(logger_name).handlers
 
 
-
+    # print('new logging dict is: %r' % dict_config)
 
     logging.config.dictConfig(dict_config)
 
     new_handlers = {}
     for logger_name in dict_config.loggers:
-        new_handlers[logger_name] = [handler for handler in logging.getLogger(logger_name).handlers if handler not in old_handlers[logger_name]]
+        logger = logging.getLogger(logger_name)
+        logger.disabled = False # re-enable the logger if is was disabled by a previous config. dictConfig() doen not do that
+        new_handlers[logger_name] = [handler for handler in logger.handlers if handler not in old_handlers[logger_name]]
 
     return new_handlers
 
@@ -308,8 +311,8 @@ def setup_basic_logging(level='INFO'):
     DEFAULT_LOGGING = {
         'formatters': {
              'std': {
-                        'format': "%(asctime)s %(levelname)s %(name)s.%(funcName)s() %(filename)s:%(lineno)d>> %(message)s",
-                        'datefmt': "%H:%M:%S" },
+                 'format': "%(asctime)s %(levelname)s %(name)s: %(message)s",
+                 'datefmt': "%H:%M:%S" },
               },
         'handlers': {
             'stderr': {'class': 'logging.StreamHandler', 'formatter': 'std', 'level': level}
