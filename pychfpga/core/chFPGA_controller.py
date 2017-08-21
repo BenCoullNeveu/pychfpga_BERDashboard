@@ -398,15 +398,19 @@ class chFPGA_controller(IceBoardExtHandler):
 
             self.hw.set_led('GP_LED1', 1) # Indicate that the Iceboard is ready
 
-        except Exception:
+        except Exception as e:
+            self.logger.error('****Exception during open!****** =  %r' % e)
+            
             self.close()
             # raise chFPGAException('An exception has occured during module instantiation. Sockets will be closed. The exception is %s' % repr(e))
+            
             raise
             # Initialize subsystems. This has to be done only once all subsystems are created because some subsystems depend on each other.
         if init > 0:
             try:
                 yield self.init.async(**kwargs)
-            except Exception:
+            except Exception as e:
+                self.logger.error('****Exception during init!****** =  %r' % e)
                 self.close()
                 raise
 
@@ -2873,8 +2877,24 @@ class chFPGA_controller(IceBoardExtHandler):
         # is_voltage_nominal
         # sysmon?
         # QSFP voltage, temp, signal
+        slot = self.slot
+        crate_number = self.crate.crate_number if self.crate else None
+        crate_id = self.crate.get_string_id() if self.crate else None
+        board_id = self.get_string_id()
+        labeled_metrics = Metrics()
+        labeled_metrics.add(metrics, slot=slot, crate_number=crate_number, crate_id=crate_id, id=board_id)
+        async_return((info, labeled_metrics))
 
-        async_return((info, metrics))
+    @async
+    def get_bp_shuffle_metrics(self):
+        metrics = self.BP_SHUFFLE.get_metrics()
+        slot = self.slot
+        crate_number = self.crate.crate_number if self.crate else None
+        crate_id = self.crate.get_string_id() if self.crate else None
+        board_id = self.get_string_id()
+        labeled_metrics = Metrics()
+        labeled_metrics.add(metrics, slot=slot, crate_number=crate_number, crate_id=crate_id, id=board_id)
+        async_return(labeled_metrics)
 
 
     @async
@@ -2932,6 +2952,9 @@ class chFPGA_controller(IceBoardExtHandler):
 
         # backplane QSFP voltage, temp, signal-level
 
+        crate_number = self.crate.crate_number if self.crate else None
+        crate_id = self.crate.get_string_id() if self.crate else None
+        metrics = Metrics().add(metrics,  crate_number=crate_number, crate_id=crate_id)
         async_return(metrics)
 
 

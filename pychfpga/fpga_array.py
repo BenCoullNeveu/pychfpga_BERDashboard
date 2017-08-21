@@ -299,9 +299,13 @@ class FPGAArray(object):
         # setup pychfpga.fpga_array logging
         ###########################################
         self.logger = logging.getLogger(__name__)
-
-
-
+        #print('fpga_array loger name is %s' % __name__)
+        #print('logger name=%s, level=%s, handlers=%r' % (self.logger.name, self.logger.level, self.logger.handlers)) 
+        #self.logger.warning('This is a warning')
+        #ch = logging.StreamHandler(sys.stdout)
+        #self.logger.addHandler(ch)
+        #self.logger.warning('why dont you log')
+        
         ###########################################
         # setup sqlalchemy logging
         ###########################################
@@ -319,16 +323,16 @@ class FPGAArray(object):
         parent_logger_name = __name__.rsplit('.', 1)[0] if '.' in __name__ else ''
         parent_logger = logging.getLogger(parent_logger_name)
         # Setup logging. If a handler already exists, its log level is simply updated
-        for (handler_type, log_level) in ((logging.StreamHandler, stderr_log_level), (logging.handlers.SysLogHandler, syslog_log_level)):
-            if log_level:
-                log_handlers = [h for h in parent_logger.handlers if isinstance(h, handler_type)]
-                if log_handlers: # if a handler of that type already exist, just use it
-                    log_handler = log_handlers[0]
-                else:  # otherwise create a new one
-                    log_handler = handler_type()
-                    parent_logger.addHandler(log_handler)
-                log_handler.setLevel(log_level.upper() if isinstance(log_level, str) else log_level)
-                parent_logger.setLevel(min(parent_logger.level, log_handler.level))  # make sure all messages from this handler are passed to the parent handler
+        #for (handler_type, log_level) in ((logging.StreamHandler, stderr_log_level), (logging.handlers.SysLogHandler, syslog_log_level)):
+        #    if log_level:
+        #        log_handlers = [h for h in parent_logger.handlers if isinstance(h, handler_type)]
+        #        if log_handlers: # if a handler of that type already exist, just use it
+        #            log_handler = log_handlers[0]
+        #        else:  # otherwise create a new one
+        #            log_handler = handler_type()
+        #            parent_logger.addHandler(log_handler)
+        #        log_handler.setLevel(log_level.upper() if isinstance(log_level, str) else log_level)
+        #        parent_logger.setLevel(min(parent_logger.level, log_handler.level))  # make sure all messages from this handler are passed to the parent handler
 
 
 
@@ -461,7 +465,7 @@ class FPGAArray(object):
         if subarrays:
             ib_not_in_subarray = self.hwm.query(IceBoardPlus).filter(~IceBoardPlus.subarray.in_(subarrays))
             for ib in list(ib_not_in_subarray):  # make sure the list does not change during the loop
-                self.logger.info("%r (subarray '%s') is not in the target subarray list %s. It is removed from the YAML hardware map."  # That comment should be if verbose=1
+                self.logger.debug("%r (subarray '%s') is not in the target subarray list %s. It is removed from the YAML hardware map."  # That comment should be if verbose=1
                                    % (ib, ib.subarray, subarrays))
                 self.hwm.delete(ib)
             self.hwm.flush()
@@ -812,6 +816,9 @@ class FPGAArray(object):
             slot_numer, lane_number)) and are also used to infer which is a master and slave crate when
             crates are interconnected in pairs.
         """
+
+        self.logger.info('%r: setting crate numbers for crates %r' % (self, self.ic))
+        
         for ic in self.ic:
             model = ic.part_number
             sn = ic.serial
@@ -823,10 +830,13 @@ class FPGAArray(object):
             new_crate_number = (crate_number_map.get((model, sn), None) or
                                crate_number_map.get((model, int_sn), None))
 
+            #if not isinstance(new_crate_number, int):
+            #    raise ValueError('%r: crate number %r is not an interger' % (self, new_crate_number))
+
             if new_crate_number is not None:
-                ic.crate_number = new_crate_number
+                ic.crate_number = int(new_crate_number)
                 self.hwm.flush()
-                self.logger.info('Assigining crate number %i to crate %s' % (new_crate_number, ic.get_string_id()))
+                self.logger.info('Assigining crate number %r to crate %s' % (new_crate_number, ic.get_string_id()))
             elif strict:
                 raise RuntimeError('Cannot find a crate number for crate %s' % ic.get_string_id())
             else:
@@ -860,6 +870,7 @@ class FPGAArray(object):
         # enable_gpu_link : Enables the GPU link transmission
 
         """
+        self.logger.info('%r: Setting operational mode to %s' % (self, mode))
         # To make sure that the data acquisition and transmission will be done at the same rate, refuse to operate if there
         # are more than one IceBoard in the array and the boards are not all
         # set to operate on the backplane clock.
@@ -1034,7 +1045,7 @@ class FPGAArray(object):
         else:
             raise ValueError("Unknown syncing method '%s'" % method)
 
-    def sync(self, delay=20, check=True):
+    def sync(self, delay=2, check=True):
         """ Generate a SYNC event across the whole array based on the syncing method set by ``set_sync_method()``.
 
         If ``check`` is True, the method will read the SYNC counters on every
@@ -1055,15 +1066,23 @@ class FPGAArray(object):
                 if time.time() - t0 > delay+1:
                     raise RuntimeError('Timout while waiting for the IRIG-B-based SYNC to complete')
         elif self.sync_method == 'distributed_time':
+            # Estimate how much time it takes to set the trigger time
             dt = self.ib[0].get_irigb_time()
-            print 'Triggering SYNC in %i seconds at %s' % (delay,  dt.isoformat())
+            t0 = time.time()
+            self.ib.set_irigb_trigger_time(dt, delay=300) # set the trigger far enough in time it should not happen before we reprogram another delay
+            setting_time = (time.time() - t0)
+            self.logger.info('It takes %f seconds to set the trigger time' % setting_time)
+            setting_time = round(2*setting_time + delay)
+            # Now set the trigger time using that delay
+            dt = self.ib[0].get_irigb_time()
+            print 'Triggering SYNC in %i seconds at %s' % (setting_time,  dt.isoformat())
             self.print_flush()
             t0 = time.time()
-            self.ib.set_irigb_trigger_time(dt, delay=delay)
+            self.ib.set_irigb_trigger_time(dt, delay=setting_time)
             self.logger.info('It took %f seconds to set the trigger time' % (time.time() - t0))
             t0 = time.time()
             while any(self.ib.is_irigb_before_trigger_time()):
-                if time.time() - t0 > delay+1:
+                if time.time() - t0 > setting_time + 1:
                     raise RuntimeError('Timout while waiting for the IRIG-B-based SYNC to complete')
         elif self.sync_method == 'local_soft_trigger':
             self.ib.sync()
@@ -1341,9 +1360,9 @@ class FPGAArray(object):
 
 
     @async
-    def get_fpga_config(self):
+    def get_fpga_config(self, basic=False):
         """ Concurrently gets the configuration info for each FPGA """
-        configs = yield {ib.get_id():ib.get_config.async() for ib in self.ib}
+        configs = yield {ib.get_id():ib.get_config.async(basic=basic) for ib in self.ib}
         async_return(configs)
 
 
@@ -2263,16 +2282,28 @@ class FPGAArray(object):
 
         for ic in self.ic:
             # backplane metrics
-            slot, ib = ic.slot.items()[0]
-            bp_metrics = yield ib.get_backplane_metrics.async()
-            metrics.add(bp_metrics, crate_number=ic.crate_number, crate_id=ic.get_string_id())
-            # IceBoard metrics
-            for slot, ib in ic.slot.items():
-                extra_labels = dict(slot=slot, crate_number=ic.crate_number, crate_id=ic.get_string_id(), id=ib.get_string_id())
-                ib_metrics = yield ib.get_metrics.async()
-                metrics.add(ib_metrics, **extra_labels)
-                if ib.is_open():
-                   metrics.add(ib.BP_SHUFFLE.get_metrics(), **extra_labels)
+            try:
+                slot, ib = ic.slot.items()[0]
+                bp_metrics = yield ib.get_backplane_metrics.async()
+                metrics.add(bp_metrics)
+            except Exception as e:
+                self.logger.error('%r: error getting backplane metrics: error is %r' % (self, e))
+        # IceBoard metrics
+        self.logger.info('%r: getting all iceboard metrics' % self)
+        try:
+            all_metrics = yield [ib.get_metrics.async() for ib in self.ib]
+            self.logger.info('%r: got the metrics' % self)
+        except Exception as e:
+            self.logger.error('%r: error getting metrics: error is %r' % (self, e))
+
+        self.logger.info('%r: getting all bp_shuffle metrics' % self)
+        if ib.is_open():
+            all_metrics += yield [ib.get_bp_shuffle_metrics.async() for ib in self.ib]
+        #print(all_metrics)
+        for m in all_metrics:
+            #self.logger.info('%r: adding %i metrics' % (self, len(m.metrics)))
+            #ib_metrics = yield ib.get_metrics.async()
+            metrics.add(m)
 
         # Backplane GTX
         # Errors, signal level

@@ -26,6 +26,7 @@ import time
 import yaml
 import json
 import functools
+import Queue
 
 import tornado
 import tornado.tcpclient
@@ -256,13 +257,13 @@ class ChimeMaster(object):
         for the power on delay specified in `power_supplies.power_on.delay`.
         """
 
-        yield [ps.power_on(ps_names) for ps, ps_names in self.power_supply_units.items()]
+        yield [ps.power_on(*ps_names) for ps, ps_names in self.power_supply_units.items()]
 
     @coroutine
     def power_off(self):
         """ Turn off the power supplies listed in the `power_supplies.power_on.units` config field.
         """
-        yield [ps.power_off(ps_names) for ps, ps_names in self.power_supply_units.items()]
+        yield [ps.power_off(*ps_names) for ps, ps_names in self.power_supply_units.items()]
 
     @coroutine
     def is_power_supply_ready(self):
@@ -607,14 +608,19 @@ class ChimeMaster(object):
 
 
         log_filename = os.path.join(self.acq_base_dir, "ch_master.log")
-
+        #import logging
+        #print('exists: %s' % ('pychfpga.fpga_array' in logging.Logger.manager.loggerDict)) 
+        #lo=logging.getLogger('pychfpga.fpga_array')
+        #print('before setup: logger name=%s, level=%s, handlers=%s, disabled=%r' %(lo.name, lo.level, lo.handlers, lo.disabled))
         self.logging_handlers = log.setup_logging(conf.logging.dict_config, conf.logging.log_levels,
             base_package_name=conf.logging.base_package_name,
             actual_package_name = __name__.rpartition('.')[0], # full package path up to ch_acq (note: __package__ exists but is not consistently defined)
             script_name=conf.logging.script_name,
             path=self.acq_base_dir) # path will be inserted in filename strings containing "%(path)"
-
-
+        #lo=logging.getLogger('pychfpga.fpga_array')
+        #print('before setup: logger name=%s, level=%s, handlers=%s, disabled=%r' %(lo.name, lo.level, lo.handlers,lo.disabled))
+        #lo.warning('Trop seche')
+        self.log.info('%r: Logging configured'% self)
         # Now that the housekeeping is done, let's start the real work
 
         # Create objects to communicates to the remote processes needed to run the array
@@ -633,7 +639,7 @@ class ChimeMaster(object):
 
         # Read the FPGA setting back from the FPGA
         self.log.info("Getting configuration data from all FPGAs")
-        self.fpga_conf = yield self.fpgas.get_fpga_config.async()
+        self.fpga_conf = yield self.fpgas.get_fpga_config.async(basic=True)
 
 
         # Configre and start CHRX remote processes
@@ -990,8 +996,11 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         ChimeMasterClass = DummyChimeMaster if self.dummy else ChimeMaster
 
         self.chime_master = ChimeMasterClass()
-
+        self.future = None
         #self.add_periodic_callback(self.print_iceboard_info_callback, period=60000)
+        self.metrics_queue = Queue.Queue(1000)
+        #self.add_periodic_callback(self._get_metrics, 3000)
+        self._get_metrics()
 
     @coroutine
     def shutdown(self):
@@ -1025,7 +1034,8 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
     @coroutine
     @endpoint('start')
     def start(self, handler, **config):
-        self.log.debug('%r: Received start command' % self)
+        print('%r: Received start command' % self)
+        self.log.info('%r: Received start command' % self)
         def encode_utf8(x):
             """Convert unicode strings to utf-8 strings for the target object and any objects in lists or dictionaries"""
             if type(x) is unicode:
@@ -1037,10 +1047,24 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
             else:
                 return x
         config = encode_utf8(config)  # convert all strings in the config dict into utf8
-        result = yield self.chime_master.start(**config)
-        self.log.debug('%r: Start command result is: %r' % (self, result))
-
-        coroutine_return(result)
+        def done(future):
+            print('Done')
+            try:
+                logger = log.get_logger(self)
+                print('Got ne wlogger %r' % logger)
+                print(' Logger name=%s, level=%s, handlers=%s, disabled=%s' % (logger.name, logger.level, logger.handlers, logger.disabled))
+            except Exception as e:
+                print('oops. Exception %r' % e)
+            if future.exception():
+                logger.error('START Done with exception: %r' % future.exception())
+            else:
+                logger.info('START Done. result is %r' % future.result())
+            return True
+        self.future = self.chime_master.start(**config)
+        IOLoop.current().add_future(self.future, done)
+        self.log = log.get_logger(self)  # update the self.log pointer to the new logger 
+        self.log.debug('%r: future created. ch_master initilization is in progress' % (self))
+        coroutine_return('Initialization in progress. Check status for completion.')
 
     @coroutine
     @endpoint('methods')
@@ -1050,7 +1074,25 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
     @coroutine
     @endpoint('status')
     def status(self, handler):
-        coroutine_return(self.chime_master.status())
+        """ Return a dict describing the state of the server.
+
+        If the ChimeMaster raised an exception during the background start() process, the exception is risen now.
+
+        Returns:
+            dict: containing the fields:
+                :state: (str): current state string. 
+                :is_ready (bool): true when ChimeMaster has finished initializing successfully
+                :start_result (str): Messsage returned by ChimeMaster.start() command. 
+                :config (dict): Current configuration
+        """
+        r = self.chime_master.status() # {state:x and config: y}. chome_master always exists.
+        result = dict(state=r['state'])
+        result['is_ready'] = r['state'] == 'ok' # so we don't have to know the string to check
+        if self.future and self.future.done():
+            result['start_result'] = self.future.result() # raise an error if start failed
+        else:
+            result['start_result'] = None
+        coroutine_return(result)
 
     @coroutine
     @endpoint('stop')
@@ -1069,6 +1111,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
     def kotekan_start(self, handler, **config):
         results = yield [k.start(**config) for k in self.kotekan_clients]
         coroutine_return(results=results)
+
 
     @coroutine
     @endpoint('get-frequency-map')
@@ -1115,26 +1158,42 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         r = getattr(self.chime_master.fpgas, args['method_name'])(**args)
         coroutine_return(results=sanitize_for_json(r))
 
+    @coroutine
+    def _get_metrics(self):
+        """ get the metrics from the FPGAss and put them in the queue
+        """
+        self.log.info('%.32r: Getting metrics from FPGAs' % (self))
+        while True:
+            if self.chime_master and self.chime_master.state=='on' and self.chime_master.fpgas:
+                try:
+                    metrics = yield self.chime_master.fpgas.get_metrics.async()
+                    self.log.info('%r: Got %i metrics' % (self, len(metrics.metrics)))
+                    if self.metrics_queue.full():
+                        self.metrics_queue.get()
+                    self.metrics_queue.put(metrics)
+                except exception as e:
+                    self.log.warning('%r: error getting FPGA metrics. error is: %r' % (self, e))
+                    pass
+
+                self.log.info('Queue has %i metrics blocks' % self.metrics_queue.qsize())
+            yield sleep(1)
 
     @coroutine
     @endpoint('get-monitoring-data')
     def get_monitoring_data(self, handler):
         metrics = Metrics()
+        for i in range(self.metrics_queue.qsize()):
+            metrics.add(self.metrics_queue.get())
         # try:
         #     metrics.add((yield self.chime_master.get_power_supply_metrics()))
         # except:
         #     pass
 
-        if self.chime_master.fpgas:
-            try:
-                metrics.add((yield self.chime_master.fpgas.get_metrics.async()))
-            except:
-                pass
-        if self.chime_master.power_supply_servers:
-            try:
-                metrics.add((yield self.chime_master.get_power_supply_metrics()))
-            except:
-                pass
+        #if self.chime_master.power_supply_servers:
+        #    try:
+        #        metrics.add((yield self.chime_master.get_power_supply_metrics()))
+        #    except:
+        #        pass
 
         # Make the HTTP reply a plain text response for Prometheus, not JSON,
         handler.set_header('Content-Type', 'text/plain')
@@ -1162,6 +1221,11 @@ class ChimeMasterAsyncRESTClient(AsyncRESTClient):
     @coroutine
     def nop(self):
         print('Doing nothing')
+
+
+    @coroutine
+    def raise_exception(self):
+        raise RuntimeError('You asked for it') # for debugging
 
     @coroutine
     def get_methods(self):
@@ -1198,15 +1262,23 @@ class ChimeMasterAsyncRESTClient(AsyncRESTClient):
         self.log.debug('%r: Sending start command to server' % self)
         reply = yield self.post('start', **config)
         self.log.debug('%r: Reply to start command is: %r' % (self, reply))
-        self.print_result(reply)
+
+        while True:
+            status = yield self.status() # raise exception if start failed
+            if status['is_ready']:
+                coroutine_return('start_result')
+            self.log.info('%r: Waiting for the START process to complete. Current state is: %s' % (self, status['state'])) 
+            yield sleep(1)
 
     @coroutine
     def status(self):
         """
-        Print ch_master status.
+        Get ch_master server status.
+
+        Raises an exception if the start process failed.
         """
-        r = yield self.get('status')
-        self.print_result(r)
+        result = yield self.get('status')
+        coroutine_return(result)
 
     @coroutine
     def stop(self):
@@ -1242,17 +1314,6 @@ class ChimeMasterAsyncRESTClient(AsyncRESTClient):
         """
         m = yield self.get('get_frequency_map')
         self.print_result(m)
-
-
-def parse_cmdline_args(argv):
-    parser = argparse.ArgumentParser(description="CHIME Master", epilog="""
-        """)
-    parser.add_argument('args', type=str, nargs='*', default='',  help='"server", "client" or a YAML filename:subconfig. "server" Starts the CHIME Master REST server. Control is returned only after server is stopped')
-    parser.add_argument('-d', '--debug', action='store_true',
-                        help="debug mode")
-    parser.add_argument('-p', '--port', default=54321, type=int, help="port used by the server")
-    parser.add_argument('-n', '--host', default='localhost', type=str, help="server hostname")
-    return parser.parse_args(argv)
 
 def main():
     """ Command-line interface to operate the ChimeMaster server.
@@ -1328,7 +1389,6 @@ def main():
     if server and server.chime_master:
         cm = RunSyncWrapper(server.chime_master)
         print("   cm: ChimeMaster object")
-
     return client, server, cm
 
 if __name__ == '__main__':
