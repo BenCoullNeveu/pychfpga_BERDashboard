@@ -684,9 +684,9 @@ class RawAcqReceiver(object):
                 self.rms[(crate_number, slot_number, chan)] = np.std(adc_data)
 
     def print_stats(self):
-        print()
+        #print()
         for i,r in enumerate(self.receivers):
-            print('Recv %i, pkts=%i, queued= %i, overflows=%i, qsize=%i' % (i, r.packet_counter, r.queued_packets, r.queue_overflows, self.data_queue.qsize()))
+            self.log.debug('Recv %i, pkts=%i, queued= %i, overflows=%i, qsize=%i' % (i, r.packet_counter, r.queued_packets, r.queue_overflows, self.data_queue.qsize()))
         print
 
     def startHdf5Disk(self, base_dir, base_filename, capture_duration=60, elements_per_file=2048*64):
