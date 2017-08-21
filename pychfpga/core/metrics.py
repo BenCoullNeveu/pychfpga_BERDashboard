@@ -7,17 +7,25 @@ import time as time_
 class Metrics(object):
     """ Simplified container to hold Prometheus Metrics.
     """
-    def __init__(self, arg=None):
+    def __init__(self, arg=None, **default_labels):
+        self.default_labels= default_labels
         if arg is None:
             self.metrics = {}
-        elif isinstance(arg, Metrics):
-            self.metrics = arg.metrics.copy()
-        elif isinstance(arg, dict):
-            self.metrics = arg.copy()
+        elif isinstance(arg, Metrics):  # Add all metrics, with the additional default labels
+            self.metrics = {}
+            self.add(arg)
+        elif isinstance(arg, dict):  # add a metrics specified as a dict, with the additional default labels
+            m = Metrics()
+            m.metrics = arg.copy()
+            self.metrics = {}
+            self.add(m)
         elif isinstance(arg, list):
             self.metrics = {}
             for item in arg:
                 self.add(item)
+
+    def __len__(self):  # will also me used as __nonzero__
+        return len(self.metrics)
 
     def items(self):
         return self.metrics.items()
@@ -39,7 +47,7 @@ class Metrics(object):
 
             time (int): time (ms since epoch) to be added to the entry stored when `value` is not None. If time is Node, the current time is used.
 
-            \**labels: labels to be added to the entrystored when `value` is not None
+            \**labels: labels to be added to the entry stored when `value` is not None
 
             doc: documentation associated with the metric. Different docs cannot be associated with
                 a metric. If not specified, there will not ``# HELP`` entry in the string output.
@@ -53,11 +61,11 @@ class Metrics(object):
             for met_name, met in metric_name.metrics.items():
                 self.add(met_name, doc=met['doc'], type=met['type'])
                 for entry in met['entries']:
-                    new_labels = dict(entry['labels'].items() + labels.items())
+                    new_labels = dict(entry['labels'].items() + labels.items() + self.default_labels.items())
                     self.add(met_name, value=entry['value'], time=entry['time'], **new_labels)
             return
 
-        # get the metric from the dct, or create an empty one
+        # get the metric from the local dict, or create an empty one
         metric = self.metrics.setdefault(metric_name, dict(type=None, doc=None, entries=[]))
 
         # Assign documentation if some is provided. It must be unique to the metric.
@@ -74,7 +82,8 @@ class Metrics(object):
 
         # Add entric (value and labels) to the metric
         if value is not None:
-            metric['entries'].append(dict(value=value, labels=labels, time=time or time_.time() * 1000))
+            new_labels = dict(labels.items() + self.default_labels.items())
+            metric['entries'].append(dict(value=value, labels=new_labels, time=time or time_.time() * 1000))
 
     def  __str__(self):
         s = []
