@@ -400,10 +400,10 @@ class chFPGA_controller(IceBoardExtHandler):
 
         except Exception as e:
             self.logger.error('****Exception during open!****** =  %r' % e)
-            
+
             self.close()
             # raise chFPGAException('An exception has occured during module instantiation. Sockets will be closed. The exception is %s' % repr(e))
-            
+
             raise
             # Initialize subsystems. This has to be done only once all subsystems are created because some subsystems depend on each other.
         if init > 0:
@@ -2809,7 +2809,12 @@ class chFPGA_controller(IceBoardExtHandler):
         """
 
         info = OrderedDict()
-        metrics = Metrics()
+        metrics = Metrics(
+            slot=self.slot,
+            id=self.get_string_id(),
+            crate_id=self.crate.get_string_id() if self.crate else None,
+            crate_number=self.crate.crate_number if self.crate else None)
+
 
         ####################################
         # Motherboard temperatures
@@ -2877,25 +2882,21 @@ class chFPGA_controller(IceBoardExtHandler):
         # is_voltage_nominal
         # sysmon?
         # QSFP voltage, temp, signal
-        slot = self.slot
-        crate_number = self.crate.crate_number if self.crate else None
-        crate_id = self.crate.get_string_id() if self.crate else None
-        board_id = self.get_string_id()
-        labeled_metrics = Metrics()
-        labeled_metrics.add(metrics, slot=slot, crate_number=crate_number, crate_id=crate_id, id=board_id)
-        async_return((info, labeled_metrics))
+        async_return((info, metrics))
 
     @async
     def get_bp_shuffle_metrics(self):
         metrics = self.BP_SHUFFLE.get_metrics()
-        slot = self.slot
-        crate_number = self.crate.crate_number if self.crate else None
-        crate_id = self.crate.get_string_id() if self.crate else None
-        board_id = self.get_string_id()
-        labeled_metrics = Metrics()
-        labeled_metrics.add(metrics, slot=slot, crate_number=crate_number, crate_id=crate_id, id=board_id)
-        async_return(labeled_metrics)
+        async_return(metrics)
 
+
+    @async
+    def get_crossbar_metrics(self):
+        metrics = Metrics([
+            self.CROSSBAR.get_metrics(),
+            self.CROSSBAR2.get_metrics(),
+            self.CROSSBAR3.get_metrics()])
+        async_return(metrics)
 
     @async
     def get_metrics(self):

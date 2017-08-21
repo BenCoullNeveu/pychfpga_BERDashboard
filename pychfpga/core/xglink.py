@@ -539,7 +539,12 @@ class XGLinkArray(XGLink):
         dict containing a number of {error_type:error_info} for the
         corresponding lane.
         """
-        metrics = Metrics()
+        metrics = Metrics(
+            crate_id=self.fpga.crate.get_string_id() if self.fpga.crate else None,
+            crate_number=self.fpga.crate.crate_number if self.fpga.crate else None,
+            slot=self.fpga.slot,
+            id=self.fpga.get_string_id())
+
         for link_type, link_group in [('pcb_gtx',0), ('qsfp_gtx', 1)]:
             err, min_len, max_len, frame_det, rx_fifo, tx_fifo = self.get_rx_lane_monitor(['ERROR_CTR', 'MIN_FRAME_LENGTH', 'MAX_FRAME_LENGTH', 'FRAME_DETECT', 'RX_FIFO_OVERFLOW', 'TX_FIFO_OVERFLOW'],  link_group)
             for lane in range(len(err)):
@@ -555,7 +560,6 @@ class XGLinkArray(XGLink):
                 #gtx_number = lane + link_group*self.NUMBER_OF_PCB_LANES
                 metrics.add('fpga_bp_link_rx_power', value=gtx.DMONITOROUT & 0x7F, type='GAUGE', gtx=gtx_number)
                 metrics.add('fpga_bp_link_block_lock', value=gtx.BLOCK_LOCK, type='GAUGE', gtx=gtx_number)
-
         return metrics
 
     def get_bp_rx_status(self, link_group=None):

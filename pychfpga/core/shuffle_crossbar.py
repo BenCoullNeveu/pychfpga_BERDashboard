@@ -16,6 +16,7 @@ from collections import OrderedDict
 
 import numpy as np
 
+from metrics import Metrics
 from Module import Module_base, BitField
 import SHUFFLE_BIN_SEL
 
@@ -321,6 +322,11 @@ class ShuffleCrossbar(Module_base):
         'MISSING_FRAME': 'MISSING_FRAME_MON',
         'ALIGN_FIFO_OVERFLOW': 'ALIGN_FIFO_OVERFLOW_MON',
         'DATA_TIMEOUT': 'DATA_TIMEOUT_MON',
+        'INPUT_FRAME_CTR': 'INPUT_FRAME_CTR',
+        'ALIGN_FRAME_CTR': 'ALIGN_FRAME_CTR',
+        'DELAY_CAPTURE': 'DELAY_CAPTURE',
+        'FIFO_COUNT': 'FIFO_COUNT',
+
         }
 
     def get_lane_monitor(self, names):
@@ -451,6 +457,52 @@ class ShuffleCrossbar(Module_base):
 
         print '%25s: %s' % ('Frame #', ' '.join('%6i' % f for f in frame_number))
         print '%25s: %s' % ('Delta Frame #', ' '.join('%6i' % (f - frame_ref) for f in frame_number))
+
+    def get_metrics(self):
+        """ Return the monitoring metrics for the 2nd and 3rd crossbar.
+        """
+        metrics = Metrics(
+            crate_id=self.fpga.crate.get_string_id() if self.fpga.crate else None,
+            crate_number=self.fpga.crate.crate_number if self.fpga.crate else None,
+            slot=self.fpga.slot,
+            id=self.fpga.get_string_id())
+
+        # add ALIGN status flags
+        bitfield_names = ['BAD_TLAST', 'BAD_TVALID', 'BAD_FRAME_LENGTH', 'MISSING_FRAME', 'ALIGN_FIFO_OVERFLOW', 'DATA_TIMEOUT']
+        align_flags = self.get_lane_monitor(bitfield_names)
+        for i, bitfield_name in enumerate(bitfield_names):
+            metric_name = 'fpga_crossbar%i_%s_flag' % (self.crossbar_level, bitfield_name.lower())
+            flags = align_flags[i]
+            for lane, flag in enumerate(flags):
+                metrics.add(metric_name, lane=lane, value=flag, type='GAUGE')
+
+        # Add frame alignment flag
+        frame_numbers = self.capture_frame_number()
+        metric_name = 'fpga_crossbar%i_frame_alignment_offset' % (self.crossbar_level)
+        for lane, frame_number in enumerate(frame_numbers):
+            offset = frame_number - frame_numbers[0]
+            metrics.add(metric_name, lane=lane, value=offset, type='GAUGE')
+
+        # Add BIN SEL status
+        for lane, bs in enumerate(self.BIN_SEL):
+            number_of_sublanes_per_output = self.NUMBER_OF_INPUT_LANES/bs.NUMBER_OF_OUTPUTS
+            sublane_mask = (1 << (bs.LAST_LANE + 1)) - (1 << bs.FIRST_LANE)
+            mask = sum(sublane_mask << (number_of_sublanes_per_output * i) for i in range(bs.NUMBER_OF_OUTPUTS))
+
+            metrics.add('fpga_crossbar%i_bin_sel_data_fifo_overflow' % (self.crossbar_level),
+                        lane=lane, value=bs.FIFO_OVERFLOW & mask, type='GAUGE')
+            metrics.add('fpga_crossbar%i_bin_sel_flags_fifo_overflow' % (self.crossbar_level),
+                        lane=lane, value=bs.FLAGS_FIFO_OVERFLOW & mask, type='GAUGE')
+
+        bitfield_names = ['INPUT_FRAME_CTR', 'ALIGN_FRAME_CTR', 'DELAY_CAPTURE', 'FIFO_COUNT']
+        counters = self.get_lane_monitor(bitfield_names)
+        for i, bitfield_name in enumerate(bitfield_names):
+            metric_name = 'fpga_crossbar%i_%s' % (self.crossbar_level, bitfield_name.lower())
+            flags = counters[i]
+            for lane, flag in enumerate(flags):
+                metrics.add(metric_name, lane=lane, value=flag, type='GAUGE')
+
+        return metrics
 
 
     # def print_capture_word(self):
