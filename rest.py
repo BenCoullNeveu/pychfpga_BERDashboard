@@ -13,7 +13,7 @@ import functools
 import socket
 import argparse
 import yaml
-
+import re
 
 import log
 from log import NameSpace
@@ -306,11 +306,25 @@ class JsonRequestHandler(tornado.web.RequestHandler):
     def write_error(self, status_code, **kvs):
         if 'exc_info' in kvs:
             exc_info = kvs.pop('exc_info')
-            kvs['error'] = ''.join(traceback.format_exception(*exc_info))
+            kvs['error'] = self.format_exception(exc_info)
         # self.set_status(200, reason='There were errors, though') # Prevent the client from raising an HTTP error. The client will recognize errors by looking at the error field.
         # print('writing', kvs['error'])
         self.write(kvs)  # kvs is a dict, so it will be json-encoded
 
+    def format_exception(self, exc_info, remove_tornado=True):
+        """ Format traceback string by indenting them and removing the tornado internals"""
+        lines = traceback.format_exception(*exc_info)
+        filtered_lines = []
+        i = 0
+        while i < len(lines):
+            if remove_tornado and re.match(r'\s*File ".*/tornado/.*", line ', lines[i]):
+                i+=1
+            else:
+                for line in lines[i].split('\n'):
+                    if line:
+                        filtered_lines.append('   >  %s\n ' % line)
+                i += 1
+        return ''.join(filtered_lines)
 
 class AsyncRESTServer(AsyncMixin):
     """
@@ -374,7 +388,7 @@ class AsyncRESTServer(AsyncMixin):
         self.address = address
         self.port = port
 
-        self.log = logging.getLogger(__name__).getChild(self.__class__.__name__)
+        self.log = log.get_logger(self)
         self.log.info('%32r: Creating %s server at %s:%s' % (self, self.__class__.__name__, address or '*', port))
 
         # Create the endpoints registered with the @endpoint decorator
