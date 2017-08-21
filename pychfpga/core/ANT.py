@@ -157,10 +157,12 @@ class ANT_base(object):
             self.logger.debug('%.32r: Using the internal clock to generate the channelizer clock since the ADC is not available' % self.fpga)
             self.fpga.GPIO.CHAN_CLK_SRC = 1 # uses the internal 200 MHz clock to clock the channelizer
 
+        #self.logger.debug("%.32r: Initializing each channelizer", self.fpga)
         for (i, ant) in enumerate(self.ANT):
             # self.logger.debug('%.32r: Initializing channelizer #%i %s' % (self.fpga, ant.ant_number, '' if fmc_present[i] else '(No ADC board)'))
             ant.init(fmc_present[i])
-
+        #self.logger.debug("%.32r: Initializing delay tables", self.fpga)
+        
         if delay_table is not None:
             self.set_adc_delays(delay_table)
 

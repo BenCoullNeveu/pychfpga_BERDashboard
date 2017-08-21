@@ -9,6 +9,8 @@ PROBER.py module
  2012-07-20 JFC: Added initialization of PROBE_ID with antenna number
 """
 
+import logging
+
 from Module import Module_base, BitField
 
 
@@ -45,6 +47,7 @@ class PROBER_base(Module_base):
 
     def __init__(self, fpga_instance, base_address, instance_number):
         # self.ant = ant_instance
+        self.logger = logging.getLogger(__name__)
         super(self.__class__, self).__init__(fpga_instance, base_address, instance_number)
         self._lock()  # Prevent accidental addition of attributes (if, for example, a value is assigned to a wrongly-spelled property)
     # Specialized functions
@@ -110,6 +113,7 @@ class PROBER_base(Module_base):
         channel = self.instance_number
         slot = (self.fpga.slot or 1) - 1   # 0-based, 0 if no slot
         crate = self.fpga.crate.crate_number or 0 if self.fpga.crate else 0 # 0 if there is no backplane/crate, or the crate does not have an assigned crate number.
+        self.logger.debug('PROBER crate=%r, slot=%r, channel=%r' % (crate, slot, channel))
         self.PROBE_ID = 0xA0 + self.instance_number  # For backwards compatibility
         self.STREAM_ID = ((crate & 0xF) << 8) | ((slot & 0xF) << 4) | (channel & 0x0F)
         self.RESET = 1  # Make sure no data is being transmitted at reset
