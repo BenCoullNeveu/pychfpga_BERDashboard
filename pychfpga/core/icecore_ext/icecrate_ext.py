@@ -609,20 +609,28 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
         This requires I2C communication with the backplane.
         """
 
-        # Check if the fan controller is connected
-        self._fan_ctrl_present = self._fan_ctrl.is_present()
+        for trial in range(10):
+            try:
+                # Check if the fan controller is connected
+                self._fan_ctrl_present = self._fan_ctrl.is_present()
 
-        # Check if the power/reset control IO expander is accessible
-        #self._reset_ctrl_present = self._reset_ctrl.is_present()
+                # Check if the power/reset control IO expander is accessible
+                #self._reset_ctrl_present = self._reset_ctrl.is_present()
 
-        #self._init_qsfp_ctrl()
-        #if self._reset_ctrl_present:
-        #    self._init_reset_ctrl()  # The power I2c bus needs to be bridged to the monitor I2C bus for this to work
-        #self._init_temperature_sensors()
-        #self._init_power_sensors()
-        if self._fan_ctrl_present:
-            self._fan_ctrl.init()
-        self._i2c.select_bus([])  # Make sure we don't load the bus
+                #self._init_qsfp_ctrl()
+                #if self._reset_ctrl_present:
+                #    self._init_reset_ctrl()  # The power I2c bus needs to be bridged to the monitor I2C bus for this to work
+                #self._init_temperature_sensors()
+                #self._init_power_sensors()
+        
+                if self._fan_ctrl_present:
+                    self._fan_ctrl.init()
+                return
+            except IOError as e:
+                self.logger.warning('%r: IO Error during backplane INIT on trial %i. retrying. Error was:\n%r' % (self, trial+1, e))
+            finally:
+                self._i2c.select_bus([])  # Make sure we don't load the bus
+        raise IOError('%r: Cannot initialize backplane peripherals' % self)
 
     def _init_temperature_sensors(self, temperature_sensor_name=None):
         """
