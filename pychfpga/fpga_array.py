@@ -300,12 +300,12 @@ class FPGAArray(object):
         ###########################################
         self.logger = logging.getLogger(__name__)
         #print('fpga_array loger name is %s' % __name__)
-        #print('logger name=%s, level=%s, handlers=%r' % (self.logger.name, self.logger.level, self.logger.handlers)) 
+        #print('logger name=%s, level=%s, handlers=%r' % (self.logger.name, self.logger.level, self.logger.handlers))
         #self.logger.warning('This is a warning')
         #ch = logging.StreamHandler(sys.stdout)
         #self.logger.addHandler(ch)
         #self.logger.warning('why dont you log')
-        
+
         ###########################################
         # setup sqlalchemy logging
         ###########################################
@@ -818,7 +818,7 @@ class FPGAArray(object):
         """
 
         self.logger.info('%r: setting crate numbers for crates %r' % (self, self.ic))
-        
+
         for ic in self.ic:
             model = ic.part_number
             sn = ic.serial
@@ -2294,15 +2294,14 @@ class FPGAArray(object):
             all_metrics = yield [ib.get_metrics.async() for ib in self.ib]
             self.logger.info('%r: got the metrics' % self)
         except Exception as e:
-            self.logger.error('%r: error getting metrics: error is %r' % (self, e))
+            self.logger.error('%r: error getting FPGA metrics: error is %r' % (self, e))
 
         self.logger.info('%r: getting all bp_shuffle metrics' % self)
         if ib.is_open():
             all_metrics += yield [ib.get_bp_shuffle_metrics.async() for ib in self.ib]
+            all_metrics += yield [ib.get_crossbar_metrics.async() for ib in self.ib]
         #print(all_metrics)
         for m in all_metrics:
-            #self.logger.info('%r: adding %i metrics' % (self, len(m.metrics)))
-            #ib_metrics = yield ib.get_metrics.async()
             metrics.add(m)
 
         # Backplane GTX
@@ -2346,7 +2345,30 @@ class FPGAArray(object):
 
     def print_rx_err_map(self, icecrates=None, reset_stats=0, delay=-5, tx_power=None,
                          tx_precursor=None, tx_postcursor=None, lpm = None, dfe_reset=False, stop_on_errors=2, verbose=1):
+        """
+        Initialize and test the corner turn engine operation.
 
+        Parameters:
+            icecrates (IceCrate Ccoll): List of icecrates on which the test is done. If `None`, all icecrates are initialized/tested.
+
+            reset_stats (bool): Reset the statistics counters. Default is false.
+
+            delay (int):
+
+            tx_power (int). transmit power to be set on the GTX. Ranges from 0-15. If ``None``, TX power levels ar enot changed.
+
+            tx_precursor=None,
+
+            tx_postcursor=None
+
+            lpm (bool): If true, enables Low Power Mode in the GTX. Requires a dfe_reset.
+
+            dfe_reset (bool): If true, resets the Dynamix Feedback Equalizer to allow it to find a new equalization solution. Is needed when power levels or operaiton mode are changed
+
+            stop_on_errors=2,
+
+            verbose=1
+        """
         if icecrates is None:
             icecrates = self.ic
 
