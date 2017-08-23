@@ -391,7 +391,16 @@ class AgilentN5700(SocketContext):
 
 class PowerSupplyAsyncRESTServer(AsyncRESTServer):
     """
-    REST interface for receiver hut power supplies.
+    Web server with REST interface to operate an array of Agilent/Keysight power supplies.
+
+    Supports Agilent N5764 and N8731 supplies (although all related supplies will also work).
+
+    The server is based on the asynchrounous Tornado web server.
+
+    The following REST endpoints are provided by the web server:
+
+
+
     """
 
     DEFAULT_PORT = 54324
@@ -410,14 +419,14 @@ class PowerSupplyAsyncRESTServer(AsyncRESTServer):
         super(PowerSupplyAsyncRESTServer, self).__init__(address=address, port=port, heartbeat_string='Ps')
 
     def _parse_names(self, ps_names):
-        print('*********************_parse_names',ps_names)
+        # print('*********************_parse_names',ps_names)
         if not ps_names:
             return []
         if isinstance(ps_names, (str, unicode)):
             ps_names = ps_names.replace(' ', ',').split(',')
         ps_names = [name.strip() for name in ps_names]
         # Expand aliases
-        
+
         self.log.warning('%r, %r' %(ps_names, self.config.aliases))
         for ps_name in list(ps_names):  # make a copy, we modify the list
             if ps_name in self.config.aliases:
@@ -461,7 +470,10 @@ class PowerSupplyAsyncRESTServer(AsyncRESTServer):
     @coroutine
     @endpoint('start')
     def start(self, handler, **config):
-        """ Start the power sypply server with provided config
+        """ ``POST endpoint: /start`` Initializes the power supply server with the provided configuration.
+
+        This creates a power supply instance for each of the supply specified under the ``units`` key.
+        Units that are already powered on are marked immediately as ready.
         """
         if self.power_supplies:
             raise RuntimeError('%.32r: Power Supply server is already started' % self)
@@ -492,6 +504,7 @@ class PowerSupplyAsyncRESTServer(AsyncRESTServer):
     @coroutine
     @endpoint('stop')
     def stop(self, handler):
+        """ ``GET endpoint: /stop`` Uninlitializes the server and keep it running so it can be started with a new configuration."""
         if not self.power_supplies():
             self.log.warning('%.32r: Power Supply server is not started' % self)
         else:
@@ -503,6 +516,23 @@ class PowerSupplyAsyncRESTServer(AsyncRESTServer):
     @coroutine
     @endpoint('status')
     def status(self, handler):
+        """ ``GET endpoint: /status`` Return the status of all the supplies handled by this server.
+
+        Returns:
+            dict, with the following contents:
+
+                - is_started (bool): true when the server is initialized
+                - ps_names (list): list of str describing the names of all the supplies handled by
+                    the current running configuration.
+                - name1 (dict): Dict that describes the status of the powert supply unit named
+                    ``name1``, as returned by the :meth:`AgilentN5700.status()` method. In the format:
+
+                    - current (float): output current, in Amps
+                    - power (float): output power, in Watts
+                    - voltage (float):output voltage, in Volts
+                    - status (str): 'OK', 'OFF', 'ILIM' or 'FAULT'
+                - name2 ...
+        """
         # ps_names = self._parse_names(ps_names)
         # self.log.info('%.32r: Received status request for %r' % (self, ps_names))
         stati = dict(is_started=bool(self.power_supplies),
@@ -516,18 +546,45 @@ class PowerSupplyAsyncRESTServer(AsyncRESTServer):
     @coroutine
     @endpoint('is-started')
     def is_started(self, handler):
+        """ ``GET endpoint: /is-started`` indicates if the server is initialized.
+
+        This information is also included in the status() dict.
+
+        Returns:
+            bool: True if the power supply server is initialized
+        """
         coroutine_return(bool(self.power_supplies))
 
 
     @coroutine
     @endpoint('list-names')
     def listNames(self, handler):
+        """ ``GET endpoint: /list-names`` Return the list of the names of the supplies handled bu
+        the current running configuration.
+
+        This information is also included in the status() dict.
+
+        Returns:
+            list of str: names of the supplies, as defined in the configuration
+        """
         self.log.info('%.32r: Received list names request' % self)
         coroutine_return(self.power_supplies.keys())
 
     @coroutine
     @endpoint('power-on')
-    def powerOn(self, handler, ps_names=None):
+    def power_on(self, handler, ps_names=None):
+        """ ``POST endpoint: /power-on`` Powers up the specified supplies.
+
+        Parameters:
+
+            ps_names (str or list of str): List of power supplies to power on. If a string, the
+                string is splitted into a list at the space or comma delimiters. Each string in the
+                list can be a supply name (the keys in the ``units`` dict), or an alias (found as a
+                key in the ``alias`` dict). If 'all', all the supplies are affected.
+
+        Returns:
+            str: Message indicating the result of the operation
+        """
         ps_names = self._parse_names(ps_names)
         self.log.info('%.32r: Received power on command for %r' % (self, ps_names))
 
@@ -547,11 +604,24 @@ class PowerSupplyAsyncRESTServer(AsyncRESTServer):
                 self.log.info("%.32r: %s is powered ON" % (self, ps_name))
 
                 # yield sleep(self.config.power_on.delay) # make this asynchronous so all the delay happen in parallel
-        coroutine_return(True)
+        coroutine_return("%s are powered ON" % (ps_names))
 
     @coroutine
     @endpoint('power-off')
-    def powerOff(self, handler, ps_names=None):
+    def power_off(self, handler, ps_names=None):
+        """ ``POST endpoint: /power-off`` Powers down the specified supplies.
+
+        Parameters:
+
+            ps_names (str or list of str): List of power supplies to power off. If a string, the
+                string is splitted into a list at the space or comma delimiters. Each string in the
+                list can be a supply name (the keys in the ``units`` dict of the configuration), or
+                an alias (found as a key in the ``alias`` dict). If 'all', all the supplies are
+                affected.
+
+        Returns:
+            str: Message indicating the result of the operation
+        """
         ps_names = self._parse_names(ps_names)
         self.log.info('%.32r: Received power off command for %r' % (self, ps_names))
 
@@ -565,7 +635,7 @@ class PowerSupplyAsyncRESTServer(AsyncRESTServer):
                 ps.power_off()
                 ps.lock()
                 self.log.info("%.32r: %s is powered OFF" % (self, ps_name))
-        coroutine_return('%s powered off' % ps_names)
+        coroutine_return('%s are powered OFF' % ps_names)
 
 
     @coroutine

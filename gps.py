@@ -822,10 +822,10 @@ class GPSAsyncRESTClient(AsyncRESTClient):
         result = yield self.get('stop')
         coroutine_return(result)
 
-    @coroutine
-    def status(self):
-        result = yield self.get('status')
-        coroutine_return(result)
+    # @coroutine
+    # def status(self):
+    #     result = yield self.get('status')
+    #     coroutine_return(result)
 
 
     @coroutine
@@ -841,98 +841,13 @@ class GPSAsyncRESTClient(AsyncRESTClient):
 
 
 
-
-def parse_cmdline_args(argv):
-    parser = argparse.ArgumentParser(description="ps: Receiver hut power supply control server", epilog="""
-        """)
-    parser.add_argument('args', type=str, nargs='*', default='',  help='"server" or "client" ')
-    parser.add_argument('-p', '--port', default=GPSAsyncRESTServer.DEFAULT_PORT, type=int, help="Server port")
-    parser.add_argument('-n', '--host', default='localhost', type=str, help="Server hostname")
-    parser.add_argument('-s', '--server', action='store_true', help='Start a server')
-    return parser.parse_args(argv)
+def main():
+    """ Command-line interface to launch and operate the GPS server.
+    """
+    # Setup logging
+    log.setup_basic_logging('INFO')
+    client, server = run_client(sys.argv[1:], GPSAsyncRESTServer, GPSAsyncRESTClient, object_name ='GPS', server_config_path='gps.servers')
+    return client, server
 
 if __name__ == '__main__':
-    """
-    Command-line interface to start power supply REST server or client
-
-    To start a server (on the local machine):
-        ps.py [--port 54324] --server # creates and run an uninitialized local power supply server
-        ps.py [config_file:]config_name server_name --server  # create and starts a local power supply server the port and with the configuration specified in the config file.
-
-    To start a client:
-        ps.py [--host localhost] [--port 54324] [command [arg1, arg2]] # starts a client that connect to the server located at the specified host and port. If the hostname is '' or does not respond, a temporary local server will be created. If a command and arguments are specified, that the command is sent to the server.
-        ps.py [config_file:]config_name server_name [command [arg1, arg2, ...]]  # The ultimate command. Create client and local server if necessary. If a known command  is provided, it is sent to the server, otherwise the argument is assumed to be a configuration that is loaded and used to re(start) the server
-
-    Port is 54324 used by defaut if not specified.
-
-    Examples::
-
-        ./ps.py  --server  # creates a local server on port 54324.
-        ./ps.py jfc.drao pss0 --server # create, start and run local power supply server based on pss0 entry of jfc.drao config
-
-        ./ps.py power_off all# power off all power supplies handled by the server on localhost (assuming the server is started)
-        ./ps.py jfc.drao pss0 power_off all # power off all supplies managed py the server pss0 defined in config jfc.drao
-        ./ps.py power_off ps_crate0 --host 10.0.0.192 --port 1234 # instruct power supply server at 10.0.0.192:1234 to power off supply named ps_crate0
-
-    In interactive ipython sessions, server or client objects cna be used directly::
-
-        [1] run -i ps server
-        [2]
-    """
-
-    # Create our own IOLoop so we don't interfere with ipython's own ioloop.
-    ioloop = IOLoop()
-    ioloop.make_current()
-
-    # Setup logging
-    log.setup_basic_logging()
-
-    args = parse_cmdline_args(sys.argv[1:])
-    port = args.port
-    host = args.host
-    is_server = args.server
-    args = args.args
-    first_arg = args[0].lower() if args else None
-    pss_config = None
-    pss = None  # PowerSupply server object
-    psc = None  # PowerSupply client object
-    # print(args.args[1:], first_arg)
-
-    if args and (':' in args[0] or '.' in args[0]):
-        if len(args) >= 2:
-            print('Loading %s from config %s ' % (args[1], args[0]))
-            all_config = NameSpace(load_yaml_config(args[0]))
-            server_name = args[1]
-            config = all_config.gps.servers[server_name]
-            args = args[2:]
-        else:
-            raise RuntimeError('Please specify both a config root name and power supply name')
-
-    if is_server:
-        server_port = config.port if config else port
-        server = RunSyncWrapper(GPSAsyncRESTServer(port=server_port))
-        if config:
-            server.start(None, name=server_name, **config)
-        print("GPS REST Server started. Waiting for REST commands.")
-        server.run()
-        print("\nI'm done. Bye!")
-
-    else:
-        client_port = config.port if config else port
-        client_host = config.hostname if config else host
-        client = RunSyncWrapper(GPSAsyncRESTClient(hostname=client_host, port=client_port))
-        if config:
-            client.start(config)
-        # If the client started a server, get it for the interactive session
-        if hasattr(client,'server'):
-            server = RunSyncWrapper(client.server)
-        # If there are further arguments, assume they are commands
-        if args:
-            cmd = args[0]
-            if cmd and hasattr(client, cmd):
-                print('Sending command %s(%s) to CHIME Master server %s:%s' % (cmd, ', '.join(args[1:]), client_host, client_port))
-                print getattr(client, cmd)(*args[1:])
-    print()
-    print("If this was run in an interactive session (ipython -i), the following variables are now accessible:")
-    if server: print("   server: GPS REST server")
-    if client: print("   client: GPS REST client")
+    client, server = main()

@@ -42,9 +42,13 @@ Then leave it running (preferably in a ``screen`` that won't die when you log ou
   ./ps.py power_off erh # powers off the erh FPGA . 'erh' is a alias defined in the config file that refer to 'ps_crate4 ps_crate5 ps_crate6 and ps_crate7'
   ./ps.py power_on ps_crate1 ps_crate2 ps_crate3 # power up the power supply units by name
 
+More details can be found in :ref:`power_supplies`.
+
 The GPS server is not started by ch_master. To start it, just do::
 
   ./gps.py jfc.drao # again, there is only one server config to use in jfc.drao, so no need to specify it.
+
+More details can be found in :ref:`gps`.
 
 Main Modules
 ============
@@ -57,10 +61,11 @@ The :mod:`ch_acq` package provides the following main modules, each correspondin
 
    ch_master
    ps
-   fpga_array
-   kotekan
+   gps
    raw_acq
+   kotekan
    chrx
+   fpga_array
 
 Additional support modules are also provided:
 
