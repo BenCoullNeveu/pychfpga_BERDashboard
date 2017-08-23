@@ -117,7 +117,7 @@ def get_logger(*names):
         logger = logging.getLogger(getname(names[0]))
         for name in names[1:]:
             logger = logger.getChild(getname(name))
-        print('created logger %s' % logger.name)
+        #print('created logger %s' % logger.name)
         logger.disabled = False
         return logger
 
@@ -251,7 +251,7 @@ def setup_logging(dict_config={}, log_levels={}, base_package_name=None, script_
         prefix, sep, name = script_name.rpartition('.')
         new_logger_name = prefix + sep + '__main__'
         dict_config.loggers[new_logger_name] = dict_config.loggers[script_name]
-        print('Added logger %s to process logs from %s' % (new_logger_name, script_name))
+        #print('Added logger %s to process logs from %s' % (new_logger_name, script_name))
     # fix the logger names for the current package
     new_loggers = {}
     for logger_name, logger_config in dict_config.loggers.items():
@@ -268,7 +268,7 @@ def setup_logging(dict_config={}, log_levels={}, base_package_name=None, script_
         # prepend actual package path
         if actual_package_name:
             new_logger_name = actual_package_name + (('.' + new_logger_name) if new_logger_name else '')
-        print('Converted logger name from %s to %s' % (logger_name, new_logger_name))
+        #print('Converted logger name from %s to %s' % (logger_name, new_logger_name))
         new_loggers[new_logger_name] = logger_config
 
     dict_config.loggers = new_loggers

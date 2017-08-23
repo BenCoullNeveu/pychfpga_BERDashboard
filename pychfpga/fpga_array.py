@@ -125,6 +125,7 @@ class FPGAArray(object):
                  hwm=None,
                  iceboards=[], icecrates=[], mezzanines=[], exclude_iceboards=[],
                  crate_map={},
+                 ignore_missing_boards = False,
 
                  subarrays=[], ping=True,
                  mdns_timeout=2,
@@ -472,6 +473,7 @@ class FPGAArray(object):
 
         # If ping=1, remove boards that do not respond to tuber pings
         ping_timeout = 3
+        missing_boards = []
         if ping:
             self.logger.info('%.32r: Pinging IceBoards specified in YAML file' % (self))
             ib_to_ping = self.hwm.query(IceBoardPlus).as_dict()  # use as_dict so ib_to_ping does not change as we delete boards from the hwm
@@ -483,11 +485,16 @@ class FPGAArray(object):
                     if ping_successful:
                         ib.hostname = socket.gethostbyname(ib.hostname)
                     else:
-                        self.logger.warning("%r could not be found at '%s'. It is removed from YAML hardware map."
-                                           % (ib, ib.tuber_uri))
+                        missing_boards.append(ib.hostname + (('(SN%s)' % ib.serial) if ib.serial else ''))
                         self.logger.debug('%.32r: Deleting %r from the YAML hardware map' % (self, ib))
                         self.hwm.delete(ib)
                 self.hwm.flush()
+            if missing_boards:
+                message ="%r: Could not ping the follwing boards: %s'. Those were removed from YAML hardware map." % (self, ', '.join(missing_boards))
+                if ignore_missing_boards:
+                    self.logger.warning(message)
+                else:
+                    raise RuntimeError(message)
 
 
         #######################################################
@@ -583,20 +590,19 @@ class FPGAArray(object):
         #################################
         # Check for missing crates
         current_crates = [(c.part_number, self._to_integer(c.serial)) for c in ic]
-        print current_crates
+        #print current_crates
         missing_crates = [(model, serial) for (model, serial) in hw_table.icecrates if (model, self._to_integer(serial)) not in current_crates]
-        print missing_crates
+        #print missing_crates
         if missing_crates:
             raise RuntimeError('%.32r: The following crates are missing: %s' % (self, ', '.join('%s SN%s' % (model, serial) for (model, serial) in missing_crates)))
         # Check for missing boards
-        ignore_missing_slots = False
         missing_slots = { (ic.part_number, ic.serial, ic.crate_number): set(range(1, ic.NUMBER_OF_SLOTS + 1)) - set(ic.slot) for ic in self.ic}
         if any(missing_slots.values()):
             message = '%s: The following slots are missing:\n%s' % (
                 self,
                 '\n'.join('    Crate #%s (%s SN%s): slots %s' % (number, model, serial, ', '.join(str(s) for s in slots))
                 for (model, serial, number), slots in missing_slots.items() if slots))
-            if not ignore_missing_slots:
+            if not ignore_missing_boards:
                 raise RuntimeError(message)
             else:
                 self.logger.warning(message)
@@ -2924,9 +2930,10 @@ def add_fpga_array_arguments(parser):
     parser.add_argument('-c', '--icecrates', type=str, nargs='*', help="Space-separated list of icecrate serial numbers.  Discover and adds all boards in the specified serial number")
     parser.add_argument('--subarrays',       type=int, nargs='*', help='Keep in the hardware map only the boards that are in the specified subarrays. This applies only to iceboards that are specified in a YAML file.')
     parser.add_argument('-x', '--exclude_iceboards', type=str, nargs='*', help="Space-separated list of iceboards serials to exclude ")
+    parser.add_argument('--ignore_missing_boards', action='store_true', help='Do not fail if boards are not found')
+    parser.add_argument('--no_mezz',         action='store_true', help='Do not attempt to auto-detect the mezzanines')
     parser.add_argument('--ping',            type=int, help="1: Check if Tuber is responding. 0: Check but ignore. ")
     parser.add_argument('--mdns_timeout',    type=float, help="Time to wait for mDNS discovery replies")
-    parser.add_argument('--no_mezz',         action='store_true', help='Do not attempt to auto-detect the mezzanines')
     parser.add_argument('--prog',            type=int, nargs='?', const=1, help='Programs the FPGA if not already programmed. --prog or --prog 1 programs the FPGA if the firmware is not already programmed.  --prog 2 forces the FPGA programming even if the firmware is already programmed')
     parser.add_argument('-b', '--bitfile',   type=str, help='Filename of the bitfile used to to program the FPGAs')
     parser.add_argument('-o', '--open',      type=int, nargs='?', const=1, help='Opens communication with the FPGAs, create the Python objects representing the firmware, and initialize the firmware. --open 0 skips the firmware initialization phase')

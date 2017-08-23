@@ -434,7 +434,7 @@ class AsyncRESTServer(AsyncMixin):
         """
         method = getattr(self, method_name)
         has_args = len(method_args) > 2  # any other arguments beyound the mandatory 'self' and 'handler'?
-        self.log.info('%r: Creating a REST %s endpoint %s for method %s(%s)' % (self, ('GET','POST')[has_args], endpoint_name, method_name, ', '.join(method_args)))
+        self.log.debug('%r: Creating a REST %s endpoint %s for method %s(%s)' % (self, ('GET','POST')[has_args], endpoint_name, method_name, ', '.join(method_args)))
         if has_args:
             class Handler(JsonRequestHandler):
                 @coroutine

@@ -1171,7 +1171,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
                     if self.metrics_queue.full():
                         self.metrics_queue.get()
                     self.metrics_queue.put(metrics)
-                except exception as e:
+                except Exception as e:
                     self.log.warning('%r: error getting FPGA metrics. error is: %r' % (self, e))
                     pass
 
@@ -1382,7 +1382,7 @@ def main():
         ./ch_master jfc.erh power_off # power off supplies used by server running at theaddress specified in the jfc.erh config
     """
     # Setup logging
-    log.setup_basic_logging('DEBUG')
+    log.setup_basic_logging('INFO')
 
     client, server = run_client(sys.argv[1:], ChimeMasterAsyncRESTServer, ChimeMasterAsyncRESTClient, object_name ='ChimeMaster')
     cm = None
