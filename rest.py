@@ -737,7 +737,9 @@ def run_client(args, server_class=None, client_class=None, object_name='', serve
     server = RunSyncWrapper(getattr(client, 'server', None)) # get the local server if one was started
 
     # Confirm that a server is running with the same config is running, or start the server if it is not running
+    print(server_config, args.no_start)
     if server_config and not args.no_start:
+        print('starting client')
         client.start(server_config)
 
     if command:

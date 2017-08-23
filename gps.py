@@ -17,7 +17,10 @@ import Queue
 
 # from pychfpga.Agilent_N5764A import AgilentN5764AHandler
 from pychfpga import Metrics, NameSpace, load_yaml_config
-from rest import AsyncRESTClient, AsyncRESTServer, endpoint, coroutine, coroutine_return, sleep, IOLoop, RunSyncWrapper, SocketContext  # generic REST servers and clients
+from rest import AsyncRESTClient, AsyncRESTServer, endpoint 
+from rest import coroutine, coroutine_return, sleep, IOLoop 
+from rest import RunSyncWrapper, SocketContext, run_client  # generic REST servers and clients
+
 import log  # logging helper functions
 
 class SpectrumInstrumentsTM4D(SocketContext):
@@ -712,11 +715,13 @@ class GPSAsyncRESTServer(AsyncRESTServer):
     def start(self, handler, **config):
         """ Start the GPS server with provided config
         """
+        self.log.info('%r: Received start command' % self)
         if self.gps:
             raise RuntimeError('%.32r: Power Supply server is already started' % self)
         self.config = NameSpace(config)
         units = self.config.units or {}
         for name, params in units.items():
+            self.log.debug('%r: Creating GPS handler %s' % (self, name))
             gps = SpectrumInstrumentsTM4D(**params)
             self.gps[name] = gps
         coroutine_return('GPS server started')
@@ -811,10 +816,12 @@ class GPSAsyncRESTClient(AsyncRESTClient):
                 configuration file and name. if a dict, it is passed directly to the server.
 
         """
+        #print('start!')
         self.log.info('%s: Starting remote PowerSupply server at %s:%i with config: %r' % (self, self.hostname, self.port, config))
 
         if isinstance(config, str):
             config = load_yaml_config(config)
+        result = self.post('start', **config)
         coroutine_return('GPS server started')
 
     @coroutine
@@ -845,7 +852,7 @@ def main():
     """ Command-line interface to launch and operate the GPS server.
     """
     # Setup logging
-    log.setup_basic_logging('INFO')
+    log.setup_basic_logging('DEBUG')
     client, server = run_client(sys.argv[1:], GPSAsyncRESTServer, GPSAsyncRESTClient, object_name ='GPS', server_config_path='gps.servers')
     return client, server
 
