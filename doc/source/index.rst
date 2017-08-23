@@ -17,28 +17,34 @@ The main module, :mod:`ch_master`, is used to connect with the various remote pr
 Installation
 ============
 
-``kotekan`` and ``carillon``  can both run ch_master. All the system files and python packages required to run ch_master have been installed as root user and are available to all users. However, if the machine has been rebooted, you will need to tdo the following::
-
-    sudo iptables -A INPUT -p udp -j ACCEPT  # allow FPGA command packet replies and mdns packets in
-    sudo iptables -A INPUT -p tcp  --dport 54320:54329 -j ACCEPT # allow the external (housekeeping) computer to query metrics
-    sudo ifconfig interface_name mtu 9000 # allow jumbo frames (replace interface name with the proper name: enp0s31f6 on klaxon)
+``kotekan`` and ``carillon``  are already both configured to run ch_master from any user. These machines are accessible by both the public-facing ``liberty`` (192.139.21.135) or ``tubular`` (192.139.21.201) computers. All the system files and python packages required to run ch_master have been installed as root user and are available to all users. Also, the networking shoudld be set to allow FPGA UDP packets, mDNS packets and Jumbo frames (for ADC raw data). if you have any issues, see :ref:`detailed_installation` section.
 
 
 Quick start
 ===========
-Here is how  you can start an experiment with `ch_master` in the configuration ``jfc.erh3``::
-
-   sudo avahi-daemon -k  # kill the avahi daemon. Apparently it restarts by itself when needed...
-   ./ch_master.py server jfc.erh3
 
 
-Here, ``jfc.erh3`` is the config defined in ``config.yaml``, which in this case powers-up crate 3, initialize all boards, and start capturing raw data for 5 minutes. After that, it will stop storing data but will continue to operate the power supply and ch_acq servers (which could be queried and operated by the user with REST commands), and will serve metrics to Prometheus.
+Here is how  you can start an experiment with `ch_master` with the configuration ``jfc.erh``::
 
+   ./ch_master.py jfc.erh
 
-Note that if ch_master fails  to connect to raw_acq and power_supply servers (as defined in the config file), it will create temporary servers that will run as long as ch_master is running.
+Here, ``jfc.erh`` is the config defined in ``config.yaml``, which in this case powers-up all the crates in the East receiver Hut (ERH), initialize all boards, start capturing raw data for 5 minutes, and continues running after that until stopped with :kbd:`\Ctrl-C`.
 
-To stop ch_master, just press :kbd:`ctrl-C`.
+The ch_master script tries to connect to a ch_master server, which in turn connect to a ADC raw data acquisition (raw_acq), power supply (ps) server, etc. If any of those servers are not already running, new local servers will be created and initialized. These servers run until the script is interrupted, and while they run, they can be queried REST commands and will serve metrics to Prometheus.
 
+Although ch_master will start its own power supply server if needed, it is usually a good idea to continuously run the power supply server so Prometheus can see the state of the supplies at all time, and allow command-line control of the supplies. To start a power supply server on the local machine, just do::
+
+  ./ps.py jfc.drao  # no need to specify the which server config to use: there is only one in jfc.drao.
+
+Then leave it running (preferably in a ``screen`` that won't die when you log out or if your connection is lost...). You can then send commands to the power supply server running on the local machine from another shell::
+
+  ./ps.py status # show the status of all supplies managed by the local server
+  ./ps.py power_off erh # powers off the erh FPGA . 'erh' is a alias defined in the config file that refer to 'ps_crate4 ps_crate5 ps_crate6 and ps_crate7'
+  ./ps.py power_on ps_crate1 ps_crate2 ps_crate3 # power up the power supply units by name
+
+The GPS server is not started by ch_master. To start it, just do::
+
+  ./gps.py jfc.drao # again, there is only one server config to use in jfc.drao, so no need to specify it.
 
 Main Modules
 ============

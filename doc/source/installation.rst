@@ -1,6 +1,9 @@
+.. _detailed_installation:
+
 Installation
 ============
 
+This page describes how to install and configure the software required to run ch_master and all the other software included in :mod:`ch_acq` package.
 
 Requirements
 ------------
@@ -89,6 +92,7 @@ If there is no pip,  install with::
 
 Virtualenv
 **********
+If the user want to use his/her own package configuration, or don;t have the right to install packages at the system level, it is recommendd to install those package within a Python virtual environment. This is not necessary to run the basic modules in the :mod:`ch_acq` since all the necessary packages have been installed at the system level.
 
 If the virtualenv package is not installed::
 
@@ -103,7 +107,7 @@ And we activate the environment with::
 
     source ~/py275/bin/activate
 
-.. Note:: The virtualenv environemnt needs to be activated on every new session
+.. Note:: If packages are installed within the virtualenv environemnt, the environment will needs to be activated on every new user session
 
 Python packages
 ***************
@@ -121,7 +125,7 @@ We will use pybonjour, which requires avahi system libraries::
     sudo yum install avahi avahi-compat-libdns_sd avahi-compat-libdns_sd-devel
     sudo yum install avahi-tools avahi-ui-tools # to get the command-line tools like avahi-browse, avahi-discover
 
-Now, install python packages::
+Now, install python packages, including pybonjour::
 
     pip install ipython
     pip install numpy matplotlib sqlalchemy pyyaml tornado lxml h5py
@@ -129,12 +133,13 @@ Now, install python packages::
     pip install -e git+https://github.com/Eichhoernchen/pybonjour.git#egg=pybonjour
 
 
-.. note:: Pybonjour can also be installed manually with::
+.. note:: Pybonjour can also be installed manually
+   with ::
 
-    wget https://storage.googleapis.com/google-code-archive-downloads/v2/code.google.com/pybonjour/pybonjour-1.1.1.tar.gz
-    tar zxf pybonjour-1.1.1.tar.gz
-    cd pybonjour-1.1.1
-    python setup.py install
+        wget https://storage.googleapis.com/google-code-archive-downloads/v2/code.google.com/pybonjour/pybonjour-1.1.1.tar.gz
+        tar zxf pybonjour-1.1.1.tar.gz
+        cd pybonjour-1.1.1
+        python setup.py install
 
 
 Getting the source code
@@ -146,6 +151,8 @@ if you use ssh keys to access these repos, setup ssh keys in .ssh/config or star
 
     eval `ssh-agent`
     ssh-add path_to_bitbucket_key
+
+If the key requires a password, enter it. Alternatively, a special hostname can be defined in your ``~/.ssh/config`` file with the appropriate associated key, and that hostname can be used in the git configuration.
 
 Create a you own user folder to put the repos::
 
@@ -164,78 +171,108 @@ Checkout the proper branches. In this example, we use jfc_dev for ch_acq and jfc
     cd ../chfpga
     checkout jfc/dev
 
+Testing ch_acq
+--------------
+
+If you installed the Python packages in a virtual environment, make sure the virtualenv is enabled. Otherwise, skip this step::
+
+    source ~/py275/bin/activate
+
+Then launch ipython
+
+    cd ~/git/ch_acq
+    ipython
 
 
-Networking
-**********
+in ipython, create a fpga_array with no boards in it, just to see if there are no missing packages::
+
+    run -i pychfpga/fpga_array.py
+
+
+
+Networking Configuration, Tricks & Tips
+***************************************
 
 To make the system work, we need to
     1) allow mDNS and UDP packets from the FPGA to be allowed in, and
     2) accept jumbo frames for raw data acquisition.
 
 
-To temorarily allow avahi to work and accept all UDP packets for the FPGA commands and raw data (which might also allow mDNS)
+Opening ports
+-------------
+
+To temporarily allow Avahi to work and accept all UDP packets for the FPGA commands and raw data (which might also allow mDNS)
 
     sudo iptables -I INPUT -p udp -j ACCEPT
 
 Opeen port to allow clients to connect to servers
 
-    sudo iptables -I INPUT 1 -p tcp  --dport 54321 -j ACCEPT  # ch_master server
-    sudo iptables -I INPUT 1 -p tcp  --dport 54324 -j ACCEPT  # power supply server
+    sudo iptables -I INPUT 1 -p tcp  --dport 54320-54329 -j ACCEPT  # all servers
 
-Raw data packets are large and require the interface to accept JUMBO frames. Enable JUMBO frames with::
+On Centos 7, this could be made permanent by usingthe equivalent firewalld commands::
+
+    sudo firewall-cmd --permanent --add-port=54320-54329/tcp
+    sudo firewall-cmd --permanent --add-port 0-65535/udp
+
+Enabling Jumbo Frames
+---------------------
+
+Raw data packets are large and require the interface to accept JUMBO frames. Enable JUMBO frames temporarily with::
 
     sudo ifconfig enp0s31f6 mtu 9000
+
+To make the change permanent on Centos 7::
+
+    sudo vim /etc/sysconfig/network-scripts/ifcfg-enp0s31f6
+
+and add the line::
+
+    MTU=9000
+
+
+Checking the traffic on the interface
+-------------------------------------
 
 Tip: you can check incoming trafic with::
 
     ip -s  link show enp0s31f6
 
+Checking mDNS/Avahi
+-------------------
 
-to check if avahi works:
+To check if mDNS works, you can query the FPGA boards using the mdns client Avahi:
+
     avahi-browse _tuber-jsonrpc._tcp --resolve
 
-If resolve timeouts after 10 seconds, there is a problem. Sould restart the avahi server:
+If resolve timeouts after 10 seconds, there is a problem. Sould kill the avahi server:
 
-    sudo avahi-daemon -k; sudo avahi-daemon -D
+    sudo avahi-daemon -k
 
-Testing
-*******
-
-Make sure the virtualenv is enabled and launch ipython::
-
-    cd ~/git/ch_acq
-    source ~/py275/bin/activate
-    ipython
-
-in ipython, create a fpga_array with no boards in it, just to see if there are no missing packages::
-
-    run -i pychfpga/fpga_array.py
-
-Tips
-****
+a new server will apparently be started when needed.
 
 
 Checking crates visible to mDNS:
+--------------------------------
 
-sudo avahi-daemon -k
-avahi-browse  _tuber-jsonrpc._tcp --resolve -t | grep -o 'backplane-serial=[0-9]*' | sort -u
+You can get a list of all active FPGA crates in the network with::
 
-Dynamic DHCP entries on carillon::
+    sudo avahi-daemon -k
+    avahi-browse  _tuber-jsonrpc._tcp --resolve -t | grep -o 'backplane-serial=[0-9]*' | sort -u
+
+To check the Ip addresses that is dynamically allocated to hardware over DHCP, you can do on ``carillon``::
 
     cat /var/lib/dhcpd/dhcpd.leases
 
+This, however, will not show the statically assigned IPs (the IPs bound to specific MAC addresses). To see those::
 
-Static DHCP entries::
-    sudo cat /etc/dhcp/dhcpd.conf
+    sudo cat /etc/dhcp/dhcpd.conf # general config
+    sudo cat /etc/dhcp/fpga.network # fpga equipment assignments
+
+The entries can be cut and pasted from the receiver hut address table Google spreadsheet at https://bao.phas.ubc.ca/wiki/index.php/Receiver_Hut_Networking#IP_Address_map.
 
 
-
-Search for OUI in static or dynamic addresses::
+If you need to find the IP address of equipment with specific hardware address, you can do::
 
     cat /var/lib/dhcpd/dhcpd.leases | grep -B 7 '00:18'
     sudo cat /etc/dhcp/dhcpd.conf | grep '00:18'
-
-Restart the DHCP server::
-
 
