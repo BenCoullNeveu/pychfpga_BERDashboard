@@ -141,6 +141,7 @@ Now, install python packages, including pybonjour::
         cd pybonjour-1.1.1
         python setup.py install
 
+.. _getting_source_code:
 
 Getting the source code
 ***********************
