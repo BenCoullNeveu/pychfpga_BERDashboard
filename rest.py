@@ -130,9 +130,9 @@ class AsyncMixin(object):
             period (float): interval between prints in milliseconds. Default is 1000 ms.
         """
         def heartbeat_callback():
-            print(heartbeat_string, end='')
-            sys.stdout.flush()
-
+            # print(heartbeat_string, end='')
+            # sys.stdout.flush()
+            self.log.info('%r: running')
         self.add_periodic_callback(heartbeat_callback, period)
 
     def add_shutdown_handler(self):
@@ -188,7 +188,7 @@ class AsyncRESTClient(AsyncMixin):
     DEFAULT_HOST = 'localhost'
     DEFAULT_PORT = 80
 
-    def __init__(self, hostname=DEFAULT_HOST, port=DEFAULT_PORT, server_class=None, heartbeat_string=None, heartbeat_period=1000):
+    def __init__(self, hostname=DEFAULT_HOST, port=DEFAULT_PORT, server_class=None, heartbeat_string=None, heartbeat_period=5000):
         self.log = log.get_logger(self)
         self.hostname = hostname
         self.port = port
@@ -737,13 +737,13 @@ def run_client(args, server_class=None, client_class=None, object_name='', serve
     server = RunSyncWrapper(getattr(client, 'server', None)) # get the local server if one was started
 
     # Confirm that a server is running with the same config is running, or start the server if it is not running
-    print(server_config, args.no_start)
+    #print(server_config, args.no_start)
     if server_config and not args.no_start:
-        print('starting client')
+        #print('starting client')
         client.start(server_config)
 
     if command:
-        print('Sending command %s(%s) to CHIME Master server %s:%s' % (command, ', '.join(sargs), hostname, port))
+        print('Sending command %s(%s) to %r' % (command, ', '.join(sargs), server))
         reply = getattr(client, command)(*sargs)
         print()
         print(yaml.safe_dump(reply))

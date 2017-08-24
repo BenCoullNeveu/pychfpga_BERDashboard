@@ -468,7 +468,7 @@ class ChimeMaster(object):
         """
         self.log.info('%.32r: starting raw_acq servers' % self)
         conf = self.config.raw_acq
-        print(conf)
+        #print(conf)
 
         # Make a list of all all iceboards for each of the RawAcq node
         self.raw_acq_ibs = {}
@@ -477,7 +477,7 @@ class ChimeMaster(object):
             for ib in node_conf.iceboards:  # ib is a (crate, slot) tuple)
                 self.raw_acq_ibs[node_name].update(self.get_iceboards(ib))
 
-        print('self.raw_acq_ibs=', self.raw_acq_ibs)
+        #print('self.raw_acq_ibs=', self.raw_acq_ibs)
         # Check that an iceboard is assigned to only one server
         for node_name, ibs in self.raw_acq_ibs.items():
             if not all(ibs.isdisjoint(other_ibs) for other_name, other_ibs in self.raw_acq_ibs.items() if other_name != node_name):
@@ -609,7 +609,7 @@ class ChimeMaster(object):
 
         log_filename = os.path.join(self.acq_base_dir, "ch_master.log")
         #import logging
-        #print('exists: %s' % ('pychfpga.fpga_array' in logging.Logger.manager.loggerDict)) 
+        #print('exists: %s' % ('pychfpga.fpga_array' in logging.Logger.manager.loggerDict))
         #lo=logging.getLogger('pychfpga.fpga_array')
         #print('before setup: logger name=%s, level=%s, handlers=%s, disabled=%r' %(lo.name, lo.level, lo.handlers, lo.disabled))
         self.logging_handlers = log.setup_logging(conf.logging.dict_config, conf.logging.log_levels,
@@ -1034,7 +1034,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
     @coroutine
     @endpoint('start')
     def start(self, handler, **config):
-        print('%r: Received start command' % self)
+        # print('%r: Received start command' % self)
         self.log.info('%r: Received start command' % self)
         def encode_utf8(x):
             """Convert unicode strings to utf-8 strings for the target object and any objects in lists or dictionaries"""
@@ -1048,7 +1048,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
                 return x
         config = encode_utf8(config)  # convert all strings in the config dict into utf8
         def done(future):
-            print('Done')
+            # print('Done')
             try:
                 logger = log.get_logger(self)
                 print('Got ne wlogger %r' % logger)
@@ -1062,7 +1062,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
             return True
         self.future = self.chime_master.start(**config)
         IOLoop.current().add_future(self.future, done)
-        self.log = log.get_logger(self)  # update the self.log pointer to the new logger 
+        self.log = log.get_logger(self)  # update the self.log pointer to the new logger
         self.log.debug('%r: future created. ch_master initilization is in progress' % (self))
         coroutine_return('Initialization in progress. Check status for completion.')
 
@@ -1080,9 +1080,9 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
 
         Returns:
             dict: containing the fields:
-                :state: (str): current state string. 
+                :state: (str): current state string.
                 :is_ready (bool): true when ChimeMaster has finished initializing successfully
-                :start_result (str): Messsage returned by ChimeMaster.start() command. 
+                :start_result (str): Messsage returned by ChimeMaster.start() command.
                 :config (dict): Current configuration
         """
         r = self.chime_master.status() # {state:x and config: y}. chome_master always exists.
@@ -1267,7 +1267,7 @@ class ChimeMasterAsyncRESTClient(AsyncRESTClient):
             status = yield self.status() # raise exception if start failed
             if status['is_ready']:
                 coroutine_return('start_result')
-            self.log.info('%r: Waiting for the START process to complete. Current state is: %s' % (self, status['state'])) 
+            self.log.info('%r: Waiting for the START process to complete. Current state is: %s' % (self, status['state']))
             yield sleep(1)
 
     @coroutine

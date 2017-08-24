@@ -23,14 +23,15 @@ Installation
 Quick start
 ===========
 
+First, make sure you have a copy of both the ``ch_acq`` and ``chfpga_lite`` GIT repositories (see :ref:`getting_source_code`).
 
-Here is how  you can start an experiment with `ch_master` with the configuration ``jfc.erh``::
+To start an experiment with `ch_master` with the configuration ``jfc.erh``, ``cd`` to the ``ch_acq`` repository folder and execute::
 
    ./ch_master.py jfc.erh
 
 Here, ``jfc.erh`` is the config defined in ``config.yaml``, which in this case powers-up all the crates in the East receiver Hut (ERH), initialize all boards, start capturing raw data for 5 minutes, and continues running after that until stopped with :kbd:`\Ctrl-C`.
 
-The ch_master script tries to connect to a ch_master server, which in turn connect to a ADC raw data acquisition (raw_acq), power supply (ps) server, etc. If any of those servers are not already running, new local servers will be created and initialized. These servers run until the script is interrupted, and while they run, they can be queried REST commands and will serve metrics to Prometheus.
+The ch_master script tries to connect to a ch_master server, which in turn connect to a ADC raw data acquisition (raw_acq), power supply (ps) server, etc. If any of those servers are not already running, new local servers will be created and initialized. These servers run until the script is interrupted, and while they run, they can be queried REST commands and will serve metrics to Prometheus. More details can be found in :ref:`ch_master_cli`.
 
 Although ch_master will start its own power supply server if needed, it is usually a good idea to continuously run the power supply server so Prometheus can see the state of the supplies at all time, and allow command-line control of the supplies. To start a power supply server on the local machine, just do::
 

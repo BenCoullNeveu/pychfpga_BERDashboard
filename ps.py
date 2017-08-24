@@ -83,7 +83,7 @@ class AgilentN5700(SocketContext):
         """
         if self.instrument_model:
             return
-        print(self.instrument_model, self.instrument_name)
+        # print(self.instrument_model, self.instrument_name)
         with self.socket(flush=True):
             self.send('*IDN?\n')
             id_string = self.recv(timeout=min(1, self.timeout))
@@ -329,7 +329,7 @@ class AgilentN5700(SocketContext):
 
             problem = False
             if failmode != 0:
-                print 'A power supply problem is present'
+                self.log.warn('A power supply problem is present')
                 problem = True
 
             UNR = bool( ( failmode & ( 1 << 10 ) ) >> 10 )  #True if Unregulated output
@@ -881,7 +881,7 @@ def main():
         ./ps jfc.erh power_off # power off supplies used by server running at theaddress specified in the jfc.erh config
     """
     # Setup logging
-    log.setup_basic_logging('DEBUG')
+    log.setup_basic_logging('INFO')
     client, server = run_client(sys.argv[1:], PowerSupplyAsyncRESTServer, PowerSupplyAsyncRESTClient, object_name ='PowerSupply', server_config_path='power_supplies.servers')
     return client, server
 
