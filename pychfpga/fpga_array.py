@@ -454,10 +454,16 @@ class FPGAArray(object):
             self.logger.debug('Creating Hardware Map from list')
             self.hwm = HardwareMap()  # Create empty hardware map
             for obj in hwm:
-                class_name = obj.pop('class') # remove the class name from the dict. The rest wil be used as instantiation parameters
+                params = dict(obj) # make a copy
+                class_name = params.pop('class') # remove the class name from the dict. The rest wil be used as instantiation parameters
                 class_ = HWMResource._decl_class_registry[class_name] # look up all the classes from the class registry created with the Base object
-                self.hwm.add(class_(**obj))
-            self.hwm.flush()
+                if 'crate' in params:
+                    if isinstance(crate, int):
+                        params['crate'] = self.hwm.query(IceCrateExt).filter(crate_number==params['crate']).one()
+                    else:
+                        raise RuntimeError('%r: In the hwm, crate must be an integer referring to a crate number. It will be converted to a crate object reference' % self)
+                self.hwm.add(class_(**params))
+                self.hwm.flush()
         # Otherwise use the hardware map as is, hoping it is a HardwareMap object
         else:
             self.hwm = hwm
