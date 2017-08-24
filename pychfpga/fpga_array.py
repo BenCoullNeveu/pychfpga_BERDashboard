@@ -458,11 +458,11 @@ class FPGAArray(object):
                 print(params)
                 class_name = params.pop('class') # remove the class name from the dict. The rest wil be used as instantiation parameters
                 class_ = HWMResource._decl_class_registry[class_name] # look up all the classes from the class registry created with the Base object
-                if 'crate' in params:
-                    crate = params['crate']
-                    self.logger.debug('%r: Crate %r is in %r' % (self, crate, params))
-                    if isinstance(crate, int):
-                        crate = self.hwm.query(IceCrateExt).filter(crate_number==crate).one()
+                if isinstance(class_, IceBoardPlus):
+                    crate_number = params.pop('crate_number', None)
+                    self.logger.debug('%r: Crate %r is in %r' % (self, crate_number, params))
+                    if crate_number is not None:
+                        crate = self.hwm.query(IceCrateExt).filter(crate_number==crate_number).one()
                         self.logger.debug('%r: Assigning crate %r to board %r' % (self, crate, params))
                         params['crate'] = crate
                     else:
