@@ -132,7 +132,7 @@ class AsyncMixin(object):
         def heartbeat_callback():
             # print(heartbeat_string, end='')
             # sys.stdout.flush()
-            self.log.info('%r: running')
+            self.log.info('%r: *** Alive ***' % self)
         self.add_periodic_callback(heartbeat_callback, period)
 
     def add_shutdown_handler(self):
@@ -367,7 +367,7 @@ class AsyncRESTServer(AsyncMixin):
 
     DEFAULT_PORT = 80
 
-    def __init__(self, address='', port=DEFAULT_PORT, heartbeat_string=None, heartbeat_period=1000):
+    def __init__(self, address='', port=DEFAULT_PORT, heartbeat_string=None, heartbeat_period=5000):
         """ Create a Web server responding to the endpoints defined in the class.
 
         Parameters:

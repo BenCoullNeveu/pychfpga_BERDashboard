@@ -469,7 +469,7 @@ class chFPGA_controller(IceBoardExtHandler):
         self.FRAME_PERIOD = float(self.FRAME_LENGTH)/self._sampling_frequency
         self.FRAME_RATE = 1 / self.FRAME_PERIOD
 
-        self._logger.debug('%r: --- Initializing FPGA ressources' % self)
+        self._logger.info('%r: --- Initializing FPGA subsystems' % self)
 
         self._logger.debug('%r: --- Initializing GPIO' % self)
         self.GPIO.init()  # This stops the antenna procesors from sending data. Neeeded if the FPGA is flooding the buffers which prevent subsequent reads to come through
