@@ -2284,6 +2284,8 @@ class chFPGA_controller(IceBoardExtHandler):
             cb2_lane_map = range(16)
             cb2_bypass = True
             cb2_input_words_per_bin = cb1_output_words_per_bin
+            cb2_input_frame_flags_words_per_frame = 1
+            cb2_input_data_flags_words_per_bin = 1
             cb2_input_bins = cb1_bins
             # cb2_lanes = ((0, 1), (2, 3))  #BS0 selects sublanes 0-1, BS1 selects sublanes 2-3
             # cb2_bins = cb1_bins
@@ -2366,11 +2368,16 @@ class chFPGA_controller(IceBoardExtHandler):
             # CB2 BIN_SEL
             cb2_input_words_per_bin = cb1_output_words_per_bin
             cb2_input_bins = cb1_output_bins
+            cb2_input_data_flags_words_per_bin = 1
+            cb2_input_frame_flags_words_per_frame = 1
             cb2_lanes = ((0, 1), (2, 3))  #BS0 selects sublanes 0-1, BS1 selects sublanes 2-3
+            cb2_input_lanes_per_output_lane = cb2_lanes[0][1] - cb2_lanes[0][1] + 1 # 2 input lanes per output
             cb2_bins = 64
             cb2_bin_spacing = 1
             cb2_bin_select_map = [np.arange(cb2_bins)*cb2_bin_spacing for i in range(number_of_cb2_bin_sel)]
             cb2_output_words_per_bin = 2 * cb2_input_words_per_bin
+            cb2_output_data_flags_words_per_bin = cb2_input_data_flags_words_per_bin * cb2_input_lanes_per_output_lane
+            cb2_output_frame_flags_words_per_frame = cb2_input_frame_flags_words_per_frame * cb2_input_lanes_per_output_lane
             cb2_output_bins = cb2_bins
             crate_number = self.crate.crate_number
             stream_type = 2
@@ -2380,6 +2387,8 @@ class chFPGA_controller(IceBoardExtHandler):
             cb3_lane_map = [0, 4, 1, 5, 2, 6, 3, 7]  # Reorder to get data from lanes 0-1, 2-3, 4-5 ...
             cb3_bypass = False
             cb3_input_words_per_bin = cb2_output_words_per_bin
+            cb3_input_data_flags_words_per_bin = cb2_output_data_flags_words_per_bin
+            cb3_input_frame_flags_words_per_frame = cb2_output_frame_flags_words_per_frame
             cb3_input_bins = cb2_output_bins
             cb3_lanes = [(0, 7)] * number_of_cb3_bin_sel
             cb3_bins = 8  # We merge data from 8 full bandwidth input lanes, so we select 1/8th of the bins on each output lane
@@ -2400,6 +2409,8 @@ class chFPGA_controller(IceBoardExtHandler):
             cb1_bin_spacing = 1024/cb1_bins
             cb1_bin_select_map = [np.arange(cb1_bins)*cb1_bin_spacing+i for i in range(number_of_cb1_bin_sel)]
             cb1_bin_select_map = [cb1_bin_select_map[dsmap[get_dest_slot_for_src_lane(i)-1]] for i in range(16)]  # reorder cb1_bin_select_map so slot 0 gets cb1_bin_select_map[0], slot 1 gets cb1_bin_select_map[1] etc.
+
+            # Output packet geometry
             cb1_output_words_per_bin = 16/4
             cb1_output_bins = cb1_bins
 
@@ -2439,40 +2450,74 @@ class chFPGA_controller(IceBoardExtHandler):
             #    CB3 Output Lane 7: BS1.3: 4 bins (7,15...) from sublanes 0-7 (Input lanes 0-7 =CH0-511)
 
 
+            # CROSSBAR 2
+            # ----------
+
             # CB2 ALIGN
             # cb2_timeout_period = 0
-            cb2_sof_window_stop = 50
-            # CB2 REMAP
-            cb2_lane_map = self.CROSSBAR2.compute_bp_shuffle_lane_map()
-            cb2_bypass = False
-            # CB@ BIN_SEL
-            cb2_lanes = [(0, 3), (0, 3)] # Every output of both bin sels get data from all the 4 sublanes they get.
+
+            crate_number = self.crate.crate_number
+            stream_type = 3 # crossbar 3-level data
+
+            # Input packet geometry
+
+            cb2_input_data_flags_words_per_bin = 1
             cb2_input_words_per_bin = cb1_output_words_per_bin
             cb2_input_bins = cb1_output_bins
-            cb2_bins = 32
-            cb2_bin_spacing = 2
-            crate_number = self.crate.crate_number
-            stream_type = 3
+            cb2_input_frame_flags_words_per_frame = 1
+
+            # Configuration
+            cb2_sof_window_stop = 50
+            cb2_bypass = False
+            # CB2 REMAP
+            cb2_lane_map = self.CROSSBAR2.compute_bp_shuffle_lane_map()
+            # CB@ BIN_SEL
+            cb2_lanes = [(0, 3), (0, 3)] # Every output of both bin sels get data from all the 4 sublanes they get.
+            cb2_input_lanes_per_output_lane = cb2_lanes[0][1] - cb2_lanes[0][1] + 1 # 4 input lanes per output
+            cb2_bins = cb1_output_bins / number_of_cb2_bin_sel # 64/2 = 32
+            cb2_bin_spacing = number_of_cb2_bin_sel # 2
             cb2_bin_select_map = [np.arange(cb2_bins)*cb2_bin_spacing + (i ^ crate_number) for i in range(number_of_cb2_bin_sel)]
-            cb2_output_words_per_bin = cb2_input_words_per_bin * 4
+            cb2_combine_data_flags = True # hardwired to True in crossbar 2
+
+            # Output packet geometry
+
+            cb2_output_words_per_bin = cb2_input_words_per_bin * cb2_input_lanes_per_output_lane
             cb2_output_bins = cb2_bins
+            cb2_output_data_flags_words_per_bin = cb2_input_data_flags_words_per_bin * cb2_input_lanes_per_output_lane / (2 if cb2_combine_data_flags else 1)
+            cb2_output_frame_flags_words_per_frame = cb2_input_frame_flags_words_per_frame * cb2_input_lanes_per_output_lane
+
 
             # QSFP SHUFFLE
+            # ------------
+
             crate_shuffle_bypass = False
             # crate_shuffle_bypass = True #***debug
 
+            # CROSSBAR 3
+            # ----------
 
+            # Input packet geometry
+            cb3_input_words_per_bin = cb2_output_words_per_bin
+            cb3_input_data_flags_words_per_bin = cb2_output_data_flags_words_per_bin
+            cb3_input_frame_flags_words_per_frame = cb2_output_frame_flags_words_per_frame
+            cb3_input_bins = cb2_output_bins
 
+            # Configuration
             cb3_lane_map = range(8)
             cb3_bypass = False
-            cb3_input_words_per_bin = cb2_output_words_per_bin
-            cb3_input_bins = cb2_output_bins
             cb3_lanes = [(0, 7)] * number_of_cb3_bin_sel
-            cb3_bins = 4
-            cb3_bin_spacing = 8
+            cb3_input_lanes_per_output_lane = cb3_lanes[0][1] - cb2_lanes[0][1] + 1 # 8 input lanes per bin sel output
+            cb3_bins = cb2_output_bins / number_of_cb3_bin_sel # 32/8 = 4
+            cb3_bin_spacing = number_of_cb3_bin_sel # = 8
             cb3_bin_select_map = [np.arange(cb3_bins)*cb3_bin_spacing+i for i in range(number_of_cb3_bin_sel)]
-            cb3_output_words_per_bin = cb3_input_words_per_bin * 8
+            cb3_combine_data_flags = False # hardwired to False in crossbar 3
+
+            # Output packet geometry
+            cb3_output_words_per_bin = cb3_input_words_per_bin * cb3_input_lanes_per_output_lane
             cb3_output_bins = cb3_bins
+            cb3_output_data_flags_words_per_bin = cb3_input_data_flags_words_per_bin * cb3_input_lanes_per_output_lane / (2 if cb3_combine_data_flags else 1)
+            cb3_output_frame_flags_words_per_frame = cb3_input_frame_flags_words_per_frame * cb3_input_lanes_per_output_lane
+
 
         elif mode == 'corr16':
             number_of_cb1_bin_sel = 8
@@ -2513,6 +2558,9 @@ class chFPGA_controller(IceBoardExtHandler):
             else:
                 cb2_lane_map = range(16)
 
+            cb2_input_frame_flags_words_per_frame = 1
+            cb2_input_data_flags_words_per_bin = 1
+
 
             cb3_bypass = True
             cb3_lane_map = range(8)
@@ -2524,11 +2572,6 @@ class chFPGA_controller(IceBoardExtHandler):
             raise ValueError('Unknown mode')
 
 
-        header_size = 16
-        packet_flags_size = 4
-        cb1_payload_size = header_size  + frames_per_packet * (cb1_output_words_per_bin * cb1_bins + (cb1_bins if not cb1_combine_data_flags else (cb1_bins+1)//2) + 1) * 4 + packet_flags_size
-        self._logger.debug('%r: CROSSBAR1 config: frames_per_packet=%i, cb1_lanes=%s, cb1_bypass=%s, cb1_combine=%s, cb1_bins=%i, cb1_words_per_bin=%i' % (self, frames_per_packet, cb1_lanes, bool(cb1_bypass), bool(cb1_combine_data_flags), cb1_bins, cb1_output_words_per_bin ))
-        self._logger.debug('%.32r: CROSSBAR1 output packets payload = %i bytes (%i words)' % (self, cb1_payload_size, (cb1_payload_size+3)//4))
 
         # cb2_payload_size = header_size + packet_flags_size + frames_per_packet * (cb2_input_words_per_bin * cb2_bins* cb2_lanes + 1*cb2_bins*cb2_lanes/2 + cb2_lanes) * 4
 
@@ -2582,11 +2625,12 @@ class chFPGA_controller(IceBoardExtHandler):
                 if not cb2_bypass:
                     bs.STREAM_ID = (stream_type << 8) | (crate_number << 4) | slot_number
                     bs.NUMBER_OF_FRAMES_PER_PACKET = frames_per_packet
-                    bs.NUMBER_OF_FRAME_FLAGS_WORDS_PER_FRAME=1
-                    bs.FIRST_LANE = cb2_lanes[cb2_bin_sel][0]
-                    bs.LAST_LANE = cb2_lanes[cb2_bin_sel][1]
                     bs.NUMBER_OF_BINS_PER_FRAME = cb2_input_bins
                     bs.NUMBER_OF_WORDS_PER_BIN = cb2_input_words_per_bin
+                    bs.NUMBER_OF_DATA_FLAGS_WORDS_PER_BIN = cb2_input_data_flags_words_per_bin
+                    bs.NUMBER_OF_FRAME_FLAGS_WORDS_PER_FRAME = cb2_input_frame_flags_words_per_frame
+                    bs.FIRST_LANE = cb2_lanes[cb2_bin_sel][0]
+                    bs.LAST_LANE = cb2_lanes[cb2_bin_sel][1]
                     bs.select_bins(cb2_bin_select_map[cb2_bin_sel])
         elif not cb2_bypass:
             raise RuntimeError("The FPGA firmware must have a CROSSBAR2 in the '%s' operational mode", mode)
@@ -2602,7 +2646,8 @@ class chFPGA_controller(IceBoardExtHandler):
                 if not cb3_bypass:
                     bs.STREAM_ID = (stream_type << 8) | (crate_number << 4) | slot_number  # The stream ID at the output of CB2 will be 0xSL (S=slot-1, L=lane)
                     bs.NUMBER_OF_FRAMES_PER_PACKET = frames_per_packet
-                    bs.NUMBER_OF_FRAME_FLAGS_WORDS_PER_FRAME=2
+                    bs.NUMBER_OF_DATA_FLAGS_WORDS_PER_BIN = cb3_input_data_flags_words_per_bin
+                    bs.NUMBER_OF_FRAME_FLAGS_WORDS_PER_FRAME = cb3_input_frame_flags_words_per_frame
                     bs.FIRST_LANE = cb3_lanes[cb3_bin_sel][0]
                     bs.LAST_LANE = cb3_lanes[cb3_bin_sel][1]
                     bs.NUMBER_OF_BINS_PER_FRAME = cb3_input_bins
@@ -2620,23 +2665,26 @@ class chFPGA_controller(IceBoardExtHandler):
         # # for gtx in gpu_links.CHANNEL:
         # #     gtx.LOOPBACK = bp_shuffle_bypass
 
-        # header_size = 16
-        # packet_flags_size = 4
-        # eth_overhead = 42
-        # bp_overhead = 8
-        # eth_data_rate = 156.25e6 * 66 * 32/33
-        # bp_data_rate = 156.25e6* 50 * 32/33
-        # packet_rate = 800e6/2048/frames_per_packet
-        # cb1_payload_size = header_size + packet_flags_size + frames_per_packet * (words_per_bin * cb1_bins + cb1_bins + 1) * 4
-        # cb1_eth_packet_size = (cb1_payload_size+eth_overhead+7)//8*8
-        # cb1_eth_data_rate = cb1_eth_packet_size * packet_rate * 8
+        def print_packet_size(crossbar_name, frames_per_packet, bins, data_words_per_bin, data_flags_words_per_bin, frame_flags_words_per_frame):
+            header_words_per_packet = 4
+            packet_flags_words_per_packet = 1
+            payload_size = (header_words_per_packet  + frames_per_packet * ((data_words_per_bin + data_flags_words_per_bin) * bins + frame_flags_words_per_frame) + packet_flags_words_per_packet) * 4
+            ethernet_packet_overhead_bytes = 42
+            ethernet_packet_size = (ethernet_packet_overhead_bytes + payload_size + 7) // 8 * 8
+            # eth_data_rate = 156.25e6 * 66 * 32/33
+            # bp_data_rate = 156.25e6* 50 * 32/33
+            packet_rate = 800e6/2048/frames_per_packet
+            ethernet_data rate = (packet_rate * ethernet_packet_size) * 8
+            self._logger.info('%r: %s Ethernet packet size: %i bytes, %0.1f Gbit/s (%i frames_per_packet, %i bins, %i data words/bin, %i data flags_words/bin, %i frame_flags_words/frame)' % (self, ethernet_packet_size, ethernet_data_rate / 1e9,  frames_per_packet, bins, data_words_per_bin, data_flags_words_per_bin, frame_flags_words_per_frame))
+            # self._logger.info('%r: %s config: frames_per_packet=%i, cb1_lanes=%s, cb1_bypass=%s, cb1_combine=%s, cb1_bins=%i, cb1_words_per_bin=%i' % (self, frames_per_packet, cb1_lanes, bool(cb1_bypass), bool(cb1_combine_data_flags), cb1_bins, cb1_output_words_per_bin ))
+            # self._logger.debug('%.32r: CROSSBAR1 output packets payload = %i bytes (%i words)' % (self, cb1_payload_size, (cb1_payload_size+3)//4))
 
-
-        # cb1_bp_packet_size = (cb1_payload_size+bp_overhead+7)//8*8
-        # cb1_bp_data_rate = cb1_bp_packet_size * packet_rate * 8
-
-        # self._logger.info('%.32r: CROSSBAR1 output: payload = %i bytes' % (self, cb1_payload_size))
-        # self._logger.info('%.32r: Backplane links: Packet size = %i bytes, data rate = %0.2f Gbps / %0.2f Gbps (%0.2f%%)' % (self, cb1_bp_packet_size, cb1_bp_data_rate/1e9, bp_data_rate / 1e9, cb1_bp_data_rate/bp_data_rate*100))
+        print_packet_size('CROSSBAR3',
+                          frames_per_packet=frames_per_packet,
+                          bins=cb3_output_bins,
+                          data_words_per_bin=cb3_output_words_per_bin,
+                          data_flags_words_per_bin=cb3_output_data_flags_words_per_bin,
+                          frame_flags_words_per_frame=cb3_output_frame_flags_words_per_frame)
 
         # cb2_payload_size = header_size + packet_flags_size + frames_per_packet * (words_per_bin * cb2_bins* cb2_lanes + 1*cb2_bins*cb2_lanes/2 + cb2_lanes) * 4
         # cb2_eth_packet_size = (cb2_payload_size + eth_overhead + 7) // 8 * 8
