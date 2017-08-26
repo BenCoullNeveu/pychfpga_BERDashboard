@@ -1285,7 +1285,9 @@ class FPGAArray(object):
 
         self.logger.info('%.32r: Configuring crate-wide data shuffling with frames_per_packet=%i' % (self, frames_per_packet))
 
+        #####################
         # Set-up transmitters
+        #####################
         for i, ib in enumerate(self.ib):
             self.logger.info('%.32r: **** Initializing transmitters for IceBoard %r (SN%s) ****' % (ib.crate, ib, ib.serial))
             ib.set_corr_reset(0)
@@ -1302,7 +1304,9 @@ class FPGAArray(object):
             # ib.init_crossbars(dsmap, frames_per_packet=frames_per_packet, cb1_lanes=cb1_lanes, cb1_bins=cb1_bins, cb1_bypass=cb1_bypass, cb2_lanes=cb2_lanes, cb2_bins=cb2_bins, cb2_bypass=cb2_bypass, remap=remap, bp_bypass=bp_bypass)
             ib.init_crossbars(mode, dsmap=dsmap, frames_per_packet=frames_per_packet, chan8_channel_map=chan8_channel_map)
 
-        # set-up receivers
+        #####################
+        # Set-up receivers
+        #####################
         for i, ib in enumerate(self.ib):
             # Disable all receivers for which there are no transmitters
             for j, gtx in enumerate(ib.BP_SHUFFLE.gtx[0:ib.BP_SHUFFLE.NUMBER_OF_PCB_LINKS]):
@@ -1318,9 +1322,14 @@ class FPGAArray(object):
                     gtx.USER_GTRXRESET = 1
                     # gtx.USER_RESET = 1
 
-            # ib.CROSSBAR2.SOF_WINDOW_STOP = 25
-            ib.BP_SHUFFLE.reset_rx_equalizers()
-            ib.REFCLK.local_sync() # needed
+        # reset DFE at low power, then increase power
+        self.ib.BP_SHUFFLE.set_tx_power(5)
+        self.ib.BP_SHUFFLE.reset_rx_equalizer()
+        time.sleep(0.3)
+        self.ib.BP_SHUFFLE.set_tx_power(7)
+        self.ib.BP_SHUFFLE.set_tx_power(10)
+        self.ib.BP_SHUFFLE.set_tx_power(13)
+        self.ib.BP_SHUFFLE.reset_stats()
 
         # Print links
         for ib in self.ib:
@@ -2297,6 +2306,7 @@ class FPGAArray(object):
         """
         metrics = Metrics()
 
+        self.logger.info('%r: Getting IceBoard backplane hardware metrics' % self)
         for ic in self.ic:
             # backplane metrics
             try:
@@ -2306,17 +2316,20 @@ class FPGAArray(object):
             except Exception as e:
                 self.logger.error('%r: error getting backplane metrics: error is %r' % (self, e))
         # IceBoard metrics
-        self.logger.info('%r: getting all iceboard metrics' % self)
+        self.logger.info('%r: Getting IceBoard hardware metrics' % self)
         try:
             all_metrics = yield [ib.get_metrics.async() for ib in self.ib]
             self.logger.info('%r: got the metrics' % self)
         except Exception as e:
             self.logger.error('%r: error getting FPGA metrics: error is %r' % (self, e))
 
-        self.logger.info('%r: getting all bp_shuffle metrics' % self)
+        self.logger.info('%r:Getting FPGA Firmware metrics' % self)
         if ib.is_open():
-            all_metrics += yield [ib.get_bp_shuffle_metrics.async() for ib in self.ib]
-            all_metrics += yield [ib.get_crossbar_metrics.async() for ib in self.ib]
+            try:
+                all_metrics += yield [ib.get_bp_shuffle_metrics.async() for ib in self.ib]
+                all_metrics += yield [ib.get_crossbar_metrics.async() for ib in self.ib]
+            except Exception as e:
+                self.logger.error('%r: error getting FPGA Firmware metrics: error is %r' % (self, e))
         #print(all_metrics)
         for m in all_metrics:
             metrics.add(m)
