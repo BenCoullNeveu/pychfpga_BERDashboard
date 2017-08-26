@@ -69,22 +69,25 @@ def get_wview_metrics(db_path='/var/lib/wview/archive/wview-archive.sdb'):
     cur = db.cursor()
     # cur.execute("SELECT dateTime FROM archive ORDER BY dateTime LIMIT 1;")
     # t_first = cur.fetchone()[0]
-    col_name = dataset.keys()
-    col = ",".join(["dateTime", "usUnits"] + col_name)
-    cur.execute("SELECT %s FROM archive WHERE dateTime BETWEEN %d AND %d " \
-                "ORDER BY dateTime;" % (col, t_start, t_end))
+    col_names = dataset.keys()
+    col_string = ",".join(["dateTime", "usUnits"] + col_names)
+    # cur.execute("SELECT %s FROM archive WHERE dateTime BETWEEN %d AND %d " \
+    #             "ORDER BY dateTime;" % (col, t_start, t_end))
+    cur.execute("SELECT %s FROM archive ORDER BY dateTime DESC LIMIT 1;" % (col_string))
     data = np.asarray(cur.fetchall(), dtype=float)
     db.close()
 
     metrics = Metrics(type='GAUGE')
     # Check if "usUnits" is true; if so, convert from Imperial to metric units.
     for i in range(data.shape[0]):
-        if data[i, 1]:
-            for j in range(2, data.shape[1]):
-                if not data[i, j]:
-                  continue
-                type_ = dataset[col_name[j - 2]]["type"]
-                value = data[i, j]
+        time_ = data[i, 0]
+        us_units = data[i, 1]
+        for j in range(2, data.shape[1]):
+            value = data[i, j]
+            if not value:
+              continue
+            if us_units: # if US units, convert to metric
+                type_ = dataset[col_names[j - 2]]["type"]
                 if type_ == "pressure":
                   value = value * 33.86389 # inHg to hPa
                 elif type_ == "temperature":
@@ -93,7 +96,7 @@ def get_wview_metrics(db_path='/var/lib/wview/archive/wview-archive.sdb'):
                   value = value * 1.60934 # mi/h to km/ha
                 elif type_ == "amount" or type_ == "rate":
                   value = value * 25.4 # inch to mm
-                metrics.add('weather_%s' % type_, value=value)
+            metrics.add('weather_%s' % type_, value=value)
     return metrics
 
 
