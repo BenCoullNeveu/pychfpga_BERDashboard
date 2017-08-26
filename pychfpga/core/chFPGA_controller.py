@@ -2371,7 +2371,7 @@ class chFPGA_controller(IceBoardExtHandler):
             cb2_input_data_flags_words_per_bin = 1
             cb2_input_frame_flags_words_per_frame = 1
             cb2_lanes = ((0, 1), (2, 3))  #BS0 selects sublanes 0-1, BS1 selects sublanes 2-3
-            cb2_input_lanes_per_output_lane = cb2_lanes[0][1] - cb2_lanes[0][1] + 1 # 2 input lanes per output
+            cb2_input_lanes_per_output_lane = cb2_lanes[0][1] - cb2_lanes[0][0] + 1 # 2 input lanes per output
             cb2_bins = 64
             cb2_bin_spacing = 1
             cb2_bin_select_map = [np.arange(cb2_bins)*cb2_bin_spacing for i in range(number_of_cb2_bin_sel)]
@@ -2473,7 +2473,7 @@ class chFPGA_controller(IceBoardExtHandler):
             cb2_lane_map = self.CROSSBAR2.compute_bp_shuffle_lane_map()
             # CB@ BIN_SEL
             cb2_lanes = [(0, 3), (0, 3)] # Every output of both bin sels get data from all the 4 sublanes they get.
-            cb2_input_lanes_per_output_lane = cb2_lanes[0][1] - cb2_lanes[0][1] + 1 # 4 input lanes per output
+            cb2_input_lanes_per_output_lane = cb2_lanes[0][1] - cb2_lanes[0][0] + 1 # 4 input lanes per output
             cb2_bins = cb1_output_bins / number_of_cb2_bin_sel # 64/2 = 32
             cb2_bin_spacing = number_of_cb2_bin_sel # 2
             cb2_bin_select_map = [np.arange(cb2_bins)*cb2_bin_spacing + (i ^ crate_number) for i in range(number_of_cb2_bin_sel)]
@@ -2506,7 +2506,7 @@ class chFPGA_controller(IceBoardExtHandler):
             cb3_lane_map = range(8)
             cb3_bypass = False
             cb3_lanes = [(0, 7)] * number_of_cb3_bin_sel
-            cb3_input_lanes_per_output_lane = cb3_lanes[0][1] - cb2_lanes[0][1] + 1 # 8 input lanes per bin sel output
+            cb3_input_lanes_per_output_lane = cb3_lanes[0][1] - cb2_lanes[0][0] + 1 # 8 input lanes per bin sel output
             cb3_bins = cb2_output_bins / number_of_cb3_bin_sel # 32/8 = 4
             cb3_bin_spacing = number_of_cb3_bin_sel # = 8
             cb3_bin_select_map = [np.arange(cb3_bins)*cb3_bin_spacing+i for i in range(number_of_cb3_bin_sel)]
