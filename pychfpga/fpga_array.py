@@ -2306,6 +2306,7 @@ class FPGAArray(object):
         """
         metrics = Metrics()
 
+        self.logger.info('%r: Getting IceBoard backplane hardware metrics' % self)
         for ic in self.ic:
             # backplane metrics
             try:
@@ -2315,17 +2316,20 @@ class FPGAArray(object):
             except Exception as e:
                 self.logger.error('%r: error getting backplane metrics: error is %r' % (self, e))
         # IceBoard metrics
-        self.logger.info('%r: getting all iceboard metrics' % self)
+        self.logger.info('%r: Getting IceBoard hardware metrics' % self)
         try:
             all_metrics = yield [ib.get_metrics.async() for ib in self.ib]
             self.logger.info('%r: got the metrics' % self)
         except Exception as e:
             self.logger.error('%r: error getting FPGA metrics: error is %r' % (self, e))
 
-        self.logger.info('%r: getting all bp_shuffle metrics' % self)
+        self.logger.info('%r:Getting FPGA Firmware metrics' % self)
         if ib.is_open():
-            all_metrics += yield [ib.get_bp_shuffle_metrics.async() for ib in self.ib]
-            all_metrics += yield [ib.get_crossbar_metrics.async() for ib in self.ib]
+            try:
+                all_metrics += yield [ib.get_bp_shuffle_metrics.async() for ib in self.ib]
+                all_metrics += yield [ib.get_crossbar_metrics.async() for ib in self.ib]
+            except Exception as e:
+                self.logger.error('%r: error getting FPGA Firmware metrics: error is %r' % (self, e))
         #print(all_metrics)
         for m in all_metrics:
             metrics.add(m)
