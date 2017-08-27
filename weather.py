@@ -13,8 +13,9 @@ import datetime
 import calendar
 import Queue
 import sqlite3
+import numpy as np
 
-from pychfpga import Metrics, NameSpace, load_yaml_config
+from pychfpga import Metrics, NameSpace
 from rest import AsyncRESTClient, AsyncRESTServer, endpoint
 from rest import coroutine, coroutine_return, sleep, IOLoop
 from rest import RunSyncWrapper, SocketContext, run_client  # generic REST servers and clients
@@ -49,15 +50,6 @@ units = {   "pressure": "hPa",
               "amount": "mm"
           }
 
-# Parse command line and get .conf information.
-parser = argparse.ArgumentParser(description = __doc__.split("\n")[0])
-parser.add_argument("date", metavar = "<YYYYMMDD>", type=str)
-parser.add_argument("-c", "--conf-file", default = "ch_translate_weather.conf")
-parser.add_argument("-g", "--git-tag", action = "store", \
-                    help = "Current git tag, use: " + \
-                                         "-g `git describe --tags` ")
-arg = parser.parse_args()
-
 def get_wview_metrics(db_path='/var/lib/wview/archive/wview-archive.sdb'):
 
     # Figure out the starting UNIX time.
@@ -83,6 +75,7 @@ def get_wview_metrics(db_path='/var/lib/wview/archive/wview-archive.sdb'):
         time_ = data[i, 0]
         us_units = data[i, 1]
         for j in range(2, data.shape[1]):
+            metric_name = col_names[j-2]
             value = data[i, j]
             if not value:
               continue
@@ -96,7 +89,7 @@ def get_wview_metrics(db_path='/var/lib/wview/archive/wview-archive.sdb'):
                   value = value * 1.60934 # mi/h to km/ha
                 elif type_ == "amount" or type_ == "rate":
                   value = value * 25.4 # inch to mm
-            metrics.add('weather_%s' % type_, value=value)
+            metrics.add('weather_%s' % metric_name, value=value, time=time_ * 1000)
     return metrics
 
 
@@ -104,43 +97,35 @@ def get_wview_metrics(db_path='/var/lib/wview/archive/wview-archive.sdb'):
 
 class WeatherAsyncRESTServer(AsyncRESTServer):
     """
-    REST interface for receiver hut GPS.
+    REST interface for wview weather server.
     """
 
     DEFAULT_PORT = 54325
 
     def __init__(self,  address='', port=DEFAULT_PORT, logging_params={}):
-        """ power_supplies list of dict with entries 'type', 'name', and 'address'
+        """ 
         """
-        self.gps = {}
         super(WeatherAsyncRESTServer, self).__init__(address=address, port=port, heartbeat_string='Gs')
-        self.metrics_queue = Queue.Queue(1000)
-        self.add_periodic_callback(self._get_metrics, 1000)
+        self.last_time = None
+        #self.metrics_queue = Queue.Queue(1000)
+        #self.add_periodic_callback(self._get_metrics, 1000)
 
 
-    @coroutine
-    def _get_metrics(self):
-        """ get the metrics from the GPS units and put them in the queue
-        """
-        metrics = Metrics()
-        for gps_name, gps in self.gps.items():
-            self.log.info('%.32r: Getting metrics for GPS %s' % (self, gps_name))
-            try:
-                m = gps.get_broadcast_metrics()
-                metrics = Metrics()
-                metrics.add(m, gps_name=gps_name)
-                self.log.info('Got %i metrics' % len(metrics.metrics))
-                if len(metrics.metrics):
-                    if self.metrics_queue.full():
-                        self.metrics_queue.get()
-                    self.metrics_queue.put(metrics)
-            except IOError as e:
-                self.log.warning('%r: Error while trying to access metric from %s\nThe error is:\n%r' % (self, gps_name, e))
-            except Exception as e:
-                self.log.error(e)
-                raise
-
-        self.log.info('Queue has %i metrics blocks' % self.metrics_queue.qsize())
+    #@coroutine
+    #def _get_metrics(self):
+    #    """ get the metrics from the GPS units and put them in the queue
+    #    """
+    #    metrics = get_wview_metrics()
+    #    if self.metrics_queue.full():
+    #        self.metrics_queue.get()
+    #        self.metrics_queue.put(metrics)
+    #        except IOError as e:
+    #            self.log.warning('%r: Error while trying to access metric from %s\nThe error is:\n%r' % (self, gps_name, e))
+    #        except Exception as e:
+    #            self.log.error(e)
+    #            raise
+    #
+    #    self.log.info('Queue has %i metrics blocks' % self.metrics_queue.qsize())
 
     ##################
     # Server commands
@@ -149,26 +134,26 @@ class WeatherAsyncRESTServer(AsyncRESTServer):
     @coroutine
     @endpoint('start')
     def start(self, handler, **config):
-        """ Start the GPS server with provided config
+        """ Start the Weather server with provided config
         """
         self.log.info('%r: Received start command' % self)
-        if self.gps:
-            raise RuntimeError('%.32r: Power Supply server is already started' % self)
+        #if self.gps:
+        #    raise RuntimeError('%.32r: Power Supply server is already started' % self)
         self.config = NameSpace(config)
-        units = self.config.units or {}
-        for name, params in units.items():
-            self.log.debug('%r: Creating GPS handler %s' % (self, name))
-            gps = SpectrumInstrumentsTM4D(**params)
-            self.gps[name] = gps
-        coroutine_return('GPS server started')
+        #units = self.config.units or {}
+        #for name, params in units.items():
+        #    self.log.debug('%r: Creating GPS handler %s' % (self, name))
+        #    gps = SpectrumInstrumentsTM4D(**params)
+        #    self.gps[name] = gps
+        coroutine_return('Weather server started')
 
     @coroutine
     @endpoint('stop')
     def stop(self, handler):
-        if not self.gps:
-            self.log.warning('%.32r: Power Supply server is not started' % self)
-        else:
-            self.gps = {}
+        #if not self.gps:
+        #    self.log.warning('%.32r: Power Supply server is not started' % self)
+        #else:
+        #    self.gps = {}
         coroutine_return('GPS server stopped')
 
     # @coroutine
@@ -184,11 +169,11 @@ class WeatherAsyncRESTServer(AsyncRESTServer):
     #     coroutine_return(stati)
 
 
-    @coroutine
-    @endpoint('list-names')
-    def listNames(self, handler):
-        self.log.info('%.32r: Received list names request' % self)
-        coroutine_return(self.gps.keys())
+    #@coroutine
+    #@endpoint('list-names')
+    #def listNames(self, handler):
+    #    self.log.info('%.32r: Received list names request' % self)
+    #    coroutine_return(self.gps.keys())
 
 
 
@@ -196,11 +181,16 @@ class WeatherAsyncRESTServer(AsyncRESTServer):
     @endpoint('get-monitoring-data')
     def monitoringMetrics(self, handler):
         self.log.info('%.32r: Received monitoring metrics request' % self)
-        metrics = Metrics()
-        for i in range(self.metrics_queue.qsize()):
-            m = self.metrics_queue.get()
-            metrics.add(m)
-        self.log.info('%r: sending %i metrics' % (self, len(metrics.metrics)))
+        metrics = get_wview_metrics()
+        if metrics: 
+            new_time = metrics.metrics.items()[0][1]['entries'][0]['time']
+            if new_time == self.last_time:
+                metrics = Metrics()
+            self.last_time = new_time
+        #for i in range(self.metrics_queue.qsize()):
+        #    m = self.metrics_queue.get()
+        #    metrics.add(m)
+        #self.log.info('%r: sending %i metrics' % (self, len(metrics.metrics)))
         handler.set_header('Content-Type', 'text/plain')
         handler.write(str(metrics))
 
@@ -271,10 +261,10 @@ class WeatherAsyncRESTClient(AsyncRESTClient):
     #     coroutine_return(result)
 
 
-    @coroutine
-    def list_names(self):
-        result = yield self.get('list-names')
-        coroutine_return(result)
+    #@coroutine
+    #def list_names(self):
+    #    result = yield self.get('list-names')
+    #    coroutine_return(result)
 
 
     # @coroutine
@@ -289,8 +279,9 @@ def main():
     """
     # Setup logging
     log.setup_basic_logging('DEBUG')
-    client, server = run_client(sys.argv[1:], WeatherAsyncRESTServer, WeatherAsyncRESTClient, object_name ='GPS', server_config_path='gps.servers')
+    client, server = run_client(sys.argv[1:], WeatherAsyncRESTServer, WeatherAsyncRESTClient, object_name ='Weather', server_config_path='weather.servers')
     return client, server
 
 if __name__ == '__main__':
+    #pass
     client, server = main()
