@@ -1324,7 +1324,7 @@ class FPGAArray(object):
 
         # reset DFE at low power, then increase power
         self.ib.BP_SHUFFLE.set_tx_power(5)
-        self.ib.BP_SHUFFLE.reset_rx_equalizer()
+        self.ib.BP_SHUFFLE.reset_rx_equalizers()
         time.sleep(0.3)
         self.ib.BP_SHUFFLE.set_tx_power(7)
         self.ib.BP_SHUFFLE.set_tx_power(10)
