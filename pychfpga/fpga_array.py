@@ -2330,7 +2330,11 @@ class FPGAArray(object):
                 all_metrics += yield [ib.get_crossbar_metrics.async() for ib in self.ib]
             except Exception as e:
                 self.logger.error('%r: error getting FPGA Firmware metrics: error is %r' % (self, e))
-        #print(all_metrics)
+                try:
+                    self.ib.check_command_count(reset=True)
+                except Exception as e:
+                    self.logger.error('%r: Cannot reset FPGA command counters because of error: %r' % (self, e))
+            #print(all_metrics)
         for m in all_metrics:
             metrics.add(m)
 
@@ -3005,12 +3009,15 @@ def GPUArray(gpu_nodes=[]):
 
     # Create Power Supply array
 def PSArray(power_supplies=[]):
-        if power_supplies:
+        if not power_supplies:
+            return Ccoll([])
+        if isinstance(power_supplies, list):
             ps = Ccoll(AgilentN5764AHandler(hostname=hostname) for hostname in power_supplies)
             ps.open()
             return ps
         else:
-            return Ccoll([])
+            raise TypeError('Wrong type to PSArray')
+
 
 def create_fpga_array(args=None):
     """

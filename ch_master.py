@@ -33,7 +33,7 @@ import tornado.tcpclient
 import tornado.web
 
 import pychfpga  # used to access .calculate_gain.
-from pychfpga import FPGAArray, NameSpace, load_yaml_config, AgilentN5764AHandler, Metrics
+from pychfpga import FPGAArray, NameSpace, load_yaml_config, Metrics
 import log
 
 from rest import RESTClient, AsyncRESTServer, AsyncRESTClient # generic REST servers and clients
