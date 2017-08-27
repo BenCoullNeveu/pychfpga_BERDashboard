@@ -5,57 +5,42 @@ accessed through the StarTech NETRS232 serial-to-ethernet adapters.
 
 """
 
-import logging
 import sys
-import argparse
 import time
-import datetime
-import calendar
 import Queue
 import sqlite3
 import numpy as np
 
+import log  # logging helper functions
 from pychfpga import Metrics, NameSpace
 from rest import AsyncRESTClient, AsyncRESTServer, endpoint
 from rest import coroutine, coroutine_return, sleep, IOLoop
 from rest import RunSyncWrapper, SocketContext, run_client  # generic REST servers and clients
 
-import log  # logging helper functions
-
-archive_version = "2.3.0"
-
-dataset = {    "barometer": {"type": "pressure"},
-                "pressure": {"type": "pressure"},
-               "altimeter": {"type": "pressure"},
-                  "inTemp": {"type": "temperature"},
-                 "outTemp": {"type": "temperature"},
-              "inHumidity": {"type": "percent"},
-             "outHumidity": {"type": "percent"},
-               "windSpeed": {"type": "speed"},
-                 "windDir": {"type": "direction"},
-                "windGust": {"type": "speed"},
-             "windGustDir": {"type": "direction"},
-                "rainRate": {"type": "rate"},
-                    "rain": {"type": "amount"},
-                "dewpoint": {"type": "temperature"},
-               "windchill": {"type": "temperature"},
-               "heatindex": {"type": "temperature"}}
-
-units = {   "pressure": "hPa",
-         "temperature": "deg C",
-             "percent": "%",
-               "speed": "km/h",
-           "direction": "deg",
-                "rate": "mm/hr",
-              "amount": "mm"
-          }
+dataset = {    "barometer": {"type": "pressure", "units": "hPa"},
+                "pressure": {"type": "pressure", "units": "hPa"},
+               "altimeter": {"type": "pressure", "units": "hPa"},
+                  "inTemp": {"type": "temperature", "units": "deg C"},
+                 "outTemp": {"type": "temperature", "units": "deg C"},
+              "inHumidity": {"type": "percent", "units": "%"},
+             "outHumidity": {"type": "percent", "units": "%"},
+               "windSpeed": {"type": "speed", "units": "km/h"},
+                 "windDir": {"type": "direction", "units": "deg"},
+                "windGust": {"type": "speed", "units": "km/h"},
+             "windGustDir": {"type": "direction", "units": "deg"},
+                "rainRate": {"type": "rate", "units": "mm/h"},
+                    "rain": {"type": "amount", "units": "mm"},
+                "dewpoint": {"type": "temperature", "units": "deg C"},
+               "windchill": {"type": "temperature", "units": "deg C"},
+               "heatindex": {"type": "temperature", "units": "deg C"}}
 
 def get_wview_metrics(db_path='/var/lib/wview/archive/wview-archive.sdb'):
+    """ Return a Metrics containing the most recent entry of the Wview sqlite database"""
 
     # Figure out the starting UNIX time.
     # t_start = int(datetime.datetime.strptime(arg.date, "%Y%m%d").strftime("%s"))
-    t_start = time.time()
-    t_end = t_start + 600
+    # t_start = time.time()
+    # t_end = t_start + 600
     # Get the data.
     db = sqlite3.connect(db_path)
     cur = db.cursor()
@@ -73,26 +58,25 @@ def get_wview_metrics(db_path='/var/lib/wview/archive/wview-archive.sdb'):
     # Check if "usUnits" is true; if so, convert from Imperial to metric units.
     for i in range(data.shape[0]):
         time_ = data[i, 0]
-        us_units = data[i, 1]
+        are_us_units = data[i, 1]
         for j in range(2, data.shape[1]):
-            metric_name = col_names[j-2]
             value = data[i, j]
             if not value:
               continue
-            if us_units: # if US units, convert to metric
-                type_ = dataset[col_names[j - 2]]["type"]
+            metric_name = col_names[j-2]
+            type_ = dataset[metric_name]["type"]
+            units = dataset[metric_name]["units"]
+            if are_us_units: # if US units, convert to metric
                 if type_ == "pressure":
-                  value = value * 33.86389 # inHg to hPa
+                    value = value * 33.86389 # inHg to hPa
                 elif type_ == "temperature":
-                  value = (value - 32.0) * 5.0 / 9.0 # F to C
+                    value = (value - 32.0) * 5.0 / 9.0 # F to C
                 elif type_ == "speed":
-                  value = value * 1.60934 # mi/h to km/ha
+                    value = value * 1.60934 # mi/h to km/h
                 elif type_ == "amount" or type_ == "rate":
-                  value = value * 25.4 # inch to mm
-            metrics.add('weather_%s' % metric_name, value=value, time=time_ * 1000)
+                    value = value * 25.4 # inch to mm
+            metrics.add('weather_%s' % metric_name, value=value, units=units, time=time_ * 1000)
     return metrics
-
-
 
 
 class WeatherAsyncRESTServer(AsyncRESTServer):
@@ -103,29 +87,10 @@ class WeatherAsyncRESTServer(AsyncRESTServer):
     DEFAULT_PORT = 54325
 
     def __init__(self,  address='', port=DEFAULT_PORT, logging_params={}):
-        """ 
+        """
         """
         super(WeatherAsyncRESTServer, self).__init__(address=address, port=port, heartbeat_string='Gs')
         self.last_time = None
-        #self.metrics_queue = Queue.Queue(1000)
-        #self.add_periodic_callback(self._get_metrics, 1000)
-
-
-    #@coroutine
-    #def _get_metrics(self):
-    #    """ get the metrics from the GPS units and put them in the queue
-    #    """
-    #    metrics = get_wview_metrics()
-    #    if self.metrics_queue.full():
-    #        self.metrics_queue.get()
-    #        self.metrics_queue.put(metrics)
-    #        except IOError as e:
-    #            self.log.warning('%r: Error while trying to access metric from %s\nThe error is:\n%r' % (self, gps_name, e))
-    #        except Exception as e:
-    #            self.log.error(e)
-    #            raise
-    #
-    #    self.log.info('Queue has %i metrics blocks' % self.metrics_queue.qsize())
 
     ##################
     # Server commands
@@ -137,24 +102,14 @@ class WeatherAsyncRESTServer(AsyncRESTServer):
         """ Start the Weather server with provided config
         """
         self.log.info('%r: Received start command' % self)
-        #if self.gps:
-        #    raise RuntimeError('%.32r: Power Supply server is already started' % self)
         self.config = NameSpace(config)
-        #units = self.config.units or {}
-        #for name, params in units.items():
-        #    self.log.debug('%r: Creating GPS handler %s' % (self, name))
-        #    gps = SpectrumInstrumentsTM4D(**params)
-        #    self.gps[name] = gps
         coroutine_return('Weather server started')
 
     @coroutine
     @endpoint('stop')
     def stop(self, handler):
-        #if not self.gps:
-        #    self.log.warning('%.32r: Power Supply server is not started' % self)
-        #else:
-        #    self.gps = {}
-        coroutine_return('GPS server stopped')
+        self.config = None
+        coroutine_return('Wheather server server stopped')
 
     # @coroutine
     # @endpoint('status')
@@ -168,60 +123,29 @@ class WeatherAsyncRESTServer(AsyncRESTServer):
     #         self.log.info('%.32r: Status of %s is %s' % (self, ps_name, stati[ps_name]))
     #     coroutine_return(stati)
 
-
-    #@coroutine
-    #@endpoint('list-names')
-    #def listNames(self, handler):
-    #    self.log.info('%.32r: Received list names request' % self)
-    #    coroutine_return(self.gps.keys())
-
-
-
     @coroutine
     @endpoint('get-monitoring-data')
     def monitoringMetrics(self, handler):
         self.log.info('%.32r: Received monitoring metrics request' % self)
-        metrics = get_wview_metrics()
-        if metrics: 
-            new_time = metrics.metrics.items()[0][1]['entries'][0]['time']
-            if new_time == self.last_time:
-                metrics = Metrics()
-            self.last_time = new_time
-        #for i in range(self.metrics_queue.qsize()):
-        #    m = self.metrics_queue.get()
-        #    metrics.add(m)
-        #self.log.info('%r: sending %i metrics' % (self, len(metrics.metrics)))
+        metrics = Metrics()
+        if self.config:
+            for unit_name, unit_config in self.config.items():
+                m = get_wview_metrics(unit_config.db_path)
+                if m:
+                    new_time = metrics.metrics.items()[0][1]['entries'][0]['time']
+                    if new_time != self.last_time:
+                        metrics.add(m)
+                    self.last_time = new_time
         handler.set_header('Content-Type', 'text/plain')
         handler.write(str(metrics))
 
 #########################################
-# Power Supply REST client
+# Weather REST client
 #########################################
 
 class WeatherAsyncRESTClient(AsyncRESTClient):
     """
-    Implements an asynchronous client that exposes the functions of the specified remote RawAcq server.
-
-    This client is used by ch_master to start, configue and operate all the RawAcq servers in the array.
-
-    The client is implemented using a Tornado AsyncHTTPClient. It exposes the RawAcq server methods
-    (i.e REST endpoints) as local methods. The local methods are Tornado coroutines so requests to
-    multiple clients can be made in parallel. This is especially beneficial since the data requests
-    from the server are slow IO operations which benefit the mist from co-execution.
-
-    The client will operate only if the IOloop in which is was created is running.
-
-    Parameters:
-
-        name (str): Name of the client, to be used in logging etc.
-
-        hostname (str): The hostname of the RawAcq REST server. If `host` is None, an (experimental,
-             Python-based) RawAcq REST server will be created locally.
-
-        port (int): The port number to which the RawAcq REST server is listening. Default is port 80.
-
-        ps_names (list of str): list of power supply names on which this client will operate. Other
-            supplies will not be affected.
+    Implements an asynchronous client that exposes the functions of the specified  wether server.
     """
     DEFAULT_PORT = WeatherAsyncRESTServer.DEFAULT_PORT
 
@@ -234,7 +158,7 @@ class WeatherAsyncRESTClient(AsyncRESTClient):
 
     @coroutine
     def start(self, config):
-        """ If the PowerSupply remote server is not started, start it with the specified configuration
+        """ If the remote server is not started, start it with the specified configuration
 
         Parameters:
 
@@ -248,7 +172,7 @@ class WeatherAsyncRESTClient(AsyncRESTClient):
         if isinstance(config, str):
             config = load_yaml_config(config)
         result = self.post('start', **config)
-        coroutine_return('GPS server started')
+        coroutine_return('Weather server started')
 
     @coroutine
     def stop(self):
@@ -261,24 +185,11 @@ class WeatherAsyncRESTClient(AsyncRESTClient):
     #     coroutine_return(result)
 
 
-    #@coroutine
-    #def list_names(self):
-    #    result = yield self.get('list-names')
-    #    coroutine_return(result)
-
-
-    # @coroutine
-    # def get_metrics(self):
-    #     result = yield self.get('get-metrics')
-    #     coroutine_return(Metrics(result))
-
-
-
 def main():
-    """ Command-line interface to launch and operate the GPS server.
+    """ Command-line interface to launch and operate the Weather server.
     """
     # Setup logging
-    log.setup_basic_logging('DEBUG')
+    log.setup_basic_logging('INFO')
     client, server = run_client(sys.argv[1:], WeatherAsyncRESTServer, WeatherAsyncRESTClient, object_name ='Weather', server_config_path='weather.servers')
     return client, server
 
