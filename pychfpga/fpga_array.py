@@ -1325,9 +1325,9 @@ class FPGAArray(object):
         # reset DFE at low power, then increase power
         self.ib.BP_SHUFFLE.set_tx_power(5)
         self.ib.BP_SHUFFLE.reset_rx_equalizers()
-        time.sleep(0.3)
-        self.ib.BP_SHUFFLE.set_tx_power(7)
-        self.ib.BP_SHUFFLE.set_tx_power(10)
+        #time.sleep(0.3)
+        #self.ib.BP_SHUFFLE.set_tx_power(7)
+        #self.ib.BP_SHUFFLE.set_tx_power(10)
         self.ib.BP_SHUFFLE.set_tx_power(13)
         self.ib.BP_SHUFFLE.reset_stats()
 
@@ -2322,6 +2322,10 @@ class FPGAArray(object):
             self.logger.info('%r: got the metrics' % self)
         except Exception as e:
             self.logger.error('%r: error getting FPGA metrics: error is %r' % (self, e))
+            try:
+                self.ib.check_command_count(reset=True)
+            except Exception as e:
+                self.logger.error('%r: Cannot reset FPGA command counters because of error: %r' % (self, e))
 
         self.logger.info('%r:Getting FPGA Firmware metrics' % self)
         if ib.is_open():
