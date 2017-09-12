@@ -545,7 +545,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
         # return float(time[:4]) + float(time[4:6])/60 + float(time[6:])/3600
         coast_timer_values = self.query('79', reply)
         coast_timer_values = [int(c) for c in coast_timer_values]
-        self.add_metric(metrics, 'gps_coast_time', value=coast_time)
+        # self.add_metric(metrics, 'gps_coast_time', value=coast_time)
         for i, c in enumerate(coast_timer_values):
             self.add_metric(metrics, 'gps_coast_time', field=i, value=c)
         return coast_timer_values
