@@ -285,8 +285,8 @@ class SpectrumInstrumentsTM4D(SocketContext):
             int(time_[:2]), int(time_[2:4]), int(time_[4:6])) # hours, minutes, seconds
 
         self.last_gps_time = calendar.timegm(t.timetuple())
-        self.add_metric('gps_time', value=self.last_gps_time * 1000, type='gauge')
-        self.add_metric('gps_time_diff', value=(time.time() - self.last_gps_time) * 1000, type='gauge')
+        self.add_metric(metrics, 'gps_time', value=self.last_gps_time * 1000, type='gauge')
+        self.add_metric(metrics, 'gps_time_diff', value=(time.time() - self.last_gps_time) * 1000, type='gauge')
         return t
 
     def get_position(self, reply=None, metrics=None):
@@ -326,7 +326,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
         angle_code, datum = self.query('55', reply)
         assert datum == '47', 'datum is not WGS84'
         mask_angle = int(angle_code)
-        self.add_metric('gps_mask_angle', value=mask_angle, type='gauge')
+        self.add_metric(metrics, 'gps_mask_angle', value=mask_angle, type='gauge')
         return mask_angle
 
     def get_user_time_bias(self, reply=None, metrics=None):
@@ -337,7 +337,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
         """
         (bias, ) = self.query('56', reply)
         time_bias = int(bias)
-        self.add_metric('gps_time_bias', value=time_bias)
+        self.add_metric(metrics, 'gps_time_bias', value=time_bias)
         return time_bias
 
     def get_timing_mode(self, reply=None, metrics=None):
@@ -351,7 +351,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
         """
         (mode, ) = self.query('57', reply)
         timing_mode = int(mode)
-        self.add_metric('gps_mask_angle', value=timing_mode)
+        self.add_metric(metrics, 'gps_mask_angle', value=timing_mode)
         return timing_mode
 
     def get_geometric_quality_and_almanac_status(self, reply=None, metrics=None):
@@ -364,8 +364,8 @@ class SpectrumInstrumentsTM4D(SocketContext):
         """
         gq, almanac_status = self.query('59', reply)
         gq, almanac_status = int(gq), int(almanac_status)
-        self.add_metric('gps_geometric_quality', value=gq)
-        self.add_metric('gps_almanac_status', value=almanac_status)
+        self.add_metric(metrics, 'gps_geometric_quality', value=gq)
+        self.add_metric(metrics, 'gps_almanac_status', value=almanac_status)
         return gq, almanac_status
 
     def get_oscillator_tuning_mode(self, reply=None, metrics=None):
@@ -381,7 +381,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
         """
         (osc_tuning_mode, ) = self.query('64', reply)
         osc_tuning_mode = int(osc_tuning_mode)
-        self.add_metric('gps_osc_tuning_mode', value=osc_tuning_mode)
+        self.add_metric(metrics, 'gps_osc_tuning_mode', value=osc_tuning_mode)
         return osc_tuning_mode
 
     def get_alarm_status(self, reply=None, metrics=None):
@@ -395,9 +395,9 @@ class SpectrumInstrumentsTM4D(SocketContext):
         """
         coast_alarm, antenna_alarm, clk_alarm = self.query('65', reply)
         coast_alarm, antenna_alarm, clk_alarm = bool(int(coast_alarm)), bool(int(antenna_alarm)), bool(int(clk_alarm))
-        self.add_metric('gps_coast_alarm', value=coast_alarm)
-        self.add_metric('gps_antenna_alarm', value=antenna_alarm)
-        self.add_metric('gps_10MHz_alarm', value=clk_alarm)
+        self.add_metric(metrics, 'gps_coast_alarm', value=coast_alarm)
+        self.add_metric(metrics, 'gps_antenna_alarm', value=antenna_alarm)
+        self.add_metric(metrics, 'gps_10MHz_alarm', value=clk_alarm)
         return coast_alarm, antenna_alarm, clk_alarm
 
     def get_mux1_output_source(self, reply=None, metrics=None):
@@ -408,7 +408,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
         """
         time_port_baud_rate, mux1, unknown = self.query('60', reply) # undocumented 'unknown' parameter ('+00')
         mux1 = int(mux1)
-        self.add_metric('gps_mux1_source', value=mux1)
+        self.add_metric(metrics, 'gps_mux1_source', value=mux1)
         return mux1
 
     def get_timing_status(self, reply=None, metrics=None):
@@ -419,7 +419,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
         """
         (status, ) = self.query('61', reply)
         status = int(status)
-        self.add_metric('gps_timing_status', value=status)
+        self.add_metric(metrics, 'gps_timing_status', value=status)
         return status
 
 
@@ -431,7 +431,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
         """
         (mux2, ) = self.query('68', reply)
         mux2 = int(mux2)
-        self.add_metric('gps_mux2_source', value=mux2)
+        self.add_metric(metrics, 'gps_mux2_source', value=mux2)
         return mux2
 
     def get_tracking_channel_status(self, reply=None, metrics=None):
@@ -464,11 +464,11 @@ class SpectrumInstrumentsTM4D(SocketContext):
             s = s[4:]
         receiver_status = int(s[0])
 
-        self.add_metric('gps_receiver_status', value=receiver_status)
-            for sat_number, sat_info in satellite_status_map.items():
-            self.add_metric('gps_constellation_status', satellite_number=sat_number, value=sat_info.constellation_status)
-            self.add_metric('gps_signal_quality', satellite_number=sat_number, value=sat_info.signal_quality)
-            self.add_metric('gps_ephemeris_status', satellite_number=sat_number, value=sat_info.ephemeris_status)
+        self.add_metric(metrics, 'gps_receiver_status', value=receiver_status)
+        for sat_number, sat_info in satellite_status_map.items():
+            self.add_metric(metrics, 'gps_constellation_status', satellite_number=sat_number, value=sat_info.constellation_status)
+            self.add_metric(metrics, 'gps_signal_quality', satellite_number=sat_number, value=sat_info.signal_quality)
+            self.add_metric(metrics, 'gps_ephemeris_status', satellite_number=sat_number, value=sat_info.ephemeris_status)
 
         return satellite_status_map, receiver_status
 
@@ -510,14 +510,14 @@ class SpectrumInstrumentsTM4D(SocketContext):
             speed = float(speed),
             course = float(course))
 
-        self.add_metric('gps_latitude', value=info.lat)
-        self.add_metric('gps_longitude', value=info.lon)
-        self.add_metric('gps_altitude', value=info.alt)
-        self.add_metric('gps_fix_valid', value=info.fix)
-        self.add_metric('gps_number_of_satellites', value=info.n_sat)
-        self.add_metric('gps_horiz_dilution', value=info.h_dilution)
-        self.add_metric('gps_speed', value=info.speed)
-        self.add_metric('gps_course', value=info.course)
+        self.add_metric(metrics, 'gps_latitude', value=info.lat)
+        self.add_metric(metrics, 'gps_longitude', value=info.lon)
+        self.add_metric(metrics, 'gps_altitude', value=info.alt)
+        self.add_metric(metrics, 'gps_fix_valid', value=info.fix)
+        self.add_metric(metrics, 'gps_number_of_satellites', value=info.n_sat)
+        self.add_metric(metrics, 'gps_horiz_dilution', value=info.h_dilution)
+        self.add_metric(metrics, 'gps_speed', value=info.speed)
+        self.add_metric(metrics, 'gps_course', value=info.course)
         return info
 
     def get_user_options(self, reply=None, metrics=None):
@@ -530,8 +530,8 @@ class SpectrumInstrumentsTM4D(SocketContext):
         """
         aa_enabled, pps_source, _, _, _, _ = self.query('78', reply)
         aa_enabled, pps_source = (bool(aa_enabled), int(pps_source))
-        self.add_metric('gps_antenna_alarm_detection_enabled', value=aa_enabled)
-        self.add_metric('gps_pps_source', value=pps_source)
+        self.add_metric(metrics, 'gps_antenna_alarm_detection_enabled', value=aa_enabled)
+        self.add_metric(metrics, 'gps_pps_source', value=pps_source)
         return aa_enabled, pps_source
 
     def get_coast_timer(self, reply=None, metrics=None):
@@ -545,9 +545,9 @@ class SpectrumInstrumentsTM4D(SocketContext):
         # return float(time[:4]) + float(time[4:6])/60 + float(time[6:])/3600
         coast_timer_values = self.query('79', reply)
         coast_timer_values = [int(c) for c in coast_timer_values]
-        self.add_metric('gps_coast_time', value=coast_time)
-            for i, c in enumerate(coast_timer_values):
-            self.add_metric('gps_coast_time', field=i, value=c)
+        self.add_metric(metrics, 'gps_coast_time', value=coast_time)
+        for i, c in enumerate(coast_timer_values):
+            self.add_metric(metrics, 'gps_coast_time', field=i, value=c)
         return coast_timer_values
 
     def get_phase_lock_status(self, reply=None, metrics=None):
@@ -565,7 +565,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
         """
         (status, ) = self.query('80', reply)
         phase_lock_status = int(status)
-        self.add_metric('gps_phase_lock_status', value=phase_lock_status)
+        self.add_metric(metrics, 'gps_phase_lock_status', value=phase_lock_status)
         return phase_lock_status
 
     def get_leap_seconds(self, reply=None, metrics=None):
@@ -579,8 +579,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
         """
         time_mode, valid, leaps  = self.query('81', reply)
         valid, leap_seconds = bool(int(valid)), int(leaps)
-        if metrics is not None and valid:
-        self.add_metric('gps_leap_seconds', value=leap_seconds)
+        self.add_metric(metrics, 'gps_leap_seconds', value=leap_seconds)
         return valid, leap_seconds
 
     def poll_metrics(self):
