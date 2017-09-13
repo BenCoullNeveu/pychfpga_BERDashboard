@@ -37,6 +37,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
         self.log.debug('Initializing instrument')
         self.polling_mode = None
         self.last_gps_time = None
+        self.gps_time_offset = None
         self.use_gps_time = True
         self.buffer = '' # used in broadcast processing only
         self.get_methods = {
@@ -114,9 +115,15 @@ class SpectrumInstrumentsTM4D(SocketContext):
         return args[1:]
 
     def add_metric(self, metrics, metric_name, value, type='gauge', **labels):
-        if self.use_gps_time and self.last_gps_time:
-            labels['time'] = self.last_gps_time * 1000
-        if metrics is not None:
+        if metrics is None:
+            return
+        if self.use_gps_time:
+            if self.last_gps_time and self.gps_time_offset is not None:
+                time_ =  (self.last_gps_time + self.gps_time_offset)
+                metrics.add(metric_name, value=value, type=type, time=time_ * 1000, **labels)
+            else:
+                self.log.warning('%r: No GPS time has been rceived yet. Metric %s is not produced' % (self, metric_name))
+        else:
             metrics.add(metric_name, value=value, type=type, **labels)
 
     ###################################
@@ -419,6 +426,11 @@ class SpectrumInstrumentsTM4D(SocketContext):
         """
         (status, ) = self.query('61', reply)
         status = int(status)
+        if status:
+            self.gps_time_offset = 0
+        elif self.gps_time_offset is None and self.last_gps_time is not None:
+            self.gps_time_offset = time.time() - self.last_gps_time
+
         self.add_metric(metrics, 'gps_timing_status', value=status)
         return status
 
