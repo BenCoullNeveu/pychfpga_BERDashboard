@@ -490,6 +490,11 @@ class ChimeMaster(object):
         # should be sent.
         #
         # First, prepare the receiver parameters for each node
+        
+        # HACK: IF USING FIXED DATA PORT NUMBERS, RELEASE THE PRE-ALLOCATED PORT SOCKETS SO THEYT CAN BE ASSIGNED BY RAW_ACQ
+        for s in self.pre_alloc_recv_sockets:
+            s.close()
+
         recv_ports = {}
         recv_names = {}
         for node_name, ibs in self.raw_acq_ibs.items():  # for each raw_acq node
@@ -502,7 +507,7 @@ class ChimeMaster(object):
                 if conf.use_fixed_port_numbers:
                     crate_number = 0 if not ib.crate else ib.crate.crate_number or 0
                     slot_number = ib.slot or 0
-                    port_name = 41000 + 100*(crate_number + 1) + slot_number  # ***TODO: make resilient to no-crate and no slot info
+                    port_name = 42400 + 100*(crate_number + 1) + slot_number  # ***TODO: make resilient to no-crate and no slot info
                 else:
                     port_name = '%sPort%i' % (recv_name, i)
                 recv_ports[node_name].append(dict(port=port_name, sources=[(ib.hostname, 80)]))
@@ -554,7 +559,7 @@ class ChimeMaster(object):
         yield [node.start_hdf5(
             base_dir=capture_folder,
             base_filename=capture_filename,
-            capture_duration=capture_duration + 60,  # stop HDF5 capture 1 min after the desired time in case ch_master does not do it.
+            capture_duration=capture_duration,  
             elements_per_file=capture_elements_per_file
             )         for node_name, node in self.raw_acq.items()]
 
@@ -622,6 +627,14 @@ class ChimeMaster(object):
         #lo.warning('Trop seche')
         self.log.info('%r: Logging configured'% self)
         # Now that the housekeeping is done, let's start the real work
+
+        # HACK: IF USING FIXED PORTS, PRE-ALLOCATE DATA PORTS BEFORE INITIALIZING BOARDS SO THEY ARE NOT USED
+        self.pre_alloc_recv_sockets = []
+        for crate_number in range(8):
+            for slot_number in range(1, 17):
+                self.pre_alloc_recv_sockets.append(socket.socket(socket.AF_INET, socket.SOCK_DGRAM))
+                port_name = 42400 + 100*(crate_number + 1) + slot_number
+                self.pre_alloc_recv_sockets[-1].bind(('0.0.0.0', port_name))
 
         # Create objects to communicates to the remote processes needed to run the array
         yield self.create_power_supplies()

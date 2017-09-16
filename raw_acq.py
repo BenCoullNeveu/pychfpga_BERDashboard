@@ -697,6 +697,7 @@ class RawAcqReceiver(object):
         # self.data_writer_thread.setDaemon(True)
         # self.data_writer_thread.start()
         if capture_duration:
+            capture_duration += 60,  # stop HDF5 capture 1 min after the desired time in case ch_master does not do it.
             self.log.info('%.32r: HDF5 data writer will be stopped in %f seconds' % (self, capture_duration))
             IOLoop.current().call_later(capture_duration, self.stopHdf5Disk)
 
