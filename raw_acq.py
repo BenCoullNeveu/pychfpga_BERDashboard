@@ -210,7 +210,7 @@ class GainEstimator(object):
 class hdf5TimestreamData(object):
     """ Object representing a HDF5 file containing raw data
     """
-    def __init__(self, filestring, crate_and_slot_from_port = False):
+    def __init__(self, filestring, elements_per_file=2048*64, crate_and_slot_from_port = False):
         self.N_SAMP = 2048
         #self.N_CHANNELS = 1
         self.crate_and_slot_from_port = crate_and_slot_from_port
@@ -244,12 +244,12 @@ class hdf5TimestreamData(object):
         self.timestreamDataset.attrs['axis'] = ['snapshot', 'timestream']
         self.index_map = self.f.create_group("index_map")
         self.snapshot_index_map = self.index_map.create_dataset('snapshot',
-                                            (1310720,), dtype=np.uint32)
+                                            (elements_per_file,), dtype=np.uint32)
         self.start_index = int(filestring[-9:-6]) + 1
-        self.snapshot_index_map = np.arange(1310720) + self.start_index
+        self.snapshot_index_map[:] = np.arange(elements_per_file) + self.start_index
         self.timestream_index_map = self.index_map.create_dataset("timestream",
                                             (2048,), dtype=np.uint16)
-        self.timestream_index_map = np.arange(2048)
+        self.timestream_index_map[:] = np.arange(2048)
         self.n_times = 1
         self.n = 0
 
@@ -697,6 +697,7 @@ class RawAcqReceiver(object):
         # self.data_writer_thread.setDaemon(True)
         # self.data_writer_thread.start()
         if capture_duration:
+            capture_duration += 60,  # stop HDF5 capture 1 min after the desired time in case ch_master does not do it.
             self.log.info('%.32r: HDF5 data writer will be stopped in %f seconds' % (self, capture_duration))
             IOLoop.current().call_later(capture_duration, self.stopHdf5Disk)
 
@@ -733,7 +734,7 @@ class RawAcqReceiver(object):
         filename = "{0:06d}.h5".format(self.hdf5_file_number)
         filename =  os.path.join(self.hdf5_base_dir, filename)
         self.log.info('%r: started logging in file %s' % (self, filename))
-        h5file = hdf5TimestreamData(filename)  # start a new empty file
+        h5file = hdf5TimestreamData(filename, elements_per_file=self.elements_per_file)  # start a new empty file
         return h5file
 
     # def hdf5_write(self, timestamp, port, chan, stream_id, flags, adc_data):
