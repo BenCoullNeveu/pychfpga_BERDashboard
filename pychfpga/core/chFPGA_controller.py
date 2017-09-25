@@ -2486,7 +2486,7 @@ class chFPGA_controller(IceBoardExtHandler):
             cb2_output_data_flags_words_per_bin = cb2_input_data_flags_words_per_bin * cb2_input_lanes_per_output_lane / (2 if cb2_combine_data_flags else 1)
             cb2_output_frame_flags_words_per_frame = cb2_input_frame_flags_words_per_frame * cb2_input_lanes_per_output_lane
             print("cb2_output frame flags words=%i, input frame flags words=%i, input_lanes=%i" % (cb2_output_frame_flags_words_per_frame,cb2_input_frame_flags_words_per_frame, cb2_input_lanes_per_output_lane))
- 
+
 
             # QSFP SHUFFLE
             # ------------
@@ -2656,9 +2656,9 @@ class chFPGA_controller(IceBoardExtHandler):
                     bs.NUMBER_OF_BINS_PER_FRAME = cb3_input_bins
                     bs.NUMBER_OF_WORDS_PER_BIN = cb3_input_words_per_bin
                     bs.select_bins(cb3_bin_select_map[cb3_bin_sel])
-                    
+
                     #bs.SEND_FLAGS = 0  # JFC debug. Does not affect data.
-            #print("cb3 input frame flags words=%i" %cb3_input_frame_flags_words_per_frame) 
+            #print("cb3 input frame flags words=%i" %cb3_input_frame_flags_words_per_frame)
         elif not cb3_bypass:
             raise RuntimeError("The FPGA firmware must have a CROSSBAR3 in the '%s' operational mode", mode)
 
