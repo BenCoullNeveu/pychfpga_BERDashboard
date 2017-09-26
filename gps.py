@@ -293,7 +293,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
 
         self.last_gps_time = calendar.timegm(t.timetuple())
         self.add_metric(metrics, 'gps_time', value=self.last_gps_time * 1000, type='gauge')
-        self.add_metric(metrics, 'gps_time_diff', value=(time.time() - self.last_gps_time) * 1000, type='gauge')
+        self.add_metric(metrics, 'gps_time_diff', value=(time.time() - self.last_gps_time), type='gauge')
         return t
 
     def get_position(self, reply=None, metrics=None):
@@ -358,7 +358,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
         """
         (mode, ) = self.query('57', reply)
         timing_mode = int(mode)
-        self.add_metric(metrics, 'gps_mask_angle', value=timing_mode)
+        self.add_metric(metrics, 'gps_timing_mode', value=timing_mode)
         return timing_mode
 
     def get_geometric_quality_and_almanac_status(self, reply=None, metrics=None):
@@ -411,7 +411,16 @@ class SpectrumInstrumentsTM4D(SocketContext):
         """Return the mux output source.
 
         Returns:
-                mux1 (int): Mux 1 source
+                mux1 (int): Mux 1 source:
+                    0 for 10 MHz output
+                    1 for 5 MHz output
+                    2 for 1 MHz output
+                    3 for 100 kHz output
+                    4 for 10 kHz output
+                    5 for 1 kHz output
+                    6 for IRIG output (if installed)
+                    7 for PPS output
+                    8 for OFF (newer TM-4's only)
         """
         time_port_baud_rate, mux1, unknown = self.query('60', reply) # undocumented 'unknown' parameter ('+00')
         mux1 = int(mux1)
@@ -439,7 +448,16 @@ class SpectrumInstrumentsTM4D(SocketContext):
         """Return the mux output source.
 
         Returns:
-                mux2 (int): Mux 2 source
+            mux2 (int): Mux 2 source
+                0 : 10 MHz output
+                1 : Mux1 mirror
+                2 : PPS
+                3 : output option 1
+                4 : output option 2
+                5 : output option 3
+                6 : baseband IRIG (if installed)
+                7 : baseband NASA-36 (if installed)
+                8 : OFF (newer TM-4's only)
         """
         (mux2, ) = self.query('68', reply)
         mux2 = int(mux2)
@@ -538,7 +556,11 @@ class SpectrumInstrumentsTM4D(SocketContext):
         Returns:
             (antenna_alarm_enable,pps_source) tuple:
                 antenna_alarm_enable (bool): antenna alarm is enabled
-                pps_source (int): PPS source
+                pps_source (int): PPS source unitl Time valid/Initial phase lock/Beyond lock
+                   0: LOW/GPSPPS/FILPPS
+                   1: LOW/LOW/FILPPS
+                   2: LOW/GPSPPS/GPSPPS
+                   4: GPSPPS/GPSPPS/GPSPPS
         """
         aa_enabled, pps_source, _, _, _, _ = self.query('78', reply)
         aa_enabled, pps_source = (bool(aa_enabled), int(pps_source))
