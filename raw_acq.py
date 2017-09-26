@@ -485,12 +485,15 @@ class RawAcqReceiver(object):
         self.crate_mismatch_count = 0
         self.slot_mismatch_count = 0
         self.ramp_error_count = {}
+        self.ramp_bit_error_count = {}
+        self.ping_error_count = {}
 
         # Determine the interface from which data will be coming from each source by pinging them
-        src_if_addrs = {tuple(src):self._ping(tuple(src)) for port_info in self.ports for src in port_info['sources']} # can be parallelized
-        for (src_ip, src_port), src_if_addr in src_if_addrs.items():
-            if not src_if_addr:
-                raise RuntimeError('Cannot ping %s:%s, so cannot determine interface this data source is connected.' % (src_ip, src_port))
+        src_if_addrs = yield self.ping_sources()
+        failed_src = [arc_addr for arc_addr, arc_if_addr in src_if_addrs.items() if not src_if_addr]
+        if failed_src:
+            raise RuntimeError('Cannot ping %s, so cannot determine interface through which these data sources are reached.' %
+                ','.join('%s:%s' (src_addr) for arc_addr in failed_src))
 
 
         # Determine the interface and port to which each receiver should listen to.
@@ -562,9 +565,10 @@ class RawAcqReceiver(object):
         return result
 
 
+    @coroutine
     def _ping(self, addr, timeout=0.3):
         """
-        Establish a TCP connection with `addr`  at and return the interface and loal port used for the connection.
+        Establish a TCP connection with `addr`  at and return the interface and local port used for the connection.
 
         Parameters:
             addr ((str, int) tuple): Address and port to which a TCP connection is made
@@ -573,19 +577,36 @@ class RawAcqReceiver(object):
         Return:
             An (interface_address, local_port) if the connection is successful, None otherwise.
 
-        Todo:
-            Make a real coroutine
         """
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.settimeout(timeout)
+        stream = tornado.iostream.IOStream(s)
+
         try:
-            s.connect(addr)
+            yield stream.connect(addr)
             if_addr = s.getsockname()
             s.close()
         except socket.timeout:
             self.log.warn('Could not establish a TCP connection with %s:%s' % (addr[0], addr[1]))
             if_addr = None
-        return(if_addr)
+
+        coroutine_return(if_addr)
+
+    @coroutine
+    def ping_sources(self):
+        if not self.ports:
+            coroutine_return()
+        self.log.info('%r: Pinging all data sources' % (self))
+        # Determine the interface from which data will be coming from each source by pinging them
+        src_if_addrs = yield {tuple(src):self._ping(tuple(src))
+                              for port_info in self.ports
+                              for src in port_info['sources']} # can be parallelized
+        for src_addr, src_if_addr in src_if_addrs.items():
+            old_count = self.ping_error_count.setdefault(src_addr, 0)
+            if not src_if_addr:
+                self.ping_error_count[src_addr] = old_count + 1
+        coroutine_return(src_if_addrs)
+
 
     def _get_mac_address(self, if_addr):
         """ Return the MAC address of the interface with address `if_addr`.
@@ -703,7 +724,13 @@ class RawAcqReceiver(object):
                 # Store some stats
                 chan_id =(crate_number, slot_number, chan)
                 self.rms[chan_id] = np.std(adc_data)
-                self.ramp_error_count[chan_id] = self.ramp_error_count.get(chan_id, 0) + np.sum(adc_data != np.arange(2048, dtype=np.int8))
+                expected_ramp = np.arange(2048, dtype=np.int8)
+                self.ramp_error_count[chan_id] = self.ramp_error_count.get(chan_id, 0) + np.sum(adc_data != expected_ramp)
+                for bit in range(8):
+                    mask = 1 << bit
+                    chan_bit_id = (crate_number, slot_number, chan, bit)
+                    self.ramp_bit_error_count[chan_bit_id] = self.ramp_bit_error_count.get(chan_bit_id, 0) + np.count_nonzero((adc_data ^ expected_ramp) & mask)
+
 
     def print_stats(self):
         #print()
@@ -818,8 +845,10 @@ class RawAcqReceiver(object):
         metrics = Metrics()
         for (crate, slot, chan), rms in self.rms.items():
             metrics.add('raw_acq_rms', value= rms, crate=crate, slot=slot, chan=chan, type='gauge')
-        for (crate, slot, chan), ramp_error_count in self.ramp_error_count.items():
-            metrics.add('raw_acq_ramp_errors', value= ramp_error_count, crate=crate_number, slot=slot, chan=chan, type='gauge')
+        for (crate, slot, chan), count in self.ramp_error_count.items():
+            metrics.add('raw_acq_ramp_errors', value= count, crate=crate_number, slot=slot, chan=chan, type='gauge')
+        for (crate, slot, chan, bit), count in self.ramp_bit_error_count.items():
+            metrics.add('raw_acq_ramp_bit_errors', value=count, crate=crate_number, slot=slot, chan=chan, bit=bit, type='gauge')
         for i,r in enumerate(self.receivers):
             metrics.add('raw_acq_received_packets', value=r.packet_counter, receiver=i, type='gauge')
             metrics.add('raw_acq_queued_packets', value=r.queued_packets, receiver=i, type='gauge')
@@ -828,6 +857,8 @@ class RawAcqReceiver(object):
         metrics.add('raw_acq_chan_mismatch', value=self.chan_mismatch_count, type='gauge')
         metrics.add('raw_acq_crate_mismatch', value=self.crate_mismatch_count, type='gauge')
         metrics.add('raw_acq_slot_mismatch', value=self.slot_mismatch_count, type='gauge')
+        for (src_ip, src_port), count in self.ping_error_count.items():
+            metrics.add('raw_acq_ping_errors', value=count, src_ip=src_ip, src_port=src_port, type='gauge')
         return metrics
 
 
@@ -851,6 +882,7 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
         super(RawAcqAsyncRESTServer, self).__init__(address=address, port=port,  heartbeat_string='Rs')
 
         self.add_periodic_callback(self.receiver.print_stats, 3000)
+        self.add_periodic_callback(self.receiver.ping_sources, 3000) # ping the raw_acq data sources periodically to ensure the switches tables always know how to route the packets to here
 
     @coroutine
     def shutdown(self):
