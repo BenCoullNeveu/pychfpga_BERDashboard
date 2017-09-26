@@ -277,3 +277,10 @@ If you need to find the IP address of equipment with specific hardware address, 
     cat /var/lib/dhcpd/dhcpd.leases | grep -B 7 '00:18'
     sudo cat /etc/dhcp/dhcpd.conf | grep '00:18'
 
+
+Update prometheus
+-----------------
+
+Log on hk-east as chime
+sudo vim /etc/prometheus/prometheus.yml
+curl -X POST localhost:9090/-/reload

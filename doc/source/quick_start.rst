@@ -10,3 +10,9 @@ Get the repositories
 --------------------
 
 You need two repositories, both located on https://bitbucket.org.
+
+
+Weather
+-------
+
+See :ref:`weather_quick_start`

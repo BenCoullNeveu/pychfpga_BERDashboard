@@ -1,7 +1,6 @@
 #!/usr/bin/env python
 """
-REST Server and clients for the CHIME receiver hut GPS units Spectrum Instruments TM-4D, which are
-accessed through the StarTech NETRS232 serial-to-ethernet adapters.
+REST Server and clients for allowing the Prometheus to access the DRAO weather data gathered by ``wview``.
 
 """
 
@@ -12,7 +11,7 @@ import sqlite3
 import numpy as np
 
 import log  # logging helper functions
-from pychfpga import Metrics, NameSpace
+from pychfpga import Metrics, NameSpace, load_yaml_config
 from rest import AsyncRESTClient, AsyncRESTServer, endpoint
 from rest import coroutine, coroutine_return, sleep, IOLoop
 from rest import RunSyncWrapper, SocketContext, run_client  # generic REST servers and clients
@@ -35,7 +34,21 @@ dataset = {    "barometer": {"type": "pressure", "units": "hPa"},
                "heatindex": {"type": "temperature", "units": "deg C"}}
 
 def get_wview_metrics(db_path='/var/lib/wview/archive/wview-archive.sdb'):
-    """ Return a Metrics containing the most recent entry of the Wview sqlite database"""
+    """ Return a Metrics object containing the most recent entry of the wview sqlite database specified in `db_path`.
+
+    Parameters:
+
+        db_path (str): full path and filename where the ``wviwe`` SQLLite database can be found.
+
+    Returns:
+
+        Metrics object.
+
+    Notes:
+        - The Metrics is empty if the data does not have a new timestamp compared to the last call.
+        - The metrics contains only the latest entry. We could envision returning all the entries
+          since the last call, so we could access the database less often.
+    """
 
     # Figure out the starting UNIX time.
     # t_start = int(datetime.datetime.strptime(arg.date, "%Y%m%d").strftime("%s"))
