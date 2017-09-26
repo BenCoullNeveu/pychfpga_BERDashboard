@@ -401,7 +401,7 @@ class RawAcqReceiver(object):
     QUEUE_MAXSIZE = 10240 #: Maximum number of elements in a queue, just in case we can't read the queue as fast as we fill it. Otherwise we can use infinite memory.
 
     def __init__(self):
-        self.log = logging.getLogger(__name__).getChild(self.__class__.__name__)
+        self.log = log.get_logger(self)
         self.ports = None
         self.name = None
         self.datawriter = None
@@ -478,7 +478,13 @@ class RawAcqReceiver(object):
         self.hdf5_file = None
         self.hdf5_run = False
         self.capture_start = False
+
+        # Metrics
         self.rms = {}
+        self.chan_mismatch_count = 0
+        self.crate_mismatch_count = 0
+        self.slot_mismatch_count = 0
+        self.ramp_error_count = {}
 
         # Determine the interface from which data will be coming from each source by pinging them
         src_if_addrs = {tuple(src):self._ping(tuple(src)) for port_info in self.ports for src in port_info['sources']} # can be parallelized
@@ -626,7 +632,6 @@ class RawAcqReceiver(object):
     def process_data(self):
         self.old_timestamp = None
         self.n_ant_rec = 0
-
         while self.run:
             # for j, out_q in enumerate(self.data_queues):
                 # if out_q.empty():
@@ -639,10 +644,25 @@ class RawAcqReceiver(object):
                     #print('process_data: Queue Empty')
                     continue
                 #print('.')
+
+                base_data_port = 42500
+                if port < base_data_port:
+                    crate_number_from_port = None
+                    slot_number_from_port = None
+                crate_number_from_port = (port-base_data_port)//100
+                slot_number_from_port = (port-base_data_port) % 100
+
                 stream_id &= 0xFFF
                 chan_number = stream_id & 0xF
                 slot_number = (stream_id >> 4) & 0xF
                 crate_number = (stream_id >> 8) & 0xF
+
+                if chan != chan_number:
+                    self.chan_number_mismatch_count += 1
+                if crate_number_from_port != crate_number:
+                    self.crate_number_mismatch_count += 1
+                if slot_number_from_port != slot_number:
+                    self.slot_number_mismatch_count += 1
 
                 # Write data to HDF file
                 if self.hdf5_run:
@@ -681,7 +701,9 @@ class RawAcqReceiver(object):
                         self.capture_start = False
 
                 # Store some stats
-                self.rms[(crate_number, slot_number, chan)] = np.std(adc_data)
+                chan_id =(crate_number, slot_number, chan)
+                self.rms[chan_id] = np.std(adc_data)
+                self.ramp_error_count[chan_id] = self.ramp_error_count.get(chan_id, 0) + np.sum(adc_data != np.arange(2048, dtype=np.int8))
 
     def print_stats(self):
         #print()
@@ -796,11 +818,16 @@ class RawAcqReceiver(object):
         metrics = Metrics()
         for (crate, slot, chan), rms in self.rms.items():
             metrics.add('raw_acq_rms', value= rms, crate=crate, slot=slot, chan=chan, type='gauge')
+        for (crate, slot, chan), ramp_error_count in self.ramp_error_count.items():
+            metrics.add('raw_acq_ramp_errors', value= ramp_error_count, crate=crate_number, slot=slot, chan=chan, type='gauge')
         for i,r in enumerate(self.receivers):
             metrics.add('raw_acq_received_packets', value=r.packet_counter, receiver=i, type='gauge')
             metrics.add('raw_acq_queued_packets', value=r.queued_packets, receiver=i, type='gauge')
             metrics.add('raw_acq_overflow_packets', value=r.queue_overflows, receiver=i, type='gauge')
         metrics.add('raw_acq_queue_size', value=self.data_queue.qsize(), type='gauge')
+        metrics.add('raw_acq_chan_mismatch', value=self.chan_mismatch_count, type='gauge')
+        metrics.add('raw_acq_crate_mismatch', value=self.crate_mismatch_count, type='gauge')
+        metrics.add('raw_acq_slot_mismatch', value=self.slot_mismatch_count, type='gauge')
         return metrics
 
 
