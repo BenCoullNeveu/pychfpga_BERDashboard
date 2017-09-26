@@ -160,7 +160,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
                  hostname=None, serial=None, part_number=None,
                  crate=None, slot=None, mezzanine={},
                  tuber_objname='IceBoard',
-                 fpga_ip_addr=None, self.fpga_port_number=None,
+                 fpga_ip_addr=None, fpga_port_number=None,
                  local_port_number=0):
         """
         Creates an Iceboard that is accessed through the networking parameters
