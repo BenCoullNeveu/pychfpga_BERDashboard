@@ -61,6 +61,7 @@ class FpgaMmi:
                  ip_addr,
                  port_number,
                  interface_ip_addr=None,
+                 remote_port_number=0,
                  fpga_serial_number=None,
                  set_fpga_networking_parameters=False,
                  udp_retries=10,
@@ -70,8 +71,9 @@ class FpgaMmi:
         """
         self.logger = logging.getLogger(__name__)
         self.ip_addr = ip_addr
-        self.port_number = port_number  # Control port on the FPGA
-        self.address = (self.ip_addr, self.port_number)
+        self.local_port_number = port_number  # Command listening port on the FPGA
+        self.remote_port_number = remote_port_number  # Command replies destination port (0= selected randomly by OS)
+        self.address = (self.ip_addr, self.local_port_number)
         self.fpga_serial_number = fpga_serial_number  # used to select specific FPGAs during broadcasts
         self.set_fpga_networking_parameters = set_fpga_networking_parameters
         self.timeout = timeout
@@ -103,12 +105,13 @@ class FpgaMmi:
 
         self.udp = udp.Udp(
             remote_ip_addr=self.ip_addr,
-            remote_port_number=self.port_number,
+            remote_port_number=self.remote_port_number,
+            loacl_port_number=self.local_port_number,
             if_ip_addr=self.interface_ip_addr)
 
         self.udp.set_timeout(self.timeout)
         self.local_port_number = self.udp.local_port_number
-        # self.logger.info('   Opened control socket on %s:%i through interface %s' % (self.ip_addr, self.port_number, self.interface_ip_addr))
+        # self.logger.info('   Opened control socket on %s:%i through interface %s' % (self.ip_addr, self.local_port_number, self.interface_ip_addr))
 
     def close(self):
         """Closes the socket"""
@@ -141,7 +144,7 @@ class FpgaMmi:
         import struct
 
         ip_addr = self.ip_addr
-        port_number = self.port_number
+        port_number = self.local_port_number
         serial_number = self.fpga_serial_number
         broadcast_group = 0
         # interface_ip_addr = self.interface_ip_addr
@@ -190,7 +193,7 @@ class FpgaMmi:
         specified address. Instead, all fields will be None.
         """
         trial = 0
-        with FpgaMmi(self.ip_addr, self.port_number) as mmi:
+        with FpgaMmi(self.ip_addr, self.local_port_number) as mmi:
             while trial < number_of_trials:
                 try:
                     serial = mmi.read(self._FPGA_SERIAL_NUMBER_ADDR, type=np.dtype('>u8'), timeout=timeout, retry=0)

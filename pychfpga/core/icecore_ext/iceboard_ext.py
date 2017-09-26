@@ -53,17 +53,40 @@ class IceBoardExtHandler(IceBoardPlusHandler):
     object. Note that any explicitely specified parameter overrides a parent parameter.
 
     Parameters:
-        parent_getter (func): Function that returns the dynamically return the parent object from which the following parameters will be fetched. Is `None` if there is no parent.
-        hostname (str): hostname or IP address of the ICEBoard ARM processor (mandatory)
-        serial (str): Serial number of the board. Can be provided by the ARM.
-        part_number (str): Part number of the IceBoard. Can be obtained from the ARM.
-        crate (IceCrateHandler): = object that handle the backplane on which the board is connected. `None` if the board is not connected to a backplane.
-        slot (int): Slot number in which the board is installed ona backplane. None if there is no backplane.
-        mezzanine (dict): Map {mezzanine_number: Mezzanine Handler, ...} describing the installed mezzanines. Can be obtained from the ARM.
-        tuber_objname (str): name of the set of software functions that will be provided by the ARM processor through the Tuber interface.
 
-    Python-based application-specific FPGA firmware and hardware handler are
-    meant to be derived from this class.
+        parent_getter (func): Function that dynamically return the parent object from which the
+            following parameters will be fetched. Is `None` if there is no parent.
+
+        hostname (str): hostname or IP address of the ICEBoard ARM processor (mandatory)
+
+        serial (str): Serial number of the board. Can be provided by the ARM.
+
+        part_number (str): Part number of the IceBoard. Can be obtained from the ARM.
+
+        crate (IceCrateHandler): = object that handle the backplane on which the board is connected.
+            `None` if the board is not connected to a backplane.
+
+        slot (int): Slot number in which the board is installed ona backplane. None if there is no
+            backplane.
+
+        mezzanine (dict): Map {mezzanine_number: Mezzanine Handler, ...} describing the installed
+            mezzanines. Can be obtained from the ARM.
+
+        tuber_objname (str): name of the set of software functions that will be provided by the ARM
+            processor through the Tuber interface.
+
+        fpga_ip_address (str): FPGA's listening IP address in the form 'xx.xx.xx.xx'. If None
+            (default), the address will be obtained by converting the ARM address 'a.b.c.d' into 'a.b.3.d'.
+
+        fpga_port_number (int): FPGA listening port number for commands. Defaults to 41000. If None,
+            the local port number is used.
+
+        local_port_number (int): UDP port number to use to receive command replies. If 0, the number
+            is allocated randomly by the OS. If None, and there is a crate_number and a slot number,
+            then the port numbers will be derived from hese parameters.
+
+    Python-based application-specific FPGA firmware and hardware handler are meant to be derived
+    from this class.
     """
 
     _FPGA_CONTROL_BASE_PORT = 41000
@@ -111,7 +134,6 @@ class IceBoardExtHandler(IceBoardPlusHandler):
     # Instance attributes
     # ---------------------------------------
 
-    fpga_ip_addr = None
     interface_ip_addr = None  # Is automatically detected by opening a TCP connection to the ARM
     zero_target_irigb_year_and_day = False # If True, target IRIGB yead and day will always be written as zero binary values to me compatible with the IRIG-B generator
 
@@ -119,23 +141,27 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         """ Automatcally call the specified 'open' method that creates an
         attribute if the attribute is accessed and is not yet defined.
         """
-        def __init__(self, open_method, attribute_name):
+        def __init__(self, attribute_name, open_method):
             self._open_method = open_method
             self._attribute_name = attribute_name
 
-        def __get__(self, object, class_):
-            # print 'Auto-open %s' % self._attribute_name
-            getattr(object, self._open_method)()  # Execute the open method
-            return getattr(object, self._attribute_name)  # Get target object
+        def __get__(self, obj, class_):
+            getattr(obj, self._open_method)()  # Execute the open method. This normally overrites the attribute, so this will not be called again.
+            return getattr(obj, self._attribute_name)  # Get target object
 
-    mmi       = AutoOpen('open_core', 'mmi')
-    i2c       = AutoOpen('open_core', 'i2c')
-    core_gpio = AutoOpen('open_core', 'core_gpio')
-    core_i2c  = AutoOpen('open_core', 'core_i2c')
-    hw        = AutoOpen('open_hw', 'hw')
+    mmi       = AutoOpen('mmi',       'open_core')
+    i2c       = AutoOpen('i2c',       'open_core')
+    core_gpio = AutoOpen('core_gpio', 'open_core')
+    core_i2c  = AutoOpen('core_i2c',  'open_core')
+    hw        = AutoOpen('hw',        'open_hw'  )
     # bp        = AutoOpen('open_bp', 'bp')
 
-    def __init__(self, parent_getter=None, hostname=None, serial=None, part_number=None, crate=None, slot=None, mezzanine={}, tuber_objname='IceBoard'):
+    def __init__(self, parent_getter=None,
+                 hostname=None, serial=None, part_number=None,
+                 crate=None, slot=None, mezzanine={},
+                 tuber_objname='IceBoard',
+                 fpga_ip_addr=None, self.fpga_port_number=None,
+                 local_port_number=0):
         """
         Creates an Iceboard that is accessed through the networking parameters
         specified in the database.
@@ -143,13 +169,21 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         The created object does not have any fpga or hardware handlers yet.
         Those will be created when the Iceboard is opened.
         """
-        super(IceBoardExtHandler, self).__init__(parent_getter=parent_getter, hostname=hostname, serial=serial, part_number=part_number, crate=crate, slot=slot, mezzanine=mezzanine, tuber_objname=tuber_objname)
+        super(IceBoardExtHandler, self).__init__(parent_getter=parent_getter,
+              hostname=hostname, serial=serial, part_number=part_number,
+              crate=crate, slot=slot, mezzanine=mezzanine, tuber_objname=tuber_objname)
         self.logger = logging.getLogger(__name__)
+
+        self.fpga_ip_addr = fpga_ip_addr
+        self.fpga_port_number = fpga_port_number
+        self.local_port_number = local_port_number
+
         self._mezzanine_ipmi_cache = {1: None, 2: None}
         self._is_core_open = None
         self._is_hw_open = None
         # self._is_bp_open = None
         self._is_open = None
+
 
     # ------------------------------------------------------------------
     # CHIME-specific MMI interface
@@ -218,12 +252,28 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         # Compute the IP address to use for the FPGA UDP interface For now, we
         # replace a.b.c.d by a.b.3.d. We need to find a more generic mechanism
         # for this (like obtaining another IP from the DHCP server)
-        ip_packed = socket.inet_aton(self._get_arm_ip())  #
-        ip_packed = ip_packed[:2] + chr(3) + ip_packed[3]
-        fpga_ip_addr = socket.inet_ntoa(ip_packed)
+        if not self.fpga_ip_addr:
+            ip_packed = socket.inet_aton(self._get_arm_ip())  #
+            ip_packed = ip_packed[:2] + chr(3) + ip_packed[3]
+            self.fpga_ip_addr = socket.inet_ntoa(ip_packed)
+
+        # Compute the local port number if requested and if possible
+        if self.local_port_number is None:
+            if not self.slot or not self.crate or self.crate.crate_number is None:
+                self.local_port_number = 0
+                self.logger.warning('%r: cannot used slot/crate_number-based UDP port number for UDP control channel. There is no slot or crate_number info. Using OS-assigned random port' % self)
+            else:
+                self.local_port_number = self._FPGA_CONTROL_BASE_PORT + 16*self.crate.crate_number + (self.slot-1)
+                self.logger.info('%r: Replies will be sent to %s:%i' % (self, self.interface_ip_addr, self.local_port_number))
+
+        # Select the fpga port number
+        if not self.fpga_port_number:
+            self.fpga_port_number = self.local_port_number
 
         # Set-up the FPGA networking parameters using the ARM-SPI link to the FPGA
-        self.set_fpga_control_networking_parameters(fpga_ip_addr=fpga_ip_addr)
+        self.fpga_mac_addr = self.set_fpga_control_networking_parameters(
+            fpga_ip_addr=self.fpga_ip_addr,
+            fpga_port_number=self.fpga_port_number)
 
 
         # if the FPGA handler instance was not created, check if one exists
@@ -239,9 +289,10 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         # -------------------------------------------------------------------------
         from .lib import fpga_mmi
         self.mmi = fpga_mmi.FpgaMmi(
-            ip_addr=self.fpga_ip_addr,
-            port_number=self.fpga_port_number,
+            fpga_ip_addr=self.fpga_ip_addr,
+            fpga_port_number=self.fpga_port_number,
             interface_ip_addr=self.interface_ip_addr,
+            local_port_number=self.local_port_number,
             udp_retries=udp_retries)
         self.mmi.open()
         self.local_port_number = self.mmi.local_port_number
@@ -377,7 +428,8 @@ class IceBoardExtHandler(IceBoardPlusHandler):
             fpga_port_number=_FPGA_CONTROL_BASE_PORT):
         """
         Set the FPGA listening UDP networking parameters for the FPGA's *incoming* control packets
-        using the ARM SPI MMI link.
+        using the ARM SPI MMI link. Reply packets will be sent back over UDP transmit channel 0, i.e.
+        back to the address and port from which the command originated..
 
         This method sets the FPGA's listening addresses while assuming that the FPGA's is in
         addressing mode "00" (the default addressing mode),  which means that the channel 0
@@ -385,30 +437,33 @@ class IceBoardExtHandler(IceBoardPlusHandler):
 
         Parameters:
 
-            fpga_ip_addr (str):  Address at which the FPGA listens for commands. The address is  in
+            fpga_mac_addr (str): MAC address of the FPGA in the format
+                'xx:xx:xx:xx:xx:xx, where 'xx' is a hex number'. If fpga_mac_addr is None, an
+                arbitrary MAC address is created using the IP address to ensure its uniqueness.
+
+            fpga_ip_addr (str):  Address at which the FPGA listens for commands. The address is in
                 the format of 'a.b.c.d', where a,b,c and d are decimal numbers.
 
             fpga_port_number (int): Port on which the FPGA listens for commands. This port is 41000
                 by default. It is independent from the port from which the host computer sends and
                 receives packets, which can be any port.
 
-            fpga_mac_addr (str): MAC address of the FPGA in the format
-                'xx:xx:xx:xx:xx:xx, where 'xx' is a hex number'. If fpga_mac_addr is None, an
-                arbitrary MAC address is created using the IP address to ensure its uniqueness.
+        Returns:
 
-        While this method sets up the FPGA's *incoming* traffic network parameters (in other forts,
-        the FPGA listring address), the network parameters for the *outgoing* data is set
-        differently. The outgoing data is sent through either UDP transmit channels 0 or 1.
+            str: MAC address that was used/computed, in the form 'xx:xx:xx:xx:xx'
 
-        The channel on which the *commands* are returned is set by the FPGA GPIO field
-        CTRL_RPLY_IP_PORT_OFFSET. This is set to channel '0' by default, and should not be changed.
+        This method sets up the FPGA's *incoming* traffic network parameters (in other words, the
+        FPGA listening address). The  *outgoing* command reply packets are sent through either UDP
+        transmit channels 0 or 1. The channel on which the *commands* are returned is set by the
+        FPGA GPIO field CTRL_RPLY_IP_PORT_OFFSET. This is set to channel '0' by default, and should
+        not be changed.
 
         UDP channel 0 sends packets with the following destination:
 
-            * target ip address: Is hardwired to use the source IP of the last valid IP packet
-              received
             * target mac address: Is hardwired to use the source MAC address of the last valid
               packet received
+            * target ip address: Is hardwired to use the source IP of the last valid IP packet
+              received
             * target port number: Is set in the in the lower 16-bits of the SPI register
               _REMOTE_IP_PORT_ADDR. The default is a value of 0, meaning that the target port will
               be the source port number of the last valid received packet. This default should
@@ -435,7 +490,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         addressing mode is changed by causing a rising edge on the GPIO registers TARGET_LOAD while
         TARGET_FPGA_SERIAL_NUMBER matches the serial number of the FPGA. This is a feature meant to
         allow ARM-less configuring of the FPGA through broadcasting, but we don't use it here since
-        it's much , easier to go through the ARM, which can get its networking parameters
+        it's much easier and reliable to go through the ARM, which can get its networking parameters
         automatically through DHCP.
 
 
@@ -451,14 +506,16 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         else:
             mac_packed = [chr(int(s, 16)) for s in fpga_mac_addr.split(':')]
 
-        self.fpga_mac_addr = fpga_mac_addr
-        self.fpga_port_number = fpga_port_number
-        self.fpga_ip_addr = fpga_ip_addr
+        # self.fpga_mac_addr = fpga_mac_addr
+        # self.fpga_port_number = fpga_port_number
+        # self.fpga_ip_addr = fpga_ip_addr
 
         # Set the FPGA Networking parameters over the ARM-FPGA SPI interface
         self.fpga_mmi_write(self._FPGA_MAC_ADDR_LSW_ADDR, struct.unpack('>I', mac_packed[2:6])[0])
         self.fpga_mmi_write(self._FPGA_MAC_ADDR_MSW_IP_PORT_ADDR, (struct.unpack('>H', mac_packed[0:2])[0] << 16) | fpga_port_number)
         self.fpga_mmi_write(self._FPGA_IP_ADDR_ADDR, struct.unpack('>I', ip_packed)[0])
+
+        return fpga_mac_addr
 
     def set_local_data_port_number(self, port):
         """
@@ -523,7 +580,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
 
 
         The Channel 1 addressing described above is valid for addressing mode '00' (the only mode
-        available to this module, see [#F1]) In this mode, the IP address and MAC address are set by
+        available to this module, see [#f1]) In this mode, the IP address and MAC address are set by
         the GPIO registers TARGET_MAC_ADDR and TARGET_IP_ADDR. The port number is set by the lower
         16 bits of the SPI register _REMOTE_IP_PORT_ADDR  (GPIO's TARGET_IP_PORT is *not* used). The
         Channel 1 destination addresses are set differently in other addressing modes.
