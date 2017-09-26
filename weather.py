@@ -140,12 +140,13 @@ class WeatherAsyncRESTServer(AsyncRESTServer):
         self.log.info('%.32r: Received monitoring metrics request' % self)
         metrics = Metrics()
         if self.config:
-            for unit_name, unit_config in self.config.items():
+            for unit_name, unit_config in self.config.units.items():
                 m = get_wview_metrics(unit_config.db_path)
+                #print(m.metrics.items()[0][1]['entries'][0])
                 if m:
-                    new_time = metrics.metrics.items()[0][1]['entries'][0]['time']
+                    new_time = m.metrics.items()[0][1]['entries'][0]['time']
                     if new_time != self.last_time:
-                        metrics.add(m)
+                        metrics.add(m, name=unit_name)
                     self.last_time = new_time
         handler.set_header('Content-Type', 'text/plain')
         handler.write(str(metrics))
