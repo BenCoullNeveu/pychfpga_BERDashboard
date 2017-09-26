@@ -549,17 +549,17 @@ class XGLinkArray(XGLink):
             err, min_len, max_len, frame_det, rx_fifo, tx_fifo = self.get_rx_lane_monitor(['ERROR_CTR', 'MIN_FRAME_LENGTH', 'MAX_FRAME_LENGTH', 'FRAME_DETECT', 'RX_FIFO_OVERFLOW', 'TX_FIFO_OVERFLOW'],  link_group)
             for lane in range(len(err)):
                 metrics.add('fpga_bp_link_errors', value=err[lane], type='GAUGE', link_type=link_type, lane=lane)
-                metrics.add('fpga_bp_link_min_length', value=min_len[lane], type='GAUGE', lane=lane)
-                metrics.add('fpga_bp_link_max_length', value=max_len[lane], type='GAUGE', lane=lane)
-                metrics.add('fpga_bp_link_frame_detect', value=frame_det[lane], type='GAUGE', lane=lane)
-                metrics.add('fpga_bp_link_rx_fifo_overflow', value=rx_fifo[lane], type='GAUGE', lane=lane)
-                metrics.add('fpga_bp_link_tx_fifo_overflow', value=tx_fifo[lane], type='GAUGE', lane=lane)
-                metrics.add('fpga_bp_link_error_overflow', value=err[lane]==255, type='GAUGE', lane=lane)
-                metrics.add('fpga_bp_link_length_mismatch', value=min_len[lane]!=max_len[lane], type='GAUGE', lane=lane)
-            for gtx_number, gtx in enumerate(self.gtx):
-                #gtx_number = lane + link_group*self.NUMBER_OF_PCB_LANES
-                metrics.add('fpga_bp_link_rx_power', value=gtx.DMONITOROUT & 0x7F, type='GAUGE', gtx=gtx_number)
-                metrics.add('fpga_bp_link_block_lock', value=gtx.BLOCK_LOCK, type='GAUGE', gtx=gtx_number)
+                metrics.add('fpga_bp_link_min_length', value=min_len[lane], type='GAUGE', link_type=link_type, lane=lane)
+                metrics.add('fpga_bp_link_max_length', value=max_len[lane], type='GAUGE', link_type=link_type, lane=lane)
+                metrics.add('fpga_bp_link_frame_detect', value=frame_det[lane], type='GAUGE', link_type=link_type, lane=lane)
+                metrics.add('fpga_bp_link_rx_fifo_overflow', value=rx_fifo[lane], type='GAUGE', link_type=link_type, lane=lane)
+                metrics.add('fpga_bp_link_tx_fifo_overflow', value=tx_fifo[lane], type='GAUGE', link_type=link_type, lane=lane)
+                metrics.add('fpga_bp_link_error_overflow', value=err[lane]==255, type='GAUGE', link_type=link_type, lane=lane)
+                metrics.add('fpga_bp_link_length_mismatch', value=min_len[lane]!=max_len[lane], type='GAUGE', link_type=link_type, lane=lane)
+        for gtx_number, gtx in enumerate(self.gtx):
+            #gtx_number = lane + link_group*self.NUMBER_OF_PCB_LANES
+            metrics.add('fpga_bp_link_rx_power', value=gtx.DMONITOROUT & 0x7F, type='GAUGE', gtx=gtx_number)
+            metrics.add('fpga_bp_link_block_lock', value=gtx.BLOCK_LOCK, type='GAUGE', gtx=gtx_number)
         return metrics
 
     def get_bp_rx_status(self, link_group=None):
