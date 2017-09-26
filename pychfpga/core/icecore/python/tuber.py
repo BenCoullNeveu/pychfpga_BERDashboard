@@ -19,7 +19,7 @@ import tornado.gen
 
 import async
 
-tornado.httpclient.AsyncHTTPClient.configure(None, max_clients=40)  # So we can probe many boards at once (Default is 10)
+tornado.httpclient.AsyncHTTPClient.configure(None, max_clients=40, max_buffer_size=2000000)  # So we can probe many boards at once (Default is 10)
 
 # Prefer simplejson (it's compatible, but faster)
 try:
