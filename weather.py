@@ -5,13 +5,11 @@ REST Server and clients for allowing the Prometheus to access the DRAO weather d
 """
 
 import sys
-import time
-import Queue
 import sqlite3
 import numpy as np
 
 import log  # logging helper functions
-from pychfpga import Metrics, NameSpace, load_yaml_config
+from pychfpga import Metrics, NameSpace
 from rest import AsyncRESTClient, AsyncRESTServer, endpoint
 from rest import coroutine, coroutine_return, sleep, IOLoop
 from rest import RunSyncWrapper, SocketContext, run_client  # generic REST servers and clients
