@@ -489,7 +489,7 @@ class RawAcqReceiver(object):
         self.ping_error_count = {}
 
         # Determine the interface from which data will be coming from each source by pinging them
-        src_if_addrs = yield self.ping_sources()
+        src_if_addrs = self.ping_sources()
         failed_src = [arc_addr for arc_addr, arc_if_addr in src_if_addrs.items() if not src_if_addr]
         if failed_src:
             raise RuntimeError('Cannot ping %s, so cannot determine interface through which these data sources are reached.' %
