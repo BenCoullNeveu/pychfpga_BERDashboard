@@ -111,6 +111,7 @@ class FpgaMmi:
 
         self.udp.set_timeout(self.timeout)
         self.local_port_number = self.udp.local_port_number
+        self.fpga_port_number = self.udp.port_number
         # self.logger.info('   Opened control socket on %s:%i through interface %s' % (self.fpga_ip_addr, self.local_port_number, self.interface_ip_addr))
 
     def close(self):

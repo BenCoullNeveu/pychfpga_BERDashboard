@@ -74,6 +74,9 @@ class Udp(object):
             self.sock.bind((self.if_ip_addr, self.local_port_number))
             (addr, port) = self.sock.getsockname()
             self.local_port_number = port
+            if not self.port_number:
+                self.port_number=port
+            self.address = (self.ip_addr, self.port_number)
             # store the socket in the main module so it will live persistently until the Python session is closed.
             __main__.__opened_sockets__[self.local_port_number] = self.sock
 

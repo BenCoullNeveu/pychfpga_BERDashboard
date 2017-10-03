@@ -161,7 +161,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
                  crate=None, slot=None, mezzanine={},
                  tuber_objname='IceBoard',
                  fpga_ip_addr=None, fpga_port_number=None,
-                 local_port_number=0):
+                 local_port_number=None):
         """
         Creates an Iceboard that is accessed through the networking parameters
         specified in the database.
@@ -259,21 +259,14 @@ class IceBoardExtHandler(IceBoardPlusHandler):
 
         # Compute the local port number if requested and if possible
         if self.local_port_number is None:
+            print('Cannot use fixed comman port numbers: slot=%s, crate=%s' % (self.slot, self.crate))
             if not self.slot or not self.crate or self.crate.crate_number is None:
                 self.local_port_number = 0
-                self.logger.warning('%r: cannot used slot/crate_number-based UDP port number for UDP control channel. There is no slot or crate_number info. Using OS-assigned random port' % self)
+                self.logger.warning('%r: cannot use slot/crate_number-based UDP port number for UDP control channel. There is no slot or crate_number info. Using OS-assigned random port' % self)
             else:
                 self.local_port_number = self._FPGA_CONTROL_BASE_PORT + 16*self.crate.crate_number + (self.slot-1)
                 self.logger.info('%r: Replies will be sent to %s:%i' % (self, self.interface_ip_addr, self.local_port_number))
 
-        # Select the fpga port number
-        if not self.fpga_port_number:
-            self.fpga_port_number = self.local_port_number
-
-        # Set-up the FPGA networking parameters using the ARM-SPI link to the FPGA
-        self.fpga_mac_addr = self.set_fpga_control_networking_parameters(
-            fpga_ip_addr=self.fpga_ip_addr,
-            fpga_port_number=self.fpga_port_number)
 
 
         # if the FPGA handler instance was not created, check if one exists
@@ -296,6 +289,17 @@ class IceBoardExtHandler(IceBoardPlusHandler):
             udp_retries=udp_retries)
         self.mmi.open()
         self.local_port_number = self.mmi.local_port_number
+        self.fpga_port_number = self.mmi.fpga_port_number
+        print('opened fpga (%s:%i) local (%s:%i)' % (self.fpga_ip_addr, self.fpga_port_number, self.interface_ip_addr, self.local_port_number))
+
+        # Select the fpga port number
+        #if not self.fpga_port_number:
+        #    self.fpga_port_number = self.local_port_number
+
+        # Set-up the FPGA networking parameters using the ARM-SPI link to the FPGA
+        self.fpga_mac_addr = self.set_fpga_control_networking_parameters(
+            fpga_ip_addr=self.fpga_ip_addr,
+            fpga_port_number=self.fpga_port_number)
 
         # -------------------------------------------------------------------------
         # Open FPGA's GPIO module interface
