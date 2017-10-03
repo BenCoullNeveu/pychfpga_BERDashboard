@@ -151,6 +151,8 @@ class FPGAArray(object):
                  syslog_log_level=None,
                  udp_retries=3,
 
+                 #ioloop=None,
+
                  **kwargs
                 ):
         """ Create a hardware map describing CHIME hardware and optionally
@@ -622,7 +624,7 @@ class FPGAArray(object):
         #################################
 
         if self.ib:
-            ib.check_tuber_version()  # Check if the board is running a compatible ARM firmware
+            self.ib.check_tuber_version()  # Check if the board is running a compatible ARM firmware
 
             # Auto-discover mezzanines and add them to the hardware map.
             if not no_mezz:
@@ -2311,14 +2313,14 @@ class FPGAArray(object):
             # backplane metrics
             try:
                 slot, ib = ic.slot.items()[0]
-                bp_metrics = yield ib.get_backplane_metrics.async()
-                metrics.add(bp_metrics)
+                metrics +=  yield ib.get_backplane_metrics.async()
+                #metrics.add(bp_metrics)
             except Exception as e:
                 self.logger.error('%r: error getting backplane metrics: error is %r' % (self, e))
         # IceBoard metrics
         self.logger.info('%r: Getting IceBoard hardware metrics' % self)
         try:
-            all_metrics = yield [ib.get_metrics.async() for ib in self.ib]
+            metrics += yield [ib.get_metrics.async() for ib in self.ib]
             self.logger.info('%r: got the metrics' % self)
         except Exception as e:
             self.logger.error('%r: error getting FPGA metrics: error is %r' % (self, e))
@@ -2330,8 +2332,8 @@ class FPGAArray(object):
         self.logger.info('%r:Getting FPGA Firmware metrics' % self)
         if ib.is_open():
             try:
-                all_metrics += yield [ib.get_bp_shuffle_metrics.async() for ib in self.ib]
-                all_metrics += yield [ib.get_crossbar_metrics.async() for ib in self.ib]
+                metrics += yield [ib.get_bp_shuffle_metrics.async() for ib in self.ib]
+                metrics += yield [ib.get_crossbar_metrics.async() for ib in self.ib]
             except Exception as e:
                 self.logger.error('%r: error getting FPGA Firmware metrics: error is %r' % (self, e))
                 try:
@@ -2339,8 +2341,8 @@ class FPGAArray(object):
                 except Exception as e:
                     self.logger.error('%r: Cannot reset FPGA command counters because of error: %r' % (self, e))
             #print(all_metrics)
-        for m in all_metrics:
-            metrics.add(m)
+        #for m in all_metrics:
+        #    metrics.add(m)
 
         # Backplane GTX
         # Errors, signal level

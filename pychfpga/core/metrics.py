@@ -33,6 +33,11 @@ class Metrics(object):
     def as_dict(self):
         return self.metrics
 
+    def __iadd__(self, other):
+        #print('Metric: adding %r' % other)
+        self.add(other)
+        return self
+
     def add(self, metric_name, value=None, type=None , doc=None, time=None, **labels):
         """ Add a metric, a metric entry, or add all the metrics from another Metrics object.
 
@@ -56,15 +61,22 @@ class Metrics(object):
                 a metric. If not specified, there will not ``# TYPE`` entry in the string output.
         """
 
+        if metric_name is None:
+            return
         # If we pass a Metrics object, merge the metrics into this one.
-        if isinstance(metric_name, Metrics):
+        elif isinstance(metric_name, Metrics):
             for met_name, met in metric_name.metrics.items():
                 self.add(met_name, doc=met['doc'], type=met['type'])
                 for entry in met['entries']:
                     new_labels = dict(entry['labels'].items() + labels.items() + self.default_labels.items())
                     self.add(met_name, value=entry['value'], time=entry['time'], **new_labels)
             return
-
+        elif isinstance(metric_name, (list, tuple)):
+            #print('Adding metric list')
+            for m in metric_name:
+                #print('   Adding metric %r' % m)
+                self.add(m, value=value, type=type, doc=doc, time=time, **labels)
+            return
         # get the metric from the local dict, or create an empty one
         metric = self.metrics.setdefault(metric_name, dict(type=None, doc=None, entries=[]))
 
