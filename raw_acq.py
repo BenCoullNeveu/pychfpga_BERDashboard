@@ -884,7 +884,7 @@ class RawAcqReceiver(object):
         # HDF5 file writing stats
 
         metrics.add('raw_acq_hdf5_write_time', value=self.hdf5_write_time)
-        self.self.hdf5_write_time = 0
+        self.hdf5_write_time = 0
         metrics.add('raw_acq_hdf5_n_elements', value=self.n_elements)
 
         # receiver data queue stats
