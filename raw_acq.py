@@ -216,7 +216,7 @@ class hdf5TimestreamData(object):
         self.N_SAMP = 2048
         #self.N_CHANNELS = 1
         self.crate_and_slot_from_port = crate_and_slot_from_port
-        self.f = h5py.File(filestring, 'w')
+        self.f = h5py.File(filestring, 'w', libver='latest')
         self.f.attrs["git_version_tag"] = "0.1"
         self.f.attrs["system_user"] = "root"
         self.f.attrs["collection_server"] = "hostname"
