@@ -22,6 +22,7 @@ import numpy as np
 import h5py
 import datetime
 import tornado
+import psutil
 
 import log
 from rest import AsyncRESTServer, endpoint, AsyncRESTClient, coroutine, coroutine_return, IOLoop, RunSyncWrapper
@@ -409,6 +410,9 @@ class RawAcqReceiver(object):
         self.receivers = []
         self.data_queue = None
         self.gain_estimator = None
+        self.ioloop_last_time = None
+        self.ioloop_response_time = 0
+        self.hdf5_write_time = 0
 
     def __repr__(self):
         return '%s(%s)' % (self.__class__.__name__, self.name)
@@ -688,7 +692,9 @@ class RawAcqReceiver(object):
                 if slot_number_from_port != slot_number:
                     self.slot_number_mismatch_count += 1
                     print('slot number mismatch: port=%i, slot from port=%i, from streamid=%i'% (port, slot_number_from_port, slot_number))
+
                 # Write data to HDF file
+                t0 = time.time()
                 if self.hdf5_run:
                     self.hdf5_file.write(timestamp, port, chan, stream_id, flags, adc_data)
                     self.n_elements += 1
@@ -698,6 +704,7 @@ class RawAcqReceiver(object):
                 elif self.hdf5_file: # if we are no lunget capturing to bile, but a file is open, then close it.
                     self.hdf5_file.close()
                     self.hdf5_file = None # This will tell us we are finished capturing
+                self.hdf5_write_time = max(self.hdf5_write_time, time.time() - t0)
 
 
                 # if timestamp not in self.buffers:
@@ -843,29 +850,75 @@ class RawAcqReceiver(object):
     def is_running(self):
         return bool(self.receivers)
 
+    def check_ioloop_response_time(self):
+        t = time.time()
+        if self.ioloop_last_time is not None:
+            self.ioloop_response_time = max(self.ioloop_response_time or 0, t-self.ioloop_last_time)
+        self.ioloop_last_time = t
+
     @coroutine
     def get_metrics(self):
-        metrics = Metrics()
+        metrics = Metrics(default_type='gauge')
+
+        # Node stats
+
+        mem = psutil.virtual_memory()
+
+        metrics.add('raw_acq_node_mem_total', value=mem.total)
+        metrics.add('raw_acq_node_mem_available', value=mem.available)
+        metrics.add('raw_acq_node_mem_percent', value=mem.percent)
+        metrics.add('raw_acq_node_mem_used', value=mem.used)
+        metrics.add('raw_acq_node_mem_free', value=mem.free)
+
+        cpu = psutil.cpu_times()
+
+        metrics.add('raw_acq_node_cpu_percent', value=psutil.cpu_percent())
+        metrics.add('raw_acq_node_cpu_user', value=cpu.user)
+        metrics.add('raw_acq_node_cpu_system', value=cpu.system)
+        metrics.add('raw_acq_node_cpu_idle', value=cpu.idle)
+
+        # IOloop health stats
+        metrics.add('raw_acq_ioloop_response_time', value= self.ioloop_response_time)
+        self.ioloop_response_time = 0
+
+        # HDF5 file writing stats
+
+        metrics.add('raw_acq_hdf5_write_time', value=self.hdf5_write_time)
+        self.self.hdf5_write_time = 0
+        metrics.add('raw_acq_hdf5_n_elements', value=self.n_elements)
+
+        # receiver data queue stats
+
+        metrics.add('raw_acq_queue_size', value=self.data_queue.qsize())
+        metrics.add('raw_acq_queue_maxsize', value=self.data_queue.maxsize)
+
+        # ADC signal stats
         for (crate, slot, chan), rms in self.rms.items():
-            metrics.add('raw_acq_rms', value= rms, crate=crate, slot=slot, chan=chan, type='gauge')
+            metrics.add('raw_acq_rms', value= rms, crate=crate, slot=slot, chan=chan)
         self.rms = {}
         for (crate, slot, chan), count in self.ramp_error_count.items():
-            metrics.add('raw_acq_ramp_errors', value= count, crate=crate, slot=slot, chan=chan, type='gauge')
+            metrics.add('raw_acq_ramp_errors', value= count, crate=crate, slot=slot, chan=chan)
         self.ramp_error_count = {}
         for (crate, slot, chan, bit), count in self.ramp_bit_error_count.items():
-            metrics.add('raw_acq_ramp_bit_errors', value=count, crate=crate, slot=slot, chan=chan, bit=bit, type='gauge')
-        self.ramp_bit_error_count={}
+            metrics.add('raw_acq_ramp_bit_errors', value=count, crate=crate, slot=slot, chan=chan, bit=bit)
+        self.ramp_bit_error_count = {}
+
+        # Receiver-specific stats
         for i,r in enumerate(self.receivers):
-            metrics.add('raw_acq_received_packets', value=r.packet_counter, receiver=i, type='gauge')
-            metrics.add('raw_acq_queued_packets', value=r.queued_packets, receiver=i, type='gauge')
-            metrics.add('raw_acq_overflow_packets', value=r.queue_overflows, receiver=i, type='gauge')
-        metrics.add('raw_acq_queue_size', value=self.data_queue.qsize(), type='gauge')
-        metrics.add('raw_acq_chan_mismatch', value=self.chan_number_mismatch_count, type='gauge')
-        metrics.add('raw_acq_crate_mismatch', value=self.crate_number_mismatch_count, type='gauge')
-        metrics.add('raw_acq_slot_mismatch', value=self.slot_number_mismatch_count, type='gauge')
+            metrics.add('raw_acq_received_packets', value=r.packet_counter, receiver=i)
+            metrics.add('raw_acq_queued_packets', value=r.queued_packets, receiver=i)
+            metrics.add('raw_acq_overflow_packets', value=r.queue_overflows, receiver=i)
+
+        # Packet integrity stats
+
+        metrics.add('raw_acq_chan_mismatch', value=self.chan_number_mismatch_count)
+        metrics.add('raw_acq_crate_mismatch', value=self.crate_number_mismatch_count)
+        metrics.add('raw_acq_slot_mismatch', value=self.slot_number_mismatch_count)
+
+        # Ping stats
         for (src_ip, src_port), count in self.ping_error_count.items():
-            metrics.add('raw_acq_ping_errors', value=count, src_ip=src_ip, src_port=src_port, type='gauge')
-        self.ping_error_count={}
+            metrics.add('raw_acq_ping_errors', value=count, src_ip=src_ip, src_port=src_port)
+        self.ping_error_count = {}
         return metrics
 
 
@@ -887,9 +940,10 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
     def __init__(self, address='', port=DEFAULT_PORT, logging_params={}):
         self.receiver = RawAcqReceiver()
         super(RawAcqAsyncRESTServer, self).__init__(address=address, port=port,  heartbeat_string='Rs')
-
         self.add_periodic_callback(self.receiver.print_stats, 3000)
         self.add_periodic_callback(self.receiver.ping_sources, 3000) # ping the raw_acq data sources periodically to ensure the switches tables always know how to route the packets to here
+        self.add_periodic_callback(self.receiver.check_ioloop_response_time, 300)
+
 
     @coroutine
     def shutdown(self):

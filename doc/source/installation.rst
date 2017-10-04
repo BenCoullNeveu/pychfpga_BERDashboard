@@ -32,7 +32,12 @@ Requirements
        - futures
        - requests
        - netifaces
+       - psutil
        - pybonjour (requires avahi/mdns/bonjour system files to be installed)::
+
+            pip install -e git+https://github.com/Eichhoernchen/pybonjour.git#egg=pybonjour
+
+            or
 
             wget https://storage.googleapis.com/google-code-archive-downloads/v2/code.google.com/pybonjour/pybonjour-1.1.1.tar.gz
             tar zxf pybonjour-1.1.1.tar.gz
@@ -129,7 +134,7 @@ Now, install python packages, including pybonjour::
 
     pip install ipython
     pip install numpy matplotlib sqlalchemy pyyaml tornado lxml h5py
-    pip install nose docutils futures requests netifaces
+    pip install nose docutils futures requests netifaces psutil
     pip install -e git+https://github.com/Eichhoernchen/pybonjour.git#egg=pybonjour
 
 
