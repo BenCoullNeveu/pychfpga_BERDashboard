@@ -18,6 +18,8 @@ import numpy as np
 
 from metrics import Metrics
 from Module import Module_base, BitField
+from .icecore import async, async_return, async_sleep
+
 import SHUFFLE_BIN_SEL
 
 
@@ -458,6 +460,7 @@ class ShuffleCrossbar(Module_base):
         print '%25s: %s' % ('Frame #', ' '.join('%6i' % f for f in frame_number))
         print '%25s: %s' % ('Delta Frame #', ' '.join('%6i' % (f - frame_ref) for f in frame_number))
 
+    @async
     def get_metrics(self):
         """ Return the monitoring metrics for the 2nd and 3rd crossbar.
         """
@@ -469,6 +472,7 @@ class ShuffleCrossbar(Module_base):
 
         # add ALIGN status flags
         bitfield_names = ['BAD_TLAST', 'BAD_TVALID', 'BAD_FRAME_LENGTH', 'MISSING_FRAME', 'ALIGN_FIFO_OVERFLOW', 'DATA_TIMEOUT']
+        yield None
         align_flags = self.get_lane_monitor(bitfield_names)
         for i, bitfield_name in enumerate(bitfield_names):
             metric_name = 'fpga_crossbar%i_%s_flag' % (self.crossbar_level, bitfield_name.lower())
@@ -477,6 +481,7 @@ class ShuffleCrossbar(Module_base):
                 metrics.add(metric_name, lane=lane, value=flag, type='GAUGE')
 
         # Add frame alignment flag
+        yield None
         frame_numbers = self.capture_frame_number()
         metric_name = 'fpga_crossbar%i_frame_alignment_offset' % (self.crossbar_level)
         for lane, frame_number in enumerate(frame_numbers):
@@ -485,6 +490,7 @@ class ShuffleCrossbar(Module_base):
 
         # Add BIN SEL status
         for lane, bs in enumerate(self.BIN_SEL):
+            yield None
             number_of_sublanes_per_output = self.NUMBER_OF_INPUT_LANES/bs.NUMBER_OF_OUTPUTS
             sublane_mask = (1 << (bs.LAST_LANE + 1)) - (1 << bs.FIRST_LANE)
             mask = sum(sublane_mask << (number_of_sublanes_per_output * i) for i in range(bs.NUMBER_OF_OUTPUTS))
@@ -495,6 +501,7 @@ class ShuffleCrossbar(Module_base):
                         lane=lane, value=bs.FLAGS_FIFO_OVERFLOW & mask, type='GAUGE')
 
         bitfield_names = ['INPUT_FRAME_CTR', 'ALIGN_FRAME_CTR', 'DELAY_CAPTURE', 'FIFO_COUNT']
+        yield None
         counters = self.get_lane_monitor(bitfield_names)
         for i, bitfield_name in enumerate(bitfield_names):
             metric_name = 'fpga_crossbar%i_%s' % (self.crossbar_level, bitfield_name.lower())
@@ -502,7 +509,7 @@ class ShuffleCrossbar(Module_base):
             for lane, flag in enumerate(flags):
                 metrics.add(metric_name, lane=lane, value=flag, type='GAUGE')
 
-        return metrics
+        async_return(metrics)
 
 
     # def print_capture_word(self):

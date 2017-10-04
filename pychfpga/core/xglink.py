@@ -16,6 +16,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from Module import Module_base, BitField
+from .icecore import async, async_return, async_sleep
 from metrics import Metrics
 
 # Types of memory-mapped registers
@@ -534,6 +535,7 @@ class XGLinkArray(XGLink):
     def get_rx_error_count(self, link_group=None):
         return self.get_rx_lane_monitor('ERROR_CTR', link_group)
 
+    @async
     def get_metrics(self):
         """ Checks the status of the rx links. Returns a list of dict, each
         dict containing a number of {error_type:error_info} for the
@@ -546,6 +548,7 @@ class XGLinkArray(XGLink):
             id=self.fpga.get_string_id())
 
         for link_type, link_group in [('pcb_gtx',0), ('qsfp_gtx', 1)]:
+            yield None # let the ioloop process data
             err, min_len, max_len, frame_det, rx_fifo, tx_fifo = self.get_rx_lane_monitor(['ERROR_CTR', 'MIN_FRAME_LENGTH', 'MAX_FRAME_LENGTH', 'FRAME_DETECT', 'RX_FIFO_OVERFLOW', 'TX_FIFO_OVERFLOW'],  link_group)
             for lane in range(len(err)):
                 metrics.add('fpga_bp_link_errors', value=err[lane], type='GAUGE', link_type=link_type, lane=lane)
@@ -557,10 +560,11 @@ class XGLinkArray(XGLink):
                 metrics.add('fpga_bp_link_error_overflow', value=err[lane]==255, type='GAUGE', link_type=link_type, lane=lane)
                 metrics.add('fpga_bp_link_length_mismatch', value=min_len[lane]!=max_len[lane], type='GAUGE', link_type=link_type, lane=lane)
         for gtx_number, gtx in enumerate(self.gtx):
+            yield None # let the ioloop process data
             #gtx_number = lane + link_group*self.NUMBER_OF_PCB_LANES
             metrics.add('fpga_bp_link_rx_power', value=gtx.DMONITOROUT & 0x7F, type='GAUGE', gtx=gtx_number)
             metrics.add('fpga_bp_link_block_lock', value=gtx.BLOCK_LOCK, type='GAUGE', gtx=gtx_number)
-        return metrics
+        async_return(metrics)
 
     def get_bp_rx_status(self, link_group=None):
         """ Checks the status of the rx links. Returns a list of dict, each

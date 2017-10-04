@@ -2939,16 +2939,15 @@ class chFPGA_controller(IceBoardExtHandler):
 
     @async
     def get_bp_shuffle_metrics(self):
-        metrics = self.BP_SHUFFLE.get_metrics()
+        metrics = yield self.BP_SHUFFLE.get_metrics.async()
         async_return(metrics)
 
 
     @async
     def get_crossbar_metrics(self):
-        metrics = Metrics([
-            self.CROSSBAR.get_metrics(),
-            self.CROSSBAR2.get_metrics(),
-            self.CROSSBAR3.get_metrics()])
+        metrics = yield self.CROSSBAR.get_metrics.async()
+        metrics += yield self.CROSSBAR2.get_metrics.async()
+        metrics += yield self.CROSSBAR3.get_metrics.async()
         async_return(metrics)
 
     @async
