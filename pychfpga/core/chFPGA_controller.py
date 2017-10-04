@@ -2476,7 +2476,7 @@ class chFPGA_controller(IceBoardExtHandler):
             cb2_input_lanes_per_output_lane = cb2_lanes[0][1] - cb2_lanes[0][0] + 1 # 4 input lanes per output
             cb2_bins = cb1_output_bins / number_of_cb2_bin_sel # 64/2 = 32
             cb2_bin_spacing = number_of_cb2_bin_sel # 2
-            cb2_bin_select_map = [np.arange(cb2_bins)*cb2_bin_spacing + (i ^ crate_number) for i in range(number_of_cb2_bin_sel)]
+            cb2_bin_select_map = [np.arange(cb2_bins)*cb2_bin_spacing + (i ^ (crate_number & 1)) for i in range(number_of_cb2_bin_sel)]
             cb2_combine_data_flags = True # hardwired to True in crossbar 2
 
             # Output packet geometry
