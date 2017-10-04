@@ -7,8 +7,9 @@ import time as time_
 class Metrics(object):
     """ Simplified container to hold Prometheus Metrics.
     """
-    def __init__(self, arg=None, **default_labels):
-        self.default_labels= default_labels
+    def __init__(self, arg=None, default_type=None, **default_labels):
+        self.default_type = default_type
+        self.default_labels = default_labels
         if arg is None:
             self.metrics = {}
         elif isinstance(arg, Metrics):  # Add all metrics, with the additional default labels
@@ -87,6 +88,7 @@ class Metrics(object):
             metric['doc'] = doc
 
         # Assign metric type if some is provided. It must be unique to the metric.
+        type = type or self.default_type
         if metric['type'] and type and metric['type'] != type.upper():
             raise RuntimeError('Cannot assign different types to metric %s' % metric_name)
         elif type:
