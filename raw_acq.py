@@ -702,7 +702,8 @@ class RawAcqReceiver(object):
                     if self.n_elements >= self.elements_per_file:
                         self.hdf5_file_number += 1
                         self.hdf5_file = self.start_new_hdf5_file()
-                elif self.hdf5_file: # if we are no lunget capturing to bile, but a file is open, then close it.
+                elif self.hdf5_file: # if we are no longer capturing to file, but a file is open, then close it.
+                    self.log.info('%r: Closing HDF5 file' % self)
                     self.hdf5_file.close()
                     self.hdf5_file = None # This will tell us we are finished capturing
                 self.hdf5_write_time = max(self.hdf5_write_time, time.time() - t0)
@@ -789,11 +790,12 @@ class RawAcqReceiver(object):
 
     def start_new_hdf5_file(self):
         if self.hdf5_file:
+            self.log.info('%r: Closing HDF5 file' % self)
             self.hdf5_file.close()
         self.n_elements = 0
         filename = "{0:06d}.h5".format(self.hdf5_file_number)
         filename =  os.path.join(self.hdf5_base_dir, filename)
-        self.log.info('%r: started logging in file %s' % (self, filename))
+        self.log.info('%r: Started storing raw data in HDF5 file %s' % (self, filename))
         h5file = hdf5TimestreamData(filename, elements_per_file=self.elements_per_file)  # start a new empty file
         return h5file
 

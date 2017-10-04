@@ -1106,7 +1106,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         self.log.info('%r: requesting ch_master status' % self)
         r = self.chime_master.status() # {state:x and config: y}. chome_master always exists.
         result = dict(state=r['state'])
-        self.log.info("%r: ch_master status is currently '%s'. It took %f seconds to get it" % (self, r['state'], time.time()-t0)) 
+        self.log.info("%r: ch_master status is currently '%s'. It took %f seconds to get it" % (self, r['state'], time.time()-t0))
         result['is_ready'] = r['state'] == 'on' # so we don't have to know the string to check
         if self.future and self.future.done():
             result['start_result'] = self.future.result() # raise an error if start failed
@@ -1187,7 +1187,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
             if self.chime_master and self.chime_master.state=='on' and self.chime_master.fpgas:
                 try:
                     metrics = yield self.chime_master.fpgas.get_metrics.async()
-                    self.log.info('%r: Got %i metrics' % (self, len(metrics.metrics)))
+                    self.log.info('%r: Got %i FPGA metrics' % (self, len(metrics.metrics)))
                     if self.metrics_queue.full():
                         self.metrics_queue.get()
                     self.metrics_queue.put(metrics)

@@ -2321,7 +2321,7 @@ class FPGAArray(object):
         self.logger.info('%r: Getting IceBoard hardware metrics' % self)
         try:
             metrics += yield [ib.get_metrics.async() for ib in self.ib]
-            self.logger.info('%r: got the metrics' % self)
+            self.logger.info('%r: Got the IceBoards hardware metrics' % self)
         except Exception as e:
             self.logger.error('%r: Error getting FPGA hardware metrics. Error is %r' % (self, e))
             try:
@@ -2335,12 +2335,14 @@ class FPGAArray(object):
                 metrics += yield [ib.get_bp_shuffle_metrics.async() for ib in self.ib]
                 self.logger.info('%r:Getting corner-turn crossbars metrics' % self)
                 metrics += yield [ib.get_crossbar_metrics.async() for ib in self.ib]
+                self.logger.info('%r: Got the corner-turn metrics' % self)
             except Exception as e:
                 self.logger.error('%r: Error getting FPGA corner-turn engine metrics. Error is %r' % (self, e))
                 try:
                     self.ib.check_command_count(reset=True)
                 except Exception as e:
                     self.logger.error('%r: Cannot reset FPGA command counters because of error: %r' % (self, e))
+        self.logger.info('%r: Finished gathering FPGA/backplane metrics' % self)
             #print(all_metrics)
         #for m in all_metrics:
         #    metrics.add(m)
