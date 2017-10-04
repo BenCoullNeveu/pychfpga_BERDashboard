@@ -2323,19 +2323,20 @@ class FPGAArray(object):
             metrics += yield [ib.get_metrics.async() for ib in self.ib]
             self.logger.info('%r: got the metrics' % self)
         except Exception as e:
-            self.logger.error('%r: error getting FPGA metrics: error is %r' % (self, e))
+            self.logger.error('%r: Error getting FPGA hardware metrics. Error is %r' % (self, e))
             try:
                 self.ib.check_command_count(reset=True)
             except Exception as e:
                 self.logger.error('%r: Cannot reset FPGA command counters because of error: %r' % (self, e))
 
-        self.logger.info('%r:Getting FPGA Firmware metrics' % self)
         if ib.is_open():
             try:
+                self.logger.info('%r:Getting corner-turn links metrics' % self)
                 metrics += yield [ib.get_bp_shuffle_metrics.async() for ib in self.ib]
+                self.logger.info('%r:Getting corner-turn crossbars metrics' % self)
                 metrics += yield [ib.get_crossbar_metrics.async() for ib in self.ib]
             except Exception as e:
-                self.logger.error('%r: error getting FPGA Firmware metrics: error is %r' % (self, e))
+                self.logger.error('%r: Error getting FPGA corner-turn engine metrics. Error is %r' % (self, e))
                 try:
                     self.ib.check_command_count(reset=True)
                 except Exception as e:
