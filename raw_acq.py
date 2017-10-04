@@ -21,8 +21,9 @@ import struct
 import numpy as np
 import h5py
 import datetime
+import tornado
 
-
+import log
 from rest import AsyncRESTServer, endpoint, AsyncRESTClient, coroutine, coroutine_return, IOLoop, RunSyncWrapper
 from pychfpga import NameSpace, Metrics
 
@@ -412,6 +413,8 @@ class RawAcqReceiver(object):
     def __repr__(self):
         return '%s(%s)' % (self.__class__.__name__, self.name)
 
+
+    @coroutine
     def start(self, name='RawAcq', ports=[]):
         """ Start a raw data receiver for each specified port.
 
@@ -481,16 +484,16 @@ class RawAcqReceiver(object):
 
         # Metrics
         self.rms = {}
-        self.chan_mismatch_count = 0
-        self.crate_mismatch_count = 0
-        self.slot_mismatch_count = 0
+        self.chan_number_mismatch_count = 0
+        self.crate_number_mismatch_count = 0
+        self.slot_number_mismatch_count = 0
         self.ramp_error_count = {}
         self.ramp_bit_error_count = {}
         self.ping_error_count = {}
 
         # Determine the interface from which data will be coming from each source by pinging them
-        src_if_addrs = self.ping_sources()
-        failed_src = [arc_addr for arc_addr, arc_if_addr in src_if_addrs.items() if not src_if_addr]
+        src_if_addrs = yield self.ping_sources()
+        failed_src = [src_addr for src_addr, src_if_addr in src_if_addrs.items() if not src_if_addr]
         if failed_src:
             raise RuntimeError('Cannot ping %s, so cannot determine interface through which these data sources are reached.' %
                 ','.join('%s:%s' (src_addr) for arc_addr in failed_src))
@@ -562,7 +565,7 @@ class RawAcqReceiver(object):
             status='started',
             target_addr=dest_ifs.items() # return as a list of tuples, json does not support tuple-indexed dicts
             )
-        return result
+        coroutine_return(result)
 
 
     @coroutine
@@ -671,11 +674,11 @@ class RawAcqReceiver(object):
                     crate_number_from_port = None
                     slot_number_from_port = None
                 crate_number_from_port = (port-base_data_port)//100
-                slot_number_from_port = (port-base_data_port) % 100
+                slot_number_from_port = ((port-base_data_port) % 100)-1 # zero-based
 
                 stream_id &= 0xFFF
                 chan_number = stream_id & 0xF
-                slot_number = (stream_id >> 4) & 0xF
+                slot_number = (stream_id >> 4) & 0xF  # zero-based
                 crate_number = (stream_id >> 8) & 0xF
 
                 if chan != chan_number:
@@ -684,7 +687,7 @@ class RawAcqReceiver(object):
                     self.crate_number_mismatch_count += 1
                 if slot_number_from_port != slot_number:
                     self.slot_number_mismatch_count += 1
-
+                    print('slot number mismatch: port=%i, slot from port=%i, from streamid=%i'% (port, slot_number_from_port, slot_number))
                 # Write data to HDF file
                 if self.hdf5_run:
                     self.hdf5_file.write(timestamp, port, chan, stream_id, flags, adc_data)
@@ -845,20 +848,24 @@ class RawAcqReceiver(object):
         metrics = Metrics()
         for (crate, slot, chan), rms in self.rms.items():
             metrics.add('raw_acq_rms', value= rms, crate=crate, slot=slot, chan=chan, type='gauge')
+        self.rms = {}
         for (crate, slot, chan), count in self.ramp_error_count.items():
-            metrics.add('raw_acq_ramp_errors', value= count, crate=crate_number, slot=slot, chan=chan, type='gauge')
+            metrics.add('raw_acq_ramp_errors', value= count, crate=crate, slot=slot, chan=chan, type='gauge')
+        self.ramp_error_count = {}
         for (crate, slot, chan, bit), count in self.ramp_bit_error_count.items():
-            metrics.add('raw_acq_ramp_bit_errors', value=count, crate=crate_number, slot=slot, chan=chan, bit=bit, type='gauge')
+            metrics.add('raw_acq_ramp_bit_errors', value=count, crate=crate, slot=slot, chan=chan, bit=bit, type='gauge')
+        self.ramp_bit_error_count={}
         for i,r in enumerate(self.receivers):
             metrics.add('raw_acq_received_packets', value=r.packet_counter, receiver=i, type='gauge')
             metrics.add('raw_acq_queued_packets', value=r.queued_packets, receiver=i, type='gauge')
             metrics.add('raw_acq_overflow_packets', value=r.queue_overflows, receiver=i, type='gauge')
         metrics.add('raw_acq_queue_size', value=self.data_queue.qsize(), type='gauge')
-        metrics.add('raw_acq_chan_mismatch', value=self.chan_mismatch_count, type='gauge')
-        metrics.add('raw_acq_crate_mismatch', value=self.crate_mismatch_count, type='gauge')
-        metrics.add('raw_acq_slot_mismatch', value=self.slot_mismatch_count, type='gauge')
+        metrics.add('raw_acq_chan_mismatch', value=self.chan_number_mismatch_count, type='gauge')
+        metrics.add('raw_acq_crate_mismatch', value=self.crate_number_mismatch_count, type='gauge')
+        metrics.add('raw_acq_slot_mismatch', value=self.slot_number_mismatch_count, type='gauge')
         for (src_ip, src_port), count in self.ping_error_count.items():
             metrics.add('raw_acq_ping_errors', value=count, src_ip=src_ip, src_port=src_port, type='gauge')
+        self.ping_error_count={}
         return metrics
 
 
@@ -894,7 +901,7 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
         self.log.info('%.32r: Received start command with %r' % (self, config))
         if self.receiver.is_running():
             raise RuntimeError('Server is already started')
-        result = self.receiver.start(**config)
+        result = yield self.receiver.start(**config)
         self.log.info('%.32r: UDP receiver started. Returned %r' % (self, result))
         coroutine_return(result)
 
@@ -943,6 +950,7 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
     def get_monitoring_data(self, handler):
         self.log.info('%.32r: Received monitoring metrics request' % self)
         metrics = yield self.receiver.get_metrics()
+        self.log.info('%.32r: Returning %i metrics' % (self, len(metrics)))
         handler.set_header('Content-Type', 'text/plain')
         handler.write(str(metrics))
 
