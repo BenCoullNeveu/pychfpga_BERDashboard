@@ -36,7 +36,7 @@ import pychfpga  # used to access .calculate_gain.
 from pychfpga import FPGAArray, NameSpace, load_yaml_config, Metrics
 import log
 
-from rest import RESTClient, AsyncRESTServer, AsyncRESTClient # generic REST servers and clients
+from rest import RESTClient, AsyncRESTServer, AsyncRESTClient, HTTPError # generic REST servers and clients
 from rest import endpoint, coroutine, coroutine_return, sleep
 from rest import RunSyncWrapper, IOLoop, run_client
 
@@ -586,7 +586,7 @@ class ChimeMaster(object):
     def start(self, **config):
         """ Make the telescope operational by starting and initializing the FPGA F-Engine and the GPU X Engine (Kotekan), CHRX, and raw_acq remote processes. """
         self.log.debug('%r: starting ChimeMaster instance' % (self))
-
+        self.log.info('Starting ch_master.start()')
         if self.state != 'off':
             coroutine_return(dict(error='already started'))
 
@@ -662,14 +662,18 @@ class ChimeMaster(object):
 
 
 
+        self.log.info("Starting raw_acq servers")
         yield self.start_raw_acq_servers()
 
         # Start raw_data capture
         if conf.raw_acq.common_config.capture_duration is not None:
+            self.log.info("Starting HDF5 data capture")
             yield self.start_hdf5_capture()
         else:
+            self.log.info("Starting idle data capture")
             yield self.start_fpga_raw_data_transmission()
 
+        self.log.info("Finished ch_master.start()")
 
         self.state = 'on'
         coroutine_return({})
@@ -1098,9 +1102,12 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
                 :start_result (str): Messsage returned by ChimeMaster.start() command.
                 :config (dict): Current configuration
         """
+        t0=time.time()
+        self.log.info('%r: requesting ch_master status' % self)
         r = self.chime_master.status() # {state:x and config: y}. chome_master always exists.
         result = dict(state=r['state'])
-        result['is_ready'] = r['state'] == 'ok' # so we don't have to know the string to check
+        self.log.info("%r: ch_master status is currently '%s'. It took %f seconds to get it" % (self, r['state'], time.time()-t0)) 
+        result['is_ready'] = r['state'] == 'on' # so we don't have to know the string to check
         if self.future and self.future.done():
             result['start_result'] = self.future.result() # raise an error if start failed
         else:
@@ -1272,14 +1279,21 @@ class ChimeMasterAsyncRESTClient(AsyncRESTClient):
             raise ValueError('A YAML configuration filename:object must be specified')
         if isinstance(config, str):
             config = load_yaml_config(config.encode('ascii'))
-        self.log.debug('%r: Sending start command to server' % self)
+        print('Client start')
+        self.log.info('%r: Sending start command to server' % self)
         reply = yield self.post('start', **config)
-        self.log.debug('%r: Reply to start command is: %r' % (self, reply))
-
+        self.log.info('%r: Reply to start command is: %r' % (self, reply))
+        print('Client started')
         while True:
-            status = yield self.status() # raise exception if start failed
-            if status['is_ready']:
-                coroutine_return('start_result')
+            try:
+                status = yield self.status() # raise exception if start failed
+
+                print('%r:  Current state is: %s, is_ready=%s' % (self, status['state'], status['is_ready']))
+                if status['is_ready']:
+                    self.log.info('%r: start process is completed' % self)
+                    coroutine_return(status['start_result'])
+            except HTTPError:
+                status=dict(state='HTTP error')
             self.log.info('%r: Waiting for the START process to complete. Current state is: %s' % (self, status['state']))
             yield sleep(1)
 
