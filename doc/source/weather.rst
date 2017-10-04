@@ -85,6 +85,12 @@ Python Module Summary
 	weather.WeatherAsyncRESTServer
 	weather.WeatherAsyncRESTClient
 
+Weather data scraping function
+******************************
+
+.. autofunction:: weather.get_wview_metrics
+
+
 Weather REST Server
 *******************
 
@@ -96,7 +102,7 @@ Weather REST Server
    	.. automethod:: stop(self, handler)
 	.. automethod:: get_monitoring_data(self, handler)
 
-	.. rubric:: Support methods
+..	.. rubric:: Support methods
 
 
 Weather REST Client
@@ -109,10 +115,6 @@ Weather REST Client
 
 ..   .. automethod:: stop
 
-Weather scraping function
-*************************
-
-.. autofunction:: weather.get_wview_metrics
 
 
 Design
