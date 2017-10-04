@@ -411,7 +411,8 @@ class RawAcqReceiver(object):
         self.data_queue = None
         self.gain_estimator = None
         self.ioloop_last_time = None
-        self.ioloop_response_time = 0
+        self.ioloop_max_response_time = None
+        self.ioloop_min_response_time = None
         self.hdf5_write_time = 0
 
     def __repr__(self):
@@ -853,7 +854,8 @@ class RawAcqReceiver(object):
     def check_ioloop_response_time(self):
         t = time.time()
         if self.ioloop_last_time is not None:
-            self.ioloop_response_time = max(self.ioloop_response_time or 0, t-self.ioloop_last_time)
+            self.ioloop_max_response_time = max(self.ioloop_max_response_time or 0, t-self.ioloop_last_time)
+            self.ioloop_min_response_time = min(self.ioloop_min_response_time or float('inf'), t-self.ioloop_last_time)
         self.ioloop_last_time = t
 
     @coroutine
@@ -878,14 +880,20 @@ class RawAcqReceiver(object):
         metrics.add('raw_acq_node_cpu_idle', value=cpu.idle)
 
         # IOloop health stats
-        metrics.add('raw_acq_ioloop_response_time', value= self.ioloop_response_time)
-        self.ioloop_response_time = 0
+        metrics.add('raw_acq_ioloop_max_response_time', value=self.ioloop_max_response_time)
+        metrics.add('raw_acq_ioloop_min_response_time', value=self.ioloop_min_response_time)
+        self.ioloop_max_response_time = None
+        self.ioloop_min_response_time = None
 
         # HDF5 file writing stats
 
         metrics.add('raw_acq_hdf5_write_time', value=self.hdf5_write_time)
         self.hdf5_write_time = 0
         metrics.add('raw_acq_hdf5_n_elements', value=self.n_elements)
+        metrics.add('raw_acq_hdf5_n_elements_max', value=self.elements_per_file)
+        metrics.add('raw_acq_hdf5_number_of_files', value=self.hdf5_file_number)
+
+
 
         # receiver data queue stats
 
