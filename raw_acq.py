@@ -213,9 +213,17 @@ class hdf5TimestreamData(object):
     """ Object representing a HDF5 file containing raw data
     """
     def __init__(self, filestring, elements_per_file=2048*64, crate_and_slot_from_port = False):
+        self.log = log.get_logger(self)
         self.N_SAMP = 2048
         #self.N_CHANNELS = 1
         self.crate_and_slot_from_port = crate_and_slot_from_port
+        self.filename = filestring
+        self.lock_filename = self.filename + '.lock'
+
+        # create a lock file
+        with open(self.lock_filename,'w') as h:
+            h.write('locked\n')
+        self.log.info('%r: Opening raw data HDF5 file %s' % (self, filestring))
         self.f = h5py.File(filestring, 'w', libver='latest')
         self.f.attrs["git_version_tag"] = "0.1"
         self.f.attrs["system_user"] = "root"
@@ -284,7 +292,12 @@ class hdf5TimestreamData(object):
         self.n += 1
 
     def close(self):
+        self.log.info('%r: Closing HDF5 file %s' % (self, self.filename))
         self.f.close()
+        try:
+            os.remove(self.lock_filename)
+        except OSError:
+            self.log.error('%r: Unable to remove HDF5 lock file %s' % (self, self.lock_filename))
 
 
 # class dataWriter(object):
@@ -686,14 +699,21 @@ class RawAcqReceiver(object):
                 slot_number = (stream_id >> 4) & 0xF  # zero-based
                 crate_number = (stream_id >> 8) & 0xF
 
+                discard = False
                 if chan != chan_number:
                     self.chan_number_mismatch_count += 1
+                    discard = True
                 if crate_number_from_port != crate_number:
                     self.crate_number_mismatch_count += 1
+                    discard = True
                 if slot_number_from_port != slot_number:
                     self.slot_number_mismatch_count += 1
-                    print('slot number mismatch: port=%i, slot from port=%i, from streamid=%i'% (port, slot_number_from_port, slot_number))
+                    discard = True
 
+                if discard:
+                    self.log.warning('%r:Crate/slot/channel mismatch: (%i, %i, %i) from port, (%i, %i, %i) from streamID' %
+                        (self, crate_number_from_port, slot_number_from_port, chan, crate_number, slot_number, chan_number))
+                    continue
                 # Write data to HDF file
                 t0 = time.time()
                 if self.hdf5_run:
@@ -703,7 +723,6 @@ class RawAcqReceiver(object):
                         self.hdf5_file_number += 1
                         self.hdf5_file = self.start_new_hdf5_file()
                 elif self.hdf5_file: # if we are no longer capturing to file, but a file is open, then close it.
-                    self.log.info('%r: Closing HDF5 file' % self)
                     self.hdf5_file.close()
                     self.hdf5_file = None # This will tell us we are finished capturing
                 self.hdf5_write_time = max(self.hdf5_write_time, time.time() - t0)
@@ -790,12 +809,10 @@ class RawAcqReceiver(object):
 
     def start_new_hdf5_file(self):
         if self.hdf5_file:
-            self.log.info('%r: Closing HDF5 file' % self)
             self.hdf5_file.close()
         self.n_elements = 0
         filename = "{0:06d}.h5".format(self.hdf5_file_number)
         filename =  os.path.join(self.hdf5_base_dir, filename)
-        self.log.info('%r: Started storing raw data in HDF5 file %s' % (self, filename))
         h5file = hdf5TimestreamData(filename, elements_per_file=self.elements_per_file)  # start a new empty file
         return h5file
 
