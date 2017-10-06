@@ -220,11 +220,12 @@ class hdf5TimestreamData(object):
         self.filename = filestring
         self.lock_filename = self.filename + '.lock'
 
-        # create a lock file
+        # # create a lock file
         with open(self.lock_filename,'w') as h:
             h.write('locked\n')
-        self.log.info('%r: Opening raw data HDF5 file %s' % (self, filestring))
-        self.f = h5py.File(filestring, 'w', libver='latest')
+
+        self.log.info('%r: Opening raw data HDF5 file %s' % (self, self.filename))
+        self.f = h5py.File(self.filename, 'w', libver='latest')
         self.f.attrs["git_version_tag"] = "0.1"
         self.f.attrs["system_user"] = "root"
         self.f.attrs["collection_server"] = "hostname"
@@ -296,8 +297,9 @@ class hdf5TimestreamData(object):
         self.f.close()
         try:
             os.remove(self.lock_filename)
+            # os.rename(self.lock_filename, self.filename)
         except OSError:
-            self.log.error('%r: Unable to remove HDF5 lock file %s' % (self, self.lock_filename))
+            self.log.error('%r: Unable to rename HDF5 lock file from %s to %s' % (self, self.lock_filename, self.filename))
 
 
 # class dataWriter(object):
@@ -897,6 +899,15 @@ class RawAcqReceiver(object):
         metrics.add('raw_acq_node_cpu_user', value=cpu.user)
         metrics.add('raw_acq_node_cpu_system', value=cpu.system)
         metrics.add('raw_acq_node_cpu_idle', value=cpu.idle)
+
+        # Disk usage on the hdf5 file destination volume
+        if hasattr(os,'statvfs') and self.hdf5_run:
+            s = os.statvfs(self.hdf5_base_dir)
+            metrics.add('raw_acq_disk_size', value=s.f_blocks * s.f_bsize)
+            metrics.add('raw_acq_disk_used', value=(s.f_blocks - s.f_bfree) * s.f_bsize)
+            metrics.add('raw_acq_disk_free', value=s.f_bfree * s.f_bsize)
+            metrics.add('raw_acq_disk_percent_used', value=float(s.f_blocks - s.f_bfree)/s.f_blocks)
+            metrics.add('raw_acq_disk_percent_free', value=float(s.f_bfree)/s.f_blocks)
 
         # IOloop health stats
         metrics.add('raw_acq_ioloop_max_response_time', value=self.ioloop_max_response_time)
