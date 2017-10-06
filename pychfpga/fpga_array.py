@@ -293,16 +293,8 @@ class FPGAArray(object):
 
             stderr_log_level: sets up a handler that prints on stderr
         """
-
-        if not ioloop:
-            # Create our own IOLoop so we don't interfere with ipython's own ioloop.
-            # old_ioloop = IOLoop.current()
-            ioloop = IOLoop()
-            # ioloop.make_current()
-        # else:
-        #     old_ioloop = None
-        ioloop.run_sync(functools.partial(
-             self.init,
+        init = functools.partial(
+             self.init.async,
              hwm=hwm,
              iceboards=iceboards,
              icecrates=icecrates,
@@ -326,10 +318,36 @@ class FPGAArray(object):
              stderr_log_level=stderr_log_level,
              syslog_log_level=syslog_log_level,
              udp_retries=udp_retries,
-             **kwargs))
+             **kwargs)
 
+
+        if not ioloop:
+            # Create our own IOLoop so we don't interfere with ipython's own ioloop.
+            old_ioloop = IOLoop.current()
+            ioloop = IOLoop()
+            ioloop.make_current()
+            ioloop.run_sync(init)
+            old_ioloop.make_current()
+        else:
+            self._init = init
+            #old_ioloop = IOLoop.current()
+            #ioloop.make_current()
+            #future = init()
+            #ioloop.add_future(future)
+            #while not future.done():
+            #   print('waiting', future, future.done())
+            #   time.sleep(.3) 
+            #   pass
+            #old_ioloop.make_current()
+
+        # else:
+        #     old_ioloop = None
             # old_ioloop = IOLoop.current
             # IOLoop.set_current(ioloop)
+
+    @async
+    def run(self):
+       yield self._init()
 
     @async
     def init(self,
@@ -536,10 +554,10 @@ class FPGAArray(object):
                 class_ = HWMResource._decl_class_registry[class_name] # look up all the classes from the class registry created with the Base object
                 if issubclass(class_, IceBoardPlus):
                     crate_number = params.pop('crate_number', None)
-                    self.logger.debug('%r: Crate %r is in %r' % (self, crate_number, params))
+                    #self.logger.debug('%r: Crate %r is in %r' % (self, crate_number, params))
                     if crate_number is not None:
                         crate = self.hwm.query(IceCrateExt).filter(IceCrateExt.crate_number==crate_number).one()
-                        self.logger.debug('%r: Assigning crate %r to board %r' % (self, crate, params))
+                        #self.logger.debug('%r: Assigning crate %r to board %r' % (self, crate, params))
                         params['crate'] = crate
                     else:
                         raise RuntimeError('%r: In the hwm, crate must be an integer referring to a crate number. It will be converted to a crate object reference' % self)
@@ -565,8 +583,8 @@ class FPGAArray(object):
             self.logger.info('%.32r: Pinging IceBoards specified in YAML file' % (self))
             ib_to_ping = self.hwm.query(IceBoardPlus).as_dict()  # use as_dict so ib_to_ping does not change as we delete boards from the hwm
             if ib_to_ping:
-                ping_results = ib_to_ping.ping(timeout=ping_timeout)  # asynchronous parallel call to all boards
-                self.logger.debug('%.32r: Ping results are %s' % (self, ping_results))
+                ping_results = yield [ib.ping.async(timeout=ping_timeout) for ib in ib_to_ping]  # asynchronous parallel call to all boards
+                #self.logger.debug('%.32r: Ping results are %s' % (self, ping_results))
                 for i, ping_successful in enumerate(ping_results):
                     ib = ib_to_ping[i]
                     if ping_successful:
@@ -606,7 +624,7 @@ class FPGAArray(object):
             # ping all boards concurrently
             ping_results = yield {ib: ib.ping.async() for ib in added_ib}
             # If some boards failed, raise an exception
-            if not all(ping.results.value()):
+            if not all(ping_results.values()):
                 raise RuntimeError("%r: The following Iceboards could not be pigned: '%s'" % (
                     self,
                     ', '.join('%r (%s)' % (ib, ib.tuber_uri)
@@ -717,7 +735,7 @@ class FPGAArray(object):
         #################################
 
         if self.ib:
-            yield [ib.check_tuber_version.async() for ib in self.ib]  # Check if the board is running a compatible ARM firmware
+            [ib.check_tuber_version() for ib in self.ib]  # Check if the board is running a compatible ARM firmware
 
             # Auto-discover mezzanines and add them to the hardware map.
             if not no_mezz:

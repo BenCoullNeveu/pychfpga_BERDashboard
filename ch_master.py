@@ -737,8 +737,8 @@ class ChimeMaster(object):
         # in the parameters, the FPGAs will be loaded with their bitstream, communication with the FPGAs
         # will be established and all the Python objects needed to operate the FPGA firmware will be
         # created and initialized.
-        self.fpgas = ca = FPGAArray(**fpga_array_params, ioloop=IOLoop.current())  # Starts an independent ioloop while initializing. Web clients/server stop while
-
+        self.fpgas = ca = FPGAArray(ioloop=IOLoop.current(), **fpga_array_params)  # Starts an independent ioloop while initializing. Web clients/server stop while
+        yield ca.run.async()
 
         if not ca.ib: # if there ar eno boards in the array
             if conf.debug.get('allow_empty_fpga_array', False):
@@ -1104,10 +1104,11 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
             # print('Done')
             try:
                 logger = log.get_logger(self)
-                print('Got ne wlogger %r' % logger)
-                print(' Logger name=%s, level=%s, handlers=%s, disabled=%s' % (logger.name, logger.level, logger.handlers, logger.disabled))
+                #print('Got ne wlogger %r' % logger)
+                #print(' Logger name=%s, level=%s, handlers=%s, disabled=%s' % (logger.name, logger.level, logger.handlers, logger.disabled))
             except Exception as e:
-                print('oops. Exception %r' % e)
+                #print('oops. Exception %r' % e)
+                pass
             if future.exception():
                 logger.error('START Done with exception: %r' % future.exception())
             else:
