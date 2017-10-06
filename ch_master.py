@@ -737,7 +737,7 @@ class ChimeMaster(object):
         # in the parameters, the FPGAs will be loaded with their bitstream, communication with the FPGAs
         # will be established and all the Python objects needed to operate the FPGA firmware will be
         # created and initialized.
-        self.fpgas = ca = FPGAArray(**fpga_array_params)  # Starts an independent ioloop while initializing. Web clients/server stop while
+        self.fpgas = ca = FPGAArray(**fpga_array_params, ioloop=IOLoop.current())  # Starts an independent ioloop while initializing. Web clients/server stop while
 
 
         if not ca.ib: # if there ar eno boards in the array

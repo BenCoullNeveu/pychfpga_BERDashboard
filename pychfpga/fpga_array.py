@@ -16,6 +16,7 @@ import matplotlib.pyplot as plt
 import pickle
 import re
 import datetime
+import functools
 
 from tornado.netutil import Resolver
 from tornado.ioloop import IOLoop
@@ -151,7 +152,7 @@ class FPGAArray(object):
                  syslog_log_level=None,
                  udp_retries=3,
 
-                 #ioloop=None,
+                 ioloop=None,
 
                  **kwargs
                 ):
@@ -293,7 +294,80 @@ class FPGAArray(object):
             stderr_log_level: sets up a handler that prints on stderr
         """
 
+        if not ioloop:
+            # Create our own IOLoop so we don't interfere with ipython's own ioloop.
+            # old_ioloop = IOLoop.current()
+            ioloop = IOLoop()
+            # ioloop.make_current()
+        # else:
+        #     old_ioloop = None
+        ioloop.run_sync(functools.partial(
+             self.init,
+             hwm=hwm,
+             iceboards=iceboards,
+             icecrates=icecrates,
+             mezzanines=mezzanines,
+             exclude_iceboards=exclude_iceboards,
+             crate_map=crate_map,
+             ignore_missing_boards = ignore_missing_boards,
+             subarrays=subarrays, ping=ping,
+             mdns_timeout=mdns_timeout,
+             no_mezz=no_mezz,
+             bitfile=bitfile,
+             prog=prog,
+             open=open,
+             if_ip=if_ip,
+             sync_method=sync_method,
+             sync_source=sync_source,
+             sync_master=sync_master,
+             sync_master_time_source=sync_master_time_source,
+             mode=mode,
+             frames_per_packet=frames_per_packet,
+             stderr_log_level=stderr_log_level,
+             syslog_log_level=syslog_log_level,
+             udp_retries=udp_retries,
+             **kwargs))
 
+            # old_ioloop = IOLoop.current
+            # IOLoop.set_current(ioloop)
+
+    @async
+    def init(self,
+
+             hwm=None,
+             iceboards=[], icecrates=[], mezzanines=[], exclude_iceboards=[],
+             crate_map={},
+             ignore_missing_boards = False,
+
+             subarrays=[], ping=True,
+             mdns_timeout=2,
+             no_mezz=False,
+
+             bitfile=None,
+             prog=None,
+             open=None,
+             if_ip=None,
+
+
+             sync_method=None,
+             sync_source=None,
+             sync_master=None,
+             sync_master_time_source=None,
+
+             mode=None,
+             frames_per_packet=2,
+             stderr_log_level=None,
+             syslog_log_level=None,
+             udp_retries=3,
+
+             #ioloop=None,
+
+             **kwargs
+            ):
+
+        """
+        Co-routine implementation of fpga_array initialization
+        """
         self.ib = []  # make sure repr() has always something
         self.ic = []
 
@@ -517,6 +591,8 @@ class FPGAArray(object):
         # serial numbers. We can talk to these boards, which means we can figure out everything we
         # need from these boards (serial, crate, slot  etc) right away without requiring us to do
         # mDNS query, which is the last resort (because not all systems might have mDNS support).
+
+        added_ib = []
         for (model, hostname) in list(hw_table.iceboards): # make a copy: we modify in-place
             if model is None or '.' in str(hostname): # if it is actually a hostname. Might be an int serial
                 hw_table.iceboards.remove((model, hostname))
@@ -524,14 +600,26 @@ class FPGAArray(object):
                 new_ib = IceBoardPlus(hostname=hostname)
                 self.hwm.add(new_ib)
                 self.hwm.flush()
-                # Explicitely listed boards must exist on the network
-                if ping:
-                    if new_ib.ping(timeout=ping_timeout):
-                        new_ib.hostname = socket.gethostbyname(new_ib.hostname)
-                        self.hwm.flush()
-                    else:
-                        raise RuntimeError("%r could not be found at '%s'"
-                                           % (new_ib, new_ib.tuber_uri))
+                added_ib .append(new_ib)
+        # Explicitely listed boards must exist on the network
+        if ping:
+            # ping all boards concurrently
+            ping_results = yield {ib: ib.ping.async() for ib in added_ib}
+            # If some boards failed, raise an exception
+            if not all(ping.results.value()):
+                raise RuntimeError("%r: The following Iceboards could not be pigned: '%s'" % (
+                    self,
+                    ', '.join('%r (%s)' % (ib, ib.tuber_uri)
+                              for ib, ping_result in ping_results.items() if not ping_result)))
+            # resolve hostnames into IP addresses
+            # this is not concurrent, unfortunately... this is why we checked ping first, otherwise it blocks for a long time
+            t0=time.time()
+            for ib, ping_result in ping_results.items():
+                if ping_result:
+                    ib.hostname = socket.gethostbyname(ib.hostname)
+            if any(ping_results.values()):
+                self.hwm.flush()
+            self.logger.info('%r: resolving IP addresses took %s seconds' % (self, time.time()-t0))
 
         ########################################################
         # Resolve missing serial/crate/slot info through the ARM
@@ -542,13 +630,16 @@ class FPGAArray(object):
         # (i.e without using mDNS and pybonjour).
         ib_without_serial = self.hwm.query(IceBoardPlus).filter(IceBoardPlus.serial == None)
         if ib_without_serial.count():
-            self.logger.info('%.32r: Auto-Discovering serial number for IceBoards %s' % (self, ', '.join(ib_without_serial.hostname)))
-            ib_without_serial.discover_serial()
+            self.logger.info('%.32r: Auto-Discovering serial number for IceBoards %s' %
+                (self, ', '.join(ib_without_serial.hostname)))
+            # concurrently resolve serials
+            yield [ib.discover_serial.async() for ib in ib_without_serial]
 
         ib_without_crate = self.hwm.query(IceBoardPlus).filter(or_(IceBoardPlus.crate==None, IceBoardPlus.slot==None))
         if ib_without_crate.count():
-            self.logger.info('%.32r: Auto-Discovering crate information for IceBoards %s' % (self, ', '.join(ib_without_crate.hostname)))
-            ib_without_crate.discover_crate()
+            self.logger.info('%.32r: Auto-Discovering crate information for IceBoards %s' %
+                (self, ', '.join(ib_without_crate.hostname)))
+            yield [ib.discover_crate.async() for ib in ib_without_crate]
 
         ###########################################################################
         # mDNS discovery of boards and crates specified by model/serial number only
@@ -604,10 +695,12 @@ class FPGAArray(object):
         # Check for missing crates
         current_crates = [(c.part_number, self._to_integer(c.serial)) for c in ic]
         #print current_crates
-        missing_crates = [(model, serial) for (model, serial) in hw_table.icecrates if (model, self._to_integer(serial)) not in current_crates]
+        missing_crates = [(model, serial) for (model, serial) in hw_table.icecrates
+                          if (model, self._to_integer(serial)) not in current_crates]
         #print missing_crates
         if missing_crates:
-            raise RuntimeError('%.32r: The following crates are missing: %s' % (self, ', '.join('%s SN%s' % (model, serial) for (model, serial) in missing_crates)))
+            raise RuntimeError('%.32r: The following crates are missing: %s' %
+                (self, ', '.join('%s SN%s' % (model, serial) for (model, serial) in missing_crates)))
         # Check for missing boards
         missing_slots = { (ic.part_number, ic.serial, ic.crate_number): set(range(1, ic.NUMBER_OF_SLOTS + 1)) - set(ic.slot) for ic in self.ic}
         if any(missing_slots.values()):
@@ -624,13 +717,13 @@ class FPGAArray(object):
         #################################
 
         if self.ib:
-            self.ib.check_tuber_version()  # Check if the board is running a compatible ARM firmware
+            yield [ib.check_tuber_version.async() for ib in self.ib]  # Check if the board is running a compatible ARM firmware
 
             # Auto-discover mezzanines and add them to the hardware map.
             if not no_mezz:
                 self.logger.info('Discovering Mezzanines...')
                 self.print_flush()  # make sure we see the previous prints right away so we have a better feeling of what is happening
-                self.ib.discover_mezzanines()
+                yield [ib.discover_mezzanines.async() for ib in self.ib]
                 self.hwm.flush()
                 self.ib.set_cache()
 
@@ -660,8 +753,8 @@ class FPGAArray(object):
                 self.fpga_bitstream = FPGABitstream(bitfile, auto_reload=False)
                 self.logger.info('Loaded bitfile: %s' % bitfile)
                 str(self.fpga_bitstream)
-                ib.register_fpga_bitstream(self.fpga_bitstream)
-                ib.set_fpga_bitstream(force= (prog > 1))
+                self.ib.register_fpga_bitstream(self.fpga_bitstream)
+                yield [ib.set_fpga_bitstream.async(force= (prog > 1)) for ib in self.ib]
                 self.logger.info('Done configuring FPGAs')
 
         self.print_flush()
@@ -678,20 +771,22 @@ class FPGAArray(object):
                 ib.interface_ip_addr = if_ip
 
             self.logger.info('Initializing firmware (calling ib.open())')
-            self.ib.open(adc_delay_table=ADC_DELAY_TABLE,
+            yield [ib.open.async()(adc_delay_table=ADC_DELAY_TABLE,
                          udp_retries=udp_retries,
                          init=open,
                          **kwargs
                          # sampling_frequency=sampling_frequency,
                          # reference_frequency=reference_frequency,
-                         )
+                         ) for ib in self.ib]
 
+            self.logger.info('%r: Setting SYNC method' % self)
             if sync_method or sync_source:
                 self.set_sync_method(method=sync_method, source=sync_source, master=sync_master, master_time_source=sync_master_time_source)
+            self.logger.info('%r: Setting operational mode to %s' % (self, mode))
             if mode:
                 self.set_operational_mode(mode=mode, frames_per_packet=frames_per_packet)
 
-            self.logger.info('Initializing Backplane firmware')
+            self.logger.info('%r: Initializing Backplane firmware' % self)
             if self.ic:
                 self.ic.init()
 
