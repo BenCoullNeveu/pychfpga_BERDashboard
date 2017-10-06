@@ -977,22 +977,49 @@ class chFPGA_controller(IceBoardExtHandler):
         return self.recv
 
 
-    def start_data_capture(self, period=None, frames_per_burst=1,  number_of_bursts=0,  channels=None, source='scaler', sync=1, verbose=1, burst_period_in_seconds=None, burst_period_in_frames=None, offset=0):
+    def start_data_capture(self, period=None, frames_per_burst=1,  number_of_bursts=0,
+                           channels=None, source='scaler', sync=1, verbose=1,
+                           burst_period_in_seconds=None, burst_period_in_frames=None, offset=0):
         """
-        Triggers the capture and transmission of ADC (pre-FFT) or SCALER (post
-        FFT) data frames the Ethernet port. This function does not receive the
-        frames from the ethernet port. This has to be done separately.
+        Starts the transmission of ADC (post-function generator / pre-FFT) or SCALER (post
+        scaler) data frames to the Ethernet port at the specified rate.
 
-        Data is sent as N bursts ('number_of_bursts') of M frames
-        ('frames_per_burst') . If 'number_of_bursts' is zero or not specified,
-        burst transmission is continuous.
+        Parameters:
 
-        Burst repetition rate is set either as a period specified in seconds
-        ('period' or 'burst_period_in_seconds') or as a number of frames
-        ('burst_period_in-frames').
+            period (float): Time (in seconds) between captured bursts
 
-        'source' selects the data source and is either 'adc' or 'scaler'.
-        Default is 'scaler'.
+            burst_period_in_seconds (float): Same as `period` or as a number of frames
+
+            burst_period_in-frames (int): Number of frames between captured bursts.
+
+            number_of_bursts (int): Number of bursts to send, after which the FPGA stops sending
+                data. If `number_of_bursts`=0, the transmission continues indefinitely, until
+                stopped by `stop_data_capture()`.
+
+            frames_per_burst (int): Number of frames to send in a single burst. Default is 1.
+                Limited by buffer space in the FPGA.
+
+            source (str): selects the data source. 'adc':  the data is taken after the function
+                generator (sorry, non intuitive). `scaler`: the data is taken after the scaler.
+                Default is 'scaler'.
+
+            channels (list): list of channels for which the data capture will be enabled. others are
+            left untouched.
+
+            sync (bool):
+
+            verbose (int):
+
+            offset (int): Number that translates to how many frames are skipped before the capture
+                counters starts after a sync(). This is used to stagger capture frame transmission
+                between boards in a crate to prevent UDP packets from being dropped by a switch.
+
+
+        Data is sent as N bursts ('number_of_bursts') of M frames ('frames_per_burst') . If
+        'number_of_bursts' is zero or not specified, burst transmission is continuous.
+
+        Burst repetition rate is set either as a period specified in seconds ('period' or
+        'burst_period_in_seconds') or as a number of frames ('burst_period_in-frames').
         """
         if channels is None:
             channels = self.default_channels

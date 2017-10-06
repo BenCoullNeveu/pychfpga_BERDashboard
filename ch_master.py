@@ -530,6 +530,13 @@ class ChimeMaster(object):
     def start_fpga_raw_data_transmission(self, capture_rate=None, capture_source=None):
         """ Configure the FPGAs to transmit raw data.
 
+        Parameters:
+
+            capture_rate (float): Number of frames to send per second.
+
+            capture_source (str): selects the data source. 'adc':  the data is taken after the function generator (sorry, non
+                intuitive). `scaler`: the data is taken after the scaler. Default is 'scaler'.
+
         If no arguments are provided, the FPGA will be set to transmit data at the idle rate and from source defined in the config file.
         """
         conf = self.config.raw_acq.common_config
@@ -543,16 +550,45 @@ class ChimeMaster(object):
                 ib.start_data_capture(period=capture_period, source=capture_source, offset=offset)
 
     @coroutine
-    def start_hdf5_capture(self, capture_folder=None, capture_filename=None, capture_rate=None, capture_duration=None, capture_source=None, capture_elements_per_file=None):
+    def start_hdf5_capture(self, capture_folder=None, capture_filename=None, capture_rate=None,
+                           capture_duration=None, capture_source=None, capture_elements_per_file=None):
+        """
+        instricts the raw_acq server to start storing raw data in HDF5 files at a specified rate, duration and in the specified folder.
 
+
+        Parameters:
+
+            capture_folder (str): path to the folder where the raw data folder will be created. If it is
+                a relative path, it will be relative to the run folder. If not specified or `None`, it
+                will be taken from the config file.
+
+            capture_filename (str): name of the folder in which the HDF5 files ``nnnnnn.h5`` will be
+                created. Is prepended with the time. If not specified or `None`, it will be taken
+                from the config file.
+
+            capture_rate (float): How many frames will be stored in HDF5 files per second for each
+                channel. If not specified or `None`, it will be taken from the config file.
+
+            capture_duration (float): period of time (in seconds) during which the captured data
+                will be stored to HDF5 files. After which the capture will revert to the idle rate.
+                if ``0``, the capture will continue indefinitely.  If not specified or `None`, it will be taken
+                from the config file.
+
+            capture_source (str): selects the data source. 'adc': function generator output,
+                'scaler' = scaler output. If not specified or `None`, the parameter is taken from the config file.
+
+            capture_elements_per_file (int): Number of frames to store in each HDF5 files. If not
+            specified or `None`, the parameter is taken from the config file.
+
+        """
         conf = self.config.raw_acq.common_config
-        capture_rate = capture_rate or conf.hdf5_capture_rate
         capture_source = capture_source or conf.capture_source
-        capture_folder = capture_folder or conf.capture_folder
+        capture_rate = capture_rate or conf.hdf5_capture_rate
+        capture_folder = capture_folder or conf.hdf5_capture_folder
         capture_folder = os.path.join(self.acq_base_dir, capture_folder)
-        capture_filename = capture_filename or conf.capture_filename
-        capture_duration = capture_duration or conf.capture_duration
-        capture_elements_per_file = capture_elements_per_file or conf.capture_elements_per_file
+        capture_filename = capture_filename or conf.hdf5_capture_filename
+        capture_duration = capture_duration or conf.hdf5_capture_duration
+        capture_elements_per_file = capture_elements_per_file or conf.hdf5_capture_elements_per_file
 
         yield self.start_fpga_raw_data_transmission(capture_rate, capture_source)
 
@@ -666,7 +702,7 @@ class ChimeMaster(object):
         yield self.start_raw_acq_servers()
 
         # Start raw_data capture
-        if conf.raw_acq.common_config.capture_duration is not None:
+        if conf.raw_acq.common_config.hdf5_capture_rate and conf.raw_acq.common_config.hdf5_capture_duration is not None:
             self.log.info("Starting HDF5 data capture")
             yield self.start_hdf5_capture()
         else:
