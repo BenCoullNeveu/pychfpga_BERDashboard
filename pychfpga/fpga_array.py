@@ -651,7 +651,11 @@ class FPGAArray(object):
             self.logger.info('%.32r: Auto-Discovering serial number for IceBoards %s' %
                 (self, ', '.join(ib_without_serial.hostname)))
             # concurrently resolve serials
-            yield [ib.discover_serial.async() for ib in ib_without_serial]
+            futures = [ib.discover_serial.async() for ib in ib_without_serial]
+            self.logger.info('%r: got all discover_serial futures' % self)
+            yield futures # [ib.discover_serial.async() for ib in ib_without_serial]
+
+            self.logger.info('%.32r: finished Auto-Discovering serial number for IceBoards')
 
         ib_without_crate = self.hwm.query(IceBoardPlus).filter(or_(IceBoardPlus.crate==None, IceBoardPlus.slot==None))
         if ib_without_crate.count():
@@ -789,7 +793,7 @@ class FPGAArray(object):
                 ib.interface_ip_addr = if_ip
 
             self.logger.info('Initializing firmware (calling ib.open())')
-            yield [ib.open.async()(adc_delay_table=ADC_DELAY_TABLE,
+            yield [ib.open.async(adc_delay_table=ADC_DELAY_TABLE,
                          udp_retries=udp_retries,
                          init=open,
                          **kwargs

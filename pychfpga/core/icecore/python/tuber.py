@@ -337,6 +337,7 @@ class TuberObject(object):
                  ' "kwargs": {}}' % self.tuber_objname,
             connect_timeout=timeout,
             request_timeout=timeout)
+        logger.info('%r: Pinging %s' % (self, self.tuber_uri))
         response = yield client.fetch(request, raise_error=False)
         if response.error:
             logger.debug('%.32r: ping returned an HTTP error. Board is considered to be absent.' % self)
@@ -432,7 +433,7 @@ class TuberObject(object):
         t2 = time.time()
 
         # Say something about the retrieval
-        l.debug('%r: Retrieved Tuber metadata (%f sec)' % (self, t2-t1))
+        l.info('%r: Retrieved Tuber metadata (%f sec)' % (self, t2-t1))
 
         if not json_out.result:
             l.warning("%r: Tuber returned an empty metadata list for object '%s'." % (self, self.tuber_objname))
@@ -454,6 +455,7 @@ class TuberObject(object):
         )
         for p, r in zip(meta.properties, json_out):
             props[p] = r.result
+        l.info('%r: got properties' % (self))
 
         # Retrieve all methods
         json_in = json.dumps([{
@@ -465,6 +467,7 @@ class TuberObject(object):
         )
         for m, r in zip(meta.methods, json_out):
             methods[m] = r.result
+        l.info('%r: got methods. done.' % (self))
 
         self._tuber_meta_properties = props
         self._tuber_meta_methods = methods

@@ -294,11 +294,13 @@ class IceBoardPlus(IceBoard):
     @async
     def discover_serial(self, update=True):
         """ Discover the serial number of this IceBoard from its IPMI data, and update the hardware map accordingly if `update=True`"""
+        self.logger.info('%r: discovering the serial number of board at %s' % (self, self.tuber_uri))
         try:
             actual_serial = str((yield self.get_motherboard_serial.async()))
         except:  #  Deal with uninitialized boards
             self.logger.warn('%r: Error while attempring to read the board serial number' % (self))
             actual_serial = None
+        self.logger.info('%r: got the serial number of board at %s to be %s' % (self, self.tuber_uri, actual_serial))
 
         if update:
             if not actual_serial:
@@ -307,6 +309,7 @@ class IceBoardPlus(IceBoard):
                 self.logger.warn('%r: The discovered serial number differs from the current (hardware map) one. Updating to the discovered value.' % (self))
             self.serial = actual_serial
             self.hwm.flush()
+        self.logger.info('%r: finished discovering the serial number of board at %s' % (self, self.tuber_uri))
         async_return(self.serial)
 
     @async
