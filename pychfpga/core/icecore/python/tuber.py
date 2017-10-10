@@ -332,7 +332,7 @@ class TuberObject(object):
         """
         client = tornado.httpclient.AsyncHTTPClient()
         request = tornado.httpclient.HTTPRequest(
-            url=self.obj.tuber_uri,
+            url=self.tuber_uri,
             method='POST',
             body=json.dumps(command),
             connect_timeout=timeout,
