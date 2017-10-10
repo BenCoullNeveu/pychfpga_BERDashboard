@@ -336,7 +336,7 @@ class FPGAArray(object):
             #ioloop.add_future(future)
             #while not future.done():
             #   print('waiting', future, future.done())
-            #   time.sleep(.3) 
+            #   time.sleep(.3)
             #   pass
             #old_ioloop.make_current()
 
@@ -618,7 +618,7 @@ class FPGAArray(object):
                 new_ib = IceBoardPlus(hostname=hostname)
                 self.hwm.add(new_ib)
                 self.hwm.flush()
-                added_ib .append(new_ib)
+                added_ib.append(new_ib)
         # Explicitely listed boards must exist on the network
         if ping:
             # ping all boards concurrently
@@ -651,6 +651,7 @@ class FPGAArray(object):
             self.logger.info('%.32r: Auto-Discovering serial number for IceBoards %s' %
                 (self, ', '.join(ib_without_serial.hostname)))
             # concurrently resolve serials
+            yield [ib._tuber_get_meta() for ib in ib_without_serial]
             futures = [ib.discover_serial.async() for ib in ib_without_serial]
             self.logger.info('%r: got all discover_serial futures' % self)
             yield futures # [ib.discover_serial.async() for ib in ib_without_serial]
