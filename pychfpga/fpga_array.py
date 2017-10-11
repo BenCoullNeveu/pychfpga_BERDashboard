@@ -17,6 +17,7 @@ import pickle
 import re
 import datetime
 import functools
+import zlib
 
 from tornado.netutil import Resolver
 from tornado.ioloop import IOLoop
@@ -94,6 +95,7 @@ class FPGABitstream(object):
     def _load(self):
         with open(self.filename, 'rb') as file_:
             self.bitstream = file_.read()
+        self.crc32 = zlib.crc32(self.bitstream) & 0xFFFFFFFF  # compute CRC32 of the data
 
 # Default ADC delays
 ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 = {
@@ -549,7 +551,7 @@ class FPGAArray(object):
             self.hwm = HardwareMap()  # Create empty hardware map
             for obj in hwm:
                 params = dict(obj) # make a copy
-                print(params)
+                #print(params)
                 class_name = params.pop('class') # remove the class name from the dict. The rest wil be used as instantiation parameters
                 class_ = HWMResource._decl_class_registry[class_name] # look up all the classes from the class registry created with the Base object
                 if issubclass(class_, IceBoardPlus):
@@ -651,7 +653,7 @@ class FPGAArray(object):
             self.logger.info('%.32r: Auto-Discovering serial number for IceBoards %s' %
                 (self, ', '.join(ib_without_serial.hostname)))
             # concurrently resolve serials
-            yield [ib._tuber_get_meta() for ib in ib_without_serial]
+            yield [ib._tuber_get_meta.async() for ib in ib_without_serial]
             futures = [ib.discover_serial.async() for ib in ib_without_serial]
             self.logger.info('%r: got all discover_serial futures' % self)
             yield futures # [ib.discover_serial.async() for ib in ib_without_serial]
@@ -3113,15 +3115,18 @@ def setup_logging(log_target='syslog', log_level='debug', sql_log_level='warn', 
         log_handler = logging.handlers.SysLogHandler()
     else:
         log_handler = logging.FileHandler(log_target)
+    formatter = logging.Formatter('%(asctime)s %(levelname)s %(name)s:  %(message)s')
 
     logger = logging.getLogger('')
     logger.handlers = []  # Clear all existing handlers
     logger.setLevel(logging.DEBUG)  # pass all messages to the handlers which will filter what they want
 
     log_handler.setLevel(log_levels[log_level])
+    log_handler.setFormatter(formatter)
     logger.addHandler(log_handler)
 
     stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(formatter)
     stream_handler.setLevel(log_levels[stderr_log_level])
     logger.addHandler(stream_handler)
     return logger
@@ -3277,13 +3282,13 @@ def create_fpga_array(args=None):
 
     # Add logging-related command-line parameters
     logging_group = parser.add_argument_group('logging parameters', 'Specify how and where the logging is done')
-    logging_group.sub_dict = 'logging'  # group all arguments in this group in a sub dictionary with this name
+    logging_group.sub_dict = 'cli_logging'  # group all arguments in this group in a sub dictionary with this name
     add_logging_arguments(logging_group)
 
 
     # Add FPGA Array-related command-line parameters
     fpga_group = parser.add_argument_group('FPGA Array parameters', 'Allows interactive creation of a hardware map and initialization of all its components')
-    fpga_group.sub_dict = 'fpga_array_params'  # group all arguments in this group in a sub dictionary with this name
+    fpga_group.sub_dict = 'cli_fpga_array'  # group all arguments in this group in a sub dictionary with this name
     add_fpga_array_arguments(fpga_group)
 
     gpu_group = parser.add_argument_group('GPU Array parameters', 'Allows interactive creation of GPU nodes')
@@ -3291,7 +3296,7 @@ def create_fpga_array(args=None):
     gpu_group.add_argument('-n', '--gpu_nodes', type=str, nargs='+',  help='List of IP address or hostnames of the GPU node objects to be created.')
 
     ps_group = parser.add_argument_group('Power Supply Array parameters', 'Allows interactive creation of Power Supply objects')
-    ps_group.sub_dict = 'power_supply_array'  # group all arguments in this group in a sub dictionary with this name
+    ps_group.sub_dict = 'cli_power_supply_array'  # group all arguments in this group in a sub dictionary with this name
     ps_group.add_argument('-p', '--power_supplies', type=str, nargs='+', help='List of IP address or hostnames of the power supply objects (Agilent_N5764A) to be created.')
 
     # Add generic command-line parameters
@@ -3305,14 +3310,19 @@ def create_fpga_array(args=None):
     # Load configuration file
     # -------------------------------
     config = load_yaml_config(args.pop('yaml', None))  # Load YAML config
-    config = merge_dict(args, config)     # Add command line arguments to config
+    #config = merge_dict(config, args)     # Add command line arguments to config
     # config['test'] = parse_dut_id(' '.join(config['target']))
 
-    logger = setup_logging(**config.get('logging', {}))
+    logger = setup_logging(**config.get('cli_logging', {}))
     fpga_array_params = config.get('fpga', {}).get('fpga_array_params', {}) or config.get('fpga_array_params', {})
+    print('merging \n\n%r\n\n with \n\n%r' % (fpga_array_params, args['cli_fpga_array']))
+    merge_dict(fpga_array_params, args['cli_fpga_array'])
     fpga_array = FPGAArray(**fpga_array_params)  # Create FPGA array
+
     gpu_array = GPUArray(**config.get('gpu_array', {}))     # Create FPGA array
-    ps_array = PSArray(**config.get('power_supply_array', {}))     # Create FPGA array
+    ps_array_params = config.get('power_supply_array', {})
+    merge_dict(ps_array_params, args['cli_power_supplies'])
+    ps_array = PSArray(**ps_array_params)     # Create FPGA array
 
     return config, fpga_array, gpu_array, ps_array
 

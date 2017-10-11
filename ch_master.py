@@ -1107,7 +1107,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
                 #print('Got ne wlogger %r' % logger)
                 #print(' Logger name=%s, level=%s, handlers=%s, disabled=%s' % (logger.name, logger.level, logger.handlers, logger.disabled))
             except Exception as e:
-                #print('oops. Exception %r' % e)
+                print('oops. Exception %r' % e)
                 pass
             if future.exception():
                 logger.error('START Done with exception: %r' % future.exception())
@@ -1146,7 +1146,11 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         self.log.info("%r: ch_master status is currently '%s'. It took %f seconds to get it" % (self, r['state'], time.time()-t0))
         result['is_ready'] = r['state'] == 'on' # so we don't have to know the string to check
         if self.future and self.future.done():
-            result['start_result'] = self.future.result() # raise an error if start failed
+            try:
+                result['start_result'] = self.future.result() # raise an error if start failed
+            except Exception as e:
+                print('oops. Exception %r' % e)
+                raise
         else:
             result['start_result'] = None
         coroutine_return(result)
@@ -1329,7 +1333,8 @@ class ChimeMasterAsyncRESTClient(AsyncRESTClient):
                 if status['is_ready']:
                     self.log.info('%r: start process is completed' % self)
                     coroutine_return(status['start_result'])
-            except HTTPError:
+            except Exception as e:
+                print('*** %r Client get_status got an exception %r' % (self, e))
                 status=dict(state='HTTP error')
             self.log.info('%r: Waiting for the START process to complete. Current state is: %s' % (self, status['state']))
             yield sleep(1)

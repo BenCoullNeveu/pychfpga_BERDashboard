@@ -19,7 +19,7 @@ import tornado.gen
 
 import async
 
-tornado.httpclient.AsyncHTTPClient.configure(None, max_clients=40, max_buffer_size=2000000)  # So we can probe many boards at once (Default is 10)
+tornado.httpclient.AsyncHTTPClient.configure(None, max_clients=70, max_buffer_size=200000)  # So we can probe many boards at once (Default is 10)
 
 # Prefer simplejson (it's compatible, but faster)
 try:
@@ -321,7 +321,7 @@ class TuberObject(object):
     '''
 
     @async.async
-    def _post(self, command, timeout=1):
+    def _post(self, command, timeout=20):
         """ Sends an asynchronous POST request as the JSON-encoded `command` object and return the JSON-decoded reply
 
         Exceptions:
@@ -386,16 +386,16 @@ class TuberObject(object):
         try:
             response = yield self._post.async(
                 {'object': self.tuber_objname, 'method': '_sleep', 'args': [0], 'kwargs':{}},
-                timeout=0.1)
+                timeout=timeout)
         # response = yield client.fetch(request, raise_error=False)
-        except tornado.httpclient.HTTPError:
+        except IOError, tornado.httpclient.HTTPError:
             logger.debug('%.32r: Tuber Ping returned an HTTP error. Board is considered to be absent.' % self)
             async.async_return(False)
         except ValueError:
             logger.debug('%.32r: Tuber Ping returned a HTTP response with invalid JSON data. Board is considered to be absent.' % (self, response.body))
             async.async_return(False)
         try:
-            async.async_return(not response['error'])
+            async.async_return(not response.error)
         except KeyError:
             logger.debug('%.32r: Tuber Ping returned valid JSON reply ("%r") but does not have the required error field. Board is considered to be absent.' % (self, response))
             async.async_return(False)
@@ -505,9 +505,10 @@ class TuberObject(object):
 
         json_out = yield self._post.async(
             [{'object': self.tuber_objname,'property': p}
-             for p in meta.properties + meta.methods])
-
-        props = {p:r.results for p, r in zip(meta.properties, json_out[:len(meta.properties)])}
+             for p in (meta.properties + meta.methods)])
+        #for j in json_out:
+        #    print(j.result)
+        props = {p:r.result for p, r in zip(meta.properties, json_out[:len(meta.properties)])}
         # for p, r in zip(meta.properties, json_out):
         #     props[p] = r.result
 
@@ -523,7 +524,7 @@ class TuberObject(object):
         # json_out = yield self._post.async(
         #     [{'object': self.tuber_objname,'property': p} for p in meta.methods])
 
-        methods = {m:r.results for m, r in zip(meta.methods, json_out[len(meta.properties):])}
+        methods = {m:r.result for m, r in zip(meta.methods, json_out[len(meta.properties):])}
         # for m, r in zip(meta.methods, json_out):
         #     methods[m] = r.result
 

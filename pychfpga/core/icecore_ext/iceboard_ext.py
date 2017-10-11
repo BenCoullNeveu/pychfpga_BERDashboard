@@ -259,7 +259,6 @@ class IceBoardExtHandler(IceBoardPlusHandler):
 
         # Compute the local port number if requested and if possible
         if self.local_port_number is None:
-            print('Cannot use fixed comman port numbers: slot=%s, crate=%s' % (self.slot, self.crate))
             if not self.slot or not self.crate or self.crate.crate_number is None:
                 self.local_port_number = 0
                 self.logger.warning('%r: cannot use slot/crate_number-based UDP port number for UDP control channel. There is no slot or crate_number info. Using OS-assigned random port' % self)
@@ -290,6 +289,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         self.mmi.open()
         self.local_port_number = self.mmi.local_port_number
         self.fpga_port_number = self.mmi.fpga_port_number
+        print('opened fpga (%s:%s) local (%s:%s)' % (self.fpga_ip_addr, self.fpga_port_number, self.interface_ip_addr, self.local_port_number))
         print('opened fpga (%s:%i) local (%s:%i)' % (self.fpga_ip_addr, self.fpga_port_number, self.interface_ip_addr, self.local_port_number))
 
         # Select the fpga port number

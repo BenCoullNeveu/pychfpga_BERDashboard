@@ -631,6 +631,8 @@ class IceBoardPlusHandler(IceBoardHandler):
                     if bitstream CRC differ
             force = None: FPGA will be configured only if it is not configured
         '''
+        self.logger.info('%.32r: called set_fpga_bitstream' % self)
+
         if hasattr(self, 'close'):
             self.close()
 
@@ -638,13 +640,16 @@ class IceBoardPlusHandler(IceBoardHandler):
         # provide it. The str() of the returned object must yield the valid
         # bitstream buffer in a string.
         if buf is None:
-            buf = str(self.get_fpga_bitstream(tag))
-        else:
-            buf = str(buf)
+            buf = self.get_fpga_bitstream(tag)
+        #else:
+        #    buf = str(buf)
 
-        crc32 = zlib.crc32(buf) & 0xFFFFFFFF  # compute CRC32 of the data
+        crc32 = getattr(buf, 'crc32', zlib.crc32(str(buf))) & 0xFFFFFFFF  # compute CRC32 of the data
+        buf = str(buf)
 
+        self.logger.info('%.32r: getting is_programmed' % self)
         is_fpga_programmed = yield self.is_fpga_programmed.async()
+        self.logger.info('%.32r: getting FPGA crc' % self)
         fpga_bitstream_crc = yield self.get_fpga_bitstream_crc.async()
         self.logger.debug('%.32r: fpga_programmed=%s, force=%s, fpga_crc=%08X, bitstream_crc=%08X' % (self, is_fpga_programmed, force, fpga_bitstream_crc or 0, crc32 or 0))
         if not is_fpga_programmed or force \

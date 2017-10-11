@@ -29,7 +29,7 @@ class Udp(object):
         self.port_number = remote_port_number
         self.ip_addr = remote_ip_addr
         self.address = (remote_ip_addr, remote_port_number)
-        self.local_port_number = local_port_number
+        self.local_port_number = local_port_number or 0 # make sure None is 0
 
         if if_ip_addr:
             self.if_ip_addr = if_ip_addr

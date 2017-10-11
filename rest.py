@@ -229,8 +229,10 @@ class AsyncRESTClient(AsyncMixin):
         else:
             body = None
         self.log.debug('fetch: Send %s request %s' % (method, endpoint))
-        resp = yield self.client.fetch(url, method=method, headers={"Content-Type": "application/json"}, body=body, raise_error=False)
-        self.log.debug('_fetch response: %r' % resp)
+        resp = yield self.client.fetch(url, method=method, headers={"Content-Type": "application/json"}, body=body, raise_error=False, request_timeout=30)
+        #print('_fetch response: %r' % resp)
+        #print('_fetch response body: %r' % resp.body)
+        #print('_fetch response error: %s' % resp.error)
         if raw:
             decoded_reply = resp.body
             error = ''
@@ -244,9 +246,10 @@ class AsyncRESTClient(AsyncMixin):
             except (TypeError, ValueError):
                 error = '%.32r: Invalid JSON reply string %r' %(self, resp.body)
         if resp.error:
+            #print('*** REST client got response error: %s' % resp.error)
             error = str(resp.error) + '\n' + error
         if error:
-            print('****ERROR****:', error)
+            #print('****ERROR****:', error, '\n--------------------')
             raise RuntimeError(error)
         coroutine_return(decoded_reply)
 
@@ -308,9 +311,11 @@ class JsonRequestHandler(tornado.web.RequestHandler):
         if 'exc_info' in kvs:
             exc_info = kvs.pop('exc_info')
             kvs['error'] = self.format_exception(exc_info)
-        # self.set_status(200, reason='There were errors, though') # Prevent the client from raising an HTTP error. The client will recognize errors by looking at the error field.
-        # print('writing', kvs['error'])
+        self.set_status(200, reason='There was an exception') # Prevent the client from raising an HTTP error. The client will recognize errors by looking at the error field.
+        #print('*** REST Server: Adding error field:', kvs['error'], '\n------')
+        #self.write('**whoah! an exception***\n')
         self.write(kvs)  # kvs is a dict, so it will be json-encoded
+        self.finish()
 
     def format_exception(self, exc_info, remove_tornado=True):
         """ Format traceback string by indenting them and removing the tornado internals"""

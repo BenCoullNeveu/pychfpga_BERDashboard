@@ -2418,11 +2418,15 @@ class chFPGA_controller(IceBoardExtHandler):
             cb3_input_frame_flags_words_per_frame = cb2_output_frame_flags_words_per_frame
             cb3_input_bins = cb2_output_bins
             cb3_lanes = [(0, 7)] * number_of_cb3_bin_sel
+            cb3_input_lanes_per_output_lane = cb3_lanes[0][1] - cb3_lanes[0][0] + 1 # 8 input lanes per bin sel output
+            cb3_combine_data_flags = False # hardwired to False in crossbar 3
             cb3_bins = 8  # We merge data from 8 full bandwidth input lanes, so we select 1/8th of the bins on each output lane
             cb3_bin_spacing = 8  # use maximum possible number so we minimize FIFO usage
             cb3_bin_select_map = [np.arange(cb3_bins)*cb3_bin_spacing+i for i in range(number_of_cb3_bin_sel)]
             cb3_output_words_per_bin = cb3_input_words_per_bin * 8
             cb3_output_bins = cb3_bins
+            cb3_output_data_flags_words_per_bin = cb3_input_data_flags_words_per_bin * cb3_input_lanes_per_output_lane / (2 if cb3_combine_data_flags else 1)
+            cb3_output_frame_flags_words_per_frame = cb3_input_frame_flags_words_per_frame * cb3_input_lanes_per_output_lane
 
         elif mode == 'shuffle512':
             if not self.slot:
