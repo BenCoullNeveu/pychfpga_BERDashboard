@@ -2850,7 +2850,6 @@ def parse_hw_string(hw_string, remap_table={}, dut_id_patterns=ICE_PATTERNS):
 def parse_args_as_dict(parser, *args, **kwargs):
     """ Parses arguments like argparse.parse_args(...), with the following differences:
            - The results are returned as a dictionary instead of a namespace.
-           - Arguments that have the value ``None`` are not included (they are presumed not to have been specified in the command line)
            - If an argument is part of a group that has the ``sub_dict`` attribute, all the argument values of this group are stored in a subdictionary named by that attribute.
     """
 
@@ -2863,14 +2862,12 @@ def parse_args_as_dict(parser, *args, **kwargs):
 
     args_dict = {}
     for k, v in vars(args).items():
-        if v is not None:
-            sub_dict = group_map[k]
-            if sub_dict:  # if a sub dict was specified
-                if sub_dict not in args_dict:  # a sub dict if it does not exist
-                    args_dict[sub_dict] = {}
-                args_dict[sub_dict][k] = v
-            else:
-                args_dict[k] = v
+        # if v is not None:
+        sub_dict = group_map[k]
+        if sub_dict:  # if a sub dict was specified
+            args_dict.setdefault(sub_dict, {})[k] = v
+        else:
+            args_dict[k] = v
     return args_dict
 
 
@@ -3326,7 +3323,7 @@ def create_fpga_array(args=None):
     #config = merge_dict(config, args)     # Add command line arguments to config
     # config['test'] = parse_dut_id(' '.join(config['target']))
 
-    logger = setup_logging(**config.get('cli_logging', {}))
+    logger = setup_logging(**args.get('cli_logging', {}))
 
     # FPGA array
     fpga_array_params = config.get('fpga', {}).get('fpga_array_params', {}) or config.get('fpga_array_params', {})
