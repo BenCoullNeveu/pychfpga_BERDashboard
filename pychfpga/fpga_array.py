@@ -3103,6 +3103,9 @@ def add_fpga_array_arguments(parser):
     parser.add_argument('-u', '--udp_retries',     type=int, default=3, help="Number of times UDP packet transmission to the FPGA will be retried.")
     parser.add_argument('hwm', type=str, nargs='*', help="target hardware")  # allows free-style hardware description string
 
+    #defaults = {
+    #   
+    #   log_target
 def setup_logging(log_target='syslog', log_level='debug', sql_log_level='warn', stderr_log_level='warn'):
     # Make sure SQLAlchemy does not log too much
     sql_logger = logging.getLogger('sqlalchemy.engine.base.Engine')
