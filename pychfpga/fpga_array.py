@@ -2897,7 +2897,7 @@ def merge_dict(src, dest, skip_none=False):
         new = {}
         for k in set(src.keys()) | set(dest.keys()):
             if k in src and k in dest:
-                new[k] = merge_dict(src[k], dest[k])
+                new[k] = merge_dict(src[k], dest[k], skip_none=skip_none)
             elif k in src:
                 new[k] = src[k]
             else:
