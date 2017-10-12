@@ -65,30 +65,29 @@ class Udp(object):
 
         # If we want to use a specific local port that was previously reserved, use its socket.
         if self.local_port_number and self.local_port_number in __main__.__opened_sockets__:
-            self.sock = __main__.__opened_sockets__[self.local_port_number]
-        else:
-            self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            if self.remote_ip_addr == self.BROADCAST:
-                self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, True)
-            # sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
-            #self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) # don't use REUSEADDR: many sockets get open and we then fail to receive replies
+            __main__.__opened_sockets__.pop(self.local_port_number).close()
+        self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        if self.remote_ip_addr == self.BROADCAST:
+            self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, True)
+        # sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
+        #self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) # don't use REUSEADDR: many sockets get open and we then fail to receive replies
 
-            # Bind the UDP port to the specified interface .
-            #
-            # By binding the socket, we set the source port and source address (intrface address) of
-            # outgoing packets, and we allow the socket to receive packets with in the same
-            # interfaceand port number. the desired values. The FPGA will send replies back to
-            # this/port
-            #
-            # We need to specify the interface explicitely because the packet might be sent over the wrong (default) interface (which happened when the 10GbE was connected to the FPGA).
-            self.sock.bind((self.if_ip_addr, self.local_port_number))
-            (local_addr, local_port) = self.sock.getsockname()
-            self.local_port_number = local_port
-            if not self.remote_port_number:
-                self.remote_port_number = local_port
-            self.address = (self.remote_ip_addr, self.remote_port_number)
-            # store the socket in the main module so it will live persistently until the Python session is closed.
-            __main__.__opened_sockets__[self.local_port_number] = self.sock
+        # Bind the UDP port to the specified interface .
+        #
+        # By binding the socket, we set the source port and source address (intrface address) of
+        # outgoing packets, and we allow the socket to receive packets with in the same
+        # interfaceand port number. the desired values. The FPGA will send replies back to
+        # this/port
+        #
+        # We need to specify the interface explicitely because the packet might be sent over the wrong (default) interface (which happened when the 10GbE was connected to the FPGA).
+        self.sock.bind((self.if_ip_addr, self.local_port_number))
+        # store the socket in the main module so it will live persistently until the Python session is closed.
+        __main__.__opened_sockets__[self.local_port_number] = self.sock
+        (local_addr, local_port) = self.sock.getsockname()
+        self.local_port_number = local_port
+        if not self.remote_port_number:
+            self.remote_port_number = local_port
+        self.address = (self.remote_ip_addr, self.remote_port_number)
 
         return self.sock
 
