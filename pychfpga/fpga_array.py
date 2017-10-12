@@ -661,6 +661,9 @@ class FPGAArray(object):
 
             self.logger.info('%.32r: finished Auto-Discovering serial number for IceBoards')
 
+        self.logger.info('%.32r: Auto-Discovering slot numbers of IceBoards')
+        yield [ib.discover_slot.async() for ib in self.hwm.query(IceBoardPlus)]
+
         ib_without_crate = self.hwm.query(IceBoardPlus).filter(or_(IceBoardPlus.crate==None, IceBoardPlus.slot==None))
         if ib_without_crate.count():
             self.logger.info('%.32r: Auto-Discovering crate information for IceBoards %s' %
@@ -3328,7 +3331,7 @@ def create_fpga_array(args=None):
     # FPGA array
     config_fpga_array_params = config.get('fpga', {}).get('fpga_array_params', {}) or config.get('fpga_array_params', {})
     cli_fpga_array_params = {k:v for k,v in args['cli_fpga_array'].items() if v is not None}
-    print('merging \n\n%r\n\n with \n\n%r' % (fpga_array_params, args['cli_fpga_array']))
+    print('merging \n\n%r\n\n with \n\n%r' % (config_fpga_array_params, cli_fpga_array_params))
     fpga_array_params = merge_dict(config_fpga_array_params, cli_fpga_array_params)
     fpga_array = FPGAArray(**fpga_array_params)  # Create FPGA array
 

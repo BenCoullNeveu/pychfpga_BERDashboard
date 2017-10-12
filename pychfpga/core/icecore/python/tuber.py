@@ -388,11 +388,14 @@ class TuberObject(object):
                 {'object': self.tuber_objname, 'method': '_sleep', 'args': [0], 'kwargs':{}},
                 timeout=timeout)
         # response = yield client.fetch(request, raise_error=False)
-        except IOError, tornado.httpclient.HTTPError:
+        except (IOError, tornado.httpclient.HTTPError):
             logger.debug('%.32r: Tuber Ping returned an HTTP error. Board is considered to be absent.' % self)
             async.async_return(False)
         except ValueError:
             logger.debug('%.32r: Tuber Ping returned a HTTP response with invalid JSON data. Board is considered to be absent.' % (self, response.body))
+            async.async_return(False)
+        except Exception as e:
+            logger.error('%r: unhandled exception in ping: %s: %r' %(self,type(e), e ))
             async.async_return(False)
         try:
             async.async_return(not response.error)
