@@ -257,6 +257,14 @@ If resolve timeouts after 10 seconds, there is a problem. Sould kill the avahi s
 a new server will apparently be started when needed.
 
 
+Finding boards using mDNS
+-------------------------
+
+To list new boards that are not in the static DHCP table and ended up with dynamic addresses (10.0.1.x)::
+
+    sudo avahi-daemon -k
+    avahi-browse  _tuber-jsonrpc._tcp --resolve -t | grep -B2 -A2 '10.0.1.'
+
 Checking crates visible to mDNS:
 --------------------------------
 
@@ -265,7 +273,10 @@ You can get a list of all active FPGA crates in the network with::
     sudo avahi-daemon -k
     avahi-browse  _tuber-jsonrpc._tcp --resolve -t | grep -o 'backplane-serial=[0-9]*' | sort -u
 
-To check the Ip addresses that is dynamically allocated to hardware over DHCP, you can do on ``carillon``::
+DHCP leases
+-----------
+
+To check the Ip addresses that are dynamically allocated to hardware over DHCP, you can do on ``carillon``::
 
     cat /var/lib/dhcpd/dhcpd.leases
 
@@ -274,10 +285,10 @@ This, however, will not show the statically assigned IPs (the IPs bound to speci
     sudo cat /etc/dhcp/dhcpd.conf # general config
     sudo cat /etc/dhcp/fpga.network # fpga equipment assignments
 
-The entries can be cut and pasted from the receiver hut address table Google spreadsheet at https://bao.phas.ubc.ca/wiki/index.php/Receiver_Hut_Networking#IP_Address_map.
+These files can be edited. The entries can be cut and pasted from the receiver hut address table Google spreadsheet at https://bao.phas.ubc.ca/wiki/index.php/Receiver_Hut_Networking#IP_Address_map.
 
 
-If you need to find the IP address of equipment with specific hardware address, you can do::
+If you need to find the IP address of equipment with specific hardware address from the dynamic or static lease lists, you can do::
 
     cat /var/lib/dhcpd/dhcpd.leases | grep -B 7 '00:18'
     sudo cat /etc/dhcp/dhcpd.conf | grep '00:18'
