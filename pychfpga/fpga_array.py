@@ -3318,7 +3318,7 @@ def create_fpga_array(args=None):
 
     args = parse_args_as_dict(parser)  # Parse command-line arguments as a dict, with arguments groups stored in separate sub dictionaries
     # args.test = parse_dut_id(args.target)
-
+    print('args=', args)
     # -------------------------------
     # Load configuration file
     # -------------------------------
