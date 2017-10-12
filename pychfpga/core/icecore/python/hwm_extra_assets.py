@@ -320,7 +320,7 @@ class IceBoardPlus(IceBoard):
             if not actual_slot:
                 self.logger.warn('%r: The board is not connected to a backplane. Slot number is not updated.' % (self))
             elif self.slot and actual_slot != self.slot:
-                self.logger.warn('%r: The discovered slot number differs from the current (hardware map) one. Updating to the discovered slot.' % (self))
+                self.logger.warn('%r: The discovered slot (%s) number differs from the current (hardware map) one (%s). Updating to the discovered slot.' % (self, actual_slot, self.slot))
             self.slot = actual_slot
             self.hwm.flush()
         async_return(self.slot)

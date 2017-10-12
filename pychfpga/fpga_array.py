@@ -598,7 +598,7 @@ class FPGAArray(object):
                         self.hwm.delete(ib)
                 self.hwm.flush()
             if missing_boards:
-                message ="%r: Could not ping the follwing boards: %s'. Those were removed from YAML hardware map." % (self, ', '.join(missing_boards))
+                message ="%r: Could not ping the follwoing boards: %s" % (self, ', '.join(missing_boards))
                 if ignore_missing_boards:
                     self.logger.warning(message)
                 else:
