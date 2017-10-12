@@ -280,6 +280,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         # Open the UDP MMI interface
         # -------------------------------------------------------------------------
         from .lib import fpga_mmi
+        print('Opening FPGA MMI with FPGA=(%s:%s),  local=(%s:%s)' % (self.fpga_ip_addr, self.fpga_port_number, self.interface_ip_addr, self.local_port_number))
         self.mmi = fpga_mmi.FpgaMmi(
             fpga_ip_addr=self.fpga_ip_addr,
             fpga_port_number=self.fpga_port_number, # none or 0: use local port number
