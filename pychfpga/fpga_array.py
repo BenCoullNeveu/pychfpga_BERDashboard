@@ -3326,9 +3326,10 @@ def create_fpga_array(args=None):
     logger = setup_logging(**args.get('cli_logging', {}))
 
     # FPGA array
-    fpga_array_params = config.get('fpga', {}).get('fpga_array_params', {}) or config.get('fpga_array_params', {})
+    config_fpga_array_params = config.get('fpga', {}).get('fpga_array_params', {}) or config.get('fpga_array_params', {})
+    cli_fpga_array_params = {k:v for k,v in args['cli_fpga_array'].items() if v is not None}
     print('merging \n\n%r\n\n with \n\n%r' % (fpga_array_params, args['cli_fpga_array']))
-    fpga_array_params = merge_dict(fpga_array_params, args['cli_fpga_array'], skip_none=True)
+    fpga_array_params = merge_dict(config_fpga_array_params, cli_fpga_array_params)
     fpga_array = FPGAArray(**fpga_array_params)  # Create FPGA array
 
     # GPU array
