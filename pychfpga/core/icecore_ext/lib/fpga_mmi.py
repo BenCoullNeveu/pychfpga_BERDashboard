@@ -105,13 +105,13 @@ class FpgaMmi:
 
         self.udp = udp.Udp(
             remote_ip_addr=self.fpga_ip_addr,
-            remote_port_number=self.fpga_port_number,
-            local_port_number=self.local_port_number,
+            remote_port_number=self.fpga_port_number, # None or 0: use local port number
+            local_port_number=self.local_port_number, # 0 : use random port assigned by OS
             if_ip_addr=self.interface_ip_addr)
 
         self.udp.set_timeout(self.timeout)
         self.local_port_number = self.udp.local_port_number
-        self.fpga_port_number = self.udp.port_number
+        self.fpga_port_number = self.udp.remote_port_number
         # self.logger.info('   Opened control socket on %s:%i through interface %s' % (self.fpga_ip_addr, self.local_port_number, self.interface_ip_addr))
 
     def close(self):

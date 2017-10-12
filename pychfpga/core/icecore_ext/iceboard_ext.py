@@ -282,9 +282,9 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         from .lib import fpga_mmi
         self.mmi = fpga_mmi.FpgaMmi(
             fpga_ip_addr=self.fpga_ip_addr,
-            fpga_port_number=self.fpga_port_number,
+            fpga_port_number=self.fpga_port_number, # none or 0: use local port number
             interface_ip_addr=self.interface_ip_addr,
-            local_port_number=self.local_port_number,
+            local_port_number=self.local_port_number, # 0 = randomly assigned by os
             udp_retries=udp_retries)
         self.mmi.open()
         self.local_port_number = self.mmi.local_port_number

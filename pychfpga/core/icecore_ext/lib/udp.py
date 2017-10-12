@@ -25,9 +25,19 @@ class Udp(object):
     TimeoutException = socket.timeout
 
     def __init__(self, remote_ip_addr=None, remote_port_number=None, local_port_number=0, if_ip_addr=None):
+        """ Create and bind UDP socket.
+
+        Parameters:
+
+            remote_ip_addr (str): target IP address
+
+            remote_port_number (int or None): target port number. If 0 or None, use the local port number.
+
+            local_port_number (int): local port number. If 0, use OS-assigned port.
+        """
         self.logger = logging.getLogger(__name__)
-        self.port_number = remote_port_number
-        self.ip_addr = remote_ip_addr
+        self.remote_port_number = remote_port_number
+        self.remote_ip_addr = remote_ip_addr
         self.address = (remote_ip_addr, remote_port_number)
         self.local_port_number = local_port_number or 0 # make sure None is 0
 
@@ -58,7 +68,7 @@ class Udp(object):
             self.sock = __main__.__opened_sockets__[self.local_port_number]
         else:
             self.sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            if self.ip_addr == self.BROADCAST:
+            if self.remote_ip_addr == self.BROADCAST:
                 self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, True)
             # sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, True)
             #self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1) # don't use REUSEADDR: many sockets get open and we then fail to receive replies
@@ -72,11 +82,11 @@ class Udp(object):
             #
             # We need to specify the interface explicitely because the packet might be sent over the wrong (default) interface (which happened when the 10GbE was connected to the FPGA).
             self.sock.bind((self.if_ip_addr, self.local_port_number))
-            (addr, port) = self.sock.getsockname()
-            self.local_port_number = port
-            if not self.port_number:
-                self.port_number=port
-            self.address = (self.ip_addr, self.port_number)
+            (local_addr, local_port) = self.sock.getsockname()
+            self.local_port_number = local_port
+            if not self.remote_port_number:
+                self.remote_port_number = local_port
+            self.address = (self.remote_ip_addr, self.remote_port_number)
             # store the socket in the main module so it will live persistently until the Python session is closed.
             __main__.__opened_sockets__[self.local_port_number] = self.sock
 
@@ -136,4 +146,4 @@ class Udp(object):
         """
         Returns true if the current socket is set-up in broadcast mode.
         """
-        return self.ip_addr == self.BROADCAST
+        return self.remote_ip_addr == self.BROADCAST
