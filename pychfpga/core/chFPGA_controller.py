@@ -2894,7 +2894,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
         info = OrderedDict()
         metrics = Metrics(
-            slot=self.slot,
+            slot=(self.slot or 0) - 1,
             id=self.get_string_id(),
             crate_id=self.crate.get_string_id() if self.crate else None,
             crate_number=self.crate.crate_number if self.crate else None)

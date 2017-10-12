@@ -622,7 +622,7 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
                 #    self._init_reset_ctrl()  # The power I2c bus needs to be bridged to the monitor I2C bus for this to work
                 #self._init_temperature_sensors()
                 #self._init_power_sensors()
-        
+
                 if self._fan_ctrl_present:
                     self._fan_ctrl.init()
                 return

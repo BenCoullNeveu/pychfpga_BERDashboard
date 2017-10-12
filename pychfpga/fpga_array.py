@@ -2874,7 +2874,7 @@ def parse_args_as_dict(parser, *args, **kwargs):
     return args_dict
 
 
-def merge_dict(src, dest):
+def merge_dict(src, dest, skip_none=False):
     """ Merge a hierarchy of dictionnaries.
     - Only a dict can be merged with a dict
     - Dicts are merged as follow:
@@ -2889,29 +2889,32 @@ def merge_dict(src, dest):
         return isinstance(dest, Mapping)
 
     logger = logging.getLogger('')
-
-    if is_dict(src) or is_dict(dest):
+    if skip_none and dest is None:
+        new = src
+    elif is_dict(src) or is_dict(dest):
         # print ' --- merge ', src, 'to', dest
         src = src or {}
         dest = dest or {}
-        if is_dict(src) and is_dict(dest):
-            for k, v in src.iteritems():
-                if k in dest:
-                    dest[k] = merge_dict(v, dest[k])
-                else:
-                    dest[k] = v
-        else:
+        if not (is_dict(src) and is_dict(dest)):
             raise TypeError('Only a mapping can be merged with another mapping')
+        new = {}
+        for k in set(src.keys()) | set(dest.keys()):
+            if k in src and k in dest:
+                new[k] = merge_dict(src[k], dest[k])
+            elif k in src:
+                new[k] = src[k]
+            else:
+                new[k] = dest[k]
     elif is_list(src) or is_list(dest):
         if not is_list(src):
             src = [src]
         if not is_list(dest):
             dest = [dest]
-        dest.extend(src)
+        new = src + dest
     else:
-        logger.warning('%.32s: Overriding  %s with %s' % ('merge_dict', dest, src))
-        dest = src
-    return dest
+        logger.warning('%.32s: Overriding  %s with %s' % ('merge_dict', src, dest))
+        new = dest
+    return new
 
 def load_yaml_config(object_names, default_filename='config.yaml'):
     """
@@ -3094,18 +3097,25 @@ def add_fpga_array_arguments(parser):
     parser.add_argument('--prog',            type=int, nargs='?', const=1, help='Programs the FPGA if not already programmed. --prog or --prog 1 programs the FPGA if the firmware is not already programmed.  --prog 2 forces the FPGA programming even if the firmware is already programmed')
     parser.add_argument('-b', '--bitfile',   type=str, help='Filename of the bitfile used to to program the FPGAs')
     parser.add_argument('-o', '--open',      type=int, nargs='?', const=1, help='Opens communication with the FPGAs, create the Python objects representing the firmware, and initialize the firmware. --open 0 skips the firmware initialization phase')
-    parser.add_argument('--sync_method',     type=str, default='distributed_time', help="Sets the global syncing method ('distributed_time', 'centralized_time_trigger', 'centralized_soft_trigger', 'local_soft_trigger')")
-    parser.add_argument('--sync_source',     type=str, default='bp_trig', help="Sets the global syncing source ('bp_gpio_int', 'bp_time', 'bp_trig')")
-    parser.add_argument('--sync_master',     type=str, default=None, help="Serial number of the IceBoard that generates the time or trig signal")
-    parser.add_argument('--sync_master_time_source', type=str, default=None, help="Source of the time signal used by the master board to generate the time or trigger signal ('bp_gpio_int', 'bp_time', 'bp_trig')")
-    parser.add_argument('-m', '--mode',     type=str, default=None, help="Operational mode ('shuffle16', 'shuffle256', 'shuffle512'). If not specified, set_operational_mode() is not called.")
-    parser.add_argument('-f', '--frames_per_packet', '--fpp',     type=int, default=2, help="Number of frames per packeet. Default=2.")
-    parser.add_argument('-u', '--udp_retries',     type=int, default=3, help="Number of times UDP packet transmission to the FPGA will be retried.")
-    parser.add_argument('hwm', type=str, nargs='*', help="target hardware")  # allows free-style hardware description string
+    parser.add_argument('--sync_method',     type=str, help="Sets the global syncing method ('distributed_time', 'centralized_time_trigger', 'centralized_soft_trigger', 'local_soft_trigger')")
+    parser.add_argument('--sync_source',     type=str, help="Sets the global syncing source ('bp_gpio_int', 'bp_time', 'bp_trig')")
+    parser.add_argument('--sync_master',     type=str, help="Serial number of the IceBoard that generates the time or trig signal")
+    parser.add_argument('--sync_master_time_source', type=str, help="Source of the time signal used by the master board to generate the time or trigger signal ('bp_gpio_int', 'bp_time', 'bp_trig')")
+    parser.add_argument('-m', '--mode',      type=str, help="Operational mode ('shuffle16', 'shuffle256', 'shuffle512'). If not specified, set_operational_mode() is not called.")
+    parser.add_argument('-f', '--frames_per_packet', '--fpp',     type=int, help="Number of frames per packeet. Default=2.")
+    parser.add_argument('-u', '--udp_retries', type=int, help="Number of times UDP packet transmission to the FPGA will be retried.")
+    parser.add_argument('hwm',               type=str, nargs='*', help="target hardware")  # allows free-style hardware description string
 
-    #defaults = {
-    #   
-    #   log_target
+    defaults = dict(
+        sync_method='distributed_time',
+        sync_source='bp_trig',
+        sync_master=None,
+        sync_master_time_source=None,
+        mode=None,
+        frames_per_packet=2,
+        udp_retries=3)
+    return defaults
+
 def setup_logging(log_target='syslog', log_level='debug', sql_log_level='warn', stderr_log_level='warn'):
     # Make sure SQLAlchemy does not log too much
     sql_logger = logging.getLogger('sqlalchemy.engine.base.Engine')
@@ -3292,10 +3302,10 @@ def create_fpga_array(args=None):
     # Add FPGA Array-related command-line parameters
     fpga_group = parser.add_argument_group('FPGA Array parameters', 'Allows interactive creation of a hardware map and initialization of all its components')
     fpga_group.sub_dict = 'cli_fpga_array'  # group all arguments in this group in a sub dictionary with this name
-    add_fpga_array_arguments(fpga_group)
+    fpga_defaults = add_fpga_array_arguments(fpga_group)
 
     gpu_group = parser.add_argument_group('GPU Array parameters', 'Allows interactive creation of GPU nodes')
-    gpu_group.sub_dict = 'gpu_array'  # group all arguments in this group in a sub dictionary with this name
+    gpu_group.sub_dict = 'cli_gpu_array'  # group all arguments in this group in a sub dictionary with this name
     gpu_group.add_argument('-n', '--gpu_nodes', type=str, nargs='+',  help='List of IP address or hostnames of the GPU node objects to be created.')
 
     ps_group = parser.add_argument_group('Power Supply Array parameters', 'Allows interactive creation of Power Supply objects')
@@ -3317,14 +3327,19 @@ def create_fpga_array(args=None):
     # config['test'] = parse_dut_id(' '.join(config['target']))
 
     logger = setup_logging(**config.get('cli_logging', {}))
+
+    # FPGA array
     fpga_array_params = config.get('fpga', {}).get('fpga_array_params', {}) or config.get('fpga_array_params', {})
     print('merging \n\n%r\n\n with \n\n%r' % (fpga_array_params, args['cli_fpga_array']))
-    merge_dict(fpga_array_params, args['cli_fpga_array'])
+    fpga_array_params = merge_dict(fpga_array_params, args['cli_fpga_array'], skip_none=True)
     fpga_array = FPGAArray(**fpga_array_params)  # Create FPGA array
 
-    gpu_array = GPUArray(**config.get('gpu_array', {}))     # Create FPGA array
-    ps_array_params = config.get('power_supply_array', {})
-    merge_dict(ps_array_params, args['cli_power_supplies'])
+    # GPU array
+    gpu_array = GPUArray(**config.get('cli_gpu_array', {}))     # Create FPGA array
+
+    # Power supply array
+    # ps_array_params = merge_dict(config.get('power_supply_array', {}), args['cli_power_supply_array'])
+    ps_array_params = args['cli_power_supply_array']
     ps_array = PSArray(**ps_array_params)     # Create FPGA array
 
     return config, fpga_array, gpu_array, ps_array

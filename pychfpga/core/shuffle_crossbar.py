@@ -467,7 +467,7 @@ class ShuffleCrossbar(Module_base):
         metrics = Metrics(
             crate_id=self.fpga.crate.get_string_id() if self.fpga.crate else None,
             crate_number=self.fpga.crate.crate_number if self.fpga.crate else None,
-            slot=self.fpga.slot,
+            slot=(self.fpga.slot or 0) - 1,
             id=self.fpga.get_string_id())
 
         # add ALIGN status flags
