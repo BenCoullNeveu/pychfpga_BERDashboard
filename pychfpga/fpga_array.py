@@ -138,21 +138,22 @@ class FPGAArray(object):
                  prog=None,
                  open=None,
                  if_ip=None,
+                 udp_retries=3,
 
                  # sampling_frequency=800e6,
                  # reference_frequency=10e6,
                  # data_width=4,
 
-                 sync_method=None,
-                 sync_source=None,
+                 sync_method='distributed_time',
+                 sync_source='bp_trig',
                  sync_master=None,
                  sync_master_time_source=None,
 
                  mode=None,
                  frames_per_packet=2,
+
                  stderr_log_level=None,
                  syslog_log_level=None,
-                 udp_retries=3,
 
                  ioloop=None,
 
@@ -3311,7 +3312,6 @@ def create_fpga_array(args=None):
 
     # Add generic command-line parameters
     parser.add_argument('-y', '--yaml',  type=str, nargs='+',   help='YAML configuration file name, optionally followed by object names in that file.')
-
 
     args = parse_args_as_dict(parser)  # Parse command-line arguments as a dict, with arguments groups stored in separate sub dictionaries
     # args.test = parse_dut_id(args.target)
