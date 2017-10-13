@@ -43,17 +43,78 @@ te first -A allows the ssh to carillon to use the key from your trusted machine'
 
 
 
+Programming the ARM firmware
+----------------------------
+
+
+The ARM processor firmware includes the Linux operating system, a filesystem loaded with all the files and executables required to run the OS, the web server and and the IceBoard-specific software  that handles its hardware and provides the corresponding methods over a HTTP-based interface.
+
+The ARM firmware resides in the SD card that is inerted in each IceBoard, and the board boots locally from there. (There is an experimental network booting mode, which is not used for CHIME).
+
+The SD card image is built on a linux machine, and is then copied to the SD cards.
+
+It takes about 50 seconds to program a card using a fast SD card reader/writer (or the one on your PC), but that is tedious for a large array. For this reason, an experimental (and very hacky) remote, parallel programming method has been devised.
+
+To use this programming method, you first need an image compressed in bzip2 format (typically with a ``.bz2`` extension). Uncompressed images, or images compressed in another format are not currently accepted.
+
+The programming is done  in an interactive ipython session.
+
+  - cd to the ch_acq folder
+  - Start ipython
+
+Then create an array of boards you whish to reprogram by using the :mod:`fpga_array` command-line interface. For example, if you want to load all the boards that are specified in the configuration ``jfc.crate0`` (define din ``config.yaml``), you would do::
+
+  run -i pychfpga/fpga_array -y jfc.crate0 --prog 0 --open 0
+
+This will create an array of boards accessible through variable `ca`. `ca.ib` is the collection of all IceBoards in the array. As a convenience, just ``ib`` will give you this array directly.
+
+The ``--prog 0`` ``--open 0`` arguments override the config so to prevent `fpga_array` from programming the FPGAs or attempt to open communication with them.
+
+This is just one example on how you select a collection of boards. You could also specify them directly by IP address, or, if mDNS is working, through the IceBoard or backplane serial numbers.
+
+Once you have an array, you can check the current firmware version with::
+
+	ib.get_build_info().icecore_git_hash
+
+This returns a tuple with many fields describing various build informatio elements. To get a specific field from that array::
+
+	ib.get_build_info().icecore_git_hash
+
+You can then program the SD cards by invoking the :meth:`FPGAController._update_arm_firmware()` method as follows::
+
+	ib._update_arm_firmware(path_to_firmware_image_file)
+
+Since ``ib`` is a `Ccoll`-type collection, and the ``_update_arm_firmware`` is designed to be asynchronous, the method will be run in parallel (concurrently) for all of the boards in the array.
+
+The method will:
+
+   - open a ssh shell to copy the image to a temporary RAM disk on the arm
+   - copy the image to the SD card (while the OS is still running from that OS -- that is the hacky part. But apparently, it works).
+   - wait for 120 seconds to make sure the write buffers are flushed and writing to the SD card is completed.
+
+Once this is done, you need to power-cycle the boards, and thhey should boot with the new firmware.
+
+Warning: Do not interrupt this process. This will corrupt the SD card and the boards won't boot again. Always have an evergency SD card image and a SD card programmer handy on site in case things go wrong.
+
+
+
+
+
+
+
+
+
+Running the array
+-----------------
+
 This section describe how to run the CHIME Array.
 
-Before you begin, make sure all the system and Python packages have been installed, as per the instruction in :doc:`Installation`.
-
-Get the repositories
---------------------
-
-You need two repositories, both located on https://bitbucket.org.
+Before you begin, make sure all the system and Python packages have been installed, as per the instruction in :doc:`installation`.
 
 
-Weather
--------
+
+
+Weather server
+--------------
 
 See :ref:`weather_quick_start`
