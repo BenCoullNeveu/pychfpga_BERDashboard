@@ -240,7 +240,7 @@ class chFPGA_controller(IceBoardExtHandler):
             kwargs: All remaining parameters are passed to `init()` method if the `init` parameter is 1.
         """
 
-        super(chFPGA_controller, self).open(udp_retries=udp_retries)  # Open UDP communication link
+        yield super(chFPGA_controller, self).open.async(udp_retries=udp_retries)  # Open UDP communication link
         self.logger.debug('%r: Instantiating chFPGA firmware handlers objects' % (self))
 
         # self.read = self.mmi.read
@@ -262,11 +262,12 @@ class chFPGA_controller(IceBoardExtHandler):
             # ---------------------------------------------------------------------
 
             self._logger.debug('%r: === Instantiating GPIO' % self)
+            yield None
             self.GPIO = GPIO.GPIO_base(self, self._SYSTEM_GPIO_BASE_ADDR)
             # get system constants from the FPGA
 
             self._logger.debug('%r: === Getting board info information' % self)
-
+            yield None
             self.PLATFORM_ID = self.GPIO.PLATFORM_ID
             if self.PLATFORM_ID not in self._PLATFORM_ID_LIST:
                 raise RuntimeError('%r: Platform ID 0x%02X is not recognized' % (self, self.PLATFORM_ID))
@@ -321,6 +322,7 @@ class chFPGA_controller(IceBoardExtHandler):
             self._logger.debug('%r: Number of correlators: %i (correlators %s)' % (self, len(self.LIST_OF_IMPLEMENTED_CORRELATORS),str(self.LIST_OF_IMPLEMENTED_CORRELATORS)))
             self._logger.debug('%r: Number of channelizers supported by the correlators: %i ' % (self, self.NUMBER_OF_ANTENNAS_TO_CORRELATE))
 
+            yield None
             self._logger.debug('%r: === Instantiating FPGA ressources' % self)
 
             self._logger.debug('%r: === Instantiating SYSMON' % self)
@@ -339,6 +341,7 @@ class chFPGA_controller(IceBoardExtHandler):
             self.ANT = ANT.ANT_base(self, self._CHAN_BASE_ADDR, self._CHAN_ADDR_INCREMENT, self._CHAN_SUBMODULE_ADDR_INCREMENT) # Antenna processors (ADCDAQ, FUNCGEN,  FFT, SCALER) for each input
             self.ANT_FMC_NUMBER = [i//8 for i in range(self.NUMBER_OF_ANTENNAS)]
 
+            yield None
             self._logger.debug('%r: === Instantiating 1st CROSSBAR' % self)
             self.CROSSBAR = chan_crossbar.ChanCrossbar(self, self._CROSSBAR1_BASE_ADDR, self._CROSSBAR_ADDR_INCREMENT) # CROSSBAR block
 
@@ -376,6 +379,7 @@ class chFPGA_controller(IceBoardExtHandler):
             # -- Create ADC board hardware ressource handlers objects
             # ---------------------------------------------------------------------
 
+            yield None
             self._logger.debug('%r: === Analyzing available FMC Mezzanines' % self)
             # self._adc_board = [
             #     self.mezzanine.get(1, None),
@@ -483,21 +487,25 @@ class chFPGA_controller(IceBoardExtHandler):
          # Module depend on the FMC_present flag after this point
 
         self._logger.debug('%r: --- Initializing REFCLK' % self)
+        yield None
         self.REFCLK.init()
         # self.REFCLK.status()
 
         #Only do for ML605, not KC705 board
         self._logger.debug('%r: --- Initializing SYSMON' % self)
+        yield None
         self.SYSMON.init()
         # self.SYSMON.status()
 
         self._logger.debug('%r: --- Initializing SPI' % self)
+        yield None
         self.SPI.init()
         # self.SPI.status()
 
         self._logger.debug('%r: --- Initializing FMC slots' % self)
 
         # Reduce the power load before we turn on the mezzanines
+        yield None
         self.set_adc_mask(0) # null the ADC data before it gets to the channelizers to reduce power consumption
         self.set_ant_reset(1)
         self.set_corr_reset(1)
@@ -528,6 +536,7 @@ class chFPGA_controller(IceBoardExtHandler):
         self.set_ant_reset(1)
 
         self._logger.debug('%r:   Sending sync()' % (self))
+        yield None
         self.sync() # might be needed  to make sure that the clock is running to set delays
 
 
@@ -537,6 +546,7 @@ class chFPGA_controller(IceBoardExtHandler):
         # self.ANT.status()
 
         self._logger.debug('%r: === Initializing 1st Crossbar' % self )
+        yield None
         if self.NUMBER_OF_CROSSBAR_OUTPUTS > 0:
             self._logger.debug('%r:  - 1st CROSSBAR' % self)
             self.CROSSBAR.init()
@@ -545,17 +555,20 @@ class chFPGA_controller(IceBoardExtHandler):
             self._logger.warning("%r: There is no 1st CROSSBAR module in this firmware build (so there can't be data streamed to the correlators or GPU links!)" % self);
 
         if self.BP_SHUFFLE:
+            yield None
             self._logger.debug('%r: === Initializing Backplane Shuffle' % self)
             self.BP_SHUFFLE.init()
 
         self._logger.debug('%r: === Initializing 2nd Crossbar' % self)
         if self.CROSSBAR2:
+            yield None
             self.CROSSBAR2.init()
         else:
             self._logger.warning("%r: There is no 2nd CROSSBAR module in this firmware build" % self);
 
         self._logger.debug('%r: === Initializing 3rd Crossbar' % self)
         if self.CROSSBAR3:  # *** Fixme
+            yield None
             self.CROSSBAR3.init()
         else:
             self._logger.warning("%r: There is no 3rd CROSSBAR module in this firmware build" % self);
@@ -563,6 +576,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
         self._logger.debug('%r: === Initializing FPGA correlators' % self)
         if self.CORR:
+            yield None
             self._logger.debug('%r:  - CORR' % self)
             self.CORR.init()
         else:
@@ -573,6 +587,8 @@ class chFPGA_controller(IceBoardExtHandler):
 
         self.CROSSBAR.set_frames_per_packet(group_frames)
         self._logger.debug('%r: The 1st crossbar will pack %i frames per packet' % (self, group_frames))
+
+        yield None
 
         if self.GPU:
             self.GPU.init()
@@ -588,6 +604,7 @@ class chFPGA_controller(IceBoardExtHandler):
         self._logger.debug("%r: Done with initializations." % self)
 
 
+        yield None
         self.set_ant_reset(0) # disable antenna reset
 
         self._last_init_time = time.time()

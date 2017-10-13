@@ -1223,10 +1223,10 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
     def _get_metrics(self):
         """ get the metrics from the FPGAss and put them in the queue
         """
-        self.log.info('%.32r: Getting metrics from FPGAs' % (self))
         while True:
-            if self.chime_master and self.chime_master.state=='on' and self.chime_master.fpgas:
+            if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
                 try:
+                    self.log.info('%.32r: Scraping metrics from FPGAs' % (self))
                     metrics = yield self.chime_master.fpgas.get_metrics.async()
                     self.log.info('%r: Got %i FPGA metrics' % (self, len(metrics.metrics)))
                     if self.metrics_queue.full():
@@ -1237,6 +1237,9 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
                     pass
 
                 self.log.info('Queue has %i metrics blocks' % self.metrics_queue.qsize())
+            else:
+                self.log.info('%.32r: Not ready to scrape Metrics from FPGA' % (self))
+
             yield sleep(1)
 
     @coroutine

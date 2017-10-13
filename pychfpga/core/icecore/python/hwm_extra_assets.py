@@ -741,9 +741,10 @@ class IceBoardPlusHandler(IceBoardHandler):
         async_return(base64.decodestring(data))
 
     # *** JFC: method rename
+    @async
     def _write_motherboard_spi_eeprom_base64(self, *args, **kwargs):
-        return self._motherboard_eeprom_write_base64(*args, **kwargs)
-
+        result = yield self._motherboard_eeprom_write_base64.async(*args, **kwargs)
+        async_return(result)
 
     # def get_motherboard_serial(self):
     #     """ Read the motherboard serial number from the IPMI data. """
@@ -752,15 +753,16 @@ class IceBoardPlusHandler(IceBoardHandler):
 
     # *** JFC: We now have the equivalent ARM method. Will delete this when we
     #     confirm it behaves the same.
+    @async
     def get_slot_number(self):
         """ Reads the GPIO to determine in which slot number this IceBoard is
         connected.
 
         """
-        if self.is_backplane_present():  # Is this test necessary?
-            return self.get_backplane_slot()
+        if (yield self.is_backplane_present.async()):  # Is this test necessary?
+            async_return( (yield self.get_backplane_slot.async()))
         else:
-            return None
+            async_return(None)
 
     # Bitstream management
 
@@ -778,18 +780,19 @@ class IceBoardPlusHandler(IceBoardHandler):
         async_return(crc)
         # return self._bitstream_crc
 
+    @async
     def set_fpga_bitstream_crc(self, crc32):
         """ Return the signature of the firmware currently configured in the
         FPGA.
 
         Returns None if the FPGA is not configured.
         """
-        if self.is_fpga_programmed():
+        if (yield self.is_fpga_programmed.async()):
             # self._bitstream_crc = crc32
-            self.fpga_mmi_write(self.FPGA_FIRMWARE_CRC32_ADDR, crc32)
+            yield self.fpga_mmi_write.async(self.FPGA_FIRMWARE_CRC32_ADDR, crc32)
         else:
             # self._bitstream_crc = None
-            self.fpga_mmi_write(self.FPGA_FIRMWARE_CRC32_ADDR, 0)
+            yield self.fpga_mmi_write.async(self.FPGA_FIRMWARE_CRC32_ADDR, 0)
 
     # def clear_fpga_bitstream(self):
     #     """ Stop the operation of the FPGA.
@@ -801,34 +804,40 @@ class IceBoardPlusHandler(IceBoardHandler):
 
     # Core firmware functions
 
+    @async
     def get_fpga_core_cookie(self):
         """ Return the core FPGA firmware cookie. Should always be 0xBEEFFACE.
         """
-        if not self.is_fpga_programmed():
-            return None
-        return self.fpga_mmi_read(self.FPGA_CORE_FIRMWARE_COOKIE_ADDR)
+        if not (yield self.is_fpga_programmed.async()):
+            async_return(None)
+        cookie = yield self.fpga_mmi_read.async(self.FPGA_CORE_FIRMWARE_COOKIE_ADDR)
+        async_return(cookie)
 
+    @async
     def get_fpga_application_cookie(self):
         """ Return the application-specific FPGA firmware cookie. """
-        if not self.is_fpga_programmed():
-            return None
-        return self.fpga_mmi_read(self.FPGA_APPLICATION_FIRMWARE_COOKIE_ADDR)
+        if not (yield self.is_fpga_programmed.async()):
+            async_return(None)
+        cookie = yield self.fpga_mmi_read.async(self.FPGA_APPLICATION_FIRMWARE_COOKIE_ADDR)
+        async_return(cookie)
 
+    @async
     def get_fpga_serial_number(self):
         """ Return the FPGA serial number, as read from the FPGA's core
         firmware throught the MMI interface. """
         fpga_serial_number = (
-            self.fpga_mmi_read(self.FPGA_SERIAL_NUMBER_LSW_ADDR) |
-            (self.fpga_mmi_read(self.FPGA_SERIAL_NUMBER_MSW_ADDR) << 32)
+            (yield self.fpga_mmi_read.async(self.FPGA_SERIAL_NUMBER_LSW_ADDR)) |
+            (yield (self.fpga_mmi_read(self.FPGA_SERIAL_NUMBER_MSW_ADDR) << 32))
             )
 
-        return fpga_serial_number
+        async_return(fpga_serial_number)
 
+    @async
     def get_fpga_firmware_timestamp(self):
         """ Returns a string containing the date-time of the currrent firmware
         bitstream.
         """
-        timestamp = self.fpga_mmi_read(self.FPGA_FIRMWARE_TIMESTAMP_ADDR)
+        timestamp = yield self.fpga_mmi_read.async(self.FPGA_FIRMWARE_TIMESTAMP_ADDR)
         seconds = (timestamp >> 0) & 0x3F
         minutes = (timestamp >> 6) & 0x3F
         hour = (timestamp >> 12) & 0x1F
@@ -837,15 +846,16 @@ class IceBoardPlusHandler(IceBoardHandler):
         day = (timestamp >> 27) & 0x1F
         timestamp_string = '%04i-%02i-%02i %02i:%02i:%02i' % (
             year + 2000, month, day, hour, minutes, seconds)
-        return timestamp_string
+        async_return(timestamp_string)
 
+    @async
     def check_tuber_version(self):
         """ Check if the ARM processor provides the methods required to run this code. """
 
         required_tuber_methods = [
             'is_fpga_programmed']#, '_mezzanine_eeprom_read_base64']
 
-        (meta, props, tuber_methods) = self._tuber_get_meta()  # get the meta info
+        (meta, props, tuber_methods) = yield self._tuber_get_meta.async()  # get the meta info
         if not tuber_methods:
             raise RuntimeError("%r: The ARM does not publish any methods under the object name '%s'. Was the right Tuber object name used for this ARM firmware?" % (self, self.tuber_objname))
 
@@ -853,7 +863,7 @@ class IceBoardPlusHandler(IceBoardHandler):
             if method not in tuber_methods:
                 raise RuntimeError("%r: The current version of the ARM firmware does not provide the method '%s' that is needed for this application" % (self, method))
 
-        return True
+        async_return(True)
 
     def print_tuber_methods(self):
         """ Print all the methods and properties provided by the Iceboard's

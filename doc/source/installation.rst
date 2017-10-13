@@ -273,6 +273,18 @@ You can get a list of all active FPGA crates in the network with::
     sudo avahi-daemon -k
     avahi-browse  _tuber-jsonrpc._tcp --resolve -t | grep -o 'backplane-serial=[0-9]*' | sort -u
 
+Editing static DHCP entries
+---------------------------
+
+The following files contain the static DHCP assignemetes that are based on MAC addresses. The entries can be cut and pasted from the receiver hut address table Google spreadsheet at https://bao.phas.ubc.ca/wiki/index.php/Receiver_Hut_Networking#IP_Address_map. To edit the files::
+
+    sudo vim /etc/dhcp/dhcpd.conf # general config
+    sudo vim /etc/dhcp/fpga.network # fpga equipment assignments
+
+Once the files are edited:
+    sudo service dhcpd restart
+
+
 DHCP leases
 -----------
 
@@ -284,8 +296,6 @@ This, however, will not show the statically assigned IPs (the IPs bound to speci
 
     sudo cat /etc/dhcp/dhcpd.conf # general config
     sudo cat /etc/dhcp/fpga.network # fpga equipment assignments
-
-These files can be edited. The entries can be cut and pasted from the receiver hut address table Google spreadsheet at https://bao.phas.ubc.ca/wiki/index.php/Receiver_Hut_Networking#IP_Address_map.
 
 
 If you need to find the IP address of equipment with specific hardware address from the dynamic or static lease lists, you can do::

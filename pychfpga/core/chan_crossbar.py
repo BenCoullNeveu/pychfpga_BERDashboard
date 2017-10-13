@@ -237,9 +237,13 @@ class ChanCrossbar(Module_base):
         for lane in range(self.NUMBER_OF_CROSSBAR_INPUTS):
             yield None
             self.LANE_MONITOR_SEL = lane
+            yield None
             metrics.add('fpga_crossbar1_reset_state', value=self.RESET_MON, lane=lane)
+            yield None
             metrics.add('fpga_crossbar1_align_fifo_overflow_flag', value=self.ALIGN_FIFO_OVERFLOW, lane=lane)
+            yield None
             metrics.add('fpga_crossbar1_input_frame_counter', value=self.INPUT_FRAME_CTR, lane=lane)
+            yield None
             metrics.add('fpga_crossbar1_align_output_frame_counter', value=self.ALIGN_FRAME_CTR, lane=lane)
 
         async_return(metrics)

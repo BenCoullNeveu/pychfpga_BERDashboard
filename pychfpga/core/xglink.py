@@ -494,7 +494,7 @@ class XGLinkArray(XGLink):
         self.NUMBER_OF_PCB_LINKS = 15
         self.NUMBER_OF_QSFP_LINKS = 4
 
-
+    @async
     def get_rx_lane_monitor(self, names, link_group=None):
 
         if isinstance(names, str):
@@ -521,11 +521,12 @@ class XGLinkArray(XGLink):
 
         mon = [list() for _ in names]
         for lane in lanes:
+            yield None
             self.LANE_SEL = lane
             for i, bf in enumerate(bitfields):
                 mon[i].append(self.read_bitfield(bf))
 
-        return mon if is_list else mon[0]
+        async_return(mon if is_list else mon[0])
 
     def reset_stats(self):
         self.RESET_STATS = 1
@@ -548,7 +549,7 @@ class XGLinkArray(XGLink):
 
         for link_type, link_group in [('pcb_gtx',0), ('qsfp_gtx', 1)]:
             yield None # let the ioloop process data
-            err, min_len, max_len, frame_det, rx_fifo, tx_fifo = self.get_rx_lane_monitor(['ERROR_CTR', 'MIN_FRAME_LENGTH', 'MAX_FRAME_LENGTH', 'FRAME_DETECT', 'RX_FIFO_OVERFLOW', 'TX_FIFO_OVERFLOW'],  link_group)
+            err, min_len, max_len, frame_det, rx_fifo, tx_fifo = yield self.get_rx_lane_monitor.async(['ERROR_CTR', 'MIN_FRAME_LENGTH', 'MAX_FRAME_LENGTH', 'FRAME_DETECT', 'RX_FIFO_OVERFLOW', 'TX_FIFO_OVERFLOW'],  link_group)
             for lane in range(len(err)):
                 metrics.add('fpga_bp_link_errors', value=err[lane], link_type=link_type, lane=lane)
                 metrics.add('fpga_bp_link_min_length', value=min_len[lane], link_type=link_type, lane=lane)
