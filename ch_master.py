@@ -27,6 +27,7 @@ import yaml
 import json
 import functools
 import Queue
+import pickle
 
 import tornado
 import tornado.tcpclient
@@ -1264,12 +1265,25 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         handler.write(str(metrics))
 
     @coroutine
-    @endpoint('print-iceboard-info')
-    def print_iceboard_info(self, handler):
+    @endpoint('get-hw-map')
+    def get_hw_map(self, handler):
         if self.chime_master.fpgas:
-            coroutine_return(self.chime_master.fpgas.ib[0].slot)
+            hwm = {}
+            # Get icecrates
+            for icecrate in self.chime_master.fpgas.ic:
+                hwm['FCC%02d' %icecrate.crate_number] = 'K7BP16-0%s' %icecrate.serial
+            # Get iceboards and mezzanines
+            for iceboard in self.chime_master.fpgas.ib:
+                hwm['FCC%02d%02d' %(iceboard.crate.crate_number, iceboard.slot-1)] = (
+                    'MGK7MB-%s' %iceboard.serial.encode('utf-8'), 
+                    'MGMEZZ-%s' %iceboard.mezzanine.get(1, None).serial, 
+                    'MGMEZZ-%s' %iceboard.mezzanine.get(2, None).serial
+                    )
+            # Save hwm
+            
+            coroutine_return(hwm)
         else:
-            self.log.info('FPGA array not yet initialized. No houskeeping info to show.')
+            self.log.info('FPGA array not yet initialized. No info to show.')
 
 
 class ChimeMasterAsyncRESTClient(AsyncRESTClient):
