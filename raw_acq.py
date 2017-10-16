@@ -435,7 +435,7 @@ class RawAcqReceiver(object):
 
 
     @coroutine
-    def start(self, name='RawAcq', ports=[]):
+    def start(self, name='RawAcq', ports=[], jump_thresholds = []):
         """ Start a raw data receiver for each specified port.
 
         For each re port we monitor, create a data queue and atart a multithreaded UDP receiver that
@@ -501,9 +501,14 @@ class RawAcqReceiver(object):
         self.hdf5_file = None
         self.hdf5_run = False
         self.capture_start = False
+        self.jump_thresholds = jump_thresholds
 
         # Metrics
         self.rms = {}
+        self.min = {}
+        self.max = {}
+        self.mean = {}
+        self.jumps = {}
         self.chan_number_mismatch_count = 0
         self.crate_number_mismatch_count = 0
         self.slot_number_mismatch_count = 0
@@ -757,12 +762,18 @@ class RawAcqReceiver(object):
                 # Store some stats
                 chan_id =(crate_number, slot_number, chan)
                 self.rms[chan_id] = np.std(adc_data)
+                self.min[chan_id] = np.min(adc_data)
+                self.max[chan_id] = np.max(adc_data)
+                self.mean[chan_id] = np.mean(adc_data)
                 expected_ramp = np.arange(2048, dtype=np.int8)
                 self.ramp_error_count[chan_id] = self.ramp_error_count.get(chan_id, 0) + np.sum(adc_data != expected_ramp)
                 for bit in range(8):
                     mask = 1 << bit
                     chan_bit_id = (crate_number, slot_number, chan, bit)
                     self.ramp_bit_error_count[chan_bit_id] = self.ramp_bit_error_count.get(chan_bit_id, 0) + np.count_nonzero((adc_data ^ expected_ramp) & mask)
+                for threshold in self.jump_thresholds:
+                    jump_id = (crate_number, slot_number, chan, threshold)
+                    self.jumps[jump_id] = self.jump.get(jump_id, 0) + np.sum(np.abs(np.diff(adc_data)) > threshold)
 
 
     def print_stats(self):
@@ -934,12 +945,24 @@ class RawAcqReceiver(object):
         for (crate, slot, chan), rms in self.rms.items():
             metrics.add('raw_acq_rms', value= rms, crate=crate, slot=slot, chan=chan)
         self.rms = {}
+        for (crate, slot, chan), min_ in self.min.items():
+            metrics.add('raw_acq_min', value= min_, crate=crate, slot=slot, chan=chan)
+        self.min = {}
+        for (crate, slot, chan), max_ in self.max.items():
+            metrics.add('raw_acq_rms', value= max_, crate=crate, slot=slot, chan=chan)
+        self.max = {}
+        for (crate, slot, chan), mean in self.mean.items():
+            metrics.add('raw_acq_mean', value= mean, crate=crate, slot=slot, chan=chan)
+        self.mean = {}
         for (crate, slot, chan), count in self.ramp_error_count.items():
             metrics.add('raw_acq_ramp_errors', value= count, crate=crate, slot=slot, chan=chan)
         self.ramp_error_count = {}
         for (crate, slot, chan, bit), count in self.ramp_bit_error_count.items():
             metrics.add('raw_acq_ramp_bit_errors', value=count, crate=crate, slot=slot, chan=chan, bit=bit)
         self.ramp_bit_error_count = {}
+        for (crate, slot, chan, threshold), count in self.jumps.items():
+            metrics.add('raw_acq_jumps', value=count, crate=crate, slot=slot, chan=chan, threshold=threshold)
+        self.jumps = {}
 
         # Receiver-specific stats
         for i,r in enumerate(self.receivers):

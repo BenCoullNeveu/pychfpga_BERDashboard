@@ -63,8 +63,9 @@ The :mod:`ch_acq` package provides the following main modules, each correspondin
    ps
    raw_acq
    kotekan
-   chrx
+   .. chrx
    fpga_array
+   chfpga_controller
    gps
    weather
 

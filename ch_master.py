@@ -413,7 +413,7 @@ class ChimeMaster(object):
         """ Create RawAcq REST clients.
         """
         self.raw_acq = {}
-        nodes = self.config.raw_acq.nodes or {}
+        nodes = self.config.raw_acq.servers or {}
         for node_name, node_params in nodes.items():
             self.raw_acq[node_name] = RawAcqAsyncRESTClient(name=node_name, **node_params)
 
@@ -473,7 +473,7 @@ class ChimeMaster(object):
 
         # Make a list of all all iceboards for each of the RawAcq node
         self.raw_acq_ibs = {}
-        for node_name, node_conf in conf.nodes.items():
+        for node_name, node_conf in conf.servers.items():
             self.raw_acq_ibs[node_name] = set()
             for ib in node_conf.iceboards:  # ib is a (crate, slot) tuple)
                 self.raw_acq_ibs[node_name].update(self.get_iceboards(ib))
@@ -514,7 +514,11 @@ class ChimeMaster(object):
                 recv_ports[node_name].append(dict(port=port_name, sources=[(ib.hostname, 80)]))
 
         # Start the receivers concurrently
-        start_results = yield {node_name: self.raw_acq[node_name].start(name=recv_names[node_name], ports=recv_ports[node_name]) for node_name in self.raw_acq_ibs.keys()}
+        start_results = yield {node_name: self.raw_acq[node_name].start(
+                name=recv_names[node_name],
+                ports=recv_ports[node_name],
+                jump_thresholds=conf.common_config.jump_thresholds)
+            for node_name in self.raw_acq_ibs.keys()}
 
         # Configure the FPGA transmit addresses based on what the receiver returned
         for node_name, start_result in start_results.items(): # for each RawAcq node
@@ -656,7 +660,7 @@ class ChimeMaster(object):
         #print('before setup: logger name=%s, level=%s, handlers=%s, disabled=%r' %(lo.name, lo.level, lo.handlers, lo.disabled))
         self.logging_handlers = log.setup_logging(conf.logging.dict_config, conf.logging.log_levels,
             base_package_name=conf.logging.base_package_name,
-            actual_package_name = __name__.rpartition('.')[0], # full package path up to ch_acq (note: __package__ exists but is not consistently defined)
+            actual_package_name=__name__.rpartition('.')[0], # full package path up to ch_acq (note: __package__ exists but is not consistently defined)
             script_name=conf.logging.script_name,
             path=self.acq_base_dir) # path will be inserted in filename strings containing "%(path)"
         #lo=logging.getLogger('pychfpga.fpga_array')
