@@ -547,7 +547,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
     def get_local_data_port_number(self):
         """ Return the port number to which the FPGA is sending its captured data stream on the control network.
         """
-        return_async((yield self.fpga_mmi_read.async (self._REMOTE_IP_PORT_ADDR) >> 16))
+        async_return((yield self.fpga_mmi_read.async(self._REMOTE_IP_PORT_ADDR)) >> 16)
 
     @async
     def set_data_target_address(self, ip_addr=None, port=None, mac_addr=None):
@@ -615,7 +615,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         self.core_gpio.TARGET_IP_ADDR = ip_addr_int
 
         # Set the UDP  Channel 1 outgoing packet destination port number, on the ARM-FPGA SPI registers
-        word = yield self.fpga_mmi_read(self._REMOTE_IP_PORT_ADDR)
+        word = yield self.fpga_mmi_read.async(self._REMOTE_IP_PORT_ADDR)
         yield self.fpga_mmi_write.async(self._REMOTE_IP_PORT_ADDR, (word & 0xFFFF) | (port << 16))
 
 
@@ -634,7 +634,8 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         sequence number to the value known by the FPGA. This should be is used
         by the first command sent to the FPGA to reset the communication link.
         """
-        async_return((yield self.mmi_read(self._GPIO_COOKIE_REG, resync=resync) & 0x7F))
+        yield None
+        async_return((self.mmi_read(self._GPIO_COOKIE_REG, resync=resync) & 0x7F))
 
     def get_fpga_firmware_version(self):
         """
@@ -736,7 +737,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         """ Set the source of the IRIG-B signal."""
         if source not in self._IRIGB_SOURCE_TABLE:
             raise ValueError('Invalid IRIG-B source name. Valid names are %s' % ', '.join(self._IRIGB_SOURCE_TABLE.keys()))
-        w2 = self.fpga_mmi_read(self._IRIGB_SAMPLE2_ADDR)
+        w2 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE2_ADDR)
         self.fpga_mmi_write(self._IRIGB_SAMPLE2_ADDR, (w2 & 0x3FFFFFFF) | (self._IRIGB_SOURCE_TABLE[source] << 30))
 
     @async
@@ -786,7 +787,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
 
         # Capture current time
         if trig:
-            w2 = self.fpga_mmi_read(self._IRIGB_SAMPLE2_ADDR)
+            w2 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE2_ADDR)
             t0 = time.time()
             while True:
                 # trigger time capture
@@ -796,12 +797,12 @@ class IceBoardExtHandler(IceBoardPlusHandler):
 
                 # Wait for the time capture . Time is captured on the next 10 MHz reference clock edge, so that shoudl be quick.
                 t1 = time.time()
-                while not self.fpga_mmi_read(self._IRIGB_TARGET1_ADDR) & (1 << 29):
+                while not (yield self.fpga_mmi_read.async(self._IRIGB_TARGET1_ADDR)) & (1 << 29):
                     print 'Waiting for time capture' # -- debug. should not happen
                     if time.time() - t1 > 0.1:
                         raise RuntimeError('Timeout while waiting for a Reference clock edge')
 
-                w1 = self.fpga_mmi_read(self._IRIGB_SAMPLE1_ADDR)
+                w1 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE1_ADDR)
                 recent = (w1 >> 29) & 1
                 if recent: # if we get a updated time
                     break
@@ -811,9 +812,9 @@ class IceBoardExtHandler(IceBoardPlusHandler):
                     else:
                         raise RuntimeError('%.32r: Could not get a recently updated IRIG-B time. Check your cabling.' % self)
 
-        w0 = self.fpga_mmi_read(self._IRIGB_SAMPLE0_ADDR)
-        w1 = self.fpga_mmi_read(self._IRIGB_SAMPLE1_ADDR)
-        w2 = self.fpga_mmi_read(self._IRIGB_SAMPLE2_ADDR)
+        w0 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE0_ADDR)
+        w1 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE1_ADDR)
+        w2 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE2_ADDR)
 
         # t0 = self.fpga_mmi_read(self._IRIGB_TARGET0_ADDR)
         # t1 = self.fpga_mmi_read(self._IRIGB_TARGET1_ADDR)

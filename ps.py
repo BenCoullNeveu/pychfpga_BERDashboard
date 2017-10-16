@@ -800,7 +800,7 @@ class PowerSupplyAsyncRESTClient(AsyncRESTClient):
         off_result = yield self.post('power-off', ps_names=ps_names)
         yield sleep(3)
         on_result = yield self.post('power-on', ps_names=ps_names)
-        coroutine_return(off_result, on_result)
+        coroutine_return((off_result, on_result))
 
     @coroutine
     def get_metrics(self):

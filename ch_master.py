@@ -1263,6 +1263,15 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         handler.set_header('Content-Type', 'text/plain')
         handler.write(str(metrics))
 
+    @coroutine
+    @endpoint('print-iceboard-info')
+    def print_iceboard_info(self, handler):
+        if self.chime_master.fpgas:
+            coroutine_return(self.chime_master.fpgas.ib[0].slot)
+        else:
+            self.log.info('FPGA array not yet initialized. No houskeeping info to show.')
+
+
 class ChimeMasterAsyncRESTClient(AsyncRESTClient):
 
     DEFAULT_PORT = ChimeMasterAsyncRESTServer.DEFAULT_PORT
@@ -1336,7 +1345,7 @@ class ChimeMasterAsyncRESTClient(AsyncRESTClient):
                 if status['is_ready']:
                     self.log.info('%r: start process is completed' % self)
                     coroutine_return(status['start_result'])
-            except HTTPError as e:
+            except Exception as e:
                 print('*** %r Client get_status got an exception %r\n\n Ignoring.' % (self, e))
                 status=dict(state='HTTP error')
             self.log.info('%r: Waiting for the START process to complete. Current state is: %s' % (self, status['state']))
@@ -1386,6 +1395,15 @@ class ChimeMasterAsyncRESTClient(AsyncRESTClient):
         """
         m = yield self.get('get_frequency_map')
         self.print_result(m)
+
+    @coroutine
+    def get_ib_info(self):
+        """
+        Print iceboard info.
+        """
+        result = yield self.get('print-iceboard-info')
+        coroutine_return(result)
+
 
 def main():
     """ Command-line interface to operate the ChimeMaster server.
