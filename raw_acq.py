@@ -774,7 +774,7 @@ class RawAcqReceiver(object):
                 for threshold in self.jump_thresholds:
                     jump_id = (crate_number, slot_number, chan, threshold)
                     self.jumps[jump_id] = self.jumps.get(jump_id, 0) + np.sum(np.abs(np.diff(adc_data)) > threshold)
-                print('jumps thresholds=', self.jump_thresholds)
+                # print('jumps thresholds=', self.jump_thresholds)
 
     def print_stats(self):
         #print()

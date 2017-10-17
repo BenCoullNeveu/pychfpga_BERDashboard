@@ -3149,7 +3149,7 @@ def setup_logging(log_target='syslog', log_level='debug', sql_log_level='warn', 
 def GPUArray(gpu_nodes=[]):
         # Create GPU node array
         if gpu_nodes:
-            print gpu_nodes
+            #print gpu_nodes
             return Ccoll(GpuNodeHandler(hostname=hostname) for hostname in gpu_nodes)
         else:
             return Ccoll([])
@@ -3319,7 +3319,7 @@ def create_fpga_array(args=None):
 
     args = parse_args_as_dict(parser)  # Parse command-line arguments as a dict, with arguments groups stored in separate sub dictionaries
     # args.test = parse_dut_id(args.target)
-    print('args=', args)
+    #print('args=', args)
     # -------------------------------
     # Load configuration file
     # -------------------------------
@@ -3332,7 +3332,7 @@ def create_fpga_array(args=None):
     # FPGA array
     config_fpga_array_params = config.get('fpga', {}).get('fpga_array_params', {}) or config.get('fpga_array_params', {})
     cli_fpga_array_params = {k:v for k,v in args['cli_fpga_array'].items() if v is not None}
-    print('merging \n\n%r\n\n with \n\n%r' % (config_fpga_array_params, cli_fpga_array_params))
+    #Sprint('merging \n\n%r\n\n with \n\n%r' % (config_fpga_array_params, cli_fpga_array_params))
     fpga_array_params = merge_dict(config_fpga_array_params, cli_fpga_array_params)
     fpga_array = FPGAArray(**fpga_array_params)  # Create FPGA array
 

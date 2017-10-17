@@ -516,7 +516,11 @@ class ChimeMaster(object):
                 recv_ports[node_name].append(dict(port=port_name, sources=[(ib.hostname, 80)]))
 
         # Start the receivers concurrently
-        start_results = yield {node_name: self.raw_acq[node_name].start(name=recv_names[node_name], ports=recv_ports[node_name]) for node_name in self.raw_acq_ibs.keys()}
+        start_results = yield {node_name: self.raw_acq[node_name].start(
+                name=recv_names[node_name],
+                ports=recv_ports[node_name],
+                jump_thresholds=conf.common_config.jump_thresholds)
+            for node_name in self.raw_acq_ibs.keys()}
 
         # Configure the FPGA transmit addresses based on what the receiver returned
         for node_name, start_result in start_results.items(): # for each RawAcq node
@@ -1277,8 +1281,8 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
             # Get iceboards and mezzanines
             for iceboard in self.chime_master.fpgas.ib:
                 hwm['FCC%02d%02d' %(iceboard.crate.crate_number, iceboard.slot-1)] = (
-                    'MGK7MB-%s' %iceboard.serial.encode('utf-8'), 
-                    'MGMEZZ-%s' %iceboard.mezzanine.get(1, None).serial, 
+                    'MGK7MB-%s' %iceboard.serial.encode('utf-8'),
+                    'MGMEZZ-%s' %iceboard.mezzanine.get(1, None).serial,
                     'MGMEZZ-%s' %iceboard.mezzanine.get(2, None).serial
                     )
             coroutine_return(hwm)
@@ -1420,7 +1424,7 @@ class ChimeMasterAsyncRESTClient(AsyncRESTClient):
         time_str = datetime.datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
         pickle.dump(hwm, open( '/home/chime/ch_acq/%s_hardware_map.pkl' %time_str, 'wb'))
         # Print hardware map
-        for key in np.sort(hwm.keys()): 
+        for key in np.sort(hwm.keys()):
             print('%s: %s' %(key, hwm[key]))
         #coroutine_return(result)
 
