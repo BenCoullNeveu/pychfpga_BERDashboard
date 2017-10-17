@@ -301,7 +301,7 @@ class IceBoardPlus(IceBoard):
             self.logger.warn('%r: Error while attempring to read the board serial number' % (self))
             actual_serial = None
         self.logger.info('%r: got the serial number of board at %s to be %s' % (self, self.tuber_uri, actual_serial))
-
+        yield None
         if update:
             if not actual_serial:
                 self.logger.warn('%r: Could not read the board serial number from IPMI storage or serial number is null. Serial number is not updated.' % (self))

@@ -466,6 +466,8 @@ class TuberObject(object):
         log.info('%r: Getting Tuber metadata' % (self))
         t1 = time.time()
 
+
+        yield None
         self._tuber_meta_properties = {}
         self._tuber_meta_methods = {}
         self._tuber_meta = _tuber_json_object_hook({"properties": [], "methods": []})

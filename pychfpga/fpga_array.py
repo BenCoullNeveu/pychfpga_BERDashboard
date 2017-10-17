@@ -1465,7 +1465,8 @@ class FPGAArray(object):
                 rx = (ib.slot, i)
                 tx = ib.crate.get_matching_tx(rx)
                 if tx in tx_list:
-                    self.logger.debug('%.32r: In %r,  %s is receiving from %s' % (self, ib.crate, rx, tx))
+                    pass
+                    #self.logger.debug('%.32r: In %r,  %s is receiving from %s' % (self, ib.crate, rx, tx))
                 else:
                     self.logger.debug('%.32r: In %r, %s has no corresponding transmitter' % (self, ib.crate, rx))
 

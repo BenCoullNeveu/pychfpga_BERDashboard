@@ -773,8 +773,8 @@ class RawAcqReceiver(object):
                     self.ramp_bit_error_count[chan_bit_id] = self.ramp_bit_error_count.get(chan_bit_id, 0) + np.count_nonzero((adc_data ^ expected_ramp) & mask)
                 for threshold in self.jump_thresholds:
                     jump_id = (crate_number, slot_number, chan, threshold)
-                    self.jumps[jump_id] = self.jump.get(jump_id, 0) + np.sum(np.abs(np.diff(adc_data)) > threshold)
-
+                    self.jumps[jump_id] = self.jumps.get(jump_id, 0) + np.sum(np.abs(np.diff(adc_data)) > threshold)
+                print('jumps thresholds=', self.jump_thresholds)
 
     def print_stats(self):
         #print()
