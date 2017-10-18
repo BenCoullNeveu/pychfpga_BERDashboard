@@ -401,6 +401,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         except IOError:
             return False
 
+    @async
     def check_command_count(self, reset=False):
         """ Check UDP communication command/reply synchronization and optionally reset counts.
 
@@ -424,12 +425,28 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         If 'reset' is True, the MMI counters are reset to the FPGA values in order to clear the error on future checks.
         """
 
-        (cmd, rply) = self.core_gpio.get_command_count()
-        valid = (cmd == self.mmi.send_counter & 0xFF) and (rply == self.mmi.recv_counter & 0xFF)
-        if reset:
-            self.mmi.send_counter = cmd
-            self.mmi.recv_counter = rply
-        return valid
+        for trial in range(2):
+            try:
+                yield None
+                (cmd, rply) = self.core_gpio.get_command_count()
+                yield None
+                valid = (cmd == self.mmi.send_counter & 0xFF) and (rply == self.mmi.recv_counter & 0xFF)
+                if not valid:
+                    self.loggr.warning('%r: Command counters differ cmd/rply in FPGA is (%i, %i), Python MMI is (%i, %i)' % (self, cmd, rply, self.mmi.send_counter & 0xFF, self.mmi.recv_counter & 0xFF))
+                if reset:
+                    self.mmi.send_counter = cmd
+                    self.mmi.recv_counter = rply
+                    async_return(True)
+                async_return(valid)
+            except IOError as e:
+                self.logger.error("%r: UDP communinication error. Appempting to reset FPGA's UDP stack (trial %i).The error is:\n %s" % (self, trial+1, e))
+                yield self.fpga_mmi_write.async(_SFP_STATUS_ADDR, 2<<30)
+                yield self.fpga_mmi_write.async(_SFP_STATUS_ADDR, 0<<30)
+                valid = False
+                reset = True
+        errmsg = "%r: Could not re-establish UDP communinication with the FPGA. Raising an exception" % (self)
+        self.logger.error(errmsg)
+        raise IOError(errmsg)
 
     @async
     def set_fpga_control_networking_parameters(
