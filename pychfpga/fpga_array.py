@@ -2438,21 +2438,14 @@ class FPGAArray(object):
             # backplane metrics
             try:
                 slot, ib = ic.slot.items()[0]
-                metrics +=  yield ib.get_backplane_metrics.async()
+                metrics += yield ib.get_backplane_metrics.async()
                 #metrics.add(bp_metrics)
             except Exception as e:
                 self.logger.error('%r: error getting backplane metrics: error is %r' % (self, e))
         # IceBoard metrics
         self.logger.info('%r: Getting IceBoard hardware metrics' % self)
-        try:
-            metrics += yield [ib.get_metrics.async() for ib in self.ib]
-            self.logger.info('%r: Got the IceBoards hardware metrics' % self)
-        except Exception as e:
-            self.logger.error('%r: Error getting FPGA hardware metrics. Error is %r' % (self, e))
-            try:
-                self.ib.check_command_count(reset=True)
-            except Exception as e:
-                self.logger.error('%r: Cannot reset FPGA command counters because of error: %r' % (self, e))
+        metrics += yield [ib.get_metrics.async() for ib in self.ib]
+        self.logger.info('%r: Got the IceBoards hardware metrics' % self)
 
         if ib.is_open():
             try:

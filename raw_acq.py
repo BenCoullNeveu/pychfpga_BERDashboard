@@ -617,8 +617,8 @@ class RawAcqReceiver(object):
             yield stream.connect(addr)
             if_addr = s.getsockname()
             s.close()
-        except socket.timeout:
-            self.log.warn('Could not establish a TCP connection with %s:%s' % (addr[0], addr[1]))
+        except (socket.timeout, Exception) as e:
+            self.log.warn('Could not establish a TCP connection with %s:%s. Error is:\n %s' % (addr[0], addr[1], e))
             if_addr = None
 
         coroutine_return(if_addr)
