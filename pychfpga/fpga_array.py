@@ -539,7 +539,7 @@ class FPGAArray(object):
         # responding boards or boards that do not belong to the target
         # subarray.
 
-        self.logger.debug('hardware map=%s' % hwm)
+        #self.logger.debug('hardware map=%s' % hwm)
 
         # If no hardware map is provided, create an empty one
         if not hwm:
