@@ -3005,7 +3005,15 @@ class chFPGA_controller(IceBoardExtHandler):
         Returns:
             a :cls:`Metrics` object.
         """
-        _, metrics = yield self.get_status.async()
+        try:
+            _, metrics = yield self.get_status.async()
+        except Exception as e:
+            self.logger.error('%r: Error getting FPGA hardware metrics. Error is %r' % (self, e))
+            metrics = Metrics()
+            try:
+                self.check_command_count(reset=True)
+            except Exception as e:
+                self.logger.error('%r: Cannot reset FPGA command counters because of error: %r' % (self, e))
         async_return(metrics)
 
 
