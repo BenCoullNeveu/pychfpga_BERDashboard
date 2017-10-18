@@ -634,41 +634,57 @@ class FPGAArray(object):
                               for ib, ping_result in ping_results.items() if not ping_result)))
             # resolve hostnames into IP addresses
             # this is not concurrent, unfortunately... this is why we checked ping first, otherwise it blocks for a long time
-            t0=time.time()
+            t0 = time.time()
             for ib, ping_result in ping_results.items():
                 if ping_result:
                     ib.hostname = socket.gethostbyname(ib.hostname)
             if any(ping_results.values()):
                 self.hwm.flush()
-            self.logger.info('%r: resolving IP addresses took %s seconds' % (self, time.time()-t0))
+            self.logger.info('%r: resolving IP addresses took %s seconds' % (self, time.time() - t0))
+
+        ########################################################
+        # Establish Tuber communication (ARM only)
+        ########################################################
+        # All the boards in the hardware map should have a hostname now.
+        # Let's initialize ARM/Tuber
+        # communication becore we start using Tuber methods. We want to cache the Tuber methods
+        # asynchnously now instead of letting Tuber do it asynchrunously on the first Tuber command
+        # it gets.
+        self.logger.info('%r: Establishing ARM/Tuber communication' % (self))
+        ibs = self.hwm.query(IceBoardPlus)
+        t0 = time.time()
+        yield [ib._tuber_get_meta.async() for ib in ibs]
+        self.logger.info('%r: ARM conneciton established. It took %s seconds' % (self, time.time() - t0))
 
         ########################################################
         # Resolve missing serial/crate/slot info through the ARM
         ########################################################
-        # All the boards in the hardware map should have a hostname now.
         # Complete serial, crate and slot information on IceBoard that miss
         # that information by talking directly to the ARM
         # (i.e without using mDNS and pybonjour).
         ib_without_serial = self.hwm.query(IceBoardPlus).filter(IceBoardPlus.serial == None)
         if ib_without_serial.count():
-            self.logger.info('%.32r: Auto-Discovering serial number for IceBoards %s' %
+            t0 = time.time()
+            self.logger.info('%r: Auto-Discovering serial number for IceBoards %s' %
                 (self, ', '.join(ib_without_serial.hostname)))
             # concurrently resolve serials
-            yield [ib._tuber_get_meta.async() for ib in ib_without_serial]
-            futures = [ib.discover_serial.async() for ib in ib_without_serial]
-            self.logger.info('%r: got all discover_serial futures' % self)
+            futures = [ib.discover_serial.async() for ib in ib_without_serial] # Tuber method
+            self.logger.info('%r: Got all discover_serial futures after %f seconds' % (self, self.time() - t0))
             yield futures # [ib.discover_serial.async() for ib in ib_without_serial]
-
-            self.logger.info('%.32r: finished Auto-Discovering serial number for IceBoards')
+            self.logger.info('%r: Finished Auto-Discovering serial number for IceBoards. Took %f seconds.' % (self, self.time() - t0))
 
         self.logger.info('%.32r: Auto-Discovering slot numbers of IceBoards')
+        t0 = time.time()
         yield [ib.discover_slot.async() for ib in self.hwm.query(IceBoardPlus)]
+        self.logger.info('%r: Finished Auto-Discovering slot numbers for IceBoards. Took %f seconds.' % (self, self.time() - t0))
 
         ib_without_crate = self.hwm.query(IceBoardPlus).filter(or_(IceBoardPlus.crate==None, IceBoardPlus.slot==None))
         if ib_without_crate.count():
-            self.logger.info('%.32r: Auto-Discovering crate information for IceBoards %s' %
+            t0 = time.time()
+            self.logger.info('%r: Auto-Discovering crate information for IceBoards %s' %
                 (self, ', '.join(ib_without_crate.hostname)))
             yield [ib.discover_crate.async() for ib in ib_without_crate]
+            self.logger.info('%r: Finished Auto-Discovering crate serial numbers. Took %f seconds.' % (self, self.time() - t0))
 
         ###########################################################################
         # mDNS discovery of boards and crates specified by model/serial number only

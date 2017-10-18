@@ -2992,10 +2992,10 @@ class chFPGA_controller(IceBoardExtHandler):
         try:
             yield self.check_command_count.async(reset=True)
             metrics = yield self.BP_SHUFFLE.get_metrics.async()
-            async_return(metrics)
         except Exception as e:
             self.logger.error('%r: Error getting FPGA backplane link metrics. Error is %r' % (self, e))
-            async_return(Metrics())
+            metrics = Metrics()
+        async_return()
 
 
     @async
@@ -3005,9 +3005,10 @@ class chFPGA_controller(IceBoardExtHandler):
             metrics = yield self.CROSSBAR.get_metrics.async()
             metrics += yield self.CROSSBAR2.get_metrics.async()
             metrics += yield self.CROSSBAR3.get_metrics.async()
-            async_return(metrics)
         except Exception as e:
             self.logger.error('%r: Error getting FPGA crossbar metrics. Error is %r' % (self, e))
+            metrics = Metrics()
+        async_return()
 
     @async
     def get_metrics(self):
@@ -3018,10 +3019,10 @@ class chFPGA_controller(IceBoardExtHandler):
         """
         try:
             _, metrics = yield self.get_status.async()
-            async_return(metrics)
         except Exception as e:
             self.logger.error('%r: Error getting FPGA hardware metrics. Error is %r' % (self, e))
-            async_return(Metrics())
+            metrics = Metrics()
+        async_return()
 
 
     @async
@@ -3076,11 +3077,9 @@ class chFPGA_controller(IceBoardExtHandler):
                 metrics.add('fpga_backplane_fantray_tachometer', value=yield self.get_fantray_tachometer.async())
                 metrics.add('fpga_backplane_fantray_duty_cycle', value=(yield self.get_fantray_duty_cycle.async()/255.))
 
-                async_return(metrics)
-
             except Exception as e:
                 self.logger.error('%r: error getting backplane metrics: error is %r' % (self, e))
-                async_return(Metrics())
+        async_return(metrics)
 
         # backplane QSFP voltage, temp, signal-level
 
