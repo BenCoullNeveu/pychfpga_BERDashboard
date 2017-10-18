@@ -3073,7 +3073,7 @@ class chFPGA_controller(IceBoardExtHandler):
                 # Fan tray
                 ####################################
 
-                metrics.add('fpga_backplane_fantray_tachometer', value=yield self.get_fantray_tachometer.async())
+                metrics.add('fpga_backplane_fantray_tachometer', value=(yield self.get_fantray_tachometer.async()))
                 metrics.add('fpga_backplane_fantray_duty_cycle', value=(yield self.get_fantray_duty_cycle.async()/255.))
 
                 async_return(metrics)
