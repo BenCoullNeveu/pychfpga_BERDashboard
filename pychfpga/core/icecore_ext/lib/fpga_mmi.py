@@ -230,15 +230,35 @@ class FpgaMmi:
         """
         return self.udp.get_timeout()
 
-    def _send_command(self, cmd, expected_reply_length, retry=None, resync=False):
-        """ Send a command to the FPGA and check the reply for the correct
+    def _send_command(self, cmd, expected_reply_length, retry=None, resync=False, timeout_increase_factor=1):
+        """ Send a read or write command to the FPGA and check the reply for the correct
         sequence number and packet length. If unsuccessful, the command will
         be resent ``retry`` times.
 
-        If ``resync`` is True, the sequenc enumber will be resynchronized to
-        the incoming reply and will not raise an exception.
+        This method is used by the read() and write() methods.
 
-        This is used by the read() and write() methods.
+        Parameters:
+
+            cmd (str): command bytes to send
+
+            expected_reply_length (int): Number of bytes we expect in the reply, excluding the
+                1-byte header. This is used to validate the reply and retry if necessary.
+
+            retry (int): Number of times the command can be retried before raising an exception
+
+            resync (bool): if `resync` is True, the sequence number will be resynchronized to the
+                incoming reply and will not raise an exception.
+
+            timeout_increase_factor (float): factor by which the timeout is increased each time there is a timeout error.
+
+        Returns:
+
+            str: The content of the reply packet without the header.
+
+        Exceptions:
+
+            IOError: Raised if a valid reply cannot be obtained after the retries.
+
         """
         old_timeout = self.get_timeout()
         if retry is None:
@@ -254,24 +274,26 @@ class FpgaMmi:
                 # self.logger.warning('read command: Got 0x%02x, expected 0x%02x' % (ord(data[0]), self.send_counter & 0xff))
                 if ord(data[0]) != self.send_counter & 0xff:
                     if not resync:
-                        error = '%.32r: Invalid sequence number from a read command. Got 0x%02x, expected 0x%02x.' % (self, ord(data[0]), self.send_counter & 0xff)
+                        error = 'Invalid sequence number from a read command. Got 0x%02x, expected 0x%02x.' % (ord(data[0]), self.send_counter & 0xff)
                     self.send_counter = ord(data[0])
                 elif len(data) != expected_reply_length + 1:
-                        error = "%.32r: FPGA Read command to returned %i bytes (0x%s). %i were expected." % (
-                            self, len(data),
+                        error = "FPGA Read command to returned %i bytes (0x%s). %i were expected." % (
+                            len(data),
                             ' '.join('%02X' % ord(b) for b in data),
                             expected_reply_length + 1)
 
             except self.udp.TimeoutException:
-                self.set_timeout(self.get_timeout() * 2)
-                error = '%.32r: Timeout during FPGA read command' % (self)
+                self.set_timeout(self.get_timeout() * timeout_increase_factor)
+                error = 'Timeout during FPGA command.'
 
             if not error:
                 break
 
-            self.logger.warning(error)
             if retries > retry:
+                self.error.warning('%r: %s Raising exception after %i unsuccessful trials' % (self, error, retries))
                 raise IOError(error)
+            else:
+                self.logger.warning('%r: %s This is trial %i/%i. Trying again' % (self, error, retries, retry))
             retries += 1
         # We now have our data for this chunk
         self.set_timeout(old_timeout)

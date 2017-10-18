@@ -2911,6 +2911,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
         info = OrderedDict()
         metrics = Metrics(
+            type='GAUGE',
             slot=(self.slot or 0) - 1,
             id=self.get_string_id(),
             crate_id=self.crate.get_string_id() if self.crate else None,
@@ -2931,7 +2932,7 @@ class chFPGA_controller(IceBoardExtHandler):
         for display_name, sensor, sensor_name in mb_temp_sensors:
             value = yield self.get_motherboard_temperature.async(sensor_name)
             info[display_name] = '%0.1fC' % value
-            metrics.add('fpga_motherboard_temp', value, type='GAUGE', sensor=sensor)
+            metrics.add('fpga_motherboard_temp', value,  sensor=sensor)
 
         ####################################
         # Motherboard voltages and currents
@@ -2953,8 +2954,8 @@ class chFPGA_controller(IceBoardExtHandler):
             voltage = yield self.get_motherboard_voltage.async(tuber_sensor_name)
             current = yield self.get_motherboard_current.async(tuber_sensor_name)
             info[display_name] = '%0.1fV@%0.3fA' % (voltage, current)
-            metrics.add('fpga_motherboard_voltage', value=voltage, type='GAUGE', sensor=sensor)
-            metrics.add('fpga_motherboard_current', value=current, type='GAUGE', sensor=sensor)
+            metrics.add('fpga_motherboard_voltage', value=voltage, sensor=sensor)
+            metrics.add('fpga_motherboard_current', value=current, sensor=sensor)
             if add_to_total_power:
                 total_power += voltage * current
 
@@ -2973,11 +2974,11 @@ class chFPGA_controller(IceBoardExtHandler):
                 voltage = yield self.get_mezzanine_voltage.async(sensor_name, mezz)
                 current = yield self.get_mezzanine_current.async(sensor_name, mezz)
                 info[display_name % mezz] = '%0.1fV@%0.3fA' % (voltage, current)
-                metrics.add('fpga_mezzanine_voltage', value=voltage, type='GAUGE', sensor=sensor, mezzanine=mezz)
-                metrics.add('fpga_mezzanine_current', value=current, type='GAUGE', sensor=sensor, mezzanine=mezz)
+                metrics.add('fpga_mezzanine_voltage', value=voltage, sensor=sensor, mezzanine=mezz)
+                metrics.add('fpga_mezzanine_current', value=current, sensor=sensor, mezzanine=mezz)
 
         info['MB Total power'] = '%0.1fW' % total_power
-        metrics.add('fpga_motherboard_power', value=total_power, type='GAUGE')
+        metrics.add('fpga_motherboard_power', value=total_power)
 
 
         # is_voltage_nominal
@@ -2987,16 +2988,26 @@ class chFPGA_controller(IceBoardExtHandler):
 
     @async
     def get_bp_shuffle_metrics(self):
-        metrics = yield self.BP_SHUFFLE.get_metrics.async()
-        async_return(metrics)
+
+        try:
+            yield self.check_command_count.async(reset=True)
+            metrics = yield self.BP_SHUFFLE.get_metrics.async()
+            async_return(metrics)
+        except Exception as e:
+            self.logger.error('%r: Error getting FPGA backplane link metrics. Error is %r' % (self, e))
+            async_return(Metrics())
 
 
     @async
     def get_crossbar_metrics(self):
-        metrics = yield self.CROSSBAR.get_metrics.async()
-        metrics += yield self.CROSSBAR2.get_metrics.async()
-        metrics += yield self.CROSSBAR3.get_metrics.async()
-        async_return(metrics)
+        try:
+            yield self.check_command_count.async(reset=True)
+            metrics = yield self.CROSSBAR.get_metrics.async()
+            metrics += yield self.CROSSBAR2.get_metrics.async()
+            metrics += yield self.CROSSBAR3.get_metrics.async()
+            async_return(metrics)
+        except Exception as e:
+            self.logger.error('%r: Error getting FPGA crossbar metrics. Error is %r' % (self, e))
 
     @async
     def get_metrics(self):
@@ -3007,14 +3018,10 @@ class chFPGA_controller(IceBoardExtHandler):
         """
         try:
             _, metrics = yield self.get_status.async()
+            async_return(metrics)
         except Exception as e:
             self.logger.error('%r: Error getting FPGA hardware metrics. Error is %r' % (self, e))
-            metrics = Metrics()
-            try:
-                self.check_command_count(reset=True)
-            except Exception as e:
-                self.logger.error('%r: Cannot reset FPGA command counters because of error: %r' % (self, e))
-        async_return(metrics)
+            async_return(Metrics())
 
 
     @async
@@ -3029,42 +3036,54 @@ class chFPGA_controller(IceBoardExtHandler):
         """
 
         info = OrderedDict()
-        metrics = Metrics()
+        crate_number = self.crate.crate_number if self.crate else None
+        crate_id = self.crate.get_string_id() if self.crate else None
+        metrics = Metrics(crate_number=crate_number, crate_id=crate_id, type='GAUGE')
 
         if (yield self.is_backplane_present.async()):
-            ####################################
-            # Backplane temperatures
-            ####################################
+            try:
+                ####################################
+                # Backplane temperatures
+                ####################################
 
-            bp_temp_sensors = [
-                ('BP Slot1 Temp', 'Slot1', self.TEMPERATURE_SENSOR.BP_SLOT1),
-                ('BP Slot16 Temp', 'Slot16', self.TEMPERATURE_SENSOR.BP_SLOT16)]
+                bp_temp_sensors = [
+                    ('BP Slot1 Temp', 'Slot1', self.TEMPERATURE_SENSOR.BP_SLOT1),
+                    ('BP Slot16 Temp', 'Slot16', self.TEMPERATURE_SENSOR.BP_SLOT16)]
 
 
-            for display_name, sensor, sensor_name in bp_temp_sensors:
-                value = yield self.get_backplane_temperature.async(sensor_name)
-                info[display_name] = '%0.1fC' % value
-                metrics.add('fpga_backplane_temp', value, type='GAUGE', sensor=sensor)
+                for display_name, sensor, sensor_name in bp_temp_sensors:
+                    value = yield self.get_backplane_temperature.async(sensor_name)
+                    info[display_name] = '%0.1fC' % value
+                    metrics.add('fpga_backplane_temp', value, sensor=sensor)
 
-            ####################################
-            # Backplane voltages and currents
-            ####################################
+                ####################################
+                # Backplane voltages and currents
+                ####################################
 
-            voltage = yield self.get_backplane_voltage.async()
-            current = yield self.get_backplane_current.async()
-            power = yield self.get_backplane_power.async()
-            info['BP VCC3V3'] = '%0.1fV@%0.3fA' % (voltage, current)
-            info['BP power'] = '%0.1fW' % power
-            metrics.add('fpga_backplane_voltage', value=voltage, type='GAUGE')
-            metrics.add('fpga_backplane_current', value=current, type='GAUGE')
-            metrics.add('fpga_backplane_power', value=power, type='GAUGE')
+                voltage = yield self.get_backplane_voltage.async()
+                current = yield self.get_backplane_current.async()
+                power = yield self.get_backplane_power.async()
+                info['BP VCC3V3'] = '%0.1fV@%0.3fA' % (voltage, current)
+                info['BP power'] = '%0.1fW' % power
+                metrics.add('fpga_backplane_voltage', value=voltage)
+                metrics.add('fpga_backplane_current', value=current)
+                metrics.add('fpga_backplane_power', value=power)
+
+                ####################################
+                # Fan tray
+                ####################################
+
+                metrics.add('fpga_backplane_fantray_tachometer', value=yield self.get_fantray_tachometer.async())
+                metrics.add('fpga_backplane_fantray_duty_cycle', value=(yield self.get_fantray_duty_cycle.async()/255.))
+
+                async_return(metrics)
+
+            except Exception as e:
+                self.logger.error('%r: error getting backplane metrics: error is %r' % (self, e))
+                async_return(Metrics())
 
         # backplane QSFP voltage, temp, signal-level
 
-        crate_number = self.crate.crate_number if self.crate else None
-        crate_id = self.crate.get_string_id() if self.crate else None
-        metrics = Metrics().add(metrics,  crate_number=crate_number, crate_id=crate_id)
-        async_return(metrics)
 
 
     def get_string_id(self):

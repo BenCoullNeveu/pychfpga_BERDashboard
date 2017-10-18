@@ -2433,37 +2433,24 @@ class FPGAArray(object):
         """
         metrics = Metrics()
 
-        self.logger.info('%r: Getting IceBoard backplane hardware metrics' % self)
+        # IceCrate metrics
+        self.logger.info('%r: Getting IceBoard backplane hardware metrics (over ARM link)' % self)
         for ic in self.ic:
-            # backplane metrics
-            try:
-                slot, ib = ic.slot.items()[0]
-                metrics += yield ib.get_backplane_metrics.async()
-                #metrics.add(bp_metrics)
-            except Exception as e:
-                self.logger.error('%r: error getting backplane metrics: error is %r' % (self, e))
+            slot, ib = ic.slot.items()[0]
+            metrics += yield ib.get_backplane_metrics.async()
+
         # IceBoard metrics
-        self.logger.info('%r: Getting IceBoard hardware metrics' % self)
+        self.logger.info('%r: Getting IceBoard hardware metrics (over ARM link)' % self)
         metrics += yield [ib.get_metrics.async() for ib in self.ib]
         self.logger.info('%r: Got the IceBoards hardware metrics' % self)
 
         if ib.is_open():
-            try:
-                self.logger.info('%r:Getting corner-turn links metrics' % self)
-                metrics += yield [ib.get_bp_shuffle_metrics.async() for ib in self.ib]
-                self.logger.info('%r:Getting corner-turn crossbars metrics' % self)
-                metrics += yield [ib.get_crossbar_metrics.async() for ib in self.ib]
-                self.logger.info('%r: Got the corner-turn metrics' % self)
-            except Exception as e:
-                self.logger.error('%r: Error getting FPGA corner-turn engine metrics. Error is %r' % (self, e))
-                try:
-                    self.ib.check_command_count(reset=True)
-                except Exception as e:
-                    self.logger.error('%r: Cannot reset FPGA command counters because of error: %r' % (self, e))
+            self.logger.info('%r:Getting corner-turn links metrics (over FPGA UDP link)' % self)
+            metrics += yield [ib.get_bp_shuffle_metrics.async() for ib in self.ib]
+            self.logger.info('%r:Getting corner-turn crossbars metrics (over FPGA UDP link)' % self)
+            metrics += yield [ib.get_crossbar_metrics.async() for ib in self.ib]
+            self.logger.info('%r: Got the corner-turn metrics' % self)
         self.logger.info('%r: Finished gathering FPGA/backplane metrics' % self)
-            #print(all_metrics)
-        #for m in all_metrics:
-        #    metrics.add(m)
 
         # Backplane GTX
         # Errors, signal level
