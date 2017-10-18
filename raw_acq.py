@@ -429,6 +429,7 @@ class RawAcqReceiver(object):
         self.ioloop_max_response_time = None
         self.ioloop_min_response_time = None
         self.hdf5_write_time = 0
+        self.start_time = None
 
     def __repr__(self):
         return '%s(%s)' % (self.__class__.__name__, self.name)
@@ -509,12 +510,14 @@ class RawAcqReceiver(object):
         self.max = {}
         self.mean = {}
         self.jumps = {}
+        self.maxdiff = {}
         self.chan_number_mismatch_count = 0
         self.crate_number_mismatch_count = 0
         self.slot_number_mismatch_count = 0
         self.ramp_error_count = {}
         self.ramp_bit_error_count = {}
         self.ping_error_count = {}
+        self.start_time = time.time()
 
         # Determine the interface from which data will be coming from each source by pinging them
         src_if_addrs = yield self.ping_sources()
@@ -676,7 +679,7 @@ class RawAcqReceiver(object):
             print("shutdown servers")
             self.data_queue.clear()
         self.gain_estimator = None
-
+        self.start_time = None
 
     def process_data(self):
         self.old_timestamp = None
@@ -765,6 +768,7 @@ class RawAcqReceiver(object):
                 self.min[chan_id] = np.min(adc_data)
                 self.max[chan_id] = np.max(adc_data)
                 self.mean[chan_id] = np.mean(adc_data)
+                self.maxdiff[chan_id] = np.max(np.abs(np.diff(adc_data)))
                 expected_ramp = np.arange(2048, dtype=np.int8)
                 self.ramp_error_count[chan_id] = self.ramp_error_count.get(chan_id, 0) + np.sum(adc_data != expected_ramp)
                 for bit in range(8):
@@ -954,21 +958,27 @@ class RawAcqReceiver(object):
         for (crate, slot, chan), mean in self.mean.items():
             metrics.add('raw_acq_mean', value= mean, crate=crate, slot=slot, chan=chan)
         self.mean = {}
+        for (crate, slot, chan), maxdiff in self.maxdiff.items():
+            metrics.add('raw_acq_max_diff', value= maxdiff, crate=crate, slot=slot, chan=chan)
+        self.maxdiff = {}
         for (crate, slot, chan), count in self.ramp_error_count.items():
             metrics.add('raw_acq_ramp_errors', value= count, crate=crate, slot=slot, chan=chan)
-        self.ramp_error_count = {}
+        #self.ramp_error_count = {}
         for (crate, slot, chan, bit), count in self.ramp_bit_error_count.items():
             metrics.add('raw_acq_ramp_bit_errors', value=count, crate=crate, slot=slot, chan=chan, bit=bit)
-        self.ramp_bit_error_count = {}
+        #self.ramp_bit_error_count = {}
         for (crate, slot, chan, threshold), count in self.jumps.items():
             metrics.add('raw_acq_jumps', value=count, crate=crate, slot=slot, chan=chan, threshold=threshold)
-        self.jumps = {}
+        #self.jumps = {}
 
         # Receiver-specific stats
         for i,r in enumerate(self.receivers):
             metrics.add('raw_acq_received_packets', value=r.packet_counter, receiver=i)
             metrics.add('raw_acq_queued_packets', value=r.queued_packets, receiver=i)
             metrics.add('raw_acq_overflow_packets', value=r.queue_overflows, receiver=i)
+
+
+        metrics.add('raw_acq_run_time', value=0 if self.start_time is None else time.time() - self.start_time)
 
         # Packet integrity stats
 
