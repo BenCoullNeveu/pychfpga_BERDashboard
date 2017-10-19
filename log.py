@@ -273,7 +273,7 @@ def setup_logging(dict_config={}, log_levels={}, base_package_name=None, script_
 
     dict_config.loggers = new_loggers
 
-    # print 'new loggers=', new_loggers
+    #print 'new loggers=', new_loggers
 
     # register the existing handlers for each logger
     old_handlers = {}
@@ -281,7 +281,7 @@ def setup_logging(dict_config={}, log_levels={}, base_package_name=None, script_
         old_handlers[logger_name] = logging.getLogger(logger_name).handlers
 
 
-    # print('new logging dict is: %r' % dict_config)
+    print('new loggingconfig is: %r' % dict_config)
 
     logging.config.dictConfig(dict_config)
 

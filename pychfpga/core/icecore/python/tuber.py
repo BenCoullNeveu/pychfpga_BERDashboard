@@ -11,6 +11,7 @@ import logging
 import time
 import textwrap
 import warnings
+import hashlib
 
 import tornado.concurrent
 import tornado.ioloop
@@ -19,7 +20,10 @@ import tornado.gen
 
 import async
 
-tornado.httpclient.AsyncHTTPClient.configure(None, max_clients=70, max_buffer_size=200000)  # So we can probe many boards at once (Default is 10)
+#tornado.httpclient.AsyncHTTPClient.configure("tornado.curl_httpclient.CurlAsyncHTTPClient", max_clients=300) #, max_buffer_size=200000)  # So we can probe many boards at once (Default is 10)
+tornado.httpclient.AsyncHTTPClient.configure(None, max_clients=300, max_buffer_size=200000)  # So we can probe many boards at once (Default is 10)
+
+json_cache = {}
 
 # Prefer simplejson (it's compatible, but faster)
 try:
@@ -134,7 +138,8 @@ class Context(async.Parallelizable):
 
             client = tornado.httpclient.AsyncHTTPClient()
             # client.configure(None, max_clients=50) ## So we can send to 50 boards at once
-            #                                        ## Default is 10
+                                                     ## Default is 10
+            log=logging.getLogger(__name__)
             request = tornado.httpclient.HTTPRequest(
                 url=self.obj.tuber_uri,
                 method='POST',
@@ -143,7 +148,12 @@ class Context(async.Parallelizable):
                 request_timeout=10 * 60) # permit calls to be really slow
 
             t1 = time.time()
-            response = yield client.fetch(request)
+            fetch_future = client.fetch(request)
+            #if client.queue or len(client.active) > 70:
+            #    #log.info("max_clients: %i, %d active, %d queued requests." % (client.max_clients, 
+            #    #              len(client.active), len(client.queue)))
+            #    pass
+            response = yield fetch_future
             t2 = time.time()
 
             # Say something about the call
@@ -333,24 +343,34 @@ class TuberObject(object):
         t0 = time.time()
         log = logging.getLogger(__name__)
         client = tornado.httpclient.AsyncHTTPClient()
-        log.info('%r: got a HTTP client instance after %f seconds' % (self, time.time()- t0))
-
+        #log.info('%r: got a HTTP client instance after %f seconds' % (self, time.time()- t0))
+        #log.info("max_clients: %i, %d active, %d queued requests." % (client.max_clients, 
+        #                      len(client.active), len(client.queue)))
+        log.info('%r: HTTP POST: Tuber request body is %i bytes' % (self, len(json.dumps(command))))
         request = tornado.httpclient.HTTPRequest(
             url=self.tuber_uri,
             method='POST',
             body=json.dumps(command),
             connect_timeout=timeout,
             request_timeout=timeout)
-        log.info('%r: got a HTTP request instance after %f seconds' % (self, time.time()- t0))
+        #log.info('%r: got a HTTP request instance after %f seconds' % (self, time.time()- t0))
 
         response = yield client.fetch(request)
-        log.info('%r: got a HTTP response after %f seconds' % (self, time.time()- t0))
+        t1 = time.time()
+        h = hashlib.md5(response.body).hexdigest()
+        log.info('%r:  HTTP POST: got response after %f seconds. hash=%s' % (self, time.time()- t0, h))
+        if h in json_cache:
+            log.info('%r: HTTP POST: got the hashed-decoded response (decode time: %.3fs, total request: %.3fs)' % (self, time.time()- t1, time.time() - t0))
+            async.async_return(json_cache[h])
+
         try:
             json_out = json.loads(response.body, object_hook=_tuber_json_object_hook)
+            json_cache[h] = json_out
         except ValueError:
             logger = logging.getLogger(__name__)
             logger.debug('%.32r: Tuber HTTP request returned invalid JSON data "%s"' % (self, response.body))
             raise
+        log.info('%r: HTTP POST: got the decoded response (decode time: %.3fs, total request: %.3fs)' % (self, time.time()- t1, time.time() - t0))
         async.async_return(json_out)
         # async.async_return(response.body)
 
@@ -398,7 +418,7 @@ class TuberObject(object):
             logger.debug('%.32r: Tuber Ping returned an HTTP error. Board is considered to be absent.' % self)
             async.async_return(False)
         except ValueError:
-            logger.debug('%.32r: Tuber Ping returned a HTTP response with invalid JSON data. Board is considered to be absent.' % (self, response.body))
+            logger.debug('%.32r: Tuber Ping returned a HTTP response with invalid JSON data. Board is considered to be absent.' % (self))
             async.async_return(False)
         except Exception as e:
             logger.error('%r: unhandled exception in ping: %s: %r' %(self,type(e), e ))
@@ -469,8 +489,8 @@ class TuberObject(object):
                 self._tuber_meta_methods))
 
         log = logging.getLogger(__name__)
-        log.info('%r: Getting Tuber metadata' % (self))
-        t1 = time.time()
+        #log.info('%r: Getting Tuber metadata' % (self))
+        t0 = time.time()
 
 
         yield None
@@ -490,10 +510,10 @@ class TuberObject(object):
         #     urllib2.urlopen(self.tuber_uri, json_in).read(),
         #     object_hook=_tuber_json_object_hook)
 
-        log.info('%r: getting list of properties and methods' % (self))
+        #log.info('%r: getting list of properties and methods' % (self))
 
         json_out = yield self._post.async({'object': self.tuber_objname})
-
+        t1 = time.time()
         meta = json_out.result
 
         if not meta:
@@ -512,15 +532,16 @@ class TuberObject(object):
         #     urllib2.urlopen(self.tuber_uri, json_in).read(),
         #     object_hook=_tuber_json_object_hook
         # )
-        log.info('%r: getting properties and method info' % (self))
-
+        #log.info('%r: getting properties and method info' % (self))
+        meta_properties=meta.properties; meta_methods=meta.methods
         json_out = yield self._post.async(
             [{'object': self.tuber_objname,'property': p}
-             for p in (meta.properties + meta.methods)])
-        log.info('%r: got properties and method info after %f seconds' %(self, time.time() - t1))
+             for p in (meta_properties + meta_methods)])
+        t2 = time.time()
+        #log.info('%r: got properties and method info after %f seconds' %(self, time.time() - t1))
         #for j in json_out:
         #    print(j.result)
-        props = {p:r.result for p, r in zip(meta.properties, json_out[:len(meta.properties)])}
+        props = {p:r.result for p, r in zip(meta_properties, json_out[:len(meta_properties)])}
         # for p, r in zip(meta.properties, json_out):
         #     props[p] = r.result
 
@@ -536,7 +557,7 @@ class TuberObject(object):
         # json_out = yield self._post.async(
         #     [{'object': self.tuber_objname,'property': p} for p in meta.methods])
 
-        methods = {m:r.result for m, r in zip(meta.methods, json_out[len(meta.properties):])}
+        methods = {m:r.result for m, r in zip(meta_methods,json_out[len(meta_properties):])}
         # for m, r in zip(meta.methods, json_out):
         #     methods[m] = r.result
 
@@ -544,8 +565,8 @@ class TuberObject(object):
         self._tuber_meta_methods = methods
         self._tuber_meta = meta
 
-        t2 = time.time()
-        log.info('%r: Retrieved Tuber metadata (%f sec)' % (self, t2-t1))
+        t3 = time.time()
+        log.info('%r: Retrieved Tuber metadata (%.3fs to get list, %.3fs to get method/prop info, %.3fs total' % (self, t1-t0, t2-t1, t3-t0))
 
         async.async_return((
             self._tuber_meta,

@@ -1120,7 +1120,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
                 pass
             if future.exception():
                 self.start_time = None
-                logger.error('START Done with exception: %r' % future.exception())
+                logger.error('START Done with exception: \n%s' % future.exception())
             else:
                 logger.info('START Done. result is %r' % future.result())
             return True
@@ -1387,7 +1387,7 @@ class ChimeMasterAsyncRESTClient(AsyncRESTClient):
                 if status['is_ready']:
                     self.log.info('%r: start process is completed' % self)
                     coroutine_return(status['start_result'])
-            except Exception as e:
+            except HTTPError as e:
                 print('*** %r Client get_status got an exception %r\n\n Ignoring.' % (self, e))
                 status=dict(state='HTTP error')
             self.log.info('%r: Waiting for the START process to complete. Current state is: %s' % (self, status['state']))
