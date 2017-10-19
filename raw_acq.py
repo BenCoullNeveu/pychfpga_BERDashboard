@@ -429,6 +429,8 @@ class RawAcqReceiver(object):
         self.ioloop_max_response_time = None
         self.ioloop_min_response_time = None
         self.hdf5_write_time = 0
+        self.start_time = None
+        self.hdf5_start_time = None
 
     def __repr__(self):
         return '%s(%s)' % (self.__class__.__name__, self.name)
@@ -502,6 +504,7 @@ class RawAcqReceiver(object):
         self.hdf5_run = False
         self.capture_start = False
         self.jump_thresholds = jump_thresholds
+        self.start_time = time.time()
 
         # Metrics
         self.rms = {}
@@ -675,6 +678,7 @@ class RawAcqReceiver(object):
             receiver.socket.close()  # free the socket so we can restart the receiver later
             print("shutdown servers")
             self.data_queue.clear()
+            self.start_time = None
         self.gain_estimator = None
 
 
@@ -785,6 +789,8 @@ class RawAcqReceiver(object):
     def startHdf5Disk(self, base_dir, base_filename, capture_duration=60, elements_per_file=2048*64):
         if self.hdf5_file:
             raise RuntimeError('HDF5 dataWriter is already running')
+
+        self.hdf5_start_time = time.time()
         # self.datawriter = dataWriter(self.data_queues, base_dir, base_filename, elements_per_file)
         # self.data_writer_thread = threading.Thread(target=self.datawriter.write)
         # self.data_writer_thread.setDaemon(True)
@@ -815,6 +821,7 @@ class RawAcqReceiver(object):
             raise RuntimeError('%.32r: HDF5 dataWriter is not running' % self)
         self.log.info('%.32r: Stopping HDF5 data writer' % self)
         self.hdf5_run = False
+        self.hdf5_start_time = None
         # self.data_writer_thread.join()
         # self.datawriter.close()
         # self.datawriter = None
@@ -920,6 +927,9 @@ class RawAcqReceiver(object):
             metrics.add('raw_acq_disk_percent_used', value=float(s.f_blocks - s.f_bfree)/s.f_blocks)
             metrics.add('raw_acq_disk_percent_free', value=float(s.f_bfree)/s.f_blocks)
 
+        metrics.add('raw_acq_run_time', value= 0 if self.start_time is None else time.time() - self.start_time )
+        metrics.add('raw_acq_hdf5_run_time', value= 0 if self.hdf5_start_time is None else time.time() - self.hdf5_start_time )
+
         # IOloop health stats
         metrics.add('raw_acq_ioloop_max_response_time', value=self.ioloop_max_response_time)
         metrics.add('raw_acq_ioloop_min_response_time', value=self.ioloop_min_response_time)
@@ -949,7 +959,7 @@ class RawAcqReceiver(object):
             metrics.add('raw_acq_min', value= min_, crate=crate, slot=slot, chan=chan)
         self.min = {}
         for (crate, slot, chan), max_ in self.max.items():
-            metrics.add('raw_acq_rms', value= max_, crate=crate, slot=slot, chan=chan)
+            metrics.add('raw_acq_max', value= max_, crate=crate, slot=slot, chan=chan)
         self.max = {}
         for (crate, slot, chan), mean in self.mean.items():
             metrics.add('raw_acq_mean', value= mean, crate=crate, slot=slot, chan=chan)
@@ -965,7 +975,7 @@ class RawAcqReceiver(object):
         self.jumps = {}
 
         # Receiver-specific stats
-        for i,r in enumerate(self.receivers):
+        for i, r in enumerate(self.receivers):
             metrics.add('raw_acq_received_packets', value=r.packet_counter, receiver=i)
             metrics.add('raw_acq_queued_packets', value=r.queued_packets, receiver=i)
             metrics.add('raw_acq_overflow_packets', value=r.queue_overflows, receiver=i)
