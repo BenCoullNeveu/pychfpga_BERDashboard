@@ -30,6 +30,7 @@ import Queue
 import pickle
 import datetime
 import numpy as np
+import psutil
 
 import tornado
 import tornado.tcpclient
@@ -1060,7 +1061,8 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         #self.add_periodic_callback(self.print_iceboard_info_callback, period=60000)
         self.metrics_queue = Queue.Queue(1000)
         #self.add_periodic_callback(self._get_metrics, 3000)
-        self._get_metrics()
+        self.start_time = None
+        self._get_metrics() # continuously run get_metrics loop
 
     @coroutine
     def shutdown(self):
@@ -1117,10 +1119,12 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
                 print('oops. chimeMaster Server start().done() Exception: %s\n' % e)
                 pass
             if future.exception():
+                self.start_time = None
                 logger.error('START Done with exception: %r' % future.exception())
             else:
                 logger.info('START Done. result is %r' % future.result())
             return True
+        self.start_time = time.time()
         self.future = self.chime_master.start(**config)
         IOLoop.current().add_future(self.future, done)
         self.log = log.get_logger(self)  # update the self.log pointer to the new logger
@@ -1165,6 +1169,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
     @coroutine
     @endpoint('stop')
     def stop(self, handler):
+        self.start_time = None
         results = yield self.chime_master.stop()
         coroutine_return(results)
 
@@ -1231,21 +1236,40 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         """ get the metrics from the FPGAss and put them in the queue
         """
         while True:
+            metrics = Metrics()
+            mem = psutil.virtual_memory()
+
+            metrics.add('ch_master_node_mem_total', value=mem.total)
+            metrics.add('ch_master_node_mem_available', value=mem.available)
+            metrics.add('ch_master_node_mem_percent', value=mem.percent)
+            metrics.add('ch_master_node_mem_used', value=mem.used)
+            metrics.add('ch_master_node_mem_free', value=mem.free)
+
+            cpu = psutil.cpu_times()
+
+            metrics.add('ch_master_node_cpu_percent', value=psutil.cpu_percent())
+            metrics.add('ch_master_node_cpu_user', value=cpu.user)
+            metrics.add('ch_master_node_cpu_system', value=cpu.system)
+            metrics.add('ch_master_node_cpu_idle', value=cpu.idle)
+
+            metrics.add('ch_master_run_time', value= 0 if self.start_time is None else time.time() - self.start_time)
+
+
             if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
                 try:
                     self.log.info('%.32r: Scraping metrics from FPGAs' % (self))
-                    metrics = yield self.chime_master.fpgas.get_metrics.async()
+                    metrics += yield self.chime_master.fpgas.get_metrics.async()
                     self.log.info('%r: Got %i FPGA metrics' % (self, len(metrics.metrics)))
-                    if self.metrics_queue.full():
-                        self.metrics_queue.get()
-                    self.metrics_queue.put(metrics)
                 except Exception as e:
                     self.log.warning('%r: error getting FPGA metrics. error is: %r' % (self, e))
                     pass
-
-                self.log.info('Queue has %i metrics blocks' % self.metrics_queue.qsize())
             else:
                 self.log.info('%.32r: Not ready to scrape Metrics from FPGA' % (self))
+
+            if self.metrics_queue.full():
+                self.metrics_queue.get()
+            self.metrics_queue.put(metrics)
+            self.log.info('Queue has %i metrics blocks' % self.metrics_queue.qsize())
 
             yield sleep(1)
 
