@@ -669,14 +669,14 @@ class FPGAArray(object):
                 (self, ', '.join(ib_without_serial.hostname)))
             # concurrently resolve serials
             futures = [ib.discover_serial.async() for ib in ib_without_serial] # Tuber method
-            self.logger.info('%r: Got all discover_serial futures after %f seconds' % (self, self.time() - t0))
+            self.logger.info('%r: Got all discover_serial futures after %f seconds' % (self, time.time() - t0))
             yield futures # [ib.discover_serial.async() for ib in ib_without_serial]
-            self.logger.info('%r: Finished Auto-Discovering serial number for IceBoards. Took %f seconds.' % (self, self.time() - t0))
+            self.logger.info('%r: Finished Auto-Discovering serial number for IceBoards. Took %f seconds.' % (self, time.time() - t0))
 
         self.logger.info('%.32r: Auto-Discovering slot numbers of IceBoards')
         t0 = time.time()
         yield [ib.discover_slot.async() for ib in self.hwm.query(IceBoardPlus)]
-        self.logger.info('%r: Finished Auto-Discovering slot numbers for IceBoards. Took %f seconds.' % (self, self.time() - t0))
+        self.logger.info('%r: Finished Auto-Discovering slot numbers for IceBoards. Took %f seconds.' % (self, time.time() - t0))
 
         ib_without_crate = self.hwm.query(IceBoardPlus).filter(or_(IceBoardPlus.crate==None, IceBoardPlus.slot==None))
         if ib_without_crate.count():
@@ -684,7 +684,7 @@ class FPGAArray(object):
             self.logger.info('%r: Auto-Discovering crate information for IceBoards %s' %
                 (self, ', '.join(ib_without_crate.hostname)))
             yield [ib.discover_crate.async() for ib in ib_without_crate]
-            self.logger.info('%r: Finished Auto-Discovering crate serial numbers. Took %f seconds.' % (self, self.time() - t0))
+            self.logger.info('%r: Finished Auto-Discovering crate serial numbers. Took %f seconds.' % (self, time.time() - t0))
 
         ###########################################################################
         # mDNS discovery of boards and crates specified by model/serial number only

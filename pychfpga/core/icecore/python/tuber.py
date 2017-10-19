@@ -330,15 +330,21 @@ class TuberObject(object):
             ValueError: If JSON encoding or decoding fails
 
         """
+        t0 = time.time()
+        log = logging.getLogger(__name__)
         client = tornado.httpclient.AsyncHTTPClient()
+        log.info('%r: got a HTTP client instance after %f seconds' % (self, time.time()- t0))
+
         request = tornado.httpclient.HTTPRequest(
             url=self.tuber_uri,
             method='POST',
             body=json.dumps(command),
             connect_timeout=timeout,
             request_timeout=timeout)
+        log.info('%r: got a HTTP request instance after %f seconds' % (self, time.time()- t0))
 
         response = yield client.fetch(request)
+        log.info('%r: got a HTTP response after %f seconds' % (self, time.time()- t0))
         try:
             json_out = json.loads(response.body, object_hook=_tuber_json_object_hook)
         except ValueError:
@@ -511,6 +517,7 @@ class TuberObject(object):
         json_out = yield self._post.async(
             [{'object': self.tuber_objname,'property': p}
              for p in (meta.properties + meta.methods)])
+        log.info('%r: got properties and method info after %f seconds' %(self, time.time() - t1))
         #for j in json_out:
         #    print(j.result)
         props = {p:r.result for p, r in zip(meta.properties, json_out[:len(meta.properties)])}
