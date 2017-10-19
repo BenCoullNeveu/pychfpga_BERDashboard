@@ -18,6 +18,7 @@ import re
 import datetime
 import functools
 import zlib
+import base64
 
 from tornado.netutil import Resolver
 from tornado.ioloop import IOLoop
@@ -96,6 +97,7 @@ class FPGABitstream(object):
         with open(self.filename, 'rb') as file_:
             self.bitstream = file_.read()
         self.crc32 = zlib.crc32(self.bitstream) & 0xFFFFFFFF  # compute CRC32 of the data
+        self.base64 = base64.b64encode(self.bitstream)
 
 # Default ADC delays
 ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 = {

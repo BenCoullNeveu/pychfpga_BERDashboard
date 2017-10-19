@@ -3,15 +3,16 @@ Tuber object interface
 '''
 
 import inspect
-import urllib2
-import urlparse
-import os
+# import urllib2
+# import urlparse
+# import os
+import sys
 import collections
 import logging
 import time
 import textwrap
 import warnings
-import hashlib
+# import hashlib
 
 import tornado.concurrent
 import tornado.ioloop
@@ -120,6 +121,7 @@ class Context(async.Parallelizable):
 
         calls = []
         futures = []
+        argsize = 0
         while self.calls:
             (n, f, a, k) = self.calls.pop(0)
 
@@ -129,6 +131,7 @@ class Context(async.Parallelizable):
                 'args': a,
                 'kwargs': k
             })
+            argsize += sum(sys.getsizeof(arg) for arg in a) + sum(sys.getargzise(arg) for arg in k.values())
             futures.append(f)
 
         if calls:
@@ -138,19 +141,30 @@ class Context(async.Parallelizable):
 
             client = tornado.httpclient.AsyncHTTPClient()
             # client.configure(None, max_clients=50) ## So we can send to 50 boards at once
-                                                     ## Default is 10
+
             log=logging.getLogger(__name__)
+            if argsize > 1000:
+                h = tuple((call['object'], call['method'], tuple(call['args']), frozenset(call['kwargs'].items())) for call in calls)
+                if h in json_cache:
+                    log.info('%r: using cashed JSON in request')
+                    json_in = json_cache
+                else:
+                    json_in = json.dumps(calls)
+                    json_cache[h] = json_in
+            else:
+                json_in = json.dumps(calls)
+                                                     ## Default is 10
             request = tornado.httpclient.HTTPRequest(
                 url=self.obj.tuber_uri,
                 method='POST',
-                body=json.dumps(calls),
+                body=json_in,
                 connect_timeout=10 * 60,
                 request_timeout=10 * 60) # permit calls to be really slow
 
             t1 = time.time()
             fetch_future = client.fetch(request)
             #if client.queue or len(client.active) > 70:
-            #    #log.info("max_clients: %i, %d active, %d queued requests." % (client.max_clients, 
+            #    #log.info("max_clients: %i, %d active, %d queued requests." % (client.max_clients,
             #    #              len(client.active), len(client.queue)))
             #    pass
             response = yield fetch_future
@@ -344,7 +358,7 @@ class TuberObject(object):
         log = logging.getLogger(__name__)
         client = tornado.httpclient.AsyncHTTPClient()
         #log.info('%r: got a HTTP client instance after %f seconds' % (self, time.time()- t0))
-        #log.info("max_clients: %i, %d active, %d queued requests." % (client.max_clients, 
+        #log.info("max_clients: %i, %d active, %d queued requests." % (client.max_clients,
         #                      len(client.active), len(client.queue)))
         log.info('%r: HTTP POST: Tuber request body is %i bytes' % (self, len(json.dumps(command))))
         request = tornado.httpclient.HTTPRequest(
@@ -357,15 +371,15 @@ class TuberObject(object):
 
         response = yield client.fetch(request)
         t1 = time.time()
-        h = hashlib.md5(response.body).hexdigest()
-        log.info('%r:  HTTP POST: got response after %f seconds. hash=%s' % (self, time.time()- t0, h))
-        if h in json_cache:
+        # h = hashlib.md5(response.body).hexdigest()
+        log.info('%r:  HTTP POST: got response after %f seconds. hash=%s' % (self, time.time()- t0, hash(response.body)))
+        if response.body in json_cache:
             log.info('%r: HTTP POST: got the hashed-decoded response (decode time: %.3fs, total request: %.3fs)' % (self, time.time()- t1, time.time() - t0))
-            async.async_return(json_cache[h])
+            async.async_return(json_cache[response.body])
 
         try:
             json_out = json.loads(response.body, object_hook=_tuber_json_object_hook)
-            json_cache[h] = json_out
+            json_cache[response.body] = json_out
         except ValueError:
             logger = logging.getLogger(__name__)
             logger.debug('%.32r: Tuber HTTP request returned invalid JSON data "%s"' % (self, response.body))

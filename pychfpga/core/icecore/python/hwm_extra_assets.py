@@ -631,6 +631,8 @@ class IceBoardPlusHandler(IceBoardHandler):
                     if bitstream CRC differ
             force = None: FPGA will be configured only if it is not configured
         '''
+
+        t0 = time.time()
         self.logger.info('%.32r: called set_fpga_bitstream' % self)
 
         if hasattr(self, 'close'):
@@ -644,7 +646,7 @@ class IceBoardPlusHandler(IceBoardHandler):
         #else:
         #    buf = str(buf)
 
-        crc32 = getattr(buf, 'crc32', zlib.crc32(str(buf))) & 0xFFFFFFFF  # compute CRC32 of the data
+        crc32 = getattr(buf, 'crc32', zlib.crc32(str(buf))) & 0xFFFFFFFF  # compute CRC32 of the data if it not already precomputed in the 'buf' object
         buf = str(buf)
 
         self.logger.info('%.32r: getting is_programmed' % self)
@@ -655,14 +657,17 @@ class IceBoardPlusHandler(IceBoardHandler):
         if not is_fpga_programmed or force \
            or (force is not None and (fpga_bitstream_crc != crc32)):
             self.logger.info('%.32r: Configuring FPGA' % self)
-            b64_string = base64.b64encode(str(buf))
+            b64_string = getattr(buf, 'base64', base64.b64encode(str(buf)))
             # self._set_fpga_bitstream_base64(b64_string)
+            t1 = time.time()
             yield self._set_fpga_bitstream_base64.async(b64_string)
             self.set_fpga_bitstream_crc(crc32)
-            self.logger.info('%r: Done configuring FPGA' % self)
+            t2 = time.time()
+            self.logger.info('%r: Done configuring FPGA. It took %.3fs (%.3fs to set-up, %.3fs to program)' % (self, t2-t0, t1-t0, t2-t1))
         else:
+            t2 = time.time()
             self.logger.info(
-                '%.32r: FPGA is already configured. Skipping configuration' % self
+                '%.32r: FPGA is already configured. Skipping configuration. Took %.3fs' % (t2 - t0)
                 )
 
     def get_fpga_bitstream(self, tag=None):
