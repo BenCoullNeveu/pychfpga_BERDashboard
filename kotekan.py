@@ -61,7 +61,7 @@ class KotekanAsyncRESTServer(AsyncRESTServer):
 
     @coroutine
     @endpoint('packet_grab')
-    def status(self, handler, number_of_packets=5):
+    def packet_grab(self, handler, number_of_packets=5):
         self.log.info('%.32r: Received status command' % (self))
         coroutine_return("Status")
 
