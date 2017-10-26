@@ -646,28 +646,37 @@ class IceBoardPlusHandler(IceBoardHandler):
         #else:
         #    buf = str(buf)
 
-        crc32 = getattr(buf, 'crc32', zlib.crc32(str(buf))) & 0xFFFFFFFF  # compute CRC32 of the data if it not already precomputed in the 'buf' object
+        if hasattr(buf, 'crc32'):
+		crc32 = buf.crc32
+	else:
+		crc32 =  zlib.crc32(str(buf))  # compute CRC32 of the data if it not already precomputed in the 'buf' object
+	crc32 &=  0xFFFFFFFF
         buf = str(buf)
 
         self.logger.info('%.32r: getting is_programmed' % self)
         is_fpga_programmed = yield self.is_fpga_programmed.async()
+	t1 = time.time()
         self.logger.info('%.32r: getting FPGA crc' % self)
         fpga_bitstream_crc = yield self.get_fpga_bitstream_crc.async()
         self.logger.debug('%.32r: fpga_programmed=%s, force=%s, fpga_crc=%08X, bitstream_crc=%08X' % (self, is_fpga_programmed, force, fpga_bitstream_crc or 0, crc32 or 0))
+	t2 = time.time()
         if not is_fpga_programmed or force \
            or (force is not None and (fpga_bitstream_crc != crc32)):
             self.logger.info('%.32r: Configuring FPGA' % self)
-            b64_string = getattr(buf, 'base64', base64.b64encode(str(buf)))
+            if hasattr(buf, 'base64'):
+		b64_string = buf.base64
+	    else: 
+		b64_string =  base64.b64encode(str(buf))
             # self._set_fpga_bitstream_base64(b64_string)
-            t1 = time.time()
+            t3 = time.time()
             yield self._set_fpga_bitstream_base64.async(b64_string)
             self.set_fpga_bitstream_crc(crc32)
-            t2 = time.time()
-            self.logger.info('%r: Done configuring FPGA. It took %.3fs (%.3fs to set-up, %.3fs to program)' % (self, t2-t0, t1-t0, t2-t1))
+            t4 = time.time()
+            self.logger.info('%r: Done configuring FPGA. It took %.3fs (%.3fs, %.3fs, %.3fs, %.3fs)' % (self, t4-t0, t1-t0, t2-t1, t3-t2, t4-t3))
         else:
-            t2 = time.time()
+            t4 = time.time()
             self.logger.info(
-                '%.32r: FPGA is already configured. Skipping configuration. Took %.3fs' % (t2 - t0)
+                '%.32r: FPGA is already configured. Skipping configuration. Took %.3fs' % (t4 - t0)
                 )
 
     def get_fpga_bitstream(self, tag=None):

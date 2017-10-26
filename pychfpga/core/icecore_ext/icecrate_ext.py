@@ -608,7 +608,7 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
 
         This requires I2C communication with the backplane.
         """
-
+	#return
         for trial in range(10):
             try:
                 # Check if the fan controller is connected
@@ -626,10 +626,13 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
                 if self._fan_ctrl_present:
                     self._fan_ctrl.init()
                 return
-            except IOError as e:
-                self.logger.warning('%r: IO Error during backplane INIT on trial %i. retrying. Error was:\n%r' % (self, trial+1, e))
+            except (IOError, RuntimeError) as e:
+                self.logger.warning('%r: IO Error during backplane INIT on trial %i. retrying. Error was:\n%s' % (self, trial+1, e))
             finally:
-                self._i2c.select_bus([])  # Make sure we don't load the bus
+                try:
+                    self._i2c.select_bus([])  # Make sure we don't load the bus
+                except (IOError, RuntimeError):
+		    pass
         raise IOError('%r: Cannot initialize backplane peripherals' % self)
 
     def _init_temperature_sensors(self, temperature_sensor_name=None):
@@ -893,10 +896,11 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
     def set_fan_speed(self, speed):
         """ Set the speed of the crate fan. `speed` is a value from 0 to 100.
         """
-        if not self._fan_ctrl_present:
-            raise RuntimeError('There is no fan controller connected on the backplane I2C bus')
-        self._fan_ctrl.set_duty_cycle(speed)
+        #if not self._fan_ctrl_present:
+        #    raise RuntimeError('There is no fan controller connected on the backplane I2C bus')
+        #self._fan_ctrl.set_duty_cycle(speed)
 
+        self.master_iceboard.set_fantray_duty_cycle(int(255.*speed/100))
 
     def get_qsfp_links(self):
         """

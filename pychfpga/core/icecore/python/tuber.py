@@ -131,7 +131,7 @@ class Context(async.Parallelizable):
                 'args': a,
                 'kwargs': k
             })
-            argsize += sum(sys.getsizeof(arg) for arg in a) + sum(sys.getargzise(arg) for arg in k.values())
+            argsize += sum(sys.getsizeof(arg) for arg in a) + sum(sys.getsizeof(arg) for arg in k.values())
             futures.append(f)
 
         if calls:
@@ -147,7 +147,7 @@ class Context(async.Parallelizable):
                 h = tuple((call['object'], call['method'], tuple(call['args']), frozenset(call['kwargs'].items())) for call in calls)
                 if h in json_cache:
                     log.info('%r: using cashed JSON in request')
-                    json_in = json_cache
+                    json_in = json_cache[h]
                 else:
                     json_in = json.dumps(calls)
                     json_cache[h] = json_in

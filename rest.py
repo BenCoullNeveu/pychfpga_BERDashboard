@@ -24,6 +24,7 @@ import tornado.web
 from tornado.gen import sleep
 from tornado.ioloop import IOLoop
 from tornado.web import HTTPError
+from tornado_profile import TornadoProfiler
 
 def coroutine(func, replace_callback=True):
     """ Standard Tornado coroutine decorator, with the coroutine flag added in case we use tornado < 4.5"""
@@ -695,6 +696,12 @@ def run_client(args, server_class=None, client_class=None, object_name='', serve
     old_ioloop = IOLoop.current()
     ioloop = IOLoop()
     ioloop.make_current()
+
+
+    # Setup profiler web server
+    #routes = TornadoProfiler().get_routes()
+    #profile_app = tornado.web.Application(routes)
+    #profile_app.listen(54329)
 
     def is_client_method(string):
         return ':' not in string and '.' not in string and hasattr(client_class, string)

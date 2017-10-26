@@ -37,7 +37,7 @@ import tornado.tcpclient
 import tornado.web
 
 import pychfpga  # used to access .calculate_gain.
-from pychfpga import FPGAArray, NameSpace, load_yaml_config, Metrics
+from pychfpga import FPGAArray, NameSpace, load_yaml_config, Metrics, calculate_gains
 import log
 
 from rest import RESTClient, AsyncRESTServer, AsyncRESTClient, HTTPError # generic REST servers and clients
@@ -947,10 +947,10 @@ class ChimeMaster(object):
         if not cg.enable:
             return
         # setup noise injection using noise injection parameters that are specific to the gain calculation operation.
-        self.setup_noise_injection(cg.noise_injection)
+        #self.setup_noise_injection(cg.noise_injection)
         for ib in self.fpgas.ib:
-            if ib.slot in cg.slots:
-                pychfpga.calculate_gains.calculate_gains(ib, str(ib.fpga_port_number + 1)) # use of fixed port numbers is obsolete
+            #if ib.slot in cg.slots:
+                calculate_gains.calculate_gains(ib) 
 
     @coroutine
     def switch_gains(self, gain_map):

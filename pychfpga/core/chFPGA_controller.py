@@ -16,6 +16,7 @@ import numpy as np
 import time
 import os
 import yaml
+import pickle
 from datetime import datetime
 from collections import OrderedDict
 from functools import wraps
@@ -3113,7 +3114,7 @@ class chFPGA_controller(IceBoardExtHandler):
             id = [self.get_string_id()]
         else:
             id = list(self.crate.get_id()) + [self.slot]
-        if lane:
+        if lane is not None:
             id.append(lane)
         return tuple(id)
 

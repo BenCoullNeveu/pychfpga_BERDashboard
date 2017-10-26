@@ -1326,25 +1326,25 @@ class FPGAArray(object):
 
         array_gains = {}
         for ib in self.ib:
+            self.logger.info('%r: Reading digital gains for crate %s, slot %02i' % (self, ib.crate.crate_number, ib.slot))
             board_gains = ib.load_gains(folder=gain_folder) or default_gains
 
             if not board_gains:
                 self.logger.warn('Neither board-specific gain file not default gain file was found for IceBoard SN%s, crate %s, slot %i, channel %i.' % (ib.serial, crate, slot, ch))
 
-            for ch in range(ib.NUMBER_OF_CHANNELIZERS):
-                ch_id = ib.get_id(lane=ch)
-                if board_gains is None or ch not in board_gains:
-                    array_gains[ch_id] = None
-                else:
-                    array_gains[ch_id] = board_gains[ch]
+            ch_id = ib.get_id()
+            if board_gains is None:
+                array_gains[ch_id] = None
+            else:
+                array_gains[ch_id] = board_gains
         return array_gains
 
     def set_gains(self, gains, bank=-1,  when='now'):
         """ Set the gains on the boards in the array.
 
         Arguments:
-            'gains': dictionary of gains specified as {channel_id: gain_spec, ...}.
-                     `channel_id` uniquely identifies an ADC channel and is a tubple either in the format (crate, slot, channel_number) or (board_id, channel_number).
+            'gains': dictionary of gains specified as {board_id: gain_spec, ...}.
+                     `board_id` uniquely identifies a board and is a tuple either in the format (crate, slot) or (board_id).
                      `gain_spec` is passed to the set_gain() method and is in the format (linear_gain, log_gain). `linear_gain` is a complex scalar or a 1024-element complex vector. log_gain is the post_scaler factor, and is a integer.
 
             `bank`: gain bank in which the gains are written. If `bank`=-1 or is None, gains are
@@ -1361,9 +1361,9 @@ class FPGAArray(object):
 
         """
         for ch_id, gain in gains.items():
+            self.logger.info('%r: Setting digital gains for crate %s, slot %02i' % (self, ch_id[0], ch_id[1]))
             ib = self.get_iceboard_from_id(ch_id)
-            ch = ch_id[-1]
-            ib.set_gain(gain=gain, channels=[ch], bank=bank)
+            ib.set_gains(gain=gain, bank=bank)
 
         if when is not None:
             self.switch_gains(bank=bank, when=when)
