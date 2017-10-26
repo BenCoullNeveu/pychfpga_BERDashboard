@@ -3,14 +3,31 @@
 import os
 import logging
 import collections
+import re
+import yaml
+
+re_dot = r"\."
 
 class NameSpace(object):
-    """ Wraps an iterable (list, dict) and any of its elements such that failed attribute accesses are tried as item access.
+    """ Wraps an iterable (list, dict) and any of its accessed elements such that failed
+    attribute accesses are tried as item access.
+
+    Usage:
+
+    n = NameSpace(a=1, b=2, c=dict(e=4, f=5))
+    print n.c.e
+
+    d=dict(a=1, b=2, c=dict(e=4, f=5)
+    n = NameSpace(d)
+    n2 = NameSpace(n)
+    print n.c.e
+
+
     """
     def __init__(self, *args, **kwargs):
         if not args:
             obj = kwargs
-        elif len(args)>1 or kwargs:
+        elif len(args) > 1 or kwargs:
             raise TypeError('Specify either a single object or keyword list')
         elif isinstance(args[0], NameSpace):
             obj = args[0]._obj
@@ -82,9 +99,133 @@ class NameSpace(object):
         return 'NameSpace(%r)' % (self._obj, )
 
     def __dir__(self):
-        attrs = dir(type(self)) + vars(self).keys() + dir(self._obj)
-        return attrs
+        attrs = set(dir(type(self)) + vars(self).keys() + dir(self._obj) +
+            self._obj.keys() if isinstance(self._obj, collections.Mapping) else [] )
+        return list(attrs)
 
+    def as_dict(self):
+        return self._obj
+
+        # def todict(v):
+        #     if isinstance(v, collections.Mapping):
+        #         return {k: todict(i) for k, i in v.items()}
+        #     elif isinstance(obj, collections.Sequence) and not isinstance(obj, basestring):
+        #         return [todict(i) for i in v]
+        #     else:
+        #         return v
+        # return todict(self)
+
+    def as_yaml(self):
+        return yaml.safe_dump(self.as_dict(), default_flow_style=False)
+
+
+    def iterfind(self, pattern='**', lastpath='', search_lists=False, verbose=0):
+        """Generator that yield the full paths to every elements in obj, depth-first.
+
+        Parameters:
+
+            pattern (str): pattern to search for
+
+            lastpath (str): base path used with relative paths.
+
+            search_list (bool): If true, lists items and content and their contnts will be searched.
+                Can significantly slow down searches if a cross-level wildcard is used early in the
+                path.
+
+        """
+
+        while pattern.startswith('.'):
+            lastpath = lastpath.rsplit('.', 1)[0]
+            pattern = pattern[1:]
+
+        if lastpath:
+            pattern = lastpath + '.' + pattern
+
+        # build the full path regular expression
+        for sub, repl in (('**', '::'), ('.', re_dot), ('[', re_dot +r'\['), (']', r'\]'), ('*', '[^.]*'), ('::', '.*?')):
+            pattern = pattern.replace(sub,repl)
+
+        # if verbose:
+        #     print('Full pattern is %s' % (pattern + '$'))
+        full_pattern = re.compile(re_dot + pattern + '$') # to be used with .match()
+
+        # Compute the pattern that will be used to determine if we descend into sub-elements.
+        # It will save a lot of computational time if we don't have to descend into all possible branches
+
+        # Stop path at wildcards that cross hierarchical levels. We have to check all the way down anyway once we got one...
+        if '.*?' in pattern:
+            pattern = pattern.split('.*?')[0] + '.*?'
+
+        re_index = re.compile(r'\[[^\]]*\]$')
+        re_int_index = re.compile(r'\[(\d+)\]$')
+
+        split_pattern = pattern.split(re_dot)
+        not_wild = [int('*' not in s) for s in split_pattern]
+        is_int_index = [re_int_index.match(s) for s in split_pattern]
+        int_index = [int(r.group()) if r else None for r in is_int_index]
+
+        # if verbose:
+        #     print("Split pattern elements are %s\n-------------" % (','.join("'%s'" % s for s in split_pattern)))
+
+        # Mapping = collections.Mapping
+        Sequence = collections.Sequence
+        def paths(prefix, obj, level=0):
+            """
+            Search a specific node `obj` for the target pattern.
+
+            Parameters:
+                obj (dict): An object to get paths from.
+
+                prefix (str): prefix to add to the names found in the current object. Used for recursion.
+
+                level (int): The index of the pattern element we are now looking for. Used to accelerate searches when possible.
+            """
+            if hasattr(obj, 'iteritems'):# and isinstance(obj, Mapping): # the hasattr() test is much faster than isinstance. It is significantly faster not to check isinstance at all.
+                lpat = split_pattern[level]
+
+                if lpat in obj: # obj[lpat] instead of all obj's children if lpat is found in obj. This really helps only when we end up going down long lists
+                    new_prefix = '%s.%s' % (prefix, lpat) # if not isinstance(child_prefix, str) else child_prefix)
+                    child_obj = obj[lpat]
+                    if full_pattern.match(new_prefix):
+                        yield new_prefix, child_obj #self._to_namespace(child_obj) 28 ms for _to_namespace()
+                    for item in paths(new_prefix, child_obj,  level + not_wild[level]):
+                        yield item
+                else: # test every items if the dict, and their children
+                    for (child_prefix, child_obj) in obj.iteritems(): #9 ms gain by using obj.iteritems directly
+                        new_prefix = '%s.%s' % (prefix, child_prefix) # if not isinstance(child_prefix, str) else child_prefix)
+                        if full_pattern.match(new_prefix):
+                            yield new_prefix, child_obj #self._to_namespace(child_obj) 28 ms for _to_namespace()
+                        for item in paths(new_prefix, child_obj, level + not_wild[level]):
+                            yield item
+            elif search_lists and not isinstance(obj, basestring) and isinstance(obj, Sequence):
+                index = int_index[level]
+                if index is not None:
+                    new_prefix = '%s.[%i]' % (prefix, index) # if not isinstance(child_prefix, str) else child_prefix)
+                    child_obj = obj[index]
+                    yield new_prefix, child_obj
+                    for item in paths(new_prefix, child_obj, level + not_wild[level]):
+                        yield item
+                else:
+                    for (index, child_obj) in enumerate(obj):
+                        new_prefix = '%s.[%i]' % (prefix, index) # if not isinstance(child_prefix, str) else child_prefix)
+                        if full_pattern.match(new_prefix):
+                            yield new_prefix, child_obj #self._to_namespace(child_obj) 28 ms for _to_namespace()
+                        for item in paths(new_prefix, child_obj, level + not_wild[level]):
+                            yield item
+
+        return ((k[1:].replace('.[', '['), self._to_namespace(v)) for k, v in paths('', self._obj))
+
+    def findall(self, pattern, lastpath=''):
+        return dict(self.iterfind(pattern, lastpath))
+
+    def findone(self, pattern, lastpath=''):
+        gen = self.iterfind(pattern, lastpath)
+        res = next(gen, None)
+        if res is None:
+            raise AttributeError('Cannot find pattern %s' % pattern)
+        if next(gen, None) is not None:
+            raise AttributeError('More than one entry matches the pattern %s' % pattern)
+        return res
 
 def get_logger(*names):
     """ get a logger whose hierarchical name elements are provided in `names`.
@@ -381,3 +522,5 @@ def setup_basic_logging(level='INFO'):
 #     handler = logging.FileHandler(log_filename)
 #     handler.setFormatter(formatter)
 #     logger.addHandler(handler)
+if __name__=='__main__':
+    pass
