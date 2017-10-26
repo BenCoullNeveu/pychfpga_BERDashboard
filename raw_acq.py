@@ -772,7 +772,9 @@ class RawAcqReceiver(object):
                 self.max[chan_id] = np.max(adc_data)
                 self.mean[chan_id] = np.mean(adc_data)
                 self.maxdiff[chan_id] = np.max(np.abs(np.diff(adc_data)))
-                expected_ramp = np.arange(2048, dtype=np.int8)
+                expected_ramp = np.arange(-128,2048-128, dtype=np.int8)
+         	#if (adc_data != expected_ramp).any() and crate_number==0 and slot_number==0:
+		#	print('%r: Ramp mismatch. Expected %s, got %s' % (self, expected_ramp[:8], adc_data[:8]))
                 self.ramp_error_count[chan_id] = self.ramp_error_count.get(chan_id, 0) + np.sum(adc_data != expected_ramp)
                 for bit in range(8):
                     mask = 1 << bit
