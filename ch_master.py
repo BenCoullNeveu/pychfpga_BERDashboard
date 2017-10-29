@@ -227,7 +227,7 @@ class ChimeMaster(object):
     # Operates the power supplies via the power supply server(s)
 
     @coroutine
-    def create_power_supplies(self):
+    def create_power_supply_clients(self):
         """ create clients object that operate on the power supply server
         """
         ps_config = self.config.power_supplies
@@ -322,7 +322,7 @@ class ChimeMaster(object):
     #     # Add some acquisition information to the header, for kicks.
     #     conf = self.config
     #     headers = {
-    #         'acquisition_name': self.acq_name,
+    #         'acquisition_name': self.run_name,
     #         'acquisition_type': 'corr',
     #         'archive_version': ARCHIVE_VERSION,
     #         'collection_server': socket.gethostname(),
@@ -350,7 +350,7 @@ class ChimeMaster(object):
             crate_sn = self.fpga.ic[0].get_string_id() # Hack. Works with pathfinder only. Have to rewrite for full CHIME.
             fpga_hk_fields = { "core_temp": "deg C" } # To be rewritten with new chrx
             headers = {
-                'acquisition_name': self.acq_name,
+                'acquisition_name': self.run_name,
                 'acquisition_type': 'corr',
                 'archive_version': ARCHIVE_VERSION,
                 'collection_server': socket.gethostname(),
@@ -363,7 +363,7 @@ class ChimeMaster(object):
             self.log.info("starting CHRX %s..." % chrx.name)
             # Start the chrx remote process with additional updated configuration parameters
             yield chrx.start(
-                acq_base_dir= self.acq_base_dir,
+                acq_base_dir= self.run_folder,
                 crate_sn=crate_sn,
                 fpga_hk_fields=fpga_hk_fields,
                 headers=headers)
@@ -403,8 +403,8 @@ class ChimeMaster(object):
         self.kotekan = {}
         nodes = self.config.kotekan.nodes or {}
         for node_name, node_params in nodes.items():
-            config = node_params.copy()
-            config.update(self.config.kotekan.common_config)
+            config = self.config.kotekan.common_config.copy()
+            config.update(node_params)
             self.kotekan[node_name] = KotekanAsyncRESTClient(name=node_name, **config)
 
     #####################################
@@ -593,7 +593,7 @@ class ChimeMaster(object):
         capture_source = capture_source or conf.capture_source
         capture_rate = capture_rate or conf.hdf5_capture_rate
         capture_folder = capture_folder or conf.hdf5_capture_folder
-        capture_folder = os.path.join(self.acq_base_dir, capture_folder)
+        capture_folder = os.path.join(self.run_folder, capture_folder)
         capture_filename = capture_filename or conf.hdf5_capture_filename
         capture_duration = capture_duration or conf.hdf5_capture_duration
         capture_elements_per_file = capture_elements_per_file or conf.hdf5_capture_elements_per_file
@@ -622,7 +622,8 @@ class ChimeMaster(object):
         """ Sets the state to a specified value. Used for debugging. """
         self.state = new_state
 
-
+    def expand_path(self, pattern, **kwargs):
+        pattern = os.path.expanduser(pattern % kwargs)
 
 
 
@@ -644,47 +645,69 @@ class ChimeMaster(object):
             raise RuntimeError('CHIME master configuration data does not define the correlator name. Was the correct object selected in the configuration file (i.e. config.yaml:object)')
 
         # Create output directories
-        time_str = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-        self.acq_name = "%s_%s" % (time_str, conf.corr_name)
-        self.acq_base_dir = os.path.join(os.path.expanduser(conf.base_path), self.acq_name)
+        isotime = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
 
+        self.run_name = conf.run_name % dict(isotime=isotime, corr_name=conf.corr_name)
+        str_args = dict(isotime=isotime, corr_name=conf.corr_name, run_name=self.run_name)
+        self.run_folder = os.path.expanduser(conf.run_folder % str_args)
+        self.current_folder = os.path.expanduser(conf.current_folder % str_args)
+
+
+        # Create the run folder
         try:
-            os.makedirs(self.acq_base_dir)
-        except:
-            errmsg = "Could not create directory '%s'!" % self.acq_base_dir
+            os.makedirs(self.run_folder)
+        except OSError:
+            errmsg = "Could not create directory '%s'!" % self.run_folder
             self.log.critical(errmsg)
-            coroutine_return({'error':errmsg})
+            raise RuntimeError(errmsg)
+
+        # Make a symlink to the run folder
+        if hasattr(os, 'symlink'):
+            try:
+                os.remove(self.current_folder)
+            except OSError as e:
+                self.log.warn("%r: Could not remove current symlink '%s'. The error isn%s" % (self, self.current_folder, e))
+            try:
+                os.symlink(self.run_folder, self.current_folder)
+            except OSError as e:
+                self.log.warning("%r: Could not create a symlink '%s' to the run folder '%s'. The error is:\n%s" % (self, self.current_folder, self.run_folder, e))
 
 
-        log_filename = os.path.join(self.acq_base_dir, "ch_master.log")
+        # log_filename = os.path.join(self.run_folder, "ch_master.log")
         #import logging
         #print('exists: %s' % ('pychfpga.fpga_array' in logging.Logger.manager.loggerDict))
         #lo=logging.getLogger('pychfpga.fpga_array')
         #print('before setup: logger name=%s, level=%s, handlers=%s, disabled=%r' %(lo.name, lo.level, lo.handlers, lo.disabled))
         self.logging_handlers = log.setup_logging(conf.logging.dict_config, conf.logging.log_levels,
             base_package_name=conf.logging.base_package_name,
-            actual_package_name = __name__.rpartition('.')[0], # full package path up to ch_acq (note: __package__ exists but is not consistently defined)
+            actual_package_name=__name__.rpartition('.')[0], # full package path up to ch_acq (note: __package__ exists but is not consistently defined)
             script_name=conf.logging.script_name,
-            path=self.acq_base_dir) # path will be inserted in filename strings containing "%(path)"
+            run_folder=self.run_folder) # path will be inserted in filename strings containing "%(path)"
         #lo=logging.getLogger('pychfpga.fpga_array')
         #print('before setup: logger name=%s, level=%s, handlers=%s, disabled=%r' %(lo.name, lo.level, lo.handlers,lo.disabled))
         #lo.warning('Trop seche')
         self.log.info('%r: Logging configured'% self)
         # Now that the housekeeping is done, let's start the real work
 
-        # # HACK: IF USING FIXED PORTS, PRE-ALLOCATE DATA PORTS BEFORE INITIALIZING BOARDS SO THEY ARE NOT USED
-        # self.pre_alloc_recv_sockets = []
-        # for crate_number in range(8):
-        #     for slot_number in range(1, 17):
-        #         self.pre_alloc_recv_sockets.append(socket.socket(socket.AF_INET, socket.SOCK_DGRAM))
-        #         port_name = 42400 + 100*(crate_number + 1) + slot_number
-        #         self.pre_alloc_recv_sockets[-1].bind(('0.0.0.0', port_name))
+
+        # Store the basic run info in the run folder
+        filename = os.join(self.run_folder, 'config.yaml')
+        with open(filename, 'w') as h:
+            h.write(self.config.as_yaml())
+
+        filename = os.join(self.run_folder, 'info.txt')
+        with open(filename, 'w') as h:
+            h.write('Run name: %s\n' % self.run_name)
+            h.write('Run start time: %s\n' % isotime)
+            h.write('Correlator/config name: %s\n' % conf.corr_name)
+            h.write('Run folder: %s\n' % self.run_folder)
+
 
         # Create objects to communicates to the remote processes needed to run the array
-        yield self.create_power_supplies()
-        yield self.create_chrx_clients() # CHRX nodes receive data processed by the GPU nodes
-        yield self.create_kotekan_clients() # Kotekan processes run on the GPU nodes; they receive the data from the FPGAs over dedicated point-to-point FPGA-GPU 10G Ethernet links, perform the correlation on the data, and forward the processed data to the CHRX nodes
-        yield self.create_raw_acq_clients() # Raw acq clients receive raw ADC data sent by the FPGA over the control network
+        yield self.create_power_supply_clients()
+        yield self.create_chrx_clients()  # CHRX nodes receive data processed by the GPU nodes
+        yield self.create_kotekan_clients()  # Kotekan processes run on the GPU nodes; they receive the data from the FPGAs over dedicated point-to-point FPGA-GPU 10G Ethernet links, perform the correlation on the data, and forward the processed data to the CHRX nodes
+        yield self.create_raw_acq_clients()  # Raw acq clients receive raw ADC data sent by the FPGA over the control network
 
 
         # power on the array
@@ -950,7 +973,7 @@ class ChimeMaster(object):
         #self.setup_noise_injection(cg.noise_injection)
         for ib in self.fpgas.ib:
             #if ib.slot in cg.slots:
-                calculate_gains.calculate_gains(ib) 
+                calculate_gains.calculate_gains(ib)
 
     @coroutine
     def switch_gains(self, gain_map):
