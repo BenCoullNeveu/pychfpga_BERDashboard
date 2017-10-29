@@ -10,7 +10,7 @@ import __main__
 import os
 import sys
 import socket  # for gethostbyname()
-from collections import OrderedDict, Sequence, Mapping
+from collections import OrderedDict
 import numpy as np
 import matplotlib.pyplot as plt
 import pickle
@@ -38,7 +38,7 @@ if getattr(__main__, '__reload__', False):
 # Automatically update the search path for absolute imports of pychfpga and its subpackages. We use
 # absolute imports because 1) if both relative and absolute imports are made, then  modules ar
 # eloade dmultiple times and SQLAlchemy complains. 2) wa cannot access pychfpga subpackages if we
-# run this module as a script because Python refuses to consider the script folder asa package.
+# run this module as a script because Python refuses to consider the script folder as a package.
 try:
     import pychfpga
 except ImportError:
@@ -47,7 +47,7 @@ except ImportError:
         sys.path.insert(0, ch_acq_path)
 
 
-from pychfpga.core.icecore import Ccoll, NameSpace
+from pychfpga.core.icecore import Ccoll
 from pychfpga.core.icecore import HardwareMap, HWMResource
 from pychfpga.core.icecore import mdns_discover
 from pychfpga.core.icecore import async, async_return, async_sleep
@@ -59,8 +59,8 @@ from pychfpga.core.metrics import Metrics
 from pychfpga.core.chFPGA_controller import chFPGA_controller
 from pychfpga.Agilent_N5764A import AgilentN5764AHandler
 from pychfpga.gpu_node import GpuNodeHandler
-
-# import logging.handlers
+from pychfpga.namespace import NameSpace, merge_dict
+from pychfpga.conf import load_yaml_config# import logging.handlers
 
 
 from pychfpga.core.icecore.session import load_session as load_yaml
@@ -2364,7 +2364,6 @@ class FPGAArray(object):
         func=data, dict, key is iceboard object
         """
 
-
         if not len(self.ib):
             print '[ There are no IceBoards in the hardware map ]'
             return
@@ -2850,233 +2849,37 @@ def parse_hw_string(hw_string, remap_table={}, dut_id_patterns=ICE_PATTERNS):
 
 
 
-def parse_args_as_dict(parser, *args, **kwargs):
-    """ Parses arguments like argparse.parse_args(...), with the following differences:
-           - The results are returned as a dictionary instead of a namespace.
-           - If an argument is part of a group that has the ``sub_dict`` attribute, all the argument values of this group are stored in a subdictionary named by that attribute.
-    """
-
-    # Create a dictionary that maps command line arguments to their group name.
-    group_map = {action.dest: getattr(group, 'sub_dict', '')
-              for group in parser._action_groups
-                 for action in group._group_actions}
-
-    args = parser.parse_args(*args, **kwargs)
-
-    args_dict = {}
-    for k, v in vars(args).items():
-        # if v is not None:
-        sub_dict = group_map[k]
-        if sub_dict:  # if a sub dict was specified
-            args_dict.setdefault(sub_dict, {})[k] = v
-        else:
-            args_dict[k] = v
-    return args_dict
-
-
-def merge_dict(src, dest, skip_none=False):
-    """ Merge a hierarchy of dictionnaries.
-    - Only a dict can be merged with a dict
-    - Dicts are merged as follow:
-        - If the destination item does not exist is it created from the source
-        - If both the source and destination item is a dict then those are merged
-        - If only one of the source or destination is a dict there is an error
-
-    """
-    def is_list(x):
-        return isinstance(dest, Sequence)
-    def is_dict(x):
-        return isinstance(dest, Mapping)
-
-    logger = logging.getLogger('')
-    if skip_none and dest is None:
-        new = src
-    elif is_dict(src) or is_dict(dest):
-        # print ' --- merge ', src, 'to', dest
-        src = src or {}
-        dest = dest or {}
-        if not (is_dict(src) and is_dict(dest)):
-            raise TypeError('Only a mapping can be merged with another mapping')
-        new = {}
-        for k in set(src.keys()) | set(dest.keys()):
-            if k in src and k in dest:
-                new[k] = merge_dict(src[k], dest[k], skip_none=skip_none)
-            elif k in src:
-                new[k] = src[k]
-            else:
-                new[k] = dest[k]
-    elif is_list(src) or is_list(dest):
-        if not is_list(src):
-            src = [src]
-        if not is_list(dest):
-            dest = [dest]
-        new = src + dest
-    else:
-        logger.warning('%.32s: Overriding  %s with %s' % ('merge_dict', src, dest))
-        new = dest
-    return new
-
-def load_yaml_config(object_names, default_filename='config.yaml'):
-    """
-    Loads one or more elements from a YAML configuration file.
-
-    Parameters:
-
-        object_names (str or list of str): String or list of strings describing the name of a YAML
-           files and objects to load.
-
-            [filename :]object_name{.object_name} {[.]object_name{.object_name}}
-
-           Name of objects are specified by preceding them with a semicolon.
-           Object hierarchy is separated by '.'. An object starting with '.'
-           starts at the same root note as the previous object.
-
-        default_filename (str): Filename to use if no file is specified (no semicolon)
-
-    Returns:
-         A Python dictionary
-
-    Examples::
-        Yaml file *conf.yaml*::
-            obj1:
-                field11: 11
-                obj11:
-                    field111: 111
-                    field112: 112
-                obj12:
-                    field121: 121
-                    field122: 122
-            obj2:
-                field21: 21
-                obj21:
-                    field211: 211
-                    field212: 212
-
-
-        # Loading objects from default conig file
-        load_yaml_config('obj1')  -> {field11: ..., obj11: ..., obj12: ...}
-        load_yaml_config('obj1 obj2')  -> {field11: ..., obj11: ..., obj12: ..., field21: ..., obj21: ...}
-        load_yaml_config('obj1.obj11 obj2')  -> {field111: ..., field112: ..., field21: ..., obj21: ...}
-        load_yaml_config('obj1.obj11 .obj12')  -> {field111: ..., field112: ...,  field121: ..., field122:...}
-
-        # With a specific filename
-        load_yaml_config('conf.yaml:obj1 obj2')
-
-
-    """
-        # -------------------------------
-    # Load YAML file
-    # -------------------------------
-    # The YAML file may contain any configuration data that will be
-    # accessible by the user, which includes hardware maps that will be
-    # extracted below
-
-
-    if not object_names:
-        return {}
-
-    # If the objects are passed as a list of strings, combine those in a single string
-    if not isinstance(object_names, str):
-        object_names = ' '.join(object_names)  # Combine all strings into a single string
-
-    config = {}
-    logger = logging.getLogger(__name__)
-    if not object_names:
-        return config
-
-
-    yaml_args = object_names.split(':')
-    if len(yaml_args) > 2:
-        raise ValueError('Only one filename can be specified')
-
-    yaml_filename = yaml_args[0] or default_filename
-
-    # print yaml_filename
-    if len(yaml_args) == 1: # if there is no semiciin, it's either a filename or a object
-        yaml_filename = default_filename
-        yaml_objects = yaml_args[0].split()
-    elif len(yaml_args) == 2:
-        yaml_filename = yaml_args[0]
-        yaml_objects = yaml_args[1].split()
-
-    logger.info('Loading YAML file %s' % (yaml_filename))
-    # print 'Loading YAML file %s' % yaml_filename
-    with open(yaml_filename, 'rb') as yamlfile:
-        yaml = load_yaml(yamlfile)
-
-    # self.hwm = None
-    current_root_node = yaml
-
-    for yaml_object_path in yaml_objects:
-        yaml_path_items = yaml_object_path.split('.')
-        if yaml_path_items[0]:  # If the path does not start with '.', restart from top
-            current_root_node = yaml
-        current_node = current_root_node
-        for path_item in yaml_path_items:
-            if path_item:
-                if path_item in current_node:
-                    current_root_node = current_node
-                    current_node = current_node.get(path_item)
-                else:
-                    raise RuntimeError("YAML file loading error: Unknown object '%s'" % yaml_object_path)
-        logger.info('Loading YAML elements from object %s' % (yaml_object_path))
-        # print 'Loading YAML elements from object %s' % yaml_object_path
-
-        # if isinstance(node, Session):
-        #     self.hwm = self.yaml
-        if not isinstance(current_node, dict):
-            raise RuntimeError("Target element '%s' must be a dictionary" % yaml_object_path)
-        # print 'merging', current_node, 'with', config
-        config = merge_dict(current_node, config)
-        # # Copy each item of the dictionary into the final dictionary. If an item is a dict and already, merge the fields. Similarly, extend lists.
-        # for (k, v) in current_node.items():
-        #     if k in config:
-        #         arg = config[k]
-        #         if isinstance(arg, list) and isinstance(v, list):
-        #             arg.extend(v)
-        #             # print 'Extended %s=%s' % (k, arg)
-        #         elif isinstance(arg, list):
-        #             arg.append(v)
-        #             # print 'Appended %s=%s' % (k, arg)
-        #         else:
-        #             # print 'Overwriting argument %s=%s to %s=%s' % (k, arg, k, v)
-        #             setattr(config, k, v)
-        #     else:
-        #         # print 'Creating %s=%s' % (k, v)
-        #         config[k] = v
-    return config
-
-def validate_config(config, schema_file):
-    print 'Loading Schema YAML file %s' % schema_file
-    with open(schema_file, 'rb') as yamlfile:
-        schema = load_yaml(yamlfile)
-
-    def validate(config, schema):
-        for key, info in schema.items():
-            type_ = info['type']
-            if key not in config:
-                config[key] = get(schema, 'default', {})
-            value = config[key]
-            if isinstance(info, dict) and 'type' not in info:
-                validate(config[key], schema[key])
-                continue
-            try:
-                if type_ == 'integer':
-                    assert isinstance(value, int) and not ((hasattr(info,'min') and value < info['min']) or (hasattr(info,'max') and value > info['max']))
-                elif type_ == 'float':
-                    assert isinstance(value, float) and not ((hasattr(info,'min') and value < info['min']) or (hasattr(info,'max') and value > info['max']))
-                elif type_ == 'string':
-                    assert isinstance(value, str)
-                elif type_ == 'ip_addr':
-                    socket.inet_aton(value)
-                elif type_ == 'int_list':
-                    assert isinstance(value, list) and all(isinstance(x, int) for x in value)
-            except (AssertionError, socket.error):
-                raise ValueError("Value for %s=%s failed the criteria %s" % (key, value, info) )
-
-    validate(config, schema)
 
 log_levels = {'info': logging.INFO, 'debug': logging.DEBUG, 'warn': logging.WARNING, 'error': logging.ERROR}
+
+def setup_logging(log_target='syslog', log_level='debug', sql_log_level='warn', stderr_log_level='warn'):
+    # Make sure SQLAlchemy does not log too much
+    sql_logger = logging.getLogger('sqlalchemy.engine.base.Engine')
+    sql_logger.setLevel(log_levels[sql_log_level])
+
+    # Set-up main loggers
+    if log_target == 'stream':
+        log_handler = logging.StreamHandler()
+    elif log_target == 'syslog':
+        log_handler = logging.handlers.SysLogHandler()
+    else:
+        log_handler = logging.FileHandler(log_target)
+    formatter = logging.Formatter('%(asctime)s %(levelname)s %(name)s:  %(message)s')
+
+    logger = logging.getLogger('')
+    logger.handlers = []  # Clear all existing handlers
+    logger.setLevel(logging.DEBUG)  # pass all messages to the handlers which will filter what they want
+
+    log_handler.setLevel(log_levels[log_level])
+    log_handler.setFormatter(formatter)
+    logger.addHandler(log_handler)
+
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(formatter)
+    stream_handler.setLevel(log_levels[stderr_log_level])
+    logger.addHandler(stream_handler)
+    return logger
+
 
 def add_logging_arguments(parser):
     parser.add_argument('-t', '--log_target', action='store', type=str, default='syslog', help="Logging target ('stream', 'syslog' or a filename)")
@@ -3116,33 +2919,33 @@ def add_fpga_array_arguments(parser):
         udp_retries=3)
     return defaults
 
-def setup_logging(log_target='syslog', log_level='debug', sql_log_level='warn', stderr_log_level='warn'):
-    # Make sure SQLAlchemy does not log too much
-    sql_logger = logging.getLogger('sqlalchemy.engine.base.Engine')
-    sql_logger.setLevel(log_levels[sql_log_level])
+def parse_args_as_dict(parser, *args, **kwargs):
+    """
+    Parses arguments like argparse.parse_args(...), with the following differences:
 
-    # Set-up main loggers
-    if log_target == 'stream':
-        log_handler = logging.StreamHandler()
-    elif log_target == 'syslog':
-        log_handler = logging.handlers.SysLogHandler()
-    else:
-        log_handler = logging.FileHandler(log_target)
-    formatter = logging.Formatter('%(asctime)s %(levelname)s %(name)s:  %(message)s')
+       - The results are returned as a dictionary instead of a argparse namespace.
+       - If an argument is part of a group that has the ``sub_dict`` attribute, all the argument
+         values of this group are stored in a subdictionary named by that attribute.
+    """
 
-    logger = logging.getLogger('')
-    logger.handlers = []  # Clear all existing handlers
-    logger.setLevel(logging.DEBUG)  # pass all messages to the handlers which will filter what they want
+    # Create a dictionary that maps command line arguments to their group name.
+    group_map = {action.dest: getattr(group, 'sub_dict', '')
+              for group in parser._action_groups
+                 for action in group._group_actions}
 
-    log_handler.setLevel(log_levels[log_level])
-    log_handler.setFormatter(formatter)
-    logger.addHandler(log_handler)
+    args = parser.parse_args(*args, **kwargs)
 
-    stream_handler = logging.StreamHandler()
-    stream_handler.setFormatter(formatter)
-    stream_handler.setLevel(log_levels[stderr_log_level])
-    logger.addHandler(stream_handler)
-    return logger
+    args_dict = {}
+    for k, v in vars(args).items():
+        # if v is not None:
+        sub_dict = group_map[k]
+        if sub_dict:  # if a sub dict was specified
+            args_dict.setdefault(sub_dict, {})[k] = v
+        else:
+            args_dict[k] = v
+    return args_dict
+
+
 
 def GPUArray(gpu_nodes=[]):
         # Create GPU node array
@@ -3329,7 +3132,7 @@ def create_fpga_array(args=None):
 
     # FPGA array
     config_fpga_array_params = config.get('fpga', {}).get('fpga_array_params', {}) or config.get('fpga_array_params', {})
-    cli_fpga_array_params = {k:v for k,v in args['cli_fpga_array'].items() if v is not None}
+    cli_fpga_array_params = {k: v for k, v in args['cli_fpga_array'].items() if v is not None}
     #Sprint('merging \n\n%r\n\n with \n\n%r' % (config_fpga_array_params, cli_fpga_array_params))
     fpga_array_params = merge_dict(config_fpga_array_params, cli_fpga_array_params)
     fpga_array = FPGAArray(**fpga_array_params)  # Create FPGA array
@@ -3343,8 +3146,6 @@ def create_fpga_array(args=None):
     ps_array = PSArray(**ps_array_params)     # Create FPGA array
 
     return config, fpga_array, gpu_array, ps_array
-
-
 
 if __name__ == '__main__':
     (config, ca, nodes, ps) = create_fpga_array()
