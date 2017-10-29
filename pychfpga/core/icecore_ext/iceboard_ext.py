@@ -440,8 +440,8 @@ class IceBoardExtHandler(IceBoardPlusHandler):
                 async_return(valid)
             except IOError as e:
                 self.logger.error("%r: UDP communinication error. Appempting to reset FPGA's UDP stack (trial %i).The error is:\n %s" % (self, trial+1, e))
-                yield self.fpga_mmi_write.async(_SFP_STATUS_ADDR, 2<<30)
-                yield self.fpga_mmi_write.async(_SFP_STATUS_ADDR, 0<<30)
+                yield self.fpga_mmi_write.async(self._SFP_STATUS_ADDR, 2 << 30)
+                yield self.fpga_mmi_write.async(self._SFP_STATUS_ADDR, 0 << 30)
                 valid = False
                 reset = True
         errmsg = "%r: Could not re-establish UDP communinication with the FPGA. Raising an exception" % (self)
