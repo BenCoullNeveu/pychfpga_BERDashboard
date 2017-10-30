@@ -574,6 +574,7 @@ class FPGAArray(object):
 
         # If subarrays are specified, remove boards that are not in those subarrays
         if subarrays:
+ 	    print('Subarrays are: %r' % subarrays)
             ib_not_in_subarray = self.hwm.query(IceBoardPlus).filter(~IceBoardPlus.subarray.in_(subarrays))
             for ib in list(ib_not_in_subarray):  # make sure the list does not change during the loop
                 self.logger.debug("%r (subarray '%s') is not in the target subarray list %s. It is removed from the YAML hardware map."  # That comment should be if verbose=1

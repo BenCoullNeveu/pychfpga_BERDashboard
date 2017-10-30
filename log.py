@@ -109,7 +109,7 @@ def setup_logging(dict_config={}, log_levels={}, base_package_name=None, script_
     """
 
     # print 'setting up logger with', base_package_name, actual_package_name, script_name
-    dict_config = NameSpace(dict_config)
+    dict_config = NameSpace(dict_config).deepcopy()
     log_levels = NameSpace(log_levels or {})
 
     # Add the version number if non-existent
@@ -171,9 +171,10 @@ def setup_logging(dict_config={}, log_levels={}, base_package_name=None, script_
         old_handlers[logger_name] = logging.getLogger(logger_name).handlers
 
 
-    print('new loggingconfig is: %r' % dict_config)
+    print('new logging config is: %s' % dict_config.as_dict())
 
     logging.config.dictConfig(dict_config)
+    print('new logging after dictCconfig is: %s' % dict_config.as_dict())
 
     new_handlers = {}
     for logger_name in dict_config.loggers:

@@ -2,6 +2,7 @@
 import collections
 import re
 import yaml
+import copy
 
 
 re_dot = r"\."
@@ -113,6 +114,9 @@ class NameSpace(object):
         attrs = set(dir(type(self)) + vars(self).keys() + dir(self._obj) +
             self._obj.keys() if isinstance(self._obj, collections.Mapping) else [] )
         return list(attrs)
+
+    def deepcopy(self):
+        return NameSpace(copy.deepcopy(self._obj))
 
     def as_dict(self):
 

@@ -638,7 +638,6 @@ class ChimeMaster(object):
         if config:
             self.set_config(config)
         conf = self.config # Shortcut. We use `conf` a lot below.
-
         self.state = 'starting'
 
         if not hasattr(conf, 'corr_name'):
@@ -646,7 +645,7 @@ class ChimeMaster(object):
 
         # Create output directories
         isotime = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-
+        #print('run name=%s, config = %r' % (conf.run_name , dict(isotime=isotime, corr_name=conf.corr_name)))
         self.run_name = conf.run_name % dict(isotime=isotime, corr_name=conf.corr_name)
         str_args = dict(isotime=isotime, corr_name=conf.corr_name, run_name=self.run_name)
         self.run_folder = os.path.expanduser(conf.run_folder % str_args)
@@ -678,7 +677,9 @@ class ChimeMaster(object):
         #print('exists: %s' % ('pychfpga.fpga_array' in logging.Logger.manager.loggerDict))
         #lo=logging.getLogger('pychfpga.fpga_array')
         #print('before setup: logger name=%s, level=%s, handlers=%s, disabled=%r' %(lo.name, lo.level, lo.handlers, lo.disabled))
-        self.logging_handlers = log.setup_logging(conf.logging.dict_config, conf.logging.log_levels,
+        self.logging_handlers = log.setup_logging(
+	    conf.logging.dict_config, 
+            conf.logging.log_levels,
             base_package_name=conf.logging.base_package_name,
             actual_package_name=__name__.rpartition('.')[0], # full package path up to ch_acq (note: __package__ exists but is not consistently defined)
             script_name=conf.logging.script_name,
@@ -688,14 +689,17 @@ class ChimeMaster(object):
         #lo.warning('Trop seche')
         self.log.info('%r: Logging configured'% self)
         # Now that the housekeeping is done, let's start the real work
+	print('LOGGING config before is %s' % self.config.logging)
 
+	print('YAML config is %s' % conf.logging.dict_config.as_dict())
 
         # Store the basic run info in the run folder
-        filename = os.join(self.run_folder, 'config.yaml')
+        filename = os.path.join(self.run_folder, 'config.yaml')
+	print('YAML config is %r' % self.config.logging.as_dict())
         with open(filename, 'w') as h:
             h.write(self.config.as_yaml())
 
-        filename = os.join(self.run_folder, 'info.txt')
+        filename = os.path.join(self.run_folder, 'info.txt')
         with open(filename, 'w') as h:
             h.write('Run name: %s\n' % self.run_name)
             h.write('Run start time: %s\n' % isotime)
@@ -1148,7 +1152,8 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
                 logger.info('START Done. result is %r' % future.result())
             return True
         self.start_time = time.time()
-        self.future = self.chime_master.start(**config)
+        #print('START config is %s' % config['logging'])
+	self.future = self.chime_master.start(**config)
         IOLoop.current().add_future(self.future, done)
         self.log = log.get_logger(self)  # update the self.log pointer to the new logger
         self.log.debug('%r: future created. ch_master initilization is in progress' % (self))
@@ -1399,7 +1404,7 @@ class ChimeMasterAsyncRESTClient(AsyncRESTClient):
             config = load_yaml_config(config.encode('ascii'))
         print('Client start')
         self.log.info('%r: Sending start command to server' % self)
-        reply = yield self.post('start', **config)
+        reply = yield self.post('start', **config.as_dict())
         self.log.info('%r: Reply to start command is: %r' % (self, reply))
         print('Client started')
         while True:
