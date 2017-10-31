@@ -721,28 +721,34 @@ class ChimeMaster(object):
         # Create FPGA Array object and and initialize FPGAs
         yield self.create_fpga_array()
 
-        # Read the FPGA setting back from the FPGA
-        self.log.info("Getting configuration data from all FPGAs")
-        self.fpga_conf = yield self.fpgas.get_fpga_config.async(basic=True)
+
+        if self.fpgas.ib:
+		# Read the FPGA setting back from the FPGA
+		self.log.info("Getting configuration data from all FPGAs")
+		self.fpga_conf = yield self.fpgas.get_fpga_config.async(basic=True)
 
 
-        # Configre and start CHRX remote processes
+		# Configre and start CHRX remote processes
 
-        self.configure_fpgas_post_acq()
-        self.current_bank = 0
+		self.configure_fpgas_post_acq()
+		self.current_bank = 0
 
 
 
-        self.log.info("Starting raw_acq servers")
-        yield self.start_raw_acq_servers()
+		self.log.info("Starting raw_acq servers")
+		yield self.start_raw_acq_servers()
 
-        # Start raw_data capture
-        if conf.raw_acq.common_config.hdf5_capture_rate and conf.raw_acq.common_config.hdf5_capture_duration is not None:
-            self.log.info("Starting HDF5 data capture")
-            yield self.start_hdf5_capture()
-        else:
-            self.log.info("Starting idle data capture")
-            yield self.start_fpga_raw_data_transmission()
+		# Start raw_data capture
+		if conf.raw_acq.common_config.hdf5_capture_rate and conf.raw_acq.common_config.hdf5_capture_duration is not None:
+		    self.log.info("Starting HDF5 data capture")
+		    yield self.start_hdf5_capture()
+		else:
+		    self.log.info("Starting idle data capture")
+		    yield self.start_fpga_raw_data_transmission()
+
+
+	else:
+            self.log.warning('%r: There are no FPGAs in the array. Stopping FPGA initializations here' % self)
 
         self.log.info("Finished ch_master.start()")
 
@@ -772,15 +778,19 @@ class ChimeMaster(object):
         # in the parameters, the FPGAs will be loaded with their bitstream, communication with the FPGAs
         # will be established and all the Python objects needed to operate the FPGA firmware will be
         # created and initialized.
-        self.fpgas = ca = FPGAArray(ioloop=IOLoop.current(), **fpga_array_params)  # Starts an independent ioloop while initializing. Web clients/server stop while
+        self.fpgas = ca = FPGAArray(ioloop=IOLoop.current(), **fpga_array_params.as_dict())  # Starts an independent ioloop while initializing. Web clients/server stop while
         yield ca.run.async()
 
         if not ca.ib: # if there ar eno boards in the array
             if conf.debug.get('allow_empty_fpga_array', False):
-                return
+                coroutine_return()
             else:
                 raise RuntimeError('No IceBoard could be found. Are the boards powered up? Is the network connection functional?')
 
+        if not fpga_array_params.open:
+            self.log.warning("fpga_array is initialized with open=0. Aborting the rest of the FPGA array initialization.")
+	    coroutine_return()
+  
         # # if this needed?
         # ca.ib.set_adc_mask(0) # null the ADC data before it gets to the channelizers to reduce power consumption
 

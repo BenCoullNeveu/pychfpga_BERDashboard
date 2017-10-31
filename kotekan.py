@@ -84,7 +84,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         super(KotekanAsyncRESTClient, self).__init__(
             hostname=hostname,
             port=port,
-            server_class=KotekanAsyncRESTServer,
+            # server_class=KotekanAsyncRESTServer,
             heartbeat_string='Kc')
         # self.name = name
         self.config = config

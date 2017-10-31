@@ -132,7 +132,8 @@ class FPGAArray(object):
                  crate_map={},
                  ignore_missing_boards = False,
 
-                 subarrays=[], ping=True,
+                 subarrays=None, 
+		 ping=True,
                  mdns_timeout=2,
                  no_mezz=False,
 
@@ -257,7 +258,7 @@ class FPGAArray(object):
             None: Hardware map filtering
 
             subarrays : List of integers describing the subarrays to include in
-                the default IceBoard set. If not specified or an empty list, all
+                the default IceBoard set. If None, all
                 Iceboards in the hardware map will be selected. Affects only the
                 boards specified in the hardware map specified with the ``hwm`` parameter.
 
@@ -362,7 +363,7 @@ class FPGAArray(object):
              crate_map={},
              ignore_missing_boards = False,
 
-             subarrays=[], ping=True,
+             subarrays=None, ping=True,
              mdns_timeout=2,
              no_mezz=False,
 
@@ -573,7 +574,7 @@ class FPGAArray(object):
             self.hwm = hwm
 
         # If subarrays are specified, remove boards that are not in those subarrays
-        if subarrays:
+        if subarrays is not None:
  	    print('Subarrays are: %r' % subarrays)
             ib_not_in_subarray = self.hwm.query(IceBoardPlus).filter(~IceBoardPlus.subarray.in_(subarrays))
             for ib in list(ib_not_in_subarray):  # make sure the list does not change during the loop
@@ -2685,9 +2686,12 @@ class FPGAArray(object):
         """
 
         for ib in self.ib:
-            self.logger.info("%.32r: Setting ADC delays" % (self))
-            ib.set_adc_delays(**kwargs)
-
+	    if ib.is_open():
+                self.logger.info("%.32r: Setting ADC delays" % (self))
+                ib.set_adc_delays(**kwargs)
+	    else:
+                self.logger.warning("%.32r: Communication with FPGA is not initialized. Cannot set ADC delays" % (self))
+ 
 
 ICE_PATTERNS = [
         { 'regex': '(MGK7)?BP1',           'cur_state': None,  'next_state': 'ic',  'entry': ('MGK7BP1', None, None),  'store_in': None        },  # Sets the curent model and type to the One-slot backplane; matches MGK7BP1, BP1
