@@ -19,6 +19,7 @@ import collections
 import getpass
 import numpy
 import os
+import traceback
 import socket
 import subprocess
 import sys
@@ -37,7 +38,7 @@ import tornado.tcpclient
 import tornado.web
 
 import pychfpga  # used to access .calculate_gain.
-from pychfpga import FPGAArray, NameSpace, load_yaml_config, Metrics, calculate_gains
+from pychfpga import FPGAArray, NameSpace, merge_dict, load_yaml_config, Metrics, calculate_gains
 import log
 
 from rest import RESTClient, AsyncRESTServer, AsyncRESTClient, HTTPError # generic REST servers and clients
@@ -403,9 +404,18 @@ class ChimeMaster(object):
         self.kotekan = {}
         nodes = self.config.kotekan.nodes or {}
         for node_name, node_params in nodes.items():
-            config = self.config.kotekan.common_config.copy()
-            config.update(node_params)
-            self.kotekan[node_name] = KotekanAsyncRESTClient(name=node_name, **config)
+            #config = self.config.kotekan.common_config.copy()
+            #config.update(node_params)
+            self.kotekan[node_name] = KotekanAsyncRESTClient(name=node_name, **node_params)
+
+    @coroutine
+    def start_kotekan_servers(self):
+        """
+        Start Kotekan serers with the proper config.
+        """
+        conf = self.config.kotekan
+        yield [node.start(config=merge_dict(conf.common_config, conf.nodes[node_name]).as_dict()) for node_name, node in self.kotekan.items()]
+
 
     #####################################
     # RAW_ACQ management methods
@@ -479,7 +489,7 @@ class ChimeMaster(object):
         for node_name, node_conf in conf.servers.items():
             self.raw_acq_ibs[node_name] = set()
             for ib in node_conf.iceboards:  # ib is a (crate, slot) tuple)
-                self.raw_acq_ibs[node_name].update(self.get_iceboards(ib))
+                self.raw_acq_ibs[node_name].update(self.get_iceboards(ib.as_dict()))
 
         #print('self.raw_acq_ibs=', self.raw_acq_ibs)
         # Check that an iceboard is assigned to only one server
@@ -520,7 +530,7 @@ class ChimeMaster(object):
         start_results = yield {node_name: self.raw_acq[node_name].start(
                 name=recv_names[node_name],
                 ports=recv_ports[node_name],
-                jump_thresholds=conf.common_config.jump_thresholds)
+                jump_thresholds=conf.common_config.jump_thresholds.as_dict())
             for node_name in self.raw_acq_ibs.keys()}
 
         # Configure the FPGA transmit addresses based on what the receiver returned
@@ -689,13 +699,13 @@ class ChimeMaster(object):
         #lo.warning('Trop seche')
         self.log.info('%r: Logging configured'% self)
         # Now that the housekeeping is done, let's start the real work
-	print('LOGGING config before is %s' % self.config.logging)
+	#print('LOGGING config before is %s' % self.config.logging)
 
-	print('YAML config is %s' % conf.logging.dict_config.as_dict())
+	#print('YAML config is %s' % conf.logging.dict_config.as_dict())
 
         # Store the basic run info in the run folder
         filename = os.path.join(self.run_folder, 'config.yaml')
-	print('YAML config is %r' % self.config.logging.as_dict())
+	#print('YAML config is %r' % self.config.logging.as_dict())
         with open(filename, 'w') as h:
             h.write(self.config.as_yaml())
 
@@ -711,6 +721,7 @@ class ChimeMaster(object):
         yield self.create_power_supply_clients()
         yield self.create_chrx_clients()  # CHRX nodes receive data processed by the GPU nodes
         yield self.create_kotekan_clients()  # Kotekan processes run on the GPU nodes; they receive the data from the FPGAs over dedicated point-to-point FPGA-GPU 10G Ethernet links, perform the correlation on the data, and forward the processed data to the CHRX nodes
+        yield self.start_kotekan_servers()
         yield self.create_raw_acq_clients()  # Raw acq clients receive raw ADC data sent by the FPGA over the control network
 
 
@@ -1299,7 +1310,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
                     metrics += yield self.chime_master.fpgas.get_metrics.async()
                     self.log.info('%r: Got %i FPGA metrics' % (self, len(metrics.metrics)))
                 except Exception as e:
-                    self.log.warning('%r: error getting FPGA metrics. error is: %r' % (self, e))
+                    self.log.warning('%r: error getting FPGA metrics. error is: %r\n%s' % (self, e, traceback.format_exc()))
                     pass
             else:
                 self.log.info('%.32r: Not ready to scrape Metrics from FPGA' % (self))
