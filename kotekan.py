@@ -5,6 +5,7 @@ from __future__ import absolute_import, division, print_function
 
 import logging
 import argparse
+import sys
 
 import numpy as np
 
@@ -110,7 +111,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
     @coroutine
     def start(self, config):
         newconfig = self.config.copy()
-        newconfig.update(self.config)
+        newconfig.update(config)
         result = yield self.post('start', **newconfig)
         coroutine_return(result)
 
