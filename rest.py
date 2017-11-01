@@ -238,18 +238,23 @@ class AsyncRESTClient(AsyncMixin):
             decoded_reply = resp.body
             error = ''
         else:
-            try:
-                decoded_reply = tornado.escape.json_decode(resp.body)
-                if isinstance(decoded_reply, dict):
-                    error = decoded_reply.get('error','')
-                else:
-                    error = ''
-            except (TypeError, ValueError):
-                error = '%.32r: Invalid JSON reply string %r' %(self, resp.body)
+            if not resp.body:
+                decoded_reply = None
+                error = ''
+            else:
+                try:
+                    decoded_reply = tornado.escape.json_decode(resp.body)
+                    if isinstance(decoded_reply, dict):
+                        error = decoded_reply.pop('error','')
+                    else:
+                        error = ''
+                except (TypeError, ValueError):
+                    error = '%.32r: Invalid JSON reply string %r' %(self, resp.body)
         if resp.error:
             #print('*** REST client got response error: %s' % resp.error)
             error = str(resp.error) + '\n' + error
         if error:
+            error = ('Response=%r\n'%decoded_reply) + error
             #print('****ERROR****:', error, '\n--------------------')
             raise RuntimeError(error)
         coroutine_return(decoded_reply)

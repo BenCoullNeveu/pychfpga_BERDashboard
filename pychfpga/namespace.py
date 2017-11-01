@@ -294,6 +294,7 @@ def merge_dict(src, dest, skip_none=False, add_lists=False):
 
     """
 
+    print(type(src), is_mapping(src), type(dest), is_mapping(dest))
     # logger = logging.getLogger('')
     if skip_none and dest is None:
         return
@@ -304,7 +305,7 @@ def merge_dict(src, dest, skip_none=False, add_lists=False):
             raise TypeError('Only a mapping can be merged with another mapping. Types are src=%s, dest=%s' % (type(src), type(dest)))
         # print ' --- merge ', src, 'to', dest
         # src = src or {}
-        new = {}
+        new = type(src)()
         for k in set(src.keys()) | set(dest.keys()):
             if k in src and k in dest:
                 new[k] = merge_dict(src[k], dest[k], skip_none=skip_none)
@@ -319,4 +320,5 @@ def merge_dict(src, dest, skip_none=False, add_lists=False):
     else:
         # logger.warning('%.32s: Overriding  %s with %s' % ('merge_dict', src, dest))
         new = dest
+    print(new)
     return new
