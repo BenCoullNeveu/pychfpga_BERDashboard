@@ -171,10 +171,10 @@ def setup_logging(dict_config={}, log_levels={}, base_package_name=None, script_
         old_handlers[logger_name] = logging.getLogger(logger_name).handlers
 
 
-    print('new logging config is: %s' % dict_config.as_dict())
+    #print('new logging config is: %s' % dict_config.as_dict())
 
     logging.config.dictConfig(dict_config)
-    print('new logging after dictCconfig is: %s' % dict_config.as_dict())
+    #print('new logging after dictCconfig is: %s' % dict_config.as_dict())
 
     new_handlers = {}
     for logger_name in dict_config.loggers:
