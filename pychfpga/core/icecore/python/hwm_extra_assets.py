@@ -665,7 +665,7 @@ class IceBoardPlusHandler(IceBoardHandler):
             self.logger.info('%.32r: Configuring FPGA' % self)
             if hasattr(buf, 'base64'):
 		b64_string = buf.base64
-	    else: 
+	    else:
 		b64_string =  base64.b64encode(str(buf))
             # self._set_fpga_bitstream_base64(b64_string)
             t3 = time.time()
@@ -676,7 +676,7 @@ class IceBoardPlusHandler(IceBoardHandler):
         else:
             t4 = time.time()
             self.logger.info(
-                '%.32r: FPGA is already configured. Skipping configuration. Took %.3fs' % (t4 - t0)
+                '%.32r: FPGA is already configured. Skipping configuration. Took %.3fs' % (self, t4 - t0)
                 )
 
     def get_fpga_bitstream(self, tag=None):
