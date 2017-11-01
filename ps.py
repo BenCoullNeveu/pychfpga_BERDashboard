@@ -738,7 +738,7 @@ class PowerSupplyAsyncRESTClient(AsyncRESTClient):
 
         if not server_info.is_started:
             self.log.info('%.32r: Server not started. Starting it with the provided configuration' % self)
-            start_results = yield self.post('start', **config)  # start the server if not already started
+            start_results = yield self.post('start', **config.as_dict())  # start the server if not already started
         else:
             self.log.info('%.32r: Server is already started' % self)
             if set(server_info.ps_names) != set(ps_names):
