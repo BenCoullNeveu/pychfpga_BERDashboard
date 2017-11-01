@@ -3,6 +3,7 @@
 chime_array.py module. Defines the objects that represent and handles
 operations one the whole array of CHIME ICE hardware.
 """
+from __future__ import absolute_import
 import argparse
 import logging
 import time
@@ -2463,12 +2464,11 @@ class FPGAArray(object):
         metrics += yield [ib.get_metrics.async() for ib in self.ib]
         self.logger.info('%r: Got the IceBoards hardware metrics' % self)
 
-        if ib.is_open():
-            self.logger.info('%r:Getting corner-turn links metrics (over FPGA UDP link)' % self)
-            metrics += yield [ib.get_bp_shuffle_metrics.async() for ib in self.ib]
-            self.logger.info('%r:Getting corner-turn crossbars metrics (over FPGA UDP link)' % self)
-            metrics += yield [ib.get_crossbar_metrics.async() for ib in self.ib]
-            self.logger.info('%r: Got the corner-turn metrics' % self)
+        self.logger.info('%r:Getting corner-turn links metrics (over FPGA UDP link)' % self)
+        metrics += yield [ib.get_bp_shuffle_metrics.async() for ib in self.ib]
+        self.logger.info('%r:Getting corner-turn crossbars metrics (over FPGA UDP link)' % self)
+        metrics += yield [ib.get_crossbar_metrics.async() for ib in self.ib]
+        self.logger.info('%r: Got the corner-turn metrics' % self)
         self.logger.info('%r: Finished gathering FPGA/backplane metrics' % self)
 
         # Backplane GTX

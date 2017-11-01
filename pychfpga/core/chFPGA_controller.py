@@ -11,6 +11,7 @@ IceBoard and its chFPGA firmware.
 ..     Created 2011-01-10. See GIT for commit history.
 """
 
+from __future__ import absolute_import
 import logging
 import numpy as np
 import time
@@ -32,29 +33,29 @@ from .icecore import async, async_return, async_sleep
 from .icecore.session import load_session as load_yaml
 
 from .icecore_ext.iceboard_ext import IceBoardExtHandler
-from chFPGA_receiver import chFPGA_receiver
-from metrics import Metrics
+from .chFPGA_receiver import chFPGA_receiver
+from .metrics import Metrics
 
 from pychfpga.common import util
 
 # FPGA subsystems handlers
-import SPI
-import I2C
-import GPIO
-import SYSMON
-import FreqCtr
-import REFCLK
+from . import SPI
+from . import I2C
+from . import GPIO
+from . import SYSMON
+from . import FreqCtr
+from . import REFCLK
 # import MGT
 
 # FPGA Channelizer
-import ANT
+from . import ANT
 
 # FPGA Correlator, corner-turn and GPU link objects
-import CORR # 16-channel correlator (if implemented)
-import chan_crossbar  # Channelizer Crossbar
-import shuffle_crossbar  # Shuffle Crossbar
-import shuffle
-import GPU
+from . import CORR # 16-channel correlator (if implemented)
+from . import chan_crossbar  # Channelizer Crossbar
+from . import shuffle_crossbar  # Shuffle Crossbar
+from . import shuffle
+from . import GPU
 
 
 # -- chFPGA --
@@ -2989,7 +2990,8 @@ class chFPGA_controller(IceBoardExtHandler):
 
     @async
     def get_bp_shuffle_metrics(self):
-
+        if not self.is_open():
+            async_return(Metrics())
         try:
             yield self.check_command_count.async(reset=True)
             metrics = yield self.BP_SHUFFLE.get_metrics.async()
@@ -3001,6 +3003,8 @@ class chFPGA_controller(IceBoardExtHandler):
 
     @async
     def get_crossbar_metrics(self):
+        if not self.is_open():
+            async_return(Metrics())
         try:
             yield self.check_command_count.async(reset=True)
             metrics = yield self.CROSSBAR.get_metrics.async()
