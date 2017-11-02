@@ -137,31 +137,6 @@ FAQ, troubleshooting and known issues
 Weather Quick-start
 *******************
 
-In CHIME, the ``wview`` service that gathers DRAO weather station data runs on ``marimba``. Since `weather.py` needs to access the database file produced by this service, our server mush run on the same machine.
+See :ref:`weather_quick_start`
 
-``marimba``'s Python has been configured to all users can run the server. However, it is common practice to run all experiment process as the chime user, and within a GNU ``screen``. This allows multiple users to connect and re-connect simulatenously and to ensure the process continues in case of disconnections (which happens regularly if you are connecting from the outside). The default ``screen`` name is ``ch_acq``.
-
-To access an existing (or create a new) weather ``screen`` from ``liberty``/``tubular`` ::
-
-   ssh -A chime@marimba -t "screen -c ~/.screenrc_ch_acq -xRS ch_acq"
-
-Or from the outside world via ``tubular`` (192.139.21.135)::
-
-   ssh -A jfcliche@192.139.21.135 -t "ssh -A chime@marimba -t \"screen -c ~/.screenrc_ch_acq -xRS ch_acq\""
-
-This assumes you have ssh-agent running on your work terminal and which is loaded with a key that match one of those listed in ``~/.ssh/authorized_keys`` on ``tubular`` and ``marimba``, or there are ``~/.ssh/config``  that indicate how to authenticate to these machines. The ``ssh -A`` option allows the ssh-agent keys running on your work computer to be accessible from the ssh sessions, so your super-secret private key does not have to be on any of the servers.
-
-
-The ``screen`` options specify: ``-R``: resume an existing screen, ``-x``, allow commection to an already attached screen (multi-user); and ``-S ch_acq``: if no screen exist, create a new screen named ``ch_acq``, using the configuration specified by ``-c ~/.screenrc_ch_acq``.
-
-
-The server is normally running in the weather.py tab (:kbd:`Ctrl-A 1`).  The ``.screenrc_ch_acq`` config creates this tab by default if a new screen is created.
-
-
-If the server is not already running, it can be started with::
-
-	cd ~/git/ch_acq
-	./weather.py jfc.drao
-
-Tip: ``.inputrc`` is configured so you can just conveniently type "cd [up-arrow]" or "./ [up arrow]" to search for these  commands from the history
 

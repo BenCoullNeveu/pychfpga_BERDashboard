@@ -98,10 +98,41 @@ Warning: Do not interrupt this process. This will corrupt the SD card and the bo
 
 
 
+Configuring and operating the Agilent5700/8700 power supplies
+-------------------------------------------------------------
+
+We use the Agilent 5764A (20V, 76A) to power the FPGA crates and the Agilent 8731A (8V, 400A) to power the FLAs (low noise pre-amp, and filtered post-amplifiers).
+
+When a new power supply unit is installed, it should be configured with a default voltage and current limit that will persist even after power failures. We need to set these important parameters manually, using the front panel or remotely using the Python object. For safety reasons, `ch_master` does not set these parameters automatically, as a simple configuration error could destroy hundred of thousands of dollars of equipment.
 
 
+.. warning:: Make sure you connect to the right power supply!
 
+Open an interactive ipython session, from the ``ch_acq`` folder::
 
+	from ps import AgilentN5700 # load the class that can handle both the 5700 and 8700 series
+	ps = AgilentN5700('10.0.0.40') # yoy can also use the hostname.In any case, make sure you connect to the right unit!
+	ps.unlock()  # disable software protection (This protection is implemented by the instance; it does not affect the instrument in any way)
+	ps.configure_power_on_state(voltage=6.2, current=360) # Sets the voltage setpoint and current limit.
+
+The `configure_power_on_state` first disables the power supply output and sets the voltage setpoint and maximum current, and also ensures that those parameters will be reloaded when the power to the unit is re-established. The power supply output is left disabled  after the command.
+
+Before enabling the supply, you can check the voltage and current limit settings with::
+
+	ps.get_voltage_setting()
+	ps.get_current_limit()
+
+The power supply can be powered on and off with::
+
+	ps.unlock() # if was not done before on this instance
+	ps.power_on()
+	ps.power_off()
+
+The status of the supply and the current voltage and current can be displayed with::
+
+	ps.status()
+
+Once you enable the supply, the status() method can be used to confirm that the output voltage is as desired. The current will be whatever the load uses, not the limit (hopefully).
 
 
 Running the array
@@ -114,7 +145,34 @@ Before you begin, make sure all the system and Python packages have been install
 
 
 
-Weather server
---------------
+Running the Weather server
+--------------------------
 
-See :ref:`weather_quick_start`
+In CHIME, the ``wview`` service that gathers DRAO weather station data runs on ``marimba``. Since `weather.py` needs to access the database file produced by this service, our server mush run on the same machine.
+
+``marimba``'s Python has been configured to all users can run the server. However, it is common practice to run all experiment process as the chime user, and within a GNU ``screen``. This allows multiple users to connect and re-connect simulatenously and to ensure the process continues in case of disconnections (which happens regularly if you are connecting from the outside). The default ``screen`` name is ``ch_acq``.
+
+To access an existing (or create a new) weather ``screen`` from ``liberty``/``tubular`` ::
+
+   ssh -A chime@marimba -t "screen -c ~/.screenrc_ch_acq -xRS ch_acq"
+
+Or from the outside world via ``tubular`` (192.139.21.135)::
+
+   ssh -A jfcliche@192.139.21.135 -t "ssh -A chime@marimba -t \"screen -c ~/.screenrc_ch_acq -xRS ch_acq\""
+
+This assumes you have ssh-agent running on your work terminal and which is loaded with a key that match one of those listed in ``~/.ssh/authorized_keys`` on ``tubular`` and ``marimba``, or there are ``~/.ssh/config``  that indicate how to authenticate to these machines. The ``ssh -A`` option allows the ssh-agent keys running on your work computer to be accessible from the ssh sessions, so your super-secret private key does not have to be on any of the servers.
+
+
+The ``screen`` options specify: ``-R``: resume an existing screen, ``-x``, allow commection to an already attached screen (multi-user); and ``-S ch_acq``: if no screen exist, create a new screen named ``ch_acq``, using the configuration specified by ``-c ~/.screenrc_ch_acq``.
+
+
+The server is normally running in the weather.py tab (:kbd:`Ctrl-A 1`).  The ``.screenrc_ch_acq`` config creates this tab by default if a new screen is created.
+
+
+If the server is not already running, it can be started with::
+
+	cd ~/git/ch_acq
+	./weather.py jfc.drao
+
+Tip: ``.inputrc`` is configured so you can just conveniently type "cd [up-arrow]" or "./ [up arrow]" to search for these  commands from the history
+
