@@ -199,6 +199,12 @@ int main(int argc, const char **argv)
   /* Child return status */
   int status;
 
+  /* The number of nodes with error */
+  int n_error = 0;
+
+  /* The number of nodes attempted */
+  int n_total = 0;
+
   /* The list of nodes */
   int n, nodes[NN];
 
@@ -284,11 +290,30 @@ int main(int argc, const char **argv)
       /* Check if ssh failed */
       if (WEXITSTATUS(status)) {
         fputs("ssh call failed\n", stderr);
-        return 1;
+        n_error++;
       }
+      n_total++;
     }
 
   /* Done! */
   free(cmd);
+
+  if (n_error > 0) {
+    if (n_total > 1) {
+      fprintf(stderr, "\n"
+          "========== COMMAND FAILED =============\n"
+          "%i of %i nodes returned failure.\n"
+          "Check output above.\n"
+          "========== COMMAND FAILED =============\n", n_error, n_total);
+    } else {
+      fprintf(stderr, "\n"
+          "========== COMMAND FAILED =============\n"
+          "Node returned failure.\n"
+          "Check output above.\n"
+          "========== COMMAND FAILED =============\n", n_error, n_total);
+    }
+    return 1;
+  }
+
   return 0;
 }
