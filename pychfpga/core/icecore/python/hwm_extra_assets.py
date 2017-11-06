@@ -16,7 +16,7 @@ from . import handler
 from . import session  # YAML loader
 from . import hardware_map
 from . import tuber
-from .async import async, async_return
+from .async import async, async_return, async_moment
 from .hwm_assets import IceBoard, IceBoardHandler, FMCMezzanine, IceCrate, IceCrateHandler
 
 
@@ -301,7 +301,7 @@ class IceBoardPlus(IceBoard):
             self.logger.warn('%r: Error while attempring to read the board serial number' % (self))
             actual_serial = None
         self.logger.info('%r: got the serial number of board at %s to be %s' % (self, self.tuber_uri, actual_serial))
-        yield None
+        yield async_moment
         if update:
             if not actual_serial:
                 self.logger.warn('%r: Could not read the board serial number from IPMI storage or serial number is null. Serial number is not updated.' % (self))
