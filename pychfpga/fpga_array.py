@@ -133,7 +133,7 @@ class FPGAArray(object):
                  crate_map={},
                  ignore_missing_boards = False,
 
-                 subarrays=None, 
+                 subarrays=None,
 		 ping=True,
                  mdns_timeout=2,
                  no_mezz=False,
@@ -533,7 +533,6 @@ class FPGAArray(object):
         # We've got our crate numbers. Remove them from the icecrate list so we pass only the (model,
         # serial) to the mdns discovery function.
         hw_table.icecrates = [(model, serial) for (model, serial, crate_number) in hw_table.icecrates]
-
 
         ######################################
         # Hardware map processing
@@ -2691,7 +2690,7 @@ class FPGAArray(object):
                 ib.set_adc_delays(**kwargs)
 	    else:
                 self.logger.warning("%.32r: Communication with FPGA is not initialized. Cannot set ADC delays" % (self))
- 
+
 
 ICE_PATTERNS = [
         { 'regex': '(MGK7)?BP1',           'cur_state': None,  'next_state': 'ic',  'entry': ('MGK7BP1', None, None),  'store_in': None        },  # Sets the curent model and type to the One-slot backplane; matches MGK7BP1, BP1
