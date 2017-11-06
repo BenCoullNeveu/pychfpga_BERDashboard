@@ -16,7 +16,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from Module import Module_base, BitField
-from .icecore import async, async_return, async_sleep
+from .icecore import async, async_return, async_sleep, async_moment
 from metrics import Metrics
 
 # Types of memory-mapped registers
@@ -521,7 +521,7 @@ class XGLinkArray(XGLink):
 
         mon = [list() for _ in names]
         for lane in lanes:
-            yield None
+            yield async_moment
             self.LANE_SEL = lane
             for i, bf in enumerate(bitfields):
                 mon[i].append(self.read_bitfield(bf))
@@ -548,7 +548,7 @@ class XGLinkArray(XGLink):
             type='GAUGE')
 
         for link_type, link_group in [('pcb_gtx',0), ('qsfp_gtx', 1)]:
-            yield None # let the ioloop process data
+            yield async_moment # let the ioloop process data
             err, min_len, max_len, frame_det, rx_fifo, tx_fifo = yield self.get_rx_lane_monitor.async(['ERROR_CTR', 'MIN_FRAME_LENGTH', 'MAX_FRAME_LENGTH', 'FRAME_DETECT', 'RX_FIFO_OVERFLOW', 'TX_FIFO_OVERFLOW'],  link_group)
             for lane in range(len(err)):
                 metrics.add('fpga_bp_link_errors', value=err[lane], link_type=link_type, lane=lane)
@@ -560,7 +560,7 @@ class XGLinkArray(XGLink):
                 metrics.add('fpga_bp_link_error_overflow', value=err[lane]==255, link_type=link_type, lane=lane)
                 metrics.add('fpga_bp_link_length_mismatch', value=min_len[lane]!=max_len[lane], link_type=link_type, lane=lane)
         for gtx_number, gtx in enumerate(self.gtx):
-            yield None # let the ioloop process data
+            yield async_moment # let the ioloop process data
             #gtx_number = lane + link_group*self.NUMBER_OF_PCB_LANES
             metrics.add('fpga_bp_link_rx_power', value=gtx.DMONITOROUT & 0x7F, gtx=gtx_number)
             metrics.add('fpga_bp_link_block_lock', value=gtx.BLOCK_LOCK, gtx=gtx_number)

@@ -25,7 +25,7 @@ import tornado
 import psutil
 
 import log
-from rest import AsyncRESTServer, endpoint, AsyncRESTClient, coroutine, coroutine_return, IOLoop, RunSyncWrapper
+from rest import AsyncRESTServer, endpoint, AsyncRESTClient, coroutine, coroutine_return, IOLoop, RunSyncWrapper, moment
 from pychfpga import NameSpace, Metrics
 
 
@@ -887,7 +887,7 @@ class RawAcqReceiver(object):
             raise RuntimeError('Data set capture is already in progress')
         self.start_capture = True
         while not self.start_capture:
-            yield None
+            yield moment
 
         coroutine_return(self.all_ts, self.ports, self.all_data)
 

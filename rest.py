@@ -3,7 +3,6 @@ Base REST Clients and Servers classes for building REST-based applications.
 """
 from __future__ import print_function
 
-import sys
 import logging
 import signal
 import traceback
@@ -22,6 +21,7 @@ from pychfpga import load_yaml_config
 import tornado.ioloop
 import tornado.web
 from tornado.gen import sleep
+from tornado.gen import moment
 from tornado.ioloop import IOLoop
 from tornado.web import HTTPError
 from tornado_profile import TornadoProfiler
