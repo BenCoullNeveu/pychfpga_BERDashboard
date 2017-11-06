@@ -472,6 +472,8 @@ class FPGAArray(object):
         # Make sure iceboards is a list
         if isinstance(iceboards, (str, int)):
             iceboards = [iceboards]
+        if isinstance(icecrates, (str, int)):
+            icecrates = [icecrates]
         # iceboards = [self._to_integer(x) for x in iceboards]
 
         ###########################################
