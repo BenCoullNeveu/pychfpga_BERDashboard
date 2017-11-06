@@ -467,9 +467,11 @@ class FPGAArray(object):
 
         __main__._host_interface_ip_addr = if_ip
 
-        # # Fix up a few parameters for convenience
-        # if isinstance(iceboards, (str, int)):
-        #     iceboards = [iceboards]
+        # Fix up a few parameters for convenience
+
+        # Make sure iceboards is a list
+        if isinstance(iceboards, (str, int)):
+            iceboards = [iceboards]
         # iceboards = [self._to_integer(x) for x in iceboards]
 
         ###########################################
