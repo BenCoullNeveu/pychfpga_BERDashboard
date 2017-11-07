@@ -795,8 +795,8 @@ class FPGAArray(object):
 
         # Tell the IceBoard to run chFPGA firmware, program the FPGA, and establish communication with it
         if self.ib:
-            ib.set_handler(chFPGA_controller)
-            ib.set_cache() # we have a new handler, so update its cached ORM object values
+            self.ib.set_handler(chFPGA_controller)
+            self.ib.set_cache() # we have a new handler, so update its cached ORM object values
             # ib.set_handler(IceBoardPlusHandler, fpga_bitstream)
 
             # Configure the FPGA with the bitstream associated with the handler
@@ -821,7 +821,7 @@ class FPGAArray(object):
             # Set the interface over which the FPGA UDP communication will be done
             # Not needed in normal uses: we now get the interface automatically by examining info from the socket connected to the ARM
             if if_ip:
-                ib.interface_ip_addr = if_ip
+                self.ib.interface_ip_addr = if_ip
 
             self.logger.info('Initializing firmware (calling ib.open())')
             yield [ib.open.async(adc_delay_table=ADC_DELAY_TABLE,
