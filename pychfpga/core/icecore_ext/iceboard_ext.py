@@ -334,7 +334,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         # Open FPGA's I2C interfaces
         # -------------------------------------------------------------------------
         self.core_i2c = i2c.I2C_base(self, self._SYSTEM_I2C_BASE_ADDR)
-        yield None
+        yield async_moment
         # Create standardized I2C interface
         self.i2c = I2CInterface(
             self.fpga_i2c_write_read,
@@ -427,9 +427,10 @@ class IceBoardExtHandler(IceBoardPlusHandler):
 
         for trial in range(2):
             try:
-                yield None
+                yield async_moment
+                self.logger.debug('%r: Checking command counters' % (self))
                 (cmd, rply) = self.core_gpio.get_command_count()
-                yield None
+                yield async_moment
                 valid = (cmd == self.mmi.send_counter & 0xFF) and (rply == self.mmi.recv_counter & 0xFF)
                 if not valid:
                     self.logger.warning('%r: Command counters differ cmd/rply in FPGA is (%i, %i), Python MMI is (%i, %i)' % (self, cmd, rply, self.mmi.send_counter & 0xFF, self.mmi.recv_counter & 0xFF))
@@ -444,6 +445,9 @@ class IceBoardExtHandler(IceBoardPlusHandler):
                 yield self.fpga_mmi_write.async(self._SFP_STATUS_ADDR, 0 << 30)
                 valid = False
                 reset = True
+            except Exception as e:
+                self.logger.error("%r: Unhandled error during UDP communinication check.The error is:\n %s" % (self, e))
+                raise
         errmsg = "%r: Could not re-establish UDP communinication with the FPGA. Raising an exception" % (self)
         self.logger.error(errmsg)
         raise IOError(errmsg)
@@ -651,7 +655,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         sequence number to the value known by the FPGA. This should be is used
         by the first command sent to the FPGA to reset the communication link.
         """
-        yield None
+        yield async_moment
         async_return((self.mmi_read(self._GPIO_COOKIE_REG, resync=resync) & 0x7F))
 
     def get_fpga_firmware_version(self):
@@ -1364,7 +1368,7 @@ class IceBoardHardware(object):
         """Initializes the motherboard hardware to a known state.
         This will turn off FMC power.
         """
-        yield None
+        yield async_moment
         self._init_gpio_expanders()
         # self._init_temperature_sensors()
         # self.set_fmc_power()
@@ -1372,9 +1376,9 @@ class IceBoardHardware(object):
 
         # Initialize the QSFPs. This sets the reset and LowPower mode. Some
         # QSFP+ modules (like the 3M AOCs) will not work without this.
-        yield None
+        yield async_moment
         self._qsfpa.init()
-        yield None
+        yield async_moment
         self._qsfpb.init()
 
     def _init_gpio_expanders(self):
@@ -1496,7 +1500,7 @@ class IceBoardHardware(object):
         if isinstance(state, (bool, int)):
             state = [state] * len(led_name)
 
-        yield None
+        yield async_moment
         for (led, led_state) in zip(led_name, state):
             self._gpio.write(led, led_state)
 

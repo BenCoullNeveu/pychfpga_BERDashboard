@@ -133,7 +133,7 @@ class FPGAArray(object):
                  crate_map={},
                  ignore_missing_boards = False,
 
-                 subarrays=None, 
+                 subarrays=None,
 		 ping=True,
                  mdns_timeout=2,
                  no_mezz=False,
@@ -467,9 +467,13 @@ class FPGAArray(object):
 
         __main__._host_interface_ip_addr = if_ip
 
-        # # Fix up a few parameters for convenience
-        # if isinstance(iceboards, (str, int)):
-        #     iceboards = [iceboards]
+        # Fix up a few parameters for convenience
+
+        # Make sure iceboards is a list
+        if isinstance(iceboards, (str, int)):
+            iceboards = [iceboards]
+        if isinstance(icecrates, (str, int)):
+            icecrates = [icecrates]
         # iceboards = [self._to_integer(x) for x in iceboards]
 
         ###########################################
@@ -533,7 +537,6 @@ class FPGAArray(object):
         # We've got our crate numbers. Remove them from the icecrate list so we pass only the (model,
         # serial) to the mdns discovery function.
         hw_table.icecrates = [(model, serial) for (model, serial, crate_number) in hw_table.icecrates]
-
 
         ######################################
         # Hardware map processing
@@ -792,8 +795,8 @@ class FPGAArray(object):
 
         # Tell the IceBoard to run chFPGA firmware, program the FPGA, and establish communication with it
         if self.ib:
-            ib.set_handler(chFPGA_controller)
-            ib.set_cache() # we have a new handler, so update its cached ORM object values
+            self.ib.set_handler(chFPGA_controller)
+            self.ib.set_cache() # we have a new handler, so update its cached ORM object values
             # ib.set_handler(IceBoardPlusHandler, fpga_bitstream)
 
             # Configure the FPGA with the bitstream associated with the handler
@@ -818,7 +821,7 @@ class FPGAArray(object):
             # Set the interface over which the FPGA UDP communication will be done
             # Not needed in normal uses: we now get the interface automatically by examining info from the socket connected to the ARM
             if if_ip:
-                ib.interface_ip_addr = if_ip
+                self.ib.interface_ip_addr = if_ip
 
             self.logger.info('Initializing firmware (calling ib.open())')
             yield [ib.open.async(adc_delay_table=ADC_DELAY_TABLE,
@@ -2691,7 +2694,7 @@ class FPGAArray(object):
                 ib.set_adc_delays(**kwargs)
 	    else:
                 self.logger.warning("%.32r: Communication with FPGA is not initialized. Cannot set ADC delays" % (self))
- 
+
 
 ICE_PATTERNS = [
         { 'regex': '(MGK7)?BP1',           'cur_state': None,  'next_state': 'ic',  'entry': ('MGK7BP1', None, None),  'store_in': None        },  # Sets the curent model and type to the One-slot backplane; matches MGK7BP1, BP1

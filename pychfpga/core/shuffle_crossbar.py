@@ -18,7 +18,7 @@ import numpy as np
 
 from metrics import Metrics
 from Module import Module_base, BitField
-from .icecore import async, async_return, async_sleep
+from .icecore import async, async_return, async_sleep, async_moment
 
 import SHUFFLE_BIN_SEL
 
@@ -311,7 +311,7 @@ class ShuffleCrossbar(Module_base):
         # get 8 bits of stream ID
         self.HEADER_CAPTURE_EN = 0
         for i in range(self.NUMBER_OF_CROSSBAR_INPUTS):
-            yield None
+            yield async_moment
             self.LANE_MONITOR_SEL = i
             frame.append(self.FRAME_NUMBER_CAPTURE_DATA)
         self.HEADER_CAPTURE_EN = 1
@@ -353,7 +353,7 @@ class ShuffleCrossbar(Module_base):
 
         mon = [[] for _ in bitfields]
         for lane in range(self.NUMBER_OF_CROSSBAR_INPUTS):
-            yield None
+            yield async_moment
             self.LANE_MONITOR_SEL = lane
             for i, bf in enumerate(bitfields):
                 mon[i].append(self.read_bitfield(bf))
@@ -484,7 +484,7 @@ class ShuffleCrossbar(Module_base):
                 metrics.add(metric_name, lane=lane, value=flag, type='GAUGE')
 
         # Add frame alignment flag
-        yield None
+        yield async_moment
         frame_numbers = yield self.capture_frame_number.async()
         metric_name = 'fpga_crossbar%i_frame_alignment_offset' % (self.crossbar_level)
         for lane, frame_number in enumerate(frame_numbers):
@@ -493,14 +493,14 @@ class ShuffleCrossbar(Module_base):
 
         # Add BIN SEL status
         for lane, bs in enumerate(self.BIN_SEL):
-            yield None
+            yield async_moment
             number_of_sublanes_per_output = self.NUMBER_OF_INPUT_LANES/bs.NUMBER_OF_OUTPUTS
             sublane_mask = (1 << (bs.LAST_LANE + 1)) - (1 << bs.FIRST_LANE)
             mask = sum(sublane_mask << (number_of_sublanes_per_output * i) for i in range(bs.NUMBER_OF_OUTPUTS))
 
             metrics.add('fpga_crossbar%i_bin_sel_data_fifo_overflow' % (self.crossbar_level),
                         lane=lane, value=bs.FIFO_OVERFLOW & mask, type='GAUGE')
-            yield None
+            yield async_moment
             metrics.add('fpga_crossbar%i_bin_sel_flags_fifo_overflow' % (self.crossbar_level),
                         lane=lane, value=bs.FLAGS_FIFO_OVERFLOW & mask, type='GAUGE')
 

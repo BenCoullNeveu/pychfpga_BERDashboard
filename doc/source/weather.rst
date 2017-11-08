@@ -52,9 +52,9 @@ Examples::
 Command-line/ REST commands:
 ****************************
 
-	- ``start`` (implicit)
+	- ``start`` (implicit if a configuration is specified)
 	- ``stop``
-	- ``get_monitoring_data`` (used my Prometheus)
+	- ``get_monitoring_data`` (used by Prometheus)
 
 Weather server configuration
 ****************************

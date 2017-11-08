@@ -15,7 +15,7 @@ import logging
 
 from metrics import Metrics
 from Module import Module_base, BitField
-from .icecore import async, async_return, async_sleep
+from .icecore import async, async_return, async_sleep, async_moment
 
 import chan_bin_sel
 
@@ -235,15 +235,15 @@ class ChanCrossbar(Module_base):
             id=self.fpga.get_string_id())
 
         for lane in range(self.NUMBER_OF_CROSSBAR_INPUTS):
-            yield None
+            yield async_moment
             self.LANE_MONITOR_SEL = lane
-            yield None
+            yield async_moment
             metrics.add('fpga_crossbar1_reset_state', value=self.RESET_MON, lane=lane)
-            yield None
+            yield async_moment
             metrics.add('fpga_crossbar1_align_fifo_overflow_flag', value=self.ALIGN_FIFO_OVERFLOW, lane=lane)
-            yield None
+            yield async_moment
             metrics.add('fpga_crossbar1_input_frame_counter', value=self.INPUT_FRAME_CTR, lane=lane)
-            yield None
+            yield async_moment
             metrics.add('fpga_crossbar1_align_output_frame_counter', value=self.ALIGN_FRAME_CTR, lane=lane)
 
         async_return(metrics)

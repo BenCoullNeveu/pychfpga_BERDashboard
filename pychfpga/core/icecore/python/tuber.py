@@ -507,7 +507,7 @@ class TuberObject(object):
         t0 = time.time()
 
 
-        yield None
+        yield async.async_moment
         self._tuber_meta_properties = {}
         self._tuber_meta_methods = {}
         self._tuber_meta = _tuber_json_object_hook({"properties": [], "methods": []})

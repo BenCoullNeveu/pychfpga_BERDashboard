@@ -35,7 +35,7 @@ class NameSpace(object):
         object.__setattr__(self, '_obj', obj)
 
     def _to_namespace(self, x):
-        if isinstance(x, collections.Iterable) and not isinstance(x, basestring):
+        if isinstance(x, collections.Mapping):  # and not isinstance(x, basestring):
             return NameSpace(x)
         else:
             return x
