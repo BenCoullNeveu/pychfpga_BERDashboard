@@ -279,8 +279,9 @@ void Usage(const char *argv0, int retval)
 {
   printf(
   "Usage:\n  %s <list-of-nodes> <command>\n"
-  "  or      %s single <command>\n"
-  "Example:\n  %s 2-4,7,12 ls -lah /home\n", argv0, argv0);
+  "to run on the nodes specified, or\n"
+  "  %s single <command>\nto run on a single node chosen at random."
+  "\n\nExample:\n  %s 2-4,7,12 ls -lah /home\n", argv0, argv0);
 
   exit(retval);
 }
