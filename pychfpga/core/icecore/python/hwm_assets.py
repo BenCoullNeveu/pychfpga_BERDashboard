@@ -364,19 +364,30 @@ class IceBoardHandler(handler.Handler, tuber.TuberObject):
         alphanumeric characters only).
         """
 
-        if self.crate and self.slot:
-            return "%s(C%s.S%02i)" % (self.__class__.__name__,
-                                      self.crate.serial, self.slot)
-        if self.serial:
-            return "%s(SN%s)" % (self.__class__.__name__,  self.serial)
-        if self.hostname:
-            return "%s(%s)" % (self.__class__.__name__,  self.hostname)
-        return "%s(?)" % (self.__class__.__name__)
+        return "%s(%s)" % (self.__class__.__name__,  self.get_id())
+
+        # if self.crate and self.slot:
+        #     return "%s(C%s.S%02i)" % (self.__class__.__name__,
+        #                               self.crate.serial, self.slot)
+        # if self.serial:
+        #     return "%s(SN%s)" % (self.__class__.__name__,  self.serial)
+        # if self.hostname:
+        #     return "%s(%s)" % (self.__class__.__name__,  self.hostname)
+        # return "%s(?)" % (self.__class__.__name__)
 
     def get_id(self):
         """ Return a string that identifies uniquely the motherboard board. Comprises the model number and the serial number.
         """
-        return '%s_SN%s' % (self.part_number, self.serial)
+        if self.crate and self.slot:
+            return "C%s.S%02i" % (self.crate.serial, self.slot)
+        elif self.serial:
+            return "SN%s" % (self.serial)
+        elif self.hostname:
+            return "%s" % (self.hostname)
+        else:
+            return "?"
+
+        # return '%s_SN%s' % (self.part_number, self.serial)
 
     def set_fpga_bitstream(self, buf):
         '''

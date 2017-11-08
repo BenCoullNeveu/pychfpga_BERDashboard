@@ -14,7 +14,6 @@ from __future__ import absolute_import, division, print_function
 #     is_script = False
 
 
-import argparse
 import collections
 import getpass
 import numpy
@@ -654,9 +653,11 @@ class ChimeMaster(object):
             raise RuntimeError('CHIME master configuration data does not define the correlator name. Was the correct object selected in the configuration file (i.e. config.yaml:object)')
 
         # Create output directories
-        isotime = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
+        start_time = time.time()
+        isotime = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime(start_time))
+        localtime = time.strftime("%Y/%m/%d %H:%M:%S", time.localtime(start_time))
         #print('run name=%s, config = %r' % (conf.run_name , dict(isotime=isotime, corr_name=conf.corr_name)))
-        self.run_name = conf.run_name % dict(isotime=isotime, corr_name=conf.corr_name)
+        self.run_name = conf.run_name % dict(isotime=isotime, localtime=localtime, corr_name=conf.corr_name)
         str_args = dict(isotime=isotime, corr_name=conf.corr_name, run_name=self.run_name)
         self.run_folder = os.path.expanduser(conf.run_folder % str_args)
         self.current_folder = os.path.expanduser(conf.current_folder % str_args)
@@ -688,7 +689,7 @@ class ChimeMaster(object):
         #lo=logging.getLogger('pychfpga.fpga_array')
         #print('before setup: logger name=%s, level=%s, handlers=%s, disabled=%r' %(lo.name, lo.level, lo.handlers, lo.disabled))
         self.logging_handlers = log.setup_logging(
-	    conf.logging.dict_config, 
+	    conf.logging.dict_config,
             conf.logging.log_levels,
             base_package_name=conf.logging.base_package_name,
             actual_package_name=__name__.rpartition('.')[0], # full package path up to ch_acq (note: __package__ exists but is not consistently defined)
@@ -712,7 +713,8 @@ class ChimeMaster(object):
         filename = os.path.join(self.run_folder, 'info.txt')
         with open(filename, 'w') as h:
             h.write('Run name: %s\n' % self.run_name)
-            h.write('Run start time: %s\n' % isotime)
+            h.write('Run start time (local): %s\n' % localtime)
+            h.write('Run start time (UTC): %s\n' % isotime)
             h.write('Correlator/config name: %s\n' % conf.corr_name)
             h.write('Run folder: %s\n' % self.run_folder)
 
@@ -801,7 +803,7 @@ class ChimeMaster(object):
         if not fpga_array_params.open:
             self.log.warning("fpga_array is initialized with open=0. Aborting the rest of the FPGA array initialization.")
 	    coroutine_return()
-  
+
         # # if this needed?
         # ca.ib.set_adc_mask(0) # null the ADC data before it gets to the channelizers to reduce power consumption
 

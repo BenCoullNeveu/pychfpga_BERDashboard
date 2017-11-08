@@ -291,7 +291,7 @@ class FpgaMmi:
 
             if retries > retry:
                 self.logger.error('%r: %s Raising exception after %i unsuccessful trials' % (self, error, retries))
-                raise IOError(error)
+                raise IOError('%r: %s' % (self, error))
             else:
                 self.logger.warning('%r: %s This is trial %i/%i. Trying again' % (self, error, retries, retry))
             retries += 1

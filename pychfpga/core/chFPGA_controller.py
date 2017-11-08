@@ -1378,7 +1378,7 @@ class chFPGA_controller(IceBoardExtHandler):
         for entry in file_data:
             if any(key not in entry for key in ('__tag__' , '__mezzanines__', '__date__', 'delay_table')):
                 continue
-            mezzanines = {i: m.get_id() for i,m in self.mezzanine.items()}
+            mezzanines = {i: m.get_id() for i, m in self.mezzanine.items()}
             if entry['__tag__'] == tag and entry['__mezzanines__'] == mezzanines:
                 date = datetime.strptime(entry['__date__'], "%Y-%m-%dT%H:%M:%S.%f")
                 if latest_date is None or date >= latest_date:
@@ -3117,7 +3117,7 @@ class chFPGA_controller(IceBoardExtHandler):
         if not self.crate or self.slot is None:
             id = [self.get_string_id()]
         else:
-            id = list(self.crate.get_id()) + [self.slot]
+            id = list(self.crate.get_id()) + [self.slot - 1]
         if lane is not None:
             id.append(lane)
         return tuple(id)
