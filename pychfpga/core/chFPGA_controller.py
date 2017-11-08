@@ -1404,7 +1404,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
         if not isinstance(file_data, list):
             raise RuntimeError('Delay table file should be a list')
-        mezzanines = {i: m.get_id() for i,m in self.mezzanine.items()}
+        mezzanines = {i: m.get_id() for i, m in self.mezzanine.items()}
         date = datetime.utcnow().isoformat()
 
         new_entry = dict(__date__=date, __tag__=tag, __mezzanines__=mezzanines, delay_table=delay_table)

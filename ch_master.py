@@ -251,7 +251,7 @@ class ChimeMaster(object):
                self.power_supply_units[server] = list(common_ps_names)
                ps_names -= common_ps_names
         if ps_names:
-            raise RuntimeError('%.32r: Could not find a power supply server to handle the following supplies: %s' % (self, ps_names))
+            raise RuntimeError('%r: Could not find a power supply server to handle the following supplies: %s' % (self, ps_names))
 
     @coroutine
     def power_on(self):
@@ -479,7 +479,7 @@ class ChimeMaster(object):
 
         Creates the self.raw_acq_ibs dictionary which lists the iceboards objects associated with each RawAcq server.
         """
-        self.log.info('%.32r: starting raw_acq servers' % self)
+        self.log.info('%r: starting raw_acq servers' % self)
         conf = self.config.raw_acq
         #print(conf)
 
@@ -541,7 +541,7 @@ class ChimeMaster(object):
             for ib in self.raw_acq_ibs[node_name]:
                 ip_addr, port, eth_addr = targets[(ib.hostname, 80)]
                 ib.set_data_target_address(ip_addr, port, eth_addr)
-        self.log.info('%.32r: RawAcq server setup successfully' % self)
+        self.log.info('%r: RawAcq server setup successfully' % self)
 
     @coroutine
     def start_fpga_raw_data_transmission(self, capture_rate=None, capture_source=None):
@@ -563,7 +563,7 @@ class ChimeMaster(object):
         for node_name, ibs in self.raw_acq_ibs.items():
             for ib in ibs:
                 offset = (ib.slot or 1) - 1
-                self.log.info('%.32r: Starting data capture on %r with period=%f, source=%s' % (self, ib, capture_period, capture_source))
+                self.log.info('%r: Starting data capture on %r with period=%f, source=%s' % (self, ib, capture_period, capture_source))
                 ib.start_data_capture(period=capture_period, source=capture_source, offset=offset)
 
     @coroutine
@@ -617,7 +617,7 @@ class ChimeMaster(object):
             )         for node_name, node in self.raw_acq.items()]
 
 
-        self.log.info('%.32r: HDF5 data writer will be stopped in %f seconds' % (self, capture_duration))
+        self.log.info('%r: HDF5 data writer will be stopped in %f seconds' % (self, capture_duration))
         self.call_later(capture_duration, self.stop_hdf5_capture)
 
     @coroutine
@@ -1308,14 +1308,14 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
 
             if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
                 try:
-                    self.log.info('%.32r: Scraping metrics from FPGAs' % (self))
+                    self.log.info('%r: Scraping metrics from FPGAs' % (self))
                     metrics += yield self.chime_master.fpgas.get_metrics.async()
                     self.log.info('%r: Got %i FPGA metrics' % (self, len(metrics.metrics)))
                 except Exception as e:
                     self.log.warning('%r: error getting FPGA metrics. error is: %r\n%s' % (self, e, traceback.format_exc()))
                     pass
             else:
-                self.log.info('%.32r: Not ready to scrape Metrics from FPGA' % (self))
+                self.log.info('%r: Not ready to scrape Metrics from FPGA' % (self))
 
             if self.metrics_queue.full():
                 self.metrics_queue.get()
