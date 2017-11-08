@@ -428,6 +428,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         for trial in range(2):
             try:
                 yield async_moment
+                self.logger.debug('%r: Checking command counters' % (self))
                 (cmd, rply) = self.core_gpio.get_command_count()
                 yield async_moment
                 valid = (cmd == self.mmi.send_counter & 0xFF) and (rply == self.mmi.recv_counter & 0xFF)
@@ -444,6 +445,9 @@ class IceBoardExtHandler(IceBoardPlusHandler):
                 yield self.fpga_mmi_write.async(self._SFP_STATUS_ADDR, 0 << 30)
                 valid = False
                 reset = True
+            except Exception as e:
+                self.logger.error("%r: Unhandled error during UDP communinication check.The error is:\n %s" % (self, e))
+                raise
         errmsg = "%r: Could not re-establish UDP communinication with the FPGA. Raising an exception" % (self)
         self.logger.error(errmsg)
         raise IOError(errmsg)
