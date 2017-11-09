@@ -833,7 +833,7 @@ class ChimeMaster(object):
             # ca.set_synchronized_gain_switching_mode(enable=0)  # Disable synchronized gain switching
             # ca.set_next_gain_bank(bank=0)  # immediately select bank zero to load initial gains
             gains = yield ca.load_gains.async() # load gains from gain files
-            ca.set_gains(gains, bank=0, when='now') # Upload to bank 0 and immediately activate gain bank
+            ca.set_gains.async(gains, bank=0, when='now') # Upload to bank 0 and immediately activate gain bank
         # for bankset in ca.ib.get_current_gain_bank():
         #     log.info('Using gain banks %s' % (', '.join([str(i) for i in bankset])))
 
@@ -1370,13 +1370,11 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         if self.chime_master.fpgas:
             # Read Gains
             self.log.info('Reading digital gains from folder %s.' %gain_folder)
-            print('Reading digital gains from folder %s.' %gain_folder)
             gains = yield self.chime_master.fpgas.load_gains.async(gain_folder=gain_folder)
             
             # Load gains into inactive gain bank
             self.log.info('Loading digital gains to inactive gain bank.')
-            print('Loading digital gains to inactive gain bank.')
-            self.chime_master.fpgas.set_gains(gains, when=None)
+            self.chime_master.fpgas.set_gains.async(gains, when=None)
 
             # Figure out gain switch frame number
             # Figure out integration period in frames. Currently just by checking the kotekan config file
@@ -1386,7 +1384,6 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
             # Get current frame number
             current_frame_number = self.chime_master.fpgas.ib[0].get_frame_number()
             self.log.info('The current FPGA frame number is %i' %current_frame_number)
-            print('The current FPGA frame number is %i' %current_frame_number)
             current_gpu_frame = int(current_frame_number/frames_per_gpu_integration)
             # Figure out frame number at which gains are switched
             frame_period_seconds = 2.56e-6 # Frame period in seconds = 2048/800e6. Should be read from config
@@ -1404,14 +1401,11 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
             # Update and print the actual delta_t for switching gains
             delta_t_frames = gain_switch_frame_number - current_frame_number
             delta_t_seconds = delta_t_frames*frame_period_seconds
-            self.log.info('Gains will be switched on frame %i (in %.2f seconds) at the closest GPU integration start.' %(gain_switch_frame_number, 
-                delta_t_seconds))
-            print('Gains will be switched on frame %i (in %.2f seconds) at the closest GPU integration start.' %(gain_switch_frame_number, 
+            self.log.info('new gains will be active on frame %i (in %.2f seconds) at the closest GPU integration start.' %(gain_switch_frame_number, 
                 delta_t_seconds))
             #coroutine_return(None) # Probably don't need this
         else:
             self.log.info('FPGA array not yet initialized. Cannot load digital gains.')
-            print('FPGA array not yet initialized. Cannot load digital gains.')
 
     @coroutine
     @endpoint('load-digital-gains')
