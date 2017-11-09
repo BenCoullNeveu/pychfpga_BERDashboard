@@ -488,7 +488,7 @@ class ChimeMaster(object):
         for node_name, node_conf in conf.servers.items():
             self.raw_acq_ibs[node_name] = set()
             for ib in node_conf.iceboards:  # ib is a (crate, slot) tuple)
-                self.raw_acq_ibs[node_name].update(self.get_iceboards(ib.as_dict()))
+                self.raw_acq_ibs[node_name].update(self.get_iceboards(ib))
 
         #print('self.raw_acq_ibs=', self.raw_acq_ibs)
         # Check that an iceboard is assigned to only one server
@@ -529,7 +529,7 @@ class ChimeMaster(object):
         start_results = yield {node_name: self.raw_acq[node_name].start(
                 name=recv_names[node_name],
                 ports=recv_ports[node_name],
-                jump_thresholds=conf.common_config.jump_thresholds.as_dict())
+                jump_thresholds=conf.common_config.jump_thresholds)
             for node_name in self.raw_acq_ibs.keys()}
 
         # Configure the FPGA transmit addresses based on what the receiver returned
