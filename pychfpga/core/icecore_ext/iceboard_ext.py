@@ -446,7 +446,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
                 valid = False
                 reset = True
             except Exception as e:
-                self.logger.error("%r: Unhandled error during UDP communinication check.The error is:\n %s" % (self, e))
+                self.logger.error("%r: Unhandled error during UDP communinication check. The error is:\n %r" % (self, e))
                 raise
         errmsg = "%r: Could not re-establish UDP communinication with the FPGA. Raising an exception" % (self)
         self.logger.error(errmsg)

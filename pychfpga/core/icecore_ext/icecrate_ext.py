@@ -609,11 +609,13 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
         This requires I2C communication with the backplane.
         """
 	#return
+        print('backplane.init()')
         for trial in range(10):
+            print('trial ', trial)
             try:
                 # Check if the fan controller is connected
                 self._fan_ctrl_present = self._fan_ctrl.is_present()
-
+                print('Fan ctrl is preset=', self._fan_ctrl_present)
                 # Check if the power/reset control IO expander is accessible
                 #self._reset_ctrl_present = self._reset_ctrl.is_present()
 
@@ -625,13 +627,18 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
 
                 if self._fan_ctrl_present:
                     self._fan_ctrl.init()
+                    self.logger.info('%r: Initialized fan controller from FPGA' % (self))
+                print('done init successfully')
                 return
             except (IOError, RuntimeError) as e:
-                self.logger.warning('%r: IO Error during backplane INIT on trial %i. retrying. Error was:\n%s' % (self, trial+1, e))
+                print('%r: IO Error during backplane INIT on trial %i. retrying. Error was:\n%s' % (self, trial+1, e))
+            except Exception as e:
+                print('%r: Unexpected exception during backplane INIT on trial %i. retrying. Error was:\n%s' % (self, trial+1, e))
             finally:
                 try:
                     self._i2c.select_bus([])  # Make sure we don't load the bus
-                except (IOError, RuntimeError):
+                except (IOError, RuntimeError) as e:
+                    print('%r: IO Error while trying to deselect bus. Error was:\n%s' % (self, e))
 		    pass
         raise IOError('%r: Cannot initialize backplane peripherals' % self)
 
