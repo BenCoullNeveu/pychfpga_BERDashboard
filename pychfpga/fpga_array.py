@@ -591,18 +591,18 @@ class FPGAArray(object):
         ping_timeout = 3
         missing_boards = []
         if ping:
-            self.logger.info('%.32r: Pinging IceBoards specified in YAML file' % (self))
+            self.logger.info('%r: Pinging IceBoards specified in YAML file' % (self))
             ib_to_ping = self.hwm.query(IceBoardPlus).as_dict()  # use as_dict so ib_to_ping does not change as we delete boards from the hwm
             if ib_to_ping:
                 ping_results = yield [ib.ping.async(timeout=ping_timeout) for ib in ib_to_ping]  # asynchronous parallel call to all boards
-                #self.logger.debug('%.32r: Ping results are %s' % (self, ping_results))
+                #self.logger.debug('%r: Ping results are %s' % (self, ping_results))
                 for i, ping_successful in enumerate(ping_results):
                     ib = ib_to_ping[i]
                     if ping_successful:
                         ib.hostname = socket.gethostbyname(ib.hostname)
                     else:
                         missing_boards.append(ib.hostname + (('(SN%s)' % ib.serial) if ib.serial else ''))
-                        self.logger.debug('%.32r: Deleting %r from the YAML hardware map' % (self, ib))
+                        self.logger.debug('%r: Deleting %r from the YAML hardware map' % (self, ib))
                         self.hwm.delete(ib)
                 self.hwm.flush()
             if missing_boards:
@@ -681,7 +681,7 @@ class FPGAArray(object):
             yield futures # [ib.discover_serial.async() for ib in ib_without_serial]
             self.logger.info('%r: Finished Auto-Discovering serial number for IceBoards. Took %f seconds.' % (self, time.time() - t0))
 
-        self.logger.info('%.32r: Auto-Discovering slot numbers of IceBoards')
+        self.logger.info('%r: Auto-Discovering slot numbers of IceBoards')
         t0 = time.time()
         yield [ib.discover_slot.async() for ib in self.hwm.query(IceBoardPlus)]
         self.logger.info('%r: Finished Auto-Discovering slot numbers for IceBoards. Took %f seconds.' % (self, time.time() - t0))
@@ -752,7 +752,7 @@ class FPGAArray(object):
                           if (model, self._to_integer(serial)) not in current_crates]
         #print missing_crates
         if missing_crates:
-            raise RuntimeError('%.32r: The following crates are missing: %s' %
+            raise RuntimeError('%r: The following crates are missing: %s' %
                 (self, ', '.join('%s SN%s' % (model, serial) for (model, serial) in missing_crates)))
         # Check for missing boards
         missing_slots = { (ic.part_number, ic.serial, ic.crate_number): set(range(1, ic.NUMBER_OF_SLOTS + 1)) - set(ic.slot) for ic in self.ic}
@@ -849,7 +849,7 @@ class FPGAArray(object):
         # Completed
         #################################
 
-        self.logger.info('%.32r: Done creating %r' % (self, self))
+        self.logger.info('%r: Done creating %r' % (self, self))
 
     @staticmethod
     def _to_integer(x):
@@ -1332,12 +1332,12 @@ class FPGAArray(object):
 
         array_gains = {}
         for ib in self.ib:
-            self.logger.info('%r: Reading digital gains for crate %s, slot %02i' % (self, ib.crate.crate_number, ib.slot))
+            self.logger.info('%r: Reading digital gains for board %s' % (self, ib.get_id()))
             board_gains = ib.load_gains(folder=gain_folder) or default_gains
             yield async_moment
 
             if not board_gains:
-                self.logger.warn('Neither board-specific gain file not default gain file was found for IceBoard SN%s, crate %s, slot %i, channel %i.' % (ib.serial, crate, slot, ch))
+                self.logger.warn('%r: Neither board-specific gain file not default gain file was found for IceBoard %s (SN%s).' % (self, ib.get_id(), ib.serial))
 
             ch_id = ib.get_id()
             if board_gains is None:
@@ -1436,13 +1436,13 @@ class FPGAArray(object):
         #     raise RuntimeError('All boards must be in the same crate. The provided set of Iceboards have the following crates: %r' % crate_set)
         # crate = crate_set.pop()
 
-        self.logger.info('%.32r: Configuring crate-wide data shuffling with frames_per_packet=%i' % (self, frames_per_packet))
+        self.logger.info('%r: Configuring crate-wide data shuffling with frames_per_packet=%i' % (self, frames_per_packet))
 
         #####################
         # Set-up transmitters
         #####################
         for i, ib in enumerate(self.ib):
-            self.logger.info('%.32r: **** Initializing transmitters for IceBoard %r (SN%s) ****' % (ib.crate, ib, ib.serial))
+            self.logger.info('%r: **** Initializing transmitters for IceBoard %r (SN%s) ****' % (self, ib, ib.serial))
             ib.set_corr_reset(0)
 
             tx_list.append((ib.slot, 0))  # Register Bypass lane (lane 0) as a transmitter in this slot
@@ -1493,14 +1493,14 @@ class FPGAArray(object):
                 tx = ib.crate.get_matching_tx(rx)
                 if tx in tx_list:
                     pass
-                    #self.logger.debug('%.32r: In %r,  %s is receiving from %s' % (self, ib.crate, rx, tx))
+                    #self.logger.debug('%r: In %r,  %s is receiving from %s' % (self, ib.crate, rx, tx))
                 else:
-                    self.logger.debug('%.32r: In %r, %s has no corresponding transmitter' % (self, ib.crate, rx))
+                    self.logger.debug('%r: In %r, %s has no corresponding transmitter' % (self, ib.crate, rx))
 
 
         # sync boards
         #soft_sync(c, sync_board)
-        self.logger.info('%.32r: Shuffling initialization completed. Syncing boards' % self)
+        self.logger.info('%r: Shuffling initialization completed. Syncing boards' % self)
         self.sync(delay=2)
 
     def get_chan_identity_map(self):
@@ -2474,7 +2474,8 @@ class FPGAArray(object):
         metrics += yield [ib.get_bp_shuffle_metrics.async() for ib in self.ib]
         self.logger.info('%r:Getting corner-turn crossbars metrics (over FPGA UDP link)' % self)
         metrics += yield [ib.get_crossbar_metrics.async() for ib in self.ib]
-        self.logger.info('%r: Got the corner-turn metrics' % self)
+        self.logger.info('%r:Getting channelizer metrics (over FPGA UDP link)' % self)
+        metrics += yield [ib.get_channelizer_metrics.async() for ib in self.ib]
         self.logger.info('%r: Finished gathering FPGA/backplane metrics' % self)
 
         # Backplane GTX
@@ -2693,10 +2694,10 @@ class FPGAArray(object):
 
         for ib in self.ib:
 	    if ib.is_open():
-                self.logger.info("%.32r: Setting ADC delays" % (self))
+                self.logger.info("%r: Setting ADC delays" % (self))
                 ib.set_adc_delays(**kwargs)
 	    else:
-                self.logger.warning("%.32r: Communication with FPGA is not initialized. Cannot set ADC delays" % (self))
+                self.logger.warning("%r: Communication with FPGA is not initialized. Cannot set ADC delays" % (self))
 
 
 ICE_PATTERNS = [

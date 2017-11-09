@@ -234,7 +234,7 @@ class IceCrateHandler(handler.Handler):
         return sorted(active_iceboards)[0][1]
 
     def __repr__(self):
-        return '%s(SN%s)' % (self.__class__.__name__, self.serial)
+        return '%s(%s)' % (self.__class__.__name__, self.get_id())
 
     def get_id(self):
         return 'No backplane'

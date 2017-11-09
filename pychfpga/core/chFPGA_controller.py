@@ -1404,7 +1404,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
         if not isinstance(file_data, list):
             raise RuntimeError('Delay table file should be a list')
-        mezzanines = {i: m.get_id() for i,m in self.mezzanine.items()}
+        mezzanines = {i: m.get_id() for i, m in self.mezzanine.items()}
         date = datetime.utcnow().isoformat()
 
         new_entry = dict(__date__=date, __tag__=tag, __mezzanines__=mezzanines, delay_table=delay_table)
@@ -3000,6 +3000,27 @@ class chFPGA_controller(IceBoardExtHandler):
             metrics = Metrics()
         async_return(metrics)
 
+
+    @async
+    def get_channelizer_metrics(self):
+        metrics = Metrics(
+            type='GAUGE',
+            slot=(self.slot or 0) - 1,
+            id=self.get_string_id(),
+            crate_id=self.crate.get_string_id() if self.crate else None,
+            crate_number=self.crate.crate_number if self.crate else None)
+
+        if not self.is_open():
+            async_return(metrics)
+        try:
+            yield self.check_command_count.async(reset=True)
+            for i, ant  in self.ANT.items():
+                metrics.add('fpga_fft_overflow_count', value = ant.FFT.OVERFLOW_COUNT, chan=i)
+                metrics.add('fpga_scaler_overflow_count', value = ant.SCALER.STATS_SCALER_OVERFLOWS, chan=i)
+                metrics.add('fpga_adc_overflow_count', value = ant.SCALER.STATS_ADC_OVERFLOWS, chan=i)
+        except IOError as e:
+            self.logger.error('%r: Error getting FPGA channelizer metrics. Error is %r' % (self, e))
+        async_return(metrics)
 
     @async
     def get_crossbar_metrics(self):

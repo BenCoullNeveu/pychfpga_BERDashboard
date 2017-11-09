@@ -437,8 +437,8 @@ class IceBoardExtHandler(IceBoardPlusHandler):
                 if reset:
                     self.mmi.send_counter = cmd
                     self.mmi.recv_counter = rply
-                    async_return(True)
-                async_return(valid)
+                    valid = True
+                break
             except IOError as e:
                 self.logger.error("%r: UDP communinication error. Appempting to reset FPGA's UDP stack (trial %i).The error is:\n %s" % (self, trial+1, e))
                 yield self.fpga_mmi_write.async(self._SFP_STATUS_ADDR, 2 << 30)
@@ -448,9 +448,11 @@ class IceBoardExtHandler(IceBoardPlusHandler):
             except Exception as e:
                 self.logger.error("%r: Unhandled error during UDP communinication check. The error is:\n %r" % (self, e))
                 raise
-        errmsg = "%r: Could not re-establish UDP communinication with the FPGA. Raising an exception" % (self)
-        self.logger.error(errmsg)
-        raise IOError(errmsg)
+        else: # executes if we exhausted the for loop iterations, i.e  no break
+            errmsg = "%r: Could not re-establish UDP communinication with the FPGA. Raising an exception" % (self)
+            self.logger.error(errmsg)
+            raise IOError(errmsg)
+        async_return(valid)
 
     @async
     def set_fpga_control_networking_parameters(
