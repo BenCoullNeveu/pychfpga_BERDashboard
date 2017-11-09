@@ -1332,12 +1332,12 @@ class FPGAArray(object):
 
         array_gains = {}
         for ib in self.ib:
-            self.logger.info('%r: Reading digital gains for crate %s, slot %02i' % (self, ib.crate.crate_number, ib.slot))
+            self.logger.info('%r: Reading digital gains for board %s' % (self, ib.get_id()))
             board_gains = ib.load_gains(folder=gain_folder) or default_gains
             yield async_moment
 
             if not board_gains:
-                self.logger.warn('Neither board-specific gain file not default gain file was found for IceBoard SN%s, crate %s, slot %i, channel %i.' % (ib.serial, crate, slot, ch))
+                self.logger.warn('%r: Neither board-specific gain file not default gain file was found for IceBoard %s (SN%s).' % (self, ib.get_id(), ib.serial))
 
             ch_id = ib.get_id()
             if board_gains is None:
@@ -2474,7 +2474,8 @@ class FPGAArray(object):
         metrics += yield [ib.get_bp_shuffle_metrics.async() for ib in self.ib]
         self.logger.info('%r:Getting corner-turn crossbars metrics (over FPGA UDP link)' % self)
         metrics += yield [ib.get_crossbar_metrics.async() for ib in self.ib]
-        self.logger.info('%r: Got the corner-turn metrics' % self)
+        self.logger.info('%r:Getting channelizer metrics (over FPGA UDP link)' % self)
+        metrics += yield [ib.get_channelizer_metrics.async() for ib in self.ib]
         self.logger.info('%r: Finished gathering FPGA/backplane metrics' % self)
 
         # Backplane GTX
