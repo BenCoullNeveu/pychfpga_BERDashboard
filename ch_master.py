@@ -832,7 +832,7 @@ class ChimeMaster(object):
             self.log.info("Loading initial SCALER gains in bank #0")
             # ca.set_synchronized_gain_switching_mode(enable=0)  # Disable synchronized gain switching
             # ca.set_next_gain_bank(bank=0)  # immediately select bank zero to load initial gains
-            gains = ca.load_gains() # load gains from gain files
+            gains = yield ca.load_gains.async() # load gains from gain files
             ca.set_gains(gains, bank=0, when='now') # Upload to bank 0 and immediately activate gain bank
         # for bankset in ca.ib.get_current_gain_bank():
         #     log.info('Using gain banks %s' % (', '.join([str(i) for i in bankset])))
@@ -1365,15 +1365,17 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
             self.log.info('FPGA array not yet initialized. No info to show.')
 
     @coroutine
-    @endpoint('load-digital-gains')
-    def load_digital_gains(self, handler, gain_folder='/home/chime/ch_acq/gains/new_gains', delta_t_seconds='now'):
+    #@endpoint('load-digital-gains')
+    def _load_digital_gains(self, handler, gain_folder='/home/chime/ch_acq/gains/new_gains', delta_t_seconds=20):
         if self.chime_master.fpgas:
             # Read Gains
             self.log.info('Reading digital gains from folder %s.' %gain_folder)
-            gains = self.chime_master.fpgas.load_gains(gain_folder=gain_folder)
+            print('Reading digital gains from folder %s.' %gain_folder)
+            gains = yield self.chime_master.fpgas.load_gains.async(gain_folder=gain_folder)
             
             # Load gains into inactive gain bank
             self.log.info('Loading digital gains to inactive gain bank.')
+            print('Loading digital gains to inactive gain bank.')
             self.chime_master.fpgas.set_gains(gains, when=None)
 
             # Figure out gain switch frame number
@@ -1383,6 +1385,8 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
             frames_per_gpu_integration = samples_per_data_set*num_gpu_frames
             # Get current frame number
             current_frame_number = self.chime_master.fpgas.ib[0].get_frame_number()
+            self.log.info('The current FPGA frame number is %i' %current_frame_number)
+            print('The current FPGA frame number is %i' %current_frame_number)
             current_gpu_frame = int(current_frame_number/frames_per_gpu_integration)
             # Figure out frame number at which gains are switched
             frame_period_seconds = 2.56e-6 # Frame period in seconds = 2048/800e6. Should be read from config
@@ -1400,11 +1404,20 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
             # Update and print the actual delta_t for switching gains
             delta_t_frames = gain_switch_frame_number - current_frame_number
             delta_t_seconds = delta_t_frames*frame_period_seconds
-            self.log.info('The gains will be switched in %.2f seconds at the closest GPU integration start.' %delta_t_seconds)
-            coroutine_return(None) # Probably don't need this
+            self.log.info('Gains will be switched on frame %i (in %.2f seconds) at the closest GPU integration start.' %(gain_switch_frame_number, 
+                delta_t_seconds))
+            print('Gains will be switched on frame %i (in %.2f seconds) at the closest GPU integration start.' %(gain_switch_frame_number, 
+                delta_t_seconds))
+            #coroutine_return(None) # Probably don't need this
         else:
             self.log.info('FPGA array not yet initialized. Cannot load digital gains.')
+            print('FPGA array not yet initialized. Cannot load digital gains.')
 
+    @coroutine
+    @endpoint('load-digital-gains')
+    def load_digital_gains(self, handler, gain_folder='/home/chime/ch_acq/gains/new_gains', delta_t_seconds=20):
+        future = self._load_digital_gains(gain_folder=gain_folder, delta_t_seconds=delta_t_seconds)
+        coroutine_return('called load_digital_gains')
 
 class ChimeMasterAsyncRESTClient(AsyncRESTClient):
 
@@ -1545,11 +1558,11 @@ class ChimeMasterAsyncRESTClient(AsyncRESTClient):
         #coroutine_return(result)
 
     @coroutine
-    def load_digital_gains(self):
+    def load_digital_gains(self, gain_folder, delta_t_seconds):
         """
         load digital gains
         """
-        r = yield self.get('load-digital-gains')
+        r = yield self.post('load-digital-gains', gain_folder=gain_folder, delta_t_seconds=float(delta_t_seconds))
 
 
 def main():
