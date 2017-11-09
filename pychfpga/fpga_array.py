@@ -51,7 +51,7 @@ except ImportError:
 from pychfpga.core.icecore import Ccoll
 from pychfpga.core.icecore import HardwareMap, HWMResource
 from pychfpga.core.icecore import mdns_discover
-from pychfpga.core.icecore import async, async_return, async_sleep
+from pychfpga.core.icecore import async, async_return, async_sleep, async_moment
 
 from pychfpga.core.icecore import IceBoardPlus
 from pychfpga.core.icecore_ext import IceCrateExt
@@ -1302,7 +1302,7 @@ class FPGAArray(object):
     def get_iceboard_from_id(self, id):
         """ return the iceboard corresponding to the specified id.
         """
-        crate, slot = id[:2]
+        crate, slot = id[0], id[1] + 1
         return self.ic.get(crate_number=crate).slot[slot]
 
 #    def init_gains(self):
@@ -1316,7 +1316,7 @@ class FPGAArray(object):
 #                print 'Could not find gain settings for %r, sn %i. Using default gain settings.' % (ib, ib.get_fpga_serial_number())
 #            print 'Setting gains on IceBoard SN%s' % ib.serial
 #            ib.set_gain(g_array)
-
+    @async
     def load_gains(self, bank=0, gain_folder='/home/chime/ch_acq/gains'):
         """ Loads the gains from the gain files associated with every board of the array and return
         the gain map in the format {channel_id:gain}
@@ -1334,6 +1334,7 @@ class FPGAArray(object):
         for ib in self.ib:
             self.logger.info('%r: Reading digital gains for crate %s, slot %02i' % (self, ib.crate.crate_number, ib.slot))
             board_gains = ib.load_gains(folder=gain_folder) or default_gains
+            yield async_moment
 
             if not board_gains:
                 self.logger.warn('Neither board-specific gain file not default gain file was found for IceBoard SN%s, crate %s, slot %i, channel %i.' % (ib.serial, crate, slot, ch))
@@ -1343,8 +1344,9 @@ class FPGAArray(object):
                 array_gains[ch_id] = None
             else:
                 array_gains[ch_id] = board_gains
-        return array_gains
+        async_return(array_gains)
 
+    @async
     def set_gains(self, gains, bank=-1,  when='now'):
         """ Set the gains on the boards in the array.
 
@@ -1370,6 +1372,7 @@ class FPGAArray(object):
             self.logger.info('%r: Setting digital gains for crate %s, slot %02i' % (self, ch_id[0], ch_id[1]))
             ib = self.get_iceboard_from_id(ch_id)
             ib.set_gains(gain=gain, bank=bank)
+            yield async_moment
 
         if when is not None:
             self.switch_gains(bank=bank, when=when)
@@ -2915,7 +2918,7 @@ def add_fpga_array_arguments(parser):
     parser.add_argument('-m', '--mode',      type=str, help="Operational mode ('shuffle16', 'shuffle256', 'shuffle512'). If not specified, set_operational_mode() is not called.")
     parser.add_argument('-f', '--frames_per_packet', '--fpp',     type=int, help="Number of frames per packeet. Default=2.")
     parser.add_argument('-u', '--udp_retries', type=int, help="Number of times UDP packet transmission to the FPGA will be retried.")
-    parser.add_argument('hwm',               type=str, nargs='*', help="target hardware")  # allows free-style hardware description string
+    parser.add_argument('hwm',               type=str, nargs='*', default=argparse.SUPPRESS, help="target hardware")  # allows free-style hardware description string
 
     defaults = dict(
         sync_method='distributed_time',
