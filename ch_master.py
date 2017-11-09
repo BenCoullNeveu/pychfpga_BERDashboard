@@ -1176,7 +1176,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
             return True
         self.start_time = time.time()
         #print('START config is %s' % config['logging'])
-	self.future = self.chime_master.start(**config)
+        self.future = self.chime_master.start(**config)
         IOLoop.current().add_future(self.future, done)
         self.log = log.get_logger(self)  # update the self.log pointer to the new logger
         self.log.debug('%r: future created. ch_master initilization is in progress' % (self))
@@ -1394,7 +1394,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
             # The gain_switch_frame_number must be a multiple of frames_per_gpu_integration to switch at start of integration
             gain_switch_gpu_frame = int((current_frame_number + delta_t_frames)/frames_per_gpu_integration)
             # I assume that setting the gain_switch_frame_number for all boards takes ~1 integration period, so make sure there's enough time
-            if (gain_switch_gpu_frame-current_gpu_frame)<2: 
+            if (gain_switch_gpu_frame-current_gpu_frame)<2:
                 # If gain_switch_gpu_frame-current_gpu_frame == 0 the gain_switch_frame_number already passed
                 # If gain_switch_gpu_frame-current_gpu_frame == 1 the gain_switch_frame_number is the start of next gpu integration
                 # which may not be enough time to set gain_switch_frame_number for all the boards
