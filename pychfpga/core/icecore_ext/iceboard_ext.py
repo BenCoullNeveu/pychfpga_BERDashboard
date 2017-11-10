@@ -984,7 +984,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         yield self.fpga_mmi_write.async(self._IRIGB_SAMPLE2_ADDR, w2 & ~(1 << 28))
         yield self.fpga_mmi_write.async(self._IRIGB_SAMPLE2_ADDR, w2 | (1 << 28))
         t0 = time.time()
-        while not (yield self.fpga_mmi_read.async(self._IRIGB_TARGET1_ADDR) & (1 << 30)):
+        while not (yield self.fpga_mmi_read.async(self._IRIGB_TARGET1_ADDR)) & (1 << 30):
             if time.time() - t0 > 1:
                 raise RuntimeError('Timeout while waiting for a Frame. Is data flowing out of the ADC data acquisition module?')
         event_number = yield self.fpga_mmi_read.async(self._IRIGB_EVENT_CTR_ADDR)
