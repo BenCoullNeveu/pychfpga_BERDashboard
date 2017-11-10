@@ -1066,6 +1066,49 @@ class ChimeMaster(object):
         """ Run the IOLoop until interrupted """
         IOLoop.current().start()
 
+    @coroutine
+    def load_digital_gains(self, handler, gain_folder='/home/chime/ch_acq/gains/new_gains', delta_t_seconds=20):
+        if self.chime_master.fpgas:
+            # Read Gains
+            self.log.info('Reading digital gains from folder %s.' %gain_folder)
+            gains = yield self.fpgas.load_gains.async(gain_folder=gain_folder)
+            
+            # Load gains into inactive gain bank
+            self.log.info('Loading digital gains to inactive gain bank.')
+            self.fpgas.set_gains.async(gains, when=None)
+
+            # Figure out gain switch frame number
+            # Figure out integration period in frames. Currently just by checking the kotekan config file
+            samples_per_data_set = 32768
+            num_gpu_frames = 128
+            frames_per_gpu_integration = samples_per_data_set*num_gpu_frames
+            # Get current frame number
+            current_frame_number = self.fpgas.ib[0].get_frame_number()
+            self.log.info('The current FPGA frame number is %i' %current_frame_number)
+            current_gpu_frame = int(current_frame_number/frames_per_gpu_integration)
+            # Figure out frame number at which gains are switched
+            frame_period_seconds = 2.56e-6 # Frame period in seconds = 2048/800e6. Should be read from config
+            delta_t_frames = int(np.ceil(delta_t_seconds/frame_period_seconds)) # Number of frames to switch gains
+            # The gain_switch_frame_number must be a multiple of frames_per_gpu_integration to switch at start of integration
+            gain_switch_gpu_frame = int((current_frame_number + delta_t_frames)/frames_per_gpu_integration)
+            # I assume that setting the gain_switch_frame_number for all boards takes ~1 integration period, so make sure there's enough time
+            if (gain_switch_gpu_frame-current_gpu_frame)<2:
+                # If gain_switch_gpu_frame-current_gpu_frame == 0 the gain_switch_frame_number already passed
+                # If gain_switch_gpu_frame-current_gpu_frame == 1 the gain_switch_frame_number is the start of next gpu integration
+                # which may not be enough time to set gain_switch_frame_number for all the boards
+                gain_switch_gpu_frame = current_gpu_frame + 2
+            gain_switch_frame_number = gain_switch_gpu_frame*frames_per_gpu_integration
+            self.chime_master.fpgas.switch_gains(when=gain_switch_frame_number)
+            # Update and print the actual delta_t for switching gains
+            delta_t_frames = gain_switch_frame_number - current_frame_number
+            delta_t_seconds = delta_t_frames*frame_period_seconds
+            self.log.info('new gains will be active on frame %i (in %.2f seconds) at the closest GPU integration start.' %(gain_switch_frame_number, 
+                delta_t_seconds))
+            #coroutine_return(None) # Probably don't need this
+        else:
+            self.log.info('FPGA array not yet initialized. Cannot load digital gains.')
+    
+
 class DummyChimeMaster(ChimeMaster):
     """
     A variant of ChimeMaster that doesn't do anything hardware related.
@@ -1365,52 +1408,12 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
             self.log.info('FPGA array not yet initialized. No info to show.')
 
     @coroutine
-    #@endpoint('load-digital-gains')
-    def _load_digital_gains(self, handler, gain_folder='/home/chime/ch_acq/gains/new_gains', delta_t_seconds=20):
-        if self.chime_master.fpgas:
-            # Read Gains
-            self.log.info('Reading digital gains from folder %s.' %gain_folder)
-            gains = yield self.chime_master.fpgas.load_gains.async(gain_folder=gain_folder)
-            
-            # Load gains into inactive gain bank
-            self.log.info('Loading digital gains to inactive gain bank.')
-            self.chime_master.fpgas.set_gains.async(gains, when=None)
-
-            # Figure out gain switch frame number
-            # Figure out integration period in frames. Currently just by checking the kotekan config file
-            samples_per_data_set = 32768
-            num_gpu_frames = 128
-            frames_per_gpu_integration = samples_per_data_set*num_gpu_frames
-            # Get current frame number
-            current_frame_number = self.chime_master.fpgas.ib[0].get_frame_number()
-            self.log.info('The current FPGA frame number is %i' %current_frame_number)
-            current_gpu_frame = int(current_frame_number/frames_per_gpu_integration)
-            # Figure out frame number at which gains are switched
-            frame_period_seconds = 2.56e-6 # Frame period in seconds = 2048/800e6. Should be read from config
-            delta_t_frames = int(np.ceil(delta_t_seconds/frame_period_seconds)) # Number of frames to switch gains
-            # The gain_switch_frame_number must be a multiple of frames_per_gpu_integration to switch at start of integration
-            gain_switch_gpu_frame = int((current_frame_number + delta_t_frames)/frames_per_gpu_integration)
-            # I assume that setting the gain_switch_frame_number for all boards takes ~1 integration period, so make sure there's enough time
-            if (gain_switch_gpu_frame-current_gpu_frame)<2:
-                # If gain_switch_gpu_frame-current_gpu_frame == 0 the gain_switch_frame_number already passed
-                # If gain_switch_gpu_frame-current_gpu_frame == 1 the gain_switch_frame_number is the start of next gpu integration
-                # which may not be enough time to set gain_switch_frame_number for all the boards
-                gain_switch_gpu_frame = current_gpu_frame + 2
-            gain_switch_frame_number = gain_switch_gpu_frame*frames_per_gpu_integration
-            self.chime_master.fpgas.switch_gains(when=gain_switch_frame_number)
-            # Update and print the actual delta_t for switching gains
-            delta_t_frames = gain_switch_frame_number - current_frame_number
-            delta_t_seconds = delta_t_frames*frame_period_seconds
-            self.log.info('new gains will be active on frame %i (in %.2f seconds) at the closest GPU integration start.' %(gain_switch_frame_number, 
-                delta_t_seconds))
-            #coroutine_return(None) # Probably don't need this
-        else:
-            self.log.info('FPGA array not yet initialized. Cannot load digital gains.')
-
-    @coroutine
     @endpoint('load-digital-gains')
     def load_digital_gains(self, handler, gain_folder='/home/chime/ch_acq/gains/new_gains', delta_t_seconds=20):
-        future = self._load_digital_gains(gain_folder=gain_folder, delta_t_seconds=delta_t_seconds)
+        future = self.chime_master.load_digital_gains(gain_folder=gain_folder, delta_t_seconds=delta_t_seconds)
+        IOLoop.current().add_future(future, lambda : self.log.info('Digital gains loaded.'))
+        #self._load_digital_gains(gain_folder=gain_folder, delta_t_seconds=delta_t_seconds)
+        self.log.info('Created future for load_digital_gains')
         coroutine_return('called load_digital_gains')
 
 class ChimeMasterAsyncRESTClient(AsyncRESTClient):
