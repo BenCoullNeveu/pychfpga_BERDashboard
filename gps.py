@@ -5,9 +5,7 @@ accessed through the StarTech NETRS232 serial-to-ethernet adapters.
 
 """
 
-import logging
 import sys
-import argparse
 import time
 import datetime
 import calendar

@@ -791,7 +791,7 @@ class ChimeMaster(object):
         # in the parameters, the FPGAs will be loaded with their bitstream, communication with the FPGAs
         # will be established and all the Python objects needed to operate the FPGA firmware will be
         # created and initialized.
-        self.fpgas = ca = FPGAArray(ioloop=IOLoop.current(), **fpga_array_params.as_dict())  # Starts an independent ioloop while initializing. Web clients/server stop while
+        self.fpgas = ca = FPGAArray(ioloop=IOLoop.current(), **fpga_array_params)  # Starts an independent ioloop while initializing. Web clients/server stop while
         yield ca.run.async()
 
         if not ca.ib: # if there ar eno boards in the array
@@ -1488,7 +1488,7 @@ class ChimeMasterAsyncRESTClient(AsyncRESTClient):
             config = load_yaml_config(config.encode('ascii'))
         print('Client start')
         self.log.info('%r: Sending start command to server' % self)
-        reply = yield self.post('start', **config.as_dict())
+        reply = yield self.post('start', **config)
         self.log.info('%r: Reply to start command is: %r' % (self, reply))
         print('Client started')
         while True:
