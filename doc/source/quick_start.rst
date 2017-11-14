@@ -144,9 +144,34 @@ Before you begin, make sure all the system and Python packages have been install
 
 
 
+Resetting a single board
+------------------------
 
-Running the Weather server
---------------------------
+Sometimes, when you initialize an array, a FPGA board (more precisely, its ARM processor) will fail to respond to pings. Unless there is a bad networking conneciton, this is because the board has not booted properly. This board needs to be rebooted. To solve this issue, the whole crate can be powercycled, but it is also possible to reboot a single board in the crate. This is explained here.
+
+``ch_master`` or ``fpga_array`` will report the list of missing boards with as much information as it has on the identity of that board (hostname/IP address of the board,  serial number,  and (crate_number, slot_number) tuple). You can use the network map spreadsheed to find out in which crate and slot the board is located if that information is not preseted. Note that the (crate,slot) tuple use zero-based slot numbers.
+
+To reset the board, launch an ``ipython`` session and use fpga_array.py to create an array consisting of the crate that has the problematic board. There are various methods to select the boards (the IP address of a known working board in the crate, and if mDNS is working on that machine, the serial numbe rof the board or the crate). Here, we'll use the boards defines in a pre-existing array in the config file::
+
+	run -i pychfpga/fpga_array.py -y jfc.crate7 --open 0 --prog 0 --ignore_missing_boards
+
+We use the ``--open 0 --prog 0`` to override the config parameters and make sure the FPGAs are not initialized. We just want to talk to the ARM processors. The option ``--ignore_missing_boards`` is needed to prevent from fpga_array from raisong an exception if the problematic board is covered by the list.
+
+When the array is created, select a working board in the same crate::
+
+	i = ib[0]
+
+``ib`` was defined by ``fpga_array.py`` script as a list of all selected boards. We just take the first one in the list.
+To reset the board, on slot N (one-based slot number), we do::
+
+	i.set_power_on_slot(N,False) # power off slot N
+	i.set_power_on_slot(N,True) # power on slot N
+
+After some delay (up to 60 seconds), the board will boot up and will respond to pings.
+
+
+Accessing the Weather server
+----------------------------
 
 In CHIME, the ``wview`` service that gathers DRAO weather station data runs on ``marimba``. Since `weather.py` needs to access the database file produced by this service, our server mush run on the same machine.
 
@@ -169,10 +194,24 @@ The ``screen`` options specify: ``-R``: resume an existing screen, ``-x``, allow
 The server is normally running in the weather.py tab (:kbd:`Ctrl-A 1`).  The ``.screenrc_ch_acq`` config creates this tab by default if a new screen is created.
 
 
+Starting the Weather server
+---------------------------
+
 If the server is not already running, it can be started with::
 
 	cd ~/git/ch_acq
 	./weather.py jfc.drao
 
 Tip: ``.inputrc`` is configured so you can just conveniently type "cd [up-arrow]" or "./ [up arrow]" to search for these  commands from the history
+
+
+Manually interacting with the weather server
+--------------------------------------------
+
+If you need to confirm you are getting weather, you can manually print the latest weather data from an ``ipython`` session::
+
+	cd ~/git/ch_acq
+	ipython
+	import weather
+	print weather.get_wview_metrics()
 
