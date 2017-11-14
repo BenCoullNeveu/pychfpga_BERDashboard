@@ -601,12 +601,16 @@ class FPGAArray(object):
                     if ping_successful:
                         ib.hostname = socket.gethostbyname(ib.hostname)
                     else:
-                        missing_boards.append(ib.hostname + (('(SN%s)' % ib.serial) if ib.serial else ''))
+                        missing_boards.append('%s (SN%s, (%s,%s))' % (
+                            ib.hostname,
+                            ib.serial or '????',
+                            ib.crate.crate_number if ib.crate else '?',
+                            ib.slot or '?'))
                         self.logger.debug('%r: Deleting %r from the YAML hardware map' % (self, ib))
                         self.hwm.delete(ib)
                 self.hwm.flush()
             if missing_boards:
-                message ="%r: Could not ping the follwoing boards: %s" % (self, ', '.join(missing_boards))
+                message ="%r: Could not ping the following boards: %s" % (self, ', '.join(missing_boards))
                 if ignore_missing_boards:
                     self.logger.warning(message)
                 else:
