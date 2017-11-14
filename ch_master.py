@@ -1426,6 +1426,23 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         self.log.info('Created future for load_digital_gains')
         coroutine_return('called load_digital_gains')
 
+    @coroutine
+    @endpoint('sync')
+    def sync(self, handler):
+        if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
+            self.log.info('%r: received sync() request' % self)
+            self.chime_master.fpgas.sync()
+            self.log.info('%r: sync() done' % self)
+
+    @coroutine
+    @endpoint('set_adc_delays')
+    def sync(self, handler):
+        if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
+            self.log.info('%r: received set_adc_delays() request' % self)
+            self.chime_master.fpgas.set_adc_delays(**self.chime_master.fpga.adc_delay_params)
+            self.log.info('%r: set_adc_delays() done' % self)
+
+
 class ChimeMasterAsyncRESTClient(AsyncRESTClient):
 
     DEFAULT_PORT = ChimeMasterAsyncRESTServer.DEFAULT_PORT
