@@ -139,7 +139,7 @@ def load_yaml_config(object_names, default_filename='config.yaml'):
     #         raise RuntimeError("Target element '%s' must be a dictionary" % yaml_object_path)
     #     # print 'merging', current_node, 'with', config
     #     config = merge_dict(current_node, config)
-    return config
+    return config.as_dict()
 
 def validate_yaml_config(config, schema_file):
     print 'Loading Schema YAML file %s' % schema_file

@@ -102,6 +102,7 @@ class WeatherAsyncRESTServer(AsyncRESTServer):
         """
         super(WeatherAsyncRESTServer, self).__init__(address=address, port=port, heartbeat_string='Gs')
         self.last_time = None
+        self.config = None
 
     ##################
     # Server commands
@@ -148,6 +149,9 @@ class WeatherAsyncRESTServer(AsyncRESTServer):
                     if new_time != self.last_time:
                         metrics.add(m, name=unit_name)
                     self.last_time = new_time
+        else:
+            self.log.warning('%.32r: Weather server is not started!' % self)
+
         handler.set_header('Content-Type', 'text/plain')
         handler.write(str(metrics))
 
