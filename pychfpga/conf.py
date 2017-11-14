@@ -31,7 +31,8 @@ def load_yaml_config(object_names, default_filename='config.yaml'):
          A Python dictionary
 
     Examples::
-        Yaml file *conf.yaml*::
+
+        YAML file structure:
             obj1:
                 field11: 11
                 obj11:
@@ -47,14 +48,17 @@ def load_yaml_config(object_names, default_filename='config.yaml'):
                     field212: 212
 
 
-        # Loading objects from default conig file
-        load_yaml_config('obj1')  -> {field11: ..., obj11: ..., obj12: ...}
-        load_yaml_config('obj1 obj2')  -> {field11: ..., obj11: ..., obj12: ..., field21: ..., obj21: ...}
-        load_yaml_config('obj1.obj11 obj2')  -> {field111: ..., field112: ..., field21: ..., obj21: ...}
-        load_yaml_config('obj1.obj11 .obj12')  -> {field111: ..., field112: ...,  field121: ..., field122:...}
+        # Loading objects from default config file (config.yaml)
+            'obj1':  Selects obj1
+            'obj1 obj2': Merges obj1 and obj2
+            'obj1.obj11 obj2'  Merges obj1.obj11 and obj2
+            'obj1.obj11 .obj12': Merges  obj1.obj11 and obj1.obj12
 
-        # With a specific filename
-        load_yaml_config('conf.yaml:obj1 obj2')
+        # overriding existing objects
+            'obj1 obj1.obj11.field111=11 .field112=12
+
+        # Use a specific yaml file
+            'myconf.yaml:obj1 obj2'
 
 
     """
@@ -95,10 +99,13 @@ def load_yaml_config(object_names, default_filename='config.yaml'):
     logger.info('Loading YAML file %s' % (yaml_filename))
     # print 'Loading YAML file %s' % yaml_filename
     with open(yaml_filename, 'rb') as yamlfile:
-        yaml = NameSpace(load_yaml(yamlfile))
+        yaml = NameSpace(load_yaml(yamlfile)) # We make it a NmeSpace so we can use its object search methods
 
-    # self.hwm = None
-    # current_root_node = yaml
+    # -------------------------------
+    # Select / add objects
+    # -------------------------------
+    # Add or override the specified objects
+
     current_yaml_path = None
     current_config_path = None
     config = NameSpace()
@@ -118,28 +125,7 @@ def load_yaml_config(object_names, default_filename='config.yaml'):
             config.merge(obj)
             current_yaml_path = name
 
-    # for yaml_object_path in object_names:
-    #     yaml_path_items = yaml_object_path.split('.')
-    #     if yaml_path_items[0]:  # If the path does not start with '.', restart from top
-    #         current_root_node = yaml
-    #     current_node = current_root_node
-    #     for path_item in yaml_path_items:
-    #         if path_item:
-    #             if path_item in current_node:
-    #                 current_root_node = current_node
-    #                 current_node = current_node.get(path_item)
-    #             else:
-    #                 raise RuntimeError("YAML file loading error: Unknown object '%s'" % yaml_object_path)
-    #     logger.info('Loading YAML elements from object %s' % (yaml_object_path))
-    #     # print 'Loading YAML elements from object %s' % yaml_object_path
-
-    #     # if isinstance(node, Session):
-    #     #     self.hwm = self.yaml
-    #     if not isinstance(current_node, dict):
-    #         raise RuntimeError("Target element '%s' must be a dictionary" % yaml_object_path)
-    #     # print 'merging', current_node, 'with', config
-    #     config = merge_dict(current_node, config)
-    return config
+    return config.as_dict() # return a dict, not a NameSpace
 
 def validate_yaml_config(config, schema_file):
     print 'Loading Schema YAML file %s' % schema_file

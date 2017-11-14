@@ -294,7 +294,7 @@ def merge_dict(src, dest, skip_none=False, add_lists=False):
 
     """
 
-    print(type(src), is_mapping(src), type(dest), is_mapping(dest))
+    #print(type(src), is_mapping(src), type(dest), is_mapping(dest))
     # logger = logging.getLogger('')
     if skip_none and dest is None:
         return
@@ -320,5 +320,5 @@ def merge_dict(src, dest, skip_none=False, add_lists=False):
     else:
         # logger.warning('%.32s: Overriding  %s with %s' % ('merge_dict', src, dest))
         new = dest
-    print(new)
+    #print(new)
     return new

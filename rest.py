@@ -24,7 +24,7 @@ from tornado.gen import sleep
 from tornado.gen import moment
 from tornado.ioloop import IOLoop
 from tornado.web import HTTPError
-from tornado_profile import TornadoProfiler
+#from tornado_profile import TornadoProfiler
 
 def coroutine(func, replace_callback=True):
     """ Standard Tornado coroutine decorator, with the coroutine flag added in case we use tornado < 4.5"""

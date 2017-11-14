@@ -428,7 +428,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         for trial in range(2):
             try:
                 yield async_moment
-                self.logger.debug('%r: Checking command counters' % (self))
+                self.logger.info('%r: Checking command counters' % (self))
                 (cmd, rply) = self.core_gpio.get_command_count()
                 yield async_moment
                 valid = (cmd == self.mmi.send_counter & 0xFF) and (rply == self.mmi.recv_counter & 0xFF)
@@ -440,7 +440,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
                     valid = True
                 break
             except IOError as e:
-                self.logger.error("%r: UDP communinication error. Appempting to reset FPGA's UDP stack (trial %i).The error is:\n %s" % (self, trial+1, e))
+                self.logger.error("%r: UDP communinication error. Attempting to reset FPGA's UDP stack via the ARM processor (trial %i).The error is:\n %s" % (self, trial+1, e))
                 yield self.fpga_mmi_write.async(self._SFP_STATUS_ADDR, 2 << 30)
                 yield self.fpga_mmi_write.async(self._SFP_STATUS_ADDR, 0 << 30)
                 valid = False
@@ -942,6 +942,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         t1 = yield self.fpga_mmi_read.async(self._IRIGB_TARGET1_ADDR)
         async_return(bool((t1 >> 31) & 1))
 
+    @async
     def capture_frame_time(self, trig=True, format='nano'):
         """ Captures the IRIG-B of the first sample of the next frame coming
         out of the ADC data acquisition module.
@@ -952,7 +953,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         formats).
 
         NOTE1: floats do not have enough resolution to represent the current
-        time down to nanoseconds (as opposed to Pythin int's which have
+        time down to nanoseconds (as opposed to Python int's which have
         infinite resolution), so beware of conversions.
 
         NOTE2: The method will generate a timeout error if there is no data
@@ -964,16 +965,16 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         delay).
         """
         if trig:
-            w2 = self.fpga_mmi_read(self._IRIGB_SAMPLE2_ADDR)
-            self.fpga_mmi_write(self._IRIGB_SAMPLE2_ADDR, w2 & ~(1 << 28))
-            self.fpga_mmi_write(self._IRIGB_SAMPLE2_ADDR, w2 | (1 << 28))
+            w2 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE2_ADDR)
+            yield self.fpga_mmi_write.async(self._IRIGB_SAMPLE2_ADDR, w2 & ~(1 << 28))
+            yield self.fpga_mmi_write.async(self._IRIGB_SAMPLE2_ADDR, w2 | (1 << 28))
             t0 = time.time()
-            while not self.fpga_mmi_read(self._IRIGB_TARGET1_ADDR) & (1 << 30):
+            while not (yield self.fpga_mmi_read.async(self._IRIGB_TARGET1_ADDR)) & (1 << 30):
                     if time.time() - t0 > 1:
                         raise RuntimeError('Timeout while waiting for a Frame. Is data flowing out of the ADC data acquisition module?')
-        event_number = self.fpga_mmi_read(self._IRIGB_EVENT_CTR_ADDR)
-        captured_time = self._get_irigb_time(trig=0, format=format)  # The event trigger will automatically trig IRIGB
-        return (event_number, captured_time)
+        event_number = yield self.fpga_mmi_read.async(self._IRIGB_EVENT_CTR_ADDR)
+        captured_time = yield self._get_irigb_time.async(trig=0, format=format)  # The event trigger will automatically trig IRIGB
+        async_return((event_number, captured_time))
 
     @async
     def get_frame_number(self):

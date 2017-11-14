@@ -791,7 +791,7 @@ class ChimeMaster(object):
         # in the parameters, the FPGAs will be loaded with their bitstream, communication with the FPGAs
         # will be established and all the Python objects needed to operate the FPGA firmware will be
         # created and initialized.
-        self.fpgas = ca = FPGAArray(ioloop=IOLoop.current(), **fpga_array_params.as_dict())  # Starts an independent ioloop while initializing. Web clients/server stop while
+        self.fpgas = ca = FPGAArray(ioloop=IOLoop.current(), **fpga_array_params)  # Starts an independent ioloop while initializing. Web clients/server stop while
         yield ca.run.async()
 
         if not ca.ib: # if there ar eno boards in the array
@@ -1072,7 +1072,7 @@ class ChimeMaster(object):
             # Read Gains
             self.log.info('Reading digital gains from folder %s.' %gain_folder)
             gains = yield self.fpgas.load_gains.async(gain_folder=gain_folder)
-            
+
             # Load gains into inactive gain bank
             self.log.info('Loading digital gains to inactive gain bank.')
             self.fpgas.set_gains.async(gains, when=None)
@@ -1103,12 +1103,12 @@ class ChimeMaster(object):
             # Update and print the actual delta_t for switching gains
             delta_t_frames = gain_switch_frame_number - current_frame_number
             delta_t_seconds = delta_t_frames*frame_period_seconds
-            self.log.info('new gains will be active on frame %i (in %.2f seconds) at the closest GPU integration start.' %(gain_switch_frame_number, 
+            self.log.info('new gains will be active on frame %i (in %.2f seconds) at the closest GPU integration start.' %(gain_switch_frame_number,
                 delta_t_seconds))
             #coroutine_return(None) # Probably don't need this
         else:
             self.log.info('FPGA array not yet initialized. Cannot load digital gains.')
-    
+
 
 class DummyChimeMaster(ChimeMaster):
     """
@@ -1280,6 +1280,16 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         results = yield [k.start(**config) for k in self.kotekan_clients]
         coroutine_return(results=results)
 
+
+
+    @coroutine
+    @endpoint('get-frame-time')
+    def get_frame_time(self, handler):
+        if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas and self.chime_master.fpgas.ib:
+            frame_number, (dt, nano) = yield self.chime_master.fpgas.ib[0].capture_frame_time.async(format='datetime+')
+            coroutine_return(dict(frame_number=frame_number,
+                             gps_time=[dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second, nano/1000]))
+        coroutine_return({})
 
     @coroutine
     @endpoint('get-frequency-map')
@@ -1479,7 +1489,7 @@ class ChimeMasterAsyncRESTClient(AsyncRESTClient):
             config = load_yaml_config(config.encode('ascii'))
         print('Client start')
         self.log.info('%r: Sending start command to server' % self)
-        reply = yield self.post('start', **config.as_dict())
+        reply = yield self.post('start', **config)
         self.log.info('%r: Reply to start command is: %r' % (self, reply))
         print('Client started')
         while True:
