@@ -611,7 +611,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
         """
         is_utc_time, valid, leaps  = self.query('81', reply)
         is_utc_time = bool(int(is_utc_time))
-        leap_seconds_valid =  bool(int(leap_seconds_valid))
+        leap_seconds_valid = bool(int(valid))
         leap_seconds = int(leaps)
         self.gps_leap_seconds = None if not leap_seconds_valid else leap_seconds if is_utc_time else 0
         self.add_metric(metrics, 'gps_is_utc_time', value=int(is_utc_time))
