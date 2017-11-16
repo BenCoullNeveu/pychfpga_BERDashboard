@@ -605,7 +605,7 @@ class FPGAArray(object):
                             ib.hostname,
                             ib.serial or '????',
                             ib.crate.crate_number if ib.crate else '?',
-                            ib.slot or '?'))
+                            ib.slot-1 if ib.slot else '?'))
                         self.logger.debug('%r: Deleting %r from the YAML hardware map' % (self, ib))
                         self.hwm.delete(ib)
                 self.hwm.flush()
