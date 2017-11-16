@@ -1440,7 +1440,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
     def sync(self, handler):
         if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
             self.log.info('%r: received set_adc_delays() request' % self)
-            self.chime_master.fpgas.set_adc_delays(**self.chime_master.fpga.adc_delay_params)
+            self.chime_master.fpgas.set_adc_delays(**self.chime_master.config.fpga.adc_delay_params)
             self.log.info('%r: set_adc_delays() done' % self)
 
 
