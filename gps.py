@@ -37,7 +37,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
         self.last_gps_time = None
         self.gps_time_valid = False
         self.gps_leap_seconds = None
-        self.use_gps_time = True
+        self.use_gps_time = False
         self.buffer = '' # used in broadcast processing only
         self.get_methods = {
             '50': None, # Acknowledge
@@ -664,6 +664,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
                     get_method = self.get_method_for(reply)
                     if get_method:
                         get_method(reply=reply, metrics=metrics)
+                    break
         #print('Parsed %i metrics' % len(metrics.metrics))
         return metrics
 
