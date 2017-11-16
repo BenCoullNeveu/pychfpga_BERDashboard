@@ -341,7 +341,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
         """
         (bias, ) = self.query('56', reply)
         time_bias = int(bias)
-        self.add_metric(metrics, 'gps_time_bias', value=time_bias)
+        self.add_metric(metrics, 'gps_user_time_bias', value=time_bias)
         return time_bias
 
     def get_timing_mode(self, reply=None, metrics=None):
@@ -433,10 +433,6 @@ class SpectrumInstrumentsTM4D(SocketContext):
         (status, ) = self.query('61', reply)
         status = int(status)
         self.gps_time_valid = status
-        # if status:
-        #     self.gps_leap_seconds = 0
-        # elif self.gps_leap_seconds is None and self.last_gps_time is not None:
-        #     self.gps_leap_seconds = time.time() - self.last_gps_time
 
         self.add_metric(metrics, 'gps_timing_status', value=status)
         return status
@@ -613,7 +609,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
         is_utc_time = bool(int(is_utc_time))
         leap_seconds_valid = bool(int(valid))
         leap_seconds = int(leaps)
-        self.gps_leap_seconds = None if not leap_seconds_valid else leap_seconds if is_utc_time else 0
+        self.gps_leap_seconds = None if not leap_seconds_valid else 0 if is_utc_time else leap_seconds
         self.add_metric(metrics, 'gps_is_utc_time', value=int(is_utc_time))
         self.add_metric(metrics, 'gps_leap_seconds_valid', value=leap_seconds_valid)
         self.add_metric(metrics, 'gps_leap_seconds', value=leap_seconds)
