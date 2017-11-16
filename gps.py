@@ -614,6 +614,8 @@ class SpectrumInstrumentsTM4D(SocketContext):
         """
         time_mode, valid, leaps  = self.query('81', reply)
         valid, leap_seconds = bool(int(valid)), int(leaps)
+        self.add_metric(metrics, 'gps_time_mode', value=int(time_mode))
+        self.add_metric(metrics, 'gps_leap_seconds_valid', value=valid)
         self.add_metric(metrics, 'gps_leap_seconds', value=leap_seconds)
         return valid, leap_seconds
 
