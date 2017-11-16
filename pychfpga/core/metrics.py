@@ -97,7 +97,11 @@ class Metrics(object):
         # Add entric (value and labels) to the metric
         if value is not None:
             new_labels = dict(labels.items() + self.default_labels.items())
-            metric['entries'].append(dict(value=value, labels=new_labels, time=time or time_.time() * 1000))
+            new_time = time or time_.time() * 1000
+            for d in metric['entries']
+                if d['labels']==new_labels and d['time']==new_time:
+                    raise ValueError('%r: metric %s already exists')
+            metric['entries'].append(dict(value=value, labels=new_labels, time=new_time))
 
     def  __str__(self):
         s = []
