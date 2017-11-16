@@ -118,6 +118,9 @@ class SpectrumInstrumentsTM4D(SocketContext):
         if self.use_gps_time:
             if self.last_gps_time and self.gps_time_offset is not None:
                 time_ =  (self.last_gps_time + self.gps_time_offset)
+                local_time = time.time()
+                if time_ > local_time:
+                    self.log.warning('%r: GPS time for metric %s is in advance from system time by %f seconds.' % (self, metric_name, time_-local_time))
                 metrics.add(metric_name, value=value, type=type, time=time_ * 1000, **labels)
             else:
                 self.log.warning('%r: No GPS time has been rceived yet. Metric %s is not produced' % (self, metric_name))
