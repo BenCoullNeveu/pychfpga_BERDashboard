@@ -35,7 +35,8 @@ class SpectrumInstrumentsTM4D(SocketContext):
         self.log.debug('Initializing instrument')
         self.polling_mode = None
         self.last_gps_time = None
-        self.gps_time_offset = None
+        self.gps_time_valid = False
+        self.gps_leap_seconds = None
         self.use_gps_time = True
         self.buffer = '' # used in broadcast processing only
         self.get_methods = {
@@ -71,12 +72,6 @@ class SpectrumInstrumentsTM4D(SocketContext):
             '82': None, # Undocumented, #82,0,1,8,8,F,F
             '84': None, # Undocumented, #84,1,0,5,3,2,1,F
             }
-
-    # def __repr__(self):
-    #     if self.instrument_model:
-    #         return '%s %s @%s:%i' % (self.instrument_name, self.instrument_model, self.ip_addr, self.ip_port)
-    #     else:
-    #         return 'Unknown Instrument @%s:%i' % (self.ip_addr, self.ip_port)
 
     ###################################
     # Basic read/write commands
@@ -116,14 +111,15 @@ class SpectrumInstrumentsTM4D(SocketContext):
         if metrics is None:
             return
         if self.use_gps_time:
-            if self.last_gps_time and self.gps_time_offset is not None:
-                time_ =  (self.last_gps_time + self.gps_time_offset)
+            if self.last_gps_time and self.gps_leap_seconds is not None:
+                utc_time = self.last_gps_time - self.gps_leap_seconds
                 local_time = time.time()
-                if time_ > local_time:
-                    self.log.warning('%r: GPS time for metric %s is in advance from system time by %f seconds.' % (self, metric_name, time_-local_time))
-                metrics.add(metric_name, value=value, type=type, time=time_ * 1000, **labels)
+                if utc_time - local_time > 1:
+                    self.log.warning('%r: GPS time for metric %s is in advance from system time by %f seconds.' % (self, metric_name, utc_time-local_time))
             else:
-                self.log.warning('%r: No GPS time has been rceived yet. Metric %s is not produced' % (self, metric_name))
+                self.log.warning('%r: No GPS time has been rceived yet. Using system time for the metric %s' % (self, metric_name))
+                utc_time = time.time()
+            metrics.add(metric_name, value=value, type=type, time=utc_time * 1000, **labels)
         else:
             metrics.add(metric_name, value=value, type=type, **labels)
 
@@ -162,7 +158,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
         Parameters:
             mode (int): 0=Dynamic, 1=Static, 2=Auto survey
         """
-        if mode not in [0,1,2]:
+        if mode not in [0, 1, 2]:
             raise ValueError('%r: timing modeargument is 0 (Dynamic), 1 (Static) or 2 (Survey)' % self)
 
         self.command('07', mode)
@@ -293,7 +289,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
             int(time_[:2]), int(time_[2:4]), int(time_[4:6])) # hours, minutes, seconds
 
         self.last_gps_time = calendar.timegm(t.timetuple())
-        self.add_metric(metrics, 'gps_time', value=self.last_gps_time * 1000, type='gauge')
+        self.add_metric(metrics, 'gps_time', value=self.last_gps_time, type='gauge')
         self.add_metric(metrics, 'gps_time_diff', value=(time.time() - self.last_gps_time), type='gauge')
         return t
 
@@ -436,10 +432,11 @@ class SpectrumInstrumentsTM4D(SocketContext):
         """
         (status, ) = self.query('61', reply)
         status = int(status)
-        if status:
-            self.gps_time_offset = 0
-        elif self.gps_time_offset is None and self.last_gps_time is not None:
-            self.gps_time_offset = time.time() - self.last_gps_time
+        self.gps_time_valid = status
+        # if status:
+        #     self.gps_leap_seconds = 0
+        # elif self.gps_leap_seconds is None and self.last_gps_time is not None:
+        #     self.gps_leap_seconds = time.time() - self.last_gps_time
 
         self.add_metric(metrics, 'gps_timing_status', value=status)
         return status
@@ -612,12 +609,15 @@ class SpectrumInstrumentsTM4D(SocketContext):
             valid (bool): leap seconds info is valid
             leap_seconds(int): number of leap seconds
         """
-        time_mode, valid, leaps  = self.query('81', reply)
-        valid, leap_seconds = bool(int(valid)), int(leaps)
-        self.add_metric(metrics, 'gps_time_mode', value=int(time_mode))
-        self.add_metric(metrics, 'gps_leap_seconds_valid', value=valid)
+        is_utc_time, valid, leaps  = self.query('81', reply)
+        is_utc_time = bool(int(is_utc_time))
+        leap_seconds_valid =  bool(int(leap_seconds_valid))
+        leap_seconds = int(leaps)
+        self.gps_leap_seconds = None if not leap_seconds_valid else leap_seconds if is_utc_time else 0
+        self.add_metric(metrics, 'gps_is_utc_time', value=int(is_utc_time))
+        self.add_metric(metrics, 'gps_leap_seconds_valid', value=leap_seconds_valid)
         self.add_metric(metrics, 'gps_leap_seconds', value=leap_seconds)
-        return valid, leap_seconds
+        return leap_seconds_valid, leap_seconds
 
     def poll_metrics(self):
         metrics = Metrics()

@@ -563,6 +563,9 @@ class SocketContext(object):
         self.socket_references = 0
         super(SocketContext, self).__init__(**kwargs)
 
+    def __repr__(self):
+        return '%s(%s:%s)' % (self.__class__.__name__, self.ip_addr, self.ip_port)
+
     def socket(self, flush=False, flush_timeout=None):
         """
         Return a context object (`self`) in which a socket to the instrument (`self.sock`) is
