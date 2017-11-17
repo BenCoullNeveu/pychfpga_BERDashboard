@@ -37,7 +37,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
         self.last_gps_time = None
         self.gps_time_valid = False
         self.gps_leap_seconds = None
-        self.use_gps_time = False
+        self.use_gps_time = True
         self.buffer = '' # used in broadcast processing only
         self.get_methods = {
             '50': None, # Acknowledge
@@ -664,7 +664,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
                     get_method = self.get_method_for(reply)
                     if get_method:
                         get_method(reply=reply, metrics=metrics)
-                    break
+                    #break
         #print('Parsed %i metrics' % len(metrics.metrics))
         return metrics
 
@@ -703,6 +703,7 @@ class GPSAsyncRESTServer(AsyncRESTServer):
         self.gps = {}
         super(GPSAsyncRESTServer, self).__init__(address=address, port=port, heartbeat_string='Gs')
         self.metrics_queue = Queue.Queue(1000)
+        self.metrics = Metrics(latest_only=True)
         self.add_periodic_callback(self._get_metrics, 1000)
 
 
@@ -710,25 +711,25 @@ class GPSAsyncRESTServer(AsyncRESTServer):
     def _get_metrics(self):
         """ get the metrics from the GPS units and put them in the queue
         """
-        metrics = Metrics()
+        #metrics = Metrics()
         for gps_name, gps in self.gps.items():
             self.log.info('%.32r: Getting metrics for GPS %s' % (self, gps_name))
             try:
                 m = gps.get_broadcast_metrics()
-                metrics = Metrics()
-                metrics.add(m, gps_name=gps_name)
-                self.log.info('Got %i metrics' % len(metrics.metrics))
-                if len(metrics.metrics):
-                    if self.metrics_queue.full():
-                        self.metrics_queue.get()
-                    self.metrics_queue.put(metrics)
+                #metrics = Metrics()
+                self.metrics.add(m, gps_name=gps_name)
+                self.log.info('Got %i metrics' % len(m.metrics))
+                #if len(metrics.metrics):
+                #    if self.metrics_queue.full():
+                #        self.metrics_queue.get()
+                #    self.metrics_queue.put(metrics)
             except IOError as e:
                 self.log.warning('%r: Error while trying to access metric from %s\nThe error is:\n%r' % (self, gps_name, e))
             except Exception as e:
                 self.log.error(e)
                 raise
 
-        self.log.info('Queue has %i metrics blocks' % self.metrics_queue.qsize())
+        self.log.info('Queue has %i metrics blocks' % len(self.metrics))  # _queue.qsize())
 
     ##################
     # Server commands
@@ -784,13 +785,14 @@ class GPSAsyncRESTServer(AsyncRESTServer):
     @endpoint('get-monitoring-data')
     def monitoringMetrics(self, handler):
         self.log.info('%.32r: Received monitoring metrics request' % self)
-        metrics = Metrics()
-        for i in range(self.metrics_queue.qsize()):
-            m = self.metrics_queue.get()
-            metrics.add(m)
-        self.log.info('%r: sending %i metrics' % (self, len(metrics.metrics)))
+        #metrics = self.metrics # Metrics()
+        #self.metrics.metrics={}
+        #for i in range(self.metrics_queue.qsize()):
+        #    m = self.metrics_queue.get()
+        #    metrics.add(m)
+        self.log.info('%r: sending %i metrics' % (self, len(self.metrics.metrics)))
         handler.set_header('Content-Type', 'text/plain')
-        handler.write(str(metrics))
+        handler.write(str(self.metrics))
 
 #########################################
 # Power Supply REST client

@@ -7,9 +7,10 @@ import time as time_
 class Metrics(object):
     """ Simplified container to hold Prometheus Metrics.
     """
-    def __init__(self, arg=None, default_type=None, **default_labels):
+    def __init__(self, arg=None, default_type=None, latest_only=False, **default_labels):
         self.default_type = default_type
         self.default_labels = default_labels
+        self.latest_only = latest_only
         if arg is None:
             self.metrics = {}
         elif isinstance(arg, Metrics):  # Add all metrics, with the additional default labels
@@ -81,6 +82,8 @@ class Metrics(object):
         # get the metric from the local dict, or create an empty one
         metric = self.metrics.setdefault(metric_name, dict(type=None, doc=None, entries=[]))
 
+        #if metric['entries']:
+        #    return
         # Assign documentation if some is provided. It must be unique to the metric.
         if metric['doc'] and doc and metric['doc'] != doc:
             raise RuntimeError('Cannot assign different docs to metric %s' % metric_name)
@@ -97,11 +100,23 @@ class Metrics(object):
         # Add entric (value and labels) to the metric
         if value is not None:
             new_labels = dict(labels.items() + self.default_labels.items())
-            new_time = time or time_.time() * 1000
-            for d in metric['entries']
-                if d['labels']==new_labels and d['time']==new_time:
-                    raise ValueError('%r: metric %s already exists')
-            metric['entries'].append(dict(value=value, labels=new_labels, time=new_time))
+            new_time = int(time or time_.time() * 1000)
+            #new_entry = dict(value=value, labels=new_labels, time=new_time)            
+            for d in metric['entries']:
+                if d['time']>new_time:
+                    print('%r: out-of-order on metric %s'% (self, metric_name))
+                    raise ValueError('%r: out-of-order' % self)
+                if d['labels']==new_labels:
+                    if self.latest_only:
+                        #print('Updating metric %s' % metric_name)
+                        d['value'] = value
+                        d['time'] = new_time
+                        break
+                    elif d['time']==new_time:
+                        print('%r: oops' % self)
+                        raise ValueError('%r: metric %s already exists' % (self,metric_name))
+            else:
+                metric['entries'].append(dict(value=value, labels=new_labels, time=new_time))
 
     def  __str__(self):
         s = []
@@ -113,4 +128,5 @@ class Metrics(object):
             for entry in m['entries']:
                 labels = '{' + ','.join('%s="%s"' % (k, v) for k, v in entry['labels'].items()) + '}' if entry['labels'] else ''
                 s.append('%s%s %f %i\n' % (metric_name, labels, entry['value'], entry['time']))
+                #s.append('%s%s %f\n' % (metric_name, labels, entry['value']))
         return ''.join(s)
