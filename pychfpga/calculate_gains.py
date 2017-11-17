@@ -196,9 +196,9 @@ def calc_gains(g):
 def calculate_gains(c, gain_folder='/home/chime/ch_acq/gains'):
     '''Calculate digital gains for all the inputs of an iceboard c
     '''
-    slot = c.slot
+    slot_0based = c.slot-1
     crate = c.crate.crate_number
-    print 'Calculating digital gains for crate %s slot %02i' % (crate, slot)
+    print 'Calculating digital gains for crate %02i slot %02i (FCC%02i%02i)' % (crate, slot_0based, crate, slot_0based)
     # Get current state. Assumes all inputs have the same state
     data_source = c.get_data_source()[0]
     adc_mode = c.get_adc_mode()
@@ -250,7 +250,7 @@ def calculate_gains(c, gain_folder='/home/chime/ch_acq/gains'):
             gain.append([channel,[glin[channel].tolist(), glog[channel]]])
         c.set_gains(gain)
         time.sleep(1)
-    out1 = open(os.path.join(gain_folder, 'gains_noisy_C%sS%02i.pkl' % (crate, slot)), 'wb')
+    out1 = open(os.path.join(gain_folder, 'gains_noisy_FCC%02i%02i.pkl' % (crate, slot_0based)), 'wb')
     pickle.dump(gain, out1)
     out1.close()
     Calc = GainCalc()
@@ -262,7 +262,7 @@ def calculate_gains(c, gain_folder='/home/chime/ch_acq/gains'):
         flags.append(Calc.mask)
     c.set_gains(gain)
     c.freq_flags = flags
-    output = open(os.path.join(gain_folder, 'gains_C%sS%02i.pkl' % (crate, slot)),'wb')
+    output = open(os.path.join(gain_folder, 'gains_FCC%02i%02i.pkl' % (crate, slot_0based)),'wb')
     pickle.dump(gain, output)
     output.close()
     print "Scaler Gain set and saved"

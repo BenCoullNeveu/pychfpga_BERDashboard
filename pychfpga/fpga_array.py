@@ -1336,14 +1336,15 @@ class FPGAArray(object):
 
         array_gains = {}
         for ib in self.ib:
-            self.logger.info('%r: Reading digital gains for board %s' % (self, ib.get_id()))
+            ch_id = ib.get_id()
+            crate, slot_0based = ch_id[0], ch_id[1]
+            self.logger.info('%r: Reading digital gains for crate %02i slot %02i (FCC%02i%02i)' % (self, crate, slot_0based, crate, slot_0based))
             board_gains = ib.load_gains(folder=gain_folder) or default_gains
             yield async_moment
 
             if not board_gains:
-                self.logger.warn('%r: Neither board-specific gain file not default gain file was found for IceBoard %s (SN%s).' % (self, ib.get_id(), ib.serial))
+                self.logger.warn('%r: Neither board-specific gain file not default gain file was found for crate %02i slot %02i (FCC%02i%02i)' % (self, crate, slot_0based, crate, slot_0based))
 
-            ch_id = ib.get_id()
             if board_gains is None:
                 array_gains[ch_id] = None
             else:
@@ -1373,7 +1374,8 @@ class FPGAArray(object):
 
         """
         for ch_id, gain in gains.items():
-            self.logger.info('%r: Setting digital gains for crate %s, slot %02i' % (self, ch_id[0], ch_id[1]))
+            crate, slot_0based = ch_id[0], ch_id[1]
+            self.logger.info('%r: Setting digital gains for crate %02i slot %02i (FCC%02i%02i)' % (self, crate, slot_0based, crate, slot_0based))
             ib = self.get_iceboard_from_id(ch_id)
             ib.set_gains(gain=gain, bank=bank)
             yield async_moment

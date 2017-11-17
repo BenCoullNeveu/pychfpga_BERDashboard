@@ -1823,15 +1823,15 @@ class chFPGA_controller(IceBoardExtHandler):
         The gain file is a pickled dictionary in the format {channel_number:gains,..}.
 
         """
-        slot = self.slot
+        slot_0based = self.slot - 1
         crate = self.crate.crate_number
         try:
-            gain_filename = os.path.join(folder, 'gains_C%sS%02i.pkl' % (crate, slot))
+            gain_filename = os.path.join(folder, 'gains_FCC%02i%02i.pkl' % (crate, slot_0based))
             gains = pickle.load(open(gain_filename, 'rb'))
             # self.logger.info('Setting gains on IceBoard SN%s, crate %s, slot %i' % (ib.serial, crate, slot))
             # ib.set_gain(g_array, bank=bank)  # *** should this be bank=all_bank
         except IOError:
-            self.logger.warn('Gain file not found for IceBoard SN%s, crate %s, slot %i. Using default gains' % (ib.serial, crate, slot))
+            self.logger.warn('Gain file not found for for crate %02i slot %02i (FCC%02i%02i)' % (crate, slot_0based, crate, slot_0based))
             gains = None
         # # Fill any missing channel info with None
         # for ch in range(self.NUMBER_OF_CHANNELIZERS):

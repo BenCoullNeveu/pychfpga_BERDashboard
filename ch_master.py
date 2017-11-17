@@ -998,8 +998,11 @@ class ChimeMaster(object):
             return
         # setup noise injection using noise injection parameters that are specific to the gain calculation operation.
         #self.setup_noise_injection(cg.noise_injection)
+        calc_gain_flag = self.config.fpga.compute_gains.slots
         for ib in self.fpgas.ib:
-            #if ib.slot in cg.slots:
+            ch_id = ib.get_id()
+            crate, slot_0based = ch_id[0], ch_id[1]
+            if calc_gain_flag[crate][slot_0based]:
                 calculate_gains.calculate_gains(ib)
 
     @coroutine
@@ -1437,7 +1440,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
 
     @coroutine
     @endpoint('set_adc_delays')
-    def sync(self, handler):
+    def set_adc_delays(self, handler):
         if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
             self.log.info('%r: received set_adc_delays() request' % self)
             self.chime_master.fpgas.set_adc_delays(**self.chime_master.config.fpga.adc_delay_params)
