@@ -1070,7 +1070,7 @@ class ChimeMaster(object):
         IOLoop.current().start()
 
     @coroutine
-    def load_digital_gains(self, gain_folder='/home/chime/ch_acq/gains/new_gains', delta_t_seconds=20):
+    def load_digital_gains(self, gain_folder='/home/chime/ch_acq/gains/new_gains'):
         if self.fpgas:
             # Read Gains
             self.log.info('Reading digital gains from folder %s.' %gain_folder)
@@ -1079,8 +1079,13 @@ class ChimeMaster(object):
             # Load gains into inactive gain bank
             self.log.info('Loading digital gains to inactive gain bank.')
             self.fpgas.set_gains.async(gains, when=None)
-            self.log.info('Loaded digital gains to inactive gain bank.')
+            self.log.info('New digital gains have been loaded to inactive gain bank.')
+        else:
+            self.log.info('FPGA array not yet initialized. Cannot load digital gains.')
 
+    @coroutine
+    def switch_digital_gains(self, delta_t_seconds=100):
+        if self.fpgas:
             # Figure out gain switch frame number
             # Figure out integration period in frames. Currently just by checking the kotekan config file
             samples_per_data_set = 32768
@@ -1426,7 +1431,6 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
     def load_digital_gains(self, handler, gain_folder='/home/chime/ch_acq/gains/new_gains', delta_t_seconds=20):
         future = self.chime_master.load_digital_gains(gain_folder=gain_folder, delta_t_seconds=delta_t_seconds)
         IOLoop.current().add_future(future, lambda : self.log.info('Digital gains loaded.'))
-        #self.chime_master.load_digital_gains(gain_folder=gain_folder, delta_t_seconds=delta_t_seconds)
         self.log.info('Created future for load_digital_gains')
         coroutine_return('called load_digital_gains')
 
