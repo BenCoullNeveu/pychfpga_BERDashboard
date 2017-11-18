@@ -215,3 +215,73 @@ If you need to confirm you are getting weather, you can manually print the lates
 	import weather
 	print weather.get_wview_metrics()
 
+Checking the GPS Serial to Ethernet adapters
+--------------------------------------------
+
+These are Startech NETRS232 units. You can check if they work properly by pinging them, e.g.::
+	ping 10.0.0.10
+
+or by opening a browser page at http://10.0.0.10
+
+Sometimes, a NETRS232 stops working and needs to be power-cycled.
+
+You can check if a unit has open ports with::
+
+	nmap -sV -Pn 10.0.0.10  # -Pn says to ignore pings and test the ports anyway
+
+Which will yield a result such as::
+
+	Nmap scan report for 10.0.0.11
+	Host is up (0.0097s latency).
+	Not shown: 995 closed ports
+	PORT     STATE SERVICE    VERSION
+	80/tcp   open  tcpwrapped
+	99/tcp   open  metagram?
+	1001/tcp open  tcpwrapped
+	5000/tcp open  upnp?
+	6000/tcp open  X11?
+
+We expect port 80 (web interface), TCP 1001 (data port), 6000 (Control port)
+
+Configuring the GPS units
+-------------------------
+Use manufacturer procedure to configure the networking of the device to DHCP. That might require the unit to be connected directly to an ethernet port configured with the default networking parameters, or use the Windows program (?).
+
+Once you have an IP address, over the web interface, set the following:
+
+	- System Status:
+
+		- Nickname: gps-east or gps-west
+
+	- TCP mode:
+
+		- Telnet Server/client: Server (Necessary, otherwise even simple tcp connection to the data port does not work)
+		- reverse telnet: off
+		- CLI Mode: NOT enabled
+		- Data port Number: 1001 (important. This is what the config file assumes)
+		- Control protocol:
+		- Remote IP server address: not used
+		- Client mod einactive timeout: (unused)
+		- Server mode protect timeout: 1 minute (default 60 minutes)
+
+	- UDP Mode: disabled, since TCP mode is active
+
+	- UART:
+
+		- RS232, 9600, 8 , N ,1
+		- no hardware flow control
+		- no delimiter selected
+
+Manually interacting with the GPS unit
+--------------------------------------
+
+In ipython, from the ch_acq folder::
+
+	import gps
+	g=gps.SpectrumInstrumentsTM4D('10.0.0.10')
+	g.set_polling_mode(1)  # stop the GPS from broacdasting continuously
+	g.get_date_time() # just for testing, ask the time and date
+	g.configure_gps() # setup the GPS parameters for CHIME
+
+
+
