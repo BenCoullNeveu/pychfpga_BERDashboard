@@ -4,11 +4,9 @@ REST Server and clients for the CHIME receiver hut power supplies.
 
 """
 
-import logging
 import sys
 import argparse
 import time
-import socket
 
 # import tornado
 
