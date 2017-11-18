@@ -3,14 +3,32 @@ Provides a simplified object to handle Prometheus metrics.
 """
 
 import time as time_
+import logging
+from operator import itemgetter
 
 class Metrics(object):
     """ Simplified container to hold Prometheus Metrics.
+
+    YAML representation:
+        metric_name (str):
+            'type': type (str)
+            'doc': documentation (str)
+            'entries':
+                {(label (str), value (str)), ...} (frozenset) :
+                    time1 (int): value1 (float)
+                    time2 (int): value2 (float)
+
+    Python representation
+        {metric_name:{'type':type, 'doc':doc, 'entries': { frozenset([(label,value),...]) : {time:value, ...}, ...}}, ...}
+
     """
     def __init__(self, arg=None, default_type=None, latest_only=False, **default_labels):
         self.default_type = default_type
         self.default_labels = default_labels
         self.latest_only = latest_only
+        self.last_time = None
+        self.log = logging.getLogger(__name__)
+
         if arg is None:
             self.metrics = {}
         elif isinstance(arg, Metrics):  # Add all metrics, with the additional default labels
@@ -40,12 +58,22 @@ class Metrics(object):
         self.add(other)
         return self
 
+    def pop(self):
+        """ return a Metric() object with all the current metrics and clear this metric."""
+        metrics = Metrics(self)
+        self.clear()
+        return metrics
+
+    def clear(self):
+        """ removes all the metrics """
+        self.metrics = {}
+
     def add(self, metric_name, value=None, type=None , doc=None, time=None, **labels):
         """ Add a metric, a metric entry, or add all the metrics from another Metrics object.
 
         Parameters:
 
-            metric_name (Metric or str): If `metric_name` is a `Metrics` instance, all the metric
+            metric_name (Metric,  str): If `metric_name` is a `Metrics` instance, all the metric
                and metric entries are added to this object, with the labels in `labels` added to
                every metric. If if it a *str*, a new metric is created or information is added to
                the existing metric.
@@ -57,30 +85,31 @@ class Metrics(object):
             \**labels: labels to be added to the entry stored when `value` is not None
 
             doc: documentation associated with the metric. Different docs cannot be associated with
-                a metric. If not specified, there will not ``# HELP`` entry in the string output.
+                a single metric. If not specified, there will not be a ``# HELP`` entry in the string output.
 
             type: type associated with the metric. Different types cannot be associated with
-                a metric. If not specified, there will not ``# TYPE`` entry in the string output.
+                a single metric. If not specified, there will not be a ``# TYPE`` entry in the string output.
         """
 
         if metric_name is None:
-            return
+            return self
         # If we pass a Metrics object, merge the metrics into this one.
         elif isinstance(metric_name, Metrics):
             for met_name, met in metric_name.metrics.items():
                 self.add(met_name, doc=met['doc'], type=met['type'])
-                for entry in met['entries']:
-                    new_labels = dict(entry['labels'].items() + labels.items() + self.default_labels.items())
-                    self.add(met_name, value=entry['value'], time=entry['time'], **new_labels)
-            return
-        elif isinstance(metric_name, (list, tuple)):
+                for label_set, time_entries in met['entries'].items():
+                    new_labels = dict(list(label_set) + labels.items())
+                    for time, value in time_entries.items():
+                        self.add(met_name, value=value, time=time, **new_labels)
+            return self
+        elif not isinstance(metric_name, basestring):
             #print('Adding metric list')
             for m in metric_name:
                 #print('   Adding metric %r' % m)
                 self.add(m, value=value, type=type, doc=doc, time=time, **labels)
-            return
+            return self
         # get the metric from the local dict, or create an empty one
-        metric = self.metrics.setdefault(metric_name, dict(type=None, doc=None, entries=[]))
+        metric = self.metrics.setdefault(metric_name, dict(type=None, doc=None, entries={}))
 
         #if metric['entries']:
         #    return
@@ -98,25 +127,26 @@ class Metrics(object):
             metric['type'] = type.upper()
 
         # Add entric (value and labels) to the metric
-        if value is not None:
-            new_labels = dict(labels.items() + self.default_labels.items())
-            new_time = int(time or time_.time() * 1000)
-            #new_entry = dict(value=value, labels=new_labels, time=new_time)            
-            if self.latest_only:
-                for d in metric['entries']:
-                #if d['time']>new_time:
-                #    print('%r: out-of-order on metric %s. old time =%i, new time=%i'% (self, metric_name, d['time'], new_time))
-                #    #raise ValueError('%r: out-of-order' % self)
-                    if d['labels']==new_labels:
-                        #print('Updating metric %s' % metric_name)
-                        d['value'] = value
-                        d['time'] = new_time
-                        return
-                    #if d['time']==new_time:
-                    #    print('%r: oops' % self)
-                    #    raise ValueError('%r: metric %s already exists' % (self,metric_name))
-            
-            metric['entries'].append(dict(value=value, labels=new_labels, time=new_time))
+        if value is None:
+            return self
+
+        new_time = int(time or time_.time() * 1000)
+        if self.last_time and new_time < self.last_time:
+           self.log.warning('%r: out-of-order on metric %s. old time =%i, new time=%i'% (self, metric_name, self.last_time, new_time))
+        self.last_time = new_time
+
+        # Combine the labels with the default labels (in a dict to avoid multiple instance of the same label)
+        # convert values into strings
+        # pack the (key,string_values) pairs into a frozenset, which can be used as a dict key
+        new_labels = frozenset((k, str(v)) for k, v in
+            dict(self.default_labels.items() + labels.items()).items())
+        time_entries = metric['entries'].setdefault(new_labels, {})
+        if self.latest_only:
+            time_entries.clear()
+        if time in time_entries:
+           self.log.warning('%r: metric %s at time %i already exist. The old entry will be rewritten'% (self, metric_name, new_time))
+        time_entries[new_time] = value
+        return self
 
     def  __str__(self):
         s = []
@@ -125,8 +155,9 @@ class Metrics(object):
                 s.append('# HELP %s %s\n' % (metric_name, m['doc']))
             if m['type']:
                 s.append('# TYPE %s %s\n' % (metric_name, m['type']))
-            for entry in m['entries']:
-                labels = '{' + ','.join('%s="%s"' % (k, v) for k, v in entry['labels'].items()) + '}' if entry['labels'] else ''
-                s.append('%s%s %f %i\n' % (metric_name, labels, entry['value'], entry['time']))
-                #s.append('%s%s %f\n' % (metric_name, labels, entry['value']))
+            for label_set, time_entries in m['entries'].items():
+                labels_string = '{' + ','.join('%s="%s"' % (k, v) for k, v in sorted(label_set, key=itemgetter(0))) + '}' if label_set else ''
+                for time, value in time_entries.items():
+                    s.append('%s%s %.16g %i\n' % (metric_name, labels_string, value, time))
+                    #s.append('%s%s %f\n' % (metric_name, labels, entry['value']))
         return ''.join(s)
