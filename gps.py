@@ -84,8 +84,10 @@ class SpectrumInstrumentsTM4D(SocketContext):
         """
         flush = kwargs.get('flush', False)
         with self.socket(flush=flush):
-            self.send('#%s\r\n' % ','.join(str(s) for s in args))
-
+            cmd = '#%s\r\n' % ','.join(str(s) for s in args)
+            if self.verbose:
+                print('Sending command: %s' % (cmd))
+            self.send(cmd)
     def query(self, command, reply=None, flush=False):
         """
         Sends a command to the instrument and returns the reply string without the terminator or trailing spaces.
@@ -99,7 +101,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
                         s = self.recv(16384)
                         print('received %r (%s)' % (s, '\r\n' in s))
                         reply += s
-                        if '\r\n' in s:
+                        if '\r\n' in reply:
                             break
                 except IOError:
                     raise IOError('%r: timout while waiting for reply for command %s' % (self, command))
@@ -129,6 +131,10 @@ class SpectrumInstrumentsTM4D(SocketContext):
 
     # Set commands
 
+
+    def enable_ntp_output(self, enable):
+          self.command('04',3123,3,1,3 if enable else 2,1,0,2,0,3,9,7,6,5,3) # secret command from Tom Versaput 
+    
     def set_mask_angle(self, angle_code):
         """ Sets mask angle of the GPS.
 
@@ -150,7 +156,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
         if not  -999999 <= bias <= 999999:
             raise ValueError('%r: bias must be between -999999 and 99999 ns' % self)
 
-        self.command('06', '%+05i' % bias)
+        self.command('06', '%+06i' % bias)
 
     def set_timing_mode(self, mode):
         """ Sets the timing mode of the GPS.
@@ -200,7 +206,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
             raise ValueError('%r: Mux2 selector value must be between 0 and 8' % self)
 
         self.command('09', mux1)
-        self.command('14', mux1)
+        self.command('14', mux2)
 
     def set_broadcast_output(self, mode):
         """ Sets the broadcast output mode.
@@ -241,7 +247,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
                            'N' if lat>=0 else 'S',
                            '%03i%5.2f' % (abs(lon), abs(lon) % 1 * 60),
                            'E' if lon>=0 else 'W',
-                           '%+05.0f' % alt)
+                           '%+06.0f' % alt)
 
     def set_antenna_alarm_enable(self, enable):
         """ Enables or disables the antenna alarm.
@@ -261,6 +267,18 @@ class SpectrumInstrumentsTM4D(SocketContext):
             raise ValueError('%r: PPS source 0=LOW at power-on/GPSPPS on Time Valid/FILPPS on lock, 1= LOW at power-on/FILPPS on lock, 2= LOW on power-up/GPSPPS on valid time and Lock, 3=GPSPPS always' % self)
 
         self.command('24', source)
+
+    def set_time_format(self, fmt):
+        """ Sets the output time format to UTC or GPS time.
+
+        Parameters:
+            fmt (int): 0: GPS time, 1: UTC time
+
+        """
+        if fmt not in [0,1]:
+            raise ValueError('%r: format can be 0=GPS or 1=UTC' % self)
+        self.command('26',fmt)
+
 
     # Get commands
 
@@ -681,7 +699,9 @@ class SpectrumInstrumentsTM4D(SocketContext):
         """
         with self.socket(flush=True):
             self.set_polling_mode()
+            self.enable_ntp_output(False)  #Not needed, causes the unit to do extra processing and affects latency
             self.set_mask_angle(0)
+            self.set_time_format(1) # UTC time
             self.set_timing_mode(1) # Static. Position is set below.
             self.set_position(lat, lon, alt)
             self.set_pps_output_source(1) # FILPPS only when fully locked

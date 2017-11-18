@@ -102,21 +102,21 @@ class Metrics(object):
             new_labels = dict(labels.items() + self.default_labels.items())
             new_time = int(time or time_.time() * 1000)
             #new_entry = dict(value=value, labels=new_labels, time=new_time)            
-            for d in metric['entries']:
-                if d['time']>new_time:
-                    print('%r: out-of-order on metric %s'% (self, metric_name))
-                    raise ValueError('%r: out-of-order' % self)
-                if d['labels']==new_labels:
-                    if self.latest_only:
+            if self.latest_only:
+                for d in metric['entries']:
+                #if d['time']>new_time:
+                #    print('%r: out-of-order on metric %s. old time =%i, new time=%i'% (self, metric_name, d['time'], new_time))
+                #    #raise ValueError('%r: out-of-order' % self)
+                    if d['labels']==new_labels:
                         #print('Updating metric %s' % metric_name)
                         d['value'] = value
                         d['time'] = new_time
-                        break
-                    elif d['time']==new_time:
-                        print('%r: oops' % self)
-                        raise ValueError('%r: metric %s already exists' % (self,metric_name))
-            else:
-                metric['entries'].append(dict(value=value, labels=new_labels, time=new_time))
+                        return
+                    #if d['time']==new_time:
+                    #    print('%r: oops' % self)
+                    #    raise ValueError('%r: metric %s already exists' % (self,metric_name))
+            
+            metric['entries'].append(dict(value=value, labels=new_labels, time=new_time))
 
     def  __str__(self):
         s = []
