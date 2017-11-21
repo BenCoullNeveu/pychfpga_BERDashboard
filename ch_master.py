@@ -1428,11 +1428,19 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
 
     @coroutine
     @endpoint('load-digital-gains')
-    def load_digital_gains(self, handler, gain_folder='/home/chime/ch_acq/gains/new_gains', delta_t_seconds=20):
-        future = self.chime_master.load_digital_gains(gain_folder=gain_folder, delta_t_seconds=delta_t_seconds)
-        IOLoop.current().add_future(future, lambda : self.log.info('Digital gains loaded.'))
-        self.log.info('Created future for load_digital_gains')
-        coroutine_return('called load_digital_gains')
+    def load_digital_gains(self, handler, gain_folder='/home/chime/ch_acq/gains/new_gains'):
+        if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
+            future = self.chime_master.load_digital_gains(gain_folder=gain_folder, delta_t_seconds=delta_t_seconds)
+            IOLoop.current().add_future(future, lambda : self.log.info('Digital gains loaded.'))
+            self.log.info('Created future for load_digital_gains')
+            #coroutine_return('called load_digital_gains')
+
+    @coroutine
+    @endpoint('switch-digital-gains')
+    def switch_digital_gains(self, handler, delta_t_seconds=100):
+        if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
+            self.chime_master.switch_digital_gains(gain_folder=gain_folder, delta_t_seconds=delta_t_seconds)
+            #self.log.info('Created future for load_digital_gains')
 
     @coroutine
     @endpoint('sync')
@@ -1590,11 +1598,18 @@ class ChimeMasterAsyncRESTClient(AsyncRESTClient):
         #coroutine_return(result)
 
     @coroutine
-    def load_digital_gains(self, gain_folder, delta_t_seconds):
+    def load_digital_gains(self, gain_folder):
         """
         load digital gains
         """
         r = yield self.post('load-digital-gains', gain_folder=gain_folder, delta_t_seconds=float(delta_t_seconds))
+
+    @coroutine
+    def switch_digital_gains(self, delta_t_seconds):
+        """
+        load digital gains
+        """
+        self.post('switch-digital-gains', delta_t_seconds=float(delta_t_seconds))
 
 
 def main():
