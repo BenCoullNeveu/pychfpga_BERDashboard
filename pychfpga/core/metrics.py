@@ -131,8 +131,8 @@ class Metrics(object):
             return self
 
         new_time = int(time or time_.time() * 1000)
-        if self.last_time and new_time < self.last_time:
-           self.log.warning('%r: out-of-order on metric %s. old time =%i, new time=%i'% (self, metric_name, self.last_time, new_time))
+        #if self.last_time and new_time < self.last_time:
+        #   self.log.warning('%r: out-of-order on metric %s. old time =%i, new time=%i'% (self, metric_name, self.last_time, new_time))
         self.last_time = new_time
 
         # Combine the labels with the default labels (in a dict to avoid multiple instance of the same label)
