@@ -1246,7 +1246,7 @@ class FPGAArray(object):
             setting_time = round(2*setting_time + delay)
             # Now set the trigger time using that delay
             dt = self.ib[0].get_irigb_time()
-            self.logger.info('Triggering SYNC in %i seconds at %s' % (setting_time,  dt.isoformat())
+            self.logger.info('Triggering SYNC in %i seconds at %s' % (setting_time,  dt.isoformat()))
             self.print_flush()
             t0 = time.time()
             self.ib.set_irigb_trigger_time(dt, delay=setting_time)
