@@ -1246,7 +1246,7 @@ class FPGAArray(object):
             setting_time = round(2*setting_time + delay)
             # Now set the trigger time using that delay
             dt = self.ib[0].get_irigb_time()
-            print 'Triggering SYNC in %i seconds at %s' % (setting_time,  dt.isoformat())
+            self.logger.info('Triggering SYNC in %i seconds at %s' % (setting_time,  dt.isoformat())
             self.print_flush()
             t0 = time.time()
             self.ib.set_irigb_trigger_time(dt, delay=setting_time)
@@ -1265,6 +1265,11 @@ class FPGAArray(object):
             bad_ib = [ib for i,ib in enumerate(self.ib) if (sync_ctr_after[i] - sync_ctr_before[i]) & 0xf != 1]
             if bad_ib:
                 raise RuntimeError('The following IceBoards did not SYNC properly: %s' % (','.join(repr(ib) for ib in bad_ib)))
+
+        for ib in self.ib:
+            for ant in ib.ANT:
+                ant.SCALER.OVERFLOW_RESET = 1
+                ant.SCALER.OVERFLOW_RESET = 0
 
     def set_channelizers(self, adc_mode=None, adcdaq_mode=None,
                          data_source=None, function=None, a=1, b=0,
