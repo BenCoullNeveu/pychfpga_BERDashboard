@@ -202,6 +202,7 @@ class ChimeMaster(object):
         self.log.debug('%r: Creating ChimeMaster instance' % self)
         self.state = 'off'
         self.config = None
+        self.start_time = None
 
         # Remote service provider objects
         self.chrx = None  # CHRX REST clients
@@ -765,6 +766,7 @@ class ChimeMaster(object):
 
         self.log.info("Finished ch_master.start()")
 
+        self.start_time = start_time
         self.state = 'on'
         coroutine_return({})
 
@@ -1050,6 +1052,7 @@ class ChimeMaster(object):
                 yield self.stop_chrx_clients()
             log.stop_logging(self.logging_handlers) # remove the handlers that were created by setup_logging()
             reap_cached_sockets()
+            self.start_time = None
             self.state = 'off'
         coroutine_return({})
 
@@ -1163,7 +1166,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         #self.add_periodic_callback(self.print_iceboard_info_callback, period=60000)
         self.metrics_queue = Queue.Queue(1000)
         #self.add_periodic_callback(self._get_metrics, 3000)
-        self.start_time = None
+        #self.start_time = None
         self._get_metrics() # continuously run get_metrics loop
 
     @coroutine
@@ -1221,12 +1224,12 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
                 print('oops. chimeMaster Server start().done() Exception: %s\n' % e)
                 pass
             if future.exception():
-                self.start_time = None
+                #self.start_time = None
                 logger.error('START Done with exception: \n%s' % future.exception())
             else:
                 logger.info('START Done. result is %r' % future.result())
             return True
-        self.start_time = time.time()
+        #self.start_time = time.time()
         #print('START config is %s' % config['logging'])
         self.future = self.chime_master.start(**config)
         IOLoop.current().add_future(self.future, done)
@@ -1272,7 +1275,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
     @coroutine
     @endpoint('stop')
     def stop(self, handler):
-        self.start_time = None
+        #self.start_time = None
         results = yield self.chime_master.stop()
         coroutine_return(results)
 
@@ -1296,7 +1299,8 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas and self.chime_master.fpgas.ib:
             frame_number, (dt, nano) = yield self.chime_master.fpgas.ib[0].capture_frame_time.async(format='datetime+')
             coroutine_return(dict(frame_number=frame_number,
-                             gps_time=[dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second, nano/1000]))
+                             gps_time=[dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second, nano/1000],
+                             start_time = self.chime_master.start_time))
         coroutine_return({})
 
     @coroutine
@@ -1316,14 +1320,14 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
     @endpoint('power-on')
     def power_on(self, handler):
         """ Power up only the power supplies used in this run"""
-        result = yield self.ch_master.power_on()
+        result = yield self.chime_master.power_on()
         coroutine_return(result)
 
     @coroutine
     @endpoint('power-off')
     def power_off(self, handler):
         """ Power down only the power supplies used in this run"""
-        result = yield self.ch_master.power_off()
+        result = yield self.chime_master.power_off()
         coroutine_return(result)
 
     @coroutine
@@ -1365,7 +1369,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
             metrics.add('ch_master_node_cpu_system', value=cpu.system)
             metrics.add('ch_master_node_cpu_idle', value=cpu.idle)
 
-            metrics.add('ch_master_run_time', value= 0 if self.start_time is None else time.time() - self.start_time)
+            metrics.add('ch_master_run_time', value= 0 if self.chime_master.start_time is None else time.time() - self.chime_master.start_time)
 
 
             if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
