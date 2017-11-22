@@ -1297,10 +1297,17 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
     @endpoint('get-frame-time')
     def get_frame_time(self, handler):
         if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas and self.chime_master.fpgas.ib:
-            frame_number, (dt, nano) = yield self.chime_master.fpgas.ib[0].capture_frame_time.async(format='datetime+')
-            coroutine_return(dict(frame_number=frame_number,
-                             gps_time=[dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second, nano/1000],
-                             start_time = self.chime_master.start_time))
+            frame_number, ts = yield self.chime_master.fpgas.ib[0].capture_frame_time.async(format='raw')
+            dt = ts.datetime
+            gps_time = [dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second, nano/1000]
+            gps_ctime = dt.time
+            server_ctime = time.time(),
+            coroutine_return(dict(
+                    frame_number=frame_number,  # 48-bit frame number
+                    gps_time=gps_time, # time structure [year, month, day, hour, minute, second, microsecond (float, 10 ns resolution)]
+                    gps_ctime=gps_ctime, # GPS time, expressed in ctime format (float expressing seconds since UTC epoch)
+                    server_ctime =server_ctime, # system time, expressed in ctime format (float expressing seconds since UTC epoch)
+                    start_time=self.chime_master.start_time))
         coroutine_return({})
 
     @coroutine

@@ -879,6 +879,8 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         # ts.before_target = (t1 >> 31) & 1
         # ts.done = (t1 >> 30) & 1
         ts.nano = int(timegm((y + 2000, 1, 1, 0, 0, 0)) * 1e9) + ((d-1) *24*3600 + ts.h * 3600 + ts.m * 60 + ts.s)*1000000000 + ts.ss*10
+        ts.time = ts.nano / 1e9
+
         # ts.event_ctr = e0
 
         async_return(self._IRIGB_TIME_FORMAT[format](ts))
