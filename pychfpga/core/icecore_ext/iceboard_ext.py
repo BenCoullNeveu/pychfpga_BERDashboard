@@ -122,8 +122,8 @@ class IceBoardExtHandler(IceBoardPlusHandler):
     _IRIGB_TARGET1_ADDR             = 4 * 14
     _IRIGB_TARGET2_ADDR             = 4 * 15
     _IRIGB_EVENT_CTR_ADDR           = 4 * 16
-    _BP_BUCK_SYNC_ADDR              = 4 * 17
-    _BP_BUCK_SYNC_ADDR2             = 4 * 18
+    _IRIGB_EVENT_CTR_ADDR2          = 4 * 17
+    _BP_BUCK_SYNC_ADDR              = 4 * 18
     _SFP_STATUS_ADDR                = 4 * 19
     _REMOTE_IP_PORT_ADDR            = 4 * 20
     _IRIGB_REFCLK_SAMPLE            = 4 * 21
@@ -973,6 +973,8 @@ class IceBoardExtHandler(IceBoardPlusHandler):
                     if time.time() - t0 > 1:
                         raise RuntimeError('Timeout while waiting for a Frame. Is data flowing out of the ADC data acquisition module?')
         event_number = yield self.fpga_mmi_read.async(self._IRIGB_EVENT_CTR_ADDR)
+        event_number += (yield self.fpga_mmi_read.async(self._IRIGB_EVENT_CTR_ADDR2)) << 32
+
         captured_time = yield self._get_irigb_time.async(trig=0, format=format)  # The event trigger will automatically trig IRIGB
         async_return((event_number, captured_time))
 
