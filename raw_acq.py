@@ -431,6 +431,8 @@ class RawAcqReceiver(object):
         self.hdf5_write_time = 0
         self.start_time = None
         self.hdf5_start_time = None
+        self.hdf5_run = False
+        self.n_elements = 0
 
     def __repr__(self):
         return '%s(%s)' % (self.__class__.__name__, self.name)
