@@ -432,7 +432,6 @@ class RawAcqReceiver(object):
         self.start_time = None
         self.hdf5_start_time = None
         self.hdf5_run = False
-        self.n_elements = 0
 
     def __repr__(self):
         return '%s(%s)' % (self.__class__.__name__, self.name)
@@ -947,9 +946,10 @@ class RawAcqReceiver(object):
 
         metrics.add('raw_acq_hdf5_write_time', value=self.hdf5_write_time)
         self.hdf5_write_time = 0
-        metrics.add('raw_acq_hdf5_n_elements', value=self.n_elements)
-        metrics.add('raw_acq_hdf5_n_elements_max', value=self.elements_per_file)
-        metrics.add('raw_acq_hdf5_number_of_files', value=self.hdf5_file_number)
+        if self.hdf5_run:
+            metrics.add('raw_acq_hdf5_n_elements', value=self.n_elements)
+            metrics.add('raw_acq_hdf5_n_elements_max', value=self.elements_per_file)
+            metrics.add('raw_acq_hdf5_number_of_files', value=self.hdf5_file_number)
 
 
 
@@ -1086,11 +1086,13 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
     @coroutine
     @endpoint('get-monitoring-data')
     def get_monitoring_data(self, handler):
+        t0 = time.time()
         self.log.info('%.32r: Received monitoring metrics request' % self)
         metrics = yield self.receiver.get_metrics()
-        self.log.info('%.32r: Returning %i metrics' % (self, len(metrics)))
         handler.set_header('Content-Type', 'text/plain')
-        handler.write(str(metrics))
+        handler.set_header('Content-Encoding', 'gzip')
+        handler.write(metrics.get_gzip())
+        self.log.info('%.32r: Returning raw_acq %i metrics. The request took %.3f seconds' % (self, len(metrics), time.time()-t0))
 
 
 ################################################
