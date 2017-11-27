@@ -812,7 +812,7 @@ class GPSAsyncRESTServer(AsyncRESTServer):
         #    metrics.add(m)
         self.log.info('%r: sending %i metrics' % (self, len(self.metrics.metrics)))
         handler.set_header('Content-Type', 'text/plain')
-        handler.write(str(self.metrics))
+        handler.write(str(self.metrics.pop()))
 
 #########################################
 # Power Supply REST client
