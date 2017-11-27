@@ -2481,9 +2481,9 @@ class FPGAArray(object):
 
         # IceBoard metrics
         self.logger.info('%r: Getting IceBoard hardware metrics (over ARM link)' % self)
-        metrics += yield [ib.get_metrics.async() for ib in self.ib]
-        self.logger.info('%r: Got the IceBoards hardware metrics' % self)
-
+        m = yield [ib.get_metrics.async() for ib in self.ib]
+        metrics += m
+        self.logger.info('%r: Got the IceBoards hardware metrics (%s metrics)\nmetrics are:\n%s' % (self, ','.join(str(len(mm)) for mm in m), '---\n'.join(str(mm) for mm in m[0:1])))
         self.logger.info('%r:Getting corner-turn links metrics (over FPGA UDP link)' % self)
         metrics += yield [ib.get_bp_shuffle_metrics.async() for ib in self.ib]
         self.logger.info('%r:Getting corner-turn crossbars metrics (over FPGA UDP link)' % self)
