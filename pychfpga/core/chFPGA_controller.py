@@ -543,10 +543,12 @@ class chFPGA_controller(IceBoardExtHandler):
 
 
 #        self._FMC_present = self._adc_board[0].is_present()
-        self._logger.debug('%r: === Initializing Channelizers' % self )
+        # self._logger.info('%r: --- Initializing FPGA subsystems' % self)
+        self._logger.info('%r: === Initializing Channelizers' % self )
         self.ANT.init(delay_table=adc_delay_table, fmc_present=self.ANT_FMC_IS_PRESENT)
         # self.ANT.status()
 
+        self._logger.info('%r: === Initializing Corner-Turn engine' % self)
         self._logger.debug('%r: === Initializing 1st Crossbar' % self )
         yield async_moment
         if self.NUMBER_OF_CROSSBAR_OUTPUTS > 0:
@@ -576,8 +578,8 @@ class chFPGA_controller(IceBoardExtHandler):
             self._logger.warning("%r: There is no 3rd CROSSBAR module in this firmware build" % self);
 
 
-        self._logger.debug('%r: === Initializing FPGA correlators' % self)
         if self.CORR:
+            self._logger.info('%r: === Initializing FPGA-based correlator (X-Engine)' % self)
             yield async_moment
             self._logger.debug('%r:  - CORR' % self)
             self.CORR.init()
@@ -593,6 +595,7 @@ class chFPGA_controller(IceBoardExtHandler):
         yield async_moment
 
         if self.GPU:
+            self._logger.info('%r: === Initializing GPU links' % self)
             self.GPU.init()
             self.GPU.set_enable(enable_gpu_link)
             self._logger.debug('%r: GPU link is currently %s' % (self, ['Disabled','Enabled'][bool(enable_gpu_link)]))
