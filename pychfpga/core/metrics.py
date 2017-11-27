@@ -28,8 +28,10 @@ class Metrics(object):
         self.default_type = default_type
         self.default_labels = default_labels
         self.latest_only = latest_only
-        self.last_time = None
+        self.last_time = 0
         self.log = logging.getLogger(__name__)
+        self.last_time_table = {}
+        self.last_compression_ratio = 0
 
         if arg is None:
             self.metrics = {}
@@ -77,6 +79,7 @@ class Metrics(object):
 
     def clear(self):
         """ removes all the metrics """
+        self.last_time = 0
         self.metrics = {}
 
     def add(self, metric_name, value=None, type=None , doc=None, time=None, **labels):
@@ -145,7 +148,7 @@ class Metrics(object):
         new_time = int(time or (time_.time() * 1000))
         #if self.last_time and new_time < self.last_time:
         #   self.log.warning('%r: out-of-order on metric %s. old time =%i, new time=%i'% (self, metric_name, self.last_time, new_time))
-        self.last_time = new_time
+        self.last_time = max(self.last_time, new_time)
 
         # Combine the labels with the default labels (in a dict to avoid multiple instance of the same label)
         # convert values into strings
@@ -159,28 +162,61 @@ class Metrics(object):
         if self.latest_only:
             time_entries.clear()
         if new_time in time_entries:
-           self.log.warning('%r: metric %s at time %i already exist. The old entry will be rewritten'% (self, metric_name, new_time))
+           self.log.warning('%r: metric %s at time %i already exist. The old entry will be rewritten' % (self, metric_name, new_time))
         time_entries[new_time] = value
         return self
 
-    def  __str__(self):
+    def __str__(self):
+        return self.get_str()
+
+    def get_last_time(self):
+        return self.last_time
+
+    def get_str(self, after=0):
+        """ Return a string repreentation of the metrics.
+
+        labels are sorted for nicer display.
+        Within a set of samples, samples are sorted by time.
+
+        Parameters:
+
+            after (int or str): Include samples only after the specified time. If an int, this is
+                the unix time * 1000. if a string, only the samples since the last call with the tag
+                `after` are returned.
+        """
         s = []
+        if isinstance(after, str):
+            after_time = self.last_time_table.setdefault(after, 0)
+        else:
+            after_time = after or 0
         for metric_name, m in self.metrics.iteritems():
             if m['doc']:
                 s.append('# HELP %s %s\n' % (metric_name, m['doc']))
             if m['type']:
                 s.append('# TYPE %s %s\n' % (metric_name, m['type']))
             for label_set, time_entries in m['entries'].iteritems():
-                labels_string = '{' + ','.join('%s="%s"' % (k, v) for k, v in sorted(label_set, key=itemgetter(0))) + '}' if label_set else ''
-                for time, value in time_entries.iteritems():
-                    s.append('%s%s %.16g %i\n' % (metric_name, labels_string, value, time))
-                    #s.append('%s%s %f\n' % (metric_name, labels, entry['value']))
+                if label_set:
+                    labels_string = '{' + ','.join('%s="%s"' % (k, v) for k, v in sorted(label_set)) + '}'
+                else:
+                    labels_string = ''
+                for time, value in sorted(time_entries.iteritems()):
+                    if time > after_time:
+                        s.append('%s%s %.16g %i\n' % (metric_name, labels_string, value, time))
+                        #s.append('%s%s %f\n' % (metric_name, labels, entry['value']))
+        if isinstance(after, str):
+            self.last_time_table[after] = self.last_time
         return ''.join(s)
 
-    def get_gzip(self):
+
+    def get_gzip(self, after=0):
         f = BytesIO()
         g = gzip.GzipFile(mode="w", fileobj=f)
-        g.write(str(self))
+        uncompressed_metrics = self.get_str(after=after)
+        g.write(uncompressed_metrics)
         g.close()
-        return  f.getvalue()
-        
+        compressed_metrics = f.getvalue()
+        if not uncompressed_metrics:
+            self.last_compression_ratio = 0
+        else:
+            self.last_compression_ratio = 1 - float(len(compressed_metrics)) / (len(uncompressed_metrics))
+        return compressed_metrics
