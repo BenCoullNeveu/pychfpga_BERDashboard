@@ -1271,6 +1271,7 @@ class FPGAArray(object):
                 ant.SCALER.OVERFLOW_RESET = 1
                 ant.SCALER.OVERFLOW_RESET = 0
 
+    @async
     def set_channelizers(self, adc_mode=None, adcdaq_mode=None,
                          data_source=None, function=None, a=1, b=0,
                          fft_bypass=None, fft_shift=None,
@@ -1282,11 +1283,13 @@ class FPGAArray(object):
 
             See IceBoard's set_channelizer(...) for details.
         """
-
-        self.ib.set_channelizer(adc_mode=adc_mode, adcdaq_mode=adcdaq_mode,
+        for ib in self.ib:
+            ib.set_channelizer(adc_mode=adc_mode, adcdaq_mode=adcdaq_mode,
                         data_source=data_source, function=function, a=a, b=b,
                         fft_bypass=fft_bypass, fft_shift=fft_shift,
-                        scaler_bypass=scaler_bypass, gain=gain, postscaler=postscaler, offset_binary_encoding=offset_binary_encoding)
+                        scaler_bypass=scaler_bypass, gain=gain, postscaler=postscaler,
+                        offset_binary_encoding=offset_binary_encoding)
+            yield async_moment
         if sync:
             self.sync()
 
@@ -2698,15 +2701,17 @@ class FPGAArray(object):
             ps.power_cycle(delay=4)
 
 
+    @async
     def set_adc_delays(self, **kwargs):
         """
         Set ADC delays for all Mezzanines on all IceBoards of the array. Calls set_adc_delays() on each IceBoard instance with the specified paramaters.
         """
 
         for ib in self.ib:
-	    if ib.is_open():
+            if ib.is_open():
                 self.logger.info("%r: Setting ADC delays" % (self))
                 ib.set_adc_delays(**kwargs)
+                yield async_moment
 	    else:
                 self.logger.warning("%r: Communication with FPGA is not initialized. Cannot set ADC delays" % (self))
 

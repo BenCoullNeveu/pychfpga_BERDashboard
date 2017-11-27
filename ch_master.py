@@ -811,7 +811,7 @@ class ChimeMaster(object):
 
         # Set ADC delays from delay files. Recompute and save new delays if the files do not exist or if
         # the delays loaded from them do not work.
-        ca.set_adc_delays(**conf.fpga.adc_delay_params)
+        yield ca.set_adc_delays.async(**conf.fpga.adc_delay_params)
 
 
         # Reset the correlator. Not sure if this is necesssary?
@@ -827,7 +827,7 @@ class ChimeMaster(object):
 
         # Set-up channelizers to process data normally
         self.log.info("Setting-up channelizers")
-        ca.set_channelizers(**conf.fpga.channelizer_params)
+        yield ca.set_channelizers.async(**conf.fpga.channelizer_params)
 
         # Set-up initial gains in gain bank #0
         if conf.fpga.load_initial_gains:
@@ -1466,7 +1466,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
     def set_adc_delays(self, handler):
         if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
             self.log.info('%r: received set_adc_delays() request' % self)
-            self.chime_master.fpgas.set_adc_delays(**self.chime_master.config.fpga.adc_delay_params)
+            yield self.chime_master.fpgas.set_adc_delays.async(**self.chime_master.config.fpga.adc_delay_params)
             self.log.info('%r: set_adc_delays() done' % self)
 
 
