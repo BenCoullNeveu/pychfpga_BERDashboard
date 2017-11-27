@@ -258,7 +258,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
             ip_packed = ip_packed[:2] + chr(3) + ip_packed[3]
             self.fpga_ip_addr = socket.inet_ntoa(ip_packed)
 
-        # Compute the local port number if requested and if possible
+        # Compute the local port number if requested (self.local_port_number is None) and if possible (there is a slot and crate number)
         if self.local_port_number is None:
             if not self.slot or not self.crate or self.crate.crate_number is None:
                 self.local_port_number = 0
@@ -291,8 +291,8 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         self.mmi.open()
         self.local_port_number = self.mmi.local_port_number
         self.fpga_port_number = self.mmi.fpga_port_number
-        print('opened fpga (%s:%s) local (%s:%s)' % (self.fpga_ip_addr, self.fpga_port_number, self.interface_ip_addr, self.local_port_number))
-        print('opened fpga (%s:%i) local (%s:%i)' % (self.fpga_ip_addr, self.fpga_port_number, self.interface_ip_addr, self.local_port_number))
+        # print('opened fpga (%s:%s) local (%s:%s)' % (self.fpga_ip_addr, self.fpga_port_number, self.interface_ip_addr, self.local_port_number))
+        # print('opened fpga (%s:%i) local (%s:%i)' % (self.fpga_ip_addr, self.fpga_port_number, self.interface_ip_addr, self.local_port_number))
 
         # Select the fpga port number
         #if not self.fpga_port_number:
@@ -875,12 +875,12 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         if not noerror and (ts.h > 23 or ts.m > 59 or ts.s > 59):
             raise RuntimeError('Invalid IRIG-B time value %ih %im %is.' % (ts.h, ts.m, ts.s))
 
-        ts.datetime = datetime(y + 2000, 1, 1) + timedelta(d-1, ts.s, ts.ss//100, 0, ts.m, ts.h)
+        ts.datetime = dt = datetime(y + 2000, 1, 1) + timedelta(d-1, ts.s, ts.ss//100, 0, ts.m, ts.h)
         # ts.before_target = (t1 >> 31) & 1
         # ts.done = (t1 >> 30) & 1
         ts.nano = int(timegm((y + 2000, 1, 1, 0, 0, 0)) * 1e9) + ((d-1) *24*3600 + ts.h * 3600 + ts.m * 60 + ts.s)*1000000000 + ts.ss*10
         ts.time = ts.nano / 1e9
-
+        ts.time_struct = [dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second, (ts.nano % 1000000000) / 1000]
         # ts.event_ctr = e0
 
         async_return(self._IRIGB_TIME_FORMAT[format](ts))
