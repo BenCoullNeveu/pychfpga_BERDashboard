@@ -395,7 +395,7 @@ class FPGAArray(object):
         """
         self.ib = []  # make sure repr() has always something
         self.ic = []
-
+        self.sync_timestamp = None
 
         ###########################################
         # setup pychfpga.fpga_array logging
@@ -1266,6 +1266,11 @@ class FPGAArray(object):
             if bad_ib:
                 raise RuntimeError('The following IceBoards did not SYNC properly: %s' % (','.join(repr(ib) for ib in bad_ib)))
 
+        ts = self.ib.get_irigb_time(trig=False, format = 'raw')
+        if len(set(t.nano for t in ts)) != 1:
+            self.log.warning('%r: The timestamp is not the same for all boards after sync. Times are:n%s' %
+                (self,                  '\n'.join('%r:%i' % (ib[i], ts[i].nano) for i,ib in enumerate(self.ib))))
+        self.sync_timestamp = ts[0]
         for ib in self.ib:
             for ant in ib.ANT:
                 ant.SCALER.OVERFLOW_RESET = 1
