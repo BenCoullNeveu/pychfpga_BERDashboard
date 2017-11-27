@@ -312,11 +312,22 @@ class JsonRequestHandler(tornado.web.RequestHandler):
 
     def set_default_headers(self):
         self.set_header('Content-Type', 'application/json')
+        
+    @coroutine
+    def head(self, *args, **kwargs):
+        if kwargs:
+            yield self.post(*args, **kwargs)
+        else:
+            yield self.get(*args)
 
     def write_error(self, status_code, **kvs):
+
+        log = logging.getLogger(__name__)
         if 'exc_info' in kvs:
             exc_info = kvs.pop('exc_info')
-            kvs['error'] = self.format_exception(exc_info)
+            kvs['error'] = self.format_exception(exc_info, remove_tornado=False)
+        log.error('%r: Request Handler caught an exception. HTTP code is %s. Error is %s' % (self, status_code, kvs.get('error', '[No Error]')))
+        print('Request Handler exception \n%s' %  kvs.get('error', '[No Error]'))
         self.set_status(200, reason='There was an exception') # Prevent the client from raising an HTTP error. The client will recognize errors by looking at the error field.
         #print('*** REST Server: Adding error field:', kvs['error'], '\n------')
         #self.write('**whoah! an exception***\n')
@@ -337,6 +348,7 @@ class JsonRequestHandler(tornado.web.RequestHandler):
                         filtered_lines.append('   >  %s\n ' % line)
                 i += 1
         return ''.join(filtered_lines)
+
 
 class AsyncRESTServer(AsyncMixin):
     """
