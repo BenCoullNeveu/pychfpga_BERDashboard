@@ -5,6 +5,8 @@ Provides a simplified object to handle Prometheus metrics.
 import time as time_
 import logging
 from operator import itemgetter
+import gzip
+from io import BytesIO
 
 class Metrics(object):
     """ Simplified container to hold Prometheus Metrics.
@@ -44,11 +46,19 @@ class Metrics(object):
             for item in arg:
                 self.add(item)
 
-    def __len__(self):  # will also me used as __nonzero__
-        return len(self.metrics)
+    #def __len__(self):  # will also me used as __nonzero__
+    #    return len(self.metrics)
 
     def items(self):
         return self.metrics.items()
+
+    def __len__(self):
+        length = 0
+        for metric_entries in self.metrics.itervalues():
+            for time_entries in metric_entries['entries'].itervalues():
+                if time_entries is not None:
+                    length += len(time_entries)
+        return length
 
     def as_dict(self):
         return self.metrics
@@ -60,7 +70,8 @@ class Metrics(object):
 
     def pop(self):
         """ return a Metric() object with all the current metrics and clear this metric."""
-        metrics = Metrics(self)
+        metrics = Metrics()
+        metrics.metrics = self.metrics
         self.clear()
         return metrics
 
@@ -95,11 +106,11 @@ class Metrics(object):
             return self
         # If we pass a Metrics object, merge the metrics into this one.
         elif isinstance(metric_name, Metrics):
-            for met_name, met in metric_name.metrics.items():
+            for met_name, met in metric_name.metrics.iteritems():
                 self.add(met_name, doc=met['doc'], type=met['type'])
-                for label_set, time_entries in met['entries'].items():
+                for label_set, time_entries in met['entries'].iteritems():
                     new_labels = dict(list(label_set) + labels.items())
-                    for time, value in time_entries.items():
+                    for time, value in time_entries.iteritems():
                         self.add(met_name, value=value, time=time, **new_labels)
             return self
         elif not isinstance(metric_name, basestring):
@@ -109,8 +120,9 @@ class Metrics(object):
                 self.add(m, value=value, type=type, doc=doc, time=time, **labels)
             return self
         # get the metric from the local dict, or create an empty one
-        metric = self.metrics.setdefault(metric_name, dict(type=None, doc=None, entries={}))
-
+        if metric_name not in self.metrics:
+            self.metrics[metric_name] = dict(type=None, doc=None, entries={})
+        metric = self.metrics[metric_name]
         #if metric['entries']:
         #    return
         # Assign documentation if some is provided. It must be unique to the metric.
@@ -130,7 +142,7 @@ class Metrics(object):
         if value is None:
             return self
 
-        new_time = int(time or time_.time() * 1000)
+        new_time = int(time or (time_.time() * 1000))
         #if self.last_time and new_time < self.last_time:
         #   self.log.warning('%r: out-of-order on metric %s. old time =%i, new time=%i'% (self, metric_name, self.last_time, new_time))
         self.last_time = new_time
@@ -140,24 +152,35 @@ class Metrics(object):
         # pack the (key,string_values) pairs into a frozenset, which can be used as a dict key
         new_labels = frozenset((k, str(v)) for k, v in
             dict(self.default_labels.items() + labels.items()).items())
-        time_entries = metric['entries'].setdefault(new_labels, {})
+        metric_entries = metric['entries']
+        if new_labels not in metric_entries:
+            metric_entries[new_labels] = {}
+        time_entries = metric_entries[new_labels]
         if self.latest_only:
             time_entries.clear()
-        if time in time_entries:
+        if new_time in time_entries:
            self.log.warning('%r: metric %s at time %i already exist. The old entry will be rewritten'% (self, metric_name, new_time))
         time_entries[new_time] = value
         return self
 
     def  __str__(self):
         s = []
-        for metric_name, m in self.metrics.items():
+        for metric_name, m in self.metrics.iteritems():
             if m['doc']:
                 s.append('# HELP %s %s\n' % (metric_name, m['doc']))
             if m['type']:
                 s.append('# TYPE %s %s\n' % (metric_name, m['type']))
-            for label_set, time_entries in m['entries'].items():
+            for label_set, time_entries in m['entries'].iteritems():
                 labels_string = '{' + ','.join('%s="%s"' % (k, v) for k, v in sorted(label_set, key=itemgetter(0))) + '}' if label_set else ''
-                for time, value in time_entries.items():
+                for time, value in time_entries.iteritems():
                     s.append('%s%s %.16g %i\n' % (metric_name, labels_string, value, time))
                     #s.append('%s%s %f\n' % (metric_name, labels, entry['value']))
         return ''.join(s)
+
+    def get_gzip(self):
+        f = BytesIO()
+        g = gzip.GzipFile(mode="w", fileobj=f)
+        g.write(str(self))
+        g.close()
+        return  f.getvalue()
+        
