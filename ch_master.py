@@ -23,7 +23,6 @@ import socket
 import subprocess
 import sys
 import time
-import yaml
 import json
 import functools
 import Queue
@@ -31,15 +30,12 @@ import pickle
 import datetime
 import numpy as np
 import psutil
-import gzip
-from io import BytesIO
 
 
 import tornado
 import tornado.tcpclient
 import tornado.web
 
-import pychfpga  # used to access .calculate_gain.
 from pychfpga import FPGAArray, NameSpace, merge_dict, load_yaml_config, Metrics, calculate_gains
 import log
 
@@ -171,10 +167,10 @@ def get_git_version():
 
 def reap_cached_sockets():
     import __main__
-    log = log.get_logger(__name__, 'reap_cached_sockets()')
+    logger = log.get_logger(__name__, 'reap_cached_sockets()')
     if hasattr(__main__, '__opened_sockets__'):
         for port, socket in __main__.__opened_sockets__.items():
-            log.debug("closing cached socket on port %d" % port)
+            logger.debug("closing cached socket on port %d" % port)
             socket.close()
         del __main__.__opened_sockets__
 
@@ -1301,18 +1297,25 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
     @endpoint('get-frame-time')
     def get_frame_time(self, handler):
         if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas and self.chime_master.fpgas.ib:
-            frame_number, ts = yield self.chime_master.fpgas.ib[0].capture_frame_time.async(format='raw')
-            dt = ts.datetime
-            gps_time = [dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second, (ts.nano % 1000000000) / 1000]
-            gps_ctime = ts.time
+            frame_number, gps_ts = yield self.chime_master.fpgas.ib[0].capture_frame_time.async(format='raw')
+            # dt = ts.datetime
+            # gps_time = ts.time_struct
+            # gps_ctime = ts.time
+            frame0_ts = self.chime_master.fpgas.sync_timestamp
+            # frame0_time = frame0_ts.time_struct
+            # frame0_ctime = frame0_ts.time
+
             server_ctime = time.time(),
             coroutine_return(dict(
                     frame_number=frame_number,  # 48-bit frame number
-                    gps_time=gps_time, # time structure [year, month, day, hour, minute, second, microsecond (float, 10 ns resolution)]
-                    gps_ctime=gps_ctime, # GPS time, expressed in ctime format (float expressing seconds since UTC epoch)
-                    gps_nano=ts.nano,
+                    gps_time=gps_ts.time_struct, # time structure [year, month, day, hour, minute, second, microsecond (float, 10 ns resolution)]
+                    gps_ctime=gps_ts.ctime, # GPS time, expressed in ctime format (float expressing seconds since UTC epoch)
+                    gps_nano=gps_ts.nano,
                     server_ctime =server_ctime, # system time, expressed in ctime format (float expressing seconds since UTC epoch)
-                    start_ctime=self.chime_master.start_time))
+                    start_ctime=self.chime_master.start_time,
+                    frame0_time=frame0_ts.time_struct,
+                    frame0_ctime=frame0_ts.ctime,
+                    frame0_nano=frame0_ts.nano))
         coroutine_return({})
 
     @coroutine
@@ -1368,7 +1371,8 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
             t0 = time.time()
             self.log.info('%r: Starting to gather a new set of ch_master metrics' % (self, ))
             self.log.info('%r: Getting server metrics (memory & CPU usage, run time etc.' % (self,))
-            metrics = self.metrics #  Metrics()
+            metrics = self.metrics  # Metrics()
+
             mem = psutil.virtual_memory()
 
             metrics.add('ch_master_node_mem_total', value=mem.total)
@@ -1384,7 +1388,12 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
             metrics.add('ch_master_node_cpu_system', value=cpu.system)
             metrics.add('ch_master_node_cpu_idle', value=cpu.idle)
 
-            metrics.add('ch_master_run_time', value= 0 if self.chime_master.start_time is None else time.time() - self.chime_master.start_time)
+            if self.chime_master.start_time is None:
+                run_time = 0
+            else:
+                run_time = time.time() - self.chime_master.start_time
+
+            metrics.add('ch_master_run_time', value=run_time)
 
 
             if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
@@ -1412,14 +1421,14 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         try:
             t0 = time.time()
             self.log.info('%r: Received metrics request' % (self))
-            metrics = self.metrics #  Metrics()
-            number_of_sets = self.metrics_queue.qsize()
+            # metrics = self.metrics #  Metrics()
+            number_of_metrics = len(self.metrics)
             # for i in range(number_of_sets):
             #metrics.add(self.metrics_queue.get() for _ in range(number_of_sets))
 
             #metric_strings = '\n'.join(self.metrics_queue.get() for _ in range(number_of_sets))
             #self.log.info('%r: Finished combining %i sets of metrics after %0.3f seconds' % (self, number_of_sets, time.time()-t0))
-            metric_strings = str(metrics.pop())
+            # metric_strings = str(metrics.pop())
             # try:
             #     metrics.add((yield self.chime_master.get_power_supply_metrics()))
             # except:
@@ -1432,20 +1441,21 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
             #        pass
 
             # Make the HTTP reply a plain text response for Prometheus, not JSON,
-            f = BytesIO()
-            g = gzip.GzipFile(mode="w", fileobj=f)
-            g.write(metric_strings)
-            g.close()
+            # f = BytesIO()
+            # g = gzip.GzipFile(mode="w", fileobj=f)
+            # g.write(metric_strings)
+            # g.close()
+            # compressed_metrics = f.getvalue() #  zlib.compress(metric_strings)
 
-            compressed_metrics = f.getvalue() #  zlib.compress(metric_strings)
-            self.log.info('%r: Returning %i FPGA metrics(%i kB => %i kB compressed, %.0f%% the original )' % (self, metric_strings.count('\n')+1, len(metric_strings)/1024, len(compressed_metrics)/1024, float(len(compressed_metrics)) / (len(metric_strings) + 1) * 100))
             handler.set_header('Content-Type', 'text/plain')
             handler.set_header('Content-Encoding', 'gzip')
-            handler.write(compressed_metrics)
+            handler.write(self.metrics.pop().get_gzip())
+            self.log.info('%r: Returning %i FPGA metrics (compression ratio %.0f%%)' % (self, number_of_metrics, self.metrics.last_compression_ratio))
+
             # handler.write(self.metrics.pop().get_gzip())
             self.log.info('%r: Metrics request took %.3f seconds to execute' % (self, time.time()-t0))
         except Exception as e:
-            self.log.error('%r: Exception in get-monutoring-data. error is: %r' % (self, e))
+            self.log.error('%r: Exception in get-monitoring-data. Error is: %r' % (self, e))
             raise
 
     @coroutine
