@@ -243,9 +243,10 @@ Which will yield a result such as::
 
 We expect port 80 (web interface), TCP 1001 (data port), 6000 (Control port)
 
-Configuring the GPS units
--------------------------
-Use manufacturer procedure to configure the networking of the device to DHCP. That might require the unit to be connected directly to an ethernet port configured with the default networking parameters, or use the Windows program (?).
+Configuring the GPS Ethernet adapters
+-------------------------------------
+
+Use manufacturer procedure to configure the networking of the Startech NETRS323 device to DHCP. That might require the unit to be connected directly to an ethernet port configured with the default networking parameters, or use the Windows program (?).
 
 Once you have an IP address, over the web interface, set the following:
 
@@ -275,7 +276,7 @@ Once you have an IP address, over the web interface, set the following:
 Manually interacting with the GPS unit
 --------------------------------------
 
-In ipython, from the ch_acq folder::
+In ``ipython``, from the ch_acq folder::
 
 	import gps
 	g=gps.SpectrumInstrumentsTM4D('10.0.0.10')
@@ -283,5 +284,14 @@ In ipython, from the ch_acq folder::
 	g.get_date_time() # just for testing, ask the time and date
 	g.configure_gps() # setup the GPS parameters for CHIME
 
+You can set the unit in survey mode, meaning it will average 10000 positions and then switch back into static mode (time only)::
 
+	g.set_polling_mode(1)  # stop the GPS from broacdasting continuously
+	g.set_timing_mode(3)  # start the survey mode
+
+You can check the setting with:
+
+	g.get_timing_mode()  #
+
+You might have to repeat the command to flush the previous responses that were put in the buffer by pervious commands (or the broadcast mode)
 
