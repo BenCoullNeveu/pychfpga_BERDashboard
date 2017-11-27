@@ -162,10 +162,10 @@ class SpectrumInstrumentsTM4D(SocketContext):
         """ Sets the timing mode of the GPS.
 
         Parameters:
-            mode (int): 0=Dynamic, 1=Static, 2=Auto survey
+            mode (int): 0=Dynamic, 1=Static, 3=Auto survey
         """
-        if mode not in [0, 1, 2]:
-            raise ValueError('%r: timing modeargument is 0 (Dynamic), 1 (Static) or 2 (Survey)' % self)
+        if mode not in [0, 1, 3]:
+            raise ValueError('%r: timing modeargument is 0 (Dynamic), 1 (Static) or 3 (Survey)' % self)
 
         self.command('07', mode)
 
@@ -178,7 +178,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
         """ Selects the output of the multiplexers.
 
         Parameters:
-            mux1 (int): 0=Dynamic, 1=Static, 2=Auto survey
+            mux1 (int):
                 0: 10 MHz output
                 1: 5 MHz output
                 2: 1 MHz output
