@@ -1165,6 +1165,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         #self.add_periodic_callback(self.print_iceboard_info_callback, period=60000)
         self.metrics_queue = Queue.Queue(1000)
         self.metrics = Metrics()
+        self.last_metrics_client = None
         #self.add_periodic_callback(self._get_metrics, 3000)
         #self.start_time = None
         self._get_metrics() # continuously run get_metrics loop
@@ -1407,16 +1408,20 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
             #self.metrics_queue.put((metrics))
             self.log.info('%r: We now have  %i metrics. It took %.1f seconds to gather this set of ch_master metrics' % (self, len(self.metrics), time.time()-t0))
 
-            yield sleep(1)
+            yield sleep(10)
 
     @coroutine
     @endpoint('get-monitoring-data')
     def get_monitoring_data(self, handler):
         try:
             t0 = time.time()
-            self.log.info('%r: Received metrics request' % (self))
             # metrics = self.metrics #  Metrics()
             number_of_metrics = len(self.metrics)
+            client_ip = handler.request.remote_ip
+            self.log.info('%r: Received metrics request from %s' % (self, client_ip))
+            if self.last_metrics_client and client_ip != self.last_metrics_client:
+                self.log.warn('%r: A new clients at %s is pulling metrics from this server. Previous client was %s' % (self, client_ip, self.last_metrics_client)) 
+            self.last_metrics_client = client_ip
             # for i in range(number_of_sets):
             #metrics.add(self.metrics_queue.get() for _ in range(number_of_sets))
 
@@ -1444,7 +1449,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
             handler.set_header('Content-Type', 'text/plain')
             handler.set_header('Content-Encoding', 'gzip')
             handler.write(self.metrics.pop().get_gzip())
-            self.log.info('%r: Returning %i FPGA metrics (compression ratio %.0f%%)' % (self, number_of_metrics, self.metrics.last_compression_ratio))
+            self.log.info('%r: Returning %i FPGA metrics (compression ratio %.0f%%)' % (self, number_of_metrics, self.metrics.last_compression_ratio * 100))
 
             # handler.write(self.metrics.pop().get_gzip())
             self.log.info('%r: Metrics request took %.3f seconds to execute' % (self, time.time()-t0))

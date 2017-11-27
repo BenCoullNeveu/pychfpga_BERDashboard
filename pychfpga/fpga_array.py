@@ -1268,8 +1268,8 @@ class FPGAArray(object):
 
         ts = self.ib.get_irigb_time(trig=False, format = 'raw')
         if len(set(t.nano for t in ts)) != 1:
-            self.log.warning('%r: The timestamp is not the same for all boards after sync. Times are:n%s' %
-                (self,                  '\n'.join('%r:%i' % (ib[i], ts[i].nano) for i,ib in enumerate(self.ib))))
+            self.logger.warning('%r: The timestamp is not the same for all boards after sync. Times are:n%s' %
+                (self,                  '\n'.join('%r:%i' % (ib, ts[i].nano) for i,ib in enumerate(self.ib))))
         self.sync_timestamp = ts[0]
         for ib in self.ib:
             for ant in ib.ANT:
