@@ -441,8 +441,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
                 break
             except IOError as e:
                 self.logger.error("%r: UDP communinication error. Attempting to reset FPGA's UDP stack via the ARM processor (trial %i).The error is:\n %s" % (self, trial+1, e))
-                yield self.fpga_mmi_write.async(self._SFP_STATUS_ADDR, 2 << 30)
-                yield self.fpga_mmi_write.async(self._SFP_STATUS_ADDR, 0 << 30)
+                yield self.reset_fpa_udp_stack()
                 valid = False
                 reset = True
             except Exception as e:
@@ -453,6 +452,11 @@ class IceBoardExtHandler(IceBoardPlusHandler):
             self.logger.error(errmsg)
             raise IOError(errmsg)
         async_return(valid)
+
+    @async
+    def reset_fpa_udp_stack(self):
+        yield self.fpga_mmi_write.async(self._SFP_STATUS_ADDR, 2 << 30)
+        yield self.fpga_mmi_write.async(self._SFP_STATUS_ADDR, 0 << 30)
 
     @async
     def set_fpga_control_networking_parameters(
@@ -880,7 +884,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         # ts.done = (t1 >> 30) & 1
         ts.nano = int(timegm((y + 2000, 1, 1, 0, 0, 0)) * 1e9) + ((d-1) *24*3600 + ts.h * 3600 + ts.m * 60 + ts.s)*1000000000 + ts.ss*10
         ts.time = ts.nano / 1e9
-        ts.time_struct = [dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second, (ts.nano % 1000000000) / 1000]
+        ts.time_struct = [dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second, (ts.nano % 1000000000) / 1000.0]
         # ts.event_ctr = e0
 
         async_return(self._IRIGB_TIME_FORMAT[format](ts))
