@@ -3116,7 +3116,8 @@ class chFPGA_controller(IceBoardExtHandler):
 
     def get_string_id(self):
         """
-        Return a string composed of the model and serial number which uniquely identifies the board.
+        Return a string that uniquely represents the board. It is composed of the model and serial
+        number, or, if the serial numbe ris unknown, the hostname of the board.
 
         Arguments:
             None
@@ -3125,7 +3126,10 @@ class chFPGA_controller(IceBoardExtHandler):
             string
 
         """
-        return '%s_SN%s' % (self.part_number, self.serial)
+        if self.serial and self.part_number:
+            return '%s_SN%s' % (self.part_number, self.serial)
+        else:
+            return self.hostname
 
     def get_id(self, lane=None):
         """ Returns a tuple representing a unique IceBoard ID, using numeric values whenever possible.
@@ -3133,8 +3137,8 @@ class chFPGA_controller(IceBoardExtHandler):
         Arguments:
             lane (int): caller-provided lane number to be appended to the returned tuple.
         Returns:
-             -  (int, int): (crate_number, slot_number)if the board is in a crate for which a crate number was assigned
-             - (str, int): (crate_id, slot_number) Identify the crate with model and serial number if there is a crate  but no crate number is specified
+             -  (int, int): (crate_number, zero_based_slot_number) if the board is in a crate for which a crate number was assigned
+             - (str, int): (crate_id, zero_based_slot_number) Identify the crate with model and serial number if there is a crate  but no crate number is specified
              - (str): (iceboard_id) If the board is not in a crate or the slot number is unknown, use the the iceboard model and serial number
 
         """
