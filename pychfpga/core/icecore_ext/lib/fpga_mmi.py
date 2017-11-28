@@ -82,6 +82,7 @@ class FpgaMmi:
         self.interface_ip_addr = interface_ip_addr
         self.send_counter = 0
         self.recv_counter = 0
+        self.error_counter = 0
 
     def __enter__(self):
             self.open()
@@ -286,8 +287,13 @@ class FpgaMmi:
                 self.set_timeout(self.get_timeout() * timeout_increase_factor)
                 error = 'Timeout during FPGA command.'
 
+            if retry < 0:
+                return
+
             if not error:
                 break
+
+            self.error_counter += 1
 
             if retries > retry:
                 self.logger.error('%r: %s Raising exception after %i unsuccessful trials' % (self, error, retries))

@@ -2996,7 +2996,8 @@ class chFPGA_controller(IceBoardExtHandler):
         if not self.is_open():
             async_return(Metrics())
         try:
-            yield self.check_command_count.async(reset=True)
+            yield self.clear_fpga_udp_errors.async()
+            # yield self.check_command_count.async(reset=True)
             metrics = yield self.BP_SHUFFLE.get_metrics.async()
         except IOError as e:
             self.logger.error('%r: Error getting FPGA backplane link metrics. Error is %r' % (self, e))
@@ -3016,11 +3017,12 @@ class chFPGA_controller(IceBoardExtHandler):
         if not self.is_open():
             async_return(metrics)
         try:
-            yield self.check_command_count.async(reset=True)
+            # yield self.check_command_count.async(reset=True)
+            yield self.clear_fpga_udp_errors.async()
             for i, ant  in self.ANT.items():
-                metrics.add('fpga_fft_overflow_count', value = ant.FFT.OVERFLOW_COUNT, chan=i)
-                metrics.add('fpga_scaler_overflow_count', value = ant.SCALER.STATS_SCALER_OVERFLOWS, chan=i)
-                metrics.add('fpga_adc_overflow_count', value = ant.SCALER.STATS_ADC_OVERFLOWS, chan=i)
+                metrics.add('fpga_fft_overflow_count', value=ant.FFT.OVERFLOW_COUNT, chan=i)
+                metrics.add('fpga_scaler_overflow_count', value=ant.SCALER.STATS_SCALER_OVERFLOWS, chan=i)
+                metrics.add('fpga_adc_overflow_count', value=ant.SCALER.STATS_ADC_OVERFLOWS, chan=i)
         except IOError as e:
             self.logger.error('%r: Error getting FPGA channelizer metrics. Error is %r' % (self, e))
         async_return(metrics)
@@ -3030,7 +3032,8 @@ class chFPGA_controller(IceBoardExtHandler):
         if not self.is_open():
             async_return(Metrics())
         try:
-            yield self.check_command_count.async(reset=True)
+            # yield self.check_command_count.async(reset=True)
+            yield self.clear_fpga_udp_errors.async()
             metrics = yield self.CROSSBAR.get_metrics.async()
             metrics += yield self.CROSSBAR2.get_metrics.async()
             metrics += yield self.CROSSBAR3.get_metrics.async()

@@ -402,6 +402,17 @@ class IceBoardExtHandler(IceBoardPlusHandler):
             return False
 
     @async
+    def clear_fpga_udp_errors(self):
+        if self.mmi.error_counter:
+            yield self.reset_fpga_udp_stack()
+            try:
+                self.mmi.read(0, 1, retry=-1, resync=1)
+                self.mmi.read(0, 1, resync=1)
+            except IOError:
+                pass
+            self.mmi.error_counter = 0
+
+    @async
     def check_command_count(self, reset=False):
         """ Check UDP communication command/reply synchronization and optionally reset counts.
 
@@ -441,7 +452,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
                 break
             except IOError as e:
                 self.logger.error("%r: UDP communinication error. Attempting to reset FPGA's UDP stack via the ARM processor (trial %i).The error is:\n %s" % (self, trial+1, e))
-                yield self.reset_fpa_udp_stack()
+                yield self.reset_fpga_udp_stack()
                 valid = False
                 reset = True
             except Exception as e:
@@ -454,7 +465,8 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         async_return(valid)
 
     @async
-    def reset_fpa_udp_stack(self):
+    def reset_fpga_udp_stack(self):
+        self.logger.error("%r: Resetting the FPGA's UDP communication stack" % (self))
         yield self.fpga_mmi_write.async(self._SFP_STATUS_ADDR, 2 << 30)
         yield self.fpga_mmi_write.async(self._SFP_STATUS_ADDR, 0 << 30)
 
