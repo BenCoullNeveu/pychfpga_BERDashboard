@@ -1304,12 +1304,12 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
             coroutine_return(dict(
                     frame_number=frame_number,  # 48-bit frame number
                     gps_time=gps_ts.time_struct, # time structure [year, month, day, hour, minute, second, microsecond (float, 10 ns resolution)]
-                    gps_ctime=gps_ts.ctime, # GPS time, expressed in ctime format (float expressing seconds since UTC epoch)
+                    gps_ctime=gps_ts.time, # GPS time, expressed in ctime format (float expressing seconds since UTC epoch)
                     gps_nano=gps_ts.nano,
                     server_ctime =time.time(), # system time, expressed in ctime format (float expressing seconds since UTC epoch)
                     start_ctime=self.chime_master.start_time,
                     frame0_time=frame0_ts.time_struct,
-                    frame0_ctime=frame0_ts.ctime,
+                    frame0_ctime=frame0_ts.time,
                     frame0_nano=frame0_ts.nano))
         coroutine_return({})
 
