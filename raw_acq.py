@@ -956,49 +956,50 @@ class RawAcqReceiver(object):
 
         # receiver data queue stats
 
-        metrics.add('raw_acq_queue_size', value=self.data_queue.qsize())
-        metrics.add('raw_acq_queue_maxsize', value=self.data_queue.maxsize)
+        if self.run:
+            metrics.add('raw_acq_queue_size', value=self.data_queue.qsize())
+            metrics.add('raw_acq_queue_maxsize', value=self.data_queue.maxsize)
 
-        # ADC signal stats
-        for (crate, slot, chan), rms in self.rms.items():
-            metrics.add('raw_acq_rms', value= rms, crate=crate, slot=slot, chan=chan)
-        self.rms = {}
-        for (crate, slot, chan), min_ in self.min.items():
-            metrics.add('raw_acq_min', value= min_, crate=crate, slot=slot, chan=chan)
-        self.min = {}
-        for (crate, slot, chan), max_ in self.max.items():
-            metrics.add('raw_acq_max', value= max_, crate=crate, slot=slot, chan=chan)
-        self.max = {}
-        for (crate, slot, chan), mean in self.mean.items():
-            metrics.add('raw_acq_mean', value= mean, crate=crate, slot=slot, chan=chan)
-        self.mean = {}
-        for (crate, slot, chan), maxdiff in self.maxdiff.items():
-            metrics.add('raw_acq_max_diff', value= maxdiff, crate=crate, slot=slot, chan=chan)
-        self.maxdiff = {}
-        for (crate, slot, chan), count in self.ramp_error_count.items():
-            metrics.add('raw_acq_ramp_errors', value= count, crate=crate, slot=slot, chan=chan)
-        #self.ramp_error_count = {}
-        for (crate, slot, chan, bit), count in self.ramp_bit_error_count.items():
-            metrics.add('raw_acq_ramp_bit_errors', value=count, crate=crate, slot=slot, chan=chan, bit=bit)
-        #self.ramp_bit_error_count = {}
-        for (crate, slot, chan, threshold), count in self.jumps.items():
-            metrics.add('raw_acq_jumps', value=count, crate=crate, slot=slot, chan=chan, threshold=threshold)
-        #self.jumps = {}
+            # ADC signal stats
+            for (crate, slot, chan), rms in self.rms.items():
+                metrics.add('raw_acq_rms', value= rms, crate=crate, slot=slot, chan=chan)
+            self.rms = {}
+            for (crate, slot, chan), min_ in self.min.items():
+                metrics.add('raw_acq_min', value= min_, crate=crate, slot=slot, chan=chan)
+            self.min = {}
+            for (crate, slot, chan), max_ in self.max.items():
+                metrics.add('raw_acq_max', value= max_, crate=crate, slot=slot, chan=chan)
+            self.max = {}
+            for (crate, slot, chan), mean in self.mean.items():
+                metrics.add('raw_acq_mean', value= mean, crate=crate, slot=slot, chan=chan)
+            self.mean = {}
+            for (crate, slot, chan), maxdiff in self.maxdiff.items():
+                metrics.add('raw_acq_max_diff', value= maxdiff, crate=crate, slot=slot, chan=chan)
+            self.maxdiff = {}
+            for (crate, slot, chan), count in self.ramp_error_count.items():
+                metrics.add('raw_acq_ramp_errors', value= count, crate=crate, slot=slot, chan=chan)
+            #self.ramp_error_count = {}
+            for (crate, slot, chan, bit), count in self.ramp_bit_error_count.items():
+                metrics.add('raw_acq_ramp_bit_errors', value=count, crate=crate, slot=slot, chan=chan, bit=bit)
+            #self.ramp_bit_error_count = {}
+            for (crate, slot, chan, threshold), count in self.jumps.items():
+                metrics.add('raw_acq_jumps', value=count, crate=crate, slot=slot, chan=chan, threshold=threshold)
+            #self.jumps = {}
 
-        # Receiver-specific stats
-        for i, r in enumerate(self.receivers):
-            metrics.add('raw_acq_received_packets', value=r.packet_counter, receiver=i)
-            metrics.add('raw_acq_queued_packets', value=r.queued_packets, receiver=i)
-            metrics.add('raw_acq_overflow_packets', value=r.queue_overflows, receiver=i)
+            # Receiver-specific stats
+            for i, r in enumerate(self.receivers):
+                metrics.add('raw_acq_received_packets', value=r.packet_counter, receiver=i)
+                metrics.add('raw_acq_queued_packets', value=r.queued_packets, receiver=i)
+                metrics.add('raw_acq_overflow_packets', value=r.queue_overflows, receiver=i)
 
 
-        metrics.add('raw_acq_run_time', value=0 if self.start_time is None else time.time() - self.start_time)
+            metrics.add('raw_acq_run_time', value=0 if self.start_time is None else time.time() - self.start_time)
 
-        # Packet integrity stats
+            # Packet integrity stats
 
-        metrics.add('raw_acq_chan_mismatch', value=self.chan_number_mismatch_count)
-        metrics.add('raw_acq_crate_mismatch', value=self.crate_number_mismatch_count)
-        metrics.add('raw_acq_slot_mismatch', value=self.slot_number_mismatch_count)
+            metrics.add('raw_acq_chan_mismatch', value=self.chan_number_mismatch_count)
+            metrics.add('raw_acq_crate_mismatch', value=self.crate_number_mismatch_count)
+            metrics.add('raw_acq_slot_mismatch', value=self.slot_number_mismatch_count)
 
         # Ping stats
         for (src_ip, src_port), count in self.ping_error_count.items():
