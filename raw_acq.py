@@ -1001,10 +1001,11 @@ class RawAcqReceiver(object):
             metrics.add('raw_acq_crate_mismatch', value=self.crate_number_mismatch_count)
             metrics.add('raw_acq_slot_mismatch', value=self.slot_number_mismatch_count)
 
-        # Ping stats
-        for (src_ip, src_port), count in self.ping_error_count.items():
-            metrics.add('raw_acq_ping_errors', value=count, src_ip=src_ip, src_port=src_port)
-        self.ping_error_count = {}
+            # Ping stats
+            for (src_ip, src_port), count in self.ping_error_count.items():
+                metrics.add('raw_acq_ping_errors', value=count, src_ip=src_ip, src_port=src_port)
+            self.ping_error_count = {}
+
         return metrics
 
 
