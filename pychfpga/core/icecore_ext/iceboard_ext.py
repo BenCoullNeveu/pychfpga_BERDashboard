@@ -14,7 +14,7 @@ from ..icecore import IceBoardPlusHandler
 from ..icecore import tuber  # Used to get TuberRemoteError
 from ..icecore import Ccoll
 from ..icecore import async, async_sleep, async_return, async_moment
-
+from ..metrics import Metrics
 
 from .. import I2C as i2c
 from .. import GPIO as fpga_gpio
@@ -402,6 +402,37 @@ class IceBoardExtHandler(IceBoardPlusHandler):
             return False
 
     @async
+    def get_fpga_udp_metrics(self):
+        metrics = Metrics(
+            type='GAUGE',
+            slot=(self.slot or 0) - 1,
+            id=self.get_string_id(),
+            crate_id=self.crate.get_string_id() if self.crate else None,
+            crate_number=self.crate.crate_number if self.crate else None)
+
+        if not self.is_open():
+            async_return(metrics)
+        try:
+            # yield self.check_command_count.async(reset=True)
+            metrics.add('fpga_udp_error_current_count', value=self.mmi.error_counter)
+            vect = yield self.fpga_mmi_write.read(self._SFP_STATUS_ADDR)
+            metrics.add('fpga_udp_tx_fifo_overflow', value= bool(vect & 1 << 17))
+            metrics.add('fpga_udp_rx_fifo_overflow', value= bool(vect & 1 << 16))
+            metrics.add('fpga_udp_sfp_remote_fault', value= bool(vect & 1 << 13))
+            metrics.add('fpga_udp_sfp_duplex_mode', value= bool(vect & 1 << 12))
+            metrics.add('fpga_udp_sfp_speed', value= (vect >> 10) & 3)
+            metrics.add('fpga_udp_rxnotintable', value= (vect >> 6) & 1)
+            metrics.add('fpga_udp_rxdisperr', value= (vect >> 5) & 1)
+            metrics.add('fpga_udp_link_sync', value= (vect >> 1) & 1)
+            metrics.add('fpga_udp_link_status', value= (vect >> 0) & 1)
+        except IOError as e:
+            self.logger.error('%r: Error getting FPGA udp metrics. Error is %r' % (self, e))
+        async_return(metrics)
+
+
+
+
+    @async
     def clear_fpga_udp_errors(self):
         if self.mmi.error_counter:
             yield self.reset_fpga_udp_stack()
@@ -410,6 +441,9 @@ class IceBoardExtHandler(IceBoardPlusHandler):
                 self.mmi.read(0, length=1, retry=-1, resync=1)
                 self.mmi.read(0, length=1, resync=1)
                 self.mmi.flush()
+                (cmd, rply) = self.core_gpio.get_command_count()
+                self.mmi.send_counter = cmd
+                self.mmi.recv_counter = rply
             except IOError:
                 pass
             self.mmi.error_counter = 0
@@ -469,7 +503,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
     @async
     def reset_fpga_udp_stack(self):
         self.logger.error("%r: Resetting the FPGA's UDP communication stack" % (self))
-        yield self.fpga_mmi_write.async(self._SFP_STATUS_ADDR, 2 << 30)
+        yield self.fpga_mmi_write.async(self._SFP_STATUS_ADDR, 3 << 30)
         yield self.fpga_mmi_write.async(self._SFP_STATUS_ADDR, 0 << 30)
 
     @async

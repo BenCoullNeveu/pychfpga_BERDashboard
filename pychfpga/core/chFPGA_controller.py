@@ -3018,7 +3018,6 @@ class chFPGA_controller(IceBoardExtHandler):
             async_return(metrics)
         try:
             # yield self.check_command_count.async(reset=True)
-            metrics.add('fpga_udp_error_current_count', value=self.mmi.error_counter)
             yield self.clear_fpga_udp_errors.async()
             for i, ant  in self.ANT.items():
                 metrics.add('fpga_fft_overflow_count', value=ant.FFT.OVERFLOW_COUNT, chan=i)
