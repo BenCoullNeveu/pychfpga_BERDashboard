@@ -3029,17 +3029,19 @@ class chFPGA_controller(IceBoardExtHandler):
 
     @async
     def get_crossbar_metrics(self):
+        metrics = Metrics()
         if not self.is_open():
-            async_return(Metrics())
+            async_return(metrics)
         try:
             # yield self.check_command_count.async(reset=True)
             yield self.clear_fpga_udp_errors.async()
-            metrics = yield self.CROSSBAR.get_metrics.async()
+            metrics += yield self.CROSSBAR.get_metrics.async()
             metrics += yield self.CROSSBAR2.get_metrics.async()
             metrics += yield self.CROSSBAR3.get_metrics.async()
         except IOError as e:
             self.logger.error('%r: Error getting FPGA crossbar metrics. Error is %r' % (self, e))
-            metrics = Metrics()
+        except Exception as e:
+            self.logger.error('%r: Unhandled error while  getting FPGA crossbar metrics. Error is %r' % (self, e))
         async_return(metrics)
 
     @async
