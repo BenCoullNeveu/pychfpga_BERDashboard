@@ -406,8 +406,10 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         if self.mmi.error_counter:
             yield self.reset_fpga_udp_stack()
             try:
-                self.mmi.read(0, 1, retry=-1, resync=1)
-                self.mmi.read(0, 1, resync=1)
+                self.mmi.flush()
+                self.mmi.read(0, length=1, retry=-1, resync=1)
+                self.mmi.read(0, length=1, resync=1)
+                self.mmi.flush()
             except IOError:
                 pass
             self.mmi.error_counter = 0

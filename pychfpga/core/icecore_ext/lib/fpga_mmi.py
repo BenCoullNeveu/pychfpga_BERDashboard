@@ -288,7 +288,7 @@ class FpgaMmi:
                 error = 'Timeout during FPGA command.'
 
             if retry < 0:
-                return
+                return ''
 
             if not error:
                 break
@@ -357,7 +357,10 @@ class FpgaMmi:
                  chr(addr & 0xFF))
 
             data = self._send_command(s, read_length, retry, resync)
-            dout[offset:offset+read_length] = np.fromstring(data, dtype=np.uint8)  # store received byte
+            if retry is not None and retry < 0:
+                print('FPGA_MMI retry = %i' % retry)
+                return
+            dout[offset: offset + read_length] = np.fromstring(data, dtype=np.uint8)  # store received byte
             addr += read_length
             offset += read_length
 
