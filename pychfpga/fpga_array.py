@@ -2489,6 +2489,8 @@ class FPGAArray(object):
         m = yield [ib.get_metrics.async() for ib in self.ib]
         metrics += m
         self.logger.info('%r: Got %i IceBoard temperature & power supply metrics' % (self, len(m)))
+        metrics += yield [ib.get_fpga_udp_metrics.async() for ib in self.ib]
+
         self.logger.info('%r: Getting corner-turn links metrics (over FPGA UDP link)' % self)
         metrics += yield [ib.get_bp_shuffle_metrics.async() for ib in self.ib]
         self.logger.info('%r: Getting corner-turn crossbars metrics (over FPGA UDP link)' % self)
