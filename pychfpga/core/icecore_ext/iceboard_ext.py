@@ -897,6 +897,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         # e0 = self.fpga_mmi_read(self._IRIGB_EVENT_CTR_ADDR)
 
         ts = self._IrigTimestamp()
+        ts.system_time = time.time()
         ts.pps = (w0 >> 26) & ((1 << 6) - 1)
         ts.sbs = (w0 >> 8) & ((1 << 18) - 1)
         ts.y = (w0 >> 0) & ((1 << 8) - 1)
@@ -907,7 +908,6 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         ts.ss = (w2 >> 0) & ((1 << 28) - 1)
         ts.source = (w1 >> 30) & ((1 << 2) - 1)
         ts.recent = (w1 >> 29) & 1
-
         if not ts.recent:
             if noerror:
                 async_return(None)
@@ -930,7 +930,8 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         ts.datetime = dt = datetime(y + 2000, 1, 1) + timedelta(d-1, ts.s, ts.ss//100, 0, ts.m, ts.h)
         # ts.before_target = (t1 >> 31) & 1
         # ts.done = (t1 >> 30) & 1
-        ts.nano = int(timegm((y + 2000, 1, 1, 0, 0, 0)) * 1e9) + ((d-1) *24*3600 + ts.h * 3600 + ts.m * 60 + ts.s)*1000000000 + ts.ss*10
+        # ts.nano = int(timegm((y + 2000, 1, 1, 0, 0, 0)) * 1e9) + ((d-1) *24*3600 + ts.h * 3600 + ts.m * 60 + ts.s)*1000000000 + ts.ss*10
+        ts.nano = int(timegm((y + 2000, 1, 1, 0, 0, 0)) * 1e9) + ( *24*3600 + ts.h * 3600 + ts.m * 60 + ts.s)*1000000000 + ts.ss*10
         ts.time = ts.nano / 1e9
         ts.time_struct = [dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second, (ts.nano % 1000000000) / 1000.0]
         # ts.event_ctr = e0
