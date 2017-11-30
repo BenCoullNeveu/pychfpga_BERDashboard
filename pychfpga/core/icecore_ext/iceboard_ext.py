@@ -415,7 +415,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         try:
             # yield self.check_command_count.async(reset=True)
             metrics.add('fpga_udp_error_current_count', value=self.mmi.error_counter)
-            vect = yield self.fpga_mmi_write.read(self._SFP_STATUS_ADDR)
+            vect = yield self.fpga_mmi_read.async(self._SFP_STATUS_ADDR)
             metrics.add('fpga_udp_tx_fifo_overflow', value= bool(vect & 1 << 17))
             metrics.add('fpga_udp_rx_fifo_overflow', value= bool(vect & 1 << 16))
             metrics.add('fpga_udp_sfp_remote_fault', value= bool(vect & 1 << 13))
