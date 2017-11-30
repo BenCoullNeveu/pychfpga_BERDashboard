@@ -435,7 +435,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
     @async
     def clear_fpga_udp_errors(self):
         if self.mmi.error_counter:
-            yield self.reset_fpga_udp_stack()
+            yield self.reset_fpga_udp_stack.async()
             try:
                 self.mmi.flush()
                 self.mmi.read(0, length=1, retry=-1, resync=1)
