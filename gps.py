@@ -5,9 +5,7 @@ accessed through the StarTech NETRS232 serial-to-ethernet adapters.
 
 """
 
-import logging
 import sys
-import argparse
 import time
 import datetime
 import calendar
@@ -37,7 +35,8 @@ class SpectrumInstrumentsTM4D(SocketContext):
         self.log.debug('Initializing instrument')
         self.polling_mode = None
         self.last_gps_time = None
-        self.gps_time_offset = None
+        self.gps_time_valid = False
+        self.gps_leap_seconds = None
         self.use_gps_time = True
         self.buffer = '' # used in broadcast processing only
         self.get_methods = {
@@ -74,12 +73,6 @@ class SpectrumInstrumentsTM4D(SocketContext):
             '84': None, # Undocumented, #84,1,0,5,3,2,1,F
             }
 
-    # def __repr__(self):
-    #     if self.instrument_model:
-    #         return '%s %s @%s:%i' % (self.instrument_name, self.instrument_model, self.ip_addr, self.ip_port)
-    #     else:
-    #         return 'Unknown Instrument @%s:%i' % (self.ip_addr, self.ip_port)
-
     ###################################
     # Basic read/write commands
     ###################################
@@ -91,8 +84,10 @@ class SpectrumInstrumentsTM4D(SocketContext):
         """
         flush = kwargs.get('flush', False)
         with self.socket(flush=flush):
-            self.send('#%s\r\n' % ','.join(str(s) for s in args))
-
+            cmd = '#%s\r\n' % ','.join(str(s) for s in args)
+            if self.verbose:
+                print('Sending command: %s' % (cmd))
+            self.send(cmd)
     def query(self, command, reply=None, flush=False):
         """
         Sends a command to the instrument and returns the reply string without the terminator or trailing spaces.
@@ -106,7 +101,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
                         s = self.recv(16384)
                         print('received %r (%s)' % (s, '\r\n' in s))
                         reply += s
-                        if '\r\n' in s:
+                        if '\r\n' in reply:
                             break
                 except IOError:
                     raise IOError('%r: timout while waiting for reply for command %s' % (self, command))
@@ -118,11 +113,15 @@ class SpectrumInstrumentsTM4D(SocketContext):
         if metrics is None:
             return
         if self.use_gps_time:
-            if self.last_gps_time and self.gps_time_offset is not None:
-                time_ =  (self.last_gps_time + self.gps_time_offset)
-                metrics.add(metric_name, value=value, type=type, time=time_ * 1000, **labels)
+            if self.last_gps_time and self.gps_leap_seconds is not None:
+                utc_time = self.last_gps_time - self.gps_leap_seconds
+                local_time = time.time()
+                if utc_time - local_time > 1:
+                    self.log.warning('%r: GPS time for metric %s is in advance from system time by %f seconds.' % (self, metric_name, utc_time-local_time))
             else:
-                self.log.warning('%r: No GPS time has been rceived yet. Metric %s is not produced' % (self, metric_name))
+                self.log.warning('%r: No GPS time has been rceived yet. Using system time for the metric %s' % (self, metric_name))
+                utc_time = time.time()
+            metrics.add(metric_name, value=value, type=type, time=utc_time * 1000, **labels)
         else:
             metrics.add(metric_name, value=value, type=type, **labels)
 
@@ -132,6 +131,10 @@ class SpectrumInstrumentsTM4D(SocketContext):
 
     # Set commands
 
+
+    def enable_ntp_output(self, enable):
+          self.command('04',3123,3,1,3 if enable else 2,1,0,2,0,3,9,7,6,5,3) # secret command from Tom Versaput 
+    
     def set_mask_angle(self, angle_code):
         """ Sets mask angle of the GPS.
 
@@ -153,16 +156,16 @@ class SpectrumInstrumentsTM4D(SocketContext):
         if not  -999999 <= bias <= 999999:
             raise ValueError('%r: bias must be between -999999 and 99999 ns' % self)
 
-        self.command('06', '%+05i' % bias)
+        self.command('06', '%+06i' % bias)
 
     def set_timing_mode(self, mode):
         """ Sets the timing mode of the GPS.
 
         Parameters:
-            mode (int): 0=Dynamic, 1=Static, 2=Auto survey
+            mode (int): 0=Dynamic, 1=Static, 3=Auto survey
         """
-        if mode not in [0,1,2]:
-            raise ValueError('%r: timing modeargument is 0 (Dynamic), 1 (Static) or 2 (Survey)' % self)
+        if mode not in [0, 1, 3]:
+            raise ValueError('%r: timing modeargument is 0 (Dynamic), 1 (Static) or 3 (Survey)' % self)
 
         self.command('07', mode)
 
@@ -175,7 +178,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
         """ Selects the output of the multiplexers.
 
         Parameters:
-            mux1 (int): 0=Dynamic, 1=Static, 2=Auto survey
+            mux1 (int):
                 0: 10 MHz output
                 1: 5 MHz output
                 2: 1 MHz output
@@ -203,7 +206,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
             raise ValueError('%r: Mux2 selector value must be between 0 and 8' % self)
 
         self.command('09', mux1)
-        self.command('14', mux1)
+        self.command('14', mux2)
 
     def set_broadcast_output(self, mode):
         """ Sets the broadcast output mode.
@@ -244,7 +247,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
                            'N' if lat>=0 else 'S',
                            '%03i%5.2f' % (abs(lon), abs(lon) % 1 * 60),
                            'E' if lon>=0 else 'W',
-                           '%+05.0f' % alt)
+                           '%+06.0f' % alt)
 
     def set_antenna_alarm_enable(self, enable):
         """ Enables or disables the antenna alarm.
@@ -264,6 +267,18 @@ class SpectrumInstrumentsTM4D(SocketContext):
             raise ValueError('%r: PPS source 0=LOW at power-on/GPSPPS on Time Valid/FILPPS on lock, 1= LOW at power-on/FILPPS on lock, 2= LOW on power-up/GPSPPS on valid time and Lock, 3=GPSPPS always' % self)
 
         self.command('24', source)
+
+    def set_time_format(self, fmt):
+        """ Sets the output time format to UTC or GPS time.
+
+        Parameters:
+            fmt (int): 0: GPS time, 1: UTC time
+
+        """
+        if fmt not in [0,1]:
+            raise ValueError('%r: format can be 0=GPS or 1=UTC' % self)
+        self.command('26',fmt)
+
 
     # Get commands
 
@@ -292,8 +307,8 @@ class SpectrumInstrumentsTM4D(SocketContext):
             int(time_[:2]), int(time_[2:4]), int(time_[4:6])) # hours, minutes, seconds
 
         self.last_gps_time = calendar.timegm(t.timetuple())
-        self.add_metric(metrics, 'gps_time', value=self.last_gps_time * 1000, type='gauge')
-        self.add_metric(metrics, 'gps_time_diff', value=(time.time() - self.last_gps_time) * 1000, type='gauge')
+        self.add_metric(metrics, 'gps_time', value=self.last_gps_time, type='gauge')
+        self.add_metric(metrics, 'gps_time_diff', value=(time.time() - self.last_gps_time), type='gauge')
         return t
 
     def get_position(self, reply=None, metrics=None):
@@ -344,7 +359,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
         """
         (bias, ) = self.query('56', reply)
         time_bias = int(bias)
-        self.add_metric(metrics, 'gps_time_bias', value=time_bias)
+        self.add_metric(metrics, 'gps_user_time_bias', value=time_bias)
         return time_bias
 
     def get_timing_mode(self, reply=None, metrics=None):
@@ -358,7 +373,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
         """
         (mode, ) = self.query('57', reply)
         timing_mode = int(mode)
-        self.add_metric(metrics, 'gps_mask_angle', value=timing_mode)
+        self.add_metric(metrics, 'gps_timing_mode', value=timing_mode)
         return timing_mode
 
     def get_geometric_quality_and_almanac_status(self, reply=None, metrics=None):
@@ -411,7 +426,16 @@ class SpectrumInstrumentsTM4D(SocketContext):
         """Return the mux output source.
 
         Returns:
-                mux1 (int): Mux 1 source
+                mux1 (int): Mux 1 source:
+                    0 for 10 MHz output
+                    1 for 5 MHz output
+                    2 for 1 MHz output
+                    3 for 100 kHz output
+                    4 for 10 kHz output
+                    5 for 1 kHz output
+                    6 for IRIG output (if installed)
+                    7 for PPS output
+                    8 for OFF (newer TM-4's only)
         """
         time_port_baud_rate, mux1, unknown = self.query('60', reply) # undocumented 'unknown' parameter ('+00')
         mux1 = int(mux1)
@@ -426,10 +450,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
         """
         (status, ) = self.query('61', reply)
         status = int(status)
-        if status:
-            self.gps_time_offset = 0
-        elif self.gps_time_offset is None and self.last_gps_time is not None:
-            self.gps_time_offset = time.time() - self.last_gps_time
+        self.gps_time_valid = status
 
         self.add_metric(metrics, 'gps_timing_status', value=status)
         return status
@@ -439,7 +460,16 @@ class SpectrumInstrumentsTM4D(SocketContext):
         """Return the mux output source.
 
         Returns:
-                mux2 (int): Mux 2 source
+            mux2 (int): Mux 2 source
+                0 : 10 MHz output
+                1 : Mux1 mirror
+                2 : PPS
+                3 : output option 1
+                4 : output option 2
+                5 : output option 3
+                6 : baseband IRIG (if installed)
+                7 : baseband NASA-36 (if installed)
+                8 : OFF (newer TM-4's only)
         """
         (mux2, ) = self.query('68', reply)
         mux2 = int(mux2)
@@ -538,7 +568,11 @@ class SpectrumInstrumentsTM4D(SocketContext):
         Returns:
             (antenna_alarm_enable,pps_source) tuple:
                 antenna_alarm_enable (bool): antenna alarm is enabled
-                pps_source (int): PPS source
+                pps_source (int): PPS source unitl Time valid/Initial phase lock/Beyond lock
+                   0: LOW/GPSPPS/FILPPS
+                   1: LOW/LOW/FILPPS
+                   2: LOW/GPSPPS/GPSPPS
+                   4: GPSPPS/GPSPPS/GPSPPS
         """
         aa_enabled, pps_source, _, _, _, _ = self.query('78', reply)
         aa_enabled, pps_source = (bool(aa_enabled), int(pps_source))
@@ -589,10 +623,15 @@ class SpectrumInstrumentsTM4D(SocketContext):
             valid (bool): leap seconds info is valid
             leap_seconds(int): number of leap seconds
         """
-        time_mode, valid, leaps  = self.query('81', reply)
-        valid, leap_seconds = bool(int(valid)), int(leaps)
+        is_utc_time, valid, leaps  = self.query('81', reply)
+        is_utc_time = bool(int(is_utc_time))
+        leap_seconds_valid = bool(int(valid))
+        leap_seconds = int(leaps)
+        self.gps_leap_seconds = None if not leap_seconds_valid else 0 if is_utc_time else leap_seconds
+        self.add_metric(metrics, 'gps_is_utc_time', value=int(is_utc_time))
+        self.add_metric(metrics, 'gps_leap_seconds_valid', value=leap_seconds_valid)
         self.add_metric(metrics, 'gps_leap_seconds', value=leap_seconds)
-        return valid, leap_seconds
+        return leap_seconds_valid, leap_seconds
 
     def poll_metrics(self):
         metrics = Metrics()
@@ -643,6 +682,7 @@ class SpectrumInstrumentsTM4D(SocketContext):
                     get_method = self.get_method_for(reply)
                     if get_method:
                         get_method(reply=reply, metrics=metrics)
+                    #break
         #print('Parsed %i metrics' % len(metrics.metrics))
         return metrics
 
@@ -659,7 +699,9 @@ class SpectrumInstrumentsTM4D(SocketContext):
         """
         with self.socket(flush=True):
             self.set_polling_mode()
+            self.enable_ntp_output(False)  #Not needed, causes the unit to do extra processing and affects latency
             self.set_mask_angle(0)
+            self.set_time_format(1) # UTC time
             self.set_timing_mode(1) # Static. Position is set below.
             self.set_position(lat, lon, alt)
             self.set_pps_output_source(1) # FILPPS only when fully locked
@@ -681,6 +723,7 @@ class GPSAsyncRESTServer(AsyncRESTServer):
         self.gps = {}
         super(GPSAsyncRESTServer, self).__init__(address=address, port=port, heartbeat_string='Gs')
         self.metrics_queue = Queue.Queue(1000)
+        self.metrics = Metrics(latest_only=True)
         self.add_periodic_callback(self._get_metrics, 1000)
 
 
@@ -688,25 +731,25 @@ class GPSAsyncRESTServer(AsyncRESTServer):
     def _get_metrics(self):
         """ get the metrics from the GPS units and put them in the queue
         """
-        metrics = Metrics()
+        #metrics = Metrics()
         for gps_name, gps in self.gps.items():
             self.log.info('%.32r: Getting metrics for GPS %s' % (self, gps_name))
             try:
                 m = gps.get_broadcast_metrics()
-                metrics = Metrics()
-                metrics.add(m, gps_name=gps_name)
-                self.log.info('Got %i metrics' % len(metrics.metrics))
-                if len(metrics.metrics):
-                    if self.metrics_queue.full():
-                        self.metrics_queue.get()
-                    self.metrics_queue.put(metrics)
+                #metrics = Metrics()
+                self.metrics.add(m, gps_name=gps_name)
+                self.log.info('Got %i metrics' % len(m.metrics))
+                #if len(metrics.metrics):
+                #    if self.metrics_queue.full():
+                #        self.metrics_queue.get()
+                #    self.metrics_queue.put(metrics)
             except IOError as e:
                 self.log.warning('%r: Error while trying to access metric from %s\nThe error is:\n%r' % (self, gps_name, e))
             except Exception as e:
                 self.log.error(e)
                 raise
 
-        self.log.info('Queue has %i metrics blocks' % self.metrics_queue.qsize())
+        self.log.info('Queue has %i metrics blocks' % len(self.metrics))  # _queue.qsize())
 
     ##################
     # Server commands
@@ -762,13 +805,14 @@ class GPSAsyncRESTServer(AsyncRESTServer):
     @endpoint('get-monitoring-data')
     def monitoringMetrics(self, handler):
         self.log.info('%.32r: Received monitoring metrics request' % self)
-        metrics = Metrics()
-        for i in range(self.metrics_queue.qsize()):
-            m = self.metrics_queue.get()
-            metrics.add(m)
-        self.log.info('%r: sending %i metrics' % (self, len(metrics.metrics)))
+        #metrics = self.metrics # Metrics()
+        #self.metrics.metrics={}
+        #for i in range(self.metrics_queue.qsize()):
+        #    m = self.metrics_queue.get()
+        #    metrics.add(m)
+        self.log.info('%r: sending %i metrics' % (self, len(self.metrics.metrics)))
         handler.set_header('Content-Type', 'text/plain')
-        handler.write(str(metrics))
+        handler.write(str(self.metrics.pop()))
 
 #########################################
 # Power Supply REST client

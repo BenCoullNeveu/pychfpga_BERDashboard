@@ -3,6 +3,7 @@
 chime_array.py module. Defines the objects that represent and handles
 operations one the whole array of CHIME ICE hardware.
 """
+from __future__ import absolute_import
 import argparse
 import logging
 import time
@@ -10,12 +11,15 @@ import __main__
 import os
 import sys
 import socket  # for gethostbyname()
-from collections import OrderedDict, Sequence, Mapping
+from collections import OrderedDict
 import numpy as np
 import matplotlib.pyplot as plt
 import pickle
 import re
 import datetime
+import functools
+import zlib
+import base64
 
 from tornado.netutil import Resolver
 from tornado.ioloop import IOLoop
@@ -35,7 +39,7 @@ if getattr(__main__, '__reload__', False):
 # Automatically update the search path for absolute imports of pychfpga and its subpackages. We use
 # absolute imports because 1) if both relative and absolute imports are made, then  modules ar
 # eloade dmultiple times and SQLAlchemy complains. 2) wa cannot access pychfpga subpackages if we
-# run this module as a script because Python refuses to consider the script folder asa package.
+# run this module as a script because Python refuses to consider the script folder as a package.
 try:
     import pychfpga
 except ImportError:
@@ -44,10 +48,10 @@ except ImportError:
         sys.path.insert(0, ch_acq_path)
 
 
-from pychfpga.core.icecore import Ccoll, NameSpace
+from pychfpga.core.icecore import Ccoll
 from pychfpga.core.icecore import HardwareMap, HWMResource
 from pychfpga.core.icecore import mdns_discover
-from pychfpga.core.icecore import async, async_return, async_sleep
+from pychfpga.core.icecore import async, async_return, async_sleep, async_moment
 
 from pychfpga.core.icecore import IceBoardPlus
 from pychfpga.core.icecore_ext import IceCrateExt
@@ -56,8 +60,8 @@ from pychfpga.core.metrics import Metrics
 from pychfpga.core.chFPGA_controller import chFPGA_controller
 from pychfpga.Agilent_N5764A import AgilentN5764AHandler
 from pychfpga.gpu_node import GpuNodeHandler
-
-# import logging.handlers
+from pychfpga.namespace import NameSpace, merge_dict
+from pychfpga.conf import load_yaml_config# import logging.handlers
 
 
 from pychfpga.core.icecore.session import load_session as load_yaml
@@ -93,6 +97,8 @@ class FPGABitstream(object):
     def _load(self):
         with open(self.filename, 'rb') as file_:
             self.bitstream = file_.read()
+        self.crc32 = zlib.crc32(self.bitstream) & 0xFFFFFFFF  # compute CRC32 of the data
+        self.base64 = base64.b64encode(self.bitstream)
 
 # Default ADC delays
 ADC_DELAYS_MGK7MB_REV2_MGAC08_REV2 = {
@@ -127,7 +133,8 @@ class FPGAArray(object):
                  crate_map={},
                  ignore_missing_boards = False,
 
-                 subarrays=[], ping=True,
+                 subarrays=None,
+		 ping=True,
                  mdns_timeout=2,
                  no_mezz=False,
 
@@ -135,21 +142,24 @@ class FPGAArray(object):
                  prog=None,
                  open=None,
                  if_ip=None,
+                 udp_retries=3,
 
                  # sampling_frequency=800e6,
                  # reference_frequency=10e6,
                  # data_width=4,
 
-                 sync_method=None,
-                 sync_source=None,
+                 sync_method='distributed_time',
+                 sync_source='bp_trig',
                  sync_master=None,
                  sync_master_time_source=None,
 
                  mode=None,
                  frames_per_packet=2,
+
                  stderr_log_level=None,
                  syslog_log_level=None,
-                 udp_retries=3,
+
+                 ioloop=None,
 
                  **kwargs
                 ):
@@ -249,7 +259,7 @@ class FPGAArray(object):
             None: Hardware map filtering
 
             subarrays : List of integers describing the subarrays to include in
-                the default IceBoard set. If not specified or an empty list, all
+                the default IceBoard set. If None, all
                 Iceboards in the hardware map will be selected. Affects only the
                 boards specified in the hardware map specified with the ``hwm`` parameter.
 
@@ -290,11 +300,102 @@ class FPGAArray(object):
 
             stderr_log_level: sets up a handler that prints on stderr
         """
+        init = functools.partial(
+             self.init.async,
+             hwm=hwm,
+             iceboards=iceboards,
+             icecrates=icecrates,
+             mezzanines=mezzanines,
+             exclude_iceboards=exclude_iceboards,
+             crate_map=crate_map,
+             ignore_missing_boards = ignore_missing_boards,
+             subarrays=subarrays, ping=ping,
+             mdns_timeout=mdns_timeout,
+             no_mezz=no_mezz,
+             bitfile=bitfile,
+             prog=prog,
+             open=open,
+             if_ip=if_ip,
+             sync_method=sync_method,
+             sync_source=sync_source,
+             sync_master=sync_master,
+             sync_master_time_source=sync_master_time_source,
+             mode=mode,
+             frames_per_packet=frames_per_packet,
+             stderr_log_level=stderr_log_level,
+             syslog_log_level=syslog_log_level,
+             udp_retries=udp_retries,
+             **kwargs)
 
 
+        if not ioloop:
+            # Create our own IOLoop so we don't interfere with ipython's own ioloop.
+            old_ioloop = IOLoop.current()
+            ioloop = IOLoop()
+            ioloop.make_current()
+            ioloop.run_sync(init)
+            old_ioloop.make_current()
+        else:
+            self._init = init
+            #old_ioloop = IOLoop.current()
+            #ioloop.make_current()
+            #future = init()
+            #ioloop.add_future(future)
+            #while not future.done():
+            #   print('waiting', future, future.done())
+            #   time.sleep(.3)
+            #   pass
+            #old_ioloop.make_current()
+
+        # else:
+        #     old_ioloop = None
+            # old_ioloop = IOLoop.current
+            # IOLoop.set_current(ioloop)
+
+    @async
+    def run(self):
+       yield self._init()
+
+    @async
+    def init(self,
+
+             hwm=None,
+             iceboards=[], icecrates=[], mezzanines=[], exclude_iceboards=[],
+             crate_map={},
+             ignore_missing_boards = False,
+
+             subarrays=None, ping=True,
+             mdns_timeout=2,
+             no_mezz=False,
+
+             bitfile=None,
+             prog=None,
+             open=None,
+             if_ip=None,
+
+
+             sync_method=None,
+             sync_source=None,
+             sync_master=None,
+             sync_master_time_source=None,
+
+             mode=None,
+             frames_per_packet=2,
+             stderr_log_level=None,
+             syslog_log_level=None,
+             udp_retries=3,
+
+             #ioloop=None,
+
+             **kwargs
+            ):
+
+        """
+        Co-routine implementation of fpga_array initialization
+        """
         self.ib = []  # make sure repr() has always something
         self.ic = []
-
+        self.sync_timestamp = None
 
         ###########################################
         # setup pychfpga.fpga_array logging
@@ -366,9 +467,13 @@ class FPGAArray(object):
 
         __main__._host_interface_ip_addr = if_ip
 
-        # # Fix up a few parameters for convenience
-        # if isinstance(iceboards, (str, int)):
-        #     iceboards = [iceboards]
+        # Fix up a few parameters for convenience
+
+        # Make sure iceboards is a list
+        if isinstance(iceboards, (str, int)):
+            iceboards = [iceboards]
+        if isinstance(icecrates, (str, int)):
+            icecrates = [icecrates]
         # iceboards = [self._to_integer(x) for x in iceboards]
 
         ###########################################
@@ -433,7 +538,6 @@ class FPGAArray(object):
         # serial) to the mdns discovery function.
         hw_table.icecrates = [(model, serial) for (model, serial, crate_number) in hw_table.icecrates]
 
-
         ######################################
         # Hardware map processing
         ######################################
@@ -442,7 +546,7 @@ class FPGAArray(object):
         # responding boards or boards that do not belong to the target
         # subarray.
 
-        self.logger.debug('hardware map=%s' % hwm)
+        #self.logger.debug('hardware map=%s' % hwm)
 
         # If no hardware map is provided, create an empty one
         if not hwm:
@@ -455,15 +559,15 @@ class FPGAArray(object):
             self.hwm = HardwareMap()  # Create empty hardware map
             for obj in hwm:
                 params = dict(obj) # make a copy
-                print(params)
+                #print(params)
                 class_name = params.pop('class') # remove the class name from the dict. The rest wil be used as instantiation parameters
                 class_ = HWMResource._decl_class_registry[class_name] # look up all the classes from the class registry created with the Base object
                 if issubclass(class_, IceBoardPlus):
                     crate_number = params.pop('crate_number', None)
-                    self.logger.debug('%r: Crate %r is in %r' % (self, crate_number, params))
+                    #self.logger.debug('%r: Crate %r is in %r' % (self, crate_number, params))
                     if crate_number is not None:
                         crate = self.hwm.query(IceCrateExt).filter(IceCrateExt.crate_number==crate_number).one()
-                        self.logger.debug('%r: Assigning crate %r to board %r' % (self, crate, params))
+                        #self.logger.debug('%r: Assigning crate %r to board %r' % (self, crate, params))
                         params['crate'] = crate
                     else:
                         raise RuntimeError('%r: In the hwm, crate must be an integer referring to a crate number. It will be converted to a crate object reference' % self)
@@ -474,7 +578,8 @@ class FPGAArray(object):
             self.hwm = hwm
 
         # If subarrays are specified, remove boards that are not in those subarrays
-        if subarrays:
+        if subarrays is not None:
+ 	    print('Subarrays are: %r' % subarrays)
             ib_not_in_subarray = self.hwm.query(IceBoardPlus).filter(~IceBoardPlus.subarray.in_(subarrays))
             for ib in list(ib_not_in_subarray):  # make sure the list does not change during the loop
                 self.logger.debug("%r (subarray '%s') is not in the target subarray list %s. It is removed from the YAML hardware map."  # That comment should be if verbose=1
@@ -486,22 +591,26 @@ class FPGAArray(object):
         ping_timeout = 3
         missing_boards = []
         if ping:
-            self.logger.info('%.32r: Pinging IceBoards specified in YAML file' % (self))
+            self.logger.info('%r: Pinging IceBoards specified in YAML file' % (self))
             ib_to_ping = self.hwm.query(IceBoardPlus).as_dict()  # use as_dict so ib_to_ping does not change as we delete boards from the hwm
             if ib_to_ping:
-                ping_results = ib_to_ping.ping(timeout=ping_timeout)  # asynchronous parallel call to all boards
-                self.logger.debug('%.32r: Ping results are %s' % (self, ping_results))
+                ping_results = yield [ib.ping.async(timeout=ping_timeout) for ib in ib_to_ping]  # asynchronous parallel call to all boards
+                #self.logger.debug('%r: Ping results are %s' % (self, ping_results))
                 for i, ping_successful in enumerate(ping_results):
                     ib = ib_to_ping[i]
                     if ping_successful:
                         ib.hostname = socket.gethostbyname(ib.hostname)
                     else:
-                        missing_boards.append(ib.hostname + (('(SN%s)' % ib.serial) if ib.serial else ''))
-                        self.logger.debug('%.32r: Deleting %r from the YAML hardware map' % (self, ib))
+                        missing_boards.append('%s (SN%s, (%s,%s))' % (
+                            ib.hostname,
+                            ib.serial or '????',
+                            ib.crate.crate_number if ib.crate else '?',
+                            ib.slot-1 if ib.slot else '?'))
+                        self.logger.debug('%r: Deleting %r from the YAML hardware map' % (self, ib))
                         self.hwm.delete(ib)
                 self.hwm.flush()
             if missing_boards:
-                message ="%r: Could not ping the follwing boards: %s'. Those were removed from YAML hardware map." % (self, ', '.join(missing_boards))
+                message ="%r: Could not ping the following boards: %s" % (self, ', '.join(missing_boards))
                 if ignore_missing_boards:
                     self.logger.warning(message)
                 else:
@@ -515,6 +624,8 @@ class FPGAArray(object):
         # serial numbers. We can talk to these boards, which means we can figure out everything we
         # need from these boards (serial, crate, slot  etc) right away without requiring us to do
         # mDNS query, which is the last resort (because not all systems might have mDNS support).
+
+        added_ib = []
         for (model, hostname) in list(hw_table.iceboards): # make a copy: we modify in-place
             if model is None or '.' in str(hostname): # if it is actually a hostname. Might be an int serial
                 hw_table.iceboards.remove((model, hostname))
@@ -522,31 +633,70 @@ class FPGAArray(object):
                 new_ib = IceBoardPlus(hostname=hostname)
                 self.hwm.add(new_ib)
                 self.hwm.flush()
-                # Explicitely listed boards must exist on the network
-                if ping:
-                    if new_ib.ping(timeout=ping_timeout):
-                        new_ib.hostname = socket.gethostbyname(new_ib.hostname)
-                        self.hwm.flush()
-                    else:
-                        raise RuntimeError("%r could not be found at '%s'"
-                                           % (new_ib, new_ib.tuber_uri))
+                added_ib.append(new_ib)
+        # Explicitely listed boards must exist on the network
+        if ping:
+            # ping all boards concurrently
+            ping_results = yield {ib: ib.ping.async() for ib in added_ib}
+            # If some boards failed, raise an exception
+            if not all(ping_results.values()):
+                raise RuntimeError("%r: The following Iceboards could not be pigned: '%s'" % (
+                    self,
+                    ', '.join('%r (%s)' % (ib, ib.tuber_uri)
+                              for ib, ping_result in ping_results.items() if not ping_result)))
+            # resolve hostnames into IP addresses
+            # this is not concurrent, unfortunately... this is why we checked ping first, otherwise it blocks for a long time
+            t0 = time.time()
+            for ib, ping_result in ping_results.items():
+                if ping_result:
+                    ib.hostname = socket.gethostbyname(ib.hostname)
+            if any(ping_results.values()):
+                self.hwm.flush()
+            self.logger.info('%r: resolving IP addresses took %s seconds' % (self, time.time() - t0))
+
+        ########################################################
+        # Establish Tuber communication (ARM only)
+        ########################################################
+        # All the boards in the hardware map should have a hostname now.
+        # Let's initialize ARM/Tuber
+        # communication becore we start using Tuber methods. We want to cache the Tuber methods
+        # asynchnously now instead of letting Tuber do it asynchrunously on the first Tuber command
+        # it gets.
+        self.logger.info('%r: Establishing ARM/Tuber communication' % (self))
+        ibs = self.hwm.query(IceBoardPlus)
+        t0 = time.time()
+        yield [ib._tuber_get_meta.async() for ib in ibs]
+        self.logger.info('%r: ARM conneciton established. It took %s seconds' % (self, time.time() - t0))
 
         ########################################################
         # Resolve missing serial/crate/slot info through the ARM
         ########################################################
-        # All the boards in the hardware map should have a hostname now.
         # Complete serial, crate and slot information on IceBoard that miss
         # that information by talking directly to the ARM
         # (i.e without using mDNS and pybonjour).
         ib_without_serial = self.hwm.query(IceBoardPlus).filter(IceBoardPlus.serial == None)
         if ib_without_serial.count():
-            self.logger.info('%.32r: Auto-Discovering serial number for IceBoards %s' % (self, ', '.join(ib_without_serial.hostname)))
-            ib_without_serial.discover_serial()
+            t0 = time.time()
+            self.logger.info('%r: Auto-Discovering serial number for IceBoards %s' %
+                (self, ', '.join(ib_without_serial.hostname)))
+            # concurrently resolve serials
+            futures = [ib.discover_serial.async() for ib in ib_without_serial] # Tuber method
+            self.logger.info('%r: Got all discover_serial futures after %f seconds' % (self, time.time() - t0))
+            yield futures # [ib.discover_serial.async() for ib in ib_without_serial]
+            self.logger.info('%r: Finished Auto-Discovering serial number for IceBoards. Took %f seconds.' % (self, time.time() - t0))
+
+        self.logger.info('%r: Auto-Discovering slot numbers of IceBoards')
+        t0 = time.time()
+        yield [ib.discover_slot.async() for ib in self.hwm.query(IceBoardPlus)]
+        self.logger.info('%r: Finished Auto-Discovering slot numbers for IceBoards. Took %f seconds.' % (self, time.time() - t0))
 
         ib_without_crate = self.hwm.query(IceBoardPlus).filter(or_(IceBoardPlus.crate==None, IceBoardPlus.slot==None))
         if ib_without_crate.count():
-            self.logger.info('%.32r: Auto-Discovering crate information for IceBoards %s' % (self, ', '.join(ib_without_crate.hostname)))
-            ib_without_crate.discover_crate()
+            t0 = time.time()
+            self.logger.info('%r: Auto-Discovering crate information for IceBoards %s' %
+                (self, ', '.join(ib_without_crate.hostname)))
+            yield [ib.discover_crate.async() for ib in ib_without_crate]
+            self.logger.info('%r: Finished Auto-Discovering crate serial numbers. Took %f seconds.' % (self, time.time() - t0))
 
         ###########################################################################
         # mDNS discovery of boards and crates specified by model/serial number only
@@ -602,10 +752,12 @@ class FPGAArray(object):
         # Check for missing crates
         current_crates = [(c.part_number, self._to_integer(c.serial)) for c in ic]
         #print current_crates
-        missing_crates = [(model, serial) for (model, serial) in hw_table.icecrates if (model, self._to_integer(serial)) not in current_crates]
+        missing_crates = [(model, serial) for (model, serial) in hw_table.icecrates
+                          if (model, self._to_integer(serial)) not in current_crates]
         #print missing_crates
         if missing_crates:
-            raise RuntimeError('%.32r: The following crates are missing: %s' % (self, ', '.join('%s SN%s' % (model, serial) for (model, serial) in missing_crates)))
+            raise RuntimeError('%r: The following crates are missing: %s' %
+                (self, ', '.join('%s SN%s' % (model, serial) for (model, serial) in missing_crates)))
         # Check for missing boards
         missing_slots = { (ic.part_number, ic.serial, ic.crate_number): set(range(1, ic.NUMBER_OF_SLOTS + 1)) - set(ic.slot) for ic in self.ic}
         if any(missing_slots.values()):
@@ -622,13 +774,13 @@ class FPGAArray(object):
         #################################
 
         if self.ib:
-            ib.check_tuber_version()  # Check if the board is running a compatible ARM firmware
+            [ib.check_tuber_version() for ib in self.ib]  # Check if the board is running a compatible ARM firmware
 
             # Auto-discover mezzanines and add them to the hardware map.
             if not no_mezz:
                 self.logger.info('Discovering Mezzanines...')
                 self.print_flush()  # make sure we see the previous prints right away so we have a better feeling of what is happening
-                self.ib.discover_mezzanines()
+                yield [ib.discover_mezzanines.async() for ib in self.ib]
                 self.hwm.flush()
                 self.ib.set_cache()
 
@@ -647,8 +799,8 @@ class FPGAArray(object):
 
         # Tell the IceBoard to run chFPGA firmware, program the FPGA, and establish communication with it
         if self.ib:
-            ib.set_handler(chFPGA_controller)
-            ib.set_cache() # we have a new handler, so update its cached ORM object values
+            self.ib.set_handler(chFPGA_controller)
+            self.ib.set_cache() # we have a new handler, so update its cached ORM object values
             # ib.set_handler(IceBoardPlusHandler, fpga_bitstream)
 
             # Configure the FPGA with the bitstream associated with the handler
@@ -658,8 +810,8 @@ class FPGAArray(object):
                 self.fpga_bitstream = FPGABitstream(bitfile, auto_reload=False)
                 self.logger.info('Loaded bitfile: %s' % bitfile)
                 str(self.fpga_bitstream)
-                ib.register_fpga_bitstream(self.fpga_bitstream)
-                ib.set_fpga_bitstream(force= (prog > 1))
+                self.ib.register_fpga_bitstream(self.fpga_bitstream)
+                yield [ib.set_fpga_bitstream.async(force= (prog > 1)) for ib in self.ib]
                 self.logger.info('Done configuring FPGAs')
 
         self.print_flush()
@@ -673,23 +825,25 @@ class FPGAArray(object):
             # Set the interface over which the FPGA UDP communication will be done
             # Not needed in normal uses: we now get the interface automatically by examining info from the socket connected to the ARM
             if if_ip:
-                ib.interface_ip_addr = if_ip
+                self.ib.interface_ip_addr = if_ip
 
             self.logger.info('Initializing firmware (calling ib.open())')
-            self.ib.open(adc_delay_table=ADC_DELAY_TABLE,
+            yield [ib.open.async(adc_delay_table=ADC_DELAY_TABLE,
                          udp_retries=udp_retries,
                          init=open,
                          **kwargs
                          # sampling_frequency=sampling_frequency,
                          # reference_frequency=reference_frequency,
-                         )
+                         ) for ib in self.ib]
 
+            self.logger.info('%r: Setting SYNC method' % self)
             if sync_method or sync_source:
                 self.set_sync_method(method=sync_method, source=sync_source, master=sync_master, master_time_source=sync_master_time_source)
+            self.logger.info('%r: Setting operational mode to %s' % (self, mode))
             if mode:
                 self.set_operational_mode(mode=mode, frames_per_packet=frames_per_packet)
 
-            self.logger.info('Initializing Backplane firmware')
+            self.logger.info('%r: Initializing Backplane firmware' % self)
             if self.ic:
                 self.ic.init()
 
@@ -699,7 +853,7 @@ class FPGAArray(object):
         # Completed
         #################################
 
-        self.logger.info('%.32r: Done creating %r' % (self, self))
+        self.logger.info('%r: Done creating %r' % (self, self))
 
     @staticmethod
     def _to_integer(x):
@@ -1092,7 +1246,7 @@ class FPGAArray(object):
             setting_time = round(2*setting_time + delay)
             # Now set the trigger time using that delay
             dt = self.ib[0].get_irigb_time()
-            print 'Triggering SYNC in %i seconds at %s' % (setting_time,  dt.isoformat())
+            self.logger.info('Triggering SYNC in %i seconds at %s' % (setting_time,  dt.isoformat()))
             self.print_flush()
             t0 = time.time()
             self.ib.set_irigb_trigger_time(dt, delay=setting_time)
@@ -1112,6 +1266,17 @@ class FPGAArray(object):
             if bad_ib:
                 raise RuntimeError('The following IceBoards did not SYNC properly: %s' % (','.join(repr(ib) for ib in bad_ib)))
 
+        ts = self.ib.get_irigb_time(trig=False, format = 'raw')
+        if len(set(t.nano for t in ts)) != 1:
+            self.logger.warning('%r: The timestamp is not the same for all boards after sync. Times are:n%s' %
+                (self,                  '\n'.join('%r:%i' % (ib, ts[i].nano) for i,ib in enumerate(self.ib))))
+        self.sync_timestamp = ts[0]
+        for ib in self.ib:
+            for ant in ib.ANT:
+                ant.SCALER.OVERFLOW_RESET = 1
+                ant.SCALER.OVERFLOW_RESET = 0
+
+    @async
     def set_channelizers(self, adc_mode=None, adcdaq_mode=None,
                          data_source=None, function=None, a=1, b=0,
                          fft_bypass=None, fft_shift=None,
@@ -1123,11 +1288,13 @@ class FPGAArray(object):
 
             See IceBoard's set_channelizer(...) for details.
         """
-
-        self.ib.set_channelizer(adc_mode=adc_mode, adcdaq_mode=adcdaq_mode,
+        for ib in self.ib:
+            ib.set_channelizer(adc_mode=adc_mode, adcdaq_mode=adcdaq_mode,
                         data_source=data_source, function=function, a=a, b=b,
                         fft_bypass=fft_bypass, fft_shift=fft_shift,
-                        scaler_bypass=scaler_bypass, gain=gain, postscaler=postscaler, offset_binary_encoding=offset_binary_encoding)
+                        scaler_bypass=scaler_bypass, gain=gain, postscaler=postscaler,
+                        offset_binary_encoding=offset_binary_encoding)
+            yield async_moment
         if sync:
             self.sync()
 
@@ -1152,7 +1319,7 @@ class FPGAArray(object):
     def get_iceboard_from_id(self, id):
         """ return the iceboard corresponding to the specified id.
         """
-        crate, slot = id[:2]
+        crate, slot = id[0], id[1] + 1
         return self.ic.get(crate_number=crate).slot[slot]
 
 #    def init_gains(self):
@@ -1166,7 +1333,7 @@ class FPGAArray(object):
 #                print 'Could not find gain settings for %r, sn %i. Using default gain settings.' % (ib, ib.get_fpga_serial_number())
 #            print 'Setting gains on IceBoard SN%s' % ib.serial
 #            ib.set_gain(g_array)
-
+    @async
     def load_gains(self, bank=0, gain_folder='/home/chime/ch_acq/gains'):
         """ Loads the gains from the gain files associated with every board of the array and return
         the gain map in the format {channel_id:gain}
@@ -1182,25 +1349,28 @@ class FPGAArray(object):
 
         array_gains = {}
         for ib in self.ib:
+            ch_id = ib.get_id()
+            crate, slot_0based = ch_id[0], ch_id[1]
+            self.logger.info('%r: Reading digital gains for crate %02i slot %02i (FCC%02i%02i)' % (self, crate, slot_0based, crate, slot_0based))
             board_gains = ib.load_gains(folder=gain_folder) or default_gains
+            yield async_moment
 
             if not board_gains:
-                self.logger.warn('Neither board-specific gain file not default gain file was found for IceBoard SN%s, crate %s, slot %i, channel %i.' % (ib.serial, crate, slot, ch))
+                self.logger.warn('%r: Neither board-specific gain file not default gain file was found for crate %02i slot %02i (FCC%02i%02i)' % (self, crate, slot_0based, crate, slot_0based))
 
-            for ch in range(ib.NUMBER_OF_CHANNELIZERS):
-                ch_id = ib.get_id(lane=ch)
-                if board_gains is None or ch not in board_gains:
-                    array_gains[ch_id] = None
-                else:
-                    array_gains[ch_id] = board_gains[ch]
-        return array_gains
+            if board_gains is None:
+                array_gains[ch_id] = None
+            else:
+                array_gains[ch_id] = board_gains
+        async_return(array_gains)
 
+    @async
     def set_gains(self, gains, bank=-1,  when='now'):
         """ Set the gains on the boards in the array.
 
         Arguments:
-            'gains': dictionary of gains specified as {channel_id: gain_spec, ...}.
-                     `channel_id` uniquely identifies an ADC channel and is a tubple either in the format (crate, slot, channel_number) or (board_id, channel_number).
+            'gains': dictionary of gains specified as {board_id: gain_spec, ...}.
+                     `board_id` uniquely identifies a board and is a tuple either in the format (crate, slot) or (board_id).
                      `gain_spec` is passed to the set_gain() method and is in the format (linear_gain, log_gain). `linear_gain` is a complex scalar or a 1024-element complex vector. log_gain is the post_scaler factor, and is a integer.
 
             `bank`: gain bank in which the gains are written. If `bank`=-1 or is None, gains are
@@ -1217,9 +1387,11 @@ class FPGAArray(object):
 
         """
         for ch_id, gain in gains.items():
+            crate, slot_0based = ch_id[0], ch_id[1]
+            self.logger.info('%r: Setting digital gains for crate %02i slot %02i (FCC%02i%02i)' % (self, crate, slot_0based, crate, slot_0based))
             ib = self.get_iceboard_from_id(ch_id)
-            ch = ch_id[-1]
-            ib.set_gain(gain=gain, channels=[ch], bank=bank)
+            ib.set_gains(gain=gain, bank=bank)
+            yield async_moment
 
         if when is not None:
             self.switch_gains(bank=bank, when=when)
@@ -1283,13 +1455,13 @@ class FPGAArray(object):
         #     raise RuntimeError('All boards must be in the same crate. The provided set of Iceboards have the following crates: %r' % crate_set)
         # crate = crate_set.pop()
 
-        self.logger.info('%.32r: Configuring crate-wide data shuffling with frames_per_packet=%i' % (self, frames_per_packet))
+        self.logger.info('%r: Configuring crate-wide data shuffling with frames_per_packet=%i' % (self, frames_per_packet))
 
         #####################
         # Set-up transmitters
         #####################
         for i, ib in enumerate(self.ib):
-            self.logger.info('%.32r: **** Initializing transmitters for IceBoard %r (SN%s) ****' % (ib.crate, ib, ib.serial))
+            self.logger.info('%r: **** Initializing transmitters for IceBoard %r (SN%s) ****' % (self, ib, ib.serial))
             ib.set_corr_reset(0)
 
             tx_list.append((ib.slot, 0))  # Register Bypass lane (lane 0) as a transmitter in this slot
@@ -1339,14 +1511,15 @@ class FPGAArray(object):
                 rx = (ib.slot, i)
                 tx = ib.crate.get_matching_tx(rx)
                 if tx in tx_list:
-                    self.logger.debug('%.32r: In %r,  %s is receiving from %s' % (self, ib.crate, rx, tx))
+                    pass
+                    #self.logger.debug('%r: In %r,  %s is receiving from %s' % (self, ib.crate, rx, tx))
                 else:
-                    self.logger.debug('%.32r: In %r, %s has no corresponding transmitter' % (self, ib.crate, rx))
+                    self.logger.debug('%r: In %r, %s has no corresponding transmitter' % (self, ib.crate, rx))
 
 
         # sync boards
         #soft_sync(c, sync_board)
-        self.logger.info('%.32r: Shuffling initialization completed. Syncing boards' % self)
+        self.logger.info('%r: Shuffling initialization completed. Syncing boards' % self)
         self.sync(delay=2)
 
     def get_chan_identity_map(self):
@@ -2219,7 +2392,6 @@ class FPGAArray(object):
         func=data, dict, key is iceboard object
         """
 
-
         if not len(self.ib):
             print '[ There are no IceBoards in the hardware map ]'
             return
@@ -2306,41 +2478,26 @@ class FPGAArray(object):
         """
         metrics = Metrics()
 
-        self.logger.info('%r: Getting IceBoard backplane hardware metrics' % self)
+        # IceCrate metrics
+        self.logger.info('%r: Getting IceBoard backplane hardware metrics (over ARM link)' % self)
         for ic in self.ic:
-            # backplane metrics
-            try:
-                slot, ib = ic.slot.items()[0]
-                bp_metrics = yield ib.get_backplane_metrics.async()
-                metrics.add(bp_metrics)
-            except Exception as e:
-                self.logger.error('%r: error getting backplane metrics: error is %r' % (self, e))
-        # IceBoard metrics
-        self.logger.info('%r: Getting IceBoard hardware metrics' % self)
-        try:
-            all_metrics = yield [ib.get_metrics.async() for ib in self.ib]
-            self.logger.info('%r: got the metrics' % self)
-        except Exception as e:
-            self.logger.error('%r: error getting FPGA metrics: error is %r' % (self, e))
-            try:
-                self.ib.check_command_count(reset=True)
-            except Exception as e:
-                self.logger.error('%r: Cannot reset FPGA command counters because of error: %r' % (self, e))
+            slot, ib = ic.slot.items()[0]
+            metrics += yield ib.get_backplane_metrics.async()
 
-        self.logger.info('%r:Getting FPGA Firmware metrics' % self)
-        if ib.is_open():
-            try:
-                all_metrics += yield [ib.get_bp_shuffle_metrics.async() for ib in self.ib]
-                all_metrics += yield [ib.get_crossbar_metrics.async() for ib in self.ib]
-            except Exception as e:
-                self.logger.error('%r: error getting FPGA Firmware metrics: error is %r' % (self, e))
-                try:
-                    self.ib.check_command_count(reset=True)
-                except Exception as e:
-                    self.logger.error('%r: Cannot reset FPGA command counters because of error: %r' % (self, e))
-            #print(all_metrics)
-        for m in all_metrics:
-            metrics.add(m)
+        # IceBoard metrics
+        self.logger.info('%r: Getting IceBoard temperature & power supply metrics (over ARM link)' % self)
+        m = yield [ib.get_metrics.async() for ib in self.ib]
+        metrics += m
+        self.logger.info('%r: Got %i IceBoard temperature & power supply metrics' % (self, len(m)))
+        metrics += yield [ib.get_fpga_udp_metrics.async() for ib in self.ib]
+
+        self.logger.info('%r: Getting corner-turn links metrics (over FPGA UDP link)' % self)
+        metrics += yield [ib.get_bp_shuffle_metrics.async() for ib in self.ib]
+        self.logger.info('%r: Getting corner-turn crossbars metrics (over FPGA UDP link)' % self)
+        metrics += yield [ib.get_crossbar_metrics.async() for ib in self.ib]
+        self.logger.info('%r: Getting channelizer metrics (over FPGA UDP link)' % self)
+        metrics += yield [ib.get_channelizer_metrics.async() for ib in self.ib]
+        self.logger.info('%r: Finished gathering FPGA/backplane metrics' % self)
 
         # Backplane GTX
         # Errors, signal level
@@ -2551,14 +2708,19 @@ class FPGAArray(object):
             ps.power_cycle(delay=4)
 
 
+    @async
     def set_adc_delays(self, **kwargs):
         """
         Set ADC delays for all Mezzanines on all IceBoards of the array. Calls set_adc_delays() on each IceBoard instance with the specified paramaters.
         """
 
         for ib in self.ib:
-            self.logger.info("%.32r: Setting ADC delays" % (self))
-            ib.set_adc_delays(**kwargs)
+            if ib.is_open():
+                self.logger.info("%r: Setting ADC delays" % (self))
+                ib.set_adc_delays(**kwargs)
+                yield async_moment
+	    else:
+                self.logger.warning("%r: Communication with FPGA is not initialized. Cannot set ADC delays" % (self))
 
 
 ICE_PATTERNS = [
@@ -2722,233 +2884,37 @@ def parse_hw_string(hw_string, remap_table={}, dut_id_patterns=ICE_PATTERNS):
 
 
 
-def parse_args_as_dict(parser, *args, **kwargs):
-    """ Parses arguments like argparse.parse_args(...), with the following differences:
-           - The results are returned as a dictionary instead of a namespace.
-           - Arguments that have the value ``None`` are not included (they are presumed not to have been specified in the command line)
-           - If an argument is part of a group that has the ``sub_dict`` attribute, all the argument values of this group are stored in a subdictionary named by that attribute.
-    """
-
-    # Create a dictionary that maps command line arguments to their group name.
-    group_map = {action.dest: getattr(group, 'sub_dict', '')
-              for group in parser._action_groups
-                 for action in group._group_actions}
-
-    args = parser.parse_args(*args, **kwargs)
-
-    args_dict = {}
-    for k, v in vars(args).items():
-        if v is not None:
-            sub_dict = group_map[k]
-            if sub_dict:  # if a sub dict was specified
-                if sub_dict not in args_dict:  # a sub dict if it does not exist
-                    args_dict[sub_dict] = {}
-                args_dict[sub_dict][k] = v
-            else:
-                args_dict[k] = v
-    return args_dict
-
-
-def merge_dict(src, dest):
-    """ Merge a hierarchy of dictionnaries.
-    - Only a dict can be merged with a dict
-    - Dicts are merged as follow:
-        - If the destination item does not exist is it created from the source
-        - If both the source and destination item is a dict then those are merged
-        - If only one of the source or destination is a dict there is an error
-
-    """
-    def is_list(x):
-        return isinstance(dest, Sequence)
-    def is_dict(x):
-        return isinstance(dest, Mapping)
-
-    logger = logging.getLogger('')
-
-    if is_dict(src) or is_dict(dest):
-        # print ' --- merge ', src, 'to', dest
-        src = src or {}
-        dest = dest or {}
-        if is_dict(src) and is_dict(dest):
-            for k, v in src.iteritems():
-                if k in dest:
-                    dest[k] = merge_dict(v, dest[k])
-                else:
-                    dest[k] = v
-        else:
-            raise TypeError('Only a mapping can be merged with another mapping')
-    elif is_list(src) or is_list(dest):
-        if not is_list(src):
-            src = [src]
-        if not is_list(dest):
-            dest = [dest]
-        dest.extend(src)
-    else:
-        logger.warning('%.32s: Overriding  %s with %s' % ('merge_dict', dest, src))
-        dest = src
-    return dest
-
-def load_yaml_config(object_names, default_filename='config.yaml'):
-    """
-    Loads one or more elements from a YAML configuration file.
-
-    Parameters:
-
-        object_names (str or list of str): String or list of strings describing the name of a YAML
-           files and objects to load.
-
-            [filename :]object_name{.object_name} {[.]object_name{.object_name}}
-
-           Name of objects are specified by preceding them with a semicolon.
-           Object hierarchy is separated by '.'. An object starting with '.'
-           starts at the same root note as the previous object.
-
-        default_filename (str): Filename to use if no file is specified (no semicolon)
-
-    Returns:
-         A Python dictionary
-
-    Examples::
-        Yaml file *conf.yaml*::
-            obj1:
-                field11: 11
-                obj11:
-                    field111: 111
-                    field112: 112
-                obj12:
-                    field121: 121
-                    field122: 122
-            obj2:
-                field21: 21
-                obj21:
-                    field211: 211
-                    field212: 212
-
-
-        # Loading objects from default conig file
-        load_yaml_config('obj1')  -> {field11: ..., obj11: ..., obj12: ...}
-        load_yaml_config('obj1 obj2')  -> {field11: ..., obj11: ..., obj12: ..., field21: ..., obj21: ...}
-        load_yaml_config('obj1.obj11 obj2')  -> {field111: ..., field112: ..., field21: ..., obj21: ...}
-        load_yaml_config('obj1.obj11 .obj12')  -> {field111: ..., field112: ...,  field121: ..., field122:...}
-
-        # With a specific filename
-        load_yaml_config('conf.yaml:obj1 obj2')
-
-
-    """
-        # -------------------------------
-    # Load YAML file
-    # -------------------------------
-    # The YAML file may contain any configuration data that will be
-    # accessible by the user, which includes hardware maps that will be
-    # extracted below
-
-
-    if not object_names:
-        return {}
-
-    # If the objects are passed as a list of strings, combine those in a single string
-    if not isinstance(object_names, str):
-        object_names = ' '.join(object_names)  # Combine all strings into a single string
-
-    config = {}
-    logger = logging.getLogger(__name__)
-    if not object_names:
-        return config
-
-
-    yaml_args = object_names.split(':')
-    if len(yaml_args) > 2:
-        raise ValueError('Only one filename can be specified')
-
-    yaml_filename = yaml_args[0] or default_filename
-
-    # print yaml_filename
-    if len(yaml_args) == 1: # if there is no semiciin, it's either a filename or a object
-        yaml_filename = default_filename
-        yaml_objects = yaml_args[0].split()
-    elif len(yaml_args) == 2:
-        yaml_filename = yaml_args[0]
-        yaml_objects = yaml_args[1].split()
-
-    logger.info('Loading YAML file %s' % (yaml_filename))
-    # print 'Loading YAML file %s' % yaml_filename
-    with open(yaml_filename, 'rb') as yamlfile:
-        yaml = load_yaml(yamlfile)
-
-    # self.hwm = None
-    current_root_node = yaml
-
-    for yaml_object_path in yaml_objects:
-        yaml_path_items = yaml_object_path.split('.')
-        if yaml_path_items[0]:  # If the path does not start with '.', restart from top
-            current_root_node = yaml
-        current_node = current_root_node
-        for path_item in yaml_path_items:
-            if path_item:
-                if path_item in current_node:
-                    current_root_node = current_node
-                    current_node = current_node.get(path_item)
-                else:
-                    raise RuntimeError("YAML file loading error: Unknown object '%s'" % yaml_object_path)
-        logger.info('Loading YAML elements from object %s' % (yaml_object_path))
-        # print 'Loading YAML elements from object %s' % yaml_object_path
-
-        # if isinstance(node, Session):
-        #     self.hwm = self.yaml
-        if not isinstance(current_node, dict):
-            raise RuntimeError("Target element '%s' must be a dictionary" % yaml_object_path)
-        # print 'merging', current_node, 'with', config
-        config = merge_dict(current_node, config)
-        # # Copy each item of the dictionary into the final dictionary. If an item is a dict and already, merge the fields. Similarly, extend lists.
-        # for (k, v) in current_node.items():
-        #     if k in config:
-        #         arg = config[k]
-        #         if isinstance(arg, list) and isinstance(v, list):
-        #             arg.extend(v)
-        #             # print 'Extended %s=%s' % (k, arg)
-        #         elif isinstance(arg, list):
-        #             arg.append(v)
-        #             # print 'Appended %s=%s' % (k, arg)
-        #         else:
-        #             # print 'Overwriting argument %s=%s to %s=%s' % (k, arg, k, v)
-        #             setattr(config, k, v)
-        #     else:
-        #         # print 'Creating %s=%s' % (k, v)
-        #         config[k] = v
-    return config
-
-def validate_config(config, schema_file):
-    print 'Loading Schema YAML file %s' % schema_file
-    with open(schema_file, 'rb') as yamlfile:
-        schema = load_yaml(yamlfile)
-
-    def validate(config, schema):
-        for key, info in schema.items():
-            type_ = info['type']
-            if key not in config:
-                config[key] = get(schema, 'default', {})
-            value = config[key]
-            if isinstance(info, dict) and 'type' not in info:
-                validate(config[key], schema[key])
-                continue
-            try:
-                if type_ == 'integer':
-                    assert isinstance(value, int) and not ((hasattr(info,'min') and value < info['min']) or (hasattr(info,'max') and value > info['max']))
-                elif type_ == 'float':
-                    assert isinstance(value, float) and not ((hasattr(info,'min') and value < info['min']) or (hasattr(info,'max') and value > info['max']))
-                elif type_ == 'string':
-                    assert isinstance(value, str)
-                elif type_ == 'ip_addr':
-                    socket.inet_aton(value)
-                elif type_ == 'int_list':
-                    assert isinstance(value, list) and all(isinstance(x, int) for x in value)
-            except (AssertionError, socket.error):
-                raise ValueError("Value for %s=%s failed the criteria %s" % (key, value, info) )
-
-    validate(config, schema)
 
 log_levels = {'info': logging.INFO, 'debug': logging.DEBUG, 'warn': logging.WARNING, 'error': logging.ERROR}
+
+def setup_logging(log_target='syslog', log_level='debug', sql_log_level='warn', stderr_log_level='warn'):
+    # Make sure SQLAlchemy does not log too much
+    sql_logger = logging.getLogger('sqlalchemy.engine.base.Engine')
+    sql_logger.setLevel(log_levels[sql_log_level])
+
+    # Set-up main loggers
+    if log_target == 'stream':
+        log_handler = logging.StreamHandler()
+    elif log_target == 'syslog':
+        log_handler = logging.handlers.SysLogHandler()
+    else:
+        log_handler = logging.FileHandler(log_target)
+    formatter = logging.Formatter('%(asctime)s %(levelname)s %(name)s:  %(message)s')
+
+    logger = logging.getLogger('')
+    logger.handlers = []  # Clear all existing handlers
+    logger.setLevel(logging.DEBUG)  # pass all messages to the handlers which will filter what they want
+
+    log_handler.setLevel(log_levels[log_level])
+    log_handler.setFormatter(formatter)
+    logger.addHandler(log_handler)
+
+    stream_handler = logging.StreamHandler()
+    stream_handler.setFormatter(formatter)
+    stream_handler.setLevel(log_levels[stderr_log_level])
+    logger.addHandler(stream_handler)
+    return logger
+
 
 def add_logging_arguments(parser):
     parser.add_argument('-t', '--log_target', action='store', type=str, default='syslog', help="Logging target ('stream', 'syslog' or a filename)")
@@ -2969,44 +2935,57 @@ def add_fpga_array_arguments(parser):
     parser.add_argument('--prog',            type=int, nargs='?', const=1, help='Programs the FPGA if not already programmed. --prog or --prog 1 programs the FPGA if the firmware is not already programmed.  --prog 2 forces the FPGA programming even if the firmware is already programmed')
     parser.add_argument('-b', '--bitfile',   type=str, help='Filename of the bitfile used to to program the FPGAs')
     parser.add_argument('-o', '--open',      type=int, nargs='?', const=1, help='Opens communication with the FPGAs, create the Python objects representing the firmware, and initialize the firmware. --open 0 skips the firmware initialization phase')
-    parser.add_argument('--sync_method',     type=str, default='distributed_time', help="Sets the global syncing method ('distributed_time', 'centralized_time_trigger', 'centralized_soft_trigger', 'local_soft_trigger')")
-    parser.add_argument('--sync_source',     type=str, default='bp_trig', help="Sets the global syncing source ('bp_gpio_int', 'bp_time', 'bp_trig')")
-    parser.add_argument('--sync_master',     type=str, default=None, help="Serial number of the IceBoard that generates the time or trig signal")
-    parser.add_argument('--sync_master_time_source', type=str, default=None, help="Source of the time signal used by the master board to generate the time or trigger signal ('bp_gpio_int', 'bp_time', 'bp_trig')")
-    parser.add_argument('-m', '--mode',     type=str, default=None, help="Operational mode ('shuffle16', 'shuffle256', 'shuffle512'). If not specified, set_operational_mode() is not called.")
-    parser.add_argument('-f', '--frames_per_packet', '--fpp',     type=int, default=2, help="Number of frames per packeet. Default=2.")
-    parser.add_argument('-u', '--udp_retries',     type=int, default=3, help="Number of times UDP packet transmission to the FPGA will be retried.")
-    parser.add_argument('hwm', type=str, nargs='*', help="target hardware")  # allows free-style hardware description string
+    parser.add_argument('--sync_method',     type=str, help="Sets the global syncing method ('distributed_time', 'centralized_time_trigger', 'centralized_soft_trigger', 'local_soft_trigger')")
+    parser.add_argument('--sync_source',     type=str, help="Sets the global syncing source ('bp_gpio_int', 'bp_time', 'bp_trig')")
+    parser.add_argument('--sync_master',     type=str, help="Serial number of the IceBoard that generates the time or trig signal")
+    parser.add_argument('--sync_master_time_source', type=str, help="Source of the time signal used by the master board to generate the time or trigger signal ('bp_gpio_int', 'bp_time', 'bp_trig')")
+    parser.add_argument('-m', '--mode',      type=str, help="Operational mode ('shuffle16', 'shuffle256', 'shuffle512'). If not specified, set_operational_mode() is not called.")
+    parser.add_argument('-f', '--frames_per_packet', '--fpp',     type=int, help="Number of frames per packeet. Default=2.")
+    parser.add_argument('-u', '--udp_retries', type=int, help="Number of times UDP packet transmission to the FPGA will be retried.")
+    parser.add_argument('hwm',               type=str, nargs='*', default=argparse.SUPPRESS, help="target hardware")  # allows free-style hardware description string
 
-def setup_logging(log_target='syslog', log_level='debug', sql_log_level='warn', stderr_log_level='warn'):
-    # Make sure SQLAlchemy does not log too much
-    sql_logger = logging.getLogger('sqlalchemy.engine.base.Engine')
-    sql_logger.setLevel(log_levels[sql_log_level])
+    defaults = dict(
+        sync_method='distributed_time',
+        sync_source='bp_trig',
+        sync_master=None,
+        sync_master_time_source=None,
+        mode=None,
+        frames_per_packet=2,
+        udp_retries=3)
+    return defaults
 
-    # Set-up main loggers
-    if log_target == 'stream':
-        log_handler = logging.StreamHandler()
-    elif log_target == 'syslog':
-        log_handler = logging.handlers.SysLogHandler()
-    else:
-        log_handler = logging.FileHandler(log_target)
+def parse_args_as_dict(parser, *args, **kwargs):
+    """
+    Parses arguments like argparse.parse_args(...), with the following differences:
 
-    logger = logging.getLogger('')
-    logger.handlers = []  # Clear all existing handlers
-    logger.setLevel(logging.DEBUG)  # pass all messages to the handlers which will filter what they want
+       - The results are returned as a dictionary instead of a argparse namespace.
+       - If an argument is part of a group that has the ``sub_dict`` attribute, all the argument
+         values of this group are stored in a subdictionary named by that attribute.
+    """
 
-    log_handler.setLevel(log_levels[log_level])
-    logger.addHandler(log_handler)
+    # Create a dictionary that maps command line arguments to their group name.
+    group_map = {action.dest: getattr(group, 'sub_dict', '')
+              for group in parser._action_groups
+                 for action in group._group_actions}
 
-    stream_handler = logging.StreamHandler()
-    stream_handler.setLevel(log_levels[stderr_log_level])
-    logger.addHandler(stream_handler)
-    return logger
+    args = parser.parse_args(*args, **kwargs)
+
+    args_dict = {}
+    for k, v in vars(args).items():
+        # if v is not None:
+        sub_dict = group_map[k]
+        if sub_dict:  # if a sub dict was specified
+            args_dict.setdefault(sub_dict, {})[k] = v
+        else:
+            args_dict[k] = v
+    return args_dict
+
+
 
 def GPUArray(gpu_nodes=[]):
         # Create GPU node array
         if gpu_nodes:
-            print gpu_nodes
+            #print gpu_nodes
             return Ccoll(GpuNodeHandler(hostname=hostname) for hostname in gpu_nodes)
         else:
             return Ccoll([])
@@ -3154,46 +3133,54 @@ def create_fpga_array(args=None):
 
     # Add logging-related command-line parameters
     logging_group = parser.add_argument_group('logging parameters', 'Specify how and where the logging is done')
-    logging_group.sub_dict = 'logging'  # group all arguments in this group in a sub dictionary with this name
+    logging_group.sub_dict = 'cli_logging'  # group all arguments in this group in a sub dictionary with this name
     add_logging_arguments(logging_group)
 
 
     # Add FPGA Array-related command-line parameters
     fpga_group = parser.add_argument_group('FPGA Array parameters', 'Allows interactive creation of a hardware map and initialization of all its components')
-    fpga_group.sub_dict = 'fpga_array_params'  # group all arguments in this group in a sub dictionary with this name
-    add_fpga_array_arguments(fpga_group)
+    fpga_group.sub_dict = 'cli_fpga_array'  # group all arguments in this group in a sub dictionary with this name
+    fpga_defaults = add_fpga_array_arguments(fpga_group)
 
     gpu_group = parser.add_argument_group('GPU Array parameters', 'Allows interactive creation of GPU nodes')
-    gpu_group.sub_dict = 'gpu_array'  # group all arguments in this group in a sub dictionary with this name
+    gpu_group.sub_dict = 'cli_gpu_array'  # group all arguments in this group in a sub dictionary with this name
     gpu_group.add_argument('-n', '--gpu_nodes', type=str, nargs='+',  help='List of IP address or hostnames of the GPU node objects to be created.')
 
     ps_group = parser.add_argument_group('Power Supply Array parameters', 'Allows interactive creation of Power Supply objects')
-    ps_group.sub_dict = 'power_supply_array'  # group all arguments in this group in a sub dictionary with this name
+    ps_group.sub_dict = 'cli_power_supply_array'  # group all arguments in this group in a sub dictionary with this name
     ps_group.add_argument('-p', '--power_supplies', type=str, nargs='+', help='List of IP address or hostnames of the power supply objects (Agilent_N5764A) to be created.')
 
     # Add generic command-line parameters
     parser.add_argument('-y', '--yaml',  type=str, nargs='+',   help='YAML configuration file name, optionally followed by object names in that file.')
 
-
     args = parse_args_as_dict(parser)  # Parse command-line arguments as a dict, with arguments groups stored in separate sub dictionaries
     # args.test = parse_dut_id(args.target)
-
+    #print('args=', args)
     # -------------------------------
     # Load configuration file
     # -------------------------------
     config = load_yaml_config(args.pop('yaml', None))  # Load YAML config
-    config = merge_dict(args, config)     # Add command line arguments to config
+    #config = merge_dict(config, args)     # Add command line arguments to config
     # config['test'] = parse_dut_id(' '.join(config['target']))
 
-    logger = setup_logging(**config.get('logging', {}))
-    fpga_array_params = config.get('fpga', {}).get('fpga_array_params', {}) or config.get('fpga_array_params', {})
+    logger = setup_logging(**args.get('cli_logging', {}))
+
+    # FPGA array
+    config_fpga_array_params = config.get('fpga', {}).get('fpga_array_params', {}) or config.get('fpga_array_params', {})
+    cli_fpga_array_params = {k: v for k, v in args['cli_fpga_array'].items() if v is not None}
+    #Sprint('merging \n\n%r\n\n with \n\n%r' % (config_fpga_array_params, cli_fpga_array_params))
+    fpga_array_params = merge_dict(config_fpga_array_params, cli_fpga_array_params)
     fpga_array = FPGAArray(**fpga_array_params)  # Create FPGA array
-    gpu_array = GPUArray(**config.get('gpu_array', {}))     # Create FPGA array
-    ps_array = PSArray(**config.get('power_supply_array', {}))     # Create FPGA array
+
+    # GPU array
+    gpu_array = GPUArray(**config.get('cli_gpu_array', {}))     # Create FPGA array
+
+    # Power supply array
+    # ps_array_params = merge_dict(config.get('power_supply_array', {}), args['cli_power_supply_array'])
+    ps_array_params = args['cli_power_supply_array']
+    ps_array = PSArray(**ps_array_params)     # Create FPGA array
 
     return config, fpga_array, gpu_array, ps_array
-
-
 
 if __name__ == '__main__':
     (config, ca, nodes, ps) = create_fpga_array()

@@ -2,7 +2,7 @@
 :mod:`ch_acq`:  CHIME telescope control package
 ===============================================
 
-The `ch_acq` package provides the Python modules that are used to initialize and operate the CHIME telescope hardware and make it produce and store correlated data. The data processing pipeline, which is not within the scope of this package, then process the data to generate usable scientific data.
+The `ch_acq` package is a collection of Python modules that are used to initialize and operate the CHIME telescope FPGA-based F-Engine, corner-turn engine and X-and make it produce and store correlated data. The data processing pipeline, which is not within the scope of this package, then process the data to generate usable scientific data.
 
 The main module, :mod:`ch_master`, is used to connect with the various remote processes and hardware that operate the array, configure them into the desired configuration, and runs in the background to provide monitoring information and receiver further commands.
 
@@ -12,7 +12,6 @@ The main module, :mod:`ch_master`, is used to connect with the various remote pr
 
    installation
    quick_start
-   usage
 
 Installation
 ============
@@ -31,7 +30,7 @@ To start an experiment with `ch_master` with the configuration ``jfc.erh``, ``cd
 
 Here, ``jfc.erh`` is the config defined in ``config.yaml``, which in this case powers-up all the crates in the East receiver Hut (ERH), initialize all boards, start capturing raw data for 5 minutes, and continues running after that until stopped with :kbd:`\Ctrl-C`.
 
-The ch_master script tries to connect to a ch_master server, which in turn connect to a ADC raw data acquisition (raw_acq), power supply (ps) server, etc. If any of those servers are not already running, new local servers will be created and initialized. These servers run until the script is interrupted, and while they run, they can be queried REST commands and will serve metrics to Prometheus. More details can be found in :ref:`ch_master_cli`.
+The ch_master script tries to connect to a ch_master server (or creates a new one), which in turn connect to a ADC raw data acquisition (raw_acq), power supply (ps) server, etc. If any of those servers are not already running, new local servers will be created and initialized. These servers run until the script is interrupted. While they run, all these servers can be queried with REST commands.  Prometheus will get the metrics from these servers through these REST servers . More details can be found in :ref:`ch_master_cli`.
 
 Although ch_master will start its own power supply server if needed, it is usually a good idea to continuously run the power supply server so Prometheus can see the state of the supplies at all time, and allow command-line control of the supplies. To start a power supply server on the local machine, just do::
 
@@ -45,9 +44,9 @@ Then leave it running (preferably in a ``screen`` that won't die when you log ou
 
 More details can be found in :ref:`power_supplies`.
 
-The GPS server is not started by ch_master. To start it, just do::
+The GPS server is a non-critical service and is not started by ch_master. To start it, just do::
 
-  ./gps.py jfc.drao # again, there is only one server config to use in jfc.drao, so no need to specify it.
+  ./gps.py jfc.drao # again, there is only one gps server configuration to use in jfc.drao, so no need to specify it.
 
 More details can be found in :ref:`gps`.
 
@@ -62,11 +61,13 @@ The :mod:`ch_acq` package provides the following main modules, each correspondin
 
    ch_master
    ps
-   gps
    raw_acq
    kotekan
-   chrx
+   .. chrx
    fpga_array
+   chfpga_controller
+   gps
+   weather
 
 Additional support modules are also provided:
 

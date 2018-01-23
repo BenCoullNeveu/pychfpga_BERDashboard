@@ -5,6 +5,7 @@ from __future__ import absolute_import, division, print_function
 
 import logging
 import argparse
+import sys
 
 import numpy as np
 
@@ -61,7 +62,7 @@ class KotekanAsyncRESTServer(AsyncRESTServer):
 
     @coroutine
     @endpoint('packet_grab')
-    def status(self, handler, number_of_packets=5):
+    def packet_grab(self, handler, number_of_packets=5):
         self.log.info('%.32r: Received status command' % (self))
         coroutine_return("Status")
 
@@ -84,7 +85,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         super(KotekanAsyncRESTClient, self).__init__(
             hostname=hostname,
             port=port,
-            server_class=KotekanAsyncRESTServer,
+            # server_class=KotekanAsyncRESTServer,
             heartbeat_string='Kc')
         # self.name = name
         self.config = config
@@ -110,7 +111,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
     @coroutine
     def start(self, config):
         newconfig = self.config.copy()
-        newconfig.update(self.config)
+        newconfig.update(config)
         result = yield self.post('start', **newconfig)
         coroutine_return(result)
 

@@ -4,11 +4,9 @@ REST Server and clients for the CHIME receiver hut power supplies.
 
 """
 
-import logging
 import sys
 import argparse
 import time
-import socket
 
 # import tornado
 
@@ -796,6 +794,13 @@ class PowerSupplyAsyncRESTClient(AsyncRESTClient):
         coroutine_return(result)
 
     @coroutine
+    def power_cycle(self, *ps_names):
+        off_result = yield self.post('power-off', ps_names=ps_names)
+        yield sleep(3)
+        on_result = yield self.post('power-on', ps_names=ps_names)
+        coroutine_return((off_result, on_result))
+
+    @coroutine
     def get_metrics(self):
         result = yield self.get('get-metrics')
         coroutine_return(Metrics(result))
@@ -881,7 +886,7 @@ def main():
         ./ps jfc.erh power_off # power off supplies used by server running at theaddress specified in the jfc.erh config
     """
     # Setup logging
-    log.setup_basic_logging('INFO')
+    log.setup_basic_logging('DEBUG')
     client, server = run_client(sys.argv[1:], PowerSupplyAsyncRESTServer, PowerSupplyAsyncRESTClient, object_name ='PowerSupply', server_config_path='power_supplies.servers')
     return client, server
 

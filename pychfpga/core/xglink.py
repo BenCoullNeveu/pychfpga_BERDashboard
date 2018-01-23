@@ -16,6 +16,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 from Module import Module_base, BitField
+from .icecore import async, async_return, async_sleep, async_moment
 from metrics import Metrics
 
 # Types of memory-mapped registers
@@ -493,7 +494,7 @@ class XGLinkArray(XGLink):
         self.NUMBER_OF_PCB_LINKS = 15
         self.NUMBER_OF_QSFP_LINKS = 4
 
-
+    @async
     def get_rx_lane_monitor(self, names, link_group=None):
 
         if isinstance(names, str):
@@ -520,11 +521,12 @@ class XGLinkArray(XGLink):
 
         mon = [list() for _ in names]
         for lane in lanes:
+            yield async_moment
             self.LANE_SEL = lane
             for i, bf in enumerate(bitfields):
                 mon[i].append(self.read_bitfield(bf))
 
-        return mon if is_list else mon[0]
+        async_return(mon if is_list else mon[0])
 
     def reset_stats(self):
         self.RESET_STATS = 1
@@ -534,33 +536,35 @@ class XGLinkArray(XGLink):
     def get_rx_error_count(self, link_group=None):
         return self.get_rx_lane_monitor('ERROR_CTR', link_group)
 
+    @async
     def get_metrics(self):
-        """ Checks the status of the rx links. Returns a list of dict, each
-        dict containing a number of {error_type:error_info} for the
-        corresponding lane.
+        """ Return metrics on the status of the rx links as a Metrics object.
         """
         metrics = Metrics(
             crate_id=self.fpga.crate.get_string_id() if self.fpga.crate else None,
             crate_number=self.fpga.crate.crate_number if self.fpga.crate else None,
-            slot=self.fpga.slot,
-            id=self.fpga.get_string_id())
+            slot=(self.fpga.slot or 0) - 1,
+            id=self.fpga.get_string_id(),
+            type='GAUGE')
 
         for link_type, link_group in [('pcb_gtx',0), ('qsfp_gtx', 1)]:
-            err, min_len, max_len, frame_det, rx_fifo, tx_fifo = self.get_rx_lane_monitor(['ERROR_CTR', 'MIN_FRAME_LENGTH', 'MAX_FRAME_LENGTH', 'FRAME_DETECT', 'RX_FIFO_OVERFLOW', 'TX_FIFO_OVERFLOW'],  link_group)
+            yield async_moment # let the ioloop process data
+            err, min_len, max_len, frame_det, rx_fifo, tx_fifo = yield self.get_rx_lane_monitor.async(['ERROR_CTR', 'MIN_FRAME_LENGTH', 'MAX_FRAME_LENGTH', 'FRAME_DETECT', 'RX_FIFO_OVERFLOW', 'TX_FIFO_OVERFLOW'],  link_group)
             for lane in range(len(err)):
-                metrics.add('fpga_bp_link_errors', value=err[lane], type='GAUGE', link_type=link_type, lane=lane)
-                metrics.add('fpga_bp_link_min_length', value=min_len[lane], type='GAUGE', lane=lane)
-                metrics.add('fpga_bp_link_max_length', value=max_len[lane], type='GAUGE', lane=lane)
-                metrics.add('fpga_bp_link_frame_detect', value=frame_det[lane], type='GAUGE', lane=lane)
-                metrics.add('fpga_bp_link_rx_fifo_overflow', value=rx_fifo[lane], type='GAUGE', lane=lane)
-                metrics.add('fpga_bp_link_tx_fifo_overflow', value=tx_fifo[lane], type='GAUGE', lane=lane)
-                metrics.add('fpga_bp_link_error_overflow', value=err[lane]==255, type='GAUGE', lane=lane)
-                metrics.add('fpga_bp_link_length_mismatch', value=min_len[lane]!=max_len[lane], type='GAUGE', lane=lane)
-            for gtx_number, gtx in enumerate(self.gtx):
-                #gtx_number = lane + link_group*self.NUMBER_OF_PCB_LANES
-                metrics.add('fpga_bp_link_rx_power', value=gtx.DMONITOROUT & 0x7F, type='GAUGE', gtx=gtx_number)
-                metrics.add('fpga_bp_link_block_lock', value=gtx.BLOCK_LOCK, type='GAUGE', gtx=gtx_number)
-        return metrics
+                metrics.add('fpga_bp_link_errors', value=err[lane], link_type=link_type, lane=lane)
+                metrics.add('fpga_bp_link_min_length', value=min_len[lane], link_type=link_type, lane=lane)
+                metrics.add('fpga_bp_link_max_length', value=max_len[lane], link_type=link_type, lane=lane)
+                metrics.add('fpga_bp_link_frame_detect', value=frame_det[lane], link_type=link_type, lane=lane)
+                metrics.add('fpga_bp_link_rx_fifo_overflow', value=rx_fifo[lane], link_type=link_type, lane=lane)
+                metrics.add('fpga_bp_link_tx_fifo_overflow', value=tx_fifo[lane], link_type=link_type, lane=lane)
+                metrics.add('fpga_bp_link_error_overflow', value=err[lane]==255, link_type=link_type, lane=lane)
+                metrics.add('fpga_bp_link_length_mismatch', value=min_len[lane]!=max_len[lane], link_type=link_type, lane=lane)
+        for gtx_number, gtx in enumerate(self.gtx):
+            yield async_moment # let the ioloop process data
+            #gtx_number = lane + link_group*self.NUMBER_OF_PCB_LANES
+            metrics.add('fpga_bp_link_rx_power', value=gtx.DMONITOROUT & 0x7F, gtx=gtx_number)
+            metrics.add('fpga_bp_link_block_lock', value=gtx.BLOCK_LOCK, gtx=gtx_number)
+        async_return(metrics)
 
     def get_bp_rx_status(self, link_group=None):
         """ Checks the status of the rx links. Returns a list of dict, each

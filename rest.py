@@ -3,7 +3,6 @@ Base REST Clients and Servers classes for building REST-based applications.
 """
 from __future__ import print_function
 
-import sys
 import logging
 import signal
 import traceback
@@ -22,7 +21,10 @@ from pychfpga import load_yaml_config
 import tornado.ioloop
 import tornado.web
 from tornado.gen import sleep
+from tornado.gen import moment
 from tornado.ioloop import IOLoop
+from tornado.web import HTTPError
+#from tornado_profile import TornadoProfiler
 
 def coroutine(func, replace_callback=True):
     """ Standard Tornado coroutine decorator, with the coroutine flag added in case we use tornado < 4.5"""
@@ -228,24 +230,32 @@ class AsyncRESTClient(AsyncMixin):
         else:
             body = None
         self.log.debug('fetch: Send %s request %s' % (method, endpoint))
-        resp = yield self.client.fetch(url, method=method, headers={"Content-Type": "application/json"}, body=body, raise_error=False)
-        self.log.debug('_fetch response: %r' % resp)
+        resp = yield self.client.fetch(url, method=method, headers={"Content-Type": "application/json"}, body=body, raise_error=False, request_timeout=30)
+        #print('_fetch response: %r' % resp)
+        #print('_fetch response body: %r' % resp.body)
+        #print('_fetch response error: %s' % resp.error)
         if raw:
             decoded_reply = resp.body
             error = ''
         else:
-            try:
-                decoded_reply = tornado.escape.json_decode(resp.body)
-                if isinstance(decoded_reply, dict):
-                    error = decoded_reply.get('error','')
-                else:
-                    error = ''
-            except (TypeError, ValueError):
-                error = '%.32r: Invalid JSON reply string %r' %(self, resp.body)
+            if not resp.body:
+                decoded_reply = None
+                error = ''
+            else:
+                try:
+                    decoded_reply = tornado.escape.json_decode(resp.body)
+                    if isinstance(decoded_reply, dict):
+                        error = decoded_reply.pop('error','')
+                    else:
+                        error = ''
+                except (TypeError, ValueError):
+                    error = '%.32r: Invalid JSON reply string %r' %(self, resp.body)
         if resp.error:
+            #print('*** REST client got response error: %s' % resp.error)
             error = str(resp.error) + '\n' + error
         if error:
-            print('****ERROR****:', error)
+            error = ('Response=%r\n'%decoded_reply) + error
+            #print('****ERROR****:', error, '\n--------------------')
             raise RuntimeError(error)
         coroutine_return(decoded_reply)
 
@@ -302,14 +312,27 @@ class JsonRequestHandler(tornado.web.RequestHandler):
 
     def set_default_headers(self):
         self.set_header('Content-Type', 'application/json')
+        
+    @coroutine
+    def head(self, *args, **kwargs):
+        if kwargs:
+            yield self.post(*args, **kwargs)
+        else:
+            yield self.get(*args)
 
     def write_error(self, status_code, **kvs):
+
+        log = logging.getLogger(__name__)
         if 'exc_info' in kvs:
             exc_info = kvs.pop('exc_info')
-            kvs['error'] = self.format_exception(exc_info)
-        # self.set_status(200, reason='There were errors, though') # Prevent the client from raising an HTTP error. The client will recognize errors by looking at the error field.
-        # print('writing', kvs['error'])
+            kvs['error'] = self.format_exception(exc_info, remove_tornado=False)
+        log.error('%r: Request Handler caught an exception. HTTP code is %s. Error is %s' % (self, status_code, kvs.get('error', '[No Error]')))
+        print('Request Handler exception \n%s' %  kvs.get('error', '[No Error]'))
+        self.set_status(200, reason='There was an exception') # Prevent the client from raising an HTTP error. The client will recognize errors by looking at the error field.
+        #print('*** REST Server: Adding error field:', kvs['error'], '\n------')
+        #self.write('**whoah! an exception***\n')
         self.write(kvs)  # kvs is a dict, so it will be json-encoded
+        self.finish()
 
     def format_exception(self, exc_info, remove_tornado=True):
         """ Format traceback string by indenting them and removing the tornado internals"""
@@ -325,6 +348,7 @@ class JsonRequestHandler(tornado.web.RequestHandler):
                         filtered_lines.append('   >  %s\n ' % line)
                 i += 1
         return ''.join(filtered_lines)
+
 
 class AsyncRESTServer(AsyncMixin):
     """
@@ -551,6 +575,9 @@ class SocketContext(object):
         self.socket_references = 0
         super(SocketContext, self).__init__(**kwargs)
 
+    def __repr__(self):
+        return '%s(%s:%s)' % (self.__class__.__name__, self.ip_addr, self.ip_port)
+
     def socket(self, flush=False, flush_timeout=None):
         """
         Return a context object (`self`) in which a socket to the instrument (`self.sock`) is
@@ -689,6 +716,12 @@ def run_client(args, server_class=None, client_class=None, object_name='', serve
     old_ioloop = IOLoop.current()
     ioloop = IOLoop()
     ioloop.make_current()
+
+
+    # Setup profiler web server
+    #routes = TornadoProfiler().get_routes()
+    #profile_app = tornado.web.Application(routes)
+    #profile_app.listen(54329)
 
     def is_client_method(string):
         return ':' not in string and '.' not in string and hasattr(client_class, string)

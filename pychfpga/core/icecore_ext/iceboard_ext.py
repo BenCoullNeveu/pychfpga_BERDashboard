@@ -14,7 +14,7 @@ from ..icecore import IceBoardPlusHandler
 from ..icecore import tuber  # Used to get TuberRemoteError
 from ..icecore import Ccoll
 from ..icecore import async, async_sleep, async_return, async_moment
-
+from ..metrics import Metrics
 
 from .. import I2C as i2c
 from .. import GPIO as fpga_gpio
@@ -53,17 +53,40 @@ class IceBoardExtHandler(IceBoardPlusHandler):
     object. Note that any explicitely specified parameter overrides a parent parameter.
 
     Parameters:
-        parent_getter (func): Function that returns the dynamically return the parent object from which the following parameters will be fetched. Is `None` if there is no parent.
-        hostname (str): hostname or IP address of the ICEBoard ARM processor (mandatory)
-        serial (str): Serial number of the board. Can be provided by the ARM.
-        part_number (str): Part number of the IceBoard. Can be obtained from the ARM.
-        crate (IceCrateHandler): = object that handle the backplane on which the board is connected. `None` if the board is not connected to a backplane.
-        slot (int): Slot number in which the board is installed ona backplane. None if there is no backplane.
-        mezzanine (dict): Map {mezzanine_number: Mezzanine Handler, ...} describing the installed mezzanines. Can be obtained from the ARM.
-        tuber_objname (str): name of the set of software functions that will be provided by the ARM processor through the Tuber interface.
 
-    Python-based application-specific FPGA firmware and hardware handler are
-    meant to be derived from this class.
+        parent_getter (func): Function that dynamically return the parent object from which the
+            following parameters will be fetched. Is `None` if there is no parent.
+
+        hostname (str): hostname or IP address of the ICEBoard ARM processor (mandatory)
+
+        serial (str): Serial number of the board. Can be provided by the ARM.
+
+        part_number (str): Part number of the IceBoard. Can be obtained from the ARM.
+
+        crate (IceCrateHandler): = object that handle the backplane on which the board is connected.
+            `None` if the board is not connected to a backplane.
+
+        slot (int): Slot number in which the board is installed ona backplane. None if there is no
+            backplane.
+
+        mezzanine (dict): Map {mezzanine_number: Mezzanine Handler, ...} describing the installed
+            mezzanines. Can be obtained from the ARM.
+
+        tuber_objname (str): name of the set of software functions that will be provided by the ARM
+            processor through the Tuber interface.
+
+        fpga_ip_address (str): FPGA's listening IP address in the form 'xx.xx.xx.xx'. If None
+            (default), the address will be obtained by converting the ARM address 'a.b.c.d' into 'a.b.3.d'.
+
+        fpga_port_number (int): FPGA listening port number for commands. Defaults to 41000. If None,
+            the local port number is used.
+
+        local_port_number (int): UDP port number to use to receive command replies. If 0, the number
+            is allocated randomly by the OS. If None, and there is a crate_number and a slot number,
+            then the port numbers will be derived from hese parameters.
+
+    Python-based application-specific FPGA firmware and hardware handler are meant to be derived
+    from this class.
     """
 
     _FPGA_CONTROL_BASE_PORT = 41000
@@ -99,8 +122,8 @@ class IceBoardExtHandler(IceBoardPlusHandler):
     _IRIGB_TARGET1_ADDR             = 4 * 14
     _IRIGB_TARGET2_ADDR             = 4 * 15
     _IRIGB_EVENT_CTR_ADDR           = 4 * 16
-    _BP_BUCK_SYNC_ADDR              = 4 * 17
-    _BP_BUCK_SYNC_ADDR2             = 4 * 18
+    _IRIGB_EVENT_CTR_ADDR2          = 4 * 17
+    _BP_BUCK_SYNC_ADDR              = 4 * 18
     _SFP_STATUS_ADDR                = 4 * 19
     _REMOTE_IP_PORT_ADDR            = 4 * 20
     _IRIGB_REFCLK_SAMPLE            = 4 * 21
@@ -111,7 +134,6 @@ class IceBoardExtHandler(IceBoardPlusHandler):
     # Instance attributes
     # ---------------------------------------
 
-    fpga_ip_addr = None
     interface_ip_addr = None  # Is automatically detected by opening a TCP connection to the ARM
     zero_target_irigb_year_and_day = False # If True, target IRIGB yead and day will always be written as zero binary values to me compatible with the IRIG-B generator
 
@@ -119,23 +141,27 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         """ Automatcally call the specified 'open' method that creates an
         attribute if the attribute is accessed and is not yet defined.
         """
-        def __init__(self, open_method, attribute_name):
+        def __init__(self, attribute_name, open_method):
             self._open_method = open_method
             self._attribute_name = attribute_name
 
-        def __get__(self, object, class_):
-            # print 'Auto-open %s' % self._attribute_name
-            getattr(object, self._open_method)()  # Execute the open method
-            return getattr(object, self._attribute_name)  # Get target object
+        def __get__(self, obj, class_):
+            getattr(obj, self._open_method)()  # Execute the open method. This normally overrites the attribute, so this will not be called again.
+            return getattr(obj, self._attribute_name)  # Get target object
 
-    mmi       = AutoOpen('open_core', 'mmi')
-    i2c       = AutoOpen('open_core', 'i2c')
-    core_gpio = AutoOpen('open_core', 'core_gpio')
-    core_i2c  = AutoOpen('open_core', 'core_i2c')
-    hw        = AutoOpen('open_hw', 'hw')
+    mmi       = AutoOpen('mmi',       'open_core')
+    i2c       = AutoOpen('i2c',       'open_core')
+    core_gpio = AutoOpen('core_gpio', 'open_core')
+    core_i2c  = AutoOpen('core_i2c',  'open_core')
+    hw        = AutoOpen('hw',        'open_hw'  )
     # bp        = AutoOpen('open_bp', 'bp')
 
-    def __init__(self, parent_getter=None, hostname=None, serial=None, part_number=None, crate=None, slot=None, mezzanine={}, tuber_objname='IceBoard'):
+    def __init__(self, parent_getter=None,
+                 hostname=None, serial=None, part_number=None,
+                 crate=None, slot=None, mezzanine={},
+                 tuber_objname='IceBoard',
+                 fpga_ip_addr=None, fpga_port_number=None,
+                 local_port_number=None):
         """
         Creates an Iceboard that is accessed through the networking parameters
         specified in the database.
@@ -143,13 +169,21 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         The created object does not have any fpga or hardware handlers yet.
         Those will be created when the Iceboard is opened.
         """
-        super(IceBoardExtHandler, self).__init__(parent_getter=parent_getter, hostname=hostname, serial=serial, part_number=part_number, crate=crate, slot=slot, mezzanine=mezzanine, tuber_objname=tuber_objname)
+        super(IceBoardExtHandler, self).__init__(parent_getter=parent_getter,
+              hostname=hostname, serial=serial, part_number=part_number,
+              crate=crate, slot=slot, mezzanine=mezzanine, tuber_objname=tuber_objname)
         self.logger = logging.getLogger(__name__)
+
+        self.fpga_ip_addr = fpga_ip_addr
+        self.fpga_port_number = fpga_port_number
+        self.local_port_number = local_port_number
+
         self._mezzanine_ipmi_cache = {1: None, 2: None}
         self._is_core_open = None
         self._is_hw_open = None
         # self._is_bp_open = None
         self._is_open = None
+
 
     # ------------------------------------------------------------------
     # CHIME-specific MMI interface
@@ -180,6 +214,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
     #     specified byte address through the ARM<->FPGA SPI link."""
     #     self._fpga_spi_poke(addr, value)
 
+    @async
     def open_core(self, udp_retries=10):
         """
         Establishes the connection with the hardware and firmware on the
@@ -187,13 +222,13 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         """
         # print '%r: opening core' % self
 
-        if not self.is_fpga_programmed():
+        if not (yield self.is_fpga_programmed.async()):
             raise RuntimeError(
                 "%r: The FPGA is not programmed with a bitstream . "
                 'Direct UDP link to FPGA cannot be established ' % (self))
 
         # Check the FPGA firmware cookie obtained through the ARM SPI interface to the FPGA
-        cookie = self.get_fpga_application_cookie()
+        cookie = yield self.get_fpga_application_cookie.async()
         if cookie != self._CHFPGA_COOKIE:
             raise RuntimeError(
                 '%r: The firmware currently configured on the FPGA is not chFPGA (got cookie 0x%04X instead of 0x%04X). '
@@ -218,12 +253,20 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         # Compute the IP address to use for the FPGA UDP interface For now, we
         # replace a.b.c.d by a.b.3.d. We need to find a more generic mechanism
         # for this (like obtaining another IP from the DHCP server)
-        ip_packed = socket.inet_aton(self._get_arm_ip())  #
-        ip_packed = ip_packed[:2] + chr(3) + ip_packed[3]
-        fpga_ip_addr = socket.inet_ntoa(ip_packed)
+        if not self.fpga_ip_addr:
+            ip_packed = socket.inet_aton(self._get_arm_ip())  #
+            ip_packed = ip_packed[:2] + chr(3) + ip_packed[3]
+            self.fpga_ip_addr = socket.inet_ntoa(ip_packed)
 
-        # Set-up the FPGA networking parameters using the ARM-SPI link to the FPGA
-        self.set_fpga_control_networking_parameters(fpga_ip_addr=fpga_ip_addr)
+        # Compute the local port number if requested (self.local_port_number is None) and if possible (there is a slot and crate number)
+        if self.local_port_number is None:
+            if not self.slot or not self.crate or self.crate.crate_number is None:
+                self.local_port_number = 0
+                self.logger.warning('%r: cannot use slot/crate_number-based UDP port number for UDP control channel. There is no slot or crate_number info. Using OS-assigned random port' % self)
+            else:
+                self.local_port_number = self._FPGA_CONTROL_BASE_PORT + 16*self.crate.crate_number + (self.slot-1)
+                self.logger.info('%r: Replies will be sent to %s:%i' % (self, self.interface_ip_addr, self.local_port_number))
+
 
 
         # if the FPGA handler instance was not created, check if one exists
@@ -238,13 +281,27 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         # Open the UDP MMI interface
         # -------------------------------------------------------------------------
         from .lib import fpga_mmi
+        print('Opening FPGA MMI with FPGA=(%s:%s),  local=(%s:%s)' % (self.fpga_ip_addr, self.fpga_port_number, self.interface_ip_addr, self.local_port_number))
         self.mmi = fpga_mmi.FpgaMmi(
-            ip_addr=self.fpga_ip_addr,
-            port_number=self.fpga_port_number,
+            fpga_ip_addr=self.fpga_ip_addr,
+            fpga_port_number=self.fpga_port_number, # none or 0: use local port number
             interface_ip_addr=self.interface_ip_addr,
+            local_port_number=self.local_port_number, # 0 = randomly assigned by os
             udp_retries=udp_retries)
         self.mmi.open()
         self.local_port_number = self.mmi.local_port_number
+        self.fpga_port_number = self.mmi.fpga_port_number
+        # print('opened fpga (%s:%s) local (%s:%s)' % (self.fpga_ip_addr, self.fpga_port_number, self.interface_ip_addr, self.local_port_number))
+        # print('opened fpga (%s:%i) local (%s:%i)' % (self.fpga_ip_addr, self.fpga_port_number, self.interface_ip_addr, self.local_port_number))
+
+        # Select the fpga port number
+        #if not self.fpga_port_number:
+        #    self.fpga_port_number = self.local_port_number
+
+        # Set-up the FPGA networking parameters using the ARM-SPI link to the FPGA
+        self.fpga_mac_addr = yield self.set_fpga_control_networking_parameters.async(
+            fpga_ip_addr=self.fpga_ip_addr,
+            fpga_port_number=self.fpga_port_number)
 
         # -------------------------------------------------------------------------
         # Open FPGA's GPIO module interface
@@ -256,9 +313,10 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         # link by reading the UDP MMI cookie (not the SPI one) and check if
         # the cookie correspond to the chFPGA firmware.
         # -------------------------------------------------------------------------
+        self.clear_fpga_udp_errors(force=True, no_reset=True) # Try to prevent initial error on first command
         self.logger.debug("%.32r: Attempting to communicate with the FPGA over direct Ethernet link" % self)
         try:
-            cookie = self.get_fpga_firmware_cookie(resync=True)  # Read the firmware version cookie from the GPIO subsystem (this is provided by the FPGA core firmware which is always present on all versions of the FPGA)
+            cookie = yield self.get_fpga_firmware_cookie.async(resync=True)  # Read the firmware version cookie from the GPIO subsystem (this is provided by the FPGA core firmware which is always present on all versions of the FPGA)
         except IOError as e:
             error_message = "%.32r: Unable to communicate with the FPGA at address %s:%i due to the following exception: %s" % (self, self.fpga_ip_addr, self.fpga_port_number, repr(e))
             self.close()
@@ -277,6 +335,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         # Open FPGA's I2C interfaces
         # -------------------------------------------------------------------------
         self.core_i2c = i2c.I2C_base(self, self._SYSTEM_I2C_BASE_ADDR)
+        yield async_moment
         # Create standardized I2C interface
         self.i2c = I2CInterface(
             self.fpga_i2c_write_read,
@@ -300,11 +359,12 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         # return self.iceboard_pk in type(self)._active_instances
         return bool(self._is_core_open)
 
+    @async
     def open_hw(self):
         # Open IceBoard hardware manager object
         self.hw = IceBoardHardware(iceboard=self)
         self._is_hw_open = True
-        self.hw.open()
+        yield self.hw.open.async()
 
     def close_hw(self):
         if self._is_hw_open:
@@ -312,14 +372,16 @@ class IceBoardExtHandler(IceBoardPlusHandler):
             del self.hw
             self._is_hw_open = False
 
+    @async
     def open(self, udp_retries=10):
 
         self.logger.debug('%.32r: open() is called' % (self))
-        self.open_core(udp_retries=udp_retries)
+        yield self.open_core.async(udp_retries=udp_retries)
 
-        self.hw.init()
-        self.hw.set_led('GP_LED2', 1)  # Hardware link is on
-        self.hw.set_led('GP_LED1', 0)  # Full FPGA firmware is not yet on
+        yield self.open_hw.async()
+        yield self.hw.init.async()
+        yield self.hw.set_led.async('GP_LED2', 1)  # Hardware link is on
+        yield self.hw.set_led.async('GP_LED1', 0)  # Full FPGA firmware is not yet on
 
         self._is_open = True
 
@@ -340,6 +402,58 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         except IOError:
             return False
 
+    @async
+    def get_fpga_udp_metrics(self):
+        metrics = Metrics(
+            type='GAUGE',
+            slot=(self.slot or 0) - 1,
+            id=self.get_string_id(),
+            crate_id=self.crate.get_string_id() if self.crate else None,
+            crate_number=self.crate.crate_number if self.crate else None)
+
+        if not self.is_open():
+            async_return(metrics)
+        try:
+            # yield self.check_command_count.async(reset=True)
+            metrics.add('fpga_udp_error_current_count', value=self.mmi.error_counter)
+            vect = yield self.fpga_mmi_read.async(self._SFP_STATUS_ADDR)
+            metrics.add('fpga_udp_tx_fifo_overflow', value= bool(vect & 1 << 17))
+            metrics.add('fpga_udp_rx_fifo_overflow', value= bool(vect & 1 << 16))
+            metrics.add('fpga_udp_sfp_remote_fault', value= bool(vect & 1 << 13))
+            metrics.add('fpga_udp_sfp_duplex_mode', value= bool(vect & 1 << 12))
+            metrics.add('fpga_udp_sfp_speed', value= (vect >> 10) & 3)
+            metrics.add('fpga_udp_rxnotintable', value= (vect >> 6) & 1)
+            metrics.add('fpga_udp_rxdisperr', value= (vect >> 5) & 1)
+            metrics.add('fpga_udp_link_sync', value= (vect >> 1) & 1)
+            metrics.add('fpga_udp_link_status', value= (vect >> 0) & 1)
+        except IOError as e:
+            self.logger.error('%r: Error getting FPGA udp metrics. Error is %r' % (self, e))
+        async_return(metrics)
+
+
+
+
+    @async
+    def clear_fpga_udp_errors(self, force=False, no_reset=False):
+        if force or self.mmi.error_counter > 40:
+            self.logger.info('%r: clearing FPGA UDP errors' % self)
+            if not no_reset:
+                yield self.reset_sfp()
+                yield self.reset_fpga_udp_stack.async()
+            try:
+                self.mmi.flush()
+                self.mmi.read(0, length=1, retry=-1, resync=1)
+                self.mmi.read(0, length=1, resync=1)
+                self.mmi.flush()
+                (cmd, rply) = self.core_gpio.get_command_count()
+                self.mmi.send_counter = cmd
+                self.mmi.recv_counter = rply
+            except IOError:
+                pass
+            self.mmi.error_counter = 0
+            self.logger.info('%r: Finished clearing FPGA UDP errors. Hoping it works now...' % self)
+
+    @async
     def check_command_count(self, reset=False):
         """ Check UDP communication command/reply synchronization and optionally reset counts.
 
@@ -363,13 +477,47 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         If 'reset' is True, the MMI counters are reset to the FPGA values in order to clear the error on future checks.
         """
 
-        (cmd, rply) = self.core_gpio.get_command_count()
-        valid = (cmd == self.mmi.send_counter & 0xFF) and (rply == self.mmi.recv_counter & 0xFF)
-        if reset:
-            self.mmi.send_counter = cmd
-            self.mmi.recv_counter = rply
-        return valid
+        for trial in range(2):
+            try:
+                yield async_moment
+                self.logger.info('%r: Checking command counters' % (self))
+                (cmd, rply) = self.core_gpio.get_command_count()
+                yield async_moment
+                valid = (cmd == self.mmi.send_counter & 0xFF) and (rply == self.mmi.recv_counter & 0xFF)
+                if not valid:
+                    self.logger.warning('%r: Command counters differ cmd/rply in FPGA is (%i, %i), Python MMI is (%i, %i)' % (self, cmd, rply, self.mmi.send_counter & 0xFF, self.mmi.recv_counter & 0xFF))
+                if reset:
+                    self.mmi.send_counter = cmd
+                    self.mmi.recv_counter = rply
+                    valid = True
+                break
+            except IOError as e:
+                self.logger.error("%r: UDP communinication error. Attempting to reset FPGA's UDP stack via the ARM processor (trial %i).The error is:\n %s" % (self, trial+1, e))
+                yield self.reset_fpga_udp_stack()
+                valid = False
+                reset = True
+            except Exception as e:
+                self.logger.error("%r: Unhandled error during UDP communinication check. The error is:\n %r" % (self, e))
+                raise
+        else: # executes if we exhausted the for loop iterations, i.e  no break
+            errmsg = "%r: Could not re-establish UDP communinication with the FPGA. Raising an exception" % (self)
+            self.logger.error(errmsg)
+            raise IOError(errmsg)
+        async_return(valid)
 
+    @async
+    def reset_fpga_udp_stack(self):
+        self.logger.warning("%r: Resetting %s FPGA's UDP communication stack" % (self, self.hostname))
+        yield self.fpga_mmi_write.async(self._SFP_STATUS_ADDR, 3 << 30)
+        yield self.fpga_mmi_write.async(self._SFP_STATUS_ADDR, 0 << 30)
+
+    @async
+    def reset_sfp(self):
+        self.logger.warning("%r: Temporarily disconnecting the SFP to reset the %s FPGA's UDP communication stack" % (self, self.hostname))
+        yield self.set_pci_switch_direction.async('SEL_ARM')
+        yield self.set_pci_switch_direction.async('SEL_SFP')
+
+    @async
     def set_fpga_control_networking_parameters(
             self,
             fpga_mac_addr=None,
@@ -377,7 +525,8 @@ class IceBoardExtHandler(IceBoardPlusHandler):
             fpga_port_number=_FPGA_CONTROL_BASE_PORT):
         """
         Set the FPGA listening UDP networking parameters for the FPGA's *incoming* control packets
-        using the ARM SPI MMI link.
+        using the ARM SPI MMI link. Reply packets will be sent back over UDP transmit channel 0, i.e.
+        back to the address and port from which the command originated..
 
         This method sets the FPGA's listening addresses while assuming that the FPGA's is in
         addressing mode "00" (the default addressing mode),  which means that the channel 0
@@ -385,30 +534,33 @@ class IceBoardExtHandler(IceBoardPlusHandler):
 
         Parameters:
 
-            fpga_ip_addr (str):  Address at which the FPGA listens for commands. The address is  in
+            fpga_mac_addr (str): MAC address of the FPGA in the format
+                'xx:xx:xx:xx:xx:xx, where 'xx' is a hex number'. If fpga_mac_addr is None, an
+                arbitrary MAC address is created using the IP address to ensure its uniqueness.
+
+            fpga_ip_addr (str):  Address at which the FPGA listens for commands. The address is in
                 the format of 'a.b.c.d', where a,b,c and d are decimal numbers.
 
             fpga_port_number (int): Port on which the FPGA listens for commands. This port is 41000
                 by default. It is independent from the port from which the host computer sends and
                 receives packets, which can be any port.
 
-            fpga_mac_addr (str): MAC address of the FPGA in the format
-                'xx:xx:xx:xx:xx:xx, where 'xx' is a hex number'. If fpga_mac_addr is None, an
-                arbitrary MAC address is created using the IP address to ensure its uniqueness.
+        Returns:
 
-        While this method sets up the FPGA's *incoming* traffic network parameters (in other forts,
-        the FPGA listring address), the network parameters for the *outgoing* data is set
-        differently. The outgoing data is sent through either UDP transmit channels 0 or 1.
+            str: MAC address that was used/computed, in the form 'xx:xx:xx:xx:xx'
 
-        The channel on which the *commands* are returned is set by the FPGA GPIO field
-        CTRL_RPLY_IP_PORT_OFFSET. This is set to channel '0' by default, and should not be changed.
+        This method sets up the FPGA's *incoming* traffic network parameters (in other words, the
+        FPGA listening address). The  *outgoing* command reply packets are sent through either UDP
+        transmit channels 0 or 1. The channel on which the *commands* are returned is set by the
+        FPGA GPIO field CTRL_RPLY_IP_PORT_OFFSET. This is set to channel '0' by default, and should
+        not be changed.
 
         UDP channel 0 sends packets with the following destination:
 
-            * target ip address: Is hardwired to use the source IP of the last valid IP packet
-              received
             * target mac address: Is hardwired to use the source MAC address of the last valid
               packet received
+            * target ip address: Is hardwired to use the source IP of the last valid IP packet
+              received
             * target port number: Is set in the in the lower 16-bits of the SPI register
               _REMOTE_IP_PORT_ADDR. The default is a value of 0, meaning that the target port will
               be the source port number of the last valid received packet. This default should
@@ -435,7 +587,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         addressing mode is changed by causing a rising edge on the GPIO registers TARGET_LOAD while
         TARGET_FPGA_SERIAL_NUMBER matches the serial number of the FPGA. This is a feature meant to
         allow ARM-less configuring of the FPGA through broadcasting, but we don't use it here since
-        it's much , easier to go through the ARM, which can get its networking parameters
+        it's much easier and reliable to go through the ARM, which can get its networking parameters
         automatically through DHCP.
 
 
@@ -451,15 +603,18 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         else:
             mac_packed = [chr(int(s, 16)) for s in fpga_mac_addr.split(':')]
 
-        self.fpga_mac_addr = fpga_mac_addr
-        self.fpga_port_number = fpga_port_number
-        self.fpga_ip_addr = fpga_ip_addr
+        # self.fpga_mac_addr = fpga_mac_addr
+        # self.fpga_port_number = fpga_port_number
+        # self.fpga_ip_addr = fpga_ip_addr
 
         # Set the FPGA Networking parameters over the ARM-FPGA SPI interface
-        self.fpga_mmi_write(self._FPGA_MAC_ADDR_LSW_ADDR, struct.unpack('>I', mac_packed[2:6])[0])
-        self.fpga_mmi_write(self._FPGA_MAC_ADDR_MSW_IP_PORT_ADDR, (struct.unpack('>H', mac_packed[0:2])[0] << 16) | fpga_port_number)
-        self.fpga_mmi_write(self._FPGA_IP_ADDR_ADDR, struct.unpack('>I', ip_packed)[0])
+        yield self.fpga_mmi_write.async(self._FPGA_MAC_ADDR_LSW_ADDR, struct.unpack('>I', mac_packed[2:6])[0])
+        yield self.fpga_mmi_write.async(self._FPGA_MAC_ADDR_MSW_IP_PORT_ADDR, (struct.unpack('>H', mac_packed[0:2])[0] << 16) | fpga_port_number)
+        yield self.fpga_mmi_write.async(self._FPGA_IP_ADDR_ADDR, struct.unpack('>I', ip_packed)[0])
 
+        async_return(fpga_mac_addr)
+
+    @async
     def set_local_data_port_number(self, port):
         """
         Sets the port number to which the FPGA is sending the data for UDP channel 1. Use
@@ -471,15 +626,16 @@ class IceBoardExtHandler(IceBoardPlusHandler):
 
         Does not change the target MAC or IP address.
         """
-        word = self.fpga_mmi_read(self._REMOTE_IP_PORT_ADDR)
-        self.fpga_mmi_write(self._REMOTE_IP_PORT_ADDR, (word & 0xFFFF) | (port << 16))
+        word = yield self.fpga_mmi_read.async(self._REMOTE_IP_PORT_ADDR)
+        yield self.fpga_mmi_write.async(self._REMOTE_IP_PORT_ADDR, (word & 0xFFFF) | (port << 16))
 
+    @async
     def get_local_data_port_number(self):
         """ Return the port number to which the FPGA is sending its captured data stream on the control network.
         """
-        return self.fpga_mmi_read(self._REMOTE_IP_PORT_ADDR) >> 16
+        async_return((yield self.fpga_mmi_read.async(self._REMOTE_IP_PORT_ADDR)) >> 16)
 
-
+    @async
     def set_data_target_address(self, ip_addr=None, port=None, mac_addr=None):
         """
         Sets the IP address, port number and MAC address to which data is sent back to the host comptuter.
@@ -523,7 +679,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
 
 
         The Channel 1 addressing described above is valid for addressing mode '00' (the only mode
-        available to this module, see [#F1]) In this mode, the IP address and MAC address are set by
+        available to this module, see [#f1]) In this mode, the IP address and MAC address are set by
         the GPIO registers TARGET_MAC_ADDR and TARGET_IP_ADDR. The port number is set by the lower
         16 bits of the SPI register _REMOTE_IP_PORT_ADDR  (GPIO's TARGET_IP_PORT is *not* used). The
         Channel 1 destination addresses are set differently in other addressing modes.
@@ -545,12 +701,13 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         self.core_gpio.TARGET_IP_ADDR = ip_addr_int
 
         # Set the UDP  Channel 1 outgoing packet destination port number, on the ARM-FPGA SPI registers
-        word = self.fpga_mmi_read(self._REMOTE_IP_PORT_ADDR)
-        self.fpga_mmi_write(self._REMOTE_IP_PORT_ADDR, (word & 0xFFFF) | (port << 16))
+        word = yield self.fpga_mmi_read.async(self._REMOTE_IP_PORT_ADDR)
+        yield self.fpga_mmi_write.async(self._REMOTE_IP_PORT_ADDR, (word & 0xFFFF) | (port << 16))
 
 
 
 
+    @async
     def get_fpga_firmware_cookie(self, resync=False):
         """
         Get the FPGA firmware cookie.
@@ -563,7 +720,8 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         sequence number to the value known by the FPGA. This should be is used
         by the first command sent to the FPGA to reset the communication link.
         """
-        return self.mmi_read(self._GPIO_COOKIE_REG, resync=resync) & 0x7F
+        yield async_moment
+        async_return((self.mmi_read(self._GPIO_COOKIE_REG, resync=resync) & 0x7F))
 
     def get_fpga_firmware_version(self):
         """
@@ -665,7 +823,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         """ Set the source of the IRIG-B signal."""
         if source not in self._IRIGB_SOURCE_TABLE:
             raise ValueError('Invalid IRIG-B source name. Valid names are %s' % ', '.join(self._IRIGB_SOURCE_TABLE.keys()))
-        w2 = self.fpga_mmi_read(self._IRIGB_SAMPLE2_ADDR)
+        w2 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE2_ADDR)
         self.fpga_mmi_write(self._IRIGB_SAMPLE2_ADDR, (w2 & 0x3FFFFFFF) | (self._IRIGB_SOURCE_TABLE[source] << 30))
 
     @async
@@ -712,10 +870,11 @@ class IceBoardExtHandler(IceBoardPlusHandler):
 
         if format not in self._IRIGB_TIME_FORMAT:
             raise ValueError('Invalid time format. Valid formats are: %s' % (', '.join(self._IRIGB_TIME_FORMAT.keys())))
+        ts = self._IrigTimestamp()
 
         # Capture current time
         if trig:
-            w2 = self.fpga_mmi_read(self._IRIGB_SAMPLE2_ADDR)
+            w2 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE2_ADDR)
             t0 = time.time()
             while True:
                 # trigger time capture
@@ -725,12 +884,12 @@ class IceBoardExtHandler(IceBoardPlusHandler):
 
                 # Wait for the time capture . Time is captured on the next 10 MHz reference clock edge, so that shoudl be quick.
                 t1 = time.time()
-                while not self.fpga_mmi_read(self._IRIGB_TARGET1_ADDR) & (1 << 29):
+                while not (yield self.fpga_mmi_read.async(self._IRIGB_TARGET1_ADDR)) & (1 << 29):
                     print 'Waiting for time capture' # -- debug. should not happen
                     if time.time() - t1 > 0.1:
                         raise RuntimeError('Timeout while waiting for a Reference clock edge')
 
-                w1 = self.fpga_mmi_read(self._IRIGB_SAMPLE1_ADDR)
+                w1 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE1_ADDR)
                 recent = (w1 >> 29) & 1
                 if recent: # if we get a updated time
                     break
@@ -740,6 +899,10 @@ class IceBoardExtHandler(IceBoardPlusHandler):
                     else:
                         raise RuntimeError('%.32r: Could not get a recently updated IRIG-B time. Check your cabling.' % self)
 
+        #w0 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE0_ADDR)
+        #w1 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE1_ADDR)
+        #w2 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE2_ADDR)
+        ts.system_time_before = time.time()
         w0 = self.fpga_mmi_read(self._IRIGB_SAMPLE0_ADDR)
         w1 = self.fpga_mmi_read(self._IRIGB_SAMPLE1_ADDR)
         w2 = self.fpga_mmi_read(self._IRIGB_SAMPLE2_ADDR)
@@ -749,7 +912,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         # t2 = self.fpga_mmi_read(self._IRIGB_TARGET2_ADDR)
         # e0 = self.fpga_mmi_read(self._IRIGB_EVENT_CTR_ADDR)
 
-        ts = self._IrigTimestamp()
+        ts.system_time = time.time()
         ts.pps = (w0 >> 26) & ((1 << 6) - 1)
         ts.sbs = (w0 >> 8) & ((1 << 18) - 1)
         ts.y = (w0 >> 0) & ((1 << 8) - 1)
@@ -760,7 +923,6 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         ts.ss = (w2 >> 0) & ((1 << 28) - 1)
         ts.source = (w1 >> 30) & ((1 << 2) - 1)
         ts.recent = (w1 >> 29) & 1
-
         if not ts.recent:
             if noerror:
                 async_return(None)
@@ -777,13 +939,24 @@ class IceBoardExtHandler(IceBoardPlusHandler):
             y = ts.y
             d = ts.d
 
-        if not noerror and (ts.h > 23 or ts.m > 59 or ts.s > 59):
+        if not noerror and (ts.h > 23 or ts.m > 59 or ts.s > 60):
             raise RuntimeError('Invalid IRIG-B time value %ih %im %is.' % (ts.h, ts.m, ts.s))
 
-        ts.datetime = datetime(y + 2000, 1, 1) + timedelta(d-1, ts.s, ts.ss//100, 0, ts.m, ts.h)
+        ts.datetime = dt = datetime(y + 2000, 1, 1) + timedelta(d-1, ts.s + 1, ts.ss//100, 0, ts.m, ts.h)
         # ts.before_target = (t1 >> 31) & 1
         # ts.done = (t1 >> 30) & 1
-        ts.nano = int(timegm((y + 2000, 1, 1, 0, 0, 0)) * 1e9) + ((d-1) *24*3600 + ts.h * 3600 + ts.m * 60 + ts.s)*1000000000 + ts.ss*10
+        # ts.nano = int(timegm((y + 2000, 1, 1, 0, 0, 0)) * 1e9) + ((d-1) *24*3600 + ts.h * 3600 + ts.m * 60 + ts.s)*1000000000 + ts.ss*10
+        timestamp = timegm((y + 2000, 1, d, ts.h, ts.m, ts.s + 1))
+        ts.nano = int(timestamp * 1e9) +  ts.ss * 10
+        ts.nano2 = int(timegm((y + 2000, 1, 1, 0, 0, 0)) * 1e9) + ((d-1) *24*3600 + ts.h * 3600 + ts.m * 60 + ts.s)*1000000000 + ts.ss*10
+
+        ts.time = ts.nano / 1e9
+        ts.time2 = ts.nano2 / 1e9
+        tt = time.gmtime(timestamp)
+        ts.time_struct = [tt.tm_year, tt.tm_mon, tt.tm_mday, tt.tm_hour,
+            tt.tm_min, tt.tm_sec, (ts.nano % 1000000000) / 1000.0]
+        ts.time_struct2 = [dt.year, dt.month, dt.day, dt.hour, dt.minute,
+                dt.second, (ts.nano % 1000000000) / 1000.0]
         # ts.event_ctr = e0
 
         async_return(self._IRIGB_TIME_FORMAT[format](ts))
@@ -847,6 +1020,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         t1 = yield self.fpga_mmi_read.async(self._IRIGB_TARGET1_ADDR)
         async_return(bool((t1 >> 31) & 1))
 
+    @async
     def capture_frame_time(self, trig=True, format='nano'):
         """ Captures the IRIG-B of the first sample of the next frame coming
         out of the ADC data acquisition module.
@@ -857,7 +1031,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         formats).
 
         NOTE1: floats do not have enough resolution to represent the current
-        time down to nanoseconds (as opposed to Pythin int's which have
+        time down to nanoseconds (as opposed to Python int's which have
         infinite resolution), so beware of conversions.
 
         NOTE2: The method will generate a timeout error if there is no data
@@ -869,31 +1043,35 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         delay).
         """
         if trig:
-            w2 = self.fpga_mmi_read(self._IRIGB_SAMPLE2_ADDR)
-            self.fpga_mmi_write(self._IRIGB_SAMPLE2_ADDR, w2 & ~(1 << 28))
-            self.fpga_mmi_write(self._IRIGB_SAMPLE2_ADDR, w2 | (1 << 28))
+            w2 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE2_ADDR)
+            yield self.fpga_mmi_write.async(self._IRIGB_SAMPLE2_ADDR, w2 & ~(1 << 28))
+            yield self.fpga_mmi_write.async(self._IRIGB_SAMPLE2_ADDR, w2 | (1 << 28))
             t0 = time.time()
-            while not self.fpga_mmi_read(self._IRIGB_TARGET1_ADDR) & (1 << 30):
+            while not (yield self.fpga_mmi_read.async(self._IRIGB_TARGET1_ADDR)) & (1 << 30):
                     if time.time() - t0 > 1:
                         raise RuntimeError('Timeout while waiting for a Frame. Is data flowing out of the ADC data acquisition module?')
-        event_number = self.fpga_mmi_read(self._IRIGB_EVENT_CTR_ADDR)
-        captured_time = self._get_irigb_time(trig=0, format=format)  # The event trigger will automatically trig IRIGB
-        return (event_number, captured_time)
+        event_number = yield self.fpga_mmi_read.async(self._IRIGB_EVENT_CTR_ADDR)
+        event_number += (yield self.fpga_mmi_read.async(self._IRIGB_EVENT_CTR_ADDR2)) << 32
 
+        captured_time = yield self._get_irigb_time.async(trig=0, format=format)  # The event trigger will automatically trig IRIGB
+        async_return((event_number, captured_time))
+
+    @async
     def get_frame_number(self):
         """
         Return the number of the next frame passing through the system.
         """
-        w2 = self.fpga_mmi_read(self._IRIGB_SAMPLE2_ADDR)
-        self.fpga_mmi_write(self._IRIGB_SAMPLE2_ADDR, w2 & ~(1 << 28))
-        self.fpga_mmi_write(self._IRIGB_SAMPLE2_ADDR, w2 | (1 << 28))
+        w2 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE2_ADDR)
+        yield self.fpga_mmi_write.async(self._IRIGB_SAMPLE2_ADDR, w2 & ~(1 << 28))
+        yield self.fpga_mmi_write.async(self._IRIGB_SAMPLE2_ADDR, w2 | (1 << 28))
         t0 = time.time()
-        while not self.fpga_mmi_read(self._IRIGB_TARGET1_ADDR) & (1 << 30):
+        while not (yield self.fpga_mmi_read.async(self._IRIGB_TARGET1_ADDR)) & (1 << 30):
             if time.time() - t0 > 1:
                 raise RuntimeError('Timeout while waiting for a Frame. Is data flowing out of the ADC data acquisition module?')
-        event_number = self.fpga_mmi_read(self._IRIGB_EVENT_CTR_ADDR)
-        return event_number
+        event_number = yield self.fpga_mmi_read.async(self._IRIGB_EVENT_CTR_ADDR)
+        async_return(event_number)
 
+    @async
     def capture_refclk_time(self, trig=True, format='nano'):
         """ Measures the time at which the next 10MHz reference clock rising
         edge occurs.
@@ -905,9 +1083,9 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         This method can be used to measure the drift of the 10 MHz reference clock relative to
         the IRIG-B time.
         """
-        t = self._get_irigb_time(trig=trig, format=format)
-        c = self.fpga_mmi_read(self._IRIGB_REFCLK_SAMPLE)
-        return (c, t)  # Return
+        t = yield self._get_irigb_time.async(trig=trig, format=format)
+        c = yield self.fpga_mmi_read.async(self._IRIGB_REFCLK_SAMPLE)
+        async_return((c, t))  # Return
 
     @async
     def get_irigb_time(self, trig=True, format='datetime', noerror=False):
@@ -1256,6 +1434,7 @@ class IceBoardHardware(object):
         #     'FMCB_VADJ': (self._power_fmcb_vadj, 2.5, 5, 1., 0.5)
         # }
 
+    @async
     def open(self):
         """
         """
@@ -1267,10 +1446,12 @@ class IceBoardHardware(object):
         if self._i2c:
             self._i2c = None
 
+    @async
     def init(self):
         """Initializes the motherboard hardware to a known state.
         This will turn off FMC power.
         """
+        yield async_moment
         self._init_gpio_expanders()
         # self._init_temperature_sensors()
         # self.set_fmc_power()
@@ -1278,7 +1459,9 @@ class IceBoardHardware(object):
 
         # Initialize the QSFPs. This sets the reset and LowPower mode. Some
         # QSFP+ modules (like the 3M AOCs) will not work without this.
+        yield async_moment
         self._qsfpa.init()
+        yield async_moment
         self._qsfpb.init()
 
     def _init_gpio_expanders(self):
@@ -1386,6 +1569,7 @@ class IceBoardHardware(object):
                     yield async_sleep(0.100)
 
 
+    @async
     def set_led(self, led_name, state):
         """
         Set the LED(s) specified in 'led_name' to the the 'state'.
@@ -1399,9 +1583,11 @@ class IceBoardHardware(object):
         if isinstance(state, (bool, int)):
             state = [state] * len(led_name)
 
+        yield async_moment
         for (led, led_state) in zip(led_name, state):
             self._gpio.write(led, led_state)
 
+    @async
     def get_led(self, led_name):
         """
         Returns the status of specified LED(s) in a dictionary
@@ -1415,7 +1601,7 @@ class IceBoardHardware(object):
         for led in led_name:
             led_status[led] = self._gpio.read(led)
 
-        return led_status
+        async_return(led_status)
 
     # def _init_temperature_sensors(self, temperature_sensor_name=None, bit_resolution=12):
     #     """ Initialize temperature sensors.

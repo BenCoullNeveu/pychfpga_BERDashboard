@@ -1,13 +1,10 @@
 #!/usr/bin/env python
 """
-REST Server and clients for the CHIME receiver hut GPS units Spectrum Instruments TM-4D, which are
-accessed through the StarTech NETRS232 serial-to-ethernet adapters.
+REST Server and clients for allowing the Prometheus to access the DRAO weather data gathered by ``wview``.
 
 """
 
 import sys
-import time
-import Queue
 import sqlite3
 import numpy as np
 
@@ -35,7 +32,21 @@ dataset = {    "barometer": {"type": "pressure", "units": "hPa"},
                "heatindex": {"type": "temperature", "units": "deg C"}}
 
 def get_wview_metrics(db_path='/var/lib/wview/archive/wview-archive.sdb'):
-    """ Return a Metrics containing the most recent entry of the Wview sqlite database"""
+    """ Return a Metrics object containing the most recent entry of the wview sqlite database specified in `db_path`.
+
+    Parameters:
+
+        db_path (str): full path and filename where the ``wview`` SQLLite database can be found.
+
+    Returns:
+
+        Metrics object.
+
+    Notes:
+        - The Metrics is empty if the data does not have a new timestamp compared to the last call.
+        - The metrics contains only the latest entry. We could envision returning all the entries
+          since the last call, so we could access the database less often.
+    """
 
     # Figure out the starting UNIX time.
     # t_start = int(datetime.datetime.strptime(arg.date, "%Y%m%d").strftime("%s"))
@@ -81,7 +92,7 @@ def get_wview_metrics(db_path='/var/lib/wview/archive/wview-archive.sdb'):
 
 class WeatherAsyncRESTServer(AsyncRESTServer):
     """
-    REST interface for wview weather server.
+    REST server that publishes ``wview`` weather server data as Prometheus-compatible metrics.
     """
 
     DEFAULT_PORT = 54325
@@ -91,6 +102,7 @@ class WeatherAsyncRESTServer(AsyncRESTServer):
         """
         super(WeatherAsyncRESTServer, self).__init__(address=address, port=port, heartbeat_string='Gs')
         self.last_time = None
+        self.config = None
 
     ##################
     # Server commands
@@ -111,31 +123,23 @@ class WeatherAsyncRESTServer(AsyncRESTServer):
         self.config = None
         coroutine_return('Wheather server server stopped')
 
-    # @coroutine
-    # @endpoint('status')
-    # def status(self, handler):
-    #     # ps_names = self._parse_names(ps_names)
-    #     # self.log.info('%.32r: Received status request for %r' % (self, ps_names))
-    #     stati = dict(is_started=bool(self.power_supplies),
-    #                  ps_names=self.power_supplies.keys())
-    #     for ps_name, ps in self.power_supplies.items():
-    #         stati[ps_name] = ps.status()
-    #         self.log.info('%.32r: Status of %s is %s' % (self, ps_name, stati[ps_name]))
-    #     coroutine_return(stati)
-
     @coroutine
     @endpoint('get-monitoring-data')
     def monitoringMetrics(self, handler):
         self.log.info('%.32r: Received monitoring metrics request' % self)
         metrics = Metrics()
         if self.config:
-            for unit_name, unit_config in self.config.items():
+            for unit_name, unit_config in self.config.units.items():
                 m = get_wview_metrics(unit_config.db_path)
+                #print(m.metrics.items()[0][1]['entries'][0])
                 if m:
-                    new_time = metrics.metrics.items()[0][1]['entries'][0]['time']
+                    new_time = m.metrics.items()[0][1]['entries'][0]['time']
                     if new_time != self.last_time:
-                        metrics.add(m)
+                        metrics.add(m, name=unit_name)
                     self.last_time = new_time
+        else:
+            self.log.warning('%.32r: Weather server is not started!' % self)
+
         handler.set_header('Content-Type', 'text/plain')
         handler.write(str(metrics))
 
@@ -145,7 +149,7 @@ class WeatherAsyncRESTServer(AsyncRESTServer):
 
 class WeatherAsyncRESTClient(AsyncRESTClient):
     """
-    Implements an asynchronous client that exposes the functions of the specified  wether server.
+    Implements an asynchronous client that exposes the functions of the specified weather server.
     """
     DEFAULT_PORT = WeatherAsyncRESTServer.DEFAULT_PORT
 
@@ -167,7 +171,7 @@ class WeatherAsyncRESTClient(AsyncRESTClient):
 
         """
         #print('start!')
-        self.log.info('%s: Starting remote PowerSupply server at %s:%i with config: %r' % (self, self.hostname, self.port, config))
+        self.log.info('%s: Starting remote Weather server at %s:%i with config: %r' % (self, self.hostname, self.port, config))
 
         if isinstance(config, str):
             config = load_yaml_config(config)
@@ -178,12 +182,6 @@ class WeatherAsyncRESTClient(AsyncRESTClient):
     def stop(self):
         result = yield self.get('stop')
         coroutine_return(result)
-
-    # @coroutine
-    # def status(self):
-    #     result = yield self.get('status')
-    #     coroutine_return(result)
-
 
 def main():
     """ Command-line interface to launch and operate the Weather server.

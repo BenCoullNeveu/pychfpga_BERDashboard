@@ -21,9 +21,11 @@ import struct
 import numpy as np
 import h5py
 import datetime
+import tornado
+import psutil
 
-
-from rest import AsyncRESTServer, endpoint, AsyncRESTClient, coroutine, coroutine_return, IOLoop, RunSyncWrapper
+import log
+from rest import AsyncRESTServer, endpoint, AsyncRESTClient, coroutine, coroutine_return, IOLoop, RunSyncWrapper, moment
 from pychfpga import NameSpace, Metrics
 
 
@@ -210,11 +212,20 @@ class GainEstimator(object):
 class hdf5TimestreamData(object):
     """ Object representing a HDF5 file containing raw data
     """
-    def __init__(self, filestring, crate_and_slot_from_port = False):
+    def __init__(self, filestring, elements_per_file=2048*64, crate_and_slot_from_port = False):
+        self.log = log.get_logger(self)
         self.N_SAMP = 2048
         #self.N_CHANNELS = 1
         self.crate_and_slot_from_port = crate_and_slot_from_port
-        self.f = h5py.File(filestring, 'w')
+        self.filename = filestring
+        self.lock_filename = self.filename + '.lock'
+
+        # # create a lock file
+        with open(self.lock_filename,'w') as h:
+            h.write('locked\n')
+
+        self.log.info('%r: Opening raw data HDF5 file %s' % (self, self.filename))
+        self.f = h5py.File(self.filename, 'w', libver='latest')
         self.f.attrs["git_version_tag"] = "0.1"
         self.f.attrs["system_user"] = "root"
         self.f.attrs["collection_server"] = "hostname"
@@ -244,12 +255,12 @@ class hdf5TimestreamData(object):
         self.timestreamDataset.attrs['axis'] = ['snapshot', 'timestream']
         self.index_map = self.f.create_group("index_map")
         self.snapshot_index_map = self.index_map.create_dataset('snapshot',
-                                            (1310720,), dtype=np.uint32)
+                                            (elements_per_file,), dtype=np.uint32)
         self.start_index = int(filestring[-9:-6]) + 1
-        self.snapshot_index_map = np.arange(1310720) + self.start_index
+        self.snapshot_index_map[:] = np.arange(elements_per_file) + self.start_index
         self.timestream_index_map = self.index_map.create_dataset("timestream",
                                             (2048,), dtype=np.uint16)
-        self.timestream_index_map = np.arange(2048)
+        self.timestream_index_map[:] = np.arange(2048)
         self.n_times = 1
         self.n = 0
 
@@ -282,7 +293,13 @@ class hdf5TimestreamData(object):
         self.n += 1
 
     def close(self):
+        self.log.info('%r: Closing HDF5 file %s' % (self, self.filename))
         self.f.close()
+        try:
+            os.remove(self.lock_filename)
+            # os.rename(self.lock_filename, self.filename)
+        except OSError:
+            self.log.error('%r: Unable to rename HDF5 lock file from %s to %s' % (self, self.lock_filename, self.filename))
 
 
 # class dataWriter(object):
@@ -401,18 +418,28 @@ class RawAcqReceiver(object):
     QUEUE_MAXSIZE = 10240 #: Maximum number of elements in a queue, just in case we can't read the queue as fast as we fill it. Otherwise we can use infinite memory.
 
     def __init__(self):
-        self.log = logging.getLogger(__name__).getChild(self.__class__.__name__)
+        self.log = log.get_logger(self)
         self.ports = None
         self.name = None
         self.datawriter = None
         self.receivers = []
         self.data_queue = None
         self.gain_estimator = None
+        self.ioloop_last_time = None
+        self.ioloop_max_response_time = None
+        self.ioloop_min_response_time = None
+        self.hdf5_write_time = 0
+        self.start_time = None
+        self.hdf5_start_time = None
+        self.hdf5_run = False
+        self.run = False
 
     def __repr__(self):
         return '%s(%s)' % (self.__class__.__name__, self.name)
 
-    def start(self, name='RawAcq', ports=[]):
+
+    @coroutine
+    def start(self, name='RawAcq', ports=[], jump_thresholds = []):
         """ Start a raw data receiver for each specified port.
 
         For each re port we monitor, create a data queue and atart a multithreaded UDP receiver that
@@ -478,13 +505,30 @@ class RawAcqReceiver(object):
         self.hdf5_file = None
         self.hdf5_run = False
         self.capture_start = False
+        self.jump_thresholds = jump_thresholds
+        self.start_time = time.time()
+
+        # Metrics
         self.rms = {}
+        self.min = {}
+        self.max = {}
+        self.mean = {}
+        self.jumps = {}
+        self.maxdiff = {}
+        self.chan_number_mismatch_count = 0
+        self.crate_number_mismatch_count = 0
+        self.slot_number_mismatch_count = 0
+        self.ramp_error_count = {}
+        self.ramp_bit_error_count = {}
+        self.ping_error_count = {}
+        self.start_time = time.time()
 
         # Determine the interface from which data will be coming from each source by pinging them
-        src_if_addrs = {tuple(src):self._ping(tuple(src)) for port_info in self.ports for src in port_info['sources']} # can be parallelized
-        for (src_ip, src_port), src_if_addr in src_if_addrs.items():
-            if not src_if_addr:
-                raise RuntimeError('Cannot ping %s:%s, so cannot determine interface this data source is connected.' % (src_ip, src_port))
+        src_if_addrs = yield self.ping_sources()
+        failed_src = [src_addr for src_addr, src_if_addr in src_if_addrs.items() if not src_if_addr]
+        if failed_src:
+            raise RuntimeError('Cannot ping %s, so cannot determine interface through which these data sources are reached.' %
+                ','.join('%s:%s' (src_addr) for arc_addr in failed_src))
 
 
         # Determine the interface and port to which each receiver should listen to.
@@ -553,12 +597,13 @@ class RawAcqReceiver(object):
             status='started',
             target_addr=dest_ifs.items() # return as a list of tuples, json does not support tuple-indexed dicts
             )
-        return result
+        coroutine_return(result)
 
 
+    @coroutine
     def _ping(self, addr, timeout=0.3):
         """
-        Establish a TCP connection with `addr`  at and return the interface and loal port used for the connection.
+        Establish a TCP connection with `addr`  at and return the interface and local port used for the connection.
 
         Parameters:
             addr ((str, int) tuple): Address and port to which a TCP connection is made
@@ -567,19 +612,36 @@ class RawAcqReceiver(object):
         Return:
             An (interface_address, local_port) if the connection is successful, None otherwise.
 
-        Todo:
-            Make a real coroutine
         """
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.settimeout(timeout)
+        stream = tornado.iostream.IOStream(s)
+
         try:
-            s.connect(addr)
+            yield stream.connect(addr)
             if_addr = s.getsockname()
             s.close()
-        except socket.timeout:
-            self.log.warn('Could not establish a TCP connection with %s:%s' % (addr[0], addr[1]))
+        except (socket.timeout, Exception) as e:
+            self.log.warn('Could not establish a TCP connection with %s:%s. Error is:\n %s' % (addr[0], addr[1], e))
             if_addr = None
-        return(if_addr)
+
+        coroutine_return(if_addr)
+
+    @coroutine
+    def ping_sources(self):
+        if not self.ports:
+            coroutine_return()
+        self.log.info('%r: Pinging all data sources' % (self))
+        # Determine the interface from which data will be coming from each source by pinging them
+        src_if_addrs = yield {tuple(src):self._ping(tuple(src))
+                              for port_info in self.ports
+                              for src in port_info['sources']} # can be parallelized
+        for src_addr, src_if_addr in src_if_addrs.items():
+            old_count = self.ping_error_count.setdefault(src_addr, 0)
+            if not src_if_addr:
+                self.ping_error_count[src_addr] = old_count + 1
+        coroutine_return(src_if_addrs)
+
 
     def _get_mac_address(self, if_addr):
         """ Return the MAC address of the interface with address `if_addr`.
@@ -620,13 +682,13 @@ class RawAcqReceiver(object):
             receiver.socket.close()  # free the socket so we can restart the receiver later
             print("shutdown servers")
             self.data_queue.clear()
+            self.start_time = None
         self.gain_estimator = None
-
+        self.start_time = None
 
     def process_data(self):
         self.old_timestamp = None
         self.n_ant_rec = 0
-
         while self.run:
             # for j, out_q in enumerate(self.data_queues):
                 # if out_q.empty():
@@ -639,21 +701,46 @@ class RawAcqReceiver(object):
                     #print('process_data: Queue Empty')
                     continue
                 #print('.')
+
+                base_data_port = 42500
+                if port < base_data_port:
+                    crate_number_from_port = None
+                    slot_number_from_port = None
+                crate_number_from_port = (port-base_data_port)//100
+                slot_number_from_port = ((port-base_data_port) % 100)-1 # zero-based
+
                 stream_id &= 0xFFF
                 chan_number = stream_id & 0xF
-                slot_number = (stream_id >> 4) & 0xF
+                slot_number = (stream_id >> 4) & 0xF  # zero-based
                 crate_number = (stream_id >> 8) & 0xF
 
+                discard = False
+                if chan != chan_number:
+                    self.chan_number_mismatch_count += 1
+                    discard = True
+                if crate_number_from_port != crate_number:
+                    self.crate_number_mismatch_count += 1
+                    discard = True
+                if slot_number_from_port != slot_number:
+                    self.slot_number_mismatch_count += 1
+                    discard = True
+
+                if discard:
+                    self.log.warning('%r:Crate/slot/channel mismatch: (%i, %i, %i) from port, (%i, %i, %i) from streamID' %
+                        (self, crate_number_from_port, slot_number_from_port, chan, crate_number, slot_number, chan_number))
+                    continue
                 # Write data to HDF file
+                t0 = time.time()
                 if self.hdf5_run:
                     self.hdf5_file.write(timestamp, port, chan, stream_id, flags, adc_data)
                     self.n_elements += 1
                     if self.n_elements >= self.elements_per_file:
                         self.hdf5_file_number += 1
                         self.hdf5_file = self.start_new_hdf5_file()
-                elif self.hdf5_file: # if we are no lunget capturing to bile, but a file is open, then close it.
+                elif self.hdf5_file: # if we are no longer capturing to file, but a file is open, then close it.
                     self.hdf5_file.close()
                     self.hdf5_file = None # This will tell us we are finished capturing
+                self.hdf5_write_time = max(self.hdf5_write_time, time.time() - t0)
 
 
                 # if timestamp not in self.buffers:
@@ -681,7 +768,24 @@ class RawAcqReceiver(object):
                         self.capture_start = False
 
                 # Store some stats
-                self.rms[(crate_number, slot_number, chan)] = np.std(adc_data)
+                chan_id =(crate_number, slot_number, chan)
+                self.rms[chan_id] = np.std(adc_data)
+                self.min[chan_id] = np.min(adc_data)
+                self.max[chan_id] = np.max(adc_data)
+                self.mean[chan_id] = np.mean(adc_data)
+                self.maxdiff[chan_id] = np.max(np.abs(np.diff(adc_data)))
+                expected_ramp = np.arange(-128,2048-128, dtype=np.int8)
+         	#if (adc_data != expected_ramp).any() and crate_number==0 and slot_number==0:
+		#	print('%r: Ramp mismatch. Expected %s, got %s' % (self, expected_ramp[:8], adc_data[:8]))
+                self.ramp_error_count[chan_id] = self.ramp_error_count.get(chan_id, 0) + np.sum(adc_data != expected_ramp)
+                for bit in range(8):
+                    mask = 1 << bit
+                    chan_bit_id = (crate_number, slot_number, chan, bit)
+                    self.ramp_bit_error_count[chan_bit_id] = self.ramp_bit_error_count.get(chan_bit_id, 0) + np.count_nonzero((adc_data ^ expected_ramp) & mask)
+                for threshold in self.jump_thresholds:
+                    jump_id = (crate_number, slot_number, chan, threshold)
+                    self.jumps[jump_id] = self.jumps.get(jump_id, 0) + np.sum(np.abs(np.diff(adc_data)) > threshold)
+                # print('jumps thresholds=', self.jump_thresholds)
 
     def print_stats(self):
         #print()
@@ -692,11 +796,14 @@ class RawAcqReceiver(object):
     def startHdf5Disk(self, base_dir, base_filename, capture_duration=60, elements_per_file=2048*64):
         if self.hdf5_file:
             raise RuntimeError('HDF5 dataWriter is already running')
+
+        self.hdf5_start_time = time.time()
         # self.datawriter = dataWriter(self.data_queues, base_dir, base_filename, elements_per_file)
         # self.data_writer_thread = threading.Thread(target=self.datawriter.write)
         # self.data_writer_thread.setDaemon(True)
         # self.data_writer_thread.start()
         if capture_duration:
+            capture_duration += 60,  # stop HDF5 capture 1 min after the desired time in case ch_master does not do it.
             self.log.info('%.32r: HDF5 data writer will be stopped in %f seconds' % (self, capture_duration))
             IOLoop.current().call_later(capture_duration, self.stopHdf5Disk)
 
@@ -721,6 +828,7 @@ class RawAcqReceiver(object):
             raise RuntimeError('%.32r: HDF5 dataWriter is not running' % self)
         self.log.info('%.32r: Stopping HDF5 data writer' % self)
         self.hdf5_run = False
+        self.hdf5_start_time = None
         # self.data_writer_thread.join()
         # self.datawriter.close()
         # self.datawriter = None
@@ -732,8 +840,7 @@ class RawAcqReceiver(object):
         self.n_elements = 0
         filename = "{0:06d}.h5".format(self.hdf5_file_number)
         filename =  os.path.join(self.hdf5_base_dir, filename)
-        self.log.info('%r: started logging in file %s' % (self, filename))
-        h5file = hdf5TimestreamData(filename)  # start a new empty file
+        h5file = hdf5TimestreamData(filename, elements_per_file=self.elements_per_file)  # start a new empty file
         return h5file
 
     # def hdf5_write(self, timestamp, port, chan, stream_id, flags, adc_data):
@@ -782,7 +889,7 @@ class RawAcqReceiver(object):
             raise RuntimeError('Data set capture is already in progress')
         self.start_capture = True
         while not self.start_capture:
-            yield None
+            yield moment
 
         coroutine_return(self.all_ts, self.ports, self.all_data)
 
@@ -790,16 +897,115 @@ class RawAcqReceiver(object):
     def is_running(self):
         return bool(self.receivers)
 
+    def check_ioloop_response_time(self):
+        t = time.time()
+        if self.ioloop_last_time is not None:
+            self.ioloop_max_response_time = max(self.ioloop_max_response_time or 0, t-self.ioloop_last_time)
+            self.ioloop_min_response_time = min(self.ioloop_min_response_time or float('inf'), t-self.ioloop_last_time)
+        self.ioloop_last_time = t
+
     @coroutine
     def get_metrics(self):
-        metrics = Metrics()
-        for (crate, slot, chan), rms in self.rms.items():
-            metrics.add('raw_acq_rms', value= rms, crate=crate, slot=slot, chan=chan, type='gauge')
-        for i,r in enumerate(self.receivers):
-            metrics.add('raw_acq_received_packets', value=r.packet_counter, receiver=i, type='gauge')
-            metrics.add('raw_acq_queued_packets', value=r.queued_packets, receiver=i, type='gauge')
-            metrics.add('raw_acq_overflow_packets', value=r.queue_overflows, receiver=i, type='gauge')
-        metrics.add('raw_acq_queue_size', value=self.data_queue.qsize(), type='gauge')
+        metrics = Metrics(default_type='gauge')
+
+        # Node stats
+
+        mem = psutil.virtual_memory()
+
+        metrics.add('raw_acq_node_mem_total', value=mem.total)
+        metrics.add('raw_acq_node_mem_available', value=mem.available)
+        metrics.add('raw_acq_node_mem_percent', value=mem.percent)
+        metrics.add('raw_acq_node_mem_used', value=mem.used)
+        metrics.add('raw_acq_node_mem_free', value=mem.free)
+
+        cpu = psutil.cpu_times()
+
+        metrics.add('raw_acq_node_cpu_percent', value=psutil.cpu_percent())
+        metrics.add('raw_acq_node_cpu_user', value=cpu.user)
+        metrics.add('raw_acq_node_cpu_system', value=cpu.system)
+        metrics.add('raw_acq_node_cpu_idle', value=cpu.idle)
+
+        # Disk usage on the hdf5 file destination volume
+        if hasattr(os,'statvfs') and self.hdf5_run:
+            s = os.statvfs(self.hdf5_base_dir)
+            metrics.add('raw_acq_disk_size', value=s.f_blocks * s.f_bsize)
+            metrics.add('raw_acq_disk_used', value=(s.f_blocks - s.f_bfree) * s.f_bsize)
+            metrics.add('raw_acq_disk_free', value=s.f_bfree * s.f_bsize)
+            metrics.add('raw_acq_disk_percent_used', value=float(s.f_blocks - s.f_bfree)/s.f_blocks)
+            metrics.add('raw_acq_disk_percent_free', value=float(s.f_bfree)/s.f_blocks)
+
+        metrics.add('raw_acq_run_time', value= 0 if self.start_time is None else time.time() - self.start_time )
+        metrics.add('raw_acq_hdf5_run_time', value= 0 if self.hdf5_start_time is None else time.time() - self.hdf5_start_time )
+
+        # IOloop health stats
+        metrics.add('raw_acq_ioloop_max_response_time', value=self.ioloop_max_response_time)
+        metrics.add('raw_acq_ioloop_min_response_time', value=self.ioloop_min_response_time)
+        self.ioloop_max_response_time = None
+        self.ioloop_min_response_time = None
+
+        # HDF5 file writing stats
+
+        metrics.add('raw_acq_hdf5_write_time', value=self.hdf5_write_time)
+        self.hdf5_write_time = 0
+        if self.hdf5_run:
+            metrics.add('raw_acq_hdf5_n_elements', value=self.n_elements)
+            metrics.add('raw_acq_hdf5_n_elements_max', value=self.elements_per_file)
+            metrics.add('raw_acq_hdf5_number_of_files', value=self.hdf5_file_number)
+
+
+
+        # receiver data queue stats
+
+        if self.run:
+            metrics.add('raw_acq_queue_size', value=self.data_queue.qsize())
+            metrics.add('raw_acq_queue_maxsize', value=self.data_queue.maxsize)
+
+            # ADC signal stats
+            for (crate, slot, chan), rms in self.rms.items():
+                metrics.add('raw_acq_rms', value= rms, crate=crate, slot=slot, chan=chan)
+            self.rms = {}
+            for (crate, slot, chan), min_ in self.min.items():
+                metrics.add('raw_acq_min', value= min_, crate=crate, slot=slot, chan=chan)
+            self.min = {}
+            for (crate, slot, chan), max_ in self.max.items():
+                metrics.add('raw_acq_max', value= max_, crate=crate, slot=slot, chan=chan)
+            self.max = {}
+            for (crate, slot, chan), mean in self.mean.items():
+                metrics.add('raw_acq_mean', value= mean, crate=crate, slot=slot, chan=chan)
+            self.mean = {}
+            for (crate, slot, chan), maxdiff in self.maxdiff.items():
+                metrics.add('raw_acq_max_diff', value= maxdiff, crate=crate, slot=slot, chan=chan)
+            self.maxdiff = {}
+            for (crate, slot, chan), count in self.ramp_error_count.items():
+                metrics.add('raw_acq_ramp_errors', value= count, crate=crate, slot=slot, chan=chan)
+            #self.ramp_error_count = {}
+            for (crate, slot, chan, bit), count in self.ramp_bit_error_count.items():
+                metrics.add('raw_acq_ramp_bit_errors', value=count, crate=crate, slot=slot, chan=chan, bit=bit)
+            #self.ramp_bit_error_count = {}
+            for (crate, slot, chan, threshold), count in self.jumps.items():
+                metrics.add('raw_acq_jumps', value=count, crate=crate, slot=slot, chan=chan, threshold=threshold)
+            #self.jumps = {}
+
+            # Receiver-specific stats
+            for i, r in enumerate(self.receivers):
+                metrics.add('raw_acq_received_packets', value=r.packet_counter, receiver=i)
+                metrics.add('raw_acq_queued_packets', value=r.queued_packets, receiver=i)
+                metrics.add('raw_acq_overflow_packets', value=r.queue_overflows, receiver=i)
+
+
+            metrics.add('raw_acq_run_time', value=0 if self.start_time is None else time.time() - self.start_time)
+
+            # Packet integrity stats
+
+            metrics.add('raw_acq_chan_mismatch', value=self.chan_number_mismatch_count)
+            metrics.add('raw_acq_crate_mismatch', value=self.crate_number_mismatch_count)
+            metrics.add('raw_acq_slot_mismatch', value=self.slot_number_mismatch_count)
+
+            # Ping stats
+            for (src_ip, src_port), count in self.ping_error_count.items():
+                metrics.add('raw_acq_ping_errors', value=count, src_ip=src_ip, src_port=src_port)
+            self.ping_error_count = {}
+
         return metrics
 
 
@@ -821,8 +1027,10 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
     def __init__(self, address='', port=DEFAULT_PORT, logging_params={}):
         self.receiver = RawAcqReceiver()
         super(RawAcqAsyncRESTServer, self).__init__(address=address, port=port,  heartbeat_string='Rs')
-
         self.add_periodic_callback(self.receiver.print_stats, 3000)
+        self.add_periodic_callback(self.receiver.ping_sources, 3000) # ping the raw_acq data sources periodically to ensure the switches tables always know how to route the packets to here
+        self.add_periodic_callback(self.receiver.check_ioloop_response_time, 300)
+
 
     @coroutine
     def shutdown(self):
@@ -834,7 +1042,7 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
         self.log.info('%.32r: Received start command with %r' % (self, config))
         if self.receiver.is_running():
             raise RuntimeError('Server is already started')
-        result = self.receiver.start(**config)
+        result = yield self.receiver.start(**config)
         self.log.info('%.32r: UDP receiver started. Returned %r' % (self, result))
         coroutine_return(result)
 
@@ -881,10 +1089,13 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
     @coroutine
     @endpoint('get-monitoring-data')
     def get_monitoring_data(self, handler):
+        t0 = time.time()
         self.log.info('%.32r: Received monitoring metrics request' % self)
         metrics = yield self.receiver.get_metrics()
         handler.set_header('Content-Type', 'text/plain')
-        handler.write(str(metrics))
+        handler.set_header('Content-Encoding', 'gzip')
+        handler.write(metrics.get_gzip())
+        self.log.info('%.32r: Returning raw_acq %i metrics. The request took %.3f seconds' % (self, len(metrics), time.time()-t0))
 
 
 ################################################

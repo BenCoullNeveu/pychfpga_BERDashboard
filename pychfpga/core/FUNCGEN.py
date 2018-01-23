@@ -37,20 +37,25 @@ class FUNCGEN_base(Module_base):
     FN_BUFFER = 1
     FN_NOISE = 2
     FN_WORD_CTR = 3
+    FN_FRAME8 = 4
+    FN_FRAME4 = 5
     BUFFER_SIZE = 2048  # bytes
     FRAME_SIZE = 2048 # bytes
 
+    # The following define the source of the data
     DATA_SOURCE_NAMES = {
         'adc':                   FN_ADC,  # Sends the ADC data
         'noise':                 FN_NOISE,  # Uniform white noise generator
         'word_ctr_buffer_flags': FN_WORD_CTR,  # 32-bit Frame/word counter, with ADC overflow from bit 0 of buffer bytes
         'buffer':                FN_BUFFER,  # Sends the data stored in the buffer
         'funcgen':               FN_BUFFER,  # Sends the data stored in the buffer (for backwards compatibility)
+        'frame8':                FN_FRAME8,  # Sends the frame number in every 8-bit sample
+        'frame4':                FN_FRAME4,  # Sends the frame number if the upper 4 bits of each samples. The lower bits are zero.
         }
 
     FUNCTION_NAMES = {  # key : (function number, buffer generator fn)
 
-        # The following are
+        # The following define the patterns we can program in the waveform buffer
         'arb':            (0, lambda data, N=BUFFER_SIZE: data),  # Arbitrary waveform stored in buffer
         'a':              (1, lambda a, N=BUFFER_SIZE: np.tile(np.uint8(a), N)),  # All bytes are Byte A
         'b':              (2, lambda b, N=BUFFER_SIZE: np.tile(np.uint8(b), N)),  # All bytes are Byte B
