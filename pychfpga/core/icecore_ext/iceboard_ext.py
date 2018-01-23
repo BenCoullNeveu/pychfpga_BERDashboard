@@ -313,6 +313,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         # link by reading the UDP MMI cookie (not the SPI one) and check if
         # the cookie correspond to the chFPGA firmware.
         # -------------------------------------------------------------------------
+        self.clear_fpga_udp_errors(force=True, no_reset=True) # Try to prevent initial error on first command
         self.logger.debug("%.32r: Attempting to communicate with the FPGA over direct Ethernet link" % self)
         try:
             cookie = yield self.get_fpga_firmware_cookie.async(resync=True)  # Read the firmware version cookie from the GPIO subsystem (this is provided by the FPGA core firmware which is always present on all versions of the FPGA)
@@ -433,9 +434,12 @@ class IceBoardExtHandler(IceBoardPlusHandler):
 
 
     @async
-    def clear_fpga_udp_errors(self):
-        if self.mmi.error_counter:
-            yield self.reset_fpga_udp_stack.async()
+    def clear_fpga_udp_errors(self, force=False, no_reset=False):
+        if force or self.mmi.error_counter > 40:
+            self.logger.info('%r: clearing FPGA UDP errors' % self)
+            if not no_reset:
+                yield self.reset_sfp()
+                yield self.reset_fpga_udp_stack.async()
             try:
                 self.mmi.flush()
                 self.mmi.read(0, length=1, retry=-1, resync=1)
@@ -447,6 +451,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
             except IOError:
                 pass
             self.mmi.error_counter = 0
+            self.logger.info('%r: Finished clearing FPGA UDP errors. Hoping it works now...' % self)
 
     @async
     def check_command_count(self, reset=False):
@@ -502,9 +507,15 @@ class IceBoardExtHandler(IceBoardPlusHandler):
 
     @async
     def reset_fpga_udp_stack(self):
-        self.logger.error("%r: Resetting the FPGA's UDP communication stack" % (self))
-        yield self.fpga_mmi_write.async(self._SFP_STATUS_ADDR, 2 << 30)
+        self.logger.warning("%r: Resetting %s FPGA's UDP communication stack" % (self, self.hostname))
+        yield self.fpga_mmi_write.async(self._SFP_STATUS_ADDR, 3 << 30)
         yield self.fpga_mmi_write.async(self._SFP_STATUS_ADDR, 0 << 30)
+
+    @async
+    def reset_sfp(self):
+        self.logger.warning("%r: Temporarily disconnecting the SFP to reset the %s FPGA's UDP communication stack" % (self, self.hostname))
+        yield self.set_pci_switch_direction.async('SEL_ARM')
+        yield self.set_pci_switch_direction.async('SEL_SFP')
 
     @async
     def set_fpga_control_networking_parameters(
@@ -859,6 +870,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
 
         if format not in self._IRIGB_TIME_FORMAT:
             raise ValueError('Invalid time format. Valid formats are: %s' % (', '.join(self._IRIGB_TIME_FORMAT.keys())))
+        ts = self._IrigTimestamp()
 
         # Capture current time
         if trig:
@@ -887,16 +899,19 @@ class IceBoardExtHandler(IceBoardPlusHandler):
                     else:
                         raise RuntimeError('%.32r: Could not get a recently updated IRIG-B time. Check your cabling.' % self)
 
-        w0 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE0_ADDR)
-        w1 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE1_ADDR)
-        w2 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE2_ADDR)
+        #w0 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE0_ADDR)
+        #w1 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE1_ADDR)
+        #w2 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE2_ADDR)
+        ts.system_time_before = time.time()
+        w0 = self.fpga_mmi_read(self._IRIGB_SAMPLE0_ADDR)
+        w1 = self.fpga_mmi_read(self._IRIGB_SAMPLE1_ADDR)
+        w2 = self.fpga_mmi_read(self._IRIGB_SAMPLE2_ADDR)
 
         # t0 = self.fpga_mmi_read(self._IRIGB_TARGET0_ADDR)
         # t1 = self.fpga_mmi_read(self._IRIGB_TARGET1_ADDR)
         # t2 = self.fpga_mmi_read(self._IRIGB_TARGET2_ADDR)
         # e0 = self.fpga_mmi_read(self._IRIGB_EVENT_CTR_ADDR)
 
-        ts = self._IrigTimestamp()
         ts.system_time = time.time()
         ts.pps = (w0 >> 26) & ((1 << 6) - 1)
         ts.sbs = (w0 >> 8) & ((1 << 18) - 1)
@@ -924,16 +939,24 @@ class IceBoardExtHandler(IceBoardPlusHandler):
             y = ts.y
             d = ts.d
 
-        if not noerror and (ts.h > 23 or ts.m > 59 or ts.s > 59):
+        if not noerror and (ts.h > 23 or ts.m > 59 or ts.s > 60):
             raise RuntimeError('Invalid IRIG-B time value %ih %im %is.' % (ts.h, ts.m, ts.s))
 
-        ts.datetime = dt = datetime(y + 2000, 1, 1) + timedelta(d-1, ts.s, ts.ss//100, 0, ts.m, ts.h)
+        ts.datetime = dt = datetime(y + 2000, 1, 1) + timedelta(d-1, ts.s + 1, ts.ss//100, 0, ts.m, ts.h)
         # ts.before_target = (t1 >> 31) & 1
         # ts.done = (t1 >> 30) & 1
         # ts.nano = int(timegm((y + 2000, 1, 1, 0, 0, 0)) * 1e9) + ((d-1) *24*3600 + ts.h * 3600 + ts.m * 60 + ts.s)*1000000000 + ts.ss*10
-        ts.nano = int(timegm((y + 2000, 1, d, ts.h, ts.m, ts.s)) * 1e9) +  ts.ss * 10
+        timestamp = timegm((y + 2000, 1, d, ts.h, ts.m, ts.s + 1))
+        ts.nano = int(timestamp * 1e9) +  ts.ss * 10
+        ts.nano2 = int(timegm((y + 2000, 1, 1, 0, 0, 0)) * 1e9) + ((d-1) *24*3600 + ts.h * 3600 + ts.m * 60 + ts.s)*1000000000 + ts.ss*10
+
         ts.time = ts.nano / 1e9
-        ts.time_struct = [dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second, (ts.nano % 1000000000) / 1000.0]
+        ts.time2 = ts.nano2 / 1e9
+        tt = time.gmtime(timestamp)
+        ts.time_struct = [tt.tm_year, tt.tm_mon, tt.tm_mday, tt.tm_hour,
+            tt.tm_min, tt.tm_sec, (ts.nano % 1000000000) / 1000.0]
+        ts.time_struct2 = [dt.year, dt.month, dt.day, dt.hour, dt.minute,
+                dt.second, (ts.nano % 1000000000) / 1000.0]
         # ts.event_ctr = e0
 
         async_return(self._IRIGB_TIME_FORMAT[format](ts))
