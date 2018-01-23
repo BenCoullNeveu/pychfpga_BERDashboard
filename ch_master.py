@@ -565,6 +565,7 @@ class ChimeMaster(object):
                 offset = (ib.slot or 1) - 1
                 self.log.info('%r: Starting data capture on %r with period=%f, source=%s' % (self, ib, capture_period, capture_source))
                 ib.start_data_capture(period=capture_period, source=capture_source, offset=offset)
+        self.fpgas.sync() # JM: this is required after starting raw data capture so the raw frames are indeed synced
 
     @coroutine
     def start_hdf5_capture(self, capture_folder=None, capture_filename=None, capture_rate=None,
@@ -1306,7 +1307,11 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
                     gps_time=gps_ts.time_struct, # time structure [year, month, day, hour, minute, second, microsecond (float, 10 ns resolution)]
                     gps_ctime=gps_ts.time, # GPS time, expressed in ctime format (float expressing seconds since UTC epoch)
                     gps_nano=gps_ts.nano,
-                    server_ctime =gps_ts.system_time(), # system time, expressed in ctime format (float expressing seconds since UTC epoch)
+                    gps_time2=gps_ts.time_struct2, # time structure [year, month, day, hour, minute, second, microsecond (float, 10 ns resolution)]
+                    gps_ctime2=gps_ts.time2, # GPS time, expressed in ctime format (float expressing seconds since UTC epoch)
+                    gps_nano2=gps_ts.nano2,
+                    server_ctime =gps_ts.system_time, # system time, expressed in ctime format (float expressing seconds since UTC epoch)
+                    server_ctime_before =gps_ts.system_time_before, # system time, expressed in ctime format (float expressing seconds since UTC epoch)
                     start_ctime=self.chime_master.start_time,
                     frame0_time=frame0_ts.time_struct,
                     frame0_ctime=frame0_ts.time,
