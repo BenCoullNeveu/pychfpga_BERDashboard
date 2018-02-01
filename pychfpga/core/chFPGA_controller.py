@@ -2985,6 +2985,13 @@ class chFPGA_controller(IceBoardExtHandler):
         info['MB Total power'] = '%0.1fW' % total_power
         metrics.add('fpga_motherboard_power', value=total_power)
 
+        ####################################
+        # Motherboard QSFPs present
+        ####################################
+
+        for qsfp in [1, 2]:
+                is_present = yield self.is_qsfp_present.async(qsfp)
+                metrics.add('fpga_motherboard_qsfp_present', value=is_present, qsfp=qsfp)
 
         # is_voltage_nominal
         # sysmon?
