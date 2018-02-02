@@ -3118,6 +3118,13 @@ class chFPGA_controller(IceBoardExtHandler):
                 metrics.add('fpga_backplane_fantray_tachometer', value=(yield self.get_fantray_tachometer.async()))
                 metrics.add('fpga_backplane_fantray_duty_cycle', value=(yield self.get_fantray_duty_cycle.async())/255.)
 
+                ####################################
+                # Backplane QSFPs present
+                ####################################
+                for slot in range(1,17):
+                    is_present = yield self.is_bp_qsfp_present.async(slot)
+                    metrics.add('fpga_backplane_qsfp_present',value=is_present, slot=(slot-1))
+
             except Exception as e:
                 self.logger.error('%r: error getting backplane metrics: error is %r' % (self, e))
         async_return(metrics)
