@@ -7,14 +7,79 @@
 import sys
 import numpy as np
 import log
-from pychfpga import Metrics, NameSpace
+from pychfpga import NameSpace
+from kotekan import KotekanAsyncRESTClient      
 from rest import AsyncRESTClient, AsyncRESTServer, endpoint
 from rest import coroutine, coroutine_return, sleep, IOLoop
 from rest import RunSyncWrapper, SocketContext, run_client  # generic REST Server/Client
 
-class KotekanMasterAsyncRESTServer(AsyncRESTServer):
+
+class KotekanMaster(object):
+    """KotekanMaster Object to interact with the kotekan processes running on CHIME GPU Nodes.
     """
-    Async Restful Server for Kotekan Master
+
+    # Define minimum logging setup until we some from the config file.
+    DEFAULT_LOGGING = 
+    {
+        'handlers': 
+            {
+            'stderr': {'class': 'logging.StreamHandler', 'level': 'INFO'}
+            },
+        'loggers': 
+            {
+            '': {'handlers': ['stderr']}  # root logger
+            }
+    }
+
+    def __init__(self):
+        log.setup_logging(self.DEFAULT_LOGGING)
+        self.log.debug('%r: Creating KotekanMaster Instance' % self)
+        #KotekanMaster Parameters
+        self.state = 'off'
+        self.config = None
+        self.start_time = None
+
+        #Kotekan Objects
+        self.kotekan = None # Kotekan REST clients
+
+        #Logging Parameters
+        self.PROGRAM = os.path.realpath(__file__) # absolute path name to this module
+        self.GIT_VERSION = "TEST" #TODO: Add a git hook here.
+        self.log.info("program %s" % self.PROGRAM)
+        self.log.info("version %s" % self.GIT_VERSION)
+
+    def set_config(self, config):
+        self.config = NameSpace(config)
+
+    #####################################
+    # KOTEKAN Methods                   #
+    #####################################
+
+    #These methods manage and operate kotekan clients
+    @coroutine
+    def create_kotekan_clients(self):
+        # Create Kotekan REST clients
+        self.kotekan = {}
+        nodes = self.config.kotekan.nodes or {}
+        for node_name, node_params in nodes.items():
+            #config = self.config.kotekan.common_config.copy()
+            #config.update(node_params)
+            self.kotekan[node_name] = KotekanAsyncRESTClient(name=node_name, **node_params)
+
+    @coroutine
+    def start_kotekan_servers(self):
+        """
+        Start Kotekan serers with the proper config.
+        """
+        conf = self.config.kotekan
+        yield [node.start(config=merge_dict(conf.common_config, conf.nodes[node_name]).as_dict()) for node_name, node in self.kotekan.items()]
+
+
+###############################################################################
+# Kotekan Master Server                                                       #
+###############################################################################
+class KotekanMasterAsyncRESTServer(AsyncRESTServer):
+    """Async Restful Server for Kotekan Master
     """
     DEFAULT_PORT = 12048
     KOTEKAN_MASTER_HOSTNAME = None
@@ -59,9 +124,11 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
     def node_stop(self, handler)
     	pass
 
+###############################################################################
+# Kotekan Master Client                                                       #
+###############################################################################
 class KotekanMasterAsyncRESTClient(AsyncRESTClient):
-    """
-    Async Restful Server for Kotekan Master
+    """Async Restful Server for Kotekan Master
     """
     DEFAULT_PORT = KotekanMasterAsyncRESTServer.DEFAULT_PORT
 
@@ -96,6 +163,9 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
     	self.log.info('%s: Stoping KotekanMasterServer at %s:%i' % (self, self.hostname, self.port))
         result = yield self.get('stop')
         coroutine_return(result)
+
+
+###############################################################################
 
 def main():
     """CLI for operating Kotekan Master
