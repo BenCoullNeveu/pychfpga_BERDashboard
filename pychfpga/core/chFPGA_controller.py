@@ -772,7 +772,7 @@ class chFPGA_controller(IceBoardExtHandler):
             self.set_data_source(data_source, channels=channels)  # does a channelizer reset
 
         if function is not None:
-            self.set_funcgen_function(function=function, a=a, b=b, channels=channels)
+            self.set_funcgen_function(function=function, channels=channels)#self.set_funcgen_function(function=function, a=a, b=b, channels=channels)
 
         # Set FFT bypass and shift schedule
         if fft_bypass is not None:
@@ -2557,7 +2557,7 @@ class chFPGA_controller(IceBoardExtHandler):
             cb3_input_bins = cb2_output_bins
 
             # Configuration
-            cb3_lane_map = range(8)
+            cb3_lane_map = [4,5,6,7,0,1,2,3] if (crate_number & 1) else [0,1,2,3,4,5,6,7] #JM: modified this line to have consistent input ordering between pairs of crates. Before this change this line was just range(8)
             cb3_bypass = False
             cb3_lanes = [(0, 7)] * number_of_cb3_bin_sel
             cb3_input_lanes_per_output_lane = cb3_lanes[0][1] - cb3_lanes[0][0] + 1 # 8 input lanes per bin sel output
@@ -3353,3 +3353,56 @@ class chFPGA_controller(IceBoardExtHandler):
         print '%r: Waiting %i seconds' % (self, delay)
         yield tornado.gen.sleep(delay)
         async_return(True)
+
+    @async
+    def _upload_fpga_bitstream(self, filename, card_filename=None, delay=120):
+        """
+        Remounts the filesystem as read write
+        Uploads the bit file to the SD card in folder /usr/lib/iceboard/
+        Remounts the file system back to read only
+        """
+
+        if card_filename is not None:
+            filename_sd_card = '/usr/lib/iceboard/' + card_filename
+        else:
+            filename_sd_card = '/usr/lib/iceboard/' + os.path.basename(filename)
+
+        print '%r: Remounting the SD card file system as readwrite' % self
+        yield self.arm_exec.async('mount / -o remount,rw')
+
+        print '%r: Making /usr/lib/iceboard folder if needed' % self
+        yield self.arm_exec.async('mkdir -p /usr/lib/iceboard')
+
+        print '%r: Sending file to /usr/lib/iceboard/' % self
+        yield self.arm_scp.async(filename, filename_sd_card)
+
+        self.logger.info('%.32r: Command completed. Waiting %i seconds to ensure cache is flushed' % (self, delay))
+        print '%r: Waiting %i seconds' % (self, delay)
+        yield tornado.gen.sleep(delay)
+
+        print '%r: Remounting the SD card file system as readonly' % self
+        yield self.arm_exec.async('mount / -o remount,ro')
+        async_return(True)
+
+    @async
+    def _delete_fpga_bitstream(self, filename, delay=120):
+        """
+        Remounts the filesystem as read write
+        Removes  the bit file on the SD card in folder /usr/lib/iceboard/
+        Remounts the file system back to read only
+        """
+
+        print '%r: Remounting the SD card file system as readwrite' % self
+        yield self.arm_exec.async('mount / -o remount,rw')
+
+        remove_file = 'rm /usr/lib/iceboard/' + os.path.basename(filename)
+        print '%r: Removing the requested file' % self
+        yield self.arm_exec.async(remove_file)
+        
+        self.logger.info('%.32r: Command completed. Waiting %i seconds to ensure cache is flushed' % (self, delay))
+        print '%r: Waiting %i seconds' % (self, delay)
+        yield tornado.gen.sleep(delay)
+
+        print '%r: Remounting the SD card file system as readonly' % self
+        yield self.arm_exec.async('mount / -o remount,ro')
+        sync_return(True)
