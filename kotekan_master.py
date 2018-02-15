@@ -18,7 +18,7 @@ class KotekanMaster(object):
     """KotekanMaster Object to interact with the kotekan processes running on CHIME GPU Nodes.
     """
 
-    # Define minimum logging setup until we some from the config file.
+    # Logging setup without config file.
     DEFAULT_LOGGING = 
     {
         'handlers': 
@@ -39,12 +39,12 @@ class KotekanMaster(object):
         self.config = None
         self.start_time = None
 
-        #Kotekan Objects
-        self.kotekan = None # Kotekan REST clients
+        #Kotekan Client Objects
+        self.kotekan = None
 
         #Logging Parameters
         self.PROGRAM = os.path.realpath(__file__) # absolute path name to this module
-        self.GIT_VERSION = "TEST" #TODO: Add a git hook here.
+        self.GIT_VERSION = "DEV" #TODO: Add a git hook here.
         self.log.info("program %s" % self.PROGRAM)
         self.log.info("version %s" % self.GIT_VERSION)
 
@@ -74,13 +74,49 @@ class KotekanMaster(object):
         conf = self.config.kotekan
         yield [node.start(config=merge_dict(conf.common_config, conf.nodes[node_name]).as_dict()) for node_name, node in self.kotekan.items()]
 
+    @coroutine
+    def stop_kotekan_servers(self):
+        """
+        Stop Kotekan Servers
+        """
+        yield [kotekan.stop() for kotekan in self.kotekan]
+
+    #####################################
+    # Management Methods                #
+    #####################################
+
+    @coroutine
+    def start(self);
+        """
+        Start KotekanMaster
+        """
+        #Line 631
+        coroutine_return({})
+
+    @coroutine
+    def stop(self):
+        """
+        Stop KotekanMaster
+        """
+        #Line 1036
+        if self.state == "on":
+            self.state = "stopping"
+            self.log.info("Stopping Kotekan Master")
+            if self.kotekan:
+                yield self.stop_kotekan_clients()
+            log.stop_logging(self.logging_handlers)
+            reap_cached_sockets()
+            self.state("off")
+        coroutine_return({})
 
 ###############################################################################
-# Kotekan Master Server                                                       #
+# KotekanMaster Server                                                        #
 ###############################################################################
 class KotekanMasterAsyncRESTServer(AsyncRESTServer):
-    """Async Restful Server for Kotekan Master
+    """Wraps KotekanMaster into a Async Restful Server which can recieve HTTP GET
+    or POST requests and call the appropritate KotekanMaster method.
     """
+    #Line 1131
     DEFAULT_PORT = 12048
     KOTEKAN_MASTER_HOSTNAME = None
 
@@ -165,6 +201,8 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
         coroutine_return(result)
 
 
+###############################################################################
+# Command Line Interface to operate KotekanMaster Server                      #
 ###############################################################################
 
 def main():

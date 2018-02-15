@@ -1,4 +1,5 @@
 #!/usr/bin/env python
+
 """
 Module that provide the classes used to run the top-level ChimeMaster object used to initialize and operate the CHIME telescope.
 
@@ -51,7 +52,9 @@ from raw_acq import RawAcqAsyncRESTClient
 
 
 def convert_types(val):
-    # Do the annoying conversion of numpy types to native Python types. Sigh.
+    """
+    Do the annoying conversion of numpy types to native Python types. Sigh.
+    """
 
     def flatten(x):
         """ Flatten arbitrarily deep nested lists. (inspired from stack overflow)"""
@@ -130,17 +133,12 @@ def sanitize_for_json(obj):
     else:
         return obj
 
-
-
-#
 ## Constants ##
-
 # Current archive format version. Prefixed by "NT_" to signify that
 # these data do not have the time-transpose completed.
 ARCHIVE_VERSION = "NT_2.2.0"
 
 # import pychfpga.fpga_array
-
 # print(sys.argv)
 # print(__package__)
 # print(__name__)
@@ -161,10 +159,6 @@ def get_git_version():
         print('GIT was not found')
         return 'unknown' # JFC: To allow tests in windows
 
-
-
-
-
 def reap_cached_sockets():
     import __main__
     logger = log.get_logger(__name__, 'reap_cached_sockets()')
@@ -173,7 +167,6 @@ def reap_cached_sockets():
             logger.debug("closing cached socket on port %d" % port)
             socket.close()
         del __main__.__opened_sockets__
-
 
 class ChimeMaster(object):
     """ Object that provide methods to initialize, control, monitor and shutdown a CHIME telescope
@@ -218,8 +211,6 @@ class ChimeMaster(object):
 
     def set_config(self, config):
         self.config = NameSpace(config)
-
-
 
     #####################################
     # Power supply management
