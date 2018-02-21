@@ -13,18 +13,17 @@ import h5py
 import datetime as dt
 import time as tm
 
-#import matplotlib
-#matplotlib.use('Agg')
+import matplotlib
+if os.name == 'posix' and "DISPLAY" not in os.environ: matplotlib.use('Agg')
 import matplotlib.pyplot as plt
 
 from scipy import signal
 from scipy import stats
 from scipy.stats import kurtosis
 from scipy.stats import skew
-from skimage import filters
 
 import log
-ilog = log.get_logger(__name__)
+logger = log.get_parent_logger(__name__)
 
 FMT = 'FCC{:02d}{:02d}{:02d}'
 
@@ -69,20 +68,80 @@ class chime_rawadc_reader():
             return V,T
 #-------------------------------------------------------------------------------
 #-------------------Function for deciding Thresholds----------------------------
+def threshold_otsu(image, nbins=256):
+    """Return threshold value based on Otsu's method.
+
+    Parameters
+    ----------
+    image : (N, M) ndarray
+        Grayscale input image.
+    nbins : int, optional
+        Number of bins used to calculate histogram. This value is ignored for
+        integer arrays.
+
+    Returns
+    -------
+    threshold : float
+        Upper threshold value. All pixels with an intensity higher than
+        this value are assumed to be foreground.
+
+    Raises
+    ------
+    ValueError
+         If `image` only contains a single grayscale value.
+
+    References
+    ----------
+    .. [1] Wikipedia, http://en.wikipedia.org/wiki/Otsu's_Method
+
+    Notes
+    -----
+    The input image must be grayscale.
+    Adapted from skimage.filters.threshold_otsu.
+    """
+    if len(image.shape) > 2 and image.shape[-1] in (3, 4):
+        msg = "threshold_otsu is expected to work correctly only for " \
+              "grayscale images; image shape {0} looks like an RGB image"
+        warn(msg.format(image.shape))
+
+    # Check if the image is multi-colored or not
+    if image.min() == image.max():
+        raise ValueError("threshold_otsu is expected to work with images "
+                         "having more than one color. The input image seems "
+                         "to have just one color {0}.".format(image.min()))
+
+    hist, bin_edges = np.histogram(image.ravel(), bins=nbins)
+    bin_centers = bin_edges[0:-1] + 0.5 * np.diff(bin_edges)
+    hist = hist.astype(float)
+
+    # class probabilities for all possible thresholds
+    weight1 = np.cumsum(hist)
+    weight2 = np.cumsum(hist[::-1])[::-1]
+    # class means for all possible thresholds
+    mean1 = np.cumsum(hist * bin_centers) / weight1
+    mean2 = (np.cumsum((hist * bin_centers)[::-1]) / weight2[::-1])[::-1]
+
+    # Clip ends to align class 1 and class 2 variables:
+    # The last value of `weight1`/`mean1` should pair with zero values in
+    # `weight2`/`mean2`, which do not exist.
+    variance12 = weight1[:-1] * weight2[1:] * (mean1[:-1] - mean2[1:]) ** 2
+
+    idx = np.argmax(variance12)
+    threshold = bin_centers[:-1][idx]
+    return threshold
+
 def threshold(dictionary):
-    A = []
-    a = []
-    for value in dictionary.values():
-        A.append(value)
-    A = np.array(A)
-    val = filters.threshold_otsu(A)
-    for i in A:
-        if i > val:
-            a.append(i)
-    q75, q25 = np.percentile(a, [75 ,25])
-    IQR = q75 - q25
-    Threshold = q25 - IQR*3
-    return Threshold
+
+    meas = np.array(dictionary.values())
+
+    init_th = threshold_otsu(meas)
+
+    q75, q25 = np.percentile(meas[meas > init_th], [75, 25])
+
+    final_th = q25 - 3.0 * (q75 - q25)
+
+    return final_th
+
 #------------------------------------------------------------------------------
 #-------------------Saving Images of the Bad channels--------------------------
 def save_images(obj, obj1, obj2, inputs, path, var_name, data):
@@ -105,7 +164,6 @@ def save_images(obj, obj1, obj2, inputs, path, var_name, data):
             FFt.append(FFT)
         FFt = np.array(FFt)
         data_FFT = np.median(FFt,axis=0)
-        fig = plt.figure(num=k,figsize=(10,8),dpi=400)
         sub1 = fig.add_subplot(2,1,1)
         sub2 = fig.add_subplot(2,1,2)
         data_FFT = (((data_FFT)/(np.median(data_FFT)))*np.median(obj2.Temp_fft)) #Data normalized to FFT Template level
@@ -346,7 +404,7 @@ def create_templates_from_file(filename, obj1, obj2):
 
         rms = np.std(frame)
 
-        if (rms >= 8) and (rms <= 16):
+        if (rms >= 9) and (rms <= 20):
 
             kval, pval = stats.normaltest(frame)
 
@@ -387,7 +445,7 @@ def create_templates_from_data(data, obj1, obj2):
 
             rms = np.std(frame)
 
-            if (rms >= 8) and (rms <= 16):
+            if (rms >= 9) and (rms <= 20):
 
                 kval, pval = stats.normaltest(frame)
 
@@ -596,13 +654,14 @@ class DataAnalysis(object):
                 self.Doubtful_channel.append([crate,slot,channel])
 
     def display_stats(self):
-        ilog.info('Total channels in the chunk : {}'.format(len(self.Bad_channel_Normal) + len(self.Missing_channel) +
-                                                               len(self.Bad_channel_Zero) + len(self.Good_channel) + len(self.Doubtful_channel)))
-        ilog.info('Good channels : {}'.format(len(self.Good_channel)))
-        ilog.info('Missing Channels : {}'.format(len(self.Missing_channel)))
-        ilog.info('Bad channels with near-zero RMS : {}'.format(len(self.Bad_channel_Zero)))
-        ilog.info('Bad channels with non-zero RMS : {}'.format(len(self.Bad_channel_Normal)))
-        ilog.info('Doubtful channels : {}'.format(len(self.Doubtful_channel)))
+        logger.info('Total channels in the chunk : {}'.format(len(self.Bad_channel_Normal) + len(self.Missing_channel) +
+                                                            len(self.Bad_channel_Zero) + len(self.Good_channel) +
+                                                            len(self.Doubtful_channel)))
+        logger.info('Good channels : {}'.format(len(self.Good_channel)))
+        logger.info('Missing Channels : {}'.format(len(self.Missing_channel)))
+        logger.info('Bad channels with near-zero RMS : {}'.format(len(self.Bad_channel_Zero)))
+        logger.info('Bad channels with non-zero RMS : {}'.format(len(self.Bad_channel_Normal)))
+        logger.info('Doubtful channels : {}'.format(len(self.Doubtful_channel)))
 #-------------------------------------------------------------------------------
 #-------------------------------------------------------------------------------
 

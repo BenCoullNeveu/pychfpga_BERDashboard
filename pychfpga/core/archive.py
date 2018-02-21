@@ -124,12 +124,12 @@ class Hdf5Archive(object):
 
     _axes = abstract_attribute()
     _dataset_spec = abstract_attribute()
-    
+
     _max_file_size = MAX_FILE_SIZE
 
     def __init__(self, archive_files=None):
         """ Instantiates an Hdf5Archive.
-        
+
         Parameters
         ----------
         archive_files: str, list of str
@@ -139,6 +139,7 @@ class Hdf5Archive(object):
         """
 
         # Initialize variables
+        self.iam = True
         self.ind = 0
         self.num = 0
         self.writer = None
@@ -150,7 +151,7 @@ class Hdf5Archive(object):
         self.attrs = {}
 
         self._rlock = threading.RLock()
-        
+
         self._metric_name = convert_camel_case(self.__class__.__name__)
 
         # If archive_files provided, then add readers/writers
@@ -264,7 +265,7 @@ class Hdf5Archive(object):
         if (self.writer is None) or (self.writer.id.get_filesize() >= self._max_file_size):
 
             # Determine new filename using an abstracted method
-            output_file = self.get_output_file(**kwargs)
+            output_file = self.get_output_file(smp, **kwargs)
 
             # Extract now-grow axes from kwargs or current file
             index_map = {}
@@ -390,13 +391,22 @@ class Hdf5Archive(object):
     @rlock
     def read(self, key, dataset):
 
-        index = self[key]
+        if isinstance(key, tuple):
+            index = key
+        else:
+            index = self[key]
 
         return self.reader[index[0]][dataset][index[1]]
 
+    @rlock
+    def read_all(self, dataset):
+
+        return np.concatenate(tuple([rd[dataset][:] for rd in self.reader]), axis=0)
 
     @rlock
     def close_all(self):
+
+        self.iam = False
 
         # Close out h5py files
         while self.reader:
@@ -427,8 +437,8 @@ class Hdf5Archive(object):
             self.attrs[key] = value
 
 
-    def get_metrics(self, timestamp=None):
-        
+    def get_metrics(self, timestamp=None, **kwargs):
+
         if self._grow_ax != 'time':
             ValueError('Function get_metrics is only compatible with time growing archives.')
 
@@ -443,9 +453,17 @@ class Hdf5Archive(object):
             index_lbl = {}
             for name, value in self.index_map.iteritems():
                 if name != self._grow_ax:
-                    if value.dtype.fields is None:
+                    if name in kwargs:
+                        new_labels = kwargs[name](value)
+
+                        index_lbl[name] = sorted(new_labels.keys())
+                        for lbl in index_lbl[name]:
+                            index_map[lbl] = new_labels[lbl]
+
+                    elif value.dtype.fields is None:
                         index_lbl[name] = [name]
                         index_map[name] = value[:]
+
                     else:
                         fields = value.dtype.fields.keys()
                         index_lbl[name] = fields
@@ -454,14 +472,14 @@ class Hdf5Archive(object):
 
             # Loop over datasets
             for name, dspec in self._dataset_spec.iteritems():
-                
+
                 # Check to see if we are saving this metric
                 if dspec['metric']:
 
                     # Read in the data for latest timesample
                     results = self.read(timestamp, name)
                     axes = [ax for ax in dspec['axes'] if ax != self._grow_ax]
-                    
+
                     # Multidimensional loop over array and add element to metrics container
                     for index, res in np.ndenumerate(results):
 
@@ -519,7 +537,7 @@ class Hdf5Archive(object):
         """ index_map for reading (thread-safe).
         """
         index_map = {key:value[:] for key, value in self._index_map.iteritems()}
-            
+
         return index_map
 
     @abstractmethod
@@ -535,6 +553,11 @@ class Hdf5Archive(object):
     @rlock
     def archive_files(self):
         return [rd.id.name for rd in self.reader]
+
+    @property
+    @rlock
+    def current_file(self):
+        return self.writer.id.name if self.writer else None
 
     @property
     @rlock

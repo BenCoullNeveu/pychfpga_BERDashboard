@@ -699,7 +699,7 @@ def run_client(args, server_class=None, client_class=None, object_name='', serve
     parser.add_argument('-p', '--port', default=None, type=int, help="port used by the server")
     parser.add_argument('-n', '--host', default=None, type=str, help="server hostname")
     run = parser.add_mutually_exclusive_group(required=False)
-    run.add_argument('--run', action='store_true', help='runs de client/server untilinterrupted by Ctrl-C. Implicit if no command is given')
+    run.add_argument('--run', action='store_true', help='runs the client/server until interrupted by Ctrl-C. Implicit if no command is given')
     run.add_argument('--no-run', action='store_true', help='Do not run the client even if no command is given. Useful in interactive sessions')
     parser.add_argument('--no-start', action='store_true', help='prevents the initializatoin the server with the provided config when it is not initialized')
     args = parser.parse_args()
