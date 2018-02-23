@@ -85,7 +85,7 @@ def threshold(dictionary):
     return Threshold
 #------------------------------------------------------------------------------
 #-------------------Saving Images of the Bad channels--------------------------
-def save_images(obj, obj1, obj2, inputs, path, var_name, data):
+def save_images(obj, obj1, obj2, inputs, path, var_name, data, align=False):
     k = 0
     plot_dir = os.path.join(path, var_name)
     mkdir(plot_dir)
@@ -108,7 +108,8 @@ def save_images(obj, obj1, obj2, inputs, path, var_name, data):
         fig = plt.figure(num=k,figsize=(10,8),dpi=400)
         sub1 = fig.add_subplot(2,1,1)
         sub2 = fig.add_subplot(2,1,2)
-        data_FFT = (((data_FFT)/(np.median(data_FFT)))*np.median(obj2.Temp_fft)) #Data normalized to FFT Template level
+        if align:
+            data_FFT = (((data_FFT)/(np.median(data_FFT)))*np.median(obj2.Temp_fft)) #Data normalized to FFT Template level
         sub1.semilogy(np.linspace(800, 400, 1024, endpoint=False), data_FFT,'b',linewidth=1,label='FFT channel')
         sub1.semilogy(np.linspace(800, 400, 1024, endpoint=False),obj2.Temp_fft,'r',linewidth=1,label='FFT Template')
         sub2.plot(np.arange(-128,128,1),Hist,'b',linewidth=1,label='Averaged channel histogram')
@@ -513,6 +514,10 @@ class DataAnalysis(object):
         self.Good_channel = []
         self.Missing_channel = []
         self.Doubtful_channel = []
+        self.Good_channel1 = []
+	self.Bad_channel_Zero1 = []
+	self.Bad_channel_Normal1 = []
+	self.Doubtful_channel1 = []
 
         self.nframe = dict()
         self.mean = dict()
@@ -520,6 +525,7 @@ class DataAnalysis(object):
         self.skew = dict()
         self.rms = dict()
         self.snr = dict()
+        self.result = dict()
 
         self.freq = np.linspace(800, 400, 1024, endpoint=False)
         self.lsb = np.linspace(-128, 127, 256)
@@ -549,6 +555,7 @@ class DataAnalysis(object):
             self.skew[key] = None
             self.rms[key] = None
             self.snr[key] = None
+            self.result['{}-{}-{}'.format(crate,slot,channel)] ='MISSING'
             self.Missing_channel.append([crate,slot,channel])
         else:
             self.nframe[key] = len(ch)
@@ -581,19 +588,86 @@ class DataAnalysis(object):
             self.spectrum_fail[key] = value <= Threshold_2
             self.spectrum[key] = obj2.spectrum[key]
 
+    def analysis_data(self,obj1,threshold,w,q1,q2,q3):  #w=0.5 for test-2, w=1.5 for test-1
+        rt = 1    		
+        if w == 1.5:
+            rt = 2
+        Weight = dict()
+        if q1 > 0: # the cutoff is either mean or 0 which ever is smaller.
+            s = 0
+        else:
+            s = q1
+        for i,j in obj1.corr.iteritems():
+            if j == None:
+                continue
+            j = j - threshold
+            if j > s or j==s:
+                Weight[i] = 10
+            elif j < s and j > q2 or j == q2:
+                Weight[i] = 6.6*w
+            elif j < q2 and j > q3 or j == q3:
+                Weight[i] = 3.3*rt
+            elif j < q3:
+                Weight[i] = 0
+        return Weight
+
+    def re_analysis(self, obj1,obj2,Threshold_1,Threshold_2):
+        Weight = dict()	
+        q11,q12,q13 = self.find_divisions(obj1,Threshold_1)
+        q21,q22,q23 = self.find_divisions(obj2,Threshold_2)
+        wt1 = self.analysis_data(obj1,Threshold_1,1.5,q11,q12,q13)
+        wt2 = self.analysis_data(obj2,Threshold_2,0.5,q21,q22,q23)
+        for key in wt1.keys():
+            Weight[key] = wt1[key]+wt2[key]
+        print Weight
+        for i,j in Weight.items():
+            if wt1[i] == 0 or wt2[i]==0:
+                j = 0
+            if j > 14.0:
+                self.result[i] = 'GOOD'
+    	    elif j < 14.0 and j > 6.0:
+                self.result[i] = 'DOUBTFUL'
+    	    elif j<6.0:
+                self.result[i] = 'BAD'
+
+    def find_divisions(self,obj,threshold):
+        data = []			
+        for crate,slot,channel in self.Doubtful_channel1:
+            data.append(obj.corr['{}-{}-{}'.format(crate,slot,channel)] - threshold)
+            q75, q50, q25 = np.percentile(data, [75, 50, 25])
+            k_lower = q25 - 1.5*(q75 - q25)
+            return q50, q25, k_lower
+		
+    def results(self):
+        TAGS = [[a,b,c] for a in range(8) for b in range(16) for c in range(16)]
+        print 'Start'
+        print '-------Results---------\n'
+        for crate,slot,channel in TAGS:
+            if self.result['{}-{}-{}'.format(crate,slot,channel)] == 'MISSING':
+                continue
+            if self.result['{}-{}-{}'.format(crate,slot,channel)] == 'GOOD':
+                self.Good_channel.append([crate,slot,channel])
+            elif self.result['{}-{}-{}'.format(crate,slot,channel)] == 'BAD':
+                if self.RMS_ch['{}-{}-{}'.format(crate,slot,channel)] < 1:				
+                    self.Bad_channel_Zero.append([crate,slot,channel])
+                else:
+                    self.Bad_channel_Normal.append([crate,slot,channel])
+            elif self.result['{}-{}-{}'.format(crate,slot,channel)] == 'DOUBTFUL':
+                    self.Doubtful_channel.append([crate,slot,channel])
+
     def Results(self):
         TAGS = [[a,b,c] for a in range(8) for b in range(16) for c in range(16)]
         for crate,slot,channel in TAGS:
             key = FMT.format(crate,slot,channel)
             if not self.histogram_fail[key] and not self.spectrum_fail[key]:
-                self.Good_channel.append([crate,slot,channel])
+                self.Good_channel1.append([crate,slot,channel])
             elif self.histogram_fail[key] and self.spectrum_fail[key]:
                 if self.rms[key] < 1:
-                    self.Bad_channel_Zero.append([crate,slot,channel])
+                    self.Bad_channel_Zero1.append([crate,slot,channel])
                 else:
-                    self.Bad_channel_Normal.append([crate,slot,channel])
+                    self.Bad_channel_Normal1.append([crate,slot,channel])
             else:
-                self.Doubtful_channel.append([crate,slot,channel])
+                self.Doubtful_channel1.append([crate,slot,channel])
 
     def display_stats(self):
         ilog.info('Total channels in the chunk : {}'.format(len(self.Bad_channel_Normal) + len(self.Missing_channel) +
@@ -695,8 +769,11 @@ def main(input_files, output_dir=None, output_csv=True, output_plot=True, output
     Threshold_1 = threshold(Test_1.corr)
     Threshold_2 = threshold(Test_2.corr)
 
-    DATA.channel_Analysis(Test_1, Test_2, Threshold_1, Threshold_2)
+    DATA.channel_Analysis(Test_1,Test_2,Threshold_1,Threshold_2)
     DATA.Results()
+    DATA.re_analysis(Test_1,Test_2,Threshold_1,Threshold_2)
+    print('Done')	
+    DATA.results()	
     DATA.display_stats()
 
     # If requested, output csv files with results
@@ -761,8 +838,8 @@ def main(input_files, output_dir=None, output_csv=True, output_plot=True, output
         plot_dir = os.path.join(path, 'plots')
         mkdir(plot_dir)
 
-        save_images(data, Test_1, Test_2, DATA.Bad_channel_Normal, plot_dir, 'bad_nonzero', DATA)
-        save_images(data, Test_1, Test_2, DATA.Doubtful_channel, plot_dir, 'doubtful', DATA)
+        save_images(data, Test_1, Test_2, DATA.Bad_channel_Normal, plot_dir, 'bad_nonzero', DATA, align=None)
+        save_images(data, Test_1, Test_2, DATA.Doubtful_channel, plot_dir, 'doubtful', DATA, align=None)
         o,p,q = DATA.Good_channel[1]
         ch,t =data.get_adc_input(o,p,q,1)
         T1 = dt.datetime.fromtimestamp(t[-1])
@@ -855,12 +932,12 @@ if __name__ == "__main__":
     parser.add_argument('--no_tex', dest='output_tex', help='Do not output summary to a .tex file.', action='store_false')
     parser.add_argument('--default_template', dest='compute_template', help='Use the default histogram and FFT template.  ' +
                                              'Otherwise will compute template from the input data files.', action='store_false')
-
+    parser.add_argument('--align', help='to align FFT power spectrum baseline to that of FFT template', action='store_true')
 
     args = parser.parse_args()
 
     log.setup_basic_logging('INFO')
 
     main(args.input_files, output_dir=args.output_dir, output_csv=args.output_csv, output_plot=args.output_plot, output_tex=args.output_tex,
-                           compute_template=args.compute_template)
+                           compute_template=args.compute_template, align=args.align)
 
