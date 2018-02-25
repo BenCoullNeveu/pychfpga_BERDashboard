@@ -56,14 +56,13 @@ def rlock(func):
     return locked
 
 
-class Hdf5Archive(object):
-    """Class that interfaces to an archive consisting of multiple
-    (identically structured) hdf5 files.  Enables safe read/write access
-    to the archive.
+class Hdf5Writer(object):
+    """Class that interfaces to an hdf5 file and enables safe read/write access.
+    Writes must append to datasets along a single axis.
 
     Abstract Attributes
     -------------------
-    Any subclass of Hdf5Archive must define these attributes:
+    Any subclass of Hdf5Writer must define these attributes:
 
     _axes: {axis name: {'dtype': dtype}, ...}
         Recursive dictionary that specifies the axes that the hdf5 file will contain
@@ -102,7 +101,6 @@ class Hdf5Archive(object):
     write
     flush_writer
     close_writer
-    create_reader
     read
     get
     close_all
@@ -111,7 +109,7 @@ class Hdf5Archive(object):
 
     Abstract Methods
     ----------------
-    Any subclass of Hdf5ReaderWriter must define these methods:
+    Any subclass of Hdf5Writer must define these methods:
 
     get_output_file
 
@@ -127,15 +125,15 @@ class Hdf5Archive(object):
 
     _max_file_size = MAX_FILE_SIZE
 
-    def __init__(self, archive_files=None):
-        """ Instantiates an Hdf5Archive.
+    _with_lock_file = True
+
+    def __init__(self, output_file=None):
+        """ Instantiates an Hdf5Writer.
 
         Parameters
         ----------
-        archive_files: str, list of str
-            List of hdf5 files that contain the archive.
-            Last element of list will be opened in write mode.
-            Other elements will be opened in read-mode.
+        output_file: str
+            Name of HDF5 file to append to.
         """
 
         # Initialize variables
@@ -154,17 +152,8 @@ class Hdf5Archive(object):
 
         self._metric_name = convert_camel_case(self.__class__.__name__)
 
-        # If archive_files provided, then add readers/writers
-        if archive_files is not None:
-            if isinstance(archive_files, basestring):
-                output_file = archive_files
-                archive_files = []
-            else:
-                output_file = archive_files.pop()
-
-            if len(archive_files) > 0:
-                self.create_reader(archive_files)
-
+        # If output_file provided, then add writer
+        if output_file is not None:
             self.create_writer(output_file)
 
 
@@ -172,6 +161,10 @@ class Hdf5Archive(object):
 
         # Open output file
         if not os.path.isfile(output_file):
+
+            # If requested, acquire lock file.
+            if self._with_lock_file:
+                self.acquire_lock_file(output_file)
 
             # File does not exist, so create it.
             self.writer = h5py.File(output_file, 'w', libver='latest')
@@ -202,7 +195,11 @@ class Hdf5Archive(object):
 
         else:
 
-            # File already exists
+            # If requested, acquire lock file.
+            if self._with_lock_file:
+                self.acquire_lock_file(output_file)
+
+            # File already exists, so open it.
             self.writer = h5py.File(output_file, 'r+', libver='latest')
 
             # Check version number
@@ -346,46 +343,38 @@ class Hdf5Archive(object):
             self.writer = h5py.File(filename, 'r+', libver='latest')
             self.reader[rr] = self.writer
 
+
     @rlock
     def close_writer(self):
 
         if self.writer:
 
-            # Save filename
+            # Save filename and reader index
             filename = self.writer.id.name
             rr = self.writer_index
+
+            # Reset writer counters
+            self.ind = 0
+            self.num = 0
 
             # Close the file
             self.writer = self.writer.close()
 
-            # Open the file in read mode
-            self.reader[rr] = h5py.File(filename, 'r', libver='latest')
+            # Release the lock file
+            if self._with_lock_file:
+                self.release_lock_file(filename)
 
+            # Reset utilities for reading
+            self.search = {key:val for key, val in self.search.iteritems() if val[0] != rr}
 
-    def create_reader(self, archive_files):
+            grow = {'axis':[], 'index':[]}
+            for smp, ind in zip(self.grow['axis'], self.grow['index']):
+                if ind[0] != rr:
+                    grow['axis'].append(smp)
+                    grow['index'].append(ind)
+            self.grow = grow
 
-        list_af = archive_files if hasattr(archive_files, '__iter__') else [archive_files]
-
-        for af in list_af:
-
-            if af not in self.archive_files:
-
-                rr = len(self.reader)
-
-                # Open file in single-writer-multiple-reader mode
-                reader = h5py.File(af, 'r', libver='latest')
-
-                # Update searchable axis
-                for kk, key in enumerate(reader[self._uniq_id][:]):
-                    self.search[key] = (rr, kk)
-
-                # Update growing axis
-                tmp = reader['index_map'][self._grow_ax][:]
-                self.grow['axis'] += list(tmp)
-                self.grow['index'] += zip(np.repeat(rr, tmp.size), np.arange(tmp.size, dtype=np.int))
-
-                # Add file to internal list
-                self.reader.append(reader)
+            self.reader.pop(rr)
 
 
     @rlock
@@ -398,10 +387,12 @@ class Hdf5Archive(object):
 
         return self.reader[index[0]][dataset][index[1]]
 
+
     @rlock
     def read_all(self, dataset):
 
         return np.concatenate(tuple([rd[dataset][:] for rd in self.reader]), axis=0)
+
 
     @rlock
     def close_all(self):
@@ -435,6 +426,35 @@ class Hdf5Archive(object):
         # Save input attributes
         for key, value in kwargs.iteritems():
             self.attrs[key] = value
+
+
+    def dump(self, output_file, timestamp=None):
+        """ Dump a single timestamp to a separate HDF5 file.
+        """
+
+        if timestamp is None:
+            with self._rlock:
+                timestamp = self.grow['axis'][-1]
+
+        with h5py.File(output_file, 'w', libver='latest') as fdump:
+
+            # Copy attributes
+            for key, value in self.attrs.iteritems():
+                fdump.attrs[key] = value
+
+            # Copy index map
+            index_map = fdump.create_group('index_map')
+            for name, val in self.index_map.iteritems():
+                if name != self._grow_ax:
+                    index_map.create_dataset(name, data=val)
+
+            # Copy datasets for this timesample
+            for name in self.datasets:
+                data = self.read(timestamp, name)
+                if np.isscalar(data):
+                    fdump.attrs[name] = data
+                else:
+                    fdump.create_dataset(name, data=data)
 
 
     def get_metrics(self, timestamp=None, **kwargs):
@@ -495,6 +515,25 @@ class Hdf5Archive(object):
         return metrics
 
 
+    def acquire_lock_file(self, output_file):
+
+        lock_file = os.path.splitext(output_file)[0] + '.lock'
+
+        if not os.path.isfile(lock_file):
+            with open(lock_file,  'w') as lofi:
+                lofi.write('locked\n')
+
+
+    def release_lock_file(self, output_file):
+
+        lock_file = os.path.splitext(output_file)[0] + '.lock'
+
+        try:
+            os.remove(lock_file)
+        except OSError:
+            pass
+
+
     def __nonzero__(self):
 
         return bool(self.reader)
@@ -524,6 +563,7 @@ class Hdf5Archive(object):
     def __contains__(self, item):
 
         return (item in self.search)
+
 
     @property
     def _index_map(self):
@@ -563,6 +603,100 @@ class Hdf5Archive(object):
     @rlock
     def writer_index(self):
         return [rd.id.name for rd in self.reader].index(self.writer.id.name)
+
+
+
+class Hdf5Archive(Hdf5Writer):
+    """Subclass of Hdf5Writer that interfaces to an archive consisting of
+    multiple (identically structured) hdf5 files.  Enables safe read/write
+    access to the archive.
+
+    The primary distinction between Hdf5Archive and Hdf5Writer is that
+    Hdf5Archive maintains read-only access to all past files.
+
+    Methods
+    -------
+    close_writer
+    create_reader
+    """
+
+    _with_lock_file = False
+
+    def __init__(self, archive_files=None):
+        """ Instantiates an Hdf5Archive.
+
+        Parameters
+        ----------
+        archive_files: str, list of str
+            List of hdf5 files that contain the archive.
+            Last element of list will be opened in write mode.
+            Other elements will be opened in read-mode.
+        """
+
+        # Call superclass
+        super(Hdf5Archive, self).__init__()
+
+        # If archive_files provided, then add readers/writers
+        if archive_files is not None:
+            if isinstance(archive_files, basestring):
+                output_file = archive_files
+                archive_files = []
+            else:
+                output_file = archive_files.pop()
+
+            if len(archive_files) > 0:
+                self.create_reader(archive_files)
+
+            self.create_writer(output_file)
+
+    @rlock
+    def close_writer(self):
+
+        if self.writer:
+
+            # Save filename
+            filename = self.writer.id.name
+            rr = self.writer_index
+
+            # Reset writer counters
+            self.ind = 0
+            self.num = 0
+
+            # Close the file
+            self.writer = self.writer.close()
+
+            # Release the lock file
+            if self._with_lock_file:
+                self.release_lock_file(filename)
+
+            # Open the file in read mode
+            self.reader[rr] = h5py.File(filename, 'r', libver='latest')
+
+
+    def create_reader(self, archive_files):
+
+        list_af = archive_files if hasattr(archive_files, '__iter__') else [archive_files]
+
+        for af in list_af:
+
+            if af not in self.archive_files:
+
+                rr = len(self.reader)
+
+                # Open file in single-writer-multiple-reader mode
+                reader = h5py.File(af, 'r', libver='latest')
+
+                # Update searchable axis
+                for kk, key in enumerate(reader[self._uniq_id][:]):
+                    self.search[key] = (rr, kk)
+
+                # Update growing axis
+                tmp = reader['index_map'][self._grow_ax][:]
+                self.grow['axis'] += list(tmp)
+                self.grow['index'] += zip(np.repeat(rr, tmp.size), np.arange(tmp.size, dtype=np.int))
+
+                # Add file to internal list
+                self.reader.append(reader)
 
 
 def h5py_dataset_iterator(group):

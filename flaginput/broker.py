@@ -23,7 +23,7 @@ import re
 import flag_raw
 
 from pychfpga import NameSpace, Metrics, load_yaml_config
-from pychfpga import Hdf5Archive, OrderedSetLifoQueue, OrderedSetFifoQueue
+from pychfpga import Hdf5Archive, Hdf5Writer, OrderedSetLifoQueue, OrderedSetFifoQueue
 from rest import AsyncRESTClient, AsyncRESTServer
 from rest import coroutine, coroutine_return, endpoint, run_client
 
@@ -222,8 +222,8 @@ class FlagCorrInputArchive(Hdf5Archive):
         return output_file
 
 
-class FlagRawArchive(Hdf5Archive):
-    """ Interface to an Hdf5Archive containing flags derived
+class FlagRawWriter(Hdf5Writer):
+    """ Interface to an Hdf5Writer containing flags derived
     from raw adc data (and associated data products).
     """
 
@@ -327,7 +327,7 @@ class FlagRawArchive(Hdf5Archive):
 
     def __init__(self, output_dir=DEFAULTS.raw.output_dir, output_suffix=DEFAULTS.raw.output_suffix,
                        instrument=DEFAULTS.correlator, *args, **kwargs):
-        """ Instantiates a FlagRawArchive object.
+        """ Instantiates a FlagRawWriter object.
 
         Parameters
         ----------
@@ -343,7 +343,7 @@ class FlagRawArchive(Hdf5Archive):
         """
 
         # Call superclass
-        super(FlagRawArchive, self).__init__(*args, **kwargs)
+        super(FlagRawWriter, self).__init__(*args, **kwargs)
 
         # Set parameters that specify output file format
         self.output_dir = output_dir
@@ -535,6 +535,14 @@ class FlagCorrInput(object):
             - upper_limit: int
                 Flag inputs as bad if their RMS power in LSB is above this number.
 
+            - number_consecutive_good: int
+                Number of consecutive samples that must be good in order for a
+                RMS derived flag to change from bad to good.
+
+            - number_consecutive_bad: int
+                Number of consecutive samples that must be bad in order for a
+                RMS derived flag to change from good to bad.
+
         raw: dict
             Config parameters related to the "raw" source.
 
@@ -597,6 +605,9 @@ class FlagCorrInput(object):
                                             instrument=self.config.correlator, combine=np.array(self.sources)[self.icombine],
                                             archive_files=output_files)
 
+        # Define buffer file
+        self.buffer_file = os.path.join(self.config.output_dir, self.config.output_suffix + '_buffer.h5')
+
         # Query the layout database to obtain list of current correlator inputs
         self._query_layout_database(update=False)
 
@@ -635,6 +646,7 @@ class FlagCorrInput(object):
                 self.rms_clients.append(RmsAsyncRESTClient(**config))
 
         # Set up processing of raw ADC files
+        self.h5_raw = False
         if 'raw' in self.sources:
 
             # Create queue for raw acquisition files that need to be analyzed
@@ -643,11 +655,12 @@ class FlagCorrInput(object):
             # Check if any output files already exist
             output_files = self.find_files(raw=True)
             if output_files is not None:
-                self.log.info('Writing raw data products to existing file %s.' % format_filename(output_files[-1]))
+                output_files = output_files[-1]
+                self.log.info('Writing raw data products to existing file %s.' % format_filename(output_files))
 
             # Create hdf5 reader/writer for analysis of raw adc data
-            self.h5_raw = FlagRawArchive(output_dir=self.config.raw.output_dir, output_suffix=self.config.raw.output_suffix,
-                                         instrument=self.config.correlator, archive_files=output_files)
+            self.h5_raw = FlagRawWriter(output_dir=self.config.raw.output_dir, output_suffix=self.config.raw.output_suffix,
+                                         instrument=self.config.correlator, output_file=output_files)
 
             # Start processing the raw adc files on a separate thread from the pool
             self.futures['raw'] = self.executor.submit(self.process_raw_adc_files)
@@ -1043,10 +1056,13 @@ class FlagCorrInput(object):
             self.h5_flag.write(this_time, **res)
 
             # If we changed files, then start a new log
-            if (self.h5_flag.current_file != previous_file) and (previous_file is not None):
+            if (previous_file is not None) and (os.path.dirname(self.h5_flag.current_file) != os.path.dirname(previous_file)):
                 previous_dir = os.path.dirname(previous_file)
                 self.log.info('Starting new log file.  Moving old log file to %s.' % previous_dir)
-                shutil.move(LOG_FILE, previous_dir)
+                try:
+                    shutil.move(LOG_FILE, previous_dir)
+                except IOError as err:
+                    self.log.info('Could not move log file:  %s.' % err)
 
             # Add to metrics
             self.log.info('Adding new %s flags to metrics at %s.' % (' and '.join(flags_were_updated), this_datetime))
@@ -1068,6 +1084,11 @@ class FlagCorrInput(object):
 
             # Check if we have flagged an abnormally large number of inputs
             self.check_population()
+
+            # Save most recent flags to HDF5 file that can be accessed by others.
+            # Eventually this will be replaced with distribution of the flags
+            # through ch_master to the various kotekan REST endpoints.
+            self.h5_flag.dump(self.buffer_file, timestamp=this_time)
 
 
     def check_population(self):
@@ -1517,7 +1538,7 @@ class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
             self.log.info('%r: Monitoring metrics queue is empty.' % self)
 
         else:
-            encoding = self.config.metric_encoding if hasattr(self.config, 'metric_encoding') else 'text/plain'
+            encoding = self.config.get('metric_encoding', 'text/plain')
             if encoding == 'gzip':
                 handler.set_header('Content-Encoding', 'gzip')
                 handler.write(metrics.get_gzip())
@@ -1540,7 +1561,7 @@ class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
             raise
 
         else:
-            encoding = self.config.encoding if hasattr(self.config, 'encoding') else 'gzip'
+            encoding = self.config.raw.get('metric_encoding', 'text/plain')
             if encoding == 'gzip':
                 handler.set_header('Content-Encoding', 'gzip')
                 handler.write(metrics.get_gzip())
