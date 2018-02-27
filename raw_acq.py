@@ -507,6 +507,7 @@ class RawAcqReceiver(object):
         self.capture_start = False
         self.jump_thresholds = jump_thresholds
         self.start_time = time.time()
+        self.rms_cache = {}
 
         # Metrics
         self.rms = {}
@@ -769,6 +770,7 @@ class RawAcqReceiver(object):
 
                 # Store some stats
                 chan_id =(crate_number, slot_number, chan)
+                self.rms_cache[chan_id] = np.std(adc_data)
                 self.rms[chan_id] = np.std(adc_data)
                 self.min[chan_id] = np.min(adc_data)
                 self.max[chan_id] = np.max(adc_data)
@@ -1085,6 +1087,11 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
             coroutine_return(gains=gains)
         else:
             raise RuntimeError('Gain estimator is not created (most probably because the server is not started)')
+
+    @coroutine
+    @endpoint('get-rms')
+    def get_rms(self, handler):
+        coroutine_return(rms=self.receiver.rms_cache.items())
 
     @coroutine
     @endpoint('get-monitoring-data')
