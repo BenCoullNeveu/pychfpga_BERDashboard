@@ -19,8 +19,7 @@ class KotekanMaster(object):
     """
 
     # Logging setup without config file.
-    DEFAULT_LOGGING = 
-    {
+    DEFAULT_LOGGING = {
         'handlers': 
             {
             'stderr': {'class': 'logging.StreamHandler', 'level': 'INFO'}
@@ -86,7 +85,7 @@ class KotekanMaster(object):
     #####################################
 
     @coroutine
-    def start(self);
+    def start(self):
         """
         Start KotekanMaster
         """
@@ -157,7 +156,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
 
     @coroutine
     @endpoint('node_stop')
-    def node_stop(self, handler)
+    def node_stop(self, handler):
     	pass
 
 ###############################################################################
@@ -201,26 +200,34 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
         coroutine_return(result)
 
 
+
 ###############################################################################
 # Command Line Interface to operate KotekanMaster Server                      #
 ###############################################################################
-
 def main():
     """CLI for operating Kotekan Master
     """
-    #TODO: Add Configuration Here
-    #TODO: Add click based CLI similar to ch_master
+    #TODO: Add Configuration Path Here
+    #TODO: Add click based CLI similar to kotekan_master
     config = None
     log.setup_basic_logging('INFO')
-    client, server = run_client(config, KotekanMasterAsyncRESTServer, KotekanMasterAsyncRESTClient, object_name ='KotekanMaster')
-    cm = None
+    client, server = run_client(config, 
+                                KotekanMasterAsyncRESTServer,
+                                KotekanMasterAsyncRESTClient, 
+                                object_name ='KotekanMaster')
+    km = None
     if server and server.chime_master:
         cm = RunSyncWrapper(server.chime_master)
-        print("   cm: ChimeMaster object")
+        print("   km: KotekanMaster Object")
     return client, server, cm
 
+###############################################################################
+# Command Line Instantiation of Kotekan Master                                #
+###############################################################################
 if __name__ == '__main__':
     """Kotekan Master CLI Instantiation
     """
     client, server, cm = main()
+
+
 
