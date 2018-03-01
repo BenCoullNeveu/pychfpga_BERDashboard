@@ -123,11 +123,9 @@ class Hdf5Writer(object):
     _axes = abstract_attribute()
     _dataset_spec = abstract_attribute()
 
-    _max_file_size = MAX_FILE_SIZE
-
     _with_lock_file = True
 
-    def __init__(self, output_file=None):
+    def __init__(self, output_file=None, max_file_size=MAX_FILE_SIZE):
         """ Instantiates an Hdf5Writer.
 
         Parameters
@@ -149,6 +147,8 @@ class Hdf5Writer(object):
         self.attrs = {}
 
         self._rlock = threading.RLock()
+
+        self._max_file_size = max_file_size
 
         self._metric_name = convert_camel_case(self.__class__.__name__)
 
@@ -517,7 +517,7 @@ class Hdf5Writer(object):
 
     def acquire_lock_file(self, output_file):
 
-        lock_file = os.path.splitext(output_file)[0] + '.lock'
+        lock_file = output_file + '.lock'
 
         if not os.path.isfile(lock_file):
             with open(lock_file,  'w') as lofi:
@@ -526,7 +526,7 @@ class Hdf5Writer(object):
 
     def release_lock_file(self, output_file):
 
-        lock_file = os.path.splitext(output_file)[0] + '.lock'
+        lock_file = output_file + '.lock'
 
         try:
             os.remove(lock_file)
@@ -622,7 +622,7 @@ class Hdf5Archive(Hdf5Writer):
 
     _with_lock_file = False
 
-    def __init__(self, archive_files=None):
+    def __init__(self, archive_files=None, *args, **kwargs):
         """ Instantiates an Hdf5Archive.
 
         Parameters
@@ -634,7 +634,7 @@ class Hdf5Archive(Hdf5Writer):
         """
 
         # Call superclass
-        super(Hdf5Archive, self).__init__()
+        super(Hdf5Archive, self).__init__(*args, **kwargs)
 
         # If archive_files provided, then add readers/writers
         if archive_files is not None:

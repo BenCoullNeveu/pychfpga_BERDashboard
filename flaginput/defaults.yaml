@@ -5,7 +5,7 @@ flaginput:
     output_dir: '/home/ssiegel/chime/flag_input'
     output_suffix: 'flaginput'
     metric_encoding: 'text/plain'
-    max_file_size: 4000000000
+    max_file_size: 1000000000
     max_metrics_size: 5
     max_threadpool_workers: 8
     port: 54327
@@ -15,7 +15,7 @@ flaginput:
         cadence: 215.0
         clients:
             - {hostname: 'hk-west', port: 5000, bulkheads: ['A', 'B']}
-            # - {hostname: 'hk-east', port: 5000, bulkheads: ['C', 'D']}
+            - {hostname: 'hk-east-ext', port: 5000, bulkheads: ['C', 'D']}
     rms:
         cadence: 60.0
         clients:
@@ -25,10 +25,11 @@ flaginput:
         num_consecutive_bad: 1
         num_consecutive_good: 8
     raw:
-        cadence: 60.0
+        cadence: 40.0
         acq_dir: '/mnt/gong/archive'
         acq_suffix: 'rawadc'
         output_dir: '/home/ssiegel/chime/flag_input'
         output_suffix: 'rawflag'
-        start_time: 1519176463
+        max_file_size: 1000000000
+        start_time: 
         lifo: False

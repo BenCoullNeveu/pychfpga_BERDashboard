@@ -322,6 +322,16 @@ class FlagRawWriter(Hdf5Writer):
             'axes': ['time', 'input'],
             'dtype': np.bool,
             'metric': True,
+        },
+        'weight': {
+            'axes': ['time', 'input'],
+            'dtype': np.float32,
+            'metric': True,
+        },
+        'classification': {
+            'axes': ['time', 'input'],
+            'dtype': np.float32,
+            'metric': False,
         }
     }
 
@@ -603,7 +613,7 @@ class FlagCorrInput(object):
 
         self.h5_flag = FlagCorrInputArchive(output_dir=self.config.output_dir, output_suffix=self.config.output_suffix,
                                             instrument=self.config.correlator, combine=np.array(self.sources)[self.icombine],
-                                            archive_files=output_files)
+                                            archive_files=output_files, max_file_size=self.config.max_file_size)
 
         # Define buffer file
         self.buffer_file = os.path.join(self.config.output_dir, self.config.output_suffix + '_buffer.h5')
@@ -660,7 +670,8 @@ class FlagCorrInput(object):
 
             # Create hdf5 reader/writer for analysis of raw adc data
             self.h5_raw = FlagRawWriter(output_dir=self.config.raw.output_dir, output_suffix=self.config.raw.output_suffix,
-                                         instrument=self.config.correlator, output_file=output_files)
+                                         instrument=self.config.correlator, output_file=output_files,
+                                         max_file_size=self.config.raw.max_file_size)
 
             # Start processing the raw adc files on a separate thread from the pool
             self.futures['raw'] = self.executor.submit(self.process_raw_adc_files)
@@ -874,7 +885,11 @@ class FlagCorrInput(object):
                     if (axis not in ['input', self.h5_raw._grow_ax]) and (axis in outcls.__dict__):
                         res[axis] = outcls.__dict__[axis]
 
-                # Save results to dictionary, ordered using the cylinder based scheme
+                # Remove inputs with no data
+                input_axis = np.array([(idd, sn) for idd, sn in input_axis if sn not in outcls.missing_channel],
+                                        dtype=[('chan_id', 'u2'), ('correlator_input', 'S32')])
+
+                # Save datasets to dictionary, ordered using the cylinder based scheme.
                 for dset in self.h5_raw._dataset_spec:
                     if dset in outcls.__dict__:
 
@@ -886,7 +901,7 @@ class FlagCorrInput(object):
                         # Check if dataset has input axis to reorder
                         if 'input' in axes:
                             shp = tuple(res[axis].size for axis in axes)
-                            default = True if dtype is np.bool else np.nan
+                            default = True if dtype is np.bool else np.nan if np.issubdtype(dtype, np.floating) else 0
 
                             res[dset] = np.full(shp, default, dtype=dtype)
                             for ind, key in input_axis:
@@ -897,8 +912,6 @@ class FlagCorrInput(object):
                         else:
                             res[dset] = outcls.__dict__[dset]
 
-                res['input'] = input_axis
-
                 # Add filename to results
                 res['filename'] = format_filename(my_file)
 
@@ -908,7 +921,9 @@ class FlagCorrInput(object):
 
                 # Update flags
                 self.log.info('Updating raw flags from file %s' % my_file)
-                flag = ~res['histogram_fail'] & ~res['spectrum_fail']
+                isource = self.sources.index('raw')
+                flag = np.array([classification > 0.01 if not np.isnan(classification) else self.source_flags[isource, ii]
+                                 for ii, classification in enumerate(res['classification'])])
                 self.update_flags(raw=flag)
 
                 # Get metrics for this file and add to queue
@@ -1100,15 +1115,21 @@ class FlagCorrInput(object):
         if self.h5_flag:
 
             all_flags = self.h5_flag.read_all('flag')
+            all_times = self.h5_flag.read_all('index_map/time')[0:all_flags.size]
 
-            med_nbad = np.median(np.sum(~all_flags, axis=1, dtype=np.int), axis=0)
+            weight = np.diff(all_times)
+            weight *= tools.invert_no_zero(np.sum(weight))
 
-            med_prop = med_nbad / float(all_flags.shape[1])
+            nbad = np.sum(~all_flags, axis=1, dtype=np.int)[:-1]
 
-            sigma = np.sqrt(med_nbad * (1.0 - med_prop))
+            mu_nbad = np.sum(weight * nbad)
 
-            lower = med_nbad - 3.0 * sigma
-            upper = med_nbad + 3.0 * sigma
+            mu_prop = mu_nbad / float(all_flags.shape[1])
+
+            sigma = np.sqrt(mu_nbad * (1.0 - mu_prop))
+
+            lower = mu_nbad - 3.0 * sigma
+            upper = mu_nbad + 3.0 * sigma
 
             nbad = np.sum(~np.array(self.flag), dtype=np.int)
 
@@ -1561,7 +1582,7 @@ class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
             raise
 
         else:
-            encoding = self.config.raw.get('metric_encoding', 'text/plain')
+            encoding = self.config.raw.get('metric_encoding', 'gzip')
             if encoding == 'gzip':
                 handler.set_header('Content-Encoding', 'gzip')
                 handler.write(metrics.get_gzip())
@@ -1698,6 +1719,11 @@ class FlagCorrInputAsyncRESTClient(AsyncRESTClient):
         coroutine_return(res)
 
     @coroutine
+    def get_noise_injection_products(self):
+        res = yield self.get('noise-injection-products')
+        coroutine_return(res)
+
+    @coroutine
     def get_holography_inputs(self):
         res = yield self.get('holography-inputs')
         coroutine_return(res)
@@ -1711,6 +1737,16 @@ class FlagCorrInputAsyncRESTClient(AsyncRESTClient):
     def get_summary(self):
         res = yield self.get('summary')
         self.print_result(res)
+
+    @coroutine
+    def get_past_flags(self, timestamp=None):
+        res = yield self.post('past-flags', timestamp=timestamp)
+        coroutine_return(res)
+
+    @coroutine
+    def get_past_source_flags(self, timestamp=None):
+        res = yield self.post('past-source-flags', timestamp=timestamp)
+        coroutine_return(res)
 
 
 #########################################
@@ -1836,7 +1872,7 @@ DEFAULT_LOGGING = {
     'formatters': {
          'std': {
              'format': "%(asctime)s %(levelname)s %(name)s: %(message)s",
-             'datefmt': "%H:%M:%S"},
+             'datefmt': "%m/%d %H:%M:%S"},
           },
     'handlers': {
         'stderr': {'class': 'logging.StreamHandler', 'formatter': 'std', 'level': 'DEBUG'}
