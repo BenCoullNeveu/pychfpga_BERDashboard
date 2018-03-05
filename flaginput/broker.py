@@ -1,0 +1,1908 @@
+#!/usr/bin/env python
+"""
+REST server and client for flagging bad correlator inputs.
+"""
+__version__ = '0.1'
+
+import os
+import sys
+import glob
+import shutil
+import json
+import Queue
+import concurrent.futures
+import datetime
+import time
+import tornado.ioloop
+
+import numpy as np
+import h5py
+import log
+import re
+
+import flag_raw
+
+from pychfpga import NameSpace, Metrics, load_yaml_config
+from pychfpga import Hdf5Archive, Hdf5Writer, OrderedSetLifoQueue, OrderedSetFifoQueue
+from rest import AsyncRESTClient, AsyncRESTServer
+from rest import coroutine, coroutine_return, endpoint, run_client
+
+from ch_util.ephemeris import datetime_to_unix, timestr_to_datetime
+from ch_util import tools, layout
+
+LOG_FILE = os.environ.get('FLAGINPUT_LOG_FILE',
+           os.path.join(os.path.dirname(os.path.realpath(__file__)), 'broker.log'))
+
+DEFAULTS = NameSpace(load_yaml_config(os.path.join(os.path.dirname(
+                                                   os.path.realpath(__file__)),
+                                                   'defaults.yaml') + ':flaginput'))
+
+
+###################################################
+# ancillary functions
+###################################################
+
+def format_filename(filename):
+    """ Extract the unique portion of the acquisition filename.
+    """
+
+    return os.path.join(os.path.basename(os.path.dirname(filename)),
+                        os.path.basename(filename))
+
+def filename_to_datetime(filename):
+    """ Determines the datetime from the acquistion filename.
+    """
+
+    acq_date = timestr_to_datetime(os.path.basename(os.path.dirname(filename)))
+    file_date = acq_date + datetime.timedelta(seconds=int(os.path.splitext(os.path.basename(filename))[0]))
+
+    return file_date
+
+def mkdir(directory):
+    """ Make a directory if it does not already exist.
+    """
+    try:
+        os.makedirs(directory)
+    except OSError:
+        if not os.path.isdir(directory):
+            raise
+
+def ensure_unix(val):
+    """ Convert an input to unix time based on the input's datatype.
+    """
+
+    if isinstance(val, (float, int, long)):
+        return val
+
+    elif isinstance(val, basestring):
+        return datetime_to_unix(timestr_to_datetime(val))
+
+    elif isinstance(val, datetime.datetime):
+        return datetime_to_unix(val)
+
+    elif isinstance(val, dict):
+        return datetime_to_unix(datetime.datetime(**val))
+
+    elif isinstance(val, tuple) or isinstance(val, list):
+        return datetime_to_unix(datetime.datetime(*val))
+
+    else:
+        ValueError("Do not recognize %.32r as time." % type(val))
+
+def check_manual_flag(inp):
+
+    return (inp.flag if hasattr(inp, 'flag') else True)
+
+def chime_input_labels(inputs):
+
+    ninput = inputs.size
+
+    # Initiate arrays to hold labels
+    label_map = {}
+    for key in ['chan_id', 'correlator_input', 'crate', 'slot', 'input']:
+        label_map[key] = np.zeros(ninput, dtype=np.int)
+
+    # Loop over inputs and extract labels
+    for ii, inp in enumerate(inputs):
+
+        mo = re.match('FCC(\d{2})(\d{2})(\d{2})', inp['correlator_input'])
+
+        if mo is None:
+            raise RuntimeError('Serial number %s does not match expected CHIME format.' % inp['correlator_input'])
+
+        label_map['chan_id'][ii] = inp['chan_id']
+        label_map['correlator_input'][ii] = inp['correlator_input']
+        label_map['crate'][ii] = int(mo.group(1))
+        label_map['slot'][ii]  = int(mo.group(2))
+        label_map['input'][ii] = int(mo.group(3))
+
+    return label_map
+
+
+###################################################
+# containers
+###################################################
+
+class FlagCorrInputArchive(Hdf5Archive):
+    """ Interface to an Hdf5Archive containing correlator input flags.
+    """
+
+    _uniq_id = 'datetime'
+    _grow_ax = 'time'
+
+    _axes = {
+        'time': {'dtype': np.float64},
+        'source': {'dtype': str},
+        'input': {'dtype': str},
+    }
+
+    _dataset_spec = {
+        'datetime': {
+            'axes': ['time', ],
+            'dtype': h5py.special_dtype(vlen=bytes),
+            'metric': False,
+        },
+        'source_flags': {
+            'axes': ['time', 'source', 'input'],
+            'dtype': np.bool,
+            'metric': True,
+        },
+        'flag': {
+            'axes': ['time', 'input'],
+            'dtype': np.bool,
+            'metric': True,
+        }
+    }
+
+    def __init__(self, output_dir=DEFAULTS.output_dir, output_suffix=DEFAULTS.output_suffix,
+                       instrument=DEFAULTS.correlator, combine=None, *args, **kwargs):
+        """ Instantiates a FlagCorrInputArchive object.
+
+        Parameters
+        ----------
+        output_dir:  str
+            Directory where the hdf5 archive files will be saved.
+
+        output_suffix: str
+            Suffix appended to the hdf5 archive filenames.
+
+        instrument:  str
+            Name of the instrument/correlator.  Included in hdf5 archive filenames,
+            and also saved to file attributes.
+
+        combine: list
+            List of sources that are combined to produce the master flag.
+        """
+
+        # Call superclass
+        super(FlagCorrInputArchive, self).__init__(*args, **kwargs)
+
+        # Set parameters that specify output file format
+        self.output_dir = output_dir
+        self.output_suffix = output_suffix
+
+        # Set attributes
+        attrs = {'instrument':instrument, 'version':__version__}
+        if combine is not None:
+            attrs['combine'] = np.array(combine)
+
+        self.set_attrs(**attrs)
+
+        # Set metric name
+        self._metric_name = 'flaginput'
+
+
+    def get_output_file(self, smp, **kwargs):
+        """ Defines the filenaming conventions for the archive files:
+
+            {output_dir}/{YYYYMMDD}T{HHMMSS}Z_{instrument}_{output_suffix}/{SSSSSSS}.h5
+
+        Parameters
+        ----------
+        smp: unix time
+            Time at which the datasets in kwargs were collected.
+
+        datetime: str
+            Datetime string {YYYYMMDD}T{HHMMSS}Z indicating the time the flags
+            were updated.  Used in the archive file directory name.
+        """
+
+        # Determine directory
+        if not 'datetime' in kwargs:
+            RuntimeError("Must include datetime in call to write.")
+
+        output_dir = os.path.join(self.output_dir, '_'.join([kwargs['datetime'], self.attrs['instrument'], self.output_suffix]))
+        mkdir(output_dir)
+
+        # Determine filename
+        start_time = datetime_to_unix(datetime.datetime.strptime(kwargs['datetime'], "%Y%m%dT%H%M%SZ"))
+        seconds_elapsed = smp - start_time
+
+        output_file = os.path.join(output_dir, "%07d.h5" % seconds_elapsed)
+
+        return output_file
+
+
+class FlagRawWriter(Hdf5Writer):
+    """ Interface to an Hdf5Writer containing flags derived
+    from raw adc data (and associated data products).
+    """
+
+    _uniq_id = 'filename'
+    _grow_ax = 'time'
+
+    _axes = {
+        'time': {'dtype': np.float64},
+        'input': {'dtype': str},
+        'lsb': {'dtype': np.float32},
+        'freq': {'dtype': np.float32}
+    }
+
+    _dataset_spec = {
+        'filename': {
+            'axes': ['time', ],
+            'dtype': h5py.special_dtype(vlen=bytes),
+            'metric': False,
+        },
+        'histogram_threshold': {
+            'axes': ['time', ],
+            'dtype': np.float32,
+            'metric': True,
+        },
+        'histogram_template': {
+            'axes': ['time', 'lsb'],
+            'dtype': np.float32,
+            'metric': True,
+        },
+        'spectrum_threshold': {
+            'axes': ['time', ],
+            'dtype': np.float32,
+            'metric': True,
+        },
+        'spectrum_template': {
+            'axes': ['time', 'freq'],
+            'dtype': np.float32,
+            'metric': True,
+        },
+        'nframe': {
+            'axes': ['time', 'input'],
+            'dtype': np.int16,
+            'metric': True,
+        },
+        'mean': {
+            'axes': ['time', 'input'],
+            'dtype': np.float32,
+            'metric': False,
+        },
+        'rms': {
+            'axes': ['time', 'input'],
+            'dtype': np.float32,
+            'metric': False,
+        },
+        'skew': {
+            'axes': ['time', 'input'],
+            'dtype': np.float32,
+            'metric': True,
+        },
+        'kurtosis': {
+            'axes': ['time', 'input'],
+            'dtype': np.float32,
+            'metric': True,
+        },
+        'snr': {
+            'axes': ['time', 'input'],
+            'dtype': np.float32,
+            'metric': True,
+        },
+        'histogram': {
+            'axes': ['time', 'input', 'lsb'],
+            'dtype': np.float32,
+            'metric': True,
+        },
+        'histogram_corr_coeff': {
+            'axes': ['time', 'input'],
+            'dtype': np.float32,
+            'metric': True,
+        },
+        'histogram_fail': {
+            'axes': ['time', 'input'],
+            'dtype': np.bool,
+            'metric': True,
+        },
+        'spectrum': {
+            'axes': ['time', 'input', 'freq'],
+            'dtype': np.float32,
+            'metric': True,
+        },
+        'spectrum_corr_coeff': {
+            'axes': ['time', 'input'],
+            'dtype': np.float32,
+            'metric': True,
+        },
+        'spectrum_fail': {
+            'axes': ['time', 'input'],
+            'dtype': np.bool,
+            'metric': True,
+        },
+        'weight': {
+            'axes': ['time', 'input'],
+            'dtype': np.float32,
+            'metric': True,
+        },
+        'classification': {
+            'axes': ['time', 'input'],
+            'dtype': np.float32,
+            'metric': False,
+        }
+    }
+
+    def __init__(self, output_dir=DEFAULTS.raw.output_dir, output_suffix=DEFAULTS.raw.output_suffix,
+                       instrument=DEFAULTS.correlator, *args, **kwargs):
+        """ Instantiates a FlagRawWriter object.
+
+        Parameters
+        ----------
+        output_dir:  str
+            Directory where the hdf5 archive files will be saved.
+
+        output_suffix: str
+            Suffix appended to the hdf5 archive filenames.
+
+        instrument:  str
+            Name of the instrument/correlator.  Included in hdf5 archive filenames,
+            and also saved to file attributes. (Default 'chime')
+        """
+
+        # Call superclass
+        super(FlagRawWriter, self).__init__(*args, **kwargs)
+
+        # Set parameters that specify output file format
+        self.output_dir = output_dir
+        self.output_suffix = output_suffix
+
+        # Set attributes
+        self.set_attrs(**{'instrument':instrument, 'version':__version__})
+
+        # Set metric name
+        self._metric_name = 'rawflag'
+
+
+    def get_output_file(self, smp, **kwargs):
+        """ Defines the filenaming conventions for the archive files:
+
+            {output_dir}/{YYYYMMDD}T{HHMMSS}Z_{instrument}_{output_suffix}/{SSSSSSS}.h5
+
+        Parameters
+        ----------
+        smp: unix time
+            Time at which the datasets in kwargs were collected.
+
+        filename: str
+            Full path to the current raw acquisition file.  The timestamp from the
+            raw acquisition directory name is used in the archive file directory name.
+        """
+
+        # Determine directory
+        if not 'filename' in kwargs:
+            RuntimeError("Must include raw acquisition filename in call to write.")
+
+        base_prefix = os.path.basename(os.path.dirname(kwargs['filename']))[0:16]
+        output_dir = os.path.join(self.output_dir, '_'.join([base_prefix, self.attrs['instrument'], self.output_suffix]))
+        mkdir(output_dir)
+
+        # Determine filename
+        start_time = datetime_to_unix(datetime.datetime.strptime(base_prefix, "%Y%m%dT%H%M%SZ"))
+        seconds_elapsed = smp - start_time
+
+        output_file = os.path.join(output_dir, "%07d.h5" % seconds_elapsed)
+
+        return output_file
+
+
+class ControlFlag(object):
+    """ Container for flags that requires consecutive good or bad
+    values in order for the flag to change.
+    """
+
+    def __init__(self, num_consecutive_bad=1, num_consecutive_good=8):
+        """
+        Parameters
+        ----------
+        num_consecutive_bad : int
+            If a flag is True, then there must be this number of
+            consecutive Falses for the flag to change to False.
+            Default is 1.
+
+        num_consecutive_good : int
+            If a flag is False, then there must be this number of
+            consecutive Trues for the flag to change to True.
+            Default is 8.
+        """
+
+        self._flag = None
+        self._count = None
+
+        self.num_consecutive_bad = num_consecutive_bad
+        self.num_consecutive_good = num_consecutive_good
+
+    def update(self, val):
+
+        # Make sure input is a boolean numpy array
+        flag = np.array(val).astype(np.bool)
+
+        # If this is the first update, then create internal
+        # flag and counter
+        if self._flag is None:
+
+            self._flag = flag
+            self._count = np.zeros(flag.size, dtype=np.int)
+            return
+
+        # Check if any of the flags have changed
+        good_to_bad = np.flatnonzero(self._flag & ~flag)
+        bad_to_good = np.flatnonzero(~self._flag & flag)
+
+        # Increase or decrease the counter for the flags that have changed
+        if good_to_bad.size > 0:
+            self._count[good_to_bad] -= 1
+
+        if bad_to_good.size > 0:
+            self._count[bad_to_good] += 1
+
+        # Set the counter to zero for flags that have not changed
+        no_change = np.flatnonzero(self._flag == flag)
+
+        if no_change.size > 0:
+            self._count[no_change] = 0
+
+        # Compare the count to the user specified limits
+        now_bad = np.flatnonzero(self._count <= -self.num_consecutive_bad)
+        if now_bad.size > 0:
+            self._flag[now_bad] = False
+
+        now_good = np.flatnonzero(self._count >= self.num_consecutive_good)
+        if now_good.size > 0:
+            self._flag[now_good] = True
+
+    @property
+    def flag(self):
+        return self._flag
+
+
+###################################################
+# primary class
+###################################################
+
+class FlagCorrInput(object):
+    """ Manages flagging of bad correlator inputs.  Specifically:
+
+        - layout:  Queries layout database to flag inputs not connected to CHIME antennas.
+
+        - power:  Queries bulkhead servers to flag inputs whose FLAs are not currently powered.
+
+        - rms:  Queries raw acquisition server to flag inputs with low or high RMS.
+
+        - raw:  Processes raw ADC acquisition files to flag inputs with anomalous histogram or spectrum.
+
+    The user can specify which of these sources to use through the "sources" parameter.
+    When flags from one of the user-requested sources changes, the current flags from all sources
+    are appended to the end of an HDF5 file and also added to Grafana metrics.  The master flag
+    obtained from the AND of all user-requested source flags is also passed on to ch_master for further
+    distribution to relevant consumer processes.
+    """
+
+    _potential_sources = ['layout', 'manual', 'power', 'rms', 'raw']
+
+    def __init__(self, **config):
+        """ Instantiates a FlagCorrInput object.
+
+        Parameters are passed through a config (hierarchical dictionary).
+        See ch_acq/flaginput/defaults.yaml for their default values.
+
+        Parameters
+        ----------
+        sources:  list of str
+            List indicating which of the _potential_sources to collect flags from.
+
+        output_dir:  str
+            Directory where the output hdf5 files will be saved.
+
+        output_suffix: str
+            Suffix appended to the output hdf5 filenames.
+
+        correlator: str
+            Name of the correlator.  Used to query layout database and included in
+            name of output hdf5 files.
+
+        max_file_size:  int
+            Maximum file size in bits.
+
+        max_metrics_size:  int
+            Maximum size of the metrics queue.  Here an element of the queue is
+            defined as an update to all flags.
+
+        max_threadpool_workers:  str
+            Maximum number of threads to use for asynchronous computations.
+
+        power: dict
+            Config parameters related to the "power" source.
+
+            - clients: list
+                Parameters for connecting to the the FLA power REST servers.
+                Each element of the list should be a dictionary of the format:
+                    {hostname: 'hk-west', port: 5000, bulkhead: ['A', 'B']}
+
+        rms: dict
+            Config parameters related to the "rms" source.
+
+            - clients:
+                Parameters for connecting to the the raw acquisition REST servers.
+                Each element of the list should be a dictionary of the format:
+                    {hostname: 'carillon', port: 33221}
+
+            - lower_limit: int
+                Flag inputs as bad if their RMS power in LSB is below this number.
+
+            - upper_limit: int
+                Flag inputs as bad if their RMS power in LSB is above this number.
+
+            - number_consecutive_good: int
+                Number of consecutive samples that must be good in order for a
+                RMS derived flag to change from bad to good.
+
+            - number_consecutive_bad: int
+                Number of consecutive samples that must be bad in order for a
+                RMS derived flag to change from good to bad.
+
+        raw: dict
+            Config parameters related to the "raw" source.
+
+            - start_time:  unix time
+                Process raw ADC acquisitions after this time.
+                (None will use current time. 0 will process all files in archive.)
+
+            - lifo:  bool
+                Process new raw ADC acquisitions first.
+
+            - acq_dir:  str
+                Directory containing raw ADC acquisitions.
+
+            - acq_suffix: str
+                Suffix appended to the raw ADC acquisitions.
+
+            - output_dir:  str
+                Directory where the ancillary data products related to the
+                raw aquisition analysis are saved.
+
+            - output_suffix: str
+                Suffix appended to the hdf5 filenames.
+        """
+
+        # Save configuration parameters
+        self.config = DEFAULTS.deepcopy()
+        self.config.merge(NameSpace(config))
+
+        start_time = self.config.raw.start_time or time.time()
+        self.search_time = ensure_unix(start_time)
+
+        if self.config.sources is None:
+            self.sources = self._potential_sources
+        else:
+            self.sources = [ss for ss in self._potential_sources if ss in self.config.sources]
+
+        # Determine what sources we will combine for the master flag
+        combine = self.config.combine if self.config.combine is not None else self.sources
+        self.icombine = np.array([ii for ii, ss in enumerate(self.sources) if ss in combine])
+
+        # Setup logger
+        self.log = log.get_logger(self)
+
+        # Keep track of when each of  the sources was last updated
+        self.update_time = {ss:None for ss in self.sources}
+
+        # Create pool of threads for asynchronous computations
+        self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=self.config.max_threadpool_workers)
+        self.futures = {ss:None for ss in self.sources}
+
+        # Create queue for metrics
+        self.metrics_queue = Queue.Queue(maxsize=self.config.max_metrics_size)
+
+        # Create hdf5 reader/writer for flags
+        output_files = self.find_files(raw=False)
+        if output_files is not None:
+            self.log.info('Writing flags to existing file %s.' % format_filename(output_files[-1]))
+
+        self.h5_flag = FlagCorrInputArchive(output_dir=self.config.output_dir, output_suffix=self.config.output_suffix,
+                                            instrument=self.config.correlator, combine=np.array(self.sources)[self.icombine],
+                                            archive_files=output_files, max_file_size=self.config.max_file_size)
+
+        # Define buffer file
+        self.buffer_file = os.path.join(self.config.output_dir, self.config.output_suffix + '_buffer.h5')
+
+        # Query the layout database to obtain list of current correlator inputs
+        self._query_layout_database(update=False)
+
+        # Create internal variable for holding current flags.
+        # If possible, pick up where we left off.
+        if self.h5_flag:
+            idd = self.h5_flag[time.time()]
+            lastup = self.h5_flag.read(idd, 'datetime')
+
+            self.log.info('Using flags from %s.' % lastup)
+            for ss in self.sources:
+                self.update_time[ss] = lastup
+
+            self.source_flags = self.h5_flag.read(idd, 'source_flags')
+
+        else:
+            self.log.info('No prior flags available.  Setting all correlator inputs to good.')
+            self.source_flags = np.ones((len(self.sources), self.ninput), dtype=np.bool)
+
+        # Set up clients to communicate with FLA power server
+        self.power_clients = []
+        if 'power' in self.sources:
+
+            for config in self.config.power.clients:
+                self.power_clients.append(PowerAsyncRESTClient(**config))
+
+        # Set up client to communicate with raw acquisition server
+        self.rms_clients = []
+        if 'rms' in self.sources:
+
+            self.rms_control = ControlFlag(num_consecutive_bad=self.config.rms.num_consecutive_bad,
+                                           num_consecutive_good=self.config.rms.num_consecutive_good)
+            self.rms_control.update(self.source_flags[self.sources.index('rms')])
+
+            for config in self.config.rms.clients:
+                self.rms_clients.append(RmsAsyncRESTClient(**config))
+
+        # Set up processing of raw ADC files
+        self.h5_raw = False
+        if 'raw' in self.sources:
+
+            # Create queue for raw acquisition files that need to be analyzed
+            self.file_queue = OrderedSetLifoQueue(maxsize=0) if self.config.raw.lifo else OrderedSetFifoQueue(maxsize=0)
+
+            # Check if any output files already exist
+            output_files = self.find_files(raw=True)
+            if output_files is not None:
+                output_files = output_files[-1]
+                self.log.info('Writing raw data products to existing file %s.' % format_filename(output_files))
+
+            # Create hdf5 reader/writer for analysis of raw adc data
+            self.h5_raw = FlagRawWriter(output_dir=self.config.raw.output_dir, output_suffix=self.config.raw.output_suffix,
+                                         instrument=self.config.correlator, output_file=output_files,
+                                         max_file_size=self.config.raw.max_file_size)
+
+            # Start processing the raw adc files on a separate thread from the pool
+            self.futures['raw'] = self.executor.submit(self.process_raw_adc_files)
+
+    # -------------------------------
+    # layout
+    # -------------------------------
+
+    def query_layout_database(self):
+        """ Spawn a thread that queries the layout database.
+        """
+
+        if 'layout' in self.sources:
+            if (self.futures['layout'] is not None) and not self.futures['layout'][1].done():
+                self.futures['layout'][1].cancel()
+
+            timestamp = time.time()
+            self.futures['layout'] = (timestamp, self.executor.submit(self._query_layout_database, timestamp=timestamp))
+
+
+    def _query_layout_database(self, timestamp=None, update=True):
+        """ Query the layout database and save the list of CHIMEAntennas to self._input.
+
+        Parameters
+        ----------
+        timestamp: unix time
+
+        update: bool
+            If True, use tools.is_chime_on to update the layout flags.
+            Default is True.
+        """
+
+        if timestamp is None:
+            timestamp = time.time()
+
+        utc_time = datetime.datetime.utcfromtimestamp(timestamp)
+
+        self.log.info('Querying layout database for time %s.' % utc_time.strftime("%Y-%m-%d %H:%M:%S"))
+
+        layout.connect_database(read_write=False, reconnect=True)
+        layout.set_user('Siegel')
+
+        # Query layout database
+        inp = tools.get_correlator_inputs(utc_time, correlator=self.config.correlator)
+
+        # Make sure the database query did not take much longer than expected
+        if (self.futures['layout'] is not None) and (self.futures['layout'][0] > timestamp):
+            self.log.info('Layout database query timed out for time %s.' % utc_time.strftime("%Y-%m-%d %H:%M:%S"))
+            return
+        else:
+            self.log.info('Layout database query successful for time %s.' % utc_time.strftime("%Y-%m-%d %H:%M:%S"))
+
+        # Update class _input variable
+        self._input = inp
+
+        # Update flags
+        if update:
+            tests = {}
+            tests['layout'] = np.array(tools.is_chime_on(self._input))
+
+            if 'manual' in self.sources:
+                tests['manual'] = np.array([check_manual_flag(inp) for inp in self._input])
+
+            self.update_flags(**tests)
+
+
+    # -------------------------------
+    # power
+    # -------------------------------
+
+    @coroutine
+    def query_fla_power_server(self):
+        """ Query the FLA power servers and update the power flags.
+        """
+
+        if 'power' in self.sources:
+
+            isource = self.sources.index('power')
+
+            powered = []
+            for client in self.power_clients:
+
+                yield client.get_status()
+
+                powered += client.powered.items()
+
+            powered = dict(powered)
+
+            flag = np.array([powered[inp.input_sn][1] if inp.input_sn in powered else
+                            self.source_flags[isource, ii]
+                            for ii, inp in enumerate(self._input)])
+
+            self.update_flags(power=flag)
+
+
+    # -------------------------------
+    # rms
+    # -------------------------------
+
+    @coroutine
+    def query_rms_server(self):
+        """ Query the raw acquisition servers and update the rms flags.
+        """
+
+        if 'rms' in self.sources:
+
+            isource = self.sources.index('rms')
+
+            rms = []
+            for client in self.rms_clients:
+
+                yield client.get_status()
+
+                rms += client.rms.items()
+
+            rms = dict(rms)
+
+            flag = np.array([((rms[inp.input_sn] >= self.config.rms.lower_limit) and
+                              (rms[inp.input_sn] <= self.config.rms.upper_limit))
+                              if inp.input_sn in rms else self.source_flags[isource, ii]
+                              for ii, inp in enumerate(self._input)])
+
+            self.rms_control.update(flag)
+
+            self.update_flags(rms=self.rms_control.flag)
+
+
+    # -------------------------------
+    # raw
+    # -------------------------------
+
+    def get_raw_adc_files(self):
+        """ Find new raw acquisition files in the archive and add them to self.file_queue.
+        """
+
+        if 'raw' in self.sources:
+
+            # Find all raw acquisition files in raw_acq_dir
+            all_files = sorted(glob.glob(os.path.join(self.config.raw.acq_dir, '*' + self.config.correlator + '_' +
+                                                                                     self.config.raw.acq_suffix, '*.h5')))
+            if not all_files:
+                return
+
+            # Remove files whose last modified time is before the time of the most recent update
+            all_files = [ff for ff in all_files if (os.path.getmtime(ff) > self.search_time)]
+            #all_files = [ff for ff in all_files if (ensure_unix(filename_to_datetime(ff)) > self.search_time)]
+            if not all_files:
+                return
+
+            # Remove files that have already been analyzed
+            if self.h5_raw:
+                all_files = [ff for ff in all_files if format_filename(ff) not in self.h5_raw]
+                if not all_files:
+                    return
+
+            # Remove files that are currently locked
+            all_files = [ff for ff in all_files if not os.path.isfile(os.path.splitext(ff)[0] + '.lock')]
+            if not all_files:
+                return
+
+            # Add new files in the queue
+            self.log.info('Adding %d files to queue.' % len(all_files))
+            for ff in all_files:
+                self.file_queue.put(ff, block=False)
+
+            # Update the time
+            self.search_time = time.time()
+
+
+    def process_raw_adc_files(self):
+        """ Process raw acquisition files in self.file_queue.
+        """
+
+        while 'raw' in self.sources:
+
+            try:
+                my_file = self.file_queue.get(block=False)
+            except Queue.Empty:
+                continue
+
+            try:
+                # Call the main routine to process data
+                self.log.info('Processing file %s' % my_file)
+
+                try:
+                    outcls = flag_raw.main(my_file, output_csv=False, output_plot=False, output_tex=False, compute_template=True)
+                except Exception as e:
+                    self.log.error("flag_raw.main failed with error:  %s" % e)
+                    raise
+
+                self.log.info('Finished analysis of file %s' % my_file)
+
+                # Make sure that the server was not stopped while processing file
+                if not self.h5_raw.iam:
+                    self.log.error("HDF5 file closed while processing file %s" % my_file)
+                    raise RuntimeError
+
+                # Extract the time associated with this file
+                with h5py.File(my_file, 'r') as hf:
+                    this_time = 0.5 * (hf['timestamp']['ctime'][0, 0] + hf['timestamp']['ctime'][-1, 0])
+
+                # Grab correlator input ordering from most recent layout database query
+                input_axis = np.array(self.input, dtype=[('chan_id', 'u2'), ('correlator_input', 'S32')])
+
+                # Save results to dictionary.  First define axes.
+                self.log.info('Reordering results from file %s' % my_file)
+                res = dict()
+                res['input'] = input_axis
+
+                for axis in self.h5_raw._axes:
+                    if (axis not in ['input', self.h5_raw._grow_ax]) and (axis in outcls.__dict__):
+                        res[axis] = outcls.__dict__[axis]
+
+                # Remove inputs with no data
+                input_axis = np.array([(idd, sn) for idd, sn in input_axis if sn not in outcls.missing_channel],
+                                        dtype=[('chan_id', 'u2'), ('correlator_input', 'S32')])
+
+                # Save datasets to dictionary, ordered using the cylinder based scheme.
+                for dset in self.h5_raw._dataset_spec:
+                    if dset in outcls.__dict__:
+
+                        # Extract the specifications for this dataset
+                        dspec = self.h5_raw._dataset_spec[dset]
+                        dtype = dspec['dtype']
+                        axes = [ax for ax in dspec['axes'] if ax != self.h5_raw._grow_ax]
+
+                        # Check if dataset has input axis to reorder
+                        if 'input' in axes:
+                            shp = tuple(res[axis].size for axis in axes)
+                            default = True if dtype is np.bool else np.nan if np.issubdtype(dtype, np.floating) else 0
+
+                            res[dset] = np.full(shp, default, dtype=dtype)
+                            for ind, key in input_axis:
+                                try:
+                                    res[dset][ind] = outcls.__dict__[dset][key]
+                                except KeyError:
+                                    pass
+                        else:
+                            res[dset] = outcls.__dict__[dset]
+
+                # Add filename to results
+                res['filename'] = format_filename(my_file)
+
+                # Write to output file
+                self.log.info('Writing to disk results from file %s' % my_file)
+                self.h5_raw.write(this_time, **res)
+
+                # Update flags
+                self.log.info('Updating raw flags from file %s' % my_file)
+                isource = self.sources.index('raw')
+                flag = np.array([classification > 0.01 if not np.isnan(classification) else self.source_flags[isource, ii]
+                                 for ii, classification in enumerate(res['classification'])])
+                self.update_flags(raw=flag)
+
+                # Get metrics for this file and add to queue
+                self.log.info('Grabbing metrics for file %s' % my_file)
+                if self.config.correlator.lower() in ['chime', 'fcc']:
+                    metric_labels = {'input':chime_input_labels}
+                else:
+                    metric_labels = {}
+
+                metrics = self.h5_raw.get_metrics(this_time, **metric_labels)
+
+                while True:
+                    try:
+                        self.metrics_queue.put(metrics, block=False)
+                    except Queue.Full:
+                        self.metrics_queue.get(block=False)
+                        self.metrics_queue.task_done()
+                    else:
+                        break
+
+            finally:
+                self.file_queue.task_done()
+                self.log.info('Finished processing file %s' % my_file)
+
+
+    def get_raw_metrics(self, timestamp=None):
+        """ Spawn a thread that returns the metrics from the
+        raw analysis closest to a particular time.
+
+        Parameters
+        ----------
+        timestamp: unix time
+        """
+
+        if self.config.correlator.lower() in ['chime', 'fcc']:
+            metric_labels = {'input':chime_input_labels}
+        else:
+            metric_labels = {}
+
+        return self.executor.submit(self.h5_raw.get_metrics, timestamp, **metric_labels)
+
+
+    # -------------------------------
+    # ancillary methods
+    # -------------------------------
+
+    def find_files(self, raw=False):
+        """ Find HDF5 archive files on disk.
+
+        The directory and filename suffix are specified in
+        the configuration file (self.config).
+
+        Parameters
+        ----------
+        raw: bool
+            If True, find files containing results from the
+            analysis of raw acquisition data, using the parameters
+            specificed in self.config.raw.  If False, find files
+            containing correlator input flags, using the parameters
+            specified in self.config.  Default is False.
+        """
+
+        if raw:
+            output_dir = self.config.raw.output_dir
+            output_suffix = self.config.raw.output_suffix
+        else:
+            output_dir = self.config.output_dir
+            output_suffix = self.config.output_suffix
+
+        candidate_files = sorted(glob.glob(os.path.join(output_dir, '*' + output_suffix, '*.h5')))
+
+        output_files = []
+        for cf in candidate_files:
+
+            with h5py.File(cf, 'r') as hf:
+
+                version = hf.attrs['version']
+                instrument = hf.attrs['instrument']
+
+                valid = (version == __version__) and (instrument == self.config.correlator)
+
+                if not raw:
+                    sources = hf['index_map']['source'][:]
+                    nsources = len(sources)
+
+                    valid = (valid and (nsources == len(self.sources)) and
+                             all([sources[ii] == self.sources[ii] for ii in range(nsources)]))
+
+                if valid:
+                     output_files.append(cf)
+
+        return output_files or None
+
+
+    def update_flags(self, **kwargs):
+        """ Update internal flags.
+
+        Provide keyword arguments of the form source=flag.
+        Can handle multiple sources.
+
+        Parameters
+        ----------
+        source: np.array of bool
+            ninput long boolean vector indicating whether
+            each input is good (True) or bad (False) as
+            determined by this particular source.
+        """
+
+        # Loop over sources in kwargs
+        flags_were_updated = []
+        for source, flag in kwargs.iteritems():
+
+            isource = self.sources.index(source)
+
+            # Only take action if flags are different from the current flags
+            if np.any(self.source_flags[isource] != np.array(flag)):
+
+                # Save to class variable
+                self.source_flags[isource] = flag
+                flags_were_updated.append(source)
+
+
+        # If the flags changed, then make the relevant updates
+        if flags_were_updated:
+
+            this_time = time.time()
+            this_datetime = datetime.datetime.utcfromtimestamp(this_time).strftime("%Y%m%dT%H%M%SZ")
+
+            for ss in flags_were_updated:
+                self.update_time[ss] = this_datetime
+
+            # Save to HDF5 file
+            self.log.info('Writing new %s flags at %s.' % (' and '.join(flags_were_updated), this_datetime))
+
+            input_axis = np.array(self.input, dtype=[('chan_id', 'u2'), ('correlator_input', 'S32')])
+
+            res = {'input':input_axis,
+                   'source':self.sources,
+                   'datetime':this_datetime,
+                   'source_flags':self.source_flags,
+                   'flag':self.flag}
+
+            previous_file = self.h5_flag.current_file
+
+            self.h5_flag.write(this_time, **res)
+
+            # If we changed files, then start a new log
+            if (previous_file is not None) and (os.path.dirname(self.h5_flag.current_file) != os.path.dirname(previous_file)):
+                previous_dir = os.path.dirname(previous_file)
+                self.log.info('Starting new log file.  Moving old log file to %s.' % previous_dir)
+                try:
+                    shutil.move(LOG_FILE, previous_dir)
+                except IOError as err:
+                    self.log.info('Could not move log file:  %s.' % err)
+
+            # Add to metrics
+            self.log.info('Adding new %s flags to metrics at %s.' % (' and '.join(flags_were_updated), this_datetime))
+            if self.config.correlator.lower() in ['chime', 'fcc']:
+                metric_labels = {'input':chime_input_labels}
+            else:
+                metric_labels = {}
+
+            metrics = self.h5_flag.get_metrics(this_time, **metric_labels)
+
+            while True:
+                try:
+                    self.metrics_queue.put(metrics, block=False)
+                except Queue.Full:
+                    self.metrics_queue.get(block=False)
+                    self.metrics_queue.task_done()
+                else:
+                    break
+
+            # Check if we have flagged an abnormally large number of inputs
+            self.check_population()
+
+            # Save most recent flags to HDF5 file that can be accessed by others.
+            # Eventually this will be replaced with distribution of the flags
+            # through ch_master to the various kotekan REST endpoints.
+            self.h5_flag.dump(self.buffer_file, timestamp=this_time)
+
+
+    def check_population(self):
+        """ Compares the number of bad inputs to the historical median.
+        """
+
+        passed = True
+
+        if self.h5_flag:
+
+            all_flags = self.h5_flag.read_all('flag')
+            all_times = self.h5_flag.read_all('index_map/time')[0:all_flags.size]
+
+            weight = np.diff(all_times)
+            weight *= tools.invert_no_zero(np.sum(weight))
+
+            nbad = np.sum(~all_flags, axis=1, dtype=np.int)[:-1]
+
+            mu_nbad = np.sum(weight * nbad)
+
+            mu_prop = mu_nbad / float(all_flags.shape[1])
+
+            sigma = np.sqrt(mu_nbad * (1.0 - mu_prop))
+
+            lower = mu_nbad - 3.0 * sigma
+            upper = mu_nbad + 3.0 * sigma
+
+            nbad = np.sum(~np.array(self.flag), dtype=np.int)
+
+            if (nbad <= lower) or (nbad >= upper):
+
+                self.log.warning("%d inputs were flagged bad.  Expect between %d and %d." %
+                                 (nbad, lower, upper))
+
+                # Provide alerts here
+
+                # Failed test
+                passed = False
+
+        # Return status of population test
+        return passed
+
+
+    def get_flag(self, timestamp, dataset='flag'):
+        """ Search the HDF5 flag archive for the
+        source_flags or flag at some past time.
+
+        Parameters
+        ----------
+        timestamp : time
+            Parsed with the ensure_unix function.
+
+        dataset : str
+            Either 'source_flag' or 'flag'.  Default 'flag'.
+        """
+
+        tsearch = ensure_unix(timestamp)
+
+        return self.h5_flag.read(tsearch, dataset)
+
+
+    def stop(self):
+        """ Shutdown routine:  Turns off flagging, shutdowns
+        thread pool executor, closes hdf5 archives, and
+        shutdown http clients.
+        """
+
+        self.sources = []
+        self.executor.shutdown(wait=False)
+
+        if self.h5_raw:
+            self.log.info('Closing %s.' % self.h5_raw.current_file)
+            self.h5_raw.close_all()
+
+        if self.h5_flag:
+            self.log.info('Closing %s.' % self.h5_flag.current_file)
+            self.h5_flag.close_all()
+
+        while self.rms_clients:
+            client = self.rms_clients.pop()
+            client.shutdown()
+
+        while self.power_clients:
+            client = self.power_clients.pop()
+            client.shutdown()
+
+        self.log.info('Closed cleanly.')
+
+
+    @property
+    def stats(self):
+        """ Returns a list of dictionaries where each
+        element of the list contains basic statistics
+        for a source flag:
+
+            update:  str
+                Time of last update.
+
+            nbad:  int
+                Number of correlator inputs that are
+                flagged as bad by this source.
+
+            nuniq: int
+                Number of correlator inputs that are
+                flagged as bad by this source and flagged
+                as good by all other soruces.
+        """
+        stats = []
+        for ind, ss in enumerate(self.sources):
+
+            ialt = range(self.nsources)
+            ialt.remove(ind)
+
+            bad = ~self.source_flags[ind]
+
+            nbad = np.sum(bad, dtype=np.int)
+            nuniq = np.sum(bad & np.all(self.source_flags[ialt], axis=0), dtype=np.int)
+
+            stats.append((ss, {'update': self.update_time[ss],
+                               'nbad': nbad,
+                               'nuniq': nuniq}))
+
+        nbad = np.sum(~np.array(self.flag))
+        stats.append(('combined', {'update': '', 'nbad': nbad, 'nuniq': ''}))
+
+        return stats
+
+
+    @property
+    def flag(self):
+        """ Returns a list of correlator input flags
+        obtained by taking the AND of the most recent
+        source flags from the sources specified in
+        self.config.combine.
+        """
+        return [bool(ff) for ff in np.all(self.source_flags[self.icombine], axis=0)]
+
+
+    @property
+    def input(self):
+        """ Returns a list of tuples of the form:
+
+        (Cylinder Based ID, Correlator Input SN [e.g., FCC000000])
+
+        obtained from the most recent query to the layout database.
+        """
+        return [(inp.id, inp.input_sn) for inp in self._input]
+
+
+    @property
+    def ninput(self):
+        """ Number of correlator inputs.  Obtained from
+        the most recent query to the layout database.
+        """
+        return len(self._input)
+
+    @property
+    def nsources(self):
+        """ Number of sources that are currently being
+        polled for flags.
+        """
+        return len(self.sources)
+
+
+#########################################
+# FlagCorrInput REST server
+#########################################
+
+class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
+    """
+    REST interface for FlagCorrInput
+    """
+
+    DEFAULT_PORT = DEFAULTS.port
+
+    def __init__(self,  address='', port=DEFAULT_PORT, logging_params={}):
+
+        # Initialize attributes
+        self.flg = None
+        self._periodic_callbacks = {}
+
+        # Define map between sources and periodic update methods
+        self._periodic_methods = {'layout': self._query_layout_database, 'power': self._query_fla_power_server,
+                                  'rms': self._query_rms_server, 'raw': self._get_raw_adc_files}
+
+        # Call AsyncRESTServer
+        super(FlagCorrInputAsyncRESTServer, self).__init__(address=address, port=port,
+                                                           heartbeat_string='Is', heartbeat_period=60000)
+
+
+    @coroutine
+    def shutdown(self):
+
+        self.log.info('%r: Shutting down.' % self)
+
+        # Stop all periodic callbacks
+        while True:
+            try:
+                source, callback = self._periodic_callbacks.popitem()
+                callback.stop()
+                self.log.info('%r: Ended %s periodic callback.' % (self, source))
+            except KeyError:
+                break
+
+        # Close open files, shutdown thread executor
+        self.flg.stop()
+
+        # Set flg to False
+        self.flg = None
+
+
+    ###########################
+    # Periodic callback methods
+    ###########################
+
+    @coroutine
+    def _get_raw_adc_files(self):
+        """ Process new raw acquisition files.
+        """
+        if self.flg is None: return
+
+        self.log.info('%r: Searching for new raw ADC acquisition files.' % self)
+        try:
+            # Add new files to the queue
+            self.flg.get_raw_adc_files()
+
+            # Make sure the file processor has not died
+            if 'raw' in self.flg.sources:
+                try:
+                    exc = self.flg.futures['raw'].exception(timeout=0.25)
+
+                except concurrent.futures.TimeoutError:
+                    pass
+
+                else:
+                    self.log.error('%r: Raw ADC file processor failed with error:  %s' % (self, exc))
+                    self.log.info('%r: Restarting raw ADC file processor.' % self)
+                    self.flg.futures['raw'] = self.flg.executor.submit(self.flg.process_raw_adc_files)
+
+
+        except Exception as e:
+            self.log.error(e)
+            raise
+
+    @coroutine
+    def _query_layout_database(self):
+        """ Query the layout database and find feeds not connected to an antenna.
+        """
+        if self.flg is None: return
+
+        self.log.info('%r: Querying layout database.' % self)
+        try:
+            self.flg.query_layout_database()
+
+        except Exception as e:
+            self.log.error(e)
+            raise
+
+    @coroutine
+    def _query_fla_power_server(self):
+        """ Query the FLA power server and find feeds currently powered off.
+        """
+        if self.flg is None: return
+
+        self.log.info('%r: Querying FLA power server.' % self)
+        try:
+            yield self.flg.query_fla_power_server()
+
+        except Exception as e:
+            self.log.error(e)
+            raise
+
+    @coroutine
+    def _query_rms_server(self):
+        """ Query the raw acquisition server and find feed with low or high RMS.
+        """
+        if self.flg is None: return
+
+        self.log.info('%r: Querying raw acquisition server.' % self)
+        try:
+            yield self.flg.query_rms_server()
+
+        except Exception as e:
+            self.log.error(e)
+            raise
+
+    ##################
+    # Server commands
+    ##################
+
+    @coroutine
+    @endpoint('start')
+    def start(self, handler, **config):
+        """ Start FlagCorrInput analysis with provided config.
+        """
+        self.log.info('%r: Received start command' % self)
+        if self.flg:
+            self.log.info('%r: FlagCorrInput server already running.  Restarting with new config.' % self)
+            self.shutdown()
+
+        # Save configuration file
+        # Save configuration parameters
+        self.config = DEFAULTS.deepcopy()
+        self.config.merge(NameSpace(config))
+
+        self.log.debug('%r: Creating FlagCorrInput handler' % self)
+        self.flg = FlagCorrInput(**self.config)
+
+        # Add periodic callbacks
+        for source, method in self._periodic_methods.iteritems():
+            if source in self.config.sources:
+                self._periodic_callbacks[source] = tornado.ioloop.PeriodicCallback(method, 1000 * self.config[source].cadence)
+                self._periodic_callbacks[source].start()
+
+        # Server started
+        coroutine_return('FlagCorrInput server started.')
+
+    @coroutine
+    @endpoint('stop')
+    def stop(self, handler):
+        """ Stop FlagCorrInput analysis.
+        """
+        self.log.info('%r: Received stop command' % self)
+        if self.flg:
+            self.shutdown()
+            coroutine_return('FlagCorrInput server stopped.')
+
+        else:
+            coroutine_return('FlagCorrInput server is not started.')
+
+
+    @coroutine
+    @endpoint('correlator-inputs')
+    def correlator_inputs(self, handler):
+        self.log.info('%r: Received request for correlator inputs.' % self)
+        if self.flg:
+            coroutine_return( self.flg.input )
+
+        else:
+            coroutine_return( "FlagCorrInput server is not started" )
+
+    @coroutine
+    @endpoint('good-correlator-inputs')
+    def good_correlator_inputs(self, handler):
+        self.log.info('%r: Received request for good correlator inputs.' % self)
+        if self.flg:
+            coroutine_return( [inp for inp, good in zip(self.flg.input, self.flg.flag) if good] )
+
+        else:
+            coroutine_return( "FlagCorrInput server is not started" )
+
+    @coroutine
+    @endpoint('bad-correlator-inputs')
+    def bad_correlator_inputs(self, handler):
+        self.log.info('%r: Received request for bad correlator inputs.' % self)
+        if self.flg:
+            coroutine_return( [inp for inp, good in zip(self.flg.input, self.flg.flag) if not good] )
+
+        else:
+            coroutine_return( "FlagCorrInput server is not started" )
+
+    @coroutine
+    @endpoint('correlator-input-flags')
+    def correlator_input_flags(self, handler):
+        self.log.info('%r: Received request for correlator input flag.' % self)
+        if self.flg:
+            coroutine_return( self.flg.flag )
+
+        else:
+            coroutine_return( "FlagCorrInput server is not started" )
+
+    @coroutine
+    @endpoint('noise-injection-inputs')
+    def noise_injection_inputs(self, handler):
+        self.log.info('%r: Received request for noise injection inputs.' % self)
+        if self.flg:
+            coroutine_return( [idx for idx, inp in zip(self.flg.input, self.flg._input)
+                               if isinstance(inp, tools.NoiseSource)] )
+
+        else:
+            coroutine_return( "FlagCorrInput server is not started" )
+
+    @coroutine
+    @endpoint('noise-injection-products')
+    def noise_injection_products(self, handler):
+        self.log.info('%r: Received request for noise injection products.' % self)
+        if self.flg:
+            inoise = [ix for ix, inp in enumerate(self.flg._input) if isinstance(inp, tools.NoiseSource)]
+
+            prod = sorted([tools.cmap(ii, jj, self.ninput) for ii in inoise for jj in range(self.ninput)])
+
+            coroutine_return( prod )
+
+        else:
+            coroutine_return( "FlagCorrInput server is not started" )
+
+    @coroutine
+    @endpoint('holography-inputs')
+    def holography_inputs(self, handler):
+        self.log.info('%r: Received request for noise injection inputs.' % self)
+        if self.flg:
+            coroutine_return( [idx for idx, inp in zip(self.flg.input, self.flg._input)
+                               if isinstance(inp, tools.HolographyAntenna)] )
+
+        else:
+            coroutine_return( "FlagCorrInput server is not started" )
+
+    @coroutine
+    @endpoint('summary')
+    def summary(self, handler):
+        self.log.info('%r: Received request for summary.' % self)
+        if self.flg:
+
+            def format_time(tstr):
+                if not tstr:
+                    return ''
+                else:
+                    year, month, day = tstr[0:4], tstr[4:6], tstr[6:8]
+                    hour, minute, sec = tstr[9:11], tstr[11:13], tstr[13:15]
+                    return  "%4s-%2s-%2s %2s:%2s:%2s" % (year, month, day, hour, minute, sec)
+
+            fmt = "%-10s %-30s %-10s %-10s"
+            summary  = fmt % ("SOURCE", "LAST CHANGE (UTC)", "N BAD", "N UNIQ BAD") + '\n'
+            summary += '\n'.join([fmt % (ss, format_time(dct['update']), dct['nbad'], dct['nuniq'])
+                                    for ss, dct in self.flg.stats])
+
+            coroutine_return( summary )
+
+        else:
+            coroutine_return( "FlagCorrInput server is not started" )
+
+    @coroutine
+    @endpoint('stats')
+    def stats(self, handler):
+        self.log.info('%r: Received request for summary.' % self)
+        if self.flg:
+            coroutine_return( self.flg.stats )
+
+        else:
+            coroutine_return( "FlagCorrInput server is not started" )
+
+    @coroutine
+    @endpoint('monitoring-data')
+    def monitoring_data(self, handler):
+        self.log.info('%r: Received monitoring metrics request.' % self)
+        t0 = time.time()
+        try:
+            metrics = self.flg.metrics_queue.get(block=False)
+
+        except Queue.Empty:
+            handler.set_header('Content-Type', 'text/plain')
+            handler.write('')
+            self.log.info('%r: Monitoring metrics queue is empty.' % self)
+
+        else:
+            encoding = self.config.get('metric_encoding', 'text/plain')
+            if encoding == 'gzip':
+                handler.set_header('Content-Encoding', 'gzip')
+                handler.write(metrics.get_gzip())
+            else:
+                handler.set_header('Content-Type', 'text/plain')
+                handler.write(str(metrics))
+            self.log.info('%r: Returning %i flaginput metrics. The request took %.3f seconds' % (self, len(metrics), time.time()-t0))
+            self.flg.metrics_queue.task_done()
+
+    @coroutine
+    @endpoint('raw-metrics')
+    def metrics(self, handler):
+        self.log.info('%r: Received raw metrics request.' % self)
+        t0 = time.time()
+        try:
+            metrics = yield self.flg.get_raw_metrics(t0)
+
+        except Exception as e:
+            self.log.error(e)
+            raise
+
+        else:
+            encoding = self.config.raw.get('metric_encoding', 'gzip')
+            if encoding == 'gzip':
+                handler.set_header('Content-Encoding', 'gzip')
+                handler.write(metrics.get_gzip())
+            else:
+                handler.set_header('Content-Type', 'text/plain')
+                handler.write(str(metrics))
+            self.log.info('%r: Returning %i flag_raw metrics. The request took %.3f seconds' % (self, len(metrics), time.time()-t0))
+
+    @coroutine
+    @endpoint('past-flags')
+    def past_flags(self, handler, timestamp=None):
+        self.log.info('%r: Received request for past flags.' % self)
+
+        if timestamp is None:
+            coroutine_return( "Must provide timestamp." )
+
+        timestamp_decoded = json.loads(timestamp)
+
+        if self.flg:
+            coroutine_return( [bool(ff) for ff in self.flg.get_flag(timestamp_decoded, dataset='flag')] )
+
+        else:
+            coroutine_return( "FlagCorrInput server is not started" )
+
+
+    @coroutine
+    @endpoint('past-source-flags')
+    def past_source_flags(self, handler, timestamp=None):
+        self.log.info('%r: Received request for past flags.' % self)
+
+        if timestamp is None:
+            coroutine_return( "Must provide timestamp." )
+
+        timestamp_decoded = json.loads(timestamp)
+
+        if self.flg:
+            arr = self.flg.get_flag(timestamp_decoded, dataset='source_flags')
+            source_flags = {src:[bool(ff) for ff in arr[ii]] for ii, src in enumerate(self.flg.sources)}
+            coroutine_return( source_flags )
+
+        else:
+            coroutine_return( "FlagCorrInput server is not started" )
+
+
+#########################################
+# FlagCorrInput REST client
+#########################################
+
+class FlagCorrInputAsyncRESTClient(AsyncRESTClient):
+    """
+    Implements an asynchronous client that exposes the functions of the specified remote
+    FlagCorrInput server.  This client is used by ch_master to start, configure, and
+    operate FlagCorrInput.
+
+    The client is implemented using a Tornado AsyncHTTPClient. It exposes the FlagCorrInput
+    server methods (i.e REST endpoints) as local methods. The local methods are Tornado coroutines
+    so requests to multiple clients can be made in parallel. This is especially beneficial since
+    the data requests from the server are slow IO operations which benefit the most from co-execution.
+
+    The client will operate only if the IOloop in which it was created is running.
+
+    Parameters:
+
+        hostname (str): The hostname of the FlagCorrInput REST server.
+
+        port (int): The port number to which the FlagCorrInput REST server is listening.
+                    Default is port 54327.
+
+    """
+
+    DEFAULT_PORT = FlagCorrInputAsyncRESTServer.DEFAULT_PORT
+
+    def __init__(self, hostname='localhost', port=DEFAULT_PORT):
+
+        super(FlagCorrInputAsyncRESTClient, self).__init__(hostname=hostname, port=port,
+                                                           heartbeat_string='Ic', heartbeat_period=60000,
+                                                           server_class=FlagCorrInputAsyncRESTServer)
+
+    def print_result(self, d):
+        if d == {}:
+            print('ok')
+        elif 'error' in d:
+            print('Error:', d['error'].rstrip())
+        else:
+            print(json.dumps(d, sort_keys=True, indent=2))
+
+    @coroutine
+    def start(self, config):
+        """ If the FlagCorrInput remote server is not started, start it with the specified configuration
+
+        Parameters:
+
+            config (str or dict): If a string, the configuration is loaded from the specified
+                configuration file and name. if a dict, it is passed directly to the server.
+
+        """
+
+        self.log.info('%s: Starting remote FlagCorrInput server at %s:%i with config: %r' % (self, self.hostname, self.port, config))
+
+        if isinstance(config, str):
+            config = load_yaml_config(config)
+
+        result = self.post('start', **config)
+        coroutine_return('FlagCorrInput server started')
+
+    @coroutine
+    def stop(self):
+        result = yield self.get('stop')
+        coroutine_return(result)
+
+    @coroutine
+    def get_correlator_inputs(self):
+        res = yield self.get('correlator-inputs')
+        coroutine_return(res)
+
+    @coroutine
+    def get_good_correlator_inputs(self):
+        res = yield self.get('good-correlator-inputs')
+        coroutine_return(res)
+
+    @coroutine
+    def get_bad_correlator_inputs(self):
+        res = yield self.get('bad-correlator-inputs')
+        coroutine_return(res)
+
+    @coroutine
+    def get_correlator_input_flags(self):
+        res = yield self.get('correlator-input-flags')
+        coroutine_return(res)
+
+    @coroutine
+    def get_noise_injection_inputs(self):
+        res = yield self.get('noise-injection-inputs')
+        coroutine_return(res)
+
+    @coroutine
+    def get_noise_injection_products(self):
+        res = yield self.get('noise-injection-products')
+        coroutine_return(res)
+
+    @coroutine
+    def get_holography_inputs(self):
+        res = yield self.get('holography-inputs')
+        coroutine_return(res)
+
+    @coroutine
+    def get_stats(self):
+        res = yield self.get('stats')
+        coroutine_return(res)
+
+    @coroutine
+    def get_summary(self):
+        res = yield self.get('summary')
+        self.print_result(res)
+
+    @coroutine
+    def get_past_flags(self, timestamp=None):
+        res = yield self.post('past-flags', timestamp=timestamp)
+        coroutine_return(res)
+
+    @coroutine
+    def get_past_source_flags(self, timestamp=None):
+        res = yield self.post('past-source-flags', timestamp=timestamp)
+        coroutine_return(res)
+
+
+#########################################
+# Power REST client
+#########################################
+
+FLA_COLUMN = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'J', 'K', 'L', 'M', 'N', 'P', 'Q', 'R']
+
+def bulkhead_position_to_correlator_input(bulkhead, column, row):
+
+    blk = ord(bulkhead.upper()) - 65 if isinstance(bulkhead, basestring) else bulkhead
+
+    crate = blk*2 + int(row < 16)
+    slot = FLA_COLUMN.index(column)
+    inp = row % 16
+
+    correlator_input = 'FCC%02d%02d%02d' % (crate, slot, inp)
+
+    return correlator_input
+
+
+class PowerAsyncRESTClient(AsyncRESTClient):
+    """
+    Implements an asynchronous client that exposes the functions of the specified remote
+    FLA power server.  This client is used by FlagCorrInput to query the FLA Power REST server.
+
+    The client will operate only if the IOloop in which it was created is running.
+
+    Parameters:
+
+        hostname (str): The hostname of the FLA power REST server.  Default is 'hk-west'.
+
+        port (int): The port number to which the FLA power REST server is listening.
+                    Default is port 5000.
+
+    """
+
+    def __init__(self, hostname='hk-west', port=5000, bulkheads=['A', 'B'], *args, **kwargs):
+
+        super(PowerAsyncRESTClient, self).__init__(hostname=hostname, port=port)
+
+        self.bulkheads = bulkheads
+        self.powered = {}
+
+    @coroutine
+    def get_status(self):
+
+        for bulkhead in self.bulkheads:
+            endpoint = '/'.join(['fla_power', bulkhead, 'metrics'])
+            resp = yield self.get(endpoint, raw=True)
+            self._update_status(resp)
+
+    def _update_status(self, results):
+
+        res = results.splitlines()
+        type_prefix = '# TYPE'
+
+        for rr in res:
+            if rr.startswith(type_prefix):
+                metric_name = rr[len(type_prefix):].split()[0]
+                break
+
+        for rr in res:
+            if rr.startswith(metric_name):
+                labels, powered, time = rr[len(metric_name):].split()
+
+                mo = re.match('{bulkhead="(\d{1})",row="(\d{1,2})",column="([A-R])"}', labels)
+                if mo is not None:
+                    bulkhead, row, column = 3 - int(mo.group(1)), int(mo.group(2)), mo.group(3)
+                    corr_input = bulkhead_position_to_correlator_input(bulkhead, column, row)
+                    self.powered[corr_input] = (float(time) / 1000.0, bool(int(powered)))
+
+
+#########################################
+# RMS REST client
+#########################################
+
+SMA_TO_INP = [12, 13, 14, 15, 8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 3]
+
+class RmsAsyncRESTClient(AsyncRESTClient):
+    """
+    Implements an asynchronous client that exposes (some of) the functions of the specified remote
+    raw acquisition server.  This client is used by FlagCorrInput to query the raw acquisition server
+    for the most recent RMS values.
+
+    The client will operate only if the IOloop in which it was created is running.
+
+    Parameters:
+
+        hostname (str): The hostname of the raw acquisition REST server.  Default is 'carillon'.
+
+        port (int): The port number to which the raw acquisition REST server is listening.
+                    Default is port 33221.
+
+    """
+
+    def __init__(self, hostname='carillon', port=54322, *args, **kwargs):
+
+        super(RmsAsyncRESTClient, self).__init__(hostname=hostname, port=port)
+
+        self.rms = {}
+
+    @coroutine
+    def get_status(self):
+
+        resp = yield self.get('get-rms', raw=False)
+        self._update_status(resp['rms'])
+
+    def _update_status(self, results):
+
+        for (crate, slot, sma), rms in results:
+
+            corr_input = 'FCC%02d%02d%02d' % (crate, slot, SMA_TO_INP[sma])
+
+            self.rms[corr_input] = rms
+
+
+#########################################
+# main
+#########################################
+
+DEFAULT_LOGGING = {
+    'formatters': {
+         'std': {
+             'format': "%(asctime)s %(levelname)s %(name)s: %(message)s",
+             'datefmt': "%m/%d %H:%M:%S"},
+          },
+    'handlers': {
+        'stderr': {'class': 'logging.StreamHandler', 'formatter': 'std', 'level': 'DEBUG'}
+        },
+    'loggers': {
+        '': {'handlers': ['stderr'], 'level': 'DEBUG'}  # root logger
+
+        }
+    }
+
+def main(logging_params=DEFAULT_LOGGING):
+
+    # Setup logging
+    log.setup_logging(logging_params)
+
+    # Create client and server
+    client, server = run_client(sys.argv[1:], FlagCorrInputAsyncRESTServer, FlagCorrInputAsyncRESTClient,
+                                              object_name='FlagCorrInput', server_config_path='flaginput.servers')
+    return client, server
+
+
+if __name__ == '__main__':
+    """ Command-line interface to launch and operate the FlagCorrInput server.
+    """
+
+    # If calling from the command line, then send logging to log file instead of screen
+    logging_params = DEFAULT_LOGGING
+    logging_params['handlers'] = {'stderr': {'class': 'logging.handlers.WatchedFileHandler',
+                                            'filename': LOG_FILE, 'formatter': 'std', 'level': 'INFO'}}
+
+    # Create client and server with modified logging parameters
+    client, server = main(logging_params=logging_params)
