@@ -99,7 +99,7 @@ def chime_input_labels(inputs):
 
     # Initiate arrays to hold labels
     label_map = {}
-    for key in ['chan_id', 'crate', 'slot', 'input']:
+    for key in ['chan_id', 'correlator_input', 'crate', 'slot', 'input']:
         label_map[key] = np.zeros(ninput, dtype=np.int)
 
     # Loop over inputs and extract labels
@@ -111,6 +111,7 @@ def chime_input_labels(inputs):
             raise RuntimeError('Serial number %s does not match expected CHIME format.' % inp['correlator_input'])
 
         label_map['chan_id'][ii] = inp['chan_id']
+        label_map['correlator_input'][ii] = inp['correlator_input']
         label_map['crate'][ii] = int(mo.group(1))
         label_map['slot'][ii]  = int(mo.group(2))
         label_map['input'][ii] = int(mo.group(3))
@@ -251,7 +252,7 @@ class FlagRawWriter(Hdf5Writer):
         'histogram_template': {
             'axes': ['time', 'lsb'],
             'dtype': np.float32,
-            'metric': False,
+            'metric': True,
         },
         'spectrum_threshold': {
             'axes': ['time', ],
@@ -261,7 +262,7 @@ class FlagRawWriter(Hdf5Writer):
         'spectrum_template': {
             'axes': ['time', 'freq'],
             'dtype': np.float32,
-            'metric': False,
+            'metric': True,
         },
         'nframe': {
             'axes': ['time', 'input'],
@@ -296,7 +297,7 @@ class FlagRawWriter(Hdf5Writer):
         'histogram': {
             'axes': ['time', 'input', 'lsb'],
             'dtype': np.float32,
-            'metric': False,
+            'metric': True,
         },
         'histogram_corr_coeff': {
             'axes': ['time', 'input'],
@@ -311,7 +312,7 @@ class FlagRawWriter(Hdf5Writer):
         'spectrum': {
             'axes': ['time', 'input', 'freq'],
             'dtype': np.float32,
-            'metric': False,
+            'metric': True,
         },
         'spectrum_corr_coeff': {
             'axes': ['time', 'input'],
