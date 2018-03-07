@@ -8,13 +8,14 @@ flaginput:
     max_file_size: 1000000000
     max_metrics_size: 5
     max_threadpool_workers: 8
+    niceness: 10
     port: 54327
     layout:
         cadence: 300.0
     power:
         cadence: 215.0
         clients:
-            #- {hostname: 'hk-west', port: 5000, bulkheads: ['A', 'B']}
+            - {hostname: 'hk-west', port: 5000, bulkheads: ['A', 'B']}
             - {hostname: 'hk-east-ext', port: 5000, bulkheads: ['C', 'D']}
     rms:
         cadence: 60.0

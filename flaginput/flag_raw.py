@@ -25,6 +25,8 @@ from scipy.stats import skew
 import log
 logger = log.get_logger(__name__)
 
+SCALE_FACTOR = (1.0 / 100.0) * (0.500 / 256.0)**2 * 1000.0       # Converts from LSB^2 --> mW
+
 FMT = 'FCC{:02d}{:02d}{:02d}'
 
 
@@ -407,7 +409,7 @@ def create_templates_from_file(filename, obj1, obj2):
     spec /= float(count)
 
     obj1.Temp_Hist = hist
-    obj2.Temp_fft = spec
+    obj2.Temp_fft = 2.0 * SCALE_FACTOR * spec / (2.0 * obj2._nfreq)**2
 
     hd.close()
 
@@ -448,7 +450,7 @@ def create_templates_from_data(data, obj1, obj2):
     spec /= float(count)
 
     obj1.Temp_Hist = hist
-    obj2.Temp_fft = spec
+    obj2.Temp_fft = 2.0 * SCALE_FACTOR * spec / (2.0 * obj2._nfreq)**2
 
 
 def create_templates(data, obj1, obj2):
@@ -489,9 +491,12 @@ class FFT_template_test():
 
         else:
             spec = np.median(np.abs(np.fft.rfft(np.array(data), axis=-1))**2, axis=0)[0:self._nfreq]
-            spec *= (np.median(self.Temp_fft) / np.median(spec))  #This makes continuum part aligned
 
-            self.spectrum[FMT.format(crate,slot,channel)] = spec
+            # Save in units of mW at ADC input
+            self.spectrum[FMT.format(crate,slot,channel)] = 2.0 * SCALE_FACTOR * spec / (2.0 * self._nfreq)**2
+
+            # Align continuum with the template
+            spec = spec * (np.median(self.Temp_fft) / np.median(spec))  #This makes continuum part aligned
 
             specm = np.power( signal.medfilt(spec, kernel_size=7), 0.2)
             tempm = np.power(self.Temp_fft, 0.2)

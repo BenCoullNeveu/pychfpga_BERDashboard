@@ -597,6 +597,15 @@ class FlagCorrInput(object):
         # Setup logger
         self.log = log.get_logger(self)
 
+        # Set niceness (Unix only)
+        try:
+            sys.getwindowsversion()
+        except AttributeError:
+            niceness = os.nice(0)
+            os.nice(self.config.niceness - niceness)
+            self.log.info('Changing process niceness from %d to %d.' %
+                          (niceness,  self.config.niceness))
+
         # Keep track of when each of  the sources was last updated
         self.update_time = {ss:None for ss in self.sources}
 
@@ -1900,6 +1909,7 @@ if __name__ == '__main__':
     """
 
     # If calling from the command line, then send logging to log file instead of screen
+    mkdir(os.path.dirname(LOG_FILE))
     logging_params = DEFAULT_LOGGING
     logging_params['handlers'] = {'stderr': {'class': 'logging.handlers.WatchedFileHandler',
                                             'filename': LOG_FILE, 'formatter': 'std', 'level': 'INFO'}}
