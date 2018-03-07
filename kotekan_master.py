@@ -39,7 +39,7 @@ class KotekanMaster(object):
         self.start_time = None
 
         #Kotekan Client Objects
-        self.kotekan = None
+        self.kotekan_master = None
 
         #Logging Parameters
         self.PROGRAM = os.path.realpath(__file__) # absolute path name to this module
@@ -128,7 +128,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
 
     #Kotekan Master Server Commands
     @coroutine
-    @endpoint('start')
+    @endpoint('start-kotekan-master')
     def start(self, handler, **config):
         """ Start the Kotekan Master server with provided config
         """
@@ -137,7 +137,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         coroutine_return('KotekanMaster server started.')
 
     @coroutine
-    @endpoint('stop')
+    @endpoint('stop-kotekan-master')
     def stop(self, handler):
     	"""Stop the Kotekan Master server
     	"""
@@ -145,17 +145,17 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         coroutine_return('KotekanMaster server stopped.')
 
     @coroutine
-    @endpoint('node_status')
+    @endpoint('node-status')
     def node_status(self, handler):
     	pass
     
     @coroutine
-    @endpoint('node_start')
+    @endpoint('node-start')
     def node_start(self, handler):
     	pass
 
     @coroutine
-    @endpoint('node_stop')
+    @endpoint('node-stop')
     def node_stop(self, handler):
     	pass
 
@@ -199,6 +199,9 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
         result = yield self.get('stop')
         coroutine_return(result)
 
+    @coroutine
+    def 
+
 
 
 ###############################################################################
@@ -209,17 +212,17 @@ def main():
     """
     #TODO: Add Configuration Path Here
     #TODO: Add click based CLI similar to kotekan_master
-    config = None
+    config = "config.yaml"
     log.setup_basic_logging('INFO')
     client, server = run_client(config, 
                                 KotekanMasterAsyncRESTServer,
                                 KotekanMasterAsyncRESTClient, 
                                 object_name ='KotekanMaster')
     km = None
-    if server and server.chime_master:
-        cm = RunSyncWrapper(server.chime_master)
+    if server:
+        km = RunSyncWrapper(server.kotekan_master)
         print("   km: KotekanMaster Object")
-    return client, server, cm
+    return client, server, km
 
 ###############################################################################
 # Command Line Instantiation of Kotekan Master                                #
@@ -227,7 +230,7 @@ def main():
 if __name__ == '__main__':
     """Kotekan Master CLI Instantiation
     """
-    client, server, cm = main()
+    client, server, km = main()
 
 
 
