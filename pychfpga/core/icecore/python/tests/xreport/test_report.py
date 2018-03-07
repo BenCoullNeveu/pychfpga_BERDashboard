@@ -2,7 +2,6 @@ import lxml.etree
 import lxml.objectify
 import lxml.html
 from copy import deepcopy
-import matplotlib.pyplot as plt
 # import numpy as np
 import base64
 import urllib
@@ -16,6 +15,10 @@ import bz2
 import re
 import tempfile
 import shutil
+
+import matplotlib
+if os.name == 'posix' and "DISPLAY" not in os.environ: matplotlib.use('Agg')
+import matplotlib.pyplot as plt
 
 
 from rst import rST

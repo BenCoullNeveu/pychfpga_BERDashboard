@@ -66,7 +66,9 @@ Banks 1 & 2 (8 BNCs) provide IRIG-B, and banks 2 & 3 (8 BNCs) provide the 10 MHz
 Connection to the IceCrate
 --------------------------
 
-The outputs of the TM-4D are 5Vpp in 50 ohms and are compatible with the
+The outputs of the TM-4D are 2.5Vpp in 50 ohms and are compatible with the backplane clock input.
+
+.. Voltage output confirmed on Slack by a masurement from Seth, Dec 7th 2017
 
 The antenna required a TNC connector, so an adapter might be needed.
 
