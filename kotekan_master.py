@@ -128,7 +128,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
 
     #Kotekan Master Server Commands
     @coroutine
-    @endpoint('start')
+    @endpoint('start-kotekan-master')
     def start(self, handler, **config):
         """ Start the Kotekan Master server with provided config
         """
@@ -137,7 +137,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         coroutine_return('KotekanMaster server started.')
 
     @coroutine
-    @endpoint('stop')
+    @endpoint('stop-kotekan-master')
     def stop(self, handler):
     	"""Stop the Kotekan Master server
     	"""
@@ -145,17 +145,17 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         coroutine_return('KotekanMaster server stopped.')
 
     @coroutine
-    @endpoint('node_status')
+    @endpoint('node-status')
     def node_status(self, handler):
     	pass
     
     @coroutine
-    @endpoint('node_start')
+    @endpoint('node-start')
     def node_start(self, handler):
     	pass
 
     @coroutine
-    @endpoint('node_stop')
+    @endpoint('node-stop')
     def node_stop(self, handler):
     	pass
 
@@ -198,6 +198,9 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
     	self.log.info('%s: Stoping KotekanMasterServer at %s:%i' % (self, self.hostname, self.port))
         result = yield self.get('stop')
         coroutine_return(result)
+
+    @coroutine
+    def 
 
 
 
