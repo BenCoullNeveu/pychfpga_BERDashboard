@@ -39,7 +39,7 @@ class KotekanMaster(object):
         self.start_time = None
 
         #Kotekan Client Objects
-        self.kotekan = None
+        self.kotekan_master = None
 
         #Logging Parameters
         self.PROGRAM = os.path.realpath(__file__) # absolute path name to this module
@@ -209,17 +209,17 @@ def main():
     """
     #TODO: Add Configuration Path Here
     #TODO: Add click based CLI similar to kotekan_master
-    config = None
+    config = "config.yaml"
     log.setup_basic_logging('INFO')
     client, server = run_client(config, 
                                 KotekanMasterAsyncRESTServer,
                                 KotekanMasterAsyncRESTClient, 
                                 object_name ='KotekanMaster')
     km = None
-    if server and server.chime_master:
-        cm = RunSyncWrapper(server.chime_master)
+    if server:
+        km = RunSyncWrapper(server.kotekan_master)
         print("   km: KotekanMaster Object")
-    return client, server, cm
+    return client, server, km
 
 ###############################################################################
 # Command Line Instantiation of Kotekan Master                                #
@@ -227,7 +227,7 @@ def main():
 if __name__ == '__main__':
     """Kotekan Master CLI Instantiation
     """
-    client, server, cm = main()
+    client, server, km = main()
 
 
 
