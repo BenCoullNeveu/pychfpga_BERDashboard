@@ -1504,7 +1504,7 @@ class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
         if self.flg:
             inoise = [ix for ix, inp in enumerate(self.flg._input) if isinstance(inp, tools.NoiseSource)]
 
-            prod = sorted([tools.cmap(ii, jj, self.ninput) for ii in inoise for jj in inoise])
+            prod = sorted([tools.cmap(ii, jj, self.flg.ninput) for ii in inoise for jj in inoise])
 
             coroutine_return( prod )
 
