@@ -99,7 +99,7 @@ def chime_input_labels(inputs):
 
     # Initiate arrays to hold labels
     label_map = {}
-    #label_map['correlator_input'] = np.zeros(ninput, dtype='S32')
+    label_map['correlator_input'] = np.zeros(ninput, dtype='S32')
     for key in ['chan_id', 'crate', 'slot', 'input']:
         label_map[key] = np.zeros(ninput, dtype=np.int)
 
@@ -111,7 +111,7 @@ def chime_input_labels(inputs):
         if mo is None:
             raise RuntimeError('Serial number %s does not match expected CHIME format.' % inp['correlator_input'])
 
-        #label_map['correlator_input'][ii] = inp['correlator_input']
+        label_map['correlator_input'][ii] = inp['correlator_input']
         label_map['chan_id'][ii] = inp['chan_id']
         label_map['crate'][ii] = int(mo.group(1))
         label_map['slot'][ii]  = int(mo.group(2))
