@@ -214,7 +214,6 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
         pass
 
 
-
 ###############################################################################
 # Command Line Interface to operate KotekanMaster Server                      #
 ###############################################################################
@@ -228,7 +227,7 @@ def main():
     client, server = run_client(config, 
                                 KotekanMasterAsyncRESTServer,
                                 KotekanMasterAsyncRESTClient, 
-                                object_name ='KotekanMaster')
+                                object_name ='kotekan')
     km = None
     if server:
         km = RunSyncWrapper(server.kotekan_master)
