@@ -41,6 +41,7 @@ class KotekanMaster(object):
         #Kotekan Client Objects
         self.kotekan_master = None
 
+
         #Logging Parameters
         self.PROGRAM = os.path.realpath(__file__) # absolute path name to this module
         self.GIT_VERSION = "DEV" #TODO: Add a git hook here.
@@ -144,19 +145,20 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         self.config = None
         coroutine_return('KotekanMaster server stopped.')
 
+    #Kotekan Client Commands
     @coroutine
-    @endpoint('node-status')
-    def node_status(self, handler):
+    @endpoint('kotekan-status')
+    def status_kotekan(self, handler):
     	pass
     
     @coroutine
-    @endpoint('node-start')
-    def node_start(self, handler):
+    @endpoint('start-kotekan')
+    def start_kotkan(self, handler):
     	pass
 
     @coroutine
-    @endpoint('node-stop')
-    def node_stop(self, handler):
+    @endpoint('stop-kotekan')
+    def stop_kotekan(self, handler):
     	pass
 
 ###############################################################################
@@ -200,7 +202,16 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
         coroutine_return(result)
 
     @coroutine
-    def 
+    def start_kotekan():
+        pass
+
+    @coroutine
+    def stop_kotekan():
+        pass
+
+    @coroutine
+    def kotekan_status():
+        pass
 
 
 
