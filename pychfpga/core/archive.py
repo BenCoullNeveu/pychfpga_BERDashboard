@@ -510,7 +510,7 @@ class Hdf5Writer(object):
                                 labels[lbl] = index_map[lbl][ind]
 
                         # Add to metrics
-                        metrics.add('/'.join([self._metric_name, name]), value=res, time=timestamp*1000, **labels)
+                        metrics.add('_'.join([self._metric_name, name]), value=res, time=timestamp*1000, **labels)
 
         return metrics
 

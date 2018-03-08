@@ -99,7 +99,8 @@ def chime_input_labels(inputs):
 
     # Initiate arrays to hold labels
     label_map = {}
-    for key in ['chan_id', 'correlator_input', 'crate', 'slot', 'input']:
+    #label_map['correlator_input'] = np.zeros(ninput, dtype='S32')
+    for key in ['chan_id', 'crate', 'slot', 'input']:
         label_map[key] = np.zeros(ninput, dtype=np.int)
 
     # Loop over inputs and extract labels
@@ -110,8 +111,8 @@ def chime_input_labels(inputs):
         if mo is None:
             raise RuntimeError('Serial number %s does not match expected CHIME format.' % inp['correlator_input'])
 
+        #label_map['correlator_input'][ii] = inp['correlator_input']
         label_map['chan_id'][ii] = inp['chan_id']
-        label_map['correlator_input'][ii] = inp['correlator_input']
         label_map['crate'][ii] = int(mo.group(1))
         label_map['slot'][ii]  = int(mo.group(2))
         label_map['input'][ii] = int(mo.group(3))
@@ -234,7 +235,7 @@ class FlagRawWriter(Hdf5Writer):
     _axes = {
         'time': {'dtype': np.float64},
         'input': {'dtype': str},
-        'lsb': {'dtype': np.float32},
+        'lsb': {'dtype': np.int8},
         'freq': {'dtype': np.float32}
     }
 
@@ -252,7 +253,7 @@ class FlagRawWriter(Hdf5Writer):
         'histogram_template': {
             'axes': ['time', 'lsb'],
             'dtype': np.float32,
-            'metric': True,
+            'metric': False,
         },
         'spectrum_threshold': {
             'axes': ['time', ],
@@ -262,7 +263,7 @@ class FlagRawWriter(Hdf5Writer):
         'spectrum_template': {
             'axes': ['time', 'freq'],
             'dtype': np.float32,
-            'metric': True,
+            'metric': False,
         },
         'nframe': {
             'axes': ['time', 'input'],
@@ -297,7 +298,7 @@ class FlagRawWriter(Hdf5Writer):
         'histogram': {
             'axes': ['time', 'input', 'lsb'],
             'dtype': np.float32,
-            'metric': True,
+            'metric': False,
         },
         'histogram_corr_coeff': {
             'axes': ['time', 'input'],
@@ -312,7 +313,7 @@ class FlagRawWriter(Hdf5Writer):
         'spectrum': {
             'axes': ['time', 'input', 'freq'],
             'dtype': np.float32,
-            'metric': True,
+            'metric': False,
         },
         'spectrum_corr_coeff': {
             'axes': ['time', 'input'],
@@ -1503,7 +1504,7 @@ class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
         if self.flg:
             inoise = [ix for ix, inp in enumerate(self.flg._input) if isinstance(inp, tools.NoiseSource)]
 
-            prod = sorted([tools.cmap(ii, jj, self.ninput) for ii in inoise for jj in range(self.ninput)])
+            prod = sorted([tools.cmap(ii, jj, self.ninput) for ii in inoise for jj in inoise])
 
             coroutine_return( prod )
 
@@ -1563,21 +1564,26 @@ class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
         try:
             metrics = self.flg.metrics_queue.get(block=False)
 
-        except Queue.Empty:
+        except Exception as e:
             handler.set_header('Content-Type', 'text/plain')
             handler.write('')
-            self.log.info('%r: Monitoring metrics queue is empty.' % self)
+
+            if type(e) is Queue.Empty:
+                self.log.info('%r: Monitoring metrics queue is empty.' % self)
+            else:
+                self.log.error(e)
 
         else:
             encoding = self.config.get('metric_encoding', 'text/plain')
+            handler.set_header('Content-Type', 'text/plain')
             if encoding == 'gzip':
                 handler.set_header('Content-Encoding', 'gzip')
                 handler.write(metrics.get_gzip())
             else:
-                handler.set_header('Content-Type', 'text/plain')
                 handler.write(str(metrics))
             self.log.info('%r: Returning %i flaginput metrics. The request took %.3f seconds' % (self, len(metrics), time.time()-t0))
             self.flg.metrics_queue.task_done()
+
 
     @coroutine
     @endpoint('raw-metrics')
@@ -1588,16 +1594,17 @@ class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
             metrics = yield self.flg.get_raw_metrics(t0)
 
         except Exception as e:
+            handler.set_header('Content-Type', 'text/plain')
+            handler.write('')
             self.log.error(e)
-            raise
 
         else:
             encoding = self.config.raw.get('metric_encoding', 'gzip')
+            handler.set_header('Content-Type', 'text/plain')
             if encoding == 'gzip':
                 handler.set_header('Content-Encoding', 'gzip')
                 handler.write(metrics.get_gzip())
             else:
-                handler.set_header('Content-Type', 'text/plain')
                 handler.write(str(metrics))
             self.log.info('%r: Returning %i flag_raw metrics. The request took %.3f seconds' % (self, len(metrics), time.time()-t0))
 
