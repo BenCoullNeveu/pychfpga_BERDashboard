@@ -5,6 +5,7 @@
 
 #Imports
 import sys
+import os
 import numpy as np
 import log
 from pychfpga import NameSpace
@@ -32,6 +33,7 @@ class KotekanMaster(object):
 
     def __init__(self):
         log.setup_logging(self.DEFAULT_LOGGING)
+        self.log = log.get_logger(self)
         self.log.debug('%r: Creating KotekanMaster Instance' % self)
         #KotekanMaster Parameters
         self.state = 'off'
@@ -59,20 +61,20 @@ class KotekanMaster(object):
     @coroutine
     def create_kotekan_clients(self):
         # Create Kotekan REST clients
-        self.kotekan = {}
-        nodes = self.config.kotekan.nodes or {}
+        self.nodes = {}
+        nodes = self.config.nodes or {}
         for node_name, node_params in nodes.items():
             #config = self.config.kotekan.common_config.copy()
             #config.update(node_params)
-            self.kotekan[node_name] = KotekanAsyncRESTClient(name=node_name, **node_params)
+            self.nodes[node_name] = KotekanAsyncRESTClient(name=node_name, **node_params)
 
     @coroutine
-    def start_kotekan_servers(self):
+    def start_kotekan_clients(self):
         """
-        Start Kotekan serers with the proper config.
+        Start Kotekan serivers with the proper config.
         """
-        conf = self.config.kotekan
-        yield [node.start(config=merge_dict(conf.common_config, conf.nodes[node_name]).as_dict()) for node_name, node in self.kotekan.items()]
+        conf = self.config
+        yield [node.start(config=merge_dict(conf.common_config, conf.nodes[node_name]).as_dict()) for node_name, node in self.nodes.items()]
 
     @coroutine
     def stop_kotekan_servers(self):
@@ -86,11 +88,13 @@ class KotekanMaster(object):
     #####################################
 
     @coroutine
-    def start(self):
+    def start(self, config):
         """
-        Start KotekanMaster
+        Start Kotekan clients defined in the provided config
         """
-        #Line 631
+        self.config = config # store the kotekan config
+        yield self.create_kotekan_clients()
+        yield self.start_kotekan_clients()
         coroutine_return({})
 
     @coroutine
@@ -109,6 +113,15 @@ class KotekanMaster(object):
             self.state("off")
         coroutine_return({})
 
+    @coroutine
+    def status(self):
+        """
+        Get kotekan nodes status.
+        """
+        conf = self.config
+        result = yield [node.status() for node_name, node in self.nodes.items()]
+        coroutine_return(result)
+        
 ###############################################################################
 # KotekanMaster Server                                                        #
 ###############################################################################
@@ -126,6 +139,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         super(KotekanMasterAsyncRESTServer, self).__init__(address=address, port=port, heartbeat_string='KMs')
         self.last_time = None
         self.config = None
+        self.kotekan_master = KotekanMaster()
 
     #Kotekan Master Server Commands
     @coroutine
@@ -135,6 +149,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         """
         self.log.info('%r: Received start command' % self)
         self.config = NameSpace(config)
+        self.kotekan_master.start(self.config)
         coroutine_return('KotekanMaster server started.')
 
     @coroutine
@@ -149,7 +164,8 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
     @coroutine
     @endpoint('kotekan-status')
     def status_kotekan(self, handler):
-    	pass
+        result = yield self.kotekan_master.status()
+        coroutine_return(result)
     
     @coroutine
     @endpoint('start-kotekan')
@@ -192,7 +208,7 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
         self.log.info('%s: Starting KotekanMasterServer at %s:%i with config: %r' % (self, self.hostname, self.port, config))
         if isinstance(config, str):
             config = load_yaml_config(config)
-        result = self.post('start', **config)
+        result = self.post('start-kotekan-master', **config)
         coroutine_return('KotekanMaster server started')
 
     @coroutine
