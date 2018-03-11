@@ -930,13 +930,6 @@ class FlagCorrInput(object):
                 self.log.info('Writing to disk results from file %s' % my_file)
                 self.h5_raw.write(this_time, **res)
 
-                # Update flags
-                self.log.info('Updating raw flags from file %s' % my_file)
-                isource = self.sources.index('raw')
-                flag = np.array([classification > 0.01 if not np.isnan(classification) else self.source_flags[isource, ii]
-                                 for ii, classification in enumerate(res['classification'])])
-                self.update_flags(raw=flag)
-
                 # Get metrics for this file and add to queue
                 self.log.info('Grabbing metrics for file %s' % my_file)
                 if self.config.correlator.lower() in ['chime', 'fcc']:
@@ -944,7 +937,7 @@ class FlagCorrInput(object):
                 else:
                     metric_labels = {}
 
-                metrics = self.h5_raw.get_metrics(this_time, **metric_labels)
+                metrics = self.h5_raw.get_metrics(time.time(), **metric_labels)
 
                 while True:
                     try:
@@ -954,6 +947,14 @@ class FlagCorrInput(object):
                         self.metrics_queue.task_done()
                     else:
                         break
+
+                # Update flags
+                self.log.info('Updating raw flags from file %s' % my_file)
+                isource = self.sources.index('raw')
+                flag = np.array([classification > self.config.raw.classification_threshold if not np.isnan(classification)
+                                 else self.source_flags[isource, ii]
+                                 for ii, classification in enumerate(res['classification'])])
+                self.update_flags(raw=flag)
 
             finally:
                 self.file_queue.task_done()
@@ -1099,6 +1100,8 @@ class FlagCorrInput(object):
 
             metrics = self.h5_flag.get_metrics(this_time, **metric_labels)
 
+            metrics.add(self.get_bad_input_metrics(this_time, lookback=24.0 * 3600.0 * self.config.num_days_lookback))
+
             while True:
                 try:
                     self.metrics_queue.put(metrics, block=False)
@@ -1156,6 +1159,65 @@ class FlagCorrInput(object):
 
         # Return status of population test
         return passed
+
+
+    def get_bad_input_metrics(self, timestamp, lookback=None):
+        """ Generate metrics that indicates which inputs were
+        flagged as bad in the recent past.
+
+        Parameters
+        ----------
+        timestamp : unix time
+            Timestamp associated to the metrics.
+
+        lookback : float
+            Amount of time in seconds to look back in the past.
+            Default is None, which uses the entirety of the flaginput history.
+        """
+
+        metrics = Metrics(default_type='gauge')
+
+        historical_status = self._historical_status(lookback=lookback)
+        nbad = historical_status['bad'].size
+
+        if nbad > 0:
+            input_axis = np.array(self.input, dtype=[('chan_id', 'u2'), ('correlator_input', 'S32')])
+            bad_inputs = input_axis[historical_status['bad']]
+            labels = chime_input_labels(bad_inputs)
+
+            for ii in range(nbad):
+                lbls = {key:val[ii] for key, val in labels.iteritems()}
+                metrics.add('_'.join([self.h5_flag._metric_name, 'historically_bad_input']),
+                            value=1, time=timestamp*1000, **lbls)
+
+        return metrics
+
+
+    def _historical_status(self, lookback=None):
+        """ Find inputs that have always been flagged as good in the past.
+
+        Parameters
+        ----------
+        lookback : float
+            Amount of time in seconds to look back in the past.
+            Default is None, which uses the entirety of the flaginput history.
+        """
+
+        all_flags = self.h5_flag.read_all('flag')
+        all_times = self.h5_flag.read_all('index_map/time')[0:all_flags.size]
+
+        if lookback is None:
+            keep = slice(None)
+        else:
+            keep = np.flatnonzero(all_times >= (all_times[-1] - np.abs(lookback)))
+
+        flg = np.all(all_flags[keep, :], axis=0)
+        good_index = np.flatnonzero(flg)
+        bad_index = np.flatnonzero(~flg)
+
+        historical_status = {'good':good_index, 'bad':bad_index}
+
+        return historical_status
 
 
     def get_flag(self, timestamp, dataset='flag'):

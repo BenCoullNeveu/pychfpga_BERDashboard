@@ -5,8 +5,9 @@ flaginput:
     output_dir: '/data/test/flaginput'
     output_suffix: 'flaginput'
     metric_encoding: 'gzip'
+    num_days_lookback: 14
+    max_metrics_size: 10
     max_file_size: 1000000000
-    max_metrics_size: 5
     max_threadpool_workers: 8
     niceness: 10
     port: 54327
@@ -34,3 +35,4 @@ flaginput:
         max_file_size: 1000000000
         start_time: 
         lifo: False
+        classification_threshold: 0.01
