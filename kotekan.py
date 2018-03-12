@@ -1,5 +1,8 @@
 #!/usr/bin/env python
-""" REST Client to configure and operate kotekan nodes and dummy kotekan REST Servers"""
+"""
+REST Client to configure and operate
+kotekan nodes and dummy kotekan REST Servers
+"""
 
 from __future__ import absolute_import, division, print_function
 
@@ -27,10 +30,12 @@ class KotekanAsyncRESTServer(AsyncRESTServer):
 
     """
 
-    DEFAULT_PORT = 12048 # 54323
+    DEFAULT_PORT = 12048
 
     def __init__(self, address='', port=DEFAULT_PORT, logging_params={}):
-        super(KotekanAsyncRESTServer, self).__init__(address=address, port=port, heartbeat_string='Ks')
+        super(KotekanAsyncRESTServer, self).__init__(address=address,
+                                                     port=port,
+                                                     heartbeat_string='Ks')
 
     @coroutine
     def shutdown(self):
@@ -74,10 +79,11 @@ class KotekanAsyncRESTServer(AsyncRESTServer):
 
 class KotekanAsyncRESTClient(AsyncRESTClient):
     """
-    Provides access to the remote GPU node kotekan processes through its REST interface.
+    Provides access to the remote GPU node kotekan processes through the
+    REST interface.
 
-    Uses Tornado AsyncHTTPClient. All methods are Tornado coroutines so that operations can be
-    performed concurrently on multiple nodes.
+    Uses Tornado AsyncHTTPClient. All methods are Tornado coroutines so
+    that operations can be performed concurrently on multiple nodes.
     """
     DEFAULT_PORT = KotekanAsyncRESTServer.DEFAULT_PORT
 
@@ -89,19 +95,25 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
             heartbeat_string='Kc')
         # self.name = name
         self.config = config
-        #self.ping_cb = tornado.ioloop.PeriodicCallback(self.ping, 60e3)
-        #self.ping_cb.start()
+        # self.ping_cb = tornado.ioloop.PeriodicCallback(self.ping, 60e3)
+        # self.ping_cb.start()
 
     @coroutine
     def ping(self):
         try:
             yield self.post('status')
-            self.log.info("%.32r: Pinged kotekan at %s:%s" % (self, self.hostname, self.port))
+            self.log.info("%.32r: Pinged kotekan at %s:%s" % (self,
+                                                              self.hostname,
+                                                              self.port))
         except Exception as e:
             self.log.debug(repr(e))
-            self.log.warning("%.32r: Cannot ping kotekan at %s:%s" % (self, self.hostname, self.port))
+            self.log.warning("%.32r: Ping failed at %s:%s" % (self,
+                                                              self.hostname,
+                                                              self.port))
             coroutine_return(False)
-        coroutine_return(True)  # we dont want this in the try block, as by design it raises an exception
+        coroutine_return(True)
+        # We dont want this in the try block,
+        # as by design it raises an exception
 
     @coroutine
     def status(self):
@@ -129,8 +141,9 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
     #     """
     #     Sends a command to the kotekan REST server
 
-    #     All endpoints return failure status codes if something goes wrong, along with a (sometimes
-    #     helpful) error message in the "Error: <message>" field of the HTML header.  They don't
+    #     All endpoints return failure status codes if something goes wrong,
+    #     along with a (sometimes helpful) error message in the
+    #     "Error: <message>" field of the HTML header.  They don't
     #     return any json data on failure at the moment.
 
     #     """
@@ -140,7 +153,6 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
     #     if resp.reason != 'OK' or resp.status_code != 200:
     #         raise RuntimeError('The kotekan returned the following error: %i:%s' % (resp.status_code, resp.reason))
     #     return resp.content
-
 
     @coroutine
     def packet_grab(self, port=0, number_of_packets=1):

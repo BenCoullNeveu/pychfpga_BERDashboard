@@ -1,33 +1,43 @@
 #!/usr/bin/env python
 
-"""RESTful Server & Client Module to run KotekanMaster object used to initialize and operate the CHIME GPU Backend.
+"""
+RESTful Server & Client Module to run KotekanMaster object used to initialize
+and operate the CHIME GPU Backend.
 """
 
-#Imports
+# Imports
 import sys
 import os
 import numpy as np
 import log
 from pychfpga import NameSpace
-from kotekan import KotekanAsyncRESTClient      
+from kotekan import KotekanAsyncRESTClient   
 from rest import AsyncRESTClient, AsyncRESTServer, endpoint
 from rest import coroutine, coroutine_return, sleep, IOLoop
-from rest import RunSyncWrapper, SocketContext, run_client  # generic REST Server/Client
+# REST Server/Client
+from rest import RunSyncWrapper, SocketContext, run_client
 
 
 class KotekanMaster(object):
-    """KotekanMaster Object to interact with the kotekan processes running on CHIME GPU Nodes.
+    """
+    KotekanMaster Object to interact with the kotekan processes running
+    on CHIME GPU Nodes.
     """
 
     # Logging setup without config file.
     DEFAULT_LOGGING = {
-        'handlers': 
+        'handlers':
             {
-            'stderr': {'class': 'logging.StreamHandler', 'level': 'INFO'}
+                'stderr': {
+                    'class': 'logging.StreamHandler',
+                    'level': 'INFO'
+                    }
             },
-        'loggers': 
+        'loggers':
             {
-            '': {'handlers': ['stderr']}  # root logger
+             '': {
+                'handlers': ['stderr']
+                }  # root logger
             }
     }
 
@@ -35,18 +45,19 @@ class KotekanMaster(object):
         log.setup_logging(self.DEFAULT_LOGGING)
         self.log = log.get_logger(self)
         self.log.debug('%r: Creating KotekanMaster Instance' % self)
-        #KotekanMaster Parameters
+        # KotekanMaster Parameters
         self.state = 'off'
         self.config = None
         self.start_time = None
 
-        #Kotekan Client Objects
+        # Kotekan Client Objects
         self.kotekan_master = None
 
-
-        #Logging Parameters
-        self.PROGRAM = os.path.realpath(__file__) # absolute path name to this module
-        self.GIT_VERSION = "DEV" #TODO: Add a git hook here.
+        # Logging Parameters
+        # Absolute path name to this module
+        self.PROGRAM = os.path.realpath(__file__)
+        # TODO: Add a git hook here.
+        self.GIT_VERSION = "DEV"
         self.log.info("program %s" % self.PROGRAM)
         self.log.info("version %s" % self.GIT_VERSION)
 
@@ -54,55 +65,62 @@ class KotekanMaster(object):
         self.config = NameSpace(config)
 
     #####################################
-    # KOTEKAN Methods                   #
+    # Kotekan Methods                   #
     #####################################
 
-    #These methods manage and operate kotekan clients
+    # These methods manage and operate kotekan clients
     @coroutine
     def create_kotekan_clients(self):
         # Create Kotekan REST clients
         self.nodes = {}
         nodes = self.config.nodes or {}
         for node_name, node_params in nodes.items():
-            #config = self.config.kotekan.common_config.copy()
-            #config.update(node_params)
+            # config = self.config.kotekan.common_config.copy()
+            # config.update(node_params)
             self.nodes[node_name] = KotekanAsyncRESTClient(name=node_name, **node_params)
 
     @coroutine
     def start_kotekan_clients(self):
         """
-        Start Kotekan serivers with the proper config.
+        Start Kotekan servers with the proper config.
         """
         conf = self.config
         yield [node.start(config=merge_dict(conf.common_config, conf.nodes[node_name]).as_dict()) for node_name, node in self.nodes.items()]
 
     @coroutine
-    def stop_kotekan_servers(self):
+    def ping_kotekan_clients(self):
+        """
+        Ping all kotekan clients.
+        """
+        conf = self.config
+        yield [node.ping()for node_name, node in self.nodes.items()]
+
+    @coroutine
+    def stop_kotekan_clients(self):
         """
         Stop Kotekan Servers
         """
         yield [kotekan.stop() for kotekan in self.kotekan]
 
     #####################################
-    # Management Methods                #
+    # Kotekan Master Methods            #
     #####################################
-
     @coroutine
-    def start(self, config):
+    def start_kotekan_master(self, config):
         """
         Start Kotekan clients defined in the provided config
         """
-        self.config = config # store the kotekan config
+        # Store the kotekan config
+        self.config = config
         yield self.create_kotekan_clients()
         yield self.start_kotekan_clients()
         coroutine_return({})
 
     @coroutine
-    def stop(self):
+    def stop_kotekan_master(self):
         """
-        Stop KotekanMaster
+        Stop Kotekan Master
         """
-        #Line 1036
         if self.state == "on":
             self.state = "stopping"
             self.log.info("Stopping Kotekan Master")
@@ -113,69 +131,76 @@ class KotekanMaster(object):
             self.state("off")
         coroutine_return({})
 
-    @coroutine
-    def status(self):
-        """
-        Get kotekan nodes status.
-        """
-        conf = self.config
-        result = yield [node.status() for node_name, node in self.nodes.items()]
+    @couroutine
+    def status_kotekan_master(self):
+        result = "Running..."
         coroutine_return(result)
-        
+
 ###############################################################################
 # KotekanMaster Server                                                        #
 ###############################################################################
+
 class KotekanMasterAsyncRESTServer(AsyncRESTServer):
-    """Wraps KotekanMaster into a Async Restful Server which can recieve HTTP GET
+    """
+    Wraps KotekanMaster into a Async Restful Server which can recieve HTTP GET
     or POST requests and call the appropritate KotekanMaster method.
     """
-    #Line 1131
+
     DEFAULT_PORT = 12048
     KOTEKAN_MASTER_HOSTNAME = None
 
-    def __init__(self,  address=KOTEKAN_MASTER_HOSTNAME, port=DEFAULT_PORT, logging_params={}):
+    def __init__(self, address=KOTEKAN_MASTER_HOSTNAME,
+                 port=DEFAULT_PORT, logging_params={}):
         """KotekanMaster Server Initialization
         """
-        super(KotekanMasterAsyncRESTServer, self).__init__(address=address, port=port, heartbeat_string='KMs')
+        super(KotekanMasterAsyncRESTServer, self).__init__(
+            address=address,
+            port=port,
+            heartbeat_string='KMs')
         self.last_time = None
         self.config = None
         self.kotekan_master = KotekanMaster()
 
-    #Kotekan Master Server Commands
+    #####################################
+    # Kotekan Client RESTful Endpoints  #
+    #####################################
     @coroutine
-    @endpoint('start-kotekan-master')
+    @endpoint('start-kotekan-clients')
     def start(self, handler, **config):
         """ Start the Kotekan Master server with provided config
         """
-        self.log.info('%r: Received start command' % self)
+        self.log.info('%r: Received kotekan client start command' % self)
         self.config = NameSpace(config)
         self.kotekan_master.start(self.config)
         coroutine_return('KotekanMaster server started.')
 
     @coroutine
-    @endpoint('stop-kotekan-master')
+    @endpoint('stop-kotekan-clients')
     def stop(self, handler):
-    	"""Stop the Kotekan Master server
     	"""
+        Stop the Kotekan Master server
+        """
         self.config = None
         coroutine_return('KotekanMaster server stopped.')
 
-    #Kotekan Client Commands
+    #####################################
+    # Kotekan Master RESTful Endpoints  #
+    #####################################
     @coroutine
-    @endpoint('kotekan-status')
-    def status_kotekan(self, handler):
-        result = yield self.kotekan_master.status()
+    @endpoint('status-kotekan-master')
+    def status_kotekan_master(self, handler):
+        result = yield self.kotekan_master.status_kotekan_master()
         coroutine_return(result)
-    
-    @coroutine
-    @endpoint('start-kotekan')
-    def start_kotkan(self, handler):
-    	pass
 
     @coroutine
-    @endpoint('stop-kotekan')
-    def stop_kotekan(self, handler):
-    	pass
+    @endpoint('start-kotekan-master')
+    def start_kotekan_master(self, handler):
+        pass
+
+    @coroutine
+    @endpoint('stop-kotekan-master')
+    def stop_kotekan_master(self, handler):
+        pass
 
 ###############################################################################
 # Kotekan Master Client                                                       #
@@ -186,25 +211,26 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
     DEFAULT_PORT = KotekanMasterAsyncRESTServer.DEFAULT_PORT
 
     def __init__(self, hostname='localhost', port=DEFAULT_PORT):
-    	"""KotekanMaster Client Initialization
     	"""
+        KotekanMaster Client Initialization
+        """
         super(KotekanMasterAsyncRESTClient, self).__init__(
             hostname=hostname, port=port,
-            server_class= KotekanMasterAsyncRESTServer,
+            server_class=KotekanMasterAsyncRESTServer,
             heartbeat_string='KMc')
-
 
     @coroutine
     def start(self, config):
-        """ If the remote kotekan server is not started, start it with the specified configuration
+        """ 
+        If the remote kotekan server is not started, start it with
+        the specified configuration.
 
         Parameters:
-
-            config (str or dict): If a string, the configuration is loaded from the specified
-                configuration file and name. if a dict, it is passed directly to the server.
-
+            config (str or dict): If a string, the configuration is
+            loaded from the specified configuration file and name.
+            if a dict, it is passed directly to the server.
         """
-        #print('start!')
+
         self.log.info('%s: Starting KotekanMasterServer at %s:%i with config: %r' % (self, self.hostname, self.port, config))
         if isinstance(config, str):
             config = load_yaml_config(config)
@@ -213,7 +239,7 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
 
     @coroutine
     def stop(self):
-    	self.log.info('%s: Stoping KotekanMasterServer at %s:%i' % (self, self.hostname, self.port))
+        self.log.info('%s: Stoping KotekanMasterServer at %s:%i' % (self, self.hostname, self.port))
         result = yield self.get('stop')
         coroutine_return(result)
 
@@ -236,14 +262,14 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
 def main():
     """CLI for operating Kotekan Master
     """
-    #TODO: Add Configuration Path Here
-    #TODO: Add click based CLI similar to kotekan_master
+    # TODO: Add Configuration Path Here
+    # TODO: Add click based CLI similar to kotekan_master
     config = "config.yaml"
     log.setup_basic_logging('INFO')
-    client, server = run_client(config, 
+    client, server = run_client(config,
                                 KotekanMasterAsyncRESTServer,
-                                KotekanMasterAsyncRESTClient, 
-                                object_name ='kotekan')
+                                KotekanMasterAsyncRESTClient,
+                                object_name='kotekan')
     km = None
     if server:
         km = RunSyncWrapper(server.kotekan_master)
@@ -257,6 +283,3 @@ if __name__ == '__main__':
     """Kotekan Master CLI Instantiation
     """
     client, server, km = main()
-
-
-
