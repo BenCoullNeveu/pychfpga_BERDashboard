@@ -63,7 +63,7 @@ The :mod:`ch_acq` package provides the following main modules, each correspondin
    ps
    raw_acq
    kotekan
-   .. chrx
+   kotekan_master
    fpga_array
    chfpga_controller
    gps
