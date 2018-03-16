@@ -9,6 +9,7 @@ flaginput:
     max_metrics_size: 10
     max_file_size: 1000000000
     max_threadpool_workers: 8
+    sources_in_buffer: False
     niceness: 10
     port: 54327
     layout:
@@ -36,3 +37,5 @@ flaginput:
         start_time: 
         lifo: False
         classification_threshold: 0.01
+        num_consecutive_bad: 2
+        num_consecutive_good: 24

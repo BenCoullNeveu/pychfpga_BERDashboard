@@ -525,6 +525,10 @@ class FlagCorrInput(object):
         max_threadpool_workers:  str
             Maximum number of threads to use for asynchronous computations.
 
+        sources_in_buffer: bool
+            Update the file buffer when the flag for any source changes.
+            Otherwise will update the file buffer only when the combined flag changes.
+
         power: dict
             Config parameters related to the "power" source.
 
@@ -577,6 +581,14 @@ class FlagCorrInput(object):
 
             - output_suffix: str
                 Suffix appended to the hdf5 filenames.
+
+            - number_consecutive_good: int
+                Number of consecutive samples that must be good in order for a
+                raw derived flag to change from bad to good.
+
+            - number_consecutive_bad: int
+                Number of consecutive samples that must be bad in order for a
+                raw derived flag to change from good to bad.
         """
 
         # Save configuration parameters
@@ -656,13 +668,16 @@ class FlagCorrInput(object):
                 self.power_clients.append(PowerAsyncRESTClient(**config))
 
         # Set up client to communicate with raw acquisition server
+        self.control = {}
         self.rms_clients = []
         if 'rms' in self.sources:
 
-            self.rms_control = ControlFlag(num_consecutive_bad=self.config.rms.num_consecutive_bad,
-                                           num_consecutive_good=self.config.rms.num_consecutive_good)
-            self.rms_control.update(self.source_flags[self.sources.index('rms')])
+            # Create control flags
+            self.control['rms'] = ControlFlag(num_consecutive_bad=self.config.rms.num_consecutive_bad,
+                                              num_consecutive_good=self.config.rms.num_consecutive_good)
+            self.control['rms'].update(self.source_flags[self.sources.index('rms')])
 
+            # Create clients
             for config in self.config.rms.clients:
                 self.rms_clients.append(RmsAsyncRESTClient(**config))
 
@@ -683,6 +698,11 @@ class FlagCorrInput(object):
             self.h5_raw = FlagRawWriter(output_dir=self.config.raw.output_dir, output_suffix=self.config.raw.output_suffix,
                                          instrument=self.config.correlator, output_file=output_files,
                                          max_file_size=self.config.raw.max_file_size)
+
+            # Create control flags
+            self.control['raw'] = ControlFlag(num_consecutive_bad=self.config.raw.num_consecutive_bad,
+                                              num_consecutive_good=self.config.raw.num_consecutive_good)
+            self.control['raw'].update(self.source_flags[self.sources.index('raw')])
 
             # Start processing the raw adc files on a separate thread from the pool
             self.futures['raw'] = self.executor.submit(self.process_raw_adc_files)
@@ -805,9 +825,9 @@ class FlagCorrInput(object):
                               if inp.input_sn in rms else self.source_flags[isource, ii]
                               for ii, inp in enumerate(self._input)])
 
-            self.rms_control.update(flag)
+            self.control['rms'].update(flag)
 
-            self.update_flags(rms=self.rms_control.flag)
+            self.update_flags(rms=self.control['rms'].flag)
 
 
     # -------------------------------
@@ -954,7 +974,9 @@ class FlagCorrInput(object):
                 flag = np.array([classification > self.config.raw.classification_threshold if not np.isnan(classification)
                                  else self.source_flags[isource, ii]
                                  for ii, classification in enumerate(res['classification'])])
-                self.update_flags(raw=flag)
+
+                self.control['raw'].update(flag)
+                self.update_flags(raw=self.control['raw'].flag)
 
             finally:
                 self.file_queue.task_done()
@@ -1044,6 +1066,10 @@ class FlagCorrInput(object):
             determined by this particular source.
         """
 
+        # Extract current combined flag to compare
+        # with updated combined flag later
+        combined_flag = np.array(self.flag)
+
         # Loop over sources in kwargs
         flags_were_updated = []
         for source, flag in kwargs.iteritems():
@@ -1117,7 +1143,8 @@ class FlagCorrInput(object):
             # Save most recent flags to HDF5 file that can be accessed by others.
             # Eventually this will be replaced with distribution of the flags
             # through ch_master to the various kotekan REST endpoints.
-            self.h5_flag.dump(self.buffer_file, timestamp=this_time)
+            if self.config.sources_in_buffer or np.any(combined_flag != np.array(self.flag)):
+                self.h5_flag.dump(self.buffer_file, timestamp=this_time)
 
 
     def check_population(self):
@@ -1507,6 +1534,15 @@ class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
         else:
             coroutine_return('FlagCorrInput server is not started.')
 
+    @coroutine
+    @endpoint('configuration')
+    def configuration(self, handler):
+        self.log.info('%r: Received request for configuration.' % self)
+        if self.flg:
+            coroutine_return( {'flaginput': self.config.as_dict()} )
+
+        else:
+            coroutine_return( "FlagCorrInput server is not started" )
 
     @coroutine
     @endpoint('correlator-inputs')
@@ -1543,7 +1579,7 @@ class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
     def correlator_input_flags(self, handler):
         self.log.info('%r: Received request for correlator input flag.' % self)
         if self.flg:
-            coroutine_return( self.flg.flag )
+            coroutine_return( [[idd, sn, flag] for (idd, sn), flag in zip(self.flg.input, self.flg.flag)] )
 
         else:
             coroutine_return( "FlagCorrInput server is not started" )
@@ -1771,6 +1807,11 @@ class FlagCorrInputAsyncRESTClient(AsyncRESTClient):
     def stop(self):
         result = yield self.get('stop')
         coroutine_return(result)
+
+    @coroutine
+    def get_configuration(self):
+        res = yield self.get('configuration')
+        coroutine_return(res)
 
     @coroutine
     def get_correlator_inputs(self):
