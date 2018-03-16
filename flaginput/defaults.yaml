@@ -2,7 +2,7 @@ flaginput:
     sources: ['layout', 'manual', 'power', 'rms', 'raw']
     combine: ['layout', 'manual', 'power', 'rms', 'raw']
     correlator: 'chime'
-    output_dir: '/data/test/flaginput'
+    output_dir: '/data/flaginput'
     output_suffix: 'flaginput'
     metric_encoding: 'gzip'
     num_days_lookback: 14
@@ -31,7 +31,7 @@ flaginput:
         cadence: 40.0
         acq_dir: '/mnt/gong/archive'
         acq_suffix: 'rawadc'
-        output_dir: '/data/test/rawflag'
+        output_dir: '/data/rawflag'
         output_suffix: 'rawflag'
         max_file_size: 1000000000
         start_time: 
