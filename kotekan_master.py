@@ -74,7 +74,7 @@ class KotekanMaster(object):
         # Create Kotekan REST clients
         self.nodes = {}
         nodes = self.config.nodes or {}
-	print nodes
+        print nodes
         for node_name, node_params in nodes.items():
             # config = self.config.kotekan.common_config.copy()
             # config.update(node_params)
@@ -186,8 +186,8 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
     @endpoint('ping-kotekan-clients')
     def ping_kotekan_clients(self, handler):
         """
-	    Ping kotekan clients.
-	    """
+        Ping kotekan clients.
+        """
         self.log.info('%r: Pinging kotekan clients...' % self)
         self.kotekan_master.ping_kotekanclients()
         coroutine_return('kotekan clients pinged.')
