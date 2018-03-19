@@ -2144,8 +2144,13 @@ class chFPGA_controller(IceBoardExtHandler):
         power = sum([(yield self.get_motherboard_voltage.async(rail)) * (yield self.get_motherboard_current.async(rail)) for rail in (self.RAIL.MB_VCC3V3, self.RAIL.MB_VCC5V5, self.RAIL.MB_VCC12V0)])  # have to use a list comprehension, not generator (a yield inside a generator is not consistent in Python 2.7)
         async_return(power)
 
-    def init_crossbars(self, mode=None, dsmap=range(16), frames_per_packet=2, cb1_lanes=16, cb1_bins=64, cb1_bypass=False, cb1_combine_data_flags=0, cb2_lanes=None, cb2_bins=1, cb2_bypass=False, bp_shuffle_bypass=1, crate_shuffle_bypass=1, remap=True, chan8_channel_map=range(16)):
-        """ Initializes the 1st, 2nd and 3rd crossbars.
+    def init_crossbars(self, mode=None, dsmap=range(16), frames_per_packet=2,
+            cb1_lanes=16, cb1_bins=64, cb1_bypass=False, cb1_combine_data_flags=0,
+            cb2_lanes=None, cb2_bins=1, cb2_bypass=False,
+            bp_shuffle_bypass=1, crate_shuffle_bypass=1,
+            remap=True, chan8_channel_map=range(16)):
+        """
+        Initializes the 1st, 2nd and 3rd crossbars.
         """
 
         cb1 = self.CROSSBAR
@@ -2926,19 +2931,19 @@ class chFPGA_controller(IceBoardExtHandler):
         elif test_name=='rand_complex_C':
             for data_set_number in xrange(trials):
 
-                data=(np.floor(np.random.rand(16,1024)*4-2) + 1j*np.floor(np.random.rand(16,1024)*4-2)) 
+                data=(np.floor(np.random.rand(16,1024)*4-2) + 1j*np.floor(np.random.rand(16,1024)*4-2))
 
                 trial = 0
                 while True:
                     self.set_channelizer_outputs(data)
-                    
+
                     self.start_correlator(integration_period=integration_period, verbose=(0 if trial == 0 else 0))
-                    
+
                     self.sync()
                     p = self.compute_corr_output(data, integration_period=integration_period)
                     timestamp,f = ir.read_correlator_frame(verbose=verbose)
                     f = np.swapaxes(f, 0, 2)
-                    
+
 
                     match = np.all(p==f)
                     if match:
