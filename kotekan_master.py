@@ -106,7 +106,7 @@ class KotekanMaster(object):
 
     @coroutine
     def status_kotekan_clients(self):
-        result = yield [node.status() for node_name, node in self.nodes.items()]
+        result = yield {node_name:node.status() for node_name, node in self.nodes.items()}
         coroutine_return(result)
 
     #####################################
