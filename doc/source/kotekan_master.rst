@@ -36,7 +36,7 @@ where:
 
    ``command``:
       Name of a client method to be invoked with the following arguments as parameters. The command is
-      identified as the first string that corresponds to a method in the ch_master client class. Some commands might require that the server be initialized beforehand. Once the command is executed, the script exits.
+      identified as the first string that corresponds to a method in the ``kotekan_master`` client class. Some commands might require that the server be initialized beforehand. Once the command is executed, the script exits.
 
       If no command is specified, and a new local server was created, the script will continue to run the server continuously until :kbd:`Ctrl-C` is pressed so the server can do its job (provide metrics, respond to client requests etc).
 
@@ -54,7 +54,7 @@ If there is no server runing at the target address specified in the config file 
 
 Examples::
 
-   ./ch_master.py jfc.erh #  Start and run ch_master server continuously with th econfiguration jfc.erh until Ctrl-C.
+   ./kotekan_master.py jfc.erh #  Start and run kotekan_master server continuously with the configuration jfc.erh until Ctrl-C.
 
 Commands:
 *********
@@ -88,36 +88,19 @@ A configuration describes:
 The configuration file example is::
 
     ch_master_config_name:
-        corr_name: 'some_name'# Name of the correlator
-        comment:  'some comment' # A comment to be inserted into the header.
-        base_path: "~/data/"  # base local folder where to store logs, run data etc.
+            servers: # List all the existing servers (multiple servers could operate different sets of nodes)
+                default_server:
+                        hostname: localhost
+                        port: 54323
+                        nodes: # node-specific config
+                            'csDg5': {hostname: csDg5, port: 12048}  # define kotekan nodes. The key name is arbitrary.
+                        aliases: # Lists names that can be used to access subsets of nodes in some client methods
+                            alias1: [csDg5]
 
-
-        # ch_master REST server address
-        hostname: localhost
-        port: 54321
-
-        # Global array parameters
-        n_input: 256  # Number of receiver elements/inputs (used?).
-        n_freq : 1024 # Number of frequency bins (used?).
-
-        enable_gain_switching : false # Enable digital gain switching
-
-        debug: # debugging flags
-            allow_empty_fpga_array: True
-            # skip_power_supply: True
-
-        logging: # Logging configuration. See logging section.
-            ...
-        power_supplies: # Power supply server configuration. See power supply section
-            ...
-        fpga: # FPGA board configuration
-            ...
-        chrx: # chrx server config
-            ...
-        raw_acq: # raw_acq server config
-            ...
-        kotekan: # GPU node config
+                        common_config: # config appended to every-node-specific config
+                            <<: *kotekan_shuffle
+                other_server:
+                  ...
 
 
 Module documentation
@@ -131,10 +114,9 @@ Class summary
 
 .. autosummary::
 
-   ch_master.ChimeMaster
-   ch_master.DummyChimeMaster
-   ch_master.ChimeMasterAsyncRESTServer
-   ch_master.ChimeMasterAsyncRESTClient
+   kotekan_master.KotekanMaster
+   kotekan_master.KotekanMasterAsyncRESTServer
+   kotekan_master.KotekanMasterAsyncRESTClient
 
 
 
@@ -142,20 +124,17 @@ Class summary
 Classes
 -------
 
-.. autoclass:: ch_master.ChimeMaster
+.. autoclass:: kotekan_master.KotekanMaster
    :members:
    :undoc-members:
 
 
-.. autoclass:: ch_master.DummyChimeMaster
+
+.. autoclass:: kotekan_master.KotekanMasterAsyncRESTServer
    :members:
    :undoc-members:
 
-.. autoclass:: ch_master.ChimeMasterAsyncRESTServer
-   :members:
-   :undoc-members:
-
-.. autoclass:: ch_master.ChimeMasterAsyncRESTClient
+.. autoclass:: kotekan_master.KotekanMasterAsyncRESTClient
    :members:
    :undoc-members:
 
@@ -167,16 +146,3 @@ Design
 Logging
 -------
 
-We tried to keep an unified logging structure throughout the design of ch_acq modules in order to make it easy to configure where the logs are being sent, and how much logging info is colleected by each destination. The design philosophy is summarized below:
-
-
-- Logging is done using the standard Python `logging` package.
-- The `log` module provides helper function to set-up logging
-- Logger objects are created at the class instance level, not at the module level. This makes it easier to programatically control the logger, set proper logger name based on contaxt, and avoid pitfalls caused by the main module initializing the loggers *after* thay are created by the import statements (see https://fangpenlin.com/posts/2012/08/26/good-logging-practice-in-python/)
-- We create logger liberally. Creating loggers is cheap.
-- We do **not** use the root logger. Loggers are all named at least using the module name (using the global variable ``__name__``, and can optionally be furthermore specialized by class and method name. Note that ``__name__`` includes the package name.  Typical logger names are therefore "ch_acq.ch_master", "ch_acq.ch_master.ChimeMaster" or "ch_acq.ch_master.ChimeMaster.some_method". The Python logger module understands the dot-separated name hierarchy and allows us to configure logging at any point of the hierarchy.
-- ch_master sets the top-level logging on the logger named after the ch_acq package (and not the root logger). This will handle any events generated by any module directly in the ch_acq package (ch_master, ps, raw_acq etc) or modules in sub-packages such as the pychfpga package (which also respect the same logger naming convention). This also allows ch_acq package to be potentially used as a sub-package while maintaining fine logging control.
-- ...
--
-
-.. .. automethod:: chFPGA_controller.__init__(*see below*)
