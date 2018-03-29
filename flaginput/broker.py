@@ -523,6 +523,7 @@ class FlagCorrInput(object):
             try:
                 my_file = self.file_queue.get(block=False)
             except Queue.Empty:
+                time.sleep(self.config.raw.cadence)
                 continue
 
             try:

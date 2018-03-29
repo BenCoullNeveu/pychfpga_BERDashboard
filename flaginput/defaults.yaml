@@ -6,7 +6,7 @@ flaginput:
     output_suffix: 'flaginput'
     metric_encoding: 'gzip'
     num_days_lookback: 14
-    max_metrics_size: 10
+    max_metrics_size: 20
     max_file_size: 1000000000
     max_threadpool_workers: 8
     sources_in_buffer: False
