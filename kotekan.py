@@ -9,24 +9,23 @@ from __future__ import absolute_import, division, print_function
 import logging
 import argparse
 import sys
-
+from platform import system as system_name  # Returns the system/OS name
+from subprocess import call as system_call  # Execute a shell command
 import numpy as np
-
 import tornado
 import tornado.web
 import tornado.httpclient
-
 from pychfpga import Ccoll, NameSpace, load_yaml_config
-
 from rest import AsyncRESTClient, AsyncRESTServer, coroutine, coroutine_return, endpoint, RunSyncWrapper, IOLoop
 
-################################################
-# Dummy kotekan REST Server
-################################################
+##########################
+# Kotekan RESTful Server #
+##########################
+
 
 class KotekanAsyncRESTServer(AsyncRESTServer):
     """
-    Asynchronous dummy kotekan REST server.
+    Asynchronous Kotekan RESTful server.
 
     """
 
@@ -72,9 +71,9 @@ class KotekanAsyncRESTServer(AsyncRESTServer):
         coroutine_return("Status")
 
 
-################################################
-# kotekan REST Client
-################################################
+##########################
+# Kotekan RESTful Client #
+##########################
 
 
 class KotekanAsyncRESTClient(AsyncRESTClient):
@@ -91,34 +90,14 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         super(KotekanAsyncRESTClient, self).__init__(
             hostname=hostname,
             port=port,
-            # server_class=KotekanAsyncRESTServer,
+            #server_class=KotekanAsyncRESTServer,
             heartbeat_string='Kc')
         # self.name = name
         self.config = config
+        self.hostname = hostname
+        self.port = port
         # self.ping_cb = tornado.ioloop.PeriodicCallback(self.ping, 60e3)
         # self.ping_cb.start()
-
-    @coroutine
-    def ping(self):
-        try:
-            yield self.post('status')
-            self.log.info("%.32r: Pinged kotekan at %s:%s" % (self,
-                                                              self.hostname,
-                                                              self.port))
-        except Exception as e:
-            self.log.debug(repr(e))
-            self.log.warning("%.32r: Ping failed at %s:%s" % (self,
-                                                              self.hostname,
-                                                              self.port))
-            coroutine_return(False)
-        coroutine_return(True)
-        # We dont want this in the try block,
-        # as by design it raises an exception
-
-    @coroutine
-    def status(self):
-        result = yield self.post('status')
-        coroutine_return(result)
 
     @coroutine
     def start(self, config):
@@ -133,8 +112,23 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         coroutine_return(result)
 
     @coroutine
+    def status(self):
+        result = yield self.post('status')
+        coroutine_return(result)
+
+    @coroutine
     def update(self, config):
         result = yield self.post('update', **config)
+        coroutine_return(result)
+
+    @coroutine
+    def update_gains(self, gains_dir):
+        result = yield self.post('gain_dir', gains_dir)
+        coroutine_return(result)
+
+    @coroutine
+    def update_beam_offset(self, offset):
+        result = yield self.post('beam_offset', offset)
         coroutine_return(result)
 
     # def send_command(self, command, args):
@@ -153,6 +147,23 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
     #     if resp.reason != 'OK' or resp.status_code != 200:
     #         raise RuntimeError('The kotekan returned the following error: %i:%s' % (resp.status_code, resp.reason))
     #     return resp.content
+
+    @coroutine
+    def ping(self):
+        """
+        Returns True if host (str) responds to a ping request.
+        Note: Host may not respond to a ping (ICMP) request even if
+              the host name is valid.
+        """
+
+        # Ping command count option as function of OS
+        param = '-n 1' if system_name().lower() == 'windows' else '-c 1'
+
+        # Building the command. Ex: "ping -c 1 google.com"
+        command = ['ping', param, self.hostname]
+
+        # Pinging
+        return system_call(command) == 0
 
     @coroutine
     def packet_grab(self, port=0, number_of_packets=1):
