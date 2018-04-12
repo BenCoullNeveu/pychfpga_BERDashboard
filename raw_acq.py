@@ -1091,7 +1091,10 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
     @coroutine
     @endpoint('get-rms')
     def get_rms(self, handler):
-        coroutine_return(rms=self.receiver.rms_cache.items())
+        if self.receiver.is_running():
+            coroutine_return(rms=self.receiver.rms_cache.items())
+        else:
+            coroutine_return(rms=[])
 
     @coroutine
     @endpoint('get-monitoring-data')
