@@ -251,11 +251,11 @@ class AsyncRESTClient(AsyncMixin):
                 except (TypeError, ValueError):
                     error = '%.32r: Invalid JSON reply string %r' %(self, resp.body)
         if resp.error:
-            #print('*** REST client got response error: %s' % resp.error)
+            self.log.error('REST client got response error: %s'  % resp.error)
             error = str(resp.error) + '\n' + error
         if error:
             error = ('Response=%r\n'%decoded_reply) + error
-            #print('****ERROR****:', error, '\n--------------------')
+            self.log.error('Failed to send %s request %s, error: %s' % (method, endpoint, error))
             raise RuntimeError(error)
         coroutine_return(decoded_reply)
 
