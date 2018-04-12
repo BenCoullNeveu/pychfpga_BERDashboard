@@ -750,7 +750,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
     def set_channelizer(self,
                         adc_mode=None, adcdaq_mode=None,
-                        data_source=None, function=None, a=1, b=0,
+                        data_source=None, function=None, a=1, b=0, freq_test_bins=None,
                         fft_bypass=None, fft_shift=None,
                         scaler_bypass=None, gain=None, postscaler=None, offset_binary_encoding=None,
                         local_sync=True,
@@ -772,7 +772,36 @@ class chFPGA_controller(IceBoardExtHandler):
             self.set_data_source(data_source, channels=channels)  # does a channelizer reset
 
         if function is not None:
-            self.set_funcgen_function(function=function, channels=channels)#self.set_funcgen_function(function=function, a=a, b=b, channels=channels)
+            if function == 'freq_test': #Configure funcgen so the visibility data has a unique real number for 108 freq bins. The other freq bins are zeros
+                N = min(len(freq_test_bins), 108) # N has to be less that 108 for this to work
+                if N==0: # Send same number (1+0j) for all frequencies
+                    v = (9*np.ones(2048, dtype=np.uint8))<<4 # with the offset encoding, 9s here result in 1s in the complex visibility data
+                    v[1::2] = (8*np.ones(1024, dtype=np.uint8))<<4 # with the offset encoding, 8s here result in 0s in the complex visibility data
+                else:
+                    freq_pattern_real = np.array([ 1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  2,  2,
+                                                    2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  3,  3,  3,  3,  3,
+                                                    3,  3,  3,  3,  3,  3,  3,  3,  4,  4,  4,  4,  4,  4,  4,  4,  4,
+                                                    4,  4,  5,  5,  5,  5,  5,  5,  5,  5,  5,  6,  6,  6,  6,  6,  6,
+                                                    6,  6,  7,  7,  7,  7,  7,  7,  7,  8,  8,  8,  8,  8,  8,  9,  9,
+                                                    9,  9,  9,  9, 10, 10, 10, 10, 11, 11, 11, 11, 11, 12, 12, 12, 12,
+                                                   13, 13, 13, 14, 14, 15], dtype=np.uint8)<<4
+                    freq_pattern_imag = np.array([ 1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15,  2,  3,
+                                                    4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15,  3,  4,  5,  6,  7,
+                                                    8,  9, 10, 11, 12, 13, 14, 15,  4,  5,  6,  8,  9, 10, 11, 12, 13,
+                                                   14, 15,  6,  7,  8,  9, 11, 12, 13, 14, 15,  6,  8,  9, 10, 11, 12,
+                                                   14, 15,  7,  8, 10, 12, 13, 14, 15,  8, 10, 12, 13, 14, 15,  9, 10,
+                                                   11, 12, 14, 15, 12, 13, 14, 15, 11, 12, 13, 14, 15, 12, 13, 14, 15,
+                                                   13, 14, 15, 14, 15, 15], dtype=np.uint8)<<4
+                    v = np.zeros(2048, dtype=np.uint8)
+                    v_real = np.zeros(1024, dtype=np.uint8)
+                    v_imag = np.zeros(1024, dtype=np.uint8)
+                    v_real[freq_test_bins] = freq_pattern_real[:N]
+                    v_imag[freq_test_bins] = freq_pattern_imag[:N]
+                    v[::2] = v_real
+                    v[1::2] = v_imag
+                self.set_funcgen_function('arb', channels=channels, data=v) # If FFT and scaler are bypassed, then the visibility data has a unique real number for the 108 freq bins in freq_test_bins. The rest are zeros.
+            else:
+                self.set_funcgen_function(function=function, channels=channels)#self.set_funcgen_function(function=function, a=a, b=b, channels=channels)
 
         # Set FFT bypass and shift schedule
         if fft_bypass is not None:

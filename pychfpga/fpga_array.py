@@ -1278,7 +1278,7 @@ class FPGAArray(object):
 
     @async
     def set_channelizers(self, adc_mode=None, adcdaq_mode=None,
-                         data_source=None, function=None, a=1, b=0,
+                         data_source=None, function=None, a=1, b=0, freq_test_bins=None,
                          fft_bypass=None, fft_shift=None,
                          scaler_bypass=None, gain=None, postscaler=None, offset_binary_encoding=None,
                          sync=True,
@@ -1290,7 +1290,7 @@ class FPGAArray(object):
         """
         for ib in self.ib:
             ib.set_channelizer(adc_mode=adc_mode, adcdaq_mode=adcdaq_mode,
-                        data_source=data_source, function=function, a=a, b=b,
+                        data_source=data_source, function=function, a=a, b=b, freq_test_bins=freq_test_bins,
                         fft_bypass=fft_bypass, fft_shift=fft_shift,
                         scaler_bypass=scaler_bypass, gain=gain, postscaler=postscaler,
                         offset_binary_encoding=offset_binary_encoding)
