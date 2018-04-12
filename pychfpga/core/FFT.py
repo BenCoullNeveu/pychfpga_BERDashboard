@@ -50,6 +50,13 @@ class FFT_base(Module_base):
         # if self.PIPELINE_DELAY != self.MEASURED_PIPELINE_DELAY:
         #    raise Exception('FFT pipeline delay is not set to the measured value!')
 
+    def get_fft_overflow_count(self):
+        return self.OVERFLOW_COUNT
+
+    def reset_fft_overflow_count(self):
+        self.OVERFLOW_RESET = 1
+        self.OVERFLOW_RESET = 0
+
     def status(self):
         """ Displays the status of the data capture module"""
         print '-------------- ANT[%i].FFT STATUS --------------' % self.instance_number

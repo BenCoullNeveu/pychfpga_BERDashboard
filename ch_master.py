@@ -1060,6 +1060,9 @@ class ChimeMaster(object):
     def get_frequency_map(self):
         return self.fpgas.get_frequency_map()
 
+    def reset_fpga_stats(self):
+        self.fpgas.reset_fpga_stats()
+
     def run_sync(self, method_name, *args, **kwargs):
         """ Runs `method_name` in a ioloop and returns when completed"""
 
@@ -1163,6 +1166,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
 
         self.chime_master = ChimeMasterClass()
         self.future = None
+        self._gps_time = {}
         #self.add_periodic_callback(self.print_iceboard_info_callback, period=60000)
         self.metrics_queue = Queue.Queue(1000)
         self.metrics = Metrics()
@@ -1299,29 +1303,44 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
     @endpoint('get-frame-time')
     def get_frame_time(self, handler):
         if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas and self.chime_master.fpgas.ib:
-            frame_number, gps_ts = yield self.chime_master.fpgas.ib[0].capture_frame_time.async(format='raw')
-            frame0_ts = self.chime_master.fpgas.sync_timestamp
+            
+            if not self._gps_time or ((time.time() - self._gps_time['gps_ctime']) > 60.0):
+                try:
+                    frame_number, gps_ts = yield self.chime_master.fpgas.ib[0].capture_frame_time.async(format='raw')
+                except RuntimeError:
+                    pass
+                else:
+                    frame0_ts = self.chime_master.fpgas.sync_timestamp
 
-            coroutine_return(dict(
-                    frame_number=frame_number,  # 48-bit frame number
-                    gps_time=gps_ts.time_struct, # time structure [year, month, day, hour, minute, second, microsecond (float, 10 ns resolution)]
-                    gps_ctime=gps_ts.time, # GPS time, expressed in ctime format (float expressing seconds since UTC epoch)
-                    gps_nano=gps_ts.nano,
-                    gps_time2=gps_ts.time_struct2, # time structure [year, month, day, hour, minute, second, microsecond (float, 10 ns resolution)]
-                    gps_ctime2=gps_ts.time2, # GPS time, expressed in ctime format (float expressing seconds since UTC epoch)
-                    gps_nano2=gps_ts.nano2,
-                    server_ctime =gps_ts.system_time, # system time, expressed in ctime format (float expressing seconds since UTC epoch)
-                    server_ctime_before =gps_ts.system_time_before, # system time, expressed in ctime format (float expressing seconds since UTC epoch)
-                    start_ctime=self.chime_master.start_time,
-                    frame0_time=frame0_ts.time_struct,
-                    frame0_ctime=frame0_ts.time,
-                    frame0_nano=frame0_ts.nano))
+                    self._gps_time = dict(
+                        frame_number=frame_number,  # 48-bit frame number
+                        gps_time=gps_ts.time_struct, # time structure [year, month, day, hour, minute, second, microsecond (float, 10 ns resolution)]
+                        gps_ctime=gps_ts.time, # GPS time, expressed in ctime format (float expressing seconds since UTC epoch)
+                        gps_nano=gps_ts.nano,
+                        gps_time2=gps_ts.time_struct2, # time structure [year, month, day, hour, minute, second, microsecond (float, 10 ns resolution)]
+                        gps_ctime2=gps_ts.time2, # GPS time, expressed in ctime format (float expressing seconds since UTC epoch)
+                        gps_nano2=gps_ts.nano2,
+                        server_ctime =gps_ts.system_time, # system time, expressed in ctime format (float expressing seconds since UTC epoch)
+                        server_ctime_before =gps_ts.system_time_before, # system time, expressed in ctime format (float expressing seconds since UTC epoch)
+                        start_ctime=self.chime_master.start_time,
+                        frame0_time=frame0_ts.time_struct,
+                        frame0_ctime=frame0_ts.time,
+                        frame0_nano=frame0_ts.nano)
+
+            coroutine_return(self._gps_time)
+
         coroutine_return({})
 
     @coroutine
     @endpoint('get-frequency-map')
     def get_frequency_map(self, handler):
         coroutine_return(results=sanitize_for_json(self.chime_master.get_frequency_map()))
+    @coroutine
+
+    @endpoint('reset-fpga-stats')
+    def reset_fpga_stats(self, handler):
+        self.chime_master.reset_fpga_stats()
+        coroutine_return(results='FPGA STATS RESETTED')
 
     @coroutine
     @endpoint('abort')
@@ -1513,6 +1532,17 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
             yield self.chime_master.fpgas.set_adc_delays.async(**self.chime_master.config.fpga.adc_delay_params)
             self.log.info('%r: set_adc_delays() done' % self)
 
+    @coroutine
+    @endpoint('frequency-test')
+    def frequency_test(self, handler):
+        """
+        Test frequency ordering on GPU nodes. Reads the channelizer information from config.yaml:jfc:freq_test
+        """
+    
+        if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
+            conf = NameSpace(load_yaml_config('config.yaml:jfc.freq_test'))
+            self.log.info('Configuring channelizers for frequency test on bins {0}'.format(conf.fpga.channelizer_params.freq_test_bins))
+            yield self.chime_master.fpgas.set_channelizers.async(**conf.fpga.channelizer_params)
 
 class ChimeMasterAsyncRESTClient(AsyncRESTClient):
 
@@ -1665,7 +1695,6 @@ class ChimeMasterAsyncRESTClient(AsyncRESTClient):
         load digital gains
         """
         self.post('switch-digital-gains', delta_t_seconds=float(delta_t_seconds))
-
 
 def main():
     """ Command-line interface to operate the ChimeMaster server.
