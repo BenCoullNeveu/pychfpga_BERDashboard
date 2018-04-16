@@ -1169,7 +1169,6 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
 
         self.chime_master = ChimeMasterClass()
         self.future = None
-        self._gps_time = {}
         #self.add_periodic_callback(self.print_iceboard_info_callback, period=60000)
         self.metrics_queue = Queue.Queue(1000)
         self.metrics = Metrics()
@@ -1177,6 +1176,10 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         #self.add_periodic_callback(self._get_metrics, 3000)
         #self.start_time = None
         self._get_metrics() # continuously run get_metrics loop
+
+        # Create a cached gps time
+        self._gps_time = {}
+        self._gps_lock = tornado.locks.Lock()
 
     @coroutine
     def shutdown(self):
@@ -1306,33 +1309,41 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
     @endpoint('get-frame-time')
     def get_frame_time(self, handler):
         if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas and self.chime_master.fpgas.ib:
-            
-            if not self._gps_time or ((time.time() - self._gps_time['gps_ctime']) > 60.0):
-                try:
-                    frame_number, gps_ts = yield self.chime_master.fpgas.ib[0].capture_frame_time.async(format='raw')
-                except RuntimeError:
-                    pass
-                else:
-                    frame0_ts = self.chime_master.fpgas.sync_timestamp
 
-                    self._gps_time = dict(
-                        frame_number=frame_number,  # 48-bit frame number
-                        gps_time=gps_ts.time_struct, # time structure [year, month, day, hour, minute, second, microsecond (float, 10 ns resolution)]
-                        gps_ctime=gps_ts.time, # GPS time, expressed in ctime format (float expressing seconds since UTC epoch)
-                        gps_nano=gps_ts.nano,
-                        gps_time2=gps_ts.time_struct2, # time structure [year, month, day, hour, minute, second, microsecond (float, 10 ns resolution)]
-                        gps_ctime2=gps_ts.time2, # GPS time, expressed in ctime format (float expressing seconds since UTC epoch)
-                        gps_nano2=gps_ts.nano2,
-                        server_ctime =gps_ts.system_time, # system time, expressed in ctime format (float expressing seconds since UTC epoch)
-                        server_ctime_before =gps_ts.system_time_before, # system time, expressed in ctime format (float expressing seconds since UTC epoch)
-                        start_ctime=self.chime_master.start_time,
-                        frame0_time=frame0_ts.time_struct,
-                        frame0_ctime=frame0_ts.time,
-                        frame0_nano=frame0_ts.nano)
+            try:
 
-            coroutine_return(self._gps_time)
+                with (yield self._gps_lock.acquire(timeout=10.0)):
 
-        coroutine_return({})
+                    if not self._gps_time or ((time.time() - self._gps_time['server_ctime']) > 10.0):
+
+                        frame_number, gps_ts = yield self.chime_master.fpgas.ib[0].capture_frame_time.async(format='raw')
+
+                        frame0_ts = self.chime_master.fpgas.sync_timestamp
+
+                        self._gps_time = dict(
+                            frame_number=frame_number,  # 48-bit frame number
+                            gps_time=gps_ts.time_struct, # time structure [year, month, day, hour, minute, second, microsecond (float, 10 ns resolution)]
+                            gps_ctime=gps_ts.time, # GPS time, expressed in ctime format (float expressing seconds since UTC epoch)
+                            gps_nano=gps_ts.nano,
+                            gps_time2=gps_ts.time_struct2, # time structure [year, month, day, hour, minute, second, microsecond (float, 10 ns resolution)]
+                            gps_ctime2=gps_ts.time2, # GPS time, expressed in ctime format (float expressing seconds since UTC epoch)
+                            gps_nano2=gps_ts.nano2,
+                            server_ctime =gps_ts.system_time, # system time, expressed in ctime format (float expressing seconds since UTC epoch)
+                            server_ctime_before =gps_ts.system_time_before, # system time, expressed in ctime format (float expressing seconds since UTC epoch)
+                            start_ctime=self.chime_master.start_time,
+                            frame0_time=frame0_ts.time_struct,
+                            frame0_ctime=frame0_ts.time,
+                            frame0_nano=frame0_ts.nano)
+
+            except Exception as e:
+                self.log.error(e)
+                coroutine_return({})
+
+            else:
+                coroutine_return(self._gps_time)
+
+        else:
+            coroutine_return({})
 
     @coroutine
     @endpoint('get-frequency-map')
@@ -1342,22 +1353,22 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
     @coroutine
     @endpoint('reset-fpga-stats')
     def reset_fpga_stats(self, handler):
-        self.chime_master.reset_fpga_stats()
-        coroutine_return(results='FPGA STATS RESET')
+        if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
+            self.chime_master.reset_fpga_stats()
+            coroutine_return(results='FPGA STATS RESET')
+
+        else:
+            coroutine_return('FPGA array not yet initialized.')
 
     @coroutine
     @endpoint('reset-shuffle-stats')
     def reset_shuffle_stats(self, handler):
-        self.chime_master.reset_shuffle_stats()
-        coroutine_return(results='SHUFFLE STATS RESET')
+        if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
+            self.chime_master.reset_shuffle_stats()
+            coroutine_return(results='SHUFFLE STATS RESET')
 
-    @coroutine
-    @endpoint('abort')
-    def abort(self, handler):
-        """ Savagely stop the server for debugging purposes."""
-        tornado.ioloop.IOLoop.instance().stop()
-        coroutine_return(results='ABORTING NOW!')
-        # sys.exit(-1)
+        else:
+            coroutine_return('FPGA array not yet initialized.')
 
     @coroutine
     @endpoint('power-on')
@@ -1547,7 +1558,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         """
         Test frequency ordering on GPU nodes. Reads the channelizer information from config.yaml:jfc:freq_test
         """
-    
+
         if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
             conf = NameSpace(load_yaml_config('config.yaml:jfc.freq_test'))
             self.log.info('Configuring channelizers for frequency test on bins {0}'.format(conf.fpga.channelizer_params.freq_test_bins))
