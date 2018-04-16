@@ -2236,6 +2236,17 @@ class FPGAArray(object):
 
         return status
 
+    def reset_shuffle_stats(self):
+        """ Reset error statistics for the crossbar2,
+        crossbar3, and backplane shuffle.
+        """
+
+        for crate in self.ic:
+            for (slot, ib) in crate.slot.items():
+                for cb in [ib.CROSSBAR2, ib.CROSSBAR3, ib.BP_SHUFFLE]:
+                    cb.reset_stats()
+
+
     def print_shuffle_status(self, reset_stats=False, verbose=1, grid=False):
 
         for crate in self.ic:

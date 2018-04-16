@@ -1063,6 +1063,9 @@ class ChimeMaster(object):
     def reset_fpga_stats(self):
         self.fpgas.reset_fpga_stats()
 
+    def reset_shuffle_stats(self):
+        self.fpgas.reset_shuffle_stats()
+
     def run_sync(self, method_name, *args, **kwargs):
         """ Runs `method_name` in a ioloop and returns when completed"""
 
@@ -1335,12 +1338,18 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
     @endpoint('get-frequency-map')
     def get_frequency_map(self, handler):
         coroutine_return(results=sanitize_for_json(self.chime_master.get_frequency_map()))
-    @coroutine
 
+    @coroutine
     @endpoint('reset-fpga-stats')
     def reset_fpga_stats(self, handler):
         self.chime_master.reset_fpga_stats()
-        coroutine_return(results='FPGA STATS RESETTED')
+        coroutine_return(results='FPGA STATS RESET')
+
+    @coroutine
+    @endpoint('reset-shuffle-stats')
+    def reset_shuffle_stats(self, handler):
+        self.chime_master.reset_shuffle_stats()
+        coroutine_return(results='SHUFFLE STATS RESET')
 
     @coroutine
     @endpoint('abort')
