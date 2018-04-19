@@ -43,13 +43,13 @@ class KotekanMaster(object):
     }
 
     def __init__(self):
+        # Default Logger
         log.setup_logging(self.DEFAULT_LOGGING)
         self.log = log.get_logger(self)
         self.log.debug('%r: Creating KotekanMaster Class Instance' % self)
 
         # KotekanMaster Parameters
         self.state = 'off'
-        self.config = None
         self.startup_config = None
         self.current_config = None
         # GPU nodes which are managed by Kotekan Client Objects
@@ -63,7 +63,7 @@ class KotekanMaster(object):
         self.log.info("git ver: %s" % self.GIT_VERSION)
 
     def set_config(self, config):
-        self.config = NameSpace(config)
+        self.current_config = NameSpace(config)
 
     #####################################
     # Kotekan Master Methods            #
@@ -77,9 +77,8 @@ class KotekanMaster(object):
         if self.state == 'off':
             self.log.info('%s : KotekanMaster server starting.' % self)
             self.state = 'on'
-            self.config = NameSpace(config)
-            self.current_config = self.config
-            self.startup_config = self.config
+            self.startup_config = NameSpace(config)
+            self.current_config = startup_config
             self.log.info('%s : Creating kotekan node clients.' % self)
             yield self.create_node_clients()
             self.log.info('%s : Kotekan node clients created.' % self)
@@ -92,8 +91,8 @@ class KotekanMaster(object):
     def create_node_clients(self):
         # Create RESTClients to manage each kotekan process & node.
         self.nodes = {}
-        nodes = self.config.nodes or {}
-        result = [self.nodes, self.config]
+        nodes = self.current_config.nodes or {}
+        result = [self.nodes, self.current_config]
         for node_name, node_params in nodes.items():
             self.nodes[node_name] = KotekanAsyncRESTClient(name=node_name,
                                                            **node_params)
@@ -165,7 +164,7 @@ class KotekanMaster(object):
         """
         Ping all kotekan clients.
         """
-        conf = self.config
+        conf = self.current_config
         yield [node.ping()for node_name, node in self.nodes.items()]
 
 ###############################################################################
@@ -190,7 +189,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
             address=address,
             port=port,
             heartbeat_string='KMs')
-        self.config = None
+        self.current_config = None
         self.kotekan_master = KotekanMaster()
 
     #####################################
@@ -226,7 +225,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
     #     """
     #     print('%r: Received kotekan client create command' % self)
     #     self.log.info('%r: Received kotekan client create command' % self)
-    #     # self.config = NameSpace(config)
+    #     # self.current_config = NameSpace(config)
     #     yield self.kotekan_master.create_kotekan_clients()
     #     coroutine_return('Kotekan clients Created')
 
