@@ -884,6 +884,29 @@ class ChimeMaster(object):
 
         self.log.info("finished initializing FPGAs")
 
+    @coroutine
+    def update_channelizers(self, **params):
+
+        # Log the new parameters
+        output_str = ["  %-32s  %s" % (key + ':',  params[key]) for key in sorted(params.keys())]
+        output_str.insert(0, 'Updating channelizer parameters:')
+        self.log.info('\n'.join(output_str))
+
+        # Sync if we are changing data source
+        sync = False
+        if 'data_source' in params:
+            dsrc = self.fpgas.ib[0].get_data_source()[0]
+            if dsrc != params['data_source']:
+                sync = True
+
+        # Set channelizer
+        yield self.fpgas.set_channelizers.async(sync=sync, **params)
+
+        # Update configuration with new channelizer params
+        for key, val in params.iteritems():
+            self.config.fpga.channelizer_params[key] = val
+
+
     def configure_fpgas_post_acq(self):
         """
         """
@@ -1060,11 +1083,17 @@ class ChimeMaster(object):
     def get_frequency_map(self):
         return self.fpgas.get_frequency_map()
 
+    def get_channelizer_output(self):
+        return self.fpgas.get_chan_output()
+
     def reset_fpga_stats(self):
         self.fpgas.reset_fpga_stats()
 
-    def reset_shuffle_stats(self):
-        self.fpgas.reset_shuffle_stats()
+    def reset_crossbar_stats(self):
+        self.fpgas.reset_crossbar_stats()
+
+    def reset_bp_shuffle_stats(self):
+        self.fpgas.reset_bp_shuffle_stats()
 
     def run_sync(self, method_name, *args, **kwargs):
         """ Runs `method_name` in a ioloop and returns when completed"""
@@ -1351,6 +1380,11 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         coroutine_return(results=sanitize_for_json(self.chime_master.get_frequency_map()))
 
     @coroutine
+    @endpoint('get-channelizer-output')
+    def get_channelizer_output(self, handler):
+        coroutine_return(results=sanitize_for_json(self.chime_master.get_channelizer_output()))
+
+    @coroutine
     @endpoint('reset-fpga-stats')
     def reset_fpga_stats(self, handler):
         if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
@@ -1361,11 +1395,21 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
             coroutine_return('FPGA array not yet initialized.')
 
     @coroutine
-    @endpoint('reset-shuffle-stats')
-    def reset_shuffle_stats(self, handler):
+    @endpoint('reset-crossbar-stats')
+    def reset_crossbar_stats(self, handler):
         if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
-            self.chime_master.reset_shuffle_stats()
-            coroutine_return(results='SHUFFLE STATS RESET')
+            self.chime_master.reset_crossbar_stats()
+            coroutine_return(results='CROSSBAR STATS RESET')
+
+        else:
+            coroutine_return('FPGA array not yet initialized.')
+
+    @coroutine
+    @endpoint('reset-bp-shuffle-stats')
+    def reset_bp_shuffle_stats(self, handler):
+        if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
+            self.chime_master.reset_bp_shuffle_stats()
+            coroutine_return(results='BP SHUFFLE STATS RESET')
 
         else:
             coroutine_return('FPGA array not yet initialized.')
@@ -1404,7 +1448,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
 
     @coroutine
     def _get_metrics(self):
-        """ get the metrics from the FPGAss and put them in the queue
+        """ get the metrics from the FPGAs and put them in the queue
         """
         while True:
             t0 = time.time()
@@ -1438,7 +1482,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
             if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
                 try:
                     self.log.info('%r: Scraping metrics from FPGAs' % (self))
-                    metrics += yield self.chime_master.fpgas.get_metrics.async()
+                    metrics += yield self.chime_master.fpgas.get_metrics.async(reset=self.chime_master.config.fpga.reset_stats)
                     self.log.info('%r: Got a set of %i FPGA metrics' % (self, len(metrics)))
                 except Exception as e:
                     self.log.warning('%r: error getting FPGA metrics. error is: %r\n%s' % (self, e, traceback.format_exc()))
@@ -1553,16 +1597,31 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
             self.log.info('%r: set_adc_delays() done' % self)
 
     @coroutine
-    @endpoint('frequency-test')
-    def frequency_test(self, handler):
+    @endpoint('update-channelizer')
+    def update_channelizer(self, handler, config='config.yaml:jfc.freq_test'):
         """
-        Test frequency ordering on GPU nodes. Reads the channelizer information from config.yaml:jfc:freq_test
+        Update channelizers using the parameters in the provided config.fpga.channelizer_params.
         """
-
         if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
-            conf = NameSpace(load_yaml_config('config.yaml:jfc.freq_test'))
-            self.log.info('Configuring channelizers for frequency test on bins {0}'.format(conf.fpga.channelizer_params.freq_test_bins))
-            yield self.chime_master.fpgas.set_channelizers.async(**conf.fpga.channelizer_params)
+
+            # Load configuration file
+            try:
+                conf = NameSpace(load_yaml_config(config))
+                new_params = conf.fpga.channelizer_params
+
+            except Exception as e:
+                msg = 'Could not load fpga.channelizer_params from %s:  %s' % (config, e)
+                self.log.error(msg)
+                coroutine_return(msg)
+
+            # Update channelizers
+            yield self.chime_master.update_channelizer(**new_params)
+
+            coroutine_return('Channelizers updated with configuration: %s' % config)
+
+        else:
+            coroutine_return('FPGA array not yet initialized.')
+
 
 class ChimeMasterAsyncRESTClient(AsyncRESTClient):
 
@@ -1685,8 +1744,16 @@ class ChimeMasterAsyncRESTClient(AsyncRESTClient):
         """
         Print ch_master status.
         """
-        m = yield self.get('get_frequency_map')
+        m = yield self.get('get-frequency-map')
         self.print_result(m)
+
+    @coroutine
+    def get_channelizer_output(self):
+        """
+        Get the channelizer output buffer.
+        """
+        channelizer_output_buffer = yield self.get('get-channelizer-output')
+        coroutine_return(channelizer_output_buffer)
 
     @coroutine
     def get_hw_map(self):

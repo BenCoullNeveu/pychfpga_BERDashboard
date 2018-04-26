@@ -2212,6 +2212,21 @@ class FPGAArray(object):
                          row_labels=row_labels, col_labels=col_labels, corner_label=corner_label,
                          line_sep=grid, max_width=width)
 
+    def reset_crossbar_stats(self):
+        """ Reset error statistics for the crossbar, crossbar2, and crossbar3.
+        """
+
+        for ib in self.ib:
+            for cb in [ib.CROSSBAR, ib.CROSSBAR2, ib.CROSSBAR3]:
+                cb.reset_stats()
+
+    def reset_bp_shuffle_stats(self):
+        """ Reset error statistics for the backplane shuffle.
+        """
+
+        for ib in self.ib:
+            ib.BP_SHUFFLE.reset_stats()
+
     def get_shuffle_status(self):
 
         status = {}
@@ -2235,17 +2250,6 @@ class FPGAArray(object):
                 status[crate][ib]['cb2']['bin'] = ib.CROSSBAR3.get_bin_sel_status()
 
         return status
-
-    def reset_shuffle_stats(self):
-        """ Reset error statistics for the crossbar2,
-        crossbar3, and backplane shuffle.
-        """
-
-        for crate in self.ic:
-            for (slot, ib) in crate.slot.items():
-                for cb in [ib.CROSSBAR2, ib.CROSSBAR3, ib.BP_SHUFFLE]:
-                    cb.reset_stats()
-
 
     def print_shuffle_status(self, reset_stats=False, verbose=1, grid=False):
 
@@ -2472,11 +2476,17 @@ class FPGAArray(object):
     def print_iceboard_power(self):
         self.print_iceboard_table(lambda ib: '%0.1f' % ib.get_total_power())
 
+    def reset_fpga_stats(self):
+        """ Resets FFT overflow count for all boards in FPGA array.
+        """
+        for ib in self.ib:
+            ib.reset_fft_overflow_count()
+
     def get_monitoring_info(self):
         return self.ib.index_by(lambda ib:ib.get_id()).get_status()
 
     @async
-    def get_metrics(self):
+    def get_metrics(self, reset=True):
         """ Get the monitoring information on the backplanes, boards and firmware status across the array.
 
         Includes:
@@ -2502,10 +2512,11 @@ class FPGAArray(object):
         self.logger.info('%r: Got %i IceBoard temperature & power supply metrics' % (self, len(m)))
         metrics += yield [ib.get_fpga_udp_metrics.async() for ib in self.ib]
 
+        # Shuffle status
         self.logger.info('%r: Getting corner-turn links metrics (over FPGA UDP link)' % self)
-        metrics += yield [ib.get_bp_shuffle_metrics.async() for ib in self.ib]
+        metrics += yield [ib.get_bp_shuffle_metrics.async(reset=reset) for ib in self.ib]
         self.logger.info('%r: Getting corner-turn crossbars metrics (over FPGA UDP link)' % self)
-        metrics += yield [ib.get_crossbar_metrics.async() for ib in self.ib]
+        metrics += yield [ib.get_crossbar_metrics.async(reset=reset) for ib in self.ib]
         self.logger.info('%r: Getting channelizer metrics (over FPGA UDP link)' % self)
         metrics += yield [ib.get_channelizer_metrics.async() for ib in self.ib]
         self.logger.info('%r: Finished gathering FPGA/backplane metrics' % self)
@@ -2515,7 +2526,6 @@ class FPGAArray(object):
 
         # Command errors
 
-        # Shuffle status
 
         async_return(metrics)
 

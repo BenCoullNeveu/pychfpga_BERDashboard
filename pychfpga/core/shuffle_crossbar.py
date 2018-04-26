@@ -465,7 +465,7 @@ class ShuffleCrossbar(Module_base):
         print '%25s: %s' % ('Delta Frame #', ' '.join('%6i' % (f - frame_ref) for f in frame_number))
 
     @async
-    def get_metrics(self):
+    def get_metrics(self, reset=True):
         """ Return the monitoring metrics for the 2nd and 3rd crossbar.
         """
         metrics = Metrics(
@@ -511,6 +511,9 @@ class ShuffleCrossbar(Module_base):
             flags = counters[i]
             for lane, flag in enumerate(flags):
                 metrics.add(metric_name, lane=lane, value=flag, type='GAUGE')
+
+        if reset:
+            self.reset_stats()
 
         async_return(metrics)
 
