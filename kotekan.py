@@ -37,39 +37,31 @@ class KotekanAsyncRESTServer(AsyncRESTServer):
                                                      heartbeat_string='Ks')
 
     @coroutine
-    def shutdown(self):
-        pass
-
-    @coroutine
     @endpoint('start')
     def start(self, handler, **config):
+        """
+        Start Kotekan
+        """
         self.log.info('%.32r: Received start command with %r' % (self, config))
         coroutine_return('Started kotekan')
 
     @coroutine
     @endpoint('stop')
     def stop(self, handler):
+        """
+        Stop Kotekan
+        """
         self.log.info('%.32r: Received stop command' % (self))
         coroutine_return("Stopped kotekan")
 
     @coroutine
-    @endpoint('update')
-    def update(self, handler, **config):
-        self.log.info('%.32r: Received update command with %r' % (self, config))
-        coroutine_return("Updated kotekan")
-
-    @coroutine
     @endpoint('status')
     def status(self, handler):
+        """
+        GET Status
+        """
         self.log.info('%.32r: Received status command' % (self))
-        coroutine_return("Status")
-
-    @coroutine
-    @endpoint('packet_grab')
-    def packet_grab(self, handler, number_of_packets=5):
-        self.log.info('%.32r: Received status command' % (self))
-        coroutine_return("Status")
-
+        coroutine_return("Got Status from kotekan")
 
 ##########################
 # Kotekan RESTful Client #
@@ -99,8 +91,12 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         # self.ping_cb = tornado.ioloop.PeriodicCallback(self.ping, 60e3)
         # self.ping_cb.start()
 
+    # Operation Endpoints
     @coroutine
     def start(self, config):
+        """
+        Start a kotekan process with a provided config
+        """
         newconfig = self.config.copy()
         newconfig.update(config)
         result = yield self.post('start', **newconfig)
@@ -108,54 +104,64 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
 
     @coroutine
     def stop(self):
+        """
+        Stop a kotekan process
+        """
         result = yield self.post('stop')
         coroutine_return(result)
 
     @coroutine
     def status(self):
-        result = yield self.post('status')
+        """
+        GET status from a kotekan process.
+        """
+        result = yield self.get('status')
         coroutine_return(result)
 
     @coroutine
-    def update(self, config):
-        result = yield self.post('update', **config)
+    def version(self):
+        """
+        Returns the current kotekan version information; including build options.
+        """
+        result = yield self.get('version')
+        coroutine_return(result)
+
+    # Parameter Endpoints
+    @coroutine
+    def checksum(self):
+        """
+        Returns an MD5 hash of the config file (based on the json string with no spaces).
+        Only exists if kotekan was build with OpenSSL support included
+        """
+        result = yield self.get('config_md5sum')
         coroutine_return(result)
 
     @coroutine
     def update_gains(self, gains_dir):
+        """
+        Update frb gains directory
+        """
         result = yield self.post('gain_dir', gains_dir)
         coroutine_return(result)
 
     @coroutine
     def update_beam_offset(self, offset):
+        """
+        Upsate frb beam offset
+        """
         result = yield self.post('beam_offset', offset)
         coroutine_return(result)
 
-    # def send_command(self, command, args):
-    #     """
-    #     Sends a command to the kotekan REST server
-
-    #     All endpoints return failure status codes if something goes wrong,
-    #     along with a (sometimes helpful) error message in the
-    #     "Error: <message>" field of the HTML header.  They don't
-    #     return any json data on failure at the moment.
-
-    #     """
-    #     port = 12048  # hard coded
-    #     # command = {"port": port, "num_packets": number_of_packets}
-    #     resp = requests.post('http://%s:%i/%s' % (self.hostname, port, command), data=json.dumps(args))
-    #     if resp.reason != 'OK' or resp.status_code != 200:
-    #         raise RuntimeError('The kotekan returned the following error: %i:%s' % (resp.status_code, resp.reason))
-    #     return resp.content
-
+    # Node Endpoints
     @coroutine
     def ping(self):
         """
+        Ping a Kotekan Node
+
         Returns True if host (str) responds to a ping request.
         Note: Host may not respond to a ping (ICMP) request even if
               the host name is valid.
         """
-
         # Ping command count option as function of OS
         param = '-n 1' if system_name().lower() == 'windows' else '-c 1'
 
