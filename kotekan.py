@@ -85,7 +85,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
             #server_class=KotekanAsyncRESTServer,
             heartbeat_string='Kc')
         # self.name = name
-        self.config = config
+        self.kotekan_config = config
         self.hostname = hostname
         self.port = port
         # self.ping_cb = tornado.ioloop.PeriodicCallback(self.ping, 60e3)
@@ -97,7 +97,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         """
         Start a kotekan process with a provided config
         """
-        newconfig = self.config.copy()
+        newconfig = self.kotekan_config.copy()
         newconfig.update(config)
         result = yield self.post('start', **newconfig)
         coroutine_return(result)
@@ -126,9 +126,17 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         result = yield self.get('version')
         coroutine_return(result)
 
+    @coroutine
+    def running_config(self):
+        """
+        Returns the current running kotekan configuration.
+        """
+        result = yield self.get('config')
+        coroutine_return(result)
+
     # Parameter Endpoints
     @coroutine
-    def checksum(self):
+    def config_md5sum(self):
         """
         Returns an MD5 hash of the config file (based on the json string with no spaces).
         Only exists if kotekan was build with OpenSSL support included

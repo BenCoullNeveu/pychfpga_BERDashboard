@@ -127,7 +127,9 @@ class KotekanMaster(object):
         KotekanMaster Status
         """
         result = {'state': self.state,
-                  'current_config': self.current_config}
+                  'current_config': self.current_config,
+                  'watchdog': self.watchdog,
+                  'watch_interval': self.watch_interval}
         coroutine_return(result)
 
 
@@ -162,11 +164,29 @@ class KotekanMaster(object):
     @coroutine
     def kotekan_version(self):
         """
-        GET version of kotekan process from all nodes.
+        GET Kotekan Version.
         """
         result = yield {node_name: kotekan.version()
                         for node_name, kotekan in self.nodes.items()}
-        
+        coroutine_return(result)
+
+    @coroutine
+    def kotekan_running_config(self):
+        """
+        GET current kotekan configuration.
+        """
+        result = yield {node_name: kotekan.running_config()
+                        for node_name, kotekan in self.nodes.items()}
+        coroutine_return(result)
+
+    @coroutine
+    def kotekan_config_md5sum(self):
+        """
+        GET md5sum of current running configuration.
+        """
+        result = yield {node_name: kotekan.config_md5sum()
+                        for node_name, kotekan in self.nodes.items()}
+        coroutine_return(result)
 
     @coroutine
     def update_gains(self, gains_dir):
@@ -209,8 +229,11 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
     """
     DEFAULT_PORT = 12048
     KOTEKAN_MASTER_HOSTNAME = None
+    WATCHDOG = True
+    WATCH_INTERVAL = 30
 
-    def __init__(self, address=KOTEKAN_MASTER_HOSTNAME, port=DEFAULT_PORT, logging_params={}):
+    def __init__(self, address=KOTEKAN_MASTER_HOSTNAME, port=DEFAULT_PORT, logging_params={},
+                 watchdog=WATCHDOG, watch_interval=WATCH_INTERVAL):
         """
         KotekanMaster Server Initialization
         """
@@ -221,6 +244,8 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         self.log.info("KotekanMasterAsyncRESTServer: %s:%s", str(address), str(port))
         self.current_config = None
         self.kotekan_master = KotekanMaster()
+        self.watchdog = watchdog
+        self.watch_interval = watch_interval
 
     # KotekanMaster RESTful Endpoints
     #   API to interact with KotekanMaster.
@@ -250,6 +275,29 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         Get the current status of KotekanMaster
         """
         result = yield self.kotekan_master.status_kotekan_master()
+        coroutine_return(result)
+
+    @coroutine
+    @endpoint('validate-running-config')
+    def validate_running_configuration(self, handler):
+        """
+        Validate that all nodes in the array are running the same current config.
+        """
+        running_configs = yield self.kotekan_master.kotekan_running_config()
+        unique_configs = set(running_configs.values())
+        if len(unique_configs) != 1:
+            coroutine_return(True)
+        else:
+            coroutine_return(False)
+
+    @coroutine
+    @endpoint('validate-checksum')
+    def validate_checksum(self, handler):
+        """
+        Validate the md5checksum for all running kotekan configs against the
+        md5checksum of the self.current_config
+        """
+        result = "Not Implemented."
         coroutine_return(result)
 
     # Kotekan RESTful Endpoints
@@ -296,6 +344,23 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         result = yield self.kotekan_master.kotekan_version()
         coroutine_return(result)
 
+    @coroutine('kotekan-running-config')
+    def kotekan_running_config(self, handler):
+        """
+        Queries the current running configuration from the kotekan process.
+        """
+        result = yield self.kotekan_master.kotekan_running_config()
+        coroutine_return(result)
+
+    @coroutine
+    @endpoint('kotekan-config-md5sum')
+    def kotekan_config_md5sum(self, handler):
+        """
+        Queries the current kotekan for the MD5 hash of the running configuration.
+        """
+        result = yield self.kotekan_master.kotekan_config_md5sum()
+        coroutine_return(result)
+
     # Parameter Endpoints.
     @coroutine
     @endpoint('update-gains')
@@ -323,15 +388,6 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         """
         result = "Not Implemented."
         coroutine_return(result)
-
-    @coroutine('validate-parameters')
-    def validate_parameters(self, handler, parameter):
-        """
-        Validate current parameters.
-        """
-        result = "Not Implemented."
-        coroutine_return(result)
-
 
     # Node RESTful Endpoints
     #   These endpoints interact with the hardware in the GPU SeaCans.
@@ -461,6 +517,21 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
         result = yield self.get('kotekan-version')
         coroutine_return(result)
 
+    @coroutine
+    def kotekan_running_config(self):
+        """
+        Current running kotekan configuration.
+        """
+        result = yield self.get('kotekan-running-config')
+        coroutine_return(result)
+
+    @coroutine
+    def kotekan_config_md5sum(self):
+        """
+        Returns an MD5 hash of the config file
+        """
+        result = yield self.get('kotekan-config-md5sum')
+        coroutine_return(result)
 
     # Parameter Endpoints
     #   All parameter endpoints have a corresponding value in the kotekan config.
