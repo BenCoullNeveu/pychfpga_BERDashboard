@@ -9,7 +9,7 @@ manage and operate the CHIME GPU Backend.
 import os
 import subprocess
 import ch_acq.log as log
-from ch_acq.pychfpga import NameSpace, load_yaml_config
+from ch_acq.pychfpga import NameSpace, load_yaml_config, merge_dict
 from ch_acq.kotekan import KotekanAsyncRESTClient
 from ch_acq.rest import AsyncRESTClient, AsyncRESTServer, endpoint
 from ch_acq.rest import coroutine, coroutine_return, sleep, IOLoop
@@ -17,10 +17,10 @@ from ch_acq.rest import coroutine, coroutine_return, sleep, IOLoop
 # REST Server/Client
 from ch_acq.rest import RunSyncWrapper, SocketContext, run_client
 
-
+# KotekanMaster Class
 class KotekanMaster(object):
     """
-    KotekanMaster Object to manage individual Kotekan Objects which interact with
+    KotekanMaster class to manage individual Kotekan Objects which interact with
     the individual CHIME GPU nodes over RESTful API.
     """
     # Logging setup without config file.
@@ -73,7 +73,7 @@ class KotekanMaster(object):
     @coroutine
     def start_kotekan_master(self, config):
         """
-        Start KotekanMaster and create a KotekanAsyncRESTClient for each nodes
+        Start KotekanMaster and create a KotekanAsyncRESTClient for each node
         specified in the config file.
         """
         # Start KotekanMaster if the current state is off.
@@ -127,9 +127,7 @@ class KotekanMaster(object):
         KotekanMaster Status
         """
         result = {'state': self.state,
-                  'current_config': self.current_config,
-                  'watchdog': self.watchdog,
-                  'watch_interval': self.watch_interval}
+                  'current_config': self.current_config}
         coroutine_return(result)
 
 
@@ -227,13 +225,13 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
     POST and PUT requests and call the appropriate KotekanMaster class functions
     to perform the required task.
     """
+    #Defaul parameters
     DEFAULT_PORT = 12048
     KOTEKAN_MASTER_HOSTNAME = None
-    WATCHDOG = True
-    WATCH_INTERVAL = 30
+    WATCHDOG_ENABLED = True
+    WATCHDOG_INTERVAL = 60 # In seconds
 
-    def __init__(self, address=KOTEKAN_MASTER_HOSTNAME, port=DEFAULT_PORT, logging_params={},
-                 watchdog=WATCHDOG, watch_interval=WATCH_INTERVAL):
+    def __init__(self, address=KOTEKAN_MASTER_HOSTNAME, port=DEFAULT_PORT, logging_params={}):
         """
         KotekanMaster Server Initialization
         """
@@ -244,8 +242,6 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         self.log.info("KotekanMasterAsyncRESTServer: %s:%s", str(address), str(port))
         self.current_config = None
         self.kotekan_master = KotekanMaster()
-        self.watchdog = watchdog
-        self.watch_interval = watch_interval
 
     # KotekanMaster RESTful Endpoints
     #   API to interact with KotekanMaster.
