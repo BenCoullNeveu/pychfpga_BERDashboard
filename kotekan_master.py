@@ -139,7 +139,7 @@ class KotekanMaster(object):
         """
         result = {'state': self.state,
                   'current_config': self.current_config,
-                  'nodes': self.nodes.key(),
+                  'nodes': self.nodes.keys(),
                   'blacklist_nodes' : self.blacklist_nodes,
                   'watchdog_enabled' : self.watchdog_enabled,
                   'watchdog_interval' : self.watchdog_interval}
@@ -156,6 +156,22 @@ class KotekanMaster(object):
         self.watchdog_enabled = False
         self.watchdog_interval = None
         coroutine_return('%s : KotekanMaster watchdog disabled.', self)
+
+    @coroutine
+    def whitelist_node(self, node_list):
+        for node_name in node_list:
+            if node_name not in self.nodes.keys():
+                self.nodes[node_name] = KotekanAsyncRESTClient(name=node_name)
+                self.log.info('%s : Whitelisted node: %s', self, node_name)
+        coroutine_return('%s : Attempted whitelisting node[s]: %s', self, node_list)
+
+    @coroutine
+    def blacklist_node(self, node_list):
+        for node_name in the node_list:
+            if node_name in self.nodes.keys():
+                self.nodes.pop(node_name)
+                self.log.info('%s : Blacklisted node: %s', self, node_name)
+        coroutine_return('%s : Attempted blacklisting node[s]: %s', self, node_list)
 
     # Kotekan Methods
     #   These methods interact with the kotekan rest server.
@@ -552,6 +568,16 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
     @coroutine
     def stop_watchdog(self):
         result = yield self.get('stop-watchdog')
+        coroutine_return(result)
+
+    @coroutine
+    def blacklist_node(self, node_list):
+        result = yield self.post('blacklist-node',node_list)
+        coroutine_return(result)
+
+    @coroutine
+    def whitelist_node(self, node_list):
+        result = yield self.post('whitelist-node', node_list)
         coroutine_return(result)
 
 
