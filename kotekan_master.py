@@ -63,7 +63,7 @@ class KotekanMaster(object):
 
         #Watchdog parameters
         self.watchdog_enabled = None
-        self.watchdog_interval = None
+        self.watchdog_interval = 60
 
         #GPS Time for the current run as obtained from ch_master
         self.gps_server = 'http://carillon.chime:54321/get-frame-time'
@@ -76,7 +76,7 @@ class KotekanMaster(object):
 
     def set_config(self, config):
         """
-        Convert list or dict to a attribute space.
+        Convert list or dict to an object with attributes
         """
         self.current_config = NameSpace(config)
 
@@ -165,12 +165,12 @@ class KotekanMaster(object):
         coroutine_return(result)
 
     @coroutine
-    def start_watchdog(self):
+    def start_watchdog(self, watchdog_interval):
         """
         Start Watchdog
         """
         self.watchdog_enabled = True
-        self.watchdog_interval = 60
+        self.watchdog_interval = watchdog_interval
         self.log.info('%s : KotekanMaster Watchdog Enabled', self)
         self.log.info('%s : KotekanMaster Watchdog Interval : %ss', self, self.watchdog_interval)
         coroutine_return('%s : KotekanMaster watchdog enabled.', self)
@@ -181,7 +181,7 @@ class KotekanMaster(object):
         Stop Watchdog
         """
         self.watchdog_enabled = False
-        self.watchdog_interval = None
+        self.watchdog_interval = 60
         self.log.info('%s : KotekanMaster Watchdog Disabled', self)
         coroutine_return('%s : KotekanMaster watchdog disabled.', self)
 
@@ -210,7 +210,7 @@ class KotekanMaster(object):
     @coroutine
     def get_gps_time(self):
         """
-        Get gps time for ch_master to sync the kotekan nodes
+        Get gps time for chime master to sync the kotekan nodes
         """
         gps_request = requests.get(self.gps_server)
         #Check if the request worked out.
@@ -366,11 +366,11 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
 
     @coroutine
     @endpoint('start-watchdog')
-    def start_watchdog(self, handler):
+    def start_watchdog(self, handler, watchdog_interval):
         """
         Start Kotekan Watchdog
         """
-        result = yield self.kotekan_master.start_watchdog()
+        result = yield self.kotekan_master.start_watchdog(watchdog_interval)
         coroutine_return(result)
 
 
@@ -394,7 +394,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
                 # Update watchdog metrics
 
                 # Wait for the specific time interval
-                time
+                sleep(self.kotekan_master.watchdog_interval)
 
     @coroutine
     @endpoint('blacklist-node')
@@ -634,11 +634,11 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
         coroutine_return(result)
 
     @coroutine
-    def start_watchdog(self):
+    def start_watchdog(self, watchdog_interval):
         """
         Start KotekanMaster Watchdog
         """
-        result = yield self.get('start-watchdog')
+        result = yield self.post('start-watchdog')
         coroutine_return(result)
 
     @coroutine
