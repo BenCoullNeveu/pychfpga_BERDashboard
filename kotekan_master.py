@@ -244,10 +244,27 @@ class KotekanMaster(object):
         yield {node_name: kotekan.stop() for node_name, kotekan in self.nodes.items()}
 
     @coroutine
+    def _watchdog_restart(self, status_list):
+        """
+        Start specific kotekan nodes from the status_list which are not running.
+        NOTE: This method is not visible as a RESTful endpoint.
+
+        Input:
+            status_list : dict-type
+                {'node_name' : {'running' : 'false|true'}}
+        """
+        for node, status in status_list:
+            if status['running'] is 'false':
+        coroutine_return()
+
+    @coroutine
     def kotekan_status(self):
         """
         GET status of the kotekan process from all nodes currently
         managed by kotekan_master.
+
+        Returns: dict
+        {"node_name" : {"running": true|false}}
         """
         result = yield {node_name: kotekan.status()
                         for node_name, kotekan in self.nodes.items()}
@@ -257,6 +274,14 @@ class KotekanMaster(object):
     def kotekan_version(self):
         """
         GET Kotekan Version.
+
+        Returns: dict
+        { "node_name" : {"available_processes": ["p1","p2", ... "pN"],
+                         "branch": "master",
+                         "cmake_build_settings" : "BUILD_OPTIONS",
+                         "git_commit_hash": "b1ce8aecf10b8eed49e458ec0ba5d34f926993fb",
+                         "kotekan_version": "2.3"
+                         }}
         """
         result = yield {node_name: kotekan.version()
                         for node_name, kotekan in self.nodes.items()}
@@ -389,8 +414,8 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
             if self.kotekan_master.watchdog_enabled:
                 # Run get status from each node
                 node_status = yield self.kotekan_master.kotekan_status()
-                # Execute restarts for nodes which are down
-
+                # Execute restarts for nodes which report running status as false
+                watchdog_restart = yield self.kotekan_master.watchdog_restart(node_status)
                 # Update watchdog metrics
 
                 # Wait for the specific time interval
