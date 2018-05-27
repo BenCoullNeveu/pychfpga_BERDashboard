@@ -21,8 +21,6 @@ from rest import AsyncRESTClient, AsyncRESTServer, coroutine, coroutine_return, 
 ##########################
 # Kotekan RESTful Server #
 ##########################
-
-
 class KotekanAsyncRESTServer(AsyncRESTServer):
     """
     Asynchronous Kotekan RESTful server.
@@ -66,8 +64,6 @@ class KotekanAsyncRESTServer(AsyncRESTServer):
 ##########################
 # Kotekan RESTful Client #
 ##########################
-
-
 class KotekanAsyncRESTClient(AsyncRESTClient):
     """
     Provides access to the remote GPU node kotekan processes through the
@@ -121,7 +117,8 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
     @coroutine
     def version(self):
         """
-        Returns the current kotekan version information; including build options.
+        Returns the current kotekan version information,
+        including build options.
         """
         result = yield self.get('version')
         coroutine_return(result)
@@ -129,7 +126,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
     @coroutine
     def running_config(self):
         """
-        Returns the current running kotekan configuration.
+        Returns the current running kotekan config.
         """
         result = yield self.get('config')
         coroutine_return(result)
@@ -138,8 +135,8 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
     @coroutine
     def config_md5sum(self):
         """
-        Returns an MD5 hash of the config file (based on the json string with no spaces).
-        Only exists if kotekan was build with OpenSSL support included
+        Returns an MD5 hash of the config file (based on the json string with no
+        spaces). Only exists if kotekan was build with OpenSSL support.
         """
         result = yield self.get('config_md5sum')
         coroutine_return(result)
@@ -147,7 +144,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
     @coroutine
     def update_gains(self, gains_dir):
         """
-        Update frb gains directory
+        Update CHIME/FRB beamforming kernel gains directory
         """
         result = yield self.post('gain_dir', gains_dir)
         coroutine_return(result)
@@ -155,9 +152,17 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
     @coroutine
     def update_beam_offset(self, offset):
         """
-        Upsate frb beam offset
+        Update CHIME/FRB network process beam offset
         """
         result = yield self.post('beam_offset', offset)
+        coroutine_return(result)
+
+    @coroutine
+    def update_pulsar_pointing(self, pulsar_pointing):
+        """
+        Update CHIME/Pulsar beam pointing
+        """
+        result = "Not Implemented."
         coroutine_return(result)
 
     # Node Endpoints
@@ -177,7 +182,8 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         command = ['ping', param, self.hostname]
 
         # Pinging
-        return system_call(command) == 0
+        result = system_call(command) == 0
+        coroutine_return(result)
 
     @coroutine
     def packet_grab(self, port=0, number_of_packets=1):
@@ -197,7 +203,10 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
     def vis(self, freq):
         """
         Send it {"freq":[0,64]} - range depends on mode.
-        Sends a binary "Content-Type: application/octet-stream" with size "num_elements * (num_elements + 1) / 2"  i.e. the upper triangle matrix in row major order.
+
+        Sends a binary "Content-Type: application/octet-stream" with size
+        "num_elements * (num_elements + 1) / 2"  i.e. the upper triangle matrix
+        in row major order.
         """
         freq = int(freq)
         data = yield self.post('vis', freq=freq)
@@ -206,7 +215,9 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
 
     def parse_hexdump(self, hexdump):
         """
-        Parses a string as a series of hexdumps. Each packet is seperated by a single line containing 'Packet'.
+        Parses a string as a series of hexdumps. Each packet is seperated by a
+        single line containing 'Packet'.
+
         Returns an list containing a uint8 array for each packet.
         """
         packets = []
@@ -220,14 +231,17 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
 
     @coroutine
     def capture_raw_packets(self, port, number_of_packets=5):
-        """ Parses the inspect_packet output and return the captured packets as a list of strings.
+        """
+        Parses the inspect_packet output and return the captured packets as a
+        list of strings.
         """
         data = yield self.packet_grab(port, number_of_packets)
         coroutine_return(data)
 
     @coroutine
     def capture_packets(self, port=0, number_of_packets=5, print_packet_info=True):
-        """ Obtain packets from the node and decode them.
+        """
+        Obtain packets from the node and decode them.
         """
         # Get raw packets
         raw_packets = yield self.packet_grab(port, number_of_packets)
@@ -274,13 +288,17 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
             # Header word 3
             d.timestamp = d.header_words[3]
             d.data_words = udp_payload[4:]
-            d.raw_data_bytes = udp_payload[4:].astype('>u4').view(np.uint8) # UDP payload, without header (but includes data, scaler flags, frame flags, packet flags
+            # UDP payload, without header (but includes data, scaler flags,
+            # frame flags, packet flags
+            d.raw_data_bytes = udp_payload[4:].astype('>u4').view(np.uint8)
             d.shuffle_data_bytes = udp_payload[4:].view(np.uint8)
             d.data_length = len(d.raw_data_bytes) # length of all the packet without the header
             result.append(d)
             if print_packet_info:
-                print('Timestamp %08X, Ethernet packet= %i bytes' % (d.timestamp, d.ethernet_packet_size))
-        coroutine_return(Ccoll(result))  # Ccoll allows attributes of the list elements to be accessed directly in parallel
+                print('Timestamp %08X, Ethernet packet= %i bytes' %
+                      (d.timestamp, d.ethernet_packet_size))
+        # Ccoll allows attributes of the list elements to be accessed directly in parallel
+        coroutine_return(Ccoll(result))
 
     # def get_raw_data(self, port=0, number_of_packets=5):
     #     """ Capture and return the raw data bytes from specified ``port``. Data is concatenated into a single vector. """
@@ -298,8 +316,6 @@ def parse_cmdline_args(argv):
     parser.add_argument('-n', '--host', default='localhost', type=str, help="Server hostname")
     parser.add_argument('-s', '--server', action='store_true', help='Start a server')
     return parser.parse_args(argv)
-
-
 
 if __name__ == '__main__':
     # Create our own IOLoop so we don't interfere with ipython's own ioloop.
