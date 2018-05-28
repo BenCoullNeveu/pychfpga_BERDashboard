@@ -35,6 +35,7 @@ import psutil
 import tornado
 import tornado.tcpclient
 import tornado.web
+import tornado.locks
 
 from pychfpga import FPGAArray, NameSpace, merge_dict, load_yaml_config, Metrics, calculate_gains
 import log
@@ -760,6 +761,10 @@ class ChimeMaster(object):
 		    self.log.info("Starting idle data capture")
 		    yield self.start_fpga_raw_data_transmission()
 
+                # Clear errors accumulated during start and initialization
+                self.reset_fpga_stats()
+                self.reset_crossbar_stats()
+                self.reset_bp_shuffle_stats()
 
 	else:
             self.log.warning('%r: There are no FPGAs in the array. Stopping FPGA initializations here' % self)
@@ -883,6 +888,32 @@ class ChimeMaster(object):
         time.sleep(2)
 
         self.log.info("finished initializing FPGAs")
+
+    @coroutine
+    def update_channelizers(self, **params):
+
+        # Log the new parameters
+        output_str = ["  %-32s  %s" % (key + ':',  params[key]) for key in sorted(params.keys())]
+        output_str.insert(0, 'Updating channelizer parameters:')
+        self.log.info('\n'.join(output_str))
+
+        # Sync if we are changing data source
+        requested_dsrc = params['data_source']
+        if requested_dsrc == 'funcgen':
+            self.log.warning("Data source 'funcgen' is deprecated, use 'buffer' in future.")
+            requested_dsrc = 'buffer'
+
+        dsrc = self.fpgas.ib[0].get_data_source()[0]
+        sync = (dsrc != requested_dsrc)
+
+        self.log.info('Requested data source: %s | Current data source: %s | SYNC: %s' %
+                      (requested_dsrc, dsrc, sync))
+
+        # Set channelizers
+        yield self.fpgas.set_channelizers.async(sync=sync, **params)
+
+        # Update configuration with new channelizer params
+        self.config.fpga.channelizer_params = NameSpace(params)
 
     def configure_fpgas_post_acq(self):
         """
@@ -1060,8 +1091,17 @@ class ChimeMaster(object):
     def get_frequency_map(self):
         return self.fpgas.get_frequency_map()
 
+    def get_channelizer_output(self):
+        return self.fpgas.get_chan_output()
+
     def reset_fpga_stats(self):
         self.fpgas.reset_fpga_stats()
+
+    def reset_crossbar_stats(self):
+        self.fpgas.reset_crossbar_stats()
+
+    def reset_bp_shuffle_stats(self):
+        self.fpgas.reset_bp_shuffle_stats()
 
     def run_sync(self, method_name, *args, **kwargs):
         """ Runs `method_name` in a ioloop and returns when completed"""
@@ -1166,7 +1206,6 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
 
         self.chime_master = ChimeMasterClass()
         self.future = None
-        self._gps_time = {}
         #self.add_periodic_callback(self.print_iceboard_info_callback, period=60000)
         self.metrics_queue = Queue.Queue(1000)
         self.metrics = Metrics()
@@ -1174,6 +1213,10 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         #self.add_periodic_callback(self._get_metrics, 3000)
         #self.start_time = None
         self._get_metrics() # continuously run get_metrics loop
+
+        # Create a cached gps time
+        self._gps_time = {}
+        self._gps_lock = tornado.locks.Lock()
 
     @coroutine
     def shutdown(self):
@@ -1303,52 +1346,81 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
     @endpoint('get-frame-time')
     def get_frame_time(self, handler):
         if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas and self.chime_master.fpgas.ib:
-            
-            if not self._gps_time or ((time.time() - self._gps_time['gps_ctime']) > 60.0):
-                try:
-                    frame_number, gps_ts = yield self.chime_master.fpgas.ib[0].capture_frame_time.async(format='raw')
-                except RuntimeError:
-                    pass
-                else:
-                    frame0_ts = self.chime_master.fpgas.sync_timestamp
 
-                    self._gps_time = dict(
-                        frame_number=frame_number,  # 48-bit frame number
-                        gps_time=gps_ts.time_struct, # time structure [year, month, day, hour, minute, second, microsecond (float, 10 ns resolution)]
-                        gps_ctime=gps_ts.time, # GPS time, expressed in ctime format (float expressing seconds since UTC epoch)
-                        gps_nano=gps_ts.nano,
-                        gps_time2=gps_ts.time_struct2, # time structure [year, month, day, hour, minute, second, microsecond (float, 10 ns resolution)]
-                        gps_ctime2=gps_ts.time2, # GPS time, expressed in ctime format (float expressing seconds since UTC epoch)
-                        gps_nano2=gps_ts.nano2,
-                        server_ctime =gps_ts.system_time, # system time, expressed in ctime format (float expressing seconds since UTC epoch)
-                        server_ctime_before =gps_ts.system_time_before, # system time, expressed in ctime format (float expressing seconds since UTC epoch)
-                        start_ctime=self.chime_master.start_time,
-                        frame0_time=frame0_ts.time_struct,
-                        frame0_ctime=frame0_ts.time,
-                        frame0_nano=frame0_ts.nano)
+            try:
 
-            coroutine_return(self._gps_time)
+                with (yield self._gps_lock.acquire(timeout=datetime.timedelta(seconds=15))):
 
-        coroutine_return({})
+                    if not self._gps_time or ((time.time() - self._gps_time['server_ctime']) > 15.0):
+
+                        frame_number, gps_ts = yield self.chime_master.fpgas.ib[0].capture_frame_time.async(format='raw')
+
+                        frame0_ts = self.chime_master.fpgas.sync_timestamp
+
+                        self._gps_time = dict(
+                            frame_number=frame_number,  # 48-bit frame number
+                            gps_time=gps_ts.time_struct, # time structure [year, month, day, hour, minute, second, microsecond (float, 10 ns resolution)]
+                            gps_ctime=gps_ts.time, # GPS time, expressed in ctime format (float expressing seconds since UTC epoch)
+                            gps_nano=gps_ts.nano,
+                            gps_time2=gps_ts.time_struct2, # time structure [year, month, day, hour, minute, second, microsecond (float, 10 ns resolution)]
+                            gps_ctime2=gps_ts.time2, # GPS time, expressed in ctime format (float expressing seconds since UTC epoch)
+                            gps_nano2=gps_ts.nano2,
+                            server_ctime =gps_ts.system_time, # system time, expressed in ctime format (float expressing seconds since UTC epoch)
+                            server_ctime_before =gps_ts.system_time_before, # system time, expressed in ctime format (float expressing seconds since UTC epoch)
+                            start_ctime=self.chime_master.start_time,
+                            frame0_time=frame0_ts.time_struct,
+                            frame0_ctime=frame0_ts.time,
+                            frame0_nano=frame0_ts.nano)
+
+            except Exception as e:
+                self.log.error(e)
+                coroutine_return({})
+
+            else:
+                coroutine_return(self._gps_time)
+
+        else:
+            coroutine_return({})
 
     @coroutine
     @endpoint('get-frequency-map')
     def get_frequency_map(self, handler):
         coroutine_return(results=sanitize_for_json(self.chime_master.get_frequency_map()))
-    @coroutine
 
+    @coroutine
+    @endpoint('get-channelizer-output')
+    def get_channelizer_output(self, handler):
+        coroutine_return(results=sanitize_for_json(self.chime_master.get_channelizer_output()))
+
+    @coroutine
     @endpoint('reset-fpga-stats')
     def reset_fpga_stats(self, handler):
-        self.chime_master.reset_fpga_stats()
-        coroutine_return(results='FPGA STATS RESETTED')
+        if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
+            self.chime_master.reset_fpga_stats()
+            coroutine_return(results='FPGA STATS RESET')
+
+        else:
+            coroutine_return('FPGA array not yet initialized.')
 
     @coroutine
-    @endpoint('abort')
-    def abort(self, handler):
-        """ Savagely stop the server for debugging purposes."""
-        tornado.ioloop.IOLoop.instance().stop()
-        coroutine_return(results='ABORTING NOW!')
-        # sys.exit(-1)
+    @endpoint('reset-crossbar-stats')
+    def reset_crossbar_stats(self, handler):
+        if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
+            self.chime_master.reset_crossbar_stats()
+            coroutine_return(results='CROSSBAR STATS RESET')
+
+        else:
+            coroutine_return('FPGA array not yet initialized.')
+
+    @coroutine
+    @endpoint('reset-bp-shuffle-stats')
+    def reset_bp_shuffle_stats(self, handler):
+        if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
+            self.chime_master.reset_bp_shuffle_stats()
+            coroutine_return(results='BP SHUFFLE STATS RESET')
+
+        else:
+            coroutine_return('FPGA array not yet initialized.')
 
     @coroutine
     @endpoint('power-on')
@@ -1384,7 +1456,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
 
     @coroutine
     def _get_metrics(self):
-        """ get the metrics from the FPGAss and put them in the queue
+        """ get the metrics from the FPGAs and put them in the queue
         """
         while True:
             t0 = time.time()
@@ -1418,7 +1490,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
             if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
                 try:
                     self.log.info('%r: Scraping metrics from FPGAs' % (self))
-                    metrics += yield self.chime_master.fpgas.get_metrics.async()
+                    metrics += yield self.chime_master.fpgas.get_metrics.async(reset=self.chime_master.config.fpga.reset_stats)
                     self.log.info('%r: Got a set of %i FPGA metrics' % (self, len(metrics)))
                 except Exception as e:
                     self.log.warning('%r: error getting FPGA metrics. error is: %r\n%s' % (self, e, traceback.format_exc()))
@@ -1533,16 +1605,31 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
             self.log.info('%r: set_adc_delays() done' % self)
 
     @coroutine
-    @endpoint('frequency-test')
-    def frequency_test(self, handler):
+    @endpoint('update-channelizers')
+    def update_channelizers(self, handler, config='config.yaml:jfc.freq_test'):
         """
-        Test frequency ordering on GPU nodes. Reads the channelizer information from config.yaml:jfc:freq_test
+        Update channelizers using the parameters in the provided config.fpga.channelizer_params.
         """
-    
         if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
-            conf = NameSpace(load_yaml_config('config.yaml:jfc.freq_test'))
-            self.log.info('Configuring channelizers for frequency test on bins {0}'.format(conf.fpga.channelizer_params.freq_test_bins))
-            yield self.chime_master.fpgas.set_channelizers.async(**conf.fpga.channelizer_params)
+
+            # Load configuration file
+            try:
+                conf = NameSpace(load_yaml_config(config))
+                new_params = conf.fpga.channelizer_params
+
+            except Exception as e:
+                msg = 'Could not load fpga.channelizer_params from %s:  %s' % (config, e)
+                self.log.error(msg)
+                coroutine_return(msg)
+
+            # Update channelizers
+            yield self.chime_master.update_channelizers(**new_params)
+
+            coroutine_return('Channelizers updated with configuration: %s' % config)
+
+        else:
+            coroutine_return('FPGA array not yet initialized.')
+
 
 class ChimeMasterAsyncRESTClient(AsyncRESTClient):
 
@@ -1665,8 +1752,16 @@ class ChimeMasterAsyncRESTClient(AsyncRESTClient):
         """
         Print ch_master status.
         """
-        m = yield self.get('get_frequency_map')
+        m = yield self.get('get-frequency-map')
         self.print_result(m)
+
+    @coroutine
+    def get_channelizer_output(self):
+        """
+        Get the channelizer output buffer.
+        """
+        channelizer_output_buffer = yield self.get('get-channelizer-output')
+        coroutine_return(channelizer_output_buffer)
 
     @coroutine
     def get_hw_map(self):

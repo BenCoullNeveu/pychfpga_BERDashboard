@@ -537,7 +537,7 @@ class XGLinkArray(XGLink):
         return self.get_rx_lane_monitor('ERROR_CTR', link_group)
 
     @async
-    def get_metrics(self):
+    def get_metrics(self, reset=True):
         """ Return metrics on the status of the rx links as a Metrics object.
         """
         metrics = Metrics(
@@ -564,6 +564,10 @@ class XGLinkArray(XGLink):
             #gtx_number = lane + link_group*self.NUMBER_OF_PCB_LANES
             metrics.add('fpga_bp_link_rx_power', value=gtx.DMONITOROUT & 0x7F, gtx=gtx_number)
             metrics.add('fpga_bp_link_block_lock', value=gtx.BLOCK_LOCK, gtx=gtx_number)
+
+        if reset:
+            self.reset_stats()
+
         async_return(metrics)
 
     def get_bp_rx_status(self, link_group=None):

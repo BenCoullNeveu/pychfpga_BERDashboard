@@ -2112,6 +2112,10 @@ class chFPGA_controller(IceBoardExtHandler):
     #         gain_banks.append(ant.SCALER.CURRENT_GAIN_BANK)
     #     return gain_banks
 
+    def reset_fft_overflow_count(self):
+
+        for ant in self.ANT.values():
+            ant.FFT.reset_fft_overflow_count()
 
     def set_fft_shift(self, fft_shift=0b11111111111, channels=None):
         """
@@ -3028,13 +3032,13 @@ class chFPGA_controller(IceBoardExtHandler):
         async_return((info, metrics))
 
     @async
-    def get_bp_shuffle_metrics(self):
+    def get_bp_shuffle_metrics(self, reset=True):
         if not self.is_open():
             async_return(Metrics())
         try:
             yield self.clear_fpga_udp_errors.async()
             # yield self.check_command_count.async(reset=True)
-            metrics = yield self.BP_SHUFFLE.get_metrics.async()
+            metrics = yield self.BP_SHUFFLE.get_metrics.async(reset=reset)
         except IOError as e:
             self.logger.error('%r: Error getting FPGA backplane link metrics. Error is %r' % (self, e))
             metrics = Metrics()
@@ -3064,16 +3068,16 @@ class chFPGA_controller(IceBoardExtHandler):
         async_return(metrics)
 
     @async
-    def get_crossbar_metrics(self):
+    def get_crossbar_metrics(self, reset=True):
         metrics = Metrics()
         if not self.is_open():
             async_return(metrics)
         try:
             # yield self.check_command_count.async(reset=True)
             yield self.clear_fpga_udp_errors.async()
-            metrics += yield self.CROSSBAR.get_metrics.async()
-            metrics += yield self.CROSSBAR2.get_metrics.async()
-            metrics += yield self.CROSSBAR3.get_metrics.async()
+            metrics += yield self.CROSSBAR.get_metrics.async(reset=reset)
+            metrics += yield self.CROSSBAR2.get_metrics.async(reset=reset)
+            metrics += yield self.CROSSBAR3.get_metrics.async(reset=reset)
         except IOError as e:
             self.logger.error('%r: Error getting FPGA crossbar metrics. Error is %r' % (self, e))
         except Exception as e:

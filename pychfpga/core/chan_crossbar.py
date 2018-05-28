@@ -196,11 +196,14 @@ class ChanCrossbar(Module_base):
         value = self.LANE_MONITOR
         return [bool(value & (1 << bit)) for bit in range(16)]
 
+    def reset_stats(self):
+        self.LANE_MONITOR_RESET = 1
+        self.LANE_MONITOR_RESET = 0
+
     def print_lane_monitor(self, reset=True):
 
         if reset:
-            self.LANE_MONITOR_RESET = 1
-            self.LANE_MONITOR_RESET = 0
+            self.reset_stats()
 
         lane_range = range(self.NUMBER_OF_CROSSBAR_INPUTS)
 
@@ -224,7 +227,7 @@ class ChanCrossbar(Module_base):
         # print '%20s: %s' % ('ALIGN GLOBAL FRAME CTR', '(common to all lanes) %6i' % self.ALIGN_GLOBAL_FRAME_CTR)
 
     @async
-    def get_metrics(self):
+    def get_metrics(self, reset=True):
         """ Return the monitoring metrics for the 1st crossbar.
         """
         metrics = Metrics(
@@ -245,6 +248,9 @@ class ChanCrossbar(Module_base):
             metrics.add('fpga_crossbar1_input_frame_counter', value=self.INPUT_FRAME_CTR, lane=lane)
             yield async_moment
             metrics.add('fpga_crossbar1_align_output_frame_counter', value=self.ALIGN_FRAME_CTR, lane=lane)
+
+        if reset:
+            self.reset_stats()
 
         async_return(metrics)
 
