@@ -761,6 +761,10 @@ class ChimeMaster(object):
 		    self.log.info("Starting idle data capture")
 		    yield self.start_fpga_raw_data_transmission()
 
+                # Clear errors accumulated during start and initialization
+                self.reset_fpga_stats()
+                self.reset_crossbar_stats()
+                self.reset_bp_shuffle_stats()
 
 	else:
             self.log.warning('%r: There are no FPGAs in the array. Stopping FPGA initializations here' % self)
@@ -886,14 +890,7 @@ class ChimeMaster(object):
         self.log.info("finished initializing FPGAs")
 
     @coroutine
-    def update_channelizers(self, **kwargs):
-
-        # Update configuration with new channelizer params
-        for key, val in kwargs.iteritems():
-            if key in self.config.fpga.channelizer_params:
-                self.config.fpga.channelizer_params[key] = val
-
-        params = self.config.fpga.channelizer_params.as_dict()
+    def update_channelizers(self, **params):
 
         # Log the new parameters
         output_str = ["  %-32s  %s" % (key + ':',  params[key]) for key in sorted(params.keys())]
@@ -912,8 +909,11 @@ class ChimeMaster(object):
         self.log.info('Requested data source: %s | Current data source: %s | SYNC: %s' %
                       (requested_dsrc, dsrc, sync))
 
-        # Set channelizer
+        # Set channelizers
         yield self.fpgas.set_channelizers.async(sync=sync, **params)
+
+        # Update configuration with new channelizer params
+        self.config.fpga.channelizer_params = NameSpace(params)
 
     def configure_fpgas_post_acq(self):
         """
