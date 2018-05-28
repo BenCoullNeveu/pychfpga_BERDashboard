@@ -886,7 +886,14 @@ class ChimeMaster(object):
         self.log.info("finished initializing FPGAs")
 
     @coroutine
-    def update_channelizers(self, **params):
+    def update_channelizers(self, **kwargs):
+
+        # Update configuration with new channelizer params
+        for key, val in kwargs.iteritems():
+            if key in self.config.fpga.channelizer_params:
+                self.config.fpga.channelizer_params[key] = val
+
+        params = self.config.fpga.channelizer_params.as_dict()
 
         # Log the new parameters
         output_str = ["  %-32s  %s" % (key + ':',  params[key]) for key in sorted(params.keys())]
@@ -894,22 +901,19 @@ class ChimeMaster(object):
         self.log.info('\n'.join(output_str))
 
         # Sync if we are changing data source
-        sync = False
-        if 'data_source' in params:
-            dsrc = self.fpgas.ib[0].get_data_source()[0]
-            if dsrc != params['data_source']:
-                sync = True
+        requested_dsrc = params['data_source']
+        if requested_dsrc == 'funcgen':
+            self.log.warning("Data source 'funcgen' is deprecated, use 'buffer' in future.")
+            requested_dsrc = 'buffer'
 
-            self.log.info('Requested data source: %s | Current data source: %s | SYNC: %s' % 
-                                             (params['data_source'], dsrc, sync))
+        dsrc = self.fpgas.ib[0].get_data_source()[0]
+        sync = (dsrc != requested_dsrc)
+
+        self.log.info('Requested data source: %s | Current data source: %s | SYNC: %s' %
+                      (requested_dsrc, dsrc, sync))
 
         # Set channelizer
         yield self.fpgas.set_channelizers.async(sync=sync, **params)
-
-        # Update configuration with new channelizer params
-        for key, val in params.iteritems():
-            self.config.fpga.channelizer_params[key] = val
-
 
     def configure_fpgas_post_acq(self):
         """
