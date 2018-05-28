@@ -35,6 +35,7 @@ import psutil
 import tornado
 import tornado.tcpclient
 import tornado.web
+import tornado.locks
 
 from pychfpga import FPGAArray, NameSpace, merge_dict, load_yaml_config, Metrics, calculate_gains
 import log
@@ -899,6 +900,9 @@ class ChimeMaster(object):
             if dsrc != params['data_source']:
                 sync = True
 
+            self.log.info('Requested data source: %s | Current data source: %s | SYNC: %s' % 
+                                             (params['data_source'], dsrc, sync))
+
         # Set channelizer
         yield self.fpgas.set_channelizers.async(sync=sync, **params)
 
@@ -1341,9 +1345,9 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
 
             try:
 
-                with (yield self._gps_lock.acquire(timeout=10.0)):
+                with (yield self._gps_lock.acquire(timeout=datetime.timedelta(seconds=15))):
 
-                    if not self._gps_time or ((time.time() - self._gps_time['server_ctime']) > 10.0):
+                    if not self._gps_time or ((time.time() - self._gps_time['server_ctime']) > 15.0):
 
                         frame_number, gps_ts = yield self.chime_master.fpgas.ib[0].capture_frame_time.async(format='raw')
 
@@ -1597,8 +1601,8 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
             self.log.info('%r: set_adc_delays() done' % self)
 
     @coroutine
-    @endpoint('update-channelizer')
-    def update_channelizer(self, handler, config='config.yaml:jfc.freq_test'):
+    @endpoint('update-channelizers')
+    def update_channelizers(self, handler, config='config.yaml:jfc.freq_test'):
         """
         Update channelizers using the parameters in the provided config.fpga.channelizer_params.
         """
@@ -1615,7 +1619,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
                 coroutine_return(msg)
 
             # Update channelizers
-            yield self.chime_master.update_channelizer(**new_params)
+            yield self.chime_master.update_channelizers(**new_params)
 
             coroutine_return('Channelizers updated with configuration: %s' % config)
 
