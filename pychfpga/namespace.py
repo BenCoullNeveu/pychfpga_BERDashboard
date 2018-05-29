@@ -1,8 +1,8 @@
 # import logging
 import collections
 import re
-import yaml
 import copy
+import yaml
 
 
 re_dot = r"\."
