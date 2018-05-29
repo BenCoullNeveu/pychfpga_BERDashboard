@@ -8,6 +8,7 @@ manage and operate the CHIME GPU Backend.
 # Imports
 import os
 import subprocess
+import time
 import requests
 import ch_acq.log as log
 from ch_acq.pychfpga import NameSpace, load_yaml_config, merge_dict
@@ -53,6 +54,7 @@ class KotekanMaster(object):
         # Tracked KotekanMaster Parameters
         # Valid state parameters: 'on', 'off', 'stopping'
         self.state = 'off'
+        self.start_time = None
         self.startup_config = None
         self.current_config = None
 
@@ -62,8 +64,9 @@ class KotekanMaster(object):
         self.blacklist_nodes = None
 
         #Watchdog parameters
-        self.watchdog_enabled = None
+        self.watchdog_enabled = False
         self.watchdog_interval = 60
+        self.watchdog_stats = {}
 
         #GPS Time for the current run as obtained from ch_master
         self.gps_server = 'http://carillon.chime:54321/get-frame-time'
@@ -74,14 +77,42 @@ class KotekanMaster(object):
         self.log.info("program: %s", self.program)
         self.log.info("git ver: %s", self.git_version)
 
+    # Helper Methods
     def set_config(self, config):
         """
         Convert list or dict to an object with attributes
         """
         self.current_config = NameSpace(config)
 
+    @coroutine
+    def get_gps_time(self):
+        """
+        Get gps time for chime master to sync the kotekan nodes
+        """
+        gps_request = requests.get(self.gps_server)
+        #Check if the request worked out.
+        if gps_request.raise_for_status() is None:
+            self.gps_frame_time = gps_request.json()
+            self.log.info('%s : successfully retrieved gps_frame_time', self)
+            coroutine_return('PASSED')
+        else:
+            self.log.error('%s : failed to get gps_frame_time with exception: %s',
+                           self, gps_request.raise_for_status())
+            coroutine_return('FAILED')
 
-    # Kotekan Master Methods
+    @coroutine
+    def _update_config_parameter(self, parameter, value):
+        """
+
+        """
+        self.running_config = self.running_config
+        try:
+            pass
+        except Exception as e:
+            raise
+        coroutine_return()
+
+    # KotekanMaster Methods
     @coroutine
     def start_kotekan_master(self, config):
         """
@@ -91,6 +122,7 @@ class KotekanMaster(object):
         # Start KotekanMaster if the current state is off.
         if self.state == 'off':
             self.log.info('%s : KotekanMaster server starting ...', self)
+            self.start_time = time.ctime()
             # startup_config is never changed throughout the operation of
             # the array. All dynamic updates to the configuration are
             # applied against the current_config
@@ -100,12 +132,12 @@ class KotekanMaster(object):
             self.log.info('%s: retreiving gps time ...')
             yield self.get_gps_time()
 
-            #TODO: Append gps time to the current_config.
+            # TODO: Append gps time to the current_config.
             # Need to think about this a bit more since, we want one generic way
             # of modifying the current configuration.
 
             self.log.info('%s : creating kotekan clients ...', self)
-            yield self.create_node_clients()
+            yield self._create_node_clients()
             self.log.info('%s : kotekan clients created.', self)
             self.state = 'on'
             self.log.info('%s : KotekanMaster State : %s', self, self.state)
@@ -116,7 +148,7 @@ class KotekanMaster(object):
             coroutine_return('%s : KotekanMaster already running.', self)
 
     @coroutine
-    def create_node_clients(self):
+    def _create_node_clients(self):
         """
         Create KotekanAsyncRESTClient instances for each GPU node listed in the
         startup_config
@@ -159,31 +191,12 @@ class KotekanMaster(object):
                   'blacklist_nodes' : self.blacklist_nodes,
                   'watchdog_enabled' : self.watchdog_enabled,
                   'watchdog_interval' : self.watchdog_interval,
+                  'watchdog_stats' : self.watchdog_stats,
                   'gps_server' : self.gps_server,
                   'gps_frame_time' : self.gps_frame_time,
-                  'git_version' : self.git_version}
+                  'git_version' : self.git_version,
+                  'start_time' : self.start_time}
         coroutine_return(result)
-
-    @coroutine
-    def start_watchdog(self, watchdog_interval):
-        """
-        Start Watchdog
-        """
-        self.watchdog_enabled = True
-        self.watchdog_interval = watchdog_interval
-        self.log.info('%s : KotekanMaster Watchdog Enabled', self)
-        self.log.info('%s : KotekanMaster Watchdog Interval : %ss', self, self.watchdog_interval)
-        coroutine_return('%s : KotekanMaster watchdog enabled.', self)
-
-    @coroutine
-    def stop_watchdog(self):
-        """
-        Stop Watchdog
-        """
-        self.watchdog_enabled = False
-        self.watchdog_interval = 60
-        self.log.info('%s : KotekanMaster Watchdog Disabled', self)
-        coroutine_return('%s : KotekanMaster watchdog disabled.', self)
 
     @coroutine
     def whitelist_node(self, node_list):
@@ -207,25 +220,48 @@ class KotekanMaster(object):
                 self.log.info('%s : blacklisted node: %s', self, node_name)
         coroutine_return('%s : Attempted blacklisting node[s]: %s', self, node_list)
 
+
+
+    # KotekanMaster Watchdog Methods
     @coroutine
-    def get_gps_time(self):
+    def start_watchdog(self, watchdog_interval):
         """
-        Get gps time for chime master to sync the kotekan nodes
+        Start Watchdog
         """
-        gps_request = requests.get(self.gps_server)
-        #Check if the request worked out.
-        if gps_request.raise_for_status() is None:
-            self.gps_frame_time = gps_request.json()
-            self.log.info('%s : successfully retrieved gps_frame_time', self)
-            coroutine_return(True)
-        else:
-            self.log.error('%s : failed to get gps_frame_time with exception: %s',
-                           self, gps_request.raise_for_status())
-            coroutine_return(False)
+        self.watchdog_enabled = True
+        self.watchdog_interval = watchdog_interval
+        self.log.info('%s : KotekanMaster Watchdog Enabled', self)
+        self.log.info('%s : KotekanMaster Watchdog Interval : %ss', self, self.watchdog_interval)
+        coroutine_return('%s : KotekanMaster watchdog enabled.', self)
+
+    @coroutine
+    def stop_watchdog(self):
+        """
+        Stop Watchdog
+        """
+        self.watchdog_enabled = False
+        self.watchdog_interval = 60
+        self.log.info('%s : KotekanMaster Watchdog Disabled', self)
+        coroutine_return('%s : KotekanMaster watchdog disabled.', self)
+
+    @coroutine
+    def update_watchdog_stats(self, restart_list):
+        """
+        Statistics regarding the KotekanMaster Watchdog
+        """
+        for node in restart_list:
+            if node not in self.watchdog_stats.keys():
+                self.watchdog_stats.update({node:0})
+            self.watchdog_stats[node] += 1
+        coroutine_return(self.watchdog_stats)
+
+
 
     # Kotekan Methods
     #   These methods interact with the kotekan rest server.
     #   See https://github.com/kotekan/kotekan for more information about kotekan.
+
+    # Operation Based Endpoints
     @coroutine
     def start_kotekan(self):
         """
@@ -237,25 +273,40 @@ class KotekanMaster(object):
                for node_name, kotekan in self.nodes.items()}
 
     @coroutine
+    def restart_kotekan(self, status_list):
+        """
+        Start specific kotekan nodes from the status_list which are not running.
+
+        NOTE: This method is not visible as a RESTful endpoint.
+
+        Parameters
+        ----------
+        Input:
+            status_list : dict-type
+                {'node_name' : {'running' : 'false|true'}}
+        Returns:
+            restart_list : list-type
+                {'node_1', 'node_2', ... 'node_N'}
+        """
+        restart_list = []
+        for node_name, status in status_list:
+            if status['running'] == 'false':
+                restart_list.append(node_name)
+        # Start the nodes
+        conf = self.current_config
+
+        for node_name, kotekan in self.nodes.items():
+            if node_name in restart_list:
+                kotekan.start(config=merge_dict(conf.common_config,
+                                                conf.nodes[node_name]).as_dict())
+        coroutine_return(restart_list)
+
+    @coroutine
     def stop_kotekan(self):
         """
         Stop the kotekan process on all nodes currently managed by kotekan_master.
         """
         yield {node_name: kotekan.stop() for node_name, kotekan in self.nodes.items()}
-
-    @coroutine
-    def _watchdog_restart(self, status_list):
-        """
-        Start specific kotekan nodes from the status_list which are not running.
-        NOTE: This method is not visible as a RESTful endpoint.
-
-        Input:
-            status_list : dict-type
-                {'node_name' : {'running' : 'false|true'}}
-        """
-        for node, status in status_list:
-            if status['running'] is 'false':
-        coroutine_return()
 
     @coroutine
     def kotekan_status(self):
@@ -300,11 +351,17 @@ class KotekanMaster(object):
     def kotekan_config_md5sum(self):
         """
         GET md5sum of current running configuration.
+
+        Returns
+            config_md5sum : dict-types
+                {node_name:md5sum ...}
         """
         result = yield {node_name: kotekan.config_md5sum()
                         for node_name, kotekan in self.nodes.items()}
         coroutine_return(result)
 
+
+    # Parameter Based Endpoints
     @coroutine
     def update_gains(self, gains_dir):
         """
@@ -391,13 +448,43 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
 
     @coroutine
     @endpoint('start-watchdog')
-    def start_watchdog(self, handler, watchdog_interval):
+    def start_watchdog(self, handler, watchdog_interval=None):
         """
         Start Kotekan Watchdog
+
+        Parameters
+        ----------
+        Input
+            watchdog_interval : int
+                Time interval in seconds for which the watchdog waits before
+                checking the status of all nodes in the array.
+            Default Value: 60s
         """
-        result = yield self.kotekan_master.start_watchdog(watchdog_interval)
+        if watchdog_interval is None:
+            watchdog_interval = 60
+        result = yield self.kotekan_master.start_watchdog(int(watchdog_interval))
         coroutine_return(result)
 
+    @coroutine
+    def _watchdog(self):
+        """
+        KotekanMaster Watchdog Loop
+
+        NOTE: This loop runs prepetually.
+        """
+        while True:
+            # Check if the watchdog is currently enabled.
+            if self.kotekan_master.watchdog_enabled:
+                # Run get status from each node
+                node_status = yield self.kotekan_master.kotekan_status()
+                # Execute restarts for nodes which report running status as false
+                restart_list = yield self.kotekan_master.restart_kotekan(node_status)
+                # Update watchdog statistics
+                watchdog_stats = yield self.kotekan_master.update_watchdog_stats(restart_list)
+                self.log.info('%s : KotekanMaster Watchdog Statistics', self)
+                self.log.info('%s : %s', self, watchdog_stats)
+            # Wait for the specific time interval
+            sleep(self.kotekan_master.watchdog_interval)
 
     @coroutine
     @endpoint('stop-watchdog')
@@ -407,19 +494,6 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         """
         result = yield self.kotekan_master.stop_watchdog()
         coroutine_return(result)
-
-    @coroutine
-    def _watchdog(self):
-        while True:
-            if self.kotekan_master.watchdog_enabled:
-                # Run get status from each node
-                node_status = yield self.kotekan_master.kotekan_status()
-                # Execute restarts for nodes which report running status as false
-                watchdog_restart = yield self.kotekan_master.watchdog_restart(node_status)
-                # Update watchdog metrics
-
-                # Wait for the specific time interval
-                sleep(self.kotekan_master.watchdog_interval)
 
     @coroutine
     @endpoint('blacklist-node')
@@ -448,7 +522,40 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         Get the current status of KotekanMaster
         """
         result = yield self.kotekan_master.status_kotekan_master()
+        self.log.info('%s : KotekanMaster Status', self)
+        self.log.info('%s : %s', self, result)
         coroutine_return(result)
+
+    # @coroutine
+    # @endpoint('validate-running-config')
+    # def validate_running_configuration(self, handler):
+    #     """
+    #     Validate that all nodes in the array are running the same current config.
+    #     """
+    #     running_configs = yield self.kotekan_master.kotekan_running_config()
+    #     unique_configs = set(running_configs.values())
+    #     if len(unique_configs) != 1:
+    #         coroutine_return('success')
+    #     else:
+    #         coroutine_return('fail')
+
+    @coroutine
+    @endpoint('validate-checksum')
+    def validate_checksum(self, handler):
+        """
+        Validate the md5checksum for all running kotekan configs against the
+        md5checksum of the self.current_config
+        """
+        config_md5sum = yield self.kotekan_master.kotekan_config_md5sum()
+        unique_checksums = set(config_md5sum.values())
+        if len(unique_checksums) != 1:
+            self.log.error('%s : KotekanMaster Checksum Error')
+            self.log.error('%s : More than one unique checksums discovered.', self)
+            self.log.error('%s : %s', self, unique_checksums)
+            coroutine_return('FAILED')
+        else:
+            self.log.info('%s : KotekanMaster Checksum PASSED')
+            coroutine_return('PASSED')
 
     # Kotekan RESTful Endpoints
     #   These endpoints interact with the kotekan process running on all the nodes.
@@ -511,29 +618,6 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         Queries the current kotekan for the MD5 hash of the running configuration.
         """
         result = yield self.kotekan_master.kotekan_config_md5sum()
-        coroutine_return(result)
-
-    @coroutine
-    @endpoint('validate-running-config')
-    def validate_running_configuration(self, handler):
-        """
-        Validate that all nodes in the array are running the same current config.
-        """
-        running_configs = yield self.kotekan_master.kotekan_running_config()
-        unique_configs = set(running_configs.values())
-        if len(unique_configs) != 1:
-            coroutine_return(True)
-        else:
-            coroutine_return(False)
-
-    @coroutine
-    @endpoint('validate-checksum')
-    def validate_checksum(self, handler):
-        """
-        Validate the md5checksum for all running kotekan configs against the
-        md5checksum of the self.current_config
-        """
-        result = "Not Implemented."
         coroutine_return(result)
 
     # Parameter Endpoints.
@@ -663,7 +747,8 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
         """
         Start KotekanMaster Watchdog
         """
-        result = yield self.post('start-watchdog')
+        watchdog_interval = int(watchdog_interval)
+        result = yield self.post('start-watchdog', watchdog_interval)
         coroutine_return(result)
 
     @coroutine
