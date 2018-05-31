@@ -11,21 +11,23 @@ import subprocess
 import time
 import requests
 import ch_acq.log as log
-from ch_acq.pychfpga import NameSpace, load_yaml_config, merge_dict
-from ch_acq.kotekan import KotekanAsyncRESTClient
-from ch_acq.rest import AsyncRESTClient, AsyncRESTServer, endpoint
-from ch_acq.rest import coroutine, coroutine_return, sleep, IOLoop
+from pychfpga import NameSpace, load_yaml_config, merge_dict
+from kotekan import KotekanAsyncRESTClient
+from rest import AsyncRESTClient, AsyncRESTServer, endpoint
+from rest import coroutine, coroutine_return, sleep, IOLoop
 
 # REST Server/Client
-from ch_acq.rest import RunSyncWrapper, SocketContext, run_client
+from rest import RunSyncWrapper, SocketContext, run_client
+
 
 # KotekanMaster Class
 class KotekanMaster(object):
     """
-    KotekanMaster class to manage individual Kotekan Objects which interact with
-    the individual CHIME GPU nodes over RESTful API.
+    KotekanMaster class to manage individual Kotekan Objects which interact
+    with the CHIME GPU nodes over RESTful API.
     """
-    # Logging setup without config file.
+
+    # Logging setup when no config file is provided.
     DEFAULT_LOGGING = {
         'handlers':
             {
@@ -36,7 +38,7 @@ class KotekanMaster(object):
             },
         'loggers':
             {
-                '' : {
+                '': {
                     'handlers': ['stderr']
                     }
             }
@@ -46,7 +48,7 @@ class KotekanMaster(object):
         # Default Logger
         log.setup_logging(self.DEFAULT_LOGGING)
         self.log = log.get_logger(self)
-        self.log.debug("%r: Creating KotekanMaster Class Instance", self)
+        self.log.info("%r: Creating KotekanMaster Class Instance", self)
 
         # Logging Parameters -- Absolute path name to this module
         self.program = os.path.realpath(__file__)
@@ -59,18 +61,19 @@ class KotekanMaster(object):
         self.current_config = None
 
         # KotekanAsyncRESTClient instances which are managed by KotekanMaster
+        # Format {{node_name: KotekanMasterObj}}
         self.nodes = None
         # KotekanAsyncRESTClient instances blacklisted
         self.blacklist_nodes = None
 
-        #Watchdog parameters
+        # Watchdog parameters
         self.watchdog_enabled = False
         self.watchdog_interval = 60
         self.watchdog_stats = {}
 
-        #GPS Time for the current run as obtained from ch_master
+        # GPS Parameters
         self.gps_server = 'http://carillon.chime:54321/get-frame-time'
-        self.gps_frame_time = None
+        self.gps_frame_time = {}
 
         # Revision Control Logging
         self.git_version = subprocess.check_output(['git', 'rev-parse', 'HEAD'])
@@ -78,6 +81,7 @@ class KotekanMaster(object):
         self.log.info("git ver: %s", self.git_version)
 
     # Helper Methods
+    #   NOTE: These methods are not coroutines!
     def set_config(self, config):
         """
         Convert list or dict to an object with attributes
@@ -90,7 +94,7 @@ class KotekanMaster(object):
         Get gps time for chime master to sync the kotekan nodes
         """
         gps_request = requests.get(self.gps_server)
-        #Check if the request worked out.
+        # Check if the request worked out.
         if gps_request.raise_for_status() is None:
             self.gps_frame_time = gps_request.json()
             self.log.info('%s : successfully retrieved gps_frame_time', self)
@@ -105,7 +109,7 @@ class KotekanMaster(object):
         """
 
         """
-        self.running_config = self.running_config
+        config = self.current_config
         try:
             pass
         except Exception as e:
@@ -157,10 +161,14 @@ class KotekanMaster(object):
         endpoint.
         """
         self.nodes = {}
+        # This actually points to current_config.servers.default_server.nodes
+        # in the kotekan_config.yaml
         nodes = self.current_config.nodes or {}
         for node_name, node_params in nodes.items():
-            self.nodes[node_name] = KotekanAsyncRESTClient(name=node_name, **node_params)
-        self.log.info('%s : created kotekan clients for nodes: %s', self, self.nodes.keys())
+            self.nodes[node_name] = KotekanAsyncRESTClient(name=node_name,
+                                                           **node_params)
+        self.log.info('%s : created kotekan clients for nodes: %s',
+                       self, self.nodes.keys())
         coroutine_return('created clients for kotekan nodes.')
 
     @coroutine
@@ -188,14 +196,14 @@ class KotekanMaster(object):
         result = {'state': self.state,
                   'current_config': self.current_config,
                   'nodes': self.nodes.keys(),
-                  'blacklist_nodes' : self.blacklist_nodes,
-                  'watchdog_enabled' : self.watchdog_enabled,
-                  'watchdog_interval' : self.watchdog_interval,
-                  'watchdog_stats' : self.watchdog_stats,
-                  'gps_server' : self.gps_server,
-                  'gps_frame_time' : self.gps_frame_time,
-                  'git_version' : self.git_version,
-                  'start_time' : self.start_time}
+                  'blacklist_nodes': self.blacklist_nodes,
+                  'watchdog_enabled': self.watchdog_enabled,
+                  'watchdog_interval': self.watchdog_interval,
+                  'watchdog_stats': self.watchdog_stats,
+                  'gps_server': self.gps_server,
+                  'gps_frame_time': self.gps_frame_time,
+                  'git_version': self.git_version,
+                  'start_time': self.start_time}
         coroutine_return(result)
 
     @coroutine
@@ -259,7 +267,7 @@ class KotekanMaster(object):
 
     # Kotekan Methods
     #   These methods interact with the kotekan rest server.
-    #   See https://github.com/kotekan/kotekan for more information about kotekan.
+    #   See https://github.com/kotekan/kotekan for more information.
 
     # Operation Based Endpoints
     @coroutine
@@ -326,13 +334,20 @@ class KotekanMaster(object):
         """
         GET Kotekan Version.
 
-        Returns: dict
-        { "node_name" : {"available_processes": ["p1","p2", ... "pN"],
-                         "branch": "master",
-                         "cmake_build_settings" : "BUILD_OPTIONS",
-                         "git_commit_hash": "b1ce8aecf10b8eed49e458ec0ba5d34f926993fb",
-                         "kotekan_version": "2.3"
-                         }}
+        Parameters
+        ----------
+            None
+
+        Returns
+        -------
+            kotekan_version : dict-type
+            { "node_name" : {"available_processes": ["p1","p2", ... "pN"],
+                             "branch": "master",
+                             "cmake_build_settings" : "BUILD_OPTIONS",
+                             "git_commit_hash": "b1ce8aecf",
+                             "kotekan_version": "2.3"
+                            }
+            }
         """
         result = yield {node_name: kotekan.version()
                         for node_name, kotekan in self.nodes.items()}
@@ -360,7 +375,6 @@ class KotekanMaster(object):
                         for node_name, kotekan in self.nodes.items()}
         coroutine_return(result)
 
-
     # Parameter Based Endpoints
     @coroutine
     def update_gains(self, gains_dir):
@@ -383,8 +397,8 @@ class KotekanMaster(object):
         coroutine_return(result)
 
     # Node Methods
-    #   These methods interact the node hardware and have no access to the kotekan
-    #   process endpoints.
+    #   These methods interact the node hardware and have no access to the
+    #   kotekan process endpoints.
     @coroutine
     def ping_nodes(self):
         """
@@ -400,16 +414,19 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
     Asynchronous RESTful Server for KotekanMaster
 
     Wraps KotekanMaster into a Async Restful Server which can recieve HTTP GET,
-    POST and PUT requests and call the appropriate KotekanMaster class functions
-    to perform the required task.
+    POST and PUT requests and call the appropriate KotekanMaster class
+    functions to perform the required task.
     """
-    #Defaul parameters
+    # Defaul parameters
     DEFAULT_PORT = 12048
     KOTEKAN_MASTER_HOSTNAME = None
     WATCHDOG_ENABLED = True
-    WATCHDOG_INTERVAL = 60 # In seconds
+    WATCHDOG_INTERVAL = 60  # In seconds
 
-    def __init__(self, address=KOTEKAN_MASTER_HOSTNAME, port=DEFAULT_PORT, logging_params={}):
+    def __init__(self,
+                 address=KOTEKAN_MASTER_HOSTNAME,
+                 port=DEFAULT_PORT,
+                 logging_params={}):
         """
         KotekanMaster Server Initialization
         """
@@ -417,7 +434,8 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
             address=address,
             port=port,
             heartbeat_string='KMs')
-        self.log.info("KotekanMasterAsyncRESTServer: %s:%s", str(address), str(port))
+        self.log.info("KotekanMasterAsyncRESTServer: %s:%s",
+                      str(address), str(port))
         self.current_config = None
         self.kotekan_master = KotekanMaster()
         # Start the watchdog loop.
@@ -470,14 +488,16 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         """
         KotekanMaster Watchdog Loop
 
-        NOTE: This loop runs prepetually.
+        NOTE: This loop runs prepetually. To enable and disable the _watchdog
+        manipulate the watchdog_enabled parameter in the KotekanMaster class.
         """
         while True:
             # Check if the watchdog is currently enabled.
             if self.kotekan_master.watchdog_enabled:
                 # Run get status from each node
                 node_status = yield self.kotekan_master.kotekan_status()
-                # Execute restarts for nodes which report running status as false
+                # Execute restarts for nodes which report running
+                # status as false
                 restart_list = yield self.kotekan_master.restart_kotekan(node_status)
                 # Update watchdog statistics
                 watchdog_stats = yield self.kotekan_master.update_watchdog_stats(restart_list)
@@ -552,10 +572,10 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
             self.log.error('%s : KotekanMaster Checksum Error')
             self.log.error('%s : More than one unique checksums discovered.', self)
             self.log.error('%s : %s', self, unique_checksums)
-            coroutine_return('FAILED')
+            coroutine_return('Checksum Validation : FAILED')
         else:
             self.log.info('%s : KotekanMaster Checksum PASSED')
-            coroutine_return('PASSED')
+            coroutine_return('Checksum Validation : PASSED')
 
     # Kotekan RESTful Endpoints
     #   These endpoints interact with the kotekan process running on all the nodes.
