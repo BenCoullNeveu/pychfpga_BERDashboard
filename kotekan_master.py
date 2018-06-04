@@ -10,7 +10,7 @@ import os
 import subprocess
 import time
 import requests
-import ch_acq.log as log
+import log
 from pychfpga import NameSpace, load_yaml_config, merge_dict
 from kotekan import KotekanAsyncRESTClient
 from rest import AsyncRESTClient, AsyncRESTServer, endpoint
@@ -72,8 +72,9 @@ class KotekanMaster(object):
         self.watchdog_stats = {}
 
         # GPS Parameters
+        self.gps_status = {}
         self.gps_server = 'http://carillon.chime:54321/get-frame-time'
-        self.gps_frame_time = {}
+        self.gps_time = {}
 
         # Revision Control Logging
         self.git_version = subprocess.check_output(['git', 'rev-parse', 'HEAD'])
@@ -89,32 +90,21 @@ class KotekanMaster(object):
         self.current_config = NameSpace(config)
 
     @coroutine
-    def get_gps_time(self):
+    def _get_gps_time(self):
         """
         Get gps time for chime master to sync the kotekan nodes
         """
         gps_request = requests.get(self.gps_server)
         # Check if the request worked out.
         if gps_request.raise_for_status() is None:
-            self.gps_frame_time = gps_request.json()
-            self.log.info('%s : successfully retrieved gps_frame_time', self)
-            coroutine_return('PASSED')
+            self.gps_time = gps_request.json()
+            self.log.info('%s : successfully retrieved gps_time', self)
+            coroutine_return(result="PASSED")
         else:
-            self.log.error('%s : failed to get gps_frame_time with exception: %s',
+            self.log.error('%s : failed to get gps time with exception:%s',
                            self, gps_request.raise_for_status())
-            coroutine_return('FAILED')
+            coroutine_return(result="FAILED")
 
-    @coroutine
-    def _update_config_parameter(self, parameter, value):
-        """
-
-        """
-        config = self.current_config
-        try:
-            pass
-        except Exception as e:
-            raise
-        coroutine_return()
 
     # KotekanMaster Methods
     @coroutine
@@ -126,20 +116,20 @@ class KotekanMaster(object):
         # Start KotekanMaster if the current state is off.
         if self.state == 'off':
             self.log.info('%s : KotekanMaster server starting ...', self)
-            self.start_time = time.ctime()
+            self.start_time = time.time()
+            self.log.info('%s : Start Time: %s', self, self.start_time)
             # startup_config is never changed throughout the operation of
             # the array. All dynamic updates to the configuration are
             # applied against the current_config
             self.startup_config = NameSpace(config)
             self.current_config = self.startup_config
-            # Get gps_frame_time from the gps_server
+            # Get gps_time from the gps_server
             self.log.info('%s: retreiving gps time ...')
-            yield self.get_gps_time()
+            self.gps_status = yield self._get_gps_time()
 
-            # TODO: Append gps time to the current_config.
-            # Need to think about this a bit more since, we want one generic way
-            # of modifying the current configuration.
-
+            # TODO: Put this is a sysexit() try/Except.
+            # Append current_config with a new key called gps_time
+            self.current_config.common_config.gps_time = self.gps_time
             self.log.info('%s : creating kotekan clients ...', self)
             yield self._create_node_clients()
             self.log.info('%s : kotekan clients created.', self)
@@ -168,8 +158,8 @@ class KotekanMaster(object):
             self.nodes[node_name] = KotekanAsyncRESTClient(name=node_name,
                                                            **node_params)
         self.log.info('%s : created kotekan clients for nodes: %s',
-                       self, self.nodes.keys())
-        coroutine_return('created clients for kotekan nodes.')
+                      self, self.nodes.keys())
+        coroutine_return('created clients for kotekan nodes')
 
     @coroutine
     def stop_kotekan_master(self):
@@ -182,11 +172,12 @@ class KotekanMaster(object):
             if self.nodes is not None:
                 self.nodes = None
             self.current_config = None
-            # self.log.stop_logging(self.logging_handlers)
-            # reap_cached_sockets()
+            reap_cached_sockets()
+            #self.log.stop_logging(self.logging_handlers)
+            
         self.state = 'off'
         self.log.info('%s : KotekanMaster State : %s', self, self.state)
-        coroutine_return('%s : KotekanMaster server stopped.', self)
+        coroutine_return('KotekanMaster server stopped.')
 
     @coroutine
     def status_kotekan_master(self):
@@ -201,34 +192,35 @@ class KotekanMaster(object):
                   'watchdog_interval': self.watchdog_interval,
                   'watchdog_stats': self.watchdog_stats,
                   'gps_server': self.gps_server,
-                  'gps_frame_time': self.gps_frame_time,
+                  'gps_status' : self.gps_status,
+                  'gps_time': self.gps_time,
                   'git_version': self.git_version,
-                  'start_time': self.start_time}
+                  'start_time': time.strftime("%Y/%m/%d %H:%M:%S", time.localtime(self.start_time))
+                  }
         coroutine_return(result)
 
     @coroutine
-    def whitelist_node(self, node_list):
+    def whitelist_node(self, node_dict):
         """
         Whitelist Node
         """
-        for node_name in node_list:
+        for node_name in node_dict:
             if node_name not in self.nodes.keys():
-                self.nodes[node_name] = KotekanAsyncRESTClient(name=node_name)
+                self.nodes[node_name] = KotekanAsyncRESTClient(name=node_name,
+                                                               **node_dict[node_name])
                 self.log.info('%s : whitelisted node: %s', self, node_name)
-        coroutine_return('%s : whitelisted node[s]: %s', self, node_list)
+        coroutine_return('whitelisted node[s]: %s', node_dict)
 
     @coroutine
-    def blacklist_node(self, node_list):
+    def blacklist_node(self, node_dict):
         """
         Blacklist Node
         """
-        for node_name in node_list:
+        for node_name in node_dict:
             if node_name in self.nodes.keys():
                 self.nodes.pop(node_name)
                 self.log.info('%s : blacklisted node: %s', self, node_name)
-        coroutine_return('%s : Attempted blacklisting node[s]: %s', self, node_list)
-
-
+        coroutine_return('blacklisted node[s]: %s', node_dict)
 
     # KotekanMaster Watchdog Methods
     @coroutine
@@ -239,8 +231,9 @@ class KotekanMaster(object):
         self.watchdog_enabled = True
         self.watchdog_interval = watchdog_interval
         self.log.info('%s : KotekanMaster Watchdog Enabled', self)
-        self.log.info('%s : KotekanMaster Watchdog Interval : %ss', self, self.watchdog_interval)
-        coroutine_return('%s : KotekanMaster watchdog enabled.', self)
+        self.log.info('%s : KotekanMaster Watchdog Interval : %ss',
+                      self, self.watchdog_interval)
+        coroutine_return('KotekanMaster watchdog enabled')
 
     @coroutine
     def stop_watchdog(self):
@@ -250,20 +243,55 @@ class KotekanMaster(object):
         self.watchdog_enabled = False
         self.watchdog_interval = 60
         self.log.info('%s : KotekanMaster Watchdog Disabled', self)
-        coroutine_return('%s : KotekanMaster watchdog disabled.', self)
+        coroutine_return('KotekanMaster watchdog disabled')
 
     @coroutine
     def update_watchdog_stats(self, restart_list):
         """
-        Statistics regarding the KotekanMaster Watchdog
+        Statistics for KotekanMaster Watchdog
+
+        Parameters
+        ----------
+            restart_list : dict-type
+
+        Returns
+        -------
+            watchdog_stats : dict-type
+                {node_name: number_of_restarts}
         """
         for node in restart_list:
             if node not in self.watchdog_stats.keys():
-                self.watchdog_stats.update({node:0})
+                self.watchdog_stats.update({node: 0})
             self.watchdog_stats[node] += 1
         coroutine_return(self.watchdog_stats)
 
+    # KotekanMaster Validation Routines
+    @coroutine
+    def validate_config():
+        running_configs = yield self.kotekan_master.kotekan_running_config()
+        unique_configs = set(running_configs.values())
+        if len(unique_configs) != 1:
+            self.log.error('%s : KotekanMaster Config Validation Error')
+            self.log.error('%s : %s configs discovered.',
+                           self, str(len(unique_configs)))
+            result = 'FAILED'
+        else:
+            result = 'PASSED'
+        coroutine_return(result)
 
+    @coroutine
+    def validate_checksum(self):
+        config_md5sum = yield self.kotekan_master.kotekan_config_md5sum()
+        unique_checksums = set(config_md5sum.values())
+        if len(unique_checksums) != 1:
+            self.log.error('%s : KotekanMaster Checksum Validation Error')
+            self.log.error('%s : %s checksums discovered.',
+                           self, str(len(unique_checksums)))
+            result = 'FAILED'
+        else:
+            self.log.info('%s : KotekanMaster Checksum Passed')
+            result = 'PASSED'
+        coroutine_return(result)
 
     # Kotekan Methods
     #   These methods interact with the kotekan rest server.
@@ -273,11 +301,9 @@ class KotekanMaster(object):
     @coroutine
     def start_kotekan(self):
         """
-        Start the kotekan process on all nodes currently managed by kotekan_master.
+        Start the kotekan process on all nodes.
         """
-        conf = self.current_config
-        yield {node_name: kotekan.start(config=merge_dict(conf.common_config,
-                                                          conf.nodes[node_name]).as_dict())
+        yield {node_name: kotekan.start(config=self.current_config.common_config.as_dict())
                for node_name, kotekan in self.nodes.items()}
 
     @coroutine
@@ -408,6 +434,7 @@ class KotekanMaster(object):
                         for node_name, kotekan in self.nodes.items()}
         coroutine_return(result)
 
+
 # KotekanMaster Asynchronous RESTful Server
 class KotekanMasterAsyncRESTServer(AsyncRESTServer):
     """
@@ -418,22 +445,22 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
     functions to perform the required task.
     """
     # Defaul parameters
-    DEFAULT_PORT = 12048
-    KOTEKAN_MASTER_HOSTNAME = None
+    KOTEKAN_MASTER_HOSTNAME = 'localhost'
+    DEFAULT_PORT = 54323
     WATCHDOG_ENABLED = True
     WATCHDOG_INTERVAL = 60  # In seconds
 
     def __init__(self,
                  address=KOTEKAN_MASTER_HOSTNAME,
-                 port=DEFAULT_PORT,
-                 logging_params={}):
+                 port=DEFAULT_PORT):
         """
         KotekanMaster Server Initialization
         """
         super(KotekanMasterAsyncRESTServer, self).__init__(
             address=address,
             port=port,
-            heartbeat_string='KMs')
+            heartbeat_string='KMs',
+            heartbeat_period=1000)
         self.log.info("KotekanMasterAsyncRESTServer: %s:%s",
                       str(address), str(port))
         self.current_config = None
@@ -503,8 +530,8 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
                 watchdog_stats = yield self.kotekan_master.update_watchdog_stats(restart_list)
                 self.log.info('%s : KotekanMaster Watchdog Statistics', self)
                 self.log.info('%s : %s', self, watchdog_stats)
-            # Wait for the specific time interval
-            sleep(self.kotekan_master.watchdog_interval)
+            # Wait for the watchdog_interval
+            yield sleep(self.kotekan_master.watchdog_interval)
 
     @coroutine
     @endpoint('stop-watchdog')
@@ -517,22 +544,22 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
 
     @coroutine
     @endpoint('blacklist-node')
-    def blacklist_node(self, handler, node_list):
+    def blacklist_node(self, handler, node_dict):
         """
         Blacklist a node[s] from being actively managed by KotekanMaster
         """
-        result = yield self.kotekan_master.blacklist_node(node_list)
+        result = yield self.kotekan_master.blacklist_node(node_dict)
         coroutine_return(result)
 
     @coroutine
     @endpoint('whitelist-node')
-    def whitelist_node(self, handler, node_list):
+    def whitelist_node(self, handler, node_dict):
         """
         Whitelist a node to bring it under the control of KotekanMaster
 
-        e.g. node_list = ['cn1g1', 'cn1g2']
+        e.g. node_dict = {'csDg5': {hostname: csDg5, port: 12048}}
         """
-        result = yield self.kotekan_master.whitelist_node(node_list)
+        result = yield self.kotekan_master.whitelist_node(node_dict)
         coroutine_return(result)
 
     @coroutine
@@ -546,18 +573,17 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         self.log.info('%s : %s', self, result)
         coroutine_return(result)
 
-    # @coroutine
-    # @endpoint('validate-running-config')
-    # def validate_running_configuration(self, handler):
-    #     """
-    #     Validate that all nodes in the array are running the same current config.
-    #     """
-    #     running_configs = yield self.kotekan_master.kotekan_running_config()
-    #     unique_configs = set(running_configs.values())
-    #     if len(unique_configs) != 1:
-    #         coroutine_return('success')
-    #     else:
-    #         coroutine_return('fail')
+    # KotekanMaster Validation Routines
+    #   These routines run on the entire node cluster in order to deduce
+    #   consensus in the array.
+    @coroutine
+    @endpoint('validate-config')
+    def validate_running_configuration(self, handler):
+        """
+        Validate if nodes in the array are running the same config.
+        """
+        result = yield self.kotekan_master.validate_config()
+        coroutine_return(result)
 
     @coroutine
     @endpoint('validate-checksum')
@@ -566,23 +592,16 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         Validate the md5checksum for all running kotekan configs against the
         md5checksum of the self.current_config
         """
-        config_md5sum = yield self.kotekan_master.kotekan_config_md5sum()
-        unique_checksums = set(config_md5sum.values())
-        if len(unique_checksums) != 1:
-            self.log.error('%s : KotekanMaster Checksum Error')
-            self.log.error('%s : More than one unique checksums discovered.', self)
-            self.log.error('%s : %s', self, unique_checksums)
-            coroutine_return('Checksum Validation : FAILED')
-        else:
-            self.log.info('%s : KotekanMaster Checksum PASSED')
-            coroutine_return('Checksum Validation : PASSED')
+        result = yield self.kotekan_master.validate_checksum()
+        coroutine_return(result)
 
     # Kotekan RESTful Endpoints
-    #   These endpoints interact with the kotekan process running on all the nodes.
+    #   These endpoints interact with the kotekan process.
     #   There are two types of Kotekan RESTful endpoints
-    #       Parameter Endpoints: Dynamically tracked, have a corresponding config paramter
-    #       Operation Endpoints: Not tracked, time dependent calls, no corresponding
-    #                            config parameter
+    #       Parameter Endpoints: Dynamically tracked which have a corresponding
+    #                            config paramter
+    #       Operation Endpoints: Not tracked, and no corresponding config
+    #                            parameter, e.g. start_baseband_dump
 
     # Operation Endpoints
     @coroutine
@@ -622,7 +641,8 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         coroutine_return(result)
 
     # Returns all the unique running configurations found in the array.
-    @coroutine('kotekan-running-config')
+    @coroutine
+    @endpoint('kotekan-running-config')
     def kotekan_running_config(self, handler):
         """
         Queries the current running configuration from the kotekan process.
@@ -635,7 +655,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
     @endpoint('kotekan-config-md5sum')
     def kotekan_config_md5sum(self, handler):
         """
-        Queries the current kotekan for the MD5 hash of the running configuration.
+        Queries for the MD5 hash of the running configuration.
         """
         result = yield self.kotekan_master.kotekan_config_md5sum()
         coroutine_return(result)
@@ -707,6 +727,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         result = 'Not Implemented.'
         coroutine_return(result)
 
+
 # KotekanMaster Asynchronous RESTful Client
 class KotekanMasterAsyncRESTClient(AsyncRESTClient):
     """Async Restful Server for Kotekan Master
@@ -715,14 +736,18 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
     # TODO: Add a link to the wikipedia page.
     DEFAULT_PORT = KotekanMasterAsyncRESTServer.DEFAULT_PORT
 
-    def __init__(self, hostname='localhost', port=DEFAULT_PORT):
+    def __init__(self,
+                 hostname='localhost',
+                 port=DEFAULT_PORT):
         """
         KotekanMaster Client Initialization
         """
         super(KotekanMasterAsyncRESTClient, self).__init__(
-            hostname=hostname, port=port,
+            hostname=hostname,
+            port=port,
             server_class=KotekanMasterAsyncRESTServer,
-            heartbeat_string='KMc')
+            heartbeat_string='KMc',
+            heartbeat_period=1000)
 
     # Kotekan Master Routines
     # These routines are not executed on any kotekan node but are rather
@@ -737,7 +762,7 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
             loaded from the specified configuration file and name.
             if a dict, it is passed directly to the server.
         """
-        self.log.info('%s: Starting KotekanMasterServer at %s:%i with config:%r',
+        self.log.info('%s:Starting KotekanMasterServer at %s:%i with config:%r',
                       self, self.hostname, self.port, config)
         if isinstance(config, str):
             config = load_yaml_config(config)
@@ -780,19 +805,18 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
         coroutine_return(result)
 
     @coroutine
-    def blacklist_node(self, node_list):
+    def blacklist_node(self, node_dict):
         "Blacklist node[s] from being managed by KotekanMaster"
-        result = yield self.post('blacklist-node', node_list)
+        result = yield self.post('blacklist-node', node_dict)
         coroutine_return(result)
 
     @coroutine
-    def whitelist_node(self, node_list):
+    def whitelist_node(self, node_dict):
         """
         Whitelist/add nodes[s] to be managed by KotekanMaster
         """
-        result = yield self.post('whitelist-node', node_list)
+        result = yield self.post('whitelist-node', node_dict)
         coroutine_return(result)
-
 
     # Kotekan Routines
     # Routine endpoints which interact with kotekan nodes.
@@ -891,6 +915,16 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
         result = yield self.get('restart-nodes')
         coroutine_return(result)
 
+# Cleanup Opened Sockets
+def reap_cached_sockets():
+    import __main__
+    logger = log.get_logger(__name__, 'reap_cached_sockets()')
+    if hasattr(__main__, '__opened_sockets__'):
+        for port, socket in __main__.__opened_sockets__.items():
+            logger.debug("closing cached socket on port %d" % port)
+            socket.close()
+        del __main__.__opened_sockets__
+
 # Command Line Interface to operate KotekanMaster Server
 def main():
     """CLI for operating Kotekan Master
@@ -904,6 +938,7 @@ def main():
                                 KotekanMasterAsyncRESTClient,
                                 object_name='KotekanMaster',
                                 server_config_path='kotekan_master.servers')
+    # TODO: This needs to be fixed.
     kotekan_master = None
     if server:
         kotekan_master = RunSyncWrapper(server.kotekan_master)
