@@ -33,7 +33,7 @@ class KotekanMaster(object):
             {
                 'stderr': {
                     'class': 'logging.StreamHandler',
-                    'level': 'DEBUG'
+                    'level': 'INFO'
                     }
             },
         'loggers':
@@ -68,7 +68,7 @@ class KotekanMaster(object):
 
         # Watchdog parameters
         self.watchdog_enabled = False
-        self.watchdog_interval = 60
+        self.watchdog_interval = 10
         self.watchdog_stats = {}
 
         # GPS Parameters
@@ -78,8 +78,8 @@ class KotekanMaster(object):
 
         # Revision Control Logging
         self.git_version = subprocess.check_output(['git', 'rev-parse', 'HEAD'])
-        self.log.info("program: %s", self.program)
-        self.log.info("git ver: %s", self.git_version)
+        self.log.info("%s :program: %s", self, self.program)
+        self.log.info("%s :git ver: %s", self, self.git_version)
 
     # Helper Methods
     #   NOTE: These methods are not coroutines!
@@ -116,29 +116,31 @@ class KotekanMaster(object):
         if self.state == 'off':
             self.log.info('%s : KotekanMaster server starting ...', self)
             self.start_time = time.time()
-            self.log.info('%s : Start Time: %s', self, self.start_time)
+            self.log.info('%s : Start Time : %s',
+                    self, time.strftime("%Y/%m/%d %H:%M:%S", time.localtime(self.start_time)))
             # startup_config is never changed throughout the operation of
             # the array. All dynamic updates to the configuration are
             # applied against the current_config
             self.startup_config = NameSpace(config)
             self.current_config = self.startup_config
             # Get gps_time from the gps_server
-            self.log.info('%s: retreiving gps time ...', self)
+            self.log.info('%s : Retreiving GPS Time ...', self)
             self.gps_status = yield self._get_gps_time()
 
             # TODO: Put this is a sysexit() try/Except.
             # Append current_config with a new key called gps_time
+
             self.current_config.common_config.gps_time = self.gps_time
-            self.log.info('%s : creating kotekan clients ...', self)
+            self.log.info('%s : Creating Kotekan Node Clients ...', self)
             yield self._create_node_clients()
-            self.log.info('%s : kotekan clients created.', self)
+            self.log.info('%s : Kotekan Clients Created.', self)
             self.state = 'on'
             self.log.info('%s : KotekanMaster State : %s', self, self.state)
-            coroutine_return('KotekanMaster server started.')
+            coroutine_return('KotekanMaster Server Started.')
         # If already running, do nothing.
         if self.state == 'on':
             self.log.info('%s : KotekanMaster State : %s', self, self.state)
-            coroutine_return('KotekanMaster already running.')
+            coroutine_return('KotekanMaster Already Running!')
 
     @coroutine
     def _create_node_clients(self):
@@ -158,7 +160,7 @@ class KotekanMaster(object):
                                                            **node_params)
         self.log.info('%s : created kotekan clients for nodes: %s',
                       self, self.nodes.keys())
-        coroutine_return('created clients for kotekan nodes')
+        coroutine_return({})
 
     @coroutine
     def stop_kotekan_master(self):
@@ -173,10 +175,10 @@ class KotekanMaster(object):
             self.current_config = None
             reap_cached_sockets()
             #self.log.stop_logging(self.logging_handlers)
-            
+
         self.state = 'off'
         self.log.info('%s : KotekanMaster State : %s', self, self.state)
-        coroutine_return('KotekanMaster server stopped.')
+        coroutine_return('KotekanMaster Server Stopped.')
 
     @coroutine
     def status_kotekan_master(self):
@@ -223,16 +225,16 @@ class KotekanMaster(object):
 
     # KotekanMaster Watchdog Methods
     @coroutine
-    def start_watchdog(self, watchdog_interval):
+    def start_watchdog(self):
         """
         Start Watchdog
         """
         self.watchdog_enabled = True
-        self.watchdog_interval = watchdog_interval
+        self.watchdog_interval = 60
         self.log.info('%s : KotekanMaster Watchdog Enabled', self)
-        self.log.info('%s : KotekanMaster Watchdog Interval : %ss',
+        self.log.info('%s : KotekanMaster Watchdog Interval : %s seconds',
                       self, self.watchdog_interval)
-        coroutine_return('KotekanMaster watchdog enabled')
+        coroutine_return(result='KotekanMaster Watchdog Enabled')
 
     @coroutine
     def stop_watchdog(self):
@@ -240,9 +242,8 @@ class KotekanMaster(object):
         Stop Watchdog
         """
         self.watchdog_enabled = False
-        self.watchdog_interval = 60
         self.log.info('%s : KotekanMaster Watchdog Disabled', self)
-        coroutine_return('KotekanMaster watchdog disabled')
+        coroutine_return('KotekanMaster Watchdog Disabled')
 
     @coroutine
     def update_watchdog_stats(self, restart_list):
@@ -316,22 +317,21 @@ class KotekanMaster(object):
         ----------
         Input:
             status_list : dict-type
-                {'node_name' : {'running' : 'false|true'}}
+                {'node_name' : {'running' : boolean }}
         Returns:
             restart_list : list-type
                 {'node_1', 'node_2', ... 'node_N'}
         """
         restart_list = []
-        for node_name, status in status_list:
-            if status['running'] == 'false':
+        for node_name, status in status_list.items():
+            if status['running'] is False:
                 restart_list.append(node_name)
+        self.log.debug('Watchdog Restart List: %s', restart_list)
         # Start the nodes
-        conf = self.current_config
-
         for node_name, kotekan in self.nodes.items():
             if node_name in restart_list:
-                kotekan.start(config=merge_dict(conf.common_config,
-                                                conf.nodes[node_name]).as_dict())
+                self.log.info('Attempting restart on node : %s', node_name)
+                result = kotekan.start(config=self.current_config.common_config.as_dict())
         coroutine_return(restart_list)
 
     @coroutine
@@ -348,7 +348,7 @@ class KotekanMaster(object):
         managed by kotekan_master.
 
         Returns: dict
-        {"node_name" : {"running": true|false}}
+        {"node_name" : {"running": Boolean}}
         """
         result = yield {node_name: kotekan.status()
                         for node_name, kotekan in self.nodes.items()}
@@ -450,8 +450,6 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
     # Defaul parameters
     KOTEKAN_MASTER_HOSTNAME = 'localhost'
     DEFAULT_PORT = 54323
-    WATCHDOG_ENABLED = True
-    WATCHDOG_INTERVAL = 60  # In seconds
 
     def __init__(self,
                  address=KOTEKAN_MASTER_HOSTNAME,
@@ -496,21 +494,12 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
 
     @coroutine
     @endpoint('start-watchdog')
-    def start_watchdog(self, handler, watchdog_interval=None):
+    def start_watchdog(self, handler):
         """
         Start Kotekan Watchdog
-
-        Parameters
-        ----------
-        Input
-            watchdog_interval : int
-                Time interval in seconds for which the watchdog waits before
-                checking the status of all nodes in the array.
-            Default Value: 60s
         """
-        if watchdog_interval is None:
-            watchdog_interval = 60
-        result = yield self.kotekan_master.start_watchdog(int(watchdog_interval))
+        result = yield self.kotekan_master.start_watchdog()
+        print (self.kotekan_master.watchdog_enabled, self.kotekan_master.watchdog_interval)
         coroutine_return(result)
 
     @coroutine
@@ -518,21 +507,23 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         """
         KotekanMaster Watchdog Loop
 
-        NOTE: This loop runs prepetually. To enable and disable the _watchdog
-        manipulate the watchdog_enabled parameter in the KotekanMaster class.
+        NOTE: This loop runs prepetually. To enable and disable the watchdog,
+        execute the start-watchdog and stop-watchdog endpoints.
         """
         while True:
+            print ('Watching...')
             # Check if the watchdog is currently enabled.
             if self.kotekan_master.watchdog_enabled:
                 # Run get status from each node
                 node_status = yield self.kotekan_master.kotekan_status()
-                # Execute restarts for nodes which report running
-                # status as false
+                # Execute restarts for nodes which report running status as false
                 restart_list = yield self.kotekan_master.restart_kotekan(node_status)
+                print node_status, restart_list
                 # Update watchdog statistics
                 watchdog_stats = yield self.kotekan_master.update_watchdog_stats(restart_list)
-                self.log.info('%s : KotekanMaster Watchdog Statistics', self)
-                self.log.info('%s : %s', self, watchdog_stats)
+                #self.log.info('%s : KotekanMaster Watchdog Stats', self)
+                #self.log.info('%s : %s', self, watchdog_stats)
+                #self.log.info('%s : Watchdog sleeping for %s seconds', self, self.kotekan_master.watchdog_interval)
             # Wait for the watchdog_interval
             yield sleep(self.kotekan_master.watchdog_interval)
 
@@ -791,12 +782,11 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
         coroutine_return(result)
 
     @coroutine
-    def start_watchdog(self, watchdog_interval):
+    def start_watchdog(self):
         """
         Start KotekanMaster Watchdog
         """
-        watchdog_interval = int(watchdog_interval)
-        result = yield self.post('start-watchdog', watchdog_interval)
+        result = yield self.post('start-watchdog')
         coroutine_return(result)
 
     @coroutine

@@ -93,18 +93,15 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         """
         Start a kotekan process with a provided config
         """
-        newconfig = self.kotekan_config.copy()
-        newconfig.update(config)
-        result = yield self.post('start', **newconfig)
-        coroutine_return(result)
+        self.kotekan_config = config
+        yield self.post('start', **config)
 
     @coroutine
     def stop(self):
         """
         Stop a kotekan process
         """
-        result = yield self.post('stop')
-        coroutine_return(result)
+        yield self.post('stop')
 
     @coroutine
     def status(self):
