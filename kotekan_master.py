@@ -219,9 +219,10 @@ class KotekanMaster(object):
         """
         for node_name in node_dict:
             if node_name in self.nodes.keys():
+
                 self.nodes.pop(node_name)
-                self.log.info('%s : blacklisted node: %s', self, node_name)
-        coroutine_return('blacklisted node[s]: %s', node_dict)
+                self.log.info('%s : Blacklisted Node : %s', self, node_name)
+        coroutine_return(result='blacklisted node[s]: %s', node_dict)
 
     # KotekanMaster Watchdog Methods
     @coroutine
@@ -613,6 +614,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         """
         Stop the kotekan process on all nodes.
         """
+        watchdog = yield self.kotekan_master.stop_watchdog()
         result = yield self.kotekan_master.stop_kotekan()
         coroutine_return(result)
 
@@ -799,7 +801,9 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
 
     @coroutine
     def blacklist_node(self, node_dict):
-        "Blacklist node[s] from being managed by KotekanMaster"
+        """
+        Blacklist node[s] from being managed by KotekanMaster
+        """
         result = yield self.post('blacklist-node', node_dict)
         coroutine_return(result)
 

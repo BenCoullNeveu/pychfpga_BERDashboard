@@ -101,7 +101,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         """
         Stop a kotekan process
         """
-        yield self.post('stop')
+        yield self.get('stop')
 
     @coroutine
     def status(self):
