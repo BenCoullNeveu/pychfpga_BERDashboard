@@ -105,7 +105,6 @@ class KotekanMaster(object):
                            self, gps_request.raise_for_status())
             coroutine_return(result="FAILED")
 
-
     # KotekanMaster Methods
     @coroutine
     def start_kotekan_master(self, config):
@@ -408,6 +407,8 @@ class KotekanMaster(object):
         POST the new gain directory for the beamformingKernel on all nodes
         currently managed by kotekan_master.
         """
+        self.log.info('%s : Parameter gains_dir update: %s', self, gains_dir)
+        self.current_config.common_config.gpu.gains_dir = gains_dir
         result = yield {node_name: kotekan.update_gains(gains_dir)
                         for node_name, kotekan in self.nodes.items()}
         coroutine_return(result)
@@ -418,6 +419,8 @@ class KotekanMaster(object):
         POST the new beam_offset for frbNetworkProcess on all nodes currently
         managed by kotekan_master.
         """
+        self.log.info('%s : Parameter beam_offset update: %s', self, beam_offset)
+        self.current_config.common_config.frb.network.beam_offset = beam_offset
         result = yield {node_name: kotekan.update_beam_offset(beam_offset)
                         for node_name, kotekan in self.nodes.items()}
         coroutine_return(result)
