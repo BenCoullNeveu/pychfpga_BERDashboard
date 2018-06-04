@@ -134,11 +134,11 @@ class KotekanMaster(object):
             self.log.info('%s : kotekan clients created.', self)
             self.state = 'on'
             self.log.info('%s : KotekanMaster State : %s', self, self.state)
-            coroutine_return('%s : KotekanMaster server started.', self)
+            coroutine_return('KotekanMaster server started.')
         # If already running, do nothing.
         if self.state == 'on':
             self.log.info('%s : KotekanMaster State : %s', self, self.state)
-            coroutine_return('%s : KotekanMaster already running.', self)
+            coroutine_return('KotekanMaster already running.')
 
     @coroutine
     def _create_node_clients(self):
