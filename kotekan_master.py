@@ -123,7 +123,7 @@ class KotekanMaster(object):
             self.startup_config = NameSpace(config)
             self.current_config = self.startup_config
             # Get gps_time from the gps_server
-            self.log.info('%s: retreiving gps time ...')
+            self.log.info('%s: retreiving gps time ...', self)
             self.gps_status = yield self._get_gps_time()
 
             # TODO: Put this is a sysexit() try/Except.
@@ -184,7 +184,7 @@ class KotekanMaster(object):
         Current status of services KotekanMaster Status
         """
         result = {'state': self.state,
-                  'current_config': self.current_config,
+                  'current_config': self.current_config.as_dict(),
                   'nodes': self.nodes.keys(),
                   'blacklist_nodes': self.blacklist_nodes,
                   'watchdog_enabled': self.watchdog_enabled,
