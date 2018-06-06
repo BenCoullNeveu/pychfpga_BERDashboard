@@ -1340,8 +1340,6 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         results = yield [k.start(**config) for k in self.kotekan_clients]
         coroutine_return(results=results)
 
-
-
     @coroutine
     @endpoint('get-frame-time')
     def get_frame_time(self, handler):
@@ -1378,6 +1376,24 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
 
             else:
                 coroutine_return(self._gps_time)
+
+        else:
+            coroutine_return({})
+
+    @coroutine
+    @endpoint('get-frame0-time')
+    def get_frame0_time(self, handler):
+        if (self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas and
+            self.chime_master.fpgas.sync_timestamp):
+
+            frame0_ts = self.chime_master.fpgas.sync_timestamp
+
+            gps_time = dict(start_ctime=self.chime_master.start_time,
+                            frame0_time=frame0_ts.time_struct,
+                            frame0_ctime=frame0_ts.time,
+                            frame0_nano=frame0_ts.nano)
+
+            coroutine_return(gps_time)
 
         else:
             coroutine_return({})
