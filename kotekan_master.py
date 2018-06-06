@@ -330,7 +330,7 @@ class KotekanMaster(object):
         Start the kotekan process on all nodes.
         """
         yield {node_name: kotekan.start(config=self.current_config.common_config.as_dict())
-               for node_name, kotekan in self.nodes.items()}
+                for node_name, kotekan in self.nodes.items()}
 
     @coroutine
     def restart_kotekan(self, node_status):
