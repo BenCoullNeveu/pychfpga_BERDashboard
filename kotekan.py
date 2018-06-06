@@ -11,20 +11,21 @@ import argparse
 import sys
 from platform import system as system_name  # Returns the system/OS name
 from subprocess import call as system_call  # Execute a shell command
-import numpy as np
 import tornado
 import tornado.web
 import tornado.httpclient
-from pychfpga import Ccoll, NameSpace, load_yaml_config
-from rest import AsyncRESTClient, AsyncRESTServer, coroutine, coroutine_return, endpoint, RunSyncWrapper, IOLoop
+from pychfpga import NameSpace, load_yaml_config
+from rest import AsyncRESTClient, AsyncRESTServer, coroutine, coroutine_return
+from rest import endpoint, RunSyncWrapper, IOLoop
 
 ##########################
 # Kotekan RESTful Server #
 ##########################
+
+
 class KotekanAsyncRESTServer(AsyncRESTServer):
     """
     Asynchronous Kotekan RESTful server.
-
     """
 
     DEFAULT_PORT = 12048
@@ -64,6 +65,8 @@ class KotekanAsyncRESTServer(AsyncRESTServer):
 ##########################
 # Kotekan RESTful Client #
 ##########################
+
+
 class KotekanAsyncRESTClient(AsyncRESTClient):
     """
     Provides access to the remote GPU node kotekan processes through the
@@ -78,7 +81,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         super(KotekanAsyncRESTClient, self).__init__(
             hostname=hostname,
             port=port,
-            #server_class=KotekanAsyncRESTServer,
+            # server_class=KotekanAsyncRESTServer,
             heartbeat_string='Kc')
         # self.name = name
         self.kotekan_config = config
@@ -99,9 +102,16 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
     @coroutine
     def stop(self):
         """
-        Stop a kotekan process
+        Stop a kotekan threads.
         """
         yield self.get('stop')
+
+    @coroutine
+    def kill(self):
+        """
+        Kill the kotekan completely
+        """
+        yield self.get('kill')
 
     @coroutine
     def status(self):
@@ -132,8 +142,8 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
     @coroutine
     def config_md5sum(self):
         """
-        Returns an MD5 hash of the config file (based on the json string with no
-        spaces). Only exists if kotekan was build with OpenSSL support.
+        Returns an MD5 hash of the config file (based on the json string with
+        no spaces). Only exists if kotekan was build with OpenSSL support.
         """
         result = yield self.get('config_md5sum')
         coroutine_return(result)
@@ -191,6 +201,7 @@ def parse_cmdline_args(argv):
     parser.add_argument('-n', '--host', default='localhost', type=str, help="Server hostname")
     parser.add_argument('-s', '--server', action='store_true', help='Start a server')
     return parser.parse_args(argv)
+
 
 if __name__ == '__main__':
     # Create our own IOLoop so we don't interfere with ipython's own ioloop.
