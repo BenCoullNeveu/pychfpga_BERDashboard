@@ -1349,7 +1349,12 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
 
                 with (yield self._gps_lock.acquire(timeout=datetime.timedelta(seconds=15))):
 
-                    if not self._gps_time or ((time.time() - self._gps_time['server_ctime']) > 15.0):
+                    if self._gps_time:
+                        self.log.info("GPS time is %0.1f seconds old." % (time.time() - self._gps_time['server_ctime'], ))
+
+                    if not self._gps_time or ((time.time() - self._gps_time['server_ctime']) > 20.0):
+
+                        self.log.info("Capturing GPS time from motherboard.")
 
                         frame_number, gps_ts = yield self.chime_master.fpgas.ib[0].capture_frame_time.async(format='raw')
 
@@ -1369,6 +1374,10 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
                             frame0_time=frame0_ts.time_struct,
                             frame0_ctime=frame0_ts.time,
                             frame0_nano=frame0_ts.nano)
+
+                        self.log.info("Capture successful.  Took %0.1f seconds." % (self._gps_time['server_ctime'] -
+                                                                                    self._gps_time['server_ctime_before'], ))
+
 
             except Exception as e:
                 self.log.error(e)
