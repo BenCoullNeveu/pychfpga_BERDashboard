@@ -62,9 +62,9 @@ class KotekanMaster(object):
 
         # KotekanAsyncRESTClient instances which are managed by KotekanMaster
         # Format {{node_name: KotekanMasterObj}}
-        self.nodes = None
+        self.nodes = {}
         # KotekanAsyncRESTClient instances blacklisted
-        self.blacklist_nodes = None
+        self.blacklist_nodes = []
 
         # Watchdog parameters
         self.watchdog_enabled = False
@@ -201,28 +201,45 @@ class KotekanMaster(object):
         coroutine_return(result)
 
     @coroutine
-    def whitelist_node(self, node_dict):
+    def whitelist_node(self, node_list):
         """
         Whitelist Node
         """
+        whitelisted_nodes = []
         for node_name in node_dict:
+            # Find a config for the node.
+            try:
+                node_config = self.current_config.nodes.as_dict()[node_name]
+                self.log.info('%s : Found config for node %s', self, node_name)
+            except:
+                node_config = {'hostname' : node_name, 'port': 12048}
+                self.log.info('%s : Unable to find config for node %s, using  defaults', self, node_name)
+
             if node_name not in self.nodes.keys():
-                self.nodes[node_name] = KotekanAsyncRESTClient(name=node_name,
-                                                               **node_dict[node_name])
-                self.log.info('%s : whitelisted node: %s', self, node_name)
-        coroutine_return('whitelisted node[s]: %s', node_dict)
+                self.nodes[node_name] = KotekanAsyncRESTClient(name=node_name,**node_config)
+                self.log.info('%s : Whitelisted Node: %s', self, node_name)
+
+            if node_name in self.blacklist_nodes:
+                self.blacklist.remove(node_name)
+                self.log.info('%s : Removed node %s from Blacklist', self, node_name)
+            #Keep track of newly whiteliested nodes.
+            whitelisted_nodes.append(node_name)
+        coroutine_return(whitelisted_nodes)
 
     @coroutine
-    def blacklist_node(self, node_dict):
+    def blacklist_node(self, node_list):
         """
         Blacklist Node
         """
-        for node_name in node_dict:
-            if node_name in self.nodes.keys():
-
-                self.nodes.pop(node_name)
-                self.log.info('%s : Blacklisted Node : %s', self, node_name)
-        coroutine_return(result='blacklisted node[s]: %s', node_dict)
+        for node_name, kotekan in self.nodes.items():
+            if node_name in node_list:
+                if node_name not in self.blacklist_nodes:
+                    self.log.info('%s : Blacklisted Node : %s', self, node_name)
+                    self.log.info('%s : Stopping Kotekan on %s', self, node_name)
+                    yield kotekan.stop()
+                    self.blacklist_nodes.append(node_name)
+                    self.nodes.pop(node_name)
+        coroutine_return(self.blacklist_nodes)
 
     # KotekanMaster Watchdog Methods
     @coroutine
