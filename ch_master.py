@@ -545,7 +545,7 @@ class ChimeMaster(object):
         self.log.info('%r: RawAcq server setup successfully' % self)
 
     @coroutine
-    def start_fpga_raw_data_transmission(self, capture_rate=None, capture_source=None):
+    def start_fpga_raw_data_transmission(self, capture_rate=None, capture_source=None, tmux_factor=None):
         """ Configure the FPGAs to transmit raw data.
 
         Parameters:
@@ -555,22 +555,36 @@ class ChimeMaster(object):
             capture_source (str): selects the data source. 'adc':  the data is taken after the function generator (sorry, non
                 intuitive). `scaler`: the data is taken after the scaler. Default is 'scaler'.
 
+            tmux_factor (int): Number between 0 and 64.  Raw data transmission is staggered across FPGAs in the array
+                with a step size equal to tmux_factor * 256 * 2.56microsec.
+
         If no arguments are provided, the FPGA will be set to transmit data at the idle rate and from source defined in the config file.
         """
         conf = self.config.raw_acq.common_config
         capture_rate = capture_rate or conf.idle_capture_rate
         capture_period = 1.0 / float(capture_rate)
         capture_source = capture_source or conf.capture_source
+        tmux_factor = conf.tmux_factor if tmux_factor is None else tmux_factor
+
         for node_name, ibs in self.raw_acq_ibs.items():
             for ib in ibs:
-                offset = (ib.slot or 1) - 1
-                self.log.info('%r: Starting data capture on %r with period=%f, source=%s' % (self, ib, capture_period, capture_source))
+                crate = getattr(ib.crate, 'crate_number', 0) or 0
+                slot = (ib.slot or 1) - 1
+                offset = int(tmux_factor * (16 * crate + slot))
+
+                self.log.info('%r: Starting data capture on %r with period=%f, source=%s, offset=%d' %
+                             (self, ib, capture_period, capture_source, offset))
+
                 ib.start_data_capture(period=capture_period, source=capture_source, offset=offset)
-        self.fpgas.sync() # JM: this is required after starting raw data capture so the raw frames are indeed synced
+
+        # Must issue sync command after starting raw data capture,
+        # otherwise raw frames will not be synced across boards.
+        self.fpgas.sync()
 
     @coroutine
     def start_hdf5_capture(self, capture_folder=None, capture_filename=None, capture_rate=None,
-                           capture_duration=None, capture_source=None, capture_elements_per_file=None):
+                           capture_duration=None, capture_source=None, capture_elements_per_file=None,
+                           tmux_factor=None):
         """
         instricts the raw_acq server to start storing raw data in HDF5 files at a specified rate, duration and in the specified folder.
 
@@ -599,6 +613,9 @@ class ChimeMaster(object):
             capture_elements_per_file (int): Number of frames to store in each HDF5 files. If not
             specified or `None`, the parameter is taken from the config file.
 
+            tmux_factor (int): Number between 0 and 64.  Data capture is staggered across FPGAs in the array
+                with a step size equal to tmux_factor * 256 * 2.56microsec.
+
         """
         conf = self.config.raw_acq.common_config
         capture_source = capture_source or conf.capture_source
@@ -608,8 +625,9 @@ class ChimeMaster(object):
         capture_filename = capture_filename or conf.hdf5_capture_filename
         capture_duration = capture_duration or conf.hdf5_capture_duration
         capture_elements_per_file = capture_elements_per_file or conf.hdf5_capture_elements_per_file
+        tmux_factor = conf.tmux_factor if tmux_factor is None else tmux_factor
 
-        yield self.start_fpga_raw_data_transmission(capture_rate, capture_source)
+        yield self.start_fpga_raw_data_transmission(capture_rate, capture_source, tmux_factor)
 
         yield [node.start_hdf5(
             base_dir=capture_folder,
@@ -625,7 +643,7 @@ class ChimeMaster(object):
     @coroutine
     def stop_hdf5_capture(self):
 
-        yield [node.stop_hdf5() for node_name, nnode in self.raw_acq.items()]
+        yield [node.stop_hdf5() for node_name, node in self.raw_acq.items()]
         yield self.start_fpga_raw_data_transmission()
 
 
@@ -736,37 +754,33 @@ class ChimeMaster(object):
         # Create FPGA Array object and and initialize FPGAs
         yield self.create_fpga_array()
 
-
         if self.fpgas.ib:
-		# Read the FPGA setting back from the FPGA
-		self.log.info("Getting configuration data from all FPGAs")
-		self.fpga_conf = yield self.fpgas.get_fpga_config.async(basic=True)
+            # Read the FPGA setting back from the FPGA
+            self.log.info("Getting configuration data from all FPGAs")
+            self.fpga_conf = yield self.fpgas.get_fpga_config.async(basic=True)
 
 
-		# Configre and start CHRX remote processes
+            # Configure and start CHRX remote processes
+            self.configure_fpgas_post_acq()
+            self.current_bank = 0
 
-		self.configure_fpgas_post_acq()
-		self.current_bank = 0
+            self.log.info("Starting raw_acq servers")
+            yield self.start_raw_acq_servers()
 
+            # Start raw_data capture
+            if conf.raw_acq.common_config.hdf5_capture_rate and conf.raw_acq.common_config.hdf5_capture_duration is not None:
+                self.log.info("Starting HDF5 data capture")
+                yield self.start_hdf5_capture()
+            else:
+                self.log.info("Starting idle data capture")
+                yield self.start_fpga_raw_data_transmission()
 
+            # Clear errors accumulated during start and initialization
+            self.reset_fpga_stats()
+            self.reset_crossbar_stats()
+            self.reset_bp_shuffle_stats()
 
-		self.log.info("Starting raw_acq servers")
-		yield self.start_raw_acq_servers()
-
-		# Start raw_data capture
-		if conf.raw_acq.common_config.hdf5_capture_rate and conf.raw_acq.common_config.hdf5_capture_duration is not None:
-		    self.log.info("Starting HDF5 data capture")
-		    yield self.start_hdf5_capture()
-		else:
-		    self.log.info("Starting idle data capture")
-		    yield self.start_fpga_raw_data_transmission()
-
-                # Clear errors accumulated during start and initialization
-                self.reset_fpga_stats()
-                self.reset_crossbar_stats()
-                self.reset_bp_shuffle_stats()
-
-	else:
+        else:
             self.log.warning('%r: There are no FPGAs in the array. Stopping FPGA initializations here' % self)
 
         self.log.info("Finished ch_master.start()")
