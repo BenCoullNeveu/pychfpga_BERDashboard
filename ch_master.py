@@ -1781,6 +1781,22 @@ class ChimeMasterAsyncRESTClient(AsyncRESTClient):
         self.print_result(m)
 
     @coroutine
+    def get_frame_time(self):
+        """
+        Get the current frame number and gps time.
+        """
+        gps_time = yield self.get('get-frame-time')
+        coroutine_return(gps_time)
+
+    @coroutine
+    def get_frame0_time(self):
+        """
+        Get the gps time corresponding to frame 0.
+        """
+        gps_time = yield self.get('get-frame0-time')
+        coroutine_return(gps_time)
+
+    @coroutine
     def get_channelizer_output(self):
         """
         Get the channelizer output buffer.
