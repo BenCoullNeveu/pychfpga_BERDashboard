@@ -563,7 +563,7 @@ class ChimeMaster(object):
         capture_source = capture_source or conf.capture_source
         for node_name, ibs in self.raw_acq_ibs.items():
             for ib in ibs:
-                offset = (ib.slot or 1) - 1
+                offset = 16 * getattr(ib.crate, 'crate_number', 0) + (ib.slot or 1) - 1
                 self.log.info('%r: Starting data capture on %r with period=%f, source=%s' % (self, ib, capture_period, capture_source))
                 ib.start_data_capture(period=capture_period, source=capture_source, offset=offset)
         self.fpgas.sync() # JM: this is required after starting raw data capture so the raw frames are indeed synced
