@@ -116,22 +116,61 @@ class KotekanMaster(object):
         if self.state == 'off':
             self.log.info('%s : KotekanMaster server starting ...', self)
             self.start_time = time.time()
-            self.log.info('%s : Start Time : %s', self,
-                          time.strftime("%Y/%m/%d %H:%M:%S",
-                                        time.localtime(self.start_time)))
+            self.isotime = time.strftime("%Y%m%dT%H%M%SZ",
+                                         time.gmtime(self.start_time))
+            self.localtime = time.strftime("%Y/%m/%d %H:%M:%S",
+                                           time.localtime(self.start_time))
+            self.log.info('%s : Start Time : %s', self, self.localtime)
             # startup_config is never changed throughout the operation of
             # the array. All dynamic updates to the configuration are
             # applied against the current_config
             self.startup_config = NameSpace(config)
             self.current_config = self.startup_config
-            # Setting up logging
+            # Setup logging paths
+            self.run_name = self.startup_config.run_name % dict(
+                    isotime=self.isotime,
+                    localtime=self.localtime,
+                    corr_name=self.startup_config.corr_name)
+            self.log.info("%s : Run Name : %s", self, self.run_name)
+            str_args = dict(isotime=self.isotime,
+                            corr_name=self.startup_config.corr_name,
+                            run_name=self.run_name)
+            self.run_folder = self.startup_config.run_folder % str_args
+            self.run_folder = os.path.expanduser(self.run_folder)
+            self.log.info("%s : Run Folder : %s", self, self.run_folder)
+            self.current_folder = os.path.expanduser(self.startup_config.current_folder % str_args)
+            self.log.info("%s : Current Folder : %s", self, self.current_folder)
+            # Create run folders
+            try:
+                os.makedirs(self.run_folder)
+            except OSError:
+                errmsg = "Could not create directory '%s'!" % self.run_folder
+                self.log.critical(errmsg)
+                raise RuntimeError(errmsg)
+
+            # Make a symlink to the run folder
+            if hasattr(os, 'symlink'):
+                try:
+                    os.remove(self.current_folder)
+                except OSError as e:
+                    self.log.warn(
+                        "%r : Could not remove current symlink '%s'. The error is \n%s" %
+                        (self, self.current_folder, e))
+                try:
+                    os.symlink(self.run_folder, self.current_folder)
+                except OSError as e:
+                    self.log.warning(
+                        "%r : Could not create a symlink '%s' to the run folder '%s'. The error is:\n%s" %
+                        (self, self.current_folder, self.run_folder, e))
+            # Setting up logging handlers
             self.logging_handlers = log.setup_logging(
                         self.startup_config.logging.dict_config,
                         self.startup_config.logging.log_levels,
                         base_package_name=self.startup_config.logging.base_package_name,
                         actual_package_name=__name__.rpartition('.')[0],
                         script_name=self.startup_config.logging.script_name,
-                        run_folder=self.run_folder)
+                        run_folder=self.run_folder % str_args )
+            self.log.info('%r : Logging Configured.'% self)
             # Get gps_time from the gps_server
             self.log.info('%s : Retreiving GPS Time ...', self)
             self.gps_status = yield self._get_gps_time()
