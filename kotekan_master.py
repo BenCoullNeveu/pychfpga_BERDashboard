@@ -439,6 +439,7 @@ class KotekanMaster(object):
         """
         result = yield {node_name: kotekan.config_md5sum()
                         for node_name, kotekan in self.nodes.items()}
+        self.log.debug(result)
         coroutine_return(result)
 
     # Parameter Based Endpoints
@@ -540,7 +541,6 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         Start Kotekan Watchdog
         """
         result = yield self.kotekan_master.start_watchdog()
-        print (self.kotekan_master.watchdog_enabled, self.kotekan_master.watchdog_interval)
         coroutine_return(result)
 
     @coroutine
@@ -554,13 +554,12 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         while True:
             # Check if the watchdog is currently enabled.
             if self.kotekan_master.watchdog_enabled:
-                print "Watching ..."
+                print "Watching Running ..."
                 # Run get status from each node
                 node_status = yield self.kotekan_master.kotekan_status()
                 # Execute restarts for nodes with running==false
                 restart_list = yield self.kotekan_master.restart_kotekan(
                                         node_status)
-                print node_status, restart_list
                 # Update watchdog statistics
                 watchdog_stats = yield self.kotekan_master.update_watchdog_stats(restart_list)
                 self.log.info('%s : KotekanMaster Watchdog Stats', self)
@@ -588,8 +587,6 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
 
         curl -d "node_list=['csDg5']" -X POST http://localhost:54323/blacklist-node
         """
-        print "Blacklist Node Executed"
-        print node_list
         result = yield self.kotekan_master.blacklist_node(node_list)
         coroutine_return(result)
 
