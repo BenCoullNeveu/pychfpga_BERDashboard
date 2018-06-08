@@ -78,8 +78,8 @@ class KotekanMaster(object):
 
         # Revision Control Logging
         self.git_version = subprocess.check_output(['git', 'rev-parse', 'HEAD'])
-        self.log.info("%s :program: %s", self, self.program)
-        self.log.info("%s :git ver: %s", self, self.git_version)
+        self.log.info("%s : Program : %s", self, self.program)
+        self.log.info("%s : Git Ver : %s", self, self.git_version)
 
     # Helper Methods
     #   NOTE: These methods are not coroutines!
@@ -159,7 +159,7 @@ class KotekanMaster(object):
         for node_name, node_params in nodes.items():
             self.nodes[node_name] = KotekanAsyncRESTClient(name=node_name,
                                                            **node_params)
-        self.log.info('%s : created kotekan clients for nodes: %s',
+        self.log.info('%s : Created kotekan clients for nodes: %s',
                       self, self.nodes.keys())
         coroutine_return({})
 
@@ -206,9 +206,14 @@ class KotekanMaster(object):
     def whitelist_node(self, node_list):
         """
         Whitelist Node
+
+        Parameters
+        ----------
+
         """
+        self.log.info('%s : Whitelist Nodes Executed : %s', self, node_list)
         whitelisted_nodes = []
-        for node_name in node_list:
+        for node_name in node_list.strip('[').strip(']').split(','):
             # Find a node_config or use defaults.
             try:
                 node_config = self.current_config.nodes.as_dict()[node_name]
@@ -330,7 +335,7 @@ class KotekanMaster(object):
         Start the kotekan process on all nodes.
         """
         yield {node_name: kotekan.start(config=self.current_config.common_config.as_dict())
-               for node_name, kotekan in self.nodes.items()}
+                for node_name, kotekan in self.nodes.items()}
 
     @coroutine
     def restart_kotekan(self, node_status):
@@ -434,6 +439,7 @@ class KotekanMaster(object):
         """
         result = yield {node_name: kotekan.config_md5sum()
                         for node_name, kotekan in self.nodes.items()}
+        self.log.debug(result)
         coroutine_return(result)
 
     # Parameter Based Endpoints
@@ -535,7 +541,6 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         Start Kotekan Watchdog
         """
         result = yield self.kotekan_master.start_watchdog()
-        print (self.kotekan_master.watchdog_enabled, self.kotekan_master.watchdog_interval)
         coroutine_return(result)
 
     @coroutine
@@ -547,21 +552,21 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         execute the start-watchdog and stop-watchdog endpoints.
         """
         while True:
-            print ('Watching...')
             # Check if the watchdog is currently enabled.
             if self.kotekan_master.watchdog_enabled:
+                print "Watching Running ..."
                 # Run get status from each node
                 node_status = yield self.kotekan_master.kotekan_status()
                 # Execute restarts for nodes with running==false
                 restart_list = yield self.kotekan_master.restart_kotekan(
                                         node_status)
-                print node_status, restart_list
                 # Update watchdog statistics
                 watchdog_stats = yield self.kotekan_master.update_watchdog_stats(restart_list)
                 self.log.info('%s : KotekanMaster Watchdog Stats', self)
                 self.log.info('%s : %s', self, watchdog_stats)
                 self.log.info('%s : Watchdog sleeping for %s seconds',
                               self, self.kotekan_master.watchdog_interval)
+
             # Wait for the watchdog_interval
             yield sleep(self.kotekan_master.watchdog_interval)
 
@@ -579,6 +584,8 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
     def blacklist_node(self, handler, node_list):
         """
         Blacklist a node[s] from being actively managed by KotekanMaster
+
+        curl -d "node_list=['csDg5']" -X POST http://localhost:54323/blacklist-node
         """
         result = yield self.kotekan_master.blacklist_node(node_list)
         coroutine_return(result)
@@ -854,11 +861,11 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
         coroutine_return(result)
 
     @coroutine
-    def whitelist_node(self, node_dict):
+    def whitelist_node(self, node_list):
         """
-        Whitelist/add nodes[s] to be managed by KotekanMaster
+        Whitelist nodes[s]
         """
-        result = yield self.post('whitelist-node', node_dict)
+        result = yield self.post('whitelist-node', node_list)
         coroutine_return(result)
 
     # Kotekan Routines
