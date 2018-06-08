@@ -700,6 +700,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         """
         Start kotekan process on all nodes with current_config
         """
+        watchdog = yield self.kotekan_master.start_watchdog()
         result = yield self.kotekan_master.start_kotekan()
         coroutine_return(result)
 
@@ -716,6 +717,10 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
     @coroutine
     @endpoint('kill-kotekan')
     def kill_kotekan(self, handler):
+        """
+        Kill the kotekan process on all nodes.
+        """
+        watchdog = yield self.kotekan_master.stop_watchdog()
         result = yield self.kotekan_master.kill_kotekan()
         coroutine_return(result)
 
