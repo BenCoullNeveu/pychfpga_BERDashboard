@@ -90,7 +90,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         # self.ping_cb = tornado.ioloop.PeriodicCallback(self.ping, 60e3)
         # self.ping_cb.start()
 
-    # Operation Endpoints
+    # Operation -- POST RESTful Endpoints
     @coroutine
     def start(self, config):
         """
@@ -99,6 +99,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         self.kotekan_config = config
         yield self.post('start', **config)
 
+    # Operation -- GET RESTful Endpoints
     @coroutine
     def stop(self):
         """
@@ -109,9 +110,10 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
     @coroutine
     def kill(self):
         """
-        Kill the kotekan completely
+        Kill the kotekan process gracefully.
         """
-        yield self.get('kill')
+        result = yield self.get('kill')
+        coroutine_return(result)
 
     @coroutine
     def status(self):
@@ -138,7 +140,6 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         result = yield self.get('config')
         coroutine_return(result)
 
-    # Parameter Endpoints
     @coroutine
     def config_md5sum(self):
         """
@@ -148,28 +149,73 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         result = yield self.get('config_md5sum')
         coroutine_return(result)
 
+    # FRB Parameters -- POST RESTful Endpoints
     @coroutine
     def update_gains(self, gains_dir):
         """
-        Update CHIME/FRB beamforming kernel gains directory
+        Update CHIME/FRB/PULSAR EigenValue Gains Directory
         """
-        result = yield self.post('gain_dir', gains_dir)
+        command = {"gain_dir": gains_dir}
+        endpoints = []
+        for gpu_id in range(4):
+            endpoints.append(
+                "/gpu/gpu_{0}/frb/update_gains/{0}".format(gpu_id))
+        result = yield {gpu_id: self.post(endpoint, command)
+                        for endpoint in endpoints}
+        coroutine_return(result)
+
+    @coroutine
+    def update_north_south_beam(self, northmost_beam):
+        """
+        Update CHIME/FRB North-South Beam
+        """
+        command = {"northmost_beam": northmost_beam}
+        endpoints = []
+        for gpu_id in range(4):
+            endpoints.append(
+                "/gpu/gpu_{0}/frb/update_NS_beam/{0}".format(gpu_id))
+        result = yield {gpu_id: self.post(endpoint, command)
+                        for endpoint in endpoints}
+        coroutine_return(result)
+
+    @coroutine
+    def update_east_west_beam(self, east_west_id, east_west_beam):
+        """
+        Update CHIME/FRB East-West Beam
+        """
+        command = {"ew_id": east_west_id,
+                   "ew_beam": east_west_beam}
+        endpoints = []
+        for gpu_id in range(4):
+            endpoints.append(
+                "/gpu/gpu_{0}/frb/update_EW_beam/{0}".format(gpu_id))
+        result = yield {gpu_id: self.post(endpoint, command)
+                        for endpoint in endpoints}
         coroutine_return(result)
 
     @coroutine
     def update_beam_offset(self, offset):
         """
-        Update CHIME/FRB network process beam offset
+        Update CHIME/FRB Network Beam Offset
         """
         result = yield self.post('beam_offset', offset)
         coroutine_return(result)
 
+    # Pulsar Parameters -- POST RESTful Endpoints
     @coroutine
-    def update_pulsar_pointing(self, pulsar_pointing):
+    def update_pulsar_pointing(self, beam, ra, dec, scaling):
         """
         Update CHIME/Pulsar beam pointing
         """
-        result = "Not Implemented."
+        command = {"beam": beam,
+                   "ra": ra,
+                   "dec": dec,
+                   "scaling": scaling}
+        endpoints = []
+        for gpu_id in range(4):
+            endpoints.append("/gpu/gpu_{0}/update_pulsar/{0}".format(gpu_id))
+        result = yield {gpu_id: self.post(endpoint, command)
+                        for endpoint in endpoints}
         coroutine_return(result)
 
     # Node Endpoints
@@ -194,12 +240,22 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
 
 
 def parse_cmdline_args(argv):
-    parser = argparse.ArgumentParser(description="kotekan: kotekan client/server command line interface", epilog="""
-        """)
-    parser.add_argument('args', type=str, nargs='*', default='',  help='config name and/or command')
-    parser.add_argument('-p', '--port', default=KotekanAsyncRESTServer.DEFAULT_PORT, type=int, help="Server port")
-    parser.add_argument('-n', '--host', default='localhost', type=str, help="Server hostname")
-    parser.add_argument('-s', '--server', action='store_true', help='Start a server')
+    parser = argparse.ArgumentParser(description="Kotekan Client/Server CLI",
+                                     epilog=""" """)
+    parser.add_argument('args',
+                        type=str,
+                        nargs='*',
+                        default='',
+                        help='config name and/or command')
+    parser.add_argument('-p', '--port',
+                        default=KotekanAsyncRESTServer.DEFAULT_PORT, type=int,
+                        help="server port")
+    parser.add_argument('-n', '--host',
+                        default='localhost', type=str,
+                        help="Server hostname")
+    parser.add_argument('-s', '--server',
+                        action='store_true',
+                        help='Start a server')
     return parser.parse_args(argv)
 
 
