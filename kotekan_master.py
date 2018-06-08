@@ -124,6 +124,14 @@ class KotekanMaster(object):
             # applied against the current_config
             self.startup_config = NameSpace(config)
             self.current_config = self.startup_config
+            # Setting up logging
+            self.logging_handlers = log.setup_logging(
+                        self.startup_config.logging.dict_config,
+                        self.startup_config.logging.log_levels,
+                        base_package_name=self.startup_config.logging.base_package_name,
+                        actual_package_name=__name__.rpartition('.')[0],
+                        script_name=self.startup_config.logging.script_name,
+                        run_folder=self.run_folder)
             # Get gps_time from the gps_server
             self.log.info('%s : Retreiving GPS Time ...', self)
             self.gps_status = yield self._get_gps_time()
@@ -334,7 +342,8 @@ class KotekanMaster(object):
         """
         Start the kotekan process on all nodes.
         """
-        yield {node_name: kotekan.start(config=self.current_config.common_config.as_dict())
+        yield {node_name: kotekan.start(
+            config=self.current_config.common_config.as_dict())
                 for node_name, kotekan in self.nodes.items()}
 
     @coroutine
@@ -503,7 +512,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
             address=address,
             port=port,
             heartbeat_string='KMs',
-            heartbeat_period=3000)
+            heartbeat_period=1000)
         self.log.info("KotekanMasterAsyncRESTServer: %s:%s",
                       str(address), str(port))
         self.current_config = None
