@@ -636,9 +636,9 @@ class ChimeMaster(object):
             elements_per_file=capture_elements_per_file
             )         for node_name, node in self.raw_acq.items()]
 
-
-        self.log.info('%r: HDF5 data writer will be stopped in %f seconds' % (self, capture_duration))
-        self.call_later(capture_duration, self.stop_hdf5_capture)
+        if capture_duration:
+            self.log.info('%r: HDF5 data writer will be stopped in %f seconds' % (self, capture_duration))
+            self.call_later(capture_duration, self.stop_hdf5_capture)
 
     @coroutine
     def stop_hdf5_capture(self):
