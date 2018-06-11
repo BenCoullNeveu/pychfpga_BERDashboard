@@ -48,7 +48,7 @@ class KotekanMaster(object):
         # Default Logger
         log.setup_logging(self.DEFAULT_LOGGING)
         self.log = log.get_logger(self)
-        self.log.info("%r: Creating KotekanMaster Class Instance", self)
+        self.log.info("%r : Creating KotekanMaster Class Instance", self)
 
         # Logging Parameters -- Absolute path name to this module
         self.program = os.path.realpath(__file__)
@@ -77,7 +77,8 @@ class KotekanMaster(object):
         self.gps_time = {}
 
         # Revision Control Logging
-        self.git_version = subprocess.check_output(['git', 'rev-parse', 'HEAD'])
+        self.git_version = subprocess.check_output(
+                            ['git', 'rev-parse', 'HEAD'])
         self.log.info("%s : Program : %s", self, self.program)
         self.log.info("%s : Git Ver : %s", self, self.git_version)
 
@@ -138,8 +139,10 @@ class KotekanMaster(object):
             self.run_folder = self.startup_config.run_folder % str_args
             self.run_folder = os.path.expanduser(self.run_folder)
             self.log.info("%s : Run Folder : %s", self, self.run_folder)
-            self.current_folder = os.path.expanduser(self.startup_config.current_folder % str_args)
-            self.log.info("%s : Current Folder : %s", self, self.current_folder)
+            self.current_folder = os.path.expanduser(
+                self.startup_config.current_folder % str_args)
+            self.log.info(
+                "%s : Current Folder : %s", self, self.current_folder)
             # Create run folders
             try:
                 os.makedirs(self.run_folder)
@@ -154,23 +157,26 @@ class KotekanMaster(object):
                     os.remove(self.current_folder)
                 except OSError as e:
                     self.log.warn(
-                        "%r : Could not remove current symlink '%s'. The error is \n%s" %
+                        "%r : Could not remove current symlink '%s'.\
+                         The error is \n%s" %
                         (self, self.current_folder, e))
                 try:
                     os.symlink(self.run_folder, self.current_folder)
                 except OSError as e:
                     self.log.warning(
-                        "%r : Could not create a symlink '%s' to the run folder '%s'. The error is:\n%s" %
+                        "%r : Could not create a symlink '%s' to the run\
+                         folder '%s'. The error is:\n%s" %
                         (self, self.current_folder, self.run_folder, e))
             # Setting up logging handlers
+            self.log.info('Run Folder Again: %s', self.run_folder)
             self.logging_handlers = log.setup_logging(
                         self.startup_config.logging.dict_config,
                         self.startup_config.logging.log_levels,
                         base_package_name=self.startup_config.logging.base_package_name,
                         actual_package_name=__name__.rpartition('.')[0],
                         script_name=self.startup_config.logging.script_name,
-                        run_folder=self.run_folder % str_args )
-            self.log.info('%r : Logging Configured.'% self)
+                        run_folder=self.run_folder)
+            self.log.info('%r : Logging Configured.', self)
             # Get gps_time from the gps_server
             self.log.info('%s : Retreiving GPS Time ...', self)
             self.gps_status = yield self._get_gps_time()
@@ -205,6 +211,7 @@ class KotekanMaster(object):
         nodes = self.current_config.nodes or {}
         for node_name, node_params in nodes.items():
             self.nodes[node_name] = KotekanAsyncRESTClient(name=node_name,
+                                                           heartbeat_period=5000,
                                                            **node_params)
         self.log.info('%s : Created kotekan clients for nodes: %s',
                       self, self.nodes.keys())
@@ -260,15 +267,14 @@ class KotekanMaster(object):
         """
         self.log.info('%s : Whitelist Nodes Executed : %s', self, node_list)
         whitelisted_nodes = []
-        for node_name in node_list.strip('[').strip(']').split(','):
+        for node_name in node_list:
             # Find a node_config or use defaults.
             try:
                 node_config = self.current_config.nodes.as_dict()[node_name]
                 self.log.info('%s : Found config for node %s', self, node_name)
-            except:
+            except Exception:
                 node_config = {'hostname': node_name, 'port': 12048}
-                self.log.info('%s : Unable to find config for node %s,\
-                               using  defaults', self, node_name)
+                self.log.info('%s : Unable to find config for node %s, using  defaults', self, node_name)
             # Start a Kotekan Client for the node.
             if node_name not in self.nodes.keys():
                 self.nodes[node_name] = KotekanAsyncRESTClient(
@@ -347,28 +353,23 @@ class KotekanMaster(object):
     @coroutine
     def validate_config(self):
         running_configs = yield self.kotekan_running_config()
-        unique_configs = set(running_configs.values())
-        if len(unique_configs) != 1:
-            self.log.error('%s : KotekanMaster Config Validation Error')
-            self.log.error('%s : %s configs discovered.',
-                           self, str(len(unique_configs)))
-            result = 'FAILED'
+        if all(running_configs):
+            self.log.info('%s : KotekanMaster Config Validation Passed', self)
+            result = 'Config Validation Passed'
         else:
-            result = 'PASSED'
+            self.log.error('%s : KotekanMaster Config Validation Error')
+            result = 'Config Validation Failed'
         coroutine_return(result)
 
     @coroutine
     def validate_checksum(self):
-        config_md5sum = yield self.kotekan_master.kotekan_config_md5sum()
-        unique_checksums = set(config_md5sum.values())
-        if len(unique_checksums) != 1:
-            self.log.error('%s : KotekanMaster Checksum Validation Error')
-            self.log.error('%s : %s checksums discovered.',
-                           self, str(len(unique_checksums)))
-            result = 'FAILED'
+        config_md5sum = yield self.kotekan_config_md5sum()
+        if all(config_md5sum):
+            self.log.info('%s : KotekanMaster Checksum Validation Passed')
+            result = 'Checksum Validation Passed'
         else:
-            self.log.info('%s : KotekanMaster Checksum Passed')
-            result = 'PASSED'
+            self.log.error('%s : KotekanMaster Checksum Validation Failed')
+            result = 'Checksum Validation Failed'
         coroutine_return(result)
 
     # Kotekan Methods
@@ -551,7 +552,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
             address=address,
             port=port,
             heartbeat_string='KMs',
-            heartbeat_period=1000)
+            heartbeat_period=10000)
         self.log.info("KotekanMasterAsyncRESTServer: %s:%s",
                       str(address), str(port))
         self.current_config = None
@@ -602,7 +603,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         while True:
             # Check if the watchdog is currently enabled.
             if self.kotekan_master.watchdog_enabled:
-                print "Watching Running ..."
+                self.log.info('%s : Watchdog Running', self)
                 # Run get status from each node
                 node_status = yield self.kotekan_master.kotekan_status()
                 # Execute restarts for nodes with running==false
@@ -633,8 +634,16 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         """
         Blacklist a node[s] from being actively managed by KotekanMaster
 
-        curl -d "node_list=['csDg5']" -X POST http://localhost:54323/blacklist-node
+        curl
+        -d '{"node_list":["csDg5", "csDg6"]}'
+        -X POST
+        -H "Content-Type: application/json"
+        http://localhost:54323/blacklist-node
         """
+        print type(node_list)
+        print node_list
+        for node in node_list:
+            print node
         result = yield self.kotekan_master.blacklist_node(node_list)
         coroutine_return(result)
 
@@ -646,9 +655,15 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
 
         Parameters
         ----------
-            node_list : list-type
-                ['cnAg1', 'cnBg1']
+        curl
+        -d '{"node_list":["csDg5", "csDg6"]}'
+        -X POST
+        -H "Content-Type: application/json"
+        http://localhost:54323/whitelist-node
         """
+        print node_list
+        for node in node_list:
+            print node
         result = yield self.kotekan_master.whitelist_node(node_list)
         coroutine_return(result)
 
@@ -849,7 +864,7 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
             port=port,
             server_class=KotekanMasterAsyncRESTServer,
             heartbeat_string='KMc',
-            heartbeat_period=3000)
+            heartbeat_period=10000)
 
     # Kotekan Master Routines
     # These routines are not executed on any kotekan node but are rather

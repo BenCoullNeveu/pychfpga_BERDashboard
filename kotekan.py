@@ -77,12 +77,16 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
     """
     DEFAULT_PORT = KotekanAsyncRESTServer.DEFAULT_PORT
 
-    def __init__(self, hostname=None, port=DEFAULT_PORT, **config):
+    def __init__(self, hostname=None,
+                 port=DEFAULT_PORT,
+                 heartbeat_period=10000,
+                 **config):
         super(KotekanAsyncRESTClient, self).__init__(
             hostname=hostname,
             port=port,
+            heartbeat_period=heartbeat_period,
             # server_class=KotekanAsyncRESTServer,
-            heartbeat_string='Kc')
+            heartbeat_string=None)
         # self.name = name
         self.kotekan_config = config
         self.hostname = hostname
@@ -265,7 +269,9 @@ if __name__ == '__main__':
     ioloop.make_current()
 
     # Setup logging
-    #log.setup_logger(__name__, stderr_log_level='warning', syslog_level='debug')
+    # log.setup_logger(__name__,
+    #                  stderr_log_level='warning',
+    #                  syslog_level='debug')
     logging.getLogger().setLevel('INFO')
 
     args = parse_cmdline_args(sys.argv[1:])
