@@ -155,16 +155,16 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
 
     # FRB Parameters -- POST RESTful Endpoints
     @coroutine
-    def update_gains(self, gains_dir):
+    def update_gain_dir(self, gain_dir):
         """
         Update CHIME/FRB/PULSAR EigenValue Gains Directory
         """
-        command = {"gain_dir": gains_dir}
+        command = {"gain_dir": gain_dir}
         endpoints = []
         for gpu_id in range(4):
             endpoints.append(
-                "/gpu/gpu_{0}/frb/update_gains/{0}".format(gpu_id))
-        result = yield {gpu_id: self.post(endpoint, command)
+                "gpu/gpu_{0}/frb/update_gains/{0}".format(gpu_id))
+        result = yield {gpu_id: self.post(endpoint, **command)
                         for endpoint in endpoints}
         coroutine_return(result)
 
@@ -177,8 +177,8 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         endpoints = []
         for gpu_id in range(4):
             endpoints.append(
-                "/gpu/gpu_{0}/frb/update_NS_beam/{0}".format(gpu_id))
-        result = yield {gpu_id: self.post(endpoint, command)
+                "gpu/gpu_{0}/frb/update_NS_beam/{0}".format(gpu_id))
+        result = yield {gpu_id: self.post(endpoint, **command)
                         for endpoint in endpoints}
         coroutine_return(result)
 
@@ -192,8 +192,8 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         endpoints = []
         for gpu_id in range(4):
             endpoints.append(
-                "/gpu/gpu_{0}/frb/update_EW_beam/{0}".format(gpu_id))
-        result = yield {gpu_id: self.post(endpoint, command)
+                "gpu/gpu_{0}/frb/update_EW_beam/{0}".format(gpu_id))
+        result = yield {gpu_id: self.post(endpoint, **command)
                         for endpoint in endpoints}
         coroutine_return(result)
 
@@ -202,7 +202,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         """
         Update CHIME/FRB Network Beam Offset
         """
-        result = yield self.post('beam_offset', offset)
+        result = yield self.post('beam_offset', **offset)
         coroutine_return(result)
 
     # Pulsar Parameters -- POST RESTful Endpoints
@@ -217,8 +217,8 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
                    "scaling": scaling}
         endpoints = []
         for gpu_id in range(4):
-            endpoints.append("/gpu/gpu_{0}/update_pulsar/{0}".format(gpu_id))
-        result = yield {gpu_id: self.post(endpoint, command)
+            endpoints.append("gpu/gpu_{0}/update_pulsar/{0}".format(gpu_id))
+        result = yield {gpu_id: self.post(endpoint, **command)
                         for endpoint in endpoints}
         coroutine_return(result)
 

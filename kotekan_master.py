@@ -80,10 +80,10 @@ class KotekanMaster(object):
 
         # Synchronization Parameters
         # True all nodes in the array are running the same config
-        self.array_sync = None
+        self.array_sync = {}
         # True if nodes are running the same config as the one
         # tracked by KotekanMaster
-        self.confg_sync = None
+        self.config_sync = {}
 
         # Revision Control Logging
         self.git_version = subprocess.check_output(
@@ -367,11 +367,11 @@ class KotekanMaster(object):
         self.log.info('%s : KotekanMaster Config Validation Status', self)
         result={}
         if all(running_configs):
-            self.log.info('%s : Config Synchronization -- True')
+            self.log.info('%s : Config Synchronization -- True', self)
             self.config_sync = True
             result['config_sync'] = True
         else:
-            self.log.info('%s : Config Synchronization -- False')
+            self.log.info('%s : Config Synchronization -- False', self)
             self.config_sync = False
             result['config_sync'] = False
         coroutine_return(result)
@@ -529,16 +529,22 @@ class KotekanMaster(object):
         self.log.debug(result)
         coroutine_return(result)
 
-    # Parameter Based Endpoints
+    # Parameter POST Based Endpoints
     @coroutine
-    def update_gains(self, gains_dir):
+    def update_gain_dir(self, gain_dir):
         """
         POST the new gain directory for the beamformingKernel on all nodes
         currently managed by kotekan_master.
         """
-        self.log.info('%s : Parameter gains_dir update: %s', self, gains_dir)
-        self.current_config.common_config.gpu.gains_dir = gains_dir
-        result = yield {node_name: kotekan.update_gains(gains_dir)
+        self.log.info('%s : Parameter gains_dir updated to: %s',
+                      self, gain_dir)
+        # TODO: I am staticly manipulating the config for each gpu.
+        # This should be automated.
+        self.current_config.common_config.gpu.gpu_0.gain_dir = gain_dir
+        self.current_config.common_config.gpu.gpu_1.gain_dir = gain_dir
+        self.current_config.common_config.gpu.gpu_2.gain_dir = gain_dir
+        self.current_config.common_config.gpu.gpu_3.gain_dir = gain_dir
+        result = yield {node_name: kotekan.update_gain_dir(gain_dir)
                         for node_name, kotekan in self.nodes.items()}
         coroutine_return(result)
 
@@ -548,10 +554,53 @@ class KotekanMaster(object):
         POST the new beam_offset for frbNetworkProcess on all nodes currently
         managed by kotekan_master.
         """
-        self.log.info('%s : Parameter beam_offset update: %s', self, beam_offset)
-        self.current_config.common_config.frb.network.beam_offset = beam_offset
+        self.log.info('%s : Parameter beam_offset updated to : %s',
+                      self, beam_offset)
+        self.current_config.common_config.frb.buffer_read.beam_offset = beam_offset
         result = yield {node_name: kotekan.update_beam_offset(beam_offset)
                         for node_name, kotekan in self.nodes.items()}
+        coroutine_return(result)
+
+    @coroutine
+    def update_north_south_beam(self, northmost_beam):
+        """
+        Update CHIME/FRB North-South Beam
+        """
+        self.log.info('%s : Parameter northmost_beam updated to : %s',
+                      self, northmost_beam)
+        self.current_config.common_config.gpu.gpu_0.northmost_beam = northmost_beam
+        self.current_config.common_config.gpu.gpu_1.northmost_beam = northmost_beam
+        self.current_config.common_config.gpu.gpu_2.northmost_beam = northmost_beam
+        self.current_config.common_config.gpu.gpu_3.northmost_beam = northmost_beam
+        result = yield{node_name: kotekan.update_north_south_beam(northmost_beam)
+                       for node_name, kotekan in self.nodes.items()}
+        coroutine_return(result)
+
+    @coroutine
+    def update_east_west_beam(self, east_west_id, east_west_beam):
+        """
+        Update CHIME/FRB East-West Beam
+        """
+        self.log.info('%s : Parameter east_east_id was updated to : %s',
+                      self, east_west_id)
+        self.log.info('%s : paramter east_west_beam updated to : %s',
+                      self, east_west_beam)
+        result = yield{node_name: kotekan.update_east_west_beam(east_west_id,
+                                                                east_west_beam)
+                       for node_name, kotekan in self.nodes.items()}
+        coroutine_return(result)
+
+    @coroutine
+    def update_pulsar_pointing(self, beam, ra, dec, scaling):
+        """
+        Update CHIME/PSR Beam Pointing
+        """
+        self.log.info('%s : Pulsar Parameters Updated', self)
+        self.log.info('%s : Beam %s, RA %s, DEC %s, Scaling %s',
+                      self, beam, ra, dec, scaling)
+        result = yield{node_name: kotekan.update_pulsar_pointing(beam, ra,
+                                                                 dec, scaling)
+                       for node_name, kotekan in self.nodes.items()}
         coroutine_return(result)
 
     # Node Methods
@@ -650,7 +699,9 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
                 # Update watchdog statistics
                 watchdog_stats = yield self.kotekan_master.update_watchdog_stats(restart_list)
 
-                #Validate Checksums
+                # Validate Checksums
+                checksum_validate = yield self.kotekan_master.validate_checksum()
+
                 self.log.info('%s : KotekanMaster Watchdog Stats', self)
                 self.log.info('%s : %s', self, watchdog_stats)
                 self.log.info('%s : Watchdog sleeping for %s seconds',
@@ -819,13 +870,18 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
 
     # Parameter Endpoints.
     @coroutine
-    @endpoint('update-gains')
-    def update_gains(self, handler, gains_dir):
+    @endpoint('update-gain-dir')
+    def update_gain_dir(self, handler, gain_dir):
         """
         POST to update the gain_dir parameter.
+
+        curl
+        -d '{"gain_dir": "dir"}'
+        -X POST
+        -H "Content-Type: application/json"
+        http://localhost:54323/update-gain-dir
         """
-        print ("GAINS DIR : %s", gains_dir)
-        result = yield self.kotekan_master.update_gains(gains_dir)
+        result = yield self.kotekan_master.update_gain_dir(gain_dir)
         coroutine_return(result)
 
     @coroutine
@@ -833,17 +889,48 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
     def update_beam_offset(self, handler, beam_offset):
         """
         POST to update the beam_offset parameter.
+
+        curl
+        -d '{"beam_offset": <int> }'
+        -X POST
+        -H "Content-Type: application/json"
+        http://localhost:54323/update-beam-offset
         """
         result = yield self.kotekan_master.update_beam_offset(beam_offset)
         coroutine_return(result)
 
     @coroutine
+    @endpoint('update-north-south-beam')
+    def update_north_south_beam(self, handler, northmost_beam):
+        """
+        POST to update CHIME/FRB northmost_beam parameter
+
+        curl
+        -d '{"northmost_beam": float }'
+        -X POST
+        -H "Content-Type: application/json"
+        http://localhost:54323/update-north-south-beam
+        """
+        result = yield self.kotekan_master.update_north_south_beam(northmost_beam)
+        coroutine_return(result)
+
+    @coroutine
+    @endpoint('update-east-west-beam')
+    def update_east_west_beam(self, handler, east_west_id, east_west_beam):
+        """
+        POST to update CHIME/FRB East-West Beam
+        """
+
+    @coroutine
     @endpoint('update-pulsar-pointing')
-    def update_pulsar_pointing(self, handler, pulsar_pointing):
+    def update_pulsar_pointing(self, handler, beam, ra, dec, scaling):
         """
-        POST to update the pulsar_pointing parameter.
+        POST to update CHIME/PSR pulsar beam pointing.
         """
-        result = "Not Implemented."
+        result = yield self.kotekan_master.update_pulsar_pointing(beam,
+                                                                  ra,
+                                                                  dec,
+                                                                  scaling)
         coroutine_return(result)
 
     # Node RESTful Endpoints
@@ -1038,27 +1125,46 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
     # Parameter Endpoints
     #   All parameter endpoints have a corresponding value in the kotekan config.
     @coroutine
-    def update_gains(self, gains_dir):
+    def update_gain_dir(self, gain_dir):
         """
-        Update FRB Gains directory on all nodes.
+        Update CHIME/FRB Gains directory on all nodes.
         """
-        result = yield self.post('update-gains', gains_dir)
+        result = yield self.post('update-gain-dir', gain_dir)
+        coroutine_return(result)
+
+    @coroutine
+    def update_east_west_beam(self, east_west_id, east_west_beam):
+        """
+        Update CHIME/FRB East West Beam Spacing
+        """
+        result = yield self.post('update-east-west-beam',
+                                 east_west_id, east_west_beam)
+        coroutine_return(result)
+
+    @coroutine
+    def update_north_south_beam(self, northmost_beam):
+        """
+        Update CHIME/FRB North South Beam Spacing
+        """
+        result = yield self.post('update-north-south-beam',
+                                 northmost_beam)
         coroutine_return(result)
 
     @coroutine
     def update_beam_offset(self, beam_offset):
         """
-        Update FRB Beam Offset on all nodes.
+        Update CHIME/FRB Beam Offset on all nodes.
         """
         result = yield self.post('update-beam-offset', beam_offset)
         coroutine_return(result)
 
     @coroutine
-    def config_checksum(self):
+    def update_pulsar_pointing(self, beam, ra, dec, scaling):
         """
-        Get the md5sum of the current running configuration
+        Update CHIME/PSR Beam Pointing
         """
-        result = 'Not Implemented.'
+        result = yield self.post('update-pulsar-pointing',
+                                 beam, ra, dec, scaling)
         coroutine_return(result)
 
     # Node Routines
