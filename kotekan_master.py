@@ -11,6 +11,8 @@ import subprocess
 import time
 import requests
 import log
+import json
+import hashlib
 from pychfpga import NameSpace, load_yaml_config, merge_dict
 from kotekan import KotekanAsyncRESTClient
 from rest import AsyncRESTClient, AsyncRESTServer, endpoint
@@ -68,13 +70,20 @@ class KotekanMaster(object):
 
         # Watchdog parameters
         self.watchdog_enabled = False
-        self.watchdog_interval = 10
+        self.watchdog_interval = 60
         self.watchdog_stats = {}
 
         # GPS Parameters
         self.gps_status = {}
         self.gps_server = 'http://carillon.chime:54321/get-frame-time'
         self.gps_time = {}
+
+        # Synchronization Parameters
+        # True all nodes in the array are running the same config
+        self.array_sync = None
+        # True if nodes are running the same config as the one
+        # tracked by KotekanMaster
+        self.confg_sync = None
 
         # Revision Control Logging
         self.git_version = subprocess.check_output(
@@ -241,12 +250,14 @@ class KotekanMaster(object):
         Current status of services KotekanMaster Status
         """
         result = {'state': self.state,
-                  'current_config': self.current_config.as_dict(),
+                  'current_config': self.current_config.common_config.as_dict(),
                   'nodes': self.nodes.keys(),
                   'blacklist_nodes': self.blacklist_nodes,
                   'watchdog_enabled': self.watchdog_enabled,
                   'watchdog_interval': self.watchdog_interval,
                   'watchdog_stats': self.watchdog_stats,
+                  'array_sync': self.array_sync,
+                  'config_sync': self.config_sync,
                   'gps_server': self.gps_server,
                   'gps_status': self.gps_status,
                   'gps_time': self.gps_time,
@@ -353,23 +364,50 @@ class KotekanMaster(object):
     @coroutine
     def validate_config(self):
         running_configs = yield self.kotekan_running_config()
+        self.log.info('%s : KotekanMaster Config Validation Status', self)
+        result={}
         if all(running_configs):
-            self.log.info('%s : KotekanMaster Config Validation Passed', self)
-            result = 'Config Validation Passed'
+            self.log.info('%s : Config Synchronization -- True')
+            self.config_sync = True
+            result['config_sync'] = True
         else:
-            self.log.error('%s : KotekanMaster Config Validation Error')
-            result = 'Config Validation Failed'
+            self.log.info('%s : Config Synchronization -- False')
+            self.config_sync = False
+            result['config_sync'] = False
         coroutine_return(result)
 
     @coroutine
     def validate_checksum(self):
         config_md5sum = yield self.kotekan_config_md5sum()
+        dynamic_config = json.dumps(self.current_config.common_config.as_dict(),
+                                    sort_keys=True, separators=(',', ':'))
+        _md5 = hashlib.md5()
+        _md5.update(dynamic_config)
+        dynamic_md5sum = _md5.hexdigest()
+
+        result = {}
+        self.log.info('%s : KotekanMaster Checksum Validation Status', self)
+        # Check if the array is synchronized.
         if all(config_md5sum):
-            self.log.info('%s : KotekanMaster Checksum Validation Passed')
-            result = 'Checksum Validation Passed'
+            self.log.info('%s : Array Synchronization --  True', self)
+            self.array_sync = True
+            result['array_sync'] = True
         else:
-            self.log.error('%s : KotekanMaster Checksum Validation Failed')
-            result = 'Checksum Validation Failed'
+            self.log.error('%s : Array Synchronization -- False', self)
+            self.array_sync = False
+            result['array_sync'] = False
+        # Check if the array config and the KotekanMaster config are the same.
+        self.log.info('%s : Node MD5Sum : %s',
+                      self, config_md5sum[config_md5sum.keys()[0]]['md5sum'])
+        self.log.info('%s : KM   MD5Sum : %s', self, dynamic_md5sum)
+        if config_md5sum[config_md5sum.keys()[0]]['md5sum'] == dynamic_md5sum:
+            self.log.info('%s : Config Synchronization -- True', self)
+            self.config_sync = False
+            result['config_sync'] = True
+        else:
+            self.log.info('%s : Config Synchronization -- False', self)
+            self.config_sync = False
+            result['config_sync'] = False
         coroutine_return(result)
 
     # Kotekan Methods
@@ -410,7 +448,7 @@ class KotekanMaster(object):
         # Start the nodes
         for node_name, kotekan in self.nodes.items():
             if node_name in restart_list:
-                self.log.info('Restart kotekan on %s', node_name)
+                self.log.info('Restarting kotekan on %s', node_name)
                 kotekan.start(
                     config=self.current_config.common_config.as_dict())
         coroutine_return(restart_list)
@@ -611,6 +649,8 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
                                         node_status)
                 # Update watchdog statistics
                 watchdog_stats = yield self.kotekan_master.update_watchdog_stats(restart_list)
+
+                #Validate Checksums
                 self.log.info('%s : KotekanMaster Watchdog Stats', self)
                 self.log.info('%s : %s', self, watchdog_stats)
                 self.log.info('%s : Watchdog sleeping for %s seconds',
@@ -784,6 +824,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         """
         POST to update the gain_dir parameter.
         """
+        print ("GAINS DIR : %s", gains_dir)
         result = yield self.kotekan_master.update_gains(gains_dir)
         coroutine_return(result)
 
