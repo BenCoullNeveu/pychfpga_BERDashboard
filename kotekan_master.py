@@ -188,11 +188,11 @@ class KotekanMaster(object):
             self.log.info('%r : Logging Configured.', self)
             # Get gps_time from the gps_server
             self.log.info('%s : Retreiving GPS Time ...', self)
-            self.gps_status = yield self._get_gps_time()
-
-            # TODO: Put this is a sysexit() try/Except.
-            # Append current_config with a new key called gps_time
-
+            try:
+                self.gps_status = yield self._get_gps_time()
+            except Exception:
+                self.log.error('%s : Unable to retreive GPS Time.', self)
+            # Append GPS time to the config.
             self.current_config.common_config.gps_time = self.gps_time
             self.log.info('%s : Creating Kotekan Node Clients ...', self)
             yield self._create_node_clients()
