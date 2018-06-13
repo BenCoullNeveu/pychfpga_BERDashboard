@@ -94,6 +94,20 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         # self.ping_cb = tornado.ioloop.PeriodicCallback(self.ping, 60e3)
         # self.ping_cb.start()
 
+    @coroutine
+    def _get(self, endpoint):
+        try:
+            yield self.get(endpoint)
+        except Exception as e:
+            yield str(e)
+
+    @coroutine
+    def _post(self, endpoint, args):
+        try:
+            yield self._post(endpoint, **args)
+        except Exception as e:
+            yield str(e)
+
     # Operation -- POST RESTful Endpoints
     @coroutine
     def start(self, config):
@@ -101,7 +115,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         Start a kotekan process with a provided config
         """
         self.kotekan_config = config
-        yield self.post('start', **config)
+        yield self._post('start', **config)
 
     # Operation -- GET RESTful Endpoints
     @coroutine
@@ -109,14 +123,14 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         """
         Stop a kotekan threads.
         """
-        yield self.get('stop')
+        yield self._get('stop')
 
     @coroutine
     def kill(self):
         """
         Kill the kotekan process gracefully.
         """
-        result = yield self.get('kill')
+        result = yield self._get('kill')
         coroutine_return(result)
 
     @coroutine
@@ -124,7 +138,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         """
         GET status from a kotekan process.
         """
-        result = yield self.get('status')
+        result = yield self._get('status')
         coroutine_return(result)
 
     @coroutine
@@ -133,7 +147,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         Returns the current kotekan version information,
         including build options.
         """
-        result = yield self.get('version')
+        result = yield self._get('version')
         coroutine_return(result)
 
     @coroutine
@@ -141,7 +155,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         """
         Returns the current running kotekan config.
         """
-        result = yield self.get('config')
+        result = yield self._get('config')
         coroutine_return(result)
 
     @coroutine
@@ -150,7 +164,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         Returns an MD5 hash of the config file (based on the json string with
         no spaces). Only exists if kotekan was build with OpenSSL support.
         """
-        result = yield self.get('config_md5sum')
+        result = yield self._get('config_md5sum')
         coroutine_return(result)
 
     # FRB Parameters -- POST RESTful Endpoints
@@ -164,7 +178,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         for gpu_id in range(4):
             endpoints.append(
                 "gpu/gpu_{0}/frb/update_gains/{0}".format(gpu_id))
-        result = yield {gpu_id: self.post(endpoint, **command)
+        result = yield {gpu_id: self._post(endpoint, **command)
                         for endpoint in endpoints}
         coroutine_return(result)
 
@@ -178,7 +192,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         for gpu_id in range(4):
             endpoints.append(
                 "gpu/gpu_{0}/frb/update_NS_beam/{0}".format(gpu_id))
-        result = yield {gpu_id: self.post(endpoint, **command)
+        result = yield {gpu_id: self._post(endpoint, **command)
                         for endpoint in endpoints}
         coroutine_return(result)
 
@@ -193,7 +207,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         for gpu_id in range(4):
             endpoints.append(
                 "gpu/gpu_{0}/frb/update_EW_beam/{0}".format(gpu_id))
-        result = yield {gpu_id: self.post(endpoint, **command)
+        result = yield {gpu_id: self._post(endpoint, **command)
                         for endpoint in endpoints}
         coroutine_return(result)
 
@@ -202,7 +216,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         """
         Update CHIME/FRB Network Beam Offset
         """
-        result = yield self.post('beam_offset', **offset)
+        result = yield self._post('beam_offset', **offset)
         coroutine_return(result)
 
     # Pulsar Parameters -- POST RESTful Endpoints
@@ -218,7 +232,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         endpoints = []
         for gpu_id in range(4):
             endpoints.append("gpu/gpu_{0}/update_pulsar/{0}".format(gpu_id))
-        result = yield {gpu_id: self.post(endpoint, **command)
+        result = yield {gpu_id: self._post(endpoint, **command)
                         for endpoint in endpoints}
         coroutine_return(result)
 

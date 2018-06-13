@@ -1207,7 +1207,7 @@ def main():
     # TODO: Add Configuration Path Here
     # TODO: Add click based CLI similar to kotekan_master
     config = "config.yaml"
-    log.setup_basic_logging('DEBUG')
+    log.setup_basic_logging('INFO')
     client, server = run_client(config,
                                 KotekanMasterAsyncRESTServer,
                                 KotekanMasterAsyncRESTClient,
