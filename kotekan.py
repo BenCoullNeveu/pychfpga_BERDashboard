@@ -94,19 +94,26 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         # self.ping_cb = tornado.ioloop.PeriodicCallback(self.ping, 60e3)
         # self.ping_cb.start()
 
+    # Client Helper Functions
     @coroutine
     def _get(self, endpoint):
+        result = {}
         try:
-            yield self.get(endpoint)
+            result = yield self.get(endpoint)
+        except RuntimeError as e:
+            result = {"RuntimeError": "{0}".format(str(e))}
         except Exception as e:
-            yield str(e)
+            result = {"UnknownError": "{0}".format(str(e))}
+        coroutine_return(result)
 
     @coroutine
-    def _post(self, endpoint, args):
+    def _post(self, endpoint, **arguments):
+        result = {}
         try:
-            yield self._post(endpoint, **args)
+            result = yield self.post(endpoint, **arguments)
         except Exception as e:
-            yield str(e)
+            result = {"UnknownError": "{0}".format(str(e))}
+        coroutine_return(result)
 
     # Operation -- POST RESTful Endpoints
     @coroutine
