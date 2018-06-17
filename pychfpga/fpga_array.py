@@ -63,7 +63,6 @@ from pychfpga.gpu_node import GpuNodeHandler
 from pychfpga.namespace import NameSpace, merge_dict
 from pychfpga.conf import load_yaml_config# import logging.handlers
 
-
 from pychfpga.core.icecore.session import load_session as load_yaml
 
 
@@ -1395,6 +1394,42 @@ class FPGAArray(object):
 
         if when is not None:
             self.switch_gains(bank=bank, when=when)
+
+    @async
+    def compute_gains(self, enable=True, slots=None, noise_injection=None):
+        """ Compute the gains of the SCALER module so that the conversion of the FFT output
+        to (4+4) bit complex values stays within range for the current signal conditions.
+
+        This method will have to be rewritten to use data obtained over REST-based raw data receivers.
+        """
+
+        # Make sure gain calculation is enabled
+        if not enable:
+            return
+
+        # Try to import gain computation module
+        try:
+            import calculate_gains
+        except ImportError:
+            self.logger.info('Could not import calculate_gains. Missing timestream_receiver in path?')
+            return
+
+        # Setup noise injection using noise injection parameters that are specific to the gain calculation operation.
+        if noise_injection is not None:
+            for source_name, source_params in noise_injection.items():
+                if source_params.board:
+                    self.logger.info("Setting gain computation noise injection for source '%s' with parameters %s" %
+                                    (source_name, source_params))
+                    self.set_noise_injection(local_sync=True, **source_params)
+
+        # Loop over boards and compute gains
+        self.logger.info("Computing SCALAR gains.")
+        for ib in self.ib:
+            ch_id = ib.get_id()
+            crate, slot_0based = ch_id[0], ch_id[1]
+            if (slots is None) or slots[crate][slot_0based]:
+                calculate_gains.calculate_gains(ib)
+                yield async_moment
 
     def get_next_gain_bank(self):
         """
