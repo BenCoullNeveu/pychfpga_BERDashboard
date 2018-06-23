@@ -401,15 +401,18 @@ def create_templates_from_file(filename, obj1, obj2):
 
     for ind, kval in zip(index, klist):
         if kval < k_upper:
-            hist += np.histogram(data[ind], bins=obj1._nbins, range=obj1._range)[0]
-            spec += np.abs(np.fft.rfft(data[ind])[0:obj2._nfreq])**2
+            y = np.array(data[ind])
+            y -= np.mean(y)
+
+            hist += np.histogram(y, bins=obj1._nbins, range=obj1._range)[0]
+            spec += np.abs(np.fft.rfft(y * obj2._window)[0:obj2._nfreq])**2
             count += 1
 
     hist /= float(count)
     spec /= float(count)
 
     obj1.Temp_Hist = hist
-    obj2.Temp_fft = 2.0 * SCALE_FACTOR * spec / (2.0 * obj2._nfreq)**2
+    obj2.Temp_fft = 2.0 * SCALE_FACTOR * obj2._window_norm * spec / (2.0 * obj2._nfreq)**2
 
     hd.close()
 
@@ -442,15 +445,18 @@ def create_templates_from_data(data, obj1, obj2):
 
     for ind, kval in zip(index, klist):
         if kval < k_upper:
-            hist += np.histogram(data[ind[0]][ind[1]][1], bins=obj1._nbins, range=obj1._range)[0]
-            spec += np.abs(np.fft.rfft(data[ind[0]][ind[1]][1])[0:obj2._nfreq])**2
+            y = np.array(data[ind[0]][ind[1]][1])
+            y -= np.mean(y)
+
+            hist += np.histogram(y, bins=obj1._nbins, range=obj1._range)[0]
+            spec += np.abs(np.fft.rfft(y * obj2._window)[0:obj2._nfreq])**2
             count += 1
 
     hist /= float(count)
     spec /= float(count)
 
     obj1.Temp_Hist = hist
-    obj2.Temp_fft = 2.0 * SCALE_FACTOR * spec / (2.0 * obj2._nfreq)**2
+    obj2.Temp_fft = 2.0 * SCALE_FACTOR * obj2._window_norm * spec / (2.0 * obj2._nfreq)**2
 
 
 def create_templates(data, obj1, obj2):
@@ -471,10 +477,14 @@ def create_templates(data, obj1, obj2):
 class FFT_template_test():
 
     _nfreq = 1024
+    _beta = 2
 
     def __init__(self):
         self.spectrum = dict()
         self.corr = dict()
+
+        self._window = np.kaiser(2 * self._nfreq, self._beta)
+        self._window_norm = float(self._window.size) / np.sum(self._window**2)
 
     def load_FFT_Template(self):
         dirname = os.path.join(os.path.dirname(os.path.realpath(__file__)), 'data')
@@ -484,13 +494,15 @@ class FFT_template_test():
                 Temp_fft.append(float(line.rstrip()))
         self.Temp_fft = np.array(Temp_fft)
 
-    def corr_coeff_fft(self, data, crate, slot, channel):
+    def corr_coeff_fft(self, data, crate, slot, channel, mu):
         if len(data) == 0:
             self.spectrum[FMT.format(crate,slot,channel)] = None
             self.corr[FMT.format(crate,slot,channel)] = None
 
         else:
-            spec = np.median(np.abs(np.fft.rfft(np.array(data), axis=-1))**2, axis=0)[0:self._nfreq]
+
+            windowed_data = (np.array(data) - mu) * self._window[np.newaxis, :]
+            spec = self._window_norm * np.median(np.abs(np.fft.rfft(windowed_data, axis=-1))**2, axis=0)[0:self._nfreq]
 
             # Save in units of mW at ADC input
             self.spectrum[FMT.format(crate,slot,channel)] = 2.0 * SCALE_FACTOR * spec / (2.0 * self._nfreq)**2
@@ -498,10 +510,11 @@ class FFT_template_test():
             # Align continuum with the template
             spec = spec * (np.median(self.Temp_fft) / np.median(spec))  #This makes continuum part aligned
 
-            specm = np.power( signal.medfilt(spec, kernel_size=7), 0.2)
-            tempm = np.power(self.Temp_fft, 0.2)
+            specm = np.power( signal.medfilt(spec, kernel_size=7), 0.2)[1:]
+            tempm = np.power(self.Temp_fft, 0.2)[1:]
             corr = np.correlate(specm, tempm)[0] / (np.linalg.norm(specm) * np.linalg.norm(tempm))
             self.corr[FMT.format(crate,slot,channel)] = corr
+
 
 #-------------------------------------------------------------------------------
 #-----------------------Histogram Test------------------------------------------
@@ -815,7 +828,7 @@ def main(input_files, output_dir=None, output_csv=True, output_plot=True, output
         DATA.analyze_adc_input(ch,crate,slot,channel)
         mu = DATA.mean[FMT.format(crate,slot,channel)]
         Test_1.corr_coeff_hist(ch,crate,slot,channel,mu)
-        Test_2.corr_coeff_fft(ch,crate,slot,channel)
+        Test_2.corr_coeff_fft(ch,crate,slot,channel,mu)
 
     Threshold_1 = threshold(Test_1.corr)
     Threshold_2 = threshold(Test_2.corr)

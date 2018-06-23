@@ -83,7 +83,7 @@ class FlagCorrInputArchive(Hdf5Archive):
         self.output_suffix = output_suffix
 
         # Set attributes
-        attrs = {'instrument':instrument, 'version':__version__}
+        attrs = {'instrument_name':instrument, 'version':__version__}
         if combine is not None:
             attrs['combine'] = np.array(combine)
 
@@ -96,7 +96,7 @@ class FlagCorrInputArchive(Hdf5Archive):
     def get_output_file(self, smp, **kwargs):
         """ Defines the filenaming conventions for the archive files:
 
-            {output_dir}/{YYYYMMDD}T{HHMMSS}Z_{instrument}_{output_suffix}/{SSSSSSS}.h5
+            {output_dir}/{YYYYMMDD}T{HHMMSS}Z_{instrument_name}_{output_suffix}/{SSSSSSSS}.h5
 
         Parameters
         ----------
@@ -112,14 +112,14 @@ class FlagCorrInputArchive(Hdf5Archive):
         if not 'datetime' in kwargs:
             RuntimeError("Must include datetime in call to write.")
 
-        output_dir = os.path.join(self.output_dir, '_'.join([kwargs['datetime'], self.attrs['instrument'], self.output_suffix]))
+        output_dir = os.path.join(self.output_dir, '_'.join([kwargs['datetime'], self.attrs['instrument_name'], self.output_suffix]))
         mkdir(output_dir)
 
         # Determine filename
         start_time = datetime_to_unix(datetime.datetime.strptime(kwargs['datetime'], "%Y%m%dT%H%M%SZ"))
         seconds_elapsed = smp - start_time
 
-        output_file = os.path.join(output_dir, "%07d.h5" % seconds_elapsed)
+        output_file = os.path.join(output_dir, "%08d.h5" % seconds_elapsed)
 
         return output_file
 
@@ -136,7 +136,7 @@ class FlagRawWriter(Hdf5Writer):
         'time': {'dtype': np.float64},
         'input': {'dtype': str},
         'lsb': {'dtype': np.int8},
-        'freq': {'dtype': np.float32, 'binsize':4}
+        'freq': {'dtype': np.float32}
     }
 
     _dataset_spec = {
@@ -163,7 +163,7 @@ class FlagRawWriter(Hdf5Writer):
         'spectrum_template': {
             'axes': ['time', 'freq'],
             'dtype': np.float32,
-            'metric': True,
+            'metric': False,
         },
         'nframe': {
             'axes': ['time', 'input'],
@@ -213,7 +213,7 @@ class FlagRawWriter(Hdf5Writer):
         'spectrum': {
             'axes': ['time', 'input', 'freq'],
             'dtype': np.float32,
-            'metric': True,
+            'metric': False,
         },
         'spectrum_corr_coeff': {
             'axes': ['time', 'input'],
@@ -262,7 +262,7 @@ class FlagRawWriter(Hdf5Writer):
         self.output_suffix = output_suffix
 
         # Set attributes
-        self.set_attrs(**{'instrument':instrument, 'version':__version__})
+        self.set_attrs(**{'instrument_name':instrument, 'version':__version__})
 
         # Set metric name
         self._metric_name = 'rawflag'
@@ -271,7 +271,7 @@ class FlagRawWriter(Hdf5Writer):
     def get_output_file(self, smp, **kwargs):
         """ Defines the filenaming conventions for the archive files:
 
-            {output_dir}/{YYYYMMDD}T{HHMMSS}Z_{instrument}_{output_suffix}/{SSSSSSS}.h5
+            {output_dir}/{YYYYMMDD}T{HHMMSS}Z_{instrument_name}_{output_suffix}/{SSSSSSSS}.h5
 
         Parameters
         ----------
@@ -288,14 +288,14 @@ class FlagRawWriter(Hdf5Writer):
             RuntimeError("Must include raw acquisition filename in call to write.")
 
         base_prefix = os.path.basename(os.path.dirname(kwargs['filename']))[0:16]
-        output_dir = os.path.join(self.output_dir, '_'.join([base_prefix, self.attrs['instrument'], self.output_suffix]))
+        output_dir = os.path.join(self.output_dir, '_'.join([base_prefix, self.attrs['instrument_name'], self.output_suffix]))
         mkdir(output_dir)
 
         # Determine filename
         start_time = datetime_to_unix(datetime.datetime.strptime(base_prefix, "%Y%m%dT%H%M%SZ"))
         seconds_elapsed = smp - start_time
 
-        output_file = os.path.join(output_dir, "%07d.h5" % seconds_elapsed)
+        output_file = os.path.join(output_dir, "%08d.h5" % seconds_elapsed)
 
         return output_file
 

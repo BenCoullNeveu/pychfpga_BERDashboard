@@ -6,7 +6,7 @@ flaginput:
     output_suffix: 'flaginput'
     metric_encoding: 'gzip'
     num_days_lookback: 14
-    max_metrics_size: 20
+    always_return_metrics: True
     max_file_size: 1000000000
     max_threadpool_workers: 8
     sources_in_buffer: False
@@ -27,12 +27,16 @@ flaginput:
         upper_limit: 23.5
         num_consecutive_bad: 1
         num_consecutive_good: 8
+        excludes:
+            cadence: 43200.0
+            sources: {'sun': 1800.0}
     raw:
         cadence: 40.0
         acq_dir: '/mnt/gong/archive'
         acq_suffix: 'rawadc'
         output_dir: '/data/rawflag'
         output_suffix: 'rawflag'
+        always_return_metrics: True
         max_file_size: 1000000000
         start_time: 
         lifo: False

@@ -25,8 +25,7 @@ from pychfpga import OrderedSetLifoQueue, OrderedSetFifoQueue
 from rest import AsyncRESTClient, AsyncRESTServer
 from rest import coroutine, coroutine_return, endpoint, run_client
 
-from ch_util.ephemeris import datetime_to_unix, timestr_to_datetime
-from ch_util import tools, layout
+from ch_util import tools, layout, ephemeris
 
 from version import __version__
 from containers import mkdir, FlagCorrInputArchive, FlagRawWriter, ControlFlag
@@ -54,7 +53,7 @@ def filename_to_datetime(filename):
     """ Determines the datetime from the acquistion filename.
     """
 
-    acq_date = timestr_to_datetime(os.path.basename(os.path.dirname(filename)))
+    acq_date = ephemeris.timestr_to_datetime(os.path.basename(os.path.dirname(filename)))
     file_date = acq_date + datetime.timedelta(seconds=int(os.path.splitext(os.path.basename(filename))[0]))
 
     return file_date
@@ -67,16 +66,16 @@ def ensure_unix(val):
         return val
 
     elif isinstance(val, basestring):
-        return datetime_to_unix(timestr_to_datetime(val))
+        return ephemeris.datetime_to_unix(ephemeris.timestr_to_datetime(val))
 
     elif isinstance(val, datetime.datetime):
-        return datetime_to_unix(val)
+        return ephemeris.datetime_to_unix(val)
 
     elif isinstance(val, dict):
-        return datetime_to_unix(datetime.datetime(**val))
+        return ephemeris.datetime_to_unix(datetime.datetime(**val))
 
     elif isinstance(val, tuple) or isinstance(val, list):
-        return datetime_to_unix(datetime.datetime(*val))
+        return ephemeris.datetime_to_unix(datetime.datetime(*val))
 
     else:
         ValueError("Do not recognize %.32r as time." % type(val))
@@ -160,9 +159,9 @@ class FlagCorrInput(object):
         max_file_size:  int
             Maximum file size in bits.
 
-        max_metrics_size:  int
-            Maximum size of the metrics queue.  Here an element of the queue is
-            defined as an update to all flags.
+        always_return_metrics:  bool
+            Return metrics every time they are requested.  Otherwise return metrics
+            only when they have been updated.
 
         max_threadpool_workers:  str
             Maximum number of threads to use for asynchronous computations.
@@ -237,7 +236,9 @@ class FlagCorrInput(object):
         self.config = DEFAULTS.deepcopy()
         self.config.merge(NameSpace(config))
 
-        start_time = self.config.raw.start_time or time.time()
+        start_time = self.config.raw.start_time
+        if start_time is None:
+            start_time = time.time()
         self.search_time = ensure_unix(start_time)
 
         if self.config.sources is None:
@@ -263,13 +264,12 @@ class FlagCorrInput(object):
 
         # Keep track of when each of  the sources was last updated
         self.update_time = {ss:None for ss in self.sources}
+        self.update_time['combined'] = None
+        self.update_time['metrics'] = time.time()
 
         # Create pool of threads for asynchronous computations
         self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=self.config.max_threadpool_workers)
         self.futures = {ss:None for ss in self.sources}
-
-        # Create queue for metrics
-        self.metrics_queue = Queue.Queue(maxsize=self.config.max_metrics_size)
 
         # Create hdf5 reader/writer for flags
         output_files = self.find_files(raw=False)
@@ -289,13 +289,17 @@ class FlagCorrInput(object):
         # Create internal variable for holding current flags.
         # If possible, pick up where we left off.
         if self.h5_flag:
-            idd = self.h5_flag[time.time()]
-            lastup = self.h5_flag.read(idd, 'datetime')
 
-            self.log.info('Using flags from %s.' % lastup)
+            lastup = self.h5_flag.last_update
+            lastupstr = datetime.datetime.utcfromtimestamp(lastup).strftime('%Y%m%dT%H%M%SZ')
+
+            self.log.info('Using flags from %s.' % lastupstr)
             for ss in self.sources:
                 self.update_time[ss] = lastup
 
+            self.update_time['combined'] = lastup
+
+            idd = self.h5_flag[lastup]
             self.source_flags = self.h5_flag.read(idd, 'source_flags')
 
         else:
@@ -323,6 +327,9 @@ class FlagCorrInput(object):
             for config in self.config.rms.clients:
                 self.rms_clients.append(RmsAsyncRESTClient(**config))
 
+            # Set the time ranges where we ignore anomalous rms
+            self.update_rms_excludes()
+
         # Set up processing of raw ADC files
         self.h5_raw = False
         if 'raw' in self.sources:
@@ -335,6 +342,9 @@ class FlagCorrInput(object):
             if output_files is not None:
                 output_files = output_files[-1]
                 self.log.info('Writing raw data products to existing file %s.' % format_filename(output_files))
+
+            # Create separate entry in update_time dictionary for raw data products
+            self.update_time['raw_data'] = None
 
             # Create hdf5 reader/writer for analysis of raw adc data
             self.h5_raw = FlagRawWriter(output_dir=self.config.raw.output_dir, output_suffix=self.config.raw.output_suffix,
@@ -451,6 +461,10 @@ class FlagCorrInput(object):
 
         if 'rms' in self.sources:
 
+            current_time = time.time()
+            if any([np.abs(current_time - texc) < win for texc, win in self.rms_excludes]):
+                return
+
             isource = self.sources.index('rms')
 
             rms = []
@@ -471,6 +485,21 @@ class FlagCorrInput(object):
 
             self.update_flags(rms=self.control['rms'].flag)
 
+            self.log.info('%r: it took %s seconds to update rms.' % (self, time.time() - current_time))
+
+
+    def update_rms_excludes(self):
+
+        cadence = self.config.rms.excludes.cadence
+
+        self.rms_excludes = []
+        for src, win in self.config.rms.excludes.sources.iteritems():
+
+            if src.lower() == 'sun':
+                self.rms_excludes += [(tt, win) for tt in ephemeris.solar_transit(now - win, now + 2*cadence)]
+            else:
+                obj = ephemeris.source_dictionary[src]
+                self.rms_excludes += [(tt, win) for tt in ephemeris.transit_times(obj, now - win, now + 2*cadence)]
 
     # -------------------------------
     # raw
@@ -593,23 +622,8 @@ class FlagCorrInput(object):
                 self.log.info('Writing to disk results from file %s' % my_file)
                 self.h5_raw.write(this_time, **res)
 
-                # Get metrics for this file and add to queue
-                self.log.info('Grabbing metrics for file %s' % my_file)
-                if self.config.correlator.lower() in ['chime', 'fcc']:
-                    metric_labels = {'input':chime_input_labels}
-                else:
-                    metric_labels = {}
-
-                metrics = self.h5_raw.get_metrics(time.time(), **metric_labels)
-
-                while True:
-                    try:
-                        self.metrics_queue.put(metrics, block=False)
-                    except Queue.Full:
-                        self.metrics_queue.get(block=False)
-                        self.metrics_queue.task_done()
-                    else:
-                        break
+                # Update time
+                self.update_time['raw_data'] = time.time()
 
                 # Update flags
                 self.log.info('Updating raw flags from file %s' % my_file)
@@ -626,14 +640,12 @@ class FlagCorrInput(object):
                 self.log.info('Finished processing file %s' % my_file)
 
 
-    def get_raw_metrics(self, timestamp=None):
-        """ Spawn a thread that returns the metrics from the
-        raw analysis closest to a particular time.
-
-        Parameters
-        ----------
-        timestamp: unix time
+    def get_raw_metrics(self):
+        """ Spawn a thread that returns the current metrics
+        from the raw analysis.
         """
+
+        timestamp = time.time()
 
         if self.config.correlator.lower() in ['chime', 'fcc']:
             metric_labels = {'input':chime_input_labels}
@@ -678,7 +690,7 @@ class FlagCorrInput(object):
             with h5py.File(cf, 'r') as hf:
 
                 file_version = hf.attrs['version']
-                instrument = hf.attrs['instrument']
+                instrument = hf.attrs['instrument_name']
 
                 valid = (file_version == __version__) and (instrument == self.config.correlator)
 
@@ -734,7 +746,7 @@ class FlagCorrInput(object):
             this_datetime = datetime.datetime.utcfromtimestamp(this_time).strftime("%Y%m%dT%H%M%SZ")
 
             for ss in flags_were_updated:
-                self.update_time[ss] = this_datetime
+                self.update_time[ss] = this_time
 
             # Save to HDF5 file
             self.log.info('Writing new %s flags at %s.' % (' and '.join(flags_were_updated), this_datetime))
@@ -760,26 +772,6 @@ class FlagCorrInput(object):
                 except IOError as err:
                     self.log.info('Could not move log file:  %s.' % err)
 
-            # Add to metrics
-            self.log.info('Adding new %s flags to metrics at %s.' % (' and '.join(flags_were_updated), this_datetime))
-            if self.config.correlator.lower() in ['chime', 'fcc']:
-                metric_labels = {'input':chime_input_labels}
-            else:
-                metric_labels = {}
-
-            metrics = self.h5_flag.get_metrics(this_time, **metric_labels)
-
-            metrics.add(self.get_bad_input_metrics(this_time, lookback=24.0 * 3600.0 * self.config.num_days_lookback))
-
-            while True:
-                try:
-                    self.metrics_queue.put(metrics, block=False)
-                except Queue.Full:
-                    self.metrics_queue.get(block=False)
-                    self.metrics_queue.task_done()
-                else:
-                    break
-
             # Check if we have flagged an abnormally large number of inputs
             self.check_population()
 
@@ -788,6 +780,10 @@ class FlagCorrInput(object):
             # through ch_master to the various kotekan REST endpoints.
             if self.config.sources_in_buffer or np.any(combined_flag != np.array(self.flag)):
                 self.h5_flag.dump(self.buffer_file, timestamp=this_time)
+
+            # Save current time if the combined flags changed
+            if np.any(combined_flag != np.array(self.flag)):
+                self.update_time['combined'] = this_time
 
 
     def check_population(self):
@@ -831,7 +827,37 @@ class FlagCorrInput(object):
         return passed
 
 
-    def get_bad_input_metrics(self, timestamp, lookback=None):
+    @coroutine
+    def get_metrics(self):
+        """ Return all metrics at the current time.
+        """
+
+        timestamp = time.time()
+
+        if self.config.correlator.lower() in ['chime', 'fcc']:
+            metric_labels = {'input':chime_input_labels}
+        else:
+            metric_labels = {}
+
+        metrics = Metrics(default_type='gauge')
+
+        if ('raw' in self.sources and self.h5_raw and
+            (self.config.raw.always_return_metrics or (self.update_time['raw_data'] > self.update_time['metrics']))):
+            metrics += yield self.executor.submit(self.h5_raw.get_metrics, timestamp, **metric_labels)
+
+        if (self.h5_flag and (self.config.always_return_metrics or
+            any([self.update_time[ss] > self.update_time['metrics'] for ss in self.sources]))):
+            metrics += self._get_summary_metrics(timestamp)
+            metrics += yield self.executor.submit(self.h5_flag.get_metrics, timestamp, **metric_labels)
+            metrics += yield self.executor.submit(self._get_bad_input_metrics, timestamp,
+                                                  lookback=24.0 * 3600.0 * self.config.num_days_lookback)
+
+        self.update_time['metrics'] = timestamp
+
+        coroutine_return(metrics)
+
+
+    def _get_bad_input_metrics(self, timestamp, lookback=None):
         """ Generate metrics that indicates which inputs were
         flagged as bad in the recent past.
 
@@ -859,6 +885,26 @@ class FlagCorrInput(object):
                 lbls = {key:val[ii] for key, val in labels.iteritems()}
                 metrics.add('_'.join([self.h5_flag._metric_name, 'historically_bad_input']),
                             value=1, time=timestamp*1000, **lbls)
+
+        return metrics
+
+
+    def _get_summary_metrics(self, timestamp):
+
+        metrics = Metrics(default_type='gauge')
+
+        prefix = self.h5_flag._metric_name
+
+        for src, dct in self.stats:
+            kwargs = {'time':timestamp*1000, 'source':src}
+            for key, val in dct.iteritems():
+                if key == 'update':
+                    value = timestamp - val
+                    name = 'last_changed'
+                else:
+                    name, value = key, val
+
+                metrics.add('_'.join([prefix, name]), value=value, **kwargs)
 
         return metrics
 
@@ -904,8 +950,9 @@ class FlagCorrInput(object):
         """
 
         tsearch = ensure_unix(timestamp)
+        idd = self.h5_flag[tsearch]
 
-        return self.h5_flag.read(tsearch, dataset)
+        return self.h5_flag.grow_axis(idd), self.h5_flag.read(idd, dataset)
 
 
     def stop(self):
@@ -966,11 +1013,13 @@ class FlagCorrInput(object):
             nuniq = np.sum(bad & np.all(self.source_flags[ialt], axis=0), dtype=np.int)
 
             stats.append((ss, {'update': self.update_time[ss],
-                               'nbad': nbad,
-                               'nuniq': nuniq}))
+                               'number_bad': nbad,
+                               'number_uniq_bad': nuniq}))
 
         nbad = np.sum(~np.array(self.flag))
-        stats.append(('combined', {'update': '', 'nbad': nbad, 'nuniq': ''}))
+        stats.append(('combined', {'update': self.update_time['combined'],
+                                   'number_bad': nbad,
+                                   'number_uniq_bad': nbad}))
 
         return stats
 
@@ -1030,7 +1079,8 @@ class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
 
         # Define map between sources and periodic update methods
         self._periodic_methods = {'layout': self._query_layout_database, 'power': self._query_fla_power_server,
-                                  'rms': self._query_rms_server, 'raw': self._get_raw_adc_files}
+                                  'rms': self._query_rms_server, 'rms.excludes': self._update_rms_excludes,
+                                  'raw': self._get_raw_adc_files}
 
         # Call AsyncRESTServer
         super(FlagCorrInputAsyncRESTServer, self).__init__(address=address, port=port,
@@ -1125,9 +1175,23 @@ class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
         """
         if self.flg is None: return
 
-        self.log.info('%r: Querying raw acquisition server.' % self)
+        self.log.info('%r: Querying raw adc server for rms.' % self)
         try:
             yield self.flg.query_rms_server()
+
+        except Exception as e:
+            self.log.error(e)
+            raise
+
+    @coroutine
+    def _update_rms_excludes(self):
+        """ Update the time ranges to exclude from rms calculation.
+        """
+        if self.flg is None: return
+
+        self.log.info('%r: Updating time ranges to exclude from rms test.' % self)
+        try:
+            yield self.flg.update_rms_excludes()
 
         except Exception as e:
             self.log.error(e)
@@ -1155,11 +1219,17 @@ class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
         self.log.debug('%r: Creating FlagCorrInput handler' % self)
         self.flg = FlagCorrInput(**self.config)
 
-        # Add periodic callbacks
-        for source, method in self._periodic_methods.iteritems():
-            if source in self.config.sources:
-                self._periodic_callbacks[source] = tornado.ioloop.PeriodicCallback(method, 1000 * self.config[source].cadence)
-                self._periodic_callbacks[source].start()
+        #Add periodic callbacks
+        for path, method in self._periodic_methods.iteritems():
+
+            pth = path.split('.')
+            if pth[0] in self.config.sources:
+                cfg = self.config
+                for pp in pth:
+                    cfg = cfg[pp]
+
+                self._periodic_callbacks[path] = tornado.ioloop.PeriodicCallback(method, 1000 * cfg.cadence)
+                self._periodic_callbacks[path].start()
 
         # Server started
         coroutine_return('FlagCorrInput server started.')
@@ -1218,11 +1288,21 @@ class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
             coroutine_return( "FlagCorrInput server is not started" )
 
     @coroutine
+    @endpoint('bad-correlator-inputs-by-source')
+    def bad_correlator_inputs_by_source(self, handler):
+        self.log.info('%r: Received request for bad correlator inputs for each source.' % self)
+        if self.flg:
+            coroutine_return( {src:[inp for inp, good in zip(self.flg.input, self.flg.source_flags[ii]) if not good]
+                                for ii, src in enumerate(self.flg.sources)} )
+        else:
+            coroutine_return( "FlagCorrInput server is not started" )
+
+    @coroutine
     @endpoint('correlator-input-flags')
     def correlator_input_flags(self, handler):
         self.log.info('%r: Received request for correlator input flag.' % self)
         if self.flg:
-            coroutine_return( [[idd, sn, flag] for (idd, sn), flag in zip(self.flg.input, self.flg.flag)] )
+            coroutine_return( [[idd, sn, int(flag)] for (idd, sn), flag in zip(self.flg.input, self.flg.flag)] )
 
         else:
             coroutine_return( "FlagCorrInput server is not started" )
@@ -1269,17 +1349,12 @@ class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
         self.log.info('%r: Received request for summary.' % self)
         if self.flg:
 
-            def format_time(tstr):
-                if not tstr:
-                    return ''
-                else:
-                    year, month, day = tstr[0:4], tstr[4:6], tstr[6:8]
-                    hour, minute, sec = tstr[9:11], tstr[11:13], tstr[13:15]
-                    return  "%4s-%2s-%2s %2s:%2s:%2s" % (year, month, day, hour, minute, sec)
+            def format_time(unix_time):
+                return datetime.datetime.utcfromtimestamp(unix_time).strftime('%Y-%m-%d %H:%M:%S') if unix_time else ''
 
             fmt = "%-10s %-30s %-10s %-10s"
             summary  = fmt % ("SOURCE", "LAST CHANGE (UTC)", "N BAD", "N UNIQ BAD") + '\n'
-            summary += '\n'.join([fmt % (ss, format_time(dct['update']), dct['nbad'], dct['nuniq'])
+            summary += '\n'.join([fmt % (ss, format_time(dct['update']), dct['number_bad'], dct['number_uniq_bad'])
                                     for ss, dct in self.flg.stats])
 
             coroutine_return( summary )
@@ -1303,16 +1378,12 @@ class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
         self.log.info('%r: Received monitoring metrics request.' % self)
         t0 = time.time()
         try:
-            metrics = self.flg.metrics_queue.get(block=False)
+            metrics = yield self.flg.get_metrics()
 
         except Exception as e:
             handler.set_header('Content-Type', 'text/plain')
             handler.write('')
-
-            if type(e) is Queue.Empty:
-                self.log.info('%r: Monitoring metrics queue is empty.' % self)
-            else:
-                self.log.error(e)
+            self.log.error(e)
 
         else:
             encoding = self.config.get('metric_encoding', 'text/plain')
@@ -1323,8 +1394,6 @@ class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
             else:
                 handler.write(str(metrics))
             self.log.info('%r: Returning %i flaginput metrics. The request took %.3f seconds' % (self, len(metrics), time.time()-t0))
-            self.flg.metrics_queue.task_done()
-
 
     @coroutine
     @endpoint('raw-metrics')
@@ -1332,7 +1401,7 @@ class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
         self.log.info('%r: Received raw metrics request.' % self)
         t0 = time.time()
         try:
-            metrics = yield self.flg.get_raw_metrics(t0)
+            metrics = yield self.flg.get_raw_metrics()
 
         except Exception as e:
             handler.set_header('Content-Type', 'text/plain')
@@ -1350,9 +1419,9 @@ class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
             self.log.info('%r: Returning %i flag_raw metrics. The request took %.3f seconds' % (self, len(metrics), time.time()-t0))
 
     @coroutine
-    @endpoint('past-flags')
-    def past_flags(self, handler, timestamp=None):
-        self.log.info('%r: Received request for past flags.' % self)
+    @endpoint('past-correlator-input-flags')
+    def past_correlator_input_flags(self, handler, timestamp=None):
+        self.log.info('%r: Received request for past correlator input flags.' % self)
 
         if timestamp is None:
             coroutine_return( "Must provide timestamp." )
@@ -1360,11 +1429,63 @@ class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
         timestamp_decoded = json.loads(timestamp)
 
         if self.flg:
-            coroutine_return( [bool(ff) for ff in self.flg.get_flag(timestamp_decoded, dataset='flag')] )
+            timestamp_returned, arr = self.flg.get_flag(timestamp_decoded, dataset='flag')
+
+            if timestamp_returned is not None:
+                coroutine_return( {'time': timestamp_returned,
+                                   'payload':[[idd, sn, int(flag)] for (idd, sn), flag in zip(self.flg.input, arr)]} )
+
+            else:
+                coroutine_return( "No flags available for time %s" % timestamp_decoded )
 
         else:
             coroutine_return( "FlagCorrInput server is not started" )
 
+    @coroutine
+    @endpoint('past-good-correlator-inputs')
+    def past_good_correlator_inputs(self, handler, timestamp=None):
+        self.log.info('%r: Received request for past good correlator inputs.' % self)
+
+        if timestamp is None:
+            coroutine_return( "Must provide timestamp." )
+
+        timestamp_decoded = json.loads(timestamp)
+
+        if self.flg:
+            timestamp_returned, arr = self.flg.get_flag(timestamp_decoded, dataset='flag')
+
+            if timestamp_returned is not None:
+                coroutine_return( {'time': timestamp_returned,
+                                   'payload': [inp for inp, good in zip(self.flg.input, arr) if good]} )
+
+            else:
+                coroutine_return( "No flags available for time %s" % timestamp_decoded )
+
+        else:
+            coroutine_return( "FlagCorrInput server is not started" )
+
+    @coroutine
+    @endpoint('past-bad-correlator-inputs')
+    def past_bad_correlator_inputs(self, handler, timestamp=None):
+        self.log.info('%r: Received request for past bad correlator inputs.' % self)
+
+        if timestamp is None:
+            coroutine_return( "Must provide timestamp." )
+
+        timestamp_decoded = json.loads(timestamp)
+
+        if self.flg:
+            timestamp_returned, arr = self.flg.get_flag(timestamp_decoded, dataset='flag')
+
+            if timestamp_returned is not None:
+                coroutine_return( {'time': timestamp_returned,
+                                   'payload': [inp for inp, good in zip(self.flg.input, arr) if not good]} )
+
+            else:
+                coroutine_return( "No flags available for time %s" % timestamp_decoded )
+
+        else:
+            coroutine_return( "FlagCorrInput server is not started" )
 
     @coroutine
     @endpoint('past-source-flags')
@@ -1377,9 +1498,16 @@ class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
         timestamp_decoded = json.loads(timestamp)
 
         if self.flg:
-            arr = self.flg.get_flag(timestamp_decoded, dataset='source_flags')
-            source_flags = {src:[bool(ff) for ff in arr[ii]] for ii, src in enumerate(self.flg.sources)}
-            coroutine_return( source_flags )
+            timestamp_returned, arr = self.flg.get_flag(timestamp_decoded, dataset='source_flags')
+
+            if timestamp_returned is not None:
+                source_flags = {'time': timestamp_returned,
+                                'payload': {src:[[idd, sn, int(flag)] for (idd, sn), flag in zip(self.flg.input, arr[ii])]
+                                                          for ii, src in enumerate(self.flg.sources)}}
+                coroutine_return( source_flags )
+
+            else:
+                coroutine_return( "No flags available for time %s" % timestamp_decoded )
 
         else:
             coroutine_return( "FlagCorrInput server is not started" )
@@ -1472,6 +1600,11 @@ class FlagCorrInputAsyncRESTClient(AsyncRESTClient):
         coroutine_return(res)
 
     @coroutine
+    def get_bad_correlator_inputs_by_source(self):
+        res = yield self.get('bad-correlator-inputs-by-source')
+        coroutine_return(res)
+
+    @coroutine
     def get_correlator_input_flags(self):
         res = yield self.get('correlator-input-flags')
         coroutine_return(res)
@@ -1502,8 +1635,18 @@ class FlagCorrInputAsyncRESTClient(AsyncRESTClient):
         self.print_result(res)
 
     @coroutine
-    def get_past_flags(self, timestamp=None):
-        res = yield self.post('past-flags', timestamp=timestamp)
+    def get_past_correlator_input_flags(self, timestamp=None):
+        res = yield self.post('past-correlator-input-flags', timestamp=timestamp)
+        coroutine_return(res)
+
+    @coroutine
+    def get_past_bad_correlator_inputs(self, timestamp=None):
+        res = yield self.post('past-bad-correlator-inputs', timestamp=timestamp)
+        coroutine_return(res)
+
+    @coroutine
+    def get_past_good_correlator_inputs(self, timestamp=None):
+        res = yield self.post('past-good-correlator-inputs', timestamp=timestamp)
         coroutine_return(res)
 
     @coroutine

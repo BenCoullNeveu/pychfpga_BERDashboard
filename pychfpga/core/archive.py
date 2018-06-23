@@ -170,6 +170,9 @@ class Hdf5Writer(object):
             self.writer = h5py.File(output_file, 'w', libver='latest')
 
             # Add attributes
+            self.attrs['acquisition_name'] = os.path.basename(os.path.dirname(output_file))
+
+            # Add attributes
             for key, value in self.attrs.iteritems():
                 self.writer.attrs[key] = value
 
@@ -422,15 +425,27 @@ class Hdf5Writer(object):
         if not self.attrs:
             self.attrs['type'] = str(type(self))
             self.attrs['git_version_tag'] = subprocess.check_output(["git", "-C", os.path.dirname(__file__), "describe", "--always"]).strip()
+            self.attrs['collection_server'] = subprocess.check_output(["hostname"]).strip()
+            self.attrs['system_user'] = subprocess.check_output(["id", "-u", "-n"]).strip()
 
         # Save input attributes
         for key, value in kwargs.iteritems():
             self.attrs[key] = value
 
 
-    def dump(self, output_file, timestamp=None):
+    def dump(self, output_file, timestamp=None, datasets=None):
         """ Dump a single timestamp to a separate HDF5 file.
         """
+
+        if datasets is not None:
+            datasets = [dset for dset in datasets if dset in self.datasets]
+        else:
+            datasets = self.datasets
+
+        axes = []
+        for name in datasets:
+            axes += self._dataset_spec[name]['axes']
+        axes = [ax for ax in set(axes) if ax != self._grow_ax]
 
         if timestamp is None:
             with self._rlock:
@@ -442,14 +457,16 @@ class Hdf5Writer(object):
             for key, value in self.attrs.iteritems():
                 fdump.attrs[key] = value
 
+            # Add timestamp to attributes
+            fdump.attrs[self._grow_ax] = timestamp
+
             # Copy index map
             index_map = fdump.create_group('index_map')
-            for name, val in self.index_map.iteritems():
-                if name != self._grow_ax:
-                    index_map.create_dataset(name, data=val)
+            for name in axes:
+                index_map.create_dataset(name, data=self.index_map[name])
 
             # Copy datasets for this timesample
-            for name in self.datasets:
+            for name in datasets:
                 data = self.read(timestamp, name)
                 if np.isscalar(data):
                     fdump.attrs[name] = data
@@ -565,6 +582,20 @@ class Hdf5Writer(object):
         return (item in self.search)
 
 
+    def grow_axis(self, key):
+
+        if isinstance(key, tuple):
+            idd = key
+        else:
+            idd = self[key]
+
+        if idd is not None:
+            ind = self.grow['index'].index(idd)
+            return self.grow['axis'][ind]
+        else:
+            return None
+
+
     @property
     def _index_map(self):
         """ index_map for writing (not thread-safe).
@@ -579,6 +610,10 @@ class Hdf5Writer(object):
         index_map = {key:value[:] for key, value in self._index_map.iteritems()}
 
         return index_map
+
+    @property
+    def last_update(self):
+        return self.grow['axis'][-1]
 
     @abstractmethod
     def get_output_file(self, *args, **kwargs):
