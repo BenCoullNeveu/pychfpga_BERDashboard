@@ -388,7 +388,7 @@ class Hdf5Writer(object):
         else:
             index = self[key]
 
-        return self.reader[index[0]][dataset][index[1]]
+        return self.reader[index[0]][dataset][index[1]] if index is not None else None
 
 
     @rlock
@@ -540,11 +540,45 @@ class Hdf5Writer(object):
             with open(lock_file,  'w') as lofi:
                 lofi.write('locked\n')
 
+        # Switch to the lock file format below, but leave the
+        # original version above in place until we fix
+        # downstream code (theremin)
+        lock_file = os.path.join(os.path.dirname(output_file),
+                           '.' + os.path.basename(output_file) + '.lock')
+
+        if os.access(lock_file, os.F_OK):
+            with open(lock_file, 'r') as lofi:
+                lofi.seek(0)
+                old_pid = int(lofi.readline())
+
+            if old_pid == os.getpid():
+                return
+            elif os.path.isdir('/proc/%d' % old_pid):
+                RuntimeError("%s is already locked by process %d." % (output_file, old_pid))
+            else:
+                try:
+                    os.remove(lock_file)
+                except OSError:
+                    pass
+
+        with open(lock_file, 'w') as lofi:
+            lofi.write('%d' % os.getpid())
+
 
     def release_lock_file(self, output_file):
 
         lock_file = output_file + '.lock'
 
+        try:
+            os.remove(lock_file)
+        except OSError:
+            pass
+
+        # Switch to the lock file format below, but leave the
+        # original version above in place until we fix
+        # downstream code (theremin)
+        lock_file = os.path.join(os.path.dirname(output_file),
+                           '.' + os.path.basename(output_file) + '.lock')
         try:
             os.remove(lock_file)
         except OSError:
