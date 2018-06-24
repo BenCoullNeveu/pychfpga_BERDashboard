@@ -4,10 +4,11 @@ flaginput:
     correlator: 'chime'
     output_dir: '/data/flaginput'
     output_suffix: 'flaginput'
-    metric_encoding: 'gzip'
     num_days_lookback: 14
     always_return_metrics: True
-    max_file_size: 1000000000
+    metric_encoding: 'text'
+    max_file_size: 100000000
+    max_num_time:
     max_threadpool_workers: 8
     sources_in_buffer: False
     niceness: 10
@@ -37,8 +38,10 @@ flaginput:
         output_dir: '/data/rawflag'
         output_suffix: 'rawflag'
         always_return_metrics: True
-        max_file_size: 1000000000
-        start_time: 
+        metric_encoding: 'text'
+        max_file_size: 100000000
+        max_num_time:
+        start_time:
         lifo: False
         classification_threshold: 0.01
         num_consecutive_bad: 2

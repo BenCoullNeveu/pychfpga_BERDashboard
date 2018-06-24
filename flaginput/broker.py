@@ -84,31 +84,43 @@ def check_manual_flag(inp):
 
     return (inp.flag if hasattr(inp, 'flag') else True)
 
-def chime_input_labels(inputs):
+def wrapper_chime_input_labels(inputmap):
 
-    ninput = inputs.size
+    def chime_input_labels(inputs):
 
-    # Initiate arrays to hold labels
-    label_map = {}
-    label_map['correlator_input'] = np.zeros(ninput, dtype='S32')
-    for key in ['chan_id', 'crate', 'slot', 'input']:
-        label_map[key] = np.zeros(ninput, dtype=np.int)
+        ninput = inputs.size
 
-    # Loop over inputs and extract labels
-    for ii, inp in enumerate(inputs):
+        # Initiate arrays to hold labels
+        label_map = {}
+        label_map['correlator_input'] = np.zeros(ninput, dtype='S32')
+        label_map['bulkhead_position'] = np.zeros(ninput, dtype='S32')
+        for key in ['chan_id', 'crate', 'slot', 'input']:
+            label_map[key] = np.zeros(ninput, dtype=np.int)
 
-        mo = re.match('FCC(\d{2})(\d{2})(\d{2})', inp['correlator_input'])
+        # Loop over inputs and extract labels
+        for ii, inp in enumerate(inputs):
 
-        if mo is None:
-            raise RuntimeError('Serial number %s does not match expected CHIME format.' % inp['correlator_input'])
+            mo = re.match('FCC(\d{2})(\d{2})(\d{2})', inp['correlator_input'])
 
-        label_map['correlator_input'][ii] = inp['correlator_input']
-        label_map['chan_id'][ii] = inp['chan_id']
-        label_map['crate'][ii] = int(mo.group(1))
-        label_map['slot'][ii]  = int(mo.group(2))
-        label_map['input'][ii] = int(mo.group(3))
+            if mo is None:
+                raise RuntimeError('Serial number %s does not match expected CHIME format.' % inp['correlator_input'])
 
-    return label_map
+            label_map['correlator_input'][ii] = inp['correlator_input']
+            label_map['chan_id'][ii] = inp['chan_id']
+            label_map['crate'][ii] = int(mo.group(1))
+            label_map['slot'][ii]  = int(mo.group(2))
+            label_map['input'][ii] = int(mo.group(3))
+
+            label_map['bulkhead_position'][ii] = 'null'
+            rf_thru = getattr(inputmap[inp['chan_id']], 'rf_thru', None)
+            if rf_thru is not None:
+                mo = re.match('BKR0(\w{1})C_(\w{3})', rf_thru)
+                if mo is not None:
+                    label_map['bulkhead_position'][ii] = '_'.join([mo.group(1), mo.group(2)])
+
+        return label_map
+
+    return chime_input_labels
 
 
 ###################################################
@@ -158,6 +170,11 @@ class FlagCorrInput(object):
 
         max_file_size:  int
             Maximum file size in bits.
+
+        max_num_time: int
+            Maximum number of time samples to include in single file.  The file is
+            closed and a new one started when the file size is greater than max_file_size
+            or the number of samples is greater than max_num_time, whichever comes first.
 
         always_return_metrics:  bool
             Return metrics every time they are requested.  Otherwise return metrics
@@ -278,7 +295,8 @@ class FlagCorrInput(object):
 
         self.h5_flag = FlagCorrInputArchive(output_dir=self.config.output_dir, output_suffix=self.config.output_suffix,
                                             instrument=self.config.correlator, combine=np.array(self.sources)[self.icombine],
-                                            archive_files=output_files, max_file_size=self.config.max_file_size)
+                                            archive_files=output_files, max_file_size=self.config.max_file_size,
+                                            max_num=self.config.max_num_time)
 
         # Define buffer file
         self.buffer_file = os.path.join(self.config.output_dir, self.config.output_suffix + '_buffer.h5')
@@ -349,7 +367,7 @@ class FlagCorrInput(object):
             # Create hdf5 reader/writer for analysis of raw adc data
             self.h5_raw = FlagRawWriter(output_dir=self.config.raw.output_dir, output_suffix=self.config.raw.output_suffix,
                                          instrument=self.config.correlator, output_file=output_files,
-                                         max_file_size=self.config.raw.max_file_size)
+                                         max_file_size=self.config.raw.max_file_size, max_num=self.config.raw.max_num_time)
 
             # Create control flags
             self.control['raw'] = ControlFlag(num_consecutive_bad=self.config.raw.num_consecutive_bad,
@@ -652,7 +670,7 @@ class FlagCorrInput(object):
         timestamp = time.time()
 
         if self.config.correlator.lower() in ['chime', 'fcc']:
-            metric_labels = {'input':chime_input_labels}
+            metric_labels = {'input':wrapper_chime_input_labels(self._input)}
         else:
             metric_labels = {}
 
@@ -839,7 +857,7 @@ class FlagCorrInput(object):
         timestamp = time.time()
 
         if self.config.correlator.lower() in ['chime', 'fcc']:
-            metric_labels = {'input':chime_input_labels}
+            metric_labels = {'input':wrapper_chime_input_labels(self._input)}
         else:
             metric_labels = {}
 
@@ -883,7 +901,8 @@ class FlagCorrInput(object):
         if nbad > 0:
             input_axis = np.array(self.input, dtype=[('chan_id', 'u2'), ('correlator_input', 'S32')])
             bad_inputs = input_axis[historical_status['bad']]
-            labels = chime_input_labels(bad_inputs)
+            func_input_labels = wrapper_chime_input_labels(self._input)
+            labels = func_input_labels(bad_inputs)
 
             for ii in range(nbad):
                 lbls = {key:val[ii] for key, val in labels.iteritems()}

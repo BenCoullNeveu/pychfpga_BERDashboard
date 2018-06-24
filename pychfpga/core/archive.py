@@ -125,7 +125,7 @@ class Hdf5Writer(object):
 
     _with_lock_file = True
 
-    def __init__(self, output_file=None, max_file_size=MAX_FILE_SIZE):
+    def __init__(self, output_file=None, max_file_size=MAX_FILE_SIZE, max_num=None):
         """ Instantiates an Hdf5Writer.
 
         Parameters
@@ -149,6 +149,7 @@ class Hdf5Writer(object):
         self._rlock = threading.RLock()
 
         self._max_file_size = max_file_size
+        self._max_num = max_num if max_num is not None else float('inf')
 
         self._metric_name = convert_camel_case(self.__class__.__name__)
 
@@ -262,7 +263,7 @@ class Hdf5Writer(object):
     def write(self, smp, **kwargs):
 
         # Check if file does not exist or has reached maximum size
-        if (self.writer is None) or (self.writer.id.get_filesize() >= self._max_file_size):
+        if (self.writer is None) or (self.writer.id.get_filesize() >= self._max_file_size) or (self.ind >= self._max_num):
 
             # Determine new filename using an abstracted method
             output_file = self.get_output_file(smp, **kwargs)
