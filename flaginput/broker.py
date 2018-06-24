@@ -711,8 +711,8 @@ class FlagCorrInput(object):
 
             with h5py.File(cf, 'r') as hf:
 
-                file_version = hf.attrs['version']
-                instrument = hf.attrs['instrument_name']
+                file_version = hf.attrs.get('version', None)
+                instrument = hf.attrs.get('instrument_name', None)
 
                 valid = (file_version == __version__) and (instrument == self.config.correlator)
 
