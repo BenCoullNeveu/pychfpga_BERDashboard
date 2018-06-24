@@ -601,12 +601,16 @@ class Hdf5Writer(object):
 
             idd = self.search.get(key, None)
 
-        else:
+        elif isinstance(key, (float, int, long)):
 
             delta = key - np.array(self.grow['axis'])
             ipos = np.flatnonzero(delta >= 0.0)
 
             idd = None if ipos.size == 0 else self.grow['index'][ipos[np.argmin(delta[ipos])]]
+
+        else:
+
+            idd = None
 
         return idd
 
@@ -623,11 +627,7 @@ class Hdf5Writer(object):
         else:
             idd = self[key]
 
-        if idd is not None:
-            ind = self.grow['index'].index(idd)
-            return self.grow['axis'][ind]
-        else:
-            return None
+        return self.grow['axis'][self.grow['index'].index(idd)] if idd is not None else None
 
 
     @property

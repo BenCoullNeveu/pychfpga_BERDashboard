@@ -463,6 +463,7 @@ class FlagCorrInput(object):
 
             current_time = time.time()
             if any([np.abs(current_time - texc) < win for texc, win in self.rms_excludes]):
+                self.log.info('Near transit.  Ignoring rms values.')
                 return
 
             isource = self.sources.index('rms')
@@ -485,21 +486,24 @@ class FlagCorrInput(object):
 
             self.update_flags(rms=self.control['rms'].flag)
 
-            self.log.info('%r: it took %s seconds to update rms.' % (self, time.time() - current_time))
+            self.log.info('It took %s seconds to update rms.' % (time.time() - current_time,))
 
 
     def update_rms_excludes(self):
 
-        cadence = self.config.rms.excludes.cadence
+        if 'rms' in self.sources:
 
-        self.rms_excludes = []
-        for src, win in self.config.rms.excludes.sources.iteritems():
+            now = time.time()
+            cadence = self.config.rms.excludes.cadence
 
-            if src.lower() == 'sun':
-                self.rms_excludes += [(tt, win) for tt in ephemeris.solar_transit(now - win, now + 2*cadence)]
-            else:
-                obj = ephemeris.source_dictionary[src]
-                self.rms_excludes += [(tt, win) for tt in ephemeris.transit_times(obj, now - win, now + 2*cadence)]
+            self.rms_excludes = []
+            for src, win in self.config.rms.excludes.sources.iteritems():
+
+                if src.lower() == 'sun':
+                    self.rms_excludes += [(tt, win) for tt in ephemeris.solar_transit(now - win, now + 2*cadence)]
+                else:
+                    obj = ephemeris.source_dictionary[src]
+                    self.rms_excludes += [(tt, win) for tt in ephemeris.transit_times(obj, now - win, now + 2*cadence)]
 
     # -------------------------------
     # raw
@@ -898,13 +902,14 @@ class FlagCorrInput(object):
         for src, dct in self.stats:
             kwargs = {'time':timestamp*1000, 'source':src}
             for key, val in dct.iteritems():
-                if key == 'update':
-                    value = timestamp - val
-                    name = 'last_changed'
-                else:
-                    name, value = key, val
+                if val is not None:
+                    if key == 'update':
+                        value = int(timestamp - val)
+                        name = 'last_changed'
+                    else:
+                        name, value = key, val
 
-                metrics.add('_'.join([prefix, name]), value=value, **kwargs)
+                    metrics.add('_'.join([prefix, name]), value=value, **kwargs)
 
         return metrics
 
@@ -1308,6 +1313,16 @@ class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
             coroutine_return( "FlagCorrInput server is not started" )
 
     @coroutine
+    @endpoint('correlator-input-reorder')
+    def correlator_input_reorder(self, handler):
+        self.log.info('%r: Received request for correlator input reordering.' % self)
+        if self.flg:
+            coroutine_return( [[inp.corr_order, inp.id, inp.input_sn] for inp in self.flg._input] )
+
+        else:
+            coroutine_return( "FlagCorrInput server is not started" )
+
+    @coroutine
     @endpoint('noise-injection-inputs')
     def noise_injection_inputs(self, handler):
         self.log.info('%r: Received request for noise injection inputs.' % self)
@@ -1607,6 +1622,11 @@ class FlagCorrInputAsyncRESTClient(AsyncRESTClient):
     @coroutine
     def get_correlator_input_flags(self):
         res = yield self.get('correlator-input-flags')
+        coroutine_return(res)
+
+    @coroutine
+    def get_correlator_input_reorder(self):
+        res = yield self.get('correlator-input-reorder')
         coroutine_return(res)
 
     @coroutine

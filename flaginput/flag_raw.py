@@ -401,7 +401,7 @@ def create_templates_from_file(filename, obj1, obj2):
 
     for ind, kval in zip(index, klist):
         if kval < k_upper:
-            y = np.array(data[ind])
+            y = np.array(data[ind], dtype=np.float32)
             y -= np.mean(y)
 
             hist += np.histogram(y, bins=obj1._nbins, range=obj1._range)[0]
@@ -445,7 +445,7 @@ def create_templates_from_data(data, obj1, obj2):
 
     for ind, kval in zip(index, klist):
         if kval < k_upper:
-            y = np.array(data[ind[0]][ind[1]][1])
+            y = np.array(data[ind[0]][ind[1]][1], dtype=np.float32)
             y -= np.mean(y)
 
             hist += np.histogram(y, bins=obj1._nbins, range=obj1._range)[0]
@@ -500,8 +500,7 @@ class FFT_template_test():
             self.corr[FMT.format(crate,slot,channel)] = None
 
         else:
-
-            windowed_data = (np.array(data) - mu) * self._window[np.newaxis, :]
+            windowed_data = (np.array(data, dtype=np.float32) - mu) * self._window[np.newaxis, :]
             spec = self._window_norm * np.median(np.abs(np.fft.rfft(windowed_data, axis=-1))**2, axis=0)[0:self._nfreq]
 
             # Save in units of mW at ADC input
@@ -549,7 +548,7 @@ class Normality_test():
         else:
             hist = np.zeros((len(data), self._nbins), dtype=np.float32)
             for ff, frame in enumerate(data):
-                hist[ff, :] = np.histogram(frame - mu, bins=self._nbins, range=self._range)[0]
+                hist[ff, :] = np.histogram(np.array(frame, dtype=np.float32) - mu, bins=self._nbins, range=self._range)[0]
 
             hist = np.median(hist, axis=0)
             self.histogram[FMT.format(crate,slot,channel)] = hist
