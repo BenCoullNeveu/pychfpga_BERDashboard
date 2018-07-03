@@ -32,7 +32,7 @@ class SHUFFLE_BIN_SEL_base(Module_base):
 
     STREAM_ID                   = BitField(CONTROL, 2, 4, width=12, doc="Stream ID to be used for tagging the output frames")
     ZERO_PACKET_FLAGS           = BitField(CONTROL, 2, 3, doc="When high, packets plags are forced to zero.")
-    NUMBER_OF_FRAME_FLAGS_WORDS_PER_FRAME = BitField(CONTROL, 2, 0, width=2, doc="Number of frame flags words in each incoming frame")
+    NUMBER_OF_FRAME_FLAGS_WORDS_PER_FRAME = BitField(CONTROL, 2, 0, width=3, doc="Number of frame flags words in each incoming frame")
     NUMBER_OF_BINS_PER_FRAME    = BitField(CONTROL, 3, 0, width=8, doc="Number of bins expected in each incoming frame")
     FIFO_OVERFLOW_RESET         = BitField(CONTROL, 4, 7, doc="When high, resets the FIFO OVERFLOW flag.")
     NUMBER_OF_WORDS_PER_BIN     = BitField(CONTROL, 4, 0, width=7, doc="Number of words expected in each bin of the incoming frames. In 4-bit mode, 1 Word = 4 analog channels")
