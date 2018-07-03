@@ -39,6 +39,7 @@ class FUNCGEN_base(Module_base):
     FN_WORD_CTR = 3
     FN_FRAME8 = 4
     FN_FRAME4 = 5
+    FN_BUFFER_NIBBLE4 = 6
     BUFFER_SIZE = 2048  # bytes
     FRAME_SIZE = 2048 # bytes
 
@@ -51,6 +52,7 @@ class FUNCGEN_base(Module_base):
         'funcgen':               FN_BUFFER,  # Sends the data stored in the buffer (for backwards compatibility)
         'frame8':                FN_FRAME8,  # Sends the frame number in every 8-bit sample
         'frame4':                FN_FRAME4,  # Sends the frame number if the upper 4 bits of each samples. The lower bits are zero.
+        'nibble4':               FN_BUFFER_NIBBLE4,  # Sends the lower/upper nibble of the bytes in the buffer as a real value based on whether the frame number is even/odd.
         }
 
     FUNCTION_NAMES = {  # key : (function number, buffer generator fn)
