@@ -125,7 +125,7 @@ class Hdf5Writer(object):
 
     _with_lock_file = True
 
-    def __init__(self, output_file=None, max_file_size=MAX_FILE_SIZE):
+    def __init__(self, output_file=None, max_file_size=MAX_FILE_SIZE, max_num=None):
         """ Instantiates an Hdf5Writer.
 
         Parameters
@@ -149,6 +149,7 @@ class Hdf5Writer(object):
         self._rlock = threading.RLock()
 
         self._max_file_size = max_file_size
+        self._max_num = max_num if max_num is not None else float('inf')
 
         self._metric_name = convert_camel_case(self.__class__.__name__)
 
@@ -168,6 +169,9 @@ class Hdf5Writer(object):
 
             # File does not exist, so create it.
             self.writer = h5py.File(output_file, 'w', libver='latest')
+
+            # Add attributes
+            self.attrs['acquisition_name'] = os.path.basename(os.path.dirname(output_file))
 
             # Add attributes
             for key, value in self.attrs.iteritems():
@@ -259,7 +263,7 @@ class Hdf5Writer(object):
     def write(self, smp, **kwargs):
 
         # Check if file does not exist or has reached maximum size
-        if (self.writer is None) or (self.writer.id.get_filesize() >= self._max_file_size):
+        if (self.writer is None) or (self.writer.id.get_filesize() >= self._max_file_size) or (self.ind >= self._max_num):
 
             # Determine new filename using an abstracted method
             output_file = self.get_output_file(smp, **kwargs)
@@ -385,7 +389,7 @@ class Hdf5Writer(object):
         else:
             index = self[key]
 
-        return self.reader[index[0]][dataset][index[1]]
+        return self.reader[index[0]][dataset][index[1]] if index is not None else None
 
 
     @rlock
@@ -422,15 +426,27 @@ class Hdf5Writer(object):
         if not self.attrs:
             self.attrs['type'] = str(type(self))
             self.attrs['git_version_tag'] = subprocess.check_output(["git", "-C", os.path.dirname(__file__), "describe", "--always"]).strip()
+            self.attrs['collection_server'] = subprocess.check_output(["hostname"]).strip()
+            self.attrs['system_user'] = subprocess.check_output(["id", "-u", "-n"]).strip()
 
         # Save input attributes
         for key, value in kwargs.iteritems():
             self.attrs[key] = value
 
 
-    def dump(self, output_file, timestamp=None):
+    def dump(self, output_file, timestamp=None, datasets=None):
         """ Dump a single timestamp to a separate HDF5 file.
         """
+
+        if datasets is not None:
+            datasets = [dset for dset in datasets if dset in self.datasets]
+        else:
+            datasets = self.datasets
+
+        axes = []
+        for name in datasets:
+            axes += self._dataset_spec[name]['axes']
+        axes = [ax for ax in set(axes) if ax != self._grow_ax]
 
         if timestamp is None:
             with self._rlock:
@@ -442,14 +458,16 @@ class Hdf5Writer(object):
             for key, value in self.attrs.iteritems():
                 fdump.attrs[key] = value
 
+            # Add timestamp to attributes
+            fdump.attrs[self._grow_ax] = timestamp
+
             # Copy index map
             index_map = fdump.create_group('index_map')
-            for name, val in self.index_map.iteritems():
-                if name != self._grow_ax:
-                    index_map.create_dataset(name, data=val)
+            for name in axes:
+                index_map.create_dataset(name, data=self.index_map[name])
 
             # Copy datasets for this timesample
-            for name in self.datasets:
+            for name in datasets:
                 data = self.read(timestamp, name)
                 if np.isscalar(data):
                     fdump.attrs[name] = data
@@ -523,11 +541,45 @@ class Hdf5Writer(object):
             with open(lock_file,  'w') as lofi:
                 lofi.write('locked\n')
 
+        # Switch to the lock file format below, but leave the
+        # original version above in place until we fix
+        # downstream code (theremin)
+        lock_file = os.path.join(os.path.dirname(output_file),
+                           '.' + os.path.basename(output_file) + '.lock')
+
+        if os.access(lock_file, os.F_OK):
+            with open(lock_file, 'r') as lofi:
+                lofi.seek(0)
+                old_pid = int(lofi.readline())
+
+            if old_pid == os.getpid():
+                return
+            elif os.path.isdir('/proc/%d' % old_pid):
+                RuntimeError("%s is already locked by process %d." % (output_file, old_pid))
+            else:
+                try:
+                    os.remove(lock_file)
+                except OSError:
+                    pass
+
+        with open(lock_file, 'w') as lofi:
+            lofi.write('%d' % os.getpid())
+
 
     def release_lock_file(self, output_file):
 
         lock_file = output_file + '.lock'
 
+        try:
+            os.remove(lock_file)
+        except OSError:
+            pass
+
+        # Switch to the lock file format below, but leave the
+        # original version above in place until we fix
+        # downstream code (theremin)
+        lock_file = os.path.join(os.path.dirname(output_file),
+                           '.' + os.path.basename(output_file) + '.lock')
         try:
             os.remove(lock_file)
         except OSError:
@@ -550,12 +602,16 @@ class Hdf5Writer(object):
 
             idd = self.search.get(key, None)
 
-        else:
+        elif isinstance(key, (float, int, long)):
 
             delta = key - np.array(self.grow['axis'])
             ipos = np.flatnonzero(delta >= 0.0)
 
             idd = None if ipos.size == 0 else self.grow['index'][ipos[np.argmin(delta[ipos])]]
+
+        else:
+
+            idd = None
 
         return idd
 
@@ -563,6 +619,16 @@ class Hdf5Writer(object):
     def __contains__(self, item):
 
         return (item in self.search)
+
+
+    def grow_axis(self, key):
+
+        if isinstance(key, tuple):
+            idd = key
+        else:
+            idd = self[key]
+
+        return self.grow['axis'][self.grow['index'].index(idd)] if idd is not None else None
 
 
     @property
@@ -579,6 +645,10 @@ class Hdf5Writer(object):
         index_map = {key:value[:] for key, value in self._index_map.iteritems()}
 
         return index_map
+
+    @property
+    def last_update(self):
+        return self.grow['axis'][-1]
 
     @abstractmethod
     def get_output_file(self, *args, **kwargs):

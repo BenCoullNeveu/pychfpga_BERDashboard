@@ -4,10 +4,11 @@ flaginput:
     correlator: 'chime'
     output_dir: '/data/flaginput'
     output_suffix: 'flaginput'
-    metric_encoding: 'gzip'
     num_days_lookback: 14
-    max_metrics_size: 20
-    max_file_size: 1000000000
+    always_return_metrics: True
+    metric_encoding: 'text'
+    max_file_size: 100000000
+    max_num_time:
     max_threadpool_workers: 8
     sources_in_buffer: False
     niceness: 10
@@ -27,14 +28,20 @@ flaginput:
         upper_limit: 23.5
         num_consecutive_bad: 1
         num_consecutive_good: 8
+        excludes:
+            cadence: 43200.0
+            sources: {'sun': 1800.0}
     raw:
         cadence: 40.0
         acq_dir: '/mnt/gong/archive'
         acq_suffix: 'rawadc'
         output_dir: '/data/rawflag'
         output_suffix: 'rawflag'
-        max_file_size: 1000000000
-        start_time: 
+        always_return_metrics: True
+        metric_encoding: 'text'
+        max_file_size: 100000000
+        max_num_time:
+        start_time:
         lifo: False
         classification_threshold: 0.01
         num_consecutive_bad: 2
