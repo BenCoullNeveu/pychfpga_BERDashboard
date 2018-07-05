@@ -36,6 +36,7 @@ class PROBER_base(Module_base):
     PROBE_ID = BitField(CONTROL, 0x06, 0, width=8, doc="8-bit number that is the first byte of the raw data packet. Can be used as a cookie or to encode information from the source")
     OFFSET3 = BitField(CONTROL, 0x07, 4, width=4, doc="Offset (bits 12:9)")
     STREAM_ID = BitField(CONTROL, 0x08, 0, width=12, doc="Arbitrary 12-bit number that that identifies the source of the data (typically crate/slot/channel numbers)")
+    SEND_DELAY = BitField(CONTROL, 0x0A, 0, width=16, doc="Amount of time to wait before sending captured data once the data fifo has been emptied. The actual delay is (send_delay*65536)/125 MHz.")
 
     # Memory-mapped status registers
     _TRIG_CTR = BitField(STATUS, 0x01, 0, width=8, doc="Number of frames")
@@ -85,7 +86,7 @@ class PROBER_base(Module_base):
         """ Returns the interval between data capture bursts. The period is specified in number of frames. This method is used because the property does not yet handle multi-byte values well."""
         return self.BURST_PERIOD0 + (self.BURST_PERIOD1 << 8) + (self.BURST_PERIOD2 << 16)
 
-    def config_capture(self, frames_per_burst=1, burst_period=100, number_of_bursts=0, offset=0):
+    def config_capture(self, frames_per_burst=1, burst_period=100, number_of_bursts=0, offset=0, send_delay=0):
         """
         Configure the capture of data frames for transmisssion over the ethernet link.
 
@@ -104,6 +105,14 @@ class PROBER_base(Module_base):
                 starts. The actual number of skipped frames is `offset` x 256.
                 The range is 0 to 8191. Assuming 2.56us frames, the offset is
                 adjustable up to 5.36 s in increments io 655.36 us.
+
+            send_delay (int): Sets the delay to start sending a block of data
+                after it has been captured. The delay applies to tranmission
+                that start after the local data buffer has been emptied (i.e the delay
+                is not applied between contiguously captured framed). The delay is
+                a 16 bit value that correspond to increments of 65536/125
+                MHz=524.288 us. The maximum delay is therefore 524.288 us * 65535 =
+                34.36 s.
         """
 
         # frame_period=1.0/850e6*self.ant.frame_length
@@ -118,6 +127,7 @@ class PROBER_base(Module_base):
         self.OFFSET = offset & 0b11111
         self.OFFSET2 = (offset >> 5) & 0b1111
         self.OFFSET3 = offset >> 9
+        self.SEND_DELAY = send_delay
 
     def init(self, **kwargs):
         """ Initialize the data capture module"""

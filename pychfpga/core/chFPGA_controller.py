@@ -1030,7 +1030,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
     def start_data_capture(self, period=None, frames_per_burst=1,  number_of_bursts=0,
                            channels=None, source='scaler', sync=1, verbose=1,
-                           burst_period_in_seconds=None, burst_period_in_frames=None, offset=0):
+                           burst_period_in_seconds=None, burst_period_in_frames=None, offset=0, send_delay=0):
         """
         Starts the transmission of ADC (post-function generator / pre-FFT) or SCALER (post
         scaler) data frames to the Ethernet port at the specified rate.
@@ -1065,6 +1065,10 @@ class chFPGA_controller(IceBoardExtHandler):
                 counters starts after a sync(). This is used to stagger capture frame transmission
                 between boards in a crate to prevent UDP packets from being dropped by a switch.
 
+            send_delay (int): Number that sets the amount of time to wait
+                before sending a group of packets that are captured in the local
+                buffer. This is a 16-bit number, where each unit corresponds to
+                524.288 us.
 
         Data is sent as N bursts ('number_of_bursts') of M frames ('frames_per_burst') . If
         'number_of_bursts' is zero or not specified, burst transmission is continuous.
@@ -1112,7 +1116,7 @@ class chFPGA_controller(IceBoardExtHandler):
             ant.PROBER.set_data_source(source)
             ant.PROBER.RESET = 1
             ant.PROBER.PROBE_ID = 0xA0 + ant.ant_number
-            ant.PROBER.config_capture(frames_per_burst=frames_per_burst, burst_period=burst_period_in_frames, number_of_bursts=number_of_bursts, offset=offset)
+            ant.PROBER.config_capture(frames_per_burst=frames_per_burst, burst_period=burst_period_in_frames, number_of_bursts=number_of_bursts, offset=offset, send_delay=send_delay)
             if ant.ant_number in channels:
                 self._logger.debug('%r: Enabling Capture for Antenna %i' % (self, ant.ant_number))
                 ant.PROBER.RESET = 0
@@ -3431,7 +3435,7 @@ class chFPGA_controller(IceBoardExtHandler):
         remove_file = 'rm /usr/lib/iceboard/' + os.path.basename(filename)
         print '%r: Removing the requested file' % self
         yield self.arm_exec.async(remove_file)
-        
+
         self.logger.info('%.32r: Command completed. Waiting %i seconds to ensure cache is flushed' % (self, delay))
         print '%r: Waiting %i seconds' % (self, delay)
         yield tornado.gen.sleep(delay)

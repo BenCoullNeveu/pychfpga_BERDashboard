@@ -575,7 +575,7 @@ class ChimeMaster(object):
                 self.log.info('%r: Starting data capture on %r with period=%f, source=%s, offset=%d' %
                              (self, ib, capture_period, capture_source, offset))
 
-                ib.start_data_capture(period=capture_period, source=capture_source, offset=offset)
+                ib.start_data_capture(period=capture_period, source=capture_source, send_delay=offset)
 
         # Must issue sync command after starting raw data capture,
         # otherwise raw frames will not be synced across boards.
