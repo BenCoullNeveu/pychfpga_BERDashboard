@@ -1014,6 +1014,7 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
         result = self.post('start-kotekan-master', **config)
         coroutine_return(result)
 
+
     @coroutine
     def stop(self):
         """
