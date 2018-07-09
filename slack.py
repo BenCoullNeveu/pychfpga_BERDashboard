@@ -1,7 +1,7 @@
-# -*- coding: utf-8 -*-
+# # -*- coding: utf-8 -*-
 
 """
-Send Messages to Slack using Slack Incoming Webhooks
+Send Messages to Slack using Slack Incoming Webhooks API
 """
 
 # Imports
@@ -9,37 +9,41 @@ from urllib import urlencode
 import urllib2 as urlrequest
 import json
 import time
+import os
 
 """
 Slack Message Colors
-    |-----------|---------|
-    | LOG LEVEL |  COLOR  |
-    |-----------|---------|
-    | DEBUG     | #268bd2 |
-    | INFO      | #859900 |
-    | WARNING   | #6c71c4 |
-    | ERROR     | #cb4b16 |
-    | CRITICAL  | #dc2f2f |
-    |-----------|---------|
+|-----------|---------|
+| LOG LEVEL |  COLOR  |
+|-----------|---------|
+| DEBUG     | #268bd2 |
+| INFO      | #859900 |
+| WARNING   | #6c71c4 |
+| ERROR     | #cb4b16 |
+| CRITICAL  | #dc2f2f |
+|-----------|---------|
 """
 
 
-class Slack():
+class SlackClient():
     """
     Client to send messages to slack.
 
     Parameters
     ----------
-        slack_token_url : str
-            Slack Webhook URL
+        SLACK_TOKEN_NAME : str
+            OS environment variable mapping to slack api token url
         module_name : str
             Name of the module sending messages to slack
     """
 
-    def __init__(self, slack_token_url, module_name):
-        self.url = slack_token_url
-        self.opener = urlrequest.build_opener(urlrequest.HTTPHandler())
-        self.module_name = module_name
+    def __init__(self, SLACK_TOKEN_NAME, module_name):
+        self.url = os.environ[SLACK_TOKEN_NAME]
+        try:
+            self.opener = urlrequest.build_opener(urlrequest.HTTPHandler())
+            self.module_name = module_name
+        except Exception as e:
+            raise e
 
     ###########################################################################
     #                        Public Messages API                              #
@@ -47,25 +51,29 @@ class Slack():
     def send_text_message(self, text):
         return self._notify(text=text)
 
-    def debug_message(self, msg_title=None, msg_text=None):
+    def debug(self, msg=None):
         return self._send_message(
-            msg_title=msg_title, msg_text=msg_text, msg_level='DEBUG')
+            msg_title="DEBUG", msg_text=msg, msg_level='DEBUG')
 
-    def info_message(self, msg_title=None, msg_text=None):
+    def info(self, msg=None):
         return self._send_message(
-            msg_title=msg_title, msg_text=msg_text, msg_level='INFO')
+            msg_title="INFO", msg_text=msg, msg_level='INFO')
 
-    def warning_message(self, msg_title=None, msg_text=None):
+    def warning(self, msg=None):
         return self._send_message(
-            msg_title=msg_title, msg_text=msg_text, msg_level='WARNING')
+            msg_title="WARNING", msg_text=msg, msg_level='WARNING')
 
-    def error_message(self, msg_title=None, msg_text=None):
+    def error(self, msg=None):
         return self._send_message(
-            msg_title=msg_title, msg_text=msg_text, msg_level='ERROR')
+            msg_title="ERROR", msg_text=msg, msg_level='ERROR')
 
-    def critical_message(self, msg_title=None, msg_text=None):
+    def critical(self, msg=None):
         return self._send_message(
-            msg_title=msg_title, msg_text=msg_text, msg_level='CRITICAL')
+            msg_title="CRITICAL", msg_text=msg, msg_level='CRITICAL')
+
+    ##########################################################################
+    #                       End of Public API                                #
+    ##########################################################################
 
     # Core Communication
     def _notify(self, **kwargs):
@@ -106,7 +114,7 @@ class Slack():
                                              title=msg_title,
                                              text=msg_text,
                                              footer=self.module_name)
-        status = self.send_attachment_message(attachments=attachment)
+        status = self._send_attachment_message(attachments=attachment)
         return status
 
     # Create Messages API
@@ -158,5 +166,4 @@ class Slack():
         except Exception as e:
             raise e
         return message_color
-
 
