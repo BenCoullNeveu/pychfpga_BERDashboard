@@ -2518,7 +2518,7 @@ class FPGAArray(object):
         self.logger.info('%r: Getting corner-turn crossbars metrics (over FPGA UDP link)' % self)
         metrics += yield [ib.get_crossbar_metrics.async(reset=False) for ib in self.ib]
         self.logger.info('%r: Getting channelizer metrics (over FPGA UDP link)' % self)
-        metrics += yield [ib.get_channelizer_metrics.async() for ib in self.ib]
+        metrics += yield [ib.get_channelizer_metrics.async(reset=reset) for ib in self.ib]
         self.logger.info('%r: Finished gathering FPGA/backplane metrics' % self)
 
         # Backplane GTX

@@ -3050,7 +3050,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
 
     @async
-    def get_channelizer_metrics(self):
+    def get_channelizer_metrics(self, reset=True):
         metrics = Metrics(
             type='GAUGE',
             slot=(self.slot or 0) - 1,
@@ -3067,6 +3067,8 @@ class chFPGA_controller(IceBoardExtHandler):
                 metrics.add('fpga_fft_overflow_count', value=ant.FFT.OVERFLOW_COUNT, chan=i)
                 metrics.add('fpga_scaler_overflow_count', value=ant.SCALER.STATS_SCALER_OVERFLOWS, chan=i)
                 metrics.add('fpga_adc_overflow_count', value=ant.SCALER.STATS_ADC_OVERFLOWS, chan=i)
+                if reset:
+                    ant.FFT.reset_fft_overflow_count()
         except IOError as e:
             self.logger.error('%r: Error getting FPGA channelizer metrics. Error is %r' % (self, e))
         async_return(metrics)
