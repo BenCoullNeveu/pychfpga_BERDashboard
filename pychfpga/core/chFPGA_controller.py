@@ -2364,6 +2364,8 @@ class chFPGA_controller(IceBoardExtHandler):
             cb1_bin_select_map = [np.arange(cb1_bins)*cb1_bin_spacing+(i % cb1_bin_spacing) for i in range(number_of_cb1_bin_sel)]
             cb1_output_words_per_bin = 4
             cb1_output_bins = cb1_bins
+            cb1_input_lanes_per_output_lane = 16
+            cb1_output_data_flags_words_per_bin = cb1_bins/2
 
             bp_shuffle_bypass = True
 
@@ -2379,6 +2381,8 @@ class chFPGA_controller(IceBoardExtHandler):
             # cb2_bin_select_map = [np.arange(cb2_bins)*cb2_bin_spacing for i in range(number_of_cb2_bin_sel)]
             cb2_output_words_per_bin = cb2_input_words_per_bin
             cb2_output_bins = cb2_bins
+            cb2_input_lanes_per_output_lane = cb1_input_lanes_per_output_lane
+            cb2_output_data_flags_words_per_bin = cb1_output_data_flags_words_per_bin
 
             crate_number = self.crate.crate_number or 0 if self.crate else 0
             stream_type = 1
@@ -2388,6 +2392,8 @@ class chFPGA_controller(IceBoardExtHandler):
             cb3_bypass = True
             cb3_output_words_per_bin = cb2_input_words_per_bin
             cb3_output_bins = cb2_input_bins
+            cb3_output_data_flags_words_per_bin = cb2_output_data_flags_words_per_bin
+            cb3_output_frame_flags_words_per_frame = cb2_output_data_flags_words_per_bin
 
         elif mode == 'shuffle256':
             if not self.slot:
