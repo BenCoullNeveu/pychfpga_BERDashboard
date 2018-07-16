@@ -1,7 +1,7 @@
-# # -*- coding: utf-8 -*-
+# -*- coding: utf-8 -*-
 
 """
-Send Messages to Slack using Slack Incoming Webhooks API
+Send Messages to Slack using Slack Incoming Webhooks
 """
 
 # Imports
@@ -166,4 +166,3 @@ class SlackClient():
         except Exception as e:
             raise e
         return message_color
-
