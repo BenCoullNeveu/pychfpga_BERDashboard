@@ -188,7 +188,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
                 "gpu/gpu_{0}/frb/update_gains/{0}".format(gpu_id))
         result = yield {gpu_id: self._post(endpoint, **command)
                         for endpoint in endpoints}
-        coroutine_return(result)
+        coroutine_return("done")
 
     @coroutine
     def update_north_south_beam(self, northmost_beam):
@@ -202,7 +202,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
                 "gpu/gpu_{0}/frb/update_NS_beam/{0}".format(gpu_id))
         result = yield {gpu_id: self._post(endpoint, **command)
                         for endpoint in endpoints}
-        coroutine_return(result)
+        coroutine_return("done")
 
     @coroutine
     def update_east_west_beam(self, east_west_id, east_west_beam):
@@ -217,7 +217,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
                 "gpu/gpu_{0}/frb/update_EW_beam/{0}".format(gpu_id))
         result = yield {gpu_id: self._post(endpoint, **command)
                         for endpoint in endpoints}
-        coroutine_return(result)
+        coroutine_return("done")
 
     @coroutine
     def update_beam_offset(self, offset):
@@ -242,7 +242,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
             endpoints.append("gpu/gpu_{0}/update_pulsar/{0}".format(gpu_id))
         result = yield {gpu_id: self._post(endpoint, **command)
                         for endpoint in endpoints}
-        coroutine_return(result)
+        coroutine_return("done")
 
     # Node Endpoints
     @coroutine

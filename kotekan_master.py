@@ -74,7 +74,7 @@ class KotekanMaster(object):
 
         # Watchdog parameters
         self.watchdog_enabled = False
-        self.watchdog_interval = 60
+        self.watchdog_interval = 30
         self.watchdog_stats = {}
 
         # GPS Parameters
@@ -378,7 +378,7 @@ class KotekanMaster(object):
         Start Watchdog
         """
         self.watchdog_enabled = True
-        self.watchdog_interval = 60
+        self.watchdog_interval = 30
         self.log.info('%s : KotekanMaster Watchdog Enabled', self)
         self.log.info('%s : KotekanMaster Watchdog Interval : %s seconds',
                       self, self.watchdog_interval)
@@ -425,6 +425,7 @@ class KotekanMaster(object):
         result = {}
         if all(running_configs):
             self.log.info('%s : Config Synchronization -- True', self)
+            self.slack.info('Kotekan configurations sync ')
             self.config_sync = True
             result['config_sync'] = True
         else:
@@ -435,38 +436,69 @@ class KotekanMaster(object):
 
     @coroutine
     def validate_checksum(self):
-        config_md5sum = yield self.kotekan_config_md5sum()
-        print config_md5sum
-        dynamic_config = json.dumps(self.current_config.common_config.as_dict(),
-                                    sort_keys=True, separators=(',', ':'))
-        _md5 = hashlib.md5()
-        _md5.update(dynamic_config)
-        dynamic_md5sum = _md5.hexdigest()
+        try:
+            # GPU node md5sums
+            log.info('Validating Config Checksums')
+            node_md5sums = yield self.kotekan_config_md5sum()
+            # KotekanMaster md5sum
+            dynamic_config = json.dumps(self.current_config.common_config.as_dict(),
+                                        sort_keys=True, separators=(',', ':'))
+            _md5 = hashlib.md5()
+            _md5.update(dynamic_config)
+            kotekan_master_md5sum = _md5.hexdigest()
 
-        result = {}
-        self.log.info('%s : KotekanMaster Checksum Validation Status', self)
-        # Check if the array is synchronized.
-        if all(config_md5sum):
-            self.log.info('%s : Array Synchronization --  True', self)
-            self.array_sync = True
-            result['array_sync'] = True
-        else:
-            self.log.error('%s : Array Synchronization -- False', self)
-            self.array_sync = False
-            result['array_sync'] = False
-        # Check if the array config and the KotekanMaster config are the same.
-        self.log.info('%s : Node MD5Sum : %s',
-                      self, config_md5sum[config_md5sum.keys()[0]]['md5sum'])
-        self.log.info('%s : KM   MD5Sum : %s', self, dynamic_md5sum)
-        if config_md5sum[config_md5sum.keys()[0]]['md5sum'] == dynamic_md5sum:
-            self.log.info('%s : Config Synchronization -- True', self)
-            self.config_sync = False
-            result['config_sync'] = True
-        else:
-            self.log.info('%s : Config Synchronization -- False', self)
-            self.config_sync = False
-            result['config_sync'] = False
-        coroutine_return(result)
+            result = {}
+            array_md5_sync = None
+            kotekan_master_md5_sync = None
+            unique_md5sums = {}
+
+            # Check all the md5sums and keep track how many times we see it.
+            for node in node_md5sums.keys():
+                md5sum = node_md5sums.get(node).get('md5sum')
+                if md5sum not in unique_md5sums:
+                    unique_md5sums[md5sum] = 1
+                else:
+                    unique_md5sums[md5sum] += 1
+
+            # Remove None md5sums returned by dead nodes.
+            try:
+                unique_md5sums.pop(None)
+            except Exception as e:
+                pass
+
+            if len(unique_md5sums.keys()) == 1:
+                array_md5_sync = True
+                if unique_md5sums.keys()[0] == kotekan_master_md5sum:
+                    kotekan_master_md5_sync = True
+                else:
+                    kotekan_master_md5_sync = False
+            else:
+                array_md5_sync = False
+                kotekan_master_md5_sync = False
+
+            result['array_sync'] = array_md5_sync
+            result['km_sync'] = kotekan_master_md5_sync
+
+            if array_md5_sync and kotekan_master_md5_sync:
+                    self.log.info('%s : Checksum validation passed.', self)
+                    self.log.debug(unique_md5sums)
+                    self.slack.info(msg_title='Checksum validation passed',
+                                    msg=json.dumps(unique_md5sums),
+                                    as_inline_code=True)
+            else:
+                self.log.warning('%s : Checksum validation failed.', self)
+                self.log.warning('%s : array md5s = %s', self, unique_md5sums)
+                self.log.warning('%s : kotekan master md5s = %s', self, kotekan_master_md5sum)
+                self.slack.warning(msg_title='Checksum validation failed')
+                self.slack.warning(msg_title='array md5',
+                                   msg=json.dumps(unique_md5sums),
+                                   as_inline_code=True)
+                self.slack.warning(msg_title='kotekan master md5',
+                                   msg=json.dumps(kotekan_master_md5sum),
+                                   as_inline_code=True)
+            coroutine_return(result)
+        except Exception as e:
+            coroutine_return(str(e))
 
     # Kotekan Methods
     #   These methods interact with the kotekan rest server.
@@ -608,16 +640,18 @@ class KotekanMaster(object):
         POST the new gain directory for the beamformingKernel on all nodes
         currently managed by kotekan_master.
         """
-        self.log.info('%s : Parameter gains_dir updated to: %s',
-                      self, gain_dir)
-        # TODO: I am staticly manipulating the config for each gpu.
-        # This should be automated.
+        # Update local configuration to reflect gain_dir changes.
         self.current_config.common_config.gpu.gpu_0.gain_dir = gain_dir
         self.current_config.common_config.gpu.gpu_1.gain_dir = gain_dir
         self.current_config.common_config.gpu.gpu_2.gain_dir = gain_dir
         self.current_config.common_config.gpu.gpu_3.gain_dir = gain_dir
         result = yield {node_name: kotekan.update_gain_dir(gain_dir)
                         for node_name, kotekan in self.nodes.items()}
+        self.log.info('%s : Parameter gains_dir updated to: %s',
+                      self, gain_dir)
+        self.slack.info(msg_title="update-gain-dir",
+                        msg=gain_dir,
+                        as_inline_code=True)
         coroutine_return(result)
 
     @coroutine
@@ -626,11 +660,15 @@ class KotekanMaster(object):
         POST the new beam_offset for frbNetworkProcess on all nodes currently
         managed by kotekan_master.
         """
-        self.log.info('%s : Parameter beam_offset updated to : %s',
-                      self, beam_offset)
+
         self.current_config.common_config.frb.buffer_read.beam_offset = beam_offset
         result = yield {node_name: kotekan.update_beam_offset(beam_offset)
                         for node_name, kotekan in self.nodes.items()}
+        self.log.info('%s : Parameter beam_offset updated to : %s',
+                      self, beam_offset)
+        self.slack.info(msg_title="update-beam-offset",
+                        msg=json.dumps(beam_offset),
+                        as_inline_code=True)
         coroutine_return(result)
 
     @coroutine
@@ -638,14 +676,18 @@ class KotekanMaster(object):
         """
         Update CHIME/FRB North-South Beam
         """
-        self.log.info('%s : Parameter northmost_beam updated to : %s',
-                      self, northmost_beam)
+        northmost_beam = float(northmost_beam)
         self.current_config.common_config.gpu.gpu_0.northmost_beam = northmost_beam
         self.current_config.common_config.gpu.gpu_1.northmost_beam = northmost_beam
         self.current_config.common_config.gpu.gpu_2.northmost_beam = northmost_beam
         self.current_config.common_config.gpu.gpu_3.northmost_beam = northmost_beam
         result = yield{node_name: kotekan.update_north_south_beam(northmost_beam)
                        for node_name, kotekan in self.nodes.items()}
+        self.log.info('%s : Parameter northmost_beam updated to : %s',
+                      self, northmost_beam)
+        self.slack.info(msg_title="updated-north-south-beam",
+                        msg=json.dumps(northmost_beam),
+                        as_inline_code=True)
         coroutine_return(result)
 
     @coroutine
@@ -653,29 +695,64 @@ class KotekanMaster(object):
         """
         Update CHIME/FRB East-West Beam
         """
-        self.log.info('%s : Parameter east_east_id was updated to : %s',
-                      self, east_west_id)
-        self.log.info('%s : paramter east_west_beam updated to : %s',
-                      self, east_west_beam)
-        result = yield{node_name: kotekan.update_east_west_beam(east_west_id,
-                                                                east_west_beam)
-                       for node_name, kotekan in self.nodes.items()}
-        coroutine_return(result)
+        east_west_id = int(east_west_id)
+        east_west_beam = float(east_west_beam)
+        try:
+            # Update the KotekanMaster Dynamic Config
+            self.current_config.common_config.gpu.gpu_0.ew_spacing[east_west_id] = east_west_beam
+            self.current_config.common_config.gpu.gpu_1.ew_spacing[east_west_id] = east_west_beam
+            self.current_config.common_config.gpu.gpu_2.ew_spacing[east_west_id] = east_west_beam
+            self.current_config.common_config.gpu.gpu_3.ew_spacing[east_west_id] = east_west_beam
+
+            msg = "east_west_id: {}, east_west_beam: {}".format(east_west_id, east_west_beam)
+            self.log.info(msg)
+            self.slack.info(msg_title='update-east-west-beam',
+                            msg=msg,
+                            as_inline_code=True)
+            result = yield{node_name: kotekan.update_east_west_beam(east_west_id, east_west_beam) for node_name, kotekan in self.nodes.items()}
+            coroutine_return(result)
+        except Exception as e:
+            coroutine_return(str(e))
 
     @coroutine
     def update_pulsar_pointing(self, beam, ra, dec, scaling):
         """
         Update CHIME/PSR Beam Pointing
         """
-        self.slack.info(msg_title="update-pulsar-pointing",
-                        msg="TODO")
-        self.log.info('%s : Pulsar Parameters Updated', self)
-        self.log.info('%s : Beam %s, RA %s, DEC %s, Scaling %s',
-                      self, beam, ra, dec, scaling)
-        result = yield{node_name: kotekan.update_pulsar_pointing(beam, ra,
-                                                                 dec, scaling)
-                       for node_name, kotekan in self.nodes.items()}
-        coroutine_return(result)
+        beam = int(beam)
+        ra = float(ra)
+        dec = float(dec)
+        scaling = int(scaling)
+        try:
+            # Update KotekanMaster Dynamic Config
+            # Update ra
+            self.current_config.common_config.gpu.gpu_0.source_ra[beam] = ra
+            self.current_config.common_config.gpu.gpu_1.source_ra[beam] = ra
+            self.current_config.common_config.gpu.gpu_2.source_ra[beam] = ra
+            self.current_config.common_config.gpu.gpu_3.source_ra[beam] = ra
+            # Update dec
+            self.current_config.common_config.gpu.gpu_0.source_dec[beam] = dec
+            self.current_config.common_config.gpu.gpu_1.source_dec[beam] = dec
+            self.current_config.common_config.gpu.gpu_2.source_dec[beam] = dec
+            self.current_config.common_config.gpu.gpu_3.source_dec[beam] = dec
+            # Update scaling
+            self.current_config.common_config.gpu.gpu_0.psr_scaling[beam] = scaling
+            self.current_config.common_config.gpu.gpu_1.psr_scaling[beam] = scaling
+            self.current_config.common_config.gpu.gpu_2.psr_scaling[beam] = scaling
+            self.current_config.common_config.gpu.gpu_3.psr_scaling[beam] = scaling
+
+            msg = "beam: {}, ra: {}, dec: {}, scaling: {}".format(beam, ra, dec, scaling)
+            self.slack.info(msg_title="update-pulsar-pointing",
+                            msg=msg,
+                            as_inline_code=True)
+            self.log.info('%s : Pulsar Parameters Updated', self)
+            self.log.info(msg)
+            result = yield{node_name: kotekan.update_pulsar_pointing(beam, ra,
+                                                                     dec, scaling)
+                           for node_name, kotekan in self.nodes.items()}
+            coroutine_return(result)
+        except Exception as e:
+            coroutine_return(str(e))
 
     # Node Methods
     #   These methods interact the node hardware and have no access to the
@@ -761,11 +838,21 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         NOTE: This loop runs prepetually. To enable and disable the watchdog,
         execute the start-watchdog and stop-watchdog endpoints.
         """
+        initial_sleep = True
+
         while True:
             # Check if the watchdog is currently enabled.
             if self.kotekan_master.watchdog_enabled:
-                print ('Watching...')
-                self.log.info('%s : Watchdog Running', self)
+                print ("Watchdog running...")
+                # kotekan can take update 10-20 seconds to report running as true
+                # even when a start as been issues. To migigate watchdog from posting a start
+                # while kotekan is initiliazing, we wait at the start of the loop instead of
+                # at the end.
+                if initial_sleep:
+                    yield sleep(self.kotekan_master.watchdog_interval)
+                    initial_sleep = False
+
+                self.log.info('%s : Watching...0.0', self)
                 # Run get status from each node
                 node_status = yield self.kotekan_master.kotekan_status()
                 # Execute restarts for nodes with running==false
@@ -773,19 +860,22 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
                                         node_status)
                 # Update watchdog statistics
                 watchdog_stats = yield self.kotekan_master.update_watchdog_stats(restart_list)
-
                 # Validate Checksums
-                print ("Running Validation")
+                self.log.info('%s : Validating...', self)
                 checksum_validate = yield self.kotekan_master.validate_checksum()
+                print (checksum_validate)
 
                 self.log.info('%s : KotekanMaster Watchdog Stats', self)
                 self.log.info('%s : %s', self, watchdog_stats)
                 self.log.info('%s : Watchdog sleeping for %s seconds',
                               self, self.kotekan_master.watchdog_interval)
 
-            # Wait for the watchdog_interval
-            print ("Sleeping")
-            yield sleep(self.kotekan_master.watchdog_interval)
+                yield sleep(self.kotekan_master.watchdog_interval)
+
+            if not self.kotekan_master.watchdog_enabled:
+                # If watchdog is not enabled, still sleep so that we dont overtake
+                # compute cycles.
+                yield sleep(5)
 
     @coroutine
     @endpoint('stop-watchdog')
@@ -881,8 +971,8 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         """
         Start kotekan process on all nodes with current_config
         """
-        watchdog = yield self.kotekan_master.start_watchdog()
         result = yield self.kotekan_master.start_kotekan()
+        watchdog = yield self.kotekan_master.start_watchdog()
         coroutine_return(result)
 
     @coroutine
@@ -994,13 +1084,30 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
     def update_east_west_beam(self, handler, east_west_id, east_west_beam):
         """
         POST to update CHIME/FRB East-West Beam
+
+        curl
+        -d '{"east_west_id": 0|1|2|3, "east_west_beam": 0.2 }'
+        -X POST
+        -H "Content-Type: application/json"
+        http://localhost:54323/update-east-west-beam
         """
+        result = yield self.kotekan_master.update_east_west_beam(east_west_id, east_west_beam)
+        coroutine_return(result)
 
     @coroutine
     @endpoint('update-pulsar-pointing')
     def update_pulsar_pointing(self, handler, beam, ra, dec, scaling):
         """
         POST to update CHIME/PSR pulsar beam pointing.
+        curl
+        -d '{"beam": 0|1|2|3,
+             "ra": 0.0,
+             "dec": 0.0,
+             "scaling": 48 }'
+        -X POST
+        -H "Content-Type: application/json"
+        http://localhost:54323/update-pulsar-pointing
+
         """
         result = yield self.kotekan_master.update_pulsar_pointing(beam,
                                                                   ra,
