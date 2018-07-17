@@ -2563,7 +2563,7 @@ class chFPGA_controller(IceBoardExtHandler):
             cb2_input_frame_flags_words_per_frame = 1
 
             # Configuration
-            cb2_sof_window_stop = 50
+            cb2_sof_window_stop = 55
             cb2_bypass = False
             # CB2 REMAP
             cb2_lane_map = self.CROSSBAR2.compute_bp_shuffle_lane_map()

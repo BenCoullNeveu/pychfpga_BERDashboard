@@ -1060,7 +1060,7 @@ class FPGAArray(object):
             if not all(self.ib.CROSSBAR2) or not all(self.ib.CROSSBAR3):
                 raise RuntimeError('All IceBoards must have their CROSSBAR2 and CROSSBAR 3 implemented')
             self.ib.BP_SHUFFLE.set_tx_power(13)
-            self.ib.CROSSBAR3.SOF_WINDOW_STOP = 100
+            self.ib.CROSSBAR3.SOF_WINDOW_STOP = 110
             self.ib.CROSSBAR3.TIMEOUT_PERIOD = 0
             self.ib.BP_SHUFFLE.reset_rx_equalizers()
             self.init_shuffle(mode=mode, frames_per_packet=frames_per_packet)

@@ -96,7 +96,7 @@ class ShuffleCrossbar(Module_base):
         self.NUMBER_OF_CROSSBAR_INPUTS = self.NUMBER_OF_INPUT_LANES
         self.NUMBER_OF_CROSSBAR_OUTPUTS = self.NUMBER_OF_OUTPUT_LANES
         self.NUMBER_OF_OUTPUTS_PER_BIN_SEL = self.NUMBER_OF_CROSSBAR_OUTPUTS/self.NUMBER_OF_BIN_SEL
-        self.SOF_WINDOW_STOP = 50
+        self.SOF_WINDOW_STOP = 55
         for bs in self.BIN_SEL:
             bs.init(number_of_inputs=self.NUMBER_OF_INPUT_LANES)
 
