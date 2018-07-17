@@ -112,6 +112,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         try:
             result = yield self.post(endpoint, **arguments)
         except Exception as e:
+            print (e)
             result = {"UnknownError": "{0}".format(str(e))}
         coroutine_return(result)
 

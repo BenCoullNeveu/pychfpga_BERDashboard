@@ -51,25 +51,35 @@ class SlackClient():
     def send_text_message(self, text):
         return self._notify(text=text)
 
-    def debug(self, msg=None):
+    def debug(self, msg_title="DEBUG", msg=None, as_inline_code=False):
+        if as_inline_code:
+            msg = self._as_inline_code(msg)
         return self._send_message(
-            msg_title="DEBUG", msg_text=msg, msg_level='DEBUG')
+            msg_title, msg, msg_level='DEBUG')
 
-    def info(self, msg=None):
+    def info(self, msg_title="INFO", msg=None, as_inline_code=False):
+        if as_inline_code:
+            msg = self._as_inline_code(msg)
         return self._send_message(
-            msg_title="INFO", msg_text=msg, msg_level='INFO')
+            msg_title, msg, msg_level='INFO')
 
-    def warning(self, msg=None):
+    def warning(self, msg_title="WARNING", msg=None, as_inline_code=False):
+        if as_inline_code:
+            msg = self._as_inline_code(msg)
         return self._send_message(
-            msg_title="WARNING", msg_text=msg, msg_level='WARNING')
+            msg_title, msg, msg_level='WARNING')
 
-    def error(self, msg=None):
+    def error(self, msg_title="ERROR", msg=None, as_inline_code=False):
+        if as_inline_code:
+            msg = self._as_inline_code(msg)
         return self._send_message(
-            msg_title="ERROR", msg_text=msg, msg_level='ERROR')
+            msg_title, msg, msg_level='ERROR')
 
-    def critical(self, msg=None):
+    def critical(self, msg_title="CRITICAL", msg=None, as_inline_code=False):
+        if as_inline_code:
+            msg = self._as_inline_code(msg)
         return self._send_message(
-            msg_title="CRITICAL", msg_text=msg, msg_level='CRITICAL')
+            msg_title, msg, msg_level='CRITICAL')
 
     ##########################################################################
     #                       End of Public API                                #
@@ -166,3 +176,6 @@ class SlackClient():
         except Exception as e:
             raise e
         return message_color
+
+    def _as_inline_code(self, msg):
+        return "``` " + msg + " ```"

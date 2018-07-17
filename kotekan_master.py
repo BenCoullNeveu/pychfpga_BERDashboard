@@ -13,10 +13,13 @@ import requests
 import log
 import json
 import hashlib
+from random import choice
 from pychfpga import NameSpace, load_yaml_config, merge_dict
 from kotekan import KotekanAsyncRESTClient
 from rest import AsyncRESTClient, AsyncRESTServer, endpoint
 from rest import coroutine, coroutine_return, sleep, IOLoop
+# Import Slack Client
+from slack import SlackClient
 
 # REST Server/Client
 from rest import RunSyncWrapper, SocketContext, run_client
@@ -67,6 +70,7 @@ class KotekanMaster(object):
         self.nodes = {}
         # KotekanAsyncRESTClient instances blacklisted
         self.blacklist_nodes = []
+        self.no_connection_nodes = {}
 
         # Watchdog parameters
         self.watchdog_enabled = False
@@ -79,6 +83,7 @@ class KotekanMaster(object):
         self.gps_time = {}
 
         # Synchronization Parameters
+        self.kotekan_versions = []
         # True all nodes in the array are running the same config
         self.array_sync = {}
         # True if nodes are running the same config as the one
@@ -90,6 +95,9 @@ class KotekanMaster(object):
                             ['git', 'rev-parse', 'HEAD'])
         self.log.info("%s : Program : %s", self, self.program)
         self.log.info("%s : Git Ver : %s", self, self.git_version)
+
+        self.slack = SlackClient(SLACK_TOKEN_NAME="SLACK_API_TOKEN",
+                                 module_name="KotekanMaster")
 
     # Helper Methods
     #   NOTE: These methods are not coroutines!
@@ -125,6 +133,7 @@ class KotekanMaster(object):
         # Start KotekanMaster if the current state is off.
         if self.state == 'off':
             self.log.info('%s : KotekanMaster server starting ...', self)
+            self.slack.info(msg_title="KotekanMaster Startup Initiated")
             self.start_time = time.time()
             self.isotime = time.strftime("%Y%m%dT%H%M%SZ",
                                          time.gmtime(self.start_time))
@@ -155,6 +164,9 @@ class KotekanMaster(object):
             # Create run folders
             try:
                 os.makedirs(self.run_folder)
+                self.slack.info(msg_title="Run Folder",
+                                msg=json.dumps(self.run_folder),
+                                as_inline_code=True)
             except OSError:
                 errmsg = "Could not create directory '%s'!" % self.run_folder
                 self.log.critical(errmsg)
@@ -190,6 +202,9 @@ class KotekanMaster(object):
             self.log.info('%s : Retreiving GPS Time ...', self)
             try:
                 self.gps_status = yield self._get_gps_time()
+                self.slack.info(msg_title="GPS Time",
+                                msg=json.dumps(self.gps_time),
+                                as_inline_code=True)
             except Exception:
                 self.log.error('%s : Unable to retreive GPS Time.', self)
             # Append GPS time to the config.
@@ -199,7 +214,42 @@ class KotekanMaster(object):
             self.log.info('%s : Kotekan Clients Created.', self)
             self.state = 'on'
             self.log.info('%s : KotekanMaster State : %s', self, self.state)
+            self.slack.info(msg_title="Nodes", 
+                            msg=json.dumps(self.nodes.keys()),
+                            as_inline_code=True)
+
+            # Check if we can connect to Kotekan running on the nodes.
+            self.log.info('%s : Checking kotekan node connection status ', self)
+            status = yield self.kotekan_status()
+            for node_name, status in status.items():
+                if 'running' not in status:
+                    self.no_connection_nodes[node_name] = status
+            self.slack.info(msg_title="No Connection Nodes",
+                            msg=json.dumps(self.no_connection_nodes),
+                            as_inline_code=True)
+
+            # Check if all kotekan instances are running the same binary.
+            self.log.info('%s : Checking kotekan binary versions', self)
+            running_versions = yield self.kotekan_version()
+
+            for node_name, version in running_versions.items():
+                if node_name not in self.no_connection_nodes.keys():
+                    self.kotekan_versions.append(version.get('git_commit_hash'))
+
+            # Select a random kotekan_version
+            random_kotekan_version = choice(self.kotekan_versions)
+            print random_kotekan_version
+            for version in self.kotekan_versions:
+                if version != random_kotekan_version:
+                    self.slack.error(msg_title="Kotekan version error",
+                                     msg="{} != {}".format(version, random_kotekan_version))
+                    raise Exception("Kotekan version error!!")
+            self.slack.info(msg_title="Kotekan version check passed",
+                            msg=str(random_kotekan_version))
+
+            self.slack.info(msg_title='KotekanMaster Startup Complete.')
             coroutine_return('KotekanMaster Server Started.')
+
         # If already running, do nothing.
         if self.state == 'on':
             self.log.info('%s : KotekanMaster State : %s', self, self.state)
@@ -222,8 +272,7 @@ class KotekanMaster(object):
             self.nodes[node_name] = KotekanAsyncRESTClient(name=node_name,
                                                            heartbeat_period=5000,
                                                            **node_params)
-        self.log.info('%s : Created kotekan clients for nodes: %s',
-                      self, self.nodes.keys())
+        self.log.info('%s : Created kotekan clients.', self)
         coroutine_return({})
 
     @coroutine
@@ -242,6 +291,7 @@ class KotekanMaster(object):
 
         self.state = 'off'
         self.log.info('%s : KotekanMaster State : %s', self, self.state)
+        self.slack.info(msg_title='KotekanMaster Stopped.')
         coroutine_return('KotekanMaster Server Stopped.')
 
     @coroutine
@@ -271,10 +321,6 @@ class KotekanMaster(object):
     def whitelist_node(self, node_list):
         """
         Whitelist Node
-
-        Parameters
-        ----------
-
         """
         self.log.info('%s : Whitelist Nodes Executed : %s', self, node_list)
         whitelisted_nodes = []
@@ -285,7 +331,7 @@ class KotekanMaster(object):
                 self.log.info('%s : Found config for node %s', self, node_name)
             except Exception:
                 node_config = {'hostname': node_name, 'port': 12048}
-                self.log.info('%s : Unable to find config for node %s, using  defaults', self, node_name)
+                self.log.info('%s : Cannot find config for node %s, using  defaults', self, node_name)
             # Start a Kotekan Client for the node.
             if node_name not in self.nodes.keys():
                 self.nodes[node_name] = KotekanAsyncRESTClient(
@@ -294,11 +340,14 @@ class KotekanMaster(object):
                 self.log.info('%s : Whitelisted Node: %s', self, node_name)
             # Remove the node from the blacklist
             if node_name in self.blacklist_nodes:
-                self.blacklist.remove(node_name)
+                self.blacklist_nodes.remove(node_name)
                 self.log.info('%s : Removed node %s from Blacklist',
                               self, node_name)
             # Keep track of newly whiteliested nodes.
             whitelisted_nodes.append(node_name)
+        self.slack.info(msg_title="Whitelisted Nodes",
+                        msg=json.dumps(whitelisted_nodes),
+                        as_inline_code=True)
         coroutine_return(whitelisted_nodes)
 
     @coroutine
@@ -306,16 +355,20 @@ class KotekanMaster(object):
         """
         Blacklist Node
         """
+        new_blacklist_nodes = []
+        self.log.info('%s : Blacklist Nodes Executed : %s', self, node_list)
         for node_name, kotekan in self.nodes.items():
             if node_name in node_list:
                 if node_name not in self.blacklist_nodes:
-                    self.log.info('%s : Blacklisted Node : %s',
-                                  self, node_name)
-                    self.log.info('%s : Stopping Kotekan on %s',
-                                  self, node_name)
+                    self.log.info('%s : Blacklisted Node : %s', self, node_name)
                     yield kotekan.kill()
                     self.blacklist_nodes.append(node_name)
                     self.nodes.pop(node_name)
+                    new_blacklist_nodes.append(node_name)
+        if len(new_blacklist_nodes) != 0:
+            self.slack.info(msg_title="Blacklisted Nodes",
+                            msg=json.dumps(new_blacklist_nodes),
+                            as_inline_code=True)
         coroutine_return(self.blacklist_nodes)
 
     # KotekanMaster Watchdog Methods
@@ -329,6 +382,9 @@ class KotekanMaster(object):
         self.log.info('%s : KotekanMaster Watchdog Enabled', self)
         self.log.info('%s : KotekanMaster Watchdog Interval : %s seconds',
                       self, self.watchdog_interval)
+        msg = 'watchdog interval: {} seconds'.format(self.watchdog_interval)
+        self.slack.info(msg_title="KotekanMaster Watchdog Enabled",
+                        msg=msg)
         coroutine_return(result='KotekanMaster Watchdog Enabled')
 
     @coroutine
@@ -338,6 +394,7 @@ class KotekanMaster(object):
         """
         self.watchdog_enabled = False
         self.log.info('%s : KotekanMaster Watchdog Disabled', self)
+        self.slack.info('KotekanMaster Watchdog Disabled')
         coroutine_return('KotekanMaster Watchdog Disabled')
 
     @coroutine
@@ -365,7 +422,7 @@ class KotekanMaster(object):
     def validate_config(self):
         running_configs = yield self.kotekan_running_config()
         self.log.info('%s : KotekanMaster Config Validation Status', self)
-        result={}
+        result = {}
         if all(running_configs):
             self.log.info('%s : Config Synchronization -- True', self)
             self.config_sync = True
@@ -379,6 +436,7 @@ class KotekanMaster(object):
     @coroutine
     def validate_checksum(self):
         config_md5sum = yield self.kotekan_config_md5sum()
+        print config_md5sum
         dynamic_config = json.dumps(self.current_config.common_config.as_dict(),
                                     sort_keys=True, separators=(',', ':'))
         _md5 = hashlib.md5()
@@ -420,6 +478,10 @@ class KotekanMaster(object):
         """
         Start the kotekan process on all nodes.
         """
+        print self.current_config.common_config.as_dict()
+        self.slack.info(msg_title="start-kotekan",
+                        msg=json.dumps(self.nodes.keys()),
+                        as_inline_code=True)
         yield {node_name: kotekan.start(
             config=self.current_config.common_config.as_dict())
                 for node_name, kotekan in self.nodes.items()}
@@ -442,9 +504,13 @@ class KotekanMaster(object):
         """
         restart_list = []
         for node_name, status in node_status.items():
-            if status['running'] is False:
-                restart_list.append(node_name)
-        self.log.info('Watchdog Restart List: %s', restart_list)
+                if status.get('running') is False:
+                    restart_list.append(node_name)
+        if len(restart_list) != 0:
+            self.log.info('Watchdog Restart List: %s', restart_list)
+            self.slack.info(msg_title='Watchdog Restart List',
+                            msg=json.dumps(restart_list),
+                            as_inline_code=True)
         # Start the nodes
         for node_name, kotekan in self.nodes.items():
             if node_name in restart_list:
@@ -458,7 +524,10 @@ class KotekanMaster(object):
         """
         Stop the kotekan process on all nodes.
         """
-        yield {node_name: kotekan.stop()
+        self.slack.info(msg_title="stop-kotekan (used /kill)",
+                        msg=json.dumps(self.nodes.keys()),
+                        as_inline_code=True)
+        yield {node_name: kotekan.kill()
                for node_name, kotekan in self.nodes.items()}
 
     @coroutine
@@ -466,6 +535,9 @@ class KotekanMaster(object):
         """
         Kill the kotekan process on all nodes.
         """
+        self.slack.info(msg_title="kill-kotekan",
+                        msg=json.dumps(self.nodes.keys()),
+                        as_inline_code=True)
         yield {node_name: kotekan.kill()
                for node_name, kotekan in self.nodes.items()}
 
@@ -595,6 +667,8 @@ class KotekanMaster(object):
         """
         Update CHIME/PSR Beam Pointing
         """
+        self.slack.info(msg_title="update-pulsar-pointing",
+                        msg="TODO")
         self.log.info('%s : Pulsar Parameters Updated', self)
         self.log.info('%s : Beam %s, RA %s, DEC %s, Scaling %s',
                       self, beam, ra, dec, scaling)
@@ -690,6 +764,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         while True:
             # Check if the watchdog is currently enabled.
             if self.kotekan_master.watchdog_enabled:
+                print ('Watching...')
                 self.log.info('%s : Watchdog Running', self)
                 # Run get status from each node
                 node_status = yield self.kotekan_master.kotekan_status()
@@ -700,6 +775,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
                 watchdog_stats = yield self.kotekan_master.update_watchdog_stats(restart_list)
 
                 # Validate Checksums
+                print ("Running Validation")
                 checksum_validate = yield self.kotekan_master.validate_checksum()
 
                 self.log.info('%s : KotekanMaster Watchdog Stats', self)
@@ -708,6 +784,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
                               self, self.kotekan_master.watchdog_interval)
 
             # Wait for the watchdog_interval
+            print ("Sleeping")
             yield sleep(self.kotekan_master.watchdog_interval)
 
     @coroutine
@@ -753,8 +830,6 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         http://localhost:54323/whitelist-node
         """
         print node_list
-        for node in node_list:
-            print node
         result = yield self.kotekan_master.whitelist_node(node_list)
         coroutine_return(result)
 
@@ -1013,7 +1088,6 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
             config = load_yaml_config(config)
         result = self.post('start-kotekan-master', **config)
         coroutine_return(result)
-
 
     @coroutine
     def stop(self):
