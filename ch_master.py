@@ -556,7 +556,7 @@ class ChimeMaster(object):
                 intuitive). `scaler`: the data is taken after the scaler. Default is 'scaler'.
 
             tmux_factor (int): Number between 0 and 64.  Raw data transmission is staggered across FPGAs in the array
-                with a step size equal to tmux_factor * 256 * 2.56microsec.
+                with a step size equal to tmux_factor * 524.288 microsec.
 
         If no arguments are provided, the FPGA will be set to transmit data at the idle rate and from source defined in the config file.
         """
@@ -1761,7 +1761,7 @@ class ChimeMasterAsyncRESTClient(AsyncRESTClient):
                 if status['is_ready']:
                     self.log.info('%r: start process is completed' % self)
                     coroutine_return(status['start_result'])
-            except HTTPError as e:
+            except RuntimeError as e:
                 print('*** %r Client get_status got an exception %r\n\n Ignoring.' % (self, e))
                 status=dict(state='HTTP error')
             self.log.info('%r: Waiting for the START process to complete. Current state is: %s' % (self, status['state']))
