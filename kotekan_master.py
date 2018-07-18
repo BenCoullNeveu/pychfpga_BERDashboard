@@ -223,7 +223,7 @@ class KotekanMaster(object):
                             as_inline_code=True)
 
             # Check if we can connect to Kotekan running on the nodes.
-            self.log.info('%s : Checking kotekan node connection status ', self)
+            self.log.info('%s : Checking node connection status ', self)
             status = yield self.kotekan_status()
             for node_name, status in status.items():
                 if 'running' not in status:
@@ -246,7 +246,8 @@ class KotekanMaster(object):
             for version in self.kotekan_versions:
                 if version != random_kotekan_version:
                     self.slack.error(msg_title="Kotekan version error",
-                                     msg="{} != {}".format(version, random_kotekan_version))
+                                     msg="{} != {}".format(
+                                        version, random_kotekan_version))
                     raise Exception("Kotekan version error!!")
             self.slack.info(msg_title="Kotekan version check passed",
                             msg=str(random_kotekan_version))
@@ -273,9 +274,10 @@ class KotekanMaster(object):
         # in the kotekan_config.yaml
         nodes = self.current_config.nodes or {}
         for node_name, node_params in nodes.items():
-            self.nodes[node_name] = KotekanAsyncRESTClient(name=node_name,
-                                                           heartbeat_period=5000,
-                                                           **node_params)
+            self.nodes[node_name] = KotekanAsyncRESTClient(
+                                        name=node_name,
+                                        heartbeat_period=5000,
+                                        **node_params)
         self.log.info('%s : Created kotekan clients.', self)
         coroutine_return({})
 
@@ -335,7 +337,9 @@ class KotekanMaster(object):
                 self.log.info('%s : Found config for node %s', self, node_name)
             except Exception:
                 node_config = {'hostname': node_name, 'port': 12048}
-                self.log.info('%s : Cannot find config for node %s, using  defaults', self, node_name)
+                self.log.info(
+                    '%s : Cannot find config for node %s, using  defaults',
+                    self, node_name)
             # Start a Kotekan Client for the node.
             if node_name not in self.nodes.keys():
                 self.nodes[node_name] = KotekanAsyncRESTClient(
@@ -364,7 +368,8 @@ class KotekanMaster(object):
         for node_name, kotekan in self.nodes.items():
             if node_name in node_list:
                 if node_name not in self.blacklist_nodes:
-                    self.log.info('%s : Blacklisted Node : %s', self, node_name)
+                    self.log.info('%s : Blacklisted Node : %s',
+                                  self, node_name)
                     yield kotekan.kill()
                     self.blacklist_nodes.append(node_name)
                     self.nodes.pop(node_name)
@@ -464,7 +469,7 @@ class KotekanMaster(object):
             else:
                 array_md5_sync = False
                 kotekan_master_md5_sync = False
-            
+
             # Update counter about the array being out of sync.
             # If the array has been in out of sync for two watchdog cycles.
             # start incrementing the global counter
@@ -492,7 +497,8 @@ class KotekanMaster(object):
             else:
                 self.log.warning('%s : Checksum validation failed.', self)
                 self.log.warning('%s : array_md5: %s', self, unique_md5sums)
-                self.log.warning('%s : kotekan master md5: %s', self, kotekan_master_md5sum)
+                self.log.warning('%s : kotekan master md5: %s',
+                                 self, kotekan_master_md5sum)
                 self.slack.warning(msg_title='Checksum validation failed')
                 self.slack.warning(msg_title='array md5',
                                    msg=json.dumps(unique_md5sums),
@@ -708,12 +714,16 @@ class KotekanMaster(object):
             self.current_config.common_config.gpu.gpu_2.ew_spacing[east_west_id] = east_west_beam
             self.current_config.common_config.gpu.gpu_3.ew_spacing[east_west_id] = east_west_beam
 
-            msg = "east_west_id: {}, east_west_beam: {}".format(east_west_id, east_west_beam)
+            msg = "east_west_id: {}, east_west_beam: {}".format(
+                east_west_id, east_west_beam)
             self.log.info(msg)
             self.slack.info(msg_title='update-east-west-beam',
                             msg=msg,
                             as_inline_code=True)
-            result = yield{node_name: kotekan.update_east_west_beam(east_west_id, east_west_beam) for node_name, kotekan in self.nodes.items()}
+            result = yield{
+                node_name: kotekan.update_east_west_beam(east_west_id,
+                                                         east_west_beam)
+                for node_name, kotekan in self.nodes.items()}
             coroutine_return(result)
         except Exception as e:
             coroutine_return(str(e))
@@ -745,15 +755,17 @@ class KotekanMaster(object):
             self.current_config.common_config.gpu.gpu_2.psr_scaling[beam] = scaling
             self.current_config.common_config.gpu.gpu_3.psr_scaling[beam] = scaling
 
-            msg = "beam: {}, ra: {}, dec: {}, scaling: {}".format(beam, ra, dec, scaling)
+            msg = "beam: {}, ra: {}, dec: {}, scaling: {}".format(
+                beam, ra, dec, scaling)
             self.slack.info(msg_title="update-pulsar-pointing",
                             msg=msg,
                             as_inline_code=True)
             self.log.info('%s : Pulsar Parameters Updated', self)
             self.log.info(msg)
-            result = yield{node_name: kotekan.update_pulsar_pointing(beam, ra,
-                                                                     dec, scaling)
-                           for node_name, kotekan in self.nodes.items()}
+            result = yield{
+                node_name: kotekan.update_pulsar_pointing(beam, ra,
+                                                          dec, scaling)
+                for node_name, kotekan in self.nodes.items()}
             coroutine_return(result)
         except Exception as e:
             coroutine_return(str(e))
@@ -848,10 +860,10 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
             # Check if the watchdog is currently enabled.
             if self.kotekan_master.watchdog_enabled:
                 print ("Watchdog running...")
-                # kotekan can take update 10-20 seconds to report running as true
-                # even when a start as been issues. To migigate watchdog from posting a start
-                # while kotekan is initiliazing, we wait at the start of the loop instead of
-                # at the end.
+                # kotekan can take update 10-20 seconds to report running as
+                # true even when a start as been issues. To migigate watchdog
+                # from posting a start while kotekan is initiliazing, we wait
+                # at the start of the loop instead of at the end.
                 if initial_sleep:
                     yield sleep(self.kotekan_master.watchdog_interval)
                     initial_sleep = False
@@ -867,18 +879,23 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
                 # Validate Checksums
                 self.log.info('%s : Validating...', self)
                 checksum_validate = yield self.kotekan_master.validate_checksum()
-                print (checksum_validate)
 
                 self.log.info('%s : KotekanMaster Watchdog Stats', self)
                 self.log.info('%s : %s', self, watchdog_stats)
+
+                if self.kotekan_master.out_of_sync_cycles > 5:
+                    msg="Array has been out of sync for more than 5 cycles"
+                    self.log.error(msg)
+                    self.slack.error(msg)
+
+
                 self.log.info('%s : Watchdog sleeping for %s seconds',
                               self, self.kotekan_master.watchdog_interval)
-
                 yield sleep(self.kotekan_master.watchdog_interval)
 
             if not self.kotekan_master.watchdog_enabled:
-                # If watchdog is not enabled, still sleep so that we dont overtake
-                # compute cycles.
+                # If watchdog is not enabled, still sleep so that we dont
+                # overtake compute cycles.
                 yield sleep(5)
 
     @coroutine
@@ -1071,7 +1088,8 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         -H "Content-Type: application/json"
         http://localhost:54323/update-north-south-beam
         """
-        result = yield self.kotekan_master.update_north_south_beam(northmost_beam)
+        result = yield self.kotekan_master.update_north_south_beam(
+                    northmost_beam)
         coroutine_return(result)
 
     @coroutine
@@ -1086,7 +1104,8 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         -H "Content-Type: application/json"
         http://localhost:54323/update-east-west-beam
         """
-        result = yield self.kotekan_master.update_east_west_beam(east_west_id, east_west_beam)
+        result = yield self.kotekan_master.update_east_west_beam(
+            east_west_id, east_west_beam)
         coroutine_return(result)
 
     @coroutine
@@ -1300,7 +1319,7 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
         coroutine_return(result)
 
     # Parameter Endpoints
-    #   All parameter endpoints have a corresponding value in the kotekan config.
+    # All parameter endpoints have a corresponding value in the kotekan config.
     @coroutine
     def update_gain_dir(self, gain_dir):
         """
