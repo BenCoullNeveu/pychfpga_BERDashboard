@@ -7,6 +7,7 @@ After=syslog.target network.target
 Type=simple
 Restart=always
 KillSignal=SIGINT
+WorkingDirectory=/home/chime/ch_acq/
 ExecStart=/home/chime/ch_acq/kotekan_master.py shiny
 User=chime
 PIDFile=/var/run/KotekanMaster.pid
