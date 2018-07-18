@@ -74,7 +74,7 @@ class KotekanMaster(object):
 
         # Watchdog parameters
         self.watchdog_enabled = False
-        self.watchdog_interval = 30
+        self.watchdog_interval = 60
         self.watchdog_stats = {}
 
         # GPS Parameters
@@ -88,7 +88,11 @@ class KotekanMaster(object):
         self.array_sync = {}
         # True if nodes are running the same config as the one
         # tracked by KotekanMaster
-        self.config_sync = {}
+        self.km_sync = {}
+        # Restart List
+        self.out_of_sync_cycles = 0
+        self.out_of_sync_nodes = []
+        self.unique_md5sums = {}
 
         # Revision Control Logging
         self.git_version = subprocess.check_output(
@@ -307,7 +311,7 @@ class KotekanMaster(object):
                   'watchdog_interval': self.watchdog_interval,
                   'watchdog_stats': self.watchdog_stats,
                   'array_sync': self.array_sync,
-                  'config_sync': self.config_sync,
+                  'km_sync': self.km_sync,
                   'gps_server': self.gps_server,
                   'gps_status': self.gps_status,
                   'gps_time': self.gps_time,
@@ -378,7 +382,7 @@ class KotekanMaster(object):
         Start Watchdog
         """
         self.watchdog_enabled = True
-        self.watchdog_interval = 30
+        self.watchdog_interval = 60
         self.log.info('%s : KotekanMaster Watchdog Enabled', self)
         self.log.info('%s : KotekanMaster Watchdog Interval : %s seconds',
                       self, self.watchdog_interval)
@@ -419,30 +423,15 @@ class KotekanMaster(object):
 
     # KotekanMaster Validation Routines
     @coroutine
-    def validate_config(self):
-        running_configs = yield self.kotekan_running_config()
-        self.log.info('%s : KotekanMaster Config Validation Status', self)
-        result = {}
-        if all(running_configs):
-            self.log.info('%s : Config Synchronization -- True', self)
-            self.slack.info('Kotekan configurations sync ')
-            self.config_sync = True
-            result['config_sync'] = True
-        else:
-            self.log.info('%s : Config Synchronization -- False', self)
-            self.config_sync = False
-            result['config_sync'] = False
-        coroutine_return(result)
-
-    @coroutine
     def validate_checksum(self):
         try:
             # GPU node md5sums
-            log.info('Validating Config Checksums')
+            log.info('%s : Validating Checksums', self)
             node_md5sums = yield self.kotekan_config_md5sum()
             # KotekanMaster md5sum
-            dynamic_config = json.dumps(self.current_config.common_config.as_dict(),
-                                        sort_keys=True, separators=(',', ':'))
+            dynamic_config = json.dumps(
+                self.current_config.common_config.as_dict(),
+                sort_keys=True, separators=(',', ':'))
             _md5 = hashlib.md5()
             _md5.update(dynamic_config)
             kotekan_master_md5sum = _md5.hexdigest()
@@ -475,7 +464,22 @@ class KotekanMaster(object):
             else:
                 array_md5_sync = False
                 kotekan_master_md5_sync = False
+            
+            # Update counter about the array being out of sync.
+            # If the array has been in out of sync for two watchdog cycles.
+            # start incrementing the global counter
+            if (not array_md5_sync) and (not self.array_sync):
+                self.out_of_sync_cycles += 1
+                msg = "Kotekan array out of sync for {} watchdog cycles".format(self.out_of_sync_cycles)
+                self.log.warning('%s : %s', self, msg)
+                self.slack.warning(msg_title="Checksum validation failed.",
+                                   msg=msg)
+            else:
+                self.out_of_sync_cycles = 0
 
+            # Update globals regarding array sync status
+            self.array_sync = array_md5_sync
+            self.km_sync = kotekan_master_md5_sync
             result['array_sync'] = array_md5_sync
             result['km_sync'] = kotekan_master_md5_sync
 
@@ -487,8 +491,8 @@ class KotekanMaster(object):
                                     as_inline_code=True)
             else:
                 self.log.warning('%s : Checksum validation failed.', self)
-                self.log.warning('%s : array md5s = %s', self, unique_md5sums)
-                self.log.warning('%s : kotekan master md5s = %s', self, kotekan_master_md5sum)
+                self.log.warning('%s : array_md5: %s', self, unique_md5sums)
+                self.log.warning('%s : kotekan master md5: %s', self, kotekan_master_md5sum)
                 self.slack.warning(msg_title='Checksum validation failed')
                 self.slack.warning(msg_title='array md5',
                                    msg=json.dumps(unique_md5sums),
@@ -937,15 +941,6 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
     # KotekanMaster Validation Routines
     #   These routines run on the entire node cluster in order to deduce
     #   consensus in the array.
-    @coroutine
-    @endpoint('validate-config')
-    def validate_running_configuration(self, handler):
-        """
-        Validate if nodes in the array are running the same config.
-        """
-        result = yield self.kotekan_master.validate_config()
-        coroutine_return(result)
-
     @coroutine
     @endpoint('validate-checksum')
     def validate_checksum(self, handler):
