@@ -434,89 +434,90 @@ class KotekanMaster(object):
     # KotekanMaster Validation Routines
     @coroutine
     def validate_checksum(self):
+        
+        # Declare state variables
+        result = {}
+        array_md5_sync = False
+        kotekan_master_md5_sync = False
+        unique_md5sums = {}
         try:
-            # GPU node md5sums
-            log.info('%s : Validating Checksums', self)
-	    print ("1")
-	    node_md5sums = yield self.kotekan_config_md5sum()            
-	    print node_md5sums
+            self.log.debug('%s : Validating Checksums', self)
+            # Get node md5's
+            node_md5sums = yield self.kotekan_config_md5sum()
+            self.log.debug(node_md5sums)
 
-	    # KotekanMaster md5sum
-            dynamic_config = json.dumps(
-                self.current_config.common_config.as_dict(),
-                sort_keys=True, separators=(',', ':'))
+            # Calculate the md5 for kotekanmaster config
+            dynamic_config = json.dumps(self.current_config.common_config.as_dict(),
+                                        sort_keys=True, separators=(',', ':'))
             _md5 = hashlib.md5()
             _md5.update(dynamic_config)
             kotekan_master_md5sum = _md5.hexdigest()
-            print kotekan_master_md5sum
+            self.log.debug(kotekan_master_md5sum)
 
-            result = {}
-            array_md5_sync = False
-            kotekan_master_md5_sync = False
-            unique_md5sums = {}
-	
-	    
-
-            # Remove None md5sums returned by dead nodes.
-            try:
-            	# Check all the md5sums and keep track how many times we see it.
-            	for node in node_md5sums.keys():
-                    md5sum = node_md5sums.get(node).get('md5sum')
-                    if md5sum not in unique_md5sums:
-                        unique_md5sums[md5sum] = 1
-                    else:
-                        unique_md5sums[md5sum] += 1
-                unique_md5sums.pop(None)
-            except Exception as e:
-                print (e)
-		pass
-	
-            if len(unique_md5sums.keys()) == 1:
-                array_md5_sync = True
-                if unique_md5sums.keys()[0] == kotekan_master_md5sum:
-                    kotekan_master_md5_sync = True
-
-            # Update counter about the array being out of sync.
-            # If the array has been in out of sync for two watchdog cycles.
-            # start incrementing the global counter
-            if (not array_md5_sync) and (not self.array_sync):
-                self.out_of_sync_cycles += 1
-                msg = "Kotekan array out of sync for {} watchdog cycles".format(self.out_of_sync_cycles)
-                self.log.warning('%s : %s', self, msg)
-                self.slack.warning(msg_title="Checksum validation failed.",
-                                   msg=msg)
-            else:
-                self.out_of_sync_cycles = 0
-
-
-            if array_md5_sync:
-            	self.log.info('%s : Checksum validation passed.', self)
-                self.log.debug(unique_md5sums)
-                self.slack.info(msg_title='Checksum validation passed',
-                                msg=json.dumps(unique_md5sums),
-                                as_inline_code=True)
-            else:
-                self.log.warning('%s : Checksum validation failed.', self)
-                self.log.warning('%s : array_md5: %s', self, unique_md5sums)
-                self.log.warning('%s : kotekan master md5: %s',
-                                 self, kotekan_master_md5sum)
-                self.slack.warning(msg_title='Checksum validation failed')
-                self.slack.warning(msg_title='array md5',
-                                   msg=json.dumps(unique_md5sums),
-                                   as_inline_code=True)
-                self.slack.warning(msg_title='kotekan master md5',
-                                   msg=json.dumps(kotekan_master_md5sum),
-                                   as_inline_code=True)
-            
-            # Update globals regarding array sync status
-            self.array_sync = array_md5_sync
-            self.km_sync = kotekan_master_md5_sync
-            result['array_sync'] = array_md5_sync
-            result['km_sync'] = kotekan_master_md5_sync
-            coroutine_return(result)
         except Exception as e:
-            print e
-	    pass
+            self.log.error(e)
+            coroutine_return(error="Unable to get md5sums")
+
+        # Get unique md5sums
+        try:
+            self.log.debug("Sanitizing node md5sums")
+        	# Check all the md5sums and keep track how many times we see it.
+            for node in node_md5sums.keys():
+                md5sum = node_md5sums.get(node).get('md5sum')
+                if md5sum not in unique_md5sums:
+                    unique_md5sums[md5sum] = 1
+                else:
+                    unique_md5sums[md5sum] += 1
+            self.log.debug(unique_md5sums)
+            # Remove None's from md5sums returned by dead nodes.
+            unique_md5sums.pop(None)
+        except Exception as e:
+            self.log.error(e)
+            pass
+	
+        if len(unique_md5sums.keys()) == 1:
+            array_md5_sync = True
+            if unique_md5sums.keys()[0] == kotekan_master_md5sum:
+                kotekan_master_md5_sync = True
+
+        # Update counter about the array being out of sync.
+        # If the array has been in out of sync for two watchdog cycles.
+        # start incrementing the global counter
+        if (not array_md5_sync) and (not self.array_sync):
+            self.out_of_sync_cycles += 1
+            msg = "array out of sync for {} watchdog cycles".format(self.out_of_sync_cycles)
+            self.log.warning('%s : %s', self, msg)
+            self.slack.warning(msg_title="Checksum validation failed.",
+                               msg=msg)
+        else:
+            self.out_of_sync_cycles = 0
+
+
+        if array_md5_sync:
+            self.log.info('%s : Checksum validation passed.', self)
+            self.log.debug(unique_md5sums)
+            self.slack.info(msg_title='Checksum validation passed',
+                            msg=json.dumps(unique_md5sums),
+                            as_inline_code=True)
+        else:
+            self.log.warning('%s : Checksum validation failed.', self)
+            self.log.warning('%s : array_md5: %s', self, unique_md5sums)
+            self.log.warning('%s : kotekan master md5: %s',
+                             self, kotekan_master_md5sum)
+            self.slack.warning(msg_title='Checksum validation failed')
+            self.slack.warning(msg_title='array md5',
+                               msg=json.dumps(unique_md5sums),
+                               as_inline_code=True)
+            self.slack.warning(msg_title='kotekan master md5',
+                               msg=json.dumps(kotekan_master_md5sum),
+                               as_inline_code=True)
+            
+        # Update globals regarding array sync status
+        self.array_sync = array_md5_sync
+        self.km_sync = kotekan_master_md5_sync
+        result['array_sync'] = array_md5_sync
+        result['km_sync'] = kotekan_master_md5_sync
+        coroutine_return(result)
 
     # Kotekan Methods
     #   These methods interact with the kotekan rest server.
@@ -868,20 +869,20 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
                 print ("Watching...0.0")
                 self.log.info('%s : Watching...0.0', self)
                 print ("GETing Node Status")
-		# Run get status from each node
+		        # Run get status from each node
                 node_status = yield self.kotekan_master.kotekan_status()
                 print ("GETing Restart List")
-		# Execute restarts for nodes with running==false
+		        # Execute restarts for nodes with running==false
                 restart_list = yield self.kotekan_master.restart_kotekan(
                                         node_status)
                 print ("Updating Stats")
-		# Update watchdog statistics
+		        # Update watchdog statistics
                 watchdog_stats = yield self.kotekan_master.update_watchdog_stats(restart_list)
                 print ("Validating Checksums")
-		# Validate Checksums
+		        # Validate Checksums
                 self.log.info('%s : Validating...', self)
                 checksum_validate = yield self.kotekan_master.validate_checksum()
-
+                print checksum_validate
                 self.log.info('%s : KotekanMaster Watchdog Stats', self)
                 self.log.info('%s : %s', self, watchdog_stats)
 
@@ -890,8 +891,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
                     self.log.error(msg)
                     self.slack.error(msg)
 
-		
-		print ("Sleeping")
+                print ("Sleeping")
                 self.log.info('%s : Watchdog sleeping for %s seconds',
                               self, self.kotekan_master.watchdog_interval)
                 yield sleep(self.kotekan_master.watchdog_interval)
