@@ -206,11 +206,16 @@ class KotekanMaster(object):
             self.log.info('%s : Retreiving GPS Time ...', self)
             try:
                 self.gps_status = yield self._get_gps_time()
+                # Check for the corner case when gps returns an empty dict
+                if self.gps_time == {}:
+                    raise Exception("GPS Error")
                 self.slack.info(msg_title="GPS Time",
                                 msg=json.dumps(self.gps_time),
                                 as_inline_code=True)
-            except Exception:
+            except Exception as e:
                 self.log.error('%s : Unable to retreive GPS Time.', self)
+                self.slack.error(msg_title="Unable to retreive GPS Time.")
+
             # Append GPS time to the config.
             self.current_config.common_config.gps_time = self.gps_time
             self.log.info('%s : Creating Kotekan Node Clients ...', self)
@@ -434,7 +439,7 @@ class KotekanMaster(object):
     # KotekanMaster Validation Routines
     @coroutine
     def validate_checksum(self):
-        
+
         # Declare state variables
         result = {}
         array_md5_sync = False
@@ -461,7 +466,7 @@ class KotekanMaster(object):
         # Get unique md5sums
         try:
             self.log.debug("Sanitizing node md5sums")
-        	# Check all the md5sums and keep track how many times we see it.
+            # Check all the md5sums and keep track how many times we see it.
             for node in node_md5sums.keys():
                 md5sum = node_md5sums.get(node).get('md5sum')
                 if md5sum not in unique_md5sums:
@@ -474,7 +479,7 @@ class KotekanMaster(object):
         except Exception as e:
             self.log.error(e)
             pass
-	
+
         if len(unique_md5sums.keys()) == 1:
             array_md5_sync = True
             if unique_md5sums.keys()[0] == kotekan_master_md5sum:
@@ -491,7 +496,6 @@ class KotekanMaster(object):
                                msg=msg)
         else:
             self.out_of_sync_cycles = 0
-
 
         if array_md5_sync:
             self.log.info('%s : Checksum validation passed.', self)
@@ -511,7 +515,7 @@ class KotekanMaster(object):
             self.slack.warning(msg_title='kotekan master md5',
                                msg=json.dumps(kotekan_master_md5sum),
                                as_inline_code=True)
-            
+
         # Update globals regarding array sync status
         self.array_sync = array_md5_sync
         self.km_sync = kotekan_master_md5_sync
