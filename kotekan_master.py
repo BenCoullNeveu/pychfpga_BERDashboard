@@ -74,7 +74,7 @@ class KotekanMaster(object):
 
         # Watchdog parameters
         self.watchdog_enabled = False
-        self.watchdog_interval = 60
+        self.watchdog_interval = 300
         self.watchdog_stats = {}
 
         # GPS Parameters
@@ -397,7 +397,6 @@ class KotekanMaster(object):
         Start Watchdog
         """
         self.watchdog_enabled = True
-        self.watchdog_interval = 60
         self.log.info('%s : KotekanMaster Watchdog Enabled', self)
         self.log.info('%s : KotekanMaster Watchdog Interval : %s seconds',
                       self, self.watchdog_interval)
