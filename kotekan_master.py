@@ -74,7 +74,7 @@ class KotekanMaster(object):
 
         # Watchdog parameters
         self.watchdog_enabled = False
-        self.watchdog_interval = 300
+        self.watchdog_interval = 200
         self.watchdog_stats = {}
 
         # GPS Parameters
@@ -465,14 +465,12 @@ class KotekanMaster(object):
             current_frame0 = current_gps_time['frame0_ctime']
             system_frame0 = self.gps_time['frame0_ctime']
             if current_frame0 != system_frame0:
-                msg = "fram0_ctime mismatch: {}, {}".format(
-                    current_frame0, system_frame0)
-                self.log.error("GPS Time Error: {}".format(msg))
+                self.log.error("GPS Time Error: frame0_ctime mismatch".format(msg))
                 self.slack.error(msg_title="GPS Time Error",
-                                 msg=msg,
+                                 msg="frame0_ctime mismatch",
                                  as_inline_code=True)
-        except Exception as gps_error:
-            coroutine_return(result=gps_error)
+        except Exception:
+            coroutine_return(result="FAILED")
 
         coroutine_return(result='PASSED')
 
@@ -951,41 +949,44 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
             if self.kotekan_master.watchdog_enabled:
                 self.log.info('%s : Watching...0.0', self)
 
-                # Run get status from each node
-                self.log.info("%s : GETing Node Status", self)
-                node_status = yield self.kotekan_master.kotekan_status()
+                try:
+                    # Run get status from each node
+                    self.log.info("%s : GETing Node Status", self)
+                    node_status = yield self.kotekan_master.kotekan_status()
 
-                # Execute restarts for nodes with running==false
-                self.log.info("%s : GETing Restart List", self)
-                restart_list = yield self.kotekan_master.restart_kotekan(
-                    node_status)
-                # Sleep 10 seconds just to make sure, kotekan has time to start reporting the
-                # checksums
-                yield sleep(10)
-                # Update watchdog statistics
-                self.log.info("%s : Updating Watchdog Stats", self)
-                watchdog_stats = yield self.kotekan_master.update_watchdog_stats(restart_list)
+                    # Execute restarts for nodes with running==false
+                    self.log.info("%s : GETing Restart List", self)
+                    restart_list = yield self.kotekan_master.restart_kotekan(
+                        node_status)
+                    # Sleep 10 seconds just to make sure, kotekan has time to start reporting the
+                    # checksums
+                    yield sleep(10)
+                    # Update watchdog statistics
+                    self.log.info("%s : Updating Watchdog Stats", self)
+                    watchdog_stats = yield self.kotekan_master.update_watchdog_stats(restart_list)
 
-                # Validate Checksums
-                self.log.info("%s : Validating Checksums", self)
-                checksum_validate = yield self.kotekan_master.validate_checksum()
-                self.log.info("{}".format(checksum_validate))
+                    # Validate Checksums
+                    self.log.info("%s : Validating Checksums", self)
+                    checksum_validate = yield self.kotekan_master.validate_checksum()
+                    self.log.info("{}".format(checksum_validate))
 
-                self.log.info('%s : KotekanMaster Watchdog Stats', self)
-                self.log.info('%s : %s', self, watchdog_stats)
+                    self.log.info('%s : KotekanMaster Watchdog Stats', self)
+                    self.log.info('%s : %s', self, watchdog_stats)
 
-                self.log.info("%s : Validating GPS Time", self)
-                gps_validate = yield self.kotekan_master.validate_gps()
-                self.log.into("%s : GPS Validation: {}".format(gps_validate["result"]))
+                    self.log.info("%s : Validating GPS Time", self)
+                    gps_validate = yield self.kotekan_master.validate_gps()
 
-                if gps_validate["result"] != "PASSED":
-                    self.log.error("%s: GPS Time Error", self)
-                    restart_cluster_status = yield self.kotekan_master.restart_cluster()
+                    if gps_validate["result"] != "PASSED":
+                        self.log.error("%s: GPS Time Error", self)
+                        restart_cluster_status = yield self.kotekan_master.restart_cluster()
 
-                if self.kotekan_master.out_of_sync_cycles > 5:
-                    msg = "Array has been out of sync for more than 5 cycles"
-                    self.log.error(msg)
+                    if self.kotekan_master.out_of_sync_cycles > 5:
+                        msg = "Array has been out of sync for more than 5 cycles"
+                        self.log.error(msg)
 
+                except Exception as watchdog_error:
+                    print watchdog_error
+                
                 self.log.info('%s : Sleeping...zZZ', self)
                 yield sleep(self.kotekan_master.watchdog_interval)
 

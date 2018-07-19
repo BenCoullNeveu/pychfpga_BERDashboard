@@ -203,6 +203,8 @@ class AsyncRESTClient(AsyncMixin):
 
         self.log.info('%32r: Creating %s at %s:%i' % (self, self.__class__.__name__, self.hostname, port))
         self.client = tornado.httpclient.AsyncHTTPClient()
+        # Increase number of threads from default 300 to 2000
+        self.client.configure(None, max_clients=2000)
         if heartbeat_string:
             self.add_heartbeat(heartbeat_string, heartbeat_period)
         self.add_shutdown_handler()
