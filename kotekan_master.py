@@ -986,8 +986,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
                     msg = "Array has been out of sync for more than 5 cycles"
                     self.log.error(msg)
 
-                self.log.info('%s : Sleeping...zZZ',
-                              self, self.kotekan_master.watchdog_interval)
+                self.log.info('%s : Sleeping...zZZ', self)
                 yield sleep(self.kotekan_master.watchdog_interval)
 
             if not self.kotekan_master.watchdog_enabled:
