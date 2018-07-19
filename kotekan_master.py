@@ -85,10 +85,10 @@ class KotekanMaster(object):
         # Synchronization Parameters
         self.kotekan_versions = []
         # True all nodes in the array are running the same config
-        self.array_sync = None
+        self.array_sync = False
         # True if nodes are running the same config as the one
         # tracked by KotekanMaster
-        self.km_sync = None
+        self.km_sync = False
         # Restart List
         self.out_of_sync_cycles = 0
         self.out_of_sync_nodes = []
@@ -496,13 +496,13 @@ class KotekanMaster(object):
         else:
             self.out_of_sync_cycles = 0
 
-        if array_md5_sync:
+        if array_md5_sync and (not self.array_sync):
             self.log.info('%s : Checksum validation passed.', self)
             self.log.debug(unique_md5sums)
             self.slack.info(msg_title='Checksum validation passed',
                             msg=json.dumps(unique_md5sums),
                             as_inline_code=True)
-        else:
+        if not array_md5_sync:
             self.log.warning('%s : Checksum validation failed.', self)
             self.log.warning('%s : array_md5: %s', self, unique_md5sums)
             self.log.warning('%s : kotekan master md5: %s',
