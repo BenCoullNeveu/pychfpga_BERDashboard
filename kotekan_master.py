@@ -267,7 +267,7 @@ class KotekanMaster(object):
                     raise Exception("Kotekan version error!!")
             self.slack.info(msg_title="Kotekan version check passed",
                             msg=str(random_kotekan_version))
-
+            self.log.info("KotekanMaster Startup Complete.")
             self.slack.info(msg_title='KotekanMaster Startup Complete.')
             coroutine_return('KotekanMaster Server Started.')
 
@@ -415,7 +415,7 @@ class KotekanMaster(object):
         """
         self.watchdog_enabled = False
         self.log.info('%s : KotekanMaster Watchdog Disabled', self)
-        self.slack.info('KotekanMaster Watchdog Disabled')
+        self.slack.warning('KotekanMaster Watchdog Disabled')
         coroutine_return('KotekanMaster Watchdog Disabled')
 
     @coroutine
@@ -458,7 +458,9 @@ class KotekanMaster(object):
             self.log.error(msg)
             self.slack.error(msg_title='GPS Time Error',
                              msg=msg)
-
+        self.log.info("GPS Validation Status")
+        self.log.info("System frame0_ctime: {}".format(self.gps_time['frame0_ctime']))
+        self.log.info("Curled frame0_ctime: {}".format(current_gps_time['frame0_ctime']))
         try:
             current_frame0 = current_gps_time['frame0_ctime']
             system_frame0 = self.gps_time['frame0_ctime']
@@ -625,8 +627,7 @@ class KotekanMaster(object):
         kill_status = yield self.kill_kotekan()
         self.log.critical(kill_status)
         self.slack.critical(msg_title="Cluster Restart",
-                            msg=kill_status,
-                            as_inline_code=True)
+                            msg="All kotekan instances killed.")
 
         try:
             self.gps_status = yield self._get_gps_time()
@@ -643,11 +644,11 @@ class KotekanMaster(object):
 
         self.log.warning("Sleeping while the kill-kotekan permeates")
         self.slack.warning(msg_title="Cluster Restart",
-                           msg="Sleeping 60s while the kill-kotekan permeates")
-        yield sleep(60)
+                           msg="Sleeping 120s while the kill-kotekan permeates")
+        yield sleep(120)
         self.log.info("Restarting Kotekan on the entire cluster.")
-        self.log.info(msg_title="Restart Cluster",
-                      msg="Re-starting Kotekan...")
+        self.slack.info(msg_title="Restart Cluster",
+                        msg="Re-starting Kotekan...")
         start_status = yield self.start_kotekan()
         coroutine_return(result={kill_status, start_status})
 
@@ -896,7 +897,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
             address=address,
             port=port,
             heartbeat_string='KMs',
-            heartbeat_period=10000)
+            heartbeat_period=60000)
         self.log.info("KotekanMasterAsyncRESTServer: %s:%s",
                       str(address), str(port))
         self.current_config = None
@@ -948,31 +949,35 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         while True:
             # Check if the watchdog is currently enabled.
             if self.kotekan_master.watchdog_enabled:
-                print ("Watching...0.0")
                 self.log.info('%s : Watching...0.0', self)
 
                 # Run get status from each node
-                print ("GETing Node Status")
+                self.log.info("%s : GETing Node Status", self)
                 node_status = yield self.kotekan_master.kotekan_status()
 
                 # Execute restarts for nodes with running==false
-                print ("GETing Restart List")
+                self.log.info("%s : GETing Restart List", self)
                 restart_list = yield self.kotekan_master.restart_kotekan(
                     node_status)
-
+                # Sleep 10 seconds just to make sure, kotekan has time to start reporting the
+                # checksums
+                yield sleep(10)
                 # Update watchdog statistics
-                print ("Updating Stats")
+                self.log.info("%s : Updating Watchdog Stats", self)
                 watchdog_stats = yield self.kotekan_master.update_watchdog_stats(restart_list)
 
                 # Validate Checksums
-                print ("Validating Checksums")
+                self.log.info("%s : Validating Checksums", self)
                 checksum_validate = yield self.kotekan_master.validate_checksum()
-                print checksum_validate
+                self.log.info("{}".format(checksum_validate))
+
                 self.log.info('%s : KotekanMaster Watchdog Stats', self)
                 self.log.info('%s : %s', self, watchdog_stats)
 
-                print ("Validating GPS Time")
+                self.log.info("%s : Validating GPS Time", self)
                 gps_validate = yield self.kotekan_master.validate_gps()
+                self.log.into("%s : GPS Validation: {}".format(gps_validate["result"]))
+
                 if gps_validate["result"] != "PASSED":
                     self.log.error("%s: GPS Time Error", self)
                     restart_cluster_status = yield self.kotekan_master.restart_cluster()
@@ -981,8 +986,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
                     msg = "Array has been out of sync for more than 5 cycles"
                     self.log.error(msg)
 
-                print ("Sleeping")
-                self.log.info('%s : Watchdog sleeping for %s seconds',
+                self.log.info('%s : Sleeping...zZZ',
                               self, self.kotekan_master.watchdog_interval)
                 yield sleep(self.kotekan_master.watchdog_interval)
 
@@ -1110,7 +1114,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         stop = yield self.kotekan_master.stop_watchdog()
         restart = yield self.kotekan_master.restart_cluster()
         start = yield self.kotekan_master.start_watchdog()
-        coroutine_return(result={stop, restart, start})
+        coroutine_return(result="restart-cluster executed")
 
     @coroutine
     @endpoint('kotekan-status')
