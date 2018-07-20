@@ -252,4 +252,4 @@ def get_version(git_dir=None, python_package=None,
         raise Exception("Unable to create release version")
 
 if __name__ == '__main__':
-    get_version()
+    print get_version()
