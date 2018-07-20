@@ -250,3 +250,6 @@ def get_version(git_dir=None, python_package=None,
                                      sha=git_sha.lstrip('g'))
     except Exception:
         raise Exception("Unable to create release version")
+
+if __name__ == '__main__':
+    get_version()
