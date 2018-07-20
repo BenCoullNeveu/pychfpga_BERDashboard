@@ -124,16 +124,22 @@ class KotekanMaster(object):
         """
         Get gps time for chime master to sync the kotekan nodes
         """
-        gps_request = requests.get(self.gps_server)
-        # Check if the request worked out.
-        if gps_request.raise_for_status() is None:
+        try:
+            gps_request = requests.get(self.gps_server)
+            # Check if the request worked out.
+            gps_request.raise_for_status()
             self.gps_time = gps_request.json()
-            self.log.info('%s : successfully retrieved gps_time', self)
-            coroutine_return(result="PASSED")
-        else:
-            self.log.error('%s : failed to get gps time with exception:%s',
-                           self, gps_request.raise_for_status())
+        except Exception as e:
+            self.log.error('%s : failed to get gps time with exception: %s',
+                           self, e)
             coroutine_return(result="FAILED")
+
+        if self.gps_time == {}:
+            self.log.error('%s : failed to get gps time : got empty dict')
+            coroutine_return(result="FAILED")
+
+        self.log.info('%s : successfully retrieved gps_time', self)
+        coroutine_return(result="PASSED")
 
     # KotekanMaster Methods
     @coroutine
@@ -197,7 +203,7 @@ class KotekanMaster(object):
                 except OSError as e:
                     msg = "%r : Could not create a symlink '%s' to the run\
                           folder '%s'. The error is:\n%s" % (
-                            self, self.current_folder, self.run_folder, e)
+                              self, self.current_folder, self.run_folder, e)
                     self.log.warning(msg)
             # Setting up logging handlers
             self.log.info('Run Folder Again: %s', self.run_folder)
@@ -663,7 +669,7 @@ class KotekanMaster(object):
             self.log.error('%s : Unable to retreive GPS Time.', self)
             self.slack.error(msg_title="Cluster Restart",
                              msg="GPS Error: Unable to execute restart-cluster")
-            coroutine_return(result="FAIELD")
+            coroutine_return(result="FAILED")
 
         if self.gps_status["result"] == "PASSED":
             self.log.info("Restarting Kotekan on the entire cluster.")
