@@ -9,6 +9,7 @@ import re
 import pprint as pp
 import click
 import requests
+from version import get_version
 
 
 # Global Parameters
@@ -54,6 +55,7 @@ def _post_command(command, data):
 
 # CLI
 @click.group()
+@click.version_option(version="2018.07rc5", prog_name='km-cli', message='%(prog)s %(version)s')
 def cli():
     """
     KotekanMaster Command Line Interface
