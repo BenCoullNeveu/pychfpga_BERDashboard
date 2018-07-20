@@ -7,6 +7,7 @@ Kotekan Master Command Line Interface
 # Imports
 import click
 import requests
+import pprint as pp
 
 # Global Parameters
 HOSTNAME = 'csBfs'
@@ -88,8 +89,10 @@ def get_status():
     """
     GET KotekanMaster status
     """
-    status = requests.get("status-kotekan-master")
-    click.echo(status)
+    status = _get_command("status-kotekan-master")
+    status.pop('current_config')
+    status.pop('nodes')
+    pp.pprint(status)
 
 
 # Adding commands to the cli group
