@@ -9,7 +9,7 @@ import re
 import pprint as pp
 import click
 import requests
-from version import get_version
+import json
 
 
 # Global Parameters
@@ -23,7 +23,7 @@ VALID_NODES = []
 for can in CANS:
     for rack in RACKS:
         for node in NODES:
-            VALID_NODES.append('c{}{}g{}'.format(can, rack, node))
+            VALID_NODES.append("c{}{}g{}".format(can, rack, node))
 
 
 # Private REST API
@@ -35,7 +35,10 @@ def _get_command(command):
     try:
         get = requests.get(url)
         get.raise_for_status()
-        return get.json()
+        try:
+            return get.json()
+        except:
+            return "{} exceuted".format(command)
     except requests.exceptions.HTTPError as err:
         raise err
 
@@ -46,7 +49,7 @@ def _post_command(command, data):
     """
     url = "http://{0}:{1}/{2}".format(HOSTNAME, PORT, command)
     try:
-        post = requests.post(url, data=data)
+        post = requests.post(url, json=data)
         post.raise_for_status()
         return post.json()
     except requests.exceptions.HTTPError as err:
