@@ -1015,8 +1015,10 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
 
                     if gps_validate["result"] != "PASSED":
                         self.log.error("%s: GPS Time Error", self)
-                        restart_cluster_status = yield self.kotekan_master.restart_cluster()
-                        self.log.info("%s : %s", self, restart_cluster_status)
+                        kill_status = yield self.kotekan_master.kill_kotekan()
+                        watchdog_status = yield self.kotekan_master.stop_watchdog()
+                        # restart_cluster_status = yield self.kotekan_master.restart_cluster()
+                        # self.log.info("%s : %s", self, restart_cluster_status)
 
                     if self.kotekan_master.out_of_sync_cycles > 5:
                         msg = "Array has been out of sync for more than 5 cycles"
