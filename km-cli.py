@@ -160,9 +160,9 @@ def get_status(status_option):
     """
     status = _get_command("status-kotekan-master")
     if (status_option == "all") or (status_option is None):
-        status.pop('current_config')
-        status.pop('nodes')
-        pp.pprint(status)
+        data_to_print = status.keys()
+        data_to_print.remove('current_config')
+        data_to_print.remove('nodes')
     elif status_option == "gps":
         data_to_print = ["gps_server", "gps_status", "gps_time"]
     elif status_option == "sync":
