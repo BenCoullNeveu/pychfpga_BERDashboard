@@ -236,7 +236,7 @@ class KotekanMaster(object):
             self.current_config.common_config.gps_time = self.gps_time
 
             # Get current gain_dir from config file
-            self.gains_directory = self.current_config.common_config.gpu.gpu_0.gain_dir.as_dict()
+            self.gains_directory = self.current_config.common_config.gpu.gpu_0.gain_dir
             self.gains_update_time = time.strftime("%Y/%m/%d %H:%M:%S",
                                                    time.localtime(self.start_time))
             self.log.info('%s : Creating Kotekan Node Clients ...', self)
