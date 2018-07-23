@@ -147,7 +147,7 @@ def whitelist(nodes):
 @click.option("--nodes", "status_option",
               flag_value="nodes", help="get current node list")
 @click.option("--blacklist", "status_option",
-              flag_value="blacklist-nodes", help="get blacklist node list")
+              flag_value="blacklist", help="get blacklist node list")
 @click.option("--watchdog", "status_option",
               flag_value="watchdog", help="get watchdog info")
 @click.option("--gains", "status_option",
