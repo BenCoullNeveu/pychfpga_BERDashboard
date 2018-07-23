@@ -645,7 +645,7 @@ class KotekanMaster(object):
         """
         self.log.critical("Restarting the entire GPU Cluster")
         self.slack.critical(msg_title="Cluster Restart",
-                            msg="Restarting the entire GPU Cluster")
+                            msg="Attempting to restart the entire GPU Cluster")
 
         kill_status = yield self.kill_kotekan()
         self.log.critical(kill_status)
@@ -661,9 +661,14 @@ class KotekanMaster(object):
             # Check for the corner case when gps returns an empty dict
             if (self.gps_time == {}) or (self.gps_status["result"] == "FAILED"):
                 raise Exception("GPS Error: Unable to execute restart-cluster")
+
+            # Successful GPS Acquisition
             self.slack.info(msg_title="Cluster Restart",
                             msg=json.dumps(self.gps_time),
                             as_inline_code=True)
+            # Update the current config with the new gps time
+            self.current_config.common_config.gps_time = self.gps_time
+
         except Exception as err:
             self.log.error(err)
             self.log.error('%s : Unable to retreive GPS Time.', self)
@@ -672,7 +677,7 @@ class KotekanMaster(object):
             coroutine_return(result="FAILED")
 
         if self.gps_status["result"] == "PASSED":
-            self.log.info("Restarting Kotekan on the entire cluster.")
+            self.log.info("Restarting kotekan on the entire cluster.")
             self.slack.info(msg_title="Restart Cluster",
                             msg="Re-starting Kotekan...")
             start_status = yield self.start_kotekan()
