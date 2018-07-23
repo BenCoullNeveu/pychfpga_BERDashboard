@@ -123,7 +123,8 @@ class SlackClient():
         attachment = self.create_attachement(color=color,
                                              title=msg_title,
                                              text=msg_text,
-                                             footer=self.module_name)
+                                             footer=self.module_name,
+                                             timestamp=time.time())
         status = self._send_attachment_message(attachments=attachment)
         return status
 
@@ -178,4 +179,7 @@ class SlackClient():
         return message_color
 
     def _as_inline_code(self, msg):
+        """
+        Convert msg into an inline code format for slack
+        """
         return "``` " + msg + " ```"

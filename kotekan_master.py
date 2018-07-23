@@ -102,12 +102,15 @@ class KotekanMaster(object):
         self.current_folder = None
         self.logging_handlers = None
 
+        # Endpoint Parameters
+        self.gains_directory = None
+        self.gains_update_time = None
+
         # Revision Control Logging
         self.git_version = subprocess.check_output(
             ['git', 'rev-parse', 'HEAD'])
         self.log.info("%s : Program : %s", self, self.program)
         self.log.info("%s : Git Ver : %s", self, self.git_version)
-
         self.slack = SlackClient(SLACK_TOKEN_NAME="SLACK_API_TOKEN",
                                  module_name="KotekanMaster")
 
@@ -231,6 +234,11 @@ class KotekanMaster(object):
 
             # Append GPS time to the config.
             self.current_config.common_config.gps_time = self.gps_time
+
+            # Get current gain_dir from config file
+            self.gains_directory = self.current_config.common_config.gpu.gpu_0.gain_dir.as_dict()
+            self.gains_update_time = time.strftime("%Y/%m/%d %H:%M:%S",
+                                                   time.localtime(self.start_time))
             self.log.info('%s : Creating Kotekan Node Clients ...', self)
             yield self._create_node_clients()
             self.log.info('%s : Kotekan Clients Created.', self)
@@ -339,8 +347,9 @@ class KotekanMaster(object):
                   'gps_time': self.gps_time,
                   'git_version': self.git_version,
                   'start_time': time.strftime("%Y/%m/%d %H:%M:%S",
-                                              time.localtime(self.start_time))
-                  }
+                                              time.localtime(self.start_time)),
+                  'gains_dir': self.gains_directory,
+                  'gains_update_time': self.gains_update_time}
         coroutine_return(result)
 
     @coroutine
@@ -778,6 +787,9 @@ class KotekanMaster(object):
         currently managed by kotekan_master.
         """
         # Update local configuration to reflect gain_dir changes.
+        self.gains_directory = gain_dir
+        self.gains_update_time = time.strftime("%Y/%m/%d %H:%M:%S",
+                                               time.localtime())
         self.current_config.common_config.gpu.gpu_0.gain_dir = gain_dir
         self.current_config.common_config.gpu.gpu_1.gain_dir = gain_dir
         self.current_config.common_config.gpu.gpu_2.gain_dir = gain_dir
