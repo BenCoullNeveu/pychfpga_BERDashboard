@@ -140,18 +140,18 @@ def whitelist(nodes):
               flag_value="all", help="get all status reports")
 @click.option("--gps", "status_option",
               flag_value="gps", help="get current gps status")
-@click.option("--restarts", "status_option",
-              flag_value="restarts", help="get node restart list")
 @click.option("--sync", "status_option",
               flag_value="sync", help="get synchronisation status")
 @click.option("--config", "status_option",
               flag_value="config", help="get current config")
-@click.option("--node-lists", "status_option",
-              flag_value="node-list", help="get current node list")
-@click.option("--watchdog-info", "status_option",
-              flag_value="watchdog-info", help="get watchdog info")
-@click.option("--blacklist-nodes", "status_option",
+@click.option("--nodes", "status_option",
+              flag_value="nodes", help="get current node list")
+@click.option("--blacklist", "status_option",
               flag_value="blacklist-nodes", help="get blacklist node list")
+@click.option("--watchdog", "status_option",
+              flag_value="watchdog", help="get watchdog info")
+@click.option("--gains", "status_option",
+              flag_value="gains", help="get beamformer gains info")
 @click.option("--start-time", "status_option",
               flag_value="start-time", help="get km start time")
 def get_status(status_option):
@@ -164,25 +164,31 @@ def get_status(status_option):
         status.pop('nodes')
         pp.pprint(status)
     elif status_option == "gps":
-        pp.pprint(status["gps_server"])
-        pp.pprint(status["gps_status"])
-        pp.pprint(status["gps_time"])
-    elif status_option == "restarts":
-        pp.pprint(status["watchdog_stats"])
+        data_to_print = ["gps_server", "gps_status", "gps_time"]
     elif status_option == "sync":
-        pp.pprint(status["km_sync"])
-        pp.pprint(status["array_sync"])
+        data_to_print = ["km_sync", "array_sync"]
     elif status_option == "config":
-        pp.pprint(status["current_config"])
-    elif status_option == "node-list":
-        pp.pprint(status["nodes"])
-    elif status_option == "blacklist-nodes":
-        pp.pprint(status["blacklist_nodes"])
+        data_to_print = ["current_config"]
+    elif status_option == "nodes":
+        data_to_print = ["nodes"]
+    elif status_option == "blacklist":
+        data_to_print = ["blacklist_nodes"]
     elif status_option == "start-time":
-        pp.pprint(status["start_time"])
-    elif status_option == "watchdog-info":
-        pp.pprint(status["watchdog_enabled"])
-        pp.pprint(status["watchdog_interval"])
+        data_to_print = ["start_time"]
+    elif status_option == "watchdog":
+        data_to_print = ["watchdog_enabled", "watchdog_interval",
+                         "watchdog_stats"]
+    elif status_option == "gains":
+        data_to_print = ["gains_dir", "gains_update_time"]
+    elif status_option == "start-time":
+        data_to_print = ["start_time"]
+
+    try:
+        for key in data_to_print:
+            pp.pprint(key)
+            pp.pprint(status[key])
+    except Exception as error:
+        raise error
 
 
 @click.command("update-gains")
