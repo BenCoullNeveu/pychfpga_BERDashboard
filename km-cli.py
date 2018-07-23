@@ -9,7 +9,6 @@ import re
 import pprint as pp
 import click
 import requests
-import json
 
 
 # Global Parameters
@@ -58,7 +57,9 @@ def _post_command(command, data):
 
 # CLI
 @click.group()
-@click.version_option(version="2018.07rc5", prog_name='km-cli', message='%(prog)s %(version)s')
+@click.version_option(version="2018.07rc5",
+                      prog_name='km-cli',
+                      message='%(prog)s %(version)s')
 def cli():
     """
     KotekanMaster Command Line Interface
@@ -71,7 +72,7 @@ def start_kotekan():
     """
     Start kotekan on all nodes managed by KotekanMaster
     """
-    click.echo("starting kotekan")
+    click.echo("starting kotekan on all nodes")
     start_status = _get_command("start-kotekan")
     pp.pprint(start_status)
 
@@ -81,7 +82,7 @@ def stop_kotekan():
     """
     Stop kotekan on all nodes managed by KotekanMaster
     """
-    click.echo("stopping kotekan")
+    click.echo("stopping kotekan on all nodes")
     stop_status = _get_command("stop-kotekan")
     pp.pprint(stop_status)
 
@@ -91,7 +92,7 @@ def restart_cluster():
     """
     Restart the entire GPU cluster
     """
-    click.echo("restarting cluster")
+    click.echo("restarting gpu cluster")
     value = click.prompt('Are you sure you want to restart the entire cluster [y|n]?', type=click.STRING)
     if value == 'y':
         restart_status = _get_command("restart-cluster")
@@ -134,15 +135,54 @@ def whitelist(nodes):
     click.echo(whitelist_status)
 
 
-@click.command("get-status", help="get status from kotekan master")
-def get_status():
+@click.command("status", help="get status from kotekan master")
+@click.option("--all", "status_option",
+              flag_value="all", help="get all status reports")
+@click.option("--gps", "status_option",
+              flag_value="gps", help="get current gps status")
+@click.option("--restarts", "status_option",
+              flag_value="restarts", help="get node restart list")
+@click.option("--sync", "status_option",
+              flag_value="sync", help="get synchronisation status")
+@click.option("--config", "status_option",
+              flag_value="config", help="get current config")
+@click.option("--node-lists", "status_option",
+              flag_value="node-list", help="get current node list")
+@click.option("--watchdog-info", "status_option",
+              flag_value="watchdog-info", help="get watchdog info")
+@click.option("--blacklist-nodes", "status_option",
+              flag_value="blacklist-nodes", help="get blacklist node list")
+@click.option("--start-time", "status_option",
+              flag_value="start-time", help="get km start time")
+def get_status(status_option):
     """
     GET KotekanMaster status
     """
     status = _get_command("status-kotekan-master")
-    status.pop('current_config')
-    status.pop('nodes')
-    pp.pprint(status)
+    if (status_option == "all") or (status_option is None):
+        status.pop('current_config')
+        status.pop('nodes')
+        pp.pprint(status)
+    elif status_option == "gps":
+        pp.pprint(status["gps_server"])
+        pp.pprint(status["gps_status"])
+        pp.pprint(status["gps_time"])
+    elif status_option == "restarts":
+        pp.pprint(status["watchdog_stats"])
+    elif status_option == "sync":
+        pp.pprint(status["km_sync"])
+        pp.pprint(status["array_sync"])
+    elif status_option == "config":
+        pp.pprint(status["current_config"])
+    elif status_option == "node-list":
+        pp.pprint(status["nodes"])
+    elif status_option == "blacklist-nodes":
+        pp.pprint(status["blacklist_nodes"])
+    elif status_option == "start-time":
+        pp.pprint(status["start_time"])
+    elif status_option == "watchdog-info":
+        pp.pprint(status["watchdog_enabled"])
+        pp.pprint(status["watchdog_interval"])
 
 
 @click.command("update-gains")
