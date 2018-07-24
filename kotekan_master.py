@@ -79,7 +79,7 @@ class KotekanMaster(object):
 
         # GPS Parameters
         self.gps_status = {}
-        self.gps_server = 'http://carillon.chime:54321/get-frame-time'
+        self.gps_server = 'http://carillon.chime:54321/get-frame0-time'
         self.gps_time = {}
 
         # Synchronization Parameters
