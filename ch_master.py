@@ -37,7 +37,7 @@ import tornado.tcpclient
 import tornado.web
 import tornado.locks
 
-from pychfpga import FPGAArray, NameSpace, merge_dict, load_yaml_config, Metrics, calculate_gains
+from pychfpga import FPGAArray, NameSpace, merge_dict, load_yaml_config, Metrics
 import log
 
 from rest import RESTClient, AsyncRESTServer, AsyncRESTClient, HTTPError # generic REST servers and clients
@@ -832,17 +832,13 @@ class ChimeMaster(object):
         # the delays loaded from them do not work.
         yield ca.set_adc_delays.async(**conf.fpga.adc_delay_params)
 
-
         # Reset the correlator. Not sure if this is necesssary?
         ca.ib.set_corr_reset(1)
         time.sleep(0.1)
         ca.ib.set_corr_reset(0)
 
-
         # Compute gains if requested
-        if conf.fpga.compute_gains.enable:
-            self.compute_gains()
-
+        yield ca.compute_gains.async(**conf.fpga.compute_gains)
 
         # Set-up channelizers to process data normally
         self.log.info("Setting-up channelizers")
@@ -1030,27 +1026,6 @@ class ChimeMaster(object):
     #     # log current gains
     #     for bankset in iceboards.get_current_gain_bank():
     #         log.info('Using gain banks ' + ', '.join(map(str,bankset)))
-
-
-    def compute_gains(self):
-        """
-        Compute the gains of the SCALER module so that the conversion of the FFT output to (4+4) bit complex values syays within range for the current signal conditions.
-
-        This method will have to be rewritten to use data obtained over REST-based raw data receivers.
-        """
-
-        # shortcuts
-        cg = self.config.fpga.compute_gains
-        if not cg.enable:
-            return
-        # setup noise injection using noise injection parameters that are specific to the gain calculation operation.
-        #self.setup_noise_injection(cg.noise_injection)
-        calc_gain_flag = self.config.fpga.compute_gains.slots
-        for ib in self.fpgas.ib:
-            ch_id = ib.get_id()
-            crate, slot_0based = ch_id[0], ch_id[1]
-            if calc_gain_flag[crate][slot_0based]:
-                calculate_gains.calculate_gains(ib)
 
     @coroutine
     def switch_gains(self, gain_map):
