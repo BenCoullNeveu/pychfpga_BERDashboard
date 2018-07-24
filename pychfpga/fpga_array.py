@@ -1409,7 +1409,7 @@ class FPGAArray(object):
 
         # Try to import gain computation module
         try:
-            import calculate_gains
+            from pychfpga import calculate_gains
         except ImportError:
             self.logger.info('Could not import calculate_gains. Missing timestream_receiver in path?')
             return
@@ -1428,8 +1428,7 @@ class FPGAArray(object):
             ch_id = ib.get_id()
             crate, slot_0based = ch_id[0], ch_id[1]
             if (slots is None) or slots[crate][slot_0based]:
-                calculate_gains.calculate_gains(ib)
-                yield async_moment
+                yield calculate_gains.calculate_gains.async(ib)
 
     def get_next_gain_bank(self):
         """

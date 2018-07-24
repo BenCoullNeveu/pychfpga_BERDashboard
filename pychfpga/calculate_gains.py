@@ -23,6 +23,7 @@ import os
 
 from pychfpga.core import chFPGA_controller
 #from pychfpga.core import chFPGA_receiver
+from pychfpga.core.icecore import async, async_moment, async_sleep
 from timestream_receiver import get_frame
 
 import numpy as np
@@ -192,7 +193,7 @@ def calc_gains(g):
     glin[bad_values] = 2**14
     return glin, glog.data
 
-
+@async
 def calculate_gains(c, gain_folder='/home/chime/ch_acq/gains'):
     '''Calculate digital gains for all the inputs of an iceboard c
     '''
@@ -249,7 +250,7 @@ def calculate_gains(c, gain_folder='/home/chime/ch_acq/gains'):
         for channel in channels:
             gain.append([channel,[glin[channel].tolist(), glog[channel]]])
         c.set_gains(gain)
-        time.sleep(1)
+        yield async_sleep(1.0)
     out1 = open(os.path.join(gain_folder, 'gains_noisy_FCC%02i%02i.pkl' % (crate, slot_0based)), 'wb')
     pickle.dump(gain, out1)
     out1.close()
@@ -260,6 +261,7 @@ def calculate_gains(c, gain_folder='/home/chime/ch_acq/gains'):
         glin_final = Calc.run()
         gain[channel][1][0] = glin_final.tolist()
         flags.append(Calc.mask)
+        yield async_moment
     c.set_gains(gain)
     c.freq_flags = flags
     output = open(os.path.join(gain_folder, 'gains_FCC%02i%02i.pkl' % (crate, slot_0based)),'wb')
