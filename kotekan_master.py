@@ -107,8 +107,7 @@ class KotekanMaster(object):
         self.gains_update_time = None
 
         # Revision Control Logging
-        self.git_version = subprocess.check_output(
-            ['git', 'rev-parse', 'HEAD'])
+        self.git_version = "2018.07"
         self.log.info("%s : Program : %s", self, self.program)
         self.log.info("%s : Git Ver : %s", self, self.git_version)
         self.slack = SlackClient(SLACK_TOKEN_NAME="SLACK_API_TOKEN",
