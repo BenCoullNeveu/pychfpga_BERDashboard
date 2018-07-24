@@ -1764,6 +1764,7 @@ class ChimeMasterAsyncRESTClient(AsyncRESTClient):
             except RuntimeError as e:
                 print('*** %r Client get_status got an exception %r\n\n Ignoring.' % (self, e))
                 status=dict(state='HTTP error')
+                raise RuntimeError
             self.log.info('%r: Waiting for the START process to complete. Current state is: %s' % (self, status['state']))
             yield sleep(1)
 
