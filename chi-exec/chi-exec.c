@@ -27,6 +27,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
 /* SSH options */
@@ -128,6 +129,97 @@ static int set_nodes(int start, int end, int nodes[NN])
   return 0;
 }
 
+/* Randomise a list of NN sequential numbers in nodes */
+static void randomise_nodes(int nodes[NN])
+{
+  unsigned int seed = time(NULL);
+
+  int i;
+
+  /* Initialise the RNG */
+  srand(seed);
+
+  /* Initialise the nodes */
+  for (i = 0; i < NN; ++i)
+    nodes[i] = i;
+
+  /* shuffle: swap the i'th item with a random one
+   * (which might be itself) */
+  for (i = 0; i < NN; ++i) {
+    int q = nodes[i];
+    int r = rand() % NN;
+    nodes[i] = nodes[r];
+    nodes[r] = q;
+  }
+}
+
+/* Run cmd on node n.  Returns non-zero on error */
+static int run_node(int n, char *cmd)
+{
+  /* Space for the nodename */
+  char nodename[NODELEN];
+
+  /* Child return status */
+  int status;
+
+  /* Child's PID */
+  pid_t pid;
+
+  /* Make node name */
+  sprintf(nodename, NODEFMT, n + 1);
+  printf("\n========== %s ==========\n", nodename);
+
+  /* Fork */
+  pid = fork();
+  if (pid < 0) {
+    perror("fork");
+    return 1;
+  }
+
+  if (pid == 0) {
+    /* === CHILD === */
+
+    /* This is the SSH command, i.e.:
+     *
+     * /usr/bin/ssh -i <keyfile> -l <username> <nodename> -- <command>
+     *
+     * The "--" before the command is to prevent nefarious insertion of
+     * extra ssh options
+     */
+    char *const args[] = { SSH, "-i", KEYFILE, "-l", REMOTE_USER,
+      nodename, "--", cmd, NULL };
+
+    /* Set our real UID to root */
+    if (setuid(0)) {
+      perror("setuid");
+      return 1;
+    }
+
+    /* Exec.  This should not return */
+    execvp(SSH, args);
+
+    /* Exec failed */
+    perror("execvp");
+    return 1;
+  }
+
+  /* === PARENT === */
+
+  /* Wait to reap the child */
+  if (wait(&status) < 0) {
+    perror("wait");
+    return 1;
+  }
+
+  /* Check if ssh failed */
+  if (WEXITSTATUS(status)) {
+    fputs("ssh call failed\n", stderr);
+    return 1;
+  }
+
+  return 0;
+}
+
 /* Parse the node string.  Returns non-zero on error */
 static int parse_nodes(const char *ptr, int nodes[NN])
 {
@@ -185,8 +277,11 @@ static int parse_nodes(const char *ptr, int nodes[NN])
 /* Print usage and exit with retval.  Doesn't return. */
 void Usage(const char *argv0, int retval)
 {
-  printf("Usage:\n  %s <list-of-nodes> <command>\n"
-      "Example:\n  %s 2-4,7,12 ls -lah /home\n", argv0, argv0);
+  printf(
+  "Usage:\n  %s <list-of-nodes> <command>\n"
+  "to run on the nodes specified, or\n"
+  "  %s single <command>\nto run on a single node chosen at random."
+  "\n\nExample:\n  %s 2-4,7,12 ls -lah /home\n", argv0, argv0);
 
   exit(retval);
 }
@@ -195,9 +290,6 @@ int main(int argc, const char **argv)
 {
   /* A place to put a descriptor */
   int fd;
-
-  /* Child return status */
-  int status;
 
   /* The number of nodes with error */
   int n_error = 0;
@@ -208,8 +300,8 @@ int main(int argc, const char **argv)
   /* The list of nodes */
   int n, nodes[NN];
 
-  /* Space for the nodename */
-  char nodename[NODELEN];
+  /* Non-zero to run command on a single node at (pseudo-random) */
+  int single = 0;
 
   /* The remote command goes here */
   char *cmd;
@@ -222,7 +314,11 @@ int main(int argc, const char **argv)
 
   if ((strcmp(argv[1], "-h") == 0) || (strcmp(argv[1], "--help") == 0))
     Usage(argv[0], 0);
-  if (parse_nodes(argv[1], nodes))
+
+  if (strcmp(argv[1], "single") == 0) {
+    randomise_nodes(nodes);
+    single = 1;
+  } else if (parse_nodes(argv[1], nodes))
     Usage(argv[0], 1);
 
   /* Smush everything else together to form the command */
@@ -236,70 +332,35 @@ int main(int argc, const char **argv)
   }
   close(fd);
 
-  /* Now loop over set nodes */
-  for (n = 0; n < NN; ++n)
-    if (nodes[n]) {
-      pid_t pid;
-
-      /* Make node name */
-      sprintf(nodename, NODEFMT, n + 1);
-      printf("\n========== %s ==========\n", nodename);
-
-      /* Fork */
-      pid = fork();
-      if (pid < 0) {
-        perror("fork");
-        return 1;
+  /* In single mode, nodes[] contains an ordered list of nodes to hit.
+   * in non-single mdoe, nodes[] is non-zero for nodes which should be hit
+   */
+  if (single) {
+    n_error = 1;
+    for (n = 0; n < NN; ++n)
+      if (run_node(nodes[n], cmd) == 0) {
+        n_error = 0; /* It worked */
+        break; /* So, stop trying */
       }
-
-      if (pid == 0) {
-        /* === CHILD === */
-
-        /* This is the SSH command, i.e.:
-         *
-         * /usr/bin/ssh -i <keyfile> -l <username> <nodename> -- <command>
-         *
-         * The "--" before the command is to prevent nefarious insertion of
-         * extra ssh options
-         */
-        char *const args[] = { SSH, "-i", KEYFILE, "-l", REMOTE_USER,
-          nodename, "--", cmd, NULL };
-
-        /* Set our real UID to root */
-        if (setuid(0)) {
-          perror("setuid");
-          return 1;
-        }
-
-        /* Exec.  This should not return */
-        execvp(SSH, args);
-
-        /* Exec failed */
-        perror("execvp");
-        return 1;
+  } else
+    for (n = 0; n < NN; ++n)
+      if (nodes[n]) {
+        if (run_node(n, cmd))
+          n_error++;
+        n_total++;
       }
-
-      /* === PARENT === */
-
-      /* Wait to reap the child */
-      if (wait(&status) < 0) {
-        perror("wait");
-        return 1;
-      }
-      
-      /* Check if ssh failed */
-      if (WEXITSTATUS(status)) {
-        fputs("ssh call failed\n", stderr);
-        n_error++;
-      }
-      n_total++;
-    }
 
   /* Done! */
   free(cmd);
 
   if (n_error > 0) {
-    if (n_total > 1) {
+    if (single) {
+      fprintf(stderr, "\n"
+          "========== COMMAND FAILED =============\n"
+          "Couldn't find one working node!\n"
+          "Check output above.\n"
+          "========== COMMAND FAILED =============\n");
+    } else if (n_total > 1) {
       fprintf(stderr, "\n"
           "========== COMMAND FAILED =============\n"
           "%i of %i nodes returned failure.\n"

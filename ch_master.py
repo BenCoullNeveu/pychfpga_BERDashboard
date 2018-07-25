@@ -212,6 +212,9 @@ if __name__ == "__main__":
   parser.add_argument("-f", "--configure_fpga", action = "store", \
                        default = 1, \
                        help = "1 configure and control fpga.  0 to ignore fpga and just get data from gpu")
+  parser.add_argument("-v", "--previous_config", action = "store", \
+                       default = 1, \
+                       help = "When configure_fpga==0. 1 save most recent fpga config to acq header. 0 empty acq header")
   args = parser.parse_args()
 
   # Be paranoid: if the executable is being run from /usr/sbin we can be
@@ -490,10 +493,18 @@ if __name__ == "__main__":
         exit()
   else:
       time_str = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-      corr_name = "NoFGPA_information"
+      corr_name = 'pathfinder' # RS asked to always use same name format for acq folders for archiving purposes
 
   acq_base_dir = "%s/%s_%s_corr" % (conf["acq"]["base_path"], time_str, \
                                    corr_name)
+
+  if (int(args.configure_fpga) > 0):
+    # Save current FPGA settings to pickle file. This will be used in case the acq restart without configuring the fpgas
+    fpga_conf['acq_base_dir'] = acq_base_dir # Saving ref to date of this fpga config as requested by MA
+    with open("fpga_conf.pkl", "wb") as fpga_conf_pkl:
+      pickle.dump(fpga_conf, fpga_conf_pkl)
+    del fpga_conf['acq_base_dir']
+
   os.makedirs(acq_base_dir)
   if not os.path.exists(acq_base_dir):
     log.critical("Could not create directory \"%s\"." % (acq_base_dir))
@@ -541,8 +552,33 @@ if __name__ == "__main__":
             name = 'Slot_'+ str(fpga_slot) + '_' + name
             acq.add_header_item(name, val)
   else:
-    acq.add_header_item("fpga_info",
-                        "no communication with fpga for this dataset")
+    if (int(args.previous_config) >0): # No communication with FPGAs. Will use most recent available fpga config
+      with open("fpga_conf.pkl", "rb") as fpga_conf_pkl:
+        fpga_conf = pickle.load(fpga_conf_pkl)
+      acq.add_header_item("fpga_info",
+        "NO COMMUNICATION WITH FPGA FOR THIS DATASET. SAVED MOST RECENT AVAILABLE FPGA CONFIGURATION (FROM %s) TO ACQ HEADER" 
+        %fpga_conf['acq_base_dir'])
+      del fpga_conf['acq_base_dir']
+      
+      # Pass FPGA configuration variables to header.
+      for fpga_slot, slot_conf in fpga_conf.items():
+        for name in slot_conf:
+          if name == 'antenna_scaler_gain':
+            # Eventually, the gains will be updated whenever they change,
+            # presumably by moving this call somewhere in the loop at the end 
+            # of this program.
+            for val in slot_conf[name]:
+              v = convert_types(val)
+              inp = remap_slot[fpga_slot-1] * 16 + remap_adc_sma[int(val[0])]
+              acq.pass_fpga_gain(inp, v)
+          else:
+            val = slot_conf[name]
+            val = convert_types(val)
+            name = 'Slot_'+ str(fpga_slot) + '_' + name
+            acq.add_header_item(name, val)
+    else:
+      acq.add_header_item("fpga_info",
+                        "NO COMMUNICATION WITH FPGA FOR THIS DATASET. EMPTY ACQ HEADER")
 
   # Add some acquisition information to the header, for kicks.
   acq.add_header_item("system_user", getpass.getuser())
