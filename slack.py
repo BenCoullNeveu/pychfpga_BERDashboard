@@ -96,11 +96,16 @@ class SlackClient():
         """
         Send payload to slack API
         """
-        payload_json = json.dumps(payload)
-        data = urlencode({"payload": payload_json})
-        req = urlrequest.Request(self.url)
-        response = self.opener.open(req, data.encode('utf-8')).read()
-        return response.decode('utf-8')
+        try:
+            payload_json = json.dumps(payload)
+            data = urlencode({"payload": payload_json})
+            req = urlrequest.Request(self.url)
+            response = self.opener.open(req, data.encode('utf-8')).read()
+            return response.decode('utf-8')
+        except Exception as error:
+            print error
+            return ("unable to connect to slack")
+
 
     # Private Messaging API
     def _send_custom_mesaage(self, text, slack_channel, username, icon_emoji):
