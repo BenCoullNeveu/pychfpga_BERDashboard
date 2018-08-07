@@ -49,10 +49,10 @@ The clock can come from the following sources:
         remote source and may not be at the same freuency as the transmit clock
         if independent clocks are used.
 
-The source of the 10 MHz reference clock is selected by installing the jumper
-in the locations listed in :ref:`TableClockSelection`.
-The settings of the jumpers can be read out from the ARM processor to allow the
-control software to detect improper clock source selection.
+  The source of the 10 MHz reference clock is selected by installing the jumper
+  in the locations listed in :ref:`TableClockSelection`.
+  The settings of the jumpers can be read out from the ARM processor to allow the
+  control software to detect improper clock source selection.
 
 .. _TableClockSelection:
 .. table:: Clock Source Jumper Positions
@@ -87,18 +87,18 @@ PLLs
 .. note::  The PLLs are factory-programmed and do not need to be programmed
    by the user.
 
-Two PLL chips are used to generate the various clocks required by the ARM and
-FPGA. The non-volatile memory in the PLLs can be programmed through SPI
-interface to generate a set of pre-defined frequencies at startup without FPGA
-and ARM intervention. The IceBoard is factory-programmed to generate the
-mandatory frequencies  needed by the ARM and its PHY (20 MHz, 25 MHz, 100 MHz)
-in addition to frequencies that are typically used by the FPGA (125 MHz for 1G
-Ethernet communications and core system, 156.25 MHz for 10G Ethernet links).
-Some frequency references are duplicated and are fed to multiple MGT
-references in order to reach all the MGTs that are typically used in an array
-(e.g 10G backplane shuffle  uses 15 MGTs and need at least two 156.25 MHz
-references, 10G QSFP links need 8 MGTs and require another 156.25 MHz
-reference, etc).
+Two PLL chips (Texas Instruments CDCE62005) are used to generate the various clocks required by the ARM and
+FPGA from the selected 10 MHz reference clock. The non-volatile memory in the
+PLLs can be programmed through SPI interface to generate a set of pre-defined
+frequencies at startup without FPGA and ARM intervention. The IceBoard is
+factory-programmed to generate the mandatory frequencies  needed by the ARM
+and its PHY (20 MHz, 25 MHz, 100 MHz) in addition to frequencies that are
+typically used by the FPGA (125 MHz for 1G Ethernet communications and core
+system, 156.25 MHz for 10G Ethernet links). Some frequency references are
+duplicated and are fed to multiple MGT references in order to reach all the
+MGTs that are typically used in an array (e.g 10G backplane shuffle  uses 15
+MGTs and need at least two 156.25 MHz references, 10G QSFP links need 8 MGTs
+and require another 156.25 MHz reference, etc).
 
 .. _TableDefaultPLLConfig:
 .. table::  PLL Default Configuration Information
@@ -126,5 +126,130 @@ reference, etc).
     |      +--------+------------+------------------------------------------------+-----------------------------------------------------------------------+
     |      | Out 4  | 10 MHz     | FPGA MGTCLKREF1_115                            | Feedback bypass, for access to original 10 MHz reference, AC coupled  |
     +------+--------+------------+------------------------------------------------+-----------------------------------------------------------------------+
+
+
+PLL Programming
+---------------
+
+The PLL configuration is prepared using the Texas Instruments CDCE62005 EVM
+software (http://www.ti.com/product/CDCE62005/toolssoftware). A snapshot of
+the configuration screen is shown below. The GUI loads and saves INI file that
+contains the hex value that needs to be programmed in the PLL internal EEPROM
+registers to achieve the desired frequencies.
+
+
+.. figure:: ../images/pll_gui.png
+    :align: center
+    :width: 600 px
+
+    PLL Configuration screen
+
+The .INI configuration files for both PLLs are available.
+
+.. _TableDefaultPLLINIFiles:
+.. table::  PLL Default INI Files (Warning: These seem different from what is used by the QC porcess)
+
+    +---------------------+-----------------------+
+    |         PLL1        | PLL2                  |
+    +=====================+=======================+
+    | REGISTERS           |  REGISTERS            |
+    | 0   01260320        |  0   EB840320         |
+    | 1   EB060301        |  1   EB840301         |
+    | 2   011E0302        |  2   EB840302         |
+    | 3   EB040303        |  3   EB860303         |
+    | 4   EB860314        |  4   EB400014         |
+    | 5   10000BE5        |  5   101C0BE5         |
+    | 6   048E09E6        |  6   04AE49A6         |
+    | 7   BD887667        |  7   BDA1F9E7         |
+    | 8   80001808        |  8   80001808         |
+    |                     |                       |
+    | PORTS               |  PORTS                |
+    | 0   DD              |  0   DD               |
+    | 1   EC              |  1   EC               |
+    | 2   DF              |  2   DF               |
+    | 3   F9              |  3   F9               |
+    |                     |                       |
+    | INPUTS              |  INPUTS               |
+    | PRI 10              |  PRI 10               |
+    | SEC 0               |  SEC 0                |
+    | AUX 10              |  AUX 10               |
+    |                     |                       |
+    | EXTERNAL COMPONENTS |  EXTERNAL COMPONENTS  |
+    | C4  1               |  C4  1                |
+    | R4  1               |  R4  1                |
+    | C5  1               |  C5  1                |
+    +=====================+=======================+
+
+
+The PLL is programmed using a 3.3V SPI interface. We typically use the FTDI
+USB-MPSSE (Multi-Protocol Synchronous Serial Engine) cable model C232HM-
+DDHSL-0, which comes with Windows and Linux drivers and example code.
+
+.. figure:: ../images/C232HM-DDHSL-0.jpg
+    :align: center
+    :width: 300 px
+
+    FDTI USB to SPI interface cable used to program the PLLs
+
+
+To program the PLL:
+
+#. Make sure the board is connected to a power supply but turn it off for now.
+
+#. Set the IceBoard to use a valid 10 MHz reference source (needed to check if the PLLs lock properly, not for programming)
+
+#. Locate the PLL Programming pins on the boards. They are just to the left of the ARM shield.
+   Connect the FTDI cable mini wires to the pins as follows:
+
+    - GREEN (tdo) to miso
+    - YELLOW (tdi) to mosi,
+    - ORANGE (tck) to sck,
+    - BROWN to either csn1(pll1) or csn2 (pll2) if the programming software supports a single SPI port (C program)
+    - BROWN to csn1 (pll1) and GREY to csn2 (pll2) if the programming software supports multiple SPI port (Python program)
+    - BLACK to ground.
+
+
+   If the programming software supports only a single SPI port at a time, you'll need the brown wire connected to whichever PLL you wish to program. The csn1 pin corresponds to PLL1 and csn2 pin corresponds to PLL2.
+
+#. Power up the Iceboard
+
+#. Using the C-based PLL programing software
+
+   We typically do the programming using a small C program ``pllprog.c``
+   compiled on the Linux platform. The value of the PLL registers (from the
+   INI files) are copied into the program, and the program is compiled. When
+   run, the program opens communication with the USB cable and programs the
+   PLL registers. The program can be found in the CHIME ``ch_acq`` repository
+   under the ``/pychfpga/core/qc/iceboard-qc/pll`` folder.
+
+   If you are using a Windows platform, the program can be run under Ubuntu
+   virtual machine running on Oracle VM VirtualBox. Those are all free
+   progams.
+
+   Configure, compile and run the program for both PLLs with the brown wire
+   connected to the corresponding PLL chip select pin csn1 or csn2. When the
+   program is run, you should be able to see an output like this::
+
+      0: 0x01260320 1:0xeb060301 2:0x011e0302 3: 0xeb040303 4: 0xeb860314 ... 9:0x0000001f.
+
+#. Using the Python-based PLL programing software
+
+   Make sure you meet the following software requirments:
+
+    Python modules:
+        pyftdi (pip install git+https://github.com/eblot/pyftdi.git  to make sure to get the latest version)
+        pyusb (installed when instaklling pyftdi)
+    Driver:
+        Linux: libusb (http://www.libusb.org/)
+        Windows: libusb-win32 (http://www.libusb.org/wiki/libusb-win32)
+
+    In ipython, run the cdce62005_pll.py script. This will read both PLLs.
+
+    Scripts to write the PLL are to be written, but manual writing works using the program_pll() function.
+
+#. After programming of both PLL is done, power cycle the board
+
+#. Check the LED lights at the top left corner of the board. You should see both of the PLL LEDs light up. This means the PLLs are locked."
+
 
 .. vim: sts=3 ts=3 sw=3 tw=78 smarttab expandtab

@@ -41,9 +41,11 @@ def programFPGA(username=str,board_sn=str,board_vn=str,board_md=str,testStatus =
     print "Make sure you can ping the motherboard, in the same method as that of Programming ARM Test. You may need to turn the board on/off"
     print "a few times to make sure it works."
     print "Please make sure the Ethernet cable has a good connection with the SFP adapter to ensure no communication problems."
+
+    print "\nIf you just ran the 'programARM' test, you will need to reboot the board so that it broadcasts a hostname"\
+          " with the serial number that was just written to its EEPROM."
     
     print "\nWe will now program the FPGA of board " + board_sn + "."
-    print "You need to have successfully run the 'Program ARM' in its entirety, or be sure that the ARM addresses were entered in database."
     raw_input("Press Enter to proceed with programming (this may take some time):\t")
     fpgaFun.programFpga(board_sn, force=True)
 

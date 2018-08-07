@@ -46,6 +46,14 @@ class SCALER_base(Module_base):
     STATS_SCALER_OVERFLOWS = BitField(STATUS, 0x02, 0, width=16, doc="Stats result: number of scaler overflows")
     STATS_ADC_OVERFLOWS    = BitField(STATUS, 0x04, 0, width=16, doc="Stats result: number of ADC overflows")
     FRAME_CTR              = BitField(STATUS, 0x05, 0, width=8, doc="Free running frame counter (last 8 bits)")
+    DELAY_CTR = BitField(STATUS, 0x07, 0, width=16, doc="Debug: Delay counter")
+
+
+    ROUNDING_MODE_TRUNCATE         = 0b00
+    ROUNDING_MODE_ROUND            = 0b01
+    ROUNDING_MODE_CONVERGENT_ROUND = 0b10
+
+    cached_gain_table = {}
 
 
     # Define Status registers
@@ -72,7 +80,8 @@ class SCALER_base(Module_base):
         # self.set_fixed_gain(1)
         self.set_gain_table(1)
         self.SATURATE_ON_MINUS_7 = 1
-
+        self.STATS_CAPTURE = 1
+        self.STATS_FRAME_COUNT = int(800e6 / 2048 * 30)
 
     # def set_fixed_gain(self, complex_gain):
     #     """
@@ -97,6 +106,9 @@ class SCALER_base(Module_base):
     def set_gain_table(self, gain_list, bank=0):
         """
         Sets the scaler's complex gain table for the specified bank.
+
+        If ``bank`` is None or is -1, the currently inactive bank is used.
+        The method does not set the active bank.
         """
         total_bins = self.fpga.NUMBER_OF_FREQUENCY_BINS
         if isinstance(gain_list, (int, float, complex)):
@@ -111,7 +123,18 @@ class SCALER_base(Module_base):
         if len(gains) != total_bins:
             raise ValueError('Either a scalar gain or a 1024 element gain vector must be provided')
 
+        self.cached_gain_table[bank] = gains
         gain_string = np.reshape(np.vstack((gains.imag, gains.real)).T, 2 * total_bins).astype('<i2').tostring()
+
+        # if timestamp is None:
+        #     self.SYNCHRONIZE_GAIN_BANK = 0
+        # else:
+        #     self.SYNCHRONIZE_GAIN_BANK = 1
+        #     self.GAIN_BANK_SWITCH_FRAME_NUMBER = timestamp
+
+        if bank < 0 or bank is None:
+            bank = self.CURRENT_GAIN_BANK ^ 1
+
 
         # page_table = np.zeros(512, np.int8)
         for page in range(8): # there are 8 pages of coefficients per bank
@@ -125,12 +148,16 @@ class SCALER_base(Module_base):
             #print page_table
             # self.write_ram(0, np.uint8(page_table))
 
+        # self.READ_COEFF_BANK = bank
 
 
-    def get_gain_table(self, bank=0):
+    def get_gain_table(self, bank=0, use_cache=False):
         """
         Gets the scaler's complex gain table for the specified bank.  Converts to numpy complex array.
         """
+        if use_cache and self.cached_gain_table:
+            return self.cached_gain_table[bank]
+
         page_table = np.zeros(512, np.int8)
         gain_table = []#np.zeros(self.fpga.NUMBER_OF_FREQUENCY_BINS, np.complex)
         for page in range(8): # there are 8 pages of coefficients per bank
@@ -138,7 +165,7 @@ class SCALER_base(Module_base):
             page_table = self.read_ram(0, length=512)
             for ix in range(128): # there are 128 coefficients per page ( 4 byte per coefficient = 512 bytes total per page)
                 bin = page*128 + ix
-                g_imag, g_real = struct.unpack('<hh',page_table[4*ix:4*ix+4])
+                g_imag, g_real = struct.unpack('<hh', page_table[4*ix:4*ix+4])
                 gain_table.append(g_real +1j*g_imag) #[bin] = g_real +1j*g_imag
         return gain_table
 
@@ -148,4 +175,71 @@ class SCALER_base(Module_base):
         print ' SCALER Bypass: %s' % (bool(self.BYPASS))
         print ' Shift left: %i' % self.SHIFT_LEFT
 
+    def get_sim_output(self, scaler_input):
+        bypass = self.BYPASS
 
+        four_bits = not self.EIGHT_BIT_SUPPORT and self.FOUR_BITS
+        if not four_bits:
+            raise RuntimeError('8-bit mode not supported by simulation model yet')
+
+        word = [None]*4
+        (flags, word[0], word[1], word[2], word[3]) = scaler_input
+
+        (number_of_frames, words_per_frame) = word.shape
+        if bypass:
+            word = np.array(word, dtype=int) & 0xff # 8 bit values
+            data = (word[0] << 24) | (word[1] << 16) | (word[2] << 8) | (word[3] << 0)
+            return (flags, data)
+        else:
+            if any(word < -1<<17) or any( word >= 1<<17):
+                raise ValueError('input values overflows a signed 18-bit word')
+            data_real = np.reshape([word(0), word(2)], (number_of_frames, 2*words_per_frame), order='F')
+            data_imag = np.reshape([word(1), word(3)], (number_of_frames, 2*words_per_frame), order='F')
+            gains = self.get_gain_table() # 16 bits
+            shift_left = self.SHIFT_LEFT
+            rounding_mode = self.ROUNDING_MODE
+            zero_on_sat = self.ZERO_ON_SATURATION
+            offset_binary = self.USE_OFFSET_BINARY
+            (r_ovf, r_real, r_imag) = self.scale((data_real, data_imag), gains=gains, shift_left=shift_left, rounding_mode=rounding_mode, zero_on_sat=zero_on_sat, offset_binary=offset_binary)
+
+            r_data = (r_real[0::2] << 24) | (r_imag[0::2] << 16) | (r_real[1::2] << 8) | (r_imag[1::2] << 0)
+            r_flags = (r_ovf[0::2] << 3) | (r_ovf[1::2] << 2) | flags
+
+            return (r_flags, r_data)
+
+    def scale(self, data, gains=None, shift_left=31, rounding_mode=ROUNDING_MODE_CONVERGENT_ROUND, zero_on_sat=False, offset_binary = False):
+            """ Compute the thoretical output of the scaler.
+            ``data`` a (real, imag) tuple of N-dimentional array of (18+18) bits complex values.
+            """
+            # Complex product = (a+bj)(c+dj) = (ac-bd) + j(bc+ad)
+            # Width: assume b,c,a,d are 8 bits and are -128. (bc+ad) = 2*-128*-128 = +32768, need (8+8+1) bit to hold worst-case signed product
+            # So, in our case, we need (18+16+1)=35 bits unsigned value.
+            (data_real, data_imag) = data
+            (gains_real, gains_imag) = (gains.real.astype(int), gains.imag.astype(int))
+            stage0_real = data_real * gains_real - data_imag * gains_imag # (18+18) bits * (16+16) bits = (35+35) bits
+            stage0_imag = data_real * gains_imag + data_imag * gains_real
+            # word_var = np.array([even.real, even.imag, odd.real, odd.imag], dtype=np.int64)
+            # stage1_sign = word_var & (1 << 34).astype(bool)  # Sign on bit 34
+            stage1_word = np.array([stage0_real, stage0_imag], int) << shift_left  # store real and imag part in an array so we can process them together.
+            # stage1_overflow = (-1<<34) > stage1_word >= (1<<34)
+
+            if rounding_mode == self.ROUNDING_MODE_ROUND:
+                stage2_word = stage1_word + (1 << 30)
+            elif rounding_mode == self.ROUNDING_MODE_CONVERGENT_ROUND:
+                stage2_word = stage1_word + (1 << 30)
+                stage2_word &= ~( (stage2_word & ((1 << 30)-1)).astype(bool)*(1 << 30))
+            else:
+                stage2_word = stage1_word
+
+            stage3_word = stage2_word >> 31
+            max_value = 7
+            min_value = -8 if self.SATURATE_ON_MINUS_7 else -7
+            stage3_overflow = (stage2_word < min_value) | (stage2_word > max_value)
+            stage3_word = np.clip(stage3_word, min_value, max_value)
+            data_overflow = (stage3_overflow[0] | stage3_overflow[1]).astype(bool)
+            if zero_on_sat:
+                stage3_word *= (data_overflow ^ 1)
+            if self.USE_OFFSET_BINARY:
+                stage3_word ^= 0x80
+            stage3_word <<= 4
+            return (data_overflow, stage3_word[0], stage3_word[1])

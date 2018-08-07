@@ -74,7 +74,7 @@ def rampTest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     
     # Begin Ramp test
     raw_input("\nPress Enter to begin ramp test:\t")
-    delay_table, stuck_bits, ipmi = fpgaFun.rampTest(board_sn, directory + '/ramp_testing_trial_sn' + board_sn, host_ip=host_ip)
+    test_results, delay_table, stuck_bits, ipmi = fpgaFun.rampTest(board_sn, directory + '/ramp_testing_trial_sn' + board_sn, host_ip=host_ip)
 
     # Record run and ADC serials
     file.write('Used ADC #' + ipmi[0].board.serial_number + ' on FMC slot 1 and ADC #' +
@@ -82,25 +82,51 @@ def rampTest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     file.write("\n\nRamp test was run successfully. (See BoardTests/ramp_tests/ for all the details.\n\n")
 
     # Record results to file
-    test_pass = False
-    print("\nPlease take a look at the output of the test: error ratios and histograms (found printed to console "
-          "\nand in BoardTests/ramp_tests respectively)")
-    if raw_input("Are there any non-zero error ratios, or non-flat histograms? (y/n)\t").lower().strip() == 'y':
-        bit_errors = raw_input("\nIf there are any non-zero bit error ratios, enter the affected channels "
-                               "and bits (e.g. ch 10 bit 4, ch 1 bit 7, ...):\n")
-        file.write("| Bit errors found on: " + bit_errors + "\n")
-        hist_errors = raw_input("If any of the histograms are not perfectly flat, enter the affected channels:\n")
-        file.write("| Channels with non-flat histogram: " + hist_errors + "\n")
-        hist_errors = raw_input("If any of the histograms show very large distorsion, beyond relatively small peaks "
-                                "away from flat, enter the affected channels:\n")
-        file.write("| Channels with severely distorted histogram: " + hist_errors + "\n\n")
+    # test_pass = False
+    # print("\nPlease take a look at the output of the test: error ratios and histograms (found printed to console "
+    #       "\nand in BoardTests/ramp_tests respectively)")
+    # if raw_input("Are there any non-zero error ratios, or non-flat histograms? (y/n)\t").lower().strip() == 'y':
+    #     bit_errors = raw_input("\nIf there are any non-zero bit error ratios, enter the affected channels "
+    #                            "and bits (e.g. ch 10 bit 4, ch 1 bit 7, ...):\n")
+    #     file.write("| Bit errors found on: " + bit_errors + "\n")
+    #     hist_errors = raw_input("If any of the histograms are not perfectly flat, enter the affected channels:\n")
+    #     file.write("| Channels with non-flat histogram: " + hist_errors + "\n")
+    #     hist_errors = raw_input("If any of the histograms show very large distorsion, beyond relatively small peaks "
+    #                             "away from flat, enter the affected channels:\n")
+    #     file.write("| Channels with severely distorted histogram: " + hist_errors + "\n\n")
+    #     print("\nSmall peaks around a flat histogram or small (< 0.1) error ratios may be attributed to timing issues "
+    #           "with the ADC mezzanines, but a very distorted histogram may point to more serious issues."
+    #           "\n If this is found to be the case, the connector to the affected mezzanine or the traces, vias, and "
+    #           "solder joints connecting it to the FPGA are possible culprits.")
+    # else:
+    #     file.write("Ramp test found no errors." + "\n\n")
+    #     test_pass = True
+
+    test_pass = test_results['status']
+    if not test_pass:
+        if test_results['bit_error'] != None:
+            print   "\n | Bit errors found on: " + test_results['bit_error'] + "\n"
+            file.write("| Bit errors found on: " + test_results['bit_error'] + "\n")
+
+        if test_results['hist_equal'] != None:
+            print   "\n | Channels with non-flat histogram: " + test_results['hist_equal'] + "\n"
+            file.write("| Channels with non-flat histogram: " + test_results['hist_equal'] + "\n")
+
+        if test_results['hist_expected'] != None:
+            print   "\n | Channels with severely distorted histogram: " + test_results['hist_expected'] + "\n"
+            file.write("| Channels with severely distorted histogram: " + test_results['hist_expected'] + "\n")
+                        
         print("\nSmall peaks around a flat histogram or small (< 0.1) error ratios may be attributed to timing issues "
               "with the ADC mezzanines, but a very distorted histogram may point to more serious issues."
               "\n If this is found to be the case, the connector to the affected mezzanine or the traces, vias, and "
               "solder joints connecting it to the FPGA are possible culprits.")
+              
+        file.write("\n")
+        print "\n FAILED ramp test. \n\n"
+        
     else:
+        print "\n PASSED ramp test. \n\n"
         file.write("Ramp test found no errors." + "\n\n")
-        test_pass = True
 
     file.write('Computed ADC delay table:\n')
     file.write('\n::\n')
@@ -123,22 +149,34 @@ def rampTest(username=str,board_sn=str,board_vn=str,board_md=str,testStatus = EM
     print "\nIf there are any special concerns regarding the board for this test, please describe them below. If none, enter 'None'. "
     comments = raw_input("Enter your comments:  ")
     file.write('\n\nComments: ' + comments)
-
-    print "Has everything in this test gone smoothly?"
-    check = raw_input("Enter ('Y' or 'N'):  ")
-    if check == 'Y' or check == 'y':
+    
+    testStatus[11] = test_pass
+    if test_pass:
         file.write('\n\n**Ramp Test Overall Status: Pass**')
         file.close()
-        testStatus[11] = test_pass
+        return testStatus
     else:
         file.write('\n\n**Ramp Test Overall Status: Fail**')
-        print "Please describe why below."
-        failure = raw_input("Enter your comments:       ")
-        file.write('\n\nComments:         ' + failure)
         file.close()
-        testStatus[11] = False
         return rampFail(username,board_sn,board_vn,board_md,testStatus)
-
-    return testStatus
-
-
+        
+        
+    #
+    # print "Has everything in this test gone smoothly?"
+    # check = raw_input("Enter ('Y' or 'N'):  ")
+    # if check == 'Y' or check == 'y':
+    #     file.write('\n\n**Ramp Test Overall Status: Pass**')
+    #     file.close()
+    #     testStatus[11] = test_pass
+    # else:
+    #     file.write('\n\n**Ramp Test Overall Status: Fail**')
+    #     print "Please describe why below."
+    #     failure = raw_input("Enter your comments:       ")
+    #     file.write('\n\nComments:         ' + failure)
+    #     file.close()
+    #     testStatus[11] = False
+    #     return rampFail(username,board_sn,board_vn,board_md,testStatus)
+    #
+    # return testStatus
+    #
+    

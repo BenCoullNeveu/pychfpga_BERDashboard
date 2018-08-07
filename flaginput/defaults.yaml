@@ -1,0 +1,48 @@
+flaginput:
+    sources: ['layout', 'manual', 'power', 'rms', 'raw']
+    combine: ['layout', 'manual', 'power', 'rms', 'raw']
+    correlator: 'chime'
+    output_dir: '/data/flaginput'
+    output_suffix: 'flaginput'
+    num_days_lookback: 14
+    always_return_metrics: True
+    metric_encoding: 'text'
+    max_file_size: 100000000
+    max_num_time:
+    max_threadpool_workers: 8
+    sources_in_buffer: False
+    niceness: 10
+    port: 54327
+    layout:
+        cadence: 300.0
+    power:
+        cadence: 215.0
+        clients:
+            - {hostname: 'hk-west', port: 5000, bulkheads: ['A', 'B']}
+            - {hostname: 'hk-east-ext', port: 5000, bulkheads: ['C', 'D']}
+    rms:
+        cadence: 60.0
+        clients:
+            - {hostname: 'carillon', port: 54322}
+        lower_limit: 5.5
+        upper_limit: 23.5
+        num_consecutive_bad: 1
+        num_consecutive_good: 8
+        excludes:
+            cadence: 43200.0
+            sources: {'sun': 1800.0}
+    raw:
+        cadence: 40.0
+        acq_dir: '/mnt/gong/archive'
+        acq_suffix: 'rawadc'
+        output_dir: '/data/rawflag'
+        output_suffix: 'rawflag'
+        always_return_metrics: True
+        metric_encoding: 'text'
+        max_file_size: 100000000
+        max_num_time:
+        start_time:
+        lifo: False
+        classification_threshold: 0.01
+        num_consecutive_bad: 2
+        num_consecutive_good: 24

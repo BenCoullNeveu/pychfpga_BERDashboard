@@ -26,7 +26,8 @@ def get_boards(boards=None, ch_acq_path = '../../../../../../ch_acq/'):
 
     found_boards = []
     for ib in hwm.query(IceBoardPlus):
-        if ib.ping():
+        pings = ib.ping()
+        if pings:
             found_boards.append(ib)
     return found_boards
 
@@ -66,19 +67,19 @@ def programFpga(board_sn, ch_acq_path = '../../../../../../ch_acq/',  bitfile_pa
     fpga_bitstream = FpgaBitstream(bitfile_path)
 
     # Find iceboard
-    ib = get_boards(boards=[board_sn], ch_acq_path=ch_acq_path)
-    if len(ib) == 0:
-        raise Exception("Did not find any board on the network with serial number {}".format(board_sn))
+    while True:
+        ib = get_boards(boards=[board_sn], ch_acq_path=ch_acq_path)
+        if len(ib) == 0:
+            if raw_input("\nDid not find board on network with serial {}."
+                         "\nTry again (y/n)?    ".format(board_sn)).lower().strip() == 'y':
+                continue
+            else:
+                raise Exception("Did not find any board on the network with serial number {}".format(board_sn))
+        else:
+            break
     ib = ib[0]
 
-    # Check present on network
-    while not ib.ping():
-        logger.warning("Could not ping iceboard " + board_sn)
-        try_again = raw_input("\nCould not find iceboard " + board_sn + " on network.\nTry again? (y/n)\t")
-        if not try_again.lower().strip() == 'y':
-            raise Exception("Iceboard " + board_sn + " not present on network.")
-
-    # Associate the fpga_bitstream with the target Handler and program
+    # Associate the fpga bitstream with the target Handler and program
     ib.set_handler(chFPGA_controller, fpga_bitstream)
     ib.set_fpga_bitstream(force = force)
 
@@ -89,7 +90,7 @@ def discover_fpgas(host_ip):
     FpgaCoreFirmware.interface_ip_addr = host_ip
     return FpgaCoreFirmware.discover_fpgas()
 
-def top_test(board_sn, ch_acq_path='../../../../../../ch_acq/', host_ip=None, force=False):
+def top_test(board_sn, ch_acq_path='../../../../../../ch_acq/', init_FMC=True, host_ip=None, force=False):
     '''
     Creates fpga_controller and fpga_receiver instances and returns them as [c,r].
     :param ch_acq_path: will be added to PYTHONPATH. defaults to '../../ch_acq/'
@@ -125,7 +126,7 @@ def top_test(board_sn, ch_acq_path='../../../../../../ch_acq/', host_ip=None, fo
     )
 
     # Parameters for FPGA open
-    init = 1  # 'Initialization level: -1: Just create sockets, 0: connect and read only. 1: initialize hardware'
+    init = 1 if init_FMC else 0  # 'Initialization level: -1: Just create sockets, 0: connect and read only. 1: initialize hardware'
     sampling_frequency = 800  # 'Sampling frequency of the ADC in MHz'
     log_level = logging.INFO
     data_width = 8  # 'Data width of each Re and Im component of the channelizer output'
@@ -188,6 +189,7 @@ def rampTest(board_sn, directory, ch_acq_path='../../../../../../ch_acq/', host_
 
     # Import necessary pychfpga modules
     import sys
+    import numpy as np
     sys.path.append(ch_acq_path)
     from pychfpga.common.tests.ramp_test import test_adc_ramp_histogram
 
@@ -195,7 +197,7 @@ def rampTest(board_sn, directory, ch_acq_path='../../../../../../ch_acq/', host_
     [c,r] = top_test(board_sn, ch_acq_path=ch_acq_path, host_ip=host_ip)
 
     # Timing for ADCs. Calculate proper offsets for this board.
-    ADC_DELAY_TABLE, stuck_bits, bitposgood = c.compute_adc_delay_offsets(channels=[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15])
+    ADC_DELAY_TABLE, stuck_bits, bitposgood, problem = c.compute_adc_delay_offsets(channels=[0,1,2,3,4,5,6,7,8,9,10,11,12,13,14,15])
     print "Computed delay table:"
     print repr(ADC_DELAY_TABLE)
     print "Stuck bit flags (0 indicates a stuck bit):"
@@ -231,7 +233,87 @@ def rampTest(board_sn, directory, ch_acq_path='../../../../../../ch_acq/', host_
     test = test_adc_ramp_histogram(c, r)
     test.execute(directory)
     r.close()
-    return [ADC_DELAY_TABLE, stuck_bits, ipmi]
+    
+    # Determine if test is pass or fail.  If fail, determine bad bits.
+    ber_pass = bool(test.test_bit_error_rate.all())
+    heq_pass = bool(test.test_hist_equal.all())
+    hex_pass = bool(test.test_hist_expected.all())
+    test_pass = ber_pass and heq_pass and hex_pass
+
+    ber_string = None
+    heq_string = None
+    hex_string = None
+    
+    if not test_pass:
+    
+        nchannels = test.bit_error_rate.shape[0]
+        nbits = test.bit_error_rate.shape[1]
+
+        if not ber_pass:
+            channel_matrix = np.arange(nchannels*nbits).reshape(nchannels,nbits) / nbits
+            bits_matrix = np.arange(nchannels*nbits).reshape(nchannels,nbits) % nbits
+        
+            flag_bad = np.logical_not(test.test_bit_error_rate)
+            bad_channels = channel_matrix[flag_bad]
+            bad_bits = bits_matrix[flag_bad]
+            bad_ber = test.bit_error_rate[flag_bad]
+            nbad = len(bad_channels)
+            ber_string = ' - '.join([("Channel %d, Bit %d: %0.2e" % (bad_channels[i], bad_bits[i], bad_ber[i])) for i in range(nbad)])
+        
+        if not heq_pass:
+            heq_string = ", ".join(["%d" % cc for cc in range(nchannels)[np.logical_not(test.test_hist_equal)]])
+        
+        if not hex_pass:
+            hex_string = ", ".join(["%d" % cc for cc in range(nchannels)[np.logical_not(test.test_hist_expected)]])
+            
+        
+    test_results = {'status':test_pass, 'bit_error':ber_string, 'hist_equal':heq_string, 'hist_expected':hex_string}
+        
+    
+    # Return results
+    return [test_results, ADC_DELAY_TABLE, stuck_bits, ipmi]
+    
+
+def gtx_ber(board_sn, ch_acq_path='../../../../../../ch_acq/', links=None, period=1, power=None,
+            bitfile_path = "../../../../../../chFPGA/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/"+\
+                           "impl_Rev2/chFPGA_MGK7MB_Rev2.bit", force=True):
+    """ Measure the bit error rate on GTX links for a board.
+    :param board_sn: e.g. '0021'
+    :param ch_acq_path: will be added to PYTHONPATH. defaults to '../../ch_acq/'
+    :param links: GTX links to test, can be either "gpu" or "bp".
+    :param period: Period of time to count errors for. Default 1s.
+    :param power: Set power of the GTX transmitters. Up to 15, default 10.
+    :bitfile_path: Path of bitfile to use for programming the FPGA.
+    :return: Dictionary of error counts, keys give lanes.
+    """
+
+    import sys
+    sys.path.append(ch_acq_path)
+    from pychfpga.chime_array import ChimeArray
+
+    # Get ChimeArray object and program the FPGA
+    # Enable GPU link so we can perform bit error test
+    ca = ChimeArray(iceboards=[int(board_sn)], bitfile=bitfile_path, init=0, enable_gpu_link=1, open=0,
+                    prog=1 if force else 0)
+
+    # Choose links and run bit error rate test
+    all_links = ca.get_link_map().keys()
+    if links is None:
+        print "Testing all BP and GPU links."
+        links = [key for key in all_links if (key[0] == 'GPU' or key[0] == 'BP')]
+    elif links == 'gpu':
+        print "Testing only GPU links."
+        links = [key for key in all_links if key[0] == 'GPU']
+    elif links == 'bp':
+        print "Testing only BackPlane links."
+        links = [key for key in all_links if key[0] == 'BP']
+    elif type(links) is tuple:
+        links = [links]
+    else:
+        raise Exception("Unrecognized argument for 'links': '{}'.    Must be either 'bp' or 'gpu'.".format(str(links)))
+    ber = ca.get_ber(link_list=links, tx_power=power, period=period)
+    ca.ib.close()
+    return ber
 
 def write_ipmi(ib, pn, sn, vn):
     ''' Write IPMI to supplied board instance in standard format.

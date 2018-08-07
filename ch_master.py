@@ -1,731 +1,1920 @@
-#!/usr/local/bin/python2.7
+#!/usr/bin/env python
+"""
+Module that provide the classes used to run the top-level ChimeMaster object used to initialize and operate the CHIME telescope.
 
 """
-Master control program for CHIME.
-#
-History:
-2013-05-13 ADH: First version.
-2015-05-30 JM: Modified to work with new icecore and handle noise injection gating
-"""
 
-import chrx
-from configobj import *
-from pychfpga.core.icecore.session import load_session as load_yaml
-from pychfpga.core.chFPGA_controller import chFPGA_controller as ChimeFpgaFirmware
-from pychfpga.core import chFPGA_receiver
-from pychfpga.core.icecore import IceBoardPlus
-from validate import Validator
-import argparse
+from __future__ import absolute_import, division, print_function
+
+# __package__ = __package__ or ''
+# if __name__ == '__main__':
+#     __name__ = 'ch_master'
+#     is_script = True
+# else:
+#     is_script = False
+
+
+import collections
 import getpass
-import logging
-import numpy as np
+import numpy
 import os
-import sys
+import traceback
 import socket
+import subprocess
+import sys
 import time
+import json
+import functools
+import Queue
 import pickle
-from pychfpga import calculate_gains
-from pychfpga.MGADC08 import MGADC08
-from pychfpga.init_links import *
-#import MySQLdb
-from pychfpga.core.icecore.hardware_map import asynchronously, async_return, async
-import signal
+import datetime
+import numpy as np
+import psutil
 
-# Should put somewhere else. Flatten arbitrarily deep nested lists
-# from stack overflow
-def flatten(x):
-    result = []
-    for el in x:
-        if hasattr(el, "__iter__") and not isinstance(el, basestring):
-            result.extend(flatten(el))
-        else:
-            result.append(el)
-    return result
+
+import tornado
+import tornado.tcpclient
+import tornado.web
+import tornado.locks
+
+from pychfpga import FPGAArray, NameSpace, merge_dict, load_yaml_config, Metrics
+import log
+
+from rest import RESTClient, AsyncRESTServer, AsyncRESTClient, HTTPError # generic REST servers and clients
+from rest import endpoint, coroutine, coroutine_return, sleep
+from rest import RunSyncWrapper, IOLoop, run_client
+
+# Remote servers handled by ChimeMaster
+from ps import PowerSupplyAsyncRESTClient
+from kotekan import KotekanAsyncRESTClient
+from chrx import ChrxAsyncRESTClient
+from raw_acq import RawAcqAsyncRESTClient
+
 
 def convert_types(val):
-      # Do the annoying conversion of numpy types to native Python types. Sigh.
-      found_complex = False
-      if isinstance(val, (list, tuple)):
+    # Do the annoying conversion of numpy types to native Python types. Sigh.
+
+    def flatten(x):
+        """ Flatten arbitrarily deep nested lists. (inspired from stack overflow)"""
+        result = []
+        for el in x:
+            if hasattr(el, "__iter__") and not isinstance(el, basestring):
+                result.extend(flatten(el))
+            else:
+                result.append(el)
+        return result
+
+    found_complex = False
+    if isinstance(val, (list, tuple)):
         if len(val) == 0:
-          val = [0]
+            val = [0]
         #if isinstance(val[0], (list, tuple)):
         val = flatten(val)
         if not isinstance(val[0], str):
-          try:
-            if val[0].dtype.kind in ('i', 'u', 'f'):
-              val = list(np.asscalar(x) for x in val)
-          except:
-            if type(val[0]) == bool:
-              val = list(int(x) for x in val)
+            try:
+                if val[0].dtype.kind in ('i', 'u', 'f'):
+                    val = list(numpy.asscalar(x) for x in val)
+            except:
+                if type(val[0]) == bool:
+                    val = list(int(x) for x in val)
+                else:
+                    val = list(x for x in val)
+            for i, val_element in enumerate(val):
+                #print val_element
+                if isinstance(val_element, complex):
+                        val[i] = [val_element.real, val_element.imag]
+                        found_complex = True
+                if isinstance(val_element, (int,numpy.uint8)):
+                        val[i] = float(val_element)
+            if found_complex:
+                val = flatten(val)
             else:
-              val = list(x for x in val)
-          for i, val_element in enumerate(val):
-            #print val_element
-            if isinstance(val_element, complex):
-                val[i] = [val_element.real, val_element.imag]
-                found_complex = True
-            if isinstance(val_element, (int,np.uint8)):
-                val[i] = float(val_element)
-          if found_complex:
-            val = flatten(val)
-          else:
-            val = list(int(x) for x in val)
-
-      else:
-        if isinstance(val, long):
-          val = int(val)
-        elif isinstance(val, bool):
-          val = int(val)
-        elif isinstance(val, unicode):
-          val = str(val)
-        if not isinstance(val, str):
-          try:
-            if val.dtype.kind in ('i', 'u', 'f', 'b'):
-              val = np.asscalar(val)
-          except:
-              # Hopefully already a int/float
-              pass
-      return val
-
-@async
-def get_fpga_hk(fpga):
-    """this should parallelize to make one call for all sensors"""
-    with fpga.tuber_context() as ctx:
-        t = yield ctx.get_motherboard_temperature(fpga.TEMPERATURE_SENSOR.MB_FPGA_DIE)
-    # ret["VCC1V0"] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VCC1V0)
-    # ret["VCC1V0_GTX"] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VCC1V0_GTX)
-    # ret["VCC12V0"] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VCC12V0)
-    # ret["VCC12V0_curr"] = fpga.get_motherboard_current(fpga.RAIL.MB_VCC12V0)
-    # ret["VCC5V5"] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VCC5V5)
-    # ret["VCC1V5"] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VCC1V5)
-    # ret["VCC1V2"] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VCC1V2)
-    # ret["VCC3V3"] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VCC3V3)
-    # ret["VCC1V8"] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VCC1V8)
-    # ret["VADJ"] = fpga.get_motherboard_voltage(fpga.RAIL.MB_VADJ)
-    async_return(t)
-
-#should be more elegant way...but list fields here to stay compatible
-hk_fields_list = ["core_temp"]
-
-@async
-def get_all_fpga_slots_hk(c):
-    async_return( (yield [get_fpga_hk.async(cc) for cc in c])  )
-
-# FPGA housekeeping.
-fpga_hk_field = {      "core_temp" : "deg C",
-                       # "VCC1V0" : "V",
-                       # "VCC1V0_GTX" : "V",
-                       # "VCC12V0" : "V",
-                       # "VCC12V0_curr" : "A",
-                       # "VCC5V5" : "V",
-                       # "VCC1V5" : "V",
-                       # "VCC1V2" : "V",
-                       # "VCC3V3" : "V",
-                       # "VCC1V8" : "V",
-                       # "VADJ" : "V",
-                }
-
-# Backplane serial number---eventually this should be queried directly from the
-# hardware!
-crate_sn = "K7BP16-0004"
-
-# Dictionary of correlators.
-correlator_hash = {"stone"        : ["0001"],
-                   "abbot"        : ["0003"],
-                   "vincente"     : ["29821-0000-0028"],
-                   "blanchard"    : ["0029","0030"],
-                   "slot7"      : ["0031", "0032"],
-                   "first9ucrate" : ["0034"],
-                   "testing2": ["0031"],
-                   "slot16":['0034', '0036'],
-                   "slot15":['0005', '0006'],
-                   "slot14":['0038', '0040'],
-                   "slot13":['0027', '0039'],
-                   "slot12":['0037', '0016'],
-                   "slot11":['0015', '0014'],
-                   "slot10":['0023', '0022'],
-                   "slot9":['0025', '0024'],
-                   "slot8":['0019', '0020'],
-                   "slot6":['0042', '0008'],
-                   "slot5":['0011', '0012'],
-                   "slot4":['0004', '0021'],
-                   "slot3":['0026', '0013'],
-                   "slot2":['0018', '0017']
-                  }
-
-
-# Current archive format version. Prefixed by "NT_" to signify that these data
-# do not have the time-transpose completed.
-# archive_version = "NT_2.2.0"
-# Moved into chrx
-
-class FpgaBitstream(object):
-    """ Helper object used to load and store a FPGA bitstream. You don't have
-    to use it, but it makes the code look nicer"""
-    bitstream = None
-
-    def __init__(self, filename):
-        with open(filename, 'rb') as file_:
-            self.bitstream = file_.read()
-
-    def __str__(self):
-        """ Return the bitstream as a string. """
-        return self.bitstream
-remap_adc_sma =  [12,13,14,15,8,9,10,11,4,5,6,7,0,1,2,3]
-remap_slot = [5,1,4,0,13,9,12,8,15,11,14,10,7,3,6,2]
-
-if __name__ == "__main__":
-  # Set up logger.
-  log = logging.getLogger("")
-  log.setLevel(logging.DEBUG)
-  log_stdout = logging.StreamHandler(sys.stdout)
-  log_stdout.setLevel(logging.DEBUG)
-  log_fmt = logging.Formatter("%(asctime)s %(levelname)s >> %(message)s", \
-                              "%b %d %H:%M:%S")
-  log_stdout.setFormatter(log_fmt)
-  log.addHandler(log_stdout)
-
-  # Debugging log, this should be removed/moved to data dir also
-  # Start writing to a log file in this directory.
-  logname = "ch_master_debug.log"
-  log_to_file = logging.FileHandler(logname)
-  log_to_file.setLevel(logging.DEBUG)
-  log_to_file.setFormatter(log_fmt)
-  log.addHandler(log_to_file)
-
-  # Get command line arguments.
-  parser = argparse.ArgumentParser(description = __doc__.split('\n')[0])
-  parser.add_argument("-g", "--git-tag", action = "store", \
-                      default = "", help = "Current git tag, use: " + \
-                             "-g `git describe --tags` ")
-  parser.add_argument("-c", "--conf_file", action = "store", \
-                      default = "ch_master.conf", \
-                      help = "Configuration file.")
-  parser.add_argument("-n", "--notes", action = "store", default = "None.", \
-                      help = "Acquisition notes.")
-  parser.add_argument("-s", "--spec_file", action = "store", \
-                      default = "ch_master.spec", \
-                      help = "Configuration file specifications.")
-  parser.add_argument("-a", "--compute_gain", action = "store", \
-                       default = 0, \
-                       help = "1 to calculate and save FFT scaler gains")
-  parser.add_argument("-f", "--configure_fpga", action = "store", \
-                       default = 1, \
-                       help = "1 configure and control fpga.  0 to ignore fpga and just get data from gpu")
-  parser.add_argument("-v", "--previous_config", action = "store", \
-                       default = 1, \
-                       help = "When configure_fpga==0. 1 save most recent fpga config to acq header. 0 empty acq header")
-  args = parser.parse_args()
-
-  # Be paranoid: if the executable is being run from /usr/sbin we can be
-  # reasonably assured that the git tag recorded in /etc/CHIME is correct. If it
-  # is not being run from there, force the user manually insert the git tag as
-  # an option.
-  if sys.argv[0] != "/usr/sbin/ch_master.py":
-    if not len(args.git_tag):
-      print "If you are not running this as a daemon from \"/usr/sbin\", you "
-      print "MUST use the -g option and manually specify which git tag you are "
-      print "running (e.g., ./ch_master -g `git describe --tags`)."
-      exit()
-
-  val_conf = Validator()
-  conf = ConfigObj(args.conf_file, configspec = args.spec_file)
-  ret = conf.validate(val_conf, preserve_errors = True)
-
-  if ret != True:
-    for entry in flatten_errors(conf, ret):
-      sec_list, key, error = entry
-      if key is not None:
-        sec_list.append(key)
-      else:
-        sec_list.append("[missing section]")
-      sec_string = ".".join(sec_list)
-      if error == False:
-        error = "Missing value or section."
-      log.critical("Error parsing %s: %s" % (sec_string, error))
-    exit()
-
-  # Build up the adc_delay_table.
-  # Should be 16 different sets of 16.  Have a pickle file, change
-  # this to point to it and use each when programming the fpga.
-  if (int(args.configure_fpga) > 0):
-    n = 16 #int(conf["n_antenna"])
-    adc_delay = []
-    for i in range(n):
-      name = "ch%02d" % i
-      tmp_delay = []
-      if not name in conf["fpga"]["adc_delay"]:
-        log.critical("Could not find fpga.adc_delay.%s entry in " \
-                     "configuration file." % (name))
-        exit()
-      else:
-        this_chan = conf["fpga"]["adc_delay"][name]
-      for j in range(len(this_chan)):
-        k = int(this_chan[j])
-        tmp_delay.append(k)
-      if len(tmp_delay) != 16:
-        log.critical("Entry fpga.adc_delay.%s needs 16 integer entries." % \
-                     (name))
-        exit()
-      adc_delay.append((tmp_delay[:8],tmp_delay[8:]))
-
-  # Create the acquisition object. Pass it the configuration settings so that it
-  # can initialise.
-  acq = chrx.acq(conf, log, 16, fpga_hk_field)
-  if (int(args.configure_fpga) > 0): 
-      # Create the FPGA controller object.
-      # Will now create an array of controller objects indexed by serial number
-      # And program board firmware if needed/requested currently will always reprogram
-      ca = load_yaml(open('pychfpga/yaml_iceboard_list.txt'))
-      # close_all_sockets()
-      # IceArray.close_all_sessions()
-      # ca = IceArray(uri=conf["fpga"]["db_file"], interface_ip_addr=conf["fpga"]["host_ip"])
-      # Might want to move the list somewhere else/into conf file?
-      # ca.load_iceboards('/home/chime/ch_acq/pychfpga/iceboard_list.txt')
-      # ca.discover()
-      fpga_bitstream = FpgaBitstream(conf["fpga"]["bitfile_name"])
-      ChimeFpgaFirmware.register_fpga_bitstream(fpga_bitstream)
-
-      # bitfile_filename = conf["fpga"]["bitfile_name"]
-      # fpga_bitstream = ca.get_fpga_bitstream(bitfile_filename, ChimeFpgaFirmware)
-      c = ca.query(IceBoardPlus).filter_by(subarray=conf["fpga"]["subarray"])
-
-      for ib in c:
-        if not ib.ping():
-            ca.delete(ib)
-      ca.commit()
-
-      c.set_fpga_bitstream(force=conf["fpga"]["force"])
-
-      # c = ca.get_iceboards(subarray=[conf["fpga"]["subarray"]]).index_by(IceBoard.serial_number)
-      # c.set_fpga_firmware(fpga_bitstream, force=conf["fpga"]["force"])
-      c.discover_mezzanines()
-      c.discover_crate()
-      c.open( \
-            adc_delay_table=adc_delay, \
-            init=1, \
-            sampling_frequency=conf["fpga"]["samp_freq"] * 1e6, \
-            reference_frequency=conf["fpga"]["ref_freq"], \
-            data_width=conf["fpga"]["data_width"], \
-            group_frames=conf["fpga"]["group_frames"], \
-            enable_gpu_link = conf["fpga"]["enable_gpu_link"])
-      #Temp solution to load adc_delay from table...
-      #try:
-      delays = pickle.load(open('pychfpga/delays_20170308.pkl'))
-      for ice in c:
-          #try:
-              ice.set_adc_delays_with_check(delays[int(ice.serial)])
-              log.info("set delays on SN {0}, SLOT {1}".format(ice.serial, ice.slot))
-          #except:
-          #    log.info("Error loading/setting delay tables.  Using default delays from config file for all boards")
-      #for cc in c:
-      #  cc.GPU.LINK_ENABLE=1
-      #  log.info("GPU link enabled on SN {0}, SLOT {1}".format(cc.serial, cc.slot))
-      c.set_corr_reset(1)
-      time.sleep(0.1)
-      c.set_corr_reset(0)
-      # fpga = chFPGA_controller.chFPGA_controller( \
-      #            ip_address = conf["fpga"]["ip_address"], \
-      #            port_number = conf["fpga"]["port"], \
-      #            adc_delay_table = adc_delay, \
-      #            verbose = 0, \
-      #            init = 1, \
-      #            sampling_frequency = conf["fpga"]["samp_freq"] * 1e6, \
-      #            reference_frequency = conf["fpga"]["ref_freq"], \
-      #            data_width=conf["fpga"]["data_width"], \
-      #            group_frames=conf["fpga"]["group_frames"], \
-      #            enable_gpu_link = conf["fpga"]["enable_gpu_link"], \
-      #            host_ip = conf["fpga"]["host_ip"])
-
-
-      # Set FPGA controller parameters.
-      # Calculate new gains if necessary
-      # Get config here to be able to create receiver object
-      # Gains will need to be able to handle multiple boards, currently file
-      # Will be overwritten when used for more than one board.
-      # Make compute gains smarter -> write to db? need boards to actually be different
-      
-      # Get noise injection parameters
-      ni_board = c(serial=conf["fpga"]["ni_board"])
-      ni_enable = conf["fpga"]["ni_enable"]
-      ni_offset = conf["fpga"]["ni_offset"]
-      ni_high_time = conf["fpga"]["ni_high_time"] - 1 # the -1 is due to the convention in function set_frame_pwm()
-      ni_period = conf["fpga"]["ni_period"] - 1
-      ni_board_26m = c(serial=conf["fpga"]["ni_board_26m"])
-      ni_enable_26m = conf["fpga"]["ni_enable_26m"]
-      ni_offset_26m = conf["fpga"]["ni_offset_26m"]
-      ni_high_time_26m = conf["fpga"]["ni_high_time_26m"] - 1 # the -1 is due to the convention in function set_frame_pwm()
-      ni_period_26m = conf["fpga"]["ni_period_26m"] - 1      
-
-      if (int(args.compute_gain) > 0):
-          #Shouldn't need for loop here, but initial testing failed in parallel.
-          if ni_enable:
-              ni_board.set_user_output_source('pwm')
-              ni_board.set_frame_pwm(0, 3, 4)
-              ni_board.sync()
-          if ni_enable_26m:
-              ni_board_26m.set_user_output_source('pwm')
-              ni_board_26m.set_frame_pwm(0, 3, 4)
-              ni_board_26m.sync()
-          calculate_gain_slots = conf["fpga"]['calculate_gain_slots'] 
-          for i, c_element in enumerate(c):
-            if c_element.slot in calculate_gain_slots:
-              fpga_config = c_element.get_config()
-              #fpga_rec = chFPGA_receiver.chFPGA_receiver(fpga_config, \
-              #              ip_address=c_element.fpga_ip_addr, \
-              #              port=c_element.fpga_port_number+1, \
-              #              host_ip = conf["fpga"]["host_ip"])
-              calculate_gains.calculate_gains(c_element,str(c_element.fpga_port_number+1))
-              #fpga_rec.close()
-      all_chan = range(16)#range(conf["n_antenna"])
-      c.set_data_source("adc") # This should come first.
-      c.set_FFT_bypass(False, channels = all_chan)
-      c.set_FFT_shift(conf["fpga"]["fft_shift"], channels = all_chan)
-      set_synchronized_gain_switching(c, enable=0)
-      set_next_gain_bank(c, bank=0)
-      all_banks = get_current_gain_bank(c)     
-      load_gains(c, bank=0)
-      for bankset in all_banks:
-          log.info('Using gain banks %s' % ( ', '.join([str(i) for i in bankset])))
-      gpu_intergration_period = conf["gpu"]["gpu_intergration_period"]      
-      enable_gain_switching = conf['acq']['enable_gain_switching']
-      gain_switch_frame = conf['fpga']['gain_switch_frame']
-      if enable_gain_switching > 0:
-          # set frame number to switch gains at.
-          set_gain_switch_frame_number(c, frame=gain_switch_frame)
-          # set to only change when at configured frame number
-          set_synchronized_gain_switching(c, enable=1)
-          # set to use bank 1 next, change in loop below. have to do this after config to wait for
-          # frame number
-      else:
-          set_synchronized_gain_switching(c, enable=0)
-      all_banks = get_current_gain_bank(c)
-      for bankset in all_banks:
-          log.info('Using gain banks %s' % ( ', '.join([str(i) for i in bankset])))
-      all_enabled_sync = get_synchronized_gain_switching(c)
-      for enabled_sync in all_enabled_sync:
-          log.info('gain sync status is %s' % ( ', '.join([str(i) for i in enabled_sync])))
-      
-      all_frame_number_set = get_gain_switch_frame_number(c)
-      for frames_set in all_frame_number_set:
-          log.info('gain sync frame is %s' % ( ', '.join([str(i) for i in frames_set])))
-      # for i, c_element in enumerate(c):
-      #   gain_pkl_file = open('/home/chime/ch_acq/gains_'+str(c_element.fpga.GPIO.FPGA_SERIAL_NUMBER)+'.pkl', "rb")
-      #   gains = pickle.load(gain_pkl_file)
-      #   c_element.fpga.set_gain(gains, channels = all_chan)
-      c.sync()
-      #c.set_send_flags()
-      c.set_offset_binary_encoding()
-      c.sync()
-      # Get sync_board. Currently board SN0008 (slot 16)
-      sync_board = c(serial=conf["fpga"]["sync_board"])
-      ## enable slow stream
-      for cc in c:
-          cc.set_local_data_port_number(cc.slot+41100)
-          cc.start_data_capture(period=30, source='adc', offset=cc.slot-1)
-      # This is another hack. Have to fix it for DRAO. REALLY: HAVE TO CHANGE IT
-      # shuffle_init(list(c),sync_board,frames_per_packet=4, cb1_lanes=16, cb1_bins=64, cb2_lanes=16, cb2_bins=8, cb2_bypass=0, remap=True )
-      d_slots = conf['fpga']['destination_slots'] #[int(ii) for ii in conf["fpga"]["destination_slots"]]
-      shuffle_init(list(c), ni_board, ni_board_26m, sync_board, dsmap = d_slots, frames_per_packet=conf['fpga']['group_frames'], cb1_lanes=16, cb1_bins=64, cb2_lanes=16, cb2_bins=8, cb2_bypass=0, remap=True,
-                   ni_enable = ni_enable, ni_offset = ni_offset, 
-                   ni_high_time = ni_high_time, ni_period = ni_period,
-                   ni_enable_26m = ni_enable_26m, ni_offset_26m = ni_offset_26m, 
-                   ni_high_time_26m = ni_high_time_26m, ni_period_26m = ni_period_26m,
-                   window_start=0, window_stop=50)
-      time.sleep(2)
-      #shuffle_init(list(c), ni_board, ni_board_26m, sync_board, dsmap = d_slots, frames_per_packet=4, cb1_lanes=16, cb1_bins=64, cb2_lanes=16, cb2_bins=8, cb2_bypass=0, remap=True,
-      #             ni_enable = ni_enable, ni_offset = ni_offset, 
-      #             ni_high_time = ni_high_time, ni_period = ni_period,
-      #             ni_enable_26m = ni_enable_26m, ni_offset_26m = ni_offset_26m, 
-      #             ni_high_time_26m = ni_high_time_26m, ni_period_26m = ni_period_26m,
-      #             window_start=200, window_stop=200)
-
-      #Make sure FPGA throttling is fast enough to send all the data
-      #FPGA doesn't seem to change this without a reset...
-      #read_rate = int(np.floor(np.log2(conf["fpga"]["int_period"] * 4 * 125e6 / \
-      #                2 / (conf["n_antenna"] * (conf["n_antenna"] + 1)))))
-      #fpga.GPIO.HOST_FRAME_READ_RATE = read_rate
-
-      # Start the correlator.
-      ##fpga.start_corr_capture(integration_period = conf["fpga"]["int_period"])
-      #log.info("Correlator started with an integration time of %.1f s" % \
-      #         (conf["fpga"]["int_period"]))
-
-
-
-
-      #Read the FPGA setting back from the FPGA
-      fpga_conf = {}
-      for i, c_element in enumerate(c):
-        fpga_conf[c_element.slot] = vars(c_element.get_config())
-
-      # Create the output directory.
-      time_str = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-      corr_name = None
-      if (len(fpga_conf) == 1):
-        fpga_conf1 = fpga_conf[fpga_conf.keys()[0]]
-        for corr, ser_list in correlator_hash.iteritems():
-          not_found = False
-          if type(fpga_conf1["adc_serial"]) is list:
-            for ser in fpga_conf1["adc_serial"]:
-              if not ser in ser_list:
-                not_found = True
-                break
-          else:
-            print fpga_conf1["adc_serial"]
-            if not fpga_conf1["adc_serial"] in ser_list:
-                not_found = True
-          if not_found:
-            corr_name = repr(c[0])
-            continue
-          corr_name = corr
-          break
-      else:
-        #Assume array is whole pathfinder.
-        #need to change this
-        corr_name = 'pathfinder'
-      if not corr_name:
-        try:
-          log.critical("Could not find hash for ADC serial numbers %s." %
-                       fpga_conf["adc_serial"])
-        except KeyError:
-          log.critical("Could not find key \"adc_serial\" in FPGA configuration.")
-        exit()
-  else:
-      time_str = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime())
-      corr_name = 'pathfinder' # RS asked to always use same name format for acq folders for archiving purposes
-
-  acq_base_dir = "%s/%s_%s_corr" % (conf["acq"]["base_path"], time_str, \
-                                   corr_name)
-
-  if (int(args.configure_fpga) > 0):
-    # Save current FPGA settings to pickle file. This will be used in case the acq restart without configuring the fpgas
-    fpga_conf['acq_base_dir'] = acq_base_dir # Saving ref to date of this fpga config as requested by MA
-    with open("fpga_conf.pkl", "wb") as fpga_conf_pkl:
-      pickle.dump(fpga_conf, fpga_conf_pkl)
-    del fpga_conf['acq_base_dir']
-
-  os.makedirs(acq_base_dir)
-  if not os.path.exists(acq_base_dir):
-    log.critical("Could not create directory \"%s\"." % (acq_base_dir))
-    exit()
-
-  # Create a symbolic link to the output directory.
-  os.unlink(conf["acq"]["curfile"])
-  os.symlink("%s/%s_%s_corr" % (conf["acq"]["base_path"], time_str, corr_name),
-             conf["acq"]["curfile"])
-
-  # Lock the logfile.
-  log_file_lock = "%s/.ch_master.log.lock" % acq_base_dir
-  fp = open(log_file_lock, "w")
-  if not fp:
-    log.error("Could not create lockfile \"%s\"." % log_file_lock)
-  else:
-    fp.close()
-
-  # Start writing to a log file in this directory.
-  acq_log_path = "%s/ch_master.log" % (acq_base_dir)
-  log_file = logging.FileHandler(acq_log_path)
-  log_file.setLevel(logging.DEBUG)
-  log_file.setFormatter(log_fmt)
-  log.addHandler(log_file)
-  log.info("Now logging to \"%s\"." % (acq_log_path))
-
-  log.info("Sampling frequency is %0.3f MHz." % \
-           float(conf["fpga"]["samp_freq"]))
-
-  if (int(args.configure_fpga) > 0):
-      # Pass FPGA configuration variables to header.
-      for fpga_slot, slot_conf in fpga_conf.items():
-        for name in slot_conf:
-          if name == 'antenna_scaler_gain':
-            # Eventually, the gains will be updated whenever they change,
-            # presumably by moving this call somewhere in the loop at the end 
-            # of this program.
-            for val in slot_conf[name]:
-              v = convert_types(val)
-              inp = remap_slot[fpga_slot-1] * 16 + remap_adc_sma[int(val[0])]
-              acq.pass_fpga_gain(inp, v)
-          else:
-            val = slot_conf[name]
-            val = convert_types(val)
-            name = 'Slot_'+ str(fpga_slot) + '_' + name
-            acq.add_header_item(name, val)
-  else:
-    if (int(args.previous_config) >0): # No communication with FPGAs. Will use most recent available fpga config
-      with open("fpga_conf.pkl", "rb") as fpga_conf_pkl:
-        fpga_conf = pickle.load(fpga_conf_pkl)
-      acq.add_header_item("fpga_info",
-        "NO COMMUNICATION WITH FPGA FOR THIS DATASET. SAVED MOST RECENT AVAILABLE FPGA CONFIGURATION (FROM %s) TO ACQ HEADER" 
-        %fpga_conf['acq_base_dir'])
-      del fpga_conf['acq_base_dir']
-      
-      # Pass FPGA configuration variables to header.
-      for fpga_slot, slot_conf in fpga_conf.items():
-        for name in slot_conf:
-          if name == 'antenna_scaler_gain':
-            # Eventually, the gains will be updated whenever they change,
-            # presumably by moving this call somewhere in the loop at the end 
-            # of this program.
-            for val in slot_conf[name]:
-              v = convert_types(val)
-              inp = remap_slot[fpga_slot-1] * 16 + remap_adc_sma[int(val[0])]
-              acq.pass_fpga_gain(inp, v)
-          else:
-            val = slot_conf[name]
-            val = convert_types(val)
-            name = 'Slot_'+ str(fpga_slot) + '_' + name
-            acq.add_header_item(name, val)
+                val = list(int(x) for x in val)
     else:
-      acq.add_header_item("fpga_info",
-                        "NO COMMUNICATION WITH FPGA FOR THIS DATASET. EMPTY ACQ HEADER")
+        if isinstance(val, long):
+            val = int(val)
+        elif isinstance(val, bool):
+            val = int(val)
+        elif isinstance(val, unicode):
+            val = str(val)
+        elif isinstance(val, int):
+            pass
+        elif isinstance(val, float):
+            pass
+        elif not isinstance(val, str):
+            try:
+                if val.dtype.kind in ('i', 'u', 'f', 'b'):
+                    val = numpy.asscalar(val)
+            except:
+                    # Hopefully already a int/float
+                    pass
+    return val
 
-  # Add some acquisition information to the header, for kicks.
-  acq.add_header_item("system_user", getpass.getuser())
-  acq.add_header_item("collection_server", socket.gethostname())
-  acq.add_header_item("instrument_name", corr_name)
-  #acq.add_header_item("archive_version", archive_version)
-  acq.add_header_item("acquisition_name", "%s_%s_corr" % (time_str, corr_name))
-  acq.add_header_item("acquisition_type", "corr")
+def sanitize_for_json(obj):
+    """
+    Modify an object to make it JSON-compatible. Contents of dicts and
+    lists contained in the object are recursively converted.
 
-  # Get the git tag and write it to the header.
-  if not len(args.git_tag):
-    fp = open("/etc/CHIME/version", "r")
-    if not fp:
-      log.critical("Could not find git tag in \"/etc/CHIME/version\".")
-      exit()
-    tag = fp.read().replace("\n", "")
-  else:
-    tag = args.git_tag
-  log.info("Git version is %s." % (tag))
-  acq.add_header_item("git_version_tag", tag)
+        - dict-like object with string keys are converted to Python dict
+        - dict-like objects with non-string keys are converted into a Python list of (key,value) tuples.
+        - list objects are converted into Python list
+        - other objects stay the same.
 
-  # Add the user notes.
-  acq.add_header_item("notes", args.notes)
-
-  # Stop the acq on SIGTERM
-  def stop_acq(*args):
-    os.remove(log_file_lock)
-    acq.stop()
-
-  signal.signal(signal.SIGTERM, stop_acq)
-
-  # Start the acquisition.
-  acq.start(acq_base_dir, crate_sn, int(conf["fpga"]["subarray"]))
-
-  if (int(args.configure_fpga) > 0):
-    c.CROSSBAR.LANE_MONITOR_RESET=1
-    c.CROSSBAR.LANE_MONITOR_RESET=0
-    c.CROSSBAR2.LANE_MONITOR_RESET=1
-    c.CROSSBAR2.LANE_MONITOR_RESET=0
-    c.CROSSBAR.LANE_MONITOR_SEL = 6
-    c.CROSSBAR2.LANE_MONITOR_SEL = 6
-
-  gains_reloaded = False
-  hdf5_gains_switched = False
-  bank_switched = True
-  hk_rate_in_frames = int(conf["acq"]["fpga_hk"]["rate"] / 2.56e-6)
-  poll_rate = conf['acq']['acq_loop_poll_rate'] #in seconds
-  poll_rate_in_frames = poll_rate/2.56e-6  #should use fpga config frequency?
-  reload_gains_frame = conf['fpga']['reload_gains_frame']
-  frame_range = 2*poll_rate_in_frames  
-  bank_switch_frame = conf['fpga']['bank_switch_frame']
-  gain_reload_period = conf['fpga']['gain_reload_period']  #in frames
-  if ( int(args.configure_fpga) > 0):
-      # init gains function kind of a hack.  Should fix.
-      current_bank = 0
-      next_bank = 1
-      if (enable_gain_switching > 0):
-          set_next_gain_bank(c, bank=next_bank)
-      all_next_bank = get_next_gain_bank(c)
-      for bankset in all_next_bank:
-          log.info('Set next gain bank to %s' % ( ', '.join([str(i) for i in bankset])))
-      all_banks = get_current_gain_bank(c)
-      for bankset in all_banks:
-          log.info('currently using gain banks %s' % ( ', '.join([str(i) for i in bankset])))
-
-  try:
-    while True:
-      # Pass the acquisition object the board temperatures. This is a temporary
-      # way of doing this!  Check on frame number.  If less than 10sec from 'reload_gains_time'
-      # then start reloading the gains. and switch banks. 
-      # If less than 10s from gains_switch_time, Change to new gains into hdf5 file.  
-      #
-      if (int(args.configure_fpga) > 0):
-        #try:
-             #fpga_frame_count = c[0].get_frame_number()
-             #if ((fpga_frame_count % hk_rate_in_frames) < poll_rate_in_frames):
-             #    hk_return = get_all_fpga_slots_hk(c)
-             #    i = 0
-             #    for hk in hk_return:
-             #      acq.pass_fpga_amb_temp(i, {hk_fields_list[0] : hk})
-             #      i += 1
-                   #log.debug("Slot number: %d "  % c_element.slot )
-                   #log.debug("Crossbar1 fifo overflow %d "  % c_element.CROSSBAR.CB1_LANE_MONITOR )
-                   #log.debug("Crossbar2 fifo overflow %d "  % c_element.CROSSBAR2.CB2_LANE_MONITOR )
-             #    log.info("Read FPGA housekeeping.")
-        #except:
-        #     log.critical("Did not get FPGA housekeeping, still aquiring data...")
-             #Right now can miss gain setting stuff if hk takes more than 10s.  Really need to disentangle the two.  
-        if ( int(enable_gain_switching) > 0):
-         #log.info("Gain switching enabled")
-         try:
-          time.sleep(0.1)
-          true_fpga_frame_count = c[0].get_frame_number()
-          fpga_frame_count = true_fpga_frame_count % gain_reload_period  #now need a reset since 48bit counter
-          try:
-            # Well before switch time.  Set gains in next bank, read back what we set.  
-            if (abs(fpga_frame_count - reload_gains_frame) < frame_range) and not gains_reloaded:
-                load_gains(c, bank=next_bank)
-                fpga_gains = {}
-                for i, c_element in enumerate(c):
-                    fpga_gains[c_element.slot] = c_element.get_gain(bank=next_bank)
-                gains_reloaded = True
-                bank_switched = False
-                log.info("Loaded gains into bank %d" % next_bank)
-                all_banks = get_current_gain_bank(c)     
-                for bankset in all_banks:
-                    log.info('Currently using gain banks %s' % ( ', '.join([str(i) for i in bankset])))
-            #log.debug("checked for reload gain time")
-            # Right before switch time
-            if (abs(fpga_frame_count - (gain_switch_frame+gpu_intergration_period)) < frame_range) and not hdf5_gains_switched and gains_reloaded:
-                for fpga_slot, slot_gain in fpga_gains.items():
-                    for val in slot_gain:
-                        v = convert_types(val)
-                        inp = remap_slot[fpga_slot-1] * 16 + remap_adc_sma[int(val[0])]
-                        acq.pass_fpga_gain(inp, v)
-                hdf5_gains_switched = True
-                log.info('Changed gains in hdf5 file')
-            #log.debug("checked for switch gains in hdf5 file time")
-            #shortly after after switch
-            if (abs(fpga_frame_count - (bank_switch_frame+gpu_intergration_period)) < frame_range) and not bank_switched and hdf5_gains_switched:
-                set_next_gain_bank(c, bank = current_bank)
-                current_bank = (current_bank + 1) % 2  
-                next_bank = (next_bank + 1) % 2
-                new_gain_switch_frame = (1+(true_fpga_frame_count / gain_reload_period))*gain_reload_period + gain_switch_frame
-                set_gain_switch_frame_number(c, frame = new_gain_switch_frame)
-                gains_reloaded = False
-                hdf5_gains_switched = False
-                bank_switched = True
-                log.debug("changed which gain bank will be written to over to %d" % next_bank)
-                all_banks = get_current_gain_bank(c)     
-                for bankset in all_banks:
-                    log.info('Using other gain banks %s' % ( ', '.join([str(i) for i in bankset])))
-            #log.debug("checked for gain back switch prep time")
-          except:
-            log.critical("something went wrong with gain switching, still aquiring data...")
-            #raise
-         except:
-          log.info("couldn't read fpga frame number... will try again.")
-          #raise
+    """
+    if isinstance(obj, collections.Mapping) or hasattr(obj, 'items'):
+        if not all(isinstance(k,str) for k in obj.keys()):
+            return [(k, sanitize_for_json(v)) for k, v in obj.items()]
         else:
-          pass
-      else:
-        log.info("acquiring data...")
-      time.sleep(poll_rate)
-    stop_acq()
-  except(KeyboardInterrupt, SystemExit):
-    stop_acq()
-    #raise
+            return {str(k): sanitize_for_json(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [sanitize_for_json(v) for v in obj]
+    else:
+        return obj
 
-log.info("Exiting ch_master now.")
+
+
+#
+## Constants ##
+
+# Current archive format version. Prefixed by "NT_" to signify that
+# these data do not have the time-transpose completed.
+ARCHIVE_VERSION = "NT_2.2.0"
+
+# import pychfpga.fpga_array
+
+# print(sys.argv)
+# print(__package__)
+# print(__name__)
+# print(pychfpga.fpga_array.__package__)
+# print(pychfpga.fpga_array.__name__)
+
+# # Full path to this file.
+# PROGRAM = os.path.realpath(__file__)
+
+def get_git_version():
+    # Git version.
+    PROGRAM = os.path.realpath(__file__)
+    try:
+        return subprocess.check_output(
+            'git describe --all --dirty --long'.split(),
+            cwd = os.path.dirname(PROGRAM)).strip()
+    except WindowsError:
+        print('GIT was not found')
+        return 'unknown' # JFC: To allow tests in windows
+
+
+
+
+
+def reap_cached_sockets():
+    import __main__
+    logger = log.get_logger(__name__, 'reap_cached_sockets()')
+    if hasattr(__main__, '__opened_sockets__'):
+        for port, socket in __main__.__opened_sockets__.items():
+            logger.debug("closing cached socket on port %d" % port)
+            socket.close()
+        del __main__.__opened_sockets__
+
+
+class ChimeMaster(object):
+    """ Object that provide methods to initialize, control, monitor and shutdown a CHIME telescope
+    array (or subarray)
+    """
+
+    # Define the minimum logging setup to be used until we have properly set-up logging from the config file
+    DEFAULT_LOGGING = {
+        'handlers': {
+            'stderr': {'class': 'logging.StreamHandler', 'level': 'INFO'}
+            },
+        'loggers': {
+            '': {'handlers': ['stderr']}  # root logger
+
+            }
+        }
+
+
+    def __init__(self):
+
+        # Setup logging for all the ch_acq package. This will apply to logs generated by raw_acq, kotekan, ch_master etc.
+        log.setup_logging(self.DEFAULT_LOGGING)
+
+        self.log = log.get_logger(self) # i.e. ch_master.ChimeMaster
+        self.log.debug('%r: Creating ChimeMaster instance' % self)
+        self.state = 'off'
+        self.config = None
+        self.start_time = None
+
+        # Remote service provider objects
+        self.chrx = None  # CHRX REST clients
+        self.raw_acq = None # Raw FPGA data acquisitoin REST clients
+        self.kotekan = None # Kotekan REST clients
+        self.fpgas = None # fpga_array object
+        self.power_supply_servers = None # power supply REST server
+
+        self.PROGRAM = os.path.realpath(__file__) # absolute path name to this module
+        self.GIT_VERSION = get_git_version()
+
+        self.log.info("program %s" % self.PROGRAM)
+        self.log.info("version %s" % self.GIT_VERSION)
+
+    def set_config(self, config):
+        self.config = NameSpace(config)
+
+
+
+    #####################################
+    # Power supply management
+    #####################################
+    # Operates the power supplies via the power supply server(s)
+
+    @coroutine
+    def create_power_supply_clients(self):
+        """ create clients object that operate on the power supply server
+        """
+        ps_config = self.config.power_supplies
+
+        # First create the client to the servers, and start the server if it is not already started
+        self.power_supply_servers = {}
+        server_nodes = ps_config.servers or {}
+        for server_name, server_params in server_nodes.items():
+            ps = PowerSupplyAsyncRESTClient(hostname=server_params.hostname, port=server_params.port) # we pass the whole server config to the client in case it needs th create and/or start the server
+            yield ps.start(server_params)
+            self.power_supply_servers[server_name] = ps
+
+        # figure out which servers controls the power supply units we want to use in this experiment
+        units = ps_config.power_on.units or []  # units used by ch_master
+        ps_names = set(units)
+        self.power_supply_units = {}
+        for server_name, server in self.power_supply_servers.items():
+            server_ps_names = set((yield server.list_names()))
+            common_ps_names = ps_names & server_ps_names # set intersection
+            if common_ps_names:
+               self.power_supply_units[server] = list(common_ps_names)
+               ps_names -= common_ps_names
+        if ps_names:
+            raise RuntimeError('%r: Could not find a power supply server to handle the following supplies: %s' % (self, ps_names))
+
+    @coroutine
+    def power_on(self):
+        """ Turn on the power supplies listed in the `power_supplies.power_on.units` config field.
+
+        If the power supply is already ON, no action is taken. If not, it is turned on, and we wait
+        for the power on delay specified in `power_supplies.power_on.delay`.
+        """
+
+        yield [ps.power_on(*ps_names) for ps, ps_names in self.power_supply_units.items()]
+
+    @coroutine
+    def power_off(self):
+        """ Turn off the power supplies listed in the `power_supplies.power_on.units` config field.
+        """
+        yield [ps.power_off(*ps_names) for ps, ps_names in self.power_supply_units.items()]
+
+    @coroutine
+    def is_power_supply_ready(self):
+        """ Check is all power supplies listed in the `power_supplies.power_on.units` config field are ready.
+        """
+        # Get the is_ready dict for each power supply server as [ {ps_name: state,...}, {ps_name: state, ...}]
+        is_ready = yield [ps.is_ready() for ps, ps_names in self.power_supply_units.items()]
+        # Check if the flag for each supply associated with each server is True
+        coroutine_return(all(is_ready[i][ps_name]
+                             for i, ps_names in enumerate(self.power_supply_units.values())
+                             for ps_name in ps_names))
+
+    @coroutine
+    def wait_for_power_supply(self):
+        while not (yield self.is_power_supply_ready()):
+            self.log.warn('Waiting for power supplies')
+            yield sleep(5)
+
+    @coroutine
+    def get_power_supply_metrics(self):
+        """ Return the metrics for every power supply server.
+
+        Data is gathered for **all** servers, not just the ones that serve a power supply we use in this run.
+
+        Returns:
+            A `Metrics` object with the supply monitiring data.
+        """
+
+        metrics = Metrics((yield [ps.get_metrics() for ps in self.power_supply_servers.values()]))
+        coroutine_return(metrics)
+
+    #####################################
+    # CHRX management methods
+    #####################################
+
+    @coroutine
+    def create_chrx_clients(self):
+        """ Create CHRX REST clients, which communicate with the CHRX remote processes that receive
+        the data processed from the GPUs.
+
+        TODO:
+            - Make parallel if needed
+        """
+        self.chrx = {}
+        nodes = self.config.chrx.nodes or {} # return {} if None (no YAML entries)
+        for node_name, node_params in nodes.items():
+            conf = node_params.copy()
+            conf.update(self.config.chrx.common_config)
+            self.chrx[node_name] = ChrxAsyncRESTClient(name=node_name, **conf)  # will use only the parameters it needs for now (host, port etc)
+
+    # def make_chrx_headers(self):
+    #     # Add some acquisition information to the header, for kicks.
+    #     conf = self.config
+    #     headers = {
+    #         'acquisition_name': self.run_name,
+    #         'acquisition_type': 'corr',
+    #         'archive_version': ARCHIVE_VERSION,
+    #         'collection_server': socket.gethostname(),
+    #         'instrument_name': conf.corr_name,
+    #         'git_version_tag': get_git_version(),
+    #         'system_user': getpass.getuser(),
+    #         'notes': conf.get('notes','(no notes)'),
+    #     }
+
+    #     # # Pass FPGA configuration variables to header.
+    #     # for fpga_slot, slot_conf in self.fpga_conf.items():
+    #     #     for name in slot_conf:
+    #     #         if name != 'antenna_scaler_gain':
+    #     #             val = convert_types(slot_conf[name])
+    #     #             name = 'Slot_'+ str(fpga_slot) + '_' + name
+    #     #             headers[name] = val
+    #     return headers
+
+
+    @coroutine
+    def start_chrx_clients(self):
+        """ Start all CHRX remote process in parallel """
+        @coroutine
+        def start_chrx_client(chrx):
+            crate_sn = self.fpga.ic[0].get_string_id() # Hack. Works with pathfinder only. Have to rewrite for full CHIME.
+            fpga_hk_fields = { "core_temp": "deg C" } # To be rewritten with new chrx
+            headers = {
+                'acquisition_name': self.run_name,
+                'acquisition_type': 'corr',
+                'archive_version': ARCHIVE_VERSION,
+                'collection_server': socket.gethostname(),
+                'instrument_name': self.config.corr_name,
+                'git_version_tag': get_git_version(),
+                'system_user': getpass.getuser(),
+                'notes': self.config.get('notes','(no notes)'),
+            }
+            # headers = self.make_chrx_headers()
+            self.log.info("starting CHRX %s..." % chrx.name)
+            # Start the chrx remote process with additional updated configuration parameters
+            yield chrx.start(
+                acq_base_dir= self.run_folder,
+                crate_sn=crate_sn,
+                fpga_hk_fields=fpga_hk_fields,
+                headers=headers)
+            self.log.info("finished starting CHRX %s" % chrx.name)
+
+        yield [start_chrx_client(chrx) for chrx in self.chrx.values()]
+
+    @coroutine
+    def stop_chrx_clients(self):
+        yield [chrx.stop() for chrx in self.chrx.values()]
+
+
+    @coroutine
+    def pass_gains_to_chrx(self, gain_map):
+        """ *** To be rewritten *** """
+        @coroutine
+        def update_gains(chrx):
+            chan_map = [12, 13, 14, 15,  8, 9, 10, 11,  4,  5,  6,  7, 0, 1, 2, 3]
+            slot_map    = [ 5,  1,  4,  0, 13, 9, 12,  8, 15, 11, 14, 10, 7, 3, 6, 2]
+            for (crate, slot, chan), gains in gain_map.items():
+                remapped_slot = slot_map[slot-1]
+                remapped_chan = chan_map[chan]
+                # for val in slot_gain:
+                converted_gains = convert_types(gains)
+                input_number = remapped_slot * 16 + remapped_chan
+                yield chrx.send_config(input_number, converted_gains)  # pass_fpga_gain(inp, v)
+        # update all gains in parallel
+        yield [update_gains(chrx) for chrx in self.chrx.values()]
+
+    #####################################
+    # KOTEKAN management methods
+    #####################################
+
+    @coroutine
+    def create_kotekan_clients(self):
+        # Create Kotekan REST clients
+        self.kotekan = {}
+        nodes = self.config.kotekan.nodes or {}
+        for node_name, node_params in nodes.items():
+            #config = self.config.kotekan.common_config.copy()
+            #config.update(node_params)
+            self.kotekan[node_name] = KotekanAsyncRESTClient(name=node_name, **node_params)
+
+    @coroutine
+    def start_kotekan_servers(self):
+        """
+        Start Kotekan serers with the proper config.
+        """
+        conf = self.config.kotekan
+        yield [node.start(config=merge_dict(conf.common_config, conf.nodes[node_name]).as_dict()) for node_name, node in self.kotekan.items()]
+
+
+    #####################################
+    # RAW_ACQ management methods
+    #####################################
+
+    @coroutine
+    def create_raw_acq_clients(self):
+        """ Create RawAcq REST clients.
+        """
+        self.raw_acq = {}
+        nodes = self.config.raw_acq.servers or {}
+        for node_name, node_params in nodes.items():
+            self.raw_acq[node_name] = RawAcqAsyncRESTClient(name=node_name, **node_params)
+
+    def get_iceboards(self, ib):
+        """ Return the iceboard object(s) corresponding to the  `ib` tuple.
+
+        Parameters:
+
+            ib (tuple): A (crate_number, slot_number) tuple describing an iceboard. A value of None
+                is equivalent to a '*' wildcard. Missing tuple entries are considered to be None.
+
+        Returns:
+            list of iceboard objects
+
+        Examples:
+
+            - (0,), (0, None), (0, '*'), {crate:0} : All boards in Crate 0
+        """
+        if isinstance(ib, (tuple, list)):
+            crate_number = ib[0] if len(ib) > 1 else None
+            slot_number = ib[1] if len(ib) > 2 else None
+        elif isinstance(ib, dict):
+            crate_number = None
+            slot_number = None
+            for k,v in ib.items():
+                if k.lower()=='crate':
+                    crate_number = v
+                elif k.lower() == 'slot':
+                    slot_number = v
+                else:
+                    raise RuntimeError("Unknown element '%s' in iceboard selection item %s" % (k, ib))
+        else:
+            raise ValueError('Unknown iceboard selection format %s', ib)
+
+        crate_number = None if crate_number == '*' else crate_number
+        slot_number = None if slot_number == '*' else slot_number
+        iceboards = []
+        #print('get_iceboard: looking for ', crate_number, slot_number)
+        for ib in self.fpgas.ib:
+            ib_id = ib.get_id()
+            #print('   checking', ib_id)
+            if (crate_number is None or crate_number == ib_id[0]) and (slot_number is None or slot_number== ib_id[1]):
+                iceboards.append(ib)
+        return iceboards
+
+    @coroutine
+    def start_raw_acq_servers(self):
+        """ Start raw data acquisition servers and set the FPGAs raw data transmit addresses.
+
+        Requires the FPGAs to be initialized.
+
+        Creates the self.raw_acq_ibs dictionary which lists the iceboards objects associated with each RawAcq server.
+        """
+        self.log.info('%r: starting raw_acq servers' % self)
+        conf = self.config.raw_acq
+        #print(conf)
+
+        # Make a list of all all iceboards for each of the RawAcq node
+        self.raw_acq_ibs = {}
+        for node_name, node_conf in conf.servers.items():
+            self.raw_acq_ibs[node_name] = set()
+            for ib in node_conf.iceboards:  # ib is a (crate, slot) tuple)
+                self.raw_acq_ibs[node_name].update(self.get_iceboards(ib))
+
+        #print('self.raw_acq_ibs=', self.raw_acq_ibs)
+        # Check that an iceboard is assigned to only one server
+        for node_name, ibs in self.raw_acq_ibs.items():
+            if not all(ibs.isdisjoint(other_ibs) for other_name, other_ibs in self.raw_acq_ibs.items() if other_name != node_name):
+                raise RuntimeError('Some FPGA board(s) is/are assigned to send raw data to multiple RawAcq nodes. Check your config')
+
+        # Start each RawAcq server with a port for each assigned iceboard. For each port, we provide
+        # the address of the (only) source FPGA board. The server will ping this address back to
+        # set-up the switches routing tables and figure out on which interface the data will be
+        # arriving. It will then return the addresses (ip_addr, port, mac_addr) to which the data
+        # should be sent.
+        #
+        # First, prepare the receiver parameters for each node
+
+        # # HACK: IF USING FIXED DATA PORT NUMBERS, RELEASE THE PRE-ALLOCATED PORT SOCKETS SO THEYT CAN BE ASSIGNED BY RAW_ACQ
+        # for s in self.pre_alloc_recv_sockets:
+        #     s.close()
+
+        recv_ports = {}
+        recv_names = {}
+        for node_name, ibs in self.raw_acq_ibs.items():  # for each raw_acq node
+            recv_name = '%sRecv' % node_name  # Name of the receiver object. Each node runs one receiver, which can hande multiple ports.
+            recv_names[node_name] = '%sRecv' % node_name
+
+            recv_ports[node_name] = []
+            for i, ib in enumerate(ibs):
+                # We have one port per Iceboard, although we could have multiple iceboards per port if the receiver supported it.
+                if conf.use_fixed_port_numbers:
+                    crate_number = 0 if not ib.crate else ib.crate.crate_number or 0
+                    slot_number = ib.slot or 0
+                    port_name = 42400 + 100*(crate_number + 1) + slot_number  # ***TODO: make resilient to no-crate and no slot info
+                else:
+                    port_name = '%sPort%i' % (recv_name, i)
+                recv_ports[node_name].append(dict(port=port_name, sources=[(ib.hostname, 80)]))
+
+        # Start the receivers concurrently
+        start_results = yield {node_name: self.raw_acq[node_name].start(
+                name=recv_names[node_name],
+                ports=recv_ports[node_name],
+                jump_thresholds=conf.common_config.jump_thresholds)
+            for node_name in self.raw_acq_ibs.keys()}
+
+        # Configure the FPGA transmit addresses based on what the receiver returned
+        for node_name, start_result in start_results.items(): # for each RawAcq node
+            # The start command returned the target address to use for each data source as a list in the format
+            #    [ ((src_ip, src_port),(if_ip, port, mac)) ...].
+            # We convert this to a dict {(src_ip, src_port):(if_if, port, mac),...} for easy lookup
+            targets = {tuple(src_addr):target_addr for src_addr,target_addr in start_result['target_addr']}
+            for ib in self.raw_acq_ibs[node_name]:
+                ip_addr, port, eth_addr = targets[(ib.hostname, 80)]
+                ib.set_data_target_address(ip_addr, port, eth_addr)
+        self.log.info('%r: RawAcq server setup successfully' % self)
+
+    @coroutine
+    def start_fpga_raw_data_transmission(self, capture_rate=None, capture_source=None, tmux_factor=None):
+        """ Configure the FPGAs to transmit raw data.
+
+        Parameters:
+
+            capture_rate (float): Number of frames to send per second.
+
+            capture_source (str): selects the data source. 'adc':  the data is taken after the function generator (sorry, non
+                intuitive). `scaler`: the data is taken after the scaler. Default is 'scaler'.
+
+            tmux_factor (int): Number between 0 and 64.  Raw data transmission is staggered across FPGAs in the array
+                with a step size equal to tmux_factor * 524.288 microsec.
+
+        If no arguments are provided, the FPGA will be set to transmit data at the idle rate and from source defined in the config file.
+        """
+        conf = self.config.raw_acq.common_config
+        capture_rate = capture_rate or conf.idle_capture_rate
+        capture_period = 1.0 / float(capture_rate)
+        capture_source = capture_source or conf.capture_source
+        tmux_factor = conf.tmux_factor if tmux_factor is None else tmux_factor
+
+        for node_name, ibs in self.raw_acq_ibs.items():
+            for ib in ibs:
+                crate = getattr(ib.crate, 'crate_number', 0) or 0
+                slot = (ib.slot or 1) - 1
+                offset = int(tmux_factor * (16 * crate + slot))
+
+                self.log.info('%r: Starting data capture on %r with period=%f, source=%s, offset=%d' %
+                             (self, ib, capture_period, capture_source, offset))
+
+                ib.start_data_capture(period=capture_period, source=capture_source, send_delay=offset)
+
+        # Must issue sync command after starting raw data capture,
+        # otherwise raw frames will not be synced across boards.
+        self.fpgas.sync()
+
+    @coroutine
+    def start_hdf5_capture(self, capture_folder=None, capture_filename=None, capture_rate=None,
+                           capture_duration=None, capture_source=None, capture_elements_per_file=None,
+                           tmux_factor=None):
+        """
+        instricts the raw_acq server to start storing raw data in HDF5 files at a specified rate, duration and in the specified folder.
+
+
+        Parameters:
+
+            capture_folder (str): path to the folder where the raw data folder will be created. If it is
+                a relative path, it will be relative to the run folder. If not specified or `None`, it
+                will be taken from the config file.
+
+            capture_filename (str): name of the folder in which the HDF5 files ``nnnnnn.h5`` will be
+                created. Is prepended with the time. If not specified or `None`, it will be taken
+                from the config file.
+
+            capture_rate (float): How many frames will be stored in HDF5 files per second for each
+                channel. If not specified or `None`, it will be taken from the config file.
+
+            capture_duration (float): period of time (in seconds) during which the captured data
+                will be stored to HDF5 files. After which the capture will revert to the idle rate.
+                if ``0``, the capture will continue indefinitely.  If not specified or `None`, it will be taken
+                from the config file.
+
+            capture_source (str): selects the data source. 'adc': function generator output,
+                'scaler' = scaler output. If not specified or `None`, the parameter is taken from the config file.
+
+            capture_elements_per_file (int): Number of frames to store in each HDF5 files. If not
+            specified or `None`, the parameter is taken from the config file.
+
+            tmux_factor (int): Number between 0 and 64.  Data capture is staggered across FPGAs in the array
+                with a step size equal to tmux_factor * 256 * 2.56microsec.
+
+        """
+        conf = self.config.raw_acq.common_config
+        capture_source = capture_source or conf.capture_source
+        capture_rate = capture_rate or conf.hdf5_capture_rate
+        capture_folder = capture_folder or conf.hdf5_capture_folder
+        capture_folder = os.path.join(self.run_folder, capture_folder)
+        capture_filename = capture_filename or conf.hdf5_capture_filename
+        capture_duration = capture_duration or conf.hdf5_capture_duration
+        capture_elements_per_file = capture_elements_per_file or conf.hdf5_capture_elements_per_file
+        tmux_factor = conf.tmux_factor if tmux_factor is None else tmux_factor
+
+        yield self.start_fpga_raw_data_transmission(capture_rate, capture_source, tmux_factor)
+
+        yield [node.start_hdf5(
+            base_dir=capture_folder,
+            base_filename=capture_filename,
+            capture_duration=capture_duration,
+            elements_per_file=capture_elements_per_file
+            )         for node_name, node in self.raw_acq.items()]
+
+        if capture_duration:
+            self.log.info('%r: HDF5 data writer will be stopped in %f seconds' % (self, capture_duration))
+            self.call_later(capture_duration, self.stop_hdf5_capture)
+
+    @coroutine
+    def stop_hdf5_capture(self):
+
+        yield [node.stop_hdf5() for node_name, node in self.raw_acq.items()]
+        yield self.start_fpga_raw_data_transmission()
+
+
+    def set_state(self, new_state):
+        """ Sets the state to a specified value. Used for debugging. """
+        self.state = new_state
+
+    def expand_path(self, pattern, **kwargs):
+        pattern = os.path.expanduser(pattern % kwargs)
+
+
+
+    @coroutine
+    def start(self, **config):
+        """ Make the telescope operational by starting and initializing the FPGA F-Engine and the GPU X Engine (Kotekan), CHRX, and raw_acq remote processes. """
+        self.log.debug('%r: starting ChimeMaster instance' % (self))
+        self.log.info('Starting ch_master.start()')
+        if self.state != 'off':
+            coroutine_return(dict(error='already started'))
+
+        if config:
+            self.set_config(config)
+        conf = self.config # Shortcut. We use `conf` a lot below.
+        self.state = 'starting'
+
+        if not hasattr(conf, 'corr_name'):
+            raise RuntimeError('CHIME master configuration data does not define the correlator name. Was the correct object selected in the configuration file (i.e. config.yaml:object)')
+
+        # Create output directories
+        start_time = time.time()
+        isotime = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime(start_time))
+        localtime = time.strftime("%Y/%m/%d %H:%M:%S", time.localtime(start_time))
+        #print('run name=%s, config = %r' % (conf.run_name , dict(isotime=isotime, corr_name=conf.corr_name)))
+        self.run_name = conf.run_name % dict(isotime=isotime, localtime=localtime, corr_name=conf.corr_name)
+        str_args = dict(isotime=isotime, corr_name=conf.corr_name, run_name=self.run_name)
+        self.run_folder = os.path.expanduser(conf.run_folder % str_args)
+        self.current_folder = os.path.expanduser(conf.current_folder % str_args)
+
+
+        # Create the run folder
+        try:
+            os.makedirs(self.run_folder)
+        except OSError:
+            errmsg = "Could not create directory '%s'!" % self.run_folder
+            self.log.critical(errmsg)
+            raise RuntimeError(errmsg)
+
+        # Make a symlink to the run folder
+        if hasattr(os, 'symlink'):
+            try:
+                os.remove(self.current_folder)
+            except OSError as e:
+                self.log.warn("%r: Could not remove current symlink '%s'. The error isn%s" % (self, self.current_folder, e))
+            try:
+                os.symlink(self.run_folder, self.current_folder)
+            except OSError as e:
+                self.log.warning("%r: Could not create a symlink '%s' to the run folder '%s'. The error is:\n%s" % (self, self.current_folder, self.run_folder, e))
+
+
+        # log_filename = os.path.join(self.run_folder, "ch_master.log")
+        #import logging
+        #print('exists: %s' % ('pychfpga.fpga_array' in logging.Logger.manager.loggerDict))
+        #lo=logging.getLogger('pychfpga.fpga_array')
+        #print('before setup: logger name=%s, level=%s, handlers=%s, disabled=%r' %(lo.name, lo.level, lo.handlers, lo.disabled))
+        self.logging_handlers = log.setup_logging(
+	    conf.logging.dict_config,
+            conf.logging.log_levels,
+            base_package_name=conf.logging.base_package_name,
+            actual_package_name=__name__.rpartition('.')[0], # full package path up to ch_acq (note: __package__ exists but is not consistently defined)
+            script_name=conf.logging.script_name,
+            run_folder=self.run_folder) # path will be inserted in filename strings containing "%(path)"
+        #lo=logging.getLogger('pychfpga.fpga_array')
+        #print('before setup: logger name=%s, level=%s, handlers=%s, disabled=%r' %(lo.name, lo.level, lo.handlers,lo.disabled))
+        #lo.warning('Trop seche')
+        self.log.info('%r: Logging configured'% self)
+        # Now that the housekeeping is done, let's start the real work
+	#print('LOGGING config before is %s' % self.config.logging)
+
+	#print('YAML config is %s' % conf.logging.dict_config.as_dict())
+
+        # Store the basic run info in the run folder
+        filename = os.path.join(self.run_folder, 'config.yaml')
+	#print('YAML config is %r' % self.config.logging.as_dict())
+        with open(filename, 'w') as h:
+            h.write(self.config.as_yaml())
+
+        filename = os.path.join(self.run_folder, 'info.txt')
+        with open(filename, 'w') as h:
+            h.write('Run name: %s\n' % self.run_name)
+            h.write('Run start time (local): %s\n' % localtime)
+            h.write('Run start time (UTC): %s\n' % isotime)
+            h.write('Correlator/config name: %s\n' % conf.corr_name)
+            h.write('Run folder: %s\n' % self.run_folder)
+
+
+        # Create objects to communicates to the remote processes needed to run the array
+        yield self.create_power_supply_clients()
+        yield self.create_chrx_clients()  # CHRX nodes receive data processed by the GPU nodes
+        yield self.create_kotekan_clients()  # Kotekan processes run on the GPU nodes; they receive the data from the FPGAs over dedicated point-to-point FPGA-GPU 10G Ethernet links, perform the correlation on the data, and forward the processed data to the CHRX nodes
+        yield self.start_kotekan_servers()
+        yield self.create_raw_acq_clients()  # Raw acq clients receive raw ADC data sent by the FPGA over the control network
+
+
+        # power on the array
+        yield self.power_on()
+        yield self.wait_for_power_supply()
+
+        # Create FPGA Array object and and initialize FPGAs
+        yield self.create_fpga_array()
+
+        if self.fpgas.ib:
+            # Read the FPGA setting back from the FPGA
+            self.log.info("Getting configuration data from all FPGAs")
+            self.fpga_conf = yield self.fpgas.get_fpga_config.async(basic=True)
+
+
+            # Configure and start CHRX remote processes
+            self.configure_fpgas_post_acq()
+            self.current_bank = 0
+
+            self.log.info("Starting raw_acq servers")
+            yield self.start_raw_acq_servers()
+
+            # Start raw_data capture
+            if conf.raw_acq.common_config.hdf5_capture_rate and conf.raw_acq.common_config.hdf5_capture_duration is not None:
+                self.log.info("Starting HDF5 data capture")
+                yield self.start_hdf5_capture()
+            else:
+                self.log.info("Starting idle data capture")
+                yield self.start_fpga_raw_data_transmission()
+
+            # Clear errors accumulated during start and initialization
+            self.reset_fpga_stats()
+            self.reset_crossbar_stats()
+            self.reset_bp_shuffle_stats()
+
+        else:
+            self.log.warning('%r: There are no FPGAs in the array. Stopping FPGA initializations here' % self)
+
+        self.log.info("Finished ch_master.start()")
+
+        self.start_time = start_time
+        self.state = 'on'
+        coroutine_return({})
+
+    def call_later(self, delay, callback):
+        return IOLoop.current().call_later(delay, callback)
+
+    @coroutine
+    def create_fpga_array(self):
+        self.log.info("initializing FPGAs...")
+
+        # shortcuts
+        conf = self.config  # shortcut to shorten the code below
+        fpga_array_params = conf.fpga.fpga_array_params
+
+        #Define some FPGA-related system constants
+        self.SAMPLING_FREQUENCY = float(fpga_array_params.samp_freq)*1e6  # frequency in Hz
+        self.SAMPLES_PER_FRAME = 2048
+        self.SECONDS_PER_FRAME = self.SAMPLES_PER_FRAME / self.SAMPLING_FREQUENCY
+
+        self.log.info("Sampling frequency is %0.3f MHz." % (self.SAMPLING_FREQUENCY/1e6))
+
+        # Create the FPGAArray object. This object will create a database of all FPGA boards, crates and
+        # mezzanines as described by the ``fpga_array_params`` parameters.fpga_array_params If specified
+        # in the parameters, the FPGAs will be loaded with their bitstream, communication with the FPGAs
+        # will be established and all the Python objects needed to operate the FPGA firmware will be
+        # created and initialized.
+        self.fpgas = ca = FPGAArray(ioloop=IOLoop.current(), **fpga_array_params)  # Starts an independent ioloop while initializing. Web clients/server stop while
+        yield ca.run.async()
+
+        if not ca.ib: # if there ar eno boards in the array
+            if conf.debug.get('allow_empty_fpga_array', False):
+                coroutine_return()
+            else:
+                raise RuntimeError('No IceBoard could be found. Are the boards powered up? Is the network connection functional?')
+
+        if not fpga_array_params.open:
+            self.log.warning("fpga_array is initialized with open=0. Aborting the rest of the FPGA array initialization.")
+	    coroutine_return()
+
+        # # if this needed?
+        # ca.ib.set_adc_mask(0) # null the ADC data before it gets to the channelizers to reduce power consumption
+
+        # Set ADC delays from delay files. Recompute and save new delays if the files do not exist or if
+        # the delays loaded from them do not work.
+        yield ca.set_adc_delays.async(**conf.fpga.adc_delay_params)
+
+        # Reset the correlator. Not sure if this is necesssary?
+        ca.ib.set_corr_reset(1)
+        time.sleep(0.1)
+        ca.ib.set_corr_reset(0)
+
+        # Compute gains if requested
+        yield ca.compute_gains.async(**conf.fpga.compute_gains)
+
+        # Set-up channelizers to process data normally
+        self.log.info("Setting-up channelizers")
+        yield ca.set_channelizers.async(**conf.fpga.channelizer_params)
+
+        # Set-up initial gains in gain bank #0
+        if conf.fpga.load_initial_gains:
+            self.log.info("Loading initial SCALER gains in bank #0")
+            # ca.set_synchronized_gain_switching_mode(enable=0)  # Disable synchronized gain switching
+            # ca.set_next_gain_bank(bank=0)  # immediately select bank zero to load initial gains
+            gains = yield ca.load_gains.async() # load gains from gain files
+            ca.set_gains.async(gains, bank=0, when='now') # Upload to bank 0 and immediately activate gain bank
+        # for bankset in ca.ib.get_current_gain_bank():
+        #     log.info('Using gain banks %s' % (', '.join([str(i) for i in bankset])))
+
+        # if conf.enable_gain_switching:
+        #     # set frame number to switch gains at.
+        #     ca.set_gain_switch_frame_number(frame=0) # XXX:???
+        #     # set to only change when at configured frame number
+        #     ca.set_synchronized_gain_switching_mode(enable=1)
+        #     # set to use bank 1 next, change in loop below.
+        #     # have to do this after config to wait for frame number
+
+
+        # Is the logging below useful? We just set them...
+
+        # for bankset in ca.ib.get_current_gain_bank():
+        #     log.info('Using gain banks %s' % (', '.join([str(i) for i in bankset])))
+
+        # for enabled_sync in ca.ib.get_synchronized_gain_switching():
+        #     log.info('Gain sync status is %s' % (', '.join([str(i) for i in enabled_sync])))
+
+        # for frames_set in ca.ib.get_gain_switch_frame_number():
+        #     log.info('Gain sync frame is %s' % (', '.join([str(i) for i in frames_set])))
+
+        # log.info("Sending local sync to each board")
+        # ca.ib.sync()
+
+        # Setup raw data capture
+        #yield self.start_raw_acq_servers()
+
+        # Setup noise injection for normal operation
+        self.setup_noise_injection(conf.fpga.noise_injection)
+
+
+        # Initialize data shufling and transmission to the GPU
+        # log.info("Setting FPGA operational mode")
+        # ca.set_operational_mode(conf.fpga.operational_mode, frames_per_packet=fpga_array_params.group_frames)
+
+        self.log.info("Synchronizing the array...")
+        ca.sync()  # synchronize all the boards in the array
+
+        # log.info("Unmasking the ADC data")
+        # ca.ib.set_adc_mask(0xFF) # restore normal ADC data, necessary anymore?
+
+        self.log.info("Waiting for 2 seconds")
+        time.sleep(2)
+
+        self.log.info("finished initializing FPGAs")
+
+    @coroutine
+    def update_channelizers(self, **params):
+
+        # Log the new parameters
+        output_str = ["  %-32s  %s" % (key + ':',  params[key]) for key in sorted(params.keys())]
+        output_str.insert(0, 'Updating channelizer parameters:')
+        self.log.info('\n'.join(output_str))
+
+        # Sync if we are changing data source
+        requested_dsrc = params['data_source']
+        if requested_dsrc == 'funcgen':
+            self.log.warning("Data source 'funcgen' is deprecated, use 'buffer' in future.")
+            requested_dsrc = 'buffer'
+
+        dsrc = self.fpgas.ib[0].get_data_source()[0]
+        sync = (dsrc != requested_dsrc)
+
+        self.log.info('Requested data source: %s | Current data source: %s | SYNC: %s' %
+                      (requested_dsrc, dsrc, sync))
+
+        # Set channelizers
+        yield self.fpgas.set_channelizers.async(sync=sync, **params)
+
+        # Update configuration with new channelizer params
+        self.config.fpga.channelizer_params = NameSpace(params)
+
+    def configure_fpgas_post_acq(self):
+        """
+        """
+        # shortcuts
+        # ca = self.fpgas
+
+        # JFC: not sure why we had those:
+        # ca.ib.CROSSBAR.LANE_MONITOR_RESET = 1
+        # ca.ib.CROSSBAR.LANE_MONITOR_RESET = 0
+        # ca.ib.CROSSBAR2.LANE_MONITOR_RESET = 1
+        # ca.ib.CROSSBAR2.LANE_MONITOR_RESET = 0
+        # ca.ib.CROSSBAR.LANE_MONITOR_SEL = 6
+        # ca.ib.CROSSBAR2.LANE_MONITOR_SEL = 6
+
+        # if self.config.enable_gain_switching:
+        #     ca.set_next_gain_bank(bank=1)
+        # for bankset in ca.ib.get_next_gain_bank():
+        #     log.info('Set next gain bank to %s' % ', '.join([str(i) for i in bankset]))
+        # for bankset in ca.ib.get_current_gain_bank():
+        #     log.info('Currently using gain banks %s' % ', '.join([str(i) for i in bankset]))
+
+
+    def setup_noise_injection(self, ni_params):
+        """
+        Setup the noise gating PWM signals for all the boards specified in `ni_params`.
+
+        `ni_params` is a dictionary containing the parameters passed to the fpga_array's setup_noise_injection() method.
+
+        If no board is specified for an entry (.board evaluates to False), the parameters are ignored.
+        """
+        for source_name, source_params in ni_params.items():
+            self.log.info("Setting noise injection for source '%s' with parameters %s" % (source_name, source_params))
+            if source_params.board:
+                self.fpgas.set_noise_injection(local_sync=True, **source_params)
+
+    ###################################
+    # Gains management
+    ###################################
+
+
+    # def load_gains(self):
+    #     """ Reload a new set of FPGA F-Engine complex gains from the gain files in the currently unused gain bank"""
+
+    #     ca = self.fpgas
+    #     gains = ca.load_gains(self.config.gain_folder)
+    #     ca.set_gains(gains, when='now')
+    #     # current_bank = self.current_bank
+    #     # next_bank = (current_bank + 1) % 2
+    #     # iceboards = self.fpgas.ib
+
+    #     # # log current gains
+    #     # for bankset in iceboards.get_current_gain_bank():
+    #     #     log.info('Using gain banks ' + ', '.join(map(str,bankset)))
+
+    #     # # load gains into next bank
+    #     # fpga_gains = self.fpga.load_gains(bank=next_bank)
+    #     # log.info("Loaded gains into bank %d" % next_bank)
+
+    #     # return fpga_gains
+
+
+    def get_next_gain_switch_frame(self):
+        """ Get the frame number of first frame of the next integration period and the remaining time before this frame occurs.
+        """
+        ib = self.fpgas.ib[0]
+        gain_switch_delay = self.config.fpga.gain_switch_delay # how much extra time do we need to set-up the gains before switching
+        gpu_integration_period = self.config.gpu.gpu_integration_period
+
+        current_frame_number = ib.get_frame_number()
+        next_gain_switch_frame = (1 + (current_frame_number + gain_switch_delay)//gpu_integration_period)*gpu_integration_period
+        time_until_switch = (next_gain_switch_frame - current_frame_number)*self.SECONDS_PER_FRAME
+        return (next_frame_number, time_until_switch)
+
+
+    # def set_gain_switch_frame(self):
+
+    #     iceboards = self.fpgas.ib
+    #     gain_switch_delay = self.config.fpga.gain_switch_delay
+    #     gpu_integration_period = self.config.gpu.gpu_integration_period
+
+    #     # set gain switch time
+    #     frame_number = iceboards[0].get_frame_number()
+    #     new_gain_switch_frame = (1 + (frame_number + gain_switch_delay)//gpu_integration_period)*gpu_integration_period
+    #     iceboards.set_gain_switch_frame_number(frame=new_gain_switch_frame)
+
+    #     sleep = (new_gain_switch_frame - frame_number)*self.SECONDS_PER_FRAME
+    #     return sleep
+
+    # def switch_gain_banks(self):
+    #     current_bank = self.current_bank
+    #     next_bank = (current_bank + 1) % 2
+    #     iceboards = self.fpgas.ib
+
+    #     self.fpgas.set_next_gain_bank(bank=current_bank)
+    #     self.current_bank = next_bank
+    #     log.debug("changed which gain bank will be written to over to %d"
+    #         % current_bank)
+
+    #     # log current gains
+    #     for bankset in iceboards.get_current_gain_bank():
+    #         log.info('Using gain banks ' + ', '.join(map(str,bankset)))
+
+    @coroutine
+    def switch_gains(self, gain_map):
+        """ Start using the specified gain map for the next available integration period and inform CHRX of the new gains.
+        """
+        if self.state != 'on':
+            coroutine_return(dict(error='not started'))
+
+        # get the currently inactive active gain bank from one single board. We want all boards to
+        # use the same bank number to make the system more robust to gain qdesynchronization (if one
+        # board misses its gain switch for instance).
+        next_bank = self.fpgas.get_next_gain_bank()
+
+        # Set the gains in the unused gain bank, but don't switch to them yet. This will take some unknown time
+        self.fpgas.set_gains(gain_map, bank=next_bank)
+
+        # Now that all the gains are stored, find out when we can switch them in.
+        # This will be the next integer number of interation period. This includes a guard period to leave us time to instruct the FPGAs when to switch.
+        (next_gain_switch_frame_number, time_until_switch) = self.get_next_gain_switch_frame()
+
+        # Tell all the channels to switch to the currently unused bank at that frame number. That should be done within the guard period.
+        self.fpgas.switch_gains(bank=next_bank, when=next_gain_switch_frame_number)
+
+        # Tell chrx which gains are coming and when
+        yield self.pass_gains_to_chrx(next_gain_switch_frame_number, gain_map)
+
+
+    def status(self):
+        """ Get the operational status of the telescope as a dictionary"""
+        status = dict(state=self.state)
+        if self.state == 'on':
+            status['config'] = self.config.as_dict()
+        return status
+
+
+    @coroutine
+    def stop(self):
+        """ Stop the F-engine and the correlator data acquisition processes"""
+        if self.state == 'on':
+            self.state = 'stopping'
+            self.log.info("stopping acquisition")
+            self.iceboard_cb.stop()
+            if self.chrx:
+                yield self.stop_chrx_clients()
+            log.stop_logging(self.logging_handlers) # remove the handlers that were created by setup_logging()
+            reap_cached_sockets()
+            self.start_time = None
+            self.state = 'off'
+        coroutine_return({})
+
+
+    def get_frequency_map(self):
+        return self.fpgas.get_frequency_map()
+
+    def get_channelizer_output(self):
+        return self.fpgas.get_chan_output()
+
+    def reset_fpga_stats(self):
+        self.fpgas.reset_fpga_stats()
+
+    def reset_crossbar_stats(self):
+        self.fpgas.reset_crossbar_stats()
+
+    def reset_bp_shuffle_stats(self):
+        self.fpgas.reset_bp_shuffle_stats()
+
+    def run_sync(self, method_name, *args, **kwargs):
+        """ Runs `method_name` in a ioloop and returns when completed"""
+
+        def heartbeat_callback():
+            print('M', end='')
+        tornado.ioloop.PeriodicCallback(heartbeat_callback, 1000).start()
+        return IOLoop.current().run_sync(functools.partial(getattr(self, method_name), *args, **kwargs))
+
+    def run(self):
+        """ Run the IOLoop until interrupted """
+        IOLoop.current().start()
+
+    @coroutine
+    def load_digital_gains(self, gain_folder='/home/chime/ch_acq/gains/new_gains'):
+        if self.fpgas:
+            # Read Gains
+            self.log.info('Reading digital gains from folder %s.' %gain_folder)
+            gains = yield self.fpgas.load_gains.async(gain_folder=gain_folder)
+
+            # Load gains into inactive gain bank
+            self.log.info('Loading digital gains to inactive gain bank.')
+            self.fpgas.set_gains.async(gains, when=None)
+            self.log.info('New digital gains have been loaded to inactive gain bank.')
+        else:
+            self.log.info('FPGA array not yet initialized. Cannot load digital gains.')
+
+    @coroutine
+    def switch_digital_gains(self, delta_t_seconds=100):
+        if self.fpgas:
+            # Figure out gain switch frame number
+            # Figure out integration period in frames. Currently just by checking the kotekan config file
+            samples_per_data_set = 32768
+            num_gpu_frames = 128
+            frames_per_gpu_integration = samples_per_data_set*num_gpu_frames
+            # Get current frame number
+            current_frame_number = self.fpgas.ib[0].get_frame_number()
+            self.log.info('The current FPGA frame number is %i' %current_frame_number)
+            current_gpu_frame = int(current_frame_number/frames_per_gpu_integration)
+            # Figure out frame number at which gains are switched
+            frame_period_seconds = 2.56e-6 # Frame period in seconds = 2048/800e6. Should be read from config
+            delta_t_frames = int(np.ceil(delta_t_seconds/frame_period_seconds)) # Number of frames to switch gains
+            # The gain_switch_frame_number must be a multiple of frames_per_gpu_integration to switch at start of integration
+            gain_switch_gpu_frame = int((current_frame_number + delta_t_frames)/frames_per_gpu_integration)
+            # I assume that setting the gain_switch_frame_number for all boards takes ~1 integration period, so make sure there's enough time
+            if (gain_switch_gpu_frame-current_gpu_frame)<2:
+                # If gain_switch_gpu_frame-current_gpu_frame == 0 the gain_switch_frame_number already passed
+                # If gain_switch_gpu_frame-current_gpu_frame == 1 the gain_switch_frame_number is the start of next gpu integration
+                # which may not be enough time to set gain_switch_frame_number for all the boards
+                gain_switch_gpu_frame = current_gpu_frame + 2
+            gain_switch_frame_number = gain_switch_gpu_frame*frames_per_gpu_integration
+            self.fpgas.switch_gains(when=gain_switch_frame_number)
+            # Update and print the actual delta_t for switching gains
+            delta_t_frames = gain_switch_frame_number - current_frame_number
+            delta_t_seconds = delta_t_frames*frame_period_seconds
+            self.log.info('new gains will be active on frame %i (in %.2f seconds) at the closest GPU integration start.' %(gain_switch_frame_number,
+                delta_t_seconds))
+            #coroutine_return(None) # Probably don't need this
+        else:
+            self.log.info('FPGA array not yet initialized. Cannot load digital gains.')
+
+
+class DummyChimeMaster(ChimeMaster):
+    """
+    A variant of ChimeMaster that doesn't do anything hardware related.
+    """
+
+    def start(self, **config):
+        self.config = NameSpace(config)
+        return config
+
+    def status(self):
+        return self.config.as_dict()
+
+    def stop(self):
+        return {}
+
+
+class ChimeMasterAsyncRESTServer(AsyncRESTServer):
+    """ Wraps the ChimeMaster into a REST server which receives HTTP GET or POST requests and calls
+    the correspnding ChimeMaster methods.
+    """
+    DEFAULT_PORT = 54321
+
+    def __init__(self, address='', port=DEFAULT_PORT, dummy=False):
+
+        super(ChimeMasterAsyncRESTServer, self).__init__(
+            address=address,
+            port=port,
+            heartbeat_string='Cs')
+
+        # self.port = port # port on which the web server will be run
+        self.dummy = dummy
+
+        # # Create a kotekan client for each node specified in the gpu_config_file
+        # # We may want to make this part of ChimeMaster initialization
+        # gpu_config = yaml.load(open(gpu_config_file)) if gpu_config_file else {}
+        # self.kotekan_clients = [KotekanAsyncRESTClient(k, **v) for k,v in gpu_config.items()]
+
+        # Use a dummy CHIME Master object if dummy is True
+        ChimeMasterClass = DummyChimeMaster if self.dummy else ChimeMaster
+
+        self.chime_master = ChimeMasterClass()
+        self.future = None
+        #self.add_periodic_callback(self.print_iceboard_info_callback, period=60000)
+        self.metrics_queue = Queue.Queue(1000)
+        self.metrics = Metrics()
+        self.last_metrics_client = None
+        #self.add_periodic_callback(self._get_metrics, 3000)
+        #self.start_time = None
+        self._get_metrics() # continuously run get_metrics loop
+
+        # Create a cached gps time
+        self._gps_time = {}
+        self._gps_lock = tornado.locks.Lock()
+
+    @coroutine
+    def shutdown(self):
+        print('Shutting down CHIME Master')
+        yield self.chime_master.stop()
+        yield sleep(3)
+        print('CHIME Master is shut down')
+
+    def print_iceboard_info_callback(self):
+        if self.chime_master.fpgas:
+            self.chime_master.fpgas.print_iceboard_info()
+        else:
+            self.log.info('FPGA array not yet initialized. No houskeeping info to show.')
+
+    ##########################
+    # Target endpoint methods
+    ##########################
+
+
+    @coroutine
+    @endpoint('echo') # must be applied before coroutine because we lose the method signature
+    def echo(self, handler, **args):
+        coroutine_return(args)
+
+    @coroutine
+    @endpoint('set-state')
+    def set_state(self, handler, state=None):
+        self.chime_master.set_state(state)
+        coroutine_return(args)
+
+    @coroutine
+    @endpoint('start')
+    def start(self, handler, **config):
+        # print('%r: Received start command' % self)
+        self.log.info('%r: Received start command' % self)
+        def encode_utf8(x):
+            """Convert unicode strings to utf-8 strings for the target object and any objects in lists or dictionaries"""
+            if type(x) is unicode:
+                return x.encode('utf8')
+            elif type(x) is dict:
+                return {encode_utf8(k):encode_utf8(v) for k,v in x.items()}
+            elif type(x) is list:
+                return map(encode_utf8, x)
+            else:
+                return x
+        config = encode_utf8(config)  # convert all strings in the config dict into utf8
+        def done(future):
+            # print('Done')
+            try:
+                logger = log.get_logger(self)
+                #print('Got ne wlogger %r' % logger)
+                #print(' Logger name=%s, level=%s, handlers=%s, disabled=%s' % (logger.name, logger.level, logger.handlers, logger.disabled))
+            except Exception as e:
+                print('oops. chimeMaster Server start().done() Exception: %s\n' % e)
+                pass
+            if future.exception():
+                #self.start_time = None
+                logger.error('START Done with exception: \n%s' % future.exception())
+            else:
+                logger.info('START Done. result is %r' % future.result())
+            return True
+        #self.start_time = time.time()
+        #print('START config is %s' % config['logging'])
+        self.future = self.chime_master.start(**config)
+        IOLoop.current().add_future(self.future, done)
+        self.log = log.get_logger(self)  # update the self.log pointer to the new logger
+        self.log.debug('%r: future created. ch_master initilization is in progress' % (self))
+        coroutine_return('Initialization in progress. Check status for completion.')
+
+    @coroutine
+    @endpoint('methods')
+    def methods(self, handler):
+        coroutine_return(results=self.get_endpoint_info())
+
+    @coroutine
+    @endpoint('status')
+    def status(self, handler):
+        """ Return a dict describing the state of the server.
+
+        If the ChimeMaster raised an exception during the background start() process, the exception is risen now.
+
+        Returns:
+            dict: containing the fields:
+                :state: (str): current state string.
+                :is_ready (bool): true when ChimeMaster has finished initializing successfully
+                :start_result (str): Messsage returned by ChimeMaster.start() command.
+                :config (dict): Current configuration
+        """
+        t0=time.time()
+        self.log.info('%r: requesting ch_master status' % self)
+        r = self.chime_master.status() # {state:x and config: y}. chome_master always exists.
+        result = dict(state=r['state'])
+        self.log.info("%r: ch_master status is currently '%s'. It took %f seconds to get it" % (self, r['state'], time.time()-t0))
+        result['is_ready'] = r['state'] == 'on' # so we don't have to know the string to check
+        if self.future and self.future.done():
+            try:
+                result['start_result'] = self.future.result() # raise an error if start failed
+            except Exception as e:
+                print('oops. ChimeMaster status() exception while reading chime master object future result. Exception:\n %s' % e)
+                raise
+        else:
+            result['start_result'] = None
+        coroutine_return(result)
+
+    @coroutine
+    @endpoint('stop')
+    def stop(self, handler):
+        #self.start_time = None
+        results = yield self.chime_master.stop()
+        coroutine_return(results)
+
+    @coroutine
+    @endpoint('switch-gains')
+    def switch_gains(self, handler, gain_map):
+        results = yield self.chime_master.switch_gains(gain_map)
+        coroutine_return(results)
+
+    @coroutine
+    @endpoint('kotekan-start')
+    def kotekan_start(self, handler, **config):
+        results = yield [k.start(**config) for k in self.kotekan_clients]
+        coroutine_return(results=results)
+
+    @coroutine
+    @endpoint('get-frame-time')
+    def get_frame_time(self, handler):
+        if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas and self.chime_master.fpgas.ib:
+
+            try:
+
+                with (yield self._gps_lock.acquire(timeout=datetime.timedelta(seconds=60))):
+
+                    start_time = time.time()
+
+                    if self._gps_time:
+                        self.log.info("GPS time is %0.1f seconds old." % (start_time - self._gps_time['server_ctime'], ))
+
+                    if not self._gps_time or ((start_time - self._gps_time['server_ctime']) > 60.0):
+
+                        self.log.info("Capturing GPS time from FPGA motherboard.")
+
+                        frame_number, gps_ts = yield self.chime_master.fpgas.ib[0].capture_frame_time.async(format='raw')
+
+                        frame0_ts = self.chime_master.fpgas.sync_timestamp
+
+                        self._gps_time = dict(
+                            frame_number=frame_number,  # 48-bit frame number
+                            gps_time=gps_ts.time_struct, # time structure [year, month, day, hour, minute, second, microsecond (float, 10 ns resolution)]
+                            gps_ctime=gps_ts.time, # GPS time, expressed in ctime format (float expressing seconds since UTC epoch)
+                            gps_nano=gps_ts.nano,
+                            gps_time2=gps_ts.time_struct2, # time structure [year, month, day, hour, minute, second, microsecond (float, 10 ns resolution)]
+                            gps_ctime2=gps_ts.time2, # GPS time, expressed in ctime format (float expressing seconds since UTC epoch)
+                            gps_nano2=gps_ts.nano2,
+                            server_ctime =gps_ts.system_time, # system time, expressed in ctime format (float expressing seconds since UTC epoch)
+                            server_ctime_before =gps_ts.system_time_before, # system time, expressed in ctime format (float expressing seconds since UTC epoch)
+                            start_ctime=self.chime_master.start_time,
+                            frame0_time=frame0_ts.time_struct,
+                            frame0_ctime=frame0_ts.time,
+                            frame0_nano=frame0_ts.nano)
+
+                        self.log.info("Capture successful.  Took %0.1f seconds." % (time.time() - start_time, ))
+
+
+            except Exception as ex:
+                self.log.error("Failed to capture GPS time: %s" % ex)
+                coroutine_return({})
+
+            else:
+                coroutine_return(self._gps_time)
+
+        else:
+            coroutine_return({})
+
+    @coroutine
+    @endpoint('get-frame0-time')
+    def get_frame0_time(self, handler):
+        if (self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas and
+            self.chime_master.fpgas.sync_timestamp):
+
+            frame0_ts = self.chime_master.fpgas.sync_timestamp
+
+            gps_time = dict(start_ctime=self.chime_master.start_time,
+                            frame0_time=frame0_ts.time_struct,
+                            frame0_ctime=frame0_ts.time,
+                            frame0_nano=frame0_ts.nano)
+
+            coroutine_return(gps_time)
+
+        else:
+            coroutine_return({})
+
+    @coroutine
+    @endpoint('get-frequency-map')
+    def get_frequency_map(self, handler):
+        coroutine_return(results=sanitize_for_json(self.chime_master.get_frequency_map()))
+
+    @coroutine
+    @endpoint('get-channelizer-output')
+    def get_channelizer_output(self, handler):
+        coroutine_return(results=sanitize_for_json(self.chime_master.get_channelizer_output()))
+
+    @coroutine
+    @endpoint('reset-fpga-stats')
+    def reset_fpga_stats(self, handler):
+        if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
+            self.chime_master.reset_fpga_stats()
+            coroutine_return(results='FPGA STATS RESET')
+
+        else:
+            coroutine_return('FPGA array not yet initialized.')
+
+    @coroutine
+    @endpoint('reset-crossbar-stats')
+    def reset_crossbar_stats(self, handler):
+        if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
+            self.chime_master.reset_crossbar_stats()
+            coroutine_return(results='CROSSBAR STATS RESET')
+
+        else:
+            coroutine_return('FPGA array not yet initialized.')
+
+    @coroutine
+    @endpoint('reset-bp-shuffle-stats')
+    def reset_bp_shuffle_stats(self, handler):
+        if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
+            self.chime_master.reset_bp_shuffle_stats()
+            coroutine_return(results='BP SHUFFLE STATS RESET')
+
+        else:
+            coroutine_return('FPGA array not yet initialized.')
+
+    @coroutine
+    @endpoint('power-on')
+    def power_on(self, handler):
+        """ Power up only the power supplies used in this run"""
+        result = yield self.chime_master.power_on()
+        coroutine_return(result)
+
+    @coroutine
+    @endpoint('power-off')
+    def power_off(self, handler):
+        """ Power down only the power supplies used in this run"""
+        result = yield self.chime_master.power_off()
+        coroutine_return(result)
+
+    @coroutine
+    @endpoint('abort')
+    def abort(self, handler):
+        """ Savagely stop the server for debugging purposes."""
+        tornado.ioloop.IOLoop.instance().stop()
+        coroutine_return(results='ABORTING NOW!')
+        # sys.exit(-1)
+
+    @coroutine
+    @endpoint('call-fpga-array-method')
+    def call_fpga_array_method(self, handler, **args):
+        """  For debuging: calls any fpga_array method. """
+        if not hasattr(self.chime_master, 'fpgas') or not self.chime_master.fpgas:
+            handler.write(dict(error='FPGA array is not created yet'))
+            return
+        r = getattr(self.chime_master.fpgas, args['method_name'])(**args)
+        coroutine_return(results=sanitize_for_json(r))
+
+    @coroutine
+    def _get_metrics(self):
+        """ get the metrics from the FPGAs and put them in the queue
+        """
+        while True:
+            t0 = time.time()
+            self.log.info('%r: Starting to gather a new set of ch_master metrics' % (self, ))
+            self.log.info('%r: Getting server metrics (memory & CPU usage, run time etc.' % (self,))
+            metrics = self.metrics  # Metrics()
+
+            mem = psutil.virtual_memory()
+
+            metrics.add('ch_master_node_mem_total', value=mem.total)
+            metrics.add('ch_master_node_mem_available', value=mem.available)
+            metrics.add('ch_master_node_mem_percent', value=mem.percent)
+            metrics.add('ch_master_node_mem_used', value=mem.used)
+            metrics.add('ch_master_node_mem_free', value=mem.free)
+
+            cpu = psutil.cpu_times()
+
+            metrics.add('ch_master_node_cpu_percent', value=psutil.cpu_percent())
+            metrics.add('ch_master_node_cpu_user', value=cpu.user)
+            metrics.add('ch_master_node_cpu_system', value=cpu.system)
+            metrics.add('ch_master_node_cpu_idle', value=cpu.idle)
+
+            if self.chime_master.start_time is None:
+                run_time = 0
+            else:
+                run_time = time.time() - self.chime_master.start_time
+
+            metrics.add('ch_master_run_time', value=run_time)
+
+
+            if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
+                try:
+                    self.log.info('%r: Scraping metrics from FPGAs' % (self))
+                    metrics += yield self.chime_master.fpgas.get_metrics.async(reset=self.chime_master.config.fpga.reset_stats)
+                    self.log.info('%r: Got a set of %i FPGA metrics' % (self, len(metrics)))
+                except Exception as e:
+                    self.log.warning('%r: error getting FPGA metrics. error is: %r\n%s' % (self, e, traceback.format_exc()))
+                    pass
+            else:
+                self.log.info('%r: Not ready to scrape Metrics from FPGA' % (self))
+
+            #if self.metrics_queue.full():
+            #    self.log.warning('%r: Queue is full. Popping a set of metrics before putting a new one' % (self))
+            #    self.metrics_queue.get()
+            #self.metrics_queue.put((metrics))
+            self.log.info('%r: We now have  %i metrics. It took %.1f seconds to gather this set of ch_master metrics' % (self, len(self.metrics), time.time()-t0))
+
+            yield sleep(10)
+
+    @coroutine
+    @endpoint('get-monitoring-data')
+    def get_monitoring_data(self, handler):
+        try:
+            t0 = time.time()
+            # metrics = self.metrics #  Metrics()
+            number_of_metrics = len(self.metrics)
+            client_ip = handler.request.remote_ip
+            self.log.info('%r: Received metrics request from %s' % (self, client_ip))
+            if self.last_metrics_client and client_ip != self.last_metrics_client:
+                self.log.warn('%r: A new clients at %s is pulling metrics from this server. Previous client was %s' % (self, client_ip, self.last_metrics_client))
+            self.last_metrics_client = client_ip
+            # for i in range(number_of_sets):
+            #metrics.add(self.metrics_queue.get() for _ in range(number_of_sets))
+
+            #metric_strings = '\n'.join(self.metrics_queue.get() for _ in range(number_of_sets))
+            #self.log.info('%r: Finished combining %i sets of metrics after %0.3f seconds' % (self, number_of_sets, time.time()-t0))
+            # metric_strings = str(metrics.pop())
+            # try:
+            #     metrics.add((yield self.chime_master.get_power_supply_metrics()))
+            # except:
+            #     pass
+
+            #if self.chime_master.power_supply_servers:
+            #    try:
+            #        metrics.add((yield self.chime_master.get_power_supply_metrics()))
+            #    except:
+            #        pass
+
+            # Make the HTTP reply a plain text response for Prometheus, not JSON,
+            # f = BytesIO()
+            # g = gzip.GzipFile(mode="w", fileobj=f)
+            # g.write(metric_strings)
+            # g.close()
+            # compressed_metrics = f.getvalue() #  zlib.compress(metric_strings)
+
+            handler.set_header('Content-Type', 'text/plain')
+            handler.set_header('Content-Encoding', 'gzip')
+            handler.write(self.metrics.pop().get_gzip())
+            self.log.info('%r: Returning %i FPGA metrics (compression ratio %.0f%%)' % (self, number_of_metrics, self.metrics.last_compression_ratio * 100))
+
+            # handler.write(self.metrics.pop().get_gzip())
+            self.log.info('%r: Metrics request took %.3f seconds to execute' % (self, time.time()-t0))
+        except Exception as e:
+            self.log.error('%r: Exception in get-monitoring-data. Error is: %r' % (self, e))
+            raise
+
+    @coroutine
+    @endpoint('get-hw-map')
+    def get_hw_map(self, handler):
+        if self.chime_master.fpgas:
+            hwm = {}
+            # Get icecrates
+            for icecrate in self.chime_master.fpgas.ic:
+                hwm['FCC%02d' %icecrate.crate_number] = 'K7BP16-0%s' %icecrate.serial
+            # Get iceboards and mezzanines
+            for iceboard in self.chime_master.fpgas.ib:
+                hwm['FCC%02d%02d' %(iceboard.crate.crate_number, iceboard.slot-1)] = (
+                    'MGK7MB-%s' %iceboard.serial.encode('utf-8'),
+                    'MGMEZZ-%s' %iceboard.mezzanine.get(1, None).serial,
+                    'MGMEZZ-%s' %iceboard.mezzanine.get(2, None).serial
+                    )
+            coroutine_return(hwm)
+        else:
+            self.log.info('FPGA array not yet initialized. No info to show.')
+
+    @coroutine
+    @endpoint('load-digital-gains')
+    def load_digital_gains(self, handler, gain_folder='/home/chime/ch_acq/gains/new_gains'):
+        if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
+            future = self.chime_master.load_digital_gains(gain_folder=gain_folder, delta_t_seconds=delta_t_seconds)
+            IOLoop.current().add_future(future, lambda : self.log.info('Digital gains loaded.'))
+            self.log.info('Created future for load_digital_gains')
+            #coroutine_return('called load_digital_gains')
+
+    @coroutine
+    @endpoint('switch-digital-gains')
+    def switch_digital_gains(self, handler, delta_t_seconds=100):
+        if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
+            self.chime_master.switch_digital_gains(gain_folder=gain_folder, delta_t_seconds=delta_t_seconds)
+            #self.log.info('Created future for load_digital_gains')
+
+    @coroutine
+    @endpoint('sync')
+    def sync(self, handler):
+        if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
+            self.log.info('%r: received sync() request' % self)
+            self.chime_master.fpgas.sync()
+            self.log.info('%r: sync() done' % self)
+
+    @coroutine
+    @endpoint('set_adc_delays')
+    def set_adc_delays(self, handler):
+        if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
+            self.log.info('%r: received set_adc_delays() request' % self)
+            yield self.chime_master.fpgas.set_adc_delays.async(**self.chime_master.config.fpga.adc_delay_params)
+            self.log.info('%r: set_adc_delays() done' % self)
+
+    @coroutine
+    @endpoint('update-channelizers')
+    def update_channelizers(self, handler, config='config.yaml:jfc.freq_test'):
+        """
+        Update channelizers using the parameters in the provided config.fpga.channelizer_params.
+        """
+        if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
+
+            # Load configuration file
+            try:
+                conf = NameSpace(load_yaml_config(config))
+                new_params = conf.fpga.channelizer_params
+
+            except Exception as e:
+                msg = 'Could not load fpga.channelizer_params from %s:  %s' % (config, e)
+                self.log.error(msg)
+                coroutine_return(msg)
+
+            # Update channelizers
+            yield self.chime_master.update_channelizers(**new_params)
+
+            coroutine_return('Channelizers updated with configuration: %s' % config)
+
+        else:
+            coroutine_return('FPGA array not yet initialized.')
+
+    @coroutine
+    @endpoint('set-gtx-power')
+    def set_gtx_power(self, handler, ib_serial, power):
+        """
+        Set gtx power of backplane links for a specific fpga motherboard.
+
+        Parameters:
+        -----------
+        ib_serial (str):  serial number of iceboard
+        power (int):  gtx power level. Integer in the range 0-15. The ch_master default level is 13.
+        """
+        if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
+            ib = self.chime_master.fpgas.ib.get(serial=ib_serial)
+            ib.BP_SHUFFLE.set_tx_power(int(power))
+            self.log.info('%r: Set gtx power level of FCC%02i%02i (SN%s) to %s.' %
+                         (self, ib.crate.crate_number, ib.slot - 1, ib.serial, power))
+
+
+class ChimeMasterAsyncRESTClient(AsyncRESTClient):
+
+    DEFAULT_PORT = ChimeMasterAsyncRESTServer.DEFAULT_PORT
+
+    def __init__(self, hostname='localhost', port=DEFAULT_PORT):
+        super(ChimeMasterAsyncRESTClient, self).__init__(
+            hostname=hostname,
+            port=port,
+            server_class=ChimeMasterAsyncRESTServer,
+            heartbeat_string='Cc')
+
+    def print_result(self, d):
+        if d == {}:
+            print('ok')
+        elif 'error' in d:
+            print('Error:', d['error'].rstrip())
+        else:
+            print(json.dumps(d, sort_keys=True, indent=2))
+
+    @coroutine
+    def nop(self):
+        print('Doing nothing')
+
+
+    @coroutine
+    def raise_exception(self):
+        raise RuntimeError('You asked for it') # for debugging
+
+    @coroutine
+    def get_methods(self):
+        coroutine_return(self.get('methods'))
+
+
+    @coroutine
+    def ping(self):
+        """
+        Test connection to ch_master.
+        """
+        import random
+        nonce = random.getrandbits(32)
+        r = yield self.post('echo', nonce=nonce)
+        if 'nonce' in r and nonce == int(r['nonce']):
+            print("ok")
+            return
+        self.print("internal error!. Server reply was: \n%s" % '\n'.join('%s:%s' % (k,v) for (k,v) in r.items()))
+
+    @coroutine
+    def set_state(self, state):
+        r = yield self.post('set-state', state=state)
+        self.print_result(r)
+
+    @coroutine
+    def start(self, config=None):
+        """
+        Start ch_master with specified config file.
+        """
+        if not config:
+            raise ValueError('A YAML configuration filename:object must be specified')
+        if isinstance(config, str):
+            config = load_yaml_config(config.encode('ascii'))
+        print('Client start')
+        self.log.info('%r: Sending start command to server' % self)
+        reply = yield self.post('start', **config)
+        self.log.info('%r: Reply to start command is: %r' % (self, reply))
+        print('Client started')
+        while True:
+            try:
+                status = yield self.status() # raise exception if start failed
+
+                print('%r:  Current state is: %s, is_ready=%s' % (self, status['state'], status['is_ready']))
+                if status['is_ready']:
+                    self.log.info('%r: start process is completed' % self)
+                    coroutine_return(status['start_result'])
+            except RuntimeError as e:
+                print('*** %r Client get_status got an exception %r\n\n Ignoring.' % (self, e))
+                status=dict(state='HTTP error')
+                raise RuntimeError
+            self.log.info('%r: Waiting for the START process to complete. Current state is: %s' % (self, status['state']))
+            yield sleep(1)
+
+    @coroutine
+    def status(self):
+        """
+        Get ch_master server status.
+
+        Raises an exception if the start process failed.
+        """
+        result = yield self.get('status')
+        coroutine_return(result)
+
+    @coroutine
+    def stop(self):
+        """
+        Stop ch_master.
+        """
+        r = yield self.get('stop')
+        self.print_result(r)
+
+    @coroutine
+    def switch_gains(self):
+        """
+        Change gains.
+        """
+        r = yield self.post('switchgains')
+        self.print_result(r)
+
+    @coroutine
+    def kotekan_start(self, yaml):
+        """
+        Start kotekan with specified config file.
+        """
+        if not yaml:
+            raise ValueError('A YAML configuration filename must be specified')
+        config = load_yaml_config(yaml.encode('ascii'))
+        r = yield self.post('kotekan-start', **config)
+        self.print_result(r)
+
+    @coroutine
+    def get_frequency_map(self):
+        """
+        Print ch_master status.
+        """
+        m = yield self.get('get-frequency-map')
+        self.print_result(m)
+
+    @coroutine
+    def get_frame_time(self):
+        """
+        Get the current frame number and gps time.
+        """
+        gps_time = yield self.get('get-frame-time')
+        coroutine_return(gps_time)
+
+    @coroutine
+    def get_frame0_time(self):
+        """
+        Get the gps time corresponding to frame 0.
+        """
+        gps_time = yield self.get('get-frame0-time')
+        coroutine_return(gps_time)
+
+    @coroutine
+    def get_channelizer_output(self):
+        """
+        Get the channelizer output buffer.
+        """
+        channelizer_output_buffer = yield self.get('get-channelizer-output')
+        coroutine_return(channelizer_output_buffer)
+
+    @coroutine
+    def get_hw_map(self):
+        """
+        Get hardware map
+        """
+        hwm = yield self.get('get-hw-map')
+        # Save hardware map
+        time_str = datetime.datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
+        pickle.dump(hwm, open( '/home/chime/ch_acq/%s_hardware_map.pkl' %time_str, 'wb'))
+        # Print hardware map
+        for key in np.sort(hwm.keys()):
+            print('%s: %s' %(key, hwm[key]))
+        #coroutine_return(result)
+
+    @coroutine
+    def load_digital_gains(self, gain_folder):
+        """
+        load digital gains
+        """
+        r = yield self.post('load-digital-gains', gain_folder=gain_folder, delta_t_seconds=float(delta_t_seconds))
+
+    @coroutine
+    def switch_digital_gains(self, delta_t_seconds):
+        """
+        load digital gains
+        """
+        self.post('switch-digital-gains', delta_t_seconds=float(delta_t_seconds))
+
+def main():
+    """ Command-line interface to operate the ChimeMaster server.
+
+    ./ch_master.py [config] [command {args}] [--host hostname] [--port port_number] [--no-run | --run] [--no-start]
+
+    where:
+        *config* : configuration in the format [[*filename*]:][*path_to_config_object*]
+        *command* : the name of a ChimeMaster client method.
+        --host: hostname of the server. Overrides the hostname found in the config. Default is 'localhost'.
+        --port: port number of the server. Overrides the port number found in the config.  Default is 54321.
+        --run: run the client/server until Ctrl-C is pressed. Default when no command is provided.
+        --no-run: Do not run the client/server even if no comman dis provided.
+        --no_start: do not attempt to initialize the server even if a configuration is provided.
+
+    The `ch_master` command is invoked from the command line with::
+
+        ./ch_master.py arguments...  # linux only
+        python ch_master.py arguments
+
+    Or from an ipython interactive session::
+
+        run -i ch_master arguments
+
+    Operations done:
+
+        1. Create client:
+
+            - Always starts a client that connects to server at address specified in config or as
+              overriden by --host and --port.
+
+        2. Create server if none already esists:
+
+            - If there is no server, a server is created at localhost on the port specified in the
+              config or as overriden by --port, unless -no-server is specified
+
+        3. Initialize server with config file if requested:
+
+            - If no config is present, or if --no-start option is specified, the server is not started
+            - If there is a config file, the 'start' command is sent along with the specified
+              config. If the server is already started with a different config, an error will be
+              raised.
+
+        4. Execute command or run server:
+
+            - If a command and arguments are specified, the corresponding client methods commands
+              are invoked. Those generally pass on the command to the corresponding server endpoint.
+            - If no command is specified and a local server was started, the client (and locally
+              started server if any) are run continually until stopped by Ctrl-C. Bypassed if --no-
+              run is specified
+
+    Examples:
+
+    Create and initialize and run a new local server  or initialize an existing server::
+
+        ./ch_master.py jfc.erh
+
+    Create an non-initialized server
+
+        ./ch_master.py  # starts server on localhost:54321
+        ./ch_master.py config --no-start # starts server at address specified in config
+
+    Send a command to server:
+
+        ./ch_master stop # send stop command to server on localhost:54321
+        ./ch_master jfc.erh power_off # power off supplies used by server running at theaddress specified in the jfc.erh config
+    """
+    # Setup logging
+    log.setup_basic_logging('INFO')
+
+    client, server = run_client(sys.argv[1:], ChimeMasterAsyncRESTServer, ChimeMasterAsyncRESTClient, object_name ='ChimeMaster')
+    cm = None
+    if server and server.chime_master:
+        cm = RunSyncWrapper(server.chime_master)
+        print("   cm: ChimeMaster object")
+    return client, server, cm
+
+if __name__ == '__main__':
+    client, server, cm = main()

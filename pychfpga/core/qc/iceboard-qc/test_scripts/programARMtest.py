@@ -70,8 +70,8 @@ def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None,testS
     raw_input("Press Enter to continue: 	")
 
     # Find the 'blank' iceboard on the network
-    ib = get_boards()
     while True:
+        ib = get_boards()
         if len(ib) == 0:
             print "\nCouldn't find the board on the network. Make sure it is connected and has booted."
         elif len(ib) > 1:
@@ -81,7 +81,7 @@ def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None,testS
             ib = ib[0]
             break
         if not (raw_input("Try again? (y/n)\t").lower().strip() == 'y'):
-            raise Exception("ARMtest: Didn't find just a single board with no serial on the network, found " + len(ib))
+            raise Exception("ARMtest: Didn't find just a single board with no serial on the network, found " + str(len(ib)))
 
     # Get MAC and IP
     MACright = ib._get_arm_mac()
@@ -173,8 +173,12 @@ def programARMtest(username=None,board_sn=None,board_vn=None,board_md=None,testS
     #    mtestFail(username, board_sn, board_vn, board_md, testStatus)
     #else:
     #    file.write("\nMemory Test produces no errors: Pass\n")
+
+    print "\nYou should now reboot the board so that it will broadcast a hostname using the serial number that was " \
+          "just written to the EEPROM."
     
-    print "If there are any special concerns regarding the board for this test, please describe them below. If none, enter 'None'. "
+    print "\nIf there are any special concerns regarding the board for this test, please describe them below. " \
+          "If none, enter 'None'. "
     comments = raw_input("Enter your comments: 	")
     file.write('\n\nComments: ' + comments)
 

@@ -4,7 +4,7 @@
 
 """
 ANT.py module
-    Implements interface to the Antenna processors
+    Implements interface to the channelizer modules
 
 History:
     2011-07-12 : JFC : Created from test code in chFPGA.py
@@ -14,86 +14,71 @@ History:
 import logging
 
 import ADCDAQ
-import SRCSEL
+# import SRCSEL
 import FFT
 import SCALER
 import PROBER
 import FUNCGEN
-import INJECT
+from numpy import NaN as npNaN
+# import INJECT
 
 class ANT_channel(object):
     """ Implements the interface to one of the channelizer"""
 
-    # Antenna processor module addresses
+    # Channelizer module addresses
     ADCDAQ_OFFSET_ADDR  = 0
-    SRCSEL_OFFSET_ADDR  = 1
+    # SRCSEL_OFFSET_ADDR  = 1
     FFT_OFFSET_ADDR     = 2
     SCALER_OFFSET_ADDR  = 3
     PROBER_OFFSET_ADDR  = 4
     FUNCGEN_OFFSET_ADDR = 5
-    INJECT_OFFSET_ADDR  = 6
+    # INJECT_OFFSET_ADDR  = 6
 
     def __init__(self, fpga_instance, base_address, submodule_address_increment, instance_number):
-        #super(ADC_chip,self).__init__(fpga)
-        # self.ant = ant_instance # store current ADC number for this instance
-        self.ant_number = instance_number # store current ADC number for this instance
+        self.ant_number = instance_number  # store current channelizer number for this instance
         self.fpga = fpga_instance
         self.logger = logging.getLogger(__name__)
 
-        # port = self.fpga.ANT_PORT[self.ant_number]
-
-        self.ADCDAQ  = ADCDAQ.ADCDAQ_base( fpga_instance,   base_address + self.ADCDAQ_OFFSET_ADDR*submodule_address_increment,  instance_number)
-        self.SRCSEL  = SRCSEL.SRCSEL_base( fpga_instance,   base_address + self.SRCSEL_OFFSET_ADDR*submodule_address_increment,  instance_number)
-        self.FFT     = FFT.FFT_base( fpga_instance,         base_address + self.FFT_OFFSET_ADDR*submodule_address_increment,     instance_number)
-        self.SCALER  = SCALER.SCALER_base( fpga_instance,   base_address + self.SCALER_OFFSET_ADDR*submodule_address_increment,  instance_number)
-        self.PROBER  = PROBER.PROBER_base( fpga_instance,   base_address + self.PROBER_OFFSET_ADDR*submodule_address_increment,  instance_number)
-        self.FUNCGEN = FUNCGEN.FUNCGEN_base( fpga_instance, base_address + self.FUNCGEN_OFFSET_ADDR*submodule_address_increment, instance_number)
-        self.INJECT  = INJECT.INJECT_base( fpga_instance,   base_address + self.INJECT_OFFSET_ADDR*submodule_address_increment,  instance_number)
+        self.ADCDAQ  = ADCDAQ.ADCDAQ_base(fpga_instance,   base_address + self.ADCDAQ_OFFSET_ADDR*submodule_address_increment,  instance_number)
+        self.FFT     = FFT.FFT_base(fpga_instance,         base_address + self.FFT_OFFSET_ADDR*submodule_address_increment,     instance_number)
+        self.SCALER  = SCALER.SCALER_base(fpga_instance,   base_address + self.SCALER_OFFSET_ADDR*submodule_address_increment,  instance_number)
+        self.PROBER  = PROBER.PROBER_base(fpga_instance,   base_address + self.PROBER_OFFSET_ADDR*submodule_address_increment,  instance_number)
+        self.FUNCGEN = FUNCGEN.FUNCGEN_base(fpga_instance, base_address + self.FUNCGEN_OFFSET_ADDR*submodule_address_increment, instance_number)
         self.frame_length = self.fpga.FRAME_LENGTH
-
-
-    # def read(self, module, addr, *args, **kwargs):
-    #     """ Reads data from the specified module at the specified address"""
-    #     return self.fpga.read(self.ant_number, module, addr, *args, **kwargs)
-
-    # def write(self, module, addr, data, *args, **kwargs):
-    #     """ Writes data to the specified module at the specified address"""
-    #     return self.ant.write(self.ant_number, module, addr, data, *args, **kwargs)
-
 
 
     def init(self, fmc_present):
 
         self.fmc_present = fmc_present
 
-        """ Initializes the antenna modules"""
-        self.logger.debug('Initializing modules for antenna #%i' % self.ant_number)
-        self.logger.debug('  - ADCDAQ')
+        """ Initializes the channelizer modules"""
+        # self.logger.debug('Initializing modules for channel #%i' % self.ant_number)
+        # self.logger.debug('  - ADCDAQ')
         self.ADCDAQ.init(fmc_present)
-        self.logger.debug('  - SRCSEL')
-        self.SRCSEL.init()
-        self.logger.debug('  - FFT')
+        # self.logger.debug('  - SRCSEL')
+        # self.SRCSEL.init()
+        # self.logger.debug('  - FFT')
         self.FFT.init()
-        self.logger.debug('  - SCALER')
+        # self.logger.debug('  - SCALER')
         self.SCALER.init()
-        self.logger.debug('  - PROBER')
+        # self.logger.debug('  - PROBER')
         self.PROBER.init()
-        self.logger.debug('  - FUNCGEN')
+        # self.logger.debug('  - FUNCGEN')
         self.FUNCGEN.init()
-        self.logger.debug('  - INJECT')
-        self.INJECT.init()
+        # self.logger.debug('  - INJECT')
+        # self.INJECT.init()
 
 
     def status(self):
-        """ Displays the status of the antenna modules"""
-        #self.logger.info('=== ANTENNA NUMBER %i ' % self.ant_number)
-        # self.ADCDAQ.status()
-        # self.SRCSEL.status()
-        # self.FFT.status()
-        # self.SCALER.status()
-        # self.PROBER.status()
-        # self.FUNCGEN.status()
-        # self.INJECT.status()
+        """ Displays the status of the channelizer modules"""
+        pass
+
+    def get_sim_output(self, analog_input):
+        adcdaq_out = self.ADCDAQ.get_sim_output(analog_input)
+        funcgen_out = self.FUNCGEN.get_sim_output(adcdaq_out)
+        fft_out = self.FFT.get_sim_output(funcgen_out)
+        scaler_out = self.SCALER.get_sim_output(fft_out)
+        return scaler_out
 
 class ANT_base(object):
     """
@@ -113,17 +98,20 @@ class ANT_base(object):
             self.ANT.append(ANT_channel(self.fpga, base_address + i * address_increment, submodule_address_increment, i))
 
     def __getitem__(self, key):
-        """If the user indexes this object (ANT[n] instead of ANT) then return the antenna processor instance"""
+        """If the user indexes this object (ANT[n] instead of ANT) then return the channelizer instance"""
         return self.ANT[key]
 
     def __len__(self):
-        """Returns the number of antennas"""
+        """Returns the number of channelizers"""
         return len(self.ANT)
 
     def __contains__(self, value):
         """
         """
         return value in self.keys()
+
+    def __iter__(self):
+        return iter(self.ANT)
 
     def keys(self):
         """
@@ -143,54 +131,80 @@ class ANT_base(object):
     # Low-level access functions
 
     # def read(self, ant_number, module_number, addr, *args, **kwargs):
-    #     """ Reads from the register of a module of a specified antenna processor"""
+    #     """ Reads from the register of a module of a specified channelizer"""
     #     fpga = self.fpga
     #     data = fpga.read(fpga.ANT_PORT[ant_number], module_number, addr, *args, **kwargs)
     #     return data
 
     # def write(self, ant_number, module_number, addr, data, *args, **kwargs):
-    #     """ Writes to the register of a module of a specified antenna processor"""
+    #     """ Writes to the register of a module of a specified channelizer"""
     #     fpga = self.fpga
     #     fpga.write(fpga.ANT_PORT[ant_number], module_number, addr, data, *args, **kwargs)
 
     def init(self, delay_table=None, fmc_present=None):
-        """ Initializes all antennas"""
+        """ Initializes all channelizer modules"""
 
         # Selects which clock is used to clock the channelizes based on whether the ADC card that normally provides the clock is present or not.
         if fmc_present[self.fpga.CHANNELIZERS_CLOCK_SOURCE]:
-            self.logger.info('Using the ADC to generate the channelizer clock')
-            self.fpga.GPIO.CHAN_CLK_SRC = 0 # uses the ADC clock to clock the channelizers
+            self.logger.debug('%.32r: Using the ADC to generate the channelizer clock' % self.fpga)
+            if self.fpga._sampling_frequency == 800.0e6:
+                self.fpga.GPIO.CHAN_CLK_SRC = 1 # *** JFC: uses the internal clock always. Works only for sampling at 800.000 MSPS
+                self.logger.debug("%.32r: Since the sampling frequency is exactly 800.000000 MHz, we'll use the internal 200 MHz clock to clock the channelizers instead of the ADC clock so that syncing the board won't cause large current changes that may upset the core switcher", self.fpga)
+            else:
+                self.fpga.GPIO.CHAN_CLK_SRC = 0 # uses the ADC clock to clock the channelizers
+                self.logger.error("%.32r: The channelizers is clocked by the ADC because we do not sample at exactly 800 MHz. The channelizer clock will be interrupted during syncing, which will cause cause large current changes that may upset the core switcher", self.fpga)
         else:
-            self.logger.info('Using the internal clock to generate the channelizer clock since the ADC is not available')
+            self.logger.debug('%.32r: Using the internal clock to generate the channelizer clock since the ADC is not available' % self.fpga)
             self.fpga.GPIO.CHAN_CLK_SRC = 1 # uses the internal 200 MHz clock to clock the channelizer
 
+        #self.logger.debug("%.32r: Initializing each channelizer", self.fpga)
         for (i, ant) in enumerate(self.ANT):
-            self.logger.debug('Initializing Antenna #%i %s' % (ant.ant_number, '' if fmc_present[i] else '(No ADC board)'))
+            # self.logger.debug('%.32r: Initializing channelizer #%i %s' % (self.fpga, ant.ant_number, '' if fmc_present[i] else '(No ADC board)'))
             ant.init(fmc_present[i])
-
+        #self.logger.debug("%.32r: Initializing delay tables", self.fpga)
+        
         if delay_table is not None:
-            self.set_delays(delay_table)
+            self.set_adc_delays(delay_table)
 
     def status(self):
-        """ Displays the status of all antennas"""
+        """ Displays the status of all channelizer modules"""
         for ant in self.ANT:
             ant.status()
 
         #self.ANT[1].ADCDAQ.set_divclk_phase(1) # Adjust phase of the DIVCLK signal to allow proper sampling of the deserialized words
 
-    def set_delays(self, adc_delay_table):
+    def set_adc_delays(self, adc_delay_table):
         """
-        Sets the delays for all ADC data lines using the provided array.
-        'adc_delay-table'  consists of a list of 8 arrays comprising 8 delay values each.
-        """
-        for i, ant in enumerate(self.ANT):
-            ant.ADCDAQ.set_delay(adc_delay_table[i])
+        Sets the delays for all ADC data lines using the provided delay table.
 
-    def get_delays(self):
+        ``adc_delay_table`` is a dictionary where the key is a channel number and the corresponding values are the (tap_delays,
+        sample_delay), where tap_delays is a list of 8 tap delay values for each of
+        the ADC bits, and sample_offset is the number of samples acquisition is delayed after sync.
+
+        If ``adc_delay_table`` is a list of (tap_delays, sample_delay), the delays are applied in order to channels 0,1,2 etc...
+        """
+        if not isinstance(adc_delay_table, dict):
+            adc_delay_table = dict(enumerate(adc_delay_table))
+
+        for ch, ant in enumerate(self.ANT):
+            if ch in adc_delay_table:
+                tap_delays = adc_delay_table[ch]['tap_delays']
+                sample_delay = adc_delay_table[ch]['sample_delay']
+                clock_delay = adc_delay_table[ch]['clock_delay']
+                if (tap_delays is not None and  any(bd is None or bd < 0 for bd in tap_delays)) or (sample_delay is not None and sample_delay < 0):
+                    self.logger.warning("Skipping channel set_delay on channel %i since Invalid bit or sample delay detected in delay table entry" % ch)
+                else:
+                    ant.ADCDAQ.set_delays((tap_delays, sample_delay, clock_delay))
+
+    def get_adc_delays(self):
         """
         Return the delays currently in use for all ADC data lines.
         """
-        return [ant.ADCDAQ.get_delay() for ant in self.ANT]
+        delay_table = {}
+        for ch, ant in enumerate(self.ANT):
+            (tap_delays, sample_delay, clock_delay) = ant.ADCDAQ.get_delays()
+            delay_table[ch] = {'tap_delays': tap_delays, 'sample_delay': sample_delay, 'clock_delay':clock_delay}
+        return delay_table
 
     def set_data_width(self, width):
         """
@@ -209,6 +223,8 @@ class ANT_base(object):
 
         # Set the channelizer data width
         for ch in self.ANT:
+            if not is_four_bits and not ch.SCALER.EIGHT_BIT_SUPPORT:
+                raise ValueError('8-bit mode not supported in thie build of the SCALER firmware')
             ch.SCALER.FOUR_BITS = is_four_bits
 
     def get_data_width(self):

@@ -4,3 +4,9 @@ test_scripts/config.yaml
 test_scripts/import_iceboard.py
 test_scripts/launch.py
 *.pyc
+*.aux
+*.log
+*.toc
+*.blg
+*.out
+*.synctex.gz

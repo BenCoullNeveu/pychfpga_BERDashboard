@@ -11,6 +11,8 @@ SHUFFLE_BIN_SEL.py module
 """
 #import time
 import numpy as np
+from collections import OrderedDict
+
 from Module import Module_base, BitField
 import logging
 
@@ -24,35 +26,62 @@ class SHUFFLE_BIN_SEL_base(Module_base):
     # Control bitfields
     RESET                       = BitField(CONTROL, 0, 7, doc="Reset the CH_DIST. Clears FIFO.")
     BYPASS                      = BitField(CONTROL, 0, 6, doc="When high, routes input lane 'x' directly to the output, where x in the index of this bin selector.")
-    HEADER_CAPTURE_DATA_SEL     = BitField(CONTROL, 0, 5, doc=" Select whether we capture Stream ID or timestamps.")
-    HEADER_CAPTURE_LANE_SEL     = BitField(CONTROL, 0, 1, width=4, doc=" Select from which lane the captured data is accessed.")
-    HEADER_CAPTURE_EN           = BitField(CONTROL, 0, 0, doc="Enables capture of header info on all lanes simultaneously.")
+    NUMBER_OF_DATA_FLAGS_WORDS_PER_BIN = BitField(CONTROL, 0, 4, width=2, doc="Number of data flags words in each incoming bin and frame")
+    FIRST_LANE                  = BitField(CONTROL, 0, 0, width=4, doc="Index of the first lane to be sent out")
+    # HEADER_CAPTURE_DATA_SEL     = BitField(CONTROL, 0, 5, doc=" Select whether we capture Stream ID or timestamps.")
 
     STREAM_ID                   = BitField(CONTROL, 2, 4, width=12, doc="Stream ID to be used for tagging the output frames")
-    NUMBER_OF_BINS_PER_FRAME    = BitField(CONTROL, 3, 0, width=11, doc="Number of bins extected in each incoming frame")
+    ZERO_PACKET_FLAGS           = BitField(CONTROL, 2, 3, doc="When high, packets plags are forced to zero.")
+    NUMBER_OF_FRAME_FLAGS_WORDS_PER_FRAME = BitField(CONTROL, 2, 0, width=3, doc="Number of frame flags words in each incoming frame")
+    NUMBER_OF_BINS_PER_FRAME    = BitField(CONTROL, 3, 0, width=8, doc="Number of bins expected in each incoming frame")
     FIFO_OVERFLOW_RESET         = BitField(CONTROL, 4, 7, doc="When high, resets the FIFO OVERFLOW flag.")
-    NUMBER_OF_WORDS_PER_BIN     = BitField(CONTROL, 4, 0, width=6, doc="Number of words expected in each bin. In 4-bit mode, 1 Word = 4 analog inputs")
+    NUMBER_OF_WORDS_PER_BIN     = BitField(CONTROL, 4, 0, width=7, doc="Number of words expected in each bin of the incoming frames. In 4-bit mode, 1 Word = 4 analog channels")
     NUMBER_OF_FRAMES_PER_PACKET = BitField(CONTROL, 5, 5, width=3, doc="Number of expected frames per packet. ")
-    NUMBER_OF_LANES             = BitField(CONTROL, 5, 0, width=5, doc="Number of lanes (from lane 0 to lane N-1) to include in the output")
+    LAST_LANE                   = BitField(CONTROL, 5, 0, width=4, doc="Index of the last lane to be transmitted")
+
+    NUMBER_OF_OUTPUT_WORDS_PER_BIN = BitField(CONTROL, 6, 0, width=8, doc="Number of words generated for each bin of the transmitted frames. Is used only to populate the outgoing packet header and does not affect the actual data.")
+
+    FOUR_BITS                   = BitField(CONTROL, 7, 7, doc="1=four bit mode, 0= 8 bit mode. Is used only to populate the outgoing packet header and does not affect the actual data. ")
+    USE_OFFSET_BINARY           = BitField(CONTROL, 7, 6, doc="Is used only to populate the outgoing packet header and does not affect the actual data. ")
+    SEND_FLAGS                  = BitField(CONTROL, 7, 5, doc="Is used only to populate the outgoing packet header and does not affect the actual data. ")
+    NUMBER_OF_OUTPUT_BINS_PER_FRAME = BitField(CONTROL, 7, 0, width=5, doc="Number of bins in each outgoing frame. Is used only to populate the outgoing packet header and does not affect the actual data.")
+
 
     # Status bitfields
     FIFO_EMPTY               = BitField(STATUS, 0, 7, doc="Active high when the data FIFO is empty")
+    FLAGS_FIFO_OVERFLOW      = BitField(STATUS, 0, 6, doc="Active high if the flags FIFO has overflowed since the last time the flag was cleared with FIFO_OVERFLOW_RESET")
     IS_RESET                 = BitField(STATUS, 0, 5, doc="High when the module reset line is active")
     COMBINE_DATA_FLAGS       = BitField(STATUS, 0, 4, doc="Active high if this crossbar is configured to pack the data flags two by two. This is used for the 2nd crossbar, where the incoming data flags occupy only 16 bits of the words.")
-    FLAGS_FIFO_OVERFLOW      = BitField(STATUS, 0, 3, doc="Active high if the flags FIFO has overflowed since the last time the flag was cleared with FIFO_OVERFLOW_RESET")
-    HEADER_CAPTURE_DATA      = BitField(STATUS, 1, 0, width=8, doc="")
+    NUMBER_OF_OUTPUTS        = BitField(STATUS, 0, 0, width=4, doc="")
 
-    FIFO_OVERFLOW            = BitField(STATUS, 3, 0, width=16, doc="Active high if any fo the data FIFO has overflowed since the last time the flag was cleared with FIFO_OVERFLOW_RESET")
+    FIFO_OVERFLOW             = BitField(STATUS, 2, 0, width=16, doc="Active high if any fo the data FIFO has overflowed since the last time the flag was cleared with FIFO_OVERFLOW_RESET")
     # TIMESTAMP_CAPTURE        = BitField(STATUS, 4, 0, width=16, doc="")
     # IN_FRAME_CTR             = BitField(STATUS, 0x02, 0, width=8, doc="Number of frames received on lane 0 before the alignment FIFOs. Rolls over.")
     # LANE_CTR                = BitField(STATUS, 0x04, 0, width=4, doc="Debug")
 
-    def __init__(self, fpga_instance, base_address, instance_number):
+    def __init__(self, fpga_instance, base_address, instance_number, crossbar_level):
         # self.parent = parent
         # self.fpga = fpga_instance
+        self.crossbar_level = crossbar_level
         super(self.__class__, self).__init__(fpga_instance, base_address, instance_number)
         self.logger = logging.getLogger(__name__)
+        self.NUMBER_OF_INPUTS = None
+        self.cached_bin_select_table = None
         self._lock()
+
+    def init(self, number_of_inputs):
+        """ Initializes SHUFFLE_BIN_SEL"""
+        #self.select_words(self.fpga.FRAME_LENGTH//4) # enable tranmission of all words by default
+        #array doesn't seem to work here....
+#        frequency_bins_per_correlator = 124 # 202-5chan correlator # must be even, max 1010 / number of correlated antennas 124-8 channel.  Should get this from config
+        #self.select_words(range(words_per_correlator)) # enable tranmission 8 words, 16 freq channels by default
+        self.NUMBER_OF_INPUTS = number_of_inputs
+        self.NUMBER_OF_FRAMES_PER_PACKET = 4
+        self.NUMBER_OF_WORDS_PER_BIN=4
+        self.NUMBER_OF_BINS_PER_FRAME = 8
+        self.FIRST_LANE = 0
+        self.LAST_LANE = 15
+        self.ZERO_PACKET_FLAGS = 0  # set to 1 to force the packets flags to zero
 
     def reset(self):
         """Performs the soft reset of the CH_DIST module."""
@@ -72,7 +101,7 @@ class SHUFFLE_BIN_SEL_base(Module_base):
         If the FFT is bypassed, each word contains 4 8-bit ADC samples instead of a pair of frequency channels.
         """
         # Initialize bin selection mask
-        mask = np.zeros(128, np.uint8) # 128*8 = up to 1024 bins / frame
+        mask = np.zeros(128, np.uint8)  # 128*8 = up to 1024 bins / frame
 
         if isinstance(bins_to_enable, int):
             bins_to_enable = range(bins_to_enable)
@@ -83,52 +112,88 @@ class SHUFFLE_BIN_SEL_base(Module_base):
             mask[j//8] |= (1<<(j % 8))
         # verbose = False
         # if verbose: print (bins_to_enable)
-        self.logger.debug('Configuring lane %i of the crossbar to capture %i frequency bins: %s' % ( self.instance_number, len(bins_to_enable), repr(bins_to_enable)))
-        self.logger.debug('Mask pattern is: %s' % ( ' '.join('%02X'% byte for byte in mask)))
+        self.logger.debug('%.32r: CROSSBAR%i.BIN_SEL[%i] configured to capture %i frequency bins: %s...' % (self.fpga, self.crossbar_level, self.instance_number, len(bins_to_enable), repr(bins_to_enable[:10])))
+        # self.logger.debug('%.32r: Mask pattern is: %s' % (self.fpga, ' '.join('%02X'% byte for byte in mask)))
 
-        self.write_ram(0x00, mask) # Write the bin selection mask array
+        self.cached_bin_select_table = mask
+        self.write_ram(0x00, mask)  # Write the bin selection mask array
 
-    def init(self):
-        """ Initializes SHUFFLE_BIN_SEL"""
-        #self.select_words(self.fpga.FRAME_LENGTH//4) # enable tranmission of all words by default
-        #array doesn't seem to work here....
-#        frequency_bins_per_correlator = 124 # 202-5chan correlator # must be even, max 1010 / number of correlated antennas 124-8 channel.  Should get this from config
-        #self.select_words(range(words_per_correlator)) # enable tranmission 8 words, 16 freq channels by default
-        self.NUMBER_OF_FRAMES_PER_PACKET = 4
-        self.NUMBER_OF_WORDS_PER_BIN=4
-        self.NUMBER_OF_BINS_PER_FRAME = 8
+    def get_selected_bins(self, use_cache=True):
 
+        if use_cache and self.cached_bin_select_table is not None:
+            mask = self.cached_bin_select_table
+        else:
+            mask = self.read_ram(0x00, length=128)  # 128*8 = up to 1024 bins / frame
 
+        bin_map = np.unpackbits(mask[::-1])[::-1]
+        return np.where(bin_map)[0]
+
+    def map(self, input_data):
+        """ Return a bin selector frequency map, which describes the structure and contents of the
+        bin selector output stream.
+        """
+
+        if self.BYPASS:
+            raise RuntimeError('%.32s: CHAN_BIN_SEL cannot yet provide maps in BYPASS mode')
+
+        N = self.NUMBER_OF_INPUTS / self.NUMBER_OF_OUTPUTS;  # number of input lanes per output
+        ch_per_bin = self.NUMBER_OF_WORDS_PER_BIN * 4  # fixme - only 4-bit mode
+        bs_out = OrderedDict()
+        bins = self.get_selected_bins()
+        for sublane in range(self.NUMBER_OF_OUTPUTS):
+            channels = range(N * sublane + self.FIRST_LANE, N * sublane + self.LAST_LANE + 1)
+            d = [input_data[ch]['data'][ch_per_bin * bin_number: ch_per_bin * (bin_number + 1)] for bin_number in bins for ch in channels]
+            bs_out[sublane] = dict(
+                header=dict(
+                    cookie =0xcf,
+                    protocol_version=1,
+                    header_length=4,
+                    stream_id=(self.STREAM_ID << 4) | (self.instance_number*self.NUMBER_OF_OUTPUTS + sublane),
+                    four_bits=self.FOUR_BITS,
+                    use_offset_binary=self.USE_OFFSET_BINARY,
+                    send_flags=self.SEND_FLAGS,
+                    bypass=self.BYPASS,
+                    frames_per_packet=self.NUMBER_OF_FRAMES_PER_PACKET,
+                    bins_per_frame=self.NUMBER_OF_OUTPUT_BINS_PER_FRAME,
+                    words_per_bin=self.NUMBER_OF_OUTPUT_WORDS_PER_BIN,
+                    ancillary=None,
+                    timestamp=0,
+                    ),
+                data=[i for di in d for i in di], # flatten the list of lists,
+                data_flags=None,
+                frame_flags=None,
+                packet_flags=None
+                )
+        return bs_out
 
     def status(self):
         """Displays the status of SHUFFLE_BIN_SEL."""
-        self.logger.debug('--- SHUFFLE_BIN_SEL[%i] STATUS' % (self.instance_number))
-        self.logger.debug('   RESET: %i' % self.RESET)
-        self.logger.debug('   FIFO EMPTY: %i' % self.FIFO_EMPTY)
+        self.logger.debug('%.32r: --- SHUFFLE_BIN_SEL[%i] STATUS' % (self.fpga, self.instance_number))
+        self.logger.debug('%.32r:    RESET: %i' % (self.fpga, self.RESET))
+        self.logger.debug('%.32r:    FIFO EMPTY: %i' % (self.fpga, self.FIFO_EMPTY))
         # self.logger.debug('   FIFO OVERFLOW: %i' % self.FIFO_OVERFLOW)
 
 
 
-    def print_frame_info(self):
-        bs = self
-        ts=[]
-        sid=[]
+    # def print_frame_info(self):
+    #     ts = []
+    #     sid = []
 
-        # get 8 bits of stream ID
-        self.HEADER_CAPTURE_DATA_SEL=0
-        self.HEADER_CAPTURE_EN=1
-        self.HEADER_CAPTURE_EN=0
-        for i in range(16):
-            self.HEADER_CAPTURE_LANE_SEL=i
-            sid.append(self.HEADER_CAPTURE_DATA)
+    #     # get 8 bits of stream ID
+    #     self.HEADER_CAPTURE_DATA_SEL = 0
+    #     self.HEADER_CAPTURE_EN = 1
+    #     self.HEADER_CAPTURE_EN = 0
+    #     for i in range(16):
+    #         self.HEADER_CAPTURE_LANE_SEL = i
+    #         sid.append(self.HEADER_CAPTURE_DATA)
 
-        # get lsb of timestamp
-        self.HEADER_CAPTURE_DATA_SEL=1
-        self.HEADER_CAPTURE_EN=1
-        self.HEADER_CAPTURE_EN=0
-        for i in range(16):
-            self.HEADER_CAPTURE_LANE_SEL=i
-            ts.append(self.HEADER_CAPTURE_DATA)
+    #     # get lsb of timestamp
+    #     self.HEADER_CAPTURE_DATA_SEL = 1
+    #     self.HEADER_CAPTURE_EN = 1
+    #     self.HEADER_CAPTURE_EN = 0
+    #     for i in range(16):
+    #         self.HEADER_CAPTURE_LANE_SEL = i
+    #         ts.append(self.HEADER_CAPTURE_DATA)
 
-        for i in range(len(ts)):
-            print 'Lane %02i: Stream ID=0x%02x, Frame = 0x%02x (delta = %i)' % (i, sid[i], ts[i], ts[i]-ts[0])
+    #     for i in range(len(ts)):
+    #         print 'Lane %02i: Stream ID=0x%02x, Frame = 0x%02x (delta = %i)' % (i, sid[i], ts[i], ts[i]-ts[0])

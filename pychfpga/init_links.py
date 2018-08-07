@@ -5,47 +5,47 @@ import logging
 #import core.icecore.icebox
 import pickle
 
-class GpuData(object):
-    def __repr__(self):
-        return '\n'.join(['%10s = %r' % (name, value) for (name, value) in vars(self).items() if not name.startswith('_') and not name=='data'])
+# class GpuData(object):
+#     def __repr__(self):
+#         return '\n'.join(['%10s = %r' % (name, value) for (name, value) in vars(self).items() if not name.startswith('_') and not name=='data'])
 
-def get_gpu_data(node_number, dna_number):
-    from subprocess import Popen, PIPE
-    p = Popen(['sudo','chi-exec','%i' % node_number, '/root/inspect_pkt_dna_select', 'dna%i' % dna_number], stdout=PIPE)
-    (data, stderr) = p.communicate()
-    split_data = data.split('\n')
-    d=[]
-    for line in split_data[2:]:
-        if line.startswith('Packet'):
-            break
-        split_line = line.lstrip().split(' ')
-        # print split_line
-        d += [int(c,16) for c in split_line[2:2+min(len(split_line)-2, 16)] if c]
-    result=GpuData()
-    result.ethernet_packet_size = len(d)
-    result.mac_dst = ':'.join(['%02X' % c for c in d[0:6]])
-    result.mac_src = ':'.join(['%02X' % c for c in d[6:12]])
-    result.ethertype = '%04X' % (d[12]*256 + d[13])
-    result.ip_length = d[16]*256 + d[17]
-    result.ip_protocol = d[23]
-    result.ip_src = d[26:30]
-    result.ip_dst = d[30:34]
-    result.udp_src_port = d[34]*256 + d[35]
-    result.udp_dst_port = d[36]*256 + d[37]
-    result.udp_length = d[38]*256 + d[39] # includes 8 bytes of the UDP header
-    result.udp_payload_length = result.udp_length-8
+# def get_gpu_data(node_number, dna_number):
+#     from subprocess import Popen, PIPE
+#     p = Popen(['sudo','chi-exec','%i' % node_number, '/root/inspect_pkt_dna_select', 'dna%i' % dna_number], stdout=PIPE)
+#     (data, stderr) = p.communicate()
+#     split_data = data.split('\n')
+#     d=[]
+#     for line in split_data[2:]:
+#         if line.startswith('Packet'):
+#             break
+#         split_line = line.lstrip().split(' ')
+#         # print split_line
+#         d += [int(c,16) for c in split_line[2:2+min(len(split_line)-2, 16)] if c]
+#     result=GpuData()
+#     result.ethernet_packet_size = len(d)
+#     result.mac_dst = ':'.join(['%02X' % c for c in d[0:6]])
+#     result.mac_src = ':'.join(['%02X' % c for c in d[6:12]])
+#     result.ethertype = '%04X' % (d[12]*256 + d[13])
+#     result.ip_length = d[16]*256 + d[17]
+#     result.ip_protocol = d[23]
+#     result.ip_src = d[26:30]
+#     result.ip_dst = d[30:34]
+#     result.udp_src_port = d[34]*256 + d[35]
+#     result.udp_dst_port = d[36]*256 + d[37]
+#     result.udp_length = d[38]*256 + d[39] # includes 8 bytes of the UDP header
+#     result.udp_payload_length = result.udp_length-8
 
-    d = d[42:42+result.udp_payload_length]
+#     d = d[42:42+result.udp_payload_length]
 
-    header = ''.join(chr(x) for x in d[0:16])
-    (result.cookie, __, result.stream_id, __, __, result.timestamp) = struct.unpack('<BBHLLL',header)
-    result.source_lane_number = result.stream_id & 0x00F
+#     header = ''.join(chr(x) for x in d[0:16])
+#     (result.cookie, __, result.stream_id, __, __, result.timestamp) = struct.unpack('<BBHLLL',header)
+#     result.source_lane_number = result.stream_id & 0x00F
 
-    result.data = d[16:]
+#     result.data = d[16:]
 
-    print 'UDP Payload = %i bytes, Ethernet packet=%i bytes' % (result.udp_payload_length, result.ethernet_packet_size)
+#     print 'UDP Payload = %i bytes, Ethernet packet=%i bytes' % (result.udp_payload_length, result.ethernet_packet_size)
 
-    return result
+#     return result
 
 #def shuffle_init(c, sync_board, frames_per_packet=1, cb1_lanes=4, cb1_bins=16, cb2_lanes=2, cb2_bins=1, cb2_bypass=0, bp_bypass=0, remap=True):
 def shuffle_init(c, ni_board, ni_board_26m, sync_board, window_start=200, window_stop=50, dsmap=range(16), frames_per_packet=1, cb1_lanes=4, cb1_bins=16, cb2_lanes=2, cb2_bins=1, cb2_bypass=0, bp_bypass=0, remap=True,
@@ -137,7 +137,7 @@ def shuffle_init(c, ni_board, ni_board_26m, sync_board, window_start=200, window
     if ni_enable_26m:
         ni_board_26m.set_user_output_source('pwm')
         ni_board_26m.set_frame_pwm(ni_offset_26m, ni_high_time_26m, ni_period_26m)
-        
+
     # Set sync delays on boards to test sync-after power cycle
     # Assign to each of the first 8 slots a sync tap delay equal to the slot number
     #sync_tap_delay = range(8)
@@ -307,7 +307,7 @@ def time_soft_sync(boards, sync_board, delay):
     for ib in boards:
         for ant in ib.ANT:
             ant.ADCDAQ.BYTE_MASK = 0
-    
+
     # Get current time
     # sometimes first try crashes.
     try:

@@ -48,46 +48,74 @@ class GPIO_base(Module_base):
     LCD_RW   = BitField(CONTROL, 0x02, 5, doc='LCD Read/Write flag (0=write, 1=read)')
     LCD_DATA = BitField(CONTROL, 0x02, 0, width=4, doc='LCD 4-bit data bus')
 
-    BLINKER_RESET                       = BitField(CONTROL, 3, 7, doc='When active, stops the LED blinker')
-    ANT_RESET                           = BitField(CONTROL, 3, 6, doc='Antenna processing pipeline reset')
-    CORR_RESET                          = BitField(CONTROL, 3, 5, doc='Correlator reset')
-    CORR_IP_PORT_OFFSET                 = BitField(CONTROL, 3, 2, width=2, doc='Correlator output data IP port offset from the base port')
-    DATA_IP_PORT_OFFSET                 = BitField(CONTROL, 3, 0, width=2, doc='Captured data IP port offset from the base port')
-    HOST_FRAME_READ_RATE                = BitField(CONTROL, 4, 0, width=5, doc='Indicates how often the host UDP buffers are read. Used to throttle data transmision. Period = 2/125MHz*2^value ')
-    BUCK_PHASE                          = BitField(CONTROL, 12, 0, width=64, doc='Phase of each of the 16 Buck sync lines. There are 16 possible phase values for each line. Bits 3:0 is for phase of line 0, bits 7:4 for phase of line 1 etc.')
-    TARGET_MAC_ADDR                     = BitField(CONTROL, 18, 0, width=48, doc='Target MAC address, used to to setup networking over UDP broadcast')
-    TARGET_IP_ADDR                      = BitField(CONTROL, 22, 0, width=32, doc='Target IP address, used to to setup networking over UDP broadcast')
-    TARGET_IP_PORT                      = BitField(CONTROL, 24, 0, width=16, doc='Target IP base port number, used to to setup networking over UDP broadcast')
-    TARGET_FPGA_SERIAL_NUMBER           = BitField(CONTROL, 32, 0, width=64, doc='Target FPGA serial number, used to to setup networking over UDP broadcast. Programming occurs only when this matches the actual FPGA serial number.')
-    TARGET_LOAD                         = BitField(CONTROL, 33, 7, doc='When 1, loads programs the networking with the target values if the target FPGA serial number matches the actual FPGA serial number.')
-    NETWORK_CONFIG_SOURCE               = BitField(CONTROL, 33, 2, width=2, doc='Selects which method is used to set the FPGA Ethernet networking.')
-    TARGET_SUBARRAY                     = BitField(CONTROL, 33, 0, width=2, doc='Target subarray to be used during network setup over UDP broadcast')
-    PWM_OFFSET                          = BitField(CONTROL, 37, 0, width=32, doc='Number of events (frames) to delay before starting to generate the first High of the PWM output')
-    PWM_HIGH_TIME                       = BitField(CONTROL, 41, 0, width=32, doc='Number of events (frames) to keep the PWM output at High')
-    PWM_PERIOD                          = BitField(CONTROL, 45, 0, width=32, doc='Number of events (frames) between PWM High (i.e PWM period)')
-    PWM_RESET                           = BitField(CONTROL, 46, 7, width=1, doc='Resets the PWM generator')
-    USER_MUX_SOURCE                     = BitField(CONTROL, 46, 0, width=3, doc='Selects which signal is sent to the SMA-A output. 0=PWM, 1=PPS, 2=SYNC, 3=IRIGB Trigger, 4=BP Buck Sync')
+    BLINKER_RESET              = BitField(CONTROL, 3, 7, doc='When active, stops the LED blinker')
+    ANT_RESET                  = BitField(CONTROL, 3, 6, doc='Antenna processing pipeline reset')
+    CORR_RESET                 = BitField(CONTROL, 3, 5, doc='Correlator reset')
+    CORR_IP_PORT_OFFSET        = BitField(CONTROL, 3, 2, width=2, doc='Correlator output data IP port offset from the base port')
+    DATA_IP_PORT_OFFSET        = BitField(CONTROL, 3, 0, width=2, doc='Captured data IP port offset from the base port')
+    HOST_FRAME_READ_RATE       = BitField(CONTROL, 4, 0, width=5, doc='Indicates how often the host UDP buffers are read. Used to throttle data transmision. Period = 2/125MHz*2^value ')
+    BUCK_PHASE                 = BitField(CONTROL, 12, 0, width=64, doc='Phase of each of the 16 Buck sync lines. There are 16 possible phase values for each line. Bits 3:0 is for phase of line 0, bits 7:4 for phase of line 1 etc.')
+    TARGET_MAC_ADDR            = BitField(CONTROL, 18, 0, width=48, doc='NETWORK_CONFIG_SOURCE=0: destination MAC address for outgoing data on UDP channel 1. NETWORK_CONFIG_SOURCE=1,2: unused.  NETWORK_CONFIG_SOURCE=3, FPGA listening MAC address to be loaded on the rising edge of TARGET_LOAD when TARGET_FPGA_SERIAL_NUMBER matches the actual FPGA serial number.')
+    TARGET_IP_ADDR             = BitField(CONTROL, 22, 0, width=32, doc='NETWORK_CONFIG_SOURCE=0: destination IP address for outgoing data on UDP channel 1.  NETWORK_CONFIG_SOURCE=1,2 and3: FPGA listening IP address of the FPGA to be loaded on the rising edge of TARGET_LOAD when TARGET_FPGA_SERIAL_NUMBER matches the actual FPGA serial number.')
+    TARGET_IP_PORT             = BitField(CONTROL, 24, 0, width=16, doc='NETWORK_CONFIG_SOURCE=0: unused; NETWORK_CONFIG_SOURCE=1,2,3: FPGA listening port number to be loaded on the rising edge of TARGET_LOAD when TARGET_FPGA_SERIAL_NUMBER matches the actual FPGA serial number.')
+    TARGET_FPGA_SERIAL_NUMBER  = BitField(CONTROL, 32, 0, width=64, doc='Target FPGA serial number, used to to setup networking over UDP broadcast. Loading of the networking parameters occurs only on a rising edge of TARGET_LOAD when this matches the actual FPGA serial number.')
+    TARGET_LOAD                = BitField(CONTROL, 33, 7, doc='When transitioning from 0 to 1, loads the FPGA networking parameters with the target values, but only if the target FPGA serial number matches the actual FPGA serial number.')
+    NETWORK_CONFIG_SOURCE      = BitField(CONTROL, 33, 2, width=2, doc='a.k.a. addressing mode. Selects which method is used to set the FPGA Ethernet networking. Is loaded internally only on a rising edge of TARGET_LOAD when TARGET_FPGA_SERIAL_NUMBER matches the actual FPGA serial number.')
+    TARGET_SUBARRAY            = BitField(CONTROL, 33, 0, width=2, doc='Target subarray to be used during network setup over UDP broadcast')
+    PWM_OFFSET                 = BitField(CONTROL, 37, 0, width=32, doc='Number of events (frames) to delay before starting to generate the first High of the PWM output')
+    PWM_HIGH_TIME              = BitField(CONTROL, 41, 0, width=32, doc='Number of events (frames) to keep the PWM output at High')
+    PWM_PERIOD                 = BitField(CONTROL, 45, 0, width=32, doc='Number of events (frames) between PWM High (i.e PWM period)')
+    PWM_RESET                  = BitField(CONTROL, 46, 7, width=1, doc='Resets the PWM generator')
+    BP_GPIO_INT_EN             = BitField(CONTROL, 46, 4, doc="When '1', the Backplane GPIO_INT is driven by this board. WARNING: Only one board should be enabled at a time.")
+    USER_MUX_SOURCE0           = BitField(CONTROL, 46, 0, width=4, doc='Selects which signal is sent to the Motherboard SMA-A output.')
 
-    TIMESTAMP_VALID                     = BitField(STATUS, 0, 7, doc='Timestamp data valid (i.e. can be read)')
-    ADC_SYNC_READBACK                   = BitField(STATUS, 1, 0, doc='Reads back the SYNC bit for debugging')
-    LOG2_FRAME_LENGTH                   = BitField(STATUS, 1, 0, width=8, doc='Number of time samples per frame')
-    NUMBER_OF_CHANNELIZERS              = BitField(STATUS, 2, 0, width=8, doc='Number of implemented antenna processing pipelines')
-    NUMBER_OF_CORRELATORS               = BitField(STATUS, 3, 0, width=8, doc='Number of implemented correlators')
+    UART_TX_OE                 = BitField(CONTROL, 47, 7, doc="FPGA I/O line")
+    UART_TX_OUT                = BitField(CONTROL, 47, 6, doc="FPGA I/O line")
+    UART_RX_OE                 = BitField(CONTROL, 47, 5, doc="FPGA I/O line")
+    UART_RX_OUT                = BitField(CONTROL, 47, 4, doc="FPGA I/O line")
+    GPIO_RST_OE                = BitField(CONTROL, 47, 3, doc="FPGA I/O line")
+    GPIO_RST_OUT               = BitField(CONTROL, 47, 2, doc="FPGA I/O line")
+    ARM_IRQ_OE                 = BitField(CONTROL, 47, 1, doc="FPGA I/O line")
+    ARM_IRQ_OUT                = BitField(CONTROL, 47, 0, doc="FPGA I/O line")
+
+    USER_MUX_SOURCE3           = BitField(CONTROL, 48, 4, width=4, doc='Selects which signal is sent to the BP_GPIO_INT line.')
+    GPIO_IRQ_OE                = BitField(CONTROL, 48, 3, doc="FPGA I/O line")
+    GPIO_IRQ_OUT               = BitField(CONTROL, 48, 2, doc="FPGA I/O line")
+    FLASH_CS_OE                = BitField(CONTROL, 48, 1, doc="FPGA I/O line")
+    FLASH_CS_OUT               = BitField(CONTROL, 48, 0, doc="FPGA I/O line")
+
+    USER_MUX_SOURCE1           = BitField(CONTROL, 49, 0, width=4, doc='Selects which signal is sent to the Motherboard FPGA LED1 and Backplane SMA output.')
+    USER_MUX_SOURCE2           = BitField(CONTROL, 49, 4, width=4, doc='Selects which signal is sent to the Motherboard SMA-B and FPGA LED2 output.')
+
+    USER_BIT0                  = BitField(CONTROL, 50, 7, doc='Control the USER_BIT0 signal that can be routed to any user outputs')
+    USER_BIT1                  = BitField(CONTROL, 50, 6, doc='Control the USER_BIT1 signal that can be routed to any user outputs')
+    USER_BITS                  = BitField(CONTROL, 50, 6, width=2, doc='Control the USER_BIT signals that can be routed to any user outputs')
+    IRIG_DELAY_RESET           = BitField(CONTROL, 50, 5, doc='Loads the IRIG signal delay value into the delay block')
+    IRIG_DELAY_RESET           = BitField(CONTROL, 50, 5, doc='Loads the IRIG signal delay value into the delay block')
+    IRIGB_DELAY                = BitField(CONTROL, 50, 0, width=5, doc='IRIG-B signal delay')
+
+    TIMESTAMP_VALID            = BitField(STATUS, 0, 7, doc='Timestamp data valid (i.e. can be read)')
+    ADC_SYNC_READBACK          = BitField(STATUS, 1, 0, doc='Reads back the SYNC bit for debugging')
+    LOG2_FRAME_LENGTH          = BitField(STATUS, 1, 0, width=8, doc='Number of time samples per frame')
+    NUMBER_OF_CHANNELIZERS     = BitField(STATUS, 2, 0, width=8, doc='Number of implemented antenna processing pipelines')
+    NUMBER_OF_CORRELATORS      = BitField(STATUS, 3, 0, width=8, doc='Number of implemented correlators')
     NUMBER_OF_CHANNELIZERS_TO_CORRELATE = BitField(STATUS, 4, 0, width=8, doc='Number of channelizers handled by the correlators')
-    NUMBER_OF_CHANNELIZERS_WITH_FFT     = BitField(STATUS, 5, 0, width=8, doc='Number of channelizers with FFT')
-    NUMBER_OF_GPU_LINKS                 = BitField(STATUS, 6, 0, width=8, doc='Number of implemented GPU links')
-    #    IMPLEMENT_ANT                  = BitField(STATUS, 4, 0, width=8, doc='Indicates whether the antenna processor is implemented or if a dummy mmodule is put in place. There is one bit per antenna.')
-    IMPLEMENT_FFT                       = BitField(STATUS, 6, 0, width=16, doc='Indicates whether the antenna processor FFT is implemented. If not, it is bypassed and timestream data is fed to the scaler. There is one bit per antenna. ')
-    #    IMPLEMENT_CORR                 = BitField(STATUS, 6, 0, width=8, doc='Indicates whether the correlator is implemented. . There is one bit per correlator. ')
-    TIMESTAMP                           = BitField(STATUS, 10, 0, width=32, doc='Bitstream timestamp word')
-    PLATFORM_ID                         = BitField(STATUS, 11, 0, width=8, doc='Which FPGA/board in use.  0 for ML605 eval board, 1 for KC705 evaluation board')
-    FPGA_SERIAL_NUMBER                  = BitField(STATUS, 19, 0, width=64, doc='FPGA 57-bit serial number')
-    NUMBER_OF_CROSSBAR_INPUTS           = BitField(STATUS, 20, 0, width=8, doc='Number of channelizer feds to the crossbar outputs')
-    NUMBER_OF_CROSSBAR_OUTPUTS          = BitField(STATUS, 21, 0, width=8, doc='Number of crossbar outputs')
-    PROTOCOL_VERSION                    = BitField(STATUS, 23, 0, width=16, doc='Protocol version used to manage host software compatibility.')
-    CHANNELIZERS_CLOCK_SOURCE           = BitField(STATUS, 24, 0, width=8, doc='Indicates which ADC is used to provide the clock from all channelizers.')
-    CMD_RPLY_PACKET_COUNTERS            = BitField(STATUS, 35, 0, width=16, doc='Number of command and reply packets received since last FPGA configuration. MSB=Commands, LSB=Replies')
-    NUMBER_OF_BP_SHUFFLE_LANES          = BitField(STATUS, 36, 0, width=8, doc='Number of backplane links (including the direct internal link)')
+    NUMBER_OF_CHANNELIZERS_WITH_FFT = BitField(STATUS, 5, 0, width=8, doc='Number of channelizers with FFT')
+    NUMBER_OF_GPU_LINKS        = BitField(STATUS, 6, 0, width=8, doc='Number of implemented GPU links')
+    #    IMPLEMENT_ANT         = BitField(STATUS, 4, 0, width=8, doc='Indicates whether the antenna processor is implemented or if a dummy mmodule is put in place. There is one bit per antenna.')
+    IMPLEMENT_FFT              = BitField(STATUS, 6, 0, width=16, doc='Indicates whether the antenna processor FFT is implemented. If not, it is bypassed and timestream data is fed to the scaler. There is one bit per antenna. ')
+    #    IMPLEMENT_CORR        = BitField(STATUS, 6, 0, width=8, doc='Indicates whether the correlator is implemented. . There is one bit per correlator. ')
+    TIMESTAMP                  = BitField(STATUS, 10, 0, width=32, doc='Bitstream timestamp word')
+    PLATFORM_ID                = BitField(STATUS, 11, 0, width=8, doc='Which FPGA/board in use.  0 for ML605 eval board, 1 for KC705 evaluation board')
+    FPGA_SERIAL_NUMBER         = BitField(STATUS, 19, 0, width=64, doc='FPGA 57-bit serial number')
+    NUMBER_OF_CROSSBAR_INPUTS  = BitField(STATUS, 20, 0, width=8, doc='Number of channelizer feds to the crossbar outputs')
+    NUMBER_OF_CROSSBAR_OUTPUTS = BitField(STATUS, 21, 0, width=8, doc='Number of crossbar outputs')
+    PROTOCOL_VERSION           = BitField(STATUS, 23, 0, width=16, doc='Protocol version used to manage host software compatibility.')
+    CHANNELIZERS_CLOCK_SOURCE  = BitField(STATUS, 24, 0, width=8, doc='Indicates which ADC is used to provide the clock from all channelizers.')
+    ADC_PLL_LOCK0              = BitField(STATUS, 33, 6,  doc='Lock status of the ADC PLL in FMC0')
+    ADC_PLL_LOCK1              = BitField(STATUS, 33, 7,  doc='Lock status of the ADC PLL in FMC1')
+    CMD_RPLY_PACKET_COUNTERS   = BitField(STATUS, 35, 0, width=16, doc='Number of command and reply packets received since last FPGA configuration. MSB=Commands, LSB=Replies')
+    NUMBER_OF_BP_SHUFFLE_LANES = BitField(STATUS, 36, 0, width=8, doc='Number of backplane links (including the direct internal link)')
 
 
     def __init__(self, fpga, base_address):
@@ -118,44 +146,89 @@ class GPIO_base(Module_base):
         """ Pulses the global trigger line. """
         self.pulse_bit('GLOBAL_TRIG')
 
-    def set_pwm(self, offset=0, high_time=195312, period=390625, reset=False):
-        """ Set-ups the frame-based PWM generatot, typically used to generate
-        the noise injecting gating signal.
+    def set_pwm(self, enable=True, offset=0, high_time=195312, period=390625, pwm_reset=False):
+        """ Set-ups the frame-based PWM generator, typically used to generate
+        the noise injection gating signal.
 
-        All values are 32-bit. A channelizer reset (or a SYNC signal, which
-        generates one) must be issued after the values are changed to obtain
-        the proper waveform.
+        ``offset``, ``high-time`` and ``period`` are 32-bit values that describe the waveform.
 
-        If 'reset' is True, a channelizer reset signal is issued. This is
-        mainly useful for testing. A system-wide SYNC (which will cause the
-        channelizer reset) is actually needed to make this signal synchronized
-        with other boards.
+        ``offset``: number of frames to ait after reset before the first HIGH
+        ``high_time``: Number of frames to stay high
+        ``period``: number of frames between the begginings of the high time
+
+        A channelizer reset (or a SYNC signal, which generates one) must be issued after the values
+        are changed to obtain the proper waveform.
+
+        If ``enable`` is false, the PWM generator will be disabled
+
+        If 'pwm_reset' is True, the PWM generator will be reset before being enabled. This is mainly
+        useful for testing, as the offset will be taken from the current frame, not frame zero, and
+        every board will operate on a random offsets. The PWM generator is always reset by SYNC events.
+        A system-wide SYNC will therefore make the PWM signal synchronized across all boards.
         """
         self.PWM_OFFSET = offset
-        self.PWM_HIGH_TIME = high_time
-        self.PWM_PERIOD = period
-        if reset:
-            self.PWM_RESET = 1
-            self.PWM_RESET = 0
+        self.PWM_HIGH_TIME = high_time - 1 # The actual high time is PWM_HIGH_TIME + 1
+        self.PWM_PERIOD = period - 1  # The actual period is PWM_PERIOD + 1
+        if enable:
+            if pwm_reset:
+                self.PWM_RESET = 1  # stops the PWM generator
+            self.PWM_RESET = 0  # starts the PWM generator
+        else:
+            self.PWM_RESET = 1  # stops the PWM generator
 
     def get_pwm(self):
-        """ Return the current values of the frame-based PWM generator as a
+        """ Return the current settings of the PWM generator as a
         tuple."""
         return (self.PWM_OFFSET, self.PWM_HIGH_TIME, self.PWM_PERIOD)
 
     USER_OUTPUT_SOURCE_TABLE = {
-        'sync': 0,  # User-generated SYNC signal
-        'pps': 1,  # 1 PPS signal from the IRIG-B decoder
-        'pwm': 2,  # Output from the frame-based pwm generator
-        'irigb_trig': 3,
-        'bp_sync': 4}  # Backplane SYNC signal
+        'sync': 0,  # User-generated SYNC signal (sunc_out)
+        'pps': 1,  # 1 PPS signal from the IRIG-B decoder (pps_out)
+        'pwm': 2,  # Output from the frame-based pwm generator (pwm_out)
+        'irigb_trig': 3, # (not irigb_before_target)
+        'bp_trig': 4,  # (bp_trig_reg)
+        'bp_time': 5,  # (bp_time_reg)
+        'refclk': 6,  # 10 MHz reference clock (clk10)
+        'irigb_gen': 7,  # (irigb_gen_out)
+        'heartbeat1': 8,  # (gpio_led_int(4))
+        'heartbeat2': 9,  # (gpio_led_int(7))
+        'debug1': 10,  # (debug1, currently crossbar2.align_pulse)
+        'debug2': 11,  # (debug2, currently crossbar0.lane_monitor)
+        'user_bit0': 12,  # (user_bit(0))
+        'user_bit1': 13,  # (user_bit(1))
+        'debug3': 14,  # (chan_lane_monitor(2)(to_integer(unsigned(user_bit))))
+        'fmc_refclk': 15  # Refclk from Mezz selected by user_bits(0:1)  (fmc_refclk(to_integer(unsigned(user_bit)))
+        }  # Backplane TRIG signal
 
-    def set_user_output_source(self, source):
-        """ Set the user output source. 'source' is a string."""
+    USER_OUTPUTS = {
+        0: 'USER_MUX_SOURCE0',
+        'sma_a': 'USER_MUX_SOURCE0',
+        1: 'USER_MUX_SOURCE1',
+        'bp_sma_fpga_led1': 'USER_MUX_SOURCE1',
+        'bp_sma': 'USER_MUX_SOURCE1',
+        2: 'USER_MUX_SOURCE2',
+        'sma_b_fpga_led2': 'USER_MUX_SOURCE2',
+        3: 'USER_MUX_SOURCE3',
+        'bp_gpio_int': 'USER_MUX_SOURCE3'
+        }
+
+
+    def set_user_output_source(self, source='', output=None):
+        """
+        Set the user output ``output`` to issue the signal specified in
+        ``source``. ``source`` and ``output`` are strings.
+
+        If source or output ar eomitted, an error is raised and the list of
+        valid values is shown.
+        """
         if source not in self.USER_OUTPUT_SOURCE_TABLE:
             raise AttributeError("Invalid source '%s'. Valid sources are %s." % (
-                source, ','.join(self.USER_OUTPUT_SOURCE_TABLE.keys())))
-        self.USER_MUX_SOURCE = self.USER_OUTPUT_SOURCE_TABLE[source]
+                source, ', '.join(self.USER_OUTPUT_SOURCE_TABLE.keys())))
+        if output not in self.USER_OUTPUTS:
+            raise AttributeError("Invalid output '%s'. Valid outputs are %s." % (
+                output, ', '.join(str(k) for k in self.USER_OUTPUTS.keys())))
+
+        self.write_bitfield(self.USER_OUTPUTS[output], self.USER_OUTPUT_SOURCE_TABLE[source])
 
     def get_user_output_source(self):
         """ Return the current user output source as a string """
@@ -192,7 +265,7 @@ class GPIO_base(Module_base):
         self.ANT_RESET = 1
         self.CORR_RESET = 1
         # In the alternate code below, we do not use self.ANT_RESET=1 to reset the antenna because this implies reading the control register, and the read data might not get through if too much data is coming in
-        #ant_reset = self.bitfield('ANT_RESET')
+        #ant_reset = self.get_bitfield('ANT_RESET')
         #self.write(ant_reset.addr, 1 << ant_reset.bit)
         #self.write(ant_reset.addr, 0x60) # ** debug  BEWARE: This resets the DATA and CORR IP addresses to zero!!!!!***
         self.HOST_FRAME_READ_RATE = 14  #Indicates how often the host UDP buffers are read. Used to throttle data transmision. Period = 2/125MHz*2^value

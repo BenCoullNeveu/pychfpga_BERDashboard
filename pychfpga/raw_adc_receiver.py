@@ -35,14 +35,15 @@ class TimestreamUdpHandler(SocketServer.BaseRequestHandler):
             self.timestamp) = struct.unpack_from('>BHHL', self.data)
         self.ant_channel = probe_id & 0x0F
         self.adc_data = np.fromstring(self.data[9:9+2048], dtype=np.int8)
-        #if (self.adc_data.shape[0] != 2048):
-        #    print "bad data?"
-        #    print self.adc_data
-        #    print '#######################'
-        #    print len(self.data)
-        #    print '#######################'
-        #    print len(self.request[0])
-        self.server.data_queue.put((self.timestamp,
+        if (self.adc_data.shape[0] != 2048):
+            print "bad data?"
+            print self.adc_data
+            print '#######################'
+            print len(self.data)
+            print '#######################'
+            print len(self.request[0])
+        else:
+            self.server.data_queue.put((self.timestamp,
                                     self.ant_channel, self.adc_data))
 
 
@@ -177,8 +178,8 @@ class dataWriter(object):
         self.n_file = 0
         self.N_TIME_PER_FILE = 64
         self.time_name = datetime.datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
-        self.base_dir = '/data/archive/'+ self.time_name + '_pathfinder_rawadc/'
-        self.live_base_dir = '/mnt/agogo/livedata/'
+        self.base_dir = './'+ self.time_name + '_pathfinder_rawadc/'
+        self.live_base_dir = './'
         try:
             os.mkdir(self.base_dir)
         except:
@@ -210,10 +211,11 @@ class dataWriter(object):
             #self.live_h5file.close()
 
 if __name__ == "__main__":
-    HOST = "10.10.10.2"
-    PORTS = [41101, 41102, 41103, 41104, 41105, 41106, 41107, 41108, 41109,
-               41110, 41111, 41112, 41113, 41114, 41115, 41116]
+    HOST = "10.10.10.25"
+    #PORTS = [41101, 41102, 41103, 41104, 41105, 41106, 41107, 41108, 41109,
+    #           41110, 41111, 41112, 41113, 41114, 41115, 41116]
     # [41102, 41103, 41106, 41114, 41116]
+    PORTS = [41101]
     data_queues = []
     out_queues = []
     servers = []

@@ -12,33 +12,35 @@ import contextlib
 import logging
 import functools
 import time
-import datetime
-import base64
 
 from sqlalchemy import Column, Integer, String, ForeignKey
 from sqlalchemy import UniqueConstraint, CheckConstraint
 from sqlalchemy.orm import relationship, backref
 from sqlalchemy.orm.collections import attribute_mapped_collection
 
-from . import hardware_map
-from . import tuber
+from . import hardware_map, tuber, async
+
 from . import handler
 from .handler import HandlerParentAttribute
 from . import session
 from hw import ipmi_fru
+import datetime
+import base64
 
-@session.register_yaml_object(transforms={'move_index': ('slots', 'slot')})
+@session.register_yaml_object()  # Todo: Add transforms={'move_index': ('slots', 'slot')}
 class IceCrate(hardware_map.HWMResource, handler.HandlerObject):
-
     handler_name = 'IceCrateHandler'
-
     __tablename__ = 'icecrates'
-    __table_args__ = (UniqueConstraint('serial'),)
-    __mapper_args__ = {'polymorphic_identity': 'IceCrate'}
-
-    __ipmi_part_number__ = 'MGK7BP'  # Must match part number in IPMI data
+    __table_args__ = (
+        UniqueConstraint('_polymorphic_key', 'serial'),  # Crates with different models can have the same serial number
+    )
+    __mapper_args__ = {'polymorphic_identity': 'IceCrate',
+                       'polymorphic_on': '_polymorphic_key'}
+    __ipmi_part_number__ = None  # Must match part number in IPMI data
 
     _pk = Column(Integer, primary_key=True)
+    _polymorphic_key = Column(String)  # Needed to allow multiple types of crates
+
     serial = Column(String,
                     doc="The serial number written on the board (e.g. '001')")
 
@@ -136,7 +138,7 @@ class IceCrate(hardware_map.HWMResource, handler.HandlerObject):
                 bp_serial = tr['backplane-serial']
                 slot = int(tr['backplane-slot'])
 
-                logger.info("IceBoard %s is slot %s in backplane %s" % (
+                logger.debug("IceBoard %s is slot %s in backplane %s" % (
                     mb_serial, slot, bp_serial))
 
                 # If this isn't our serial number, these aren't our boards.
@@ -157,7 +159,7 @@ class IceCrate(hardware_map.HWMResource, handler.HandlerObject):
                     # Otherwise, just don't continue.
                     return
 
-                logger.info("Discovered IceBoard serial %s in slot %s of "
+                logger.debug("Discovered IceBoard serial %s in slot %s of "
                             "backplane %s" % (mb_serial, slot, bp_serial))
 
                 ib = self.slot[slot]
@@ -212,13 +214,15 @@ class IceCrate(hardware_map.HWMResource, handler.HandlerObject):
             raise socket.timeout("IceBoards missing in slots %s!" %
                                  missing)
 
-
+# The following defines the default handler for an Icecrate object
 @tuber.TuberCategory("Backplane", lambda ic: ic.master_iceboard)
 class IceCrateHandler(handler.Handler):
     """
     Provide the basic methods to operate the IceCrate.
     """
     __handler_for__ = IceCrate
+    part_number = None
+    NUMBER_OF_SLOTS = 0
 
     # Locally give access to the hardware_map attributes
     slot = property(lambda self: {slot:iceboard.handler for (slot, iceboard) in self.parent.slot.items()})
@@ -230,10 +234,16 @@ class IceCrateHandler(handler.Handler):
         return sorted(active_iceboards)[0][1]
 
     def __repr__(self):
-        return '%s(SN%s)' % (self.__class__.__name__, self.serial)
+        return '%s(%s)' % (self.__class__.__name__, self.get_id())
+
+    def get_id(self):
+        return 'No backplane'
+
+    def init(self):
+        pass
 
 
-@session.register_yaml_object(transforms={'move_index': ('mezzanines', 'mezzanine')})
+@session.register_yaml_object()  # Todo: add transforms={'move_index': ('mezzanines', 'mezzanine')}
 class IceBoard(hardware_map.HWMResource, handler.HandlerObject):
     """ Provides access to the basic functions of an IceBoard.
 
@@ -244,13 +254,18 @@ class IceBoard(hardware_map.HWMResource, handler.HandlerObject):
     Project-specific classes are meant to be derived from this class.
     """
     __tablename__ = 'iceboards'
-    __table_args__ = ( UniqueConstraint('serial'), )
+    __table_args__ = (
+        UniqueConstraint('serial'),
+    )
     __mapper_args__ = {
         'polymorphic_identity': "IceBoard",
         'polymorphic_on': '_cls'
     }
 
+
     handler_name = 'IceBoardHandler'  # Fixed, default handler
+    __ipmi_part_number__ = 'MGK7MB'
+
 
     _pk = Column(Integer, primary_key=True)
     _cls = Column(String, nullable=False)
@@ -258,7 +273,6 @@ class IceBoard(hardware_map.HWMResource, handler.HandlerObject):
 
     hostname = Column(String,
                       doc="The hostname (or IP) to use for this resource.")
-
     serial = Column(String,
                     doc="The serial number written on the board (verbatim!)")
     slot = Column(Integer, doc="The IceCrate slot occupied by this board")
@@ -266,6 +280,7 @@ class IceBoard(hardware_map.HWMResource, handler.HandlerObject):
     crate = relationship(
         "IceCrate",
         back_populates="slot",
+        enable_typechecks=False,  # Allow IceCrate subclasses
         doc="The IceCrate in which this Iceboard is connected.")
 
     mezzanines = relationship(
@@ -300,6 +315,23 @@ class IceBoard(hardware_map.HWMResource, handler.HandlerObject):
 class IceBoardHandler(handler.Handler, tuber.TuberObject):
     """ Provide the basic code needed to operate the Iceboard (i.e. Tuber-
     provided code and a few Python wrappers)
+
+    `IceBoardHandler` can be created as a standard Python object initialized with a number of
+    parameters which set corresponding attributes (see below). If a `parent_getter` function is
+    provided, no other parameter is needed, and the value of the attributes will will be fetched
+    dynamically from the parent object. Note that any explicitely specified parameter overrides a
+    parent parameter.
+
+    Parameters:
+        parent_getter (func): Function that returns the dynamically return the parent object from which the following parameters will be fetched. Is `None` if there is no parent.
+        hostname (str): hostname or IP address of the ICEBoard ARM processor (mandatory)
+        serial (str): Serial number of the board. Can be provided by the ARM.
+        part_number (str): Part number of the IceBoard. Can be obtained from the ARM.
+        crate (IceCrateHandler): = object that handle the backplane on which the board is connected. `None` if the board is not connected to a backplane.
+        slot (int): Slot number in which the board is installed ona backplane. None if there is no backplane.
+        mezzanine (dict): Map {mezzanine_number: Mezzanine Handler, ...} describing the installed mezzanines. Can be obtained from the ARM.
+        tuber_objname (str): name of the set of software functions that will be provided by the ARM processor through the Tuber interface.
+
     """
     # Make this class (and any subclass) register with IceBoard
     __handler_for__ = IceBoard
@@ -307,37 +339,23 @@ class IceBoardHandler(handler.Handler, tuber.TuberObject):
     # Provide access to hardware_map attributes as if they were local
     hostname = HandlerParentAttribute(lambda ib: ib.hostname)
     serial = HandlerParentAttribute(lambda ib: ib.serial)
+    part_number = HandlerParentAttribute(lambda ib: ib.__ipmi_part_number__)
     crate = HandlerParentAttribute(lambda ib: ib.crate.handler if ib.crate else None)
     slot = HandlerParentAttribute(lambda ib: ib.slot)
-    mezzanine = HandlerParentAttribute(lambda ib: {slot: mezz.handler if mezz else None for (slot, mezz) in ib.mezzanine.items()}, {})
-    tuber_objname = HandlerParentAttribute(lambda ib: ib.__class__.__name__, 'IceBoard')
+    mezzanine = HandlerParentAttribute(lambda ib: {slot: mezz.handler if mezz else None for (slot, mezz) in ib.mezzanine.items()})
+    tuber_objname = HandlerParentAttribute(lambda ib: ib.__class__.__name__)
 
-    @property
-    def tuber_uri(self):
-        '''Smarter, IceBoard-aware tuber_uri.
 
-        The version of 'tuber_uri' in tuber.py doesn't know about calculating
-        hostnames from serials, for instance.
-        '''
-        if self.hostname:
-            # We have a hostname; just use it.
-            return 'http://{}/tuber'.format(self.hostname)
+    def __init__(self, hostname=None, serial=None, part_number=None, crate=None, slot=None, mezzanine={}, tuber_objname='IceBoard', **kwargs):
+        super(IceBoardHandler, self).__init__(**kwargs)  # pass on the remaining kwargs
+        self.hostname = hostname
+        self.serial = serial
+        self.part_number = part_number
+        self.crate = crate
+        self.slot = slot
+        self.mezzanine = mezzanine
+        self.tuber_objname = tuber_objname
 
-        if self.serial:
-            # We have a serial number; compute the hostname.
-            return 'http://iceboard{}.local/tuber'.format(self.serial)
-
-        if self.slot and self.crate:
-            # We're in a specified slot in a crate. For now, that means we
-            # need IceCrate.resolve() to be called. When I2C contention on the
-            # backplane isn't an issue, this is also enough to compute the
-            # hostname (i.e. slot3.crate001.local).
-            raise NameError("Slot and crate supplied, but you haven't called "
-                            "'resolve' on the crate yet. Until you do, I "
-                            "don't know how to talk to boards.")
-
-        raise NameError("Couldn't figure out a Tuber URI for this object! "
-                        "I need serial or crate information.")
 
     def __repr__(self):
         """ Provides a concise string representation of this Iceboard that is
@@ -346,14 +364,30 @@ class IceBoardHandler(handler.Handler, tuber.TuberObject):
         alphanumeric characters only).
         """
 
+        return "%s(%s)" % (self.__class__.__name__,  self.get_id())
+
+        # if self.crate and self.slot:
+        #     return "%s(C%s.S%02i)" % (self.__class__.__name__,
+        #                               self.crate.serial, self.slot)
+        # if self.serial:
+        #     return "%s(SN%s)" % (self.__class__.__name__,  self.serial)
+        # if self.hostname:
+        #     return "%s(%s)" % (self.__class__.__name__,  self.hostname)
+        # return "%s(?)" % (self.__class__.__name__)
+
+    def get_id(self):
+        """ Return a string that identifies uniquely the motherboard board. Comprises the model number and the serial number.
+        """
         if self.crate and self.slot:
-            return "%s(C%s.S%02i)" % (self.__class__.__name__,
-                                      self.crate.serial, self.slot)
-        if self.serial:
-            return "%s(SN%s)" % (self.__class__.__name__,  self.serial)
-        if self.hostname:
-            return "%s(%s)" % (self.__class__.__name__,  self.hostname)
-        return "%s(?)" % (self.__class__.__name__)
+            return "C%s.S%02i" % (self.crate.serial, self.slot)
+        elif self.serial:
+            return "SN%s" % (self.serial)
+        elif self.hostname:
+            return "%s" % (self.hostname)
+        else:
+            return "?"
+
+        # return '%s_SN%s' % (self.part_number, self.serial)
 
     def set_fpga_bitstream(self, buf):
         '''
@@ -365,12 +399,8 @@ class IceBoardHandler(handler.Handler, tuber.TuberObject):
         b64_string = base64.b64encode(buf)
         self._set_fpga_bitstream_base64(b64_string)
 
-    #-------------------------------------
-    # Python Motherboard EEPROM management
-    #-------------------------------------
-
     def _eeprom_write_ipmi(self, part_number, serial_number, product_version):
-        '''Write crrmatted EEPROM for IceBoards.
+        '''Write IPMI-formatted EEPROM for IceBoards.
 
         These fields are read back and parsed by software, so you have
         to get them right or things will misbehave. This method currently
@@ -410,10 +440,6 @@ class IceBoardHandler(handler.Handler, tuber.TuberObject):
         b64_string = base64.b64encode(fru.encode())
         return self._motherboard_eeprom_write_base64(b64_string)
 
-    #-----------------------------------
-    # Python Backplane EEPROM management
-    #-----------------------------------
-
     def _backplane_eeprom_write_ipmi(self,
                                      part_number,
                                      serial_number,
@@ -427,7 +453,7 @@ class IceBoardHandler(handler.Handler, tuber.TuberObject):
         >>> m._backplane_eeprom_write_ipmi(
         ...     part_number="MGK7BP",
         ...     serial_number="001",
-        ...     product_version="0")
+        ...     product_version="00")
 
         DON'T fill incorrect values unless they're visibly incorrect,
         since this data tends to be useful when debugging physical
@@ -468,9 +494,47 @@ class IceBoardHandler(handler.Handler, tuber.TuberObject):
         b64_string = base64.b64encode(fru.encode())
         return self._backplane_eeprom_write_base64(b64_string)
 
+    @property
+    def tuber_uri(self):
+        '''Smarter, IceBoard-aware tuber_uri.
+
+        The version of 'tuber_uri' in tuber.py doesn't know about calculating
+        hostnames from serials, for instance.
+        '''
+
+        if self.hostname:
+            # We have a hostname; just use it.
+            return 'http://{}/tuber'.format(self.hostname)
+
+        if self.serial:
+            # We have a serial number; compute the hostname.
+            return 'http://iceboard{}.local/tuber'.format(self.serial)
+
+        if self.slot and self.crate:
+            # We're in a specified slot in a crate. For now, that means we
+            # need IceCrate.resolve() to be called. When I2C contention on the
+            # backplane isn't an issue, this is also enough to compute the
+            # hostname (i.e. slot3.crate001.local).
+            raise NameError("Slot and crate supplied, but you haven't called "
+                            "'resolve' on the crate yet. Until you do, I "
+                            "don't know how to talk to boards.")
+
+        raise NameError("Couldn't figure out a Tuber URI for this object! "
+                        "I need serial or crate information.")
+
+    @property
+    def _sleep_python(self):
+        class P(async.Parallelizable):
+            @tornado.gen.coroutine
+            def __call_async__(self, delay):
+                yield tornado.gen.Task(
+                    tornado.ioloop.IOLoop.current().add_timeout,
+                    datetime.timedelta(seconds=delay))
+        return P()
+
+
 @session.register_yaml_object()
 class FMCMezzanine(hardware_map.HWMResource, handler.HandlerObject):
-    pass
     """FMC Mezzanine schema object.
 
     This is an abstract class. To specialize it for a particular FMC
@@ -499,13 +563,12 @@ class FMCMezzanine(hardware_map.HWMResource, handler.HandlerObject):
     mezzanine = Column(Integer)
 
     def __repr__(self):
-        # return self.handler.__repr__() if self.handler else object.__repr__(self)
-        # return '%s(%s)' % (self.__class__.__name__, self.serial)
         return "%r.%s(%r,%r)" % (
             self.iceboard,
             self.__class__.__name__,
             self.mezzanine,
-            self.serial)
+            self.serial
+        )
 
 @tuber.TuberCategory("Mezzanine", lambda m: m.iceboard,
                      mezzanine=lambda m: m.mezzanine)
@@ -517,7 +580,21 @@ class FMCMezzanineHandler(handler.Handler):
 
     iceboard = HandlerParentAttribute(lambda ib: ib.iceboard)
     serial = HandlerParentAttribute(lambda ib: ib.serial)
+    part_number = HandlerParentAttribute(lambda ib: ib.__ipmi_part_number__)
     mezzanine = HandlerParentAttribute(lambda ib: ib.mezzanine)
+
+    def __repr__(self):
+        # return '%s(%s)' % (self.__class__.__name__, self.serial)
+        return "%r.%s(%r,%r)" % (
+            self.iceboard,
+            self.__class__.__name__,
+            self.mezzanine,
+            self.serial)
+
+    def get_id(self):
+        """ Return a string that identifies uniquely the mezzanine board. Comprises the model number and the serial number.
+        """
+        return '%s_SN%s' % (self.part_number, self.serial)
 
     def eeprom_write(self, buf):
         '''Writes a collection of bytes to the internal EEPROM.
@@ -541,14 +618,7 @@ class FMCMezzanineHandler(handler.Handler):
         self.iceboard._mezzanine_eeprom_write_base64(
             self.mezzanine,
             b64_string,
-            0)
-
-    def __repr__(self):
-        # return '%s(%s)' % (self.__class__.__name__, self.serial)
-        return "%r.%s(%r,%r)" % (
-            self.iceboard,
-            self.__class__.__name__,
-            self.mezzanine,
-            self.serial)
+            0
+        )
 
 # vim: sts=4 ts=4 sw=4 tw=78 smarttab expandtab
