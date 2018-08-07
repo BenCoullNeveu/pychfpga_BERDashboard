@@ -127,7 +127,8 @@ def setup_logging(dict_config={}, log_levels={}, base_package_name=None, script_
             handler_config.level = handler_config.level.upper()
 
         filename = handler_config.get('filename', None)
-        if isinstance(filename, str) and '%(' in filename:
+
+        if isinstance(filename, basestring) and '%(' in filename:
             handler_config.filename = filename % kwargs
 
     # fix the case of the logging levels to uppercase
