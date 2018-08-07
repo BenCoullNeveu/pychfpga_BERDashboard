@@ -203,6 +203,8 @@ class AsyncRESTClient(AsyncMixin):
 
         self.log.info('%32r: Creating %s at %s:%i' % (self, self.__class__.__name__, self.hostname, port))
         self.client = tornado.httpclient.AsyncHTTPClient()
+        # Increase number of threads from default 300 to 2000
+        self.client.configure(None, max_clients=2000)
         if heartbeat_string:
             self.add_heartbeat(heartbeat_string, heartbeat_period)
         self.add_shutdown_handler()
@@ -312,7 +314,7 @@ class JsonRequestHandler(tornado.web.RequestHandler):
 
     def set_default_headers(self):
         self.set_header('Content-Type', 'application/json')
-        
+
     @coroutine
     def head(self, *args, **kwargs):
         if kwargs:
@@ -352,7 +354,8 @@ class JsonRequestHandler(tornado.web.RequestHandler):
 
 class AsyncRESTServer(AsyncMixin):
     """
-    Creates a Tornado Web application that will call the endpoint handlers registered with the RESTserver.endpoint decorator.
+    Creates a Tornado Web application that will call the endpoint handlers registered
+    with the RESTserver.endpoint decorator.
 
     GET endpoint methods are coroutines and are tagged with the @endpoint decorator:
 
@@ -376,17 +379,20 @@ class AsyncRESTServer(AsyncMixin):
     The method can access to the AsyncRESTServer instance ('self') to obtain context information.
 
 
-    `handler` is the RequestHandler that is handling the current request and can be used for more sophisticated
-    processing or error handling.
+    `handler` is the RequestHandler that is handling the current request and can
+    be used for more sophisticated processing or error handling.
 
-    Endpoint methods must be Tornado co-routines, and should therefore `yield` when doing lengthy
-    IO-bound operations and shall use `coroutine_return` to return values (do not use the 'return' statement).
+    Endpoint methods must be Tornado co-routines, and should therefore `yield` when
+    doing lengthy IO-bound operations and shall use `coroutine_return` to return
+    values (do not use the 'return' statement).
 
     If the endpoint handler is successful, its return value is sent to the client.
 
-    If an uncatched exception has occured, a dictionary containing the 'error' key set with the error information (and traceback) is sent back.
+    If an uncatched exception has occured, a dictionary containing the 'error'
+    key set with the error information (and traceback) is sent back.
 
-    User can signal an error condition by raising an exception or by returning a dictionary with the 'error' key.
+    User can signal an error condition by raising an exception or by returning a
+    dictionary with the 'error' key.
     """
 
     DEFAULT_PORT = 80
@@ -800,4 +806,3 @@ def run_client(args, server_class=None, client_class=None, object_name='', serve
 
     old_ioloop.make_current()
     return client, server
-

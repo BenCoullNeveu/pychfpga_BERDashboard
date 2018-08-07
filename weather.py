@@ -14,25 +14,26 @@ from rest import AsyncRESTClient, AsyncRESTServer, endpoint
 from rest import coroutine, coroutine_return, sleep, IOLoop
 from rest import RunSyncWrapper, SocketContext, run_client  # generic REST servers and clients
 
-dataset = {    "barometer": {"type": "pressure", "units": "hPa"},
-                "pressure": {"type": "pressure", "units": "hPa"},
-               "altimeter": {"type": "pressure", "units": "hPa"},
-                  "inTemp": {"type": "temperature", "units": "deg C"},
-                 "outTemp": {"type": "temperature", "units": "deg C"},
-              "inHumidity": {"type": "percent", "units": "%"},
-             "outHumidity": {"type": "percent", "units": "%"},
-               "windSpeed": {"type": "speed", "units": "km/h"},
-                 "windDir": {"type": "direction", "units": "deg"},
-                "windGust": {"type": "speed", "units": "km/h"},
-             "windGustDir": {"type": "direction", "units": "deg"},
-                "rainRate": {"type": "rate", "units": "mm/h"},
-                    "rain": {"type": "amount", "units": "mm"},
-                "dewpoint": {"type": "temperature", "units": "deg C"},
-               "windchill": {"type": "temperature", "units": "deg C"},
-               "heatindex": {"type": "temperature", "units": "deg C"}}
+dataset = {"barometer"  : {"type": "pressure", "units": "hPa"},
+           "pressure"   : {"type": "pressure", "units": "hPa"},
+           "altimeter"  : {"type": "pressure", "units": "hPa"},
+           "inTemp"     : {"type": "temperature", "units": "deg C"},
+           "outTemp"    : {"type": "temperature", "units": "deg C"},
+           "inHumidity" : {"type": "percent", "units": "%"},
+           "outHumidity": {"type": "percent", "units": "%"},
+           "windSpeed"  : {"type": "speed", "units": "km/h"},
+           "windDir"    : {"type": "direction", "units": "deg"},
+           "windGust"   : {"type": "speed", "units": "km/h"},
+           "windGustDir": {"type": "direction", "units": "deg"},
+           "rainRate"   : {"type": "rate", "units": "mm/h"},
+           "rain"       : {"type": "amount", "units": "mm"},
+           "dewpoint"   : {"type": "temperature", "units": "deg C"},
+           "windchill"  : {"type": "temperature", "units": "deg C"},
+           "heatindex"  : {"type": "temperature", "units": "deg C"}}
 
 def get_wview_metrics(db_path='/var/lib/wview/archive/wview-archive.sdb'):
-    """ Return a Metrics object containing the most recent entry of the wview sqlite database specified in `db_path`.
+    """ Return a Metrics object containing the most recent entry of the
+        wview sqlite database specified in `db_path`.
 
     Parameters:
 
