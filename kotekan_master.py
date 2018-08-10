@@ -5,15 +5,16 @@ RESTful Server & Client Module for KotekanMaster to initialize,
 manage and operate the CHIME GPU Backend.
 """
 
-# Imports
+# Standard Imports
 import os
-import subprocess
 import time
-import requests
-import log
 import json
 import hashlib
 from random import choice
+import requests
+
+#Custom Imports
+import log
 from pychfpga import NameSpace, load_yaml_config, merge_dict
 from kotekan import KotekanAsyncRESTClient
 from rest import AsyncRESTClient, AsyncRESTServer, endpoint
@@ -75,6 +76,8 @@ class KotekanMaster(object):
         # Watchdog parameters
         self.watchdog_enabled = False
         self.watchdog_interval = 200
+        # Watchdog Statistics Format
+        # { node_name }
         self.watchdog_stats = {}
 
         # GPS Parameters
@@ -106,12 +109,25 @@ class KotekanMaster(object):
         self.gains_directory = None
         self.gains_update_time = None
 
+        #Calibration Broker Parameters
+        self.calibration_dir = None
+        self.calibration_dir_tag = None
+        self.calibration_dir_time = None
+        self.calibration_bad_inputs = None
+        self.calibration_bad_inputs_tag = None
+        self.calibration_bad_inputs_time = None
+
         # Revision Control Logging
         self.git_version = "2018.07"
         self.log.info("%s : Program : %s", self, self.program)
         self.log.info("%s : Git Ver : %s", self, self.git_version)
-        self.slack = SlackClient(SLACK_TOKEN_NAME="SLACK_API_TOKEN",
-                                 module_name="KotekanMaster")
+        self.slack = SlackClient(
+            SLACK_TOKEN_NAME="SLACK_API_TOKEN",
+            module_name="KotekanMaster")
+        self.pulsar_slack = SlackClient(
+            SLACK_TOKEN_NAME="PULSAR_SLACK_API_TOKEN",
+            module_name="KotekanMaster"
+            )
 
     # Helper Methods
     #   NOTE: These methods are not coroutines!
@@ -131,9 +147,9 @@ class KotekanMaster(object):
             # Check if the request worked out.
             gps_request.raise_for_status()
             self.gps_time = gps_request.json()
-        except Exception as e:
+        except Exception as error:
             self.log.error('%s : failed to get gps time with exception: %s',
-                           self, e)
+                           self, error)
             coroutine_return(result="FAILED")
 
         if self.gps_time == {}:
@@ -1214,6 +1230,50 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         result = yield self.kotekan_master.kotekan_config_md5sum()
         coroutine_return(result)
 
+
+    # Calibration Broker Endpoints
+    @coroutine
+    @endpoint('update-calibration-dir')
+    def update_calibration_dir(
+            self, handler, tag, start_time, calibration_dir):
+        """
+        POST to update and federate the calibration directory
+
+        curl
+        -d '{ "tag": <HASH>,
+              "start_time": <C_TIME>,
+              "calibration_dir": 'hostname:/full/path/to/calibration/dir/'
+            }'
+        -X POST
+        -H "Content-Type: application/json"
+        http://KOTEKAN-MASTER-NODE/update-calibration-dir
+        """
+        result = yield self.kotekan_master.federate_calibration_dir(
+            tag, calibration_dir, start_time)
+        coroutine_return(result)
+
+    @coroutine
+    @endpoint('update-bad-inputs')
+    def update_bad_inputs(
+            self, handler, tag, start_time, correlator_bad_inputs, cylinder_bad_inputs):
+        """
+        POST to update and federate the bad inputs
+
+        curl
+        -d
+        '{ "tag": <HASH>,
+           "start_time": <C_TIME>,
+           "correlator_bad_inputs": <ARRAY>,
+           "cylinder_bad_inputs": <ARRAY> }'
+        -X POST
+        -H "Content-Type: application/json"
+        http://KOTEKAN-MASTER:PORT/update-bad-inputs
+        """
+        result = yield self.kotekan_master.federate_bad_inputs(
+            tag, start_time, correlator_bad_inputs, cylinder_bad_inputs)
+        coroutine_return(result)
+
+
     # Parameter Endpoints.
     @coroutine
     @endpoint('update-gain-dir')
@@ -1495,6 +1555,41 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
         result = yield self.get('kotekan-config-md5sum')
         coroutine_return(result)
 
+    # Calibration Broker Endpoints
+    @coroutine
+    def update_calibration_dir(
+        self,
+        tag,
+        start_time,
+        calibration_dir):
+        """
+        Update and federate calibration directory changes.
+        """
+        result = yield self.post(
+            'update-calibration-dir',
+            tag,
+            start_time,
+            calibration_dir)
+        coroutine_return(result)
+
+    @coroutine
+    def update_bad_inputs(
+        self,
+        tag,
+        start_time,
+        correlator_bad_inputs,
+        cylinder_bad_inputs):
+        """
+        Update and federate bad inputs changes.
+        """
+        result = yield self.post(
+            'update-bad-inputs',
+            tag,
+            start_time,
+            correlator_bad_inputs,
+            cylinder_bad_inputs)
+        coroutine_return(result)
+    
     # Parameter Endpoints
     # All parameter endpoints have a corresponding value in the kotekan config.
     @coroutine
