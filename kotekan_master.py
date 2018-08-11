@@ -103,7 +103,8 @@ class KotekanMaster(object):
         self.cal_dir = None
         self.cal_dir_tag = None
         self.cal_dir_time = None
-        self.bad_inputs = None
+        self.correlator_bad_inputs = None
+        self.cylinder_bad_inputs = None
         self.bad_inputs_tag = None
         self.bad_inputs_time = None
 
@@ -866,7 +867,7 @@ class KotekanMaster(object):
             cylinder_bad_inputs
         ):
         """
-        Update Calibration Directory
+        Update Calibration Broker provided Bad Input Feeds Information
 
         Paramters
         ---------
@@ -878,7 +879,7 @@ class KotekanMaster(object):
                 List of bad inputs in correlator schema
             cylinder_bad_inputs : list
                 List of bad inputs in cylinder schema
-        
+
         Returns
         -------
             kotekan_result : string
@@ -903,6 +904,7 @@ class KotekanMaster(object):
             for node_name, kotekan in self.nodes.items()
         }
         # Federate bad inputs to receiver nodes
+        # TODO: Add receiver node logic
         receiver_result = yield {
             receiver_node: receiver.update_bad_inputs(tag, start_time, cylinder_bad_inputs)
             for receriver_node, receiver in self.receiver_nodes.items()
@@ -916,6 +918,56 @@ class KotekanMaster(object):
         )
         coroutine_return(kotekan_result, receiver_result)
 
+    @coroutine
+    def update_calibration_dir(
+            self,
+            tag,
+            start_time,
+            cal_dir
+        ):
+        """
+        Update Calibration Broker provided calibration directory
+
+        Paramters
+        ---------
+            tag : sha1 hashsum
+                Unique hash representing the calibration
+            start_time : time.ctime type
+                UTC after which the calibration paramter should be applied
+            cal_dir : string
+                Directory location of the calibration information.
+                Format: "http://HOSTNAME/path/to/calibration"
+
+        Returns
+        -------
+            kotekan_result : string
+                Result of bad input federation to kotekan nodes
+            receiver_result : string
+                Result of bad input federation to receiver nodes
+
+        """
+        # Update KotekanMaster state machine
+        self.cal_dir_tag = tag
+        self.cal_dir_time = start_time
+        self.cal_dir = cal_dir
+
+        # Federate calibration directory to kotekan nodes
+        # Nothing to do here currently
+        kotekan_result = {}
+
+        # Federate calibration directory to receiver nodes
+        receiver_result = yield {
+            receiver_node: receiver.update_cal_dir(tag, start_time, cal_dir)
+            for receiver_node, receiver in self.receiver_nodes.items()
+        }
+        # Log things
+        self.log.info("%s : Parameter cal_dir updated to: %s", self, cal_dir)
+        self.slack.info(
+            msg_title='update-cal-dir',
+            msg=cal_dir,
+            as_inline_code=True
+        )
+        coroutine_return(kotekan_result, receiver_result)
 
     # Parameter POST Based Endpoints
     @coroutine
@@ -1054,8 +1106,10 @@ class KotekanMaster(object):
             msg = "beam: {}, ra: {}, dec: {}, scaling: {}".format(
                 beam, ra, dec, scaling
             )
-            self.slack.info(
-                msg_title="update-pulsar-pointing", msg=msg, as_inline_code=True
+            self.pulsar_slack.info(
+                msg_title="update-pulsar-pointing",
+                msg=msg,
+                as_inline_code=True
             )
             self.log.info("%s : Pulsar Parameters Updated", self)
             self.log.info(msg)
@@ -1251,10 +1305,10 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         Parameters
         ----------
         curl
-        -d '{"node_list":["csDg5", "csDg6"]}'
-        -X POST
-        -H "Content-Type: application/json"
-        http://localhost:54323/whitelist-node
+            -d '{"node_list":["csDg5", "csDg6"]}'
+            -X POST
+            -H "Content-Type: application/json"
+            http://localhost:54323/whitelist-node
         """
         print node_list
         result = yield self.kotekan_master.whitelist_node(node_list)
@@ -1376,7 +1430,13 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
     # Calibration Broker Endpoints
     @coroutine
     @endpoint("update-calibration-dir")
-    def update_calibration_dir(self, handler, tag, start_time, calibration_dir):
+    def update_calibration_dir(
+            self,
+            handler,
+            tag,
+            start_time,
+            calibration_dir
+        ):
         """
         POST to update and federate the calibration directory
 
@@ -1397,7 +1457,12 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
     @coroutine
     @endpoint("update-bad-inputs")
     def update_bad_inputs(
-        self, handler, tag, start_time, correlator_bad_inputs, cylinder_bad_inputs
+            self,
+            handler,
+            tag,
+            start_time,
+            correlator_bad_inputs,
+            cylinder_bad_inputs
     ):
         """
         POST to update and federate the bad inputs
@@ -1482,7 +1547,14 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
 
     @coroutine
     @endpoint("update-pulsar-pointing")
-    def update_pulsar_pointing(self, handler, beam, ra, dec, scaling):
+    def update_pulsar_pointing(
+            self,
+            handler,
+            beam,
+            ra,
+            dec,
+            scaling
+        ):
         """
         POST to update CHIME/PSR pulsar beam pointing.
         curl
