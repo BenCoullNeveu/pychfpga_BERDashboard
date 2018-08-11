@@ -16,7 +16,7 @@ HOSTNAME = 'csBfs'
 PORT = 54323
 
 CANS = ['n', 's']
-RACKS = [0, 1, 2, 3, 4, 5, 6, 8, 9, 'A', 'B', 'C', 'D', 'E']
+RACKS = [0, 1, 2, 3, 4, 5, 6, 8, 9, 'a', 'b', 'c', 'd', 'e']
 NODES = range(10)
 VALID_NODES = []
 for can in CANS:
@@ -110,6 +110,7 @@ def blacklist(nodes):
     """
     Blacklist a node from being managed by KotekanMaster
     """
+    nodes = nodes.lower()
     regex = re.compile(nodes)
     current_nodes = filter(regex.match, VALID_NODES)
     click.echo("Blacklist-ing Nodes : {} ".format(current_nodes))
@@ -127,6 +128,7 @@ def whitelist(nodes):
     """
     Whitelist a node to be managed by KotekanMaster
     """
+    nodes = nodes.lower()
     regex = re.compile(nodes)
     current_nodes = filter(regex.match, VALID_NODES)
     click.echo("Whitelist-ing Nodes : {}".format(current_nodes))
