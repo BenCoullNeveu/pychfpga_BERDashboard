@@ -97,15 +97,16 @@ class Hdf5Writer(object):
     Methods
     -------
     create_writer
-    add_dataset
     write
     flush_writer
     close_writer
     read
+    read_all
     get
     close_all
     set_attrs
     get_metrics
+    dump
 
     Abstract Methods
     ----------------
@@ -125,7 +126,7 @@ class Hdf5Writer(object):
 
     _with_lock_file = True
 
-    def __init__(self, output_file=None, max_file_size=MAX_FILE_SIZE, max_num=None):
+    def __init__(self, output_file=None, max_file_size=MAX_FILE_SIZE, memory_size=0, max_num=None):
         """ Instantiates an Hdf5Writer.
 
         Parameters
@@ -140,16 +141,22 @@ class Hdf5Writer(object):
         self.num = 0
         self.writer = None
 
+        self.in_memory = []
+        self.memory = {}
+
         self.reader = []
         self.search = {}
         self.grow = {'axis':[], 'index':[]}
 
         self.attrs = {}
+        self.index_map = {}
 
         self._rlock = threading.RLock()
 
         self._max_file_size = max_file_size
         self._max_num = max_num if max_num is not None else float('inf')
+
+        self._with_memory = memory_size
 
         self._metric_name = convert_camel_case(self.__class__.__name__)
 
@@ -189,9 +196,12 @@ class Hdf5Writer(object):
                 else:
                     RuntimeError("Must supply all non-growing axis at file creation, please specify %s." % name)
 
+            # Set index map
+            self._set_index_map()
+
             # Create datasets
             for name in self._dataset_spec.keys():
-                self.add_dataset(name)
+                self._add_dataset(name)
 
             # Set dimensions
             self.num = 1
@@ -210,8 +220,11 @@ class Hdf5Writer(object):
             if ('version' in self.attrs) and (self.writer.attrs['version'] != self.attrs['version']):
                 ValueError("Code is version %s, file is version %s." % (self.writer.attrs['version'], self.attrs['version']))
 
+            # Set index map
+            self._set_index_map()
+
             # Set dimensions
-            self.num = self._index_map[self._grow_ax].size
+            self.num = self.index_map[self._grow_ax].size
             self.ind = self.num
 
             # Update searchable axes
@@ -221,15 +234,19 @@ class Hdf5Writer(object):
                 self.search[key] = (rr, kk)
 
             # Set growing axis
-            tmp = self._index_map[self._grow_ax][:]
+            tmp = self.index_map[self._grow_ax][:]
             self.grow['axis'] += list(tmp)
             self.grow['index'] += zip(np.repeat(rr, tmp.size), np.arange(tmp.size, dtype=np.int))
 
         # Add to readers
         self.reader.append(self.writer)
 
+        # Initialize memory
+        self._initialize_memory()
+        self._load_into_memory()
 
-    def add_dataset(self, name):
+
+    def _add_dataset(self, name):
 
         # Extract specifications for this dataset from class attribute
         dspec = self._dataset_spec[name]
@@ -244,7 +261,7 @@ class Hdf5Writer(object):
                 l = 1
                 m = None
             else:
-                l = len(self._index_map[axis])
+                l = len(self.index_map[axis])
                 m = l
 
             shape += (l,)
@@ -275,8 +292,8 @@ class Hdf5Writer(object):
                     if axis in kwargs:
                         index_map[axis] = kwargs[axis]
                     else:
-                        if (self.writer is not None):
-                            index_map[axis] = self._index_map[axis][:]
+                        if axis in self.index_map:
+                            index_map[axis] = self.index_map[axis][:]
                         else:
                             RuntimeError("Must include non-grow axes in initial call to write.")
 
@@ -295,7 +312,6 @@ class Hdf5Writer(object):
                 self.num = self.ind + 1
 
                 self._index_map[self._grow_ax].resize((self.num, ))
-
                 for name in self.datasets:
                     is_grow = np.flatnonzero(self.writer[name].attrs['axis'] == self._grow_ax)
                     if is_grow.size > 0:
@@ -312,21 +328,36 @@ class Hdf5Writer(object):
         # Lock access to the file during write
         with self._rlock:
 
+            index = (self.writer_index, self.ind)
+
             # Append this sample to the end of the datasets
             self._index_map[self._grow_ax][self.ind] = smp
+            self._set_index_map()
 
-            for key, value in kwargs.iteritems():
-                if key in self.datasets:
+            for key in self.datasets:
+                value = kwargs.get(key, None)
+                if value is not None:
+
                     self.writer[key][self.ind] = value
 
+                    if key in self.memory:
+                        self.memory[key] = np.roll(self.memory[key], -1, axis=0)
+                        self.memory[key][-1] = value
+
             # Update searchable axes
-            rr = self.writer_index
             uniq_id = self.writer[self._uniq_id][self.ind]
-            self.search[uniq_id] = (rr, self.ind)
+            self.search[uniq_id] = index
 
             # Update grow axis
             self.grow['axis'].append(smp)
-            self.grow['index'].append((rr, self.ind))
+            self.grow['index'].append(index)
+
+            # Update memory contents
+            if self.in_memory:
+                self.in_memory = self.in_memory[1:] + [index]
+
+            # Flush to disk
+            self.flush_writer()
 
             # Increment counter
             self.ind += 1
@@ -380,8 +411,11 @@ class Hdf5Writer(object):
 
             self.reader.pop(rr)
 
+            # Reset memory
+            self._initialize_memory()
+            self._load_into_memory()
 
-    @rlock
+
     def read(self, key, dataset):
 
         if isinstance(key, tuple):
@@ -389,7 +423,16 @@ class Hdf5Writer(object):
         else:
             index = self[key]
 
-        return self.reader[index[0]][dataset][index[1]] if index is not None else None
+        if index is not None:
+            if index in self.in_memory:
+                return self.memory[dataset][self.in_memory.index(index)]
+
+            else:
+                with self._rlock:
+                    return self.reader[index[0]][dataset][index[1]]
+
+        else:
+            return None
 
 
     @rlock
@@ -411,6 +454,14 @@ class Hdf5Writer(object):
         if self.writer:
             self.writer = self.writer.close()
 
+        # Empty memory
+        self.memory = {}
+        self.in_memory = []
+
+        # Empty index map and attributes
+        self.index_map = {}
+        self.attrs = {}
+
         # Reset search and grow axis
         self.search = {}
         self.grow = {'axis':[], 'index':[]}
@@ -418,6 +469,62 @@ class Hdf5Writer(object):
         self.ind = 0
         self.num = 0
 
+
+    def _initialize_memory(self):
+
+        if self._with_memory:
+
+            # Create empty buffer for this dataset
+            for name, dspec in self._dataset_spec.iteritems():
+
+                axes = dspec['axes']
+                dtype = dspec['dtype']
+
+                memshape = ()
+                for axis in axes:
+                    b = self._with_memory if axis == self._grow_ax else len(self._index_map[axis])
+                    memshape += (b, )
+
+                self.memory[name] = np.zeros(memshape, dtype=dtype)
+
+            # Create list for lookup
+            self.in_memory = [None] * self._with_memory
+
+
+    def _load_into_memory(self):
+
+        for kk in range(self._with_memory):
+
+            rr = -(kk + 1)
+            try:
+                index = self.grow['index'][rr]
+            except IndexError:
+                break
+
+            for dset in self._dataset_spec.keys():
+                self.memory[dset][rr] = self.reader[index[0]][dset][index[1]]
+
+            self.in_memory[rr] = index
+
+    @rlock
+    def check_memory(self):
+
+        check = {}
+
+        for dset, mem in self.memory.iteritems():
+
+            check[dset] = {'match':0, 'total':0}
+
+            for ii, index in enumerate(self.in_memory):
+
+                if index is not None:
+
+                    match = int(np.all(self.reader[index[0]][dset][index[1]] == mem[ii]))
+
+                    check[dset]['match'] += match
+                    check[dset]['total'] += 1
+
+        return check
 
     def set_attrs(self, **kwargs):
 
@@ -481,8 +588,7 @@ class Hdf5Writer(object):
             ValueError('Function get_metrics is only compatible with time growing archives.')
 
         if timestamp is None:
-            with self._rlock:
-                timestamp = self.grow['axis'][-1]
+            timestamp = self.grow['axis'][-1]
 
         metrics = Metrics(default_type='gauge')
         if self.writer:
@@ -637,14 +743,11 @@ class Hdf5Writer(object):
         """
         return self.writer['index_map']
 
-    @property
     @rlock
-    def index_map(self):
-        """ index_map for reading (thread-safe).
+    def _set_index_map(self):
+        """ set the index_map for reading (thread-safe).
         """
-        index_map = {key:value[:] for key, value in self._index_map.iteritems()}
-
-        return index_map
+        self.index_map = {key:value[:] for key, value in self._index_map.iteritems()}
 
     @property
     def last_update(self):
