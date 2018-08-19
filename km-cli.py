@@ -60,7 +60,9 @@ def _post_command(command, data):
 # MAIN CLI GROUP
 @click.group()
 @click.version_option(
-    version=version.get_version(), prog_name="km-cli", message="%(prog)s %(version)s"
+    version=version.get_version(),
+    prog_name="km-cli",
+    message="%(prog)s %(version)s"
 )
 def cli():
     """
@@ -312,6 +314,12 @@ def cosmology_config():
     flag_value="cal_broker",
     help="get calibration broker status",
 )
+@click.option(
+    "--pulsar-beams",
+    "status_option",
+    flag_value="pulsar_beams",
+    help="get current pulsar pointings"
+)
 def get_status(status_option):
     """
     GET KotekanMaster status
@@ -346,6 +354,9 @@ def get_status(status_option):
 
     elif status_option == "cal-broker":
         data_to_print = ["calibration_broker_status"]
+
+    elif status_option == "pulsar_beams":
+        data_to_print = ["pulsar_status"]
 
     try:
         for key in data_to_print:
