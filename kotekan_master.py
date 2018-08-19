@@ -59,6 +59,8 @@ class KotekanMaster(object):
         # KotekanAsyncRESTClient instances which are managed by KotekanMaster
         # Format {{node_name: KotekanMasterObj}}
         self.nodes = {}
+        self.receiver_nodes = {}
+
         # KotekanAsyncRESTClient instances blacklisted
         self.blacklist_nodes = []
         self.no_connection_nodes = {}
@@ -95,9 +97,17 @@ class KotekanMaster(object):
         self.current_folder = None
         self.logging_handlers = None
 
-        # Endpoint Parameters
+        # FRB Endpoint Parameters
         self.gains_directory = None
         self.gains_update_time = None
+        self.ew_spacing = None
+        self.ew_spacing_update_time = None
+        self.ns_extent = None
+        self.ns_extent_update_time = None
+
+        # Pulsar Status Parameters
+
+        # Cosmology Status Paramters
 
         # Calibration Broker Parameters
         self.cal_dir = None
@@ -113,10 +123,12 @@ class KotekanMaster(object):
         self.log.info("%s : Program : %s", self, self.program)
         self.log.info("%s : Git Ver : %s", self, self.git_version)
         self.slack = SlackClient(
-            SLACK_TOKEN_NAME="SLACK_API_TOKEN", module_name="KotekanMaster"
+            SLACK_TOKEN_NAME="SLACK_API_TOKEN",
+            module_name="KotekanMaster"
         )
         self.pulsar_slack = SlackClient(
-            SLACK_TOKEN_NAME="PULSAR_SLACK_API_TOKEN", module_name="KotekanMaster"
+            SLACK_TOKEN_NAME="PULSAR_SLACK_API_TOKEN",
+            module_name="KotekanMaster"
         )
 
     # Helper Methods
@@ -132,22 +144,52 @@ class KotekanMaster(object):
         """
         Get gps time for chime master to sync the kotekan nodes
         """
+        self.log.info("%s : Retreiving GPS Time ...", self)
+        self.slack.info(
+            msg_title="Retreiving GPS Time ...",
+            msg=self.gps_server,
+            as_inline_code=True
+        )
         try:
             gps_request = requests.get(self.gps_server)
             # Check if the request worked out.
             gps_request.raise_for_status()
+            # Change the GPS Time in KotekanMaster Status
             self.gps_time = gps_request.json()
-        except Exception as error:
+            # Append GPS time to the current kotekan config.
+            self.current_config.common_config.gps_time = self.gps_time
+        except requests.exceptions.RequestException as error:
+            msg = str(error)
+            self.slack.error(
+                msg_title="Unable to retreive GPS Time",
+                msg=msg,
+                as_inline_code=True
+            )
             self.log.error(
-                "%s : failed to get gps time with exception: %s", self, error
+                "%s : Unable to retreive GPS Time: %s", self, error
             )
             coroutine_return(result="FAILED")
 
+        # Check for the corner case when gps_server is booting up and
+        # returns an empty dict
         if self.gps_time == {}:
-            self.log.error("%s : failed to get gps time : got empty dict")
+            msg = (
+                "gps_server (%s) returned empty dict.", self.gps_server
+            )
+            self.log.error(msg)
+            self.slack.error(
+                msg_title="Unable to retreive GPS Time",
+                msg=msg,
+                as_inline_code=True
+            )
             coroutine_return(result="FAILED")
-
-        self.log.info("%s : successfully retrieved gps_time", self)
+        else:
+            self.log.info("%s : successfully retrieved gps_time", self)
+            self.slack.info(
+                msg_title="Successfully retrieved GPS Time",
+                msg=json.dumps(self.gps_time),
+                as_inline_code=True
+            )
         coroutine_return(result="PASSED")
 
     # KotekanMaster Methods
@@ -162,38 +204,47 @@ class KotekanMaster(object):
             self.log.info("%s : KotekanMaster server starting ...", self)
             self.slack.info(msg_title="KotekanMaster Startup Initiated")
             self.start_time = time.time()
-            self.isotime = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime(self.start_time))
+            self.isotime = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime(
+                self.start_time))
             self.localtime = time.strftime(
                 "%Y/%m/%d %H:%M:%S", time.localtime(self.start_time)
             )
             self.log.info("%s : Start Time : %s", self, self.localtime)
-            # startup_config is never changed throughout the operation of
-            # the array. All dynamic updates to the configuration are
-            # applied against the current_config
+
+            # The startup_config is never changed throughout the operation of
+            # KotekanMaster. All dynamic updates to the configuration are
+            # applied against a local copy called current_config
             self.startup_config = NameSpace(config)
             self.current_config = self.startup_config
+
             # Setup logging paths
             self.run_name = self.startup_config.run_name % dict(
                 isotime=self.isotime,
                 localtime=self.localtime,
                 corr_name=self.startup_config.corr_name,
             )
-            self.log.info("%s : Run Name : %s", self, self.run_name)
-            str_args = dict(
+            self.log.info(
+                "%s : Run Name : %s", self, self.run_name
+            )
+            run_args = dict(
                 isotime=self.isotime,
                 corr_name=self.startup_config.corr_name,
                 run_name=self.run_name,
             )
-            self.run_folder = self.startup_config.run_folder % str_args
+            self.run_folder = self.startup_config.run_folder % run_args
             self.run_folder = os.path.expanduser(self.run_folder)
             self.log.info("%s : Run Folder : %s", self, self.run_folder)
             self.current_folder = os.path.expanduser(
-                self.startup_config.current_folder % str_args
+                self.startup_config.current_folder % run_args
             )
             self.log.info("%s : Current Folder : %s", self, self.current_folder)
-            # Create run folders
+
+            # Create Run Folders for Logging
             try:
                 os.makedirs(self.run_folder)
+                self.log.info(
+                    "%s : Run Folder: %s", self, self.run_folder
+                )
                 self.slack.info(
                     msg_title="Run Folder",
                     msg=json.dumps(self.run_folder),
@@ -224,8 +275,8 @@ class KotekanMaster(object):
                         % (self, self.current_folder, self.run_folder, e)
                     )
                     self.log.warning(msg)
+
             # Setting up logging handlers
-            self.log.info("Run Folder Again: %s", self.run_folder)
             self.logging_handlers = log.setup_logging(
                 self.startup_config.logging.dict_config,
                 self.startup_config.logging.log_levels,
@@ -234,25 +285,10 @@ class KotekanMaster(object):
                 script_name=self.startup_config.logging.script_name,
                 run_folder=self.run_folder,
             )
-            self.log.info("%r : Logging Configured.", self)
-            # Get gps_time from the gps_server
-            self.log.info("%s : Retreiving GPS Time ...", self)
-            try:
-                self.gps_status = yield self._get_gps_time()
-                # Check for the corner case when gps returns an empty dict
-                if self.gps_time == {}:
-                    raise Exception("GPS Error")
-                self.slack.info(
-                    msg_title="GPS Time",
-                    msg=json.dumps(self.gps_time),
-                    as_inline_code=True,
-                )
-            except Exception as e:
-                self.log.error("%s : Unable to retreive GPS Time.", self)
-                self.slack.error(msg_title="Unable to retreive GPS Time.")
+            self.log.info("%s: Logging Configured.", self)
 
-            # Append GPS time to the config.
-            self.current_config.common_config.gps_time = self.gps_time
+            # Get gps_time from the self.gps_server
+            self.gps_status = yield self._get_gps_time()
 
             # Get current gain_dir from config file
             try:
@@ -262,19 +298,23 @@ class KotekanMaster(object):
                 self.gains_update_time = time.strftime(
                     "%Y/%m/%d %H:%M:%S", time.localtime(self.start_time)
                 )
-            except:
+            except Exception as warn:
+                self.log.warning(warn)
                 self.gains_directory = None
                 self.gains_update_time = None
+
+            # Create a client for each node.
             self.log.info("%s : Creating Kotekan Node Clients ...", self)
             yield self._create_node_clients()
             self.log.info("%s : Kotekan Clients Created.", self)
-            self.state = "on"
-            self.log.info("%s : KotekanMaster State : %s", self, self.state)
             self.slack.info(
                 msg_title="Nodes",
                 msg=json.dumps(self.nodes.keys()),
                 as_inline_code=True,
             )
+
+            self.state = "on"
+            self.log.info("%s : KotekanMaster State : %s", self, self.state)
 
             # Check if we can connect to Kotekan running on the nodes.
             self.log.info("%s : Checking node connection status ", self)
@@ -306,7 +346,9 @@ class KotekanMaster(object):
                 if version != random_kotekan_version:
                     msg = "{} != {}".format(version, random_kotekan_version)
                     self.slack.error(
-                        msg_title="Kotekan version error", msg=msg, as_inline_code=True
+                        msg_title="Kotekan version error",
+                        msg=msg,
+                        as_inline_code=True
                     )
                     raise Exception("Kotekan version error!!")
             self.slack.info(
@@ -337,10 +379,23 @@ class KotekanMaster(object):
         nodes = self.current_config.nodes or {}
         for node_name, node_params in nodes.items():
             self.nodes[node_name] = KotekanAsyncRESTClient(
-                name=node_name, heartbeat_period=5000, **node_params
+                name=node_name,
+                heartbeat_period=5000,
+                **node_params
             )
         self.log.info("%s : Created kotekan clients.", self)
-        coroutine_return({})
+
+        # Create clients for receiver nodes
+        self.receiver_nodes = {}
+        receiver_nodes = self.current_config.receiver_nodes or {}
+        for node_name, node_params in receiver_nodes.items():
+            self.receiver_nodes[node_name] = KotekanAsyncRESTClient(
+                name=node_name,
+                heartbeat_period=5000,
+                **node_params
+            )
+        self.log.info("%s : Created receiver clients.", self)
+        coroutine_return(result="PASSED")
 
     @coroutine
     def stop_kotekan_master(self):
@@ -371,20 +426,42 @@ class KotekanMaster(object):
             "current_config": self.current_config.common_config.as_dict(),
             "nodes": self.nodes.keys(),
             "blacklist_nodes": self.blacklist_nodes,
-            "watchdog_enabled": self.watchdog_enabled,
-            "watchdog_interval": self.watchdog_interval,
-            "watchdog_stats": self.watchdog_stats,
-            "array_sync": self.array_sync,
-            "km_sync": self.km_sync,
-            "gps_server": self.gps_server,
-            "gps_status": self.gps_status,
-            "gps_time": self.gps_time,
+            "watchdog_status": {
+                "watchdog_enabled": self.watchdog_enabled,
+                "watchdog_interval": self.watchdog_interval,
+                "watchdog_stats": self.watchdog_stats,
+                "array_sync": self.array_sync,
+                "km_sync": self.km_sync},
+            "gps_status": {
+                "gps_server": self.gps_server,
+                "gps_status": self.gps_status,
+                "gps_time": self.gps_time,
+            },
+            "calibration_broker_status": {
+                "cal_dir": self.cal_dir,
+                "cal_tag": self.cal_dir_tag,
+                "cal_start_time": self.cal_dir_time,
+                "corr_bad_inputs": self.correlator_bad_inputs,
+                "cyl_bad_inputs": self.cylinder_bad_inputs,
+                "bad_inputs_tag": self.bad_inputs_tag,
+                "bad_inputs_start_time": self.bad_inputs_time
+            },
+            "frb_status": {
+                "gains_dir": self.gains_directory,
+                "gains_update_time": self.gains_update_time,
+                "ew_spacing": self.ew_spacing,
+                "ew_spacing_update_time": self.ew_spacing_update_time,
+                "ns_extent": self.ns_extent,
+                "ns_extent_update_time": self.ns_extent_update_time
+                },
+            "logging_status": {
+
+            },
+
             "git_version": self.git_version,
             "start_time": time.strftime(
                 "%Y/%m/%d %H:%M:%S", time.localtime(self.start_time)
-            ),
-            "gains_dir": self.gains_directory,
-            "gains_update_time": self.gains_update_time,
+            )
         }
         coroutine_return(result)
 
@@ -490,10 +567,11 @@ class KotekanMaster(object):
             watchdog_stats : dict-type
                 {node_name: number_of_restarts}
         """
+        restart_time = time.ctime()
         for node in restart_list:
             if node not in self.watchdog_stats.keys():
-                self.watchdog_stats.update({node: 0})
-            self.watchdog_stats[node] += 1
+                self.watchdog_stats.update({node: []})
+            self.watchdog_stats[node].append(restart_time)
         coroutine_return(self.watchdog_stats)
 
     # KotekanMaster Validation Routines
@@ -1553,8 +1631,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
             beam,
             ra,
             dec,
-            scaling
-        ):
+            scaling):
         """
         POST to update CHIME/PSR pulsar beam pointing.
         curl
