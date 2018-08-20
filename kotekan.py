@@ -240,9 +240,68 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         endpoints = []
         for gpu_id in range(4):
             endpoints.append("gpu/gpu_{0}/update_pulsar/{0}".format(gpu_id))
-        result = yield {gpu_id: self._post(endpoint, **command)
-                        for endpoint in endpoints}
+        result = yield {
+            gpu_id: self._post(endpoint, **command)
+            for endpoint in endpoints
+        }
+        self.log.debug(result)
         coroutine_return("done")
+
+    # Calibration Broker Parameters
+    @coroutine
+    def update_gain(
+            self,
+            start_time,
+            tag,
+            update_destination
+    ):
+        """
+        Update the calibration broker provided gain solution
+        """
+        if update_destination == "receiver":
+            command = {
+                "start_time": start_time,
+                "tag": tag
+            }
+            result = yield self._post('updatable_config/gains', **command)
+            self.log.debug(result)
+            coroutine_return(result)
+        else:
+            coroutine_return(result="FAILED")
+
+    @coroutine
+    def update_bad_inputs(
+            self,
+            start_time,
+            tag,
+            bad_inputs,
+            update_destination):
+        if update_destination == "cluster":
+            command = {
+                "bad_inputs": bad_inputs,
+            }
+            endpoints = []
+            for gpu_id in range(4):
+                endpoints.append(
+                    "gpu/gpu_{0}/update_bad_inputs".format(gpu_id)
+                )
+            result = yield {
+                gpu_id: self._post(endpoint, **command)
+                for endpoint in endpoints
+            }
+            coroutine_return(result)
+        elif update_destination == "receiver":
+            command = {
+                "start_time": start_time,
+                "tag": tag,
+                "bad_inputs": bad_inputs
+            }
+            endpoint = "/updatable_config/flagging"
+            result = self._post(endpoint, **command)
+            self.log.debug(result)
+            coroutine_return(result)
+        else:
+            coroutine_return(result="FAILED")
 
     # Node Endpoints
     @coroutine
@@ -315,7 +374,9 @@ if __name__ == '__main__':
             node_config = config.kotekan.nodes[node_name]
             args = args[2:]
         else:
-            raise RuntimeError('Please specify both a config root name and power supply name')
+            raise RuntimeError(
+                'Please specify both a config root name and power supply name'
+            )
 
     if is_server:
         server_port = node_config.port if node_config else port
@@ -329,21 +390,32 @@ if __name__ == '__main__':
     else:
         client_port = node_config.port if node_config else port
         client_host = node_config.hostname if node_config else host
-        client = RunSyncWrapper(KotekanAsyncRESTClient(hostname=client_host, port=client_port))
+        client = RunSyncWrapper(
+            KotekanAsyncRESTClient(
+                hostname=client_host,
+                port=client_port
+            )
+        )
         if node_config:
             client.start(node_config)
         # If the client started a server, get it for the interactive session
-        if hasattr(client,'server'):
+        if hasattr(client, 'server'):
             server = RunSyncWrapper(client.server)
         # If there are further arguments, assume they are commands
         if args:
             cmd = args[0]
             if cmd and hasattr(client, cmd):
-                print('Sending command %s(%s) to CHIME Master server %s:%s' % (cmd, ', '.join(args[1:]), client_host, client_port))
+                print('Sending command %s(%s) to CHIME Master server %s:%s' % (
+                    cmd,
+                    ', '.join(args[1:]),
+                    client_host,
+                    client_port)
+                )
                 print(getattr(client, cmd)(*args[1:]))
-
 
     print()
     print("If this was run in an interactive session (ipython -i), the following variables are now accessible:")
-    if server: print("   server: Kotekan REST server")
-    if client: print("   client: Kotekan REST client")
+    if server:
+        print("   server: Kotekan REST server")
+    if client:
+        print("   client: Kotekan REST client")
