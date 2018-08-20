@@ -9,6 +9,7 @@ import shutil
 import json
 import Queue
 import concurrent.futures
+import threading
 import datetime
 import time
 
@@ -340,8 +341,10 @@ class FlagCorrInput(object):
         except AttributeError:
             niceness = os.nice(0)
             os.nice(self.config.niceness - niceness)
-            self.log.info('Changing process niceness from %d to %d.' %
-                          (niceness,  self.config.niceness))
+            self.log.info('Changing process niceness from %d to %d.' % (niceness,  self.config.niceness))
+
+        # Create lock
+        self._rlock = threading.RLock()
 
         # Keep track of when each of the sources was last updated
         self.update_time = {ss:None for ss in self.sources + ['combined']}
@@ -383,14 +386,13 @@ class FlagCorrInput(object):
             idd = self.h5_flag[lastup]
             self.source_flags = np.copy(self.h5_flag.read(idd, 'source_flags'))
 
-            self.current_update_id = self.h5_flag.read(idd, 'update_id')
+            current_update_id = self.h5_flag.read(idd, 'update_id')
             for ss in self.sources + ['combined']:
-                self.update_id[ss] = self.current_update_id
+                self.update_id[ss] = current_update_id
 
         else:
             self.log.info('No prior flags available.  Setting all correlator inputs to good.')
             self.source_flags = np.ones((len(self.sources), self.ninput), dtype=np.bool)
-            self.current_update_id = None
 
         # Determine historically bad inputs
         self._update_historical_status()
@@ -911,10 +913,6 @@ class FlagCorrInput(object):
             determined by this particular source.
         """
 
-        # Extract current combined flag to compare
-        # with updated combined flag later
-        combined_flag = np.array(self.flag)
-
         # Loop over sources in kwargs
         flags_were_updated = []
         for source, flag in kwargs.iteritems():
@@ -923,27 +921,39 @@ class FlagCorrInput(object):
 
             # Only take action if flags are different from the current flags
             if np.any(self.source_flags[isource] != np.array(flag)):
-
-                # Save to class variable
-                self.source_flags[isource] = flag
                 flags_were_updated.append(source)
-
 
         # If the flags changed, then make the relevant updates
         if flags_were_updated:
 
-            this_time = time.time()
+            # Acquire lock and perform update
+            with self._rlock:
 
-            update_id = '_'.join([self._update_type, datetime.datetime.utcfromtimestamp(this_time).strftime("%Y%m%dT%H%M%S.%fZ")] +
-                            flags_were_updated)
+                # Extract current combined flag to compare
+                # with updated combined flag later
+                combined_flag = np.array(self.flag)
 
-            self.current_update_id = update_id
+                # Create an update id
+                this_time = time.time()
 
-            new_combined_flag = self.flag
+                update_id = '_'.join([self._update_type, datetime.datetime.utcfromtimestamp(this_time).strftime("%Y%m%dT%H%M%S.%fZ")] +
+                                flags_were_updated)
+
+                # Perform the actual update
+                for source in flags_were_updated:
+                    self.source_flags[self.sources.index(source)] = kwargs[source]
+
+                    self.update_time[source] = this_time
+                    self.update_id[source] = update_id
+
+                # Grab the current state before releasing lock
+                new_source_flags = np.copy(self.source_flags)
+                new_combined_flag = np.array(self.flag)
+
             # If the combined flags changed, then post to relevant consumer processes
-            if np.any(combined_flag != np.array(new_combined_flag)):
+            if np.any(combined_flag != new_combined_flag):
 
-                payload = self.create_payload(update_id, this_time + self.config.sync_delay, new_combined_flag)
+                payload = self.create_payload(update_id, this_time + self.config.sync_delay, new_combined_flag.tolist())
 
                 for client in self.consumers:
                     client.update_bad_inputs(**payload)
@@ -951,12 +961,6 @@ class FlagCorrInput(object):
                 # Save current time if the combined flags changed
                 self.update_time['combined'] = this_time
                 self.update_id['combined'] = update_id
-
-
-            # Update time
-            for ss in flags_were_updated:
-                self.update_time[ss] = this_time
-                self.update_id[ss] = update_id
 
             # Save to HDF5 file
             this_datetime = datetime.datetime.utcfromtimestamp(this_time).strftime("%Y%m%dT%H%M%SZ")
@@ -968,8 +972,8 @@ class FlagCorrInput(object):
                    'source':self.sources,
                    'datetime':this_datetime,
                    'update_id': update_id,
-                   'source_flags':self.source_flags,
-                   'flag':self.flag}
+                   'source_flags':new_source_flags,
+                   'flag':new_combined_flag}
 
             previous_file = self.h5_flag.current_file
 
@@ -985,7 +989,7 @@ class FlagCorrInput(object):
                     self.log.info('Could not move log file:  %s.' % err)
 
             # Save most recent flags to HDF5 file that can be accessed by others.
-            if self.config.sources_in_buffer or np.any(combined_flag != np.array(new_combined_flag)):
+            if self.config.sources_in_buffer or np.any(combined_flag != new_combined_flag):
                 self.h5_flag.dump(self.buffer_file, timestamp=this_time)
 
             # Check if we have flagged an abnormally large number of inputs
@@ -1303,6 +1307,14 @@ class FlagCorrInput(object):
         polled for flags.
         """
         return len(self.sources)
+
+    @property
+    def last_update_id(self):
+        return self.update_id['combined']
+
+    @property
+    def last_update_time(self):
+        return self.update_time['combined']
 
 
 #########################################
@@ -1802,7 +1814,7 @@ class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
         self.log.info('%r: Received request for last update: %s')
 
         if self.flg:
-            update_id = self.flg.update_id['combined']
+            update_id = self.flg.last_update_id
             timestamp_returned, arr = self.flg.get_flag(update_id, dataset='flag')
 
             if timestamp_returned is not None:
