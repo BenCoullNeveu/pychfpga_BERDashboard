@@ -35,15 +35,35 @@ class SlackClient():
             OS environment variable mapping to slack api token url
         module_name : str
             Name of the module sending messages to slack
-    """
+        log_level : string
+            Log severeity level to publish messages on slack.
 
-    def __init__(self, SLACK_TOKEN_NAME, module_name):
-        self.url = os.environ[SLACK_TOKEN_NAME]
+            Valid Options in decreasing order of severeity are:
+                debug, info, warning, error, critical
+            Example:
+                If log_level="warning", only warning, error & critical
+                messages will be published to slack.
+
+    Returns
+    -------
+        None
+
+    """
+    def __init__(self, SLACK_TOKEN_NAME, module_name, log_level="debug"):
+        self.logging_levels = {
+            "debug": 0,
+            "info": 1,
+            "warning": 2,
+            "error": 3,
+            "critical": 4}
         try:
+            self.url = os.environ[SLACK_TOKEN_NAME]
             self.opener = urlrequest.build_opener(urlrequest.HTTPHandler())
             self.module_name = module_name
-        except Exception as e:
-            raise e
+            # Set the global logging level
+            self.logging_level = self.logging_levels[log_level.lower()]
+        except Exception as error:
+            raise error
 
     ###########################################################################
     #                        Public Messages API                              #
@@ -52,34 +72,39 @@ class SlackClient():
         return self._notify(text=text)
 
     def debug(self, msg_title="DEBUG", msg=None, as_inline_code=False):
-        if as_inline_code:
-            msg = self._as_inline_code(msg)
-        return self._send_message(
-            msg_title, msg, msg_level='DEBUG')
+        if 1 > self.logging_level:
+            if as_inline_code:
+                msg = self._as_inline_code(msg)
+            return self._send_message(
+                msg_title, msg, msg_level='DEBUG')
 
     def info(self, msg_title="INFO", msg=None, as_inline_code=False):
-        if as_inline_code:
-            msg = self._as_inline_code(msg)
-        return self._send_message(
-            msg_title, msg, msg_level='INFO')
+        if 2 > self.logging_level:
+            if as_inline_code:
+                msg = self._as_inline_code(msg)
+            return self._send_message(
+                msg_title, msg, msg_level='INFO')
 
     def warning(self, msg_title="WARNING", msg=None, as_inline_code=False):
-        if as_inline_code:
-            msg = self._as_inline_code(msg)
-        return self._send_message(
-            msg_title, msg, msg_level='WARNING')
+        if 3 > self.logging_level:
+            if as_inline_code:
+                msg = self._as_inline_code(msg)
+            return self._send_message(
+                msg_title, msg, msg_level='WARNING')
 
     def error(self, msg_title="ERROR", msg=None, as_inline_code=False):
-        if as_inline_code:
-            msg = self._as_inline_code(msg)
-        return self._send_message(
-            msg_title, msg, msg_level='ERROR')
+        if 4 > self.logging_level:
+            if as_inline_code:
+                msg = self._as_inline_code(msg)
+            return self._send_message(
+                msg_title, msg, msg_level='ERROR')
 
     def critical(self, msg_title="CRITICAL", msg=None, as_inline_code=False):
-        if as_inline_code:
-            msg = self._as_inline_code(msg)
-        return self._send_message(
-            msg_title, msg, msg_level='CRITICAL')
+        if 5 > self.logging_level:
+            if as_inline_code:
+                msg = self._as_inline_code(msg)
+            return self._send_message(
+                msg_title, msg, msg_level='CRITICAL')
 
     ##########################################################################
     #                       End of Public API                                #
