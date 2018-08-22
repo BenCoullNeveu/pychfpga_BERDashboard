@@ -610,9 +610,7 @@ class KotekanMaster(object):
         )
         try:
 
-            self.log.info(
-                "GPS Validation Status"
-            )
+            self.log.info("GPS Validation Status")
             self.log.info(
                 "Current frame0_ctime: {0}".format(
                     self.gps_time["frame0_ctime"]
@@ -623,28 +621,25 @@ class KotekanMaster(object):
                     previous_gps_time["frame0_ctime"]
                 )
             )
-            current_frame0 = self.gps_time["frame0_ctime"]
-            previous_frame0 = previous_gps_time["frame0_ctime"]
-            if current_frame0 != previous_frame0:
-                # Set GPS Status to FAILED
-                self.gps_status["result"] = "FAILED"
-                self.log.error("GPS Time Error: frame0_ctime mismatch")
-                self.slack.error(
-                    msg_title="GPS Time Validation Error",
-                    msg="frame0_ctime mismatch",
-                    as_inline_code=True,
-                )
-                coroutine_return(result="FAILED")
+            if self.gps_time["frame0_ctime"] != previous_gps_time["frame0_ctime"]:
+                # frame0_ctime changed! Raise Exception
+                raise Exception("frame0_ctime mismatch")
         except Exception as err:
+            # Set gps_status as failed!
+            self.gps_status["result"] = "FAILED"
+            # Log / slack things.
             msg = str(err)
-            self.log.error("%s : GPS Validateion Error: %s", self, msg)
+            self.log.error("%s : GPS Validation Error: %s", self, msg)
             self.slack.error(
                 msg_title="GPS Validation Error",
                 msg=msg,
                 as_inline_code=True
             )
-            self.gps_status["result"] = "FAILED"
+            # Kill kotekan immediately
+            kill_status = yield self.kotekan_master.kill_kotekan()
+            self.log.error(kill_status)
             coroutine_return(result="FAILED")
+
         # If everything is good, return PASSED
         coroutine_return(result="PASSED")
 
@@ -707,10 +702,21 @@ class KotekanMaster(object):
         if (not array_md5_sync) and (not self.array_sync):
             self.out_of_sync_cycles += 1
             msg = "array out of sync for {} watchdog cycles".format(
-                self.out_of_sync_cycles
-            )
-            self.log.warning("%s : %s", self, msg)
-            self.slack.warning(msg_title="Checksum validation failed.", msg=msg)
+                    self.out_of_sync_cycles
+                )
+            if self.out_of_sync_cycles <= 5:
+                self.log.warning("%s : %s", self, msg)
+                self.slack.warning(
+                    msg_title="Checksum Validation FAILED.",
+                    msg=msg
+                )
+            elif self.out_of_sync_cycles > 5:
+                self.log.critical("%s : %s", self, msg)
+                self.slack.critical(
+                    msg_title="Checksum Validation FAILED.",
+                    msg=msg
+                )
+
         else:
             self.out_of_sync_cycles = 0
 
@@ -769,13 +775,17 @@ class KotekanMaster(object):
                 for node_name, kotekan in self.nodes.items()
             }
         elif self.gps_status["result"] == "FAILED":
-            self.log.error("start-kotekan failed because gps failed status check")
+            self.log.error(
+                "Error: start-kotekan due to gps error.")
             self.slack.error(
-                msg_title="ERROR: start-kotekan", msg="GPS Status Checked FAILED"
+                msg_title="ERROR: start-kotekan",
+                msg="GPS status check FAILED"
             )
         else:
             self.log.error("start-kotekan failed, I dont know why!")
-            self.slack.error(msg_title="ERROR: start-kotekan", msg="I dont know why!")
+            self.slack.error(
+                msg_title="ERROR: start-kotekan",
+                msg="I dont know why! Call shiny!?! 0.0")
 
     @coroutine
     def restart_kotekan(self, node_status):
@@ -816,9 +826,9 @@ class KotekanMaster(object):
         """
         Restart kotekan on the entire node cluster
         """
-        self.log.critical("Restarting the entire GPU Cluster")
+        self.log.critical("Attempting to restarting the entire GPU Cluster")
         self.slack.critical(
-            msg_title="Cluster Restart",
+            msg_title="Cluster Restart Statsu",
             msg="Attempting to restart the entire GPU Cluster",
         )
         # First make sure everything is killed!
@@ -831,16 +841,16 @@ class KotekanMaster(object):
         self.log.warning("Sleeping while the kill-kotekan permeates")
         self.slack.warning(
             msg_title="Cluster Restart",
-            msg="Sleeping 60s while the kill-kotekan permeates",
+            msg="Sleeping 30s while the kill-kotekan permeates",
         )
-        yield sleep(60)
+        yield sleep(30)
 
         try:
             self.gps_status = yield self._get_gps_time()
             # Check for the corner case when gps returns an empty dict
             if self.gps_status["result"] == "FAILED":
-                raise Exception("GPS Error: Unable to execute restart-cluster")
-
+                raise Exception(
+                    "Restart Error: restart-cluster failed due to GPS Error")
             # Successful GPS Acquisition
             self.slack.info(
                 msg_title="Cluster Restart",
@@ -1371,56 +1381,59 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
                     if self.kotekan_master.gps_status["result"] == "PASSED":
                         # Run get status from each node
                         self.log.info("%s : GETing Node Status", self)
-                        node_status = yield self.kotekan_master.kotekan_status()
-
+                        node_status = (
+                            yield self.kotekan_master.kotekan_status()
+                        )
                         # Execute restarts for nodes with running==false
                         self.log.info("%s : GETing Restart List", self)
-                        restart_list = yield self.kotekan_master.restart_kotekan(
-                            node_status
+                        restart_list = (
+                            yield self.kotekan_master.restart_kotekan(
+                                node_status
+                            )
                         )
                         # Sleep 15 seconds just to make sure, kotekan has time
                         # to start reporting the checksums
                         yield sleep(15)
                         # Update watchdog statistics
                         self.log.info("%s : Updating Watchdog Stats", self)
-                        watchdog_stats = yield self.kotekan_master.update_watchdog_stats(
-                            restart_list
+                        watchdog_stats = (
+                            yield self.kotekan_master.update_watchdog_stats(
+                                restart_list
+                            )
                         )
-                        # Validate Config Checksums
+                        # Validate Configuration Checksums
                         self.log.info("%s : Validating Checksums", self)
                         checksum_validate = (
                             yield self.kotekan_master.validate_checksum()
                         )
                         self.log.info("{0}".format(checksum_validate))
-
+                        # Log Kotekan Master Statistics
                         self.log.debug("%s : KotekanMaster Watchdog Stats", self)
                         self.log.debug("%s : %s", self, watchdog_stats)
+                        # Validate GPS Clock Status
+                        self.log.info("%s : Validating GPS Time", self)
+                        gps_validate = yield self.kotekan_master.validate_gps()
+                        self.log.info("%s : GPS Status: %s", self, gps_validate)
                     else:
                         self.log.error(
                             "Unable to execute watchdog loop due to gps error"
                         )
 
-                    # Validate GPS Time, if validation fails, KotekanMaster
-                    # will shutdown the entire cluster.
-                    self.log.info("%s : Validating GPS Time", self)
-                    gps_validate = yield self.kotekan_master.validate_gps()
-                    self.log.info("%s : %s", self, gps_validate)
-
+                    # Execute this part of the loop only when validate_gps has
+                    # FAILED, causing the KotekanMaster to shutdown the entire
+                    # cluster.
                     if gps_validate["result"] != "PASSED":
-                        self.log.error("%s: GPS Time Error", self)
-                        # GPS Validation Failed, Kill Kotekan
-                        kill_status = yield self.kotekan_master.kill_kotekan()
-                        self.log.error(kill_status)
-                        # TODO: Move kill to the bottom of validate_gps
-                        # restart_cluster_status = yield self.kotekan_master.restart_cluster()
-                        # self.log.info("%s : %s", self, restart_cluster_status)
-
-                    if self.kotekan_master.out_of_sync_cycles > 5:
-                        msg = "Array has been out of sync for more than 5 cycles"
-                        self.log.error(msg)
-
+                        restart_cluster_status = (
+                            yield self.kotekan_master.restart_cluster()
+                        )
+                        self.log.info(
+                            "%s : Restart Cluster Status %s",
+                            self,
+                            restart_cluster_status
+                        )
                 except Exception as watchdog_error:
-                    print watchdog_error
+                    self.log.error(watchdog_error)
+                    self.slack.error(msg_title=watchdog_error)
 
                 self.log.info("%s : Sleeping...zZZ", self)
                 yield sleep(self.kotekan_master.watchdog_interval)

@@ -245,9 +245,36 @@ def pulsar():
     pass
 
 
-@pulsar.command("Work-In-Progress", help="Nothing to do 0.0")
-def pulsar_config():
-    pass
+@pulsar.command("update-beam")
+@click.option(
+    "-p", "--parameters",
+    "beam_parameters",
+    is_flag=False,
+    required=True,
+    type=click.Tuple([
+        click.IntRange(0, 10),
+        click.FLOAT,
+        click.FLOAT,
+        click.INT
+    ]),
+    help="e.g. -p <BEAM_NUMBER> <RA> <DEC> <SCALING>\n\
+          e.g. --parameters 3 66.6 23.3 48")
+def update_pulsar_pointing(beam_parameters):
+    """
+    Update CHIME/Pulsar beam pointing
+    """
+    data = {
+        "beam": beam_parameters[0],
+        "ra": beam_parameters[1],
+        "dec": beam_parameters[2],
+        "scaling": beam_parameters[3]
+    }
+    print (data)
+    pulsar_pointing_status = _post_command(
+        "update-pulsar-pointing",
+        data
+    )
+    click.echo(pulsar_pointing_status)
 
 
 # CHIME/COSMOLOGY CLI Commands
