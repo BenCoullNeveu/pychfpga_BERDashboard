@@ -5,8 +5,14 @@ Send Messages to Slack using Slack Incoming Webhooks
 """
 
 # Imports
-from urllib import urlencode
-import urllib2 as urlrequest
+try:
+    from urllib import urlencode
+    import urllib2 as urlrequest
+except ImportError:
+    # Try python3.7 imports
+    from urllib.parse import urlencode
+    import urllib.request as urlrequest
+
 import json
 import time
 import os
@@ -25,7 +31,7 @@ Slack Message Colors
 """
 
 
-class SlackClient():
+class SlackClient:
     """
     Client to send messages to slack.
 
@@ -49,13 +55,15 @@ class SlackClient():
         None
 
     """
+
     def __init__(self, SLACK_TOKEN_NAME, module_name, log_level="debug"):
         self.logging_levels = {
             "debug": 0,
             "info": 1,
             "warning": 2,
             "error": 3,
-            "critical": 4}
+            "critical": 4,
+        }
         try:
             self.url = os.environ[SLACK_TOKEN_NAME]
             self.opener = urlrequest.build_opener(urlrequest.HTTPHandler())
@@ -75,36 +83,31 @@ class SlackClient():
         if 1 > self.logging_level:
             if as_inline_code:
                 msg = self._as_inline_code(msg)
-            return self._send_message(
-                msg_title, msg, msg_level='DEBUG')
+            return self._send_message(msg_title, msg, msg_level="DEBUG")
 
     def info(self, msg_title="INFO", msg=None, as_inline_code=False):
         if 2 > self.logging_level:
             if as_inline_code:
                 msg = self._as_inline_code(msg)
-            return self._send_message(
-                msg_title, msg, msg_level='INFO')
+            return self._send_message(msg_title, msg, msg_level="INFO")
 
     def warning(self, msg_title="WARNING", msg=None, as_inline_code=False):
         if 3 > self.logging_level:
             if as_inline_code:
                 msg = self._as_inline_code(msg)
-            return self._send_message(
-                msg_title, msg, msg_level='WARNING')
+            return self._send_message(msg_title, msg, msg_level="WARNING")
 
     def error(self, msg_title="ERROR", msg=None, as_inline_code=False):
         if 4 > self.logging_level:
             if as_inline_code:
                 msg = self._as_inline_code(msg)
-            return self._send_message(
-                msg_title, msg, msg_level='ERROR')
+            return self._send_message(msg_title, msg, msg_level="ERROR")
 
     def critical(self, msg_title="CRITICAL", msg=None, as_inline_code=False):
         if 5 > self.logging_level:
             if as_inline_code:
                 msg = self._as_inline_code(msg)
-            return self._send_message(
-                msg_title, msg, msg_level='CRITICAL')
+            return self._send_message(msg_title, msg, msg_level="CRITICAL")
 
     ##########################################################################
     #                       End of Public API                                #
@@ -125,19 +128,20 @@ class SlackClient():
             payload_json = json.dumps(payload)
             data = urlencode({"payload": payload_json})
             req = urlrequest.Request(self.url)
-            response = self.opener.open(req, data.encode('utf-8')).read()
-            return response.decode('utf-8')
+            response = self.opener.open(req, data.encode("utf-8")).read()
+            return response.decode("utf-8")
         except Exception as error:
-            print error
-            return ("unable to connect to slack")
-
+            print(error)
+            return "unable to connect to slack"
 
     # Private Messaging API
     def _send_custom_mesaage(self, text, slack_channel, username, icon_emoji):
-        self._notify(text=text,
-                     slack_channel=slack_channel,
-                     username=username,
-                     icon_emoji=icon_emoji)
+        self._notify(
+            text=text,
+            slack_channel=slack_channel,
+            username=username,
+            icon_emoji=icon_emoji,
+        )
 
     def _send_attachment_message(self, attachments):
         self._notify(attachments=attachments)
@@ -150,51 +154,71 @@ class SlackClient():
         except Exception as e:
             raise e
 
-        attachment = self.create_attachement(color=color,
-                                             title=msg_title,
-                                             text=msg_text,
-                                             footer=self.module_name,
-                                             timestamp=time.time())
+        attachment = self.create_attachement(
+            color=color,
+            title=msg_title,
+            text=msg_text,
+            footer=self.module_name,
+            timestamp=time.time(),
+        )
         status = self._send_attachment_message(attachments=attachment)
         return status
 
     # Create Messages API
-    def create_attachement(self, fallback="", color="#999999", pretext="",
-                           author_name="", author_link="", author_icon="",
-                           title="", title_link="", text="",
-                           fields=[], actions=[],
-                           image_url="", thumb_url="",
-                           footer="", footer_icon="",
-                           timestamp=time.time()):
+    def create_attachement(
+        self,
+        fallback="",
+        color="#999999",
+        pretext="",
+        author_name="",
+        author_link="",
+        author_icon="",
+        title="",
+        title_link="",
+        text="",
+        fields=[],
+        actions=[],
+        image_url="",
+        thumb_url="",
+        footer="",
+        footer_icon="",
+        timestamp=time.time(),
+    ):
         # Generate the slack attachment
         slack_message = [
-                {"fallback": fallback,
-                 "color": color,
-                 "pretext": pretext,
-                 "author_name": author_name,
-                 "author_link": author_link,
-                 "author_icon": author_icon,
-                 "title": title,
-                 "title_link": title_link,
-                 "text": text,
-                 "fields": fields,
-                 "actions": actions,
-                 "image_url": image_url,
-                 "thumb_url": thumb_url,
-                 "footer": footer,
-                 "footer_icon": footer_icon,
-                 "ts": timestamp}
-            ]
+            {
+                "fallback": fallback,
+                "color": color,
+                "pretext": pretext,
+                "author_name": author_name,
+                "author_link": author_link,
+                "author_icon": author_icon,
+                "title": title,
+                "title_link": title_link,
+                "text": text,
+                "fields": fields,
+                "actions": actions,
+                "image_url": image_url,
+                "thumb_url": thumb_url,
+                "footer": footer,
+                "footer_icon": footer_icon,
+                "ts": timestamp,
+            }
+        ]
         return slack_message
 
     # Message Formatting
     def get_message_color(self, log_level):
         # Valid Message Levels and corresponding colors.
-        valid_levels = {"DEBUG": "#268bd2",
-                        "INFO": "#859900",
-                        "WARN": "#6c71c4", "WARNING": "#6c71c4",
-                        "ERROR": "#cb4b16",
-                        "CRITICAL": "#dc2f2f", "CRIT": "#dc2f2f"}
+        valid_levels = {
+            "DEBUG": "#268bd2",
+            "INFO": "#859900",
+            "WARN": "#6c71c4",
+            "WARNING": "#6c71c4",
+            "ERROR": "#cb4b16",
+            "CRITICAL": "#dc2f2f",
+            "CRIT": "#dc2f2f",
+        }
         # Default Message Color (Grey)
         default_color = "#999999"
 
