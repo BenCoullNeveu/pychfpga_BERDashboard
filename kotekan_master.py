@@ -697,7 +697,7 @@ class KotekanMaster(object):
         """
         Start the kotekan process on all nodes.
         """
-        self.log.info("%s : Starting kotekan...")
+        self.log.info("%s : Starting kotekan...", self)
         self.slack.info(
             msg_title="start-kotekan",
             msg=json.dumps(self.nodes.keys()),
