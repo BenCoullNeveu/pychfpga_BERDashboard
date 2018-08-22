@@ -116,7 +116,7 @@ def restart_cluster():
     Restart the entire GPU cluster
     """
     value = click.prompt(
-        "Are you sure you want to RE-ACQUIRE GPS clock & RESTART kotekan on entire cluster [y|n]?",
+        "Are you sure you want to RE-ACQUIRE GPS clock & RESTART kotekan on the entire cluster [y|n]?",
         type=click.STRING,
     )
     if value == "y":
