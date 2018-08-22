@@ -558,7 +558,10 @@ class KotekanMaster(object):
         Validate GPS Time
         """
         previous_gps_time = self.gps_time
-        self.gps_status = self._get_gps_time(slack_broadcast=False)
+        # Assign GPS status to a placeholder, so that we never return a future when
+        # we access self.gps_status
+        new_gps_status = yield self._get_gps_time(slack_broadcast=False)
+        self.gps_status = new_gps_status
         try:
 
             self.log.info("GPS Validation Status")
@@ -772,7 +775,8 @@ class KotekanMaster(object):
         yield sleep(30)
 
         try:
-            self.gps_status = yield self._get_gps_time()
+            new_gps_status = yield self._get_gps_time()
+            self.gps_status = new_gps_status
             # Check for the corner case when gps returns an empty dict
             if self.gps_status["result"] == "FAILED":
                 raise Exception(
@@ -955,14 +959,18 @@ class KotekanMaster(object):
             for receiver_node, receiver in self.receiver_nodes.items()
         }
         # Create the result response
-        result = {"kotekan_result": kotekan_result, "receiver_result": receiver_result}
+        result = {"kotekan_result": str(kotekan_result), "receiver_result": str(receiver_result)}
         # Log Things
         self.log.info("%s : Parameter bad_inputs updated.", self)
         self.log.debug(result)
+        return_msg = ("%s update-bad-inputs tag registered with KotekanMaster", tag)
         self.slack.info(
-            msg_title="update-bad-inputs", msg=cylinder_bad_inputs, as_inline_code=True
+            msg_title="update-bad-inputs",
+            msg=tag,
+            as_inline_code=True
         )
-        coroutine_return(result)
+	
+        coroutine_return(return_msg)
 
     @coroutine
     def update_gain(self, start_time, tag):
@@ -1013,14 +1021,13 @@ class KotekanMaster(object):
         result = {"kotekan_result": kotekan_result, "receiver_result": receiver_result}
 
         # Log things
-        self.log.info("%s : calibration tag updated to: %s", self, self.calibration_tag)
-
+        self.log.info("%s : calibration tag updated to: %s", self, tag)
         self.log.debug(result)
-
+        return_msg = ("%s update-gain tag registered with KotekanMaster", tag)
         self.slack.info(
-            msg_title="update-gain", msg=self.calibration_tag, as_inline_code=True
+            msg_title="update-gain", msg=tag, as_inline_code=True
         )
-        coroutine_return(result)
+        coroutine_return(return_msg)
 
     # Parameter POST Based Endpoints
     @coroutine
@@ -1366,8 +1373,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         Get the current status of KotekanMaster
         """
         result = yield self.kotekan_master.status_kotekan_master()
-        self.log.info("%s : KotekanMaster Status", self)
-        self.log.info("%s : %s", self, result)
+        self.log.info("%s : Sending KotekanMaster Status", self)
         coroutine_return(result)
 
     # KotekanMaster Validation Routines
