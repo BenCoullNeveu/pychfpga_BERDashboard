@@ -396,7 +396,10 @@ class KotekanMaster(object):
         result = {
             "state": self.state,
             "current_config": self.current_config.common_config.as_dict(),
-            "nodes": {self.nodes.keys(), self.receiver_nodes.keys()},
+            "nodes": {
+                "kotekan_nodes": self.nodes.keys(),
+                "receiver_nodes": self.receiver_nodes.keys()
+            },
             "blacklist_nodes": self.blacklist_nodes,
             "watchdog_status": {
                 "watchdog_enabled": self.watchdog_enabled,
