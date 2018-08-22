@@ -80,11 +80,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
     DEFAULT_PORT = KotekanAsyncRESTServer.DEFAULT_PORT
 
     def __init__(
-        self,
-        hostname=None,
-        port=DEFAULT_PORT,
-        heartbeat_period=10000,
-        **config
+        self, hostname=None, port=DEFAULT_PORT, heartbeat_period=10000, **config
     ):
         super(KotekanAsyncRESTClient, self).__init__(
             hostname=hostname,
@@ -204,9 +200,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         command = {"northmost_beam": northmost_beam}
         endpoints = []
         for gpu_id in range(4):
-            endpoints.append(
-                "gpu/gpu_{0}/frb/update_NS_beam/{0}".format(gpu_id)
-            )
+            endpoints.append("gpu/gpu_{0}/frb/update_NS_beam/{0}".format(gpu_id))
         result = yield {
             gpu_id: self._post(endpoint, **command) for endpoint in endpoints
         }
@@ -220,9 +214,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         command = {"ew_id": east_west_id, "ew_beam": east_west_beam}
         endpoints = []
         for gpu_id in range(4):
-            endpoints.append(
-                "gpu/gpu_{0}/frb/update_EW_beam/{0}".format(gpu_id)
-            )
+            endpoints.append("gpu/gpu_{0}/frb/update_EW_beam/{0}".format(gpu_id))
         result = yield {
             gpu_id: self._post(endpoint, **command) for endpoint in endpoints
         }
@@ -267,31 +259,18 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
             coroutine_return(result="FAILED")
 
     @coroutine
-    def update_bad_inputs(
-        self,
-        start_time,
-        tag,
-        bad_inputs,
-        update_destination
-    ):
+    def update_bad_inputs(self, start_time, tag, bad_inputs, update_destination):
         if update_destination == "cluster":
             command = {"bad_inputs": bad_inputs}
             endpoints = []
             for gpu_id in range(4):
-                endpoints.append(
-                    "gpu/gpu_{0}/update_bad_inputs".format(gpu_id)
-                )
+                endpoints.append("gpu/gpu_{0}/update_bad_inputs".format(gpu_id))
             result = yield {
-                gpu_id: self._post(endpoint, **command)
-                for endpoint in endpoints
+                gpu_id: self._post(endpoint, **command) for endpoint in endpoints
             }
             coroutine_return(result)
         elif update_destination == "receiver":
-            command = {
-                "start_time": start_time,
-                "tag": tag,
-                "bad_inputs": bad_inputs
-            }
+            command = {"start_time": start_time, "tag": tag, "bad_inputs": bad_inputs}
             endpoint = "/updatable_config/flagging"
             result = self._post(endpoint, **command)
             self.log.debug(result)
