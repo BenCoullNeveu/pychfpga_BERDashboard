@@ -813,7 +813,9 @@ class KotekanMaster(object):
             msg=json.dumps(self.nodes.keys()),
             as_inline_code=True,
         )
-        yield {node_name: kotekan.kill() for node_name, kotekan in self.nodes.items()}
+        result = yield {node_name: kotekan.kill() for node_name, kotekan in self.nodes.items()}
+        coroutine_return(result)
+
 
     @coroutine
     def kill_kotekan(self):
@@ -825,7 +827,8 @@ class KotekanMaster(object):
             msg=json.dumps(self.nodes.keys()),
             as_inline_code=True,
         )
-        yield {node_name: kotekan.kill() for node_name, kotekan in self.nodes.items()}
+        result = yield {node_name: kotekan.kill() for node_name, kotekan in self.nodes.items()}
+        coroutine_return(result)
 
     @coroutine
     def kotekan_status(self):
