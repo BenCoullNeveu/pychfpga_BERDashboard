@@ -60,9 +60,7 @@ def _post_command(command, data):
 # MAIN CLI GROUP
 @click.group()
 @click.version_option(
-    version=version.get_version(),
-    prog_name="km-cli",
-    message="%(prog)s %(version)s"
+    version=version.get_version(), prog_name="km-cli", message="%(prog)s %(version)s"
 )
 def cli():
     """
@@ -209,10 +207,7 @@ def update_ew(column_spacing):
     """
     Update east-west column spacing
     """
-    data = {
-        "east_west_id": column_spacing[0],
-        "east_west_beam": column_spacing[1]
-    }
+    data = {"east_west_id": column_spacing[0], "east_west_beam": column_spacing[1]}
     ew_spacing_status = _post_command("update-east-west-beam", data)
     click.echo(ew_spacing_status)
 
@@ -232,10 +227,7 @@ def update_ns(beam_extent):
     Update north/south-most beam extent
     """
     data = {"northmost_beam": beam_extent}
-    update_northmost_extent_status = _post_command(
-        "update-north-south-beam",
-        data
-    )
+    update_northmost_extent_status = _post_command("update-north-south-beam", data)
     click.echo(update_northmost_extent_status)
 
 
@@ -247,18 +239,15 @@ def pulsar():
 
 @pulsar.command("update-beam")
 @click.option(
-    "-p", "--parameters",
+    "-p",
+    "--parameters",
     "beam_parameters",
     is_flag=False,
     required=True,
-    type=click.Tuple([
-        click.IntRange(0, 10),
-        click.FLOAT,
-        click.FLOAT,
-        click.INT
-    ]),
+    type=click.Tuple([click.IntRange(0, 10), click.FLOAT, click.FLOAT, click.INT]),
     help="e.g. -p <BEAM_NUMBER> <RA> <DEC> <SCALING>\n\
-          e.g. --parameters 3 66.6 23.3 48")
+          e.g. --parameters 3 66.6 23.3 48",
+)
 def update_pulsar_pointing(beam_parameters):
     """
     Update CHIME/Pulsar beam pointing
@@ -267,13 +256,10 @@ def update_pulsar_pointing(beam_parameters):
         "beam": beam_parameters[0],
         "ra": beam_parameters[1],
         "dec": beam_parameters[2],
-        "scaling": beam_parameters[3]
+        "scaling": beam_parameters[3],
     }
-    print (data)
-    pulsar_pointing_status = _post_command(
-        "update-pulsar-pointing",
-        data
-    )
+    print(data)
+    pulsar_pointing_status = _post_command("update-pulsar-pointing", data)
     click.echo(pulsar_pointing_status)
 
 
@@ -288,40 +274,20 @@ def cosmology_config():
     pass
 
 
-@click.command(
-    "status",
-    help="Get Status from KotekanMaster"
+@click.command("status", help="Get Status from KotekanMaster")
+@click.option("--all", "status_option", flag_value="all", help="get all status reports")
+@click.option("--gps", "status_option", flag_value="gps", help="get current gps status")
+@click.option(
+    "--config", "status_option", flag_value="config", help="get current kotekan config"
 )
 @click.option(
-    "--all",
-    "status_option",
-    flag_value="all",
-    help="get all status reports"
+    "--nodes", "status_option", flag_value="nodes", help="get current node-list"
 )
 @click.option(
-    "--gps", "status_option", flag_value="gps", help="get current gps status")
-@click.option(
-    "--config",
-    "status_option",
-    flag_value="config",
-    help="get current kotekan config"
+    "--blacklist", "status_option", flag_value="blacklist", help="get node blacklist"
 )
 @click.option(
-    "--nodes",
-    "status_option",
-    flag_value="nodes",
-    help="get current node-list"
-)
-@click.option(
-    "--blacklist",
-    "status_option",
-    flag_value="blacklist",
-    help="get node blacklist"
-)
-@click.option(
-    "--watchdog",
-    "status_option",
-    flag_value="watchdog", help="get watchdog statistics"
+    "--watchdog", "status_option", flag_value="watchdog", help="get watchdog statistics"
 )
 @click.option(
     "--frb",
@@ -330,10 +296,7 @@ def cosmology_config():
     help="get frb gains, beam spacing/extent ",
 )
 @click.option(
-    "--start-time",
-    "status_option",
-    flag_value="start-time",
-    help="get km start time"
+    "--start-time", "status_option", flag_value="start-time", help="get km start time"
 )
 @click.option(
     "--cal-broker",
@@ -345,7 +308,7 @@ def cosmology_config():
     "--pulsar-beams",
     "status_option",
     flag_value="pulsar_beams",
-    help="get current pulsar pointings"
+    help="get current pulsar pointings",
 )
 def get_status(status_option):
     """
