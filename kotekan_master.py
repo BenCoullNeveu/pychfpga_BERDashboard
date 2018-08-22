@@ -697,30 +697,19 @@ class KotekanMaster(object):
         """
         Start the kotekan process on all nodes.
         """
-        if self.gps_status["result"] == "PASSED":
-            self.log.info(self.current_config.common_config.as_dict())
-            self.slack.info(
-                msg_title="start-kotekan",
-                msg=json.dumps(self.nodes.keys()),
-                as_inline_code=True,
+        self.log.info("%s : Starting kotekan...")
+        self.slack.info(
+            msg_title="start-kotekan",
+            msg=json.dumps(self.nodes.keys()),
+            as_inline_code=True,
+        )
+        result = yield {
+            node_name: kotekan.start(
+                config=self.current_config.common_config.as_dict()
             )
-            yield {
-                node_name: kotekan.start(
-                    config=self.current_config.common_config.as_dict()
-                )
-                for node_name, kotekan in self.nodes.items()
-            }
-        elif self.gps_status["result"] == "FAILED":
-            self.log.error("Error: start-kotekan due to gps error.")
-            self.slack.error(
-                msg_title="ERROR: start-kotekan", msg="GPS status check FAILED"
-            )
-        else:
-            self.log.error("start-kotekan failed, I dont know why!")
-            self.slack.error(
-                msg_title="ERROR: start-kotekan",
-                msg="I dont know why! Call shiny!?! 0.0",
-            )
+            for node_name, kotekan in self.nodes.items()
+        }
+        coroutine_return(result)
 
     @coroutine
     def restart_kotekan(self, node_status):
