@@ -342,7 +342,7 @@ def get_status(status_option):
     elif status_option == "frb":
         data_to_print = ["frb_status"]
 
-    elif status_option == "cal-broker":
+    elif status_option == "cal_broker":
         data_to_print = ["calibration_broker_status"]
 
     elif status_option == "pulsar_beams":
