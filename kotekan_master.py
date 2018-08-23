@@ -300,8 +300,7 @@ class KotekanMaster(object):
 
             # Get gps_time from the self.gps_server
             self.gps_status = yield self._get_gps_time(
-                slack_braodcast=True,
-                update_config=True
+                slack_braodcast=True, update_config=True
             )
 
             # Create a client for each node.
@@ -599,8 +598,7 @@ class KotekanMaster(object):
         # Assign GPS status to a placeholder, so that we never return a future
         # when we access self.gps_status
         new_gps_status = yield self._get_gps_time(
-            slack_broadcast=False,
-            update_config=False
+            slack_broadcast=False, update_config=False
         )
         self.gps_status = new_gps_status
         try:
@@ -829,8 +827,7 @@ class KotekanMaster(object):
         yield sleep(30)
         try:
             new_gps_status = yield self._get_gps_time(
-                slack_broadcast=True,
-                update_config=True
+                slack_broadcast=True, update_config=True
             )
             self.gps_status = new_gps_status
             # Check for the corner case when gps returns an empty dict
