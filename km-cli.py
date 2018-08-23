@@ -60,7 +60,9 @@ def _post_command(command, data):
 # MAIN CLI GROUP
 @click.group()
 @click.version_option(
-    version=version.get_version(), prog_name="km-cli", message="%(prog)s %(version)s"
+    version=version.get_version(),
+    prog_name="km-cli",
+    message="%(prog)s %(version)s",
 )
 def cli():
     """
@@ -207,7 +209,10 @@ def update_ew(column_spacing):
     """
     Update east-west column spacing
     """
-    data = {"east_west_id": column_spacing[0], "east_west_beam": column_spacing[1]}
+    data = {
+        "east_west_id": column_spacing[0],
+        "east_west_beam": column_spacing[1],
+    }
     ew_spacing_status = _post_command("update-east-west-beam", data)
     click.echo(ew_spacing_status)
 
@@ -227,7 +232,9 @@ def update_ns(beam_extent):
     Update north/south-most beam extent
     """
     data = {"northmost_beam": beam_extent}
-    update_northmost_extent_status = _post_command("update-north-south-beam", data)
+    update_northmost_extent_status = _post_command(
+        "update-north-south-beam", data
+    )
     click.echo(update_northmost_extent_status)
 
 
@@ -244,7 +251,9 @@ def pulsar():
     "beam_parameters",
     is_flag=False,
     required=True,
-    type=click.Tuple([click.IntRange(0, 10), click.FLOAT, click.FLOAT, click.INT]),
+    type=click.Tuple(
+        [click.IntRange(0, 10), click.FLOAT, click.FLOAT, click.INT]
+    ),
     help="e.g. -p <BEAM_NUMBER> <RA> <DEC> <SCALING>\n\
           e.g. --parameters 3 66.6 23.3 48",
 )
@@ -275,19 +284,35 @@ def cosmology_config():
 
 
 @click.command("status", help="Get Status from KotekanMaster")
-@click.option("--all", "status_option", flag_value="all", help="get all status reports")
-@click.option("--gps", "status_option", flag_value="gps", help="get current gps status")
 @click.option(
-    "--config", "status_option", flag_value="config", help="get current kotekan config"
+    "--all", "status_option", flag_value="all", help="get all status reports"
 )
 @click.option(
-    "--nodes", "status_option", flag_value="nodes", help="get current node-list"
+    "--gps", "status_option", flag_value="gps", help="get current gps status"
 )
 @click.option(
-    "--blacklist", "status_option", flag_value="blacklist", help="get node blacklist"
+    "--config",
+    "status_option",
+    flag_value="config",
+    help="get current kotekan config",
 )
 @click.option(
-    "--watchdog", "status_option", flag_value="watchdog", help="get watchdog statistics"
+    "--nodes",
+    "status_option",
+    flag_value="nodes",
+    help="get current node-list",
+)
+@click.option(
+    "--blacklist",
+    "status_option",
+    flag_value="blacklist",
+    help="get node blacklist",
+)
+@click.option(
+    "--watchdog",
+    "status_option",
+    flag_value="watchdog",
+    help="get watchdog statistics",
 )
 @click.option(
     "--frb",
@@ -296,7 +321,10 @@ def cosmology_config():
     help="get frb gains, beam spacing/extent ",
 )
 @click.option(
-    "--start-time", "status_option", flag_value="start-time", help="get km start time"
+    "--start-time",
+    "status_option",
+    flag_value="start-time",
+    help="get km start time",
 )
 @click.option(
     "--cal-broker",

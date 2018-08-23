@@ -1017,10 +1017,7 @@ class KotekanMaster(object):
         # Log Things
         self.log.info("%s : Parameter bad_inputs updated.", self)
         self.log.debug(result)
-        return_msg = (
-            "%s update-bad-inputs tag registered with KotekanMaster",
-            tag,
-        )
+        return_msg = "{} update-bad-inputs tag registered.".foramt(tag)
         self.slack.info(
             msg_title="update-bad-inputs", msg=tag, as_inline_code=True
         )
@@ -1080,7 +1077,7 @@ class KotekanMaster(object):
         # Log things
         self.log.info("%s : calibration tag updated to: %s", self, tag)
         self.log.debug(result)
-        return_msg = ("%s update-gain tag registered with KotekanMaster", tag)
+        return_msg = "{} update-gain tag registered.".format(tag)
         self.slack.info(msg_title="update-gain", msg=tag, as_inline_code=True)
         coroutine_return(return_msg)
 
@@ -1516,9 +1513,8 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         """
         Stop the kotekan process on all nodes.
         """
-        watchdog = yield self.kotekan_master.stop_watchdog()
+        yield self.kotekan_master.stop_watchdog()
         result = yield self.kotekan_master.stop_kotekan()
-        self.log.debug(watchdog)
         coroutine_return(result)
 
     @coroutine
@@ -1527,8 +1523,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         """
         Kill the kotekan process on all nodes.
         """
-        watchdog = yield self.kotekan_master.stop_watchdog()
-        self.
+        yield self.kotekan_master.stop_watchdog()
         result = yield self.kotekan_master.kill_kotekan()
         coroutine_return(result)
 
@@ -1598,7 +1593,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
             }'
         -X POST
         -H "Content-Type: application/json"
-        http://KOTEKAN-MASTER-NODE/update-gain
+        http://KOTEKAN-MASTER-NODE:KOTEKAN_MASTER-PORT/update-gain
         """
         result = yield self.kotekan_master.update_gain(start_time, tag)
         coroutine_return(result)

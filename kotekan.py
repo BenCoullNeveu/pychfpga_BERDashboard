@@ -288,7 +288,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
                 "tag": tag,
                 "bad_inputs": bad_inputs,
             }
-            endpoint = "/updatable_config/flagging"
+            endpoint = "updatable_config/flagging"
             result = self._post(endpoint, **command)
             self.log.debug(result)
             coroutine_return(result)
