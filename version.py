@@ -145,7 +145,9 @@ def get_version(
                 # Check if the python_package is currently running from a
                 # folder under git revision.
                 package_dir = get_loader(python_package).filename
-                git_info = _run_cmd(cmd=git_describe_cmd, directory=package_dir)
+                git_info = _run_cmd(
+                    cmd=git_describe_cmd, directory=package_dir
+                )
                 branch = _run_cmd(cmd=git_branch_cmd, directory=package_dir)
                 if debug:
                     print("python package dir      : {}".format(package_dir))
@@ -163,7 +165,9 @@ def get_version(
                     # by setuptools.
                     pkg_version = get_distribution(python_package).version
                     if debug:
-                        print("python package setup ver: {}".format(pkg_version))
+                        print(
+                            "python package setup ver: {}".format(pkg_version)
+                        )
                     return pkg_version
             except Exception:
                 raise Exception(
@@ -221,7 +225,9 @@ def get_version(
                     remote_tags_dir = package_dir
                 elif cwd_release:
                     remote_tags_dir = "."
-                remote_tags = _run_cmd(cmd=git_remote_cmd, directory=remote_tags_dir)
+                remote_tags = _run_cmd(
+                    cmd=git_remote_cmd, directory=remote_tags_dir
+                )
 
                 if debug:
                     print("tags_dir   : {}".format(remote_tags_dir))
@@ -248,7 +254,10 @@ def get_version(
             release_format = clean_formatting
 
         return release_format.format(
-            branch=branch, tag=tag, commits_ahead=commits_ahead, sha=git_sha.lstrip("g")
+            branch=branch,
+            tag=tag,
+            commits_ahead=commits_ahead,
+            sha=git_sha.lstrip("g"),
         )
     except Exception:
         raise Exception("Unable to create release version")
