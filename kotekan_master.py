@@ -1017,7 +1017,7 @@ class KotekanMaster(object):
         # Log Things
         self.log.info("%s : Parameter bad_inputs updated.", self)
         self.log.debug(result)
-        return_msg = "{} update-bad-inputs tag registered.".foramt(tag)
+        return_msg = "{} update-bad-inputs tag registered.".format(tag)
         self.slack.info(
             msg_title="update-bad-inputs", msg=tag, as_inline_code=True
         )
