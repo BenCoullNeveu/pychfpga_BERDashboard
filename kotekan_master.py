@@ -138,9 +138,24 @@ class KotekanMaster(object):
         self.current_config = NameSpace(config)
 
     @coroutine
-    def _get_gps_time(self, slack_broadcast=True):
+    def _get_gps_time(self, slack_broadcast=True, update_config=False):
         """
         Get gps time for chime master to sync the kotekan nodes
+
+        Parameters
+        ----------
+            slack_braodcast: boolean
+                Post updates to slack
+            update_config : boolean
+                Update the local copy of kotekan config, which is posted to all
+                nodes and is used for checksum validation.
+                NOTE: update_config should only be called during start and
+                restart process only.
+        Returns
+        -------
+            result : string
+                PASSED -- All good!
+                FAILED -- All not good!
         """
         self.log.info("%s : Retreiving GPS Time ...", self)
         if slack_broadcast:
@@ -156,7 +171,8 @@ class KotekanMaster(object):
             # Change the GPS Time in KotekanMaster Status
             self.gps_time = gps_request.json()
             # Append GPS time to the current kotekan config.
-            self.current_config.common_config.gps_time = self.gps_time
+            if update_config:
+                self.current_config.common_config.gps_time = self.gps_time
         except requests.exceptions.RequestException as error:
             msg = str(error)
             self.slack.error(
@@ -283,7 +299,10 @@ class KotekanMaster(object):
             self.log.info("%s: Logging Configured.", self)
 
             # Get gps_time from the self.gps_server
-            self.gps_status = yield self._get_gps_time()
+            self.gps_status = yield self._get_gps_time(
+                slack_braodcast=True,
+                update_config=True
+            )
 
             # Create a client for each node.
             self.log.info(
@@ -577,9 +596,12 @@ class KotekanMaster(object):
         Validate GPS Time
         """
         previous_gps_time = self.gps_time
-        # Assign GPS status to a placeholder, so that we never return a future when
-        # we access self.gps_status
-        new_gps_status = yield self._get_gps_time(slack_broadcast=False)
+        # Assign GPS status to a placeholder, so that we never return a future
+        # when we access self.gps_status
+        new_gps_status = yield self._get_gps_time(
+            slack_broadcast=False,
+            update_config=False
+        )
         self.gps_status = new_gps_status
         try:
 
@@ -601,7 +623,7 @@ class KotekanMaster(object):
                 # frame0_ctime changed! Raise Exception
                 raise Exception("frame0_ctime mismatch")
         except Exception as err:
-            # Set gps_status as failed!
+            # Set gps_status to FAILED!
             self.gps_status["result"] = "FAILED"
             # Log / slack things.
             msg = str(err)
@@ -609,7 +631,7 @@ class KotekanMaster(object):
             self.slack.error(
                 msg_title="GPS Validation Error", msg=msg, as_inline_code=True
             )
-            # Kill kotekan immediately
+            # Kill kotekan on all nodes immediately
             kill_status = yield self.kotekan_master.kill_kotekan()
             self.log.error(kill_status)
             coroutine_return(result="FAILED")
@@ -643,7 +665,6 @@ class KotekanMaster(object):
             _md5.update(dynamic_config)
             kotekan_master_md5sum = _md5.hexdigest()
             self.log.debug(kotekan_master_md5sum)
-
         except Exception as md5_error:
             self.log.error(md5_error)
             coroutine_return(error="Unable to get md5sums")
@@ -688,7 +709,6 @@ class KotekanMaster(object):
                 self.slack.critical(
                     msg_title="Checksum Validation FAILED.", msg=msg
                 )
-
         else:
             self.out_of_sync_cycles = 0
 
@@ -807,9 +827,11 @@ class KotekanMaster(object):
             msg="Sleeping 30s while the kill-kotekan permeates",
         )
         yield sleep(30)
-
         try:
-            new_gps_status = yield self._get_gps_time()
+            new_gps_status = yield self._get_gps_time(
+                slack_broadcast=True,
+                update_config=True
+            )
             self.gps_status = new_gps_status
             # Check for the corner case when gps returns an empty dict
             if self.gps_status["result"] == "FAILED":
