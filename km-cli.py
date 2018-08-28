@@ -16,7 +16,7 @@ HOSTNAME = "csBfs"
 PORT = 54323
 
 CANS = ["n", "s"]
-RACKS = [0, 1, 2, 3, 4, 5, 6, 8, 9, "a", "b", "c", "d", "e"]
+RACKS = [0, 1, 2, 3, 4, 5, 6, 8, 9, "A", "B", "C", "D", "E"]
 NODES = range(10)
 VALID_NODES = []
 for can in CANS:
@@ -134,13 +134,14 @@ def restart_cluster():
     required=True,
     help="cn|cs to blacklist entire seacan, e.g. --nodes cs\
           cs[0-9,A-D] to blacklist entire rack, e.g. --nodes cn3\
-          cs[0-9,A-D]g[0-9] to blacklist a node, e.g. --nodes cn[3,B]g7",
+          cs[0-9,A-D]g[0-9] to blacklist a node, e.g. --nodes cn[3,B]g7\
+          NOTE: --nodes argument is case-sensitive.",
 )
 def blacklist(nodes):
     """
     Blacklist a node from being managed by KotekanMaster
     """
-    nodes = nodes.lower()
+    #nodes = nodes.lower()
     regex = re.compile(nodes)
     current_nodes = filter(regex.match, VALID_NODES)
     click.echo("Blacklist-ing Nodes : {} ".format(current_nodes))
@@ -156,13 +157,14 @@ def blacklist(nodes):
     required=True,
     help="cn|cs to whitelist entire seacan, e.g. --nodes cs\
           cs[0-9,A-D] to whitelist entire rack, e.g. --nodes cn3\
-          cs[0-9,A-D]g[0-9] to whitelist a node, e.g. --nodes cn[0-3,A]g[0-1]",
+          cs[0-9,A-D]g[0-9] to whitelist a node, e.g. --nodes cn[0-3,A]g[0-1]\
+          NOTE: --nodes argument is case-sensitive",
 )
 def whitelist(nodes):
     """
     Whitelist a node to be managed by KotekanMaster
     """
-    nodes = nodes.lower()
+    #nodes = nodes.lower()
     regex = re.compile(nodes)
     current_nodes = filter(regex.match, VALID_NODES)
     click.echo("Whitelist-ing Nodes : {}".format(current_nodes))
