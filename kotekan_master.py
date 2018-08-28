@@ -144,7 +144,7 @@ class KotekanMaster(object):
 
         Parameters
         ----------
-            slack_braodcast: boolean
+            slack_broadcast: boolean
                 Post updates to slack
             update_config : boolean
                 Update the local copy of kotekan config, which is posted to all
@@ -300,7 +300,7 @@ class KotekanMaster(object):
 
             # Get gps_time from the self.gps_server
             self.gps_status = yield self._get_gps_time(
-                slack_braodcast=True, update_config=True
+                slack_broadcast=True, update_config=True
             )
 
             # Create a client for each node.
