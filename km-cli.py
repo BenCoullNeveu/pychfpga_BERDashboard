@@ -9,7 +9,6 @@ import re
 import pprint as pp
 import click
 import requests
-import version
 
 
 # Global Parameters
@@ -60,7 +59,7 @@ def _post_command(command, data):
 # MAIN CLI GROUP
 @click.group()
 @click.version_option(
-    version=version.get_version(),
+    version="2018.08",
     prog_name="km-cli",
     message="%(prog)s %(version)s",
 )
