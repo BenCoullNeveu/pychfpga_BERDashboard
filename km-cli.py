@@ -59,9 +59,7 @@ def _post_command(command, data):
 # MAIN CLI GROUP
 @click.group()
 @click.version_option(
-    version="2018.08",
-    prog_name="km-cli",
-    message="%(prog)s %(version)s",
+    version="2018.08", prog_name="km-cli", message="%(prog)s %(version)s"
 )
 def cli():
     """
@@ -141,7 +139,7 @@ def blacklist(nodes):
     """
     Blacklist a node from being managed by KotekanMaster
     """
-    #nodes = nodes.lower()
+    # nodes = nodes.lower()
     regex = re.compile(nodes)
     current_nodes = filter(regex.match, VALID_NODES)
     click.echo("Blacklist-ing Nodes : {} ".format(current_nodes))
@@ -164,7 +162,7 @@ def whitelist(nodes):
     """
     Whitelist a node to be managed by KotekanMaster
     """
-    #nodes = nodes.lower()
+    # nodes = nodes.lower()
     regex = re.compile(nodes)
     current_nodes = filter(regex.match, VALID_NODES)
     click.echo("Whitelist-ing Nodes : {}".format(current_nodes))
@@ -375,11 +373,13 @@ def get_status(status_option):
         data_to_print = ["watchdog_status"]
         total_restarts = 0
         for key in status["watchdog_status"]["watchdog_stats"].keys():
-            total_restarts += len(status["watchdog_status"]["watchdog_stats"][key])
+            total_restarts += len(
+                status["watchdog_status"]["watchdog_stats"][key]
+            )
             status["watchdog_status"]["watchdog_stats"][key] = len(
                 status["watchdog_status"]["watchdog_stats"][key]
             )
-        status["watchdog_status"]["total_restarts"]=total_restarts
+        status["watchdog_status"]["total_restarts"] = total_restarts
 
     elif status_option == "detailed_watchdog":
         data_to_print = ["watchdog_status"]
