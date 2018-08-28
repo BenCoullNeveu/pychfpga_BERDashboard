@@ -316,6 +316,12 @@ def cosmology_config():
     help="get watchdog statistics",
 )
 @click.option(
+    "--detailed-watchdog",
+    "status_option",
+    flag_value="detailed_watchdog",
+    help="get detailed watchdog statistics",
+)
+@click.option(
     "--frb",
     "status_option",
     flag_value="frb",
@@ -366,6 +372,16 @@ def get_status(status_option):
         data_to_print = ["start_time"]
 
     elif status_option == "watchdog":
+        data_to_print = ["watchdog_status"]
+        total_restarts = 0
+        for key in status["watchdog_status"]["watchdog_stats"].keys():
+            total_restarts += len(status["watchdog_status"]["watchdog_stats"][key])
+            status["watchdog_status"]["watchdog_stats"][key] = len(
+                status["watchdog_status"]["watchdog_stats"][key]
+            )
+        status["watchdog_status"]["total_restarts"]=total_restarts
+
+    elif status_option == "detailed_watchdog":
         data_to_print = ["watchdog_status"]
 
     elif status_option == "frb":
