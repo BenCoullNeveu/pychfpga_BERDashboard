@@ -731,8 +731,8 @@ class FlagCorrInput(object):
             for ff in all_files:
                 self.file_queue.put(ff, block=False)
 
-            # Update the time
-            self.search_time = time.time()
+                # Update the time
+                self.search_time = os.path.getmtime(ff)
 
 
     def process_raw_adc_files(self):
@@ -956,7 +956,10 @@ class FlagCorrInput(object):
                 payload = self.create_payload(update_id, this_time + self.config.sync_delay, new_combined_flag.tolist())
 
                 for client in self.consumers:
-                    client.update_bad_inputs(**payload)
+                    try:
+                        client.update_bad_inputs(**payload)
+                    except Exception as exc:
+                        self.log.error("Failed sending bad inputs to %r: %s" % (client, exc))
 
                 # Save current time if the combined flags changed
                 self.update_time['combined'] = this_time
@@ -1493,8 +1496,7 @@ class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
         """
         self.log.info('%r: Received start command' % self)
         if self.flg:
-            self.log.info('%r: FlagCorrInput server already running.  Restarting with new config.' % self)
-            self.shutdown()
+            coroutine_return('FlagCorrInput server already running.  Use the stop endpoint.')
 
         # Save configuration file
         # Save configuration parameters
@@ -1727,6 +1729,22 @@ class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
             coroutine_return( "FlagCorrInput server is not started" )
 
     @coroutine
+    @endpoint('reset-control-flag')
+    def reset_control_flag(self, handler, source):
+        self.log.info('%r: Received request to reset %s control flag.' % (self, source))
+
+        source = json.loads(source)
+
+        if self.flg and source in self.flg.control:
+
+            self.flg.control[source].reset()
+
+            coroutine_return( "Reset %s control flag." % source )
+
+        else:
+            coroutine_return( "FlagCorrInput server is not started" )
+
+    @coroutine
     @endpoint('past-correlator-input-flags')
     def past_correlator_input_flags(self, handler, timestamp):
         self.log.info('%r: Received request for past correlator input flags.' % self)
@@ -1820,6 +1838,30 @@ class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
             if timestamp_returned is not None:
 
                 payload = self.flg.create_payload(update_id, timestamp_returned, arr)
+
+                coroutine_return( payload )
+
+            else:
+                coroutine_return( "No flags available." )
+
+        else:
+            coroutine_return( "FlagCorrInput server is not started" )
+
+    @coroutine
+    @endpoint('send-last-update')
+    def send_last_update(self, handler):
+        self.log.info('%r: Received request to POST last update to consumers.' % self)
+
+        if self.flg:
+            update_id = self.flg.update_id['combined']
+            timestamp_returned, arr = self.flg.get_flag(update_id, dataset='flag')
+
+            if timestamp_returned is not None:
+
+                payload = self.flg.create_payload(update_id, time.time() + self.flg.config.sync_delay, arr)
+
+                for client in self.flg.consumers:
+                    client.update_bad_inputs(**payload)
 
                 coroutine_return( payload )
 
@@ -1977,6 +2019,11 @@ class FlagCorrInputAsyncRESTClient(AsyncRESTClient):
         self.print_result(res)
 
     @coroutine
+    def reset_control_flag(self, source):
+        res = yield self.post('reset-control-flag', source)
+        coroutine_return(res)
+
+    @coroutine
     def get_past_correlator_input_flags(self, timestamp):
         res = yield self.post('past-correlator-input-flags', timestamp)
         coroutine_return(res)
@@ -1999,6 +2046,11 @@ class FlagCorrInputAsyncRESTClient(AsyncRESTClient):
     @coroutine
     def get_last_update(self):
         res = yield self.get('last-update')
+        coroutine_return(res)
+
+    @coroutine
+    def send_last_update(self):
+        res = yield self.get('send-last-update')
         coroutine_return(res)
 
     @coroutine
