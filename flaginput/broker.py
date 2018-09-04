@@ -14,6 +14,7 @@ import datetime
 import time
 
 import tornado.ioloop
+import tornado.gen
 import tornado.escape
 
 import numpy as np
@@ -394,6 +395,9 @@ class FlagCorrInput(object):
             self.log.info('No prior flags available.  Setting all correlator inputs to good.')
             self.source_flags = np.ones((len(self.sources), self.ninput), dtype=np.bool)
 
+        self.source_flags_staging = {}
+        self.cadence = 0.1 * min([self.config[src].cadence for src in self.sources if src in self.config])
+
         # Determine historically bad inputs
         self._update_historical_status()
 
@@ -485,7 +489,7 @@ class FlagCorrInput(object):
         self.consumers = []
         if self.config.consumers is not None:
             for config in self.config.consumers:
-                self.consumers.append(KotekanRESTClient(**config))
+                self.consumers.append(KotekanMasterRESTClient(**config))
 
     # -------------------------------
     # layout
@@ -540,14 +544,11 @@ class FlagCorrInput(object):
 
         # Update flags
         if update:
-            tests = {}
-            tests['layout'] = np.array(tools.is_chime_on(self._input))
+
+            self.source_flags_staging['layout'] = np.array(tools.is_chime_on(self._input))
 
             if 'manual' in self.sources:
-                tests['manual'] = np.array([check_manual_flag(inp) for inp in self._input])
-
-            self.update_flags(**tests)
-
+                self.source_flags_staging['manual'] = np.array([check_manual_flag(inp) for inp in self._input])
 
     # -------------------------------
     # power
@@ -575,8 +576,7 @@ class FlagCorrInput(object):
                             self.source_flags[isource, ii]
                             for ii, inp in enumerate(self._input)])
 
-            self.update_flags(power=flag)
-
+            self.source_flags_staging['power'] = flag
 
     # -------------------------------
     # rms
@@ -638,7 +638,7 @@ class FlagCorrInput(object):
 
             self.control['rms'].update(flag)
 
-            self.update_flags(rms=self.control['rms'].flag)
+            self.source_flags_staging['rms'] = self.control['rms'].flag
 
             self.log.info('It took %s seconds to update rms.' % (time.time() - current_time,))
 
@@ -688,7 +688,7 @@ class FlagCorrInput(object):
 
                 flag = np.array([likelihood[inp.corr_order] < self.config.rfi.threshold for inp in self._input])
 
-                self.update_flags(rfi=flag)
+                self.source_flags_staging['rfi'] = flag
 
                 self.log.info('It took %s seconds to update rfi.' % (time.time() - current_time,))
 
@@ -825,7 +825,7 @@ class FlagCorrInput(object):
                                  for ii, classification in enumerate(res['classification'])])
 
                 self.control['raw'].update(flag)
-                self.update_flags(raw=self.control['raw'].flag)
+                self.source_flags_staging['raw'] = self.control['raw'].flag
 
             finally:
                 self.file_queue.task_done()
@@ -898,7 +898,36 @@ class FlagCorrInput(object):
 
         return output_files or None
 
+    @coroutine
+    def runner(self):
 
+        heartbeat = time.time()
+
+        while self.sources:
+
+            # Print a message to let you know I'm alive
+            current_time = time.time()
+            if (current_time - heartbeat) > self.config.heartbeat:
+                self.log.info("Checking for flag updates.")
+                heartbeat = current_time
+
+            # Extract updates to the source flags from staging
+            flags = {}
+            while self.source_flags_staging:
+                key, val = self.source_flags_staging.popitem()
+                flags[key] = val
+
+            # Perform the update
+            if flags:
+                try:
+                    yield self.update_flags(**flags)
+                except Exception as exc:
+                    self.log.error("Failed to update flags: %s" % exc)
+
+            # Non-blocking sleep
+            yield tornado.gen.sleep(self.cadence)
+
+    @coroutine
     def update_flags(self, **kwargs):
         """ Update internal flags.
 
@@ -957,9 +986,11 @@ class FlagCorrInput(object):
 
                 for client in self.consumers:
                     try:
-                        client.update_bad_inputs(**payload)
+                        yield client.update_bad_inputs(**payload)
                     except Exception as exc:
                         self.log.error("Failed sending bad inputs to %r: %s" % (client, exc))
+
+                self.log.info('It took %0.1f seconds to post %s to consumers.' % (time.time() - this_time, update_id))
 
                 # Save current time if the combined flags changed
                 self.update_time['combined'] = this_time
@@ -997,6 +1028,8 @@ class FlagCorrInput(object):
 
             # Check if we have flagged an abnormally large number of inputs
             # self.check_population()
+
+            self.log.info('It took %0.1f seconds to process %s.' % (time.time() - this_time, update_id))
 
 
     def check_population(self):
@@ -1353,13 +1386,10 @@ class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
         self.log.info('%r: Shutting down.' % self)
 
         # Stop all periodic callbacks
-        while True:
-            try:
-                source, callback = self._periodic_callbacks.popitem()
-                callback.stop()
-                self.log.info('%r: Ended %s periodic callback.' % (self, source))
-            except KeyError:
-                break
+        while self._periodic_callbacks:
+            source, callback = self._periodic_callbacks.popitem()
+            callback.stop()
+            self.log.info('%r: Ended %s periodic callback.' % (self, source))
 
         # Close open files, shutdown thread executor
         self.flg.stop()
@@ -1376,7 +1406,7 @@ class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
     def _get_raw_adc_files(self):
         """ Process new raw acquisition files.
         """
-        if self.flg is None: return
+        if self.flg is None: coroutine_return()
 
         self.log.info('%r: Searching for new raw ADC acquisition files.' % self)
         try:
@@ -1405,7 +1435,7 @@ class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
     def _query_layout_database(self):
         """ Query the layout database and find feeds not connected to an antenna.
         """
-        if self.flg is None: return
+        if self.flg is None: coroutine_return()
 
         self.log.info('%r: Querying layout database.' % self)
         try:
@@ -1419,7 +1449,7 @@ class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
     def _query_fla_power_server(self):
         """ Query the FLA power server and find feeds currently powered off.
         """
-        if self.flg is None: return
+        if self.flg is None: coroutine_return()
 
         self.log.info('%r: Querying FLA power server.' % self)
         try:
@@ -1433,7 +1463,7 @@ class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
     def _query_rms_server(self):
         """ Query the raw acquisition server and find feed with low or high RMS.
         """
-        if self.flg is None: return
+        if self.flg is None: coroutine_return()
 
         self.log.info('%r: Querying raw adc server for rms.' % self)
         try:
@@ -1447,7 +1477,7 @@ class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
     def _query_rfi_server(self):
         """ Query the rfi server and find feed with high bad input likelihood.
         """
-        if self.flg is None: return
+        if self.flg is None: coroutine_return()
 
         self.log.info('%r: Querying rfi server.' % self)
         try:
@@ -1461,7 +1491,7 @@ class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
     def _update_rms_excludes(self):
         """ Update the time ranges to exclude from rms calculation.
         """
-        if self.flg is None: return
+        if self.flg is None: coroutine_return()
 
         self.log.info('%r: Updating time ranges to exclude from rms test.' % self)
         try:
@@ -1475,7 +1505,7 @@ class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
     def _update_historical_status(self):
         """ Update the inputs that have been historically bad.
         """
-        if self.flg is None: return
+        if self.flg is None: coroutine_return()
 
         self.log.info('%r: Updating historically bad inputs.' % self)
         try:
@@ -1484,6 +1514,26 @@ class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
         except Exception as e:
             self.log.error(e)
             raise
+
+    @coroutine
+    def _send_update(self, update_id=None):
+
+        if self.flg is None: coroutine_return()
+
+        update_id = update_id or self.flg.update_id['combined']
+        if update_id is None: coroutine_return()
+
+        timestamp_returned, arr = self.flg.get_flag(update_id, dataset='flag')
+        if timestamp_returned is None: coroutine_return()
+
+        payload = self.flg.create_payload(update_id, timestamp_returned, arr)
+
+        for client in self.flg.consumers:
+            try:
+                yield client.update_bad_inputs(**payload)
+            except Exception as exc:
+                self.log.error("Failed sending bad inputs to %r: %s" % (client, exc))
+
 
     ##################
     # Server commands
@@ -1519,6 +1569,9 @@ class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
             cfg = self.flg.config[path]
             self._periodic_callbacks[path] = tornado.ioloop.PeriodicCallback(getattr(self, cfg.method), 1000 * cfg.cadence)
             self._periodic_callbacks[path].start()
+
+        # Start the main loop that checks for gain updates
+        tornado.ioloop.IOLoop.current().spawn_callback(self.flg.runner)
 
         # Server started
         coroutine_return('FlagCorrInput server started.')
@@ -1847,6 +1900,7 @@ class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
         else:
             coroutine_return( "FlagCorrInput server is not started" )
 
+
     @coroutine
     @endpoint('send-last-update')
     def send_last_update(self, handler):
@@ -1854,16 +1908,12 @@ class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
 
         if self.flg:
             update_id = self.flg.update_id['combined']
-            timestamp_returned, arr = self.flg.get_flag(update_id, dataset='flag')
 
-            if timestamp_returned is not None:
+            if update_id is not None:
 
-                payload = self.flg.create_payload(update_id, time.time() + self.flg.config.sync_delay, arr)
+                self._send_update(update_id=update_id)
 
-                for client in self.flg.consumers:
-                    client.update_bad_inputs(**payload)
-
-                coroutine_return( payload )
+                coroutine_return( "Sent update:  %s" % update_id )
 
             else:
                 coroutine_return( "No flags available." )
@@ -2226,7 +2276,7 @@ class RFIMonitorRESTClient(AsyncRESTClient):
 # Kotekan Master REST client
 #########################################
 
-class KotekanRESTClient(AsyncRESTClient):
+class KotekanMasterRESTClient(AsyncRESTClient):
     """
     Implements an asynchronous client that exposes (some of) the functions of the
     kotekan master client.   This client is used by FlagCorrInput to POST the
@@ -2245,7 +2295,7 @@ class KotekanRESTClient(AsyncRESTClient):
 
     def __init__(self, hostname='csBfs', port=54323, *args, **kwargs):
 
-        super(KotekanRESTClient, self).__init__(hostname=hostname, port=port)
+        super(KotekanMasterRESTClient, self).__init__(hostname=hostname, port=port)
 
     @coroutine
     def update_bad_inputs(self, tag, start_time, correlator_bad_inputs, cylinder_bad_inputs):

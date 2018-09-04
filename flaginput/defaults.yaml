@@ -13,7 +13,8 @@ flaginput:
     sources_in_buffer: False
     niceness: 10
     port: 54327
-    sync_delay: 10.0
+    heartbeat: 60.0
+    sync_delay: 60.0
     consumers:
         - {hostname: 'csBfs', port: 54323}
     layout:
@@ -58,6 +59,9 @@ flaginput:
         num_consecutive_bad: 2
         num_consecutive_good: 24
     periodic_callbacks: ['historical_status']
+    send_regular_update:
+        method: '_send_update'
+        cadence: 54000.0
     historical_status:
         method: '_update_historical_status'
         cadence: 3600.0

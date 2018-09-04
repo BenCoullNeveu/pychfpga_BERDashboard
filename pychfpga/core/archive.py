@@ -582,6 +582,8 @@ class Hdf5Writer(object):
                     fdump.attrs[name] = data
                 else:
                     fdump.create_dataset(name, data=data)
+                    fdump[name].attrs['axis'] = np.array([ax for ax in self._dataset_spec[name]['axes']
+                                                          if ax != self._grow_ax])
 
 
     def get_metrics(self, timestamp=None, **kwargs):
