@@ -962,6 +962,67 @@ class KotekanMaster(object):
         self.log.debug(result)
         coroutine_return(result)
 
+    @coroutine
+    def baseband(self, event_id, file_path, start_unix_seconds, start_unix_nano, duration_nano, dm, dm_error):
+        """Submit a baseband dump request
+
+        Parameters
+        ----------
+            event_id : integer
+                Unique id number of the event
+
+            file_path : string
+                The path relative to the archiver root where the baseband files
+                should be saved. E.g., "yyyy/mm/dd/<evt_id>/baseband/raw".
+
+            start_unix_seconds : int
+                Whole part of the start time of the dump (seconds since Unix
+                epoch) at the reference frequency channel
+
+            start_unix_nano : int
+                Fractional part of the start time of the dump (seconds since
+                Unix epoch) at the reference frequency channel, scaled to
+                nanoseconds.
+
+            duration_nano : int
+                Duration of the dump in seconds at the reference frequency
+                channel, in nanoseconds.
+
+            dm : number
+                Estimated dispersion measure
+
+            dm_error : number
+                Uncertainty of dispersion measure
+
+        Returns
+        -------
+            <node_name> : dict
+                Result of baseband request federation to kotekan nodes
+
+        """
+        msg = "%s: [%s.%s, %s] (dm=%s+/-%s)" % (event_id, start_unix_seconds,
+                                                start_unix_nano, duration_nano,
+                                                dm, dm_error)
+        self.log.debug("%s: dispatching baseband dump request %s", self, msg)
+
+        result = yield {
+            node_name: kotekan.baseband(event_id, file_path,
+                                        start_unix_seconds,
+                                        start_unix_nano,
+                                        duration_nano,
+                                        dm, dm_error)
+            for node_name, kotekan in self.nodes.items()
+        }
+        self.log.info("%s: baseband dump request dispatched", self)
+        self.log.debug(result)
+
+        self.slack.info(
+            msg_title="Baseband %s requested" % event_id,
+            msg=msg,
+            as_inline_code=True
+        )
+        coroutine_return(result)
+
     # Calibration Broker Endpoints
     @coroutine
     def update_bad_inputs(
@@ -1596,6 +1657,36 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         result = yield self.kotekan_master.kotekan_config_md5sum()
         coroutine_return(result)
 
+    @coroutine
+    @endpoint("baseband")
+    def baseband(self, handler, event_id, file_path, start_unix_seconds, start_unix_nano, duration_nano, dm, dm_error):
+        """
+        POST to submit a baseband dump request.
+
+        curl
+        -d
+            '{
+                "event_id": 238,
+                "file_path": "yyyy/mm/dd/<evt_id>/baseband/raw",
+                "start_unix_seconds": -1,
+                "start_unix_nano": -1,
+                "duration_nano": 400000000,
+                "dm": 100,
+                "dm_error": 12
+            }'
+        -H "Content-Type: application/json"
+        http://KOTEKAN-MASTER-NODE:KOTEKAN_MASTER-PORT/baseband
+        """
+        # file_path is cleaned *not* to include the trailing slash
+        if file_path[-1] == "/":
+            file_path = file_path[:-1]
+        result = yield self.kotekan_master.baseband(event_id, file_path,
+                                                    start_unix_seconds,
+                                                    start_unix_nano,
+                                                    duration_nano,
+                                                    dm, dm_error)
+        coroutine_return(result)
+
     # Calibration Broker Endpoints
     @coroutine
     @endpoint("update-gain")
@@ -1934,6 +2025,19 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
         Returns an MD5 hash of the config file
         """
         result = yield self.get("kotekan-config-md5sum")
+        coroutine_return(result)
+
+    @coroutine
+    def baseband(self, event_id, file_path, start_unix_seconds, start_unix_nano, duration_nano, dm, dm_error):
+        """
+        Update and federate baseband dump requests.
+        """
+        result = yield self.post("baseband",
+                                 event_id, file_path,
+                                 start_unix_seconds,
+                                 start_unix_nano,
+                                 duration_nano,
+                                 dm, dm_error)
         coroutine_return(result)
 
     # Calibration Broker Endpoints

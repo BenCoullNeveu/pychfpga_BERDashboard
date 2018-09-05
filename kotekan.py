@@ -181,6 +181,23 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         result = yield self._get("config_md5sum")
         coroutine_return(result)
 
+    @coroutine
+    def baseband(self, event_id, file_path, start_unix_seconds, start_unix_nano, duration_nano, dm, dm_error):
+        """
+        Submits a baseband dump request.
+        """
+        request = {
+            "event_id": event_id,
+            "file_path": file_path,
+            "start_unix_seconds": start_unix_seconds,
+            "start_unix_nano": start_unix_nano,
+            "duration_nano": duration_nano,
+            "dm": dm,
+            "dm_error": dm_error,
+        }
+        result = yield self._post("baseband", **request)
+        coroutine_return(result)
+
     # FRB Parameters -- POST RESTful Endpoints
     @coroutine
     def update_gain_dir(self, gain_dir):
