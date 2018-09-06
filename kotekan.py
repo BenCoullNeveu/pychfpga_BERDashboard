@@ -198,6 +198,14 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         result = yield self._post("baseband", **request)
         coroutine_return(result)
 
+    @coroutine
+    def baseband_status(self, event_id):
+        """
+        Returns the status of a baseband dump for `event_id`
+        """
+        result = yield self._get("baseband/{}".format(event_id))
+        coroutine_return(result)
+
     # FRB Parameters -- POST RESTful Endpoints
     @coroutine
     def update_gain_dir(self, gain_dir):

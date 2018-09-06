@@ -1023,6 +1023,29 @@ class KotekanMaster(object):
         )
         coroutine_return(result)
 
+    @coroutine
+    def baseband_status(self, event_id):
+        """GET baseband status for an event
+
+        Parameters
+        ----------
+            event_id : integer
+                Unique id number of the event
+
+        Returns
+        -------
+            <node_name> : dict
+                Result of baseband status federation to kotekan nodes
+
+        """
+        result = yield {
+            node_name: kotekan.baseband_status(event_id)
+            for node_name, kotekan in self.nodes.items()
+        }
+        self.log.info("%s: baseband status request dispatched", self)
+        self.log.debug(result)
+        coroutine_return(result)
+
     # Calibration Broker Endpoints
     @coroutine
     def update_bad_inputs(
@@ -1687,6 +1710,38 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
                                                     dm, dm_error)
         coroutine_return(result)
 
+    @coroutine
+    @endpoint(r"baseband/\d+")
+    def baseband_status(self, handler):
+        """
+        Queries for the status of a baseband dump request.
+        """
+        event_id = handler.request.path.split("/")[-1]
+        result = yield self.kotekan_master.baseband_status(int(event_id))
+
+        statuses = set()
+        for node, node_status in result.items():
+            if "RuntimeError" in node_status:
+                statuses.add("fail")
+            else:
+                for readout_status in node_status:
+                    statuses.add(readout_status["status"])
+
+        if len(statuses) == 1:
+            status = statuses.pop()
+        elif statuses == set(["done", "error"]):
+            status = "done"
+        else:
+            status = "inprogress"
+
+        if status == "fail":
+            status = "error"
+
+        coroutine_return({
+            "status": status,
+            "nodes": result
+        })
+
     # Calibration Broker Endpoints
     @coroutine
     @endpoint("update-gain")
@@ -2038,6 +2093,14 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
                                  start_unix_nano,
                                  duration_nano,
                                  dm, dm_error)
+        coroutine_return(result)
+
+    @coroutine
+    def baseband_status(self, event_id):
+        """
+        Returns the status of a baseband dump for `event_id`
+        """
+        result = yield self.get("baseband/{}".format(event_id))
         coroutine_return(result)
 
     # Calibration Broker Endpoints
