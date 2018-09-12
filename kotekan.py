@@ -191,6 +191,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         endpoints = []
         for gpu_id in range(4):
             endpoints.append("gpu/gpu_{0}/frb/update_gains/{0}".format(gpu_id))
+            endpoints.append("gpu/gpu_{0}/update_gains_psr/{0}".format(gpu_id))
         result = yield {
             gpu_id: self._post(endpoint, **command) for endpoint in endpoints
         }
