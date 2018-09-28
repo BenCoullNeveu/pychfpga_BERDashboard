@@ -6,6 +6,7 @@ REST Server and clients for the Dataset Broker.
 
 import sys
 import thread
+import time
 
 from rest import AsyncRESTClient, AsyncRESTServer, endpoint
 from rest import coroutine, coroutine_return
@@ -115,8 +116,18 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
 
         # Do we know this dset ID?
         if ds_id >= len(self.datasets):
-            reply['result'] = "error: dataset ID unknown to broker."
-            coroutine_return(reply)
+            # wait for half of kotekans timeout before we admit we don't have it
+            self.lock_states.release()
+            self.lock_ds.release()
+            time.sleep(15)
+            self.lock_ds.acquire()
+            self.lock_states.acquire()
+            # did someone send it to us by now?
+            if ds_id >= len(self.datasets):
+                self.lock_states.release()
+                self.lock_ds.release()
+                reply['result'] = "error: dataset ID unknown to broker."
+                coroutine_return(reply)
 
         reply["ancestors"] = yield self.ancestors(ds_id);
 
@@ -188,6 +199,11 @@ class DSBrokerAsyncRESTClient(AsyncRESTClient):
     @coroutine
     def status(self):
         result = yield self.get('status')
+        coroutine_return(result)
+
+    @coroutine
+    def requestAncestors(self, ds_id):
+        result = yield self.post('request-ancestors')
         coroutine_return(result)
 
 
