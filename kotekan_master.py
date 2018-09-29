@@ -65,7 +65,9 @@ class KotekanMaster(object):
 
         # KotekanAsyncRESTClient instances blacklisted
         self.blacklist_nodes = []
-        self.no_connection_nodes = {}
+        # Connection error list contains of tuples with the format:
+        # (time.ctime(), {"node_name": "HTTPError"})
+        self.connection_error_nodes = []
 
         # Watchdog parameters
         self.watchdog_enabled = False
@@ -327,20 +329,17 @@ class KotekanMaster(object):
             # Check if we can connect to Kotekan running on the nodes.
             self.log.info("%s : Checking node connection status ", self)
             status = yield self.kotekan_status()
-            for node_name, status in status.items():
-                if "running" not in status:
-                    self.no_connection_nodes[node_name] = status
-            self.slack.info(
-                msg_title="Unable to connect to the following nodes:",
-                msg=json.dumps(self.no_connection_nodes),
-                as_inline_code=True,
+            no_connection_nodes = yield self.check_node_connection(status)
+            self.log.warning(
+                "%s : Connection Error Nodes: %s", self, no_connection_nodes
             )
 
             # Check if all kotekan instances are running the same binary.
             self.log.info("%s : Checking kotekan binary versions", self)
+            # Get the current running versions
             running_versions = yield self.kotekan_version()
             for node_name, version in running_versions.items():
-                if node_name not in self.no_connection_nodes.keys():
+                if node_name not in no_connection_nodes.keys():
                     self.kotekan_versions.append(
                         version.get("git_commit_hash")
                     )
@@ -434,6 +433,7 @@ class KotekanMaster(object):
                 "receiver_nodes": self.receiver_nodes.keys(),
             },
             "blacklist_nodes": self.blacklist_nodes,
+            "connection_error_nodes": self.connection_error_nodes,
             "watchdog_status": {
                 "watchdog_enabled": self.watchdog_enabled,
                 "watchdog_interval": self.watchdog_interval,
@@ -474,6 +474,25 @@ class KotekanMaster(object):
             ),
         }
         coroutine_return(result)
+
+    @coroutine
+    def check_node_connection(self, node_status):
+        _connection_error = {}
+        # Check for which nodes we cannot connect
+        for node_name, status in node_status.items():
+            if "running" not in status:
+                _connection_error[node_name] = status
+
+        if len(_connection_error) != 0:
+            # Update the self.connection_error_nodes parameter with the new
+            # nodes that were found not to be working.
+            self.connection_error_nodes.append(time.ctime(), _connection_error)
+            self.slack.warning(
+                msg_title="Connection Error Nodes:",
+                msg=json.dumps(_connection_error),
+                as_inline_code=True,
+            )
+        coroutine_return(result=_connection_error)
 
     @coroutine
     def whitelist_node(self, node_list):
@@ -1379,6 +1398,11 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
                         node_status = (
                             yield self.kotekan_master.kotekan_status()
                         )
+                        # Report nodes which have connection issues
+                        no_connection_nodes = (
+                            yield self.check_node_connection(node_status)
+                        )
+
                         # Execute restarts for nodes with running==false
                         self.log.info("%s : GETing Restart List", self)
                         restart_list = (
