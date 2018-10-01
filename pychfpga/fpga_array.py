@@ -1475,8 +1475,32 @@ class FPGAArray(object):
                      mode,
                      dsmap=range(16),
                      frames_per_packet=1,
-                     chan8_channel_map=range(16)):
+                     chan8_channel_map=range(16),
+                     pcb_link_tx_power=(5, 13),
+                     qsfp_link_tx_power=(5, 5)):
         """ Setup the crossbars and data shuffling in every board of the array.
+
+        Parameters:
+
+            mode (str): One of the crossbar engine operational mode
+                ('shuffle16', 'shuffle256' etc.). Is passed to
+                ib.init_crossbar().
+
+            dsmap (list of int): Shuffle remap that is passed to
+                ib.init_crossbar(). Defaults to `range(16)`.
+
+            frames_per_packet (int): Number of frames per packet. Defaults to
+                1. Is passed to ib.init_crossbar().
+
+            chan8_channel_map (list): Map that is passed to
+                ib.init_crossbar(). Defaults to `range(16)`.
+
+             pcb_link_tx_power (tuple (int, int)): Initial and final TX power
+                 applied to the backplane PCB GTX links.
+
+             qsfp_link_tx_power (tuple (int,int)): Initial and final TX power
+                 applied to the backplane QSFP GTX links.
+
 
         The GTX receivers that have no corresponding transmitter is put in
         reset so it won't generate random packets into the following crossbar.
@@ -1529,12 +1553,14 @@ class FPGAArray(object):
                     # gtx.USER_RESET = 1
 
         # reset DFE at low power, then increase power
-        self.ib.BP_SHUFFLE.set_tx_power(5)
+        self.ib.BP_SHUFFLE.set_tx_power(pcb_link_tx_power[0], 'pcb')
+        self.ib.BP_SHUFFLE.set_tx_power(qsfp_link_tx_power[0], 'qsfp')
         self.ib.BP_SHUFFLE.reset_rx_equalizers()
         #time.sleep(0.3)
         #self.ib.BP_SHUFFLE.set_tx_power(7)
         #self.ib.BP_SHUFFLE.set_tx_power(10)
-        self.ib.BP_SHUFFLE.set_tx_power(13)
+        self.ib.BP_SHUFFLE.set_tx_power(pcb_link_tx_power[1], 'pcb')
+        self.ib.BP_SHUFFLE.set_tx_power(qsfp_link_tx_power[1], 'qsfp')
         self.ib.BP_SHUFFLE.reset_stats()
 
         # Print links

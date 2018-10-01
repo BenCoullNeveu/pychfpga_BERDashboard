@@ -493,6 +493,52 @@ class XGLinkArray(XGLink):
         self.NUMBER_OF_QSFP_LANES = 8
         self.NUMBER_OF_PCB_LINKS = 15
         self.NUMBER_OF_QSFP_LINKS = 4
+        self.LANE_GROUPS = {}
+            # group name ; (lane indices, GTX link indices)
+        self.LANE_GROUPS[0] = self.LANE_GROUPS['pcb'] = (
+                range(0, self.NUMBER_OF_PCB_LANES), 
+                range(0, self.NUMBER_OF_PCB_LINKS)
+                ) 
+        self.LANE_GROUPS[1] = self.LANE_GROUPS['qsfp'] = (
+                range(self.NUMBER_OF_PCB_LANES, self.NUMBER_OF_PCB_LANES + self.NUMBER_OF_QSFP_LANES),
+                range(self.NUMBER_OF_PCB_LINKS, self.NUMBER_OF_PCB_LINKS + self.NUMBER_OF_QSFP_LINKS)
+                )
+        self.LANE_GROUPS[None] = (
+            range(self.NUMBER_OF_LANES), 
+            range(self.NUMBER_OF_LINKS)
+            )
+
+    def get_lane_group(self, group):
+        """ Returns a list of lane numbers that correspond to the specified group. 
+        """
+        if group not in self.LANE_GROUPS:
+            raise ValueError('Invalid link group')
+        (lanes, _) = self.LANE_GROUPS[group]
+        return lanes
+
+    def get_link_group(self, group):
+        """ Returns a list of link numbers (i.e GTX indices) that correspond to the specified group. 
+        """
+        if group not in self.LANE_GROUPS:
+            raise ValueError('Invalid link group')
+        (_, links) = self.LANE_GROUPS[group]
+        return links
+
+
+    def set_tx_power(self,  power, group=None):
+        """ Sets the power level of the specified GTX link group.
+
+        Parameters:
+
+            groups (str or int): Group name or index: 0 or 'pcb' for backplane
+                PCB links, 1 or 'qsfp' for backplane QSFP links. `None`
+                (default) returns all links.
+
+        """
+        links = self.get_link_group(group)
+        for link in links:
+            self.gtx[link].TXDIFFCTRL = power
+
 
     @async
     def get_rx_lane_monitor(self, names, link_group=None):
@@ -503,14 +549,7 @@ class XGLinkArray(XGLink):
         else:
             is_list = True
 
-        if link_group == 0:
-            lanes = range(0, self.NUMBER_OF_PCB_LANES)
-        elif link_group == 1:
-            lanes = range(self.NUMBER_OF_PCB_LANES, self.NUMBER_OF_PCB_LANES + self.NUMBER_OF_QSFP_LANES)
-        elif link_group is None:
-            lanes = range(self.NUMBER_OF_LANES)
-        else:
-            raise ValueError('Invalid link group')
+        lanes = self.get_lane_group(link_group)
 
         bitfields = []
         for name in names:
@@ -547,7 +586,7 @@ class XGLinkArray(XGLink):
             id=self.fpga.get_string_id(),
             type='GAUGE')
 
-        for link_type, link_group in [('pcb_gtx',0), ('qsfp_gtx', 1)]:
+        for link_type, link_group in [('pcb_gtx', 'pcb'), ('qsfp_gtx', 'qsfp')]:
             yield async_moment # let the ioloop process data
             err, min_len, max_len, frame_det, rx_fifo, tx_fifo = yield self.get_rx_lane_monitor.async(['ERROR_CTR', 'MIN_FRAME_LENGTH', 'MAX_FRAME_LENGTH', 'FRAME_DETECT', 'RX_FIFO_OVERFLOW', 'TX_FIFO_OVERFLOW'],  link_group)
             for lane in range(len(err)):
