@@ -1639,7 +1639,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
 
     @coroutine
     @endpoint('set-gtx-power')
-    def set_gtx_power(self, handler, ib_serial, power):
+    def set_gtx_power(self, handler, ib_serial=None, power, link_type=None):
         """
         Set gtx power of backplane links for a specific fpga motherboard.
 
@@ -1649,10 +1649,16 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         power (int):  gtx power level. Integer in the range 0-15. The ch_master default level is 13.
         """
         if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
-            ib = self.chime_master.fpgas.ib.get(serial=ib_serial)
-            ib.BP_SHUFFLE.set_tx_power(int(power))
-            self.log.info('%r: Set gtx power level of FCC%02i%02i (SN%s) to %s.' %
-                         (self, ib.crate.crate_number, ib.slot - 1, ib.serial, power))
+            if ib_serial:
+                ib = self.chime_master.fpgas.ib.get(serial=ib_serial)
+                ib.BP_SHUFFLE.set_tx_power(int(power))
+                self.log.info('%r: Set gtx power level of FCC%02i%02i (SN%s) to %s.' %
+                             (self, ib.crate.crate_number, ib.slot - 1, ib.serial, power))
+
+            else:
+                self.chime_master.fpgas.ib.BP_SHUFFLE.set_tx_power(int(power))
+                self.log.info('%r: Set gtx power level to %i of on all Iceboards.' %
+                             (self, power))
 
 
 class ChimeMasterAsyncRESTClient(AsyncRESTClient):

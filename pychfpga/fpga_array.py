@@ -1477,7 +1477,7 @@ class FPGAArray(object):
                      frames_per_packet=1,
                      chan8_channel_map=range(16),
                      pcb_link_tx_power=(5, 13),
-                     qsfp_link_tx_power=(5, 5)):
+                     qsfp_link_tx_power=(5, 10)):
         """ Setup the crossbars and data shuffling in every board of the array.
 
         Parameters:
