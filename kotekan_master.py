@@ -12,6 +12,7 @@ import json
 import hashlib
 from random import choice
 import requests
+import yaml
 
 # Custom Imports
 import log
@@ -363,6 +364,7 @@ class KotekanMaster(object):
                 msg_title="Kotekan Version Check: PASSED",
                 msg=str(random_kotekan_version),
             )
+
             self.log.info("KotekanMaster Startup Complete.")
             self.slack.info(msg_title="KotekanMaster Startup Complete.")
             coroutine_return(result="KotekanMaster Startup Complete")
@@ -1402,6 +1404,10 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
                         no_connection_nodes = (
                             yield self.check_node_connection(node_status)
                         )
+                        self.log.warning(
+                            "%s : Node Connection Issues: %s",
+                            self,
+                            no_connection_nodes)
 
                         # Execute restarts for nodes with running==false
                         self.log.info("%s : GETing Restart List", self)
