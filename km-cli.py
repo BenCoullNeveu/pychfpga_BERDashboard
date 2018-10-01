@@ -9,6 +9,7 @@ import re
 import pprint as pp
 import click
 import requests
+import yaml
 
 
 # Global Parameters
@@ -108,7 +109,7 @@ def stop_kotekan():
 
 @cluster.command(
     "restart-cluster",
-    help="Re-acquire GPS clock and restart kotekan on the entire cluster",
+    help="Re-acquire GPS clock and restart kotekan",
 )
 def restart_cluster():
     """
@@ -146,6 +147,62 @@ def blacklist(nodes):
     data = {"node_list": current_nodes}
     blacklist_status = _post_command("blacklist-node", data)
     click.echo(blacklist_status)
+
+
+@cluster.command(
+    "save-blacklist",
+    help="Save current node blacklist"
+)
+@click.option(
+    "--filename",
+    type=click.STRING,
+    required=False,
+    help="Save current blacklist to --filename provided. Default:/usr/local/bin/kotekan_master_parameters.yaml"
+    )
+def save_blacklist(filename=None):
+    try:
+        click.echo("Getting blacklist from kotekan-master")
+        status = _get_command("status-kotekan-master")
+        blacklist = status['blacklist_nodes']
+        if filename is None:
+            filename = "/usr/local/bin/kotekan_master_parameters.yaml"
+        try:
+            click.echo("Saving node blacklist to file: {}".format(filename))
+            # Open and read the current parameter file.
+            stream = open(filename, 'r')
+            data = yaml.load(stream)
+            data['blacklist-nodes'] = blacklist
+            with open(filename, 'w') as file:
+                file.write(yaml.dump(data, default_flow_style=False))
+        except yaml.YAMLError as error:
+            click.echo(error)
+            raise error
+        click.echo("Blacklist successfully saved.")
+    except Exception as e:
+        raise e
+
+
+@cluster.command("load-blacklist", help="Load blacklist to kotekan-master")
+@click.option(
+    "--filename",
+    type=click.STRING,
+    required=False,
+    help="Load default blacklist from the --filename provided. Default:/usr/local/bin/kotekan_master_parameters.yaml"
+    )
+def load_blacklist(filename=None):
+    try:
+        if filename is None:
+            filename = "/usr/local/bin/kotekan_master_parameters.yaml"
+        click.echo("Loading node blacklist from : {}".format(filename))
+        stream = open(filename, 'r')
+        data = yaml.load(stream)
+        blacklist = data['blacklist-nodes']
+        click.echo("Loading blacklist : {}".format(blacklist))
+        data = {"node_list": blacklist}
+        blacklist_status = _post_command("blacklist-node", data)
+        click.echo(blacklist_status)
+    except Exception as e:
+        raise e
 
 
 @cluster.command("whitelist", help="whitelist a node|rack|seacan")
