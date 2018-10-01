@@ -1639,7 +1639,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
 
     @coroutine
     @endpoint('set-gtx-power')
-    def set_gtx_power(self, handler, ib_serial=None, power, link_type=None):
+    def set_gtx_power(self, handler, ib_serial=None, power=13, link_type=None):
         """
         Set gtx power of backplane links for a specific fpga motherboard.
 
