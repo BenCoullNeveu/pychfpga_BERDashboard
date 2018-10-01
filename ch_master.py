@@ -1651,12 +1651,12 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
             if ib_serial:
                 ib = self.chime_master.fpgas.ib.get(serial=ib_serial)
-                ib.BP_SHUFFLE.set_tx_power(int(power))
+                ib.BP_SHUFFLE.set_tx_power(int(power), link_type)
                 self.log.info('%r: Set gtx power level of FCC%02i%02i (SN%s) to %s.' %
                              (self, ib.crate.crate_number, ib.slot - 1, ib.serial, power))
 
             else:
-                self.chime_master.fpgas.ib.BP_SHUFFLE.set_tx_power(int(power))
+                self.chime_master.fpgas.ib.BP_SHUFFLE.set_tx_power(int(power), link_type)
                 self.log.info('%r: Set gtx power level to %i of on all Iceboards.' %
                              (self, power))
 
