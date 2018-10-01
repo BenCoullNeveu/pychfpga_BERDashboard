@@ -1486,7 +1486,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
                         )
                         # Report nodes which have connection issues
                         no_connection_nodes = (
-                            yield self.check_node_connection(node_status)
+                            yield self.kotekan_master.check_node_connection(node_status)
                         )
                         self.log.warning(
                             "%s : Node Connection Issues: %s",
