@@ -488,7 +488,7 @@ class KotekanMaster(object):
         if len(_connection_error) != 0:
             # Update the self.connection_error_nodes parameter with the new
             # nodes that were found not to be working.
-            self.connection_error_nodes.append(time.ctime(), _connection_error)
+            self.connection_error_nodes.append((time.ctime(), _connection_error))
             self.slack.warning(
                 msg_title="Connection Error Nodes:",
                 msg=json.dumps(_connection_error),
