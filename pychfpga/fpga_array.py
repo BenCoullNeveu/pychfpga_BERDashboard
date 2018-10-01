@@ -1477,7 +1477,7 @@ class FPGAArray(object):
                      frames_per_packet=1,
                      chan8_channel_map=range(16),
                      pcb_link_tx_power=(5, 13),
-                     qsfp_link_tx_power=(5, 10)):
+                     qsfp_link_tx_power=(5, 15)):
         """ Setup the crossbars and data shuffling in every board of the array.
 
         Parameters:
@@ -1556,7 +1556,7 @@ class FPGAArray(object):
         self.ib.BP_SHUFFLE.set_tx_power(pcb_link_tx_power[0], 'pcb')
         self.ib.BP_SHUFFLE.set_tx_power(qsfp_link_tx_power[0], 'qsfp')
         self.ib.BP_SHUFFLE.reset_rx_equalizers()
-        #time.sleep(0.3)
+        time.sleep(0.3)
         #self.ib.BP_SHUFFLE.set_tx_power(7)
         #self.ib.BP_SHUFFLE.set_tx_power(10)
         self.ib.BP_SHUFFLE.set_tx_power(pcb_link_tx_power[1], 'pcb')
