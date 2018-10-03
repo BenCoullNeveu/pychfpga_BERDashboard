@@ -38,6 +38,7 @@ import tornado
 import tornado.tcpclient
 import tornado.web
 import tornado.locks
+import tornado.escape
 
 from pychfpga import FPGAArray, NameSpace, merge_dict, load_yaml_config, Metrics
 import log
@@ -1645,9 +1646,17 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         """
         if not (self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas):
             coroutine_return('FPGA array not yet initialized.')
+        
+        function_name = tornado.escape.native_str(function)
+        function_kwargs = {}
+        for key, val in kwargs.iteritems():
+            skey = tornado.escape.native_str(key)
+            function_kwargs[skey] = tornado.escape.native_str(val) if isinstance(val, basestring) else val
+        
         for ib in self.chime_master.fpgas.ib:
-            ib.set_funcgen_function(function, **kwargs)
+            ib.set_funcgen_function(function_name, **function_kwargs)
             yield moment
+
         coroutine_return('Function generator function set to %s(%r)' % (function, kwargs))
 
     @coroutine

@@ -1476,8 +1476,8 @@ class FPGAArray(object):
                      dsmap=range(16),
                      frames_per_packet=1,
                      chan8_channel_map=range(16),
-                     pcb_link_tx_power=(5, 13),
-                     qsfp_link_tx_power=(5, 15)):
+                     pcb_link_tx_power=(10, 15),
+                     qsfp_link_tx_power=(10, 15)):
         """ Setup the crossbars and data shuffling in every board of the array.
 
         Parameters:
