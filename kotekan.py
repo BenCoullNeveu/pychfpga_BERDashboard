@@ -30,37 +30,38 @@ class KotekanAsyncRESTServer(AsyncRESTServer):
 
     DEFAULT_PORT = 12048
 
-    def __init__(self, address='', port=DEFAULT_PORT, logging_params={}):
-        super(KotekanAsyncRESTServer, self).__init__(address=address,
-                                                     port=port,
-                                                     heartbeat_string='Ks')
+    def __init__(self, address="", port=DEFAULT_PORT, logging_params={}):
+        super(KotekanAsyncRESTServer, self).__init__(
+            address=address, port=port, heartbeat_string="Ks"
+        )
 
     @coroutine
-    @endpoint('start')
+    @endpoint("start")
     def start(self, handler, **config):
         """
-        Start Kotekan
+        Start kotekan on the node with the provided config
         """
-        self.log.info('%.32r: Received start command with %r' % (self, config))
-        coroutine_return('Started kotekan')
+        self.log.info("%.32r: Received start command with %r" % (self, config))
+        coroutine_return("Started kotekan")
 
     @coroutine
-    @endpoint('stop')
+    @endpoint("stop")
     def stop(self, handler):
         """
-        Stop Kotekan
+        Stop kotekan on the node.
         """
-        self.log.info('%.32r: Received stop command' % (self))
+        self.log.info("%.32r: Received stop command" % (self))
         coroutine_return("Stopped kotekan")
 
     @coroutine
-    @endpoint('status')
+    @endpoint("status")
     def status(self, handler):
         """
-        GET Status
+        Get status from kotekan
         """
-        self.log.info('%.32r: Received status command' % (self))
+        self.log.info("%.32r: Received status command" % (self))
         coroutine_return("Got Status from kotekan")
+
 
 ##########################
 # Kotekan RESTful Client #
@@ -69,25 +70,30 @@ class KotekanAsyncRESTServer(AsyncRESTServer):
 
 class KotekanAsyncRESTClient(AsyncRESTClient):
     """
-    Provides access to the remote GPU node kotekan processes through the
+    Provides access to the kotekan processes running on a node through the
     REST interface.
 
     Uses Tornado AsyncHTTPClient. All methods are Tornado coroutines so
     that operations can be performed concurrently on multiple nodes.
     """
+
     DEFAULT_PORT = KotekanAsyncRESTServer.DEFAULT_PORT
 
-    def __init__(self, hostname=None,
-                 port=DEFAULT_PORT,
-                 heartbeat_period=10000,
-                 **config):
+    def __init__(
+        self,
+        hostname=None,
+        port=DEFAULT_PORT,
+        heartbeat_period=10000,
+        **config
+    ):
         super(KotekanAsyncRESTClient, self).__init__(
             hostname=hostname,
             port=port,
             heartbeat_period=heartbeat_period,
             # server_class=KotekanAsyncRESTServer,
-            heartbeat_string=None)
-        # self.name = name
+            heartbeat_string=None,
+        )
+        # self.name = "KotekanAsyncRESTClient"
         self.kotekan_config = config
         self.hostname = hostname
         self.port = port
@@ -112,7 +118,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         try:
             result = yield self.post(endpoint, **arguments)
         except Exception as e:
-            print (e)
+            print(e)
             result = {"UnknownError": "{0}".format(str(e))}
         coroutine_return(result)
 
@@ -123,7 +129,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         Start a kotekan process with a provided config
         """
         self.kotekan_config = config
-        yield self._post('start', **config)
+        yield self._post("start", **config)
 
     # Operation -- GET RESTful Endpoints
     @coroutine
@@ -131,14 +137,14 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         """
         Stop a kotekan threads.
         """
-        yield self._get('stop')
+        yield self._get("stop")
 
     @coroutine
     def kill(self):
         """
         Kill the kotekan process gracefully.
         """
-        result = yield self._get('kill')
+        result = yield self._get("kill")
         coroutine_return(result)
 
     @coroutine
@@ -146,7 +152,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         """
         GET status from a kotekan process.
         """
-        result = yield self._get('status')
+        result = yield self._get("status")
         coroutine_return(result)
 
     @coroutine
@@ -155,7 +161,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         Returns the current kotekan version information,
         including build options.
         """
-        result = yield self._get('version')
+        result = yield self._get("version")
         coroutine_return(result)
 
     @coroutine
@@ -163,7 +169,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         """
         Returns the current running kotekan config.
         """
-        result = yield self._get('config')
+        result = yield self._get("config")
         coroutine_return(result)
 
     @coroutine
@@ -172,7 +178,32 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         Returns an MD5 hash of the config file (based on the json string with
         no spaces). Only exists if kotekan was build with OpenSSL support.
         """
-        result = yield self._get('config_md5sum')
+        result = yield self._get("config_md5sum")
+        coroutine_return(result)
+
+    @coroutine
+    def baseband(self, event_id, file_path, start_unix_seconds, start_unix_nano, duration_nano, dm, dm_error):
+        """
+        Submits a baseband dump request.
+        """
+        request = {
+            "event_id": event_id,
+            "file_path": file_path,
+            "start_unix_seconds": start_unix_seconds,
+            "start_unix_nano": start_unix_nano,
+            "duration_nano": duration_nano,
+            "dm": dm,
+            "dm_error": dm_error,
+        }
+        result = yield self._post("baseband", **request)
+        coroutine_return(result)
+
+    @coroutine
+    def baseband_status(self, event_id):
+        """
+        Returns the status of a baseband dump for `event_id`
+        """
+        result = yield self._get("baseband/{}".format(event_id))
         coroutine_return(result)
 
     # FRB Parameters -- POST RESTful Endpoints
@@ -184,11 +215,12 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         command = {"gain_dir": gain_dir}
         endpoints = []
         for gpu_id in range(4):
-            endpoints.append(
-                "gpu/gpu_{0}/frb/update_gains/{0}".format(gpu_id))
-        result = yield {gpu_id: self._post(endpoint, **command)
-                        for endpoint in endpoints}
-        coroutine_return("done")
+            endpoints.append("gpu/gpu_{0}/frb/update_gains/{0}".format(gpu_id))
+            endpoints.append("gpu/gpu_{0}/update_gains_psr/{0}".format(gpu_id))
+        result = yield {
+            gpu_id: self._post(endpoint, **command) for endpoint in endpoints
+        }
+        coroutine_return(result)
 
     @coroutine
     def update_north_south_beam(self, northmost_beam):
@@ -199,32 +231,35 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         endpoints = []
         for gpu_id in range(4):
             endpoints.append(
-                "gpu/gpu_{0}/frb/update_NS_beam/{0}".format(gpu_id))
-        result = yield {gpu_id: self._post(endpoint, **command)
-                        for endpoint in endpoints}
-        coroutine_return("done")
+                "gpu/gpu_{0}/frb/update_NS_beam/{0}".format(gpu_id)
+            )
+        result = yield {
+            gpu_id: self._post(endpoint, **command) for endpoint in endpoints
+        }
+        coroutine_return(result)
 
     @coroutine
     def update_east_west_beam(self, east_west_id, east_west_beam):
         """
         Update CHIME/FRB East-West Beam
         """
-        command = {"ew_id": east_west_id,
-                   "ew_beam": east_west_beam}
+        command = {"ew_id": east_west_id, "ew_beam": east_west_beam}
         endpoints = []
         for gpu_id in range(4):
             endpoints.append(
-                "gpu/gpu_{0}/frb/update_EW_beam/{0}".format(gpu_id))
-        result = yield {gpu_id: self._post(endpoint, **command)
-                        for endpoint in endpoints}
-        coroutine_return("done")
+                "gpu/gpu_{0}/frb/update_EW_beam/{0}".format(gpu_id)
+            )
+        result = yield {
+            gpu_id: self._post(endpoint, **command) for endpoint in endpoints
+        }
+        coroutine_return(result)
 
     @coroutine
     def update_beam_offset(self, offset):
         """
         Update CHIME/FRB Network Beam Offset
         """
-        result = yield self._post('beam_offset', **offset)
+        result = yield self._post("beam_offset", **offset)
         coroutine_return(result)
 
     # Pulsar Parameters -- POST RESTful Endpoints
@@ -233,16 +268,58 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         """
         Update CHIME/Pulsar beam pointing
         """
-        command = {"beam": beam,
-                   "ra": ra,
-                   "dec": dec,
-                   "scaling": scaling}
+        command = {"beam": beam, "ra": ra, "dec": dec, "scaling": scaling}
         endpoints = []
         for gpu_id in range(4):
             endpoints.append("gpu/gpu_{0}/update_pulsar/{0}".format(gpu_id))
-        result = yield {gpu_id: self._post(endpoint, **command)
-                        for endpoint in endpoints}
+        result = yield {
+            gpu_id: self._post(endpoint, **command) for endpoint in endpoints
+        }
+        self.log.debug(result)
         coroutine_return("done")
+
+    # Calibration Broker Parameters
+    @coroutine
+    def update_gain(self, start_time, tag, update_destination):
+        """
+        Update the calibration broker provided gain solution
+        """
+        if update_destination == "receiver":
+            command = {"start_time": start_time, "tag": tag}
+            result = yield self._post("updatable_config/gains", **command)
+            self.log.debug(result)
+            coroutine_return(result)
+        else:
+            coroutine_return(result="FAILED")
+
+    @coroutine
+    def update_bad_inputs(
+        self, start_time, tag, bad_inputs, update_destination
+    ):
+        if update_destination == "cluster":
+            command = {"bad_inputs": bad_inputs}
+            endpoints = []
+            for gpu_id in range(4):
+                endpoints.append(
+                    "gpu/gpu_{0}/update_bad_inputs".format(gpu_id)
+                )
+            result = yield {
+                gpu_id: self._post(endpoint, **command)
+                for endpoint in endpoints
+            }
+            coroutine_return(result)
+        elif update_destination == "receiver":
+            command = {
+                "start_time": start_time,
+                "tag": tag,
+                "bad_inputs": bad_inputs,
+            }
+            endpoint = "updatable_config/flagging"
+            result = self._post(endpoint, **command)
+            self.log.debug(result)
+            coroutine_return(result)
+        else:
+            coroutine_return(result="FAILED")
 
     # Node Endpoints
     @coroutine
@@ -255,10 +332,10 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
               the host name is valid.
         """
         # Ping command count option as function of OS
-        param = '-n 1' if system_name().lower() == 'windows' else '-c 1'
+        param = "-n 1" if system_name().lower() == "windows" else "-c 1"
 
         # Building the command. Ex: "ping -c 1 google.com"
-        command = ['ping', param, self.hostname]
+        command = ["ping", param, self.hostname]
 
         # Pinging
         result = system_call(command) == 0
@@ -266,26 +343,33 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
 
 
 def parse_cmdline_args(argv):
-    parser = argparse.ArgumentParser(description="Kotekan Client/Server CLI",
-                                     epilog=""" """)
-    parser.add_argument('args',
-                        type=str,
-                        nargs='*',
-                        default='',
-                        help='config name and/or command')
-    parser.add_argument('-p', '--port',
-                        default=KotekanAsyncRESTServer.DEFAULT_PORT, type=int,
-                        help="server port")
-    parser.add_argument('-n', '--host',
-                        default='localhost', type=str,
-                        help="Server hostname")
-    parser.add_argument('-s', '--server',
-                        action='store_true',
-                        help='Start a server')
+    parser = argparse.ArgumentParser(
+        description="Kotekan Client/Server CLI", epilog=""" """
+    )
+    parser.add_argument(
+        "args",
+        type=str,
+        nargs="*",
+        default="",
+        help="config name and/or command",
+    )
+    parser.add_argument(
+        "-p",
+        "--port",
+        default=KotekanAsyncRESTServer.DEFAULT_PORT,
+        type=int,
+        help="server port",
+    )
+    parser.add_argument(
+        "-n", "--host", default="localhost", type=str, help="Server hostname"
+    )
+    parser.add_argument(
+        "-s", "--server", action="store_true", help="Start a server"
+    )
     return parser.parse_args(argv)
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # Create our own IOLoop so we don't interfere with ipython's own ioloop.
     ioloop = IOLoop()
     ioloop.make_current()
@@ -294,7 +378,7 @@ if __name__ == '__main__':
     # log.setup_logger(__name__,
     #                  stderr_log_level='warning',
     #                  syslog_level='debug')
-    logging.getLogger().setLevel('INFO')
+    logging.getLogger().setLevel("INFO")
 
     args = parse_cmdline_args(sys.argv[1:])
     port = args.port
@@ -309,13 +393,15 @@ if __name__ == '__main__':
 
     if args and not hasattr(KotekanAsyncRESTClient, args[0]):
         if len(args) >= 2:
-            print('Loading %s from config %s ' % (args[1], args[0]))
+            print("Loading %s from config %s " % (args[1], args[0]))
             config = NameSpace(load_yaml_config(args[0]))
             node_name = args[1]
             node_config = config.kotekan.nodes[node_name]
             args = args[2:]
         else:
-            raise RuntimeError('Please specify both a config root name and power supply name')
+            raise RuntimeError(
+                "Please specify both a config root name and power supply name"
+            )
 
     if is_server:
         server_port = node_config.port if node_config else port
@@ -329,21 +415,29 @@ if __name__ == '__main__':
     else:
         client_port = node_config.port if node_config else port
         client_host = node_config.hostname if node_config else host
-        client = RunSyncWrapper(KotekanAsyncRESTClient(hostname=client_host, port=client_port))
+        client = RunSyncWrapper(
+            KotekanAsyncRESTClient(hostname=client_host, port=client_port)
+        )
         if node_config:
             client.start(node_config)
         # If the client started a server, get it for the interactive session
-        if hasattr(client,'server'):
+        if hasattr(client, "server"):
             server = RunSyncWrapper(client.server)
         # If there are further arguments, assume they are commands
         if args:
             cmd = args[0]
             if cmd and hasattr(client, cmd):
-                print('Sending command %s(%s) to CHIME Master server %s:%s' % (cmd, ', '.join(args[1:]), client_host, client_port))
+                print(
+                    "Sending command %s(%s) to CHIME Master server %s:%s"
+                    % (cmd, ", ".join(args[1:]), client_host, client_port)
+                )
                 print(getattr(client, cmd)(*args[1:]))
 
-
     print()
-    print("If this was run in an interactive session (ipython -i), the following variables are now accessible:")
-    if server: print("   server: Kotekan REST server")
-    if client: print("   client: Kotekan REST client")
+    print(
+        "If this was run in an interactive session (ipython -i), the following variables are now accessible:"
+    )
+    if server:
+        print("   server: Kotekan REST server")
+    if client:
+        print("   client: Kotekan REST client")
