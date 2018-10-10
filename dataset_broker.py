@@ -29,7 +29,7 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
         List of dict with entries 'type', 'name', and 'address'
         """
         self.states = dict()
-        self.datasets = list()
+        self.datasets = dict()
         self.cv_states = toro.Condition()
         self.cv_dsets = toro.Condition()
         self.lock_ds = thread.allocate_lock()
@@ -93,37 +93,28 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
 
     @coroutine
     @endpoint('register-dataset')
-    def registerDataset(self, handler, state_id, base_ds_id):
-        self.log.info('%.32r: Registering new dataset: (state: %r, base_ds: %r)' % (self, state_id, base_ds_id))
+    def registerDataset(self, handler, hash, dataset):
+        self.log.info('%.32r: Registering new dataset with hash %r : %r' %
+                      (self, hash, dataset))
         reply = dict(result="success")
 
         # dataset already known?
         with self.lock_ds:
-            known = self.datasets.count((state_id, base_ds_id)) > 0
+            found = self.datasets.get(hash)
+            if found is not None:
+                # if we know it already, does it differ?
+                if found != dataset:
+                    reply['result'] = "error: a different dataset is know to the broker with this hash: %r" % found
+                    self.log.info('%.32r: Failure receiving dataset: a different dataset with the same hash is: %r'
+                                  % (self, found))
+                else:
+                    reply['result'] = "success"
+            else:
+                self.datasets[hash] = dataset
+                reply['result'] = "success"
+                self.cv_dsets.notify_all()
 
-        if known:
-            with self.lock_ds:
-                reply['new_ds_id'] = self.datasets.index((state_id, base_ds_id))
-
-            self.log.info('%.32r: Dataset %r already registered (state: %r, base_ds: %r)' % (self, reply['new_ds_id'],
-                                                                                         state_id, base_ds_id))
-        else:
-            # is the base ds id known?
-            known = yield self.wait_for_dset(base_ds_id)
-            if not known:
-                reply["result"] = "error: base dataset ID %r unknown to broker." % base_ds_id
-                self.log.info('%.32r: %r' % reply["result"])
-                coroutine_return(reply)
-            with self.lock_ds:
-                self.datasets.append((state_id, base_ds_id))
-                reply['new_ds_id'] = len(self.datasets) - 1
-
-            self.log.info('%.32r: Registered new dataset %r (state: %r, base_ds: %r)' % (self, reply['new_ds_id'],
-                                                                                         state_id, base_ds_id))
-            self.cv_dsets.notify_all()
-        reply['state_id'] = state_id
-        reply['base_dset_id'] = base_ds_id
-        coroutine_return(reply)
+            coroutine_return(reply)
 
     @coroutine
     @endpoint('request-ancestors')
@@ -156,24 +147,22 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
     def wait_for_dset(self, id):
         found = True
         self.lock_ds.acquire()
-        if id >= len(self.datasets):
+
+        if self.datasets.get(id) is None:
             # wait for half of kotekans timeout before we admit we don't have it
-            start_time = time.time()
-            #while time.time() - start_time < 15:
             self.lock_ds.release()
-                #yield gen.sleep(0.5)
             notified = True
             try:
                 while notified:
                     notified = yield self.cv_dsets.wait(deadline=datetime.timedelta(seconds=15))
                     # did someone send it to us by now?
                     with self.lock_ds:
-                        if id < len(self.datasets):
+                        if self.datasets.get(id) is not None:
                             break
             except:
                 pass
             self.lock_ds.acquire()
-            if id >= len(self.datasets):
+            if self.datasets.get(id) is None:
                 self.log.warn('%.32r: Timeout when waiting for dataset %r' % (self, id))
                 found = False
         self.lock_ds.release()
@@ -199,6 +188,7 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
                 pass
             self.lock_states.acquire()
             if self.states.get(id) is None:
+                self.log.warn('%.32r: Timeout when waiting for state %r' % (self, id))
                 found = False
         self.lock_states.release()
 
@@ -211,7 +201,10 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
 
         with self.lock_ds:
             js["datasets"][ds_id] = self.datasets[ds_id]
-            state_id = self.datasets[ds_id][0]
+            state_id = self.datasets[ds_id]['state']
+
+        self.log.info(
+            '%.32r: Collecting ancestors: %r' % (self, js))
 
         found = yield self.wait_for_state(state_id)
         if not found:
@@ -220,11 +213,11 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
         with self.lock_states:
             js["states"][state_id] = self.states[state_id]
 
-        if ds_id == -1:
+        if self.datasets[ds_id]['is_root']:
             coroutine_return(js)
 
         with self.lock_ds:
-            next_ds = self.datasets[ds_id][1]
+            next_ds = self.datasets[ds_id]['base_dset']
 
         found = yield self.wait_for_dset(next_ds)
         if not found:
