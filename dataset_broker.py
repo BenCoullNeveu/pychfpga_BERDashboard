@@ -33,7 +33,9 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
         self.cv_dsets = toro.Condition()
         self.lock_ds = thread.allocate_lock()
         self.lock_states = thread.allocate_lock()
-        super(DSBrokerAsyncRESTServer, self).__init__(address=address, port=port, heartbeat_string='Gs')
+        super(DSBrokerAsyncRESTServer, self).__init__(address=address,
+                                                      port=port,
+                                                      heartbeat_string='Gs')
 
     ##################
     # Server commands
@@ -55,21 +57,20 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
     @coroutine
     @endpoint('register-state')
     def registerState(self, handler, hash):
-        self.log.info('%.32r: Received register state request, hash: %r' % (self, hash))
+        self.log.debug('%.32r: Received register state request, hash: %r'
+                      % (self, hash))
         reply = dict(result="success")
         with self.lock_states:
             if self.states.get(hash) is None:
                 # we don't know this state, ask for it
                 reply['request'] = "get_state"
                 reply['hash'] = hash
-
-        self.log.info('%.32r: Received register state request DONE, hash: %r' % (self, hash))
         coroutine_return(reply)
 
     @coroutine
     @endpoint('send-state')
     def sendState(self, handler, hash, state):
-        self.log.info('%.32r: Received state %r : %r' % (self, hash, state))
+        self.log.debug('%.32r: Received state %r : %r' % (self, hash, state))
         reply = dict()
 
         # do we have this state already?
@@ -78,8 +79,10 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
             if found is not None:
                 # if we know it already, does it differ?
                 if found != state:
-                    reply['result'] = "error: a different state is know to the broker with this hash: %r" % found
-                    self.log.info('%.32r: Failure receiving state: a different state with the same hash is: %r'
+                    reply['result'] = "error: a different state is know to " \
+                                      "the broker with this hash: %r" % found
+                    self.log.warn('%.32r: Failure receiving state: a '
+                                  'different state with the same hash is: %r'
                                   % (self, found))
                 else:
                     reply['result'] = "success"
@@ -87,14 +90,12 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
                 self.states[hash] = state
                 reply['result'] = "success"
                 self.cv_states.notify_all()
-
-        self.log.info('%.32r: Received state DONE %r : %r' % (self, hash, state))
         coroutine_return(reply)
 
     @coroutine
     @endpoint('register-dataset')
     def registerDataset(self, handler, hash, dataset):
-        self.log.info('%.32r: Registering new dataset with hash %r : %r' %
+        self.log.debug('%.32r: Registering new dataset with hash %r : %r' %
                       (self, hash, dataset))
         reply = dict(result="success")
 
@@ -104,8 +105,10 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
             if found is not None:
                 # if we know it already, does it differ?
                 if found != dataset:
-                    reply['result'] = "error: a different dataset is know to the broker with this hash: %r" % found
-                    self.log.info('%.32r: Failure receiving dataset: a different dataset with the same hash is: %r'
+                    reply['result'] = "error: a different dataset is know to" \
+                                      " the broker with this hash: %r" % found
+                    self.log.warn('%.32r: Failure receiving dataset: a'
+                                  ' different dataset with the same hash is: %r'
                                   % (self, found))
                 else:
                     reply['result'] = "success"
@@ -128,8 +131,7 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
         found = yield self.wait_for_dset(ds_id)
         if not found:
             reply['result'] = "error: dataset ID %r unknown to broker." % ds_id
-            self.log.info(
-                '%.32r: Dataset %r unknown to broker' % (self, ds_id))
+            self.log.info('%.32r: Dataset %r unknown to broker' % (self, ds_id))
             coroutine_return(reply)
 
         try:
@@ -143,8 +145,6 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
             coroutine_return(reply)
 
         reply['result'] = "success"
-        self.log.info(
-            '%.32r: Answering %r' % (self, reply))
         coroutine_return(reply)
 
     @coroutine
@@ -158,7 +158,8 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
             notified = True
             try:
                 while notified:
-                    notified = yield self.cv_dsets.wait(deadline=datetime.timedelta(seconds=15))
+                    notified = yield self.cv_dsets.wait(
+                        deadline=datetime.timedelta(seconds=15))
                     # did someone send it to us by now?
                     with self.lock_ds:
                         if self.datasets.get(id) is not None:
@@ -167,7 +168,8 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
                 pass
             self.lock_ds.acquire()
             if self.datasets.get(id) is None:
-                self.log.warn('%.32r: Timeout when waiting for dataset %r' % (self, id))
+                self.log.warn('%.32r: Timeout when waiting for dataset %r'
+                              % (self, id))
                 found = False
         self.lock_ds.release()
 
@@ -183,7 +185,8 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
             notified = True
             try:
                 while notified:
-                    notified = yield self.cv_states.wait(deadline=datetime.timedelta(seconds=15))
+                    notified = yield self.cv_states.wait(
+                        deadline=datetime.timedelta(seconds=15))
                     # did someone send it to us by now?
                     with self.lock_states:
                         if self.states.get(id) is not None:
@@ -192,7 +195,8 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
                 pass
             self.lock_states.acquire()
             if self.states.get(id) is None:
-                self.log.warn('%.32r: Timeout when waiting for state %r' % (self, id))
+                self.log.warn('%.32r: Timeout when waiting for state %r'
+                              % (self, id))
                 found = False
         self.lock_states.release()
 
@@ -204,12 +208,10 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
             js["datasets"][ds_id] = self.datasets[ds_id]
             state_id = self.datasets[ds_id]['state']
 
-        self.log.info(
-            '%.32r: Collecting ancestors: %r' % (self, js))
-
         found = yield self.wait_for_state(state_id)
         if not found:
-            raise Exception("Error: Broker is in bad state. Found reference to not existing state ID.")
+            raise Exception("Error: dataset-broker is in a bad state."
+                            " Found reference to not existing state ID.")
 
         # look for the state of requested type
         with self.lock_states:
@@ -244,23 +246,31 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
 
 class DSBrokerAsyncRESTClient(AsyncRESTClient):
     """
-    Implements an asynchronous client that exposes the functions of the specified remote dataset broker.
+    Implements an asynchronous client that exposes the functions of the
+    specified remote dataset broker.
 
-    The client is implemented using a Tornado AsyncHTTPClient. It exposes the dataset broker methods
-    (i.e REST endpoints) as local methods. The local methods are Tornado coroutines so requests to
-    multiple clients can be made in parallel. This is especially beneficial since the data requests
-    from the server are slow IO operations which benefit the mist from co-execution.
+    The client is implemented using a Tornado AsyncHTTPClient. It exposes the
+    dataset broker methods
+    (i.e REST endpoints) as local methods. The local methods are Tornado
+    coroutines so requests to
+    multiple clients can be made in parallel. This is especially beneficial
+    since the data requests
+    from the server are slow IO operations which benefit the mist from
+    co-execution.
 
-    The client will operate only if the IOloop in which is was created is running.
+    The client will operate only if the IOloop in which is was created is
+    running.
 
     Parameters:
 
         name (str): Name of the client, to be used in logging etc.
 
-        hostname (str): The hostname of the dataset broker. If `host` is None, an (experimental,
+        hostname (str): The hostname of the dataset broker. If `host` is None,
+        an (experimental,
              Python-based) dataset broker REST server will be created locally.
 
-        port (int): The port number to which the dataset broker REST server is listening. Default is port 80.
+        port (int): The port number to which the dataset broker REST server is
+        listening. Default is port 80.
     """
     DEFAULT_PORT = DSBrokerAsyncRESTServer.DEFAULT_PORT
 
@@ -303,8 +313,11 @@ def main():
     """
     # Setup logging
     log.setup_basic_logging('DEBUG')
-    client, server = run_client(sys.argv[1:], DSBrokerAsyncRESTServer, DSBrokerAsyncRESTClient,
-                                object_name ='DSETBROKER', server_config_path='dsetbroker.servers')
+    client, server = run_client(sys.argv[1:],
+                                DSBrokerAsyncRESTServer,
+                                DSBrokerAsyncRESTClient,
+                                object_name ='DSETBROKER',
+                                server_config_path='dsetbroker.servers')
     return client, server
 
 if __name__ == '__main__':
