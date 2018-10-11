@@ -117,10 +117,11 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
             coroutine_return(reply)
 
     @coroutine
-    @endpoint('request-ancestors')
-    def requestAncestors(self, handler, ds_id):
-        self.log.info(
-            '%.32r: Received request for ancestors of dataset %r' % (self, ds_id))
+    @endpoint('request-ancestor')
+    def requestAncestor(self, handler, ds_id, type):
+        self.log.debug(
+            '%.32r: Received request for ancestor of type %r of dataset %r'
+            % (self, type, ds_id))
         reply = dict()
 
         # Do we know this dset ID?
@@ -132,7 +133,10 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
             coroutine_return(reply)
 
         try:
-            reply["ancestors"] = yield self.ancestors(ds_id);
+            # default parameter doesn't work in subroutines?
+            ancestor = yield self.ancestor(ds_id, type, js=dict(datasets=dict(),
+                                                                states=dict()))
+            reply.update(ancestor)
         except Exception as error:
             reply["result"] = error.message
             self.log.error('%.32r: %r' % (self, error))
@@ -195,10 +199,7 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
         coroutine_return(found)
 
     @coroutine
-    def ancestors(self, ds_id, js=dict(datasets=dict(), states=dict())):
-        self.log.info(
-            '%.32r: Collecting ancestors: %r' % (self, js))
-
+    def ancestor(self, ds_id, type, js):
         with self.lock_ds:
             js["datasets"][ds_id] = self.datasets[ds_id]
             state_id = self.datasets[ds_id]['state']
@@ -210,20 +211,32 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
         if not found:
             raise Exception("Error: Broker is in bad state. Found reference to not existing state ID.")
 
+        # look for the state of requested type
         with self.lock_states:
-            js["states"][state_id] = self.states[state_id]
+            if self.states[state_id]["type"] == type:
+                js["states"][state_id] = self.states[state_id]
+                coroutine_return(js)
 
-        if self.datasets[ds_id]['is_root']:
-            coroutine_return(js)
+            # loop through the inner states
+            state = self.states[state_id].get("inner", None)
+            while state != None:
+                if state["type"] == type:
+                    js["states"][state_id] = self.states[state_id]
+                    coroutine_return(js)
+                state = state.get("inner", None)
 
+        # look for the requested type in parent dataset states
         with self.lock_ds:
+            if self.datasets[ds_id]['is_root']:
+                coroutine_return(js)
             next_ds = self.datasets[ds_id]['base_dset']
 
         found = yield self.wait_for_dset(next_ds)
         if not found:
-            raise Exception("Error: Broker is in bad state. Found reference to not existing dataset ID.")
-        result = yield self.ancestors(next_ds, js)
-        coroutine_return(result)
+            raise Exception("Error: Broker is in bad state."
+                            " Found reference to not existing dataset ID.")
+        js = yield self.ancestor(next_ds, type, js)
+        coroutine_return(js)
 
 #########################################
 # Dataset Broker REST client
