@@ -11,7 +11,7 @@ import datetime
 from rest import AsyncRESTClient, AsyncRESTServer, endpoint
 from rest import coroutine, coroutine_return
 from rest import run_client  # generic REST servers and clients
-import toro # conditional variables for tornado coroutines
+import toro  # conditional variables for tornado coroutines
 
 import log  # logging helper functions
 
@@ -23,7 +23,7 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
 
     DEFAULT_PORT = 12050
 
-    def __init__(self,  address='', port=DEFAULT_PORT, logging_params={}):
+    def __init__(self, address='', port=DEFAULT_PORT, logging_params={}):
         """
         List of dict with entries 'type', 'name', and 'address'
         """
@@ -58,7 +58,7 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
     @endpoint('register-state')
     def registerState(self, handler, hash):
         self.log.debug('%.32r: Received register state request, hash: %r'
-                      % (self, hash))
+                       % (self, hash))
         reply = dict(result="success")
         with self.lock_states:
             if self.states.get(hash) is None:
@@ -96,7 +96,7 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
     @endpoint('register-dataset')
     def registerDataset(self, handler, hash, dataset):
         self.log.debug('%.32r: Registering new dataset with hash %r : %r' %
-                      (self, hash, dataset))
+                       (self, hash, dataset))
         reply = dict(result="success")
 
         # dataset already known?
@@ -164,7 +164,8 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
                     with self.lock_ds:
                         if self.datasets.get(id) is not None:
                             break
-            except:
+            except toro.Timeout as e:
+                self.log.debug('%.32r: %r' % (self, e.message))
                 pass
             self.lock_ds.acquire()
             if self.datasets.get(id) is None:
@@ -191,7 +192,8 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
                     with self.lock_states:
                         if self.states.get(id) is not None:
                             break
-            except:
+            except toro.Timeout as e:
+                self.log.debug('%.32r: %r' % (self, e.message))
                 pass
             self.lock_states.acquire()
             if self.states.get(id) is None:
@@ -240,6 +242,7 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
         js = yield self.ancestor(next_ds, type, js)
         coroutine_return(js)
 
+
 #########################################
 # Dataset Broker REST client
 #########################################
@@ -277,9 +280,8 @@ class DSBrokerAsyncRESTClient(AsyncRESTClient):
     def __init__(self, hostname='localhost', port=DEFAULT_PORT):
         super(DSBrokerAsyncRESTClient, self).__init__(
             hostname=hostname, port=port,
-            server_class= DSBrokerAsyncRESTServer,
+            server_class=DSBrokerAsyncRESTServer,
             heartbeat_string='Gc')
-
 
     @coroutine
     def registerState(self, hash):
@@ -307,7 +309,6 @@ class DSBrokerAsyncRESTClient(AsyncRESTClient):
         coroutine_return(result)
 
 
-
 def main():
     """ Command-line interface to launch and operate the dataset broker.
     """
@@ -316,9 +317,10 @@ def main():
     client, server = run_client(sys.argv[1:],
                                 DSBrokerAsyncRESTServer,
                                 DSBrokerAsyncRESTClient,
-                                object_name ='DSETBROKER',
+                                object_name='DSETBROKER',
                                 server_config_path='dsetbroker.servers')
     return client, server
+
 
 if __name__ == '__main__':
     client, server = main()
