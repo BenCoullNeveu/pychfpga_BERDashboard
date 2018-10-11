@@ -42,14 +42,15 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
     @coroutine
     @endpoint('status')
     def status(self, handler):
-    #     # ps_names = self._parse_names(ps_names)
-        self.log.info('%.32r: Received status request' % self)
-    #     stati = dict(is_started=bool(self.power_supplies),
-    #                  ps_names=self.power_supplies.keys())
-    #     for ps_name, ps in self.power_supplies.items():
-    #         stati[ps_name] = ps.status()
-    #         self.log.info('%.32r: Status of %s is %s' % (self, ps_name, stati[ps_name]))
-    #     coroutine_return(stati)
+        self.log.debug('%.32r: Received status request' % self)
+        reply = dict()
+        with self.lock_ds:
+            self.log.debug('%.32r: states: %r' % (self, self.states))
+            reply["states"] = self.states
+        with self.lock_states:
+            self.log.debug('%.32r: datasets: %r' % (self, self.datasets))
+            reply["datasets"] = self.datasets
+        coroutine_return(reply)
 
     @coroutine
     @endpoint('register-state')
