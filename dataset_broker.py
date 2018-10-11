@@ -29,9 +29,9 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
         """
         self.states = dict()
         self.datasets = dict()
-        self.cv_states = toro.Condition()
-        self.cv_dsets = toro.Condition()
-        self.lock_ds = thread.allocate_lock()
+        self.signal_states_updated = toro.Condition()
+        self.signal_datasets_updated = toro.Condition()
+        self.lock_datasets = thread.allocate_lock()
         self.lock_states = thread.allocate_lock()
         super(DSBrokerAsyncRESTServer, self).__init__(address=address,
                                                       port=port,
@@ -46,7 +46,7 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
     def status(self, handler):
         self.log.debug('%.32r: Received status request' % self)
         reply = dict()
-        with self.lock_ds:
+        with self.lock_datasets:
             self.log.debug('%.32r: states: %r' % (self, self.states))
             reply["states"] = self.states
         with self.lock_states:
@@ -89,7 +89,7 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
             else:
                 self.states[hash] = state
                 reply['result'] = "success"
-                self.cv_states.notify_all()
+                self.signal_states_updated.notify_all()
         coroutine_return(reply)
 
     @coroutine
@@ -100,7 +100,7 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
         reply = dict(result="success")
 
         # dataset already known?
-        with self.lock_ds:
+        with self.lock_datasets:
             found = self.datasets.get(hash)
             if found is not None:
                 # if we know it already, does it differ?
@@ -115,7 +115,7 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
             else:
                 self.datasets[hash] = dataset
                 reply['result'] = "success"
-                self.cv_dsets.notify_all()
+                self.signal_datasets_updated.notify_all()
 
             coroutine_return(reply)
 
@@ -150,29 +150,29 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
     @coroutine
     def wait_for_dset(self, id):
         found = True
-        self.lock_ds.acquire()
+        self.lock_datasets.acquire()
 
         if self.datasets.get(id) is None:
             # wait for half of kotekans timeout before we admit we don't have it
-            self.lock_ds.release()
+            self.lock_datasets.release()
             notified = True
             try:
                 while notified:
-                    notified = yield self.cv_dsets.wait(
+                    notified = yield self.signal_datasets_updated.wait(
                         deadline=datetime.timedelta(seconds=15))
                     # did someone send it to us by now?
-                    with self.lock_ds:
+                    with self.lock_datasets:
                         if self.datasets.get(id) is not None:
                             break
             except toro.Timeout as e:
                 self.log.debug('%.32r: %r' % (self, e.message))
                 pass
-            self.lock_ds.acquire()
+            self.lock_datasets.acquire()
             if self.datasets.get(id) is None:
                 self.log.warn('%.32r: Timeout when waiting for dataset %r'
                               % (self, id))
                 found = False
-        self.lock_ds.release()
+        self.lock_datasets.release()
 
         coroutine_return(found)
 
@@ -186,7 +186,7 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
             notified = True
             try:
                 while notified:
-                    notified = yield self.cv_states.wait(
+                    notified = yield self.signal_states_updated.wait(
                         deadline=datetime.timedelta(seconds=15))
                     # did someone send it to us by now?
                     with self.lock_states:
@@ -206,7 +206,7 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
 
     @coroutine
     def ancestor(self, ds_id, type, js):
-        with self.lock_ds:
+        with self.lock_datasets:
             js["datasets"][ds_id] = self.datasets[ds_id]
             state_id = self.datasets[ds_id]['state']
 
@@ -230,7 +230,7 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
                 state = state.get("inner", None)
 
         # look for the requested type in parent dataset states
-        with self.lock_ds:
+        with self.lock_datasets:
             if self.datasets[ds_id]['is_root']:
                 coroutine_return(js)
             next_ds = self.datasets[ds_id]['base_dset']
