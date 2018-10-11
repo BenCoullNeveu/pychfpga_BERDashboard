@@ -6,7 +6,6 @@ REST Server and clients for the Dataset Broker.
 
 import sys
 import thread
-import time
 import datetime
 
 from rest import AsyncRESTClient, AsyncRESTServer, endpoint
