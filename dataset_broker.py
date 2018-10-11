@@ -44,6 +44,14 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
     @coroutine
     @endpoint('status')
     def status(self, handler):
+        """ Get status of dataset-broker.
+
+        Shows all datasets and states registered by the broker.
+
+        curl
+        -X GET
+        http://localhost:12050/status
+        """
         self.log.debug('%.32r: Received status request' % self)
         reply = dict()
         with self.lock_datasets:
@@ -57,6 +65,10 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
     @coroutine
     @endpoint('register-state')
     def registerState(self, handler, hash):
+        """ Register a dataset state with the broker.
+
+        This should only ever be called by kotekan's datasetManager.
+        """
         self.log.debug('%.32r: Received register state request, hash: %r'
                        % (self, hash))
         reply = dict(result="success")
@@ -70,6 +82,10 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
     @coroutine
     @endpoint('send-state')
     def sendState(self, handler, hash, state):
+        """ Send a dataset state to the broker.
+
+        This should only ever be called by kotekan's datasetManager.
+        """
         self.log.debug('%.32r: Received state %r : %r' % (self, hash, state))
         reply = dict()
 
@@ -95,6 +111,10 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
     @coroutine
     @endpoint('register-dataset')
     def registerDataset(self, handler, hash, dataset):
+        """ Register a dataset with the broker.
+
+        This should only ever be called by kotekan's datasetManager.
+        """
         self.log.debug('%.32r: Registering new dataset with hash %r : %r' %
                        (self, hash, dataset))
         reply = dict(result="success")
@@ -122,6 +142,17 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
     @coroutine
     @endpoint('request-ancestor')
     def requestAncestor(self, handler, ds_id, type):
+        """ Request the ancestor of a given type closest to the dataset with the
+        given ID.
+
+        This is called by kotekan's datasetManager.
+
+        curl
+        -d '{"ds_id":123,"type":"10freqState"}'
+        -X POST
+        -H "Content-Type: application/json"
+        http://localhost:12050/request-ancestor
+        """
         self.log.debug(
             '%.32r: Received request for ancestor of type %r of dataset %r'
             % (self, type, ds_id))
@@ -304,8 +335,8 @@ class DSBrokerAsyncRESTClient(AsyncRESTClient):
         coroutine_return(result)
 
     @coroutine
-    def requestAncestors(self, ds_id):
-        result = yield self.post('request-ancestors')
+    def requestAncestor(self, ds_id, type):
+        result = yield self.post('request-ancestor', ds_id, type)
         coroutine_return(result)
 
 
