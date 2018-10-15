@@ -1,5 +1,6 @@
 import os
 import datetime
+import time
 
 import numpy as np
 import h5py
@@ -28,7 +29,7 @@ class FlagCorrInputArchive(Hdf5Archive):
     """ Interface to an Hdf5Archive containing correlator input flags.
     """
 
-    _uniq_id = 'datetime'
+    _uniq_id = 'update_id'
     _grow_ax = 'time'
 
     _axes = {
@@ -38,7 +39,7 @@ class FlagCorrInputArchive(Hdf5Archive):
     }
 
     _dataset_spec = {
-        'datetime': {
+        'update_id': {
             'axes': ['time', ],
             'dtype': h5py.special_dtype(vlen=bytes),
             'metric': False,
@@ -109,14 +110,13 @@ class FlagCorrInputArchive(Hdf5Archive):
         """
 
         # Determine directory
-        if not 'datetime' in kwargs:
-            RuntimeError("Must include datetime in call to write.")
+        this_datetime = kwargs.get('datetime', datetime.datetime.utcfromtimestamp(smp).strftime("%Y%m%dT%H%M%SZ"))
 
-        output_dir = os.path.join(self.output_dir, '_'.join([kwargs['datetime'], self.attrs['instrument_name'], self.output_suffix]))
+        output_dir = os.path.join(self.output_dir, '_'.join([this_datetime, self.attrs['instrument_name'], self.output_suffix]))
         mkdir(output_dir)
 
         # Determine filename
-        start_time = datetime_to_unix(datetime.datetime.strptime(kwargs['datetime'], "%Y%m%dT%H%M%SZ"))
+        start_time = datetime_to_unix(datetime.datetime.strptime(this_datetime, "%Y%m%dT%H%M%SZ"))
         seconds_elapsed = smp - start_time
 
         output_file = os.path.join(output_dir, "%08d.h5" % seconds_elapsed)
@@ -365,6 +365,90 @@ class ControlFlag(object):
         if now_good.size > 0:
             self._flag[now_good] = True
 
+    def reset(self):
+
+        self._flag = None
+        self._count = None
+
     @property
     def flag(self):
         return self._flag
+
+
+class RateFlag(ControlFlag):
+    """ Container for flags that automatically flags an input as bad
+    if the number of flag changes per hour exceeds some threshold.
+    """
+
+    def __init__(self, max_rate=None, trial_period=1.0, *args, **kwargs):
+        """
+        Parameters
+        ----------
+        max_rate : float
+            Maximum number of flag changes per hour beyond which an input
+            will be flagged as bad.  Default is infinity (i.e., do not apply the
+            rate test.)
+
+        trial_period : float
+            Initial trial period in hours during which the rate test will not be applied.
+            Default is 1 hour.
+        """
+
+        super(RateFlag, self).__init__(*args, **kwargs)
+
+        self._start_time = None
+        self._num_change = None
+        self._rate = None
+
+        self.max_rate = max_rate if max_rate is not None else float('Inf')
+        self.trial_period = trial_period
+
+    def update(self, val, timestamp=None):
+
+        # Grab the current value before any updates
+        if self._flag is not None:
+            previous_flag = self._flag.copy()
+
+        current_time = time.time() if timestamp is None else timestamp
+
+        # Make sure input is a boolean numpy array
+        flag = np.array(val).astype(np.bool)
+
+        # Update the flags
+        super(RateFlag, self).update(flag)
+
+        # If this is the first update, then create some internal variables
+        if self._num_change is None:
+            self.reset(timestamp=current_time)
+            return
+
+        # Increment counter if the flags changed
+        is_change = (previous_flag != self._flag)
+
+        self._num_change += is_change.astype(np.int)
+        self._total_num_change += int(np.any(is_change))
+
+        # Calculate rate
+        time_elapsed = (current_time - self._start_time) / 3600.0
+
+        if time_elapsed > self.trial_period:
+
+            self._rate = self._num_change / time_elapsed
+            self._total_rate = self._total_num_change / time_elapsed
+
+    def reset(self, timestamp=None):
+
+        current_time = time.time() if timestamp is None else timestamp
+        ninput = self._flag.size
+
+        self._start_time = current_time
+
+        self._num_change = np.zeros(ninput, dtype=np.int)
+        self._rate = np.zeros(ninput, dtype=np.float)
+
+        self._total_num_change = 0
+        self._total_rate = 0.0
+
+    @property
+    def flag(self):
+        return self._flag & (self._rate <= self.max_rate)

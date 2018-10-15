@@ -67,7 +67,7 @@ def coroutine_return(*args, **kwargs):
 class RESTClient(object):
     """ This is a Requests-based client (non asynchronous)
     """
-    TIMEOUT = 60 # seconds
+    TIMEOUT = 30 # seconds
     DEFAULT_HOST = 'localhost'
     DEFAULT_PORT = 54321
 
@@ -190,7 +190,14 @@ class AsyncRESTClient(AsyncMixin):
     DEFAULT_HOST = 'localhost'
     DEFAULT_PORT = 80
 
-    def __init__(self, hostname=DEFAULT_HOST, port=DEFAULT_PORT, server_class=None, heartbeat_string=None, heartbeat_period=5000):
+    def __init__(
+        self,
+        hostname=DEFAULT_HOST,
+        port=DEFAULT_PORT,
+        server_class=None,
+        heartbeat_string=None,
+        heartbeat_period=5000
+    ):
         self.log = log.get_logger(self)
         self.hostname = hostname
         self.port = port
