@@ -95,9 +95,9 @@ class HandlerObject(object):
     _handler_disable = False
     # Default non-data descriptors: can be overriden by instance attributes
     handler_name = None
-    handler_id = property(lambda self: tuple(
-        [self._sa_instance_state.session_id] +  # Make handler unique to each session
-        self.__mapper__.primary_key_from_instance(self)))
+    handler_id = property(lambda self:
+        (self._sa_instance_state.session_id, ) +  # Make handler unique to each session
+        tuple(self.__mapper__.primary_key_from_instance(self))) # make this work with both SQLAlchemy 1.1 and 1.2.
 
     @property
     def handler(self):
