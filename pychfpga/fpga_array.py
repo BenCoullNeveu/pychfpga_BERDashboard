@@ -237,7 +237,11 @@ class FPGAArray(object):
                     ``subarray`` criteria.
 
 
-            crate_map (dict): Maps crate numbers to (model, serial)
+            crate_map (dict): Maps crate numbers to (model, serial). Not
+                needed if the crate numbers are already specified in the
+                hardware map. Useful if the crates are auto-discovered and the
+                crate number is not specified in the hardware description
+                string.
 
             iceboards (list of str) : Iceboard to add to the hardware map,
                 specified by IP address, hostname, or serial number. Equivalent to
@@ -819,7 +823,6 @@ class FPGAArray(object):
         # Initialize
         #################################
 
-
         if self.ib and open is not None and open > 0:
             # Set the interface over which the FPGA UDP communication will be done
             # Not needed in normal uses: we now get the interface automatically by examining info from the socket connected to the ARM
@@ -828,18 +831,19 @@ class FPGAArray(object):
 
             self.logger.info('Initializing firmware (calling ib.open())')
             yield [ib.open.async(adc_delay_table=ADC_DELAY_TABLE,
-                         udp_retries=udp_retries,
-                         init=open,
-                         **kwargs
-                         # sampling_frequency=sampling_frequency,
-                         # reference_frequency=reference_frequency,
-                         ) for ib in self.ib]
+                                 udp_retries=udp_retries,
+                                 init=open,
+                                 **kwargs
+                                 # sampling_frequency=sampling_frequency,
+                                 # reference_frequency=reference_frequency,
+                                 ) for ib in self.ib]
 
-            self.logger.info('%r: Setting SYNC method' % self)
             if sync_method or sync_source:
+                self.logger.info('%r: Setting SYNC method' % self)
                 self.set_sync_method(method=sync_method, source=sync_source, master=sync_master, master_time_source=sync_master_time_source)
-            self.logger.info('%r: Setting operational mode to %s' % (self, mode))
+
             if mode:
+                self.logger.info('%r: Setting operational mode to %s' % (self, mode))
                 self.set_operational_mode(mode=mode, frames_per_packet=frames_per_packet)
 
             self.logger.info('%r: Initializing Backplane firmware' % self)
@@ -1013,7 +1017,12 @@ class FPGAArray(object):
                 self.logger.warning('set_crate_number: Cannot find a crate number for crate %s' % ic.get_string_id())
 
 
-    def set_operational_mode(self, mode, frames_per_packet=1, chan8_channel_map=range(8)):
+    def set_operational_mode(self,
+                             mode,
+                             frames_per_packet=1,
+                             chan8_channel_map=range(8),
+                             tx_power = None
+                             ):
         """
         NOTE: Having called get_ber() before initializing the shuffle will lead to errors!
         Set the operational mode of the array.
@@ -1053,7 +1062,7 @@ class FPGAArray(object):
         if mode == 'raw_time':
             self.ib.set_fft_bypass(True)
             self.ib.set_scaler_bypass(True)
-            self.init_shuffle(mode='chan8', frames_per_packet=frames_per_packet, chan8_channel_map=np.hstack((chan8_channel_map, [16]*8)))
+            self.init_shuffle(mode='chan8', frames_per_packet=frames_per_packet, chan8_channel_map=np.hstack((chan8_channel_map, [16]*8)), tx_power=tx_power)
 
         elif mode in ['shuffle256', 'shuffle512', 'shuffle16']:
             if not all(self.ib.CROSSBAR2) or not all(self.ib.CROSSBAR3):
@@ -1062,7 +1071,7 @@ class FPGAArray(object):
             self.ib.CROSSBAR3.SOF_WINDOW_STOP = 110
             self.ib.CROSSBAR3.TIMEOUT_PERIOD = 0
             self.ib.BP_SHUFFLE.reset_rx_equalizers()
-            self.init_shuffle(mode=mode, frames_per_packet=frames_per_packet)
+            self.init_shuffle(mode=mode, frames_per_packet=frames_per_packet, tx_power=tx_power)
             self.ib.BP_SHUFFLE.reset_stats()
             self.ib.CROSSBAR2.reset_stats()
             self.ib.CROSSBAR3.reset_stats()
@@ -1074,6 +1083,131 @@ class FPGAArray(object):
         else:
             raise ValueError('Unknown operational mode')
 
+    def init_shuffle(self,
+                     mode,
+                     dsmap=range(16),
+                     frames_per_packet=1,
+                     chan8_channel_map=range(16),
+                     tx_power=dict(
+                        bp_pcb_links={"default": (10, 15)},
+                        bp_qsfp_links={"default": (10, 15)})
+                     )
+        """ Setup the crossbars and data shuffling in every board of the array.
+
+        Parameters:
+
+            mode (str): One of the crossbar engine operational mode
+                ('shuffle16', 'shuffle256' etc.). Is passed to
+                ib.init_crossbar().
+
+            dsmap (list of int): Shuffle remap that is passed to
+                ib.init_crossbar(). Defaults to `range(16)`.
+
+            frames_per_packet (int): Number of frames per packet. Defaults to
+                1. Is passed to ib.init_crossbar().
+
+            chan8_channel_map (list): Map that is passed to
+                ib.init_crossbar(). Defaults to `range(16)`.
+
+            tx_power (dict): Describes the initial (training) and final TX power to be used by the backplane PCB and QSFP links.
+                 applied to the backplane PCB GTX links.
+
+
+        The GTX receivers that have no corresponding transmitter is put in
+        reset so it won't generate random packets into the following crossbar.
+        """
+
+        tx_list = []
+
+        # crate_set = set(ib.crate for ib in self.ib)
+        # if len(crate_set) != 1:
+        #     raise RuntimeError('All boards must be in the same crate. The provided set of Iceboards have the following crates: %r' % crate_set)
+        # crate = crate_set.pop()
+
+        self.logger.info('%r: Configuring crate-wide data shuffling with frames_per_packet=%i' % (self, frames_per_packet))
+
+        #####################
+        # Set-up transmitters
+        #####################
+        for i, ib in enumerate(self.ib):
+            self.logger.info('%r: **** Initializing transmitters for IceBoard %r (SN%s) ****' % (self, ib, ib.serial))
+            ib.set_corr_reset(0)
+
+            tx_list.append((ib.slot, 0))  # Register Bypass lane (lane 0) as a transmitter in this slot
+            for j, gtx in enumerate(ib.BP_SHUFFLE.gtx):
+                gtx.TXINHIBIT = 0
+                tx_list.append((ib.slot, j+1))
+
+            # Initialize the crossbars to select and send data in a specific format
+            # ib.init_crossbars(dsmap, frames_per_packet=frames_per_packet, cb1_lanes=cb1_lanes, cb1_bins=cb1_bins, cb1_bypass=cb1_bypass, cb2_lanes=cb2_lanes, cb2_bins=cb2_bins, cb2_bypass=cb2_bypass, remap=remap, bp_bypass=bp_bypass)
+            ib.init_crossbars(mode,
+                              dsmap=dsmap,
+                              frames_per_packet=frames_per_packet,
+                              chan8_channel_map=chan8_channel_map)
+
+        #####################
+        # Set-up receivers
+        #####################
+        for i, ib in enumerate(self.ib):
+            # Disable all receivers for which there are no transmitters
+            for j, gtx in enumerate(ib.BP_SHUFFLE.gtx[0:ib.BP_SHUFFLE.NUMBER_OF_PCB_LINKS]):
+                if ib.slot is None:
+                    continue
+                rx = (ib.slot, j+1)
+                tx = ib.crate.get_matching_tx(rx)
+
+                # disable receivers that have no corresponding transmitters
+                if tx in tx_list:
+                    gtx.USER_GTRXRESET = 0
+                else:
+                    gtx.USER_GTRXRESET = 1
+                    # gtx.USER_RESET = 1
+
+        # reset DFE at low power, then increase power
+
+        links =
+
+        def set_tx_power(power_params, link_type, seq)
+            default = power_params['default']
+            exceptions = {tuple(key): tuple(pow) for (key, pow) in power_params.get('exceptions', [])}
+            for ib in self.ib:
+                bp = ib.BP_SHUFFLE
+                for i, gtx in enumerate(bp.gtx):
+                    crate_id = i.crate.get_id()
+                    rx = (ib.slot, i)
+                    tx = ib.crate.get_matching_tx(rx)
+                tx_node_id =
+                self.ib.BP_SHUFFLE.set_tx_power(pcb_link_tx_power[seq], link_type)
+        set_tx_power(tx_power['bp_pcb_links'], 'pcb', 0)
+        self.ib.BP_SHUFFLE.set_tx_power(qsfp_link_tx_power[0], 'qsfp')
+        self.ib.BP_SHUFFLE.reset_rx_equalizers()
+        time.sleep(0.3)
+        #self.ib.BP_SHUFFLE.set_tx_power(7)
+        #self.ib.BP_SHUFFLE.set_tx_power(10)
+        self.ib.BP_SHUFFLE.set_tx_power(pcb_link_tx_power[1], 'pcb')
+        self.ib.BP_SHUFFLE.set_tx_power(qsfp_link_tx_power[1], 'qsfp')
+        self.ib.BP_SHUFFLE.reset_stats()
+
+        # Print links
+        for ib in self.ib:
+            for i in range(ib.NUMBER_OF_CROSSBAR_OUTPUTS):
+                if ib.slot is None:
+                    continue
+                rx = (ib.slot, i)
+                tx = ib.crate.get_matching_tx(rx)
+                if tx in tx_list:
+                    pass
+                    #self.logger.debug('%r: In %r,  %s is receiving from %s' % (self, ib.crate, rx, tx))
+                else:
+                    self.logger.debug('%r: In %r, %s has no corresponding transmitter' % (self, ib.crate, rx))
+
+
+        # sync boards
+        #soft_sync(c, sync_board)
+        self.logger.info('%r: Shuffling initialization completed. Syncing boards' % self)
+        self.sync(delay=2)
+
+
     def set_test_pattern(self):
         for ic in self.ic:
             for (slot, ib) in ic.slot.items():
@@ -1083,6 +1217,8 @@ class FPGAArray(object):
 
     def set_sync_method(self, method='distributed_time', source='bp_time', master=None, master_time_source=None):
         """ Sets the global syncing method, and setup the boards accordingly.
+
+        Parameters:
 
         method: (string)
             - 'distributed_time': All boards receive and decode IRIG-B time
@@ -1471,116 +1607,6 @@ class FPGAArray(object):
 
 
 
-    def init_shuffle(self,
-                     mode,
-                     dsmap=range(16),
-                     frames_per_packet=1,
-                     chan8_channel_map=range(16),
-                     pcb_link_tx_power=(10, 15),
-                     qsfp_link_tx_power=(10, 15)):
-        """ Setup the crossbars and data shuffling in every board of the array.
-
-        Parameters:
-
-            mode (str): One of the crossbar engine operational mode
-                ('shuffle16', 'shuffle256' etc.). Is passed to
-                ib.init_crossbar().
-
-            dsmap (list of int): Shuffle remap that is passed to
-                ib.init_crossbar(). Defaults to `range(16)`.
-
-            frames_per_packet (int): Number of frames per packet. Defaults to
-                1. Is passed to ib.init_crossbar().
-
-            chan8_channel_map (list): Map that is passed to
-                ib.init_crossbar(). Defaults to `range(16)`.
-
-             pcb_link_tx_power (tuple (int, int)): Initial and final TX power
-                 applied to the backplane PCB GTX links.
-
-             qsfp_link_tx_power (tuple (int,int)): Initial and final TX power
-                 applied to the backplane QSFP GTX links.
-
-
-        The GTX receivers that have no corresponding transmitter is put in
-        reset so it won't generate random packets into the following crossbar.
-        """
-
-        tx_list = []
-
-        # crate_set = set(ib.crate for ib in self.ib)
-        # if len(crate_set) != 1:
-        #     raise RuntimeError('All boards must be in the same crate. The provided set of Iceboards have the following crates: %r' % crate_set)
-        # crate = crate_set.pop()
-
-        self.logger.info('%r: Configuring crate-wide data shuffling with frames_per_packet=%i' % (self, frames_per_packet))
-
-        #####################
-        # Set-up transmitters
-        #####################
-        for i, ib in enumerate(self.ib):
-            self.logger.info('%r: **** Initializing transmitters for IceBoard %r (SN%s) ****' % (self, ib, ib.serial))
-            ib.set_corr_reset(0)
-
-            tx_list.append((ib.slot, 0))  # Register Bypass lane (lane 0) as a transmitter in this slot
-            for j, gtx in enumerate(ib.BP_SHUFFLE.gtx):
-                gtx.TXINHIBIT = 0
-                tx_list.append((ib.slot, j+1))
-
-            # if remap:
-            #     ib.CROSSBAR2.set_lane_map(self.compute_lane_map(ib))
-
-            # Initialize the crossbars to select and send data in a specific format
-            # ib.init_crossbars(dsmap, frames_per_packet=frames_per_packet, cb1_lanes=cb1_lanes, cb1_bins=cb1_bins, cb1_bypass=cb1_bypass, cb2_lanes=cb2_lanes, cb2_bins=cb2_bins, cb2_bypass=cb2_bypass, remap=remap, bp_bypass=bp_bypass)
-            ib.init_crossbars(mode, dsmap=dsmap, frames_per_packet=frames_per_packet, chan8_channel_map=chan8_channel_map)
-
-        #####################
-        # Set-up receivers
-        #####################
-        for i, ib in enumerate(self.ib):
-            # Disable all receivers for which there are no transmitters
-            for j, gtx in enumerate(ib.BP_SHUFFLE.gtx[0:ib.BP_SHUFFLE.NUMBER_OF_PCB_LINKS]):
-                if ib.slot is None:
-                    continue
-                rx = (ib.slot, j+1)
-                tx = ib.crate.get_matching_tx(rx)
-
-                # disable receivers that have no corresponding transmitters
-                if tx in tx_list:
-                    gtx.USER_GTRXRESET = 0
-                else:
-                    gtx.USER_GTRXRESET = 1
-                    # gtx.USER_RESET = 1
-
-        # reset DFE at low power, then increase power
-        self.ib.BP_SHUFFLE.set_tx_power(pcb_link_tx_power[0], 'pcb')
-        self.ib.BP_SHUFFLE.set_tx_power(qsfp_link_tx_power[0], 'qsfp')
-        self.ib.BP_SHUFFLE.reset_rx_equalizers()
-        time.sleep(0.3)
-        #self.ib.BP_SHUFFLE.set_tx_power(7)
-        #self.ib.BP_SHUFFLE.set_tx_power(10)
-        self.ib.BP_SHUFFLE.set_tx_power(pcb_link_tx_power[1], 'pcb')
-        self.ib.BP_SHUFFLE.set_tx_power(qsfp_link_tx_power[1], 'qsfp')
-        self.ib.BP_SHUFFLE.reset_stats()
-
-        # Print links
-        for ib in self.ib:
-            for i in range(ib.NUMBER_OF_CROSSBAR_OUTPUTS):
-                if ib.slot is None:
-                    continue
-                rx = (ib.slot, i)
-                tx = ib.crate.get_matching_tx(rx)
-                if tx in tx_list:
-                    pass
-                    #self.logger.debug('%r: In %r,  %s is receiving from %s' % (self, ib.crate, rx, tx))
-                else:
-                    self.logger.debug('%r: In %r, %s has no corresponding transmitter' % (self, ib.crate, rx))
-
-
-        # sync boards
-        #soft_sync(c, sync_board)
-        self.logger.info('%r: Shuffling initialization completed. Syncing boards' % self)
-        self.sync(delay=2)
 
     def get_chan_identity_map(self):
         """ Return an identity map that describes the origin of each of the 1024 samples contained in the channelizer output packets.
@@ -1800,7 +1826,9 @@ class FPGAArray(object):
         backplane link and detect  from which slot/lane every board is
         receiving data.
 
-        The test is performed only on IceBoards that are installed in crates and whose FPGA has been programmed and initialized. Other boards are ignored.
+        The test is performed only on IceBoards that are installed in crates
+        and whose FPGA has been programmed and initialized. Other boards are
+        ignored.
 
         For now, this test works only if all boards are in a single crate.
         """
@@ -1906,25 +1934,53 @@ class FPGAArray(object):
 
         return link_list
 
-    # def get_backplane_links(self, print_=True):
-    #     """ Return all backplane links that **should** be available given the currnet collection of crates.
-    #     """
-
-    #     # get all crates associated with the current set of iceboards
-    #     crates = set(ib.crate for ib in self.ib if ib.crate)
-
-    #     links = {}
-    #     for cr in crates:
-    #         links[cr.id] = list(itertools.chain(*(ib.BP_SHUFFLE.get_links() for ib in cr.slot.values())))
-    #     return links
 
     def get_backplane_pcb_link_map(self):
+        """ Return a dictionary that lists all the backplane PCB links and
+        their corresponding GTXes for every boards in the array.
+
+        The list covers every transmitter and receivers on the borads that are
+        currently in the array. Each GTX therefore has two entries, one in
+        which it is the transmitter, and one in which it is the reciever. The
+        connectivity is resolved by relying on the connectivity information
+        that is probiced by the IceCrate object, so there is no need for
+        additional resolving.
+
+        Parameters:
+
+            None
+
+        Returns:
+            A dict, in the format:
+
+                {('BP', (tx_crate, tx_slot, tx_lane), (rx_crate, rx_slot, rx_lane)) : (tx_gtx_instance, rx_gtx_instance)}
+        """
         link_map = {}
         for ib in self.ib:
             link_map.update(ib.BP_SHUFFLE.get_link_map())
         return link_map
 
     def get_backplane_qsfp_links(self):
+        """ Get the list of backplane QSFP links and resolve their connectivity to return a list of lane connectivity.
+
+        We achieve this by getting the list that matches the QSFP-connected GTXes to a cable link ID by calling each crate's get_qsfp_links(), which returns a list in the format:
+
+            [('BP_QSFP', (crate_id, iceboard_slot, gtx_index), None, cable_link_id), ...]
+
+
+        Returns:
+
+            A resolved, iceboard- and lane-oriented connectivity list in the format:
+
+                [('BP_QSFP', (tx_crate, tx_iceboard_slot, tx_lane), (rx_crate, rx_iceboard_slot, rx_lane) ), ...]
+
+            The list refers to logical lane numbers (including the internal
+            bypass lanes). Note that the internal (bypass) links are not added
+            to the result.
+
+
+        """
+
 
         # tx_nodes = {}
         # rx_nodes = {}
@@ -1942,16 +1998,31 @@ class FPGAArray(object):
                 matching_nodes = [nid1 for (lt, nid1, nid2, lid) in raw_links if lt==link_type and nid1 != node_id1 and nid2 is None and lid==link_id]
                 if len(matching_nodes) == 1:
                     node_id2 = matching_nodes[0]
-            if node_id1 is not None and node_id2 is not None:
-                (source_crate, source_slot, source_lane) = node_id1
-                (dest_crate, dest_slot, dest_lane) = node_id2
-                links.append((link_type, (source_crate, source_slot, source_lane + 4), (dest_crate, dest_slot, dest_lane+4)))
-                # links.append((link_type, node_id2, node_id1))
+            if node_id1 is None or node_id2 is None:
+                continue
+            (source_crate, source_slot, source_lane) = node_id1
+            (dest_crate, dest_slot, dest_lane) = node_id2
+            ic0 = crates[source_crate]
+            ic1 = crates[dest_crate]
+            if (source_slot not in ic0.slot) or (dest_slot not in ic1.slot):
+                continue
+            bp0 = ic0.slot[source_slot].BP_SHUFFLE
+            bp1 = ic1.slot[dest_slot].BP_SHUFFLE
+            links.append((link_type, (source_crate, source_slot, source_lane + bp0.NUMBER_OF_QSFP_DIRECT_LANES), (dest_crate, dest_slot, dest_lane + bp1.NUMBER_OF_QSFP_DIRECT_LANES)))  # convert from gtx index to logical lane #
 
         return links
 
 
     def get_backplane_qsfp_link_map(self):
+        """ Return a dictionary that maps the backplane QSFP links to
+        corresponding GTX transmitter and receiver instances.
+
+        Returns:
+           A dict, in the format:
+
+                {('BP_QSFP', (tx_crate, tx_slot, tx_lane), (rx_crate, rx_slot, rx_lane)) : (tx_gtx_instance, rx_gtx_instance)}
+
+        """
         link_map = {}
         crates = self.ic.index_by(list(self.ic.get_id()))  # crates, indexed by crate_id
 
@@ -1975,26 +2046,15 @@ class FPGAArray(object):
             link_map[link] = (source_gtx, dest_gtx)
         return link_map
 
-        # if len(ic) == 2:  # hack
-        #     for slot in set(ic[0].slot.keys()) & set(ic[1].slot.keys()):
-        #         bp0 = ic[0].slot[slot].BP_SHUFFLE
-        #         bp1 = ic[1].slot[slot].BP_SHUFFLE
-        #         crate_id0 = ic[0].get_id()
-        #         crate_id1 = ic[1].get_id()
-        #         for lane in range(bp0.NUMBER_OF_QSFP_LANES):
-        #             link0 = ('BP_QSFP', (crate_id0, slot, lane), (crate_id1, slot, lane))
-        #             link1 = ('BP_QSFP', (crate_id1, slot, lane), (crate_id0, slot, lane))
-        #             if lane < bp0.NUMBER_OF_QSFP_DIRECT_LANES:
-        #                 gtx0 = None
-        #                 gtx1 = None
-        #             else:
-        #                 gtx0 = bp0.gtx[bp0.NUMBER_OF_PCB_LINKS + lane - bp0.NUMBER_OF_QSFP_DIRECT_LANES]
-        #                 gtx1 = bp1.gtx[bp1.NUMBER_OF_PCB_LINKS + lane - bp1.NUMBER_OF_QSFP_DIRECT_LANES]
-        #             link_map[link0] = (gtx0, gtx1)
-        #             link_map[link1] = (gtx1, gtx0)
-        # return link_map
 
     def get_gpu_link_map(self):
+        """ Return a dictionary that matches the GPU links to the GTX Rx and Tx instances when connected with a loopback cable.
+
+        Returns:
+           A dict, in the format:
+
+                {('GPU', (tx_crate, tx_slot, tx_lane), (rx_crate, rx_slot, rx_lane)) : (tx_gtx_instance, rx_gtx_instance)}
+        """
         link_map = {}
         for ib in self.ib:
             crate_id = ib.get_crate_id()
@@ -2008,10 +2068,26 @@ class FPGAArray(object):
         return link_map
 
     def get_link_map(self, links=None, gtx_only=False):
+        """ Return a dictionary that describes the corner-turn and loopbacked GPU links and the corresponding Tx and RX GTXes.
+
+
+        Is used by `get_ber()` to identify the links on which Bit Error Rate (BER) tests will be performed.
+
+        Parameters:
+
+            links (str or list of str): select only the link type specified as a string or the link types specified in a list of strings.
+
+        Returns:
+           A dict, in the format:
+
+                {(link_type, (tx_crate, tx_slot, tx_lane), (rx_crate, rx_slot, rx_lane)) : (tx_gtx_instance, rx_gtx_instance)}
+
+                `link_type` is either "BP", "BP_QSFP" or "GPU"
+        """
         link_map = {}
         link_map.update(self.get_backplane_pcb_link_map())
         link_map.update(self.get_backplane_qsfp_link_map())
-        link_map.update(self.get_gpu_link_map())
+        link_map.update(self.get_gpu_link_map()) # loopback links
 
         if isinstance(links, str):
             link_map = {link: gtxes for link, gtxes in link_map.items() if link[0] == links}

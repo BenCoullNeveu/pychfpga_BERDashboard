@@ -445,8 +445,25 @@ class XGLink(Module_base):
             for (name, value) in gtx.read_all_fields():
                 print '    %s = %i, 0x%X, %s' % (name, value, value, bin(value))
 
-class XGLinkArray(XGLink):
-    """ Instantiates an object that represents the xglink_array"""
+class XGLinkArray(Module_base):
+    """ Instantiates an object that represents the VHDL xglink_array, i.e. an ensemble of GTXes,
+
+    """
+    # ########################################
+    # XGLINK_CORE.VHD control and status registers
+    # ########################################
+    CORE_RESET      = BitField(CONTROL, 0, 7, doc='The GTX cores are reset when this signal goes from 1 to 0')
+    TX_DATA_MSB     = BitField(CONTROL, 3, 0, width=16, doc='24 most significant bits of the data word that can be sent manually. This is common to all lanes.')
+
+    NUMBER_OF_QUADS = BitField(STATUS, 0, 5, width=3, doc='Number of QUADS (QPLLs)')
+    NUMBER_OF_LINKS = BitField(STATUS, 0, 0, width=5, doc='Number of links')
+    RESET_PULSE     = BitField(STATUS, 1, 5, doc='debug')
+    RESET_DONE      = BitField(STATUS, 1, 4, doc='debug')
+    QPLL_RESET_MON  = BitField(STATUS, 1, 3, doc='debug')
+
+    # ########################################
+    # XGLINK_ARRAY.VHD control and status registers
+    # ########################################
 
     # backplane link-specific registers
     # TX_TEST_ENABLE  = BitField(CONTROL, 4+0, 1, doc='')
@@ -484,8 +501,12 @@ class XGLinkArray(XGLink):
         'RX_FRAME_CTR': 'RX_FRAME_CTR',
         }
 
-    def init(self):
-        super(XGLinkArray, self).init()
+   def __init__(self, fpga_instance, base_address, address_increment, verbose=1):
+        # self.fpga = fpga
+        self.logger = logging.getLogger(__name__)
+        self.verbose = verbose
+        super(XGLink, self).__init__(fpga_instance, base_address)
+
         self.NUMBER_OF_LANES = self.NUMBER_OF_LINKS + 5  # 1 bypass link for BP PCB shuffle, 4 for Bp QSFP shuffle
         self.NUMBER_OF_PCB_DIRECT_LANES = 1
         self.NUMBER_OF_QSFP_DIRECT_LANES = 4
@@ -494,36 +515,70 @@ class XGLinkArray(XGLink):
         self.NUMBER_OF_PCB_LINKS = 15
         self.NUMBER_OF_QSFP_LINKS = 4
         self.LANE_GROUPS = {}
-            # group name ; (lane indices, GTX link indices)
-        self.LANE_GROUPS[0] = self.LANE_GROUPS['pcb'] = (
-                range(0, self.NUMBER_OF_PCB_LANES), 
-                range(0, self.NUMBER_OF_PCB_LINKS)
-                ) 
-        self.LANE_GROUPS[1] = self.LANE_GROUPS['qsfp'] = (
-                range(self.NUMBER_OF_PCB_LANES, self.NUMBER_OF_PCB_LANES + self.NUMBER_OF_QSFP_LANES),
-                range(self.NUMBER_OF_PCB_LINKS, self.NUMBER_OF_PCB_LINKS + self.NUMBER_OF_QSFP_LINKS)
-                )
-        self.LANE_GROUPS[None] = (
-            range(self.NUMBER_OF_LANES), 
-            range(self.NUMBER_OF_LINKS)
-            )
+            # group name : (first lane, number_of_bypass_lanes, number_of_links)
+        self.LANE_GROUPS[0] = self.LANE_GROUPS['pcb'] = (0, self.NUMBER_OF_PCB_DIRECT_LANES, self.NUMBER_OF_PCB_LINKS)
+        self.LANE_GROUPS[1] = self.LANE_GROUPS['qsfp'] = (self.NUMBER_OF_PCB_LANES, self.NUMBER_OF_QSFP_DIRECT_LANES, self.NUMBER_OF_QSFP_LINKS)
 
-    def get_lane_group(self, group):
-        """ Returns a list of lane numbers that correspond to the specified group. 
+        # Instantiate QPLLs and GTXes at the appropriate addresses
+        i = 1 # address 0 are for the common control/status register subnet
+        # Instantiate QPLL objects
+        self.qpll = []
+        for j in range(self.NUMBER_OF_QUADS):
+            self.qpll.append(QPLL(fpga_instance, base_address + i * address_increment, j))
+            i += 1
+
+        self.gtx = []
+        for j in range(self.NUMBER_OF_LINKS):
+            self.gtx.append(GTX(fpga_instance, base_address + i * address_increment, j))
+            i += 1
+
+
+    def init(self):
+
+
+        self.logger.debug('%.32r: Initializing GTX links (%i QUADs & %i GTXes' % (self.fpga, len(self.qpll), len(self.gtx)))
+        for (i, qpll) in enumerate(self.qpll):
+            qpll.init()
+
+        for (i, gtx) in enumerate(self.gtx):
+            gtx.init()
+
+    def get_lanes(self, group):
+        """ Returns a list of lane numbers that correspond to the specified group.
         """
         if group not in self.LANE_GROUPS:
             raise ValueError('Invalid link group')
         (lanes, _) = self.LANE_GROUPS[group]
         return lanes
 
-    def get_link_group(self, group):
-        """ Returns a list of link numbers (i.e GTX indices) that correspond to the specified group. 
+    def get_gtx_for_lane(self, group, lane):
+        """ Return the GTX instance for the specified lane of the specified group.
+
+        Returns:
+            GTX instance, or None if there is no associated GTX (internal bypass lanes)
         """
+
         if group not in self.LANE_GROUPS:
             raise ValueError('Invalid link group')
-        (_, links) = self.LANE_GROUPS[group]
-        return links
 
+    def get_gtxes(self, group):
+        """ Returns a list of GTXes that correspond to the specified group.
+        """
+        if not group:
+            return self.gtx
+        if group not in self.LANE_GROUPS:
+            raise ValueError('Invalid link group')
+
+        return (_, links) = self.LANE_GROUPS[group]
+        return [self.gtx[lnk] for lnk in links]
+
+    def get_gtx_pair(self, lane):
+        """ Return the TX GTX and RX GTX objects that send data to this board on the specified lane.
+        """
+        rx_gtx = self.gtx[lane-1]
+        source = self.fpga.crate.get_matching_tx((self.fpga.slot, lane))
+        tx_gtx = self.fpga.crate.slot[source[0]].BP_SHUFFLE.gtx[source[1]-1]
+        return (tx_gtx, rx_gtx)
 
     def set_tx_power(self,  power, group=None):
         """ Sets the power level of the specified GTX link group.
@@ -535,10 +590,33 @@ class XGLinkArray(XGLink):
                 (default) returns all links.
 
         """
-        links = self.get_link_group(group)
-        for link in links:
+
+        for gtx in self.get_gtxes(group):
             self.gtx[link].TXDIFFCTRL = power
 
+    def reset_rx_equalizers(self):
+        """ Reset the equalizers for all GTXes (both the 'pcb' and 'qsfp' groups).
+        """
+        for g in self.gtx:
+            g.reset_rx_equalizer()
+
+
+    def status(self):
+        """ Displays the status of the QPLLs and GTXes"""
+
+        print 'Common Bitfields'
+        for (name, value) in self.read_all_fields():
+            print '    %s = %i, 0x%X, %s' % (name, value, value, bin(value))
+
+        for (i, qpll) in enumerate(self.qpll):
+            print 'QPLL[%i] Bitfields' % i
+            for (name, value) in qpll.read_all_fields():
+                print '    %s = %i, 0x%X, %s' % (name, value, value, bin(value))
+
+        for (i, gtx) in enumerate(self.gtx):
+            print 'GTX[%i] Bitfields' % i
+            for (name, value) in gtx.read_all_fields():
+                print '    %s = %i, 0x%X, %s' % (name, value, value, bin(value))
 
     @async
     def get_rx_lane_monitor(self, names, link_group=None):
@@ -549,7 +627,7 @@ class XGLinkArray(XGLink):
         else:
             is_list = True
 
-        lanes = self.get_lane_group(link_group)
+        lanes = self.get_lanes(link_group)
 
         bitfields = []
         for name in names:
@@ -653,10 +731,3 @@ class XGLinkArray(XGLink):
         if self.RESET_MON:
             print 'WARNING: BP_SHUFFLE reset is active (areset=1)!'
 
-    def get_gtx_pair(self, lane):
-        """ Return the TX GTX and RX GTX objects that send data to this board on the specified lane.
-        """
-        rx_gtx = self.gtx[lane-1]
-        source = self.fpga.crate.get_matching_tx((self.fpga.slot, lane))
-        tx_gtx = self.fpga.crate.slot[source[0]].BP_SHUFFLE.gtx[source[1]-1]
-        return (tx_gtx, rx_gtx)
