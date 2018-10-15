@@ -2286,7 +2286,14 @@ class chFPGA_controller(IceBoardExtHandler):
         power = sum([(yield self.get_motherboard_voltage.async(rail)) * (yield self.get_motherboard_current.async(rail)) for rail in (self.RAIL.MB_VCC3V3, self.RAIL.MB_VCC5V5, self.RAIL.MB_VCC12V0)])  # have to use a list comprehension, not generator (a yield inside a generator is not consistent in Python 2.7)
         async_return(power)
 
-    def init_crossbars(self, mode=None, dsmap=range(16), frames_per_packet=2, cb1_lanes=16, cb1_bins=64, cb1_bypass=False, cb1_combine_data_flags=0, cb2_lanes=None, cb2_bins=1, cb2_bypass=False, bp_shuffle_bypass=1, crate_shuffle_bypass=1, remap=True, chan8_channel_map=range(16)):
+    def init_crossbars(self,
+                       mode=None,
+                       dsmap=range(16),
+                       frames_per_packet=2,
+                       cb1_lanes=16, cb1_bins=64, cb1_bypass=False, cb1_combine_data_flags=0,
+                       cb2_lanes=None, cb2_bins=1, cb2_bypass=False,
+                       bp_shuffle_bypass=1, crate_shuffle_bypass=1,
+                       remap=True, chan8_channel_map=range(16)):
         """ Initializes the 1st, 2nd and 3rd crossbars.
         """
 
