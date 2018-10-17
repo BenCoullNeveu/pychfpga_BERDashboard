@@ -15,6 +15,8 @@ import toro  # conditional variables for tornado coroutines
 
 import log  # logging helper functions
 
+WAIT_TIME = 5
+
 
 class DSBrokerAsyncRESTServer(AsyncRESTServer):
     """
@@ -115,6 +117,7 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
 
         This should only ever be called by kotekan's datasetManager.
         """
+        dataset_valid = yield self.checkDataset(dataset)
         self.log.debug('%.32r: Registering new dataset with hash %r : %r' %
                        (self, hash, dataset))
         reply = dict(result="success")
@@ -132,12 +135,37 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
                                   % (self, found))
                 else:
                     reply['result'] = "success"
-            else:
+            elif dataset_valid:
                 self.datasets[hash] = dataset
                 reply['result'] = "success"
                 self.signal_datasets_updated.notify_all()
+            else:
+                reply['result'] = "error: dataset invalid."
+                self.log.debug(
+                    '%.32r: Received invalid dataset with hash %r : %r' %
+                    (self, hash, dataset))
 
             coroutine_return(reply)
+
+    @coroutine
+    def checkDataset(self, ds):
+        """ Checks if a dataset is valid.
+
+        For a dataset to be valid, the state and base dataset it references to
+        have to exist. If it is a root dataset, the base dataset does not have
+        to exist.
+        """
+        if not self.wait_for_state(ds['state']):
+            self.log.debug('%.32r: State of dataset unknown: %r' %
+                           (self, ds))
+            coroutine_return(False)
+        if ds['is_root']:
+            coroutine_return(True)
+        if not self.wait_for_dset(ds['base_dset']):
+            self.log.debug('%.32r: Base dataset of dataset unknown: %r' %
+                           (self, ds))
+            coroutine_return(False)
+        coroutine_return(True)
 
     @coroutine
     @endpoint('request-ancestor')
@@ -176,6 +204,8 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
             coroutine_return(reply)
 
         reply['result'] = "success"
+        if not reply['states']:
+            reply['datasets'] = {}
         coroutine_return(reply)
 
     @coroutine
@@ -190,7 +220,7 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
             try:
                 while notified:
                     notified = yield self.signal_datasets_updated.wait(
-                        deadline=datetime.timedelta(seconds=15))
+                        deadline=datetime.timedelta(seconds=WAIT_TIME))
                     # did someone send it to us by now?
                     with self.lock_datasets:
                         if self.datasets.get(id) is not None:
@@ -218,7 +248,7 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
             try:
                 while notified:
                     notified = yield self.signal_states_updated.wait(
-                        deadline=datetime.timedelta(seconds=15))
+                        deadline=datetime.timedelta(seconds=WAIT_TIME))
                     # did someone send it to us by now?
                     with self.lock_states:
                         if self.states.get(id) is not None:
@@ -248,15 +278,14 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
 
         # look for the state of requested type
         with self.lock_states:
+            js["states"][state_id] = self.states[state_id]
             if self.states[state_id]["type"] == type:
-                js["states"][state_id] = self.states[state_id]
                 coroutine_return(js)
 
             # loop through the inner states
             state = self.states[state_id].get("inner", None)
             while state != None:
                 if state["type"] == type:
-                    js["states"][state_id] = self.states[state_id]
                     coroutine_return(js)
                 state = state.get("inner", None)
 
