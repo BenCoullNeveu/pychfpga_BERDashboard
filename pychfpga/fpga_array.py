@@ -1088,10 +1088,8 @@ class FPGAArray(object):
                      dsmap=range(16),
                      frames_per_packet=1,
                      chan8_channel_map=range(16),
-                     tx_power=dict(
-                        bp_pcb_links={"default": (10, 15)},
-                        bp_qsfp_links={"default": (10, 15)})
-                     )
+                     tx_power=None,
+                     ):
         """ Setup the crossbars and data shuffling in every board of the array.
 
         Parameters:
@@ -1109,13 +1107,16 @@ class FPGAArray(object):
             chan8_channel_map (list): Map that is passed to
                 ib.init_crossbar(). Defaults to `range(16)`.
 
-            tx_power (dict): Describes the initial (training) and final TX power to be used by the backplane PCB and QSFP links.
-                 applied to the backplane PCB GTX links.
+            tx_power (dict): Describes the initial (training) and final TX
+                 power to be used by the backplane PCB and QSFP links. applied
+                 to the backplane PCB GTX links.
 
 
         The GTX receivers that have no corresponding transmitter is put in
         reset so it won't generate random packets into the following crossbar.
         """
+        if tx_power is None:
+            tx_power = {'bp_pcb_links': {"default": (10, 15)}, 'bp_qsfp_links': {"default": (10, 15)}}
 
         tx_list = []
 
@@ -1165,19 +1166,8 @@ class FPGAArray(object):
 
         # reset DFE at low power, then increase power
 
-        links =
+        #links =
 
-        def set_tx_power(power_params, link_type, seq)
-            default = power_params['default']
-            exceptions = {tuple(key): tuple(pow) for (key, pow) in power_params.get('exceptions', [])}
-            for ib in self.ib:
-                bp = ib.BP_SHUFFLE
-                for i, gtx in enumerate(bp.gtx):
-                    crate_id = i.crate.get_id()
-                    rx = (ib.slot, i)
-                    tx = ib.crate.get_matching_tx(rx)
-                tx_node_id =
-                self.ib.BP_SHUFFLE.set_tx_power(pcb_link_tx_power[seq], link_type)
         set_tx_power(tx_power['bp_pcb_links'], 'pcb', 0)
         self.ib.BP_SHUFFLE.set_tx_power(qsfp_link_tx_power[0], 'qsfp')
         self.ib.BP_SHUFFLE.reset_rx_equalizers()
@@ -1207,6 +1197,18 @@ class FPGAArray(object):
         self.logger.info('%r: Shuffling initialization completed. Syncing boards' % self)
         self.sync(delay=2)
 
+    def set_tx_power(self, lane_group, power_index=0, default_power=(5, 10), lane_specific_power=[]):
+        """ Set the power level of the corner-turn engine GTX transmitters.
+        """
+        exceptions = {tuple(node_id): power_tuple for node_id, power_tuple in lane_specific_power.items()}
+        for ib in self.ib:
+            bp = ib.BP_SHUFFLE
+            ib_id = ib.get_id()
+            lanes = bp.get_lane_numbers(lane_group)
+            for lane in lanes:
+                node_id = tuple(ib_id) + tuple(lane)
+                power_tuple = exceptions.get(node_id, default_power)
+                bp.set_tx_power([lane, power_tuple[power_index]], lane_group)
 
     def set_test_pattern(self):
         for ic in self.ic:

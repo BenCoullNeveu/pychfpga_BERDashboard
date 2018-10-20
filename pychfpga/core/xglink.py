@@ -377,8 +377,17 @@ class GTX(Module_base):
         plt.title('Eye diagram for IceBoard SN%s (Icecrate %s SN%s Slot %i) Lane %i' % (iceboard.serial, iceboard.crate.__class__.__name__, iceboard.crate.serial, iceboard.slot, eye_diag.gtx.instance_number+1))
 
 
-class XGLink(Module_base):
-    """ Instantiates a container for all the xglink core module """
+class XGLinkCore(Module_base):
+    """ Instantiates a container for all the xglink core module 
+
+    The XGLink core implements an array of QPLLs and GTXes with a primitive
+    data/control word interface, 64/66 bit encoding, scrambling and
+    synchronization. The core is used to implement both arrays of 10G Ethernet
+    transmitters as well as custom backplane 10G links.
+
+    The core contains a number of common control registers, which are extended
+    by registers added by the protocol-specific logic.
+    """
 
     # XGLINK common control and status registers
     CORE_RESET      = BitField(CONTROL, 0, 7, doc='The GTX cores are reset when this signal goes from 1 to 0')
@@ -395,7 +404,7 @@ class XGLink(Module_base):
         # self.fpga = fpga
         self.logger = logging.getLogger(__name__)
         self.verbose = verbose
-        super(XGLink, self).__init__(fpga_instance, base_address)
+        super(XGLinkCore, self).__init__(fpga_instance, base_address)
 
         i = 1
 
@@ -445,21 +454,18 @@ class XGLink(Module_base):
             for (name, value) in gtx.read_all_fields():
                 print '    %s = %i, 0x%X, %s' % (name, value, value, bin(value))
 
-class XGLinkArray(Module_base):
+class XGLinkArray(XGLinkCore):
     """ Instantiates an object that represents the VHDL xglink_array, i.e. an ensemble of GTXes,
 
-    """
-    # ########################################
-    # XGLINK_CORE.VHD control and status registers
-    # ########################################
-    CORE_RESET      = BitField(CONTROL, 0, 7, doc='The GTX cores are reset when this signal goes from 1 to 0')
-    TX_DATA_MSB     = BitField(CONTROL, 3, 0, width=16, doc='24 most significant bits of the data word that can be sent manually. This is common to all lanes.')
+    The XGLinkArray implements a XGLinkCore (ensemble of QPLLs and GTXes and
+    date encoding/synchonization) and adds without minimal packet framing
+    (SOF, EOF) and checksum (CRC32). It provides an additional set of
+    registers to the XGLinkCore.
 
-    NUMBER_OF_QUADS = BitField(STATUS, 0, 5, width=3, doc='Number of QUADS (QPLLs)')
-    NUMBER_OF_LINKS = BitField(STATUS, 0, 0, width=5, doc='Number of links')
-    RESET_PULSE     = BitField(STATUS, 1, 5, doc='debug')
-    RESET_DONE      = BitField(STATUS, 1, 4, doc='debug')
-    QPLL_RESET_MON  = BitField(STATUS, 1, 3, doc='debug')
+    XGLinkArray is used to implement the corner turn data links (between
+    boards though the backplane PCB tracks and backplane QSFP connectors)
+
+    """
 
     # ########################################
     # XGLINK_ARRAY.VHD control and status registers
@@ -498,14 +504,12 @@ class XGLinkArray(Module_base):
         'MIN_FRAME_LENGTH': 'RX_MIN_FRAME_LENGTH',
         'FRAME_DETECT': 'RX_FRAME_DETECT',
         # 'RX_CTR': 'RX_CTR',
-        'RX_FRAME_CTR': 'RX_FRAME_CTR',
-        }
+        'RX_FRAME_CTR': 'RX_FRAME_CTR'}
 
-   def __init__(self, fpga_instance, base_address, address_increment, verbose=1):
+    def __init__(self, fpga_instance, base_address, address_increment, verbose=1):
         # self.fpga = fpga
-        self.logger = logging.getLogger(__name__)
-        self.verbose = verbose
-        super(XGLink, self).__init__(fpga_instance, base_address)
+
+        super(XGLinkArray, self).__init__(fpga_instance, base_address, address_increment, verbose)
 
         self.NUMBER_OF_LANES = self.NUMBER_OF_LINKS + 5  # 1 bypass link for BP PCB shuffle, 4 for Bp QSFP shuffle
         self.NUMBER_OF_PCB_DIRECT_LANES = 1
@@ -514,63 +518,84 @@ class XGLinkArray(Module_base):
         self.NUMBER_OF_QSFP_LANES = 8
         self.NUMBER_OF_PCB_LINKS = 15
         self.NUMBER_OF_QSFP_LINKS = 4
-        self.LANE_GROUPS = {}
-            # group name : (first lane, number_of_bypass_lanes, number_of_links)
-        self.LANE_GROUPS[0] = self.LANE_GROUPS['pcb'] = (0, self.NUMBER_OF_PCB_DIRECT_LANES, self.NUMBER_OF_PCB_LINKS)
-        self.LANE_GROUPS[1] = self.LANE_GROUPS['qsfp'] = (self.NUMBER_OF_PCB_LANES, self.NUMBER_OF_QSFP_DIRECT_LANES, self.NUMBER_OF_QSFP_LINKS)
+        # self.LANE_GROUPS = {}
+        # group name : (first lane, number_of_bypass_lanes, number_of_links)
+        # self.LANE_GROUPS[0] = self.LANE_GROUPS['pcb'] = (0, self.NUMBER_OF_PCB_DIRECT_LANES, self.NUMBER_OF_PCB_LINKS)
+        # self.LANE_GROUPS[1] = self.LANE_GROUPS['qsfp'] = (self.NUMBER_OF_PCB_LANES, self.NUMBER_OF_QSFP_DIRECT_LANES, self.NUMBER_OF_QSFP_LINKS)
 
-        # Instantiate QPLLs and GTXes at the appropriate addresses
-        i = 1 # address 0 are for the common control/status register subnet
-        # Instantiate QPLL objects
-        self.qpll = []
-        for j in range(self.NUMBER_OF_QUADS):
-            self.qpll.append(QPLL(fpga_instance, base_address + i * address_increment, j))
-            i += 1
+        lane_list = []
+        phys_lane = 0
+        gtx_ix = 0
+        groups = (('pcb', self.NUMBER_OF_PCB_DIRECT_LANES, self.NUMBER_OF_PCB_LINKS),
+                  ('qsfp', self.NUMBER_OF_QSFP_DIRECT_LANES, self.NUMBER_OF_QSFP_LINKS))
+        for group, n_direct_lanes, n_links in groups:
+            # lane_list[group] = []
+            for lane in range(n_direct_lanes):
+                lane_list.append((group, lane, phys_lane, None, None))
+                phys_lane += 1
+            for lane in range(n_direct_lanes, n_direct_lanes + n_links):
+                lane_list.append((group, lane, phys_lane, gtx_ix, self.gtx[gtx_ix]))
+                phys_lane += 1
+                gtx_ix += 1
+        self.lane_list = lane_list
 
-        self.gtx = []
-        for j in range(self.NUMBER_OF_LINKS):
-            self.gtx.append(GTX(fpga_instance, base_address + i * address_increment, j))
-            i += 1
+        # Create a lane map tht maps  gtx instances to group name and logical
+        # lane number, or to physical lane number if the group name is None
+        self.lane_map = {None: {}}
+        for group, lane, phys_lane, gtx_ix, gtx in self.lane_list:
+            self.lane_map.setdefault(group, {})[lane] = (phys_lane, gtx_ix, gtx)
+            self.lane_map[None][phys_lane] = (phys_lane, gtx_ix, gtx)
+        
+    def get_physical_lane_numbers(self, lane_group):
+        """ Returns a list of physical lane numbers that correspond to the specified group.
 
+        Physical lane number can be used to index lane logic in the fpga.
+        Lanes in all the groups have a unique physical lane number.
 
-    def init(self):
+        Parameters:
 
-
-        self.logger.debug('%.32r: Initializing GTX links (%i QUADs & %i GTXes' % (self.fpga, len(self.qpll), len(self.gtx)))
-        for (i, qpll) in enumerate(self.qpll):
-            qpll.init()
-
-        for (i, gtx) in enumerate(self.gtx):
-            gtx.init()
-
-    def get_lanes(self, group):
-        """ Returns a list of lane numbers that correspond to the specified group.
-        """
-        if group not in self.LANE_GROUPS:
-            raise ValueError('Invalid link group')
-        (lanes, _) = self.LANE_GROUPS[group]
-        return lanes
-
-    def get_gtx_for_lane(self, group, lane):
-        """ Return the GTX instance for the specified lane of the specified group.
+            group (str): target lane group. If None, lane number for all groups are returned.
 
         Returns:
-            GTX instance, or None if there is no associated GTX (internal bypass lanes)
+
+            List of integers.
+
         """
+        if lane_group not self.lane_map:
+            raise ValueError('Invalid lane group name %s' % group)
 
-        if group not in self.LANE_GROUPS:
-            raise ValueError('Invalid link group')
+        phys_lanes = [phys_lane for (phys_lane, _, _) in self.lane_map[group]]
 
-    def get_gtxes(self, group):
-        """ Returns a list of GTXes that correspond to the specified group.
-        """
-        if not group:
-            return self.gtx
-        if group not in self.LANE_GROUPS:
-            raise ValueError('Invalid link group')
+        return phys_lanes
 
-        return (_, links) = self.LANE_GROUPS[group]
-        return [self.gtx[lnk] for lnk in links]
+    # def get_gtx_for_lane(self, group, lane):
+    #     """ Return the GTX instance for the specified lane of the specified group.
+
+    #     Returns:
+    #         GTX instance, or None if there is no associated GTX (internal bypass lanes)
+    #     """
+
+    #     if lane_group not in self.lane_map:
+    #         raise ValueError('Invalid lane group')
+
+    # def get_gtxes(self, group):
+    #     """ Returns a list of GTX instances that correspond to the specified group.
+
+    #     Parameters:
+
+    #         group (str): Name of the gorup of GTX to return ('pcb' or 'qsfp'). If None, all GTXes are returned.
+
+    #     Returns:
+
+    #         List of GTX instances.
+    #     """
+    #     if not group:
+    #         return self.gtx
+    #     if group not in self.LANE_GROUPS:
+    #         raise ValueError('Invalid link group')
+
+    #     (_, links) = self.LANE_GROUPS[group]
+    #     return [self.gtx[lnk] for lnk in links]
 
     def get_gtx_pair(self, lane):
         """ Return the TX GTX and RX GTX objects that send data to this board on the specified lane.
@@ -580,66 +605,70 @@ class XGLinkArray(Module_base):
         tx_gtx = self.fpga.crate.slot[source[0]].BP_SHUFFLE.gtx[source[1]-1]
         return (tx_gtx, rx_gtx)
 
-    def set_tx_power(self,  power, group=None):
-        """ Sets the power level of the specified GTX link group.
+    def set_tx_power(self,  power, lane_group=None):
+        """ Sets the power level of the GTXes in the specified lane group.
 
         Parameters:
 
-            groups (str or int): Group name or index: 0 or 'pcb' for backplane
-                PCB links, 1 or 'qsfp' for backplane QSFP links. `None`
-                (default) returns all links.
+            power (int or list of tuple): If an 'int', power level applied to
+                all GTX in the group. Power of individual lanes can be set by
+                providing a list of (logical_lane, power) tuples if a specific
+                group is specified, or (physical_lane, power) if lane_group is
+                None.
+
+
+            lane_group (str): lane group name of the target GTXes. If `None`, all groups are selected.
 
         """
-
-        for gtx in self.get_gtxes(group):
-            self.gtx[link].TXDIFFCTRL = power
-
-    def reset_rx_equalizers(self):
-        """ Reset the equalizers for all GTXes (both the 'pcb' and 'qsfp' groups).
-        """
-        for g in self.gtx:
-            g.reset_rx_equalizer()
+        # make a dict that maps lane number with all selected GTXes
 
 
-    def status(self):
-        """ Displays the status of the QPLLs and GTXes"""
+        gtx_map = {lane: gtx for (lane, _, gtx) in self.lane_map[lane_group] if gtx}
 
-        print 'Common Bitfields'
-        for (name, value) in self.read_all_fields():
-            print '    %s = %i, 0x%X, %s' % (name, value, value, bin(value))
-
-        for (i, qpll) in enumerate(self.qpll):
-            print 'QPLL[%i] Bitfields' % i
-            for (name, value) in qpll.read_all_fields():
-                print '    %s = %i, 0x%X, %s' % (name, value, value, bin(value))
-
-        for (i, gtx) in enumerate(self.gtx):
-            print 'GTX[%i] Bitfields' % i
-            for (name, value) in gtx.read_all_fields():
-                print '    %s = %i, 0x%X, %s' % (name, value, value, bin(value))
-
+        if not gtx_map:
+            raise (_, _, Val)ueError('Invalid lane group name %s' % lane_group)
+        if isinstance(power, list):
+            for (lane, pwr) in power:
+                if lane in self.lane_map[lane_group]:
+                    (_, _, gtx) = self.lane_map[lane_group]
+                    if gtx:
+                        gtx_map[lane].TXDIFFCTRL = pwr
+                    else:
+                        self.logger.warning('There is no GTX at the specified lane %i of group %s (it is a direct internal link)' % (lane, lane_group))
+                else:
+                    raise ValueError('Invalid lane number %i for lane group %s' % (lane, lane_group))
+ 
     @async
-    def get_rx_lane_monitor(self, names, link_group=None):
+    def get_rx_lane_monitor(self, names, lane_group=None):
+        """ Retreive monitoring info for the specified monitoring points in the target lane group.
 
+        Parameters:
+
+            names (str or list of str): name of the monitoring poins to return.
+
+            lane_group: name of the lane group to query. If None, all lanes from all groups are returned.
+        """
         if isinstance(names, str):
             names = [names]
             is_list = False
         else:
             is_list = True
 
-        lanes = self.get_lanes(link_group)
+        # Get the physical lane number of target lanes
+        phys_lanes = self.get_physical_lane_numbers(lane_group)
 
+        # Build a list of Birfields to access for each lane
         bitfields = []
         for name in names:
             if name not in self.RX_LANE_MONITOR_TABLE:
                 raise ValueError('Invalid lane monitor name. valid names are %s' % ','.join(self.RX_LANE_MONITOR_TABLE.keys()))
             bitfields.append(self.get_bitfield(self.RX_LANE_MONITOR_TABLE[name]))
 
-
+        # get monitoring results
         mon = [list() for _ in names]
-        for lane in lanes:
+        for phys_lane in phys_lanes:
             yield async_moment
-            self.LANE_SEL = lane
+            self.LANE_SEL = phys_lane
             for i, bf in enumerate(bitfields):
                 mon[i].append(self.read_bitfield(bf))
 
@@ -650,8 +679,8 @@ class XGLinkArray(Module_base):
         self.RESET_STATS = 0
 
 
-    def get_rx_error_count(self, link_group=None):
-        return self.get_rx_lane_monitor('ERROR_CTR', link_group)
+    def get_rx_error_count(self, lane_group=None):
+        return self.get_rx_lane_monitor('ERROR_CTR', lane_group)
 
     @async
     def get_metrics(self, reset=True):

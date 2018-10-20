@@ -14,8 +14,18 @@ from Module import BitField
 import xglink
 
 
-class GPU_base(xglink.XGLink):
-    """ Instantiates a container for all the GPU link ressources """
+class GPU_base(xglink.XGLinkCore):
+    """ Instantiates a container for all the GPU link ressources 
+
+    Thhis class implements a XGLinkCore (ensemble of QPLLs and GTXes and
+    date encoding/synchonization) and adds 10G Ethernet packet framing
+    (SOF, EOF) and checksum (CRC32). It provides an additional set of
+    registers to the XGLinkCore.
+
+    XGLinkArray is used to implement Tx-only communication links from the
+    IceBoard's QSFP connector to the GPU farm.
+
+    """
 
     CONTROL = BitField.CONTROL
     STATUS = BitField.STATUS
