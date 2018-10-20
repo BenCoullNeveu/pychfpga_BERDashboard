@@ -79,6 +79,8 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
                 # we don't know this state, ask for it
                 reply['request'] = "get_state"
                 reply['hash'] = hash
+                self.log.debug('%.32r: Asking for state, hash: %r'
+                        % (self, hash))
         coroutine_return(reply)
 
     @coroutine
@@ -204,8 +206,37 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
             coroutine_return(reply)
 
         reply['result'] = "success"
-        if not reply['states']:
-            reply['datasets'] = {}
+        coroutine_return(reply)
+
+    @coroutine
+    @endpoint('request-state')
+    def requestState(self, handler, state_id):
+        """ Request the state with the given ID.
+
+        This is called by kotekan's datasetManager.
+
+        curl
+        -d '{"state_id":42}'
+        -X POST
+        -H "Content-Type: application/json"
+        http://localhost:12050/request-state
+        """
+        self.log.debug(
+            '%.32r: Received request for state with ID %r'
+            % (self, state_id))
+        reply = dict()
+
+        # Do we know this state ID?
+        found = yield self.wait_for_state(state_id)
+        if not found:
+            reply['result'] = "error: state ID %r unknown to broker." % state_id
+            self.log.info('%.32r: State %r unknown to broker' % (self, state_id))
+            coroutine_return(reply)
+
+        with self.lock_states:
+            reply['state'] = self.states[state_id]
+
+        reply['result'] = "success"
         coroutine_return(reply)
 
     @coroutine
@@ -268,7 +299,6 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
     @coroutine
     def ancestor(self, ds_id, type, js):
         with self.lock_datasets:
-            js["datasets"][ds_id] = self.datasets[ds_id]
             state_id = self.datasets[ds_id]['state']
 
         found = yield self.wait_for_state(state_id)
@@ -278,14 +308,15 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
 
         # look for the state of requested type
         with self.lock_states:
-            js["states"][state_id] = self.states[state_id]
             if self.states[state_id]["type"] == type:
+                js['state_id'] = state_id
                 coroutine_return(js)
 
             # loop through the inner states
             state = self.states[state_id].get("inner", None)
             while state != None:
                 if state["type"] == type:
+                    js['state_id'] = state_id
                     coroutine_return(js)
                 state = state.get("inner", None)
 
@@ -366,6 +397,11 @@ class DSBrokerAsyncRESTClient(AsyncRESTClient):
     @coroutine
     def requestAncestor(self, ds_id, type):
         result = yield self.post('request-ancestor', ds_id, type)
+        coroutine_return(result)
+
+    @coroutine
+    def requestState(self, state_id):
+        result = yield self.post('request-state', state_id)
         coroutine_return(result)
 
 
