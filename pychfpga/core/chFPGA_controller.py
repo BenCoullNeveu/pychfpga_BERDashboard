@@ -3205,21 +3205,24 @@ class chFPGA_controller(IceBoardExtHandler):
     def get_id(self, lane=None):
         """ Returns a tuple representing a unique IceBoard ID, using numeric values whenever possible.
 
-        Arguments:
+        Parameters:
+
             lane (int): caller-provided lane number to be appended to the returned tuple.
+
         Returns:
-             -  (int, int): (crate_number, zero_based_slot_number) if the board is in a crate for which a crate number was assigned
-             - (str, int): (crate_id, zero_based_slot_number) Identify the crate with model and serial number if there is a crate  but no crate number is specified
-             - (str): (iceboard_id) If the board is not in a crate or the slot number is unknown, use the the iceboard model and serial number
+             - (int, int): (numeric_crate_number, zero_based_slot_number) if the board
+               is in a crate for which a crate number was assigned
+             - (str, int): (string_crate_id, zero_based_slot_number) Identify the
+               crate with model and serial number if there is a crate but no
+               crate number is specified
+             - (str): (iceboard_id) If the board is not in a crate or the slot
+               number is unknown, use the the iceboard model and serial number
 
         """
         if not self.crate or self.slot is None:
-            id = [self.get_string_id()]
+            return (self.get_string_id(), ) if lane is None else (self.get_string_id(), lane)
         else:
-            id = list(self.crate.get_id()) + [self.slot - 1]
-        if lane is not None:
-            id.append(lane)
-        return tuple(id)
+            return self.get_crate_id(self.slot - 1)
 
 
     def get_crate_id(self):

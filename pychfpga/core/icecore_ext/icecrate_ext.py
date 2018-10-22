@@ -97,18 +97,35 @@ class IceCrateExtHandler(IceCrateHandler):
         pass
 
     def get_string_id(self):
-        """ Return a string composed of the backplane model and serial number that can be used to uniquely identofy a crate in a system"""
+        """ Return a string composed of the backplane model and serial number
+        that can be used to uniquely identify a crate in a system
+
+
+        Returns:
+
+            str: a string in the format backplane_model_name_crate_serial_number.
+
+        """
         return '%s_SN%s' % (self.part_number, str(self.serial))
 
-    def get_id(self, lane=None):
-        if self.crate_number is not None:
-            id = [self.crate_number]
-        else:
-            id = [self.get_string_id()]
-        if lane:
-            id.append(lane)
-        return tuple(id)
+    def get_id(self, slot=None):
+        """ Return a tuple that describes the crate and an optional slot number. 
 
+        Parameters:
+
+            slot: If not None, the `slot` parameter is appnded to the tuple.
+
+
+        Returns:
+
+            (int, ): (crate_number, )  if a crate_number is not None
+            (str, ): (string_crate_id, ) Use the model/serial string instead if there is no crate number
+            (int, slot) or (str, slot) if a slot is provided
+        """
+        if self.crate_number is not None:
+            return (self.crate_number, ) if slot is None else (self.crate_number, slot)
+        else:
+            return (self.get_string_id(), ) if slot is None else (self.get_string_id(), slot)
 
     def get_number_of_slots(self):
         return self.NUMBER_OF_SLOTS

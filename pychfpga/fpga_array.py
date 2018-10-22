@@ -1963,9 +1963,12 @@ class FPGAArray(object):
         return link_map
 
     def get_backplane_qsfp_links(self):
-        """ Get the list of backplane QSFP links and resolve their connectivity to return a list of lane connectivity.
+        """ Get the list of backplane QSFP links and resolve their
+        connectivity to return a list of lane connectivity.
 
-        We achieve this by getting the list that matches the QSFP-connected GTXes to a cable link ID by calling each crate's get_qsfp_links(), which returns a list in the format:
+        We achieve this by getting the list that matches the QSFP-connected
+        GTXes to a cable link ID by calling each crate's get_qsfp_links(),
+        which returns a list in the format:
 
             [('BP_QSFP', (crate_id, iceboard_slot, gtx_index), None, cable_link_id), ...]
 
@@ -1986,24 +1989,30 @@ class FPGAArray(object):
 
         # tx_nodes = {}
         # rx_nodes = {}
-        raw_links = []
 
         # Combine TX and RX link dicts from all crates
+        raw_links = [link for ic in self.ic
+                          for qsfp_link_list in ic.get_qsfp_links()
+                          for link in qsfp_link_list]
+
         for ic in self.ic:
             raw_links += ic.get_qsfp_links()
 
+        # Make a map of crates objects indexed by crate_number
+        crate_map = {crate.get_id()[0]: crate for crate in self.ic}
+
         # Visit each link and find the attached nodes
         links = []
-        for (link_type, node_id1, node_id2, link_id) in raw_links:
+        for (link_type, tx_id, rx_id, link_id) in raw_links:
             # If the second node is not already known, search all the links for a corresponding half-link with the same link_id
-            if node_id2 is None:
-                matching_nodes = [nid1 for (lt, nid1, nid2, lid) in raw_links if lt==link_type and nid1 != node_id1 and nid2 is None and lid==link_id]
+            if rx_id is None:
+                matching_nodes = [nid1 for (lt, nid1, nid2, lid) in raw_links if lt==link_type and nid1 != tx_id and nid2 is None and lid==link_id]
                 if len(matching_nodes) == 1:
-                    node_id2 = matching_nodes[0]
-            if node_id1 is None or node_id2 is None:
+                    rx_id = matching_nodes[0]
+            if tx_id is None or rx_id is None:
                 continue
-            (source_crate, source_slot, source_lane) = node_id1
-            (dest_crate, dest_slot, dest_lane) = node_id2
+            (source_crate, source_slot, source_lane) = tx_id
+            (dest_crate, dest_slot, dest_lane) = rx_id
             ic0 = crates[source_crate]
             ic1 = crates[dest_crate]
             if (source_slot not in ic0.slot) or (dest_slot not in ic1.slot):
