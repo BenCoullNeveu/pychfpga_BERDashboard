@@ -109,7 +109,7 @@ class IceCrateExtHandler(IceCrateHandler):
         return '%s_SN%s' % (self.part_number, str(self.serial))
 
     def get_id(self, slot=None):
-        """ Return a tuple that describes the crate and an optional slot number. 
+        """ Return a tuple that describes the crate and an optional slot number.
 
         Parameters:
 
@@ -317,6 +317,9 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
 
     _BP_TX_TO_RX_MAP = {tx:rx for (rx, tx) in _BP_RX_TO_TX_MAP.items()}
 
+    # length of the backplane PCB traces that connect two GTXes, in mils, indexed by the (slot,
+    # lane) id of the receiver node. Slot number is one-based, lane is zero-based. Lane 0 is not
+    # physically present (it is the internal lane)
     _BP_RX_NET_LENGTH = {
         (1, 0): 0,
         (1, 1): 13131.376, (1, 2): 11758.891, (1, 3): 10895.916, (1, 4): 10765.111, (1, 5): 8343.244,
@@ -928,6 +931,22 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
         #self._fan_ctrl.set_duty_cycle(speed)
 
         self.master_iceboard.set_fantray_duty_cycle(int(255.*speed/100))
+
+
+    # def get_pcb_links(self):
+    #     """
+    #     Return a list describing all possible data links that can be provided over the PCB tracks.
+
+    #     All link sin the list are resolved (i.e. the id of both end is known):
+    #     Returns:
+
+    #         [('pcb', tx_id, rx_id), ...]
+
+    #     """
+    #     tx_crate = rx_crate = self.get_id()[0]
+    #     links = [('pcb', (tx_crate, tx_slot - 1, tx_lane), (rx_crate, rx_slot - 1, rx_lane))
+    #               for (rx_slot, rx_lane), (tx_slot, tx_lane) in self.get_pcb_link_map()]
+
 
     def get_qsfp_links(self, get_link_uid=True):
         """

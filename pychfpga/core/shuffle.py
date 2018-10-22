@@ -56,90 +56,119 @@ class Shuffle(xglink.XGLinkArray):
         return self.fpga.crate.get_rx_net_length(rx_node_id)
 
     def get_link_map(self, lane_group='pcb'):
-        """ Return a dictionary that lists all the backplane PCB data shuffle
-        lanes of the corner turn engine, and associated GTX Tx and Rx
-        instances.
+        """ Return a dictionary that lists all the corner-turn engine data
+        lanes, and associated GTX Tx and Rx instances when possible.
 
-        The dictionary does not include the QSFP data lanes. It includes the
-        internal bypass lanes (not just the physical GTX links), and links
-        that have no end-to-end connectivity.
+        Parameters:
 
-        The dictionary is in the format:
+            lane_group (str): type of backplane links to include in the list
+                ('pcb' or 'qsfp'). If None, both types will be included.
 
-            { (link_type, tx_node_id, rx_node_id) : (tx_gtx, rx_gtx)}
+        Returns:
+            A dictionary in the format:
 
-        Where link_type is either 'BP' or 'BP_QSFP', and where `tx_node_id`
-        and `rx_node_id` are tuples in the format: ``(crate_id, slot_id,
-        lane_id)``. All id's are zero-based.
+                { (link_type, tx_id, rx_id) : (tx_gtx, rx_gtx)}
 
-        A link is resolved when the node_id is known at both ends of the link,
-        whether or not there is hardware at each end of the link.the
-        Consequently, a link that is not resolved has either its `tx_node_id`
-        or `rx_node_id` instance set to `None`:
 
-            ('BP_QSFP', None, rx_id) : (None, rx_gtx_instance)
+            Where link_type is either 'BP' or 'BP_QSFP', and where `tx_id`
+            and `rx_id` are tuples in the format: ``(crate_id, slot_id,
+            lane_id)``. All indices in the id tuples are zero-based.
 
-        Links that are (resolved) but are missing *one* gtx instance are broken (i.e.
-        missing board):
+        A link is resolved when *both* the `tx_id` and `rx_id` are
+        known. This does not necessarily mean that the link is connectd to
+        hardware, but only that it could potentially be there.
 
-            ('BP', tx_id, rx_id) : (tx_gtx, None) 
-            ('BP', tx_id, rx_id) : (None, rx_gtx) 
+        A link is actually connected only if both `tx_gtx` and `rx_gtx` are
+        defined as an instance of the correcponding GTX object if the link
+        goes through a actual GTX link, or as the 'int' string if the link is
+        established through the internal bypass link. :
 
-        A relolved link that is missing *both* the rx and tx gtx in a valid
-        internal direct link.
+        Examples:
 
-            ('BP', tx_id, rx_id) : (None, None) 
+            Resolved and connected link, through wither GTXes or internal links
+
+                ('BP', tx_id, rx_id) : (tx_gtx, rx_gtx)
+                ('BP', tx_id, rx_id) : ('int', 'int')
+
+            Resolved link that is not connected (i.e. missing board on a backplane PCB link):
+
+                ('BP', tx_id, rx_id) : (tx_gtx, None)
+
+            The two ends of a link that yet unresolved (i.e. the cabling will have to be checked):
+
+                ('BP_QSFP', tx_id, None) : (tx_gtx, None)
+                ('BP_QSFP', None, rx_id) : (None, rx_id)
 
         'pcb' links are always resolved, since the method has access to the
         icecrate object, which is aware of which node should be at the other
-        end.  Links will be roken if the board is missing at the other end.
-        Lane 0 is always the internal link that connect to the same lane of
-        the same board.
+        end. All possible PCB links are listed, even if they are not connected
+        at one or both end becaus eof missing boards. Lane 0 is always a
+        connected internal link that connect to the same lane of the same
+        board.
 
         With the exception of the internal direct links, 'qsfp' links are
         always unresolved, since this method has no knowledge of other crates.
+        There is an unresolved entry for each receiver and transmitter, which
+        will have to be resolved based on the cable id.
 
         The link map takes into account whether the transmitters are are
         currently in bypass mode and are sending the data to itself instead of
         an other board.
 
-
-        Returns:
-            A dictionry in the format:
-                { ('BP', (tx_crate_id, tx_slot, tx_lane), (rx_crate_id, rx_slot, rx_lane): (tx_gtx, rx_gtx)}
-
         """
         links = {}
-        (rx_crate, rx_slot) = self.fpga.get_id()
-        # Create the pcb link map. We scan all receiver links
-        if lane_group == 'pcb' or lane_group is None:
-            for rx_lane, (phys_lane, gtx_ix, rx_gtx) in self.lane_map['pcb'].items:
-                rx_id = (rx_crate, rx_slot, rx_lane)
-                if rx_gtx:
-                    tx_crate = rx_crate
-                    (tx_slot, tx_lane) = self.get_matching_tx_node_id((rx_slot, rx_lane))
-                    tx_id = (tx_crate, tx_slot, tx_lane)
-                    tx_ib = self.fpga.crate.slot.get(tx_slot + 1, None)
-                    if tx_ib:
-                        tx_gtx = tx_ib.BP_SHUFFLE.get_gtx(tx_lane, 'pcb')
-                    else:
-                        tx_id = None
-                        tx_gtx = None
-                else: # direck internal link
-                    tx_id = rx_id
-                    tx_gtx = None
-                links[('BP', tx_id, rx_id)] = (tx_gtx, rx_gtx)
-            return links
+        (crate, slot) = self.fpga.get_id()
 
-        # Add unresolved QSFP links for both the transmitter and receivers ends
-        if lane_group == 'qsfp' or lane_group is None:
-            for rx_lane, (phys_lane, gtx_ix, rx_gtx) in self.lane_map['qsfp'].items:
-                rx_id = (rx_crate, rx_slot, rx_lane)
-                links[('BP_QSFP', None, rx_id)] = (None, rx_gtx)
-                links[('BP_QSFP', rx_id, None)] = (rx_gtx, None)
-            return links
-        
+        lane_groups = ['pcb', 'qsfp']
+        if lane_group is None:
+            groups = lane_groups
+        elif lane_group in lane_groups:
+            groups = [lane_group]
+        elif all(group in lane_groups for group in lane_group):
+            groups = lane_group
+        else:
+            raise ValueError('Invalid lane group. Can be one of %r' % lane_groups)
 
+        bypass_pcb_shuffle = self.BYPASS_PCB_SHUFFLE
+        bypass_qsfp_shuffle = self.BYPASS_QSFP_SHUFFLE
+
+        # Create the pcb link map. We include all the possible PCB links that are offered by the backplane, even if there
+        for group in groups:
+            for lane, gtx in enumerate(self.get_gtx(lane_group=group)):
+                if group == 'pcb':
+                    if self.is_gtx(gtx) and not bypass_pcb_shuffle: # do we have a real external link?
+                        # Add the link connected to the receiver side of the GTX
+                        (rx_slot, rx_lane) = (slot, lane)
+                        rx_id = (crate, rx_slot, rx_lane)
+                        rx_gtx = gtx
+                        (tx_slot, tx_lane) = self.get_matching_tx_node_id((rx_slot + 1, rx_lane))
+                        tx_id = (crate, tx_slot, tx_lane)
+                        tx_ib = self.fpga.crate.slot.get(tx_slot + 1, None)
+                        tx_gtx = tx_ib.BP_SHUFFLE.get_gtx(tx_lane, group) if tx_ib else None
+                        links[(group, tx_id, rx_id)] = (tx_gtx, rx_gtx) # No transmitter
+
+                        # Add the link connected to the transmitter side of the GTX
+                        (tx_slot, tx_lane) = (slot, lane)
+                        tx_id = (crate, tx_slot, tx_lane)
+                        tx_gtx = gtx
+                        (rx_slot, rx_lane) = self.get_matching_rx_node_id((tx_slot, tx_lane))
+                        rx_id = (crate, rx_slot, rx_lane)
+                        rx_ib = self.fpga.crate.slot.get(rx_slot + 1, None)
+                        rx_gtx = tx_ib.BP_SHUFFLE.get_gtx(rx_lane, group) if rx_ib else None
+                        links[(group, tx_id, rx_id)] = (tx_gtx, rx_gtx)
+
+                    else: # if a direct internal link or a software bypass
+                        tx_id = rx_id = (crate, slot, lane)
+                        tx_gtx = rx_gtx = 'int'  # internal link
+                        links[(group, tx_id, rx_id)] = (tx_gtx, rx_gtx)
+                elif group == 'qsfp':
+                        tx_id = rx_id = (crate, slot, lane)
+                        if self.is_gtx(gtx) and not bypass_qsfp_shuffle:
+                            links[(group, None, rx_id)] = (None, gtx)
+                            links[(group, rx_id, None)] = (gtx, None)
+                        else: # if a direct internal link or a software bypass
+                            links[(group, rx_id, tx_id)] = ('int', 'int')
+            return links
 
     def get_links(self):
         """

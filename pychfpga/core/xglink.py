@@ -378,7 +378,7 @@ class GTX(Module_base):
 
 
 class XGLinkCore(Module_base):
-    """ Instantiates a container for all the xglink core module 
+    """ Instantiates a container for all the xglink core module
 
     The XGLink core implements an array of QPLLs and GTXes with a primitive
     data/control word interface, 64/66 bit encoding, scrambling and
@@ -454,16 +454,19 @@ class XGLinkCore(Module_base):
             for (name, value) in gtx.read_all_fields():
                 print '    %s = %i, 0x%X, %s' % (name, value, value, bin(value))
 
+
 class XGLinkArray(XGLinkCore):
-    """ Instantiates an object that represents the VHDL xglink_array, i.e. an ensemble of GTXes,
+    """ Instantiates an object that represents the VHDL xglink_array, i.e. an ensemble of GTXes with
+    a knowledge of lane groups.
 
-    The XGLinkArray implements a XGLinkCore (ensemble of QPLLs and GTXes and
-    date encoding/synchonization) and adds without minimal packet framing
-    (SOF, EOF) and checksum (CRC32). It provides an additional set of
-    registers to the XGLinkCore.
+    The XGLinkArray implements a XGLinkCore (ensemble of QPLLs and GTXes and date
+    encoding/synchonization) and adds without minimal packet framing (SOF, EOF) and checksum
+    (CRC32). It provides an additional set of registers to the XGLinkCore, and implement internal
+    links as well as GTX bypasses. XGLink is also aware of logical lane groups ('pcb' vs 'qsfp'
+    links).
 
-    XGLinkArray is used to implement the corner turn data links (between
-    boards though the backplane PCB tracks and backplane QSFP connectors)
+    XGLinkArray is used to implement the corner turn data links by tranmitting data though the
+    backplane PCB tracks and backplane QSFP connectors.
 
     """
 
@@ -528,25 +531,35 @@ class XGLinkArray(XGLinkCore):
         gtx_ix = 0
         groups = (('pcb', self.NUMBER_OF_PCB_DIRECT_LANES, self.NUMBER_OF_PCB_LINKS),
                   ('qsfp', self.NUMBER_OF_QSFP_DIRECT_LANES, self.NUMBER_OF_QSFP_LINKS))
+
+        self.gtx_map = {None: []} # list of GTX instance for each group. The None group lists them all.
+        self.phys_lane_map = {None: []} # list of the physical lane limbers for each group
+
         for group, n_direct_lanes, n_links in groups:
+            self.gtx_lane_map[group] = []
             # lane_list[group] = []
             for lane in range(n_direct_lanes):
-                lane_list.append((group, lane, phys_lane, None, None))
+                lane_list.append((group, lane, phys_lane, None, None)) # internal link, no GTX
+                for g in [group, None]:
+                    self.gtx_lane_map[g].append(None)
+                    self.phys_lane_map[g].append(phys_lane)
                 phys_lane += 1
             for lane in range(n_direct_lanes, n_direct_lanes + n_links):
                 lane_list.append((group, lane, phys_lane, gtx_ix, self.gtx[gtx_ix]))
+                for g in [group, None]:
+                    self.gtx_lane_map[g].append(gtx)
+                    self.phys_lane_map[g].append(phys_lane)
                 phys_lane += 1
                 gtx_ix += 1
         self.lane_list = lane_list
 
-        # Create a lane map tht maps  gtx instances to group name and logical
+        # Create a lane map that maps gtx instances to group name and logical
         # lane number, or to physical lane number if the group name is None
         self.lane_map = {None: {}}
         for group, lane, phys_lane, gtx_ix, gtx in self.lane_list:
             self.lane_map.setdefault(group, {})[lane] = (phys_lane, gtx_ix, gtx)
-            self.lane_map[None][phys_lane] = (phys_lane, gtx_ix, gtx)
-        
-    def get_physical_lane_numbers(self, lane_group):
+
+    def get_physical_lane_numbers(self, lane_group=None):
         """ Returns a list of physical lane numbers that correspond to the specified group.
 
         Physical lane number can be used to index lane logic in the fpga.
@@ -554,90 +567,93 @@ class XGLinkArray(XGLinkCore):
 
         Parameters:
 
-            group (str): target lane group. If None, lane number for all groups are returned.
+            group (str): target lane group. If None, physicallane number for all groups are
+                returned.
 
         Returns:
 
             List of integers.
-
         """
         if lane_group not self.lane_map:
             raise ValueError('Invalid lane group name %s' % group)
+        return self.phys_lane_map[group]
 
-        phys_lanes = [phys_lane for (phys_lane, _, _) in self.lane_map[group]]
+    def get_lane_numbers(self, lane_group):
+        """ Returns a list of logical lane numbers for the specified lane group.
 
-        return phys_lanes
+        Parameters:
 
-    # def get_gtx_for_lane(self, group, lane):
-    #     """ Return the GTX instance for the specified lane of the specified group.
+            lane_group (str): target lane group. Cannot be `None`, as the logical lane numbers are
+                not unique between groups.
 
-    #     Returns:
-    #         GTX instance, or None if there is no associated GTX (internal bypass lanes)
-    #     """
+        Returns:
 
-    #     if lane_group not in self.lane_map:
-    #         raise ValueError('Invalid lane group')
-
-    # def get_gtxes(self, group):
-    #     """ Returns a list of GTX instances that correspond to the specified group.
-
-    #     Parameters:
-
-    #         group (str): Name of the gorup of GTX to return ('pcb' or 'qsfp'). If None, all GTXes are returned.
-
-    #     Returns:
-
-    #         List of GTX instances.
-    #     """
-    #     if not group:
-    #         return self.gtx
-    #     if group not in self.LANE_GROUPS:
-    #         raise ValueError('Invalid link group')
-
-    #     (_, links) = self.LANE_GROUPS[group]
-    #     return [self.gtx[lnk] for lnk in links]
-
-    def get_gtx_pair(self, lane):
-        """ Return the TX GTX and RX GTX objects that send data to this board on the specified lane.
+            List of integers.
         """
-        rx_gtx = self.gtx[lane-1]
-        source = self.fpga.crate.get_matching_tx((self.fpga.slot, lane))
-        tx_gtx = self.fpga.crate.slot[source[0]].BP_SHUFFLE.gtx[source[1]-1]
-        return (tx_gtx, rx_gtx)
+        if lane_group not in self.lane_map:
+            raise ValueError('Invalid lane group name %s' % group)
+        if lane_group is None:
+            raise ValueError('Logical lane numbers cannot be obtained for lane group "none": the lane numbers are not unique')
+        return range(len(self.lane_map[group]))
+
+
+    def get_gtx(self, lane, lane_group):
+        """ Returns a single or a list of GTX instances that correspond to the specified group and lanes.
+
+        Parameters:
+
+            lane (int or list of int): Single lane or list of lanes for which to get the GTX
+                instance. if `lane` is None, all lanes are returned within the group are returned.
+                If group is None, lanes from both groups are queries and physical lane number is
+                expected instead of the logical lane number.
+
+            lane_group (str): Name of the lane group in which the GTX belongs ('pcb' or 'qsfp'). If None, all GTXes are returned.
+
+        Returns:
+
+            List of GTX instances. Returns None for internal data links.
+        """
+        if lane_group not in self.gtx_map:
+            raise ValueError('Invalid lane group name %s' % lane_group)
+        gtx_map = self.gtx_map[lane_group]
+        if lane is None:
+            return gtx_map
+        elif isinstance(lane, int):
+            return gtx_map[lane]
+        else:
+            return [gtx_map[l] for l in lane]
 
     def set_tx_power(self,  power, lane_group=None):
         """ Sets the power level of the GTXes in the specified lane group.
 
         Parameters:
 
-            power (int or list of tuple): If an 'int', power level applied to
-                all GTX in the group. Power of individual lanes can be set by
-                providing a list of (logical_lane, power) tuples if a specific
-                group is specified, or (physical_lane, power) if lane_group is
-                None.
+            power (int, tuple or list of tuple): If an 'int', power level applied to all GTX in the
+                group. Power of an individual lanes can be set by providing a single (lane, power)
+                tuple. A list of (lane, power) tuples can be specified to set multiple lanes. If
+                `lane_group` is `None`, physical lane numbers are used instead of logical lane
+                numbers.
 
-
-            lane_group (str): lane group name of the target GTXes. If `None`, all groups are selected.
+            lane_group (str): lane group name of the target GTXes. If `None`, all groups are
+                selected and physical lane numbers should be used.
 
         """
-        # make a dict that maps lane number with all selected GTXes
+
+        if lane_group not in self.gtx_map:
+            raise ValueError('Invalid lane group name %s' % lane_group)
+        gtx_map = self.gtx_map[lane_group]
+
+        if isinstance(power, int):
+            power = [(i, power) for i,gtx in enumerate(gtx_map) if gtx] # exclude internal links (no GTX)
+        elif isinstance(power, (tuple, list)) and isinstance(power[0], int) and isinstance(power[1], int) and len(power) == 2:
+            power = [power]
+        for lane, pwr in power:
+            gtx = gtx_map[lane]
+            if not gtx:
+                self.logger.warning('There is no GTX at the specified lane %i of group %s (it is a direct internal link)' % (lane, lane_group))
+            gtx.TXDIFFCTRL = pwr
 
 
-        gtx_map = {lane: gtx for (lane, _, gtx) in self.lane_map[lane_group] if gtx}
-
-        if not gtx_map:
-            raise (_, _, Val)ueError('Invalid lane group name %s' % lane_group)
-        if isinstance(power, list):
-            for (lane, pwr) in power:
-                if lane in self.lane_map[lane_group]:
-                    (_, _, gtx) = self.lane_map[lane_group]
-                    if gtx:
-                        gtx_map[lane].TXDIFFCTRL = pwr
-                    else:
-                        self.logger.warning('There is no GTX at the specified lane %i of group %s (it is a direct internal link)' % (lane, lane_group))
-                else:
-                    raise ValueError('Invalid lane number %i for lane group %s' % (lane, lane_group))
- 
     @async
     def get_rx_lane_monitor(self, names, lane_group=None):
         """ Retreive monitoring info for the specified monitoring points in the target lane group.
