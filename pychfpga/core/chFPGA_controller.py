@@ -451,14 +451,25 @@ class chFPGA_controller(IceBoardExtHandler):
         """
         Initialize the FPGA firmware AND the Python objects to a known state.
 
-        Arguments:
-             sampling_frequency (float): Sampling frequency in Hz to set on the ADC Mezzanine boards (default 800 MHz)
-             reference_frequency (float): Frequency in Hz of the Iceboard's reference clock (default is 10 MHz)
+        Parameters:
+
+             sampling_frequency (float): Sampling frequency in Hz to set on the ADC Mezzanine boards
+                 (default 800 MHz)
+
+             reference_frequency (float): Frequency in Hz of the Iceboard's reference clock (default
+                 is 10 MHz)
+
              adc_delay_table (dict): initial setting of the ADC delays. see `set_adc_delays`
-             data_width (int): 4 or 8. Indicate of the channelizer output is in (4+4)bit or (8+8 bit) mode
+
+             data_width (int): 4 or 8. Indicate of the channelizer output is in (4+4)bit or (8+8
+                 bit) mode
+
              group_frames (int): Number of frames per packets used by the corner-turn engine
+
              enable_gpu_link (bool): 1
+
              create_receiver (bool): False, obsolete
+
              verbose (int): verbose level
 
         Returns:
@@ -466,8 +477,8 @@ class chFPGA_controller(IceBoardExtHandler):
 
         Note:
 
-            not all FPGA registers are rewritten durint `init()`, so it might be required to
-            reprogramthe fpga to come back to a known state if manual changes weremade.
+            Not all of the FPGA registers are rewritten durint `init()`, so it might be required to
+            reprogramthe fpga to come back to a known state if manual changes were made.
         """
 
         self._sampling_frequency = sampling_frequency
@@ -1502,7 +1513,7 @@ class chFPGA_controller(IceBoardExtHandler):
         """
         Measures the eye diagram of the ADC digital data lines using the ADCDAQ capture feature.
 
-        Arguments:
+        Parameters:
             channels (list of int): List of channels to which the command is applied
 
         Returns:
@@ -1821,7 +1832,7 @@ class chFPGA_controller(IceBoardExtHandler):
         Set the output to be encoded in offset binary instead of 2's compliment
         if sync is true, perform a sync afterward.  Necessary for data to continue flowing
 
-        Arguments:
+        Parameters:
             channels (list of int): List of channels to which the command is applied
 
         """
@@ -1839,7 +1850,17 @@ class chFPGA_controller(IceBoardExtHandler):
 
     def set_send_flags(self, send_flags=True, crossbar_outputs=None, sync=True):
         """
-        Configures the gpu output to send flags in the packets.
+        Sets the Corner-Turn engine to add and send Scaler and Frame and flags in its output
+        packets.
+
+        Parameters:
+
+            send_flags (bool): If True, the flags will be sent.
+
+            crossbar_outputs (list of int): list of indices of the 1st CROSSBAR outputs that should
+                be configured.
+
+            sync (bool): If True (default), a local sync() will be performed.
         """
         if crossbar_outputs is None:
             crossbar_outputs = range(self.NUMBER_OF_CROSSBAR_OUTPUTS)
@@ -1849,7 +1870,7 @@ class chFPGA_controller(IceBoardExtHandler):
         else:
             # Set the scaler to use offset binary
             for output in crossbar_outputs:
-                self.CROSSBAR[output].CH_DIST.SEND_FLAGS=send_flags
+                self.CROSSBAR[output].CH_DIST.SEND_FLAGS = send_flags
             if sync:
                 self.sync()
 
@@ -1857,6 +1878,14 @@ class chFPGA_controller(IceBoardExtHandler):
         """ Loads the gain file associated with this board and return the gains.
 
         The gain file is a pickled dictionary in the format {channel_number:gains,..}.
+
+        Parameters:
+
+            folder (str): Folder in which the gain files are to be found. Default is the current directory.
+
+        Returns:
+
+            gains that have been loaded. `None` if the gains are not found.
 
         """
         slot_0based = self.slot - 1
@@ -1880,7 +1909,7 @@ class chFPGA_controller(IceBoardExtHandler):
         Sets the gain between the (18+18) bits input of the scaler module (from the FFT) to its 4- or 8- bit scaler output.
         The gain can be set individually for every frequency bins and every ADC channel.
 
-        Arguments:
+        Parameters:
 
             gain (complex or tuple): Linear gain and optional poscaler gain to apply to the specified channels. The real and imaginary part of the linear gain are integer
                   values ranging from -32768 to 32767.
@@ -2020,11 +2049,21 @@ class chFPGA_controller(IceBoardExtHandler):
             self.switch_gains(bank=bank, when=when)
 
     def get_next_gain_bank(self):
+        """ Return the gain bank that will be used on the next automatic bank switch."""
         return [ant.SCALER.READ_COEFF_BANK ^ 1 for ant in self.ANT.values()]
 
     def get_gains(self, bank=0):
         """
-        Returns the log2 SCALER gain each antenna, and the linear gain table used for each antenna or the fixed gain.
+        Returns the log2 SCALER gain and the linear gain table used for each channelizer.
+
+        Parameters:
+
+            bank (int): gain bank from which to get the gains.
+
+        Returns:
+
+            list of (log_gain, linear_gain_table) for each channelizer. ``linear_gain_table`` is an
+            array of 2014 complex values.
         """
         gain_list = []
         for ant in self.ANT.values():
@@ -2035,10 +2074,17 @@ class chFPGA_controller(IceBoardExtHandler):
 
     def switch_gains(self, bank=None, when='now'):
         """
-        Switch the gains to the specified `bank`. If `bank` is -1 or None, the unused bank is switched in.
-        if `when` is 'now' (default), the switch is done immediately.
-        If `when` is None, no switch is done.
-        if 'when' is an integer, the switch will be done at the frame numbers specified by `when`.
+        Switch the gains to the specified `bank` at the moment specified by `when`.
+
+        Parameters:
+
+            bank (int): target gain bank in which the gains will be written. If `bank` is -1 or
+                None, the unused bank is switched in.
+
+            when ('now', None or int):
+                if `when` is 'now' (default), the switch is done immediately.
+                If `when` is None, no switch is done.
+                if 'when' is an integer, the switch will be done at the frame numbers specified by `when`.
         """
 
         if when is None:
@@ -2117,14 +2163,21 @@ class chFPGA_controller(IceBoardExtHandler):
     #     return gain_banks
 
     def reset_fft_overflow_count(self):
-
+        """ Reset the FFT overflow counter in all channelizers.
+        """
         for ant in self.ANT.values():
             ant.FFT.reset_fft_overflow_count()
 
     def set_fft_shift(self, fft_shift=0b11111111111, channels=None):
         """
-        Sets the FFT shift schedule for the FFT.  Each bit represents a divide by 2 for that stage of the FFT.  Default is to shift every stage.  11 stage FFT, so default is 2**11-1.
-        expects a number  in the range 0b11111111111 (2047) and 0b00000000000 (0).
+        Sets the FFT shift schedule for the FFT.  .
+
+        Parameters:
+
+            fft_shift (int): binary value that indicates whether each FFT stage will shift the
+                result (i.e divide by 2) of that stage. Each bit represents a divide by 2 for that
+                stage of the FFT.  Default is to shift every stage.  11 stage FFT, so default is
+                2**11-1. expects a number  in the range 0b11111111111 (2047) and 0b00000000000 (0)
 
         History:
             2013-02-19 KMB: Added this function
@@ -2143,6 +2196,10 @@ class chFPGA_controller(IceBoardExtHandler):
     def get_fft_shift(self):
         """
         Returns the FFT shift schedule for each antenna.
+
+        Returns:
+
+            list of int: one integer indicating the shift pattern for each channelizer.
         """
         return [ant.FFT.FFT_SHIFT for ant in self.ANT.values()]
 
@@ -2184,32 +2241,74 @@ class chFPGA_controller(IceBoardExtHandler):
         self.GPIO.set_user_output_source(source, output=output)
 
     def get_user_output_source(self):
-        """ Return the name of the source currently routed to SMA-A"""
+        """ Return the name of the source currently routed to SMA-A
+
+        Returns:
+
+            str: name of the source currently routed to SMA-A
+        """
         return self.GPIO.get_user_output_source()
 
     def set_sync_source(self, source):
         """ Sets the source of the signal that will trigger SYNC events.
+
+        Parameters:
+
+            source (str): name of the source. See `REFCLK.set_sync_source()` for valid names.
+
         """
         if source not in self.REFCLK.SYNC_SOURCE_TABLE:
             raise ValueError('Invalid SYNC source name. Valid names are %s' % ', '.join(self.REFCLK.SYNC_SOURCE_TABLE))
         self.REFCLK.set_sync_source(source)
 
     def get_sync_source(self):
-        """ Return the current source used to trigger SYNC events """
+        """ Return the current source used to trigger SYNC events
+
+        Returns:
+            str describing the SYNC trigger source.
+        """
         return self.REFCLK.get_sync_source()
 
     def set_pwm(self, enable, offset, high_time, period, local_sync=False):
-        """ Sets the frame-based PWM generator. All times are stated as the number of frames. A SYNC
-        is needed after changes.
+        """ Sets the frame-based PWM generator. All times are stated as the number of frames.
+
+        A SYNC is needed after changes for the changes PWM signal to work properly (it might be in
+        some invalid state). A global sync is needed if the PWM signal is to be synchronous across
+        multiple boards.
 
         See GPIO.set_pwm() for more details.
+
+        The `set_user_output_source()` method shall be used to route the PWB signal to the user SMA.
+
+        Parameters:
+
+            enable (bool): if `True`, PWM mode is enabled.
+
+            offset (int): number of frames to wait before the first pulse
+
+            high_time (int) number of frames during which the PWD signal stays high
+
+            period (int): period of the PWM signal in number of frames
+
+            local_sync (bool): If `True`, a local sync signal will be trigerred. Do not use if
+                multiple boards need to be opearating synchronously.
+
         """
         self.GPIO.set_pwm(enable=enable, offset=offset, high_time=high_time, period=period, pwm_reset=False)
         if local_sync:
             self.sync()
 
     def set_adc_mask(self, mask=0xFF, channels=None):
-        """ Set the mask that is applied on the ADC data on the specified channel. ``mask`` is an 8 bit value which is ANDed with the incoming ADC bytes. mask=0xFF therefore disables the masking effect. Can be useful to reduce power consumption of the channelizer without affecting synchronization of the data processing pipeline.
+        """ Set the mask that is applied on the ADC data on the specified channel.
+
+        Parameters:
+
+            mask (int): an 8 bit value which is ANDed with the incoming ADC bytes. mask=0xFF
+                therefore disables the masking effect. Can be useful to reduce power consumption of
+                the channelizer without affecting synchronization of the data processing pipeline.
+
+            channels (list of int): list of channelizer numbers for which the ADC mask is set.
+
         """
         if channels is None:
             channels = self.default_channels
@@ -2255,6 +2354,16 @@ class chFPGA_controller(IceBoardExtHandler):
 #         return total_word_errors
 
     def test_speed(self, n=1000, timeout=0.1):
+        """ Test the speed of UDP communications and mesure the number of errors.
+
+        The results are printed on stdout.
+
+        Parameters:
+
+            n (int): number of UDP interactions
+
+            timeout: time to wait for a reply before giving up and count the trial as a failed
+        """
         old_timeout = self.fpga.get_timeout()
         self.fpga.set_timeout(timeout)
         t0 = time.time()
@@ -2274,6 +2383,15 @@ class chFPGA_controller(IceBoardExtHandler):
         print '%i read operations performed in %.2f s (%.0f read/s) with %i errors (%0.3f%% errors)' % (trials, t1 - t0, float(n)/(t1 - t0), errors, float(errors)/float(trials)*100)
 
     def get_temperatures(self):
+        """ Return the core temperature of the fpga and the ADC chips.
+
+        Uses SYSMON for the FPGA core temperature.
+
+        Returns:
+
+            dict in the format {('target': temperature),...}, with an entry for the FPGA core and each of the ADC chips.
+
+        """
         res = {}
         res['FPGA_core'] = self.SYSMON.temperature()
         for mezz_number, mezz in self.mezzanine.items():
@@ -2283,7 +2401,16 @@ class chFPGA_controller(IceBoardExtHandler):
 
     @async
     def get_total_power(self):
-        power = sum([(yield self.get_motherboard_voltage.async(rail)) * (yield self.get_motherboard_current.async(rail)) for rail in (self.RAIL.MB_VCC3V3, self.RAIL.MB_VCC5V5, self.RAIL.MB_VCC12V0)])  # have to use a list comprehension, not generator (a yield inside a generator is not consistent in Python 2.7)
+        """ Return the total power used by this board.
+
+        The power is measured by measuring the voltage and current on the VCC3V3, VCC5V5 and VCC12V0
+        rails.
+
+        Returns:
+            Total power, as a float.
+        """
+        power = sum([(yield self.get_motherboard_voltage.async(rail)) * (yield self.get_motherboard_current.async(rail))
+                     for rail in (self.RAIL.MB_VCC3V3, self.RAIL.MB_VCC5V5, self.RAIL.MB_VCC12V0)])  # have to use a list comprehension, not generator (a yield inside a generator is not consistent in Python 2.7)
         async_return(power)
 
     def init_crossbars(self,
@@ -2294,7 +2421,83 @@ class chFPGA_controller(IceBoardExtHandler):
                        cb2_lanes=None, cb2_bins=1, cb2_bypass=False,
                        bp_shuffle_bypass=1, crate_shuffle_bypass=1,
                        remap=True, chan8_channel_map=range(16)):
-        """ Initializes the 1st, 2nd and 3rd crossbars.
+        """ Initializes the Corner Turn engine in the specified operation mode.
+
+        This method configured the 1st, 2nd and 3rd crossbars (which each can include a remap, frame
+        aligner and an array of bin selectors), as well as the PCB and QSFP data shuffle links.
+
+
+        Parameters:
+
+            mode (str): String describing a predefined corner-turn engine operation mode. If None,
+                the crossbars and shuffle enginecan be set manually with the other provided
+                parameters. The valid modes are:
+
+                    'chan8': Corner-turn engine is mostly bypassed and raw 8-bit data from 8
+                        channelizers is sent directly to the 8 CT-Engine outputs.
+
+                    'chan4': Corner-turn engine is mostly bypassed and raw 8-bit data from 16
+                        channelizers is sent directly to the 8 CT-Engine outputs.
+
+                    'shuffle16': A corner-turn operation is applied only within the 16 channelizer
+                        outputs of this board.
+
+                    'shuffle256': The corner-turn operation is applies between 16 channelizers within
+                        a board and between the 16 boards within a crate using the backplane PCB links.
+
+                    shuffle512: The corner-turn operation is applies between 16 channelizers within
+                        a board, between the 16 boards within a crate using the backplane PCB links,
+                        and between 2 crates using the backplane QSFP links.
+
+            dsmap (list) : Defaults to range(16).
+
+            frames_per_packet (int): Number of frames to be packaged in a packet. Defaults to 2. Is
+                limited by the amount of memory used by the FPGA to store data and flags.
+
+            cb1_lanes (int): Number of input lanes considered in the CROSSBAR1. Defaults to 16. Used only if `mode`=`None`.
+
+            cb1_bins (int): Number of frequency bins to be included in CROSSBAR1. defaults to 64. Used only if `mode`=`None`.
+
+            cb1_bypass (bool): If True, CROSSBAR1 will be bypassed. Used only if `mode`=`None`.
+
+            cb1_combine_data_flags (bool): if True, the data flags at the output of CROSSBAR1 will
+                be packed in 32-bit words. Defaults to False, where each data word is associated
+                with a data flag word filled with only 16 flag bits, which is needed to allow the
+                next crossbar to further split the flags and data as part of the 2nd stage corner
+                turn operation.
+
+            cb2_lanes (list of tuple): list of (lower_lane, upper_lane), one for each of the 2
+                CROSSBAR2 bin selector, that describe the range of input lanes that shall be read
+                out by the bin selectors. Only partial number of lanes is used if the data is to be
+                further recombined by the 3rd stage corner turn operation. If None, both bin
+                selectros will combine data from all 16 input lanes.
+
+
+            cb2_bins (int): Number of bins to be included in the CROSSBAR2 bin selectors.
+
+            cb2_bypass (bool): If True the 2nd stage cirner-turn operation (CROSSBAR2) will be
+                bypassed. Defaults to `False`
+
+
+            bp_shuffle_bypass (bool): If `False`, the 16 data lanes form the CROSSBAR1 will be sent
+                to other boards through the backplane PCB links, and the CROSSBAR2 will receiver 16
+                lanes of data from the other boards (note than lane 0 is in fact always internal).
+                If `True`, the 16 data lanes from the CROSSBAR1 will be forwrded directly to the the
+                input of CROSSBAR2.
+
+
+            crate_shuffle_bypass (bool): If False, half of the 8 outputs lanes of CROSSBAR2 will be
+                sent to other boards in the other crate through the backplane QSFP links, and half
+                will be sent to the CROSSBAR3. CROSSBAR3 will receive half its data from the other
+                crate the corresponding board.If True, the 8 output lanes of CROSSBAR2 go directly
+                to the 8 input lanes of CROSSBAR3.
+
+            remap (bool). Defaults to True
+
+            chan8_channel_map (list) : channel remapping to be used in `chan8` mode. Defaults to the identity map (range(16))
+
+
+
         """
 
         cb1 = self.CROSSBAR
@@ -2956,7 +3159,7 @@ class chFPGA_controller(IceBoardExtHandler):
         """
         (`async` method) Return status information on the board, and mezzanines, including voltages current, power consumption, temperatures etc.
 
-        Arguments:
+        Parameters:
             None
 
 
@@ -3190,7 +3393,7 @@ class chFPGA_controller(IceBoardExtHandler):
         Return a string that uniquely represents the board. It is composed of the model and serial
         number, or, if the serial numbe ris unknown, the hostname of the board.
 
-        Arguments:
+        Parameters:
             None
 
         Returns:
@@ -3285,7 +3488,7 @@ class chFPGA_controller(IceBoardExtHandler):
         """
         Compute the expected correlator output given the channelizer output :paramref:`databb`.
 
-        Arguments:
+        Parameters:
             databb (float): some value
             data (ndarray): data[channel, bin] = complex
         Returns:
@@ -3302,7 +3505,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
         :param int data: super!
 
-        Arguments:
+        Parameters:
             dataaa (float): some value
             datax (ndarray): Data that should appear at the channelizer
                 output, indexed as data[channel, bin] = complex_value. channel

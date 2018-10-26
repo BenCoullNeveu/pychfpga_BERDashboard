@@ -1028,16 +1028,17 @@ class FPGAArray(object):
         Set the operational mode of the array.
 
         - 'raw_time': Each boards stream raw 8-bit time samples from channels
-                    0-7 to the corresponding GPU ports.
-        - 'shuffle16': Acquire, channelize and shuffle data within each
-          Iceboard individually and send the data through the IceBoard QSFP+
-          ports. There is no data shuffling between boards. This is good for
-          single board operation (or an array of boards operating
-          independently)
+            0-7 to the corresponding GPU ports.
+
+        - 'shuffle16': Acquire, channelize and shuffle data within each Iceboard individually and
+          send the data through the IceBoard QSFP+ ports. There is no data shuffling between boards.
+          This is good for single board operation (or an array of boards operating independently)
+
         - 'shuffle256': Acquire, channelize and shuffle data within a crate to
-          create a 16-board (256-channel) correlator. The shuffled data is
-          sent through the IceBoard QSFP+ ports. There is no shuffling between
-          crates.
+            create a 16-board (256-channel) correlator. The shuffled data is
+            sent through the IceBoard QSFP+ ports. There is no shuffling between
+            crates.
+
         - 'shuffle512': Acquire, channelize and shuffle data between pair of
           crates to create a 32-board (512-channel) correlator. The shuffled
           data is sent through the IceBoard QSFP+ ports. The pairing of crates
@@ -1116,7 +1117,7 @@ class FPGAArray(object):
         reset so it won't generate random packets into the following crossbar.
         """
         if tx_power is None:
-            tx_power = {'bp_pcb_links': {"default": (10, 15)}, 'bp_qsfp_links': {"default": (10, 15)}}
+            tx_power = {'corner_turn': [dict(lane_group='pcb', default=(10, 15)), dict(lane_goup='qsfp', default=(10, 15))]}
 
         tx_list = []
 
@@ -1168,14 +1169,17 @@ class FPGAArray(object):
 
         #links =
 
-        set_tx_power(tx_power['bp_pcb_links'], 'pcb', 0)
-        self.ib.BP_SHUFFLE.set_tx_power(qsfp_link_tx_power[0], 'qsfp')
-        self.ib.BP_SHUFFLE.reset_rx_equalizers()
-        time.sleep(0.3)
-        #self.ib.BP_SHUFFLE.set_tx_power(7)
-        #self.ib.BP_SHUFFLE.set_tx_power(10)
-        self.ib.BP_SHUFFLE.set_tx_power(pcb_link_tx_power[1], 'pcb')
-        self.ib.BP_SHUFFLE.set_tx_power(qsfp_link_tx_power[1], 'qsfp')
+        for index in (0, 1):
+            for tx_group in tx_power['corner_turn']:
+                lane_group = tx_group['lane_group']
+                default = tx_group['default']
+                exceptions = tx_group.get('exceptions', {})
+                self.set_tx_power(lane_group=lane_group, default_power=default, exceptions=exceptions, index=index)
+            if index == 0:
+                time.sleep(0.3)
+                for ib in self.ib:
+                    self.ib.BP_SHUFFLE.reset_rx_equalizers()
+
         self.ib.BP_SHUFFLE.reset_stats()
 
         # Print links
@@ -1197,18 +1201,55 @@ class FPGAArray(object):
         self.logger.info('%r: Shuffling initialization completed. Syncing boards' % self)
         self.sync(delay=2)
 
-    def set_tx_power(self, lane_group, power_index=0, default_power=(5, 10), lane_specific_power=[]):
+    def set_tx_power(self, default_power=(5, 10), lane_group=None, exceptions={}, index=0):
         """ Set the power level of the corner-turn engine GTX transmitters.
+
+        Parameters:
+
+            default_power (int or tuple): power level to use for all gtx that
+                are not exception list. An int is interpreted as a
+                single-element tuple. In the case where multiple power values
+                are to be specified, the value within the tuple is selected by
+                `index`.
+
+            lane_group (str): lane group for which the power is set ('pcb' or
+                'qsfp').
+
+            exceptions (dict): map of the lane-specific power level exceptin, in the form:
+
+                {(crate, slot, lane):power, ...}
+
+            index (int): used to select which value within a power tuple, list
+                or map will be used to set power.
         """
-        exceptions = {tuple(node_id): power_tuple for node_id, power_tuple in lane_specific_power.items()}
+        if isinstance(default_power, int):
+            default_power = (default_power, )
+
+        exceptions = {tuple(node_id): power_tuple for node_id, power_tuple in exceptions.items()}
         for ib in self.ib:
             bp = ib.BP_SHUFFLE
-            ib_id = ib.get_id()
-            lanes = bp.get_lane_numbers(lane_group)
-            for lane in lanes:
-                node_id = tuple(ib_id) + tuple(lane)
-                power_tuple = exceptions.get(node_id, default_power)
-                bp.set_tx_power([lane, power_tuple[power_index]], lane_group)
+            power_tuples = [(lane, exceptions.get(ib.get_id(lane), default_power)[index])
+                            for lane in bp.get_lane_numbers(lane_group)]
+            bp.set_tx_power([power_tuples, lane_group)
+
+
+    # def set_tx_power(self, pmin=6, pmax=13, pre=3):
+    #     """ Set the transmit power of each transceiver based on the link length to minimize crosstalk.
+    #     The shortest link pas the power ``pmin``, and the longest link has ``pmax''.
+    #     The precursor value can also be set to ``pre`` if it is not ``None``.
+    #     """
+    #     for ib in self.ib:
+    #         for gg in ib.BP_SHUFFLE.gtx:
+    #             if pre is not None:
+    #                 gg.TXPRECURSOR = pre
+    #             rx_id = (ib.slot, gg.instance_number + 1)
+    #             if gg.instance_number <= 14:
+    #                 net_length = gg.fpga.crate.get_rx_net_length(rx_id)
+    #                 p = pmin + int((pmax-pmin)*(net_length-1515.)/(16081-1515))
+    #                 print '%s, len=%f, power=%i' % (rx_id, net_length, p)
+    #                 gg.TXDIFFCTRL = p
+    #             else:
+    #                 gg.TXDIFFCTRL = pmax
 
     def set_test_pattern(self):
         for ic in self.ic:
@@ -1955,11 +1996,11 @@ class FPGAArray(object):
         Returns:
             A dict, in the format:
 
-                {('BP', (tx_crate, tx_slot, tx_lane), (rx_crate, rx_slot, rx_lane)) : (tx_gtx_instance, rx_gtx_instance)}
+                {('pcb', (tx_crate, tx_slot, tx_lane), (rx_crate, rx_slot, rx_lane)) : (tx_gtx_instance, rx_gtx_instance)}
         """
         link_map = {}
         for ib in self.ib:
-            link_map.update(ib.BP_SHUFFLE.get_link_map())
+            link_map.update(ib.BP_SHUFFLE.get_link_map('pcb'))
         return link_map
 
     def get_backplane_qsfp_links(self):
@@ -2023,39 +2064,59 @@ class FPGAArray(object):
 
         return links
 
-
-    def get_backplane_qsfp_link_map(self):
+    def get_backplane_qsfp_link_map(self, resolve=True):
         """ Return a dictionary that maps the backplane QSFP links to
         corresponding GTX transmitter and receiver instances.
 
         Returns:
            A dict, in the format:
 
-                {('BP_QSFP', (tx_crate, tx_slot, tx_lane), (rx_crate, rx_slot, rx_lane)) : (tx_gtx_instance, rx_gtx_instance)}
+                {('qsfp', (tx_crate, tx_slot, tx_lane), (rx_crate, rx_slot, rx_lane)) : (tx_gtx_instance, rx_gtx_instance)}
 
         """
-        link_map = {}
-        crates = self.ic.index_by(list(self.ic.get_id()))  # crates, indexed by crate_id
+        qsfp_link_map = {}
+        for ib in self.ib:
+            qsfp_link_map.update(ib.BP_SHUFFLE.get_link_map('qsfp'))
 
-        links = self.get_backplane_qsfp_links()
-        for link in links:
-            (link_type, (source_crate, source_slot, source_lane), (dest_crate, dest_slot, dest_lane)) = link
-            ic0 = crates[source_crate]
-            ic1 = crates[dest_crate]
-            if (source_slot not in ic0.slot) or (dest_slot not in ic1.slot):
-                continue
-            bp0 = ic0.slot[source_slot].BP_SHUFFLE
-            bp1 = ic1.slot[dest_slot].BP_SHUFFLE
-            if source_lane < bp0.NUMBER_OF_QSFP_DIRECT_LANES:
-                source_gtx = None
-            else:
-                source_gtx = bp0.gtx[bp0.NUMBER_OF_PCB_LINKS + source_lane - bp0.NUMBER_OF_QSFP_DIRECT_LANES]
-            if dest_lane < bp0.NUMBER_OF_QSFP_DIRECT_LANES:
-                dest_gtx = None
-            else:
-                dest_gtx = bp1.gtx[bp1.NUMBER_OF_PCB_LINKS + dest_lane - bp1.NUMBER_OF_QSFP_DIRECT_LANES]
-            link_map[link] = (source_gtx, dest_gtx)
-        return link_map
+        if not resolve:
+            return qsfp_link_map
+
+        # Ask each board a map that describe how each logical link is connected to the backplane links
+        bp_to_logical_link_map = {}
+        for ib in self.ib:
+            bp_to_logical_link_map.update(ib.BP_SHUFFLE.get_bp_logical_link_map('qsfp'))
+
+        # Ask each crate the map that matches backplane links to cable ids (this takes time: we need to read the cable identification)
+        bp_to_cable_map = {}
+        for ic in self.ic:
+            bp_to_cable_map.update(ic.get_qsfp_cable_map())
+
+        # Create a map that matches each cable id to a list of correspinding logical link ids (there should be 2 for each link)
+        cable_to_link_map  = {}
+        for (bp_id, cable_id) in bp_to_cable_map.items():
+            cable_to_link_map.setdefault(cable_id, []).append(bp_to_logical_link_map[bp_id])
+
+        # Crate a map that matches each logical link id with another logical link id.
+        link_map = {}
+        for cable_id, link_ids in cable_to_link_map.items():
+            if len(link_ids) == 1:
+                self.logger.warning('Only one end of a QSFP cable is connected; Cable ID %s connects only to %s. The link will be ignored.' % (cable_id, link_ids[0]))
+            elif len(link_ids) > 2:
+                raise RuntimeError('A QSFP cable connects to more than 2 links. Something is wrong. Cable ID %s connects only to %s.' % (cable_id, link_ids))
+            elif len(link_id) == 2:
+                link_map[link_id[0]] = link_id[1]
+                link_map[link_id[1]] = link_id[0]
+
+        # Resolve each unresolved link.
+        resolved_qsfp_link_map = {}
+        for (link_type, tx_id, rx_id), (tx_gtx, rx_gtx) in qsfp_link_map.items():
+            if not tx_id and rx_id and rx_id in link_map:
+                tx_id = link_map[rx_id]
+            elif not rx_id and tx_id and tx_id in link_map:
+                rx_id = link_map[tx_id]
+            resolved_qsfp_link_map[link_type, tx_id, rx_id] = (tx_gtx, rx_gtx)
+
+        return resolved_qsfp_link_map
 
 
     def get_gpu_link_map(self):
@@ -2688,23 +2749,6 @@ class FPGAArray(object):
         data = {ib:('\n'.join(info_metrics[i][0].values())) for i, ib in enumerate(self.ib)}
         self.print_iceboard_table(data, row_labels=keys)
 
-    def set_tx_power(self, pmin=6, pmax=13, pre=3):
-        """ Set the transmit power of each transceiver based on the link length to minimize crosstalk.
-        The shortest link pas the power ``pmin``, and the longest link has ``pmax''.
-        The precursor value can also be set to ``pre`` if it is not ``None``.
-        """
-        for ib in self.ib:
-            for gg in ib.BP_SHUFFLE.gtx:
-                if pre is not None:
-                    gg.TXPRECURSOR = pre
-                rx_id = (ib.slot, gg.instance_number + 1)
-                if gg.instance_number <= 14:
-                    net_length = gg.fpga.crate.get_rx_net_length(rx_id)
-                    p = pmin + int((pmax-pmin)*(net_length-1515.)/(16081-1515))
-                    print '%s, len=%f, power=%i' % (rx_id, net_length, p)
-                    gg.TXDIFFCTRL = p
-                else:
-                    gg.TXDIFFCTRL = pmax
 
     def print_rx_err_map(self, icecrates=None, reset_stats=0, delay=-5, tx_power=None,
                          tx_precursor=None, tx_postcursor=None, lpm = None, dfe_reset=False, stop_on_errors=2, verbose=1):

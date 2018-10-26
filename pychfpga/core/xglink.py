@@ -462,11 +462,26 @@ class XGLinkArray(XGLinkCore):
     The XGLinkArray implements a XGLinkCore (ensemble of QPLLs and GTXes and date
     encoding/synchonization) and adds without minimal packet framing (SOF, EOF) and checksum
     (CRC32). It provides an additional set of registers to the XGLinkCore, and implement internal
-    links as well as GTX bypasses. XGLink is also aware of logical lane groups ('pcb' vs 'qsfp'
+    links as well as GTX bypasses. XGLink is also aware of logical lane groups (e.g. 'pcb', 'qsfp'
     links).
 
     XGLinkArray is used to implement the corner turn data links by tranmitting data though the
     backplane PCB tracks and backplane QSFP connectors.
+
+
+    Parameters:
+
+        fpga_instance (chFPGA_controller instance): Instance of the FPGA board, which is used to access various system parameters and the UDP MMI.
+
+        base_address (int): UDP MMI Address where the first register of the XGLinkArray is located
+
+        address_increment (int): Address spacing between various subsystems (common register block, QPLLs, GTXes)
+
+        lane_groups (list of tuples): Defines the lane groups that are supported by the XGLinkArray subsystem. Is in the format::
+
+            [ (link_type, number_if_direct_lanes, number_of_gtx_links), ...]
+
+        verbose (int): Indicates the verbose level.
 
     """
 
@@ -512,15 +527,8 @@ class XGLinkArray(XGLinkCore):
     def __init__(self, fpga_instance, base_address, address_increment, verbose=1):
         # self.fpga = fpga
 
-        super(XGLinkArray, self).__init__(fpga_instance, base_address, address_increment, verbose)
+        super(XGLinkArray, self).__init__(fpga_instance, base_address, address_increment, lane_groups, verbose)
 
-        self.NUMBER_OF_LANES = self.NUMBER_OF_LINKS + 5  # 1 bypass link for BP PCB shuffle, 4 for Bp QSFP shuffle
-        self.NUMBER_OF_PCB_DIRECT_LANES = 1
-        self.NUMBER_OF_QSFP_DIRECT_LANES = 4
-        self.NUMBER_OF_PCB_LANES = 16
-        self.NUMBER_OF_QSFP_LANES = 8
-        self.NUMBER_OF_PCB_LINKS = 15
-        self.NUMBER_OF_QSFP_LINKS = 4
         # self.LANE_GROUPS = {}
         # group name : (first lane, number_of_bypass_lanes, number_of_links)
         # self.LANE_GROUPS[0] = self.LANE_GROUPS['pcb'] = (0, self.NUMBER_OF_PCB_DIRECT_LANES, self.NUMBER_OF_PCB_LINKS)
@@ -529,25 +537,23 @@ class XGLinkArray(XGLinkCore):
         lane_list = []
         phys_lane = 0
         gtx_ix = 0
-        groups = (('pcb', self.NUMBER_OF_PCB_DIRECT_LANES, self.NUMBER_OF_PCB_LINKS),
-                  ('qsfp', self.NUMBER_OF_QSFP_DIRECT_LANES, self.NUMBER_OF_QSFP_LINKS))
 
         self.gtx_map = {None: []} # list of GTX instance for each group. The None group lists them all.
         self.phys_lane_map = {None: []} # list of the physical lane limbers for each group
 
-        for group, n_direct_lanes, n_links in groups:
+        for group, n_direct_lanes, n_links in lane_groups:
             self.gtx_lane_map[group] = []
             # lane_list[group] = []
             for lane in range(n_direct_lanes):
                 lane_list.append((group, lane, phys_lane, None, None)) # internal link, no GTX
                 for g in [group, None]:
-                    self.gtx_lane_map[g].append(None)
+                    self.gtx_map[g].append(None)
                     self.phys_lane_map[g].append(phys_lane)
                 phys_lane += 1
             for lane in range(n_direct_lanes, n_direct_lanes + n_links):
                 lane_list.append((group, lane, phys_lane, gtx_ix, self.gtx[gtx_ix]))
                 for g in [group, None]:
-                    self.gtx_lane_map[g].append(gtx)
+                    self.gtx_map[g].append(self.gtx[phys_lane])
                     self.phys_lane_map[g].append(phys_lane)
                 phys_lane += 1
                 gtx_ix += 1
@@ -555,9 +561,24 @@ class XGLinkArray(XGLinkCore):
 
         # Create a lane map that maps gtx instances to group name and logical
         # lane number, or to physical lane number if the group name is None
-        self.lane_map = {None: {}}
-        for group, lane, phys_lane, gtx_ix, gtx in self.lane_list:
-            self.lane_map.setdefault(group, {})[lane] = (phys_lane, gtx_ix, gtx)
+        # self.lane_map = {None: {}}
+        # for group, lane, phys_lane, gtx_ix, gtx in self.lane_list:
+        #     self.lane_map.setdefault(group, {})[lane] = (phys_lane, gtx_ix, gtx)
+
+
+    def is_gtx(self, obj):
+        """ Test whether an object is a GTX instance.
+
+        Parameters:
+
+            obj: object to test
+
+        Returns:
+
+            A bool.
+        """
+        return isinstance(obj, GTX)
+
 
     def get_physical_lane_numbers(self, lane_group=None):
         """ Returns a list of physical lane numbers that correspond to the specified group.
@@ -574,9 +595,9 @@ class XGLinkArray(XGLinkCore):
 
             List of integers.
         """
-        if lane_group not self.lane_map:
-            raise ValueError('Invalid lane group name %s' % group)
-        return self.phys_lane_map[group]
+        if lane_group not in self.phys_lane_map:
+            raise ValueError('Invalid lane group name %s' % lane_group)
+        return self.phys_lane_map[lane_group]
 
     def get_lane_numbers(self, lane_group):
         """ Returns a list of logical lane numbers for the specified lane group.
@@ -590,11 +611,11 @@ class XGLinkArray(XGLinkCore):
 
             List of integers.
         """
-        if lane_group not in self.lane_map:
-            raise ValueError('Invalid lane group name %s' % group)
+        if lane_group not in self.gtx_lane_map:
+            raise ValueError('Invalid lane group name %s' % lane_group)
         if lane_group is None:
             raise ValueError('Logical lane numbers cannot be obtained for lane group "none": the lane numbers are not unique')
-        return range(len(self.lane_map[group]))
+        return range(len(self.gtx_map[lane_group]))
 
 
     def get_gtx(self, lane, lane_group):
@@ -622,6 +643,8 @@ class XGLinkArray(XGLinkCore):
             return gtx_map[lane]
         else:
             return [gtx_map[l] for l in lane]
+
+
 
     def set_tx_power(self,  power, lane_group=None):
         """ Sets the power level of the GTXes in the specified lane group.

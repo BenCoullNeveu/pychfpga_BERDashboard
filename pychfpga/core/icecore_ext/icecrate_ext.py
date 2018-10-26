@@ -771,26 +771,38 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
 
     def get_led(self, led_name):
         """
-        Returns the status of specified LED(s) in a dictionary led_status
-        where each key is a led_name and the respective value is the led
-        status.
+        Returns the status of specified LED(s)
+
+        Parameters:
+            led_name (str): String indicating the name of the led to query
+
+        Returns:
+
+            Status of specified LED
         """
         return self._gpio.read(led_name)
 
     def get_temperature(self, temperature_sensor_name=None):
         """
         Returns the current temperature measured on the specified
-        sensor(s).  NOTE: some temperatures are taken from the FPGA
-        inetrnal SYSTEM monitor.
+        sensor(s).
 
-        initializes temperature expanders
-        'temperature_sensor_name' can be a list of temperature sensor
-        names found in TEMPERATURE_SENSOR_TABLE
 
-        Returns a dictionary with keys corresponding to the temperature_sensor_name names.
+        Parameters:
+
+            temperature_sensor_name (str, or list of str): list of temperature sensor names found in
+        TEMPERATURE_SENSOR_TABLE
+
+        Returns:
+             A dictionary with keys corresponding to the temperature_sensor_name names.
+
+        Notes:
+
+            Some temperatures are taken from the FPGA inetrnal system monitor core (SYSMON).
+
 
         History:
-        140318 JM: created
+            140318 JM: created
         """
         temperature_dict = {}
         if temperature_sensor_name == None:
@@ -813,7 +825,7 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
         Includes power measured internally from  the FPGA's system monitor.
         Multiple targets can be specified.
 
-        Arguments:
+        Parameters:
 
            'power_sensor_name' can be a list of power sensor
             names found in POWER_SENSOR_TABLE. If
@@ -948,14 +960,54 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
     #               for (rx_slot, rx_lane), (tx_slot, tx_lane) in self.get_pcb_link_map()]
 
 
-    def get_qsfp_links(self, get_link_uid=True):
+    def get_qsfp_cable_map(self, get_cable_id=True, use_qsfp_link_id=False):
         """
-        Return a list describing all data links that could be provided by
-        the backplane QSFP cables, along with each UID if `get_link_uid` is True.
+        Return a list describing all data links that could be provided by the
+        backplane QSFP cables, along with each UID if `get_cable_id` is True.
 
-        This method is typically used by BER tests to determine which links
-        are to be tested, but could also be used to validate the connectivity
-        of an installed system.
+        Parameters:
+
+            get_cable_id (bool): if True, the method will query the cable and
+                provide a string that uniquely identifies each link across the
+                system.
+
+            use_qsfp_link_id: If True, index the map using the qsfp link id
+                instead of the backplane link id.
+
+        Returns:
+            A list in the format:
+
+                {bp_link_id or qsfp_link_id: cable_link_id, ...}
+
+            `bp_link_id` is a tuple that describes the link from the point of
+                view of the backplane connector. It is in the format::
+
+                    (crate_id, bp_slot, bp_lane).
+
+                where `bp_slot` and `bp_lane` indicates to which backplane
+                slot and backplane QSFP lane the link is routed to. The slot
+                number is zeroo-based. The `bp_lane` field ranges from 0 to 3.
+                The caller needs to use its knowledge of the motherboard
+                routing to associate this number to a GTX transceiver.
+
+            `qsfp_link_id` is a tuple that describes the link from the point
+                of view of the QSFP connector. It is in the format:
+
+                    (crate_id, qsfp_slot, qsfp_lane).
+
+            `cable_link_id` a unique identifier that is unique for each bi-
+                directional links. It is provided only if `get_cable_id' is
+                `True`, otherwise this field is set to `None`. It is a string
+                based on the cable manufacturer, model, serial number and lane
+                number, and is in the format "VENDOR_MODEL_SERIAL_LANE.
+                `link_uid` requires a slow access to the QSFP cable over I2C.
+
+
+
+        This method is typically used by BER tests to obtain the information
+        needed to resolve the connectivity of the IceBoard GTXes and determine
+        which links are to be tested, but could also be used to validate the
+        connectivity of an installed system.
 
         This method provides information that is only related to the backplane
         QSFPs: it does not assess whether a motherboard is connected in the
@@ -967,65 +1019,42 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
         the code that has access to all of the crates and by using the
         `link_uid` that will be common to both ends of each link.
 
-        Each link node is in the format (link_type='BP_QSFP, qsfp_link_id, bp_link_id, link_uid).
-
-        Each entry represents both the receiver and transmitter that are
-        connected on that bidirectional lane.
-
-        `qsfp_link_id` is a tuple that describes the link from the point of
-        view of the QSFP connector. It is in the format (crate_id, qsfp_slot,
-        qsfp_lane).
-
-        `bp_link_id` is a tuple that describes the link from the point of view
-        of the backplane connector. It is in the format `(crate_id, bp_slot,
-        bp_lane)`. `bp_slot` and `bp_lane` indicates to which backplane slot
-        and backplane QSFP lane the link is routed to. The `bp_lane` field
-        ranges from 0 to 3. The caller needs to use its knowledge of the
-        motherboard routing to associate this number to a transceiver.
-
-
-        `link_uid` a unique identifier that is unique for each bi- directional
-        links. It is provided only if `get_link_uid' is `True`, otherwise this
-        field is set to `None`. It is a string based on the cable
-        manufacturer, model, serial number and lane number, and is in the
-        format "VENDOR_MODEL_SERIAL_LANE. `link_uid` requires a slow access to
-        the QSFP cable over I2C.
-
-
-        Returns:
-            A list in the format:
-
-                [('BP_QSFP', qsfp_link_id, bp_link_id, link_uid), ...]
-
-
         """
         # tx_nodes = {}
         # rx_nodes = {}
-        links = []
-        crate_id = self.get_id()
+        links = {}
+        crate_id = self.get_id()[0]
         for qsfp_slot, qsfp_instance in enumerate(self.qsfp):
 
             # Get the UID of the cable connected to this QSFP cage
-            if get_link_uid and qsfp_instance.is_present(): # qsfp not accessed if get_link_uid=False (slow)
-                cable_uid = qsfp.read_str('VendName') + "_" + qsfp.read_str('VenPN')+ "_" + qsfp.read_str('VenSN')
+            if get_cable_id and qsfp_instance.is_present(): # qsfp not accessed if get_link_uid=False (slow)
+                cable_id = qsfp.read_str('VendName') + "_" + qsfp.read_str('VenPN')+ "_" + qsfp.read_str('VenSN')
             else:
-                cable_uid = None
+                cable_id = None
 
             for qsfp_lane in range(4):
-                qsfp_link_id = (crate_id, qsfp_slot, qsfp_lane)
-                # establish backplane connectivity (routing is inferred by this code)
-                bp_lane = qsfp_slot % 4
-                bp_slot = (qsfp_slot // 4) * 4 + qsfp_lane + 1  # slot number starts at 1
-                bp_link_id = (crate_id, bp_lane, bp_slot)
                 link_uid = '%s_%i' % (cable_uid, qsfp_lane) if cable_uid else None
-                links.append(('BP_QSFP', qsfp_link_id, bp_link_id, link_uid))
-        return links
+                # establish backplane connectivity (routing is inferred by this code)
+                if use_qsfp_link_id:
+                    qsfp_link_id = (crate_id, qsfp_slot, qsfp_lane)
+                    links[qsfp_link_id] = cable_link_id
+                else:
+                    bp_lane = qsfp_slot % 4
+                    bp_slot = (qsfp_slot // 4) * 4 + qsfp_lane + 1  # slot number starts at 1
+                    bp_link_id = (crate_id, bp_lane, bp_slot)
+                    links[bp_link_id] = cable_link_id
+         return links
 
-    def get_qsfp_ids(self):
-        """ Return a dictionary that lists the backplane QSFP cable information for the cables connected on each of the backplane QSFP cages.
+    def get_qsfp_cable_info(self):
+        """ Return a dictionary that lists the backplane QSFP cable information for the cables
+        connected on each of the backplane QSFP cages.
 
         Returns:
-            A dict in the format {slot_number:{'Manufacturer':..., 'PN':..., 'SN':...}}. Slots that have no detectet cables are not persent in the dictionary.
+            A dict in the format::
+
+                {slot_number:{'Manufacturer':..., 'PN':..., 'SN':...}}.
+
+            Slots that have no detectet cables are not persent in the dictionary.
         """
         ids = {}
         for qsfp_slot, qsfp in enumerate(self.qsfp):

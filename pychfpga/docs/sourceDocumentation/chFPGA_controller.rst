@@ -469,3 +469,55 @@ Tuber methods
 *************
 
 
+Channelizer and ADC data acqusition
+***********************************
+
+.. automethod:: chFPGA_controller.set_channelizer
+.. automethod:: chFPGA_controller.get_next_gain_bank
+.. automethod:: chFPGA_controller.get_scaler_bypass
+.. automethod:: chFPGA_controller.get_gains
+.. automethod:: chFPGA_controller.load_gains
+.. automethod:: chFPGA_controller.set_ADCDAQ_mode
+.. automethod:: chFPGA_controller.set_FFT_bypass
+.. automethod:: chFPGA_controller.set_FFT_shift
+.. automethod:: chFPGA_controller.set_adc_delays
+.. automethod:: chFPGA_controller.set_adc_mask
+.. automethod:: chFPGA_controller.set_adc_mode
+.. automethod:: chFPGA_controller.set_adcdaq_mode
+.. automethod:: chFPGA_controller.set_ant_reset
+.. automethod:: chFPGA_controller.get_data_source
+.. automethod:: chFPGA_controller.get_data_width
+.. automethod:: chFPGA_controller.get_default_channels
+.. automethod:: chFPGA_controller.get_fft_bypass
+.. automethod:: chFPGA_controller.get_fft_shift
+.. automethod:: chFPGA_controller.get_FFT_bypass
+.. automethod:: chFPGA_controller.get_FFT_shift
+.. automethod:: chFPGA_controller.capture_adc_eye_diagram
+.. automethod:: chFPGA_controller.check_adc_data_acquisition
+.. automethod:: chFPGA_controller.compute_adc_delay_offsets
+.. automethod:: chFPGA_controller.compute_adc_delays
+.. automethod:: chFPGA_controller.tune_adc_delays
+.. automethod:: chFPGA_controller.check_ramp_errors
+.. automethod:: chFPGA_controller.get_adc_board
+.. automethod:: chFPGA_controller.get_adc_delays
+.. automethod:: chFPGA_controller.get_adc_mode
+.. automethod:: chFPGA_controller.set_channelizer_outputs
+.. automethod:: chFPGA_controller.set_data_source
+.. automethod:: chFPGA_controller.set_data_width
+.. automethod:: chFPGA_controller.set_default_channels
+.. automethod:: chFPGA_controller.set_fft_bypass
+.. automethod:: chFPGA_controller.set_fft_shift
+.. automethod:: chFPGA_controller.set_funcgen_function
+.. automethod:: chFPGA_controller.set_gains
+.. automethod:: chFPGA_controller.set_offset_binary_encoding
+.. automethod:: chFPGA_controller.set_scaler_bypass
+.. automethod:: chFPGA_controller.switch_gains
+
+Corner-turn Engine configuration
+********************************
+
+
+.. automethod:: chFPGA_controller.configure_crossbar
+.. automethod:: chFPGA_controller.init_crossbars
+.. automethod:: chFPGA_controller.set_send_flags
+.. automethod:: chFPGA_controller.get_shuffle_status

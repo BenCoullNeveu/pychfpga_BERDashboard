@@ -21,10 +21,27 @@ class Shuffle(xglink.XGLinkArray):
     and the backplane QSFP links (between boards in two different crates) are
     included.
 
-    The `Shuffle` inherits from XGLinkArray, with some application-specific
-    methods added.
+    As opposed to the base class `XGLinkArray', this class is aware of the
+    crate in which the board is located, and how the links are connected
+    through PBC lanes or QSFP cables.
     """
-    pass
+
+    def __init__(self, fpga_instance, base_address, address_increment, verbose=1):
+
+        self.NUMBER_OF_LANES = self.NUMBER_OF_LINKS + 5  # 1 bypass link for BP PCB shuffle, 4 for Bp QSFP shuffle
+        self.NUMBER_OF_PCB_DIRECT_LANES = 1
+        self.NUMBER_OF_QSFP_DIRECT_LANES = 4
+        self.NUMBER_OF_PCB_LANES = 16
+        self.NUMBER_OF_QSFP_LANES = 8
+        self.NUMBER_OF_PCB_LINKS = 15
+        self.NUMBER_OF_QSFP_LINKS = 4
+
+        self.lane_groups = (('pcb', self.NUMBER_OF_PCB_DIRECT_LANES, self.NUMBER_OF_PCB_LINKS),
+                       ('qsfp', self.NUMBER_OF_QSFP_DIRECT_LANES, self.NUMBER_OF_QSFP_LINKS))
+
+        self.lane_group_names = [name for (name, _, _) in self.lane_groups]
+
+        super(Shuffle, self).__init__(fpga_instance, base_address, address_increment, self.lane_groups, verbose)
 
     def get_matching_tx_node_id(self, rx_node_id):
         """ Return the PCB link transmitter node id ( a (slot, lane) tuple)
@@ -121,14 +138,15 @@ class Shuffle(xglink.XGLinkArray):
 
         lane_groups = ['pcb', 'qsfp']
         if lane_group is None:
-            groups = lane_groups
-        elif lane_group in lane_groups:
+            groups = self.lane_group_names
+        elif lane_group in self.lane_group_names:
             groups = [lane_group]
-        elif all(group in lane_groups for group in lane_group):
+        elif all(group in self.lane_group_names for group in lane_group):
             groups = lane_group
         else:
             raise ValueError('Invalid lane group. Can be one of %r' % lane_groups)
 
+        # cache the bypass flags obtained from the FPGA
         bypass_pcb_shuffle = self.BYPASS_PCB_SHUFFLE
         bypass_qsfp_shuffle = self.BYPASS_QSFP_SHUFFLE
 
@@ -157,7 +175,7 @@ class Shuffle(xglink.XGLinkArray):
                         rx_gtx = tx_ib.BP_SHUFFLE.get_gtx(rx_lane, group) if rx_ib else None
                         links[(group, tx_id, rx_id)] = (tx_gtx, rx_gtx)
 
-                    else: # if a direct internal link or a software bypass
+                    else:  # if a direct internal link or a software bypass
                         tx_id = rx_id = (crate, slot, lane)
                         tx_gtx = rx_gtx = 'int'  # internal link
                         links[(group, tx_id, rx_id)] = (tx_gtx, rx_gtx)
@@ -167,8 +185,68 @@ class Shuffle(xglink.XGLinkArray):
                             links[(group, None, rx_id)] = (None, gtx)
                             links[(group, rx_id, None)] = (gtx, None)
                         else: # if a direct internal link or a software bypass
-                            links[(group, rx_id, tx_id)] = ('int', 'int')
+                            links[(group, rx_id, tx_id)] = ('int', 'int') # already resolved
             return links
+
+
+    def get_bp_to_logical_link_map(self, lane_group=None):
+        """ Return a map that matches the backplane link id (i.e. relative to
+        the backplane connector pinout) to logical links (i.e related to the
+        lane groups).
+
+        The map is built to match the routing of the IceBoard and the firmware
+        assignments of the GTX and direct lanes in various lane groups. The
+        map include both the PCB and QSFP mappings.
+
+        This map can be used to relate the connectivity provided by the
+        backplane to connectivity from the point of view of the firmware.
+
+
+        Returns:
+
+            A dictionary in the format:
+
+                {backplane_link_id: logical_link_id, ...}
+
+            where
+
+                ``backplane_link_id`` is a ('qsfp', (crate, slot, bp_lane)) tuple that
+            refers to the backplane link
+                ``logical_link_id`` is a ('qsfp', (crate, slot, logical_lane)) that refer to a logical link.
+
+        """
+
+        (crate, slot) = self.fpga.get_id()
+
+        lane_groups = ['pcb', 'qsfp']
+        if lane_group is None:
+            groups = self.lane_group_names
+        elif lane_group in self.lane_group_names:
+            groups = [lane_group]
+        elif all(group in self.lane_group_names for group in lane_group):
+            groups = lane_group
+        else:
+            raise ValueError('Invalid lane group. Can be one of %r' % lane_groups)
+
+        # cache the bypass flags obtained from the FPGA
+        bypass_pcb_shuffle = self.BYPASS_PCB_SHUFFLE
+        bypass_qsfp_shuffle = self.BYPASS_QSFP_SHUFFLE
+
+        bp_to_logical_link_map = {}
+        for group in groups:
+            for lane, gtx in enumerate(self.get_gtx(lane_group=group)):
+                logical_id = (group, (crate, slot, lane))
+                if group == 'pcb' and self.is_gtx(gtx) and not bypass_pcb_shuffle: # do we have a real external link?
+                        bp_id = (group, (crate, slot + 0, rx_lane - self.NUMBER_OF_PCB_DIRECT_LANES))
+                        bp_to_logical_link_map[bp_id] = logical_id
+                        bp_to_logical_link_map[bp_id] = logical_id
+                elif group == 'qsfp' and self.is_gtx(gtx) and not bypass_qsfb_shuffle:
+                        bp_id = (group, (crate, slot + 0, rx_lane - self.NUMBER_OF_QSFP_DIRECT_LANES))
+                        logic_id = (group, (crate, slot, rx_lane))
+                        bp_to_logical_link_map[bp_id] = logical_id
+            return bp_to_logical_link_map
+
+
 
     def get_links(self):
         """
