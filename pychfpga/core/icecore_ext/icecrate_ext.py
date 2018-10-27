@@ -1024,26 +1024,26 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
         # rx_nodes = {}
         links = {}
         crate_id = self.get_id()[0]
-        for qsfp_slot, qsfp_instance in enumerate(self.qsfp):
+        for qsfp_slot, qsfp in enumerate(self.qsfp):
 
             # Get the UID of the cable connected to this QSFP cage
-            if get_cable_id and qsfp_instance.is_present(): # qsfp not accessed if get_link_uid=False (slow)
+            if get_cable_id and qsfp.is_present(): # qsfp not accessed if get_link_uid=False (slow)
                 cable_id = qsfp.read_str('VendName') + "_" + qsfp.read_str('VenPN')+ "_" + qsfp.read_str('VenSN')
             else:
                 cable_id = None
 
             for qsfp_lane in range(4):
-                link_uid = '%s_%i' % (cable_uid, qsfp_lane) if cable_uid else None
+                cable_link_id = '%s_%i' % (cable_id, qsfp_lane) if cable_id else None
                 # establish backplane connectivity (routing is inferred by this code)
                 if use_qsfp_link_id:
                     qsfp_link_id = (crate_id, qsfp_slot, qsfp_lane)
                     links[qsfp_link_id] = cable_link_id
                 else:
                     bp_lane = qsfp_slot % 4
-                    bp_slot = (qsfp_slot // 4) * 4 + qsfp_lane + 1  # slot number starts at 1
-                    bp_link_id = (crate_id, bp_lane, bp_slot)
+                    bp_slot = (qsfp_slot // 4) * 4 + qsfp_lane   # slot number is zero-based for tuples
+                    bp_link_id = (crate_id, bp_slot, bp_lane)
                     links[bp_link_id] = cable_link_id
-         return links
+        return links
 
     def get_qsfp_cable_info(self):
         """ Return a dictionary that lists the backplane QSFP cable information for the cables

@@ -1021,7 +1021,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         async_return(bool((t1 >> 31) & 1))
 
     @async
-    def capture_frame_time(self, trig=True, format='nano'):
+    def capture_frame_time(self, trig=True, format='nano', timeout=5):
         """ Captures the IRIG-B of the first sample of the next frame coming
         out of the ADC data acquisition module.
 
@@ -1048,7 +1048,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
             yield self.fpga_mmi_write.async(self._IRIGB_SAMPLE2_ADDR, w2 | (1 << 28))
             t0 = time.time()
             while not (yield self.fpga_mmi_read.async(self._IRIGB_TARGET1_ADDR)) & (1 << 30):
-                    if time.time() - t0 > 3:
+                    if time.time() - t0 > timeout:
                         raise RuntimeError('Timeout while waiting for a Frame. Is data flowing out of the ADC data acquisition module?')
         event_number = yield self.fpga_mmi_read.async(self._IRIGB_EVENT_CTR_ADDR)
         event_number += (yield self.fpga_mmi_read.async(self._IRIGB_EVENT_CTR_ADDR2)) << 32

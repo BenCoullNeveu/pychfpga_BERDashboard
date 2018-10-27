@@ -3428,8 +3428,19 @@ class chFPGA_controller(IceBoardExtHandler):
             return self.get_crate_id(self.slot - 1)
 
 
-    def get_crate_id(self):
-        return self.crate.get_id()
+    def get_crate_id(self, slot=None):
+        """ Return the crate ID tuple optionally appended by the specified slot number.slot
+        Parameters:
+
+            slot (int): slot number to append to the tuple. Should be zero-based.slot
+
+        Returns:
+
+            (crate_id, ) if `slot` is `None`, else (crate_id, slot).
+            ``crate_id`` is the crate number if it exists, otherwise it is a
+            string that uniquely defined the crate.
+        """
+        return self.crate.get_id(slot=slot)
 
     def start_correlator(self, integration_period=16384, autocorr_only=False, correlators=None, bandwidth_limit=0.5e9, verbose=1):
         """

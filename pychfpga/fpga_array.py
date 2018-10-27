@@ -133,7 +133,7 @@ class FPGAArray(object):
                  ignore_missing_boards = False,
 
                  subarrays=None,
-		 ping=True,
+                 ping=True,
                  mdns_timeout=2,
                  no_mezz=False,
 
@@ -154,6 +154,7 @@ class FPGAArray(object):
 
                  mode=None,
                  frames_per_packet=2,
+                 tx_power=None,
 
                  stderr_log_level=None,
                  syslog_log_level=None,
@@ -325,6 +326,7 @@ class FPGAArray(object):
              sync_master_time_source=sync_master_time_source,
              mode=mode,
              frames_per_packet=frames_per_packet,
+             tx_power=tx_power,
              stderr_log_level=stderr_log_level,
              syslog_log_level=syslog_log_level,
              udp_retries=udp_retries,
@@ -365,7 +367,7 @@ class FPGAArray(object):
              hwm=None,
              iceboards=[], icecrates=[], mezzanines=[], exclude_iceboards=[],
              crate_map={},
-             ignore_missing_boards = False,
+             ignore_missing_boards=False,
 
              subarrays=None, ping=True,
              mdns_timeout=2,
@@ -384,6 +386,8 @@ class FPGAArray(object):
 
              mode=None,
              frames_per_packet=2,
+             tx_power=None,
+
              stderr_log_level=None,
              syslog_log_level=None,
              udp_retries=3,
@@ -582,7 +586,7 @@ class FPGAArray(object):
 
         # If subarrays are specified, remove boards that are not in those subarrays
         if subarrays is not None:
- 	    print('Subarrays are: %r' % subarrays)
+            print('Subarrays are: %r' % subarrays)
             ib_not_in_subarray = self.hwm.query(IceBoardPlus).filter(~IceBoardPlus.subarray.in_(subarrays))
             for ib in list(ib_not_in_subarray):  # make sure the list does not change during the loop
                 self.logger.debug("%r (subarray '%s') is not in the target subarray list %s. It is removed from the YAML hardware map."  # That comment should be if verbose=1
@@ -844,7 +848,7 @@ class FPGAArray(object):
 
             if mode:
                 self.logger.info('%r: Setting operational mode to %s' % (self, mode))
-                self.set_operational_mode(mode=mode, frames_per_packet=frames_per_packet)
+                self.set_operational_mode(mode=mode, frames_per_packet=frames_per_packet, tx_power=tx_power)
 
             self.logger.info('%r: Initializing Backplane firmware' % self)
             if self.ic:
@@ -977,18 +981,26 @@ class FPGAArray(object):
 
 
     def set_crate_numbers(self, crate_number_map, strict=True):
-        """ Set the crate number of each crate based on the provided crate number map.
+        """ Set the crate number of each crate based on the provided crate
+        number map.
 
         Silently overrides any existing crate numbers.
 
-        Arguments:
-            crate_number_map (dict): A { (model, serial): number} dict that maps a crate ID tuple to a crate number.
-            strict (bool): if True, will raise an exception if not all crates can be assigned a crate number
+        Parameters:
+
+            crate_number_map (dict): A { (model, serial): number} dict that
+                maps a crate ID tuple to a crate number.
+
+
+            strict (bool): if True, will raise an exception if not all crates
+                can be assigned a crate number
 
         Notes:
-            Crate numbers are needed to identify hardware element by simple tuples (e.g. (crate_number,
-            slot_numer, lane_number)) and are also used to infer which is a master and slave crate when
-            crates are interconnected in pairs.
+
+            Crate numbers are needed to identify hardware element by simple
+            tuples (e.g. (crate_number, slot_numer, lane_number)) and are also
+            used to infer which is a master and slave crate when crates are
+            interconnected in pairs.
         """
 
         self.logger.info('%r: setting crate numbers for crates %r' % (self, self.ic))
@@ -1021,30 +1033,37 @@ class FPGAArray(object):
                              mode,
                              frames_per_packet=1,
                              chan8_channel_map=range(8),
-                             tx_power = None
+                             tx_power=None
                              ):
-        """
-        NOTE: Having called get_ber() before initializing the shuffle will lead to errors!
-        Set the operational mode of the array.
+        """ Set the operational mode of the array.
 
-        - 'raw_time': Each boards stream raw 8-bit time samples from channels
-            0-7 to the corresponding GPU ports.
 
-        - 'shuffle16': Acquire, channelize and shuffle data within each Iceboard individually and
-          send the data through the IceBoard QSFP+ ports. There is no data shuffling between boards.
-          This is good for single board operation (or an array of boards operating independently)
+        Parameters:
 
-        - 'shuffle256': Acquire, channelize and shuffle data within a crate to
-            create a 16-board (256-channel) correlator. The shuffled data is
-            sent through the IceBoard QSFP+ ports. There is no shuffling between
-            crates.
+            mode (str): operational mode string.
 
-        - 'shuffle512': Acquire, channelize and shuffle data between pair of
-          crates to create a 32-board (512-channel) correlator. The shuffled
-          data is sent through the IceBoard QSFP+ ports. The pairing of crates
-          is based on the crate number: Crate N and N+1 form a pair, whereas N
-          is a even number.
+                - 'raw_time': Each boards stream raw 8-bit time samples from channels
+                    0-7 to the corresponding GPU ports.
 
+                - 'shuffle16': Acquire, channelize and shuffle data within each Iceboard individually and
+                  send the data through the IceBoard QSFP+ ports. There is no data shuffling between boards.
+                  This is good for single board operation (or an array of boards operating independently)
+
+                - 'shuffle256': Acquire, channelize and shuffle data within a crate to
+                    create a 16-board (256-channel) correlator. The shuffled data is
+                    sent through the IceBoard QSFP+ ports. There is no shuffling between
+                    crates.
+
+                - 'shuffle512': Acquire, channelize and shuffle data between pair of
+                  crates to create a 32-board (512-channel) correlator. The shuffled
+                  data is sent through the IceBoard QSFP+ ports. The pairing of crates
+                  is based on the crate number: Crate N and N+1 form a pair, whereas N
+                  is a even number.
+
+
+        Notes:
+
+            Having called get_ber() before initializing the shuffle will lead to errors!
 
         # data_width : Data width of each Re and Im component of the channelizer output
         # enable_gpu_link : Enables the GPU link transmission
@@ -1117,7 +1136,9 @@ class FPGAArray(object):
         reset so it won't generate random packets into the following crossbar.
         """
         if tx_power is None:
-            tx_power = {'corner_turn': [dict(lane_group='pcb', default=(10, 15)), dict(lane_goup='qsfp', default=(10, 15))]}
+            tx_power = {'corner_turn': [
+                dict(lane_group='pcb', default=(10, 15)),
+                dict(lane_group='qsfp', default=(10, 15))]}
 
         tx_list = []
 
@@ -1170,6 +1191,7 @@ class FPGAArray(object):
         #links =
 
         for index in (0, 1):
+            print tx_power
             for tx_group in tx_power['corner_turn']:
                 lane_group = tx_group['lane_group']
                 default = tx_group['default']
@@ -1230,7 +1252,7 @@ class FPGAArray(object):
             bp = ib.BP_SHUFFLE
             power_tuples = [(lane, exceptions.get(ib.get_id(lane), default_power)[index])
                             for lane in bp.get_lane_numbers(lane_group)]
-            bp.set_tx_power([power_tuples, lane_group)
+            bp.set_tx_power(power_tuples, lane_group)
 
 
     # def set_tx_power(self, pmin=6, pmax=13, pre=3):
@@ -1444,10 +1466,11 @@ class FPGAArray(object):
             if bad_ib:
                 raise RuntimeError('The following IceBoards did not SYNC properly: %s' % (','.join(repr(ib) for ib in bad_ib)))
 
-        ts = self.ib.get_irigb_time(trig=False, format = 'raw')
+        ts = self.ib.get_irigb_time(trig=False, format='raw')
         if len(set(t.nano for t in ts)) != 1:
             self.logger.warning('%r: The timestamp is not the same for all boards after sync. Times are:n%s' %
                 (self,                  '\n'.join('%r:%i' % (ib, ts[i].nano) for i,ib in enumerate(self.ib))))
+        self.sync_timestamps = ts
         self.sync_timestamp = ts[0]
         for ib in self.ib:
             for ant in ib.ANT:
@@ -2084,7 +2107,7 @@ class FPGAArray(object):
         # Ask each board a map that describe how each logical link is connected to the backplane links
         bp_to_logical_link_map = {}
         for ib in self.ib:
-            bp_to_logical_link_map.update(ib.BP_SHUFFLE.get_bp_logical_link_map('qsfp'))
+            bp_to_logical_link_map.update(ib.BP_SHUFFLE.get_bp_to_logical_link_map('qsfp'))
 
         # Ask each crate the map that matches backplane links to cable ids (this takes time: we need to read the cable identification)
         bp_to_cable_map = {}
@@ -2092,9 +2115,9 @@ class FPGAArray(object):
             bp_to_cable_map.update(ic.get_qsfp_cable_map())
 
         # Create a map that matches each cable id to a list of correspinding logical link ids (there should be 2 for each link)
-        cable_to_link_map  = {}
+        cable_to_link_map  = {} # {cable_id: (crate, slot, logical_lane)}
         for (bp_id, cable_id) in bp_to_cable_map.items():
-            cable_to_link_map.setdefault(cable_id, []).append(bp_to_logical_link_map[bp_id])
+            cable_to_link_map.setdefault(cable_id, []).append(bp_to_logical_link_map[('qsfp', bp_id)])
 
         # Crate a map that matches each logical link id with another logical link id.
         link_map = {}
@@ -2103,17 +2126,20 @@ class FPGAArray(object):
                 self.logger.warning('Only one end of a QSFP cable is connected; Cable ID %s connects only to %s. The link will be ignored.' % (cable_id, link_ids[0]))
             elif len(link_ids) > 2:
                 raise RuntimeError('A QSFP cable connects to more than 2 links. Something is wrong. Cable ID %s connects only to %s.' % (cable_id, link_ids))
-            elif len(link_id) == 2:
-                link_map[link_id[0]] = link_id[1]
-                link_map[link_id[1]] = link_id[0]
+            elif len(link_ids) == 2:
+                link_map[link_ids[0][1]] = link_ids[1][1]
+                link_map[link_ids[1][1]] = link_ids[0][1]
+        print link_map
 
         # Resolve each unresolved link.
         resolved_qsfp_link_map = {}
         for (link_type, tx_id, rx_id), (tx_gtx, rx_gtx) in qsfp_link_map.items():
             if not tx_id and rx_id and rx_id in link_map:
                 tx_id = link_map[rx_id]
+                tx_gtx,_ = qsfp_link_map[('qsfp', tx_id, None)]
             elif not rx_id and tx_id and tx_id in link_map:
                 rx_id = link_map[tx_id]
+                _, rx_gtx = qsfp_link_map[('qsfp', None, rx_id)]
             resolved_qsfp_link_map[link_type, tx_id, rx_id] = (tx_gtx, rx_gtx)
 
         return resolved_qsfp_link_map
@@ -2734,6 +2760,18 @@ class FPGAArray(object):
 
         # Command errors
 
+
+        for i, ib in enumerate(self.ib):
+            try:
+                fn, ts = yield ib.capture_frame_time.async(format='raw')
+                if not i:
+                    fn0, ts0 = (fn, ts)
+                metrics.add('fpga_time_delta', ts.nano - ts0.nano, slot=i)
+                metrics.add('fpga_frame_number_delta', fn - fn0, slot=i)
+                metrics.add('fpga_time_error', ts.nano - (self.sync_timestamps[i].nano + fn*2560), slot=i)
+                metrics.add('fpga_sync_time_delta', self.sync_timestamps[i].nano - self.sync_timestamps[0].nano, slot=i)
+            except RuntimeError:
+                self.logger.error('%r: Timeout while capturing frame time' % ib)
 
         async_return(metrics)
 

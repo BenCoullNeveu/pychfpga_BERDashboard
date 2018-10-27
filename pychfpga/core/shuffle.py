@@ -28,11 +28,8 @@ class Shuffle(xglink.XGLinkArray):
 
     def __init__(self, fpga_instance, base_address, address_increment, verbose=1):
 
-        self.NUMBER_OF_LANES = self.NUMBER_OF_LINKS + 5  # 1 bypass link for BP PCB shuffle, 4 for Bp QSFP shuffle
         self.NUMBER_OF_PCB_DIRECT_LANES = 1
         self.NUMBER_OF_QSFP_DIRECT_LANES = 4
-        self.NUMBER_OF_PCB_LANES = 16
-        self.NUMBER_OF_QSFP_LANES = 8
         self.NUMBER_OF_PCB_LINKS = 15
         self.NUMBER_OF_QSFP_LINKS = 4
 
@@ -42,6 +39,10 @@ class Shuffle(xglink.XGLinkArray):
         self.lane_group_names = [name for (name, _, _) in self.lane_groups]
 
         super(Shuffle, self).__init__(fpga_instance, base_address, address_increment, self.lane_groups, verbose)
+
+        self.NUMBER_OF_PCB_LANES = 16
+        self.NUMBER_OF_QSFP_LANES = 8
+        self.NUMBER_OF_LANES = self.NUMBER_OF_LINKS + 5  # 1 bypass link for BP PCB shuffle, 4 for Bp QSFP shuffle
 
     def get_matching_tx_node_id(self, rx_node_id):
         """ Return the PCB link transmitter node id ( a (slot, lane) tuple)
@@ -56,6 +57,21 @@ class Shuffle(xglink.XGLinkArray):
             A (slot, lane) tuple that corresponds to the specified receiver node id
         """
         return self.fpga.crate.get_matching_tx(rx_node_id)
+
+
+    def get_matching_rx_node_id(self, tx_node_id):
+        """ Return the PCB link receiver node id ( a (slot, lane) tuple)
+        that corresponds to the specified transmitter node id.
+
+        Parameters:
+
+            tx_node_id (tuple): A (slot, lane) tuple that identifies the PCB link transmitter
+
+        Returns:
+
+            A (slot, lane) tuple that corresponds to the specified receiver node id
+        """
+        return self.fpga.crate.get_matching_rx(tx_node_id)
 
     def get_rx_net_length(self, rx_node_id):
         """ Return the length of the PCB link connected to the specified receiver node.
@@ -160,7 +176,7 @@ class Shuffle(xglink.XGLinkArray):
                         rx_id = (crate, rx_slot, rx_lane)
                         rx_gtx = gtx
                         (tx_slot, tx_lane) = self.get_matching_tx_node_id((rx_slot + 1, rx_lane))
-                        tx_id = (crate, tx_slot, tx_lane)
+                        tx_id = (crate, tx_slot - 1, tx_lane)
                         tx_ib = self.fpga.crate.slot.get(tx_slot + 1, None)
                         tx_gtx = tx_ib.BP_SHUFFLE.get_gtx(tx_lane, group) if tx_ib else None
                         links[(group, tx_id, rx_id)] = (tx_gtx, rx_gtx) # No transmitter
@@ -169,10 +185,10 @@ class Shuffle(xglink.XGLinkArray):
                         (tx_slot, tx_lane) = (slot, lane)
                         tx_id = (crate, tx_slot, tx_lane)
                         tx_gtx = gtx
-                        (rx_slot, rx_lane) = self.get_matching_rx_node_id((tx_slot, tx_lane))
-                        rx_id = (crate, rx_slot, rx_lane)
+                        (rx_slot, rx_lane) = self.get_matching_rx_node_id((tx_slot + 1, tx_lane))
+                        rx_id = (crate, rx_slot - 1, rx_lane)
                         rx_ib = self.fpga.crate.slot.get(rx_slot + 1, None)
-                        rx_gtx = tx_ib.BP_SHUFFLE.get_gtx(rx_lane, group) if rx_ib else None
+                        rx_gtx = rx_ib.BP_SHUFFLE.get_gtx(rx_lane, group) if rx_ib else None
                         links[(group, tx_id, rx_id)] = (tx_gtx, rx_gtx)
 
                     else:  # if a direct internal link or a software bypass
@@ -237,12 +253,10 @@ class Shuffle(xglink.XGLinkArray):
             for lane, gtx in enumerate(self.get_gtx(lane_group=group)):
                 logical_id = (group, (crate, slot, lane))
                 if group == 'pcb' and self.is_gtx(gtx) and not bypass_pcb_shuffle: # do we have a real external link?
-                        bp_id = (group, (crate, slot + 0, rx_lane - self.NUMBER_OF_PCB_DIRECT_LANES))
+                        bp_id = (group, (crate, slot + 0, lane - self.NUMBER_OF_PCB_DIRECT_LANES))
                         bp_to_logical_link_map[bp_id] = logical_id
-                        bp_to_logical_link_map[bp_id] = logical_id
-                elif group == 'qsfp' and self.is_gtx(gtx) and not bypass_qsfb_shuffle:
-                        bp_id = (group, (crate, slot + 0, rx_lane - self.NUMBER_OF_QSFP_DIRECT_LANES))
-                        logic_id = (group, (crate, slot, rx_lane))
+                elif group == 'qsfp' and self.is_gtx(gtx) and not bypass_qsfp_shuffle:
+                        bp_id = (group, (crate, slot + 0, lane - self.NUMBER_OF_QSFP_DIRECT_LANES))
                         bp_to_logical_link_map[bp_id] = logical_id
             return bp_to_logical_link_map
 

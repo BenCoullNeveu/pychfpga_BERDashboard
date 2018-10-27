@@ -400,7 +400,7 @@ class XGLinkCore(Module_base):
     QPLL_RESET_MON  = BitField(STATUS, 1, 3, doc='debug')
 
 
-    def __init__(self, fpga_instance, base_address, address_increment, verbose=1):
+    def __init__(self, fpga_instance, base_address, address_increment,verbose=1):
         # self.fpga = fpga
         self.logger = logging.getLogger(__name__)
         self.verbose = verbose
@@ -524,17 +524,17 @@ class XGLinkArray(XGLinkCore):
         # 'RX_CTR': 'RX_CTR',
         'RX_FRAME_CTR': 'RX_FRAME_CTR'}
 
-    def __init__(self, fpga_instance, base_address, address_increment, verbose=1):
+    def __init__(self, fpga_instance, base_address, address_increment,  lane_groups, verbose=1):
         # self.fpga = fpga
 
-        super(XGLinkArray, self).__init__(fpga_instance, base_address, address_increment, lane_groups, verbose)
+        super(XGLinkArray, self).__init__(fpga_instance, base_address, address_increment, verbose)
 
         # self.LANE_GROUPS = {}
         # group name : (first lane, number_of_bypass_lanes, number_of_links)
         # self.LANE_GROUPS[0] = self.LANE_GROUPS['pcb'] = (0, self.NUMBER_OF_PCB_DIRECT_LANES, self.NUMBER_OF_PCB_LINKS)
         # self.LANE_GROUPS[1] = self.LANE_GROUPS['qsfp'] = (self.NUMBER_OF_PCB_LANES, self.NUMBER_OF_QSFP_DIRECT_LANES, self.NUMBER_OF_QSFP_LINKS)
 
-        lane_list = []
+        #lane_list = []
         phys_lane = 0
         gtx_ix = 0
 
@@ -542,22 +542,23 @@ class XGLinkArray(XGLinkCore):
         self.phys_lane_map = {None: []} # list of the physical lane limbers for each group
 
         for group, n_direct_lanes, n_links in lane_groups:
-            self.gtx_lane_map[group] = []
+            self.gtx_map[group] = []
+            self.phys_lane_map[group] = []
             # lane_list[group] = []
             for lane in range(n_direct_lanes):
-                lane_list.append((group, lane, phys_lane, None, None)) # internal link, no GTX
+                # lane_list.append((group, lane, phys_lane, None, None))  # internal link, no GTX
                 for g in [group, None]:
                     self.gtx_map[g].append(None)
                     self.phys_lane_map[g].append(phys_lane)
                 phys_lane += 1
             for lane in range(n_direct_lanes, n_direct_lanes + n_links):
-                lane_list.append((group, lane, phys_lane, gtx_ix, self.gtx[gtx_ix]))
+                # lane_list.append((group, lane, phys_lane, gtx_ix, self.gtx[gtx_ix]))
                 for g in [group, None]:
-                    self.gtx_map[g].append(self.gtx[phys_lane])
+                    self.gtx_map[g].append(self.gtx[gtx_ix])
                     self.phys_lane_map[g].append(phys_lane)
                 phys_lane += 1
                 gtx_ix += 1
-        self.lane_list = lane_list
+        # self.lane_list = lane_list
 
         # Create a lane map that maps gtx instances to group name and logical
         # lane number, or to physical lane number if the group name is None
@@ -611,14 +612,14 @@ class XGLinkArray(XGLinkCore):
 
             List of integers.
         """
-        if lane_group not in self.gtx_lane_map:
+        if lane_group not in self.gtx_map:
             raise ValueError('Invalid lane group name %s' % lane_group)
         if lane_group is None:
-            raise ValueError('Logical lane numbers cannot be obtained for lane group "none": the lane numbers are not unique')
+            raise ValueError('Logical lane numbers cannot be obtained for lane group "None": the lane numbers are not unique')
         return range(len(self.gtx_map[lane_group]))
 
 
-    def get_gtx(self, lane, lane_group):
+    def get_gtx(self, lane=None, lane_group=None):
         """ Returns a single or a list of GTX instances that correspond to the specified group and lanes.
 
         Parameters:
@@ -674,7 +675,8 @@ class XGLinkArray(XGLinkCore):
             gtx = gtx_map[lane]
             if not gtx:
                 self.logger.warning('There is no GTX at the specified lane %i of group %s (it is a direct internal link)' % (lane, lane_group))
-            gtx.TXDIFFCTRL = pwr
+            else:
+                gtx.TXDIFFCTRL = pwr
 
 
     @async
