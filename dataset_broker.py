@@ -189,11 +189,13 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
         reply = dict()
 
         # Do we know this dset ID?
+        self.log.debug('%.32r: waiting for dataset %r' % (self, ds_id))
         found = yield self.wait_for_dset(ds_id)
         if not found:
             reply['result'] = "error: dataset ID %r unknown to broker." % ds_id
             self.log.info('%.32r: Dataset %r unknown to broker' % (self, ds_id))
             coroutine_return(reply)
+        self.log.debug('%.32r: found dataset %r' % (self, ds_id))
 
         try:
             # default parameter doesn't work in subroutines?
@@ -206,6 +208,12 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
             coroutine_return(reply)
 
         reply['result'] = "success"
+
+        # if ancestor state is not found, also don't send datasets
+        if not reply['states']:
+            reply['datasets'] = {}
+
+        self.log.debug('%.32r: replying with %r' % (self, reply))
         coroutine_return(reply)
 
     @coroutine
@@ -221,17 +229,21 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
         -H "Content-Type: application/json"
         http://localhost:12050/request-state
         """
-        self.log.debug(
-            '%.32r: Received request for state with ID %r'
+        self.log.debug('%.32r: Received request for state with ID %r'
             % (self, state_id))
         reply = dict()
+        reply['state_id'] = state_id
 
         # Do we know this state ID?
+        self.log.debug(
+            '%.32r: waiting for state ID %r' % (self, state_id))
         found = yield self.wait_for_state(state_id)
         if not found:
             reply['result'] = "error: state ID %r unknown to broker." % state_id
             self.log.info('%.32r: State %r unknown to broker' % (self, state_id))
             coroutine_return(reply)
+        self.log.debug(
+            '%.32r: found state ID %r' % (self, state_id))
 
         with self.lock_states:
             reply['state'] = self.states[state_id]
@@ -300,6 +312,7 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
     def ancestor(self, ds_id, type, js):
         with self.lock_datasets:
             state_id = self.datasets[ds_id]['state']
+            js["datasets"][ds_id] = self.datasets[ds_id]
 
         found = yield self.wait_for_state(state_id)
         if not found:
@@ -308,15 +321,14 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
 
         # look for the state of requested type
         with self.lock_states:
+            js["states"][state_id] = self.states[state_id]
             if self.states[state_id]["type"] == type:
-                js['state_id'] = state_id
                 coroutine_return(js)
 
             # loop through the inner states
             state = self.states[state_id].get("inner", None)
             while state != None:
                 if state["type"] == type:
-                    js['state_id'] = state_id
                     coroutine_return(js)
                 state = state.get("inner", None)
 
