@@ -376,7 +376,8 @@ class IceBoardHandler(handler.Handler, tuber.TuberObject):
         # return "%s(?)" % (self.__class__.__name__)
 
     def get_id(self):
-        """ Return a string that identifies uniquely the motherboard board. Comprises the model number and the serial number.
+        """ Return a string that identifies uniquely the motherboard board.
+        Comprises the model number and the serial number.
         """
         if self.crate and self.slot:
             return "C%s.S%02i" % (self.crate.serial, self.slot)
