@@ -24,10 +24,10 @@ class eeprom(object):
         self.logger = logging.getLogger(__name__)
         self.address = address
         self.address_width = address_width
-        self.address_max = (1<<address_width)-1
+        self.address_max = (1 << address_width) - 1
         self.write_page_size = write_page_size
-        self.address_mask = (1<<address_width)-1
-        self.address_page_mask = write_page_size-1
+        self.address_mask = (1 << address_width) - 1
+        self.address_page_mask = write_page_size - 1
 
     def _get_addr_bytes(self, addr):
         """
@@ -35,15 +35,33 @@ class eeprom(object):
         Byte 0 are excess bits going in the I2C command byte
         Bytes 1:N are the address bytes sent as the first data bytes sent with each command.
         """
-        addr_bytes = max((self.address_width+7) // 8, 2) # add an extra byte for the part that falls in the I2c address field
-        bytes = [(((addr & self.address_max) >> (8*i)) & 0xff) for i in range(addr_bytes-1, -1, -1)]
+        addr_bytes = max((self.address_width + 7) // 8, 2)  # add an extra byte for the part that falls in the I2c address field
+        bytes = [(((addr & self.address_max) >> (8 * i)) & 0xff) for i in range(addr_bytes - 1, -1, -1)]
         # bytes[0] &= 2**(self.address_width % 8)-1 # mask the bits not used for data address in the i2c command byte
         return bytes
 
     def read(self, addr, length=1, retry=0, **kwargs):
         """ Reads from the EEPROM. Data is returned as a string.
 
-        if length == -1, the data is read from the specified address until the end of the EEPROM.
+        Parameters:
+
+            addr (int): EEPROM address from which to start the read operation
+
+            length (int): Number of bytes to read. If length == -1, the data
+                is read from the specified address until the end of the EEPROM.
+
+            retry (int): Number of times to retry in case of errors
+
+            kwargs (dict): Unused
+
+        Returns:
+
+            string containing the bytes read.
+
+        Exceptions:
+
+
+
         """
 
         if length == -1:
@@ -56,7 +74,7 @@ class eeprom(object):
         try:
             self.i2c.select_bus(self.bus_name, retry=retry)
         except:
-            self.logger.error('Failed to set I2C switch to %s.' % (self.bus_name))
+            self.logger.error('%r: Failed to set I2C switch to %s.' % (self, self.bus_name))
             raise
 
         data = ""
@@ -77,7 +95,7 @@ class eeprom(object):
                     # self.logger.warning('I2C Error while reading EEPROM at memory address %i. Retrying...' % addr)
                     # trial +=1
                     # if trial>retry:
-                self.logger.error('Failed to read EEPROM at memory address %i after %i retries.' % (addr, retry))
+                self.logger.error('%r: Failed to read EEPROM at memory address %i after %i retries.' % (self, addr, retry))
                 raise
             data += block_data
             # print 'data=', data
@@ -139,9 +157,9 @@ class eeprom(object):
 
     def status(self):
         """ Shows EEPROM data"""
-        self.logger.info('-- FMC EEPROM ')
+        self.logger.info('%r: -- FMC EEPROM ' % self)
         try:
-            self.logger.info('FMC EEPROM data at address 0x00-0x03 is: %s' % ' '.join([hex(x) for x in self.read(0, length=4)]))
+            self.logger.info('%r: FMC EEPROM data at address 0x00-0x03 is: %s' % (self, ' '.join([hex(x) for x in self.read(0, length=4)])))
         except:
-            self.logger.info('FMC EEPROM did not respond')
+            self.logger.info('%r: FMC EEPROM did not respond' % self)
 

@@ -128,7 +128,7 @@ class HandlerObject(object):
 
             # If the key exists in the handler registry, retreive it
             if handler_key in self._handler_instance_registry:
-                logger.debug("%.32r: Reusing handler for handler key (%s, %s)" %
+                logger.debug("%r: Reusing handler for handler key (%s, %s)" %
                             (self, handler_id, handler_name))
                 self._handler = self._handler_instance_registry[handler_key]
                 return self._handler
@@ -136,7 +136,7 @@ class HandlerObject(object):
             # If not, let's create and register a new handler
             if handler_name in self._handler_class_registry:
                 handler_class = self._handler_class_registry[handler_name]
-                logger.debug("%.32r: Handler key %s does not exist. Creating %s" %
+                logger.debug("%r: Handler key %s does not exist. Creating %s" %
                             (self, handler_id, handler_name))
                 self._handler = handler_class(parent_getter=self.self_getter())
                 type(self)._handler_instance_registry[handler_key] = self._handler
@@ -301,8 +301,8 @@ class Handler(object):
         # super(Handler, self).__init__(**{k:v for k,v in kwargs.items() if k not in self._parent_attributes})
         super(Handler, self).__init__(**kwargs)
         self.logger = logging.getLogger(__name__)
-        self.logger.debug("%s: Creating handler with parameters %s" %
-                          (self.__class__.__name__, kwargs))
+        self.logger.debug("%s: Creating handler for class %s with parameters %s" %
+                          ('Handler', self.__class__.__name__, kwargs))
         self._parent_getter = parent_getter
 
     @property

@@ -41,6 +41,6 @@ class AmbTemp_base(object):
     temperature = property(get_temperature)
 
     def status(self):
-        self.logger.info('%.32r: --- Ambient Temperature Sensor' % self.adc_board)
-        self.logger.info('%.32r: Ambient Temperature of the ADC board: %.1f C' % (self.adc_board, self.temperature))
+        self.logger.info('%r: --- Ambient Temperature Sensor' % self.adc_board)
+        self.logger.info('%r: Ambient Temperature of the ADC board: %.1f C' % (self.adc_board, self.temperature))
 

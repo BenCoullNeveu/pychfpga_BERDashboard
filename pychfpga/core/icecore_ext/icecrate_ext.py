@@ -91,6 +91,9 @@ class IceCrateExtHandler(IceCrateHandler):
         self._logger = logging.getLogger(__name__)
         self._logger.debug('%r: Instantiating backplane hardware' % self)
 
+    def __repr__(self):
+        return "IceCrate(%s)" % self.get_id()[0]
+
     def init(self):
         """ Communicates with the hardware and sets it in a known state.
         """
@@ -449,19 +452,19 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
 
         self._i2c = MasterIceboardObject(self, 'i2c')  # Indirect reference to the master Iceboard's I2C object
 
-        self._logger.debug('%.32r: Instantiating Backplane I2C resource managers' % self)
+        self._logger.debug('%r: Instantiating Backplane I2C resource managers' % self)
         self._eeprom_data = EEPROM(self._i2c, bus_name='BP', address=self.BACKPLANE_EEPROM_DATA_ADDRESS, address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH, write_page_size = self.BACKPLANE_EEPROM_PAGE_SIZE)
         self._eeprom_serial = EEPROM(self._i2c, bus_name='BP', address=self.BACKPLANE_EEPROM_SERIAL_ADDRESS, address_width=self.BACKPLANE_EEPROM_ADDRESS_WIDTH, write_page_size = self.BACKPLANE_EEPROM_PAGE_SIZE)
         self._qsfp_eeprom = EEPROM(self._i2c, bus_name='BP', address=self.BACKPLANE_QSFP_ADDRESS, address_width=self.BACKPLANE_QSFP_ADDRESS_WIDTH)
 
-        self._logger.debug('%.32r: Instantiating Backplane I2C temperature sensors' % self)
+        self._logger.debug('%r: Instantiating Backplane I2C temperature sensors' % self)
         self._tmp_slot1 = tmp421.tmp421(self._i2c, self._TMP_SLOT1_ADDR, 'BP')
         self._tmp_slot16 = tmp421.tmp421(self._i2c, self._TMP_SLOT16_ADDR, 'BP')
 
-        self._logger.debug('%.32r: Instantiating Backplane I2C current/power monitor' % self)
+        self._logger.debug('%r: Instantiating Backplane I2C current/power monitor' % self)
         self._power_3v3 = ina230.ina230(self._i2c, self._POWER_3V3_ADDR, 'BP')
 
-        self._logger.debug('%.32r: Instantiating Backplane I2C I/O expanders' % self)
+        self._logger.debug('%r: Instantiating Backplane I2C I/O expanders' % self)
         self._qsfp_ctrla = pca9698.pca9698(self._i2c, self._QSFP_CTRL_SETA_ADDR, 'BP')
         self._qsfp_ctrlb = pca9698.pca9698(self._i2c, self._QSFP_CTRL_SETB_ADDR, 'BP')
         self._reset_ctrl = pca9698.pca9698(self._i2c, self._RESETS_CTRL_ADDR, 'BP')
@@ -569,9 +572,7 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
              'LED1': (self._reset_ctrl, 0, 7, 1)
         })
 
-        self.qsfp = Ccoll(qsfp.QSFP(self._i2c, 'BP', gpio_prefix='QSFP%i_' % (i + 1), gpio=self._gpio) for i in range(self.NUMBER_OF_SLOTS))
-
-
+        self.qsfp = Ccoll(qsfp.QSFP(self._i2c, 'BP', gpio_prefix='QSFP%i_' % (i + 1), gpio=self._gpio, parent=self) for i in range(self.NUMBER_OF_SLOTS))
 
         self.SLOT_RESETS_MAP = {
             # Slot num : (expander object, ARM Register, Power Down Register, Bit number)
@@ -628,14 +629,14 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
 
         This requires I2C communication with the backplane.
         """
-	#return
-        print('backplane.init()')
+        #return
+        self._logger.info('%r: Starting backplane initialization' % self)
         for trial in range(10):
-            print('trial ', trial)
+            self._logger.info('%r: Backplane initialization trial #%i' % (self, trial))
             try:
                 # Check if the fan controller is connected
                 self._fan_ctrl_present = self._fan_ctrl.is_present()
-                print('Fan ctrl is preset=', self._fan_ctrl_present)
+                self._logger.info('%r: Fan controller %s present' % (self, ('is NOT', 'IS')[self._fan_ctrl_present]))
                 # Check if the power/reset control IO expander is accessible
                 #self._reset_ctrl_present = self._reset_ctrl.is_present()
 
@@ -648,18 +649,18 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
                 if self._fan_ctrl_present:
                     self._fan_ctrl.init()
                     self.logger.info('%r: Initialized fan controller from FPGA' % (self))
-                print('done init successfully')
+                self._logger.info('%r: Successfully completed backplane initialization' % self)
                 return
             except (IOError, RuntimeError) as e:
-                print('%r: IO Error during backplane INIT on trial %i. retrying. Error was:\n%s' % (self, trial+1, e))
+                self._logger.error('%r: IO Error during backplane INIT on trial %i. retrying. Error was:\n%s' % (self, trial+1, e))
             except Exception as e:
-                print('%r: Unexpected exception during backplane INIT on trial %i. retrying. Error was:\n%s' % (self, trial+1, e))
+                self._logger.info('%r: Unexpected exception during backplane INIT on trial %i. Retrying. Error was:\n%s' % (self, trial+1, e))
             finally:
                 try:
                     self._i2c.select_bus([])  # Make sure we don't load the bus
                 except (IOError, RuntimeError) as e:
-                    print('%r: IO Error while trying to deselect bus. Error was:\n%s' % (self, e))
-		    pass
+                    self._logger.info('%r: IO Error while trying to deselect bus. Error was:\n%s' % (self, e))
+                    pass
         raise IOError('%r: Cannot initialize backplane peripherals' % self)
 
     def _init_temperature_sensors(self, temperature_sensor_name=None):
@@ -683,7 +684,7 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
                 try:
                     tmp_object.init()
                 except IOError:
-                    self.logger.error('%.32r: Error initializing the Backplane temperature sensors' % self)
+                    self.logger.error('%r: Error initializing the Backplane temperature sensors' % self)
 
     def _init_power_sensors(self, power_sensor_name='BP_3V3'):
         """
@@ -709,7 +710,7 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
                 try:
                     power_sensor_object.init(v_out=power_sensor_list[1], r_shunt=power_sensor_list[2], i_typ=power_sensor_list[3], tol_i=power_sensor_list[4])
                 except IOError:
-                    self.logger.error('%.32r: Error initializing the Backplane Power sensors.' % self)
+                    self.logger.error('%r: Error initializing the Backplane Power sensors.' % self)
 
 
     def _init_qsfp_ctrl(self):
@@ -726,7 +727,7 @@ class IceCrate_MGK7BP16_Handler(IceCrateExtHandler):
                 qsfpb_ctrl.init(cfg0_def=0x55, cfg1_def=0x55,cfg2_def=0x55,cfg3_def=0x55,cfg4_def=0xff,out0_def=0xaa, out1_def=0xaa,out2_def=0xaa,out3_def=0xaa,out4_def=0)
                 #By default LEDs are off (dir=inputs , outputs=0), ModPrsL and IntL (dir=input, output = 0), ResetL and ModselL (dir=output, output=1)
             except IOError:
-                self.logger.error('%.32r: Error initializing the Backplane QSFP GPIO control lines' % self)
+                self.logger.error('%r: Error initializing the Backplane QSFP GPIO control lines' % self)
 
     def _init_reset_ctrl(self):
         """

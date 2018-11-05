@@ -88,6 +88,12 @@ class Module_base(object):
         #     setattr(self.__class__, field_name, bitfield)
         #     print ' OBSOLETE:  Defining property "%s"' % (field_name)
 
+    def __repr__(self):
+        """ Return a string that represents this object and its parent object.
+        """
+        return "%r.%s%s" % (self.fpga, self.__class__.__name__, '(%i)' % self.instance_number if self.instance_number is not None else '')
+
+
     def __setattr__(self, name, value):
         """ Prevents creating new attributes to the class when _locked==1"""
         # Allow write only if not locked or if attribute already exists in the

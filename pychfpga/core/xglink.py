@@ -422,7 +422,7 @@ class XGLinkCore(Module_base):
     def init(self):
         """ Initializes the links"""
 
-        self.logger.debug('%.32r: Initializing GTX links (%i QUADs & %i GTXes' % (self.fpga, len(self.qpll), len(self.gtx)))
+        self.logger.debug('%r: Initializing GTX links (%i QUADs & %i GTXes)' % (self, len(self.qpll), len(self.gtx)))
         for (i, qpll) in enumerate(self.qpll):
             qpll.init()
 

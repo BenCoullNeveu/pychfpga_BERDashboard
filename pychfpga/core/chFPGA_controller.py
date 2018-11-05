@@ -214,7 +214,7 @@ class chFPGA_controller(IceBoardExtHandler):
         # Initialize basic instance attributes, but don;t do anything that involve talking to the IceBoard.
 
         self._logger = logging.getLogger(__name__)
-        self._logger.debug("%.32r: Creating chFPGA_controller object" % (self))
+        self._logger.debug("%r: Creating chFPGA_controller object" % (self))
 
         self._sampling_frequency = None  # Set in init()
         self._reference_frequency = None # set in init()
@@ -721,7 +721,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
     def sync(self, local=1, verbose=0):
         if verbose:
-            self._logger.debug("%.32r: Syncing board" % self)
+            self._logger.debug("%r: Syncing board" % self)
         self.set_adc_mask(0) # null the ADC data before it gets to the channelizers to reduce power consumption
         if local:
             self.REFCLK.local_sync()
@@ -1387,14 +1387,14 @@ class chFPGA_controller(IceBoardExtHandler):
             if delay_table and check_adc_delays and self.check_ramp_errors(trials=check_adc_delays, verbose=verbose):
                 delay_table = None  # invalidate the delay table if we asked to check it and found errors
             if delay_table is None:
-                self.logger.warning('%.32r: Provided delay table failed checks' % self)
+                self.logger.warning('%r: Provided delay table failed checks' % self)
         if compute_delays >= 2 or (compute_delays >= 1 and not delay_table):
             for trial in xrange(retry):
                 delay_table = self.compute_adc_delays(channels=range(16), verbose=verbose, adc_sampling_freq=800e6, compute_sync_delays=True, check_sync_delays=check_sync_delays, check_adc_delays=check_adc_delays, set_delays=False)
                 delay_table_updated = True
                 if delay_table and delay_table.get('valid', True):
                     break
-                self.logger.warning('%.32r: Computed delay table failed checks. Retrying...' % self)
+                self.logger.warning('%r: Computed delay table failed checks. Retrying...' % self)
 
         if delay_table and delay_table.get('valid', True):
             self._set_adc_delays(delay_table)
@@ -2988,7 +2988,7 @@ class chFPGA_controller(IceBoardExtHandler):
             ethernet_data_rate = (packet_rate * ethernet_packet_size) * 8
             self._logger.info('%r: %s Ethernet packet size: %i bytes, %0.1f Gbit/s (%i frames_per_packet, %i bins, %i data words/bin, %i data flags_words/bin, %i frame_flags_words/frame)' % (self, crossbar_name, ethernet_packet_size, ethernet_data_rate / 1e9,  frames_per_packet, bins, data_words_per_bin, data_flags_words_per_bin, frame_flags_words_per_frame))
             # self._logger.info('%r: %s config: frames_per_packet=%i, cb1_lanes=%s, cb1_bypass=%s, cb1_combine=%s, cb1_bins=%i, cb1_words_per_bin=%i' % (self, frames_per_packet, cb1_lanes, bool(cb1_bypass), bool(cb1_combine_data_flags), cb1_bins, cb1_output_words_per_bin ))
-            # self._logger.debug('%.32r: CROSSBAR1 output packets payload = %i bytes (%i words)' % (self, cb1_payload_size, (cb1_payload_size+3)//4))
+            # self._logger.debug('%r: CROSSBAR1 output packets payload = %i bytes (%i words)' % (self, cb1_payload_size, (cb1_payload_size+3)//4))
 
         print_packet_size('CROSSBAR3',
                           frames_per_packet=frames_per_packet,
@@ -3001,13 +3001,13 @@ class chFPGA_controller(IceBoardExtHandler):
         # cb2_eth_packet_size = (cb2_payload_size + eth_overhead + 7) // 8 * 8
         # cb2_eth_data_rate = cb2_eth_packet_size * packet_rate * 8
         # cb2_fifo_load = cb2_bins * words_per_bin * frames_per_packet - ( cb2_bins * words_per_bin* cb2_minimum_bin_spacing* frames_per_packet / 16)
-        # self._logger.info('%.32r: CROSSBAR2 output: payload = %i bytes' % (self, cb2_payload_size))
-        # self._logger.info('%.32r: CROSSBAR2 peak FIFO load per frame: %i (Max. 16), Words per frame: %i (max %i)' % (self, cb2_fifo_load,cb2_payload_size/frames_per_packet, 512*bp_data_rate/32/200e6))
+        # self._logger.info('%r: CROSSBAR2 output: payload = %i bytes' % (self, cb2_payload_size))
+        # self._logger.info('%r: CROSSBAR2 peak FIFO load per frame: %i (Max. 16), Words per frame: %i (max %i)' % (self, cb2_fifo_load,cb2_payload_size/frames_per_packet, 512*bp_data_rate/32/200e6))
 
         # if cb2_bypass:
-        #     self._logger.info('%.32r: GPU link (CROSSBAR1 data): UDP Payload = %i bytes, Ethernet packets = %i bytes, data rate = %0.2f Gbps (%0.2f%%)' % (self, cb1_payload_size, cb1_eth_packet_size, cb1_eth_data_rate/1e9, cb1_eth_data_rate/eth_data_rate*100))
+        #     self._logger.info('%r: GPU link (CROSSBAR1 data): UDP Payload = %i bytes, Ethernet packets = %i bytes, data rate = %0.2f Gbps (%0.2f%%)' % (self, cb1_payload_size, cb1_eth_packet_size, cb1_eth_data_rate/1e9, cb1_eth_data_rate/eth_data_rate*100))
         # else:
-        #     self._logger.info('%.32r: GPU Link (CROSSBAR2 data): UDP Payload = %i bytes, Ethernet packets = %i bytes, data rate = %0.2f Gbps (%0.2f%%)' % (self, cb2_payload_size, cb2_eth_packet_size, cb2_eth_data_rate/1e9, cb2_eth_data_rate/eth_data_rate*100))
+        #     self._logger.info('%r: GPU Link (CROSSBAR2 data): UDP Payload = %i bytes, Ethernet packets = %i bytes, data rate = %0.2f Gbps (%0.2f%%)' % (self, cb2_payload_size, cb2_eth_packet_size, cb2_eth_data_rate/1e9, cb2_eth_data_rate/eth_data_rate*100))
 
         self.set_corr_reset(0)
         self.set_ant_reset(0)
@@ -3405,6 +3405,9 @@ class chFPGA_controller(IceBoardExtHandler):
         else:
             return self.hostname
 
+    def __repr__(self):
+        return "chFPGA%s" % (self.get_id(),) # watch out, get_id() returns a tuple...
+
     def get_id(self, lane=None):
         """ Returns a tuple representing a unique IceBoard ID, using numeric values whenever possible.
 
@@ -3578,7 +3581,7 @@ class chFPGA_controller(IceBoardExtHandler):
         """
         Executes a command on the ARM over SSH.
         """
-        self.logger.info("%.32r: Executing command '%s' on the ARM" % (self, cmd))
+        self.logger.info("%r: Executing command '%s' on the ARM" % (self, cmd))
         ssh_cmd = 'ssh -o "StrictHostKeyChecking no" root@%s "%s"' % (self.hostname, cmd)
         result = yield self._call_subprocess.async(ssh_cmd)
         async_return(result)
@@ -3588,7 +3591,7 @@ class chFPGA_controller(IceBoardExtHandler):
         """
         Sends a file to the arm using scp.
         """
-        self.logger.info('%.32r: Sending image file %s to the ARM in %s' % (self, source_filename, destination_filename))
+        self.logger.info('%r: Sending image file %s to the ARM in %s' % (self, source_filename, destination_filename))
         scp_cmd = 'scp -o "StrictHostKeyChecking no" %s root@%s:%s' % (source_filename, self.hostname, destination_filename)
         result = yield self._call_subprocess.async(scp_cmd)
         async_return(result)
@@ -3618,7 +3621,7 @@ class chFPGA_controller(IceBoardExtHandler):
         yield self.arm_scp.async(image_filename, '/tmp/image.bz2')
         print '%r: Writing SD card' % self
         yield self.arm_exec.async('bzcat /tmp/image.bz2 >/dev/mmcblk0')
-        self.logger.info('%.32r: Command completed. Waiting %i seconds to ensure cache is flushed' % (self, delay))
+        self.logger.info('%r: Command completed. Waiting %i seconds to ensure cache is flushed' % (self, delay))
         print '%r: Waiting %i seconds' % (self, delay)
         yield tornado.gen.sleep(delay)
         async_return(True)
@@ -3645,7 +3648,7 @@ class chFPGA_controller(IceBoardExtHandler):
         print '%r: Sending file to /usr/lib/iceboard/' % self
         yield self.arm_scp.async(filename, filename_sd_card)
 
-        self.logger.info('%.32r: Command completed. Waiting %i seconds to ensure cache is flushed' % (self, delay))
+        self.logger.info('%r: Command completed. Waiting %i seconds to ensure cache is flushed' % (self, delay))
         print '%r: Waiting %i seconds' % (self, delay)
         yield tornado.gen.sleep(delay)
 
@@ -3668,7 +3671,7 @@ class chFPGA_controller(IceBoardExtHandler):
         print '%r: Removing the requested file' % self
         yield self.arm_exec.async(remove_file)
 
-        self.logger.info('%.32r: Command completed. Waiting %i seconds to ensure cache is flushed' % (self, delay))
+        self.logger.info('%r: Command completed. Waiting %i seconds to ensure cache is flushed' % (self, delay))
         print '%r: Waiting %i seconds' % (self, delay)
         yield tornado.gen.sleep(delay)
 

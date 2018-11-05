@@ -273,7 +273,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         # create it
         if self.is_core_open():
             self.logger.warning(
-                '%.32r: Attempting to open core while it is already opened. '
+                '%r: Attempting to open core while it is already opened. '
                 'Ignoring.' % (self))
             return
 
@@ -281,13 +281,14 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         # Open the UDP MMI interface
         # -------------------------------------------------------------------------
         from .lib import fpga_mmi
-        print('Opening FPGA MMI with FPGA=(%s:%s),  local=(%s:%s)' % (self.fpga_ip_addr, self.fpga_port_number, self.interface_ip_addr, self.local_port_number))
+        self.logger.info('%r: Opening FPGA MMI with FPGA=(%s:%s),  local=(%s:%s)' % (self, self.fpga_ip_addr, self.fpga_port_number, self.interface_ip_addr, self.local_port_number))
         self.mmi = fpga_mmi.FpgaMmi(
             fpga_ip_addr=self.fpga_ip_addr,
             fpga_port_number=self.fpga_port_number, # none or 0: use local port number
             interface_ip_addr=self.interface_ip_addr,
             local_port_number=self.local_port_number, # 0 = randomly assigned by os
-            udp_retries=udp_retries)
+            udp_retries=udp_retries,
+            parent=self)
         self.mmi.open()
         self.local_port_number = self.mmi.local_port_number
         self.fpga_port_number = self.mmi.fpga_port_number
@@ -314,22 +315,22 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         # the cookie correspond to the chFPGA firmware.
         # -------------------------------------------------------------------------
         self.clear_fpga_udp_errors(force=True, no_reset=True) # Try to prevent initial error on first command
-        self.logger.debug("%.32r: Attempting to communicate with the FPGA over direct Ethernet link" % self)
+        self.logger.debug("%r: Attempting to communicate with the FPGA over direct Ethernet link" % self)
         try:
             cookie = yield self.get_fpga_firmware_cookie.async(resync=True)  # Read the firmware version cookie from the GPIO subsystem (this is provided by the FPGA core firmware which is always present on all versions of the FPGA)
         except IOError as e:
-            error_message = "%.32r: Unable to communicate with the FPGA at address %s:%i due to the following exception: %s" % (self, self.fpga_ip_addr, self.fpga_port_number, repr(e))
+            error_message = "%r: Unable to communicate with the FPGA at address %s:%i due to the following exception: %s" % (self, self.fpga_ip_addr, self.fpga_port_number, repr(e))
             self.close()
             self.logger.error(error_message)
             raise
 
         if cookie != self._CHFPGA_COOKIE:
-            error_message = '%.32r: The firmware at %s:%i is not chFPGA. The magic cookie returned by the FPGA is 0x%02X, whereas we expected 0x%02X' % (self, self.fpga_ip_addr, self.fpga_port_number, cookie, self._CHFPGA_COOKIE)
+            error_message = '%r: The firmware at %s:%i is not chFPGA. The magic cookie returned by the FPGA is 0x%02X, whereas we expected 0x%02X' % (self, self.fpga_ip_addr, self.fpga_port_number, cookie, self._CHFPGA_COOKIE)
             self.logger.error(error_message)
             self.close()
             raise RuntimeError(error_message)
 
-        self.logger.debug("%.32r: Established a UDP/Ethernet connection with the FPGA" % self)
+        self.logger.debug("%r: Established a UDP/Ethernet connection with the FPGA at %s:%i" % (self, self.fpga_ip_addr, self.fpga_port_number))
 
         # -------------------------------------------------------------------------
         # Open FPGA's I2C interfaces
@@ -338,10 +339,11 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         yield async_moment
         # Create standardized I2C interface
         self.i2c = I2CInterface(
-            self.fpga_i2c_write_read,
-            self.fpga_i2c_set_port,
-            IceBoardHardware.FPGA_I2C_BUS_LIST,
-            IceBoardHardware._FPGA_I2C_SWITCH_ADDR)
+            write_read_fn=self.fpga_i2c_write_read, # write-read function
+            port_select_fn=self.fpga_i2c_set_port,
+            bus_table=IceBoardHardware.FPGA_I2C_BUS_LIST,
+            switch_addr=IceBoardHardware._FPGA_I2C_SWITCH_ADDR,
+            parent=self) # parent object, whose repr() is used to tag messages
 
         self._is_core_open = True
 
@@ -375,7 +377,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
     @async
     def open(self, udp_retries=10):
 
-        self.logger.debug('%.32r: open() is called' % (self))
+        self.logger.debug('%r: open() is called' % (self))
         yield self.open_core.async(udp_retries=udp_retries)
 
         yield self.open_hw.async()
@@ -695,7 +697,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         else:
             mac_addr_int = sum(int(s, 16) << (8 * i) for i, s in enumerate(reversed(mac_addr.split(':'))))
 
-        self.logger.debug('%.32r: setting data target address to ip=%r(%r), port=%r(%r), mac=%r(%r)' % (self, ip_addr, ip_addr_int, port, port, mac_addr, mac_addr_int))
+        self.logger.debug('%r: setting data target address to ip=%r(%r), port=%r(%r), mac=%r(%r)' % (self, ip_addr, ip_addr_int, port, port, mac_addr, mac_addr_int))
         # Set the UDP transmit channel 1 IP and MAC addresses
         self.core_gpio.TARGET_MAC_ADDR = mac_addr_int
         self.core_gpio.TARGET_IP_ADDR = ip_addr_int
@@ -779,16 +781,16 @@ class IceBoardExtHandler(IceBoardPlusHandler):
             data = yield self._mezzanine_eeprom_read_base64.async(mezzanine)
             async_return(base64.decodestring(data))
         except (tuber.TuberRemoteError, AttributeError):
-            self.logger.debug("%.32r: Cannot read the Mezzanine %i EEPROM through the ARM's _mezzanine_eeprom_read_base64() method. Attempting to read the Mezzanine EEPROM through the FPGA." % (self, mezzanine))
+            self.logger.debug("%r: Cannot read the Mezzanine %i EEPROM through the ARM's _mezzanine_eeprom_read_base64() method. Attempting to read the Mezzanine EEPROM through the FPGA." % (self, mezzanine))
 
         fpga_programmed = yield self.is_fpga_programmed.async()
         if not fpga_programmed:
-            self.logger.debug("%.32r: FPGA is not programmed, so cannot read the Mezzanine %i EEPROM through the FPGA." % (self, mezzanine))
+            self.logger.debug("%r: FPGA is not programmed, so cannot read the Mezzanine %i EEPROM through the FPGA." % (self, mezzanine))
             async_return(None)
 
         eeprom_data = self.hw.read_mezzanine_eeprom(mezzanine, 0, 1)
         if ord(eeprom_data[0]) == 0x0d:  # if this is McGill format
-            self.logger.debug("%.32r: EEPROM in Mezzanine %i is McGill format. The FPGA will be reading only bytes until the terminator character. " % (self, mezzanine))
+            self.logger.debug("%r: EEPROM in Mezzanine %i is McGill format. The FPGA will be reading only bytes until the terminator character. " % (self, mezzanine))
             # Read the eeprom block by block until we detect the end of the
             # dictionary
             block_size = 32
@@ -801,7 +803,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
                     break
             async_return(string)
         else:  # If not McGill format,
-            self.logger.debug("%.32r: EEPROM in Mezzanine %i is not McGill format. The FPGA will *NOT* read the EEPROM contetnt " % (self, mezzanine))
+            self.logger.debug("%r: EEPROM in Mezzanine %i is not McGill format. The FPGA will *NOT* read the EEPROM contetnt " % (self, mezzanine))
             async_return(None)
 
     # ---------------------------------------------------------
@@ -897,7 +899,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
                     if noerror:
                         async_return(None)
                     else:
-                        raise RuntimeError('%.32r: Could not get a recently updated IRIG-B time. Check your cabling.' % self)
+                        raise RuntimeError('%r: Could not get a recently updated IRIG-B time. Check your cabling.' % self)
 
         #w0 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE0_ADDR)
         #w1 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE1_ADDR)
@@ -980,7 +982,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         """
         if datetime_ is None:
             dt = self._get_irigb_time(trig=True, format='datetime')
-            self.logger.debug('%.32r: Current IRIGB time is %s' % (self, dt.isoformat()))
+            self.logger.debug('%r: Current IRIGB time is %s' % (self, dt.isoformat()))
             if delay is None:
                 delay = 3
         else:
@@ -991,7 +993,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         nano_delay = int(delay * 1e9) % 1000  # Get submicrosecond delay in nanosecond units
         delay = int(delay * 1e6)/1e6  # Round delay to the microsecond
         dt += timedelta(0, delay)
-        self.logger.debug('%.32r: Setting IRIGB target time to %s + %3i ns' % (self, dt.isoformat(), nano_delay))
+        self.logger.debug('%r: Setting IRIGB target time to %s + %3i ns' % (self, dt.isoformat(), nano_delay))
         if self.zero_target_irigb_year_and_day:
             y = 0
             d = 0
@@ -1003,7 +1005,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         s = dt.second
         ss = dt.microsecond * 100 + int(nano_delay/10)
 
-        self.logger.debug('%.32r: Setting IRIGB target time with y=%i, d=%i, h=%i, m=%i, s=%i, ss=%i' % (self, y, d, h, m, s, ss))
+        self.logger.debug('%r: Setting IRIGB target time with y=%i, d=%i, h=%i, m=%i, s=%i, ss=%i' % (self, y, d, h, m, s, ss))
 
         t0 = (y << 0)
         t1 = (d << 20) | (h << 14) | (m << 7) | (s << 0)
@@ -1110,13 +1112,24 @@ class I2CInterface(object):
 
     I2CException = IOError  # Exception object to expect from I2C communication errors
 
-    def __init__(self, write_read_fn, port_select_fn, bus_table, _switch_addr, verbose=None):
+    def __init__(self, write_read_fn, port_select_fn, bus_table, switch_addr, parent=None, verbose=None):
+        self.parent = parent
         self.write_read_fn = write_read_fn
         self.set_port_fn = port_select_fn
         self._I2C_BUS_LIST = bus_table
 
-        self._i2c_switch = tca9548a.tca9548a(self, _switch_addr)
+        self._i2c_switch = tca9548a.tca9548a(self, switch_addr)
         self._logger = logging.getLogger(__name__)
+
+    def __repr__(self):
+        """ Return a string representation of this I2C interface.
+
+        Returns:
+
+            A string which include the parent object id.
+ 
+        """
+        return "%s(%r)" % (self.__class__.__name__, self.parent)
 
     def select_bus(self, bus_names, *args, **kwargs):
         """
@@ -1127,6 +1140,19 @@ class I2CInterface(object):
         error will be provided if all the buses are not accessible
         through the same FPGA I2C port. This function assumes that
         each FPGA I2C port has an identical I2C switch.
+
+        Parameters:
+
+            bus_names (str, int, or list of str or int): Name or number of the
+                I2C bus to enable on the I2C switch. Multiple buses can be
+                enabled at one time.
+            
+            args, kwargs: passed to the bus select function
+
+        Exceptions:
+
+            IOError: Raised by an FPGA-based I2C controller in case of transaction errors
+
         """
         if isinstance(bus_names, (str, int)):
             bus_names = [bus_names]
@@ -1134,12 +1160,12 @@ class I2CInterface(object):
         selected_switch_port_numbers = []
         for bus_name in bus_names:
             if bus_name not in self._I2C_BUS_LIST:
-                self._logger.error("I2C bus '%s' is not part of the available buses. Valid values are %s" % (bus_name, ','.join(str(self._I2C_BUS_LIST.keys()))) )
+                self._logger.error("%r: I2C bus '%s' is not part of the available buses. Valid values are %s" % (self, bus_name, ','.join(str(self._I2C_BUS_LIST.keys()))) )
             (fpga_port_number, switch_port_number) = self._I2C_BUS_LIST[bus_name]
             if selected_fpga_port_number is None:
                 selected_fpga_port_number = fpga_port_number
             elif selected_fpga_port_number != fpga_port_number:
-                self._logger.error("I2C bus '%s' is not on the same FPGA port as the other buses" % (bus_name) )
+                self._logger.error("%r: I2C bus '%s' is not on the same FPGA port as the other buses" % (self, bus_name) )
             selected_switch_port_numbers.append(switch_port_number)
             # self._logger.debug("Enabling I2C bus %s" % bus_name)
 
@@ -1153,12 +1179,30 @@ class I2CInterface(object):
         Writes up to 3 bytes to the addressed I2C device and/or
         reads up to 4 bytes from that device after a restart. See
         the FPGA I2C module for detailed method description.
+
+        Parameters:
+            See `I2C.write_read`
+
+        Returns:    
+            See `I2C.write_read`
+
+        Exceptions:
+
+            IOError: Raised by an FPGA-based I2C controller in case of transaction errors
+
         """
         # self._logger.debug("Accessing I2C bus...")
         return self.write_read_fn(*args, **kwargs)
 
     def is_present(self, addr, bus_name=None):
         """ Test the presence of an I2C device at the specified address.
+
+        Parameters:
+
+            addr (int): I2C address of the device to query
+
+            bus_name (str, int, or list of str or int): I2C bus(es) to activate
+
         """
         if bus_name:
             self.select_bus(bus_name, retry=3)
@@ -1278,14 +1322,14 @@ class IceBoardHardware(object):
         """
 
         self._logger = logging.getLogger(__name__)
-        self._logger.debug('%.32r: Initializing Iceboard hardware' % iceboard)
+        self._logger.debug('%r: Initializing Iceboard hardware' % iceboard)
         self._iceboard = iceboard
         self._i2c = self._iceboard.i2c
-        self._logger.debug('%.32r: Instantiating Motherboard EEPROM managers' % self._iceboard)
+        self._logger.debug('%r: Instantiating Motherboard EEPROM managers' % self._iceboard)
         self._motherboard_eeprom_data = eeprom.eeprom(self._i2c, self._MOTHERBOARD_EEPROM_DATA_ADDR, 'GPIO', self._MOTHERBOARD_EEPROM_ADDR_WIDTH, self._MOTHERBOARD_EEPROM_PAGE_SIZE)
         self._motherboard_eeprom_serial = eeprom.eeprom(self._i2c, self._MOTHERBOARD_EEPROM_SERIAL_ADDR, 'GPIO', self._MOTHERBOARD_EEPROM_ADDR_WIDTH, self._MOTHERBOARD_EEPROM_PAGE_SIZE)
 
-        self._logger.debug('%.32r:  Instantiating FMC EEPROM managers' % self._iceboard)
+        self._logger.debug('%r:  Instantiating FMC EEPROM managers' % self._iceboard)
 
         # We check if the EEPROM has multiple pages, and if so, we *assume* that
         # the EEPROM is a large (non-FMC compliant) EEPROM with 2-byte addresses.
@@ -1298,13 +1342,13 @@ class IceBoardHardware(object):
         # if there has another I2C device at the address following the EEPROM
         # address.
         if self._i2c.is_present(self._FMC_EEPROM_ADDR+1, bus_name='FMCA'):
-            self._logger.debug('%.32r: Detected multipage EEPROM on FMCA. Assuming >16-bit addressing.' % self._iceboard)
+            self._logger.debug('%r: Detected multipage EEPROM on FMCA. Assuming >16-bit addressing.' % self._iceboard)
             self._fmca_eeprom = eeprom.eeprom(self._i2c, self._FMC_EEPROM_ADDR, 'FMCA', self._MCGILL_FMC_EEPROM_ADDR_WIDTH, self._MCGILL_FMC_EEPROM_PAGE_SIZE)
         else:
             self._fmca_eeprom = eeprom.eeprom(self._i2c, self._FMC_EEPROM_ADDR, 'FMCA', self._FMC_EEPROM_ADDR_WIDTH, self._FMC_EEPROM_PAGE_SIZE)
 
         if self._i2c.is_present(self._FMC_EEPROM_ADDR+1, bus_name='FMCB'):
-            self._logger.debug('%.32r: Detected multipage EEPROM on FMCB. Assuming >16-bit addressing.' % self._iceboard)
+            self._logger.debug('%r: Detected multipage EEPROM on FMCB. Assuming >16-bit addressing.' % self._iceboard)
             self._fmcb_eeprom = eeprom.eeprom(self._i2c, self._FMC_EEPROM_ADDR, 'FMCB', self._MCGILL_FMC_EEPROM_ADDR_WIDTH, self._MCGILL_FMC_EEPROM_PAGE_SIZE)
         else:
             self._fmcb_eeprom = eeprom.eeprom(self._i2c, self._FMC_EEPROM_ADDR, 'FMCB', self._FMC_EEPROM_ADDR_WIDTH, self._FMC_EEPROM_PAGE_SIZE)
@@ -1315,7 +1359,7 @@ class IceBoardHardware(object):
             }
 
 
-        self._logger.debug('%.32r: Instantiating I2C GPIO manager' % self._iceboard)
+        self._logger.debug('%r: Instantiating I2C GPIO manager' % self._iceboard)
         self._gpio_power = pca9575.pca9575(self._i2c, self._GPIO_POWER_I2C_ADDR, 'GPIO')
         self._gpio_sw_leds = pca9575.pca9575(self._i2c, self._GPIO_SW_LEDS_ADDR, 'GPIO')
         self._gpio_arm_phy_leds = pca9575.pca9575(self._i2c, self._GPIO_ARM_PHY_LEDS_ADDR, 'GPIO')
@@ -1377,8 +1421,8 @@ class IceBoardHardware(object):
             'FMCB_PG_M2C': (self._gpio_power, 1, 3, 1)
         })
 
-        self._qsfpa = qsfp.QSFP(self._i2c, bus_name='QSFPA', gpio_prefix='QSFPA_', gpio=self._gpio)
-        self._qsfpb = qsfp.QSFP(self._i2c, bus_name='QSFPB', gpio_prefix='QSFPB_', gpio=self._gpio)
+        self._qsfpa = qsfp.QSFP(self._i2c, bus_name='QSFPA', gpio_prefix='QSFPA_', gpio=self._gpio, parent=self)
+        self._qsfpb = qsfp.QSFP(self._i2c, bus_name='QSFPB', gpio_prefix='QSFPB_', gpio=self._gpio, parent=self)
 
         self.qsfp = Ccoll((self._qsfpa, self._qsfpb))
         # self._logger.info(' Instantiating I2C temperature sensors')
@@ -1434,12 +1478,14 @@ class IceBoardHardware(object):
         #     'FMCB_VADJ': (self._power_fmcb_vadj, 2.5, 5, 1., 0.5)
         # }
 
+    def __repr__(self):
+        return "%r.%s" % (self._iceboard, self.__class__.__name__)
+
     @async
     def open(self):
         """
         """
         pass
-
 
     def close(self):
         self._logger.debug('Closing Iceboard hardware')
@@ -1632,7 +1678,7 @@ class IceBoardHardware(object):
     #                 try:
     #                     tmp_object.init(bit_resolution)
     #                 except:
-    #                     self._logger.info('%.32r: Temperature sensor %s failed to initialize.' % (self._iceboard, temp_sensor))
+    #                     self._logger.info('%r: Temperature sensor %s failed to initialize.' % (self._iceboard, temp_sensor))
 
     # def _init_power_sensors(self, power_sensor_name=None):
     #     """
@@ -1656,7 +1702,7 @@ class IceBoardHardware(object):
     #             try:
     #                 power_sensor_object.init(v_out=v_out, r_shunt=r_shunt, i_typ=i_typ, tol_i=tol_i)
     #             except:
-    #                 self._logger.info('%.32r: Power sensor %s failed to initialize.' % (self._iceboard, power_sensor))
+    #                 self._logger.info('%r: Power sensor %s failed to initialize.' % (self._iceboard, power_sensor))
 
 
     # def get_temperature(self, temperature_sensor_name=None):

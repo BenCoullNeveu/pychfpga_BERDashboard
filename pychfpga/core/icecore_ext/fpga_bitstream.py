@@ -71,7 +71,7 @@ class FpgaBitstream(object):
         timestamp = None
         md5_string = None
 
-        self.logger.info('%.32r: Reading file from URL %s ...' %
+        self.logger.info('%r: Reading file from URL %s ...' %
                          (self, self.url))
         if '://' in self.url:
             with urllib2.urlopen(self.url) as res:
@@ -81,7 +81,7 @@ class FpgaBitstream(object):
             # binary
             with open(self.url, 'rb') as file:
                 data = file.read()
-        self.logger.info('%.32r: Read %0.3f MBytes' % (self, len(data) / 1e6))
+        self.logger.info('%r: Read %0.3f MBytes' % (self, len(data) / 1e6))
 
         is_bin = struct.unpack('>Q', data[0:8])[0] == BIN_PREFIX
 
@@ -90,7 +90,7 @@ class FpgaBitstream(object):
             # Field 1 - ignore
             length = struct.unpack('>H', data[pos:pos+2])[0]
             self.logger.debug(
-                '%.32r: Field 1: 0x%s' % (self, ''.join(
+                '%r: Field 1: 0x%s' % (self, ''.join(
                     ['%0X' % ord(c) for c in data[pos+2: pos+2+length]]))
                 )
             pos += length + 2
@@ -98,7 +98,7 @@ class FpgaBitstream(object):
             length = struct.unpack('>H', data[pos:pos+2])[0]
             field = data[pos + 2: pos + 2 + length]
             self.logger.debug(
-                '%.32r: Field 2 (%i bytes): %s' % (self, length, field))
+                '%r: Field 2 (%i bytes): %s' % (self, length, field))
             if field != 'a':
                 self.logger.error('This is not a valid bit file')
                 return
@@ -106,14 +106,14 @@ class FpgaBitstream(object):
             # Field 3
             length = struct.unpack('>H', data[pos:pos+2])[0]
             self.logger.debug(
-                '%.32r: Field 3: %s' % (self, data[pos+2:pos+2+length]))
+                '%r: Field 3: %s' % (self, data[pos+2:pos+2+length]))
             pos += length + 2
             # Field 4
             tag = data[pos]
             length = struct.unpack('>H', data[pos+1: pos+2+1])[0]
             fpga_model = data[pos+2+1: pos+2+1+length]
             self.logger.debug(
-                '%.32r: Field 4 (tag=%s, length = %i bytes): %s' %
+                '%r: Field 4 (tag=%s, length = %i bytes): %s' %
                 (self, tag, length, fpga_model))
             pos += length + 2 + 1
             # Field 5
@@ -121,7 +121,7 @@ class FpgaBitstream(object):
             length = struct.unpack('>H', data[pos+1: pos+2+1])[0]
             firmware_date = data[pos+2+1: pos+2+1+length]
             self.logger.debug(
-                '%.32r: Field 5 (tag=%s, length = %i bytes): %s' %
+                '%r: Field 5 (tag=%s, length = %i bytes): %s' %
                 (self, tag, length, firmware_date))
             pos += length + 2 + 1
             # Field 6
@@ -129,14 +129,14 @@ class FpgaBitstream(object):
             length = struct.unpack('>H', data[pos+1: pos+2+1])[0]
             firmware_time = data[pos+2+1: pos+2+1+length]
             self.logger.debug(
-                '%.32r: Field 6 (tag=%s, length = %i bytes): %s' %
+                '%r: Field 6 (tag=%s, length = %i bytes): %s' %
                 (self, tag, length, data[pos+2+1: pos+2+1+length]))
             pos += length + 2 + 1
             # Field 7
             tag = data[pos]
             length = struct.unpack('>L', data[pos+1: pos+4+1])[0]
             self.logger.debug(
-                '%.32r: Field 7 (tag=%s, length= %i bytes): [data]' %
+                '%r: Field 7 (tag=%s, length= %i bytes): [data]' %
                 (self, tag, length))
             pos += 4 + 1  # skip the header. Now points to cofiguration data
             bitstream = data[pos:]
@@ -152,7 +152,7 @@ class FpgaBitstream(object):
             # prefix = struct.unpack('>Q', bitstream[0:8])[0]
             # if prefix != BIN_PREFIX:
             #     self.logger.error(
-            #    '%.32r: This is not a valid bit file. Header is 0x%016X' %
+            #    '%r: This is not a valid bit file. Header is 0x%016X' %
             #     (self, prefix))
 
         else:

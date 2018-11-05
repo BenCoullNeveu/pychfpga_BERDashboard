@@ -46,6 +46,10 @@ class ANT_channel(object):
         self.FUNCGEN = FUNCGEN.FUNCGEN_base(fpga_instance, base_address + self.FUNCGEN_OFFSET_ADDR*submodule_address_increment, instance_number)
         self.frame_length = self.fpga.FRAME_LENGTH
 
+    def __repr__(self):
+        """ Return a string that represents this object and its parent object.
+        """
+        return "%r.%s(%i)" % (self.fpga, self.__class__.__name__, self.ant_number)
 
     def init(self, fmc_present):
 
@@ -97,6 +101,11 @@ class ANT_base(object):
         for i in range(fpga.NUMBER_OF_ANTENNAS):
             self.ANT.append(ANT_channel(self.fpga, base_address + i * address_increment, submodule_address_increment, i))
 
+    def __repr__(self):
+        """ Return a string that represents this object and its parent object.
+        """
+        return "%r.%s" % (self.fpga, self.__class__.__name__)
+
     def __getitem__(self, key):
         """If the user indexes this object (ANT[n] instead of ANT) then return the channelizer instance"""
         return self.ANT[key]
@@ -146,22 +155,22 @@ class ANT_base(object):
 
         # Selects which clock is used to clock the channelizes based on whether the ADC card that normally provides the clock is present or not.
         if fmc_present[self.fpga.CHANNELIZERS_CLOCK_SOURCE]:
-            self.logger.debug('%.32r: Using the ADC to generate the channelizer clock' % self.fpga)
+            self.logger.debug('%r: Using the ADC to generate the channelizer clock' % self)
             if self.fpga._sampling_frequency == 800.0e6:
                 self.fpga.GPIO.CHAN_CLK_SRC = 1 # *** JFC: uses the internal clock always. Works only for sampling at 800.000 MSPS
-                self.logger.debug("%.32r: Since the sampling frequency is exactly 800.000000 MHz, we'll use the internal 200 MHz clock to clock the channelizers instead of the ADC clock so that syncing the board won't cause large current changes that may upset the core switcher", self.fpga)
+                self.logger.debug("%r: Since the sampling frequency is exactly 800.000000 MHz, we'll use the internal 200 MHz clock to clock the channelizers instead of the ADC clock so that syncing the board won't cause large current changes that may upset the core switcher" % self)
             else:
                 self.fpga.GPIO.CHAN_CLK_SRC = 0 # uses the ADC clock to clock the channelizers
-                self.logger.error("%.32r: The channelizers is clocked by the ADC because we do not sample at exactly 800 MHz. The channelizer clock will be interrupted during syncing, which will cause cause large current changes that may upset the core switcher", self.fpga)
+                self.logger.error("%r: The channelizers is clocked by the ADC because we do not sample at exactly 800 MHz. The channelizer clock will be interrupted during syncing, which will cause cause large current changes that may upset the core switcher" % self)
         else:
-            self.logger.debug('%.32r: Using the internal clock to generate the channelizer clock since the ADC is not available' % self.fpga)
+            self.logger.debug('%r: Using the internal clock to generate the channelizer clock since the ADC is not available' % self)
             self.fpga.GPIO.CHAN_CLK_SRC = 1 # uses the internal 200 MHz clock to clock the channelizer
 
-        #self.logger.debug("%.32r: Initializing each channelizer", self.fpga)
+        #self.logger.debug("%r: Initializing each channelizer", self.fpga)
         for (i, ant) in enumerate(self.ANT):
-            # self.logger.debug('%.32r: Initializing channelizer #%i %s' % (self.fpga, ant.ant_number, '' if fmc_present[i] else '(No ADC board)'))
+            # self.logger.debug('%r: Initializing channelizer #%i %s' % (self.fpga, ant.ant_number, '' if fmc_present[i] else '(No ADC board)'))
             ant.init(fmc_present[i])
-        #self.logger.debug("%.32r: Initializing delay tables", self.fpga)
+        #self.logger.debug("%r: Initializing delay tables", self.fpga)
         
         if delay_table is not None:
             self.set_adc_delays(delay_table)
@@ -192,7 +201,7 @@ class ANT_base(object):
                 sample_delay = adc_delay_table[ch]['sample_delay']
                 clock_delay = adc_delay_table[ch]['clock_delay']
                 if (tap_delays is not None and  any(bd is None or bd < 0 for bd in tap_delays)) or (sample_delay is not None and sample_delay < 0):
-                    self.logger.warning("Skipping channel set_delay on channel %i since Invalid bit or sample delay detected in delay table entry" % ch)
+                    self.logger.warning("%r: Skipping channel set_delay on channel %i since Invalid bit or sample delay detected in delay table entry" % (self, ch))
                 else:
                     ant.ADCDAQ.set_delays((tap_delays, sample_delay, clock_delay))
 
@@ -254,4 +263,3 @@ class ANT_base(object):
                 print
         except KeyboardInterrupt:
             pass
-

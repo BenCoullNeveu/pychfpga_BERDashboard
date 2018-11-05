@@ -455,22 +455,23 @@ class FPGAArray(object):
         self.logger.info('%r: ------------------------' % self)
         self.logger.info('%r: F P G A   A R R A Y' % self)
         self.logger.info('%r: ------------------------' % self)
-        self.logger.info('%r: Called with: %s' % (self, ', '.join((
-            'if_ip = %s' % if_ip,
-            'iceboards = %s' % iceboards,
-            'icecrates = %s' % icecrates,
-            'subarrays = %s' % subarrays,
-            'ping = %s' % ping,
-            'mdns_timeout = %s' % mdns_timeout,
-            'exclude_iceboards = %s' % exclude_iceboards,
-            'bitfile = %s' % bitfile,
-            'prog = %s' % prog,
-            'open = %s' % open,
-            'no_mezz = %s' % no_mezz,
-            # 'sampling_frequency = %s' % sampling_frequency,
-            # 'reference_frequency = %s' % reference_frequency,
-            'sync_method = %s' % sync_method,
-            'sync_source = %s' % sync_source))))
+        self.logger.info('%r: Called with for following parameters' % self)
+        self.logger.info('%r:     if_ip = %s' % (self, if_ip))
+        self.logger.info('%r:     iceboards = %s' % (self, iceboards))
+        self.logger.info('%r:     icecrates = %s' % (self, icecrates))
+        self.logger.info('%r:     subarrays = %s' % (self, subarrays))
+        self.logger.info('%r:     ping = %s' % (self, ping))
+        self.logger.info('%r:     mdns_timeout = %s' % (self, mdns_timeout))
+        self.logger.info('%r:     exclude_iceboards = %s' % (self, exclude_iceboards))
+        self.logger.info('%r:     bitfile = %s' % (self, bitfile))
+        self.logger.info('%r:     prog = %s' % (self, prog))
+        self.logger.info('%r:     open = %s' % (self, open))
+        self.logger.info('%r:     no_mezz = %s' % (self, no_mezz))
+        # self.logger.info('%r:     sampling_frequency = %s' % (self, sampling_frequency))
+        # self.logger.info('%r:     reference_frequency = %s' % (self, reference_frequency))
+        self.logger.info('%r:     sync_method = %s' % (self, sync_method))
+        self.logger.info('%r:     sync_source = %s' % (self, sync_source))
+        self.logger.info('%r: ------------------------' % self)
 
         __main__._host_interface_ip_addr = if_ip
 
@@ -506,6 +507,7 @@ class FPGAArray(object):
         # Add `icecrates`
         if icecrates:
             hw_string += 'MGK7BP16 '+ ' '.join(icecrates) + ' '
+        self.logger.debug("%r: The composite hardware description string is: '%s'" %  (self, hw_string))
 
         # Parse the hwm string into a hardware table. The hardware table is
         # not the hardware map, but represents the entries that we want to add
@@ -514,11 +516,13 @@ class FPGAArray(object):
             {(crate_number,): ('icecrates', (model, serial, crate_number))
              for crate_number, (model, serial) in crate_map.items()}}
         hw_table = parse_hw_string(hw_string, remap_table)
-        self.logger.debug('hw table = %s' %  hw_table)
+        self.logger.debug('%r: The hardware description table obtained from hardware description string is:' % self)
+        for key, value in hw_table.items():
+            self.logger.debug('%r:     %s:%r' % (self, key, value))
 
         # Check if there were 'crate' entries that were not remapped to icececrate entries
         if hw_table.crates:
-            self.logger.warn('The following hardware map crate entries could not be resolved into backplane model/serial: %s' % hw_table.crates)
+            self.logger.warning('The following hardware map crate entries could not be resolved into backplane model/serial: %s' % hw_table.crates)
 
         # Create a *reverse* crate map ({(model,serial):number} instead of {number:(model,serial)})
         # that will be used later with set_crate_numbers() to assign crate numbers to crates if
@@ -537,9 +541,9 @@ class FPGAArray(object):
             # numbers in the order they were specified in the hw description string (first crate =
             # crate 0, second crate is crate 1 etc)
             else:
-                crate_number_map = {(model, serial) : i
+                crate_number_map = {(model, serial): i
                     for i, (model, serial, crate_number) in enumerate(hw_table.icecrates)}
-        self.logger.debug('icecrate map=%s' % crate_number_map)
+        self.logger.debug('%r: The Icecrate map is %s' % (self, crate_number_map))
 
         # We've got our crate numbers. Remove them from the icecrate list so we pass only the (model,
         # serial) to the mdns discovery function.
@@ -562,7 +566,7 @@ class FPGAArray(object):
         # object of the type contained in the ``class`` element and passing it the remaining
         # elements as keyword arguments
         elif isinstance(hwm, list):
-            self.logger.debug('Creating Hardware Map from list')
+            self.logger.debug('%r: Creating Hardware Map from list' % self)
             self.hwm = HardwareMap()  # Create empty hardware map
             for obj in hwm:
                 params = dict(obj) # make a copy
@@ -573,7 +577,7 @@ class FPGAArray(object):
                     crate_number = params.pop('crate_number', None)
                     #self.logger.debug('%r: Crate %r is in %r' % (self, crate_number, params))
                     if crate_number is not None:
-                        crate = self.hwm.query(IceCrateExt).filter(IceCrateExt.crate_number==crate_number).one()
+                        crate = self.hwm.query(IceCrateExt).filter(IceCrateExt.crate_number == crate_number).one()
                         #self.logger.debug('%r: Assigning crate %r to board %r' % (self, crate, params))
                         params['crate'] = crate
                     else:
@@ -598,9 +602,9 @@ class FPGAArray(object):
         ping_timeout = 3
         missing_boards = []
         if ping:
-            self.logger.info('%r: Pinging IceBoards specified in YAML file' % (self))
             ib_to_ping = self.hwm.query(IceBoardPlus).as_dict()  # use as_dict so ib_to_ping does not change as we delete boards from the hwm
             if ib_to_ping:
+                self.logger.info('%r: Pinging the %i IceBoards specified explicitely in YAML file' % (self, len(ib_to_ping)))
                 ping_results = yield [ib.ping.async(timeout=ping_timeout) for ib in ib_to_ping]  # asynchronous parallel call to all boards
                 #self.logger.debug('%r: Ping results are %s' % (self, ping_results))
                 for i, ping_successful in enumerate(ping_results):
@@ -671,9 +675,11 @@ class FPGAArray(object):
         # it gets.
         self.logger.info('%r: Establishing ARM/Tuber communication' % (self))
         ibs = self.hwm.query(IceBoardPlus)
-        t0 = time.time()
-        yield [ib._tuber_get_meta.async() for ib in ibs]
-        self.logger.info('%r: ARM conneciton established. It took %s seconds' % (self, time.time() - t0))
+        if ibs.count():
+            self.logger.info('%r: Establishing communication with the %i motherboard ARM processors over the HTTP/Tuber protocol and acquiring list of remote functions' % (self, ibs.count()))
+            t0 = time.time()
+            yield [ib._tuber_get_meta.async() for ib in ibs]
+            self.logger.info('%r: Connection with %i ARM processors established. It took %s seconds' % (self, ibs.count(), time.time() - t0))
 
         ########################################################
         # Resolve missing serial/crate/slot info through the ARM
@@ -684,7 +690,7 @@ class FPGAArray(object):
         ib_without_serial = self.hwm.query(IceBoardPlus).filter(IceBoardPlus.serial == None)
         if ib_without_serial.count():
             t0 = time.time()
-            self.logger.info('%r: Auto-Discovering serial number for IceBoards %s' %
+            self.logger.info('%r: Auto-Discovering the serial number of the IceBoards with known hostnames: %s' %
                 (self, ', '.join(ib_without_serial.hostname)))
             # concurrently resolve serials
             futures = [ib.discover_serial.async() for ib in ib_without_serial] # Tuber method
@@ -692,15 +698,17 @@ class FPGAArray(object):
             yield futures # [ib.discover_serial.async() for ib in ib_without_serial]
             self.logger.info('%r: Finished Auto-Discovering serial number for IceBoards. Took %f seconds.' % (self, time.time() - t0))
 
-        self.logger.info('%r: Auto-Discovering slot numbers of IceBoards')
-        t0 = time.time()
-        yield [ib.discover_slot.async() for ib in self.hwm.query(IceBoardPlus)]
-        self.logger.info('%r: Finished Auto-Discovering slot numbers for IceBoards. Took %f seconds.' % (self, time.time() - t0))
+        ib_without_slot = self.hwm.query(IceBoardPlus)
+        if ib_without_slot.count():
+            self.logger.info('%r: Auto-Discovering & validating the slot numbers for %i IceBoards with known hostnames...' % (self, ib_without_slot.count()))
+            t0 = time.time()
+            yield [ib.discover_slot.async() for ib in ib_without_slot]
+            self.logger.info('%r: Finished Auto-Discovering slot numbers for IceBoards. Took %f seconds.' % (self, time.time() - t0))
 
-        ib_without_crate = self.hwm.query(IceBoardPlus).filter(or_(IceBoardPlus.crate==None, IceBoardPlus.slot==None))
+        ib_without_crate = self.hwm.query(IceBoardPlus).filter(or_(IceBoardPlus.crate == None, IceBoardPlus.slot == None))
         if ib_without_crate.count():
             t0 = time.time()
-            self.logger.info('%r: Auto-Discovering crate information for IceBoards %s' %
+            self.logger.info('%r: Auto-Discovering crate information for IceBoards with known hostnames: %s' %
                 (self, ', '.join(ib_without_crate.hostname)))
             yield [ib.discover_crate.async() for ib in ib_without_crate]
             self.logger.info('%r: Finished Auto-Discovering crate serial numbers. Took %f seconds.' % (self, time.time() - t0))
@@ -710,7 +718,9 @@ class FPGAArray(object):
         ###########################################################################
 
         if hw_table.iceboards or hw_table.icecrates :
-            self.logger.info('Discovering IceBoards %s and IceCrates %s...' % (hw_table.iceboards, hw_table.icecrates))
+            self.logger.info('%r: Discovering IceBoards and Icecrates specified by serial number using mDNS' % self)
+            self.logger.info('%r:     IceBoards to find: %s' % (self, hw_table.iceboards))
+            self.logger.info('%r:     IceCrates to find: %s' % (self, hw_table.icecrates))
             self.print_flush()
             mdns_discover(self.hwm,
                           icecrates=hw_table.icecrates,
@@ -719,6 +729,7 @@ class FPGAArray(object):
 
         # Remove iceboards to be excluded (by serial number)
         if exclude_iceboards:
+            self.logger.info('%r: Removing IceBoards based on exclusion list: %s' % (self, exclude_iceboards))
             for ib in self.hwm.query(IceBoardPlus):
                 try:
                     serial = str(int(ib.serial))
@@ -728,7 +739,7 @@ class FPGAArray(object):
                     self.hwm.delete(ib)
             self.hwm.flush()
 
-        # Hardware map is complete
+        self.logger.info('%r: Hardware map is complete' % self)
 
         #################################
         # Create self.ib and self.ic
@@ -812,14 +823,14 @@ class FPGAArray(object):
 
             # Configure the FPGA with the bitstream associated with the handler
             if prog:
-                self.logger.info('Configuring FPGAs...')
+                self.logger.info('%r: Configuring FPGAs...' % self)
                 # Associate the bitstream with the target Handler
                 self.fpga_bitstream = FPGABitstream(bitfile, auto_reload=False)
-                self.logger.info('Loaded bitfile: %s' % bitfile)
-                str(self.fpga_bitstream)
+                self.logger.info('%r: Loaded bitfile: %s' % (self, bitfile))
+                # str(self.fpga_bitstream)
                 self.ib.register_fpga_bitstream(self.fpga_bitstream)
                 yield [ib.set_fpga_bitstream.async(force= (prog > 1)) for ib in self.ib]
-                self.logger.info('Done configuring FPGAs')
+                self.logger.info('%r: Done configuring FPGAs' % self)
 
         self.print_flush()
 
@@ -833,7 +844,7 @@ class FPGAArray(object):
             if if_ip:
                 self.ib.interface_ip_addr = if_ip
 
-            self.logger.info('Initializing firmware (calling ib.open())')
+            self.logger.info('%r: Initializing firmware (calling ib.open())' % self)
             yield [ib.open.async(adc_delay_table=ADC_DELAY_TABLE,
                                  udp_retries=udp_retries,
                                  init=open,
@@ -1003,7 +1014,7 @@ class FPGAArray(object):
             interconnected in pairs.
         """
 
-        self.logger.info('%r: setting crate numbers for crates %r' % (self, self.ic))
+        self.logger.info('%r: Setting crate numbers for the following crates %s' % (self, ', '.join(repr(ic) for ic in self.ic)))
 
         for ic in self.ic:
             model = ic.part_number
@@ -1022,11 +1033,11 @@ class FPGAArray(object):
             if new_crate_number is not None:
                 ic.crate_number = int(new_crate_number)
                 self.hwm.flush()
-                self.logger.info('Assigining crate number %r to crate %s' % (new_crate_number, ic.get_string_id()))
+                self.logger.info('%r: Assigining crate number %r to crate %s' % (self, new_crate_number, ic.get_string_id()))
             elif strict:
                 raise RuntimeError('Cannot find a crate number for crate %s' % ic.get_string_id())
             else:
-                self.logger.warning('set_crate_number: Cannot find a crate number for crate %s' % ic.get_string_id())
+                self.logger.warning('%r: set_crate_number: Cannot find a crate number for crate %s' % (self, ic.get_string_id()))
 
 
     def set_operational_mode(self,
@@ -3129,7 +3140,6 @@ def parse_hw_string(hw_string, remap_table={}, dut_id_patterns=ICE_PATTERNS):
                     hw_table[target_type].append(target_entry)
                     hw_table[type].remove(entry)
 
-    logger.debug('hw_table: %s' % hw_table)
     return hw_table
 
 
