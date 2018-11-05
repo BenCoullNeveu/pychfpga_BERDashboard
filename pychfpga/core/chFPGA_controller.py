@@ -3428,7 +3428,7 @@ class chFPGA_controller(IceBoardExtHandler):
         if not self.crate or self.slot is None:
             return (self.get_string_id(), ) if lane is None else (self.get_string_id(), lane)
         else:
-            return self.get_crate_id(self.slot - 1)
+            return self.get_crate_id(self.slot - 1) + (tuple() if lane is None else (lane,) )
 
 
     def get_crate_id(self, slot=None):
