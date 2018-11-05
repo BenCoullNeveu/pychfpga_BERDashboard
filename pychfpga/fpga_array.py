@@ -627,6 +627,8 @@ class FPGAArray(object):
                         self.logger.debug('%r: Deleting %r from the YAML hardware map' % (self, ib))
                         self.hwm.delete(ib)
                 self.hwm.flush()
+            else:
+                self.logger.info('%r: There are no IceBoards specified explicitely in YAML Hardware map. Ping verification is not performed on those.' % self)
             if missing_boards:
                 message ="%r: Could not ping the following boards: %s" % (self, ', '.join(missing_boards))
                 if ignore_missing_boards:
@@ -638,39 +640,46 @@ class FPGAArray(object):
         #######################################################
         # Adding iceboards with explicit hostnames/IP addresses
         #######################################################
-        # Extract iceboards that are explicitely listed with IP addresses or hostname instead of
+        # We now add to the hwm the boards that were specified in the hardware description string.
+        #
+        # We first extract iceboards that are explicitely listed with IP addresses or hostname instead of
         # serial numbers. We can talk to these boards, which means we can figure out everything we
         # need from these boards (serial, crate, slot  etc) right away without requiring us to do
         # mDNS query, which is the last resort (because not all systems might have mDNS support).
 
-        added_ib = []
-        for (model, hostname) in list(hw_table.iceboards): # make a copy: we modify in-place
-            if model is None or '.' in str(hostname): # if it is actually a hostname. Might be an int serial
-                hw_table.iceboards.remove((model, hostname))
-                # ip_addr = socket.gethostbyname(hostname)  # convert hostname to IP address for faster Tuber access
-                new_ib = IceBoardPlus(hostname=hostname)
-                self.hwm.add(new_ib)
-                self.hwm.flush()
-                added_ib.append(new_ib)
-        # Explicitely listed boards must exist on the network
-        if ping:
-            # ping all boards concurrently
-            ping_results = yield {ib: ib.ping.async() for ib in added_ib}
-            # If some boards failed, raise an exception
-            if not all(ping_results.values()):
-                raise RuntimeError("%r: The following Iceboards could not be pigned: '%s'" % (
-                    self,
-                    ', '.join('%r (%s)' % (ib, ib.tuber_uri)
-                              for ib, ping_result in ping_results.items() if not ping_result)))
-            # resolve hostnames into IP addresses
-            # this is not concurrent, unfortunately... this is why we checked ping first, otherwise it blocks for a long time
-            t0 = time.time()
-            for ib, ping_result in ping_results.items():
-                if ping_result:
-                    ib.hostname = socket.gethostbyname(ib.hostname)
-            if any(ping_results.values()):
-                self.hwm.flush()
-            self.logger.info('%r: resolving IP addresses took %s seconds' % (self, time.time() - t0))
+        if hw_table.iceboards:
+            self.logger.info('%r: Adding Iceboards listed in hardware description string with explicit hostnames' % self)
+            added_ib = []
+            for (model, hostname) in list(hw_table.iceboards): # make a copy: we modify in-place
+                if model is None or '.' in str(hostname): # if it is actually a hostname. Might be an int serial
+                    hw_table.iceboards.remove((model, hostname)) # remove it. We'll be left with boards that require mDNS...
+                    # ip_addr = socket.gethostbyname(hostname)  # convert hostname to IP address for faster Tuber access
+                    new_ib = IceBoardPlus(hostname=hostname, handler_name='chFPGA_controller')
+                    self.hwm.add(new_ib)
+                    self.hwm.flush()
+                    added_ib.append(new_ib)
+            # Explicitely listed boards must exist on the network
+            if ping and added_ib:
+                self.logger.info('%r: Pinging Iceboards with explicit hostnames in the hardware description string' % self)
+                # ping all boards concurrently
+                ping_results = yield {ib: ib.ping.async() for ib in added_ib}
+                # If some boards failed, raise an exception
+                if not all(ping_results.values()):
+                    raise RuntimeError("%r: The following Iceboards could not be pigned: '%s'" % (
+                        self,
+                        ', '.join('%r (%s)' % (ib, ib.tuber_uri)
+                                  for ib, ping_result in ping_results.items() if not ping_result)))
+                # resolve hostnames into IP addresses
+                # this is not concurrent, unfortunately... this is why we checked ping first, otherwise it blocks for a long time
+
+                self.logger.info('%r: Resolving IP addresses of Iceboards that passed the ping test' % (self, time.time() - t0))
+                t0 = time.time()
+                for ib, ping_result in ping_results.items():
+                    if ping_result:
+                        ib.hostname = socket.gethostbyname(ib.hostname)
+                if any(ping_results.values()):
+                    self.hwm.flush()
+                self.logger.info('%r: Finished resolving IP addresses. It took %s seconds' % (self, time.time() - t0))
 
         ########################################################
         # Establish Tuber communication (ARM only)
@@ -680,7 +689,6 @@ class FPGAArray(object):
         # communication becore we start using Tuber methods. We want to cache the Tuber methods
         # asynchnously now instead of letting Tuber do it asynchrunously on the first Tuber command
         # it gets.
-        self.logger.info('%r: Establishing ARM/Tuber communication' % (self))
         ibs = self.hwm.query(IceBoardPlus)
         if ibs.count():
             self.logger.info('%r: Establishing communication with the %i motherboard ARM processors over the HTTP/Tuber protocol and acquiring list of remote functions' % (self, ibs.count()))
