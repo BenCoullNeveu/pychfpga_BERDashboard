@@ -151,6 +151,7 @@ class FPGAArray(object):
                  sync_source='bp_trig',
                  sync_master=None,
                  sync_master_time_source=None,
+                 max_sync_time_difference=20,
 
                  mode=None,
                  frames_per_packet=2,
@@ -324,6 +325,7 @@ class FPGAArray(object):
              sync_source=sync_source,
              sync_master=sync_master,
              sync_master_time_source=sync_master_time_source,
+             max_sync_time_difference=max_sync_time_difference,
              mode=mode,
              frames_per_packet=frames_per_packet,
              tx_power=tx_power,
@@ -383,6 +385,7 @@ class FPGAArray(object):
              sync_source=None,
              sync_master=None,
              sync_master_time_source=None,
+             max_sync_time_difference=20,
 
              mode=None,
              frames_per_packet=2,
@@ -404,6 +407,10 @@ class FPGAArray(object):
         self.ic = []
         self.sync_timestamp = None
 
+        self.max_sync_time_difference = max_sync_time_difference
+        self.tx_power = tx_power
+        self.mode = mode
+ 
         ###########################################
         # setup pychfpga.fpga_array logging
         ###########################################
@@ -1080,6 +1087,10 @@ class FPGAArray(object):
         # enable_gpu_link : Enables the GPU link transmission
 
         """
+        # use defaults that were set during initialization unless overriden
+        mode = mode or self.mode
+        tx_power = tx_power or self.tx_power
+
         self.logger.info('%r: Setting operational mode to %s' % (self, mode))
         # To make sure that the data acquisition and transmission will be done at the same rate, refuse to operate if there
         # are more than one IceBoard in the array and the boards are not all
@@ -1478,9 +1489,12 @@ class FPGAArray(object):
                 raise RuntimeError('The following IceBoards did not SYNC properly: %s' % (','.join(repr(ib) for ib in bad_ib)))
 
         ts = self.ib.get_irigb_time(trig=False, format='raw')
-        if len(set(t.nano for t in ts)) != 1:
-            self.logger.warning('%r: The timestamp is not the same for all boards after sync. Times are:n%s' %
-                (self,                  '\n'.join('%r:%i' % (ib, ts[i].nano) for i,ib in enumerate(self.ib))))
+        delta_ts = max(ts.nano) - min(ts.nano)
+        self.logger.info('%r: The sync time for all boards are:%s' %
+            (self, '\n'.join('%r:%i' % (ib.handler, ts[i].nano) for i,ib in enumerate(self.ib))))
+        self.logger.info('%r: The maximum sync time difference is %i ns' % (self, delta_ts) )
+        if delta_ts > self.max_sync_time_difference:
+            raise RuntimeError('The sync time difference of %i exceeds the maximum limit of %i' % (delta_ts, self.max_sync_time_difference))
         self.sync_timestamps = ts
         self.sync_timestamp = ts[0]
         for ib in self.ib:
