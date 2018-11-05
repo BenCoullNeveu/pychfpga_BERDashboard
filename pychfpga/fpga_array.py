@@ -1100,6 +1100,7 @@ class FPGAArray(object):
         tx_power = tx_power or self.tx_power
 
         self.logger.info('%r: Setting operational mode to %s' % (self, mode))
+        self.logger.info('%r: Using tx_power=%r' % (self, tx_power))
         # To make sure that the data acquisition and transmission will be done at the same rate, refuse to operate if there
         # are more than one IceBoard in the array and the boards are not all
         # set to operate on the backplane clock.
@@ -1217,15 +1218,12 @@ class FPGAArray(object):
                     # gtx.USER_RESET = 1
 
         # reset DFE at low power, then increase power
-
-        #links =
-
         for index in (0, 1):
-            print tx_power
             for tx_group in tx_power['corner_turn']:
                 lane_group = tx_group['lane_group']
                 default = tx_group['default']
-                exceptions = tx_group.get('exceptions', {})
+                exceptions = tx_group.get('exceptions', [])
+                self.logger.info('%r: TX power parameters are: %r (default=%r, exceptions=%r)' % (self, tx_group, default, exceptions))
                 self.set_tx_power(lane_group=lane_group, default_power=default, exceptions=exceptions, index=index)
             if index == 0:
                 time.sleep(0.3)
@@ -1245,7 +1243,7 @@ class FPGAArray(object):
                     pass
                     #self.logger.debug('%r: In %r,  %s is receiving from %s' % (self, ib.crate, rx, tx))
                 else:
-                    self.logger.debug('%r: In %r, %s has no corresponding transmitter' % (self, ib.crate, rx))
+                    self.logger.debug('%r: In %r, %s has no corresponding transmitter' % (self, ib.crate.handler, rx))
 
 
         # sync boards
@@ -1253,7 +1251,7 @@ class FPGAArray(object):
         self.logger.info('%r: Shuffling initialization completed. Syncing boards' % self)
         self.sync(delay=2)
 
-    def set_tx_power(self, default_power=(5, 10), lane_group=None, exceptions={}, index=0):
+    def set_tx_power(self, default_power=(5, 10), lane_group=None, exceptions=[], index=0):
         """ Set the power level of the corner-turn engine GTX transmitters.
 
         Parameters:
@@ -1267,9 +1265,9 @@ class FPGAArray(object):
             lane_group (str): lane group for which the power is set ('pcb' or
                 'qsfp').
 
-            exceptions (dict): map of the lane-specific power level exceptin, in the form:
+            exceptions (list): list of the lane-specific power level exceptin, in the form:
 
-                {(crate, slot, lane):power, ...}
+                [((crate, slot, lane), power_tuple), ...}
 
             index (int): used to select which value within a power tuple, list
                 or map will be used to set power.
@@ -1277,11 +1275,16 @@ class FPGAArray(object):
         if isinstance(default_power, int):
             default_power = (default_power, )
 
-        exceptions = {tuple(node_id): power_tuple for node_id, power_tuple in exceptions.items()}
+        exceptions = {tuple(node_id): power_tuple for node_id, power_tuple in exceptions}
+        self.logger.info('%r: Setting GTX power for lane group %s to power index %i' % (self, lane_group, index))
+        self.logger.info('%r:    Default power is %s' % (self, default_power))
+        self.logger.info('%r:    Power exceptions are %s' % (self, exceptions))
+
         for ib in self.ib:
             bp = ib.BP_SHUFFLE
             power_tuples = [(lane, exceptions.get(ib.get_id(lane), default_power)[index])
-                            for lane in bp.get_lane_numbers(lane_group)]
+                            for lane, gtx in enumerate(bp.get_gtx(lane_group=lane_group)) if gtx]
+            self.logger.info('%r: setting Tx power for %r %s to %r' % (self, ib.handler, lane_group, power_tuples))
             bp.set_tx_power(power_tuples, lane_group)
 
 
