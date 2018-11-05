@@ -85,7 +85,7 @@ class Module_base(object):
     #BitDef=BitDef_base # make class accessible to subclass (somehow the class is not inherited directly)
     # BITS = {} # Should be overriden by the subclass
 
-    def __init__(self, fpga_instance, base_address, instance_number=0):
+    def __init__(self, fpga_instance, base_address, instance_number=None):
         self._unlock()
         self.fpga = fpga_instance
         self.base_address = base_address
