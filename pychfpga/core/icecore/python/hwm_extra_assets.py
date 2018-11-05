@@ -440,7 +440,7 @@ class IceBoardPlus(IceBoard):
             serial = ipmi.product.serial_number
             slot_number = yield self.get_backplane_slot.async()
             self.logger.debug(
-                '%.32r: discover_crate(): '
+                '%r: discover_crate(): '
                 'Detected Backplane Model: %s Serial %s'
                 % (self, part_number, serial)
                 )
@@ -454,7 +454,7 @@ class IceBoardPlus(IceBoard):
 
         if not icecrate_class:
             self.logger.warning(
-                "%.32r: discover_crate(): "
+                "%r: discover_crate(): "
                 "There is no known backplane object with "
                 "polymorphic map name '%r'"
                 % (self, part_number))
@@ -462,7 +462,7 @@ class IceBoardPlus(IceBoard):
         if icecrate_class and update:
             if not self.hwm:
                 raise SystemError(
-                    '%.32r: discover_crate(): Attempt to update new backplane '
+                    '%r: discover_crate(): Attempt to update new backplane '
                     'object while the IceBoard is not yet added to the '
                     'hardware map. ' % self)
 
@@ -481,12 +481,12 @@ class IceBoardPlus(IceBoard):
                 existing_crate = self.hwm.query(icecrate_class).filter_by(serial=serial)
                 if existing_crate.count():  # If so, assign it to this iceboard
                     self.logger.debug(
-                        '%.32r: discover_crate(): Reusing IceCrate %s SN%s'
+                        '%r: discover_crate(): Reusing IceCrate %s SN%s'
                         % (self, part_number, serial))
                     self.crate = existing_crate.one()
                 else:  # otherwise create a new one and assign it
                     self.logger.debug(
-                        '%.32r: discover_crate(): Creating IceCrate %s SN%s'
+                        '%r: discover_crate(): Creating IceCrate %s SN%s'
                         % (self, part_number, serial))
                     new_crate = icecrate_class(serial=serial)
                     self.crate = new_crate
@@ -633,7 +633,7 @@ class IceBoardPlusHandler(IceBoardHandler):
         '''
 
         t0 = time.time()
-        self.logger.info('%.32r: called set_fpga_bitstream' % self)
+        self.logger.info('%r: called set_fpga_bitstream' % self)
 
         if hasattr(self, 'close'):
             self.close()
@@ -647,26 +647,26 @@ class IceBoardPlusHandler(IceBoardHandler):
         #    buf = str(buf)
 
         if hasattr(buf, 'crc32'):
-		crc32 = buf.crc32
-	else:
-		crc32 =  zlib.crc32(str(buf))  # compute CRC32 of the data if it not already precomputed in the 'buf' object
-	crc32 &=  0xFFFFFFFF
+            crc32 = buf.crc32
+        else:
+            crc32 =  zlib.crc32(str(buf))  # compute CRC32 of the data if it not already precomputed in the 'buf' object
+        crc32 &=  0xFFFFFFFF
         buf = str(buf)
 
-        self.logger.info('%.32r: getting is_programmed' % self)
+        self.logger.info('%r: getting is_programmed' % self)
         is_fpga_programmed = yield self.is_fpga_programmed.async()
-	t1 = time.time()
-        self.logger.info('%.32r: getting FPGA crc' % self)
+        t1 = time.time()
+        self.logger.info('%r: getting FPGA crc' % self)
         fpga_bitstream_crc = yield self.get_fpga_bitstream_crc.async()
-        self.logger.debug('%.32r: fpga_programmed=%s, force=%s, fpga_crc=%08X, bitstream_crc=%08X' % (self, is_fpga_programmed, force, fpga_bitstream_crc or 0, crc32 or 0))
-	t2 = time.time()
+        self.logger.debug('%r: fpga_programmed=%s, force=%s, fpga_crc=%08X, bitstream_crc=%08X' % (self, is_fpga_programmed, force, fpga_bitstream_crc or 0, crc32 or 0))
+        t2 = time.time()
         if not is_fpga_programmed or force \
            or (force is not None and (fpga_bitstream_crc != crc32)):
-            self.logger.info('%.32r: Configuring FPGA' % self)
+            self.logger.info('%r: Configuring FPGA' % self)
             if hasattr(buf, 'base64'):
-		b64_string = buf.base64
-	    else:
-		b64_string =  base64.b64encode(str(buf))
+                b64_string = buf.base64
+            else:
+                b64_string =  base64.b64encode(str(buf))
             # self._set_fpga_bitstream_base64(b64_string)
             t3 = time.time()
             yield self._set_fpga_bitstream_base64.async(b64_string)
@@ -676,7 +676,7 @@ class IceBoardPlusHandler(IceBoardHandler):
         else:
             t4 = time.time()
             self.logger.info(
-                '%.32r: FPGA is already configured. Skipping configuration. Took %.3fs' % (self, t4 - t0)
+                '%r: FPGA is already configured. Skipping configuration. Took %.3fs' % (self, t4 - t0)
                 )
 
     def get_fpga_bitstream(self, tag=None):

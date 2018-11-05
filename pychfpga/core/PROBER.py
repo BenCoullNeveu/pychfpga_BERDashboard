@@ -134,8 +134,8 @@ class PROBER_base(Module_base):
         # self.config_capture(1, 100) # Capture 1 frame every 100 frames
         channel = self.instance_number
         slot = (self.fpga.slot or 1) - 1   # 0-based, 0 if no slot
-        crate = self.fpga.crate.crate_number or 0 if self.fpga.crate else 0 # 0 if there is no backplane/crate, or the crate does not have an assigned crate number.
-        self.logger.debug('PROBER crate=%r, slot=%r, channel=%r' % (crate, slot, channel))
+        crate = self.fpga.crate.crate_number or 0 if self.fpga.crate else 0  # 0 if there is no backplane/crate, or the crate does not have an assigned crate number.
+        self.logger.debug('%r: Initializing channel %i' % (self, channel))
         self.PROBE_ID = 0xA0 + self.instance_number  # For backwards compatibility
         self.STREAM_ID = ((crate & 0xF) << 8) | ((slot & 0xF) << 4) | (channel & 0x0F)
         self.RESET = 1  # Make sure no data is being transmitted at reset

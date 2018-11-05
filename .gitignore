@@ -11,3 +11,4 @@
 *.7z
 out_*/
 /nbproject/
+src/

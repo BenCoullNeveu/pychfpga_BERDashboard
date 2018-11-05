@@ -479,7 +479,7 @@ class ChimeMaster(object):
 
         # Make a list of all all iceboards for each of the RawAcq node
         self.raw_acq_ibs = {}
-        for node_name, node_conf in conf.servers.items():
+        for node_name, node_conf in (conf.servers or {}).items():
             self.raw_acq_ibs[node_name] = set()
             for ib in node_conf.iceboards:  # ib is a (crate, slot) tuple)
                 self.raw_acq_ibs[node_name].update(self.get_iceboards(ib))
