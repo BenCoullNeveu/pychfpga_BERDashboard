@@ -749,6 +749,7 @@ class XGLinkArray(XGLinkCore):
         for gtx_number, gtx in enumerate(self.gtx):
             yield async_moment # let the ioloop process data
             #gtx_number = lane + link_group*self.NUMBER_OF_PCB_LANES
+            metrics.add('fpga_bp_link_tx_power', value=gtx.TXDIFFCTRL, gtx=gtx_number)
             metrics.add('fpga_bp_link_rx_power', value=gtx.DMONITOROUT & 0x7F, gtx=gtx_number)
             metrics.add('fpga_bp_link_block_lock', value=gtx.BLOCK_LOCK, gtx=gtx_number)
 
