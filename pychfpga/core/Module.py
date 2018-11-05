@@ -23,16 +23,23 @@ _CONTROL_BASE_ADDR = 0x000000
 _STATUS_BASE_ADDR = 0x080000
 _RAM_BASE_ADDR = 0x100000
 
+
+# Page values
+CONTROL = 0  # Control bytes (read/write)
+STATUS = 1  # STATUS bytes (read only)
+RAM = 2  # RAM or FIFO
+DRP = 3  # Dynamic Reconfiguration Port
+
 class BitField(object):
     """
     Holds the definition of a memory-mapped variable
     It is implemented as a data descriptor that calls the read_bitfield() and write_field() properties of the parent object when accessed.
     """
     # Page values
-    CONTROL = 0  # Control bytes (read/write)
-    STATUS = 1  # STATUS bytes (read only)
-    RAM = 2  # RAM or FIFO
-    DRP = 3  # Dynamic Reconfiguration Port
+    CONTROL = CONTROL  # Control bytes (read/write)
+    STATUS = STATUS  # STATUS bytes (read only)
+    RAM = RAM  # RAM or FIFO
+    DRP = DRP  # Dynamic Reconfiguration Port
 
 
     def __init__(self, page, addr, bit, width=1, default=None, doc='No documentation available'):
@@ -71,9 +78,9 @@ class Module_base(object):
     """ Implements basic interfaces to a module. It is intended to be inherited by a subclass that specializes to specific modules"""
     _locked = False # when 1, prevents the object to be modified
 
-    CONTROL = BitField.CONTROL
-    STATUS = BitField.STATUS
-    DRP = BitField.DRP
+    CONTROL = CONTROL
+    STATUS = STATUS
+    DRP = DRP
 
     #BitDef=BitDef_base # make class accessible to subclass (somehow the class is not inherited directly)
     # BITS = {} # Should be overriden by the subclass
