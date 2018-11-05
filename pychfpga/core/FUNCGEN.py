@@ -55,6 +55,37 @@ class FUNCGEN_base(Module_base):
         'nibble4':               FN_BUFFER_NIBBLE4,  # Sends the lower/upper nibble of the bytes in the buffer as a real value based on whether the frame number is even/odd.
         }
 
+
+    def one(self):
+        v = (9*np.ones(2048, dtype=np.uint8)) << 4 # with the offset encoding, 9s here result in 1s in the complex visibility data
+        v[1::2] = (8*np.ones(1024, dtype=np.uint8)) << 4 # with the offset encoding, 8s here result in 0s in the complex visibility data
+        return v
+
+    def freq_test(self, freq_test_bins=[]):
+        N = min(len(freq_test_bins), 108) # N has to be less that 108 for this to work
+        freq_pattern_real = np.array([ 1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  1,  2,  2,
+                                       2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  2,  3,  3,  3,  3,  3,
+                                       3,  3,  3,  3,  3,  3,  3,  3,  4,  4,  4,  4,  4,  4,  4,  4,  4,
+                                       4,  4,  5,  5,  5,  5,  5,  5,  5,  5,  5,  6,  6,  6,  6,  6,  6,
+                                       6,  6,  7,  7,  7,  7,  7,  7,  7,  8,  8,  8,  8,  8,  8,  9,  9,
+                                       9,  9,  9,  9, 10, 10, 10, 10, 11, 11, 11, 11, 11, 12, 12, 12, 12,
+                                       13, 13, 13, 14, 14, 15], dtype=np.uint8) << 4
+        freq_pattern_imag = np.array([ 1,  2,  3,  4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15,  2,  3,
+                                        4,  5,  6,  7,  8,  9, 10, 11, 12, 13, 14, 15,  3,  4,  5,  6,  7,
+                                        8,  9, 10, 11, 12, 13, 14, 15,  4,  5,  6,  8,  9, 10, 11, 12, 13,
+                                       14, 15,  6,  7,  8,  9, 11, 12, 13, 14, 15,  6,  8,  9, 10, 11, 12,
+                                       14, 15,  7,  8, 10, 12, 13, 14, 15,  8, 10, 12, 13, 14, 15,  9, 10,
+                                       11, 12, 14, 15, 12, 13, 14, 15, 11, 12, 13, 14, 15, 12, 13, 14, 15,
+                                       13, 14, 15, 14, 15, 15], dtype=np.uint8) << 4
+        v = np.zeros(2048, dtype=np.uint8)
+        v_real = np.zeros(1024, dtype=np.uint8)
+        v_imag = np.zeros(1024, dtype=np.uint8)
+        v_real[freq_test_bins] = freq_pattern_real[:N]
+        v_imag[freq_test_bins] = freq_pattern_imag[:N]
+        v[::2] = v_real
+        v[1::2] = v_imag
+        return v
+
     FUNCTION_NAMES = {  # key : (function number, buffer generator fn)
 
         # The following define the patterns we can program in the waveform buffer
@@ -70,6 +101,8 @@ class FUNCGEN_base(Module_base):
         'sin':            (8, lambda self, freq=1, N=BUFFER_SIZE: (np.sin(np.arange(N)*2*np.pi/N*freq) * 127).astype(np.uint8)),  # Generates the ramp: 0x00, 0x00, 0x10, 0x00, 0x20, 0x00 ... 0xF0, 0x00
         'crate_slot':     (9, lambda self, N=BUFFER_SIZE: np.tile(np.array([self.fpga.get_id()[0], self.fpga.get_id()[1]], np.uint8)<<4, N / 2)),  # Bytes alternate between crate number and slot number (in upper 4 bits). If FFT and scaler are bypassed, then the complex data has the crate number in the real part and slot number in imag part.
         #'crate':          (10, lambda self, N=BUFFER_SIZE: np.tile(np.array([self.get_id()[0]<<4, 0], np.uint8), N / 2)),  # Bytes alternate between crate number (in upper 4 bits) and 0. If FFT and scaler are bypassed, then the complex data has the crate number in the real part.
+        'freq_test':      (10, freq_test),
+        'one':            (11, one),
         }
 
     buffer_cache = None
