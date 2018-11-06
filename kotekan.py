@@ -211,6 +211,8 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
     def update_gain_dir(self, gain_dir):
         """
         Update CHIME/FRB/PULSAR EigenValue Gains Directory
+
+        NOTE: Potentially depracted in 2018.11 release.
         """
         command = {"gain_dir": gain_dir}
         endpoints = []
@@ -220,6 +222,23 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         result = yield {
             gpu_id: self._post(endpoint, **command) for endpoint in endpoints
         }
+        coroutine_return(result)
+
+    @coroutine
+    def update_frb_gain_dir(self, frb_gain_dir):
+        command = {"frb_gain_dir": frb_gain_dir}
+        endpoint = "frb_gain"
+        result = self._post(endpoint, **command)
+        coroutine_return(result)
+
+    @coroutine
+    def update_pulsar_gain_dir(self, pulsar_gain_dir):
+        """
+        Update PULSAR Gains Directory
+        """
+        command = {"pulsar_gain_dir": pulsar_gain_dir}
+        endpoint = "pulsar_gain"
+        result = self._post(endpoint, **command)
         coroutine_return(result)
 
     @coroutine

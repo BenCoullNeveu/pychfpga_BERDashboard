@@ -234,7 +234,7 @@ def frb():
     pass
 
 
-@frb.command("gains")
+@frb.command("update-gains-dir")
 @click.option(
     "-d",
     "--directory",
@@ -242,12 +242,12 @@ def frb():
     required=True,
     help="e.g. --directory /path/to/gains/dir",
 )
-def update_gains(directory):
+def update_frb_gain_dir(directory):
     """
     Update gains directory
     """
-    data = {"gain_dir": directory}
-    update_gains_status = _post_command("update-gain-dir", data)
+    data = {"frb_gain_dir": directory}
+    update_gains_status = _post_command("update-frb-gain-dir", data)
     click.echo(update_gains_status)
 
 
@@ -326,6 +326,23 @@ def update_pulsar_pointing(beam_parameters):
     print(data)
     pulsar_pointing_status = _post_command("update-pulsar-pointing", data)
     click.echo(pulsar_pointing_status)
+
+
+@pulsar.command("update-gain-dirs")
+@click.option(
+    "-d",
+    "--directory-list",
+    type=click.STRING,
+    required=True,
+    help="e.g. --directory-list '[p1, p2]'",
+)
+def update_frb_gain_dir(directory):
+    """
+    Update gains directory
+    """
+    data = {"pulsar_gain_dirs": directory}
+    update_gains_status = _post_command("update-pulsar-gain-dirs", data)
+    click.echo(update_gains_status)
 
 
 # CHIME/COSMOLOGY CLI Commands

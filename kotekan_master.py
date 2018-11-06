@@ -103,12 +103,13 @@ class KotekanMaster(object):
         self.logging_handlers = None
 
         # FRB Update Times
-        self.gains_dir_update_time = "Never"
+        self.frb_gains_dir_update_time = "Never"
         self.ew_spacing_update_time = "Never"
         self.ns_extent_update_time = "Never"
 
         # Pulsar Update Times
         self.pulsar_update_time = "Never"
+        self.pulsar_gains_dirs_update_time = "Never"
 
         # Cosmology Status Paramters
 
@@ -457,14 +458,16 @@ class KotekanMaster(object):
                 "bad_inputs_update_time": self.bat_inputs_update_time,
             },
             "frb_status": {
-                "gains_dir": self.current_config.common_config.gpu.gpu_0.gain_dir,
-                "gains_dir_update_time": self.gains_dir_update_time,
+                "gains_dir": self.current_config.common_config.frb_gain.frb_gain_dir,
+                "gains_dir_update_time": self.frb_gains_dir_update_time,
                 "ew_spacing": self.current_config.common_config.gpu.gpu_0.ew_spacing,
                 "ew_spacing_update_time": self.ew_spacing_update_time,
                 "ns_extent": self.current_config.common_config.gpu.gpu_0.northmost_beam,
                 "ns_extent_update_time": self.ns_extent_update_time,
             },
             "pulsar_status": {
+                "gain_dirs": self.current_config.common_config.pulsar_gain.pulsar_gain_dir,
+                "gain_update_time": self.pulsar_gains_dirs_update_time,
                 "last_beam_update_time": self.pulsar_update_time,
                 "ra": self.current_config.common_config.gpu.gpu_0.source_ra,
                 "dec": self.current_config.common_config.gpu.gpu_0.source_dec,
@@ -1182,7 +1185,7 @@ class KotekanMaster(object):
         # Federate calibration directory to kotekan nodes
         # Currently not implemented
         kotekan_result = {
-            "Gain federation to kotekan nodes is currently not implemneted"
+            "Gain federation to kotekan nodes is currently not implemented"
         }
 
         # Federate calibration directory to receiver nodes
@@ -1212,23 +1215,80 @@ class KotekanMaster(object):
         POST the new gain directory for the beamformingKernel on all nodes
         currently managed by kotekan_master.
         """
-        # Update local configuration to reflect gain_dir changes.
-        self.gains_dir_update_time = time.strftime(
+        # # Update local configuration to reflect gain_dir changes.
+        # self.gains_dir_update_time = time.strftime(
+        #     "%Y/%m/%d %H:%M:%S", time.localtime()
+        # )
+        # self.current_config.common_config.gpu.gpu_0.gain_dir = gain_dir
+        # self.current_config.common_config.gpu.gpu_1.gain_dir = gain_dir
+        # self.current_config.common_config.gpu.gpu_2.gain_dir = gain_dir
+        # self.current_config.common_config.gpu.gpu_3.gain_dir = gain_dir
+        # result = yield {
+        #     node_name: kotekan.update_gain_dir(gain_dir)
+        #     for node_name, kotekan in self.nodes.items()
+        # }
+        # self.log.info(
+        #     "%s : Parameter gains_dir updated to: %s", self, gain_dir
+        # )
+        # self.slack.info(
+        #     msg_title="update-gain-dir", msg=gain_dir, as_inline_code=True
+        # )
+        result = "Endpoint Depracted. Please use frb-gain-dir or pulsar_gain_dirs"
+        coroutine_return(result)
+
+    @coroutine
+    def update_frb_gain_dir(self, frb_gain_dir):
+        """
+        POST the new gain directory for the hsaBeamformKernel on all nodes.
+        """
+        self.frb_gains_dir_update_time = time.strftime(
             "%Y/%m/%d %H:%M:%S", time.localtime()
         )
-        self.current_config.common_config.gpu.gpu_0.gain_dir = gain_dir
-        self.current_config.common_config.gpu.gpu_1.gain_dir = gain_dir
-        self.current_config.common_config.gpu.gpu_2.gain_dir = gain_dir
-        self.current_config.common_config.gpu.gpu_3.gain_dir = gain_dir
+
+        # Update the local copy of frb_gain_dir in config
+        self.current_config.common_config.frb_gain.frb_gain_dir = frb_gain_dir
+
+        # Update frb_gain_dir for all nodes
         result = yield {
-            node_name: kotekan.update_gain_dir(gain_dir)
+            node_name: kotekan.update_frb_gain_dir(frb_gain_dir)
             for node_name, kotekan in self.nodes.items()
         }
         self.log.info(
-            "%s : Parameter gains_dir updated to: %s", self, gain_dir
+            "%s : Parameter frb_gain_dir updated to: %s", self, frb_gain_dir
         )
         self.slack.info(
-            msg_title="update-gain-dir", msg=gain_dir, as_inline_code=True
+            msg_title="update-frb-gain-dir",
+            msg=frb_gain_dir,
+            as_inline_code=True
+        )
+        coroutine_return(result)
+
+    @coroutine
+    def update_pulsar_gain_dirs(self, pulsar_gain_dirs):
+        """
+        POST the new gain directory list to hsaPulsarUpdatePhase kernel
+        """
+        self.pulsar_gains_dirs_update_time = time.strftime(
+            "%Y/%m/%d %H:%M:%S", time.localtime()
+        )
+
+        # Update the local copy of the pulsar_gain_dir
+        self.current_config.common_config.pulsar_gain.pulsar_gain_dir = pulsar_gain_dirs
+
+        # Update the pulsar_gain_dirs for all nodes
+        result = yield {
+            node_name: kotekan.update_frb_gain_dir(pulsar_gain_dirs)
+            for node_name, kotekan in self.nodes.items()
+        }
+        self.log.info(
+            "%s : Parameter pulsar_gain_dirs updated to: %s",
+            self,
+            pulsar_gain_dirs
+        )
+        self.slack.info(
+            msg_title="update-pulsar-gain-dirs",
+            msg=pulsar_gain_dirs,
+            as_inline_code=True
         )
         coroutine_return(result)
 
@@ -1794,6 +1854,42 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         coroutine_return(result)
 
     @coroutine
+    @endpoint("update-pulsar-gain-dirs")
+    def update_pulsar_gain(self, handler, pulsar_gain_dirs):
+        """
+        POST to update and federate the calibration broker provided gain
+        information to the pulsar gpu kernels
+
+        curl
+            -d '{
+                "pulsar_gain_dirs":[
+                "path0","path1","path2","path3","path4",
+                "path5","path6","path7","path8","path9"
+                ]
+            }'
+        -X POST
+        -H "Content-Type: application/json"
+        http://KOTEKAN-MASTER-NODE:KOTEKAN_MASTER-PORT/update-pulsar-gain
+        """
+        result = yield self.kotekan_master.update_pulsar_gain(pulsar_gain_dirs)
+        coroutine_return(result)
+
+    @coroutine
+    @endpoint("update-frb-gain-dir")
+    def update_frb_gain_dir(self, handler, frb_gain_dir):
+        """
+        POST to update the frb_gain_dir parameter.
+
+        curl
+        -d '{"frb_gain_dir": "dir"}'
+        -X POST
+        -H "Content-Type: application/json"
+        http://localhost:54323/update-frb-gain-dir
+        """
+        result = yield self.kotekan_master.update_frb_gain_dir(frb_gain_dir)
+        coroutine_return(result)
+
+    @coroutine
     @endpoint("update-bad-inputs")
     def update_bad_inputs(
         self,
@@ -1834,7 +1930,8 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         -H "Content-Type: application/json"
         http://localhost:54323/update-gain-dir
         """
-        result = yield self.kotekan_master.update_gain_dir(gain_dir)
+        #result = yield self.kotekan_master.update_gain_dir(gain_dir)
+        result = "Endpoint Depracted: Please use frb-gain-dir or pulsar-gain-dirs"
         coroutine_return(result)
 
     @coroutine
@@ -2167,6 +2264,16 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
         Update CHIME/FRB Gains directory on all nodes.
         """
         result = yield self.post("update-gain-dir", gain_dir)
+        coroutine_return(result)
+
+    @coroutine
+    def update_frb_gain_dir(self, frb_gain_dir):
+        result = yield self.post("update-frb-gain-dir", frb_gain_dir)
+        coroutine_return(result)
+
+    @coroutine
+    def update_pulsar_gain_dirs(self, pulsar_gain_dirs):
+        result = yield self.post("update-pulsar-gain-dirs", pulsar_gain_dirs)
         coroutine_return(result)
 
     @coroutine
