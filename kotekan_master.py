@@ -12,20 +12,20 @@ import json
 import hashlib
 from random import choice
 import requests
-import yaml
+import ast
 
 # Custom Imports
 import log
-from pychfpga import NameSpace, load_yaml_config, merge_dict
+from pychfpga import NameSpace, load_yaml_config
 from kotekan import KotekanAsyncRESTClient
 from rest import AsyncRESTClient, AsyncRESTServer, endpoint
-from rest import coroutine, coroutine_return, sleep, IOLoop
+from rest import coroutine, coroutine_return, sleep
 
 # Import Slack Client
 from slack import SlackClient
 
 # REST Server/Client
-from rest import RunSyncWrapper, SocketContext, run_client
+from rest import RunSyncWrapper, run_client
 
 
 # KotekanMaster Class
@@ -1271,7 +1271,7 @@ class KotekanMaster(object):
         self.pulsar_gains_dirs_update_time = time.strftime(
             "%Y/%m/%d %H:%M:%S", time.localtime()
         )
-
+        pulsar_gain_dirs = ast.literal_eval(pulsar_gain_dirs)
         # Update the local copy of the pulsar_gain_dir
         self.current_config.common_config.pulsar_gain.pulsar_gain_dir = pulsar_gain_dirs
 

@@ -10,6 +10,7 @@ import pprint as pp
 import click
 import requests
 import yaml
+import ast
 
 
 # Global Parameters
@@ -24,6 +25,15 @@ for can in CANS:
     for rack in RACKS:
         for node in NODES:
             VALID_NODES.append("c{}{}g{}".format(can, rack, node))
+
+
+class PythonLiteralOption(click.Option):
+
+    def type_cast_value(self, ctx, value):
+        try:
+            return ast.literal_eval(value)
+        except Exception:
+            raise click.BadParameter(value)
 
 
 # Private REST API for the CLI
@@ -331,16 +341,23 @@ def update_pulsar_pointing(beam_parameters):
 @pulsar.command("update-gain-dirs")
 @click.option(
     "-d",
-    "--directory-list",
+    "--dirs",
     type=click.STRING,
     required=True,
-    help="e.g. --directory-list '[p1, p2]'",
+    help="e.g. --dirs \"[\'dir1\', \'dir2\', \'dir3\'']\"",
+    default=[]
 )
-def update_frb_gain_dir(directory):
+def update_pulsar_gain_dirs(dirs):
     """
-    Update gains directory
+    Update gains directories
     """
-    data = {"pulsar_gain_dirs": directory}
+
+    try:
+        dirs = ast.literal_eval(dirs)
+    except Exception as e:
+        click.echo(e)
+
+    data = {"pulsar_gain_dirs": dirs}
     update_gains_status = _post_command("update-pulsar-gain-dirs", data)
     click.echo(update_gains_status)
 
