@@ -240,6 +240,9 @@ class DigitalGainWriter(object):
             if not os.path.isdir(output_dir):
                 raise
 
+        # Set time in attributes
+        self.attrs['time'] = this_time
+
         # Determine filename
         seconds_elapsed = this_time - start_time
 
