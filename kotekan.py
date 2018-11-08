@@ -238,9 +238,10 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         """
         command = {"pulsar_gain_dir": pulsar_gain_dir}
         endpoint = "pulsar_gain"
-        self.log.info(command) 
+        self.log.debug(command) 
         result = self._post(endpoint, **command)
-        coroutine_return(result)
+        result = str(result)
+	coroutine_return(result)
 
     @coroutine
     def update_north_south_beam(self, northmost_beam):
