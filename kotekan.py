@@ -229,6 +229,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         command = {"frb_gain_dir": frb_gain_dir}
         endpoint = "frb_gain"
         result = self._post(endpoint, **command)
+        result = str(result)
         coroutine_return(result)
 
     @coroutine
@@ -238,7 +239,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         """
         command = {"pulsar_gain_dir": pulsar_gain_dir}
         endpoint = "pulsar_gain"
-        self.log.debug(command) 
+        self.log.debug(command)
         result = self._post(endpoint, **command)
         result = str(result)
 	coroutine_return(result)
