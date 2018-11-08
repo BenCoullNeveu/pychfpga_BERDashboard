@@ -1855,7 +1855,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
 
     @coroutine
     @endpoint("update-pulsar-gain-dirs")
-    def update_pulsar_gain(self, handler, pulsar_gain_dirs):
+    def update_pulsar_gain_dirs(self, handler, pulsar_gain_dirs):
         """
         POST to update and federate the calibration broker provided gain
         information to the pulsar gpu kernels
@@ -1871,7 +1871,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         -H "Content-Type: application/json"
         http://KOTEKAN-MASTER-NODE:KOTEKAN_MASTER-PORT/update-pulsar-gain
         """
-        result = yield self.kotekan_master.update_pulsar_gain(pulsar_gain_dirs)
+        result = yield self.kotekan_master.update_pulsar_gain_dirs(pulsar_gain_dirs)
         coroutine_return(result)
 
     @coroutine
