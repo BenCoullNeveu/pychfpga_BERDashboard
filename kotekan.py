@@ -232,12 +232,13 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         coroutine_return(result)
 
     @coroutine
-    def update_pulsar_gain_dir(self, pulsar_gain_dir):
+    def update_pulsar_gain_dirs(self, pulsar_gain_dir):
         """
         Update PULSAR Gains Directory
         """
         command = {"pulsar_gain_dir": pulsar_gain_dir}
         endpoint = "pulsar_gain"
+        self.log.info(command) 
         result = self._post(endpoint, **command)
         coroutine_return(result)
 

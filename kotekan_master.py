@@ -1271,13 +1271,13 @@ class KotekanMaster(object):
         self.pulsar_gains_dirs_update_time = time.strftime(
             "%Y/%m/%d %H:%M:%S", time.localtime()
         )
-        pulsar_gain_dirs = ast.literal_eval(pulsar_gain_dirs)
-        # Update the local copy of the pulsar_gain_dir
+	self.log.info("pulsar_gain_dirs type: {}".format(type(pulsar_gain_dirs)))
+	self.log.info("pulsar_gain_dirs val:{}".format(pulsar_gain_dirs))
+        self.log.info("Updating the local copy of the pulsar_gain_dirs")
         self.current_config.common_config.pulsar_gain.pulsar_gain_dir = pulsar_gain_dirs
-
-        # Update the pulsar_gain_dirs for all nodes
+        self.log.info("Updating the pulsar_gain_dirs for all nodes")
         result = yield {
-            node_name: kotekan.update_frb_gain_dir(pulsar_gain_dirs)
+            node_name: kotekan.update_pulsar_gain_dirs(pulsar_gain_dirs)
             for node_name, kotekan in self.nodes.items()
         }
         self.log.info(
@@ -1287,7 +1287,7 @@ class KotekanMaster(object):
         )
         self.slack.info(
             msg_title="update-pulsar-gain-dirs",
-            msg=pulsar_gain_dirs,
+            msg=str(pulsar_gain_dirs),
             as_inline_code=True
         )
         coroutine_return(result)
