@@ -70,7 +70,7 @@ def _post_command(command, data):
 # MAIN CLI GROUP
 @click.group()
 @click.version_option(
-    version="2018.08", prog_name="km-cli", message="%(prog)s %(version)s"
+    version="2018.11a", prog_name="km-cli", message="%(prog)s %(version)s"
 )
 def cli():
     """
