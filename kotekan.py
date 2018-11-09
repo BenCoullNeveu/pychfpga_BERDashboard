@@ -206,6 +206,16 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         result = yield self._get("baseband/{}".format(event_id))
         coroutine_return(result)
 
+    @coroutine
+    def toggle_rfi_zeroing(self, rfi_zeroing):
+        """
+        Enable/Disable RFI Zero-ing on Kotekan
+        """
+        command = {"rfi_zeroing": rfi_zeroing}
+        endpoint = "rfi_masking/toggle"
+        result = yield self._post(endpoint, **command)
+        coroutine_return(result)
+
     # FRB Parameters -- POST RESTful Endpoints
     @coroutine
     def update_gain_dir(self, gain_dir):
@@ -242,7 +252,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         self.log.debug(command)
         result = self._post(endpoint, **command)
         result = str(result)
-	coroutine_return(result)
+        coroutine_return(result)
 
     @coroutine
     def update_north_south_beam(self, northmost_beam):

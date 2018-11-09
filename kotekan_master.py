@@ -428,9 +428,10 @@ class KotekanMaster(object):
         """
         Current status of services KotekanMaster Status
         """
+        _config = self.current_config.common_config
         result = {
             "state": self.state,
-            "current_config": self.current_config.common_config.as_dict(),
+            "current_config": _config.as_dict(),
             "nodes": {
                 "kotekan_nodes": self.nodes.keys(),
                 "receiver_nodes": self.receiver_nodes.keys(),
@@ -458,20 +459,23 @@ class KotekanMaster(object):
                 "bad_inputs_update_time": self.bat_inputs_update_time,
             },
             "frb_status": {
-                "gains_dir": self.current_config.common_config.frb_gain.frb_gain_dir,
+                "gains_dir": _config.frb_gain.frb_gain_dir,
                 "gains_dir_update_time": self.frb_gains_dir_update_time,
-                "ew_spacing": self.current_config.common_config.gpu.gpu_0.ew_spacing,
+                "ew_spacing": _config.gpu.gpu_0.ew_spacing,
                 "ew_spacing_update_time": self.ew_spacing_update_time,
-                "ns_extent": self.current_config.common_config.gpu.gpu_0.northmost_beam,
+                "ns_extent": _config.gpu.gpu_0.northmost_beam,
                 "ns_extent_update_time": self.ns_extent_update_time,
             },
             "pulsar_status": {
-                "gain_dirs": self.current_config.common_config.pulsar_gain.pulsar_gain_dir,
+                "gain_dirs": _config.pulsar_gain.pulsar_gain_dir,
                 "gain_update_time": self.pulsar_gains_dirs_update_time,
                 "last_beam_update_time": self.pulsar_update_time,
-                "ra": self.current_config.common_config.gpu.gpu_0.source_ra,
-                "dec": self.current_config.common_config.gpu.gpu_0.source_dec,
-                "scaling": self.current_config.common_config.gpu.gpu_0.psr_scaling,
+                "ra": _config.gpu.gpu_0.source_ra,
+                "dec": _config.gpu.gpu_0.source_dec,
+                "scaling": _config.gpu.gpu_0.psr_scaling,
+            },
+            "cosmology_status": {
+                "rfi_zeroing": _config.rfi_masking.rfi_zeroing,
             },
             "git_version": self.git_version,
             "start_time": time.strftime(
@@ -1271,8 +1275,8 @@ class KotekanMaster(object):
         self.pulsar_gains_dirs_update_time = time.strftime(
             "%Y/%m/%d %H:%M:%S", time.localtime()
         )
-	self.log.info("pulsar_gain_dirs type: {}".format(type(pulsar_gain_dirs)))
-	self.log.info("pulsar_gain_dirs val:{}".format(pulsar_gain_dirs))
+        self.log.info("pulsar_gain_dirs type: {}".format(type(pulsar_gain_dirs)))
+        self.log.info("pulsar_gain_dirs val:{}".format(pulsar_gain_dirs))
         self.log.info("Updating the local copy of the pulsar_gain_dirs")
         self.current_config.common_config.pulsar_gain.pulsar_gain_dir = pulsar_gain_dirs
         self.log.info("Updating the pulsar_gain_dirs for all nodes")
@@ -1442,6 +1446,21 @@ class KotekanMaster(object):
             coroutine_return(result)
         except Exception as e:
             coroutine_return(str(e))
+
+    @coroutine
+    def toggle_rfi_zeroing(self, rfi_zeroing):
+        """
+        Toggle RFI Zeroing Kernels
+        """
+        # Update local state in the configuration
+        self.current_config.common_config.rfi_masking.rfi_zeroing = rfi_zeroing
+
+        #  Send the command to all nodes
+        result = yield {
+            node_name: kotekan.toggle_rfi_zeroing(rfi_zeroing)
+            for node_name, kotekan in self.nodes.items()
+        }
+        coroutine_return(result)
 
     # Node Methods
     #   These methods interact the node hardware and have no access to the
@@ -1831,6 +1850,21 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
             "status": status,
             "nodes": result
         })
+
+    @coroutine
+    @endpoint("toggle-rfi-zeroing")
+    def toggle_rfi_zeroing(self, handler, rfi_zeroing):
+        """
+        POST to update the state of rfi_zeroing
+        curl
+        -d
+            '{"rfi_zeroing": false|true}'
+        -X POST
+        -H "Content-Type: application/json"
+        http://KOTEKAN-MASTER-NODE:KOTEKAN_MASTER-PORT/toggle-rfi-zeroing
+        """
+        result = yield self.kotekan_master.toggle_rfi_zeroing(rfi_zeroing)
+        coroutine_return(result)
 
     # Calibration Broker Endpoints
     @coroutine
@@ -2228,6 +2262,14 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
         Returns the status of a baseband dump for `event_id`
         """
         result = yield self.get("baseband/{}".format(event_id))
+        coroutine_return(result)
+
+    @coroutine
+    def toggle_rfi_zeroing(self, rfi_zeroing):
+        """
+        Update the state of the rfi-zeroing kernel
+        """
+        result = yield self.post("toggle-rfi-zeroing", rfi_zeroing)
         coroutine_return(result)
 
     # Calibration Broker Endpoints
