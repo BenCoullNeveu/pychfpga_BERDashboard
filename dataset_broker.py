@@ -15,7 +15,7 @@ import toro  # conditional variables for tornado coroutines
 
 import log  # logging helper functions
 
-WAIT_TIME = 5
+WAIT_TIME = 9
 
 
 class DSBrokerAsyncRESTServer(AsyncRESTServer):
@@ -119,9 +119,9 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
 
         This should only ever be called by kotekan's datasetManager.
         """
-        dataset_valid = yield self.checkDataset(dataset)
         self.log.debug('%.32r: Registering new dataset with hash %r : %r' %
                        (self, hash, dataset))
+        dataset_valid = yield self.checkDataset(dataset)
         reply = dict(result="success")
 
         # dataset already known?
