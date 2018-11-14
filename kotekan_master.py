@@ -12,7 +12,6 @@ import json
 import hashlib
 from random import choice
 import requests
-import ast
 
 # Custom Imports
 import log
@@ -295,7 +294,9 @@ class KotekanMaster(object):
             self.logging_handlers = log.setup_logging(
                 self.startup_config.logging.dict_config,
                 self.startup_config.logging.log_levels,
-                base_package_name=self.startup_config.logging.base_package_name,
+                base_package_name=(
+                    self.startup_config.logging.base_package_name
+                ),
                 actual_package_name=__name__.rpartition(".")[0],
                 script_name=self.startup_config.logging.script_name,
                 run_folder=self.run_folder,
@@ -476,6 +477,7 @@ class KotekanMaster(object):
             },
             "cosmology_status": {
                 "rfi_zeroing": _config.rfi_masking.rfi_zeroing,
+                "pulsar_gating": _config.updateable_config.gating,
             },
             "git_version": self.git_version,
             "start_time": time.strftime(
@@ -495,7 +497,9 @@ class KotekanMaster(object):
         if len(_connection_error) != 0:
             # Update the self.connection_error_nodes parameter with the new
             # nodes that were found not to be working.
-            self.connection_error_nodes.append((time.ctime(), _connection_error))
+            self.connection_error_nodes.append(
+                (time.ctime(), _connection_error)
+            )
             self.slack.warning(
                 msg_title="Connection Error Nodes:",
                 msg=json.dumps(_connection_error),
@@ -991,7 +995,16 @@ class KotekanMaster(object):
         coroutine_return(result)
 
     @coroutine
-    def baseband(self, event_id, file_path, start_unix_seconds, start_unix_nano, duration_nano, dm, dm_error):
+    def baseband(
+        self,
+        event_id,
+        file_path,
+        start_unix_seconds,
+        start_unix_nano,
+        duration_nano,
+        dm,
+        dm_error,
+    ):
         """Submit a baseband dump request
 
         Parameters
@@ -1028,17 +1041,26 @@ class KotekanMaster(object):
                 Result of baseband request federation to kotekan nodes
 
         """
-        msg = "%s: [%s.%s, %s] (dm=%s+/-%s)" % (event_id, start_unix_seconds,
-                                                start_unix_nano, duration_nano,
-                                                dm, dm_error)
+        msg = "%s: [%s.%s, %s] (dm=%s+/-%s)" % (
+            event_id,
+            start_unix_seconds,
+            start_unix_nano,
+            duration_nano,
+            dm,
+            dm_error,
+        )
         self.log.debug("%s: dispatching baseband dump request %s", self, msg)
 
         result = yield {
-            node_name: kotekan.baseband(event_id, file_path,
-                                        start_unix_seconds,
-                                        start_unix_nano,
-                                        duration_nano,
-                                        dm, dm_error)
+            node_name: kotekan.baseband(
+                event_id,
+                file_path,
+                start_unix_seconds,
+                start_unix_nano,
+                duration_nano,
+                dm,
+                dm_error,
+            )
             for node_name, kotekan in self.nodes.items()
         }
         self.log.info("%s: baseband dump request dispatched", self)
@@ -1047,7 +1069,7 @@ class KotekanMaster(object):
         self.slack.info(
             msg_title="Baseband %s requested" % event_id,
             msg=msg,
-            as_inline_code=True
+            as_inline_code=True,
         )
         coroutine_return(result)
 
@@ -1237,7 +1259,9 @@ class KotekanMaster(object):
         # self.slack.info(
         #     msg_title="update-gain-dir", msg=gain_dir, as_inline_code=True
         # )
-        result = "Endpoint Depracted. Please use frb-gain-dir or pulsar_gain_dirs"
+        result = (
+            "Endpoint Depracted. Please use frb-gain-dir or pulsar_gain_dirs"
+        )
         coroutine_return(result)
 
     @coroutine
@@ -1263,7 +1287,7 @@ class KotekanMaster(object):
         self.slack.info(
             msg_title="update-frb-gain-dir",
             msg=frb_gain_dir,
-            as_inline_code=True
+            as_inline_code=True,
         )
         coroutine_return(result)
 
@@ -1275,10 +1299,14 @@ class KotekanMaster(object):
         self.pulsar_gains_dirs_update_time = time.strftime(
             "%Y/%m/%d %H:%M:%S", time.localtime()
         )
-        self.log.info("pulsar_gain_dirs type: {}".format(type(pulsar_gain_dirs)))
+        self.log.info(
+            "pulsar_gain_dirs type: {}".format(type(pulsar_gain_dirs))
+        )
         self.log.info("pulsar_gain_dirs val:{}".format(pulsar_gain_dirs))
         self.log.info("Updating the local copy of the pulsar_gain_dirs")
-        self.current_config.common_config.pulsar_gain.pulsar_gain_dir = pulsar_gain_dirs
+        self.current_config.common_config.pulsar_gain.pulsar_gain_dir = (
+            pulsar_gain_dirs
+        )
         self.log.info("Updating the pulsar_gain_dirs for all nodes")
         result = yield {
             node_name: kotekan.update_pulsar_gain_dirs(pulsar_gain_dirs)
@@ -1287,12 +1315,12 @@ class KotekanMaster(object):
         self.log.info(
             "%s : Parameter pulsar_gain_dirs updated to: %s",
             self,
-            pulsar_gain_dirs
+            pulsar_gain_dirs,
         )
         self.slack.info(
             msg_title="update-pulsar-gain-dirs",
             msg=str(pulsar_gain_dirs),
-            as_inline_code=True
+            as_inline_code=True,
         )
         coroutine_return(result)
 
@@ -1391,6 +1419,35 @@ class KotekanMaster(object):
             coroutine_return(result)
         except Exception as e:
             coroutine_return(str(e))
+
+    @coroutine
+    def update_pulsar_gating(
+        self, pulsar_name, pulse_width, rot_freq, phase_ref, t_ref, dm, coeff
+    ):
+        """
+        Update the Pulsar Gating Parameters
+        """
+        # Update the local configuration file
+        config = self.current_config.common_config.updateable_config.gating
+        try:
+            config.psr0_config.pulsar_name = pulsar_name
+            config.psr0_config.pulse_width = pulse_width
+            config.psr0_config.rot_freq = rot_freq
+            config.psr0_config.phase_ref = phase_ref
+            config.psr0_config.t_ref = t_ref
+            config.psr0_config.dm = dm
+            config.psr0_config.coeff = coeff
+        except Exception as e:
+            coroutine_return(str(e))
+
+        # Execute Endpoint
+        result = yield {
+            node_name: kotekan.update_pulsar_gating(
+                pulsar_name, pulse_width, rot_freq, phase_ref, t_ref, dm, coeff
+            )
+            for node_name, kotekan in self.nodes.items()
+        }
+        coroutine_return(result)
 
     @coroutine
     def update_pulsar_pointing(self, beam, ra, dec, scaling):
@@ -1565,12 +1622,15 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
                         )
                         # Report nodes which have connection issues
                         no_connection_nodes = (
-                            yield self.kotekan_master.check_node_connection(node_status)
+                            yield self.kotekan_master.check_node_connection(
+                                node_status
+                            )
                         )
                         self.log.warning(
                             "%s : Node Connection Issues: %s",
                             self,
-                            no_connection_nodes)
+                            no_connection_nodes,
+                        )
 
                         # Execute restarts for nodes with running==false
                         self.log.info("%s : GETing Restart List", self)
@@ -1749,6 +1809,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         stop = yield self.kotekan_master.stop_watchdog()
         restart = yield self.kotekan_master.restart_cluster()
         start = yield self.kotekan_master.start_watchdog()
+        self.log.debug(stop, restart, start)
         coroutine_return(result="restart-cluster executed")
 
     @coroutine
@@ -1791,7 +1852,17 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
 
     @coroutine
     @endpoint("baseband")
-    def baseband(self, handler, event_id, file_path, start_unix_seconds, start_unix_nano, duration_nano, dm, dm_error):
+    def baseband(
+        self,
+        handler,
+        event_id,
+        file_path,
+        start_unix_seconds,
+        start_unix_nano,
+        duration_nano,
+        dm,
+        dm_error,
+    ):
         """
         POST to submit a baseband dump request.
 
@@ -1812,11 +1883,15 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         # file_path is cleaned *not* to include the trailing slash
         if file_path[-1] == "/":
             file_path = file_path[:-1]
-        result = yield self.kotekan_master.baseband(event_id, file_path,
-                                                    start_unix_seconds,
-                                                    start_unix_nano,
-                                                    duration_nano,
-                                                    dm, dm_error)
+        result = yield self.kotekan_master.baseband(
+            event_id,
+            file_path,
+            start_unix_seconds,
+            start_unix_nano,
+            duration_nano,
+            dm,
+            dm_error,
+        )
         coroutine_return(result)
 
     @coroutine
@@ -1846,10 +1921,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         if status == "fail":
             status = "error"
 
-        coroutine_return({
-            "status": status,
-            "nodes": result
-        })
+        coroutine_return({"status": status, "nodes": result})
 
     @coroutine
     @endpoint("toggle-rfi-zeroing")
@@ -1905,7 +1977,9 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         -H "Content-Type: application/json"
         http://KOTEKAN-MASTER-NODE:KOTEKAN_MASTER-PORT/update-pulsar-gain
         """
-        result = yield self.kotekan_master.update_pulsar_gain_dirs(pulsar_gain_dirs)
+        result = yield self.kotekan_master.update_pulsar_gain_dirs(
+            pulsar_gain_dirs
+        )
         coroutine_return(result)
 
     @coroutine
@@ -1964,8 +2038,8 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         -H "Content-Type: application/json"
         http://localhost:54323/update-gain-dir
         """
-        #result = yield self.kotekan_master.update_gain_dir(gain_dir)
-        result = "Endpoint Depracted: Please use frb-gain-dir or pulsar-gain-dirs"
+        # result = yield self.kotekan_master.update_gain_dir(gain_dir)
+        result = "Endpoint Depracted: Use frb-gain-dir or pulsar-gain-dirs"
         coroutine_return(result)
 
     @coroutine
@@ -2014,6 +2088,51 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         """
         result = yield self.kotekan_master.update_east_west_beam(
             east_west_id, east_west_beam
+        )
+        coroutine_return(result)
+
+    @coroutine
+    @endpoint("update-pulsar-gating")
+    def update_pulsar_gating(
+        self,
+        handler,
+        pulsar_name,
+        pulse_width,
+        rot_freq,
+        phase_ref,
+        t_ref,
+        dm,
+        coeff,
+    ):
+        """
+        POST to update CHIME/Cosmology pulsar gating parameter
+        curl
+        -d '{
+            "pulsar_name": "B1929",
+            "pulse_width": 0.014,
+            "rot_freq": 4.41466731644,
+            "phase_ref": 4542317506.850324938073754,
+            "t_ref": 58431.77083333330000058936,
+            "dm": 3.18321,
+            "coeff": [ -3.629558339028879284391196358150e-11,
+               -2.214166811916401720405987284951e-02,
+               1.174585108106800026569028246211e-08,
+               -8.383233571344643529916636537155e-10,
+               5.592347445650863837747847387401e-14,
+               8.029001056538660597891912495565e-16,
+               -3.529128616024835224912778733629e-20,
+               -3.664425348061886726903281117201e-22,
+               7.831076894027254652820435449642e-27,
+               1.049593728246589236324555875400e-28,
+               1.251009085015411251409244070337e-32,
+               -4.441360501858587814936030539501e-35 ]
+        }'
+        -X POST
+        -H "Content-Type: application/json"
+        http://localhost:54323/update-pulsar-gating
+        """
+        result = yield self.kotekan_master.update_pulsar_pointing(
+            pulsar_name, pulse_width, rot_freq, phase_ref, t_ref, dm, coeff
         )
         coroutine_return(result)
 
@@ -2244,16 +2363,29 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
         coroutine_return(result)
 
     @coroutine
-    def baseband(self, event_id, file_path, start_unix_seconds, start_unix_nano, duration_nano, dm, dm_error):
+    def baseband(
+        self,
+        event_id,
+        file_path,
+        start_unix_seconds,
+        start_unix_nano,
+        duration_nano,
+        dm,
+        dm_error,
+    ):
         """
         Update and federate baseband dump requests.
         """
-        result = yield self.post("baseband",
-                                 event_id, file_path,
-                                 start_unix_seconds,
-                                 start_unix_nano,
-                                 duration_nano,
-                                 dm, dm_error)
+        result = yield self.post(
+            "baseband",
+            event_id,
+            file_path,
+            start_unix_seconds,
+            start_unix_nano,
+            duration_nano,
+            dm,
+            dm_error,
+        )
         coroutine_return(result)
 
     @coroutine
@@ -2342,6 +2474,24 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
         Update CHIME/FRB Beam Offset on all nodes.
         """
         result = yield self.post("update-beam-offset", beam_offset)
+        coroutine_return(result)
+
+    @coroutine
+    def update_pulsar_gating(
+        self, pulsar_name, pulse_width, rot_freq, phase_ref, t_ref, dm, coeff
+    ):
+        """
+        """
+        result = yield self.post(
+            "update-pulsar-gating",
+            pulsar_name,
+            pulse_width,
+            rot_freq,
+            phase_ref,
+            t_ref,
+            dm,
+            coeff,
+        )
         coroutine_return(result)
 
     @coroutine

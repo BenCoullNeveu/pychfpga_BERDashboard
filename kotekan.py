@@ -182,7 +182,16 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         coroutine_return(result)
 
     @coroutine
-    def baseband(self, event_id, file_path, start_unix_seconds, start_unix_nano, duration_nano, dm, dm_error):
+    def baseband(
+        self,
+        event_id,
+        file_path,
+        start_unix_seconds,
+        start_unix_nano,
+        duration_nano,
+        dm,
+        dm_error,
+    ):
         """
         Submits a baseband dump request.
         """
@@ -251,8 +260,27 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         endpoint = "pulsar_gain"
         self.log.debug(command)
         result = yield self._post(endpoint, **command)
-        result = str(result)
-        coroutine_return(result)
+        coroutine_return(str(result))
+
+    @coroutine
+    def update_pulsar_gating(
+        self, pulsar_name, pulse_width, rot_freq, phase_ref, t_ref, dm, coeff
+    ):
+        """
+        Update CHIME/Cosmology Pulsar Gating Endpoint
+        """
+        command = {
+            "pulsar_name": pulsar_name,
+            "pulse_width": pulse_width,
+            "rot_freq": rot_freq,
+            "phase_ref": phase_ref,
+            "t_ref": t_ref,
+            "dm": dm,
+            "coeff": coeff,
+        }
+        endpoint = "updateable_config/gating/psr0_config"
+        result = yield self._post(endpoint, **command)
+        coroutine_return(str(result))
 
     @coroutine
     def update_north_south_beam(self, northmost_beam):
