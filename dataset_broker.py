@@ -90,7 +90,7 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
 
         This should only ever be called by kotekan's datasetManager.
         """
-        self.log.debug('%.32r: Received state %r : %r' % (self, hash, state))
+        self.log.debug('%.32r: Received state %r' % (self, hash))
         reply = dict()
 
         # do we have this state already?
@@ -119,10 +119,10 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
 
         This should only ever be called by kotekan's datasetManager.
         """
-        dataset_valid = yield self.checkDataset(dataset)
         self.log.debug('%.32r: Registering new dataset with hash %r : %r' %
                        (self, hash, dataset))
         reply = dict(result="success")
+        dataset_valid = yield self.checkDataset(dataset)
 
         # dataset already known?
         with self.lock_datasets:
@@ -213,7 +213,6 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
         if not reply['states']:
             reply['datasets'] = {}
 
-        self.log.debug('%.32r: replying with %r' % (self, reply))
         coroutine_return(reply)
 
     @coroutine
