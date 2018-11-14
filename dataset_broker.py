@@ -260,6 +260,7 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
             # wait for half of kotekans timeout before we admit we don't have it
             self.lock_datasets.release()
             notified = True
+            self.log.debug('%.32r: Waiting for dataset %r' % (self, id))
             try:
                 while notified:
                     notified = yield self.signal_datasets_updated.wait(
@@ -269,12 +270,11 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
                         if self.datasets.get(id) is not None:
                             break
             except toro.Timeout as e:
-                self.log.debug('%.32r: %r' % (self, e.message))
                 pass
             self.lock_datasets.acquire()
             if self.datasets.get(id) is None:
-                self.log.warn('%.32r: Timeout when waiting for dataset %r'
-                              % (self, id))
+                self.log.warn('%.32r: Timeout (%rs) when waiting for dataset %r'
+                              % (self, WAIT_TIME, id))
                 found = False
         self.lock_datasets.release()
 
@@ -288,6 +288,7 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
             # wait for half of kotekans timeout before we admit we don't have it
             self.lock_states.release()
             notified = True
+            self.log.debug('%.32r: Waiting for state %r' % (self, id))
             try:
                 while notified:
                     notified = yield self.signal_states_updated.wait(
@@ -297,12 +298,11 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
                         if self.states.get(id) is not None:
                             break
             except toro.Timeout as e:
-                self.log.debug('%.32r: %r' % (self, e.message))
                 pass
             self.lock_states.acquire()
             if self.states.get(id) is None:
-                self.log.warn('%.32r: Timeout when waiting for state %r'
-                              % (self, id))
+                self.log.warn('%.32r: Timeout (%rs) when waiting for state %r'
+                              % (self, WAIT_TIME, id))
                 found = False
         self.lock_states.release()
 
