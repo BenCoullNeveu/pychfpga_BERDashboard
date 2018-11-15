@@ -476,7 +476,7 @@ class KotekanMaster(object):
                 "scaling": _config.gpu.gpu_0.psr_scaling,
             },
             "cosmology_status": {
-                "rfi_zeroing": _config.rfi_masking.rfi_zeroing,
+                "rfi_zeroing": _config.rfi_masking.toggle.rfi_zeroing,
                 "pulsar_gating": _config.updateable_config.gating,
             },
             "git_version": self.git_version,
@@ -1510,7 +1510,9 @@ class KotekanMaster(object):
         Toggle RFI Zeroing Kernels
         """
         # Update local state in the configuration
-        self.current_config.common_config.rfi_masking.rfi_zeroing = rfi_zeroing
+        self.current_config.common_config.rfi_masking.toggle.rfi_zeroing = (
+            rfi_zeroing
+        )
 
         #  Send the command to all nodes
         result = yield {
