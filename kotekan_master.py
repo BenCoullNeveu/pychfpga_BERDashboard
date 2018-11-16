@@ -477,7 +477,7 @@ class KotekanMaster(object):
             },
             "cosmology_status": {
                 "rfi_zeroing": _config.rfi_masking.toggle.rfi_zeroing,
-                "pulsar_gating": _config.updateable_config.gating,
+                "pulsar_gating": "Config retrival not implemented yet.",
             },
             "git_version": self.git_version,
             "start_time": time.strftime(
