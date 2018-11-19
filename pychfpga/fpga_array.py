@@ -672,8 +672,8 @@ class FPGAArray(object):
                 # resolve hostnames into IP addresses
                 # this is not concurrent, unfortunately... this is why we checked ping first, otherwise it blocks for a long time
 
-                self.logger.info('%r: Resolving IP addresses of Iceboards that passed the ping test' % (self, time.time() - t0))
                 t0 = time.time()
+                self.logger.info('%r: Resolving IP addresses of Iceboards that passed the ping test' % (self, time.time() - t0))
                 for ib, ping_result in ping_results.items():
                     if ping_result:
                         ib.hostname = socket.gethostbyname(ib.hostname)
