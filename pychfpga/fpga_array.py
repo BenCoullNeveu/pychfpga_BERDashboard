@@ -410,7 +410,7 @@ class FPGAArray(object):
         self.max_sync_time_difference = max_sync_time_difference
         self.tx_power = tx_power
         self.mode = mode
- 
+
         ###########################################
         # setup pychfpga.fpga_array logging
         ###########################################
@@ -2802,10 +2802,12 @@ class FPGAArray(object):
                 fn, ts = yield ib.capture_frame_time.async(format='raw')
                 if not i:
                     fn0, ts0 = (fn, ts)
-                metrics.add('fpga_time_delta', ts.nano - ts0.nano, slot=i)
-                metrics.add('fpga_frame_number_delta', fn - fn0, slot=i)
-                metrics.add('fpga_time_error', ts.nano - (self.sync_timestamps[i].nano + fn*2560), slot=i)
-                metrics.add('fpga_sync_time_delta', self.sync_timestamps[i].nano - self.sync_timestamps[0].nano, slot=i)
+                crate, slot = ib.get_id()
+                slot = ib.slot - 1
+                metrics.add('fpga_time_delta', ts.nano - ts0.nano, crate=crate, slot=slot)
+                metrics.add('fpga_frame_number_delta', fn - fn0, crate=crate, slot=slot)
+                metrics.add('fpga_time_error', ts.nano - (self.sync_timestamps[i].nano + fn*2560), crate=crate, slot=slot)
+                metrics.add('fpga_sync_time_delta', self.sync_timestamps[i].nano - self.sync_timestamps[0].nano, crate=crate, slot=slot)
             except RuntimeError:
                 self.logger.error('%r: Timeout while capturing frame time' % ib)
 
