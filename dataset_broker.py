@@ -15,8 +15,18 @@ import toro  # conditional variables for tornado coroutines
 
 import log  # logging helper functions
 
-WAIT_TIME = 9
+WAIT_TIME = 40
 
+
+def datetime_to_float(d):
+    epoch = datetime.datetime.utcfromtimestamp(0)
+    total_seconds = (d - epoch).total_seconds()
+    # total_seconds will be in decimals (millisecond precision)
+    return total_seconds
+
+
+def float_to_datetime(fl):
+    return datetime.datetime.utcfromtimestamp(fl)
 
 class DSBrokerAsyncRESTServer(AsyncRESTServer):
     """
@@ -31,6 +41,7 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
         """
         self.states = dict()
         self.datasets = dict()
+        self.timestamps = dict()
         self.signal_states_updated = toro.Condition()
         self.signal_datasets_updated = toro.Condition()
         self.lock_datasets = thread.allocate_lock()
@@ -57,96 +68,99 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
         self.log.debug('%.32r: Received status request' % self)
         reply = dict()
         with self.lock_datasets:
-            self.log.debug('%.32r: states: %r' % (self, self.states))
-            reply["states"] = self.states
+            reply["states"] = self.states.keys()
         with self.lock_states:
-            self.log.debug('%.32r: datasets: %r' % (self, self.datasets))
-            reply["datasets"] = self.datasets
+            reply["datasets"] = self.datasets.keys()
         coroutine_return(reply)
+        self.log.debug('%.32r: states: %r' % (self, self.states.keys()))
+        self.log.debug('%.32r: datasets: %r' % (self, self.datasets.keys()))
 
     @coroutine
     @endpoint('register-state')
-    def registerState(self, handler, hash):
+    def registerState(self, handler, hsh):
         """ Register a dataset state with the broker.
 
         This should only ever be called by kotekan's datasetManager.
         """
         self.log.debug('%.32r: Received register state request, hash: %r'
-                       % (self, hash))
-        reply = dict(result="success")
+                       % (self, hsh))
+        reply = dict(rslt="success")
         with self.lock_states:
-            if self.states.get(hash) is None:
+            if self.states.get(hsh) is None:
                 # we don't know this state, ask for it
-                reply['request'] = "get_state"
-                reply['hash'] = hash
+                reply['rqust'] = "get_state"
+                reply['hsh'] = hsh
                 self.log.debug('%.32r: Asking for state, hash: %r'
-                        % (self, hash))
+                               % (self, hsh))
         coroutine_return(reply)
 
     @coroutine
     @endpoint('send-state')
-    def sendState(self, handler, hash, state):
+    def sendState(self, handler, hsh, state):
         """ Send a dataset state to the broker.
 
         This should only ever be called by kotekan's datasetManager.
         """
-        self.log.debug('%.32r: Received state %r' % (self, hash))
+        self.log.debug('%.32r: Received state %r' % (self, hsh))
         reply = dict()
 
         # do we have this state already?
         with self.lock_states:
-            found = self.states.get(hash)
+            found = self.states.get(hsh)
             if found is not None:
                 # if we know it already, does it differ?
                 if found != state:
-                    reply['result'] = "error: a different state is know to " \
+                    reply['rslt'] = "error: a different state is know to " \
                                       "the broker with this hash: %r" % found
                     self.log.warn('%.32r: Failure receiving state: a '
                                   'different state with the same hash is: %r'
                                   % (self, found))
                 else:
-                    reply['result'] = "success"
+                    reply['rslt'] = "success"
             else:
-                self.states[hash] = state
-                reply['result'] = "success"
+                self.states[hsh] = state
+                reply['rslt'] = "success"
                 self.signal_states_updated.notify_all()
         coroutine_return(reply)
 
     @coroutine
     @endpoint('register-dataset')
-    def registerDataset(self, handler, hash, dataset):
+    def registerDataset(self, handler, hsh, ds):
         """ Register a dataset with the broker.
 
         This should only ever be called by kotekan's datasetManager.
         """
         self.log.debug('%.32r: Registering new dataset with hash %r : %r' %
-                       (self, hash, dataset))
-        dataset_valid = yield self.checkDataset(dataset)
-        reply = dict(result="success")
-        dataset_valid = yield self.checkDataset(dataset)
+                       (self, hsh, ds))
+        dataset_valid = yield self.checkDataset(ds)
+        reply = dict()
 
         # dataset already known?
         with self.lock_datasets:
-            found = self.datasets.get(hash)
+            found = self.datasets.get(hsh)
             if found is not None:
                 # if we know it already, does it differ?
-                if found != dataset:
-                    reply['result'] = "error: a different dataset is know to" \
-                                      " the broker with this hash: %r" % found
+                if found != ds:
+                    reply['rslt'] = "error: a different dataset is know to" \
+                                    " the broker with this hash: %r" % found
                     self.log.warn('%.32r: Failure receiving dataset: a'
                                   ' different dataset with the same hash is: %r'
                                   % (self, found))
                 else:
-                    reply['result'] = "success"
+                    reply['rslt'] = "success"
             elif dataset_valid:
-                self.datasets[hash] = dataset
-                reply['result'] = "success"
+                # add a timestamp to the dataset (ms precision)
+                self.timestamps[hsh] = datetime_to_float(datetime.datetime.utcnow())
+
+                # save the dataset
+                self.datasets[hsh] = ds
+                reply['rslt'] = "success"
                 self.signal_datasets_updated.notify_all()
             else:
-                reply['result'] = "error: dataset invalid."
+                reply['rslt'] = "dataset invalid."
                 self.log.debug(
                     '%.32r: Received invalid dataset with hash %r : %r' %
-                    (self, hash, dataset))
+                    (self, hsh, ds))
 
             coroutine_return(reply)
 
@@ -171,54 +185,8 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
         coroutine_return(True)
 
     @coroutine
-    @endpoint('request-ancestor')
-    def requestAncestor(self, handler, ds_id, type):
-        """ Request the ancestor of a given type closest to the dataset with the
-        given ID.
-
-        This is called by kotekan's datasetManager.
-
-        curl
-        -d '{"ds_id":123,"type":"10freqState"}'
-        -X POST
-        -H "Content-Type: application/json"
-        http://localhost:12050/request-ancestor
-        """
-        self.log.debug(
-            '%.32r: Received request for ancestor of type %r of dataset %r'
-            % (self, type, ds_id))
-        reply = dict()
-
-        # Do we know this dset ID?
-        self.log.debug('%.32r: waiting for dataset %r' % (self, ds_id))
-        found = yield self.wait_for_dset(ds_id)
-        if not found:
-            reply['result'] = "error: dataset ID %r unknown to broker." % ds_id
-            self.log.info('%.32r: Dataset %r unknown to broker' % (self, ds_id))
-            coroutine_return(reply)
-        self.log.debug('%.32r: found dataset %r' % (self, ds_id))
-
-        try:
-            # default parameter doesn't work in subroutines?
-            ancestor = yield self.ancestor(ds_id, type, js=dict(datasets=dict(),
-                                                                states=dict()))
-            reply.update(ancestor)
-        except Exception as error:
-            reply["result"] = error.message
-            self.log.error('%.32r: %r' % (self, error))
-            coroutine_return(reply)
-
-        reply['result'] = "success"
-
-        # if ancestor state is not found, also don't send datasets
-        if not reply['states']:
-            reply['datasets'] = {}
-
-        coroutine_return(reply)
-
-    @coroutine
     @endpoint('request-state')
-    def requestState(self, handler, state_id):
+    def requestState(self, handler, id):
         """ Request the state with the given ID.
 
         This is called by kotekan's datasetManager.
@@ -230,25 +198,27 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
         http://localhost:12050/request-state
         """
         self.log.debug('%.32r: Received request for state with ID %r'
-            % (self, state_id))
+                       % (self, id))
         reply = dict()
-        reply['state_id'] = state_id
+        reply['id'] = id
 
         # Do we know this state ID?
         self.log.debug(
-            '%.32r: waiting for state ID %r' % (self, state_id))
-        found = yield self.wait_for_state(state_id)
+            '%.32r: waiting for state ID %r' % (self, id))
+        found = yield self.wait_for_state(id)
         if not found:
-            reply['result'] = "error: state ID %r unknown to broker." % state_id
-            self.log.info('%.32r: State %r unknown to broker' % (self, state_id))
+            reply['rslt'] = "state ID %r unknown to broker." % id
+            self.log.info('%.32r: State %r unknown to broker' % (self, id))
             coroutine_return(reply)
         self.log.debug(
-            '%.32r: found state ID %r' % (self, state_id))
+            '%.32r: found state ID %r' % (self, id))
 
         with self.lock_states:
-            reply['state'] = self.states[state_id]
+            reply['state'] = self.states[id]
 
-        reply['result'] = "success"
+        reply['rslt'] = "success"
+        self.log.debug(
+            '%.32r: Replying with %r' % (self, reply))
         coroutine_return(reply)
 
     @coroutine
@@ -261,7 +231,7 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
             self.lock_datasets.release()
             notified = True
             try:
-                while notified:
+                while True:
                     notified = yield self.signal_datasets_updated.wait(
                         deadline=datetime.timedelta(seconds=WAIT_TIME))
                     # did someone send it to us by now?
@@ -289,7 +259,7 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
             self.lock_states.release()
             notified = True
             try:
-                while notified:
+                while True:
                     notified = yield self.signal_states_updated.wait(
                         deadline=datetime.timedelta(seconds=WAIT_TIME))
                     # did someone send it to us by now?
@@ -309,41 +279,56 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
         coroutine_return(found)
 
     @coroutine
-    def ancestor(self, ds_id, type, js):
-        with self.lock_datasets:
-            state_id = self.datasets[ds_id]['state']
-            js["datasets"][ds_id] = self.datasets[ds_id]
+    @endpoint('update-datasets')
+    def updateDatasets(self, handler, ds_id, ts):
+        """
+        Request all ancestors of the given dataset that where added after
+        the given timestamp.
 
-        found = yield self.wait_for_state(state_id)
+        This is called by kotekan's datasetManager.
+
+        curl
+        -d '{"ds_id":2143,"ts":0}'
+        -X POST
+        -H "Content-Type: application/json"
+        http://localhost:12050/update-datasets
+        """
+        self.log.debug('%.32r: Received request for ancestors of dataset %r '
+                       'since timestamp %r.' % (self, ds_id, ts))
+        reply = dict()
+
+        # Do we know this ds ID?
+        found = yield self.wait_for_dset(ds_id)
         if not found:
-            raise Exception("Error: dataset-broker is in a bad state."
-                            " Found reference to not existing state ID.")
+            reply['rslt'] = "Dataset ID %r unknown to broker." % ds_id
+            self.log.info('%.32r: Dataset ID %r unknown to broker' % (self, ds_id))
+            coroutine_return(reply)
 
-        # look for the state of requested type
-        with self.lock_states:
-            js["states"][state_id] = self.states[state_id]
-            if self.states[state_id]["type"] == type:
-                coroutine_return(js)
+        if ts is 0:
+            ts = datetime_to_float(datetime.datetime.min)
+            self.log.debug('%.32r: Zero timestamp: %r' % (self, ts))
 
-            # loop through the inner states
-            state = self.states[state_id].get("inner", None)
-            while state != None:
-                if state["type"] == type:
-                    coroutine_return(js)
-                state = state.get("inner", None)
-
-        # look for the requested type in parent dataset states
         with self.lock_datasets:
-            if self.datasets[ds_id]['is_root']:
-                coroutine_return(js)
-            next_ds = self.datasets[ds_id]['base_dset']
+            # add a timestamp to the result while datasets locked
+            reply['ts'] = datetime_to_float(datetime.datetime.utcnow())
+            reply['datasets'] = dict()
 
-        found = yield self.wait_for_dset(next_ds)
-        if not found:
-            raise Exception("Error: Broker is in bad state."
-                            " Found reference to not existing dataset ID.")
-        js = yield self.ancestor(next_ds, type, js)
-        coroutine_return(js)
+            # Get all update since timestamp
+            while ts < self.timestamps[ds_id]:
+                self.log.debug('%.32r: Adding dataset %r' % (self, self.datasets[ds_id]))
+
+                reply['datasets'][ds_id] = self.datasets[ds_id]
+
+                # Stop at the root.
+                if self.datasets[ds_id]['is_root']:
+                    break
+
+                ds_id = self.datasets[ds_id]['base_dset']
+
+
+        reply['rslt'] = "success"
+        self.log.debug('%.32r: Answering with %r.' % (self, reply))
+        coroutine_return(reply)
 
 
 #########################################
@@ -387,18 +372,18 @@ class DSBrokerAsyncRESTClient(AsyncRESTClient):
             heartbeat_string='Gc')
 
     @coroutine
-    def registerState(self, hash):
-        result = yield self.post('register-state', hash)
+    def registerState(self, hsh):
+        result = yield self.post('register-state', hsh)
         coroutine_return(result)
 
     @coroutine
-    def sendState(self, hash, state):
-        result = yield self.post('send-state', hash, state)
+    def sendState(self, hsh, state):
+        result = yield self.post('send-state', hsh, state)
         coroutine_return(result)
 
     @coroutine
-    def registerDataset(self, state_id, base_ds_id):
-        result = yield self.post('register-dataset', state_id, base_ds_id)
+    def registerDataset(self, hsh, ds):
+        result = yield self.post('register-dataset', hsh, ds)
         coroutine_return(result)
 
     @coroutine
@@ -407,14 +392,13 @@ class DSBrokerAsyncRESTClient(AsyncRESTClient):
         coroutine_return(result)
 
     @coroutine
-    def requestAncestor(self, ds_id, type):
-        result = yield self.post('request-ancestor', ds_id, type)
+    def requestState(self, state_id):
+        result = yield self.post('request-state', id)
         coroutine_return(result)
 
     @coroutine
-    def requestState(self, state_id):
-        result = yield self.post('request-state', state_id)
-        coroutine_return(result)
+    def updateDatasets(self, ds_id, ts):
+        result = yield self.post('update-datasets', ds_id, ts)
 
 
 def main():
