@@ -8,7 +8,7 @@ Type=simple
 Restart=always
 KillSignal=SIGINT
 WorkingDirectory=/home/chime/ch_acq/
-ExecStart=/home/chime/ch_acq/dataset_broker.py shiny
+ExecStart=/home/chime/ch_acq/dataset_broker.py
 User=chime
 PIDFile=/var/run/dataset_broker.pid
 
