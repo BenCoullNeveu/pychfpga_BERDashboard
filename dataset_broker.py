@@ -77,90 +77,90 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
 
     @coroutine
     @endpoint('register-state')
-    def registerState(self, handler, hsh):
+    def registerState(self, handler, hash):
         """ Register a dataset state with the broker.
 
         This should only ever be called by kotekan's datasetManager.
         """
         self.log.debug('%.32r: Received register state request, hash: %r'
-                       % (self, hsh))
-        reply = dict(rslt="success")
+                       % (self, hash))
+        reply = dict(result="success")
         with self.lock_states:
-            if self.states.get(hsh) is None:
+            if self.states.get(hash) is None:
                 # we don't know this state, ask for it
-                reply['rqust'] = "get_state"
-                reply['hsh'] = hsh
+                reply['request'] = "get_state"
+                reply['hash'] = hash
                 self.log.debug('%.32r: Asking for state, hash: %r'
-                               % (self, hsh))
+                               % (self, hash))
         coroutine_return(reply)
 
     @coroutine
     @endpoint('send-state')
-    def sendState(self, handler, hsh, state):
+    def sendState(self, handler, hash, state):
         """ Send a dataset state to the broker.
 
         This should only ever be called by kotekan's datasetManager.
         """
-        self.log.debug('%.32r: Received state %r' % (self, hsh))
+        self.log.debug('%.32r: Received state %r' % (self, hash))
         reply = dict()
 
         # do we have this state already?
         with self.lock_states:
-            found = self.states.get(hsh)
+            found = self.states.get(hash)
             if found is not None:
                 # if we know it already, does it differ?
                 if found != state:
-                    reply['rslt'] = "error: a different state is know to " \
+                    reply['result'] = "error: a different state is know to " \
                                       "the broker with this hash: %r" % found
                     self.log.warn('%.32r: Failure receiving state: a '
                                   'different state with the same hash is: %r'
                                   % (self, found))
                 else:
-                    reply['rslt'] = "success"
+                    reply['result'] = "success"
             else:
-                self.states[hsh] = state
-                reply['rslt'] = "success"
+                self.states[hash] = state
+                reply['result'] = "success"
                 self.signal_states_updated.notify_all()
         coroutine_return(reply)
 
     @coroutine
     @endpoint('register-dataset')
-    def registerDataset(self, handler, hsh, ds):
+    def registerDataset(self, handler, hash, ds):
         """ Register a dataset with the broker.
 
         This should only ever be called by kotekan's datasetManager.
         """
         self.log.debug('%.32r: Registering new dataset with hash %r : %r' %
-                       (self, hsh, ds))
+                       (self, hash, ds))
         dataset_valid = yield self.checkDataset(ds)
         reply = dict()
 
         # dataset already known?
         with self.lock_datasets:
-            found = self.datasets.get(hsh)
+            found = self.datasets.get(hash)
             if found is not None:
                 # if we know it already, does it differ?
                 if found != ds:
-                    reply['rslt'] = "error: a different dataset is know to" \
+                    reply['result'] = "error: a different dataset is know to" \
                                     " the broker with this hash: %r" % found
                     self.log.warn('%.32r: Failure receiving dataset: a'
                                   ' different dataset with the same hash is: %r'
                                   % (self, found))
                 else:
-                    reply['rslt'] = "success"
+                    reply['result'] = "success"
             elif dataset_valid:
                 # add a timestamp to the dataset (ms precision)
-                self.timestamps[hsh] = datetime_to_float(datetime.datetime.utcnow())
+                self.timestamps[hash] = datetime_to_float(datetime.datetime.utcnow())
 
                 # save the dataset
-                self.datasets[hsh] = ds
-                reply['rslt'] = "success"
+                self.datasets[hash] = ds
+                reply['result'] = "success"
                 self.signal_datasets_updated.notify_all()
             else:
-                reply['rslt'] = "dataset invalid."
+                reply['result'] = "dataset invalid."
                 self.log.debug(
                     '%.32r: Received invalid dataset with hash %r : %r' %
-                    (self, hsh, ds))
+                    (self, hash, ds))
 
             coroutine_return(reply)
 
@@ -207,7 +207,7 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
             '%.32r: waiting for state ID %r' % (self, id))
         found = yield self.wait_for_state(id)
         if not found:
-            reply['rslt'] = "state ID %r unknown to broker." % id
+            reply['result'] = "state ID %r unknown to broker." % id
             self.log.info('%.32r: State %r unknown to broker' % (self, id))
             coroutine_return(reply)
         self.log.debug(
@@ -216,7 +216,7 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
         with self.lock_states:
             reply['state'] = self.states[id]
 
-        reply['rslt'] = "success"
+        reply['result'] = "success"
         self.log.debug(
             '%.32r: Replying with %r' % (self, reply))
         coroutine_return(reply)
@@ -300,7 +300,7 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
         # Do we know this ds ID?
         found = yield self.wait_for_dset(ds_id)
         if not found:
-            reply['rslt'] = "Dataset ID %r unknown to broker." % ds_id
+            reply['result'] = "Dataset ID %r unknown to broker." % ds_id
             self.log.info('%.32r: Dataset ID %r unknown to broker' % (self, ds_id))
             coroutine_return(reply)
 
@@ -326,7 +326,7 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
                 ds_id = self.datasets[ds_id]['base_dset']
 
 
-        reply['rslt'] = "success"
+        reply['result'] = "success"
         self.log.debug('%.32r: Answering with %r.' % (self, reply))
         coroutine_return(reply)
 
@@ -372,18 +372,18 @@ class DSBrokerAsyncRESTClient(AsyncRESTClient):
             heartbeat_string='Gc')
 
     @coroutine
-    def registerState(self, hsh):
-        result = yield self.post('register-state', hsh)
+    def registerState(self, hash):
+        result = yield self.post('register-state', hash)
         coroutine_return(result)
 
     @coroutine
-    def sendState(self, hsh, state):
-        result = yield self.post('send-state', hsh, state)
+    def sendState(self, hash, state):
+        result = yield self.post('send-state', hash, state)
         coroutine_return(result)
 
     @coroutine
-    def registerDataset(self, hsh, ds):
-        result = yield self.post('register-dataset', hsh, ds)
+    def registerDataset(self, hash, ds):
+        result = yield self.post('register-dataset', hash, ds)
         coroutine_return(result)
 
     @coroutine
