@@ -299,7 +299,7 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
 
         reply['result'] = "success"
         self.log.debug(
-            '%.32r: Replying with %r' % (self, reply))
+            '%.32r: Replying with state %r' % (self, id))
         coroutine_return(reply)
 
     @coroutine
@@ -349,6 +349,8 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
                     # did someone send it to us by now?
                     with self.lock_states:
                         if self.states.get(id) is not None:
+                            self.log.debug(
+                                '%.32r: Got state %r' % (self, id))
                             break
             except toro.Timeout as e:
                 pass
