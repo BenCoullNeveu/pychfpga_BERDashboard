@@ -8,6 +8,7 @@ import sys
 import thread
 import datetime
 
+from bisect import bisect_left
 from rest import AsyncRESTClient, AsyncRESTServer, endpoint
 from rest import coroutine, coroutine_return
 from rest import run_client  # generic REST servers and clients
@@ -40,8 +41,15 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
         List of dict with entries 'type', 'name', and 'address'
         """
         self.states = dict()
+
+        # Hashmap of datasets for direct access.
         self.datasets = dict()
-        self.timestamps = dict()
+
+        # Two dicts of root -> list of (ds_id/timestamp) / timesamp. The latter
+        # facilitates sorted insert into the first.
+        self.datasets_of_root = dict()
+        self.datasets_of_root_keys = dict()
+
         self.signal_states_updated = toro.Condition()
         self.signal_datasets_updated = toro.Condition()
         self.lock_datasets = thread.allocate_lock()
@@ -82,7 +90,7 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
 
         This should only ever be called by kotekan's datasetManager.
         """
-        self.log.debug('%.32r: Received register state request, hash: %r'
+        self.log.debug('%.32r: Receiving register state request, hash: %r'
                        % (self, hash))
         reply = dict(result="success")
         with self.lock_states:
@@ -92,6 +100,8 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
                 reply['hash'] = hash
                 self.log.debug('%.32r: Asking for state, hash: %r'
                                % (self, hash))
+        self.log.debug('%.32r: Received register state request, hash: %r'
+                       % (self, hash))
         coroutine_return(reply)
 
     @coroutine
@@ -134,6 +144,7 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
                        (self, hash, ds))
         dataset_valid = yield self.checkDataset(ds)
         reply = dict()
+        root = yield self.findRoot(hash, ds)
 
         # dataset already known?
         with self.lock_datasets:
@@ -149,11 +160,9 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
                 else:
                     reply['result'] = "success"
             elif dataset_valid:
-                # add a timestamp to the dataset (ms precision)
-                self.timestamps[hash] = datetime_to_float(datetime.datetime.utcnow())
-
                 # save the dataset
-                self.datasets[hash] = ds
+                yield self.saveDataset(hash, ds, root)
+
                 reply['result'] = "success"
                 self.signal_datasets_updated.notify_all()
             else:
@@ -161,8 +170,72 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
                 self.log.debug(
                     '%.32r: Received invalid dataset with hash %r : %r' %
                     (self, hash, ds))
-
+            self.log.debug('%.32r: Registered new dataset with hash %r : %r' %
+                           (self, hash, ds))
             coroutine_return(reply)
+
+    @coroutine
+    def saveDataset(self, hash, ds, root):
+        """ Save the given dataset, its hash and a current timestamp.
+
+            This should be called while a lock on the datasets is held.
+        """
+
+        # add a timestamp to the dataset (ms precision)
+        ts = datetime_to_float(datetime.datetime.utcnow())
+
+        # create entry if this is the first node with that root
+        if root not in self.datasets_of_root.keys():
+            self.datasets_of_root[root] = list()
+            self.datasets_of_root_keys[root] = list()
+
+        # Determine where to insert dataset ID.
+        i = bisect_left(self.datasets_of_root_keys[root], ts)
+
+        # Insert timestamp in keys list.
+        self.datasets_of_root_keys[root].insert(i, ts)
+
+        # Insert the dataset ID itself in the corresponding place.
+        self.datasets_of_root[root].insert(i, hash)
+
+        # Insert the dataset in the hashmap
+        self.datasets[hash] = ds
+
+    def gatherUpdate(self, ts, roots):
+        """ Returns a dict of dataset ID -> dataset with all datasets with the
+            given roots that were registered after the given timestamp.
+        """
+        update = dict()
+
+        with self.lock_datasets:
+            for r in roots:
+                tree = reversed(self.datasets_of_root[r])
+                keys = reversed(self.datasets_of_root_keys[r])
+
+                # The nodes in tree are ordered by their timestamp from new to
+                # old, so we are done as soon as we find an older timestamp than
+                # the given one.
+                for n,k in zip(tree,keys):
+                    if k < ts:
+                        break
+                    update.insert(n, self.datasets[n])
+        return update
+
+    @coroutine
+    def findRoot(self, hash, ds):
+        """ Returns the dataset Id of the root of this dataset.
+        """
+        root = hash
+        while not ds['is_root']:
+            root = ds['base_dset']
+            found = yield self.wait_for_dset(root)
+            if not found:
+                self.log.error('%.32r: findRoot: dataset %r not found.', self,
+                               hash)
+                coroutine_return(None)
+            with self.lock_datasets:
+                ds = self.datasets[root]
+        coroutine_return(root)
 
     @coroutine
     def checkDataset(self, ds):
@@ -172,16 +245,24 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
         have to exist. If it is a root dataset, the base dataset does not have
         to exist.
         """
-        if not self.wait_for_state(ds['state']):
+        self.log.debug('%.32r: Checking dataset: %r' %
+                       (self, ds))
+        found = yield self.wait_for_state(ds['state'])
+        if not found:
             self.log.debug('%.32r: State of dataset unknown: %r' %
                            (self, ds))
             coroutine_return(False)
         if ds['is_root']:
+            self.log.debug('%.32r: Checked dataset: %r' %
+                           (self, ds))
             coroutine_return(True)
-        if not self.wait_for_dset(ds['base_dset']):
+        found = yield self.wait_for_dset(ds['base_dset'])
+        if not found:
             self.log.debug('%.32r: Base dataset of dataset unknown: %r' %
                            (self, ds))
             coroutine_return(False)
+        self.log.debug('%.32r: Checked dataset: %r' %
+                       (self, ds))
         coroutine_return(True)
 
     @coroutine
@@ -238,6 +319,8 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
                     # did someone send it to us by now?
                     with self.lock_datasets:
                         if self.datasets.get(id) is not None:
+                            self.log.debug(
+                                '%.32r: Found dataset %r' % (self, id))
                             break
             except toro.Timeout as e:
                 pass
@@ -280,10 +363,12 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
 
     @coroutine
     @endpoint('update-datasets')
-    def updateDatasets(self, handler, ds_id, ts):
+    def updateDatasets(self, handler, ds_id, ts, roots):
         """
-        Request all ancestors of the given dataset that where added after
-        the given timestamp.
+        Request all nodes that where added after the given timestamp.
+        If the root of the given dataset is not among the given known roots,
+        All datasets with the same root as the given dataset are included in the
+        returned update additionally.
 
         This is called by kotekan's datasetManager.
 
@@ -294,41 +379,46 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
         http://localhost:12050/update-datasets
         """
         self.log.debug('%.32r: Received request for ancestors of dataset %r '
-                       'since timestamp %r.' % (self, ds_id, ts))
+                       'since timestamp %r, roots %r.'
+                       % (self, ds_id, ts, roots))
         reply = dict()
 
         # Do we know this ds ID?
         found = yield self.wait_for_dset(ds_id)
         if not found:
             reply['result'] = "Dataset ID %r unknown to broker." % ds_id
-            self.log.info('%.32r: Dataset ID %r unknown to broker' % (self, ds_id))
+            self.log.info('%.32r: Dataset ID %r unknown to broker'
+                          % (self, ds_id))
             coroutine_return(reply)
 
         if ts is 0:
             ts = datetime_to_float(datetime.datetime.min)
-            self.log.debug('%.32r: Zero timestamp: %r' % (self, ts))
 
-        with self.lock_datasets:
-            # add a timestamp to the result while datasets locked
-            reply['ts'] = datetime_to_float(datetime.datetime.utcnow())
-            reply['datasets'] = dict()
+        # If the requested dataset is from a tree not known to the calling
+        # instance, send them that whole tree.
+        root = yield self.findRoot(ds_id, self.datasets[ds_id])
+        if root is None:
+            self.log.error('%.32r: Root of dataset %r not found.', ds_id)
+            reply['result'] = 'Root of dataset %r not found.' % ds_id
+        if root not in roots:
+            reply['datasets'] = self.tree(root)
 
-            # Get all update since timestamp
-            while ts < self.timestamps[ds_id]:
-                self.log.debug('%.32r: Adding dataset %r' % (self, self.datasets[ds_id]))
-
-                reply['datasets'][ds_id] = self.datasets[ds_id]
-
-                # Stop at the root.
-                if self.datasets[ds_id]['is_root']:
-                    break
-
-                ds_id = self.datasets[ds_id]['base_dset']
-
+        # add a timestamp to the result before gathering update
+        reply['ts'] = datetime_to_float(datetime.datetime.utcnow())
+        reply['datasets'].update(self.gatherUpdate(ts, roots))
 
         reply['result'] = "success"
         self.log.debug('%.32r: Answering with %r.' % (self, reply))
         coroutine_return(reply)
+
+    def tree(self, root):
+        """ Returns a list of all nodes in the given tree. """
+        tree = dict()
+        with self.lock_datasets:
+            for n in self.datasets_of_root[root]:
+                tree[n] = self.datasets[n]
+        return tree
+
 
 
 #########################################
