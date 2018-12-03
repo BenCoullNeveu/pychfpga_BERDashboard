@@ -479,7 +479,7 @@ class KotekanMaster(object):
             },
             "cosmology_status": {
                 "rfi_zeroing": _config.rfi_masking.toggle.rfi_zeroing,
-                "pulsar_gating": "Config retrival not implemented yet.",
+                "pulsar_gating": _config.updatable_config.gating,
             },
             "git_version": self.git_version,
             "start_time": time.strftime(
@@ -1438,7 +1438,7 @@ class KotekanMaster(object):
         Update the Pulsar Gating Parameters
         """
         # Update the local configuration file
-        config = self.current_config.common_config.updateable_config.gating
+        config = self.current_config.common_config.updatable_config.gating
         try:
             config.psr0_config.enabled = enabled
             config.psr0_config.pulsar_name = pulsar_name
@@ -1476,31 +1476,24 @@ class KotekanMaster(object):
         ra = float(ra)
         dec = float(dec)
         scaling = int(scaling)
+        _config = self.current_config.common_config.gpu
         try:
             # Update KotekanMaster Dynamic Config
             # Update ra
-            self.current_config.common_config.gpu.gpu_0.source_ra[beam] = ra
-            self.current_config.common_config.gpu.gpu_1.source_ra[beam] = ra
-            self.current_config.common_config.gpu.gpu_2.source_ra[beam] = ra
-            self.current_config.common_config.gpu.gpu_3.source_ra[beam] = ra
+            _config.gpu_0.source_ra[beam] = ra
+            _config.gpu_1.source_ra[beam] = ra
+            _config.gpu_2.source_ra[beam] = ra
+            _config.gpu_3.source_ra[beam] = ra
             # Update dec
-            self.current_config.common_config.gpu.gpu_0.source_dec[beam] = dec
-            self.current_config.common_config.gpu.gpu_1.source_dec[beam] = dec
-            self.current_config.common_config.gpu.gpu_2.source_dec[beam] = dec
-            self.current_config.common_config.gpu.gpu_3.source_dec[beam] = dec
+            _config.gpu_0.source_dec[beam] = dec
+            _config.gpu_1.source_dec[beam] = dec
+            _config.gpu_2.source_dec[beam] = dec
+            _config.gpu_3.source_dec[beam] = dec
             # Update scaling
-            self.current_config.common_config.gpu.gpu_0.psr_scaling[
-                beam
-            ] = scaling
-            self.current_config.common_config.gpu.gpu_1.psr_scaling[
-                beam
-            ] = scaling
-            self.current_config.common_config.gpu.gpu_2.psr_scaling[
-                beam
-            ] = scaling
-            self.current_config.common_config.gpu.gpu_3.psr_scaling[
-                beam
-            ] = scaling
+            _config.gpu_0.psr_scaling[beam] = scaling
+            _config.gpu_1.psr_scaling[beam] = scaling
+            _config.gpu_2.psr_scaling[beam] = scaling
+            _config.gpu_3.psr_scaling[beam] = scaling
 
             msg = "beam: {}, ra: {}, dec: {}, scaling: {}".format(
                 beam, ra, dec, scaling
