@@ -54,6 +54,11 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
         self.signal_datasets_updated = toro.Condition()
         self.lock_datasets = thread.allocate_lock()
         self.lock_states = thread.allocate_lock()
+
+        # a set of requested states and its lock
+        self.requested_states = set()
+        self.lock_requested_states = thread.allocate_lock()
+
         super(DSBrokerAsyncRESTServer, self).__init__(address=address,
                                                       port=port,
                                                       heartbeat_string='Gs')
@@ -75,9 +80,9 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
         """
         self.log.debug('%.32r: Received status request' % self)
         reply = dict()
-        with self.lock_datasets:
-            reply["states"] = self.states.keys()
         with self.lock_states:
+            reply["states"] = self.states.keys()
+        with self.lock_datasets:
             reply["datasets"] = self.datasets.keys()
         coroutine_return(reply)
         self.log.debug('%.32r: states: %r' % (self, self.states.keys()))
@@ -95,7 +100,14 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
         reply = dict(result="success")
         with self.lock_states:
             if self.states.get(hash) is None:
-                # we don't know this state, ask for it
+                # we don't know this state, did we request it already?
+                with self.lock_requested_states:
+                    if hash in self.requested_states:
+                        coroutine_return(reply)
+
+                # ask for it
+                with self.lock_requested_states:
+                    self.lock_requested_states.add(hash)
                 reply['request'] = "get_state"
                 reply['hash'] = hash
                 self.log.debug('%.32r: Asking for state, hash: %r'
@@ -131,6 +143,10 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
                 self.states[hash] = state
                 reply['result'] = "success"
                 self.signal_states_updated.notify_all()
+
+        with self.lock_requested_states:
+            self.requested_states.remove(hash)
+            
         coroutine_return(reply)
 
     @coroutine
