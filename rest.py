@@ -26,8 +26,11 @@ from tornado.ioloop import IOLoop
 from tornado.web import HTTPError
 #from tornado_profile import TornadoProfiler
 
+
 def coroutine(func, replace_callback=True):
-    """ Standard Tornado coroutine decorator, with the coroutine flag added in case we use tornado < 4.5"""
+    """ Standard Tornado coroutine decorator, with the coroutine
+    flag added in case we use tornado < 4.5
+    """
     wrapped = tornado.gen.coroutine(func, replace_callback=replace_callback)
     if not hasattr(wrapped, '__tornado_coroutine__'):
         wrapped.__tornado_coroutine__ = True
@@ -42,19 +45,22 @@ def is_coroutine_function(func):
     """
     return getattr(func, '__tornado_coroutine__', False)
 
+
 def coroutine_return(*args, **kwargs):
     """ return a value from a coroutine.
 
     Is used to return values from a co-routine because a
-    coroutine is a generator (a function that *yields* values) and you cannot use return in a
-    generator in python 2.7.
+    coroutine is a generator (a function that *yields* values) and you cannot
+    use return in a generator in python 2.7.
 
-    Just like the return statement, `coroutine_return` normally accept a single positional argument.
-    However, for convenience, if we pass it only keyword arguments, these arguments will be returned
-    as a dict object. This is useful because REST methods return dicts.
+    Just like the return statement, `coroutine_return` normally accept a single
+    positional argument. However, for convenience, if we pass it only keyword
+    arguments, these arguments will be returned as a dict object. This is
+    useful because REST methods return dicts.
 
-    Parameters: args, kwargs: All the positional and keywords arguments to return. Either one
-        positional argument or only keyword arguments are accepted.
+    Parameters: args, kwargs: All the positional and keywords arguments to
+    return. Either one positional argument or only keyword arguments are
+    accepted.
 
     Returns:
         Nothing
@@ -64,20 +70,25 @@ def coroutine_return(*args, **kwargs):
     else:
         raise tornado.gen.Return(*args, **kwargs)  # just pass everything
 
-class RESTClient(object):
-    """ This is a Requests-based client (non asynchronous)
-    """
-    TIMEOUT = 30 # seconds
-    DEFAULT_HOST = 'localhost'
-    DEFAULT_PORT = 54321
 
-    def __init__(self, hostname=DEFAULT_HOST, port=DEFAULT_PORT):
+class RESTClient(object):
+    """Synchronous Requests-based Client
+    """
+    def __init__(self, hostname='localhost', port=54321, timeout=15):
+
         self.hostname = hostname
         self.port = port
-        self.log = logging.getLogger(__name__).getChild(self.__class__.__name__)
+        self.timeout = timeout
+        self.log = logging.getLogger(
+            __name__
+        ).getChild(
+            self.__class__.__name__
+        )
 
     def __repr__(self):
-        return '%s(%s:%s)' % (self.__class__.__name__, self.hostname, self.port)
+        return '%s(%s:%s)' % (
+            self.__class__.__name__, self.hostname, self.port
+        )
 
     def print(self, msg):
         print(msg)
@@ -94,18 +105,34 @@ class RESTClient(object):
 
     def get(self, endpoint):
         try:
-            return requests.get(self.url(endpoint), timeout=self.TIMEOUT).json()
+            return requests.get(
+                self.url(endpoint), timeout=self.timeout
+            ).json()
         except requests.exceptions.ConnectionError:
-            self.error("Can't connect to REST server at %s:%d for GET request" % (self.hostname, self.port))
+            self.error(
+                "Can't connect to REST server at %s:%d for GET request" % (
+                    self.hostname,
+                    self.port
+                )
+            )
 
     def post(self, endpoint, **kvs):
         try:
-            return requests.post(self.url(endpoint), json=kvs, timeout=self.TIMEOUT).json()
+            return requests.post(
+                self.url(endpoint), json=kvs, timeout=self.timeout
+            ).json()
         except requests.exceptions.ConnectionError:
-            self.error("Can't connect to REST server at %s:%d for PORT request" % (self.hostname, self.port))
+            self.error(
+                "Can't connect to REST server at %s:%d for PORT request" % (
+                    self.hostname,
+                    self.port
+                )
+            )
+
 
 class AsyncMixin(object):
-    """ Mixin class that provides common methods useful to asynchrohous servers or clients
+    """ Mixin class that provides common methods useful to asynchrohous servers
+    or clients
 
     Includes:
         - register a periodic heartbeat
@@ -114,7 +141,6 @@ class AsyncMixin(object):
         - initiate periodic or delayed calls
         - start the ioloop
         - run a coroutine synchronously
-
     """
 
     def add_periodic_callback(self, callback, period):
@@ -125,11 +151,13 @@ class AsyncMixin(object):
         IOLoop.current().call_later(delay, callback)
 
     def add_heartbeat(self, heartbeat_string='.', period=1000):
-        """ Add a periodic callback that prints the specified string at specified inetrvals.
+        """ Add a periodic callback that prints the specified string at
+        specified inetrvals.
 
         Parameters:
             heartbeat_string (str): string to print
-            period (float): interval between prints in milliseconds. Default is 1000 ms.
+            period (float): interval between prints in milliseconds.
+            Default is 1000 ms.
         """
         def heartbeat_callback():
             # print(heartbeat_string, end='')
@@ -144,10 +172,11 @@ class AsyncMixin(object):
             yield self.shutdown()
             IOLoop.current().stop()
 
-            # A bit of a hack: close all sockets opened by the HTTP server so we can restart a new
+            # A bit of a hack: close all sockets opened by the HTTP server
+            # so we can restart a new
             # server in the same iPython session
             for sock in self.http_server._sockets.values():
-                #print('Closing socket ', sock.getsockname())
+                # print('Closing socket ', sock.getsockname())
                 sock.close()
 
         def handler(sig, frame):
@@ -170,22 +199,30 @@ class AsyncMixin(object):
     #     return attrs
 
     def run_sync(self, method_name, *args, **kwargs):
-        """ Runs `method_name` in the currenta ioloop and returns when completed"""
-        return IOLoop.current().run_sync(functools.partial(getattr(self, method_name), *args, **kwargs))
-
+        """ Runs `method_name` in the currenta ioloop and
+        returns when completed
+        """
+        return IOLoop.current().run_sync(functools.partial(
+            getattr(self, method_name), *args, **kwargs)
+        )
 
     def run(self):
-        """ Start the current ioloop and run it until something makes it stop """
+        """ Start the current ioloop and run it until something makes it stop
+        """
         try:
             IOLoop.current().start()
         finally:
-            IOLoop.current().stop() # make sure the loop is stopped in case the code was interrupted
+            # Make sure the loop is stopped in case the code was interrupted
+            IOLoop.current().stop()
+
 
 class AsyncRESTClient(AsyncMixin):
-    """Implements asynchronous methods (coroutines) to operate a remote REST server.
+    """Implements asynchronous methods (coroutines) to operate
+    a remote REST server.
 
-    Is implemented using a Tornado AsyncHTTPClient . All methods are Tornado coroutines so that
-    operations can be performed concurrently on multiple nodes.
+    Is implemented using a Tornado AsyncHTTPClient.
+    All methods are Tornado coroutines so that operations can be
+    performed concurrently on multiple nodes.
     """
     DEFAULT_HOST = 'localhost'
     DEFAULT_PORT = 80
@@ -196,39 +233,54 @@ class AsyncRESTClient(AsyncMixin):
         port=DEFAULT_PORT,
         server_class=None,
         heartbeat_string=None,
-        heartbeat_period=5000
+        heartbeat_period=5000,
+        timeout=None
     ):
         self.log = log.get_logger(self)
         self.hostname = hostname
         self.port = port
 
         if server_class and (not hostname or not self._tcp_ping(hostname, port)):
-            self.log.info('%32r: Hostname is not specified or is not responding. Creating local server' % (self))
+            self.log.info(
+                '%32r: Hostname not specified or responding. Creating local server' % (self))
             self.hostname = 'localhost'
             address = ''  # server listens to all interfaces by default
             self.server = server_class(address, self.port)
 
-        self.log.info('%32r: Creating %s at %s:%i' % (self, self.__class__.__name__, self.hostname, port))
+        self.log.info(
+            '%32r: Creating %s at %s:%i' % (
+                self, self.__class__.__name__, self.hostname, port
+            )
+        )
         self.client = tornado.httpclient.AsyncHTTPClient()
-        # Increase number of threads from default 300 to 2000
-        self.client.configure(None, max_clients=2000)
+        # Increase number of threads from default 300 to 5000
+        self.client.max_clients = 5000
+        # Overload the request_timeout parameter
+        if timeout is not None:
+            self.client.request_timeout = timeout
         if heartbeat_string:
             self.add_heartbeat(heartbeat_string, heartbeat_period)
         self.add_shutdown_handler()
 
     def __repr__(self):
-        return '%s(%s:%s)' % ( self.__class__.__name__, self.hostname, self.port)
+        return '%s(%s:%s)' % (
+            self.__class__.__name__, self.hostname, self.port
+        )
 
     def url(self, endpoint):
         return 'http://%s:%d/%s' % (self.hostname, self.port, endpoint)
 
     @coroutine
     def post(self, endpoint, raw=False, **kws):
-        """ Send POST request to the target endpoint, with all keywords arguments being JSON-encoded"""
+        """ Send POST request to the target endpoint,
+        with all keywords arguments being JSON-encoded
+        """
         coroutine_return((yield self._fetch(endpoint, 'POST', raw, **kws)))
 
     @coroutine
     def get(self, endpoint, raw=False):
+        """GET request to the target endpoint.
+        """
         coroutine_return((yield self._fetch(endpoint, 'GET', raw)))
 
     @coroutine
@@ -239,10 +291,17 @@ class AsyncRESTClient(AsyncMixin):
         else:
             body = None
         self.log.debug('fetch: Send %s request %s' % (method, endpoint))
-        resp = yield self.client.fetch(url, method=method, headers={"Content-Type": "application/json"}, body=body, raise_error=False, request_timeout=30)
-        #print('_fetch response: %r' % resp)
-        #print('_fetch response body: %r' % resp.body)
-        #print('_fetch response error: %s' % resp.error)
+        resp = yield self.client.fetch(
+            url,
+            method=method,
+            headers={"Content-Type": "application/json"},
+            body=body,
+            raise_error=False
+        )
+
+        # print('_fetch response: %r' % resp)
+        # print('_fetch response body: %r' % resp.body)
+        # print('_fetch response error: %s' % resp.error)
         if raw:
             decoded_reply = resp.body
             error = ''
@@ -254,23 +313,30 @@ class AsyncRESTClient(AsyncMixin):
                 try:
                     decoded_reply = tornado.escape.json_decode(resp.body)
                     if isinstance(decoded_reply, dict):
-                        error = decoded_reply.pop('error','')
+                        error = decoded_reply.pop('error', '')
                     else:
                         error = ''
                 except (TypeError, ValueError):
-                    error = '%.32r: Invalid JSON reply string %r' %(self, resp.body)
+                    error = '%.32r: Invalid JSON reply string %r' % (
+                        self, resp.body
+                    )
         if resp.error:
-            self.log.error('REST client got response error: %s'  % resp.error)
+            self.log.error('REST client got response error: %s' % resp.error)
             error = str(resp.error) + '\n' + error
         if error:
-            error = ('Response=%r\n'%decoded_reply) + error
-            self.log.error('Failed to send %s request %s, error: %s' % (method, endpoint, error))
+            error = ('Response=%r\n' % decoded_reply) + error
+            self.log.error(
+                'Failed to send %s request %s, error: %s' % (
+                    method, endpoint, error
+                    )
+            )
             raise RuntimeError(error)
         coroutine_return(decoded_reply)
 
     def _tcp_ping(self, hostname, port, timeout=0.3):
         """
-        Establish a TCP connection with `addr` and return a boolean indicating whether the connection was successful.
+        Establish a TCP connection with `addr` and return a boolean indicating
+        whether the connection was successful.
 
         Parameters:
             hostname (str): hostname to which a TCP connection is made
@@ -289,8 +355,13 @@ class AsyncRESTClient(AsyncMixin):
             s.connect((hostname, port))
             s.close()
             return True
-        except (socket.timeout, socket.error): # Windows raises socket.timeout, linux raises socket.error
-            self.log.warn('Could not establish a TCP connection with %s:%s' % (hostname, port))
+        # Windows raises socket.timeout, linux raises socket.error
+        except (socket.timeout, socket.error):
+            self.log.warn(
+                'Could not establish a TCP connection with %s:%s' % (
+                    hostname, port
+                )
+            )
             return False
 
 
@@ -361,10 +432,11 @@ class JsonRequestHandler(tornado.web.RequestHandler):
 
 class AsyncRESTServer(AsyncMixin):
     """
-    Creates a Tornado Web application that will call the endpoint handlers registered
-    with the RESTserver.endpoint decorator.
+    Creates a Tornado Web application that will call the endpoint handlers
+    registered with the RESTserver.endpoint decorator.
 
-    GET endpoint methods are coroutines and are tagged with the @endpoint decorator:
+    GET endpoint methods are coroutines and are tagged with the @endpoint
+    decorator:
 
         @coroutine
         @endpoint
@@ -378,74 +450,98 @@ class AsyncRESTServer(AsyncMixin):
         def my_POST_endpoint_method(self, handler, args):
             ...
 
-    Methods with 2 arguments (i.e method(self, handler)) will only answer to GET requests.
+    Methods with 2 arguments (i.e method(self, handler)) will only answer to
+    GET requests.
 
-    Methods with 3 arguments (i.e method(self, handler, some_arg_name)) will answer to POST
-    requests, and the posted arguments will be passed to `some_arg_name`.
+    Methods with 3 arguments (i.e method(self, handler, some_arg_name)) will
+    answer to POST requests, and the posted arguments will be passed to
+    `some_arg_name`.
 
-    The method can access to the AsyncRESTServer instance ('self') to obtain context information.
+    The method can access to the AsyncRESTServer instance ('self') to obtain
+    context information.
 
 
-    `handler` is the RequestHandler that is handling the current request and can
-    be used for more sophisticated processing or error handling.
+    `handler` is the RequestHandler that is handling the current request and
+    can be used for more sophisticated processing or error handling.
 
-    Endpoint methods must be Tornado co-routines, and should therefore `yield` when
-    doing lengthy IO-bound operations and shall use `coroutine_return` to return
-    values (do not use the 'return' statement).
+    Endpoint methods must be Tornado co-routines, and should therefore `yield`
+    when doing lengthy IO-bound operations and shall use `coroutine_return` to
+    return values (do not use the 'return' statement).
 
-    If the endpoint handler is successful, its return value is sent to the client.
+    If the endpoint handler is successful, its return value is sent to the
+    client.
 
     If an uncatched exception has occured, a dictionary containing the 'error'
     key set with the error information (and traceback) is sent back.
 
-    User can signal an error condition by raising an exception or by returning a
-    dictionary with the 'error' key.
+    User can signal an error condition by raising an exception or by returning
+    a dictionary with the 'error' key.
     """
 
     DEFAULT_PORT = 80
 
-    def __init__(self, address='', port=DEFAULT_PORT, heartbeat_string=None, heartbeat_period=5000):
+    def __init__(
+        self,
+        address='',
+        port=DEFAULT_PORT,
+        heartbeat_string=None,
+        heartbeat_period=5000
+    ):
         """ Create a Web server responding to the endpoints defined in the class.
 
         Parameters:
 
-            address (str): address of the  interface on which the server will respond to
-                requests. If left empty, the server will respond to all interfaces. If a hostname is
-                given (as opposed to a IP address), all IP addresses associated with this address will
-                be used.
+            address (str): address of the  interface on which the server will
+            respond to requests. If left empty, the server will respond to all
+            interfaces. If a hostname is given (as opposed to a IP address),
+            all IP addresses associated with this address will be used.
 
-            port (int): Port number to which the server will listen to requests. Defaults to port 80.
+            port (int): Port number to which the server will listen to requests.
+            Defaults to port 80.
 
-            heartbeat_string (str): String to print periodically on stdout. If none, the periodic
-                hearbeat process is not run.
+            heartbeat_string (str): String to print periodically on stdout.
+            If none, the periodic hearbeat process is not run.
 
             heartbeat_period (int): period between heartbeat prints in ms
-
         """
         self.address = address
         self.port = port
 
         self.log = log.get_logger(self)
-        self.log.info('%32r: Creating %s server at %s:%s' % (self, self.__class__.__name__, address or '*', port))
+        self.log.info(
+            '%32r: Creating %s server at %s:%s' % (
+                self,
+                self.__class__.__name__,
+                address or '*',
+                port
+            )
+        )
 
         # Create the endpoints registered with the @endpoint decorator
-        endpoints = [self._create_endpoint(*info) for info in self.get_endpoint_info()]
-        self.app = tornado.web.Application(endpoints) # Create the Web application serving those endpoints
-        self.http_server = self.app.listen(self.port, address=address or '') # Create the web server on the target port in the current ioloop.
+        endpoints = [
+            self._create_endpoint(*info) for info in self.get_endpoint_info()
+        ]
+        # Create the Web application serving those endpoints
+        self.app = tornado.web.Application(endpoints)
+        # Create the web server on the target port in the current ioloop.
+        self.http_server = self.app.listen(self.port, address=address or '')
         if heartbeat_string:
             self.add_heartbeat(heartbeat_string, heartbeat_period)
         self.add_shutdown_handler()
         # The server will run when the ioloop is started.
 
     def __repr__(self):
-        return '%s(%s:%s)' % ( self.__class__.__name__, self.address, self.port)
+        return '%s(%s:%s)' % (self.__class__.__name__, self.address, self.port)
 
     def get_endpoint_info(self):
-        """ Return a list of tuples (method_name, endpoint_name, method_args) describing all the
-        endpoints supported by the server"""
+        """ Return a list of tuples (method_name, endpoint_name, method_args)
+        describing all the endpoints supported by the server
+        """
         info = []
         for method in vars(type(self)).values():
-            method_name, endpoint_name, method_args = getattr(method, 'endpoint_info', (None, None, None))
+            method_name, endpoint_name, method_args = getattr(
+                method, 'endpoint_info', (None, None, None)
+            )
             if method_name:
                 info.append((method_name, endpoint_name, method_args))
         return info
@@ -455,31 +551,45 @@ class AsyncRESTServer(AsyncMixin):
 
         Parameters:
 
-            method_name (str): Name of the method in this class that handles the endpoint.
-                The method must have been decorated @endpoint so it will have been registered.
+            method_name (str): Name of the method in this class that handles
+            the endpoint. The method must have been decorated @endpoint so it
+            will have been registered.
 
-            endpoint_name (str): Name to be used for the end point on the HTTP requests. Utually the
-                same as the method name, with undrscores replaced by dashes.
+            endpoint_name (str): Name to be used for the end point on the HTTP
+            requests. Utually the same as the method name, with undrscores
+            replaced by dashes.
 
-            method_args (dict): dictionary listing the method parameters. If there are more than two
-                (i.e. self and handler), this will be a POST endpoint, otherwise it will be a GET.
+            method_args (dict): dictionary listing the method parameters.
+            If there are more than two (i.e. self and handler), this will be a
+            POST endpoint, otherwise it will be a GET.
 
-        Returns: A endpoint handler tuple (endpoint_name, handler) that will be passed to the
-            :meth:`tornado.web.Application()` to answer to that secific handler by calling the
-            target method with the passed argument (if a POST request).
-
+        Returns: A endpoint handler tuple (endpoint_name, handler) that will be
+        passed to the
+        :meth:`tornado.web.Application()` to answer to that secific handler by
+        calling the target method with the passed argument (if a POST request).
         """
         method = getattr(self, method_name)
-        has_args = len(method_args) > 2  # any other arguments beyound the mandatory 'self' and 'handler'?
-        self.log.debug('%r: Creating a REST %s endpoint %s for method %s(%s)' % (self, ('GET','POST')[has_args], endpoint_name, method_name, ', '.join(method_args)))
+        # any other arguments beyound the mandatory 'self' and 'handler'?
+        has_args = len(method_args) > 2
+        self.log.debug(
+            '%r: Creating a REST %s endpoint %s for method %s(%s)' % (
+                self,
+                ('GET', 'POST')[has_args],
+                endpoint_name,
+                method_name,
+                ', '.join(
+                    method_args
+                )
+            )
+        )
         if has_args:
             class Handler(JsonRequestHandler):
                 @coroutine
                 def post(self):
                     result = yield method(self, **self.request.arguments)
                     # print('Sending POST reply:', result)
-                    self.write(tornado.escape.json_encode(result)) # arg must be a string or a dict that will be json-encoded
-
+                    # arg must be a string or a dict that will be json-encoded
+                    self.write(tornado.escape.json_encode(result))
         else:
             class Handler(JsonRequestHandler):
                 @coroutine
@@ -488,7 +598,6 @@ class AsyncRESTServer(AsyncMixin):
                     if result is not None:
                         self.write(tornado.escape.json_encode(result))
         return tornado.web.url(r'/%s' % endpoint_name, Handler)
-
 
     @classmethod
     def endpoint(cls, arg=None):
@@ -507,7 +616,8 @@ class AsyncRESTServer(AsyncMixin):
             @endpoint('my_endpoint_name') # uses specified endpoint name
             def my_func(...)
 
-            @endpoint(endpoint_name='my_endpoint_name') # uses specified endpoint name
+            @endpoint(endpoint_name='my_endpoint_name') # uses specified
+            endpoint name
             def my_func(...)
 
         """
@@ -529,6 +639,7 @@ class AsyncRESTServer(AsyncMixin):
             return functools.partial(decorator, endpoint_name=arg)
         else:
             return decorator(arg, endpoint_name=None)
+
 
 class RunSyncWrapper(object):
     """

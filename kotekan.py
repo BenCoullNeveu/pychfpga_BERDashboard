@@ -11,9 +11,6 @@ import argparse
 import sys
 from platform import system as system_name  # Returns the system/OS name
 from subprocess import call as system_call  # Execute a shell command
-import tornado
-import tornado.web
-import tornado.httpclient
 from pychfpga import NameSpace, load_yaml_config
 from rest import AsyncRESTClient, AsyncRESTServer, coroutine, coroutine_return
 from rest import endpoint, RunSyncWrapper, IOLoop
@@ -77,12 +74,10 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
     that operations can be performed concurrently on multiple nodes.
     """
 
-    DEFAULT_PORT = KotekanAsyncRESTServer.DEFAULT_PORT
-
     def __init__(
         self,
         hostname=None,
-        port=DEFAULT_PORT,
+        port=KotekanAsyncRESTServer.DEFAULT_PORT,
         heartbeat_period=10000,
         **config
     ):
@@ -90,8 +85,8 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
             hostname=hostname,
             port=port,
             heartbeat_period=heartbeat_period,
-            # server_class=KotekanAsyncRESTServer,
             heartbeat_string=None,
+            timeout=1  # seconds
         )
         # self.name = "KotekanAsyncRESTClient"
         self.kotekan_config = config
