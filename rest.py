@@ -234,7 +234,8 @@ class AsyncRESTClient(AsyncMixin):
         server_class=None,
         heartbeat_string=None,
         heartbeat_period=5000,
-        timeout=None
+        connection_timeout=None,
+        request_timeout=None
     ):
         self.log = log.get_logger(self)
         self.hostname = hostname
@@ -256,8 +257,10 @@ class AsyncRESTClient(AsyncMixin):
         # Increase number of threads from default 300 to 5000
         self.client.max_clients = 5000
         # Overload the request_timeout parameter
-        if timeout is not None:
-            self.client.request_timeout = timeout
+        if request_timeout is not None:
+            self.client.request_timeout = request_timeout
+        if connection_timeout is not None:
+            self.client.connection_timeout = connection_timeout
         if heartbeat_string:
             self.add_heartbeat(heartbeat_string, heartbeat_period)
         self.add_shutdown_handler()
@@ -904,7 +907,6 @@ def run_client(args, server_class=None, client_class=None, object_name='', serve
         reply = getattr(client, command)(*sargs)
         print()
         print(yaml.safe_dump(reply))
-
 
     if args.run or (server and not command and not args.no_run):
         if server:
