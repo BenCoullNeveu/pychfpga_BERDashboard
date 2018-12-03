@@ -107,7 +107,7 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
 
                 # ask for it
                 with self.lock_requested_states:
-                    self.lock_requested_states.add(hash)
+                    self.requested_states.add(hash)
                 reply['request'] = "get_state"
                 reply['hash'] = hash
                 self.log.debug('%.32r: Asking for state, hash: %r'
