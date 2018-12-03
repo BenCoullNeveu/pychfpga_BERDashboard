@@ -259,12 +259,21 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
 
     @coroutine
     def update_pulsar_gating(
-        self, pulsar_name, pulse_width, rot_freq, phase_ref, t_ref, dm, coeff
+        self,
+        enabled,
+        pulsar_name,
+        pulse_width,
+        rot_freq,
+        phase_ref,
+        t_ref,
+        dm,
+        coeff
     ):
         """
         Update CHIME/Cosmology Pulsar Gating Endpoint
         """
         command = {
+            "enabled": enabled,
             "pulsar_name": pulsar_name,
             "pulse_width": pulse_width,
             "rot_freq": rot_freq,
@@ -490,7 +499,8 @@ if __name__ == "__main__":
 
     print()
     print(
-        "If this was run in an interactive session (ipython -i), the following variables are now accessible:"
+        "If this was run in an interactive session (ipython -i), the following\
+        variables are now accessible:"
     )
     if server:
         print("   server: Kotekan REST server")

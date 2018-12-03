@@ -391,7 +391,9 @@ class KotekanMaster(object):
         nodes = self.current_config.nodes or {}
         for node_name, node_params in nodes.items():
             self.nodes[node_name] = KotekanAsyncRESTClient(
-                name=node_name, heartbeat_period=5000, **node_params
+                name=node_name,
+                heartbeat_period=5000,
+                **node_params
             )
         self.log.info("%s : Created kotekan clients.", self)
 
@@ -1422,7 +1424,15 @@ class KotekanMaster(object):
 
     @coroutine
     def update_pulsar_gating(
-        self, pulsar_name, pulse_width, rot_freq, phase_ref, t_ref, dm, coeff
+        self,
+        enabled,
+        pulsar_name,
+        pulse_width,
+        rot_freq,
+        phase_ref,
+        t_ref,
+        dm,
+        coeff
     ):
         """
         Update the Pulsar Gating Parameters
@@ -1430,6 +1440,7 @@ class KotekanMaster(object):
         # Update the local configuration file
         config = self.current_config.common_config.updateable_config.gating
         try:
+            config.psr0_config.enabled = enabled
             config.psr0_config.pulsar_name = pulsar_name
             config.psr0_config.pulse_width = pulse_width
             config.psr0_config.rot_freq = rot_freq
@@ -1443,7 +1454,14 @@ class KotekanMaster(object):
         # Execute Endpoint
         result = yield {
             node_name: kotekan.update_pulsar_gating(
-                pulsar_name, pulse_width, rot_freq, phase_ref, t_ref, dm, coeff
+                enabled,
+                pulsar_name,
+                pulse_width,
+                rot_freq,
+                phase_ref,
+                t_ref,
+                dm,
+                coeff
             )
             for node_name, kotekan in self.nodes.items()
         }
@@ -2098,18 +2116,20 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
     def update_pulsar_gating(
         self,
         handler,
+        enabled,
         pulsar_name,
         pulse_width,
-        rot_freq,
-        phase_ref,
-        t_ref,
         dm,
+        rot_freq,
+        t_ref,
+        phase_ref,
         coeff,
     ):
         """
         POST to update CHIME/Cosmology pulsar gating parameter
         curl
         -d '{
+            "enabled" : "false"
             "pulsar_name": "B1929",
             "pulse_width": 0.014,
             "rot_freq": 4.41466731644,
@@ -2134,7 +2154,14 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         http://localhost:54323/update-pulsar-gating
         """
         result = yield self.kotekan_master.update_pulsar_pointing(
-            pulsar_name, pulse_width, rot_freq, phase_ref, t_ref, dm, coeff
+            enabled,
+            pulsar_name,
+            pulse_width,
+            rot_freq,
+            phase_ref,
+            t_ref,
+            dm,
+            coeff
         )
         coroutine_return(result)
 
@@ -2480,12 +2507,21 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
 
     @coroutine
     def update_pulsar_gating(
-        self, pulsar_name, pulse_width, rot_freq, phase_ref, t_ref, dm, coeff
+        self,
+        enabled,
+        pulsar_name,
+        pulse_width,
+        rot_freq,
+        phase_ref,
+        t_ref,
+        dm,
+        coeff
     ):
         """
         """
         result = yield self.post(
             "update-pulsar-gating",
+            enabled,
             pulsar_name,
             pulse_width,
             rot_freq,
