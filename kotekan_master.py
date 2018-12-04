@@ -2157,6 +2157,11 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         -H "Content-Type: application/json"
         http://localhost:54323/update-pulsar-gating
         """
+        self.log.info("{},{},{},{},{},{},{},{}".format(
+            enabled, pulsar_name, pulse_width, dm, rot_freq, t_ref, phase_ref,
+            coeff
+            )
+        )
         result = yield self.kotekan_master.update_pulsar_pointing(
             enabled,
             pulsar_name,
