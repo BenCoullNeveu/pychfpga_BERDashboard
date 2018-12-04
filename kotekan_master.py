@@ -12,6 +12,7 @@ import json
 import hashlib
 from random import choice
 import requests
+import numpy as np
 
 # Custom Imports
 import log
@@ -82,7 +83,7 @@ class KotekanMaster(object):
         self.gps_time = {}
 
         # Synchronization Parameters
-        self.kotekan_versions = []
+        self.kotekan_versions = {}
         # True all nodes in the array are running the same config
         self.array_sync = False
         # True if nodes are running the same config as the one
@@ -343,29 +344,35 @@ class KotekanMaster(object):
             running_versions = yield self.kotekan_version()
             for node_name, version in running_versions.items():
                 if node_name not in no_connection_nodes.keys():
-                    self.kotekan_versions.append(
-                        version.get("git_commit_hash")
+                    self.kotekan_versions[node_name] = version.get(
+                        "git_commit_hash"
                     )
-            # Select a random kotekan_version
-            try:
-                random_kotekan_version = choice(self.kotekan_versions)
-            except Exception as warn:
-                self.log.warning(warn)
-                random_kotekan_version = None
+            # Find all unique kotekan versions
+            unique_versions = {}
+            arr_versions = np.asarray(self.kotekan_versions.values())
+            for version in set(arr_versions):
+                unique_versions[version] = len(
+                    arr_versions[arr_versions == version]
+                )
 
-            for version in self.kotekan_versions:
-                if version != random_kotekan_version:
-                    msg = "{} != {}".format(version, random_kotekan_version)
-                    self.slack.error(
-                        msg_title="Kotekan Version Check: FAILED",
-                        msg=msg,
-                        as_inline_code=True,
-                    )
-                    raise Exception("Kotekan version error!!")
             self.slack.info(
-                msg_title="Kotekan Version Check: PASSED",
-                msg=str(random_kotekan_version),
+                msg_title="Kotekan Versions Discovered",
+                msg=str(unique_versions),
+                as_inline_code=True
             )
+            # Remove None field from unique_versions
+            unique_versions.pop(None, None)
+            if len(unique_versions) != 1:
+                self.slack.error(
+                    msg_title="Kotekan Version Check: FAILED",
+                    msg=str(unique_versions),
+                    as_inline_code=True,
+                )
+            else:
+                self.slack.info(
+                    msg_title="Kotekan Version Check: PASSED",
+                    msg=str(unique_versions),
+                )
 
             self.log.info("KotekanMaster Startup Complete.")
             self.slack.info(msg_title="KotekanMaster Startup Complete.")
@@ -438,6 +445,7 @@ class KotekanMaster(object):
             "nodes": {
                 "kotekan_nodes": self.nodes.keys(),
                 "receiver_nodes": self.receiver_nodes.keys(),
+                "kotekan_version": self.kotekan_versions,
             },
             "blacklist_nodes": self.blacklist_nodes,
             "connection_error_nodes": self.connection_error_nodes,
