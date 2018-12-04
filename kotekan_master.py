@@ -2145,7 +2145,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
             "t_ref": 58431.77083333330000058936,
             "segment": 18000.0,
             "dm": 3.18321,
-            "coeff": [[
+            "coeff": '[[
                3.428779943504219e-10,
                0.0011253963075329334,
                -1.1565642124857199e-07,
@@ -2158,18 +2158,19 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
                -2.279050323988331e-29,
                -1.1771713330451292e-32,
                3.948826407949732e-35,
-             ],]
+             ],]'
         }'
         -X POST
         -H "Content-Type: application/json"
         http://localhost:54323/update-pulsar-gating
         """
         self.log.info(
-            "ON:{}\n,Name:{}\n,Width:{}\n,Segment:{}\n,DM:{}\n,Rot:{}\n,T:{}\n,Phase:{}\n,Coeff:{}\n".format(
+            "\n Enabled:{}\nName:{}\nWidth:{}\nSegment:{}\nDM:{}\nRot:{}\nT:{}\nPhase:{}\nCoeff:{}\n".format(
                 enabled, pulsar_name, pulse_width, segment, dm, rot_freq,
                 t_ref, phase_ref, coeff
             )
         )
+        self.log.info(type(coeff))
         result = yield self.kotekan_master.update_pulsar_pointing(
             enabled,
             pulsar_name,
