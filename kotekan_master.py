@@ -10,7 +10,6 @@ import os
 import time
 import json
 import hashlib
-from random import choice
 import requests
 import numpy as np
 
@@ -1473,6 +1472,10 @@ class KotekanMaster(object):
             )
             for node_name, kotekan in self.nodes.items()
         }
+        self.slack.info(
+            msg_title="update-pulsar-gating",
+            msg=str(self.current_config.common_config.updatable_config.gating),
+            as_inline_code=True)
         coroutine_return(result)
 
     @coroutine
@@ -2130,7 +2133,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         POST to update CHIME/Cosmology pulsar gating parameter
         curl
         -d '{
-            "enabled" : "false"
+            "enabled" : "false",
             "pulsar_name": "B1929",
             "pulse_width": 0.014,
             "rot_freq": 4.41466731644,
