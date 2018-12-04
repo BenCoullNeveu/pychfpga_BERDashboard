@@ -258,9 +258,9 @@ class AsyncRESTClient(AsyncMixin):
         self.client.max_clients = 5000
         # Overload the request_timeout parameter
         if request_timeout is not None:
-            self.client.request_timeout = request_timeout
+            self.client.defaults["request_timeout"] = request_timeout
         if connection_timeout is not None:
-            self.client.connection_timeout = connection_timeout
+            self.client.defaults["connection_timeout"] = connection_timeout
         if heartbeat_string:
             self.add_heartbeat(heartbeat_string, heartbeat_period)
         self.add_shutdown_handler()
@@ -679,6 +679,7 @@ class RunSyncWrapper(object):
 
 
 endpoint = AsyncRESTServer.endpoint #: Shortcut to :meth:`AsyncRESTServer.endpoint`
+
 
 class SocketContext(object):
     """
