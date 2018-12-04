@@ -478,8 +478,8 @@ class KotekanMaster(object):
                 "scaling": _config.gpu.gpu_0.psr_scaling,
             },
             "cosmology_status": {
-                "rfi_zeroing": self.config_check("rfi_zeroing", _config.rfi_masking.toggle.rfi_zeroing),
-                "pulsar_gating": self.config_check("pulsar_gating", _config.updatable_config.gating),
+                "rfi_zeroing": "rfi_zeroing",  # _config.rfi_masking.toggle.rfi_zeroing
+                "pulsar_gating": "pulsar_gating",  # _config.updatable_config.gating
             },
             "git_version": self.git_version,
             "start_time": time.strftime(
@@ -487,12 +487,6 @@ class KotekanMaster(object):
             ),
         }
         coroutine_return(result)
-
-    def config_check(parameter, config_path):
-        try:
-            return config_path
-        except Exception:
-            return "Error: Unable to read param: {}".format(parameter)
 
     @coroutine
     def check_node_connection(self, node_status):
