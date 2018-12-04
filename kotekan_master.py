@@ -2170,8 +2170,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
                 t_ref, phase_ref, coeff
             )
         )
-        self.log.info(type(coeff))
-        result = yield self.kotekan_master.update_pulsar_pointing(
+        result = yield self.kotekan_master.update_pulsar_gating(
             enabled,
             pulsar_name,
             pulse_width,
