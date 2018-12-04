@@ -486,8 +486,8 @@ class KotekanMaster(object):
                 "scaling": _config.gpu.gpu_0.psr_scaling,
             },
             "cosmology_status": {
-                "rfi_zeroing": _config.rfi_masking.toggle.rfi_zeroing,
-                "pulsar_gating": _config.updatable_config.gating
+                "rfi_zeroing": str(_config.rfi_masking.toggle.rfi_zeroing),
+                "pulsar_gating": str(_config.updatable_config.gating)
             },
             "git_version": self.git_version,
             "start_time": time.strftime(
@@ -2245,7 +2245,7 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
             server_class=KotekanMasterAsyncRESTServer,
             heartbeat_string="KMc",
             heartbeat_period=10000,
-            connection_timeout=2,
+            connection_timeout=1,
             request_timeout=2
         )
 
