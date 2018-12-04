@@ -2165,7 +2165,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         http://localhost:54323/update-pulsar-gating
         """
         self.log.info(
-            "\n Enabled:{}\nName:{}\nWidth:{}\nSegment:{}\nDM:{}\nRot:{}\nT:{}\nPhase:{}\nCoeff:{}\n".format(
+            "\nEnabled:{}\nName:{}\nWidth:{}\nSegment:{}\nDM:{}\nRot:{}\nT:{}\nPhase:{}\nCoeff:{}\n".format(
                 enabled, pulsar_name, pulse_width, segment, dm, rot_freq,
                 t_ref, phase_ref, coeff
             )
