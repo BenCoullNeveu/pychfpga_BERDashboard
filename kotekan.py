@@ -264,11 +264,12 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         enabled,
         pulsar_name,
         pulse_width,
-        rot_freq,
-        phase_ref,
-        t_ref,
+        segment,
         dm,
-        coeff
+        rot_freq,
+        t_ref,
+        phase_ref,
+        coeff,
     ):
         """
         Update CHIME/Cosmology Pulsar Gating Endpoint
@@ -277,13 +278,14 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
             "enabled": enabled,
             "pulsar_name": pulsar_name,
             "pulse_width": pulse_width,
+            "segment": segment,
             "rot_freq": rot_freq,
             "phase_ref": phase_ref,
             "t_ref": t_ref,
             "dm": dm,
             "coeff": coeff,
         }
-        endpoint = "updateable_config/gating/psr0_config"
+        endpoint = "updatable_config/gating/psr0_config"
         result = yield self._post(endpoint, **command)
         coroutine_return(str(result))
 

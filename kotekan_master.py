@@ -1435,11 +1435,12 @@ class KotekanMaster(object):
         enabled,
         pulsar_name,
         pulse_width,
-        rot_freq,
-        phase_ref,
-        t_ref,
+        segment,
         dm,
-        coeff
+        rot_freq,
+        t_ref,
+        phase_ref,
+        coeff,
     ):
         """
         Update the Pulsar Gating Parameters
@@ -1450,6 +1451,7 @@ class KotekanMaster(object):
             config.psr0_config.enabled = enabled
             config.psr0_config.pulsar_name = pulsar_name
             config.psr0_config.pulse_width = pulse_width
+            config.psr0_config.segment = segment
             config.psr0_config.rot_freq = rot_freq
             config.psr0_config.phase_ref = phase_ref
             config.psr0_config.t_ref = t_ref
@@ -1464,11 +1466,12 @@ class KotekanMaster(object):
                 enabled,
                 pulsar_name,
                 pulse_width,
-                rot_freq,
-                phase_ref,
-                t_ref,
+                segment,
                 dm,
-                coeff
+                rot_freq,
+                t_ref,
+                phase_ref,
+                coeff,
             )
             for node_name, kotekan in self.nodes.items()
         }
@@ -2123,6 +2126,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         enabled,
         pulsar_name,
         pulse_width,
+        segment,
         dm,
         rot_freq,
         t_ref,
@@ -2139,38 +2143,43 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
             "rot_freq": 4.41466731644,
             "phase_ref": 4542317506.850324938073754,
             "t_ref": 58431.77083333330000058936,
+            "segment": 18000.0,
             "dm": 3.18321,
-            "coeff": [ -3.629558339028879284391196358150e-11,
-               -2.214166811916401720405987284951e-02,
-               1.174585108106800026569028246211e-08,
-               -8.383233571344643529916636537155e-10,
-               5.592347445650863837747847387401e-14,
-               8.029001056538660597891912495565e-16,
-               -3.529128616024835224912778733629e-20,
-               -3.664425348061886726903281117201e-22,
-               7.831076894027254652820435449642e-27,
-               1.049593728246589236324555875400e-28,
-               1.251009085015411251409244070337e-32,
-               -4.441360501858587814936030539501e-35 ]
+            "coeff": [[
+               3.428779943504219e-10,
+               0.0011253963075329334,
+               -1.1565642124857199e-07,
+               1.1347089844281842e-10,
+               1.1882399863116445e-13,
+               -1.0867680647236115e-16,
+               -7.594309559679319e-20,
+               5.042548967792808e-23,
+               2.745973613190195e-26,
+               -2.279050323988331e-29,
+               -1.1771713330451292e-32,
+               3.948826407949732e-35,
+             ],]
         }'
         -X POST
         -H "Content-Type: application/json"
         http://localhost:54323/update-pulsar-gating
         """
-        self.log.info("{},{},{},{},{},{},{},{}".format(
-            enabled, pulsar_name, pulse_width, dm, rot_freq, t_ref, phase_ref,
-            coeff
+        self.log.info(
+            "ON:{}\n,Name:{}\n,Width:{}\n,Segment:{}\n,DM:{}\n,Rot:{}\n,T:{}\n,Phase:{}\n,Coeff:{}\n".format(
+                enabled, pulsar_name, pulse_width, segment, dm, rot_freq,
+                t_ref, phase_ref, coeff
             )
         )
         result = yield self.kotekan_master.update_pulsar_pointing(
             enabled,
             pulsar_name,
             pulse_width,
-            rot_freq,
-            phase_ref,
-            t_ref,
+            segment,
             dm,
-            coeff
+            rot_freq,
+            t_ref,
+            phase_ref,
+            coeff,
         )
         coroutine_return(result)
 
@@ -2522,11 +2531,12 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
         enabled,
         pulsar_name,
         pulse_width,
-        rot_freq,
-        phase_ref,
-        t_ref,
+        segment,
         dm,
-        coeff
+        rot_freq,
+        t_ref,
+        phase_ref,
+        coeff,
     ):
         """
         """
@@ -2535,10 +2545,11 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
             enabled,
             pulsar_name,
             pulse_width,
-            rot_freq,
-            phase_ref,
-            t_ref,
+            segment,
             dm,
+            rot_freq,
+            t_ref,
+            phase_ref,
             coeff,
         )
         coroutine_return(result)
