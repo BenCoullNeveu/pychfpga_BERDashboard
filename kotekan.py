@@ -278,7 +278,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         # This is hack because currently sending
         # lists through rest is not possible.
         try:
-            coeff = json.load(coeff)
+            coeff = json.loads(coeff)
         except Exception as e:
             self.log.warning(e)
             pass
