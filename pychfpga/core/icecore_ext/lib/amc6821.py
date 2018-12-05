@@ -5,6 +5,7 @@
 import logging
 import numpy as np
 
+
 class AMC6821(object):
     """ Class defining the interface to the AMC6821 fan controller chip
     """
@@ -12,8 +13,8 @@ class AMC6821(object):
     REGISTER_MAP = {
          # Register Name : (datatype, memory location, bytes, page)
          'DeviceID': (0x3D, 0, 8),
-         'START' : (0,0,1),
-         'FDRC': (0x00, 5 ,2),
+         'START': (0, 0, 1),
+         'FDRC': (0x00, 5, 2),
          'LocalTempLSB': (0x06, 5, 3),
          'LocalTempMSB': (0x0A, 0, 8),
          'RemoteTempLSB': (0x06, 0, 3),
@@ -21,12 +22,11 @@ class AMC6821(object):
          'DutyCycle': (0x22, 0, 8),
     }
 
-
     def __init__(self, i2c, address=0x18, bus_name='BP'):
         """ Create a fan controller object.
         """
         self._logger = logging.getLogger(__name__)
-        # self._logger.debug('%.32r: Instantiating AMC6821 Fan controller object' % self)
+        # self._logger.debug('%r: Instantiating AMC6821 Fan controller object' % self)
 
         self._i2c = i2c
         self._bus_name = bus_name

@@ -133,7 +133,7 @@ class FPGAArray(object):
                  ignore_missing_boards = False,
 
                  subarrays=None,
-		 ping=True,
+                 ping=True,
                  mdns_timeout=2,
                  no_mezz=False,
 
@@ -151,9 +151,11 @@ class FPGAArray(object):
                  sync_source='bp_trig',
                  sync_master=None,
                  sync_master_time_source=None,
+                 max_sync_time_difference=20,
 
                  mode=None,
                  frames_per_packet=2,
+                 tx_power=None,
 
                  stderr_log_level=None,
                  syslog_log_level=None,
@@ -237,7 +239,11 @@ class FPGAArray(object):
                     ``subarray`` criteria.
 
 
-            crate_map (dict): Maps crate numbers to (model, serial)
+            crate_map (dict): Maps crate numbers to (model, serial). Not
+                needed if the crate numbers are already specified in the
+                hardware map. Useful if the crates are auto-discovered and the
+                crate number is not specified in the hardware description
+                string.
 
             iceboards (list of str) : Iceboard to add to the hardware map,
                 specified by IP address, hostname, or serial number. Equivalent to
@@ -319,8 +325,10 @@ class FPGAArray(object):
              sync_source=sync_source,
              sync_master=sync_master,
              sync_master_time_source=sync_master_time_source,
+             max_sync_time_difference=max_sync_time_difference,
              mode=mode,
              frames_per_packet=frames_per_packet,
+             tx_power=tx_power,
              stderr_log_level=stderr_log_level,
              syslog_log_level=syslog_log_level,
              udp_retries=udp_retries,
@@ -361,7 +369,7 @@ class FPGAArray(object):
              hwm=None,
              iceboards=[], icecrates=[], mezzanines=[], exclude_iceboards=[],
              crate_map={},
-             ignore_missing_boards = False,
+             ignore_missing_boards=False,
 
              subarrays=None, ping=True,
              mdns_timeout=2,
@@ -377,9 +385,12 @@ class FPGAArray(object):
              sync_source=None,
              sync_master=None,
              sync_master_time_source=None,
+             max_sync_time_difference=20,
 
              mode=None,
              frames_per_packet=2,
+             tx_power=None,
+
              stderr_log_level=None,
              syslog_log_level=None,
              udp_retries=3,
@@ -395,6 +406,10 @@ class FPGAArray(object):
         self.ib = []  # make sure repr() has always something
         self.ic = []
         self.sync_timestamp = None
+
+        self.max_sync_time_difference = max_sync_time_difference
+        self.tx_power = tx_power
+        self.mode = mode
 
         ###########################################
         # setup pychfpga.fpga_array logging
@@ -447,22 +462,23 @@ class FPGAArray(object):
         self.logger.info('%r: ------------------------' % self)
         self.logger.info('%r: F P G A   A R R A Y' % self)
         self.logger.info('%r: ------------------------' % self)
-        self.logger.info('%r: Called with: %s' % (self, ', '.join((
-            'if_ip = %s' % if_ip,
-            'iceboards = %s' % iceboards,
-            'icecrates = %s' % icecrates,
-            'subarrays = %s' % subarrays,
-            'ping = %s' % ping,
-            'mdns_timeout = %s' % mdns_timeout,
-            'exclude_iceboards = %s' % exclude_iceboards,
-            'bitfile = %s' % bitfile,
-            'prog = %s' % prog,
-            'open = %s' % open,
-            'no_mezz = %s' % no_mezz,
-            # 'sampling_frequency = %s' % sampling_frequency,
-            # 'reference_frequency = %s' % reference_frequency,
-            'sync_method = %s' % sync_method,
-            'sync_source = %s' % sync_source))))
+        self.logger.info('%r: Called with for following parameters' % self)
+        self.logger.info('%r:     if_ip = %s' % (self, if_ip))
+        self.logger.info('%r:     iceboards = %s' % (self, iceboards))
+        self.logger.info('%r:     icecrates = %s' % (self, icecrates))
+        self.logger.info('%r:     subarrays = %s' % (self, subarrays))
+        self.logger.info('%r:     ping = %s' % (self, ping))
+        self.logger.info('%r:     mdns_timeout = %s' % (self, mdns_timeout))
+        self.logger.info('%r:     exclude_iceboards = %s' % (self, exclude_iceboards))
+        self.logger.info('%r:     bitfile = %s' % (self, bitfile))
+        self.logger.info('%r:     prog = %s' % (self, prog))
+        self.logger.info('%r:     open = %s' % (self, open))
+        self.logger.info('%r:     no_mezz = %s' % (self, no_mezz))
+        # self.logger.info('%r:     sampling_frequency = %s' % (self, sampling_frequency))
+        # self.logger.info('%r:     reference_frequency = %s' % (self, reference_frequency))
+        self.logger.info('%r:     sync_method = %s' % (self, sync_method))
+        self.logger.info('%r:     sync_source = %s' % (self, sync_source))
+        self.logger.info('%r: ------------------------' % self)
 
         __main__._host_interface_ip_addr = if_ip
 
@@ -498,6 +514,7 @@ class FPGAArray(object):
         # Add `icecrates`
         if icecrates:
             hw_string += 'MGK7BP16 '+ ' '.join(icecrates) + ' '
+        self.logger.debug("%r: The composite hardware description string is: '%s'" %  (self, hw_string))
 
         # Parse the hwm string into a hardware table. The hardware table is
         # not the hardware map, but represents the entries that we want to add
@@ -506,11 +523,13 @@ class FPGAArray(object):
             {(crate_number,): ('icecrates', (model, serial, crate_number))
              for crate_number, (model, serial) in crate_map.items()}}
         hw_table = parse_hw_string(hw_string, remap_table)
-        self.logger.debug('hw table = %s' %  hw_table)
+        self.logger.debug('%r: The hardware description table obtained from hardware description string is:' % self)
+        for key, value in hw_table.items():
+            self.logger.debug('%r:     %s:%r' % (self, key, value))
 
         # Check if there were 'crate' entries that were not remapped to icececrate entries
         if hw_table.crates:
-            self.logger.warn('The following hardware map crate entries could not be resolved into backplane model/serial: %s' % hw_table.crates)
+            self.logger.warning('The following hardware map crate entries could not be resolved into backplane model/serial: %s' % hw_table.crates)
 
         # Create a *reverse* crate map ({(model,serial):number} instead of {number:(model,serial)})
         # that will be used later with set_crate_numbers() to assign crate numbers to crates if
@@ -529,9 +548,9 @@ class FPGAArray(object):
             # numbers in the order they were specified in the hw description string (first crate =
             # crate 0, second crate is crate 1 etc)
             else:
-                crate_number_map = {(model, serial) : i
+                crate_number_map = {(model, serial): i
                     for i, (model, serial, crate_number) in enumerate(hw_table.icecrates)}
-        self.logger.debug('icecrate map=%s' % crate_number_map)
+        self.logger.debug('%r: The Icecrate map is %s' % (self, crate_number_map))
 
         # We've got our crate numbers. Remove them from the icecrate list so we pass only the (model,
         # serial) to the mdns discovery function.
@@ -554,7 +573,7 @@ class FPGAArray(object):
         # object of the type contained in the ``class`` element and passing it the remaining
         # elements as keyword arguments
         elif isinstance(hwm, list):
-            self.logger.debug('Creating Hardware Map from list')
+            self.logger.debug('%r: Creating Hardware Map from list' % self)
             self.hwm = HardwareMap()  # Create empty hardware map
             for obj in hwm:
                 params = dict(obj) # make a copy
@@ -565,7 +584,7 @@ class FPGAArray(object):
                     crate_number = params.pop('crate_number', None)
                     #self.logger.debug('%r: Crate %r is in %r' % (self, crate_number, params))
                     if crate_number is not None:
-                        crate = self.hwm.query(IceCrateExt).filter(IceCrateExt.crate_number==crate_number).one()
+                        crate = self.hwm.query(IceCrateExt).filter(IceCrateExt.crate_number == crate_number).one()
                         #self.logger.debug('%r: Assigning crate %r to board %r' % (self, crate, params))
                         params['crate'] = crate
                     else:
@@ -578,7 +597,7 @@ class FPGAArray(object):
 
         # If subarrays are specified, remove boards that are not in those subarrays
         if subarrays is not None:
- 	    print('Subarrays are: %r' % subarrays)
+            print('Subarrays are: %r' % subarrays)
             ib_not_in_subarray = self.hwm.query(IceBoardPlus).filter(~IceBoardPlus.subarray.in_(subarrays))
             for ib in list(ib_not_in_subarray):  # make sure the list does not change during the loop
                 self.logger.debug("%r (subarray '%s') is not in the target subarray list %s. It is removed from the YAML hardware map."  # That comment should be if verbose=1
@@ -590,9 +609,9 @@ class FPGAArray(object):
         ping_timeout = 3
         missing_boards = []
         if ping:
-            self.logger.info('%r: Pinging IceBoards specified in YAML file' % (self))
             ib_to_ping = self.hwm.query(IceBoardPlus).as_dict()  # use as_dict so ib_to_ping does not change as we delete boards from the hwm
             if ib_to_ping:
+                self.logger.info('%r: Pinging the %i IceBoards specified explicitely in YAML file' % (self, len(ib_to_ping)))
                 ping_results = yield [ib.ping.async(timeout=ping_timeout) for ib in ib_to_ping]  # asynchronous parallel call to all boards
                 #self.logger.debug('%r: Ping results are %s' % (self, ping_results))
                 for i, ping_successful in enumerate(ping_results):
@@ -608,6 +627,8 @@ class FPGAArray(object):
                         self.logger.debug('%r: Deleting %r from the YAML hardware map' % (self, ib))
                         self.hwm.delete(ib)
                 self.hwm.flush()
+            else:
+                self.logger.info('%r: There are no IceBoards specified explicitely in YAML Hardware map. Ping verification is not performed on those.' % self)
             if missing_boards:
                 message ="%r: Could not ping the following boards: %s" % (self, ', '.join(missing_boards))
                 if ignore_missing_boards:
@@ -619,39 +640,46 @@ class FPGAArray(object):
         #######################################################
         # Adding iceboards with explicit hostnames/IP addresses
         #######################################################
-        # Extract iceboards that are explicitely listed with IP addresses or hostname instead of
+        # We now add to the hwm the boards that were specified in the hardware description string.
+        #
+        # We first extract iceboards that are explicitely listed with IP addresses or hostname instead of
         # serial numbers. We can talk to these boards, which means we can figure out everything we
         # need from these boards (serial, crate, slot  etc) right away without requiring us to do
         # mDNS query, which is the last resort (because not all systems might have mDNS support).
 
-        added_ib = []
-        for (model, hostname) in list(hw_table.iceboards): # make a copy: we modify in-place
-            if model is None or '.' in str(hostname): # if it is actually a hostname. Might be an int serial
-                hw_table.iceboards.remove((model, hostname))
-                # ip_addr = socket.gethostbyname(hostname)  # convert hostname to IP address for faster Tuber access
-                new_ib = IceBoardPlus(hostname=hostname)
-                self.hwm.add(new_ib)
-                self.hwm.flush()
-                added_ib.append(new_ib)
-        # Explicitely listed boards must exist on the network
-        if ping:
-            # ping all boards concurrently
-            ping_results = yield {ib: ib.ping.async() for ib in added_ib}
-            # If some boards failed, raise an exception
-            if not all(ping_results.values()):
-                raise RuntimeError("%r: The following Iceboards could not be pigned: '%s'" % (
-                    self,
-                    ', '.join('%r (%s)' % (ib, ib.tuber_uri)
-                              for ib, ping_result in ping_results.items() if not ping_result)))
-            # resolve hostnames into IP addresses
-            # this is not concurrent, unfortunately... this is why we checked ping first, otherwise it blocks for a long time
-            t0 = time.time()
-            for ib, ping_result in ping_results.items():
-                if ping_result:
-                    ib.hostname = socket.gethostbyname(ib.hostname)
-            if any(ping_results.values()):
-                self.hwm.flush()
-            self.logger.info('%r: resolving IP addresses took %s seconds' % (self, time.time() - t0))
+        if hw_table.iceboards:
+            self.logger.info('%r: Adding Iceboards listed in hardware description string with explicit hostnames' % self)
+            added_ib = []
+            for (model, hostname) in list(hw_table.iceboards): # make a copy: we modify in-place
+                if model is None or '.' in str(hostname): # if it is actually a hostname. Might be an int serial
+                    hw_table.iceboards.remove((model, hostname)) # remove it. We'll be left with boards that require mDNS...
+                    # ip_addr = socket.gethostbyname(hostname)  # convert hostname to IP address for faster Tuber access
+                    new_ib = IceBoardPlus(hostname=hostname, handler_name='chFPGA_controller')
+                    self.hwm.add(new_ib)
+                    self.hwm.flush()
+                    added_ib.append(new_ib)
+            # Explicitely listed boards must exist on the network
+            if ping and added_ib:
+                self.logger.info('%r: Pinging Iceboards with explicit hostnames in the hardware description string' % self)
+                # ping all boards concurrently
+                ping_results = yield {ib: ib.ping.async() for ib in added_ib}
+                # If some boards failed, raise an exception
+                if not all(ping_results.values()):
+                    raise RuntimeError("%r: The following Iceboards could not be pigned: '%s'" % (
+                        self,
+                        ', '.join('%r (%s)' % (ib, ib.tuber_uri)
+                                  for ib, ping_result in ping_results.items() if not ping_result)))
+                # resolve hostnames into IP addresses
+                # this is not concurrent, unfortunately... this is why we checked ping first, otherwise it blocks for a long time
+
+                t0 = time.time()
+                self.logger.info('%r: Resolving IP addresses of Iceboards that passed the ping test' % (self, time.time() - t0))
+                for ib, ping_result in ping_results.items():
+                    if ping_result:
+                        ib.hostname = socket.gethostbyname(ib.hostname)
+                if any(ping_results.values()):
+                    self.hwm.flush()
+                self.logger.info('%r: Finished resolving IP addresses. It took %s seconds' % (self, time.time() - t0))
 
         ########################################################
         # Establish Tuber communication (ARM only)
@@ -661,11 +689,12 @@ class FPGAArray(object):
         # communication becore we start using Tuber methods. We want to cache the Tuber methods
         # asynchnously now instead of letting Tuber do it asynchrunously on the first Tuber command
         # it gets.
-        self.logger.info('%r: Establishing ARM/Tuber communication' % (self))
         ibs = self.hwm.query(IceBoardPlus)
-        t0 = time.time()
-        yield [ib._tuber_get_meta.async() for ib in ibs]
-        self.logger.info('%r: ARM conneciton established. It took %s seconds' % (self, time.time() - t0))
+        if ibs.count():
+            self.logger.info('%r: Establishing communication with the %i motherboard ARM processors over the HTTP/Tuber protocol and acquiring list of remote functions' % (self, ibs.count()))
+            t0 = time.time()
+            yield [ib._tuber_get_meta.async() for ib in ibs]
+            self.logger.info('%r: Connection with %i ARM processors established. It took %s seconds' % (self, ibs.count(), time.time() - t0))
 
         ########################################################
         # Resolve missing serial/crate/slot info through the ARM
@@ -676,7 +705,7 @@ class FPGAArray(object):
         ib_without_serial = self.hwm.query(IceBoardPlus).filter(IceBoardPlus.serial == None)
         if ib_without_serial.count():
             t0 = time.time()
-            self.logger.info('%r: Auto-Discovering serial number for IceBoards %s' %
+            self.logger.info('%r: Auto-Discovering the serial number of the IceBoards with known hostnames: %s' %
                 (self, ', '.join(ib_without_serial.hostname)))
             # concurrently resolve serials
             futures = [ib.discover_serial.async() for ib in ib_without_serial] # Tuber method
@@ -684,15 +713,17 @@ class FPGAArray(object):
             yield futures # [ib.discover_serial.async() for ib in ib_without_serial]
             self.logger.info('%r: Finished Auto-Discovering serial number for IceBoards. Took %f seconds.' % (self, time.time() - t0))
 
-        self.logger.info('%r: Auto-Discovering slot numbers of IceBoards')
-        t0 = time.time()
-        yield [ib.discover_slot.async() for ib in self.hwm.query(IceBoardPlus)]
-        self.logger.info('%r: Finished Auto-Discovering slot numbers for IceBoards. Took %f seconds.' % (self, time.time() - t0))
+        ib_without_slot = self.hwm.query(IceBoardPlus)
+        if ib_without_slot.count():
+            self.logger.info('%r: Auto-Discovering & validating the slot numbers for %i IceBoards with known hostnames...' % (self, ib_without_slot.count()))
+            t0 = time.time()
+            yield [ib.discover_slot.async() for ib in ib_without_slot]
+            self.logger.info('%r: Finished Auto-Discovering slot numbers for IceBoards. Took %f seconds.' % (self, time.time() - t0))
 
-        ib_without_crate = self.hwm.query(IceBoardPlus).filter(or_(IceBoardPlus.crate==None, IceBoardPlus.slot==None))
+        ib_without_crate = self.hwm.query(IceBoardPlus).filter(or_(IceBoardPlus.crate == None, IceBoardPlus.slot == None))
         if ib_without_crate.count():
             t0 = time.time()
-            self.logger.info('%r: Auto-Discovering crate information for IceBoards %s' %
+            self.logger.info('%r: Auto-Discovering crate information for IceBoards with known hostnames: %s' %
                 (self, ', '.join(ib_without_crate.hostname)))
             yield [ib.discover_crate.async() for ib in ib_without_crate]
             self.logger.info('%r: Finished Auto-Discovering crate serial numbers. Took %f seconds.' % (self, time.time() - t0))
@@ -702,7 +733,9 @@ class FPGAArray(object):
         ###########################################################################
 
         if hw_table.iceboards or hw_table.icecrates :
-            self.logger.info('Discovering IceBoards %s and IceCrates %s...' % (hw_table.iceboards, hw_table.icecrates))
+            self.logger.info('%r: Discovering IceBoards and Icecrates specified by serial number using mDNS' % self)
+            self.logger.info('%r:     IceBoards to find: %s' % (self, hw_table.iceboards))
+            self.logger.info('%r:     IceCrates to find: %s' % (self, hw_table.icecrates))
             self.print_flush()
             mdns_discover(self.hwm,
                           icecrates=hw_table.icecrates,
@@ -711,6 +744,7 @@ class FPGAArray(object):
 
         # Remove iceboards to be excluded (by serial number)
         if exclude_iceboards:
+            self.logger.info('%r: Removing IceBoards based on exclusion list: %s' % (self, exclude_iceboards))
             for ib in self.hwm.query(IceBoardPlus):
                 try:
                     serial = str(int(ib.serial))
@@ -720,7 +754,7 @@ class FPGAArray(object):
                     self.hwm.delete(ib)
             self.hwm.flush()
 
-        # Hardware map is complete
+        self.logger.info('%r: Hardware map is complete' % self)
 
         #################################
         # Create self.ib and self.ic
@@ -804,14 +838,14 @@ class FPGAArray(object):
 
             # Configure the FPGA with the bitstream associated with the handler
             if prog:
-                self.logger.info('Configuring FPGAs...')
+                self.logger.info('%r: Configuring FPGAs...' % self)
                 # Associate the bitstream with the target Handler
                 self.fpga_bitstream = FPGABitstream(bitfile, auto_reload=False)
-                self.logger.info('Loaded bitfile: %s' % bitfile)
-                str(self.fpga_bitstream)
+                self.logger.info('%r: Loaded bitfile: %s' % (self, bitfile))
+                # str(self.fpga_bitstream)
                 self.ib.register_fpga_bitstream(self.fpga_bitstream)
                 yield [ib.set_fpga_bitstream.async(force= (prog > 1)) for ib in self.ib]
-                self.logger.info('Done configuring FPGAs')
+                self.logger.info('%r: Done configuring FPGAs' % self)
 
         self.print_flush()
 
@@ -819,28 +853,28 @@ class FPGAArray(object):
         # Initialize
         #################################
 
-
         if self.ib and open is not None and open > 0:
             # Set the interface over which the FPGA UDP communication will be done
             # Not needed in normal uses: we now get the interface automatically by examining info from the socket connected to the ARM
             if if_ip:
                 self.ib.interface_ip_addr = if_ip
 
-            self.logger.info('Initializing firmware (calling ib.open())')
+            self.logger.info('%r: Initializing firmware (calling ib.open())' % self)
             yield [ib.open.async(adc_delay_table=ADC_DELAY_TABLE,
-                         udp_retries=udp_retries,
-                         init=open,
-                         **kwargs
-                         # sampling_frequency=sampling_frequency,
-                         # reference_frequency=reference_frequency,
-                         ) for ib in self.ib]
+                                 udp_retries=udp_retries,
+                                 init=open,
+                                 **kwargs
+                                 # sampling_frequency=sampling_frequency,
+                                 # reference_frequency=reference_frequency,
+                                 ) for ib in self.ib]
 
-            self.logger.info('%r: Setting SYNC method' % self)
             if sync_method or sync_source:
+                self.logger.info('%r: Setting SYNC method' % self)
                 self.set_sync_method(method=sync_method, source=sync_source, master=sync_master, master_time_source=sync_master_time_source)
-            self.logger.info('%r: Setting operational mode to %s' % (self, mode))
+
             if mode:
-                self.set_operational_mode(mode=mode, frames_per_packet=frames_per_packet)
+                self.logger.info('%r: Setting operational mode to %s' % (self, mode))
+                self.set_operational_mode(mode=mode, frames_per_packet=frames_per_packet, tx_power=tx_power)
 
             self.logger.info('%r: Initializing Backplane firmware' % self)
             if self.ic:
@@ -973,21 +1007,29 @@ class FPGAArray(object):
 
 
     def set_crate_numbers(self, crate_number_map, strict=True):
-        """ Set the crate number of each crate based on the provided crate number map.
+        """ Set the crate number of each crate based on the provided crate
+        number map.
 
         Silently overrides any existing crate numbers.
 
-        Arguments:
-            crate_number_map (dict): A { (model, serial): number} dict that maps a crate ID tuple to a crate number.
-            strict (bool): if True, will raise an exception if not all crates can be assigned a crate number
+        Parameters:
+
+            crate_number_map (dict): A { (model, serial): number} dict that
+                maps a crate ID tuple to a crate number.
+
+
+            strict (bool): if True, will raise an exception if not all crates
+                can be assigned a crate number
 
         Notes:
-            Crate numbers are needed to identify hardware element by simple tuples (e.g. (crate_number,
-            slot_numer, lane_number)) and are also used to infer which is a master and slave crate when
-            crates are interconnected in pairs.
+
+            Crate numbers are needed to identify hardware element by simple
+            tuples (e.g. (crate_number, slot_numer, lane_number)) and are also
+            used to infer which is a master and slave crate when crates are
+            interconnected in pairs.
         """
 
-        self.logger.info('%r: setting crate numbers for crates %r' % (self, self.ic))
+        self.logger.info('%r: Setting crate numbers for the following crates %s' % (self, ', '.join(repr(ic) for ic in self.ic)))
 
         for ic in self.ic:
             model = ic.part_number
@@ -1006,41 +1048,59 @@ class FPGAArray(object):
             if new_crate_number is not None:
                 ic.crate_number = int(new_crate_number)
                 self.hwm.flush()
-                self.logger.info('Assigining crate number %r to crate %s' % (new_crate_number, ic.get_string_id()))
+                self.logger.info('%r: Assigining crate number %r to crate %s' % (self, new_crate_number, ic.get_string_id()))
             elif strict:
                 raise RuntimeError('Cannot find a crate number for crate %s' % ic.get_string_id())
             else:
-                self.logger.warning('set_crate_number: Cannot find a crate number for crate %s' % ic.get_string_id())
+                self.logger.warning('%r: set_crate_number: Cannot find a crate number for crate %s' % (self, ic.get_string_id()))
 
 
-    def set_operational_mode(self, mode, frames_per_packet=1, chan8_channel_map=range(8)):
-        """
-        NOTE: Having called get_ber() before initializing the shuffle will lead to errors!
-        Set the operational mode of the array.
+    def set_operational_mode(self,
+                             mode,
+                             frames_per_packet=1,
+                             chan8_channel_map=range(8),
+                             tx_power=None
+                             ):
+        """ Set the operational mode of the array.
 
-        - 'raw_time': Each boards stream raw 8-bit time samples from channels
+
+        Parameters:
+
+            mode (str): operational mode string.
+
+                - 'raw_time': Each boards stream raw 8-bit time samples from channels
                     0-7 to the corresponding GPU ports.
-        - 'shuffle16': Acquire, channelize and shuffle data within each
-          Iceboard individually and send the data through the IceBoard QSFP+
-          ports. There is no data shuffling between boards. This is good for
-          single board operation (or an array of boards operating
-          independently)
-        - 'shuffle256': Acquire, channelize and shuffle data within a crate to
-          create a 16-board (256-channel) correlator. The shuffled data is
-          sent through the IceBoard QSFP+ ports. There is no shuffling between
-          crates.
-        - 'shuffle512': Acquire, channelize and shuffle data between pair of
-          crates to create a 32-board (512-channel) correlator. The shuffled
-          data is sent through the IceBoard QSFP+ ports. The pairing of crates
-          is based on the crate number: Crate N and N+1 form a pair, whereas N
-          is a even number.
 
+                - 'shuffle16': Acquire, channelize and shuffle data within each Iceboard individually and
+                  send the data through the IceBoard QSFP+ ports. There is no data shuffling between boards.
+                  This is good for single board operation (or an array of boards operating independently)
+
+                - 'shuffle256': Acquire, channelize and shuffle data within a crate to
+                    create a 16-board (256-channel) correlator. The shuffled data is
+                    sent through the IceBoard QSFP+ ports. There is no shuffling between
+                    crates.
+
+                - 'shuffle512': Acquire, channelize and shuffle data between pair of
+                  crates to create a 32-board (512-channel) correlator. The shuffled
+                  data is sent through the IceBoard QSFP+ ports. The pairing of crates
+                  is based on the crate number: Crate N and N+1 form a pair, whereas N
+                  is a even number.
+
+
+        Notes:
+
+            Having called get_ber() before initializing the shuffle will lead to errors!
 
         # data_width : Data width of each Re and Im component of the channelizer output
         # enable_gpu_link : Enables the GPU link transmission
 
         """
+        # use defaults that were set during initialization unless overriden
+        mode = mode or self.mode
+        tx_power = tx_power or self.tx_power
+
         self.logger.info('%r: Setting operational mode to %s' % (self, mode))
+        self.logger.info('%r: Using tx_power=%r' % (self, tx_power))
         # To make sure that the data acquisition and transmission will be done at the same rate, refuse to operate if there
         # are more than one IceBoard in the array and the boards are not all
         # set to operate on the backplane clock.
@@ -1053,7 +1113,7 @@ class FPGAArray(object):
         if mode == 'raw_time':
             self.ib.set_fft_bypass(True)
             self.ib.set_scaler_bypass(True)
-            self.init_shuffle(mode='chan8', frames_per_packet=frames_per_packet, chan8_channel_map=np.hstack((chan8_channel_map, [16]*8)))
+            self.init_shuffle(mode='chan8', frames_per_packet=frames_per_packet, chan8_channel_map=np.hstack((chan8_channel_map, [16]*8)), tx_power=tx_power)
 
         elif mode in ['shuffle256', 'shuffle512', 'shuffle16']:
             if not all(self.ib.CROSSBAR2) or not all(self.ib.CROSSBAR3):
@@ -1062,7 +1122,7 @@ class FPGAArray(object):
             self.ib.CROSSBAR3.SOF_WINDOW_STOP = 110
             self.ib.CROSSBAR3.TIMEOUT_PERIOD = 0
             self.ib.BP_SHUFFLE.reset_rx_equalizers()
-            self.init_shuffle(mode=mode, frames_per_packet=frames_per_packet)
+            self.init_shuffle(mode=mode, frames_per_packet=frames_per_packet, tx_power=tx_power)
             self.ib.BP_SHUFFLE.reset_stats()
             self.ib.CROSSBAR2.reset_stats()
             self.ib.CROSSBAR3.reset_stats()
@@ -1074,6 +1134,178 @@ class FPGAArray(object):
         else:
             raise ValueError('Unknown operational mode')
 
+    def init_shuffle(self,
+                     mode,
+                     dsmap=range(16),
+                     frames_per_packet=1,
+                     chan8_channel_map=range(16),
+                     tx_power=None,
+                     ):
+        """ Setup the crossbars and data shuffling in every board of the array.
+
+        Parameters:
+
+            mode (str): One of the crossbar engine operational mode
+                ('shuffle16', 'shuffle256' etc.). Is passed to
+                ib.init_crossbar().
+
+            dsmap (list of int): Shuffle remap that is passed to
+                ib.init_crossbar(). Defaults to `range(16)`.
+
+            frames_per_packet (int): Number of frames per packet. Defaults to
+                1. Is passed to ib.init_crossbar().
+
+            chan8_channel_map (list): Map that is passed to
+                ib.init_crossbar(). Defaults to `range(16)`.
+
+            tx_power (dict): Describes the initial (training) and final TX
+                 power to be used by the backplane PCB and QSFP links. applied
+                 to the backplane PCB GTX links.
+
+
+        The GTX receivers that have no corresponding transmitter is put in
+        reset so it won't generate random packets into the following crossbar.
+        """
+        if tx_power is None:
+            tx_power = {'corner_turn': [
+                dict(lane_group='pcb', default=(10, 15)),
+                dict(lane_group='qsfp', default=(10, 15))]}
+
+        tx_list = []
+
+        # crate_set = set(ib.crate for ib in self.ib)
+        # if len(crate_set) != 1:
+        #     raise RuntimeError('All boards must be in the same crate. The provided set of Iceboards have the following crates: %r' % crate_set)
+        # crate = crate_set.pop()
+
+        self.logger.info('%r: Configuring crate-wide data shuffling with frames_per_packet=%i' % (self, frames_per_packet))
+
+        #####################
+        # Set-up transmitters
+        #####################
+        for i, ib in enumerate(self.ib):
+            self.logger.info('%r: **** Initializing transmitters for IceBoard %r (SN%s) ****' % (self, ib, ib.serial))
+            ib.set_corr_reset(0)
+
+            tx_list.append((ib.slot, 0))  # Register Bypass lane (lane 0) as a transmitter in this slot
+            for j, gtx in enumerate(ib.BP_SHUFFLE.gtx):
+                gtx.TXINHIBIT = 0
+                tx_list.append((ib.slot, j+1))
+
+            # Initialize the crossbars to select and send data in a specific format
+            # ib.init_crossbars(dsmap, frames_per_packet=frames_per_packet, cb1_lanes=cb1_lanes, cb1_bins=cb1_bins, cb1_bypass=cb1_bypass, cb2_lanes=cb2_lanes, cb2_bins=cb2_bins, cb2_bypass=cb2_bypass, remap=remap, bp_bypass=bp_bypass)
+            ib.init_crossbars(mode,
+                              dsmap=dsmap,
+                              frames_per_packet=frames_per_packet,
+                              chan8_channel_map=chan8_channel_map)
+
+        #####################
+        # Set-up receivers
+        #####################
+        for i, ib in enumerate(self.ib):
+            # Disable all receivers for which there are no transmitters
+            for j, gtx in enumerate(ib.BP_SHUFFLE.gtx[0:ib.BP_SHUFFLE.NUMBER_OF_PCB_LINKS]):
+                if ib.slot is None:
+                    continue
+                rx = (ib.slot, j+1)
+                tx = ib.crate.get_matching_tx(rx)
+
+                # disable receivers that have no corresponding transmitters
+                if tx in tx_list:
+                    gtx.USER_GTRXRESET = 0
+                else:
+                    gtx.USER_GTRXRESET = 1
+                    # gtx.USER_RESET = 1
+
+        # reset DFE at low power, then increase power
+        for index in (0, 1):
+            for tx_group in tx_power['corner_turn']:
+                lane_group = tx_group['lane_group']
+                default = tx_group['default']
+                exceptions = tx_group.get('exceptions', [])
+                self.logger.info('%r: TX power parameters are: %r (default=%r, exceptions=%r)' % (self, tx_group, default, exceptions))
+                self.set_tx_power(lane_group=lane_group, default_power=default, exceptions=exceptions, index=index)
+            if index == 0:
+                time.sleep(0.3)
+                for ib in self.ib:
+                    self.ib.BP_SHUFFLE.reset_rx_equalizers()
+
+        self.ib.BP_SHUFFLE.reset_stats()
+
+        # Print links
+        for ib in self.ib:
+            for i in range(ib.NUMBER_OF_CROSSBAR_OUTPUTS):
+                if ib.slot is None:
+                    continue
+                rx = (ib.slot, i)
+                tx = ib.crate.get_matching_tx(rx)
+                if tx in tx_list:
+                    pass
+                    #self.logger.debug('%r: In %r,  %s is receiving from %s' % (self, ib.crate, rx, tx))
+                else:
+                    self.logger.debug('%r: In %r, %s has no corresponding transmitter' % (self, ib.crate.handler, rx))
+
+
+        # sync boards
+        #soft_sync(c, sync_board)
+        self.logger.info('%r: Shuffling initialization completed. Syncing boards' % self)
+        self.sync(delay=2)
+
+    def set_tx_power(self, default_power=(5, 10), lane_group=None, exceptions=[], index=0):
+        """ Set the power level of the corner-turn engine GTX transmitters.
+
+        Parameters:
+
+            default_power (int or tuple): power level to use for all gtx that
+                are not exception list. An int is interpreted as a
+                single-element tuple. In the case where multiple power values
+                are to be specified, the value within the tuple is selected by
+                `index`.
+
+            lane_group (str): lane group for which the power is set ('pcb' or
+                'qsfp').
+
+            exceptions (list): list of the lane-specific power level exceptin, in the form:
+
+                [((crate, slot, lane), power_tuple), ...}
+
+            index (int): used to select which value within a power tuple, list
+                or map will be used to set power.
+        """
+        if isinstance(default_power, int):
+            default_power = (default_power, )
+
+        exceptions = {tuple(node_id): power_tuple for node_id, power_tuple in exceptions}
+        self.logger.info('%r: Setting GTX power for lane group %s to power index %i' % (self, lane_group, index))
+        self.logger.info('%r:    Default power is %s' % (self, default_power))
+        self.logger.info('%r:    Power exceptions are %s' % (self, exceptions))
+
+        for ib in self.ib:
+            bp = ib.BP_SHUFFLE
+            power_tuples = [(lane, exceptions.get(ib.get_id(lane), default_power)[index])
+                            for lane, gtx in enumerate(bp.get_gtx(lane_group=lane_group)) if gtx]
+            self.logger.info('%r: setting Tx power for %r %s to %r' % (self, ib.handler, lane_group, power_tuples))
+            bp.set_tx_power(power_tuples, lane_group)
+
+
+    # def set_tx_power(self, pmin=6, pmax=13, pre=3):
+    #     """ Set the transmit power of each transceiver based on the link length to minimize crosstalk.
+    #     The shortest link pas the power ``pmin``, and the longest link has ``pmax''.
+    #     The precursor value can also be set to ``pre`` if it is not ``None``.
+    #     """
+    #     for ib in self.ib:
+    #         for gg in ib.BP_SHUFFLE.gtx:
+    #             if pre is not None:
+    #                 gg.TXPRECURSOR = pre
+    #             rx_id = (ib.slot, gg.instance_number + 1)
+    #             if gg.instance_number <= 14:
+    #                 net_length = gg.fpga.crate.get_rx_net_length(rx_id)
+    #                 p = pmin + int((pmax-pmin)*(net_length-1515.)/(16081-1515))
+    #                 print '%s, len=%f, power=%i' % (rx_id, net_length, p)
+    #                 gg.TXDIFFCTRL = p
+    #             else:
+    #                 gg.TXDIFFCTRL = pmax
+
     def set_test_pattern(self):
         for ic in self.ic:
             for (slot, ib) in ic.slot.items():
@@ -1083,6 +1315,8 @@ class FPGAArray(object):
 
     def set_sync_method(self, method='distributed_time', source='bp_time', master=None, master_time_source=None):
         """ Sets the global syncing method, and setup the boards accordingly.
+
+        Parameters:
 
         method: (string)
             - 'distributed_time': All boards receive and decode IRIG-B time
@@ -1265,10 +1499,14 @@ class FPGAArray(object):
             if bad_ib:
                 raise RuntimeError('The following IceBoards did not SYNC properly: %s' % (','.join(repr(ib) for ib in bad_ib)))
 
-        ts = self.ib.get_irigb_time(trig=False, format = 'raw')
-        if len(set(t.nano for t in ts)) != 1:
-            self.logger.warning('%r: The timestamp is not the same for all boards after sync. Times are:n%s' %
-                (self,                  '\n'.join('%r:%i' % (ib, ts[i].nano) for i,ib in enumerate(self.ib))))
+        ts = self.ib.get_irigb_time(trig=False, format='raw')
+        delta_ts = max(ts.nano) - min(ts.nano)
+        self.logger.info('%r: The sync time for all boards are:%s' %
+            (self, '\n'.join('%r:%i' % (ib.handler, ts[i].nano) for i,ib in enumerate(self.ib))))
+        self.logger.info('%r: The maximum sync time difference is %i ns' % (self, delta_ts) )
+        if delta_ts > self.max_sync_time_difference:
+            raise RuntimeError('The sync time difference of %i exceeds the maximum limit of %i' % (delta_ts, self.max_sync_time_difference))
+        self.sync_timestamps = ts
         self.sync_timestamp = ts[0]
         for ib in self.ib:
             for ant in ib.ANT:
@@ -1471,116 +1709,6 @@ class FPGAArray(object):
 
 
 
-    def init_shuffle(self,
-                     mode,
-                     dsmap=range(16),
-                     frames_per_packet=1,
-                     chan8_channel_map=range(16),
-                     pcb_link_tx_power=(10, 15),
-                     qsfp_link_tx_power=(10, 15)):
-        """ Setup the crossbars and data shuffling in every board of the array.
-
-        Parameters:
-
-            mode (str): One of the crossbar engine operational mode
-                ('shuffle16', 'shuffle256' etc.). Is passed to
-                ib.init_crossbar().
-
-            dsmap (list of int): Shuffle remap that is passed to
-                ib.init_crossbar(). Defaults to `range(16)`.
-
-            frames_per_packet (int): Number of frames per packet. Defaults to
-                1. Is passed to ib.init_crossbar().
-
-            chan8_channel_map (list): Map that is passed to
-                ib.init_crossbar(). Defaults to `range(16)`.
-
-             pcb_link_tx_power (tuple (int, int)): Initial and final TX power
-                 applied to the backplane PCB GTX links.
-
-             qsfp_link_tx_power (tuple (int,int)): Initial and final TX power
-                 applied to the backplane QSFP GTX links.
-
-
-        The GTX receivers that have no corresponding transmitter is put in
-        reset so it won't generate random packets into the following crossbar.
-        """
-
-        tx_list = []
-
-        # crate_set = set(ib.crate for ib in self.ib)
-        # if len(crate_set) != 1:
-        #     raise RuntimeError('All boards must be in the same crate. The provided set of Iceboards have the following crates: %r' % crate_set)
-        # crate = crate_set.pop()
-
-        self.logger.info('%r: Configuring crate-wide data shuffling with frames_per_packet=%i' % (self, frames_per_packet))
-
-        #####################
-        # Set-up transmitters
-        #####################
-        for i, ib in enumerate(self.ib):
-            self.logger.info('%r: **** Initializing transmitters for IceBoard %r (SN%s) ****' % (self, ib, ib.serial))
-            ib.set_corr_reset(0)
-
-            tx_list.append((ib.slot, 0))  # Register Bypass lane (lane 0) as a transmitter in this slot
-            for j, gtx in enumerate(ib.BP_SHUFFLE.gtx):
-                gtx.TXINHIBIT = 0
-                tx_list.append((ib.slot, j+1))
-
-            # if remap:
-            #     ib.CROSSBAR2.set_lane_map(self.compute_lane_map(ib))
-
-            # Initialize the crossbars to select and send data in a specific format
-            # ib.init_crossbars(dsmap, frames_per_packet=frames_per_packet, cb1_lanes=cb1_lanes, cb1_bins=cb1_bins, cb1_bypass=cb1_bypass, cb2_lanes=cb2_lanes, cb2_bins=cb2_bins, cb2_bypass=cb2_bypass, remap=remap, bp_bypass=bp_bypass)
-            ib.init_crossbars(mode, dsmap=dsmap, frames_per_packet=frames_per_packet, chan8_channel_map=chan8_channel_map)
-
-        #####################
-        # Set-up receivers
-        #####################
-        for i, ib in enumerate(self.ib):
-            # Disable all receivers for which there are no transmitters
-            for j, gtx in enumerate(ib.BP_SHUFFLE.gtx[0:ib.BP_SHUFFLE.NUMBER_OF_PCB_LINKS]):
-                if ib.slot is None:
-                    continue
-                rx = (ib.slot, j+1)
-                tx = ib.crate.get_matching_tx(rx)
-
-                # disable receivers that have no corresponding transmitters
-                if tx in tx_list:
-                    gtx.USER_GTRXRESET = 0
-                else:
-                    gtx.USER_GTRXRESET = 1
-                    # gtx.USER_RESET = 1
-
-        # reset DFE at low power, then increase power
-        self.ib.BP_SHUFFLE.set_tx_power(pcb_link_tx_power[0], 'pcb')
-        self.ib.BP_SHUFFLE.set_tx_power(qsfp_link_tx_power[0], 'qsfp')
-        self.ib.BP_SHUFFLE.reset_rx_equalizers()
-        time.sleep(0.3)
-        #self.ib.BP_SHUFFLE.set_tx_power(7)
-        #self.ib.BP_SHUFFLE.set_tx_power(10)
-        self.ib.BP_SHUFFLE.set_tx_power(pcb_link_tx_power[1], 'pcb')
-        self.ib.BP_SHUFFLE.set_tx_power(qsfp_link_tx_power[1], 'qsfp')
-        self.ib.BP_SHUFFLE.reset_stats()
-
-        # Print links
-        for ib in self.ib:
-            for i in range(ib.NUMBER_OF_CROSSBAR_OUTPUTS):
-                if ib.slot is None:
-                    continue
-                rx = (ib.slot, i)
-                tx = ib.crate.get_matching_tx(rx)
-                if tx in tx_list:
-                    pass
-                    #self.logger.debug('%r: In %r,  %s is receiving from %s' % (self, ib.crate, rx, tx))
-                else:
-                    self.logger.debug('%r: In %r, %s has no corresponding transmitter' % (self, ib.crate, rx))
-
-
-        # sync boards
-        #soft_sync(c, sync_board)
-        self.logger.info('%r: Shuffling initialization completed. Syncing boards' % self)
-        self.sync(delay=2)
 
     def get_chan_identity_map(self):
         """ Return an identity map that describes the origin of each of the 1024 samples contained in the channelizer output packets.
@@ -1800,7 +1928,9 @@ class FPGAArray(object):
         backplane link and detect  from which slot/lane every board is
         receiving data.
 
-        The test is performed only on IceBoards that are installed in crates and whose FPGA has been programmed and initialized. Other boards are ignored.
+        The test is performed only on IceBoards that are installed in crates
+        and whose FPGA has been programmed and initialized. Other boards are
+        ignored.
 
         For now, this test works only if all boards are in a single crate.
         """
@@ -1906,95 +2036,159 @@ class FPGAArray(object):
 
         return link_list
 
-    # def get_backplane_links(self, print_=True):
-    #     """ Return all backplane links that **should** be available given the currnet collection of crates.
-    #     """
-
-    #     # get all crates associated with the current set of iceboards
-    #     crates = set(ib.crate for ib in self.ib if ib.crate)
-
-    #     links = {}
-    #     for cr in crates:
-    #         links[cr.id] = list(itertools.chain(*(ib.BP_SHUFFLE.get_links() for ib in cr.slot.values())))
-    #     return links
 
     def get_backplane_pcb_link_map(self):
+        """ Return a dictionary that lists all the backplane PCB links and
+        their corresponding GTXes for every boards in the array.
+
+        The list covers every transmitter and receivers on the borads that are
+        currently in the array. Each GTX therefore has two entries, one in
+        which it is the transmitter, and one in which it is the reciever. The
+        connectivity is resolved by relying on the connectivity information
+        that is probiced by the IceCrate object, so there is no need for
+        additional resolving.
+
+        Parameters:
+
+            None
+
+        Returns:
+            A dict, in the format:
+
+                {('pcb', (tx_crate, tx_slot, tx_lane), (rx_crate, rx_slot, rx_lane)) : (tx_gtx_instance, rx_gtx_instance)}
+        """
         link_map = {}
         for ib in self.ib:
-            link_map.update(ib.BP_SHUFFLE.get_link_map())
+            link_map.update(ib.BP_SHUFFLE.get_link_map('pcb'))
         return link_map
 
     def get_backplane_qsfp_links(self):
+        """ Get the list of backplane QSFP links and resolve their
+        connectivity to return a list of lane connectivity.
+
+        We achieve this by getting the list that matches the QSFP-connected
+        GTXes to a cable link ID by calling each crate's get_qsfp_links(),
+        which returns a list in the format:
+
+            [('BP_QSFP', (crate_id, iceboard_slot, gtx_index), None, cable_link_id), ...]
+
+
+        Returns:
+
+            A resolved, iceboard- and lane-oriented connectivity list in the format:
+
+                [('BP_QSFP', (tx_crate, tx_iceboard_slot, tx_lane), (rx_crate, rx_iceboard_slot, rx_lane) ), ...]
+
+            The list refers to logical lane numbers (including the internal
+            bypass lanes). Note that the internal (bypass) links are not added
+            to the result.
+
+
+        """
+
 
         # tx_nodes = {}
         # rx_nodes = {}
-        raw_links = []
 
         # Combine TX and RX link dicts from all crates
+        raw_links = [link for ic in self.ic
+                          for qsfp_link_list in ic.get_qsfp_links()
+                          for link in qsfp_link_list]
+
         for ic in self.ic:
             raw_links += ic.get_qsfp_links()
 
+        # Make a map of crates objects indexed by crate_number
+        crate_map = {crate.get_id()[0]: crate for crate in self.ic}
+
         # Visit each link and find the attached nodes
         links = []
-        for (link_type, node_id1, node_id2, link_id) in raw_links:
+        for (link_type, tx_id, rx_id, link_id) in raw_links:
             # If the second node is not already known, search all the links for a corresponding half-link with the same link_id
-            if node_id2 is None:
-                matching_nodes = [nid1 for (lt, nid1, nid2, lid) in raw_links if lt==link_type and nid1 != node_id1 and nid2 is None and lid==link_id]
+            if rx_id is None:
+                matching_nodes = [nid1 for (lt, nid1, nid2, lid) in raw_links if lt==link_type and nid1 != tx_id and nid2 is None and lid==link_id]
                 if len(matching_nodes) == 1:
-                    node_id2 = matching_nodes[0]
-            if node_id1 is not None and node_id2 is not None:
-                (source_crate, source_slot, source_lane) = node_id1
-                (dest_crate, dest_slot, dest_lane) = node_id2
-                links.append((link_type, (source_crate, source_slot, source_lane + 4), (dest_crate, dest_slot, dest_lane+4)))
-                # links.append((link_type, node_id2, node_id1))
-
-        return links
-
-
-    def get_backplane_qsfp_link_map(self):
-        link_map = {}
-        crates = self.ic.index_by(list(self.ic.get_id()))  # crates, indexed by crate_id
-
-        links = self.get_backplane_qsfp_links()
-        for link in links:
-            (link_type, (source_crate, source_slot, source_lane), (dest_crate, dest_slot, dest_lane)) = link
+                    rx_id = matching_nodes[0]
+            if tx_id is None or rx_id is None:
+                continue
+            (source_crate, source_slot, source_lane) = tx_id
+            (dest_crate, dest_slot, dest_lane) = rx_id
             ic0 = crates[source_crate]
             ic1 = crates[dest_crate]
             if (source_slot not in ic0.slot) or (dest_slot not in ic1.slot):
                 continue
             bp0 = ic0.slot[source_slot].BP_SHUFFLE
             bp1 = ic1.slot[dest_slot].BP_SHUFFLE
-            if source_lane < bp0.NUMBER_OF_QSFP_DIRECT_LANES:
-                source_gtx = None
-            else:
-                source_gtx = bp0.gtx[bp0.NUMBER_OF_PCB_LINKS + source_lane - bp0.NUMBER_OF_QSFP_DIRECT_LANES]
-            if dest_lane < bp0.NUMBER_OF_QSFP_DIRECT_LANES:
-                dest_gtx = None
-            else:
-                dest_gtx = bp1.gtx[bp1.NUMBER_OF_PCB_LINKS + dest_lane - bp1.NUMBER_OF_QSFP_DIRECT_LANES]
-            link_map[link] = (source_gtx, dest_gtx)
-        return link_map
+            links.append((link_type, (source_crate, source_slot, source_lane + bp0.NUMBER_OF_QSFP_DIRECT_LANES), (dest_crate, dest_slot, dest_lane + bp1.NUMBER_OF_QSFP_DIRECT_LANES)))  # convert from gtx index to logical lane #
 
-        # if len(ic) == 2:  # hack
-        #     for slot in set(ic[0].slot.keys()) & set(ic[1].slot.keys()):
-        #         bp0 = ic[0].slot[slot].BP_SHUFFLE
-        #         bp1 = ic[1].slot[slot].BP_SHUFFLE
-        #         crate_id0 = ic[0].get_id()
-        #         crate_id1 = ic[1].get_id()
-        #         for lane in range(bp0.NUMBER_OF_QSFP_LANES):
-        #             link0 = ('BP_QSFP', (crate_id0, slot, lane), (crate_id1, slot, lane))
-        #             link1 = ('BP_QSFP', (crate_id1, slot, lane), (crate_id0, slot, lane))
-        #             if lane < bp0.NUMBER_OF_QSFP_DIRECT_LANES:
-        #                 gtx0 = None
-        #                 gtx1 = None
-        #             else:
-        #                 gtx0 = bp0.gtx[bp0.NUMBER_OF_PCB_LINKS + lane - bp0.NUMBER_OF_QSFP_DIRECT_LANES]
-        #                 gtx1 = bp1.gtx[bp1.NUMBER_OF_PCB_LINKS + lane - bp1.NUMBER_OF_QSFP_DIRECT_LANES]
-        #             link_map[link0] = (gtx0, gtx1)
-        #             link_map[link1] = (gtx1, gtx0)
-        # return link_map
+        return links
+
+    def get_backplane_qsfp_link_map(self, resolve=True):
+        """ Return a dictionary that maps the backplane QSFP links to
+        corresponding GTX transmitter and receiver instances.
+
+        Returns:
+           A dict, in the format:
+
+                {('qsfp', (tx_crate, tx_slot, tx_lane), (rx_crate, rx_slot, rx_lane)) : (tx_gtx_instance, rx_gtx_instance)}
+
+        """
+        qsfp_link_map = {}
+        for ib in self.ib:
+            qsfp_link_map.update(ib.BP_SHUFFLE.get_link_map('qsfp'))
+
+        if not resolve:
+            return qsfp_link_map
+
+        # Ask each board a map that describe how each logical link is connected to the backplane links
+        bp_to_logical_link_map = {}
+        for ib in self.ib:
+            bp_to_logical_link_map.update(ib.BP_SHUFFLE.get_bp_to_logical_link_map('qsfp'))
+
+        # Ask each crate the map that matches backplane links to cable ids (this takes time: we need to read the cable identification)
+        bp_to_cable_map = {}
+        for ic in self.ic:
+            bp_to_cable_map.update(ic.get_qsfp_cable_map())
+
+        # Create a map that matches each cable id to a list of correspinding logical link ids (there should be 2 for each link)
+        cable_to_link_map  = {} # {cable_id: (crate, slot, logical_lane)}
+        for (bp_id, cable_id) in bp_to_cable_map.items():
+            cable_to_link_map.setdefault(cable_id, []).append(bp_to_logical_link_map[('qsfp', bp_id)])
+
+        # Crate a map that matches each logical link id with another logical link id.
+        link_map = {}
+        for cable_id, link_ids in cable_to_link_map.items():
+            if len(link_ids) == 1:
+                self.logger.warning('Only one end of a QSFP cable is connected; Cable ID %s connects only to %s. The link will be ignored.' % (cable_id, link_ids[0]))
+            elif len(link_ids) > 2:
+                raise RuntimeError('A QSFP cable connects to more than 2 links. Something is wrong. Cable ID %s connects only to %s.' % (cable_id, link_ids))
+            elif len(link_ids) == 2:
+                link_map[link_ids[0][1]] = link_ids[1][1]
+                link_map[link_ids[1][1]] = link_ids[0][1]
+        print link_map
+
+        # Resolve each unresolved link.
+        resolved_qsfp_link_map = {}
+        for (link_type, tx_id, rx_id), (tx_gtx, rx_gtx) in qsfp_link_map.items():
+            if not tx_id and rx_id and rx_id in link_map:
+                tx_id = link_map[rx_id]
+                tx_gtx,_ = qsfp_link_map[('qsfp', tx_id, None)]
+            elif not rx_id and tx_id and tx_id in link_map:
+                rx_id = link_map[tx_id]
+                _, rx_gtx = qsfp_link_map[('qsfp', None, rx_id)]
+            resolved_qsfp_link_map[link_type, tx_id, rx_id] = (tx_gtx, rx_gtx)
+
+        return resolved_qsfp_link_map
+
 
     def get_gpu_link_map(self):
+        """ Return a dictionary that matches the GPU links to the GTX Rx and Tx instances when connected with a loopback cable.
+
+        Returns:
+           A dict, in the format:
+
+                {('GPU', (tx_crate, tx_slot, tx_lane), (rx_crate, rx_slot, rx_lane)) : (tx_gtx_instance, rx_gtx_instance)}
+        """
         link_map = {}
         for ib in self.ib:
             crate_id = ib.get_crate_id()
@@ -2008,10 +2202,26 @@ class FPGAArray(object):
         return link_map
 
     def get_link_map(self, links=None, gtx_only=False):
+        """ Return a dictionary that describes the corner-turn and loopbacked GPU links and the corresponding Tx and RX GTXes.
+
+
+        Is used by `get_ber()` to identify the links on which Bit Error Rate (BER) tests will be performed.
+
+        Parameters:
+
+            links (str or list of str): select only the link type specified as a string or the link types specified in a list of strings.
+
+        Returns:
+           A dict, in the format:
+
+                {(link_type, (tx_crate, tx_slot, tx_lane), (rx_crate, rx_slot, rx_lane)) : (tx_gtx_instance, rx_gtx_instance)}
+
+                `link_type` is either "BP", "BP_QSFP" or "GPU"
+        """
         link_map = {}
         link_map.update(self.get_backplane_pcb_link_map())
         link_map.update(self.get_backplane_qsfp_link_map())
-        link_map.update(self.get_gpu_link_map())
+        link_map.update(self.get_gpu_link_map()) # loopback links
 
         if isinstance(links, str):
             link_map = {link: gtxes for link, gtxes in link_map.items() if link[0] == links}
@@ -2587,6 +2797,20 @@ class FPGAArray(object):
         # Command errors
 
 
+        for i, ib in enumerate(self.ib):
+            try:
+                fn, ts = yield ib.capture_frame_time.async(format='raw')
+                if not i:
+                    fn0, ts0 = (fn, ts)
+                crate, slot = ib.get_id()
+                slot = ib.slot - 1
+                metrics.add('fpga_time_delta', ts.nano - ts0.nano, crate=crate, slot=slot)
+                metrics.add('fpga_frame_number_delta', fn - fn0, crate=crate, slot=slot)
+                metrics.add('fpga_time_error', ts.nano - (self.sync_timestamps[i].nano + fn*2560), crate=crate, slot=slot)
+                metrics.add('fpga_sync_time_delta', self.sync_timestamps[i].nano - self.sync_timestamps[0].nano, crate=crate, slot=slot)
+            except RuntimeError:
+                self.logger.error('%r: Timeout while capturing frame time' % ib)
+
         async_return(metrics)
 
 
@@ -2601,23 +2825,6 @@ class FPGAArray(object):
         data = {ib:('\n'.join(info_metrics[i][0].values())) for i, ib in enumerate(self.ib)}
         self.print_iceboard_table(data, row_labels=keys)
 
-    def set_tx_power(self, pmin=6, pmax=13, pre=3):
-        """ Set the transmit power of each transceiver based on the link length to minimize crosstalk.
-        The shortest link pas the power ``pmin``, and the longest link has ``pmax''.
-        The precursor value can also be set to ``pre`` if it is not ``None``.
-        """
-        for ib in self.ib:
-            for gg in ib.BP_SHUFFLE.gtx:
-                if pre is not None:
-                    gg.TXPRECURSOR = pre
-                rx_id = (ib.slot, gg.instance_number + 1)
-                if gg.instance_number <= 14:
-                    net_length = gg.fpga.crate.get_rx_net_length(rx_id)
-                    p = pmin + int((pmax-pmin)*(net_length-1515.)/(16081-1515))
-                    print '%s, len=%f, power=%i' % (rx_id, net_length, p)
-                    gg.TXDIFFCTRL = p
-                else:
-                    gg.TXDIFFCTRL = pmax
 
     def print_rx_err_map(self, icecrates=None, reset_stats=0, delay=-5, tx_power=None,
                          tx_precursor=None, tx_postcursor=None, lpm = None, dfe_reset=False, stop_on_errors=2, verbose=1):
@@ -2960,7 +3167,6 @@ def parse_hw_string(hw_string, remap_table={}, dut_id_patterns=ICE_PATTERNS):
                     hw_table[target_type].append(target_entry)
                     hw_table[type].remove(entry)
 
-    logger.debug('hw_table: %s' % hw_table)
     return hw_table
 
 

@@ -721,14 +721,18 @@ class PowerSupplyAsyncRESTClient(AsyncRESTClient):
 
         Parameters:
 
-            config (str or dict): If a string, the configuration is loaded from the specified
-                configuration file and name. if a dict, it is passed directly to the server.
+            config (str, dict or NameSpace): If a string, the configuration is
+                loaded from the specified configuration file and name. if a
+                dict, it is passed directly to the server. If a `Namespace`,
+                it is converted to a dict befoe being passed to the server.
 
         """
         self.log.info('%s: Starting remote PowerSupply server at %s:%i' % (self, self.hostname, self.port))
 
         if isinstance(config, str):
             config = load_yaml_config(config)
+        if isinstance(config, NameSpace):
+            config = config.as_dict()
 
         server_info = NameSpace((yield self.status()))
         ps_names = config['units'].keys()

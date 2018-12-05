@@ -174,7 +174,7 @@ class IOExpander_base(object):
                 val[port] &= ~(1 << bit) # clear bit
                 val[port] |= (bit_def.default << bit) # set with new value
         if verbose or self.verbose:
-            self.logger.debug('%.32r: IOExpander config: IODIRA=%02X , IODIRB=%02X, GPIOA=%02X, GPIOB=%02X' % (self.adc_board, direction[0], direction[1], val[0], val[1]))
+            self.logger.debug('%r: IOExpander config: IODIRA=%02X , IODIRB=%02X, GPIOA=%02X, GPIOB=%02X' % (self.adc_board, direction[0], direction[1], val[0], val[1]))
         self.write(self.REG_IODIRA, direction[self.PORT_A]) #
         self.write(self.REG_IODIRB, direction[self.PORT_B]) #
         self.write(self.REG_GPIOA, val[self.PORT_A]) #
@@ -182,7 +182,7 @@ class IOExpander_base(object):
 
     def status(self):
         """ Displays the status of the IOExpander. """
-        self.logger.info('%.32r: --- FMC %i IO Expander' % (self.adc_board, self.adc_board.fmc_number))
+        self.logger.info('%r: --- FMC %i IO Expander' % (self.adc_board, self.adc_board.fmc_number))
         if not self.adc_board.is_mezzanine_present():
-            self.logger.info('%.32r: FMC board not present' % self.adc_board)
-        self.logger.info('%.32r: No status info' % self.adc_board)
+            self.logger.info('%r: FMC board not present' % self.adc_board)
+        self.logger.info('%r: No status info' % self.adc_board)

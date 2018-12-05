@@ -26,9 +26,9 @@ from tornado.ioloop import IOLoop
 from tornado.web import HTTPError
 #from tornado_profile import TornadoProfiler
 
-def coroutine(func, replace_callback=True):
+def coroutine(*args, **kwargs):
     """ Standard Tornado coroutine decorator, with the coroutine flag added in case we use tornado < 4.5"""
-    wrapped = tornado.gen.coroutine(func, replace_callback=replace_callback)
+    wrapped = tornado.gen.coroutine(*args, **kwargs)
     if not hasattr(wrapped, '__tornado_coroutine__'):
         wrapped.__tornado_coroutine__ = True
     return wrapped

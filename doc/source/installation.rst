@@ -45,6 +45,22 @@ Requirements
             python setup.py install
 
 
+Windows installation
+---------------------
+
+*JFC 2018-10-03*
+
+Pre-requisites:
+
+  - You need Microsoft Visual C++ 9.0 for `netifaces`. Get it from http://aka.ms/vcpython27
+  - Install `bonjour` (part of itunes - you can extract the Itunes install package and just install bonjour).
+
+Create and activate an environment if needed.
+
+Installation of all packages can then be made with:
+
+    pip install -r requirements.txt
+
 Centos 7 installation
 ---------------------
 

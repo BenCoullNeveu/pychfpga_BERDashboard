@@ -64,22 +64,27 @@ class QSFP(object):
     }
 
 
-    def __init__(self, i2c, bus_name, gpio_prefix, gpio, address=0x50):
+    def __init__(self, i2c, bus_name, gpio_prefix, gpio, address=0x50, parent=None):
         """ Create a QSFP object.
 
         `control_bits` is a dictionary defining:  {control_bit_name: (io_expander_object, register_number, bit_number, default), ... }
         Valid control bit names are: 'ModPrsL', 'ResetL', 'IntL', 'ModSelL', 'LPMode', 'Led'
         """
         self._logger = logging.getLogger(__name__)
-        self._logger.debug('%.32r: Instantiating QSFP+ object' % self)
 
         self._i2c = i2c
         self._bus_name = bus_name
         self._gpio_prefix = gpio_prefix
         self._address = address
         self._gpio = gpio
+        self.parent = parent
+
+        self._logger.debug('%r: Instantiating QSFP+ object' % self)
 
         self._qsfp_eeprom = EEPROM(self._i2c, bus_name=self._bus_name, address=self._address, address_width=8, write_page_size=256)
+
+    def __repr__(self):
+        return "%r.%s" % (self.parent, self.__class__.__name__)
 
     def open(self):
         pass

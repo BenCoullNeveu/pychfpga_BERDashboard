@@ -1,6 +1,6 @@
 flaginput:
-    sources: ['layout', 'manual', 'power', 'rms', 'raw']
-    combine: ['layout', 'manual', 'power', 'rms', 'raw']
+    sources: ['layout', 'manual', 'power', 'rms', 'rfi', 'raw']
+    combine: ['layout', 'manual', 'power', 'rms', 'rfi', 'raw']
     correlator: 'chime'
     output_dir: '/data/flaginput'
     output_suffix: 'flaginput'
@@ -41,7 +41,7 @@ flaginput:
         cadence: 60.0
         clients:
             - {hostname: 'carillon', port: 7342}
-        threshold: 20.0
+        threshold: 15.0
     raw:
         cadence: 40.0
         acq_dir: '/mnt/gong/archive'
@@ -57,7 +57,7 @@ flaginput:
         lifo: False
         classification_threshold: 0.01
         num_consecutive_bad: 2
-        num_consecutive_good: 24
+        num_consecutive_good: 2
     periodic_callbacks: ['historical_status']
     send_regular_update:
         method: '_send_update'
