@@ -9,6 +9,7 @@ from __future__ import absolute_import, division, print_function
 import logging
 import argparse
 import sys
+import json
 from platform import system as system_name  # Returns the system/OS name
 from subprocess import call as system_call  # Execute a shell command
 from pychfpga import NameSpace, load_yaml_config
@@ -86,8 +87,8 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
             port=port,
             heartbeat_period=heartbeat_period,
             heartbeat_string=None,
-            connection_timeout=1,  # seconds
-            request_timeout=1.5
+            connection_timeout=2,  # seconds
+            request_timeout=3
         )
         # self.name = "KotekanAsyncRESTClient"
         self.kotekan_config = config
@@ -274,6 +275,13 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         """
         Update CHIME/Cosmology Pulsar Gating Endpoint
         """
+        # This is hack because currently sending
+        # lists through rest is not possible.
+        try:
+            coeff = json.load(coeff)
+        except Exception as e:
+            self.log.warning(e)
+            pass
         command = {
             "enabled": enabled,
             "pulsar_name": pulsar_name,
