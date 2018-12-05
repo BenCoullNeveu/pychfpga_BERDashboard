@@ -87,8 +87,8 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
             port=port,
             heartbeat_period=heartbeat_period,
             heartbeat_string=None,
-            connection_timeout=2,  # seconds
-            request_timeout=3
+            connection_timeout=2.5,  # seconds
+            request_timeout=5
         )
         # self.name = "KotekanAsyncRESTClient"
         self.kotekan_config = config
