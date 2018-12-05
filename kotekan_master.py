@@ -251,9 +251,7 @@ class KotekanMaster(object):
             self.current_folder = os.path.expanduser(
                 self.startup_config.current_folder % run_args
             )
-            self.log.info(
-                "%s : Current Folder : %s", self, self.current_folder
-            )
+            self.log.info("%s : Current Folder : %s", self, self.current_folder)
 
             # Create Run Folders for Logging
             try:
@@ -357,7 +355,7 @@ class KotekanMaster(object):
             self.slack.info(
                 msg_title="Kotekan Versions Discovered",
                 msg=str(unique_versions),
-                as_inline_code=True
+                as_inline_code=True,
             )
             # Remove None field from unique_versions
             unique_versions.pop(None, None)
@@ -397,9 +395,7 @@ class KotekanMaster(object):
         nodes = self.current_config.nodes or {}
         for node_name, node_params in nodes.items():
             self.nodes[node_name] = KotekanAsyncRESTClient(
-                name=node_name,
-                heartbeat_period=5000,
-                **node_params
+                name=node_name, heartbeat_period=5000, **node_params
             )
         self.log.info("%s : Created kotekan clients.", self)
 
@@ -486,7 +482,7 @@ class KotekanMaster(object):
             },
             "cosmology_status": {
                 "rfi_zeroing": str(_config.rfi_masking.toggle.rfi_zeroing),
-                "pulsar_gating": str(_config.updatable_config.gating)
+                "pulsar_gating": str(_config.updatable_config.gating),
             },
             "git_version": self.git_version,
             "start_time": time.strftime(
@@ -566,9 +562,7 @@ class KotekanMaster(object):
         for node_name, kotekan in self.nodes.items():
             if node_name in node_list:
                 if node_name not in self.blacklist_nodes:
-                    self.log.info(
-                        "%s : Blacklisted Node : %s", self, node_name
-                    )
+                    self.log.info("%s : Blacklisted Node : %s", self, node_name)
                     yield kotekan.kill()
                     self.blacklist_nodes.append(node_name)
                     self.nodes.pop(node_name)
@@ -1478,7 +1472,8 @@ class KotekanMaster(object):
         self.slack.info(
             msg_title="update-pulsar-gating",
             msg=str(self.current_config.common_config.updatable_config.gating),
-            as_inline_code=True)
+            as_inline_code=True,
+        )
         coroutine_return(result)
 
     @coroutine
@@ -1513,9 +1508,7 @@ class KotekanMaster(object):
                 beam, ra, dec, scaling
             )
             self.pulsar_slack.info(
-                msg_title="update-pulsar-pointing",
-                msg=msg,
-                as_inline_code=True,
+                msg_title="update-pulsar-pointing", msg=msg, as_inline_code=True
             )
             self.log.info("%s : Pulsar Parameters Updated", self)
             self.log.info(msg)
@@ -1690,9 +1683,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
                         # Validate GPS Clock Status
                         self.log.info("%s : Validating GPS Time", self)
                         gps_validate = yield self.kotekan_master.validate_gps()
-                        self.log.info(
-                            "%s : GPS Status: %s", self, gps_validate
-                        )
+                        self.log.info("%s : GPS Status: %s", self, gps_validate)
                     else:
                         self.log.error(
                             "Unable to execute watchdog loop due to gps error"
@@ -2164,10 +2155,17 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         -H "Content-Type: application/json"
         http://localhost:54323/update-pulsar-gating
         """
-        self.log.info(
+        self.log.debug(
             "\nEnabled:{}\nName:{}\nWidth:{}\nSegment:{}\nDM:{}\nRot:{}\nT:{}\nPhase:{}\nCoeff:{}\n".format(
-                enabled, pulsar_name, pulse_width, segment, dm, rot_freq,
-                t_ref, phase_ref, coeff
+                enabled,
+                pulsar_name,
+                pulse_width,
+                segment,
+                dm,
+                rot_freq,
+                t_ref,
+                phase_ref,
+                coeff,
             )
         )
         result = yield self.kotekan_master.update_pulsar_gating(
@@ -2263,7 +2261,7 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
             heartbeat_string="KMc",
             heartbeat_period=10000,
             connection_timeout=1,
-            request_timeout=2
+            request_timeout=2,
         )
 
     # Kotekan Master Routines
