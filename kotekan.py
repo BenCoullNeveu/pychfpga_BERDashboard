@@ -279,6 +279,13 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         # lists through rest is not possible.
         try:
             coeff = json.loads(coeff)
+            dm = json.loads(dm)
+            enabled = json.loads(enabled)
+            phase_ref = json.loads(phase_ref)
+            pulse_width = json.loads(pulse_width)
+            rot_freq = json.loads(rot_freq)
+            segment = json.loads(segment)
+            t_ref = json.loads(t_ref)
         except Exception as e:
             self.log.warning(e)
             pass
