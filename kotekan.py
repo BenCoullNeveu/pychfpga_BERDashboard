@@ -103,11 +103,11 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         result = {}
         try:
             result = yield self.get(endpoint)
-            result["node"] = self.hostname
         except RuntimeError as e:
             result = {"RuntimeError": "{0}".format(str(e))}
         except Exception as e:
             result = {"UnknownError": "{0}".format(str(e))}
+        result["node"] = self.hostname
         coroutine_return(result)
 
     @coroutine
