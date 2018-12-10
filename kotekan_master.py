@@ -439,6 +439,7 @@ class KotekanMaster(object):
             "current_config": _config.as_dict(),
             "nodes": {
                 "kotekan_nodes": self.nodes.keys(),
+                "unique_md5sums": self.unique_md5sums,
                 "receiver_nodes": self.receiver_nodes.keys(),
                 "kotekan_version": self.kotekan_versions,
             },
@@ -715,6 +716,8 @@ class KotekanMaster(object):
             self.log.debug(unique_md5sums)
             # Remove None's from md5sums returned by dead nodes.
             unique_md5sums.pop(None)
+            # Track unique_md5sums
+            self.unique_md5sums = unique_md5sums
         except Exception as e:
             self.log.error(e)
             pass
