@@ -71,7 +71,7 @@ class KotekanMaster(object):
 
         # Watchdog parameters
         self.watchdog_enabled = False
-        self.watchdog_interval = 200
+        self.watchdog_interval = 240
         # Watchdog Statistics Format
         # { node_name }
         self.watchdog_stats = {}

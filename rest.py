@@ -255,7 +255,7 @@ class AsyncRESTClient(AsyncMixin):
         )
         self.client = tornado.httpclient.AsyncHTTPClient()
         # Increase number of threads from default 300 to 5000
-        self.client.max_clients = 5000
+        self.client.max_clients = 1024
         # Overload the request_timeout parameter
         if request_timeout is not None:
             self.client.defaults["request_timeout"] = request_timeout
