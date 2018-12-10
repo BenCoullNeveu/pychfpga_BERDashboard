@@ -107,7 +107,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
             result = {"RuntimeError": "{0}".format(str(e))}
         except Exception as e:
             result = {"UnknownError": "{0}".format(str(e))}
-        self.log.debug("{}:GET Response: {}".foramat(self.hostname, result))
+        self.log.info("{}:GET Response: {}".foramat(self.hostname, result))
         coroutine_return(result)
 
     @coroutine
@@ -118,7 +118,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         except Exception as e:
             print(e)
             result = {"UnknownError": "{0}".format(str(e))}
-        self.log.debug("{}:GET Response: {}".foramat(self.hostname, result))
+        self.log.info("{}:GET Response: {}".foramat(self.hostname, result))
         coroutine_return(result)
 
     # Operation -- POST RESTful Endpoints
