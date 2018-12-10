@@ -168,6 +168,11 @@ class FlagCorrInput(object):
 
         - raw:  Processes raw ADC acquisition files to flag inputs with anomalous histogram or spectrum.
 
+        - rfi:  Queries the RFI monitor to flag inputs with large fraction of data determined non-gaussian.
+
+        - calibration:  Receives messages from the calibration broker to flag inputs where the gain calibration
+                        failed or was anamalous for a significant fraction of the otherwise good frequencies.
+
     The user can specify which of these sources to use through the "sources" parameter.
     When flags from one of the user-requested sources changes, the current flags from all sources
     are appended to the end of an HDF5 file and also added to Grafana metrics.  The master flag
@@ -176,7 +181,7 @@ class FlagCorrInput(object):
     """
 
     _update_type = 'flaginput'
-    _potential_sources = ['layout', 'manual', 'power', 'rms', 'rfi', 'raw']
+    _potential_sources = ['layout', 'manual', 'power', 'rms', 'rfi', 'raw', 'calibration']
 
     def __init__(self, **config):
         """ Instantiates a FlagCorrInput object.
@@ -1600,6 +1605,30 @@ class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
             coroutine_return( "FlagCorrInput server is not started" )
 
     @coroutine
+    @endpoint('set-source-flags')
+    def set_source_flags(self, handler, source, bad_inputs):
+
+        source = json.loads(source)
+        bad_inputs = json.loads(bad_inputs)
+
+        self.log.info('%r: Received request to flag %d bad inputs for %s source.' %
+                           (self, len(bad_inputs), source))
+
+        if self.flg and (source in self.flg.sources):
+
+            flag = np.ones(self.flg.ninput, dtype=np.bool)
+            for bb in bad_inputs:
+                flag[bb] = False
+
+            self.flg.source_flags_staging[source] = flag
+
+            coroutine_return( "Succesfully flagged %d bad inputs for %s source." %
+                              (len(bad_inputs), source) )
+
+        else:
+            coroutine_return( "The %s source is currently unavailable." % source )
+
+    @coroutine
     @endpoint('correlator-inputs')
     def correlator_inputs(self, handler):
         self.log.info('%r: Received request for correlator inputs.' % self)
@@ -2011,6 +2040,11 @@ class FlagCorrInputAsyncRESTClient(AsyncRESTClient):
     @coroutine
     def get_configuration(self):
         res = yield self.get('configuration')
+        coroutine_return(res)
+
+    @coroutine
+    def set_source_flags(self, source, bad_inputs):
+        res = yield self.post('set-source-flags', source, bad_inputs)
         coroutine_return(res)
 
     @coroutine
