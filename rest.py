@@ -253,9 +253,10 @@ class AsyncRESTClient(AsyncMixin):
                 self, self.__class__.__name__, self.hostname, port
             )
         )
+        tornado.httpclient.AsyncHTTPClient.configure(None, max_clients=512)
         self.client = tornado.httpclient.AsyncHTTPClient()
         # Increase number of threads from default 300 to 5000
-        self.client.max_clients = 1024
+        # self.client.max_clients = 1024
         # Overload the request_timeout parameter
         if request_timeout is not None:
             self.client.defaults["request_timeout"] = request_timeout
@@ -295,9 +296,9 @@ class AsyncRESTClient(AsyncMixin):
             body = None
         self.log.debug('fetch: Send %s request %s' % (method, endpoint))
 
-        # Wait 10 times longer for a start request.
+        # Wait 60s for a start request.
         if endpoint == 'start':
-            timeout = self.client.defaults["request_timeout"]*5
+            timeout = 45
         else:
             timeout = self.client.defaults["request_timeout"]
 

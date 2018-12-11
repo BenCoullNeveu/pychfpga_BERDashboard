@@ -112,7 +112,6 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
                 )
                 yield sleep(6)
                 continue
-
             result = yield self.get(endpoint)
         except RuntimeError as e:
             result = {"RuntimeError": "{0}".format(str(e))}
