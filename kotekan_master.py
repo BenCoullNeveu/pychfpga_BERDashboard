@@ -1762,13 +1762,19 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
                     self.log.error(watchdog_error)
                     self.slack.error(msg_title=watchdog_error)
 
-                self.log.info("%s : Sleeping...zZZ", self)
                 if self.update_moratorium:
                     if self.watchdog_cycles > 2:
                         self.update_moratorium = False
-                    yield sleep(self.kotekan_master.watchdog_interval/2)
+                    sleep_interval = self.kotekan_master.watchdog_interval/2
                 else:
-                    yield sleep(self.kotekan_master.watchdog_interval)
+                    sleep_interval = self.kotekan_master.watchdog_interval
+
+                self.log.info(
+                    'Watchdog sleeping for {}s Zz..o.o'.format(
+                        sleep_interval
+                    )
+                )
+                yield sleep(sleep_interval)
 
             if not self.kotekan_master.watchdog_enabled:
                 # If watchdog is not enabled, still sleep so that we dont
