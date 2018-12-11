@@ -816,7 +816,9 @@ class KotekanMaster(object):
             )
             for node_name, kotekan in self.nodes.items()
         }
-        self.nodes_started = True
+        if not self.nodes_started:
+            self.nodes_started = True
+            self.log.info('Initial node startup completed.') 
         coroutine_return(result)
 
     @coroutine
@@ -1653,7 +1655,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         """
         while True:
             # Check if the watchdog is currently enabled.
-            if self.kotekan_master.watchdog_enabled and self.nodes_started:
+            if self.kotekan_master.watchdog_enabled:
                 self.log.info("%s : Watching...0.0", self)
                 try:
                     # Run this portion of the watchdog only if the GPS status
@@ -2286,8 +2288,8 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
             server_class=KotekanMasterAsyncRESTServer,
             heartbeat_string="KMc",
             heartbeat_period=10000,
-            connection_timeout=3,
-            request_timeout=3,
+            connection_timeout=6,
+            request_timeout=6,
         )
 
     # Kotekan Master Routines
