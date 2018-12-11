@@ -54,6 +54,7 @@ class KotekanMaster(object):
         # Tracked KotekanMaster Parameters
         # Valid state parameters: 'on', 'off', 'stopping'
         self.state = "off"
+        self.nodes_started = False
         self.start_time = None
         self.startup_config = None
         self.current_config = None
@@ -807,6 +808,7 @@ class KotekanMaster(object):
             )
             for node_name, kotekan in self.nodes.items()
         }
+        self.nodes_started = True
         coroutine_return(result)
 
     @coroutine
@@ -1488,46 +1490,52 @@ class KotekanMaster(object):
         """
         Update CHIME/PSR Beam Pointing
         """
-        beam = int(beam)
-        ra = float(ra)
-        dec = float(dec)
-        scaling = int(scaling)
-        _config = self.current_config.common_config.gpu
-        try:
-            # Update KotekanMaster Dynamic Config
-            # Update ra
-            _config.gpu_0.source_ra[beam] = ra
-            _config.gpu_1.source_ra[beam] = ra
-            _config.gpu_2.source_ra[beam] = ra
-            _config.gpu_3.source_ra[beam] = ra
-            # Update dec
-            _config.gpu_0.source_dec[beam] = dec
-            _config.gpu_1.source_dec[beam] = dec
-            _config.gpu_2.source_dec[beam] = dec
-            _config.gpu_3.source_dec[beam] = dec
-            # Update scaling
-            _config.gpu_0.psr_scaling[beam] = scaling
-            _config.gpu_1.psr_scaling[beam] = scaling
-            _config.gpu_2.psr_scaling[beam] = scaling
-            _config.gpu_3.psr_scaling[beam] = scaling
+        if self.nodes_started:
+            beam = int(beam)
+            ra = float(ra)
+            dec = float(dec)
+            scaling = int(scaling)
+            _config = self.current_config.common_config.gpu
+            try:
+                # Update KotekanMaster Dynamic Config
+                # Update ra
+                _config.gpu_0.source_ra[beam] = ra
+                _config.gpu_1.source_ra[beam] = ra
+                _config.gpu_2.source_ra[beam] = ra
+                _config.gpu_3.source_ra[beam] = ra
+                # Update dec
+                _config.gpu_0.source_dec[beam] = dec
+                _config.gpu_1.source_dec[beam] = dec
+                _config.gpu_2.source_dec[beam] = dec
+                _config.gpu_3.source_dec[beam] = dec
+                # Update scaling
+                _config.gpu_0.psr_scaling[beam] = scaling
+                _config.gpu_1.psr_scaling[beam] = scaling
+                _config.gpu_2.psr_scaling[beam] = scaling
+                _config.gpu_3.psr_scaling[beam] = scaling
 
-            msg = "beam: {}, ra: {}, dec: {}, scaling: {}".format(
-                beam, ra, dec, scaling
-            )
-            self.pulsar_slack.info(
-                msg_title="update-pulsar-pointing", msg=msg, as_inline_code=True
-            )
-            self.log.info("%s : Pulsar Parameters Updated", self)
-            self.log.info(msg)
-            result = yield {
-                node_name: kotekan.update_pulsar_pointing(
+                msg = "beam: {}, ra: {}, dec: {}, scaling: {}".format(
                     beam, ra, dec, scaling
                 )
-                for node_name, kotekan in self.nodes.items()
-            }
+                self.pulsar_slack.info(
+                    msg_title="update-pulsar-pointing",
+                    msg=msg,
+                    as_inline_code=True
+                )
+                self.log.info("%s : Pulsar Parameters Updated", self)
+                self.log.info(msg)
+                result = yield {
+                    node_name: kotekan.update_pulsar_pointing(
+                        beam, ra, dec, scaling
+                    )
+                    for node_name, kotekan in self.nodes.items()
+                }
+                coroutine_return(result)
+            except Exception as e:
+                coroutine_return(str(e))
+        else:
+            result = "kotekan not running, update ignored."
             coroutine_return(result)
-        except Exception as e:
-            coroutine_return(str(e))
 
     @coroutine
     def toggle_rfi_zeroing(self, rfi_zeroing):
@@ -2267,8 +2275,8 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
             server_class=KotekanMasterAsyncRESTServer,
             heartbeat_string="KMc",
             heartbeat_period=10000,
-            connection_timeout=5,
-            request_timeout=5,
+            connection_timeout=6,
+            request_timeout=6,
         )
 
     # Kotekan Master Routines
