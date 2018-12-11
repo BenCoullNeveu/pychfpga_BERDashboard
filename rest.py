@@ -336,7 +336,7 @@ class AsyncRESTClient(AsyncMixin):
             self.log.error('REST client got response error: %s' % resp.error)
             error = str(resp.error) + '\n' + error
         if error:
-            error = 'Response={}'.format(decoded_reply + error)
+            error = "Response={}, Error:{}".format(decoded_reply, error)
             self.log.error(
                 'Failed to send %s request %s, error: %s' % (
                     method, endpoint, error
