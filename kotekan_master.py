@@ -452,7 +452,9 @@ class KotekanMaster(object):
             "watchdog_status": {
                 "watchdog_enabled": self.watchdog_enabled,
                 "watchdog_interval": self.watchdog_interval,
+                "watchdog_cycles": self.watchdog_cycles,
                 "watchdog_stats": self.watchdog_stats,
+                "update_moratorium": self.update_moratorium,
                 "array_sync": self.array_sync,
                 "km_sync": self.km_sync,
             },
