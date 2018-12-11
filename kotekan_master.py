@@ -1713,9 +1713,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
                                 node_status
                             )
                         )
-                        # Sleep 15 seconds just to make sure, kotekan has time
-                        # to start reporting the checksums
-                        yield sleep(50)
+                        yield sleep(5)
                         # Update watchdog statistics
                         self.log.info("%s : Updating Watchdog Stats", self)
                         watchdog_stats = (
@@ -1723,7 +1721,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
                                 restart_list
                             )
                         )
-                        yield sleep(10)
+                        yield sleep(5)
                         # Validate Configuration Checksums
                         self.log.info("%s : Validating Checksums", self)
                         checksum_validate = (
