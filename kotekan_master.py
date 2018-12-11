@@ -2264,7 +2264,7 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
             heartbeat_string="KMc",
             heartbeat_period=10000,
             connection_timeout=5,
-            request_timeout=5,
+            request_timeout=25,
         )
 
     # Kotekan Master Routines
