@@ -72,7 +72,7 @@ class KotekanMaster(object):
 
         # Watchdog parameters
         self.watchdog_enabled = False
-        self.watchdog_interval = 240
+        self.watchdog_interval = 180
         # Watchdog Statistics Format
         # { node_name }
         self.watchdog_stats = {}
@@ -1645,7 +1645,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
         """
         while True:
             # Check if the watchdog is currently enabled.
-            if self.kotekan_master.watchdog_enabled:
+            if self.kotekan_master.watchdog_enabled and self.nodes_started:
                 self.log.info("%s : Watching...0.0", self)
                 try:
                     # Run this portion of the watchdog only if the GPS status
@@ -1667,7 +1667,6 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
                             self,
                             no_connection_nodes,
                         )
-
                         # Execute restarts for nodes with running==false
                         self.log.info("%s : GETing Restart List", self)
                         restart_list = (
@@ -1677,7 +1676,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
                         )
                         # Sleep 15 seconds just to make sure, kotekan has time
                         # to start reporting the checksums
-                        yield sleep(15)
+                        yield sleep(50)
                         # Update watchdog statistics
                         self.log.info("%s : Updating Watchdog Stats", self)
                         watchdog_stats = (
@@ -1685,6 +1684,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
                                 restart_list
                             )
                         )
+                        yield sleep(10)
                         # Validate Configuration Checksums
                         self.log.info("%s : Validating Checksums", self)
                         checksum_validate = (
@@ -1699,7 +1699,9 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
                         # Validate GPS Clock Status
                         self.log.info("%s : Validating GPS Time", self)
                         gps_validate = yield self.kotekan_master.validate_gps()
-                        self.log.info("%s : GPS Status: %s", self, gps_validate)
+                        self.log.info(
+                            "%s : GPS Status: %s", self, gps_validate
+                        )
                     else:
                         self.log.error(
                             "Unable to execute watchdog loop due to gps error"
