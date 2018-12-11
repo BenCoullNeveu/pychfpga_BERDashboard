@@ -1762,12 +1762,14 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
                     self.log.error(watchdog_error)
                     self.slack.error(msg_title=watchdog_error)
 
-                if self.update_moratorium:
-                    if self.kotekan_master.watchdog_cycles > 2:
-                        self.update_moratorium = False
+                # Sleep Watchdog
+                sleep_interval = self.kotekan_master.watchdog_interval
+
+                if self.kotekan_master.update_moratorium:
                     sleep_interval = self.kotekan_master.watchdog_interval/2
-                else:
-                    sleep_interval = self.kotekan_master.watchdog_interval
+                    if self.kotekan_master.watchdog_cycles > 2:
+                        self.log.info('Lifting the update moratorium.')
+                        self.kotekan_master.update_moratorium = False
 
                 self.log.info(
                     'Watchdog sleeping for {}s Zz..o.o'.format(
