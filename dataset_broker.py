@@ -234,7 +234,7 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
                 for n,k in zip(tree,keys):
                     if k < ts:
                         break
-                    update.insert(n, self.datasets[n])
+                    update[n] = self.datasets[n]
         return update
 
     @coroutine
@@ -400,6 +400,7 @@ class DSBrokerAsyncRESTServer(AsyncRESTServer):
                        'since timestamp %r, roots %r.'
                        % (self, ds_id, ts, roots))
         reply = dict()
+        reply['datasets'] = dict()
 
         # Do we know this ds ID?
         found = yield self.wait_for_dset(ds_id)
