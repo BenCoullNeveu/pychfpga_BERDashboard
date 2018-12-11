@@ -103,42 +103,42 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
     def _get(self, endpoint):
         result = {}
         try:
-            while self.starting_node:
-                self.log.info(
-                    'Pausing GET: {} on {} due to start'.format(
-                        endpoint,
-                        self.hostname,
-                    )
-                )
-                yield sleep(10)
-                continue
+            # while self.starting_node:
+            #     self.log.info(
+            #         'Pausing GET: {} on {} due to start'.format(
+            #             endpoint,
+            #             self.hostname,
+            #         )
+            #     )
+            #     yield sleep(10)
+            #     continue
             result = yield self.get(endpoint)
         except RuntimeError as e:
             result = {"RuntimeError": "{0}".format(str(e))}
         except Exception as e:
             result = {"UnknownError": "{0}".format(str(e))}
-        self.log.info("{}:GET Response: {}".foramat(self.hostname, result))
+        self.log.info("{}:GET Response: {}".format(self.hostname, result))
         coroutine_return(result)
 
     @coroutine
     def _post(self, endpoint, **arguments):
         result = {}
         try:
-            if endpoint != 'start':
-                while self.starting_node:
-                    self.log.info(
-                        'Pausing POST: {} on {} due to start'.format(
-                            endpoint,
-                            self.hostname,
-                        )
-                    )
-                    yield sleep(10)
-                    continue
+            # if endpoint != 'start':
+            #     while self.starting_node:
+            #         self.log.info(
+            #             'Pausing POST: {} on {} due to start'.format(
+            #                 endpoint,
+            #                 self.hostname,
+            #             )
+            #         )
+            #         yield sleep(10)
+            #         continue
             result = yield self.post(endpoint, **arguments)
         except Exception as e:
             print(e)
             result = {"UnknownError": "{0}".format(str(e))}
-        self.log.info("{}:GET Response: {}".foramat(self.hostname, result))
+        self.log.info("{}:GET Response: {}".format(self.hostname, result))
         coroutine_return(result)
 
     # Operation -- POST RESTful Endpoints
