@@ -383,7 +383,7 @@ def create_templates_from_file(filename, obj1, obj2):
 
         rms = np.std(frame)
 
-        if (rms >= 9) and (rms <= 20):
+        if (rms >= 4) and (rms <= 42):
 
             kval, pval = stats.normaltest(frame)
 
@@ -427,7 +427,7 @@ def create_templates_from_data(data, obj1, obj2):
 
             rms = np.std(frame)
 
-            if (rms >= 9) and (rms <= 20):
+            if (rms >= 4) and (rms <= 42):
 
                 kval, pval = stats.normaltest(frame)
 
