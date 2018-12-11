@@ -71,7 +71,7 @@ class KotekanMaster(object):
 
         # Watchdog parameters
         self.watchdog_enabled = False
-        self.watchdog_interval = 240
+        self.watchdog_interval = 120
         # Watchdog Statistics Format
         # { node_name }
         self.watchdog_stats = {}
@@ -2263,8 +2263,8 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
             server_class=KotekanMasterAsyncRESTServer,
             heartbeat_string="KMc",
             heartbeat_period=10000,
-            connection_timeout=1,
-            request_timeout=2,
+            connection_timeout=3,
+            request_timeout=30,
         )
 
     # Kotekan Master Routines
