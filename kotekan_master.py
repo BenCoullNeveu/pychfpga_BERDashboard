@@ -710,12 +710,13 @@ class KotekanMaster(object):
             for node in node_md5sums.keys():
                 md5sum = node_md5sums.get(node).get("md5sum")
                 if md5sum not in unique_md5sums:
-                    unique_md5sums[md5sum] = 1
+                    unique_md5sums[md5sum] = [node]
                 else:
-                    unique_md5sums[md5sum] += 1
-            self.log.debug(unique_md5sums)
+                    unique_md5sums[md5sum].append[node]
+            self.log.info(unique_md5sums)
             # Remove None's from md5sums returned by dead nodes.
             unique_md5sums.pop(None)
+
             # Track unique_md5sums
             self.unique_md5sums = unique_md5sums
         except Exception as e:
