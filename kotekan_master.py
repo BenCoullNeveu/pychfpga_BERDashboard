@@ -1686,7 +1686,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
             if self.kotekan_master.watchdog_enabled:
                 self.log.info("%s : Watching...0.0", self)
                 try:
-                    self.watchdog_cycles += 1
+                    self.kotekan_master.watchdog_cycles += 1
                     # Run this portion of the watchdog only if the GPS status
                     # is PASSED (Good)
                     if self.kotekan_master.gps_status["result"] == "PASSED":
@@ -1763,7 +1763,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
                     self.slack.error(msg_title=watchdog_error)
 
                 if self.update_moratorium:
-                    if self.watchdog_cycles > 2:
+                    if self.kotekan_master.watchdog_cycles > 2:
                         self.update_moratorium = False
                     sleep_interval = self.kotekan_master.watchdog_interval/2
                 else:
