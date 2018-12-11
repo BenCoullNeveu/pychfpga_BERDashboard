@@ -1733,7 +1733,7 @@ class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
             def format_time(unix_time):
                 return datetime.datetime.utcfromtimestamp(unix_time).strftime('%Y-%m-%d %H:%M:%S') if unix_time else ''
 
-            fmt = "%-10s %-30s %-10s %-10s"
+            fmt = "%-15s %-30s %-10s %-10s"
             summary  = fmt % ("SOURCE", "LAST CHANGE (UTC)", "N BAD", "N UNIQ BAD") + '\n'
             summary += '\n'.join([fmt % (ss, format_time(dct['update']), dct['number_bad'], dct['number_uniq_bad'])
                                     for ss, dct in self.flg.stats])
