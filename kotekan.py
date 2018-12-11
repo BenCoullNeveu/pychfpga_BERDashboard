@@ -87,8 +87,8 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
             port=port,
             heartbeat_period=heartbeat_period,
             heartbeat_string=None,
-            connection_timeout=20,  # seconds
-            request_timeout=20
+            connection_timeout=None,  # seconds
+            request_timeout=None,
         )
         # self.name = "KotekanAsyncRESTClient"
         self.kotekan_config = config
@@ -117,7 +117,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
             result = {"RuntimeError": "{0}".format(str(e))}
         except Exception as e:
             result = {"UnknownError": "{0}".format(str(e))}
-        self.log.info("{}:GET Response: {}".format(self.hostname, result))
+        self.log.debug("{}:GET Response: {}".format(self.hostname, result))
         coroutine_return(result)
 
     @coroutine
@@ -138,7 +138,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         except Exception as e:
             print(e)
             result = {"UnknownError": "{0}".format(str(e))}
-        self.log.info("{}:GET Response: {}".format(self.hostname, result))
+        self.log.debug("{}:GET Response: {}".format(self.hostname, result))
         coroutine_return(result)
 
     # Operation -- POST RESTful Endpoints
