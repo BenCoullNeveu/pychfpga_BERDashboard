@@ -294,12 +294,21 @@ class AsyncRESTClient(AsyncMixin):
         else:
             body = None
         self.log.debug('fetch: Send %s request %s' % (method, endpoint))
+
+        # Wait 10 times longer for a start request.
+        if endpoint == 'start':
+            timeout = self.client.defaults["request_timeout"]*10
+        else:
+            timeout = self.client.defaults["request_timeout"]
+
+        # execute the fetch
         resp = yield self.client.fetch(
             url,
             method=method,
             headers={"Content-Type": "application/json"},
             body=body,
-            raise_error=False
+            raise_error=False,
+            request_timeout=timeout,
         )
 
         # print('_fetch response: %r' % resp)
@@ -327,7 +336,7 @@ class AsyncRESTClient(AsyncMixin):
             self.log.error('REST client got response error: %s' % resp.error)
             error = str(resp.error) + '\n' + error
         if error:
-            error = ('Response=%r\n' % decoded_reply) + error
+            error = 'Response={}'.format(decoded_reply + error)
             self.log.error(
                 'Failed to send %s request %s, error: %s' % (
                     method, endpoint, error
