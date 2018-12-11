@@ -718,18 +718,26 @@ class KotekanMaster(object):
                 else:
                     unique_md5sums[md5sum] += 1
             self.log.info(unique_md5sums)
-            # Remove None's from md5sums returned by dead nodes.
-            unique_md5sums.pop(None)
-
             # Track unique_md5sums
             self.unique_md5sums = unique_md5sums
+
+            # Remove None's from md5sums returned by dead nodes.
+            try:
+                unique_md5sums.pop(None)
+            except Exception as e:
+                self.log.debug(e)
+
         except Exception as e:
             self.log.error(e)
             pass
 
         if len(unique_md5sums.keys()) == 1:
             array_md5_sync = True
-            if unique_md5sums.keys()[0] == kotekan_master_md5sum:
+        else:
+            array_md5_sync = False
+
+        for md5sum in unique_md5sums.keys():
+            if md5sum == kotekan_master_md5sum:
                 kotekan_master_md5_sync = True
 
         # Update counter about the array being out of sync.
@@ -743,12 +751,12 @@ class KotekanMaster(object):
             if self.out_of_sync_cycles <= 5:
                 self.log.warning("%s : %s", self, msg)
                 self.slack.warning(
-                    msg_title="Checksum Validation FAILED.", msg=msg
+                    msg_title="Checksum validation failed.", msg=msg
                 )
             elif self.out_of_sync_cycles > 5:
                 self.log.critical("%s : %s", self, msg)
                 self.slack.critical(
-                    msg_title="Checksum Validation FAILED.", msg=msg
+                    msg_title="Checksum validation failed.", msg=msg
                 )
         else:
             self.out_of_sync_cycles = 0
