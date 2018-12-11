@@ -297,7 +297,7 @@ class AsyncRESTClient(AsyncMixin):
 
         # Wait 10 times longer for a start request.
         if endpoint == 'start':
-            timeout = self.client.defaults["request_timeout"]*10
+            timeout = self.client.defaults["request_timeout"]*5
         else:
             timeout = self.client.defaults["request_timeout"]
 

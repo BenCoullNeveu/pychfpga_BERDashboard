@@ -1534,7 +1534,8 @@ class KotekanMaster(object):
             except Exception as e:
                 coroutine_return(str(e))
         else:
-            result = "kotekan not running, update ignored."
+            result = "Kotekan not running, update-pulsar-pointing ignored."
+            self.pulsar_slack.info("update-pulsar-pointing", msg=result, as_inline_code=True) 
             coroutine_return(result)
 
     @coroutine
@@ -2275,8 +2276,8 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
             server_class=KotekanMasterAsyncRESTServer,
             heartbeat_string="KMc",
             heartbeat_period=10000,
-            connection_timeout=6,
-            request_timeout=6,
+            connection_timeout=3,
+            request_timeout=9,
         )
 
     # Kotekan Master Routines
