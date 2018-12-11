@@ -91,6 +91,7 @@ class KotekanMaster(object):
         # Restart List
         self.out_of_sync_cycles = 0
         self.out_of_sync_nodes = []
+        self.node_md5sums = None
         self.unique_md5sums = {}
 
         # Startup Parameters
@@ -440,6 +441,7 @@ class KotekanMaster(object):
             "nodes": {
                 "kotekan_nodes": self.nodes.keys(),
                 "unique_md5sums": self.unique_md5sums,
+                "node_md5sums": self.node_md5sums,
                 "receiver_nodes": self.receiver_nodes.keys(),
                 "kotekan_version": self.kotekan_versions,
             },
@@ -687,6 +689,7 @@ class KotekanMaster(object):
             self.log.debug("%s : Validating Checksums", self)
             # Get node md5's
             node_md5sums = yield self.kotekan_config_md5sum()
+            self.node_md5sums = node_md5sums
             self.log.debug(node_md5sums)
 
             # Calculate the md5 for kotekanmaster config
@@ -710,9 +713,9 @@ class KotekanMaster(object):
             for node in node_md5sums.keys():
                 md5sum = node_md5sums.get(node).get("md5sum")
                 if md5sum not in unique_md5sums:
-                    unique_md5sums[md5sum] = [node]
+                    unique_md5sums[md5sum] = 1
                 else:
-                    unique_md5sums[md5sum].append[node]
+                    unique_md5sums[md5sum] += 1
             self.log.info(unique_md5sums)
             # Remove None's from md5sums returned by dead nodes.
             unique_md5sums.pop(None)
