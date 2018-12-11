@@ -14,7 +14,7 @@ from platform import system as system_name  # Returns the system/OS name
 from subprocess import call as system_call  # Execute a shell command
 from pychfpga import NameSpace, load_yaml_config
 from rest import AsyncRESTClient, AsyncRESTServer, coroutine, coroutine_return
-from rest import endpoint, RunSyncWrapper, IOLoop
+from rest import endpoint, RunSyncWrapper, IOLoop, sleep
 
 ##########################
 # Kotekan RESTful Server #
@@ -94,6 +94,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         self.kotekan_config = config
         self.hostname = hostname
         self.port = port
+        self.starting_node = False
         # self.ping_cb = tornado.ioloop.PeriodicCallback(self.ping, 60e3)
         # self.ping_cb.start()
 
@@ -102,6 +103,15 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
     def _get(self, endpoint):
         result = {}
         try:
+            while self.starting_node:
+                self.log.info(
+                    'Pausing GET: {} on {} due to start'.format(
+                        endpoint,
+                        self.hostname,
+                    )
+                )
+                yield sleep(10)
+                continue
             result = yield self.get(endpoint)
         except RuntimeError as e:
             result = {"RuntimeError": "{0}".format(str(e))}
@@ -114,6 +124,16 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
     def _post(self, endpoint, **arguments):
         result = {}
         try:
+            if endpoint != 'start':
+                while self.starting_node:
+                    self.log.info(
+                        'Pausing POST: {} on {} due to start'.format(
+                            endpoint,
+                            self.hostname,
+                        )
+                    )
+                    yield sleep(10)
+                    continue
             result = yield self.post(endpoint, **arguments)
         except Exception as e:
             print(e)
@@ -127,8 +147,11 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         """
         Start a kotekan process with a provided config
         """
+        self.starting_node = True
         self.kotekan_config = config
-        yield self._post("start", **config)
+        result = yield self._post("start", **config)
+        self.starting_node = False
+        coroutine_return(result)
 
     # Operation -- GET RESTful Endpoints
     @coroutine

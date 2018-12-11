@@ -2263,8 +2263,8 @@ class KotekanMasterAsyncRESTClient(AsyncRESTClient):
             server_class=KotekanMasterAsyncRESTServer,
             heartbeat_string="KMc",
             heartbeat_period=10000,
-            connection_timeout=3,
-            request_timeout=30,
+            connection_timeout=5,
+            request_timeout=5,
         )
 
     # Kotekan Master Routines
