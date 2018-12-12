@@ -375,6 +375,7 @@ class KotekanMaster(object):
                 )
 
             self.log.info("KotekanMaster Startup Complete.")
+            self.slack.info(msg_title="Update Moratorium Enabled")
             self.slack.info(msg_title="KotekanMaster Startup Complete.")
             coroutine_return(result="KotekanMaster Startup Complete")
 
@@ -609,6 +610,7 @@ class KotekanMaster(object):
         self.update_moratorium = True
         self.log.info("%s : KotekanMaster Watchdog Disabled", self)
         self.slack.warning("KotekanMaster Watchdog Disabled")
+        self.slack.info(msg_title="Update Moratorium Enabled")
         coroutine_return("KotekanMaster Watchdog Disabled")
 
     @coroutine
@@ -1715,7 +1717,6 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
                                 node_status
                             )
                         )
-                        yield sleep(5)
                         # Update watchdog statistics
                         self.log.info("%s : Updating Watchdog Stats", self)
                         watchdog_stats = (
@@ -1723,7 +1724,6 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
                                 restart_list
                             )
                         )
-                        yield sleep(5)
                         # Validate Configuration Checksums
                         self.log.info("%s : Validating Checksums", self)
                         checksum_validate = (
@@ -1768,7 +1768,8 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
                 if self.kotekan_master.update_moratorium:
                     sleep_interval = self.kotekan_master.watchdog_interval/2
                     if self.kotekan_master.watchdog_cycles > 2:
-                        self.log.info('Lifting the update moratorium.')
+                        self.slack.info('Update Moratorium Lifted')
+                        self.log.info('Update Moratorium Lifted')
                         self.kotekan_master.update_moratorium = False
 
                 self.log.info(
