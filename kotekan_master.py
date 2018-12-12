@@ -1695,7 +1695,7 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
                     # is PASSED (Good)
                     if self.kotekan_master.gps_status["result"] == "PASSED":
                         # Run get status from each node
-                        self.log.info("%s : GETing Node Status", self)
+                        self.log.info("%s : WD : Geting Node Status", self)
                         node_status = (
                             yield self.kotekan_master.kotekan_status()
                         )
@@ -1762,7 +1762,6 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
                         )
                 except Exception as watchdog_error:
                     self.log.error(watchdog_error)
-                    self.slack.error(msg_title=watchdog_error)
 
                 # Sleep Watchdog
                 sleep_interval = self.kotekan_master.watchdog_interval
@@ -1770,17 +1769,13 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
                 if self.kotekan_master.update_moratorium:
                     sleep_interval = self.kotekan_master.watchdog_interval/2
                     if self.kotekan_master.watchdog_cycles > 2:
-                        self.slack.info(msg_title='Update Moratorium Lifted')
-                        self.log.info('Update Moratorium Lifted')
+                        self.log.info("Update Moratorium Lifted")
                         self.kotekan_master.update_moratorium = False
 
                 self.log.info(
-                    'Watchdog sleeping for {}s Zzz..o.0'.format(
-                        sleep_interval
-                    )
+                    'Watchdog sleeping for {}s Zzz..o.0'.format(sleep_interval)
                 )
                 yield sleep(sleep_interval)
-
 
             if not self.kotekan_master.watchdog_enabled:
                 # If watchdog is not enabled, still sleep so that we dont
