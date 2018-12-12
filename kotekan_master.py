@@ -70,7 +70,7 @@ class KotekanMaster(object):
 
         # Watchdog parameters
         self.watchdog_enabled = False
-        self.watchdog_interval = 180
+        self.watchdog_interval = 240
         self.watchdog_cycles = 0
 
         self.update_moratorium = True
