@@ -124,7 +124,7 @@ class KotekanMaster(object):
         self.bat_inputs_update_time = None
 
         # Revision Control Logging
-        self.git_version = "km-dev.2018.07.149-87c15e1"
+        self.git_version = "2018.12"
         self.log.info("%s : Program : %s", self, self.program)
         self.log.info("%s : Git Ver : %s", self, self.git_version)
         self.slack = SlackClient(
