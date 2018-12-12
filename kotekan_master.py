@@ -609,7 +609,7 @@ class KotekanMaster(object):
         self.watchdog_cycles = 0
         self.update_moratorium = True
         self.log.info("%s : KotekanMaster Watchdog Disabled", self)
-        self.slack.warning("KotekanMaster Watchdog Disabled")
+        self.slack.warning(msg_title="KotekanMaster Watchdog Disabled")
         self.slack.info(msg_title="Update Moratorium Enabled")
         coroutine_return("KotekanMaster Watchdog Disabled")
 
@@ -1711,21 +1711,23 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
                             no_connection_nodes,
                         )
                         # Execute restarts for nodes with running==false
-                        self.log.info("%s : GETing Restart List", self)
+                        self.log.info("%s : WD: Geting Restart List", self)
                         restart_list = (
                             yield self.kotekan_master.restart_kotekan(
                                 node_status
                             )
                         )
+                        yield sleep(10)
                         # Update watchdog statistics
-                        self.log.info("%s : Updating Watchdog Stats", self)
+                        self.log.info("%s : WD: Updating Watchdog Stats", self)
                         watchdog_stats = (
                             yield self.kotekan_master.update_watchdog_stats(
                                 restart_list
                             )
                         )
+                        yield sleep(10)
                         # Validate Configuration Checksums
-                        self.log.info("%s : Validating Checksums", self)
+                        self.log.info("%s : WD: Validating Checksums", self)
                         checksum_validate = (
                             yield self.kotekan_master.validate_checksum()
                         )
@@ -1768,16 +1770,17 @@ class KotekanMasterAsyncRESTServer(AsyncRESTServer):
                 if self.kotekan_master.update_moratorium:
                     sleep_interval = self.kotekan_master.watchdog_interval/2
                     if self.kotekan_master.watchdog_cycles > 2:
-                        self.slack.info('Update Moratorium Lifted')
+                        self.slack.info(msg_title='Update Moratorium Lifted')
                         self.log.info('Update Moratorium Lifted')
                         self.kotekan_master.update_moratorium = False
 
                 self.log.info(
-                    'Watchdog sleeping for {}s Zz..o.o'.format(
+                    'Watchdog sleeping for {}s Zzz..o.0'.format(
                         sleep_interval
                     )
                 )
                 yield sleep(sleep_interval)
+
 
             if not self.kotekan_master.watchdog_enabled:
                 # If watchdog is not enabled, still sleep so that we dont
