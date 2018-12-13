@@ -2044,7 +2044,7 @@ class FlagCorrInputAsyncRESTClient(AsyncRESTClient):
 
     @coroutine
     def set_source_flags(self, source, bad_inputs):
-        res = yield self.post('set-source-flags', source, bad_inputs)
+        res = yield self.post('set-source-flags', source=source, bad_inputs=bad_inputs)
         coroutine_return(res)
 
     @coroutine
@@ -2104,27 +2104,27 @@ class FlagCorrInputAsyncRESTClient(AsyncRESTClient):
 
     @coroutine
     def reset_control_flag(self, source):
-        res = yield self.post('reset-control-flag', source)
+        res = yield self.post('reset-control-flag', source=source)
         coroutine_return(res)
 
     @coroutine
     def get_past_correlator_input_flags(self, timestamp):
-        res = yield self.post('past-correlator-input-flags', timestamp)
+        res = yield self.post('past-correlator-input-flags', timestamp=timestamp)
         coroutine_return(res)
 
     @coroutine
     def get_past_bad_correlator_inputs(self, timestamp):
-        res = yield self.post('past-bad-correlator-inputs', timestamp)
+        res = yield self.post('past-bad-correlator-inputs', timestamp=timestamp)
         coroutine_return(res)
 
     @coroutine
     def get_past_good_correlator_inputs(self, timestamp):
-        res = yield self.post('past-good-correlator-inputs', timestamp)
+        res = yield self.post('past-good-correlator-inputs', timestamp=timestamp)
         coroutine_return(res)
 
     @coroutine
     def get_past_source_flags(self, timestamp):
-        res = yield self.post('past-source-flags', timestamp)
+        res = yield self.post('past-source-flags', timestamp=timestamp)
         coroutine_return(res)
 
     @coroutine
@@ -2139,7 +2139,7 @@ class FlagCorrInputAsyncRESTClient(AsyncRESTClient):
 
     @coroutine
     def get_past_update(self, tag):
-        res = yield self.post('past-update', tag)
+        res = yield self.post('past-update', tag=tag)
         coroutine_return(res)
 
 
