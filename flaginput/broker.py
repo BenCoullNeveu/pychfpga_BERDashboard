@@ -1608,9 +1608,6 @@ class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
     @endpoint('set-source-flags')
     def set_source_flags(self, handler, source, bad_inputs):
 
-        source = json.loads(source)
-        bad_inputs = json.loads(bad_inputs)
-
         self.log.info('%r: Received request to flag %d bad inputs for %s source.' %
                            (self, len(bad_inputs), source))
 
