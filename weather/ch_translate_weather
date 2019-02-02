@@ -95,6 +95,10 @@ if not data.shape[0]:
 ts = datetime.datetime.fromtimestamp(t_first).strftime("%Y%m%dT%H%M%SZ")
 acq = "%s_%s_%s" % (ts, conf["instrument"], conf["type"])
 basedir = "%s/%s" % (conf["archive"], acq)
+filename = "{0}.h5".format(arg.date)
+filepath = "{0}/{0}".format(basedir, filename)
+lockpath = "{0}/.{0}.lock".format(basedir, filename)
+
 if not os.path.exists(basedir):
   os.makedirs(basedir)
 
@@ -122,9 +126,11 @@ if not arg.git_tag:
     exit()
   arg.git_tag = fp.read().replace("\n", "")
 
+# Create empty lock file
+open(lockpath).close()
 
 # Create the HDF5 file and add global attributes.
-hf = h5py.File("%s/%s.h5" % (basedir, arg.date), "w")
+hf = h5py.File(filepath, "w")
 hf.attrs.create("git_version_tag", arg.git_tag)
 hf.attrs.create("system_user", getpass.getuser())
 hf.attrs.create("collection_server", socket.gethostname())
@@ -142,3 +148,6 @@ for i in range(len(col_name)):
   d.attrs.create("axis", ["time",])
   d.attrs.create("units", units[dataset[col_name[i]]["type"]])
 hf.close()
+
+# Delete the lock file
+os.unlink(lockpath)
