@@ -1201,7 +1201,6 @@ class FlagCorrInput(object):
 
             self.log.info("Number historically bad: %d" % self.historical_status['bad'].size)
 
-            self.log.info("Number historically bad: %d" % self.historical_status['bad'].size)
 
     def get_flag(self, search, dataset='flag'):
         """ Search the HDF5 flag archive for the
