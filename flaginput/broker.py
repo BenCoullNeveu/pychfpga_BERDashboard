@@ -168,6 +168,11 @@ class FlagCorrInput(object):
 
         - raw:  Processes raw ADC acquisition files to flag inputs with anomalous histogram or spectrum.
 
+        - rfi:  Queries the RFI monitor to flag inputs with large fraction of data determined non-gaussian.
+
+        - calibration:  Receives messages from the calibration broker to flag inputs where the gain calibration
+                        failed or was anamalous for a significant fraction of the otherwise good frequencies.
+
     The user can specify which of these sources to use through the "sources" parameter.
     When flags from one of the user-requested sources changes, the current flags from all sources
     are appended to the end of an HDF5 file and also added to Grafana metrics.  The master flag
@@ -176,7 +181,7 @@ class FlagCorrInput(object):
     """
 
     _update_type = 'flaginput'
-    _potential_sources = ['layout', 'manual', 'power', 'rms', 'rfi', 'raw']
+    _potential_sources = ['layout', 'manual', 'power', 'rms', 'rfi', 'raw', 'calibration']
 
     def __init__(self, **config):
         """ Instantiates a FlagCorrInput object.
@@ -1196,6 +1201,7 @@ class FlagCorrInput(object):
 
             self.log.info("Number historically bad: %d" % self.historical_status['bad'].size)
 
+            self.log.info("Number historically bad: %d" % self.historical_status['bad'].size)
 
     def get_flag(self, search, dataset='flag'):
         """ Search the HDF5 flag archive for the
@@ -1600,6 +1606,27 @@ class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
             coroutine_return( "FlagCorrInput server is not started" )
 
     @coroutine
+    @endpoint('set-source-flags')
+    def set_source_flags(self, handler, source, bad_inputs):
+
+        self.log.info('%r: Received request to flag %d bad inputs for %s source.' %
+                           (self, len(bad_inputs), source))
+
+        if self.flg and (source in self.flg.sources):
+
+            flag = np.ones(self.flg.ninput, dtype=np.bool)
+            for bb in bad_inputs:
+                flag[bb] = False
+
+            self.flg.source_flags_staging[source] = flag
+
+            coroutine_return( "Succesfully flagged %d bad inputs for %s source." %
+                              (len(bad_inputs), source) )
+
+        else:
+            coroutine_return( "The %s source is currently unavailable." % source )
+
+    @coroutine
     @endpoint('correlator-inputs')
     def correlator_inputs(self, handler):
         self.log.info('%r: Received request for correlator inputs.' % self)
@@ -1704,7 +1731,7 @@ class FlagCorrInputAsyncRESTServer(AsyncRESTServer):
             def format_time(unix_time):
                 return datetime.datetime.utcfromtimestamp(unix_time).strftime('%Y-%m-%d %H:%M:%S') if unix_time else ''
 
-            fmt = "%-10s %-30s %-10s %-10s"
+            fmt = "%-15s %-30s %-10s %-10s"
             summary  = fmt % ("SOURCE", "LAST CHANGE (UTC)", "N BAD", "N UNIQ BAD") + '\n'
             summary += '\n'.join([fmt % (ss, format_time(dct['update']), dct['number_bad'], dct['number_uniq_bad'])
                                     for ss, dct in self.flg.stats])
@@ -2014,6 +2041,11 @@ class FlagCorrInputAsyncRESTClient(AsyncRESTClient):
         coroutine_return(res)
 
     @coroutine
+    def set_source_flags(self, source, bad_inputs):
+        res = yield self.post('set-source-flags', source=source, bad_inputs=bad_inputs)
+        coroutine_return(res)
+
+    @coroutine
     def get_correlator_inputs(self):
         res = yield self.get('correlator-inputs')
         coroutine_return(res)
@@ -2070,27 +2102,27 @@ class FlagCorrInputAsyncRESTClient(AsyncRESTClient):
 
     @coroutine
     def reset_control_flag(self, source):
-        res = yield self.post('reset-control-flag', source)
+        res = yield self.post('reset-control-flag', source=source)
         coroutine_return(res)
 
     @coroutine
     def get_past_correlator_input_flags(self, timestamp):
-        res = yield self.post('past-correlator-input-flags', timestamp)
+        res = yield self.post('past-correlator-input-flags', timestamp=timestamp)
         coroutine_return(res)
 
     @coroutine
     def get_past_bad_correlator_inputs(self, timestamp):
-        res = yield self.post('past-bad-correlator-inputs', timestamp)
+        res = yield self.post('past-bad-correlator-inputs', timestamp=timestamp)
         coroutine_return(res)
 
     @coroutine
     def get_past_good_correlator_inputs(self, timestamp):
-        res = yield self.post('past-good-correlator-inputs', timestamp)
+        res = yield self.post('past-good-correlator-inputs', timestamp=timestamp)
         coroutine_return(res)
 
     @coroutine
     def get_past_source_flags(self, timestamp):
-        res = yield self.post('past-source-flags', timestamp)
+        res = yield self.post('past-source-flags', timestamp=timestamp)
         coroutine_return(res)
 
     @coroutine
@@ -2105,7 +2137,7 @@ class FlagCorrInputAsyncRESTClient(AsyncRESTClient):
 
     @coroutine
     def get_past_update(self, tag):
-        res = yield self.post('past-update', tag)
+        res = yield self.post('past-update', tag=tag)
         coroutine_return(res)
 
 
