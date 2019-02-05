@@ -10,6 +10,7 @@ import pprint as pp
 import click
 import requests
 import yaml
+import ast
 
 
 # Global Parameters
@@ -24,6 +25,15 @@ for can in CANS:
     for rack in RACKS:
         for node in NODES:
             VALID_NODES.append("c{}{}g{}".format(can, rack, node))
+
+
+class PythonLiteralOption(click.Option):
+
+    def type_cast_value(self, ctx, value):
+        try:
+            return ast.literal_eval(value)
+        except Exception:
+            raise click.BadParameter(value)
 
 
 # Private REST API for the CLI
@@ -60,7 +70,7 @@ def _post_command(command, data):
 # MAIN CLI GROUP
 @click.group()
 @click.version_option(
-    version="2018.08", prog_name="km-cli", message="%(prog)s %(version)s"
+    version="2018.11a", prog_name="km-cli", message="%(prog)s %(version)s"
 )
 def cli():
     """
@@ -234,7 +244,7 @@ def frb():
     pass
 
 
-@frb.command("gains")
+@frb.command("update-gains-dir")
 @click.option(
     "-d",
     "--directory",
@@ -242,12 +252,12 @@ def frb():
     required=True,
     help="e.g. --directory /path/to/gains/dir",
 )
-def update_gains(directory):
+def update_frb_gain_dir(directory):
     """
     Update gains directory
     """
-    data = {"gain_dir": directory}
-    update_gains_status = _post_command("update-gain-dir", data)
+    data = {"frb_gain_dir": directory}
+    update_gains_status = _post_command("update-frb-gain-dir", data)
     click.echo(update_gains_status)
 
 
@@ -326,6 +336,30 @@ def update_pulsar_pointing(beam_parameters):
     print(data)
     pulsar_pointing_status = _post_command("update-pulsar-pointing", data)
     click.echo(pulsar_pointing_status)
+
+
+@pulsar.command("update-gain-dirs")
+@click.option(
+    "-d",
+    "--dirs",
+    type=click.STRING,
+    required=True,
+    help="e.g. --dirs \"[\'dir1\', \'dir2\', \'dir3\'']\"",
+    default=[]
+)
+def update_pulsar_gain_dirs(dirs):
+    """
+    Update gains directories
+    """
+
+    try:
+        dirs = ast.literal_eval(dirs)
+    except Exception as e:
+        click.echo(e)
+
+    data = {"pulsar_gain_dirs": dirs}
+    update_gains_status = _post_command("update-pulsar-gain-dirs", data)
+    click.echo(update_gains_status)
 
 
 # CHIME/COSMOLOGY CLI Commands
