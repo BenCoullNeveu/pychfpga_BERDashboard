@@ -12,37 +12,55 @@ import pickle
 import h5py
 import numpy as np
 
-__version__ = '0.2'
+from pychfpga import Hdf5Archive
+
+__version__ = '0.3'
 ARCHIVE_VERSION = u'3.1.0'
 
-class DigitalGainWriter(object):
-    """ Interface to an HDF5 file containing digital gains.
+MAX_NUM = 1
+MAX_FILE_SIZE = 100000000
+
+class DigitalGainArchive(Hdf5Archive):
+    """ Interface to an Hdf5Archive containing digital gains.
     """
 
+    _uniq_id = 'update_id'
+    _grow_ax = 'update_time'
+
     _axes = {
+        'update_time': {'dtype': np.float64},
         'freq':  {'dtype': [('centre', '<f8'), ('width', '<f8')]},
         'input': {'dtype': [('chan_id', 'u2'), ('correlator_input', 'S32')]},
     }
 
     _dataset_spec = {
+        'update_id': {
+            'axes': ['update_time', ],
+            'dtype': h5py.special_dtype(vlen=bytes),
+            'metric': False,
+        },
         'compute_time': {
-            'axes': ['input'],
+            'axes': ['update_time', 'input'],
             'dtype': np.float32,
+            'metric': False,
         },
         'gain_coeff': {
-            'axes': ['freq', 'input'],
+            'axes': ['update_time', 'freq', 'input'],
             'dtype': np.complex64,
+            'metric': False,
         },
         'gain_exp': {
-            'axes': ['input'],
+            'axes': ['update_time', 'input'],
             'dtype': np.int32,
+            'metric': False,
         }
     }
 
     _input_to_sma = [12, 13, 14, 15, 8, 9, 10, 11, 4, 5, 6, 7, 0, 1, 2, 3]
 
-    def __init__(self, output_dir=None, output_suffix="digitalgain", instrument_name="chime", notes="",
-                                        last_file=None, append=False, **kwargs):
+    def __init__(self, output_dir=None, output_suffix="digitalgain", search=True,
+                       instrument_name="chime", notes="", max_num=MAX_NUM, max_file_size=MAX_FILE_SIZE,
+                       *args, **kwargs):
         """ Instantiates a DigitalGainWriter object.  This will create a file on disk to hold the
         gains if not appending to existing file.
 
@@ -60,26 +78,22 @@ class DigitalGainWriter(object):
 
         notes: str
             User notes that are saved to file attributes.
-
-        last_file: list of file paths
-            Read the gains from existing file.  If None will search output_dir
-            for the most recent file.  Default is None.
-
-        append: boolean
-            Append to last file.  Default is False.
-
         """
 
-        # Create dictionaries to hold attrs, index_map, and datasets
-        self.attrs = {}
-        self.index_map = {}
-        self.datasets = {}
+        # Save axes
+        self.axes = {}
+        for ax in self._axes.keys():
+            if ax != self._grow_ax:
+                if ax in kwargs:
+                    self.axes[ax] = kwargs.pop(ax)
+                else:
+                    ValueError("Must pass the axis %s as a keyword when initializing %s." % (ax, self))
 
         # Set parameters that specify output file format
         self.output_dir = output_dir
         self.output_suffix = output_suffix
 
-        # Check for
+        # Determine correlator based on instrument_name
         if 'correlator' in kwargs:
             self.correlator = kwargs['correlator']
         elif instrument_name.lower() == 'pathfinder':
@@ -89,58 +103,95 @@ class DigitalGainWriter(object):
         else:
             self.correlator = None
 
-        # Search the directory for any existing files
-        if last_file is None:
-            last_file = sorted(glob.glob(os.path.join(self.output_dir,
-                              '*' + instrument_name + '_' + self.output_suffix, '*.h5')))
-            last_file = last_file[-1] if last_file else None
-
-        do_read = last_file is not None
-
-        # Read gains from most recent file
-        if do_read:
-            self.read_hdf5(last_file)
+        # Search for previous files
+        if search:
+            output_files = sorted(glob.glob(os.path.join(self.output_dir,
+                              '*' + instrument_name + '_' + self.output_suffix, '*.h5'))) or None
         else:
-            self.initialize(**kwargs)
+            output_files = None
 
-        # Check if we are appending to an existing file
-        if do_read and append:
-            self.output_file = last_file
+        # Call superclass
+        super(DigitalGainArchive, self).__init__(archive_files=output_files,
+                                                 max_num=max_num, max_file_size=max_file_size,
+                                                 *args, **kwargs)
 
+        # Set attributes
+        self.set_attrs(**{'instrument_name':instrument_name, 'version':__version__, 'notes':notes,
+                          'archive_version':ARCHIVE_VERSION})
+
+        # Initialize the gain buffer
+        self.buffer = {}
+        datasets = [dset for dset in self._dataset_spec.keys() if dset != self._uniq_id]
+        for dset in datasets:
+            dspec = self._dataset_spec[dset]
+            axes = [ax for ax in dspec['axes'] if ax != self._grow_ax]
+            if axes:
+                shp = [self.axes[ax].size for ax in axes]
+                self.buffer[dset] = np.zeros(shp, dtype=dspec['dtype'])
+
+        # Save the last update to the buffer
+        if self.current_file is not None:
+            lastup = self.last_update
+            for dset in datasets:
+                self.buffer[dset] = self.read(lastup, dset)
+
+
+    def get_output_file(self, smp, **kwargs):
+        """ Defines the filenaming conventions for the archive files:
+
+            {output_dir}/{YYYYMMDD}T{HHMMSS}Z_{instrument}_{output_suffix}/{SSSSSSS}.h5
+
+        Parameters
+        ----------
+        time: unix time
+            Time at which the datasets in kwargs were collected.
+
+        acquisition: str
+            Full path to the current acquisition file.  The timestamp from the
+            raw acquisition directory name is used in the archive file directory name.
+        """
+
+        if 'acquisition' in kwargs:
+            base_prefix = kwargs['acquisition'][0:16]
         else:
-            # Set attributes
-            self.set_attrs(**{'instrument_name':instrument_name, 'version':__version__, 'notes':notes,
-                              'archive_version':ARCHIVE_VERSION})
+            base_prefix = datetime.datetime.utcfromtimestamp(smp).strftime("%Y%m%dT%H%M%SZ")
 
-            # Determine output filename
-            self.output_file = self.get_output_file(**kwargs)
+        start_time = timegm(datetime.datetime.strptime(base_prefix, "%Y%m%dT%H%M%SZ").timetuple())
 
-            # Create the file
-            self.create_file()
+        # Determine directory
+        output_dir = os.path.join(self.output_dir, '_'.join([base_prefix, self.attrs['instrument_name'],
+                                                             self.output_suffix]))
+        try:
+            os.makedirs(output_dir)
+        except OSError:
+            if not os.path.isdir(output_dir):
+                raise
+
+        # Determine filename
+        seconds_elapsed = smp - start_time
+
+        output_file = os.path.join(output_dir, "%08d.h5" % seconds_elapsed)
+
+        return output_file
 
 
-    def initialize(self, **kwargs):
+    def write(self, smp=None, **kwargs):
 
-        for key, spec in self._axes.iteritems():
-            self.index_map[key] = kwargs[key][:]
+        if smp is None:
+            smp = time.time()
 
-        for key, spec in self._dataset_spec.iteritems():
-            shp = tuple([self.index_map[axis].size for axis in spec['axes']])
-            self.datasets[key] = np.zeros(shp, dtype=spec['dtype'])
+        for key, value in self.axes.items():
+            kwargs[key] = value
 
+        for key, value in self.buffer.items():
+            kwargs[key] = value
 
-    def read_hdf5(self, filename):
+        if 'update_id' not in kwargs:
+            kwargs['update_id'] = '_'.join([self.output_suffix,
+                                            datetime.datetime.utcfromtimestamp(smp).strftime("%Y%m%dT%H%M%S.%fZ")])
 
-        with h5py.File(filename, 'r') as handler:
-
-            for key in self._axes.keys():
-                self.index_map[key] = handler['index_map'][key][:]
-
-            for key in self._dataset_spec.keys():
-                self.datasets[key] = handler[key][:]
-
-            for key, val in handler.attrs.iteritems():
-                self.attrs[key] = val
+        # Call superclass
+        super(DigitalGainArchive, self).write(smp, **kwargs)
 
 
     def read_pickle(self, files):
@@ -160,38 +211,11 @@ class DigitalGainWriter(object):
 
                 sn = '%s%02d%02d%02d' % (self.correlator, crate, slot, self._input_to_sma[ind])
 
-                chan_id = self.correlator_input[sn]
+                chan_id = self.chan_id[sn]
 
-                self.datasets['gain_coeff'][:, chan_id] = gains[0]
-                self.datasets['gain_exp'][chan_id] = gains[1]
-                self.datasets['compute_time'][chan_id] = this_calc_time
-
-
-    def create_file(self):
-
-        with h5py.File(self.output_file, 'w') as handler:
-
-            # Set attributes
-            for key, val in self.attrs.iteritems():
-                handler.attrs[key] = val
-
-            # Create index_map
-            index_map = handler.create_group('index_map')
-            for key, val in self.index_map.iteritems():
-                index_map.create_dataset(key, data=val)
-
-            # Create datasets
-            for key, val in self.datasets.iteritems():
-                dset = handler.create_dataset(key, data=val)
-                dset.attrs['axis'] = self._dataset_spec[key]['axes']
-
-
-    def write(self):
-
-        with h5py.File(self.output_file, 'a') as handler:
-
-            for key, val in self.datasets.iteritems():
-                handler[key][:] = val
+                self.buffer['gain_coeff'][:, chan_id] = gains[0]
+                self.buffer['gain_exp'][chan_id] = gains[1]
+                self.buffer['compute_time'][chan_id] = this_calc_time
 
 
     def set_gain(self, inputs, gain_coeff, gain_exp, compute_time=None):
@@ -199,83 +223,19 @@ class DigitalGainWriter(object):
         if compute_time is None:
             compute_time = time.time()
 
-        index = np.array([self.correlator_input[inp] for inp in inputs])
+        index = np.array([self.chan_id[inp] for inp in inputs])
 
-        self.compute_time[index] = compute_time
+        self.buffer['gain_exp'][index] = gain_exp
+        self.buffer['gain_coeff'][:, index] = gain_coeff
+        self.buffer['compute_time'][index] = compute_time
 
-        self.gain_exp[index] = gain_exp
-        self.gain_coeff[:, index] = gain_coeff
-
-
-    def get_output_file(self, **kwargs):
-        """ Defines the filenaming conventions for the archive files:
-
-            {output_dir}/{YYYYMMDD}T{HHMMSS}Z_{instrument}_{output_suffix}/{SSSSSSS}.h5
-
-        Parameters
-        ----------
-        time: unix time
-            Time at which the datasets in kwargs were collected.
-
-        acquisition: str
-            Full path to the current acquisition file.  The timestamp from the
-            raw acquisition directory name is used in the archive file directory name.
-        """
-
-        this_time = kwargs.get('time', time.time())
-
-        if 'acquisition' in kwargs:
-            base_prefix = kwargs['acquisition'][0:16]
-        else:
-            base_prefix = datetime.datetime.utcfromtimestamp(this_time).strftime("%Y%m%dT%H%M%SZ")
-
-        start_time = timegm(datetime.datetime.strptime(base_prefix, "%Y%m%dT%H%M%SZ").timetuple())
-
-        # Determine directory
-        output_dir = os.path.join(self.output_dir, '_'.join([base_prefix, self.attrs['instrument_name'],
-                                                             self.output_suffix]))
-        try:
-            os.makedirs(output_dir)
-        except OSError:
-            if not os.path.isdir(output_dir):
-                raise
-
-        # Set time in attributes
-        self.attrs['time'] = this_time
-
-        # Determine filename
-        seconds_elapsed = this_time - start_time
-
-        output_file = os.path.join(output_dir, "%08d.h5" % seconds_elapsed)
-
-        return output_file
-
-
-    def set_attrs(self, **kwargs):
-
-        # Include important attributes
-        # that we want all archive files to have
-        self.attrs['type'] = str(type(self))
-        self.attrs['git_version_tag'] = subprocess.check_output(["git", "-C", os.path.dirname(__file__),
-                                                                 "describe", "--always"]).strip()
-        self.attrs['collection_server'] = subprocess.check_output(["hostname"]).strip()
-        self.attrs['system_user'] = subprocess.check_output(["id", "-u", "-n"]).strip()
-
-        # Save input attributes
-        for key, value in kwargs.iteritems():
-            self.attrs[key] = value
 
     @property
-    def correlator_input(self):
+    def chan_id(self):
         try:
-            return self._correlator_input
+            return self._chan_id
 
         except AttributeError:
-            self._correlator_input = {inp['correlator_input']:inp['chan_id']
-                                      for inp in self.index_map['input']}
-            return self._correlator_input
-
-
-    @property
-    def gain(self):
-        return self.datasets['gain_coeff'] * 2**(self.datasets['gain_exp'][np.newaxis, :])
+            self._chan_id = {inp['correlator_input']:inp['chan_id']
+                                      for inp in self.axes['input']}
+            return self._chan_id
