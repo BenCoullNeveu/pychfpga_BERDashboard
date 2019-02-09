@@ -14,8 +14,8 @@ import numpy as np
 
 from pychfpga import Hdf5Archive
 
-__version__ = '0.3'
-ARCHIVE_VERSION = u'3.1.0'
+__version__ = u'0.3'
+ARCHIVE_VERSION = u'3.2.0'
 
 MAX_NUM = 1
 MAX_FILE_SIZE = 100000000
