@@ -151,7 +151,7 @@ class FPGAArray(object):
                  sync_source='bp_trig',
                  sync_master=None,
                  sync_master_time_source=None,
-                 max_sync_time_difference=20,
+                 max_sync_time_difference=100,
 
                  mode=None,
                  frames_per_packet=2,
@@ -672,7 +672,7 @@ class FPGAArray(object):
                 # resolve hostnames into IP addresses
                 # this is not concurrent, unfortunately... this is why we checked ping first, otherwise it blocks for a long time
 
-                self.logger.info('%r: Resolving IP addresses of Iceboards that passed the ping test' % (self, time.time() - t0))
+                self.logger.info('%r: Resolving IP addresses of Iceboards that passed the ping test' % self)
                 t0 = time.time()
                 for ib, ping_result in ping_results.items():
                     if ping_result:
@@ -1449,7 +1449,7 @@ class FPGAArray(object):
         else:
             raise ValueError("Unknown syncing method '%s'" % method)
 
-    def sync(self, delay=2, check=True):
+    def sync(self, delay=2, check=True, align_to_seconds=True):
         """ Generate a SYNC event across the whole array based on the syncing method set by ``set_sync_method()``.
 
         If ``check`` is True, the method will read the SYNC counters on every
@@ -1475,15 +1475,18 @@ class FPGAArray(object):
             t0 = time.time()
             self.ib.set_irigb_trigger_time(dt, delay=300) # set the trigger far enough in time it should not happen before we reprogram another delay
             setting_time = (time.time() - t0)
-            self.logger.info('It takes %f seconds to set the trigger time' % setting_time)
-            setting_time = round(2*setting_time + delay)
+            self.logger.info('%r: It takes %f seconds to set the trigger time' % (self, setting_time))
+            setting_time = round(2*setting_time) + delay
             # Now set the trigger time using that delay
             dt = self.ib[0].get_irigb_time()
-            self.logger.info('Triggering SYNC in %i seconds at %s' % (setting_time,  dt.isoformat()))
+            if align_to_seconds:
+                self.logger.info('%r: Rounding trigger time to the second' % self)
+                dt = dt.replace(microsecond=0)
+            self.logger.info('%r: Triggering SYNC %f seconds after %s' % (self, setting_time,  dt.isoformat()))
             self.print_flush()
             t0 = time.time()
-            self.ib.set_irigb_trigger_time(dt, delay=setting_time)
-            self.logger.info('It took %f seconds to set the trigger time' % (time.time() - t0))
+            self.sync_start_time = sync_time = self.ib.set_irigb_trigger_time(dt, delay=setting_time)
+            self.logger.info('%r: It took %f seconds to set the final trigger time' % (self, time.time() - t0))
             t0 = time.time()
             while any(self.ib.is_irigb_before_trigger_time()):
                 if time.time() - t0 > setting_time + 1:
@@ -1499,15 +1502,20 @@ class FPGAArray(object):
             if bad_ib:
                 raise RuntimeError('The following IceBoards did not SYNC properly: %s' % (','.join(repr(ib) for ib in bad_ib)))
 
-        ts = self.ib.get_irigb_time(trig=False, format='raw')
+        self.sync_timestamps = ts = self.ib.get_irigb_time(trig=False, format='raw')
+        self.sync_timestamp = ts[0]
+
         delta_ts = max(ts.nano) - min(ts.nano)
-        self.logger.info('%r: The sync time for all boards are:%s' %
-            (self, '\n'.join('%r:%i' % (ib.handler, ts[i].nano) for i,ib in enumerate(self.ib))))
+        self.logger.info('%r: The sync time for all boards are:\n%s' %
+            (self, '\n'.join('%r:%i ns since epoch (%i ns after sync)' % (
+                ib.handler, 
+                ts[i].nano, 
+                ts[i].nano - sync_time[i].nano) 
+            for i,ib in enumerate(self.ib))))
         self.logger.info('%r: The maximum sync time difference is %i ns' % (self, delta_ts) )
         if delta_ts > self.max_sync_time_difference:
             raise RuntimeError('The sync time difference of %i exceeds the maximum limit of %i' % (delta_ts, self.max_sync_time_difference))
-        self.sync_timestamps = ts
-        self.sync_timestamp = ts[0]
+        
         for ib in self.ib:
             for ant in ib.ANT:
                 ant.SCALER.OVERFLOW_RESET = 1
