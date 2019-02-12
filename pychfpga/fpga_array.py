@@ -410,7 +410,7 @@ class FPGAArray(object):
         self.max_sync_time_difference = max_sync_time_difference
         self.tx_power = tx_power
         self.mode = mode
- 
+
         ###########################################
         # setup pychfpga.fpga_array logging
         ###########################################
@@ -1580,12 +1580,36 @@ class FPGAArray(object):
 #            ib.set_gain(g_array)
     @async
     def load_gains(self, bank=0, gain_folder='/home/chime/ch_acq/gains'):
-        """ Loads the gains from the gain files associated with every board of the array and return
-        the gain map in the format {channel_id:gain}
+        """ Returns the gains from the gain files associated with every board of the array.
+
+        If a gain file is not found for a specific board, the default gains
+        found in the file 'default_gains.pkl' will be used for that board.
+
+        If a gain file nor a default gains file are found, the gain data for
+        that board will be `None` and a warning will be logged.
+
+        Parameters:
+
+            bank (int): Unused
+
+            gain_folder (str): FOnder in which the gain files are located.
+
+        Returns:
+
+            The gain map in the format ``{board_id: gains}``, where
+            ``board_id`` is a two-element tuple uniquely identifying the board
+            (taken from the board's get_id()), and ``gains`` is a dict
+            containing the digital gains to be applied to the channels on that
+            board (from the board's load_gains(...))
+
+        Note:
+
+            This method does not set the digital gains in the FPGAs; it only
+            loads them from the files. See `set_gains` to set the gains using
+            the dict returned by this method.
         """
 
         # get the default gains, just in case we need them
-
         try:
             default_gains_filename = os.path.join(gain_folder, 'default_gains.pkl')  # filename of the default gains
             default_gains = pickle.load(open(default_gains_filename, 'rb'))
@@ -1594,8 +1618,7 @@ class FPGAArray(object):
 
         array_gains = {}
         for ib in self.ib:
-            ch_id = ib.get_id()
-            crate, slot_0based = ch_id[0], ch_id[1]
+            board_id = crate, slot_0based = ib.get_id()
             self.logger.info('%r: Reading digital gains for crate %02i slot %02i (FCC%02i%02i)' % (self, crate, slot_0based, crate, slot_0based))
             board_gains = ib.load_gains(folder=gain_folder) or default_gains
             yield async_moment
@@ -1604,16 +1627,16 @@ class FPGAArray(object):
                 self.logger.warn('%r: Neither board-specific gain file not default gain file was found for crate %02i slot %02i (FCC%02i%02i)' % (self, crate, slot_0based, crate, slot_0based))
 
             if board_gains is None:
-                array_gains[ch_id] = None
+                array_gains[board_id] = None
             else:
-                array_gains[ch_id] = board_gains
+                array_gains[board_id] = board_gains
         async_return(array_gains)
 
     @async
     def set_gains(self, gains, bank=-1,  when='now'):
         """ Set the gains on the boards in the array.
 
-        Arguments:
+        Parameters:
             'gains': dictionary of gains specified as {board_id: gain_spec, ...}.
                      `board_id` uniquely identifies a board and is a tuple either in the format (crate, slot) or (board_id).
                      `gain_spec` is passed to the set_gain() method and is in the format (linear_gain, log_gain). `linear_gain` is a complex scalar or a 1024-element complex vector. log_gain is the post_scaler factor, and is a integer.
@@ -1678,13 +1701,18 @@ class FPGAArray(object):
 
     def get_next_gain_bank(self):
         """
-        Return the next gain bank number to be used (i.e. the currently unused bank number).
+        Return the next gain bank number to be used (i.e. the currently unused
+        bank number of channel 0 of the first board of the array).
 
-        The bank number is the currently inactive bank of the first channel of the first board of
-        the array.
 
         It is the responsability of the user to make sure that no gain switch will occur once this
-        method is called.
+        method is called. .
+
+        Returns:
+            The bank number of the currently inactive bank of the first channel of the first board of
+            the array (not the inactive bank for every channel of every boards).
+
+
         """
         self.ib[0].get_next_gain_bank()[0]
 
@@ -2810,10 +2838,12 @@ class FPGAArray(object):
                 fn, ts = yield ib.capture_frame_time.async(format='raw')
                 if not i:
                     fn0, ts0 = (fn, ts)
-                metrics.add('fpga_time_delta', ts.nano - ts0.nano, slot=i)
-                metrics.add('fpga_frame_number_delta', fn - fn0, slot=i)
-                metrics.add('fpga_time_error', ts.nano - (self.sync_timestamps[i].nano + fn*2560), slot=i)
-                metrics.add('fpga_sync_time_delta', self.sync_timestamps[i].nano - self.sync_timestamps[0].nano, slot=i)
+                crate, slot = ib.get_id()
+                slot = ib.slot - 1
+                metrics.add('fpga_time_delta', ts.nano - ts0.nano, crate=crate, slot=slot)
+                metrics.add('fpga_frame_number_delta', fn - fn0, crate=crate, slot=slot)
+                metrics.add('fpga_time_error', ts.nano - (self.sync_timestamps[i].nano + fn*2560), crate=crate, slot=slot)
+                metrics.add('fpga_sync_time_delta', self.sync_timestamps[i].nano - self.sync_timestamps[0].nano, crate=crate, slot=slot)
             except RuntimeError:
                 self.logger.error('%r: Timeout while capturing frame time' % ib)
 
