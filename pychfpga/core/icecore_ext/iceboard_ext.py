@@ -810,8 +810,67 @@ class IceBoardExtHandler(IceBoardPlusHandler):
     # IRIG-B time support methods
     # ---------------------------------------------------------
 
+
+    _IRIGB_TIME_FORMAT = {
+        'raw': lambda ts: ts,
+        'datetime': lambda ts: ts.datetime,
+        'nano' : lambda ts: ts.nano,
+        'datetime+': lambda ts: (ts.datetime, ts.nano % 1000000000)
+        }
+
     class _IrigTimestamp(object):
-        pass
+        """ Represents the date/time that is obtained from and sent to th IRIG-B subsystem down to a 10 ns resolution.ns
+
+        The class is based on ``Datetime``, and extends it with additional
+        methods to support various additional time formats and sipport the
+        increased time resolution. Standard datetime functions can be used but
+        are limited to the microsecond resolution.
+
+        time is represented as an integer number of nanoseconds (``nano``) since the UTC
+        epoch (1 Jan 1970 00:00:00 UTC). Since Python intergers have an
+        infinite amount of resolution, we can represent the time to with a
+        nanosecond accurary without loss of precision.
+
+        The object is also used to store low-level IRIG-B-related information.
+
+        """
+        nano = None # time in nanoseconds since epoch.
+
+        def __str__(self):
+            return self.isoformat()
+
+        def __init__(self, arg=None):
+            """
+            """
+            if arg is None:
+                pass
+            elif isinstance(arg, basestring):
+                if arg.lower() == 'now':
+                    self.nano = self.datetime_to_nano(datetime.now())
+                else:
+                    raise AttributeError('Cannot convert string to nano time')
+            elif isinstance(arg, datetime):
+                    self.nano = self.datetime_to_nano(arg)
+            elif isinstance(arg, int):
+                    self.nano = arg
+
+        def datetime_to_nano(self, d, nano_offset=0):
+            """
+            """
+            return int(timegm(
+                (d.year, d.month, d.day,
+                 d.hour, d.minute, d.second + d.microsecond / 1e6)) * 1e9)
+
+        def nano_to_datetime(self, nano):
+            return datetime(1970,1,1) + timedelta(seconds=nano/1e9)
+
+        def isoformat(self):
+            n = self.datetime
+            return '%04i-%02i-%02i%s%02i:%02i:%02.9f' % (n.year, n.month, n.day, 'T', n.hour, n.minute, n.second+n.microsecond/1e6)
+
+
+        def astype(self, format):
+            return self._IRIGB_TIME_FORMAT[format](self)
 
     _IRIGB_SOURCE_TABLE = OrderedDict([
         ('bp_trig', 0),
@@ -853,12 +912,6 @@ class IceBoardExtHandler(IceBoardPlusHandler):
 
 
 
-    _IRIGB_TIME_FORMAT = {
-        'raw': lambda ts: ts,
-        'datetime': lambda ts: ts.datetime,
-        'nano' : lambda ts: ts.nano,
-        'datetime+': lambda ts: (ts.datetime, ts.nano % 1000000000)
-        }
 
 
     @async
@@ -868,6 +921,11 @@ class IceBoardExtHandler(IceBoardPlusHandler):
 
         If trig=True, the time of the next 10 MHz reference clock rising edge
         is measured and returned. Otherwise, the last captured time is returned.
+
+        The retuned time is advanced by one second to account for the fact
+        that the IRIG-B time decode by the IRIG-B FPGA logic is latched on the
+        beginning of the following second. However, the pipelining delay
+        offsets not included.
         """
 
         if format not in self._IRIGB_TIME_FORMAT:
@@ -944,7 +1002,9 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         if not noerror and (ts.h > 23 or ts.m > 59 or ts.s > 60):
             raise RuntimeError('Invalid IRIG-B time value %ih %im %is.' % (ts.h, ts.m, ts.s))
 
-        ts.datetime = dt = datetime(y + 2000, 1, 1) + timedelta(d-1, ts.s + 1, ts.ss//100, 0, ts.m, ts.h)
+        ts.datetime = dt = datetime(y + 2000, 1, 1) + timedelta(
+            days=d-1, hours=ts.h, minutes=ts.m, 
+            seconds=ts.s + 1, microseconds=ts.ss//100)
         # ts.before_target = (t1 >> 31) & 1
         # ts.done = (t1 >> 30) & 1
         # ts.nano = int(timegm((y + 2000, 1, 1, 0, 0, 0)) * 1e9) + ((d-1) *24*3600 + ts.h * 3600 + ts.m * 60 + ts.s)*1000000000 + ts.ss*10
@@ -967,18 +1027,28 @@ class IceBoardExtHandler(IceBoardPlusHandler):
     def set_irigb_trigger_time(self, datetime_=None, delay=None):
         """ Sets the time at which the IRIG-B module will generate a trigger
         that can be used to synchronize boards.
+        
+        Parameters:
 
-        'datetime_' is the base target time in the Python as a 'datetime' object.
+            datetime_ (datetime): the base target time in the Python as a 'datetime' object.
 
-        'delay' is a time offset in seconds that is added to 'datetime_' so set
-        the target time. It defaults to zero.
+            delay (float): is a time offset in seconds that is added to
+            `datetime_` so set the target time. It defaults to zero.
+
+        Returns:
+
+            _IrigTimestamp object: contains the programmed trigger time expressed as a
+                `datetime` object (.datetime) and in nanoseconds since epoch (.nano).
 
         If the trigger is used for synchronizing boards, the delay should be a
         multiple of 100 ns in order to ensure alignment with the 10 MHz
         reference clock and ensure deterministic start of the syncronization
         state machine.
 
-        If 'datetime_' and 'delay' are None, the trigger time is set 3 seconds after the current time.
+        If 'datetime_' and 'delay' are None, the trigger time is set 3 seconds
+        after the current time (as returned by the board).
+
+
         """
         if datetime_ is None:
             dt = self._get_irigb_time(trig=True, format='datetime')
@@ -991,8 +1061,8 @@ class IceBoardExtHandler(IceBoardPlusHandler):
                 delay = 0
 
         nano_delay = int(delay * 1e9) % 1000  # Get submicrosecond delay in nanosecond units
-        delay = int(delay * 1e6)/1e6  # Round delay to the microsecond
-        dt += timedelta(0, delay)
+        delay = int(delay * 1e6) / 1e6  # Round delay to the microsecond
+        dt += timedelta(0, delay) # add delay in integer microseconds (datetime does not support more than the microsecond accuracy)
         self.logger.debug('%r: Setting IRIGB target time to %s + %3i ns' % (self, dt.isoformat(), nano_delay))
         if self.zero_target_irigb_year_and_day:
             y = 0
@@ -1003,7 +1073,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         h = dt.hour
         m = dt.minute
         s = dt.second
-        ss = dt.microsecond * 100 + int(nano_delay/10)
+        ss = dt.microsecond * 100 + int(nano_delay / 10)
 
         self.logger.debug('%r: Setting IRIGB target time with y=%i, d=%i, h=%i, m=%i, s=%i, ss=%i' % (self, y, d, h, m, s, ss))
 
@@ -1014,6 +1084,11 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         yield self.fpga_mmi_write.async(self._IRIGB_TARGET0_ADDR, t0)
         yield self.fpga_mmi_write.async(self._IRIGB_TARGET1_ADDR, t1)
         yield self.fpga_mmi_write.async(self._IRIGB_TARGET2_ADDR, t2)
+
+        ts = self._IrigTimestamp()
+        ts.datetime = dt
+        ts.nano = int(timegm((2000 + y, 1, d, h, m, s + 1)) * 1e9) + ss*10 
+        async_return(ts)
 
     @async
     def is_irigb_before_trigger_time(self):
