@@ -9,14 +9,12 @@ from __future__ import absolute_import, division, print_function
 import logging
 import argparse
 import sys
+import json
 from platform import system as system_name  # Returns the system/OS name
 from subprocess import call as system_call  # Execute a shell command
-import tornado
-import tornado.web
-import tornado.httpclient
 from pychfpga import NameSpace, load_yaml_config
 from rest import AsyncRESTClient, AsyncRESTServer, coroutine, coroutine_return
-from rest import endpoint, RunSyncWrapper, IOLoop
+from rest import endpoint, RunSyncWrapper, IOLoop, sleep
 
 ##########################
 # Kotekan RESTful Server #
@@ -77,12 +75,10 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
     that operations can be performed concurrently on multiple nodes.
     """
 
-    DEFAULT_PORT = KotekanAsyncRESTServer.DEFAULT_PORT
-
     def __init__(
         self,
         hostname=None,
-        port=DEFAULT_PORT,
+        port=KotekanAsyncRESTServer.DEFAULT_PORT,
         heartbeat_period=10000,
         **config
     ):
@@ -90,13 +86,15 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
             hostname=hostname,
             port=port,
             heartbeat_period=heartbeat_period,
-            # server_class=KotekanAsyncRESTServer,
             heartbeat_string=None,
+            connection_timeout=None,  # seconds
+            request_timeout=None,
         )
         # self.name = "KotekanAsyncRESTClient"
         self.kotekan_config = config
         self.hostname = hostname
         self.port = port
+        self.starting_node = False
         # self.ping_cb = tornado.ioloop.PeriodicCallback(self.ping, 60e3)
         # self.ping_cb.start()
 
@@ -105,21 +103,42 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
     def _get(self, endpoint):
         result = {}
         try:
+            # while self.starting_node:
+            #     self.log.info(
+            #         'Pausing GET: {} on {} due to start'.format(
+            #             endpoint,
+            #             self.hostname,
+            #         )
+            #     )
+            #     yield sleep(6)
+            #     continue
             result = yield self.get(endpoint)
         except RuntimeError as e:
             result = {"RuntimeError": "{0}".format(str(e))}
         except Exception as e:
             result = {"UnknownError": "{0}".format(str(e))}
+        self.log.debug("{}:GET Response: {}".format(self.hostname, result))
         coroutine_return(result)
 
     @coroutine
     def _post(self, endpoint, **arguments):
         result = {}
         try:
+            # if endpoint != 'start':
+            #     while self.starting_node:
+            #         self.log.info(
+            #             'Pausing POST: {} on {} due to start'.format(
+            #                 endpoint,
+            #                 self.hostname,
+            #             )
+            #         )
+            #         yield sleep(6)
+            #         continue
             result = yield self.post(endpoint, **arguments)
         except Exception as e:
             print(e)
             result = {"UnknownError": "{0}".format(str(e))}
+        self.log.debug("{}:GET Response: {}".format(self.hostname, result))
         coroutine_return(result)
 
     # Operation -- POST RESTful Endpoints
@@ -128,8 +147,11 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         """
         Start a kotekan process with a provided config
         """
+        self.starting_node = True
         self.kotekan_config = config
-        yield self._post("start", **config)
+        result = yield self._post("start", **config)
+        self.starting_node = False
+        coroutine_return(result)
 
     # Operation -- GET RESTful Endpoints
     @coroutine
@@ -182,7 +204,16 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         coroutine_return(result)
 
     @coroutine
-    def baseband(self, event_id, file_path, start_unix_seconds, start_unix_nano, duration_nano, dm, dm_error):
+    def baseband(
+        self,
+        event_id,
+        file_path,
+        start_unix_seconds,
+        start_unix_nano,
+        duration_nano,
+        dm,
+        dm_error,
+    ):
         """
         Submits a baseband dump request.
         """
@@ -206,11 +237,23 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
         result = yield self._get("baseband/{}".format(event_id))
         coroutine_return(result)
 
+    @coroutine
+    def toggle_rfi_zeroing(self, rfi_zeroing):
+        """
+        Enable/Disable RFI Zero-ing on Kotekan
+        """
+        command = {"rfi_zeroing": rfi_zeroing}
+        endpoint = "rfi_masking/toggle"
+        result = yield self._post(endpoint, **command)
+        coroutine_return(result)
+
     # FRB Parameters -- POST RESTful Endpoints
     @coroutine
     def update_gain_dir(self, gain_dir):
         """
         Update CHIME/FRB/PULSAR EigenValue Gains Directory
+
+        NOTE: Potentially depracted in 2018.11 release.
         """
         command = {"gain_dir": gain_dir}
         endpoints = []
@@ -221,6 +264,70 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
             gpu_id: self._post(endpoint, **command) for endpoint in endpoints
         }
         coroutine_return(result)
+
+    @coroutine
+    def update_frb_gain_dir(self, frb_gain_dir):
+        command = {"frb_gain_dir": frb_gain_dir}
+        endpoint = "frb_gain"
+        result = yield self._post(endpoint, **command)
+        result = str(result)
+        coroutine_return(result)
+
+    @coroutine
+    def update_pulsar_gain_dirs(self, pulsar_gain_dir):
+        """
+        Update PULSAR Gains Directory
+        """
+        command = {"pulsar_gain_dir": pulsar_gain_dir}
+        endpoint = "pulsar_gain"
+        self.log.debug(command)
+        result = yield self._post(endpoint, **command)
+        coroutine_return(str(result))
+
+    @coroutine
+    def update_pulsar_gating(
+        self,
+        enabled,
+        pulsar_name,
+        pulse_width,
+        segment,
+        dm,
+        rot_freq,
+        t_ref,
+        phase_ref,
+        coeff,
+    ):
+        """
+        Update CHIME/Cosmology Pulsar Gating Endpoint
+        """
+        # This is hack because currently sending
+        # lists through rest is not possible.
+        try:
+            coeff = json.loads(coeff)
+            dm = json.loads(dm)
+            enabled = json.loads(enabled)
+            phase_ref = json.loads(phase_ref)
+            pulse_width = json.loads(pulse_width)
+            rot_freq = json.loads(rot_freq)
+            segment = json.loads(segment)
+            t_ref = json.loads(t_ref)
+        except Exception as e:
+            self.log.warning(e)
+            pass
+        command = {
+            "enabled": enabled,
+            "pulsar_name": pulsar_name,
+            "pulse_width": pulse_width,
+            "segment": segment,
+            "rot_freq": rot_freq,
+            "phase_ref": phase_ref,
+            "t_ref": t_ref,
+            "dm": dm,
+            "coeff": coeff,
+        }
+        endpoint = "updatable_config/gating/psr0_config"
+        result = yield self._post(endpoint, **command)
+        coroutine_return(str(result))
 
     @coroutine
     def update_north_south_beam(self, northmost_beam):
@@ -300,9 +407,7 @@ class KotekanAsyncRESTClient(AsyncRESTClient):
             command = {"bad_inputs": bad_inputs}
             endpoints = []
             for gpu_id in range(4):
-                endpoints.append(
-                    "gpu/gpu_{0}/update_bad_inputs".format(gpu_id)
-                )
+                endpoints.append("gpu/gpu_{0}/update_bad_inputs".format(gpu_id))
             result = yield {
                 gpu_id: self._post(endpoint, **command)
                 for endpoint in endpoints
@@ -435,7 +540,8 @@ if __name__ == "__main__":
 
     print()
     print(
-        "If this was run in an interactive session (ipython -i), the following variables are now accessible:"
+        "If this was run in an interactive session (ipython -i), the following\
+        variables are now accessible:"
     )
     if server:
         print("   server: Kotekan REST server")

@@ -1,6 +1,6 @@
 flaginput:
-    sources: ['layout', 'manual', 'power', 'rms', 'rfi', 'raw']
-    combine: ['layout', 'manual', 'power', 'rms', 'rfi', 'raw']
+    sources: ['layout', 'manual', 'power', 'rms', 'rfi', 'raw', 'calibration']
+    combine: ['layout', 'manual', 'power', 'rms', 'rfi', 'raw', 'calibration']
     correlator: 'chime'
     output_dir: '/data/flaginput'
     output_suffix: 'flaginput'

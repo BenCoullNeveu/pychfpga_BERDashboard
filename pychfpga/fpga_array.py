@@ -673,7 +673,7 @@ class FPGAArray(object):
                 # this is not concurrent, unfortunately... this is why we checked ping first, otherwise it blocks for a long time
 
                 t0 = time.time()
-                self.logger.info('%r: Resolving IP addresses of Iceboards that passed the ping test' % (self, time.time() - t0))
+                self.logger.info('%r: Resolving IP addresses of Iceboards that passed the ping test' % self)
                 for ib, ping_result in ping_results.items():
                     if ping_result:
                         ib.hostname = socket.gethostbyname(ib.hostname)
