@@ -674,6 +674,10 @@ class FPGAArray(object):
 
                 self.logger.info('%r: Resolving IP addresses of Iceboards that passed the ping test' % self)
                 t0 = time.time()
+<<<<<<< HEAD
+=======
+                self.logger.info('%r: Resolving IP addresses of Iceboards that passed the ping test' % self)
+>>>>>>> jfc_dev
                 for ib, ping_result in ping_results.items():
                     if ping_result:
                         ib.hostname = socket.gethostbyname(ib.hostname)

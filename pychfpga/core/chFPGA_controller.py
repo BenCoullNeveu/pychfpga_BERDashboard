@@ -3563,7 +3563,7 @@ class chFPGA_controller(IceBoardExtHandler):
         f = r.read_corr_frames(flush=False, complete_set=True, max_trials=100, verbose = verbose)
         return np.all(p==f), p, f
 
-    def test_correlator(self, test_name='rand_complex', integration_period=8192, trials=100):
+    def test_correlator(self, test_name='rand_complex', integration_period=8192, trials=100, verbose=0):
         if test_name=='rand_complex':
             for data_set_number in xrange(trials):
                 print 'Trial #%i' % data_set_number
@@ -3579,6 +3579,41 @@ class chFPGA_controller(IceBoardExtHandler):
                     else:
                         print 'Cannot make frames match!'
                         return match, data, p, f
+
+
+        elif test_name=='rand_complex_C':
+            for data_set_number in xrange(trials):
+
+                data=(np.floor(np.random.rand(16,1024)*4-2) + 1j*np.floor(np.random.rand(16,1024)*4-2))
+
+                trial = 0
+                while True:
+                    self.set_channelizer_outputs(data)
+
+                    self.start_correlator(integration_period=integration_period, verbose=(0 if trial == 0 else 0))
+
+                    self.sync()
+                    p = self.compute_corr_output(data, integration_period=integration_period)
+                    timestamp,f = ir.read_correlator_frame(verbose=verbose)
+                    f = np.swapaxes(f, 0, 2)
+
+
+                    match = np.all(p==f)
+                    if match:
+                        if data_set_number % 10 == 0 and data_set_number > 0:
+                            print '[{3:s}]: Test #{0:d}/{1:d}; trial {2:d}'.format(data_set_number, trials, trial, datetime.now().strftime("%H:%M:%S.%f"))
+                            print "\t{0:d}".format(timestamp)
+                        break
+                    trial += 1
+                    if trial < 10:
+                        print 'Trial {0:d} frames did not match! Retrying after rewriting the test data again...'.format(trial)
+                        if(verbose):
+                            print "Difference: "
+                            print p - f
+                    else:
+                        print 'Cannot make frames match!'
+                        return match, data, p, f
+
         else:
             raise ValueError('Unknown test name %s' % test_name)
 
