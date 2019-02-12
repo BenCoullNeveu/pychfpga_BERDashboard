@@ -50,27 +50,29 @@ class SpectrumInstrumentsTM4D(SocketContext):
             '59': self.get_geometric_quality_and_almanac_status,
             '60': self.get_mux1_output_source,
             '61': self.get_timing_status,
-            '62': None, # Event Time Tag
-            '63': None, # POP/ETT Status
+            '62': None,  # Event Time Tag
+            '63': None,  # POP/ETT Status
             '64': self.get_oscillator_tuning_mode,
             '65': self.get_alarm_status,
-            '66': None, # Reserved, #66,T28F2A.OBJ,NEWEPPSD10A.HEX   ,312102035321F,28F2,031816
+            '66': None,  # Reserved, #66,T28F2A.OBJ,NEWEPPSD10A.HEX   ,312102035321F,28F2,031816
             '68': self.get_mux2_output_source,
             '69': self.get_tracking_channel_status,
-            '70': None, # Serial time message format
-            '71': None, # Serial time code format
-            '72': None, # Reserved
-            '73': None, # ETT Parameters
-            '74': None, # POP Parameters
+            '70': None,  # Serial time message format
+            '71': None,  # Serial time code format
+            '72': None,  # Reserved
+            '73': None,  # ETT Parameters
+            '74': None,  # POP Parameters
             '75': self.get_speed_and_heading,
             '76': self.get_nmea_info,
-            '74': None, # Phase lock status, old units (see #80)
+            '74': None,  # Phase lock status, old units (see #80)
             '78': self.get_user_options,
             '79': self.get_coast_timer,
             '80': self.get_phase_lock_status,
             '81': self.get_leap_seconds,
-            '82': None, # Undocumented, #82,0,1,8,8,F,F
-            '84': None, # Undocumented, #84,1,0,5,3,2,1,F
+            '82': None,  # Undocumented, #82,0,1,8,8,F,F
+            '84': None,  # Undocumented, #84,1,0,5,3,2,1,F
+            '85': None,  # Undocumented, '#85,0058
+            '86': None,  # Undocumented #86,99.99,99.99,00.41,99.99,00.41
             }
 
     ###################################
@@ -574,8 +576,8 @@ class SpectrumInstrumentsTM4D(SocketContext):
                    2: LOW/GPSPPS/GPSPPS
                    4: GPSPPS/GPSPPS/GPSPPS
         """
-        aa_enabled, pps_source, _, _, _, _ = self.query('78', reply)
-        aa_enabled, pps_source = (bool(aa_enabled), int(pps_source))
+        r = self.query('78', reply)
+        aa_enabled, pps_source = (bool(r[0]), int(r[1]))
         self.add_metric(metrics, 'gps_antenna_alarm_detection_enabled', value=aa_enabled)
         self.add_metric(metrics, 'gps_pps_source', value=pps_source)
         return aa_enabled, pps_source
