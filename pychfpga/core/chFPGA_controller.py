@@ -2561,6 +2561,32 @@ class chFPGA_controller(IceBoardExtHandler):
 
 
         elif mode == 'shuffle16':
+            """
+            In shuffle16 mode, each of the GPU links output data for 128 bins,
+            each bins containing the data from 16 channels. The data for each
+            channel is a byte, representing the FFT output as a (4+4) bit
+            compler number.
+
+            In this mode:
+
+                chan_bin_sel: each of the 16 chan_bin_sel select data from
+                    lane groups 0-3 (i.e. lanes 0-15). They each select 1/64
+                    of the bine incoming channelizer output. There are a total
+                    of 128 selected bins. There are 4 words per bins (16
+                    channels). The data flags of two consecutive bins are
+                    combine to build a single data flag word.
+
+            The packet format is as follows (assume one frame per packet):
+                - Header: 4 words (16 bytes) for the header
+                - Data block: 128 bins x 16 channels = 2056 bytes
+                - Data flags block: We combine the data flags, so scaler flags
+                  from two consecutive bins are combined into a single 32 bit
+                  word ( one bit per channel for each of the 2 bins). This represents 128*16/32=64 words = 256 bytes
+                - Frame flags: 16 bit FFT overflow + 16 bit ADC overflow flags per frame. This is 1 word = 4 bytes.
+                - Packet flags: 32 bit word (4 bytes)
+                - Total: 2328 bytes
+
+            """
             cb1_bypass = False
             cb1_four_bit = True
             # BS0 grabs data from FIFO 0-1 (lanes 0-7), BS1 from FIFO 2-3
@@ -2575,15 +2601,15 @@ class chFPGA_controller(IceBoardExtHandler):
             cb1_output_words_per_bin = 4
             cb1_output_bins = cb1_bins
             cb1_input_lanes_per_output_lane = 16
-            cb1_output_data_flags_words_per_bin = cb1_bins/2
-
+            cb1_output_data_flags_words_per_bin = (cb1_output_words_per_bin * 4.0) / (32 if cb1_combine_data_flags else 16)  # This is 0.5 if combine_flags
+            cb1_output_frame_flags_words_per_frame = 1
             bp_shuffle_bypass = True
 
             cb2_lane_map = range(16)
             cb2_bypass = True
             cb2_input_words_per_bin = cb1_output_words_per_bin
-            cb2_input_frame_flags_words_per_frame = 1
-            cb2_input_data_flags_words_per_bin = 1
+            cb2_input_data_flags_words_per_bin = cb1_output_data_flags_words_per_bin
+            cb2_input_frame_flags_words_per_frame = cb1_output_frame_flags_words_per_frame
             cb2_input_bins = cb1_bins
             # cb2_lanes = ((0, 1), (2, 3))  #BS0 selects sublanes 0-1, BS1 selects sublanes 2-3
             # cb2_bins = cb1_bins
@@ -2592,7 +2618,8 @@ class chFPGA_controller(IceBoardExtHandler):
             cb2_output_words_per_bin = cb2_input_words_per_bin
             cb2_output_bins = cb2_bins
             cb2_input_lanes_per_output_lane = cb1_input_lanes_per_output_lane
-            cb2_output_data_flags_words_per_bin = cb1_output_data_flags_words_per_bin
+            cb2_output_data_flags_words_per_bin = cb2_input_data_flags_words_per_bin
+            cb2_output_frame_flags_words_per_frame = cb2_input_frame_flags_words_per_frame
 
             crate_number = self.crate.crate_number or 0 if self.crate else 0
             stream_type = 1
@@ -2603,7 +2630,7 @@ class chFPGA_controller(IceBoardExtHandler):
             cb3_output_words_per_bin = cb2_input_words_per_bin
             cb3_output_bins = cb2_input_bins
             cb3_output_data_flags_words_per_bin = cb2_output_data_flags_words_per_bin
-            cb3_output_frame_flags_words_per_frame = cb2_output_data_flags_words_per_bin
+            cb3_output_frame_flags_words_per_frame = cb2_output_frame_flags_words_per_frame
 
         elif mode == 'shuffle256':
             if not self.slot:
@@ -2986,7 +3013,7 @@ class chFPGA_controller(IceBoardExtHandler):
             # bp_data_rate = 156.25e6* 50 * 32/33
             packet_rate = 800e6/2048/frames_per_packet
             ethernet_data_rate = (packet_rate * ethernet_packet_size) * 8
-            self._logger.info('%r: %s Ethernet packet size: %i bytes, %0.1f Gbit/s (%i frames_per_packet, %i bins, %i data words/bin, %i data flags_words/bin, %i frame_flags_words/frame)' % (self, crossbar_name, ethernet_packet_size, ethernet_data_rate / 1e9,  frames_per_packet, bins, data_words_per_bin, data_flags_words_per_bin, frame_flags_words_per_frame))
+            self._logger.info('%r: %s Ethernet packet size: %i bytes, %0.1f Gbit/s (%i frames_per_packet, %i bins, %i data words/bin, %g data flags_words/bin, %i frame_flags_words/frame)' % (self, crossbar_name, ethernet_packet_size, ethernet_data_rate / 1e9,  frames_per_packet, bins, data_words_per_bin, data_flags_words_per_bin, frame_flags_words_per_frame))
             # self._logger.info('%r: %s config: frames_per_packet=%i, cb1_lanes=%s, cb1_bypass=%s, cb1_combine=%s, cb1_bins=%i, cb1_words_per_bin=%i' % (self, frames_per_packet, cb1_lanes, bool(cb1_bypass), bool(cb1_combine_data_flags), cb1_bins, cb1_output_words_per_bin ))
             # self._logger.debug('%r: CROSSBAR1 output packets payload = %i bytes (%i words)' % (self, cb1_payload_size, (cb1_payload_size+3)//4))
 
