@@ -162,15 +162,15 @@ int cget_corr_frame(accFrame *frame, char *port, int verbose){
 
 
 			if(new_acquisition || current_timestamp != frame->timestamp){ // Is this the same frame number as the previous set
-				new_acquisition = 0
+				new_acquisition = 0;
 				if(verbose == 1 || verbose == 3 || verbose == 4)
 					if(n_received_packets == 0)
 						printf("****Received first packet in a new acquisition.\n");
 					else{
-						printf("****Received a packet that has a different timestamp
-						than the last acquisition... Dropping previous frames and
-						starting the capture of a new sets of packets for the new frame
-						number.\n");
+						printf("****Received a packet that has a different timestamp "
+						"than the last acquisition... Dropping previous frames and "
+						"starting the capture of a new sets of packets for the new frame "
+						"number.\n");
 						printf("\t\t\t  %X vs %X\n",current_timestamp, frame->timestamp);
 					}
 

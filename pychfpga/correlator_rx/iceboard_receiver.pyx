@@ -7,12 +7,12 @@ cimport numpy as np
 
 from libc.stdlib cimport malloc, free
 
-NCOR = 8  # Number of correlator cores in firmware
-NCMAC = 34 # Number of CMACs in each firmware correlator core
-NPROD = 512 # Number of products per CMAC
-NHEADER = 12  # Numbe rof bytes in correlator packet header
-PROD_SIZE = 5  # Number of bytes per product
-CORR_PACKET_SIZE = NHEADER + PROD_SIZE * NPROD  # Number of bytes in a correlator packet payload (header + products)
+DEF NCOR = 8  # Number of correlator cores in firmware
+DEF NCMAC = 34 # Number of CMACs in each firmware correlator core
+DEF NPROD = 512 # Number of products per CMAC
+DEF NHEADER = 12  # Numbe rof bytes in correlator packet header
+DEF PROD_SIZE = 5  # Number of bytes per product
+DEF CORR_PACKET_SIZE = NHEADER + PROD_SIZE * NPROD  # Number of bytes in a correlator packet payload (header + products)
 
 cdef extern from "ciceboard_receiver.h":
      int cget_frames(char *filename, char *port, int ntimes_per_file, int ntimes_per_burst, int file_write_loops )
