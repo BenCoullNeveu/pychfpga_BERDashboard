@@ -2870,6 +2870,10 @@ class chFPGA_controller(IceBoardExtHandler):
             cb1_output_bins = cb1_bins
             cb2_bypass = True
             cb3_bypass = True
+            cb3_output_bins = 0
+            cb3_output_words_per_bin = 0
+            cb3_output_data_flags_words_per_bin = 0
+            cb3_output_frame_flags_words_per_frame = 0
             stream_type = 0  # not used, as the shuffled packets are correlated never get out of the FPGA
             crate_number =  0  # idem
 
