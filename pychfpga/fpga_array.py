@@ -1,9 +1,12 @@
+from __future__ import absolute_import
+
 #!/usr/bin/python
+
 """
 chime_array.py module. Defines the objects that represent and handles
 operations one the whole array of CHIME ICE hardware.
 """
-from __future__ import absolute_import
+
 import argparse
 import logging
 import time
@@ -277,7 +280,7 @@ class FPGAArray(object):
 
             None: Configuration & initialization
 
-            bitfile : String. Filename of the bitfile used to to program the FPGAs
+            bitfile : String. Filename of the bitfile used to program the FPGAs
 
             prog : If ``prog=1``, the FPGAs in the selected Iceboards will be
                 configured only if they are not already configured with the same
@@ -455,8 +458,13 @@ class FPGAArray(object):
         if bitfile is None:
             chimearray_path = os.path.dirname(__file__)
             chimearray_path += '/' if chimearray_path else ''
+            #bitfile = ( chimearray_path +
+            #    '../../chfpga/xilinx_projects/SIFPGA_MGK7MB/SIFPGA_MGK7MB.runs/impl_1/SIFPGA_MGK7MB.bit')  # DOLCEK - Firmware correlator
             bitfile = ( chimearray_path +
-                '../../chfpga/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit')
+                '../../chfpga/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit') # ORIGINAL - recent one used for CHIME / does not include the firmware correlator
+            #bitfile = '/home/suit/Desktop/bitfiles/chFPGA_MGK7MB_Rev2 (16 CH,0 FFT,8 GPU,0 CORR).bit'  # When using this bit files, we encountered this error: IOError: chFPGA('MGK7BP1_SN001', 0).FpgaMmi(10.10.3.240): chFPGA('MGK7BP1_SN001', 0).FpgaMmi(10.10.3.240): Timeout during FPGA command.
+
+
 
 
         self.logger.info('%r: ------------------------' % self)
@@ -671,9 +679,9 @@ class FPGAArray(object):
                                   for ib, ping_result in ping_results.items() if not ping_result)))
                 # resolve hostnames into IP addresses
                 # this is not concurrent, unfortunately... this is why we checked ping first, otherwise it blocks for a long time
-
-                self.logger.info('%r: Resolving IP addresses of Iceboards that passed the ping test' % (self, time.time() - t0))
                 t0 = time.time()
+                self.logger.info('%r: Resolving IP addresses of Iceboards that passed the ping test' % (self))
+                
                 for ib, ping_result in ping_results.items():
                     if ping_result:
                         ib.hostname = socket.gethostbyname(ib.hostname)
