@@ -1799,9 +1799,11 @@ class ChimeMasterAsyncRESTClient(AsyncRESTClient):
                     self.log.info('%r: start process is completed' % self)
                     coroutine_return(status['start_result'])
             except RuntimeError as e:
-                print('*** %r Client get_status got an exception %r\n\n Ignoring.' % (self, e))
-                status=dict(state='HTTP error')
-                raise RuntimeError
+                print('*** %r Client get_status got an exception:%r\n.' % (self, e))
+                if 'timeout' not in e.message.lower():
+                    status = dict(state='HTTP error')
+                    raise e
+                print("This is apparently a timout. We'll ignore it...\n")
             self.log.info('%r: Waiting for the START process to complete. Current state is: %s' % (self, status['state']))
             yield sleep(1)
 
