@@ -2825,18 +2825,16 @@ class FPGAArray(object):
         return self.ib.index_by(lambda ib:ib.get_id()).get_status()
 
     @async
-    def get_metrics(self, reset=True):
-        """ Get the monitoring information on the backplanes, boards and firmware status across the array.
+    def get_arm_metrics(self, metrics):
+        """ Get the monitoring information on the backplanes & boards that are accessible from the ARM.
 
         Includes:
             - Backplane metrics, as measured from one board in each crate
             - Iceboard hardware metrics (voltages, temperatures), which also includes mezzanines voltage/current.
-            - Backplane receiver/transmitter status with packet statistics for both the PCB and QSFP links.
 
         Returns:
             A :cls:`Metrics` object.
         """
-        metrics = Metrics()
 
         # IceCrate metrics
         self.logger.info('%r: Getting IceBoard backplane hardware metrics (over ARM link)' % self)
@@ -2850,6 +2848,17 @@ class FPGAArray(object):
         metrics += m
         self.logger.info('%r: Got %i IceBoard temperature & power supply metrics' % (self, len(m)))
         metrics += yield [ib.get_fpga_udp_metrics.async() for ib in self.ib]
+
+    @async
+    def get_fpga_metrics(self, metrics, reset=True):
+        """ Get the monitoring information on the FPGA firmware status across the array.
+
+        Includes:
+            - Backplane receiver/transmitter status with packet statistics for both the PCB and QSFP links.
+
+        Returns:
+            A :cls:`Metrics` object.
+        """
 
         # Shuffle status
         self.logger.info('%r: Getting corner-turn links metrics (over FPGA UDP link)' % self)
