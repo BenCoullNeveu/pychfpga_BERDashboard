@@ -805,13 +805,19 @@ class FPGAArray(object):
         #################################
         # Discover Mezzanines
         #################################
-
+        # Check if the board is running a compatible ARM firmware. This will
+        # trigger the first communication to the ARM, causinng Tuber to fetch
+        # the method & property directory from each board.
+        self.logger.info('Checking ARM firmware version...')
         if self.ib:
-            [ib.check_tuber_version() for ib in self.ib]  # Check if the board is running a compatible ARM firmware
+            yield [ib.check_tuber_version.async() for ib in self.ib]
 
-            # Auto-discover mezzanines and add them to the hardware map.
-            if not no_mezz:
-                self.logger.info('Discovering Mezzanines...')
+        #################################
+        # Discover Mezzanines
+        #################################
+        # Auto-discover mezzanines and add them to the hardware map.
+        if self.ib and not no_mezz:
+            self.logger.info('Discovering Mezzanines...')
                 self.print_flush()  # make sure we see the previous prints right away so we have a better feeling of what is happening
                 yield [ib.discover_mezzanines.async() for ib in self.ib]
                 self.hwm.flush()
