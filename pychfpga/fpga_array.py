@@ -1126,7 +1126,7 @@ class FPGAArray(object):
         if mode == 'raw_time':
             self.ib.set_fft_bypass(True)
             self.ib.set_scaler_bypass(True)
-            self.init_shuffle(mode='chan8', frames_per_packet=frames_per_packet, chan8_channel_map=np.hstack((chan8_channel_map, [16]*8)), tx_power=tx_power)
+            self.init_corner_turn(mode='chan8', frames_per_packet=frames_per_packet, chan8_channel_map=np.hstack((chan8_channel_map, [16]*8)), tx_power=tx_power)
 
         elif mode in ['shuffle256', 'shuffle512', 'shuffle16']:
             if not all(self.ib.CROSSBAR2) or not all(self.ib.CROSSBAR3):
@@ -1135,7 +1135,7 @@ class FPGAArray(object):
             self.ib.CROSSBAR3.SOF_WINDOW_STOP = 110
             self.ib.CROSSBAR3.TIMEOUT_PERIOD = 0
             self.ib.BP_SHUFFLE.reset_rx_equalizers()
-            self.init_shuffle(mode=mode, frames_per_packet=frames_per_packet, tx_power=tx_power)
+            self.init_corner_turn(mode=mode, frames_per_packet=frames_per_packet, tx_power=tx_power)
             self.ib.BP_SHUFFLE.reset_stats()
             self.ib.CROSSBAR2.reset_stats()
             self.ib.CROSSBAR3.reset_stats()
@@ -1148,12 +1148,13 @@ class FPGAArray(object):
         else:
             raise ValueError('Unknown operational mode')
 
-    def init_shuffle(self,
+    def init_corner_turn(self,
                      mode,
                      dsmap=range(16),
                      frames_per_packet=1,
                      chan8_channel_map=range(16),
                      tx_power=None,
+                     sync=True
                      ):
         """ Setup the crossbars and data shuffling in every board of the array.
 
@@ -1262,8 +1263,9 @@ class FPGAArray(object):
 
         # sync boards
         #soft_sync(c, sync_board)
-        self.logger.info('%r: Shuffling initialization completed. Syncing boards' % self)
-        self.sync(delay=2)
+        self.logger.info('%r: Shuffling initialization completed.' % self)
+        if sync:
+            self.sync()
 
     def set_tx_power(self, default_power=(5, 10), lane_group=None, exceptions=[], index=0):
         """ Set the power level of the corner-turn engine GTX transmitters.
