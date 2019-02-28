@@ -2972,7 +2972,7 @@ class FPGAArray(object):
                     worst_err = 0
                     worst_det = 1
                     for slot, ib in ic.slot.items():
-                        errs, det = ib.BP_SHUFFLE.get_rx_lane_monitor(['ERROR_CTR', 'FRAME_DETECT'], link_group=0)
+                        errs, det = ib.BP_SHUFFLE.get_rx_lane_monitor(['ERROR_CTR', 'FRAME_DETECT'], lane_group='pcb')
                         worst_err = max(worst_err, max(errs))
                         worst_det = min(worst_det, min(det))
 
