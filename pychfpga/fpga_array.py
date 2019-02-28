@@ -819,10 +819,10 @@ class FPGAArray(object):
         # Auto-discover mezzanines and add them to the hardware map.
         if self.ib and not no_mezz:
             self.logger.info('Discovering Mezzanines...')
-                self.print_flush()  # make sure we see the previous prints right away so we have a better feeling of what is happening
-                yield [ib.discover_mezzanines.async() for ib in self.ib]
-                self.hwm.flush()
-                self.ib.set_cache()
+            self.print_flush()  # make sure we see the previous prints right away so we have a better feeling of what is happening
+            yield [ib.discover_mezzanines.async() for ib in self.ib]
+            self.hwm.flush()
+            self.ib.set_cache()
 
         def get_mezz_name(ib, mezz_number):
             m = ib.mezzanine.get(mezz_number, None)
@@ -3514,6 +3514,7 @@ def create_fpga_array(args=None):
     ps_group = parser.add_argument_group('Power Supply Array parameters', 'Allows interactive creation of Power Supply objects')
     ps_group.sub_dict = 'cli_power_supply_array'  # group all arguments in this group in a sub dictionary with this name
     ps_group.add_argument('-p', '--power_supplies', type=str, nargs='+', help='List of IP address or hostnames of the power supply objects (Agilent_N5764A) to be created.')
+    ps_group.add_argument('--power', type=str, help='Set the state of the power supplies: ON, OFF or CYCLE')
 
     # Add generic command-line parameters
     parser.add_argument('-y', '--yaml',  type=str, nargs='+',   help='YAML configuration file name, optionally followed by object names in that file.')
@@ -3530,7 +3531,30 @@ def create_fpga_array(args=None):
 
     logger = setup_logging(**args.get('cli_logging', {}))
 
+
+    #######################################
+    # Power supply array
+    #######################################
+    # ps_array_params = merge_dict(config.get('power_supply_array', {}), args['cli_power_supply_array'])
+    ps_array_params = args['cli_power_supply_array']
+    power = ps_array_params.pop('power')
+    ps_array = PSArray(**ps_array_params)  # Create Power supply array
+    if power is not None:
+        if power.lower() == 'on':
+            ps_array.unlock()
+            ps_array.power_on()
+        elif power.lower() == 'off':
+            ps_array.unlock()
+            ps_array.power_off()
+        elif power.lower() == 'cycle':
+            ps_array.unlock()
+            ps_array.power_cycle()
+        else:
+            raise AttributeError("Invalid power supply state '%s'" % power)
+
+    #######################################
     # FPGA array
+    #######################################
     config_fpga_array_params = config.get('fpga', {}).get('fpga_array_params', {}) or config.get('fpga_array_params', {})
     cli_fpga_array_params = {k: v for k, v in args['cli_fpga_array'].items() if v is not None}
     #Sprint('merging \n\n%r\n\n with \n\n%r' % (config_fpga_array_params, cli_fpga_array_params))
@@ -3540,10 +3564,6 @@ def create_fpga_array(args=None):
     # GPU array
     gpu_array = GPUArray(**config.get('cli_gpu_array', {}))     # Create FPGA array
 
-    # Power supply array
-    # ps_array_params = merge_dict(config.get('power_supply_array', {}), args['cli_power_supply_array'])
-    ps_array_params = args['cli_power_supply_array']
-    ps_array = PSArray(**ps_array_params)     # Create FPGA array
 
     return config, fpga_array, gpu_array, ps_array
 
