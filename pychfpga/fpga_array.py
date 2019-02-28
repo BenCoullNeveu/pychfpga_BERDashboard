@@ -737,6 +737,7 @@ class FPGAArray(object):
             self.logger.info('%r:     IceBoards to find: %s' % (self, hw_table.iceboards))
             self.logger.info('%r:     IceCrates to find: %s' % (self, hw_table.icecrates))
             self.print_flush()
+            # Perform mDNS discovery. This is done on a separate ioloop, which locks up the current loop for a while
             mdns_discover(self.hwm,
                           icecrates=hw_table.icecrates,
                           iceboards=hw_table.iceboards,
@@ -828,13 +829,15 @@ class FPGAArray(object):
             # return '%s_SN%s' % (m.__ipmi_part_number__, m.serial) if m else '-'
             return 'SN%s' % (m.serial) if m else '-'
 
+        #################################
+        # Print the IceBoard table
+        #################################
         self.print_iceboard_table(lambda ib: '%s\n%s' % (get_mezz_name(ib,1), get_mezz_name(ib,2)), row_labels=['Mezz1\nMezz2'], add_serial=True)
         self.print_flush()
 
         #################################
         # Program the FPGAs
         #################################
-
 
         # Tell the IceBoard to run chFPGA firmware, program the FPGA, and establish communication with it
         if self.ib:
