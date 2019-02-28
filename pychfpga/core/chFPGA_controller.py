@@ -403,6 +403,7 @@ class chFPGA_controller(IceBoardExtHandler):
                     self.ANT_FMC_IS_PRESENT[ant_number] = True
 
             self.hw.set_led('GP_LED1', 1) # Indicate that the Iceboard is ready
+            self._data_socket = None
 
         except Exception as e:
             self.logger.error('****Exception during open!****** =  %r' % e)
@@ -1038,6 +1039,37 @@ class chFPGA_controller(IceBoardExtHandler):
         self.set_local_data_port_number(self.recv.port_number)
         return self.recv
 
+    def get_data_socket(self, port_number=0):
+        """
+        Return a socket tha is bound to the port that receives the raw/correlator data.
+
+
+        """
+        # Make sure there is a list of opened sockets
+        import __main__
+        import socket
+
+        if not hasattr(__main__, '__opened_sockets__'):
+            opened_sockets = __main__.__opened_sockets__ = {}
+        else:
+            opened_sockets = __main__.__opened_sockets__
+
+        if not self._data_socket:
+
+            # If we want to use a specific local port that was previously reserved, use its socket.
+            if port_number and port_number in opened_sockets:
+                return opened_sockets[port_number]
+
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.bind((self.interface_ip_addr, port_number))
+            # store the socket in the main module so it will live persistently until the Python session is closed.
+            (actual_ip_addr, actual_port_number) = sock.getsockname()
+            opened_sockets[actual_port_number] = sock
+            self._data_socket = sock
+            self.set_local_data_port_number(actual_port_number)
+
+        return self._data_socket
+
 
     def start_data_capture(self, period=None, frames_per_burst=1,  number_of_bursts=0,
                            channels=None, source='scaler', sync=1, verbose=1,
@@ -1225,58 +1257,7 @@ class chFPGA_controller(IceBoardExtHandler):
     #         else:
     #             self.ANT[ch].INJECT.inject_frame(data)
 
-    def start_corr_capture(self,  integration_period=1.0, capture_period=None, corr_to_use=None, verbose=1):
-        """
-        Instructs chFPGA to starts integrating and capturing the correlator outputs at the specified period. The captures data is sent over the Ethernet interface.
-        The capture period can be optionnaly specified independently from the integration period. If not specified, it is equal to the integration period.
-        This function does not receive the frames from the ethernet port. This has to be done separately.
-
-        corr_to_use -> if not None, is a list specifying which to correlators to use
-
-        History:
-            2012-10-02 JFC: Created
-            2013-03-25 KMB
-        """
-
-        if not self._last_init_time:
-            self._logger.warning('%r: The system is not initialized. This might not work.' % self)
-
-        if capture_period is None:
-            capture_period = integration_period
-
-        capture_period_in_frames = int(capture_period*1.0/self.FRAME_PERIOD)
-        integration_period_in_frames = int(integration_period*1.0/self.FRAME_PERIOD)
-
-        self.set_ant_reset(1)
-        self.set_corr_reset(1)
-        if corr_to_use is None:
-            corrs = self.LIST_OF_IMPLEMENTED_CORRELATORS
-            corrs_not_used = []
-        else:
-            corrs = corr_to_use
-            corrs_not_used = list(set(self.LIST_OF_IMPLEMENTED_CORRELATORS).difference(corr_to_use))
-        for corr_num in corrs:
-            corr = self.CORR[corr_num]
-            self._logger.debug(
-                '%r: Configuring correlator %i to integrate '
-                'over %f seconds (%i frames) '
-                'and transmit data every %f seconds (%i frames)' % (
-                    self,
-                    corr.instance_number,
-                    integration_period,
-                    integration_period_in_frames,
-                    capture_period,
-                    capture_period_in_frames))
-            corr.ACC.RESET = 0
-            corr.ACC.config(integration_period=integration_period_in_frames, capture_period=capture_period_in_frames)
-        for corr_num in corrs_not_used:
-            self._logger.debug('%r: Disabling correlator %i' % (self, corr.instance_number))
-            corr = self.CORR[corr_num]
-            corr.ACC.RESET = 1
-        self.set_corr_reset(0)
-        self.set_ant_reset(0)
-        #self.sync()
-
+ 
     def get_version(self):
         """
         Returns the firmware revion currenting running on the FPGA (which si the date and time of bitstream generation)
@@ -3230,8 +3211,8 @@ class chFPGA_controller(IceBoardExtHandler):
         mb_power_sensors = [
             ('MB VCC12V'    , 'VCC12V'    , self.RAIL.MB_VCC12V0   , True),
             ('MB VCC3V3'    , 'VCC3V3'    , self.RAIL.MB_VCC3V3    , True),
-            ('MB VADJ'      , 'VADJ'      , self.RAIL.MB_VADJ      , True),
-            ('MB VCC5V5'    , 'VCC5V5'    , self.RAIL.MB_VCC5V5    , False),
+            ('MB VADJ'      , 'VADJ'      , self.RAIL.MB_VADJ      , False), # VADJ is normally powered from VCC5V0
+            ('MB VCC5V5'    , 'VCC5V5'    , self.RAIL.MB_VCC5V5    , True),
             ('MB VCC1V0'    , 'VCC1V0'    , self.RAIL.MB_VCC1V0    , False),
             ('MB VCC1V0 GTX', 'VCC1V0 GTX', self.RAIL.MB_VCC1V0_GTX, False),
             ('MB VCC1V2'    , 'VCC1V2'    , self.RAIL.MB_VCC1V2    , False),
@@ -3475,6 +3456,70 @@ class chFPGA_controller(IceBoardExtHandler):
             string that uniquely defined the crate.
         """
         return self.crate.get_id(slot=slot)
+
+    #########################################################################
+    #
+    #   FIRMARE CORRELATOR
+    #
+    #########################################################################
+    def start_corr_capture(self,  integration_period=1.0, capture_period=None, corr_to_use=None, verbose=1):
+        """
+        Instructs chFPGA to starts integrating and capturing the correlator
+        outputs at the specified period. The captures data is sent over the
+        Ethernet interface.
+
+        The capture period can be optionnaly specified independently from the
+        integration period. If not specified, it is equal to the integration
+        period.
+
+        This function does not receive the frames from the ethernet port. This
+        has to be done separately.
+
+        corr_to_use -> if not None, is a list specifying which to correlators to use
+
+        History:
+            2012-10-02 JFC: Created
+            2013-03-25 KMB
+        """
+
+        if not self._last_init_time:
+            self._logger.warning('%r: The system is not initialized. This might not work.' % self)
+
+        if capture_period is None:
+            capture_period = integration_period
+
+        capture_period_in_frames = int(capture_period*1.0/self.FRAME_PERIOD)
+        integration_period_in_frames = int(integration_period*1.0/self.FRAME_PERIOD)
+
+        self.set_ant_reset(1)
+        self.set_corr_reset(1)
+        if corr_to_use is None:
+            corrs = self.LIST_OF_IMPLEMENTED_CORRELATORS
+            corrs_not_used = []
+        else:
+            corrs = corr_to_use
+            corrs_not_used = list(set(self.LIST_OF_IMPLEMENTED_CORRELATORS).difference(corr_to_use))
+        for corr_num in corrs:
+            corr = self.CORR[corr_num]
+            self._logger.debug(
+                '%r: Configuring correlator %i to integrate '
+                'over %f seconds (%i frames) '
+                'and transmit data every %f seconds (%i frames)' % (
+                    self,
+                    corr.instance_number,
+                    integration_period,
+                    integration_period_in_frames,
+                    capture_period,
+                    capture_period_in_frames))
+            corr.ACC.RESET = 0
+            corr.ACC.config(integration_period=integration_period_in_frames, capture_period=capture_period_in_frames)
+        for corr_num in corrs_not_used:
+            self._logger.debug('%r: Disabling correlator %i' % (self, corr.instance_number))
+            corr = self.CORR[corr_num]
+            corr.ACC.RESET = 1
+        self.set_corr_reset(0)
+        self.set_ant_reset(0)
+        #self.sync()
 
     def start_correlator(self, integration_period=16384, autocorr_only=False, correlators=None, bandwidth_limit=0.5e9, verbose=1):
         """

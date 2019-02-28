@@ -314,7 +314,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         # link by reading the UDP MMI cookie (not the SPI one) and check if
         # the cookie correspond to the chFPGA firmware.
         # -------------------------------------------------------------------------
-        self.clear_fpga_udp_errors(force=True, no_reset=True) # Try to prevent initial error on first command
+        yield self.clear_fpga_udp_errors.async(force=True, no_reset=True) # Try to prevent initial error on first command
         self.logger.debug("%r: Attempting to communicate with the FPGA over direct Ethernet link" % self)
         try:
             cookie = yield self.get_fpga_firmware_cookie.async(resync=True)  # Read the firmware version cookie from the GPIO subsystem (this is provided by the FPGA core firmware which is always present on all versions of the FPGA)
@@ -866,7 +866,22 @@ class IceBoardExtHandler(IceBoardPlusHandler):
 
         def isoformat(self):
             n = self.datetime
-            return '%04i-%02i-%02i%s%02i:%02i:%02.9f' % (n.year, n.month, n.day, 'T', n.hour, n.minute, n.second+n.microsecond/1e6)
+            # COnvert into an ISO time string with more second resolution.self.
+            #
+            # Note that to obtain the fractional time, we cannot do
+            # ``(nano/1e9) %1``, as ``nano/1e9`` is represented as a float and
+            # does not have enough resolution to properly represent
+            # nanoseconds. We have to do integer math to extract the subsecond
+            # offset, then confert it to float with ``(nano % 1000000000) /
+            # 1e9 ``.
+            return '%04i-%02i-%02i%s%02i:%02i:%02.9f' % (
+                n.year,
+                n.month,
+                n.day,
+                'T',
+                n.hour,
+                n.minute,
+                n.second + (self.nano % 1000000000) / 1e9)  # See note above
 
 
         def astype(self, format):
