@@ -718,12 +718,13 @@ class RawAcqReceiver(object):
                     continue
                 #print('.')
 
+                # continue  # JFC debug mem leak
                 base_data_port = 42500
                 if port < base_data_port:
                     crate_number_from_port = None
                     slot_number_from_port = None
-                crate_number_from_port = (port-base_data_port)//100
-                slot_number_from_port = ((port-base_data_port) % 100)-1 # zero-based
+                crate_number_from_port = (port - base_data_port) // 100
+                slot_number_from_port = ((port - base_data_port) % 100) - 1 # zero-based
 
                 stream_id &= 0xFFF
                 chan_number = stream_id & 0xF
@@ -784,7 +785,7 @@ class RawAcqReceiver(object):
                         self.capture_start = False
 
                 # Store some stats
-                chan_id =(crate_number, slot_number, chan)
+                chan_id = (crate_number, slot_number, chan)
                 self.rms_cache[chan_id] = np.std(adc_data)
                 self.rms[chan_id] = np.std(adc_data)
                 self.min[chan_id] = np.min(adc_data)
@@ -805,9 +806,10 @@ class RawAcqReceiver(object):
                 # print('jumps thresholds=', self.jump_thresholds)
 
     def print_stats(self):
-        #print()
-        for i,r in enumerate(self.receivers):
-            self.log.debug('Recv %i, pkts=%i, queued= %i, overflows=%i, qsize=%i' % (i, r.packet_counter, r.queued_packets, r.queue_overflows, self.data_queue.qsize()))
+        for i, r in enumerate(self.receivers):
+            self.log.debug('Recv %i, pkts=%i, queued= %i, overflows=%i, qsize=%i' %
+                           (i, r.packet_counter, r.queued_packets,
+                            r.queue_overflows, self.data_queue.qsize()))
         print
 
     def startHdf5Disk(self, base_dir, base_filename, capture_duration=60, elements_per_file=2048*64):
