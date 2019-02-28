@@ -531,6 +531,7 @@ class RawAcqReceiver(object):
         self.mean = {}
         self.jumps = {}
         self.maxdiff = {}
+        self.expected_ramp = np.arange(-128, 2048 - 128, dtype=np.int8)
         self.chan_number_mismatch_count = 0
         self.crate_number_mismatch_count = 0
         self.slot_number_mismatch_count = 0
@@ -792,18 +793,24 @@ class RawAcqReceiver(object):
                 self.max[chan_id] = np.max(adc_data)
                 self.mean[chan_id] = np.mean(adc_data)
                 self.maxdiff[chan_id] = np.max(np.abs(np.diff(adc_data)))
-                expected_ramp = np.arange(-128,2048-128, dtype=np.int8)
-         	#if (adc_data != expected_ramp).any() and crate_number==0 and slot_number==0:
-		#	print('%r: Ramp mismatch. Expected %s, got %s' % (self, expected_ramp[:8], adc_data[:8]))
-                self.ramp_error_count[chan_id] = self.ramp_error_count.get(chan_id, 0) + np.sum(adc_data != expected_ramp)
-                for bit in range(8):
-                    mask = 1 << bit
-                    chan_bit_id = (crate_number, slot_number, chan, bit)
-                    self.ramp_bit_error_count[chan_bit_id] = self.ramp_bit_error_count.get(chan_bit_id, 0) + np.count_nonzero((adc_data ^ expected_ramp) & mask)
-                for threshold in self.jump_thresholds:
-                    jump_id = (crate_number, slot_number, chan, threshold)
-                    self.jumps[jump_id] = self.jumps.get(jump_id, 0) + np.sum(np.abs(np.diff(adc_data)) > threshold)
-                # print('jumps thresholds=', self.jump_thresholds)
+                if True:  # JFC debug mem leak
+                    #if (adc_data != self.expected_ramp).any() and crate_number==0 and slot_number==0:
+                    # print('%r: Ramp mismatch. Expected %s, got %s' % (self, self.expected_ramp[:8], adc_data[:8]))
+                    self.ramp_error_count[chan_id] = (
+                        self.ramp_error_count.get(chan_id, 0) +
+                        np.sum(adc_data != self.expected_ramp))
+                    for bit in range(8):
+                        mask = 1 << bit
+                        chan_bit_id = (crate_number, slot_number, chan, bit)
+                        self.ramp_bit_error_count[chan_bit_id] = (
+                            self.ramp_bit_error_count.get(chan_bit_id, 0) +
+                            np.count_nonzero((adc_data ^ self.expected_ramp) & mask))
+                    for threshold in self.jump_thresholds:
+                        jump_id = (crate_number, slot_number, chan, threshold)
+                        self.jumps[jump_id] = (
+                            self.jumps.get(jump_id, 0) +
+                            np.sum(np.abs(np.diff(adc_data)) > threshold))
+                    # print('jumps thresholds=', self.jump_thresholds)
 
     def print_stats(self):
         for i, r in enumerate(self.receivers):
