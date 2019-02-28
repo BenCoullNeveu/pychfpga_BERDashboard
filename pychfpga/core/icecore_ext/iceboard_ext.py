@@ -866,7 +866,22 @@ class IceBoardExtHandler(IceBoardPlusHandler):
 
         def isoformat(self):
             n = self.datetime
-            return '%04i-%02i-%02i%s%02i:%02i:%02.9f' % (n.year, n.month, n.day, 'T', n.hour, n.minute, n.second+n.microsecond/1e6)
+            # COnvert into an ISO time string with more second resolution.self.
+            #
+            # Note that to obtain the fractional time, we cannot do
+            # ``(nano/1e9) %1``, as ``nano/1e9`` is represented as a float and
+            # does not have enough resolution to properly represent
+            # nanoseconds. We have to do integer math to extract the subsecond
+            # offset, then confert it to float with ``(nano % 1000000000) /
+            # 1e9 ``.
+            return '%04i-%02i-%02i%s%02i:%02i:%02.9f' % (
+                n.year,
+                n.month,
+                n.day,
+                'T',
+                n.hour,
+                n.minute,
+                n.second + (self.nano % 1000000000) / 1e9)  # See note above
 
 
         def astype(self, format):
