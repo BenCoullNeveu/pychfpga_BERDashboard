@@ -1018,7 +1018,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
             raise RuntimeError('Invalid IRIG-B time value %ih %im %is.' % (ts.h, ts.m, ts.s))
 
         ts.datetime = dt = datetime(y + 2000, 1, 1) + timedelta(
-            days=d-1, hours=ts.h, minutes=ts.m, 
+            days=d-1, hours=ts.h, minutes=ts.m,
             seconds=ts.s + 1, microseconds=ts.ss//100)
         # ts.before_target = (t1 >> 31) & 1
         # ts.done = (t1 >> 30) & 1
@@ -1042,7 +1042,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
     def set_irigb_trigger_time(self, datetime_=None, delay=None):
         """ Sets the time at which the IRIG-B module will generate a trigger
         that can be used to synchronize boards.
-        
+
         Parameters:
 
             datetime_ (datetime): the base target time in the Python as a 'datetime' object.
@@ -1102,7 +1102,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
 
         ts = self._IrigTimestamp()
         ts.datetime = dt
-        ts.nano = int(timegm((2000 + y, 1, d, h, m, s + 1)) * 1e9) + ss*10 
+        ts.nano = int(timegm((2000 + y, 1, d, h, m, s + 1)) * 1e9) + ss*10
         async_return(ts)
 
     @async
@@ -1217,7 +1217,7 @@ class I2CInterface(object):
         Returns:
 
             A string which include the parent object id.
- 
+
         """
         return "%s(%r)" % (self.__class__.__name__, self.parent)
 
@@ -1236,7 +1236,7 @@ class I2CInterface(object):
             bus_names (str, int, or list of str or int): Name or number of the
                 I2C bus to enable on the I2C switch. Multiple buses can be
                 enabled at one time.
-            
+
             args, kwargs: passed to the bus select function
 
         Exceptions:
@@ -1273,7 +1273,7 @@ class I2CInterface(object):
         Parameters:
             See `I2C.write_read`
 
-        Returns:    
+        Returns:
             See `I2C.write_read`
 
         Exceptions:
