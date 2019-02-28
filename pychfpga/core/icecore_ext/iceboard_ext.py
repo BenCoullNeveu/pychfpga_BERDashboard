@@ -862,7 +862,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
                  d.hour, d.minute, d.second + d.microsecond / 1e6)) * 1e9)
 
         def nano_to_datetime(self, nano):
-            return datetime(1970,1,1) + timedelta(seconds=nano/1e9)
+            return datetime(1970, 1, 1) + timedelta(seconds=nano/1e9)
 
         def isoformat(self):
             n = self.datetime
@@ -910,124 +910,173 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         yield self.set_irigb_source.async(valid_source if set_source else old_source)
         async_return(valid_source)
 
-
-
-
-
     @async
-    def _get_irigb_time(self, trig=True, format='datetime', noerror=False):
-        """ Reads the IRIG-B time from the time decoder and returns an object
-        that contains all the time information gathered from it.
+    def _get_irigb_time(self, trig=True, noerror=False):
+        """ Reads the Reference clock and IRIG-B time and returns an object
+        that contains all the time information gathered from it. Optionally
+        trigger the capture of a new reference clock & IRIG-B time if `trig`
+        is True.
 
-        If trig=True, the time of the next 10 MHz reference clock rising edge
-        is measured and returned. Otherwise, the last captured time is returned.
+        Parameters:
 
-        The retuned time is advanced by one second to account for the fact
-        that the IRIG-B time decode by the IRIG-B FPGA logic is latched on the
-        beginning of the following second. However, the pipelining delay
-        offsets not included.
+            trig (bool): if trig=True, a trigger is generated to capture the
+                time on the rising edge of the next 10 MHz reference clock.
+                Otherwise, the last captured time is returned. In this last
+                case, it is assumed that some trigger was performed manually
+                or automatically (by a SYNC event, for example)
+
+            noerror (bool): Suppress the raising of error in the case the
+                IRIG-B time is not valid (i.e not updated or has invalid
+                values)
+
+
+        Returns:
+
+            an _IrigTimestamp object which contains the captured.
+
+
+        Notes:
+
+            The retuned time is advanced by one second to account for the fact
+            that the IRIG-B time decode by the IRIG-B FPGA logic is latched on the
+            beginning of the following second. However, the pipelining delay
+            offsets not included.
+
+
         """
 
         if format not in self._IRIGB_TIME_FORMAT:
             raise ValueError('Invalid time format. Valid formats are: %s' % (', '.join(self._IRIGB_TIME_FORMAT.keys())))
         ts = self._IrigTimestamp()
 
-        # Capture current time
-        if trig:
-            w2 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE2_ADDR)
-            t0 = time.time()
-            while True:
-                # trigger time capture
-                self.fpga_mmi_write(self._IRIGB_SAMPLE2_ADDR, w2 & ~(1 << 29))
-                self.fpga_mmi_write(self._IRIGB_SAMPLE2_ADDR, w2 | (1 << 29))  # Create a rising edge
+
+        # Optionally trigger time capture, and check that the IRIG-B time is
+        # captured AND to be valid. IF we trig, try to get a valid time until
+        # a timeout has elapsed, otherwise fail immediately if the time was
+        # not recently updated.
+        t0 = time.time()
+        while True:
+
+            # Trigger the capture of the reference counter and IRIG-B time
+            if trig:
+                w2 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE2_ADDR)
+                # trigger time capture by creating a rising edge on `refclk_sample_trig`
+                yield self.fpga_mmi_write.async(self._IRIGB_SAMPLE2_ADDR, w2 & ~(1 << 29))
+                yield self.fpga_mmi_write.async(self._IRIGB_SAMPLE2_ADDR, w2 | (1 << 29))
                 yield async_moment
 
-                # Wait for the time capture . Time is captured on the next 10 MHz reference clock edge, so that shoudl be quick.
-                t1 = time.time()
-                while not (yield self.fpga_mmi_read.async(self._IRIGB_TARGET1_ADDR)) & (1 << 29):
-                    print 'Waiting for time capture' # -- debug. should not happen
-                    if time.time() - t1 > 0.1:
-                        raise RuntimeError('Timeout while waiting for a Reference clock edge')
+            # Wait for the time capture to complete by monitoring
+            # `refclk_sample_done`. Time is captured on the next 10 MHz
+            # reference clock edge, so that should be quick, but we need
+            # to make sure we have stable values. Timeout if it takes too long.
+            t1 = time.time()
+            while not (yield self.fpga_mmi_read.async(self._IRIGB_TARGET1_ADDR)) & (1 << 29): # check refclk_sample_done
+                self.logger.warn('%r: Time capture was not immediately ready - this is unexpected' % self)  # Debug. should not happen since capture should be much faster than the time it takes to read the done flag
+                # TImeout if it takes too long. The time should be ready within a few 10 MHz cycles.
+                if time.time() - t1 > 0.1: # 0.1s = 1,000,000 clock cycles of the 10 MHz clock. That is way enough
+                    raise RuntimeError('Timeout while waiting for the reference clock counter and IRIG-B time capture to complete. Was the capture triggered?')
+            # At this point we have a stable IRIG-B timestamp ready to be read,
+            # but we still don't know if the time within it is valid.
 
-                w1 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE1_ADDR)
-                recent = (w1 >> 29) & 1
-                if recent: # if we get a updated time
-                    break
-                if time.time() - t0 > 2.5: # Wait a little bit more than one second in case the IRIG-B signal just became valie (e.g. we just set the source)
-                    if noerror:
-                        async_return(None)
-                    else:
-                        raise RuntimeError('%r: Could not get a recently updated IRIG-B time. Check your cabling.' % self)
+            # check the time valid (recent) flag
+            w1 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE1_ADDR) # this will also be used later
+            recent = (w1 >> 29) & 1
+            # If we get a updated time, we're good: exit the loop
+            if recent:
+                break
+            # If we don't have a valid timestamp, and have been waiting for
+            # too long or are not allowed to trig to re-check the time, then
+            # raise an error unless instructed not to.
+            if not trig or time.time() - t0 > 2.5: # Wait a little bit more than one second in case the IRIG-B signal just became valie (e.g. we just set the source)
+                if noerror:
+                    async_return(None)
+                else:
+                    raise RuntimeError('%.32r: Could not get a recently updated IRIG-B time. Check your cabling and the IRIG-B source selection.' % self)
 
-        #w0 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE0_ADDR)
-        #w1 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE1_ADDR)
-        #w2 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE2_ADDR)
         ts.system_time_before = time.time()
-        w0 = self.fpga_mmi_read(self._IRIGB_SAMPLE0_ADDR)
-        w1 = self.fpga_mmi_read(self._IRIGB_SAMPLE1_ADDR)
-        w2 = self.fpga_mmi_read(self._IRIGB_SAMPLE2_ADDR)
 
+        ts.refclk_counter = yield self.fpga_mmi_read.async(self._IRIGB_REFCLK_SAMPLE)
+
+        # Read the (other) IRIG-B capture registers. We assume nobody is callung
+        # concurrent instances at the same same time, so we do this
+        # asynchronously because each read is slow.
+        w0 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE0_ADDR)
+        # w1 was read when checkiing for a valid IRIG-B capture
+        w2 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE2_ADDR)
+
+        # check if the time is valid
         # t0 = self.fpga_mmi_read(self._IRIGB_TARGET0_ADDR)
         # t1 = self.fpga_mmi_read(self._IRIGB_TARGET1_ADDR)
         # t2 = self.fpga_mmi_read(self._IRIGB_TARGET2_ADDR)
         # e0 = self.fpga_mmi_read(self._IRIGB_EVENT_CTR_ADDR)
 
         ts.system_time = time.time()
-        ts.pps = (w0 >> 26) & ((1 << 6) - 1)
-        ts.sbs = (w0 >> 8) & ((1 << 18) - 1)
-        ts.y = (w0 >> 0) & ((1 << 8) - 1)
-        ts.d = (w1 >> 20) & ((1 << 9) - 1)
+
+        # Extract time from IRIG-B capture registers Get year and day of year.
+        # Override for debugging or misbehaviored IRIG-B source (like our
+        # CoolRunner generator board)
+        if self.zero_target_irigb_year_and_day:
+            ts.y = 0
+            ts.d = 1
+        else:
+            ts.y = (w0 >> 0) & ((1 << 8) - 1)  # year from 0 to 99. Assumes a base year of 2000.
+            ts.d = (w1 >> 20) & ((1 << 9) - 1)
         ts.h = (w1 >> 14) & ((1 << 6) - 1)
         ts.m = (w1 >> 7) & ((1 << 7) - 1)
         ts.s = (w1 >> 0) & ((1 << 7) - 1)
         ts.ss = (w2 >> 0) & ((1 << 28) - 1)
+        ts.pps = (w0 >> 26) & ((1 << 6) - 1)
+        ts.sbs = (w0 >> 8) & ((1 << 18) - 1)  #"straight binary seconds" since 00:00 on the current day (0–86399, not BCD). Not necessarily supported by the GPS.
         ts.source = (w1 >> 30) & ((1 << 2) - 1)
-        ts.recent = (w1 >> 29) & 1
-        if not ts.recent:
-            if noerror:
-                async_return(None)
-            else:
-                raise RuntimeError('Invalid or no IRIG-B signal. Check your cable and source.')
-
-        if not noerror and not self.zero_target_irigb_year_and_day and (ts.d < 1 or ts.d > 366):
-            raise RuntimeError('Invalid IRIG-B day value %i. Day-of-year must be between 1 and 366' % ts.d)
-
-        if self.zero_target_irigb_year_and_day:
-            y = 0
-            d = 1
-        else:
-            y = ts.y
-            d = ts.d
-
-        if not noerror and (ts.h > 23 or ts.m > 59 or ts.s > 60):
-            raise RuntimeError('Invalid IRIG-B time value %ih %im %is.' % (ts.h, ts.m, ts.s))
-
-        ts.datetime = dt = datetime(y + 2000, 1, 1) + timedelta(
-            days=d-1, hours=ts.h, minutes=ts.m, 
-            seconds=ts.s + 1, microseconds=ts.ss//100)
+        ts.recent = recent
         # ts.before_target = (t1 >> 31) & 1
         # ts.done = (t1 >> 30) & 1
-        # ts.nano = int(timegm((y + 2000, 1, 1, 0, 0, 0)) * 1e9) + ((d-1) *24*3600 + ts.h * 3600 + ts.m * 60 + ts.s)*1000000000 + ts.ss*10
-        timestamp = timegm((y + 2000, 1, d, ts.h, ts.m, ts.s + 1))
-        ts.nano = int(timestamp * 1e9) +  ts.ss * 10
-        ts.nano2 = int(timegm((y + 2000, 1, 1, 0, 0, 0)) * 1e9) + ((d-1) *24*3600 + ts.h * 3600 + ts.m * 60 + ts.s)*1000000000 + ts.ss*10
 
-        ts.time = ts.nano / 1e9
-        ts.time2 = ts.nano2 / 1e9
+        if not noerror:
+            if ts.h > 23 or ts.m > 59 or ts.s > 60:
+                raise RuntimeError('Invalid IRIG-B time value %ih %im %is.' % (ts.h, ts.m, ts.s))
+
+            if ts.d < 1 or ts.d > 366:
+                raise RuntimeError('Invalid IRIG-B day value %i. Day-of-year must be between 1 and 366' % ts.d)
+
+        # Compute a datetime object, one second in the future. We use
+        # timedelta because ts.d > 31, and ts.s may be > 59 because of the
+        # added second and possibly leap seconds
+        ts.datetime = dt = (datetime(ts.y + 2000, 1, 1) +
+            timedelta(days=ts.d - 1, hours=ts.h, minutes=ts.m,
+                      seconds=ts.s + 1, microseconds=ts.ss // 100))
+        # compute a timestamp, one second in the future
+        timestamp = timegm((ts.y + 2000, 1, ts.d, ts.h, ts.m, ts.s + 1))  # unix timestamp = seconds since 1 Jan 1970 UTC
+        ts.nano = int(timestamp * 1e9) + ts.ss * 10  # nanoseconds since 1 Jan 1970 UTC
+        ts.time = ts.nano / 1e9  # Unix timestamp, as a float with as much resolution as the float can provide (not necessarily to the nanosecond)
+        # Compute an modified time structure (a tuple) that contains the time
+        # elements including fractional nicroseconds
         tt = time.gmtime(timestamp)
         ts.time_struct = [tt.tm_year, tt.tm_mon, tt.tm_mday, tt.tm_hour,
             tt.tm_min, tt.tm_sec, (ts.nano % 1000000000) / 1000.0]
+
+        # alternate of computing nano, to check if is is ok to pass days>31 and seconds>59 to timegm.
+        ts.nano2 = (int(timegm((ts.y + 2000, 1, 1, 0, 0, 0)) * 1e9) +
+                    ((ts.d - 1) * 24 * 3600 +
+                     ts.h * 3600 +
+                     ts.m * 60 + ts.s) * 1000000000 +
+                    ts.ss*10)
+
+        ts.time2 = ts.nano2 / 1e9
         ts.time_struct2 = [dt.year, dt.month, dt.day, dt.hour, dt.minute,
-                dt.second, (ts.nano % 1000000000) / 1000.0]
+                dt.second, (ts.nano2 % 1000000000) / 1000.0]
         # ts.event_ctr = e0
 
-        async_return(self._IRIGB_TIME_FORMAT[format](ts))
+        assert (ts.nano == ts.nano2 and
+                ts.time == ts.time2 and
+                ts.time_struct == ts.time_struct2), "time computation error"
+        async_return(ts)
 
     @async
     def set_irigb_trigger_time(self, datetime_=None, delay=None):
         """ Sets the time at which the IRIG-B module will generate a trigger
         that can be used to synchronize boards.
-        
+
         Parameters:
 
             datetime_ (datetime): the base target time in the Python as a 'datetime' object.
@@ -1051,8 +1100,9 @@ class IceBoardExtHandler(IceBoardPlusHandler):
 
         """
         if datetime_ is None:
-            dt = self._get_irigb_time(trig=True, format='datetime')
-            self.logger.debug('%r: Current IRIGB time is %s' % (self, dt.isoformat()))
+            ts = self._get_irigb_time(trig=True)  # do this synchronously to we get an accurate time
+            dt = ts.astype('datetime')
+            self.logger.debug('%r: Current IRIGB time is %s' % (self, ts.isoformat()))
             if delay is None:
                 delay = 3
         else:
@@ -1085,9 +1135,10 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         yield self.fpga_mmi_write.async(self._IRIGB_TARGET1_ADDR, t1)
         yield self.fpga_mmi_write.async(self._IRIGB_TARGET2_ADDR, t2)
 
+        # return the time at which the sync event is scheduled for
         ts = self._IrigTimestamp()
         ts.datetime = dt
-        ts.nano = int(timegm((2000 + y, 1, d, h, m, s + 1)) * 1e9) + ss*10 
+        ts.nano = int(timegm((2000 + y, 1, d, h, m, s + 1)) * 1e9) + ss*10
         async_return(ts)
 
     @async
@@ -1130,7 +1181,8 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         event_number = yield self.fpga_mmi_read.async(self._IRIGB_EVENT_CTR_ADDR)
         event_number += (yield self.fpga_mmi_read.async(self._IRIGB_EVENT_CTR_ADDR2)) << 32
 
-        captured_time = yield self._get_irigb_time.async(trig=0, format=format)  # The event trigger will automatically trig IRIGB
+        ts = yield self._get_irigb_time.async(trig=0)  # The event trigger will automatically trig IRIGB
+        captured_time = ts.astype(format)
         async_return((event_number, captured_time))
 
     @async
@@ -1160,9 +1212,8 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         This method can be used to measure the drift of the 10 MHz reference clock relative to
         the IRIG-B time.
         """
-        t = yield self._get_irigb_time.async(trig=trig, format=format)
-        c = yield self.fpga_mmi_read.async(self._IRIGB_REFCLK_SAMPLE)
-        async_return((c, t))  # Return
+        ts = yield self._get_irigb_time.async(trig=trig)
+        async_return((ts.refclk_counter, ts.astype(format)))  # Return
 
     @async
     def get_irigb_time(self, trig=True, format='datetime', noerror=False):
@@ -1174,8 +1225,8 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         'datetime+': A (dt,nano) tuple where dt is a datetime object, and nano is the number of nanoseconds within the second.
         'nano': An integer representing the number of nanoseconds since Jan 1st 2000.
         """
-        t = yield self._get_irigb_time.async(trig=trig, format=format, noerror=noerror)
-        async_return(t)
+        ts = yield self._get_irigb_time.async(trig=trig, noerror=noerror)
+        async_return(ts.astype(format))
 
 
 class I2CInterface(object):
@@ -1202,7 +1253,7 @@ class I2CInterface(object):
         Returns:
 
             A string which include the parent object id.
- 
+
         """
         return "%s(%r)" % (self.__class__.__name__, self.parent)
 
@@ -1221,7 +1272,7 @@ class I2CInterface(object):
             bus_names (str, int, or list of str or int): Name or number of the
                 I2C bus to enable on the I2C switch. Multiple buses can be
                 enabled at one time.
-            
+
             args, kwargs: passed to the bus select function
 
         Exceptions:
@@ -1258,7 +1309,7 @@ class I2CInterface(object):
         Parameters:
             See `I2C.write_read`
 
-        Returns:    
+        Returns:
             See `I2C.write_read`
 
         Exceptions:
