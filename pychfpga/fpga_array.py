@@ -1065,7 +1065,8 @@ class FPGAArray(object):
                              mode,
                              frames_per_packet=1,
                              chan8_channel_map=range(8),
-                             tx_power=None
+                             tx_power=None,
+                             integration_period=16384
                              ):
         """ Set the operational mode of the array.
 
@@ -1091,6 +1092,9 @@ class FPGAArray(object):
                   data is sent through the IceBoard QSFP+ ports. The pairing of crates
                   is based on the crate number: Crate N and N+1 form a pair, whereas N
                   is a even number.
+
+            integration_period (int): (for ``corr16`` mode only): Sets the
+                integration period (in frames) of the firmware correlator.
 
 
         Notes:
@@ -1136,7 +1140,8 @@ class FPGAArray(object):
             if not all(self.ib.CORR):
                 raise RuntimeError('All IceBoards must have a firmware correlator engine')
             self.ib.init_crossbars(mode, frames_per_packet=1)
-
+            self.ib.set_offset_binary_encoding(False)  # The firmware correlator engine expects 1's complement encoding
+            self.ib.start_correlator(integration_period=integration_period)
         else:
             raise ValueError('Unknown operational mode')
 
