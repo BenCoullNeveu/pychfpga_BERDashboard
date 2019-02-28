@@ -1189,17 +1189,21 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         self.chime_master = ChimeMasterClass()
         self.future = None
         #self.add_periodic_callback(self.print_iceboard_info_callback, period=60000)
-        self.metrics_queue = Queue.Queue(1000)
+        #self.metrics_queue = Queue.Queue(1000)
         self.metrics = Metrics()
         self.last_metrics_client = None
         #self.add_periodic_callback(self._get_metrics, 3000)
         #self.start_time = None
-        self._get_metrics() # continuously run get_metrics loop
-
+        self.process= psutil.Process(os.getpid())
+        self.log.info('%r: Python kernel PROCESS ID is %s' % (self, self.process))
+        # Start metric gathering loops
+        self._tick_line()
+        self._get_system_metrics()  #
+        self._get_arm_metrics()  #
+        self._get_fpga_metrics()  #
         # Create a cached gps time
         self._gps_time = {}
         self._gps_lock = tornado.locks.Lock()
-
     @coroutine
     def shutdown(self):
         print('Shutting down CHIME Master')
@@ -1463,55 +1467,87 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         coroutine_return(results=sanitize_for_json(r))
 
     @coroutine
-    def _get_metrics(self):
-        """ get the metrics from the FPGAs and put them in the queue
+    def _tick_line(self):
+        """ Regularly prints a line. Used to debug coroutine call timing.
+        """
+        tick_number = 0
+        while True:
+            print('--(%i)-------------------------------------------------------------------------------------------------' % tick_number)
+            tick_number += 1
+            yield sleep(1)
+
+    @coroutine
+    def _get_system_metrics(self):
+        """ Continuously gather system metrics.
         """
         while True:
-            t0 = time.time()
-            self.log.info('%r: Starting to gather a new set of ch_master metrics' % (self, ))
-            self.log.info('%r: Getting server metrics (memory & CPU usage, run time etc.' % (self,))
-            metrics = self.metrics  # Metrics()
+            self.log.info('%r: Starting to gather a new set of system metrics' % (self, ))
 
+            # Get memory-related metrics
             mem = psutil.virtual_memory()
+            self.metrics.add('ch_master_node_mem_total', value=mem.total)
+            self.metrics.add('ch_master_node_mem_available', value=mem.available)
+            self.metrics.add('ch_master_node_mem_percent', value=mem.percent)
+            self.metrics.add('ch_master_node_mem_used', value=mem.used)
+            self.metrics.add('ch_master_node_mem_free', value=mem.free)
+            proc_mem = self.process.memory_info().rss
+            self.log.info('%r: Python kernel mem usage is %i bytes' % (self, proc_mem))
+            self.metrics.add('ch_master_node_process_mem_used', value=proc_mem)  # in bytes
 
-            metrics.add('ch_master_node_mem_total', value=mem.total)
-            metrics.add('ch_master_node_mem_available', value=mem.available)
-            metrics.add('ch_master_node_mem_percent', value=mem.percent)
-            metrics.add('ch_master_node_mem_used', value=mem.used)
-            metrics.add('ch_master_node_mem_free', value=mem.free)
-
+            # Get CPU-related metrics
             cpu = psutil.cpu_times()
+            self.metrics.add('ch_master_node_cpu_percent', value=psutil.cpu_percent())
+            self.metrics.add('ch_master_node_cpu_user', value=cpu.user)
+            self.metrics.add('ch_master_node_cpu_system', value=cpu.system)
+            self.metrics.add('ch_master_node_cpu_idle', value=cpu.idle)
 
-            metrics.add('ch_master_node_cpu_percent', value=psutil.cpu_percent())
-            metrics.add('ch_master_node_cpu_user', value=cpu.user)
-            metrics.add('ch_master_node_cpu_system', value=cpu.system)
-            metrics.add('ch_master_node_cpu_idle', value=cpu.idle)
-
+            # Get ch_master related metrics
             if self.chime_master.start_time is None:
                 run_time = 0
             else:
                 run_time = time.time() - self.chime_master.start_time
+            self.metrics.add('ch_master_run_time', value=run_time)
 
-            metrics.add('ch_master_run_time', value=run_time)
+            yield sleep(10)
 
+    @coroutine
+    def _get_arm_metrics(self):
+        """ Continuously gather metrics from the ARM processor on the ICEBoards.
+        """
+        self.log.info('%r: Starting ARM metrics gathering loop' % (self, ))
+        while True:
+            t0 = time.time()
+            self.log.info('%r: Starting to gather a new set of ARM metrics' % (self, ))
+            # print('************ Getting ARM Metrics!')
+            try:
+                if self.chime_master and self.chime_master.fpgas:
+                    yield self.chime_master.fpgas.get_arm_metrics.async(self.metrics)
+                    self.log.info('%r: Successfully got ARM metrics' % self)
+            except Exception as e:
+                self.log.warning('%r: Error getting ARM metrics. error is: %r\n%s' % (self, e, traceback.format_exc()))
+
+            self.log.info('%r: Finished gathering ARM metrics.  It took %.1f seconds to gather those. We now have %i metrics.' % (self, time.time() - t0, len(self.metrics)))
+            # print('%r: Finished gathering ARM metrics.  It took %.1f seconds to gather those. We now have %i metrics.' % (self, time.time() - t0, len(self.metrics)))
+            yield sleep(10)
+
+    @coroutine
+    def _get_fpga_metrics(self):
+        """ Continuously gather metrics from the FPGAs in the ICEBoards.
+        """
+        while True:
+            t0 = time.time()
+            self.log.info('%r: Starting to gather a new set of FPGA metrics' % (self, ))
 
             if self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas:
                 try:
                     self.log.info('%r: Scraping metrics from FPGAs' % (self))
-                    metrics += yield self.chime_master.fpgas.get_metrics.async(reset=self.chime_master.config.fpga.reset_stats)
-                    self.log.info('%r: Got a set of %i FPGA metrics' % (self, len(metrics)))
+                    yield self.chime_master.fpgas.get_fpga_metrics.async(self.metrics, reset=self.chime_master.config.fpga.reset_stats)
                 except Exception as e:
-                    self.log.warning('%r: error getting FPGA metrics. error is: %r\n%s' % (self, e, traceback.format_exc()))
-                    pass
+                    self.log.warning('%r: Error getting FPGA metrics. error is: %r\n%s' % (self, e, traceback.format_exc()))
             else:
-                self.log.info('%r: Not ready to scrape Metrics from FPGA' % (self))
+                self.log.info('%r: We got a metrics requests but we are not yet ready to scrape metrics from the FPGAs. Ignoring.' % (self))
 
-            #if self.metrics_queue.full():
-            #    self.log.warning('%r: Queue is full. Popping a set of metrics before putting a new one' % (self))
-            #    self.metrics_queue.get()
-            #self.metrics_queue.put((metrics))
-            self.log.info('%r: We now have  %i metrics. It took %.1f seconds to gather this set of ch_master metrics' % (self, len(self.metrics), time.time()-t0))
-
+            self.log.info('%r: Finished gathering FPGA metrics.  It took %.1f seconds to gather those. We now have %i pending metrics.' % (self, time.time()-t0, len(self.metrics)))
             yield sleep(10)
 
     @coroutine
@@ -1524,7 +1560,9 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
             client_ip = handler.request.remote_ip
             self.log.info('%r: Received metrics request from %s' % (self, client_ip))
             if self.last_metrics_client and client_ip != self.last_metrics_client:
-                self.log.warn('%r: A new clients at %s is pulling metrics from this server. Previous client was %s' % (self, client_ip, self.last_metrics_client))
+                self.log.warn('%r: A new client at %s is pulling metrics from '
+                              'this server. Previous client was %s' %
+                              (self, client_ip, self.last_metrics_client))
             self.last_metrics_client = client_ip
             # for i in range(number_of_sets):
             #metrics.add(self.metrics_queue.get() for _ in range(number_of_sets))
@@ -1553,12 +1591,15 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
             handler.set_header('Content-Type', 'text/plain')
             handler.set_header('Content-Encoding', 'gzip')
             handler.write(self.metrics.pop().get_gzip())
-            self.log.info('%r: Returning %i FPGA metrics (compression ratio %.0f%%)' % (self, number_of_metrics, self.metrics.last_compression_ratio * 100))
+            self.log.info('%r: Returning %i FPGA metrics (compression ratio %.0f%%)' %
+                (self, number_of_metrics, self.metrics.last_compression_ratio * 100))
 
             # handler.write(self.metrics.pop().get_gzip())
-            self.log.info('%r: Metrics request took %.3f seconds to execute' % (self, time.time()-t0))
+            self.log.info('%r: Metrics request took %.3f seconds to execute' %
+                (self, time.time()-t0))
         except Exception as e:
-            self.log.error('%r: Exception in get-monitoring-data. Error is: %r' % (self, e))
+            self.log.error('%r: Exception in get-monitoring-data. Error is: %r' %
+                (self, e))
             raise
 
     @coroutine
