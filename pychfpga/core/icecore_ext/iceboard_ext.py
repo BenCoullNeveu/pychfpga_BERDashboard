@@ -314,7 +314,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         # link by reading the UDP MMI cookie (not the SPI one) and check if
         # the cookie correspond to the chFPGA firmware.
         # -------------------------------------------------------------------------
-        self.clear_fpga_udp_errors(force=True, no_reset=True) # Try to prevent initial error on first command
+        yield self.clear_fpga_udp_errors.async(force=True, no_reset=True) # Try to prevent initial error on first command
         self.logger.debug("%r: Attempting to communicate with the FPGA over direct Ethernet link" % self)
         try:
             cookie = yield self.get_fpga_firmware_cookie.async(resync=True)  # Read the firmware version cookie from the GPIO subsystem (this is provided by the FPGA core firmware which is always present on all versions of the FPGA)
