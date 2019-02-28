@@ -372,31 +372,46 @@ class RawAcqUDPReceiver(SocketServer.UDPServer):
         to a hdf5 file.
         '''
         def handle(self):
-
-            self.server.packet_counter += 1
-            data, socket = self.request
-            port = self.server.server_address[1]
-            (probe_id, stream_id, ts_high, ts_low) = self.server.unpack_header(data[:9])
-            chan = probe_id & 0x0F
-            timestamp = (ts_high << 32) + ts_low
-            flags = stream_id & 0xF
-            stream_id = (stream_id >> 4) & 0xFFF
-            adc_data = np.fromstring(data[9:2057], dtype=np.int8)
-            #print( "Data received on port {0}, channel#{1}, std(data)={2}".format(port, chan, adc_data.std()) )
-            #print("0x%03x"% stream_id,end='')
             try:
-                self.server.data_queue.put((timestamp, port, chan, stream_id, flags, adc_data), True, 0.8)
-                self.server.queued_packets += 1# print(".", end='')
-            except Queue.Full:
-                # print("o", end='')
-                self.server.queue_overflows += 1
-                pass
+                t0 = time.time()
+                self.server.delay_between_calls = t0 - self.server.last_call_time
+                self.server.last_call_time = t0
+                self.server.packet_counter += 1
+                data, socket = self.request
+                port = self.server.server_address[1]
+                (probe_id, stream_id, ts_high, ts_low) = self.server.unpack_header(data[:9])
+                chan = probe_id & 0x0F
+                timestamp = (ts_high << 32) + ts_low
+                flags = stream_id & 0xF
+                stream_id = (stream_id >> 4) & 0xFFF
+                adc_data = np.frombuffer(data[9:2057], dtype=np.int8)
+                #print( "Data received on port {0}, channel#{1}, std(data)={2}".format(port, chan, adc_data.std()) )
+                #print("0x%03x"% stream_id,end='')
+                try:
+                    self.server.data_queue.put((timestamp, port, chan, stream_id, flags, adc_data), True, 0.8)
+                    self.server.queued_packets += 1# print(".", end='')
+                except Queue.Full:
+                    # print("o", end='')
+                    self.server.queue_overflows += 1
+                self.server.processing_time = time.time() - t0
+            except Exception as e: # Added to track memory leaks
+                print('Exception in receiver: %r' % e)
+
     def __init__(self, server_address, data_queue):
+        self.dt = np.dtype([
+            ('probe_id', 'u1', 1),
+            ('stream_id', '<u2', 1),
+            ('ts_low', '<u2', 1),
+            ('ts_high', '<u4', 1),
+            ('data', 'i1', 2048)])
         self.data_queue = data_queue
         self.queue_overflows = 0
         self.queued_packets = 0
         self.packet_counter = 0
         self.unpack_header = struct.Struct('>BHHL').unpack_from  # Precompile unpack string for performance
+        self.delay_between_calls = 0
+        self.processing_time = 0
+        self.last_call_time = time.time()
         SocketServer.UDPServer.__init__(self, server_address, self.UDPHandler)  # cannot use super(...): this is an old-style class
 
 class RawAcqReceiver(object):
@@ -993,6 +1008,8 @@ class RawAcqReceiver(object):
                 metrics.add('raw_acq_received_packets', value=r.packet_counter, receiver=i)
                 metrics.add('raw_acq_queued_packets', value=r.queued_packets, receiver=i)
                 metrics.add('raw_acq_overflow_packets', value=r.queue_overflows, receiver=i)
+                metrics.add('raw_acq_packet_receiver_delay_between_calls', value=r.delay_between_calls, receiver=i)
+                metrics.add('raw_acq_packets_receiver_processing_time', value=r.processing_time, receiver=i)
 
 
             metrics.add('raw_acq_run_time', value=0 if self.start_time is None else time.time() - self.start_time)
