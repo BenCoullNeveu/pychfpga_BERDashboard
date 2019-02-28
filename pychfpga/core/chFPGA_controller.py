@@ -3211,8 +3211,8 @@ class chFPGA_controller(IceBoardExtHandler):
         mb_power_sensors = [
             ('MB VCC12V'    , 'VCC12V'    , self.RAIL.MB_VCC12V0   , True),
             ('MB VCC3V3'    , 'VCC3V3'    , self.RAIL.MB_VCC3V3    , True),
-            ('MB VADJ'      , 'VADJ'      , self.RAIL.MB_VADJ      , True),
-            ('MB VCC5V5'    , 'VCC5V5'    , self.RAIL.MB_VCC5V5    , False),
+            ('MB VADJ'      , 'VADJ'      , self.RAIL.MB_VADJ      , False), # VADJ is normally powered from VCC5V0
+            ('MB VCC5V5'    , 'VCC5V5'    , self.RAIL.MB_VCC5V5    , True),
             ('MB VCC1V0'    , 'VCC1V0'    , self.RAIL.MB_VCC1V0    , False),
             ('MB VCC1V0 GTX', 'VCC1V0 GTX', self.RAIL.MB_VCC1V0_GTX, False),
             ('MB VCC1V2'    , 'VCC1V2'    , self.RAIL.MB_VCC1V2    , False),
