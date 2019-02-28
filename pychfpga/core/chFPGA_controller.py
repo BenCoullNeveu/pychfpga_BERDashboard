@@ -403,6 +403,7 @@ class chFPGA_controller(IceBoardExtHandler):
                     self.ANT_FMC_IS_PRESENT[ant_number] = True
 
             self.hw.set_led('GP_LED1', 1) # Indicate that the Iceboard is ready
+            self._data_socket = None
 
         except Exception as e:
             self.logger.error('****Exception during open!****** =  %r' % e)
@@ -1037,6 +1038,37 @@ class chFPGA_controller(IceBoardExtHandler):
         self.logger.debug('Started data receiver threads on %s:%i' % (self.recv.host_ip, self.recv.port_number))
         self.set_local_data_port_number(self.recv.port_number)
         return self.recv
+
+    def get_data_socket(self, port_number=0):
+        """
+        Return a socket tha is bound to the port that receives the raw/correlator data.
+
+
+        """
+        # Make sure there is a list of opened sockets
+        import __main__
+        import socket
+
+        if not hasattr(__main__, '__opened_sockets__'):
+            opened_sockets = __main__.__opened_sockets__ = {}
+        else:
+            opened_sockets = __main__.__opened_sockets__
+
+        if not self._data_socket:
+
+            # If we want to use a specific local port that was previously reserved, use its socket.
+            if port_number and port_number in opened_sockets:
+                return opened_sockets[port_number]
+
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.bind((self.interface_ip_addr, port_number))
+            # store the socket in the main module so it will live persistently until the Python session is closed.
+            (actual_ip_addr, actual_port_number) = sock.getsockname()
+            opened_sockets[actual_port_number] = sock
+            self._data_socket = sock
+            self.set_local_data_port_number(actual_port_number)
+
+        return self._data_socket
 
 
     def start_data_capture(self, period=None, frames_per_burst=1,  number_of_bursts=0,
