@@ -1465,11 +1465,25 @@ class FPGAArray(object):
         else:
             raise ValueError("Unknown syncing method '%s'" % method)
 
-    def sync(self, delay=2, check=True, align_to_seconds=True):
+    def sync(self, delay=2-0.006556800, check=True, align_to_seconds=True):
         """ Generate a SYNC event across the whole array based on the syncing method set by ``set_sync_method()``.
 
-        If ``check`` is True, the method will read the SYNC counters on every
-        board to confirm that the SYNC really happened everywhere.
+        Parameters:
+
+        delay (float): Sets in how much time in the future after the current
+            time the sync time  will happen. The system will determine and the
+            time it takes to issue the command across the array. If
+            ``align_to_seconds`` is True, the delay is applied after the
+            current time + propagation time is rounded to the second, allowing
+            a find tuning of the trigger time down to 10 nanosecond
+            increments.
+
+        check (bool): If True, the method will read the SYNC
+            counters on every board to confirm that the SYNC really happened
+            everywhere.
+
+        align_to_seconds (bool): if True, the trigger time **before** the
+            ``delay`` is applied is rounded to the closest integer second.
         """
 
         if check:
@@ -1491,7 +1505,7 @@ class FPGAArray(object):
             t0 = time.time()
             self.ib.set_irigb_trigger_time(dt, delay=300) # set the trigger far enough in time it should not happen before we reprogram another delay
             setting_time = (time.time() - t0)
-            self.logger.info('%r: It takes %f seconds to set the trigger time' % (self, setting_time))
+            self.logger.info('%r: It takes %f seconds to set the trigger time across the array' % (self, setting_time))
             setting_time = round(2*setting_time) + delay
             # Now set the trigger time using that delay
             dt = self.ib[0].get_irigb_time()
@@ -1522,16 +1536,17 @@ class FPGAArray(object):
         self.sync_timestamp = ts[0]
 
         delta_ts = max(ts.nano) - min(ts.nano)
-        self.logger.info('%r: The sync time for all boards are:\n%s' %
-            (self, '\n'.join('%r:%i ns since epoch (%i ns after sync)' % (
-                ib.handler, 
-                ts[i].nano, 
-                ts[i].nano - sync_time[i].nano) 
-            for i,ib in enumerate(self.ib))))
-        self.logger.info('%r: The maximum sync time difference is %i ns' % (self, delta_ts) )
+        self.logger.info('%r: The IRIG-B time for Frame 0 on all boards is:\n%s' %
+            (self, '\n'.join('%r: %s (%i ns since epoch, %i ns after sync)' % (
+                ib.handler,
+                ts[i].isoformat(),
+                ts[i].nano,
+                ts[i].nano - sync_time[i].nano)
+            for i ,ib in enumerate(self.ib))))
+        self.logger.info('%r: The maximum Frame 0 time difference is %i ns' % (self, delta_ts) )
         if delta_ts > self.max_sync_time_difference:
-            raise RuntimeError('The sync time difference of %i exceeds the maximum limit of %i' % (delta_ts, self.max_sync_time_difference))
-        
+            raise RuntimeError('The Frame 0 time difference of %i exceeds the maximum limit of %i' % (delta_ts, self.max_sync_time_difference))
+
         for ib in self.ib:
             for ant in ib.ANT:
                 ant.SCALER.OVERFLOW_RESET = 1
