@@ -2600,10 +2600,10 @@ class FPGAArray(object):
                 col_data = []
                 errs = []
                 # Gather status from the backplane PCB and QSFP links
-                for link_group in range(2):
+                for lane_group in ib.BP_SHUFFLE.lane_group_names:
                     if reset_stats:
                         ib.BP_SHUFFLE.reset_stats()
-                    errs.append(ib.BP_SHUFFLE.get_bp_rx_status(link_group))
+                    errs.append(ib.BP_SHUFFLE.get_bp_rx_status(lane_group))
 
                 # Gather status from the crossbars
                 for cb in [ib.CROSSBAR2, ib.CROSSBAR3]:
@@ -2621,7 +2621,9 @@ class FPGAArray(object):
                     elif verbose == 1:
                         col_data.extend(('-', 'ERR')[bool(e)] for e in err)
                     else:
-                        col_data.extend(('\n'.join(['%s=%s' % (k,v) for (k,v) in e.items()]) or '-') for e in err)
+                        col_data.extend(
+                            ('\n'.join(['%s=%s' % (k, v) for (k, v) in e.items()]) or '-')
+                            for e in err)
                 info[slot] = col_data
             print 'Crate %s Crossbar and Shuffle status' % crate.get_string_id()
 
