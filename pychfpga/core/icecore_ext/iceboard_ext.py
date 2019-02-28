@@ -978,9 +978,9 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         #w1 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE1_ADDR)
         #w2 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE2_ADDR)
         ts.system_time_before = time.time()
-        w0 = self.fpga_mmi_read(self._IRIGB_SAMPLE0_ADDR)
-        w1 = self.fpga_mmi_read(self._IRIGB_SAMPLE1_ADDR)
-        w2 = self.fpga_mmi_read(self._IRIGB_SAMPLE2_ADDR)
+        w0 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE0_ADDR)
+        w1 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE1_ADDR)
+        w2 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE2_ADDR)
 
         # t0 = self.fpga_mmi_read(self._IRIGB_TARGET0_ADDR)
         # t1 = self.fpga_mmi_read(self._IRIGB_TARGET1_ADDR)
