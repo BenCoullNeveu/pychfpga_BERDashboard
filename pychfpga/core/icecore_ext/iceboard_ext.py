@@ -959,10 +959,10 @@ class IceBoardExtHandler(IceBoardPlusHandler):
 
                 # Wait for the time capture . Time is captured on the next 10 MHz reference clock edge, so that shoudl be quick.
                 t1 = time.time()
-                while not (yield self.fpga_mmi_read.async(self._IRIGB_TARGET1_ADDR)) & (1 << 29):
-                    print 'Waiting for time capture' # -- debug. should not happen
-                    if time.time() - t1 > 0.1:
-                        raise RuntimeError('Timeout while waiting for a Reference clock edge')
+                # while not (yield self.fpga_mmi_read.async(self._IRIGB_TARGET1_ADDR)) & (1 << 29):
+                #     print 'Waiting for time capture' # -- debug. should not happen
+                #     if time.time() - t1 > 0.1:
+                #         raise RuntimeError('Timeout while waiting for a Reference clock edge')
 
                 w1 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE1_ADDR)
                 recent = (w1 >> 29) & 1
