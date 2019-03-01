@@ -811,12 +811,6 @@ class IceBoardExtHandler(IceBoardPlusHandler):
     # ---------------------------------------------------------
 
 
-    _IRIGB_TIME_FORMAT = {
-        'raw': lambda ts: ts,
-        'datetime': lambda ts: ts.datetime,
-        'nano' : lambda ts: ts.nano,
-        'datetime+': lambda ts: (ts.datetime, ts.nano % 1000000000)
-        }
 
     class _IrigTimestamp(object):
         """ Represents the date/time that is obtained from and sent to th IRIG-B subsystem down to a 10 ns resolution.ns
@@ -834,6 +828,13 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         The object is also used to store low-level IRIG-B-related information.
 
         """
+        _IRIGB_TIME_FORMAT = {
+            'raw': lambda ts: ts,
+            'datetime': lambda ts: ts.datetime,
+            'nano' : lambda ts: ts.nano,
+            'datetime+': lambda ts: (ts.datetime, ts.nano % 1000000000)
+            }
+
         nano = None # time in nanoseconds since epoch.
 
         def __str__(self):
@@ -960,9 +961,9 @@ class IceBoardExtHandler(IceBoardPlusHandler):
 
         """
 
-        if format not in self._IRIGB_TIME_FORMAT:
-            raise ValueError('Invalid time format. Valid formats are: %s' % (', '.join(self._IRIGB_TIME_FORMAT.keys())))
-        ts = self._IrigTimestamp()
+        # if format not in self._IRIGB_TIME_FORMAT:
+        #     raise ValueError('Invalid time format. Valid formats are: %s' % (', '.join(self._IRIGB_TIME_FORMAT.keys())))
+        # ts = self._IrigTimestamp()
 
 
         # Optionally trigger time capture, and check that the IRIG-B time is
@@ -1008,6 +1009,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
                 else:
                     raise RuntimeError('%.32r: Could not get a recently updated IRIG-B time. Check your cabling and the IRIG-B source selection.' % self)
 
+        ts = self._IrigTimestamp()
         ts.system_time_before = time.time()
 
         ts.refclk_counter = yield self.fpga_mmi_read.async(self._IRIGB_REFCLK_SAMPLE)
@@ -1041,7 +1043,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         ts.s = (w1 >> 0) & ((1 << 7) - 1)
         ts.ss = (w2 >> 0) & ((1 << 28) - 1)
         ts.pps = (w0 >> 26) & ((1 << 6) - 1)
-        ts.sbs = (w0 >> 8) & ((1 << 18) - 1)  #"straight binary seconds" since 00:00 on the current day (0–86399, not BCD). Not necessarily supported by the GPS.
+        ts.sbs = (w0 >> 8) & ((1 << 18) - 1)  # "straight binary seconds" since 00:00 on the current day (0-86399, not BCD). Not necessarily supported by the GPS.
         ts.source = (w1 >> 30) & ((1 << 2) - 1)
         ts.recent = recent
         # ts.before_target = (t1 >> 31) & 1
@@ -1074,17 +1076,18 @@ class IceBoardExtHandler(IceBoardPlusHandler):
         ts.nano2 = (int(timegm((ts.y + 2000, 1, 1, 0, 0, 0)) * 1e9) +
                     ((ts.d - 1) * 24 * 3600 +
                      ts.h * 3600 +
-                     ts.m * 60 + ts.s) * 1000000000 +
-                    ts.ss*10)
+                     ts.m * 60 + ts.s + 1) * 1000000000 +
+                    ts.ss * 10)
 
         ts.time2 = ts.nano2 / 1e9
         ts.time_struct2 = [dt.year, dt.month, dt.day, dt.hour, dt.minute,
                 dt.second, (ts.nano2 % 1000000000) / 1000.0]
         # ts.event_ctr = e0
 
-        assert (ts.nano == ts.nano2 and
+        if not (ts.nano == ts.nano2 and
                 ts.time == ts.time2 and
-                ts.time_struct == ts.time_struct2), "time computation error"
+                ts.time_struct == ts.time_struct2):
+            self.logger.error("%r: IRIGB time computation error" % self)
         async_return(ts)
 
     @async
