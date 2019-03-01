@@ -1257,7 +1257,7 @@ class chFPGA_controller(IceBoardExtHandler):
     #         else:
     #             self.ANT[ch].INJECT.inject_frame(data)
 
- 
+
     def get_version(self):
         """
         Returns the firmware revion currenting running on the FPGA (which si the date and time of bitstream generation)

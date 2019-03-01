@@ -1574,7 +1574,7 @@ class FPGAArray(object):
         if sync:
             self.sync()
 
-    def set_noise_injection(self, board, enable=False, offset=0, high_time=8388608, period=16777216, local_sync=True):
+    def set_noise_injection(self, board, enable=False, offset=0, high_time=8388608, period=16777216, local_sync=True, output='bp_sma'):
         """ Configure noise injection gating signal.
 
         ``board`` is either the serial number (as a string) of the target board, or is the target IceBoard object.
@@ -1582,21 +1582,41 @@ class FPGAArray(object):
         A sync event is necessary to restart the counters so the gating signal will be generated properly.
 
         """
-        if isinstance(board, str):
-            board = self.ib.get(serial=board)
+        board = self.get_iceboard(board)
 
         if enable:
-            board.set_user_output_source('pwm')
+            board.set_user_output_source('pwm', output=output)
+
         board.set_pwm(enable=enable, offset=offset, high_time=high_time, period=period, local_sync=local_sync)
 
     # def get_current_gain_bank(self):
     #     return [ib.get_current_gain_bank() for ib in self.ib]
 
-    def get_iceboard_from_id(self, id):
-        """ return the iceboard corresponding to the specified id.
+    def get_iceboard(self, board):
+        """ Return the ICEBoard specified by tuple or serial number.
+
+        If board is already an IceBoard object, it should be returned.
         """
-        crate, slot = id[0], id[1] + 1
-        return self.ic.get(crate_number=crate).slot[slot]
+        if not self.ib:
+            raise RuntimeError('There are no Iceboard to select in the list')
+        elif isinstance(board, type(self.ib[0])):
+            return board
+        elif isinstance(board, str):
+            if board in self.ib.serial:
+                return self.ib.get(serial=board)
+            else:
+                raise RuntimeError('%r: Invalid Board serial number %s. Valid serial numbers are %s' %
+                    (self, board, ','.join("'%s'" % ib.serial for ib in self.ib)))
+        elif isinstance(board, (tuple, list)):
+            crate, slot = board
+            return self.ic.get(crate_number=crate).slot[slot + 1]
+        else:
+            raise AttributeError('%r: Invalid Iceboard specification %s' % (self, board))
+
+    def get_iceboard_from_id(self, id):
+        """ return the iceboard corresponding to the specified (crate,slot) tuple. ``slot`` is zero-based.
+        """
+        return self.get_iceboard(id)
 
 #    def init_gains(self):
 #        """ Should be deprecated. Use load_gains() instead.
