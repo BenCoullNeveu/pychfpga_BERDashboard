@@ -986,12 +986,14 @@ class IceBoardExtHandler(IceBoardPlusHandler):
             # reference clock edge, so that should be quick, but we need
             # to make sure we have stable values. Timeout if it takes too long.
             t1 = time.time()
-            while not (yield self.fpga_mmi_read.async(self._IRIGB_TARGET1_ADDR)) & (1 << 29): # check refclk_sample_done
-                self.logger.warn('%r: Time capture was not immediately ready - this is unexpected' % self)  # Debug. should not happen since capture should be much faster than the time it takes to read the done flag
-                # TImeout if it takes too long. The time should be ready within a few 10 MHz cycles.
-                if time.time() - t1 > 0.1: # 0.1s = 1,000,000 clock cycles of the 10 MHz clock. That is way enough
-                    raise RuntimeError('Timeout while waiting for the reference clock counter and IRIG-B time capture to complete. Was the capture triggered?')
-            # At this point we have a stable IRIG-B timestamp ready to be read,
+            # JFC: Commented out  until I fix the firmware
+            # while not (yield self.fpga_mmi_read.async(self._IRIGB_TARGET1_ADDR)) & (1 << 29): # check refclk_sample_done
+            #     self.logger.warn('%r: Time capture was not immediately ready - this is unexpected' % self)  # Debug. should not happen since capture should be much faster than the time it takes to read the done flag
+            #     # TImeout if it takes too long. The time should be ready within a few 10 MHz cycles.
+            #     if time.time() - t1 > 0.1: # 0.1s = 1,000,000 clock cycles of the 10 MHz clock. That is way enough
+            #         raise RuntimeError('Timeout while waiting for the reference clock counter and IRIG-B time capture to complete. Was the capture triggered?')
+
+            # # At this point we have a stable IRIG-B timestamp ready to be read,
             # but we still don't know if the time within it is valid.
 
             # check the time valid (recent) flag
