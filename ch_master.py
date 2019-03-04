@@ -33,6 +33,7 @@ import datetime
 import numpy as np
 import psutil
 
+from collections import OrderedDict
 
 import tornado
 import tornado.tcpclient
@@ -1074,7 +1075,32 @@ class ChimeMaster(object):
         return self.fpgas.get_frequency_map()
 
     def get_channelizer_output(self):
-        return self.fpgas.get_chan_output()
+
+        # Query each FPGA for its current buffer
+        fpga_buffer = self.fpgas.get_chan_output()
+
+        # Convert the input identifier and buffer
+        # to a format that can be easily interpreted
+        out_buffer = OrderedDict()
+
+        # Loop over correlator inputs
+        for corr_id, (corr_loc, buff) in enumerate(fpga_buffer):
+
+            # Create the input serial number using the format
+            # specified in the config file
+            crate, slot, chan = corr_loc
+            args_sn = {'corr_sn': self.config.corr_sn,
+                       'crate': crate,
+                       'slot': slot,
+                       'chan': chan,
+                       'input': self.config.input_number_map[chan]}
+            input_sn = self.config.input_sn % args_sn
+
+            # Undo scaling and offset encoding.  Converts the buffer
+            # from uint8 to int ranging from -8 to 7.
+            out_buffer[input_sn] = [(bf >> 4) - 8 for bf in buff]
+
+        return out_buffer
 
     def reset_fpga_stats(self):
         self.fpgas.reset_fpga_stats()
