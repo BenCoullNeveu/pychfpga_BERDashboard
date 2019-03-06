@@ -14,7 +14,7 @@ from ..icecore import IceBoardPlusHandler
 from ..icecore import tuber  # Used to get TuberRemoteError
 from ..icecore import Ccoll
 from ..icecore import async, async_sleep, async_return, async_moment
-from ..metrics import Metrics
+from wtl.metrics import Metrics
 
 from .. import I2C as i2c
 from .. import GPIO as fpga_gpio

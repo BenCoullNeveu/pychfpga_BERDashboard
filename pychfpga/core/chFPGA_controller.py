@@ -38,7 +38,7 @@ from .icecore.session import load_session as load_yaml
 
 from .icecore_ext.iceboard_ext import IceBoardExtHandler
 from .chFPGA_receiver import chFPGA_receiver
-from .metrics import Metrics
+from wtl.metrics import Metrics
 
 from pychfpga.common import util
 
