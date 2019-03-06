@@ -1,5 +1,5 @@
 #from distutils.core import setup, Extension
-from setuptools import setup, Extension
+from setuptools import setup, find_packages, Extension
 import os, sys
 from os import path
 
@@ -50,8 +50,8 @@ setup(name = "ch_acq",
       packages=find_packages(),
       install_requires=requirements,
       include_package_data=True,
-      entry_points = {'fm': ['fm=ch_master:main']}
-      cmdclass = {'build_ext': build_ext},
+      entry_points = {'fm': ['fm=ch_master:main']},
+#      cmdclass = {'build_ext': build_ext},
      )
 
 # # If we are installing, copy things to system folders.
