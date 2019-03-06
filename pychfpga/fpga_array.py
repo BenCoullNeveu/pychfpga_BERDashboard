@@ -63,10 +63,10 @@ from pychfpga.core.icecore import async, async_return, async_sleep, async_moment
 from pychfpga.core.icecore import IceBoardPlus
 from pychfpga.core.icecore_ext import IceCrateExt
 from pychfpga.MGADC08 import MGADC08  # Import to make sure this Mezzanine is registered  so it can be discovered
-from pychfpga.core.metrics import Metrics
 from pychfpga.core.chFPGA_controller import chFPGA_controller
 from pychfpga.Agilent_N5764A import AgilentN5764AHandler
 from pychfpga.gpu_node import GpuNodeHandler
+from pychfpga import Metrics
 from pychfpga import NameSpace, merge_dict
 from pychfpga import load_yaml_config# import logging.handlers
 
