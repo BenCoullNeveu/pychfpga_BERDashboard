@@ -18,5 +18,5 @@ tornado==5.1.1
 h5py
 
 # pychfpga dependencies
--r pychfpga/requirements.txt
+pychfpga @ ./pychfpga/
 
