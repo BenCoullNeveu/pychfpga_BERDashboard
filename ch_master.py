@@ -47,8 +47,8 @@ from wtl import log
 from wtl.rest import RESTClient, AsyncRESTServer, AsyncRESTClient, HTTPError # generic REST servers and clients
 from wtl.rest import endpoint, coroutine, coroutine_return, sleep, moment
 from wtl.rest import RunSyncWrapper, IOLoop, run_client
-from wtl.namespace import NameSpace
-from wtl.config import merge_dict, load_yaml_config
+from wtl.namespace import NameSpace, merge_dict
+from wtl.config import load_yaml_config
 from wtl.metrics import Metrics
 
 
