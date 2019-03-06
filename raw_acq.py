@@ -3,30 +3,31 @@
 """
 from __future__ import absolute_import, division, print_function
 
+# Python Standard Library packages
 import os
 import sys
 import argparse
 import logging
 import socket
 import time
-
-import netifaces  # non-standard Python library (pip install netifaces)
-
 import Queue
 import SocketServer
 import threading
-# import logging
-# import os
 import struct
+import datetime
+
+# PyPi packages
+import netifaces  # non-standard Python library (pip install netifaces)
 import numpy as np
 import h5py
-import datetime
 import tornado
 import psutil
 
-import log
-from rest import AsyncRESTServer, endpoint, AsyncRESTClient, coroutine, coroutine_return, IOLoop, RunSyncWrapper, moment
-from pychfpga import NameSpace, Metrics
+# External private packages
+from wtl import log
+from wtl.rest import AsyncRESTServer, endpoint, AsyncRESTClient, coroutine, coroutine_return, IOLoop, RunSyncWrapper, moment
+from wtl.namespace import NameSpace
+from wtl.metrics import Metrics
 
 
 #Should be in gain.py or something.

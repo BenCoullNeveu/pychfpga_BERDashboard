@@ -7,7 +7,6 @@ Module that provide the classes used to run the top-level ChimeMaster object use
 """
 
 from __future__ import absolute_import, division, print_function
-
 # __package__ = __package__ or ''
 # if __name__ == '__main__':
 #     __name__ = 'ch_master'
@@ -15,7 +14,7 @@ from __future__ import absolute_import, division, print_function
 # else:
 #     is_script = False
 
-
+# Python Standard Library packages
 import collections
 import getpass
 import numpy
@@ -30,27 +29,36 @@ import functools
 import Queue
 import pickle
 import datetime
-import numpy as np
+
+# PyPI packages
+
 import psutil
-
-
 import tornado
 import tornado.tcpclient
 import tornado.web
 import tornado.locks
 from tornado.escape import native_str
+import numpy as np
 
-from pychfpga import FPGAArray, NameSpace, merge_dict, load_yaml_config, Metrics
-import log
 
-from rest import RESTClient, AsyncRESTServer, AsyncRESTClient, HTTPError # generic REST servers and clients
-from rest import endpoint, coroutine, coroutine_return, sleep, moment
-from rest import RunSyncWrapper, IOLoop, run_client
+# External private packages
 
+from wtl import log
+from wtl.rest import RESTClient, AsyncRESTServer, AsyncRESTClient, HTTPError # generic REST servers and clients
+from wtl.rest import endpoint, coroutine, coroutine_return, sleep, moment
+from wtl.rest import RunSyncWrapper, IOLoop, run_client
+from wtl.namespace import NameSpace
+from wtl.config import merge_dict, load_yaml_config
+from wtl.metrics import Metrics
+
+
+# Local imports
+from _version import __version__
+from pychfpga import FPGAArray
 # Remote servers handled by ChimeMaster
 from ps import PowerSupplyAsyncRESTClient
-from kotekan import KotekanAsyncRESTClient
-from chrx import ChrxAsyncRESTClient
+# from kotekan import KotekanAsyncRESTClient
+# from chrx import ChrxAsyncRESTClient
 from raw_acq import RawAcqAsyncRESTClient
 
 
@@ -297,20 +305,20 @@ class ChimeMaster(object):
     # CHRX management methods
     #####################################
 
-    @coroutine
-    def create_chrx_clients(self):
-        """ Create CHRX REST clients, which communicate with the CHRX remote processes that receive
-        the data processed from the GPUs.
+    # @coroutine
+    # def create_chrx_clients(self):
+    #     """ Create CHRX REST clients, which communicate with the CHRX remote processes that receive
+    #     the data processed from the GPUs.
 
-        TODO:
-            - Make parallel if needed
-        """
-        self.chrx = {}
-        nodes = self.config.chrx.nodes or {} # return {} if None (no YAML entries)
-        for node_name, node_params in nodes.items():
-            conf = node_params.copy()
-            conf.update(self.config.chrx.common_config)
-            self.chrx[node_name] = ChrxAsyncRESTClient(name=node_name, **conf)  # will use only the parameters it needs for now (host, port etc)
+    #     TODO:
+    #         - Make parallel if needed
+    #     """
+    #     self.chrx = {}
+    #     nodes = self.config.chrx.nodes or {} # return {} if None (no YAML entries)
+    #     for node_name, node_params in nodes.items():
+    #         conf = node_params.copy()
+    #         conf.update(self.config.chrx.common_config)
+    #         self.chrx[node_name] = ChrxAsyncRESTClient(name=node_name, **conf)  # will use only the parameters it needs for now (host, port etc)
 
     # def make_chrx_headers(self):
     #     # Add some acquisition information to the header, for kicks.
@@ -336,78 +344,78 @@ class ChimeMaster(object):
     #     return headers
 
 
-    @coroutine
-    def start_chrx_clients(self):
-        """ Start all CHRX remote process in parallel """
-        @coroutine
-        def start_chrx_client(chrx):
-            crate_sn = self.fpga.ic[0].get_string_id() # Hack. Works with pathfinder only. Have to rewrite for full CHIME.
-            fpga_hk_fields = { "core_temp": "deg C" } # To be rewritten with new chrx
-            headers = {
-                'acquisition_name': self.run_name,
-                'acquisition_type': 'corr',
-                'archive_version': ARCHIVE_VERSION,
-                'collection_server': socket.gethostname(),
-                'instrument_name': self.config.corr_name,
-                'git_version_tag': get_git_version(),
-                'system_user': getpass.getuser(),
-                'notes': self.config.get('notes','(no notes)'),
-            }
-            # headers = self.make_chrx_headers()
-            self.log.info("starting CHRX %s..." % chrx.name)
-            # Start the chrx remote process with additional updated configuration parameters
-            yield chrx.start(
-                acq_base_dir= self.run_folder,
-                crate_sn=crate_sn,
-                fpga_hk_fields=fpga_hk_fields,
-                headers=headers)
-            self.log.info("finished starting CHRX %s" % chrx.name)
+    # @coroutine
+    # def start_chrx_clients(self):
+    #     """ Start all CHRX remote process in parallel """
+    #     @coroutine
+    #     def start_chrx_client(chrx):
+    #         crate_sn = self.fpga.ic[0].get_string_id() # Hack. Works with pathfinder only. Have to rewrite for full CHIME.
+    #         fpga_hk_fields = { "core_temp": "deg C" } # To be rewritten with new chrx
+    #         headers = {
+    #             'acquisition_name': self.run_name,
+    #             'acquisition_type': 'corr',
+    #             'archive_version': ARCHIVE_VERSION,
+    #             'collection_server': socket.gethostname(),
+    #             'instrument_name': self.config.corr_name,
+    #             'git_version_tag': get_git_version(),
+    #             'system_user': getpass.getuser(),
+    #             'notes': self.config.get('notes','(no notes)'),
+    #         }
+    #         # headers = self.make_chrx_headers()
+    #         self.log.info("starting CHRX %s..." % chrx.name)
+    #         # Start the chrx remote process with additional updated configuration parameters
+    #         yield chrx.start(
+    #             acq_base_dir= self.run_folder,
+    #             crate_sn=crate_sn,
+    #             fpga_hk_fields=fpga_hk_fields,
+    #             headers=headers)
+    #         self.log.info("finished starting CHRX %s" % chrx.name)
 
-        yield [start_chrx_client(chrx) for chrx in self.chrx.values()]
+    #     yield [start_chrx_client(chrx) for chrx in self.chrx.values()]
 
-    @coroutine
-    def stop_chrx_clients(self):
-        yield [chrx.stop() for chrx in self.chrx.values()]
+    # @coroutine
+    # def stop_chrx_clients(self):
+    #     yield [chrx.stop() for chrx in self.chrx.values()]
 
 
-    @coroutine
-    def pass_gains_to_chrx(self, gain_map):
-        """ *** To be rewritten *** """
-        @coroutine
-        def update_gains(chrx):
-            chan_map = [12, 13, 14, 15,  8, 9, 10, 11,  4,  5,  6,  7, 0, 1, 2, 3]
-            slot_map    = [ 5,  1,  4,  0, 13, 9, 12,  8, 15, 11, 14, 10, 7, 3, 6, 2]
-            for (crate, slot, chan), gains in gain_map.items():
-                remapped_slot = slot_map[slot-1]
-                remapped_chan = chan_map[chan]
-                # for val in slot_gain:
-                converted_gains = convert_types(gains)
-                input_number = remapped_slot * 16 + remapped_chan
-                yield chrx.send_config(input_number, converted_gains)  # pass_fpga_gain(inp, v)
-        # update all gains in parallel
-        yield [update_gains(chrx) for chrx in self.chrx.values()]
+    # @coroutine
+    # def pass_gains_to_chrx(self, gain_map):
+    #     """ *** To be rewritten *** """
+    #     @coroutine
+    #     def update_gains(chrx):
+    #         chan_map = [12, 13, 14, 15,  8, 9, 10, 11,  4,  5,  6,  7, 0, 1, 2, 3]
+    #         slot_map    = [ 5,  1,  4,  0, 13, 9, 12,  8, 15, 11, 14, 10, 7, 3, 6, 2]
+    #         for (crate, slot, chan), gains in gain_map.items():
+    #             remapped_slot = slot_map[slot-1]
+    #             remapped_chan = chan_map[chan]
+    #             # for val in slot_gain:
+    #             converted_gains = convert_types(gains)
+    #             input_number = remapped_slot * 16 + remapped_chan
+    #             yield chrx.send_config(input_number, converted_gains)  # pass_fpga_gain(inp, v)
+    #     # update all gains in parallel
+    #     yield [update_gains(chrx) for chrx in self.chrx.values()]
 
     #####################################
     # KOTEKAN management methods
     #####################################
 
-    @coroutine
-    def create_kotekan_clients(self):
-        # Create Kotekan REST clients
-        self.kotekan = {}
-        nodes = self.config.kotekan.nodes or {}
-        for node_name, node_params in nodes.items():
-            #config = self.config.kotekan.common_config.copy()
-            #config.update(node_params)
-            self.kotekan[node_name] = KotekanAsyncRESTClient(name=node_name, **node_params)
+    # @coroutine
+    # def create_kotekan_clients(self):
+    #     # Create Kotekan REST clients
+    #     self.kotekan = {}
+    #     nodes = self.config.kotekan.nodes or {}
+    #     for node_name, node_params in nodes.items():
+    #         #config = self.config.kotekan.common_config.copy()
+    #         #config.update(node_params)
+    #         self.kotekan[node_name] = KotekanAsyncRESTClient(name=node_name, **node_params)
 
-    @coroutine
-    def start_kotekan_servers(self):
-        """
-        Start Kotekan serers with the proper config.
-        """
-        conf = self.config.kotekan
-        yield [node.start(config=merge_dict(conf.common_config, conf.nodes[node_name]).as_dict()) for node_name, node in self.kotekan.items()]
+    # @coroutine
+    # def start_kotekan_servers(self):
+    #     """
+    #     Start Kotekan serers with the proper config.
+    #     """
+    #     conf = self.config.kotekan
+    #     yield [node.start(config=merge_dict(conf.common_config, conf.nodes[node_name]).as_dict()) for node_name, node in self.kotekan.items()]
 
 
     #####################################
@@ -734,9 +742,9 @@ class ChimeMaster(object):
 
         # Create objects to communicates to the remote processes needed to run the array
         yield self.create_power_supply_clients()
-        yield self.create_chrx_clients()  # CHRX nodes receive data processed by the GPU nodes
-        yield self.create_kotekan_clients()  # Kotekan processes run on the GPU nodes; they receive the data from the FPGAs over dedicated point-to-point FPGA-GPU 10G Ethernet links, perform the correlation on the data, and forward the processed data to the CHRX nodes
-        yield self.start_kotekan_servers()
+        # yield self.create_chrx_clients()  # CHRX nodes receive data processed by the GPU nodes
+        # yield self.create_kotekan_clients()  # Kotekan processes run on the GPU nodes; they receive the data from the FPGAs over dedicated point-to-point FPGA-GPU 10G Ethernet links, perform the correlation on the data, and forward the processed data to the CHRX nodes
+        # yield self.start_kotekan_servers()
         yield self.create_raw_acq_clients()  # Raw acq clients receive raw ADC data sent by the FPGA over the control network
 
 
@@ -1043,7 +1051,7 @@ class ChimeMaster(object):
         self.fpgas.switch_gains(bank=next_bank, when=next_gain_switch_frame_number)
 
         # Tell chrx which gains are coming and when
-        yield self.pass_gains_to_chrx(next_gain_switch_frame_number, gain_map)
+        # yield self.pass_gains_to_chrx(next_gain_switch_frame_number, gain_map)
 
 
     def status(self):
@@ -1061,8 +1069,8 @@ class ChimeMaster(object):
             self.state = 'stopping'
             self.log.info("stopping acquisition")
             self.iceboard_cb.stop()
-            if self.chrx:
-                yield self.stop_chrx_clients()
+            # if self.chrx:
+            #     yield self.stop_chrx_clients()
             log.stop_logging(self.logging_handlers) # remove the handlers that were created by setup_logging()
             reap_cached_sockets()
             self.start_time = None

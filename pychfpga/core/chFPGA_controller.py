@@ -12,22 +12,26 @@ IceBoard and its chFPGA firmware.
 """
 
 from __future__ import absolute_import
+
+
+# Python STandard Library packages
 import logging
-import numpy as np
 import time
 import os
-import yaml
 import pickle
 from datetime import datetime
 from collections import OrderedDict
 from functools import wraps
-
-
 import subprocess
 import shlex
-import tornado.gen
 import bz2
 
+# PyPi packages
+import numpy as np
+import yaml
+import tornado.gen
+
+# Local imoprts
 
 from .icecore import async, async_return, async_sleep, async_moment
 from .icecore.session import load_session as load_yaml

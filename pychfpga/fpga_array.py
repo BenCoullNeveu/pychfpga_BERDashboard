@@ -4,6 +4,8 @@ chime_array.py module. Defines the objects that represent and handles
 operations one the whole array of CHIME ICE hardware.
 """
 from __future__ import absolute_import
+
+# Python Standard Library packages
 import argparse
 import logging
 import time
@@ -12,8 +14,6 @@ import os
 import sys
 import socket  # for gethostbyname()
 from collections import OrderedDict
-import numpy as np
-import matplotlib.pyplot as plt
 import pickle
 import re
 import datetime
@@ -21,13 +21,16 @@ import functools
 import zlib
 import base64
 
+# PyPi packages
+import numpy as np
+import matplotlib.pyplot as plt
 from tornado.netutil import Resolver
 from tornado.ioloop import IOLoop
 from tornado import gen
 from tornado.gen import with_timeout, TimeoutError
-
-# from sqlalchemy import orm
 from sqlalchemy import or_
+
+
 
 # For development: delete all fpga modules so fresh ones will be reloaded
 if getattr(__main__, '__reload__', False):
@@ -36,10 +39,14 @@ if getattr(__main__, '__reload__', False):
         if n.startswith('pychfpga'):
             del sys.modules[n]
 
-# Automatically update the search path for absolute imports of pychfpga and its subpackages. We use
-# absolute imports because 1) if both relative and absolute imports are made, then  modules ar
-# eloade dmultiple times and SQLAlchemy complains. 2) wa cannot access pychfpga subpackages if we
-# run this module as a script because Python refuses to consider the script folder as a package.
+# Local imports
+
+# Automatically update the search path for absolute imports of pychfpga and
+# its subpackages. We use absolute imports because 1) if both relative and
+# absolute imports are made, then  modules are loaded multiple times and
+# SQLAlchemy complains. 2) wa cannot access pychfpga subpackages if we run
+# this module as a script because Python refuses to consider the script folder
+# as a package.
 try:
     import pychfpga
 except ImportError:
