@@ -3,16 +3,23 @@
 REST Server and clients for allowing the Prometheus to access the DRAO weather data gathered by ``wview``.
 
 """
-
+# Python Standard Library packages 
 import sys
 import sqlite3
+
+# PyPi packages
+
 import numpy as np
 
-import log  # logging helper functions
-from pychfpga import Metrics, NameSpace
-from rest import AsyncRESTClient, AsyncRESTServer, endpoint
-from rest import coroutine, coroutine_return, sleep, IOLoop
-from rest import RunSyncWrapper, SocketContext, run_client  # generic REST servers and clients
+# External private packages
+from wtl import log
+from wtl.rest import AsyncRESTServer, AsyncRESTClient # generic REST servers and clients
+from wtl.rest import endpoint, coroutine, coroutine_return, sleep
+from wtl.rest import RunSyncWrapper, IOLoop, run_client, SocketContext
+from wtl.namespace import NameSpace
+from wtl.config import load_yaml_config
+from wtl.metrics import Metrics
+
 
 dataset = {"barometer"  : {"type": "pressure", "units": "hPa"},
            "pressure"   : {"type": "pressure", "units": "hPa"},
