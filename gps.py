@@ -4,22 +4,21 @@ REST Server and clients for the CHIME receiver hut GPS units Spectrum Instrument
 accessed through the StarTech NETRS232 serial-to-ethernet adapters.
 
 """
-
+# Python Stabdard Library
 import sys
 import time
 import datetime
 import calendar
 import Queue
 
-# import tornado
-
-# from pychfpga.Agilent_N5764A import AgilentN5764AHandler
-from pychfpga import Metrics, NameSpace, load_yaml_config
-from rest import AsyncRESTClient, AsyncRESTServer, endpoint
-from rest import coroutine, coroutine_return, sleep, IOLoop
-from rest import RunSyncWrapper, SocketContext, run_client  # generic REST servers and clients
-
-import log  # logging helper functions
+# External private packages
+from wtl import log
+from wtl.rest import AsyncRESTServer, AsyncRESTClient # generic REST servers and clients
+from wtl.rest import endpoint, coroutine, coroutine_return, sleep
+from wtl.rest import RunSyncWrapper, IOLoop, run_client, SocketContext
+from wtl.namespace import NameSpace
+from wtl.config import load_yaml_config
+from wtl.metrics import Metrics
 
 class SpectrumInstrumentsTM4D(SocketContext):
     """
