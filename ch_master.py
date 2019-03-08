@@ -1098,6 +1098,7 @@ class ChimeMaster(object):
             args_sn = {'corr_sn': self.config.corr_sn,
                        'crate': crate,
                        'slot': slot,
+                       'slot_zero_based': slot - 1,
                        'chan': chan,
                        'input': self.config.input_number_map[chan]}
             input_sn = self.config.input_sn % args_sn
