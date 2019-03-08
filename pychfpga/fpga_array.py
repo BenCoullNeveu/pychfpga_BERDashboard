@@ -1734,8 +1734,6 @@ class FPGAArray(object):
             for slot, ib in ic.slot.items():
                 for ch, ant in enumerate(ib.ANT):
                     buf = ant.FUNCGEN.get_buffer()
-                    buf >>= 4
-                    buf = (buf[0::2] << 4) + buf[1::2]
                     ch_out[(ic.crate_number, slot, ch)] = buf.tolist()
         return ch_out
 
