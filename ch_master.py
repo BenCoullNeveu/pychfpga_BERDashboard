@@ -849,7 +849,8 @@ class ChimeMaster(object):
             self.log.info("Loading initial SCALER gains in bank #0")
             # ca.set_synchronized_gain_switching_mode(enable=0)  # Disable synchronized gain switching
             # ca.set_next_gain_bank(bank=0)  # immediately select bank zero to load initial gains
-            gains = yield ca.load_gains.async() # load gains from gain files
+            gain_folder = os.path.expanduser(conf.fpga.gain_folder)
+            gains = yield ca.load_gains.async(gain_folder=gain_folder) # load gains from gain files
             ca.set_gains.async(gains, bank=0, when='now') # Upload to bank 0 and immediately activate gain bank
         # for bankset in ca.ib.get_current_gain_bank():
         #     log.info('Using gain banks %s' % (', '.join([str(i) for i in bankset])))

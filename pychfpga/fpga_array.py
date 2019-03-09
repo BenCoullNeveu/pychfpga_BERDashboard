@@ -1677,7 +1677,8 @@ class FPGAArray(object):
         array_gains = {}
         for ib in self.ib:
             board_id = crate, slot_0based = ib.get_id()
-            self.logger.info('%r: Reading digital gains for crate %02i slot %02i (FCC%02i%02i)' % (self, crate, slot_0based, crate, slot_0based))
+            self.logger.info('%r: Reading digital gains for crate %02i slot %02i (FCC%02i%02i) from folder %s' %
+                             (self, crate, slot_0based, crate, slot_0based, gain_folder))
             board_gains = ib.load_gains(folder=gain_folder) or default_gains
             yield async_moment
 
