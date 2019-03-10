@@ -31,7 +31,6 @@ import pickle
 import datetime
 
 # PyPI packages
-
 import psutil
 import tornado
 import tornado.tcpclient
@@ -1082,7 +1081,32 @@ class ChimeMaster(object):
         return self.fpgas.get_frequency_map()
 
     def get_channelizer_output(self):
-        return self.fpgas.get_chan_output()
+
+        # Query each FPGA for its current buffer
+        fpga_buffer = self.fpgas.get_chan_output()
+
+        # Convert the input identifier and buffer
+        # to a format that can be easily interpreted
+        out_buffer = collections.OrderedDict()
+
+        # Loop over correlator inputs
+        for corr_loc, buff in fpga_buffer.items():
+
+            # Create the input serial number using the format
+            # specified in the config file
+            crate, slot, chan = corr_loc
+            args_sn = {'corr_sn': self.config.corr_sn,
+                       'crate': crate,
+                       'slot': slot,
+                       'chan': chan,
+                       'input': self.config.input_number_map[chan]}
+            input_sn = self.config.input_sn % args_sn
+
+            # Undo scaling and offset encoding.  Converts the buffer
+            # from uint8 to float ranging from -8 to 7.
+            out_buffer[input_sn] = [float((bf >> 4) - 8) for bf in buff]
+
+        return out_buffer
 
     def reset_fpga_stats(self):
         self.fpgas.reset_fpga_stats()
@@ -1283,7 +1307,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
     @coroutine
     @endpoint('methods')
     def methods(self, handler):
-        coroutine_return(results=self.get_endpoint_info())
+        coroutine_return(self.get_endpoint_info())
 
     @coroutine
     @endpoint('status')
@@ -1332,7 +1356,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
     @endpoint('kotekan-start')
     def kotekan_start(self, handler, **config):
         results = yield [k.start(**config) for k in self.kotekan_clients]
-        coroutine_return(results=results)
+        coroutine_return(results)
 
     @coroutine
     @endpoint('get-frame-time')
@@ -1405,12 +1429,12 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
     @coroutine
     @endpoint('get-frequency-map')
     def get_frequency_map(self, handler):
-        coroutine_return(results=sanitize_for_json(self.chime_master.get_frequency_map()))
+        coroutine_return(sanitize_for_json(self.chime_master.get_frequency_map()))
 
     @coroutine
     @endpoint('get-channelizer-output')
     def get_channelizer_output(self, handler):
-        coroutine_return(results=sanitize_for_json(self.chime_master.get_channelizer_output()))
+        coroutine_return(sanitize_for_json(self.chime_master.get_channelizer_output()))
 
     @coroutine
     @endpoint('reset-fpga-stats')
@@ -1472,7 +1496,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
             handler.write(dict(error='FPGA array is not created yet'))
             return
         r = getattr(self.chime_master.fpgas, args['method_name'])(**args)
-        coroutine_return(results=sanitize_for_json(r))
+        coroutine_return(sanitize_for_json(r))
 
     @coroutine
     def _tick_line(self):
