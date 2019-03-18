@@ -232,7 +232,7 @@ class hdf5TimestreamData(object):
             h.write('locked\n')
 
         self.log.info('%r: Opening raw data HDF5 file %s' % (self, self.filename))
-        self.f = h5py.File(self.filename, 'w', libver='latest')
+        self.f = h5py.File(self.filename, 'w', libver='earliest')
         self.f.attrs["git_version_tag"] = "0.1"
         self.f.attrs["system_user"] = "root"
         self.f.attrs["collection_server"] = "hostname"

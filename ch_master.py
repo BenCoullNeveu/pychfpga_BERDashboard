@@ -838,7 +838,9 @@ class ChimeMaster(object):
         ca.ib.set_corr_reset(0)
 
         # Compute gains if requested
-        yield ca.compute_gains.async(**conf.fpga.compute_gains)
+        gain_folder = os.path.expanduser(conf.fpga.gain_folder)
+
+        yield ca.compute_gains.async(gain_folder=gain_folder, **conf.fpga.compute_gains)
 
         # Set-up channelizers to process data normally
         self.log.info("Setting-up channelizers")
@@ -849,7 +851,7 @@ class ChimeMaster(object):
             self.log.info("Loading initial SCALER gains in bank #0")
             # ca.set_synchronized_gain_switching_mode(enable=0)  # Disable synchronized gain switching
             # ca.set_next_gain_bank(bank=0)  # immediately select bank zero to load initial gains
-            gains = yield ca.load_gains.async() # load gains from gain files
+            gains = yield ca.load_gains.async(gain_folder=gain_folder) # load gains from gain files
             ca.set_gains.async(gains, bank=0, when='now') # Upload to bank 0 and immediately activate gain bank
         # for bankset in ca.ib.get_current_gain_bank():
         #     log.info('Using gain banks %s' % (', '.join([str(i) for i in bankset])))
@@ -1098,6 +1100,7 @@ class ChimeMaster(object):
             args_sn = {'corr_sn': self.config.corr_sn,
                        'crate': crate,
                        'slot': slot,
+                       'slot_zero_based': slot - 1,
                        'chan': chan,
                        'input': self.config.input_number_map[chan]}
             input_sn = self.config.input_sn % args_sn

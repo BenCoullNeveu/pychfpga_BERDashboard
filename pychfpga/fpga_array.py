@@ -1667,6 +1667,7 @@ class FPGAArray(object):
             the dict returned by this method.
         """
 
+
         # get the default gains, just in case we need them
         try:
             default_gains_filename = os.path.join(gain_folder, 'default_gains.pkl')  # filename of the default gains
@@ -1677,7 +1678,8 @@ class FPGAArray(object):
         array_gains = {}
         for ib in self.ib:
             board_id = crate, slot_0based = ib.get_id()
-            self.logger.info('%r: Reading digital gains for crate %02i slot %02i (FCC%02i%02i)' % (self, crate, slot_0based, crate, slot_0based))
+            self.logger.info('%r: Reading digital gains for crate %02i slot %02i (FCC%02i%02i) from folder %s' %
+                             (self, crate, slot_0based, crate, slot_0based, gain_folder))
             board_gains = ib.load_gains(folder=gain_folder) or default_gains
             yield async_moment
 
@@ -1723,7 +1725,7 @@ class FPGAArray(object):
             self.switch_gains(bank=bank, when=when)
 
     @async
-    def compute_gains(self, enable=True, slots=None, noise_injection=None):
+    def compute_gains(self, enable=True, slots=None, noise_injection=None, gain_folder='/home/chime/ch_acq/gains'):
         """ Compute the gains of the SCALER module so that the conversion of the FFT output
         to (4+4) bit complex values stays within range for the current signal conditions.
 
@@ -1755,7 +1757,7 @@ class FPGAArray(object):
             ch_id = ib.get_id()
             crate, slot_0based = ch_id[0], ch_id[1]
             if (slots is None) or slots[crate][slot_0based]:
-                yield calculate_gains.calculate_gains.async(ib)
+                yield calculate_gains.calculate_gains.async(ib, gain_folder=gain_folder)
 
     def get_next_gain_bank(self):
         """
