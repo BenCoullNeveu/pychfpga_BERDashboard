@@ -53,26 +53,32 @@ class GainCalc(object):
         self.masked = np.ma.array(np.log(signal), mask=mask)
 
     def convert_gain_format(self):
-        '''
-        Expects array in. returns (glin, glog)
-        '''
+        """ Return the current floating point gain vector into a (integer gain vector, log gain scalar) tuple.
+
+
+
+        """
         #2**14 is max for linear gain
         #ignore dc component
         #check for nans
         #print g
+
+        # identify bad gain values and create an appropriately masked array
         bad_values = (self.g > 2**31) | ~np.isfinite(self.g)
-        g = np.ma.array(self.g,mask=bad_values)
-        glog = (np.ceil(np.log2(np.ma.median(np.abs(g)/2**13,axis=1)))).astype(np.int)
+        g = np.ma.array(self.g, mask=bad_values)
+
+        # COmpute the power of 2 scaling for gains
+        glog = (np.ceil(np.log2(np.ma.median(np.abs(g) / 2**13, axis=1)))).astype(np.int)
         glin = np.zeros(g.shape, dtype=np.float)
         for i, glog_single in enumerate(glog):
-            glin[i] = g[i]/2**glog[i]
+            glin[i] = g[i] / 2**glog[i]
         glog.data[glog.mask == True] = np.ma.median(glog)
         glog.mask[glog.mask] = False
         glin[bad_values] = 2**14
         return glin, glog.data
 
-    def noisy_gain_estimate(self, data ):
-        outrms = data[:,:,:].std(axis=0)
+    def noisy_gain_estimate(self, data):
+        outrms = data[:, :, :].std(axis=0)
         outrms[outrms < 0.8] = 0.8
         #rmss.append(outrms.mean())
         print(outrms.mean(axis=1))
@@ -184,7 +190,7 @@ class GainEstimator(object):
         while frame_number < self.number_of_frames:
             timestamps, ports, all_data = self.read_data_func()
             data_unpacked = (np.array(all_data).astype(np.int8) ^ np.int8(128)) >> 4
-            spectrum[:,frame_number,:,:] = data_unpacked[:,:,::2] + 1.0j*data_unpacked[:,:,1::2]
+            spectrum[:, frame_number, :,:] = data_unpacked[:, :, ::2] + 1.0j * data_unpacked[:, :, 1::2]
             frame_number += 1
 
         for i, port in enumerate(ports):
@@ -442,8 +448,8 @@ class RawAcqReceiver(object):
     def start(self, name='RawAcq', ports=[], jump_thresholds = []):
         """ Start a raw data receiver for each specified port.
 
-        For each re port we monitor, create a data queue and atart a multithreaded UDP receiver that
-        will write data to that queue.
+        For each port we monitor, create a data queue and start a
+        multithreaded UDP receiver that will write data to that queue.
 
         Parameters:
             name (str): Name of the receiver array, used for logging
@@ -574,7 +580,7 @@ class RawAcqReceiver(object):
             self.all_data[receiver_port[port]] = np.zeros((self.N_CHANNELS, 2048), dtype=np.int8)  # pre-allocate data (channels x bins) for all ports,  for a single timestamp
             self.all_ts[receiver_port[port]] = np.zeros((self.N_CHANNELS), dtype=np.int32) # pre-allocate timestamps storage for the current data for all ports (should all be the same)
 
-        self.gain_estimator = GainEstimator(self.get_data, len(self.ports))
+        self.gain_estimator = GainEstimator(read_data_func=self.get_data, number_of_ports=len(self.ports))
 
 
         self.run = True
