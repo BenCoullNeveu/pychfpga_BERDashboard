@@ -33,7 +33,7 @@ NI_CLOCKS_PER_BIN = NCHAN / 2  # Clocks per bin of a straight Non-interleaved co
 CMAC_INTERLEAVE_FACTOR = NI_CLOCKS_PER_BIN / NCLOCKS_PER_BIN
 NI_CMAC_PER_CORR = (NCHAN + 1)  # number of CMACs per correlator if computations are done in NI_CLOCKS_PER_BIN clocks
 NCMAC_PER_CORR = CMAC_INTERLEAVE_FACTOR * NI_CMAC_PER_CORR # Number of interleaved CMACs per core needed to make the computations in the target number of clocks
-NBINS_PER_CMAC = NPROD_PER_CMAC / NCLOCKS_PER_BIN
+NBINS_PER_CMAC = NPROD_PER_CMAC / NCLOCKS_PER_BIN  # Number of bins per CMAC. =512/4=128
 NBINS_PER_CORR = NBINS_PER_CMAC # = 128
 NCORR = NBINS_TOTAL / NBINS_PER_CORR  # = 8
 
@@ -156,16 +156,24 @@ class CORR(object):
 
 def get_raw_corr_map():
     """
-    Creates a map that maps a correlator sample indexed by (correlator_number,
-    cmac_number, product_number) into a index (bin_number, channel_x,
-    channel_y).
+    Creates a map that maps a correlator frame array indexed by (correlator_number,
+    cmac_number, product_number) into a n array index (bin_number, i, j).
 
     This map can be used to remap the raw correlator packets contents into a more usefully indexed array.
 
     Returns:
-        A numpy array such as::
 
-            map(corr, cmac, prod) = (bin, i, j)
+        A numpy array of the shape (3, NBINS_TOTAL, NCHAN, NCHAN) where each
+        element [:, bin_number, i, j] returns the tuple ``(corr_number,
+        cmac_number, prod_number)`` so that::
+
+            raw_data(raw_to_matrix[0], raw_to_matrix[1], raw_to_matrix[2])
+
+        or equivalently::
+
+            raw_data(tuple(raw_to_matrix))
+
+        extracts the raw data and reorders it in a matrix that represents (freq_bin_number, i, j)
 
 
     The basic correlator structure is made of a fixed array (Y) of N samples
@@ -242,23 +250,33 @@ def get_raw_corr_map():
     interleaved_raw_map = np.empty((Ncorr, Ncmac*2, Nprods/2, 3), int)
 
     # Create the arrays that will be used to index the raw data into the target array
-    # The first dimension is for the 3 indexes of the war a=data (CORR, CMAC, PROD]
+    # The first dimension is for the 3 indexes of the array (CORR, CMAC, PROD]
     # We use int16 values to store indices to fit NBINS_TOTAL (0..1023)
     raw_to_matrix_map = np.empty((3, NBINS_TOTAL, N, N), np.int16)
     raw_to_vector_map = np.empty((3, NBINS_TOTAL, NPROD_TOTAL), np.int16)
     # Compute the corelator output map as if we computed all the products for each bin in N/2 clocks.
-    cmac = np.arange(Ncmac)
     x = np.zeros(Ncmac)
     y = np.zeros(Ncmac)
-    bin_number = np.zeros(NCMAC_PER_CORR, dtype=int)
+    # bin_number = np.zeros(NCMAC_PER_CORR, dtype=int)
 
-    ni_i = np.zeros((NI_CMAC_PER_CORR,NI_CLOCKS_PER_BIN), dtype=int)
-    ni_j = np.zeros((NI_CMAC_PER_CORR,NI_CLOCKS_PER_BIN), dtype=int)
-    i_i = np.zeros((NCMAC_PER_CORR,NCLOCKS_PER_BIN), dtype=int)
-    i_j = np.zeros((NCMAC_PER_CORR,NCLOCKS_PER_BIN), dtype=int)
+    ni_i = np.zeros((NI_CMAC_PER_CORR, NI_CLOCKS_PER_BIN), dtype=int)
+    ni_j = np.zeros((NI_CMAC_PER_CORR, NI_CLOCKS_PER_BIN), dtype=int)
+    i_i = np.zeros((NCMAC_PER_CORR, NCLOCKS_PER_BIN), dtype=int)
+    i_j = np.zeros((NCMAC_PER_CORR, NCLOCKS_PER_BIN), dtype=int)
 
-    X = (np.arange(N)[None].T - np.arange(NI_CLOCKS_PER_BIN)) % N
-    Y = np.tile(np.arange(N)[None].T, (1, NI_CLOCKS_PER_BIN))
+    X = (np.arange(N)[:,None] - np.arange(NI_CLOCKS_PER_BIN)) % N
+    Y = np.tile(np.arange(N)[:, None], (1, NI_CLOCKS_PER_BIN))
+
+    # ni_i and ni_j are i,j index of the product that are outputted by each CMAC on each clock.
+    # Those have a dimension of (CMAC, clock). This covers only one bin, as all bins have the same order and will be tiled later.
+    # There are ordered in the order they arrive and are *written* in the CMAC
+    # [(7,7), (6,6), (5,5), (4,4), (3,3), (2,2), (1,1), (0,0)]
+    # [(15,15), (14,14), (13,13), (12,12), (11,11), (10,10), (9,9), (8,8)]
+    # [(0,1), (0,15), (0,14), (0,13), (0,12), (0,11), (0,10), (0,9)]
+    # ...
+    # [(14,15), (13,15), (12,15), (11,15), (10,15), (9,15), (8,15), (7,15)]
+
+    # First handle non-rotated elements
     ni_i[0] = ni_j[0] = X[N / 2 - 1]
     ni_i[1] = ni_j[1] = X[N - 1]
     ni_i[2:] = X[:N-1]
@@ -276,72 +294,101 @@ def get_raw_corr_map():
 
     # interleave (double CMACs, cut clocks in 2)
     for i in range(2):
-        i_i[i::2] = ni_i[:,i::2]
-        i_j[i::2] = ni_j[:,i::2]
+        i_i[i::2] = ni_i[:, i::2]
+        i_j[i::2] = ni_j[:, i::2]
 
+    # Create an array that identify the bin index for each product coming out of each CMAC (after interleaving)
+    # The bin index represented the order of the bin in the packet, no the actual bin number.
+    # This is [0,0,0,0,1,1,1,1,2,2,2,2,...127,127,127,127]
+    # This is the same index for each CMAC
+    # cmac_bin_index shape is (NCMAC_PER_CORR, NPROD_PER_CMAC)
+    cmac_bin_index = np.tile(np.arange(NBINS_PER_CMAC, dtype=int), (NCMAC_PER_CORR, 1)).repeat(NCLOCKS_PER_BIN, axis=1)
 
-    cmac_bin_index = np.arange(NBINS_PER_CMAC, dtype=int).repeat(NCLOCKS_PER_BIN)
-    ii_i = np.tile(i_i,(1, NBINS_PER_CMAC))
-    ii_j = np.tile(i_j,(1, NBINS_PER_CMAC))
+    # replicate the i_i and i_j matrix index for each bin.
+    # ii_i and ii_j shape is (NCMAC_PER_CORR, NPROD_PER_CMAC)
+    ii_i = np.tile(i_i, (1, NBINS_PER_CMAC))
+    ii_j = np.tile(i_j, (1, NBINS_PER_CMAC))
 
     # Reverse readout order
-    cmac_bin_index = cmac_bin_index[::-1]
+    cmac_bin_index = np.fliplr(cmac_bin_index)
     ii_i = np.fliplr(ii_i)
     ii_j = np.fliplr(ii_j)
 
     # Procuct number, in the order they are received
-    cmac_prod_index = np.arange(NPROD_PER_CMAC, dtype=int)
-
-    # For each correlator, we
-    for corr in range(Ncorr):  # Correlator number
-        # for corr_bin_index in range(Nbins_per_corr): # relative bin index for this correlator
-        #     bin_number[:] = corr + corr_bin_index * Ncorr  # bin
-            # for clock in range(NI_CLOCKS_PER_BIN): # clock cycle in which the computation is done (8 clocks, will be interleaved in 4)
-            #     cmac_prod = NI_CLOCKS_PER_BIN * corr_bin_index + clock
+    # [0, 1, 2... 511]
 
 
-            #     x[0] = y[0] = NI_CLOCKS_PER_BIN - 1 - clock # 1st autocorrellation products (products 0 .. N/2-1, read in reverse order)
-            #     x[1] = y[1] = N - 1 - clock  # 2nd autocorrelation products (products N/2 .. N-1, read in reverse order)
-
-            #     x[2:] = (cmac[0:N-1] + N - clock) % N
-            #     x[2:clock+2] = np.arange(clock)
-            #     y[2:] = cmac[0:N-1] + 1
-            #     y[2:2+clock] = N-clock+np.arange(clock)
-
-#                raw_map[corr, :, cmac_prod] = np.array([list(bin_number), x, y]).T  #(b, x , y)
 
 
-                #  new method
-        freq_bin = np.tile(corr + 8*cmac_bin_index, (NCMAC_PER_CORR, 1))
-        r = raw_to_matrix_map[:, freq_bin, ii_i, ii_j]
-        return r,r
-        r[0] = corr # int scalar, broadcasted to all elements
-        r[1] = np.arange(NCMAC_PER_CORR, dtype=int)[None].T # 1xNCMAC column, broadcasted to evert product
-        r[2] = np.array(cmac_prod_index) # NPROD x NCMAC array indicating the product number
-        # return  r
+    corr_vector = np.arange(Ncorr, dtype=int)
+    cmac_vector = np.arange(NCMAC_PER_CORR, dtype=int)
+    prod_vector = np.arange(NPROD_PER_CMAC, dtype=int)
 
-    # Since we need to compute the products in N/4 clocks (there are 4 clocks per bin), we use two CMAC in parallel.
-    # The CMACs are interleaved. We update the map to repreent this.
-    # interleaved_raw_map[:, 0::2] = raw_map[:, :, 0::2]
-    # interleaved_raw_map[:, 1::2] = raw_map[:, :, 1::2]
+    shape = (Ncorr, NCMAC_PER_CORR, NPROD_PER_CMAC)
+    corr_matrix = np.broadcast_to(corr_vector[:, None, None], shape)
+    cmac_matrix = np.broadcast_to(cmac_vector[None, :, None], shape)
+    prod_matrix = np.broadcast_to(prod_vector[None, None, :], shape)
+
+    # Compute the bin number that correspond to each bin index.
+    # By default, each correlator gets 1/8th of the bins, so the bin_number is bin_index * 8, offseted by the correlator number.
+    # [1016,1016,1016,1016, 1008,1008,1008,1008, ... 0,0,0,0]
+    # [1016,1016,1016,1016, 1008,1008,1008,1008, ... 0,0,0,0]
+    # ...
+    # freq_bin shape is (NCORR, NCMAC_PER_CORR, NPROD_PER_CMAC)
+    freq_bin = corr_matrix + 8 * cmac_bin_index[None, :, :]
+
+    # Assign the (corr,cmac,prod) numbers to each (bin,i,j). We had to convert
+    # the right hand size to matrices because numpy was confused on how to
+    # broadcast those when they appear in a tuple.
+    raw_to_matrix_map[:, freq_bin, ii_i, ii_j] = (
+        corr_matrix,  # int scalar, broadcasted to all elements
+        cmac_matrix,  # 1xNCMAC column, broadcasted to evert product
+        prod_matrix # NPROD x NCMAC array indicating the product number
+        )
+
+
+    # Copy the (corr,cmax,prod) coordinate from the upper to the lower
+    # triangle so the data will appear both at (i,j) and (j,i)
+    i, j = np.triu_indices(N, 1) # don't include diagonal
+    raw_to_matrix_map[..., j, i] = raw_to_matrix_map[..., i, j]
+
+    # Compute to map that convert the raw data into a linearized list of products in the order
+    #
+    # [(0,0), (0,1), ... (0,15), (1,1), (1,2)...(1,15), (2,2), ... (15,15)]
+    #
+    # It happens that np.triu_indices() returns the i and j indices exactly in
+    # that order, so we use it to reindex out matrix into a linearized product
+    # vector.
+    i, j = np.triu_indices(N)
+    raw_to_vector_map = raw_to_matrix_map[..., i, j]
     return raw_to_matrix_map, raw_to_vector_map
 
-def imap(self, shape):
-    """ Return an array of shape `shape` where each element is a 3-element tuple containing the index on that element.
-    """
-    N1, N2, N3 = shape
-    im = np.zeros((N1,N2,N3, 3), int) + 65535
-    [b,i,j] = np.meshgrid(range(N1), range(N2), range(N3), indexing='ij')
-    im[...,0], im[..., 1], im[..., 2] = b, i, j
-    return im
 
-def reverse_map(self, m):
-    (N1, N2, N3) = m.reshape(-1, 3).max(axis=0) + 1  # Find the maximum indices if each dimension
-    rm = np.empty((N1, N2, N3, 3), int)
-    im = self.imap(m.shape[:-1])
-    rm[m[..., 0], m[..., 1], m[..., 2]] = im
-    rm[m[..., 0], m[..., 2], m[..., 1]] = im  # also populate j,i with same values
-    return rm
+def raw_to_matrix(raw_data, conjugate=False):
+
+    matrix = raw_data[tuple(raw_to_matrix_map)]
+    if conjugate:
+        (i, j) = np.triu_indices(raw_data.shape[-1])
+        matrix[:, j, i] = matrix[:, i, j].conjugate()
+    return matrix
+
+
+# def imap(self, shape):
+#     """ Return an array of shape `shape` where each element is a 3-element tuple containing the index on that element.
+#     """
+#     N1, N2, N3 = shape
+#     im = np.zeros((N1,N2,N3, 3), int) + 65535
+#     [b,i,j] = np.meshgrid(range(N1), range(N2), range(N3), indexing='ij')
+#     im[...,0], im[..., 1], im[..., 2] = b, i, j
+#     return im
+
+# def reverse_map(self, m):
+#     (N1, N2, N3) = m.reshape(-1, 3).max(axis=0) + 1  # Find the maximum indices if each dimension
+#     rm = np.empty((N1, N2, N3, 3), int)
+#     im = self.imap(m.shape[:-1])
+#     rm[m[..., 0], m[..., 1], m[..., 2]] = im
+#     rm[m[..., 0], m[..., 2], m[..., 1]] = im  # also populate j,i with same values
+#     return rm
 
 
 
