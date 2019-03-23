@@ -26,12 +26,14 @@ NCHAN = 16  # Number of channels on which to generate N-squared products
 NBINS_TOTAL = 1024  # Number of frequency bins to process
 NPROD_PER_CMAC = 512  # Number of products per CMAC, limited by BRAM size (512 x (18+18) bits for the accumulator & capture RAM)
 NCLOCKS_PER_BIN = 4  # Number of clocks that in which all products of one bin must be computed. This matches how many clocks is needed to receive all the channels of one bin
+NBYTES_PER_PROD = 5  # 5 bytes for each product
+NBYTES_PER_HEADER = 12 # Number of bytes in correlator frame header
 
 # Derived parameters
-NPROD_TOTAL = NCHAN * (NCHAN + 1) / 2  # Total number of products per correlator frame
 NI_CLOCKS_PER_BIN = NCHAN / 2  # Clocks per bin of a straight Non-interleaved correlator architecture using the minimal amount of CMACs
-CMAC_INTERLEAVE_FACTOR = NI_CLOCKS_PER_BIN / NCLOCKS_PER_BIN
 NI_CMAC_PER_CORR = (NCHAN + 1)  # number of CMACs per correlator if computations are done in NI_CLOCKS_PER_BIN clocks
+NPROD_TOTAL = NCHAN * (NCHAN + 1) / 2  # Total number of products per correlator frame
+CMAC_INTERLEAVE_FACTOR = NI_CLOCKS_PER_BIN / NCLOCKS_PER_BIN
 NCMAC_PER_CORR = CMAC_INTERLEAVE_FACTOR * NI_CMAC_PER_CORR # Number of interleaved CMACs per core needed to make the computations in the target number of clocks
 NBINS_PER_CMAC = NPROD_PER_CMAC / NCLOCKS_PER_BIN  # Number of bins per CMAC. =512/4=128
 NBINS_PER_CORR = NBINS_PER_CMAC # = 128
@@ -391,146 +393,167 @@ def raw_to_matrix(raw_data, conjugate=False):
 #     return rm
 
 
+class CorrFrameReceiver(object):
 
-def read_corr_frames(socket, integration_period, integ_time=1, timeout=0.100, packets_per_chunk=1*34*8):
-    """
+	def __init__(self, socket, packets_per_chunk=1*34*8):
 
-    Requirements:
+		# Define numpy data types that will be used to efficiently parse the data
+	    self.dt = np.dtype(dict(
+	        names=['sat', 'h', 'l'],
+	        offsets=[4, 1, 0],
+	        formats=['u1', '<i4', '<i4']))
 
-    The transmit rate must be fast enough to accomodate the desired bandwidth
-    by setting ib.GPIO.HOST_FRAME_READ_RATE = rate. rate=16 limits to about
-    260 Mbps but is slow enough to allow python to process the data with a
-    small standard UDP buffer. ``rate``=15 is good for about 500 Mbps, and
-    ``rate``=16 is good for the full Gigabit bandwidth. The latetr two require
-    bigger UDP buffers. See below::
+	    self.t = np.dtype([
+	        ('cookie', np.uint8, 1),
+	        ('proto', np.uint8, 1),
+	        ('corr', np.uint8, 1),
+	        ('cmac', np.uint8, 1),
+	        ('geometry', '<u4', 1),
+	        ('ts', '<u4', 1),
+	        ('data', dt, 512)])
 
-        ib.GPIO.HOST_FRAME_READ_RATE = 14
+	    self.socket = socket
+	    self.packets_per_chunk = packets_per_chunk
+	    self.NCMAC = NCMAC_PER_CORR
+	    self.NPROD = NPROD_PER_CMAC
+	    PACKET_SIZE = 12 + NPROD * 5
 
-    The Ethernet interface must be set to receive Jumbo frames::
-
-        sudo ifconfig eno1 mtu 9000
-
-    The UDP buffers shall be increased to reduce packet loss to a minimum::
-        sudo sysctl -w net.core.rmem_max=26214400
-        sudo sysctl -w net.core.rmem_default=26214400
-        sudo sysctl -w net.ipv4.udp_mem='26214400 26214400 26214400'
-        sudo sysctl -w net.ipv4.udp_rmem_min=26214400
-
-    Check udp buffers::
-        sysctl -a | grep mem
-
-    Monitor UDP buffer::
-
-        watch -cd -n .5 "grep :A6  /proc/net/udp"
-
-    The receiver can do software integration for unlimited time at a firmware integration period of 5000 frames (12.8 ms).
-
-
-    """
+	    # Pre-allocate buffers
+	    self.buf = np.empty((packets_per_chunk, PACKET_SIZE), dtype=np.uint8)
+	    h = np.empty((packets_per_chunk, NPROD), dtype=np.int32)
+	    ah = np.zeros((NCORR, NCMAC, NPROD), dtype=np.int64)
+	    al = np.zeros((NCORR, NCMAC, NPROD), dtype=np.int64)
+	    sat = np.empty((NCORR, NCMAC, NPROD), dtype=np.uint8)
+	    count = np.zeros((NCORR, NCMAC), dtype=np.uint64)
 
 
 
-    # integration_period = self.CORR[0].INTEGRATION_PERIOD + 1
-    integration_time = 2.56e-6 * integration_period
-    dt = np.dtype(dict(
-        names=['sat', 'h', 'l'],
-        offsets=[4, 1, 0],
-        formats=['u1', '<i4', '<i4']))
-    t = np.dtype([
-        ('cookie', np.uint8, 1),
-        ('proto', np.uint8, 1),
-        ('corr', np.uint8, 1),
-        ('cmac', np.uint8, 1),
-        ('geometry', '<u4', 1),
-        ('ts', '<u4', 1),
-        ('data', dt, 512)])
-    NCORR = 8
-    NCMAC = 34
-    NPROD = 512
-    PACKET_SIZE = 12 + NPROD * 5
+	def read_corr_frames(self, integration_period, integ_time=1, timeout=0.100, ):
+	    """
 
-    average_data_rate = (NCORR * NCMAC * (42 + PACKET_SIZE) * 8) / integration_time
-    min_transmit_time = (NCORR * NCMAC * (42 + PACKET_SIZE) * 8) / 1e9
-    integ_time = max(integ_time, integration_time)
-    expected_chunks = int(integ_time * NCORR * NCMAC / integration_time / packets_per_chunk)
-    expected_packets = expected_chunks * packets_per_chunk
-    expected_corr_frames = expected_packets / (NCORR * NCMAC)
 
-    print 'Correlator is sending data at %.3f Gb/s, correlator frame period= %i channelizer frames = %.3f ms, minimum transmit time = %.3f' % (average_data_rate/1e9, integration_period, integration_time*1000, min_transmit_time*1000)
-    print 'We expect around %.1f packets and %.1f correlator frames in the requested integration period of %.3fs' % (expected_packets, expected_corr_frames, integ_time)
+		Parameters:
 
-    # packets_per_chunk = corr_frames_per_chunk * NCORR * NCMAC
+			socket (socket.socket): An opened and bound UDP socket to which the
+				FPGA correlator data will be sent. The socket will not be closed
+				when the call is completed.
 
-    a = np.empty((packets_per_chunk, PACKET_SIZE), dtype=np.uint8)
-    h = np.empty((packets_per_chunk, NPROD), dtype=np.int32)
-    ah = np.zeros((NCORR, NCMAC, NPROD), dtype=np.int64)
-    al = np.zeros((NCORR, NCMAC, NPROD), dtype=np.int64)
-    sat = np.empty((NCORR, NCMAC, NPROD), dtype=np.uint8)
-    count = np.zeros((NCORR, NCMAC), dtype=np.uint64)
-    # sock = self.get_data_socket()
-    socket.settimeout(timeout)
-    chunks = 0
-    packets = 0
-    timeouts = 0
-    data_timeouts = 0
-    size = 0
-    dt = 0
-    packets_per_chunk = 0
 
-    # Flush the UDP buffer
-    for _ in range(8*34):
-        s = socket.recv_into(a[0])
 
-    t0 = time.time()
-    N = len(a)
-    # while time.time() - t0 < integ_time:
-    for chunk in range(expected_chunks):
-        n = 0
-        while n < N:
-            # try:
-            s = socket.recv_into(a[n])
-            if s != PACKET_SIZE:
-                continue
-            # size += s
-            n += 1
-            # packets += 1
-            # except socket.timeout:
-            #     timeouts += 1
-            #     if n:
-            #         data_timeouts += 1
-            #         break
+	    Requirements:
 
-        packets += n
-        chunks += 1
-        packets_per_chunk += n
-        # z=zeros(h.shape,dtype=int64)
+	    The transmit rate must be fast enough to accomodate the desired bandwidth
+	    by setting ib.GPIO.HOST_FRAME_READ_RATE = rate. rate=16 limits to about
+	    260 Mbps but is slow enough to allow python to process the data with a
+	    small standard UDP buffer. ``rate``=15 is good for about 500 Mbps, and
+	    ``rate``=16 is good for the full Gigabit bandwidth. The latetr two require
+	    bigger UDP buffers. See below::
 
-        # l=empty((1*8*34,512), dtype=np.int32)
-        # h=a.view(t)[:,0]['data']['h'].copy();np.left_shift(h,4,h);np.right_shift(h,14,h);np.add(z,h,out=z)
-        t1 = time.time()
-        v = a.view(t)[:n, 0]
-        corr = v['corr']
-        cmac = v['cmac']
-        # print 'corr=', corr
-        # print 'cmac=', cmac
+	        ib.GPIO.HOST_FRAME_READ_RATE = 14
 
-        ts = v['ts']
-        hh = h[:n]
-        np.copyto(hh, v['data']['h'])
-        np.left_shift(hh, 4, hh)
-        np.right_shift(hh, 14, hh)
-        ah[corr, cmac] += hh
+	    The Ethernet interface must be set to receive Jumbo frames::
 
-        np.copyto(hh, v['data']['l'])
-        np.left_shift(hh, 14, hh)
-        np.right_shift(hh, 14, hh)
-        al[corr, cmac] += hh
-        count[corr, cmac] += 1
-        # print 'count=', count[0,0]
-        dt += time.time() - t1
-        sat[corr, cmac] |= v['data']['sat']
-    print 'Got %i packets in %i chunks with %i timeouts total and %i data timeouts. Processing took on average %i packets/chunk at %.3f ms/chunk, %.1f bytes/packet' % (packets, chunks, timeouts, data_timeouts, float(packets_per_chunk)/chunks, (float(dt) / chunks) * 1000, float(size)/packets)
-    print 'Got %.1f%% of the packets, and between %.1f%% and %.1f%% of the correlator frames' % (float(packets)/expected_packets*100, np.min(count)/float(expected_corr_frames)*100, np.max(count)/float(expected_corr_frames)*100)
-    c = ah + 1j * al
-    return (c, count, sat & 0x30)
+	        sudo ifconfig eno1 mtu 9000
+
+	    The UDP buffers shall be increased to reduce packet loss to a minimum::
+	        sudo sysctl -w net.core.rmem_max=26214400
+	        sudo sysctl -w net.core.rmem_default=26214400
+	        sudo sysctl -w net.ipv4.udp_mem='26214400 26214400 26214400'
+	        sudo sysctl -w net.ipv4.udp_rmem_min=26214400
+
+	    Check udp buffers::
+	        sysctl -a | grep mem
+
+	    Monitor UDP buffer::
+
+	        watch -cd -n .5 "grep :A6  /proc/net/udp"
+
+	    The receiver can do software integration for unlimited time at a firmware integration period of 5000 frames (12.8 ms).
+
+
+	    """
+
+
+
+	    # integration_period = self.CORR[0].INTEGRATION_PERIOD + 1
+	    integration_time = 2.56e-6 * integration_period
+
+	    average_data_rate = (NCORR * NCMAC * (42 + PACKET_SIZE) * 8) / integration_time
+	    min_transmit_time = (NCORR * NCMAC * (42 + PACKET_SIZE) * 8) / 1e9
+	    integ_time = max(integ_time, integration_time)
+	    expected_chunks = int(integ_time * NCORR * NCMAC / integration_time / packets_per_chunk)
+	    expected_packets = expected_chunks * packets_per_chunk
+	    expected_corr_frames = expected_packets / (NCORR * NCMAC)
+
+	    print 'Correlator is sending data at %.3f Gb/s, correlator frame period= %i channelizer frames = %.3f ms, minimum transmit time = %.3f' % (average_data_rate/1e9, integration_period, integration_time*1000, min_transmit_time*1000)
+	    print 'We expect around %.1f packets and %.1f correlator frames in the requested integration period of %.3fs' % (expected_packets, expected_corr_frames, integ_time)
+
+	    # packets_per_chunk = corr_frames_per_chunk * NCORR * NCMAC
+
+	    # sock = self.get_data_socket()
+	    self.socket.settimeout(timeout)
+	    chunks = 0
+	    packets = 0
+	    timeouts = 0
+	    data_timeouts = 0
+	    size = 0
+	    dt = 0
+	    packets_per_chunk = 0
+
+	    # Flush the UDP buffer
+	    for _ in range(8*34):
+	        s = self.socket.recv_into(a[0])
+	        ts = self.
+	    t0 = time.time()
+	    N = len(a)
+	    # while time.time() - t0 < integ_time:
+	    for chunk in range(expected_chunks):
+	        n = 0
+	        while n < N:
+	            # try:
+	            s = self.socket.recv_into(a[n])
+	            if s != PACKET_SIZE:
+	                continue
+	            # size += s
+	            n += 1
+	            # packets += 1
+	            # except socket.timeout:
+	            #     timeouts += 1
+	            #     if n:
+	            #         data_timeouts += 1
+	            #         break
+
+	        packets += n
+	        chunks += 1
+	        packets_per_chunk += n
+	        # z=zeros(h.shape,dtype=int64)
+
+	        # l=empty((1*8*34,512), dtype=np.int32)
+	        # h=a.view(t)[:,0]['data']['h'].copy();np.left_shift(h,4,h);np.right_shift(h,14,h);np.add(z,h,out=z)
+	        t1 = time.time()
+	        v = a.view(t)[:n, 0]
+	        corr = v['corr']
+	        cmac = v['cmac']
+	        # print 'corr=', corr
+	        # print 'cmac=', cmac
+
+	        ts = v['ts']
+	        hh = h[:n]
+	        np.copyto(hh, v['data']['h'])
+	        np.left_shift(hh, 4, hh)
+	        np.right_shift(hh, 14, hh)
+	        ah[corr, cmac] += hh
+
+	        np.copyto(hh, v['data']['l'])
+	        np.left_shift(hh, 14, hh)
+	        np.right_shift(hh, 14, hh)
+	        al[corr, cmac] += hh
+	        count[corr, cmac] += 1
+	        # print 'count=', count[0,0]
+	        dt += time.time() - t1
+	        sat[corr, cmac] |= v['data']['sat']
+	    print 'Got %i packets in %i chunks with %i timeouts total and %i data timeouts. Processing took on average %i packets/chunk at %.3f ms/chunk, %.1f bytes/packet' % (packets, chunks, timeouts, data_timeouts, float(packets_per_chunk)/chunks, (float(dt) / chunks) * 1000, float(size)/packets)
+	    print 'Got %.1f%% of the packets, and between %.1f%% and %.1f%% of the correlator frames' % (float(packets)/expected_packets*100, np.min(count)/float(expected_corr_frames)*100, np.max(count)/float(expected_corr_frames)*100)
+	    c = ah + 1j * al
+	    return (c, count, sat & 0x30)
 
