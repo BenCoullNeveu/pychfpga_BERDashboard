@@ -134,8 +134,8 @@ class SpectrumInstrumentsTM4D(SocketContext):
 
 
     def enable_ntp_output(self, enable):
-          self.command('04',3123,3,1,3 if enable else 2,1,0,2,0,3,9,7,6,5,3) # secret command from Tom Versaput 
-    
+          self.command('04',3123,3,1,3 if enable else 2,1,0,2,0,3,9,7,6,5,3) # secret command from Tom Versaput
+
     def set_mask_angle(self, angle_code):
         """ Sets mask angle of the GPS.
 
@@ -687,17 +687,43 @@ class SpectrumInstrumentsTM4D(SocketContext):
         #print('Parsed %i metrics' % len(metrics.metrics))
         return metrics
 
-    def configure_gps(self,  lat=49.320683333333335, lon=-119.62329666666666, alt=562.0):
+    def configure_gps(self, location='DRAO', lat=None, lon=None, alt=None):
         """
         Configure the GPS for standard CHIME operations.
 
         The GPS is put in 'static' mode, where it tries only to get time information and not the
         position infromation. This requires less satellites and presumably provides for a more
         stable time signal. In this mode a static position is given to the GPS so it will know what
-        satellites to search for. The default position is the center of the CHIME array at DRAO,
-        Penticton, BC, Canada.
+        satellites to search for.
+
+        The default locations can be passed by name in the `location` parameter, or if `location` is `None`,
+
+
+        Valid location strings are:
+
+            'DRAO': The default position is the center of the CHIME array at
+                DRAO, Penticton, BC, Canada.
+
+            'McGill': The location of the GPS antenna at the McGill Rutherford building, Montreal, Canada
 
         """
+        if bool(location) == bool(lat is not None or lon is not None or alt is not None):
+            raise ValueError("You must specify either the location name, or specify the 'lat', 'lon' and 'alt'")
+
+        if location is None:
+            if lat is None or lon is None or alt is None:
+                raise ValueError(" You must specify `lat', 'lon' and 'alt'")
+        elif location == 'DRAO':
+            lat = 49.320683333333335
+            lon = -119.62329666666666
+            alt = 562.0
+        elif location == 'McGill':
+            lat = 45.507100
+            lon = -73.579128
+            alt = 92.5
+        else:
+            raise ValueError("Invalid location `%s`. Valid locations are 'DRAO' or 'McGill'")
+
         with self.socket(flush=True):
             self.set_polling_mode()
             self.enable_ntp_output(False)  #Not needed, causes the unit to do extra processing and affects latency
