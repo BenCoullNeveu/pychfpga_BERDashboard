@@ -199,7 +199,7 @@ def calculate_gains(c, gain_folder):   # '/home/suit/Desktop/ICE/ch_acq/gains'
     '''Calculate digital gains for all the inputs of an iceboard c
     '''
     slot_0based = c.slot-1
-    crate = c.crate.crate_number or 0
+    crate = c.crate.crate_number or 0 if c.crate else 0 #SC 03/17/2019 for individual iceboard
     print 'Calculating digital gains for crate %02i slot %02i (FCC%02i%02i)' % (crate, slot_0based, crate, slot_0based)
     # Get current state. Assumes all inputs have the same state
     data_source = c.get_data_source()[0]
