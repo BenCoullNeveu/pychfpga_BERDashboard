@@ -300,126 +300,6 @@ class ChimeMaster(object):
         metrics = Metrics((yield [ps.get_metrics() for ps in self.power_supply_servers.values()]))
         coroutine_return(metrics)
 
-    #####################################
-    # CHRX management methods
-    #####################################
-
-    # @coroutine
-    # def create_chrx_clients(self):
-    #     """ Create CHRX REST clients, which communicate with the CHRX remote processes that receive
-    #     the data processed from the GPUs.
-
-    #     TODO:
-    #         - Make parallel if needed
-    #     """
-    #     self.chrx = {}
-    #     nodes = self.config.chrx.nodes or {} # return {} if None (no YAML entries)
-    #     for node_name, node_params in nodes.items():
-    #         conf = node_params.copy()
-    #         conf.update(self.config.chrx.common_config)
-    #         self.chrx[node_name] = ChrxAsyncRESTClient(name=node_name, **conf)  # will use only the parameters it needs for now (host, port etc)
-
-    # def make_chrx_headers(self):
-    #     # Add some acquisition information to the header, for kicks.
-    #     conf = self.config
-    #     headers = {
-    #         'acquisition_name': self.run_name,
-    #         'acquisition_type': 'corr',
-    #         'archive_version': ARCHIVE_VERSION,
-    #         'collection_server': socket.gethostname(),
-    #         'instrument_name': conf.corr_name,
-    #         'git_version_tag': get_git_version(),
-    #         'system_user': getpass.getuser(),
-    #         'notes': conf.get('notes','(no notes)'),
-    #     }
-
-    #     # # Pass FPGA configuration variables to header.
-    #     # for fpga_slot, slot_conf in self.fpga_conf.items():
-    #     #     for name in slot_conf:
-    #     #         if name != 'antenna_scaler_gain':
-    #     #             val = convert_types(slot_conf[name])
-    #     #             name = 'Slot_'+ str(fpga_slot) + '_' + name
-    #     #             headers[name] = val
-    #     return headers
-
-
-    # @coroutine
-    # def start_chrx_clients(self):
-    #     """ Start all CHRX remote process in parallel """
-    #     @coroutine
-    #     def start_chrx_client(chrx):
-    #         crate_sn = self.fpga.ic[0].get_string_id() # Hack. Works with pathfinder only. Have to rewrite for full CHIME.
-    #         fpga_hk_fields = { "core_temp": "deg C" } # To be rewritten with new chrx
-    #         headers = {
-    #             'acquisition_name': self.run_name,
-    #             'acquisition_type': 'corr',
-    #             'archive_version': ARCHIVE_VERSION,
-    #             'collection_server': socket.gethostname(),
-    #             'instrument_name': self.config.corr_name,
-    #             'git_version_tag': get_git_version(),
-    #             'system_user': getpass.getuser(),
-    #             'notes': self.config.get('notes','(no notes)'),
-    #         }
-    #         # headers = self.make_chrx_headers()
-    #         self.log.info("starting CHRX %s..." % chrx.name)
-    #         # Start the chrx remote process with additional updated configuration parameters
-    #         yield chrx.start(
-    #             acq_base_dir= self.run_folder,
-    #             crate_sn=crate_sn,
-    #             fpga_hk_fields=fpga_hk_fields,
-    #             headers=headers)
-    #         self.log.info("finished starting CHRX %s" % chrx.name)
-
-    #     yield [start_chrx_client(chrx) for chrx in self.chrx.values()]
-
-    # @coroutine
-    # def stop_chrx_clients(self):
-    #     yield [chrx.stop() for chrx in self.chrx.values()]
-
-
-    # @coroutine
-    # def pass_gains_to_chrx(self, gain_map):
-    #     """ *** To be rewritten *** """
-    #     @coroutine
-    #     def update_gains(chrx):
-    #         chan_map = [12, 13, 14, 15,  8, 9, 10, 11,  4,  5,  6,  7, 0, 1, 2, 3]
-    #         slot_map    = [ 5,  1,  4,  0, 13, 9, 12,  8, 15, 11, 14, 10, 7, 3, 6, 2]
-    #         for (crate, slot, chan), gains in gain_map.items():
-    #             remapped_slot = slot_map[slot-1]
-    #             remapped_chan = chan_map[chan]
-    #             # for val in slot_gain:
-    #             converted_gains = convert_types(gains)
-    #             input_number = remapped_slot * 16 + remapped_chan
-    #             yield chrx.send_config(input_number, converted_gains)  # pass_fpga_gain(inp, v)
-    #     # update all gains in parallel
-    #     yield [update_gains(chrx) for chrx in self.chrx.values()]
-
-    #####################################
-    # KOTEKAN management methods
-    #####################################
-
-    # @coroutine
-    # def create_kotekan_clients(self):
-    #     # Create Kotekan REST clients
-    #     self.kotekan = {}
-    #     nodes = self.config.kotekan.nodes or {}
-    #     for node_name, node_params in nodes.items():
-    #         #config = self.config.kotekan.common_config.copy()
-    #         #config.update(node_params)
-    #         self.kotekan[node_name] = KotekanAsyncRESTClient(name=node_name, **node_params)
-
-    # @coroutine
-    # def start_kotekan_servers(self):
-    #     """
-    #     Start Kotekan serers with the proper config.
-    #     """
-    #     conf = self.config.kotekan
-    #     yield [node.start(config=merge_dict(conf.common_config, conf.nodes[node_name]).as_dict()) for node_name, node in self.kotekan.items()]
-
-
-    #####################################
-    # RAW_ACQ management methods
-    #####################################
 
     @coroutine
     def create_raw_acq_clients(self):
@@ -484,62 +364,83 @@ class ChimeMaster(object):
         conf = self.config.raw_acq
         #print(conf)
 
-        # Make a list of all all iceboards for each of the RawAcq node
+        # Create a list of IceBoard objects that correspond to each port of
+        # each server. Check that an iceboard is not allocated twice while
+        # doing that.
+        all_ibs= set()  # keeps track of Iceboard objects used so far so we can detect multiple assignments
         self.raw_acq_ibs = {}
-        for node_name, node_conf in (conf.servers or {}).items():
-            self.raw_acq_ibs[node_name] = set()
-            for ib in node_conf.iceboards:  # ib is a (crate, slot) tuple)
-                self.raw_acq_ibs[node_name].update(self.get_iceboards(ib))
+        for server_name, server_conf in (conf.servers or {}).items():
+            self.raw_acq_ibs[server_name] = []  # [{'port':port_name, 'sources':[ib1, ib2, ]}, ...]
+            for port_config in server_conf.receiver_ports:
+                # Get a set of iceboard objects specified in shources. These
+                # can be specified in any format recognized by
+                # get_iceboards(), i.e. (crate, slot) tuple, or {'crate':
+                # crate, 'slot':slot}
+                sources_ibs = {self.get_iceboards(ib) for ib in port_config.sources}
+                # Make sure no iceboard was already assigned
+                if not source_ibs.isdisjoint(all_ibs):
+                    raise RuntimeError('Some FPGA board(s) are assigned to multiple RawAcq ports. Check your config.')
+                all_ibs.update(source_ibs)
+                # Store the entry
+                self.raw_acq_ibs[server_name].append(NameSpace(port=port_config.port, iceboards=source_ibs))
 
-        #print('self.raw_acq_ibs=', self.raw_acq_ibs)
-        # Check that an iceboard is assigned to only one server
-        for node_name, ibs in self.raw_acq_ibs.items():
-            if not all(ibs.isdisjoint(other_ibs) for other_name, other_ibs in self.raw_acq_ibs.items() if other_name != node_name):
-                raise RuntimeError('Some FPGA board(s) is/are assigned to send raw data to multiple RawAcq nodes. Check your config')
 
         # Start each RawAcq server with a port for each assigned iceboard. For each port, we provide
         # the address of the (only) source FPGA board. The server will ping this address back to
         # set-up the switches routing tables and figure out on which interface the data will be
         # arriving. It will then return the addresses (ip_addr, port, mac_addr) to which the data
         # should be sent.
+
+        # Process the server/port list to generate the receiver port parameters
         #
-        # First, prepare the receiver parameters for each node
-
-        # # HACK: IF USING FIXED DATA PORT NUMBERS, RELEASE THE PRE-ALLOCATED PORT SOCKETS SO THEYT CAN BE ASSIGNED BY RAW_ACQ
-        # for s in self.pre_alloc_recv_sockets:
-        #     s.close()
-
-        recv_ports = {}
-        recv_names = {}
-        for node_name, ibs in self.raw_acq_ibs.items():  # for each raw_acq node
-            recv_name = '%sRecv' % node_name  # Name of the receiver object. Each node runs one receiver, which can hande multiple ports.
-            recv_names[node_name] = '%sRecv' % node_name
-
-            recv_ports[node_name] = []
-            for i, ib in enumerate(ibs):
-                # We have one port per Iceboard, although we could have multiple iceboards per port if the receiver supported it.
-                if conf.use_fixed_port_numbers:
-                    crate_number = 0 if not ib.crate else ib.crate.crate_number or 0
-                    slot_number = ib.slot or 0
-                    port_name = 42400 + 100*(crate_number + 1) + slot_number  # ***TODO: make resilient to no-crate and no slot info
+        # If conf.use_fixed_port_numbers=True and the port name is 0 or None, then each board is assigned a fixed receiver port number
+        # That info is stored in::
+        #
+        #   recv_ports[server_name] = [ {'port': port_number, sources: list_of_sources}]
+        #
+        # and will be passed later to the server to
+        # initialize the receiver.
+        #
+        # [{port_number: [source1, source2 ...]} dictionary
+        recv_ports = {} # list of ports and associated sources to open on each server
+        recv_names = {} # name of the receiver assigned to each server
+        for server_name, port_configs in self.raw_acq_ibs.items():  # for each raw_acq server
+            recv_name = '%sRecv' % server_name  # Name of the receiver object, which can hande multiple ports.
+            recv_names[server_name] = '%sRecv' % server_name
+            recv_ports[server_name] = []
+            for port_entry in port_configs:
+                # If port =0 amd we want fixed port number, create an entry for each board with the appropriate numeric port
+                if not port_entry.port
+                    for ib in port_config.iceboards:
+                        # Here we use a crate/slot-based receiver port number, and there is one Iceboard per receiver port.
+                        if conf.use_fixed_port_numbers:
+                            crate_number = 0 if not ib.crate else ib.crate.crate_number or 0
+                            slot_number = ib.slot or 0
+                            # Port number is a non-zero integer, so we ask the receiver to use this exact port
+                            port_number = 42400 + 100*(crate_number + 1) + slot_number
+                        else:
+                            # Port number is zero, so we ask the receiver to select a random port
+                            port_number = 0
+                        recv_ports[server_name].append(dict(port=port_number, sources=[(ib.hostname, 80)]))
                 else:
+
                     port_name = '%sPort%i' % (recv_name, i)
-                recv_ports[node_name].append(dict(port=port_name, sources=[(ib.hostname, 80)]))
+                recv_ports[server_name].append(dict(port=port_name, sources=[(ib.hostname, 80)]))
 
         # Start the receivers concurrently
-        start_results = yield {node_name: self.raw_acq[node_name].start(
-                name=recv_names[node_name],
-                ports=recv_ports[node_name],
+        start_results = yield {server_name: self.raw_acq[server_name].start(
+                name=recv_names[server_name],
+                ports=recv_ports[server_name],
                 jump_thresholds=conf.common_config.jump_thresholds)
-            for node_name in self.raw_acq_ibs.keys()}
+            for server_name in self.raw_acq_ibs.keys()}
 
         # Configure the FPGA transmit addresses based on what the receiver returned
-        for node_name, start_result in start_results.items(): # for each RawAcq node
+        for server_name, start_result in start_results.items(): # for each RawAcq server
             # The start command returned the target address to use for each data source as a list in the format
-            #    [ ((src_ip, src_port),(if_ip, port, mac)) ...].
-            # We convert this to a dict {(src_ip, src_port):(if_if, port, mac),...} for easy lookup
+            #    [ ((src_ip, src_port), (if_ip, port, mac)) ...].
+            # We convert this to a dict {(src_ip, src_port):(if_ip, port, mac),...} for easy lookup
             targets = {tuple(src_addr):target_addr for src_addr,target_addr in start_result['target_addr']}
-            for ib in self.raw_acq_ibs[node_name]:
+            for ib in self.raw_acq_ibs[server_name]:
                 ip_addr, port, eth_addr = targets[(ib.hostname, 80)]
                 ib.set_data_target_address(ip_addr, port, eth_addr)
         self.log.info('%r: RawAcq server setup successfully' % self)
@@ -566,7 +467,7 @@ class ChimeMaster(object):
         capture_source = capture_source or conf.capture_source
         tmux_factor = conf.tmux_factor if tmux_factor is None else tmux_factor
 
-        for node_name, ibs in self.raw_acq_ibs.items():
+        for server_name, ibs in self.raw_acq_ibs.items():
             for ib in ibs:
                 crate = getattr(ib.crate, 'crate_number', 0) or 0
                 slot = (ib.slot or 1) - 1
@@ -629,12 +530,12 @@ class ChimeMaster(object):
 
         yield self.start_fpga_raw_data_transmission(capture_rate, capture_source, tmux_factor)
 
-        yield [node.start_hdf5(
+        yield [server.start_hdf5(
             base_dir=capture_folder,
             base_filename=capture_filename,
             capture_duration=capture_duration,
             elements_per_file=capture_elements_per_file
-            )         for node_name, node in self.raw_acq.items()]
+            )         for server_name, server in self.raw_acq.items()]
 
         if capture_duration:
             self.log.info('%r: HDF5 data writer will be stopped in %f seconds' % (self, capture_duration))
@@ -643,7 +544,7 @@ class ChimeMaster(object):
     @coroutine
     def stop_hdf5_capture(self):
 
-        yield [node.stop_hdf5() for node_name, node in self.raw_acq.items()]
+        yield [server.stop_hdf5() for server_name, server in self.raw_acq.items()]
         yield self.start_fpga_raw_data_transmission()
 
 
