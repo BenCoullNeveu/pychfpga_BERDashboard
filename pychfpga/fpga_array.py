@@ -1225,52 +1225,53 @@ class FPGAArray(object):
                               dsmap=dsmap,
                               frames_per_packet=frames_per_packet,
                               chan8_channel_map=chan8_channel_map)
+        if ib.crate:
 
-        #####################
-        # Set-up receivers
-        #####################
-        for i, ib in enumerate(self.ib):
-            # Disable all receivers for which there are no transmitters
-            for j, gtx in enumerate(ib.BP_SHUFFLE.gtx[0:ib.BP_SHUFFLE.NUMBER_OF_PCB_LINKS]):
-                if ib.slot is None:
-                    continue
-                rx = (ib.slot, j+1)
-                tx = ib.crate.get_matching_tx(rx)
+	        #####################
+	        # Set-up receivers
+	        #####################
+	        for i, ib in enumerate(self.ib):
+	            # Disable all receivers for which there are no transmitters
+	            for j, gtx in enumerate(ib.BP_SHUFFLE.gtx[0:ib.BP_SHUFFLE.NUMBER_OF_PCB_LINKS]):
+	                if ib.slot is None:
+	                    continue
+	                rx = (ib.slot, j+1)
+	                tx = ib.crate.get_matching_tx(rx)
 
-                # disable receivers that have no corresponding transmitters
-                if tx in tx_list:
-                    gtx.USER_GTRXRESET = 0
-                else:
-                    gtx.USER_GTRXRESET = 1
-                    # gtx.USER_RESET = 1
+	                # disable receivers that have no corresponding transmitters
+	                if tx in tx_list:
+	                    gtx.USER_GTRXRESET = 0
+	                else:
+	                    gtx.USER_GTRXRESET = 1
+	                    # gtx.USER_RESET = 1
 
-        # reset DFE at low power, then increase power
-        for index in (0, 1):
-            for tx_group in tx_power['corner_turn']:
-                lane_group = tx_group['lane_group']
-                default = tx_group['default']
-                exceptions = tx_group.get('exceptions', [])
-                self.logger.info('%r: TX power parameters are: %r (default=%r, exceptions=%r)' % (self, tx_group, default, exceptions))
-                self.set_tx_power(lane_group=lane_group, default_power=default, exceptions=exceptions, index=index)
-            if index == 0:
-                time.sleep(0.3)
-                for ib in self.ib:
-                    self.ib.BP_SHUFFLE.reset_rx_equalizers()
+	        # reset DFE at low power, then increase power
+	        for index in (0, 1):
+	            for tx_group in tx_power['corner_turn']:
+	                lane_group = tx_group['lane_group']
+	                default = tx_group['default']
+	                exceptions = tx_group.get('exceptions', [])
+	                self.logger.info('%r: TX power parameters are: %r (default=%r, exceptions=%r)' % (self, tx_group, default, exceptions))
+	                self.set_tx_power(lane_group=lane_group, default_power=default, exceptions=exceptions, index=index)
+	            if index == 0:
+	                time.sleep(0.3)
+	                for ib in self.ib:
+	                    self.ib.BP_SHUFFLE.reset_rx_equalizers()
 
-        self.ib.BP_SHUFFLE.reset_stats()
+	        self.ib.BP_SHUFFLE.reset_stats()
 
-        # Print links
-        for ib in self.ib:
-            for i in range(ib.NUMBER_OF_CROSSBAR_OUTPUTS):
-                if ib.slot is None:
-                    continue
-                rx = (ib.slot, i)
-                tx = ib.crate.get_matching_tx(rx)
-                if tx in tx_list:
-                    pass
-                    #self.logger.debug('%r: In %r,  %s is receiving from %s' % (self, ib.crate, rx, tx))
-                else:
-                    self.logger.debug('%r: In %r, %s has no corresponding transmitter' % (self, ib.crate.handler, rx))
+	        # Print links
+	        for ib in self.ib:
+	            for i in range(ib.NUMBER_OF_CROSSBAR_OUTPUTS):
+	                if ib.slot is None:
+	                    continue
+	                rx = (ib.slot, i)
+	                tx = ib.crate.get_matching_tx(rx)
+	                if tx in tx_list:
+	                    pass
+	                    #self.logger.debug('%r: In %r,  %s is receiving from %s' % (self, ib.crate, rx, tx))
+	                else:
+	                    self.logger.debug('%r: In %r, %s has no corresponding transmitter' % (self, ib.crate.handler, rx))
 
 
         # sync boards
