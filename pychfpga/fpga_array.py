@@ -1545,20 +1545,21 @@ class FPGAArray(object):
             if bad_ib:
                 raise RuntimeError('The following IceBoards did not SYNC properly: %s' % (','.join(repr(ib) for ib in bad_ib)))
 
-        self.sync_timestamps = ts = self.ib.get_irigb_time(trig=False, format='raw')
-        self.sync_timestamp = ts[0]
+        if self.sync_method == 'centralized_time_trigger' or self.sync_method == 'distributed_time':
+	        self.sync_timestamps = ts = self.ib.get_irigb_time(trig=False, format='raw')
+	        self.sync_timestamp = ts[0]
 
-        delta_ts = max(ts.nano) - min(ts.nano)
-        self.logger.info('%r: The IRIG-B time for Frame 0 on all boards is:\n%s' %
-            (self, '\n'.join('%r: %s (%i ns since epoch, %i ns after sync)' % (
-                ib.handler,
-                ts[i].isoformat(),
-                ts[i].nano,
-                ts[i].nano - sync_time[i].nano)
-            for i ,ib in enumerate(self.ib))))
-        self.logger.info('%r: The maximum Frame 0 time difference is %i ns' % (self, delta_ts) )
-        if delta_ts > self.max_sync_time_difference:
-            raise RuntimeError('The Frame 0 time difference of %i exceeds the maximum limit of %i' % (delta_ts, self.max_sync_time_difference))
+	        delta_ts = max(ts.nano) - min(ts.nano)
+	        self.logger.info('%r: The IRIG-B time for Frame 0 on all boards is:\n%s' %
+	            (self, '\n'.join('%r: %s (%i ns since epoch, %i ns after sync)' % (
+	                ib.handler,
+	                ts[i].isoformat(),
+	                ts[i].nano,
+	                ts[i].nano - sync_time[i].nano)
+	            for i ,ib in enumerate(self.ib))))
+	        self.logger.info('%r: The maximum Frame 0 time difference is %i ns' % (self, delta_ts) )
+	        if delta_ts > self.max_sync_time_difference:
+	            raise RuntimeError('The Frame 0 time difference of %i exceeds the maximum limit of %i' % (delta_ts, self.max_sync_time_difference))
 
         for ib in self.ib:
             for ant in ib.ANT:
