@@ -512,10 +512,10 @@ class FPGAArray(object):
         hw_string = ''   # start with an empty string
 
         # Add `hwm`, if it is a string or a list of strings
-        if isinstance(hwm, str):
+        if isinstance(hwm, basestring):
             hw_string  += hwm + ' '
             hwm = None
-        elif isinstance(hwm, list) and all(isinstance(elem, str) for elem in hwm):
+        elif isinstance(hwm, list) and all(isinstance(elem, basestring) for elem in hwm):
             hw_string  += ' '.join(hwm) + ' '
             hwm = None
 
