@@ -37,7 +37,7 @@ class GainCalc(object):
     DONE = 'done'
     NBINS = 1024
 
-    def __init__(self, stream_ids):
+    def __init__(self, stream_ids, n_frames=100, n_iterations=3):
         """ Computes the frequency-dependent digital gains of the specified
             channels to bring the signals within the target RMS values across
             the band.
@@ -51,8 +51,8 @@ class GainCalc(object):
         self.stream_ids = stream_ids
         self.stream_id_to_index_map = {sid:index for index, sid in enumerate(self.stream_ids)}
         self.nchan = len(self.stream_ids)
-        self.n_rms_iterations = 3
-        self.n_rms_samples = 100
+        self.n_rms_samples = n_frames
+        self.n_rms_iterations = n_iterations
         # Set initial default gains of (glin, glog) = (1, 22)
         # We will start converging towards the final value from there
         self.default_glog = 22
@@ -63,6 +63,7 @@ class GainCalc(object):
         # Buffer in which we'll accumulate the incoming data
         self.data = np.zeros((self.nchan, self.NBINS), dtype=np.float32) # We store  abs(x)**2
         self.temp_gains = np.zeros((self.nchan, self.NBINS), dtype=np.float32)  # temp buffer
+        self.mask = np.zeros((self.nchan, self.NBINS), dtype=np.int8) # We store  abs(x)**2
 
         self.glin = np.ones((self.nchan, self.NBINS), dtype=np.int16) * self.default_glin
         self.glog = np.ones((self.nchan), dtype=np.int8) * self.default_glog
@@ -76,6 +77,7 @@ class GainCalc(object):
         self.frame_count = np.zeros((self.nchan), dtype=np.int8)
         self.rms_iteration_number = np.zeros((self.nchan ), dtype=np.int8)
         self.done = np.zeros((self.nchan), dtype=np.int8)
+
     def get_gains(self):
         """
         """
@@ -106,23 +108,31 @@ class GainCalc(object):
         # Phase 1: iteratively converge the gain until we reach the target RMS
         ######################
         # Accumulate square of FFT values
-        ix = np.array([self.stream_id_to_index_map[sid] for sid in stream_ids if not self.done[self.stream_id_to_index_map[sid]]])
+
+        # get the buffer index of the provided stream_ids
+        t1 = time.time()
+        ix = np.array([self.stream_id_to_index_map[sid] for sid in stream_ids if not self.done[self.stream_id_to_index_map[sid]]], dtype=np.int32)
         # self.rms_done
+        # print 'ix=', ix
         self.data[ix] += np.abs(data) ** 2
         self.frame_count[ix] += 1
 
         # Find which channels have accumulated 100 frames and compute new gains for those
         # return ix, self.frame_count
+        t2 = time.time()
         ix_frame_done = ix[self.frame_count[ix] == self.n_rms_samples]
         if ix_frame_done.size:
             print 'Computing gain for %i channels from %i RMS samples' % (ix_frame_done.size, self.n_rms_samples)
             self.data[ix_frame_done] = np.sqrt(self.data[ix_frame_done] / self.frame_count[ix_frame_done, None])
+            print 'rms signal is', self.data[ix_frame_done]
             # Scale the current gain to the value that would get us the target RMS
             # new_gain = ideal_rms / (data / current_gain)
 
             self.temp_gains[ix_frame_done] = self.glin[ix_frame_done] * (2.**self.glog[ix_frame_done, None])  # 2 has to be a float, otherwise it returns the ** result as int8
             # return self.temp_gains[ix_frame_done]
+            print 'Gain ratio is ', self.ideal_rms / self.data[ix_frame_done]
             self.temp_gains[ix_frame_done] *= 0.8 + (0.2 * self.ideal_rms / self.data[ix_frame_done])  #  g[j].shape=(1024)    idealRMS*glin*(2**(glog-4))/outrms
+            print 'new_gain is ', self.temp_gains[ix_frame_done]
 
             # # but we want to slowly ease into that gain, so just take 20% of thhat target and 80% of the old gain
             # self.temp_gains[ix_frame_done][...] = (20.0 * target_gains + 80.0 * self.temp_gains[ix_frame_done]) / 100.0
@@ -132,7 +142,7 @@ class GainCalc(object):
             # prepare for the next RMS round
             self.data[ix_frame_done] = 0 # restart a new integration
             self.frame_count[ix_frame_done] = 0
-            self.rms_iteration_number [ix_frame_done] += 1
+            self.rms_iteration_number[ix_frame_done] += 1
             # return self.glin[ix_frame_done], self.glog[ix_frame_done]
             print self.rms_iteration_number [ix_frame_done]
 
@@ -140,14 +150,22 @@ class GainCalc(object):
             # Phase 2: Compute gains without RFI spikes
             # #####################################
             # Find which  channels have completed their i8 gain update iterations and compute the final filtered gain for those
-            ix_rms_done = ix[self.rms_iteration_number [ix_frame_done] == self.n_rms_iterations]
+            t3 = time.time()
+            ix_rms_done = ix[self.rms_iteration_number[ix_frame_done] == self.n_rms_iterations]
+            print 'Done indices:', ix_rms_done
+            print self.rms_iteration_number[ix_frame_done]
+            print 'Gain is glin=%i, glog=%i, g=%f' % (self.glin[ix_frame_done[0]][0], self.glog[ix_frame_done[0]], self.glin[ix_frame_done[0]][0] * 2**self.glog[ix_frame_done[0]])
             if ix_rms_done.size:
+
                 # We start with gain, which is set in the set_gain() format [(ch,(glin, glog),...]
                 self.glin[ix_rms_done], self.mask[ix_rms_done] = self.filter(self.glin[ix_rms_done])
 
                 self.done[ix_rms_done] = True
                 print 'Finished %i channels' % ix_rms_done.size
-        return
+            t4 = time.time()
+            print 'Time:', t2-t1, t3-t2, t4-t3
+            return self.stream_ids[ix_frame_done], self.glin[ix_frame_done], self.glog[ix_frame_done], self.done[ix_frame_done]
+
 
 
 
@@ -340,8 +358,8 @@ class GainCalc(object):
         # Unfortunately, ma.polyfit() does not treat the masks of each
         # seriesin a 2D array individually. It somehow combines them, which is
         # useless to us. So we need to process the data line by line.
-        for i in signal.shape[0]:
-            fit_coeff = np.ma.polyfit(x, signal, degree)  # ma.polyfit does not use masked data points in signal to compute the polynomial coefficients
+        for i in range(signal.shape[0]):
+            fit_coeff = np.ma.polyfit(x, signal[i], degree)  # ma.polyfit does not use masked data points in signal to compute the polynomial coefficients
             filtered_signal[i, :] = np.poly1d(fit_coeff)(x)
         self.flag_rfi(signal, filtered_signal, threshold)
         return filtered_signal
