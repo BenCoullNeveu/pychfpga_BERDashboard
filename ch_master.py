@@ -520,7 +520,7 @@ class ChimeMaster(object):
                 # We have one port per Iceboard, although we could have multiple iceboards per port if the receiver supported it.
                 if conf.use_fixed_port_numbers:
                     crate_number = 0 if not ib.crate else ib.crate.crate_number or 0
-                    slot_number = ib.slot or 0
+                    slot_number = ib.slot or 1
                     port_name = 42400 + 100*(crate_number + 1) + slot_number  # ***TODO: make resilient to no-crate and no slot info
                 else:
                     port_name = '%sPort%i' % (recv_name, i)
