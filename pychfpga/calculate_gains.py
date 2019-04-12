@@ -197,8 +197,8 @@ def calc_gains(g):
 def calculate_gains(c, gain_folder='/home/chime/ch_acq/gains'):
     '''Calculate digital gains for all the inputs of an iceboard c
     '''
-    slot_0based = c.slot-1
-    crate = c.crate.crate_number
+    slot_0based = c.slot - 1 if c.slot else 0
+    crate = c.crate.crate_number if c.crate and c.crate.crate_number is not None else 0
     print 'Calculating digital gains for crate %02i slot %02i (FCC%02i%02i)' % (crate, slot_0based, crate, slot_0based)
     # Get current state. Assumes all inputs have the same state
     data_source = c.get_data_source()[0]
