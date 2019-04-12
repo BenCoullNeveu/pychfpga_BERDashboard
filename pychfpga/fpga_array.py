@@ -1762,8 +1762,8 @@ class FPGAArray(object):
         self.logger.info("Computing SCALAR gains.")
         for ib in self.ib:
             ch_id = ib.get_id()
-            crate, slot_0based = ch_id[0], ch_id[1]
-            if (slots is None) or slots[crate][slot_0based]:
+            # crate, slot_0based = ch_id[0], ch_id[1]
+            if (slots is None) or slots[ch_id[0]][ch_id[1]]:
                 yield calculate_gains.calculate_gains.async(ib, gain_folder=gain_folder)
 
     def get_next_gain_bank(self):
