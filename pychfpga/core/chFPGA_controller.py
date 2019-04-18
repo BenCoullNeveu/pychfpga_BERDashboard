@@ -25,6 +25,8 @@ from functools import wraps
 import subprocess
 import shlex
 import bz2
+import socket
+import __main__
 
 # PyPi packages
 import numpy as np
@@ -1050,27 +1052,23 @@ class chFPGA_controller(IceBoardExtHandler):
 
         """
         # Make sure there is a list of opened sockets
-        import __main__
-        import socket
 
-        if not hasattr(__main__, '__opened_sockets__'):
-            opened_sockets = __main__.__opened_sockets__ = {}
-        else:
-            opened_sockets = __main__.__opened_sockets__
 
         if not self._data_socket:
 
+            opened_sockets = __main__.__dict__.setdefault('__opened_sockets__', {})
+
             # If we want to use a specific local port that was previously reserved, use its socket.
             if port_number and port_number in opened_sockets:
-                return opened_sockets[port_number]
-
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            sock.bind((self.interface_ip_addr, port_number))
-            # store the socket in the main module so it will live persistently until the Python session is closed.
-            (actual_ip_addr, actual_port_number) = sock.getsockname()
-            opened_sockets[actual_port_number] = sock
-            self._data_socket = sock
-            self.set_local_data_port_number(actual_port_number)
+                self._data_socket = opened_sockets[port_number]
+            else:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                sock.bind((self.interface_ip_addr, port_number))
+                # store the socket in the main module so it will live persistently until the Python session is closed.
+                (actual_ip_addr, actual_port_number) = sock.getsockname()
+                opened_sockets[actual_port_number] = sock
+                self._data_socket = sock
+                self.set_local_data_port_number(actual_port_number)
 
         return self._data_socket
 
@@ -2855,10 +2853,10 @@ class chFPGA_controller(IceBoardExtHandler):
             cb1_output_bins = cb1_bins
             cb2_bypass = True
             cb3_bypass = True
-            cb3_output_bins = 0
-            cb3_output_words_per_bin = 0
-            cb3_output_data_flags_words_per_bin = 0
-            cb3_output_frame_flags_words_per_frame = 0
+            cb3_output_bins = cb1_bins
+            cb3_output_words_per_bin = 0 # To be updated
+            cb3_output_data_flags_words_per_bin = 0 # To be updated
+            cb3_output_frame_flags_words_per_frame = 0 # To be updated
             stream_type = 0  # not used, as the shuffled packets are correlated never get out of the FPGA
             crate_number =  0  # idem
 
@@ -2906,7 +2904,8 @@ class chFPGA_controller(IceBoardExtHandler):
         self.set_ant_reset(1)
         self.set_corr_reset(1)
 
-        slot_number = self.slot - 1 if self.slot is not None else 0
+        #slot_number = self.slot - 1 if self.slot is not None else 0
+        slot_number = self.slot - 1 if self.slot else 0 #SC 03/17/2019 changed for individual iceboard
         #-------------------------
         # Configure CROSSBAR 1
         #-------------------------

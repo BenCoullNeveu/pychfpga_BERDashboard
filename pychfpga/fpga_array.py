@@ -284,7 +284,7 @@ class FPGAArray(object):
 
             None: Configuration & initialization
 
-            bitfile : String. Filename of the bitfile used to to program the FPGAs
+            bitfile : String. Filename of the bitfile used to program the FPGAs
 
             prog : If ``prog=1``, the FPGAs in the selected Iceboards will be
                 configured only if they are not already configured with the same
@@ -462,8 +462,13 @@ class FPGAArray(object):
         if bitfile is None:
             chimearray_path = os.path.dirname(__file__)
             chimearray_path += '/' if chimearray_path else ''
+            #bitfile = ( chimearray_path +
+            #    '../../chfpga/xilinx_projects/SIFPGA_MGK7MB/SIFPGA_MGK7MB.runs/impl_1/SIFPGA_MGK7MB.bit')  # DOLCEK - Firmware correlator
             bitfile = ( chimearray_path +
-                '../../chfpga/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit')
+                '../../chfpga/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit') # ORIGINAL - recent one used for CHIME / does not include the firmware correlator
+            #bitfile = '/home/suit/Desktop/bitfiles/chFPGA_MGK7MB_Rev2 (16 CH,0 FFT,8 GPU,0 CORR).bit'  # When using this bit files, we encountered this error: IOError: chFPGA('MGK7BP1_SN001', 0).FpgaMmi(10.10.3.240): chFPGA('MGK7BP1_SN001', 0).FpgaMmi(10.10.3.240): Timeout during FPGA command.
+
+
 
 
         self.logger.info('%r: ------------------------' % self)
@@ -507,10 +512,10 @@ class FPGAArray(object):
         hw_string = ''   # start with an empty string
 
         # Add `hwm`, if it is a string or a list of strings
-        if isinstance(hwm, str):
+        if isinstance(hwm, basestring):
             hw_string  += hwm + ' '
             hwm = None
-        elif isinstance(hwm, list) and all(isinstance(elem, str) for elem in hwm):
+        elif isinstance(hwm, list) and all(isinstance(elem, basestring) for elem in hwm):
             hw_string  += ' '.join(hwm) + ' '
             hwm = None
 
@@ -1220,52 +1225,53 @@ class FPGAArray(object):
                               dsmap=dsmap,
                               frames_per_packet=frames_per_packet,
                               chan8_channel_map=chan8_channel_map)
+        if ib.crate:
 
-        #####################
-        # Set-up receivers
-        #####################
-        for i, ib in enumerate(self.ib):
-            # Disable all receivers for which there are no transmitters
-            for j, gtx in enumerate(ib.BP_SHUFFLE.gtx[0:ib.BP_SHUFFLE.NUMBER_OF_PCB_LINKS]):
-                if ib.slot is None:
-                    continue
-                rx = (ib.slot, j+1)
-                tx = ib.crate.get_matching_tx(rx)
+	        #####################
+	        # Set-up receivers
+	        #####################
+	        for i, ib in enumerate(self.ib):
+	            # Disable all receivers for which there are no transmitters
+	            for j, gtx in enumerate(ib.BP_SHUFFLE.gtx[0:ib.BP_SHUFFLE.NUMBER_OF_PCB_LINKS]):
+	                if ib.slot is None:
+	                    continue
+	                rx = (ib.slot, j+1)
+	                tx = ib.crate.get_matching_tx(rx)
 
-                # disable receivers that have no corresponding transmitters
-                if tx in tx_list:
-                    gtx.USER_GTRXRESET = 0
-                else:
-                    gtx.USER_GTRXRESET = 1
-                    # gtx.USER_RESET = 1
+	                # disable receivers that have no corresponding transmitters
+	                if tx in tx_list:
+	                    gtx.USER_GTRXRESET = 0
+	                else:
+	                    gtx.USER_GTRXRESET = 1
+	                    # gtx.USER_RESET = 1
 
-        # reset DFE at low power, then increase power
-        for index in (0, 1):
-            for tx_group in tx_power['corner_turn']:
-                lane_group = tx_group['lane_group']
-                default = tx_group['default']
-                exceptions = tx_group.get('exceptions', [])
-                self.logger.info('%r: TX power parameters are: %r (default=%r, exceptions=%r)' % (self, tx_group, default, exceptions))
-                self.set_tx_power(lane_group=lane_group, default_power=default, exceptions=exceptions, index=index)
-            if index == 0:
-                time.sleep(0.3)
-                for ib in self.ib:
-                    self.ib.BP_SHUFFLE.reset_rx_equalizers()
+	        # reset DFE at low power, then increase power
+	        for index in (0, 1):
+	            for tx_group in tx_power['corner_turn']:
+	                lane_group = tx_group['lane_group']
+	                default = tx_group['default']
+	                exceptions = tx_group.get('exceptions', [])
+	                self.logger.info('%r: TX power parameters are: %r (default=%r, exceptions=%r)' % (self, tx_group, default, exceptions))
+	                self.set_tx_power(lane_group=lane_group, default_power=default, exceptions=exceptions, index=index)
+	            if index == 0:
+	                time.sleep(0.3)
+	                for ib in self.ib:
+	                    self.ib.BP_SHUFFLE.reset_rx_equalizers()
 
-        self.ib.BP_SHUFFLE.reset_stats()
+	        self.ib.BP_SHUFFLE.reset_stats()
 
-        # Print links
-        for ib in self.ib:
-            for i in range(ib.NUMBER_OF_CROSSBAR_OUTPUTS):
-                if ib.slot is None:
-                    continue
-                rx = (ib.slot, i)
-                tx = ib.crate.get_matching_tx(rx)
-                if tx in tx_list:
-                    pass
-                    #self.logger.debug('%r: In %r,  %s is receiving from %s' % (self, ib.crate, rx, tx))
-                else:
-                    self.logger.debug('%r: In %r, %s has no corresponding transmitter' % (self, ib.crate.handler, rx))
+	        # Print links
+	        for ib in self.ib:
+	            for i in range(ib.NUMBER_OF_CROSSBAR_OUTPUTS):
+	                if ib.slot is None:
+	                    continue
+	                rx = (ib.slot, i)
+	                tx = ib.crate.get_matching_tx(rx)
+	                if tx in tx_list:
+	                    pass
+	                    #self.logger.debug('%r: In %r,  %s is receiving from %s' % (self, ib.crate, rx, tx))
+	                else:
+	                    self.logger.debug('%r: In %r, %s has no corresponding transmitter' % (self, ib.crate.handler, rx))
 
 
         # sync boards
@@ -1539,20 +1545,21 @@ class FPGAArray(object):
             if bad_ib:
                 raise RuntimeError('The following IceBoards did not SYNC properly: %s' % (','.join(repr(ib) for ib in bad_ib)))
 
-        self.sync_timestamps = ts = self.ib.get_irigb_time(trig=False, format='raw')
-        self.sync_timestamp = ts[0]
+        if self.sync_method == 'centralized_time_trigger' or self.sync_method == 'distributed_time':
+	        self.sync_timestamps = ts = self.ib.get_irigb_time(trig=False, format='raw')
+	        self.sync_timestamp = ts[0]
 
-        delta_ts = max(ts.nano) - min(ts.nano)
-        self.logger.info('%r: The IRIG-B time for Frame 0 on all boards is:\n%s' %
-            (self, '\n'.join('%r: %s (%i ns since epoch, %i ns after sync)' % (
-                ib.handler,
-                ts[i].isoformat(),
-                ts[i].nano,
-                ts[i].nano - sync_time[i].nano)
-            for i ,ib in enumerate(self.ib))))
-        self.logger.info('%r: The maximum Frame 0 time difference is %i ns' % (self, delta_ts) )
-        if delta_ts > self.max_sync_time_difference:
-            raise RuntimeError('The Frame 0 time difference of %i exceeds the maximum limit of %i' % (delta_ts, self.max_sync_time_difference))
+	        delta_ts = max(ts.nano) - min(ts.nano)
+	        self.logger.info('%r: The IRIG-B time for Frame 0 on all boards is:\n%s' %
+	            (self, '\n'.join('%r: %s (%i ns since epoch, %i ns after sync)' % (
+	                ib.handler,
+	                ts[i].isoformat(),
+	                ts[i].nano,
+	                ts[i].nano - sync_time[i].nano)
+	            for i ,ib in enumerate(self.ib))))
+	        self.logger.info('%r: The maximum Frame 0 time difference is %i ns' % (self, delta_ts) )
+	        if delta_ts > self.max_sync_time_difference:
+	            raise RuntimeError('The Frame 0 time difference of %i exceeds the maximum limit of %i' % (delta_ts, self.max_sync_time_difference))
 
         for ib in self.ib:
             for ant in ib.ANT:
@@ -1755,8 +1762,8 @@ class FPGAArray(object):
         self.logger.info("Computing SCALAR gains.")
         for ib in self.ib:
             ch_id = ib.get_id()
-            crate, slot_0based = ch_id[0], ch_id[1]
-            if (slots is None) or slots[crate][slot_0based]:
+            # crate, slot_0based = ch_id[0], ch_id[1]
+            if (slots is None) or slots[ch_id[0]][ch_id[1]]:
                 yield calculate_gains.calculate_gains.async(ib, gain_folder=gain_folder)
 
     def get_next_gain_bank(self):
