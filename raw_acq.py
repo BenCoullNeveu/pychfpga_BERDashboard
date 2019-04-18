@@ -10,6 +10,8 @@ import argparse
 import logging
 import socket
 import time
+import __main__
+
 # import Queue
 # import SocketServer
 import threading
@@ -31,23 +33,32 @@ from wtl.namespace import NameSpace
 from wtl.metrics import Metrics
 
 
-class hdf5TimestreamData(object):
+class HDF5Writer(object):
     """ Object representing a HDF5 file containing raw data
     """
-    def __init__(self, filestring, elements_per_file=2048*64, crate_and_slot_from_port = False):
+    def __init__(self, base_dir='.', elements_per_file=2048*64, crate_and_slot_from_port=False):
         self.log = log.get_logger(self)
         self.N_SAMP = 2048
+        self.base_dir = base_dir
         #self.N_CHANNELS = 1
         self.crate_and_slot_from_port = crate_and_slot_from_port
         self.filename = filestring
-        self.lock_filename = self.filename + '.lock'
+        self.file_number = 0
+        self.nn = 0 # sample number of the first sample of the current file
+
+        self.f = None
+        self.start_new_hdf5_file()
+
+    def open(self, filename):
+        self.current_filename = filename
+        self.lock_filename = self.current_filename + '.lock'
 
         # # create a lock file
         with open(self.lock_filename,'w') as h:
             h.write('locked\n')
 
-        self.log.info('%r: Opening raw data HDF5 file %s' % (self, self.filename))
-        self.f = h5py.File(self.filename, 'w', libver='earliest')
+        self.log.info('%r: Opening raw data HDF5 file %s' % (self, self.current_filename))
+        self.f = h5py.File(self.current_filename, 'w', libver='earliest')
         self.f.attrs["git_version_tag"] = "0.1"
         self.f.attrs["system_user"] = "root"
         self.f.attrs["collection_server"] = "hostname"
@@ -58,70 +69,99 @@ class hdf5TimestreamData(object):
         self.f.attrs["data_type"] = "ADC snapshot data"
         self.f.attrs["rawadc_version"] = 0.1
         self.f.attrs["timestamping_warning"] = "Done on file write, may be significantly different from snapshot acquistion time"
+
+        # timestamp
         self.compound_dtype = np.dtype([('fpga_count', np.uint64), ('ctime', np.float64)])
         self.timestampDataset = self.f.create_dataset('timestamp',
             (1, 1), dtype=self.compound_dtype, maxshape=(None, 1))
         self.timestampDataset.attrs['axis'] = ['snapshot']
+
+        # slot number
         self.slotDataset = self.f.create_dataset('slot', (1, 1),
             dtype=np.uint8, maxshape=(None, 1))
         self.slotDataset.attrs['axis'] = ['snapshot']
+
+        # crate number
         self.crateDataset = self.f.create_dataset('crate', (1, 1),
             dtype=np.uint32, maxshape=(None, 1))
         self.crateDataset.attrs['axis'] = ['snapshot']
-        self.antDataset = self.f.create_dataset('adc_input', (1, 1),
+
+        # channel number
+        self.chanDataset = self.f.create_dataset('adc_input', (1, 1),
             dtype=np.uint8, maxshape=(None, 1))
-        self.antDataset.attrs['axis'] = ['snapshot']
+        self.chanDataset.attrs['axis'] = ['snapshot']
+
+        # ADC data
         self.timestreamDataset = self.f.create_dataset('timestream',
             (1, self.N_SAMP), dtype=np.int8,
             maxshape=(None, self.N_SAMP))
         self.timestreamDataset.attrs['axis'] = ['snapshot', 'timestream']
+
         self.index_map = self.f.create_group("index_map")
+
         self.snapshot_index_map = self.index_map.create_dataset('snapshot',
-            (elements_per_file,), dtype=np.uint32)
-        self.start_index = int(filestring[-9:-6]) + 1
-        self.snapshot_index_map[:] = np.arange(elements_per_file) + self.start_index
+            (1,), dtype=np.uint32)
+
         self.timestream_index_map = self.index_map.create_dataset("timestream",
             (2048,), dtype=np.uint16)
         self.timestream_index_map[:] = np.arange(2048)
-        self.n_times = 1
-        self.n = 0
+
+        # self.n_times = 1
+        self.n = 0 # number of samples fince start of file
+        self.elements_per_file = elements_per_file
+
 
     def write(self, timestamp, port, chan, stream_id, flags, timestream):
-        if self.n == self.n_times:
-            self.n_times = self.n + 1
-            self.timestampDataset.resize((self.n_times, 1))
-            self.slotDataset.resize((self.n_times, 1))
-            self.crateDataset.resize((self.n_times, 1))
-            self.antDataset.resize((self.n_times, 1))
-            self.timestreamDataset.resize((self.n_times, self.N_SAMP))
-        elif self.n < self.n_times:
-            pass
-        else:
-            print("ut oh...")
-        # print(self.n_times)
-        current_time = time.time()
-        self.timestampDataset[self.n] = ( timestamp, current_time )
-        self.antDataset[self.n] = chan
-        if self.crate_and_slot_from_port:
-            slot_number = port % 100  # assume port gives slot
-            crate_number = ((port/100) % 10) - 1
-        else:
-            slot_number = (stream_id >> 4) & 0xF
-            crate_number = (stream_id >> 8) & 0xF
+        """
+        """
 
-        self.slotDataset[self.n] = slot_number
-        self.crateDataset[self.n] = crate_number
-        self.timestreamDataset[self.n] = timestream
-        self.n += 1
+
+        n1 = self.n
+        self.n = n2 = n1 + timestamp.shape[0]
+
+        self.timestampDataset.resize((self.n, 1))
+        self.crateDataset.resize((self.n, 1))
+        self.slotDataset.resize((self.n, 1))
+        self.chanDataset.resize((self.n, 1))
+        self.timestreamDataset.resize((self.n, self.N_SAMP))
+
+        current_time = time.time()
+        slot_number = (stream_id >> 4) & 0xF
+        crate_number = (stream_id >> 8) & 0xF
+        chan_number = (stream_id ) & 0xF
+
+        self.timestampDataset[n1:n2]['fpga_count'] = timestamp
+        self.timestampDataset[n1:n2]['ctime'] = current_time
+
+        self.chanDataset[n1:n2] = chan
+        self.slotDataset[n1:n2] = slot_number
+        self.crateDataset[n1:n2] = crate_number
+        self.timestreamDataset[n1:n2] = timestream
+
+        if n2 >= self.elements_per_file:
+            self.start_new_hdf5_file()
+
+    def start_new_hdf5_file(self):
+        self.close()
+        filename = "{0:06d}.h5".format(self.file_number)
+        filename = os.path.join(self.base_dir, filename)
+        self.open(filename)
+        self.n = 0
+        self.file_number += 1
 
     def close(self):
-        self.log.info('%r: Closing HDF5 file %s' % (self, self.filename))
-        self.f.close()
-        try:
-            os.remove(self.lock_filename)
-            # os.rename(self.lock_filename, self.filename)
-        except OSError:
-            self.log.error('%r: Unable to rename HDF5 lock file from %s to %s' % (self, self.lock_filename, self.filename))
+        if self.f:
+            self.snapshot_index_map.resize((self.n,))
+            self.snapshot_index_map[:] = np.arange(self.n) + self.nn
+            self.nn += self.n
+
+            self.log.info('%r: Closing HDF5 file %s' % (self, self.current_filename))
+            self.f.close()
+            try:
+                os.remove(self.lock_filename)
+                # os.rename(self.lock_filename, self.filename)
+            except OSError:
+                self.log.error('%r: Unable to rename HDF5 lock file from %s to %s' % (self, self.lock_filename, self.current_filename))
 
 
 
@@ -208,7 +248,7 @@ class RawAcqReceiver(object):
         self.start_time = None
         self.hdf5_start_time = None
         self.hdf5_run = False
-        self.run = False
+        self.started = False
         self.stream_ids = []
 
     def __repr__(self):
@@ -228,37 +268,68 @@ class RawAcqReceiver(object):
 
             ports (list of dict): describe the ports to be created. The list is in the format::
 
-                [ {'port': port_number, sources: list_of_sources}, ...]
+                [ {'port': port_id, 'sources': list_of_sources}, ...]
 
 
                 Where :
 
-                    port_number: the desired port number. If the port number
-                       is a string (i.e. an arbitrary ID) or is zero, a new
-                       port will be selected automatically. Multiple entries
-                       can have a null port number or point to the same
-                       physical port. This is why `port` cannot be used as a
-                       dict key.
+                    port_id: the ID of the port to be created.
 
-                    sources:  (list of tuples): List of address:port tuples
-                        [(addr, port)...] that describe the IseBoards that
-                        will be sending data to this port.
+                       If the ``port_id`` is a string (i.e. an arbitrary ID) or
+                       is zero, a port number will be selected automatically
+                       and all sources with that same `port_id` will be
+                       assigned to that port.
+
+                       If ``port_id`` is a non-zero integers, it will be
+                       interpreted as a port number and all sources will be
+                       assigned to that port number.
+
+                       If ``port_id`` is Null or zero, *each* source in
+                       `list_of_sources` will be assigned an individual random
+                       port number.
+
+                       ``port_id`` can appear in multiple elements of 'ports';
+                       this is why `port` cannot be used as a dict key.
+
+                    list_of_sources:  (list of tuples): List of address:port
+                        tuples [(addr, port)...] that describe the IceBoards
+                        that will be sending data to this port. A TCP
+                        connection will be attempted to those addresses to
 
 
-                ``sources`` is used to to periodically do a TCP *ping* to the the IceBoard in order to:
-                    1) confirm that the data source is there,
-                    2) to make sure that the switches know how to route the packets from the source to
-                       the receiver (see note below), and
-                    3) to determine the IP and MAC address that route to/from that data source so the
-                       information can be provided back to the source.
+                            1) confirm the presence of the source,
 
-                Concerning item 2), the FPGAs will send data to a specific MAC and IP address
-                without ever having received a directed packets from the server. This means that the
-                switch might not know on which port to forward the packet towards the server, which
-                will cause the switches to broadcast the data everywhere. If we **assumes that the
-                pinged interface is connected on the same switch as the data source interface**, all
-                the switches between the source and the receiver will learn on which port to direct
-                the data flow towards the server.
+                            2) determine on which interface we should listen to,
+
+                            3) and teach the switches routing table how to
+                               route the UDP packets from the source to this
+                               receiver (See Note below)
+
+            stream_ids (list of int): List of STREAM iD that are expected to
+                be received. This will be used to preallocate and order the
+                incoming data. Any packets with a STREAM ID that is not in
+                this list will be rejected.
+
+
+            jump_thresholds (list of int): Theshold values
+
+        Note 1:
+
+            Concerning item 3), the FPGAs will send UDP data to a specific
+            MAC and IP address without possibly ever having received a
+            directed packets from the server. This means that the switch
+            might not know on which port to forward the packet towards the
+            receiver, which will cause the switches to broadcast the data
+            everywhere. If we **assume that the specified source addresses
+            have interfaces on the same switch as the interface that sends
+            the UDP packets***, establishing a bidirectional TCP
+            connection to the source will tell all the switches between
+            the source and the receiverhow to direct the data flow towards
+            the server. This TCP connection needs to be redone
+            periodically to prevent the cached entries in the switches MAC
+            address tables from expiring.
+
+
 
         Returns:
             A dict with the following keys:
@@ -283,21 +354,25 @@ class RawAcqReceiver(object):
               connect.
         """
         self.name = name
-        self.listen_to_all_ports = True
+        self.listen_to_all_interfaces = True
         self.ports = ports
-        self.data_queue = None
-        # self.receivers = []
-        self.sockets = []
-        # self.server_threads = []
-        self.N_CHANNELS = 16
-        self.all_data = {}
-        self.all_ts = {}
-        self.hdf5_file = None
-        self.hdf5_run = False
-        self.capture_start = False
         self.jump_thresholds = jump_thresholds
+        self.stream_ids = stream_ids # list of stream ids that we expect to receive
+
+
+        # Socket creation variables
+        self.sockets = [] # Sockets that were opened
+        self.port_number = [] # actual port number associated with each socket
+        self.ping_error_count = {}
+
+
         self.start_time = time.time()
-        # self.stream_ids = stream_ids
+        self.fixed_port_numbers = False # If True, checks if the crate/slot matches the port number. Assumes that the port numbers have been assigned using a predetermined scheme.
+
+
+        #######################################
+        # Raw buffer & buffer unpacking objetcs
+        #######################################
 
         # Define numpy data types that will be used to efficiently parse the data
 
@@ -310,51 +385,80 @@ class RawAcqReceiver(object):
             ('header', self.header_dtype, 1),
             ('data', np.int8, 2048)])
         self.PACKET_SIZE = self.packet_dtype.itemsize
-        self.NPACKETS = len(stream_ids)
-        self.buf = np.empty((self.NPACKETS, self.PACKET_SIZE), dtype=np.uint8)
+        self.NCHAN = len(stream_ids)
+
+
+        # Define the packet buffer
+        self.BUF_SIZE = self.NCHAN # size of receive buffer
+        self.buf = np.empty((self.BUF_SIZE, self.PACKET_SIZE), dtype=np.uint8)
         self.n = 0  # number of packets currently stored in the buffer
 
+        # Useful views into the packet buffer
         self.buf_struct = self.buf.view(self.packet_dtype)
         self.buf_probe_id = self.buf_struct['header']['probe_id'][:, 0]
         self.buf_stream_id = self.buf_struct['header']['stream_id'][:, 0]
         self.buf_source_crate = self.buf_struct['header']['source_crate'][:, 0]
         self.buf_slot_chan = self.buf_struct['header']['slot_chan'][:, 0]
+        self.buf_flags = self.buf_struct['header']['flags'][:, 0]
         self.buf_ts = self.buf_struct['header']['ts'][:, 0]
         self.buf_data = self.buf_struct['data']
 
-        self.probe_id = np.empty(self.NPACKETS, dtype=np.uint8)
-        self.stream_id = np.array(stream_ids, dtype=np.uint16)
-        self.source = np.empty(self.NPACKETS, dtype=np.uint8)
-        self.crate = np.empty(self.NPACKETS, dtype=np.uint8)
-        self.slot = np.empty(self.NPACKETS, dtype=np.uint8)
-        self.chan = np.empty(self.NPACKETS, dtype=np.uint8)
-        self.ts = np.empty(self.NPACKETS, dtype=np.uint32)
-        self.n_frames = np.empty(self.NPACKETS, dtype=np.uint32)
+
+        # Compute the map that associates a stream id with a channel index
         self.sid_map = {sid:ix for ix, sid in enumerate(stream_ids)}
+        # Channel index associated with each buffer entry. sid_map is used to update this array each time a block of packets is processed.
+        self.buf_chan_ix = np.empty((self.BUF_SIZE, self.PACKET_SIZE), dtype=np.uint16)
 
-        self.expected_ramp = np.arange(-128, 2048 - 128, dtype=np.int8)
-
-        self.all_data = np.zeros((self.NPACKETS, 2048), dtype=np.int8)  # pre-allocate data (channels x bins) for all ports,  for a single timestamp
-        self.all_ts = np.zeros((self.NPACKETS), dtype=np.int32) # pre-allocate timestamps storage for the current data for all ports (should all be the same)
-
-        # Metrics
-        self.rms_buffer = np.zeros(self.NPACKETS, dtype=np.float32) # used to accumulate square values
-        self.mean_buffer = np.zeros(self.NPACKETS, dtype=np.int32) # used to accumulate square values
-        self.buffer_count = np.zeros(self.NPACKETS, dtype=np.int32)
-
-        self.latest_rms = np.zeros(self.NPACKETS, dtype=np.float32)
-        self.latest_min = np.zeros(self.NPACKETS, dtype=np.float32)
-        self.latest_max = np.zeros(self.NPACKETS, dtype=np.float32)
-        self.latest_mean = np.zeros(self.NPACKETS, dtype=np.float32)
-        self.latest_jumps = np.zeros(self.NPACKETS, dtype=np.float32)
-        self.latest_maxdiff = np.zeros(self.NPACKETS, dtype=np.float32)
+        # port number / crate/slot mismatch counters
         self.chan_number_mismatch_count = 0
         self.crate_number_mismatch_count = 0
         self.slot_number_mismatch_count = 0
-        self.ramp_error_count = np.zeros(self.NPACKETS, dtype=np.float32)
-        self.ramp_bit_error_count = np.zeros(self.NPACKETS, dtype=np.float32)
-        self.ping_error_count = {}
-        self.start_time = time.time()
+
+
+        # Channel-indexed arrays
+        self.stream_id = np.array(stream_ids, dtype=np.uint16) # Stream ID associated with each channel
+        self.n_frames = np.zeros(self.NCHAN, dtype=np.uint32) # Number of packet received for each channel
+
+        # self.probe_id = np.empty(self.NCHAN, dtype=np.uint8)
+        # self.source = np.empty(self.NCHAN, dtype=np.uint8)
+        # self.crate = np.empty(self.NCHAN, dtype=np.uint8)
+        # self.slot = np.empty(self.NCHAN, dtype=np.uint8)
+        # self.chan = np.empty(self.NCHAN, dtype=np.uint8)
+        # self.ts = np.empty(self.NCHAN, dtype=np.uint32)
+
+
+        # Metrics
+        self.rms_buffer = np.zeros(self.NCHAN, dtype=np.float32) # used to accumulate square values
+        self.mean_buffer = np.zeros(self.NCHAN, dtype=np.int32) # used to accumulate square values
+        self.buffer_count = np.zeros(self.NCHAN, dtype=np.int32)
+
+        self.metrics_last_time = np.zeros(self.NCHAN, dtype=np.float32)
+        self.metrics_updated = np.zeros(self.NCHAN, dtype=np.int8)
+        self.metrics_rms = np.zeros(self.NCHAN, dtype=np.float32)
+        self.metrics_min = np.zeros(self.NCHAN, dtype=np.float32)
+        self.metrics_max = np.zeros(self.NCHAN, dtype=np.float32)
+        self.metrics_mean = np.zeros(self.NCHAN, dtype=np.float32)
+        self.metrics_jumps = np.zeros(self.NCHAN, dtype=np.float32)
+        self.metrics_maxdiff = np.zeros(self.NCHAN, dtype=np.float32)
+
+        self.expected_ramp = np.arange(-128, self.PACKET_SIZE - 128, dtype=np.int8) # Fixed. Used to test ramp errors
+        self.metrics_ramp_error_count = np.zeros(self.NCHAN, dtype=np.float32)
+        self.metrics_ramp_bit_error_count = np.zeros(self.NCHAN, dtype=np.float32)
+
+
+        # HDF5 file writer parameters
+        self.hdf5_file = None
+        self.hdf5_processing_time = None
+        self.hdf5_packets_written = 0
+
+
+        # Full frame capture
+        self.capture_start = False
+        self.capture_done = False
+        self.capture_timestamp = None
+        self.capture_data = np.zeros((self.NCHAN, self.PACKET_SIZE), dtype=np.int8)  # pre-allocate data (channels x bins) for all ports,  for a single timestamp
+        # self.all_ts = np.zeros((self.NCHAN), dtype=np.int32) # pre-allocate timestamps storage for the current data for all ports (should all be the same)
+
 
         # Determine the interface from which data will be coming from each source by pinging them
         # returns a dictionary that maps each source to an interface IP and target port
@@ -390,7 +494,7 @@ class RawAcqReceiver(object):
             for port, src in zip(ports, port_info['sources']):
                 socket_sources.setdefault(port, []).append(src)
                 # get the set of IPs for this port, or create one if there is none yet
-                if_ip = '0.0.0.0' if self.listen_to_all_ports else src_if_addrs[tuple(src)][0]
+                if_ip = '0.0.0.0' if self.listen_to_all_interfaces else src_if_addrs[tuple(src)][0]
                 # Check if we have multiple interfaces associated with specified or named ports
                 if port in socket_if_ip and socket_if_ip[port] != if_ip:
                     raise RuntimeError('Data sources for port %s are accessed via different interfaces %s and %s.' % (port, socket_if_ip[port], if_ip))
@@ -406,19 +510,19 @@ class RawAcqReceiver(object):
             # will assign a random port number. If port_name is a number, ask
             # the system to open the socket at that port.
             port = 0 if isinstance(port_name, basestring) else port_name
-            self.log.info("%.32r: Creating socket for port '%s' on (%s:%s)" % (self, port_name, if_ip, port))
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            sock.bind((if_ip, port))
+            self.log.info("%.32r: Creating socket for port ID '%s' on (%s:%s)" % (self, port_name, if_ip, port))
+            sock = self.get_udp_socket((if_ip, port))
             self.sockets.append(sock)
             # Store actual port IP/port allocated by the system
             actual_socket_if_ip[port_name], actual_socket_port[port_name] = sock.getsockname()
+            self.port_number.append(actual_socket_port[port_name])
 
             # Check if the port and IP that were given are what we expect. This should never happen.
             if ((actual_socket_if_ip[port_name] != socket_if_ip[port_name]) or
                 (port and port != actual_socket_port[port_name])):
                 raise RuntimeError(
-                    'The socket for port %s was not created at the expected '
-                    ' address (%s:%s instead of %s:%s)' % (
+                    'The socket for port ID %s was not created at the expected '
+                    'address: got %s:%s instead of %s:%s' % (
                         port_name,
                         actual_socket_if_ip[port_name],
                         actual_socket_port[port_name],
@@ -427,9 +531,9 @@ class RawAcqReceiver(object):
 
             self.log.info("%r: receiver %s: UDP Socket created for port  '%s' at %s:%i" % (self, self.name, port_name, actual_socket_if_ip[port_name], actual_socket_port[port_name]))
 
-        self.run = True
+        self.started = True
         if start_thread:
-            self.data_processing_thread = threading.Thread(target=self.process_data)
+            self.data_processing_thread = threading.Thread(target=self.process_packets)
             self.data_processing_thread.setDaemon(True)
             self.data_processing_thread.start()
 
@@ -454,6 +558,29 @@ class RawAcqReceiver(object):
             target_addr=dest_ifs # return as a list of tuples, json does not support tuple-indexed dicts
             )
         coroutine_return(result)
+
+    def get_udp_socket(self, addr):
+        """
+        Return a socket that is bound to the specified port/address.
+
+
+        """
+        # Make sure there is a list of opened sockets
+
+        opened_sockets = __main__.__dict__.setdefault('__opened_sockets__', {})
+
+        ip, port = addr
+        # If we want to use a specific local port that was previously reserved, use its socket.
+        if port and port in opened_sockets:
+            sock = opened_sockets[port]
+        else:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.bind((ip, port))
+            # store the socket in the main module so it will live persistently until the Python session is closed.
+            (ip, port) = sock.getsockname()
+            opened_sockets[port] = sock
+
+        return sock
 
 
     @coroutine
@@ -540,11 +667,11 @@ class RawAcqReceiver(object):
         self.gain_estimator = None
         self.start_time = None
 
-    def process_data(self):
+    def process_packets(self):
         self.old_timestamp = None
         self.n_ant_rec = 0
         self.n = 0
-        while self.run:
+        while self.started:
             try:
             # for j, out_q in enumerate(self.data_queues):
                 # if out_q.empty():
@@ -553,15 +680,15 @@ class RawAcqReceiver(object):
                 # get the packet from the queue
 
                 # Check which sockets have data
-                [sockets, [], []] = select.select(self.sockets, [], [], 0)
+                sockets, [], [] = select.select(self.sockets, [], [], 0)
                 if sockets:
                     for sock in sockets:
                         size = sock.recv_into(self.buf[self.n])
                         self.n += 1
-                        if self.n == self.NPACKETS:
+                        if self.n == self.BUF_SIZE:
                             self.process_rx_buffer()
                             self.n = 0
-                else:
+                elif self.n:
                     # There was not data after the timeout. The pause might be
                     # much longer. Let's process whatever data we have so the user
                     # does not have to wait too long for it.
@@ -573,43 +700,117 @@ class RawAcqReceiver(object):
     def process_rx_buffer(self):
         # print('Processin %i packets' % self.n)
         # return
-        t1 = time.time()
-        if not self.n:
+        t0 = time.time()
+        n = self.n
+        if not n:
             return
-        # Extract source, stream_id, crate, slot, chan, ts
-        np.right_shift(self.buf_source_crate, 7, out=self.source)
-        np.logical_and(self.buf_stream_id, 0x0FFF, out=self.stream_id)
+        # Extract source (timestream or FFT) and stream_id
+        self.buf_source[:n] = self.buf_source_crate[:n] >> 7
+        self.buf_stream_id[:n] = self.buf_stream_id[:n] & 0x0FFF
+        # Packets in the buffer come in any random channel order. Find the channel index of each incoming packets by looking up their STREAM ID.
+        self.buf_chan_ix[:n] = [self.sid_map[sid] for sid in self.buf_stream_id[:n].tolist()] # iterating over a list of int is much faster than over an array of int32
 
-        np.logical_and(self.buf_source_crate, 0x0F, out=self.crate)
-        np.right_shift(self.buf_slot_chan, 4, out=self.slot)
-        np.logical_and(self.buf_slot_chan, 0x0F, out=self.chan)
-        np.logical_and(self.buf_ts, 0xFFFFFFFFFFFF, out=self.ts)
+        # np.logical_and(self.buf_source_crate, 0x0F, out=self.crate)
+        # np.right_shift(self.buf_slot_chan, 4, out=self.slot)
+        # np.logical_and(self.buf_slot_chan, 0x0F, out=self.chan)
+        # np.logical_and(self.buf_ts, 0xFFFFFFFFFFFF, out=self.ts)
 
-        t2 = time.time()
 
         # Find the receive buffer index that contain data from the ADC
-        (rx_buf_ix, ) = np.where(self.source[:self.n] == 0)
+        t1 = time.time()
+        self.process_adc_data()
+        t2 = time.time()
+        self.process_fft_data()
+        t3 = time.time()
 
-        # If we have ADC data, process it
-        if rx_buf_ix.size:
-            # Find index in the data storage space
-            ix = np.array([self.sid_map[sid] for sid in self.stream_id[rx_buf_ix]])
-            t2_2 = time.time()
+        self.buffer_preprocessing_time += t0 - t1
+        self.adc_processing_time += t2 - t1
+        self.fft_processing_time += t3 - t2
+        self.processed_packets += self.n
 
-            # data = self.data[ix]
-            data = self.buf_data[rx_buf_ix]
-            # Store some stats
-            # chan_id = (crate_number, slot_number, chan)
-            # print('sid=', self.stream_id[rx_buf_ix])
-            # print('ix=', ix)
-            self.n_frames[ix] += 1
-            self.rms_cache[ix] = np.std(data)
-            self.rms[ix] = np.std(data)
-            self.min[ix] = np.min(data)
-            self.max[ix] = np.max(data)
-            self.mean[ix] = np.mean(data)
-            self.maxdiff[ix] = np.max(np.abs(np.diff(data)))
 
+    def process_adc_data(self):
+        """ Process the data tagged with source=0, i.e ADC data (or more precisely, the data at the output of the function generator)
+
+        The following is done:
+
+            - the channel and buffer index array for ADC data packets (source=0) is computed
+            - crate/slot number are compated against port number  if self.fixed_port_numbers is True
+            - Expired metrics are updated
+            - Data is written to HDF5 file if the sampling period for each channel is reached
+            - Full set of packet for one timestamp is captured
+            - RMS values are averaged for each incoming packet
+
+        Parameters:
+
+        """
+        # find the buffer index of new ADC data entries
+        buf_ix, _ = np.where(self.buf_source[:self.n] == 0)
+
+        # If there is no ADC data, do nothing
+        if not buf_ix.size:
+            return
+
+        # Find the channel index corresponding to each packet in the buffer
+        # there is one ix for each buf_ix
+        ix = self.buf_chan_ix[buf_ix]
+
+
+        # if we used fixed port numbers, check that the crate and slot part of the stream ID matches the port number
+        if self.fixed_port_numbers:
+            base_data_port = 42500
+            crate, slot, port = self.unpack_stream_id(self.buf_port[buf_ix])
+            bad_port = self.buf_port[buf_ix] < base_data_port
+            bad_crate = crate != (self.buf_port[buf_ix] - base_data_port) // 100
+            bad_slot = slot != (self.buf_port[buf_ix] - base_data_port) % 100 -1
+            bad = bad_port or pad_crate or bad_slot
+            self.crate_number_mismatch_count += bad_crate.sum()
+            self.slot_number_mismatch_count += bad_slot.sum()
+            # remove bad channels from the channel & buffer indices
+            ix = ix[not bad]
+            buf_ix = buf_ix[not bad]
+
+
+        # keep track of an average rms value for the flagging broker
+        # self.rms_cache[ix] = np.std(data)
+
+
+        # keep track of how many packets we received for each channel
+        self.n_frames[ix] += 1
+
+        # create a view into the
+        self.adc_data[ix] = self.buf_data[buf_ix]
+
+
+        #########################################
+        # Find and update only expired metric values.
+        #########################################
+        # We process only channels whose metrics are older than
+        # `self.metric_refresh_time`. There is no point in wasting CPU cycles
+        # updating metrics data faster then the metrics refresh rate
+
+        t0 = time.time()
+        # Create a boolean array that identifies the channel index of entries that have exprired metrics
+        is_expired = (self.metrics_last_time[ix] - t0) >= self.metric_refresh_time  # boolean ndarray
+        cix = ix[is_expired]
+        if uix.size:
+             # indices of buffer entries that correspond to expired metrics
+            bix = buf_ix[is_expired]
+            # move the data in a preallocated, contiguous memory block so
+            # numpy does not have to do this each time we access it
+            # (x[index_array] does NOT create a view, but a copy in newly
+            # allocated memory)
+            self.raw_data[:bix.size] = self.buf_data[bix]
+            # create a view into raw_data for convenience. We cannot do y=x[:n]= z[ix] : y is not a view of x
+            data = self.raw_data[:bix.size]
+
+            self.metrics_last_time[cix] = t0
+            self.metrics_updated[cix] = True  # will be cleared when the metrics is read out
+            self.metrics_mean[cix] = np.mean(data)
+            self.metrics_rms[cix] = np.sqrt(np.mean((data - self.mean[cix])**2))  # faster than std()
+            self.metrics_min[cix] = np.min(data)
+            self.metrics_max[cix] = np.max(data)
+            self.metrics_maxdiff[cix] = np.max(np.abs(np.diff(data)))
 
             # self.ramp_error_count[chan_id] = (
             #     self.ramp_error_count.get(chan_id, 0) +
@@ -628,93 +829,159 @@ class RawAcqReceiver(object):
 
 
 
-                # # continue  # JFC debug mem leak
-                # base_data_port = 42500
-                # if port < base_data_port:
-                #     crate_number_from_port = None
-                #     slot_number_from_port = None
-                # crate_number_from_port = (port - base_data_port) // 100
-                # slot_number_from_port = ((port - base_data_port) % 100) - 1 # zero-based
 
-                # stream_id &= 0xFFF
-                # chan_number = stream_id & 0xF
-                # slot_number = (stream_id >> 4) & 0xF  # zero-based
-                # crate_number = (stream_id >> 8) & 0xF
-
-                # discard = False
-                # if chan != chan_number:
-                #     self.chan_number_mismatch_count += 1
-                #     discard = True
-                # if crate_number_from_port != crate_number:
-                #     self.crate_number_mismatch_count += 1
-                #     discard = True
-                # if slot_number_from_port != slot_number:
-                #     self.slot_number_mismatch_count += 1
-                #     discard = True
-
-                # if discard:
-                #     self.log.warning('%r:Crate/slot/channel mismatch: (%i, %i, %i) from port, (%i, %i, %i) from streamID' %
-                #         (self, crate_number_from_port, slot_number_from_port, chan, crate_number, slot_number, chan_number))
-                #     continue
-                # # Write data to HDF file
-                # t0 = time.time()
-                # if self.hdf5_run:
-                #     self.hdf5_file.write(timestamp, port, chan, stream_id, flags, adc_data)
-                #     self.n_elements += 1
-                #     if self.n_elements >= self.elements_per_file:
-                #         self.hdf5_file_number += 1
-                #         self.hdf5_file = self.start_new_hdf5_file()
-                # elif self.hdf5_file: # if we are no longer capturing to file, but a file is open, then close it.
-                #     self.hdf5_file.close()
-                #     self.hdf5_file = None # This will tell us we are finished capturing
-                # self.hdf5_write_time = max(self.hdf5_write_time, time.time() - t0)
+        #########################################
+        # Write data to HDF file
+        #########################################
+        # We write data for channels that have not been written for at least self.hdf5_refresh_time
+        if self.hdf5_file:
+            t0 = time.time()
+            # find the channel index of channels that need to be written
+            is_old = (self.metrics_last_time[ix] - t0) > self.metric_refresh_time  # boolean ndarray
+            # find buffer index of entries that should be written
+            bix = buf_ix[is_old]
+            if bix.size:
+                # update the last time of the channels . We use the boolean array directly, since we don't need to reuse an channel index array anymore
+                self.hdf5_last_time[is_old] = t0
+                # save the selected entries. Unfortunately, the array indexing
+                # buf_x[bix] will cause copies to be created for each
+                # argument. To avoid this extra copy, we would have to pass
+                # bix separately, and let the copy happen only when we
+                # transfer the data to the hdf5 internal buffers.
+                self.hdf5_file.write(
+                    self.buf_ts[bix],
+                    self.buf_stream_id[bix],
+                    self.buf_flags[bix],
+                    self.buf_data[bix])
+            # keep track of how many packets we write and how much time it
+            # takes so we can get an average that informs us of the maximum
+            # packet rate we can sustain
+            self.hdf5_processing_time += time.time() - t0
+            self.hdf5_packets_written += 1
 
 
 
-                # self.current_ts[buf][j][chan] = timestamp
-                # self.current_data[buf][j][chan, :] = adc_data
-                # self.current_crate[j][chan] = crate_number
-                # self.current_slot[j][chan] = slot_number
+        #########################################
+        # Update averaged RMS values
+        #########################################
 
-                # Capture a full timestamp set if self_capture = True
-                # if self.capture_start:
-                #     self.all_ts[port][chan] = timestamp
-                #     self.all_data[port][chan, :] = adc_data
-                #     if (timestamp == self.old_timestamp):
-                #         self.n_ant_rec += 1
-                #     else:
-                #         self.old_timestamp = timestamp
-                #         self.n_ant_rec = 1
-                #     if self.n_ant_rec >= self.N_CHANNELS - 1:
-                #         self.n_ant_rec = 0
-                #         self.old_timestamp = None
-                #         self.capture_start = False
+        # self.current_ts[buf][j][chan] = timestamp
+        # self.current_data[buf][j][chan, :] = adc_data
+        # self.current_crate[j][chan] = crate_number
+        # self.current_slot[j][chan] = slot_number
+
+        #########################################
+        # Capture a full set of data with the same timestamp
+        #########################################
+        # Accumulate packets in a buffer. Settarget timestamp from the hihest timestamp of a packet that contains multiple timestamps
+
+        # if self.capture:
+        #     self.buf_ts[buf_ix] = self.buf_ts[buf_ix] & 0xFFFFFFFFFFFF  # 48 bit timestamp. Mask extra bits.
+        #     if self.capture_timestamp is None:
+        #         max_timestamp = np.max(buf_ts[buf_ix])
+        #         if self.capture_last_timestamp is None:
+        #             self.capture_last_timestamp = max_timestamp
+        #         elif self.capture_last_timestamp != max_timestamp:
+        #             self.capture_timestamp = max_timestamp
+        #         self.capture_last_timestamp = max_timestamp
+        #     # We have a potentially updated self.capture_timestamp
+        #     if self.capture_timestamp is not None:
+        #         ts_match = self.buf_ts[buf_ix] == self.capture_timestamp
+        #         bix = buf_ix[ts_match]
+        #         if not bix.size: # no more packets with the target timestamp
+        #             self.capture = False
+        #             self.capture_done = True
+        #         else:
+        #             cix = ix[ts_match]
+        #             self.capture_data[cix] = self.buf_data[bix]
+        #             self.capture_valid[cix] = True
+
+        # Capture a full timestamp set if self_capture = True
+        # if self.capture_start:
+        #     self.all_ts[port][chan] = timestamp
+        #     self.all_data[port][chan, :] = adc_data
+        #     if (timestamp == self.old_timestamp):
+        #         self.n_ant_rec += 1
+        #     else:
+        #         self.old_timestamp = timestamp
+        #         self.n_ant_rec = 1
+        #     if self.n_ant_rec >= self.N_CHANNELS - 1:
+        #         self.n_ant_rec = 0
+        #         self.old_timestamp = None
+        #         self.capture_start = False
 
         t3 = time.time()
 
         print('Processing time = %f, %f, %f' % (t2-t1, t2_2-t2, t3-t2_2))
-    def print_stats(self):
-        for i, r in enumerate(self.receivers):
-            self.log.debug('Recv %i, pkts=%i, queued= %i, overflows=%i, qsize=%i' %
-                           (i, r.packet_counter, r.queued_packets,
-                            r.queue_overflows, self.data_queue.qsize()))
-        print
+    # def print_stats(self):
+    #     for i, r in enumerate(self.receivers):
+    #         self.log.debug('Recv %i, pkts=%i, queued= %i, overflows=%i, qsize=%i' %
+    #                        (i, r.packet_counter, r.queued_packets,
+    #                         r.queue_overflows, self.data_queue.qsize()))
+    #     print
+
+    def process_fft_data(self):
+        """ Process the FFT data (or more precisely, the data at the output of the scaler) This corresponds to data tagged with source=1.
+
+        - Compute an average per-bin RMS over self.fft_rms_average samples
+
+        """
+        # find the buffer index of new ADC data entries
+        buf_ix, _ = np.where(self.buf_source[:self.n] == 1)
+
+        # If there is no ADC data, do nothing
+        if not buf_ix.size:
+            return
+
+        # Find the channel index corresponding to each packet in the buffer
+        # there is one ix for each buf_ix
+        ix = self.buf_chan_ix[buf_ix]
+        # keep only those channels who are not done and who match the target bank
+        ix = ix[not self.fft_rms_done[ix] and self.rms_target_bank == self.buf_bank[buf_ix]]
+
+        # Accumulate the square of the magnitude of the frequency samples. This corresponds to re**2 + im**2. We never actually use complex numbers, which saves CPU cycles.
+        #
+        # We xor with -128 to convert offect binary into two's complement (do not use +128, it is an int16)
+        # We then right-shift by four, which preserves the sign
+        #
+        # Square of values from -8 to 7 fit in an int8, but not the sum of two. So we add the squares re and im values separately into the int32 buffer
+        # todo: check if there is a more efficient way to do this
+        self.fft_rms_buffer[ix] += ((self.buf_data[buf_ix, ::2] ^ -128) >> 4) ** 2
+        self.fft_rms_buffer[ix] += ((self.buf_data[buf_ix, 1::2] ^ -128) >> 4) ** 2
+        self.fft_n_frames[ix] += 1
+
+        # find which frames have reached their total:
+
+        cix = ix[self.fft_n_frames[ix] == self.fft_rms_average]
+        if cix.shape:
+            self.fft_rms_done[ix] = True
+            self.fft_rms[ix] = np.sum(self.fft_rms_buffer[ix]).astype(np.float32) / self.fft_n_frames[ix]
+
+    def unpack_stream_id(self, stream_id):
+        """
+        """
+        crate = (self.buf_stream_id >> 8) & 0xF
+        slot = (self.buf_stream_id >> 4) & 0xF
+        chan = self.buf_stream_id & 0xF
+
+        return crate, slot, chan
+
 
     def startHdf5Disk(self, base_dir, base_filename, capture_duration=60, elements_per_file=2048*64):
         if self.hdf5_file:
             raise RuntimeError('HDF5 dataWriter is already running')
 
-        self.hdf5_start_time = time.time()
-        # self.datawriter = dataWriter(self.data_queues, base_dir, base_filename, elements_per_file)
-        # self.data_writer_thread = threading.Thread(target=self.datawriter.write)
-        # self.data_writer_thread.setDaemon(True)
-        # self.data_writer_thread.start()
+        self.elements_per_file = elements_per_file
+
+        self.hdf5_start_time = time.time() # used to keep track of how long the disk capture has been running
+
+
+        # Schedule for the acquisition to stop if capture_ducation is non-zero
         if capture_duration:
             capture_duration += 60,  # stop HDF5 capture 1 min after the desired time in case ch_master does not do it.
             self.log.info('%.32r: HDF5 data writer will be stopped in %f seconds' % (self, capture_duration))
             IOLoop.current().call_later(capture_duration, self.stopHdf5Disk)
 
-        self.elements_per_file = elements_per_file
 
         # Create the target folder
         time_str = datetime.datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
@@ -725,30 +992,16 @@ class RawAcqReceiver(object):
             self.log.warning("%.32r: couldn't make directory '%s'. Using current directory." % (self, self.hdf5_base_dir))
             self.hdf5_base_dir = './'
 
-        self.hdf5_file_number = 0
-        self.hdf5_file = self.start_new_hdf5_file()
-        self.hdf5_run = True
+        self.hdf5_file = HDF5Writer(base_dir=self.hdf5_base_dir, elements_per_file=self.elements_per_file)
 
 
     def stopHdf5Disk(self):
         if not self.hdf5_file:
-            raise RuntimeError('%.32r: HDF5 dataWriter is not running' % self)
+            raise RuntimeError('%.32r: HDF5 dataWriter is not running. Cannot stop it.' % self)
         self.log.info('%.32r: Stopping HDF5 data writer' % self)
-        self.hdf5_run = False
         self.hdf5_start_time = None
-        # self.data_writer_thread.join()
-        # self.datawriter.close()
-        # self.datawriter = None
 
 
-    def start_new_hdf5_file(self):
-        if self.hdf5_file:
-            self.hdf5_file.close()
-        self.n_elements = 0
-        filename = "{0:06d}.h5".format(self.hdf5_file_number)
-        filename =  os.path.join(self.hdf5_base_dir, filename)
-        h5file = hdf5TimestreamData(filename, elements_per_file=self.elements_per_file)  # start a new empty file
-        return h5file
 
     # def hdf5_write(self, timestamp, port, chan, stream_id, flags, adc_data):
     #     """
@@ -800,9 +1053,24 @@ class RawAcqReceiver(object):
 
         coroutine_return(self.all_ts, self.ports, self.all_data)
 
+    @coroutine
+    def start_fft_rms(self, stream_ids, target_gain_bank, number_of_frames = 100):
+        """ Start the acquisition of averages RMS data from the FFT data using the specified target bank. `get_fft_rms()` should be polled to retreive the data products that are ready.
+
+
+        This method can be called multiple times.
+
+        """
+
+
+    @coroutine
+    def get_fft_rms(self):
+        """ Returns FFT RMS data products that are ready.
+        """
+
 
     def is_running(self):
-        return bool(self.receivers)
+        return bool(self.sockets)
 
     def check_ioloop_response_time(self):
         t = time.time()
@@ -863,43 +1131,37 @@ class RawAcqReceiver(object):
 
         # receiver data queue stats
 
-        if self.run:
+        if self.started:
+
+            # Socket-specific stats
+            for i, port in enumerate(self.ports):
+                metrics.add('raw_acq_received_packets', value=self.packet_counter, socket=i)
+                # metrics.add('raw_acq_queued_packets', value=r.queued_packets, receiver=i)
+                # metrics.add('raw_acq_overflow_packets', value=r.queue_overflows, receiver=i)
+                yield moment
+
+            metrics.add('raw_acq_packet_receiver_delay_between_calls', value=self.delay_between_calls)
+            metrics.add('raw_acq_packets_receiver_processing_time', value=self.processing_time)
+
+
             # metrics.add('raw_acq_queue_size', value=self.data_queue.qsize())
             # metrics.add('raw_acq_queue_maxsize', value=self.data_queue.maxsize)
+            t = time.time()
+            cix, _ = np.where(self.metrics_updated)  # boolean ndarray
 
-            # ADC signal stats
-            for (crate, slot, chan), rms in self.rms.items():
-                metrics.add('raw_acq_rms', value= rms, crate=crate, slot=slot, chan=chan)
-            self.rms = {}
-            for (crate, slot, chan), min_ in self.min.items():
-                metrics.add('raw_acq_min', value= min_, crate=crate, slot=slot, chan=chan)
-            self.min = {}
-            for (crate, slot, chan), max_ in self.max.items():
-                metrics.add('raw_acq_max', value= max_, crate=crate, slot=slot, chan=chan)
-            self.max = {}
-            for (crate, slot, chan), mean in self.mean.items():
-                metrics.add('raw_acq_mean', value= mean, crate=crate, slot=slot, chan=chan)
-            self.mean = {}
-            for (crate, slot, chan), maxdiff in self.maxdiff.items():
-                metrics.add('raw_acq_max_diff', value= maxdiff, crate=crate, slot=slot, chan=chan)
-            self.maxdiff = {}
-            for (crate, slot, chan), count in self.ramp_error_count.items():
-                metrics.add('raw_acq_ramp_errors', value= count, crate=crate, slot=slot, chan=chan)
-            #self.ramp_error_count = {}
-            for (crate, slot, chan, bit), count in self.ramp_bit_error_count.items():
-                metrics.add('raw_acq_ramp_bit_errors', value=count, crate=crate, slot=slot, chan=chan, bit=bit)
-            #self.ramp_bit_error_count = {}
-            for (crate, slot, chan, threshold), count in self.jumps.items():
-                metrics.add('raw_acq_jumps', value=count, crate=crate, slot=slot, chan=chan, threshold=threshold)
-            #self.jumps = {}
-
-            # Receiver-specific stats
-            for i, r in enumerate(self.receivers):
-                metrics.add('raw_acq_received_packets', value=r.packet_counter, receiver=i)
-                metrics.add('raw_acq_queued_packets', value=r.queued_packets, receiver=i)
-                metrics.add('raw_acq_overflow_packets', value=r.queue_overflows, receiver=i)
-                metrics.add('raw_acq_packet_receiver_delay_between_calls', value=r.delay_between_calls, receiver=i)
-                metrics.add('raw_acq_packets_receiver_processing_time', value=r.processing_time, receiver=i)
+            for ix in cix:
+                crate, slot, chan = self.unpack_stream_id(self.stream_id[ix])
+                metrics.add('raw_acq_rms', value= self.metrics_rms[ix], crate=crate, slot=slot, chan=chan)
+                metrics.add('raw_acq_min', value= self.metrics_min[ix], crate=crate, slot=slot, chan=chan)
+                metrics.add('raw_acq_max', value= self.metrics_max[ix], crate=crate, slot=slot, chan=chan)
+                metrics.add('raw_acq_mean', value= self.metrics_mean[ix], crate=crate, slot=slot, chan=chan)
+                metrics.add('raw_acq_max_diff', value= self.metrics_maxdiff[ix], crate=crate, slot=slot, chan=chan)
+                metrics.add('raw_acq_ramp_errors', value= self.metrics_ramp_error_count[ix], crate=crate, slot=slot, chan=chan)
+                for bit, count in enumerate(self.metrics.ramp_bit_error_count[ix]):
+                    metrics.add('raw_acq_ramp_bit_errors', value=count, crate=crate, slot=slot, chan=chan, bit=bit)
+                for i, count in enumerate(self.metrics_jumps[ix]):
+                    metrics.add('raw_acq_jumps', value= count, crate=crate, slot=slot, chan=chan, threshold=self.threshold[i])
+            self.metrics_updated[cix] = False
 
 
             metrics.add('raw_acq_run_time', value=0 if self.start_time is None else time.time() - self.start_time)
@@ -915,7 +1177,7 @@ class RawAcqReceiver(object):
                 metrics.add('raw_acq_ping_errors', value=count, src_ip=src_ip, src_port=src_port)
             self.ping_error_count = {}
 
-        return metrics
+        coroutine_return(metrics)
 
 
 
@@ -936,7 +1198,7 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
     def __init__(self, address='', port=DEFAULT_PORT, logging_params={}):
         self.receiver = RawAcqReceiver()
         super(RawAcqAsyncRESTServer, self).__init__(address=address, port=port,  heartbeat_string='Rs')
-        self.add_periodic_callback(self.receiver.print_stats, 3000)
+        # self.add_periodic_callback(self.receiver.print_stats, 3000)
         self.add_periodic_callback(self.receiver.ping_sources, 3000) # ping the raw_acq data sources periodically to ensure the switches tables always know how to route the packets to here
         self.add_periodic_callback(self.receiver.check_ioloop_response_time, 300)
 
