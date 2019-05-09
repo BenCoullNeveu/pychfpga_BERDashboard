@@ -41,7 +41,7 @@ import numpy as np
 
 
 # External private packages
-
+from comet import Manager, CometError
 from wtl import log
 from wtl.rest import RESTClient, AsyncRESTServer, AsyncRESTClient, HTTPError # generic REST servers and clients
 from wtl.rest import endpoint, coroutine, coroutine_return, sleep, moment
@@ -663,6 +663,32 @@ class ChimeMaster(object):
         self.log.info('Starting ch_master.start()')
         if self.state != 'off':
             coroutine_return(dict(error='already started'))
+
+        # Register config with comet broker
+        try:
+            enable_comet = config['comet_broker']['enabled']
+        except KeyError:
+            msg = "Missing config value 'comet_broker/enabled'."
+            self.log.error(msg)
+            coroutine_return(msg)
+        if enable_comet:
+            try:
+                comet_host = config['comet_broker']['host']
+                comet_port = config['comet_broker']['port']
+            except KeyError as exc:
+                msg = "Failure registering initial config with comet broker: 'comet_broker/{}' " \
+                      "not defined in config.".format(exc[0])
+                self.log.error(msg)
+                coroutine_return(msg)
+            comet = Manager(comet_host, comet_port)
+            try:
+                comet.register_config(config)
+            except CometError as exc:
+                msg = 'Comet failed registering initial config: {}'.format(exc)
+                self.log.error(msg)
+                coroutine_return(msg)
+        else:
+            self.log.warning("Config registration DISABLED. This is only OK for testing.")
 
         if config:
             self.set_config(config)
