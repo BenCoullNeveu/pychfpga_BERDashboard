@@ -12,6 +12,7 @@ import calendar
 import Queue
 
 # External private packages
+from comet import Manager, CometError
 from wtl import log
 from wtl.rest import AsyncRESTServer, AsyncRESTClient # generic REST servers and clients
 from wtl.rest import endpoint, coroutine, coroutine_return, sleep
@@ -764,6 +765,33 @@ class GPSAsyncRESTServer(AsyncRESTServer):
         self.log.info('%r: Received start command' % self)
         if self.gps:
             raise RuntimeError('%.32r: Power Supply server is already started' % self)
+
+        # Register config with comet broker
+        try:
+            enable_comet = config['comet_broker']['enabled']
+        except KeyError:
+            msg = "Missing config value 'comet_broker/enabled'."
+            self.log.error(msg)
+            coroutine_return(msg)
+        if enable_comet:
+            try:
+                comet_host = config['comet_broker']['host']
+                comet_port = config['comet_broker']['port']
+            except KeyError as exc:
+                msg = "Failure registering initial config with comet broker: 'comet_broker/{}' " \
+                      "not defined in config.".format(exc[0])
+                self.log.error(msg)
+                coroutine_return(msg)
+            comet = Manager(comet_host, comet_port)
+            try:
+                comet.register_config(config)
+            except CometError as exc:
+                msg = 'Comet failed registering initial config: {}'.format(exc)
+                self.log.error(msg)
+                coroutine_return(msg)
+        else:
+            self.log.warning("Config registration DISABLED. This is only OK for testing.")
+
         self.config = NameSpace(config)
         units = self.config.units or {}
         for name, params in units.items():
