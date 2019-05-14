@@ -24,6 +24,7 @@ import tornado
 import psutil
 
 # External private packages
+import ch_master
 from comet import Manager, CometError
 from wtl import log
 from wtl.rest import AsyncRESTServer, endpoint, AsyncRESTClient, coroutine, coroutine_return, IOLoop, RunSyncWrapper, moment
@@ -1060,6 +1061,8 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
         self.add_periodic_callback(self.receiver.print_stats, 3000)
         self.add_periodic_callback(self.receiver.ping_sources, 3000) # ping the raw_acq data sources periodically to ensure the switches tables always know how to route the packets to here
         self.add_periodic_callback(self.receiver.check_ioloop_response_time, 300)
+        self.startup_time = datetime.datetime.now()
+        self.GIT_VERSION = ch_master.get_git_version()
 
 
     @coroutine
@@ -1091,9 +1094,10 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
                 coroutine_return(msg)
             comet = Manager(comet_host, comet_port)
             try:
+                comet.register_start(self.startup_time, self.GIT_VERSION)
                 comet.register_config(config)
             except CometError as exc:
-                msg = 'Comet failed registering initial config: {}'.format(exc)
+                msg = 'Comet failed registering raw_acq start and initial config: {}'.format(exc)
                 self.log.error(msg)
                 coroutine_return(msg)
         else:
