@@ -215,6 +215,7 @@ class ChimeMaster(object):
 
         self.PROGRAM = os.path.realpath(__file__) # absolute path name to this module
         self.GIT_VERSION = get_git_version()
+        self.startup_time = datetime.datetime.utcnow()
 
         self.log.info("program %s" % self.PROGRAM)
         self.log.info("version %s" % self.GIT_VERSION)
@@ -682,9 +683,10 @@ class ChimeMaster(object):
                 coroutine_return(msg)
             comet = Manager(comet_host, comet_port)
             try:
+                comet.register_start(self.startup_time, self.GIT_VERSION)
                 comet.register_config(config)
             except CometError as exc:
-                msg = 'Comet failed registering initial config: {}'.format(exc)
+                msg = 'Comet failed registering ch_master start and initial config: {}'.format(exc)
                 self.log.error(msg)
                 coroutine_return(msg)
         else:
