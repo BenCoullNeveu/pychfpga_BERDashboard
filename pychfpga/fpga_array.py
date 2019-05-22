@@ -1502,6 +1502,9 @@ class FPGAArray(object):
         if check:
             sync_ctr_before = self.ib.REFCLK.SYNC_CTR
 
+        self.sync_timestamps = []
+        self.sync_timestamp = None
+
         if self.sync_method == 'centralized_soft_trigger':
             self.sync_master.remote_sync()
         elif self.sync_method == 'centralized_time_trigger':
@@ -2915,8 +2918,8 @@ class FPGAArray(object):
 
         # Command errors
 
-
-        for i, ib in enumerate(self.ib):
+        if self.sync_timestamps:
+            for i, ib in enumerate(self.ib):
             try:
                 fn, ts = yield ib.capture_frame_time.async(format='raw')
                 if not i:
