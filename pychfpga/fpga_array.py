@@ -1705,35 +1705,73 @@ class FPGAArray(object):
         # get the default gains, just in case we need them
         try:
             default_gains_filename = os.path.join(gain_folder, 'default_gains.pkl')  # filename of the default gains
-            default_gains = pickle.load(open(default_gains_filename, 'rb'))
+            with open(default_gains_filename, 'rb') as f:
+                default_gains = pickle.load(f)
         except IOError:
             default_gains = None
 
         array_gains = {}
         for ib in self.ib:
-            board_id = crate, slot_0based = ib.get_id()
-            self.logger.info('%r: Reading digital gains for crate %02i slot %02i (FCC%02i%02i) from folder %s' %
-                             (self, crate, slot_0based, crate, slot_0based, gain_folder))
+            board_id = ib.get_id()
+            self.logger.info('%r: Reading digital gains for (crate,slot)=%r' %
+                             (self, board_id))
             board_gains = ib.load_gains(folder=gain_folder) or default_gains
             yield async_moment
 
             if not board_gains:
-                self.logger.warn('%r: Neither board-specific gain file not default gain file was found for crate %02i slot %02i (FCC%02i%02i)' % (self, crate, slot_0based, crate, slot_0based))
-
-            if board_gains is None:
+                self.logger.warn('%r: Neither board-specific gain file not default gain file was found for (crate,slot)=%r' % (self, board_id))
                 array_gains[board_id] = None
             else:
                 array_gains[board_id] = board_gains
         async_return(array_gains)
 
     @async
+    def save_gains(self, gains, gain_folder='/home/chime/ch_acq/gains'):
+        """ Save the gains.
+
+        Parameters:
+
+            gains (): Gains in the format {(crate,slot,channel):(glin, glog), ...} or {(crate, slot):{channel:(glin,glog),...},...}
+
+            gain_folder (str): Folder in which the gain files are located.
+
+        Returns:
+
+            The gain map in the format ``{board_id: gains}``, where
+            ``board_id`` is a two-element tuple uniquely identifying the board
+            (taken from the board's get_id()), and ``gains`` is a dict
+            containing the digital gains to be applied to the channels on that
+            board (from the board's load_gains(...))
+
+        Note:
+
+            This method does not set the digital gains in the FPGAs; it only
+            loads them from the files. See `set_gains` to set the gains using
+            the dict returned by this method.
+        """
+
+        # make sure we have a board-id-based gain table
+        gains = self.group_gains_per_board_id(gains)
+        for board_id, board_gains in gains.items():
+            ib = self.get_iceboard(board_id)
+            ib.save_gains(gains=board_gains, folder=gain_folder)
+
+
+    @async
     def set_gains(self, gains, bank=-1,  when='now'):
         """ Set the gains on the boards in the array.
 
         Parameters:
-            'gains': dictionary of gains specified as {board_id: gain_spec, ...}.
-                     `board_id` uniquely identifies a board and is a tuple either in the format (crate, slot) or (board_id).
-                     `gain_spec` is passed to the set_gain() method and is in the format (linear_gain, log_gain). `linear_gain` is a complex scalar or a 1024-element complex vector. log_gain is the post_scaler factor, and is a integer.
+            'gains': dictionary of gains specified as either:
+                - {board_id: {chan: (glin, glog), ...}, ...}
+                - {chan_id: (glin, glog), ...}
+                where:
+                     ``board_id`` is a (crate, slot) tuple that uniquely identifies a board
+                     ``channel_id`` is a (crate, slot, channel) tuple that uniquely identifies a channel
+                     ``crate``= int or str or None
+                     ``slot``= int or str
+                     ``glin` = array of 1024 int16 linear gain components
+                     ``glog`` = post-scaler factor (applies additional gain of 2**glog)
 
             `bank`: gain bank in which the gains are written. If `bank`=-1 or is None, gains are
                     written in the inactive bank (which can be activated later using set_gain_bank()).
@@ -1748,15 +1786,39 @@ class FPGAArray(object):
 
 
         """
-        for ch_id, gain in gains.items():
-            crate, slot_0based = ch_id[0], ch_id[1]
-            self.logger.info('%r: Setting digital gains for crate %02i slot %02i (FCC%02i%02i)' % (self, crate, slot_0based, crate, slot_0based))
-            ib = self.get_iceboard_from_id(ch_id)
-            ib.set_gains(gain=gain, bank=bank)
+        # make sure we have a board-id-based gain table
+        gains = self.group_gains_per_board_id(gains)
+
+        # set the gains for each board
+        for board_id, g in gains.items():
+            ib = self.get_iceboard_from_id(board_id)
+            self.logger.info('%r: Setting digital gains for (crate,slot)=%r (%s)' % (self, board_id, ib.get_formatted_id()))
+            ib.set_gains(gain=g, bank=bank, when=None)
             yield async_moment
 
         if when is not None:
             self.switch_gains(bank=bank, when=when)
+
+    def group_gains_per_board_id(self, channel_based_gains):
+        """ Convert a channel_id based gain table into a board_id-based gain table.
+
+        Parameters:
+            channel_based_bains (dict): dict containing channel-based gain  entries in the format {channel_id: gains, ...}, where ``channel_id`` is a 3-element (crate, slot, channel)tuple
+
+        Returns:
+            A board_id-based gain table in the format {board_id: {channel:gains,...},...}.
+
+        Note:
+            - Entries that are not a 3-element tuples are left untouched, allowing a board-id based table or another dict to be passed.
+
+        """
+        board_based_gains = {}
+        for id_, gains in channel_based_gains.items():
+            if isinstance(id_, (tuple, list)) and len(id_) == 3:
+                board_based_gains.setdefault(tuple(id_[:-1]), {})[id_[-1]] = gains
+            else:
+                board_based_gains[id_] = gains
+        return board_based_gains
 
     @async
     def compute_gains(self, enable=True, slots=None, noise_injection=None, gain_folder='/home/chime/ch_acq/gains'):
