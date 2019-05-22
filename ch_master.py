@@ -215,6 +215,7 @@ class ChimeMaster(object):
 
         self.PROGRAM = os.path.realpath(__file__) # absolute path name to this module
         self.GIT_VERSION = get_git_version()
+        self.startup_time = datetime.datetime.utcnow()
 
         self.log.info("program %s" % self.PROGRAM)
         self.log.info("version %s" % self.GIT_VERSION)
@@ -664,6 +665,33 @@ class ChimeMaster(object):
         if self.state != 'off':
             coroutine_return(dict(error='already started'))
 
+        # Register config with comet broker
+        try:
+            enable_comet = config['comet_broker']['enabled']
+        except KeyError:
+            msg = "Missing config value 'comet_broker/enabled'."
+            self.log.error(msg)
+            coroutine_return(msg)
+        if enable_comet:
+            try:
+                comet_host = config['comet_broker']['host']
+                comet_port = config['comet_broker']['port']
+            except KeyError as exc:
+                msg = "Failure registering initial config with comet broker: 'comet_broker/{}' " \
+                      "not defined in config.".format(exc[0])
+                self.log.error(msg)
+                coroutine_return(msg)
+            comet = Manager(comet_host, comet_port)
+            try:
+                comet.register_start(self.startup_time, self.GIT_VERSION)
+                comet.register_config(config)
+            except CometError as exc:
+                msg = 'Comet failed registering ch_master start and initial config: {}'.format(exc)
+                self.log.error(msg)
+                coroutine_return(msg)
+        else:
+            self.log.warning("Config registration DISABLED. This is only OK for testing.")
+
         if config:
             self.set_config(config)
         conf = self.config # Shortcut. We use `conf` a lot below.
@@ -672,40 +700,11 @@ class ChimeMaster(object):
         if not hasattr(conf, 'corr_name'):
             raise RuntimeError('CHIME master configuration data does not define the correlator name. Was the correct object selected in the configuration file (i.e. config.yaml:object)')
 
-        # Set the start time
+        # Create output directories
         start_time = time.time()
-        start_datetime = datetime.datetime.utcfromtimestamp(start_time)
         isotime = time.strftime("%Y%m%dT%H%M%SZ", time.gmtime(start_time))
         localtime = time.strftime("%Y/%m/%d %H:%M:%S", time.localtime(start_time))
-
-        # Register config with comet broker
-        try:
-            enable_comet = conf['comet_broker']['enabled']
-        except KeyError:
-            msg = "Missing config value 'comet_broker/enabled'."
-            self.log.error(msg)
-            coroutine_return(msg)
-        if enable_comet:
-            try:
-                comet_host = conf['comet_broker']['host']
-                comet_port = conf['comet_broker']['port']
-            except KeyError as exc:
-                msg = "Failure registering initial config with comet broker: 'comet_broker/{}' " \
-                      "not defined in config.".format(exc[0])
-                self.log.error(msg)
-                coroutine_return(msg)
-            comet = Manager(comet_host, comet_port)
-            try:
-                comet.register_start(start_datetime, self.GIT_VERSION)
-                comet.register_config(conf.as_dict())
-            except CometError as exc:
-                msg = 'Comet failed registering ch_master start and initial config: {}'.format(exc)
-                self.log.error(msg)
-                coroutine_return(msg)
-        else:
-            self.log.warning("Config registration DISABLED. This is only OK for testing.")
-
-        # Create output directories
+        #print('run name=%s, config = %r' % (conf.run_name , dict(isotime=isotime, corr_name=conf.corr_name)))
         self.run_name = conf.run_name % dict(isotime=isotime, localtime=localtime, corr_name=conf.corr_name)
         str_args = dict(isotime=isotime, corr_name=conf.corr_name, run_name=self.run_name)
         self.run_folder = os.path.expanduser(conf.run_folder % str_args)
