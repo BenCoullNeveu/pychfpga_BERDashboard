@@ -129,15 +129,64 @@ class PROBER_base(Module_base):
         self.OFFSET3 = offset >> 9
         self.SEND_DELAY = send_delay
 
+    def set_stream_id(self, stream_id=None):
+        """ Sets the STREAM ID of the raw data capture packets.
+
+        Parameters:
+
+            stream_id (int, tuple r None): desired Stream id.
+                - If `stream_id`
+            an `int`, the specified value is used.
+
+                - If `stream_id` is a (crate, slot, channel) tuple, the a
+                  numeric stream_id will be built from the tuple elements.
+
+                  The crate number '0' will be assumed if the crate has no
+                  numeric crate_number information (even if the crate exists).
+                  The same is true for the slot field if the board has no valid
+                  slot information.
+
+
+        Notes:
+
+            The user must ensure that the stream IDs are unique if they are to
+            be used with a stream-id-aware data receiver. The same stream-id
+            could be used if crate numbers have not been assigned, or if
+            multiple stand-alone boards are part of the array.
+
+        """
+        if isinstance(stream_id, int):
+            self.STREAM_ID = stream_id
+
+        elif isinstance(stream_id, (tuple, list)) and len(stream_id) == 3:
+            crate, slot, channel = stream_id
+
+            if not isinstance(slot, int):
+                slot = 0
+            if not isinstance(crate, int):
+                crate = 0  # 0 if there is no backplane/crate, or the crate does not have an assigned crate number.
+
+            self.STREAM_ID = ((crate & 0xF) << 8) | ((slot & 0xF) << 4) | (channel & 0x0F)
+        else:
+            raise ValueError('Invalid stream id parameter %r' % (stream_id, ))
+
+    def get_stream_id(self):
+        """ Return the stream ID of the current channel instance.
+
+        Returns:
+            int: the stream id.
+
+        """
+        return self.STREAM_ID
+
+
     def init(self, **kwargs):
         """ Initialize the data capture module"""
         # self.config_capture(1, 100) # Capture 1 frame every 100 frames
         channel = self.instance_number
-        slot = (self.fpga.slot or 1) - 1   # 0-based, 0 if no slot
-        crate = self.fpga.crate.crate_number or 0 if self.fpga.crate else 0  # 0 if there is no backplane/crate, or the crate does not have an assigned crate number.
         self.logger.debug('%r: Initializing channel %i' % (self, channel))
-        self.PROBE_ID = 0xA0 + self.instance_number  # For backwards compatibility
-        self.STREAM_ID = ((crate & 0xF) << 8) | ((slot & 0xF) << 4) | (channel & 0x0F)
+        self.PROBE_ID = 0xA0 + channel  # For backwards compatibility
+        self.set_stream_id(self.fpga.get_id(channel))
         self.RESET = 1  # Make sure no data is being transmitted at reset
 
     def status(self):
