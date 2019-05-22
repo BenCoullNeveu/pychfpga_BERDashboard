@@ -21,7 +21,6 @@ import numpy
 import os
 import traceback
 import socket
-import subprocess
 import sys
 import time
 import json
@@ -52,7 +51,7 @@ from wtl.metrics import Metrics
 
 
 # Local imports
-from _version import __version__
+from _version import __version__, get_git_version
 from pychfpga import FPGAArray
 # Remote servers handled by ChimeMaster
 from ps import PowerSupplyAsyncRESTClient
@@ -157,17 +156,6 @@ ARCHIVE_VERSION = "NT_2.2.0"
 
 # # Full path to this file.
 # PROGRAM = os.path.realpath(__file__)
-
-def get_git_version():
-    # Git version.
-    PROGRAM = os.path.realpath(__file__)
-    try:
-        return subprocess.check_output(
-            'git describe --all --dirty --long'.split(),
-            cwd = os.path.dirname(PROGRAM)).strip()
-    except WindowsError:
-        print('GIT was not found')
-        return 'unknown' # JFC: To allow tests in windows
 
 def reap_cached_sockets():
     import __main__

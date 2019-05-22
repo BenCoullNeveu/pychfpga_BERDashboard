@@ -12,7 +12,6 @@ import calendar
 import Queue
 
 # External private packages
-import ch_master
 from comet import Manager, CometError
 from wtl import log
 from wtl.rest import AsyncRESTServer, AsyncRESTClient # generic REST servers and clients
@@ -21,6 +20,9 @@ from wtl.rest import RunSyncWrapper, IOLoop, run_client, SocketContext
 from wtl.namespace import NameSpace
 from wtl.config import load_yaml_config
 from wtl.metrics import Metrics
+
+# Local imports
+from _version import get_git_version
 
 class SpectrumInstrumentsTM4D(SocketContext):
     """
@@ -729,7 +731,7 @@ class GPSAsyncRESTServer(AsyncRESTServer):
         self.metrics = Metrics(latest_only=True)
         self.add_periodic_callback(self._get_metrics, 1000)
         self.startup_time = datetime.datetime.utcnow()
-        self.GIT_VERSION = ch_master.get_git_version()
+        self.GIT_VERSION = get_git_version()
 
 
     @coroutine
