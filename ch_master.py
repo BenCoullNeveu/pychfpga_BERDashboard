@@ -862,10 +862,13 @@ class ChimeMaster(object):
 
         If no board is specified for an entry (.board evaluates to False), the parameters are ignored.
         """
-        for source_name, source_params in ni_params.items():
-            self.log.info("Setting noise injection for source '%s' with parameters %s" % (source_name, source_params))
-            if source_params.board:
-                self.fpgas.set_noise_injection(local_sync=True, **source_params)
+        if not ni_params:
+            self.log.info("%r: No noise injection settings; setup skipped." % (self))
+        else:
+            for source_name, source_params in ni_params.items():
+                self.log.info("%r: Setting noise injection for source '%s' with parameters %s" % (self, source_name, source_params))
+                if source_params.board:
+                    self.fpgas.set_noise_injection(local_sync=True, **source_params)
 
     ###################################
     # Gains management
