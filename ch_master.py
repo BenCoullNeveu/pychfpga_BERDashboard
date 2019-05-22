@@ -364,26 +364,31 @@ class ChimeMaster(object):
         conf = self.config.raw_acq
         #print(conf)
 
-        # Create a list of IceBoard objects that correspond to each port of
+        # Create a list of IceBoard objects that correspond to each port entry of
         # each server. Check that an iceboard is not allocated twice while
         # doing that.
-        all_ibs= set()  # keeps track of Iceboard objects used so far so we can detect multiple assignments
-        self.raw_acq_ibs = {}
+        all_ibs = set()  # keeps track of Iceboard objects used so far so we can detect multiple assignments
+        self.raw_acq_ibs = {}  # iceboard objects assocoated with each receiver
+        self.raw_acq_stream_ids = {} # stream ID that each receiver should expect
         for server_name, server_conf in (conf.servers or {}).items():
             self.raw_acq_ibs[server_name] = []  # [{'port':port_name, 'sources':[ib1, ib2, ]}, ...]
+            self.raw_acq_stream_ids[server_name] = []  # [{'port':port_name, 'sources':[ib1, ib2, ]}, ...]
             for port_config in server_conf.receiver_ports:
                 # Get a set of iceboard objects specified in shources. These
                 # can be specified in any format recognized by
                 # get_iceboards(), i.e. (crate, slot) tuple, or {'crate':
                 # crate, 'slot':slot}
-                sources_ibs = {self.get_iceboards(ib) for ib in port_config.sources}
+                print('port_config=', port_config)
+                for src_spec in port_config['sources']:
+                    ibs = self.get_iceboards(src_spec)
                 # Make sure no iceboard was already assigned
-                if not source_ibs.isdisjoint(all_ibs):
-                    raise RuntimeError('Some FPGA board(s) are assigned to multiple RawAcq ports. Check your config.')
-                all_ibs.update(source_ibs)
-                # Store the entry
-                self.raw_acq_ibs[server_name].append(NameSpace(port=port_config.port, iceboards=source_ibs))
-
+                    if not set(ibs).isdisjoint(all_ibs):
+                        raise RuntimeError('Some FPGA board(s) are assigned to multiple RawAcq ports. Check your config.')
+                    all_ibs.update(ibs)
+                    # Store the entry
+                    self.raw_acq_ibs[server_name].append(NameSpace(port=port_config['port'], iceboards=ibs))
+                    for ib in ibs:
+                        self.raw_acq_stream_ids[server_name].extend(ib.get_stream_id_map().values())
 
         # Start each RawAcq server with a port for each assigned iceboard. For each port, we provide
         # the address of the (only) source FPGA board. The server will ping this address back to
@@ -402,35 +407,31 @@ class ChimeMaster(object):
         # initialize the receiver.
         #
         # [{port_number: [source1, source2 ...]} dictionary
-        recv_ports = {} # list of ports and associated sources to open on each server
-        recv_names = {} # name of the receiver assigned to each server
+        recv_ports = {}  # list of ports and associated sources to open on each server
+        recv_names = {}  # name of the receiver assigned to each server
         for server_name, port_configs in self.raw_acq_ibs.items():  # for each raw_acq server
-            recv_name = '%sRecv' % server_name  # Name of the receiver object, which can hande multiple ports.
+            # Name of the receiver object, which can hande multiple ports.
             recv_names[server_name] = '%sRecv' % server_name
             recv_ports[server_name] = []
             for port_entry in port_configs:
-                # If port =0 amd we want fixed port number, create an entry for each board with the appropriate numeric port
-                if not port_entry.port
-                    for ib in port_config.iceboards:
-                        # Here we use a crate/slot-based receiver port number, and there is one Iceboard per receiver port.
-                        if conf.use_fixed_port_numbers:
-                            crate_number = 0 if not ib.crate else ib.crate.crate_number or 0
-                            slot_number = ib.slot or 0
-                            # Port number is a non-zero integer, so we ask the receiver to use this exact port
-                            port_number = 42400 + 100*(crate_number + 1) + slot_number
-                        else:
-                            # Port number is zero, so we ask the receiver to select a random port
-                            port_number = 0
-                        recv_ports[server_name].append(dict(port=port_number, sources=[(ib.hostname, 80)]))
-                else:
-
-                    port_name = '%sPort%i' % (recv_name, i)
-                recv_ports[server_name].append(dict(port=port_name, sources=[(ib.hostname, 80)]))
+                src_addresses = []
+                for ib in port_entry.iceboards:
+                    if not port_entry.port and conf.use_fixed_port_numbers:
+                        # If port =0 amd we want fixed port number, create an entry for each board with the appropriate numeric port
+                        crate_number = 0 if not ib.crate else ib.crate.crate_number or 0
+                        slot_number = ib.slot or 0
+                        port_id = 42400 + 100 * (crate_number + 1) + slot_number
+                    else:
+                        # Port number is non-zero, so we ask the receiver to use this exact port
+                        port_id = port_entry.port or 0
+                    src_addresses.append((ib.hostname, 80))
+                recv_ports[server_name].append(dict(port=port_id, sources=src_addresses))
 
         # Start the receivers concurrently
         start_results = yield {server_name: self.raw_acq[server_name].start(
                 name=recv_names[server_name],
                 ports=recv_ports[server_name],
+                stream_ids=self.raw_acq_stream_ids[server_name],
                 jump_thresholds=conf.common_config.jump_thresholds)
             for server_name in self.raw_acq_ibs.keys()}
 
@@ -439,10 +440,12 @@ class ChimeMaster(object):
             # The start command returned the target address to use for each data source as a list in the format
             #    [ ((src_ip, src_port), (if_ip, port, mac)) ...].
             # We convert this to a dict {(src_ip, src_port):(if_ip, port, mac),...} for easy lookup
-            targets = {tuple(src_addr):target_addr for src_addr,target_addr in start_result['target_addr']}
-            for ib in self.raw_acq_ibs[server_name]:
-                ip_addr, port, eth_addr = targets[(ib.hostname, 80)]
-                ib.set_data_target_address(ip_addr, port, eth_addr)
+            targets = {tuple(src_addr): target_addr for src_addr,target_addr in start_result['target_addr']}
+            for port_entry in self.raw_acq_ibs[server_name]:
+                for ib in port_entry.iceboards:
+                    ip_addr, port, eth_addr = targets[(ib.hostname, 80)]
+                    self.log.info('%r: Setting data transmission address to %s:%i (%s)' % (self, ip_addr, port, eth_addr))
+                    ib.set_data_target_address(ip_addr, port, eth_addr)
         self.log.info('%r: RawAcq server setup successfully' % self)
 
     @coroutine
