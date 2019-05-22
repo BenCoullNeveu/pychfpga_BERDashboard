@@ -1857,6 +1857,40 @@ class chFPGA_controller(IceBoardExtHandler):
             if sync:
                 self.sync()
 
+
+    def get_formatted_id(self, crate_slot_format='FCC{crate:02d}{slot:02d}', no_crate_format='{slot:s}', no_slot_format='{crate:s})'):
+        """ Return a string that represent the board using the provided format list.
+
+        Parameters:
+
+            x_format (str): format to be applied in the specified condition.
+            Uses the .format() syntax, with the following fields: slot=0-based
+            slot number (int) or board model/serial (str); crate=crate number
+            (int), crate model/serial (int) or None
+
+        Returns:
+            string
+        """
+
+        crate, slot_0based = board_id = self.get_id()
+
+        if crate is None:
+            return no_crate_format.format(slot=slot_0based, crate=crate, id=board_id)
+        elif slot_0based is None:
+            return no_slot_format.format(slot=slot_0based, crate=crate, id=board_id)
+        elif isinstance(slot_0based, int) and isinstance(crate, int):
+            return crate_slot_format.format(slot=slot_0based, crate=crate, id=board_id)
+        else:
+            return self.get_string_id()
+
+    def get_gains_filename(self, folder=''):
+        """ Return the name of the fulle path and filename of the file containing the gains for this board.
+
+
+        """
+        gain_filename = os.path.join(folder, 'gains_%s.pkl' % self.get_formatted_id())
+        return gain_filename
+
     def load_gains(self, folder='.'):
         """ Loads the gain file associated with this board and return the gains.
 
@@ -1871,26 +1905,57 @@ class chFPGA_controller(IceBoardExtHandler):
             gains that have been loaded. `None` if the gains are not found.
 
         """
-        slot_0based = self.slot - 1
-        crate = self.crate.crate_number
+
+        gain_filename = self.get_gains_filename(folder=folder)
         try:
-            gain_filename = os.path.join(folder, 'gains_FCC%02i%02i.pkl' % (crate, slot_0based))
-            gains = pickle.load(open(gain_filename, 'rb'))
+            with open(gain_filename, 'rb') as f:
+                gains = pickle.load(f)
             # self.logger.info('Setting gains on IceBoard SN%s, crate %s, slot %i' % (ib.serial, crate, slot))
             # ib.set_gain(g_array, bank=bank)  # *** should this be bank=all_bank
         except IOError:
-            self.logger.warn('Gain file not found for for crate %02i slot %02i (FCC%02i%02i)' % (crate, slot_0based, crate, slot_0based))
+            self.logger.warn("Gain file '%s' not found for (crate,slot)= %r" % (gain_filename, self.get_id()))
             gains = None
+
         # # Fill any missing channel info with None
         # for ch in range(self.NUMBER_OF_CHANNELIZERS):
         #     if ch not in gains:
         #         gains[ch] = None
         return gains
 
+    def save_gains(self, gains=None, folder='.'):
+        """ Save the gains file associated with this board.
+
+        The gain file is a pickled dictionary in the format {channel_number:gains,..}.
+
+        Parameters:
+
+            gains (dict): gains for all channels, in the format {channel_number:gains,..}
+
+            folder (str): Folder in which the gain files are to be found. Default is the current directory.
+
+        Returns:
+
+            gains that have been loaded. `None` if the gains are not found.
+
+        """
+        gain_filename = self.get_gains_filename(folder=folder)
+
+        try:
+            with open(gain_filename, 'wb') as f:
+                gains = pickle.dump(gains, f)
+            # self.logger.info('Setting gains on IceBoard SN%s, crate %s, slot %i' % (ib.serial, crate, slot))
+            # ib.set_gain(g_array, bank=bank)  # *** should this be bank=all_bank
+        except IOError:
+            self.logger.warn("Gain file '%s' could not be saved for (crate,slot)=%r " % (gain_filename, self.get_id()))
+
+
     def set_gains(self, gain=None, postscaler=None, channels=None, use_fixed_gain=False, bank=0, when=None):
         """
-        Sets the gain between the (18+18) bits input of the scaler module (from the FFT) to its 4- or 8- bit scaler output.
-        The gain can be set individually for every frequency bins and every ADC channel.
+        Sets the digital gain used by the SCALER module to scale the (18+18)
+        bits output of the FFT to the (4+4) final channelizer output format.
+
+        The gain can be set individually for every frequency bins and every
+        ADC channel.
 
         Parameters:
 
