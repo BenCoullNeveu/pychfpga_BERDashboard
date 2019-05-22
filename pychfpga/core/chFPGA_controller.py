@@ -3488,27 +3488,66 @@ class chFPGA_controller(IceBoardExtHandler):
     def __repr__(self):
         return "chFPGA%s" % (self.get_id(),) # watch out, get_id() returns a tuple...
 
-    def get_id(self, lane=None):
-        """ Returns a tuple representing a unique IceBoard ID, using numeric values whenever possible.
+    def get_id(self, lane=None, default_crate=None, default_slot=None):
+        """ Returns a (crate, slot) tuple representing a unique IceBoard ID, using numeric values whenever possible.
 
         Parameters:
 
             lane (int): caller-provided lane number to be appended to the returned tuple.
 
+            default_crate: Default values to return in the crate field if there is
+                no crate or no crate_number. If None, either the crate number or crate string id is used.
+
+            default slot: Default values to return in the slot field if there is no slot number.
+
         Returns:
-             - (int, int): (numeric_crate_number, zero_based_slot_number) if the board
-               is in a crate for which a crate number was assigned
-             - (str, int): (string_crate_id, zero_based_slot_number) Identify the
-               crate with model and serial number if there is a crate but no
-               crate number is specified
-             - (str): (iceboard_id) If the board is not in a crate or the slot
-               number is unknown, use the the iceboard model and serial number
+            A (crate_id, slot_or_board_id) tuple, where:
+
+             - crate_id is:
+                - ``numeric_crate_number`` (int) if the crate number is known
+                - ``crate_model_serial_string`` (str) model and serial number string if the crate is known but not the crate number
+                - `None` if there is no crate
+
+             - slot_or_board_id
+                - ``zero_based_slot_number`` (int) zero-based slot number if the slot number is known (i.e. self.slot is not 0 or None).
+                - ``None`` if the slot number is not known and crate_id is not None.
+                - ``board_model_serial_string`` (str) if the slot number and there is no crate/backplane.
+        Notes:
+            - A board is always represented by a 2-element tuple. A crate is always represented by a one-element tuple, and a channel/lane is a 3-element tuple.
+            - The user is responsible for handling all possible types of crate (int, str, None) or slot (int, str) tuple elements
+            - crate can be None, but slot can never be None: it will be replaced by the string ID of the board so the tuple always refer to a specific board.
+            - If the crate provides a numeric slot number, the user must rely on external information to infer which board serial number correspond to the specified ID
+            - If the crate provides a numetic crate number, the user must rely on external information to infer which crate serial number correspond to thespecified ID
+            - the id must be unique, even if we have multiple stand-alone boards (i.e. no (None, None) tuple
+        Examples:
+
+            Board in a crate/backplane:
+            (2, 3): board on 4th slot of backplane with crate number 2
+            (2, None): board on crate number 2 without slot information
+            ('MGK7BP16_SN023', 3): board on 4th slot of backplane without crate number
+            ('MGK7BP1_SN001', None): self.slot is 0 or None on a backplane without crate number (e.g. unconfigured single-slot test backplane)
+
+            Stand-alone board (no backplane/crate):
+            (None, 3): No backplane, but the board slot number was manually set to  self.slot=4 (not a typical case)
+            (None, 'MGK7MB_SN0372'): No crate nor slot information (self.crate==None and self.slot==None)
 
         """
-        if not self.crate or self.slot is None:
-            return (self.get_string_id(), ) if lane is None else (self.get_string_id(), lane)
+        if self.crate: # if there is a crate/backplane
+            crate_number = self.crate.crate_number
+            crate = crate_number if crate_number is not None else default_crate if default_crate is not None else self.crate.get_string_id()
+
+            # If there is no slot info (self.slot==0 or None), we can set slot field to None because the crate field is defined and makes the tuple unique
+            slot = self.slot - 1 if self.slot else default_slot
         else:
-            return self.get_crate_id(self.slot - 1) + (tuple() if lane is None else (lane,) )
+            crate = default_crate
+            # If there is no backplane AND no slot info (None or 0), we need to use the board model/serial in the slot field to make the tuple unique.
+            slot = self.slot - 1 if self.slot else default_slot if default_slot is not None else self.get_string_id()
+        return (crate, slot) if lane is None else (crate, slot, lane)
+        # if not self.crate
+        #     crate or self.slot is None:
+        #     return (self.get_string_id(), ) if lane is None else (self.get_string_id(), lane)
+        # else:
+        #     return self.get_crate_id(self.slot - 1) + (tuple() if lane is None else (lane,) )
 
 
     def get_crate_id(self, slot=None):
@@ -3524,6 +3563,25 @@ class chFPGA_controller(IceBoardExtHandler):
             string that uniquely defined the crate.
         """
         return self.crate.get_id(slot=slot)
+
+    def get_channel_ids(self):
+        """ return a list of channel IDs for this board.
+
+        Returns:
+            list of (crate, slot, channel) tuples
+        """
+
+        return [self.get_id(ch) for ch in self.ANT.keys()]
+
+    def get_stream_id_map(self):
+        """ Return the stream_ids if every channel of the board, indexed by channel_id.
+
+        Returns:
+            dict if the format {channel_id:stream_id}, where channel_id is a (crate, slot, channel) tuple.
+        """
+
+        return {self.get_id(ch): ant.PROBER.get_stream_id() for ch, ant in self.ANT.items()}
+
 
     #########################################################################
     #
