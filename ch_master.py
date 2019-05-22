@@ -326,8 +326,8 @@ class ChimeMaster(object):
             - (0,), (0, None), (0, '*'), {crate:0} : All boards in Crate 0
         """
         if isinstance(ib, (tuple, list)):
-            crate_number = ib[0] if len(ib) > 1 else None
-            slot_number = ib[1] if len(ib) > 2 else None
+            crate_number = ib[0] if len(ib) >= 1 else None
+            slot_number = ib[1] if len(ib) >= 2 else None
         elif isinstance(ib, dict):
             crate_number = None
             slot_number = None
