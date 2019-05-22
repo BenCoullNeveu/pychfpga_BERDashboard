@@ -37,28 +37,32 @@ class GainCalc(object):
     DONE = 'done'
     NBINS = 1024
 
-    def __init__(self, stream_ids, n_frames=100, n_iterations=3):
+    def __init__(self, channel_ids,  n_iterations=18, target_rms= 1.5 * np.sqrt(2)):
         """ Computes the frequency-dependent digital gains of the specified
             channels to bring the signals within the target RMS values across
             the band.
 
+            GainCalc does not care about stream IDs.
+
         Parameters:
 
-            stream_ids (list of int): list of stream_ids that identify the
-                channels for whish we wish to
+            channel_ids (list): list of channel_ids that identify the channels
+                for which we wish to compute gains. These will be used as a
+                key of the resulting gain result map, which is meant to be
+                passed to set_gains().
         """
 
-        self.stream_ids = stream_ids
-        self.stream_id_to_index_map = {sid:index for index, sid in enumerate(self.stream_ids)}
-        self.nchan = len(self.stream_ids)
-        self.n_rms_samples = n_frames
+        self.channel_ids = channel_ids
+        # self.stream_id_to_index_map = {sid:index for index, sid in enumerate(self.channel_ids)}
+        self.nchan = len(self.channel_ids)
+        # self.n_rms_samples = n_frames
         self.n_rms_iterations = n_iterations
         # Set initial default gains of (glin, glog) = (1, 22)
         # We will start converging towards the final value from there
         self.default_glog = 22
         self.default_glin = 1.0
         #for 4 bit number *sqrt2 since real and imag, check this
-        self.ideal_rms = 1.5 * np.sqrt(2) #2.83 is 1.5bits  1.5 is 0.6bits
+        self.target_rms = target_rms #2.83 is 1.5bits  1.5 is 0.6bits
 
         # Buffer in which we'll accumulate the incoming data
         self.data = np.zeros((self.nchan, self.NBINS), dtype=np.float32) # We store  abs(x)**2
@@ -75,29 +79,68 @@ class GainCalc(object):
         # RMS averaging
         # keep track of the iteration number
         self.frame_count = np.zeros((self.nchan), dtype=np.int8)
-        self.rms_iteration_number = np.zeros((self.nchan ), dtype=np.int8)
+        self.iteration_number = np.zeros((self.nchan ), dtype=np.int8)
         self.done = np.zeros((self.nchan), dtype=np.int8)
 
-    def get_gains(self):
+    def get_gains(self, ix=None):
+        """ Return the gains from the current iteration in a format compatible with the FPGAArray.set_gains().
+
+        Parameters:
+
+            ix (ndarray or None): indices of the gains to be returned. If None, all gains are returned.
+
+        Returns:
+
         """
+        if ix is None:
+            ix = np.arange(self.nchan)
+        # return self.channel_ids, self.glin.astype(np.int16), self.glog.astype(np.int8)
+        # return [(ch, (glin,glog)) for ch, glin, glog in zip(*g.get_gains())]
+
+        return {tuple(self.channel_ids[i]): (self.glin[i].astype(np.int16), self.glog[i].astype(np.int8)) for i in ix}
+
+    def get_filtered_gains(self, ix=None):
+        """ Compute and return a filtered version of the gains along with a RFI mask.
+
+        Parameters:
+
+            ix (ndarray or None): indices of the gains to be returned. If
+                None, all completed gains are returned.
+
+        Returns:
+
+            (gains, mask), there `gains` is the channel-id-indexed gain table
+                for ALL freqencies of selected channel indices, and `mask`
+                indicates whether each of the frequancy is flagged as RFI.
         """
-        return self.stream_ids, self.glin, self.glog
+        if ix is None:
+            ix = np.arange(self.nchan)
+
+        # Select the only the gains that are done
+        ix_done = ix[self.done[ix]]
+
+        # Get a filtered version of the linear gains as a Masked Array, with RFI spikes masked.
+        filtered_masked_glin= self.filter_gains(self.glin[ix_done])
 
 
-    def process_data(self, stream_ids, data):
+        gains = {tuple(self.channel_ids[i]): (filtered_masked_glin[i].astype(np.int16), self.glog[i].astype(np.int8)) for i in ix}
+        mask = filtered_masked_glin.mask[ix_done]
+        return gains, mask
+
+    def update_gains(self, ix, rms):
         """ Process incoming data, and return gains that need to be applied to the pipleine as the algorithm converges.
 
 
         Parameters:
 
-            stream_ids (ndarray): list of integer stream ids that uniquely identify each channel.
+            ix (ndarray): list of channel indices that correspond to each row of the fft data.
 
-            data (ndarray): array of complex data .
+            rms (ndarray, dtype=float32): array of RMS values meaured at the output of the scaler .
 
         Returns:
 
-            (stream_ids, glin, glog, done): Gains (glin, glog) that need to be
-            set on the specified stream_ids before new data is sent form those
+            (ids, glin, glog, done): Gains (glin, glog) that need to be
+            set on the specified ids before new data is sent form those
             channels. `done` is a vector that indicates if the stream_id gain
             computation is complete, in which case the specified gain is the
             final solution.
@@ -109,64 +152,48 @@ class GainCalc(object):
         ######################
         # Accumulate square of FFT values
 
-        # get the buffer index of the provided stream_ids
+        # get the buffer index of the provided ids
         t1 = time.time()
-        ix = np.array([self.stream_id_to_index_map[sid] for sid in stream_ids if not self.done[self.stream_id_to_index_map[sid]]], dtype=np.int32)
-        # self.rms_done
-        # print 'ix=', ix
-        self.data[ix] += np.abs(data) ** 2
-        self.frame_count[ix] += 1
+        # remove channels that are already completed
+        ix = ix[self.done[ix] == False]
 
-        # Find which channels have accumulated 100 frames and compute new gains for those
-        # return ix, self.frame_count
+
+        # Scale the current gain to the value that would get us the target RMS
+        # new_gain = ideal_rms / (data / current_gain)
+
+        # Compute current linear gain from glin/glog
+        self.temp_gains[ix] = self.glin[ix] * (2.**self.glog[ix, None])  # 2 has to be a float, otherwise it returns the ** result as int8
+        # return self.temp_gains[ix]
+        print 'Gain Iteration', self.iteration_number[ix]
+        print 'RMS error is ', np.median(self.target_rms - rms[ix], axis=-1)
+        # Compute new gain base don the ratio of the acrual rms vs target rms
+        # We want to slowly ease into that gain to avoid being affected too much by transients, so just take 20% of thhat target and 80% of the old gain
+        # self.temp_gains[ix][...] = (20.0 * target_gains + 80.0 * self.temp_gains[ix]) / 100.0
+        self.temp_gains[ix] *= 0.8 + (0.2 * np.clip(self.target_rms / rms[ix], 1/4./.2, 4./.2))  #  g[j].shape=(1024)    idealRMS*glin*(2**(glog-4))/outrms
+        # print 'new_gain is ', self.temp_gains[ix]
+
+        # Convert linear gain into (glin, glog) values
+        self.glin[ix], self.glog[ix] = self.calc_gains(self.temp_gains[ix])  # glin.shape=(16,1024), glog.shape=(16)
+        self.iteration_number[ix] += 1
+
+
+        # #####################################
+        # Phase 2: Cleanup gains by removing RFI spikes
+        # #####################################
+        # Identifies which channels reached the target RMS, and return the corresponding gains
+        # Here, we just stop when we reached a fixed iteration number
+        ix_done = ix[self.iteration_number[ix] == self.n_rms_iterations]
+        self.done[ix_done] = True
+        # print 'Done indices:', ix_done
+        # print self.iteration_number[ix]
+        # print 'Gain is glin=%i, glog=%i, g=%f' % (self.glin[ix[0]][0], self.glog[ix[0]], self.glin[ix[0]][0] * 2**self.glog[ix[0]])
         t2 = time.time()
-        ix_frame_done = ix[self.frame_count[ix] == self.n_rms_samples]
-        if ix_frame_done.size:
-            print 'Computing gain for %i channels from %i RMS samples' % (ix_frame_done.size, self.n_rms_samples)
-            self.data[ix_frame_done] = np.sqrt(self.data[ix_frame_done] / self.frame_count[ix_frame_done, None])
-            print 'rms signal is', self.data[ix_frame_done]
-            # Scale the current gain to the value that would get us the target RMS
-            # new_gain = ideal_rms / (data / current_gain)
+        print 'Gain updating time: %.3f ms for %i channels' % (((t2 - t1) * 1000, ix.size))
 
-            self.temp_gains[ix_frame_done] = self.glin[ix_frame_done] * (2.**self.glog[ix_frame_done, None])  # 2 has to be a float, otherwise it returns the ** result as int8
-            # return self.temp_gains[ix_frame_done]
-            print 'Gain ratio is ', self.ideal_rms / self.data[ix_frame_done]
-            self.temp_gains[ix_frame_done] *= 0.8 + (0.2 * self.ideal_rms / self.data[ix_frame_done])  #  g[j].shape=(1024)    idealRMS*glin*(2**(glog-4))/outrms
-            print 'new_gain is ', self.temp_gains[ix_frame_done]
+        return self.get_gains(ix)
 
-            # # but we want to slowly ease into that gain, so just take 20% of thhat target and 80% of the old gain
-            # self.temp_gains[ix_frame_done][...] = (20.0 * target_gains + 80.0 * self.temp_gains[ix_frame_done]) / 100.0
-            # Convert linear gain into (glin, glog) values
-            self.glin[ix_frame_done], self.glog[ix_frame_done] = self.calc_gains(self.temp_gains[ix_frame_done])  # glin.shape=(16,1024), glog.shape=(16)
-            # self.gains_ready[ix_frame_done] = 1
-            # prepare for the next RMS round
-            self.data[ix_frame_done] = 0 # restart a new integration
-            self.frame_count[ix_frame_done] = 0
-            self.rms_iteration_number[ix_frame_done] += 1
-            # return self.glin[ix_frame_done], self.glog[ix_frame_done]
-            print self.rms_iteration_number [ix_frame_done]
-
-            # #####################################
-            # Phase 2: Compute gains without RFI spikes
-            # #####################################
-            # Find which  channels have completed their i8 gain update iterations and compute the final filtered gain for those
-            t3 = time.time()
-            ix_rms_done = ix[self.rms_iteration_number[ix_frame_done] == self.n_rms_iterations]
-            print 'Done indices:', ix_rms_done
-            print self.rms_iteration_number[ix_frame_done]
-            print 'Gain is glin=%i, glog=%i, g=%f' % (self.glin[ix_frame_done[0]][0], self.glog[ix_frame_done[0]], self.glin[ix_frame_done[0]][0] * 2**self.glog[ix_frame_done[0]])
-            if ix_rms_done.size:
-
-                # We start with gain, which is set in the set_gain() format [(ch,(glin, glog),...]
-                self.glin[ix_rms_done], self.mask[ix_rms_done] = self.filter(self.glin[ix_rms_done])
-
-                self.done[ix_rms_done] = True
-                print 'Finished %i channels' % ix_rms_done.size
-            t4 = time.time()
-            print 'Time:', t2-t1, t3-t2, t4-t3
-            return self.stream_ids[ix_frame_done], self.glin[ix_frame_done], self.glog[ix_frame_done], self.done[ix_frame_done]
-
-
+    def is_done(self):
+        return all(self.done)
 
 
     def calc_gains(self, g, target_glin=2**13):
@@ -204,7 +231,10 @@ class GainCalc(object):
         # Eliminate gains that would be too high from the computations by creating
         # a masked array
         bad_values = (g > 2**31) | ~ np.isfinite(g)
+        # ignore bin 0, which has a DC components that is way larger than the signal in other bins
+        bad_values[:, 0] = True
         g = np.ma.array(g, mask=bad_values)
+
 
         # ############
         # Compute glog
@@ -238,28 +268,33 @@ class GainCalc(object):
 
         return glin, glog
 
-    def filter(self, signal, filtertype='hybrid', num_components=50, zero=False):
+    def filter_gains(self, signal, filter_type='hybrid', num_components=50, zero=False):
         """ Create a filtered version of a signal that excludes spikes.
 
         Parameters:
 
             signal (ndarray): signal to filter across the last dimension.
 
-            filtertype (str): type of filtering.
+            filter_type (str): type of filtering.
 
                 - 'fourier' : Applies low pass filter, with a bandpass
-                  frequency of `num_components` frequency samples.
+                  frequency of `num_components` frequency samples. No sample is masked.
 
                 - 'poly' : Use an iteratively higher order polynomial fit to
-                  mark outliers and generate a smoothed version of the signal.
+                  mask outliers and generate a smoothed version of the signal.
+                  masked values are replaced by the original signal samples.
 
-                - 'hybrid': Applies both the 'poly' and 'fourier' filter, in
-                  that order
+                - 'hybrid': Applies the 'poly' filtr to mask RFI samples, but
+                  return 'fourier'-filter data using that mask.
 
             num_components (int): Bandpass of the Fourier low pass filter,
                 expressed in number of frequency samples
 
-            zero: if True, spoked identified by the 'poly' filter are zeroed out.
+            zero: if True, masked values identified by the 'poly' filter are zeroed out.
+
+        Returns:
+            np.MaskedArray
+
         """
         signal = np.array(signal)
         # mask = np.ma.make_mask_none((len(signal),))
@@ -268,25 +303,25 @@ class GainCalc(object):
         # self.masked = np.ma.array(np.log(signal), mask=mask)
 
 
-        if filtertype == 'fourier':
-            filtered_signal = self.fourier_filter(signal, num_components)
-            mask = None
-        elif filtertype == 'poly' or filtertype == 'hybrid':
-            filtered_signal, mask = self.iterative_poly_filter(signal)
-            if filtertype == 'hybrid':
-                # Take a copy of the signal and replacce the values that were masked due to RFU by interpolated values
+        if filter_type == 'fourier':
+            filtered_mask_signal = np.ma.array(self.fourier_filter(signal, num_components))
+
+        elif filter_type == 'poly' or filter_type == 'hybrid':
+            filtered_mask_signal = self.iterative_poly_filter(signal)
+            if filter_type == 'hybrid':
+                # Take a copy of the signal and replacce the values that were masked due to RFI by interpolated values
                 in_arr = signal.copy()
-                in_arr[mask] = filtered_signal[mask]
+                in_arr[filtered_mask_signal.mask] = filtered_mask_signal[filtered_mask_signal.mask]
                 # Apply fourir filter
-                filtered_signal = self.fourier_filter(in_arr, num_components)
+                filtered_mask_signal.data[:] = self.fourier_filter(in_arr, num_components)
             if zero:
-                filtered_signal[mask] = 0
+                filtered_mask_signal[filtered_mask_signal.mask] = 0
             else:
-                filtered_signal[mask] = signal[mask]
+                filtered_mask_signal[filtered_mask_signal.mask] = signal[filtered_mask_signal.mask]
         else:
             raise ValueError
-        filtered_signal = (filtered_signal.real).astype(np.int).astype(np.complex)
-        return filtered_signal, mask
+        filtered_mask_signal = (filtered_mask_signal.real).astype(np.int).astype(np.complex)
+        return filtered_mask_signal
 
 
 
@@ -304,17 +339,17 @@ class GainCalc(object):
         not assured to maintain signal size
         """
         signal = np.array(signal)
-        signal_length = signal.shape[-1] # take the last dimension
+        signal_length = signal.shape[-1] # length of the last dimension
         # Pad. If we represent the signal by 0123, we build the array 21+0123+ 3
-        padded_signal = np.concatenate((signal[..., signal_length/2:0:-1], signal, signal[..., -1:-signal_length/2:-1]), axis = -1)
-        f_signal = np.fft.fft(padded_signal)
+        padded_signal = np.concatenate((signal[..., signal_length/2:0:-1], signal, signal[..., -1:-signal_length/2:-1]), axis=-1)
+        f_signal = np.fft.fft(padded_signal, axis=-1) # FFT across the last axis
         # We eliminate all high frequency beyond num_components
-        f_signal[..., num_components:-num_components] = 0
-        filtered = np.fft.ifft(f_signal)[..., signal_length/2:-signal_length/2+1]
+        f_signal[..., num_components: -num_components] = 0
+        filtered = np.fft.ifft(f_signal, axis=-1)[..., signal_length / 2: -signal_length / 2 + 1]
         filtered = (filtered.real).astype(np.int).astype(np.complex)
         return filtered
 
-    def flag_rfi(self, signal, filtered_signal, threshold):
+    def mask_rfi(self, signal, filtered_signal, threshold):
         """
         Set the mask flag of the element of `signal` that deviate from `filtered_signal` by a factor that exceeds `threshold`.
 
@@ -330,13 +365,12 @@ class GainCalc(object):
 
              None, but the mask of the masked array `signal` is modified in-place.
         """
-        rfmask = abs(signal) < abs(filtered_signal / threshold)
-        signal.mask = rfmask|signal.mask
+        signal.mask |= abs(signal) < abs(filtered_signal / threshold)
 
     def poly_filter(self, signal, threshold, degree):
         """ Filters signal using a polynomial fit across the last dimension of
-        the array, ignoring masked values, AND masks values of  `signal` that
-        deviate too much from its filtered version
+        the array, ignoring masked values, AND masks in-place the values of
+        `signal` that deviate too much from its filtered version
 
         Parameters:
 
@@ -351,7 +385,7 @@ class GainCalc(object):
 
             (ndarray): filtered signal. `signal` mask is modified in-place.
         """
-        #
+
         x = np.arange(signal.shape[-1])
         filtered_signal = np.empty(signal.shape)
 
@@ -361,7 +395,7 @@ class GainCalc(object):
         for i in range(signal.shape[0]):
             fit_coeff = np.ma.polyfit(x, signal[i], degree)  # ma.polyfit does not use masked data points in signal to compute the polynomial coefficients
             filtered_signal[i, :] = np.poly1d(fit_coeff)(x)
-        self.flag_rfi(signal, filtered_signal, threshold)
+        self.mask_rfi(signal, filtered_signal, threshold)
         return filtered_signal
 
     def iterative_poly_filter(self, signal):
@@ -392,18 +426,23 @@ class GainCalc(object):
         #The first bin is always bad for some reason
         degree = 1
         threshold = 1.2
-        masked_signal = np.ma.array(np.log(signal), mask=np.zeros(signal.shape))
-        masked_signal.mask[..., 0] = 0  # the first bin is always bad (JFC probably because of DC component in bin 0)
+        # Create a copy of the signal as a masked array with nothing initially
+        # masked. Masks will be addes gradually as we iterate. We wil work on the log of the signal.
+        masked_signal = np.ma.array(np.log(signal), mask=False)
+        masked_signal.mask[..., 0] = True  # the first bin is always bad because of DC component in bin 0
+        # Pre-allocate storage for the poly-filtered results to save time
         filtered_signal = np.empty(signal.shape)
+
+        # Fit with radually higher order polynomial and mask RFI with gradually lower thresholds
         while threshold > 1.01:
-            filtered_signal[...] = self.poly_filter(masked_signal, threshold, degree)  # this masked_signal mask is modified to remove RFI
-            threshold = 1 + (threshold - 1)*0.8
+            filtered_signal[...] = self.poly_filter(masked_signal, threshold, degree)  # this masked_signal mask is modified to mask RFI
+            threshold = 1 + (threshold - 1) * 0.8
             if degree < 15:
                 degree += 2
         np.exp(filtered_signal, out=filtered_signal)
         np.floor(filtered_signal, out=filtered_signal)
         # filtered_signal = (filtered.real).astype(np.int).astype(np.complex)
-        return filtered_signal, masked_signal.mask
+        return np.ma.array(filtered_signal, mask=masked_signal.mask)
 
 
 
@@ -470,7 +509,7 @@ def calculate_gains(c, gain_folder='/home/chime/ch_acq/gains'):
     default_log2_gain = 22
     c.set_gains((1, default_log2_gain))  # startup gain is (1, 22)
     #c.set_local_data_port_number(int(port))
-    temp_gains = np.ones(16, 1024) *  2**default_log2_gain
+    temp_gains = np.ones(16, 1024) * 2**default_log2_gain
 
 
     # Start capturing FFT data
@@ -532,3 +571,52 @@ def unused():
         out1 = open(os.path.join(gain_folder, 'gains_noisy_FCC%02i%02i.pkl' % (crate, slot_0based)), 'wb')
         pickle.dump(gain, out1)
         out1.close()
+
+
+from wtl.rest import RunSyncWrapper
+import raw_acq
+
+
+def compute_gains(ca, number_of_averages=100, ch=3):
+    ca.set_sync_method('local_soft_trigger')
+
+    ca.set_operational_mode('shuffle16', frames_per_packet=1)
+    ca.ib.start_data_capture(period=.004, source='scaler')
+
+
+    stream_id_map = ca.get_stream_id_map()
+    channel_ids = stream_id_map.keys()
+    stream_ids = stream_id_map.values()
+    bank = 0
+
+    port_map = [dict(
+        port=ca.ib[0].get_data_socket().getsockname()[1],
+        sources=[(ca.ib[0].hostname, 80)])
+        ]
+    r = RunSyncWrapper(raw_acq.RawAcqReceiver())
+    g = GainCalc(channel_ids=channel_ids, n_iterations=20)
+    g.rms = np.empty((g.n_rms_iterations, 1024))
+    g.gain = np.empty((g.n_rms_iterations, 1024))
+    # Set all gains to their initial values
+    ca.set_gains(gains=g.get_gains(), bank=bank, when='now')
+    i=0
+    try:
+        r.start(ports=port_map, stream_ids=stream_ids, start_thread=True)
+
+        while not g.is_done():
+            print('.')
+            ix, rms = r.get_fft_rms(stream_ids=stream_ids, target_gain_bank=bank, number_of_frames=number_of_averages)
+            g.rms[i,:] = rms[ch]
+            g.gain[i,:] = g.glin[ch] * 2.**g.glog[ch]
+            i+=1
+            new_gains = g.update_gains(ix, rms)
+            # bank ^= 1 # switch bank
+            ca.set_gains(gains=new_gains, bank=bank, when='now')
+        # Set the final gains
+        filtered_gains, mask = g.get_filtered_gains()
+        ca.set_gains(gains=filtered_gains, bank=0, when='now')
+    except Exception:
+        raise
+    finally:
+        r.stop()
+    return g, filtered_gains, mask
