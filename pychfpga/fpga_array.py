@@ -1609,6 +1609,23 @@ class FPGAArray(object):
     # def get_current_gain_bank(self):
     #     return [ib.get_current_gain_bank() for ib in self.ib]
 
+    def get_stream_id_map(self):
+        """ Return the stream_ids if every channel of the array, indexed by channel_id.
+
+        Returns:
+            dict if the format {channel_id:stream_id}, where channel_id is a (crate, slot, channel) tuple.
+        """
+
+        stream_id_map = {}
+        for ib in self.ib:
+            stream_id_map.update(ib.get_stream_id_map())
+
+        if len(stream_id_map) != len(set(stream_id_map.values())):
+            self.logger.warn('%r: Stream IDs are not unique!')
+
+        return stream_id_map
+
+
     def get_iceboard(self, board):
         """ Return the ICEBoard specified by tuple or serial number.
 
