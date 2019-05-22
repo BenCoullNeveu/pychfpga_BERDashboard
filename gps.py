@@ -728,7 +728,7 @@ class GPSAsyncRESTServer(AsyncRESTServer):
         self.metrics_queue = Queue.Queue(1000)
         self.metrics = Metrics(latest_only=True)
         self.add_periodic_callback(self._get_metrics, 1000)
-        self.startup_time = datetime.datetime.now()
+        self.startup_time = datetime.datetime.utcnow()
         self.GIT_VERSION = ch_master.get_git_version()
 
 
