@@ -42,10 +42,10 @@ class HDF5Writer(object):
         self.base_dir = base_dir
         #self.N_CHANNELS = 1
         self.crate_and_slot_from_port = crate_and_slot_from_port
-        self.filename = filestring
+        # self.filename = filestring
         self.file_number = 0
         self.nn = 0 # sample number of the first sample of the current file
-
+        self.elements_per_file = elements_per_file
         self.f = None
         self.start_new_hdf5_file()
 
@@ -65,7 +65,7 @@ class HDF5Writer(object):
         self.f.attrs["instrument_name"] = "CHIME"
         self.f.attrs["acquisition_name"] = "rawadc"
         self.f.attrs["archive_version"] = "2.4.0"
-        self.f.attrs["file_name"] = filestring
+        self.f.attrs["file_name"] = self.current_filename  # was filestring
         self.f.attrs["data_type"] = "ADC snapshot data"
         self.f.attrs["rawadc_version"] = 0.1
         self.f.attrs["timestamping_warning"] = "Done on file write, may be significantly different from snapshot acquistion time"
@@ -73,34 +73,34 @@ class HDF5Writer(object):
         # timestamp
         self.compound_dtype = np.dtype([('fpga_count', np.uint64), ('ctime', np.float64)])
         self.timestampDataset = self.f.create_dataset('timestamp',
-            (1, 1), dtype=self.compound_dtype, maxshape=(None, 1))
+            (1, 1), dtype=self.compound_dtype, maxshape=(None, 1), chunks=(1024*1024, 1))
         self.timestampDataset.attrs['axis'] = ['snapshot']
 
         # slot number
         self.slotDataset = self.f.create_dataset('slot', (1, 1),
-            dtype=np.uint8, maxshape=(None, 1))
+            dtype=np.uint8, maxshape=(None, 1), chunks=(1024*1024, 1))
         self.slotDataset.attrs['axis'] = ['snapshot']
 
         # crate number
         self.crateDataset = self.f.create_dataset('crate', (1, 1),
-            dtype=np.uint32, maxshape=(None, 1))
+            dtype=np.uint32, maxshape=(None, 1), chunks=(1024*1024, 1))
         self.crateDataset.attrs['axis'] = ['snapshot']
 
         # channel number
         self.chanDataset = self.f.create_dataset('adc_input', (1, 1),
-            dtype=np.uint8, maxshape=(None, 1))
+            dtype=np.uint8, maxshape=(None, 1), chunks=(1024*1024, 1))
         self.chanDataset.attrs['axis'] = ['snapshot']
 
         # ADC data
         self.timestreamDataset = self.f.create_dataset('timestream',
             (1, self.N_SAMP), dtype=np.int8,
-            maxshape=(None, self.N_SAMP))
+            maxshape=(None, self.N_SAMP), chunks=(1024*1024, self.N_SAMP))
         self.timestreamDataset.attrs['axis'] = ['snapshot', 'timestream']
 
         self.index_map = self.f.create_group("index_map")
 
         self.snapshot_index_map = self.index_map.create_dataset('snapshot',
-            (1,), dtype=np.uint32)
+            (1,), dtype=np.uint32, maxshape=(None,), chunks=(1024*1024, ))
 
         self.timestream_index_map = self.index_map.create_dataset("timestream",
             (2048,), dtype=np.uint16)
@@ -108,16 +108,17 @@ class HDF5Writer(object):
 
         # self.n_times = 1
         self.n = 0 # number of samples fince start of file
-        self.elements_per_file = elements_per_file
 
 
-    def write(self, timestamp, port, chan, stream_id, flags, timestream):
+    def write(self, timestamp, stream_id, flags, timestream):
         """
         """
 
 
         n1 = self.n
         self.n = n2 = n1 + timestamp.shape[0]
+
+        # self.log.info('%r: Writing %i entries to HDF5 file %s' % (self, timestamp.size, self.current_filename))
 
         self.timestampDataset.resize((self.n, 1))
         self.crateDataset.resize((self.n, 1))
@@ -130,12 +131,18 @@ class HDF5Writer(object):
         crate_number = (stream_id >> 8) & 0xF
         chan_number = (stream_id ) & 0xF
 
-        self.timestampDataset[n1:n2]['fpga_count'] = timestamp
-        self.timestampDataset[n1:n2]['ctime'] = current_time
+        # we have to build a compound array to assign elements to it using the
+        # field names. Doing that directly on the dataset does nothing.
 
-        self.chanDataset[n1:n2] = chan
-        self.slotDataset[n1:n2] = slot_number
-        self.crateDataset[n1:n2] = crate_number
+        ts = np.empty(timestamp.shape, dtype=self.compound_dtype)  # memory allocation! might not be efficient!
+        ts['fpga_count'] = timestamp
+        ts['ctime'] = current_time
+        self.timestampDataset[n1:n2, 0] = ts
+        # print('ts=', ts)
+
+        self.chanDataset[n1:n2, 0] = chan_number
+        self.slotDataset[n1:n2, 0] = slot_number
+        self.crateDataset[n1:n2, 0] = crate_number
         self.timestreamDataset[n1:n2] = timestream
 
         if n2 >= self.elements_per_file:
