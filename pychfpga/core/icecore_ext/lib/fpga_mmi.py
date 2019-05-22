@@ -363,6 +363,8 @@ class FpgaMmi:
             if retry is not None and retry < 0:
                 self.logger.warning('%r: FPGA_MMI retry = %i' % (self, retry))
                 return
+            if offset + read_length > byte_length:
+                raise IOError('%r: mmi.read(): Received too many bytes' % self)
             dout[offset: offset + read_length] = np.fromstring(data, dtype=np.uint8)  # store received byte
             addr += read_length
             offset += read_length
