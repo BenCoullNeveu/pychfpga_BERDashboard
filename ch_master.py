@@ -470,16 +470,17 @@ class ChimeMaster(object):
         capture_source = capture_source or conf.capture_source
         tmux_factor = conf.tmux_factor if tmux_factor is None else tmux_factor
 
-        for server_name, ibs in self.raw_acq_ibs.items():
-            for ib in ibs:
-                crate = getattr(ib.crate, 'crate_number', 0) or 0
-                slot = (ib.slot or 1) - 1
-                offset = int(tmux_factor * (16 * crate + slot))
+        for server_name, port_entries in self.raw_acq_ibs.items():
+            for port_entry in port_entries:
+                # Compute a transmission delay for each board to prevent them from sending their data all at the same time
+                for ib in port_entry.iceboards:
+                    (crate, slot) = ib.get_id(default_crate=0, default_slot=0)
+                    send_delay = int(tmux_factor * (16 * crate + slot))
 
-                self.log.info('%r: Starting data capture on %r with period=%f, source=%s, offset=%d' %
-                             (self, ib, capture_period, capture_source, offset))
+                    self.log.info('%r: Starting data capture on %r with period=%f, source=%s, send_delay=%d' %
+                                 (self, ib, capture_period, capture_source, send_delay))
 
-                ib.start_data_capture(period=capture_period, source=capture_source, send_delay=offset)
+                    ib.start_data_capture(period=capture_period, source=capture_source, send_delay=send_delay)
 
         # Must issue sync command after starting raw data capture,
         # otherwise raw frames will not be synced across boards.
