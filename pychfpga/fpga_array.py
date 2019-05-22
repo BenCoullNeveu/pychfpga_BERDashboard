@@ -1612,18 +1612,25 @@ class FPGAArray(object):
         If board is already an IceBoard object, it should be returned.
         """
         if not self.ib:
-            raise RuntimeError('There are no Iceboard to select in the list')
+            raise RuntimeError('There are no Iceboard to select in the current array')
         elif isinstance(board, type(self.ib[0])):
             return board
-        elif isinstance(board, str):
+        elif isinstance(board, basestring):
             if board in self.ib.serial:
                 return self.ib.get(serial=board)
+            elif board in self.ib.hostname:
+                return self.ib.get(hostname=board)
             else:
                 raise RuntimeError('%r: Invalid Board serial number %s. Valid serial numbers are %s' %
                     (self, board, ','.join("'%s'" % ib.serial for ib in self.ib)))
-        elif isinstance(board, (tuple, list)):
-            crate, slot = board
-            return self.ic.get(crate_number=crate).slot[slot + 1]
+        elif isinstance(board, (tuple, list)) and len(board) == 2:
+            matches = [ib for ib in self.ib if board == ib.get_id()]
+            if not matches:
+                raise RuntimeError('board ID %r did not match any board in the array' % board)
+            elif len(matches) > 1:
+                raise RuntimeError('board ID %r Matched multiple boards: %s' % ','.join(ib.get_string_id() for ib in matches))
+            else:
+                return matches[0]
         else:
             raise AttributeError('%r: Invalid Iceboard specification %s' % (self, board))
 
