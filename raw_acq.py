@@ -946,11 +946,18 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
         kwargs: All remaining aruments will be stored as configuration data.
     """
 
-    def __init__(self, name='RawAcq', hostname='localhost', port=RawAcqAsyncRESTServer.DEFAULT_PORT, base_dir = '~/data', base_filename= None, **config):
+    def __init__(self,
+                 name='RawAcq',
+                 hostname='localhost',
+                 port=RawAcqAsyncRESTServer.DEFAULT_PORT,
+                 base_dir = '~/data',
+                 base_filename= None,
+                 create_server = True,
+                 **config):
         super(RawAcqAsyncRESTClient, self).__init__(
             hostname=hostname,
             port=port,
-            server_class=RawAcqAsyncRESTServer,
+            server_class=RawAcqAsyncRESTServer if create_server else None,
             heartbeat_string='Rc')
 
         self.name = name
