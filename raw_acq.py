@@ -1079,15 +1079,16 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
 
         # Register config with comet broker
         try:
-            enable_comet = config['comet_broker']['enabled']
+            comet_config = config.pop('comet_broker')
+            enable_comet = comet_config['enabled']
         except KeyError:
             msg = "Missing config value 'comet_broker/enabled'."
             self.log.error(msg)
             coroutine_return(msg)
         if enable_comet:
             try:
-                comet_host = config['comet_broker']['host']
-                comet_port = config['comet_broker']['port']
+                comet_host = comet_config['host']
+                comet_port = comet_config['port']
             except KeyError as exc:
                 msg = "Failure registering initial config with comet broker: 'comet_broker/{}' " \
                       "not defined in config.".format(exc[0])

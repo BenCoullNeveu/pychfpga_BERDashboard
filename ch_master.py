@@ -519,7 +519,8 @@ class ChimeMaster(object):
         start_results = yield {node_name: self.raw_acq[node_name].start(
                 name=recv_names[node_name],
                 ports=recv_ports[node_name],
-                jump_thresholds=conf.common_config.jump_thresholds)
+                jump_thresholds=conf.common_config.jump_thresholds,
+                comet_broker=conf.comet_broker.as_dict())
             for node_name in self.raw_acq_ibs.keys()}
 
         # Configure the FPGA transmit addresses based on what the receiver returned
