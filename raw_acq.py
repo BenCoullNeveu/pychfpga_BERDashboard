@@ -881,6 +881,11 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
         self.receiver.stopHdf5Disk()
         coroutine_return("stopped hdf5 writing to disk.")
 
+    @coroutine
+    @endpoint('status')
+    def status(self, handler):
+        coroutine_return(dict(started=self.receiver.is_running()))
+
 
     @coroutine
     @endpoint
