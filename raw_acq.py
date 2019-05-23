@@ -836,7 +836,7 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
         except KeyError:
             msg = "Missing config value 'comet_broker/enabled'."
             self.log.error(msg)
-            coroutine_return(msg)
+            raise RuntimeError('Cannot start comet broker: %s' % (msg))
         if enable_comet:
             try:
                 comet_host = comet_config['host']
@@ -845,15 +845,15 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
                 msg = "Failure registering initial config with comet broker: 'comet_broker/{}' " \
                       "not defined in config.".format(exc[0])
                 self.log.error(msg)
-                coroutine_return(msg)
+                raise RuntimeError('Cannot start comet broker: %s' % (msg))
             comet = Manager(comet_host, comet_port)
             try:
                 comet.register_start(self.startup_time, self.GIT_VERSION)
                 comet.register_config(config)
             except CometError as exc:
-                msg = 'Comet failed registering raw_acq start and initial config: {}'.format(exc)
+                msg = 'Comet failed registering raw_acq start and initial config. The Comet client returned the following error: {}'.format(exc)
                 self.log.error(msg)
-                coroutine_return(msg)
+                raise RuntimeError('Cannot start comet broker: %s' % (msg))
         else:
             self.log.warning("Config registration DISABLED. This is only OK for testing.")
 
@@ -884,7 +884,7 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
     @coroutine
     @endpoint('status')
     def status(self, handler):
-        coroutine_return(dict(started=self.receiver.is_running()))
+        coroutine_return(dict(started=self.receiver.is_running() if self.receiver else False))
 
 
     @coroutine
@@ -976,6 +976,11 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
             self.log.error("Can't ping raw_acq server at %s:%i" % (self.hostname, self.port))
             coroutine_return(False)
         coroutine_return(True) # coroutine_return raises an exception: we don't want it in the try block
+
+    @coroutine
+    def status(self):
+        result = yield self.get('status')
+        coroutine_return(result)
 
     @coroutine
     def start(self, **config):
