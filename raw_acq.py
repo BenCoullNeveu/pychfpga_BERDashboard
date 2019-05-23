@@ -31,192 +31,6 @@ from wtl.metrics import Metrics
 # Local imports
 from _version import get_git_version
 
-#Should be in gain.py or something.
-class GainCalc(object):
-    def __init__(self, gain=None, zero=False):
-        self.zero = zero
-        self.mask = None
-        self.idealRMS = 1.5 * np.sqrt(2)
-        self.default_log2_gain = 22
-        if gain:
-            self.g = np.zeros((16,1024))
-            for i in range(16):
-                inb = np.array(gain[i][1][0])*2**(gain[i][1][1])
-                self.g[i,:] = inb
-        else:
-           self.g = None
-
-
-    def update(self, signal):
-        self.signal = np.array(signal)
-        mask = np.ma.make_mask_none((len(signal),))
-        #The first bin is always bad for some reason
-        mask[0] = True
-        self.masked = np.ma.array(np.log(signal), mask=mask)
-
-    def convert_gain_format(self):
-        """ Return the current floating point gain vector into a (integer gain vector, log gain scalar) tuple.
-
-
-
-        """
-        #2**14 is max for linear gain
-        #ignore dc component
-        #check for nans
-        #print g
-
-        # identify bad gain values and create an appropriately masked array
-        bad_values = (self.g > 2**31) | ~np.isfinite(self.g)
-        g = np.ma.array(self.g, mask=bad_values)
-
-        # COmpute the power of 2 scaling for gains
-        glog = (np.ceil(np.log2(np.ma.median(np.abs(g) / 2**13, axis=1)))).astype(np.int)
-        glin = np.zeros(g.shape, dtype=np.float)
-        for i, glog_single in enumerate(glog):
-            glin[i] = g[i] / 2**glog[i]
-        glog.data[glog.mask == True] = np.ma.median(glog)
-        glog.mask[glog.mask] = False
-        glin[bad_values] = 2**14
-        return glin, glog.data
-
-    def noisy_gain_estimate(self, data):
-        outrms = data[:, :, :].std(axis=0)
-        outrms[outrms < 0.8] = 0.8
-        #rmss.append(outrms.mean())
-        print(outrms.mean(axis=1))
-        if self.g is not None:
-            #not sure about format of previous gain yet...
-            #needs to be a post of current gain setting I think...
-            #glin, glog = self.convert_gain_format(previous_gain):
-            glin, glog = self.convert_gain_format()
-            # Not sure what g should be here.
-            #g = self.idealRMS*2**(self.default_log2_gain)/outrms
-            for j, glog1 in enumerate(glog):
-                self.g[j] = self.idealRMS * glin[j] * (2**(glog[j]))/outrms[j] #idealRMS*glin*(2**(glog-4))/outrms
-                self.g[j] = (20.0 * self.g[j] + 80.0 * glin[j] * (2**(glog[j])))/100.0
-        else:
-            #Assumes was set to something simple (glin=1), glog is something.
-            self.g = self.idealRMS*2**(self.default_log2_gain)/outrms#idealRMS*2**(default_log2_gain-4)/outrms
-        self.glin, self.glog = self.convert_gain_format()
-        print(self.glog)
-        bad_gains = self.glin > 2**14
-        self.glin[bad_gains] = 2**14
-        self.glin = self.glin.astype(np.int).astype(np.float)
-        gain = []
-        for channel in range(16):
-            gain.append([channel,[self.glin[channel].tolist(), self.glog[channel]]])
-        return gain
-
-    def fourier_filter(self, signal, num_components):
-        '''
-        Filters signal with top-hat in fourier space.  Padded with itself on either     side to improve edge behavior.
-        Should extend to other windows.
-        not assured to maintain signal size
-        '''
-        signal = np.array(signal)
-        signal_length = signal.size
-        f_signal = np.fft.fft(np.r_[signal[signal_length/2:0:-1],signal,signal[-1:-signal_length/2:-1]])
-        f_signal[num_components:-num_components] = 0
-        filtered = np.fft.ifft(f_signal)[signal_length/2:-signal_length/2+1]
-        filtered = (filtered.real).astype(np.int).astype(np.float)
-        return filtered
-
-    def flag_rfi(self, in_arr, fit, threshold):
-        '''
-        Identifies RFI in the signal spectrum by finding larger than expected jumps in the signal.
-        Returns array of flags for each bin
-        '''
-        rfmask = abs(in_arr) < abs(fit/threshold)
-        in_arr.mask = rfmask|in_arr.mask
-
-    def poly_filter(self, signal, threshold, degree):
-        '''
-        Filters signal using a polynomial fit. Ignores RFI in calculating the polynomial.
-        '''
-        x = np.ma.array(np.arange(len(signal)), mask=signal.mask)
-        fit = np.polyfit(np.ma.compressed(x), np.ma.compressed(signal), degree)
-        #fit = np.polyfit(flagged, x, degree)
-        fitarr = np.poly1d(fit)(np.arange(len(signal)))
-        self.flag_rfi(signal, fitarr, threshold)
-        return fitarr
-
-    def iterative_poly_filter(self, signal):
-        mask = np.ma.make_mask_none((len(signal),))
-        #The first bin is always bad for some reason
-        mask[0] = True
-        degree = 1
-        threshold = 1.2
-        masked = np.ma.array(np.log(signal), mask=mask)
-        while threshold > 1.01:
-            fitarr = self.poly_filter(masked, threshold, degree)
-            threshold = 1 + (threshold - 1)*0.8
-            if degree < 15:
-                degree += 2
-        filtered = np.exp(fitarr)
-        filtered = (filtered.real).astype(np.int).astype(np.float)
-        return filtered, masked.mask
-
-    def run(self, filtertype='hybrid', num_components = 50):
-        if filtertype == 'fourier':
-            output = self.fourier_filter(self.signal, num_components)
-        elif filtertype == 'poly' or filtertype == 'hybrid':
-            output, mask = self.iterative_poly_filter(self.signal)
-            self.mask = mask
-            if filtertype == 'hybrid':
-                in_arr = self.signal.copy()
-                in_arr[mask] = output[mask]
-                output = self.fourier_filter(in_arr, num_components)
-            if self.zero:
-                output[mask] = 0
-            else:
-                output[mask] = self.signal[mask]
-        else:
-            raise ValueError
-        output = (output.real).astype(np.int).astype(np.float)
-        return output
-
-class GainEstimator(object):
-
-    def __init__(self, read_data_func, number_of_ports, number_of_frames=2):
-        self.previousGain = None
-        self.read_data_func = read_data_func  # function to call to get packets
-        self.number_of_ports = number_of_ports
-        self.number_of_frames = number_of_frames
-
-    def estimateGains(self):
-        ''' Assume setup to send spectrum data.  average a number of
-            frames together, and get estimate of new gain settings.'''
-        # gain_estimates = []
-        frame_number = 0
-        spectrum = np.zeros((self.number_of_ports, self.number_of_frames, 16, 1024), dtype=np.complex)  # port (board), timestanp, channel, bin
-        while frame_number < self.number_of_frames:
-            timestamps, ports, all_data = self.read_data_func()
-            data_unpacked = (np.array(all_data).astype(np.int8) ^ np.int8(128)) >> 4
-            spectrum[:, frame_number, :,:] = data_unpacked[:, :, ::2] + 1.0j * data_unpacked[:, :, 1::2]
-            frame_number += 1
-
-        for i, port in enumerate(ports):
-            if self.previousGain:
-                gain_calc = GainCalc(self.previousGain[i])
-                first_run = False
-            else:
-                gain_calc = GainCalc()
-                self.previousGain = []
-                first_run = True
-            gain = gain_calc.noisy_gain_estimate(spectrum[i])
-            for j in range(16):
-                gain_calc.update(gain[j][1][0])
-                glin_update = gain_calc.run()
-                gain[j][1][0] = glin_update.tolist()
-            if first_run:
-                self.previousGain.append(gain)
-            else:
-                self.previousGain[i] = gain
-        return self.previousGain
-
-
-
-
 class hdf5TimestreamData(object):
     """ Object representing a HDF5 file containing raw data
     """
@@ -310,69 +124,6 @@ class hdf5TimestreamData(object):
             self.log.error('%r: Unable to rename HDF5 lock file from %s to %s' % (self, self.lock_filename, self.filename))
 
 
-# class dataWriter(object):
-#     """
-#     """
-#     def __init__(self, data_queue, base_dir, base_filename, elements_per_file=2048*64):
-#         self.log = logging.getLogger(__name__).getChild(self.__class__.__name__)
-#         if not isinstance(data_queue, (list, tuple)):
-#             self.data_queue = [data_queue]
-#         else:
-#             self.data_queue = data_queue
-#         self.elements_per_file = elements_per_file
-#         time_str = datetime.datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
-#         self.hdf5_base_dir = os.path.join(os.path.expanduser(base_dir),'%s_%s/' % (time_str, base_filename))
-#         #self.live_base_dir = '/mnt/agogo/livedata/'
-#         try:
-#             os.makedirs(self.hdf5_base_dir)
-#         except:
-#             self.log.warning("%.32r: couldn't make directory '%s'. Using current directory." % (self, self.hdf5_base_dir))
-#             self.hdf5_base_dir = './'
-
-#         self.hdf5_file_number = 0
-#         self.start_new_hdf5_file()
-#         self.hdf5_run = True
-
-
-#     def start_new_hdf5_file(self):
-#         filename = "{0:06d}.h5".format(self.hdf5_file_number)
-#         filename =  os.path.join(self.hdf5_base_dir, filename)
-#         self.log.info('%r: started logging in file %s' % (self, filename))
-#         self.hdf5_file = hdf5TimestreamData(filename)  # start a new empty file
-
-
-#     def hdf5_write(self, timestamp, port, chan, stream_id, flags, adc_data):
-#         """
-#         Aggregate a number of data sets and write them into the current HDF5 file, then start a new
-#         file. Runs forever until self.hdf5_run is False.
-#         """
-#         while True:
-#             n_elements = 0
-#             while n_elements < self.elements_per_file:
-#                 if not self.hdf5_run:
-#                     if self.hdf5_file:
-#                         self.hdf5_file.close()
-#                         self.hdf5_file = None
-#                         return
-#                 for j, out_q in enumerate(self.data_queues):
-#                     if not out_q.empty():
-#                         # print('writing data')
-#                         self.hdf5_file.write(timestamp, port, chan, stream_id, flags, adc_data)
-#                         n_elements += 1
-#             self.close()
-#             self.hdf5_file_number += 1
-#             self.start_new_hdf5_file()
-
-#     def stop(self):
-#         """ Stop the `write` process."""
-#         self.hdf5_run = False
-
-#     def close(self):
-#         if self.hdf5_file:
-#             self.hdf5_file.close()
-#             self.hdf5_file = None
-
-
 class RawAcqUDPReceiver(SocketServer.UDPServer):
     class UDPHandler(SocketServer.BaseRequestHandler):
         '''
@@ -447,7 +198,6 @@ class RawAcqReceiver(object):
         self.datawriter = None
         self.receivers = []
         self.data_queue = None
-        self.gain_estimator = None
         self.ioloop_last_time = None
         self.ioloop_max_response_time = None
         self.ioloop_min_response_time = None
@@ -598,9 +348,6 @@ class RawAcqReceiver(object):
             self.all_data[receiver_port[port]] = np.zeros((self.N_CHANNELS, 2048), dtype=np.int8)  # pre-allocate data (channels x bins) for all ports,  for a single timestamp
             self.all_ts[receiver_port[port]] = np.zeros((self.N_CHANNELS), dtype=np.int32) # pre-allocate timestamps storage for the current data for all ports (should all be the same)
 
-        self.gain_estimator = GainEstimator(read_data_func=self.get_data, number_of_ports=len(self.ports))
-
-
         self.run = True
         self.data_processing_thread = threading.Thread(target=self.process_data)
         self.data_processing_thread.setDaemon(True)
@@ -708,7 +455,6 @@ class RawAcqReceiver(object):
             print("shutdown servers")
             self.data_queue.clear()
             self.start_time = None
-        self.gain_estimator = None
         self.start_time = None
 
     def process_data(self):
@@ -1058,7 +804,7 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
         - Setup logging.
     """
 
-    DEFAULT_PORT = 54321
+    DEFAULT_PORT = 54322
 
     def __init__(self, address='', port=DEFAULT_PORT, logging_params={}):
         self.receiver = RawAcqReceiver()
@@ -1145,15 +891,6 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
         print(ports)
         print(data)
         coroutine_return(ts=ts.tolist(), ports=ports, data=data.tolist())
-
-    @coroutine
-    @endpoint
-    def estimate_gains(self, handler):
-        if self.gain_estimator:
-            gains = self.gain_estimator.estimateGains()
-            coroutine_return(gains=gains)
-        else:
-            raise RuntimeError('Gain estimator is not created (most probably because the server is not started)')
 
     @coroutine
     @endpoint('get-rms')
@@ -1270,7 +1007,7 @@ def main():
         *config* : configuration in the format [[*filename*]:][*path_to_config_object*]
         *command* : the name of a ChimeMaster client method.
         --host: hostname of the server. Overrides the hostname found in the config. Default is 'localhost'.
-        --port: port number of the server. Overrides the port number found in the config.  Default is 54321.
+        --port: port number of the server. Overrides the port number found in the config.  Default is 54322.
         --run: run the client/server until Ctrl-C is pressed. Default when no command is provided.
         --no-run: Do not run the client/server even if no comman dis provided.
         --no_start: do not attempt to initialize the server even if a configuration is provided.
@@ -1324,7 +1061,7 @@ def main():
 
     Send a command to server:
 
-        ./raw_acq stop # send stop command to server on localhost:54321
+        ./raw_acq stop # send stop command to server on localhost:54322
         ./raw_acq jfc.erh power_off # power off supplies used by server running at theaddress specified in the jfc.erh config
     """
     # Setup logging
