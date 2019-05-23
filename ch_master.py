@@ -177,7 +177,7 @@ class ChimeMaster(object):
 
         # Remote service provider objects
         self.raw_acq = {} # Raw FPGA data acquisitoin REST clients
-        self.raw_acq = None # Raw FPGA data acquisitoin REST clients
+        # self.kotekan = None # Kotekan REST clients
         self.fpgas = None # fpga_array object
         self.power_supply_servers = None # power supply REST server
 
@@ -315,12 +315,16 @@ class ChimeMaster(object):
         self.log.info('%r: starting raw_acq servers' % self)
 
         # Create RawAcq REST clients.
-
         self.raw_acq = {}
         nodes = self.config.raw_acq.servers or {}
         for node_name, node_params in nodes.items():
-            self.raw_acq[node_name] = RawAcqAsyncRESTClient(name=node_name, **node_params)
+            self.raw_acq[node_name] = RawAcqAsyncRESTClient(name=node_name, create_server=False, **node_params)
 
+        # Check if server is running
+        for raw_acq_server_name, raw_acq_client in self.raw_acq.items():
+            present = yield raw_acq_client.ping()
+            if not present:
+                raise RuntimeError('%r: raw_acq server %s (%r) is not running' % (self, raw_acq_server_name, raw_acq_client))
 
         conf = self.config.raw_acq
         #print(conf)
@@ -1379,14 +1383,20 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         """ Regularly check if raw_acq server is running. If not, restart it.
         """
         while True:
-            for raw_acq_server_name, raw_acq_client in self.raw_acq.items():
-                try:
-                    result = yield raw_acq_client.status()
-                    if not result['started']:
-                        self.log.info('%r: Raw_acq server %s seems to be stopped. Restarting.' % (self, raw_acq_server_name))
-                        yield self.start_raw_acq_servers()
-                except HTTPError:
-                    self.log.error('%r: Failed to get status info from raw_acq server %s (%r)' % (self, raw_acq_server_name, raw_acq_client))
+            try:
+                self.log.info('%r: ------------ Checking status of Raw_acq servers' % (self, ))
+                if (self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas):
+                    for raw_acq_server_name, raw_acq_client in self.chime_master.raw_acq.items():
+                        try:
+                            self.log.info('%r: Checking status of Raw_acq server %s' % (self, raw_acq_server_name))
+                            result = yield raw_acq_client.status()
+                            if not result['started']:
+                                self.log.info('%r: Raw_acq server %s seems to be stopped. Restarting.' % (self, raw_acq_server_name))
+                                yield self.chime_master.start_raw_acq_servers()
+                        except (HTTPError, RuntimeError, Exception) as e:
+                            self.log.error('%r: Failed to get status info from raw_acq server %s (%r) due to the following exception: %r' % (self, raw_acq_server_name, raw_acq_client, e))
+            except Exception as e:
+                self.log.error('%r: auto_restart_raw_acq raised the following exception: %r' % (self, e))
             yield sleep(3)
 
 
