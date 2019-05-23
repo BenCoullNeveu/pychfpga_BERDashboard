@@ -453,7 +453,7 @@ class RawAcqReceiver(object):
             receiver.server_close()
             receiver.socket.close()  # free the socket so we can restart the receiver later
             print("shutdown servers")
-            self.data_queue.clear()
+            self.data_queue.queue.clear()
             self.start_time = None
         self.start_time = None
 
