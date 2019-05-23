@@ -176,9 +176,8 @@ class ChimeMaster(object):
         self.start_time = None
 
         # Remote service provider objects
-        self.chrx = None  # CHRX REST clients
+        self.raw_acq = {} # Raw FPGA data acquisitoin REST clients
         self.raw_acq = None # Raw FPGA data acquisitoin REST clients
-        self.kotekan = None # Kotekan REST clients
         self.fpgas = None # fpga_array object
         self.power_supply_servers = None # power supply REST server
 
@@ -373,7 +372,7 @@ class ChimeMaster(object):
                 name=recv_names[node_name],
                 ports=recv_ports[node_name],
                 jump_thresholds=conf.common_config.jump_thresholds,
-                comet_broker=conf.comet_broker.as_dict())
+                comet_broker=conf.common_config.comet_broker.as_dict())
             for node_name in self.raw_acq_ibs.keys()}
 
         # Configure the FPGA transmit addresses based on what the receiver returned
@@ -503,8 +502,8 @@ class ChimeMaster(object):
     @coroutine
     def start(self, **config):
         """ Make the telescope operational by starting and initializing the FPGA F-Engine and the GPU X Engine (Kotekan), CHRX, and raw_acq remote processes. """
-        self.log.debug('%r: starting ChimeMaster instance' % (self))
-        self.log.info('Starting ch_master.start()')
+        self.log.debug('%r: Starting ChimeMaster instance' % (self))
+        self.log.info('%r: Starting ch_master.start()', self)
         if self.state != 'off':
             coroutine_return(dict(error='already started'))
 
@@ -513,7 +512,7 @@ class ChimeMaster(object):
             enable_comet = config['comet_broker']['enabled']
         except KeyError:
             msg = "Missing config value 'comet_broker/enabled'."
-            self.log.error(msg)
+            self.log.error('%r: %s' % (self, msg))
             coroutine_return(msg)
         if enable_comet:
             try:
@@ -522,7 +521,7 @@ class ChimeMaster(object):
             except KeyError as exc:
                 msg = "Failure registering initial config with comet broker: 'comet_broker/{}' " \
                       "not defined in config.".format(exc[0])
-                self.log.error(msg)
+                self.log.error('%r: %s' % (self, msg))
                 coroutine_return(msg)
             comet = Manager(comet_host, comet_port)
             try:
@@ -580,7 +579,7 @@ class ChimeMaster(object):
         #lo=logging.getLogger('pychfpga.fpga_array')
         #print('before setup: logger name=%s, level=%s, handlers=%s, disabled=%r' %(lo.name, lo.level, lo.handlers, lo.disabled))
         self.logging_handlers = log.setup_logging(
-	    conf.logging.dict_config,
+        conf.logging.dict_config,
             conf.logging.log_levels,
             base_package_name=conf.logging.base_package_name,
             actual_package_name=__name__.rpartition('.')[0], # full package path up to ch_acq (note: __package__ exists but is not consistently defined)
@@ -591,13 +590,13 @@ class ChimeMaster(object):
         #lo.warning('Trop seche')
         self.log.info('%r: Logging configured'% self)
         # Now that the housekeeping is done, let's start the real work
-	#print('LOGGING config before is %s' % self.config.logging)
+    #print('LOGGING config before is %s' % self.config.logging)
 
-	#print('YAML config is %s' % conf.logging.dict_config.as_dict())
+    #print('YAML config is %s' % conf.logging.dict_config.as_dict())
 
         # Store the basic run info in the run folder
         filename = os.path.join(self.run_folder, 'config.yaml')
-	#print('YAML config is %r' % self.config.logging.as_dict())
+    #print('YAML config is %r' % self.config.logging.as_dict())
         with open(filename, 'w') as h:
             h.write(self.config.as_yaml())
 
@@ -609,13 +608,11 @@ class ChimeMaster(object):
             h.write('Correlator/config name: %s\n' % conf.corr_name)
             h.write('Run folder: %s\n' % self.run_folder)
 
-
         # Create objects to communicates to the remote processes needed to run the array
         yield self.create_power_supply_clients()
         # yield self.create_chrx_clients()  # CHRX nodes receive data processed by the GPU nodes
         # yield self.create_kotekan_clients()  # Kotekan processes run on the GPU nodes; they receive the data from the FPGAs over dedicated point-to-point FPGA-GPU 10G Ethernet links, perform the correlation on the data, and forward the processed data to the CHRX nodes
         # yield self.start_kotekan_servers()
-
 
         # power on the array
         yield self.power_on()
@@ -671,11 +668,11 @@ class ChimeMaster(object):
         fpga_array_params = conf.fpga.fpga_array_params
 
         #Define some FPGA-related system constants
-        self.SAMPLING_FREQUENCY = float(fpga_array_params.samp_freq)*1e6  # frequency in Hz
+        self.SAMPLING_FREQUENCY = float(fpga_array_params.samp_freq) * 1e6  # frequency in Hz
         self.SAMPLES_PER_FRAME = 2048
         self.SECONDS_PER_FRAME = self.SAMPLES_PER_FRAME / self.SAMPLING_FREQUENCY
 
-        self.log.info("Sampling frequency is %0.3f MHz." % (self.SAMPLING_FREQUENCY/1e6))
+        self.log.info("Sampling frequency is %0.3f MHz." % (self.SAMPLING_FREQUENCY / 1e6))
 
         # Create the FPGAArray object. This object will create a database of all FPGA boards, crates and
         # mezzanines as described by the ``fpga_array_params`` parameters.fpga_array_params If specified
@@ -693,7 +690,7 @@ class ChimeMaster(object):
 
         if not fpga_array_params.open:
             self.log.warning("fpga_array is initialized with open=0. Aborting the rest of the FPGA array initialization.")
-	    coroutine_return()
+        coroutine_return()
 
         # # if this needed?
         # ca.ib.set_adc_mask(0) # null the ADC data before it gets to the channelizers to reduce power consumption
@@ -940,8 +937,6 @@ class ChimeMaster(object):
             self.state = 'stopping'
             self.log.info("stopping acquisition")
             self.iceboard_cb.stop()
-            # if self.chrx:
-            #     yield self.stop_chrx_clients()
             log.stop_logging(self.logging_handlers) # remove the handlers that were created by setup_logging()
             reap_cached_sockets()
             self.start_time = None
@@ -1083,10 +1078,6 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         # self.port = port # port on which the web server will be run
         self.dummy = dummy
 
-        # # Create a kotekan client for each node specified in the gpu_config_file
-        # # We may want to make this part of ChimeMaster initialization
-        # gpu_config = yaml.load(open(gpu_config_file)) if gpu_config_file else {}
-        # self.kotekan_clients = [KotekanAsyncRESTClient(k, **v) for k,v in gpu_config.items()]
 
         # Use a dummy CHIME Master object if dummy is True
         ChimeMasterClass = DummyChimeMaster if self.dummy else ChimeMaster
@@ -1227,11 +1218,11 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         results = yield self.chime_master.switch_gains(gain_map)
         coroutine_return(results)
 
-    @coroutine
-    @endpoint('kotekan-start')
-    def kotekan_start(self, handler, **config):
-        results = yield [k.start(**config) for k in self.kotekan_clients]
-        coroutine_return(results)
+    # @coroutine
+    # @endpoint('kotekan-start')
+    # def kotekan_start(self, handler, **config):
+    #     results = yield [k.start(**config) for k in self.kotekan_clients]
+    #     coroutine_return(results)
 
     @coroutine
     @endpoint('get-frame-time')
@@ -1397,6 +1388,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
                 except HTTPError:
                     self.log.error('%r: Failed to get status info from raw_acq server %s (%r)' % (self, raw_acq_server_name, raw_acq_client))
             yield sleep(3)
+
 
     @coroutine
     def _get_system_metrics(self):
