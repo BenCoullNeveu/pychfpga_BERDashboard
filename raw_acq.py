@@ -6,8 +6,6 @@ from __future__ import absolute_import, division, print_function
 # Python Standard Library packages
 import os
 import sys
-import argparse
-import logging
 import socket
 import time
 import Queue
@@ -26,7 +24,7 @@ import psutil
 # External private packages
 from comet import Manager, CometError
 from wtl import log
-from wtl.rest import AsyncRESTServer, endpoint, AsyncRESTClient, coroutine, coroutine_return, IOLoop, RunSyncWrapper, moment
+from wtl.rest import AsyncRESTServer, endpoint, AsyncRESTClient, coroutine, coroutine_return, IOLoop, RunSyncWrapper, moment, run_client
 from wtl.namespace import NameSpace
 from wtl.metrics import Metrics
 
@@ -1060,7 +1058,7 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
         - Setup logging.
     """
 
-    DEFAULT_PORT = 33221
+    DEFAULT_PORT = 54321
 
     def __init__(self, address='', port=DEFAULT_PORT, logging_params={}):
         self.receiver = RawAcqReceiver()
@@ -1081,7 +1079,9 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
     def start(self, handler, **config):
         self.log.info('%.32r: Received start command with %r' % (self, config))
         if self.receiver.is_running():
-            raise RuntimeError('Server is already started')
+            self.log.info('%.32r: Receiveer is already running. Stopping it and restarting a new one' % (self))
+            yield self.receiver.stop()
+            # raise RuntimeError('Server is already started')
 
         # Register config with comet broker
         try:
@@ -1261,51 +1261,78 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
 
 
 
-def parse_cmdline_args(argv):
-    parser = argparse.ArgumentParser(description="Raw_acq: ADC Raw data acquisition server", epilog="""
-        """)
-    parser.add_argument('args', type=str, choices=['client', 'server'], default='',  help='"server" or "client" ')
-    parser.add_argument('-p', '--port', default=33221, type=int, help="Server port")
-    parser.add_argument('-n', '--host', default='localhost', type=str, help="Server hostname")
-    return parser.parse_args(argv)
+def main():
+    """ Command-line interface to operate the RawAcq server.
+
+    ./raw_acq.py [config] [command {args}] [--host hostname] [--port port_number] [--no-run | --run] [--no-start]
+
+    where:
+        *config* : configuration in the format [[*filename*]:][*path_to_config_object*]
+        *command* : the name of a ChimeMaster client method.
+        --host: hostname of the server. Overrides the hostname found in the config. Default is 'localhost'.
+        --port: port number of the server. Overrides the port number found in the config.  Default is 54321.
+        --run: run the client/server until Ctrl-C is pressed. Default when no command is provided.
+        --no-run: Do not run the client/server even if no comman dis provided.
+        --no_start: do not attempt to initialize the server even if a configuration is provided.
+
+    The `raw_acq` command is invoked from the command line with::
+
+        ./raw_acq.py arguments...  # linux only
+        python raw_acq.py arguments
+
+    Or from an ipython interactive session::
+
+        run -i raw_acq arguments
+
+    Operations done:
+
+        1. Create client:
+
+            - Always starts a client that connects to server at address specified in config or as
+              overriden by --host and --port.
+
+        2. Create server if none already exists:
+
+            - If there is no server, a server is created at localhost on the port specified in the
+              config or as overriden by --port, unless -no-server is specified
+
+        3. Initialize server with config file if requested:
+
+            - If no config is present, or if --no-start option is specified, the server is not started
+            - If there is a config file, the 'start' command is sent along with the specified
+              config. If the server is already started with a different config, an error will be
+              raised.
+
+        4. Execute command or run server:
+
+            - If a command and arguments are specified, the corresponding client methods commands
+              are invoked. Those generally pass on the command to the corresponding server endpoint.
+            - If no command is specified and a local server was started, the client (and locally
+              started server if any) are run continually until stopped by Ctrl-C. Bypassed if --no-
+              run is specified
+
+    Examples:
+
+    Create and initialize and run a new local server or initialize an existing server::
+
+        ./raw_acq.py jfc.erh
+
+    Create an non-initialized server
+
+        ./raw_acq.py  # starts server on localhost:54322
+        ./raw_acq.py config --no-start # starts server at address specified in config
+
+    Send a command to server:
+
+        ./raw_acq stop # send stop command to server on localhost:54321
+        ./raw_acq jfc.erh power_off # power off supplies used by server running at theaddress specified in the jfc.erh config
+    """
+    # Setup logging
+    log.setup_basic_logging('DEBUG')
+
+    client, server = run_client(sys.argv[1:], RawAcqAsyncRESTServer, RawAcqAsyncRESTClient, object_name ='RawAcq', server_config_path='raw_acq.servers')
+    return client, server
 
 if __name__ == '__main__':
-    """
-    Command-line interface to the raw_acq engine.
-        raw_acq server --port 33221 # starts the server on localhost.
-        raw_acq client --port 33221 --host localhost # starts a client in variable 'rc' to operate the server at localhost:33221
+    client, server = main()
 
-    Default port is 33221 if not specified.
-    """
-    logger = logging.getLogger()
-    logger.setLevel(logging.DEBUG) # pass all messages to the handlers
-    logger.handlers = []  # clear all existing handlers
-    # formatter = logging.Formatter(self.LOG_FORMAT, self.LOG_DATE_FORMAT)
-
-    def add_handler(h, log_level):
-        # h.setFormatter(formatter)
-        level = log_level if isinstance(log_level, int) else log_level.upper()
-        h.setLevel(level)
-        logger.addHandler(h)
-
-    add_handler(logging.StreamHandler(sys.stderr), 'warning')
-    add_handler(logging.handlers.SysLogHandler(), 'debug')
-
-
-    ioloop = IOLoop()
-    ioloop.make_current()
-    args = parse_cmdline_args(sys.argv[1:])
-
-    # print(args)
-    first_arg = args.args.lower()
-    if first_arg == 'server':
-        rs = RawAcqAsyncRESTServer(port=args.port)
-        print("Raw Acq REST Server started. Waiting for REST commands.")
-        ioloop.start()
-        print("\nI'm done. Bye!")
-    elif first_arg == 'client':
-        rc = RunSyncWrapper(RawAcqAsyncRESTClient(
-            name='UserRawAcqClient0',
-            hostname=args.host,
-            port=args.port))
-        print('Use rc.run_sync(method_name, args...) to call and run asynchronous (coroutine) client methods in a ioloop. Alternativeny, one can use rc.sync_method_name(args, ...).')
