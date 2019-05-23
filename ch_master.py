@@ -21,7 +21,6 @@ import numpy
 import os
 import traceback
 import socket
-import subprocess
 import sys
 import time
 import json
@@ -41,7 +40,7 @@ import numpy as np
 
 
 # External private packages
-
+from comet import Manager, CometError
 from wtl import log
 from wtl.rest import RESTClient, AsyncRESTServer, AsyncRESTClient, HTTPError # generic REST servers and clients
 from wtl.rest import endpoint, coroutine, coroutine_return, sleep, moment
@@ -52,7 +51,7 @@ from wtl.metrics import Metrics
 
 
 # Local imports
-from _version import __version__
+from _version import __version__, get_git_version
 from pychfpga import FPGAArray
 # Remote servers handled by ChimeMaster
 from ps import PowerSupplyAsyncRESTClient
@@ -158,17 +157,6 @@ ARCHIVE_VERSION = "NT_2.2.0"
 # # Full path to this file.
 # PROGRAM = os.path.realpath(__file__)
 
-def get_git_version():
-    # Git version.
-    PROGRAM = os.path.realpath(__file__)
-    try:
-        return subprocess.check_output(
-            'git describe --all --dirty --long'.split(),
-            cwd = os.path.dirname(PROGRAM)).strip()
-    except WindowsError:
-        print('GIT was not found')
-        return 'unknown' # JFC: To allow tests in windows
-
 def reap_cached_sockets():
     import __main__
     logger = log.get_logger(__name__, 'reap_cached_sockets()')
@@ -215,6 +203,7 @@ class ChimeMaster(object):
 
         self.PROGRAM = os.path.realpath(__file__) # absolute path name to this module
         self.GIT_VERSION = get_git_version()
+        self.startup_time = datetime.datetime.utcnow()
 
         self.log.info("program %s" % self.PROGRAM)
         self.log.info("version %s" % self.GIT_VERSION)
@@ -530,7 +519,8 @@ class ChimeMaster(object):
         start_results = yield {node_name: self.raw_acq[node_name].start(
                 name=recv_names[node_name],
                 ports=recv_ports[node_name],
-                jump_thresholds=conf.common_config.jump_thresholds)
+                jump_thresholds=conf.common_config.jump_thresholds,
+                comet_broker=conf.comet_broker.as_dict())
             for node_name in self.raw_acq_ibs.keys()}
 
         # Configure the FPGA transmit addresses based on what the receiver returned
@@ -663,6 +653,33 @@ class ChimeMaster(object):
         self.log.info('Starting ch_master.start()')
         if self.state != 'off':
             coroutine_return(dict(error='already started'))
+
+        # Register config with comet broker
+        try:
+            enable_comet = config['comet_broker']['enabled']
+        except KeyError:
+            msg = "Missing config value 'comet_broker/enabled'."
+            self.log.error(msg)
+            coroutine_return(msg)
+        if enable_comet:
+            try:
+                comet_host = config['comet_broker']['host']
+                comet_port = config['comet_broker']['port']
+            except KeyError as exc:
+                msg = "Failure registering initial config with comet broker: 'comet_broker/{}' " \
+                      "not defined in config.".format(exc[0])
+                self.log.error(msg)
+                coroutine_return(msg)
+            comet = Manager(comet_host, comet_port)
+            try:
+                comet.register_start(self.startup_time, self.GIT_VERSION)
+                comet.register_config(config)
+            except CometError as exc:
+                msg = 'Comet failed registering ch_master start and initial config: {}'.format(exc)
+                self.log.error(msg)
+                coroutine_return(msg)
+        else:
+            self.log.warning("Config registration DISABLED. This is only OK for testing.")
 
         if config:
             self.set_config(config)

@@ -24,11 +24,14 @@ import tornado
 import psutil
 
 # External private packages
+from comet import Manager, CometError
 from wtl import log
 from wtl.rest import AsyncRESTServer, endpoint, AsyncRESTClient, coroutine, coroutine_return, IOLoop, RunSyncWrapper, moment
 from wtl.namespace import NameSpace
 from wtl.metrics import Metrics
 
+# Local imports
+from _version import get_git_version
 
 #Should be in gain.py or something.
 class GainCalc(object):
@@ -1065,6 +1068,8 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
         self.add_periodic_callback(self.receiver.print_stats, 3000)
         self.add_periodic_callback(self.receiver.ping_sources, 3000) # ping the raw_acq data sources periodically to ensure the switches tables always know how to route the packets to here
         self.add_periodic_callback(self.receiver.check_ioloop_response_time, 300)
+        self.startup_time = datetime.datetime.utcnow()
+        self.GIT_VERSION = get_git_version()
 
 
     @coroutine
@@ -1077,6 +1082,35 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
         self.log.info('%.32r: Received start command with %r' % (self, config))
         if self.receiver.is_running():
             raise RuntimeError('Server is already started')
+
+        # Register config with comet broker
+        try:
+            comet_config = config.pop('comet_broker')
+            enable_comet = comet_config['enabled']
+        except KeyError:
+            msg = "Missing config value 'comet_broker/enabled'."
+            self.log.error(msg)
+            coroutine_return(msg)
+        if enable_comet:
+            try:
+                comet_host = comet_config['host']
+                comet_port = comet_config['port']
+            except KeyError as exc:
+                msg = "Failure registering initial config with comet broker: 'comet_broker/{}' " \
+                      "not defined in config.".format(exc[0])
+                self.log.error(msg)
+                coroutine_return(msg)
+            comet = Manager(comet_host, comet_port)
+            try:
+                comet.register_start(self.startup_time, self.GIT_VERSION)
+                comet.register_config(config)
+            except CometError as exc:
+                msg = 'Comet failed registering raw_acq start and initial config: {}'.format(exc)
+                self.log.error(msg)
+                coroutine_return(msg)
+        else:
+            self.log.warning("Config registration DISABLED. This is only OK for testing.")
+
         result = yield self.receiver.start(**config)
         self.log.info('%.32r: UDP receiver started. Returned %r' % (self, result))
         coroutine_return(result)
