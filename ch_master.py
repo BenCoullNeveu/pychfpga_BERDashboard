@@ -261,49 +261,6 @@ class ChimeMaster(object):
     # RAW_ACQ management methods
     #####################################
 
-
-    def get_iceboards(self, ib):
-        """ Return the iceboard object(s) corresponding to the  `ib` tuple.
-
-        Parameters:
-
-            ib (tuple): A (crate_number, slot_number) tuple describing an iceboard. A value of None
-                is equivalent to a '*' wildcard. Missing tuple entries are considered to be None.
-
-        Returns:
-            list of iceboard objects
-
-        Examples:
-
-            - (0,), (0, None), (0, '*'), {crate:0} : All boards in Crate 0
-        """
-        if isinstance(ib, (tuple, list)):
-            crate_number = ib[0] if len(ib) >= 1 else None
-            slot_number = ib[1] if len(ib) >= 2 else None
-        elif isinstance(ib, dict):
-            crate_number = None
-            slot_number = None
-            for k,v in ib.items():
-                if k.lower()=='crate':
-                    crate_number = v
-                elif k.lower() == 'slot':
-                    slot_number = v
-                else:
-                    raise RuntimeError("Unknown element '%s' in iceboard selection item %s" % (k, ib))
-        else:
-            raise ValueError('Unknown iceboard selection format %s', ib)
-
-        crate_number = None if crate_number == '*' else crate_number
-        slot_number = None if slot_number == '*' else slot_number
-        iceboards = []
-        #print('get_iceboard: looking for ', crate_number, slot_number)
-        for ib in self.fpgas.ib:
-            ib_id = ib.get_id()
-            #print('   checking', ib_id)
-            if (crate_number is None or crate_number == ib_id[0]) and (slot_number is None or slot_number== ib_id[1]):
-                iceboards.append(ib)
-        return iceboards
-
     @coroutine
     def start_raw_acq_servers(self):
         """ Start raw data acquisition servers and set the FPGAs raw data transmit addresses.
@@ -332,9 +289,7 @@ class ChimeMaster(object):
         # Make a list of all all iceboards for each of the RawAcq node
         self.raw_acq_ibs = {}
         for node_name, node_conf in (conf.servers or {}).items():
-            self.raw_acq_ibs[node_name] = set()
-            for ib in node_conf.iceboards:  # ib is a (crate, slot) tuple)
-                self.raw_acq_ibs[node_name].update(self.get_iceboards(ib))
+            self.raw_acq_ibs[node_name] = set(self.fpgas.get_iceboards(node_conf.iceboards))
 
         #print('self.raw_acq_ibs=', self.raw_acq_ibs)
         # Check that an iceboard is assigned to only one server
@@ -1221,6 +1176,14 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
     def switch_gains(self, handler, gain_map):
         results = yield self.chime_master.switch_gains(gain_map)
         coroutine_return(results)
+
+    @coroutine
+    @endpoint('reset-gpu-links')
+    def reset_gpu_links(self, handler, board_ids):
+        if not (self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas):
+            raise RuntimeError('FPGA array is not ready to accept command')
+        yield self.chime_master.fpgas.reset_gpu_links(board_ids)
+        coroutine_return('Done')
 
     # @coroutine
     # @endpoint('kotekan-start')
