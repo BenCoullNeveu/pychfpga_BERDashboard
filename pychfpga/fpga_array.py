@@ -1714,12 +1714,12 @@ class FPGAArray(object):
             slot_number = None
             lane_number = None
             # If the spec is a tuple"
-            if isinstance(ib, (tuple, list)):
-                crate_number = ib[0] if len(ib) >= 1 else None
-                slot_number = ib[1] if len(ib) >= 2 else None
-                lane_number = ib[2] if len(ib) >= 3 else None
-            elif isinstance(ib, dict):
-                for k, v in ib.items():
+            if isinstance(board_id, (tuple, list)):
+                crate_number = board_id[0] if len(board_id) >= 1 else None
+                slot_number = board_id[1] if len(board_id) >= 2 else None
+                lane_number = board_id[2] if len(board_id) >= 3 else None
+            elif isinstance(board_id, dict):
+                for k, v in board_id.items():
                     k = k.lower()
                     if k == 'crate':
                         crate_number = v
@@ -1738,7 +1738,7 @@ class FPGAArray(object):
             lane_number = None if lane_number == '*' else lane_number
 
             #print('get_iceboard: looking for ', crate_number, slot_number)
-            for ib in self.fpgas.ib:
+            for ib in self.ib:
                 crate, slot = ib.get_id()
                 #print('   checking', ib_id)
                 if (crate_number is None or crate_number == crate) and (slot_number is None or slot_number == slot):
