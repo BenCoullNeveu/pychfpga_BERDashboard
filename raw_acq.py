@@ -849,7 +849,7 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
             comet = Manager(comet_host, comet_port)
             try:
                 comet.register_start(self.startup_time, self.GIT_VERSION)
-                comet.register_config(config)
+                comet.register_config(config.copy())
             except CometError as exc:
                 msg = 'Comet failed registering raw_acq start and initial config. The Comet client returned the following error: {}'.format(exc)
                 self.log.error(msg)
@@ -1082,7 +1082,7 @@ def main():
         ./raw_acq jfc.erh power_off # power off supplies used by server running at theaddress specified in the jfc.erh config
     """
     # Setup logging
-    log.setup_basic_logging('DEBUG')
+    log.setup_basic_logging('INFO')
 
     client, server = run_client(sys.argv[1:], RawAcqAsyncRESTServer, RawAcqAsyncRESTClient, object_name ='RawAcq', server_config_path='raw_acq.servers')
     return client, server
