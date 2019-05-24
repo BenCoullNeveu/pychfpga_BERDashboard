@@ -470,6 +470,7 @@ class IceBoardExtHandler(IceBoardPlusHandler):
                     (cmd, rply) = self.core_gpio.get_command_count()
                     self.mmi.send_counter = cmd
                     self.mmi.recv_counter = rply
+                    break
                 except IOError:
                     if trial >= max_trials:
                         # raise IOError('%r: cannot communicate with FPGA port after %i FPGA UDP stack resets' % (self, trial))
@@ -481,6 +482,8 @@ class IceBoardExtHandler(IceBoardPlusHandler):
                 finally:
                     self.mmi.error_counter = 0
                     self.logger.info('%r: Finished to attempt clearing FPGA UDP errors.' % self)
+            else:
+                break
     @async
     def check_command_count(self, reset=False):
         """ Check UDP communication command/reply synchronization and optionally reset counts.
