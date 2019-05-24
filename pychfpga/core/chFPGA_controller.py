@@ -636,6 +636,10 @@ class chFPGA_controller(IceBoardExtHandler):
         if create_receiver:
             self.get_data_receiver()
 
+    def get_channels(self):
+        """ Return a list of available channel numbers """
+        return self.ANT.keys()
+
     @async
     def get_config(self, basic=False):
         """
@@ -3027,7 +3031,12 @@ class chFPGA_controller(IceBoardExtHandler):
         self.set_corr_reset(0)
         self.set_ant_reset(0)
 
+    def reset_gpu_links(self):
+        """ Resets the GPU links.
 
+        All links are reset. There is no way to reset an individual QSFP or individual link.
+        """
+        self.GPU.reset()
 
 
     def get_shuffle_status(self, cb1_bin_sel_overflow_reset=False):
