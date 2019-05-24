@@ -363,10 +363,10 @@ class ChimeMaster(object):
         If no arguments are provided, the FPGA will be set to transmit data at the idle rate and from source defined in the config file.
         """
         conf = self.config.raw_acq.common_config
-        capture_rate = capture_rate or conf.idle_capture_rate
-        capture_period = 1.0 / float(capture_rate)
         capture_source = capture_source or conf.capture_source
-        tmux_factor = conf.tmux_factor if tmux_factor is None else tmux_factor
+        capture_rate = capture_rate or conf.hdf5_capture_rate
+        tmux_factor = tmux_factor or conf.tmux_factor
+        capture_period = 1.0 / float(capture_rate)
 
         for node_name, ibs in self.raw_acq_ibs.items():
             for ib in ibs:
@@ -384,9 +384,8 @@ class ChimeMaster(object):
         self.fpgas.sync()
 
     @coroutine
-    def start_hdf5_capture(self, capture_folder=None, capture_filename=None, capture_rate=None,
-                           capture_duration=None, capture_source=None, capture_elements_per_file=None,
-                           tmux_factor=None):
+    def start_hdf5_capture(self, capture_folder=None, capture_filename=None,
+                           capture_duration=None, capture_elements_per_file=None):
         """
         instricts the raw_acq server to start storing raw data in HDF5 files at a specified rate, duration and in the specified folder.
 
@@ -420,33 +419,22 @@ class ChimeMaster(object):
 
         """
         conf = self.config.raw_acq.common_config
-        capture_source = capture_source or conf.capture_source
-        capture_rate = capture_rate or conf.hdf5_capture_rate
         capture_folder = capture_folder or conf.hdf5_capture_folder
         capture_folder = os.path.join(self.run_folder, capture_folder)
         capture_filename = capture_filename or conf.hdf5_capture_filename
         capture_duration = capture_duration or conf.hdf5_capture_duration
         capture_elements_per_file = capture_elements_per_file or conf.hdf5_capture_elements_per_file
-        tmux_factor = conf.tmux_factor if tmux_factor is None else tmux_factor
 
-        yield self.start_fpga_raw_data_transmission(capture_rate, capture_source, tmux_factor)
+        if capture_duration is not None:
+            self.log.info('%r: Starting HDF5 data capture for %f seconds (0 = infinite)' % (self, capture_duration))
 
-        yield [node.start_hdf5(
-            base_dir=capture_folder,
-            base_filename=capture_filename,
-            capture_duration=capture_duration,
-            elements_per_file=capture_elements_per_file
-            )         for node_name, node in self.raw_acq.items()]
+            yield [node.start_hdf5(
+                base_dir=capture_folder,
+                base_filename=capture_filename,
+                capture_duration=capture_duration,
+                elements_per_file=capture_elements_per_file
+                )         for node_name, node in self.raw_acq.items()]
 
-        if capture_duration:
-            self.log.info('%r: HDF5 data writer will be stopped in %f seconds' % (self, capture_duration))
-            self.call_later(capture_duration, self.stop_hdf5_capture)
-
-    @coroutine
-    def stop_hdf5_capture(self):
-
-        yield [node.stop_hdf5() for node_name, node in self.raw_acq.items()]
-        yield self.start_fpga_raw_data_transmission()
 
 
     def set_state(self, new_state):
@@ -585,21 +573,19 @@ class ChimeMaster(object):
             self.log.info("Getting configuration data from all FPGAs")
             self.fpga_conf = yield self.fpgas.get_fpga_config.async(basic=True)
 
-
-            # Configure and start CHRX remote processes
-            self.configure_fpgas_post_acq()
+            # Set default bank for dynamic gain switching
             self.current_bank = 0
 
             self.log.info("Starting raw_acq servers")
             yield self.start_raw_acq_servers()
 
-            # Start raw_data capture
-            if conf.raw_acq.common_config.hdf5_capture_rate and conf.raw_acq.common_config.hdf5_capture_duration is not None:
-                self.log.info("Starting HDF5 data capture")
-                yield self.start_hdf5_capture()
-            else:
-                self.log.info("Starting idle data capture")
-                yield self.start_fpga_raw_data_transmission()
+            self.log.info("Starting FPGA's raw data tranmsmission")
+            yield self.start_fpga_raw_data_transmission()
+
+            # Start HDF5 data capture
+            self.log.info("Starting HDF5 data capture")
+            yield self.start_hdf5_capture()
+
 
             # Clear errors accumulated during start and initialization
             self.reset_fpga_stats()
@@ -753,26 +739,6 @@ class ChimeMaster(object):
         # Update configuration with new channelizer params
         self.config.fpga.channelizer_params = NameSpace(params)
 
-    def configure_fpgas_post_acq(self):
-        """
-        """
-        # shortcuts
-        # ca = self.fpgas
-
-        # JFC: not sure why we had those:
-        # ca.ib.CROSSBAR.LANE_MONITOR_RESET = 1
-        # ca.ib.CROSSBAR.LANE_MONITOR_RESET = 0
-        # ca.ib.CROSSBAR2.LANE_MONITOR_RESET = 1
-        # ca.ib.CROSSBAR2.LANE_MONITOR_RESET = 0
-        # ca.ib.CROSSBAR.LANE_MONITOR_SEL = 6
-        # ca.ib.CROSSBAR2.LANE_MONITOR_SEL = 6
-
-        # if self.config.enable_gain_switching:
-        #     ca.set_next_gain_bank(bank=1)
-        # for bankset in ca.ib.get_next_gain_bank():
-        #     log.info('Set next gain bank to %s' % ', '.join([str(i) for i in bankset]))
-        # for bankset in ca.ib.get_current_gain_bank():
-        #     log.info('Currently using gain banks %s' % ', '.join([str(i) for i in bankset]))
 
 
     def setup_noise_injection(self, ni_params):
@@ -1356,6 +1322,8 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
                             if not result['started']:
                                 self.log.info('%r: Raw_acq server %s seems to be stopped. Restarting.' % (self, raw_acq_server_name))
                                 yield self.chime_master.start_raw_acq_servers()
+                                yield self.chime_master.start_hdf5_capture()
+
                         except (HTTPError, RuntimeError, Exception) as e:
                             self.log.error('%r: Failed to get status info from raw_acq server %s (%r) due to the following exception: %r' % (self, raw_acq_server_name, raw_acq_client, e))
             except Exception as e:
