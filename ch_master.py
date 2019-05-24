@@ -1145,11 +1145,29 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
 
     @coroutine
     @endpoint('reset-gpu-links')
-    def reset_gpu_links(self, handler, board_ids):
+    def reset_gpu_links(self, handler, board_ids=None):
+        """ REST endpoint to reset the GPU links on specified boards
+
+        Parameters:
+
+            board_ids (list of tuple/dict): List of boards whose GPU links should be resetted.
+
+        Returns:
+
+            List of board IDs that were actually reset.
+
+        Example::
+
+            curl -d '{"board_ids": [["*"]]}' -H "Content-Type: application/json" -X POST http://localhost:54321/reset-gpu-links   # Resets allGPU links
+        """
         if not (self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas):
-            raise RuntimeError('FPGA array is not ready to accept command')
-        yield self.chime_master.fpgas.reset_gpu_links(board_ids)
-        coroutine_return('Done')
+            self.log.warning("%r: FPGA array is not ready to accept command" % (self))
+            coroutine_return(message="FPGA not ready", board_ids=[])
+            # raise RuntimeError('FPGA array is not ready to accept command')
+        actual_board_ids = yield self.chime_master.fpgas.reset_gpu_links.async(board_ids)
+        self.log.info("%r: The GPU links for the following boards were reset: %s" % (self, actual_board_ids))
+
+        coroutine_return(message='Resetted %i boards' % len(actual_board_ids), board_ids=actual_board_ids)
 
     # @coroutine
     # @endpoint('kotekan-start')
@@ -1187,7 +1205,7 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
                             gps_time2=gps_ts.time_struct2, # time structure [year, month, day, hour, minute, second, microsecond (float, 10 ns resolution)]
                             gps_ctime2=gps_ts.time2, # GPS time, expressed in ctime format (float expressing seconds since UTC epoch)
                             gps_nano2=gps_ts.nano2,
-                            server_ctime =gps_ts.system_time, # system time, expressed in ctime format (float expressing seconds since UTC epoch)
+                            server_ctime=gps_ts.system_time, # system time, expressed in ctime format (float expressing seconds since UTC epoch)
                             server_ctime_before =gps_ts.system_time_before, # system time, expressed in ctime format (float expressing seconds since UTC epoch)
                             start_ctime=self.chime_master.start_time,
                             frame0_time=frame0_ts.time_struct,
