@@ -1981,10 +1981,30 @@ class FPGAArray(object):
 
     @async
     def reset_gpu_links(self, board_ids=None):
+        """ Reset the GPU links for the boards specified in `board_ids`
+
+        Parameters:
+
+            board_ids (list of tuple/dict): List of board descriptors in the
+                form of (crate_number) or (crate_number, slot_number) tuples
+                or {crate:crate_number} / {crate:crate_number,
+                slot:slot_number} dicts. Crate and slot number can be  '*' or
+                Null to match every instance.
+
+        Returns:
+
+            List of board_ids that were actually resetted.
+
+        Notes:
+
+            - It is not possible to selectively reset just one QSFP or a specicfic lane of a QSFP. All lanes for both QSFPs are reset.
+
+        """
         ibs = self.get_iceboards(board_ids)
         for ib in ibs:
             ib.reset_gpu_links()
             yield async_moment
+        async_return([ib.get_id() for ib in ibs])
 
     @async
     def get_fpga_config(self, basic=False):
