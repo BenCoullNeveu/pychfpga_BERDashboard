@@ -63,7 +63,7 @@ from pychfpga.core.icecore_ext import IceCrateExt
 from pychfpga.MGADC08 import MGADC08  # Import to make sure this Mezzanine is registered  so it can be discovered
 from pychfpga.core.chFPGA_controller import chFPGA_controller
 from pychfpga.Agilent_N5764A import AgilentN5764AHandler
-from pychfpga.gpu_node import GpuNodeHandler
+# from pychfpga.gpu_node import GpuNodeHandler
 from pychfpga import Metrics
 from pychfpga import NameSpace, merge_dict
 from pychfpga import load_yaml_config# import logging.handlers
@@ -457,12 +457,12 @@ class FPGAArray(object):
 
 
         if bitfile is None:
-            chimearray_path = os.path.dirname(__file__)
-            chimearray_path += '/' if chimearray_path else ''
-            #bitfile = ( chimearray_path +
+            fpga_array_path = os.path.dirname(__file__)
+            fpga_array_path += '/' if fpga_array_path else ''
+            #bitfile = ( fpga_array_path +
             #    '../../chfpga/xilinx_projects/SIFPGA_MGK7MB/SIFPGA_MGK7MB.runs/impl_1/SIFPGA_MGK7MB.bit')  # DOLCEK - Firmware correlator
-            bitfile = ( chimearray_path +
-                '../../chfpga/xilinx_projects/CHFPGA_MGK7MB_REV2/CHFPGA_MGK7MB_REV2.runs/impl_Rev2/chFPGA_MGK7MB_Rev2.bit') # ORIGINAL - recent one used for CHIME / does not include the firmware correlator
+            bitfile = ( fpga_array_path +
+                'fpga_bitstreams/chFPGA_MGK7MB_Rev2.bit') # ORIGINAL - recent one used for CHIME / does not include the firmware correlator
             #bitfile = '/home/suit/Desktop/bitfiles/chFPGA_MGK7MB_Rev2 (16 CH,0 FFT,8 GPU,0 CORR).bit'  # When using this bit files, we encountered this error: IOError: chFPGA('MGK7BP1_SN001', 0).FpgaMmi(10.10.3.240): chFPGA('MGK7BP1_SN001', 0).FpgaMmi(10.10.3.240): Timeout during FPGA command.
 
 
@@ -3540,15 +3540,15 @@ def parse_args_as_dict(parser, *args, **kwargs):
 
 
 
-def GPUArray(gpu_nodes=[]):
-        # Create GPU node array
-        if gpu_nodes:
-            #print gpu_nodes
-            return Ccoll(GpuNodeHandler(hostname=hostname) for hostname in gpu_nodes)
-        else:
-            return Ccoll([])
+# def GPUArray(gpu_nodes=[]):
+#         # Create GPU node array
+#         if gpu_nodes:
+#             #print gpu_nodes
+#             return Ccoll(GpuNodeHandler(hostname=hostname) for hostname in gpu_nodes)
+#         else:
+#             return Ccoll([])
 
-    # Create Power Supply array
+# Create Power Supply array
 def PSArray(power_supplies=[]):
         if not power_supplies:
             return Ccoll([])
@@ -3700,9 +3700,9 @@ def create_fpga_array(args=None):
     fpga_group.sub_dict = 'cli_fpga_array'  # group all arguments in this group in a sub dictionary with this name
     fpga_defaults = add_fpga_array_arguments(fpga_group)
 
-    gpu_group = parser.add_argument_group('GPU Array parameters', 'Allows interactive creation of GPU nodes')
-    gpu_group.sub_dict = 'cli_gpu_array'  # group all arguments in this group in a sub dictionary with this name
-    gpu_group.add_argument('-n', '--gpu_nodes', type=str, nargs='+',  help='List of IP address or hostnames of the GPU node objects to be created.')
+    # gpu_group = parser.add_argument_group('GPU Array parameters', 'Allows interactive creation of GPU nodes')
+    # gpu_group.sub_dict = 'cli_gpu_array'  # group all arguments in this group in a sub dictionary with this name
+    # gpu_group.add_argument('-n', '--gpu_nodes', type=str, nargs='+',  help='List of IP address or hostnames of the GPU node objects to be created.')
 
     ps_group = parser.add_argument_group('Power Supply Array parameters', 'Allows interactive creation of Power Supply objects')
     ps_group.sub_dict = 'cli_power_supply_array'  # group all arguments in this group in a sub dictionary with this name
