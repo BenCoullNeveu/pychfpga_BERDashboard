@@ -42,7 +42,7 @@ from wtl.metrics import Metrics
 
 
 # Local imports
-from pychfpga._version import __version__, get_git_version
+from pychfpga import __version__, get_git_version
 from pychfpga import FPGAArray
 from ps import PowerSupplyAsyncRESTClient
 from raw_acq import RawAcqAsyncRESTClient
