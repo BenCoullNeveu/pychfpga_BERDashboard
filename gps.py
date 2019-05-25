@@ -14,7 +14,7 @@ import Queue
 # External private packages
 from comet import Manager, CometError
 from wtl import log
-from wtl.rest import AsyncRESTServer, AsyncRESTClient # generic REST servers and clients
+from wtl.rest import AsyncRESTServer, AsyncRESTClient  # generic REST servers and clients
 from wtl.rest import endpoint, coroutine, coroutine_return, sleep
 from wtl.rest import RunSyncWrapper, IOLoop, run_client, SocketContext
 from wtl.namespace import NameSpace
