@@ -22,7 +22,7 @@ from wtl.config import load_yaml_config
 from wtl.metrics import Metrics
 
 # Local imports
-from _version import get_git_version
+from pychfpga import get_git_version
 
 class SpectrumInstrumentsTM4D(SocketContext):
     """

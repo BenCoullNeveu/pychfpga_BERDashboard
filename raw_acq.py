@@ -29,7 +29,7 @@ from wtl.namespace import NameSpace
 from wtl.metrics import Metrics
 
 # Local imports
-from _version import get_git_version
+from pychfpga import get_git_version
 
 class hdf5TimestreamData(object):
     """ Object representing a HDF5 file containing raw data
