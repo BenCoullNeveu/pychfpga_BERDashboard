@@ -629,7 +629,7 @@ class ChimeMaster(object):
 
         if not fpga_array_params.open:
             self.log.warning("fpga_array is initialized with open=0. Aborting the rest of the FPGA array initialization.")
-        coroutine_return()
+            coroutine_return()
 
         # # if this needed?
         # ca.ib.set_adc_mask(0) # null the ADC data before it gets to the channelizers to reduce power consumption
