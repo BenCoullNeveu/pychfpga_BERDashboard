@@ -22,7 +22,6 @@ import tornado
 import psutil
 
 # External private packages
-from comet import Manager, CometError
 from wtl import log
 from wtl.rest import AsyncRESTServer, endpoint, AsyncRESTClient, coroutine, coroutine_return, IOLoop, RunSyncWrapper, moment, run_client
 from wtl.namespace import NameSpace
@@ -830,14 +829,21 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
             # raise RuntimeError('Server is already started')
 
         # Register config with comet broker
+        comet_config = config.pop('comet_broker', {})
         try:
-            comet_config = config.pop('comet_broker')
             enable_comet = comet_config['enabled']
         except KeyError:
             msg = "Missing config value 'comet_broker/enabled'."
             self.log.error(msg)
             raise RuntimeError('Cannot start comet broker: %s' % (msg))
         if enable_comet:
+            try:
+                from comet import Manager, CometError
+            except ImportError:
+                msg = "Failure importing comet for configuration tracking.  Please install the " \
+                      "comet package or set 'comet_broker/enabled' to False in config."
+                self.log.error(msg)
+                coroutine_return(msg)
             try:
                 comet_host = comet_config['host']
                 comet_port = comet_config['port']

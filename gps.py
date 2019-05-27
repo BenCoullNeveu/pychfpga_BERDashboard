@@ -12,7 +12,6 @@ import calendar
 import Queue
 
 # External private packages
-from comet import Manager, CometError
 from wtl import log
 from wtl.rest import AsyncRESTServer, AsyncRESTClient  # generic REST servers and clients
 from wtl.rest import endpoint, coroutine, coroutine_return, sleep
@@ -805,6 +804,13 @@ class GPSAsyncRESTServer(AsyncRESTServer):
             self.log.error(msg)
             coroutine_return(msg)
         if enable_comet:
+            try:
+                from comet import Manager, CometError
+            except ImportError:
+                msg = "Failure importing comet for configuration tracking.  Please install the " \
+                      "comet package or set 'comet_broker/enabled' to False in config."
+                self.log.error(msg)
+                coroutine_return(msg)
             try:
                 comet_host = config['comet_broker']['host']
                 comet_port = config['comet_broker']['port']
