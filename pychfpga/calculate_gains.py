@@ -197,8 +197,8 @@ def calc_gains(g):
 def calculate_gains(c, gain_folder='/home/chime/ch_acq/gains'):
     '''Calculate digital gains for all the inputs of an iceboard c
     '''
-    slot_0based = c.slot-1
-    crate = c.crate.crate_number
+    slot_0based = c.slot - 1 if c.slot else 0
+    crate = c.crate.crate_number if c.crate and c.crate.crate_number is not None else 0
     print 'Calculating digital gains for crate %02i slot %02i (FCC%02i%02i)' % (crate, slot_0based, crate, slot_0based)
     # Get current state. Assumes all inputs have the same state
     data_source = c.get_data_source()[0]
@@ -211,7 +211,7 @@ def calculate_gains(c, gain_folder='/home/chime/ch_acq/gains'):
     c.set_data_source('adc')
     c.set_adc_mode('data')
     c.set_fft_bypass(0)
-    c.set_fft_shift(1367) 
+    c.set_fft_shift(1367)
     c.set_scaler_bypass(0)
     port = 42500 # Picked randomly. Hack
     c.set_local_data_port_number(port)
@@ -273,7 +273,7 @@ def calculate_gains(c, gain_folder='/home/chime/ch_acq/gains'):
     c.set_data_source(data_source)
     c.set_adc_mode(adc_mode)
     c.set_fft_bypass(fft_bypass)
-    c.set_fft_shift(fft_shift) 
+    c.set_fft_shift(fft_shift)
     c.set_scaler_bypass(scaler_bypass)
     c.set_local_data_port_number(local_data_port_number)
 

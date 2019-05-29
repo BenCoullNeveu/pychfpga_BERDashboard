@@ -25,6 +25,8 @@ from functools import wraps
 import subprocess
 import shlex
 import bz2
+import socket
+import __main__
 
 # PyPi packages
 import numpy as np
@@ -634,6 +636,10 @@ class chFPGA_controller(IceBoardExtHandler):
         if create_receiver:
             self.get_data_receiver()
 
+    def get_channels(self):
+        """ Return a list of available channel numbers """
+        return self.ANT.keys()
+
     @async
     def get_config(self, basic=False):
         """
@@ -1050,27 +1056,23 @@ class chFPGA_controller(IceBoardExtHandler):
 
         """
         # Make sure there is a list of opened sockets
-        import __main__
-        import socket
 
-        if not hasattr(__main__, '__opened_sockets__'):
-            opened_sockets = __main__.__opened_sockets__ = {}
-        else:
-            opened_sockets = __main__.__opened_sockets__
 
         if not self._data_socket:
 
+            opened_sockets = __main__.__dict__.setdefault('__opened_sockets__', {})
+
             # If we want to use a specific local port that was previously reserved, use its socket.
             if port_number and port_number in opened_sockets:
-                return opened_sockets[port_number]
-
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-            sock.bind((self.interface_ip_addr, port_number))
-            # store the socket in the main module so it will live persistently until the Python session is closed.
-            (actual_ip_addr, actual_port_number) = sock.getsockname()
-            opened_sockets[actual_port_number] = sock
-            self._data_socket = sock
-            self.set_local_data_port_number(actual_port_number)
+                self._data_socket = opened_sockets[port_number]
+            else:
+                sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                sock.bind((self.interface_ip_addr, port_number))
+                # store the socket in the main module so it will live persistently until the Python session is closed.
+                (actual_ip_addr, actual_port_number) = sock.getsockname()
+                opened_sockets[actual_port_number] = sock
+                self._data_socket = sock
+                self.set_local_data_port_number(actual_port_number)
 
         return self._data_socket
 
@@ -1878,8 +1880,7 @@ class chFPGA_controller(IceBoardExtHandler):
         try:
             gain_filename = os.path.join(folder, 'gains_FCC%02i%02i.pkl' % (crate, slot_0based))
             gains = pickle.load(open(gain_filename, 'rb'))
-            # self.logger.info('Setting gains on IceBoard SN%s, crate %s, slot %i' % (ib.serial, crate, slot))
-            # ib.set_gain(g_array, bank=bank)  # *** should this be bank=all_bank
+            self.logger.info('FCC%02i%02i: loaded gains from file %s' % (crate, slot_0based, gain_filename))
         except IOError:
             self.logger.warn('Gain file not found for for crate %02i slot %02i (FCC%02i%02i)' % (crate, slot_0based, crate, slot_0based))
             gains = None
@@ -2855,10 +2856,10 @@ class chFPGA_controller(IceBoardExtHandler):
             cb1_output_bins = cb1_bins
             cb2_bypass = True
             cb3_bypass = True
-            cb3_output_bins = 0
-            cb3_output_words_per_bin = 0
-            cb3_output_data_flags_words_per_bin = 0
-            cb3_output_frame_flags_words_per_frame = 0
+            cb3_output_bins = cb1_bins
+            cb3_output_words_per_bin = 0 # To be updated
+            cb3_output_data_flags_words_per_bin = 0 # To be updated
+            cb3_output_frame_flags_words_per_frame = 0 # To be updated
             stream_type = 0  # not used, as the shuffled packets are correlated never get out of the FPGA
             crate_number =  0  # idem
 
@@ -2906,7 +2907,8 @@ class chFPGA_controller(IceBoardExtHandler):
         self.set_ant_reset(1)
         self.set_corr_reset(1)
 
-        slot_number = self.slot - 1 if self.slot is not None else 0
+        #slot_number = self.slot - 1 if self.slot is not None else 0
+        slot_number = self.slot - 1 if self.slot else 0 #SC 03/17/2019 changed for individual iceboard
         #-------------------------
         # Configure CROSSBAR 1
         #-------------------------
@@ -3028,7 +3030,12 @@ class chFPGA_controller(IceBoardExtHandler):
         self.set_corr_reset(0)
         self.set_ant_reset(0)
 
+    def reset_gpu_links(self):
+        """ Resets the GPU links.
 
+        All links are reset. There is no way to reset an individual QSFP or individual link.
+        """
+        self.GPU.reset()
 
 
     def get_shuffle_status(self, cb1_bin_sel_overflow_reset=False):
@@ -3295,7 +3302,7 @@ class chFPGA_controller(IceBoardExtHandler):
         try:
             # yield self.check_command_count.async(reset=True)
             yield self.clear_fpga_udp_errors.async()
-            for i, ant  in self.ANT.items():
+            for i, ant in self.ANT.items():
                 metrics.add('fpga_fft_overflow_count', value=ant.FFT.OVERFLOW_COUNT, chan=i)
                 metrics.add('fpga_scaler_overflow_count', value=ant.SCALER.STATS_SCALER_OVERFLOWS, chan=i)
                 metrics.add('fpga_adc_overflow_count', value=ant.SCALER.STATS_ADC_OVERFLOWS, chan=i)
