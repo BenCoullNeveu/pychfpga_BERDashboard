@@ -31,7 +31,6 @@ import numpy as np
 
 
 # External private packages
-from comet import Manager, CometError
 from wtl import log
 from wtl.rest import RESTClient, AsyncRESTServer, AsyncRESTClient, HTTPError # generic REST servers and clients
 from wtl.rest import endpoint, coroutine, coroutine_return, sleep, moment
@@ -39,6 +38,10 @@ from wtl.rest import RunSyncWrapper, IOLoop, run_client
 from wtl.namespace import NameSpace, merge_dict
 from wtl.config import load_yaml_config
 from wtl.metrics import Metrics
+try:
+    import comet
+except ImportError:
+    comet = None
 
 
 # Local imports
@@ -456,6 +459,11 @@ class ChimeMaster(object):
             self.log.error('%r: %s' % (self, msg))
             coroutine_return(msg)
         if enable_comet:
+            if comet is None:
+                msg = "Failure importing comet for configuration tracking.  Please install the " \
+                      "comet package or set 'comet_broker/enabled' to False in config."
+                self.log.error('%r: %s' % (self, msg))
+                coroutine_return(msg)
             try:
                 comet_host = config['comet_broker']['host']
                 comet_port = config['comet_broker']['port']
@@ -464,13 +472,13 @@ class ChimeMaster(object):
                       "not defined in config.".format(exc[0])
                 self.log.error('%r: %s' % (self, msg))
                 coroutine_return(msg)
-            comet = Manager(comet_host, comet_port)
+            comet_manager = comet.Manager(comet_host, comet_port)
             try:
-                comet.register_start(self.startup_time, self.GIT_VERSION)
-                comet.register_config(config)
-            except CometError as exc:
+                comet_manager.register_start(self.startup_time, self.GIT_VERSION)
+                comet_manager.register_config(config)
+            except comet.CometError as exc:
                 msg = 'Comet failed registering fpga_master start and initial config: {}'.format(exc)
-                self.log.error(msg)
+                self.log.error('%r: %s' % (self, msg))
                 coroutine_return(msg)
         else:
             self.log.warning("Config registration DISABLED. This is only OK for testing.")
