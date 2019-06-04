@@ -13,12 +13,19 @@ import Queue
 
 # External private packages
 from wtl import log
-from wtl.rest import AsyncRESTServer, AsyncRESTClient # generic REST servers and clients
+from wtl.rest import AsyncRESTServer, AsyncRESTClient  # generic REST servers and clients
 from wtl.rest import endpoint, coroutine, coroutine_return, sleep
 from wtl.rest import RunSyncWrapper, IOLoop, run_client, SocketContext
 from wtl.namespace import NameSpace
 from wtl.config import load_yaml_config
 from wtl.metrics import Metrics
+try:
+    import comet
+except ImportError:
+    comet = None
+
+# Local imports
+from pychfpga import get_git_version
 
 class SpectrumInstrumentsTM4D(SocketContext):
     """
@@ -752,6 +759,8 @@ class GPSAsyncRESTServer(AsyncRESTServer):
         self.metrics_queue = Queue.Queue(1000)
         self.metrics = Metrics(latest_only=True)
         self.add_periodic_callback(self._get_metrics, 1000)
+        self.startup_time = datetime.datetime.utcnow()
+        self.GIT_VERSION = get_git_version()
 
 
     @coroutine
@@ -790,6 +799,40 @@ class GPSAsyncRESTServer(AsyncRESTServer):
         self.log.info('%r: Received start command' % self)
         if self.gps:
             raise RuntimeError('%.32r: Power Supply server is already started' % self)
+
+        # Register config with comet broker
+        try:
+            enable_comet = config['comet_broker']['enabled']
+        except KeyError:
+            msg = "Missing config value 'comet_broker/enabled'."
+            self.log.error(msg)
+            coroutine_return(msg)
+        if enable_comet:
+            if comet is None:
+                msg = "Failure importing comet for configuration tracking.  Please install the " \
+                      "comet package or set 'comet_broker/enabled' to False in config."
+                self.log.error(msg)
+                coroutine_return(msg)
+            try:
+                comet_host = config['comet_broker']['host']
+                comet_port = config['comet_broker']['port']
+            except KeyError as exc:
+                msg = "Failure registering initial config with comet broker: 'comet_broker/{}' " \
+                      "not defined in config.".format(exc[0])
+                self.log.error(msg)
+                coroutine_return(msg)
+            comet_manager = comet.Manager(comet_host, comet_port)
+            try:
+                comet_manager.register_start(self.startup_time, self.GIT_VERSION)
+                comet_manager.register_config(config)
+            except comet.CometError as exc:
+                msg = 'Comet failed registering GPS server start and initial config: {}'\
+                    .format(exc)
+                self.log.error(msg)
+                coroutine_return(msg)
+        else:
+            self.log.warning("Config registration DISABLED. This is only OK for testing.")
+
         self.config = NameSpace(config)
         units = self.config.units or {}
         for name, params in units.items():
