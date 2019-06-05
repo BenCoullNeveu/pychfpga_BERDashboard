@@ -636,6 +636,10 @@ class chFPGA_controller(IceBoardExtHandler):
         if create_receiver:
             self.get_data_receiver()
 
+    def get_channels(self):
+        """ Return a list of available channel numbers """
+        return self.ANT.keys()
+
     @async
     def get_config(self, basic=False):
         """
@@ -1910,7 +1914,7 @@ class chFPGA_controller(IceBoardExtHandler):
         try:
             with open(gain_filename, 'rb') as f:
                 gains = pickle.load(f)
-            # self.logger.info('Setting gains on IceBoard SN%s, crate %s, slot %i' % (ib.serial, crate, slot))
+            self.logger.info('%r: Loaded gains for board %s from file %s' % (self, gain_filename))
             # ib.set_gain(g_array, bank=bank)  # *** should this be bank=all_bank
         except IOError:
             self.logger.warn("Gain file '%s' not found for (crate,slot)= %r" % (gain_filename, self.get_id()))
@@ -3092,7 +3096,12 @@ class chFPGA_controller(IceBoardExtHandler):
         self.set_corr_reset(0)
         self.set_ant_reset(0)
 
+    def reset_gpu_links(self):
+        """ Resets the GPU links.
 
+        All links are reset. There is no way to reset an individual QSFP or individual link.
+        """
+        self.GPU.reset()
 
 
     def get_shuffle_status(self, cb1_bin_sel_overflow_reset=False):
@@ -3359,7 +3368,7 @@ class chFPGA_controller(IceBoardExtHandler):
         try:
             # yield self.check_command_count.async(reset=True)
             yield self.clear_fpga_udp_errors.async()
-            for i, ant  in self.ANT.items():
+            for i, ant in self.ANT.items():
                 metrics.add('fpga_fft_overflow_count', value=ant.FFT.OVERFLOW_COUNT, chan=i)
                 metrics.add('fpga_scaler_overflow_count', value=ant.SCALER.STATS_SCALER_OVERFLOWS, chan=i)
                 metrics.add('fpga_adc_overflow_count', value=ant.SCALER.STATS_ADC_OVERFLOWS, chan=i)
