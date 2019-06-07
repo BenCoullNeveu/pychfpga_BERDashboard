@@ -3755,10 +3755,10 @@ def create_fpga_array(args=None):
     fpga_array = FPGAArray(**fpga_array_params)  # Create FPGA array
 
     # GPU array
-    gpu_array = GPUArray(**config.get('cli_gpu_array', {}))     # Create FPGA array
+    #gpu_array = GPUArray(**config.get('cli_gpu_array', {}))     # Create FPGA array
 
 
-    return config, fpga_array, gpu_array, ps_array
+    return config, fpga_array, Ccoll([]), ps_array
 
 if __name__ == '__main__':
     (config, ca, nodes, ps) = create_fpga_array()
