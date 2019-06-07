@@ -30,6 +30,13 @@ from wtl.rest import AsyncRESTServer, endpoint, AsyncRESTClient, coroutine, coro
 from wtl.namespace import NameSpace
 from wtl.metrics import Metrics
 
+try:
+    import comet
+except ImportError:
+    comet = None
+
+# Local imports
+from pychfpga import get_git_version
 
 class HDF5Writer(object):
     """ Object representing a HDF5 file containing raw data
@@ -999,7 +1006,7 @@ class RawAcqReceiver(object):
 
         # Schedule for the acquisition to stop if capture_ducation is non-zero
         if capture_duration:
-            capture_duration += 60  # stop HDF5 capture 1 min after the desired time in case ch_master does not do it.
+            capture_duration += 0,  # stop HDF5 capture 1 min after the desired time in case ch_master does not do it.
             self.log.info('%.32r: HDF5 data writer will be stopped in %f seconds' % (self, capture_duration))
             IOLoop.current().call_later(capture_duration, self.stopHdf5Disk)
 
@@ -1231,6 +1238,8 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
         # self.add_periodic_callback(self.receiver.print_stats, 3000)
         self.add_periodic_callback(self.receiver.ping_sources, 3000) # ping the raw_acq data sources periodically to ensure the switches tables always know how to route the packets to here
         self.add_periodic_callback(self.receiver.check_ioloop_response_time, 300)
+        self.startup_time = datetime.datetime.utcnow()
+        self.GIT_VERSION = get_git_version()
 
 
     @coroutine
@@ -1242,10 +1251,46 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
     def start(self, handler, **config):
         self.log.info('%.32r: Received start command with %r' % (self, config))
         if self.receiver.is_running():
+            self.log.info('%.32r: Receiver is already running. Stopping it and restarting a new one' % (self))
             yield self.receiver.stop()
             # raise RuntimeError('Server is already started')
+
+        # Register config with comet broker
+        comet_config = config.pop('comet_broker', {})
+        try:
+            enable_comet = comet_config['enabled']
+        except KeyError:
+            msg = "Missing config value 'comet_broker/enabled'."
+            self.log.error(msg)
+            raise RuntimeError('Cannot start comet broker: %s' % (msg))
+        if enable_comet:
+            if comet is None:
+                msg = "Failure importing comet for configuration tracking.  Please install the " \
+                      "comet package or set 'comet_broker/enabled' to False in config."
+                self.log.error(msg)
+                coroutine_return(msg)
+            try:
+                comet_host = comet_config['host']
+                comet_port = comet_config['port']
+            except KeyError as exc:
+                msg = "Failure registering initial config with comet broker: 'comet_broker/{}' " \
+                      "not defined in config.".format(exc[0])
+                self.log.error(msg)
+                raise RuntimeError('Cannot start comet broker: %s' % (msg))
+            comet_manager = comet.Manager(comet_host, comet_port)
+            try:
+                comet_manager.register_start(self.startup_time, self.GIT_VERSION)
+                comet_manager.register_config(config.copy())
+            except comet.CometError as exc:
+                msg = "Comet failed registering raw_acq start and initial config. " \
+                      "The Comet client returned the following error: {}".format(exc)
+                self.log.error(msg)
+                raise RuntimeError('Cannot start comet broker: %s' % (msg))
+        else:
+            self.log.warning("Config registration DISABLED. This is only OK for testing.")
+
         result = yield self.receiver.start(**config)
-        self.log.info('%.32r: Raw data receiver started. Returned %r' % (self, result))
+        self.log.info('%.32r: UDP receiver started. Returned %r' % (self, result))
         coroutine_return(result)
 
     @coroutine
@@ -1267,6 +1312,11 @@ class RawAcqAsyncRESTServer(AsyncRESTServer):
     def stop_hdf5(self, handler):
         self.receiver.stopHdf5Disk()
         coroutine_return("stopped hdf5 writing to disk.")
+
+    @coroutine
+    @endpoint('status')
+    def status(self, handler):
+        coroutine_return(dict(started=self.receiver.is_running() if self.receiver else False))
 
 
     @coroutine
@@ -1344,11 +1394,18 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
         kwargs: All remaining aruments will be stored as configuration data.
     """
 
-    def __init__(self, name='RawAcq', hostname='localhost', port=RawAcqAsyncRESTServer.DEFAULT_PORT, base_dir = '~/data', base_filename= None, **config):
+    def __init__(self,
+                 name='RawAcq',
+                 hostname='localhost',
+                 port=RawAcqAsyncRESTServer.DEFAULT_PORT,
+                 base_dir = '~/data',
+                 base_filename= None,
+                 create_server = True,
+                 **config):
         super(RawAcqAsyncRESTClient, self).__init__(
             hostname=hostname,
             port=port,
-            server_class=RawAcqAsyncRESTServer,
+            server_class=RawAcqAsyncRESTServer if create_server else None,
             heartbeat_string='Rc')
 
         self.name = name
@@ -1367,6 +1424,11 @@ class RawAcqAsyncRESTClient(AsyncRESTClient):
             self.log.error("Can't ping raw_acq server at %s:%i" % (self.hostname, self.port))
             coroutine_return(False)
         coroutine_return(True) # coroutine_return raises an exception: we don't want it in the try block
+
+    @coroutine
+    def status(self):
+        result = yield self.get('status')
+        coroutine_return(result)
 
     @coroutine
     def start(self, **config):
@@ -1417,7 +1479,7 @@ def main():
         *config* : configuration in the format [[*filename*]:][*path_to_config_object*]
         *command* : the name of a ChimeMaster client method.
         --host: hostname of the server. Overrides the hostname found in the config. Default is 'localhost'.
-        --port: port number of the server. Overrides the port number found in the config.  Default is 54321.
+        --port: port number of the server. Overrides the port number found in the config.  Default is 54322.
         --run: run the client/server until Ctrl-C is pressed. Default when no command is provided.
         --no-run: Do not run the client/server even if no comman dis provided.
         --no_start: do not attempt to initialize the server even if a configuration is provided.
@@ -1471,11 +1533,11 @@ def main():
 
     Send a command to server:
 
-        ./raw_acq stop # send stop command to server on localhost:54321
+        ./raw_acq stop # send stop command to server on localhost:54322
         ./raw_acq jfc.erh power_off # power off supplies used by server running at theaddress specified in the jfc.erh config
     """
     # Setup logging
-    log.setup_basic_logging('DEBUG')
+    log.setup_basic_logging('INFO')
 
     client, server = run_client(sys.argv[1:], RawAcqAsyncRESTServer, RawAcqAsyncRESTClient, object_name ='RawAcq', server_config_path='raw_acq.servers')
     return client, server
