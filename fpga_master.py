@@ -270,6 +270,10 @@ class ChimeMaster(object):
         # Create RawAcq REST clients.
         self.raw_acq = {}
         nodes = self.config.raw_acq.servers or {}
+
+        if not nodes:
+            return
+
         for node_name, node_params in nodes.items():
             self.raw_acq[node_name] = RawAcqAsyncRESTClient(name=node_name, create_server=False, **node_params)
 
@@ -1365,6 +1369,9 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
     def _auto_restart_raw_acq(self):
         """ Regularly check if raw_acq server is running. If not, restart it.
         """
+        # Don't monitor raw_acq servers at all if not is defined
+        if not self.raw_acq:
+            return
         while True:
             try:
                 self.log.info('%r: ------------ Checking status of Raw_acq servers' % (self, ))
