@@ -339,7 +339,7 @@ class ChimeMaster(object):
                 name=recv_names[server_name],
                 ports=recv_ports[server_name],
                 stream_ids=self.raw_acq_stream_ids[server_name],
-                comet_broker=conf.common_config.comet_broker.as_dict())
+                comet_broker=conf.common_config.comet_broker.as_dict(),
                 jump_thresholds=conf.common_config.jump_thresholds)
             for server_name in self.raw_acq_ibs.keys()}
 
