@@ -941,8 +941,8 @@ class IceBoardExtHandler(IceBoardPlusHandler):
     @async
     def get_irigb_source(self):
         """ Get the name of the current source of the IRIG-B signal."""
-        w1 = yield self.fpga_mmi_read.async(self._IRIGB_TARGET0_ADDR)
-        w2 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE2_ADDR)
+        w1 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE2_ADDR)
+        w2 = yield self.fpga_mmi_read.async(self._IRIGB_TARGET0_ADDR)
 
         source = ((w1 >> 30) & 0b011) | (((w2 >> 31) & 0b001 ) << 2)
 
