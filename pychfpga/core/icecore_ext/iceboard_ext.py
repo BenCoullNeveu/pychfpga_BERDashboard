@@ -941,12 +941,15 @@ class IceBoardExtHandler(IceBoardPlusHandler):
     @async
     def get_irigb_source(self):
         """ Get the name of the current source of the IRIG-B signal."""
-        source = (yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE2_ADDR)) >> 30
+        w1 = yield self.fpga_mmi_read.async(self._IRIGB_TARGET0_ADDR)
+        w2 = yield self.fpga_mmi_read.async(self._IRIGB_SAMPLE2_ADDR)
+
+        source = ((w1 >> 30) & 0b011) | (((w2 >> 31) & 0b001 ) << 2)
 
         for (source_name, source_number) in self._IRIGB_SOURCE_TABLE.items():
             if source == source_number:
                 async_return(source_name)
-        raise ValueError('The IRIG-B module has an unknown source')
+        raise ValueError('The IRIG-B module has an unknown source number %i' % source)
 
     @async
     def detect_irigb_source(self, set_source=False):
