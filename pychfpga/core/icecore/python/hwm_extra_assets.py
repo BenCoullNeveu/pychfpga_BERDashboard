@@ -165,8 +165,14 @@ def mdns_discover(hwm=None, icecrates=None, iceboards=None, timeout=5, resolve_i
             icecrate_class = None
             for mapper in class_mapper(IceCrate).self_and_descendants:
                 supported_part_numbers = mapper.class_.__ipmi_part_number__
-                if not isinstance(supported_part_numbers, (list,tuple)):
+                # If the part number is None or an empty list, this means
+                # there is no supported part number, so skip this class
+                if not supported_part_numbers:
+                    continue
+                # Convert a single part number into a one-element list
+                if not isinstance(supported_part_numbers, (list, tuple)):
                     supported_part_numbers = [supported_part_numbers]
+                logger.debug('DNS-SD: IceCrate class search: checking in %r if part number %s is in supported PN %s' % (mapper.class_, bp_part_number, supported_part_numbers))
                 if bp_part_number in supported_part_numbers:
                     icecrate_class = mapper.class_
             # If so, create the IceCrate if needed, and fill in the IceBoard's crate and slot fields
