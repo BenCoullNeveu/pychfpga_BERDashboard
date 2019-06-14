@@ -134,11 +134,10 @@ class PROBER_base(Module_base):
 
         Parameters:
 
-            stream_id (int, tuple r None): desired Stream id.
-                - If `stream_id`
-            an `int`, the specified value is used.
+            stream_id (int, tuple or None): desired Stream id.
+                - If `stream_id` is an ``int``, the specified value is used.
 
-                - If `stream_id` is a (crate, slot, channel) tuple, the a
+                - If `stream_id` is a (crate, slot, channel) tuple, the
                   numeric stream_id will be built from the tuple elements.
 
                   The crate number '0' will be assumed if the crate has no

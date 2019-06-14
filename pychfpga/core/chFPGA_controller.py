@@ -851,7 +851,7 @@ class chFPGA_controller(IceBoardExtHandler):
         data(chan, bin) = complex value (4+4) bits
         """
 
-        d = np.zeros((16,2048), np.int8)
+        d = np.zeros((16, 2048), np.int8)
         d[:, 0::2] = data.real
         d[:, 1::2] = data.imag
         d <<= 4
@@ -1075,6 +1075,50 @@ class chFPGA_controller(IceBoardExtHandler):
                 self.set_local_data_port_number(actual_port_number)
 
         return self._data_socket
+
+    def set_data_capture_stream_ids(self, stream_ids):
+        """ Set the STREAM ID of the raw data capture packets for each of the channels
+
+        Parameters:
+
+            stream_ids (list, dict or int): stream_ids to apply.
+
+                if `stream_ids` is a list, the stream ids in the list will be
+                applied directly to the channels.
+
+                If `stream_ids` is a dict in the format {channel:stream_id},
+                the specified channels will be set with the corresponding
+                stream_ids.
+
+                If `stream_ids` is an integer, it will be treated as a virtual
+                slot number 'slot', and all channels on the board will be set
+                to ``slot * 16 + channel_number``. There can be up to 4096
+                virtual slots.
+
+
+
+        Note: This does not set the STREAM ID of the packets sent through the
+        corner turn or the correlator engines. This is only for the raw data
+        capture done over the control interface.
+
+        Examples:
+
+            ib.set_data_capture_stream_ids([100, 101, 102, ... 115]) # set stream ids from channels 0 to 100, channel 1 to 101 etc.
+
+            ib.set_data_capture_stream_ids({0:400, 5:401}) # set stream ids for channels 0 and 5 to 400 and 401 respectively
+
+            ib.set_data_capture_stream_ids(100) # Set stream_ids for channel 0...15 to the values 1600, 1601, 1602 etc.
+        """
+
+        if isinstance(stream_ids, list):
+            stream_ids = dict(enumerate(stream_ids))
+        elif insinstance(stream_ids, int):
+            stream_ids = {ch:(stream_id * 16 + ch) for ch in self.ANT.keys()}
+        elif not isinstance(stream_ids, dict):
+            raise TypeError('parameter must be a list, a dict or an integer')
+
+        for ch, stream_id in stream_ids.items()
+            self.ANT[ch].PROBER.STREAM_ID = stream_id
 
 
     def start_data_capture(self, period=None, frames_per_burst=1,  number_of_bursts=0,
