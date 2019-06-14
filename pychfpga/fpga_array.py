@@ -1127,6 +1127,7 @@ class FPGAArray(object):
     def set_operational_mode(self,
                              mode,
                              frames_per_packet=1,
+                             send_flags = True,
                              chan8_channel_map=range(8),
                              tx_power=None,
                              integration_period=16384
@@ -1156,8 +1157,19 @@ class FPGAArray(object):
                   is based on the crate number: Crate N and N+1 form a pair, whereas N
                   is a even number.
 
-            integration_period (int): (for ``corr16`` mode only): Sets the
-                integration period (in frames) of the firmware correlator.
+            frames_per_packet (int): Number of frames to combine in a single
+                packet. Is limited by the amount of buffering space inside the
+                FPGA.
+
+            send_flags (bool): If True, the Scaler and Frame flags will be
+                sent after the data block.
+
+            tx_power (dict): Power levels to be set on the GTXes.
+
+            integration_period (int): (for ``corr16`` mode only):
+                Sets the integration period (in frames) of the firmware
+                correlator.
+
 
 
         Notes:
@@ -1186,7 +1198,12 @@ class FPGAArray(object):
         if mode == 'raw_time':
             self.ib.set_fft_bypass(True)
             self.ib.set_scaler_bypass(True)
-            self.init_corner_turn(mode='chan8', frames_per_packet=frames_per_packet, chan8_channel_map=np.hstack((chan8_channel_map, [16]*8)), tx_power=tx_power)
+            self.init_corner_turn(
+                mode='chan8',
+                frames_per_packet=frames_per_packet,
+                send_flags=send_flags,
+                chan8_channel_map=np.hstack((chan8_channel_map, [16]*8)),
+                tx_power=tx_power)
 
         elif mode in ['shuffle256', 'shuffle512', 'shuffle16']:
             if not all(self.ib.CROSSBAR2) or not all(self.ib.CROSSBAR3):
@@ -1195,7 +1212,11 @@ class FPGAArray(object):
             self.ib.CROSSBAR3.SOF_WINDOW_STOP = 110
             self.ib.CROSSBAR3.TIMEOUT_PERIOD = 0
             self.ib.BP_SHUFFLE.reset_rx_equalizers()
-            self.init_corner_turn(mode=mode, frames_per_packet=frames_per_packet, tx_power=tx_power)
+            self.init_corner_turn(
+                mode=mode,
+                frames_per_packet=frames_per_packet,
+                send_flags=send_flags,
+                tx_power=tx_power)
             self.ib.BP_SHUFFLE.reset_stats()
             self.ib.CROSSBAR2.reset_stats()
             self.ib.CROSSBAR3.reset_stats()
@@ -1212,6 +1233,7 @@ class FPGAArray(object):
                      mode,
                      dsmap=range(16),
                      frames_per_packet=1,
+                     send_flags=True,
                      chan8_channel_map=range(16),
                      tx_power=None,
                      sync=True
@@ -1269,57 +1291,59 @@ class FPGAArray(object):
 
             # Initialize the crossbars to select and send data in a specific format
             # ib.init_crossbars(dsmap, frames_per_packet=frames_per_packet, cb1_lanes=cb1_lanes, cb1_bins=cb1_bins, cb1_bypass=cb1_bypass, cb2_lanes=cb2_lanes, cb2_bins=cb2_bins, cb2_bypass=cb2_bypass, remap=remap, bp_bypass=bp_bypass)
-            ib.init_crossbars(mode,
-                              dsmap=dsmap,
-                              frames_per_packet=frames_per_packet,
-                              chan8_channel_map=chan8_channel_map)
+            ib.init_crossbars(
+                mode,
+                dsmap=dsmap,
+                frames_per_packet=frames_per_packet,
+                send_flags=send_flags,
+                chan8_channel_map=chan8_channel_map)
         if ib.crate:
 
-	        #####################
-	        # Set-up receivers
-	        #####################
-	        for i, ib in enumerate(self.ib):
-	            # Disable all receivers for which there are no transmitters
-	            for j, gtx in enumerate(ib.BP_SHUFFLE.gtx[0:ib.BP_SHUFFLE.NUMBER_OF_PCB_LINKS]):
-	                if ib.slot is None:
-	                    continue
-	                rx = (ib.slot, j+1)
-	                tx = ib.crate.get_matching_tx(rx)
+            #####################
+            # Set-up receivers
+            #####################
+            for i, ib in enumerate(self.ib):
+                # Disable all receivers for which there are no transmitters
+                for j, gtx in enumerate(ib.BP_SHUFFLE.gtx[0:ib.BP_SHUFFLE.NUMBER_OF_PCB_LINKS]):
+                    if ib.slot is None:
+                        continue
+                    rx = (ib.slot, j+1)
+                    tx = ib.crate.get_matching_tx(rx)
 
-	                # disable receivers that have no corresponding transmitters
-	                if tx in tx_list:
-	                    gtx.USER_GTRXRESET = 0
-	                else:
-	                    gtx.USER_GTRXRESET = 1
-	                    # gtx.USER_RESET = 1
+                    # disable receivers that have no corresponding transmitters
+                    if tx in tx_list:
+                        gtx.USER_GTRXRESET = 0
+                    else:
+                        gtx.USER_GTRXRESET = 1
+                        # gtx.USER_RESET = 1
 
-	        # reset DFE at low power, then increase power
-	        for index in (0, 1):
-	            for tx_group in tx_power['corner_turn']:
-	                lane_group = tx_group['lane_group']
-	                default = tx_group['default']
-	                exceptions = tx_group.get('exceptions', [])
-	                self.logger.info('%r: TX power parameters are: %r (default=%r, exceptions=%r)' % (self, tx_group, default, exceptions))
-	                self.set_tx_power(lane_group=lane_group, default_power=default, exceptions=exceptions, index=index)
-	            if index == 0:
-	                time.sleep(0.3)
-	                for ib in self.ib:
-	                    self.ib.BP_SHUFFLE.reset_rx_equalizers()
+            # reset DFE at low power, then increase power
+            for index in (0, 1):
+                for tx_group in tx_power['corner_turn']:
+                    lane_group = tx_group['lane_group']
+                    default = tx_group['default']
+                    exceptions = tx_group.get('exceptions', [])
+                    self.logger.info('%r: TX power parameters are: %r (default=%r, exceptions=%r)' % (self, tx_group, default, exceptions))
+                    self.set_tx_power(lane_group=lane_group, default_power=default, exceptions=exceptions, index=index)
+                if index == 0:
+                    time.sleep(0.3)
+                    for ib in self.ib:
+                        self.ib.BP_SHUFFLE.reset_rx_equalizers()
 
-	        self.ib.BP_SHUFFLE.reset_stats()
+            self.ib.BP_SHUFFLE.reset_stats()
 
-	        # Print links
-	        for ib in self.ib:
-	            for i in range(ib.NUMBER_OF_CROSSBAR_OUTPUTS):
-	                if ib.slot is None:
-	                    continue
-	                rx = (ib.slot, i)
-	                tx = ib.crate.get_matching_tx(rx)
-	                if tx in tx_list:
-	                    pass
-	                    #self.logger.debug('%r: In %r,  %s is receiving from %s' % (self, ib.crate, rx, tx))
-	                else:
-	                    self.logger.debug('%r: In %r, %s has no corresponding transmitter' % (self, ib.crate.handler, rx))
+            # Print links
+            for ib in self.ib:
+                for i in range(ib.NUMBER_OF_CROSSBAR_OUTPUTS):
+                    if ib.slot is None:
+                        continue
+                    rx = (ib.slot, i)
+                    tx = ib.crate.get_matching_tx(rx)
+                    if tx in tx_list:
+                        pass
+                        #self.logger.debug('%r: In %r,  %s is receiving from %s' % (self, ib.crate, rx, tx))
+                    else:
+                        self.logger.debug('%r: In %r, %s has no corresponding transmitter' % (self, ib.crate.handler, rx))
 
 
         # sync boards
@@ -3278,7 +3302,7 @@ class FPGAArray(object):
                 self.logger.info("%r: Setting ADC delays" % (self))
                 ib.set_adc_delays(**kwargs)
                 yield async_moment
-	    else:
+        else:
                 self.logger.warning("%r: Communication with FPGA is not initialized. Cannot set ADC delays" % (self))
 
 

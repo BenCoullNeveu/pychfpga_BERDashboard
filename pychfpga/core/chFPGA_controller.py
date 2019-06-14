@@ -2406,7 +2406,8 @@ class chFPGA_controller(IceBoardExtHandler):
                        cb1_lanes=16, cb1_bins=64, cb1_bypass=False, cb1_combine_data_flags=0,
                        cb2_lanes=None, cb2_bins=1, cb2_bypass=False,
                        bp_shuffle_bypass=1, crate_shuffle_bypass=1,
-                       remap=True, chan8_channel_map=range(16)):
+                       remap=True, chan8_channel_map=range(16),
+                       send_flags=True):
         """ Initializes the Corner Turn engine in the specified operation mode.
 
         This method configured the 1st, 2nd and 3rd crossbars (which each can include a remap, frame
@@ -2482,7 +2483,7 @@ class chFPGA_controller(IceBoardExtHandler):
 
             chan8_channel_map (list) : channel remapping to be used in `chan8` mode. Defaults to the identity map (range(16))
 
-
+            send_flags (bool): If False, the Scaler and Frame flags will not be sent.
 
         """
 
@@ -2916,7 +2917,7 @@ class chFPGA_controller(IceBoardExtHandler):
         for (cb1_output_lane, bs) in enumerate(cb1):
             bs.BYPASS = cb1_bypass
             bs.COMBINE_DATA_FLAGS = cb1_combine_data_flags
-
+            bs.SEND_FLAGS = send_flags
             bs.GROUP_FRAMES = frames_per_packet
             bs.STREAM_ID = (stream_type << 8) | (crate_number << 4) | slot_number
             bs.FOUR_BITS = cb1_four_bit
@@ -2949,6 +2950,7 @@ class chFPGA_controller(IceBoardExtHandler):
                 bs.BYPASS = bool(cb2_bypass)
                 if not cb2_bypass:
                     bs.STREAM_ID = (stream_type << 8) | (crate_number << 4) | slot_number
+                    bs.SEND_FLAGS = send_flags
                     bs.NUMBER_OF_FRAMES_PER_PACKET = frames_per_packet
                     bs.NUMBER_OF_BINS_PER_FRAME = cb2_input_bins
                     bs.NUMBER_OF_WORDS_PER_BIN = cb2_input_words_per_bin
@@ -2970,6 +2972,7 @@ class chFPGA_controller(IceBoardExtHandler):
                 bs.BYPASS = bool(cb3_bypass)
                 if not cb3_bypass:
                     bs.STREAM_ID = (stream_type << 8) | (crate_number << 4) | slot_number  # The stream ID at the output of CB2 will be 0xSL (S=slot-1, L=lane)
+                    bs.SEND_FLAGS = send_flags
                     bs.NUMBER_OF_FRAMES_PER_PACKET = frames_per_packet
                     bs.NUMBER_OF_DATA_FLAGS_WORDS_PER_BIN = cb3_input_data_flags_words_per_bin
                     bs.NUMBER_OF_FRAME_FLAGS_WORDS_PER_FRAME = cb3_input_frame_flags_words_per_frame
@@ -2997,6 +3000,9 @@ class chFPGA_controller(IceBoardExtHandler):
         def print_packet_size(crossbar_name, frames_per_packet, bins, data_words_per_bin, data_flags_words_per_bin, frame_flags_words_per_frame):
             header_words_per_packet = 4
             packet_flags_words_per_packet = 1
+            if not send_flags:
+                data_flags_words_per_bin = 0
+                frame_flags_words_per_frame = 0
             payload_size = (header_words_per_packet  + frames_per_packet * ((data_words_per_bin + data_flags_words_per_bin) * bins + frame_flags_words_per_frame) + packet_flags_words_per_packet) * 4
             ethernet_packet_overhead_bytes = 42
             ethernet_packet_size = (ethernet_packet_overhead_bytes + payload_size + 7) // 8 * 8
