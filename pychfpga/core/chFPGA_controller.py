@@ -1112,12 +1112,12 @@ class chFPGA_controller(IceBoardExtHandler):
 
         if isinstance(stream_ids, list):
             stream_ids = dict(enumerate(stream_ids))
-        elif insinstance(stream_ids, int):
-            stream_ids = {ch:(stream_id * 16 + ch) for ch in self.ANT.keys()}
+        elif isinstance(stream_ids, int):
+            stream_ids = {ch:(stream_ids * 16 + ch) for ch in self.ANT.keys()}
         elif not isinstance(stream_ids, dict):
             raise TypeError('parameter must be a list, a dict or an integer')
 
-        for ch, stream_id in stream_ids.items()
+        for ch, stream_id in stream_ids.items():
             self.ANT[ch].PROBER.STREAM_ID = stream_id
 
 
