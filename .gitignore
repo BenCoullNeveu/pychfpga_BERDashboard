@@ -14,4 +14,4 @@ out_*/
 /src/
 /venv/
 \.DS_Store
-/pychfpga.egg-info/
+/*.egg-info/

@@ -2730,15 +2730,16 @@ class chFPGA_controller(IceBoardExtHandler):
             cb2_input_bins = cb1_output_bins
             cb2_input_data_flags_words_per_bin = 1
             cb2_input_frame_flags_words_per_frame = 1
-            cb2_lanes = ((0, 1), (2, 3))  #BS0 selects sublanes 0-1, BS1 selects sublanes 2-3
+            cb2_lanes = ((0, 1), (2, 3))  #BS0 selects sublanes 0-1, i.e. its 4 outputs gather data from lanes 0-1, 4-5, 8-9, and 12-13, BS1 selects sublanes 2-3 (lanes 2-3, 6-7, 10-12 and 14-15 )
+            cb2_combine_data_flags = True # hardwired to True in crossbar 2
             cb2_input_lanes_per_output_lane = cb2_lanes[0][1] - cb2_lanes[0][0] + 1 # 2 input lanes per output
             cb2_bins = 64
             cb2_bin_spacing = 1
             cb2_bin_select_map = [np.arange(cb2_bins)*cb2_bin_spacing for i in range(number_of_cb2_bin_sel)]
-            cb2_output_words_per_bin = 2 * cb2_input_words_per_bin
-            cb2_output_data_flags_words_per_bin = cb2_input_data_flags_words_per_bin * cb2_input_lanes_per_output_lane
+            cb2_output_words_per_bin = cb2_input_words_per_bin * cb2_input_lanes_per_output_lane / cb2_bin_spacing # x2 since we combine data from 2 lanes and select all bine
+            cb2_output_data_flags_words_per_bin = cb2_input_data_flags_words_per_bin * cb2_input_lanes_per_output_lane / (2 if cb2_combine_data_flags else 1)
             cb2_output_frame_flags_words_per_frame = cb2_input_frame_flags_words_per_frame * cb2_input_lanes_per_output_lane
-            cb2_output_bins = cb2_bins
+            cb2_output_bins = cb2_bins / cb2_bin_spacing
             crate_number = self.crate.crate_number
             stream_type = 2
             # QSFP SHUFFLE
@@ -2840,7 +2841,7 @@ class chFPGA_controller(IceBoardExtHandler):
             cb2_input_lanes_per_output_lane = cb2_lanes[0][1] - cb2_lanes[0][0] + 1 # 4 input lanes per output
             cb2_bins = cb1_output_bins / number_of_cb2_bin_sel # 64/2 = 32
             cb2_bin_spacing = number_of_cb2_bin_sel # 2
-            cb2_bin_select_map = [np.arange(cb2_bins)*cb2_bin_spacing + (i ^ (crate_number & 1)) for i in range(number_of_cb2_bin_sel)]
+            cb2_bin_select_map = [np.arange(cb2_bins) * cb2_bin_spacing + (i ^ (crate_number & 1)) for i in range(number_of_cb2_bin_sel)]
             cb2_combine_data_flags = True # hardwired to True in crossbar 2
 
             # Output packet geometry
