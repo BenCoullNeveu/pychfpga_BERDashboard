@@ -1196,9 +1196,9 @@ class chFPGA_controller(IceBoardExtHandler):
                burst_period_in_frames,
                burst_period_in_frames*self.FRAME_PERIOD*1000,
                ('continuously when TRIG=1' if not number_of_bursts else ('for a total of %i bursts' % number_of_bursts))))
-            frames_per_second = len(channels)*frames_per_burst*1.0/self.FRAME_PERIOD/burst_period_in_frames
+            frames_per_second = len(channels) * frames_per_burst * 1.0 / self.FRAME_PERIOD / burst_period_in_frames
             bits_per_second = frames_per_second * 8 * self.FRAME_LENGTH
-            self._logger.debug('%r: Data rates are: %f kFrames/s, %f Mbits/s' % (self, frames_per_second/1e3, bits_per_second/1e6))
+            self._logger.debug('%r: Data rates are: %f kFrames/s, %f Mbits/s' % (self, frames_per_second / 1e3, bits_per_second / 1e6))
 
         self.set_trig(0) # disable data transmission if continuous mode is currentlly selected
 #        self.set_ant_reset(1) # resets all
@@ -1208,7 +1208,7 @@ class chFPGA_controller(IceBoardExtHandler):
         for ant in self.ANT.values():
             ant.PROBER.set_data_source(source)
             ant.PROBER.RESET = 1
-            ant.PROBER.PROBE_ID = 0xA0 + ant.ant_number
+            # ant.PROBER.PROBE_ID = 0xA0 + ant.ant_number
             ant.PROBER.config_capture(frames_per_burst=frames_per_burst, burst_period=burst_period_in_frames, number_of_bursts=number_of_bursts, offset=offset, send_delay=send_delay)
             if ant.ant_number in channels:
                 self._logger.debug('%r: Enabling Capture for Antenna %i' % (self, ant.ant_number))
@@ -2740,7 +2740,7 @@ class chFPGA_controller(IceBoardExtHandler):
             cb2_output_data_flags_words_per_bin = cb2_input_data_flags_words_per_bin * cb2_input_lanes_per_output_lane / (2 if cb2_combine_data_flags else 1)
             cb2_output_frame_flags_words_per_frame = cb2_input_frame_flags_words_per_frame * cb2_input_lanes_per_output_lane
             cb2_output_bins = cb2_bins / cb2_bin_spacing
-            crate_number = self.crate.crate_number
+            crate_number = (self.crate.crate_number or 0) if self.crate else 0
             stream_type = 2
             # QSFP SHUFFLE
             crate_shuffle_bypass = True
@@ -2821,7 +2821,7 @@ class chFPGA_controller(IceBoardExtHandler):
             # CB2 ALIGN
             # cb2_timeout_period = 0
 
-            crate_number = self.crate.crate_number
+            crate_number = (self.crate.crate_number or 0) if self.crate else 0
             stream_type = 3 # crossbar 3-level data
 
             # Input packet geometry
@@ -2964,6 +2964,7 @@ class chFPGA_controller(IceBoardExtHandler):
             bs.COMBINE_DATA_FLAGS = cb1_combine_data_flags
             bs.SEND_FLAGS = send_flags
             bs.GROUP_FRAMES = frames_per_packet
+            print(stream_type, crate_number, slot_number)
             bs.STREAM_ID = (stream_type << 8) | (crate_number << 4) | slot_number
             bs.FOUR_BITS = cb1_four_bit
             bs.FIRST_FIFO_NUMBER = cb1_lanes[cb1_output_lane][0]
