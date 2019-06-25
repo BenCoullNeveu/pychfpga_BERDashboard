@@ -286,16 +286,31 @@ class ChimeMaster(object):
         conf = self.config.raw_acq
         #print(conf)
 
-        # Make a list of all all iceboards for each of the RawAcq node
-        self.raw_acq_ibs = {}
-        for node_name, node_conf in (conf.servers or {}).items():
-            self.raw_acq_ibs[node_name] = set(self.fpgas.get_iceboards(node_conf.iceboards))
-
-        #print('self.raw_acq_ibs=', self.raw_acq_ibs)
-        # Check that an iceboard is assigned to only one server
-        for node_name, ibs in self.raw_acq_ibs.items():
-            if not all(ibs.isdisjoint(other_ibs) for other_name, other_ibs in self.raw_acq_ibs.items() if other_name != node_name):
-                raise RuntimeError('Some FPGA board(s) is/are assigned to send raw data to multiple RawAcq nodes. Check your config')
+        # Create a list of IceBoard objects that correspond to each port entry of
+        # each server. Check that an iceboard is not allocated twice while
+        # doing that.
+        all_ibs = set()  # keeps track of Iceboard objects used so far so we can detect multiple assignments
+        self.raw_acq_ibs = {}  # iceboard objects assocoated with each receiver
+        self.raw_acq_stream_ids = {} # stream ID that each receiver should expect
+        for server_name, server_conf in (conf.servers or {}).items():
+            self.raw_acq_ibs[server_name] = []  # [{'port':port_name, 'sources':[ib1, ib2, ]}, ...]
+            self.raw_acq_stream_ids[server_name] = []  # [{'port':port_name, 'sources':[ib1, ib2, ]}, ...]
+            for port_config in server_conf.receiver_ports:
+                # Get a set of iceboard objects specified in shources. These
+                # can be specified in any format recognized by
+                # get_iceboards(), i.e. (crate, slot) tuple, or {'crate':
+                # crate, 'slot':slot}
+                print('port_config=', port_config)
+                for src_spec in port_config['sources']:
+                    ibs = self.get_iceboards(src_spec)
+                # Make sure no iceboard was already assigned
+                    if not set(ibs).isdisjoint(all_ibs):
+                        raise RuntimeError('Some FPGA board(s) are assigned to multiple RawAcq ports. Check your config.')
+                    all_ibs.update(ibs)
+                    # Store the entry
+                    self.raw_acq_ibs[server_name].append(NameSpace(port=port_config['port'], iceboards=ibs))
+                    for ib in ibs:
+                        self.raw_acq_stream_ids[server_name].extend(ib.get_stream_id_map().values())
 
         # Start each RawAcq server with a port for each assigned iceboard. For each port, we provide
         # the address of the (only) source FPGA board. The server will ping this address back to
@@ -378,8 +393,10 @@ class ChimeMaster(object):
         tmux_factor = tmux_factor or conf.tmux_factor
         capture_period = 1.0 / float(capture_rate)
 
-        for server_name, ibs in self.raw_acq_ibs.items():
-            for ib in ibs:
+        for server_name, port_entries in self.raw_acq_ibs.items():
+            for port_entry in port_entries:
+                # Compute a transmission delay for each board to prevent them from sending their data all at the same time
+                for ib in port_entry.iceboards:
                     (crate, slot) = ib.get_id(default_crate=0, default_slot=0)
                     send_delay = int(tmux_factor * (16 * crate + slot))
 
@@ -515,7 +532,7 @@ class ChimeMaster(object):
                 base_filename=capture_filename,
                 capture_duration=capture_duration,
                 elements_per_file=capture_elements_per_file
-                )         for node_name, node in self.raw_acq.items()]
+                )         for server_name, server in self.raw_acq.items()]
 
 
 
