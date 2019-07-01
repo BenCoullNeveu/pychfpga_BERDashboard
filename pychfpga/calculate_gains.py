@@ -80,7 +80,7 @@ class GainCalc(object):
         # keep track of the iteration number
         self.frame_count = np.zeros((self.nchan), dtype=np.int8)
         self.iteration_number = np.zeros((self.nchan ), dtype=np.int8)
-        self.done = np.zeros((self.nchan), dtype=np.int8)
+        self.done = np.zeros((self.nchan), dtype=bool)
 
     def get_gains(self, ix=None):
         """ Return the gains from the current iteration in a format compatible with the FPGAArray.set_gains().
@@ -155,7 +155,7 @@ class GainCalc(object):
         # get the buffer index of the provided ids
         t1 = time.time()
         # remove channels that are already completed
-        ix = ix[self.done[ix] == False]
+        # ix = ix[self.done[ix] == False]
 
 
         # Scale the current gain to the value that would get us the target RMS
@@ -164,13 +164,19 @@ class GainCalc(object):
         # Compute current linear gain from glin/glog
         self.temp_gains[ix] = self.glin[ix] * (2.**self.glog[ix, None])  # 2 has to be a float, otherwise it returns the ** result as int8
         # return self.temp_gains[ix]
-        print 'Gain Iteration', self.iteration_number[ix]
-        print 'RMS error is ', np.median(self.target_rms - rms[ix], axis=-1)
+        # print 'CG: Gain Iteration', self.iteration_number[ix]
+        # print 'CG: RMS is ', np.median(rms[ix, 1:], axis=-1)
+        print 'CG: Actual/target RMS ratio is ', np.median(rms[ix, 1:] / self.target_rms, axis=-1)
         # Compute new gain base don the ratio of the acrual rms vs target rms
         # We want to slowly ease into that gain to avoid being affected too much by transients, so just take 20% of thhat target and 80% of the old gain
         # self.temp_gains[ix][...] = (20.0 * target_gains + 80.0 * self.temp_gains[ix]) / 100.0
-        self.temp_gains[ix] *= 0.8 + (0.2 * np.clip(self.target_rms / rms[ix], 1/4./.2, 4./.2))  #  g[j].shape=(1024)    idealRMS*glin*(2**(glog-4))/outrms
-        # print 'new_gain is ', self.temp_gains[ix]
+        # self.temp_gains[ix][...] = 0.2 * target_gains + 0.8 * self.temp_gains[ix]
+        # self.temp_gains[ix][...] = 0.2 * target_gains + 0.8 * self.temp_gains[ix]
+        a = 0.2
+        gmax = 4.0
+        # self.temp_gains[ix] *= (1-a) + a*(np.clip(self.target_rms / rms[ix], 1/gmax/a, gmax/a))  #  g[j].shape=(1024)    idealRMS*glin*(2**(glog-4))/outrms
+        self.temp_gains[ix] *= np.clip((1-a) + a*self.target_rms / rms[ix], 1/gmax, gmax)  #  g[j].shape=(1024)    idealRMS*glin*(2**(glog-4))/outrms
+        # print 'CG: new_gain is ', self.temp_gains[ix]
 
         # Convert linear gain into (glin, glog) values
         self.glin[ix], self.glog[ix] = self.calc_gains(self.temp_gains[ix])  # glin.shape=(16,1024), glog.shape=(16)
@@ -230,7 +236,7 @@ class GainCalc(object):
 
         # Eliminate gains that would be too high from the computations by creating
         # a masked array
-        bad_values = (g > 2**31) | ~ np.isfinite(g)
+        bad_values = (g > 2**(31+16)) | ~ np.isfinite(g)
         # ignore bin 0, which has a DC components that is way larger than the signal in other bins
         bad_values[:, 0] = True
         g = np.ma.array(g, mask=bad_values)
@@ -246,7 +252,7 @@ class GainCalc(object):
         # it, which is rounded up so we keep our headroom of at least 4.
         #
         # glog has one less dimension than `g`.
-        glog = (np.ceil(np.log2(np.ma.median(np.abs(g) / target_glin , axis=-1)))).astype(np.int)
+        glog = np.clip((np.ceil(np.log2(np.ma.median(np.abs(g) / target_glin , axis=-1)))).astype(np.int), 0, 31)
         # ma.median will result in a masked value if all elements are masked. In
         # these cases, give to glog the the median glog from all channels
         # (hopefully there is at lease one good glog) .
