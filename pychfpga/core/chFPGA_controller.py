@@ -663,6 +663,15 @@ class chFPGA_controller(IceBoardExtHandler):
         """
         Return configuration for this FPGA.
 
+
+        Parameters:
+
+            basic (bool): If False, only the quickly accessible information is gathered
+
+        Returns:
+
+            chFPGA_config object (essentially just a namespace) containing the config parameters.
+
         TODO:
             - use yield on slow statements to make this really parallel
         """
@@ -2997,7 +3006,7 @@ class chFPGA_controller(IceBoardExtHandler):
             cb2_output_bins = cb2_bins
             cb2_output_data_flags_words_per_bin = cb2_input_data_flags_words_per_bin * cb2_input_lanes_per_output_lane / (2 if cb2_combine_data_flags else 1)
             cb2_output_frame_flags_words_per_frame = cb2_input_frame_flags_words_per_frame * cb2_input_lanes_per_output_lane
-            print("cb2_output frame flags words=%i, input frame flags words=%i, input_lanes=%i" % (cb2_output_frame_flags_words_per_frame,cb2_input_frame_flags_words_per_frame, cb2_input_lanes_per_output_lane))
+            # print("cb2_output frame flags words=%i, input frame flags words=%i, input_lanes=%i" % (cb2_output_frame_flags_words_per_frame,cb2_input_frame_flags_words_per_frame, cb2_input_lanes_per_output_lane))
 
 
             # QSFP SHUFFLE
@@ -3111,7 +3120,7 @@ class chFPGA_controller(IceBoardExtHandler):
             bs.COMBINE_DATA_FLAGS = cb1_combine_data_flags
             bs.SEND_FLAGS = send_flags
             bs.GROUP_FRAMES = frames_per_packet
-            print(stream_type, crate_number, slot_number)
+            # print(stream_type, crate_number, slot_number)
             bs.STREAM_ID = (stream_type << 8) | (crate_number << 4) | slot_number
             bs.FOUR_BITS = cb1_four_bit
             bs.FIRST_FIFO_NUMBER = cb1_lanes[cb1_output_lane][0]

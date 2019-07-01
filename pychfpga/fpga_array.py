@@ -1282,7 +1282,7 @@ class FPGAArray(object):
         #####################
         for i, ib in enumerate(self.ib):
             self.logger.info('%r: **** Initializing transmitters for IceBoard %r (SN%s) ****' % (self, ib, ib.serial))
-            ib.set_corr_reset(0)
+            ib.set_corr_reset(0) # Put the corner_turn engine in reset
 
             tx_list.append((ib.slot, 0))  # Register Bypass lane (lane 0) as a transmitter in this slot
             for j, gtx in enumerate(ib.BP_SHUFFLE.gtx):
@@ -1385,7 +1385,7 @@ class FPGAArray(object):
             bp = ib.BP_SHUFFLE
             power_tuples = [(lane, exceptions.get(ib.get_id(lane), default_power)[index])
                             for lane, gtx in enumerate(bp.get_gtx(lane_group=lane_group)) if gtx]
-            self.logger.info('%r: setting Tx power for %r %s to %r' % (self, ib.handler, lane_group, power_tuples))
+            self.logger.info('%r: setting Tx power for %r %s links' % (self, ib.handler, lane_group))
             bp.set_tx_power(power_tuples, lane_group)
 
 
@@ -1936,7 +1936,7 @@ class FPGAArray(object):
             `when`: if `when` is 'now' or a negative integer, the target gains
                     are made active immediately.
 
-                    If `when` is None, the gains are not activated.
+                    If `when` is None, the gains are written in the specified bank but the bank switching is not activated.
 
                     If `when` is an integer, the gains will be activated starting on
                     the target timestamp specified by `when`.
@@ -3391,7 +3391,7 @@ class FPGAArray(object):
                 self.logger.info("%r: Setting ADC delays" % (self))
                 ib.set_adc_delays(**kwargs)
                 yield async_moment
-        else:
+            else:
                 self.logger.warning("%r: Communication with FPGA is not initialized. Cannot set ADC delays" % (self))
 
 
