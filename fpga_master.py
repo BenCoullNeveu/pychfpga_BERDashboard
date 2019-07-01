@@ -1389,25 +1389,25 @@ class ChimeMasterAsyncRESTServer(AsyncRESTServer):
         """ Regularly check if raw_acq server is running. If not, restart it.
         """
         # Don't monitor raw_acq servers at all if not is defined
-        if not self.raw_acq:
-            return
-        while True:
-            try:
-                self.log.info('%r: ------------ Checking status of Raw_acq servers' % (self, ))
-                if (self.chime_master and self.chime_master.state == 'on' and self.chime_master.fpgas):
-                    for raw_acq_server_name, raw_acq_client in self.chime_master.raw_acq.items():
+        try:
+            while True:
+                self.log.info('%r: ============ Checking status of Raw_acq servers' % (self, ))
+                if (self.chime_master and self.chime_master.raw_acq and
+                    self.chime_master.state == 'on' and self.chime_master.fpgas):
+                    for server_name, server in self.chime_master.raw_acq.items():
                         try:
-                            self.log.info('%r: Checking status of Raw_acq server %s' % (self, raw_acq_server_name))
-                            result = yield raw_acq_client.status()
+                            self.log.info('%r: Checking status of Raw_acq server %s' % (self, server_name))
+                            result = yield server.status()
                             if not result['started']:
-                                self.log.info('%r: Raw_acq server %s seems to be stopped. Restarting.' % (self, raw_acq_server_name))
+                                self.log.info('%r: Raw_acq server %s seems to be stopped. Restarting.' % (self, server_name))
                                 yield self.chime_master.start_raw_acq_servers()
                                 yield self.chime_master.start_hdf5_capture()
 
                         except (HTTPError, RuntimeError, Exception) as e:
-                            self.log.error('%r: Failed to get status info from raw_acq server %s (%r) due to the following exception: %r' % (self, raw_acq_server_name, raw_acq_client, e))
-            except Exception as e:
-                self.log.error('%r: auto_restart_raw_acq raised the following exception: %r' % (self, e))
+                            self.log.error('%r: Failed to get status info from raw_acq server %s (%r) due to the following exception: %r' % (self, server_name, server, e))
+                yield sleep(3)
+        except Exception as e:
+            self.log.error('%r: auto_restart_raw_acq raised the following exception: %r' % (self, e))
             yield sleep(3)
 
 
